@@ -98,6 +98,14 @@ function tryRun(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, { stdio: 'inherit', shell: IS_WIN, ...opts });
   return !r.error && r.status === 0;
 }
+// have(cmd) probes with `--version`, which Windows PowerShell 5.1's powershell.exe does NOT
+// understand as a flag — it parses `--version` as a PowerShell expression (`--` looks like a unary
+// operator to it) and exits 1. Only pwsh (7+, often absent in a locked-down sandbox) supports
+// `--version`. Use `-Command exit 0` instead, which both powershell.exe and pwsh.exe understand.
+function havePowerShell(exe) {
+  const probe = spawnSync(exe, ['-NoProfile', '-NonInteractive', '-Command', 'exit 0'], { stdio: 'ignore' });
+  return !probe.error && probe.status === 0;
+}
 
 // ── download with redirect-following + progress ──────────────────────────────────────────────────
 function download(url, dest, redirects = 0) {
@@ -292,7 +300,7 @@ function unzipInto(zipPath, cacheDir) {
 
   const hasUnzip = have('unzip');
   // Windows fallback: PowerShell's Expand-Archive is available on all modern Windows systems.
-  const psExe = !hasUnzip ? (['pwsh', 'powershell'].find(have) || null) : null;
+  const psExe = !hasUnzip ? (['pwsh', 'powershell'].find(havePowerShell) || null) : null;
 
   if (!hasUnzip && !psExe) {
     die(
@@ -316,8 +324,12 @@ function unzipInto(zipPath, cacheDir) {
       // Windows: PowerShell's Expand-Archive handles .zip natively with -Force for overwrite.
       // shell:false here (pwsh/powershell are real .exe files, not .cmd shims) — routing this
       // through cmd.exe would re-tokenize the already-quoted -Command string and break it.
+      // -ExecutionPolicy Bypass: Expand-Archive ships as a script module (.psm1); on a locked-down
+      // machine (Restricted/AllSigned policy — common in sandboxes) importing it fails with
+      // "running scripts is disabled on this system" even though the exe itself runs fine. Bypass
+      // only affects this one child process, not any persistent machine setting.
       run(psExe, [
-        '-NoProfile', '-NonInteractive', '-Command',
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
         `Expand-Archive -LiteralPath "${zipPath}" -DestinationPath "${cacheDir}" -Force`,
       ], { shell: false });
     }
@@ -478,7 +490,7 @@ function doctor() {
   have('node') ? ok('node present') : warn('node missing');
   have('npm') ? ok('npm present') : warn('npm missing');
   have('claude') ? ok('claude CLI present') : warn('claude CLI missing (plugin wiring needs it)');
-  have('unzip') || have('pwsh') || have('powershell')
+  have('unzip') || havePowerShell('pwsh') || havePowerShell('powershell')
     ? ok('zip extraction available (unzip or PowerShell Expand-Archive)')
     : warn('no zip tool found — unzip or PowerShell needed for re-install');
   const env = detectEnvironment();
