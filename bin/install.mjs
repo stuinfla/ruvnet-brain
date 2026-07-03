@@ -487,7 +487,7 @@ function doctor() {
     : warn('Ruflo not found — answers still work. To build: npm install -g claude-flow@alpha  (or /plugin add ruvnet/claude-flow)');
   env.ruvector
     ? ok('RuVector present — vector CLI / MCP available')
-    : warn('RuVector not found — answers still work. To add: claude mcp add ruvector -- npx -y ruvector mcp start');
+    : warn('RuVector not found — answers still work. To add: claude mcp add ruvector --scope user -- npx -y ruvector mcp start');
   const v = verifyInstall(cacheDir);
   smokeQuery(cacheDir);
   const allGreen = v.repos > 0 && v.reader && v.mcp;
@@ -527,6 +527,21 @@ function ask(question, def = false) {
   });
 }
 
+// `claude mcp add <name> --scope user` writes to the top-level `mcpServers` object in ~/.claude.json
+// (NOT ~/.claude/settings.json, and NOT the per-project `projects[cwd].mcpServers` used by the
+// default "local" scope). Checking the wrong file/scope is why a successfully-added server can still
+// show up as "not found" on the next run.
+function hasUserScopeMcpServer(name) {
+  try {
+    const p = path.join(os.homedir(), '.claude.json');
+    if (!fs.existsSync(p)) return false;
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+    return Boolean(j.mcpServers && Object.keys(j.mcpServers).some((k) => k.toLowerCase() === name.toLowerCase()));
+  } catch {
+    return false;
+  }
+}
+
 // ── detect the user's environment + rUv toolkit (never mutates anything) ──────────────────────────
 function detectEnvironment() {
   const nodeMajor = (() => { const m = /^v(\d+)/.exec(process.version); return m ? Number(m[1]) : 0; })();
@@ -537,7 +552,7 @@ function detectEnvironment() {
     arch: process.arch,
     claude: have('claude'),
     ruflo: have('ruflo') || have('claude-flow'),
-    ruvector: have('ruvector'),
+    ruvector: have('ruvector') || hasUserScopeMcpServer('ruvector'),
   };
   // Also honor a toolkit that's wired into the Claude config even if the CLI isn't on PATH (npx users).
   try {
@@ -545,7 +560,6 @@ function detectEnvironment() {
     if (fs.existsSync(settings)) {
       const s = fs.readFileSync(settings, 'utf8');
       if (/claude-flow|\bruflo\b/i.test(s)) env.ruflo = true;
-      if (/\bruvector\b/i.test(s)) env.ruvector = true;
     }
   } catch { /* ignore — detection is best-effort */ }
   return env;
@@ -575,13 +589,18 @@ async function offerStack(env) {
       shell: env.claude ? ['npm', ['install', '-g', 'claude-flow@alpha']] : null,
       say: 'npm install -g claude-flow@alpha',
       plugin: '/plugin add ruvnet/claude-flow',
+      verify: () => have('claude-flow') || have('ruflo'),
     });
   if (!env.ruvector)
     missing.push({
       what: 'RuVector (vectors / RVF)',
-      shell: env.claude ? ['claude', ['mcp', 'add', 'ruvector', '--', 'npx', '-y', 'ruvector', 'mcp', 'start']] : null,
-      say: 'claude mcp add ruvector -- npx -y ruvector mcp start',
+      // --scope user: same reason the plugin itself installs at user scope — the brain is "one
+      // toolkit, every project", and the default "local" scope ties the server to whatever
+      // directory happens to be the cwd when this runs.
+      shell: env.claude ? ['claude', ['mcp', 'add', 'ruvector', '--scope', 'user', '--', 'npx', '-y', 'ruvector', 'mcp', 'start']] : null,
+      say: 'claude mcp add ruvector --scope user -- npx -y ruvector mcp start',
       plugin: null,
+      verify: () => hasUserScopeMcpServer('ruvector'),
     });
 
   info('');
@@ -609,7 +628,10 @@ async function offerStack(env) {
   for (const m of missing) {
     if (m.shell) {
       info(`installing ${m.what} … ${c.dim(m.say)}`);
-      if (tryRun(m.shell[0], m.shell[1])) ok(`${m.what} added`);
+      const ran = tryRun(m.shell[0], m.shell[1]);
+      // Don't trust the exit code alone — e.g. `claude mcp add` exits non-zero on "already exists",
+      // which is functionally success. Re-check the real state (m.verify) before warning.
+      if (ran || (m.verify && m.verify())) ok(`${m.what} added`);
       else warn(`couldn't auto-add ${m.what}; run it yourself: ${c.bold(m.say)}${m.plugin ? `  (or ${m.plugin})` : ''}`);
     } else {
       info(`${m.what}: run ${c.bold(m.say)}${m.plugin ? `  ${c.dim(`(or ${m.plugin} in Claude Code)`)}` : ''}`);
