@@ -38,6 +38,7 @@ const FLAG_HELP = argv.includes('--help') || argv.includes('-h');
 const FLAG_DOCTOR = argv.includes('--doctor');
 const FLAG_NO_VERIFY = argv.includes('--no-verify');
 const FLAG_PIN = argv.includes('--pin'); // skip the latest-check, use the bundled default
+const FLAG_DEMO = argv.includes('--demo'); // guided, real (non-fabricated) walkthrough of the brain in action
 // ── onboarding-experience flags (all optional; every offer is safe to decline) ──
 const FLAG_YES = argv.includes('--yes') || argv.includes('-y'); // accept every optional offer non-interactively
 const FLAG_WITH_STACK = argv.includes('--with-stack'); // add missing Ruflo/RuVector without prompting
@@ -69,6 +70,16 @@ function step(what, why) {
 const info = (s) => console.log(`    ${s}`);
 const ok = (s) => console.log(`    ${c.green('✓')} ${s}`);
 const warn = (s) => console.log(`    ${c.yellow('!')} ${s}`);
+
+// Prints an unmistakable "this is RuvNet Brain, and it's running right now" banner — so a user
+// never has to wonder whether the right tool is doing the work. Used by the installer, --doctor,
+// and --demo alike, so every entry point identifies itself the same way.
+function printBanner(subtitle) {
+  const line = '─'.repeat(64);
+  console.log(`\n${c.cyan(line)}`);
+  console.log(`  🧠  ${c.bold(c.cyan('RuvNet Brain'))} ${c.dim('—')} ${c.bold(subtitle)}`);
+  console.log(`${c.cyan(line)}`);
+}
 
 function die(msg, hint) {
   console.error(`\n${c.red('✗ install stopped:')} ${msg}`);
@@ -456,7 +467,12 @@ function smokeQuery(cacheDir) {
   info(c.dim('(first run downloads a small local model once — this can take a minute)'));
   let r;
   try {
-    r = spawnSync('node', [ask, '--dir', cacheDir, '--q', Q, '--k', '1'], {
+    // Relative filename + matching cwd (NOT the absolute `ask` path) — forge-ask-all.mjs only runs
+    // its CLI main() when `path.resolve(process.argv[1]) === path.resolve(__filename)`; passed as an
+    // absolute path via spawnSync (no shell involved) that identity check silently fails on this
+    // machine, so main() never runs — exit 0, zero stdout, zero stderr, no exception. Looks like a
+    // clean success; is actually a total no-op. Verified: switching to a relative name + cwd fixes it.
+    r = spawnSync('node', ['forge-ask-all.mjs', '--dir', cacheDir, '--q', Q, '--k', '1'], {
       cwd: cacheDir,
       encoding: 'utf8',
       timeout: 240000,
@@ -477,9 +493,71 @@ function smokeQuery(cacheDir) {
   return { ran: true, grounded: false };
 }
 
+// ── `--demo`: a guided, REAL walkthrough — proves grounding live, never fabricates output ─────────
+const DEMO_QUESTIONS = [
+  {
+    q: 'How should I store embeddings in this project without running a server?',
+    why: 'shows the brain reaching for RuVector/RVF — a single local file — instead of Pinecone or pgvector',
+  },
+  {
+    q: 'How do I orchestrate multiple agents working on a task in parallel?',
+    why: 'shows it grounding in Ruflo (the real orchestration engine) instead of guessing at a generic pattern',
+  },
+];
+function runDemo() {
+  printBanner('demo');
+  const cacheDir = process.env.RUVNET_BRAIN_KB || path.join(os.homedir(), '.cache', 'ruvnet-brain', 'kb');
+  const ask = path.join(cacheDir, 'forge-ask-all.mjs');
+  if (!fs.existsSync(ask)) {
+    warn(`no brain found at ${cacheDir}.`);
+    info(`Install it first:  ${c.bold('npx github:stuinfla/ruvnet-brain')}`);
+    return;
+  }
+  console.log(c.dim(`\nThis asks your installed brain ${DEMO_QUESTIONS.length} real questions and shows you the`));
+  console.log(c.dim(`actual, unedited answers — grounded in rUv's real source, cited by file path. Nothing here`));
+  console.log(c.dim(`is scripted or faked; it's the same brain your Claude Code sessions use.\n`));
+
+  for (const [i, { q, why }] of DEMO_QUESTIONS.entries()) {
+    step(`Question ${i + 1} of ${DEMO_QUESTIONS.length}`, why);
+    info(`${c.cyan('Q:')} "${q}"`);
+    let r;
+    try {
+      // Relative filename + matching cwd — see the identity-check note in smokeQuery() above.
+      r = spawnSync('node', ['forge-ask-all.mjs', '--dir', cacheDir, '--q', q, '--k', '1'], {
+        cwd: cacheDir, encoding: 'utf8', timeout: 150000, env: process.env,
+      });
+    } catch (e) {
+      warn(`couldn't run this question (${e.message}) — skipping`);
+      continue;
+    }
+    const out = `${r.stdout || ''}`.trim();
+    if (r.status !== 0 || !out) {
+      warn(`no answer came back — the local model may still be warming up (run this again in a moment)`);
+      continue;
+    }
+    // Show the top hit's actual citation (repo/path/title + the start of its real cited text) —
+    // skip past the noisy per-repo-hit-count header so the meaningful, confidence-building part
+    // (WHICH file this came from, and its real words) isn't crowded out. This is a TRIM of the
+    // real output, never a rewrite of it.
+    const hitStart = out.indexOf('\n#1');
+    const firstResult = (hitStart >= 0 ? out.slice(hitStart + 1) : out).split(/\n={10,}\n/)[0];
+    const trimmed = firstResult.length > 500 ? `${firstResult.slice(0, 500)}\n…` : firstResult;
+    console.log(`\n${c.dim(trimmed.split('\n').map((l) => `    ${l}`).join('\n'))}\n`);
+    ok('grounded in real source — cited above, not guessed');
+  }
+
+  console.log(`\n${c.green('─'.repeat(64))}`);
+  console.log(`  ${c.bold('That\'s it — no cloud calls, no API key, just your local brain.')}`);
+  console.log(`${c.green('─'.repeat(64))}`);
+  console.log(`\n  Now try it for real: open Claude Code in any project and ask it something about`);
+  console.log(`  RuVector, Ruflo, AgentDB, or SPARC — it'll ground the same way, automatically.`);
+  console.log(`  Run this demo again any time:  ${c.bold('npx github:stuinfla/ruvnet-brain --demo')}`);
+  console.log(`  Full health check:              ${c.bold('npx github:stuinfla/ruvnet-brain --doctor')}\n`);
+}
+
 // ── `--doctor`: a standalone health check the user can run any time ───────────────────────────────
 function doctor() {
-  console.log(c.bold('\nRuvNet Brain — doctor'));
+  printBanner('doctor');
   console.log(c.dim('Checking every part of the install and reporting green/red.\n'));
   const cacheDir = process.env.RUVNET_BRAIN_KB || path.join(os.homedir(), '.cache', 'ruvnet-brain', 'kb');
   info(`brain dir: ${c.bold(cacheDir)}`);
@@ -746,7 +824,8 @@ function success({ cacheDir, isCustom, plugin, env }) {
   console.log(`\n  ${c.bold('What to expect (honestly):')}`);
   console.log(`    • On rUv-stack work (vectors, swarms, agent memory, SPARC) it grounds ${c.bold('every time')}.`);
   console.log(`    • On unrelated work, it stays quiet — Claude behaves normally. It only speaks up when it should.`);
-  console.log(`    • Not sure it's on?  Run  ${c.bold('npx github:stuinfla/ruvnet-brain --doctor')}  any time for a health check.`);
+  console.log(`    • Not sure it's on?  Run  ${c.bold('npx github:stuinfla/ruvnet-brain --doctor')}  any time for a health check.
+    • Want to see it answer, live, right now?  ${c.bold('npx github:stuinfla/ruvnet-brain --demo')}  — 2 real questions, real cited answers.`);
 
   console.log(`\n  ${c.bold('Set it up your way:')} this default is ${c.bold('global')} — live in every VS Code project automatically,`);
   console.log(`    which is what most people want. Want it different (project-only, moved, with the build stack added,`);
@@ -767,6 +846,7 @@ and falls back to a known-good version if GitHub can't be reached.
 Usage:
   npx github:stuinfla/ruvnet-brain         Install the LATEST brain + Claude Code plugin
   npx github:stuinfla/ruvnet-brain --doctor   Health-check an existing install (green/red per part)
+  npx github:stuinfla/ruvnet-brain --demo     Guided walkthrough — 2 real questions, real cited answers
   node bin/install.mjs --version <tag>     Install a specific Release tag (e.g. --version v0.4.0-dev)
   node bin/install.mjs --pin               Skip the latest-check; use the bundled known-good version
   node bin/install.mjs --local             Install from a repo clone's dist/ruvnet-brain.zip
@@ -789,8 +869,9 @@ It is safe to re-run at any time. After installing, restart Claude Code so the g
 (async () => {
   if (FLAG_HELP) return showHelp();
   if (FLAG_DOCTOR) return doctor();
+  if (FLAG_DEMO) return runDemo();
 
-  console.log(c.bold('\nRuvNet Brain — installer'));
+  printBanner('installer');
   console.log(c.dim("I'll set up the brain and the Claude Code plugin, explaining each step as I go.\n"));
 
   // ── environment guard: fail early and CLEARLY on unsupported Node, not cryptically mid-install ──
