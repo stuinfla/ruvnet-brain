@@ -85,8 +85,17 @@ function die(msg, hint) {
 // fails with ENOENT even when the command works fine in any real terminal. shell:true routes the
 // call through cmd.exe, which resolves .cmd shims the same way an interactive shell would.
 const IS_WIN = process.platform === 'win32';
+// Existence check via the OS's own PATH resolver — `where` on Windows, POSIX `command -v` elsewhere —
+// NEVER by invoking the tool itself. Probing with `<cmd> --version` (the previous approach) is
+// fundamentally fragile: plenty of real, correctly-installed tools don't support that exact flag and
+// exit non-zero — e.g. Info-ZIP unzip exits 10 on `--version` (verified: this happens even on macOS's
+// own bundled unzip, not just Debian's — same codebase), and Windows PowerShell 5.1's powershell.exe
+// parses `--version` as a PowerShell expression and exits 1. Both read as "not installed" when the
+// tool plainly is. Asking the OS "is this on PATH?" sidesteps every tool's own argument parsing.
 function have(cmd) {
-  const probe = spawnSync(cmd, ['--version'], { stdio: 'ignore', shell: IS_WIN });
+  const probe = IS_WIN
+    ? spawnSync('where', [cmd], { stdio: 'ignore' })
+    : spawnSync('sh', ['-c', `command -v -- ${cmd}`], { stdio: 'ignore' });
   return !probe.error && probe.status === 0;
 }
 function run(cmd, args, opts = {}) {
@@ -97,14 +106,6 @@ function run(cmd, args, opts = {}) {
 function tryRun(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, { stdio: 'inherit', shell: IS_WIN, ...opts });
   return !r.error && r.status === 0;
-}
-// have(cmd) probes with `--version`, which Windows PowerShell 5.1's powershell.exe does NOT
-// understand as a flag — it parses `--version` as a PowerShell expression (`--` looks like a unary
-// operator to it) and exits 1. Only pwsh (7+, often absent in a locked-down sandbox) supports
-// `--version`. Use `-Command exit 0` instead, which both powershell.exe and pwsh.exe understand.
-function havePowerShell(exe) {
-  const probe = spawnSync(exe, ['-NoProfile', '-NonInteractive', '-Command', 'exit 0'], { stdio: 'ignore' });
-  return !probe.error && probe.status === 0;
 }
 
 // ── download with redirect-following + progress ──────────────────────────────────────────────────
@@ -300,7 +301,7 @@ function unzipInto(zipPath, cacheDir) {
 
   const hasUnzip = have('unzip');
   // Windows fallback: PowerShell's Expand-Archive is available on all modern Windows systems.
-  const psExe = !hasUnzip ? (['pwsh', 'powershell'].find(havePowerShell) || null) : null;
+  const psExe = !hasUnzip ? (['pwsh', 'powershell'].find(have) || null) : null;
 
   if (!hasUnzip && !psExe) {
     die(
@@ -490,9 +491,12 @@ function doctor() {
   have('node') ? ok('node present') : warn('node missing');
   have('npm') ? ok('npm present') : warn('npm missing');
   have('claude') ? ok('claude CLI present') : warn('claude CLI missing (plugin wiring needs it)');
-  have('unzip') || havePowerShell('pwsh') || havePowerShell('powershell')
+  have('unzip') || have('pwsh') || have('powershell')
     ? ok('zip extraction available (unzip or PowerShell Expand-Archive)')
     : warn('no zip tool found — unzip or PowerShell needed for re-install');
+  have('git')
+    ? ok('git present (not required by this installer, but handy)')
+    : info('git not found — that\'s fine, this installer never needs it');
   const env = detectEnvironment();
   env.ruflo
     ? ok('Ruflo present — orchestration / swarms / SPARC available')
@@ -790,14 +794,20 @@ It is safe to re-run at any time. After installing, restart Claude Code so the g
   console.log(c.dim("I'll set up the brain and the Claude Code plugin, explaining each step as I go.\n"));
 
   // ── environment guard: fail early and CLEARLY on unsupported Node, not cryptically mid-install ──
+  // Node itself can't be silently auto-upgraded from inside a script it's currently running as —
+  // that's the running process replacing its own runtime, which is invasive and can go wrong in
+  // platform-specific ways (permissions, competing version managers). The safe, correct move is to
+  // hand back the exact right one-liner for the platform actually in front of us.
   {
     const m = /^v(\d+)/.exec(process.version);
     const major = m ? Number(m[1]) : 0;
     if (major && major < 18) {
-      die(
-        `RuvNet Brain needs Node 18 or newer — you're on ${process.version}.`,
-        `Update Node (https://nodejs.org, or \`nvm install 20 && nvm use 20\`) and re-run. Everything else is ready.`,
-      );
+      const fix = IS_WIN
+        ? `Update Node (pick one):\n  • winget install OpenJS.NodeJS.LTS\n  • or download the LTS installer: https://nodejs.org`
+        : process.platform === 'darwin'
+          ? `Update Node (pick one):\n  • brew install node\n  • or: nvm install 20 && nvm use 20 (https://nodejs.org)`
+          : `Update Node (pick one):\n  • nvm install 20 && nvm use 20\n  • or your distro's Node 20+ package (see https://nodejs.org)`;
+      die(`RuvNet Brain needs Node 18 or newer — you're on ${process.version}.`, `${fix}\nThen re-run this same command — everything else is ready.`);
     }
   }
 
