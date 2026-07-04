@@ -28,7 +28,10 @@
     "installer"
   ],
   "license": "MIT",
-  "repository": "github:stuinfla/ruvnet-brain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stuinfla/ruvnet-brain.git"
+  },
   "homepage": "https://github.com/stuinfla/ruvnet-brain#readme",
   "bugs": "https://github.com/stuinfla/ruvnet-brain/issues",
   "author": "Stuart Kerr"
