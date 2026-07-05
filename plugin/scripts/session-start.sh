@@ -26,13 +26,27 @@ if [ "$NOW" -gt 0 ] && [ $((NOW - LAST)) -gt 72000 ]; then
     "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/plugin/.claude-plugin/plugin.json" 2>/dev/null \
     | grep -m1 '"version"' | sed -E 's/.*"version": *"([^"]+)".*/\1/')
   if [ -n "$LOCAL_V" ] && [ -n "$REMOTE_V" ] && [ "$LOCAL_V" != "$REMOTE_V" ]; then
-    echo "[RuvNet Brain — update available]"
-    echo "You're on plugin v$LOCAL_V; v$REMOTE_V is live. Run this, then restart Claude Code once to pick it up:"
-    echo "  claude plugin marketplace update ruvnet-brain && claude plugin update ruvnet-brain@ruvnet-brain"
-    echo "Mention this to the user briefly, once, at the start of your first response — don't repeat it later this session."
+    echo "[RuvNet Brain — I just got smarter! v$REMOTE_V is available (you're on v$LOCAL_V)]"
+    echo "Tell the user this PLAINLY and UNMISSABLY, near the top of your first response — this is a required action, not a footnote:"
+    echo "  \"🧠 RuvNet Brain got an update (v$LOCAL_V → v$REMOTE_V available). Run this, then QUIT AND REOPEN Claude Code to load it:"
+    echo "  claude plugin marketplace update ruvnet-brain && claude plugin update ruvnet-brain@ruvnet-brain\""
+    echo "Restarting is REQUIRED — Claude Code's own plugin system cannot hot-swap a running session, in any window. Don't repeat this notice later in the same session."
     echo ""
   fi
 fi
+
+# ── read the ACTUAL installed version + its stamped update date, live, never hardcoded ──
+BANNER_V="unknown"; BANNER_D=""
+if [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -f "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" ]; then
+  BANNER_V=$(grep -m1 '"version"'  "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null | sed -E 's/.*"version": *"([^"]+)".*/\1/')
+  BANNER_D=$(grep -m1 '"updated"'  "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null | sed -E 's/.*"updated": *"([^"]+)".*/\1/')
+fi
+[ -z "$BANNER_V" ] && BANNER_V="unknown"
+
+cat <<EOF
+[RuvNet Brain v$BANNER_V — active this session${BANNER_D:+ · last updated $BANNER_D}]
+When you give the user the confidence line below, ALWAYS include the version in parentheses exactly like this: "🧠 RuvNet Brain active (v$BANNER_V)". If they ask when it was last updated, the answer is: $BANNER_D
+EOF
 
 cat <<'EOF'
 [RuvNet Brain — active this session]
