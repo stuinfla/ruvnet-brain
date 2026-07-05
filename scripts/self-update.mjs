@@ -132,12 +132,22 @@ if (has('--publish')) {
     fs.writeFileSync(PLUGIN_JSON, JSON.stringify(pj, null, 2) + '\n');
     console.log(`[publish] product version → ${next} (${tag})`);
 
-    // Keep the README's human-readable version line in lockstep (Stuart's rule: first thing
-    // anyone sees must state the exact current version — badges lag, text doesn't).
+    // Keep the README's bright-blue version badge in lockstep (Stuart's rule: version + updated
+    // timestamp with timezone, bright blue, first thing anyone sees). GitHub strips color from
+    // markdown text, so the line is a shields.io for-the-badge image — colors guaranteed.
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short',
+    }).formatToParts(new Date());
+    const g = (t) => fmt.find((p) => p.type === t)?.value || '';
+    const human = `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')} ${g('timeZoneName')}`;
+    const badgeStamp = human.replace(/-/g, '--').replace(/ /g, '_');
+    const badgeVer = next.replace(/-/g, '--');
+    const badge = `https://img.shields.io/badge/version_${badgeVer}-updated_${badgeStamp}-1E90FF?style=for-the-badge&labelColor=0757BA`;
     const README = path.join(ROOT, 'README.md');
     const readme = fs.readFileSync(README, 'utf8').replace(
-      /^### RuvNet Brain version .*$/m,
-      `### RuvNet Brain version ${next} — updated ${pj.updated}`,
+      /^### 🧠 RuvNet Brain — \[!\[.*$/m,
+      `### 🧠 RuvNet Brain — [![RuvNet Brain version ${next} — updated ${human}](${badge})](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)`,
     );
     fs.writeFileSync(README, readme);
 
