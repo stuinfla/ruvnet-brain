@@ -37,9 +37,14 @@ if [ ! -f "$PREF_FILE" ]; then
   echo ""
 fi
 
+# Check EVERY session start, deduped to once per 15 min (a burst of window-opens = one check).
+# The check is a single 3s-capped fetch of a ~1KB raw file — negligible. The old ~20h limit meant
+# a release shipped an hour after your last check stayed invisible until TOMORROW — day-long
+# version skew, exactly what this heartbeat exists to prevent. Detection latency is now "your
+# next restart," which is also the only moment a new version can load anyway.
 NOW=$(date +%s 2>/dev/null || echo 0)
 LAST=$(cat "$STAMP" 2>/dev/null || echo 0)
-if [ "$NOW" -gt 0 ] && [ $((NOW - LAST)) -gt 72000 ]; then
+if [ "$NOW" -gt 0 ] && [ $((NOW - LAST)) -gt 900 ]; then
   echo "$NOW" > "$STAMP" 2>/dev/null
 
   # ── KB (brain bundle) freshness — a SEPARATE store from the plugin, at ~/.cache/ruvnet-brain/kb.

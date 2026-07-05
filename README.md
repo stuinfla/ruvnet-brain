@@ -4,7 +4,7 @@
 
 # 🧠 RuvNet Brain
 
-### RuvNet Brain version 0.6.4-dev — updated 2026-07-05
+### RuvNet Brain version 1.6.2-dev — updated 2026-07-05
 
 **A portable, source-grounded brain over Reuven Cohen's (rUv's) RuvNet stack — delivered as a Claude Code plugin that makes Claude _use_ the stack instead of fighting it.**
 
