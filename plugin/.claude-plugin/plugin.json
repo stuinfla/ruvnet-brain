@@ -1,7 +1,7 @@
 {
   "name": "ruvnet-brain",
   "description": "RuvNet brain transplant for Claude Code \u2014 grounds every RuvNet decision in real source across 19+ rUv repositories, prefers Ruflo / RuVector-RVF / AgentDB over training-prior defaults (pgvector, Pinecone, hand-rolled cosine), and can pull in any RuvNet repo on demand. Ships an enforced UserPromptSubmit grounding hook so the model can't drift.",
-  "version": "0.6.0-dev",
+  "version": "0.6.1-dev",
   "author": {
     "name": "Stuart Kerr"
   },
