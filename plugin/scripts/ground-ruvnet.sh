@@ -52,6 +52,18 @@ AgentDB memory exists here but has NOT been written in over 90 minutes. If meani
 EOF
 fi
 
+# ── ADRs as living plans (fires when the project keeps ADRs) ────────────────────────────────────
+ADR_DIR=""
+for D in docs/adr docs/adrs adr docs/decisions; do [ -d "$D" ] && ADR_DIR="$D" && break; done
+if [ -n "$ADR_DIR" ]; then
+  cat <<EOF
+[RuvNet Brain — this project keeps ADRs in $ADR_DIR: treat them as LIVING PLANS, never stale paper]
+- An ADR is a plan; a plan that disagrees with the code is worse than no plan. Before proposing work governed by an ADR, READ its Status and date stamps (rUv's format: Status: Proposed/Accepted/Implemented/Superseded + Date/Updated — see rvm ADR-150 for the reference shape) and say where it stands in plain words ("ADR-014 is Accepted but not yet implemented — this build implements it").
+- When a change you make alters what an accepted ADR describes, UPDATE the ADR in the same piece of work: status, an Updated date, and a one-line note of what changed. Never leave the plan describing a world that no longer exists.
+- If you notice real drift (the ADR says X, the code demonstrably does Y), surface it once, concretely, and offer to reconcile — via the ruflo-adr tools (adr-review / adr-verify) when installed, or by directly diffing the ADR's claims against the files it references when not. Findings, not vibes: name the ADR, the claim, and the code that contradicts it.
+EOF
+fi
+
 # ── Stack package currency (rate-limited ~20h, machine-wide, fail-silent) ───────────────────────
 # Fetches latest versions of the core stack from the npm registry into a cache; compares against
 # what's ACTUALLY installed (global npm dir or project node_modules) on every prompt (cheap greps).
