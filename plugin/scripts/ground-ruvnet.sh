@@ -16,6 +16,30 @@ INPUT=$(cat 2>/dev/null)
 TEXT=$(printf '%s' "$INPUT" | jq -r '.prompt // .user_prompt // .input // empty' 2>/dev/null)
 [ -z "$TEXT" ] && TEXT="$INPUT"
 
+# ── Gate 0: STACK WATCHDOG (always fires) — filesystem ground truth, not impressions. ───────────
+# Runs in the project's cwd every prompt. Checks what's ACTUALLY wired: is this a Ruflo project,
+# and is AgentDB persistent project memory (.swarm/memory.db) real and recently written? Users
+# routinely believe memory is on when the file doesn't exist — rUv deliberately didn't force it on
+# for back-compat, so the brain's job is to notice and offer. Status goes on every response.
+MEM_STATE="off"
+if [ -f ".swarm/memory.db" ]; then
+  if find .swarm/memory.db -mtime -2 2>/dev/null | grep -q .; then MEM_STATE="on"; else MEM_STATE="present, not recently written"; fi
+fi
+RUFLO_STATE="no"
+{ [ -d ".claude-flow" ] || [ -d ".swarm" ] || grep -qs 'claude-flow\|ruflo' package.json .mcp.json 2>/dev/null; } && RUFLO_STATE="yes"
+GV0="?"
+[ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -f "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" ] && \
+  GV0=$(grep -m1 '"version"' "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null | sed -E 's/.*"version": *"([^"]+)".*/\1/')
+cat <<EOF
+[RuvNet Brain — live stack status for THIS project directory: Ruflo: $RUFLO_STATE · AgentDB project memory: $MEM_STATE]
+End EVERY response with exactly this one dim status line (last line, always): "🧠 RuvNet Brain v$GV0 · Ruflo: $RUFLO_STATE · AgentDB memory: $MEM_STATE"
+EOF
+if [ "$RUFLO_STATE" = "yes" ] && [ "$MEM_STATE" = "off" ]; then
+  cat <<'EOF'
+This project runs the Ruflo stack but AgentDB persistent project memory is NOT set up (.swarm/memory.db does not exist) — decisions made here are being lost between sessions. rUv's default is memory ON. If you have not already offered this session, offer ONCE, plainly and warmly: "One thing I noticed: this project doesn't have persistent memory turned on — AgentDB would let me carry decisions and context across sessions instead of starting cold each time. Want me to turn it on and wire it up?" On a yes, set it up with the ruflo tools you have (a first memory_store write creates the store) and confirm with the real file path. If they decline, respect it for the rest of the session — the status line keeps them informed without nagging.
+EOF
+fi
+
 # ── Gate 1: does the task touch the rUv ecosystem? ──────────────────────────────────────────────
 RUVNET=0
 if printf '%s' "$TEXT" | grep -qiE 'ruvnet|ruflo|ruvector|\brvf\b|agentdb|agenticow|rulake|ruview|rupixel|ruv-fann|agentic-flow|synthlang|dspy|qudag|safla|metaharness|cve-bench|\bsparc\b|\bswarm(s)?\b|claude-flow|\brUv\b'; then
@@ -95,13 +119,6 @@ D. Keep the user oriented and confident: say what you're doing and why as you go
 
 This is the difference between answering a question and RUNNING THE PROCESS. Run it.
 EOF
-  # Sign every proposal with the exact version that produced it — read live from the running
-  # plugin's own manifest, never hardcoded. Field-debuggability: when someone shares an output,
-  # nobody should have to guess which version generated it.
-  GV="unknown"
-  [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -f "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" ] && \
-    GV=$(grep -m1 '"version"' "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null | sed -E 's/.*"version": *"([^"]+)".*/\1/')
-  echo "SIGN IT: end the proposal with exactly one final line — \"🧠 RuvNet Brain v${GV:-unknown}\" — so anyone reading the output knows precisely which version produced it. Every proposal, every time, no exceptions."
 fi
 
 exit 0
