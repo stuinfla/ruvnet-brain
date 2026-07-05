@@ -68,12 +68,12 @@ WITHOUT the brain — drift          |   WITH RuvNet Brain — grounded
 ## Install — one line
 
 ```bash
-npx github:stuinfla/ruvnet-brain
+npx ruvnet-brain
 ```
 
-That single command runs the whole setup, narrating _what it's doing and why_ at each step: it downloads the brain (~512 MB) from the [v0.5.0-dev Release](https://github.com/stuinfla/ruvnet-brain/releases/tag/v0.5.0-dev), unpacks it to `~/.cache/ruvnet-brain/kb`, installs its local reader (no cloud calls, no API keys), and wires the Claude Code plugin — the `search_ruvnet` MCP tool + the `UserPromptSubmit` grounding hook — at user scope. It's safe to re-run, and it stays current: `node ~/.cache/ruvnet-brain/kb/forge-update.mjs --apply` pulls the latest Release. You install once; you don't keep re-downloading.
+That single command runs the whole setup, narrating _what it's doing and why_ at each step: it downloads the brain (~512 MB) from the [latest GitHub Release](https://github.com/stuinfla/ruvnet-brain/releases/latest), unpacks it to `~/.cache/ruvnet-brain/kb`, installs its local reader (no cloud calls, no API keys), and wires the Claude Code plugin — the `search_ruvnet` MCP tool + the `UserPromptSubmit` grounding hook — at user scope. Works the same on **macOS, Linux, and Windows**. It's safe to re-run, and the brain itself always fetches the current Release regardless of which install path you use — you install once; you don't keep re-downloading.
 
-> **Honest note:** not on npm yet — `npx github:stuinfla/ruvnet-brain` is the works-now path (it pulls the brain from the Release, which exists). Once published, the same install becomes `npx ruvnet-brain`.
+> Want the bleeding-edge installer, even ahead of the last npm publish? `npx github:stuinfla/ruvnet-brain` always runs straight off the latest GitHub commit.
 
 <details><summary>Manual install (what the one-liner automates)</summary>
 
@@ -206,7 +206,7 @@ This is **`v0.5.0-dev`** — we don't claim “done,” “complete,” or “ze
 - ✅ **Code-level depth** — the code-rich repos are indexed to full function bodies; “how is it implemented?” returns the implementation. Verified in the shipped bundle (clean-room 3/3).
 - ✅ **Routing holds** — named 47/48, described 26/28, scenario 7/8; behavioral L1–L4 all pass; private stores fenced out of the public bundle (zero-leak verified).
 - ⚠️ **Two routing residuals** (above) — surfaced, not hidden.
-- ⏳ **Not yet a public one-line npm install** — `npx github:stuinfla/ruvnet-brain` is the works-now path; `npx ruvnet-brain` comes with the npm publish.
+- ✅ **Published on npm** — `npx ruvnet-brain` (short form); `npx github:stuinfla/ruvnet-brain` always tracks the latest commit if you want it even fresher.
 - ⏳ **The fully-autonomous engineering loop** ([ADR-0008](docs/adr/)) — the behavioral hook _drives_ the assess → SPARC → ADR/DDD → QA → score loop; a generalized always-loops-to-≥98 engine is the next phase.
 
 ---
