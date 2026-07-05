@@ -30,6 +30,11 @@
 
 **1.9.1-dev (late add):** beat 0 — point-blank questions answered in sentence one (the 94-transcript's biggest deduction: the rule existed but sat buried; now positionally first) + findings spoken in the user's vocabulary, never plumbing-state. Field grades now 78 → 88 → 94; predicted 97-98 on 1.9.x, eval harness to verify.
 
+**2026-07-05 late — ruflo 3.24 flywheel changes our own game plan:**
+- rUv published the exact architecture for evidence-gated self-improvement (gist f8e2851): candidates searched on the install's OWN data → promoted ONLY past an accept gate (beats incumbent on a FROZEN HELD-OUT split + 95% bootstrap lower bound > 0 + no regression on human-labeled truth + deterministic replay) → auditable lineage DAG (.claude/evolve-proof, reconstructLineage()) → fail-closed. Signed champion: +0.0738 nDCG@3; live compounding 0.496→0.847 RR.
+- **The eval harness is now designed as RuvNet Brain's own flywheel:** contract variants = candidates; grader-scored scenario set with a FROZEN held-out subset (never tuned against — same discipline as our heldout.*.json); accept gate = beats incumbent + no regression on the human-graded "Mario canon"; promotion = version ship via the existing auto-update chain; lineage = git + graded transcripts per version; fail-closed = incumbent stays when the gate doesn't pass. Today's 17 hand-tuned versions were a manual flywheel; next session builds the automated one.
+- **Real bug found & fixed en route:** ruflo + agentic-flow were stamped builtFromSha=unknown and self-update.mjs treated unknown as up-to-date — the two most-central repos could NEVER auto-refresh. Fixed (unknown → rebuild when upstream reachable); ruflo 3.24+ re-ingest running; tonight's nightly --publish ships the refreshed corpus to all users automatically.
+
 **NEXT (the two that matter):** (1) EVAL HARNESS — encode Stuart's bar as graders, ~12 prompts × 3 dev levels × 4 scenario types, `claude plugin eval`, loop ≥90 — stop using Mario as QA. (2) EXECUTION TRIAL — scratch repo, real feature, full cleared→SPARC→build→test→proven loop, graded end-to-end. Then: field wave with version-signed transcripts.
 
 **Standing Stuart rules recorded today:** scores /100 always · standing instructions get written to memory the moment they're uttered · maintain THIS file in real time (it was 7 days stale when he called it out — never again).

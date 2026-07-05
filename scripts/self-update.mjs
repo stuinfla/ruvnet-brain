@@ -56,7 +56,11 @@ for (const r of inScope) {
   const built = builtSha[r.name.toLowerCase()] || null;
   let action = 'up-to-date';
   if (!built) action = 'build (new)';
-  else if (live && built !== 'unknown' && live !== built) action = 'rebuild (changed)';
+  // 'unknown' stamped SHA cannot prove freshness — treat as changed whenever upstream is reachable.
+  // (Real bug: ruflo + agentic-flow were stamped unknown and therefore NEVER auto-rebuilt — the two
+  // most-central repos were invisible to the freshness loop until a 3.24 release exposed it.)
+  else if (built === 'unknown') action = live ? 'rebuild (changed)' : 'up-to-date';
+  else if (live && live !== built) action = 'rebuild (changed)';
   plan.push({ name: r.name, tier: r.tier, built: built?.slice(0, 12) || '—', live: live?.slice(0, 12) || '?', action });
 }
 
