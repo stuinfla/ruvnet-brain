@@ -17,27 +17,73 @@ TEXT=$(printf '%s' "$INPUT" | jq -r '.prompt // .user_prompt // .input // empty'
 [ -z "$TEXT" ] && TEXT="$INPUT"
 
 # ── Gate 0: STACK WATCHDOG (always fires) — filesystem ground truth, not impressions. ───────────
-# Runs in the project's cwd every prompt. Checks what's ACTUALLY wired: is this a Ruflo project,
-# and is AgentDB persistent project memory (.swarm/memory.db) real and recently written? Users
-# routinely believe memory is on when the file doesn't exist — rUv deliberately didn't force it on
-# for back-compat, so the brain's job is to notice and offer. Status goes on every response.
-MEM_STATE="off"
-if [ -f ".swarm/memory.db" ]; then
-  if find .swarm/memory.db -mtime -2 2>/dev/null | grep -q .; then MEM_STATE="on"; else MEM_STATE="present, not recently written"; fi
-fi
+# Runs in the project's cwd every prompt, FROM the loaded plugin's own dir — so $CLAUDE_PLUGIN_ROOT
+# is the RUNNING (in-memory) version by construction, never the staged disk copy. Checks what's
+# ACTUALLY wired (Ruflo? AgentDB memory real and recently written?), whether a newer plugin sits
+# staged awaiting a restart, and (rate-limited) whether the user's stack packages are outdated.
 RUFLO_STATE="no"
 { [ -d ".claude-flow" ] || [ -d ".swarm" ] || grep -qs 'claude-flow\|ruflo' package.json .mcp.json 2>/dev/null; } && RUFLO_STATE="yes"
+MEM_STATE="off"; MEM_IDLE=0
+if [ -f ".swarm/memory.db" ]; then
+  if find .swarm/memory.db -mmin -90 2>/dev/null | grep -q .; then MEM_STATE="on"; else MEM_STATE="idle"; MEM_IDLE=1; fi
+fi
+# RUNNING version (this session's loaded plugin) vs STAGED version (marketplace copy on disk).
 GV0="?"
 [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -f "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" ] && \
   GV0=$(grep -m1 '"version"' "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null | sed -E 's/.*"version": *"([^"]+)".*/\1/')
+STAGED_V=$(grep -m1 '"version"' "$HOME/.claude/plugins/marketplaces/ruvnet-brain/plugin/.claude-plugin/plugin.json" 2>/dev/null | sed -E 's/.*"version": *"([^"]+)".*/\1/')
+FOOT_V="v$GV0"
+if [ -n "$STAGED_V" ] && [ "$STAGED_V" != "$GV0" ] && [ "$GV0" != "?" ]; then
+  FOOT_V="v$GV0 · v$STAGED_V staged, restart to load"
+fi
 cat <<EOF
-[RuvNet Brain — live stack status for THIS project directory: Ruflo: $RUFLO_STATE · AgentDB project memory: $MEM_STATE]
-End EVERY response with exactly this one dim status line (last line, always): "🧠 RuvNet Brain v$GV0 · Ruflo: $RUFLO_STATE · AgentDB memory: $MEM_STATE"
+[RuvNet Brain — running v$GV0 (this session's loaded version) · project stack: Ruflo: $RUFLO_STATE · AgentDB memory: $MEM_STATE]
+End EVERY response with exactly this one dim status line (last line, always): "🧠 RuvNet Brain $FOOT_V · Ruflo: $RUFLO_STATE · AgentDB memory: $MEM_STATE"
+The version in that line is the one ACTING on this response (loaded in memory) — if a staged version appears there, the user must exit and reopen (\`claude --continue\` brings this conversation right back) to actually run it.
 EOF
 if [ "$RUFLO_STATE" = "yes" ] && [ "$MEM_STATE" = "off" ]; then
   cat <<'EOF'
 This project runs the Ruflo stack but AgentDB persistent project memory is NOT set up (.swarm/memory.db does not exist) — decisions made here are being lost between sessions. rUv's default is memory ON. If you have not already offered this session, offer ONCE, plainly and warmly: "One thing I noticed: this project doesn't have persistent memory turned on — AgentDB would let me carry decisions and context across sessions instead of starting cold each time. Want me to turn it on and wire it up?" On a yes, set it up with the ruflo tools you have (a first memory_store write creates the store) and confirm with the real file path. If they decline, respect it for the rest of the session — the status line keeps them informed without nagging.
 EOF
+fi
+if [ "$RUFLO_STATE" = "yes" ] && [ "$MEM_IDLE" = "1" ]; then
+  cat <<'EOF'
+AgentDB memory exists here but has NOT been written in over 90 minutes. If meaningful decisions HAVE happened this session, the memory hooks may be miswired — do what Ruv would: probe it. Quietly store a session checkpoint via the ruflo memory tools, then verify .swarm/memory.db's mtime actually changed. If the write fails or the file doesn't move, tell the user plainly: "your project memory isn't capturing this session — the hooks look miswired; want me to fix them?" If this session genuinely hasn't produced decisions yet, stay silent — idle is normal at a session's start.
+EOF
+fi
+
+# ── Stack package currency (rate-limited ~20h, machine-wide, fail-silent) ───────────────────────
+# Fetches latest versions of the core stack from the npm registry into a cache; compares against
+# what's ACTUALLY installed (global npm dir or project node_modules) on every prompt (cheap greps).
+VSTAMP="$HOME/.cache/ruvnet-brain/.stack-versions-checked"
+VCACHE="$HOME/.cache/ruvnet-brain/.stack-latest"
+NOWV=$(date +%s 2>/dev/null || echo 0)
+LASTV=$(cat "$VSTAMP" 2>/dev/null || echo 0)
+if [ "$NOWV" -gt 0 ] && [ $((NOWV - LASTV)) -gt 72000 ]; then
+  echo "$NOWV" > "$VSTAMP" 2>/dev/null
+  { for PKG in ruflo @claude-flow/cli @ruvector/rvf; do
+      L=$(curl -fsS --max-time 3 "https://registry.npmjs.org/$PKG/latest" 2>/dev/null | sed -E 's/.*"version":"([^"]+)".*/\1/' | head -c 40)
+      [ -n "$L" ] && echo "$PKG $L"
+    done; } > "$VCACHE" 2>/dev/null
+fi
+if [ -s "$VCACHE" ]; then
+  OUTDATED=""
+  while read -r PKG LATEST; do
+    [ -z "$PKG" ] && continue
+    INST=""
+    for DIR in "$HOME/.npm-global/lib/node_modules/$PKG" "/opt/homebrew/lib/node_modules/$PKG" "/usr/local/lib/node_modules/$PKG" "./node_modules/$PKG"; do
+      if [ -f "$DIR/package.json" ]; then
+        # First "version" match wins; grep -o handles minified single-line package.json correctly
+        # (a greedy sed across the whole line grabs the LAST match — a real bug caught in testing).
+        INST=$(grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' "$DIR/package.json" 2>/dev/null | head -1 | cut -d'"' -f4); break
+      fi
+    done
+    [ -n "$INST" ] && [ -n "$LATEST" ] && [ "$INST" != "$LATEST" ] && OUTDATED="$OUTDATED $PKG(${INST} -> ${LATEST})"
+  done < "$VCACHE"
+  if [ -n "$OUTDATED" ]; then
+    echo "[RuvNet Brain — stack updates available:$OUTDATED]"
+    echo "Mention this ONCE per session, briefly and helpfully (\"your ruflo is a version behind — want me to update it?\"); if already mentioned this session, stay silent."
+  fi
 fi
 
 # ── Gate 1: does the task touch the rUv ecosystem? ──────────────────────────────────────────────
