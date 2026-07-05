@@ -67,10 +67,10 @@ if [ "$NOW" -gt 0 ] && [ $((NOW - LAST)) -gt 72000 ]; then
       ( claude plugin marketplace update ruvnet-brain >"$STATE_DIR/.last-auto-update.log" 2>&1
         claude plugin update ruvnet-brain@ruvnet-brain >>"$STATE_DIR/.last-auto-update.log" 2>&1
       ) &
-      echo "[RuvNet Brain — updating myself in the background right now]"
-      echo "Tell the user this PLAINLY, near the top of your first response — this is informational, not a request for action:"
-      echo "  \"🧠 RuvNet Brain found v$REMOTE_V (you're on v$LOCAL_V) and is updating itself in the background now — no action needed from you. It'll be active automatically the next time Claude Code restarts.\""
-      echo "Don't repeat this notice later in the same session."
+      echo "[RuvNet Brain — downloading v$REMOTE_V in the background; THIS SESSION STILL RUNS v$LOCAL_V]"
+      echo "Tell the user this PLAINLY, near the top of your first response — be exact about running vs staged, never imply the new version is active:"
+      echo "  \"🧠 You're running RuvNet Brain v$LOCAL_V. I found v$REMOTE_V and I'm downloading it in the background now — when it finishes it will be STAGED, not active. To actually run it, exit and reopen Claude Code (I can't restart the app for you). If now's a clean moment, that's the move; otherwise it loads at your next natural restart.\""
+      echo "If the user asks which version they're on at any point, the answer is v$LOCAL_V until they restart. Don't repeat this notice later in the same session."
       echo ""
     else
       echo "[RuvNet Brain — update available, auto-update not enabled]"
@@ -91,6 +91,11 @@ if [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -f "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plug
   BANNER_D=$(grep -m1 '"updated"'  "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null | sed -E 's/.*"updated": *"([^"]+)".*/\1/')
 fi
 [ -z "$BANNER_V" ] && BANNER_V="unknown"
+# Record what THIS session actually loaded. The statusline (and anything else) must report the
+# RUNNING version from this file — never the on-disk marketplace copy, which the background
+# auto-updater refreshes ahead of the restart. Showing a staged version as if it were running
+# is a trust-destroying lie ("user thinks they have the 6.2 fix; they're on 6.1").
+[ "$BANNER_V" != "unknown" ] && echo "$BANNER_V" > "$STATE_DIR/.running-version" 2>/dev/null
 # The brain bundle stamps its own provenance (SOURCE.json releaseTag) at build time.
 [ -f "$HOME/.cache/ruvnet-brain/kb/SOURCE.json" ] && \
   BANNER_KB=$(grep -m1 '"releaseTag"' "$HOME/.cache/ruvnet-brain/kb/SOURCE.json" 2>/dev/null | sed -E 's/.*"releaseTag": *"([^"]+)".*/\1/')
