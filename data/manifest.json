@@ -1,7 +1,7 @@
 {
-  "brainVersion": "v0.5.0-dev",
-  "generated": "2026-07-01T02:31:18.973Z",
-  "generatedHuman": "Wed, 01 Jul 2026 02:31:18 GMT",
+  "brainVersion": "v0.3.0-dev",
+  "generated": "2026-07-05T19:20:23.755Z",
+  "generatedHuman": "Sun, 05 Jul 2026 19:20:23 GMT",
   "coverage": {
     "built": 19,
     "catalogued": 168,
@@ -13,7 +13,7 @@
       "name": "RuView",
       "tier": "T0",
       "stars": 75658,
-      "builtFromSha": "unknown",
+      "builtFromSha": "1a0492992f81a94d512239ff43197f891ed6c130",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -21,7 +21,7 @@
       "name": "ruflo",
       "tier": "T0",
       "stars": 61698,
-      "builtFromSha": "unknown",
+      "builtFromSha": "f71ffa2f99147b0236fc267aaf1d4cd8285ad3c1",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -37,7 +37,7 @@
       "name": "agentic-flow",
       "tier": "T1",
       "stars": 762,
-      "builtFromSha": "unknown",
+      "builtFromSha": "d069fff77063f0fb537a9f9b8fdeb4fa39a1484f",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -45,7 +45,7 @@
       "name": "sparc",
       "tier": "T1",
       "stars": 468,
-      "builtFromSha": "unknown",
+      "builtFromSha": "9656782ea9ed8d96e1d9c76a7f98b4718d365296",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -53,7 +53,7 @@
       "name": "ruv-FANN",
       "tier": "T1",
       "stars": 370,
-      "builtFromSha": "unknown",
+      "builtFromSha": "1d93b35a1f49ad4ee6c7ac9223f74f6a6255b25d",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -61,7 +61,7 @@
       "name": "agent-harness-generator",
       "tier": "T1",
       "stars": 330,
-      "builtFromSha": "unknown",
+      "builtFromSha": "a7d4b8a04c4b82e919bb698f0fa714e436102851",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -69,7 +69,7 @@
       "name": "dspy.ts",
       "tier": "T1",
       "stars": 261,
-      "builtFromSha": "unknown",
+      "builtFromSha": "535d0e41901fb291a8af8b4131fd46af456829d4",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -77,7 +77,7 @@
       "name": "SynthLang",
       "tier": "T1",
       "stars": 261,
-      "builtFromSha": "unknown",
+      "builtFromSha": "cf16b42178b39f0470f3392994da2605aaf7a64a",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -85,7 +85,7 @@
       "name": "daa",
       "tier": "T1",
       "stars": 242,
-      "builtFromSha": "unknown",
+      "builtFromSha": "ca4e3a3c7e962098152f018a123db2bf67cf5d46",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -93,7 +93,7 @@
       "name": "QuDAG",
       "tier": "T1",
       "stars": 189,
-      "builtFromSha": "unknown",
+      "builtFromSha": "6c17c5974b75e5ab367b6023256d10d2b20e033a",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -101,7 +101,7 @@
       "name": "FACT",
       "tier": "T1",
       "stars": 179,
-      "builtFromSha": "unknown",
+      "builtFromSha": "b0e343583cd8f64549dbcba4b7c709e48b3a6a08",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -109,7 +109,7 @@
       "name": "SAFLA",
       "tier": "T1",
       "stars": 155,
-      "builtFromSha": "unknown",
+      "builtFromSha": "85e730fba50ca815f01b951d8c6351aa6141cbed",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -117,7 +117,7 @@
       "name": "rvm",
       "tier": "T1",
       "stars": 113,
-      "builtFromSha": "unknown",
+      "builtFromSha": "af97d18f29d5704f2fbbeecccce192d712bb9a80",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -125,7 +125,7 @@
       "name": "agentdb",
       "tier": "T1",
       "stars": 70,
-      "builtFromSha": "unknown",
+      "builtFromSha": "47c79b6158cf4f28b27e404e0bdfebc3beeba073",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -133,7 +133,7 @@
       "name": "RuLake",
       "tier": "T1",
       "stars": 11,
-      "builtFromSha": "unknown",
+      "builtFromSha": "8f2c40863788eb38f260edb4fdbee4e07e1631d4",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -141,7 +141,7 @@
       "name": "rUv-dev",
       "tier": "T2",
       "stars": 426,
-      "builtFromSha": "unknown",
+      "builtFromSha": "0cfebab80af28e55aec6830be51f5662e72f6b04",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -149,7 +149,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "unknown",
+      "builtFromSha": "8ca840991fdf2a1944011eed0de3badc23b2448f",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -157,7 +157,7 @@
       "name": "rupixel",
       "tier": "T2",
       "stars": 14,
-      "builtFromSha": "unknown",
+      "builtFromSha": "bb1269fb9f4b0920de5944d248e4e79a01f3b80c",
       "latestRemoteSha": null,
       "status": "built"
     }

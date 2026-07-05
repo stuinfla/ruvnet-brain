@@ -25,7 +25,11 @@ const tiers = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/registry.tiers.js
 const repos = [];
 for (const t of ['T0', 'T1', 'T2', 'T3']) {
   for (const r of tiers.tiers[t].repos) {
-    const localSha = CLONES[r.name] ? shaOf(CLONES[r.name]) : null;
+    // Default clone location is ROOT/clones/<name> (where self-update.mjs puts them) — the env
+    // override is the exception, not the only source. Stamping 'unknown' when a real clone sits
+    // on disk made unknown-SHA repos permanently invisible to the freshness loop (ruflo bug).
+    const cloneDir = CLONES[r.name] || path.join(ROOT, 'clones', r.name);
+    const localSha = fs.existsSync(path.join(cloneDir, '.git')) ? shaOf(cloneDir) : null;
     repos.push({
       name: r.name, tier: t, stars: r.stars,
       builtFromSha: builtName(r.name) ? (localSha || 'unknown') : null,
