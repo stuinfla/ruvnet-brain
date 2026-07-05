@@ -69,7 +69,7 @@ if [ "$NOW" -gt 0 ] && [ $((NOW - LAST)) -gt 72000 ]; then
       ) &
       echo "[RuvNet Brain — downloading v$REMOTE_V in the background; THIS SESSION STILL RUNS v$LOCAL_V]"
       echo "Tell the user this PLAINLY, near the top of your first response — be exact about running vs staged, never imply the new version is active:"
-      echo "  \"🧠 You're running RuvNet Brain v$LOCAL_V. I found v$REMOTE_V and I'm downloading it in the background now — when it finishes it will be STAGED, not active. To actually run it, exit and reopen Claude Code (I can't restart the app for you). If now's a clean moment, that's the move; otherwise it loads at your next natural restart.\""
+      echo "  \"🧠 You're running RuvNet Brain v$LOCAL_V. I found v$REMOTE_V and I'm downloading it in the background now — when it finishes it will be STAGED, not active. Loading it costs you nothing: exit and run \`claude --continue\` (or reopen and resume this session) — your whole conversation comes right back, on the new version. I can't hot-swap myself in memory (Claude Code loads plugins only at process start), but with --continue a restart loses nothing. Or just keep working on v$LOCAL_V and it loads whenever you next restart naturally.\""
       echo "If the user asks which version they're on at any point, the answer is v$LOCAL_V until they restart. Don't repeat this notice later in the same session."
       echo ""
     else
