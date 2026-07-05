@@ -28,6 +28,8 @@
 
 **Scores (out of 100, Stuart's standing rule):** presence 90 · insertion 82 · voice 60 · execution 40 · proof 20 · overall ~62.
 
+**1.9.1-dev (late add):** beat 0 — point-blank questions answered in sentence one (the 94-transcript's biggest deduction: the rule existed but sat buried; now positionally first) + findings spoken in the user's vocabulary, never plumbing-state. Field grades now 78 → 88 → 94; predicted 97-98 on 1.9.x, eval harness to verify.
+
 **NEXT (the two that matter):** (1) EVAL HARNESS — encode Stuart's bar as graders, ~12 prompts × 3 dev levels × 4 scenario types, `claude plugin eval`, loop ≥90 — stop using Mario as QA. (2) EXECUTION TRIAL — scratch repo, real feature, full cleared→SPARC→build→test→proven loop, graded end-to-end. Then: field wave with version-signed transcripts.
 
 **Standing Stuart rules recorded today:** scores /100 always · standing instructions get written to memory the moment they're uttered · maintain THIS file in real time (it was 7 days stale when he called it out — never again).
