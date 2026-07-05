@@ -12,7 +12,7 @@
     <array>
         <string>/bin/bash</string>
         <string>-lc</string>
-        <string>cd /Users/stuartkerr/Code/ruvnet-brain &amp;&amp; node scripts/self-update.mjs --apply &gt;&gt; logs/nightly.log 2&gt;&amp;1</string>
+        <string>cd /Users/stuartkerr/Code/ruvnet-brain &amp;&amp; node scripts/self-update.mjs --apply --publish &gt;&gt; logs/nightly.log 2&gt;&amp;1</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>

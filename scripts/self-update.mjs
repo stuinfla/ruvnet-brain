@@ -107,3 +107,55 @@ execFileSync('node', ['scripts/brain-stamp.mjs'], { cwd: ROOT, stdio: 'inherit' 
 console.log('[bundle] re-assembling dist/ruvnet-brain');
 execFileSync('node', ['scripts/build-bundle.mjs'], { cwd: ROOT, env: { ...process.env, KB_MODEL_CACHE: MODEL_CACHE }, stdio: 'inherit' });
 console.log('self-update done. (Deep-source refreshed + bundle re-assembled. Primer/L2/concepts + grading are supervised steps — re-run them when a repo materially changes.)');
+
+// ── PUBLISH (the last mile): local rebuild → users, automatically. ─────────────────────────────
+// Without this, the nightly makes the LOCAL brain smarter while releases/latest never advances —
+// users' auto-updaters correctly report "up to date" against a stale Release forever. Gated on
+// --publish (the LaunchAgent passes it; ad-hoc manual runs don't publish by accident) and on
+// something having actually been rebuilt this run. ONE product version: plugin.json's version is
+// bumped (patch) and shipped in the same Release tag, so brain content and plugin always move
+// under a single user-visible number. Fail-loud: any error here exits non-zero into the nightly
+// log; nothing is half-published silently (release create is atomic per-tag; the version-bump
+// commit only pushes after the Release exists).
+if (has('--publish')) {
+  if (todo.length === 0) {
+    console.log('[publish] nothing was rebuilt — no new Release needed. Done.');
+  } else {
+    const PLUGIN_JSON = path.join(ROOT, 'plugin', '.claude-plugin', 'plugin.json');
+    const pj = JSON.parse(fs.readFileSync(PLUGIN_JSON, 'utf8'));
+    const m = pj.version.match(/^(\d+)\.(\d+)\.(\d+)(-dev)?$/);
+    if (!m) { console.error(`[publish] FAIL: cannot parse plugin version "${pj.version}"`); process.exit(1); }
+    const next = `${m[1]}.${m[2]}.${Number(m[3]) + 1}${m[4] || ''}`;
+    const tag = `v${next}`;
+    pj.version = next;
+    pj.updated = new Date().toISOString().slice(0, 10);
+    fs.writeFileSync(PLUGIN_JSON, JSON.stringify(pj, null, 2) + '\n');
+    console.log(`[publish] product version → ${next} (${tag})`);
+
+    // Keep the README's human-readable version line in lockstep (Stuart's rule: first thing
+    // anyone sees must state the exact current version — badges lag, text doesn't).
+    const README = path.join(ROOT, 'README.md');
+    const readme = fs.readFileSync(README, 'utf8').replace(
+      /^### RuvNet Brain version .*$/m,
+      `### RuvNet Brain version ${next} — updated ${pj.updated}`,
+    );
+    fs.writeFileSync(README, readme);
+
+    const zipPath = path.join(ROOT, 'dist', 'ruvnet-brain.zip');
+    console.log('[publish] zipping bundle (private stores already fenced out at assembly)');
+    try { fs.unlinkSync(zipPath); } catch {}
+    execFileSync('ditto', ['-c', '-k', '--sequesterRsrc', path.join(ROOT, 'dist', 'ruvnet-brain'), zipPath], { stdio: 'inherit' });
+
+    console.log(`[publish] creating GitHub Release ${tag} + uploading bundle (~this can take minutes)`);
+    execFileSync('gh', ['release', 'create', tag, zipPath,
+      '--title', `${tag} — nightly brain refresh`,
+      '--notes', `Automated nightly: re-ingested upstream changes in: ${todo.map((p) => p.name).join(', ')}. One product version — plugin ${next} + this knowledge bundle ship together; user installs pick both up automatically.`,
+    ], { cwd: ROOT, stdio: 'inherit' });
+
+    console.log('[publish] committing version bump + stamped manifests, pushing');
+    execFileSync('git', ['add', 'README.md', 'plugin/.claude-plugin/plugin.json', 'data/manifest.json', 'primer/ruvnet-primer.md'], { cwd: ROOT, stdio: 'inherit' });
+    execFileSync('git', ['commit', '-m', `Nightly brain refresh ${tag}: ${todo.map((p) => p.name).join(', ')}\n\nAutomated by scripts/self-update.mjs --publish (launchd com.ruvnet.brain-nightly).`], { cwd: ROOT, stdio: 'inherit' });
+    execFileSync('git', ['push', 'origin', 'main'], { cwd: ROOT, stdio: 'inherit' });
+    console.log(`[publish] DONE — ${tag} live. Users' heartbeats will pick up plugin + brain automatically.`);
+  }
+}
