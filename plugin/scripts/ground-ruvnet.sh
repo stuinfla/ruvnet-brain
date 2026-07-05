@@ -91,6 +91,13 @@ D. Keep the user oriented and confident: say what you're doing and why as you go
 
 This is the difference between answering a question and RUNNING THE PROCESS. Run it.
 EOF
+  # Sign every proposal with the exact version that produced it — read live from the running
+  # plugin's own manifest, never hardcoded. Field-debuggability: when someone shares an output,
+  # nobody should have to guess which version generated it.
+  GV="unknown"
+  [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -f "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" ] && \
+    GV=$(grep -m1 '"version"' "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null | sed -E 's/.*"version": *"([^"]+)".*/\1/')
+  echo "SIGN IT: end the proposal with exactly one final line — \"🧠 RuvNet Brain v${GV:-unknown}\" — so anyone reading the output knows precisely which version produced it. Every proposal, every time, no exceptions."
 fi
 
 exit 0
