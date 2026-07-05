@@ -1,0 +1,13 @@
+{
+  "name": "ruvnet-brain",
+  "owner": {
+    "name": "Stuart Kerr"
+  },
+  "plugins": [
+    {
+      "name": "ruvnet-brain",
+      "source": "./plugin",
+      "description": "RuvNet brain for Claude Code: source-grounded knowledge of rUv's RuvNet building blocks (RuVector, Ruflo, AgentDB, RuLake, SPARC and ~18 more) + an enforced UserPromptSubmit grounding hook so Claude answers from real source instead of drifting, and works like Ruv (assess → SPARC → ADR/DDD → QA → score → revise). Pulls in any RuvNet repo on demand."
+    }
+  ]
+}
