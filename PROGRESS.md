@@ -1,6 +1,36 @@
 # RuvNet Brain — Build Progress (living tracker)
 
-`Updated: 2026-06-28 ~23:10 PDT` · honest status, no overclaiming. "DONE" means proven with pasted evidence.
+`Updated: 2026-07-05 13:50 EDT` · honest status, no overclaiming. "DONE" means proven with pasted evidence.
+
+---
+
+## 2026-07-05 — THE BEHAVIORAL OVERHAUL DAY (v0.5.0-dev → v1.9.0-dev, 16 shipped versions)
+
+**The driver:** real field feedback (Mario Jauvin, relayed by Stuart) exposed that the brain read as "only useful for RVF/Ruflo/AgentDB questions" — cold, scope-gating, lab-report tone. Stuart's bar, set explicitly across the day: the brain must be *Ruv on your shoulder* — plays back intent, attacks with one confident plan, references only relevant tools, shows its thinking, proves its checks, serves every developer level.
+
+**Behavioral contract evolution (plugin SKILL.md + ground-ruvnet.sh gate 3):**
+- 0.5.6: toolkit-breadth (search, don't recall — real search_ruvnet calls with feature-specific queries; the OAuth/PROVIDER_PRESETS example)
+- 0.6.0: partner-on-shoulder response contract (intent playback / approaches / fit-with-their-code / one go-no-go)
+- 1.6.3: process line ("checked project memory — found X; will persist as we go") + two-layer answer ("yes for process; no library in deliverable")
+- 1.6.4: ATTACK PLAN replaces options-essays — reject silently, build loudly
+- 1.6.5: every proposal signs its version
+- 1.7.0: **consolidation** — one voice, five beats (hear them / attack / why it holds / what I checked / cleared to go), replacing 10 stacked patches
+- 1.9.0: ADRs as living plans (read Status/dates, update in same change, reconcile drift via adr-review/adr-verify)
+- Field grades of Mario transcripts: 78 → 88 (out of 100). Best transcript: direct two-layer answer + honest memory recovery that wrote 6 memories on the spot.
+
+**Infrastructure shipped same day:**
+- Consent-gated AUTO-UPDATE: session-start heartbeat (every restart, 15-min dedupe) detects new plugin version, background-applies via claude CLI, tells user restart loads it. KB bundle auto-updates too (forge-update --check/--apply vs releases/latest).
+- TRUTH IN STATUS: statusline + banner show RUNNING (in-memory) version; staged version shown explicitly as "staged — restart to load". Stuart's rule: never show a staged version as running.
+- STACK WATCHDOG (Gate 0, every prompt, filesystem ground truth): Ruflo wired? .swarm/memory.db exists/recently-written? Outdated ruflo/@claude-flow/cli/@ruvector/rvf (npm registry, 20h cache — first run found 3 real outdated packages on Stuart's machine)? Every response ends with status footer. Ruflo-without-memory triggers once-per-session warm offer to turn AgentDB on.
+- NIGHTLY PUBLISH: self-update.mjs --publish (launchd 03:15, loaded) → rebuild changed repos → zip → GitHub Release → bump ONE product version → stamp README bright-blue badge (version + date/time/TZ) → push. Users' heartbeats pull it automatically.
+- npm: ruvnet-brain@1.6.2-dev published (npx ruvnet-brain). Version 1.x era per Stuart.
+- Incidents owned: deleted top-level .claude-plugin/marketplace.json broke GitHub-sourced updates for ~30 min (restored); macOS sh parses UTF-8 char glued to $VAR as part of the name (byte-level debug).
+
+**Scores (out of 100, Stuart's standing rule):** presence 90 · insertion 82 · voice 60 · execution 40 · proof 20 · overall ~62.
+
+**NEXT (the two that matter):** (1) EVAL HARNESS — encode Stuart's bar as graders, ~12 prompts × 3 dev levels × 4 scenario types, `claude plugin eval`, loop ≥90 — stop using Mario as QA. (2) EXECUTION TRIAL — scratch repo, real feature, full cleared→SPARC→build→test→proven loop, graded end-to-end. Then: field wave with version-signed transcripts.
+
+**Standing Stuart rules recorded today:** scores /100 always · standing instructions get written to memory the moment they're uttered · maintain THIS file in real time (it was 7 days stale when he called it out — never again).
 
 ---
 
