@@ -121,6 +121,27 @@ Concretely, seven decisions — each closes a named defect above and is grounded
    the installer and publisher — the two highest-risk, currently-zero-coverage scripts — get smoke coverage.
    Per aiGI Final Assembly: nothing is "done" without a green gate from a fresh clone.
 
+## Acceptance criteria (each decision is "done" only when measurable — an ADR about proof must prove itself)
+
+An ADR whose whole thesis is "stop asserting, start measuring" cannot itself have hand-wave exit conditions.
+Each decision above is DONE only when its check below is green — verified from a fresh clone, not asserted:
+
+1. **Version SoT** — a CI check greps the tree for a hardcoded `vX.Y.Z-dev` literal and finds it in **exactly
+   one** file (`plugin.json`); installer/stamp/bundle/README-body all read it at runtime. Deliberately editing
+   `plugin.json` and rebuilding propagates everywhere with no second edit.
+2. **Reconcile plan → reality** — **ADR-QA is green on our own repo**: no accepted ADR's claims contradict the
+   code. ADR-0005 reconciliation is *done this commit* (48749be); the check must stay green thereafter.
+3. **Smoke-gated publish** — a fault-injection test (deliberately break one repo's build, or corrupt the bundle)
+   makes `self-update.mjs --publish` **abort before `gh release create`** and exit non-zero. Proven once.
+4. **Eval flywheel** — a contract change that regresses the **frozen** scenario suite is **blocked in CI**,
+   demonstrated once with a deliberately-worse variant.
+5. **Three QA capabilities** — each (ADR-QA / DDD-QA / doc-currency) runs on **this repo** and produces a real,
+   true finding (dogfood). doc-currency's v0 already fired: it found the 5-way version fracture.
+6. **Collapse duplication** — the substitution map, the behavioral contract, and the currency logic each have
+   **exactly one** defining file; `grep` proves no second copy; the hook/skill/scripts read the canonical one.
+7. **Test + CI** — a fresh clone runs `npm test` green (structure + hook-behavior + injection-guard unit), and
+   CI is green on a commit; the installer and publisher have smoke coverage.
+
 ## Consequences
 
 - **Honest scope:** this ADR is design-before-code (the rUv way Stuart is asking for). It ships the

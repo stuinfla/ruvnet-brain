@@ -81,6 +81,21 @@ the Enforcement invariant to what actually ships.
 - Self-QA ↔ Verification: Self-QA audits *artifacts* (ADRs, DDD, docs, versions); Verification grades
   *answers*. Different subjects, same honesty bar.
 
+## Domain events (what happens, and who reacts)
+The events that cross context boundaries — the seams where behavior is triggered:
+- **`BundleBuilt`** (Distribution) → `BundleGraded` (Verification) → `BundleSmokeChecked` → **`BundlePublished`**
+  (Evergreen). A failed grade or smoke check **halts** the chain; nothing publishes.
+- **`VersionStaged`** (Evergreen, background auto-update writes the new plugin to disk) → **`VersionAdopted`**
+  (on the user's next restart, when running == staged). Presence emits `VersionSkewObserved` while they differ.
+- **`StackDriftDetected`** (Presence: Ruflo present but AgentDB memory off / packages stale) →
+  `MemoryOfferMade` / `StackUpdateOffered` (once per session).
+- **`BuildRequested`** → `ArchitectureProposed` (Proposal-Contract) → `GoAheadGiven` → `BuildProven`
+  (Self-Improvement's verify/score close). `DriftNudged` fires from Enforcement on a classical-default prompt.
+- **`VariantEvaluated`** → **`VariantPromoted`** *or* `VariantRejected` (Self-Improvement: only on beating the
+  frozen suite with no regression).
+- **`DocCurrencyViolationFound`**, **`ADRDriftFound`**, **`DDDBoundaryViolationFound`** (Self-QA) → a surfaced
+  finding + an offer to reconcile. *These three fired during the 2026-07-06 self-audit — the model's first run.*
+
 ## Aggregate roots
 `ProductVersion` (`plugin.json.version`, vMAJOR.MINOR.PATCH) is the **single** root of identity: every other
 surface reads it. `BrainVersion` (the bundle's provenance in `manifest.json` + `kb/SOURCE.json.releaseTag`)
