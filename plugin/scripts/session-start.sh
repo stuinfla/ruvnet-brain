@@ -47,16 +47,18 @@ LAST=$(cat "$STAMP" 2>/dev/null || echo 0)
 if [ "$NOW" -gt 0 ] && [ $((NOW - LAST)) -gt 900 ]; then
   echo "$NOW" > "$STAMP" 2>/dev/null
 
-  # ── KB (brain bundle) freshness — a SEPARATE store from the plugin, at ~/.cache/ruvnet-brain/kb.
-  # `claude plugin update` never touches it; its own evergreen updater (forge-update.mjs, shipped
-  # inside the bundle: provenance check vs releases/latest, backup, extract, re-verify, fail-loud
-  # with no partial clobber) does — but only if something calls it. This is that something.
-  # Same consent gate as the plugin auto-update; check is cheap, --apply only fires when BEHIND.
+  # ── KB (brain bundle) freshness — a SEPARATE store at ~/.cache/ruvnet-brain/kb.
+  # SECURITY (SEC-0010 #6): forge-update.mjs --apply overwrites the KB dir INCLUDING its .mjs tool
+  # files from an unsigned GitHub Release — a compromised release would be silent RCE on opted-in
+  # users. Until the bundle is signed (Ed25519 / cosign, verify-before-extract — tracked in SEC-0010
+  # #6), we DETECT + NOTIFY only; we do NOT auto-run --apply (no unattended code overwrite from an
+  # unsigned source). The user can apply manually after reviewing; the plugin auto-update below goes
+  # through Claude Code's own trusted marketplace path, which is a different trust story.
   KB_DIR="$HOME/.cache/ruvnet-brain/kb"
   if [ "$(cat "$PREF_FILE" 2>/dev/null)" = "yes" ] && [ -f "$KB_DIR/forge-update.mjs" ] && command -v node >/dev/null 2>&1; then
     ( cd "$KB_DIR" && node forge-update.mjs --check > "$STATE_DIR/.last-kb-check.log" 2>&1
       if grep -q "BEHIND" "$STATE_DIR/.last-kb-check.log" 2>/dev/null; then
-        node forge-update.mjs --apply >> "$STATE_DIR/.last-kb-check.log" 2>&1
+        echo "[RuvNet Brain — a newer knowledge bundle is available. It is NOT auto-applied for safety (the update overwrites executable tool files and the bundle isn't cryptographically signed yet). To update it manually after you're comfortable: cd ~/.cache/ruvnet-brain/kb && node forge-update.mjs --apply]"
       fi
     ) &
   fi
