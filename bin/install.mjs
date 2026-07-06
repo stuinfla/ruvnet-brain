@@ -26,8 +26,13 @@ const REPO = 'stuinfla/ruvnet-brain';
 const RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const ASSET_NAME = 'ruvnet-brain.zip';
 // Known-good fallback used when we can't reach GitHub (offline / rate-limited / no releases).
-// Default behavior is "get the latest"; this is only the safety net.
-const RELEASE_VERSION = 'v0.5.0-dev';
+// Default behavior is "get the latest"; this is only the safety net. Version is READ from this
+// package's own package.json (which ships in the npm tarball and inherits the single source of
+// truth via scripts/sync-version.mjs) — never a hardcoded literal (SEC-0010 #2 / ADR-0009 #1).
+const RELEASE_VERSION = (() => {
+  try { return 'v' + JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')).version; }
+  catch { return 'v0.5.0-dev'; } // sync-version-ignore: last-ditch only if this package's own package.json is unreadable
+})();
 const fallbackUrl = (tag) => `https://github.com/${REPO}/releases/download/${tag}/${ASSET_NAME}`;
 const APPROX_SIZE = '~512MB';
 

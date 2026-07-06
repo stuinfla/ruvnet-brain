@@ -14,13 +14,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getVersionTag } from './version.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KB = path.join(ROOT, 'kb');
 const DATA = path.join(ROOT, 'data');
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
 const OUT = path.resolve(ROOT, arg('--out', 'dist/ruvnet-brain'));
-const BRAIN_VERSION = arg('--version', 'v0.3.0-dev');
+const BRAIN_VERSION = arg('--version', getVersionTag()); // inherits the single source of truth
 
 // ---- registry: tier + the full 169-repo pending list -------------------------------------------
 const registry = JSON.parse(fs.readFileSync(path.join(DATA, 'registry.tiers.json'), 'utf8'));

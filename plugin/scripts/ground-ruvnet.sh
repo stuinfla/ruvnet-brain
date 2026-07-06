@@ -7,7 +7,8 @@
 #   2. DRIFT    — task reaches for a classical default -> HIJACK: name the rUv replacement, even if the
 #                 user never said "RuvNet". This is the "jump in any time it should" behavior.
 #   3. BUILD    — build/change request                 -> "work like Ruv" (assess -> SPARC -> ADR/DDD -> QA).
-# Stays SILENT when nothing matches. ALWAYS exit 0 so it can never block or error a turn, even on
+# Gate 0 (status footer) ALWAYS fires by design (the always-on presence signal); the GROUNDING gates
+# (1-3) stay silent when nothing matches. ALWAYS exit 0 so it can never block or error a turn, even on
 # empty/malformed input.
 set +e
 INPUT=$(cat 2>/dev/null)
@@ -67,6 +68,7 @@ fi
 # ── Stack package currency (rate-limited ~20h, machine-wide, fail-silent) ───────────────────────
 # Fetches latest versions of the core stack from the npm registry into a cache; compares against
 # what's ACTUALLY installed (global npm dir or project node_modules) on every prompt (cheap greps).
+mkdir -p "$HOME/.cache/ruvnet-brain" 2>/dev/null
 VSTAMP="$HOME/.cache/ruvnet-brain/.stack-versions-checked"
 VCACHE="$HOME/.cache/ruvnet-brain/.stack-latest"
 NOWV=$(date +%s 2>/dev/null || echo 0)

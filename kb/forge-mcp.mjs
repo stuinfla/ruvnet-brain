@@ -28,6 +28,12 @@ if (!KB_NAME) {
   process.exit(2);
 }
 
+// Orphan guard (SEC-0010 #12, ported from forge-mcp-all.mjs): if the parent (Claude Code / the plugin
+// proxy) is force-quit, our stdin may never EOF, leaving this model-laden server (~0.5 GB) resident
+// forever. Re-parenting to PID 1 means the parent is gone → exit. Unref'd so it never keeps us alive.
+const orphanGuard = setInterval(() => { if (process.ppid === 1) process.exit(0); }, 30000);
+orphanGuard.unref();
+
 const PROTOCOL_VERSION = '2024-11-05';
 const SERVER_INFO = { name: `rvf-kb-forge:${KB_NAME}`, version: '1.0.0' };
 const TOOLS = [

@@ -58,7 +58,13 @@ const onTopic = runHook(JSON.stringify({ prompt: 'does ruflo support agent swarm
 check('fires on a RuvNet prompt', /search_ruvnet/.test(onTopic.stdout) && /ground before you assert/i.test(onTopic.stdout));
 check('exits 0 on a RuvNet prompt', onTopic.status === 0);
 const offTopic = runHook(JSON.stringify({ prompt: 'write a haiku about the ocean' }));
-check('stays silent on a non-RuvNet prompt', offTopic.stdout.trim() === '');
+// SEC-0010 #3: the always-on Gate-0 status footer is intended (Stuart's "show version+stack every turn"
+// requirement). What must stay silent off-topic are the GROUNDING gates — no search_ruvnet directive,
+// no hijack "STOP", no "take the wheel" build playbook. The neutral status line is expected, not a leak.
+const groundingFired = /search_ruvnet/.test(offTopic.stdout)
+  || /STOP: you're reaching/i.test(offTopic.stdout)
+  || /take the wheel/i.test(offTopic.stdout);
+check('grounding gates stay silent on a non-RuvNet prompt (status footer is intended)', !groundingFired);
 const malformed = runHook('this is not json');
 check('handles malformed input without erroring (exit 0)', malformed.status === 0);
 

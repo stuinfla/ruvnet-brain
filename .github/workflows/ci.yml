@@ -1,0 +1,24 @@
+name: ci
+# SEC-0010 #12 — the missing CI that let gate.sh (#1) and the run-tests regression (#3) ship unnoticed.
+# Runs the brain-independent checks on every push/PR: version single-source-of-truth, structure,
+# grounding-hook behavior, and the injection-guard unit test. None of these need the 512 MB bundle.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Version single-source-of-truth (fails on any drift / stray literal)
+        run: npm run version:check
+      - name: Structure + grounding-hook behavior + capability checks
+        run: npm test
+      - name: Injection-guard unit test
+        run: node kb/test-guard-injection.mjs

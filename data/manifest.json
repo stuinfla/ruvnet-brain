@@ -1,7 +1,7 @@
 {
-  "brainVersion": "v0.3.0-dev",
-  "generated": "2026-07-05T19:20:23.755Z",
-  "generatedHuman": "Sun, 05 Jul 2026 19:20:23 GMT",
+  "brainVersion": "1.9.3-dev",
+  "generated": "2026-07-06T16:26:26.393Z",
+  "generatedHuman": "Mon, 06 Jul 2026 16:26:26 GMT",
   "coverage": {
     "built": 19,
     "catalogued": 168,
@@ -13,7 +13,7 @@
       "name": "RuView",
       "tier": "T0",
       "stars": 75658,
-      "builtFromSha": "1a0492992f81a94d512239ff43197f891ed6c130",
+      "builtFromSha": "e6f26e9ac982aadaa18c8271ec65d29a302e49ec",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -21,7 +21,7 @@
       "name": "ruflo",
       "tier": "T0",
       "stars": 61698,
-      "builtFromSha": "f71ffa2f99147b0236fc267aaf1d4cd8285ad3c1",
+      "builtFromSha": "865dd7dd2b2a830209e64bb3e4aed935d2471d76",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -29,7 +29,7 @@
       "name": "RuVector",
       "tier": "T0",
       "stars": 4296,
-      "builtFromSha": "unknown",
+      "builtFromSha": "c87541c9507084b9eb61b20bb1e460fa79545343",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -61,7 +61,7 @@
       "name": "agent-harness-generator",
       "tier": "T1",
       "stars": 330,
-      "builtFromSha": "a7d4b8a04c4b82e919bb698f0fa714e436102851",
+      "builtFromSha": "b7276ceb615b9b7627781d59104796982214dbaa",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -149,7 +149,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "8ca840991fdf2a1944011eed0de3badc23b2448f",
+      "builtFromSha": "d18e448fe998a12b74cbfe7fed85705df8a67b15",
       "latestRemoteSha": null,
       "status": "built"
     },

@@ -8,10 +8,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { getVersionTag } from './version.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
-const BRAIN_VERSION = arg('--brain-version', 'v0.3.0-dev');
+const BRAIN_VERSION = arg('--brain-version', getVersionTag()); // inherits the single source of truth
 const NOW = new Date().toISOString();
 
 // Known local clones (extend as repos are added). Self-update resolves remote SHAs for the rest.

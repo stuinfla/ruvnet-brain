@@ -684,9 +684,11 @@
                 the word &ldquo;RuvNet,&rdquo; it speaks up the moment you reach for a classical default &mdash;
                 <code>pinecone</code>, <code>pgvector</code>, <code>langchain</code> &mdash; and points Claude at rUv&rsquo;s
                 way instead.</li>
-              <li><strong>At action &mdash; the interception.</strong> The instant Claude tries to write
-                <code>import pinecone</code> or run <code>npm i langchain</code>, the Brain catches it and injects the rUv
-                replacement <em>before the code lands.</em> The drift is corrected at the keystroke, not after.</li>
+              <li><strong>At action &mdash; the nudge.</strong> When Claude reaches for a training-prior default
+                like <code>import pinecone</code> or <code>npm i langchain</code>, the Brain injects the sharper rUv
+                replacement (RuVector, Ruflo&hellip;) into the turn and points it at the real source to confirm &mdash;
+                so the answer is grounded, not guessed. It&rsquo;s a strong grounding nudge, not a hard block: it steers
+                Claude back onto the stack rather than silently rewriting your code.</li>
             </ol>
             <p>
               Behind both, a <strong><code>search_ruvnet</code> tool</strong> pulls the exact source passage on demand
