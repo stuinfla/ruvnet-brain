@@ -26,7 +26,28 @@ const MODEL_CACHE = process.env.KB_MODEL_CACHE || path.join(ROOT, 'kb', 'models-
 const KNOWN_CLONES = JSON.parse(process.env.RUVNET_KNOWN_CLONES || '{}');
 const CLONE_DIR = path.join(ROOT, 'clones');
 // --full source-dir hints per repo (extend as repos onboard; default = whole tree, docs+manifests+lead-comments)
-const FULL_HINTS = { ruflo: 'v3/@claude-flow,v3/mcp,ruflo/src' };
+//
+// The four entries below (agentdb/rulake/daa/qudag) close a real gap: the shipped v0.5.0-dev
+// bundle's kb/*.passages.jsonl already contains substantial full-body source indexing for these
+// repos (agentdb 159, rulake 80, daa 198, qudag 401 "Source ... (full body):" entries), but none
+// of them were recorded here. Without a hint, the FIRST time self-update.mjs ever rebuilds one of
+// these repos (the moment it actually drifts), it silently downgrades that content from full
+// source bodies to doc-comment-only snippets -- the exact regression this fixes pre-emptively.
+//
+// agentdb/rulake: every full-body path falls under a single clean top-level dir, so one prefix
+// covers all of it. daa/qudag are genuinely scattered multi-crate workspaces (no single clean
+// prefix); the lists below are the exhaustive, empirically-derived minimal prefix set that
+// reproduces every full-body path currently in the shipped bundle -- extracted directly from
+// kb/{daa,qudag}.passages.jsonl, not guessed. The original build command that produced these
+// isn't recorded anywhere, so these are reconstructed from evidence rather than confirmed against
+// original intent -- please correct if the authoritative list differs.
+const FULL_HINTS = {
+  ruflo: 'v3/@claude-flow,v3/mcp,ruflo/src',
+  agentdb: 'src',
+  rulake: 'crates',
+  daa: 'crates/daa-ai,crates/daa-chain,crates/daa-economy,crates/daa-rules,daa-ai/src,daa-chain/src,daa-cli/src,daa-compute/benches,daa-compute/build.rs,daa-compute/src,daa-compute/tests,daa-economy/src,daa-mcp/src,daa-orchestrator/daa-napi,daa-orchestrator/src,daa-orchestrator/tests,daa-rules/src,daa-sdk/crates,examples/agents,examples/basic-crypto.ts,examples/decentralized-task-scheduler.ts,examples/federated-learning.ts,examples/full-stack-agent.ts,examples/orchestrator.ts,examples/performance-benchmark.ts,prime-rust/crates,prime-rust/prime-napi,prime-rust/tests,src/main.rs,src/security',
+  qudag: 'benchmarks/benches,benchmarks/cli,benchmarks/dark_addressing,benchmarks/lib.rs,benchmarks/optimized_benchmarks.rs,benchmarks/src,cli-standalone/src,cli-standalone/tests,core/crypto,core/dag,core/health.rs,core/monitoring,core/network,core/optimized,core/protocol,core/swarm,core/vault,examples/bitchat,examples/crypto,examples/dark_addressing_example.rs,examples/dht_discovery_example.rs,examples/nat_traversal_example.rs,examples/onion_routing_example.rs,examples/peer_management_example.rs,examples/persistence_example.rs,examples/shadow_address_example.rs,examples/traffic_obfuscation_example.rs,qudag-exchange/cli,qudag-exchange/core,qudag-exchange/crates,qudag-exchange/src,qudag-exchange/test_core_fee_model.rs,qudag-exchange/test_fee_model.rs,qudag-exchange/tests,qudag-mcp/benches,qudag-mcp/examples,qudag-mcp/src,qudag-mcp/tests,qudag-testnet/configs,qudag-wasm/final-test.mjs,qudag-wasm/simple-test.mjs,qudag-wasm/src,qudag-wasm/test-nodejs.mjs,qudag-wasm/test-setup.ts,qudag-wasm/vitest.config.ts,qudag-wasm/vitest.workspace.ts,qudag-wasm/working-features-test.mjs,tools/cli,tools/simulator,tools/swarm-test,vault-standalone/examples,vault-standalone/src,vault-standalone/tests',
+};
 
 const tiers = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/registry.tiers.json'), 'utf8'));
 const manifest = fs.existsSync(path.join(ROOT, 'data/manifest.json'))
