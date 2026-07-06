@@ -59,6 +59,16 @@ const FULL_HINTS = {
   'open-claude-code': 'v2/src',
   'ruv-dev': 'bin/index.js,src/cli,src/core,src/index.js,src/utils',
   'agenticow': 'bin/agenticow.js,examples/_shared.mjs,examples/ab-at-scale.mjs,examples/ab-branches.mjs,examples/checkpointing.mjs,examples/compliance-lineage.mjs,examples/git-workflow.mjs,examples/memory-evolution.mjs,examples/multi-persona-consensus.mjs,examples/multi-tenant-saas.mjs,examples/parallel-agents.mjs,examples/parallel-selves.mjs,examples/personalization.mjs,examples/promotion-pipeline.mjs,examples/red-team-sandbox.mjs,examples/rollback-quarantine.mjs,examples/simulated-org.mjs,examples/time-travel-debug.mjs,src/index.d.ts,src/index.js',
+  // cognitum-cogs (cognitum-one org): unlike the repos above, this one's existing full-body
+  // coverage is thin and scattered across nearly every directory (e.g. crates/fxnn 91/507,
+  // examples/fixel 20/180) rather than a clean whole-directory --full pass, so there's no exact
+  // original prefix set to reverse-engineer. Using every top-level dir that has ANY full-body
+  // content today as a superset --full prefix guarantees no regression (nothing currently
+  // full-body can become snippet-only); doc-only dirs (docs, .github, ui-templates, root .md)
+  // are excluded since they have zero full-body content to protect.
+  'cognitum-cogs': 'benches,benchmarks,cognitum-sim,crates,examples,scripts,shared,src,tests',
+  // cognitum-support (cognitum-one org): 100% docs/README/GitHub-template content, zero
+  // full-body entries in the existing build — no --full prefix needed, nothing to protect.
 };
 
 const tiers = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/registry.tiers.json'), 'utf8'));
@@ -67,8 +77,10 @@ const manifest = fs.existsSync(path.join(ROOT, 'data/manifest.json'))
 // case-insensitive: registry names are capitalized (RuVector) but built artifacts are lowercase (ruvector)
 const builtSha = Object.fromEntries(manifest.builtRepos.map((r) => [r.name.toLowerCase(), r.builtFromSha]));
 
-const remoteHead = (slug) => {
-  try { return execFileSync('git', ['ls-remote', `https://github.com/ruvnet/${slug}`, 'HEAD'], { timeout: 30000 }).toString().split(/\s/)[0] || null; }
+// owner/repo default to 'ruvnet'/<name> so existing registry entries (no owner/repo field) are
+// unaffected; a repo living outside the ruvnet org (e.g. a different GitHub org) sets both.
+const remoteHead = (owner, slug) => {
+  try { return execFileSync('git', ['ls-remote', `https://github.com/${owner}/${slug}`, 'HEAD'], { timeout: 30000 }).toString().split(/\s/)[0] || null; }
   catch { return null; }
 };
 const clonePath = (name) => KNOWN_CLONES[name] || path.join(CLONE_DIR, name);
@@ -85,7 +97,7 @@ for (const t of ['T0', 'T1', 'T2', 'T3']) {
 
 const plan = [];
 for (const r of inScope) {
-  const live = remoteHead(r.name);
+  const live = remoteHead(r.owner || 'ruvnet', r.repo || r.name);
   const built = builtSha[r.name.toLowerCase()] || null;
   let action = 'up-to-date';
   if (!built) action = 'build (new)';
@@ -94,7 +106,7 @@ for (const r of inScope) {
   // most-central repos were invisible to the freshness loop until a 3.24 release exposed it.)
   else if (built === 'unknown') action = live ? 'rebuild (changed)' : 'up-to-date';
   else if (live && live !== built) action = 'rebuild (changed)';
-  plan.push({ name: r.name, tier: r.tier, built: built?.slice(0, 12) || '—', live: live?.slice(0, 12) || '?', action });
+  plan.push({ name: r.name, owner: r.owner, repo: r.repo, tier: r.tier, built: built?.slice(0, 12) || '—', live: live?.slice(0, 12) || '?', action });
 }
 
 console.log(`self-update ${APPLY ? '(APPLY)' : '(dry-run)'} — ${plan.length} repos in scope\n`);
@@ -120,7 +132,7 @@ for (const p of todo) {
     if (!fs.existsSync(path.join(dir, '.git'))) {
       console.log(`[clone] ${p.name}`);
       fs.mkdirSync(CLONE_DIR, { recursive: true });
-      execFileSync('git', ['clone', '--depth', '1', `https://github.com/ruvnet/${p.name}`, dir], { stdio: 'inherit' });
+      execFileSync('git', ['clone', '--depth', '1', `https://github.com/${p.owner || 'ruvnet'}/${p.repo || p.name}`, dir], { stdio: 'inherit' });
     } else {
       execFileSync('git', ['-C', dir, 'fetch', '--depth', '1', 'origin'], { stdio: 'inherit' });
       execFileSync('git', ['-C', dir, 'reset', '--hard', 'origin/HEAD'], { stdio: 'inherit' });
