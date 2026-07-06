@@ -15,11 +15,35 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KB = path.join(ROOT, 'kb');
-// Auto-discover every repo that has a primer. (Was hardcoded to the original 5; now folds in all
-// built repos so the concepts/capability layer covers the whole brain, not just the first tier.)
+
+// PRIVATE fence (SEC-0010 #5) — the concepts store folds in primers + L2 PROSE, so it must honor the
+// same fence as the raw .rvf stores, or a private repo's write-up could ship even though its vectors
+// are excluded. FAIL-CLOSED, same contract as build-bundle.mjs: a present-but-corrupt fence aborts.
+function loadPrivate() {
+  const p = path.join(KB, 'PRIVATE-STORES.json');
+  if (!fs.existsSync(p)) {
+    if (process.env.ALLOW_NO_PRIVATE_FENCE === '1') return new Set();
+    console.error(`[build-concepts] FATAL: private fence missing (${p}). Refusing to build the shipped ` +
+      `concepts store without a verified fence. Set ALLOW_NO_PRIVATE_FENCE=1 only for a no-private fork.`);
+    process.exit(1);
+  }
+  try {
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (!Array.isArray(j.privateStores)) throw new Error('no privateStores array');
+    return new Set(j.privateStores.map((s) => String(s).toLowerCase()));
+  } catch (e) {
+    console.error(`[build-concepts] FATAL: PRIVATE-STORES.json unreadable/corrupt (${e.message}). Refusing to build.`);
+    process.exit(1);
+  }
+}
+const PRIVATE = loadPrivate();
+const isPrivate = (repo) => PRIVATE.has(String(repo).toLowerCase());
+
+// Auto-discover every repo that has a primer (skip PRIVATE ones — their prose must not ship).
 const REPOS = fs.readdirSync(KB)
   .filter((f) => f.endsWith('-primer.md'))
   .map((f) => f.replace(/-primer\.md$/, ''))
+  .filter((r) => !isPrivate(r))
   .sort();
 
 // slug -> repo, from the per-repo l2-topics files (+ ruflo defaults that predate them)
@@ -59,6 +83,7 @@ for (const f of fs.readdirSync(path.join(KB, 'l2'))) {
   if (!f.endsWith('.md')) continue;
   const slug = f.replace(/\.md$/, '');
   const repo = slugRepo.get(slug) || 'ruvnet';
+  if (isPrivate(repo)) continue; // SEC-0010 #5: never fold a private repo's L2 prose into the shipped store
   const text = fs.readFileSync(path.join(KB, 'l2', f), 'utf8');
   const title = (text.match(/^#\s+(.+)/m) || [, slug])[1];
   add(repo, 'L2', slug, title, text); l2n++;
