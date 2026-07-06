@@ -1,22 +1,19 @@
 {
   "builder": "rvf-kb-forge",
-  "builtUtc": "2026-06-29T05:43:23.820Z",
-  "releaseTag": "v0.5.0-dev",
-  "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
-  "canonicalBundleUrl": "https://github.com/stuinfla/ruvnet-brain/releases/download/v0.5.0-dev/ruvnet-brain.zip",
+  "builtUtc": "2026-07-05T18:15:09.157Z",
+  "canonicalManifestUrl": "https://raw.githubusercontent.com/ruvnet/ruvnet-brain/main/kb/.last-built.json",
   "selfUpdate": "node forge-update.mjs",
   "stores": {
-    "rvm": {
-      "kbName": "rvm",
-      "sourceRepo": "https://github.com/ruvnet/rvm",
-      "sourceCommit": "af97d18f29d5704f2fbbeecccce192d712bb9a80",
-      "sourceDescribe": "af97d18",
-      "builtUtc": "2026-06-29T05:43:23.820Z",
-      "releaseTag": "v0.5.0-dev",
+    "ruflo": {
+      "kbName": "ruflo",
+      "sourceRepo": "https://github.com/ruvnet/ruflo",
+      "sourceCommit": "f71ffa2f99147b0236fc267aaf1d4cd8285ad3c1",
+      "sourceDescribe": "v3.25.0",
+      "builtUtc": "2026-07-05T18:15:09.157Z",
       "builder": "rvf-kb-forge",
-      "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
-      "canonicalBundleUrl": "https://github.com/stuinfla/ruvnet-brain/releases/download/v0.5.0-dev/ruvnet-brain.zip",
-      "selfUpdate": "node forge-update.mjs rvm"
+      "canonicalManifestUrl": "https://raw.githubusercontent.com/ruvnet/ruvnet-brain/main/kb/.last-built.json",
+      "canonicalBundleUrl": "https://raw.githubusercontent.com/ruvnet/ruvnet-brain/main/kb/ruflo-kb-bundle.zip",
+      "selfUpdate": "node forge-update.mjs ruflo"
     }
   }
 }

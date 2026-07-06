@@ -38,3 +38,8 @@ node_modules
 .env.*
 !.env.example
 *.bak
+
+# local scratch — never ship
+agentdb.rvf
+agentdb.rvf.lock
+deck/
