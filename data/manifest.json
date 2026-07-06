@@ -1,10 +1,10 @@
 {
-  "brainVersion": "1.9.4-dev",
-  "generated": "2026-07-06T16:26:26.393Z",
-  "generatedHuman": "Mon, 06 Jul 2026 16:26:26 GMT",
+  "brainVersion": "v1.9.4-dev",
+  "generated": "2026-07-06T20:16:04.222Z",
+  "generatedHuman": "Mon, 06 Jul 2026 20:16:04 GMT",
   "coverage": {
-    "built": 19,
-    "catalogued": 168,
+    "built": 23,
+    "catalogued": 172,
     "orgTotalApprox": 248,
     "pending": 149
   },
@@ -61,7 +61,7 @@
       "name": "agent-harness-generator",
       "tier": "T1",
       "stars": 330,
-      "builtFromSha": "b7276ceb615b9b7627781d59104796982214dbaa",
+      "builtFromSha": "de12ed8e868229e63ea7953753a39b94c75cb085",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -158,6 +158,38 @@
       "tier": "T2",
       "stars": 14,
       "builtFromSha": "bb1269fb9f4b0920de5944d248e4e79a01f3b80c",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "agenticow",
+      "tier": "T2",
+      "stars": 40,
+      "builtFromSha": "dd4f437b92d2dbbc1f40dfa00023eed6e9c3bd84",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "CVE-bench",
+      "tier": "T2",
+      "stars": 15,
+      "builtFromSha": "47abc2b2b522f4d8afd07296d2a35042d8639f1d",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-cogs",
+      "tier": "T2",
+      "stars": 14,
+      "builtFromSha": "d48161eb2b676753a5b0e6d107805a2217dbaf9b",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-support",
+      "tier": "T2",
+      "stars": 19,
+      "builtFromSha": "26a92df8c17341fe73c0e455168c3f849130fafd",
       "latestRemoteSha": null,
       "status": "built"
     }
