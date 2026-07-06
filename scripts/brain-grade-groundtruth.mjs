@@ -28,7 +28,7 @@ const MODELS = (arg('--models', 'openai/gpt-4o-mini,deepseek/deepseek-chat,meta-
 function readKey() {
   if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY;
   try {
-    const env = fs.readFileSync('/Users/stuartkerr/Code/Ask-Ruvnet/Ask-Ruvnet/.env', 'utf8');
+    const env = fs.readFileSync((process.env.RUVNET_ENV_FILE || '.env'), 'utf8');
     const m = env.match(/^OPENROUTER_API_KEY=(.+)$/m); return m ? m[1].trim() : null;
   } catch { return null; }
 }

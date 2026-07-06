@@ -17,7 +17,7 @@ import { rerankKb } from '../kb/forge-rerank.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
 const NAME = arg('--name', 'ruflo'), VARIANT = arg('--variant', 'big');
-const KEY = process.env.OPENROUTER_API_KEY || (fs.readFileSync('/Users/stuartkerr/Code/Ask-Ruvnet/Ask-Ruvnet/.env', 'utf8').match(/^OPENROUTER_API_KEY=(.+)$/m) || [])[1]?.trim();
+const KEY = process.env.OPENROUTER_API_KEY || (fs.readFileSync((process.env.RUVNET_ENV_FILE || '.env'), 'utf8').match(/^OPENROUTER_API_KEY=(.+)$/m) || [])[1]?.trim();
 if (!KEY) { console.error('No OPENROUTER_API_KEY'); process.exit(2); }
 const GEN_MODEL = arg('--gen', 'deepseek/deepseek-chat');
 const JUDGES = ['openai/gpt-4o-mini', 'deepseek/deepseek-chat', 'meta-llama/llama-3.3-70b-instruct'];

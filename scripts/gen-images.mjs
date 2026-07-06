@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'explainer/assets/img');
 fs.mkdirSync(OUT, { recursive: true });
-const RAWKEY = process.env.OPENAI_API_KEY || (fs.readFileSync('/Users/stuartkerr/Code/Ask-Ruvnet/Ask-Ruvnet/.env', 'utf8').match(/^OPENAI_API_KEY=(.+)$/m) || [])[1] || '';
+const RAWKEY = process.env.OPENAI_API_KEY || (fs.readFileSync((process.env.RUVNET_ENV_FILE || '.env'), 'utf8').match(/^OPENAI_API_KEY=(.+)$/m) || [])[1] || '';
 const KEY = (RAWKEY.match(/sk-[A-Za-z0-9_\-]+/) || [''])[0];   // first valid token only — handles dup lines / whitespace
 if (!KEY) { console.error('no OPENAI_API_KEY'); process.exit(2); }
 const redact = (s) => String(s).replace(/sk-[A-Za-z0-9_\-]+/g, 'sk-***');   // never let a key reach logs

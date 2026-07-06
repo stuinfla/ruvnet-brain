@@ -38,11 +38,36 @@ try {
 // ---- PRIVATE stores (excluded from any publishable bundle) --------------------------------------
 // kb/PRIVATE-STORES.json lists store names built from PRIVATE source that MUST NOT ship. We read it
 // here and drop those names during discovery so private code can never leak into dist/.
+// FAIL-CLOSED (security-critical — SEC-0010 #4). A private-store fence that degrades to an EMPTY
+// set on any error means a truncated/corrupt/missing PRIVATE-STORES.json silently ships EVERY store,
+// including private cognitum source. So: a present-but-unparseable fence ALWAYS aborts the build; a
+// missing fence aborts too, unless the operator explicitly opts out (ALLOW_NO_PRIVATE_FENCE=1) — the
+// escape hatch a genuine no-private public fork needs, but never the silent default.
 function loadPrivateStores() {
+  const p = path.join(KB, 'PRIVATE-STORES.json');
+  if (!fs.existsSync(p)) {
+    if (process.env.ALLOW_NO_PRIVATE_FENCE === '1') {
+      console.warn('[build-bundle] no PRIVATE-STORES.json; ALLOW_NO_PRIVATE_FENCE=1 → proceeding with NO fence.');
+      return new Set();
+    }
+    console.error(`[build-bundle] FATAL: private-store fence missing (${p}). Refusing to build — a bundle ` +
+      `without a verified fence could ship private source. Set ALLOW_NO_PRIVATE_FENCE=1 only for a genuine ` +
+      `no-private fork.`);
+    process.exit(1);
+  }
+  let j;
   try {
-    const j = JSON.parse(fs.readFileSync(path.join(KB, 'PRIVATE-STORES.json'), 'utf8'));
-    return new Set((j.privateStores || []).map((s) => String(s).toLowerCase()));
-  } catch { return new Set(); }
+    j = JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (e) {
+    console.error(`[build-bundle] FATAL: PRIVATE-STORES.json is present but unreadable/corrupt (${e.message}). ` +
+      `Refusing to build — cannot prove private stores are fenced out.`);
+    process.exit(1);
+  }
+  if (!Array.isArray(j.privateStores)) {
+    console.error('[build-bundle] FATAL: PRIVATE-STORES.json has no valid "privateStores" array. Refusing to build.');
+    process.exit(1);
+  }
+  return new Set(j.privateStores.map((s) => String(s).toLowerCase()));
 }
 const PRIVATE_STORES = loadPrivateStores();
 

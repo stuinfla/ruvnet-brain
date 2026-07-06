@@ -91,9 +91,10 @@ ADR-0001 zip bundle not single file · 0002 ground-truth+multivendor gate · 000
 judge + drift SLO (the anti-drift enforcement) · 0006 segment-per-repo · 0007 tiered scope (T0–T3) ·
 **0008 the autonomous engineering loop (Ruflo decides / Claude acts / brain grounds)**.
 
-## 9. Where everything lives (project home = /Users/stuartkerr/Code/ruvnet-brain)
+## 9. Where everything lives (repo-relative)
 `PROGRESS.md` (complete build log) · `docs/adr/` (decisions) · `docs/VISION.md` (this file) · `kb/` (the brain:
 per-repo .rvf + .big.rvf + passages + symbols + primers + concepts + forge tools) · `dist/ruvnet-brain.zip`
-(the deliverable) · `explainer/` (the deck) · `scripts/` (build/grade/score/self-update tooling). Keys
-(OPENROUTER/OPENAI) in `/Users/stuartkerr/Code/Ask-Ruvnet/Ask-Ruvnet/.env`. Model cache at
-`/Users/stuartkerr/Code/PowerPlatePulse/scripts/models-cache`.
+(the deliverable) · `explainer/` (the deck) · `scripts/` (build/grade/score/self-update tooling). API keys
+(OPENROUTER/OPENAI) live in a local `.env` outside this repo (never committed); the model cache is a local
+ONNX cache dir set via `KB_MODEL_CACHE`. Neither path is published here (SEC-0010 #12 — no absolute local
+paths or secret locations in a public repo).
