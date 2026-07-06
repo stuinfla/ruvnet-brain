@@ -384,14 +384,34 @@ function installReader(cacheDir) {
     die(`\`npm\` isn't available, but the brain needs it for its reader.`, `Install Node.js (which includes npm) and re-run.`);
   }
   info('installing the local reader…');
+  // Prefer `npm ci` for a PINNED, reproducible install when the bundle shipped its lockfile
+  // (SEC-0010 #8 — otherwise every install did a fully unpinned resolve). Fall back to `npm i`
+  // for older bundles that predate the shipped lockfile.
+  const hasLock = fs.existsSync(path.join(cacheDir, 'package-lock.json'));
+  const npmArgs = hasLock
+    ? ['ci', '--no-audit', '--no-fund', '--loglevel=error']
+    : ['i', '--no-audit', '--no-fund', '--loglevel=error'];
   try {
-    run('npm', ['i', '--no-audit', '--no-fund', '--loglevel=error'], {
+    run('npm', npmArgs, {
       cwd: cacheDir,
       // silence npm's "new version available" update-notifier so the narration stays clean
       env: { ...process.env, npm_config_update_notifier: 'false', npm_config_fund: 'false' },
     });
   } catch (e) {
-    die(`the reader install failed (${e.message}).`, `Re-run after checking your network / npm setup.`);
+    // `npm ci` is strict (fails if lock and package.json disagree); fall back to `npm i` once
+    // rather than hard-failing a user's install on a lockfile mismatch.
+    if (hasLock) {
+      warn(`pinned install (npm ci) failed (${e.message}); retrying with npm i`);
+      try {
+        run('npm', ['i', '--no-audit', '--no-fund', '--loglevel=error'], {
+          cwd: cacheDir, env: { ...process.env, npm_config_update_notifier: 'false', npm_config_fund: 'false' },
+        });
+      } catch (e2) {
+        die(`the reader install failed (${e2.message}).`, `Re-run after checking your network / npm setup.`);
+      }
+    } else {
+      die(`the reader install failed (${e.message}).`, `Re-run after checking your network / npm setup.`);
+    }
   }
   ok('reader installed');
 }

@@ -174,7 +174,9 @@ if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.
 // shared runtime tools. forge-guard-injection.mjs is REQUIRED — forge-mcp-all.mjs imports it, so a
 // bundle without it crashes the brain on startup (MODULE_NOT_FOUND). forge-update.mjs is the consumer
 // self-updater (reads SOURCE.json, copied below).
-const tools = ['forge-ask.mjs', 'forge-ask-all.mjs', 'forge-mcp.mjs', 'forge-mcp-all.mjs', 'forge-rerank.mjs', 'forge-guard.mjs', 'forge-guard-injection.mjs', 'forge-update.mjs', 'resolve-deps.mjs', 'package.json'];
+// package-lock.json ships so the installer can `npm ci` (pinned, reproducible) instead of an
+// unpinned `npm i` resolve (SEC-0010 #8).
+const tools = ['forge-ask.mjs', 'forge-ask-all.mjs', 'forge-mcp.mjs', 'forge-mcp-all.mjs', 'forge-rerank.mjs', 'forge-guard.mjs', 'forge-guard-injection.mjs', 'forge-update.mjs', 'resolve-deps.mjs', 'package.json', 'package-lock.json'];
 for (const t of tools) cp(t, OUT, { required: true });
 // self-update provenance (where this bundle came from + the canonical manifest URL). Optional: a build
 // without it simply ships a brain whose `forge-update.mjs --check` reports "self-update not configured".
