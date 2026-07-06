@@ -47,11 +47,10 @@
      "sha": "RESOLVE_AT_BUILD"
     },
     {
-     "name": "agent-harness-generator",
+     "name": "metaharness",
      "stars": 330,
      "pushed": "2026-06-27",
-     "sha": "RESOLVE_AT_BUILD",
-     "repo": "metaharness"
+     "sha": "RESOLVE_AT_BUILD"
     },
     {
      "name": "dspy.ts",

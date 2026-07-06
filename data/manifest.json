@@ -1,7 +1,7 @@
 {
   "brainVersion": "v1.9.4-dev",
-  "generated": "2026-07-06T20:16:04.222Z",
-  "generatedHuman": "Mon, 06 Jul 2026 20:16:04 GMT",
+  "generated": "2026-07-06T23:17:08.289Z",
+  "generatedHuman": "Mon, 06 Jul 2026 23:17:08 GMT",
   "coverage": {
     "built": 23,
     "catalogued": 172,
@@ -58,10 +58,10 @@
       "status": "built"
     },
     {
-      "name": "agent-harness-generator",
+      "name": "metaharness",
       "tier": "T1",
       "stars": 330,
-      "builtFromSha": "de12ed8e868229e63ea7953753a39b94c75cb085",
+      "builtFromSha": "38284c8c49509decf14ce991bf17965433449e96",
       "latestRemoteSha": null,
       "status": "built"
     },

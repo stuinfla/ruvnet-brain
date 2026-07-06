@@ -61,11 +61,11 @@ export async function searchAll({ dir, query, k = 6, pool = 8, repos }) {
   // multi-word names like `agent-harness-generator` still match. Boost clears a sibling that merely
   // *contains a file named after* the repo (e.g. dspy.ts/…/safla.ts) when the question names the repo.
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // A repo can be known by a different name than its kb-store name (e.g. GitHub renamed
-  // ruvnet/agent-harness-generator -> ruvnet/metaharness; the kb store stays named
-  // agent-harness-generator to avoid re-keying FULL_HINTS + served-cache filenames, but a
-  // query naming "metaharness" should still get the boost). Extend here as repos rename.
-  const ALIASES = { 'agent-harness-generator': ['metaharness'] };
+  // A repo can be known by a former name too (e.g. GitHub renamed
+  // ruvnet/agent-harness-generator -> ruvnet/metaharness; the kb store was re-imported under
+  // the new name metaharness, but a query naming the old name should still get the boost).
+  // Extend here as repos rename.
+  const ALIASES = { 'metaharness': ['agent-harness-generator'] };
   const isNamed = (repo) => {
     const names = [repo, ...(ALIASES[repo] || [])];
     return names.some((n) => n.length >= 4 && new RegExp(`\\b${esc(n)}\\b`, 'i').test(query));
