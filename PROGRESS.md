@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-07-06 — SECURITY HARDENING (SEC-0010): Dragan Spiridonov's QE review, all 12 addressed
+
+Dragan (one of rUv's most trusted QE people) responsibly disclosed a 12-finding QE review (deep read + a
+swarm of security/code/test/dep/docs agents), reviewed at HEAD 126fc3b. Full engineering record with each
+finding's root cause + exact fix + verification: **docs/adr/0010-security-hardening-sec-0010.md**. External
+point-by-point response for Dragan: **User Feedback/2026-07-06-ruvnet-brain-security-response.md**.
+
+**11 of 12 fully fixed + verified (each proven with a real command); #6 acute RCE vector closed, full
+crypto-signing tracked.** Product 1.9.1-dev → 1.9.4-dev; whole gate green.
+- #1 gate.sh PIPESTATUS (5e703fb) · #2 version SINGLE SOURCE OF TRUTH — plugin.json + version.mjs +
+  sync-version.mjs --check in CI, 5 numbers → 1 (12232ed) · #3 test 26/26 (12232ed) · #4 fence fail-closed
+  PROVEN via fault-injection (5e703fb) · #5 concepts store private-filtered fail-closed (ff8193b) · #7
+  injection-guard recall widened, 19/19 held + 5 evasions flag (cb0f2bb) · #8 ship lockfile + npm ci (ee8daca)
+  · #9 protobufjs CVSS 9.8 cleared via npm overrides→8.7.0, audit 0 vulns, embedder verified working (ee8daca)
+  · #10 Windows claim scoped honest (ff8193b) · #11 explainer S04 honest (12232ed) · #12 CI added + .env leak
+  scrubbed + orphan-guard + mkdir.
+- **#6 unsigned-updater RCE:** auto `forge-update.mjs --apply` (overwrote .mjs from unsigned Release) removed →
+  detect+notify only (7b88e80). Full Ed25519/cosign verify-before-extract, grounded in ruflo ADR-177, is the
+  one honest open item.
+- **Two verify-first catches:** (a) the "obvious" #9 fix — migrate to @huggingface/transformers — BROKE the
+  offline embedder (caught by a live query, reverted, used overrides instead); (b) #4 proven by corrupting the
+  fence. Verify-first earned its keep.
+- New CI (.github/workflows/ci.yml) runs version:check + npm test + guard unit on every push — the missing CI
+  is what let #1/#3 ship unnoticed.
+
 ## 2026-07-05 — THE BEHAVIORAL OVERHAUL DAY (v0.5.0-dev → v1.9.0-dev, 16 shipped versions)
 
 **The driver:** real field feedback (Mario Jauvin, relayed by Stuart) exposed that the brain read as "only useful for RVF/Ruflo/AgentDB questions" — cold, scope-gating, lab-report tone. Stuart's bar, set explicitly across the day: the brain must be *Ruv on your shoulder* — plays back intent, attacks with one confident plan, references only relevant tools, shows its thinking, proves its checks, serves every developer level.
