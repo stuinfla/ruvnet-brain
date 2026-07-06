@@ -41,21 +41,21 @@
 
 ---
 
-## ★ CURRENT STATUS (corrected headline — read this first)
+## ★ CURRENT STATUS (read this first)
 
-`Version: v0.3.0-dev`
+**Product version = whatever `plugin/.claude-plugin/plugin.json` says (the single source of truth — ADR-0009
+decision 1). As of 2026-07-06: plugin `1.9.x-dev`, npm installer `1.6.2-dev`, brain Release `v0.5.0-dev`.**
+Do not trust a hand-typed version number anywhere in this file's history below; read the manifest.
 
-- **19 repos built** (both embedding variants + symbol indexes): `agent-harness-generator`, `agentdb`,
-  `agentic-flow`, `agenticow`, `cve-bench`, `daa`, `dspy.ts`, `fact`, `helix`, `qudag`, `ruflo`, `rulake`,
-  `rupixel`, `ruv-fann`, `ruvector`, `ruview`, `safla`, `sparc`, `synthlang`.
-- **~75,000 chunks** total across the 19 repos (the older "46,845 / 5 repos" and "42,718 / 4 repos" figures
-  in the session log below are stale snapshots from when only the first 5 were built).
-- The ruvnet org has **~248 non-fork repos (~297 public total)** — the old "169" everywhere below is a stale
-  org snapshot. Current scope = **19 of ~248**; the rest are roadmap, pullable on demand.
-- **Graded core = 5** (`ruflo`, `ruvector`, `agentdb`, `rulake`, `ruview`): 3-vendor ground-truth grade
-  REAL-USE 63–85, **0 hallucinated citations** (tuned + held-out). **Primers now exist for all 19** so
-  capability claims are grounded across the full covered set (the other 14 are *covered*, not yet *graded*).
-- Shipped bundle = **`dist/ruvnet-brain.zip`** (the old `ruflo-brain.zip` name is retired).
+- **The dated entries below are the live log — the NEWEST entry is the truth.** (This banner used to hard-code
+  `v0.3.0-dev` / "19 repos" / "~75,000 chunks" — six majors stale; that was exactly the doc-currency drift
+  ADR-0009 was written to kill. Corpus/scope counts have moved and are re-derived per build, not pinned here.)
+- **Corpus:** ~26 local stores (5 private `cognitum-*` fenced out of the public bundle → ~21 public); rebuilt
+  2026-07-05 against ruflo `v3.25.0`. Exact chunk/repo counts live in `data/manifest.json` + `kb/SOURCE.json`,
+  not in prose.
+- **Self-audit (2026-07-06, 5-agent parallel):** honest overall **~66/100** — excellent installer (86),
+  explainer (84), retrieval core; eroded by version-fracture, enforcement-overclaim, and doc-currency debt.
+  Full scorecard + the fix roadmap: **`docs/adr/0009-mirror-discipline-self-audit-and-qa.md`**.
 
 > Everything below this banner is the **historical session log** — preserved as a timestamped record of how
 > we got here. It reflects the original 5-repo milestone (5/169) and is intentionally **not** rewritten.

@@ -1,6 +1,23 @@
 # ADR-0005: Behavioral grounding via retrieve-and-inject + hard-deny + drift SLO (not a "lock")
 
-**Status:** Accepted (2026-06-27) · **Red-team origin:** Enf-H1/H2/H3/H6, Arch-H6
+**Status:** Accepted (2026-06-27) · **Partially implemented — reconciled 2026-07-06 (ADR-0009 decision 2).**
+**Red-team origin:** Enf-H1/H2/H3/H6, Arch-H6
+
+> **⚠ SHIPPED-VS-DECIDED RECONCILIATION (2026-07-06, ADR-0009 self-audit).** Of the four teeth decided
+> below, only **#1 (retrieve-and-inject) is implemented** — `plugin/scripts/ground-ruvnet.sh` +
+> `session-start.sh` inject grounding directives on every relevant turn. The other three are **NOT shipped**
+> as of plugin v1.9.1-dev, and this ADR is corrected here so no accepted decision describes a world the code
+> doesn't live in (the brain's own living-plans rule, ADR-0009 decision 5 · ADR-0009-ADR-QA):
+> - **#2 PreToolUse HARD-DENY** — `plugin/scripts/hijack-ruvnet.sh` ships `DECISION="defer"` (advisory
+>   inject, **never blocks**). It is a nudge, not the "one real harness tooth" this ADR claimed.
+> - **#3 Stop semantic judge** — **not wired at all**; `plugin/hooks/hooks.json` has only SessionStart /
+>   UserPromptSubmit / PreToolUse.
+> - **#4 measured drift-rate SLO** — **no drift measurement exists** in `data/` or `scripts/`; the DDD's
+>   old "measured drift-rate ≤ SLO" invariant was unmet (now reconciled in DDD v0.2, Enforcement context).
+>
+> Whether the hard teeth (#2–#4) are worth building — or whether soft retrieve-and-inject is sufficient — is
+> deferred to a future ADR that **measures** drift first, rather than asserting the teeth are needed. Today's
+> honest statement: enforcement is *retrieve-and-inject only*, a strong nudge, not a lock.
 
 ## Context
 v0.1 claimed Claude Code hooks could intercept a drafted prose answer and "rip it back." They cannot:
