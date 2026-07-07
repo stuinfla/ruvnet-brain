@@ -4,7 +4,7 @@
 
 # 🧠 RuvNet Brain
 
-### 🧠 RuvNet Brain — [![RuvNet Brain version 1.11.0-dev — updated 2026-07-07 07:46 EDT](https://img.shields.io/badge/version_1.11.0--dev-updated_2026--07--07_07:46_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
+### 🧠 RuvNet Brain — [![RuvNet Brain version 1.12.0-dev — updated 2026-07-07 07:46 EDT](https://img.shields.io/badge/version_1.12.0--dev-updated_2026--07--07_07:46_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
 
 **A portable, source-grounded brain over Reuven Cohen's (rUv's) RuvNet stack — delivered as a Claude Code plugin that makes Claude _use_ the stack instead of fighting it.**
 

@@ -80,6 +80,7 @@ console.log(`→ this run will (re)build ${todo.length}: ${todo.map((p) => p.nam
 
 if (!APPLY) { console.log('\n(dry-run — pass --apply to (re)build; runs serially since embedding is CPU-bound)'); process.exit(0); }
 
+const failures = []; // per-repo build failures collected here; ANY failure aborts before publish (see below)
 for (const p of todo) {
   const dir = clonePath(p.name);
   try {
@@ -103,8 +104,21 @@ for (const p of todo) {
     execFileSync('node', ['forge-big.mjs', 'both', '--dir', '.', '--name', kb], { cwd: path.join(ROOT, 'kb'), env, stdio: 'inherit' });
     console.log(`[symbols] ${kb}`);
     execFileSync('node', ['scripts/build-symbols.mjs', '--name', kb], { cwd: ROOT, env, stdio: 'inherit' });
-  } catch (e) { console.error(`[FAIL] ${p.name}: ${e.message}`); }
+  } catch (e) { console.error(`[FAIL] ${p.name}: ${e.message}`); failures.push({ name: p.name, error: e.message }); }
 }
+
+// A per-repo build failure used to be logged and swallowed — the run then re-stamped, re-bundled and (with
+// --publish) cut a Release + git push based on todo.length alone, shipping a half-rebuilt brain (stale or
+// missing stores) under a fresh version. Fail loud instead: if ANY repo failed, abort BEFORE stamp/bundle
+// and the publish block (gh release create / git push) with a non-zero exit, so the nightly log surfaces it
+// and nothing partial is released.
+if (failures.length) {
+  console.error(`\n[FATAL] ${failures.length} repo build(s) failed this run — aborting before stamp/bundle/publish. NOTHING released (no re-stamp, no Release, no version bump, no push):`);
+  for (const f of failures) console.error(`  - ${f.name}: ${f.error}`);
+  console.error('Fix the failing repo(s) and re-run.');
+  process.exit(1);
+}
+
 console.log('\n[stamp] re-stamping bundle');
 execFileSync('node', ['scripts/brain-stamp.mjs'], { cwd: ROOT, stdio: 'inherit' });
 // refresh the shipped bundle so the rebuilt deep-source ships (concepts/primers/L2 are supervised — not regenerated here)
@@ -160,8 +174,21 @@ if (has('--publish')) {
     try { fs.unlinkSync(zipPath); } catch {}
     execFileSync('ditto', ['-c', '-k', '--sequesterRsrc', path.join(ROOT, 'dist', 'ruvnet-brain'), zipPath], { stdio: 'inherit' });
 
+    // Sign the bundle (SEC-0010 #6) so the installer can verify-before-extract. Transitional: if no
+    // signing key is available in this env yet (RUVNET_SIGNING_KEY / .secrets/…key.pem), warn and ship
+    // unsigned rather than break the nightly — once the key is wired in, every release ships signed and
+    // install.mjs's SIGNING_REQUIRED can flip to true. sign-bundle emits <zip>.sig + <zip>.sha256.
+    const sigAssets = [];
+    try {
+      execFileSync('node', ['scripts/sign-bundle.mjs', '--bundle', zipPath], { cwd: ROOT, stdio: 'inherit' });
+      for (const a of [`${zipPath}.sig`, `${zipPath}.sha256`]) if (fs.existsSync(a)) sigAssets.push(a);
+      console.log(`[publish] signed bundle (${sigAssets.length} signature asset(s) will be uploaded)`);
+    } catch (e) {
+      console.warn(`[publish] WARNING: bundle NOT signed (${e.message.split('\n')[0]}). Shipping unsigned (transitional). Set RUVNET_SIGNING_KEY in the nightly env to enable signing.`);
+    }
+
     console.log(`[publish] creating GitHub Release ${tag} + uploading bundle (~this can take minutes)`);
-    execFileSync('gh', ['release', 'create', tag, zipPath,
+    execFileSync('gh', ['release', 'create', tag, zipPath, ...sigAssets,
       '--title', `${tag} — nightly brain refresh`,
       '--notes', `Automated nightly: re-ingested upstream changes in: ${todo.map((p) => p.name).join(', ')}. One product version — plugin ${next} + this knowledge bundle ship together; user installs pick both up automatically.`,
     ], { cwd: ROOT, stdio: 'inherit' });

@@ -46,8 +46,10 @@ for (const t of targets) {
   else { fs.writeFileSync(p, t.set(s)); console.log(`[version] ${t.file}: ${cur} -> ${V}`); }
 }
 
-// README: the visible badge already reads plugin.json live via shields.io; the human-readable heading
-// line ("RuvNet Brain version X — updated Y") is the one literal, kept in lockstep here.
+// README: the heading badge encodes the product version twice — the human-readable alt text
+// ("RuvNet Brain version X — updated Y") and the shields.io URL token ("version_X-updated_Y", with
+// hyphens escaped as `--`). --check flags version drift; write-mode now FIXES it in place (version
+// only — the nightly publisher owns the `updated_` timestamp), so `--check` and a plain write agree.
 {
   const p = path.join(ROOT, 'README.md');
   const s = fs.readFileSync(p, 'utf8');
@@ -55,21 +57,60 @@ for (const t of targets) {
   const badgeVer = m ? m[1].replace(/--/g, '-') : null;
   if (badgeVer !== V) {
     if (CHECK) { console.error(`[version] DRIFT: README badge = ${badgeVer}, expected ${V}`); drift++; }
-    // (the nightly publisher regenerates the README badge with a timestamp; --check just flags staleness)
+    else {
+      const vBadge = V.replace(/-/g, '--'); // shields.io escapes a literal hyphen as `--`
+      const next = s
+        // URL token:  version_<ver>-updated_<timestamp>  → swap <ver>, keep the timestamp
+        .replace(/(version_)[0-9][^-\s)]*(?:--[^-\s)]*)*(-updated_)/, `$1${vBadge}$2`)
+        // alt text:  "RuvNet Brain version <ver> — updated <timestamp>" → swap <ver>, keep the timestamp
+        .replace(/(RuvNet Brain version )\S+( — updated )/, `$1${V}$2`);
+      if (next !== s) { fs.writeFileSync(p, next); console.log(`[version] README badge: ${badgeVer} -> ${V}`); }
+    }
   }
 }
 
-// Guard: no stray hardcoded vX.Y.Z-dev literals in code paths that should read getVersion() instead.
+// Guard: no stray hardcoded product-version literal anywhere in the source tree — every code path must
+// read getVersion() (or inherit a synced literal via the `targets` above / the README badge). Rather than
+// a fixed 3-file allowlist (which silently missed strays in every other file), walk the WHOLE tree and
+// scan source files, skipping the regenerable / external / VCS dirs. A quoted vX.Y.Z / X.Y.Z(-dev)? literal
+// is flagged when it IS the current product version (bare or `v`-tagged) OR is a `-dev` prerelease literal —
+// i.e. anything that is meant to be the product version, not just the `-dev` form the old guard caught.
+// A line can opt out with `sync-version-ignore` (one documented last-ditch fallback); the version toolchain
+// itself is exempt because it legitimately embeds version strings in doc examples + unit-test fixtures.
 if (CHECK) {
-  const scanFiles = ['bin/install.mjs', 'scripts/brain-stamp.mjs', 'scripts/build-bundle.mjs'];
-  const re = /['"`]v?\d+\.\d+\.\d+-dev['"`]/;
-  for (const f of scanFiles) {
-    const p = path.join(ROOT, f);
-    if (!fs.existsSync(p)) continue;
-    // Line-based so a single documented last-ditch fallback can opt out with `// sync-version-ignore`.
-    const bad = fs.readFileSync(p, 'utf8').split('\n')
-      .filter((ln) => re.test(ln) && !ln.includes('sync-version-ignore'));
-    if (bad.length) { console.error(`[version] DRIFT: ${f} has hardcoded version literal(s) — read getVersion() instead:\n    ${bad.map((l) => l.trim()).join('\n    ')}`); drift++; }
+  const SKIP_DIRS = new Set(['node_modules', 'clones', 'dist', '.git']);
+  const CODE_EXT = new Set(['.mjs', '.js', '.cjs', '.ts', '.sh']);
+  const EXEMPT = new Set([ // the version machinery defines/tests these literals — linting them = false positive
+    'scripts/version.mjs', 'scripts/version.test.mjs', 'scripts/sync-version.mjs', 'scripts/self-update.mjs',
+  ]);
+  const litRe = /['"`](v?\d+\.\d+\.\d+(?:-dev)?)['"`]/g;
+
+  const walk = (dir) => {
+    const files = [];
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const abs = path.join(dir, ent.name);
+      if (ent.isDirectory()) { if (!SKIP_DIRS.has(ent.name)) files.push(...walk(abs)); }
+      else if (ent.isFile() && CODE_EXT.has(path.extname(ent.name))) files.push(abs);
+    }
+    return files;
+  };
+
+  const strays = [];
+  for (const abs of walk(ROOT)) {
+    const rel = path.relative(ROOT, abs);
+    if (EXEMPT.has(rel)) continue;
+    fs.readFileSync(abs, 'utf8').split('\n').forEach((ln, i) => {
+      if (ln.includes('sync-version-ignore')) return;
+      for (const mm of ln.matchAll(litRe)) {
+        const lit = mm[1].replace(/^v/, '');
+        if (lit === V || lit.endsWith('-dev')) strays.push(`${rel}:${i + 1}: ${ln.trim()}`);
+      }
+    });
+  }
+  if (strays.length) {
+    console.error(`[version] DRIFT: ${strays.length} stray hardcoded version literal(s) — read getVersion() instead:`);
+    for (const s of strays) console.error(`    ${s}`);
+    drift++;
   }
 }
 

@@ -53,3 +53,7 @@ data/described-baseline-results.json
 
 # bundle-signing private key (Ed25519) — NEVER commit; public key in keys/ is committed
 .secrets/
+
+# but DO commit the public signing key — it is the installer trust root
+!keys/
+!keys/*.pub.pem
