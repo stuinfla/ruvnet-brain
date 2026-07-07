@@ -89,1529 +89,326 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&amp;family=Hanken+Grotesk:wght@400;500;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet" />
 
-  <!-- Design system (verbatim skeleton) + theme (≤14 knobs) -->
-  <link rel="stylesheet" href="design-system.css" />
-  <link rel="stylesheet" href="theme.css" />
-
-  <!-- Arm the hero's one-time load entrance BEFORE first paint (motion-allowed
-       only). Self-contained CSS animation — no observer — so a JS/network hiccup
-       can never leave the hero blank; it just shows the final state. -->
-  <script>
-    try { if (!matchMedia("(prefers-reduced-motion: reduce)").matches)
-      document.documentElement.classList.add("hero-lit"); } catch (e) {}
-  </script>
-
-  <!-- ============================================================
-       ANIMATION LAYER (scoped, additive) — scroll-reveal, count-up,
-       living diagrams, hero pulse. GPU-friendly (transform/opacity).
-       Initial hidden/draw states are gated behind a .anim-on body
-       class set by JS ONLY when motion is allowed, so no-JS and
-       reduced-motion users always see the final, complete state.
-       ============================================================ -->
+  <!-- "Frontier Instrument" — self-contained. Phosphor-amber + signal-cyan on space-black. -->
   <style>
-    /* ---- 1. SCROLL-REVEAL (backbone) ---- */
-    .anim-on .reveal{opacity:0;transform:translateY(16px);
-      transition:opacity .5s var(--ease),transform .5s var(--ease)}
-    .anim-on .reveal.in{opacity:1;transform:none}
-    /* staggered children — index set inline by JS via --i */
-    .anim-on .reveal-stagger{opacity:0;transform:translateY(16px);
-      transition:opacity .5s var(--ease),transform .5s var(--ease);
-      transition-delay:calc(var(--i,0) * 80ms)}
-    .anim-on .reveal-stagger.in{opacity:1;transform:none}
-    /* table rows: opacity-only (transforms on <tr> are unreliable) */
-    .anim-on .reveal-row{opacity:0;
-      transition:opacity .5s var(--ease);transition-delay:calc(var(--i,0) * 80ms)}
-    .anim-on .reveal-row.in{opacity:1}
-
-    /* ---- 4. HERO PULSE — gentle breathing glow ---- */
-    @keyframes brain-breathe{
-      0%,100%{box-shadow:var(--shadow-deep),0 0 0 0 rgba(240,168,48,0)}
-      50%{box-shadow:var(--shadow-deep),0 0 46px -6px rgba(240,168,48,.28)}
+    :root{
+      --bg:#0a0c10; --bg2:#0d1017; --panel:#11151d; --line:#1e2530;
+      --ink:#e8ecf1; --dim:#8b95a4; --faint:#5b6472;
+      --amber:#ffb000; --amber-soft:#ffcc66; --cyan:#22d3ee; --cyan-soft:#7de8f7;
+      --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+      --serif:'Fraunces',Georgia,serif;
+      --sans:'Hanken Grotesk',system-ui,-apple-system,sans-serif;
+      --maxw:1120px;
     }
-    .anim-on .hero-art{animation:brain-breathe 5.5s ease-in-out infinite}
-    @keyframes grad-shimmer{
-      0%{background-position:0% 50%}100%{background-position:200% 50%}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+      font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden;
     }
-    .anim-on h1 .grad{background-size:200% auto;animation:grad-shimmer 9s linear infinite}
-
-    /* ---- 2. COUNT-UP — shimmer for the text-only "post-quantum" ---- */
-    @keyframes pq-sweep{0%{background-position:0% 50%}100%{background-position:200% 50%}}
-    .anim-on .spear-card.in .pq-shimmer{
-      background-size:200% auto;animation:pq-sweep 6s linear infinite}
-
-    /* ============================================================
-       3. LIVING DIAGRAMS — all motion gated on .diagram-svg.go,
-       added by the observer when the figure scrolls into view.
-       Default (no .go, motion allowed) = hidden/undrawn.
-       Reduced-motion / no-JS = .go never blocks final state because
-       these rules only apply under .anim-on AND require .go to hide.
-       ============================================================ */
-    /* draw-on strokes: dasharray trick. Lengths generous (cover longest path). */
-    .anim-on .diagram-svg .d-draw{
-      stroke-dasharray:1400;stroke-dashoffset:1400}
-    .anim-on .diagram-svg.go .d-draw{
-      animation:dgm-draw .7s var(--ease) forwards}
-    @keyframes dgm-draw{to{stroke-dashoffset:0}}
-
-    /* fade/translate-up groups inside a diagram */
-    .anim-on .diagram-svg .d-fade{opacity:0;transform:translateY(8px);
-      transition:opacity .5s var(--ease),transform .5s var(--ease)}
-    .anim-on .diagram-svg.go .d-fade{opacity:1;transform:none}
-    .anim-on .diagram-svg .d-fade-1{transition-delay:.05s}
-    .anim-on .diagram-svg .d-fade-2{transition-delay:.22s}
-    .anim-on .diagram-svg .d-fade-3{transition-delay:.39s}
-    .anim-on .diagram-svg .d-fade-4{transition-delay:.56s}
-    .anim-on .diagram-svg .d-fade-5{transition-delay:.73s}
-
-    /* pop-in (scale+fade) for timeline / hub nodes */
-    .anim-on .diagram-svg .d-pop{opacity:0;transform:scale(.92);
-      transform-box:fill-box;transform-origin:center;
-      transition:opacity .5s var(--ease),transform .5s var(--ease)}
-    .anim-on .diagram-svg.go .d-pop{opacity:1;transform:none}
-    .anim-on .diagram-svg .d-pop-1{transition-delay:.05s}
-    .anim-on .diagram-svg .d-pop-2{transition-delay:.45s}
-    .anim-on .diagram-svg .d-pop-3{transition-delay:.7s}
-    .anim-on .diagram-svg .d-pop-hub{transition-delay:.1s}
-
-    /* soft repeating pulse on the "correct/winning" element */
-    @keyframes dgm-soft{0%,100%{opacity:.5}50%{opacity:.85}}
-    .anim-on .diagram-svg.go .d-pulse-soft{
-      animation:dgm-soft 2.6s ease-in-out 1s infinite}
-
-    /* s02 / s06 timeline + constellation lines draw left→right */
-    .anim-on .diagram-svg .d-draw-line{stroke-dasharray:600;stroke-dashoffset:600}
-    .anim-on .diagram-svg.go .d-draw-line{animation:dgm-draw .8s var(--ease) forwards}
-
-    /* s04 — stagger the connector draw-ons, then the return arc */
-    .anim-on .diagram-svg.go .d-draw-1{animation-delay:.15s}
-    .anim-on .diagram-svg.go .d-draw-2{animation-delay:.4s}
-    .anim-on .diagram-svg.go .d-draw-3{animation-delay:.65s}
-    .anim-on .diagram-svg .d-draw-return{stroke-dasharray:1700;stroke-dashoffset:1700}
-    .anim-on .diagram-svg.go .d-draw-return{animation:dgm-draw 1.1s var(--ease) .9s forwards}
-
-    /* s06 — chips cascade in (opacity + tiny rise), staggered by JS --i */
-    .anim-on .diagram-svg .s06-chip{opacity:0;transform:translateY(6px);
-      transition:opacity .45s var(--ease),transform .45s var(--ease);
-      transition-delay:calc(.35s + var(--i,0) * 55ms)}
-    .anim-on .diagram-svg.go .s06-chip{opacity:1;transform:none}
-
-    /* s04 traveling pulse dot: hidden until JS starts its SMIL motion */
-    .anim-on .diagram-svg.go .s04-pulse{opacity:1}
-
-    /* ---- showcase: subtle accent-border glow on hover (additive) ---- */
-    .case{transition:border-color .2s var(--ease),box-shadow .25s var(--ease)}
-    .case:hover{border-color:var(--line-strong);
-      box-shadow:0 0 0 1px var(--fill),0 16px 40px -30px rgba(240,168,48,.5)}
-
-    /* ============================================================
-       HARD GUARD — reduced motion: kill all of the above, show final
-       state instantly. Mirrors the design-system's own RM block.
-       ============================================================ */
-    @media (prefers-reduced-motion: reduce){
-      .reveal,.reveal-stagger,.reveal-row,
-      .diagram-svg .d-draw,.diagram-svg .d-fade,.diagram-svg .d-pop,
-      .diagram-svg .d-draw-line,.diagram-svg .d-draw-return,.diagram-svg .s06-chip{
-        opacity:1 !important;transform:none !important;
-        stroke-dasharray:none !important;stroke-dashoffset:0 !important;
-        animation:none !important;transition:none !important}
-      .hero-art,h1 .grad,.spear-card .pq-shimmer,.d-pulse-soft{animation:none !important}
-      .s04-pulse{display:none}
+    body::before{ /* subtle scanline + grain atmosphere */
+      content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.5;
+      background:
+        repeating-linear-gradient(0deg,transparent 0 2px,rgba(255,255,255,.012) 2px 3px),
+        radial-gradient(1200px 700px at 70% -10%,rgba(255,176,0,.06),transparent 60%),
+        radial-gradient(1000px 700px at 10% 10%,rgba(34,211,238,.05),transparent 55%);
     }
+    .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px;position:relative;z-index:2}
+    a{color:var(--cyan);text-decoration:none}
+    a:hover{color:var(--cyan-soft)}
+    .mono{font-family:var(--mono)}
+    .label{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--amber);opacity:.9}
+    .kbd{font-family:var(--mono);background:#000;border:1px solid var(--line);border-radius:7px;padding:.15em .5em;color:var(--amber-soft);font-size:.9em}
+
+    /* reveal */
+    .rv{opacity:0;transform:translateY(22px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
+    .rv.in{opacity:1;transform:none}
+
+    /* NAV */
+    header.nav{position:sticky;top:0;z-index:20;backdrop-filter:blur(10px);
+      background:rgba(10,12,16,.72);border-bottom:1px solid var(--line)}
+    .nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+    .brand{font-family:var(--mono);font-weight:700;letter-spacing:.02em;color:var(--ink);font-size:15px;display:flex;gap:9px;align-items:center}
+    .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 12px var(--amber);animation:pulse 2.4s ease-in-out infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+    .nav a.navlink{color:var(--dim);font-family:var(--mono);font-size:13px;margin-left:22px}
+    .nav a.navlink:hover{color:var(--amber)}
+    @media(max-width:680px){.nav a.navlink{display:none}}
+
+    /* HERO */
+    .hero{padding:76px 0 56px;position:relative}
+    .hero .eyebrow{margin-bottom:22px}
+    .hero h1{font-family:var(--serif);font-weight:900;font-size:clamp(38px,7vw,74px);line-height:1.02;letter-spacing:-.02em;margin:0 0 8px}
+    .hero h1 .amber{color:var(--amber)}
+    .hero h1 .cyan{color:var(--cyan)}
+    .hero .sub{font-size:clamp(17px,2.3vw,21px);color:var(--dim);max-width:640px;margin:20px 0 34px}
+    .hero .sub b{color:var(--ink);font-weight:600}
+    .cta-row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+    .install{font-family:var(--mono);background:#000;border:1px solid var(--amber);border-radius:10px;
+      padding:14px 18px;color:var(--amber-soft);font-size:15px;display:inline-flex;gap:10px;align-items:center;
+      box-shadow:0 0 0 1px rgba(255,176,0,.15),0 8px 30px rgba(255,176,0,.08)}
+    .install .prompt{color:var(--faint)}
+    .btn{font-family:var(--mono);font-size:14px;border:1px solid var(--line);border-radius:10px;padding:14px 18px;color:var(--ink);background:var(--panel);transition:.2s}
+    .btn:hover{border-color:var(--cyan);color:var(--cyan)}
+
+    /* oscilloscope timeline */
+    .scope{margin-top:52px;border:1px solid var(--line);border-radius:14px;background:
+      linear-gradient(180deg,rgba(34,211,238,.04),transparent),var(--bg2);padding:22px 20px 14px;overflow:hidden}
+    .scope-cap{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase;margin-bottom:6px}
+    svg .grid{stroke:var(--line);stroke-width:1}
+    svg .sweep{stroke:var(--cyan);stroke-width:2.6;fill:none;filter:drop-shadow(0 0 7px rgba(34,211,238,.75));
+      stroke-dasharray:1300;stroke-dashoffset:1300;animation:draw 2.2s cubic-bezier(.3,.7,.2,1) .3s forwards}
+    svg .claude{stroke:var(--faint);stroke-width:2;fill:none;stroke-dasharray:5 6}
+    svg .gapArea{opacity:0;animation:fadein 1.1s ease-out 1.7s forwards}
+    @keyframes draw{to{stroke-dashoffset:0}}
+    @keyframes fadein{to{opacity:1}}
+    .scope text{font-family:var(--mono);}
+
+    /* SECTIONS */
+    section{padding:72px 0;border-top:1px solid var(--line);position:relative}
+    .sec-head{max-width:720px;margin-bottom:40px}
+    .sec-head h2{font-family:var(--serif);font-weight:600;font-size:clamp(28px,4vw,42px);line-height:1.1;letter-spacing:-.01em;margin:12px 0 10px}
+    .sec-head p{color:var(--dim);font-size:18px;margin:0}
+
+    /* before/after */
+    .ba{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    @media(max-width:720px){.ba{grid-template-columns:1fr}}
+    .card{border:1px solid var(--line);border-radius:14px;padding:24px;background:var(--panel)}
+    .card.bad{border-color:#3a2330}
+    .card.good{border-color:rgba(255,176,0,.32);background:linear-gradient(180deg,rgba(255,176,0,.05),transparent),var(--panel)}
+    .card h3{font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;margin:0 0 14px}
+    .card.bad h3{color:#e07a9a}.card.good h3{color:var(--amber)}
+    .stack{list-style:none;margin:0;padding:0;font-family:var(--mono);font-size:15px}
+    .stack li{padding:9px 0;border-bottom:1px dashed var(--line);display:flex;gap:10px;align-items:center}
+    .stack li:last-child{border-bottom:0}
+    .x{color:#e07a9a}.chk{color:var(--amber)}
+    .card .note{color:var(--faint);font-size:13px;margin-top:14px;font-family:var(--sans)}
+
+    /* ecosystem grid */
+    .eco-meta{display:flex;gap:26px;flex-wrap:wrap;font-family:var(--mono);font-size:13px;color:var(--dim);margin-bottom:26px}
+    .eco-meta b{color:var(--cyan);font-size:22px;display:block}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+    .chip{border:1px solid var(--line);border-radius:11px;padding:14px 15px;background:var(--panel);transition:.22s;position:relative;overflow:hidden}
+    .chip:hover{border-color:var(--amber);transform:translateY(-3px);box-shadow:0 10px 30px rgba(0,0,0,.4)}
+    .chip .nm{font-family:var(--mono);font-size:14px;color:var(--ink);font-weight:600}
+    .chip .ds{font-size:12.5px;color:var(--faint);margin-top:4px;line-height:1.45}
+    .chip::after{content:"";position:absolute;left:0;top:0;height:2px;width:0;background:var(--amber);transition:width .3s}
+    .chip:hover::after{width:100%}
+
+    /* how */
+    .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;counter-reset:s}
+    @media(max-width:760px){.steps{grid-template-columns:1fr}}
+    .step{border:1px solid var(--line);border-radius:14px;padding:24px;background:var(--panel);counter-increment:s}
+    .step::before{content:"0" counter(s);font-family:var(--mono);font-size:28px;color:var(--amber);opacity:.5;display:block;margin-bottom:10px}
+    .step h4{font-family:var(--mono);font-size:15px;margin:0 0 8px;color:var(--ink)}
+    .step p{margin:0;color:var(--dim);font-size:15px}
+    .step code{font-family:var(--mono);color:var(--cyan-soft);font-size:13px}
+
+    /* CTA */
+    .final{text-align:center;padding:90px 0}
+    .final h2{font-family:var(--serif);font-weight:900;font-size:clamp(30px,5vw,52px);line-height:1.05;margin:0 0 14px}
+    .final h2 .amber{color:var(--amber)}
+    .final p{color:var(--dim);max-width:560px;margin:0 auto 30px;font-size:18px}
+    footer{border-top:1px solid var(--line);padding:34px 0;color:var(--faint);font-family:var(--mono);font-size:12.5px}
+    footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+    @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.rv{opacity:1;transform:none}}
   </style>
 </head>
 <body>
-
-  <a class="skip-link" href="#top">Skip to content</a>
-
-  <!-- ===================== PROVENANCE BAR ===================== -->
-  <div class="prov-banner">
-    <div class="wrap prov-banner-inner">
-      <p class="prov-attr">
-        An <strong>independent explainer</strong> for the RuvNet ecosystem by
-        <strong>Reuven Cohen</strong> (<a href="https://github.com/ruvnet" target="_blank" rel="noopener">@ruvnet</a>).
-        The Brain indexes his open-source work so AI assistants can use it correctly.
-        Built by <strong>Stuart Kerr</strong> at <a href="https://isovision.ai" target="_blank" rel="noopener">Isovision.ai</a>.
-        <strong>Free &amp; fair use</strong> &mdash; so everyone can fully leverage the high end of agentic coding.
-      </p>
-      <p class="prov-live"><span class="prov-dot">&#9679;</span> STATUS&nbsp;<code>live</code> &middot; v0.5.0-dev</p>
-    </div>
-  </div>
-
-  <!-- ===================== HEADER / NAV ===================== -->
-  <header class="site-head">
+  <header class="nav">
     <div class="wrap">
-      <a class="brand" href="#top" aria-label="RuvNet Brain — home">
-        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
-          <g stroke="#f0a830" stroke-width="1.5" fill="none" stroke-linecap="round">
-            <path d="M16 6v20"/><path d="M11.5 9c-4 2-4 6.6 0 8.6s4 6.6 0 8.6"/><path d="M20.5 9c4 2 4 6.6 0 8.6s-4 6.6 0 8.6"/>
-          </g>
-          <circle cx="16" cy="6" r="1.8" fill="#5ad6ff"/>
-        </svg>
-        RuvNet Brain
-      </a>
-      <nav class="nav-links" aria-label="Sections">
-        <a href="#s01">01 the moment</a>
-        <a href="#s02">02 the gap</a>
-        <a href="#s03">03 why others failed</a>
-        <a href="#s04">04 how it steps in</a>
-        <a href="#s05">05 what&rsquo;s inside</a>
-        <a href="#s06">06 ecosystem</a>
-        <a href="#seeit">07 see it</a>
-        <a href="#s08">08 proof</a>
-        <a href="#s09">09 install</a>
+      <div class="brand"><span class="dot"></span>RuvNet&nbsp;Brain</div>
+      <nav>
+        <a class="navlink" href="#problem">the drift</a>
+        <a class="navlink" href="#ecosystem">coverage</a>
+        <a class="navlink" href="#how">how it works</a>
+        <a class="navlink" href="https://github.com/stuinfla/ruvnet-brain">github ↗</a>
       </nav>
     </div>
   </header>
 
-  <main id="top">
-
-    <!-- ===================== HERO ===================== -->
-    <section class="hero">
-      <div class="wrap">
-        <div class="hero-grid">
-          <div class="hero-copy">
-            <p class="eyebrow">ruvnet brain &middot; a downloadable brain for Claude Code</p>
-            <h1>Build <span class="grad">9 months ahead</span>.<br />Without being <span class="grad">Ruv</span>.</h1>
-            <p class="lede">
-              Reuven Cohen builds AI tools about <strong>nine months ahead</strong> of everyone else &mdash; the
-              stuff that shows up in Claude Code next year. The catch: Claude doesn&rsquo;t recognize work that&rsquo;s
-              ahead of its own training, so it quietly talks you back into the old way. <strong>RuvNet Brain fixes
-              that.</strong> It&rsquo;s a downloadable brain &mdash; rUv&rsquo;s real source code, indexed &mdash; that
-              Claude reads <em>before</em> it answers. You get to build on the front edge of AI, even if you&rsquo;ve
-              never heard of half these tools.
-            </p>
-            <div class="meta-row">
-              <span>INSTALL&nbsp;<b>npx ruvnet-brain</b></span>
-              <span>BRAIN&nbsp;<b>21 building blocks &middot; 90,842 source chunks</b></span>
-              <span>STATUS&nbsp;<b>live</b></span>
-            </div>
-            <div class="cta-row">
-              <a class="cta" href="#seeit">See it work &rarr;</a>
-              <a class="cta ghost" href="#s09">Install in one line &rarr;</a>
-            </div>
-          </div>
-          <figure class="hero-art">
-            <img src="assets/img/hero.png" width="1536" height="1024"
-                 alt="A brain made of glowing amber and cyan filaments, wired into rUv's ecosystem — the whole RuvNet toolkit gathered into one intelligence." />
-            <figcaption>The Brain sits between you and Claude &mdash; so Claude finally sees what rUv built.</figcaption>
-          </figure>
-        </div>
-
-        <div class="plainband">
-          <p>The whole idea in one sentence: <span class="q">install one file, and Claude builds with rUv&rsquo;s real tools &mdash; on every prompt, in every repo &mdash; so you never have to become rUv to build like him.</span></p>
-        </div>
-
-        <!-- ===================== TIP-OF-THE-SPEAR STAT BAND ===================== -->
-        <style>
-          /* scoped — uses ONLY existing design-system tokens, no new colors/fonts */
-          .spearband{margin-top:var(--space-l)}
-          .spear-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-          @media (max-width:760px){.spear-grid{grid-template-columns:1fr 1fr}}
-          .spear-card{
-            padding:18px 18px 16px;
-            border:1px solid var(--line-strong);border-radius:var(--radius-s);
-            background:linear-gradient(180deg,var(--surface) 0%,var(--bg-2) 100%);
-            box-shadow:var(--emboss);
-          }
-          .spear-num{
-            font-family:var(--display);font-weight:600;
-            font-size:var(--step-2);line-height:1.04;letter-spacing:-0.01em;
-            overflow-wrap:break-word;
-          }
-          .spear-lab{
-            margin:9px 0 0;max-width:none;
-            font-size:var(--step--1);line-height:1.45;color:var(--ink-2);
-          }
-          .spear-src{
-            display:block;margin-top:7px;
-            font-family:var(--mono);font-size:var(--step--2);letter-spacing:0.1em;
-            text-transform:uppercase;color:var(--accent-2);
-          }
-        </style>
-        <section class="spearband reveal" aria-label="Tip of the spear — what makes this front-edge">
-          <div class="spear-grid">
-            <div class="spear-card reveal-stagger">
-              <div class="spear-num grad"><span data-count="162" data-decimals="0">162</span> bytes &middot; <span data-count="0.5" data-decimals="1">0.5</span> ms</div>
-              <p class="spear-lab">fork 1,000,000 vectors of agent memory<span class="spear-src">agenticow</span></p>
-            </div>
-            <div class="spear-card reveal-stagger">
-              <div class="spear-num grad"><span data-count="33" data-decimals="0">33</span>% &rarr; <span data-count="93" data-decimals="0">93</span>%</div>
-              <p class="spear-lab">describe a need, get the right rUv tool<span class="spear-src">no name needed</span></p>
-            </div>
-            <div class="spear-card reveal-stagger">
-              <div class="spear-num grad"><span data-count="90842" data-decimals="0" data-commas="1">90,842</span> chunks</div>
-              <p class="spear-lab">rUv&rsquo;s real source code, indexed<span class="spear-src">not docs</span></p>
-            </div>
-            <div class="spear-card reveal-stagger">
-              <div class="spear-num grad"><span class="pq-shimmer">post-quantum</span></div>
-              <p class="spear-lab">crypto baked across the stack<span class="spear-src">years before mainstream</span></p>
-            </div>
-          </div>
-        </section>
+  <!-- HERO -->
+  <div class="hero">
+    <div class="wrap">
+      <div class="eyebrow label rv">The missing instruction manual for rUv's stack</div>
+      <h1 class="rv">Build <span class="amber">9 months</span> ahead.<br/>Without being <span class="cyan">Ruv</span>.</h1>
+      <p class="sub rv">Reuven Cohen (<span class="mono">@ruvnet</span>) ships ~9 months ahead of the state of the art. His open-source patterns become what your AI assistant adopts <b>8–9 months later</b>. RuvNet Brain hands Claude that future <b>today</b> — grounded in rUv's real source code, cited line-by-line.</p>
+      <div class="cta-row rv">
+        <span class="install"><span class="prompt">$</span> npx ruvnet-brain</span>
+        <a class="btn" href="https://github.com/stuinfla/ruvnet-brain">Read the source ↗</a>
       </div>
-    </section>
 
-    <!-- ===================== SECTIONS ===================== -->
-    <div class="sections">
-      <div class="wrap">
-
-        <!-- ============ S01 — THE MOMENT IT GOES WRONG (open) ============ -->
-        <details class="section" id="s01" open>
-          <summary>
-            <span class="num">01</span>
-            <span class="head-text">
-              <h2>The moment it goes wrong</h2>
-              <span class="q">What actually happens without the Brain?</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">
-              Meet <strong>Maya</strong> &mdash; a capable developer, brand-new to rUv&rsquo;s tools. She opens Claude
-              Code and asks the obvious thing: <em>&ldquo;Set up vector search for this project using RuVector.&rdquo;</em>
-            </p>
-            <p>
-              <strong>Without the Brain.</strong> Claude has never been trained on RuVector. So it does what classical
-              training taught it &mdash; it reaches for Pinecone, or pgvector, or hand-rolls cosine similarity in JSON.
-              It even gently <em>argues</em> with her: &ldquo;a managed vector DB would be more standard.&rdquo; Maya,
-              nervous and new, assumes Claude knows best. She ends up far from rUv&rsquo;s actual stack &mdash; slower,
-              heavier, wrong.
-            </p>
-            <p>
-              <strong>With the Brain.</strong> Claude reads rUv&rsquo;s real RuVector source first, sees RVF binary
-              vector files + HNSW, and writes the <em>correct</em> <code>RvfDatabase.open(...).query(...)</code> code
-              &mdash; the way rUv would. No argument. No drift. Maya ships the front-edge version on her first try.
-            </p>
-
-            <div class="oh">
-              The Brain doesn&rsquo;t make Claude smarter. <strong>It makes Claude stop guessing &mdash; and start
-              reading rUv&rsquo;s actual code.</strong>
-            </div>
-
-            <p class="tier tech">Technical view &mdash; the same question, two paths</p>
-            <figure class="figure diagram">
-              <svg class="diagram-svg dgm-s01" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" role="img" aria-labelledby="s01-title s01-desc">
-  <title id="s01-title">One question, two paths: without the Brain Claude drifts to Pinecone, with the Brain it grounds in rUv's RVF source</title>
-  <desc id="s01-desc">The same request — set up vector search with RuVector — splits into two paths. Without the Brain, Claude has never been trained on RuVector, falls back to Pinecone, pgvector or hand-rolled cosine, and even argues for a managed database, ending up far from rUv's stack. With the Brain, Claude reads rUv's real RuVector source first, sees RVF binary vector files plus HNSW, and writes the correct RvfDatabase open and query code on the first try.</desc>
-  <defs>
-    <linearGradient id="s01-bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0b1018"/>
-      <stop offset="100%" stop-color="#070a10"/>
-    </linearGradient>
-    <filter id="s01-glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="11" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <marker id="s01-ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#ff6b5e"/></marker>
-    <marker id="s01-ag" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#5fd38a"/></marker>
-    <marker id="s01-am" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#8b8f9c"/></marker>
-  </defs>
-
-  <rect x="0" y="0" width="1000" height="560" rx="14" fill="url(#s01-bg)"/>
-  <text x="500" y="40" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="22" font-weight="700">One question — two very different paths</text>
-
-  <!-- the question -->
-  <rect x="312" y="64" width="376" height="62" rx="11" fill="#11161f" stroke="rgba(240,168,48,.45)" stroke-width="1.4"/>
-  <text x="500" y="89" text-anchor="middle" fill="#8b8f9c" font-family="ui-monospace,monospace" font-size="11" letter-spacing="2">YOU ASK</text>
-  <text x="500" y="111" text-anchor="middle" fill="#ece8dc" font-family="system-ui,sans-serif" font-size="14.5">“Set up vector search using RuVector.”</text>
-
-  <!-- fork lines -->
-  <path class="d-draw d-draw-red" d="M430 126 C360 150 300 158 250 176" stroke="#ff6b5e" stroke-width="1.8" fill="none" marker-end="url(#s01-ar)"/>
-  <path class="d-draw d-draw-green" d="M570 126 C640 150 700 158 750 176" stroke="#5fd38a" stroke-width="1.8" fill="none" marker-end="url(#s01-ag)"/>
-
-  <!-- LEFT: drift -->
-  <g class="d-fade d-fade-1">
-  <rect x="58" y="180" width="384" height="150" rx="11" fill="#0f141c" stroke="rgba(255,107,94,.32)" stroke-width="1.3"/>
-  <text x="80" y="206" fill="#ff6b5e" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.5" font-weight="600">WITHOUT THE BRAIN — DRIFT</text>
-  <text x="80" y="232" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="13">Never trained on RuVector, so it falls back to</text>
-  <text x="80" y="252" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="13">classical habits — Pinecone, pgvector, or</text>
-  <text x="80" y="272" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="13">hand-rolled cosine over JSON.</text>
-  <text x="80" y="304" fill="#ff8a7e" font-family="Georgia,serif" font-size="13.5" font-style="italic">“a managed vector DB would be more standard…”</text>
-  </g>
-
-  <path class="d-draw d-draw-red" d="M250 330 V348" stroke="#ff6b5e" stroke-width="1.8" fill="none" marker-end="url(#s01-ar)"/>
-  <g class="d-fade d-fade-2">
-  <rect x="104" y="352" width="292" height="66" rx="10" fill="#170f10" stroke="rgba(255,107,94,.5)" stroke-width="1.3"/>
-  <text x="250" y="380" text-anchor="middle" fill="#ff6b5e" font-family="system-ui,sans-serif" font-size="14" font-weight="700">Far from rUv's stack</text>
-  <text x="250" y="401" text-anchor="middle" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="12">slower · heavier · wrong</text>
-  </g>
-
-  <!-- RIGHT: grounded -->
-  <g class="d-pulse-soft" filter="url(#s01-glow)" opacity=".5"><rect x="560" y="352" width="380" height="66" rx="10" fill="rgba(95,211,138,.16)"/></g>
-  <g class="d-fade d-fade-1">
-  <rect x="558" y="180" width="384" height="150" rx="11" fill="#0f141c" stroke="rgba(95,211,138,.36)" stroke-width="1.3"/>
-  <text x="580" y="206" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.5" font-weight="600">WITH THE BRAIN — GROUNDED</text>
-  <text x="580" y="232" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="13">Reads rUv's real RuVector source first and</text>
-  <text x="580" y="252" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="13">sees RVF binary vector files + HNSW.</text>
-  <rect x="580" y="266" width="342" height="44" rx="7" fill="#08090b" stroke="rgba(90,214,255,.3)"/>
-  <text x="598" y="294" fill="#5ad6ff" font-family="ui-monospace,monospace" font-size="13">RvfDatabase.open(..).query(query, 10)</text>
-  </g>
-
-  <path class="d-draw d-draw-green" d="M750 330 V348" stroke="#5fd38a" stroke-width="1.8" fill="none" marker-end="url(#s01-ag)"/>
-  <g class="d-fade d-fade-2">
-  <rect x="604" y="352" width="292" height="66" rx="10" fill="#0d1611" stroke="rgba(95,211,138,.55)" stroke-width="1.3"/>
-  <text x="750" y="380" text-anchor="middle" fill="#5fd38a" font-family="system-ui,sans-serif" font-size="14" font-weight="700">The front-edge version, first try</text>
-  <text x="750" y="401" text-anchor="middle" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="12">correct · the way rUv would · no argument</text>
-  </g>
-
-  <!-- aha -->
-  <g class="d-fade d-fade-3">
-  <rect x="120" y="452" width="760" height="74" rx="11" fill="#11161f" stroke="rgba(240,168,48,.3)"/>
-  <text x="500" y="483" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="16" font-weight="700">It doesn't make Claude smarter.</text>
-  <text x="500" y="508" text-anchor="middle" fill="#f0a830" font-family="Georgia,serif" font-size="15" font-style="italic">It makes Claude stop guessing — and read rUv's actual code.</text>
-  </g>
-</svg>
-              <figcaption>Same prompt, two outcomes: <b>left</b>, Claude alone drifts to a generic vector DB; <b>right</b>, grounded in rUv&rsquo;s real source, it writes the RVF + HNSW code rUv would &mdash; first try.</figcaption>
-            </figure>
-          </div>
-        </details>
-
-        <!-- ============ S02 — WHY CLAUDE DRIFTS: THE 9-MONTH GAP ============ -->
-        <details class="section" id="s02">
-          <summary>
-            <span class="num">02</span>
-            <span class="head-text">
-              <h2>Why Claude drifts: the 9-month gap</h2>
-              <span class="q">Why doesn&rsquo;t Claude already know this?</span>
-              <span class="tier tech" style="margin-top:6px">your assistant&rsquo;s blind spot</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">
-              Claude is trained on the public history of software &mdash; millions of classical-dev examples. rUv works
-              <strong>~9 months ahead</strong> of that frontier.
-            </p>
-            <p>
-              His tools are the prototypes of what becomes mainstream AI tooling &mdash; much of it lands in Claude Code
-              <strong>8&ndash;9 months later</strong>. So when you ask Claude to use today&rsquo;s front-edge rUv tool,
-              you&rsquo;re asking about <em>its own future</em> &mdash; and it defaults to the past it was trained on. It
-              doubts. It substitutes. It &ldquo;falls asleep at the switch.&rdquo;
-            </p>
-            <p>
-              This is not Claude being dumb. It&rsquo;s a <strong>training-horizon</strong> problem. The newcomer gets
-              the worst of both worlds: a revolutionary toolset with <strong>no manual</strong>, <em>and</em> an
-              assistant that argues against it.
-            </p>
-
-            <p class="tier tech">Technical view &mdash; the timeline, and the gap</p>
-            <figure class="figure diagram">
-              <svg class="diagram-svg dgm-s02" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 480" role="img" aria-labelledby="s02-title s02-desc">
-  <title id="s02-title">The 9-month gap: rUv builds at the front edge today; it reaches mainstream tooling and Claude Code about nine months later, while Claude reasons from its older training horizon</title>
-  <desc id="s02-desc">A timeline shows rUv's work at the front edge today on the left, a roughly nine-month arrow to the right where the same ideas land in mainstream AI tooling and Claude Code, and a lower dotted band marking Claude's training horizon in the public past. Because Claude reasons from that older horizon, asking it about a present-day rUv tool is asking about its own future, so it defaults to the past and drifts.</desc>
-  <defs>
-    <linearGradient id="s02-bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0b1018"/>
-      <stop offset="100%" stop-color="#070a10"/>
-    </linearGradient>
-    <linearGradient id="s02-arrow" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#f0a830"/>
-      <stop offset="100%" stop-color="#5ad6ff"/>
-    </linearGradient>
-    <filter id="s02-glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="11" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <marker id="s02-ac" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#5ad6ff"/></marker>
-    <marker id="s02-ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#ff6b5e"/></marker>
-  </defs>
-
-  <rect x="0" y="0" width="1000" height="480" rx="14" fill="url(#s02-bg)"/>
-  <text x="500" y="40" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="22" font-weight="700">The 9-month gap</text>
-  <text x="500" y="64" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="13">rUv works ahead of the frontier — so today's front-edge tool is Claude's future</text>
-
-  <!-- front edge node -->
-  <g class="d-pop d-pop-1"><g filter="url(#s02-glow)" opacity=".55"><rect x="70" y="104" width="246" height="116" rx="12" fill="rgba(240,168,48,.18)"/></g>
-  <rect x="70" y="104" width="246" height="116" rx="12" fill="#11161f" stroke="rgba(240,168,48,.5)" stroke-width="1.5"/>
-  <text x="193" y="134" text-anchor="middle" fill="#f0a830" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.5" font-weight="600">THE FRONT EDGE · TODAY</text>
-  <text x="193" y="164" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="20" font-weight="700">rUv builds it</text>
-  <text x="193" y="190" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12.5">the prototypes of tomorrow's</text>
-  <text x="193" y="207" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12.5">mainstream AI tooling</text></g>
-
-  <!-- 9 month arrow -->
-  <text class="d-pop d-pop-2" x="474" y="146" text-anchor="middle" fill="#ffce6a" font-family="ui-monospace,monospace" font-size="13" letter-spacing="1">≈ 9 MONTHS</text>
-  <line class="d-draw d-draw-line" x1="322" y1="162" x2="624" y2="162" stroke="url(#s02-arrow)" stroke-width="3" marker-end="url(#s02-ac)"/>
-  <text class="d-pop d-pop-2" x="474" y="186" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="12">becomes mainstream</text>
-
-  <!-- mainstream / claude code node -->
-  <g class="d-pop d-pop-3"><rect x="632" y="104" width="288" height="116" rx="12" fill="#11161f" stroke="rgba(90,214,255,.45)" stroke-width="1.5"/>
-  <text x="776" y="134" text-anchor="middle" fill="#5ad6ff" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.5" font-weight="600">~9 MONTHS LATER</text>
-  <text x="776" y="164" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="19" font-weight="700">Mainstream &amp; Claude Code</text>
-  <text x="776" y="190" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12.5">the same ideas ship to everyone —</text>
-  <text x="776" y="207" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12.5">8–9 months after rUv</text></g>
-
-  <!-- training horizon band -->
-  <line class="d-draw d-draw-red" x1="193" y1="220" x2="193" y2="296" stroke="#ff6b5e" stroke-width="1.6" stroke-dasharray="4 5" marker-end="url(#s02-ar)"/>
-  <text class="d-fade d-fade-4" x="214" y="262" fill="#ff6b5e" font-family="system-ui,sans-serif" font-size="12">Claude doesn't reason from here…</text>
-
-  <g class="d-fade d-fade-4">
-  <rect x="70" y="300" width="850" height="96" rx="12" fill="#0f141c" stroke="rgba(232,228,216,.14)" stroke-dasharray="6 5"/>
-  <text x="92" y="328" fill="#a39d8c" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.5">CLAUDE'S TRAINING HORIZON · THE PUBLIC PAST</text>
-  <text x="92" y="354" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="13.5">…it reasons from millions of classical-dev examples — the history of software up to its cutoff.</text>
-  <text x="92" y="378" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="13.5">So it can't <tspan fill="#ece8dc" font-weight="700">see</tspan> the front edge. It doubts it, substitutes the old way, and talks you back.</text>
-  </g>
-
-  <text class="d-fade d-fade-5" x="500" y="436" text-anchor="middle" fill="#f0a830" font-family="Georgia,serif" font-size="15.5" font-style="italic">Not Claude being dumb — a training-horizon problem. The Brain closes the gap.</text>
-</svg>
-              <figcaption>The gap is the whole point: rUv builds at the <b>front edge today</b>; it reaches Claude Code <b>~9 months later</b>; but Claude reasons from its <b>older training horizon</b> &mdash; so it can&rsquo;t see what&rsquo;s ahead.</figcaption>
-            </figure>
-          </div>
-        </details>
-
-        <!-- ============ S03 — WHY OTHERS FAILED TO BUILD THIS ============ -->
-        <details class="section" id="s03">
-          <summary>
-            <span class="num">03</span>
-            <span class="head-text">
-              <h2>Why others failed to build this</h2>
-              <span class="q">People tried this before. Why didn&rsquo;t it work?</span>
-              <span class="tier tech" style="margin-top:6px">33% &rarr; 93% routing</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">
-              Plenty of people tried to build a RuvNet knowledge base so AI could use rUv&rsquo;s tools. They failed
-              &mdash; not from lack of effort, but <strong>wrong architecture.</strong>
-            </p>
-            <p><strong>What failed:</strong> flat JSON embeddings + naive RAG + matching on repo <em>names</em>. Ask
-              &ldquo;how do I do cheap LLM routing&rdquo; without naming the repo and it returns nothing useful.
-              Brittle, shallow, drifts.</p>
-            <p><strong>What we did differently &mdash; why this one passes:</strong></p>
-            <ol>
-              <li><strong>RuVector <code>.rvf</code> single-file HNSW</strong> &mdash; the whole vector index is one
-                file: no server, no Docker, crash-safe (a crash never permanently corrupts it), and post-quantum-signed.
-                Real HNSW search in rUv&rsquo;s own format &mdash; not hand-rolled cosine over JSON.</li>
-              <li><strong>Dual embeddings</strong> &mdash; MiniLM-384 <em>and</em> bge-768, plus a cross-encoder rerank.
-                Two readings of meaning catch what a single keyword match misses.</li>
-              <li><strong>Source-chunked, not doc-scraped</strong> &mdash; <strong>90,842 chunks</strong> of rUv&rsquo;s
-                <em>real source code</em>, not docs or a blog about the code. The brain knows the actual lines.</li>
-              <li><strong>Capability cards</strong> &mdash; the breakthrough. A high-signal &ldquo;what this tool is
-                FOR&rdquo; card per building block, so a newcomer who describes a <em>need</em> (&ldquo;grade research
-                for trustworthiness&rdquo;) routes to the right repo <strong>without knowing its name.</strong></li>
-            </ol>
-            <p>
-              The measured result: routing by described need went from <strong>33% &rarr; 93%.</strong> That jump
-              <em>is</em> the architecture difference.
-            </p>
-
-            <div class="oh">
-              Tip of the spear: one tool in here, <strong>agenticow</strong>, forks <strong>1,000,000 vectors of agent
-              memory in 162 bytes and ~0.5 ms</strong> &mdash; about <strong>83&times; faster and ~3000&times; smaller</strong>
-              than copying them. It&rsquo;s a primitive <em>no mainstream vector DB offers at any price.</em> This is the
-              calibre of work the brain is grounded in.
-            </div>
-
-            <p class="tier tech">Technical view &mdash; their architecture vs this one</p>
-            <figure class="figure diagram">
-              <svg class="diagram-svg dgm-s03" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 540" role="img" aria-labelledby="s03-title s03-desc">
-  <title id="s03-title">Why others failed and why this one passes: flat JSON name-matching drifts, while real source plus RVF, dual embeddings and capability cards routes correctly every time</title>
-  <desc id="s03-desc">Side by side. The failing architecture on the left: flat JSON embeddings, naive retrieval that matches on repo names, so a query that does not name the repo returns nothing useful — brittle, shallow, drifting. The passing architecture on the right: 90,842 chunks of rUv's real source, RVF binary files with real HNSW and dual embeddings, plus capability cards describing what each tool is for, which routes to the right repo every time even when only described, lifting routing from 33 percent to 93 percent.</desc>
-  <defs>
-    <linearGradient id="s03-bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0b1018"/>
-      <stop offset="100%" stop-color="#070a10"/>
-    </linearGradient>
-    <filter id="s03-glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="11" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <marker id="s03-ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#ff6b5e"/></marker>
-    <marker id="s03-ag" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#5fd38a"/></marker>
-  </defs>
-
-  <rect x="0" y="0" width="1000" height="540" rx="14" fill="url(#s03-bg)"/>
-  <text x="500" y="40" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="22" font-weight="700">Why others failed — and why this one passes</text>
-  <line x1="500" y1="64" x2="500" y2="470" stroke="rgba(232,228,216,.1)" stroke-dasharray="3 7"/>
-
-  <!-- LEFT — fails -->
-  <g class="d-fade d-fade-1">
-  <text x="250" y="86" text-anchor="middle" fill="#ff6b5e" font-family="ui-monospace,monospace" font-size="12.5" letter-spacing="1" font-weight="600">THEIR ARCHITECTURE — FAILS</text>
-  <rect x="60" y="100" width="380" height="54" rx="10" fill="#0f141c" stroke="rgba(232,228,216,.16)"/>
-  <text x="250" y="132" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="14">Flat JSON embeddings</text>
-  </g>
-  <line class="d-draw d-draw-red" x1="250" y1="154" x2="250" y2="174" stroke="#ff6b5e" stroke-width="1.6" marker-end="url(#s03-ar)"/>
-  <g class="d-fade d-fade-2">
-  <rect x="60" y="176" width="380" height="54" rx="10" fill="#0f141c" stroke="rgba(232,228,216,.16)"/>
-  <text x="250" y="208" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="14">Naive RAG · match on repo <tspan fill="#ece8dc" font-weight="700">names</tspan></text>
-  </g>
-  <line class="d-draw d-draw-red" x1="250" y1="230" x2="250" y2="250" stroke="#ff6b5e" stroke-width="1.6" marker-end="url(#s03-ar)"/>
-  <g class="d-fade d-fade-3">
-  <rect x="60" y="252" width="380" height="62" rx="10" fill="#170f10" stroke="rgba(255,107,94,.45)"/>
-  <text x="250" y="278" text-anchor="middle" fill="#ff6b5e" font-family="system-ui,sans-serif" font-size="13.5" font-weight="700">Don't know the name? Nothing useful.</text>
-  <text x="250" y="299" text-anchor="middle" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="12">“cheap LLM routing” → 0 results</text>
-  </g>
-  <line class="d-draw d-draw-red" x1="250" y1="314" x2="250" y2="334" stroke="#ff6b5e" stroke-width="1.6" marker-end="url(#s03-ar)"/>
-  <g class="d-fade d-fade-4">
-  <rect x="100" y="336" width="300" height="68" rx="10" fill="#150d0e" stroke="rgba(255,107,94,.5)"/>
-  <text x="250" y="366" text-anchor="middle" fill="#ff6b5e" font-family="Georgia,serif" font-size="17" font-weight="700">✗ Brittle · shallow · drifts</text>
-  <text x="250" y="389" text-anchor="middle" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="12">name-blind queries fall through</text>
-  </g>
-
-  <!-- RIGHT — passes -->
-  <g class="d-fade d-fade-1">
-  <text x="750" y="86" text-anchor="middle" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="12.5" letter-spacing="1" font-weight="600">THIS ARCHITECTURE — PASSES</text>
-  <rect x="560" y="100" width="380" height="54" rx="10" fill="#0f141c" stroke="rgba(95,211,138,.28)"/>
-  <text x="750" y="125" text-anchor="middle" fill="#ece8dc" font-family="system-ui,sans-serif" font-size="13.5"><tspan font-weight="700">90,842 chunks</tspan> of rUv's real source</text>
-  <text x="750" y="143" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="11.5">the code, not a blog about the code</text>
-  </g>
-  <line class="d-draw d-draw-green" x1="750" y1="154" x2="750" y2="174" stroke="#5fd38a" stroke-width="1.6" marker-end="url(#s03-ag)"/>
-  <g class="d-fade d-fade-2">
-  <rect x="560" y="176" width="380" height="54" rx="10" fill="#0f141c" stroke="rgba(90,214,255,.3)"/>
-  <text x="750" y="201" text-anchor="middle" fill="#5ad6ff" font-family="system-ui,sans-serif" font-size="13.5">RVF binary files · real HNSW</text>
-  <text x="750" y="219" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="11.5">dual embeddings (MiniLM-384 + bge-768) + rerank</text>
-  </g>
-  <line class="d-draw d-draw-green" x1="750" y1="230" x2="750" y2="250" stroke="#5fd38a" stroke-width="1.6" marker-end="url(#s03-ag)"/>
-  <g class="d-fade d-fade-3">
-  <g filter="url(#s03-glow)" opacity=".45"><rect x="560" y="252" width="380" height="62" rx="10" fill="rgba(240,168,48,.16)"/></g>
-  <rect x="560" y="252" width="380" height="62" rx="10" fill="#161208" stroke="rgba(240,168,48,.5)"/>
-  <text x="750" y="278" text-anchor="middle" fill="#f0a830" font-family="system-ui,sans-serif" font-size="13.5" font-weight="700">Capability cards — the breakthrough</text>
-  <text x="750" y="299" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">“what this tool is FOR” → route by need, not name</text>
-  </g>
-  <line class="d-draw d-draw-green" x1="750" y1="314" x2="750" y2="334" stroke="#5fd38a" stroke-width="1.6" marker-end="url(#s03-ag)"/>
-  <g class="d-fade d-fade-4 d-pulse-soft">
-  <g filter="url(#s03-glow)" opacity=".5"><rect x="600" y="336" width="300" height="68" rx="10" fill="rgba(95,211,138,.18)"/></g>
-  <rect x="600" y="336" width="300" height="68" rx="10" fill="#0d1611" stroke="rgba(95,211,138,.55)"/>
-  <text x="750" y="366" text-anchor="middle" fill="#5fd38a" font-family="Georgia,serif" font-size="17" font-weight="700">✓ Right repo every time</text>
-  <text x="750" y="389" text-anchor="middle" fill="#ece8dc" font-family="system-ui,sans-serif" font-size="12.5">by description: <tspan fill="#ff6b5e" font-weight="700">33%</tspan> → <tspan fill="#5fd38a" font-weight="700">93%</tspan></text>
-  </g>
-
-  <!-- honest footer -->
-  <g class="d-fade d-fade-5">
-  <rect x="120" y="442" width="760" height="64" rx="11" fill="#11161f" stroke="rgba(95,211,138,.3)"/>
-  <text x="500" y="470" text-anchor="middle" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.5">NOT MAGIC — MEASURED</text>
-  <text x="500" y="492" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="14.5" font-style="italic">The boring-but-correct architecture rUv would use — and we measured the jump.</text>
-  </g>
-</svg>
-              <figcaption>The architecture difference, drawn out: name-matching JSON (<b>left, fails</b>) vs real source + RVF/HNSW + dual-embed + capability cards (<b>right, passes</b>). The 33%&rarr;93% jump lives in that right column.</figcaption>
-            </figure>
-
-            <div class="note honest">
-              <span class="lab">Honest</span>
-              We&rsquo;re not claiming magic. We&rsquo;re claiming the boring-but-correct architecture rUv would use
-              &mdash; and we measured it.
-            </div>
-          </div>
-        </details>
-
-        <!-- ============ S04 — HOW IT STEPS IN LIKE RUV (AUTOMATIC) ============ -->
-        <details class="section" id="s04">
-          <summary>
-            <span class="num">04</span>
-            <span class="head-text">
-              <h2>How it steps in like Ruv &mdash; automatic, never asleep</h2>
-              <span class="q">Do I have to remember to use it?</span>
-              <span class="tier tech" style="margin-top:6px">fires on prompts AND code edits</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">
-              <strong>You never have to remember to use it &mdash; it&rsquo;s automatic.</strong> You don&rsquo;t call
-              anything. You don&rsquo;t remember anything. Once installed, the Brain works on every prompt in every repo.
-            </p>
-            <p>It grabs the wheel at <strong>two</strong> moments &mdash; intent <em>and</em> action:</p>
-            <ol>
-              <li><strong>At intent &mdash; the grounding hook.</strong> It fires on <em>every</em> prompt and tells
-                Claude &ldquo;ground in rUv&rsquo;s real source before you assert anything.&rdquo; Even when you never say
-                the word &ldquo;RuvNet,&rdquo; it speaks up the moment you reach for a classical default &mdash;
-                <code>pinecone</code>, <code>pgvector</code>, <code>langchain</code> &mdash; and points Claude at rUv&rsquo;s
-                way instead.</li>
-              <li><strong>At action &mdash; the nudge.</strong> When Claude reaches for a training-prior default
-                like <code>import pinecone</code> or <code>npm i langchain</code>, the Brain injects the sharper rUv
-                replacement (RuVector, Ruflo&hellip;) into the turn and points it at the real source to confirm &mdash;
-                so the answer is grounded, not guessed. It&rsquo;s a strong grounding nudge, not a hard block: it steers
-                Claude back onto the stack rather than silently rewriting your code.</li>
-            </ol>
-            <p>
-              Behind both, a <strong><code>search_ruvnet</code> tool</strong> pulls the exact source passage on demand
-              &mdash; so the correction always comes with rUv&rsquo;s real code attached, not a guess. You just
-              <em>talk to Claude like normal;</em> the Brain makes it behave like it finally read rUv&rsquo;s whole
-              library.
-            </p>
-
-            <div class="oh">
-              Never asleep at the switch: <strong>it catches you at intent <em>and</em> at action</strong> &mdash; once
-              when you ask for the old way, again the instant the old code starts to land.
-            </div>
-
-            <p class="tier tech">Technical view &mdash; the grounding loop</p>
-            <figure class="figure diagram">
-              <svg class="diagram-svg dgm-s04" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 440" role="img" aria-labelledby="s04-title s04-desc">
-  <title id="s04-title">The grounding loop: every prompt triggers a hook that tells Claude to check rUv's source, search_ruvnet pulls the real passage from the Brain, and a cited grounded answer returns to you — on every turn</title>
-  <desc id="s04-desc">A loop. Your prompt goes to a grounding hook that fires on every message, telling Claude to ground in rUv's real source before asserting anything. The search_ruvnet tool pulls the exact source passage from the Brain stored in RVF. A grounded answer with a citation returns to you. A return arc shows the loop never skips, so Claude cannot fall asleep at the switch.</desc>
-  <defs>
-    <linearGradient id="s04-bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0b1018"/>
-      <stop offset="100%" stop-color="#070a10"/>
-    </linearGradient>
-    <filter id="s04-glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="11" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <marker id="s04-a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#8b8f9c"/></marker>
-    <marker id="s04-ag" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#5fd38a"/></marker>
-  </defs>
-
-  <rect x="0" y="0" width="1000" height="440" rx="14" fill="url(#s04-bg)"/>
-  <text x="500" y="38" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="22" font-weight="700">The grounding loop — automatic, never asleep</text>
-  <text x="500" y="62" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="13">You don't call anything. You don't remember anything. It runs on every prompt.</text>
-
-  <!-- full loop path the pulse dot travels (prompt → hook → search → answer → back to prompt) -->
-  <path id="s04-loop" class="s04-loop-track" fill="none" stroke="none"
-        d="M139 250 V175 H262 M369 250 V175 H502 M609 250 V175 H742 M849 175 V250 V356 Q849 372 833 372 H155 Q139 372 139 356 V250 V175"/>
-
-  <!-- 1 you -->
-  <g class="d-fade d-fade-1">
-  <rect x="44" y="100" width="190" height="150" rx="12" fill="#0f141c" stroke="rgba(232,228,216,.18)"/>
-  <text x="139" y="128" text-anchor="middle" fill="#8b8f9c" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.5">STEP 1</text>
-  <text x="139" y="156" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="18" font-weight="700">Your prompt</text>
-  <text x="139" y="184" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12.5">you just talk to</text>
-  <text x="139" y="201" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12.5">Claude like normal</text>
-  </g>
-
-  <line class="d-draw d-draw-grey d-draw-1" x1="234" y1="175" x2="262" y2="175" stroke="#8b8f9c" stroke-width="2" marker-end="url(#s04-a)"/>
-
-  <!-- 2 hook -->
-  <g class="d-fade d-fade-2">
-  <g filter="url(#s04-glow)" opacity=".45"><rect x="264" y="100" width="210" height="150" rx="12" fill="rgba(240,168,48,.15)"/></g>
-  <rect x="264" y="100" width="210" height="150" rx="12" fill="#161208" stroke="rgba(240,168,48,.5)" stroke-width="1.4"/>
-  <text x="369" y="128" text-anchor="middle" fill="#f0a830" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.5">STEP 2 · THE HOOK</text>
-  <text x="369" y="156" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="17" font-weight="700">Grounding hook fires</text>
-  <text x="369" y="184" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">injects, every message:</text>
-  <text x="369" y="203" text-anchor="middle" fill="#f0a830" font-family="system-ui,sans-serif" font-size="12" font-style="italic">“check rUv's source</text>
-  <text x="369" y="220" text-anchor="middle" fill="#f0a830" font-family="system-ui,sans-serif" font-size="12" font-style="italic">before you assert”</text>
-  </g>
-
-  <line class="d-draw d-draw-grey d-draw-2" x1="474" y1="175" x2="502" y2="175" stroke="#8b8f9c" stroke-width="2" marker-end="url(#s04-a)"/>
-
-  <!-- 3 search brain -->
-  <g class="d-fade d-fade-3">
-  <rect x="504" y="100" width="210" height="150" rx="12" fill="#0f141c" stroke="rgba(90,214,255,.45)" stroke-width="1.4"/>
-  <text x="609" y="128" text-anchor="middle" fill="#5ad6ff" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.5">STEP 3 · SEARCH</text>
-  <text x="609" y="156" text-anchor="middle" fill="#5ad6ff" font-family="ui-monospace,monospace" font-size="15" font-weight="700">search_ruvnet</text>
-  <text x="609" y="184" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">pulls the exact source</text>
-  <text x="609" y="201" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">passage from the Brain</text>
-  <text x="609" y="222" text-anchor="middle" fill="#8b8f9c" font-family="ui-monospace,monospace" font-size="11">RVF · 90,842 chunks</text>
-  </g>
-
-  <line class="d-draw d-draw-grey d-draw-3" x1="714" y1="175" x2="742" y2="175" stroke="#8b8f9c" stroke-width="2" marker-end="url(#s04-a)"/>
-
-  <!-- 4 grounded answer -->
-  <g class="d-fade d-fade-4">
-  <g filter="url(#s04-glow)" opacity=".5"><rect x="744" y="100" width="210" height="150" rx="12" fill="rgba(95,211,138,.16)"/></g>
-  <rect x="744" y="100" width="210" height="150" rx="12" fill="#0d1611" stroke="rgba(95,211,138,.55)" stroke-width="1.4"/>
-  <text x="849" y="128" text-anchor="middle" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.5">STEP 4 · ANSWER</text>
-  <text x="849" y="156" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="17" font-weight="700">Grounded answer</text>
-  <text x="849" y="184" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">rUv's real code attached</text>
-  <text x="849" y="205" text-anchor="middle" fill="#5fd38a" font-family="system-ui,sans-serif" font-size="12.5" font-weight="700">a citation, not a guess</text>
-  </g>
-
-  <!-- return loop -->
-  <path class="d-draw d-draw-return" d="M849 250 V356 Q849 372 833 372 H155 Q139 372 139 356 V250" fill="none" stroke="#5fd38a" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#s04-ag)"/>
-  <g class="d-fade d-fade-5">
-  <rect x="372" y="356" width="256" height="30" rx="8" fill="#0b1018"/>
-  <text x="500" y="376" text-anchor="middle" fill="#5fd38a" font-family="system-ui,sans-serif" font-size="13" font-weight="700">the loop never skips — every turn</text>
-  </g>
-
-  <!-- traveling pulse dot (SMIL) — circles the whole loop once the diagram is in view -->
-  <circle class="s04-pulse" r="5.5" fill="#ffce6a" opacity="0">
-    <animateMotion class="s04-pulse-motion" dur="4.6s" begin="indefinite" repeatCount="indefinite" rotate="auto">
-      <mpath href="#s04-loop"/>
-    </animateMotion>
-  </circle>
-
-  <text class="d-fade d-fade-5" x="500" y="416" text-anchor="middle" fill="#f0a830" font-family="Georgia,serif" font-size="15" font-style="italic">Claude can't fall asleep at the switch — it's reminded every single message.</text>
-</svg>
-              <figcaption>The loop never skips: your prompt &rarr; <b>hook injects &ldquo;check rUv&rsquo;s source first&rdquo;</b> &rarr; <code>search_ruvnet</code> pulls the real passage &rarr; grounded, cited answer &rarr; back to you. Every turn.</figcaption>
-            </figure>
-          </div>
-        </details>
-
-        <!-- ============ S05 — WHAT'S ACTUALLY IN THE BRAIN ============ -->
-        <details class="section" id="s05" open>
-          <summary>
-            <span class="num">05</span>
-            <span class="head-text">
-              <h2>What&rsquo;s actually in the Brain</h2>
-              <span class="q">What did you gather, exactly?</span>
-              <span class="tier tech" style="margin-top:6px">21 building blocks &middot; 90,842 source chunks</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">
-              21 of rUv&rsquo;s building blocks, <strong>90,842 source chunks</strong>, in a real vector brain (RVF).
-              Not docs &mdash; the source.
-            </p>
-            <p class="tier tech">Coverage map &mdash; everything gathered in one brain</p>
-            <figure class="figure diagram">
-              <svg class="diagram-svg dgm-s06" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 664" role="img" aria-labelledby="s06-title s06-desc">
-  <title id="s06-title">Coverage map: twenty-one of rUv's building blocks gathered into one Brain</title>
-  <desc id="s06-desc">A central Brain hub fans out to a grid of twenty-one building blocks, each shown gathered and read: ruflo, RuVector, AgentDB, RuLake, RuView, agentic-flow, SPARC, QuDAG, SAFLA, ruv-fann, SynthLang, rupixel, agenticow, metaharness, daa, dspy.ts, FACT, cve-bench, rvm, rUv-dev and open-claude-code. Together they show the reassuring breadth of the ecosystem indexed in one place.</desc>
-  <defs>
-    <linearGradient id="s06-bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0b1018"/>
-      <stop offset="100%" stop-color="#070a10"/>
-    </linearGradient>
-    <radialGradient id="s06-hub" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#f0a830" stop-opacity=".4"/>
-      <stop offset="100%" stop-color="#f0a830" stop-opacity="0"/>
-    </radialGradient>
-    <filter id="s06-glow" x="-80%" y="-80%" width="260%" height="260%">
-      <feGaussianBlur stdDeviation="11"/>
-    </filter>
-  </defs>
-
-  <rect x="0" y="0" width="1000" height="664" rx="14" fill="url(#s06-bg)"/>
-  <text x="500" y="40" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="22" font-weight="700">Everything gathered into one Brain</text>
-  <text x="500" y="64" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="13">21 building blocks · 90,842 source chunks · all read, nothing for you to chase down</text>
-
-  <!-- constellation lines from hub to row 1 -->
-  <g class="s06-lines" stroke="rgba(90,214,255,.22)" stroke-width="1" fill="none">
-    <path class="d-draw d-draw-line" d="M500 130 L113 218"/><path class="d-draw d-draw-line" d="M500 130 L267 218"/><path class="d-draw d-draw-line" d="M500 130 L421 218"/>
-    <path class="d-draw d-draw-line" d="M500 130 L575 218"/><path class="d-draw d-draw-line" d="M500 130 L729 218"/><path class="d-draw d-draw-line" d="M500 130 L883 218"/>
-  </g>
-
-  <!-- hub -->
-  <g class="d-pop d-pop-hub">
-  <circle cx="500" cy="124" r="58" fill="url(#s06-hub)"/>
-  <circle cx="500" cy="124" r="34" fill="#11161f" stroke="#f0a830" stroke-width="1.8"/>
-  <g stroke="#f0a830" stroke-width="1.3" fill="none" stroke-linecap="round" opacity=".9">
-    <path d="M500 100v48"/><path d="M486 107c-9 5-9 16 0 21s9 16 0 21"/><path d="M514 107c9 5 9 16 0 21s-9 16 0 21"/>
-  </g>
-  <text x="500" y="196" text-anchor="middle" fill="#f0a830" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.5">THE RUVNET BRAIN</text>
-  </g>
-
-  <!-- grid of 21 chips -->
-  <!-- row 1 -->
-  <g font-family="ui-monospace,monospace">
-    <g class="s06-chip"><rect x="40" y="220" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="58" cy="244" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="58" y="248" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="74" y="248" fill="#f0a830" font-size="13" font-weight="700">ruflo</text><text x="58" y="278" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">agent swarms</text></g>
-    <g class="s06-chip"><rect x="194" y="220" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="212" cy="244" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="212" y="248" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="228" y="248" fill="#f0a830" font-size="13" font-weight="700">RuVector</text><text x="212" y="278" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">private search</text></g>
-    <g class="s06-chip"><rect x="348" y="220" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="366" cy="244" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="366" y="248" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="382" y="248" fill="#f0a830" font-size="13" font-weight="700">AgentDB</text><text x="366" y="278" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">lasting memory</text></g>
-    <g class="s06-chip"><rect x="502" y="220" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="520" cy="244" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="520" y="248" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="536" y="248" fill="#f0a830" font-size="13" font-weight="700">RuLake</text><text x="520" y="278" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">instant cache</text></g>
-    <g class="s06-chip"><rect x="656" y="220" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="674" cy="244" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="674" y="248" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="690" y="248" fill="#f0a830" font-size="13" font-weight="700">RuView</text><text x="674" y="278" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">WiFi sensing</text></g>
-    <g class="s06-chip"><rect x="810" y="220" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="828" cy="244" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="828" y="248" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="844" y="248" fill="#f0a830" font-size="12" font-weight="700">agentic-flow</text><text x="828" y="278" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">cheap models</text></g>
-  </g>
-  <!-- row 2 -->
-  <g font-family="ui-monospace,monospace">
-    <g class="s06-chip"><rect x="40" y="320" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="58" cy="344" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="58" y="348" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="74" y="348" fill="#f0a830" font-size="13" font-weight="700">SPARC</text><text x="58" y="378" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">disciplined builds</text></g>
-    <g class="s06-chip"><rect x="194" y="320" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="212" cy="344" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="212" y="348" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="228" y="348" fill="#f0a830" font-size="13" font-weight="700">QuDAG</text><text x="212" y="378" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">secure messaging</text></g>
-    <g class="s06-chip"><rect x="348" y="320" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="366" cy="344" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="366" y="348" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="382" y="348" fill="#f0a830" font-size="13" font-weight="700">SAFLA</text><text x="366" y="378" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">self-improving</text></g>
-    <g class="s06-chip"><rect x="502" y="320" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="520" cy="344" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="520" y="348" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="536" y="348" fill="#f0a830" font-size="13" font-weight="700">ruv-fann</text><text x="520" y="378" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="10.5">browser neural nets</text></g>
-    <g class="s06-chip"><rect x="656" y="320" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="674" cy="344" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="674" y="348" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="690" y="348" fill="#f0a830" font-size="12" font-weight="700">SynthLang</text><text x="674" y="378" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">prompt shrinking</text></g>
-    <g class="s06-chip"><rect x="810" y="320" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="828" cy="344" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="828" y="348" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="844" y="348" fill="#f0a830" font-size="13" font-weight="700">rupixel</text><text x="828" y="378" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">visual search</text></g>
-  </g>
-  <!-- row 3 -->
-  <g font-family="ui-monospace,monospace">
-    <g class="s06-chip"><rect x="40" y="420" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="58" cy="444" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="58" y="448" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="74" y="448" fill="#f0a830" font-size="12" font-weight="700">agenticow</text><text x="58" y="478" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="10.5">memory branching</text></g>
-    <g class="s06-chip"><rect x="194" y="420" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="212" cy="444" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="212" y="448" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="228" y="448" fill="#f0a830" font-size="12" font-weight="700">metaharness</text><text x="212" y="478" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">agent factory</text></g>
-    <g class="s06-chip"><rect x="348" y="420" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="366" cy="444" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="366" y="448" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="382" y="448" fill="#f0a830" font-size="13" font-weight="700">daa</text><text x="366" y="478" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="10.5">autonomous agents</text></g>
-    <g class="s06-chip"><rect x="502" y="420" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="520" cy="444" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="520" y="448" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="536" y="448" fill="#f0a830" font-size="13" font-weight="700">dspy.ts</text><text x="520" y="478" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">prompt programs</text></g>
-    <g class="s06-chip"><rect x="656" y="420" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="674" cy="444" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="674" y="448" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="690" y="448" fill="#f0a830" font-size="13" font-weight="700">FACT</text><text x="674" y="478" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">grounded caching</text></g>
-    <g class="s06-chip"><rect x="810" y="420" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="828" cy="444" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="828" y="448" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="844" y="448" fill="#f0a830" font-size="12" font-weight="700">cve-bench</text><text x="828" y="478" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">security testing</text></g>
-  </g>
-
-  <!-- row 4 (completes the 21) -->
-  <g font-family="ui-monospace,monospace">
-    <g class="s06-chip"><rect x="40" y="520" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="58" cy="544" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="58" y="548" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="74" y="548" fill="#f0a830" font-size="13" font-weight="700">rvm</text><text x="58" y="578" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">secure runtime</text></g>
-    <g class="s06-chip"><rect x="194" y="520" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="212" cy="544" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="212" y="548" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="228" y="548" fill="#f0a830" font-size="13" font-weight="700">rUv-dev</text><text x="212" y="578" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">dev workflow</text></g>
-    <g class="s06-chip"><rect x="348" y="520" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="366" cy="544" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="366" y="548" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="382" y="548" fill="#f0a830" font-size="11.5" font-weight="700">open-claude</text><text x="366" y="578" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">agent runtime</text></g>
-  </g>
-
-  <text class="d-fade d-fade-5" x="500" y="644" text-anchor="middle" fill="#5fd38a" font-family="Georgia,serif" font-size="14.5" font-style="italic">If rUv open-sourced it and it matters, it's in here. When he ships more, the Brain updates.</text>
-</svg>
-              <figcaption>Reassuring breadth, not a wall of jargon: 21 building blocks, all gathered and already read, behind one <code>search_ruvnet</code> tool.</figcaption>
-            </figure>
-            <p>
-              Plus human-written primers and the <strong>capability cards</strong> that make routing work. Everything is
-              read once, up front, so Claude can be pointed straight at the exact line of code instead of skimming and
-              giving up.
-            </p>
-          </div>
-        </details>
-
-        <!-- ============ S06 — THE ECOSYSTEM ============ -->
-        <details class="section" id="s06" open>
-          <summary>
-            <span class="num">06</span>
-            <span class="head-text">
-              <h2>The ecosystem</h2>
-              <span class="q">What can I actually build with?</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">
-              You never choose between these and you never read their docs &mdash; Claude reaches for the right one
-              automatically. Here&rsquo;s the <strong>whole toolkit</strong>, in plain terms, grouped five ways. Open any
-              one for the human version and the one thing it does that nobody else does yet.
-            </p>
-
-            <h3 class="tier tech">Orchestration &mdash; running the agents</h3>
-            <div class="gallery">
-              <div class="grid">
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">1</span>
-                    <span class="uc-title">The conductor that runs a swarm of agents</span>
-                    <span class="uc-tag">ruflo</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>Coordinates swarms of parallel agents that share state and memory &mdash; spawning them, routing and
-                      orchestrating multi-step tasks, and adding hooks and MCP tools. The conductor of the whole stack, with 60+
-                      specialized agents and a hierarchical topology backed by Raft consensus. <strong>Ahead:</strong> a built-in
-                      self-learning layer with HNSW-indexed pattern storage reported at <strong>150&times;&ndash;12,500&times;</strong>
-                      speedup and sub-10&nbsp;ms ONNX embeddings &mdash; so the swarm gets measurably better the more it runs.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">2</span>
-                    <span class="uc-title">54+ ready-made coding agents that swarm in Claude Code</span>
-                    <span class="uc-tag">agentic-flow</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>A roster of 54+ specialized agents &mdash; coder, reviewer, architect, PR-manager &mdash; that work together
-                      right inside Claude Code across three swarm topologies (mesh, hierarchical, ring), routed over Anthropic,
-                      OpenRouter and Gemini to manage cost. <strong>Ahead:</strong> each agent&rsquo;s confidence
-                      <em>evolves 0.6 &rarr; 0.95</em> via meta-learning with persistent ReasoningBank memory, and the hierarchical
-                      topology reported a <strong>100% success rate</strong>.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">3</span>
-                    <span class="uc-title">Idea &rarr; shipped code, in disciplined gated steps</span>
-                    <span class="uc-tag">sparc</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>Build properly instead of &ldquo;vibe it&rdquo;: Specification &rarr; Pseudocode &rarr; Architecture &rarr;
-                      Refinement &rarr; Completion, with a quality gate between every phase and a CLI driving the AI analysis,
-                      planning and execution. <strong>Ahead:</strong> a <code>--research-only</code> pass runs <em>before</em> you
-                      write a line, with human-in-the-loop (<code>--hil</code>) approval at each gate.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">4</span>
-                    <span class="uc-title">An agent that rewrites itself to improve</span>
-                    <span class="uc-tag">safla</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>A self-improvement architecture that monitors, evaluates and edits its own behavior across three layers
-                      &mdash; operational, meta-cognitive and self-modification &mdash; with episodic, semantic and vector memory.
-                      <strong>Ahead:</strong> continuous self-evaluation with <em>divergence and novelty detection</em> plus
-                      automated error-recovery workflows, so it adapts its own strategy and policy at runtime.</p>
-                  </div>
-                </details>
-
-              </div>
-            </div>
-
-            <h3 class="tier tech">Vectors + memory &mdash; what the agents know</h3>
-            <div class="gallery">
-              <div class="grid">
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">5</span>
-                    <span class="uc-title">A vector database that&rsquo;s just one file</span>
-                    <span class="uc-tag">ruvector</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>A high-performance Rust vector database: SIMD-optimized HNSW indexing in a single <code>.rvf</code> binary file,
-                      with WASM bindings for in-browser search &mdash; a zero-server replacement for Pinecone, Qdrant or pgvector.
-                      <strong>Ahead:</strong> sub-100&nbsp;&micro;s HNSW search at <strong>~16.4K QPS</strong>, packaged as a
-                      cryptographically-signed RVF container with witness chains for offline-capable deployments. <em>This Brain runs
-                      on it.</em></p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">6</span>
-                    <span class="uc-title">A cache that gets faster the more you use it</span>
-                    <span class="uc-tag">rulake</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>A self-optimizing read and working-memory layer that sits in front of your index, giving agents a
-                      remember / recall / forget surface with sub-millisecond RaBitQ recall. <strong>Ahead:</strong> cryptographic
-                      witness-chain provenance (SHAKE-256) with automatic bundle-rotation refresh and an auto-tuning hit ratio
-                      &mdash; deterministic, verifiable retrieval that improves with usage.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">7</span>
-                    <span class="uc-title">Memory that can explain why it remembered</span>
-                    <span class="uc-tag">agentdb</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>Durable agent memory that survives sessions &mdash; a SQLite + vector hybrid that also stores n-ary hyperedge
-                      graph relationships between memories. <strong>Ahead:</strong> a causal memory graph with explainable,
-                      feature-attribution recall (it answers &ldquo;why did I recall that?&rdquo;), benchmarked
-                      <strong>150&times; faster</strong> than brute-force search.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">8</span>
-                    <span class="uc-title">Git for agent memory</span>
-                    <span class="uc-tag">agenticow</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>Copy-on-write vector branching: branch, checkpoint, roll back, promote and trace agent memory like code, so
-                      parallel agents share one base while keeping isolated edits. <strong>Ahead:</strong> forks a store in constant
-                      time and size &mdash; <strong>~0.5&nbsp;ms and ~162 bytes per branch</strong> regardless of base, proven
-                      83&times; faster and ~3000&times; smaller than copying 1,000,000 vectors &mdash; plus GDPR right-to-erasure by
-                      dropping a branch.</p>
-                  </div>
-                </details>
-
-              </div>
-            </div>
-
-            <h3 class="tier tech">Agents + tooling &mdash; building &amp; running them well</h3>
-            <div class="gallery">
-              <div class="grid">
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">9</span>
-                    <span class="uc-title">A factory that builds &amp; evolves agent harnesses</span>
-                    <span class="uc-tag">agent-harness-generator</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>Scaffolds a complete, host-agnostic agent harness (Claude Code, Codex, pi.dev and other MCP hosts) with a
-                      single command, then scores the repo for fit and the harness for readiness, safety and SBOM. <strong>Ahead:</strong>
-                      <em>Darwin Mode</em> evolutionarily improves the harness itself &mdash; A/B-tested and mutated under
-                      <em>immutable safety rails</em> &mdash; instead of fine-tuning the model.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">10</span>
-                    <span class="uc-title">Prompts that program themselves</span>
-                    <span class="uc-tag">dspy.ts</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>A TypeScript implementation of DSPy: build LLM pipelines from composable modules and typed signatures
-                      (classification, sentiment, QA, ReAct) and let optimizers auto-tune the prompts and few-shot examples against a
-                      metric. <strong>Ahead:</strong> runs <em>fully in-browser</em> on ONNX Runtime Web, with hierarchical
-                      (working / short / long) vector memory on AgentDB.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">11</span>
-                    <span class="uc-title">Keeps tool calls fast and crash-proof</span>
-                    <span class="uc-tag">fact</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>Wraps LLM tool calls with aggressive caching plus a circuit-breaker and graceful degradation, so tools stay
-                      fast and don&rsquo;t cascade-fail. <strong>Ahead:</strong> a three-tier cache reporting <strong>85%+ hit rate
-                      at sub-50&nbsp;ms</strong>, with production alert rules and a LiteLLM multi-provider gateway.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">12</span>
-                    <span class="uc-title">Agents that manage their own budget</span>
-                    <span class="uc-tag">daa</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>A Rust framework for decentralized autonomous agents that govern themselves with auditable rules
-                      (MaxDailySpending, RiskThreshold), run token economies and accounting, and integrate AI decisions over MCP.
-                      <strong>Ahead:</strong> rule-enforced governance combined with post-quantum (ML-DSA / ML-KEM-768) transaction
-                      signing and self-running MRAP autonomy loops.</p>
-                  </div>
-                </details>
-
-              </div>
-            </div>
-
-            <h3 class="tier tech">Safety + security &mdash; trust, measured</h3>
-            <div class="gallery">
-              <div class="grid">
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">13</span>
-                    <span class="uc-title">Agent messaging a quantum computer can&rsquo;t crack</span>
-                    <span class="uc-tag">qudag</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>A quantum-resistant, DAG-based platform for end-to-end encrypted, anonymous agent-to-agent messaging over
-                      peer-to-peer QUIC, with resource metering. <strong>Ahead:</strong> NIST post-quantum crypto
-                      (<strong>ML-KEM-768 + ML-DSA</strong>) on a DAG with QR-Avalanche consensus and anonymous multi-hop routing
-                      that resists traffic analysis.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">14</span>
-                    <span class="uc-title">Scores how well an AI fixes real CVEs</span>
-                    <span class="uc-tag">cve-bench</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>A SWE-bench-style benchmark that measures whether an agent can actually fix real, publicly disclosed CVEs by
-                      passing each project&rsquo;s own FAIL_TO_PASS security regression test. <strong>Ahead:</strong> a conformance
-                      firewall ensures the model <em>never sees the gold fix</em>, scored on a cost-aware
-                      <em>resolves-per-dollar</em> leaderboard.</p>
-                  </div>
-                </details>
-
-              </div>
-            </div>
-
-            <h3 class="tier tech">Specialized &mdash; the wild edge</h3>
-            <div class="gallery">
-              <div class="grid">
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">15</span>
-                    <span class="uc-title">Sense people through walls with plain WiFi</span>
-                    <span class="uc-tag">ruview</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>Camera-free WiFi sensing: turns ordinary WiFi Channel State Information (CSI) into presence, occupancy,
-                      17-keypoint pose, and fall / gesture recognition &mdash; privacy-preserving, no cameras (needs ESP32-S3/C6).
-                      <strong>Ahead:</strong> reads <em>medical-grade vitals</em> &mdash; breathing and heart rate &mdash; from radio
-                      alone, with sleep-apnea screening and a mass-casualty assessment mode, and it fails closed rather than
-                      fabricating a reading.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">16</span>
-                    <span class="uc-title">Search images by describing what you want</span>
-                    <span class="uc-tag">rupixel</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>Zero-server, client-side visual retrieval: searches document screenshots and live video frames by semantic
-                      meaning using on-device CLIP embeddings &mdash; OCR-free, nothing uploaded. <strong>Ahead:</strong> real-time
-                      CLIP ViT-B/32 search running entirely in the browser at <strong>~50&ndash;200&nbsp;ms</strong> per keyframe,
-                      with keyframe de-duplication.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">17</span>
-                    <span class="uc-title">Neural nets in Rust, run in the browser</span>
-                    <span class="uc-tag">ruv-fann</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>A fast, memory-safe FANN-style neural network library in Rust &mdash; MLPs and cascade-correlation networks
-                      that grow dynamically &mdash; that compiles to WASM for browser and edge, with time-series forecasting.
-                      <strong>Ahead:</strong> <em>zero <code>unsafe</code> code</em>, plus a CUDA-WASM bridge for GPU-accelerated
-                      inference in portable targets.</p>
-                  </div>
-                </details>
-
-                <details class="case">
-                  <summary>
-                    <span class="uc-num">18</span>
-                    <span class="uc-title">Cut LLM token cost with a drop-in proxy</span>
-                    <span class="uc-tag">synthlang</span>
-                    <span class="chev" aria-hidden="true">&rsaquo;</span>
-                  </summary>
-                  <div class="uc-body">
-                    <p>LLM middleware with an OpenAI-compatible proxy that compresses prompts and cuts token cost
-                      (<strong>~75% reduction</strong>), plus semantic caching and PII masking &mdash; no app rewrite &mdash; and a
-                      CLI for mathematical / symbolic prompt transforms. <strong>Ahead:</strong> symbolic compression reported at
-                      ~75% fewer tokens while <em>raising</em> task accuracy to <strong>97% vs an 85% baseline</strong>, applied at
-                      the proxy.</p>
-                  </div>
-                </details>
-
-              </div>
-            </div>
-          </div>
-        </details>
-
-        <!-- ============ S07 — SEE IT WORK (the #seeit demo) ============ -->
-        <details class="section" id="s07" open>
-          <summary>
-            <span class="num">07</span>
-            <span class="head-text">
-              <h2>See it work</h2>
-              <span class="q">Show me, don&rsquo;t tell me.</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">
-              Same question, asked two ways. <strong>Left:</strong> Claude alone (drifts). <strong>Right:</strong>
-              Claude + Brain (grounded in rUv&rsquo;s source). Watch the difference.
-            </p>
-
-            <!-- ===== self-contained interactive demo (ported intact) ===== -->
-            <div id="seeit" aria-label="Interactive demo — answering with and without the RuvNet Brain">
-              <style>
-                /* scoped to #seeit — aliases map the demo's palette onto the design-system tokens */
-                #seeit{
-                  --bg2:var(--surface-2); --amber:var(--accent); --amber-soft:var(--accent);
-                  --cyan:var(--accent-2); --green:var(--accent-3); --red:var(--bad);
-                  --ink-dim:var(--muted); --line2:var(--ridge); --body:var(--sans);
-                }
-                #seeit .seeit-qs{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0 24px}
-                #seeit .seeit-q{font-family:var(--mono);font-size:.77rem;letter-spacing:.01em;cursor:pointer;line-height:1.3;
-                  padding:10px 15px;border-radius:100px;border:1px solid var(--line);background:var(--bg2);color:var(--ink-dim);
-                  text-align:left;transition:border-color .2s,color .2s,background .2s}
-                #seeit .seeit-q:hover{border-color:var(--amber);color:var(--ink)}
-                #seeit .seeit-q[aria-pressed="true"]{border-color:var(--amber);color:var(--bg);background:var(--amber);font-weight:700}
-                #seeit .seeit-q:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
-
-                #seeit .seeit-stage{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}
-                @media(max-width:760px){#seeit .seeit-stage{grid-template-columns:1fr}}
-
-                #seeit .seeit-pane{border:1px solid var(--line);border-radius:7px;background:var(--bg2);
-                  display:flex;flex-direction:column;overflow:hidden;min-height:318px}
-                #seeit .seeit-head{font-family:var(--mono);font-size:.71rem;letter-spacing:.13em;text-transform:uppercase;
-                  padding:14px 18px;border-bottom:1px solid var(--line2);display:flex;align-items:center;gap:10px}
-                #seeit .seeit-head .d{width:8px;height:8px;border-radius:50%;flex:none}
-                #seeit .seeit-bdy{padding:22px 18px;display:flex;flex-direction:column;gap:15px;flex:1}
-                #seeit .seeit-echo{font-family:var(--mono);font-size:.78rem;line-height:1.5;color:var(--ink-dim)}
-                #seeit .seeit-ql{color:var(--amber);font-weight:700;margin-right:7px}
-                #seeit .seeit-qt{color:var(--ink)}
-                #seeit .seeit-ans{font-family:var(--body);font-size:1.06rem;line-height:1.5;min-height:1.5em}
-                #seeit .seeit-ans.typing::after{content:'▌';margin-left:1px;animation:seeit-blink 1s steps(1) infinite}
-                #seeit .seeit-cite{font-family:var(--mono);font-size:.73rem;align-self:flex-start;border-radius:4px;
-                  padding:7px 11px;display:inline-flex;align-items:center;gap:8px;color:var(--green);
-                  border:1px solid rgba(95,211,138,.4);background:rgba(95,211,138,.07);
-                  opacity:0;transform:translateY(6px);transition:opacity .45s,transform .45s}
-                #seeit .seeit-cite::before{content:'✓';font-weight:700}
-                #seeit .seeit-cite.show{opacity:1;transform:none}
-                #seeit .seeit-foot{margin-top:auto;font-family:var(--mono);font-size:.67rem;letter-spacing:.03em;
-                  padding:12px 18px;border-top:1px solid var(--line2)}
-
-                /* left — drift, visibly less sure */
-                #seeit .seeit-left{border-color:rgba(255,107,94,.3)}
-                #seeit .seeit-left .seeit-head{color:var(--red);background:linear-gradient(180deg,rgba(255,107,94,.06),transparent)}
-                #seeit .seeit-left .seeit-head .d{background:var(--red);box-shadow:0 0 9px rgba(255,107,94,.7)}
-                #seeit .seeit-left .seeit-ans{color:var(--ink-dim)}
-                #seeit .seeit-left .seeit-ans.typing::after{color:var(--red)}
-                #seeit .seeit-left .seeit-foot{color:rgba(255,107,94,.78)}
-                #seeit .seeit-left .seeit-foot::before{content:'✗  '}
-
-                /* right — grounded, calm and confident */
-                #seeit .seeit-right{border-color:rgba(95,211,138,.42);
-                  box-shadow:0 0 0 1px rgba(95,211,138,.06),0 26px 60px -42px rgba(95,211,138,.45)}
-                #seeit .seeit-right .seeit-head{color:var(--green);background:linear-gradient(180deg,rgba(95,211,138,.08),transparent)}
-                #seeit .seeit-right .seeit-head .d{background:var(--green);box-shadow:0 0 10px rgba(95,211,138,.8)}
-                #seeit .seeit-right .seeit-ans{color:var(--ink)}
-                #seeit .seeit-right .seeit-ans.typing::after{color:var(--green)}
-                #seeit .seeit-right .seeit-foot{color:rgba(95,211,138,.82)}
-                #seeit .seeit-right .seeit-foot::before{content:'✓  '}
-
-                #seeit .seeit-dots{display:flex;gap:8px;justify-content:center;margin-top:0}
-                #seeit .seeit-dot{width:7px;height:7px;border-radius:50%;background:var(--line2);transition:background .25s,transform .25s}
-                #seeit .seeit-dot.on{background:var(--amber);transform:scale(1.35)}
-                #seeit .seeit-cap{margin:20px auto 0;max-width:62ch;line-height:1.6;font-size:.95rem;color:var(--ink-dim)}
-                #seeit .seeit-cap b{color:var(--cyan);font-weight:700}
-
-                /* left-pane second hedge line — the drift answer trailing off, unsure */
-                #seeit .seeit-hedge{font-family:var(--body);font-size:.93rem;line-height:1.45;font-style:italic;
-                  color:rgba(163,157,140,.5);opacity:0;transition:opacity .5s}
-                #seeit .seeit-hedge.show{opacity:1}
-
-                /* pause / replay control, sat beside the progress dots */
-                #seeit .seeit-controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:18px;margin-top:24px}
-                #seeit .seeit-toggle{font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;cursor:pointer;
-                  display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:100px;
-                  border:1px solid var(--line);background:var(--bg2);color:var(--ink-dim);
-                  transition:border-color .2s,color .2s,background .2s}
-                #seeit .seeit-toggle:hover{border-color:var(--amber);color:var(--ink)}
-                #seeit .seeit-toggle:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
-                #seeit .seeit-toggle .ic{font-size:.78rem;line-height:1}
-
-                @keyframes seeit-blink{0%,49%{opacity:1}50%,100%{opacity:0}}
-                @media (prefers-reduced-motion:reduce){
-                  #seeit .seeit-ans.typing::after{display:none}
-                  #seeit .seeit-cite{transition:none}
-                  #seeit .seeit-dot{transition:none}
-                  #seeit .seeit-hedge{transition:none}
-                }
-              </style>
-
-              <div class="seeit-qs" role="group" aria-label="Example questions — click one to run it">
-                <button type="button" class="seeit-q" aria-pressed="true">Where should I store embeddings?</button>
-                <button type="button" class="seeit-q" aria-pressed="false">Can Ruflo agents edit files on disk?</button>
-                <button type="button" class="seeit-q" aria-pressed="false">What caches repeated vector queries?</button>
-                <button type="button" class="seeit-q" aria-pressed="false">How should I structure a non-trivial build?</button>
-              </div>
-
-              <div class="seeit-stage">
-                <div class="seeit-pane seeit-left">
-                  <div class="seeit-head"><span class="d"></span>Without the brain &rarr; drift</div>
-                  <div class="seeit-bdy">
-                    <div class="seeit-echo"><span class="seeit-ql">Q</span><span class="seeit-qt">Where should I store embeddings?</span></div>
-                    <div class="seeit-ans seeit-ans-l">Use pgvector or Pinecone.</div>
-                    <div class="seeit-hedge show">…or maybe Redis? Hard to say.</div>
-                  </div>
-                  <div class="seeit-foot">answered from training · no source</div>
-                </div>
-                <div class="seeit-pane seeit-right">
-                  <div class="seeit-head"><span class="d"></span>With RuvNet Brain &rarr; grounded</div>
-                  <div class="seeit-bdy">
-                    <div class="seeit-echo"><span class="seeit-ql">Q</span><span class="seeit-qt">Where should I store embeddings?</span></div>
-                    <div class="seeit-ans seeit-ans-r">RuVector RVF + HNSW — local, on-disk, zero-server.</div>
-                    <div class="seeit-cite show">cited: concepts/ruvector/CARD</div>
-                  </div>
-                  <div class="seeit-foot">called search_ruvnet · answered from real source</div>
-                </div>
-              </div>
-
-              <div class="seeit-controls">
-                <button type="button" class="seeit-toggle" aria-label="Pause the demo" aria-pressed="false"><span class="ic" aria-hidden="true">⏸</span><span class="tx">pause</span></button>
-                <div class="seeit-dots" aria-hidden="true">
-                  <span class="seeit-dot on"></span><span class="seeit-dot"></span><span class="seeit-dot"></span><span class="seeit-dot"></span>
-                </div>
-              </div>
-              <p class="seeit-cap">No backend, no API key. The only difference is the brain in context: it called
-                <b>search_ruvnet</b>, pulled the real passage, and answered from rUv&rsquo;s own source &mdash; not its
-                training prior.</p>
-            </div>
-          </div>
-        </details>
-
-        <!-- ============ S08 — PROOF, AND HONEST EXPECTATIONS ============ -->
-        <details class="section" id="s08" open>
-          <summary>
-            <span class="num">08</span>
-            <span class="head-text">
-              <h2>Proof, and honest expectations</h2>
-              <span class="q">Will it always work? When won&rsquo;t it?</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">Real, measured numbers &mdash; not faith. Re-run them yourself on your own machine.</p>
-
-            <table class="tbl">
-              <thead>
-                <tr><th>What we measured</th><th>How it&rsquo;s asked</th><th>Result</th></tr>
-              </thead>
-              <tbody>
-                <tr class="reveal-row"><td>Named routing</td><td class="before">you name the tool</td><td class="win">47 / 48 &middot; 98%</td></tr>
-                <tr class="reveal-row"><td>Described routing</td><td class="before">you only describe it (was 33%)</td><td class="win">26 / 28 &middot; 93%</td></tr>
-                <tr class="reveal-row"><td>Code-level depth</td><td class="before">&ldquo;how is it implemented?&rdquo; &mdash; not the docs</td><td class="win">actual code, not summaries</td></tr>
-                <tr class="reveal-row"><td>Fresh-download install</td><td class="before">brand-new machine: download, unzip, ask</td><td class="win">4 / 4</td></tr>
-              </tbody>
-            </table>
-
-            <p>Now set expectations honestly &mdash; this is comfort, not hype:</p>
-            <ul>
-              <li><strong>What it WILL do, every time:</strong> ground Claude in rUv&rsquo;s real source, stop
-                name-blind drift, cite actual code, route by description.</li>
-              <li><strong>Where it shines:</strong> anything touching rUv&rsquo;s stack &mdash; vectors/RVF, Ruflo
-                orchestration, SPARC, agent memory.</li>
-              <li><strong>Where it won&rsquo;t help (honest):</strong> it&rsquo;s not a general coding oracle; for
-                non-RuvNet topics Claude works normally. ~1 in 25 described queries still routes imperfectly (we show
-                it: 26/28).</li>
-            </ul>
-
-            <div class="note honest">
-              <span class="lab">Honest</span>
-              We&rsquo;d rather tell you the one it misses than pretend it&rsquo;s perfect. <strong>26 out of 28</strong>
-              &mdash; and improving.
-            </div>
-          </div>
-        </details>
-
-        <!-- ============ S09 — HOW YOU ACTUALLY USE IT ============ -->
-        <details class="section" id="s09">
-          <summary>
-            <span class="num">09</span>
-            <span class="head-text">
-              <h2>How you actually use it</h2>
-              <span class="q">It&rsquo;s installed &mdash; now what do I do?</span>
-              <span class="tier tech" style="margin-top:6px">one line &middot; automatic</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">The install is phenomenal &mdash; one line.</p>
-
-            <div class="install-block">
-              <pre class="code-block"><code><span class="c"># one command — downloads the Brain + wires the Claude Code plugin</span>
-npx ruvnet-brain
-<span class="c"># or, for the bleeding-edge commit: npx github:stuinfla/ruvnet-brain</span></code></pre>
-              <p style="margin:0;max-width:none;color:var(--ink-2)">It downloads the Brain (~512&nbsp;MB) to
-                <code>~/.cache/ruvnet-brain/kb</code>, wires up the Claude Code plugin, and you&rsquo;re done.
-                <strong>No Docker, no server, no config.</strong></p>
-            </div>
-
-            <ol class="steps">
-              <li><strong>Install once.</strong> Run the one line above. Watch it download and wire itself up &mdash;
-                you&rsquo;ll see it confirm each step. (Constant feedback = confidence.)</li>
-              <li><strong>Open Claude Code in any repo.</strong> Your own, anything. Nothing to copy in. The
-                Brain is user-scoped &mdash; it travels with <em>you</em>, not the project.</li>
-              <li><strong>Just ask, normally.</strong> &ldquo;Use RuVector for search.&rdquo; &ldquo;Set this up the way
-                rUv would.&rdquo; The Brain grounds Claude automatically. You&rsquo;ll see Claude cite rUv&rsquo;s real
-                source instead of guessing. That&rsquo;s how you know it&rsquo;s working.</li>
-            </ol>
-
-            <h3>The nervous questions, answered directly</h3>
-            <div class="note">
-              <span class="lab">Is it automatic?</span>
-              Yes &mdash; the grounding hook runs on every prompt. You never have to invoke it.
-            </div>
-            <div class="note">
-              <span class="lab">How do I know it&rsquo;s on?</span>
-              Claude starts referencing rUv&rsquo;s actual tools and source, and stops suggesting the generic
-              substitute.
-            </div>
-            <div class="note">
-              <span class="lab">Can I turn it off?</span>
-              Yes &mdash; it&rsquo;s a plugin; disable it anytime. It only speaks up on RuvNet-shaped work.
-            </div>
-            <div class="note">
-              <span class="lab">Do I need to understand rUv&rsquo;s tools first?</span>
-              No. That&rsquo;s the whole point &mdash; the Brain understands them so you don&rsquo;t have to.
-            </div>
-            <div class="note">
-              <span class="lab">Where does it run?</span>
-              Everywhere you run Claude Code &mdash; the <strong>CLI, VS&nbsp;Code, JetBrains, and the desktop app</strong> &mdash;
-              because it&rsquo;s user-level. It&rsquo;s a <em>local</em> brain (your own files, no server, no API key), so it lives
-              wherever Claude Code runs on your machine. <span style="color:var(--ink-2)">(The pure web app at claude.ai
-              can&rsquo;t reach local files, so use it in a local Claude Code surface.)</span>
-            </div>
-            <div class="note">
-              <span class="lab">Do I need Ruflo or RuVector installed?</span>
-              No &mdash; the Brain <strong>answers</strong> on its own with zero setup. If you also want it to <strong>build</strong>
-              (spin up swarms, orchestrate), the installer checks for Ruflo &amp; RuVector and <em>offers</em> to add them &mdash;
-              never forces. Run <code>npx github:stuinfla/ruvnet-brain --doctor</code> anytime to see what&rsquo;s present.
-            </div>
-
-            <div class="oh">
-              You&rsquo;re not going to break anything. <strong>Try it on a real task.</strong>
-            </div>
-
-            <div class="cta-row">
-              <a class="cta" href="https://github.com/stuinfla/ruvnet-brain" target="_blank" rel="noopener">Get it on GitHub &rarr;</a>
-              <a class="cta ghost" href="https://github.com/stuinfla/ruvnet-brain/releases/download/v0.5.0-dev/ruvnet-brain.zip">Download the brain &middot; 512&nbsp;MB</a>
-            </div>
-          </div>
-        </details>
-
-        <!-- ============ S10 — DROP IT INTO ANY REPO ============ -->
-        <details class="section" id="s10">
-          <summary>
-            <span class="num">10</span>
-            <span class="head-text">
-              <h2>Drop it into any repo</h2>
-              <span class="q">Is this locked to one project?</span>
-              <span class="tier tech" style="margin-top:6px">install once &middot; works everywhere</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">
-              The Brain isn&rsquo;t copied into a repo. Install once, and every Claude session in every folder has it.
-            </p>
-            <p>
-              Point it at a fresh repo &mdash; your own product, say &mdash; and Claude builds there <em>as
-              if rUv were pairing with you.</em>
-            </p>
-
-            <pre class="tree"><span class="cmt"># what shipped — portable, user-scoped</span>
-<span class="d">~/.cache/ruvnet-brain/kb/</span>            <span class="cmt"># the Brain (RVF) — travels with you, not the repo</span>
- ├ <span class="f">capability-cards.md</span>          <span class="cmt"># route by need, not by name</span>
- ├ <span class="d">concepts/</span>                    <span class="cmt"># plain-English primers per building block</span>
- ├ <span class="d">*.rvf</span>                        <span class="cmt"># 90,842 source chunks · HNSW vector index</span>
- └ <span class="f">forge-mcp-all.mjs</span>            <span class="cmt"># the search_ruvnet tool — one tool, all repos</span>
-<span class="d">claude-code-plugin/</span>              <span class="cmt"># the grounding hook — fires on every prompt</span></pre>
-          </div>
-        </details>
-
+      <div class="scope rv">
+        <div class="scope-cap"><span>◉ capability over time</span><span>the gap = your head start</span></div>
+        <svg viewBox="0 0 1000 240" width="100%" height="220" aria-label="rUv's frontier rises ~9 months ahead of Claude's training horizon">
+          <defs>
+            <linearGradient id="gapfill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#ffb000" stop-opacity="0.22"/>
+              <stop offset="1" stop-color="#ffb000" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <line class="grid" x1="0" y1="200" x2="1000" y2="200"/>
+          <line class="grid" x1="0" y1="130" x2="1000" y2="130"/>
+          <line class="grid" x1="0" y1="60" x2="1000" y2="60"/>
+          <!-- the head-start area between the two lines -->
+          <path class="gapArea" d="M60,196 C360,190 560,150 1000,44 L1000,196 Z" fill="url(#gapfill)"/>
+          <!-- Claude: flat, lagging on last year's patterns -->
+          <path class="claude" d="M60,196 C360,194 640,192 980,190"/>
+          <text x="600" y="184" fill="#5b6472" font-size="14" font-family="'JetBrains Mono',monospace">Claude — last year's patterns</text>
+          <!-- rUv: the frontier, climbing and staying ahead -->
+          <path class="sweep" d="M60,196 C360,190 560,150 1000,44"/>
+          <circle cx="1000" cy="44" r="5" fill="#22d3ee"/>
+          <text x="470" y="120" fill="#ffcc66" font-size="15" font-family="'JetBrains Mono',monospace" transform="rotate(-14 470 120)">rUv — the frontier ↗</text>
+          <text x="740" y="98" class="gap-badge" fill="#ffb000" font-size="15" font-family="'JetBrains Mono',monospace">▲ ~9 months of head start</text>
+          <text x="60" y="224" fill="#5b6472" font-size="13" font-family="'JetBrains Mono',monospace">today</text>
+          <text x="915" y="224" fill="#5b6472" font-size="13" font-family="'JetBrains Mono',monospace">+9 months</text>
+        </svg>
       </div>
     </div>
-  </main>
+  </div>
 
-  <!-- ===================== CLOSING CTA BAND ===================== -->
-  <style>
-    /* scoped — existing tokens only */
-    .closing{border-top:1px solid var(--line);background:linear-gradient(180deg,transparent,var(--fill));}
-    .closing-inner{padding:var(--space-3xl) 0 var(--space-2xl);max-width:74ch;}
-    .closing .eyebrow{margin-bottom:16px;}
-    .closing h2{font-size:var(--step-3);margin:0 0 0.4em;}
-    .closing .lede{margin:0 0 var(--space-l);color:var(--ink-2);}
-    .closing .install-block{max-width:none;}
-  </style>
-  <section class="closing" aria-label="Get the brain">
-    <div class="wrap closing-inner reveal">
-      <p class="eyebrow">the front edge &mdash; yours now</p>
-      <h2>You&rsquo;ve just been handed the front edge of AI &mdash; <span class="grad">and you can wield it.</span></h2>
-      <p class="lede">
-        You don&rsquo;t have to be rUv. Install one line, open any repo, and Claude builds
-        <strong>nine months ahead</strong> &mdash; grounded in rUv&rsquo;s real source, with the Brain steering every
-        step.
-      </p>
-
-      <div class="install-block">
-        <pre class="code-block"><code><span class="c"># one command — downloads the Brain + wires the Claude Code plugin</span>
-npx ruvnet-brain
-<span class="c"># or, for the bleeding-edge commit: npx github:stuinfla/ruvnet-brain</span></code></pre>
-        <p style="margin:0;max-width:none;color:var(--ink-2)">Downloads the Brain to
-          <code>~/.cache/ruvnet-brain/kb</code> and wires up the plugin. <strong>No Docker, no server, no config.</strong></p>
+  <!-- PROBLEM -->
+  <section id="problem">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <div class="label">The drift</div>
+        <h2>Claude was trained on last year's playbook.</h2>
+        <p>Ask it to build something rUv-shaped and it reaches for the classical defaults it learned — not the tools rUv actually ships. It doesn't <em>know</em> the frontier exists, so it quietly builds you something a generation behind.</p>
       </div>
-
-      <div class="cta-row">
-        <a class="cta" href="https://github.com/stuinfla/ruvnet-brain" target="_blank" rel="noopener">Get it on GitHub &rarr;</a>
-        <a class="cta ghost" href="https://github.com/stuinfla/ruvnet-brain/releases/download/v0.5.0-dev/ruvnet-brain.zip">Download the brain &middot; 512&nbsp;MB</a>
+      <div class="ba">
+        <div class="card bad rv">
+          <h3>✕ Claude's instinct</h3>
+          <ul class="stack">
+            <li><span class="x">✕</span> Pinecone / pgvector for embeddings</li>
+            <li><span class="x">✕</span> LangChain to orchestrate agents</li>
+            <li><span class="x">✕</span> A cloud API for every embedding call</li>
+            <li><span class="x">✕</span> "That library doesn't do that" — when it does</li>
+          </ul>
+          <div class="note">Confident. Familiar. Nine months behind.</div>
+        </div>
+        <div class="card good rv">
+          <h3>◇ The rUv way</h3>
+          <ul class="stack">
+            <li><span class="chk">◇</span> RVF / RuVector — HNSW vectors, zero server</li>
+            <li><span class="chk">◇</span> Ruflo — swarm orchestration + SPARC</li>
+            <li><span class="chk">◇</span> AgentDB — local agent memory</li>
+            <li><span class="chk">◇</span> Grounded in the real source, cited by path</li>
+          </ul>
+          <div class="note">What rUv would actually reach for — now yours.</div>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- ===================== EXPLAINER FOOTER (required) ===================== -->
-  <footer class="explainer-footer" role="contentinfo">
-    <div class="wrap explainer-footer-inner">
-      <p class="ef-credit">
-        Built by <strong>Stuart Kerr</strong> at <a href="https://isovision.ai" rel="author">Isovision.ai</a> &middot; RuvNet ecosystem by
-        <a href="https://github.com/ruvnet" rel="author">Reuven Cohen (@ruvnet)</a> &middot;
-        <a href="https://github.com/stuinfla/ruvnet-brain">github.com/stuinfla/ruvnet-brain</a>
-        <br /><span class="ef-license">Free &amp; fair use &mdash; so everyone can fully leverage the high end of agentic coding.</span>
-      </p>
-      <a class="ef-cta" href="https://github.com/stuinfla/ruvnet-brain">
-        <span class="ef-cta-lead">Build on the front edge &mdash;</span>
-        <strong>Install in one line</strong>
-        <span class="ef-arrow" aria-hidden="true">&rarr;</span>
-      </a>
+  <!-- FIX -->
+  <section id="fix">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <div class="label">The fix</div>
+        <h2>A downloadable brain that Claude reads <em>before</em> it answers.</h2>
+        <p>RuvNet Brain indexes rUv's real repositories into a local vector store. On any rUv-shaped task, Claude calls one MCP tool — <span class="kbd">search_ruvnet</span> — grounds its answer in the actual source, and cites the exact file paths. If a tool it needs isn't installed, it offers to load it for you.</p>
+      </div>
+      <div class="ba" style="grid-template-columns:1fr">
+        <div class="card good rv">
+          <h3>◇ grounded, not guessed</h3>
+          <ul class="stack">
+            <li><span class="chk">→</span> You ask normally — no new commands to learn</li>
+            <li><span class="chk">→</span> The brain grounds the answer in rUv's real code and <b>cites the path</b></li>
+            <li><span class="chk">→</span> Drifting to a classical default? It steps in with the rUv option</li>
+            <li><span class="chk">→</span> Missing a tool? It offers to install &amp; wire it, then builds</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ECOSYSTEM -->
+  <section id="ecosystem">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <div class="label">Coverage</div>
+        <h2>The whole toolkit, gathered into one intelligence.</h2>
+        <p>Every building block of rUv's stack — deep-indexed from real source, not summaries.</p>
+      </div>
+      <div class="eco-meta rv">
+        <span><b>20</b> repos deep-indexed</span>
+        <span><b>~169</b> catalogued</span>
+        <span><b>~248</b> in the org</span>
+        <span><b>1</b> tool — <span class="mono">search_ruvnet</span></span>
+      </div>
+      <div class="grid" id="ecoGrid"></div>
+    </div>
+  </section>
+
+  <!-- HOW -->
+  <section id="how">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <div class="label">How it works</div>
+        <h2>Install once. It runs everywhere, automatically.</h2>
+      </div>
+      <div class="steps">
+        <div class="step rv"><h4>Drop it in</h4><p><code>npx ruvnet-brain</code> wires the plugin at user scope — global, alongside Ruflo &amp; RuVector. Nothing per-project.</p></div>
+        <div class="step rv"><h4>Ask normally</h4><p>On rUv-stack work the brain grounds Claude in real source and cites the file. On everything else it stays quiet.</p></div>
+        <div class="step rv"><h4>Build ahead</h4><p>Claude reaches for <code>RVF · Ruflo · AgentDB</code> — and offers to load anything missing — so you ship on the front edge.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <div class="final">
+    <div class="wrap">
+      <h2 class="rv">Give Claude the <span class="amber">frontier</span>.</h2>
+      <p class="rv">One command. It grounds every rUv-stack decision in real source, forever.</p>
+      <div class="cta-row rv" style="justify-content:center">
+        <span class="install"><span class="prompt">$</span> npx ruvnet-brain</span>
+        <a class="btn" href="https://github.com/stuinfla/ruvnet-brain">GitHub ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <span>RuvNet Brain · by <a href="https://isovision.ai">Isovision.ai</a></span>
+      <span>rUv ecosystem by Reuven Cohen (<a href="https://github.com/ruvnet">@ruvnet</a>) · a distinct project from rUv's own RuVector Brain</span>
     </div>
   </footer>
 
-  <script src="main.js" defer></script>
+  <script>
+    // Ecosystem chips — real repos from the brain's coverage.
+    var REPOS = [
+      ['Ruflo','swarm orchestration · SPARC · hooks'],
+      ['RuVector / RVF','HNSW vectors · zero server'],
+      ['AgentDB','local agent memory + KV'],
+      ['agentic-flow','cost-optimal model routing'],
+      ['agentic-qe','51-agent quality engineering fleet'],
+      ['SPARC','spec→pseudocode→arch→refine→complete'],
+      ['QuDAG','DAG task orchestration'],
+      ['SAFLA','self-aware feedback loops'],
+      ['FACT','tool-call caching + circuit breaking'],
+      ['SynthLang','prompt / token compression'],
+      ['ruv-FANN','fast neural nets in Rust/WASM'],
+      ['DAA','decentralized autonomous agents'],
+      ['RuLake','cache-coherent vector read layer'],
+      ['RuView','3D knowledge visualization'],
+      ['dspy.ts','DSPy programs in TypeScript'],
+      ['FACT · cve-bench','benchmark real-CVE repair'],
+      ['open-claude-code','the agent runtime, opened up'],
+      ['agent-harness-generator','MetaHarness · Darwin evolution'],
+      ['rvm','rUv version manager'],
+      ['rupixel','image generation pipeline'],
+    ];
+    var g = document.getElementById('ecoGrid');
+    REPOS.forEach(function(r){
+      var d=document.createElement('div'); d.className='chip rv';
+      d.innerHTML='<div class="nm">'+r[0]+'</div><div class="ds">'+r[1]+'</div>';
+      g.appendChild(d);
+    });
+    // Staggered scroll reveal.
+    var io=new IntersectionObserver(function(es){
+      es.forEach(function(e,i){ if(e.isIntersecting){ setTimeout(function(){e.target.classList.add('in')}, (i%6)*70); io.unobserve(e.target);} });
+    },{threshold:.12,rootMargin:'0px 0px -40px 0px'});
+    document.querySelectorAll('.rv').forEach(function(el){io.observe(el)});
+  </script>
 </body>
 </html>
