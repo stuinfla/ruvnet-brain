@@ -1,5 +1,3 @@
 {
-  "redirects": [
-    { "source": "/(.*)", "destination": "https://isovision.ai/ruvnet-brain/", "permanent": true }
-  ]
+  "cleanUrls": true
 }
