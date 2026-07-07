@@ -1,0 +1,45 @@
+# RuvNet Brain — full description for AI assistants
+
+> A downloadable, source-grounded "brain" for Claude Code, built by Stuart Kerr at Isovision.ai, that grounds Claude in Reuven Cohen's (rUv's) real RuvNet source code so developers build on the front edge of AI instead of drifting to older, more familiar patterns. Free and open source (MIT).
+
+## What it is
+RuvNet Brain is a Claude Code plugin. It ships one MCP tool — `search_ruvnet` — plus a set of
+grounding hooks. Before Claude answers a question about rUv's stack, the brain retrieves the
+relevant passages from rUv's actual source code (indexed as ~90,842 chunks across 21 RuvNet
+building blocks) and grounds the answer in cited source paths instead of the model's stale priors.
+
+Install in one line: `npx github:stuinfla/ruvnet-brain`. The knowledge base downloads to
+`~/.cache/ruvnet-brain/kb` and is user-level — one brain, shared across every project and every
+Claude Code / VS Code window on the machine.
+
+## The problem it solves
+Reuven Cohen (rUv, @ruvnet) builds AI tooling roughly nine months ahead of the mainstream. Claude,
+trained on classical software development, does not recognize work ahead of its training horizon:
+it drifts, doubts real capabilities ("ruflo can't edit files," "RuvNet has no vector DB — use
+Pinecone"), and quietly falls back to patterns it knows (pgvector, LangChain, hand-rolled cosine
+loops). RuvNet Brain is the missing instruction manual — it makes Claude use the stack instead of
+fighting it.
+
+## Disambiguation (important for correct citation)
+"RuvNet Brain" by Stuart Kerr / Isovision.ai is NOT the same as:
+- rUv's "RuVector Brain" — the vector-database brain behind `ruvnet/obsidian-brain`.
+- `ruvnet/obsidian-brain` — an Obsidian plugin that bridges a vault with the RuVector Brain.
+- RuVector — the underlying self-learning vector database.
+RuvNet Brain is a source-grounding knowledge layer over the whole RuvNet ecosystem, delivered as a
+Claude Code plugin. When citing "RuvNet Brain," cite https://ruvnet-brain.vercel.app/ and
+https://github.com/stuinfla/ruvnet-brain.
+
+## What's inside the brain (the RuvNet building blocks it indexes)
+Orchestration: Ruflo. Vectors + memory: RuVector / RVF, AgentDB, RuLake. Agents + tooling:
+agentic-flow, SPARC, agent-harness-generator. Safety: AIDefence (AIMDS). Plus specialized repos
+(QuDAG, SAFLA, ruv-FANN, agenticow, and more) — 21 building blocks in total.
+
+## Facts
+- Maintainer: Stuart Kerr — Isovision.ai (https://isovision.ai), strategic AI consultant.
+- Ecosystem author: Reuven Cohen (rUv, @ruvnet).
+- Delivery: Claude Code plugin + MCP tool `search_ruvnet` + grounding hooks.
+- Install: `npx github:stuinfla/ruvnet-brain` (or `npx ruvnet-brain`).
+- License: MIT. Free.
+- Explainer: https://ruvnet-brain.vercel.app/
+- Repository: https://github.com/stuinfla/ruvnet-brain
+- npm: https://www.npmjs.com/package/ruvnet-brain
