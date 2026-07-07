@@ -1,10 +1,10 @@
 {
-  "brainVersion": "1.11.0-dev",
-  "generated": "2026-07-06T16:26:26.393Z",
-  "generatedHuman": "Mon, 06 Jul 2026 16:26:26 GMT",
+  "brainVersion": "v1.11.0-dev",
+  "generated": "2026-07-07T12:10:57.234Z",
+  "generatedHuman": "Tue, 07 Jul 2026 12:10:57 GMT",
   "coverage": {
-    "built": 19,
-    "catalogued": 168,
+    "built": 20,
+    "catalogued": 169,
     "orgTotalApprox": 248,
     "pending": 149
   },
@@ -61,7 +61,7 @@
       "name": "agent-harness-generator",
       "tier": "T1",
       "stars": 330,
-      "builtFromSha": "b7276ceb615b9b7627781d59104796982214dbaa",
+      "builtFromSha": "96f1cfa71a30e73cae171f13de052252bcec5ac5",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -138,6 +138,14 @@
       "status": "built"
     },
     {
+      "name": "agentic-qe",
+      "tier": "T1",
+      "stars": 0,
+      "builtFromSha": "3a5cfd4201b069915dfa7e7aed5276f5168b0300",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
       "name": "rUv-dev",
       "tier": "T2",
       "stars": 426,
@@ -149,7 +157,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "d18e448fe998a12b74cbfe7fed85705df8a67b15",
+      "builtFromSha": "3b0d8aa91a0c85027b3c48e275b8dcba366e1204",
       "latestRemoteSha": null,
       "status": "built"
     },

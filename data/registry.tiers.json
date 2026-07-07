@@ -1,1034 +1,1042 @@
 {
- "generated": "STAMP_AT_BUILD",
- "selectionRule": "stars>=1000 OR pushed<=3mo OR core-allowlist; tiered by ingest depth",
- "tiers": {
-  "T0": {
-   "depth": "max+L2+primer",
-   "repos": [
-    {
-     "name": "RuView",
-     "stars": 75658,
-     "pushed": "2026-06-27",
-     "sha": "RESOLVE_AT_BUILD"
+  "generated": "STAMP_AT_BUILD",
+  "selectionRule": "stars>=1000 OR pushed<=3mo OR core-allowlist; tiered by ingest depth",
+  "tiers": {
+    "T0": {
+      "depth": "max+L2+primer",
+      "repos": [
+        {
+          "name": "RuView",
+          "stars": 75658,
+          "pushed": "2026-06-27",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ruflo",
+          "stars": 61698,
+          "pushed": "2026-06-27",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "RuVector",
+          "stars": 4296,
+          "pushed": "2026-06-27",
+          "sha": "RESOLVE_AT_BUILD"
+        }
+      ]
     },
-    {
-     "name": "ruflo",
-     "stars": 61698,
-     "pushed": "2026-06-27",
-     "sha": "RESOLVE_AT_BUILD"
+    "T1": {
+      "depth": "full+L2+primer",
+      "repos": [
+        {
+          "name": "agentic-flow",
+          "stars": 762,
+          "pushed": "2026-06-24",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "sparc",
+          "stars": 468,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ruv-FANN",
+          "stars": 370,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agent-harness-generator",
+          "stars": 330,
+          "pushed": "2026-06-27",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "dspy.ts",
+          "stars": 261,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "SynthLang",
+          "stars": 261,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "daa",
+          "stars": 242,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "QuDAG",
+          "stars": 189,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "FACT",
+          "stars": 179,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "SAFLA",
+          "stars": 155,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "midstream",
+          "stars": 125,
+          "pushed": "2026-06-08",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "rvm",
+          "stars": 113,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "rudevolution",
+          "stars": 108,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "sublinear-time-solver",
+          "stars": 82,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "Synaptic-Mesh",
+          "stars": 74,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentdb",
+          "stars": 70,
+          "pushed": "2026-06-22",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ruv-neural",
+          "stars": 20,
+          "pushed": "2026-06-18",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "rufield",
+          "stars": 17,
+          "pushed": "2026-06-14",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "rvcsi",
+          "stars": 13,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "RuLake",
+          "stars": 11,
+          "pushed": "2026-06-08",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-qe",
+          "org": "proffesor-for-testing",
+          "stars": 0,
+          "pushed": "2026-07-07",
+          "sha": "RESOLVE_AT_BUILD",
+          "note": "rUv QE fleet \u2014 51 agents; collaborator org"
+        }
+      ]
     },
-    {
-     "name": "RuVector",
-     "stars": 4296,
-     "pushed": "2026-06-27",
-     "sha": "RESOLVE_AT_BUILD"
+    "T2": {
+      "depth": "full+primer",
+      "repos": [
+        {
+          "name": "rUv-dev",
+          "stars": 426,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "open-claude-code",
+          "stars": 416,
+          "pushed": "2026-06-27",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ruvnet",
+          "stars": 217,
+          "pushed": "2026-06-14",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "marketing",
+          "stars": 108,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "symbolic-scribe",
+          "stars": 85,
+          "pushed": "2026-06-15",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ruvbot",
+          "stars": 47,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-security",
+          "stars": 47,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "drupaljs",
+          "stars": 37,
+          "pushed": "2026-06-04",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "skygraph",
+          "stars": 29,
+          "pushed": "2026-06-14",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-robotics",
+          "stars": 26,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "musicai",
+          "stars": 26,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "obsidian-brain",
+          "stars": 19,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "musica",
+          "stars": 17,
+          "pushed": "2026-05-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "rupixel",
+          "stars": 14,
+          "pushed": "2026-06-26",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "PhotonLayer",
+          "stars": 14,
+          "pushed": "2026-06-18",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "rvdna",
+          "stars": 9,
+          "pushed": "2026-06-18",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ruos-macair",
+          "stars": 9,
+          "pushed": "2026-04-18",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ruv-drone",
+          "stars": 8,
+          "pushed": "2026-06-16",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "Connectome-OS",
+          "stars": 8,
+          "pushed": "2026-04-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "worldgraph",
+          "stars": 7,
+          "pushed": "2026-06-27",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ruqu",
+          "stars": 6,
+          "pushed": "2026-06-18",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ruvn",
+          "stars": 6,
+          "pushed": "2026-06-16",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "cognitum-claude-plugin",
+          "stars": 5,
+          "pushed": "2026-04-29",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "SonicChamber",
+          "stars": 2,
+          "pushed": "2026-06-22",
+          "sha": "RESOLVE_AT_BUILD"
+        }
+      ]
+    },
+    "T3": {
+      "depth": "primer; deep-walk on demand",
+      "repos": [
+        {
+          "name": "Bot-Generator-Bot",
+          "stars": 576,
+          "pushed": "2023-04-29",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "gpts",
+          "stars": 297,
+          "pushed": "2024-07-18",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "guardrail",
+          "stars": 152,
+          "pushed": "2023-12-12",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "chatgpt-openai-api-plugin",
+          "stars": 147,
+          "pushed": "2023-05-02",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "promptlang",
+          "stars": 133,
+          "pushed": "2023-12-12",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-voice",
+          "stars": 119,
+          "pushed": "2024-07-15",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "voicebot",
+          "stars": 102,
+          "pushed": "2025-01-31",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "hello_world_agent",
+          "stars": 99,
+          "pushed": "2025-03-08",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "chatgpt_plugin_python",
+          "stars": 97,
+          "pushed": "2023-03-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "q-star",
+          "stars": 96,
+          "pushed": "2024-01-31",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "flow-nexus",
+          "stars": 95,
+          "pushed": "2025-09-10",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ultrasonic",
+          "stars": 94,
+          "pushed": "2025-06-09",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "auto-browser",
+          "stars": 94,
+          "pushed": "2025-01-24",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "rUv-Enterprise-AI-Guide",
+          "stars": 91,
+          "pushed": "2024-05-03",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "Surfer",
+          "stars": 88,
+          "pushed": "2023-04-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "Prompt-Engine",
+          "stars": 86,
+          "pushed": "2023-05-03",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "Agent-Name-Service",
+          "stars": 78,
+          "pushed": "2025-05-16",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "openai_devops",
+          "stars": 70,
+          "pushed": "2023-03-15",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "AiToml",
+          "stars": 67,
+          "pushed": "2023-03-21",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "federated-mcp",
+          "stars": 65,
+          "pushed": "2024-11-26",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "GenAI-Superstream",
+          "stars": 59,
+          "pushed": "2025-05-22",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "strawberry-phi",
+          "stars": 59,
+          "pushed": "2024-09-13",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "reflective-engineer",
+          "stars": 57,
+          "pushed": "2024-12-19",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-employment",
+          "stars": 55,
+          "pushed": "2024-06-26",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ARCADIA",
+          "stars": 50,
+          "pushed": "2025-10-20",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "dynamo-mcp",
+          "stars": 50,
+          "pushed": "2025-04-26",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-reports",
+          "stars": 48,
+          "pushed": "2024-06-03",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ai-video",
+          "stars": 47,
+          "pushed": "2024-05-24",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-devops",
+          "stars": 46,
+          "pushed": "2024-06-20",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "inflight",
+          "stars": 44,
+          "pushed": "2025-01-09",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "Swagger-ChatGPT-Plugin-Creator",
+          "stars": 44,
+          "pushed": "2023-04-06",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "quantum-magnetic-navigation",
+          "stars": 43,
+          "pushed": "2025-04-18",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "llamastack",
+          "stars": 43,
+          "pushed": "2024-09-10",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "vibecast",
+          "stars": 42,
+          "pushed": "2026-02-22",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-search",
+          "stars": 42,
+          "pushed": "2025-05-20",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agileagents",
+          "stars": 42,
+          "pushed": "2024-06-27",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "VIVIAN",
+          "stars": 42,
+          "pushed": "2023-04-02",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "nova",
+          "stars": 41,
+          "pushed": "2025-01-31",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "genesis",
+          "stars": 39,
+          "pushed": "2025-09-05",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "code-mesh",
+          "stars": 37,
+          "pushed": "2025-10-27",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-difusion",
+          "stars": 37,
+          "pushed": "2025-05-12",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "aido",
+          "stars": 36,
+          "pushed": "2024-11-15",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "sparc-ide",
+          "stars": 35,
+          "pushed": "2025-05-06",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "hacker-league",
+          "stars": 33,
+          "pushed": "2025-02-06",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agenticsjs",
+          "stars": 32,
+          "pushed": "2024-09-25",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "paris",
+          "stars": 32,
+          "pushed": "2023-03-30",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "yyz-agentics-june",
+          "stars": 31,
+          "pushed": "2025-06-25",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "pygentic",
+          "stars": 28,
+          "pushed": "2024-06-01",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "codex-one",
+          "stars": 27,
+          "pushed": "2025-05-19",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "coding-wingman",
+          "stars": 27,
+          "pushed": "2023-11-16",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "chatgpt-dev-mode",
+          "stars": 25,
+          "pushed": "2025-09-13",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "quantum_cryptocurrency",
+          "stars": 25,
+          "pushed": "2024-12-10",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "AiHCC",
+          "stars": 23,
+          "pushed": "2024-05-07",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "omnipotent",
+          "stars": 22,
+          "pushed": "2025-03-04",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "onnx-agent",
+          "stars": 22,
+          "pushed": "2025-02-24",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ChatGPT-Trading-Bot-for-KuCoin",
+          "stars": 22,
+          "pushed": "2023-03-24",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "fireflies-webook",
+          "stars": 21,
+          "pushed": "2024-11-01",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "vcbot",
+          "stars": 21,
+          "pushed": "2023-03-21",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ruv.io",
+          "stars": 20,
+          "pushed": "2025-11-16",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "swarm-world",
+          "stars": 19,
+          "pushed": "2025-07-12",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "aws-dev",
+          "stars": 19,
+          "pushed": "2024-05-20",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "textclassifier",
+          "stars": 19,
+          "pushed": "2023-03-19",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "powerprompt",
+          "stars": 19,
+          "pushed": "2023-02-15",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "phone-agent",
+          "stars": 18,
+          "pushed": "2025-04-04",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "aihl",
+          "stars": 18,
+          "pushed": "2024-11-13",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "supa-ruv",
+          "stars": 18,
+          "pushed": "2024-05-24",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "supabase-authentication",
+          "stars": 17,
+          "pushed": "2024-08-30",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "aiscreenplay",
+          "stars": 17,
+          "pushed": "2023-03-18",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "alienator",
+          "stars": 16,
+          "pushed": "2025-08-14",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "AiCodeCalc",
+          "stars": 16,
+          "pushed": "2025-01-12",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ai-gist",
+          "stars": 16,
+          "pushed": "2024-05-26",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "vsc-remote-mcp",
+          "stars": 15,
+          "pushed": "2025-04-27",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentXNG",
+          "stars": 15,
+          "pushed": "2024-07-05",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "retro-ai-ui",
+          "stars": 15,
+          "pushed": "2024-04-06",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "2BotTalk",
+          "stars": 15,
+          "pushed": "2023-03-26",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "Quantum-Virtual-Machine",
+          "stars": 14,
+          "pushed": "2025-08-11",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "local-logic",
+          "stars": 14,
+          "pushed": "2024-10-29",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-artifacts",
+          "stars": 14,
+          "pushed": "2024-06-24",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "openai-cost-estimator",
+          "stars": 14,
+          "pushed": "2023-10-24",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "claude-test",
+          "stars": 13,
+          "pushed": "2025-06-24",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "roomodes",
+          "stars": 13,
+          "pushed": "2025-04-06",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-preview",
+          "stars": 13,
+          "pushed": "2024-10-11",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "electo1-js",
+          "stars": 13,
+          "pushed": "2024-09-23",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "open-space",
+          "stars": 13,
+          "pushed": "2024-06-08",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "Ai-Code-Generator-",
+          "stars": 12,
+          "pushed": "2023-03-21",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "vibing",
+          "stars": 11,
+          "pushed": "2025-03-20",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-scraper",
+          "stars": 11,
+          "pushed": "2024-10-21",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "markov-chains",
+          "stars": 11,
+          "pushed": "2024-06-02",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "pipackager",
+          "stars": 11,
+          "pushed": "2024-05-26",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "chatgpt_tatum_plugin",
+          "stars": 11,
+          "pushed": "2023-03-28",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-capacity-exchange",
+          "stars": 10,
+          "pushed": "2024-06-08",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "codecraft",
+          "stars": 10,
+          "pushed": "2024-05-26",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "infinity-ui",
+          "stars": 9,
+          "pushed": "2024-09-19",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "q-space",
+          "stars": 9,
+          "pushed": "2024-05-26",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "contextual-retrevial",
+          "stars": 8,
+          "pushed": "2024-10-18",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "Auto-GPT",
+          "stars": 8,
+          "pushed": "2023-04-17",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "chatgpt-aws-price-list-plugin",
+          "stars": 8,
+          "pushed": "2023-03-28",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "console-streamer",
+          "stars": 8,
+          "pushed": "2023-03-26",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "SVGart",
+          "stars": 8,
+          "pushed": "2016-12-19",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ai-browse",
+          "stars": 6,
+          "pushed": "2025-01-11",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "Electo1",
+          "stars": 6,
+          "pushed": "2024-09-22",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-dashboard",
+          "stars": 6,
+          "pushed": "2024-06-19",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "r-flow",
+          "stars": 6,
+          "pushed": "2024-04-08",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "santa-ai-workshop",
+          "stars": 6,
+          "pushed": "2023-12-22",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentX",
+          "stars": 6,
+          "pushed": "2023-12-14",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "p2pGPT",
+          "stars": 6,
+          "pushed": "2023-04-17",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ruvGPT2",
+          "stars": 6,
+          "pushed": "2023-04-17",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-gradio",
+          "stars": 5,
+          "pushed": "2024-06-25",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "rUvGPT",
+          "stars": 5,
+          "pushed": "2023-04-16",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "AIConverse",
+          "stars": 5,
+          "pushed": "2023-03-25",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "image-agent",
+          "stars": 4,
+          "pushed": "2025-04-25",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "demo-proxy-app",
+          "stars": 4,
+          "pushed": "2024-10-28",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-flows",
+          "stars": 4,
+          "pushed": "2024-08-27",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "CodeGPT",
+          "stars": 4,
+          "pushed": "2023-04-17",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "tariffic",
+          "stars": 3,
+          "pushed": "2025-04-07",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "hft",
+          "stars": 3,
+          "pushed": "2024-09-14",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentic-music",
+          "stars": 3,
+          "pushed": "2024-08-14",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agentics-meetup",
+          "stars": 2,
+          "pushed": "2025-05-06",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "ai-stream",
+          "stars": 2,
+          "pushed": "2024-05-24",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "socket",
+          "stars": 2,
+          "pushed": "2024-05-08",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "AP-Casper",
+          "stars": 2,
+          "pushed": "2023-03-23",
+          "sha": "RESOLVE_AT_BUILD"
+        }
+      ]
     }
-   ]
-  },
-  "T1": {
-   "depth": "full+L2+primer",
-   "repos": [
-    {
-     "name": "agentic-flow",
-     "stars": 762,
-     "pushed": "2026-06-24",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "sparc",
-     "stars": 468,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ruv-FANN",
-     "stars": 370,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agent-harness-generator",
-     "stars": 330,
-     "pushed": "2026-06-27",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "dspy.ts",
-     "stars": 261,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "SynthLang",
-     "stars": 261,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "daa",
-     "stars": 242,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "QuDAG",
-     "stars": 189,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "FACT",
-     "stars": 179,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "SAFLA",
-     "stars": 155,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "midstream",
-     "stars": 125,
-     "pushed": "2026-06-08",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "rvm",
-     "stars": 113,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "rudevolution",
-     "stars": 108,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "sublinear-time-solver",
-     "stars": 82,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "Synaptic-Mesh",
-     "stars": 74,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentdb",
-     "stars": 70,
-     "pushed": "2026-06-22",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ruv-neural",
-     "stars": 20,
-     "pushed": "2026-06-18",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "rufield",
-     "stars": 17,
-     "pushed": "2026-06-14",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "rvcsi",
-     "stars": 13,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "RuLake",
-     "stars": 11,
-     "pushed": "2026-06-08",
-     "sha": "RESOLVE_AT_BUILD"
-    }
-   ]
-  },
-  "T2": {
-   "depth": "full+primer",
-   "repos": [
-    {
-     "name": "rUv-dev",
-     "stars": 426,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "open-claude-code",
-     "stars": 416,
-     "pushed": "2026-06-27",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ruvnet",
-     "stars": 217,
-     "pushed": "2026-06-14",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "marketing",
-     "stars": 108,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "symbolic-scribe",
-     "stars": 85,
-     "pushed": "2026-06-15",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ruvbot",
-     "stars": 47,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-security",
-     "stars": 47,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "drupaljs",
-     "stars": 37,
-     "pushed": "2026-06-04",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "skygraph",
-     "stars": 29,
-     "pushed": "2026-06-14",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-robotics",
-     "stars": 26,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "musicai",
-     "stars": 26,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "obsidian-brain",
-     "stars": 19,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "musica",
-     "stars": 17,
-     "pushed": "2026-05-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "rupixel",
-     "stars": 14,
-     "pushed": "2026-06-26",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "PhotonLayer",
-     "stars": 14,
-     "pushed": "2026-06-18",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "rvdna",
-     "stars": 9,
-     "pushed": "2026-06-18",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ruos-macair",
-     "stars": 9,
-     "pushed": "2026-04-18",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ruv-drone",
-     "stars": 8,
-     "pushed": "2026-06-16",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "Connectome-OS",
-     "stars": 8,
-     "pushed": "2026-04-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "worldgraph",
-     "stars": 7,
-     "pushed": "2026-06-27",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ruqu",
-     "stars": 6,
-     "pushed": "2026-06-18",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ruvn",
-     "stars": 6,
-     "pushed": "2026-06-16",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "cognitum-claude-plugin",
-     "stars": 5,
-     "pushed": "2026-04-29",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "SonicChamber",
-     "stars": 2,
-     "pushed": "2026-06-22",
-     "sha": "RESOLVE_AT_BUILD"
-    }
-   ]
-  },
-  "T3": {
-   "depth": "primer; deep-walk on demand",
-   "repos": [
-    {
-     "name": "Bot-Generator-Bot",
-     "stars": 576,
-     "pushed": "2023-04-29",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "gpts",
-     "stars": 297,
-     "pushed": "2024-07-18",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "guardrail",
-     "stars": 152,
-     "pushed": "2023-12-12",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "chatgpt-openai-api-plugin",
-     "stars": 147,
-     "pushed": "2023-05-02",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "promptlang",
-     "stars": 133,
-     "pushed": "2023-12-12",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-voice",
-     "stars": 119,
-     "pushed": "2024-07-15",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "voicebot",
-     "stars": 102,
-     "pushed": "2025-01-31",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "hello_world_agent",
-     "stars": 99,
-     "pushed": "2025-03-08",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "chatgpt_plugin_python",
-     "stars": 97,
-     "pushed": "2023-03-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "q-star",
-     "stars": 96,
-     "pushed": "2024-01-31",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "flow-nexus",
-     "stars": 95,
-     "pushed": "2025-09-10",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ultrasonic",
-     "stars": 94,
-     "pushed": "2025-06-09",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "auto-browser",
-     "stars": 94,
-     "pushed": "2025-01-24",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "rUv-Enterprise-AI-Guide",
-     "stars": 91,
-     "pushed": "2024-05-03",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "Surfer",
-     "stars": 88,
-     "pushed": "2023-04-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "Prompt-Engine",
-     "stars": 86,
-     "pushed": "2023-05-03",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "Agent-Name-Service",
-     "stars": 78,
-     "pushed": "2025-05-16",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "openai_devops",
-     "stars": 70,
-     "pushed": "2023-03-15",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "AiToml",
-     "stars": 67,
-     "pushed": "2023-03-21",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "federated-mcp",
-     "stars": 65,
-     "pushed": "2024-11-26",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "GenAI-Superstream",
-     "stars": 59,
-     "pushed": "2025-05-22",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "strawberry-phi",
-     "stars": 59,
-     "pushed": "2024-09-13",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "reflective-engineer",
-     "stars": 57,
-     "pushed": "2024-12-19",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-employment",
-     "stars": 55,
-     "pushed": "2024-06-26",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ARCADIA",
-     "stars": 50,
-     "pushed": "2025-10-20",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "dynamo-mcp",
-     "stars": 50,
-     "pushed": "2025-04-26",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-reports",
-     "stars": 48,
-     "pushed": "2024-06-03",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ai-video",
-     "stars": 47,
-     "pushed": "2024-05-24",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-devops",
-     "stars": 46,
-     "pushed": "2024-06-20",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "inflight",
-     "stars": 44,
-     "pushed": "2025-01-09",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "Swagger-ChatGPT-Plugin-Creator",
-     "stars": 44,
-     "pushed": "2023-04-06",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "quantum-magnetic-navigation",
-     "stars": 43,
-     "pushed": "2025-04-18",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "llamastack",
-     "stars": 43,
-     "pushed": "2024-09-10",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "vibecast",
-     "stars": 42,
-     "pushed": "2026-02-22",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-search",
-     "stars": 42,
-     "pushed": "2025-05-20",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agileagents",
-     "stars": 42,
-     "pushed": "2024-06-27",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "VIVIAN",
-     "stars": 42,
-     "pushed": "2023-04-02",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "nova",
-     "stars": 41,
-     "pushed": "2025-01-31",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "genesis",
-     "stars": 39,
-     "pushed": "2025-09-05",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "code-mesh",
-     "stars": 37,
-     "pushed": "2025-10-27",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-difusion",
-     "stars": 37,
-     "pushed": "2025-05-12",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "aido",
-     "stars": 36,
-     "pushed": "2024-11-15",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "sparc-ide",
-     "stars": 35,
-     "pushed": "2025-05-06",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "hacker-league",
-     "stars": 33,
-     "pushed": "2025-02-06",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agenticsjs",
-     "stars": 32,
-     "pushed": "2024-09-25",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "paris",
-     "stars": 32,
-     "pushed": "2023-03-30",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "yyz-agentics-june",
-     "stars": 31,
-     "pushed": "2025-06-25",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "pygentic",
-     "stars": 28,
-     "pushed": "2024-06-01",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "codex-one",
-     "stars": 27,
-     "pushed": "2025-05-19",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "coding-wingman",
-     "stars": 27,
-     "pushed": "2023-11-16",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "chatgpt-dev-mode",
-     "stars": 25,
-     "pushed": "2025-09-13",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "quantum_cryptocurrency",
-     "stars": 25,
-     "pushed": "2024-12-10",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "AiHCC",
-     "stars": 23,
-     "pushed": "2024-05-07",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "omnipotent",
-     "stars": 22,
-     "pushed": "2025-03-04",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "onnx-agent",
-     "stars": 22,
-     "pushed": "2025-02-24",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ChatGPT-Trading-Bot-for-KuCoin",
-     "stars": 22,
-     "pushed": "2023-03-24",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "fireflies-webook",
-     "stars": 21,
-     "pushed": "2024-11-01",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "vcbot",
-     "stars": 21,
-     "pushed": "2023-03-21",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ruv.io",
-     "stars": 20,
-     "pushed": "2025-11-16",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "swarm-world",
-     "stars": 19,
-     "pushed": "2025-07-12",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "aws-dev",
-     "stars": 19,
-     "pushed": "2024-05-20",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "textclassifier",
-     "stars": 19,
-     "pushed": "2023-03-19",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "powerprompt",
-     "stars": 19,
-     "pushed": "2023-02-15",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "phone-agent",
-     "stars": 18,
-     "pushed": "2025-04-04",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "aihl",
-     "stars": 18,
-     "pushed": "2024-11-13",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "supa-ruv",
-     "stars": 18,
-     "pushed": "2024-05-24",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "supabase-authentication",
-     "stars": 17,
-     "pushed": "2024-08-30",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "aiscreenplay",
-     "stars": 17,
-     "pushed": "2023-03-18",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "alienator",
-     "stars": 16,
-     "pushed": "2025-08-14",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "AiCodeCalc",
-     "stars": 16,
-     "pushed": "2025-01-12",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ai-gist",
-     "stars": 16,
-     "pushed": "2024-05-26",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "vsc-remote-mcp",
-     "stars": 15,
-     "pushed": "2025-04-27",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentXNG",
-     "stars": 15,
-     "pushed": "2024-07-05",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "retro-ai-ui",
-     "stars": 15,
-     "pushed": "2024-04-06",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "2BotTalk",
-     "stars": 15,
-     "pushed": "2023-03-26",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "Quantum-Virtual-Machine",
-     "stars": 14,
-     "pushed": "2025-08-11",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "local-logic",
-     "stars": 14,
-     "pushed": "2024-10-29",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-artifacts",
-     "stars": 14,
-     "pushed": "2024-06-24",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "openai-cost-estimator",
-     "stars": 14,
-     "pushed": "2023-10-24",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "claude-test",
-     "stars": 13,
-     "pushed": "2025-06-24",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "roomodes",
-     "stars": 13,
-     "pushed": "2025-04-06",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-preview",
-     "stars": 13,
-     "pushed": "2024-10-11",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "electo1-js",
-     "stars": 13,
-     "pushed": "2024-09-23",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "open-space",
-     "stars": 13,
-     "pushed": "2024-06-08",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "Ai-Code-Generator-",
-     "stars": 12,
-     "pushed": "2023-03-21",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "vibing",
-     "stars": 11,
-     "pushed": "2025-03-20",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-scraper",
-     "stars": 11,
-     "pushed": "2024-10-21",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "markov-chains",
-     "stars": 11,
-     "pushed": "2024-06-02",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "pipackager",
-     "stars": 11,
-     "pushed": "2024-05-26",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "chatgpt_tatum_plugin",
-     "stars": 11,
-     "pushed": "2023-03-28",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-capacity-exchange",
-     "stars": 10,
-     "pushed": "2024-06-08",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "codecraft",
-     "stars": 10,
-     "pushed": "2024-05-26",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "infinity-ui",
-     "stars": 9,
-     "pushed": "2024-09-19",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "q-space",
-     "stars": 9,
-     "pushed": "2024-05-26",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "contextual-retrevial",
-     "stars": 8,
-     "pushed": "2024-10-18",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "Auto-GPT",
-     "stars": 8,
-     "pushed": "2023-04-17",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "chatgpt-aws-price-list-plugin",
-     "stars": 8,
-     "pushed": "2023-03-28",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "console-streamer",
-     "stars": 8,
-     "pushed": "2023-03-26",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "SVGart",
-     "stars": 8,
-     "pushed": "2016-12-19",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ai-browse",
-     "stars": 6,
-     "pushed": "2025-01-11",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "Electo1",
-     "stars": 6,
-     "pushed": "2024-09-22",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-dashboard",
-     "stars": 6,
-     "pushed": "2024-06-19",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "r-flow",
-     "stars": 6,
-     "pushed": "2024-04-08",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "santa-ai-workshop",
-     "stars": 6,
-     "pushed": "2023-12-22",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentX",
-     "stars": 6,
-     "pushed": "2023-12-14",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "p2pGPT",
-     "stars": 6,
-     "pushed": "2023-04-17",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ruvGPT2",
-     "stars": 6,
-     "pushed": "2023-04-17",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-gradio",
-     "stars": 5,
-     "pushed": "2024-06-25",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "rUvGPT",
-     "stars": 5,
-     "pushed": "2023-04-16",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "AIConverse",
-     "stars": 5,
-     "pushed": "2023-03-25",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "image-agent",
-     "stars": 4,
-     "pushed": "2025-04-25",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "demo-proxy-app",
-     "stars": 4,
-     "pushed": "2024-10-28",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-flows",
-     "stars": 4,
-     "pushed": "2024-08-27",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "CodeGPT",
-     "stars": 4,
-     "pushed": "2023-04-17",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "tariffic",
-     "stars": 3,
-     "pushed": "2025-04-07",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "hft",
-     "stars": 3,
-     "pushed": "2024-09-14",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentic-music",
-     "stars": 3,
-     "pushed": "2024-08-14",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "agentics-meetup",
-     "stars": 2,
-     "pushed": "2025-05-06",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "ai-stream",
-     "stars": 2,
-     "pushed": "2024-05-24",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "socket",
-     "stars": 2,
-     "pushed": "2024-05-08",
-     "sha": "RESOLVE_AT_BUILD"
-    },
-    {
-     "name": "AP-Casper",
-     "stars": 2,
-     "pushed": "2023-03-23",
-     "sha": "RESOLVE_AT_BUILD"
-    }
-   ]
   }
- }
 }
