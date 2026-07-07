@@ -66,8 +66,12 @@ const RULES = [
   },
   // Direct override markers.
   { name: 'new-instructions', re: /\bnew instructions\s*:/i },
+  { name: 'new-directive', re: /\bnew directive\s*:/i },
   { name: 'system-prompt', re: /\bsystem prompt\s*:/i },
   { name: 'override-directive', re: /\boverride\b[\s\S]{0,40}?\b(?:instructions?|safety|rules?)\b/i },
+  // "forget/ignore everything (above|before|prior|else)" — a control-noun-free override phrasing an
+  // adversarial red-team slipped past the anchored instruction-override rule (SEC red-team 2026-07-07).
+  { name: 'forget-everything', re: /\b(?:ignore|disregard|forget)\s+everything\b/i },
   // Role switching.
   { name: 'role-switch-now', re: /\byou are now\b/i },
   { name: 'role-switch-fromnow', re: /\bfrom now on,?\s+you\b/i },
@@ -80,8 +84,28 @@ const RULES = [
     name: 'destructive-exfil',
     re: new RegExp(
       `\\b(?:delete|rm\\s+-rf|exfiltrate|leak|send|post|upload|paste|curl|fetch|cat|print|echo|dump|read|reveal|disclose)\\b${GAP8}`
-      + `(?:\\.env\\b|\\bsecrets?\\b|\\bapi[_-]?keys?\\b|\\bpasswords?\\b|\\btokens?\\b|\\bcredentials?\\b`
+      + `(?:\\.env\\b|\\bsecrets?\\b|\\bapi[_ -]?keys?\\b|\\bpasswords?\\b|\\btokens?\\b|\\bcredentials?\\b`
       + `|~?/?\\.aws\\b|~?/?\\.ssh\\b|\\bid_rsa\\b|\\.pem\\b|\\bprivate[_ -]?keys?\\b|\\baws[_ -]?secret[_ -]?access[_ -]?keys?\\b|\\.npmrc\\b|~?/?\\.config\\b)`,
+      'i',
+    ),
+  },
+  // Credential-PATH exfil: a fetch/copy verb pointing at a secret FILE PATH (id_rsa, ~/.ssh/, ~/.aws/,
+  // .npmrc, .pem, private key). The path form (`curl … @~/.ssh/id_rsa`) embeds the object mid-token so
+  // the word-gapped destructive-exfil rule can miss it — this char-gapped rule catches it (red-team 2026-07-07).
+  {
+    name: 'cred-path-exfil',
+    re: new RegExp(
+      `\\b(?:curl|wget|scp|rsync|cat|cp|send|post|upload|dump|exfiltrate|leak)\\b[\\s\\S]{0,60}?(?:id_rsa|\\.ssh/|\\.aws/|\\.npmrc\\b|\\.pem\\b|private[_ -]?key)`,
+      'i',
+    ),
+  },
+  // Env-secret exfil: a shell-expanded secret var ($…KEY/$…TOKEN/$…SECRET/$…PASSWORD) piped into a
+  // network tool (`echo $OPENAI_API_KEY | curl …`). The secret lives inside a $IDENTIFIER so the
+  // sensitive-object rules (which need a word boundary) miss it (red-team 2026-07-07).
+  {
+    name: 'env-secret-exfil',
+    re: new RegExp(
+      `\\$\\{?[A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASS|CREDENTIAL)[A-Za-z0-9_]*\\}?[\\s\\S]{0,40}?\\|\\s*(?:sudo\\s+)?(?:curl|wget|nc|ncat|http|fetch)\\b`,
       'i',
     ),
   },

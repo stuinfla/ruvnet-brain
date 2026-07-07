@@ -27,8 +27,15 @@ jobs:
         run: |
           npm i --no-audit --no-fund --loglevel=error
           npm run test:cov
+      - name: Installer smoke test
+        # drive-to-98 #6: bin/install.mjs is the highest-risk untested path (a stranger's first
+        # contact). Runs the REAL installer in its safe, offline, non-mutating modes (--help,
+        # --doctor read-only, node --check + signing-wiring guard). Brain-independent — no 512MB bundle.
+        run: node --test tests/integration/install-smoke.mjs
       - name: Injection-guard unit test
         run: node kb/test-guard-injection.mjs
+      - name: Injection-guard adversarial red-team (5 attack families)
+        run: node tests/integration/redteam-guard.mjs
       - name: Dependency audit (high+ severity fails)
         # QE-0011 deps#5: catch a re-introduced CVE in the reader deps (protobufjs etc.).
         run: cd kb && npm ci --no-audit --no-fund && npm audit --audit-level=high
