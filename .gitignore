@@ -43,3 +43,7 @@ node_modules
 agentdb.rvf
 agentdb.rvf.lock
 deck/
+
+# generated QE/eval test artifacts
+DESCRIBED-BASELINE.md
+data/described-baseline-results.json
