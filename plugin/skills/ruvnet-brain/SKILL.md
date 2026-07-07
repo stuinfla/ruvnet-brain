@@ -91,6 +91,34 @@ When asked to build, implement, add, refactor, enhance, or fix anything, do NOT 
 
 **4. Keep the user confident.** Say what you're doing and why as you go, signal progress, and explain any esoteric concept in one plain line before you lean on it. Narrate *decisions and progress* — never your own compliance with an internal rule (e.g. don't announce that a rule "doesn't apply here"; just proceed as if it were never mentioned). The user should always feel a sharp engineer is in charge and moving — never stalled, never guessing, and never explaining its own instructions to itself out loud.
 
+## Cost-optimal model routing — the verified default (not aspirational)
+
+Two separate questions, don't conflate them: (1) which Claude tier for a subagent you're about to dispatch, (2) whether a task can skip Claude entirely and go to a cheap third-party model. Both verified live, end-to-end, on 2026-07-07 — by reading the actual source across `ruflo`, `agentic-flow`, and `agent-harness-generator` (not their ADRs, which drift from the code in both directions), then running real commands. Apply both by default whenever you dispatch a subagent — this is the standard way the brain works, not an opt-in per project.
+
+**1. Claude-tier routing.** Before spawning any non-trivial subagent, call `mcp__ruflo__hooks_model-route` with the task description and use its recommendation instead of defaulting to Sonnet by habit — it's a real, live Thompson-bandit + complexity heuristic (verified: "fix a typo" → haiku, 0.04x cost, 85% confidence; "design PCI security architecture" → sonnet, 0.2x cost). Call `hooks_model-outcome` after with the real result — every project starts this bandit at zero decisions and it stays there unless something closes the loop.
+
+Don't expect this specific tool to ever reach GLM/DeepSeek/anything non-Anthropic: its handler never computes an embedding, the one thing that unlocks Ruflo's separate neural router (`neural-router.ts`) — that router is real, well-built code (verified by installing its native FastGRNN backend and watching real training run), with real 2026-06-15 measured benchmark data, but its candidate pool is Ling-2.6-Flash / Gemini-2.5-Flash-Lite / GPT-4.1 / Llama-3.3-70B (not GLM/DeepSeek), it's reachable only via `agent_spawn`, gated behind an off-by-default env var, and has a live NaN bug on sparse per-candidate scoring. Don't wire around those gates — the payoff on rUv's own dataset is thin (n=20, near-tied margins), and a separate rUv benchmark (`ROUTER-PILOT.md`, 2026-06-28) found this whole class of embedding-based difficulty routing scores at chance (ROC-AUC 0.38) on real data. Not the lever to reach for.
+
+**2. True cheap-model delegation.** `mcp__ruflo__agent_execute` cannot do this — its own description says it runs "via the Anthropic Messages API," Anthropic-only, no provider override. The real, working path is agentic-flow's own CLI (genuinely wired OpenRouter integration, real HTTP client):
+
+```bash
+npx agentic-flow@latest --agent researcher --model "deepseek/deepseek-chat" --task "<task>"
+npx agentic-flow@latest --agent researcher --model "z-ai/glm-4.6" --task "<task>"
+```
+Any `--model` containing `/` auto-routes through OpenRouter. Verified live: both returned correct answers in ~5s using the key already in `.env`.
+
+Use this for read-only work with no file mutation — research, summarization, classification, simple text transforms — where a cheap model is good enough. Real, current pricing (pulled live from the OpenRouter API):
+
+| Model | Prompt $/Mtok | Completion $/Mtok | vs. Opus 4.8 |
+|---|---:|---:|---:|
+| deepseek/deepseek-chat | $0.20 | $0.80 | ~25–31x cheaper |
+| z-ai/glm-4.6 | $0.43 | $1.74 | ~12–14x cheaper |
+| z-ai/glm-5 | $0.60 | $1.92 | ~8–13x cheaper |
+| claude-sonnet-4.6 | $3.00 | $15.00 | (mid-tier baseline) |
+| claude-opus-4.8 | $5.00 | $25.00 | — |
+
+Don't use this for anything touching files (this CLI path has no file-write capability here — that stays on Claude Code's own Task/Edit tools), security/architecture/irreversible decisions, or anything needing tool use beyond simple text in/out (GLM triggers prompt-based tool emulation, not native tool calling).
+
 ## Reconfigure yourself on request — you're smart and installed, so set it up their way
 
 The brain ships with ONE sensible default: **user-level (global)**, so it works across every project and every VS Code window with zero per-project setup — install once, it's everywhere. That default suits most people. But everyone runs their environment differently, so when the user wants it another way, DON'T point them at docs — do it, or guide them precisely. You are the brain; you understand your own install.
