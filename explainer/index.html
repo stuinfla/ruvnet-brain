@@ -13,6 +13,11 @@
   <meta name="theme-color" content="#0a0c10" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="canonical" href="https://ruvnet-brain.vercel.app/" />
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+
+  <!-- Google Search Console verification: paste your token between the quotes
+       (Search Console → Add property → HTML tag method), then redeploy.
+  <meta name="google-site-verification" content="PASTE_YOUR_GSC_TOKEN_HERE" /> -->
 
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
@@ -31,20 +36,48 @@
   <meta name="twitter:description" content="The missing instruction manual for rUv's tools: a downloadable brain that grounds Claude in his real source so you build on the front edge of AI." />
   <meta name="twitter:image" content="https://ruvnet-brain.vercel.app/assets/img/hero.png" />
 
-  <!-- Structured data -->
+  <!-- Structured data — WebSite entity (defines "RuvNet Brain" as a named thing to search engines) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "RuvNet Brain",
+    "alternateName": ["RuvNet-Brain", "Ruvnet Brain", "Ruv Net Brain"],
+    "url": "https://ruvnet-brain.vercel.app/",
+    "description": "A downloadable, source-grounded brain for Claude Code over Reuven Cohen's (rUv's) RuvNet stack.",
+    "inLanguage": "en",
+    "publisher": {
+      "@type": "Person",
+      "name": "Stuart Kerr",
+      "url": "https://isovision.ai"
+    },
+    "sameAs": [
+      "https://github.com/stuinfla/ruvnet-brain",
+      "https://www.npmjs.com/package/ruvnet-brain"
+    ]
+  }
+  </script>
+
+  <!-- Structured data — the software itself -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "RuvNet Brain",
+    "alternateName": "RuvNet-Brain",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Cross-platform (Node.js)",
     "softwareVersion": "0.5.0-dev",
+    "datePublished": "2026-06-30",
+    "dateModified": "2026-07-07",
     "description": "A downloadable, source-grounded brain for Claude Code that grounds the AI in rUv's real RuvNet source — RuVector/RVF, ruflo, AgentDB, RuLake, SPARC and 21 building blocks — so a newcomer can build on the front edge of AI without name-blind drift. Ships a single MCP tool, search_ruvnet.",
     "url": "https://ruvnet-brain.vercel.app/",
+    "downloadUrl": "https://github.com/stuinfla/ruvnet-brain/releases/latest",
+    "installUrl": "https://www.npmjs.com/package/ruvnet-brain",
     "image": "https://ruvnet-brain.vercel.app/assets/img/hero.png",
     "author": { "@type": "Person", "name": "Reuven Cohen", "alternateName": "rUv" },
-    "creator": { "@type": "Person", "name": "Stuart Kerr" },
+    "creator": { "@type": "Person", "name": "Stuart Kerr", "url": "https://isovision.ai" },
+    "keywords": "RuvNet, rUv, Reuven Cohen, RuVector, RVF, ruflo, AgentDB, RuLake, SPARC, Claude Code plugin, MCP, vector search, source-grounded AI",
     "isAccessibleForFree": true,
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "sameAs": ["https://github.com/stuinfla/ruvnet-brain"]

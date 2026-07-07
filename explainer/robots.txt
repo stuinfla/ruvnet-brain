@@ -1,0 +1,16 @@
+# RuvNet Brain — https://ruvnet-brain.vercel.app/
+# Everything is public and meant to be found.
+User-agent: *
+Allow: /
+
+# AI crawlers welcome (this page exists to be cited by assistants)
+User-agent: GPTBot
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: Google-Extended
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+
+Sitemap: https://ruvnet-brain.vercel.app/sitemap.xml
