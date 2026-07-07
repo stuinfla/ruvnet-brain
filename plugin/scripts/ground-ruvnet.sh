@@ -125,6 +125,12 @@ if printf '%s' "$TEXT" | grep -qiE '\b(build|implement|add|create|refactor|enhan
   BUILD=1
 fi
 
+# ── Gate 4: testing / quality / harness-readiness intent -> offer MetaHarness + QE proactively ───
+HARNESS_QE=0
+if printf '%s' "$TEXT" | grep -qiE 'metaharness|\bharness\b|\bqe\b|agentic[- ]?qe|coverage|\btest(s|ing)?\b|quality|readiness|evolve|self[- ]?improv|hardening|benchmark|\baudit\b|optimi[sz]e|make (it|this|my|the) [a-z ]*(smarter|better|faster)'; then
+  HARNESS_QE=1
+fi
+
 # ── Gate 1 output ───────────────────────────────────────────────────────────────────────────────
 if [ "$RUVNET" -eq 1 ]; then
   cat <<'EOF'
@@ -187,6 +193,21 @@ C. TAKE OVER what you can do well; only surface a decision when it's genuinely t
 D. Keep the user oriented and confident: say what you're doing and why as you go, signal progress, and when you use an esoteric concept (RVF, agenticow COW branching, witness chains, AIMDS, swarm topologies…), explain it in one plain line first.
 
 This is the difference between answering a question and RUNNING THE PROCESS. Run it.
+EOF
+fi
+
+# ── Gate 4 output: MetaHarness + QE are standard tools — offer them, teach them, one-line them ───
+if [ "$HARNESS_QE" -eq 1 ]; then
+  cat <<'EOF'
+[RuvNet Brain — MetaHarness + QE are standard, machine-wide tools; offer them, don't hide them]
+This task touches testing / quality / harness-readiness. Two RuvNet capabilities are wired and work in EVERY repo on this machine — treat them as part of your standard process and PROACTIVELY offer them (most people only know them as a label, not what they do or that they can just ask).
+
+• METAHARNESS — "freeze the model, evolve the harness." It audits and SELF-IMPROVES the scaffolding around Claude (planner / context / tool / memory / retry / score policy) WITHOUT retraining the model. READ layer works on any repo, free: metaharness_score (5-dim readiness) + metaharness_oia_audit (security + drift). WRITE layer metaharness_evolve mutates one policy surface at a time, sandbox-tests each variant, and keeps only measured winners — needs OPENROUTER_API_KEY (already set on this machine) + a repo with a test command (else sandbox=mock demonstrates the loop end-to-end).
+• AGENTIC-QE — an on-demand test + quality fleet: test_generate_enhanced, coverage_analyze_sublinear, security_scan_comprehensive, accessibility_test, qe_qx_analyze (quality-experience). ALWAYS verify a QE tool's output against the real artifact before relaying a score — qe_qx_analyze returns templated defaults on a remote URL and will hand you a false grade.
+
+ONE-LINE TRIGGERS to surface to the user (tell them they can just type these): "score my harness" · "evolve my harness" · "audit my harness" · "QE this" / "test this" / "check coverage".
+
+TEACHING FORK — the FIRST time either comes up in a session, name it in one plain line then ASK: "Want me to explain how this works, or are you confident and I just run it?" If confident -> run it, no lecture. If they want more -> ONE paragraph: what it is, how it works (freeze the model -> mutate harness policy -> sandbox-score -> promote only measured wins), how it's wired (global MCP tools, any repo, nothing to install per project), and that the ONE thing needed to unlock the self-improvement loop is an OpenRouter API key. A newcomer gets one plain line; an expert gets none.
 EOF
 fi
 
