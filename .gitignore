@@ -57,3 +57,6 @@ data/described-baseline-results.json
 # but DO commit the public signing key — it is the installer trust root
 !keys/
 !keys/*.pub.pem
+
+# vitest coverage output (build artifact)
+coverage/
