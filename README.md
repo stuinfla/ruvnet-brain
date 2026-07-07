@@ -11,7 +11,7 @@
 [![plugin version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fstuinfla%2Fruvnet-brain%2Fmain%2Fplugin%2F.claude-plugin%2Fplugin.json&query=%24.version&label=plugin&color=e8a13a&style=flat-square)](plugin/.claude-plugin/plugin.json)
 [![installer version](https://img.shields.io/npm/v/ruvnet-brain?label=installer%20%28npm%29&color=2e7d32&style=flat-square)](https://www.npmjs.com/package/ruvnet-brain)
 [![download](https://img.shields.io/badge/download-512MB%20brain-2e7d32?style=flat-square)](https://github.com/stuinfla/ruvnet-brain/releases/latest)
-[![explainer](https://img.shields.io/badge/▶%20see%20it%20live-ruvnet--brain.vercel.app-e8a13a?style=flat-square)](https://ruvnet-brain.vercel.app)
+[![explainer](https://img.shields.io/badge/▶%20see%20it%20live-ruvnet--brain.vercel.app-e8a13a?style=flat-square)](https://isovision.ai/ruvnet-brain/)
 [![license](https://img.shields.io/badge/license-MIT-8ecae6?style=flat-square)](LICENSE)
 [![grounded](https://img.shields.io/badge/answers-cited%20rUv%20source-333?style=flat-square)](#testing--proof)
 
@@ -22,11 +22,11 @@
 
 <sub>Built by **[Stuart Kerr](https://isovision.ai)** at [Isovision.ai](https://isovision.ai) · free & fair use, to help everyone leverage the high end of agentic coding.</sub>
 
-### [▶ Come see it visually explained](https://ruvnet-brain.vercel.app)
+### [▶ Come see it visually explained](https://isovision.ai/ruvnet-brain/)
 
 <sub>An interactive, animated walkthrough of what you can actually build — **click the preview** to open it.</sub>
 
-[![The RuvNet Brain interactive explainer — click to open the visual walkthrough](assets/explainer-preview.png)](https://ruvnet-brain.vercel.app)
+[![The RuvNet Brain interactive explainer — click to open the visual walkthrough](assets/explainer-preview.png)](https://isovision.ai/ruvnet-brain/)
 
 </div>
 
@@ -237,7 +237,7 @@ This is a **`-dev`** project (see the live version badge up top for the exact pl
 - `plugin/` — the Claude Code plugin (MCP server, grounding skill, `UserPromptSubmit` enforcement hook, marketplace manifest, test suite).
 - `scripts/` — `gate.sh` (routing gate), `behavioral-l1-l4.mjs` (behavioral harness), `prove.mjs`, `build-bundle.mjs`, `brain-stamp.mjs`.
 - `docs/` — [`VISION.md`](docs/VISION.md) (the why), [`adr/`](docs/adr/) (locked decisions incl. ADR-0008), [`DDD.md`](docs/DDD.md).
-- `explainer/` — the source of the [live explainer](https://ruvnet-brain.vercel.app).
+- `explainer/` — the source of the [live explainer](https://isovision.ai/ruvnet-brain/).
 - `SPEC.md` · `PROGRESS.md` — the master spec and the living, timestamped build log.
 
 The brain binaries ship via the [Release](https://github.com/stuinfla/ruvnet-brain/releases/tag/v0.5.0-dev), not git — a fresh clone is lightweight; `npx` fetches the 512 MB bundle.
@@ -246,7 +246,7 @@ The brain binaries ship via the [Release](https://github.com/stuinfla/ruvnet-bra
 
 ## Links
 
-- **▶ Live explainer:** https://ruvnet-brain.vercel.app
+- **▶ Live explainer:** https://isovision.ai/ruvnet-brain/
 - **Download / Release:** https://github.com/stuinfla/ruvnet-brain/releases/tag/v0.5.0-dev
 - **rUv's RuvNet org:** https://github.com/ruvnet
 - **Built by:** [Stuart Kerr — Isovision.ai](https://isovision.ai)
