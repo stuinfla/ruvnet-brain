@@ -4,8 +4,8 @@
 # Phase B: ruvector sharded across 4 embed processes, then one ingest.
 # Honest: these are LOCAL embedding processes (no Ruflo agents involved). Progress in kb/big-*.log
 set -u
-cd /Users/stuartkerr/Code/ruvnet-brain/kb || exit 1
-export KB_MODEL_CACHE=/Users/stuartkerr/Code/PowerPlatePulse/scripts/models-cache
+cd "${0:a:h}" || exit 1   # run from this script's own dir (the kb/ folder), wherever the repo lives
+export KB_MODEL_CACHE="${KB_MODEL_CACHE:-$HOME/.cache/ruvnet-brain/models-cache}"   # honor an existing KB_MODEL_CACHE; else a home-relative default
 export OMP_NUM_THREADS=4   # cap per-process threads so 7 concurrent procs share 16 cores without thrash
 ts() { date "+%H:%M:%S"; }
 echo "[$(ts)] BIG-BUILD-ALL start (cache=$KB_MODEL_CACHE)"

@@ -45,17 +45,19 @@ auto-wires everything · **visuals** are a gated build step, not an afterthought
 
 ## 4. HONEST grade against that ultimate bar: ~30 / 100 (as of 2026-06-28)
 Per the no-inflated-scores rule. The brain (grounding floor) is real and strong; the autonomous loop — the
-bulk of the vision — is **unbuilt**. Breakdown: anti-drift grounding 65 (but 19/~248 repos + passive, not
+bulk of the vision — is **unbuilt**. Breakdown: anti-drift grounding 65 (but only partial org coverage at the time — see `data/manifest.json` for current counts — + passive, not
 enforced) · drop-in global install 15 · autonomous build-from-ADR 10 · generalized score-to-98 loop 20 ·
 auto-visuals 35 · Ruflo-orchestration integration 20. The foundation FOR the product is ~70; the product
 itself ~30. **We are at base camp with a proven base; the climb (ADR-0008) is next.**
 
 ## 5. What is DONE and PROVEN (Phase 1 — the brain)
 - **`dist/ruvnet-brain.zip`** (SHA-stamped, acceptance-tested as a real consumer: unzip → npm i → ask).
-- **19 repos loaded** (of ~248): agent-harness-generator, agentdb, agentic-flow, agenticow, cve-bench, daa,
-  dspy.ts, fact, helix, qudag, ruflo, rulake, rupixel, ruv-fann, ruvector, ruview, safla, sparc, synthlang +
-  a **concepts store** (L2 + primers). ≈75,000 chunks total. The other ~229 are roadmap;
-  `scripts/self-update.mjs --include-new` deep-walks any on demand.
+- **Building-block repos loaded** — the reusable pieces of rUv's stack, each deep-walked into per-repo
+  `.rvf` + `.big.rvf` stores, plus a **concepts store** (L2 + primers). For the exact repos, their
+  per-repo commit SHAs, and current coverage + chunk counts, see the live stamp in `data/manifest.json`
+  (hardcoded totals here go stale). The rest of the ~248-repo org is roadmap;
+  `scripts/self-update.mjs --include-new` deep-walks any on demand, and `scripts/ingest-repo.mjs` pulls
+  one in on the spot.
 - Both embedding variants (MiniLM-384 + bge-768), all reconcile + pass the anti-regression guard.
 - **3-vendor ground-truth grade** (the **graded core of 5** — ruflo, ruvector, agentdb, rulake, ruview):
   REAL-USE 63–85, **0 hallucinated citations** on tuned AND held-out sets. Primers now exist for all 19, so
@@ -65,7 +67,7 @@ itself ~30. **We are at base camp with a proven base; the climb (ADR-0008) is ne
   also won't INVENT capabilities. KEY INSIGHT: the cross-encoder trusts PROSE that describes a capability but
   under-scores CODE that implements it → prose capability statements are the fix.
 - **Cross-repo tool:** `kb/forge-ask-all.mjs` (CLI) + `kb/forge-mcp-all.mjs` (MCP tool `search_ruvnet`).
-- **Explainer LIVE & public:** https://explainer-stuart-kerrs-projects.vercel.app
+- **Explainer LIVE & public:** https://ruvnet-brain.vercel.app
 - **Nightly self-update** installed (LaunchAgent, 3:15 AM, safe-scope: rebuilds changed built-repos only).
 
 ## 6. What is NEXT (Phase 2 — ADR-0008, tasks #12–#17)
@@ -87,8 +89,9 @@ require explicit approval.
 
 ## 8. Locked architectural decisions (don't regress — see docs/adr/)
 ADR-0001 zip bundle not single file · 0002 ground-truth+multivendor gate · 0003 point-deeper retrieval ·
-0004 effectiveness-first · 0005 behavioral grounding via retrieve-and-inject + PreToolUse hard-deny + Stop
-judge + drift SLO (the anti-drift enforcement) · 0006 segment-per-repo · 0007 tiered scope (T0–T3) ·
+0004 effectiveness-first · 0005 behavioral grounding — **only retrieve-and-inject shipped: a strong
+grounding nudge, not a hard block** (the also-decided PreToolUse hard-deny, Stop judge, and drift SLO are
+NOT implemented — reconciled in docs/adr/0005 per ADR-0009) · 0006 segment-per-repo · 0007 tiered scope (T0–T3) ·
 **0008 the autonomous engineering loop (Ruflo decides / Claude acts / brain grounds)**.
 
 ## 9. Where everything lives (repo-relative)

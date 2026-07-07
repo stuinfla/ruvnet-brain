@@ -8,7 +8,7 @@
 // Emits a JSON report + console summary with REAL NUMBERS. Never claims PASS itself — prints the data.
 //
 //   node scripts/brain-grade-groundtruth.mjs --name ruflo --variant big \
-//        --questions kb/questions.ruflo.json --repo /Users/stuartkerr/Code/ruvnet-repos/ruflo
+//        --questions kb/questions.ruflo.json --repo ../ruvnet-repos/ruflo   (or set RUVNET_REPO)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +21,7 @@ const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && proc
 const NAME = arg('--name', 'ruflo');
 const VARIANT = arg('--variant', 'big');
 const QFILE = arg('--questions', path.join(ROOT, 'kb/questions.ruflo.json'));
-const REPO = arg('--repo', '/Users/stuartkerr/Code/ruvnet-repos/ruflo');
+const REPO = arg('--repo', process.env.RUVNET_REPO || path.join(ROOT, '..', 'ruvnet-repos', NAME));
 const MODELS = (arg('--models', 'openai/gpt-4o-mini,deepseek/deepseek-chat,meta-llama/llama-3.3-70b-instruct')).split(',').map(s => s.trim()).filter(Boolean);
 
 // OpenRouter key (presence already confirmed) — read from env or Ask-Ruvnet .env; never logged.

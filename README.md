@@ -100,6 +100,18 @@ Registers the `search_ruvnet` MCP tool, the grounding skill, and the `UserPrompt
 
 ---
 
+## Staying current — how updates work
+
+You install once. After that, three mechanisms keep you on the current brain without you having to remember an update command.
+
+- **Consent-gated auto-update heartbeat** (the `SessionStart` hook, `plugin/scripts/session-start.sh`). The **first** time the plugin runs on a machine it asks you **once** whether it may keep itself updated in the background — a security-conscious opt-in, because self-update can change the model's own instructions. Your answer is remembered (`~/.cache/ruvnet-brain/.auto-update-pref`) and never asked again. On each session start it does a rate-limited (~15 min) 3s-capped check of the live GitHub `plugin.json`. If a newer plugin version exists **and** you opted in, it downloads it in the background through Claude Code's own trusted marketplace path — but the new version is **staged, not active**: Claude Code only loads plugins at process start, so **this session keeps running the version it started with** until you restart (`claude --continue` brings your conversation right back on the new version). If you declined, it just tells you the command to run. The 512 MB knowledge bundle is handled more conservatively — **detect + notify only**, never auto-applied, because the bundle isn't cryptographically signed yet and applying it would overwrite executable tool files (SEC-0010 #6).
+
+- **Stack watchdog status footer** (the `UserPromptSubmit` hook's always-on Gate 0, `plugin/scripts/ground-ruvnet.sh`). Every response ends with one dim status line — e.g. `🧠 RuvNet Brain v1.11.0-dev · Ruflo: yes · AgentDB memory: on` — read from **filesystem ground truth**, not impressions. The version shown is always the one **actually loaded in memory** for this session; if a newer version is staged awaiting a restart, the line says so plainly (`… vX staged, restart to load`). So you never have to wonder whether the brain is on, which version is acting, or whether project memory is wired.
+
+- **Nightly publish → `releases/latest` chain** (`scripts/self-update.mjs --publish`, run by the `deploy/com.ruvnet.brain-nightly.plist` LaunchAgent at 03:15). The nightly rebuilds only the repos whose upstream changed, and **if anything was rebuilt** it bumps the product version, cuts a GitHub Release, and advances [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest). Plugin and knowledge bundle move under **one** version number, so the heartbeat above picks up both automatically. (The LaunchAgent is not auto-installed — enabling a system scheduler needs explicit owner approval.)
+
+---
+
 ## ✨ What the knowledge bundle knows — the stack _down to the code_
 
 Earlier bundles knew the **docs and architecture**. The current bundle re-indexes the code-rich repos to **full function bodies**, against each repo's real source layout — so “how is this actually implemented?” returns the implementation, not a summary:

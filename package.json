@@ -1,7 +1,7 @@
 {
   "name": "ruvnet-brain",
   "version": "1.11.0-dev",
-  "description": "One-command installer for RuvNet Brain \u2014 a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
+  "description": "One-command installer for RuvNet Brain — a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
   "type": "module",
   "bin": {
     "ruvnet-brain": "bin/install.mjs"
@@ -9,7 +9,9 @@
   "scripts": {
     "test": "node plugin/test/run-tests.mjs",
     "version:check": "node scripts/sync-version.mjs --check",
-    "version:sync": "node scripts/sync-version.mjs"
+    "version:sync": "node scripts/sync-version.mjs",
+    "test:unit": "vitest run",
+    "test:cov": "vitest run --coverage"
   },
   "files": [
     "bin/install.mjs",
@@ -39,5 +41,9 @@
   },
   "homepage": "https://github.com/stuinfla/ruvnet-brain#readme",
   "bugs": "https://github.com/stuinfla/ruvnet-brain/issues",
-  "author": "Stuart Kerr"
+  "author": "Stuart Kerr",
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.10",
+    "vitest": "^4.1.10"
+  }
 }

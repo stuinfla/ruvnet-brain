@@ -50,3 +50,6 @@ data/described-baseline-results.json
 
 # agentic-qe local runtime state (memory.db, dream engine) — not our source
 .agentic-qe/
+
+# bundle-signing private key (Ed25519) — NEVER commit; public key in keys/ is committed
+.secrets/

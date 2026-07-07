@@ -23,6 +23,10 @@ jobs:
         # SKIPS — now LOUDLY (run-tests prints "CORE CAPABILITY BATTERY SKIPPED" so green never
         # masquerades as "the brain works"). This fast job covers structure/hook/guard only.
         run: npm test
+      - name: Unit tests + coverage (vitest)
+        run: |
+          npm i --no-audit --no-fund --loglevel=error
+          npm run test:cov
       - name: Injection-guard unit test
         run: node kb/test-guard-injection.mjs
       - name: Dependency audit (high+ severity fails)

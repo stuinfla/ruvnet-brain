@@ -15,7 +15,7 @@ const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && proc
 const NAME = arg('--name', 'ruflo'), VARIANT = arg('--variant', 'big');
 const GEN_MODEL = arg('--gen', 'anthropic/claude-3.5-sonnet');
 const JUDGES = ['openai/gpt-4o-mini', 'deepseek/deepseek-chat', 'meta-llama/llama-3.3-70b-instruct'];
-const REPO = '/Users/stuartkerr/Code/ruvnet-repos/ruflo';
+const REPO = process.env.RUVNET_REPO || path.join(ROOT, '..', 'ruvnet-repos', NAME);
 const KEY = process.env.OPENROUTER_API_KEY || (fs.readFileSync((process.env.RUVNET_ENV_FILE || '.env'), 'utf8').match(/^OPENROUTER_API_KEY=(.+)$/m) || [])[1]?.trim();
 
 // Per-repo synthesis topics: prefer kb/l2-topics.<name>.json ([{slug,q},...] — the graded synthesis

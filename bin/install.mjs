@@ -18,6 +18,25 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
+import crypto from 'node:crypto';
+
+// SEC-0010 #6 — the Ed25519 PUBLIC key is EMBEDDED here (not a separate file) so the installer's
+// trust root travels with the installer code itself: an attacker who swaps the downloaded bundle
+// cannot also swap the key the installer checks it against. Rotate via `node scripts/sign-bundle.mjs
+// --gen-key` and paste the new keys/…pub.pem here. Verify logic mirrors scripts/verify-bundle.mjs.
+const SIGNING_PUBKEY_PEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAgse9TAtehXUvUfTrJFY2CCHiCbmelR8yCgS//sen5/w=
+-----END PUBLIC KEY-----`;
+function verifyBundle(bundlePath, sigPath) {
+  try {
+    if (!fs.existsSync(bundlePath)) return { ok: false, reason: `bundle not found: ${bundlePath}` };
+    if (!fs.existsSync(sigPath)) return { ok: false, reason: `signature missing (fail-closed)` };
+    const digest = crypto.createHash('sha256').update(fs.readFileSync(bundlePath)).digest('hex');
+    const pub = crypto.createPublicKey(SIGNING_PUBKEY_PEM);
+    const ok = crypto.verify(null, Buffer.from(digest, 'hex'), pub, fs.readFileSync(sigPath));
+    return ok ? { ok: true, reason: `signature valid (sha256 ${digest.slice(0, 12)}…)` } : { ok: false, reason: 'signature does NOT match — bundle may be tampered' };
+  } catch (e) { return { ok: false, reason: `verify error: ${e.message}` }; }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -293,19 +312,31 @@ async function obtainBundle(release) {
   );
   info(`version: ${c.bold((release && release.tag) || RELEASE_VERSION)}`);
   info(`from: ${downloadUrl}`);
-  const tmp = path.join(os.tmpdir(), `ruvnet-brain-${process.pid}.zip`);
+  // Download into a PRIVATE, per-run temp DIR — never a predictable os.tmpdir()/ruvnet-brain-<pid>.zip
+  // filename (CWE-377: a guessable path invites a pre-created or symlinked file at that location to be
+  // clobbered, or the extraction target to be hijacked). mkdtempSync creates a fresh, unguessable,
+  // owner-only (0700) directory; we write the zip inside it. The exit handler guarantees the whole dir
+  // is removed on ANY exit — success, thrown error, or die()→process.exit — and the caller also removes
+  // it immediately on success so ~512MB isn't held for the rest of the install.
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-brain-'));
+  process.on('exit', () => { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ } });
+  const tmp = path.join(tmpDir, ASSET_NAME);
   try {
     console.log(`    downloading the brain (${APPROX_SIZE})…`);
     await download(downloadUrl, tmp);
   } catch (e) {
-    try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
     die(
       `couldn't download the brain (${e.message}).`,
       `Check your connection, then re-run. Or, if you have a repo clone, build the bundle locally\n(${c.bold('node scripts/build-bundle.mjs')}) and run ${c.bold('node bin/install.mjs --local')}.`,
     );
   }
   ok(`downloaded to ${tmp}`);
-  return { zipPath: tmp, downloaded: true };
+  // Best-effort fetch of the detached Ed25519 signature published alongside the asset (SEC-0010 #6).
+  // If present we verify it before extracting; if absent (a pre-signing release) we warn but proceed
+  // (transitional — see SIGNING_REQUIRED at the verify gate).
+  try { await download(`${downloadUrl}.sig`, `${tmp}.sig`); } catch { /* no published sig yet */ }
+  return { zipPath: tmp, tmpDir, downloaded: true };
 }
 
 // ── step: unzip into the cache dir (flattening the top-level ruvnet-brain/ folder) ───────────────
@@ -934,10 +965,31 @@ It is safe to re-run at any time. After installing, restart Claude Code so the g
     const localZipPresent =
       FLAG_LOCAL || fs.existsSync(path.join(REPO_ROOT, 'dist', 'ruvnet-brain.zip'));
     const release = localZipPresent ? null : await resolveRelease();
-    const { zipPath, downloaded } = await obtainBundle(release);
+    const { zipPath, tmpDir, downloaded } = await obtainBundle(release);
+    // Verify the Ed25519 signature BEFORE extracting a downloaded bundle into the user's config
+    // (SEC-0010 #6 — trust root = keys/ruvnet-brain-signing.pub.pem shipped inside this package).
+    // SIGNING_REQUIRED is transitional: while releases predate signing, a MISSING sig warns-and-proceeds
+    // but a PRESENT-but-INVALID sig ALWAYS fails closed. Flip to true once every release is signed.
+    const SIGNING_REQUIRED = false;
+    if (downloaded && !FLAG_NO_VERIFY) {
+      const sigPath = `${zipPath}.sig`;
+      const hasSig = fs.existsSync(sigPath);
+      if (!hasSig && !SIGNING_REQUIRED) {
+        warn('this release is not signed yet — proceeding (bundle integrity not cryptographically verified)');
+      } else {
+        step('Verifying the bundle signature', 'so a tampered or MITM-swapped download can never be extracted');
+        const { ok: valid, reason } = verifyBundle(zipPath, sigPath);
+        if (!valid) {
+          try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+          die(`bundle signature check FAILED — ${reason}`,
+              `Refusing to extract an unverified bundle. Re-run to fetch a fresh copy; if it persists, the\nrelease may be tampered — report it. (Override at your own risk with ${c.bold('--no-verify')}.)`);
+        }
+        ok(reason);
+      }
+    }
     unzipInto(zipPath, cacheDir);
-    if (downloaded) {
-      try { fs.rmSync(zipPath, { force: true }); } catch { /* leave temp behind, not fatal */ }
+    if (downloaded && tmpDir) {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* leave temp behind, not fatal */ }
     }
   }
 
