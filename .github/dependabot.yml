@@ -1,0 +1,44 @@
+# Dependabot — weekly npm dependency updates for this repo's OWN manifests only.
+#
+# The project ships two npm surfaces:
+#   /      repo-root build/QA tooling (devDependencies)
+#   /kb    the self-contained knowledge-base runtime (@ruvector/rvf + @xenova/transformers)
+#
+# The vendored repo snapshots under clones/** and the build artifact under dist/** are
+# deliberately NOT listed: they are indexed *source*, not dependencies we maintain, so
+# Dependabot must never open PRs against them. Dependabot only scans the exact `directory`
+# values below, so those trees are excluded by omission.
+#
+# NOTE: the embedder MODEL-WEIGHT pin (the HuggingFace commit SHAs pinned in kb/forge-ask.mjs,
+# forge-big.mjs, forge-build.mjs, forge-rerank.mjs) is independent of the npm package version.
+# A Dependabot bump of @xenova/transformers changes the loader code, never the pinned model
+# revision, so review such PRs for loader-API compatibility with the pinned weights.
+version: 2
+updates:
+  # Repo root — build / QA tooling (devDependencies).
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      root-npm:
+        patterns:
+          - "*"
+
+  # kb/ — knowledge-base runtime (RVF vector store + Xenova embedder).
+  - package-ecosystem: "npm"
+    directory: "/kb"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      kb-npm:
+        patterns:
+          - "*"

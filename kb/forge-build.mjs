@@ -363,7 +363,13 @@ const { T, modelCache: MODEL_CACHE, via: tVia } = await loadTransformers();
 const { haveLocalModel } = configureModel(T, MODEL_CACHE);
 console.log('\n[forge] transformers via:', tVia);
 console.log('[forge] embedder:', haveLocalModel ? `local cache ${MODEL_CACHE}` : `remote download (cache ${MODEL_CACHE})`);
-const embed = await T.pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { quantized: true });
+// MODEL-WEIGHT PIN: address MiniLM by an exact HuggingFace commit SHA rather than the floating
+// `main` branch, so every rebuild yields byte-identical 384-dim vectors to the shipped corpus
+// (verified live against the HF Hub API; main HEAD unchanged since 2025-07-22). Offline-first is
+// preserved — configureModel() above resolves an already-cached model via env.localModelPath
+// regardless of revision, so this never re-downloads a cached model, only pins the first fetch.
+const MINILM_REVISION = '751bff37182d3f1213fa05d7196b954e230abad9';
+const embed = await T.pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { quantized: true, revision: MINILM_REVISION });
 
 fs.rmSync(OUT_RVF, { force: true });
 fs.rmSync(OUT_RVF + '.idmap.json', { force: true });

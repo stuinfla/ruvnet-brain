@@ -11,15 +11,22 @@ import { fileURLToPath } from 'node:url';
 import { searchKb } from './forge-ask.mjs';
 import { loadTransformers } from './resolve-deps.mjs';
 
-const CE_MODEL = process.env.CE_MODEL || 'Xenova/ms-marco-MiniLM-L-6-v2';
+const DEFAULT_CE_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
+const CE_MODEL = process.env.CE_MODEL || DEFAULT_CE_MODEL;
+// MODEL-WEIGHT PIN: when using the DEFAULT cross-encoder, pin it to an exact HuggingFace commit SHA
+// instead of the floating `main` branch so reranking is reproducible and cannot silently shift under
+// an upstream re-publish (verified live against the HF Hub API; main HEAD unchanged since 2025-06-30).
+// If the operator overrides CE_MODEL via env we do NOT force this SHA (it belongs to the default
+// model) and fall back to `main` for the custom model.
+const CE_REVISION = CE_MODEL === DEFAULT_CE_MODEL ? 'a09144355adeed5f58c8ed011d209bf8ee5a1fec' : 'main';
 let _ce = null;
 async function loadCE() {
   if (_ce) return _ce;
   const { T } = await loadTransformers();   // same resolver as forge-ask (KB node_modules / XENOVA_PATH), not a bare import
   if (process.env.KB_MODEL_CACHE) { T.env.cacheDir = process.env.KB_MODEL_CACHE; T.env.localModelPath = process.env.KB_MODEL_CACHE; }
   T.env.allowRemoteModels = true;
-  const tok = await T.AutoTokenizer.from_pretrained(CE_MODEL);
-  const model = await T.AutoModelForSequenceClassification.from_pretrained(CE_MODEL, { quantized: true });
+  const tok = await T.AutoTokenizer.from_pretrained(CE_MODEL, { revision: CE_REVISION });
+  const model = await T.AutoModelForSequenceClassification.from_pretrained(CE_MODEL, { quantized: true, revision: CE_REVISION });
   _ce = { T, tok, model };
   return _ce;
 }

@@ -26,6 +26,12 @@ import readline from 'node:readline';
 import { loadRvf, loadTransformers, chooseModelCache } from './resolve-deps.mjs';
 
 const MODEL = 'Xenova/bge-base-en-v1.5';
+// MODEL-WEIGHT PIN: address the embedder by an exact HuggingFace commit SHA, not the floating `main`
+// branch, so a rebuild always produces the SAME 768-dim vectors as the shipped corpus (verified live
+// against the HF Hub API; main HEAD unchanged since 2025-07-29). Offline-first is preserved — a
+// locally-cached model is resolved via env.localModelPath regardless of revision, so this never
+// forces a re-download of an already-cached model, only makes the first fetch deterministic.
+const MODEL_REVISION = '4d6cd88e18e51a5e020c2c305726d76ada9c03cf';
 const DIM = 768;
 const POOLING = 'cls';
 const QUERY_PREFIX = 'Represent this sentence for searching relevant passages: ';
@@ -53,8 +59,8 @@ async function getEmbedder() {
   const cache = chooseModelCache();
   T.env.localModelPath = cache;
   T.env.allowRemoteModels = !fs.existsSync(path.join(cache, MODEL));
-  console.log(`[big] transformers via ${via} | model ${MODEL} | cache ${cache} (${T.env.allowRemoteModels ? 'will download' : 'local'})`);
-  _fe = await T.pipeline('feature-extraction', MODEL, { quantized: true });
+  console.log(`[big] transformers via ${via} | model ${MODEL}@${MODEL_REVISION} | cache ${cache} (${T.env.allowRemoteModels ? 'will download' : 'local'})`);
+  _fe = await T.pipeline('feature-extraction', MODEL, { quantized: true, revision: MODEL_REVISION });
   return _fe;
 }
 async function embedTexts(texts) {

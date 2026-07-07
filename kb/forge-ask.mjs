@@ -33,6 +33,24 @@ if (process.env.KB_DEBUG) console.error(`[forge-ask] @ruvector/rvf via: ${rvfVia
 // Mac bundle auto-uses the sharp one.
 const MINILM_CFG = { model: 'Xenova/all-MiniLM-L6-v2', pooling: 'mean', normalize: true, queryPrefix: '' };
 
+// ---------- MODEL-WEIGHT PIN (supply-chain / reproducibility) ----------
+// @xenova/transformers loads ONNX model weights from HuggingFace addressed by git `revision`. The
+// library DEFAULT is the floating `main` branch, so an upstream re-publish could silently ship
+// different weights and thereby shift EVERY query embedding — de-aligning queries from the pre-built
+// corpus and quietly degrading answers with no error. We therefore pin each embedder to the EXACT
+// commit SHA the shipped corpus was built against (verified live against the HF Hub API).
+//   Xenova/all-MiniLM-L6-v2  384-dim (small build)  main HEAD unchanged since 2025-07-22
+//   Xenova/bge-base-en-v1.5  768-dim (big build)    main HEAD unchanged since 2025-07-29
+// Offline-first is fully preserved: transformers.js resolves an already-cached model from
+// `env.localModelPath` WITHOUT consulting the revision (hub.js builds localPath from repo/filename
+// only), so a pinned SHA never forces a re-download of a model that is already local — it only makes
+// the FIRST remote download on a fresh machine deterministic. A model not in this map falls back to
+// `main` (unpinned) rather than failing, so custom/extra embedders still load.
+const PINNED_REVISIONS = {
+  'Xenova/all-MiniLM-L6-v2': '751bff37182d3f1213fa05d7196b954e230abad9',
+  'Xenova/bge-base-en-v1.5': '4d6cd88e18e51a5e020c2c305726d76ada9c03cf',
+};
+
 function variantPaths(dir, name, variant) {
   const tag = variant === 'big' ? '.big' : '';
   const rvf = path.join(dir, `${name}${tag}.rvf`);
@@ -63,9 +81,13 @@ async function getEmbedder(model) {
   if (_feCache.has(model)) return _feCache.get(model);
   const { T, modelCache, via } = await loadTransformers();
   T.env.localModelPath = modelCache;
+  // Local-first network guard: a remote fetch is permitted ONLY when THIS model is not already
+  // cached locally (offline once cached). When a fetch does happen it is pinned to the exact
+  // revision below, so the weights can never silently change under us.
   T.env.allowRemoteModels = !fs.existsSync(path.join(modelCache, model));
-  if (process.env.KB_DEBUG) console.error(`[forge-ask] transformers via: ${via} | model ${model} | cache: ${modelCache} (${T.env.allowRemoteModels ? 'remote' : 'local'})`);
-  const fe = await T.pipeline('feature-extraction', model, { quantized: true });
+  const revision = PINNED_REVISIONS[model] || 'main';
+  if (process.env.KB_DEBUG) console.error(`[forge-ask] transformers via: ${via} | model ${model}@${revision} | cache: ${modelCache} (${T.env.allowRemoteModels ? 'remote' : 'local'})`);
+  const fe = await T.pipeline('feature-extraction', model, { quantized: true, revision });
   _feCache.set(model, fe);
   return fe;
 }
