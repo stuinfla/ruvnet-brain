@@ -6,8 +6,8 @@
 
   <!-- Primary SEO -->
   <title>RuvNet Brain for Claude Code — the source-grounded rUv stack, by Isovision.ai</title>
-  <meta name="description" content="RuvNet Brain for Claude Code, by Isovision.ai: a downloadable brain that grounds Claude in Reuven Cohen's (rUv's) real RuvNet source — RuVector, Ruflo, AgentDB, SPARC — so you build on the front edge of AI without drift. Distinct from rUv's own RuVector Brain. Install: npx github:stuinfla/ruvnet-brain." />
-  <meta name="keywords" content="RuvNet, rUv, Reuven Cohen, RuVector, RVF, ruflo, AgentDB, RuLake, SPARC, Claude Code plugin, MCP, vector search, source-grounded AI, capability cards" />
+  <meta name="description" content="RuvNet Brain for Claude Code, by Isovision.ai: a downloadable brain that grounds Claude in Reuven Cohen's (rUv's) real RuvNet source — RuVector, Ruflo, AgentDB, SPARC — and now RUNS two of his hardest tools for you: MetaHarness (self-improve + cost-optimize, ~56× cheaper than frontier-only) and a QE testing fleet, invoked in plain English. Build on the front edge without drift. Distinct from rUv's own RuVector Brain. Install: npx github:stuinfla/ruvnet-brain." />
+  <meta name="keywords" content="RuvNet, rUv, Reuven Cohen, RuVector, RVF, ruflo, AgentDB, RuLake, SPARC, MetaHarness, Darwin evolution, agentic-qe, QE testing, cost-optimal model routing, Claude Code plugin, MCP, vector search, source-grounded AI" />
   <meta name="author" content="Stuart Kerr — RuvNet ecosystem by Reuven Cohen (@ruvnet)" />
   <meta name="robots" content="index,follow" />
   <meta name="theme-color" content="#0a0c10" />
@@ -70,7 +70,7 @@
     "softwareVersion": "0.5.0-dev",
     "datePublished": "2026-06-30",
     "dateModified": "2026-07-07",
-    "description": "A downloadable, source-grounded brain for Claude Code that grounds the AI in rUv's real RuvNet source — RuVector/RVF, ruflo, AgentDB, RuLake, SPARC and 21 building blocks — so a newcomer can build on the front edge of AI without name-blind drift. Ships a single MCP tool, search_ruvnet.",
+    "description": "A downloadable, source-grounded brain for Claude Code that grounds the AI in rUv's real RuvNet source — RuVector/RVF, ruflo, AgentDB, RuLake, SPARC and 21 building blocks — and pre-implements two of rUv's hardest tools so you can run them in plain English: MetaHarness (harness self-improvement + cost-optimal model routing, ~56x cheaper than frontier-only) and an Agentic-QE testing fleet. Ships the search_ruvnet MCP tool plus grounding hooks.",
     "url": "https://ruvnet-brain.vercel.app/",
     "downloadUrl": "https://github.com/stuinfla/ruvnet-brain/releases/latest",
     "installUrl": "https://www.npmjs.com/package/ruvnet-brain",
@@ -194,6 +194,17 @@
     .chip .ds{font-size:12.5px;color:var(--faint);margin-top:4px;line-height:1.45}
     .chip::after{content:"";position:absolute;left:0;top:0;height:2px;width:0;background:var(--amber);transition:width .3s}
     .chip:hover::after{width:100%}
+    .chip .run{position:absolute;top:9px;right:9px;font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;color:var(--amber);border:1px solid rgba(255,176,0,.42);border-radius:5px;padding:1px 5px}
+
+    /* run — pre-wired tools */
+    .run-lede{color:var(--dim);font-size:15px;margin:0 0 14px}
+    .card .src{color:var(--faint);font-weight:400}
+    .triggers{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:18px;padding-top:15px;border-top:1px dashed var(--line)}
+    .triggers .tlabel{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+    .run-foot{max-width:760px;margin:28px auto 0;color:var(--dim);font-size:16px;text-align:center}
+    .run-foot .dimnote{display:block;margin-top:8px;color:var(--faint);font-size:13.5px;font-family:var(--mono)}
+    #run .stack li{align-items:flex-start}
+    #run .stack .chk{margin-top:2px;flex:none}
 
     /* how */
     .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;counter-reset:s}
@@ -220,6 +231,7 @@
       <div class="brand"><span class="dot"></span>RuvNet&nbsp;Brain</div>
       <nav>
         <a class="navlink" href="#problem">the drift</a>
+        <a class="navlink" href="#run">runs for you</a>
         <a class="navlink" href="#ecosystem">coverage</a>
         <a class="navlink" href="#how">how it works</a>
         <a class="navlink" href="https://github.com/stuinfla/ruvnet-brain">github ↗</a>
@@ -322,13 +334,47 @@
     </div>
   </section>
 
+  <!-- RUN — pre-wired tools you invoke in plain English -->
+  <section id="run">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <div class="label">Pre-wired power</div>
+        <h2>Two of rUv's hardest tools — already wired to <em>run</em>.</h2>
+        <p>The brain doesn't just <b>read</b> rUv's source. Two of his most powerful tools ship <b>pre-implemented</b> — you invoke them in a plain sentence and the brain runs them for you. No mastery required.</p>
+      </div>
+      <div class="ba">
+        <div class="card good rv">
+          <h3>◇ MetaHarness — self-improve &amp; cost-optimize</h3>
+          <p class="run-lede">"Freeze the model, evolve the harness." It tunes the setup <em>around</em> Claude and routes work through cheaper models — escalating to a frontier model only when it has to.</p>
+          <ul class="stack">
+            <li><span class="chk">→</span><span><b>~56× cheaper</b> than frontier-only, at comparable quality <span class="src">— rUv's SWE-bench cost-Pareto</span></span></li>
+            <li><span class="chk">→</span><span>Scores &amp; audits your setup on <b>any</b> repo — free, no key</span></li>
+            <li><span class="chk">→</span><span>Evolves it to a <b>measured</b> win — never ships an unproven change</span></li>
+          </ul>
+          <div class="triggers"><span class="tlabel">just say</span><span class="kbd">score my harness</span><span class="kbd">do this cheaper</span></div>
+        </div>
+        <div class="card good rv">
+          <h3>◇ QE fleet — testing on demand</h3>
+          <p class="run-lede">A quality-engineering fleet you summon with a sentence — it writes tests, measures coverage, and scans for security, accessibility &amp; experience gaps.</p>
+          <ul class="stack">
+            <li><span class="chk">→</span><span>Real tests without <b>you</b> wiring a test harness</span></li>
+            <li><span class="chk">→</span><span>Coverage · security · accessibility · experience</span></li>
+            <li><span class="chk">→</span><span>Findings verified against the <b>real</b> artifact before you act</span></li>
+          </ul>
+          <div class="triggers"><span class="tlabel">just say</span><span class="kbd">QE this</span><span class="kbd">check coverage</span></div>
+        </div>
+      </div>
+      <p class="run-foot rv">You never have to master MetaHarness or the QE fleet to use them — that's the point. Ask in plain English; the brain runs the tool and explains only if you want it to.<span class="dimnote">MetaHarness's cost-optimizing evolve step uses your OpenRouter key.</span></p>
+    </div>
+  </section>
+
   <!-- ECOSYSTEM -->
   <section id="ecosystem">
     <div class="wrap">
       <div class="sec-head rv">
         <div class="label">Coverage</div>
         <h2>The whole toolkit, gathered into one intelligence.</h2>
-        <p>Every building block of rUv's stack — deep-indexed from real source, not summaries.</p>
+        <p>Every building block of rUv's stack — deep-indexed from real source, not summaries. The ones marked <span class="mono" style="color:var(--amber)">▶ RUN</span> aren't just indexed — the brain operates them for you.</p>
       </div>
       <div class="eco-meta rv">
         <span><b>20</b> repos deep-indexed</span>
@@ -381,7 +427,7 @@
       ['RuVector / RVF','HNSW vectors · zero server'],
       ['AgentDB','local agent memory + KV'],
       ['agentic-flow','cost-optimal model routing'],
-      ['agentic-qe','51-agent quality engineering fleet'],
+      ['agentic-qe','quality-engineering test fleet',1],
       ['SPARC','spec→pseudocode→arch→refine→complete'],
       ['QuDAG','DAG task orchestration'],
       ['SAFLA','self-aware feedback loops'],
@@ -394,14 +440,14 @@
       ['dspy.ts','DSPy programs in TypeScript'],
       ['FACT · cve-bench','benchmark real-CVE repair'],
       ['open-claude-code','the agent runtime, opened up'],
-      ['agent-harness-generator','MetaHarness · Darwin evolution'],
+      ['agent-harness-generator','MetaHarness · Darwin evolution',1],
       ['rvm','rUv version manager'],
       ['rupixel','image generation pipeline'],
     ];
     var g = document.getElementById('ecoGrid');
     REPOS.forEach(function(r){
       var d=document.createElement('div'); d.className='chip rv';
-      d.innerHTML='<div class="nm">'+r[0]+'</div><div class="ds">'+r[1]+'</div>';
+      d.innerHTML=(r[2]?'<div class="run">▶ RUN</div>':'')+'<div class="nm">'+r[0]+'</div><div class="ds">'+r[1]+'</div>';
       g.appendChild(d);
     });
     // Staggered scroll reveal.
