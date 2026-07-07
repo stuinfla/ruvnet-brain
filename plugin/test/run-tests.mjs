@@ -96,9 +96,20 @@ function withServer(KB, fn) {
 
 // 3 & 4. launcher + capability battery
 const KB = process.env.RUVNET_BRAIN_KB || path.join(os.homedir(), '.cache', 'ruvnet-brain', 'kb');
+let brainSkipped = false; // QE-0011 tests#1: track so "skipped" can never masquerade as "passed"
 section('3. MCP launcher + 4. capability battery');
 if (!fs.existsSync(path.join(KB, 'forge-mcp-all.mjs'))) {
-  console.log(`  - SKIP: brain not found at ${KB} (set RUVNET_BRAIN_KB or symlink it). Sections 3–4 skipped.`);
+  brainSkipped = true;
+  console.log(`  ⚠️  CORE CAPABILITY BATTERY SKIPPED — brain not found at ${KB}.`);
+  console.log(`      The MCP launcher + the 9-question "never wrongly doubt a real capability" battery`);
+  console.log(`      did NOT run. This is structure/hook/guard coverage only, NOT the product guarantee.`);
+  // A fresh CI runner has no 512MB brain, so this skips there by default. Set REQUIRE_BRAIN=1 in a
+  // dedicated (nightly/release) job that restores a brain, so a skipped battery FAILS instead of
+  // silently green-lighting. Without it, the skip is loud but non-fatal (the fast PR job).
+  if (process.env.REQUIRE_BRAIN === '1') {
+    console.log(`      REQUIRE_BRAIN=1 set → treating a skipped battery as FAILURE.`);
+    failures.push('core capability battery skipped but REQUIRE_BRAIN=1');
+  }
   await finish();
 } else {
   const questions = readJson(process.env.CAP_QUESTIONS || 'test/capability-questions.json') || [];
@@ -128,7 +139,8 @@ if (!fs.existsSync(path.join(KB, 'forge-mcp-all.mjs'))) {
 async function finish() {
   section('summary');
   const total = pass + failures.length;
-  console.log(`\n${pass}/${total} checks passed.`);
+  const skipNote = brainSkipped ? '  ⚠️  (core capability battery SKIPPED — brain absent; structure/hook/guard only)' : '';
+  console.log(`\n${pass}/${total} checks passed.${skipNote ? '\n' + skipNote : ''}`);
   if (failures.length) { console.log('\nFAILURES:'); failures.forEach((f) => console.log('  - ' + f)); }
   process.exit(failures.length ? 1 : 0);
 }

@@ -18,7 +18,13 @@ jobs:
           node-version: '20'
       - name: Version single-source-of-truth (fails on any drift / stray literal)
         run: npm run version:check
-      - name: Structure + grounding-hook behavior + capability checks
+      - name: Structure + grounding-hook behavior (brain-independent)
+        # QE-0011 tests#1: on a fresh runner the 512MB brain is absent, so the capability battery
+        # SKIPS — now LOUDLY (run-tests prints "CORE CAPABILITY BATTERY SKIPPED" so green never
+        # masquerades as "the brain works"). This fast job covers structure/hook/guard only.
         run: npm test
       - name: Injection-guard unit test
         run: node kb/test-guard-injection.mjs
+      - name: Dependency audit (high+ severity fails)
+        # QE-0011 deps#5: catch a re-introduced CVE in the reader deps (protobufjs etc.).
+        run: cd kb && npm ci --no-audit --no-fund && npm audit --audit-level=high
