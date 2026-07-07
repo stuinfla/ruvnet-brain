@@ -1,41 +1,36 @@
 # ruvnet-brain — a RuvNet brain transplant for Claude Code
 
-One install gives Claude Code a **source-grounded brain over the RuvNet / rUv ecosystem** (19+ repos:
-Ruflo, RuVector, AgentDB, RuLake, RuView, agentic-flow, sparc, QuDAG, ruv-FANN, SAFLA, FACT, dspy.ts,
-SynthLang, daa, agent-harness-generator, agenticow, CVE-bench, helix, rupixel, …) **plus enforced
-grounding** so the model stops arguing about RuvNet and actually uses it.
+One install gives Claude Code a **source-grounded brain over Reuven Cohen's (rUv's) RuvNet ecosystem**
+(Ruflo, RuVector/RVF, AgentDB, RuLake, RuView, agentic-flow, SPARC, QuDAG, ruv-fann, SAFLA, FACT,
+SynthLang, DAA, agent-harness-generator, agenticow, cve-bench, and more) **plus always-on grounding**
+so Claude answers from rUv's real source instead of drifting to training-prior defaults.
+
+> This is the plugin's short README. **The full story, current version, exact repo coverage, install
+> options, and proof live in the [root README](../README.md)** — kept as the single source of truth so
+> nothing here can go stale. Version is shown live on the badge at the top of that README.
 
 ## Install (one line)
 
 ```bash
-claude plugin marketplace add stuinfla/ruvnet-brain && claude plugin install ruvnet-brain@ruvnet-brain --scope user
+npx ruvnet-brain
 ```
 
-Installed at **user scope**, so it's active in every project.
+Installs at **user scope** — active in every project, nothing to reinstall per repo. (Manual path and
+the `github:` bleeding-edge form are in the [root README](../README.md#install--one-line).)
 
 ## What you get
 
 | Piece | File | Effect |
 |---|---|---|
-| **Knowledge** | `.mcp.json` → `ruvnet-brain` MCP | the `search_ruvnet` tool: cross-repo, cross-encoder-ranked, source-grounded retrieval over the whole rUv ecosystem |
-| **Behavior** | `skills/ruvnet-brain/SKILL.md` | tells Claude to ground RuvNet claims and prefer RuvNet building blocks over pgvector/Pinecone/etc. |
-| **Enforcement** | `hooks/hooks.json` + `scripts/ground-ruvnet.sh` | a `UserPromptSubmit` hook that injects a grounding directive whenever the prompt touches RuvNet — so grounding is *enforced*, not merely suggested |
+| **Knowledge** | `.mcp.json` → `ruvnet-brain` MCP | the `search_ruvnet` tool: cross-repo, cross-encoder-ranked, source-grounded retrieval over rUv's real source |
+| **Behavior** | `skills/ruvnet-brain/SKILL.md` | grounds RuvNet claims and prefers RuvNet building blocks over pgvector/Pinecone/LangChain/etc. |
+| **Enforcement** | `hooks/hooks.json` + `scripts/*.sh` | a `UserPromptSubmit` hook that injects a grounding directive every RuvNet-relevant turn — a strong, always-on nudge (it steers, it doesn't rewrite your code) |
 
 ## How the brain is delivered
 
-The plugin itself is tiny and path-free. The ~300 MB brain bundle is fetched once to
-`~/.cache/ruvnet-brain/` by the MCP launcher (`mcp/server.mjs`).
-
-**Local / dev:** point the launcher at a local brain instead of downloading:
-```bash
-mkdir -p ~/.cache/ruvnet-brain && ln -s /absolute/path/to/ruvnet-brain/kb ~/.cache/ruvnet-brain/kb
-```
-
-## Roadmap
-
-- **v0.1 (now):** grounded `search_ruvnet` over 19 repos + grounding skill + enforcement hook.
-- **Next:** `ingest_ruvnet_repo` — pull in any `github.com/ruvnet/<name>` repo on demand mid-project.
-- **Publish:** host the brain bundle as a GitHub Release; the launcher auto-fetches it.
+The plugin is tiny and path-free; the knowledge bundle is fetched once to `~/.cache/ruvnet-brain/kb`
+by the `npx ruvnet-brain` installer. It stays current on its own — see the root README's
+"Staying current" notes.
 
 ## License
 

@@ -75,10 +75,16 @@ NOWV=$(date +%s 2>/dev/null || echo 0)
 LASTV=$(cat "$VSTAMP" 2>/dev/null || echo 0)
 if [ "$NOWV" -gt 0 ] && [ $((NOWV - LASTV)) -gt 72000 ]; then
   echo "$NOWV" > "$VSTAMP" 2>/dev/null
-  { for PKG in ruflo @claude-flow/cli @ruvector/rvf; do
+  # BACKGROUNDED (QE-0011 code#1): these are 3 sequential `curl --max-time 3` = up to ~9s. Running
+  # them synchronously HERE — before the grounding gates below — risks the whole hook being killed by
+  # Claude Code's ~5s hook timeout on the once/20h refresh tick, which would DROP the actual grounding
+  # directives (the point of the hook). Backgrounding the fetch means the network never blocks the
+  # gates; the compare below reads the PREVIOUS tick's cache, so a fresh "outdated" notice simply
+  # appears one session later — the right trade for a 20h-cadence signal.
+  ( for PKG in ruflo @claude-flow/cli @ruvector/rvf; do
       L=$(curl -fsS --max-time 3 "https://registry.npmjs.org/$PKG/latest" 2>/dev/null | sed -E 's/.*"version":"([^"]+)".*/\1/' | head -c 40)
       [ -n "$L" ] && echo "$PKG $L"
-    done; } > "$VCACHE" 2>/dev/null
+    done > "$VCACHE".tmp 2>/dev/null && mv -f "$VCACHE".tmp "$VCACHE" 2>/dev/null ) &
 fi
 if [ -s "$VCACHE" ]; then
   OUTDATED=""

@@ -116,11 +116,23 @@ function cp(src, destDir, { required = false } = {}) {
   copied++;
   return true;
 }
-function cpDir(srcDir, destDir) {
+// Private SLUG set (QE-0011 security#1) — kb/l2/ is copied wholesale below; a private repo's raw L2
+// .md would ship as a file even though the vector store fences it. Read each private repo's own
+// l2-topics.<repo>.json to learn its slugs and skip those .md files. Fail-closed on a corrupt file.
+const PRIVATE_L2_SLUGS = new Set();
+for (const p of PRIVATE_STORES) {
+  const tf = path.join(KB, `l2-topics.${p}.json`);
+  if (!fs.existsSync(tf)) continue;
+  try { for (const t of JSON.parse(fs.readFileSync(tf, 'utf8'))) if (t.slug) PRIVATE_L2_SLUGS.add(`${t.slug}.md`); }
+  catch (e) { console.error(`[build-bundle] FATAL: private topics ${tf} corrupt (${e.message}). Refusing to build.`); process.exit(1); }
+}
+// skipNames: an optional Set of filenames to exclude (used to fence private L2 .md out of the l2/ copy).
+function cpDir(srcDir, destDir, skipNames) {
   if (!fs.existsSync(srcDir)) return false;
   fs.mkdirSync(destDir, { recursive: true });
   for (const e of fs.readdirSync(srcDir, { withFileTypes: true })) {
-    if (e.isDirectory()) cpDir(path.join(srcDir, e.name), path.join(destDir, e.name));
+    if (skipNames && skipNames.has(e.name)) continue;
+    if (e.isDirectory()) cpDir(path.join(srcDir, e.name), path.join(destDir, e.name), skipNames);
     else { fs.copyFileSync(path.join(srcDir, e.name), path.join(destDir, e.name)); copied++; }
   }
   return true;
@@ -161,8 +173,9 @@ for (const name of built) {
   });
 }
 
-// L2 articles (whole dir) + master primer dir
-cpDir(path.join(KB, 'l2'), path.join(OUT, 'l2'));
+// L2 articles (whole dir, fencing out private repos' raw .md) + master primer dir (the master
+// ruvnet-primer overview — not per-repo, so nothing private to fence there).
+cpDir(path.join(KB, 'l2'), path.join(OUT, 'l2'), PRIVATE_L2_SLUGS);
 cpDir(path.join(ROOT, 'primer'), path.join(OUT, 'primer'));
 
 // CONCEPTS store (L2 + primers embedded as prose; big-only) — the cross-repo tool unions it at query

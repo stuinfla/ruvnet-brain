@@ -4,7 +4,7 @@
 
 # 🧠 RuvNet Brain
 
-### 🧠 RuvNet Brain — [![RuvNet Brain version 1.9.4-dev — updated 2026-07-06 13:53 EDT](https://img.shields.io/badge/version_1.9.4--dev-updated_2026--07--06_13:53_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
+### 🧠 RuvNet Brain — [![RuvNet Brain version 1.9.5-dev — updated 2026-07-06 21:42 EDT](https://img.shields.io/badge/version_1.9.5--dev-updated_2026--07--06_21:42_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
 
 **A portable, source-grounded brain over Reuven Cohen's (rUv's) RuvNet stack — delivered as a Claude Code plugin that makes Claude _use_ the stack instead of fighting it.**
 
@@ -40,7 +40,7 @@ But **Claude was trained on _classical_ software development.** Point it at rUv'
 
 > **RuvNet Brain is the missing instruction manual.** It reads rUv's real source, hands Claude the _answer key_, and removes Claude's permission to make things up about the stack. Install it once, aim it at any repo, and a newcomer can build ~9 months ahead — without being rUv.
 
-The novelty is **enforcement, not retrieval.** Plain RAG only decides what to _add_ to context; it never stops a model from overriding good context with a stronger prior. This ships a `UserPromptSubmit` hook that injects a grounding directive on every RuvNet-relevant turn, consumed structurally by the harness — so grounding is **non-optional**. **RAG decides what to add; this decides what the model isn't allowed to make up.**
+The novelty is **structural grounding, not plain retrieval.** Plain RAG only decides what to _add_ to context. This ships a `UserPromptSubmit` hook that injects a grounding directive on **every** RuvNet-relevant turn — the harness consumes that stdout structurally, so the directive is _always present_, not a decline-able suggestion. It's a **strong, always-on nudge** — Claude is pointed at the real source and told to ground before asserting on every relevant turn — not a hard block on the model's output. **RAG decides what to add; this makes grounding the default the model has to actively argue its way out of.**
 
 ---
 
@@ -100,9 +100,9 @@ Registers the `search_ruvnet` MCP tool, the grounding skill, and the `UserPrompt
 
 ---
 
-## ✨ What's new in v0.5.0-dev — it now knows the stack _down to the code_
+## ✨ What the knowledge bundle knows — the stack _down to the code_
 
-Earlier versions knew the **docs and architecture**. v0.5.0-dev re-indexes the code-rich repos to **full function bodies**, against each repo's real source layout — so “how is this actually implemented?” returns the implementation, not a summary:
+Earlier bundles knew the **docs and architecture**. The current bundle re-indexes the code-rich repos to **full function bodies**, against each repo's real source layout — so “how is this actually implemented?” returns the implementation, not a summary:
 
 | Repo | Full-body code passages | |
 |---|---:|---|
@@ -130,7 +130,7 @@ The expensive work happens **once, at build time**: every covered repo is deep-w
 
 ## How it changes Claude's behavior — it takes the wheel
 
-Grounding is **enforced, not suggested.** On a RuvNet-relevant prompt the `UserPromptSubmit` hook injects a directive into context; Claude calls `search_ruvnet`, gets whole source files labeled by repo and path, and answers _from_ them. Because the hook's stdout is consumed by the harness every turn, it's structural — Claude can't quietly skip it.
+Grounding is **injected every turn, not left to chance.** On a RuvNet-relevant prompt the `UserPromptSubmit` hook injects a directive into context; Claude calls `search_ruvnet`, gets whole source files labeled by repo and path, and answers _from_ them. Because the hook's stdout is consumed by the harness every turn, the directive is _always there_ — a strong grounding nudge on every relevant turn. (It's a nudge, not a hard gate: the hook can't rewrite Claude's output, so it steers rather than blocks — see [ADR-0005](docs/adr/0005-behavioral-grounding-not-lock.md) for exactly what ships.)
 
 ![The grounding flow: prompt to cited answer](assets/diagrams/grounding-flow.svg)
 
@@ -208,7 +208,7 @@ node forge-ask-all.mjs --dir . --q "How does RuVector implement HNSW vector sear
 
 ## Honest status
 
-This is **`v0.5.0-dev`** — we don't claim “done,” “complete,” or “zero hallucinations.” Where it stands:
+This is a **`-dev`** project (see the live version badge up top for the exact plugin version; the downloadable knowledge bundle is a separate track) — we don't claim “done,” “complete,” or “zero hallucinations.” Where it stands:
 
 - ✅ **The grounding brain is real and proven** — ~21 building-block repos, 90,842 chunks, dual embeddings, cross-encoder rerank, plugin (MCP tool + enforcement hook + skill), all re-runnable.
 - ✅ **Code-level depth** — the code-rich repos are indexed to full function bodies; “how is it implemented?” returns the implementation. Verified in the shipped bundle (clean-room 3/3).

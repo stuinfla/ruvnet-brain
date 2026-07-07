@@ -39,6 +39,23 @@ function loadPrivate() {
 const PRIVATE = loadPrivate();
 const isPrivate = (repo) => PRIVATE.has(String(repo).toLowerCase());
 
+// PRIVATE SLUG set (QE-0011 security#1) — a private repo's L2 article is keyed by SLUG, not repo, and
+// an unknown slug used to default to 'ruvnet' (fail-OPEN → it shipped). Read each private repo's own
+// l2-topics.<repo>.json to learn its slugs, so an L2 article whose slug belongs to a private repo is
+// fenced out even when its repo attribution is unknown. Fail-closed: if a private topics file exists
+// but can't be parsed, abort rather than ship.
+const PRIVATE_SLUGS = new Set();
+for (const p of PRIVATE) {
+  const tf = path.join(KB, `l2-topics.${p}.json`);
+  if (!fs.existsSync(tf)) continue;
+  try {
+    for (const t of JSON.parse(fs.readFileSync(tf, 'utf8'))) if (t.slug) PRIVATE_SLUGS.add(t.slug);
+  } catch (e) {
+    console.error(`[build-concepts] FATAL: private topics file ${tf} is corrupt (${e.message}). Refusing to build.`);
+    process.exit(1);
+  }
+}
+
 // Auto-discover every repo that has a primer (skip PRIVATE ones — their prose must not ship).
 const REPOS = fs.readdirSync(KB)
   .filter((f) => f.endsWith('-primer.md'))
@@ -83,7 +100,9 @@ for (const f of fs.readdirSync(path.join(KB, 'l2'))) {
   if (!f.endsWith('.md')) continue;
   const slug = f.replace(/\.md$/, '');
   const repo = slugRepo.get(slug) || 'ruvnet';
-  if (isPrivate(repo)) continue; // SEC-0010 #5: never fold a private repo's L2 prose into the shipped store
+  // Fence a private repo's L2 prose whether it's attributed by repo OR only recognizable by slug
+  // (QE-0011 security#1 — closes the fail-open 'ruvnet' default for unknown attribution).
+  if (isPrivate(repo) || PRIVATE_SLUGS.has(slug)) continue;
   const text = fs.readFileSync(path.join(KB, 'l2', f), 'utf8');
   const title = (text.match(/^#\s+(.+)/m) || [, slug])[1];
   add(repo, 'L2', slug, title, text); l2n++;
@@ -110,6 +129,7 @@ if (fs.existsSync(cardsFile)) {
     const repo = sec.slice(0, nl).trim();
     const body = sec.slice(nl + 1).trim();
     if (!repo || !body) continue;
+    if (isPrivate(repo)) continue; // QE-0011 security#1: fence a private repo's capability card too
     add(repo, 'CARD', `${repo}-card`, `${repo} — Capability`, `${repo} — ${body}`);
     cn++;
   }
