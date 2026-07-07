@@ -23,7 +23,10 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
 const NAME = arg('--name');
-if (!NAME) { console.error('Usage: node scripts/ingest-repo.mjs --name <ruvnet-repo>'); process.exit(2); }
+// --org lets us ingest ecosystem repos that live in a rUv COLLABORATOR org (e.g. the QE fleet at
+// proffesor-for-testing/agentic-qe), not just github.com/ruvnet/*. Defaults to ruvnet.
+const ORG = arg('--org', 'ruvnet');
+if (!NAME) { console.error('Usage: node scripts/ingest-repo.mjs --name <repo> [--org <github-org>]'); process.exit(2); }
 
 const KB = path.join(ROOT, 'kb');
 const CLONES = path.join(ROOT, 'clones');
@@ -34,10 +37,10 @@ const run = (cmd, args, opts) => execFileSync(cmd, args, { stdio: 'inherit', ...
 
 fs.mkdirSync(CLONES, { recursive: true });
 if (!fs.existsSync(path.join(dir, '.git'))) {
-  console.log(`[clone] ruvnet/${NAME}`);
-  run('git', ['clone', '--depth', '1', `https://github.com/ruvnet/${NAME}`, dir]);
+  console.log(`[clone] ${ORG}/${NAME}`);
+  run('git', ['clone', '--depth', '1', `https://github.com/${ORG}/${NAME}`, dir]);
 } else {
-  console.log(`[update] ruvnet/${NAME}`);
+  console.log(`[update] ${ORG}/${NAME}`);
   run('git', ['-C', dir, 'fetch', '--depth', '1', 'origin']);
   run('git', ['-C', dir, 'reset', '--hard', 'origin/HEAD']);
 }

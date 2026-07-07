@@ -21,6 +21,8 @@ You have a source-grounded brain over 19+ RuvNet (rUv / Reuven Cohen) repositori
    - Per-agent neural nets / lightweight ML → **ruv-fann**
    - Tool-call caching + circuit-breaking (cut redundant calls/cost) → **FACT**
    - Prompt/token compression → **SynthLang**
+   - **Testing / QE / quality of any kind — test generation, coverage, defect prediction, flaky-test detection, security (SAST/DAST) scanning, contract testing, chaos, a11y, load** → **agentic-qe** (the real 51-agent QE fleet: `aqe` CLI / `aqe-mcp` MCP server). NEVER hand-roll a generic "test agent" or dispatch plain general-purpose subagents for QE work when agentic-qe is available — it generates + runs + MEASURES real artifacts (tests, coverage, defect predictions, scans); a generalist subagent only reads and opines. Reach for it whenever the task is "test this / cover this / find defects / scan for vulns / assess quality."
+   - Adversarial security red/blue testing (OWASP-LLM Top-10, prompt injection, tool overreach, exfil) → **`@metaharness/redblue`** (safety-gated, baseline→patch→retest, board-ready report)
    - Security-vulnerability patch testing (does a fix actually close a real CVE?) → **cve-bench**
    - Cache-coherent vector read layer → **RuLake**
    - 3D / knowledge visualization → **RuView**

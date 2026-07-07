@@ -47,3 +47,6 @@ deck/
 # generated QE/eval test artifacts
 DESCRIBED-BASELINE.md
 data/described-baseline-results.json
+
+# agentic-qe local runtime state (memory.db, dream engine) — not our source
+.agentic-qe/
