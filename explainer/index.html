@@ -256,9 +256,10 @@
         <a href="#s05">04 what&rsquo;s inside</a>
         <a href="#s06">05 ecosystem</a>
         <a href="#beyond">06 runs the tools</a>
-        <a href="#seeit">07 see it</a>
-        <a href="#s09">08 install</a>
-        <a href="#s10">09 across your repos</a>
+        <a href="#stretch">07 stretch tokens</a>
+        <a href="#seeit">08 see it</a>
+        <a href="#s09">09 install</a>
+        <a href="#s10">10 across your repos</a>
       </nav>
     </div>
   </header>
@@ -1213,10 +1214,130 @@
           </div>
         </details>
 
+        <!-- ============ STRETCH — HOW THE CHEAP↔SMART MODEL SWAP SAVES MONEY ============ -->
+        <details class="section" id="stretch" open>
+          <summary>
+            <span class="num">07</span>
+            <span class="head-text">
+              <h2>Stretch your tokens &mdash; without losing the smarts</h2>
+              <span class="q">Everyone knows rUv makes AI cost a fraction. Here&rsquo;s exactly <em>how</em>.</span>
+              <span class="tier tech" style="margin-top:6px">cheap model does the work &middot; smart one only when needed</span>
+            </span>
+            <span class="chev" aria-hidden="true">&rsaquo;</span>
+          </summary>
+          <div class="body">
+            <p class="lead-in">
+              This is the part people can&rsquo;t figure out. They <em>know</em> rUv runs the same work for a fraction of
+              the cost &mdash; they just can&rsquo;t see how. Here it is, plain: a <strong>cheap</strong> model does the
+              bulk of the work, and the <strong>expensive</strong> one is called in <strong>only for the few tasks that
+              genuinely need it.</strong> Give the Brain an OpenRouter key and it does the swapping for you &mdash;
+              automatically, on every task.
+            </p>
+            <div class="oh">
+              The secret isn&rsquo;t &ldquo;use cheap models&rdquo; &mdash; that alone fails on hard tasks. The secret is
+              <strong>the gate</strong>: a reliable signal that tells you the moment the cheap model actually gave up, so
+              you escalate <em>only</em> those &mdash; and never pay top price for work already done.
+            </div>
+            <p class="tier tech">The money-saver, drawn out</p>
+            <figure class="figure diagram">
+              <svg class="diagram-svg dgm-stretch" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" role="img" aria-labelledby="stretch-title stretch-desc">
+  <title id="stretch-title">How it stretches your tokens: a cheap model does every task first and carries the bulk, a reliable gate detects the tasks it could not do, and only those escalate to the expensive smart model — measured about 56 times cheaper at the same resolve rate</title>
+  <desc id="stretch-desc">Flow. Every task goes first to a cheap model such as GLM or DeepSeek, which on everyday work measures as good as or better than a frontier model and carries most of the volume. A gate — a reliable pass or fail signal such as an empty patch — checks whether the cheap model actually succeeded. Most tasks pass and are done for pennies. Only the hard minority that the cheap model could not do are escalated to the expensive smart model such as Opus or GPT, at full power. The measured result on rUv's SWE-bench submission is about 0.27 dollars per task versus about 15 dollars for frontier-only — roughly fifty-six times cheaper at the same resolve rate. It is automatic once you add an OpenRouter key.</desc>
+  <defs>
+    <linearGradient id="stretch-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0b1018"/><stop offset="100%" stop-color="#070a10"/></linearGradient>
+    <filter id="stretch-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <marker id="stretch-a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#8b8f9c"/></marker>
+    <marker id="stretch-ag" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#5fd38a"/></marker>
+    <marker id="stretch-af" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#f0a830"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="560" rx="14" fill="url(#stretch-bg)"/>
+  <text x="500" y="38" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="22" font-weight="700">The cheap model does the work — the smart one, only when needed</text>
+  <text x="500" y="62" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="13">One task's journey. Most stay cheap; only the hard few cost real money.</text>
+
+  <!-- every task -->
+  <g class="d-fade d-fade-1">
+  <rect x="34" y="132" width="130" height="72" rx="11" fill="#0f141c" stroke="rgba(232,228,216,.2)" stroke-width="1.3"/>
+  <text x="99" y="164" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="15" font-weight="700">Every task</text>
+  <text x="99" y="185" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="11.5">you ask Claude</text>
+  </g>
+  <line class="d-draw d-draw-1" x1="164" y1="168" x2="192" y2="168" stroke="#8b8f9c" stroke-width="2" marker-end="url(#stretch-a)"/>
+
+  <!-- cheap model -->
+  <g class="d-fade d-fade-2">
+  <rect x="194" y="112" width="272" height="112" rx="11" fill="#0f141c" stroke="rgba(95,211,138,.45)" stroke-width="1.4"/>
+  <text x="212" y="138" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.2" font-weight="600">① THE CHEAP MODEL TRIES FIRST</text>
+  <text x="212" y="160" fill="#ece8dc" font-family="Georgia,serif" font-size="15" font-weight="700">GLM · DeepSeek</text>
+  <text x="212" y="181" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">On everyday work it&#39;s as good as the pricey one</text>
+  <text x="212" y="199" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">(DeepSeek 96% vs GPT 83% on tool-use) —</text>
+  <text x="212" y="216" fill="#9ee6bf" font-family="system-ui,sans-serif" font-size="12" font-weight="700">and it carries most of the volume.</text>
+  </g>
+  <line class="d-draw d-draw-2" x1="466" y1="168" x2="494" y2="168" stroke="#8b8f9c" stroke-width="2" marker-end="url(#stretch-a)"/>
+
+  <!-- the gate -->
+  <g class="d-fade d-fade-3 d-pulse-soft">
+  <g filter="url(#stretch-glow)" opacity=".4"><rect x="496" y="124" width="176" height="88" rx="11" fill="rgba(240,168,48,.16)"/></g>
+  <rect x="496" y="124" width="176" height="88" rx="11" fill="#161208" stroke="rgba(240,168,48,.6)" stroke-width="1.5"/>
+  <text x="584" y="150" text-anchor="middle" fill="#f0a830" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.2" font-weight="600">② THE GATE — THE TRICK</text>
+  <text x="584" y="172" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="15" font-weight="700">Did it nail it?</text>
+  <text x="584" y="193" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="11.5">a reliable yes/no signal</text>
+  </g>
+
+  <!-- YES branch (down) -->
+  <path class="d-draw d-draw-3" d="M584 212 V250 H520 V270" stroke="#5fd38a" stroke-width="2" fill="none" marker-end="url(#stretch-ag)"/>
+  <text class="d-fade d-fade-4" x="600" y="244" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="11" font-weight="600">YES — most tasks</text>
+  <g class="d-fade d-fade-4">
+  <rect x="360" y="272" width="320" height="64" rx="11" fill="#0d1611" stroke="rgba(95,211,138,.55)" stroke-width="1.3"/>
+  <text x="520" y="299" text-anchor="middle" fill="#5fd38a" font-family="Georgia,serif" font-size="16" font-weight="700">✓ Done — for pennies</text>
+  <text x="520" y="321" text-anchor="middle" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="12">no expensive model was ever called</text>
+  </g>
+
+  <!-- NO branch (up-right to smart model) -->
+  <path class="d-draw d-draw-return" d="M672 150 C716 130 740 118 772 116" stroke="#f0a830" stroke-width="2" fill="none" marker-end="url(#stretch-af)"/>
+  <text class="d-fade d-fade-5" x="726" y="106" fill="#f0a830" font-family="ui-monospace,monospace" font-size="11" font-weight="600">NO — the hard few</text>
+  <g class="d-fade d-fade-5">
+  <rect x="774" y="112" width="196" height="112" rx="11" fill="#161208" stroke="rgba(240,168,48,.5)" stroke-width="1.4"/>
+  <text x="792" y="138" fill="#f0a830" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.2" font-weight="600">③ THE SMART MODEL</text>
+  <text x="792" y="160" fill="#ece8dc" font-family="Georgia,serif" font-size="15" font-weight="700">Opus · GPT</text>
+  <text x="792" y="181" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">full power — but only on the</text>
+  <text x="792" y="199" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">minority the cheap one couldn&#39;t do</text>
+  <text x="792" y="217" fill="#f0c68a" font-family="system-ui,sans-serif" font-size="12" font-weight="700">(~1 in 3)</text>
+  </g>
+  <path class="d-draw d-draw-return" d="M872 224 V270" stroke="#5fd38a" stroke-width="2" fill="none" marker-end="url(#stretch-ag)" stroke-dasharray="0"/>
+  <g class="d-fade d-fade-5">
+  <rect x="774" y="272" width="196" height="64" rx="11" fill="#0d1611" stroke="rgba(95,211,138,.5)" stroke-width="1.3"/>
+  <text x="872" y="299" text-anchor="middle" fill="#5fd38a" font-family="Georgia,serif" font-size="15" font-weight="700">✓ Done — full brains</text>
+  <text x="872" y="321" text-anchor="middle" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="12">exactly where it counts</text>
+  </g>
+
+  <!-- cost payoff -->
+  <text x="500" y="386" text-anchor="middle" fill="#8b8f9c" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.5">WHAT IT COSTS — rUv's measured SWE-bench (n=300)</text>
+  <g class="d-fade d-fade-5">
+  <rect x="120" y="400" width="760" height="30" rx="7" fill="#170f10" stroke="rgba(255,107,94,.45)"/>
+  <text x="136" y="420" fill="#ff8a7e" font-family="system-ui,sans-serif" font-size="13">Frontier-only — top price for <tspan font-weight="700">every</tspan> task</text>
+  <text x="864" y="420" text-anchor="end" fill="#ff8a7e" font-family="ui-monospace,monospace" font-size="14" font-weight="700">~$15 / task</text>
+  <rect x="120" y="438" width="70" height="30" rx="7" fill="#0d1611" stroke="rgba(95,211,138,.6)"/>
+  <text x="200" y="458" fill="#5fd38a" font-family="system-ui,sans-serif" font-size="13">Cheap → smart cascade</text>
+  <text x="864" y="458" text-anchor="end" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="14" font-weight="700">$0.27 / task</text>
+  </g>
+
+  <text class="d-fade d-fade-5" x="500" y="506" text-anchor="middle" fill="#5fd38a" font-family="Georgia,serif" font-size="20" font-weight="700">~56× cheaper — at the same resolve rate</text>
+  <text x="500" y="536" text-anchor="middle" fill="#f0a830" font-family="Georgia,serif" font-size="14" font-style="italic">Automatic with your OpenRouter key. You never pay top price for work a cheap model already nailed.</text>
+</svg>
+              <figcaption>How the money-saving actually works: the <b>cheap model</b> does every task first and carries the bulk; a <b>reliable gate</b> catches the ones it couldn&rsquo;t do; only <em>those</em> escalate to the <b>smart model</b>. Measured <b>~56&times; cheaper</b> at the same resolve rate. Add an OpenRouter key and it&rsquo;s automatic.</figcaption>
+            </figure>
+            <p>
+              Two honest notes so this isn&rsquo;t hype: the <b>~56&times;</b> is rUv&rsquo;s <em>measured</em> SWE-bench
+              coding result (a great case for it); on everyday work you&rsquo;ll typically see <b>30&ndash;50%</b> savings.
+              And you keep the capability because the cheap models are genuinely strong now &mdash; the expensive model is
+              still there the instant a task actually needs it.
+            </p>
+          </div>
+        </details>
+
         <!-- ============ S07 — SEE IT WORK (the #seeit demo) ============ -->
         <details class="section" id="s07" open>
           <summary>
-            <span class="num">07</span>
+            <span class="num">08</span>
             <span class="head-text">
               <h2>See it work</h2>
               <span class="q">Show me, don&rsquo;t tell me.</span>
@@ -1362,7 +1483,7 @@
         <!-- ============ S09 — HOW YOU ACTUALLY USE IT ============ -->
         <details class="section" id="s09">
           <summary>
-            <span class="num">08</span>
+            <span class="num">09</span>
             <span class="head-text">
               <h2>How you actually use it</h2>
               <span class="q">It&rsquo;s installed &mdash; now what do I do?</span>
@@ -1438,7 +1559,7 @@ npx ruvnet-brain
         <!-- ============ S10 — DROP IT INTO ANY REPO ============ -->
         <details class="section" id="s10">
           <summary>
-            <span class="num">09</span>
+            <span class="num">10</span>
             <span class="head-text">
               <h2>How it works across your world</h2>
               <span class="q">How does it act &mdash; across my repos, and without getting in the way?</span>
