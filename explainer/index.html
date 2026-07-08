@@ -292,8 +292,11 @@
             </div>
           </div>
           <figure class="hero-art">
-            <img src="assets/img/hero.png" width="1536" height="1024"
-                 alt="A brain made of glowing amber and cyan filaments, wired into rUv's ecosystem — the whole RuvNet toolkit gathered into one intelligence." />
+            <picture>
+              <source srcset="assets/img/hero.webp" type="image/webp" />
+              <img src="assets/img/hero.png" width="1400" height="934" fetchpriority="high" decoding="async"
+                   alt="A brain made of glowing amber and cyan filaments, wired into rUv's ecosystem — the whole RuvNet toolkit gathered into one intelligence." />
+            </picture>
             <figcaption>The Brain sits between you and Claude &mdash; so Claude finally sees what rUv built.</figcaption>
           </figure>
         </div>
