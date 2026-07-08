@@ -6,8 +6,8 @@
 
   <!-- Primary SEO -->
   <title>RuvNet Brain for Claude Code — the source-grounded rUv stack, by Isovision.ai</title>
-  <meta name="description" content="RuvNet Brain for Claude Code, by Isovision.ai: a downloadable brain that grounds Claude in Reuven Cohen's (rUv's) real RuvNet source — RuVector, Ruflo, AgentDB, SPARC — so you build on the front edge of AI without drift. Distinct from rUv's own RuVector Brain. Install: npx github:stuinfla/ruvnet-brain." />
-  <meta name="keywords" content="RuvNet, rUv, Reuven Cohen, RuVector, RVF, ruflo, AgentDB, RuLake, SPARC, Claude Code plugin, MCP, vector search, source-grounded AI, capability cards" />
+  <meta name="description" content="RuvNet Brain for Claude Code, by Isovision.ai: a downloadable brain that grounds Claude in Reuven Cohen's (rUv's) real RuvNet source — RuVector, Ruflo, AgentDB, SPARC — and RUNS two of his hardest tools for you: MetaHarness (self-improve + cost-optimize, ~56× cheaper) and a QE testing fleet, invoked in plain English. Build on the front edge without drift. Distinct from rUv's own RuVector Brain. Install: npx github:stuinfla/ruvnet-brain." />
+  <meta name="keywords" content="RuvNet, rUv, Reuven Cohen, RuVector, RVF, ruflo, AgentDB, RuLake, SPARC, MetaHarness, Darwin evolution, agentic-qe, QE testing, cost-optimal model routing, Claude Code plugin, MCP, vector search, source-grounded AI" />
   <meta name="author" content="Stuart Kerr — RuvNet ecosystem by Reuven Cohen (@ruvnet)" />
   <meta name="robots" content="index,follow" />
   <meta name="theme-color" content="#0a0c10" />
@@ -70,7 +70,7 @@
     "softwareVersion": "0.5.0-dev",
     "datePublished": "2026-06-30",
     "dateModified": "2026-07-07",
-    "description": "A downloadable, source-grounded brain for Claude Code that grounds the AI in rUv's real RuvNet source — RuVector/RVF, ruflo, AgentDB, RuLake, SPARC and 21 building blocks — so a newcomer can build on the front edge of AI without name-blind drift. Ships a single MCP tool, search_ruvnet.",
+    "description": "A downloadable, source-grounded brain for Claude Code that grounds the AI in rUv's real RuvNet source — RuVector/RVF, ruflo, AgentDB, RuLake, SPARC and 21 building blocks — and pre-implements two of rUv's hardest tools so you can run them in plain English: MetaHarness (harness self-improvement + cost-optimal model routing, ~56x cheaper than frontier-only) and an Agentic-QE testing fleet. Ships the search_ruvnet MCP tool plus grounding hooks.",
     "url": "https://ruvnet-brain.vercel.app/",
     "downloadUrl": "https://github.com/stuinfla/ruvnet-brain/releases/latest",
     "installUrl": "https://www.npmjs.com/package/ruvnet-brain",
@@ -252,13 +252,13 @@
       <nav class="nav-links" aria-label="Sections">
         <a href="#s01">01 the moment</a>
         <a href="#s02">02 the gap</a>
-        <a href="#s03">03 why others failed</a>
-        <a href="#s04">04 how it steps in</a>
-        <a href="#s05">05 what&rsquo;s inside</a>
-        <a href="#s06">06 ecosystem</a>
+        <a href="#s04">03 how it grounds</a>
+        <a href="#s05">04 what&rsquo;s inside</a>
+        <a href="#s06">05 ecosystem</a>
+        <a href="#beyond">06 runs the tools</a>
         <a href="#seeit">07 see it</a>
-        <a href="#s08">08 proof</a>
-        <a href="#s09">09 install</a>
+        <a href="#s09">08 install</a>
+        <a href="#s10">09 across your repos</a>
       </nav>
     </div>
   </header>
@@ -558,146 +558,10 @@
           </div>
         </details>
 
-        <!-- ============ S03 — WHY OTHERS FAILED TO BUILD THIS ============ -->
-        <details class="section" id="s03">
-          <summary>
-            <span class="num">03</span>
-            <span class="head-text">
-              <h2>Why others failed to build this</h2>
-              <span class="q">People tried this before. Why didn&rsquo;t it work?</span>
-              <span class="tier tech" style="margin-top:6px">33% &rarr; 93% routing</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">
-              Plenty of people tried to build a RuvNet knowledge base so AI could use rUv&rsquo;s tools. They failed
-              &mdash; not from lack of effort, but <strong>wrong architecture.</strong>
-            </p>
-            <p><strong>What failed:</strong> flat JSON embeddings + naive RAG + matching on repo <em>names</em>. Ask
-              &ldquo;how do I do cheap LLM routing&rdquo; without naming the repo and it returns nothing useful.
-              Brittle, shallow, drifts.</p>
-            <p><strong>What we did differently &mdash; why this one passes:</strong></p>
-            <ol>
-              <li><strong>RuVector <code>.rvf</code> single-file HNSW</strong> &mdash; the whole vector index is one
-                file: no server, no Docker, crash-safe (a crash never permanently corrupts it), and post-quantum-signed.
-                Real HNSW search in rUv&rsquo;s own format &mdash; not hand-rolled cosine over JSON.</li>
-              <li><strong>Dual embeddings</strong> &mdash; MiniLM-384 <em>and</em> bge-768, plus a cross-encoder rerank.
-                Two readings of meaning catch what a single keyword match misses.</li>
-              <li><strong>Source-chunked, not doc-scraped</strong> &mdash; <strong>90,842 chunks</strong> of rUv&rsquo;s
-                <em>real source code</em>, not docs or a blog about the code. The brain knows the actual lines.</li>
-              <li><strong>Capability cards</strong> &mdash; the breakthrough. A high-signal &ldquo;what this tool is
-                FOR&rdquo; card per building block, so a newcomer who describes a <em>need</em> (&ldquo;grade research
-                for trustworthiness&rdquo;) routes to the right repo <strong>without knowing its name.</strong></li>
-            </ol>
-            <p>
-              The measured result: routing by described need went from <strong>33% &rarr; 93%.</strong> That jump
-              <em>is</em> the architecture difference.
-            </p>
-
-            <div class="oh">
-              Tip of the spear: one tool in here, <strong>agenticow</strong>, forks <strong>1,000,000 vectors of agent
-              memory in 162 bytes and ~0.5 ms</strong> &mdash; about <strong>83&times; faster and ~3000&times; smaller</strong>
-              than copying them. It&rsquo;s a primitive <em>no mainstream vector DB offers at any price.</em> This is the
-              calibre of work the brain is grounded in.
-            </div>
-
-            <p class="tier tech">Technical view &mdash; their architecture vs this one</p>
-            <figure class="figure diagram">
-              <svg class="diagram-svg dgm-s03" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 540" role="img" aria-labelledby="s03-title s03-desc">
-  <title id="s03-title">Why others failed and why this one passes: flat JSON name-matching drifts, while real source plus RVF, dual embeddings and capability cards routes correctly every time</title>
-  <desc id="s03-desc">Side by side. The failing architecture on the left: flat JSON embeddings, naive retrieval that matches on repo names, so a query that does not name the repo returns nothing useful — brittle, shallow, drifting. The passing architecture on the right: 90,842 chunks of rUv's real source, RVF binary files with real HNSW and dual embeddings, plus capability cards describing what each tool is for, which routes to the right repo every time even when only described, lifting routing from 33 percent to 93 percent.</desc>
-  <defs>
-    <linearGradient id="s03-bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0b1018"/>
-      <stop offset="100%" stop-color="#070a10"/>
-    </linearGradient>
-    <filter id="s03-glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="11" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <marker id="s03-ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#ff6b5e"/></marker>
-    <marker id="s03-ag" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#5fd38a"/></marker>
-  </defs>
-
-  <rect x="0" y="0" width="1000" height="540" rx="14" fill="url(#s03-bg)"/>
-  <text x="500" y="40" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="22" font-weight="700">Why others failed — and why this one passes</text>
-  <line x1="500" y1="64" x2="500" y2="470" stroke="rgba(232,228,216,.1)" stroke-dasharray="3 7"/>
-
-  <!-- LEFT — fails -->
-  <g class="d-fade d-fade-1">
-  <text x="250" y="86" text-anchor="middle" fill="#ff6b5e" font-family="ui-monospace,monospace" font-size="12.5" letter-spacing="1" font-weight="600">THEIR ARCHITECTURE — FAILS</text>
-  <rect x="60" y="100" width="380" height="54" rx="10" fill="#0f141c" stroke="rgba(232,228,216,.16)"/>
-  <text x="250" y="132" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="14">Flat JSON embeddings</text>
-  </g>
-  <line class="d-draw d-draw-red" x1="250" y1="154" x2="250" y2="174" stroke="#ff6b5e" stroke-width="1.6" marker-end="url(#s03-ar)"/>
-  <g class="d-fade d-fade-2">
-  <rect x="60" y="176" width="380" height="54" rx="10" fill="#0f141c" stroke="rgba(232,228,216,.16)"/>
-  <text x="250" y="208" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="14">Naive RAG · match on repo <tspan fill="#ece8dc" font-weight="700">names</tspan></text>
-  </g>
-  <line class="d-draw d-draw-red" x1="250" y1="230" x2="250" y2="250" stroke="#ff6b5e" stroke-width="1.6" marker-end="url(#s03-ar)"/>
-  <g class="d-fade d-fade-3">
-  <rect x="60" y="252" width="380" height="62" rx="10" fill="#170f10" stroke="rgba(255,107,94,.45)"/>
-  <text x="250" y="278" text-anchor="middle" fill="#ff6b5e" font-family="system-ui,sans-serif" font-size="13.5" font-weight="700">Don't know the name? Nothing useful.</text>
-  <text x="250" y="299" text-anchor="middle" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="12">“cheap LLM routing” → 0 results</text>
-  </g>
-  <line class="d-draw d-draw-red" x1="250" y1="314" x2="250" y2="334" stroke="#ff6b5e" stroke-width="1.6" marker-end="url(#s03-ar)"/>
-  <g class="d-fade d-fade-4">
-  <rect x="100" y="336" width="300" height="68" rx="10" fill="#150d0e" stroke="rgba(255,107,94,.5)"/>
-  <text x="250" y="366" text-anchor="middle" fill="#ff6b5e" font-family="Georgia,serif" font-size="17" font-weight="700">✗ Brittle · shallow · drifts</text>
-  <text x="250" y="389" text-anchor="middle" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="12">name-blind queries fall through</text>
-  </g>
-
-  <!-- RIGHT — passes -->
-  <g class="d-fade d-fade-1">
-  <text x="750" y="86" text-anchor="middle" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="12.5" letter-spacing="1" font-weight="600">THIS ARCHITECTURE — PASSES</text>
-  <rect x="560" y="100" width="380" height="54" rx="10" fill="#0f141c" stroke="rgba(95,211,138,.28)"/>
-  <text x="750" y="125" text-anchor="middle" fill="#ece8dc" font-family="system-ui,sans-serif" font-size="13.5"><tspan font-weight="700">90,842 chunks</tspan> of rUv's real source</text>
-  <text x="750" y="143" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="11.5">the code, not a blog about the code</text>
-  </g>
-  <line class="d-draw d-draw-green" x1="750" y1="154" x2="750" y2="174" stroke="#5fd38a" stroke-width="1.6" marker-end="url(#s03-ag)"/>
-  <g class="d-fade d-fade-2">
-  <rect x="560" y="176" width="380" height="54" rx="10" fill="#0f141c" stroke="rgba(90,214,255,.3)"/>
-  <text x="750" y="201" text-anchor="middle" fill="#5ad6ff" font-family="system-ui,sans-serif" font-size="13.5">RVF binary files · real HNSW</text>
-  <text x="750" y="219" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="11.5">dual embeddings (MiniLM-384 + bge-768) + rerank</text>
-  </g>
-  <line class="d-draw d-draw-green" x1="750" y1="230" x2="750" y2="250" stroke="#5fd38a" stroke-width="1.6" marker-end="url(#s03-ag)"/>
-  <g class="d-fade d-fade-3">
-  <g filter="url(#s03-glow)" opacity=".45"><rect x="560" y="252" width="380" height="62" rx="10" fill="rgba(240,168,48,.16)"/></g>
-  <rect x="560" y="252" width="380" height="62" rx="10" fill="#161208" stroke="rgba(240,168,48,.5)"/>
-  <text x="750" y="278" text-anchor="middle" fill="#f0a830" font-family="system-ui,sans-serif" font-size="13.5" font-weight="700">Capability cards — the breakthrough</text>
-  <text x="750" y="299" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">“what this tool is FOR” → route by need, not name</text>
-  </g>
-  <line class="d-draw d-draw-green" x1="750" y1="314" x2="750" y2="334" stroke="#5fd38a" stroke-width="1.6" marker-end="url(#s03-ag)"/>
-  <g class="d-fade d-fade-4 d-pulse-soft">
-  <g filter="url(#s03-glow)" opacity=".5"><rect x="600" y="336" width="300" height="68" rx="10" fill="rgba(95,211,138,.18)"/></g>
-  <rect x="600" y="336" width="300" height="68" rx="10" fill="#0d1611" stroke="rgba(95,211,138,.55)"/>
-  <text x="750" y="366" text-anchor="middle" fill="#5fd38a" font-family="Georgia,serif" font-size="17" font-weight="700">✓ Right repo every time</text>
-  <text x="750" y="389" text-anchor="middle" fill="#ece8dc" font-family="system-ui,sans-serif" font-size="12.5">by description: <tspan fill="#ff6b5e" font-weight="700">33%</tspan> → <tspan fill="#5fd38a" font-weight="700">93%</tspan></text>
-  </g>
-
-  <!-- honest footer -->
-  <g class="d-fade d-fade-5">
-  <rect x="120" y="442" width="760" height="64" rx="11" fill="#11161f" stroke="rgba(95,211,138,.3)"/>
-  <text x="500" y="470" text-anchor="middle" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.5">NOT MAGIC — MEASURED</text>
-  <text x="500" y="492" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="14.5" font-style="italic">The boring-but-correct architecture rUv would use — and we measured the jump.</text>
-  </g>
-</svg>
-              <figcaption>The architecture difference, drawn out: name-matching JSON (<b>left, fails</b>) vs real source + RVF/HNSW + dual-embed + capability cards (<b>right, passes</b>). The 33%&rarr;93% jump lives in that right column.</figcaption>
-            </figure>
-
-            <div class="note honest">
-              <span class="lab">Honest</span>
-              We&rsquo;re not claiming magic. We&rsquo;re claiming the boring-but-correct architecture rUv would use
-              &mdash; and we measured it.
-            </div>
-          </div>
-        </details>
-
         <!-- ============ S04 — HOW IT STEPS IN LIKE RUV (AUTOMATIC) ============ -->
         <details class="section" id="s04">
           <summary>
-            <span class="num">04</span>
+            <span class="num">03</span>
             <span class="head-text">
               <h2>How it steps in like Ruv &mdash; automatic, never asleep</h2>
               <span class="q">Do I have to remember to use it?</span>
@@ -831,7 +695,7 @@
         <!-- ============ S05 — WHAT'S ACTUALLY IN THE BRAIN ============ -->
         <details class="section" id="s05" open>
           <summary>
-            <span class="num">05</span>
+            <span class="num">04</span>
             <span class="head-text">
               <h2>What&rsquo;s actually in the Brain</h2>
               <span class="q">What did you gather, exactly?</span>
@@ -934,7 +798,7 @@
         <!-- ============ S06 — THE ECOSYSTEM ============ -->
         <details class="section" id="s06" open>
           <summary>
-            <span class="num">06</span>
+            <span class="num">05</span>
             <span class="head-text">
               <h2>The ecosystem</h2>
               <span class="q">What can I actually build with?</span>
@@ -1260,6 +1124,95 @@
           </div>
         </details>
 
+        <!-- ============ BEYOND — METAHARNESS + QE (other functionality) ============ -->
+        <details class="section" id="beyond" open>
+          <summary>
+            <span class="num">06</span>
+            <span class="head-text">
+              <h2>Beyond answering &mdash; it runs the tools too</h2>
+              <span class="q">It doesn&rsquo;t just <em>know</em> rUv&rsquo;s tools. It operates two of them for you.</span>
+              <span class="tier tech" style="margin-top:6px">MetaHarness &middot; QE &mdash; one line each</span>
+            </span>
+            <span class="chev" aria-hidden="true">&rsaquo;</span>
+          </summary>
+          <div class="body">
+            <p class="lead-in">
+              Grounding makes Claude <em>answer</em> like rUv. But two of rUv&rsquo;s most powerful tools are
+              <strong>pre-wired to run</strong> &mdash; you ask in a plain sentence and the Brain operates them for you.
+              <strong>No mastery required.</strong>
+            </p>
+            <p class="tier tech">The other functionality &mdash; wired in, one line each</p>
+            <figure class="figure diagram">
+              <svg class="diagram-svg dgm-beyond" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" role="img" aria-labelledby="beyond-title beyond-desc">
+  <title id="beyond-title">Beyond grounding: the Brain also runs MetaHarness to self-improve and cost-optimize your setup, and a QE fleet to test it, each invoked in one plain-English line</title>
+  <desc id="beyond-desc">The Brain branches to two pre-wired capabilities. MetaHarness freezes the model and evolves the harness around Claude, routing most work to cheap models and escalating to a frontier model only when needed — measured about fifty-six times cheaper than frontier-only at comparable quality. The QE fleet runs tests on demand: coverage, security, accessibility and experience. Each is triggered by a plain sentence such as score my harness, do this cheaper, or QE this.</desc>
+  <defs>
+    <linearGradient id="beyond-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0b1018"/><stop offset="100%" stop-color="#070a10"/></linearGradient>
+    <filter id="beyond-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="11" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <marker id="beyond-a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#8b8f9c"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="520" rx="14" fill="url(#beyond-bg)"/>
+  <text x="500" y="40" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="22" font-weight="700">Beyond answering — it runs the tools too</text>
+  <text x="500" y="64" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="13">Two of rUv's hardest tools, pre-wired. You ask in plain English; the Brain operates them.</text>
+
+  <g class="d-pop d-pop-hub"><g filter="url(#beyond-glow)" opacity=".4"><rect x="410" y="84" width="180" height="52" rx="12" fill="rgba(240,168,48,.16)"/></g>
+  <rect x="410" y="84" width="180" height="52" rx="12" fill="#161208" stroke="rgba(240,168,48,.55)" stroke-width="1.5"/>
+  <text x="500" y="116" text-anchor="middle" fill="#f0a830" font-family="ui-monospace,monospace" font-size="13" letter-spacing="1" font-weight="700">THE BRAIN</text></g>
+
+  <path class="d-draw d-draw-1" d="M430 136 C356 158 296 166 260 184" stroke="#8b8f9c" stroke-width="1.8" fill="none" marker-end="url(#beyond-a)"/>
+  <path class="d-draw d-draw-2" d="M570 136 C644 158 704 166 740 184" stroke="#8b8f9c" stroke-width="1.8" fill="none" marker-end="url(#beyond-a)"/>
+
+  <g class="d-fade d-fade-1">
+  <rect x="52" y="188" width="400" height="256" rx="12" fill="#0f141c" stroke="rgba(240,168,48,.4)" stroke-width="1.4"/>
+  <text x="76" y="216" fill="#f0a830" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.3" font-weight="600">METAHARNESS — SELF-IMPROVE &amp; COST-OPTIMIZE</text>
+  <text x="76" y="242" fill="#ece8dc" font-family="Georgia,serif" font-size="16" font-weight="700">Freeze the model, evolve the harness</text>
+  <text x="76" y="266" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12.5">Routes most work to cheap models, escalating to a</text>
+  <text x="76" y="284" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12.5">frontier model only when it must.</text>
+  <text x="76" y="318" fill="#8b8f9c" font-family="ui-monospace,monospace" font-size="10" letter-spacing="1">COST PER TASK — MEASURED (SWE-bench)</text>
+  <rect x="76" y="328" width="300" height="19" rx="5" fill="#170f10" stroke="rgba(255,107,94,.4)"/>
+  <text x="86" y="342" fill="#ff8a7e" font-family="ui-monospace,monospace" font-size="10.5">frontier-only ~$15</text>
+  <rect x="76" y="353" width="58" height="19" rx="5" fill="#0d1611" stroke="rgba(95,211,138,.6)"/>
+  <text x="142" y="367" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="10.5">GLM→Opus cascade $0.27</text>
+  <g class="d-pulse-soft"><text x="76" y="398" fill="#5fd38a" font-family="Georgia,serif" font-size="16" font-weight="700">~56× cheaper</text></g>
+  <text x="76" y="417" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11.5">at comparable quality — first try</text>
+  <text x="76" y="435" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="11.5">+ scores &amp; audits your setup on any repo — free</text>
+  </g>
+
+  <g class="d-fade d-fade-2">
+  <rect x="548" y="188" width="400" height="256" rx="12" fill="#0f141c" stroke="rgba(90,214,255,.4)" stroke-width="1.4"/>
+  <text x="572" y="216" fill="#5ad6ff" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.3" font-weight="600">QE FLEET — TESTING ON DEMAND</text>
+  <text x="572" y="242" fill="#ece8dc" font-family="Georgia,serif" font-size="16" font-weight="700">Summon a quality team with a sentence</text>
+  <text x="572" y="266" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12.5">Writes tests, measures coverage, scans for gaps —</text>
+  <text x="572" y="284" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12.5">no test harness for you to wire.</text>
+  <g font-family="ui-monospace,monospace" font-size="11">
+    <rect x="572" y="306" width="86" height="26" rx="6" fill="#0d1417" stroke="rgba(90,214,255,.35)"/><text x="615" y="323" text-anchor="middle" fill="#9fdcef">coverage</text>
+    <rect x="666" y="306" width="86" height="26" rx="6" fill="#0d1417" stroke="rgba(90,214,255,.35)"/><text x="709" y="323" text-anchor="middle" fill="#9fdcef">security</text>
+    <rect x="572" y="338" width="86" height="26" rx="6" fill="#0d1417" stroke="rgba(90,214,255,.35)"/><text x="615" y="355" text-anchor="middle" fill="#9fdcef">a11y</text>
+    <rect x="666" y="338" width="120" height="26" rx="6" fill="#0d1417" stroke="rgba(90,214,255,.35)"/><text x="726" y="355" text-anchor="middle" fill="#9fdcef">experience</text>
+  </g>
+  <text x="572" y="400" fill="#5fd38a" font-family="Georgia,serif" font-size="15" font-weight="700">Findings you can act on</text>
+  <text x="572" y="428" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="11.5">verified against the real artifact — not a templated score</text>
+  </g>
+
+  <g class="d-fade d-fade-4" font-family="ui-monospace,monospace">
+  <text x="128" y="482" fill="#8b8f9c" font-size="10" letter-spacing="2">JUST SAY</text>
+  <rect x="196" y="470" width="150" height="24" rx="12" fill="#161208" stroke="rgba(240,168,48,.5)"/><text x="271" y="486" text-anchor="middle" fill="#f0c68a" font-size="11">score my harness</text>
+  <rect x="358" y="470" width="140" height="24" rx="12" fill="#161208" stroke="rgba(240,168,48,.5)"/><text x="428" y="486" text-anchor="middle" fill="#f0c68a" font-size="11">do this cheaper</text>
+  <rect x="510" y="470" width="96" height="24" rx="12" fill="#0d1417" stroke="rgba(90,214,255,.5)"/><text x="558" y="486" text-anchor="middle" fill="#9fdcef" font-size="11">QE this</text>
+  <text x="632" y="486" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11.5">— the Brain runs it, and explains only if you want.</text>
+  </g>
+</svg>
+              <figcaption>Two capabilities that go beyond answering: <b>MetaHarness</b> evolves your setup and routes work to cheaper models (rUv&rsquo;s measured cascade ran <b>~56&times; cheaper</b> than frontier-only); the <b>QE fleet</b> tests on demand. You trigger each with a plain sentence.</figcaption>
+            </figure>
+            <p>
+              You never have to master MetaHarness or the QE fleet to use them &mdash; that&rsquo;s the point. The read-only
+              side (scoring &amp; auditing your setup) works on any repo for free; the cost-optimizing
+              <strong>evolve</strong> loop uses an OpenRouter key. Same one brain, same one-line habit &mdash; now it
+              doesn&rsquo;t just tell you the rUv way, it can <em>do</em> it.
+            </p>
+          </div>
+        </details>
+
         <!-- ============ S07 — SEE IT WORK (the #seeit demo) ============ -->
         <details class="section" id="s07" open>
           <summary>
@@ -1406,54 +1359,10 @@
           </div>
         </details>
 
-        <!-- ============ S08 — PROOF, AND HONEST EXPECTATIONS ============ -->
-        <details class="section" id="s08" open>
-          <summary>
-            <span class="num">08</span>
-            <span class="head-text">
-              <h2>Proof, and honest expectations</h2>
-              <span class="q">Will it always work? When won&rsquo;t it?</span>
-            </span>
-            <span class="chev" aria-hidden="true">&rsaquo;</span>
-          </summary>
-          <div class="body">
-            <p class="lead-in">Real, measured numbers &mdash; not faith. Re-run them yourself on your own machine.</p>
-
-            <table class="tbl">
-              <thead>
-                <tr><th>What we measured</th><th>How it&rsquo;s asked</th><th>Result</th></tr>
-              </thead>
-              <tbody>
-                <tr class="reveal-row"><td>Named routing</td><td class="before">you name the tool</td><td class="win">47 / 48 &middot; 98%</td></tr>
-                <tr class="reveal-row"><td>Described routing</td><td class="before">you only describe it (was 33%)</td><td class="win">26 / 28 &middot; 93%</td></tr>
-                <tr class="reveal-row"><td>Code-level depth</td><td class="before">&ldquo;how is it implemented?&rdquo; &mdash; not the docs</td><td class="win">actual code, not summaries</td></tr>
-                <tr class="reveal-row"><td>Fresh-download install</td><td class="before">brand-new machine: download, unzip, ask</td><td class="win">4 / 4</td></tr>
-              </tbody>
-            </table>
-
-            <p>Now set expectations honestly &mdash; this is comfort, not hype:</p>
-            <ul>
-              <li><strong>What it WILL do, every time:</strong> ground Claude in rUv&rsquo;s real source, stop
-                name-blind drift, cite actual code, route by description.</li>
-              <li><strong>Where it shines:</strong> anything touching rUv&rsquo;s stack &mdash; vectors/RVF, Ruflo
-                orchestration, SPARC, agent memory.</li>
-              <li><strong>Where it won&rsquo;t help (honest):</strong> it&rsquo;s not a general coding oracle; for
-                non-RuvNet topics Claude works normally. ~1 in 25 described queries still routes imperfectly (we show
-                it: 26/28).</li>
-            </ul>
-
-            <div class="note honest">
-              <span class="lab">Honest</span>
-              We&rsquo;d rather tell you the one it misses than pretend it&rsquo;s perfect. <strong>26 out of 28</strong>
-              &mdash; and improving.
-            </div>
-          </div>
-        </details>
-
         <!-- ============ S09 — HOW YOU ACTUALLY USE IT ============ -->
         <details class="section" id="s09">
           <summary>
-            <span class="num">09</span>
+            <span class="num">08</span>
             <span class="head-text">
               <h2>How you actually use it</h2>
               <span class="q">It&rsquo;s installed &mdash; now what do I do?</span>
@@ -1529,22 +1438,80 @@ npx ruvnet-brain
         <!-- ============ S10 — DROP IT INTO ANY REPO ============ -->
         <details class="section" id="s10">
           <summary>
-            <span class="num">10</span>
+            <span class="num">09</span>
             <span class="head-text">
-              <h2>Drop it into any repo</h2>
-              <span class="q">Is this locked to one project?</span>
-              <span class="tier tech" style="margin-top:6px">install once &middot; works everywhere</span>
+              <h2>How it works across your world</h2>
+              <span class="q">How does it act &mdash; across my repos, and without getting in the way?</span>
+              <span class="tier tech" style="margin-top:6px">recommends only when it fits &middot; then guides you in</span>
             </span>
             <span class="chev" aria-hidden="true">&rsaquo;</span>
           </summary>
           <div class="body">
             <p class="lead-in">
-              The Brain isn&rsquo;t copied into a repo. Install once, and every Claude session in every folder has it.
+              Install once and the Brain travels with <em>you</em> &mdash; every repo, every window. In each project it
+              <strong>reads what you&rsquo;re actually building first</strong>, then acts the way rUv would: it
+              recommends a rUv tool <strong>only when it genuinely fits this project</strong> &mdash; and when it does,
+              it <strong>guides you through wiring it in.</strong> When it doesn&rsquo;t fit, it stays quiet. Never forced.
             </p>
-            <p>
-              Point it at a fresh repo &mdash; your own product, say &mdash; and Claude builds there <em>as
-              if rUv were pairing with you.</em>
-            </p>
+            <p class="tier tech">The process &mdash; across your user, across your repos</p>
+            <figure class="figure diagram">
+              <svg class="diagram-svg dgm-proc" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" role="img" aria-labelledby="proc-title proc-desc">
+  <title id="proc-title">How it works across your world: one user-scoped install reaches every repo and window, reads each project first, and recommends a rUv tool only when it fits — then guides you through wiring it in</title>
+  <desc id="proc-desc">A flow. One install is user-scoped and travels with you into every repo and every window. In each project the Brain reads what you are building first. Then a fork: if a rUv tool genuinely fits this project it recommends it and guides you through the integration step by step; if it does not fit it stays quiet and is never forced. The result is that you build like rUv, grounded, but only where it makes sense.</desc>
+  <defs>
+    <linearGradient id="proc-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0b1018"/><stop offset="100%" stop-color="#070a10"/></linearGradient>
+    <filter id="proc-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <marker id="proc-a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#8b8f9c"/></marker>
+    <marker id="proc-ag" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#5fd38a"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="470" rx="14" fill="url(#proc-bg)"/>
+  <text x="500" y="38" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="22" font-weight="700">How it works across your world</text>
+  <text x="500" y="62" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="13">One install, user-scoped. It reads each project first — and recommends a tool only when it fits.</text>
+
+  <!-- spine -->
+  <g class="d-fade d-fade-1">
+  <rect x="34" y="150" width="196" height="88" rx="11" fill="#161208" stroke="rgba(240,168,48,.5)" stroke-width="1.3"/>
+  <text x="132" y="178" text-anchor="middle" fill="#f0a830" font-family="ui-monospace,monospace" font-size="10" letter-spacing="1.4">ONE INSTALL</text>
+  <text x="132" y="200" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="15" font-weight="700">user-scoped</text>
+  <text x="132" y="221" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="11.5">travels with you, not the repo</text>
+  </g>
+  <line class="d-draw d-draw-1" x1="230" y1="194" x2="262" y2="194" stroke="#8b8f9c" stroke-width="2" marker-end="url(#proc-a)"/>
+  <g class="d-fade d-fade-2">
+  <rect x="264" y="150" width="196" height="88" rx="11" fill="#0f141c" stroke="rgba(232,228,216,.2)" stroke-width="1.3"/>
+  <text x="362" y="178" text-anchor="middle" fill="#8b8f9c" font-family="ui-monospace,monospace" font-size="10" letter-spacing="1.4">EVERY REPO · EVERY WINDOW</text>
+  <text x="362" y="200" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="15" font-weight="700">it&#39;s just there</text>
+  <text x="362" y="221" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="11.5">your products, anything — no setup</text>
+  </g>
+  <line class="d-draw d-draw-2" x1="460" y1="194" x2="492" y2="194" stroke="#8b8f9c" stroke-width="2" marker-end="url(#proc-a)"/>
+  <g class="d-fade d-fade-3">
+  <rect x="494" y="150" width="196" height="88" rx="11" fill="#0f141c" stroke="rgba(90,214,255,.45)" stroke-width="1.3"/>
+  <text x="592" y="178" text-anchor="middle" fill="#5ad6ff" font-family="ui-monospace,monospace" font-size="10" letter-spacing="1.4">READS THIS PROJECT</text>
+  <text x="592" y="200" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="15" font-weight="700">what are you building?</text>
+  <text x="592" y="221" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="11.5">the way rUv would look first</text>
+  </g>
+
+  <!-- fork -->
+  <path class="d-draw d-draw-3" d="M690 172 C716 150 728 118 758 108" stroke="#5fd38a" stroke-width="2" fill="none" marker-end="url(#proc-ag)"/>
+  <path class="d-draw d-draw-return" d="M690 216 C716 238 728 270 758 282" stroke="#8b8f9c" stroke-width="1.8" fill="none" stroke-dasharray="5 5" marker-end="url(#proc-a)"/>
+
+  <g class="d-fade d-fade-4 d-pulse-soft">
+  <g filter="url(#proc-glow)" opacity=".45"><rect x="760" y="72" width="206" height="92" rx="11" fill="rgba(95,211,138,.16)"/></g>
+  <rect x="760" y="72" width="206" height="92" rx="11" fill="#0d1611" stroke="rgba(95,211,138,.55)" stroke-width="1.4"/>
+  <text x="863" y="98" text-anchor="middle" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="10" letter-spacing="1.2">FITS THIS PROJECT ✓</text>
+  <text x="863" y="120" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="14.5" font-weight="700">recommends + guides you in</text>
+  <text x="863" y="140" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="11">the right rUv tool, wired step by step</text>
+  </g>
+  <g class="d-fade d-fade-5">
+  <rect x="760" y="252" width="206" height="70" rx="11" fill="#0f141c" stroke="rgba(232,228,216,.16)" stroke-dasharray="5 5"/>
+  <text x="863" y="278" text-anchor="middle" fill="#8b8f9c" font-family="ui-monospace,monospace" font-size="10" letter-spacing="1.2">DOESN'T FIT</text>
+  <text x="863" y="300" text-anchor="middle" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="12.5">stays quiet — never forced on you</text>
+  </g>
+
+  <text class="d-fade d-fade-5" x="500" y="410" text-anchor="middle" fill="#f0a830" font-family="Georgia,serif" font-size="15.5" font-style="italic">Proactive like Ruv when a tool fits your project — silent when it doesn't. Then it guides you in.</text>
+  <text x="500" y="440" text-anchor="middle" fill="#5fd38a" font-family="system-ui,sans-serif" font-size="13">You build grounded — nine months ahead, but only where it makes sense.</text>
+</svg>
+              <figcaption>One user-scoped install &rarr; every repo &amp; window &rarr; it <b>reads the project first</b> &rarr; recommends a rUv tool <b>only when it fits</b>, then <b>guides you through wiring it in</b> &mdash; and stays quiet when it doesn&rsquo;t.</figcaption>
+            </figure>
 
             <pre class="tree"><span class="cmt"># what shipped — portable, user-scoped</span>
 <span class="d">~/.cache/ruvnet-brain/kb/</span>            <span class="cmt"># the Brain (RVF) — travels with you, not the repo</span>
