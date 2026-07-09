@@ -57,11 +57,21 @@ describe('configureModel — offline-first embedder wiring', () => {
 });
 
 describe('loadRvf — resolves the RVF SDK from the project', () => {
-  it('returns the @ruvector/rvf module and a "via" provenance string', () => {
-    const r = loadRvf(); // @ruvector/rvf is installed in this repo's node_modules
-    expect(r.mod).toBeTruthy();
-    expect(typeof r.via).toBe('string');
-    expect(r.via.length).toBeGreaterThan(0);
+  // @ruvector/rvf lives in kb/node_modules (kb/package.json), NOT the repo root. CI's root `npm i`
+  // never installs it — the `cd kb && npm ci` step runs later — so asserting "the module is present"
+  // asserted the developer's laptop, and this test failed on every CI push. Assert the CONTRACT
+  // instead: loadRvf either resolves with provenance, or throws an error that names the package it
+  // needs. Both are correct behavior; a partial (a module with no `via`) is not.
+  it('either returns the module with a "via" provenance string, or throws naming @ruvector/rvf', () => {
+    let r, err;
+    try { r = loadRvf(); } catch (e) { err = e; }
+    if (err) {
+      expect(String(err.message)).toMatch(/@ruvector\/rvf/);
+    } else {
+      expect(r.mod).toBeTruthy();
+      expect(typeof r.via).toBe('string');
+      expect(r.via.length).toBeGreaterThan(0);
+    }
   });
 
   it('with RVF_MODULE_PATH set to a dir lacking the SDK: never returns a partial — module or a throw naming @ruvector/rvf', () => {
