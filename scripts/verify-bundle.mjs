@@ -20,14 +20,20 @@ const PUB_PATH = process.env.RUVNET_SIGNING_PUB || path.join(ROOT, 'keys', 'ruvn
 
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
-export function verifyBundle(bundlePath, sigPath = `${bundlePath}.sig`) {
+/**
+ * `pubPath` defaults to the repo's committed trust root and should stay that way in production.
+ * It is overridable ONLY so the test can bring an ephemeral keypair: signing requires the private
+ * key, which CI must never hold, and a test that can't run in CI is a test that stops protecting
+ * anything. (CI was red for days on exactly this: `sign-bundle.mjs` → "no signing key".)
+ */
+export function verifyBundle(bundlePath, sigPath = `${bundlePath}.sig`, pubPath = PUB_PATH) {
   try {
-    if (!fs.existsSync(PUB_PATH)) return { ok: false, reason: `no public key at ${path.relative(ROOT, PUB_PATH)}` };
+    if (!fs.existsSync(pubPath)) return { ok: false, reason: `no public key at ${path.relative(ROOT, pubPath)}` };
     if (!fs.existsSync(bundlePath)) return { ok: false, reason: `bundle not found: ${bundlePath}` };
     if (!fs.existsSync(sigPath)) return { ok: false, reason: `signature missing: ${path.basename(sigPath)} (fail-closed — refusing to trust an unsigned bundle)` };
     const digest = sha256(fs.readFileSync(bundlePath));
     const sig = fs.readFileSync(sigPath);
-    const pub = crypto.createPublicKey(fs.readFileSync(PUB_PATH, 'utf8'));
+    const pub = crypto.createPublicKey(fs.readFileSync(pubPath, 'utf8'));
     const ok = crypto.verify(null, Buffer.from(digest, 'hex'), pub, sig);
     return ok ? { ok: true, reason: `signature valid (sha256 ${digest.slice(0, 12)}…)` } : { ok: false, reason: 'signature does NOT match — bundle may be tampered' };
   } catch (e) {

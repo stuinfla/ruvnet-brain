@@ -66,3 +66,7 @@ coverage/
 
 # gist ingest fetch-cache (machine-local; the index in docs/ is the tracked artifact)
 kb/.ruv-gists.cache.json
+
+# ruflo flywheel: the locally-applied signed retrieval-config champion (per-install state)
+.claude/proven-config.json
+.claude/.proven-config-version
