@@ -1,6 +1,12 @@
+---
+id: ADR-001
+---
 # ADR-0001: Ship a verified zip bundle, not a single embedded `.rvf`
 
-**Status:** Accepted (2026-06-27) · **Red-team origin:** Arch-H1
+**Status**: Accepted (2026-06-27)
+**Date**: 2026-06-27
+
+**Red-team origin:** Arch-H1
 
 ## Context
 The aspiration was "one magic `.rvf` you drop in." But the entire proven toolchain (`rvf-kb-forge`,

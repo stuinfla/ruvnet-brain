@@ -1,6 +1,12 @@
+---
+id: ADR-009
+---
 # ADR-0009: The Mirror Discipline — RuvNet Brain must pass its own bar (self-audit + ADR/DDD/doc QA)
 
-**Status:** Accepted (2026-07-06) · **Origin:** Stuart's directive — "have RuvNet Brain review the
+**Status**: Accepted (2026-07-06)
+**Date**: 2026-07-06
+
+**Origin:** Stuart's directive — "have RuvNet Brain review the
 existing codebase, grade it 1–100 on core elements, paint the gaps, then add an ADR + DDD and QA them
 just like RuvNet Brain always would… rUv uses ADRs and DDDs that are written and then QA'd aggressively
 to make sure they're real and complete, and checks all documentation is current and complete."

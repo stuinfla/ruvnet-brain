@@ -1,6 +1,12 @@
+---
+id: ADR-002
+---
 # ADR-0002: Quality gate of record = ground-truth-against-source + multi-vendor panel
 
-**Status:** Accepted (2026-06-27) · **Red-team origin:** Proof-H1/H12, Arch-H7 · **Owner directive**
+**Status**: Accepted (2026-06-27)
+**Date**: 2026-06-27
+
+**Red-team origin:** Proof-H1/H12, Arch-H7 · **Owner directive**
 
 ## Context
 For 15 months the failure was an LLM judging RuvNet from memory and being confidently wrong. A proof that

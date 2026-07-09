@@ -1,6 +1,12 @@
+---
+id: ADR-010
+---
 # ADR-0010: Security hardening (SEC-0010) — Dragan's QE review, and exactly how each finding was fixed
 
-**Status:** Accepted (2026-07-06) · **Origin:** a private, responsible-disclosure QE review by Dragan
+**Status**: Accepted (2026-07-06)
+**Date**: 2026-07-06
+
+**Origin:** a private, responsible-disclosure QE review by Dragan
 Spiridonov (deep read + a swarm of security/code/test/dependency/docs agents), reviewed at HEAD `126fc3b`.
 **Source record:** `User Feedback/2026-07-06-ruvnet-brain-note-for-stuart.md`. **Discipline:** every claim was
 verified against the real code before any change; every fix was proven with a real command before it counted

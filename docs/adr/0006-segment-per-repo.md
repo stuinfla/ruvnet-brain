@@ -1,6 +1,12 @@
+---
+id: ADR-006
+---
 # ADR-0006: Segment-per-repo indexing + cross-segment normalization
 
-**Status:** Accepted (2026-06-27) · **Red-team origin:** Arch-H3
+**Status**: Accepted (2026-06-27)
+**Date**: 2026-06-27
+
+**Red-team origin:** Arch-H3
 
 ## Context
 You cannot concatenate 169 per-repo HNSW graphs into one "well-routed" index — HNSW is a navigable

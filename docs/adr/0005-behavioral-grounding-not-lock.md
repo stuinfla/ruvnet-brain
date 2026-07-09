@@ -1,6 +1,12 @@
+---
+id: ADR-005
+---
 # ADR-0005: Behavioral grounding via retrieve-and-inject + hard-deny + drift SLO (not a "lock")
 
-**Status:** Accepted (2026-06-27) · **Partially implemented — reconciled 2026-07-06 (ADR-0009 decision 2).**
+**Status**: Accepted (2026-06-27)
+**Date**: 2026-06-27
+
+**Partially implemented — reconciled 2026-07-06 (ADR-0009 decision 2).**
 **Red-team origin:** Enf-H1/H2/H3/H6, Arch-H6
 
 > **⚠ SHIPPED-VS-DECIDED RECONCILIATION (2026-07-06, ADR-0009 self-audit).** Of the four teeth decided

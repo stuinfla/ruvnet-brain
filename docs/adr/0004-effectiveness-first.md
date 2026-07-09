@@ -1,6 +1,12 @@
+---
+id: ADR-004
+---
 # ADR-0004: Effectiveness first — size is a later optimization
 
-**Status:** Accepted (2026-06-27) · **Owner directive** (supersedes the v0.2 SQ8 default)
+**Status**: Accepted (2026-06-27)
+**Date**: 2026-06-27
+
+**Owner directive** (supersedes the v0.2 SQ8 default)
 
 ## Context
 Every prior optimization for size bled effectiveness below the threshold where the tool works at all. The

@@ -1,6 +1,12 @@
+---
+id: ADR-003
+---
 # ADR-0003: Point deeper — the KB resolves to exact code; the agent never chooses to dig
 
-**Status:** Accepted (2026-06-27) · **Red-team origin:** owner directive (the core 15-month failure)
+**Status**: Accepted (2026-06-27)
+**Date**: 2026-06-27
+
+**Red-team origin:** owner directive (the core 15-month failure)
 
 ## Context
 The failed assumption: "point Claude at a deep repo and it will keep reading until it finds the answer."

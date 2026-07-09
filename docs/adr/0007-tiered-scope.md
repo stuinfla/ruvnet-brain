@@ -1,6 +1,12 @@
+---
+id: ADR-007
+---
 # ADR-0007: Tiered scope (T0–T3) by ingest depth; union selection rule
 
-**Status:** Accepted (2026-06-27) · **Red-team origin:** Proof-H8, F7
+**Status**: Accepted (2026-06-27)
+**Date**: 2026-06-27
+
+**Red-team origin:** Proof-H8, F7
 
 ## Context
 169 non-fork repos under `github.com/ruvnet`. A single star cutoff is wrong (it would drop core pieces like

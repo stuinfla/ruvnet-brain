@@ -1,6 +1,12 @@
+---
+id: ADR-008
+---
 # ADR-0008: The autonomous RuvNet-native engineering loop (the build product on top of the brain)
 
-**Status:** Accepted (2026-06-28) · **Origin:** Stuart's "real definition of success" (2026-06-28) — the brain
+**Status**: Accepted (2026-06-28)
+**Date**: 2026-06-28
+
+**Origin:** Stuart's "real definition of success" (2026-06-28) — the brain
 (ADR-0001..0007) is the grounding floor; this ADR is the *building*. **Grounded via the brain itself**
 (`search_ruvnet` / `forge-ask-all`) against real RuvNet source — paths cited inline.
 
