@@ -1,0 +1,54 @@
+name: integration-linux
+# The brain-DEPENDENT suite, run on a real Linux runner on demand.
+#
+# WHY IT EXISTS. tests/integration/* passed on macOS and failed on ubuntu, and we could not
+# reproduce the divergence locally even with a sanitized HOME and PATH. Guessing at a platform bug
+# is how you "fix" the wrong thing. This job gives the actual Linux output.
+#
+# It is NOT part of the required `ci` workflow: several of these tests want the 512MB brain, which a
+# runner does not have. They are expected to SKIP when their prerequisite is absent — and a test that
+# skips must say so loudly, never pass silently. This job surfaces exactly which do which.
+#
+#   gh workflow run integration-linux.yml
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install root deps
+        run: npm i --no-audit --no-fund --loglevel=error
+
+      - name: Install kb deps (@ruvector/rvf lives here, not the root)
+        run: cd kb && npm ci --no-audit --no-fund
+
+      - name: Environment facts (so a failure is diagnosable from the log alone)
+        run: |
+          echo "shell:  $(readlink -f /bin/sh)"
+          echo "bash:   $(bash --version | head -1)"
+          echo "grep:   $(grep --version | head -1)"
+          echo "sed:    $(sed --version | head -1)"
+          echo "jq:     $(jq --version 2>/dev/null || echo MISSING)"
+          echo "gh:     $(gh --version 2>/dev/null | head -1 || echo MISSING)"
+          echo "rvf stores present: $(ls kb/*.rvf 2>/dev/null | wc -l)"
+
+      - name: Integration suite (continue on failure so we see EVERY error, not just the first)
+        id: run
+        continue-on-error: true
+        run: npx vitest run tests/integration --reporter=verbose 2>&1 | tee /tmp/integration.log
+
+      - name: Summarize
+        run: |
+          echo "### Linux integration results" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E "✓|×|↓|Test Files|Tests " /tmp/integration.log | tail -40 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # Fail the job if anything actually failed, now that the log is captured.
+          ! grep -qE "^\s*×|Failed Tests" /tmp/integration.log
