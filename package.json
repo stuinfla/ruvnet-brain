@@ -16,7 +16,9 @@
     "metaharness:check": "node scripts/fix-metaharness-memretrieve.mjs --check",
     "eval": "node scripts/eval-brain.mjs",
     "eval:gate": "node scripts/eval-brain.mjs --gate",
-    "eval:record": "node scripts/eval-brain.mjs --record"
+    "eval:record": "node scripts/eval-brain.mjs --record",
+    "embed:verifier": "node scripts/embed-verifier.mjs",
+    "embed:check": "node scripts/embed-verifier.mjs --check"
   },
   "files": [
     "bin/install.mjs",
