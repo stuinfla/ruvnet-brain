@@ -1149,7 +1149,7 @@
             <figure class="figure diagram">
               <svg class="diagram-svg dgm-beyond" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" role="img" aria-labelledby="beyond-title beyond-desc">
   <title id="beyond-title">Beyond grounding: the Brain also runs MetaHarness to self-improve and cost-optimize your setup, and a QE fleet to test it, each invoked in one plain-English line</title>
-  <desc id="beyond-desc">The Brain branches to two pre-wired capabilities. MetaHarness freezes the model and evolves the harness around Claude, routing most work to cheap models and escalating to a frontier model only when needed — measured about fifty-six times cheaper than frontier-only at comparable quality. The QE fleet runs tests on demand: coverage, security, accessibility and experience. Each is triggered by a plain sentence such as score my harness, do this cheaper, or QE this.</desc>
+  <desc id="beyond-desc">The Brain branches to two pre-wired capabilities. MetaHarness freezes the model and evolves the harness around Claude, routing most work to cheap models and escalating to a frontier model only when needed — measured about fifty-six times cheaper per task than frontier-only, solving 51 percent of tasks versus about 60 percent. The QE fleet runs tests on demand: coverage, security, accessibility and experience. Each is triggered by a plain sentence such as score my harness, do this cheaper, or QE this.</desc>
   <defs>
     <linearGradient id="beyond-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0b1018"/><stop offset="100%" stop-color="#070a10"/></linearGradient>
     <filter id="beyond-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="11" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -1178,7 +1178,7 @@
   <rect x="76" y="353" width="58" height="19" rx="5" fill="#0d1611" stroke="rgba(95,211,138,.6)"/>
   <text x="142" y="367" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="10.5">GLM→Opus cascade $0.27</text>
   <g class="d-pulse-soft"><text x="76" y="398" fill="#5fd38a" font-family="Georgia,serif" font-size="16" font-weight="700">~56× cheaper</text></g>
-  <text x="76" y="417" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11.5">at comparable quality — first try</text>
+  <text x="76" y="417" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11.5">51% solved · frontier ~60%</text>
   <text x="76" y="435" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="11.5">+ scores &amp; audits your setup on any repo — free</text>
   </g>
 
@@ -1244,8 +1244,8 @@
             <p class="tier tech">The money-saver, drawn out</p>
             <figure class="figure diagram">
               <svg class="diagram-svg dgm-stretch" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" role="img" aria-labelledby="stretch-title stretch-desc">
-  <title id="stretch-title">How it stretches your tokens: a cheap model does every task first and carries the bulk, a reliable gate detects the tasks it could not do, and only those escalate to the expensive smart model — measured about 56 times cheaper at the same resolve rate</title>
-  <desc id="stretch-desc">Flow. Every task goes first to a cheap model such as GLM or DeepSeek, which on everyday work measures as good as or better than a frontier model and carries most of the volume. A gate — a reliable pass or fail signal such as an empty patch — checks whether the cheap model actually succeeded. Most tasks pass and are done for pennies. Only the hard minority that the cheap model could not do are escalated to the expensive smart model such as Opus or GPT, at full power. The measured result on rUv's SWE-bench submission is about 0.27 dollars per task versus about 15 dollars for frontier-only — roughly fifty-six times cheaper at the same resolve rate. It is automatic once you add an OpenRouter key.</desc>
+  <title id="stretch-title">How it stretches your tokens: a cheap model does every task first and carries the bulk, a reliable gate detects the tasks it could not do, and only those escalate to the expensive smart model — measured about 56 times cheaper per task, solving 51 percent of tasks against roughly 60 percent for frontier-only</title>
+  <desc id="stretch-desc">Flow. Every task goes first to a cheap model such as GLM or DeepSeek, which on everyday work measures as good as or better than a frontier model and carries most of the volume. A gate — a reliable pass or fail signal such as an empty patch — checks whether the cheap model actually succeeded. Most tasks pass and are done for pennies. Only the hard minority that the cheap model could not do are escalated to the expensive smart model such as Opus or GPT, at full power. The measured result on rUv's SWE-bench submission is about 0.27 dollars per task versus about 15 dollars for frontier-only — roughly fifty-six times cheaper per task. It solves about 51 percent of tasks where frontier-only solves about 60 percent — the win is cost per task, not a higher score. It is automatic once you add an OpenRouter key.</desc>
   <defs>
     <linearGradient id="stretch-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0b1018"/><stop offset="100%" stop-color="#070a10"/></linearGradient>
     <filter id="stretch-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -1270,7 +1270,7 @@
   <rect x="194" y="112" width="272" height="112" rx="11" fill="#0f141c" stroke="rgba(95,211,138,.45)" stroke-width="1.4"/>
   <text x="212" y="138" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.2" font-weight="600">① THE CHEAP MODEL TRIES FIRST</text>
   <text x="212" y="160" fill="#ece8dc" font-family="Georgia,serif" font-size="15" font-weight="700">GLM · DeepSeek</text>
-  <text x="212" y="181" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">On everyday work it&#39;s as good as the pricey one</text>
+  <text x="212" y="181" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">On everyday work it matches the pricey one</text>
   <text x="212" y="199" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">(DeepSeek 96% vs GPT 83% on tool-use) —</text>
   <text x="212" y="216" fill="#9ee6bf" font-family="system-ui,sans-serif" font-size="12" font-weight="700">and it carries most of the volume.</text>
   </g>
@@ -1301,9 +1301,9 @@
   <rect x="774" y="112" width="196" height="112" rx="11" fill="#161208" stroke="rgba(240,168,48,.5)" stroke-width="1.4"/>
   <text x="792" y="138" fill="#f0a830" font-family="ui-monospace,monospace" font-size="10.5" letter-spacing="1.2" font-weight="600">③ THE SMART MODEL</text>
   <text x="792" y="160" fill="#ece8dc" font-family="Georgia,serif" font-size="15" font-weight="700">Opus · GPT</text>
-  <text x="792" y="181" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">full power — but only on the</text>
-  <text x="792" y="199" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">minority the cheap one couldn&#39;t do</text>
-  <text x="792" y="217" fill="#f0c68a" font-family="system-ui,sans-serif" font-size="12" font-weight="700">(~1 in 3)</text>
+  <text x="792" y="181" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">full power — only on the few</text>
+  <text x="792" y="199" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">the cheap model gave up on</text>
+  <text x="792" y="217" fill="#f0c68a" font-family="system-ui,sans-serif" font-size="12" font-weight="700">(113 of 300 — about 1 in 3)</text>
   </g>
   <path class="d-draw d-draw-return" d="M872 224 V270" stroke="#5fd38a" stroke-width="2" fill="none" marker-end="url(#stretch-ag)" stroke-dasharray="0"/>
   <g class="d-fade d-fade-5">
@@ -1323,10 +1323,10 @@
   <text x="864" y="458" text-anchor="end" fill="#5fd38a" font-family="ui-monospace,monospace" font-size="14" font-weight="700">$0.27 / task</text>
   </g>
 
-  <text class="d-fade d-fade-5" x="500" y="506" text-anchor="middle" fill="#5fd38a" font-family="Georgia,serif" font-size="20" font-weight="700">~56× cheaper — at the same resolve rate</text>
+  <text class="d-fade d-fade-5" x="500" y="506" text-anchor="middle" fill="#5fd38a" font-family="Georgia,serif" font-size="20" font-weight="700">~56× cheaper per task — 51% solved vs ~60%</text>
   <text x="500" y="536" text-anchor="middle" fill="#f0a830" font-family="Georgia,serif" font-size="14" font-style="italic">Automatic with your OpenRouter key. You never pay top price for work a cheap model already nailed.</text>
 </svg>
-              <figcaption>How the money-saving actually works: the <b>cheap model</b> does every task first and carries the bulk; a <b>reliable gate</b> catches the ones it couldn&rsquo;t do; only <em>those</em> escalate to the <b>smart model</b>. Measured <b>~56&times; cheaper</b> at the same resolve rate. Add an OpenRouter key and it&rsquo;s automatic.</figcaption>
+              <figcaption>How the money-saving actually works: the <b>cheap model</b> does every task first and carries the bulk; a <b>reliable gate</b> catches the ones it couldn&rsquo;t do; only <em>those</em> escalate to the <b>smart model</b>. Measured <b>~56&times; cheaper</b> per task — solving ~51% of tasks where frontier-only solves ~60%. The win is cost, not a higher score. Add an OpenRouter key and it&rsquo;s automatic.</figcaption>
             </figure>
             <p>
               Two honest notes so this isn&rsquo;t hype: the <b>~56&times;</b> is rUv&rsquo;s <em>measured</em> SWE-bench
