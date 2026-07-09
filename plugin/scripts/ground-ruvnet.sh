@@ -37,11 +37,10 @@ FOOT_V="v$GV0"
 if [ -n "$STAGED_V" ] && [ "$STAGED_V" != "$GV0" ] && [ "$GV0" != "?" ]; then
   FOOT_V="v$GV0 · v$STAGED_V staged, restart to load"
 fi
-cat <<EOF
-[RuvNet Brain — running v$GV0 (this session's loaded version) · project stack: Ruflo: $RUFLO_STATE · AgentDB memory: $MEM_STATE]
-End EVERY response with exactly this one dim status line (last line, always): "🧠 RuvNet Brain $FOOT_V · Ruflo: $RUFLO_STATE · AgentDB memory: $MEM_STATE"
-The version in that line is the one ACTING on this response (loaded in memory) — if a staged version appears there, the user must exit and reopen (\`claude --continue\` brings this conversation right back) to actually run it.
-EOF
+# The per-prompt status footer is now CONDITIONAL (Stuart, 2026-07-08): it is emitted at the
+# very END of this hook ONLY when a grounding/drift/build/harness gate actually fires, phrased
+# as "jumped in". No always-on line — silence when the Brain didn't engage. (Version vars GV0 /
+# FOOT_V computed above are reused there.)
 if [ "$RUFLO_STATE" = "yes" ] && [ "$MEM_STATE" = "off" ]; then
   cat <<'EOF'
 This project runs the Ruflo stack but AgentDB persistent project memory is NOT set up (.swarm/memory.db does not exist) — decisions made here are being lost between sessions. rUv's default is memory ON. If you have not already offered this session, offer ONCE, plainly and warmly: "One thing I noticed: this project doesn't have persistent memory turned on — AgentDB would let me carry decisions and context across sessions instead of starting cold each time. Want me to turn it on and wire it up?" On a yes, set it up with the ruflo tools you have (a first memory_store write creates the store) and confirm with the real file path. If they decline, respect it for the rest of the session — the status line keeps them informed without nagging.
@@ -208,6 +207,17 @@ This task touches testing / quality / harness-readiness. Two RuvNet capabilities
 ONE-LINE TRIGGERS to surface to the user (tell them they can just type these): "score my harness" · "evolve my harness" · "audit my harness" · "do this cheaper" / "cost-optimize this" / "route this to a cheaper model" · "QE this" / "test this" / "check coverage".
 
 TEACHING FORK — the FIRST time either comes up in a session, name it in one plain line then ASK: "Want me to explain how this works, or are you confident and I just run it?" If confident -> run it, no lecture. If they want more -> ONE paragraph: what it is, how it works (freeze the model -> mutate harness policy -> sandbox-score -> promote only measured wins), how it's wired (global MCP tools, any repo, nothing to install per project), and that the ONE thing needed to unlock the self-improvement loop is an OpenRouter API key. A newcomer gets one plain line; an expert gets none.
+EOF
+fi
+
+# ── Conditional status footer (Stuart, 2026-07-08) — signal ONLY when the Brain engaged ──
+# If any grounding / drift / build / harness gate fired, the Brain "jumped in" this prompt —
+# ask for ONE dim line at the very end. If NONE fired (pure conversation), emit nothing.
+if [ "$RUVNET" -eq 1 ] || [ "$DRIFT" -eq 1 ] || [ "$BUILD" -eq 1 ] || [ "$HARNESS_QE" -eq 1 ]; then
+  cat <<EOF
+[RuvNet Brain — engaged on this prompt]
+End your response with exactly ONE dim line, nothing after it: "🧠 RuvNet Brain jumped in · $FOOT_V"
+On any prompt where none of these gates fire, add NO status line at all — stay silent.
 EOF
 fi
 
