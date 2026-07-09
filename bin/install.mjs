@@ -44,14 +44,16 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const REPO = 'stuinfla/ruvnet-brain';
 const RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const ASSET_NAME = 'ruvnet-brain.zip';
-// Known-good fallback used when we can't reach GitHub (offline / rate-limited / no releases).
-// Default behavior is "get the latest"; this is only the safety net. Version is READ from this
-// package's own package.json (which ships in the npm tarball and inherits the single source of
-// truth via scripts/sync-version.mjs) — never a hardcoded literal (SEC-0010 #2 / ADR-0009 #1).
-const RELEASE_VERSION = (() => {
-  try { return 'v' + JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')).version; }
-  catch { return 'v0.5.0-dev'; } // sync-version-ignore: last-ditch only if this package's own package.json is unreadable
-})();
+// Known-good BUNDLE tag, used when we can't reach GitHub (offline / rate-limited / no releases),
+// and by --pin. Default behavior is "get the latest Release"; this is only the safety net.
+//
+// This MUST NOT be derived from this package's own version. The installer and the brain bundle are
+// two independent version streams (README: "Three independent things version separately here — by
+// design"). Reading it from package.json produced a tag that has never existed — installer 1.14.0-dev
+// asking for releases/download/v1.14.0-dev/ruvnet-brain.zip, which 404s, while the newest bundle
+// Release is v0.5.0-dev. Verified live: v1.14.0-dev → HTTP 404, v0.5.0-dev → HTTP 200. The safety net
+// was broken in exactly the situation it exists for. Bump this by hand when a new bundle ships.
+const RELEASE_VERSION = 'v0.5.0-dev'; // sync-version-ignore: the BUNDLE Release tag, not this package's version
 const fallbackUrl = (tag) => `https://github.com/${REPO}/releases/download/${tag}/${ASSET_NAME}`;
 const APPROX_SIZE = '~512MB';
 
