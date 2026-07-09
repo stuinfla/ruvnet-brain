@@ -22,6 +22,18 @@ export function getVersionTag() {
   return `v${getVersion()}`;
 }
 
+/**
+ * Strip the Release-tag "v" so a value is safe to write into a version FIELD.
+ *
+ * There are two legitimate forms of the same number: the Release tag (`v1.14.1-dev`, used for git
+ * tags, Release URLs and human stamps) and the bare literal (`1.14.1-dev`, used in package.json and
+ * every other version field). sync-version.mjs owns the fields and compares them bare. brain-stamp
+ * and build-bundle both carried the TAG into `data/manifest.json.brainVersion`, so `--check` went
+ * red on a clean tree, every time either ran — two writers, two formats, a contradiction no amount
+ * of re-syncing could settle. Cross the boundary once, here.
+ */
+export const stripTag = (v) => String(v).replace(/^v/, '');
+
 // CLI: `node scripts/version.mjs` prints the version (handy for shell scripts).
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   process.stdout.write(getVersion() + '\n');

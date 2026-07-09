@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getVersionTag } from './version.mjs';
+import { getVersionTag, stripTag } from './version.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KB = path.join(ROOT, 'kb');
@@ -202,7 +202,7 @@ const builtLower = new Set(built.map((b) => b.toLowerCase()));
 const pendingRepos = regFlat.filter((r) => !builtLower.has(r.name.toLowerCase())).map((r) => ({ name: r.name, tier: r.tier }));
 const now = new Date();
 const manifest = {
-  brainVersion: BRAIN_VERSION,
+  brainVersion: stripTag(BRAIN_VERSION), // FIELD = bare literal; BRAIN_VERSION stays the v-prefixed Release tag
   generated: now.toISOString(),
   generatedHuman: now.toUTCString(),
   coverage: { built: builtRepos.length, catalogued: regFlat.length, orgTotalApprox: 248, pending: pendingRepos.length },

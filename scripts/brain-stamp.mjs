@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { getVersionTag } from './version.mjs';
+import { getVersionTag, stripTag } from './version.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
@@ -41,7 +41,7 @@ for (const t of ['T0', 'T1', 'T2', 'T3']) {
 }
 const built = repos.filter((r) => r.status === 'built');
 const manifest = {
-  brainVersion: BRAIN_VERSION,
+  brainVersion: stripTag(BRAIN_VERSION), // FIELD = bare literal; the "v" tag is display-only (see version.mjs)
   generated: NOW,
   generatedHuman: new Date(NOW).toUTCString(),
   coverage: { built: built.length, catalogued: repos.length, orgTotalApprox: 248, pending: repos.length - built.length },

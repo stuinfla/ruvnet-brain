@@ -85,6 +85,8 @@ if (CHECK) {
     // The unit tests moved from scripts/ to tests/unit/ but this list did not follow them, so `--check`
     // has been failing on its OWN test fixtures — a gate nobody could pass, which is a gate nobody heeds.
     'tests/unit/version.test.mjs', 'tests/unit/sync-version-drift.test.mjs', 'tests/unit/self-update-plan.test.mjs',
+    // Asserts stripTag('v1.14.1-dev') === '1.14.1-dev' — the literals ARE the fixture.
+    'tests/unit/version-tag-vs-field.test.mjs',
   ]);
   const litRe = /['"`](v?\d+\.\d+\.\d+(?:-dev)?)['"`]/g;
 

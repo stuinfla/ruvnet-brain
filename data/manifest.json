@@ -1,7 +1,7 @@
 {
-  "brainVersion": "1.14.0-dev",
-  "generated": "2026-07-08T11:21:23.300Z",
-  "generatedHuman": "Wed, 08 Jul 2026 11:21:23 GMT",
+  "brainVersion": "1.14.1-dev",
+  "generated": "2026-07-09T17:56:02.480Z",
+  "generatedHuman": "Thu, 09 Jul 2026 17:56:02 GMT",
   "coverage": {
     "built": 20,
     "catalogued": 169,
@@ -61,7 +61,7 @@
       "name": "agent-harness-generator",
       "tier": "T1",
       "stars": 330,
-      "builtFromSha": "139d79b5efd91a224d0fd8e1e10a2af371a60d63",
+      "builtFromSha": "c86bc12a10b53b1f3e4afee03f69609802236eb3",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -157,7 +157,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "450ea2ba1a9824af8bce9ffaa44d48a44c00690e",
+      "builtFromSha": "c2a80c67aa40cef539dc083d9fb0bfd20e816f0e",
       "latestRemoteSha": null,
       "status": "built"
     },
