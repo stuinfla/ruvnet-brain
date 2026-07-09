@@ -1,7 +1,7 @@
 {
-  "brainVersion": "1.13.1-dev",
-  "generated": "2026-07-07T12:10:57.234Z",
-  "generatedHuman": "Tue, 07 Jul 2026 12:10:57 GMT",
+  "brainVersion": "v1.13.1-dev",
+  "generated": "2026-07-08T11:21:23.300Z",
+  "generatedHuman": "Wed, 08 Jul 2026 11:21:23 GMT",
   "coverage": {
     "built": 20,
     "catalogued": 169,
@@ -21,7 +21,7 @@
       "name": "ruflo",
       "tier": "T0",
       "stars": 61698,
-      "builtFromSha": "865dd7dd2b2a830209e64bb3e4aed935d2471d76",
+      "builtFromSha": "a444930d88d753e04793f55bd38861e82d9cb062",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -61,7 +61,7 @@
       "name": "agent-harness-generator",
       "tier": "T1",
       "stars": 330,
-      "builtFromSha": "96f1cfa71a30e73cae171f13de052252bcec5ac5",
+      "builtFromSha": "139d79b5efd91a224d0fd8e1e10a2af371a60d63",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -157,7 +157,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "3b0d8aa91a0c85027b3c48e275b8dcba366e1204",
+      "builtFromSha": "450ea2ba1a9824af8bce9ffaa44d48a44c00690e",
       "latestRemoteSha": null,
       "status": "built"
     },

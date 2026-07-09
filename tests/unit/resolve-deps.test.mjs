@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { chooseModelCache, configureModel, loadRvf } from '../../kb/resolve-deps.mjs';
+import { chooseModelCache, configureModel, loadRvf, loadTransformers } from '../../kb/resolve-deps.mjs';
 
 const MODEL_SLUG = 'Xenova/all-MiniLM-L6-v2';
 let tmp;
@@ -62,5 +62,46 @@ describe('loadRvf — resolves the RVF SDK from the project', () => {
     expect(r.mod).toBeTruthy();
     expect(typeof r.via).toBe('string');
     expect(r.via.length).toBeGreaterThan(0);
+  });
+
+  it('with RVF_MODULE_PATH set to a dir lacking the SDK: never returns a partial — module or a throw naming @ruvector/rvf', () => {
+    const saved = process.env.RVF_MODULE_PATH;
+    process.env.RVF_MODULE_PATH = os.tmpdir(); // exists, but contains no @ruvector/rvf
+    try {
+      let mod, err;
+      try { mod = loadRvf(); } catch (e) { err = e; }
+      if (err) expect(String(err.message)).toMatch(/@ruvector\/rvf/);
+      else { expect(mod.mod).toBeTruthy(); expect(typeof mod.via).toBe('string'); }
+    } finally {
+      if (saved === undefined) delete process.env.RVF_MODULE_PATH; else process.env.RVF_MODULE_PATH = saved;
+    }
+  });
+});
+
+describe('loadTransformers — resolve the embedder or fail clearly (async, offline-first)', () => {
+  let saved;
+  beforeEach(() => { saved = process.env.XENOVA_PATH; });
+  afterEach(() => { if (saved === undefined) delete process.env.XENOVA_PATH; else process.env.XENOVA_PATH = saved; });
+
+  it('with no XENOVA_PATH: resolves a module OR throws a clear @xenova/transformers install error', async () => {
+    delete process.env.XENOVA_PATH;
+    let T, err;
+    try { const r = await loadTransformers(); T = r.T; } catch (e) { err = e; }
+    if (err) expect(String(err.message)).toMatch(/@xenova\/transformers/);
+    else expect(T).toBeDefined();
+  });
+
+  it('with a bogus XENOVA_PATH dir: exercises the override branch, then still fails clearly', async () => {
+    process.env.XENOVA_PATH = path.join(os.tmpdir(), 'no-such-transformers-dir');
+    let err;
+    try { await loadTransformers(); } catch (e) { err = e; }
+    if (err) expect(String(err.message)).toMatch(/@xenova\/transformers/);
+  });
+
+  it('with a XENOVA_PATH ending in .js: builds a file:// URL for the override, then fails clearly', async () => {
+    process.env.XENOVA_PATH = path.join(os.tmpdir(), 'fake-transformers.js');
+    let err;
+    try { await loadTransformers(); } catch (e) { err = e; }
+    if (err) expect(String(err.message)).toMatch(/@xenova\/transformers/);
   });
 });

@@ -4,16 +4,17 @@
 
 # 🧠 RuvNet Brain
 
-### 🧠 RuvNet Brain — [![RuvNet Brain version 1.13.1-dev — updated 2026-07-07 07:46 EDT](https://img.shields.io/badge/version_1.13.1--dev-updated_2026--07--07_07:46_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
+### 🧠 RuvNet Brain — [![RuvNet Brain version 1.13.2-dev — updated 2026-07-08 07:21 EDT](https://img.shields.io/badge/version_1.13.2--dev-updated_2026--07--08_07:21_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
 
 **A portable, source-grounded brain over Reuven Cohen's (rUv's) RuvNet stack — delivered as a Claude Code plugin that makes Claude _use_ the stack instead of fighting it.**
 
 [![plugin version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fstuinfla%2Fruvnet-brain%2Fmain%2Fplugin%2F.claude-plugin%2Fplugin.json&query=%24.version&label=plugin&color=e8a13a&style=flat-square)](plugin/.claude-plugin/plugin.json)
 [![installer version](https://img.shields.io/npm/v/ruvnet-brain?label=installer%20%28npm%29&color=2e7d32&style=flat-square)](https://www.npmjs.com/package/ruvnet-brain)
 [![download](https://img.shields.io/badge/download-512MB%20brain-2e7d32?style=flat-square)](https://github.com/stuinfla/ruvnet-brain/releases/latest)
-[![explainer](https://img.shields.io/badge/▶%20see%20it%20live-ruvnet--brain.vercel.app-e8a13a?style=flat-square)](https://isovision.ai/ruvnet-brain/)
+[![explainer](https://img.shields.io/badge/▶%20see%20it%20live-isovision.ai%2Fruvnet--brain-e8a13a?style=flat-square)](https://isovision.ai/ruvnet-brain/)
 [![license](https://img.shields.io/badge/license-MIT-8ecae6?style=flat-square)](LICENSE)
 [![grounded](https://img.shields.io/badge/answers-cited%20rUv%20source-333?style=flat-square)](#testing--proof)
+[![coverage](https://img.shields.io/badge/coverage-63%25%20lines%20·%2059%25%20stmts-2e7d32?style=flat-square)](#testing--proof)
 
 > **Three independent things version separately here — by design, not drift. Every number below is live (read straight from its real source, never hand-typed), so none of them can go stale:**
 > - **`plugin`** (badge above) — the Claude Code plugin itself: SKILL.md, the grounding hooks, the MCP server. Read live from [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json). Updates often — this is where behavior fixes land.
