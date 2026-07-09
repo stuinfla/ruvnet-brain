@@ -1,15 +1,15 @@
 {
   "builder": "rvf-kb-forge",
-  "builtUtc": "2026-07-08T11:20:53.568Z",
+  "builtUtc": "2026-07-09T08:53:12.372Z",
   "canonicalManifestUrl": "https://raw.githubusercontent.com/ruvnet/ruvnet-brain/main/kb/.last-built.json",
   "selfUpdate": "node forge-update.mjs",
   "stores": {
     "open-claude-code": {
       "kbName": "open-claude-code",
       "sourceRepo": "https://github.com/ruvnet/open-claude-code",
-      "sourceCommit": "450ea2ba1a9824af8bce9ffaa44d48a44c00690e",
-      "sourceDescribe": "v2.0.0-nightly.20260708",
-      "builtUtc": "2026-07-08T11:20:53.568Z",
+      "sourceCommit": "c2a80c67aa40cef539dc083d9fb0bfd20e816f0e",
+      "sourceDescribe": "v2.0.0-nightly.20260709",
+      "builtUtc": "2026-07-09T08:53:12.372Z",
       "builder": "rvf-kb-forge",
       "canonicalManifestUrl": "https://raw.githubusercontent.com/ruvnet/ruvnet-brain/main/kb/.last-built.json",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/ruvnet/ruvnet-brain/main/kb/open-claude-code-kb-bundle.zip",

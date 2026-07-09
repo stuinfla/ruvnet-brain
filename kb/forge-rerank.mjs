@@ -31,12 +31,50 @@ async function loadCE() {
   return _ce;
 }
 
-// score one (query, passage) pair → relevance logit (higher = more relevant)
+// score one (query, passage) pair → relevance logit (higher = more relevant). Used as the per-pair
+// fallback when a batched call fails (see ceScoreBatch below) — kept isolated so one bad passage in a
+// batch degrades to -Infinity for just that item instead of losing the whole batch's scores.
 async function ceScore(ce, query, passage) {
   const inputs = ce.tok(query, { text_pair: passage.slice(0, 3000), padding: true, truncation: true });
   const out = await ce.model(inputs);
   const logits = out.logits.data;
   return logits.length ? Number(logits[0]) : -Infinity;
+}
+
+// Cap how many (query, passage) pairs go into ONE tokenizer+model forward pass. Cross-repo pools can
+// exceed 200 candidates (pool * 27 repos) — batching ALL of them in a single call would pad every
+// short passage out to the longest one in the set, an unbounded memory/compute spike. Chunking keeps
+// the batching win (one ONNX invocation per CE_BATCH_SIZE items instead of per item) bounded.
+const CE_BATCH_SIZE = 16;
+
+// score a whole batch of (query, passage) pairs in ONE forward pass per chunk — the actual perf win
+// vs. one ONNX invocation per candidate (100+ pooled across repos). Falls back to per-pair scoring
+// (isolating a single bad passage to -Infinity) if a chunk's batched call throws.
+async function ceScoreBatch(ce, query, passages) {
+  if (!passages.length) return [];
+  const scores = new Array(passages.length);
+  for (let start = 0; start < passages.length; start += CE_BATCH_SIZE) {
+    const chunk = passages.slice(start, start + CE_BATCH_SIZE);
+    try {
+      const inputs = ce.tok(new Array(chunk.length).fill(query), {
+        text_pair: chunk.map((p) => p.slice(0, 3000)),
+        padding: true,
+        truncation: true,
+      });
+      const out = await ce.model(inputs);
+      const dims = out.logits.dims;
+      const numLabels = dims && dims.length ? dims[dims.length - 1] : 1;
+      const data = out.logits.data;
+      for (let i = 0; i < chunk.length; i++) scores[start + i] = data.length ? Number(data[i * numLabels]) : -Infinity;
+    } catch (e) {
+      if (process.env.CE_DEBUG) console.error('CE batch scoring failed, falling back to per-pair:', e.message);
+      for (let i = 0; i < chunk.length; i++) {
+        try { scores[start + i] = await ceScore(ce, query, chunk[i]); }
+        catch { scores[start + i] = -Infinity; }
+      }
+    }
+  }
+  return scores;
 }
 
 export async function rerankKb({ dir, name, query, k = 6, variant, pool = 20 }) {
@@ -48,11 +86,8 @@ export async function rerankKb({ dir, name, query, k = 6, variant, pool = 20 }) 
   let ce;
   try { ce = await loadCE(); }
   catch (e) { if (process.env.CE_DEBUG) console.error('CE load failed, using base order:', e.message); return base.slice(0, k); }
-  const scored = [];
-  for (const d of base) {
-    try { scored.push({ ...d, ceScore: await ceScore(ce, query, d.fullText || '') }); }
-    catch { scored.push({ ...d, ceScore: -Infinity }); }
-  }
+  const scores = await ceScoreBatch(ce, query, base.map((d) => d.fullText || ''));
+  const scored = base.map((d, i) => ({ ...d, ceScore: scores[i] }));
   scored.sort((a, b) => b.ceScore - a.ceScore);
   return scored.slice(0, k);
 }
@@ -67,12 +102,8 @@ export async function rerankPairs(query, docs) {
   let ce;
   try { ce = await loadCE(); }
   catch (e) { if (process.env.CE_DEBUG) console.error('CE load failed, using input order:', e.message); return docs.map((d) => ({ ...d, ceScore: null })); }
-  const scored = [];
-  for (const d of docs) {
-    const text = d.fullText || d.text || '';
-    try { scored.push({ ...d, ceScore: await ceScore(ce, query, text) }); }
-    catch { scored.push({ ...d, ceScore: -Infinity }); }
-  }
+  const scores = await ceScoreBatch(ce, query, docs.map((d) => d.fullText || d.text || ''));
+  const scored = docs.map((d, i) => ({ ...d, ceScore: scores[i] }));
   scored.sort((a, b) => (b.ceScore ?? -Infinity) - (a.ceScore ?? -Infinity));
   return scored;
 }

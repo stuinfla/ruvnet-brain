@@ -12,6 +12,7 @@
     "version:sync": "node scripts/sync-version.mjs",
     "test:unit": "vitest run",
     "test:cov": "vitest run --coverage",
+    "test:all": "npm test && npm run test:cov && node --test tests/integration/install-smoke.mjs && node tests/integration/redteam-guard.mjs",
     "metaharness:fix": "node scripts/fix-metaharness-memretrieve.mjs --apply",
     "metaharness:check": "node scripts/fix-metaharness-memretrieve.mjs --check",
     "eval": "node scripts/eval-brain.mjs",

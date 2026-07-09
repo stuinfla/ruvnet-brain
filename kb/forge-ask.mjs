@@ -167,6 +167,30 @@ function loadKinds(file) {
 const SOURCE_KINDS = new Set(['source', 'crate-src', 'example']);
 function isSourceKind(kind) { return SOURCE_KINDS.has(kind); }
 
+// ---------- per-KB cache (passages, kind metadata, crate tokens, the open HNSW handle) ----------
+// The KB on disk is immutable for the life of a long-lived MCP server process, but searchKb() re-read
+// + re-parsed the passages/meta sidecars AND reopened the .rvf on every single call. Cached PER
+// `dir|name|variant` (same keying style as _feCache/_symCache above) so a hot KB is loaded once and
+// every subsequent query in this process reuses it. The db handle is intentionally left open for the
+// life of the process (never closed) — same lifetime assumption as the embedder cache above.
+const _kbCache = new Map();
+function getKb(dir, name, conf) {
+  const key = `${dir}|${name}|${conf.variant}`;
+  if (_kbCache.has(key)) return _kbCache.get(key);
+  const entry = (async () => {
+    const [{ byId, byPath }, db] = await Promise.all([
+      loadPassages(conf.passages),
+      RvfDatabase.openReadonly(conf.rvf),
+    ]);
+    const byPathKind = loadKinds(findMetaFile(dir, name, conf.variant));
+    const crateTokens = crateTokenSet(byPath);
+    return { byId, byPath, byPathKind, crateTokens, db };
+  })();
+  entry.catch(() => _kbCache.delete(key)); // don't let a failed load poison the cache permanently
+  _kbCache.set(key, entry);
+  return entry;
+}
+
 // ===================================================================================
 // Retrieval-quality layer (retrieval-only; the KB is NOT rebuilt). Returns whole, self-
 // contained DOCUMENTS instead of single chunk fragments, demotes low-signal files, and
@@ -597,8 +621,7 @@ export async function searchKb({ dir, name, query, k = 6, n, variant }) {
   const conf = resolveConf(dir, name, variant);
   if (!fs.existsSync(conf.rvf)) throw new Error(`rvf not found: ${conf.rvf} (variant=${conf.variant}; build it, or copy the bundle in)`);
   const topN = Math.max(1, n || 5);
-  const [qv, { byId, byPath }] = await Promise.all([embed(query, conf.embedCfg), loadPassages(conf.passages)]);
-  const byPathKind = loadKinds(findMetaFile(dir, name, conf.variant));   // intent layer: per-path content kind
+  const [qv, { byId, byPath, byPathKind, crateTokens, db }] = await Promise.all([embed(query, conf.embedCfg), getKb(dir, name, conf)]);
   const terms = queryTerms(query);
 
   // ---- INTENT CLASSIFICATION (deterministic, once per query) ----
@@ -607,7 +630,6 @@ export async function searchKb({ dir, name, query, k = 6, n, variant }) {
   const prodRe = productNameRe(name);
   // FIX 1 — specific-entity detection: a crate/ADR/file/proper-noun query is NOT a generic product
   // orientation question, so suppress its PRIMER force-route + lift and demote primer-orientation.
-  const crateTokens = crateTokenSet(byPath);
   const productBase = String(name || '').replace(/[-_]?kb$/i, '').replace(/[^a-z0-9]+/gi, '').toLowerCase();
   const entity = specificEntity(query, crateTokens, productBase);
   let routed = routePrimer(query, primers, titleOf, prodRe);    // PRIMER path | {conceptQuery} | null
@@ -640,10 +662,7 @@ export async function searchKb({ dir, name, query, k = 6, n, variant }) {
   // FIX C — crate-scoped maturity question: prefer the crate's OWN README/BENCHMARK.
   const crateMaturityTok = crateMaturityTarget(query, entity.crates);
 
-  const db = await RvfDatabase.openReadonly(conf.rvf);
-  let hits;
-  try { hits = await db.query(qv, Math.max(RAW_HITS, k * 4)); }
-  finally { await db.close(); }
+  const hits = await db.query(qv, Math.max(RAW_HITS, k * 4));
 
   // FIX 1 — collapse chunk hits into documents keyed by path (doc score = min distance).
   const docs = new Map();

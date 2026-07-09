@@ -117,6 +117,22 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(String(out.perRepo.daa)).toMatch(/^ERR:/);
   });
 
+  it('preserves per-repo attribution when repos resolve OUT OF ORDER (Promise.all fan-out)', async () => {
+    // Regression guard for the serial-loop -> Promise.all migration: each map callback must close
+    // over its OWN `name`, not a shared/mutated loop variable. Forces alpha to resolve LAST (a delay)
+    // while beta resolves immediately, so a broken closure would mislabel one repo's hits as the other's.
+    const d = mkdirWith(['alpha.rvf', 'beta.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => {
+      if (name === 'alpha') await new Promise((r) => setTimeout(r, 20));
+      return [hit({ path: `${name}/doc.md` })];
+    });
+    const out = await searchAll({ dir: d, query: 'q' });
+    const repoOf = Object.fromEntries(out.results.map((r) => [r.path, r.repo]));
+    expect(repoOf['alpha/doc.md']).toBe('alpha');
+    expect(repoOf['beta/doc.md']).toBe('beta');
+    expect(out.perRepo).toEqual({ alpha: 1, beta: 1 });
+  });
+
   it('gives the shared concepts store a deeper retrieval pool than a single repo', async () => {
     const d = mkdirWith(['concepts.rvf', 'safla.rvf']);
     vi.mocked(searchKb).mockResolvedValue([hit()]);

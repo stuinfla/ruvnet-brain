@@ -35,9 +35,11 @@ export function discoverRepos(dir) {
 // Query every repo, pool, rerank on a common scale, return global top-k labeled by repo.
 export async function searchAll({ dir, query, k = 6, pool = 8, repos }) {
   const list = (repos && repos.length) ? repos : discoverRepos(dir);
-  const candidates = [];
   const perRepo = {};
-  for (const name of list) {
+  // Fan out across repos CONCURRENTLY instead of one-at-a-time — each searchKb() call is an
+  // independent round-trip (its own embed + KB read + HNSW query), so 27 serial awaits were 27x the
+  // necessary wall-clock. Each repo's error is still isolated to its own perRepo entry.
+  const perRepoHits = await Promise.all(list.map(async (name) => {
     try {
       // The concepts store holds ALL repos' prose primers in one place, so it needs a deeper pool than a
       // single source repo — otherwise the queried repo's own primer is crowded out by the other 18 before
@@ -45,11 +47,13 @@ export async function searchAll({ dir, query, k = 6, pool = 8, repos }) {
       const repoPool = name === 'concepts' ? Math.max(pool, 24) : pool;
       const hits = await searchKb({ dir, name, query, k: repoPool, n: repoPool });
       perRepo[name] = hits.length;
-      for (const h of hits) candidates.push({ ...h, repo: name });
+      return hits.map((h) => ({ ...h, repo: name }));
     } catch (e) {
       perRepo[name] = `ERR: ${e.message}`;
+      return [];
     }
-  }
+  }));
+  const candidates = perRepoHits.flat();
   // ONE cross-encoder pass over the whole cross-repo pool → a single comparable relevance scale.
   const ranked = await rerankPairs(query, candidates);
   // Repo-name affinity: when the question explicitly NAMES a repo ("Does QuDAG…", "what can SAFLA do",

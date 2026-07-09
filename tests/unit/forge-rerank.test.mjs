@@ -29,14 +29,28 @@ const doc = (over = {}) => ({ path: 'p/doc.md', title: 'T', fullText: 'body text
 
 // Score table shared by every test that runs AFTER the cross-encoder first loads successfully (see
 // ordering note above) — passage text -> fake relevance logit. Fakes AutoTokenizer/
-// AutoModelForSequenceClassification as plain functions, matching how loadCE calls them
-// (`ce.tok(query, opts)`, `await ce.model(inputs)`).
+// AutoModelForSequenceClassification as plain functions, matching how ceScoreBatch/ceScore call them:
+// the batched primary path passes ARRAYS (`ce.tok([q,q,...], {text_pair: [p1,p2,...]})`, one model
+// call returning `logits.dims=[n,1]` + flat `data`), the per-pair fallback (after a batch throws)
+// passes single strings (`ce.tok(q, {text_pair: p})`, `logits.data=[score]`, no `dims`) — this mock
+// handles both by checking whether `opts.text_pair` is an array.
 const SCORES = { low: 1, mid: 5, high: 9, 'text-field': 9 };
+// Score lookup extended to also accept a bare numeric string ("0".."16") as its own score, so the
+// chunk-boundary test below can give each of 17 passages a distinct, order-revealing value without
+// growing the SCORES table by hand.
+const scoreFor = (p) => (p in SCORES ? SCORES[p] : (Number.isNaN(Number(p)) ? 0 : Number(p)));
 function fakeT() {
   const tok = (query, opts) => ({ passage: opts.text_pair });
   const model = async (inputs) => {
+    if (Array.isArray(inputs.passage)) {
+      // batched call: one whole-batch throw (mirrors a real ONNX forward pass — no partial results)
+      // if ANY passage in the chunk is the throw sentinel, so callers see the same per-item fallback
+      // behavior as a genuinely single-pair-scored model.
+      if (inputs.passage.includes('__THROW__')) throw new Error('model inference failed');
+      return { logits: { dims: [inputs.passage.length, 1], data: inputs.passage.map(scoreFor) } };
+    }
     if (inputs.passage === '__THROW__') throw new Error('model inference failed');
-    return { logits: { data: [SCORES[inputs.passage] ?? 0] } };
+    return { logits: { data: [scoreFor(inputs.passage)] } };
   };
   return {
     env: {}, // loadCE() does `T.env.allowRemoteModels = true` before touching tok/model — must exist
@@ -117,4 +131,32 @@ describe('rerankPairs — after the cross-encoder is cached', () => {
     const r = await rerankPairs('q', docs);
     expect(r.map((d) => d.path)).toEqual(['high', 'mid', 'low']);
   });
+
+  // GAP closed (perf-audit pass 16 introduced ceScoreBatch/CE_BATCH_SIZE=16; no prior test ever sent
+  // more than 4 candidates through it, so a chunk-stitching bug — scores landing at the wrong index
+  // once a SECOND ONNX call is involved — would have shipped silently. Cross-repo pools regularly
+  // exceed 200 candidates (pool * ~27 repos, per forge-rerank.mjs's own CE_BATCH_SIZE comment), so this
+  // is the realistic production shape, not an edge case.
+  it('stitches scores correctly across a CE_BATCH_SIZE chunk boundary, isolating a whole-chunk fallback to just the broken item', async () => {
+    // 17 passages -> chunk0 = indices 0-15 (16 items, one is the throw sentinel), chunk1 = index 16
+    // (1 item). chunk0's batched call throws (poisoned by '__THROW__' at index 5) and falls back to
+    // per-pair scoring for every OTHER item in that chunk; chunk1 is untouched and scores via the true
+    // batched path — proving the two chunks are independent and `scores[start + i]` lands correctly.
+    const docs = Array.from({ length: 17 }, (_, i) => doc({ path: `p${i}`, fullText: i === 5 ? '__THROW__' : String(i) }));
+    const r = await rerankPairs('q', docs);
+    expect(r.map((d) => d.fullText)).toEqual(
+      ['16', '15', '14', '13', '12', '11', '10', '9', '8', '7', '6', '4', '3', '2', '1', '0', '__THROW__']
+    );
+    expect(r[0].ceScore).toBe(16); // chunk1's lone item, scored via the real batched path (not fallback)
+    expect(r.at(-1).ceScore).toBe(-Infinity); // the one broken item in chunk0, isolated by per-pair fallback
+  });
+});
+
+// GAPS below are genuinely blocked the same way as this repo's other module-private functions
+// (ceScoreBatch/CE_BATCH_SIZE are not exported from forge-rerank.mjs) — flagged per this suite's
+// established sign-off norm, not applied here.
+describe('ceScoreBatch — internals not reachable through rerankKb/rerankPairs alone (blocked: see note above)', () => {
+  it.todo('a cross-encoder checkpoint returning dims=[n, numLabels>1] (multi-label logits) picks the intended label index, not just index 0 of a flattened array — every test so far uses dims=[n,1]');
+  it.todo('logs via console.error only when CE_DEBUG is set, and stays silent otherwise, on a batch-scoring fallback');
+  it.todo('its own `if (!passages.length) return []` guard is dead code against BOTH current callers (rerankKb short-circuits at base.length<=1 before calling it; rerankPairs short-circuits at docs.length===0) — worth exporting ceScoreBatch directly if this guard is ever meant to be relied on, or removing it if not');
 });
