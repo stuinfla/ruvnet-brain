@@ -52,10 +52,17 @@ AgentDB memory exists here but has NOT been written in over 90 minutes. If meani
 EOF
 fi
 
-# ── ADRs as living plans (fires when the project keeps ADRs) ────────────────────────────────────
+# ── ADRs as living plans (fires when the project keeps ADRs AND the turn could touch them) ──────
+# Previously this fired on EVERY prompt in any repo with an ADR folder — ~1KB of directives spent
+# on "what is the capital of France?". The guidance only bites when the model is about to build,
+# change, or reason about a decision, so gate it on that (2026-07-09).
 ADR_DIR=""
 for D in docs/adr docs/adrs adr docs/decisions; do [ -d "$D" ] && ADR_DIR="$D" && break; done
-if [ -n "$ADR_DIR" ]; then
+ADR_RELEVANT=0
+if printf '%s' "$TEXT" | grep -qiE '\badrs?\b|decision[- ]record|architect|\bdesign\b|\bplan\b|\bspec\b|\brefactor|\bmigrat|\bimplement|\bbuild\b|\bwrite\b|\badd\b|\bchange\b|\bfix\b|\bupdate\b|\bdeploy'; then
+  ADR_RELEVANT=1
+fi
+if [ -n "$ADR_DIR" ] && [ "$ADR_RELEVANT" -eq 1 ]; then
   cat <<EOF
 [RuvNet Brain — this project keeps ADRs in $ADR_DIR: treat them as LIVING PLANS, never stale paper]
 - An ADR is a plan; a plan that disagrees with the code is worse than no plan. Before proposing work governed by an ADR, READ its Status and date stamps (rUv's format: Status: Proposed/Accepted/Implemented/Superseded + Date/Updated — see rvm ADR-150 for the reference shape) and say where it stands in plain words ("ADR-014 is Accepted but not yet implemented — this build implements it").
@@ -213,10 +220,21 @@ fi
 # ── Conditional status footer (Stuart, 2026-07-08) — signal ONLY when the Brain engaged ──
 # If any grounding / drift / build / harness gate fired, the Brain "jumped in" this prompt —
 # ask for ONE dim line at the very end. If NONE fired (pure conversation), emit nothing.
+#
+# The line must carry a RECEIPT, not a claim (2026-07-09). "Jumped in" on its own is unfalsifiable:
+# the user cannot tell grounding from a confident guess, which is the exact failure this whole
+# project exists to kill. So the footer either names the source that was actually read, or openly
+# says none was read. A fabricated path would be strictly worse than silence.
 if [ "$RUVNET" -eq 1 ] || [ "$DRIFT" -eq 1 ] || [ "$BUILD" -eq 1 ] || [ "$HARNESS_QE" -eq 1 ]; then
   cat <<EOF
 [RuvNet Brain — engaged on this prompt]
-End your response with exactly ONE dim line, nothing after it: "🧠 RuvNet Brain jumped in · $FOOT_V"
+End your response with exactly ONE dim line, nothing after it. Pick the form that is TRUE:
+  • You called search_ruvnet this turn -> carry the receipt, naming the top source you actually read:
+      🧠 RuvNet Brain jumped in · cited <repo>/<path> · $FOOT_V
+  • You did not consult it (the Brain only shaped HOW you answered) -> say exactly that:
+      🧠 RuvNet Brain jumped in · guidance only, no source read · $FOOT_V
+NEVER invent or guess a path. If you cannot name the exact repo/path you read, you did not read it —
+use the "guidance only" form. An unearned citation is worse than no citation.
 On any prompt where none of these gates fire, add NO status line at all — stay silent.
 EOF
 fi

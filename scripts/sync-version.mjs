@@ -82,6 +82,9 @@ if (CHECK) {
   const CODE_EXT = new Set(['.mjs', '.js', '.cjs', '.ts', '.sh']);
   const EXEMPT = new Set([ // the version machinery defines/tests these literals — linting them = false positive
     'scripts/version.mjs', 'scripts/version.test.mjs', 'scripts/sync-version.mjs', 'scripts/self-update.mjs',
+    // The unit tests moved from scripts/ to tests/unit/ but this list did not follow them, so `--check`
+    // has been failing on its OWN test fixtures — a gate nobody could pass, which is a gate nobody heeds.
+    'tests/unit/version.test.mjs', 'tests/unit/sync-version-drift.test.mjs', 'tests/unit/self-update-plan.test.mjs',
   ]);
   const litRe = /['"`](v?\d+\.\d+\.\d+(?:-dev)?)['"`]/g;
 
