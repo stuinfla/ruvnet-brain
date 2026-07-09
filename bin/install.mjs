@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import readline from 'node:readline';
 import crypto from 'node:crypto';
 
@@ -511,7 +511,20 @@ function verifyInstall(cacheDir) {
 }
 
 // ── step: warm the model + prove grounding with one real question (best-effort, never fatal) ──────
-function smokeQuery(cacheDir) {
+// The bundle ships its own citation verifier next to the data it verifies. Older bundles don't have
+// it; in that case we say so out loud rather than fall back to a check that can't tell a real source
+// from a confident guess.
+async function loadCitationVerifier(cacheDir) {
+  const p = path.join(cacheDir, 'verify-citation.mjs');
+  if (!fs.existsSync(p)) return null;
+  try { return await import(pathToFileURL(p).href); } catch { return null; }
+}
+
+// Proving grounding means proving the answer's CITATION RESOLVES — that the file it points at is a
+// real, indexed passage on this disk. The old check here tested `/rvf|ruvector|hnsw/` against the
+// answer text, which a hallucinated "just use RVF!" passes with zero sources. Keyword presence is
+// not evidence. We now print the cited path as a receipt, so you can go look at it yourself.
+async function smokeQuery(cacheDir) {
   const ask = path.join(cacheDir, 'forge-ask-all.mjs');
   if (!fs.existsSync(ask)) return { ran: false };
   step(
@@ -521,6 +534,7 @@ function smokeQuery(cacheDir) {
   const Q = 'How should I store embeddings in this project without running a server?';
   info(`Q: ${c.cyan(`"${Q}"`)}`);
   info(c.dim('(first run downloads a small local model once — this can take a minute)'));
+  const started = Date.now();
   let r;
   try {
     // Relative filename + matching cwd (NOT the absolute `ask` path) — forge-ask-all.mjs only runs
@@ -528,7 +542,7 @@ function smokeQuery(cacheDir) {
     // absolute path via spawnSync (no shell involved) that identity check silently fails on this
     // machine, so main() never runs — exit 0, zero stdout, zero stderr, no exception. Looks like a
     // clean success; is actually a total no-op. Verified: switching to a relative name + cwd fixes it.
-    r = spawnSync('node', ['forge-ask-all.mjs', '--dir', cacheDir, '--q', Q, '--k', '1'], {
+    r = spawnSync('node', ['forge-ask-all.mjs', '--dir', cacheDir, '--q', Q, '--k', '3'], {
       cwd: cacheDir,
       encoding: 'utf8',
       timeout: 240000,
@@ -538,15 +552,34 @@ function smokeQuery(cacheDir) {
     warn("skipped the live test (couldn't launch the reader) — it'll warm on your first real question");
     return { ran: false };
   }
+  const secs = ((Date.now() - started) / 1000).toFixed(1);
   const out = `${r.stdout || ''}`;
-  if (r.status === 0 && /\brvf\b|ruvector|hnsw|single[- ]file|no server/i.test(out)) {
-    ok("the brain answered from rUv's real source — grounding confirmed ✦");
-    return { ran: true, grounded: true };
+  if (r.status !== 0 || !out.trim()) {
+    warn('no answer came back (first-run model download or offline) — the brain is installed; it\'ll warm on your first real question');
+    return { ran: true, grounded: false, reason: 'no-answer' };
+  }
+
+  const verifier = await loadCitationVerifier(cacheDir);
+  if (!verifier) {
+    info(`the brain answered in ${secs}s, but this bundle predates the citation verifier —`);
+    info(c.dim('  re-run `npx ruvnet-brain` to refresh it, and grounding will be PROVEN, not assumed'));
+    return { ran: true, grounded: null, reason: 'verifier-missing' };
+  }
+
+  const v = await verifier.verifyGrounding(out, cacheDir);
+  if (v.grounded) {
+    ok(`grounded in rUv's real source — verified in ${secs}s, not guessed ✦`);
+    console.log(`      ${c.dim('cited:')}    ${c.bold(v.receipt.path)}`);
+    if (v.receipt.title) console.log(`      ${c.dim('title:')}    ${v.receipt.title}`);
+    console.log(`      ${c.dim('verified:')} that passage really exists in ${c.bold(v.receipt.file)}`);
+    return { ran: true, grounded: true, receipt: v.receipt, secs };
   }
   warn(
-    "skipped the live test (first-run model download or offline) — the brain is installed; it'll warm on your first real question",
+    v.reason === 'no-citations'
+      ? 'the answer cited no source at all — NOT grounded (re-run the installer to repair the KB)'
+      : "the answer's citations don't resolve to any indexed passage — NOT grounded (KB may be corrupt; re-run the installer)",
   );
-  return { ran: true, grounded: false };
+  return { ran: true, grounded: false, reason: v.reason };
 }
 
 // ── `--demo`: a guided, REAL walkthrough — proves grounding live, never fabricates output ─────────
@@ -612,7 +645,7 @@ function runDemo() {
 }
 
 // ── `--doctor`: a standalone health check the user can run any time ───────────────────────────────
-function doctor() {
+async function doctor() {
   printBanner('doctor');
   console.log(c.dim('Checking every part of the install and reporting green/red.\n'));
   const cacheDir = process.env.RUVNET_BRAIN_KB || path.join(os.homedir(), '.cache', 'ruvnet-brain', 'kb');
@@ -639,13 +672,25 @@ function doctor() {
     ? ok('RuVector present — vector CLI / MCP available')
     : warn('RuVector not found — answers still work. To add: claude mcp add ruvector --scope user -- npx -y ruvector mcp start');
   const v = verifyInstall(cacheDir);
-  smokeQuery(cacheDir);
+  const smoke = await smokeQuery(cacheDir);
   const allGreen = v.repos > 0 && v.reader && v.mcp;
   console.log(
     `\n  ${allGreen ? c.green('✓ Healthy.') : c.yellow('! Needs attention.')} ${
       allGreen ? 'The brain is installed and reachable.' : 'Re-run the installer to fix the warnings above.'
     }`,
   );
+  // Installed-and-reachable and actually-grounded are different claims. Keep them separate, so a
+  // healthy install can never be mistaken for proven grounding.
+  if (smoke.grounded === true) {
+    console.log(`  ${c.green('✓ Grounding PROVEN.')} It answered from ${c.bold(smoke.receipt.path)} — a passage that`);
+    console.log(`    really exists in your local KB. Checked in ${smoke.secs}s, no cloud, no API key.`);
+  } else if (smoke.grounded === false) {
+    console.log(`  ${c.yellow('! Grounding NOT proven')} (${smoke.reason}). The install is present but the brain did not`);
+    console.log('    answer from a verifiable source. Re-run  npx ruvnet-brain  to repair the KB.');
+  } else if (smoke.grounded === null) {
+    console.log(`  ${c.yellow('! Grounding not verifiable')} on this bundle — it predates the citation verifier.`);
+    console.log('    Re-run  npx ruvnet-brain  to refresh, then --doctor will prove it.');
+  }
   if (allGreen) {
     console.log(`\n  ${c.bold('What this means for you:')}`);
     console.log(`    • ${c.bold('It works in EVERY project')} — user-level (global). Open Claude Code in any repo or VS Code`);
@@ -926,7 +971,7 @@ It is safe to re-run at any time. After installing, restart Claude Code so the g
 // ── main ─────────────────────────────────────────────────────────────────────────────────────────
 (async () => {
   if (FLAG_HELP) return showHelp();
-  if (FLAG_DOCTOR) return doctor();
+  if (FLAG_DOCTOR) return await doctor();
   if (FLAG_DEMO) return runDemo();
 
   printBanner('installer');
@@ -997,7 +1042,7 @@ It is safe to re-run at any time. After installing, restart Claude Code so the g
   const plugin = wirePlugin();
   if (!FLAG_NO_VERIFY) {
     verifyInstall(cacheDir);
-    smokeQuery(cacheDir);
+    await smokeQuery(cacheDir);
   }
 
   // ── onboarding: detect the toolkit + make offers (all optional, all non-fatal) ──

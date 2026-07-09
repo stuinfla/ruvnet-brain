@@ -189,7 +189,9 @@ if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.
 // self-updater (reads SOURCE.json, copied below).
 // package-lock.json ships so the installer can `npm ci` (pinned, reproducible) instead of an
 // unpinned `npm i` resolve (SEC-0010 #8).
-const tools = ['forge-ask.mjs', 'forge-ask-all.mjs', 'forge-mcp.mjs', 'forge-mcp-all.mjs', 'forge-rerank.mjs', 'forge-guard.mjs', 'forge-guard-injection.mjs', 'forge-update.mjs', 'resolve-deps.mjs', 'package.json', 'package-lock.json'];
+// verify-citation.mjs ships WITH the KB because it verifies the KB: --doctor loads it from the
+// installed bundle to prove an answer's citation resolves to a real passage on disk.
+const tools = ['forge-ask.mjs', 'forge-ask-all.mjs', 'forge-mcp.mjs', 'forge-mcp-all.mjs', 'forge-rerank.mjs', 'forge-guard.mjs', 'forge-guard-injection.mjs', 'forge-update.mjs', 'resolve-deps.mjs', 'verify-citation.mjs', 'package.json', 'package-lock.json'];
 for (const t of tools) cp(t, OUT, { required: true });
 // self-update provenance (where this bundle came from + the canonical manifest URL). Optional: a build
 // without it simply ships a brain whose `forge-update.mjs --check` reports "self-update not configured".

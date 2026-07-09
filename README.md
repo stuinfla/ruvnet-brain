@@ -14,7 +14,7 @@
 [![explainer](https://img.shields.io/badge/▶%20see%20it%20live-isovision.ai%2Fruvnet--brain-e8a13a?style=flat-square)](https://isovision.ai/ruvnet-brain/)
 [![license](https://img.shields.io/badge/license-MIT-8ecae6?style=flat-square)](LICENSE)
 [![grounded](https://img.shields.io/badge/answers-cited%20rUv%20source-333?style=flat-square)](#testing--proof)
-[![coverage](https://img.shields.io/badge/coverage-69%25%20lines%20·%2066%25%20stmts-2e7d32?style=flat-square)](#testing--proof)
+[![coverage](https://img.shields.io/badge/coverage-73%25%20lines%20·%2070%25%20stmts-2e7d32?style=flat-square)](#testing--proof)
 
 > **Three independent things version separately here — by design, not drift. Every number below is live (read straight from its real source, never hand-typed), so none of them can go stale:**
 > - **`plugin`** (badge above) — the Claude Code plugin itself: SKILL.md, the grounding hooks, the MCP server. Read live from [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json). Updates often — this is where behavior fixes land.
