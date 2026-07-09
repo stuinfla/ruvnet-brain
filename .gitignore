@@ -60,3 +60,6 @@ data/described-baseline-results.json
 
 # vitest coverage output (build artifact)
 coverage/
+
+# metaharness evolve artifacts (variants/runs/archive) — machine-local, regenerated
+.metaharness/

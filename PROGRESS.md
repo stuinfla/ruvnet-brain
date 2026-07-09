@@ -1,6 +1,6 @@
 # RuvNet Brain — Build Progress (living tracker)
 
-`Updated: 2026-07-06 EDT` · honest status, no overclaiming. "DONE" means proven with pasted evidence.
+`Updated: 2026-07-09 EDT` · honest status, no overclaiming. "DONE" means proven with pasted evidence.
 
 ---
 
@@ -372,3 +372,82 @@ in architecture + proof.** Remaining = engineering scale: harden L2 (enforce cit
 - Ground-truth grading tooling is unbuilt — the 98 gate is not yet real.
 - RuVector (1.58M LOC) is a much larger build than ruflo; not yet attempted.
 - Single-container still a deferred spike; shipping a zip bundle.
+
+---
+
+## 2026-07-09 — Prove-it pass: eight improvements delivered (all evidence pasted below)
+
+Theme: **every claim this project makes must be checkable, and every number must be earned.**
+Three separate "reports success, measured nothing" bugs were found and killed.
+
+| # | Shipped | Proof |
+|---|---|---|
+| 6 | MetaHarness memRetrieve fix + revert-guard | `oia_audit` persisted `audit-2026-07-09T04-09-36-769Z` → `audit_list` returned 3 real records (was `[]`) → `drift_from_history` diffed the baseline. `scripts/fix-metaharness-memretrieve.mjs --check` fails loudly if `npm update -g` wipes it. 11 tests. |
+| 8 | `--doctor` PROVES grounding | Was: `/rvf|ruvector|hnsw/.test(answer)` — a hallucinated "just use RVF!" passed. Now: the cited path must RESOLVE to a real passage on disk. Prints the receipt. `Grounding PROVEN … concepts/ruvector/CARD/ruvector-card`, 9.4s. Honest "not verifiable" path also proven. |
+| 7 | Footer carries a receipt | `🧠 RuvNet Brain jumped in · cited <repo>/<path>` — or, truthfully, `guidance only, no source read`. Never invent a path. |
+| — | ADR block no longer fires every prompt | 1086 → 0 bytes injected on "what is the capital of France?" |
+| — | `sync-version --check` un-broken | Had been red at HEAD on its own moved test fixtures. Still catches a real stray (verified by injecting one). |
+| 9 | Private-data fence extracted + tested | `scripts/private-fence.mjs` (100% covered). 19 tests replace 11 `it.todo`. **Mutation-verified**: reintroduce the QE-0011 fail-open bug → 2 tests go red. |
+| 10 | Eval flywheel | `evals/held-out.json` — 12 questions, expectations chosen from first principles BEFORE running. `npm run eval` → **grounded 12/12, routed 10/12**. Fail-closed proven: no baseline → exit 1; below baseline → exit 1. **No LLM judge** (a panel once scored a 0-citation answer 98/100). |
+| 5 | npm publish | `ruvnet-brain@1.14.0-dev` (was 1.6.2-dev). Verified by pulling the tarball back from the public registry. |
+| 4 | Explainer measurement | Deployed. Speed Insights **live (200)**; pageview counter in place, 404s until one dashboard toggle. Old link byte-identical (the 70 people are fine). |
+
+### Two bugs caught by `npm publish --dry-run` — before publishing, not after
+1. **Offline safety net asked for a Release that never existed.** `RELEASE_VERSION` was derived from the
+   installer's own version and used as the *bundle* tag: `v1.14.0-dev` → **HTTP 404**; the real bundle is
+   `v0.5.0-dev` → **200**. Broken in exactly the situation it exists for.
+2. **`--doctor` would have looped every new user.** It loads the verifier from the bundle, and no published
+   bundle contains it. "Not verifiable — re-run the installer" → re-run fetches the same bundle. Fixed by
+   embedding the verifier in the single-file installer (base64, drift-guarded by `scripts/embed-verifier.mjs`
+   + 5 tests). Proven: deleted the verifier from the KB, ran `--doctor`, it wrote it back byte-identical and
+   printed **Grounding PROVEN**.
+
+### 11 — Dogfooding `metaharness_evolve`: the fitness function was a stub
+The `.metaharness/` archive from 2026-07-07 declared **winner: baseline** across 16 variants. That conclusion
+measured nothing about this repo: the run records show `taskId: "mock-1".."mock-5"`, `startedAt: 1970-01-01`,
+`stdout: "plan: step 0 … verify: PASS"`. Synthetic stubs. `npm test` never ran. The tell was structural —
+`taskSuccess` was *identical* to `testPassRate` in all 16 rows and 13 landed on exactly `0.6`.
+The **promotion gate itself is sound** (`finalScore > parent + 0.05` AND no testPassRate regression; it correctly
+refused a regressing variant). The gate was honest; the sensor was a stub.
+
+Two further defects found in the plugin, both "success that isn't":
+- `metaharness_evolve` MCP tool returned `{success: true, degraded: false, exitCode: 0, data: null}` while the
+  underlying wrapper returned `{degraded: true, reason: "metaharness-darwin-timeout"}`. The MCP layer **swallows
+  the degraded flag**. Trusting it would mean reporting "evolve ran clean" when nothing ran.
+- The wrapper shells out via `npx` with a **60s default timeout**, but `--sandbox real` runs `npm test`
+  (~2 min/variant here), so a real-sandbox evolve times out unless the caller passes `--timeout-ms`.
+Fixed locally by adding `@metaharness/darwin@~0.8.0` as a devDependency (pinned to the plugin's own `DARWIN_PIN`).
+
+With the binary installed and `--timeout-ms 900000`, evolve finally ran for real (738s, real `npm test` output in the
+traces). It exposed a **third** defect, the worst of the three:
+
+```
+task: run repository test suite
+  exitCode: 1 | durationMs: 120102 | timedOut: true
+score: { testPassRate: 0, finalScore: 0.285, promoted: true,
+         reason: "promoted: finalScore 0.2850 > parent 0.0000 ... no test regression" }
+wrapper: { "improved": true }
+```
+
+The sandbox enforces a **120s per-task cap**. Our `npm test` takes ~116-120s locally (the capability battery runs real
+KB queries), so it was **killed, not failed**. `testPassRate: 0` is the *absence* of a measurement, but the scorer reads
+it as one — and a killed suite was then **promoted as champion** because the parent scored 0.000. `improved: true`.
+
+**The common structure of all three bugs: the failure path produced a NUMBER instead of an error.** A system that cannot
+distinguish "bad" from "unmeasured" will eventually report the second as the first. (This is exactly why `--doctor` now
+separates `NOT grounded` from `not verifiable`.)
+
+To make evolve's fitness signal usable on this repo, `npm test` must finish inside 120s. Options, not yet taken because
+they change what `npm test` means and that is Stuart's call:
+  (a) parallelize the capability battery (8 sequential ~10s KB queries dominate the runtime) — no semantic change;
+  (b) move the battery to `npm run test:capability` and leave `npm test` as the fast hermetic gate CI already relies on.
+Until then, treat any `metaharness_evolve` result on this repo as **unmeasured**, not as evidence.
+
+### Near-miss, recorded honestly
+Running `scripts/build-concepts.mjs` to "verify identical output" **overwrote the live KB** — `kb/` is a symlink to
+`~/.cache/ruvnet-brain/kb`. It regenerated 132 passages over a shipped store of 127; since `.rvf` vectors are
+id-mapped to that file, every vector would have mapped to the wrong text. Caught in the diff, restored byte-exact
+from a pre-run copy, rebuilt the (gitignored) `concepts.meta.json` from the restored passages, verified id alignment
+against the idmap, and confirmed retrieval is unchanged (`ce=0.201, vec=0.8686`, same path/text).
+**A build script is not a read-only verification tool.** Separately: the shipped concepts store is stale relative to
+current primers (127 vs 132) — rebuilding it properly needs a `forge-big` re-embed, a deliberate release step.
