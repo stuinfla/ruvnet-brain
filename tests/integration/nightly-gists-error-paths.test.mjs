@@ -38,7 +38,10 @@ const NODE_DIR = path.dirname(process.execPath);
 // host — the same discipline the rest of this suite uses when it stubs its dependencies.
 const SAFE_BIN = (() => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'safebin-'));
-  for (const cmd of ['sh', 'dash', 'bash', 'date', 'mkdir', 'grep', 'sed', 'cat', 'rm', 'env', 'sleep', 'tr']) {
+  // `dirname` is load-bearing: nightly-gists.sh's first line is `cd "$(dirname "$0")/.."`, and with
+  // `set -eu` a missing dirname kills the script before it writes even one log line (symptom: the
+  // assertion sees an empty log). Symlink every external the script actually invokes.
+  for (const cmd of ['sh', 'dash', 'bash', 'dirname', 'basename', 'date', 'mkdir', 'grep', 'sed', 'cat', 'rm', 'env', 'sleep', 'tr']) {
     const r = spawnSync('sh', ['-c', 'command -v "$1"', '_', cmd], { encoding: 'utf8' });
     const resolved = (r.stdout || '').trim();
     if (!resolved || !fs.existsSync(resolved)) continue; // some are shell builtins — fine
