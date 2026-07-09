@@ -25,6 +25,28 @@ import path from 'node:path';
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 const NODE_DIR = path.dirname(process.execPath);
 
+// A PATH containing ONLY the tools nightly-gists.sh legitimately needs — and never `gh`.
+//
+// The old PATH was NODE_DIR + /usr/bin + /bin, commented "deliberately excludes any dir a real gh
+// might live in". True on macOS (gh is /opt/homebrew/bin/gh). FALSE on Linux, where gh is
+// /usr/bin/gh — so the "gh not on PATH" case FOUND gh, fell through to the auth guard, and logged
+// "FATAL: gh not authenticated". The test passed here and failed on ubuntu because it encoded one
+// machine's filesystem layout. (On Ubuntu /bin is a symlink to /usr/bin, so dropping one and keeping
+// the other changes nothing.)
+//
+// Symlinking exactly the binaries we want makes the ABSENCE of gh a property of the test, not of the
+// host — the same discipline the rest of this suite uses when it stubs its dependencies.
+const SAFE_BIN = (() => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'safebin-'));
+  for (const cmd of ['sh', 'dash', 'bash', 'date', 'mkdir', 'grep', 'sed', 'cat', 'rm', 'env', 'sleep', 'tr']) {
+    const r = spawnSync('sh', ['-c', 'command -v "$1"', '_', cmd], { encoding: 'utf8' });
+    const resolved = (r.stdout || '').trim();
+    if (!resolved || !fs.existsSync(resolved)) continue; // some are shell builtins — fine
+    try { fs.symlinkSync(resolved, path.join(dir, cmd)); } catch { /* already linked */ }
+  }
+  return dir;
+})();
+
 let tmp, stubBin, callLog;
 
 beforeEach(() => {
@@ -87,7 +109,7 @@ function run(env = {}) {
     encoding: 'utf8',
     timeout: 15000,
     env: {
-      PATH: `${NODE_DIR}:/usr/bin:/bin`, // deliberately excludes any dir a real `gh` might live in
+      PATH: `${NODE_DIR}:${SAFE_BIN}`, // node + only the tools the script needs; gh absent on EVERY platform
       TEST_STUB_BIN: stubBin,
       CALL_LOG: callLog,
       HOME: process.env.HOME,
