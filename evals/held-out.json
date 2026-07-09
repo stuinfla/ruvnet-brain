@@ -1,0 +1,94 @@
+{
+  "_readme": [
+    "FROZEN HELD-OUT SET. Do not tune against this file. Do not add a question because the brain",
+    "already answers it, and do not change an expectation because the brain disagrees — a failure",
+    "here is a finding, not a bug in the question.",
+    "",
+    "Every expectation below was chosen from first principles ('which repo obviously owns this",
+    "capability?') BEFORE the brain was ever run against it. That is what makes it held-out. The",
+    "questions are phrased the way a newcomer would ask, deliberately avoiding the vocabulary of the",
+    "capability cards, so the retrieval has to actually work rather than string-match.",
+    "",
+    "'concepts' is always allowed alongside the owning repo: it is the prose layer that summarizes",
+    "each repo, so a hit there is a correct answer to the same question.",
+    "",
+    "Scored by scripts/eval-brain.mjs. The gate is GROUND TRUTH, never a model judge: a citation",
+    "must resolve to a passage that really exists on disk. An LLM panel once scored a zero-citation",
+    "answer 98/100 on this repo — model-as-judge is blind to the one failure that matters."
+  ],
+  "frozen": "2026-07-09",
+  "questions": [
+    {
+      "id": "ho-01",
+      "query": "I need to search a million embeddings on a laptop with no database server running.",
+      "expectRepo": ["ruvector", "concepts"],
+      "why": "zero-server on-disk ANN search is ruvector/RVF's defining claim"
+    },
+    {
+      "id": "ho-02",
+      "query": "I want to try a risky change to an agent's memory and throw it away if it goes wrong.",
+      "expectRepo": ["agenticow", "concepts"],
+      "why": "copy-on-write branch + rollback of a vector store is agenticow's whole purpose"
+    },
+    {
+      "id": "ho-03",
+      "query": "What can generate tests for my code and tell me which parts are untested?",
+      "expectRepo": ["agentic-qe", "concepts"],
+      "why": "test generation and coverage analysis is agentic-qe's remit"
+    },
+    {
+      "id": "ho-04",
+      "query": "How do I spend less money on model calls without getting dumber answers?",
+      "expectRepo": ["agentic-flow", "agent-harness-generator", "concepts"],
+      "why": "cost-optimized routing lives in agentic-flow; the cheap-then-escalate cascade is the harness's"
+    },
+    {
+      "id": "ho-05",
+      "query": "Is there a step-by-step method that takes me from a written spec to finished code?",
+      "expectRepo": ["sparc", "concepts"],
+      "why": "SPARC is the named specification-to-completion methodology"
+    },
+    {
+      "id": "ho-06",
+      "query": "I want to keep structured agent state and ask questions about how facts relate to each other.",
+      "expectRepo": ["agentdb", "concepts"],
+      "why": "AgentDB owns structured agent memory incl. the causal/graph layer"
+    },
+    {
+      "id": "ho-07",
+      "query": "How do I make repeated vector lookups instant instead of recomputing them?",
+      "expectRepo": ["rulake", "concepts"],
+      "why": "RuLake is the read cache in front of vector stores"
+    },
+    {
+      "id": "ho-08",
+      "query": "Can I train a small neural network in Rust without dragging in Python?",
+      "expectRepo": ["ruv-fann", "concepts"],
+      "why": "ruv-fann is the Rust neural network library"
+    },
+    {
+      "id": "ho-09",
+      "query": "I need messages between nodes to stay secure even against a future quantum computer.",
+      "expectRepo": ["qudag", "concepts"],
+      "why": "QuDAG is the quantum-resistant DAG communication layer"
+    },
+    {
+      "id": "ho-10",
+      "query": "How do I improve my agent's scaffolding without swapping out the model itself?",
+      "expectRepo": ["agent-harness-generator", "concepts"],
+      "why": "'freeze the model, evolve the harness' is metaharness / agent-harness-generator"
+    },
+    {
+      "id": "ho-11",
+      "query": "What coordinates several coding agents working at the same time on one task?",
+      "expectRepo": ["ruflo", "concepts"],
+      "why": "Ruflo is the orchestration engine (swarms, agent spawn, task orchestration)"
+    },
+    {
+      "id": "ho-12",
+      "query": "How would I measure whether an AI actually fixed a real security vulnerability?",
+      "expectRepo": ["cve-bench", "concepts"],
+      "why": "cve-bench grades a patch against the project's own security regression test"
+    }
+  ]
+}

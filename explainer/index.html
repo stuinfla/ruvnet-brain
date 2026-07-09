@@ -1704,5 +1704,16 @@ npx ruvnet-brain
   </footer>
 
   <script src="main.js" defer></script>
+
+  <!-- Measurement. Both are FIRST-PARTY (same-origin /_vercel/…), cookieless, and carry no
+       third-party tracker. Deferred, so neither touches LCP.
+
+       speed-insights  — live now (HTTP 200): real-user LCP/CLS/INP from actual visitors.
+       insights        — the pageview counter. It 404s harmlessly until Web Analytics is enabled
+                         on the project serving this page's ORIGIN (isovision.ai), at which point
+                         it begins counting with no redeploy. A missing script is a no-op: nothing
+                         on the page depends on either of these. -->
+  <script defer src="/_vercel/speed-insights/script.js"></script>
+  <script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>

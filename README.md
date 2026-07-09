@@ -206,10 +206,24 @@ node plugin/test/run-tests.mjs                    # full plugin QA over real JSO
 | **Clean-room install** | **3 / 3** | download the published 512 MB bundle fresh → unzip → query → grounded, cited answers |
 | **Unit tests** | **154 passing** · 75% lines | `npm run test:cov` — a CI floor fails the build if coverage slips |
 | **Grounding proof** | `npx ruvnet-brain --doctor` | asks a real question, then checks the cited path really exists in the on-disk store; a citation that doesn't resolve is reported as **NOT grounded** |
+| **Held-out eval** | **grounded 12/12** · routed 10/12 | `npm run eval` — 12 frozen questions never used for tuning, graded on ground truth, never by a model |
 
 <sub>The suite also carries **181 `it.todo` stubs** — a written backlog, each naming an untested behavior and what it would take to cover. They are deliberately **not** counted as tests: a stub proves nothing, and a number that flatters is worse than no number.</sub>
 
 Two honest residuals, not hidden: one described question (_“route to cheaper models to cut cost”_) still leans `ruflo` over `agentic-flow` (orchestration/cost overlap); one unnamed _“methodology”_ question routes to `synthlang` instead of `sparc`. Proof reports land in [`PROOF.md`](PROOF.md), [`DESCRIBED-PROOF.md`](DESCRIBED-PROOF.md), and [`HELIX-DEMO-NOHELIX.md`](HELIX-DEMO-NOHELIX.md).
+
+### The eval flywheel
+
+Most of the numbers above were tuned against. [`evals/held-out.json`](evals/held-out.json) was not: twelve questions phrased the way a newcomer would ask, each with the owning repo chosen **from first principles before the brain ever saw them**. `npm run eval` scores two things, both without asking a model's opinion:
+
+- **grounded** — the cited passage genuinely exists in the on-disk store. A path that doesn't resolve is a *fabricated* citation, and is counted as a failure however plausible it reads.
+- **routed** — the citation came from a repo that actually owns the capability.
+
+`npm run eval:gate` fails the build (exit 1) if either score drops below [`evals/baseline.json`](evals/baseline.json) — and also if there is **no baseline at all**, since you cannot promote against nothing. Baselines are only ever written deliberately, with `npm run eval:record`; a baseline that silently follows the code is a ratchet with no teeth.
+
+**Why not let an LLM grade it?** Because on this very repo an LLM panel scored a **zero-citation answer 98/100**. Model-as-judge is blind to the one failure that matters here.
+
+Current: **grounded 12/12, routed 10/12.** The two routing misses are recorded, not tuned away — `"generate tests and find coverage gaps"` cites agentic-qe's real test generator, which lives *vendored inside the ruflo repo*, so the answer is right and the repo label is a corpus-attribution artifact; `"spend less money on model calls"` cites a genuine `agentic-qe/docs/guides/cheaper-model-eval-lanes.md`, the same cost/orchestration overlap noted above.
 
 **Query it directly (CLI):**
 
