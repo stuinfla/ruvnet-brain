@@ -11,7 +11,9 @@
     "version:check": "node scripts/sync-version.mjs --check",
     "version:sync": "node scripts/sync-version.mjs",
     "test:unit": "vitest run",
-    "test:cov": "vitest run --coverage"
+    "test:cov": "vitest run --coverage",
+    "metaharness:fix": "node scripts/fix-metaharness-memretrieve.mjs --apply",
+    "metaharness:check": "node scripts/fix-metaharness-memretrieve.mjs --check"
   },
   "files": [
     "bin/install.mjs",
