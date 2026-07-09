@@ -63,3 +63,6 @@ coverage/
 
 # metaharness evolve artifacts (variants/runs/archive) — machine-local, regenerated
 .metaharness/
+
+# gist ingest fetch-cache (machine-local; the index in docs/ is the tracked artifact)
+kb/.ruv-gists.cache.json

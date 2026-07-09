@@ -18,7 +18,9 @@
     "eval:gate": "node scripts/eval-brain.mjs --gate",
     "eval:record": "node scripts/eval-brain.mjs --record",
     "embed:verifier": "node scripts/embed-verifier.mjs",
-    "embed:check": "node scripts/embed-verifier.mjs --check"
+    "embed:check": "node scripts/embed-verifier.mjs --check",
+    "gists:index": "node scripts/ingest-gists.mjs --index-only",
+    "gists:sync": "node scripts/ingest-gists.mjs && node kb/forge-big.mjs both --dir kb --name ruv-gists"
   },
   "files": [
     "bin/install.mjs",

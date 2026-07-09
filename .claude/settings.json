@@ -1,0 +1,5 @@
+{
+  "env": {
+    "RUFLO_HARNESS_LOOP": "1"
+  }
+}

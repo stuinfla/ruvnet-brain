@@ -1,0 +1,49 @@
+name: gists-nightly
+# Keep docs/RUV-GISTS.md in step with what rUv publishes.
+#
+# WHY ONLY THE INDEX. The KB stores (kb/*.passages.jsonl, *.rvf) are gitignored on purpose — they
+# ship in the 512MB Release, not in git. So CI cannot commit vectors. What it CAN keep fresh, for
+# free and with no LLM, is the index: the list of every gist, newest first, with its description.
+# That is the durable "what is rUv thinking about right now" feed. Re-embedding stays a local /
+# release-time step (`npm run gists:sync`).
+#
+# COST: ~5 authenticated API calls (the list endpoint, paginated). No per-gist fetch. No model.
+# Runs 21:47 America/New_York = 01:47 UTC. Off-the-hour on purpose: every scheduled workflow on
+# GitHub piles onto :00, and the runner queue shows it.
+
+on:
+  schedule:
+    - cron: '47 1 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Refresh the gist index
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/ingest-gists.mjs --index-only
+
+      - name: Commit only if it actually changed
+        run: |
+          if git diff --quiet -- docs/RUV-GISTS.md; then
+            echo "no new or updated gists — nothing to commit"
+            exit 0
+          fi
+          # Show WHAT changed in the job log, so a human can see the new gists without cloning.
+          echo "── new / changed rows ──"
+          git diff --unified=0 -- docs/RUV-GISTS.md | grep '^+|' | head -20 || true
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/RUV-GISTS.md
+          git commit -m "gists: refresh index (automated)"
+          git push

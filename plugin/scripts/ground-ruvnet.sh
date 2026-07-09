@@ -52,6 +52,32 @@ AgentDB memory exists here but has NOT been written in over 90 minutes. If meani
 EOF
 fi
 
+# ── Self-learning flywheel (ruflo ≥3.24, ADR-176) — OFFER it, never switch it on for them ────────
+# Opt-in is a single env var; `harnessLoopOptedIn()` in @claude-flow/cli reads process.env directly,
+# so a project enables it via .claude/settings.json `env`. Unset is a true no-op. We detect BOTH so
+# an already-enabled project is never nagged.
+FLYWHEEL=off
+case "${RUFLO_HARNESS_LOOP:-}" in 1|true|yes|on|TRUE|Yes|On) FLYWHEEL=on ;; esac
+if [ "$FLYWHEEL" = "off" ] && grep -qs 'RUFLO_HARNESS_LOOP' .claude/settings.json .claude/settings.local.json 2>/dev/null; then
+  FLYWHEEL=on
+fi
+if [ "$RUFLO_STATE" = "yes" ] && [ "$FLYWHEEL" = "off" ]; then
+  cat <<'EOF'
+[RuvNet Brain — the self-learning flywheel is available here and switched OFF]
+This project runs Ruflo, and ruflo ≥3.24 ships a self-optimizing flywheel that is OFF by default. Offer it ONCE per session, plainly and warmly — then drop it. NEVER enable it without an explicit yes.
+
+Explain it in the user's words, not the plumbing's:
+- WHAT IT IS: ruflo can improve one of its own operating policies over time — specifically how it finds the right stored memory for a query (the BM25/cosine blend, diversity, etc.). Each candidate is scored against a frozen, human-labelled relevance set; a change is promoted ONLY if it measurably beats the current champion on held-out data. Every promotion leaves a signed receipt you can replay yourself, and a drift canary auto-rolls-back on regression. Think "git for decision-policies": each generation has a parent, a diff, evidence, a signature, and an immutable root you can walk back to.
+- WHY IT'S DIFFERENT: most "self-improving agent" claims are unfalsifiable. This one only turns the wheel when an improvement is independently proven, and it hands you the receipt.
+- WHAT IT COSTS: $0. No LLM calls and no network on the decision path.
+- HONEST CAVEAT (say this, don't hide it): it stays idle until the project has accumulated at least 12 stored neural patterns to harvest a corpus from. Before that it reports "store too small" and does nothing. On a brand-new project that means it earns its keep later, not today.
+- TURN IT ON: add {"env":{"RUFLO_HARNESS_LOOP":"1"}} to .claude/settings.json, then `npx ruflo daemon start`.
+- TURN IT OFF: remove that env var (and `RUFLO_DAEMON_AUTOSTART=0` stops the daemon auto-starting).
+
+Offer like this, once: "Ruflo can quietly tune how it recalls memory — testing changes against a frozen benchmark and only keeping what provably wins, with a receipt you can replay. It's free, it's off by default, and it does nothing until this project has enough history. Want me to turn it on?" If they decline, respect it for the rest of the session and never raise it again.
+EOF
+fi
+
 # ── ADRs as living plans (fires when the project keeps ADRs AND the turn could touch them) ──────
 # Previously this fired on EVERY prompt in any repo with an ADR folder — ~1KB of directives spent
 # on "what is the capital of France?". The guidance only bites when the model is about to build,
