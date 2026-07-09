@@ -1,62 +1,142 @@
-// tests/unit/build-concepts-fence.test.mjs — scripts/build-concepts.mjs (147 lines) has ZERO tests
-// and was never even mentioned in any prior coverage-gap audit (test-coverage-gaps-2026-07-07). Found
-// during the 2026-07-08 pass by checking which source files are never referenced — not even in a
-// comment — by any of the 15 existing test files.
+// tests/unit/build-concepts-fence.test.mjs — the fence that stands between a PRIVATE cognitum store
+// and a public 512MB release. It is the highest-severity code in the repo and, until 2026-07-09, it
+// had zero tests: the logic lived inline in scripts/build-concepts.mjs, ran at import time, and
+// called process.exit(1), so importing it to test it would kill the runner.
 //
-// WHY THIS IS THE HIGHEST-SEVERITY NEW GAP: build-concepts.mjs contains a THIRD independent copy of
-// the private-data fence pattern already flagged as critical for scripts/build-bundle.mjs
-// (`loadPrivateStores()`, tested in tests/integration/build-bundle-fence.test.mjs) — `loadPrivate()`
-// (lines 22-38), `isPrivate()` (line 40), and a second layer, `PRIVATE_SLUGS` (lines 47-57), that
-// fences an L2 article by its SLUG when the repo attribution is unknown. The file's OWN comment at
-// line 42-46 says this second layer exists because "an unknown slug used to default to 'ruvnet'
-// (fail-OPEN → it shipped)" — i.e. this is a regression test for a bug that ALREADY SHIPPED ONCE
-// (QE-0011 security#1), exactly the "test the fence, not just the feature" pattern from
-// build-bundle-fence.test.mjs, and currently has zero coverage.
+// The logic now lives in scripts/private-fence.mjs — pure, returns {ok, reason}, never exits; the
+// build script owns the exit. Same external behavior, assertable core.
 //
-// PREREQUISITE (why this is a skeleton, not a finished test): build-concepts.mjs is a top-level
-// self-executing script — loadPrivate() calls `process.exit(1)` directly on fs errors (lines 28, 36),
-// and everything below it (REPOS discovery, the L2/PRIMER/CARD passage-building loops) runs
-// unconditionally on import. Both make it unsafe to import in-process. The additive, no-behavior-
-// change fix (same shape already applied to build-bundle.mjs's loadPrivateStores(), which returns a
-// result instead of exiting so its CALLER decides whether to process.exit):
+// TWO LAYERS, because one already failed. Repo-based fencing alone let an L2 article ship when its
+// repo attribution was unknown: `slugRepo.get(slug) || 'ruvnet'` handed it a PUBLIC repo name, and
+// out the door it went (QE-0011 security#1). Slug-based fencing is the patch. The last test in this
+// file is that exact regression — it is the reason this file exists.
 //
-//   export function loadPrivateFence(kbDir, { allowNoFence = false } = {}) {
-//     const p = path.join(kbDir, 'PRIVATE-STORES.json');
-//     if (!fs.existsSync(p)) {
-//       if (allowNoFence) return { ok: true, privateSet: new Set() };
-//       return { ok: false, reason: `private fence missing (${p})` };
-//     }
-//     try {
-//       const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-//       if (!Array.isArray(j.privateStores)) throw new Error('no privateStores array');
-//       return { ok: true, privateSet: new Set(j.privateStores.map((s) => String(s).toLowerCase())) };
-//     } catch (e) { return { ok: false, reason: `PRIVATE-STORES.json unreadable/corrupt (${e.message})` }; }
-//   }
-//   export function loadPrivateSlugs(kbDir, privateSet) { /* the lines 47-57 loop, returning {ok,slugs}
-//     or {ok:false, reason} on a corrupt per-repo topics file — same fail-closed contract */ }
-//   export function isPrivateRepo(privateSet, repo) { return privateSet.has(String(repo).toLowerCase()); }
-//
-// Then the top-level script becomes: `const r = loadPrivateFence(KB, {allowNoFence: env.ALLOW_NO_PRIVATE_FENCE==='1'});
-// if (!r.ok) { console.error(...); process.exit(1); }` — identical external behavior, testable core.
-// Flag to Stuart before applying (same pattern as every other export-ask in this repo's test suite).
-import { describe, it, expect } from 'vitest';
+// Every failure mode below must FAIL CLOSED. A fence you cannot read is not a fence.
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { loadPrivateFence, isPrivate, loadPrivateSlugs, shouldFenceL2 } from '../../scripts/private-fence.mjs';
 
-describe.todo('build-concepts.mjs — loadPrivateFence(kbDir, opts) (requires export + de-exit, see file header)', () => {
-  it.todo('returns {ok:false} with a reason naming the missing file when PRIVATE-STORES.json does not exist and allowNoFence is false — the default, fail-closed path');
-  it.todo('returns {ok:true, privateSet: new Set()} when PRIVATE-STORES.json is missing but allowNoFence is true (the documented ALLOW_NO_PRIVATE_FENCE=1 escape hatch for a no-private fork)');
-  it.todo('returns {ok:false} when PRIVATE-STORES.json exists but is not valid JSON');
-  it.todo('returns {ok:false} when PRIVATE-STORES.json parses but privateStores is not an array (e.g. a string or object)');
-  it.todo('returns {ok:true, privateSet} with every name lowercased, given a valid ["Seed","V0-Appliance"] array');
+let kb;
+const writeFence = (obj) => fs.writeFileSync(path.join(kb, 'PRIVATE-STORES.json'), typeof obj === 'string' ? obj : JSON.stringify(obj));
+const writeTopics = (repo, body) => fs.writeFileSync(path.join(kb, `l2-topics.${repo}.json`), typeof body === 'string' ? body : JSON.stringify(body));
+
+beforeEach(() => { kb = fs.mkdtempSync(path.join(os.tmpdir(), 'fence-test-')); });
+afterEach(() => { fs.rmSync(kb, { recursive: true, force: true }); });
+
+describe('loadPrivateFence — fail closed, always', () => {
+  it('refuses to build when PRIVATE-STORES.json is missing, naming the file it wanted', () => {
+    const r = loadPrivateFence(kb);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('PRIVATE-STORES.json');
+    expect(r.privateSet).toBeNull();
+  });
+  it('allows a missing fence ONLY under the documented no-private-fork escape hatch', () => {
+    const r = loadPrivateFence(kb, { allowNoFence: true });
+    expect(r.ok).toBe(true);
+    expect(r.privateSet).toEqual(new Set());
+  });
+  it('refuses when the fence file exists but is not valid JSON — an unreadable fence is no fence', () => {
+    writeFence('{ this is not json');
+    expect(loadPrivateFence(kb)).toMatchObject({ ok: false });
+  });
+  it('refuses when privateStores is present but not an array (a string)', () => {
+    writeFence({ privateStores: 'cognitum-seed' });
+    expect(loadPrivateFence(kb)).toMatchObject({ ok: false });
+  });
+  it('refuses when privateStores is present but not an array (an object)', () => {
+    writeFence({ privateStores: { seed: true } });
+    expect(loadPrivateFence(kb)).toMatchObject({ ok: false });
+  });
+  it('refuses when privateStores is absent entirely, even from otherwise-valid JSON', () => {
+    writeFence({ somethingElse: [] });
+    expect(loadPrivateFence(kb)).toMatchObject({ ok: false });
+  });
+  it('lowercases every name, so the fence cannot be defeated by casing', () => {
+    writeFence({ privateStores: ['Seed', 'V0-Appliance'] });
+    const r = loadPrivateFence(kb);
+    expect(r.ok).toBe(true);
+    expect(r.privateSet).toEqual(new Set(['seed', 'v0-appliance']));
+  });
+  it('an empty privateStores array is legal — a fork may genuinely have nothing to fence', () => {
+    writeFence({ privateStores: [] });
+    expect(loadPrivateFence(kb)).toMatchObject({ ok: true, privateSet: new Set() });
+  });
 });
 
-describe.todo('build-concepts.mjs — isPrivateRepo(privateSet, repo) (pure once extracted)', () => {
-  it.todo('returns true for a repo name matching a private entry regardless of case ("Seed" fences "SEED", "seed", "SeEd")');
-  it.todo('returns false for a repo name not in the private set');
+describe('isPrivate — case-insensitive membership', () => {
+  const set = new Set(['seed']);
+  it('fences a private repo whatever its casing', () => {
+    for (const name of ['Seed', 'SEED', 'seed', 'SeEd']) expect(isPrivate(set, name)).toBe(true);
+  });
+  it('lets a public repo through', () => {
+    expect(isPrivate(set, 'ruvector')).toBe(false);
+    expect(isPrivate(set, 'seedling')).toBe(false); // near-miss must not fence
+  });
 });
 
-describe.todo('build-concepts.mjs — loadPrivateSlugs(kbDir, privateSet) — the QE-0011 security#1 fix (requires export, see file header)', () => {
-  it.todo('skips (not fatal) a private repo that has no l2-topics.<repo>.json file on disk — absence is normal, not corruption');
-  it.todo('collects every slug from a private repo\'s l2-topics.<repo>.json into the returned slug set');
-  it.todo('returns {ok:false} (fail-closed, matching loadPrivateFence) when a private repo\'s l2-topics file EXISTS but is corrupt JSON — a topics file that can\'t be trusted must abort the build, not silently skip');
-  it.todo('THE REGRESSION THIS FILE EXISTS TO CATCH: an L2 article whose repo attribution is unknown (defaults to \'ruvnet\' per the main loop\'s `slugRepo.get(slug) || \'ruvnet\'`) is STILL excluded from the shipped concepts store when its slug is a member of the private-repo slug set — i.e. slug-based fencing catches what repo-based fencing alone would let ship');
+describe('loadPrivateSlugs — learn which slugs a private repo owns', () => {
+  it('treats an absent topics file as normal, not as corruption', () => {
+    const r = loadPrivateSlugs(kb, new Set(['seed']));
+    expect(r).toMatchObject({ ok: true });
+    expect(r.slugs).toEqual(new Set());
+  });
+  it('collects every slug a private repo declares', () => {
+    writeTopics('seed', [{ slug: 'seed-architecture' }, { slug: 'seed-appliance' }]);
+    const r = loadPrivateSlugs(kb, new Set(['seed']));
+    expect(r.slugs).toEqual(new Set(['seed-architecture', 'seed-appliance']));
+  });
+  it('unions slugs across several private repos', () => {
+    writeTopics('seed', [{ slug: 'a' }]);
+    writeTopics('v0-appliance', [{ slug: 'b' }]);
+    expect(loadPrivateSlugs(kb, new Set(['seed', 'v0-appliance'])).slugs).toEqual(new Set(['a', 'b']));
+  });
+  it('FAILS CLOSED when a private repo\'s topics file exists but is corrupt — never silently skip', () => {
+    writeTopics('seed', '[{ broken json');
+    const r = loadPrivateSlugs(kb, new Set(['seed']));
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('corrupt');
+    expect(r.slugs).toBeNull();
+  });
+  it('ignores topics entries that carry no slug rather than adding undefined to the set', () => {
+    writeTopics('seed', [{ slug: 'a' }, { title: 'no slug here' }]);
+    expect(loadPrivateSlugs(kb, new Set(['seed'])).slugs).toEqual(new Set(['a']));
+  });
+});
+
+describe('shouldFenceL2 — THE regression this file exists to catch (QE-0011 security#1)', () => {
+  const priv = new Set(['seed']);
+  const privSlugs = new Set(['seed-architecture']);
+
+  it('fences an article attributed to a private repo (the easy case repo-fencing already caught)', () => {
+    expect(shouldFenceL2({ repo: 'seed', slug: 'anything' }, priv, privSlugs)).toBe(true);
+  });
+
+  it('STILL fences a private article whose repo attribution was lost and defaulted to the PUBLIC "ruvnet"', () => {
+    // This is the bug that shipped. `slugRepo.get(slug) || 'ruvnet'` gives an unattributed article a
+    // public repo name, so repo-based fencing waves it through. Only the slug betrays it.
+    expect(isPrivate(priv, 'ruvnet')).toBe(false);                                  // repo layer: clean
+    expect(shouldFenceL2({ repo: 'ruvnet', slug: 'seed-architecture' }, priv, privSlugs)).toBe(true); // slug layer: caught
+  });
+
+  it('ships a genuinely public article — the fence must not swallow everything', () => {
+    expect(shouldFenceL2({ repo: 'ruvector', slug: 'hnsw-indexing' }, priv, privSlugs)).toBe(false);
+  });
+
+  it('end to end, from files on disk: a private slug attributed to ruvnet never reaches the store', () => {
+    writeFence({ privateStores: ['Seed'] });
+    writeTopics('seed', [{ slug: 'seed-architecture' }]);
+    const fence = loadPrivateFence(kb);
+    const slugs = loadPrivateSlugs(kb, fence.privateSet);
+    expect(fence.ok && slugs.ok).toBe(true);
+
+    const articles = [
+      { repo: 'ruvnet', slug: 'seed-architecture' }, // private, mis-attributed
+      { repo: 'seed', slug: 'seed-appliance' },      // private, attributed
+      { repo: 'ruvector', slug: 'hnsw-indexing' },   // public
+    ];
+    const shipped = articles.filter((a) => !shouldFenceL2(a, fence.privateSet, slugs.slugs));
+    expect(shipped).toEqual([{ repo: 'ruvector', slug: 'hnsw-indexing' }]);
+  });
 });

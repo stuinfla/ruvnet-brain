@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadPrivateFence, isPrivate as isPrivateIn, loadPrivateSlugs, shouldFenceL2 } from './private-fence.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KB = path.join(ROOT, 'kb');
@@ -19,42 +20,27 @@ const KB = path.join(ROOT, 'kb');
 // PRIVATE fence (SEC-0010 #5) — the concepts store folds in primers + L2 PROSE, so it must honor the
 // same fence as the raw .rvf stores, or a private repo's write-up could ship even though its vectors
 // are excluded. FAIL-CLOSED, same contract as build-bundle.mjs: a present-but-corrupt fence aborts.
-function loadPrivate() {
-  const p = path.join(KB, 'PRIVATE-STORES.json');
-  if (!fs.existsSync(p)) {
-    if (process.env.ALLOW_NO_PRIVATE_FENCE === '1') return new Set();
-    console.error(`[build-concepts] FATAL: private fence missing (${p}). Refusing to build the shipped ` +
-      `concepts store without a verified fence. Set ALLOW_NO_PRIVATE_FENCE=1 only for a no-private fork.`);
-    process.exit(1);
-  }
-  try {
-    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-    if (!Array.isArray(j.privateStores)) throw new Error('no privateStores array');
-    return new Set(j.privateStores.map((s) => String(s).toLowerCase()));
-  } catch (e) {
-    console.error(`[build-concepts] FATAL: PRIVATE-STORES.json unreadable/corrupt (${e.message}). Refusing to build.`);
-    process.exit(1);
-  }
+// The decisions live in scripts/private-fence.mjs (pure, unit-tested); this script owns the exit.
+const fence = loadPrivateFence(KB, { allowNoFence: process.env.ALLOW_NO_PRIVATE_FENCE === '1' });
+if (!fence.ok) {
+  console.error(`[build-concepts] FATAL: ${fence.reason}. Refusing to build the shipped concepts store ` +
+    `without a verified fence. Set ALLOW_NO_PRIVATE_FENCE=1 only for a no-private fork.`);
+  process.exit(1);
 }
-const PRIVATE = loadPrivate();
-const isPrivate = (repo) => PRIVATE.has(String(repo).toLowerCase());
+const PRIVATE = fence.privateSet;
+const isPrivate = (repo) => isPrivateIn(PRIVATE, repo);
 
 // PRIVATE SLUG set (QE-0011 security#1) — a private repo's L2 article is keyed by SLUG, not repo, and
 // an unknown slug used to default to 'ruvnet' (fail-OPEN → it shipped). Read each private repo's own
 // l2-topics.<repo>.json to learn its slugs, so an L2 article whose slug belongs to a private repo is
 // fenced out even when its repo attribution is unknown. Fail-closed: if a private topics file exists
 // but can't be parsed, abort rather than ship.
-const PRIVATE_SLUGS = new Set();
-for (const p of PRIVATE) {
-  const tf = path.join(KB, `l2-topics.${p}.json`);
-  if (!fs.existsSync(tf)) continue;
-  try {
-    for (const t of JSON.parse(fs.readFileSync(tf, 'utf8'))) if (t.slug) PRIVATE_SLUGS.add(t.slug);
-  } catch (e) {
-    console.error(`[build-concepts] FATAL: private topics file ${tf} is corrupt (${e.message}). Refusing to build.`);
-    process.exit(1);
-  }
+const slugFence = loadPrivateSlugs(KB, PRIVATE);
+if (!slugFence.ok) {
+  console.error(`[build-concepts] FATAL: ${slugFence.reason}. Refusing to build.`);
+  process.exit(1);
 }
+const PRIVATE_SLUGS = slugFence.slugs;
 
 // Auto-discover every repo that has a primer (skip PRIVATE ones — their prose must not ship).
 const REPOS = fs.readdirSync(KB)
@@ -102,7 +88,7 @@ for (const f of fs.readdirSync(path.join(KB, 'l2'))) {
   const repo = slugRepo.get(slug) || 'ruvnet';
   // Fence a private repo's L2 prose whether it's attributed by repo OR only recognizable by slug
   // (QE-0011 security#1 — closes the fail-open 'ruvnet' default for unknown attribution).
-  if (isPrivate(repo) || PRIVATE_SLUGS.has(slug)) continue;
+  if (shouldFenceL2({ repo, slug }, PRIVATE, PRIVATE_SLUGS)) continue;
   const text = fs.readFileSync(path.join(KB, 'l2', f), 'utf8');
   const title = (text.match(/^#\s+(.+)/m) || [, slug])[1];
   add(repo, 'L2', slug, title, text); l2n++;
