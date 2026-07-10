@@ -175,9 +175,19 @@ if printf '%s' "$TEXT" | grep -qiE 'pinecone|pgvector|\bchroma(db)?\b|weaviate|\
 fi
 
 # ── Gate 3: is this a build / change request (any repo)? ────────────────────────────────────────
+# Two-signal gate (field report: dealership-sales build, ~110 prompts). A build VERB alone
+# ("add", "fix", "create") fired the full TAKE-THE-WHEEL block on prompts like "remove my email
+# from the page", "add a small animation", "can you replace the phone number" — ~700 words
+# injected ~80x/session (~55k tokens) on work that needs no orchestration. Require BOTH:
+#   (a) a build verb, AND
+#   (b) a project-scale object (app/feature/service/system/architecture/...) OR a multi-step
+#       signal (phases, plan, pipeline, deploy+, end-to-end).
+# Small edits (one label, one color, one file tweak) get NO injection — the model handles them.
 BUILD=0
 if printf '%s' "$TEXT" | grep -qiE '\b(build|implement|add|create|refactor|enhance|fix|set up|setup|wire|integrate|design|test|tests|testing|qe|coverage|audit|review|benchmark|lint|scan|debug|optimi[sz]e)\b'; then
-  BUILD=1
+  if printf '%s' "$TEXT" | grep -qiE '\b(app(lication)?s?|feature|service|system|architecture|backend|frontend|api|module|pipeline|infra(structure)?|database|schema|integration|workflow|end[- ]to[- ]end|from scratch|mvp|prototype|product)\b|\b(phase|plan|roadmap|milestone)s?\b|deploy'; then
+    BUILD=1
+  fi
 fi
 
 # ── Gate 3b: is this turn UNATTENDED? (ADR-0011 Phase 1 / ADR-0008) ──────────────────────────────
