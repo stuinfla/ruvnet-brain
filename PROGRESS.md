@@ -451,3 +451,15 @@ from a pre-run copy, rebuilt the (gitignored) `concepts.meta.json` from the rest
 against the idmap, and confirmed retrieval is unchanged (`ce=0.201, vec=0.8686`, same path/text).
 **A build script is not a read-only verification tool.** Separately: the shipped concepts store is stale relative to
 current primers (127 vs 132) — rebuilding it properly needs a `forge-big` re-embed, a deliberate release step.
+
+## 2026-07-09 close — Session re-score (standing order: re-score every session, target ≥95)
+
+**Overall 55 → 61.** Receipts in AgentDB `scorecard-2026-07-09-close`. The gate is ARMED:
+n=120, grounded 100/100 [96.3,100], routed 63/80 [68.6,86.3], abstain 18/20, banner 20/20 —
+19 failures recorded verbatim (evals/runs/2026-07-09-baseline.md), scenario stratum weakest.
+Effectiveness 58→74, reliability 61→72, acting-like-rUv 38→44 (flywheel armed w/ 101 seeded
+patterns; ADR corpus machine-readable; loop still unbuilt). Token efficiency UNCHANGED 41.
+**CRITICAL: AgentDB corruption RECURRED same-day (idx_bridge_key) — recurring under normal
+use; re-repaired zero-loss (547 entries). Integrity check is now an every-session ritual item;
+root-cause (suspected concurrent writers) must land before any autonomy soak claim.**
+Next session: Phase 1 autonomy (run through SPARC), then reranker (P3) before token tax (P2).
