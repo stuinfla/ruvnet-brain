@@ -50,7 +50,8 @@
           "name": "agent-harness-generator",
           "stars": 330,
           "pushed": "2026-06-27",
-          "sha": "RESOLVE_AT_BUILD"
+          "sha": "RESOLVE_AT_BUILD",
+          "repo": "metaharness"
         },
         {
           "name": "dspy.ts",
@@ -303,6 +304,34 @@
           "name": "SonicChamber",
           "stars": 2,
           "pushed": "2026-06-22",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "agenticow",
+          "stars": 40,
+          "pushed": "2026-07-04",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "CVE-bench",
+          "stars": 15,
+          "pushed": "2026-06-27",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "cognitum-cogs",
+          "owner": "cognitum-one",
+          "repo": "cogs",
+          "stars": 14,
+          "pushed": "2026-07-02",
+          "sha": "RESOLVE_AT_BUILD"
+        },
+        {
+          "name": "cognitum-support",
+          "owner": "cognitum-one",
+          "repo": "support",
+          "stars": 19,
+          "pushed": "2026-07-06",
           "sha": "RESOLVE_AT_BUILD"
         }
       ]
