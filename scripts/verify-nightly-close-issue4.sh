@@ -17,8 +17,10 @@ LOG=logs/issue4-verify.log
     [ "$AGE" -gt 0 ] && [ "$AGE" -lt 86400 ] && FRESH=1
   fi
   if [ "$FRESH" = "1" ]; then
-    NOTE=20 20 12 61 79 80 81 98 701 702 33 100 204 250 395 398 399 400sed -e "s/__TAG__//g" -e "s/__PUB__//g" scripts/issue4-close-note.md); gh issue close 4 --comment ""
-    echo "  CLOSED issue #4 with receipt"
+    # The full professional close note, with the real receipt substituted in at close time.
+    NOTE=$(sed -e "s/__TAG__/${TAG}/g" -e "s|__PUB__|${PUB}|g" scripts/issue4-close-note.md)
+    gh issue close 4 --comment "$NOTE"
+    echo "  CLOSED issue #4 with the full note (tag=$TAG)"
   else
     gh issue comment 4 --body "Honest status: the overnight publish did **not** advance releases/latest (still $TAG). The PATH fix is in but something else is failing — investigating; leaving this open. Log: logs/nightly.log"
     echo "  release did NOT advance — commented, left open"
