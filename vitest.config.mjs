@@ -4,11 +4,15 @@ export default defineConfig({
     include: ['tests/unit/**/*.test.mjs', 'tests/integration/*.test.mjs'],
     coverage: {
       provider: 'v8',
-      include: ['scripts/version.mjs', 'scripts/verify-bundle.mjs', 'scripts/fix-metaharness-memretrieve.mjs', 'scripts/private-fence.mjs', 'kb/forge-guard-injection.mjs', 'kb/resolve-deps.mjs', 'kb/forge-ask-all.mjs', 'kb/verify-citation.mjs'],
-      reporter: ['text', 'lcov'],
-      // Regression floor (item 5): CI fails if coverage drops below these — set just under the
-      // current measured levels (stmts 74 / lines 77 / branches 62 / funcs 78). Raise as coverage grows.
-      thresholds: { statements: 71, lines: 74, branches: 59, functions: 75 },
+      // ADR-0011 Phase 0: measure ALL shipped source, not a flattering 8-file subset. `all: true`
+      // counts files no test ever imports at 0% — that zero is the honest truth, not a regression.
+      all: true,
+      include: ['scripts/**/*.mjs', 'kb/*.mjs', 'bin/*.mjs'],
+      exclude: ['kb/node_modules/**', 'kb/clones/**'],
+      reporter: ['text-summary', 'lcov'],
+      // Regression floor: CI fails below these. Set at measured − 2 (see the commit that changed
+      // this line for the measured values). Raise as coverage grows; never lower silently.
+      thresholds: { statements: 7, lines: 8, branches: 6, functions: 11 },
     },
   },
 });

@@ -14,7 +14,7 @@
 [![explainer](https://img.shields.io/badge/▶%20see%20it%20live-isovision.ai%2Fruvnet--brain-e8a13a?style=flat-square)](https://isovision.ai/ruvnet-brain/)
 [![license](https://img.shields.io/badge/license-MIT-8ecae6?style=flat-square)](LICENSE)
 [![grounded](https://img.shields.io/badge/answers-cited%20rUv%20source-333?style=flat-square)](#testing--proof)
-[![coverage](https://img.shields.io/badge/coverage-75%25%20lines%20·%2072%25%20stmts-2e7d32?style=flat-square)](#testing--proof)
+[![coverage](https://img.shields.io/badge/coverage-10%25%20of%20ALL%20source%20·%20honest-b58900?style=flat-square)](#testing--proof)
 
 > **Three independent things version separately here — by design, not drift. Every number below is live (read straight from its real source, never hand-typed), so none of them can go stale:**
 > - **`plugin`** (badge above) — the Claude Code plugin itself: SKILL.md, the grounding hooks, the MCP server. Read live from [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json). Updates often — this is where behavior fixes land.
@@ -204,7 +204,7 @@ node plugin/test/run-tests.mjs                    # full plugin QA over real JSO
 | **L1–L4 behavioral harness** | **all pass** | route · deep-recall (returns _code_) · implement (cites the API) · orchestrate (the hook drives the full pipeline) |
 | **Plugin QA** | **26 / 26** | manifests, hook firing, MCP `initialize`/`tools/list`, capability battery |
 | **Clean-room install** | **3 / 3** | download the published 512 MB bundle fresh → unzip → query → grounded, cited answers |
-| **Unit tests** | **154 passing** · 75% lines | `npm run test:cov` — a CI floor fails the build if coverage slips |
+| **Unit tests** | **208 passing** · 10% of ALL source covered | `npm run test:cov` — the floor fails CI if it slips. 10% is the honest number over every shipped file; the previous "75%" measured a hand-picked 8-file subset |
 | **Grounding proof** | `npx ruvnet-brain --doctor` | asks a real question, then checks the cited path really exists in the on-disk store; a citation that doesn't resolve is reported as **NOT grounded** |
 | **Held-out eval** | **grounded 12/12** · routed 10/12 | `npm run eval` — 12 frozen questions never used for tuning, graded on ground truth, never by a model |
 
