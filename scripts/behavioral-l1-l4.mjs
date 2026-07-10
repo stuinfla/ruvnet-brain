@@ -12,15 +12,18 @@
 //   L3 IMPLEMENT    — "implement X using <repo>" → the #1 cited source actually contains the API you
 //                     would build against, so an implementation grounded in it is correct (mechanical
 //                     correctness proxy; full multi-vendor grading stays brain-grade-groundtruth.mjs).
-//   L4 ORCHESTRATE  — the newbie path. Run the real UserPromptSubmit hook (ground-ruvnet.sh) on
-//                     "go make magic / here's a spec, build it" prompts and assert it injects the FULL
-//                     Ruv-way directive (ground → SPARC → DDD/ADR → parallel swarm → QA → score ≥98 →
-//                     frontend-design → AI image-gen → ask-for-API-key → prove). This is the only
-//                     enforcement primitive that exists (ADR-0005: UserPromptSubmit injection), so
-//                     testing the injected text IS testing whether the brain takes the wheel.
+//   L4 ORCHESTRATE  — the newbie path. Run the real hooks — session-start.sh ONCE per harness run
+//                     (since ADR-0011 Phase 2 it carries THE PLAYBOOK: ground → SPARC → DDD/ADR →
+//                     parallel swarm → QA → score ≥98 → frontend-design → AI image-gen →
+//                     ask-for-API-key → prove) AND the per-turn UserPromptSubmit hook
+//                     (ground-ruvnet.sh) on "go make magic / here's a spec, build it" prompts — and
+//                     assert every directive appears at the layer that now owns it (see the ADR-0011
+//                     Phase 2 relocation note above the L4 table). Hook injection is the only
+//                     enforcement primitive that exists (ADR-0005), so testing the injected text IS
+//                     testing whether the brain takes the wheel.
 //
 // L1–L3 call searchAll() — the EXACT engine search_ruvnet wraps (forge-mcp-all.mjs:77). L4 shells the
-// real hook. No mutation, read-only. Needs KB_MODEL_CACHE pointing at the ONNX model cache for L1–L3.
+// real hooks. No mutation, read-only. Needs KB_MODEL_CACHE pointing at the ONNX model cache for L1–L3.
 //
 // Usage:
 //   KB_MODEL_CACHE=<cache> node scripts/behavioral-l1-l4.mjs [--dir kb] [--repos a,b,c] [--levels L1,L4]
@@ -29,6 +32,8 @@
 // Exit 0 iff every selected check passes.
 
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { searchAll } from '../kb/forge-ask-all.mjs';
@@ -38,6 +43,7 @@ const ROOT = path.resolve(__dirname, '..');
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : d; };
 const KB_DIR = path.resolve(arg('--dir', path.join(ROOT, 'kb')));
 const HOOK = path.resolve(arg('--hook', path.join(ROOT, 'plugin/scripts/ground-ruvnet.sh')));
+const SESSION_HOOK = path.resolve(arg('--session-hook', path.join(ROOT, 'plugin/scripts/session-start.sh')));
 const reposArg = arg('--repos', '');
 const REPOS = reposArg ? reposArg.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 const K = parseInt(arg('--k', '6'), 10);
@@ -133,11 +139,22 @@ async function runL3() {
   }
 }
 function runL4() {
+  // Phase 2 (2026-07-09) relocated the full playbook into session-start.sh (once per session); the
+  // per-turn hook carries only a slim reminder. So `must` markers are asserted against the UNION of
+  // session-start output (captured once, exactly as a real session receives it) + the scenario's
+  // per-turn hook output. `mustNot` leak checks stay on the PER-TURN output alone — session-start
+  // legitimately always contains the playbook; the leak under test is a non-build turn wrongly
+  // triggering build directives.
+  const hookEnv = { ...process.env, CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin') };
+  let session = '';
+  try { session = execFileSync('bash', [SESSION_HOOK], { input: '', encoding: 'utf8', env: hookEnv }); } catch (e) { session = (e.stdout || ''); }
+  const sessionLc = session.toLowerCase();
   for (const t of L4) {
     let out = '';
-    try { out = execFileSync('sh', [HOOK], { input: JSON.stringify({ prompt: t.prompt }), encoding: 'utf8' }); } catch (e) { out = (e.stdout || '') + (e.stderr || ''); }
+    try { out = execFileSync('sh', [HOOK], { input: JSON.stringify({ prompt: t.prompt }), encoding: 'utf8', env: hookEnv }); } catch (e) { out = (e.stdout || '') + (e.stderr || ''); }
     const lc = out.toLowerCase();
-    const missing = (t.must || []).filter((m) => !lc.includes(m.toLowerCase()));
+    const union = `${lc}\n${sessionLc}`;
+    const missing = (t.must || []).filter((m) => !union.includes(m.toLowerCase()));
     const leaked = (t.mustNot || []).filter((m) => lc.includes(m.toLowerCase()));
     const pass = missing.length === 0 && leaked.length === 0;
     results.L4.push({ pass, info: `${t.name}${missing.length ? ` — MISSING: ${missing.join(', ')}` : ''}${leaked.length ? ` — LEAKED: ${leaked.join(', ')}` : ''}` });
