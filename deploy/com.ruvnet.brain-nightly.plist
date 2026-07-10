@@ -1,29 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- RuvNet Brain nightly evergreen rebuild.
-     NOT auto-installed (system schedulers require explicit owner approval).
-     To enable:  cp this file to ~/Library/LaunchAgents/  &&  launchctl load ~/Library/LaunchAgents/com.ruvnet.brain-nightly.plist
-     To disable: launchctl unload ~/Library/LaunchAgents/com.ruvnet.brain-nightly.plist -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key>
-    <string>com.ruvnet.brain-nightly</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/bin/bash</string>
-        <string>-lc</string>
-        <string>cd /Users/stuartkerr/Code/ruvnet-brain &amp;&amp; node scripts/self-update.mjs --apply --publish &gt;&gt; logs/nightly.log 2&gt;&amp;1</string>
-    </array>
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key><integer>3</integer>
-        <key>Minute</key><integer>15</integer>
-    </dict>
-    <key>StandardOutPath</key>
-    <string>/Users/stuartkerr/Code/ruvnet-brain/logs/nightly.out.log</string>
-    <key>StandardErrorPath</key>
-    <string>/Users/stuartkerr/Code/ruvnet-brain/logs/nightly.err.log</string>
-    <key>RunAtLoad</key>
-    <false/>
+	<key>Label</key>
+	<string>com.ruvnet.brain-nightly</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>-lc</string>
+		<string>export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"; node scripts/self-update.mjs --apply --publish &gt;&gt; logs/nightly.log 2&gt;&amp;1</string>
+	</array>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardErrorPath</key>
+	<string>/Users/stuartkerr/Code/ruvnet-brain/logs/nightly.err.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/stuartkerr/Code/ruvnet-brain/logs/nightly.out.log</string>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>3</integer>
+		<key>Minute</key>
+		<integer>15</integer>
+	</dict>
 </dict>
 </plist>
