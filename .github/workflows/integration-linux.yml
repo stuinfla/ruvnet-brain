@@ -11,7 +11,14 @@ name: integration-linux
 #
 #   gh workflow run integration-linux.yml
 
+# Runs on every push now (ADR-0011 Phase 0): a broken integration test reached main on 2026-07-09
+# and nothing stopped it, because this suite was dispatch-only. The tests skip LOUDLY when the brain
+# is absent; what remains is brain-independent and must hold on Linux.
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch: {}
 
 jobs:
