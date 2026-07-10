@@ -15,9 +15,25 @@
 // DO NOT use @ruvector/rvf-mcp-server (a non-functional stub). This server joins passages and
 // returns real source text from across the ecosystem.
 
+import fs from 'node:fs';
 import path from 'node:path';
 import { searchAll, discoverRepos } from './forge-ask-all.mjs';
 import { guardPassages } from './forge-guard-injection.mjs';
+
+// ── TOKEN METER (ADR-0011 token_cost_efficiency): one JSON line per search_ruvnet call recording
+// the REAL size (chars) of the response text handed back to the model — appended to the SAME
+// per-project ledger the plugin hooks write (.ruvnet-brain/token-ledger.jsonl in this process's
+// cwd, which the plugin proxy inherits from the Claude Code session; read it with
+// scripts/token-report.mjs). RUVNET_BRAIN_METER=0 disables. Fully guarded: metering must NEVER
+// break, delay, or surface into a query — any failure here is swallowed silently.
+function meterLog(entry) {
+  try {
+    if (process.env.RUVNET_BRAIN_METER === '0') return;
+    const dir = path.join(process.cwd(), '.ruvnet-brain');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, 'token-ledger.jsonl'), JSON.stringify(entry) + '\n');
+  } catch { /* never let metering break a query */ }
+}
 
 const KB_DIR = process.env.KB_DIR || process.cwd();
 const REPOS = (process.env.KB_REPOS || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -90,9 +106,15 @@ async function handle(msg) {
           + `${r.fullText || r.text || ''}\n`
         ).join('\n========================================================\n\n');
         const header = `Searched ${repos.length} RuvNet repos (${repos.join(', ')}).\n\n`;
-        return ok(id, { content: [{ type: 'text', text: (text ? header + text : '(no results)') }], isError: false });
+        const body = text ? header + text : '(no results)';
+        meterLog({ ts: new Date().toISOString(), source: 'mcp', tool: 'search_ruvnet', k, bytes: body.length });
+        return ok(id, { content: [{ type: 'text', text: body }], isError: false });
       } catch (e) {
-        return ok(id, { content: [{ type: 'text', text: `search_ruvnet error: ${e.message}` }], isError: true });
+        const body = `search_ruvnet error: ${e.message}`;
+        // k re-derived: the try-block's `k` is out of scope here, and an error response is still
+        // injected context — it counts.
+        meterLog({ ts: new Date().toISOString(), source: 'mcp', tool: 'search_ruvnet', k: Math.max(1, parseInt(args.k ?? 6, 10) || 6), bytes: body.length });
+        return ok(id, { content: [{ type: 'text', text: body }], isError: true });
       }
     }
     default:

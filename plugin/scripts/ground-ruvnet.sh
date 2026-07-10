@@ -19,6 +19,21 @@ INPUT=$(cat 2>/dev/null)
 TEXT=$(printf '%s' "$INPUT" | jq -r '.prompt // .user_prompt // .input // empty' 2>/dev/null)
 [ -z "$TEXT" ] && TEXT="$INPUT"
 
+# ── TOKEN METER (ADR-0011 token_cost_efficiency) — measure what this hook ACTUALLY injects. ─────
+# Nothing in the stack measured Claude Code spend; this is the honest fix. Everything the hook
+# prints to stdout is captured into a temp file, replayed verbatim at the very end (so the harness
+# sees byte-identical output), and its REAL size is appended as one JSON line to
+# .ruvnet-brain/token-ledger.jsonl in the project cwd (same per-project convention as
+# checkpoint.json; the dir is gitignored). Read it with scripts/token-report.mjs.
+# Kill-switch: RUVNET_BRAIN_METER=0 disables capture AND logging. mktemp failure = meter silently
+# off — metering must NEVER cost a turn its directives. fd 3 holds the real stdout for the replay.
+exec 3>&1
+METER_TMP=""
+if [ "${RUVNET_BRAIN_METER:-1}" != "0" ]; then
+  METER_TMP=$(mktemp 2>/dev/null) || METER_TMP=""
+  [ -n "$METER_TMP" ] && exec 1>"$METER_TMP"
+fi
+
 # ── Gate 0: STACK WATCHDOG (always fires) — filesystem ground truth, not impressions. ───────────
 # Runs in the project's cwd every prompt, FROM the loaded plugin's own dir — so $CLAUDE_PLUGIN_ROOT
 # is the RUNNING (in-memory) version by construction, never the staged disk copy. Checks what's
@@ -277,6 +292,29 @@ NEVER invent or guess a path. If you cannot name the exact repo/path you read, y
 use the "guidance only" form. An unearned citation is worse than no citation.
 On any prompt where none of these gates fire, add NO status line at all — stay silent.
 EOF
+fi
+
+# ── TOKEN METER finalize — replay the captured output on the real stdout, then log its TRUE size.
+# bytes = wc -c of the exact text handed to the harness (not an estimate); class = the gate flags
+# this very run computed ("none" when no gate fired — the always-on Gate 0 bytes still count).
+# Every step is fail-silent: a full disk or read-only cwd can never break the hook (still exit 0).
+if [ -n "$METER_TMP" ]; then
+  exec 1>&3 3>&-
+  cat "$METER_TMP" 2>/dev/null
+  METER_BYTES=$(($(wc -c < "$METER_TMP" 2>/dev/null || echo 0)))
+  rm -f "$METER_TMP" 2>/dev/null
+  METER_CLASS=""
+  [ "${RUVNET:-0}" -eq 1 ] && METER_CLASS="${METER_CLASS}+ruvnet"
+  [ "${DRIFT:-0}" -eq 1 ] && METER_CLASS="${METER_CLASS}+drift"
+  [ "${BUILD:-0}" -eq 1 ] && METER_CLASS="${METER_CLASS}+build"
+  [ "${HARNESS_QE:-0}" -eq 1 ] && METER_CLASS="${METER_CLASS}+harness"
+  [ "${AUTON:-0}" -eq 1 ] && METER_CLASS="${METER_CLASS}+auton"
+  METER_CLASS="${METER_CLASS#+}"
+  [ -z "$METER_CLASS" ] && METER_CLASS="none"
+  mkdir -p .ruvnet-brain 2>/dev/null && \
+    printf '{"ts":"%s","source":"hook","class":"%s","bytes":%d}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$METER_CLASS" "$METER_BYTES" \
+      >> .ruvnet-brain/token-ledger.jsonl 2>/dev/null
 fi
 
 exit 0

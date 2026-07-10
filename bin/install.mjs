@@ -667,6 +667,33 @@ function runDemo() {
   console.log(`  Full health check:              ${c.bold('npx ruvnet-brain --doctor')}\n`);
 }
 
+// ── token meter one-liner for --doctor (ADR-0011 token_cost_efficiency) ──────────────────────────
+// The hooks + MCP server append one JSON line per fire to .ruvnet-brain/token-ledger.jsonl in the
+// project they run in (see scripts/token-report.mjs for the full breakdown). This summarizes what
+// was MEASURED yesterday+today in the cwd --doctor is run from — measured bytes, estimated tokens
+// (bytes/4, stated as an estimate). Fail-silent by design: a meter problem never reddens a checkup.
+function meterSummaryLine() {
+  try {
+    const ledger = path.join(process.cwd(), '.ruvnet-brain', 'token-ledger.jsonl');
+    if (!fs.existsSync(ledger)) return 'meter: no data yet (this project has no .ruvnet-brain/token-ledger.jsonl — it appears after the first hook/MCP fire)';
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - 1); // start of yesterday, local time
+    let count = 0;
+    let bytes = 0;
+    for (const line of fs.readFileSync(ledger, 'utf8').split('\n')) {
+      if (!line.trim()) continue;
+      let e;
+      try { e = JSON.parse(line); } catch { continue; }
+      if (!e?.ts || new Date(e.ts) < since) continue;
+      count++;
+      bytes += Number(e.bytes) || 0;
+    }
+    if (count === 0) return 'meter: no data yet (nothing measured in this project yesterday/today)';
+    return `meter: ${count} injections measured here yesterday+today — ${bytes} bytes ≈ ${Math.round(bytes / 4)} tokens (full breakdown: node scripts/token-report.mjs)`;
+  } catch { return 'meter: ledger unreadable'; }
+}
+
 // ── `--doctor`: a standalone health check the user can run any time ───────────────────────────────
 async function doctor() {
   printBanner('doctor');
@@ -714,6 +741,7 @@ async function doctor() {
     console.log(`  ${c.yellow('! Grounding not verifiable')} on this bundle — it predates the citation verifier.`);
     console.log('    Re-run  npx ruvnet-brain  to refresh, then --doctor will prove it.');
   }
+  console.log(`  ${c.dim(meterSummaryLine())}`);
   if (allGreen) {
     console.log(`\n  ${c.bold('What this means for you:')}`);
     console.log(`    • ${c.bold('It works in EVERY project')} — user-level (global). Open Claude Code in any repo or VS Code`);

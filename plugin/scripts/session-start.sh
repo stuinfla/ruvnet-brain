@@ -7,6 +7,18 @@
 # stdout is injected into the session context at startup; ALWAYS exit 0 so it can never block a session.
 set +e
 
+# ── TOKEN METER (ADR-0011 token_cost_efficiency) — same meter as ground-ruvnet.sh. Everything this
+# hook prints synchronously is captured, replayed verbatim at the end, and its REAL byte count is
+# appended as {source:"hook", class:"session-start"} to .ruvnet-brain/token-ledger.jsonl in the
+# project cwd. RUVNET_BRAIN_METER=0 disables. fd 3 = the real stdout; the backgrounded KB-freshness
+# notice below writes to fd 3 directly (it's async — it may land after this process is measured).
+exec 3>&1
+METER_TMP=""
+if [ "${RUVNET_BRAIN_METER:-1}" != "0" ]; then
+  METER_TMP=$(mktemp 2>/dev/null) || METER_TMP=""
+  [ -n "$METER_TMP" ] && exec 1>"$METER_TMP"
+fi
+
 # ── heartbeat: rate-limited (~once/20h) check against the live GitHub plugin.json ──
 # Detects a version gap, then APPLIES it automatically in the background — no manual command for the
 # user to remember. `claude plugin marketplace update` + `claude plugin update` only refresh an
@@ -60,7 +72,7 @@ if [ "$NOW" -gt 0 ] && [ $((NOW - LAST)) -gt 900 ]; then
       if grep -q "BEHIND" "$STATE_DIR/.last-kb-check.log" 2>/dev/null; then
         echo "[RuvNet Brain — a newer knowledge bundle is available. It is NOT auto-applied for safety (the update overwrites executable tool files and the bundle isn't cryptographically signed yet). To update it manually after you're comfortable: cd ~/.cache/ruvnet-brain/kb && node forge-update.mjs --apply]"
       fi
-    ) &
+    ) >&3 &
   fi
   LOCAL_V=""
   [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -f "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" ] && \
@@ -174,4 +186,17 @@ D. Keep the user oriented and confident: say what you're doing and why as you go
 
 This is the difference between answering a question and RUNNING THE PROCESS. Run it.
 EOF
+
+# ── TOKEN METER finalize — replay the captured output, then log its TRUE size (see header block).
+# Fail-silent at every step: metering can never block a session start (still exit 0 regardless).
+if [ -n "$METER_TMP" ]; then
+  exec 1>&3 3>&-
+  cat "$METER_TMP" 2>/dev/null
+  METER_BYTES=$(($(wc -c < "$METER_TMP" 2>/dev/null || echo 0)))
+  rm -f "$METER_TMP" 2>/dev/null
+  mkdir -p .ruvnet-brain 2>/dev/null && \
+    printf '{"ts":"%s","source":"hook","class":"session-start","bytes":%d}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$METER_BYTES" \
+      >> .ruvnet-brain/token-ledger.jsonl 2>/dev/null
+fi
 exit 0
