@@ -146,26 +146,39 @@ async function main() {
     if (GATE || RECORD) die('--strata is for local iteration only; never gate or record on a subset');
   }
 
-  const ask = (query) => {
-    const r = spawnSync('node', ['forge-ask-all.mjs', '--dir', KB, '--q', query, '--k', '3'], {
-      cwd: KB, encoding: 'utf8', timeout: 240000, env: process.env,
-    });
-    return r.status === 0 ? String(r.stdout || '') : '';
-  };
+  // Each question is an independent subprocess with its own ONNX thread, so the pool parallelizes
+  // cleanly across cores — spawnSync would serialize the whole run on the event loop. Measured
+  // serial cost was ~13.5s/question ≈ 27 min for 120; at concurrency 6 the wall drops ~6×.
+  const { execFile } = await import('node:child_process');
+  const ask = (query) => new Promise((resolve) => {
+    execFile('node', ['forge-ask-all.mjs', '--dir', KB, '--q', query, '--k', '3'],
+      { cwd: KB, timeout: 240000, env: process.env, maxBuffer: 64 * 1024 * 1024 },
+      (err, stdout) => resolve(err ? '' : String(stdout || '')));
+  });
 
-  const rows = [];
-  for (const [i, q] of questions.entries()) {
-    const out = ask(q.query);
-    const v = out ? await verifyGrounding(out, KB) : { grounded: false, reason: 'no-answer', citations: [] };
-    const graded = gradeQuestion(q, { grounded: v.grounded, citations: v.citations, bannerPresent: /GIST STATUS/.test(out) });
-    const top = v.citations?.[0] ?? null;
-    rows.push({
-      id: q.id, stratum: q.stratum, query: q.query,
-      citedRepo: top?.repo ?? null, citedPath: top?.fullPath ?? null, ce: top?.ce ?? null,
-      ...graded,
-    });
-    process.stderr.write(`\r[eval] ${i + 1}/${questions.length} ${graded.pass ? '✓' : '✗'} ${q.id}          `);
-  }
+  const CONC = Math.max(1, Number(process.env.EVAL_CONCURRENCY ?? (argv.includes('--concurrency') ? argv[argv.indexOf('--concurrency') + 1] : 6)) || 6);
+  const rows = new Array(questions.length);
+  let cursor = 0;
+  let done = 0;
+  const runOne = async () => {
+    while (true) {
+      const i = cursor++;
+      if (i >= questions.length) return;
+      const q = questions[i];
+      const out = await ask(q.query);
+      const v = out ? await verifyGrounding(out, KB) : { grounded: false, reason: 'no-answer', citations: [] };
+      const graded = gradeQuestion(q, { grounded: v.grounded, citations: v.citations, bannerPresent: /GIST STATUS/.test(out) });
+      const top = v.citations?.[0] ?? null;
+      rows[i] = {
+        id: q.id, stratum: q.stratum, query: q.query,
+        citedRepo: top?.repo ?? null, citedPath: top?.fullPath ?? null, ce: top?.ce ?? null,
+        ...graded,
+      };
+      done++;
+      process.stderr.write(`\r[eval] ${done}/${questions.length} ${graded.pass ? '✓' : '✗'} ${q.id}          `);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONC, questions.length) }, runOne));
   process.stderr.write('\n');
 
   const score = aggregate(rows);

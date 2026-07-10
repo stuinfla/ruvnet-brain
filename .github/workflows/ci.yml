@@ -18,6 +18,8 @@ jobs:
           node-version: '20'
       - name: Version single-source-of-truth (fails on any drift / stray literal)
         run: npm run version:check
+      - name: Claims ledger (every advertised number must regenerate)
+        run: npm run claims:verify
       - name: Structure + grounding-hook behavior (brain-independent)
         # QE-0011 tests#1: on a fresh runner the 512MB brain is absent, so the capability battery
         # SKIPS — now LOUDLY (run-tests prints "CORE CAPABILITY BATTERY SKIPPED" so green never

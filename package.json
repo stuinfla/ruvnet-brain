@@ -9,6 +9,7 @@
   "scripts": {
     "test": "node plugin/test/run-tests.mjs",
     "version:check": "node scripts/sync-version.mjs --check",
+    "claims:verify": "node scripts/claims-verify.mjs",
     "version:sync": "node scripts/sync-version.mjs",
     "test:unit": "vitest run tests/unit",
     "test:cov": "vitest run tests/unit --coverage",
