@@ -12,6 +12,15 @@ import path from 'node:path';
 import { qaStore, discoverStores, sampleIndices } from '../../scripts/corpus-qa.mjs';
 import { loadRvf } from '../../kb/resolve-deps.mjs';
 
+// CI runners install only root deps — @ruvector/rvf lives in kb/node_modules and is a native
+// module. When it is unresolvable, SKIP LOUDLY rather than fail the whole suite: the fixtures
+// here require the real storage layer by design (no mocks), and the gate still runs for real
+// locally, in self-update's [qa] step, and in the integration lane where kb deps exist.
+let rvfAvailable = true;
+try { await loadRvf(); } catch { rvfAvailable = false; }
+const describeRvf = rvfAvailable ? describe : describe.skip;
+if (!rvfAvailable) console.warn('[corpus-qa.test] SKIPPED: @ruvector/rvf not installed on this runner — real-fixture tests need it');
+
 const DIMS = 8; // structural checks are dimension-agnostic; tiny vectors keep fixtures instant
 
 let tmp;
@@ -50,7 +59,7 @@ beforeAll(async () => {
 });
 afterAll(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
-describe('corpus-qa — structural gate', () => {
+describeRvf('corpus-qa — structural gate', () => {
   it('PASSes a well-formed store with no FULL_HINTS entry (counts match, no full-body floor demanded)', async () => {
     await mkStore('zzz-qa-good', { rows: [row(1), row(2), row(3)] });
     const r = await qaStore(tmp, 'zzz-qa-good', 'small', { roundtrip: false });
@@ -98,7 +107,7 @@ describe('corpus-qa — structural gate', () => {
   });
 });
 
-describe('corpus-qa — discovery + deterministic sampling', () => {
+describeRvf('corpus-qa — discovery + deterministic sampling', () => {
   it('discovers small and .big variants, and never silently drops an .rvf', () => {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-qa-disc-'));
     for (const f of ['a.rvf', 'a.big.rvf', 'b.big.rvf', 'a.rvf.idmap.json']) fs.writeFileSync(path.join(d, f), '');
