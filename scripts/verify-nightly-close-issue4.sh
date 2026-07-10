@@ -12,7 +12,7 @@ LOG=logs/issue4-verify.log
   PUB=$(gh release view --json publishedAt -q .publishedAt 2>/dev/null)
   echo "  latest: $TAG published $PUB"
   FRESH=0
-  if [ -n "$PUB" ] && [ "$TAG" != "v0.5.0-dev" ]; then
+  if [ -n "$PUB" ] && [ "$TAG" != "v0.5.0-dev" ]; then # sync-version-ignore: the stale BUNDLE tag being compared against, not a product version
     AGE=$(( $(date +%s) - $(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$PUB" +%s 2>/dev/null || echo 0) ))
     [ "$AGE" -gt 0 ] && [ "$AGE" -lt 86400 ] && FRESH=1
   fi
