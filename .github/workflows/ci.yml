@@ -41,3 +41,59 @@ jobs:
       - name: Dependency audit (high+ severity fails)
         # QE-0011 deps#5: catch a re-introduced CVE in the reader deps (protobufjs etc.).
         run: cd kb && npm ci --no-audit --no-fund && npm audit --audit-level=high
+
+  windows-unit:
+    # ADR-0011 engineering_reliability: "Windows is completely untested" while the installer
+    # claims cross-platform prebuilds. This job is the first real evidence, not a claim.
+    # Scope: the full vitest unit suite + the REAL installer's safe offline modes + the
+    # injection-guard checks (all brain-independent, none need kb/node_modules).
+    #
+    # Exclusion audit (grep tests/unit for /bin/sh, bash, launchctl, /Users/, process.platform,
+    # exec/spawn): NO unit-test file is POSIX-bound — every child process spawned is `node`
+    # itself, all fs work goes through node:path + os.tmpdir(), the one /Users/ literal is an
+    # existsSync fallback probe that self-skips, and the one process.platform hit is inside a
+    # string fixture. So nothing is excluded from tests/unit here. What Windows still does NOT
+    # cover is printed loudly by the last step instead of being hidden.
+    runs-on: windows-latest
+    steps:
+      - name: Keep checkout byte-exact (tests read repo files and compare contents; CRLF would lie)
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install root deps
+        run: npm ci --no-audit --no-fund
+      - name: Unit tests (full tests/unit — zero files excluded, per the audit note above)
+        run: npx vitest run tests/unit --reporter=dot
+      - name: Installer smoke on Windows (REAL bin/install.mjs — --help / --doctor / --update / syntax+signing wiring)
+        # First cross-platform run of the stranger's-first-contact path. The --enable-nightly
+        # LaunchAgent test self-skips off-macOS via its node:test skip option (launchd is
+        # macOS-only by design); RUVNET_BRAIN_TEST=1 guards it where it does run.
+        run: node --test tests/integration/install-smoke.mjs
+      - name: Injection-guard unit test (pure node — proven brain-independent on ubuntu too)
+        run: node kb/test-guard-injection.mjs
+      - name: Injection-guard adversarial red-team (5 attack families)
+        run: node tests/integration/redteam-guard.mjs
+      - name: What Windows does NOT cover (honest gap summary)
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### windows-unit — what ran, what did not, and why"
+            echo
+            echo "**RAN on windows-latest:** full \`tests/unit\` (no exclusions), installer smoke"
+            echo "(\`--help\`/\`--doctor\`/\`--update\`, \`node --check\`, signing wiring), injection guard + red-team."
+            echo
+            echo "**NOT run on Windows (excluded here, with reasons):**"
+            echo "- \`npm test\` (plugin/test/run-tests.mjs): executes the grounding hook via"
+            echo "  \`spawnSync('/bin/bash', ...)\` — the plugin hooks are POSIX shell. Covered by the ubuntu job."
+            echo "- \`tests/integration/*.test.mjs\` (vitest): need \`kb/node_modules\` (@ruvector/rvf native"
+            echo "  prebuilds) and some the 512MB brain bundle. Covered by integration-linux.yml on ubuntu;"
+            echo "  a Windows run of these remains an OPEN gap."
+            echo "- coverage thresholds: enforced once, on the ubuntu job (same tests, one denominator)."
+            echo
+            echo "**Self-skips inside this run (loud by design, same on every fresh runner):**"
+            echo "- tests/unit/forge-rerank-workers.test.mjs real-model suite: cross-encoder model cache absent."
+            echo "- install-smoke \`--enable-nightly\` LaunchAgent test: macOS-only (launchd), node:test skip."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
