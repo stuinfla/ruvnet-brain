@@ -101,8 +101,11 @@ async function ceScoreBatch(ce, query, passages) {
 // identical to inline scores — and results reassemble by index.
 //
 // Env knobs (read at CALL time, not import time, so operators/tests can flip them per call):
-//   CE_WORKERS            0 or 1 = the pre-existing inline path, untouched.
-//                         default min(8, max(1, os.availableParallelism() - 2)).
+//   CE_WORKERS            0 or 1 = the inline path (THE DEFAULT). Set >=2 to opt into the worker
+//                         pool. Measured 2026-07-10 on a quiet M3 Max over the 32-store corpus:
+//                         inline median 20.85s vs 8-worker median 23.97s — pool spawn + per-worker
+//                         ONNX model load cost more than sharded scoring returned. Workers kept as
+//                         an explicit experiment knob only; only measured winners get defaults.
 //   CE_PARALLEL_MIN       min pairs before workers engage (default 2*CE_BATCH_SIZE+1 = 33 — below
 //                         that, pool spawn + per-worker model load costs more than inline scoring).
 //   CE_FORCE_WORKER_FAIL  test hook: makes worker spawn throw, proving the inline fallback.
@@ -117,8 +120,7 @@ function ceWorkerCount() {
     const n = Math.floor(Number(raw));
     if (Number.isFinite(n) && n >= 0) return n;
   }
-  const cores = typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
-  return Math.min(8, Math.max(1, cores - 2));
+  return 0; // inline by default — the worker pool lost its quiet-machine benchmark (see header)
 }
 
 function ceParallelMin() {
