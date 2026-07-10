@@ -160,13 +160,26 @@ async function main() {
   const rows = new Array(questions.length);
   let cursor = 0;
   let done = 0;
+  // An empty answer means the SUBPROCESS failed (contention, timeout, OOM) — an infrastructure
+  // event, not a retrieval verdict. Scoring it as "not grounded" pollutes the quality metric with
+  // ops noise: one dead process under 6-wide load dragged grounded's lower bound below baseline and
+  // failed a gate that retrieval never failed (caught live, 2026-07-10, question ho-04 → "ce=—").
+  // Retry once; if it still returns nothing, the row is an INFRA ERROR and the run is inconclusive.
+  const infraErrors = [];
   const runOne = async () => {
     while (true) {
       const i = cursor++;
       if (i >= questions.length) return;
       const q = questions[i];
-      const out = await ask(q.query);
-      const v = out ? await verifyGrounding(out, KB) : { grounded: false, reason: 'no-answer', citations: [] };
+      let out = await ask(q.query);
+      if (!out) { await new Promise((r) => setTimeout(r, 2000)); out = await ask(q.query); }
+      if (!out) {
+        infraErrors.push(q.id);
+        done++;
+        process.stderr.write(`\r[eval] ${done}/${questions.length} ! ${q.id} (infra)          `);
+        continue;
+      }
+      const v = await verifyGrounding(out, KB);
       const graded = gradeQuestion(q, { grounded: v.grounded, citations: v.citations, bannerPresent: /GIST STATUS/.test(out) });
       const top = v.citations?.[0] ?? null;
       rows[i] = {
@@ -181,7 +194,13 @@ async function main() {
   await Promise.all(Array.from({ length: Math.min(CONC, questions.length) }, runOne));
   process.stderr.write('\n');
 
-  const score = aggregate(rows);
+  if (infraErrors.length) {
+    console.error(`[eval-brain] INCONCLUSIVE — ${infraErrors.length} infrastructure failure(s) after retry: ${infraErrors.join(', ')}`);
+    console.error('  A dead subprocess is not a retrieval verdict. Re-run (consider EVAL_CONCURRENCY=3 on a loaded machine).');
+    process.exit(2); // never a quality verdict, never a recorded baseline
+  }
+
+  const score = aggregate(rows.filter(Boolean));
 
   if (JSON_OUT) {
     console.log(JSON.stringify({ score, rows }, null, 2));
