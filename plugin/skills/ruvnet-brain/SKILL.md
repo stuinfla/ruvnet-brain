@@ -123,7 +123,7 @@ Don't use this for anything touching files (this CLI path has no file-write capa
 
 The brain ships with ONE sensible default: **user-level (global)**, so it works across every project and every VS Code window with zero per-project setup — install once, it's everywhere. That default suits most people. But everyone runs their environment differently, so when the user wants it another way, DON'T point them at docs — do it, or guide them precisely. You are the brain; you understand your own install.
 
-Right after the user confirms it's working, proactively offer this **once**: *"This is set up global — active in every project automatically. Want it a different way — project-only, moved elsewhere, with the build stack (Ruflo / RuVector) added, or auto-updating nightly? Just tell me."*
+Right after the user confirms it's working, proactively offer this **once**: *"This is set up global — active in every project automatically. Want it a different way — project-only, moved elsewhere, with the build stack (Ruflo / RuVector) added, or nightly auto-updates? Just tell me — for nightly I'll run `npx ruvnet-brain --enable-nightly` (off by default; `--disable-nightly` reverts; one-shot: `--update`)."*
 
 Common reshapes — **read the brain repo's own `bin/install.mjs` / `README.md` for the exact flags before running anything** (don't assert them from memory), then run the change or hand it over cleanly:
 - **Project-only instead of global** — install the plugin at project scope for one repo instead of user scope; explain the tradeoff (only active in that repo, not everywhere).

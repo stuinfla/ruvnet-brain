@@ -65,6 +65,10 @@ const FLAG_DOCTOR = argv.includes('--doctor');
 const FLAG_NO_VERIFY = argv.includes('--no-verify');
 const FLAG_PIN = argv.includes('--pin'); // skip the latest-check, use the bundled default
 const FLAG_DEMO = argv.includes('--demo'); // guided, real (non-fabricated) walkthrough of the brain in action
+// ── freshness flags — invoke/schedule the SELF-UPDATER the bundle already ships (kb/forge-update.mjs) ──
+const FLAG_UPDATE = argv.includes('--update'); // one-shot: pull the latest Release bundle into the installed brain now
+const FLAG_ENABLE_NIGHTLY = argv.includes('--enable-nightly'); // schedule that update nightly (macOS LaunchAgent)
+const FLAG_DISABLE_NIGHTLY = argv.includes('--disable-nightly'); // remove the nightly schedule
 // ── onboarding-experience flags (all optional; every offer is safe to decline) ──
 const FLAG_YES = argv.includes('--yes') || argv.includes('-y'); // accept every optional offer non-interactively
 const FLAG_WITH_STACK = argv.includes('--with-stack'); // add missing Ruflo/RuVector without prompting
@@ -725,6 +729,163 @@ async function doctor() {
   );
 }
 
+// ── `--update` / `--enable-nightly` / `--disable-nightly`: end-user freshness controls ────────────
+// The brain bundle SHIPS its own self-updater (forge-update.mjs, right in the KB dir): it pulls the
+// canonical Release bundle, backs the current copy up, extracts, and re-verifies with forge-guard —
+// failing loud with no partial clobber. These flags never reimplement any of that; they only INVOKE
+// it once (--update) or SCHEDULE it per-user (--enable-nightly). Nothing here ever publishes.
+const NIGHTLY_LABEL = 'com.ruvnet.brain-update';
+const resolvedKbDir = () =>
+  process.env.RUVNET_BRAIN_KB || path.join(os.homedir(), '.cache', 'ruvnet-brain', 'kb');
+const nightlyPlistPath = () =>
+  path.join(os.homedir(), 'Library', 'LaunchAgents', `${NIGHTLY_LABEL}.plist`);
+// RUVNET_BRAIN_TEST=1 → write/remove the plist but NEVER call launchctl. Tests point HOME at a temp
+// dir; bootstrapping a temp-dir plist into the user's real gui domain would mutate exactly the
+// system state the tests promise not to touch.
+const TEST_MODE = process.env.RUVNET_BRAIN_TEST === '1';
+const xmlEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// The same nightly command, cron-flavored — the pattern forge-update.mjs documents in its header.
+// 03:47 on purpose: an off-hour minute, so it never piles onto the :00 cron rush.
+const cronExample = (kbDir) =>
+  `47 3 * * *  cd ${kbDir} && ${process.execPath} forge-update.mjs --apply >> ${kbDir}/update.log 2>&1`;
+
+function missingUpdaterHelp(kbDir) {
+  console.error(`\n${c.red('✗ can\'t update:')} ${c.bold('forge-update.mjs')} is missing from ${kbDir}.`);
+  console.error(`  Either no brain is installed there, or the bundle predates the self-updater.`);
+  console.error(`  Fix: re-run the installer —  ${c.bold('npx ruvnet-brain')}  ${c.dim('(add --force if a brain is already present)')}`);
+  console.error(`  — the current bundle ships forge-update.mjs; then this command will work.`);
+}
+
+function runUpdate() {
+  printBanner('update');
+  const kbDir = resolvedKbDir();
+  info(`brain dir: ${c.bold(kbDir)}`);
+  if (!fs.existsSync(path.join(kbDir, 'forge-update.mjs'))) {
+    missingUpdaterHelp(kbDir);
+    process.exit(1);
+  }
+  info(c.dim("running the bundle's own self-updater (backs up first, re-verifies, never half-applies)…\n"));
+  // Relative filename + matching cwd — same launch convention as smokeQuery(); stdio:'inherit'
+  // streams the updater's narration live and unedited.
+  const r = spawnSync(process.execPath, ['forge-update.mjs', '--apply'], { cwd: kbDir, stdio: 'inherit' });
+  if (r.error) {
+    console.error(`\n${c.red('✗ update failed to launch:')} ${r.error.message}`);
+    process.exit(1);
+  }
+  process.exit(r.status === null ? 1 : r.status); // exit with the updater's own verdict
+}
+
+function enableNightly() {
+  printBanner('enable nightly updates');
+  const kbDir = resolvedKbDir();
+
+  if (process.platform !== 'darwin') {
+    info('The LaunchAgent scheduler is macOS-only (for now).');
+    info("On this platform, schedule the bundle's self-updater with cron — the pattern");
+    info('forge-update.mjs itself documents:');
+    console.log(`\n    ${c.bold(cronExample(kbDir))}\n`);
+    info(`(${c.bold('crontab -e')}, paste the line, save. Remove the line to disable.)`);
+    return; // exit 0 — the user got the working recipe
+  }
+
+  info(`brain dir: ${c.bold(kbDir)}`);
+  if (!fs.existsSync(path.join(kbDir, 'forge-update.mjs'))) {
+    // Refuse to schedule a job that is guaranteed to fail every night — fail loud NOW instead.
+    missingUpdaterHelp(kbDir);
+    process.exit(1);
+  }
+
+  // Template the plist to THIS user's kb dir + node binary. Quotes guard paths with spaces;
+  // xmlEscape guards the XML (>> and && must survive as shell operators after plist parsing).
+  const logPath = path.join(kbDir, 'update.log');
+  const shellCmd = `cd "${kbDir}" && "${process.execPath}" forge-update.mjs --apply >> "${logPath}" 2>&1`;
+  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${NIGHTLY_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>${xmlEscape(shellCmd)}</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>47</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
+`;
+  const plistPath = nightlyPlistPath();
+  try {
+    fs.mkdirSync(path.dirname(plistPath), { recursive: true });
+    fs.writeFileSync(plistPath, plist);
+  } catch (e) {
+    console.error(`\n${c.red('✗ couldn\'t write the LaunchAgent:')} ${e.message}`);
+    process.exit(1);
+  }
+  ok(`wrote ${c.bold(plistPath)}`);
+  info(c.dim('runs nightly at 03:47 — an off-hour minute, so it never lands on the :00 rush'));
+
+  if (TEST_MODE) {
+    warn('RUVNET_BRAIN_TEST=1 — skipping launchctl bootout/bootstrap (plist written only)');
+  } else {
+    const uid = process.getuid();
+    // bootout first so re-running replaces the loaded job cleanly; failure just means "wasn't loaded".
+    spawnSync('launchctl', ['bootout', `gui/${uid}/${NIGHTLY_LABEL}`], { stdio: 'ignore' });
+    const boot = spawnSync('launchctl', ['bootstrap', `gui/${uid}`, plistPath], { encoding: 'utf8' });
+    if (boot.status === 0) ok('LaunchAgent loaded — your brain now updates while you sleep');
+    else {
+      warn(`launchctl bootstrap failed (${(boot.stderr || '').trim() || `exit ${boot.status}`}) — the plist is in place;`);
+      info(`load it yourself:  ${c.bold(`launchctl bootstrap gui/${uid} ${plistPath}`)}`);
+    }
+  }
+
+  console.log(`\n  ${c.bold('Verify it:')}   launchctl list | grep ${NIGHTLY_LABEL}`);
+  console.log(`  ${c.bold('Watch it:')}    tail ${logPath}   ${c.dim('(appears after the first nightly run)')}`);
+  console.log(`  ${c.bold('Disable it:')}  npx ruvnet-brain --disable-nightly`);
+  console.log(`\n  ${c.dim('It only ever PULLS the published Release bundle (backup + re-verify built in) — it never publishes,')}`);
+  console.log(`  ${c.dim('and a night with no new Release is a clean no-op.')}\n`);
+}
+
+function disableNightly() {
+  printBanner('disable nightly updates');
+  if (process.platform !== 'darwin') {
+    info('The LaunchAgent nightly is macOS-only, so nothing was scheduled here by this tool.');
+    info(`If you added the cron line yourself, remove it with:  ${c.bold('crontab -e')}`);
+    return;
+  }
+  const plistPath = nightlyPlistPath();
+  const existed = fs.existsSync(plistPath);
+  if (TEST_MODE) {
+    warn('RUVNET_BRAIN_TEST=1 — skipping launchctl bootout (plist removal only)');
+  } else {
+    // Ignore failure: "not loaded" is exactly the state we want anyway.
+    spawnSync('launchctl', ['bootout', `gui/${process.getuid()}/${NIGHTLY_LABEL}`], { stdio: 'ignore' });
+  }
+  if (existed) {
+    try {
+      fs.rmSync(plistPath);
+    } catch (e) {
+      console.error(`\n${c.red('✗ couldn\'t remove the LaunchAgent:')} ${e.message}`);
+      console.error(`  Remove it yourself:  rm ${plistPath}`);
+      process.exit(1);
+    }
+    ok(`nightly updates disabled — removed ${plistPath}`);
+  } else {
+    ok('nightly updates were already off — nothing to remove (safe to run any time)');
+  }
+  info(`re-enable any time:  ${c.bold('npx ruvnet-brain --enable-nightly')}`);
+}
+
 // ── tiny interactive yes/no — SAFE in non-TTY (returns the default; never blocks a piped install) ──
 function ask(question, def = false) {
   if (FLAG_YES) return Promise.resolve(true);
@@ -949,9 +1110,14 @@ function success({ cacheDir, isCustom, plugin, env }) {
     • Want to see it answer, live, right now?  ${c.bold('npx ruvnet-brain --demo')}  — 2 real questions, real cited answers.`);
 
   console.log(`\n  ${c.bold('Set it up your way:')} this default is ${c.bold('global')} — live in every VS Code project automatically,`);
-  console.log(`    which is what most people want. Want it different (project-only, moved, with the build stack added,`);
-  console.log(`    auto-updating nightly)? ${c.bold('Just tell Claude')} once it's on — the brain is smart enough to reconfigure`);
-  console.log(`    itself. You never have to learn its internals.`);
+  console.log(`    which is what most people want. Want it different (project-only, moved, with the build stack`);
+  console.log(`    added)? ${c.bold('Just tell Claude')} once it's on. You never have to learn its internals.`);
+
+  console.log(`\n  ${c.bold('Staying current:')} nightly updates are ${c.bold('OFF by default')} — nothing runs on your machine unasked.`);
+  console.log(`    • one-shot check + update now:   ${c.bold('npx ruvnet-brain --update')}`);
+  console.log(`    • nightly at 03:47 (macOS):      ${c.bold('npx ruvnet-brain --enable-nightly')}   ${c.dim('· off again: --disable-nightly')}`);
+  console.log(`    • Linux/Windows: the cron line documented in the brain's own ${c.bold('forge-update.mjs')}`);
+  console.log(`    ${c.dim('Either way, your copy only advances when a new Release is actually published.')}`);
 
   console.log(`\n  ${c.dim('You can\'t break anything — the plugin is disable-able and only acts on RuvNet-shaped work.')}`);
   console.log('');
@@ -969,6 +1135,11 @@ Usage:
   npx github:stuinfla/ruvnet-brain         Same, but from the bleeding-edge GitHub commit
   npx ruvnet-brain --doctor   Health-check an existing install (green/red per part)
   npx ruvnet-brain --demo     Guided walkthrough — 2 real questions, real cited answers
+  npx ruvnet-brain --update   One-shot: pull the latest Release bundle into your installed brain
+                              (runs the bundle's own forge-update.mjs --apply: backup + re-verify)
+  npx ruvnet-brain --enable-nightly    Schedule that update nightly at 03:47 — macOS LaunchAgent;
+                              other platforms get the documented cron line. OFF by default.
+  npx ruvnet-brain --disable-nightly   Remove the nightly schedule (safe to run any time)
   node bin/install.mjs --version <tag>     Install a specific Release tag (e.g. --version v0.4.0-dev)
   node bin/install.mjs --pin               Skip the latest-check; use the bundled known-good version
   node bin/install.mjs --local             Install from a repo clone's dist/ruvnet-brain.zip
@@ -992,6 +1163,9 @@ It is safe to re-run at any time. After installing, restart Claude Code so the g
   if (FLAG_HELP) return showHelp();
   if (FLAG_DOCTOR) return await doctor();
   if (FLAG_DEMO) return runDemo();
+  if (FLAG_UPDATE) return runUpdate();
+  if (FLAG_ENABLE_NIGHTLY) return enableNightly();
+  if (FLAG_DISABLE_NIGHTLY) return disableNightly();
 
   printBanner('installer');
   console.log(c.dim("I'll set up the brain and the Claude Code plugin, explaining each step as I go.\n"));

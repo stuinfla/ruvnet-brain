@@ -20,6 +20,9 @@
 > - **`plugin`** (badge above) — the Claude Code plugin itself: SKILL.md, the grounding hooks, the MCP server. Read live from [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json). Updates often — this is where behavior fixes land.
 > - **`installer (npm)`** (badge above) — the `npx ruvnet-brain` setup script. Read live from the [npm registry](https://www.npmjs.com/package/ruvnet-brain). Only moves when the installer script itself changes — rare.
 > - **Brain Release** (the downloadable 512MB knowledge bundle, linked from the "download" badge above) — always resolves to [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest), currently `v0.5.0-dev`. Only moves when the underlying knowledge base is rebuilt — separate again from the two above.
+> - **Update an installed brain once:** `npx ruvnet-brain --update` — runs the bundle's own self-updater (backs up first, re-verifies, fails loud instead of half-applying).
+> - **Nightly auto-update is OFF by default:** `npx ruvnet-brain --enable-nightly` schedules it (macOS LaunchAgent, 03:47); `npx ruvnet-brain --disable-nightly` removes it; Linux/Windows get the cron line documented in the bundle's `forge-update.mjs`.
+> - **Either way, your copy only advances when a new Release is published** — the updater pulls `releases/latest`, so running it between releases is a safe no-op.
 
 <sub>Built by **[Stuart Kerr](https://isovision.ai)** at [Isovision.ai](https://isovision.ai) · free & fair use, to help everyone leverage the high end of agentic coding.</sub>
 

@@ -12,7 +12,11 @@
 //                   skips the multi-minute model-warm smoke query). We do NOT assert a passing
 //                   health state — only that doctor RAN, produced a diagnostic, and stayed
 //                   read-only (the pinned dir must be untouched afterwards).
-//   3. signing wiring — asserts `node --check bin/install.mjs` parses, and that SIGNING_PUBKEY_PEM
+//   3. freshness flags — `--update` against an empty KB dir must fail LOUD (non-zero exit + the
+//                   re-run-installer message); `--enable-nightly` / `--disable-nightly` must write/
+//                   remove a valid LaunchAgent plist under an overridden HOME (macOS only; the
+//                   RUVNET_BRAIN_TEST=1 guard skips launchctl so the real gui domain is never touched).
+//   4. signing wiring — asserts `node --check bin/install.mjs` parses, and that SIGNING_PUBKEY_PEM
 //                   and the verifyBundle definition are both still inlined (guards against the
 //                   Ed25519 bundle-signature gate being accidentally deleted).
 //
@@ -78,6 +82,83 @@ test('`--doctor` runs a read-only health check, prints a diagnostic, and never c
     fs.rmSync(brainDir, { recursive: true, force: true });
   }
 });
+
+test('`--help` lists the freshness flags: --update, --enable-nightly, --disable-nightly', () => {
+  const r = runInstaller(['--help']);
+  assertClean(r, '--help (freshness flags)');
+  const out = r.stdout || '';
+  for (const flag of ['--update', '--enable-nightly', '--disable-nightly']) {
+    assert.ok(out.includes(flag), `help must list ${flag}`);
+  }
+});
+
+test('`--update` against an empty KB dir fails LOUD with the re-run-installer message', () => {
+  // An empty dir has no forge-update.mjs — the honest failure is a clear "re-run the installer",
+  // a non-zero exit, and NO invented fallback behavior.
+  const kbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-update-'));
+  try {
+    const r = runInstaller(['--update'], { RUVNET_BRAIN_KB: kbDir });
+    assert.equal(r.error, undefined, `--update: spawn failed — ${r.error && r.error.message}`);
+    assert.notEqual(r.status, 0, '--update on an empty KB dir must exit non-zero (fail loud)');
+    const all = `${r.stdout || ''}${r.stderr || ''}`;
+    assert.match(all, /forge-update\.mjs/, 'must name the missing self-updater');
+    assert.match(all, /npx ruvnet-brain/, 'must tell the user the fix: re-run the installer');
+    assert.deepEqual(fs.readdirSync(kbDir), [], '--update must not mutate the KB dir on failure');
+  } finally {
+    fs.rmSync(kbDir, { recursive: true, force: true });
+  }
+});
+
+// The LaunchAgent path only exists on macOS (--enable-nightly prints a cron recipe elsewhere).
+// HOME is pointed at a temp dir so the REAL ~/Library/LaunchAgents is never touched, and
+// RUVNET_BRAIN_TEST=1 makes the installer skip launchctl entirely (we assert the guard fired).
+test(
+  '`--enable-nightly` writes a valid per-user plist under a test HOME, and `--disable-nightly` removes it',
+  { skip: process.platform !== 'darwin' ? 'macOS-only: exercises the LaunchAgent plist path' : false },
+  () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-home-'));
+    const kbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-kb-'));
+    const realPlist = path.join(os.homedir(), 'Library', 'LaunchAgents', 'com.ruvnet.brain-update.plist');
+    const realPlistBefore = fs.existsSync(realPlist);
+    try {
+      // --enable-nightly refuses to schedule a job with nothing to run — give it a stub updater.
+      fs.writeFileSync(path.join(kbDir, 'forge-update.mjs'), '// stub for install-smoke — never executed\n');
+      const env = { HOME: home, RUVNET_BRAIN_KB: kbDir, RUVNET_BRAIN_TEST: '1' };
+
+      const r = runInstaller(['--enable-nightly'], env);
+      assertClean(r, '--enable-nightly');
+      // The guard must have fired: launchctl skipped, and the installer must SAY so.
+      assert.match(r.stdout || '', /RUVNET_BRAIN_TEST=1/, 'test-mode guard must announce that launchctl was skipped');
+
+      const plist = path.join(home, 'Library', 'LaunchAgents', 'com.ruvnet.brain-update.plist');
+      assert.ok(fs.existsSync(plist), `plist not written at ${plist} (HOME override not honored?)`);
+      const xml = fs.readFileSync(plist, 'utf8');
+      assert.ok(xml.includes(kbDir), "plist must be templated to THIS user's kb dir");
+      assert.match(xml, /<key>Hour<\/key>\s*<integer>3<\/integer>/, 'must schedule hour 3');
+      assert.match(xml, /<key>Minute<\/key>\s*<integer>47<\/integer>/, 'must schedule minute 47 (03:47)');
+      assert.match(xml, /<key>RunAtLoad<\/key>\s*<false\/>/, 'must not run at load');
+      assert.match(xml, /forge-update\.mjs --apply/, 'must run the bundled self-updater with --apply');
+      // plutil is macOS's own plist validator — structural proof launchd could load this file.
+      const lint = spawnSync('plutil', ['-lint', plist], { encoding: 'utf8', timeout: 15000 });
+      assert.equal(lint.status, 0, `plutil -lint rejected the plist:\n${lint.stdout || ''}${lint.stderr || ''}`);
+
+      // --disable-nightly removes it…
+      const d1 = runInstaller(['--disable-nightly'], env);
+      assertClean(d1, '--disable-nightly (first run)');
+      assert.ok(!fs.existsSync(plist), '--disable-nightly must delete the plist');
+      // …and is idempotent + friendly when there's nothing to remove.
+      const d2 = runInstaller(['--disable-nightly'], env);
+      assertClean(d2, '--disable-nightly (second run, idempotent)');
+      assert.match(d2.stdout || '', /already off/i, 'second disable must stay friendly, not error');
+
+      // The REAL LaunchAgents dir must be exactly as it was — the whole point of the HOME override.
+      assert.equal(fs.existsSync(realPlist), realPlistBefore, 'the real ~/Library/LaunchAgents must be untouched');
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+      fs.rmSync(kbDir, { recursive: true, force: true });
+    }
+  },
+);
 
 test('installer parses and still inlines the Ed25519 signing pubkey + verifyBundle', () => {
   // Syntax gate: a broken installer would ENOENT for every stranger on first contact.
