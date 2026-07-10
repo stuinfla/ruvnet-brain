@@ -70,3 +70,6 @@ kb/.ruv-gists.cache.json
 # ruflo flywheel: the locally-applied signed retrieval-config champion (per-install state)
 .claude/proven-config.json
 .claude/.proven-config-version
+
+# unattended-loop checkpoints (per-project runtime state)
+.ruvnet-brain/

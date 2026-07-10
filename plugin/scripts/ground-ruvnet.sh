@@ -157,6 +157,16 @@ if printf '%s' "$TEXT" | grep -qiE '\b(build|implement|add|create|refactor|enhan
   BUILD=1
 fi
 
+# ── Gate 3b: is this turn UNATTENDED? (ADR-0011 Phase 1 / ADR-0008) ──────────────────────────────
+# The bug this kills: line "5. CLEARED TO GO" below ends every build response with "Want me to
+# build it now?" — a question asked to an EMPTY ROOM inside a /loop. That is what a real user's
+# "it wouldn't run autonomously" looked like from the outside.
+AUTON=0
+if printf '%s' "$TEXT" | grep -qiE '/loop|\bautonomous(ly)?\b|\bunattended\b|do(n.t| not) stop|keep (working|going)( until| on)?|\bsoak run\b|<<autonomous-loop'; then
+  AUTON=1
+fi
+[ "${RUVNET_AUTONOMOUS:-0}" = "1" ] && AUTON=1
+
 # ── Gate 4: testing / quality / harness-readiness intent -> offer MetaHarness + QE proactively ───
 HARNESS_QE=0
 if printf '%s' "$TEXT" | grep -qiE 'metaharness|\bharness\b|\bqe\b|agentic[- ]?qe|coverage|\btest(s|ing)?\b|quality|readiness|evolve|self[- ]?improv|hardening|benchmark|\baudit\b|optimi[sz]e|cheaper|\bcheap\b|cost[- ]?(optimi|effic|cut|reduc|max|down)|token[- ]?(max|cost|cut|reduc|spend)|lower[- ]?cost|compute[- ]?arbitrage|cascade|route .*(cheap|model)|make (it|this|my|the) [a-z ]*(smarter|better|faster|cheaper)'; then
@@ -243,6 +253,38 @@ TEACHING FORK — the FIRST time either comes up in a session, name it in one pl
 EOF
 fi
 
+# ── AUTONOMOUS MODE (fires last, so its overrides WIN over the build playbook above) ─────────────
+if [ "$AUTON" -eq 1 ]; then
+  CP_FILE=".ruvnet-brain/checkpoint.json"
+  cat <<'EOF'
+[RuvNet Brain — AUTONOMOUS MODE: no human is watching. These rules OVERRIDE the build playbook above.]
+1. NEVER halt to ask. Ignore beat "5. CLEARED TO GO" — do NOT ask "Want me to build it now?" or any
+   go/no-go, and do NOT stop for a missing API key (use the no-key fallback and note it). When a
+   choice is ambiguous, take the cheapest-to-reverse interpretation, record the assumption in the
+   checkpoint, and proceed. A question asked to an empty room is a silent crash.
+2. RESUME FIRST. Before any work: `node scripts/loop-checkpoint.mjs read` (or read
+   .ruvnet-brain/checkpoint.json). If it exists, continue from its `next` — never re-derive the plan,
+   never repeat completed steps (rUv's pattern: agenticow rolls back WITHOUT replay).
+3. ITERATION 1 ONLY: declare done-criteria as a SHELL COMMAND whose exit 0 means finished, and write
+   it to the checkpoint. Done is an exit code, not an opinion.
+4. CHECKPOINT LAST. End every iteration with:
+     node scripts/loop-checkpoint.mjs write --iteration N --done-criteria "<cmd>" --next "<the single
+     next action>" --blockers "<or empty>"
+   then `node scripts/loop-checkpoint.mjs check` — exit 3 = DONE (stop, report); exit 4 = NO-PROGRESS
+   (2 strikes on an unchanged `next`: stop, state what is stuck and the ONE thing that would unstick it).
+5. HARD FENCE — even in autonomous mode, NEVER: publish/deploy to production, push --force, rewrite
+   history, delete data, rotate/expose secrets, post outward-facing content, enable paid services, or
+   npm publish. Do everything UP TO the fence, checkpoint, stop, and name the exact click a human owes.
+6. End every iteration's response with real work completed this iteration — never with future tense
+   and a wait.
+EOF
+  if [ -f "$CP_FILE" ]; then
+    echo "[RuvNet Brain — RESUME: your prior checkpoint. Continue from 'next'; do not repeat done work.]"
+    cat "$CP_FILE" 2>/dev/null
+    echo ""
+  fi
+fi
+
 # ── Conditional status footer (Stuart, 2026-07-08) — signal ONLY when the Brain engaged ──
 # If any grounding / drift / build / harness gate fired, the Brain "jumped in" this prompt —
 # ask for ONE dim line at the very end. If NONE fired (pure conversation), emit nothing.
@@ -251,7 +293,7 @@ fi
 # the user cannot tell grounding from a confident guess, which is the exact failure this whole
 # project exists to kill. So the footer either names the source that was actually read, or openly
 # says none was read. A fabricated path would be strictly worse than silence.
-if [ "$RUVNET" -eq 1 ] || [ "$DRIFT" -eq 1 ] || [ "$BUILD" -eq 1 ] || [ "$HARNESS_QE" -eq 1 ]; then
+if [ "$RUVNET" -eq 1 ] || [ "$DRIFT" -eq 1 ] || [ "$BUILD" -eq 1 ] || [ "$HARNESS_QE" -eq 1 ] || [ "$AUTON" -eq 1 ]; then
   cat <<EOF
 [RuvNet Brain — engaged on this prompt]
 End your response with exactly ONE dim line, nothing after it. Pick the form that is TRUE:

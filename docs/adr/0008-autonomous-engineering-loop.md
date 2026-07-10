@@ -4,6 +4,7 @@ id: ADR-008
 # ADR-0008: The autonomous RuvNet-native engineering loop (the build product on top of the brain)
 
 **Status**: Accepted (2026-06-28)
+**Updated**: 2026-07-09 — the loop CONTRACT is now implemented via ADR-0011 Phase 1: autonomy gate in ground-ruvnet.sh (no-halt override, resume-first, hard fence) + scripts/loop-checkpoint.mjs (machine-checkable done-criteria, two-strike no-progress, atomic checkpoints). Full autonomous build-test-score loop remains open.
 **Date**: 2026-06-28
 
 **Origin:** Stuart's "real definition of success" (2026-06-28) — the brain

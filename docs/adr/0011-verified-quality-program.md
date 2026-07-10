@@ -3,8 +3,9 @@ id: ADR-011
 ---
 # ADR-0011: The Verified Quality Program — gates that can fail, before scores that can be believed
 
-**Status**: Proposed
+**Status**: Accepted (2026-07-09)
 **Date**: 2026-07-09
+**Updated**: 2026-07-09 — Phase 0 landed (held-out 120, Wilson lower-bound gate, tamper-evident hash, integration-on-push, honest all-source coverage; baseline n=120 recorded). Phase 1 (autonomy gate + checkpoint protocol) shipped same day.
 **Authors**: Claude Code (Opus 4.8), directed by Stuart Kerr
 **Supersedes**: None
 **Related**: ADR-0002 (ground-truth multi-vendor gate), ADR-0004 (effectiveness first), ADR-0005 (behavioral grounding, not a lock), ADR-0008 (autonomous engineering loop), ADR-0009 (mirror discipline)
