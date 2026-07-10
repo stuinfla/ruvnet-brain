@@ -463,3 +463,12 @@ patterns; ADR corpus machine-readable; loop still unbuilt). Token efficiency UNC
 use; re-repaired zero-loss (547 entries). Integrity check is now an every-session ritual item;
 root-cause (suspected concurrent writers) must land before any autonomy soak claim.**
 Next session: Phase 1 autonomy (run through SPARC), then reranker (P3) before token tax (P2).
+
+## 2026-07-10 — Re-score: 55 → 74 overall (receipts in AgentDB scorecard-2026-07-10)
+Movement: effectiveness 58→82 (n=120 Wilson-gated eval, gate re-PASSED post token-diet), tokens 41→72
+(684B/turn, eval-proven free), reliability 61→80 (claims ledger + integration in CI), end-user 54→74
+(npm 1.16.0-dev live + autonomy contract), dev-smarter 62→78, corpus 71→76 (gists+nightly proven),
+acting-like-rUv 38→55 (capped ≤70: AgentDB corrupted 3rd time — REINDEXed ok, 583 rows; flywheel
+pattern store reads 0; memory search still 0-hit). npm token now SELF-RENEWING (launchd-proven).
+Honest gap to 95: reranker land+gate, corpus tier-1, token meter, memory-search + corruption root
+cause, enforced method, Windows, real-user soak.
