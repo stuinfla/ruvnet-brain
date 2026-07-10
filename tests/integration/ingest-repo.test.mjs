@@ -37,6 +37,10 @@ beforeEach(() => {
   fs.mkdirSync(path.join(tmp, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(tmp, 'kb'), { recursive: true });
   fs.copyFileSync(path.join(REPO_ROOT, 'scripts/ingest-repo.mjs'), path.join(tmp, 'scripts/ingest-repo.mjs'));
+  // ingest-repo.mjs statically imports the SHARED depth config (scripts/full-hints.mjs — the
+  // one map both it and self-update.mjs read, so --full/--keep hints can never drift between
+  // entrypoints again). The isolated ROOT must carry the script's real dependency set.
+  fs.copyFileSync(path.join(REPO_ROOT, 'scripts/full-hints.mjs'), path.join(tmp, 'scripts/full-hints.mjs'));
 
   binDir = path.join(tmp, 'stub-bin');
   fs.mkdirSync(binDir);
@@ -46,10 +50,12 @@ beforeEach(() => {
   fs.writeFileSync(path.join(binDir, 'git'), `#!/bin/sh\necho "git $*" >> "$LOGFILE"\nexit 0\n`);
   fs.chmodSync(path.join(binDir, 'git'), 0o755);
 
-  // Stub `node`: record argv. Fails ONLY when invoked for build-symbols.mjs, so the try/catch
-  // swallow around that call (line 54 of ingest-repo.mjs) can be exercised deterministically.
+  // Stub `node`: record argv. Fails when invoked for build-symbols.mjs (so the try/catch swallow
+  // around that call, line 54 of ingest-repo.mjs, can be exercised deterministically), or when
+  // FAIL_SHARD names a specific `--shard N` embed invocation (so RUVNET_BIG_SHARDS failure
+  // propagation can be exercised the same way pass 29's nightly-gists.sh FAIL_SHARD knob did).
   fs.writeFileSync(path.join(binDir, 'node'),
-    `#!/bin/sh\necho "node $*" >> "$LOGFILE"\ncase "$*" in\n  *build-symbols.mjs*) exit 1 ;;\n  *) exit 0 ;;\nesac\n`);
+    `#!/bin/sh\necho "node $*" >> "$LOGFILE"\ncase "$*" in\n  *build-symbols.mjs*) exit 1 ;;\nesac\nif [ -n "$FAIL_SHARD" ]; then\n  case "$*" in\n    *"--shard $FAIL_SHARD --of"*) exit 1 ;;\n  esac\nfi\nexit 0\n`);
   fs.chmodSync(path.join(binDir, 'node'), 0o755);
 });
 
@@ -57,12 +63,12 @@ afterEach(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-function runIngest(args) {
+function runIngest(args, extraEnv = {}) {
   // process.execPath (absolute) for the OUTER process bypasses PATH entirely, so only the INNER
   // run('git', ...) / run('node', ...) calls made by the script itself resolve to our stubs.
   const r = spawnSync(process.execPath, ['scripts/ingest-repo.mjs', ...args], {
     cwd: tmp,
-    env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, LOGFILE: logFile },
+    env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, LOGFILE: logFile, ...extraEnv },
     encoding: 'utf8',
   });
   return {
@@ -112,6 +118,62 @@ describe('ingest-repo.mjs — embed pipeline invocation order + cwd', () => {
     expect(nodeCalls[0]).toMatch(/forge-build\.mjs --repo .* --out \. --name zzz-fixture --canonical-url/);
     expect(nodeCalls[1]).toMatch(/forge-big\.mjs both --dir \. --name zzz-fixture/);
     expect(r.stdout).toMatch(/\[embed MiniLM-384\] zzz-fixture[\s\S]*\[embed bge-768 sharp\] zzz-fixture/);
+  });
+});
+
+describe('ingest-repo.mjs — depth config (--full/--keep) forwarding into forge-build.mjs', () => {
+  // Before this (2026-07-10), ingest-repo.mjs never passed --full at all: any repo rebuilt through
+  // this entrypoint silently lost its full-body source indexing. 'ruview' is a real FULL_HINTS AND
+  // KEEP_DIRS entry in the shared scripts/full-hints.mjs map, so one name exercises both lookups.
+  it('forwards the shared FULL_HINTS/KEEP_DIRS lookup for a name present in the map', () => {
+    const r = runIngest(['--name', 'ruview']);
+    const buildCall = r.calls.find((c) => c.includes('forge-build.mjs'));
+    expect(buildCall).toMatch(/--full firmware\/esp32-csi-node,firmware\/esp32-hello-world,v2\/crates/);
+    expect(buildCall).toMatch(/--keep v2/);
+  });
+
+  it('an explicit --full/--keep CLI arg overrides the shared-map lookup', () => {
+    const r = runIngest(['--name', 'ruview', '--full', 'custom/prefix', '--keep', 'legacy']);
+    const buildCall = r.calls.find((c) => c.includes('forge-build.mjs'));
+    expect(buildCall).toMatch(/--full custom\/prefix/);
+    expect(buildCall).toMatch(/--keep legacy/);
+  });
+
+  it('omits --full/--keep entirely for a name absent from both maps and with no CLI override', () => {
+    const r = runIngest(['--name', 'zzz-fixture']);
+    const buildCall = r.calls.find((c) => c.includes('forge-build.mjs'));
+    expect(buildCall).not.toMatch(/--full|--keep/);
+  });
+});
+
+describe('ingest-repo.mjs — RUVNET_BIG_SHARDS parallel embed', () => {
+  it('defaults to a single "forge-big.mjs both" call when RUVNET_BIG_SHARDS is unset', () => {
+    const r = runIngest(['--name', 'zzz-fixture']);
+    const bigCalls = r.calls.filter((c) => c.includes('forge-big.mjs'));
+    expect(bigCalls).toHaveLength(1);
+    expect(bigCalls[0]).toMatch(/forge-big\.mjs both --dir \. --name zzz-fixture/);
+  });
+
+  it('RUVNET_BIG_SHARDS=3 fans out 3 "embed --shard N --of 3" calls, then exactly one "ingest" call, never "both"', () => {
+    const r = runIngest(['--name', 'zzz-fixture'], { RUVNET_BIG_SHARDS: '3' });
+    // Reaches the final store-existence check (same [FAIL] as the sibling "final store-existence
+    // check" tests below — the stub never writes real .rvf files) rather than crashing mid-shard.
+    expect(r.stdout).toMatch(/\[FAIL\] zzz-fixture: expected stores missing after build\./);
+    const bigCalls = r.calls.filter((c) => c.includes('forge-big.mjs'));
+    expect(bigCalls.some((c) => c.includes(' both '))).toBe(false);
+    for (let i = 0; i < 3; i++) {
+      expect(bigCalls.some((c) => c.includes(`--shard ${i} --of 3`))).toBe(true);
+    }
+    expect(bigCalls.filter((c) => c.includes(' ingest '))).toHaveLength(1);
+  });
+
+  it('a failing embed shard aborts the pipeline non-zero instead of silently proceeding to the final ingest', () => {
+    // Same "success that measured nothing" bug class this suite has flagged 4x elsewhere
+    // (brain-grade-groundtruth.mjs, eval-brain.mjs, behavioral-l1-l4.mjs, nightly-gists.sh) — this
+    // proves the NEW sharded path does NOT join that list.
+    const r = runIngest(['--name', 'zzz-fixture'], { RUVNET_BIG_SHARDS: '3', FAIL_SHARD: '1' });
+    expect(r.code).not.toBe(0);
+    expect(r.calls.some((c) => c.includes('forge-big.mjs ingest'))).toBe(false);
   });
 });
 

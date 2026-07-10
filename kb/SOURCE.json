@@ -1,19 +1,19 @@
 {
   "builder": "rvf-kb-forge",
-  "builtUtc": "2026-07-09T08:53:12.372Z",
-  "canonicalManifestUrl": "https://raw.githubusercontent.com/ruvnet/ruvnet-brain/main/kb/.last-built.json",
+  "builtUtc": "2026-07-10T09:58:49.311Z",
+  "canonicalManifestUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/.last-built.json",
   "selfUpdate": "node forge-update.mjs",
   "stores": {
-    "open-claude-code": {
-      "kbName": "open-claude-code",
-      "sourceRepo": "https://github.com/ruvnet/open-claude-code",
-      "sourceCommit": "c2a80c67aa40cef539dc083d9fb0bfd20e816f0e",
-      "sourceDescribe": "v2.0.0-nightly.20260709",
-      "builtUtc": "2026-07-09T08:53:12.372Z",
+    "ruvector": {
+      "kbName": "ruvector",
+      "sourceRepo": "https://github.com/ruvnet/RuVector",
+      "sourceCommit": "c87541c9507084b9eb61b20bb1e460fa79545343",
+      "sourceDescribe": "c87541c",
+      "builtUtc": "2026-07-10T09:58:49.311Z",
       "builder": "rvf-kb-forge",
-      "canonicalManifestUrl": "https://raw.githubusercontent.com/ruvnet/ruvnet-brain/main/kb/.last-built.json",
-      "canonicalBundleUrl": "https://raw.githubusercontent.com/ruvnet/ruvnet-brain/main/kb/open-claude-code-kb-bundle.zip",
-      "selfUpdate": "node forge-update.mjs open-claude-code"
+      "canonicalManifestUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/.last-built.json",
+      "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/ruvector-kb-bundle.zip",
+      "selfUpdate": "node forge-update.mjs ruvector"
     }
   }
 }

@@ -51,8 +51,14 @@ GV0="?"
   GV0=$(grep -m1 '"version"' "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null | sed -E 's/.*"version": *"([^"]+)".*/\1/')
 STAGED_V=$(grep -m1 '"version"' "$HOME/.claude/plugins/marketplaces/ruvnet-brain/plugin/.claude-plugin/plugin.json" 2>/dev/null | sed -E 's/.*"version": *"([^"]+)".*/\1/')
 FOOT_V="v$GV0"
+# "staged, restart to load" is earned ONLY by a strictly-NEWER staged copy (semver via sort -V).
+# Any-difference triggered a backwards "v2.0.0 · v1.16.0-dev staged" during the 2.0 release window
+# (2026-07-10) — an older or equal marketplace copy is noise, not an upgrade offer.
 if [ -n "$STAGED_V" ] && [ "$STAGED_V" != "$GV0" ] && [ "$GV0" != "?" ]; then
-  FOOT_V="v$GV0 · v$STAGED_V staged, restart to load"
+  NEWEST=$(printf '%s\n%s\n' "$GV0" "$STAGED_V" | sort -V | tail -1)
+  if [ "$NEWEST" = "$STAGED_V" ]; then
+    FOOT_V="v$GV0 · v$STAGED_V staged, restart to load"
+  fi
 fi
 # The per-prompt status footer is now CONDITIONAL (Stuart, 2026-07-08): it is emitted at the
 # very END of this hook ONLY when a grounding/drift/build/harness gate actually fires, phrased
@@ -186,7 +192,7 @@ fi
 
 # ── Gate 4: testing / quality / harness-readiness intent -> offer MetaHarness + QE proactively ───
 HARNESS_QE=0
-if printf '%s' "$TEXT" | grep -qiE 'metaharness|\bharness\b|\bqe\b|agentic[- ]?qe|coverage|\btest(s|ing)?\b|quality|readiness|evolve|self[- ]?improv|hardening|benchmark|\baudit\b|optimi[sz]e|cheaper|\bcheap\b|cost[- ]?(optimi|effic|cut|reduc|max|down)|token[- ]?(max|cost|cut|reduc|spend)|lower[- ]?cost|compute[- ]?arbitrage|cascade|route .*(cheap|model)|make (it|this|my|the) [a-z ]*(smarter|better|faster|cheaper)'; then
+if printf '%s' "$TEXT" | grep -qiE 'metaharness|\bharness\b|\bqe\b|agentic[- ]?qe|coverage|\btest(s|ing)?\b|quality|readiness|evolve|self[- ]?improv|hardening|benchmark|\baudit\b|optimi[sz]e|cheaper|\bcheap\b|cost[- ]?(optimi|effic|cut|reduc|max|down)|token[- ]?(max|cost|cut|reduc|spend)|lower[- ]?cost|compute[- ]?arbitrage|cascade|route .*(cheap|model)|make (it|this|my|the) [a-z ]*(smarter|better|faster|cheaper)|brain[- ]?score|scorecard|score (this|my|the|a|any|our) *(repo|repository|codebase|project)'; then
   HARNESS_QE=1
 fi
 
@@ -235,7 +241,7 @@ if [ "$HARNESS_QE" -eq 1 ]; then
 This task touches testing / quality / harness-readiness. Two RuvNet capabilities work in EVERY repo on this machine — treat them as standard process and PROACTIVELY offer them.
 • METAHARNESS — "freeze the model, evolve the harness": audits and SELF-IMPROVES the scaffolding around Claude (planner / context / tool / memory / retry / score / model-routing) without retraining. Headline payoff is COST: it evolves a cheap->frontier cascade — rUv's SWE-bench cost-Pareto submission measured ~56x cheaper than frontier-only (honestly: ~51% solve vs ~60% frontier-only, not equal quality). READ layer, free, any repo: metaharness_score (5-dim readiness incl. estCostPerRunUsd) + metaharness_oia_audit. WRITE layer metaharness_evolve keeps only measured winners — needs OPENROUTER_API_KEY + a test command. For RUNTIME per-task cheap routing, pair with agentic-flow `--router-mode cost-optimized`.
 • AGENTIC-QE — an on-demand test + quality fleet: test_generate_enhanced, coverage_analyze_sublinear, security_scan_comprehensive, accessibility_test, qe_qx_analyze. WARNING: qe_qx_analyze hallucinates on remote URLs (templated defaults, false grades) — ALWAYS verify its output against the real artifact before relaying a score.
-ONE-LINE TRIGGERS to surface to the user (they can just type these): "score my harness" · "evolve my harness" · "audit my harness" · "do this cheaper" / "cost-optimize this" / "route this to a cheaper model" · "QE this" / "test this" / "check coverage".
+ONE-LINE TRIGGERS to surface to the user (they can just type these): "score my harness" · "evolve my harness" · "audit my harness" · "do this cheaper" / "cost-optimize this" / "route this to a cheaper model" · "QE this" / "test this" / "check coverage" · "score this repo" (→ the brain-score skill: 8 dimensions /100, every deduction evidence-cited, arch flaws cap a dimension at ≤70, mandatory "what I did NOT test").
 FIRST time either comes up in a session: name it in one plain line, then ask "want the one-paragraph explainer, or just run it?" — and respect the answer. A newcomer gets one plain line; an expert gets none.
 EOF
 fi

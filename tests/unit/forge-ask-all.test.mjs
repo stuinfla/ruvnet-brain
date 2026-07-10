@@ -90,6 +90,27 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(out.results[0].nameBoosted).toBe(true);
   });
 
+  it('boosts a 3-char store name (rvm) — the old >=4 floor silently exempted rvm/daa', async () => {
+    // Regression guard for the n-19 misroute: "Can RVM partition hardware…" names the rvm store,
+    // but the boost's old length floor (>=4) never fired for it, so ruvector's vendored crates/rvm/
+    // copy outranked rvm's own userguide. Word-boundary matching keeps 3-char names safe.
+    const d = mkdirWith(['rvm.rvf', 'daa.rvf', 'ruvector.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+    // Default rerank gives every repo 0.5 except daa (1.0); naming "RVM" adds +2.0 → rvm wins.
+    const out = await searchAll({ dir: d, query: 'Can RVM partition hardware into isolated guests?' });
+    expect(out.results[0].repo).toBe('rvm');
+    expect(out.results[0].nameBoosted).toBe(true);
+  });
+
+  it('does NOT fire a 3-char name boost on a substring (word boundary still required)', async () => {
+    const d = mkdirWith(['rvm.rvf', 'daa.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+    // "rvms" / "daap" contain the store names only as substrings — no boost, daa's 1.0 stays on top.
+    const out = await searchAll({ dir: d, query: 'how do rvms and daap servers work' });
+    expect(out.results[0].repo).toBe('daa'); // won by rerank score, not by boost
+    expect(out.results.every((r) => !r.nameBoosted)).toBe(true);
+  });
+
   it('does NOT boost when the query names no repo (sibling ranking preserved)', async () => {
     const d = mkdirWith(['safla.rvf', 'daa.rvf']);
     vi.mocked(searchKb).mockResolvedValue([hit()]);

@@ -119,6 +119,21 @@ describe('parallel dispatch — hermetic (mocked CE, no model, no real workers)'
     expect(r2[0].ceScore).toBe(16);
     expect(ceWorkerStats().inlineCalls).toBe(2);
   });
+
+  it('(e) DEFAULT (CE_WORKERS unset) behaves as CE_WORKERS=0 — the 2026-07-10 quiet-machine benchmark flip (commit 9107fde)', async () => {
+    delete process.env.CE_WORKERS;
+    process.env.CE_PARALLEL_MIN = '1';
+    const { rerankPairs, ceWorkerStats } = await importMocked();
+    // 40 docs clears both CE_BATCH_SIZE (16) and CE_PARALLEL_MIN (1) -- if ceWorkerCount() still
+    // computed a cores-based default instead of the new hardcoded 0, the pool WOULD engage here.
+    const docs = Array.from({ length: 40 }, (_, i) => ({ path: `p${i}`, fullText: String(i) }));
+    const r = await rerankPairs('q', docs);
+    expect(r.map((d) => d.ceScore)).toEqual(Array.from({ length: 40 }, (_, i) => 39 - i));
+    const stats = ceWorkerStats();
+    expect(stats.poolSize).toBe(0);
+    expect(stats.parallelCalls).toBe(0);
+    expect(stats.inlineCalls).toBe(1);
+  });
 });
 
 describe('parallel vs inline determinism — real cross-encoder (skips loudly when the model cannot load offline)', () => {

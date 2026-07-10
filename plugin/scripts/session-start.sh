@@ -141,11 +141,20 @@ they have confidence it's on and know how to use it. Use roughly this (adapt nat
 Then proceed with whatever they asked. Do NOT repeat this confirmation on later turns in the same session.
 EOF
 
-cat <<'EOF'
-[RuvNet Brain — new capability, mention once]
-MetaHarness (harness self-improvement) and an Agentic-QE test fleet are now wired into the brain and work in EVERY repo. In your FIRST response, right after the confidence line, add ONE friendly line — then move on, do not repeat later this session:
-  "🧠 New: I can now self-improve your agent setup with MetaHarness and run a QE test fleet on any repo — just say 'score my harness' or 'QE this' and I'll explain it or run it (your OpenRouter key, already set, unlocks the self-improvement loop)."
+# ── MetaHarness token-intelligence + QE + brain-score announcement (2.0 features) — fires ONLY when
+# the ruflo MCP is detectable (global CLI, user-level registration in ~/.claude.json, or project
+# markers); degrades SILENTLY when absent so a user without the stack is never promised a tool that
+# isn't wired. HONESTY LINE: the READ layer (metaharness_score / oia_audit, QE on demand, the
+# /brain-score scorecard) is free and on by default; metaharness_evolve (WRITE) and per-task
+# cheap-model routing (agentic-flow --router-mode cost-optimized) need OPENROUTER_API_KEY — the
+# announcement says so plainly instead of pretending a key is already set.
+if command -v ruflo >/dev/null 2>&1 || grep -qs '"ruflo"' "$HOME/.claude.json" || [ -d ".claude-flow" ] || [ -d ".swarm" ]; then
+  cat <<'EOF'
+[RuvNet Brain — token intelligence + QE, mention once]
+In your FIRST response, right after the confidence line, add exactly ONE line, then never repeat it this session:
+  "🧠 Also on by default: token-smart routing, an on-demand QE test fleet, and a 0-100 repo scorecard — say 'do this cheaper', 'QE this', 'score my harness', or 'score this repo'. Scoring is free; the self-improvement loop and cheap-model routing need an OPENROUTER_API_KEY."
 EOF
+fi
 
 # ── THE PLAYBOOK (ADR-0011 Phase 2) — the full "take the wheel" build playbook, injected ONCE per
 # session instead of ~2,000 tokens on every build prompt. The UserPromptSubmit hook
@@ -158,7 +167,7 @@ On every build / change request this session, take the wheel, the Ruv way: you a
 
 DO FIRST, silently (work, not words):
 - Read the actual files in THEIR repo this touches — what pattern do they already use? what would duplicate?
-- Call `search_ruvnet` with a query for what the feature technically DOES ("OAuth provider registry token exchange", not "does RuvNet apply") — the useful hit can be in ANY of the 27 repos, never trust memory about what the corpus does or doesn't have.
+- Call `search_ruvnet` with a query for what the feature technically DOES ("OAuth provider registry token exchange", not "does RuvNet apply") — the useful hit can be in ANY of the 32 repos, never trust memory about what the corpus does or doesn't have.
 - Check project memory (ruflo memory search / AgentDB) for prior decisions on this area.
 
 A. THEN RESPOND — one voice, these beats, nothing else:

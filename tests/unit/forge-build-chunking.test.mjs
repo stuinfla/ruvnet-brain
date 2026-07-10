@@ -49,3 +49,15 @@ describe.todo('htmlText(html) — HTML-to-plain-text used when ingesting rendere
   it.todo('decodes the 6 handled entities: &nbsp; &amp; &lt; &gt; &quot; &#39;');
   it.todo('collapses runs of 3+ newlines down to a single blank line (\\n\\n)');
 });
+
+// --keep / KEEP_NAMES (added 2026-07-10, scripts/full-hints.mjs's KEEP_DIRS): per-repo directory
+// names exempted from the global SKIP_DIRS walk exclusion (SKIP_DIRS drops 'v2' as noise everywhere,
+// but open-claude-code's whole source lives in v2/src and ruview's active tree is v2/crates — without
+// --keep those repos index almost nothing). Same export/guard blocker as chunkText/titleOf/docBlock
+// above: SKIP_DIRS is a module-scope const mutated by a top-level for-loop, unreachable without either
+// exporting a pure `computeSkipDirs(keepNames)` or the same import.meta.url guard already requested.
+describe.todo('SKIP_DIRS --keep exemption — the walk-exclusion override for repos whose real source lives under a globally-skipped dir name', () => {
+  it.todo('a directory named in --keep is walked (its files produce passages) even though it matches the global SKIP_DIRS set (e.g. "v2")');
+  it.todo('a directory NOT named in --keep is still skipped as before — the exemption is scoped to exactly the names passed, not a blanket SKIP_DIRS disable');
+  it.todo('omitting --keep entirely leaves SKIP_DIRS fully intact (backward compatible with every repo that has no KEEP_DIRS entry)');
+});

@@ -53,6 +53,11 @@ const REPO = process.env.KB_REPO_ROOT || arg('--repo');
 const OUT_DIR = arg('--out');
 const NAME = arg('--name');
 const FULL_PREFIXES = (arg('--full', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
+// --keep: comma-separated directory NAMES to exempt from SKIP_DIRS for THIS repo. SKIP_DIRS
+// excludes 'v2' as noise globally, but for open-claude-code (all source in v2/src) and RuView
+// (active tree v2/crates) that skip deletes the repo's real content. Per-repo keep lives in
+// scripts/full-hints.mjs (KEEP_DIRS) so ingest-repo.mjs / self-update.mjs pass it automatically.
+const KEEP_NAMES = (arg('--keep', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
 // Canonical host where THIS deployment will serve the live manifest + bundle (for the EVERGREEN
 // self-updater). Differs per deployment, so it's a flag. Trailing slash optional. When omitted,
 // SOURCE.json is still written with null URLs (provenance only; self-update disabled until set).
@@ -80,6 +85,8 @@ const SKIP_DIRS = new Set([
   'node_modules', 'target', '.git', 'dist', 'build', '.next', '.cache',
   'coverage', '.venv', 'venv', '__pycache__', '.vite', 'vendor', 'v2',
 ]);
+for (const k of KEEP_NAMES) SKIP_DIRS.delete(k);
+if (KEEP_NAMES.length) console.log('[forge] --keep (un-skipped dirs):', KEEP_NAMES.join(', '));
 const SKIP_NAME_RE = /\.(min\.js|min\.css|lock)$/;          // minified / lockfiles
 const PLATFORM_STUB_RE = /\/npm\/[^/]+\/package\.json$/;     // per-platform prebuilt stub
 const VENDORED_RE = /(^|\/)(stub|pkg|\.vite|dist)(\/|$)/;

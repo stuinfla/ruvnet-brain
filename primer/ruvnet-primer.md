@@ -1,6 +1,6 @@
 # The RuvNet Primer — the building blocks, on one page
 
-`Brain version: v1.14.1-dev · Built: 2026-07-09 · Covers: 24/173 repos built @ pinned SHAs (see data/manifest.json)`
+`Brain version: v2.0.0 · Built: 2026-07-10 · Covers: 32/173 repos built @ pinned SHAs (see data/manifest.json)`
 
 > **What this is:** a portable, source-grounded "brain" over the reusable RuvNet building blocks by
 > **Reuven Cohen (rUv)**. It ships as a **Claude Code plugin** so your assistant answers from Ruv's real
@@ -11,7 +11,7 @@
 
 ## What the brain is
 
-- A **portable brain** over **~18 RuvNet building-block repos**, embedded and indexed at pinned SHAs.
+- A **portable brain** over **32 RuvNet building-block repos**, embedded and indexed at pinned SHAs.
 - Delivered as a **Claude Code plugin**: **one tool (`search_ruvnet`)** + **one enforcement hook** (a
   UserPromptSubmit grounding directive, so the model can't silently drift) + **one skill**.
 - **Installed once at user scope**, then active in **any** repo you open — not tied to one project.
@@ -66,25 +66,25 @@ The brain fixes both. It makes the assistant:
 ## The proof / confidence concept (honest, exact numbers)
 
 **Re-runnable proof batteries** (`node scripts/prove.mjs`, k=3; `bash scripts/gate.sh` for the gate) now
-score ~96–98% **whether the question names the tool or just describes the need**:
+score ~93–98% **whether the question names the tool or just describes the need**:
 
 | When the question… | Score | |
 |---|---|---|
 | **names a repo or is specific** (helix-free; tuned, held-out, cross-repo, implementation, coverage) | **47/48** | **98%** |
-| **is by-description only** (newcomer phrasing, no repo names) | **27/28** | **96%** |
+| **is by-description only** (newcomer phrasing, no repo names) | **26/28** | **93%** |
 | **Helix-context demo** (`HELIX-DEMO-NOHELIX.md`) | **7/8** | **88%** (up from 1/8) |
 
-- The by-description path **was 33% before the fix** and is now **96% after** adding **capability cards** —
+- The by-description path **was 33% before the fix** and is now **93% after** adding **capability cards** —
   a capability-phrased passage per building block that lets a described need route to the right repo without
   naming it. Artifacts: `PROOF.md`, `DESCRIBED-PROOF.md`, `HELIX-DEMO-NOHELIX.md`.
 - Two honest residuals, not hidden: one described question (*"route to cheaper models to cut cost"*) still
   routes to **ruflo** instead of **agentic-flow** (orchestration/cost overlap); one Helix question (an unnamed
   *"methodology"* ask) routes to **synthlang** instead of **sparc**.
-- The **421 MB bundle** (`dist/ruvnet-brain.zip`) was **acceptance-tested as a fresh consumer** — extracted
+- The **512 MB bundle** (`dist/ruvnet-brain.zip`) was **acceptance-tested as a fresh consumer** — extracted
   on its own, `npm i`, queried, **3/3 grounded** — so it runs off the dev machine, not just on it.
 
 **The guarantee is narrow and true:** grounded, non-drifting, cited answers over this corpus **whether the
-target is named (47/48) or only described (27/28)**, with the two residuals above named honestly; and
+target is named (47/48) or only described (26/28)**, with the two residuals above named honestly; and
 **no autonomous builder yet**. Nothing here is "done" or "complete" — it's a verified floor you can re-run.
 
 ---
@@ -98,7 +98,7 @@ target is named (47/48) or only described (27/28)**, with the two residuals abov
    ```
 2. **Open any repo and ask.** The hook grounds the turn; the model calls `search_ruvnet` and answers from
    cited source. Example: *"How does ruflo persist agent memory, and what implements it?"*
-3. **Pull in an uncovered repo on demand** (any of the ~169 catalogued, or any rUv repo):
+3. **Pull in an uncovered repo on demand** (any of the 173 catalogued, or any rUv repo):
    ```
    node scripts/ingest-repo.mjs --name <repo>
    ```

@@ -22,19 +22,19 @@
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="RuvNet Brain · by Isovision.ai" />
-  <meta property="og:title" content="RuvNet Brain for Claude Code — build 9 months ahead" />
+  <meta property="og:title" content="RuvNet Brain 2.0 for Claude Code — build 9 months ahead" />
   <meta property="og:description" content="A downloadable brain for Claude Code — rUv's real source code, indexed — that Claude reads before it answers. Built by Isovision.ai. Not the same as rUv's RuVector Brain." />
   <meta property="og:url" content="https://isovision.ai/ruvnet-brain/" />
-  <meta property="og:image" content="https://ruvnet-brain.vercel.app/assets/img/hero.png" />
-  <meta property="og:image:alt" content="A brain made of glowing amber and cyan filaments — rUv's whole toolkit gathered into one intelligence" />
-  <meta property="og:image:width" content="1536" />
-  <meta property="og:image:height" content="1024" />
+  <meta property="og:image" content="https://ruvnet-brain.vercel.app/assets/img/og-hero-2.png" />
+  <meta property="og:image:alt" content="RuvNet Brain 2.0 — a brain of glowing amber and cyan filaments, rUv's whole toolkit in one intelligence" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Build 9 months ahead. Without being Ruv." />
+  <meta name="twitter:title" content="RuvNet Brain 2.0 — build 9 months ahead. Without being Ruv." />
   <meta name="twitter:description" content="The missing instruction manual for rUv's tools: a downloadable brain that grounds Claude in his real source so you build on the front edge of AI." />
-  <meta name="twitter:image" content="https://ruvnet-brain.vercel.app/assets/img/hero.png" />
+  <meta name="twitter:image" content="https://ruvnet-brain.vercel.app/assets/img/og-hero-2.png" />
 
   <!-- Structured data — WebSite entity (defines "RuvNet Brain" as a named thing to search engines) -->
   <script type="application/ld+json">
@@ -67,10 +67,10 @@
     "alternateName": "RuvNet-Brain",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Cross-platform (Node.js)",
-    "softwareVersion": "0.5.0-dev",
+    "softwareVersion": "2.0.0",
     "datePublished": "2026-06-30",
-    "dateModified": "2026-07-07",
-    "description": "A downloadable, source-grounded brain for Claude Code that grounds the AI in rUv's real RuvNet source — RuVector/RVF, ruflo, AgentDB, RuLake, SPARC and 21 building blocks — and pre-implements two of rUv's hardest tools so you can run them in plain English: MetaHarness (harness self-improvement + cost-optimal model routing, ~56x cheaper than frontier-only) and an Agentic-QE testing fleet. Ships the search_ruvnet MCP tool plus grounding hooks.",
+    "dateModified": "2026-07-10",
+    "description": "A downloadable, source-grounded brain for Claude Code that grounds the AI in rUv's real RuvNet source — RuVector/RVF, ruflo, AgentDB, RuLake, SPARC and 32 indexed repos — and pre-implements two of rUv's hardest tools so you can run them in plain English: MetaHarness (harness self-improvement + cost-optimal model routing, ~56x cheaper than frontier-only) and an Agentic-QE testing fleet. Ships the search_ruvnet MCP tool plus grounding hooks.",
     "url": "https://ruvnet-brain.vercel.app/",
     "downloadUrl": "https://github.com/stuinfla/ruvnet-brain/releases/latest",
     "installUrl": "https://www.npmjs.com/package/ruvnet-brain",
@@ -233,7 +233,7 @@
         Built by <strong>Stuart Kerr</strong> at <a href="https://isovision.ai" target="_blank" rel="noopener">Isovision.ai</a>.
         <strong>Free &amp; fair use</strong> &mdash; so everyone can fully leverage the high end of agentic coding.
       </p>
-      <p class="prov-live"><span class="prov-dot">&#9679;</span> STATUS&nbsp;<code>live</code> &middot; v0.5.0-dev</p>
+      <p class="prov-live"><span class="prov-dot">&#9679;</span> STATUS&nbsp;<code>live</code> &middot; v2.0.0</p>
     </div>
   </div>
 
@@ -283,7 +283,7 @@
             </p>
             <div class="meta-row">
               <span>INSTALL&nbsp;<b>npx ruvnet-brain</b></span>
-              <span>BRAIN&nbsp;<b>21 building blocks &middot; 90,842 source chunks</b></span>
+              <span>BRAIN&nbsp;<b>32 repos &middot; 128,994 source chunks</b></span>
               <span>STATUS&nbsp;<b>live</b></span>
             </div>
             <div class="cta-row">
@@ -343,7 +343,7 @@
               <p class="spear-lab">describe a need, get the right rUv tool<span class="spear-src">no name needed</span></p>
             </div>
             <div class="spear-card reveal-stagger">
-              <div class="spear-num grad"><span data-count="90842" data-decimals="0" data-commas="1">90,842</span> chunks</div>
+              <div class="spear-num grad"><span data-count="128994" data-decimals="0" data-commas="1">128,994</span> chunks</div>
               <p class="spear-lab">rUv&rsquo;s real source code, indexed<span class="spear-src">not docs</span></p>
             </div>
             <div class="spear-card reveal-stagger">
@@ -352,6 +352,113 @@
             </div>
           </div>
         </section>
+      </div>
+    </section>
+
+    <!-- ===================== WHAT'S NEW — 2.0 (compact band) ===================== -->
+    <style>
+      /* scoped — existing design-system tokens only, mirrors the spearband/closing patterns */
+      .v2band{border-top:1px solid var(--line);background:linear-gradient(180deg,var(--fill),transparent)}
+      .v2band-inner{padding:var(--space-2xl) 0 var(--space-xl)}
+      .v2band .eyebrow{margin-bottom:10px}
+      .v2band h2{font-size:var(--step-2);margin:0 0 .35em}
+      .v2band .lede{margin:0 0 var(--space-l);color:var(--ink-2);max-width:70ch}
+      .v2band .v2-fine{margin:18px 0 0;max-width:none;font-size:var(--step--1);line-height:1.55;color:var(--muted)}
+      .v2band .v2-fine b{color:var(--ink-2)}
+      /* scorecard — collapsed by default; native details/summary in the page's section-chevron language */
+      .v2band .v2-details{margin-top:var(--space-l)}
+      .v2band .v2-details summary{list-style:none;cursor:pointer;user-select:none;
+        display:flex;align-items:center;gap:12px}
+      .v2band .v2-details summary::-webkit-details-marker{display:none}
+      .v2band .v2-details summary .tier{margin:0}
+      .v2band .v2-details .chev{flex:0 0 auto;width:26px;height:26px;border-radius:50%;
+        display:grid;place-items:center;border:1px solid var(--line-strong);color:var(--accent);
+        font-size:13px;line-height:1;transition:transform .25s var(--ease),background .2s var(--ease)}
+      .v2band .v2-details summary:hover .chev{background:var(--fill)}
+      .v2band .v2-details[open] .chev{transform:rotate(90deg);background:var(--fill)}
+      .v2-score{overflow-x:auto;margin-top:var(--space-s)}
+      .v2-score .tbl{margin-bottom:0}
+      /* the numbers ARE the point — stat-size, tabular */
+      .v2-score .tbl th.nh{text-align:right;white-space:nowrap}
+      .v2-score .tbl td.n{font-family:var(--mono);font-size:var(--step-1);line-height:1.15;
+        font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+      .v2-score .tbl td.moved{font-size:var(--step--1);color:var(--ink-2);min-width:24ch}
+      /* narrow screens: "what moved it" STACKS under its row — never hidden */
+      @media (max-width:760px){
+        .v2-score .tbl,.v2-score .tbl thead,.v2-score .tbl tbody{display:block}
+        .v2-score .tbl thead tr,.v2-score .tbl tbody tr{
+          display:grid;grid-template-columns:1fr max-content max-content max-content;
+          gap:2px 14px;align-items:baseline;padding:10px 12px;border-bottom:1px solid var(--line)}
+        .v2-score .tbl tbody tr:last-child{border-bottom:0}
+        .v2-score .tbl th,.v2-score .tbl td{border-bottom:0;padding:0}
+        .v2-score .tbl th.moved-h{display:none}
+        .v2-score .tbl td.moved{grid-column:1 / -1;margin-top:2px;min-width:0}
+      }
+    </style>
+    <section class="v2band" id="v2" aria-label="What's new in version 2.0">
+      <div class="wrap v2band-inner reveal">
+        <p class="eyebrow">new &middot; version 2.0</p>
+        <h2>What&rsquo;s new in <span class="grad">2.0</span></h2>
+        <p class="lede">The Brain got bigger &mdash; and stopped taking its own word for anything. Every store now has to
+          <strong>prove</strong> it embeds correctly <em>and</em> reads correctly before it ships, and a frozen
+          120-question eval gate can &mdash; and did &mdash; block a release.</p>
+        <div class="spear-grid">
+          <div class="spear-card reveal-stagger">
+            <div class="spear-num grad">24 &rarr; 32 repos</div>
+            <p class="spear-lab">every store verified by a live retrieval query<span class="spear-src">corpus</span></p>
+          </div>
+          <div class="spear-card reveal-stagger">
+            <div class="spear-num grad">12 &rarr; 120 questions</div>
+            <p class="spear-lab">frozen, hash-pinned eval &mdash; releases gated on it, fail-closed<span class="spear-src">eval flywheel</span></p>
+          </div>
+          <div class="spear-card reveal-stagger">
+            <div class="spear-num grad">6,183 &rarr; 684 bytes</div>
+            <p class="spear-lab">per-turn hook cost, ~90% cut &mdash; eval-proven zero quality loss<span class="spear-src">token cost</span></p>
+          </div>
+          <div class="spear-card reveal-stagger">
+            <div class="spear-num grad">437 gists</div>
+            <p class="spear-lab">rUv&rsquo;s gists indexed nightly, with per-chunk freshness banners<span class="spear-src">nightly</span></p>
+          </div>
+        </div>
+
+        <details class="v2-details" id="v2score">
+          <summary>
+            <span class="tier tech">The scorecard &mdash; 8 dimensions, self-scored /100, every deduction evidenced &middot; 2026-07-10 (evening re-score)</span>
+            <span class="chev" aria-hidden="true">&rsaquo;</span>
+          </summary>
+          <div class="v2-score">
+            <table class="tbl">
+              <thead>
+                <tr><th scope="col">Dimension</th><th scope="col" class="nh">v1 &middot; 07-09</th><th scope="col" class="nh">v2.0 &middot; now</th><th scope="col" class="nh">&Delta;</th><th scope="col" class="moved-h">What moved it</th></tr>
+              </thead>
+              <tbody>
+                <tr class="reveal-row"><td>End-user experience</td><td class="n before">54</td><td class="n after">83</td><td class="n win">+29</td><td class="moved">One-command install now offers nightly self-updates (default yes); the page lives on isovision.ai; publishing renews itself</td></tr>
+                <tr class="reveal-row"><td>Knowledge corpus</td><td class="n before">71</td><td class="n after">88</td><td class="n win">+17</td><td class="moved">24&rarr;32 verified repos; a 72/72 embeds-and-reads QA gate; full source depth restored &mdash; flagship went 0&rarr;2,996 source bodies</td></tr>
+                <tr class="reveal-row"><td>Effectiveness (eval-proven retrieval)</td><td class="n before">58</td><td class="n after">88</td><td class="n win">+30</td><td class="moved">120-question Wilson-bound gate &mdash; it blocked a bad release, then passed the fix <em>above</em> the old baseline</td></tr>
+                <tr class="reveal-row"><td>Acting like rUv</td><td class="n before">38</td><td class="n after">72</td><td class="n win">+34</td><td class="moved">Memory layer root-caused and fixed with proofs; 6 exact patches queued upstream; real multi-agent swarm operations</td></tr>
+                <tr class="reveal-row"><td>Developer smarter</td><td class="n before">62</td><td class="n after">84</td><td class="n win">+22</td><td class="moved"><code>/brain-score</code> runs this same scorecard on any repo; honest tool announcements; per-answer source receipts</td></tr>
+                <tr class="reveal-row"><td>Token cost efficiency</td><td class="n before">41</td><td class="n after">82</td><td class="n win">+41</td><td class="moved">~90% smaller per-turn injection, eval-proven free; a live token meter &mdash; measured, not guessed</td></tr>
+                <tr class="reveal-row"><td>Engineering reliability</td><td class="n before">61</td><td class="n after">86</td><td class="n win">+25</td><td class="moved">312 tests green; a claims ledger re-verifies marketing claims in CI; fail-closed publishing; Windows CI added</td></tr>
+                <tr class="reveal-row"><td>Safety &amp; privacy</td><td class="n before">74</td><td class="n after">82</td><td class="n win">+8</td><td class="moved">Private-store fence held under full rebuild; secrets never transit chat; autonomy hard fence</td></tr>
+                <tr class="reveal-row"><td>Overall</td><td class="n before">55</td><td class="n after">83</td><td class="n win">+28</td><td class="moved">&mdash;</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="v2-fine">Self-scores under a hard rule: <b>every deduction requires specific evidence, and a known
+            architectural flaw caps a dimension at &le;70 until the flaw is fixed</b> &mdash; <em>acting like rUv</em>
+            spent the morning capped for its memory-layer flaw; the flaw was root-caused and fixed with proofs, the cap
+            lifted, and it re-scored 72. Overall <b>55 &rarr; 83 in two days</b>, each number regenerating from a stored
+            receipt &mdash; and the same scoring that produced these blocked a release mid-day.
+            <b>That&rsquo;s why they&rsquo;re credible: scores you can trust beat scores that flatter.</b></p>
+        </details>
+
+        <p class="v2-fine"><b>Also in 2.0:</b> code-level depth restored (flagship <code>ruvector</code>: 18,491 &rarr; 28,018
+          passages, 0 &rarr; 2,996 full source bodies) &middot; a 72/72 corpus QA gate wired fail-closed into the nightly
+          publish &middot; ~27% faster repeat queries &middot; a <code>/loop</code> contract so hooks stop asking questions
+          to an empty room &middot; 3 root-caused memory-layer fixes, queued upstream to ruflo.
+          <br /><b>The honest small print:</b> warm query is ~21&nbsp;s on the large corpus (next optimization: candidate
+          dedup/pruning) &middot; the 8 newest repos are findable by name but don&rsquo;t yet have capability cards for
+          described-need routing &middot; the Windows CI job is unproven until its first green run.</p>
       </div>
     </section>
 
@@ -660,7 +767,7 @@
   <text x="609" y="156" text-anchor="middle" fill="#5ad6ff" font-family="ui-monospace,monospace" font-size="15" font-weight="700">search_ruvnet</text>
   <text x="609" y="184" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">pulls the exact source</text>
   <text x="609" y="201" text-anchor="middle" fill="#c3c2b6" font-family="system-ui,sans-serif" font-size="12">passage from the Brain</text>
-  <text x="609" y="222" text-anchor="middle" fill="#8b8f9c" font-family="ui-monospace,monospace" font-size="11">RVF · 90,842 chunks</text>
+  <text x="609" y="222" text-anchor="middle" fill="#8b8f9c" font-family="ui-monospace,monospace" font-size="11">RVF · 128,994 chunks</text>
   </g>
 
   <line class="d-draw d-draw-grey d-draw-3" x1="714" y1="175" x2="742" y2="175" stroke="#8b8f9c" stroke-width="2" marker-end="url(#s04-a)"/>
@@ -703,20 +810,20 @@
             <span class="head-text">
               <h2>What&rsquo;s actually in the Brain</h2>
               <span class="q">What did you gather, exactly?</span>
-              <span class="tier tech" style="margin-top:6px">21 building blocks &middot; 90,842 source chunks</span>
+              <span class="tier tech" style="margin-top:6px">32 repos &middot; 128,994 source chunks</span>
             </span>
             <span class="chev" aria-hidden="true">&rsaquo;</span>
           </summary>
           <div class="body">
             <p class="lead-in">
-              21 of rUv&rsquo;s building blocks, <strong>90,842 source chunks</strong>, in a real vector brain (RVF).
+              32 of rUv&rsquo;s repos, <strong>128,994 source chunks</strong>, in a real vector brain (RVF).
               Not docs &mdash; the source.
             </p>
             <p class="tier tech">Coverage map &mdash; everything gathered in one brain</p>
             <figure class="figure diagram">
-              <svg class="diagram-svg dgm-s06" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 664" role="img" aria-labelledby="s06-title s06-desc">
-  <title id="s06-title">Coverage map: twenty-one of rUv's building blocks gathered into one Brain</title>
-  <desc id="s06-desc">A central Brain hub fans out to a grid of twenty-one building blocks, each shown gathered and read: ruflo, RuVector, AgentDB, RuLake, RuView, agentic-flow, SPARC, QuDAG, SAFLA, ruv-fann, SynthLang, rupixel, agenticow, metaharness, daa, dspy.ts, FACT, cve-bench, rvm, rUv-dev and open-claude-code. Together they show the reassuring breadth of the ecosystem indexed in one place.</desc>
+              <svg class="diagram-svg dgm-s06" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 864" role="img" aria-labelledby="s06-title s06-desc">
+  <title id="s06-title">Coverage map: the core of rUv's ecosystem — 32 repos indexed — gathered into one Brain</title>
+  <desc id="s06-desc">A central Brain hub fans out to a grid of the core building blocks, each shown gathered and read: ruflo, RuVector, AgentDB, RuLake, RuView, agentic-flow, SPARC, QuDAG, SAFLA, ruv-fann, SynthLang, rupixel, agenticow, metaharness, daa, dspy.ts, FACT, cve-bench, rvm, rUv-dev, open-claude-code, agentic-qe, flow-nexus, midstream, rudevolution, marketing, symbolic-scribe, sublinear-time-solver, Synaptic-Mesh, agentic-security, cognitum-cogs and cognitum-support — 32 repos indexed in total. Together they show the reassuring breadth of the ecosystem indexed in one place.</desc>
   <defs>
     <linearGradient id="s06-bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#0b1018"/>
@@ -733,7 +840,7 @@
 
   <rect x="0" y="0" width="1000" height="664" rx="14" fill="url(#s06-bg)"/>
   <text x="500" y="40" text-anchor="middle" fill="#ece8dc" font-family="Georgia,serif" font-size="22" font-weight="700">Everything gathered into one Brain</text>
-  <text x="500" y="64" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="13">21 building blocks · 90,842 source chunks · all read, nothing for you to chase down</text>
+  <text x="500" y="64" text-anchor="middle" fill="#8b8f9c" font-family="system-ui,sans-serif" font-size="13">32 repos · 128,994 source chunks · all read, nothing for you to chase down</text>
 
   <!-- constellation lines from hub to row 1 -->
   <g class="s06-lines" stroke="rgba(90,214,255,.22)" stroke-width="1" fill="none">
@@ -785,11 +892,26 @@
     <g class="s06-chip"><rect x="40" y="520" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="58" cy="544" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="58" y="548" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="74" y="548" fill="#f0a830" font-size="13" font-weight="700">rvm</text><text x="58" y="578" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">secure runtime</text></g>
     <g class="s06-chip"><rect x="194" y="520" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="212" cy="544" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="212" y="548" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="228" y="548" fill="#f0a830" font-size="13" font-weight="700">rUv-dev</text><text x="212" y="578" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">dev workflow</text></g>
     <g class="s06-chip"><rect x="348" y="520" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="366" cy="544" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="366" y="548" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="382" y="548" fill="#f0a830" font-size="11.5" font-weight="700">open-claude</text><text x="366" y="578" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">agent runtime</text></g>
+    <g class="s06-chip"><rect x="502" y="520" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="520" cy="544" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="520" y="548" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="536" y="548" fill="#f0a830" font-size="13" font-weight="700">agentic-qe</text><text x="520" y="578" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">test fleet</text></g>
+    <g class="s06-chip"><rect x="656" y="520" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="674" cy="544" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="674" y="548" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="690" y="548" fill="#f0a830" font-size="13" font-weight="700">flow-nexus</text><text x="674" y="578" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">agent platform</text></g>
+    <g class="s06-chip"><rect x="810" y="520" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="828" cy="544" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="828" y="548" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="844" y="548" fill="#f0a830" font-size="13" font-weight="700">midstream</text><text x="828" y="578" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">stream analytics</text></g>
+  </g>
+  <g font-family="ui-monospace,monospace">
+    <g class="s06-chip"><rect x="40" y="620" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="58" cy="644" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="58" y="648" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="74" y="648" fill="#f0a830" font-size="12" font-weight="700">rudevolution</text><text x="58" y="678" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">code archaeology</text></g>
+    <g class="s06-chip"><rect x="194" y="620" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="212" cy="644" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="212" y="648" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="228" y="648" fill="#f0a830" font-size="13" font-weight="700">marketing</text><text x="212" y="678" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">swarm marketing</text></g>
+    <g class="s06-chip"><rect x="348" y="620" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="366" cy="644" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="366" y="648" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="382" y="648" fill="#f0a830" font-size="10.5" font-weight="700">symbolic-scribe</text><text x="366" y="678" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">symbolic prompts</text></g>
+    <g class="s06-chip"><rect x="502" y="620" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="520" cy="644" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="520" y="648" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="536" y="648" fill="#f0a830" font-size="10.5" font-weight="700">sublinear-solver</text><text x="520" y="678" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">fast math</text></g>
+    <g class="s06-chip"><rect x="656" y="620" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="674" cy="644" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="674" y="648" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="690" y="648" fill="#f0a830" font-size="11.5" font-weight="700">Synaptic-Mesh</text><text x="674" y="678" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">p2p neural fabric</text></g>
+    <g class="s06-chip"><rect x="810" y="620" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="828" cy="644" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="828" y="648" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="844" y="648" fill="#f0a830" font-size="10.5" font-weight="700">agentic-security</text><text x="828" y="678" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">security scans</text></g>
+  </g>
+  <g font-family="ui-monospace,monospace">
+    <g class="s06-chip"><rect x="40" y="720" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="58" cy="744" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="58" y="748" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="74" y="748" fill="#f0a830" font-size="11.5" font-weight="700">cognitum-cogs</text><text x="58" y="778" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">edge cognition</text></g>
+    <g class="s06-chip"><rect x="194" y="720" width="146" height="84" rx="9" fill="#0f141c" stroke="rgba(95,211,138,.3)"/><circle cx="212" cy="744" r="8" fill="rgba(95,211,138,.14)" stroke="rgba(95,211,138,.55)"/><text x="212" y="748" text-anchor="middle" fill="#5fd38a" font-size="9" font-weight="700">✓</text><text x="228" y="748" fill="#f0a830" font-size="10" font-weight="700">cognitum-support</text><text x="212" y="778" fill="#a39d8c" font-family="system-ui,sans-serif" font-size="11">support docs</text></g>
   </g>
 
-  <text class="d-fade d-fade-5" x="500" y="644" text-anchor="middle" fill="#5fd38a" font-family="Georgia,serif" font-size="14.5" font-style="italic">If rUv open-sourced it and it matters, it's in here. When he ships more, the Brain updates.</text>
+  <text class="d-fade d-fade-5" x="500" y="844" text-anchor="middle" fill="#5fd38a" font-family="Georgia,serif" font-size="14.5" font-style="italic">If rUv open-sourced it and it matters, it's in here. When he ships more, the Brain updates.</text>
 </svg>
-              <figcaption>Reassuring breadth, not a wall of jargon: 21 building blocks, all gathered and already read, behind one <code>search_ruvnet</code> tool.</figcaption>
+              <figcaption>Reassuring breadth, not a wall of jargon: 32 repos, all gathered and already read &mdash; the core building blocks mapped above &mdash; behind one <code>search_ruvnet</code> tool.</figcaption>
             </figure>
             <p>
               Plus human-written primers and the <strong>capability cards</strong> that make routing work. Everything is
@@ -1554,7 +1676,7 @@ npx ruvnet-brain
 
             <div class="cta-row">
               <a class="cta" href="https://github.com/stuinfla/ruvnet-brain" target="_blank" rel="noopener">Get it on GitHub &rarr;</a>
-              <a class="cta ghost" href="https://github.com/stuinfla/ruvnet-brain/releases/download/v0.5.0-dev/ruvnet-brain.zip">Download the brain &middot; 512&nbsp;MB</a>
+              <a class="cta ghost" href="https://github.com/stuinfla/ruvnet-brain/releases/latest/download/ruvnet-brain.zip">Download the brain &middot; 512&nbsp;MB</a>
             </div>
           </div>
         </details>
@@ -1641,7 +1763,7 @@ npx ruvnet-brain
 <span class="d">~/.cache/ruvnet-brain/kb/</span>            <span class="cmt"># the Brain (RVF) — travels with you, not the repo</span>
  ├ <span class="f">capability-cards.md</span>          <span class="cmt"># route by need, not by name</span>
  ├ <span class="d">concepts/</span>                    <span class="cmt"># plain-English primers per building block</span>
- ├ <span class="d">*.rvf</span>                        <span class="cmt"># 90,842 source chunks · HNSW vector index</span>
+ ├ <span class="d">*.rvf</span>                        <span class="cmt"># 128,994 source chunks · HNSW vector index</span>
  └ <span class="f">forge-mcp-all.mjs</span>            <span class="cmt"># the search_ruvnet tool — one tool, all repos</span>
 <span class="d">claude-code-plugin/</span>              <span class="cmt"># the grounding hook — fires on every prompt</span></pre>
           </div>
@@ -1681,7 +1803,7 @@ npx ruvnet-brain
 
       <div class="cta-row">
         <a class="cta" href="https://github.com/stuinfla/ruvnet-brain" target="_blank" rel="noopener">Get it on GitHub &rarr;</a>
-        <a class="cta ghost" href="https://github.com/stuinfla/ruvnet-brain/releases/download/v0.5.0-dev/ruvnet-brain.zip">Download the brain &middot; 512&nbsp;MB</a>
+        <a class="cta ghost" href="https://github.com/stuinfla/ruvnet-brain/releases/latest/download/ruvnet-brain.zip">Download the brain &middot; 512&nbsp;MB</a>
       </div>
     </div>
   </section>

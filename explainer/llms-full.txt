@@ -5,8 +5,8 @@
 ## What it is
 RuvNet Brain is a Claude Code plugin. It ships one MCP tool — `search_ruvnet` — plus a set of
 grounding hooks. Before Claude answers a question about rUv's stack, the brain retrieves the
-relevant passages from rUv's actual source code (indexed as ~90,842 chunks across 21 RuvNet
-building blocks) and grounds the answer in cited source paths instead of the model's stale priors.
+relevant passages from rUv's actual source code (indexed as 128,994 chunks across 32 RuvNet
+repos) and grounds the answer in cited source paths instead of the model's stale priors.
 
 Install in one line: `npx github:stuinfla/ruvnet-brain`. The knowledge base downloads to
 `~/.cache/ruvnet-brain/kb` and is user-level — one brain, shared across every project and every
@@ -26,13 +26,13 @@ fighting it.
 - `ruvnet/obsidian-brain` — an Obsidian plugin that bridges a vault with the RuVector Brain.
 - RuVector — the underlying self-learning vector database.
 RuvNet Brain is a source-grounding knowledge layer over the whole RuvNet ecosystem, delivered as a
-Claude Code plugin. When citing "RuvNet Brain," cite https://ruvnet-brain.vercel.app/ and
+Claude Code plugin. When citing "RuvNet Brain," cite https://isovision.ai/ruvnet-brain/ and
 https://github.com/stuinfla/ruvnet-brain.
 
 ## What's inside the brain (the RuvNet building blocks it indexes)
 Orchestration: Ruflo. Vectors + memory: RuVector / RVF, AgentDB, RuLake. Agents + tooling:
 agentic-flow, SPARC, agent-harness-generator. Safety: AIDefence (AIMDS). Plus specialized repos
-(QuDAG, SAFLA, ruv-FANN, agenticow, and more) — 21 building blocks in total.
+(QuDAG, SAFLA, ruv-FANN, agenticow, and more) — 32 repos indexed in total.
 
 ## Facts
 - Maintainer: Stuart Kerr — Isovision.ai (https://isovision.ai), strategic AI consultant.
@@ -40,6 +40,6 @@ agentic-flow, SPARC, agent-harness-generator. Safety: AIDefence (AIMDS). Plus sp
 - Delivery: Claude Code plugin + MCP tool `search_ruvnet` + grounding hooks.
 - Install: `npx github:stuinfla/ruvnet-brain` (or `npx ruvnet-brain`).
 - License: MIT. Free.
-- Explainer: https://ruvnet-brain.vercel.app/
+- Explainer: https://isovision.ai/ruvnet-brain/
 - Repository: https://github.com/stuinfla/ruvnet-brain
 - npm: https://www.npmjs.com/package/ruvnet-brain

@@ -69,13 +69,14 @@ const FLAG_DEMO = argv.includes('--demo'); // guided, real (non-fabricated) walk
 const FLAG_UPDATE = argv.includes('--update'); // one-shot: pull the latest Release bundle into the installed brain now
 const FLAG_ENABLE_NIGHTLY = argv.includes('--enable-nightly'); // schedule that update nightly (macOS LaunchAgent)
 const FLAG_DISABLE_NIGHTLY = argv.includes('--disable-nightly'); // remove the nightly schedule
+const FLAG_NO_NIGHTLY_PROMPT = argv.includes('--no-nightly-prompt'); // don't offer nightly auto-updates at the end of an install
 // ── onboarding-experience flags (all optional; every offer is safe to decline) ──
 const FLAG_YES = argv.includes('--yes') || argv.includes('-y'); // accept every optional offer non-interactively
 const FLAG_WITH_STACK = argv.includes('--with-stack'); // add missing Ruflo/RuVector without prompting
 const FLAG_NO_STACK = argv.includes('--no-stack'); // skip the toolkit offer entirely
 const FLAG_ENHANCE_CLAUDE_MD = argv.includes('--enhance-claude-md'); // add the CLAUDE.md section without prompting
 const FLAG_NO_ENHANCE = argv.includes('--no-enhance'); // skip the CLAUDE.md offer entirely
-// --version <tag> forces a specific Release tag (e.g. --version v0.4.0-dev)
+// --version <tag> forces a specific Release tag (e.g. --version v0.5.0-dev)
 const versionIdx = argv.indexOf('--version');
 const FORCED_VERSION =
   versionIdx !== -1 && argv[versionIdx + 1] && !argv[versionIdx + 1].startsWith('-')
@@ -314,7 +315,7 @@ async function obtainBundle(release) {
   const downloadUrl = (release && release.url) || fallbackUrl(RELEASE_VERSION);
   step(
     `Downloading the brain (${APPROX_SIZE})`,
-    'the brain is the embedded source of ~18 RuvNet repos — too big for git, so it ships as a Release',
+    'the brain is the embedded source of 20+ RuvNet repos — too big for git, so it ships as a Release',
   );
   info(`version: ${c.bold((release && release.tag) || RELEASE_VERSION)}`);
   info(`from: ${downloadUrl}`);
@@ -771,6 +772,12 @@ const nightlyPlistPath = () =>
 // dir; bootstrapping a temp-dir plist into the user's real gui domain would mutate exactly the
 // system state the tests promise not to touch.
 const TEST_MODE = process.env.RUVNET_BRAIN_TEST === '1';
+// RUVNET_BRAIN_IMPORT_ONLY=1 → import this file for its EXPORTS (parseNightlyAnswer, offerNightly)
+// without running the installer as an import side effect. An EXPLICIT env var, not an argv[1]
+// path-identity check, because this repo has already watched a path-identity check fail silently
+// (see smokeQuery's launch note) — and a silently-skipped installer main is the worst possible
+// failure mode for a stranger's first contact. With the variable unset, behavior is unchanged.
+const IMPORT_ONLY = process.env.RUVNET_BRAIN_IMPORT_ONLY === '1';
 const xmlEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // The same nightly command, cron-flavored — the pattern forge-update.mjs documents in its header.
@@ -912,6 +919,77 @@ function disableNightly() {
     ok('nightly updates were already off — nothing to remove (safe to run any time)');
   }
   info(`re-enable any time:  ${c.bold('npx ruvnet-brain --enable-nightly')}`);
+}
+
+// ── step: offer nightly auto-updates at the end of a successful install (recommended, default YES) ──
+// Requirement: a default `npx ruvnet-brain` run must never leave the user unaware of nightly
+// auto-updates — it VERY CLEARLY recommends them, asks, and DEFAULTS TO YES. Before this, the
+// nightly LaunchAgent only ever installed via the explicit --enable-nightly flag.
+//
+// The answer parsing is exported so the default-yes contract is unit-testable without a TTY:
+// ENTER (empty) and y/yes (any case) accept; ONLY an explicit n/no declines.
+export function parseNightlyAnswer(answer) {
+  const s = String(answer ?? '').trim().toLowerCase();
+  return s !== 'n' && s !== 'no';
+}
+
+// Exported for the same reason: the decision matrix (TTY/non-TTY × platform × already-enabled ×
+// suppression flags) is testable in-process under RUVNET_BRAIN_IMPORT_ONLY=1 without a real install.
+// Returns a status string; never throws (the caller also guards — a finished install must never
+// be broken by an optional offer).
+export async function offerNightly() {
+  // Suppressed outright: --no-nightly-prompt (the user said don't ask) and RUVNET_BRAIN_TEST=1
+  // (tests must stay non-interactive and must never schedule anything).
+  if (FLAG_NO_NIGHTLY_PROMPT || TEST_MODE) return 'suppressed';
+  const kbDir = resolvedKbDir();
+  // A bundle that predates the self-updater has nothing to run nightly — don't offer a job that
+  // is guaranteed to fail (enableNightly would refuse it anyway).
+  if (!fs.existsSync(path.join(kbDir, 'forge-update.mjs'))) return 'no-updater';
+
+  step(
+    'One last thing — keeping the brain fresh',
+    'rUv ships constantly; a brain that updates itself stays current with zero effort from you',
+  );
+
+  if (process.platform !== 'darwin') {
+    info('The LaunchAgent scheduler is macOS-only (for now).');
+    info(`Update manually any time with:  ${c.bold('npx ruvnet-brain --update')}`);
+    info(`(or schedule it yourself with the cron line documented in the brain's own forge-update.mjs)`);
+    return 'unsupported';
+  }
+
+  if (fs.existsSync(nightlyPlistPath())) {
+    ok('nightly auto-updates are already on — new repos and gists arrive while you sleep');
+    return 'already-on';
+  }
+
+  info(`${c.bold('Recommended:')} your brain updates itself while you sleep — new repos, new gists, zero effort.`);
+
+  if (!process.stdin.isTTY && !FLAG_YES) {
+    // No terminal to ask on (CI / piped install) — recommend clearly instead of prompting.
+    info(`No interactive terminal here, so I won't prompt. Enable it any time with one command:`);
+    info(`  ${c.bold('npx ruvnet-brain --enable-nightly')}`);
+    return 'recommended';
+  }
+
+  let yes = true; // --yes accepts every optional offer, this one included
+  if (!FLAG_YES) {
+    // Not ask(): its parser treats anything but y/yes as no. Here the DEFAULT is yes — only an
+    // explicit n/no declines (parseNightlyAnswer holds that contract, and the tests hold it there).
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await new Promise((resolve) =>
+      rl.question(`    ${c.cyan('?')} Enable nightly auto-updates? ${c.dim('[Y/n]')} `, resolve),
+    );
+    rl.close();
+    yes = parseNightlyAnswer(answer);
+  }
+
+  if (!yes) {
+    info(`No problem — enable it any time with:  ${c.bold('npx ruvnet-brain --enable-nightly')}`);
+    return 'declined';
+  }
+  enableNightly(); // prints its own real verification output (plist path, launchctl result, how to check)
+  return 'enabled';
 }
 
 // ── tiny interactive yes/no — SAFE in non-TTY (returns the default; never blocks a piped install) ──
@@ -1085,13 +1163,13 @@ async function offerClaudeMd() {
 }
 
 // ── final success block ──────────────────────────────────────────────────────────────────────────
-function success({ cacheDir, isCustom, plugin, env }) {
+function success({ cacheDir, isCustom, plugin, env, nightly }) {
   const line = '─'.repeat(64);
   console.log(`\n${c.green(line)}`);
   console.log(`${c.green(c.bold('  RuvNet Brain is installed.'))}`);
   console.log(`${c.green(line)}`);
   console.log(`\n  What you now have:`);
-  console.log(`    • the brain (embedded source of ~18 RuvNet repos) at:`);
+  console.log(`    • the brain (embedded source of 20+ RuvNet repos) at:`);
   console.log(`        ${c.bold(cacheDir)}`);
   console.log(
     `    • the Claude Code plugin ${plugin.wired ? c.green('wired at user scope') : c.yellow('(finish the 2 commands above)')} — search_ruvnet + grounding hook`,
@@ -1141,11 +1219,18 @@ function success({ cacheDir, isCustom, plugin, env }) {
   console.log(`    which is what most people want. Want it different (project-only, moved, with the build stack`);
   console.log(`    added)? ${c.bold('Just tell Claude')} once it's on. You never have to learn its internals.`);
 
-  console.log(`\n  ${c.bold('Staying current:')} nightly updates are ${c.bold('OFF by default')} — nothing runs on your machine unasked.`);
-  console.log(`    • one-shot check + update now:   ${c.bold('npx ruvnet-brain --update')}`);
-  console.log(`    • nightly at 03:47 (macOS):      ${c.bold('npx ruvnet-brain --enable-nightly')}   ${c.dim('· off again: --disable-nightly')}`);
-  console.log(`    • Linux/Windows: the cron line documented in the brain's own ${c.bold('forge-update.mjs')}`);
-  console.log(`    ${c.dim('Either way, your copy only advances when a new Release is actually published.')}`);
+  if (nightly === 'enabled' || nightly === 'already-on') {
+    // The offer just above turned nightly on (or found it on) — don't contradict that here.
+    console.log(`\n  ${c.bold('Staying current:')} nightly auto-updates are ${c.green(c.bold('ON'))} — your brain refreshes itself at 03:47.`);
+    console.log(`    • update right now anyway:  ${c.bold('npx ruvnet-brain --update')}   ${c.dim('· turn nightly off: --disable-nightly')}`);
+    console.log(`    ${c.dim('It only advances when a new Release is actually published — a quiet night is a clean no-op.')}`);
+  } else {
+    console.log(`\n  ${c.bold('Staying current:')} nightly updates are ${c.bold('OFF right now')} — nothing runs on your machine unasked.`);
+    console.log(`    • one-shot check + update now:   ${c.bold('npx ruvnet-brain --update')}`);
+    console.log(`    • nightly at 03:47 (macOS):      ${c.bold('npx ruvnet-brain --enable-nightly')}   ${c.dim('· off again: --disable-nightly')}`);
+    console.log(`    • Linux/Windows: the cron line documented in the brain's own ${c.bold('forge-update.mjs')}`);
+    console.log(`    ${c.dim('Either way, your copy only advances when a new Release is actually published.')}`);
+  }
 
   console.log(`\n  ${c.dim('You can\'t break anything — the plugin is disable-able and only acts on RuvNet-shaped work.')}`);
   console.log('');
@@ -1168,7 +1253,9 @@ Usage:
   npx ruvnet-brain --enable-nightly    Schedule that update nightly at 03:47 — macOS LaunchAgent;
                               other platforms get the documented cron line. OFF by default.
   npx ruvnet-brain --disable-nightly   Remove the nightly schedule (safe to run any time)
-  node bin/install.mjs --version <tag>     Install a specific Release tag (e.g. --version v0.4.0-dev)
+                              (a default install RECOMMENDS nightly and asks, defaulting to yes)
+  node bin/install.mjs --no-nightly-prompt Don't offer nightly auto-updates at the end of the install
+  node bin/install.mjs --version <tag>     Install a specific Release tag (e.g. --version v0.5.0-dev)
   node bin/install.mjs --pin               Skip the latest-check; use the bundled known-good version
   node bin/install.mjs --local             Install from a repo clone's dist/ruvnet-brain.zip
   node bin/install.mjs --force             Re-fetch and reinstall even if already present
@@ -1188,6 +1275,7 @@ It is safe to re-run at any time. After installing, restart Claude Code so the g
 
 // ── main ─────────────────────────────────────────────────────────────────────────────────────────
 (async () => {
+  if (IMPORT_ONLY) return; // imported for its exports (tests) — never run the installer as a side effect
   if (FLAG_HELP) return showHelp();
   if (FLAG_DOCTOR) return await doctor();
   if (FLAG_DEMO) return runDemo();
@@ -1270,8 +1358,12 @@ It is safe to re-run at any time. After installing, restart Claude Code so the g
   const env = detectEnvironment();
   try { await offerStack(env); } catch (e) { warn(`(toolkit check skipped: ${e && e.message})`); }
   try { await offerClaudeMd(); } catch { /* non-fatal — never let an offer break the install */ }
+  // Stuart's requirement: a default install must end by clearly recommending nightly auto-updates
+  // and asking, DEFAULTING TO YES (TTY + macOS + not already on). Non-fatal like every other offer.
+  let nightly = 'skipped';
+  try { nightly = await offerNightly(); } catch { /* never let the offer break a finished install */ }
 
-  success({ cacheDir, isCustom, plugin, env });
+  success({ cacheDir, isCustom, plugin, env, nightly });
 })().catch((e) => {
   die(e && e.message ? e.message : String(e));
 });

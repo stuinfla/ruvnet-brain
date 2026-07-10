@@ -46,7 +46,7 @@ const mcp = readJson('.mcp.json');
 check('.mcp.json registers the ruvnet-brain MCP server', !!mcp?.mcpServers?.['ruvnet-brain']);
 const hooks = readJson('hooks/hooks.json');
 check('hooks.json declares a UserPromptSubmit hook', Array.isArray(hooks?.hooks?.UserPromptSubmit));
-for (const f of ['skills/ruvnet-brain/SKILL.md', 'mcp/server.mjs', 'scripts/ground-ruvnet.sh', 'README.md', 'test/capability-questions.json']) {
+for (const f of ['skills/ruvnet-brain/SKILL.md', 'skills/brain-score/SKILL.md', 'mcp/server.mjs', 'scripts/ground-ruvnet.sh', 'README.md', 'test/capability-questions.json']) {
   check(`exists: ${f}`, fs.existsSync(path.join(ROOT, f)));
 }
 
@@ -67,6 +67,59 @@ const groundingFired = /search_ruvnet/.test(offTopic.stdout)
 check('grounding gates stay silent on a non-RuvNet prompt (status footer is intended)', !groundingFired);
 const malformed = runHook('this is not json');
 check('handles malformed input without erroring (exit 0)', malformed.status === 0);
+
+// 2b. brain-score skill + the 2.0 token-intelligence announcement (default-on vs key-gated, honestly)
+section('2b. brain-score skill + 2.0 announcement');
+const skillRaw = (() => { try { return fs.readFileSync(path.join(ROOT, 'skills/brain-score/SKILL.md'), 'utf8'); } catch { return ''; } })();
+const fm = skillRaw.match(/^---\n([\s\S]*?)\n---\n/);
+check('brain-score frontmatter parses (name: brain-score + description)', !!fm && /(^|\n)name:\s*brain-score\s*(\n|$)/.test(fm[1]) && /(^|\n)description:\s*\S/.test(fm[1]));
+check('brain-score carries the ≤70 architectural-flaw cap rule', /caps? (its |a )?dimension at ≤70/i.test(skillRaw));
+check('brain-score mandates the "what I did NOT test" section', /what I did NOT test/i.test(skillRaw) && /mandatory/i.test(skillRaw));
+check('brain-score scores /100, never /10', skillRaw.includes('/100') && /never \/10\b/.test(skillRaw));
+check('brain-score demands cited evidence for every deduction', /every deduction (must )?cite/i.test(skillRaw));
+check('brain-score carries the qe_qx_analyze remote-URL hallucination warning', skillRaw.includes('qe_qx_analyze') && /hallucinat/i.test(skillRaw));
+check('brain-score is honest about the key gate (evolve needs OPENROUTER_API_KEY; score/oia free)', skillRaw.includes('OPENROUTER_API_KEY') && skillRaw.includes('metaharness_evolve') && skillRaw.includes('metaharness_score'));
+
+const ssPath = path.join(ROOT, 'scripts/session-start.sh');
+const ssRaw = fs.readFileSync(ssPath, 'utf8');
+const MARKER = '[RuvNet Brain — token intelligence + QE, mention once]';
+check('session-start announcement present exactly once in the script', ssRaw.split(MARKER).length === 2);
+check('the old "OpenRouter key, already set" overclaim is gone', !ssRaw.includes('OpenRouter key, already set'));
+
+// Behavior: fires when ruflo is detectable; degrades SILENTLY when it is not.
+const tmpDirs = [];
+const mkTmp = (prefix) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix)); tmpDirs.push(d); return d; };
+const mkHome = () => {
+  const h = mkTmp('rb-ss-home-');
+  const c = path.join(h, '.cache', 'ruvnet-brain');
+  fs.mkdirSync(c, { recursive: true });
+  fs.writeFileSync(path.join(c, '.last-update-check'), String(Math.floor(Date.now() / 1000))); // skip network
+  fs.writeFileSync(path.join(c, '.auto-update-pref'), 'no\n'); // skip one-time question + KB check
+  return h;
+};
+const runSS = (cwd, env) => spawnSync('/bin/bash', [ssPath], {
+  cwd, encoding: 'utf8', timeout: 15000,
+  env: { ...process.env, RUVNET_BRAIN_METER: '0', CLAUDE_PLUGIN_ROOT: ROOT, ...env },
+});
+
+const withDir = mkTmp('rb-ss-ruflo-');
+fs.mkdirSync(path.join(withDir, '.claude-flow')); // project marker → ruflo detectable
+const withRuflo = runSS(withDir, { HOME: mkHome() });
+check('announcement fires when ruflo is detectable, exactly once', withRuflo.status === 0 && withRuflo.stdout.split(MARKER).length === 2);
+const block = withRuflo.stdout.match(/\[RuvNet Brain — token intelligence \+ QE, mention once\][\s\S]*?OPENROUTER_API_KEY\."\n/);
+const blockBytes = block ? Buffer.byteLength(block[0], 'utf8') : -1;
+check(`announcement under the 512-byte budget (actual: ${blockBytes})`, blockBytes > 0 && blockBytes <= 512);
+check('announcement names the triggers + the key gate', !!block && ["do this cheaper", "score my harness", "score this repo", 'OPENROUTER_API_KEY'].every((s) => block[0].includes(s)));
+
+const noDir = mkTmp('rb-ss-noruflo-');
+// no project markers, ruflo stripped off PATH, fresh HOME with no ~/.claude.json
+const noRuflo = runSS(noDir, { HOME: mkHome(), PATH: '/usr/bin:/bin' });
+check('degrades silently when ruflo is absent (no announcement, exit 0, banner intact)', noRuflo.status === 0 && !noRuflo.stdout.includes(MARKER) && /RuvNet Brain v/.test(noRuflo.stdout));
+
+// Gate 4 routes the new trigger phrase to the brain-score skill.
+const scoreRepo = runHook(JSON.stringify({ prompt: 'score this repo' }));
+check('"score this repo" fires Gate 4 and names the brain-score skill', scoreRepo.status === 0 && /brain-score/.test(scoreRepo.stdout));
+for (const d of tmpDirs) { try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* */ } }
 
 // A minimal sequential JSON-RPC client over the launcher's stdio (one request in flight at a time).
 function withServer(KB, fn) {

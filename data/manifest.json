@@ -1,12 +1,12 @@
 {
-  "brainVersion": "1.16.0-dev",
-  "generated": "2026-07-09T17:56:02.480Z",
-  "generatedHuman": "Thu, 09 Jul 2026 17:56:02 GMT",
+  "brainVersion": "2.0.0",
+  "generated": "2026-07-10T11:41:19.404Z",
+  "generatedHuman": "Fri, 10 Jul 2026 11:41:19 GMT",
   "coverage": {
-    "built": 24,
+    "built": 32,
     "catalogued": 173,
     "orgTotalApprox": 248,
-    "pending": 149
+    "pending": 141
   },
   "builtRepos": [
     {
@@ -114,10 +114,42 @@
       "status": "built"
     },
     {
+      "name": "midstream",
+      "tier": "T1",
+      "stars": 125,
+      "builtFromSha": "92250c20d8aa3d867fcc8cb75aeabbc95eb1a0cc",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
       "name": "rvm",
       "tier": "T1",
       "stars": 113,
       "builtFromSha": "af97d18f29d5704f2fbbeecccce192d712bb9a80",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "rudevolution",
+      "tier": "T1",
+      "stars": 108,
+      "builtFromSha": "c6ca63020687487bf0c07dc43714f10d1996d0b4",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "sublinear-time-solver",
+      "tier": "T1",
+      "stars": 82,
+      "builtFromSha": "47804fc5ca495d4fd608866fdb1e0960b34bffbf",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "Synaptic-Mesh",
+      "tier": "T1",
+      "stars": 74,
+      "builtFromSha": "7b70a3d59ba14bdfa632730f03d65b46d68e0625",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -157,7 +189,31 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "c2a80c67aa40cef539dc083d9fb0bfd20e816f0e",
+      "builtFromSha": "177387bad7ddcfa1dd9080d0fe9ff94d7a59497d",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "marketing",
+      "tier": "T2",
+      "stars": 108,
+      "builtFromSha": "835c98d4f63270fc8ce7f178fd49b0555f7d560b",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "symbolic-scribe",
+      "tier": "T2",
+      "stars": 85,
+      "builtFromSha": "8a31e52797dbd73703cad368d3f1e5657179bec2",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "agentic-security",
+      "tier": "T2",
+      "stars": 47,
+      "builtFromSha": "0d862e0d5704d41df8141a31b84c3d8ff82ee759",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -173,7 +229,7 @@
       "name": "agenticow",
       "tier": "T2",
       "stars": 40,
-      "builtFromSha": "dd4f437b92d2dbbc1f40dfa00023eed6e9c3bd84",
+      "builtFromSha": "3d93dc348b88cdc7e5cb251e89219a05b11dd784",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -189,7 +245,7 @@
       "name": "cognitum-cogs",
       "tier": "T2",
       "stars": 14,
-      "builtFromSha": "d48161eb2b676753a5b0e6d107805a2217dbaf9b",
+      "builtFromSha": "16c32f240f2458d193a247e0954e0cc0b2930fbb",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -197,28 +253,20 @@
       "name": "cognitum-support",
       "tier": "T2",
       "stars": 19,
-      "builtFromSha": "26a92df8c17341fe73c0e455168c3f849130fafd",
+      "builtFromSha": "11edf5d29e232e6092ea8b03f2518afb19a5887b",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "flow-nexus",
+      "tier": "T3",
+      "stars": 95,
+      "builtFromSha": "1511b93c2abd82883b9234fa90231c4c3e207744",
       "latestRemoteSha": null,
       "status": "built"
     }
   ],
   "pendingRepos": [
-    {
-      "name": "midstream",
-      "tier": "T1"
-    },
-    {
-      "name": "rudevolution",
-      "tier": "T1"
-    },
-    {
-      "name": "sublinear-time-solver",
-      "tier": "T1"
-    },
-    {
-      "name": "Synaptic-Mesh",
-      "tier": "T1"
-    },
     {
       "name": "ruv-neural",
       "tier": "T1"
@@ -236,19 +284,7 @@
       "tier": "T2"
     },
     {
-      "name": "marketing",
-      "tier": "T2"
-    },
-    {
-      "name": "symbolic-scribe",
-      "tier": "T2"
-    },
-    {
       "name": "ruvbot",
-      "tier": "T2"
-    },
-    {
-      "name": "agentic-security",
       "tier": "T2"
     },
     {
@@ -353,10 +389,6 @@
     },
     {
       "name": "q-star",
-      "tier": "T3"
-    },
-    {
-      "name": "flow-nexus",
       "tier": "T3"
     },
     {

@@ -70,9 +70,14 @@ export async function searchAll({ dir, query, k = 6, pool = 8, repos }) {
   // agent-harness-generator to avoid re-keying FULL_HINTS + served-cache filenames, but a
   // query naming "metaharness" should still get the boost). Extend here as repos rename.
   const ALIASES = { 'agent-harness-generator': ['metaharness'] };
+  // Length floor 3, not 4: the floor exists to keep trivial tokens from matching, but two REAL
+  // stores have 3-char names (rvm, daa) and the old >=4 floor silently exempted them from the
+  // affinity boost — "Can RVM partition hardware…" lost to ruvector's vendored crates/rvm/ copy
+  // because rvm's own userguide never got the boost its name earned. Word-boundary matching
+  // already prevents substring hits, so 3-char store names are safe to honor.
   const isNamed = (repo) => {
     const names = [repo, ...(ALIASES[repo] || [])];
-    return names.some((n) => n.length >= 4 && new RegExp(`\\b${esc(n)}\\b`, 'i').test(query));
+    return names.some((n) => n.length >= 3 && new RegExp(`\\b${esc(n)}\\b`, 'i').test(query));
   };
   const NAME_BOOST = 2.0;
   for (const r of ranked) {
