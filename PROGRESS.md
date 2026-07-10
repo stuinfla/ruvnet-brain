@@ -472,3 +472,10 @@ acting-like-rUv 38→55 (capped ≤70: AgentDB corrupted 3rd time — REINDEXed 
 pattern store reads 0; memory search still 0-hit). npm token now SELF-RENEWING (launchd-proven).
 Honest gap to 95: reranker land+gate, corpus tier-1, token meter, memory-search + corruption root
 cause, enforced method, Windows, real-user soak.
+
+## 2026-07-10 — 2.0.0 SHIPPED (all three channels)
+git main pushed · npm latest=2.0.0 · Release v2.0.0 live (707MB signed bundle, first
+releases/latest advance since Jul 1) · issue #4 closed with full receipt note · evening
+scorecard 55→83 live on both pages · share card + favicon carry 2.0 · security catch: self-update
+canonical pointed at ruvnet/ (unowned org) — fixed to stuinfla/ everywhere. Tonight: first
+fully-automated nightly (3:15) + verifier (7:17).
