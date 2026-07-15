@@ -5,10 +5,12 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_438 gists · refreshed 2026-07-14_
+_439 gists · refreshed 2026-07-15_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-07-14 | [redaction.md](https://gist.github.com/ruvnet/332336ad5e0516daa810d98f8f0ddca9) | Redaction hooks for Claude Code |
+| 2026-07-14 | [daemon-flywheel-fix.md](https://gist.github.com/ruvnet/f4cda824aaf58e1f2dae72368e692220) | The worktree-daemon flywheel: how ruflo accidentally invented a Claude-quota DoS against itself (#2661) |
 | 2026-07-12 | [ruvector-lattice-embeddings-rust-npm-cve-fix.md](https://gist.github.com/ruvnet/cf3877071a2b1ab9252785673340ab95) | RuVector 2.3.0: local Rust & npm embeddings via Lattice, plus a full cargo-audit/cargo-deny CVE cleanup |
 | 2026-07-11 | [.roomodes.json](https://gist.github.com/ruvnet/a206de8d484e710499398e4c39fa6299) | This guide introduces Roo Code and the innovative Boomerang task concept, now integrated into SPARC Orchestration. By fo |
 | 2026-07-10 | [claude-flow-firsts-executive-brief.md](https://gist.github.com/ruvnet/a8df1bae4686ebf3914dd61c8afe6d69) | Claude-Flow / Ruflo: Year One Executive Brief — 31 verified first-mover positions, harness-not-model thesis, top 20 inno |
@@ -181,7 +183,6 @@ _438 gists · refreshed 2026-07-14_
 | 2026-04-23 | [Contextual Retrieval system.md](https://gist.github.com/ruvnet/6959450aa7fe0e919ff52b05e3c26a44) | Contextual Retrieval system |
 | 2026-04-23 | [00-README.md](https://gist.github.com/ruvnet/29be261d41ebd66dcdb9e389e9393458) | RuVector: Connectome-Driven Embodied Brain — graph-native structural intelligence infrastructure (not mind upload) |
 | 2026-04-22 | [1-readme.md](https://gist.github.com/ruvnet/11cfb552fb85585a1dcc4a783f072527) | 11cfb552fb85585a1dcc4a783f072527 |
-| 2026-04-20 | [redaction.md](https://gist.github.com/ruvnet/332336ad5e0516daa810d98f8f0ddca9) | Redaction hooks for Claude Code |
 | 2026-04-18 | [readme.md](https://gist.github.com/ruvnet/a0d8f1a6ec98bb3843f6de1f105691d3) | Single File ReAct Agent Template (Deno) |
 | 2026-04-17 | [*SNM.md](https://gist.github.com/ruvnet/f89b040c999108b49e964620186f2397) | Synaptic Mesh Platform |
 | 2026-04-17 | [01-experiment-output.md](https://gist.github.com/ruvnet/10596316f4e29107b296568f1ff57045) | Boundary-First Seizure Prediction: 45 Seconds of Warning via Graph MinCut on EEG Coherence (z=-32.62) — Clinical Researc |
