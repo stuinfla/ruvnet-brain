@@ -42,9 +42,27 @@ fi
 RUFLO_STATE="no"
 { [ -d ".claude-flow" ] || [ -d ".swarm" ] || grep -qs 'claude-flow\|ruflo' package.json .mcp.json 2>/dev/null; } && RUFLO_STATE="yes"
 MEM_STATE="off"; MEM_IDLE=0
-if [ -f ".swarm/memory.db" ]; then
-  if find .swarm/memory.db -mmin -90 2>/dev/null | grep -q .; then MEM_STATE="on"; else MEM_STATE="idle"; MEM_IDLE=1; fi
-fi
+# Freshness must account for TWO things, either of which makes a perfectly
+# healthy store read as idle and fires the "your memory isn't capturing this
+# session / hooks look miswired" nag while every write is in fact succeeding:
+#
+#   1. `ruflo memory init` creates and REPORTS .swarm/memory.db, but the MCP
+#      memory_store tools write to .swarm/agentdb-memory.db. Watching only the
+#      former means watching a file that can legitimately stay empty forever.
+#   2. SQLite runs these in WAL mode, so a write lands in the -wal sidecar and
+#      the main .db's mtime does not move until a checkpoint. mtime on the .db
+#      alone therefore reads "idle" minutes after a successful write.
+#
+# So: consider every store, and each one's -wal, and take the newest.
+for _db in .swarm/agentdb-memory.db .swarm/memory.db .claude/memory.db; do
+  [ -f "$_db" ] || continue
+  MEM_STATE="idle"; MEM_IDLE=1
+  if find "$_db" "$_db-wal" -mmin -90 2>/dev/null | grep -q .; then
+    MEM_STATE="on"; MEM_IDLE=0
+    break
+  fi
+done
+unset _db
 # RUNNING version (this session's loaded plugin) vs STAGED version (marketplace copy on disk).
 GV0="?"
 [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -f "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" ] && \
