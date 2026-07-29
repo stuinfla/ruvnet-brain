@@ -118,6 +118,32 @@ describe('mergeCodexConfig — the three outcomes, and only three', () => {
   });
 });
 
+describe('Codex home selection', () => {
+  it('honors CODEX_HOME instead of silently wiring the login-home Codex', () => {
+    const home = tmpdir();
+    const codexDir = path.join(home, 'isolated-codex');
+    const server = path.join(home, 'server.mjs');
+    fs.mkdirSync(codexDir, { recursive: true });
+    fs.writeFileSync(server, '// fixture\n');
+    fs.writeFileSync(
+      path.join(codexDir, 'config.toml'),
+      `${START}\n[mcp_servers.ruvnet-brain]\ncommand = "node"\nargs = [${JSON.stringify(server)}]\n${END}\n`,
+    );
+    const before = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = codexDir;
+    try {
+      expect(codexStatus()).toMatchObject({
+        host: true,
+        wired: true,
+        serverPath: server,
+      });
+    } finally {
+      if (before === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = before;
+    }
+  });
+});
+
 // ── high: byte preservation + idempotency, the two things a reinstall can destroy ────────────────
 describe('a reinstall is safe — every other section survives, and the result is stable', () => {
   it('preserves the pre-existing sections byte for byte', () => {

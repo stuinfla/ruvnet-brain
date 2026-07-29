@@ -687,7 +687,7 @@ function wirePlugin() {
 // THAT absolute server path is registered. Registering the npx dir would rot when the temp dir vanished.
 const CODEX_BLOCK_START = '# --- ruvnet-brain (managed block, installer-rewritten) ---';
 const CODEX_BLOCK_END = '# --- end ruvnet-brain ---';
-const codexHomeDir = () => path.join(os.homedir(), '.codex');
+const codexHomeDir = () => process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 const codexConfigPath = () => path.join(codexHomeDir(), 'config.toml');
 const codexServerDir = () => path.join(os.homedir(), '.claude', 'ruvnet-brain', 'mcp');
 const codexHookWrapperPath = (codexDir = codexHomeDir()) =>
