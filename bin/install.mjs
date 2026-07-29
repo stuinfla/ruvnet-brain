@@ -1084,7 +1084,7 @@ function gatherInstallState(cacheDir) {
   try {
     repos = fs
       .readdirSync(cacheDir)
-      .filter((f) => f.endsWith('.rvf') && !f.endsWith('.big.rvf')).length;
+      .filter((f) => f.endsWith('.rvf')).length;
   } catch {
     /* ignore */
   }

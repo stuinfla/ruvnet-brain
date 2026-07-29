@@ -147,7 +147,9 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-healthy-cache-'));
   try {
     fs.writeFileSync(path.join(brainDir, 'forge-mcp-all.mjs'), '// stub for install-smoke — never executed\n');
-    fs.writeFileSync(path.join(brainDir, 'ruvector.rvf'), 'not a real store — presence is what gatherInstallState counts\n');
+    // Current release bundles contain canonical *.big.rvf stores only. The older checker excluded
+    // that suffix and falsely failed a real 60-store v3.9.131 install as "zero stores".
+    fs.writeFileSync(path.join(brainDir, 'ruvector.big.rvf'), 'not a real store — presence is what gatherInstallState counts\n');
     const xen = path.join(brainDir, 'node_modules', '@xenova', 'transformers');
     fs.mkdirSync(xen, { recursive: true });
     fs.writeFileSync(path.join(xen, 'package.json'), '{"name":"@xenova/transformers","version":"0.0.0-fixture"}\n');
