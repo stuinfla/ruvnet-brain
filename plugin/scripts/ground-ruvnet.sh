@@ -108,20 +108,36 @@ MEM_STATE="off"; MEM_IDLE=0
 # repository identity with the primary checkout but not its ignored `.swarm/` directory. If the
 # local worktree has no store, inspect the primary worktree resolved from git's absolute common dir
 # before declaring memory absent.
+# NEWEST-WINS, and it has to be newest-wins rather than first-match-wins: the store is resolved
+# relative to the hook's cwd, which is whatever directory the session happens to be working in
+# rather than the ruflo root, so the FIRST candidate found is not necessarily the one being
+# written. A stale local `.swarm/` used to end the search and fire the "hooks look miswired" nag
+# while every write was landing in another store.
+#
+# Taking the newest needs no mtime arithmetic, because over a candidate set the two questions the
+# states depend on distribute: "the newest is fresh" is equivalent to "ANY is fresh", and "the
+# newest exists" to "ANY exists". So accumulate two flags across every candidate instead of
+# mutating MEM_STATE per candidate, then resolve once at the end.
+MEM_FOUND=0; MEM_FRESH=0
 check_memory_db() {
   _db=$1
   [ -f "$_db" ] || return 1
-  MEM_STATE="idle"; MEM_IDLE=1
+  MEM_FOUND=1
   if find "$_db" "$_db-wal" -mmin -90 2>/dev/null | grep -q .; then
-    MEM_STATE="on"; MEM_IDLE=0
+    MEM_FRESH=1
     return 0
   fi
   return 1
 }
+# 1. cwd — the ruflo root when the session is working at the top of a project.
 for _db in .swarm/agentdb-memory.db .swarm/memory.db .claude/memory.db; do
   check_memory_db "$_db" && break
 done
-if [ "$MEM_STATE" = "off" ]; then
+# 2. Primary worktree. Once MEM_FRESH is set the answer is already final ("on" is terminal, no
+#    later candidate can beat it), so short-circuiting on FRESH is sound where short-circuiting
+#    on FOUND was not — and it keeps the healthy common case at its original cost: one stat, one
+#    find, and no git fork.
+if [ "$MEM_FRESH" = 0 ]; then
   _common_git=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
   case "$_common_git" in
     */.git)
@@ -136,8 +152,29 @@ if [ "$MEM_STATE" = "off" ]; then
       ;;
   esac
 fi
+# 3. $HOME. ruflo's own default store lives here, and a project subdir without a `.swarm/` of its
+#    own is the common case that read as "memory absent" — RUFLO_STATE above trips on
+#    `.claude-flow/` alone, which such a subdir often has, so the gate and the miss combined into
+#    a confident false negative. Skipped when cwd IS $HOME: pass 1 already covered it.
+if [ "$MEM_FRESH" = 0 ] && [ -n "$HOME" ] && [ "$PWD" != "$HOME" ]; then
+  for _db in \
+    "$HOME/.swarm/agentdb-memory.db" \
+    "$HOME/.swarm/memory.db" \
+    "$HOME/.claude/memory.db"
+  do
+    check_memory_db "$_db" && break
+  done
+fi
+# Resolve once, from the whole candidate set.
+if [ "$MEM_FRESH" = 1 ]; then
+  MEM_STATE="on";   MEM_IDLE=0
+elif [ "$MEM_FOUND" = 1 ]; then
+  MEM_STATE="idle"; MEM_IDLE=1
+else
+  MEM_STATE="off";  MEM_IDLE=0
+fi
 unset _db
-unset _common_git _primary_root
+unset _common_git _primary_root MEM_FOUND MEM_FRESH
 # RUNNING version (this session's loaded plugin) vs STAGED version (marketplace copy on disk).
 GV0="?"
 [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -f "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" ] && \
