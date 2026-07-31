@@ -16,6 +16,7 @@ governs:
   - kb/forge-ask-all.mjs
   - plugin/mcp/server.mjs
   - plugin/scripts/hook-shim.mjs
+  - plugin/scripts/session-start-core.mjs
   - scripts/onboarding-console.mjs
   - kb/brain-profile.mjs
   - kb/forge-update.mjs
@@ -33,7 +34,8 @@ governs:
 > assertions, green); gates 1 and 3 were written and RUN RED first and their verbatim failing output
 > is recorded in that file's header. Surfaces: `scripts/brain-state.mjs` (the sentinel),
 > `scripts/user-settings.mjs` (`brainEnabled` mirror), `plugin/scripts/hook-shim.mjs` (per-entry
-> `offBehavior`), `session-start.sh` (internal split), `ground-before-write.sh`, `grounding-stamp.sh`
+> `offBehavior`), `session-start-core.mjs` (internal split; `session-start.sh` is only a compatibility
+> launcher), `ground-before-write.sh`, `grounding-stamp.sh`
 > (stamp-on-result), `plugin/scripts/protect-brain-state.sh` + `hooks.json` (the consent guard —
 > a SHELL change, requiresRestart, flagged), `kb/forge-mcp-all.mjs` (disabled soft answer),
 > `bin/install.mjs` (uninstall removes the sentinel), and the console's own on/off section.
@@ -183,6 +185,7 @@ failure. v1 draft's Decision + risks register superseded above; Context stands.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-07-31 | Re-verified the complete OFF/partial/safety contract after SessionStart moved to one host-neutral Node authority. Governance now includes `plugin/scripts/session-start-core.mjs`, where the internal OFF split actually runs; `plugin/scripts/session-start.sh` is only a fail-open compatibility launcher. | Commit `5d0fe75` keeps `hook-shim.mjs`'s `offBehavior: partial` entry and forwards the resolved `RUVNET_BRAIN_OFF` snapshot into the core. Exact shell/core parity passed 5/5, including OFF with an absent KB and OFF with a present-but-broken KB; the broader SessionStart regression set passed 165/165. No master-switch, sentinel-precedence, storage-profile, maintenance, or consent decision changed. |
 | 2026-07-31 | Re-verified the brain on/off and storage-profile contract after closing the release-oracle regressions. | Commit `14f654e` changes governed `kb/forge-ask-all.mjs` only in source-backed query classification, capability-card supplementation, and replayable-promotion evidence selection. It does not change `brainEnabled`, sentinel precedence, profile selection, or off-state behavior. The impacted broad gate passed 273/273, the production Top-100 gate passed 100/100 semantic and grounded/routed with 0 errors and a 3.723s maximum, and the exact rebuilt archive audited 63/63 RVFs with zero index failures; computed digest `f6d3dce9ad77`. |
 | 2026-07-30 | Re-verified the brain on/off and storage-profile contract after source-grounded retrieval and release-artifact hardening. | Commit `8d20687` changes governed `kb/forge-ask-all.mjs` only in query classification, evidence selection, and bounded source retrieval. It does not change `brainEnabled`, sentinel precedence, profile selection, or off-state behavior. The production Top-100 gate passed 100/100 semantic and 100/100 grounded/routed; focused release tests passed 143/143 and `npm test` passed 60/60; computed digest `49285cc2b9d2`. |
 | 2026-07-30 | Re-verified the master-off and profile authority after the Fix All validator was narrowed by remedy family. | `scripts/onboarding-console.mjs` changes only which recommendation builder revalidates a selected remedy; it does not change `brainEnabled`, sentinel precedence, storage profiles, or off-state behavior. Focused console acceptance and `npm test` passed at candidate `ba53fc9`; computed digest `1d7ac1da0d47`. |
