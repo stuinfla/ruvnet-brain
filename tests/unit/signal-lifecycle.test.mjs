@@ -88,7 +88,12 @@ beforeEach(() => {
   fs.mkdirSync(path.join(home, '.cache/ruvnet-brain'), { recursive: true });
   fs.writeFileSync(path.join(home, '.cache/ruvnet-brain/.last-update-check'), String(Math.floor(Date.now() / 1000)));
 });
-afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
+afterEach(() => {
+  // Windows can retain a just-exited child process's directory handle for a few milliseconds.
+  // `rmSync` only retries EPERM/EBUSY/ENOTEMPTY when maxRetries is explicit; without it, the
+  // cleanup itself can make the nested D3 release proof report a product failure.
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+});
 
 /** Project a captured run onto the exact array shape `gh run list --json …` returns. */
 function ghFixtureFor(run, name) {
