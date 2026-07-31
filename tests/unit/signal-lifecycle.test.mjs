@@ -41,12 +41,9 @@
 //   POLLER    scripts/signal-watch.mjs, by direct import (`pollOnce`), fed the real runs through its
 //             own documented SIGNAL_WATCH_GH_FIXTURE port so no network and no auth are involved.
 //
-//   SURFACER  the `node -e` program inside plugin/scripts/session-start.sh, extracted VERBATIM from
-//             the shipped hook at test time and run as a subprocess with the same two arguments the
-//             hook passes it. It is not re-implemented here and it is not refactored out of the
-//             shell to make it testable — an extracted copy could drift from the shipped bytes
-//             silently, which is the failure mode this repo has already paid for elsewhere. If
-//             someone edits that block in session-start.sh, this test runs the edit.
+//   SURFACER  plugin/scripts/session-start-core.mjs through its shipped CLI boundary, with the real
+//             pending/status/surfaced files. The shell is now only a Node trampoline; extracting
+//             implementation text from it would grade dead code instead of the single authority.
 //
 // The transitions asserted are DDD-0013 Context 2's, by name, not an approximation of them:
 //   invariant 1  UNKNOWN STAYS OPEN — states are `pending → resolved(conclusion) | unverifiable`.
@@ -65,7 +62,7 @@ import { fileURLToPath } from 'node:url';
 import { pollOnce, debtKey } from '../../scripts/signal-watch.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const SESSION_START = path.join(REPO_ROOT, 'plugin/scripts/session-start.sh');
+const SESSION_START = path.join(REPO_ROOT, 'plugin/scripts/session-start-core.mjs');
 const LIFECYCLE = JSON.parse(fs.readFileSync(
   path.join(REPO_ROOT, 'tests/fixtures/signal-watch/ci-lifecycle-learning-replay.json'), 'utf8',
 ));
@@ -76,25 +73,8 @@ const RED_1 = phase('red-1');
 const RED_2 = phase('red-2');
 const GREEN = phase('green');
 
-/**
- * The surfacing program, lifted out of the SHIPPED hook rather than copied into this file. The
- * markers are the literal shell that invokes it, so a rename or a rewrite of the block fails loudly
- * here instead of leaving this test quietly grading a program nobody ships any more.
- */
-function extractSurfacer() {
-  const sh = fs.readFileSync(SESSION_START, 'utf8');
-  const anchor = sh.indexOf('SIGNAL_SURFACED=');
-  const open = sh.indexOf("node -e '", anchor);
-  const close = sh.indexOf('\' "$SIGNAL_STATUS" "$SIGNAL_SURFACED"', open);
-  if (anchor < 0 || open < 0 || close < 0) {
-    throw new Error('could not locate the external-signal surfacing block in plugin/scripts/session-start.sh');
-  }
-  return sh.slice(open + "node -e '".length, close);
-}
-
-const SURFACER = extractSurfacer();
-
 let tmp;
+let home;
 let statusFile;
 let surfacedFile;
 let pendingFile;
@@ -104,6 +84,9 @@ beforeEach(() => {
   statusFile = path.join(tmp, 'ci-status.json');
   surfacedFile = path.join(tmp, 'surfaced.json');
   pendingFile = path.join(tmp, 'pending.jsonl');
+  home = path.join(tmp, 'home');
+  fs.mkdirSync(path.join(home, '.cache/ruvnet-brain'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.cache/ruvnet-brain/.last-update-check'), String(Math.floor(Date.now() / 1000)));
 });
 afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
@@ -123,13 +106,31 @@ function observePush(run) {
   })}\n`);
 }
 
-/** Run the REAL session-start surfacing program over the current state files. Returns raw stdout. */
+/** Run the REAL SessionStart authority and project only its signal-channel output. */
 function surface() {
-  const r = spawnSync(process.execPath, ['-e', SURFACER, statusFile, surfacedFile], {
-    encoding: 'utf8', timeout: 15000,
+  const r = spawnSync(process.execPath, [SESSION_START], {
+    encoding: 'utf8',
+    timeout: 15000,
+    cwd: tmp,
+    env: {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
+      RUVNET_SIGNAL_DIR: tmp,
+      RUVNET_BRAIN_METER: '0',
+      CLAUDE_PLUGIN_ROOT: path.join(REPO_ROOT, 'plugin'),
+    },
   });
   expect(r.status, `the surfacer must never fail a session start (stderr: ${r.stderr})`).toBe(0);
-  return r.stdout ?? '';
+  const all = String(r.stdout || '').split('\n');
+  const selected = [];
+  for (let i = 0; i < all.length; i++) {
+    if (/external signal/i.test(all[i])) {
+      selected.push(all[i]);
+      if (/CI is RED/.test(all[i]) && all[i + 1]?.startsWith('Workflow ')) selected.push(all[++i]);
+    }
+  }
+  return selected.length ? `${selected.join('\n')}\n` : '';
 }
 
 const lines = (s) => s.split('\n').filter((l) => l.trim() !== '');

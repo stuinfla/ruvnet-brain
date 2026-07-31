@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 
 const ROOT = path.resolve(import.meta.dirname, '../../..');
 const ENGINE = path.join(ROOT, 'plugin/scripts/update-apply.mjs');
-const SESSION = path.join(ROOT, 'plugin/scripts/session-start.sh');
+const SESSION = path.join(ROOT, 'plugin/scripts/session-start-core.mjs');
 const EXPECTED = '9.9.1-issue64';
 const OTHER = '9.9.2-issue64';
 const previousImportOnly = process.env.RUVNET_BRAIN_IMPORT_ONLY;
@@ -122,7 +122,7 @@ describe('issue #64 — exact dual-host convergence', () => {
 
   it('emits host-aware restart guidance and preserves Codex hook trust review', () => {
     const source = fs.readFileSync(SESSION, 'utf8');
-    expect(source).toContain('RUVNET_HOOK_HOST:-claude');
+    expect(source).toContain("env.RUVNET_HOOK_HOST || 'claude'");
     expect(source).toContain('already installed and verified for Codex');
     expect(source).toContain('restart Codex');
     expect(source).toContain('run /hooks and trust only ruvnet-brain@ruvnet-brain');
@@ -134,10 +134,10 @@ describe('issue #64 — exact dual-host convergence', () => {
 
   it('does not launch the update heartbeat in the same SessionStart that seeds the Stable Spine', () => {
     const source = fs.readFileSync(SESSION, 'utf8');
-    expect(source).toContain('SEED_DISPATCHED=0');
-    expect(source).toContain('SEED_DISPATCHED=1');
+    expect(source).toContain('let seedDispatched = false');
+    expect(source).toContain('seedDispatched = dispatchDetached');
     expect(source).toContain('first-session-worker.mjs');
-    expect(source).toContain('if [ "$SEED_DISPATCHED" != "1" ] && [ "$NOW" -gt 0 ]');
+    expect(source).toMatch(/if\s*\(seedDispatched\s*\|\|/);
   });
 
   it('the installer binds host sync and Spine activation to one exact package version', () => {

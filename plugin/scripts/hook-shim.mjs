@@ -75,13 +75,13 @@ catch (e) { BRAIN_OFF = !(e && (e.code === 'ENOENT' || e.code === 'ENOTDIR')); }
 //               stops a subagent fan-out inheriting an expensive model; design-wall stops an
 //               ungraded surface shipping; protect-state guards the user's own consent record.
 //               None becomes acceptable because retrieval is off.
-//   'partial' — the hook splits INTERNALLY. session-start still runs the auto-updater heartbeat, the
+//   'partial' — the hook splits INTERNALLY. session-start-core still runs the auto-updater heartbeat, the
 //               GONG health alarm and the SLA banner (an off machine must still receive fixes,
 //               otherwise the fix for an off-state bug can never arrive) while suppressing every
 //               advertising byte. The snapshot is forwarded as RUVNET_BRAIN_OFF so the body reads
 //               ONE resolved answer instead of racing the filesystem again mid-run.
 const TABLE = {
-  'session-start':    { file: 'session-start.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'partial' },
+  'session-start':    { file: 'session-start-core.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'partial' },
   'ground-ruvnet':    { file: 'ground-ruvnet.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
   'hijack-ruvnet':    { file: 'hijack-ruvnet.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
   'route-dispatch':   { file: 'route-dispatch.sh',   interpreter: 'bash', mode: 'blocking', offBehavior: 'run' },
@@ -102,7 +102,7 @@ const TABLE = {
   // SEPARATE process, SEPARATE cadence) resolves later via `gh run list`. offBehavior 'silence' per
   // the ADR's explicit instruction: this plane observes and advises, it never guards money or
   // honesty on its own — the git-push debt it opens is only ever SURFACED (never gated) by
-  // session-start.sh, and that surfacing already lives under session-start's own 'partial' contract.
+  // session-start-core.mjs, and that surfacing already lives under SessionStart's 'partial' contract.
   'signal-watch':     { file: 'signal-watch.mjs',    interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   'routing-outcome':  { file: 'routing-outcome-capture.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run' },
   // The unprompted-speech chokepoint (ADR-040 / DDD-0004). ONE runtime is the sole writer of
@@ -247,10 +247,10 @@ function runHook(file) {
   // The unprompted-speech chokepoint uses this to receive the CC event name:
   // `hook-shim.mjs unprompted-speech UserPromptSubmit` → `unprompted-runtime.mjs UserPromptSubmit`.
   const extraArgs = process.argv.slice(3);
-  // Forward the ONE resolved OFF snapshot to a 'partial' body (ADR-054 §4). The body could stat the
-  // sentinel itself — and session-start.sh still does, because it is also invoked directly, outside
-  // this shim, by tests and by a bare install. Passing it means the two readings cannot disagree
-  // within a single invocation if the user flips the switch while the hook is mid-run.
+  // Forward the ONE resolved OFF snapshot to a 'partial' body (ADR-054 §4). The native SessionStart
+  // core also reads the sentinel because the POSIX compatibility launcher and bare installs invoke
+  // it outside this shim. Passing the snapshot means the two readings cannot disagree within one
+  // invocation if the user flips the switch while the hook is mid-run.
   const env = (BRAIN_OFF && entry.offBehavior === 'partial')
     ? { ...process.env, RUVNET_BRAIN_OFF: '1' }
     : process.env;

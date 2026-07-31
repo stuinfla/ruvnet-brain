@@ -15,8 +15,10 @@ governs:
   - plugin/hooks/codex-hooks.json
   - plugin/scripts/codex-hook-adapter.mjs
   - plugin/scripts/codex-hook-wrapper.mjs
+  - plugin/scripts/hook-shim.mjs
   - plugin/scripts/verify-interface.sh
   - plugin/scripts/hijack-ruvnet.sh
+  - plugin/scripts/session-start-core.mjs
   - plugin/scripts/session-start.sh
   - scripts/behavioral-l1-l4.mjs
   - scripts/learning-replay.mjs
@@ -329,6 +331,7 @@ correct: **the strong claim was the defect.**
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-07-31 | D6 now measures a host-neutral native Node SessionStart authority; the checked-in p95 and absolute-fail budgets are unchanged. Governance follows the authority into `plugin/scripts/hook-shim.mjs` and `plugin/scripts/session-start-core.mjs` instead of treating the compatibility shell trampoline as the whole implementation. | The root-cause trace separated **4709ms of pre-body Git Bash variance** from an **879ms hook body**. The native core and shell compatibility surface passed **5/5 full-parity cases**, and the adjacent focused suite passed **141/141**. The real registered local gate measured cold **250ms**, p95 **205ms**, max **220ms**, with no threshold relaxation in `kb/card-lane-budget.json#sessionStart` or `scripts/qe/session-start-gate.mjs`. **Windows packed CI remains pending**; these local and parity results are candidate evidence, not an exact-SHA packed-Windows green verdict. |
 | 2026-07-31 | Replaced the first cold-start fix's deferred heartbeat with one composite seed-then-heartbeat worker, and refreshed the self-knowledge RVF to the exact code commit. | PR #71 core job `91073195901` correctly failed `tests/unit/brain-off.test.mjs`: the heartbeat stamp stayed at `1`, violating ADR-054's rule that Brain OFF still receives fixes. Commit `0f68737` introduces `plugin/scripts/first-session-worker.mjs`, which serializes seed and heartbeat behind one detacher. Focused acceptance passed 70/70 and the real registered gate measured cold 249ms, p95 182ms, max 192ms. The refreshed `ruvnet-brain.big.rvf` contains 2157 passages, passed 3/3 round trips, and `kb/RVF-GENERATIONS.json` binds it to `0f68737`. |
 | 2026-07-31 | Closed the cold-start oracle gap exposed by the exact post-merge Windows stranger run and made release bundle assembly fail closed. | Main run `30603476401`, Windows job `91070872621`, measured the valid SessionStart at 4597ms while `scripts/qe/session-start-gate.mjs` rejected only a full timeout. Commit `cd28e28` applies `absoluteFailMs=4000` to the cold sample, makes `plugin/scripts/session-start.sh` avoid launching both seed and heartbeat workers in one virgin session, emits `SESSION_TRACE` in the stranger path, and makes `scripts/build-bundle.mjs` refuse zero public RVFs or missing required files before creating a ZIP. Focused verification passed 141/141 tests; the real registered command measured cold 244ms, p95 190ms, max 242ms. |
 | 2026-07-30 | Removed the isolated unit-test module from `governs:`; the executable release authority and its live-QE caller remain governed. | `tests/unit/release-proof.test.mjs` is an acceptance observer, not a production caller. Treating an intentionally test-only module as an unwired runtime surface capped the implemented authority at `built` and made D7 fail for the wrong reason. The runtime path remains `scripts/release-vector.mjs` → `tests/qe/gpt56/live-brain-search.test.mjs` plus `scripts/release-proof.mjs`. |

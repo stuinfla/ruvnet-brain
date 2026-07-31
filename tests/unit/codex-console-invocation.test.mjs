@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
-const SESSION_START = path.join(ROOT, 'plugin', 'scripts', 'session-start.sh');
+const SESSION_START = path.join(ROOT, 'plugin', 'scripts', 'session-start-core.mjs');
 const HOST_UPDATE = path.join(ROOT, 'plugin', 'scripts', 'host-update.mjs');
 const RVBC_SKILL = path.join(ROOT, 'plugin', 'skills', 'rvbc', 'SKILL.md');
 
@@ -28,7 +28,7 @@ describe('Codex Console invocation contract', () => {
 
     expect(fs.existsSync(HOST_UPDATE)).toBe(true);
     expect(source).toContain('host-update.mjs');
-    expect(source).toContain('host-update.mjs" --check');
+    expect(source).toContain("[path.join(hookDir, 'host-update.mjs'), '--check']");
     expect(source).not.toContain('raw.githubusercontent.com/stuinfla/ruvnet-brain/main');
     expect(source).not.toContain('command -v claude >/dev/null 2>&1');
     expect(source).not.toContain('claude plugin marketplace update ruvnet-brain');

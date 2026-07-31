@@ -149,14 +149,12 @@ describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () 
     const real = RV.INVARIANTS.find((i) => i.name === 'SIGNAL-WATCH-FIRES');
     expect((await real.detect()).state).toBe('PASS');
 
-    const p = path.join(REPO, 'plugin/scripts/session-start.sh');
+    const p = path.join(REPO, 'plugin/scripts/session-start-core.mjs');
     const before = fs.readFileSync(p, 'utf8');
-    const start = before.indexOf('# ── External-signal watch plane, W1+W2 surfacing');
-    const end = before.indexOf('# ── MetaHarness router: the ONE-LINER OFFER');
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start);
+    const call = 'surfaceSignals({ env, cwd, stateDir, hookDir, emit, now });';
+    expect(before).toContain(call);
     try {
-      fs.writeFileSync(p, before.slice(0, start) + before.slice(end));
+      fs.writeFileSync(p, before.replace(call, 'void 0; // MUTANT: signal consumer deleted'));
       const after = await real.detect();
       expect(after.state).toBe('FAIL');
       expect(after.why).toMatch(/behavior|lifecycle|surface/i);

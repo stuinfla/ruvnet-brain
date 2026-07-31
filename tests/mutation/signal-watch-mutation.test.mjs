@@ -4,8 +4,8 @@
 // in the ADR), and asserts the SAME assertion that passes on the real file now FAILS on the mutant —
 // same idiom as tests/mutation/proactivity-detector-mutation.test.mjs's withMutant().
 //
-//   M-W1 (headline) — delete the session-start.sh consumer block -> the CI-red line vanishes.
-//   M-W2            — break session-start.sh's transition-dedupe guard -> green speaks.
+//   M-W1 (headline) — delete the SessionStart core consumer call -> the CI-red line vanishes.
+//   M-W2            — break the SessionStart core's transition-dedupe guard -> green speaks.
 //   M-W3            — treat a poller API error as green -> the rate-limited debt resolves 'success'.
 //   M-W4            — stop reading tool_response in the observer -> a recorded vercel exit-1 envelope
 //                      is silently ignored.
@@ -23,11 +23,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pollOnce } from '../../scripts/signal-watch.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const SESSION_HOOK = path.join(REPO_ROOT, 'plugin/scripts/session-start.sh');
+const SESSION_HOOK = path.join(REPO_ROOT, 'plugin/scripts/session-start-core.mjs');
 const POLLER = path.join(REPO_ROOT, 'scripts/signal-watch.mjs');
 const OBSERVER = path.join(REPO_ROOT, 'plugin/scripts/signal-watch.mjs');
 
-const MUTANT_SESSION_HOOK = path.join(REPO_ROOT, 'plugin/scripts/_mutant-session-start.sh');
+const MUTANT_SESSION_HOOK = path.join(REPO_ROOT, 'plugin/scripts/_mutant-session-start-core.mjs');
 const MUTANT_POLLER = path.join(REPO_ROOT, 'scripts', '_mutant-signal-watch.mjs');
 const MUTANT_OBSERVER = path.join(REPO_ROOT, 'plugin/scripts', '_mutant-signal-watch.mjs');
 
@@ -75,20 +75,6 @@ function writeGhFixture(name, content) {
   return p;
 }
 
-/**
- * Execute the exact node surfacer embedded in session-start.sh after driving the real poller.
- * The product's shell launch is covered by the stranger matrix; this mutation oracle targets the
- * signal lifecycle itself and therefore remains runnable on native Windows without assuming bash
- * is on PATH. An absent block is deliberate silence for M-W1, not a harness crash.
- */
-function extractSurfacer(hookFile) {
-  const sh = fs.readFileSync(hookFile, 'utf8');
-  const anchor = sh.indexOf('SIGNAL_SURFACED=');
-  const open = sh.indexOf("node -e '", anchor);
-  const close = sh.indexOf('\' "$SIGNAL_STATUS" "$SIGNAL_SURFACED"', open);
-  return anchor < 0 || open < 0 || close < 0 ? null : sh.slice(open + "node -e '".length, close);
-}
-
 function runSignalSurface(hookFile, { fixturePath } = {}) {
   const statusFile = path.join(signalDir(), 'ci-status.json');
   const surfacedFile = path.join(signalDir(), 'surfaced.json');
@@ -97,16 +83,30 @@ function runSignalSurface(hookFile, { fixturePath } = {}) {
     statusFile,
     fixturePath,
   });
-  const surfacer = extractSurfacer(hookFile);
-  if (surfacer === null) return { status: 0, stdout: '', stderr: '' };
-  const r = spawnSync(process.execPath, ['-e', surfacer, statusFile, surfacedFile], {
-    cwd: tmp, encoding: 'utf8', timeout: 15000,
+  const r = spawnSync(process.execPath, [hookFile], {
+    cwd: tmp,
+    encoding: 'utf8',
+    timeout: 15000,
+    env: {
+      ...process.env,
+      HOME: tmpHome,
+      USERPROFILE: tmpHome,
+      RUVNET_SIGNAL_DIR: signalDir(),
+      RUVNET_BRAIN_METER: '0',
+      CLAUDE_PLUGIN_ROOT: path.join(REPO_ROOT, 'plugin'),
+    },
   });
-  return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+  const signalLines = String(r.stdout || '').split('\n').filter((line) =>
+    /external signal/i.test(line) || line.startsWith('Workflow '));
+  return {
+    status: r.status,
+    stdout: signalLines.length ? `${signalLines.join('\n')}\n` : '',
+    stderr: r.stderr ?? '',
+  };
 }
 
-describe('M-W1 (headline) — delete the session-start.sh consumer block', () => {
-  it('BASELINE: real session-start.sh surfaces the CI-red line with ZERO user input', () => {
+describe('M-W1 (headline) — delete the SessionStart core consumer call', () => {
+  it('BASELINE: real SessionStart core surfaces the CI-red line with ZERO user input', () => {
     seedPushDebt('stuinfla/ruvnet-brain', 'a'.repeat(40));
     const fixturePath = writeGhFixture('gh-failure.json', [{ status: 'completed', conclusion: 'failure', workflowName: 'ci' }]);
     const out = runSignalSurface(SESSION_HOOK, { fixturePath });
@@ -116,10 +116,9 @@ describe('M-W1 (headline) — delete the session-start.sh consumer block', () =>
 
   it('MUTANT: deleting the consumer block -> the red line VANISHES (this repo\'s own 2026-07-27 incident, replayed)', () => {
     writeMutant(SESSION_HOOK, MUTANT_SESSION_HOOK, (src) => {
-      const start = src.indexOf('# ── External-signal watch plane, W1+W2 surfacing');
-      const end = src.indexOf('# ── MetaHarness router: the ONE-LINER OFFER');
-      if (start === -1 || end === -1 || end <= start) throw new Error('anchors not found — block markers moved');
-      return src.slice(0, start) + src.slice(end);
+      const call = 'surfaceSignals({ env, cwd, stateDir, hookDir, emit, now });';
+      if (!src.includes(call)) throw new Error('SessionStart signal consumer call moved');
+      return src.replace(call, 'void 0; // MUTANT: signal consumer deleted');
     });
     seedPushDebt('stuinfla/ruvnet-brain', 'a'.repeat(40));
     const fixturePath = writeGhFixture('gh-failure.json', [{ status: 'completed', conclusion: 'failure', workflowName: 'ci' }]);
