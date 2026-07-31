@@ -6,7 +6,7 @@ date: 2026-07-26
 updated: 2026-07-31
 impl: verified
 verified: 2026-07-31
-verified_digest: 68b5030b731e
+verified_digest: 7e4e5c249715
 authors: [Stuart Kerr, Claude Code]
 tags: [settings, console, scope, retrieval, hooks, honesty]
 supersedes: []
