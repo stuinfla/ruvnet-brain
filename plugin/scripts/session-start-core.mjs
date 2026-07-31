@@ -366,7 +366,7 @@ export async function runSessionStart({
     if (!brain.off && !exists(consoleOffered)) {
       write(consoleOffered, '');
       emit('[RuvNet Brain — FIRST LOAD: offer the Console once]');
-      emit(`Offer ONCE in one line, then respect it: "Want to see your whole RuvNet stack on one page?" — what's installed, what your AI has learned, one-click fixes, read-only until they click; later it's ${consoleInvoke}. On yes invoke ${consoleInvoke}; on no, one gracious line and never again.`);
+      emit(`Offer ONCE: "Want to see your whole RuvNet stack on one page?" — installed parts, learned project knowledge and reversible fixes, read-only until clicked; later it's ${consoleInvoke}. On yes invoke ${consoleInvoke}; on no, don't re-offer.`);
     }
 
     surfaceIssues(stateDir, emit, now);
@@ -377,7 +377,7 @@ export async function runSessionStart({
     if (!brain.off && !exists(routerProfile) && !exists(routerNudge)) {
       write(routerNudge, '');
       emit('[RuvNet Brain — MetaHarness routing is available but not set up for THIS user yet]');
-      emit('Offer ONCE in one line, then respect it: cost-optimal routing sends each task to the cheapest model that can do it, THEIR subscriptions first ($0) before anything billed. Set it up?');
+      emit('Offer ONCE: route each task to the cheapest capable model, using THEIR subscriptions ($0) before billed models. Set it up?');
       emit('On yes ask only (1) Claude sub, Pro or Max? (2) Codex CLI on a ChatGPT plan? then:');
       const routerSetup = path.join(home, '.claude', 'model-router', 'bin', 'model-router-setup.mjs');
       emit(exists(routerSetup)
@@ -390,9 +390,9 @@ export async function runSessionStart({
     const autoPref = path.join(stateDir, '.auto-update-pref');
     if (!exists(autoPref)) {
       emit('[RuvNet Brain — one-time setup question]');
-      emit('Ask ONCE near the top of your first response: should the brain auto-update itself in the background, so they never run an update command? (recommended; reversible). Then run ONE via Bash and never ask again:');
+      emit('Ask ONCE: should the brain auto-update in the background? (recommended; reversible). Then run ONE via Bash:');
       emit(`  mkdir -p '${stateDir}' && echo yes > '${autoPref}'   (or echo no)`);
-      emit('No answer: ask again next session, never twice in one.');
+      emit('No answer: ask next session, never twice.');
     }
     const spine = stableSpine({ env, hookDir, stateDir, home, pluginVersion: running, emit, now });
     heartbeat({ env, hookDir, stateDir, home, running, ...spine, emit, now });
