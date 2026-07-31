@@ -116,9 +116,10 @@ check('brain-prompt cites rUv metaprompt prior art', bp.includes('ruv-gists/874e
 check('brain-score cross-references /brain-build as its gate consumer', /\/brain-build/.test(skillRaw));
 
 const ssPath = path.join(ROOT, 'scripts/session-start.sh');
-const ssRaw = fs.readFileSync(ssPath, 'utf8');
+const ssCorePath = path.join(ROOT, 'scripts/session-start-core.mjs');
+const ssRaw = fs.readFileSync(ssCorePath, 'utf8');
 const MARKER = '[RuvNet Brain — token intelligence + QE, mention once]';
-check('session-start announcement present exactly once in the script', ssRaw.split(MARKER).length === 2);
+check('session-start announcement present exactly once in the core authority', ssRaw.split(MARKER).length === 2);
 check('the old "OpenRouter key, already set" overclaim is gone', !ssRaw.includes('OpenRouter key, already set'));
 
 // Behavior: fires when ruflo is detectable; degrades SILENTLY when it is not.
@@ -132,7 +133,11 @@ const mkHome = () => {
   fs.writeFileSync(path.join(c, '.auto-update-pref'), 'no\n'); // skip one-time question + KB check
   return h;
 };
-const runSS = (cwd, env) => spawnSync('/bin/bash', [ssPath], {
+// Exercise the registered authority, not the legacy shell compatibility launcher. In particular,
+// the no-Ruflo fixture deliberately strips `node` from PATH; the real hook is already inside the
+// Node shim and invokes this core with process.execPath, so routing that fixture through the shell
+// would test an adjacent, obsolete door.
+const runSS = (cwd, env) => spawnSync(process.execPath, [ssCorePath], {
   cwd, encoding: 'utf8', timeout: 15000,
   env: { ...process.env, RUVNET_BRAIN_METER: '0', CLAUDE_PLUGIN_ROOT: ROOT, ...env },
 });
