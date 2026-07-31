@@ -86,10 +86,15 @@ beforeEach(() => {
   pendingFile = path.join(tmp, 'pending.jsonl');
   home = path.join(tmp, 'home');
   fs.mkdirSync(path.join(home, '.cache/ruvnet-brain'), { recursive: true });
+  // This proof owns the external-signal lifecycle, not first-install Stable Spine seeding.
+  // An absent active.json makes every surface() call dispatch a detached seed worker; on Windows
+  // that unrelated worker can still hold this fixture's cwd when afterEach removes it. Mark the
+  // fixture active so the real SessionStart authority exercises only the lifecycle under test.
+  fs.writeFileSync(path.join(home, '.cache/ruvnet-brain/active.json'), '{}');
   fs.writeFileSync(path.join(home, '.cache/ruvnet-brain/.last-update-check'), String(Math.floor(Date.now() / 1000)));
 });
 afterEach(() => {
-  // Windows can retain a just-exited child process's directory handle for a few milliseconds.
+  // Windows can retain a just-exited foreground process's directory handle for a few milliseconds.
   // `rmSync` only retries EPERM/EBUSY/ENOTEMPTY when maxRetries is explicit; without it, the
   // cleanup itself can make the nested D3 release proof report a product failure.
   fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
