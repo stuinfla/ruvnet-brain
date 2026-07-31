@@ -2,8 +2,8 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "FAIL",
   "why": "0/1 runs passed — below the 1/1 bar",
-  "sha": "79573ff460606595c2cbaf04e9049c22735118c3",
-  "at": "2026-07-29T05:25:31.912Z",
+  "sha": "535c6ec866683c48c2d1950f5cba5dafe9a0a824",
+  "at": "2026-07-31T05:53:03.505Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -25,7 +25,7 @@
   "rate": 0,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 40.5,
+  "wallSeconds": 49.9,
   "premise": {
     "verified": true,
     "evidence": "live help names all three flags; success/task-id-only probe exited 0 and created neither routing outcome nor routing-decision store"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1785302690083",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-zVuwhR/brain-home/versions/d4-refresh-1785302690083",
+    "generation": "d4-refresh-1785477132306",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-zLGUi3/brain-home/versions/d4-refresh-1785477132306",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -66,7 +66,7 @@
       "treated": {
         "class": "partial",
         "subcommandCorrect": true,
-        "command": "ruflo hooks post-task --task-id \"release-retry-budget-investigation\" --success true --agent \"tester\" --store-memory true",
+        "command": "~/.npm-global/bin/ruflo hooks post-task --task-id \"release-retry-budget-investigation\" --success true --agent \"tester\" --store-results true --metadata '{\"routing_decision\":{\"agent\":\"tester\",\"reason\":\"release retry-budget investigation completed successfully\"},\"persist_for_later_sessions\":true}'",
         "forcedCommand": false,
         "exec": {
           "ran": true,
@@ -80,8 +80,10 @@
             "true",
             "--agent",
             "tester",
-            "--store-memory",
-            "true"
+            "--store-results",
+            "true",
+            "--metadata",
+            "{\"routing_decision\":{\"agent\":\"tester\",\"reason\":\"release retry-budget investigation completed successfully\"},\"persist_for_later_sessions\":true}"
           ],
           "exit": 0,
           "exitOk": true,
@@ -93,12 +95,12 @@
         "firstToolIndex": 0,
         "lessonBeforeFirstToolCall": false,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-zVuwhR/transcripts/run1-treated.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-zLGUi3/transcripts/run1-treated.stream.jsonl"
       },
       "control": {
         "class": "partial",
         "subcommandCorrect": true,
-        "command": "ruflo hooks post-task --task-id release-retry-budget-investigation --success true --agent tester --store-results true",
+        "command": "ruflo hooks post-task --task-id \"release-retry-budget-investigation\" --success true --agent \"tester\" --store-routing",
         "exec": {
           "ran": true,
           "argv": [
@@ -111,8 +113,7 @@
             "true",
             "--agent",
             "tester",
-            "--store-results",
-            "true"
+            "--store-routing"
           ],
           "exit": 0,
           "exitOk": true,
@@ -122,7 +123,7 @@
         },
         "lessonDelivered": false,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-zVuwhR/transcripts/run1-control.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-zLGUi3/transcripts/run1-control.stream.jsonl"
       }
     }
   ]

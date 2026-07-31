@@ -2,8 +2,8 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "FAIL",
   "why": "0/1 runs passed — below the 1/1 bar",
-  "sha": "79573ff460606595c2cbaf04e9049c22735118c3",
-  "at": "2026-07-29T05:25:16.975Z",
+  "sha": "535c6ec866683c48c2d1950f5cba5dafe9a0a824",
+  "at": "2026-07-31T05:50:53.156Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -25,7 +25,7 @@
   "rate": 0,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 25.7,
+  "wallSeconds": 29,
   "premise": {
     "verified": true,
     "evidence": "-q, --query               Search query (required)"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1785302690546",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-f904k1/brain-home/versions/d4-refresh-1785302690546",
+    "generation": "d4-refresh-1785477023290",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-xqMri4/brain-home/versions/d4-refresh-1785477023290",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -66,7 +66,7 @@
       "treated": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "ruflo memory search \"caching strategy\"",
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
         "forcedCommand": false,
         "exec": {
           "ran": true,
@@ -74,7 +74,9 @@
             "ruflo",
             "memory",
             "search",
-            "caching strategy"
+            "caching strategy",
+            "--path",
+            ".swarm/memory.db"
           ],
           "exit": 1,
           "exitOk": false,
@@ -86,19 +88,20 @@
         "firstToolIndex": 0,
         "lessonBeforeFirstToolCall": false,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-f904k1/transcripts/run1-treated.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-xqMri4/transcripts/run1-treated.stream.jsonl"
       },
       "control": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "ruflo memory search \"caching strategy\"",
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
         "exec": {
           "ran": true,
           "argv": [
             "ruflo",
             "memory",
             "search",
-            "caching strategy"
+            "caching strategy",
+            "--path"
           ],
           "exit": 1,
           "exitOk": false,
@@ -108,7 +111,7 @@
         },
         "lessonDelivered": false,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-f904k1/transcripts/run1-control.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-xqMri4/transcripts/run1-control.stream.jsonl"
       }
     }
   ]
