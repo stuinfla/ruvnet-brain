@@ -30,7 +30,7 @@ function discover(home, explicitRoot) {
     `const m = await import(${JSON.stringify(pathToFileURL(DOCTOR).href)});`,
     `process.stdout.write(JSON.stringify(${expression}));`,
   ].join('\n')], {
-    env: { ...process.env, HOME: home },
+    env: { ...process.env, HOME: home, USERPROFILE: home },
     encoding: 'utf8',
   });
   expect(run.status, run.stderr).toBe(0);
@@ -89,7 +89,7 @@ describe('issue #81 — shared AgentDB fleet discovery', () => {
       `const m = await import(${JSON.stringify(pathToFileURL(DOCTOR).href)});`,
       `process.stdout.write(JSON.stringify([m.displayStoreName(${JSON.stringify(codeStore)}), m.displayStoreName(${JSON.stringify(sourceStore)})]));`,
     ].join('\n')], {
-      env: { ...process.env, HOME: home },
+      env: { ...process.env, HOME: home, USERPROFILE: home },
       encoding: 'utf8',
     });
 
@@ -102,7 +102,7 @@ describe('issue #81 — shared AgentDB fleet discovery', () => {
     store(home, 'source/hm/a');
 
     const run = spawnSync(process.execPath, [DOCTOR], {
-      env: { ...process.env, HOME: home },
+      env: { ...process.env, HOME: home, USERPROFILE: home },
       encoding: 'utf8',
     });
 

@@ -108,10 +108,20 @@ function worktrees(cwd) {
   });
 }
 
+function sameFilesystemEntry(left, right) {
+  try {
+    const leftStat = fs.statSync(left, { bigint: true });
+    const rightStat = fs.statSync(right, { bigint: true });
+    return leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
+  } catch {
+    return false;
+  }
+}
+
 function assertSingleOwner(cwd, branch, expectedPath, role) {
   const ref = `refs/heads/${branch}`;
   const owners = worktrees(cwd).filter((item) => item.branch === ref);
-  if (owners.length !== 1 || fs.realpathSync(owners[0].worktree) !== fs.realpathSync(expectedPath)) {
+  if (owners.length !== 1 || !sameFilesystemEntry(owners[0].worktree, expectedPath)) {
     fail(`${role} branch has a shared writer or is not owned by the declared worktree`);
   }
 }

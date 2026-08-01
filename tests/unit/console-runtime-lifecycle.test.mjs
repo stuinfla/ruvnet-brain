@@ -42,7 +42,7 @@ function runStatus(home, extraEnv = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [CONSOLE, '--runtime-status'], {
       cwd: REPO,
-      env: { ...process.env, HOME: home, RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1', ...extraEnv },
+      env: { ...process.env, HOME: home, USERPROFILE: home, RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1', ...extraEnv },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -95,6 +95,7 @@ function startConsole(home, port) {
     env: {
       ...process.env,
       HOME: home,
+      USERPROFILE: home,
       CONSOLE_PORT: String(port),
       RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1',
     },
@@ -121,7 +122,7 @@ describe('Brain Console runtime lifecycle', () => {
     const port = await freePort();
     const run = spawnSync(process.execPath, [CONSOLE, '--runtime-status'], {
       cwd: REPO,
-      env: { ...process.env, HOME: home, CONSOLE_PORT: String(port), RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1' },
+      env: { ...process.env, HOME: home, USERPROFILE: home, CONSOLE_PORT: String(port), RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1' },
       encoding: 'utf8',
       timeout: 10_000,
     });
