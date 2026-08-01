@@ -51,10 +51,10 @@ beforeEach(() => {
 });
 afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
-function runBuildBundle(env = {}) {
+function runBuildBundle(env = {}, args = []) {
   // spawnSync (not execFileSync) — execFileSync only returns stdout on a zero exit, and the
   // ALLOW_NO_PRIVATE_FENCE warning is written to stderr on the SUCCESS path via console.warn.
-  const r = spawnSync('node', ['scripts/build-bundle.mjs'], {
+  const r = spawnSync('node', ['scripts/build-bundle.mjs', ...args], {
     cwd: tmp, env: { ...process.env, ...env }, encoding: 'utf8',
   });
   return { code: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
@@ -105,6 +105,20 @@ describe('build-bundle.mjs — private-store fence (fail-closed)', () => {
 });
 
 describe('build-bundle.mjs — publishable artifact gate (fail-closed)', () => {
+  it('assembles explicitly supplied external release assets while keeping the source-tree private fence authoritative', () => {
+    const assets = path.join(tmp, 'release-assets');
+    fs.mkdirSync(assets);
+    fs.writeFileSync(path.join(tmp, 'kb/PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['private-repo'] }));
+    fs.writeFileSync(path.join(assets, 'private-repo.big.rvf'), '');
+    fs.writeFileSync(path.join(assets, 'public-repo.big.rvf'), '');
+
+    const r = runBuildBundle({}, ['--assets', assets]);
+
+    expect(r.stdout).toMatch(/EXCLUDED 1 PRIVATE store\(s\): private-repo/);
+    const manifest = JSON.parse(fs.readFileSync(path.join(tmp, 'dist/ruvnet-brain/manifest.json'), 'utf8'));
+    expect(manifest.builtRepos.map(({ name }) => name)).toEqual(['public-repo']);
+  });
+
   it('FATALs when discovery yields zero public RVFs, including a private-only KB', () => {
     fs.writeFileSync(path.join(tmp, 'kb/PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['private-repo'] }));
     fs.writeFileSync(path.join(tmp, 'kb/private-repo.big.rvf'), '');

@@ -10,7 +10,8 @@
 // Idempotent: re-run any time as new variants/primers/grades land — it copies whatever exists now
 // and records honestly what is still missing. Does NOT embed or grade; pure assembly.
 //
-//   node scripts/build-bundle.mjs [--out dist/ruvnet-brain] [--version v0.2.0-dev]
+//   node scripts/build-bundle.mjs [--assets /path/to/release-assets]
+//                                 [--out dist/ruvnet-brain] [--version v0.2.0-dev]
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,6 +24,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KB = path.join(ROOT, 'kb');
 const DATA = path.join(ROOT, 'data');
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
+// RVF binaries are intentionally release assets, not Git blobs. A clean worktree therefore has
+// zero stores unless the release operator supplies the canonical external asset directory. Keep
+// source/runtime files rooted in this exact checkout; only generated RVF families come from ASSETS.
+const ASSETS = path.resolve(ROOT, arg('--assets', 'kb'));
 const OUT = path.resolve(ROOT, arg('--out', 'dist/ruvnet-brain'));
 const BRAIN_VERSION = arg('--version', getVersionTag()); // inherits the single source of truth
 
@@ -79,7 +84,8 @@ const PRIVATE_STORES = loadPrivateStores();
 function discoverBuilt() {
   const names = new Set();
   const excludedPrivate = [];
-  for (const f of fs.readdirSync(KB)) {
+  if (!fs.existsSync(ASSETS)) return [];
+  for (const f of fs.readdirSync(ASSETS)) {
     const m = f.match(/^(.+?)\.big\.rvf$/);
     if (!m) continue;
     if (/\.(idmap|embed)\b/.test(f)) continue;
@@ -111,8 +117,8 @@ function gradeFor(name) {
 
 // ---- file copy helper ---------------------------------------------------------------------------
 let copied = 0, missing = [];
-function cp(src, destDir, { required = false } = {}) {
-  const s = path.isAbsolute(src) ? src : path.join(KB, src);
+function cp(src, destDir, { required = false, asset = false } = {}) {
+  const s = path.isAbsolute(src) ? src : path.join(asset ? ASSETS : KB, src);
   if (!fs.existsSync(s)) { if (required) missing.push(path.basename(src)); return false; }
   fs.copyFileSync(s, path.join(destDir, path.basename(s)));
   copied++;
@@ -153,7 +159,7 @@ if (built.length === 0) {
   process.exit(1);
 }
 const rvfIndexAudit = await auditRvfIndexes(
-  built.map((name) => path.join(KB, `${name}.big.rvf`)),
+  built.map((name) => path.join(ASSETS, `${name}.big.rvf`)),
 );
 const missingIndexes = rvfIndexAudit.filter(({ state }) => state !== 'PASS');
 if (missingIndexes.length) {
@@ -168,16 +174,16 @@ const builtRepos = [];
 for (const name of built) {
   // One canonical computer-focused vector store per repository. The unsuffixed passages/meta
   // sidecars are shared with the .big RVF so source text and metadata are packaged once.
-  cp(`${name}.big.rvf`, OUT, { required: true });
-  cp(`${name}.big.rvf.idmap.json`, OUT, { required: true });
-  cp(`${name}.big.rvf.embed.json`, OUT, { required: true });
-  cp(`${name}.passages.jsonl`, OUT, { required: true });
-  cp(`${name}.meta.json`, OUT, { required: true });
-  const hasSymbols = cp(`${name}.symbols.json`, OUT);
+  cp(`${name}.big.rvf`, OUT, { required: true, asset: true });
+  cp(`${name}.big.rvf.idmap.json`, OUT, { required: true, asset: true });
+  cp(`${name}.big.rvf.embed.json`, OUT, { required: true, asset: true });
+  cp(`${name}.passages.jsonl`, OUT, { required: true, asset: true });
+  cp(`${name}.meta.json`, OUT, { required: true, asset: true });
+  const hasSymbols = cp(`${name}.symbols.json`, OUT, { asset: true });
   const hasPrimer = cp(`${name}-primer.md`, OUT);
   // metadata
   let chunks = null, model = null, dims = null;
-  try { const m = JSON.parse(fs.readFileSync(path.join(KB, `${name}.meta.json`), 'utf8')); chunks = m.entries ? Object.keys(m.entries).length : null; model = m.model; dims = m.dimensions; } catch { /* */ }
+  try { const m = JSON.parse(fs.readFileSync(path.join(ASSETS, `${name}.meta.json`), 'utf8')); chunks = m.entries ? Object.keys(m.entries).length : null; model = m.model; dims = m.dimensions; } catch { /* */ }
   const reg = regByLower.get(name.toLowerCase()) || {};
   const grade = gradeFor(name);
   builtRepos.push({
@@ -194,7 +200,7 @@ for (const name of built) {
 // the machine-wide ledger wholesale would leak private store names/hashes even though their RVFs
 // were correctly excluded.
 {
-  const generationsFile = path.join(KB, 'RVF-GENERATIONS.json');
+  const generationsFile = path.join(ASSETS, 'RVF-GENERATIONS.json');
   if (!fs.existsSync(generationsFile)) {
     missing.push('RVF-GENERATIONS.json');
   } else {
@@ -222,15 +228,15 @@ cpDir(path.join(ROOT, 'primer'), path.join(OUT, 'primer'));
 // CONCEPTS store (L2 + primers embedded as prose; big-only) — the cross-repo tool unions it at query
 // time so code-implemented capabilities are retrievable as high-confidence prose. discoverRepos in the
 // bundle finds concepts.big.rvf automatically, so search_ruvnet searches it with no extra config.
-const hasConcepts = fs.existsSync(path.join(KB, 'concepts.big.rvf'));
-if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.json', 'concepts.big.rvf.embed.json', 'concepts.big.passages.jsonl', 'concepts.big.meta.json', 'concepts.passages.jsonl', 'concepts.meta.json']) cp(suf, OUT);
+const hasConcepts = fs.existsSync(path.join(ASSETS, 'concepts.big.rvf'));
+if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.json', 'concepts.big.rvf.embed.json', 'concepts.big.passages.jsonl', 'concepts.big.meta.json', 'concepts.passages.jsonl', 'concepts.meta.json']) cp(suf, OUT, { asset: true });
 
 // RUV-GISTS store (rUv's public gists — release notes / integration dossiers; big-only, same shape as
 // concepts, unioned by search_ruvnet at query time). BUG FIX: only `concepts` was special-cased above,
 // so ruv-gists — a PUBLIC store, not private-fenced — was silently omitted from EVERY bundle ever
 // shipped. Include it, WITH .big.passages.jsonl (the big variant opens it by name, same as concepts).
-const hasGists = fs.existsSync(path.join(KB, 'ruv-gists.big.rvf'));
-if (hasGists) for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json', 'ruv-gists.big.passages.jsonl', 'ruv-gists.big.meta.json', 'ruv-gists.passages.jsonl', 'ruv-gists.meta.json']) cp(suf, OUT);
+const hasGists = fs.existsSync(path.join(ASSETS, 'ruv-gists.big.rvf'));
+if (hasGists) for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json', 'ruv-gists.big.passages.jsonl', 'ruv-gists.big.meta.json', 'ruv-gists.passages.jsonl', 'ruv-gists.meta.json']) cp(suf, OUT, { asset: true });
 
 // capability-cards.md — the FAST LANE's zero-ML answer source (kb/card-lane.mjs, the first
 // responder search_ruvnet consults before the heavy cross-repo search). Ships as its own small
