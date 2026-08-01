@@ -30,8 +30,11 @@ lifecycle contract is now explicit: each project scope has a mode-0600 instance 
 server exposes a non-secret `/api/runtime` identity, reuse requires an exact API/source identity
 match, and only a receipt-proven instance accepts token-authenticated graceful shutdown. A legacy or
 foreign listener is never killed; the current Console binds a free port and persists that instance
-for subsequent reuse. The installer/update transaction that stages `.console-runtime` remains part
-of the issue #77/#79 release-convergence lane and is not claimed by this server-side change.
+for subsequent reuse. The issue #79 transaction now stages and syntax-verifies `.console-runtime`
+before host activation, persists its exact version/source identity, activates it only after host and
+Stable Spine convergence, and restores the prior runtime if activation or receipt finalization fails.
+The convergence receipt reports `pending-console-restart` when an owned instance still serves older
+bytes; the next launch uses the receipt/token lifecycle above to replace it safely.
 
 **Updated 2026-08-01** — issue #81 identified the residual project-discovery split left after issue #19.
 `scripts/memory-doctor.mjs` now owns the common and configured candidate-root policy, canonical

@@ -604,7 +604,7 @@ function installReader(cacheDir) {
 // though installation was green. Persist the exact runtime shipped by the installer underneath the
 // installed KB: Node then resolves optional reader dependencies from `<cacheDir>/node_modules`, and
 // both Claude Code and Codex get one stable path with no source clone or second package install.
-export function installConsoleRuntime(cacheDir, sourceRoot = REPO_ROOT) {
+export function beginConsoleRuntimeTransaction(cacheDir, sourceRoot = REPO_ROOT) {
   const runtime = path.join(cacheDir, '.console-runtime');
   const staged = `${runtime}.tmp-${process.pid}`;
   const prior = `${runtime}.prior-${process.pid}`;
@@ -631,16 +631,103 @@ export function installConsoleRuntime(cacheDir, sourceRoot = REPO_ROOT) {
     fs.cpSync(source, target, { recursive: true, force: true, preserveTimestamps: true });
   }
 
-  if (fs.existsSync(runtime)) fs.renameSync(runtime, prior);
+  let packageManifest;
   try {
-    fs.renameSync(staged, runtime);
-    fs.rmSync(prior, { recursive: true, force: true });
+    packageManifest = JSON.parse(fs.readFileSync(path.join(staged, 'package.json'), 'utf8'));
   } catch (error) {
-    if (fs.existsSync(prior) && !fs.existsSync(runtime)) fs.renameSync(prior, runtime);
     fs.rmSync(staged, { recursive: true, force: true });
+    throw new Error(`console runtime identity is invalid: ${error.message}`);
+  }
+  if (!packageManifest.version || packageManifest.version !== PACKAGE_VERSION) {
+    fs.rmSync(staged, { recursive: true, force: true });
+    throw new Error(`console runtime version ${packageManifest.version || '(missing)'} does not match candidate ${PACKAGE_VERSION}`);
+  }
+  const stagedEntry = path.join(staged, 'scripts', 'onboarding-console.mjs');
+  for (const syntaxTarget of [stagedEntry, path.join(staged, 'bin', 'install.mjs')]) {
+    const checked = spawnSync(process.execPath, ['--check', syntaxTarget], { encoding: 'utf8' });
+    if (checked.error || checked.status !== 0) {
+      fs.rmSync(staged, { recursive: true, force: true });
+      throw new Error(`console runtime failed syntax verification: ${path.relative(staged, syntaxTarget)}`);
+    }
+  }
+  const identity = {
+    product: 'ruvnet-brain-console-runtime',
+    schema: 1,
+    apiContract: 1,
+    runtimeVersion: packageManifest.version,
+    entrypoint: 'scripts/onboarding-console.mjs',
+    sourceSha256: crypto.createHash('sha256').update(fs.readFileSync(stagedEntry)).digest('hex'),
+  };
+  fs.writeFileSync(path.join(staged, 'runtime-identity.json'), `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600 });
+
+  let state = 'staged';
+  const entry = path.join(runtime, identity.entrypoint);
+  return {
+    identity,
+    entry,
+    activate() {
+      if (state !== 'staged') throw new Error(`console runtime transaction cannot activate from ${state}`);
+      if (fs.existsSync(runtime)) fs.renameSync(runtime, prior);
+      try {
+        fs.renameSync(staged, runtime);
+        state = 'active';
+        return entry;
+      } catch (error) {
+        if (fs.existsSync(prior) && !fs.existsSync(runtime)) fs.renameSync(prior, runtime);
+        fs.rmSync(staged, { recursive: true, force: true });
+        state = 'rolled-back';
+        throw error;
+      }
+    },
+    commit() {
+      if (state !== 'active') throw new Error(`console runtime transaction cannot commit from ${state}`);
+      fs.rmSync(prior, { recursive: true, force: true });
+      state = 'committed';
+      return entry;
+    },
+    rollback() {
+      if (state === 'staged') fs.rmSync(staged, { recursive: true, force: true });
+      if (state === 'active') {
+        fs.rmSync(runtime, { recursive: true, force: true });
+        if (fs.existsSync(prior)) fs.renameSync(prior, runtime);
+      }
+      fs.rmSync(staged, { recursive: true, force: true });
+      fs.rmSync(prior, { recursive: true, force: true });
+      state = 'rolled-back';
+    },
+  };
+}
+
+export function installConsoleRuntime(cacheDir, sourceRoot = REPO_ROOT) {
+  const transaction = beginConsoleRuntimeTransaction(cacheDir, sourceRoot);
+  try {
+    transaction.activate();
+    return transaction.commit();
+  } catch (error) {
+    transaction.rollback();
     throw error;
   }
-  return path.join(runtime, 'scripts', 'onboarding-console.mjs');
+}
+
+export function consoleRestartState(identity, {
+  receiptDir = path.join(process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain'), 'console-instances'),
+} = {}) {
+  let receipts = [];
+  try {
+    receipts = fs.readdirSync(receiptDir)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => {
+        try { return JSON.parse(fs.readFileSync(path.join(receiptDir, name), 'utf8')); }
+        catch { return null; }
+      })
+      .filter((receipt) => receipt?.product === 'ruvnet-brain-console' && receipt.schema === 1);
+  } catch { /* no running Console receipts is the ordinary ready state */ }
+  const staleInstances = receipts.filter((receipt) => receipt.sourceSha256 !== identity.sourceSha256).length;
+  return {
+    state: staleInstances > 0 ? 'pending-console-restart' : 'ready',
+    instanceReceipts: receipts.length,
+    staleInstances,
+  };
 }
 
 // ── plugin presence: the ONLY reliable proof the slash commands will exist ───────────────────────
@@ -2084,31 +2171,47 @@ function missingUpdaterHelp(kbDir) {
   console.error(`  — the current bundle ships forge-update.mjs; then this command will work.`);
 }
 
-function syncHostsAfterUpdate() {
+function syncHostsAfterUpdate(cacheDir = resolvedKbDir()) {
   const results = {};
-  results.claude = wirePlugin({ expectedVersion: PACKAGE_VERSION, requireManaged: true });
-  if (results.claude.host && !results.claude.wired) return { ok: false, results };
+  let runtimeTransaction;
   try {
+    runtimeTransaction = beginConsoleRuntimeTransaction(cacheDir);
+  } catch (error) {
+    return { ok: false, results, error: `Console runtime staging failed: ${error.message}` };
+  }
+  const fail = (detail = {}) => {
+    runtimeTransaction.rollback();
+    return { ok: false, results, ...detail };
+  };
+
+  try {
+    results.claude = wirePlugin({ expectedVersion: PACKAGE_VERSION, requireManaged: true });
+    if (results.claude.host && !results.claude.wired) return fail();
     results.codexHost = wireCodexHost();
     if (results.codexHost.host) {
       results.codex = wireCodexPlugin({ expectedVersion: PACKAGE_VERSION });
       if (!['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
-        return { ok: false, results };
+        return fail();
       }
     }
   } catch (error) {
     results.codex = { action: 'failed', error: error?.message || String(error) };
-    return { ok: false, results };
+    return fail();
   }
 
   const apply = path.join(__dirname, '..', 'plugin', 'scripts', 'update-apply.mjs');
-  if (!fs.existsSync(apply)) return { ok: false, results, error: 'Stable Spine updater missing from package' };
+  if (!fs.existsSync(apply)) return fail({ error: 'Stable Spine updater missing from package' });
   const applied = spawnSync(process.execPath, [apply, '--auto', '--expected-version', PACKAGE_VERSION], { stdio: 'inherit', env: process.env });
   const okApplied = !applied.error && applied.status === 0;
   if (okApplied) {
     const home = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
     const receiptPath = path.join(home, 'host-convergence.json');
     try {
+      runtimeTransaction.activate();
+      results.consoleRuntime = {
+        ...runtimeTransaction.identity,
+        ...consoleRestartState(runtimeTransaction.identity),
+      };
       fs.mkdirSync(home, { recursive: true });
       const tmp = `${receiptPath}.tmp-${process.pid}`;
       fs.writeFileSync(tmp, JSON.stringify({
@@ -2118,13 +2221,16 @@ function syncHostsAfterUpdate() {
           claude: { state: results.claude.host ? 'ready' : 'absent', version: results.claude.version || null },
           codex: { state: results.codex?.action === 'disabled' ? 'disabled' : (results.codexHost?.host ? 'ready' : 'absent'), version: results.codex?.version || null },
         },
+        consoleRuntime: results.consoleRuntime,
       }, null, 2));
       fs.renameSync(tmp, receiptPath);
+      runtimeTransaction.commit();
     } catch (error) {
-      return { ok: false, results, applyStatus: applied.status, error: `host convergence receipt failed: ${error.message}` };
+      return fail({ applyStatus: applied.status, error: `Console runtime convergence failed: ${error.message}` });
     }
   }
-  return { ok: okApplied, results, applyStatus: applied.status };
+  if (!okApplied) return fail({ applyStatus: applied.status, error: applied.error?.message || 'Stable Spine activation failed' });
+  return { ok: true, results, applyStatus: applied.status };
 }
 
 function runUpdate() {
@@ -2169,7 +2275,7 @@ function runUpdate() {
   }
   if (updateStatus === 0) {
     info(c.dim('\nsynchronizing every detected host to this exact published version…\n'));
-    const convergence = syncHostsAfterUpdate();
+    const convergence = syncHostsAfterUpdate(kbDir);
     if (!convergence.ok) {
       warn(`host synchronization is incomplete — runtime stays on the prior verified generation${convergence.error ? ` (${convergence.error})` : ''}`);
       updateStatus = 1;
