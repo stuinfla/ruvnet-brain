@@ -2171,11 +2171,23 @@ function missingUpdaterHelp(kbDir) {
   console.error(`  — the current bundle ships forge-update.mjs; then this command will work.`);
 }
 
-function syncHostsAfterUpdate(cacheDir = resolvedKbDir()) {
+export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
+  sourceRoot = REPO_ROOT,
+  brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain'),
+  consoleReceiptDir = path.join(brainHome, 'console-instances'),
+  wireClaude = wirePlugin,
+  wireCodexHost: detectCodexHost = wireCodexHost,
+  wireCodexPlugin: installCodexPlugin = wireCodexPlugin,
+  runStableSpine = (apply) => spawnSync(
+    process.execPath,
+    [apply, '--auto', '--expected-version', PACKAGE_VERSION],
+    { stdio: 'inherit', env: process.env },
+  ),
+} = {}) {
   const results = {};
   let runtimeTransaction;
   try {
-    runtimeTransaction = beginConsoleRuntimeTransaction(cacheDir);
+    runtimeTransaction = beginConsoleRuntimeTransaction(cacheDir, sourceRoot);
   } catch (error) {
     return { ok: false, results, error: `Console runtime staging failed: ${error.message}` };
   }
@@ -2185,11 +2197,13 @@ function syncHostsAfterUpdate(cacheDir = resolvedKbDir()) {
   };
 
   try {
-    results.claude = wirePlugin({ expectedVersion: PACKAGE_VERSION, requireManaged: true });
+    results.claude = wireClaude === wirePlugin
+      ? wirePlugin({ expectedVersion: PACKAGE_VERSION, requireManaged: true })
+      : wireClaude({ expectedVersion: PACKAGE_VERSION, requireManaged: true });
     if (results.claude.host && !results.claude.wired) return fail();
-    results.codexHost = wireCodexHost();
+    results.codexHost = detectCodexHost();
     if (results.codexHost.host) {
-      results.codex = wireCodexPlugin({ expectedVersion: PACKAGE_VERSION });
+      results.codex = installCodexPlugin({ expectedVersion: PACKAGE_VERSION });
       if (!['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
         return fail();
       }
@@ -2199,20 +2213,19 @@ function syncHostsAfterUpdate(cacheDir = resolvedKbDir()) {
     return fail();
   }
 
-  const apply = path.join(__dirname, '..', 'plugin', 'scripts', 'update-apply.mjs');
+  const apply = path.join(sourceRoot, 'plugin', 'scripts', 'update-apply.mjs');
   if (!fs.existsSync(apply)) return fail({ error: 'Stable Spine updater missing from package' });
-  const applied = spawnSync(process.execPath, [apply, '--auto', '--expected-version', PACKAGE_VERSION], { stdio: 'inherit', env: process.env });
+  const applied = runStableSpine(apply);
   const okApplied = !applied.error && applied.status === 0;
   if (okApplied) {
-    const home = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
-    const receiptPath = path.join(home, 'host-convergence.json');
+    const receiptPath = path.join(brainHome, 'host-convergence.json');
     try {
       runtimeTransaction.activate();
       results.consoleRuntime = {
         ...runtimeTransaction.identity,
-        ...consoleRestartState(runtimeTransaction.identity),
+        ...consoleRestartState(runtimeTransaction.identity, { receiptDir: consoleReceiptDir }),
       };
-      fs.mkdirSync(home, { recursive: true });
+      fs.mkdirSync(brainHome, { recursive: true });
       const tmp = `${receiptPath}.tmp-${process.pid}`;
       fs.writeFileSync(tmp, JSON.stringify({
         desiredVersion: PACKAGE_VERSION,

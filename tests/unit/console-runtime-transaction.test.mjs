@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const INSTALLER = path.join(ROOT, 'bin', 'install.mjs');
+const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 const temps = [];
 let install;
 
@@ -33,6 +34,19 @@ function candidate(marker) {
 
 function scriptBytes(cache) {
   return fs.readFileSync(path.join(cache, '.console-runtime', 'scripts', 'onboarding-console.mjs'), 'utf8');
+}
+
+function treeSnapshot(root) {
+  const snapshot = {};
+  const visit = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const absolute = path.join(dir, entry.name);
+      if (entry.isDirectory()) visit(absolute);
+      else snapshot[path.relative(root, absolute)] = fs.readFileSync(absolute).toString('hex');
+    }
+  };
+  visit(root);
+  return snapshot;
 }
 
 function stagedPayload(home, version) {
@@ -161,5 +175,123 @@ describe('issue #79 — Console runtime update transaction', () => {
       runtimeVersion: identity.runtimeVersion,
       sourceSha256: identity.sourceSha256,
     });
+  });
+
+  it.each([
+    { label: 'Claude-only', claude: true, codex: false },
+    { label: 'Codex-only', claude: false, codex: true },
+    { label: 'both', claude: true, codex: true },
+    { label: 'neither', claude: false, codex: false },
+  ])('$label host state converges only detected hosts and persists the exact restart receipt', ({ claude, codex }) => {
+    const cache = temporary('brain-console-cache-');
+    const brainHome = temporary('brain-console-home-');
+    const receiptDir = temporary('brain-console-receipts-');
+    const generationB = candidate('GENERATION-B');
+    install.installConsoleRuntime(cache, candidate('GENERATION-A'));
+    const sourceSha256 = crypto.createHash('sha256')
+      .update(fs.readFileSync(path.join(generationB, 'scripts', 'onboarding-console.mjs')))
+      .digest('hex');
+    fs.writeFileSync(path.join(receiptDir, 'current.json'), JSON.stringify({
+      product: 'ruvnet-brain-console', schema: 1, sourceSha256,
+    }));
+    fs.writeFileSync(path.join(receiptDir, 'stale.json'), JSON.stringify({
+      product: 'ruvnet-brain-console', schema: 1, sourceSha256: 'a'.repeat(64),
+    }));
+    const calls = { claude: 0, codexHost: 0, codexPlugin: 0, stableSpine: 0 };
+
+    const result = install.syncHostsAfterUpdate(cache, {
+      sourceRoot: generationB,
+      brainHome,
+      consoleReceiptDir: receiptDir,
+      wireClaude: () => {
+        calls.claude += 1;
+        return claude
+          ? { host: true, wired: true, version: VERSION }
+          : { host: false, wired: false };
+      },
+      wireCodexHost: () => {
+        calls.codexHost += 1;
+        return { host: codex, action: codex ? 'unchanged' : 'no-host' };
+      },
+      wireCodexPlugin: () => {
+        calls.codexPlugin += 1;
+        return { host: true, action: 'updated', enabled: true, version: VERSION };
+      },
+      runStableSpine: () => {
+        calls.stableSpine += 1;
+        return { status: 0 };
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(calls).toEqual({ claude: 1, codexHost: 1, codexPlugin: codex ? 1 : 0, stableSpine: 1 });
+    expect(scriptBytes(cache)).toContain('GENERATION-B');
+    const receipt = JSON.parse(fs.readFileSync(path.join(brainHome, 'host-convergence.json'), 'utf8'));
+    expect(receipt.hosts).toEqual({
+      claude: { state: claude ? 'ready' : 'absent', version: claude ? VERSION : null },
+      codex: { state: codex ? 'ready' : 'absent', version: codex ? VERSION : null },
+    });
+    expect(receipt.consoleRuntime).toMatchObject({
+      runtimeVersion: VERSION,
+      sourceSha256,
+      state: 'pending-console-restart',
+      instanceReceipts: 2,
+      staleInstances: 1,
+    });
+  });
+
+  it('preserves an explicitly disabled Codex host and records it as disabled', () => {
+    const cache = temporary('brain-console-cache-');
+    const brainHome = temporary('brain-console-home-');
+    install.installConsoleRuntime(cache, candidate('GENERATION-A'));
+
+    const result = install.syncHostsAfterUpdate(cache, {
+      sourceRoot: candidate('GENERATION-B'),
+      brainHome,
+      wireClaude: () => ({ host: false, wired: false }),
+      wireCodexHost: () => ({ host: true, action: 'unchanged' }),
+      wireCodexPlugin: () => ({ host: true, action: 'disabled', installed: true, enabled: false, version: VERSION }),
+      runStableSpine: () => ({ status: 0 }),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.results.codex).toMatchObject({ action: 'disabled', enabled: false });
+    expect(JSON.parse(fs.readFileSync(path.join(brainHome, 'host-convergence.json'), 'utf8')).hosts.codex)
+      .toEqual({ state: 'disabled', version: VERSION });
+  });
+
+  it.each([
+    {
+      label: 'Claude',
+      wireClaude: () => ({ host: true, wired: false, error: 'Claude verification failed' }),
+      wireCodexHost: () => ({ host: false, action: 'no-host' }),
+      wireCodexPlugin: () => { throw new Error('Codex must remain untouched'); },
+    },
+    {
+      label: 'Codex',
+      wireClaude: () => ({ host: false, wired: false }),
+      wireCodexHost: () => ({ host: true, action: 'unchanged' }),
+      wireCodexPlugin: () => ({ host: true, action: 'verification-failed', error: 'Codex verification failed' }),
+    },
+  ])('$label selected-host failure rolls Console runtime B back to byte-identical A', (hostFailure) => {
+    const cache = temporary('brain-console-cache-');
+    const brainHome = temporary('brain-console-home-');
+    install.installConsoleRuntime(cache, candidate('GENERATION-A'));
+    const runtime = path.join(cache, '.console-runtime');
+    const before = treeSnapshot(runtime);
+
+    const result = install.syncHostsAfterUpdate(cache, {
+      sourceRoot: candidate('GENERATION-B'),
+      brainHome,
+      wireClaude: hostFailure.wireClaude,
+      wireCodexHost: hostFailure.wireCodexHost,
+      wireCodexPlugin: hostFailure.wireCodexPlugin,
+      runStableSpine: () => { throw new Error('Stable Spine must not run after host failure'); },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(treeSnapshot(runtime)).toEqual(before);
+    expect(fs.existsSync(path.join(brainHome, 'host-convergence.json'))).toBe(false);
+    expect(fs.readdirSync(cache).filter((name) => /\.console-runtime\.(?:tmp|prior)-/.test(name))).toEqual([]);
   });
 });
