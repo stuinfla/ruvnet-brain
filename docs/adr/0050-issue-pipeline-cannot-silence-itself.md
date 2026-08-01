@@ -15,7 +15,6 @@ governs:
   - plugin/scripts/session-start.sh
   - plugin/skills/ruvnet-brain/SKILL.md
   - plugin/skills/release-proof/SKILL.md
-  - tests/unit/fix-workstream-guidance.test.mjs
 ---
 
 # ADR-050 — The issue pipeline may never manufacture its own acknowledgment
@@ -181,6 +180,7 @@ The four parallel agents working tonight support this distinction. They show tha
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-01 | Reconciled the executable fixer boundary with the accepted supervised-worktree decision: scheduled `unattended` mode is now read-only triage, while explicit `supervised` mode may prepare a tested local candidate but cannot push, comment, merge, commit, or promote. Removed the test-only observer from `governs:` so implementation status is derived from production surfaces rather than whether a unit test has a runtime caller. | `scripts/issue-fix.mjs` exposes `executionPolicy()`, defaults to `unattended`, removes git/gh from the worker allowlist, preserves dirty candidate worktrees as recovery evidence, and reports local candidate state to the integration owner. `tests/unit/fix-workstream-guidance.test.mjs` verifies the Brain guidance but is intentionally not a production caller; governing it caused `doc-currency` to downgrade an otherwise wired decision to `built` for the wrong reason. Public automation remains prohibited pending the GitHub App identity follow-up. |
 | 2026-08-01 | Connected the accepted session-supervised worktree decision to the Brain's always-on fix behavior and the existing fail-closed release authority. Every non-trivial writing lane now receives one isolated worktree; focused evidence hands off to one clean integration owner; dirty lanes are retained for recovery; immutable candidate and publication seals govern promotion language. | The decision already required stable worktrees and human-controlled integration, while `plugin/skills/release-proof/SKILL.md` already rejected dirty/unbound release candidates. The missing seam was `plugin/skills/ruvnet-brain/SKILL.md`: it orchestrated fixes without requiring that delivery rail. `tests/unit/fix-workstream-guidance.test.mjs` now makes the connection executable and prevents a future guidance edit from removing it silently. |
 | 2026-07-31 | Re-read the issue surfacer after first-session seed and update maintenance were serialized into one detached worker; I1-I3 are unchanged. | Commit `0f68737` changes only the Stable-Spine seed/heartbeat block in `plugin/scripts/session-start.sh` and adds `plugin/scripts/first-session-worker.mjs`. The open-issue count, human-acknowledgment predicate, SLA escalation, and fixer circuit breaker are untouched. |
 | 2026-07-30 | Removed the default-off project-preference Node launch from SessionStart without changing the issue surfacer. | `plugin/scripts/session-start.sh` now calls the authoritative seed helper only when the settings file explicitly opts into new-project defaults. Issue counting, acknowledgment, escalation, and repair logic are untouched. |
