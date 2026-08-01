@@ -79,6 +79,199 @@ const INSTALLED_KB = process.env.RUVNET_BRAIN_KB
 const COMPLETE_BRAIN_SOURCE = process.env.RUVNET_BRAIN_COMPLETE_SOURCE
   || path.join(REPO, 'dist', 'ruvnet-brain');
 const TOKEN = crypto.randomBytes(24).toString('hex');
+const RUNTIME_RECEIPT_DIR = path.join(HOME, '.cache', 'ruvnet-brain', 'console-instances');
+const RUNTIME_PRODUCT = 'ruvnet-brain-console';
+const RUNTIME_SCHEMA = 1;
+const RUNTIME_API_CONTRACT = 1;
+const RUNTIME_SCRIPT = fs.realpathSync(fileURLToPath(import.meta.url));
+const RUNTIME_SOURCE_SHA256 = crypto.createHash('sha256').update(fs.readFileSync(RUNTIME_SCRIPT)).digest('hex');
+
+function canonicalScope(cwd = process.cwd()) {
+  try { return fs.realpathSync(cwd); } catch { return path.resolve(cwd); }
+}
+
+function runtimeReceiptPath(cwd = process.cwd()) {
+  const scope = canonicalScope(cwd);
+  const scopeId = crypto.createHash('sha256').update(scope).digest('hex').slice(0, 24);
+  return path.join(RUNTIME_RECEIPT_DIR, `${scopeId}.json`);
+}
+
+function runtimeIdentity({ port, cwd = process.cwd(), pid = process.pid, startedAt = new Date().toISOString() }) {
+  return {
+    product: RUNTIME_PRODUCT,
+    schema: RUNTIME_SCHEMA,
+    apiContract: RUNTIME_API_CONTRACT,
+    pid,
+    port,
+    startedAt,
+    scope: canonicalScope(cwd),
+    scriptRealpath: RUNTIME_SCRIPT,
+    runtimeVersion: brainVersionOnDisk(),
+    sourceSha256: RUNTIME_SOURCE_SHA256,
+  };
+}
+
+function validRuntimeReceipt(receipt, file) {
+  if (!receipt || typeof receipt !== 'object') return false;
+  if (process.platform !== 'win32') {
+    try { if ((fs.statSync(file).mode & 0o777) !== 0o600) return false; } catch { return false; }
+  }
+  return receipt.product === RUNTIME_PRODUCT
+    && receipt.schema === RUNTIME_SCHEMA
+    && receipt.apiContract === RUNTIME_API_CONTRACT
+    && Number.isInteger(receipt.pid) && receipt.pid > 0
+    && Number.isInteger(receipt.port) && receipt.port > 0 && receipt.port <= 65535
+    && typeof receipt.startedAt === 'string'
+    && typeof receipt.scope === 'string'
+    && typeof receipt.scriptRealpath === 'string'
+    && typeof receipt.runtimeVersion === 'string'
+    && /^[a-f0-9]{64}$/.test(receipt.sourceSha256 || '')
+    && /^[a-f0-9]{48}$/.test(receipt.controlToken || '');
+}
+
+function publicRuntimeIdentity(receipt) {
+  const { controlToken: _secret, ...identity } = receipt;
+  return identity;
+}
+
+function writeRuntimeReceipt(receipt, file = runtimeReceiptPath(receipt.scope)) {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  if (process.platform !== 'win32') fs.chmodSync(path.dirname(file), 0o700);
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  try {
+    fs.writeFileSync(tmp, `${JSON.stringify(receipt)}\n`, { mode: 0o600, flag: 'wx' });
+    if (process.platform !== 'win32') fs.chmodSync(tmp, 0o600);
+    fs.renameSync(tmp, file);
+  } finally {
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* best effort */ }
+  }
+  return file;
+}
+
+function removeOwnedRuntimeReceipt(file, controlToken) {
+  const current = readJSON(file);
+  if (!current || current.controlToken !== controlToken) return false;
+  try { fs.unlinkSync(file); return true; } catch { return false; }
+}
+
+function sameRuntimeIdentity(left, right) {
+  return ['product', 'schema', 'apiContract', 'pid', 'port', 'startedAt', 'scope',
+    'scriptRealpath', 'runtimeVersion', 'sourceSha256'].every((key) => left?.[key] === right?.[key]);
+}
+
+function probeRuntime(port, timeout = 800) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: '/api/runtime', timeout }, (res) => {
+      let body = '';
+      res.on('data', (chunk) => {
+        body += chunk;
+        if (body.length > 16_384) req.destroy();
+      });
+      res.on('end', () => {
+        if (res.statusCode !== 200) return resolve(null);
+        try { resolve(JSON.parse(body)); } catch { resolve(null); }
+      });
+      res.on('error', () => resolve(null));
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+function probeHttpEndpoint(port, endpoint = '/api/runtime', timeout = 800) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: endpoint, timeout }, (res) => {
+      res.resume();
+      res.on('end', () => resolve({ reachable: true, status: res.statusCode }));
+    });
+    req.on('error', () => resolve({ reachable: false, status: null }));
+    req.on('timeout', () => { req.destroy(); resolve({ reachable: false, status: null }); });
+  });
+}
+
+function requestRuntimeShutdown(port, controlToken, timeout = 1_500) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ controlToken });
+    const req = http.request({
+      host: '127.0.0.1', port, path: '/api/runtime/shutdown', method: 'POST', timeout,
+      headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
+    }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode === 202));
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(body);
+  });
+}
+
+async function waitForRuntimeToStop(port, timeout = 3_000) {
+  const until = Date.now() + timeout;
+  while (Date.now() < until) {
+    if (!await probeRuntime(port, 150)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return false;
+}
+
+async function inspectConsoleRuntime({ cwd = process.cwd(), preferredPort = Number(process.env.CONSOLE_PORT) || 7411 } = {}) {
+  const receiptFile = runtimeReceiptPath(cwd);
+  if (!fs.existsSync(receiptFile)) {
+    const endpoint = await probeHttpEndpoint(preferredPort);
+    return endpoint.reachable
+      ? { state: 'foreign-port', scope: canonicalScope(cwd), port: preferredPort }
+      : { state: 'not-running', scope: canonicalScope(cwd) };
+  }
+  const receipt = readJSON(receiptFile);
+  if (!validRuntimeReceipt(receipt, receiptFile)) return { state: 'receipt-invalid', scope: canonicalScope(cwd) };
+  const live = await probeRuntime(receipt.port);
+  if (!live) {
+    const endpoint = await probeHttpEndpoint(receipt.port);
+    return endpoint.reachable
+      ? { state: 'legacy-unowned', scope: canonicalScope(cwd), port: receipt.port }
+      : { state: 'stale-receipt', scope: canonicalScope(cwd), port: receipt.port };
+  }
+  if (!sameRuntimeIdentity(live, publicRuntimeIdentity(receipt))) {
+    return { state: 'legacy-unowned', scope: canonicalScope(cwd), port: receipt.port };
+  }
+  const candidate = runtimeIdentity({ port: receipt.port, cwd, pid: receipt.pid, startedAt: receipt.startedAt });
+  const current = sameRuntimeIdentity(live, candidate);
+  return {
+    state: current ? 'current' : 'stale-running',
+    scope: canonicalScope(cwd),
+    port: receipt.port,
+    live,
+    candidate: publicRuntimeIdentity(candidate),
+  };
+}
+
+async function launchConsole({ port = Number(process.env.CONSOLE_PORT) || 7411, open = false, cwd = process.cwd() } = {}) {
+  const status = await inspectConsoleRuntime({ cwd, preferredPort: port });
+  if (status.state === 'current') {
+    const url = `http://127.0.0.1:${status.port}/`;
+    console.log(`\n  🧠  RuvNet Brain — Onboarding Console (already running)\n      ${url}\n`);
+    if (open) openBrowser(url);
+    return { reused: true, port: status.port };
+  }
+
+  if (status.state === 'stale-running') {
+    const receiptFile = runtimeReceiptPath(cwd);
+    const receipt = readJSON(receiptFile);
+    const stopped = validRuntimeReceipt(receipt, receiptFile)
+      && await requestRuntimeShutdown(receipt.port, receipt.controlToken)
+      && await waitForRuntimeToStop(receipt.port);
+    if (stopped) {
+      console.log(`  replacing owned stale Console on port ${receipt.port}…`);
+      return { reused: false, server: startServer({ port: receipt.port, open, cwd }) };
+    }
+    console.error('  owned stale Console did not release its port — starting the current Console separately');
+  }
+
+  if (status.state === 'stale-receipt' || status.state === 'receipt-invalid') {
+    try { fs.unlinkSync(runtimeReceiptPath(cwd)); } catch { /* already gone or unreadable */ }
+  }
+  return { reused: false, server: startServer({ port, open, cwd }) };
+}
 
 const NPX_RUV = /npx\s+(?:-y\s+|--yes\s+)?(?:@claude-flow\/[\w-]+|claude-flow|ruflo|ruvector|ruv-swarm|flow-nexus|metaharness|@metaharness\/[\w-]+|agentic-qe|aqe)(?:@[\w.-]+)?/;
 
@@ -2477,6 +2670,9 @@ function openBrowser(url) {
   }
 }
 function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = false, cwd = process.cwd() } = {}) {
+  const controlToken = crypto.randomBytes(24).toString('hex');
+  let activeRuntime = null;
+  let receiptFile = null;
   const server = http.createServer(async (req, res) => {
     // DNS-rebinding guard: this server binds 127.0.0.1 only. Reject any request whose Host header
     // isn't loopback, so a malicious web page can't rebind a hostname to 127.0.0.1 and read local state.
@@ -2486,6 +2682,19 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
     }
     try {
       const url = req.url.split('?')[0];
+      // This identity endpoint is deliberately cache-independent and never exposes the shutdown
+      // token. The private receipt is ownership proof; this endpoint only proves which generation
+      // is listening before reuse or replacement.
+      if (req.method === 'GET' && url === '/api/runtime') {
+        return sendJSON(res, activeRuntime ? 200 : 503, activeRuntime || { error: 'runtime not ready' });
+      }
+      if (req.method === 'POST' && url === '/api/runtime/shutdown') {
+        const body = await readBody(req);
+        if (body.controlToken !== controlToken) return sendJSON(res, 403, { error: 'bad or missing control token' });
+        sendJSON(res, 202, { ok: true, stopping: true });
+        setImmediate(() => server.close());
+        return;
+      }
       // Heavy read-models: ALWAYS cache-first (fast=1 or not — both land here now). The handler
       // never blocks the event loop; kickRefresh() recomputes in a detached child. See writeCache/
       // serveCached above and the --refresh-cache CLI mode. TOKEN is injected at serve time so it
@@ -2582,9 +2791,14 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
     if (e.code === 'EADDRINUSE' && port !== 0) { console.error(`  port ${port} busy — trying a free one…`); startServer({ port: 0, open, cwd }); }
     else { console.error(`  server error: ${e.message}`); process.exit(1); }
   });
+  server.on('close', () => {
+    if (receiptFile) removeOwnedRuntimeReceipt(receiptFile, controlToken);
+  });
   server.listen(port, '127.0.0.1', () => {
     const actual = server.address().port;
     const url = `http://127.0.0.1:${actual}/`;
+    activeRuntime = runtimeIdentity({ port: actual, cwd });
+    receiptFile = writeRuntimeReceipt({ ...activeRuntime, controlToken });
     console.log(`\n  🧠  RuvNet Brain — Onboarding Console`);
     console.log(`      ${url}`);
     console.log(`      read-only until you click · token-gated · ^C to stop\n`);
@@ -2629,6 +2843,7 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('onboarding-consol
   const args = process.argv.slice(2);
   if (args.includes('--print-state')) { console.log(JSON.stringify(gatherState(process.cwd()), null, 2)); }
   else if (args.includes('--print-stack')) { console.log(JSON.stringify(gatherStack(), null, 2)); }
+  else if (args.includes('--runtime-status')) { console.log(JSON.stringify(await inspectConsoleRuntime())); }
   else if (args.includes('--refresh-cache')) {
     // Runs as a DETACHED CHILD of the server (kickRefresh) — or standalone to pre-warm. Computes the
     // heavy read-models HERE, in a separate process, so the server's event loop is never blocked, and
@@ -2705,26 +2920,13 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('onboarding-consol
     process.exit(0);
   }
   else if (args.includes('--serve') || args.length === 0) {
-    // Hitting the command again should land on the console you already have, not spawn a second
-    // server on a random port and a second tab. If one is already up, just point the browser at it.
-    const port = Number(process.env.CONSOLE_PORT) || 7411;
-    const open = args.includes('--open');
-    const url = `http://127.0.0.1:${port}/`;
-    const alive = await new Promise((resolve) => {
-      const req = http.get({ host: '127.0.0.1', port, path: '/', timeout: 800 }, (res) => {
-        let b = ''; res.on('data', (c) => { b += c; if (b.length > 4096) res.destroy(); });
-        res.on('end', () => resolve(res.statusCode === 200 && /RuvNet Brain/.test(b)));
-        res.on('error', () => resolve(false));
-      });
-      req.on('error', () => resolve(false));
-      req.on('timeout', () => { req.destroy(); resolve(false); });
+    await launchConsole({
+      port: Number(process.env.CONSOLE_PORT) || 7411,
+      open: args.includes('--open'),
+      cwd: process.cwd(),
     });
-    if (alive) {
-      console.log(`\n  🧠  RuvNet Brain — Onboarding Console (already running)\n      ${url}\n`);
-      if (open) openBrowser(url);
-    } else { startServer({ port, open, cwd: process.cwd() }); }
   }
-  else { console.log(`\n  onboarding-console — the RuvNet Brain configure page\n\n    --serve [--open]   start the local server (and open your browser)\n    --print-state      print the read-only state JSON and exit (for tests)\n    --print-stack      print the stack audit JSON and exit\n`); }
+  else { console.log(`\n  onboarding-console — the RuvNet Brain configure page\n\n    --serve [--open]   start or safely replace the scoped local server\n    --runtime-status   print candidate, receipt, and live runtime status\n    --print-state      print the read-only state JSON and exit (for tests)\n    --print-stack      print the stack audit JSON and exit\n`); }
 }
 
 export {
@@ -2747,3 +2949,4 @@ export {
 // Exported for the cross-project cache-isolation test (console-cache-scope.test.mjs). serveCached's
 // scopeKey is the guard that stops one project's cached state being served for another.
 export { serveCached, writeCache, kickRefresh };
+export { inspectConsoleRuntime, launchConsole, runtimeReceiptPath, startServer };

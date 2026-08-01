@@ -3,7 +3,7 @@ id: ADR-013
 title: The Onboarding Console — RuvNet Brain becomes a mirror, an advisor, and only then a configurator
 status: Implemented
 date: 2026-07-14
-updated: 2026-07-30
+updated: 2026-08-01
 updated_source: derived-from-git
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, config, stack, memory-health, savings, safety]
@@ -23,6 +23,15 @@ the ADR-drift this project's own hooks warn about.
 **Updated 2026-07-30** — the Settings surface now distinguishes a working control from a persisted
 preference. A choice is interactive only when a runtime consumes it and the effect can be verified;
 declared-but-unenforced choices remain named with the missing path instead of appearing as switches.
+
+**Updated 2026-08-01** — issue #79 exposed that a detached Console process could outlive an update
+and pass the old branded-root probe while retaining an incompatible API router. The server-side
+lifecycle contract is now explicit: each project scope has a mode-0600 instance receipt, the live
+server exposes a non-secret `/api/runtime` identity, reuse requires an exact API/source identity
+match, and only a receipt-proven instance accepts token-authenticated graceful shutdown. A legacy or
+foreign listener is never killed; the current Console binds a free port and persists that instance
+for subsequent reuse. The installer/update transaction that stages `.console-runtime` remains part
+of the issue #77/#79 release-convergence lane and is not claimed by this server-side change.
 
 ## Context
 
