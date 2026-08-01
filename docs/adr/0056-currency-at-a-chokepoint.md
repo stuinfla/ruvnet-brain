@@ -3,7 +3,7 @@ id: ADR-056
 title: Pay the debt, then wire the gate — document currency without a ratchet
 status: Proposed
 date: 2026-07-27
-updated: 2026-07-30
+updated: 2026-08-01
 impl: wired
 governs:
   - scripts/wired-check.mjs
@@ -19,7 +19,7 @@ relates: [ADR-034, ADR-024, ADR-037, ADR-009, ADR-020]
 # ADR-056: Pay the debt, then wire the gate
 
 **Status**: Proposed
-**Date**: 2026-07-27 · **Last updated**: 2026-07-30 · **Why**: v3 closes a changed-scope escape that
+**Date**: 2026-07-27 · **Last updated**: 2026-08-01 · **Why**: v3 closes a changed-scope escape that
 let governed code move without bringing its ADR into the blocking set; v2 followed an adversarial
 duel in which v1 scored
 scored 33/100 and 52/100 by two independent models and largely rewritten; record in §Duel
@@ -306,6 +306,7 @@ fix** — which is the one section that was already built.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-01 | Classified `scripts/fix-workstream.mjs` as an explicit session-supervised standalone CLI after the clean integration gate correctly rejected it as unreachable. | ADR-050 requires an isolated worktree and integration-owner handoff for non-trivial fixes. `scripts/fix-workstream.mjs` implements that human/agent-invoked boundary and deliberately has no unattended caller; `tests/unit/fix-workstream.test.mjs` proves it cannot merge, push, publish, delete, or clean worktrees. |
 | 2026-07-30 | Closed the `--changed` governed-path escape and corrected the pre-push success message boundary. | `scripts/doc-currency.mjs` previously intersected the diff only with ADR filenames, so changed governed code could print global BLOCK findings yet leave the scoped set empty and return 0. The scope now includes documents whose resolved `governs:` paths intersect the diff; `tests/unit/doc-currency.test.mjs` pins both governed-path failure and unrelated-change pass. `scripts/verify-channels.mjs` now reports only channel-check success before currency runs, while `scripts/git-hooks/pre-push` owns the final whole-gate success. |
 | 2026-07-28 | Removed the obsolete `ground-before-write` and `grounding-stamp` exemptions from `scripts/wired-check.mjs`. | Both hooks are now shipped through `plugin/hooks/hooks.json` and `plugin/hooks/codex-hooks.json`; retaining the inert exemptions made the same report call them both exempt and wired. `npm run wired:check` now reports 0 unwired without that contradiction. |
 | 2026-07-27 | Initial draft (v1) | Owner's three rules. Audit found all three pre-existing and unfired: `md-stamp.mjs:11`, missing `~/.claude/hooks/ascii-svg-auto-sync.sh`, `package.json:35` defined-but-uncalled. ADR-034's `impl: unbuilt` refuted by `scripts/doc-currency.mjs` |
