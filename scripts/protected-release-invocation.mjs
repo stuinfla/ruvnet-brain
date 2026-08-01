@@ -47,6 +47,8 @@ export function validateProtectedPublishInvocation({ root = process.cwd(), env =
     if (receipt.sha !== expectedSha) failures.push('candidate receipt SHA mismatch');
     if (receiptDigest !== expectedDigest) failures.push('candidate artifact digest mismatch');
     if (receipt.version !== expectedVersion) failures.push('candidate version mismatch');
+    const expectedMode = receipt.phase === 'stabilization-candidate' ? 'stabilization' : 'strict';
+    if (env.RUVNET_RELEASE_MODE !== expectedMode) failures.push(`release mode must be ${expectedMode} for this receipt`);
 
     const artifactPath = path.resolve(root, String(receipt.artifact?.path || '.missing-artifact'));
     if (!(artifactPath === evidenceRoot || artifactPath.startsWith(`${evidenceRoot}${path.sep}`))) {

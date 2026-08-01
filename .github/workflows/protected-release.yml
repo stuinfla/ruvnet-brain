@@ -1,17 +1,13 @@
 name: protected-release
 
-# This is the only workflow allowed to invoke the repository's one publisher. The evidence run
-# creates the append-only receipts; this workflow only verifies and carries them across the
-# reviewer-protected production boundary. Missing evidence is a hard failure, never a warning.
+# The candidate CI produces one immutable package + receipt. This workflow proves that exact
+# candidate is current main, carries it across the reviewer-protected Production boundary, and is
+# the only workflow allowed to invoke the publisher.
 on:
   workflow_dispatch:
     inputs:
       candidate_sha:
-        description: Full 40-character candidate commit SHA
-        required: true
-        type: string
-      artifact_sha256:
-        description: SHA-256 of the sealed candidate artifact (64 lowercase hex characters)
+        description: Full 40-character SHA currently at origin/main
         required: true
         type: string
       version:
@@ -19,7 +15,7 @@ on:
         required: true
         type: string
       release_qe_run_id:
-        description: Successful ci run that produced the exact-SHA release-evidence artifact
+        description: Successful exact-SHA ci run that uploaded release-evidence
         required: true
         type: string
 
@@ -34,7 +30,6 @@ concurrency:
 env:
   EXPECTED_VERSION: 4.0.4
   EXPECTED_SHA: ${{ inputs.candidate_sha }}
-  EXPECTED_DIGEST: ${{ inputs.artifact_sha256 }}
 
 jobs:
   release-qe-proof:
@@ -51,10 +46,24 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'candidate SHA must be 40 lowercase hex characters' >&2; exit 1; }
-          [[ "$EXPECTED_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo 'artifact digest must be 64 lowercase hex characters' >&2; exit 1; }
           [[ "${{ inputs.version }}" == "$EXPECTED_VERSION" ]] || { echo 'candidate version mismatch' >&2; exit 1; }
 
-      - name: Prove release-qe completed successfully on the exact candidate SHA
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the candidate to be the current immutable main commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || { echo 'candidate checkout SHA mismatch' >&2; exit 1; }
+          test "$(git rev-parse origin/main)" = "$EXPECTED_SHA" || { echo 'candidate is not current origin/main' >&2; exit 1; }
+          test -z "$(git status --porcelain)" || { echo 'candidate checkout is dirty' >&2; exit 1; }
+
+      - name: Prove exact-SHA CI and release-qe completed successfully
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_QE_RUN_ID: ${{ inputs.release_qe_run_id }}
@@ -63,21 +72,20 @@ jobs:
           set -euo pipefail
           gh run view "$RELEASE_QE_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
-            --json workflowName,headSha,status,conclusion,jobs > "$RUNNER_TEMP/release-qe-run.json"
+            --json databaseId,workflowName,headSha,status,conclusion,jobs > "$RUNNER_TEMP/release-qe-run.json"
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          const env = process.env;
           const run = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/release-qe-run.json', 'utf8'));
-          const ok = run.workflowName == "ci"
-            && run.headSha == env.EXPECTED_SHA
-            && run.status == "completed"
-            && run.conclusion == "success"
-            && run.jobs?.some(({ name, status, conclusion }) => name == "release-qe"
-              && status == "completed" && conclusion == "success");
+          const ok = run.workflowName === 'ci'
+            && run.headSha === process.env.EXPECTED_SHA
+            && run.status === 'completed'
+            && run.conclusion === 'success'
+            && run.jobs?.some(({ name, status, conclusion }) => name === 'release-qe'
+              && status === 'completed' && conclusion === 'success');
           if (!ok) throw new Error('release-qe proof is absent, red, pending, or bound to another SHA');
           NODE
 
-      - name: Download machine-generated candidate receipt and sealed artifact
+      - name: Download CI-produced candidate receipt and sealed package
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
@@ -85,48 +93,32 @@ jobs:
           name: release-evidence-${{ inputs.candidate_sha }}
           path: release-evidence
 
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.candidate_sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Verify candidate receipt, source, artifact bytes, and version lockstep
+      - name: Verify machine-produced receipt, package bytes, and version lockstep
         id: identity
         shell: bash
         run: |
           set -euo pipefail
           test -s release-evidence/candidate-receipt.json
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || { echo 'candidate checkout SHA mismatch' >&2; exit 1; }
-          test -z "$(git status --porcelain)" || { echo 'candidate checkout is dirty' >&2; exit 1; }
           test "$(node -p "require('./package.json').version")" = "$EXPECTED_VERSION" || { echo 'candidate version mismatch' >&2; exit 1; }
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const receipt = JSON.parse(fs.readFileSync('release-evidence/candidate-receipt.json', 'utf8'));
-          const digest = String(receipt.artifact?.sha256 || '').replace(/^sha256:/, '');
-          if (receipt.sha !== process.env.EXPECTED_SHA) throw new Error('candidate receipt SHA mismatch');
-          if (digest !== process.env.EXPECTED_DIGEST) throw new Error('candidate artifact digest mismatch');
-          if (receipt.version !== process.env.EXPECTED_VERSION) throw new Error('candidate version mismatch');
-          if (!receipt.artifact?.path) throw new Error('candidate artifact path missing');
-          const artifactPath = String(receipt.artifact.path).replaceAll('\\', '/');
-          if (!artifactPath.startsWith('release-evidence/') || artifactPath.includes('../')) {
-            throw new Error('candidate artifact path must remain inside release-evidence');
-          }
-          fs.writeFileSync(process.env.RUNNER_TEMP + '/artifact-path', artifactPath + '\n');
-          NODE
-          artifact_path="$(cat "$RUNNER_TEMP/artifact-path")"
-          test -f "$artifact_path" || { echo 'sealed candidate artifact missing' >&2; exit 1; }
-          test "$(shasum -a 256 "$artifact_path" | awk '{print $1}')" = "$EXPECTED_DIGEST" || { echo 'candidate artifact digest mismatch' >&2; exit 1; }
           node scripts/release-proof.mjs --candidate release-evidence/candidate-receipt.json
-          {
-            echo "candidate_sha=$EXPECTED_SHA"
-            echo "artifact_sha256=$EXPECTED_DIGEST"
-            echo "version=$EXPECTED_VERSION"
-          } >> "$GITHUB_OUTPUT"
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const receipt = JSON.parse(fs.readFileSync('release-evidence/candidate-receipt.json', 'utf8'));
+          if (receipt.sha !== process.env.EXPECTED_SHA) throw new Error('candidate receipt SHA mismatch');
+          if (receipt.version !== process.env.EXPECTED_VERSION) throw new Error('candidate version mismatch');
+          const relative = String(receipt.artifact?.path || '').replaceAll('\\', '/');
+          if (!relative.startsWith('release-evidence/') || relative.includes('../')) throw new Error('candidate artifact path escaped release-evidence');
+          const artifact = path.resolve(relative);
+          const digest = crypto.createHash('sha256').update(fs.readFileSync(artifact)).digest('hex');
+          if (digest !== String(receipt.artifact.sha256).replace(/^sha256:/, '')) throw new Error('candidate artifact digest mismatch');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `candidate_sha=${receipt.sha}\nartifact_sha256=${digest}\nversion=${receipt.version}\n`);
+          NODE
 
       - name: Carry immutable candidate evidence to the protected publisher
         uses: actions/upload-artifact@v4
@@ -158,10 +150,11 @@ jobs:
           node-version: '20'
           registry-url: https://registry.npmjs.org
 
-      - name: Install current Claude Code and Codex host CLIs into the ephemeral runner
+      - name: Install candidate and current host CLIs
         shell: bash
         run: |
           set -euo pipefail
+          npm ci --no-audit --no-fund
           npm install --global --prefix "$RUNNER_TEMP/host-clis" \
             @anthropic-ai/claude-code@latest \
             @openai/codex@latest
@@ -173,27 +166,39 @@ jobs:
           name: sealed-candidate-${{ needs.release-qe-proof.outputs.candidate_sha }}
           path: release-evidence
 
-      - name: Revalidate the candidate after reviewer approval
+      - name: Restore immutable RVF assets from the last public generation
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          test -s release-evidence/candidate-receipt.json
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || { echo 'candidate checkout SHA mismatch' >&2; exit 1; }
-          test "${{ needs.release-qe-proof.outputs.artifact_sha256 }}" = "$EXPECTED_DIGEST" || { echo 'candidate artifact digest mismatch' >&2; exit 1; }
-          test "${{ needs.release-qe-proof.outputs.version }}" = "$EXPECTED_VERSION" || { echo 'candidate version mismatch' >&2; exit 1; }
-          node scripts/release-authority.mjs
-          node scripts/release-proof.mjs --candidate release-evidence/candidate-receipt.json
+          mkdir -p "$RUNNER_TEMP/release-seed"
+          gh release download v4.0.3 --repo "$GITHUB_REPOSITORY" --pattern ruvnet-brain.zip --dir "$RUNNER_TEMP/release-seed"
+          unzip -q "$RUNNER_TEMP/release-seed/ruvnet-brain.zip" -d "$RUNNER_TEMP/release-seed/extracted"
+          asset="$(find "$RUNNER_TEMP/release-seed/extracted" -name '*.big.rvf' -print -quit)"
+          test -n "$asset" || { echo 'previous public generation contains no RVF assets' >&2; exit 1; }
+          dirname "$asset" > "$RUNNER_TEMP/release-assets-path"
 
-      - name: Invoke the one canonical publisher
+      - name: Revalidate after approval and invoke the one canonical publisher
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
+          RUVNET_SIGNING_KEY: ${{ secrets.RUVNET_SIGNING_KEY }}
+          RUVNET_RELEASE_MODE: stabilization
+          RUVNET_RELEASE_ASSETS_FILE: ${{ runner.temp }}/release-assets-path
           RUVNET_CANDIDATE_RECEIPT: release-evidence/candidate-receipt.json
           RUVNET_EXPECTED_SHA: ${{ needs.release-qe-proof.outputs.candidate_sha }}
           RUVNET_EXPECTED_ARTIFACT_SHA256: ${{ needs.release-qe-proof.outputs.artifact_sha256 }}
           RUVNET_EXPECTED_VERSION: ${{ needs.release-qe-proof.outputs.version }}
           RUVNET_PUBLICATION_RECEIPT: release-evidence/publication-receipt.json
-        run: node scripts/release.mjs --publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUVNET_RELEASE_ASSETS="$(cat "$RUVNET_RELEASE_ASSETS_FILE")"
+          export RUVNET_RELEASE_ASSETS
+          node scripts/release-authority.mjs
+          node scripts/release-proof.mjs --candidate "$RUVNET_CANDIDATE_RECEIPT"
+          node scripts/release.mjs --publish
 
       - name: Require the machine-generated publication seal
         shell: bash

@@ -369,4 +369,27 @@ jobs:
       - name: Version lockstep at source
         run: npm run version:check
       - name: Exact-artifact release QE
-        run: npm exec -- vitest run --config tests/qe/release/vitest.config.mjs --reporter=dot --maxWorkers=1
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-evidence"
+          npm exec -- vitest run \
+            --config tests/qe/release/vitest.config.mjs \
+            --reporter=json \
+            --outputFile="$RUNNER_TEMP/release-evidence/release-qe.json" \
+            --maxWorkers=1
+      - name: Seal the exact stabilization candidate
+        run: |
+          npm audit --audit-level=high --json > "$RUNNER_TEMP/release-evidence/npm-audit.json"
+          npm pack --json --pack-destination "$RUNNER_TEMP/release-evidence" > "$RUNNER_TEMP/release-evidence/npm-pack.json"
+          artifact="$RUNNER_TEMP/release-evidence/$(node -p "JSON.parse(require('fs').readFileSync(process.env.RUNNER_TEMP + '/release-evidence/npm-pack.json'))[0].filename")"
+          node scripts/stabilization-receipt.mjs \
+            --artifact "$artifact" \
+            --qe "$RUNNER_TEMP/release-evidence/release-qe.json" \
+            --audit "$RUNNER_TEMP/release-evidence/npm-audit.json" \
+            --out "$RUNNER_TEMP/release-evidence/candidate-receipt.json"
+      - name: Upload the exact candidate for the protected publisher
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/release-evidence/
+          if-no-files-found: error
+          retention-days: 30

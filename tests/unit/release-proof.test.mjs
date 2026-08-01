@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import {
   REQUIRED_CHECKS,
   evaluateCandidateReceipt,
+  evaluateStabilizationCandidateReceipt,
   evaluateLivePreflight,
   evaluatePublicationReceipt,
   latestRunsByWorkflow,
@@ -12,6 +13,26 @@ const require = createRequire(import.meta.url);
 const VERSION = require('../../package.json').version;
 const SHA = 'a'.repeat(40);
 const DIGEST = `sha256:${'b'.repeat(64)}`;
+
+function stabilizationCandidate(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    phase: 'stabilization-candidate',
+    mode: 'stabilization',
+    targetScore: 95,
+    scoreClaimed: false,
+    sha: SHA,
+    tree: 'c'.repeat(40),
+    dirty: false,
+    version: VERSION,
+    tag: `v${VERSION}`,
+    sourceVersions: { package: VERSION, claudePlugin: VERSION, codexPlugin: VERSION },
+    artifact: { path: 'release-evidence/ruvnet-brain.tgz', sha256: DIGEST.slice(7), sourceSha: SHA, version: VERSION },
+    security: { status: 'PASS', critical: 0, high: 0 },
+    qe: { status: 'PASS', total: 34, passed: 34, failed: 0, skipped: 0 },
+    ...overrides,
+  };
+}
 
 function greenCandidate(overrides = {}) {
   return {
@@ -123,6 +144,24 @@ describe('release-proof candidate authority', () => {
     expect(evaluateCandidateReceipt(receipt).failures.map((failure) => failure.code))
       .toContain('VERSION_IDENTITY_MISMATCH');
   });
+});
+
+describe('release-proof stabilization authority', () => {
+  it('accepts a transparent stabilization receipt without claiming 95', () => {
+    expect(evaluateStabilizationCandidateReceipt(stabilizationCandidate())).toMatchObject({ verdict: 'PASS', failures: [] });
+    expect(evaluateCandidateReceipt(stabilizationCandidate()).verdict).toBe('PASS');
+  });
+
+  it.each([
+    ['fake 95 claim', { scoreClaimed: true }, 'STABILIZATION_SCORE_MISREPRESENTED'],
+    ['missing score declaration', { scoreClaimed: undefined }, 'STABILIZATION_SCORE_MISREPRESENTED'],
+    ['red QE', { qe: { status: 'FAIL', total: 34, passed: 33, failed: 1, skipped: 0 } }, 'QE_NOT_PASS'],
+    ['inconsistent QE total', { qe: { status: 'PASS', total: 34, passed: 33, failed: 0, skipped: 0 } }, 'QE_NOT_PASS'],
+    ['red security', { security: { status: 'FAIL', critical: 0, high: 1 } }, 'SECURITY_NOT_PASS'],
+  ])('fails closed on %s', (_name, override, code) => {
+    expect(evaluateStabilizationCandidateReceipt(stabilizationCandidate(override)).failures.map((item) => item.code)).toContain(code);
+  });
+
 });
 
 describe('release-proof publication authority', () => {

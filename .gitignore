@@ -4,6 +4,7 @@ node_modules/
 
 # build artifacts (regenerable in seconds via scripts/build-bundle.mjs)
 dist/
+/release-evidence/
 
 # external source clones (themselves git repos; regenerable via self-update --include-new)
 clones/

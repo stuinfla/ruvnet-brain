@@ -254,7 +254,9 @@ if (PUBLISH) {
     }
     console.log(c.dim('  resume existing signed release assets for the pending candidate'));
   } else {
-    runOrDie('build release bundle', process.execPath, ['scripts/build-bundle.mjs', '--version', tag]);
+    const buildArgs = ['scripts/build-bundle.mjs', '--version', tag];
+    if (process.env.RUVNET_RELEASE_ASSETS) buildArgs.push('--assets', process.env.RUVNET_RELEASE_ASSETS);
+    runOrDie('build release bundle', process.execPath, buildArgs);
     runOrDie('sign release bundle', process.execPath, ['scripts/sign-bundle.mjs', '--bundle', zip]);
   }
   for (const asset of assets) {

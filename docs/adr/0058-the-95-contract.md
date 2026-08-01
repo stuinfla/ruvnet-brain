@@ -36,6 +36,7 @@ governs:
   - scripts/release-proof.mjs
   - scripts/release-authority.mjs
   - scripts/protected-release-invocation.mjs
+  - scripts/stabilization-receipt.mjs
   - scripts/publication-receipt.mjs
   - scripts/release.mjs
   - scripts/self-update.mjs
@@ -65,12 +66,16 @@ scoped evidence instead of widening; the same query passes in 0.671s, with 118/1
 lineage, zero/skipped/todo work, open issues, exact-SHA GitHub failures, artifact/host/grader binding
 splits, missing self-RVF, deadline-margin breaches, and public-byte drift. GitHub now enforces required
 checks for admins and protects `Production – ruvnet-brain` with required review and no admin bypass.
-The 4.0.4 candidate also has a checked-in protected-release transport: dispatch identity is a full
-candidate SHA, one artifact SHA-256, exact version 4.0.4, and the successful exact-SHA CI run whose
-named `release-qe` job produced the receipt. The publisher cannot start until that proof succeeds,
-then crosses `Production – ruvnet-brain` for reviewer approval and revalidates the same seal before
-invoking the one publisher. `scripts/release.mjs --publish` rejects local and differently named
-workflow invocations before remote mutation. After publication, `scripts/publication-receipt.mjs`
+The 4.0.4 candidate exposed a release-graph defect after merge: the protected workflow consumed a
+`release-evidence-<sha>` artifact that CI never produced. The corrected transport gives the
+`release-qe` job one responsibility: test, pack, and upload an append-only stabilization receipt
+containing only facts that job actually observed. The protected workflow derives the package digest
+from those bytes, requires the candidate to equal current `origin/main`, and independently proves the
+exact-SHA CI run is complete and green. It then crosses `Production – ruvnet-brain` for reviewer
+approval before invoking the sole publisher. The stabilization receipt explicitly makes no >=95
+claim; the strict two-grader >=95 promotion contract remains unsatisfied and remains a separate
+program. `scripts/release.mjs --publish` rejects local, differently named, and receipt/mode-mismatched
+invocations before remote mutation. After publication, `scripts/publication-receipt.mjs`
 independently downloads the sealed package from npm and the GitHub Release, requires both byte
 digests and channel identities to match the candidate, installs the public npm bytes into virgin
 Claude and Codex homes, exercises the installed MCP self-store within its deadline, and runs the
@@ -81,11 +86,9 @@ D4 has a current Codex-backed
 brain-off-treated causal failures in `2b39f68`. D3 now executes its real signal lifecycle from the
 release vector (`2984783`). The packed installer, Top-100 harness, routing outcomes, retrieval
 receipts, and structured CLI boundary are committed (`7eb11fb`, `b48fb3b`, `27cca88`, `859a16d`,
-`e089074`, `4ad464e`). This is still not a release verdict: the worktree is dirty and split from
-remote main, five issues remain open, remote CI/Windows UX are red, the installed 4.0.1 registry
-lacks the Brain self-store, WSL2 and the published artifact remain unproven, Agentic QE currently
-reports a vacuous 0-test pass through its CLI, and both external graders have not re-run on one clean
-published candidate.
+`e089074`, `4ad464e`). This ADR remains **Proposed**: a stabilization release is not a 95 verdict.
+The public artifact, post-publication host installs, installed self-RVF, WSL2, and both independent
+>=95 graders remain unproven until their exact-artifact receipts exist.
 
 The post-merge run of PR #70 then caught another oracle defect before publication: the Windows
 PowerShell stranger path measured a real cold SessionStart at 4597ms, but D6's dedicated gate only
