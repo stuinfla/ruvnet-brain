@@ -91,6 +91,7 @@ if (initialDirty) {
 // A. version single source of truth
 step('A', 'version single-source-of-truth agrees across every surface');
 runOrDie('version sync', process.execPath, ['scripts/sync-version.mjs', '--check']);
+runOrDie('one protected publisher', process.execPath, ['scripts/release-authority.mjs']);
 
 // WIRED-CHECK — refuses to ship a module with zero callers.
 //

@@ -351,3 +351,22 @@ jobs:
         env:
           REQUIRE_BRAIN: '1'
         run: npm test
+
+  release-qe:
+    name: release-qe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact candidate dependencies
+        run: npm ci --no-audit --no-fund
+      - name: One protected publisher
+        run: node scripts/release-authority.mjs
+      - name: Version lockstep at source
+        run: npm run version:check
+      - name: Exact-artifact release QE
+        run: npm exec -- vitest run --config tests/qe/release/vitest.config.mjs --reporter=dot --maxWorkers=1

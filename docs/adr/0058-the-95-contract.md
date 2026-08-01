@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-07-31
+updated: 2026-08-01
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -31,6 +31,11 @@ governs:
   - scripts/qe/card-lane-gate.mjs
   - scripts/release-vector.mjs
   - scripts/release-proof.mjs
+  - scripts/release-authority.mjs
+  - scripts/release.mjs
+  - scripts/self-update.mjs
+  - scripts/nightly-wrapper.sh
+  - .github/workflows/ci.yml
   - plugin/skills/release-proof/SKILL.md
   - plugin/skills/release-proof/scripts/release-proof.mjs
   - tests/qe/gpt56/live-brain-search.test.mjs
@@ -39,7 +44,7 @@ governs:
 # ADR-058: The 95 contract
 
 **Status**: Proposed
-**Date**: 2026-07-27 · **Last updated**: 2026-07-31 · **Why**: the public 4.0.1 artifact exposed
+**Date**: 2026-07-27 · **Last updated**: 2026-08-01 · **Why**: the public 4.0.1 artifact exposed
 that QE-BRN-001 existed in the written master plan but was absent from the executable critical-risk
 map and release vector; the live `search_ruvnet` worker consequently timed out without blocking
 publication.
@@ -331,6 +336,7 @@ correct: **the strong claim was the defect.**
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-01 | Issue #77 tightened the proposed release authority around one exact product generation; this remains candidate enforcement, not a shipped release verdict. `self-update.mjs` is rebuild-only with its dead duplicate publisher removed, the nightly wrapper cannot pass `--publish` or turn a changed tag plus nonzero exit into success, CI runs a named `release-qe` job, and release receipts reject any package/Claude/Codex/bundle/installed-host version split. | The public v4.0.3 label advanced while npm and both host manifests remained v4.0.2. Digest binding alone could not reject that class: the receipt validator previously ignored host versions. Failure-first tests now kill nine candidate splits, seven public splits, a reintroduced second publisher, and the former nightly false-success branch. Publication and exact public-artifact proof remain pending. |
 | 2026-07-31 | Tightened the D6 candidate back under the existing 4,096-byte stdout contract without changing a threshold: redundant first-load prose was shortened in `session-start-core.mjs`, while every offered choice and action remains live. | The prior packed PR head failed honestly at 4,129 bytes on macOS and 4,118 bytes on Ubuntu. The corrected real packed macOS scenario passed 76/76 registered firings; focused tests passed 106/106, the plugin battery passed 60/60, and the registered wall-time gate passed at 208ms cold, 143ms p95, and 146ms max. Cross-platform CI is required again on the committed correction before release. |
 | 2026-07-31 | D4 was refreshed after `plugin/scripts/hook-shim.mjs` became the single Node SessionStart route; both independent lessons and all four causal mutants were regenerated instead of carrying evidence across a load-bearing shim change. | Source SHA `535c6ec`: memory-search-query passed 3/3 treated versus 0/3 control, hooks-post-task-persistence passed 3/3 versus 0/3, and delete-lesson plus brain-off-treated each collapsed both traps to 0/1. Every treated success executed the real global Ruflo command and produced the required retrieval/persistence outcome; both `--check-portfolio` and `--check-mutants` return PASS. Updated artifacts are the six `data/learning-replay*-result.json` files; model `gpt-5.6-sol`, cost $0. |
 | 2026-07-31 | D6 now measures a host-neutral native Node SessionStart authority; the checked-in p95 and absolute-fail budgets are unchanged. Governance follows the authority into `plugin/scripts/hook-shim.mjs` and `plugin/scripts/session-start-core.mjs` instead of treating the compatibility shell trampoline as the whole implementation. | The root-cause trace separated **4709ms of pre-body Git Bash variance** from an **879ms hook body**. The native core and shell compatibility surface passed **5/5 full-parity cases**, and the adjacent focused suite passed **141/141**. The real registered local gate measured cold **250ms**, p95 **205ms**, max **220ms**, with no threshold relaxation in `kb/card-lane-budget.json#sessionStart` or `scripts/qe/session-start-gate.mjs`. **Windows packed CI remains pending**; these local and parity results are candidate evidence, not an exact-SHA packed-Windows green verdict. |

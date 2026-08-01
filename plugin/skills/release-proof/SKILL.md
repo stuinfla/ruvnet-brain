@@ -17,13 +17,15 @@ green.
 4. Reject any test/QE result with zero tests, skips, todos, unknowns, pending jobs, or failures.
 5. Require two distinct independent graders scoring at least 95, each bound to the SHA and digest.
 6. Install the sealed artifact into virgin Claude Code and Codex homes; test their real entrypoints.
-7. Require the active Brain registry to contain the `ruvnet-brain` RVF store and require narrow,
+7. Require the source package, Claude manifest, Codex manifest, packed npm version, bundle
+   `brainVersion`/`releaseTag`, and both installed host versions to identify one exact generation.
+8. Require the active Brain registry to contain the `ruvnet-brain` RVF store and require narrow,
    broad, and concurrent cited searches to complete within 80% of their deadline.
-8. Publish only through the protected release workflow. Never run `npm publish` or `gh release
+9. Publish only through the protected release workflow. Never run `npm publish` or `gh release
    create` locally.
-9. After publication, download npm and GitHub artifacts, compare their bytes with the seal, install
+10. After publication, download npm and GitHub artifacts, compare their bytes with the seal, install
    both hosts again, query the active MCP again, and require `published-surface-probe` green.
-10. Close an issue only after posting its acceptance evidence. Never close from source inspection.
+11. Close an issue only after posting its acceptance evidence. Never close from source inspection.
 
 ## Candidate seal
 

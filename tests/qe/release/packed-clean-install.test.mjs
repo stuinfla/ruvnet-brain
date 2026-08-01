@@ -27,6 +27,23 @@ beforeAll(async () => {
 afterAll(() => fs.rmSync(temp, { recursive: true, force: true }));
 
 describe('npm artifact boundary', () => {
+  it('packs one exact product version for npm, Claude Code, and Codex', () => {
+    const packageManifest = JSON.parse(fs.readFileSync(path.join(artifact, 'package.json'), 'utf8'));
+    const claudeManifest = JSON.parse(fs.readFileSync(path.join(artifact, 'plugin/.claude-plugin/plugin.json'), 'utf8'));
+    const codexManifest = JSON.parse(fs.readFileSync(path.join(artifact, 'plugin/.codex-plugin/plugin.json'), 'utf8'));
+    expect({
+      packed: packed.version,
+      package: packageManifest.version,
+      claude: claudeManifest.version,
+      codex: codexManifest.version,
+    }).toEqual({
+      packed: packageManifest.version,
+      package: packageManifest.version,
+      claude: packageManifest.version,
+      codex: packageManifest.version,
+    });
+  });
+
   it('contains both host manifests, hooks, skills, updater, and MCP runtime', () => {
     const files = packed.files.map((entry) => entry.path);
     for (const required of [
