@@ -3,7 +3,7 @@ id: ADR-053
 title: Experience-level QA — test the journey a user actually has, on every host, OS, and install path
 status: Accepted
 date: 2026-07-26
-updated: 2026-07-30
+updated: 2026-08-01
 authors: [Stuart Kerr, Claude Code]
 tags: [qa, testing, experience, cross-platform, codex, agentic-qe, ci]
 supersedes: []
@@ -203,6 +203,7 @@ budgets (500ms vs 1s prompt-path), the stricter number won. v1's matrix section 
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-01 | Re-read the governed experience surfaces after the clean recovery candidate added a serialized `release-qe` job; the journey architecture and its remaining limitations are unchanged. | `.github/workflows/ci.yml` now runs `scripts/release-authority.mjs`, `npm run version:check`, and the exact-artifact release-QE configuration in one named job. No governed scenario, report, UX probe, or performance budget changed, and this local candidate still lacks exact-SHA remote CI and published-byte proof. |
 | 2026-07-30 | Updated the cross-platform Console acceptance oracle to the shipped 4.0.2 controls and made platform-conditional absence an explicit, OS-derived contract. | PR #68’s exact-SHA UX jobs proved `tests/ux/render-probe.mjs` still expected only provider/advocacy plus seven unsupported controls. The product has eight universally owned controls and a ninth nightly control on macOS; the oracle derives that expectation from `process.platform`, never from the product output it is grading. `HOME` and `USERPROFILE` now share the same fixture root so Windows must surface the known npx defect and exercise real save/reload, Fix All, and undo paths rather than silently accepting zero recommendations. |
 | 2026-07-29 | Re-read the governed experience and QE surfaces after the 4.0.0 Agentic-QE expansion; the journey architecture remains valid and now has additional stored adversarial coverage. | Commit `e20cdf2` adds `tests/qe/gpt56/*.test.mjs` and release/security suites while preserving the governed contracts in `tests/experience/scenarios.json`, `scripts/qe/card-lane-gate.mjs`, `scripts/qe/session-start-gate.mjs`, and `.github/workflows/ci.yml`; the focused and full gates recorded in `docs/qe/AGENTIC-QE-4.0-MASTER-PLAN.md` pass. |
 | 2026-07-29 | Added opt-in, builtin-only stage tracing to the cold SessionStart measurement after the first corrected Windows run still exceeded the declared timeout. The trace is silent outside the isolated QE environment and identifies the product stage to fix; it does not relax the budget. | PR #58 run `30423370117`, Windows job `90484507774`; governed paths `plugin/scripts/session-start.sh`, `scripts/qe/session-start-gate.mjs`, and `scripts/qe/ux-suite.mjs`. |
