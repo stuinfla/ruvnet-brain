@@ -33,6 +33,12 @@ foreign listener is never killed; the current Console binds a free port and pers
 for subsequent reuse. The installer/update transaction that stages `.console-runtime` remains part
 of the issue #77/#79 release-convergence lane and is not claimed by this server-side change.
 
+**Updated 2026-08-01** — issue #81 identified the residual project-discovery split left after issue #19.
+`scripts/memory-doctor.mjs` now owns the common and configured candidate-root policy, canonical
+root/store de-duplication, scoped explicit-root behavior, and display naming. The standalone doctor
+and Console import that same policy, so a machine-wide fleet count can no longer mean `~/Code` on
+one surface while the Console scans `~/source`, `~/work`, or user-configured roots on another.
+
 ## Context
 
 RuvNet Brain is a passive knowledge base. It answers when asked. Everything else about

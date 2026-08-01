@@ -43,6 +43,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const HOME = os.homedir();
+const DEFAULT_SCAN_ROOTS = ['Code', 'code', 'src', 'source', 'projects', 'dev', 'work'];
 
 // Telemetry namespaces: high-volume, unembedded, zero-signal. Written by the npx hook calls.
 // Counted separately so "you have 11,000 memories" is never mistaken for "you have 11,000 lessons".
@@ -131,8 +132,35 @@ const q = (db, sql) => {
 // n() returns null for "unknown" and a number only when we genuinely counted. Callers must handle null.
 const n = (r) => (r.ok ? (r.value === null || r.value === '' ? null : parseInt(r.value, 10)) : null);
 
-export function findStores(root = path.join(HOME, 'Code')) {
-  const out = [];
+function realExisting(value) {
+  try { return fs.realpathSync(value); } catch { return null; }
+}
+
+export function candidateRoots({
+  home = HOME,
+  configPath = path.join(home, '.claude', 'ruvnet-brain', 'config.json'),
+} = {}) {
+  let configured = [];
+  try {
+    const value = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (Array.isArray(value.scanRoots)) configured = value.scanRoots.filter((item) => typeof item === 'string' && item.trim());
+  } catch { /* absent or malformed config does not erase the common roots */ }
+
+  const roots = new Set();
+  for (const value of [...DEFAULT_SCAN_ROOTS, ...configured]) {
+    const absolute = path.isAbsolute(value) ? value : path.join(home, value);
+    const canonical = realExisting(absolute);
+    try {
+      if (canonical && fs.statSync(canonical).isDirectory()) roots.add(canonical);
+    } catch { /* missing/non-directory roots are not candidates on this machine */ }
+  }
+  return [...roots].sort();
+}
+
+function storesBelow(root) {
+  const out = new Set();
+  const canonicalRoot = realExisting(root);
+  if (!canonicalRoot) return out;
   const walk = (dir, depth) => {
     if (depth > 4) return;
     let entries;
@@ -142,24 +170,51 @@ export function findStores(root = path.join(HOME, 'Code')) {
       if (e.name === 'node_modules' || e.name === '.git') continue;
       if (e.name === '.swarm') {
         const db = path.join(dir, '.swarm/memory.db');
-        if (fs.existsSync(db)) out.push(db);
+        const canonical = realExisting(db);
+        if (canonical) out.add(canonical);
         continue;
       }
       if (e.name.startsWith('.') && e.name !== '.swarm') continue;
       walk(path.join(dir, e.name), depth + 1);
     }
   };
-  walk(root, 0);
-  // Stores outside ~/Code exist too (~/.claude, ~/cognitum-trader). A one-level glob missed 32 of
-  // these — including Helix — and that miss is exactly how "33/33 verified" got reported.
-  for (const extra of [path.join(HOME, '.claude/.swarm/memory.db'), path.join(HOME, 'cognitum-trader/.swarm/memory.db')]) {
-    if (fs.existsSync(extra) && !out.includes(extra)) out.push(extra);
+  walk(canonicalRoot, 0);
+  return out;
+}
+
+export function findStores(root) {
+  const out = new Set();
+  if (root !== undefined) {
+    for (const db of storesBelow(root)) out.add(db);
+    return [...out].sort();
   }
-  return out.sort();
+
+  for (const candidate of candidateRoots()) {
+    for (const db of storesBelow(candidate)) out.add(db);
+  }
+  // These two stores intentionally sit outside the project-root convention. They belong only to
+  // the fleet-wide no-argument scan; an explicit root must remain genuinely scoped.
+  for (const extra of [path.join(HOME, '.claude/.swarm/memory.db'), path.join(HOME, 'cognitum-trader/.swarm/memory.db')]) {
+    const canonical = realExisting(extra);
+    if (canonical) out.add(canonical);
+  }
+  return [...out].sort();
+}
+
+export function displayStoreName(db, home = HOME) {
+  const canonicalDb = realExisting(db) || path.resolve(db);
+  const project = path.dirname(path.dirname(canonicalDb));
+  const canonicalHome = realExisting(home) || path.resolve(home);
+  const relative = path.relative(canonicalHome, project);
+  if (relative === '') return '~';
+  if (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) {
+    return `~/${relative.split(path.sep).join('/')}`;
+  }
+  return project;
 }
 
 export function diagnose(db) {
-  const name = db.replace(HOME + '/Code/', '').replace(HOME + '/', '~/').replace('/.swarm/memory.db', '');
+  const name = displayStoreName(db);
 
   const ic = q(db, 'PRAGMA integrity_check;');
   if (!ic.ok) {

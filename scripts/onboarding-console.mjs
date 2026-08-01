@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, execFileSync, spawn } from 'node:child_process';
 
 import { auditModel, installedVersion } from './stack-sync.mjs';
-import { findStores, diagnose } from './memory-doctor.mjs';
+import { candidateRoots, findStores, diagnose } from './memory-doctor.mjs';
 import { buildStackRecommendations, buildWiringRecommendations, summarizeWiring, scoreMemoryHealth, buildHealthRecommendations, buildCapabilityRecommendations } from './console-engine.mjs';
 import { planFor } from './remedy-registry.mjs';
 import { auditAll as capabilityAuditAll } from './capability-registry.mjs';
@@ -316,27 +316,9 @@ function robustReadJSON(db, sql) {
 const VENDOR = ['/clones/', '/node_modules/', '/vendor/', '/upstream/', '.claude-backup', '_snapshots',
   '/ruvnet-repos/', '/ruvnet_repos/'];
 
-// ── Candidate scan roots (issue #19) ────────────────────────────────────────────────────────────
-// A single hardcoded `~/Code` silently reports "0" on any machine that keeps projects somewhere
-// else (a reporter's `~/source`, `~/dev`, `~/work`, …) — a confident zero that just means "didn't
-// look in the right place". Scan every root that actually exists on THIS machine, plus a user
-// override in config.json (`scanRoots`, absolute paths or relative to $HOME) when present.
-const DEFAULT_SCAN_ROOTS = ['Code', 'code', 'src', 'source', 'projects', 'dev', 'work'];
-function candidateRoots() {
-  const cfg = readJSON(CONFIG_PATH) || {};
-  const configured = Array.isArray(cfg.scanRoots) && cfg.scanRoots.length > 0
-    ? cfg.scanRoots.map((r) => (path.isAbsolute(r) ? r : path.join(HOME, r)))
-    : DEFAULT_SCAN_ROOTS.map((d) => path.join(HOME, d));
-  const seen = new Set();
-  const roots = [];
-  for (const r of configured) {
-    const resolved = path.resolve(r);
-    if (seen.has(resolved)) continue;
-    seen.add(resolved);
-    try { if (fs.statSync(resolved).isDirectory()) roots.push(resolved); } catch { /* doesn't exist on this machine — skip silently */ }
-  }
-  return roots;
-}
+// memory-doctor.mjs owns candidate-root policy for the standalone CLI, Console, and other callers.
+// Keeping one exported implementation prevents a new project-root convention from fixing one
+// surface while another continues to print a confident but incomplete machine-wide count (#81).
 function findProjects(root) {
   const out = new Set();
   const walk = (dir, depth) => {
@@ -466,19 +448,7 @@ function probeMemory(projectDir) {
 // machine has 100+. That is far too slow to sit on the page's first paint, so it is its own endpoint
 // (/api/memory) and hydrates late, exactly like the stack audit does.
 function scanFleet() {
-  // memory-doctor.mjs's findStores() defaults to ~/Code and cannot be edited here (issue #19) — so
-  // pass it every candidate root explicitly and de-dupe (it also always appends a couple of known
-  // extra paths regardless of root, which the Set below folds together instead of duplicating).
-  const seen = new Set();
-  const stores = [];
-  for (const root of candidateRoots()) {
-    for (const db of findStores(root)) {
-      const resolved = path.resolve(db);
-      if (seen.has(resolved)) continue;
-      seen.add(resolved);
-      stores.push(db);
-    }
-  }
+  const stores = findStores();
   const fleet = [];
   for (const db of stores) {
     const d = diagnose(db);
