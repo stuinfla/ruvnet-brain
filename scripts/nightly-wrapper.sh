@@ -41,8 +41,8 @@ echo $$ > "$LOCK"
 trap 'rm -f "$LOCK"' EXIT
 
 # NIGHTLY_SMOKE=1 — prove this whole chain (launchd -> heartbeat wrapper -> here -> node -> the repo
-# scan -> the log) WITHOUT a multi-hour rebuild or a real Release publish. self-update.mjs is dry-run
-# by default, so dropping --apply --publish exercises every link except the build itself.
+# scan -> the log) WITHOUT a multi-hour rebuild. self-update.mjs is dry-run by default, so dropping
+# --apply exercises every link except the build itself. Publication is never part of this job.
 # WHY IT EXISTS (2026-07-13): the 03:15 fire on 07-12 died before it could even write its own log
 # ("/bin/bash: logs/nightly.log: No such file or directory" — relative path, no working directory) and
 # NOBODY KNEW, because the only way to test this chain was to wait until 03:15 and hope. A scheduled job
@@ -51,40 +51,32 @@ trap 'rm -f "$LOCK"' EXIT
 SMOKE="${NIGHTLY_SMOKE:-0}"
 
 run_once() {
-  local before after rc tail
-  before=$(gh release view --json tagName -q .tagName 2>/dev/null || echo "unknown")
-  { echo "===== nightly-wrapper attempt $1 — $(date -u +%FT%TZ) — before: $before ====="
+  local rc
+  { echo "===== nightly-wrapper rebuild attempt $1 — $(date -u +%FT%TZ) ====="
     if [ "$SMOKE" = "1" ]; then
-      echo "[SMOKE] dry-run: exercising the full chain, NOT building or publishing"
+      echo "[SMOKE] dry-run: exercising the full chain, NOT building"
       /usr/local/bin/node scripts/self-update.mjs --fresh-window 60
     else
-      /usr/local/bin/node scripts/self-update.mjs --apply --publish --fresh-window 60
+      /usr/local/bin/node scripts/self-update.mjs --apply --fresh-window 60
     fi
   } >> "$LOG" 2>&1
   rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "===== attempt $1: FAILED exit $rc — rebuild/candidate preparation did not complete =====" >> "$LOG"
+    return 1
+  fi
   if [ "$SMOKE" = "1" ]; then
     # A smoke run must never claim a real outcome, touch the failure marker, or alter the tag story.
-    if [ "$rc" -eq 0 ]; then echo "===== attempt $1: SMOKE OK — chain intact (no build, no publish) =====" >> "$LOG"; return 0; fi
-    echo "===== attempt $1: SMOKE FAILED exit $rc — the chain is BROKEN, fix before 03:15 =====" >> "$LOG"
-    return 1
-  fi
-  after=$(gh release view --json tagName -q .tagName 2>/dev/null || echo "unknown")
-  if [ "$after" != "$before" ] && [ -n "$after" ] && [ "$after" != "unknown" ]; then
-    echo "===== attempt $1: VERIFIED SUCCESS $before -> $after =====" >> "$LOG"
-    rm -f "$MARKER"
+    echo "===== attempt $1: SMOKE OK — chain intact (no build, no publish) =====" >> "$LOG"
     return 0
-  elif [ "$rc" -eq 0 ]; then
-    echo "===== attempt $1: CLEAN NO-OP, tag unchanged at $after =====" >> "$LOG"
-    rm -f "$MARKER"
-    return 0
-  else
-    echo "===== attempt $1: FAILED exit $rc, tag stuck at $after =====" >> "$LOG"
-    return 1
   fi
+  echo "===== attempt $1: REBUILD COMPLETE — candidate bytes prepared; no release channel was promoted =====" >> "$LOG"
+  rm -f "$MARKER"
+  return 0
 }
 
 # Memory distillation (ADR-174) had gone stale 3 days — same silent-death pattern as everything
-# else tonight. Independent of publish success/failure: mine raw memory_entries into structured
+# else tonight. Independent of rebuild success/failure: mine raw memory_entries into structured
 # episodes/reasoning_patterns on every nightly run. Best-effort, never blocks the real job.
 RUFLO_DAEMON_AUTOSTART=0 ~/.npm-global/bin/ruflo memory distill run --path .swarm/memory.db >> "$LOG" 2>&1 || true
 # Durability: was a one-off manual snapshot before tonight. Now recurring — WAL-safe, rotates
@@ -94,7 +86,7 @@ RUFLO_DAEMON_AUTOSTART=0 ~/.npm-global/bin/ruflo memory backup --db .swarm/memor
 # AgentDB drift canary (2026-07-23, P7 wiring sweep) — scripts/memdb-health.sh existed unwired since
 # 2026-07-09/10, the exact nights idx_bridge_key/idx_bridge_ns corruption recurred 3x on this very DB
 # while in WAL mode. Best-effort, same shape as its brain-health/key-health siblings below: never
-# blocks the real publish, just makes a WAL-mode/integrity regression loud instead of silent.
+# blocks the real rebuild, just makes a WAL-mode/integrity regression loud instead of silent.
 echo "===== memdb-health canary — $(date -u +%FT%TZ) =====" >> "$LOG"
 sh scripts/memdb-health.sh .swarm/memory.db >> "$LOG" 2>&1 \
   && echo "===== memdb-health canary: OK =====" >> "$LOG" \
@@ -109,7 +101,7 @@ sh scripts/memdb-health.sh .swarm/memory.db >> "$LOG" 2>&1 \
 # is the currency gate on the artifact this writes; if this step stops running, that workflow goes red
 # on staleness rather than everything staying quietly green.
 #
-# Best-effort, same shape as the canaries below: it never blocks the publish. Its exit code is not
+# Best-effort, same shape as the canaries below: it never blocks the rebuild. Its exit code is not
 # thrown away though — it is written to the log by name, because 0/1/3/4 are four different facts
 # (PASS / the lesson stopped transferring / the trap was invalidated / it could not be measured) and
 # collapsing them into "failed" is how the seven prior silent-death bugs in this file happened.
@@ -126,7 +118,7 @@ esac
 # ── GONG LAYER 3: brain-health canary (Stuart, 2026-07-12 — the brain must NEVER be dark silently).
 # One real query against the LIVE cache brain every night. forge-ask-all.mjs exits non-zero on a
 # total retrieval failure (all repos erroring) and rings kb/brain-alarm.mjs itself; this adds the
-# guaranteed-nightly cadence plus its own urgent push, independent of the publish job's outcome.
+# guaranteed-nightly cadence plus its own urgent push, independent of the rebuild job's outcome.
 BRAIN_KB="$HOME/.cache/ruvnet-brain/kb"
 if [ -f "$BRAIN_KB/forge-ask-all.mjs" ]; then
   echo "===== brain-health canary — $(date -u +%FT%TZ) =====" >> "$LOG"
@@ -170,11 +162,11 @@ python3 -c "
 import json, datetime
 json.dump({
   'at': datetime.datetime.utcnow().isoformat() + 'Z',
-  'tag_stuck_at': '$AFTER',
+  'last_release_tag_observed': '$AFTER',
   'tail': '''$TAIL''',
   'note': 'Nightly failed twice (immediate + 3min retry). Needs a live session to diagnose — see logs/nightly.log.'
 }, open('$MARKER', 'w'), indent=2)
 "
-sh scripts/notify.sh "🔴 Nightly FAILED twice — needs you" "tag stuck at $AFTER after retry. Last: $TAIL" urgent "rotating_light"
+sh scripts/notify.sh "🔴 Nightly FAILED twice — needs you" "candidate rebuild failed; last release remains $AFTER. Last: $TAIL" urgent "rotating_light"
 echo "===== ESCALATED: marker written at $MARKER =====" >> "$LOG"
 exit 1

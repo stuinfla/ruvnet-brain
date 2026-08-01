@@ -20,7 +20,20 @@ function greenCandidate(overrides = {}) {
     sha: SHA,
     tree: 'c'.repeat(40),
     dirty: false,
-    artifact: { path: '/tmp/ruvnet-brain.tgz', sha256: DIGEST.slice(7), sourceSha: SHA },
+    version: VERSION,
+    tag: `v${VERSION}`,
+    sourceVersions: {
+      package: VERSION,
+      claudePlugin: VERSION,
+      codexPlugin: VERSION,
+    },
+    artifact: {
+      path: '/tmp/ruvnet-brain.tgz',
+      sha256: DIGEST.slice(7),
+      sourceSha: SHA,
+      version: VERSION,
+      bundle: { brainVersion: VERSION, releaseTag: `v${VERSION}` },
+    },
     releaseVector: { verdict: 'PASS', sha: SHA, unknown: 0, skipped: 0 },
     tests: { total: 2800, passed: 2800, failed: 0, skipped: 0, todo: 0 },
     coverage: { status: 'PASS', lines: 85, requiredLines: 80 },
@@ -31,8 +44,8 @@ function greenCandidate(overrides = {}) {
       checks: REQUIRED_CHECKS.map((name) => ({ name, status: 'completed', conclusion: 'success' })),
     },
     hosts: {
-      claude: { status: 'PASS', version: `${VERSION}-candidate`, artifactSha256: DIGEST.slice(7) },
-      codex: { status: 'PASS', version: `${VERSION}-candidate`, artifactSha256: DIGEST.slice(7) },
+      claude: { status: 'PASS', version: VERSION, artifactSha256: DIGEST.slice(7) },
+      codex: { status: 'PASS', version: VERSION, artifactSha256: DIGEST.slice(7) },
     },
     brain: {
       status: 'PASS',
@@ -93,6 +106,23 @@ describe('release-proof candidate authority', () => {
     expect(codes).toContain('GRADER_BINDING_MISMATCH');
     expect(codes).toContain('HOST_ARTIFACT_MISMATCH');
   });
+
+  it.each([
+    ['candidate tag', (receipt) => { receipt.tag = `v${VERSION}-split`; }],
+    ['npm package source', (receipt) => { receipt.sourceVersions.package = `${VERSION}-split`; }],
+    ['Claude plugin source', (receipt) => { receipt.sourceVersions.claudePlugin = `${VERSION}-split`; }],
+    ['Codex plugin source', (receipt) => { receipt.sourceVersions.codexPlugin = `${VERSION}-split`; }],
+    ['packed npm artifact', (receipt) => { receipt.artifact.version = `${VERSION}-split`; }],
+    ['bundle brainVersion', (receipt) => { receipt.artifact.bundle.brainVersion = `${VERSION}-split`; }],
+    ['bundle releaseTag', (receipt) => { receipt.artifact.bundle.releaseTag = `v${VERSION}-split`; }],
+    ['installed Claude host', (receipt) => { receipt.hosts.claude.version = `${VERSION}-split`; }],
+    ['installed Codex host', (receipt) => { receipt.hosts.codex.version = `${VERSION}-split`; }],
+  ])('rejects a split version identity at %s', (_name, mutate) => {
+    const receipt = greenCandidate();
+    mutate(receipt);
+    expect(evaluateCandidateReceipt(receipt).failures.map((failure) => failure.code))
+      .toContain('VERSION_IDENTITY_MISMATCH');
+  });
 });
 
 describe('release-proof publication authority', () => {
@@ -103,8 +133,10 @@ describe('release-proof publication authority', () => {
       phase: 'publication',
       sha: SHA,
       artifactSha256: DIGEST.slice(7),
+      version: VERSION,
       npm: { version: VERSION, sha: SHA, artifactSha256: DIGEST.slice(7) },
       githubRelease: { tag: `v${VERSION}`, sha: SHA, artifactSha256: DIGEST.slice(7) },
+      bundle: { brainVersion: VERSION, releaseTag: `v${VERSION}` },
       installed: {
         claude: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS' },
         codex: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS' },
@@ -119,6 +151,39 @@ describe('release-proof publication authority', () => {
     publication.npm.artifactSha256 = 'f'.repeat(64);
     expect(evaluatePublicationReceipt(candidate, publication).failures.map((f) => f.code))
       .toContain('PUBLIC_ARTIFACT_MISMATCH');
+  });
+
+  it.each([
+    ['publication version', (receipt) => { receipt.version = `${VERSION}-split`; }],
+    ['npm version', (receipt) => { receipt.npm.version = `${VERSION}-split`; }],
+    ['GitHub tag', (receipt) => { receipt.githubRelease.tag = `v${VERSION}-split`; }],
+    ['bundle brainVersion', (receipt) => { receipt.bundle.brainVersion = `${VERSION}-split`; }],
+    ['bundle releaseTag', (receipt) => { receipt.bundle.releaseTag = `v${VERSION}-split`; }],
+    ['Claude installed version', (receipt) => { receipt.installed.claude.version = `${VERSION}-split`; }],
+    ['Codex installed version', (receipt) => { receipt.installed.codex.version = `${VERSION}-split`; }],
+  ])('rejects public split identity at %s', (_name, mutate) => {
+    const candidate = greenCandidate();
+    const publication = {
+      schemaVersion: 1,
+      phase: 'publication',
+      sha: SHA,
+      artifactSha256: DIGEST.slice(7),
+      version: VERSION,
+      npm: { version: VERSION, sha: SHA, artifactSha256: DIGEST.slice(7) },
+      githubRelease: { tag: `v${VERSION}`, sha: SHA, artifactSha256: DIGEST.slice(7) },
+      bundle: { brainVersion: VERSION, releaseTag: `v${VERSION}` },
+      installed: {
+        claude: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS' },
+        codex: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS' },
+      },
+      brain: { status: 'PASS', selfStore: true, broadMs: 4000, deadlineMs: 30_000 },
+      postPublicationChecks: [
+        { name: 'published-surface-probe', status: 'completed', conclusion: 'success', sha: SHA },
+      ],
+    };
+    mutate(publication);
+    expect(evaluatePublicationReceipt(candidate, publication).failures.map((failure) => failure.code))
+      .toContain('PUBLIC_VERSION_IDENTITY_MISMATCH');
   });
 });
 

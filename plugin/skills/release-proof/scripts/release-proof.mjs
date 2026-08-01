@@ -6,11 +6,22 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-export const REQUIRED_CHECKS = ['ci', 'integration-linux', 'stranger-matrix', 'ux-qe'];
+export const REQUIRED_CHECKS = ['ci', 'integration-linux', 'stranger-matrix', 'ux-qe', 'release-qe'];
 
 const fail = (code, detail) => ({ code, detail });
 const cleanHex = (value, length) => new RegExp(`^[a-f0-9]{${length}}$`, 'i').test(String(value || ''));
 const digestOf = (receipt) => String(receipt?.artifact?.sha256 || '').replace(/^sha256:/, '');
+const versionField = (value) => typeof value === 'string' && value.length > 0 ? value : null;
+
+function versionIdentityFailures(expectedVersion, expectedTag, fields) {
+  const mismatches = [];
+  if (!versionField(expectedVersion)) mismatches.push('version is missing');
+  if (expectedTag !== `v${expectedVersion}`) mismatches.push(`tag=${expectedTag ?? 'missing'}`);
+  for (const [name, value, expected = expectedVersion] of fields) {
+    if (value !== expected) mismatches.push(`${name}=${value ?? 'missing'}`);
+  }
+  return mismatches;
+}
 
 export function evaluateCandidateReceipt(receipt) {
   const failures = [];
@@ -22,6 +33,22 @@ export function evaluateCandidateReceipt(receipt) {
   if (receipt?.dirty !== false) failures.push(fail('DIRTY_WORKTREE', 'release candidates must come from a clean worktree'));
   if (!cleanHex(digest, 64)) failures.push(fail('INVALID_ARTIFACT_DIGEST', 'artifact SHA-256 is missing or malformed'));
   if (receipt?.artifact?.sourceSha !== sha) failures.push(fail('ARTIFACT_SOURCE_MISMATCH', 'packed artifact is not bound to the candidate SHA'));
+
+  const version = versionField(receipt?.version);
+  const tag = version ? `v${version}` : null;
+  const identityMismatches = versionIdentityFailures(version, receipt?.tag, [
+    ['source package', receipt?.sourceVersions?.package],
+    ['source Claude plugin', receipt?.sourceVersions?.claudePlugin],
+    ['source Codex plugin', receipt?.sourceVersions?.codexPlugin],
+    ['packed npm artifact', receipt?.artifact?.version],
+    ['bundle brainVersion', receipt?.artifact?.bundle?.brainVersion],
+    ['bundle releaseTag', receipt?.artifact?.bundle?.releaseTag, tag],
+    ['installed Claude host', receipt?.hosts?.claude?.version],
+    ['installed Codex host', receipt?.hosts?.codex?.version],
+  ]);
+  if (identityMismatches.length > 0) {
+    failures.push(fail('VERSION_IDENTITY_MISMATCH', `candidate surfaces must identify one generation: ${identityMismatches.join(', ')}`));
+  }
 
   const vector = receipt?.releaseVector || {};
   if (vector.verdict !== 'PASS' || vector.sha !== sha || vector.unknown !== 0 || vector.skipped !== 0) {
@@ -85,6 +112,20 @@ export function evaluatePublicationReceipt(candidate, publication) {
   const digest = candidateResult.artifactSha256;
   if (publication?.schemaVersion !== 1 || publication?.phase !== 'publication') failures.push(fail('INVALID_PUBLICATION_RECEIPT', 'schemaVersion=1 and phase=publication are required'));
   if (publication?.sha !== sha || publication?.artifactSha256 !== digest) failures.push(fail('PUBLICATION_SEAL_MISMATCH', 'publication does not reference candidate seal'));
+  const version = versionField(candidate?.version);
+  const tag = version ? `v${version}` : null;
+  const identityMismatches = versionIdentityFailures(version, candidate?.tag, [
+    ['publication version', publication?.version],
+    ['npm version', publication?.npm?.version],
+    ['GitHub release tag', publication?.githubRelease?.tag, tag],
+    ['bundle brainVersion', publication?.bundle?.brainVersion],
+    ['bundle releaseTag', publication?.bundle?.releaseTag, tag],
+    ['installed Claude host', publication?.installed?.claude?.version],
+    ['installed Codex host', publication?.installed?.codex?.version],
+  ]);
+  if (identityMismatches.length > 0) {
+    failures.push(fail('PUBLIC_VERSION_IDENTITY_MISMATCH', `public surfaces must identify candidate ${version ?? 'UNKNOWN'}: ${identityMismatches.join(', ')}`));
+  }
   for (const surface of ['npm', 'githubRelease']) {
     const item = publication?.[surface];
     if (item?.sha !== sha || item?.artifactSha256 !== digest) failures.push(fail('PUBLIC_ARTIFACT_MISMATCH', `${surface} differs from candidate seal`));

@@ -7,7 +7,7 @@ authors: [Stuart Kerr, Claude Code]
 tags: [routing, models, enforcement, ci, rule-0]
 supersedes: []
 relates: [ADR-015, ADR-0012]
-updated: 2026-07-27
+updated: 2026-08-01
 updated_source: derived-from-git
 ---
 
@@ -55,6 +55,11 @@ a wall that fails the build, not a promise to try harder.** Model facts had no s
    harness, LiveCodeBench, Aider polyglot) are noted, not used, until they carry current models.
 
 ## Verification (so it is real, not theater)
+
+- **2026-08-01 refresh:** CI correctly rejected the 14.3-day-old OpenRouter snapshot. A live
+  `scripts/refresh-model-catalog.mjs` pull then found real price drift: GPT-5.6 Terra moved to
+  $1/$6 per million input/output tokens and Luna to $0.10/$0.60. The catalog and committed
+  337-model snapshot were refreshed together; the 14-day wall remains unchanged.
 
 - The wall caught **two real errors in the first catalog I wrote** (`google/gemini-3.1-pro` → the live id
   is `-preview`; `x-ai/grok-4.1-fast` does not exist) — proving it checks *me*, not a strawman.

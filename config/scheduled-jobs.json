@@ -91,8 +91,8 @@
     },
     {
       "label": "com.ruvnet.issue-fix",
-      "what": "Every 30 min (was 10 \u2014 a real run takes ~13 min, so the 10-min schedule SIGTERMed its own overlapping runs, fixed 2026-07-18): auto-fixes newly opened GitHub issues (stuinfla/ruvnet-brain) \u2014 bounded headless `claude -p` per issue in a disposable git worktree, pushes an issue-fix/<N> branch + comment or posts an honest triage comment, never touches main, never closes an issue",
-      "schedule": "every 10 min",
+      "what": "Every 30 min: read-only triage of eligible GitHub issues (stuinfla/ruvnet-brain); no code mutation, no worktree creation, no branch push, no public comment, and no promotion. Real fixes run only in explicit session-supervised isolated worktrees.",
+      "schedule": "every 30 min",
       "maxAgeHours": 1,
       "required": true
     },

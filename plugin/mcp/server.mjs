@@ -41,14 +41,15 @@ const CHILD_MCP = process.env.RUVNET_BRAIN_CHILD_MCP || path.join(KB, 'forge-mcp
 const ACTIVE = path.join(BRAIN_HOME, 'active.json');
 const LEASES = path.join(BRAIN_HOME, 'leases');
 const LEASE = path.join(LEASES, `mcp-${process.pid}.json`);
+const READINESS = path.join(BRAIN_HOME, 'mcp-readiness.json');
 
 const PROTOCOL_VERSION = '2024-11-05';
 const SERVER_INFO = { name: 'ruvnet-brain', version: '2.0.0' };
-// Local frozen tool declarations. search_ruvnet is only a fallback: a live child's declaration wins
-// so its description can refresh. The two managed-CLI schemas are owned by this protocol shell.
+// Stable declarations belong to this protocol shell. Capability discovery must never wait for a
+// model or vector store; the first operation that needs the worker joins its readiness promise.
 const SEARCH_TOOL = {
   name: 'search_ruvnet',
-  description: 'Source-grounded knowledge base for the RuvNet ecosystem. (Brain bundle not installed on this machine — calls will return install guidance.)',
+  description: 'Source-grounded knowledge base for the RuvNet ecosystem. The first call may wait while the local search worker becomes ready.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -60,21 +61,44 @@ const SEARCH_TOOL = {
 };
 const FALLBACK_TOOLS = [SEARCH_TOOL, ...MANAGED_CLI_TOOLS];
 
-function withLocalTools(tools) {
-  const merged = new Map();
-  for (const tool of Array.isArray(tools) ? tools : []) {
-    if (tool?.name) merged.set(tool.name, tool);
-  }
-  for (const tool of FALLBACK_TOOLS) {
-    if (!merged.has(tool.name)) merged.set(tool.name, tool);
-  }
-  return [...merged.values()];
-}
-
 const out = (obj) => process.stdout.write(JSON.stringify(obj) + '\n');
 const clientOk = (id, result) => out({ jsonrpc: '2.0', id, result });
 const clientErr = (id, code, message) => out({ jsonrpc: '2.0', id, error: { code, message } });
 const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+
+function writeReadiness(value) {
+  try {
+    fs.mkdirSync(BRAIN_HOME, { recursive: true });
+    const tmp = `${READINESS}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify({ ...value, pid: process.pid, at: new Date().toISOString() })}\n`, { mode: 0o600 });
+    fs.renameSync(tmp, READINESS);
+  } catch (error) {
+    console.error(`[ruvnet-brain] could not persist MCP readiness: ${error.message}`);
+  }
+}
+
+function recordStartupFailure({ phase, startedAt, generation, error }) {
+  const now = Date.now();
+  const fields = {
+    state: 'degraded', phase, generation, elapsedMs: now - startedAt,
+    retryable: true, retryState: 'next-search-retries',
+    error: String(error?.message || error || 'unknown startup failure').slice(0, 500),
+  };
+  writeReadiness(fields);
+  const healthPath = path.join(BRAIN_HOME, 'health.json');
+  try {
+    fs.mkdirSync(BRAIN_HOME, { recursive: true });
+    const tmp = `${healthPath}.${process.pid}.${now}.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify({
+      status: 'down', source: 'mcp-parent-startup', phase,
+      error: fields.error, elapsedMs: fields.elapsedMs, generation,
+      retryState: fields.retryState, ts: new Date(now).toISOString(),
+    })}\n`, { mode: 0o600 });
+    fs.renameSync(tmp, healthPath);
+  } catch (writeError) {
+    console.error(`[ruvnet-brain] could not persist startup health: ${writeError.message}`);
+  }
+}
 
 function currentGeneration() {
   const a = readJSON(ACTIVE);
@@ -124,6 +148,7 @@ function killChild(reason) {
   clearChildIdleTimer();
   if (!child) return childRetirement;
   const c = child; child = null;
+  c.intentionalStop = true;
   for (const [, p] of c.pending) p.reject(new Error(`brain worker ${reason}`));
   c.pending.clear();
   childRetirement = new Promise((resolve) => {
@@ -157,10 +182,12 @@ async function ensureChild() {
 
   if (!childStartup) {
     childStartup = (async () => {
+      const startedAt = Date.now();
+      let phase = 'initialize';
       const env = { ...process.env, KB_DIR: KB };
       if (!env.KB_MODEL_CACHE) env.KB_MODEL_CACHE = path.join(BRAIN_HOME, 'models');
       const proc = spawn(process.execPath, [CHILD_MCP], { stdio: ['pipe', 'pipe', 'inherit'], env });
-      const c = { proc, generation: currentGeneration(), nextId: 1, pending: new Map() };
+      const c = { proc, generation: currentGeneration(), nextId: 1, pending: new Map(), intentionalStop: false };
       const rl = readline.createInterface({ input: proc.stdout });
       rl.on('line', (line) => {
         let msg; try { msg = JSON.parse(line); } catch { return; }
@@ -171,6 +198,13 @@ async function ensureChild() {
         if (child === c) child = null;
         for (const [, p] of c.pending) p.reject(new Error('brain worker exited'));
         c.pending.clear();
+        if (!c.intentionalStop) {
+          writeReadiness({
+            state: 'degraded', phase: 'worker-exit', generation: c.generation,
+            elapsedMs: Date.now() - startedAt, retryable: true,
+            retryState: 'next-search-retries', error: 'brain worker exited unexpectedly',
+          });
+        }
       });
       proc.on('error', () => { if (child === c) child = null; });
       child = c;
@@ -180,8 +214,9 @@ async function ensureChild() {
           protocolVersion: PROTOCOL_VERSION,
           capabilities: {},
           clientInfo: { name: 'ruvnet-brain-shell', version: SERVER_INFO.version },
-        }, CHILD_INIT_TIMEOUT_MS);
-        const warmed = await childRequest(c, 'brain/warmup', {}, CHILD_INIT_TIMEOUT_MS);
+        }, CHILD_INIT_TIMEOUT_MS, { reportTimeout: false });
+        phase = 'warmup';
+        const warmed = await childRequest(c, 'brain/warmup', {}, CHILD_INIT_TIMEOUT_MS, { reportTimeout: false });
         // Rolling-upgrade compatibility: 4.0.1 workers predate the private warmup extension. The
         // stable shell is installed before the 700MB KB swap completes, so rejecting -32601 here
         // makes every query fail during the exact in-place upgrade window the shell exists to hide.
@@ -194,8 +229,14 @@ async function ensureChild() {
         }
       } catch (e) {
         await killChild('failed initialize');
+        recordStartupFailure({ phase, startedAt, generation: c.generation, error: e });
         throw new Error(`brain worker failed to initialize: ${e.message}`);
       }
+      writeReadiness({
+        state: 'ready', phase, generation: c.generation,
+        workerPid: c.proc.pid, elapsedMs: Date.now() - startedAt,
+        retryable: false, retryState: 'none',
+      });
       armChildIdleTimer(c);
       return c;
     })();
@@ -236,13 +277,13 @@ async function onChildTimeout(method, timeoutMs) {
 // Steady-state latency remains a separate release gate; this budget prevents a permanent cold loop.
 const CALL_TIMEOUT_MS = Number(process.env.RUVNET_BRAIN_CALL_TIMEOUT_MS) || 240_000;
 
-function childRequest(c, method, params, timeoutMs = CALL_TIMEOUT_MS) {
+function childRequest(c, method, params, timeoutMs = CALL_TIMEOUT_MS, { reportTimeout = true } = {}) {
   return new Promise((resolve, reject) => {
     const id = c.nextId++;
     const timer = setTimeout(() => {
       c.pending.delete(id);
       reject(new Error(`brain worker timeout on ${method}`));
-      void onChildTimeout(method, timeoutMs); // after the reject — the caller must not wait on the alarm
+      if (reportTimeout) void onChildTimeout(method, timeoutMs); // caller never waits on the alarm
     }, timeoutMs);
     c.pending.set(id, { resolve: (m) => { clearTimeout(timer); resolve(m); }, reject: (e) => { clearTimeout(timer); reject(e); } });
     try { c.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'); }
@@ -266,19 +307,6 @@ async function handleClient(msg) {
     case 'ping':
       return clientOk(id, {});
     case 'tools/list': {
-      try {
-        const c = await ensureChild();
-        if (c) {
-          try {
-            const r = await childRequest(c, 'tools/list', {}, 15_000);
-            if (r.result?.tools?.length) {
-              armChildIdleTimer(c);
-              return clientOk(id, { ...r.result, tools: withLocalTools(r.result.tools) });
-            }
-          }
-          catch { /* fall through to the static declaration */ }
-        }
-      } catch { /* fall through to the static declaration during a transient startup outage */ }
       return clientOk(id, { tools: FALLBACK_TOOLS });
     }
     case 'tools/call': {
@@ -321,4 +349,13 @@ clientRl.on('line', (line) => {
   let msg; try { msg = JSON.parse(line); } catch { return; } // malformed line: ignore, never crash
   handleClient(msg).catch((e) => { if (msg.id !== undefined && msg.id !== null) clientErr(msg.id, -32603, e.message); });
 });
-clientRl.on('close', () => { killChild('client disconnected'); process.exit(0); });
+let shuttingDown = false;
+async function shutdown(reason) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await killChild(reason);
+  process.exit(0);
+}
+clientRl.on('close', () => { void shutdown('client disconnected'); });
+process.once('SIGTERM', () => { void shutdown('parent received SIGTERM'); });
+process.once('SIGINT', () => { void shutdown('parent received SIGINT'); });

@@ -3,8 +3,8 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-07-31
-impl: wired
+updated: 2026-08-01
+impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -28,9 +28,20 @@ governs:
   - scripts/qe/ux-suite.mjs
   - scripts/claims-verify.mjs
   - kb/card-lane-budget.json
+  - kb/process-priority.mjs
+  - kb/forge-big.mjs
   - scripts/qe/card-lane-gate.mjs
   - scripts/release-vector.mjs
+  - scripts/build-bundle.mjs
   - scripts/release-proof.mjs
+  - scripts/release-authority.mjs
+  - scripts/protected-release-invocation.mjs
+  - scripts/publication-receipt.mjs
+  - scripts/release.mjs
+  - scripts/self-update.mjs
+  - scripts/nightly-wrapper.sh
+  - .github/workflows/ci.yml
+  - .github/workflows/protected-release.yml
   - plugin/skills/release-proof/SKILL.md
   - plugin/skills/release-proof/scripts/release-proof.mjs
   - tests/qe/gpt56/live-brain-search.test.mjs
@@ -39,7 +50,7 @@ governs:
 # ADR-058: The 95 contract
 
 **Status**: Proposed
-**Date**: 2026-07-27 · **Last updated**: 2026-07-31 · **Why**: the public 4.0.1 artifact exposed
+**Date**: 2026-07-27 · **Last updated**: 2026-08-01 · **Why**: the public 4.0.1 artifact exposed
 that QE-BRN-001 existed in the written master plan but was absent from the executable critical-risk
 map and release vector; the live `search_ruvnet` worker consequently timed out without blocking
 publication.
@@ -54,6 +65,17 @@ scoped evidence instead of widening; the same query passes in 0.671s, with 118/1
 lineage, zero/skipped/todo work, open issues, exact-SHA GitHub failures, artifact/host/grader binding
 splits, missing self-RVF, deadline-margin breaches, and public-byte drift. GitHub now enforces required
 checks for admins and protects `Production – ruvnet-brain` with required review and no admin bypass.
+The 4.0.4 candidate also has a checked-in protected-release transport: dispatch identity is a full
+candidate SHA, one artifact SHA-256, exact version 4.0.4, and the successful exact-SHA CI run whose
+named `release-qe` job produced the receipt. The publisher cannot start until that proof succeeds,
+then crosses `Production – ruvnet-brain` for reviewer approval and revalidates the same seal before
+invoking the one publisher. `scripts/release.mjs --publish` rejects local and differently named
+workflow invocations before remote mutation. After publication, `scripts/publication-receipt.mjs`
+independently downloads the sealed package from npm and the GitHub Release, requires both byte
+digests and channel identities to match the candidate, installs the public npm bytes into virgin
+Claude and Codex homes, exercises the installed MCP self-store within its deadline, and runs the
+exact-SHA published-surface probe. It writes the append-only publication receipt only after the
+existing two-receipt evaluator accepts every observation; missing or split evidence stays red.
 D4 has a current Codex-backed
 3/3 treated versus 0/3 control artifact on source SHA `63e5e67`, plus committed delete-lesson and
 brain-off-treated causal failures in `2b39f68`. D3 now executes its real signal lifecycle from the
@@ -331,6 +353,12 @@ correct: **the strong claim was the defect.**
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-01 | Completed the post-publication evidence path without publishing: `release.mjs` now sends the exact sealed candidate tarball to both npm and GitHub, invokes `scripts/publication-receipt.mjs` only after channel verification, validates both receipts, and only then records channel convergence or prints `SHIPPED`. The protected runner provisions virgin current Claude Code and Codex CLIs for the host-install proof. | The protected workflow previously required `publication-receipt.json` but no producer could create it, so every authorized release was permanently red. The producer refuses overwrite, public-byte drift, SHA/version/tag splits, missing host installs, absent self-RVF/readiness, deadline breaches, and a red or wrong-SHA published-surface probe. No publication was attempted in this tranche. |
+| 2026-08-01 | Added the protected 4.0.4 release transport without publishing: `.github/workflows/protected-release.yml` accepts only an exact SHA, artifact SHA-256, version, and successful exact-SHA `release-qe` run; its sole publisher depends on that proof and uses the reviewer-protected `Production – ruvnet-brain` environment. `scripts/protected-release-invocation.mjs` makes local or wrong-workflow `release.mjs --publish` fail before any remote mutation. | Source inspection found the receipt validator and one-publisher scanner but no checked-in workflow carrying either into the protected environment. Eighteen failure-first workflow/invocation tests reject missing approval, dependency, seals, malformed or split identity, artifact tampering, and local publication. The workflow requires a post-publication receipt and fails closed if its public-host/Brain evidence producer is absent; no publication was attempted in this tranche. |
+| 2026-08-01 | Canonical BGE RVF builds now request Node's below-normal process priority before embedding, with a non-fatal fallback when the host denies reprioritization. | The exact self-RVF rebuild through `kb/forge-big.mjs` held one CPU-heavy Node process for 458 seconds; during that window live PreToolUse hooks exceeded their five-second deadline. `tests/unit/forge-build-priority.test.mjs` injects both the successful `setPriority(0, PRIORITY_BELOW_NORMAL)` path and a permission-denied path, so the responsiveness contract is tested without depending on host privileges. |
+| 2026-08-01 | The proposed D1 release path now separates exact candidate source from ignored release assets: `scripts/build-bundle.mjs --assets <dir>` discovers, audits, and copies only generated RVF families from an explicit external directory while loading the private-store fence and every executable reader from the exact source checkout. The default remains `kb/`, and zero eligible stores still fails closed. | `tests/qe/gpt56/live-brain-search.test.mjs` reproduced 3/3 failures as `Searched 0 RuvNet repos` in the isolated clean candidate because Git correctly excludes RVF binaries and the assembler could only inspect its own empty `kb/`. `tests/integration/build-bundle-fence.test.mjs` now supplies one public and one private RVF in an external asset directory, proves the source-tree private fence still excludes the private store, and proves only the public store reaches the manifest. This repairs candidate assembly; it is not an exact-artifact release verdict until the self-RVF is rebuilt from the candidate and the full live gate passes on the assembled output. |
+| 2026-08-01 | Issue #77 tightened the proposed release authority around one exact product generation; this remains candidate enforcement, not a shipped release verdict. `self-update.mjs` is rebuild-only with its dead duplicate publisher removed, the nightly wrapper cannot pass `--publish` or turn a changed tag plus nonzero exit into success, CI runs a named `release-qe` job, and release receipts reject any package/Claude/Codex/bundle/installed-host version split. | The public v4.0.3 label advanced while npm and both host manifests remained v4.0.2. Digest binding alone could not reject that class: the receipt validator previously ignored host versions. Failure-first tests now kill nine candidate splits, seven public splits, a reintroduced second publisher, and the former nightly false-success branch. Publication and exact public-artifact proof remain pending. |
+| 2026-08-01 | Re-read the governed candidate changes without promoting the Proposed decision or release verdict. Bounded hook stdin, protocol-fast discovery, explicit readiness receipts, and installed What's New authority reduce concrete failure surfaces; they do not close the external 95 contract. | `plugin/scripts/hook-shim.mjs` now owns finite, closed stdin for five blocking consumers while preserving handler modes and OFF polarity. Integration commit `b606900` makes `plugin/mcp/server.mjs` return stable `tools/list` declarations without worker warmup, persist `registered | ready | degraded` readiness, and makes `plugin/scripts/session-start-core.mjs` avoid a false live-grounding claim; `bin/install.mjs` adds the matching startup deadline/doctor verdict. The #78 lane reported 138/138 focused tests. Neither these results nor the installed What's New change establish a broad or packed exact-SHA run, clean published candidate, installed MCP latency across hosts, WSL2, zero open issues, or two external grader scores at or above 95. |
 | 2026-07-31 | Tightened the D6 candidate back under the existing 4,096-byte stdout contract without changing a threshold: redundant first-load prose was shortened in `session-start-core.mjs`, while every offered choice and action remains live. | The prior packed PR head failed honestly at 4,129 bytes on macOS and 4,118 bytes on Ubuntu. The corrected real packed macOS scenario passed 76/76 registered firings; focused tests passed 106/106, the plugin battery passed 60/60, and the registered wall-time gate passed at 208ms cold, 143ms p95, and 146ms max. Cross-platform CI is required again on the committed correction before release. |
 | 2026-07-31 | D4 was refreshed after `plugin/scripts/hook-shim.mjs` became the single Node SessionStart route; both independent lessons and all four causal mutants were regenerated instead of carrying evidence across a load-bearing shim change. | Source SHA `535c6ec`: memory-search-query passed 3/3 treated versus 0/3 control, hooks-post-task-persistence passed 3/3 versus 0/3, and delete-lesson plus brain-off-treated each collapsed both traps to 0/1. Every treated success executed the real global Ruflo command and produced the required retrieval/persistence outcome; both `--check-portfolio` and `--check-mutants` return PASS. Updated artifacts are the six `data/learning-replay*-result.json` files; model `gpt-5.6-sol`, cost $0. |
 | 2026-07-31 | D6 now measures a host-neutral native Node SessionStart authority; the checked-in p95 and absolute-fail budgets are unchanged. Governance follows the authority into `plugin/scripts/hook-shim.mjs` and `plugin/scripts/session-start-core.mjs` instead of treating the compatibility shell trampoline as the whole implementation. | The root-cause trace separated **4709ms of pre-body Git Bash variance** from an **879ms hook body**. The native core and shell compatibility surface passed **5/5 full-parity cases**, and the adjacent focused suite passed **141/141**. The real registered local gate measured cold **250ms**, p95 **205ms**, max **220ms**, with no threshold relaxation in `kb/card-lane-budget.json#sessionStart` or `scripts/qe/session-start-gate.mjs`. **Windows packed CI remains pending**; these local and parity results are candidate evidence, not an exact-SHA packed-Windows green verdict. |

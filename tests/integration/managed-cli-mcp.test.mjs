@@ -68,7 +68,68 @@ process.exit(0);
   return fx;
 }
 
-function startServer(fx) {
+function readinessFixture() {
+  const fx = fixture({ withBrain: true });
+  const starts = path.join(fx.root, 'starts.txt');
+  const warmups = path.join(fx.root, 'warmups.txt');
+  fs.writeFileSync(path.join(fx.kb, 'forge-mcp-all.mjs'), `import fs from 'node:fs';
+import readline from 'node:readline';
+fs.appendFileSync(process.env.STARTS_MARKER, '1\\n');
+let ready = false;
+const reply = (id, body) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, ...body }) + '\\n');
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  const msg = JSON.parse(line);
+  if (msg.method === 'initialize') {
+    setTimeout(() => reply(msg.id, { result: { protocolVersion: '2024-11-05', capabilities: {} } }), 150);
+  } else if (msg.method === 'brain/warmup') {
+    fs.appendFileSync(process.env.WARMUPS_MARKER, '1\\n');
+    setTimeout(() => { ready = true; reply(msg.id, { result: { ready: true } }); }, 150);
+  } else if (msg.method === 'tools/call') {
+    if (!ready) reply(msg.id, { error: { code: -32002, message: 'worker is not ready' } });
+    else reply(msg.id, { result: { content: [{ type: 'text', text: 'ready result' }] } });
+  }
+});
+`);
+  return { ...fx, starts, warmups };
+}
+
+function crashingFixture() {
+  const fx = fixture({ withBrain: true });
+  fs.writeFileSync(path.join(fx.kb, 'forge-mcp-all.mjs'), `import readline from 'node:readline';
+const reply = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n');
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  const msg = JSON.parse(line);
+  if (msg.method === 'initialize') reply(msg.id, { protocolVersion: '2024-11-05', capabilities: {} });
+  if (msg.method === 'brain/warmup') {
+    reply(msg.id, { ready: true });
+    setTimeout(() => process.exit(19), 50);
+  }
+});
+`);
+  return fx;
+}
+
+function shutdownFixture() {
+  const fx = fixture({ withBrain: true });
+  const workerPid = path.join(fx.root, 'worker.pid');
+  fs.writeFileSync(path.join(fx.kb, 'forge-mcp-all.mjs'), `import fs from 'node:fs';
+import readline from 'node:readline';
+fs.writeFileSync(process.env.WORKER_PID_MARKER, String(process.pid));
+const reply = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n');
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  const msg = JSON.parse(line);
+  if (msg.method === 'initialize') reply(msg.id, { protocolVersion: '2024-11-05', capabilities: {} });
+  if (msg.method === 'brain/warmup') reply(msg.id, { ready: true });
+});
+setInterval(() => {}, 1 << 30);
+`);
+  return { ...fx, workerPid };
+}
+
+function startServer(fx, extraEnv = {}) {
   const child = spawn(process.execPath, [SERVER], {
     cwd: REPO,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -81,6 +142,7 @@ function startServer(fx) {
       RUVNET_BRAIN_HOME: path.join(fx.root, 'brain'),
       RUVNET_BRAIN_KB: fx.kb,
       RUVNET_BRAIN_PROJECT_SETTINGS_FILE: path.join(fx.root, 'absent-project-settings.json'),
+      ...extraEnv,
     },
   });
   children.add(child);
@@ -128,6 +190,142 @@ function lines(file) {
 }
 
 describe('ruvnet-brain MCP structured managed-CLI boundary', () => {
+  it('returns the stable tool catalog without waiting for a cold worker warmup', async () => {
+    const fx = fixture({ withBrain: true });
+    fs.writeFileSync(path.join(fx.kb, 'forge-mcp-all.mjs'), `import readline from 'node:readline';
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  const msg = JSON.parse(line);
+  const respond = (result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+  if (msg.method === 'brain/warmup') return setTimeout(() => respond({ ready: true }), 1200);
+  if (msg.method === 'initialize') return respond({ protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'slow', version: '0' } });
+  if (msg.method === 'tools/call') return respond({ content: [{ type: 'text', text: 'grounded' }] });
+  return respond({ tools: [{ name: 'search_ruvnet', inputSchema: { type: 'object' } }] });
+});
+`);
+    const mcp = startServer(fx);
+
+    await mcp.request('initialize', {
+      protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'cold-client', version: '1' },
+    });
+    const started = performance.now();
+    const listed = await mcp.request('tools/list');
+    const elapsedMs = performance.now() - started;
+
+    expect(elapsedMs).toBeLessThan(500);
+    expect(listed.result.tools.map((tool) => tool.name)).toEqual([
+      'search_ruvnet', 'ruvnet_cli_help', 'ruvnet_cli_run',
+    ]);
+
+    const searched = await mcp.request('tools/call', {
+      name: 'search_ruvnet', arguments: { query: 'join the cold readiness attempt' },
+    });
+    expect(searched.result.content[0].text).toBe('grounded');
+  });
+
+  it('persists a live ready receipt only after worker initialization and warmup complete', async () => {
+    const fx = fixture({ withBrain: true });
+    const mcp = startServer(fx);
+
+    await mcp.request('initialize', {
+      protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'receipt-client', version: '1' },
+    });
+    await mcp.request('tools/call', {
+      name: 'search_ruvnet', arguments: { query: 'prove readiness' },
+    });
+
+    const receipt = JSON.parse(fs.readFileSync(path.join(fx.root, 'brain', 'mcp-readiness.json'), 'utf8'));
+    expect(receipt).toMatchObject({
+      state: 'ready',
+      phase: 'warmup',
+      pid: mcp.child.pid,
+      retryable: false,
+    });
+    expect(receipt.generation).toEqual(expect.any(String));
+    expect(receipt.workerPid).toEqual(expect.any(Number));
+    expect(receipt.elapsedMs).toEqual(expect.any(Number));
+    expect(new Date(receipt.at).toString()).not.toBe('Invalid Date');
+  });
+
+  it('keeps search_ruvnet declared and returns explicit install guidance when the KB is absent', async () => {
+    const mcp = startServer(fixture());
+    const listed = await mcp.request('tools/list');
+    expect(listed.result.tools.map((tool) => tool.name)).toContain('search_ruvnet');
+    const searched = await mcp.request('tools/call', {
+      name: 'search_ruvnet', arguments: { query: 'missing bundle' },
+    });
+    expect(searched.result.isError).toBe(true);
+    expect(searched.result.content[0].text).toMatch(/bundle is not installed/i);
+  });
+
+  it('makes concurrent first searches share one initialize-and-warmup attempt', async () => {
+    const fx = readinessFixture();
+    const mcp = startServer(fx, { STARTS_MARKER: fx.starts, WARMUPS_MARKER: fx.warmups });
+    await mcp.request('initialize', {});
+    const [first, second] = await Promise.all([
+      mcp.request('tools/call', { name: 'search_ruvnet', arguments: { query: 'first' } }),
+      mcp.request('tools/call', { name: 'search_ruvnet', arguments: { query: 'second' } }),
+    ]);
+    expect(first.result.content[0].text).toBe('ready result');
+    expect(second.result.content[0].text).toBe('ready result');
+    expect(fs.readFileSync(fx.starts, 'utf8').trim().split('\n')).toHaveLength(1);
+    expect(fs.readFileSync(fx.warmups, 'utf8').trim().split('\n')).toHaveLength(1);
+  });
+
+  it('warms exactly one replacement after the active generation changes', async () => {
+    const fx = readinessFixture();
+    const brainHome = path.join(fx.root, 'brain');
+    fs.mkdirSync(brainHome, { recursive: true });
+    fs.writeFileSync(path.join(brainHome, 'active.json'), JSON.stringify({ generation: 1 }));
+    const mcp = startServer(fx, { STARTS_MARKER: fx.starts, WARMUPS_MARKER: fx.warmups });
+    await mcp.request('tools/call', { name: 'search_ruvnet', arguments: { query: 'one' } });
+    fs.writeFileSync(path.join(brainHome, 'active.json'), JSON.stringify({ generation: 2 }));
+    await mcp.request('tools/call', { name: 'search_ruvnet', arguments: { query: 'two' } });
+    expect(fs.readFileSync(fx.starts, 'utf8').trim().split('\n')).toHaveLength(2);
+    expect(fs.readFileSync(fx.warmups, 'utf8').trim().split('\n')).toHaveLength(2);
+    const receipt = JSON.parse(fs.readFileSync(path.join(brainHome, 'mcp-readiness.json'), 'utf8'));
+    expect(receipt.generation).toMatch(/^2:/);
+  });
+
+  it('retracts live readiness after a warmed worker crashes', async () => {
+    const fx = crashingFixture();
+    const mcp = startServer(fx);
+    await mcp.request('initialize', {});
+    const readinessPath = path.join(fx.root, 'brain', 'mcp-readiness.json');
+    const deadline = Date.now() + 3000;
+    let receipt = null;
+    while (Date.now() < deadline) {
+      try { receipt = JSON.parse(fs.readFileSync(readinessPath, 'utf8')); } catch { /* not written yet */ }
+      if (receipt?.state === 'degraded') break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(receipt).toMatchObject({ state: 'degraded', phase: 'worker-exit', retryable: true });
+  });
+
+  it('fully retires the warmed worker when the protocol shell receives SIGTERM', async () => {
+    const fx = shutdownFixture();
+    const mcp = startServer(fx, { WORKER_PID_MARKER: fx.workerPid });
+    await mcp.request('initialize', {});
+    const deadline = Date.now() + 3000;
+    while (!fs.existsSync(fx.workerPid) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const workerPid = Number(fs.readFileSync(fx.workerPid, 'utf8'));
+    const exited = new Promise((resolve) => mcp.child.once('exit', resolve));
+    mcp.child.kill('SIGTERM');
+    await exited;
+    let workerAlive = true;
+    const workerDeadline = Date.now() + 1000;
+    while (workerAlive && Date.now() < workerDeadline) {
+      try { process.kill(workerPid, 0); } catch { workerAlive = false; }
+      if (workerAlive) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    if (workerAlive) {
+      try { process.kill(workerPid, 'SIGKILL'); } catch { /* already stopped */ }
+    }
+    expect(workerAlive).toBe(false);
+  });
+
   it('advertises the two schema-validated tools through the actual tools/list protocol', async () => {
     const mcp = startServer(fixture());
     await mcp.request('initialize', {
@@ -144,13 +342,13 @@ describe('ruvnet-brain MCP structured managed-CLI boundary', () => {
     expect(tools.get('ruvnet_cli_run').inputSchema.properties.argv.type).toBe('array');
   });
 
-  it('merges local tools without replacing the live brain tool declaration', async () => {
+  it('keeps protocol-shell declarations independent of worker discovery', async () => {
     const fx = fixture({ withBrain: true });
     const mcp = startServer(fx);
     const listed = await mcp.request('tools/list');
     const tools = new Map(listed.result.tools.map((tool) => [tool.name, tool]));
-    expect(tools.get('search_ruvnet').description).toBe('live child description');
-    expect(fs.readFileSync(fx.warmup, 'utf8')).toBe('ready');
+    expect(tools.get('search_ruvnet').description).toMatch(/first call may wait/i);
+    expect(fs.existsSync(fx.warmup)).toBe(false);
     expect(tools.has('ruvnet_cli_help')).toBe(true);
     expect(tools.has('ruvnet_cli_run')).toBe(true);
   });

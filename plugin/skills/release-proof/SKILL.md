@@ -17,17 +17,24 @@ green.
 4. Reject any test/QE result with zero tests, skips, todos, unknowns, pending jobs, or failures.
 5. Require two distinct independent graders scoring at least 95, each bound to the SHA and digest.
 6. Install the sealed artifact into virgin Claude Code and Codex homes; test their real entrypoints.
-7. Require the active Brain registry to contain the `ruvnet-brain` RVF store and require narrow,
+7. Require the source package, Claude manifest, Codex manifest, packed npm version, bundle
+   `brainVersion`/`releaseTag`, and both installed host versions to identify one exact generation.
+8. Require the active Brain registry to contain the `ruvnet-brain` RVF store and require narrow,
    broad, and concurrent cited searches to complete within 80% of their deadline.
-8. Publish only through the protected release workflow. Never run `npm publish` or `gh release
+9. Publish only through the protected release workflow. Never run `npm publish` or `gh release
    create` locally.
-9. After publication, download npm and GitHub artifacts, compare their bytes with the seal, install
+10. After publication, download npm and GitHub artifacts, compare their bytes with the seal, install
    both hosts again, query the active MCP again, and require `published-surface-probe` green.
-10. Close an issue only after posting its acceptance evidence. Never close from source inspection.
+11. Close an issue only after posting its acceptance evidence. Never close from source inspection.
 
 ## Candidate seal
 
 Generate the receipt from commands in the protected candidate workflow. Do not hand-author it.
+For generation 4.0.4, dispatch `.github/workflows/protected-release.yml` only with the full candidate
+SHA, sealed artifact SHA-256, exact version `4.0.4`, and the successful exact-SHA CI run ID whose
+named `release-qe` job produced `release-evidence-<sha>`. The workflow checks every binding before
+creating its sealed handoff and again after the production reviewer approves. Missing artifacts,
+pending/red jobs, malformed inputs, version splits, and byte mismatches stop before the publisher.
 Validate it from the repository with:
 
 ```bash
@@ -57,6 +64,16 @@ node scripts/release-proof.mjs \
 Only exit 0 permits “shipped,” “deployed,” “green,” or “ready.” If publication occurred but this
 seal fails, say `PUBLICATION DEGRADED`, preserve the previous known-good release, and repair or
 roll back through the release workflow.
+
+`scripts/release.mjs --publish` is intentionally unusable from a local shell or another workflow.
+Its invocation guard requires GitHub Actions workflow `protected-release`, the candidate receipt,
+and matching SHA/digest/version bindings before any push, tag, release, or npm action. The workflow
+then runs `scripts/publication-receipt.mjs` after channel verification. That producer independently
+downloads the sealed package from npm and the GitHub Release, requires both copies to match the
+candidate bytes and identity, installs the npm copy into virgin Claude and Codex homes, proves the
+installed self-RVF/readiness/search deadline, and runs `published-surface-probe` on the candidate
+SHA. It refuses to overwrite an existing receipt. The workflow uploads both append-only receipts
+only after the two-receipt validator exits 0; missing evidence is red, never inferred.
 
 ## Evidence and issue handling
 

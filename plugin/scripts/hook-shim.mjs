@@ -82,16 +82,16 @@ catch (e) { BRAIN_OFF = !(e && (e.code === 'ENOENT' || e.code === 'ENOTDIR')); }
 //               ONE resolved answer instead of racing the filesystem again mid-run.
 const TABLE = {
   'session-start':    { file: 'session-start-core.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'partial' },
-  'ground-ruvnet':    { file: 'ground-ruvnet.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
+  'ground-ruvnet':    { file: 'ground-ruvnet.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence', stdinBytes: 32768 },
   'hijack-ruvnet':    { file: 'hijack-ruvnet.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
-  'route-dispatch':   { file: 'route-dispatch.sh',   interpreter: 'bash', mode: 'blocking', offBehavior: 'run' },
-  'ground-before-write': { file: 'ground-before-write.sh', interpreter: 'bash', mode: 'blocking', offBehavior: 'run' },
+  'route-dispatch':   { file: 'route-dispatch.sh',   interpreter: 'bash', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
+  'ground-before-write': { file: 'ground-before-write.sh', interpreter: 'bash', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
   'grounding-stamp': { file: 'grounding-stamp.sh', interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
   'verify-interface': { file: 'verify-interface.sh', interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
-  'design-wall':      { file: 'design-wall.sh',      interpreter: 'bash', mode: 'blocking', offBehavior: 'run' },
+  'design-wall':      { file: 'design-wall.sh',      interpreter: 'bash', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
   // The consent guard (ADR-054 §3): it protects the OFF state itself, so it is the one hook that
   // matters MORE while the brain is off. 'run', permanently.
-  'protect-state':    { file: 'protect-brain-state.sh', interpreter: 'bash', mode: 'blocking', offBehavior: 'run' },
+  'protect-state':    { file: 'protect-brain-state.sh', interpreter: 'bash', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
   'learn-capture':    { file: 'learn-capture.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
   'learn-flush':      { file: 'learn-flush.mjs',     interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   'md-stamp':         { file: 'md-stamp.mjs',        interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
@@ -112,7 +112,7 @@ const TABLE = {
   // exit code, and an opted-in lesson BLOCK must propagate as exit 2 (an advisory delivery is exit 0
   // and passes straight through; a spawn error is exit 1, which CC treats as a non-blocking notice).
   // The CC event name is forwarded to the runtime as an extra argv (see runHook's arg plumbing).
-  'unprompted-speech': { file: 'unprompted-runtime.mjs', interpreter: 'node', mode: 'blocking', channel: 'unprompted', offBehavior: 'silence' },
+  'unprompted-speech': { file: 'unprompted-runtime.mjs', interpreter: 'node', mode: 'blocking', channel: 'unprompted', offBehavior: 'silence', stdinBytes: 65536 },
   // THE LIFECYCLE PLANE (ADR-055 §2, build item 1). Stop was the ONE registered hook that bypassed
   // this table entirely — hooks.json pointed straight at continuation-gate.mjs, so it had no mode,
   // no offBehavior, and no spine resolution, contradicting this file's own `_note` and leaving
@@ -156,7 +156,7 @@ if (BRAIN_OFF && entry.offBehavior === 'silence') process.exit(0);
 // already running, and skip the interpreter entirely only when BOTH prompt intent and project
 // state prove that no advisory can fire. The regex deliberately over-approximates the shell gates:
 // false positives take the established body; false negatives would be a product defect.
-let groundInput = null;
+let hookInput = null;
 const GROUND_RELEVANT = /ruvnet|ruflo|ruvector|\brvf\b|agentdb|agenticow|rulake|ruview|rupixel|ruv-fann|agentic-flow|synthlang|dspy|qudag|safla|metaharness|cve-bench|sparc|swarm|claude-flow|pinecone|pgvector|chroma|weaviate|faiss|milvus|qdrant|hnswlib|annoy|vector|langchain|llama|autogen|crew-ai|semantic-kernel|embedding|retrieval|prompt compression|token cost|post-quantum|quantum-resistant|\badr\b|decision|architect|design|plan|spec|refactor|migrat|implement|build|write|add|change|fix|update|deploy|create|enhance|set up|setup|wire|integrate|test|coverage|audit|review|benchmark|lint|scan|debug|optimi|app|feature|service|system|backend|frontend|\bapi\b|module|pipeline|infra|database|schema|workflow|roadmap|milestone|autonomous|unattended|do not stop|keep working|keep going|soak run|harness|quality|readiness|evolve|self-improv|hardening|cheaper|cheap|lower cost|compute arbitrage|cascade|scorecard|score .*repo/i;
 
 function projectCanSpeakWithoutPrompt() {
@@ -173,7 +173,7 @@ function projectCanSpeakWithoutPrompt() {
   return false;
 }
 
-function readGroundInput() {
+function readHookInput(limit) {
   return new Promise((resolve) => {
     const chunks = [];
     let bytes = 0;
@@ -194,8 +194,8 @@ function readGroundInput() {
       idle.unref?.();
     };
     process.stdin.on('data', (chunk) => {
-      if (bytes < 32768) {
-        const kept = chunk.subarray(0, 32768 - bytes);
+      if (bytes < limit) {
+        const kept = chunk.subarray(0, limit - bytes);
         chunks.push(kept);
         bytes += kept.length;
       }
@@ -254,8 +254,8 @@ function runHook(file) {
   const env = (BRAIN_OFF && entry.offBehavior === 'partial')
     ? { ...process.env, RUVNET_BRAIN_OFF: '1' }
     : process.env;
-  const io = hookId === 'ground-ruvnet' && groundInput !== null
-    ? { stdio: ['pipe', 'inherit', 'inherit'], input: groundInput }
+  const io = hookInput !== null
+    ? { stdio: ['pipe', 'inherit', 'inherit'], input: hookInput }
     : { stdio: 'inherit' };
   const r = spawnSync(cmd, [file, ...extraArgs], { ...io, env });
   if (r.error) {
@@ -287,17 +287,22 @@ function dispatchHook() {
   return runHook(fallbackFile);
 }
 
-if (hookId === 'ground-ruvnet') {
-  readGroundInput().then((input) => {
-    groundInput = input;
-    let text = input.toString('utf8');
-    try {
-      const parsed = JSON.parse(text);
-      text = parsed?.prompt ?? parsed?.user_prompt ?? parsed?.input ?? text;
-    } catch { /* raw/malformed input is classified as-is */ }
-    if (!GROUND_RELEVANT.test(String(text)) && !projectCanSpeakWithoutPrompt()) process.exit(0);
+if (entry.stdinBytes) {
+  readHookInput(entry.stdinBytes).then((input) => {
+    hookInput = input;
+    if (hookId === 'ground-ruvnet') {
+      let text = input.toString('utf8');
+      try {
+        const parsed = JSON.parse(text);
+        text = parsed?.prompt ?? parsed?.user_prompt ?? parsed?.input ?? text;
+      } catch { /* raw/malformed input is classified as-is */ }
+      if (!GROUND_RELEVANT.test(String(text)) && !projectCanSpeakWithoutPrompt()) process.exit(0);
+    }
     process.exit(dispatchHook());
-  }).catch(() => process.exit(dispatchHook()));
+  }).catch(() => {
+    hookInput = Buffer.alloc(0);
+    process.exit(dispatchHook());
+  });
 } else {
   process.exit(dispatchHook());
 }

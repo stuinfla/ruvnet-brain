@@ -3,8 +3,8 @@ id: ADR-057
 title: 95 on both graders — closing a 38/53 against a self-reported 83, dimension by dimension
 status: Proposed
 date: 2026-07-27
-updated: 2026-07-30
-impl: verified
+updated: 2026-08-01
+impl: verification-expired
 verified: 2026-07-30
 verified_digest: 1c276a7dfbc5
 verified_by: governed-source claim ledger in this ADR plus node scripts/doc-currency.mjs --json
@@ -23,12 +23,13 @@ relates: [ADR-028, ADR-052, ADR-053, ADR-055, ADR-056]
 # ADR-057: 95 on both graders
 
 **Status**: Proposed
-**Date**: 2026-07-27 · **Last updated**: 2026-07-30 · **Why**: governed-source reconciliation after
-the prompt-hook timeout repair; external grades and open proof limits preserved
-**Implementation**: source-wired and currency-verified, not release-verified · **Verified in sync**:
-2026-07-28 against the governed-source ledger below. In this label, `verified` means only that the
-ADR was re-read against its governed source digest; it does **not** mean either external grader
-awarded 95, the candidate package passed on every promised host, or every build-order item is done.
+**Date**: 2026-07-27 · **Last updated**: 2026-08-01 · **Why**: governed-source reconciliation after
+the installed What's New and MCP readiness boundaries moved; external grades and open proof limits
+preserved
+**Implementation**: source-wired, but the stored source verification is expired and is not a release
+verdict. The last digest-backed re-read remains historical evidence only. Neither external grader
+awarded 95, the candidate package has not been proved on every promised host, and every build-order
+item is not done.
 
 ## Context — the owner's sentence, which is the whole problem
 
@@ -244,6 +245,8 @@ to the five governed paths; it does not adjudicate the product or substitute for
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-01 | Re-read the governed installer after the four-state Claude/Codex transaction matrix. The plan remains Proposed and `impl: verification-expired`; focused host proof does not promote either external grader or the overall score. | `bin/install.mjs` now exposes the minimum injected seams needed to prove Claude-only, Codex-only, both, neither, disabled-host preservation, and rollback on either host failure. The integrated focused suite passed 70/70, while the full unit run recorded 2,726 passes and two version-fixture failures that were corrected and rerun 43/43. Exact-SHA CI, public-artifact clean installs, and two independent scores at or above 95 remain outstanding. |
+| 2026-08-01 | Re-read the governed installer changes and deliberately downgraded `impl:` from `verified` to `verification-expired`. The 95 plan remains Proposed and every external score/proof limitation remains open. | `bin/install.mjs` now delegates What's New to the installed plugin payload and, in #78 integration commit `b606900`, declares a 30-second Codex MCP startup deadline and reports worker readiness separately from registration. Those changes do not alter the five governed claims in the source ledger below. Nevertheless `verified_digest: 1c276a7dfbc5` no longer recomputes, and a source read plus #78's 138/138 focused tests cannot mint a new verification checkpoint. No broad/packed/exact-SHA/public artifact was proved, no external grader reran, and the downstream substitution/clean-room gaps remain open. |
 | 2026-07-30 | Re-read the governed 4.0.2 source and kept this decision Proposed: local packed/focused evidence is not external release proof or a 95 score. | `bin/install.mjs` now persists Console runtime and validates controls; `plugin/hooks/hooks.json` removed parser-invalid metadata and retains valid description/hooks fields. Still OPEN: external exact-SHA matrix, published clean install, both independent graders, WhitSentry clean-room replay, downstream substitution audit, and D4 N=3 promotion threshold. |
 | 2026-07-29 | Re-verified every governed source surface after the 4.0.0 Agentic-QE and release-hardening commit and refreshed the machine-derived digest. This does not promote an external grader score; it proves only governed-source currency. | Commit `e20cdf2`; `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `tests/mesh/*.mjs`, `bin/install.mjs`, and `plugin/hooks/hooks.json` were re-read against the stored QE evidence in `docs/qe/AGENTIC-QE-4.0-MASTER-PLAN.md`; computed digest `1f3d77fee84c`. |
 | 2026-07-29 | Re-read all five governed surfaces after the UserPromptSubmit timeout repair; the architecture and open score/proof limits remain unchanged, while the D6 envelope wording now matches the actual split deadlines. | PR #65 / commit `6734597` changes only the two UserPromptSubmit declarations in `plugin/hooks/hooks.json` from 5s to 10s; pre-tool declarations remain 5s and the inner unprompted runtime remains bounded at 4s. The exact candidate passed the GitHub macOS/Ubuntu/Windows stranger matrix, full Windows units, UX/QE, and warm-brain battery; neither external grader re-ran, so no score is promoted. |

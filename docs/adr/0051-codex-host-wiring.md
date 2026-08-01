@@ -3,7 +3,7 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-07-30
+updated: 2026-08-01
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -135,6 +135,13 @@ The doctor reads the active Codex home. It decodes the JSON-escaped TOML argumen
 whether the named server exists, so quoted Windows paths retain their real backslashes and quotes;
 a malformed argument is treated as unwired, never guessed valid.
 
+**2026-08-01 readiness refinement.** Registration and live readiness are now reported as separate
+facts. The managed Codex block declares a 30-second startup deadline. `tools/list` returns the
+protocol shell's stable declarations immediately, while the first real search joins worker
+initialize/warmup and records `registered | ready | degraded` in `mcp-readiness.json`. Doctor still
+derives wiring from config plus the server path, but it reports readiness separately and fails on a
+live degraded receipt. A registered state is not promoted to live grounding proof.
+
 And the banner is scoped honestly: when a Codex host is detected but unwired, "It works in EVERY
 project" becomes "It works in EVERY project in Claude Code … Codex is NOT wired yet". The original
 sentence is a true claim about Claude Code that would be read as a claim about every editor, which is
@@ -249,6 +256,9 @@ native Windows.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-01 | Re-read the complete host boundary after the four-state update matrix and public-artifact receipt producer landed. Claude-only, Codex-only, both-host, and neither-host installs are now explicit acceptance states; absent hosts remain untouched, an explicitly disabled Codex lifecycle remains disabled, and either detected-host failure restores the prior Console runtime byte-for-byte. | `tests/unit/console-runtime-transaction.test.mjs` exercises the four host states, host-specific failures, persisted runtime identity, and pending-restart counts through injected host adapters in `bin/install.mjs`; the integrated focused rerun passed 70/70. `scripts/publication-receipt.mjs` verifies installed Claude and Codex payloads after publication but does not alter their MCP or lifecycle transport. Native-Windows exact-SHA CI and public installation proof remain release gates, not claims made by this row. |
+| 2026-08-01 | Re-read the Claude/Codex host boundary after the issue #79 Console runtime transaction and protected-release instructions changed. The stable MCP registration, managed-block merge, host adapter, generation-independent wrapper, hook schema, and native skill discovery decisions remain intact. | `bin/install.mjs` now stages and verifies the Console runtime before host convergence, activates it only after the detected Claude and Codex hosts plus Stable Spine converge, rolls back the prior generation on failure, and persists exact runtime identity plus pending-restart state. `plugin/skills/release-proof/SKILL.md` changes release authority, not Codex transport. Exact-SHA CI and public-artifact proof remain outstanding and are not claimed here. |
+| 2026-08-01 | Re-read the governed Codex host surfaces after installed What's New authority, subscription-backed fix-workstream guidance, and MCP readiness discovery changed. The stable MCP registration, managed-block merge, host adapter, generation-independent wrapper, hook schema, and native skill discovery decisions remain intact; §4 now distinguishes registration from live worker readiness. | `bin/install.mjs` now invokes the immutable installed `plugin/scripts/whats-new.mjs` payload and adds `startup_timeout_sec = 30` plus readiness-aware doctor output (integration commit `b606900`). `plugin/skills/whats-new/SKILL.md` follows that installed authority, while `plugin/skills/ruvnet-brain/SKILL.md` requires native Claude/Codex subscription agents and isolated fix worktrees. None changes the wrapper/adapter transport or stated native-Windows and hook-trust limitations. The #78 lane reported 138/138 focused tests; no broad, packed, exact-SHA, public-artifact, or 95 proof is claimed. |
 | 2026-07-30 | Re-read the complete Codex install and lifecycle boundary after the 4.0.2 control-plane work; the stable wrapper and host-adapter architecture remain intact. | `bin/install.mjs` now persists the Console runtime and uses a realpath main-entry guard so imports are side-effect free. `plugin/skills/*` and the command aliases expose `$ruvnet-brain:rvbc`; `plugin/hooks/codex-hooks.json` remains schema-valid. Focused lifecycle, mutation, stale-install, and skill-discovery tests cover the shipped paths; external exact-SHA CI remains the release gate. |
 | 2026-07-29 | Added a native `rvbc` Codex skill and made the shared SessionStart body emit `$ruvnet-brain:rvbc` on Codex while retaining `/rvbc` on Claude Code. | A live Codex 0.145.0 session rejected `/rvbc` before model dispatch even though `commands/rvbc.md` shipped. The official Codex manual documents plugin workflows as skills invoked through `/skills` or `$`, while slash commands are a built-in host surface. `tests/integration/codex-skill-discovery.test.mjs` now requires the installed plugin loader to expose `ruvnet-brain:rvbc`; `tests/unit/codex-console-invocation.test.mjs` pins the host-specific session contract. |
 | 2026-07-29 | Re-read the Codex lifecycle registration after increasing only the two UserPromptSubmit host deadlines from 5s to 10s; the stable wrapper, adapter, and single-source hook-body decision remain unchanged. | PR #65 / commit `6734597` measured the real installed `ground-ruvnet` and `unprompted-speech` paths at 3.48–4.26s cold against an internal 4s runtime bound, leaving no safe margin under the former 5s host deadline. Post-fix real-path probes completed in 0.75s and 1.15s; `tests/unit/codex-lifecycle-hooks.test.mjs` requires at least 2× internal-runtime headroom while capping the declaration at 10s. |

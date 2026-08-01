@@ -95,6 +95,9 @@ const STANDALONE = [
     + 'RVFs to RVF-GENERATIONS.json and optionally prunes legacy sidecars; build-bundle.mjs consumes '
     + 'and validates the resulting manifest, so scheduling this destructive migration would be wrong'],
   ['release', 'the ship path, run by a human'],
+  ['fix-workstream', 'session-supervised coordination CLI run explicitly by the integration owner or an '
+    + 'isolated writing agent to start and hand off a fix lane. Scheduling it would violate its safety '
+    + 'boundary: it prepares evidence but never merges, pushes, publishes, deletes, or cleans worktrees'],
   // Run by the launchd nightly, which lives OUTSIDE this repo — so no in-repo caller can exist.
   // This is the one category the scanner genuinely cannot reach, and saying so is the honest form.
   ['self-update', 'launchd nightly (out-of-repo scheduler)'],

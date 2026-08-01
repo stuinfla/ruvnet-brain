@@ -7,7 +7,7 @@ authors: [Stuart Kerr, Claude Code]
 tags: [updating, self-update, plugin, hot-reload, rollback, mcp, hooks]
 supersedes: []
 relates: [ADR-020, ADR-021, ADR-022]
-updated: 2026-07-29
+updated: 2026-08-01
 updated_source: derived-from-git
 ---
 
@@ -64,10 +64,16 @@ Split the product into a **boot-frozen shell** (as small as possible, changes ~n
 
 2. **Stable MCP server (shell)** — `plugin/mcp/server.mjs` owns the client protocol itself
    (initialize / ping / tools/list / tools/call; fixed `search_ruvnet` schema) and supervises the
-   brain (`forge-mcp-all.mjs`, unchanged) as a **warm child worker over a PRIVATE handshake**:
+   brain (`forge-mcp-all.mjs`) as a **warm child worker over a PRIVATE handshake**:
    parent-owned ids in both directions, the client's handshake never replayed to anyone. On a
    generation change (or a KB-track code change), the child respawns **between requests only**
    (pending-count drain gate); the server leases the generation it serves so GC can't collect it.
+   Capability discovery is shell-owned and protocol-fast: `tools/list` returns the fixed declarations
+   without waiting for worker/model warmup. Initialize starts one shared readiness attempt; the first
+   `search_ruvnet` call joins it. Atomic `mcp-readiness.json` receipts distinguish registered,
+   ready/live, and degraded startup or worker-exit states for SessionStart and doctor. Codex's managed
+   registration also carries a 30-second startup deadline as defense in depth, not as permission to
+   block discovery on model work.
    **Claude Code's connection never drops; `search_ruvnet` serves the new brain mid-session.**
 
 3. **Update engine (ships in the plugin payload)** — `plugin/scripts/update-apply.mjs`, mirroring

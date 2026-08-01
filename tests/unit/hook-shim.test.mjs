@@ -10,12 +10,27 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const SHIM = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'plugin', 'scripts', 'hook-shim.mjs');
+const HOOKS = path.join(path.dirname(SHIM), '..', 'hooks', 'hooks.json');
+const SOURCE_PLUGIN_ROOT = path.dirname(path.dirname(SHIM));
 
 let HOME_DIR, PLUGIN_ROOT;
 const run = (hookId) => spawnSync(process.execPath, [SHIM, hookId], {
   encoding: 'utf8',
   env: { ...process.env, RUVNET_BRAIN_HOME: HOME_DIR, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT },
 });
+
+function runRegistered(hookId, input) {
+  const registry = JSON.parse(fs.readFileSync(HOOKS, 'utf8'));
+  const hook = Object.values(registry.hooks).flat()
+    .flatMap((group) => group.hooks || [])
+    .find((candidate) => candidate.command.includes(`hook-shim.mjs\" ${hookId}`));
+  if (!hook) throw new Error(`registered hook ${hookId} not found`);
+  return spawnSync('/bin/sh', ['-c', hook.command], {
+    input,
+    encoding: 'utf8',
+    env: { ...process.env, RUVNET_BRAIN_HOME: HOME_DIR, CLAUDE_PLUGIN_ROOT: SOURCE_PLUGIN_ROOT },
+  });
+}
 
 /** Seed a spine generation whose scripts print/exit as instructed. */
 function seedSpine(version, scripts) {
@@ -48,6 +63,42 @@ describe.skipIf(process.platform === 'win32')('hook-shim.mjs — restart-free ho
     const r = run('route-dispatch');
     expect(r.status).toBe(2); // not 0, not 1 — the CONTRACT code
     expect(r.stderr).toMatch(/BLOCKED/);
+  });
+
+  it('the registered blocking shim sends one bounded payload to its consuming hook body', () => {
+    seedSpine('1.0.0', {
+      'protect-brain-state.sh': [
+        '#!/bin/bash',
+        'INPUT=""',
+        'while IFS= read -r -t 1 _line; do INPUT+="$_line"; done',
+        '[ -n "$_line" ] && INPUT+="$_line"',
+        'printf "%s" "${#INPUT}"',
+      ].join('\n'),
+    });
+    const result = runRegistered('protect-state', 'p'.repeat(70_000));
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe('65536');
+  });
+
+  it('every registered blocking payload consumer receives the exact closed-pipe payload', () => {
+    const consumers = [
+      ['route-dispatch', 'route-dispatch.sh'],
+      ['ground-before-write', 'ground-before-write.sh'],
+      ['design-wall', 'design-wall.sh'],
+      ['protect-state', 'protect-brain-state.sh'],
+      ['unprompted-speech', 'unprompted-runtime.mjs'],
+    ];
+    for (const [hookId, file] of consumers) {
+      const payload = `payload-for-${hookId}`;
+      seedSpine('1.0.0', {
+        [file]: file.endsWith('.mjs')
+          ? 'let input = ""; process.stdin.on("data", (chunk) => { input += chunk; }); process.stdin.on("end", () => process.stdout.write(input));\n'
+          : '#!/bin/bash\nIFS= read -r payload || true\nprintf "%s" "$payload"\n',
+      });
+      const result = runRegistered(hookId, payload);
+      expect(result.status, `${hookId}: ${result.stderr}`).toBe(0);
+      expect(result.stdout, hookId).toBe(payload);
+    }
   });
 
   it('ADVISORY mode can never block a turn — a crashing hook still exits 0', () => {

@@ -169,8 +169,8 @@ describe('the installed server completes initialize and tools/list', () => {
       expect(tool.inputSchema.required).toEqual(['query']);
       expect(tool.inputSchema.properties.query.type).toBe('string');
       expect(tool.inputSchema.properties.k.type).toBe('integer');
-      // Prove the declaration came from the static fallback, not an accidentally-reached brain.
-      expect(tool.description).toContain('Brain bundle not installed');
+      // The protocol shell owns discovery; worker availability is decided only on call.
+      expect(tool.description).toMatch(/first call may wait/i);
     } finally {
       proc.kill('SIGTERM');
     }

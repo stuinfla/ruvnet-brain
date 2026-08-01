@@ -23,6 +23,12 @@ import readline from 'node:readline';
 import { loadRvf, loadTransformers, chooseModelCache } from './resolve-deps.mjs';
 import { materializeModelRevision, modelCacheReady } from './model-requirements.mjs';
 import { persistAndVerifyRvfIndex } from './rvf-index.mjs';
+import { lowerBuildPriority } from './process-priority.mjs';
+
+// BGE embedding can saturate a core for several minutes. Keep interactive lifecycle hooks
+// responsive while this maintenance job runs; unsupported/denied reprioritization is non-fatal.
+const BUILD_PRIORITY = lowerBuildPriority();
+console.log(`[big] process priority: ${BUILD_PRIORITY.applied ? 'below-normal' : `unchanged (${BUILD_PRIORITY.error})`}`);
 
 const MODEL = 'Xenova/bge-base-en-v1.5';
 // MODEL-WEIGHT PIN: address the embedder by an exact HuggingFace commit SHA, not the floating `main`

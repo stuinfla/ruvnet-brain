@@ -3,8 +3,8 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-07-31
-impl: verified
+updated: 2026-08-01
+impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
 authors: [Stuart Kerr, Claude Code]
@@ -28,6 +28,12 @@ governs:
 **Status**: Implemented (master switch plus Complete Brain / RuVector Only storage profiles)
 **Date**: 2026-07-26
 **Related**: ADR-052 (proactivity-you-control), ADR-053 (experience QA), ADR-023 (stable spine)
+
+> **Current verification status (2026-08-01): expired.** The stored digest below predates the
+> candidate's Console runtime-identity, MCP readiness, installed What's New, and hook-stdin
+> transport changes. Source review found no decision reversal, but the full eight-gate multi-host
+> verification was not rerun in this document-currency lane. The historical `verified` fields are
+> retained as the last proved checkpoint; they are not a current-candidate verdict.
 
 > **Implemented 2026-07-26, v3.9.84-dev.** v1 = ON/OFF only; per-family scope stays measure-first per
 > §1 and NO scope plumbing was built. All 8 gate tests live in `tests/unit/brain-off.test.mjs` (54
@@ -185,6 +191,8 @@ failure. v1 draft's Decision + risks register superseded above; Context stands.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-01 | Added the exact-candidate Console runtime to the installer/update convergence transaction; `impl: verification-expired` remains honest. | Issue #79 changes `bin/install.mjs` delivery only: staged syntax verification, atomic activation/rollback, persisted runtime identity, and pending-restart reporting. It does not read, write, remove, or override `~/.config/ruvnet-brain/brain-off`, `brainEnabled`, maintenance choice, or the Complete/RuVector profile. Focused transaction/lifecycle tests cover the delivery behavior; the eight multi-host OFF gates were not rerun here. |
+| 2026-08-01 | Re-read every governed path changed on the clean integration candidate and deliberately downgraded `impl:` from `verified` to `verification-expired`; the master-switch, sentinel precedence, per-plane OFF law, maintenance behavior, and storage-profile decision remain unchanged in source. | `plugin/scripts/hook-shim.mjs` now bounds and closes stdin for five blocking consumers while preserving the pre-read OFF-silence exit and every `offBehavior` value. `scripts/onboarding-console.mjs` adds scoped runtime ownership/replacement without changing sentinel or profile writes. `bin/install.mjs`, `plugin/mcp/server.mjs`, and `plugin/scripts/session-start-core.mjs` add installed What's New and truthful `registered | ready | degraded` MCP readiness (integration commit `b606900`); the OFF branch still suppresses advertising and preserves maintenance. The stored `verified_digest: 7e4e5c249715` no longer recomputes, and neither this lane nor #78's 138/138 focused tests reran gates 1-8 across both hosts; verification therefore stays expired. |
 | 2026-07-31 | Trimmed redundant first-load wording in the native SessionStart authority to restore cross-platform stdout headroom; no state, OFF behavior, sentinel precedence, or offered choice changed. | The old PR-head packed stranger jobs measured 4,129 bytes on macOS and 4,118 bytes on Ubuntu against the 4,096-byte contract. The corrected real packed macOS scenario passed all 76 registered hook firings, focused SessionStart/OFF/console tests passed 106/106, the plugin battery passed 60/60, and the registered wall-time gate passed at 208ms cold, 143ms p95, and 146ms max. |
 | 2026-07-31 | Re-verified the complete OFF/partial/safety contract after SessionStart moved to one host-neutral Node authority. Governance now includes `plugin/scripts/session-start-core.mjs`, where the internal OFF split actually runs; `plugin/scripts/session-start.sh` is only a fail-open compatibility launcher. | Commit `5d0fe75` keeps `hook-shim.mjs`'s `offBehavior: partial` entry and forwards the resolved `RUVNET_BRAIN_OFF` snapshot into the core. Exact shell/core parity passed 5/5, including OFF with an absent KB and OFF with a present-but-broken KB; the broader SessionStart regression set passed 165/165. No master-switch, sentinel-precedence, storage-profile, maintenance, or consent decision changed. |
 | 2026-07-31 | Re-verified the brain on/off and storage-profile contract after closing the release-oracle regressions. | Commit `14f654e` changes governed `kb/forge-ask-all.mjs` only in source-backed query classification, capability-card supplementation, and replayable-promotion evidence selection. It does not change `brainEnabled`, sentinel precedence, profile selection, or off-state behavior. The impacted broad gate passed 273/273, the production Top-100 gate passed 100/100 semantic and grounded/routed with 0 errors and a 3.723s maximum, and the exact rebuilt archive audited 63/63 RVFs with zero index failures; computed digest `f6d3dce9ad77`. |
