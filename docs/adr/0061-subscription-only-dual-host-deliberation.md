@@ -3,7 +3,7 @@ id: ADR-061
 title: Subscription-only dual-host deliberation for hard problems
 status: Proposed
 date: 2026-07-28
-updated: 2026-07-28
+updated: 2026-08-01
 authors: [Stuart Kerr, GPT-5.6-Sol]
 tags: [claude-code, codex, subscriptions, adr, ddd, agentic-qe, deliberation]
 supersedes: []
@@ -12,8 +12,10 @@ governs:
   - scripts/subscription-hosts.mjs
   - scripts/dual-host-deliberation.mjs
   - scripts/dual-host-suggest.mjs
+  - plugin/skills/ruvnet-brain/SKILL.md
   - tests/unit/subscription-hosts.test.mjs
   - tests/unit/dual-host-deliberation.test.mjs
+  - tests/unit/subscription-routing-guidance.test.mjs
 ---
 
 # ADR-061: Subscription-only dual-host deliberation
@@ -112,6 +114,17 @@ plan identifiers and later independently verified outcomes. Raw prompts, source,
 identity and full transcripts are not stored by default. Host completion remains
 `verified: false`; only later adjudication may train routing.
 
+### 8. Ruflo coordinates; native subscription agents execute
+
+For ordinary swarm work, Ruflo's `swarm_init` and `agent_spawn` establish coordination and tracked
+roles. They do not authorize a provider-billed executor. Actual work runs through the active host's
+native subscription execution surface: Claude Code's Task tool or Codex collaboration agents.
+
+Provider-backed execution, including `agent_execute`, an SDK/API call, or OpenRouter, requires the
+user's explicit opt-in for that task. It is never an automatic fallback when a subscription is
+missing, logged out, quota-limited or temporarily unavailable, and routine swarm setup never asks
+the user for a provider API key.
+
 ## Failure contract
 
 | Failure | Result |
@@ -143,3 +156,9 @@ ChatGPT subscription with provider API-key variables removed. Claude Code 2.1.22
 Max `claude.ai` subscription, but the real model call hit its weekly limit. That is evidence for the
 degraded-mode requirement, not a two-sided acceptance. This ADR stays Proposed until Claude
 completes the missing side.
+
+On 2026-08-01, the shipped RuvNet Brain skill's executor guidance was reconciled with this ADR:
+Ruflo coordination now leads to native Claude Code or Codex subscription execution by default,
+while every provider-backed path is explicit opt-in only. A structural regression test protects
+that boundary. This documentation repair does not satisfy the outstanding two-host acceptance
+requirements, so the ADR remains Proposed.
