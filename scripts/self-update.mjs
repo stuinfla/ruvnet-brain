@@ -8,6 +8,10 @@
 //   node scripts/self-update.mjs --apply --tier T0   # limit scope
 //   node scripts/self-update.mjs --apply --repo ruflo
 //
+// Publication is intentionally NOT supported here. A scheduled or local rebuild may prepare
+// candidate bytes, but only the protected release workflow may publish them after release-proof
+// seals the exact clean SHA and packed-artifact digest.
+//
 // Designed to be invoked by deploy/com.ruvnet.brain-nightly.plist (LaunchAgent — NOT auto-installed).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -48,6 +52,11 @@ const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && proc
 const APPLY = has('--apply');
 const TIER = arg('--tier', null);
 const ONLY = arg('--repo', null);
+if (has('--publish')) {
+  console.error('[release-authority] DENIED: self-update is rebuild-only; --publish cannot create a GitHub Release, publish npm, move a dist-tag, push a release commit, or label anything shipped.');
+  console.error('[release-authority] Use the protected release workflow after release-proof seals the exact clean SHA and packed-artifact digest.');
+  process.exit(2);
+}
 // --publish's whole job is to end this run with `git commit` + `git push origin main` (see the
 // PUBLISH block far below) — and those two commands operate on whatever branch is CURRENTLY
 // CHECKED OUT in this working tree, not necessarily main. Real failure (2026-07-19): the nightly

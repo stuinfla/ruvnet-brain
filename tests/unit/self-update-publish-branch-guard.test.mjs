@@ -1,25 +1,7 @@
-// tests/unit/self-update-publish-branch-guard.test.mjs — the nightly must never commit to
-// whatever branch happens to be checked out.
-//
-// Real failure (2026-07-19/20): the nightly fired at 03:15 while feat/meta-proxy-passthrough was
-// checked out (a developer mid-task — exactly how this was discovered), and scripts/self-update.mjs's
-// `--publish` block's `git commit` + `git push origin main` landed commit 4a10833 "Nightly brain
-// refresh v3.4.21-dev" on THAT branch instead of main — a version-bump commit no release will ever
-// be cut from, silently mixed into someone's unrelated in-progress work. Confirmed live: 4a10833 is
-// NOT an ancestor of main (`git merge-base --is-ancestor 4a10833 main` → false) and only reachable
-// from feat/meta-proxy-passthrough.
-//
-// Fix (see scripts/self-update.mjs, right after flag parsing): refuse to proceed with --publish
-// unless HEAD is exactly `main` — checked BEFORE any rebuild work, GitHub Release, or npm publish
-// step runs. Deliberately does NOT `git checkout main` to self-correct (that could clobber a
-// developer's uncommitted work on whatever branch is checked out — the "clever and destructive"
-// move the repo's own CLAUDE.md Rule 19 already warns against, re: defensive wrappers that cause
-// the exact failure they're meant to guard against). It aborts loudly instead.
-//
-// This IS genuinely testable without running a real nightly: the guard fires immediately after
-// argument parsing, before self-update.mjs ever reads data/registry.tiers.json, probes a remote, or
-// touches the network/npm/GitHub — so a throwaway git repo containing only a copy of the script
-// (+ its one relative import, full-hints.mjs) is enough to exercise the real subprocess. No mocking.
+// self-update is a rebuild mechanism, never publication authority. These subprocess tests execute
+// the real entrypoint in a disposable repository and prove --publish dies before registry reads,
+// network probes, version writes, npm, GitHub, or git mutation. The mutant removes the denial and
+// must fail for an unrelated missing-authority path, proving the guard is load-bearing.
 import { describe, it, expect, afterEach } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -35,11 +17,10 @@ const hasGit = spawnSync('git', ['--version']).status === 0;
 
 function git(cwd, ...args) { return execFileSync('git', args, { cwd, encoding: 'utf8' }); }
 
-// A throwaway repo with self-update.mjs (+ its one relative import) copied in, so ROOT — derived
+// A throwaway repo with self-update.mjs and its relative imports copied in, so ROOT — derived
 // inside the script from its OWN file location, not the caller's cwd — resolves to this disposable
 // directory and never anywhere near the real ruvnet-brain checkout. An empty-but-valid
-// registry.tiers.json lets a main-branch run progress far enough to prove it got PAST the guard
-// (rather than merely not crashing for an unrelated reason).
+// registry.tiers.json lets a no-publish run proceed and lets the denial mutant reach later code.
 function fixtureRepo() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'self-update-branch-guard-'));
   execFileSync('git', ['init', '-b', 'main', dir]);
@@ -64,53 +45,34 @@ function runSelfUpdate(dir, args) {
   });
 }
 
-const FATAL_MSG = /requires 'main' to be checked out/;
+const DENIAL = /DENIED: self-update is rebuild-only/;
 
-describe.skipIf(!hasGit || process.platform === 'win32')('self-update.mjs — --publish refuses to run off of anything but main', () => {
+describe.skipIf(!hasGit || process.platform === 'win32')('self-update.mjs — publication authority is denied locally and on schedules', () => {
   let dir;
   afterEach(() => { if (dir) fs.rmSync(dir, { recursive: true, force: true }); });
 
-  it('NO LONGER aborts on a feature branch — the worktree removed the dilemma (2026-07-24)', () => {
-    // REVERSED, and the reason is the whole point of this file now.
-    //
-    // The guard this test guarded was CORRECT for what it knew, and it still cost us an outage.
-    // Refusing to commit onto a feature branch prevented the 4a10833 stranded-commit bug — but
-    // scripts/self-update.mjs is the ONLY thing that cuts GitHub Releases (`release.mjs --publish`
-    // does npm and contains zero `gh release` calls). So on 2026-07-23 the nightly hit this guard
-    // with the repo on branch 4.0, aborted exactly as designed, and the release channel FROZE at
-    // v3.9.18-dev while npm advanced to 3.9.50. Thirty-two versions of drift, produced by a guard
-    // working perfectly, invisible because the channel verifier only checked that the bundle was
-    // reachable and never that it was current.
-    //
-    // The dilemma was false. It existed only because the version commit ran in ROOT. It now runs in
-    // a git worktree pinned to origin/main (detached, pushed as HEAD:main — git refuses one branch in
-    // two worktrees), so the developer's tree is never touched AND the release is never blocked by
-    // what they have checked out. Neither horn, instead of a better choice between them.
-    //
-    // The guarantee this test originally protected is INTACT and asserted below: ROOT's branch and
-    // commit count are unchanged by a publish attempt. What changed is that the run is no longer
-    // required to die to achieve that.
+  it('rejects --apply --publish before touching a feature-branch checkout', () => {
     dir = fixtureRepo();
     git(dir, 'checkout', '-b', 'feat/meta-proxy-passthrough');
     const commitsBefore = git(dir, 'rev-list', '--count', 'HEAD').trim();
 
     const r = runSelfUpdate(dir, ['--apply', '--publish']);
 
-    expect(r.stderr, 'the main-only FATAL must be gone — it is what froze releases for 32 versions')
-      .not.toMatch(FATAL_MSG);
-    expect(r.stdout, 'the run must proceed past where the guard used to kill it').toMatch(/0 repos in scope/);
-    // THE ORIGINAL GUARANTEE, STILL ENFORCED: ROOT is untouched either way.
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(DENIAL);
+    expect(r.stderr).toMatch(/protected release workflow/);
+    expect(r.stdout).toBe('');
     expect(git(dir, 'rev-list', '--count', 'HEAD').trim()).toBe(commitsBefore);
     expect(git(dir, 'branch', '--show-current').trim()).toBe('feat/meta-proxy-passthrough');
   });
 
-  it('does not fire when main is checked out — proceeds past the guard into the real run', () => {
+  it('rejects --apply --publish on main too — branch identity cannot grant authority', () => {
     dir = fixtureRepo(); // fixtureRepo() leaves `main` checked out
     const r = runSelfUpdate(dir, ['--apply', '--publish']);
 
-    expect(r.stderr).not.toMatch(FATAL_MSG);
-    // proof of genuine progression past the guard, not a lucky early crash: the plan actually ran
-    expect(r.stdout).toMatch(/0 repos in scope/);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(DENIAL);
+    expect(r.stdout).toBe('');
   });
 
   it('does not fire on a feature branch when --publish is absent (plain rebuild runs stay branch-agnostic)', () => {
@@ -119,17 +81,36 @@ describe.skipIf(!hasGit || process.platform === 'win32')('self-update.mjs — --
 
     const r = runSelfUpdate(dir, ['--apply']);
 
-    expect(r.stderr).not.toMatch(FATAL_MSG);
+    expect(r.stderr).not.toMatch(DENIAL);
     expect(r.stdout).toMatch(/0 repos in scope/);
   });
 
-  it('does not fire on a feature branch in dry-run mode (no --apply, even with --publish)', () => {
+  it('rejects --publish even without --apply so the flag never implies latent authority', () => {
     dir = fixtureRepo();
     git(dir, 'checkout', '-b', 'feat/some-work');
 
     const r = runSelfUpdate(dir, ['--publish']);
 
-    expect(r.stderr).not.toMatch(FATAL_MSG);
-    expect(r.stdout).toMatch(/dry-run/);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(DENIAL);
+    expect(r.stdout).toBe('');
+  });
+
+  it('MUTANT: deleting the denial reaches later code instead of the authority failure', () => {
+    dir = fixtureRepo();
+    const script = path.join(dir, 'scripts/self-update.mjs');
+    const source = fs.readFileSync(script, 'utf8');
+    const guarded = source.replace(
+      /if \(has\('--publish'\)\) \{[\s\S]*?process\.exit\(2\);\n\}/,
+      '',
+    );
+    expect(guarded).not.toBe(source);
+    fs.writeFileSync(script, guarded);
+
+    const r = runSelfUpdate(dir, ['--apply', '--publish']);
+
+    expect(r.status).not.toBe(2);
+    expect(r.stderr).not.toMatch(DENIAL);
+    expect(r.stdout).toMatch(/0 repos in scope/);
   });
 });
