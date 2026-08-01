@@ -144,35 +144,22 @@ function distillFleet() {
   if (!RUFLO) return { ok: false, log: 'ruflo is not on this machine — install it with `npm i -g ruflo@latest` to distill' };
 
   const scope = argv.includes('--root') ? path.resolve(argv[argv.indexOf('--root') + 1]) : null;
-  const roots = scope ? [scope] : [path.join(HOME, 'Code'), path.join(HOME, 'Projects'), HOME];
-
-  const seen = new Set();
   const targets = [];
   const corrupt = [];
-  for (const root of roots) {
-    let found = [];
-    try { found = findStores(root); } catch { continue; }
-    for (const db of found) {
-      const resolved = path.resolve(db);
-      // findStores() ALWAYS appends ~/.claude and ~/cognitum-trader regardless of the root it was
-      // given (deliberately — a one-level glob once missed 32 real stores). That is right for a
-      // survey and wrong for a scoped run: passing --root pointed at a scratch directory still
-      // distilled a real store outside it. Caught live 2026-07-21 by actually running this rather
-      // than trusting it. If a scope was asked for, it is enforced HERE.
-      if (scope && !resolved.startsWith(scope + path.sep)) continue;
-      if (seen.has(resolved)) continue;
-      seen.add(resolved);
-      let d;
-      try { d = diagnose(resolved); } catch { continue; }
-      if (d.unreadable || d.schemaless || !d.total) continue;
-      if (d.cover < 0.5 || (d.patterns ?? 0) > 0) continue;
-      // A corrupt store CANNOT be distilled — ruflo refuses it outright ("memory DB reports
-      // corruption — run recoverMemoryDatabase first"). Attempting anyway burns minutes, writes
-      // nothing, and returns a zero that reads as "distillation doesn't work". The honest answer is
-      // that repair comes FIRST, so name these instead of silently failing on them.
-      if (d.integrity && d.integrity !== 'ok') { corrupt.push(d.name); continue; }
-      targets.push({ db: resolved, name: d.name, before: d.patterns ?? 0 });
-    }
+  let found = [];
+  try { found = scope ? findStores(scope) : findStores(); } catch { found = []; }
+  for (const db of found) {
+    const resolved = path.resolve(db);
+    let d;
+    try { d = diagnose(resolved); } catch { continue; }
+    if (d.unreadable || d.schemaless || !d.total) continue;
+    if (d.cover < 0.5 || (d.patterns ?? 0) > 0) continue;
+    // A corrupt store CANNOT be distilled — ruflo refuses it outright ("memory DB reports
+    // corruption — run recoverMemoryDatabase first"). Attempting anyway burns minutes, writes
+    // nothing, and returns a zero that reads as "distillation doesn't work". The honest answer is
+    // that repair comes FIRST, so name these instead of silently failing on them.
+    if (d.integrity && d.integrity !== 'ok') { corrupt.push(d.name); continue; }
+    targets.push({ db: resolved, name: d.name, before: d.patterns ?? 0 });
   }
   const corruptNote = corrupt.length
     ? ` ${corrupt.length} store${corrupt.length === 1 ? ' was' : 's were'} skipped as corrupt and must be repaired before ${corrupt.length === 1 ? 'it' : 'they'} can be distilled: ${corrupt.slice(0, 5).join(', ')}${corrupt.length > 5 ? '…' : ''}.`

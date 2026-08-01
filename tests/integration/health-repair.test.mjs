@@ -62,6 +62,35 @@ function repair(db) {
   return { out: `${r.stdout || ''}${r.stderr || ''}`, code: r.status };
 }
 
+function seedDistillableStore(home, relative) {
+  const db = path.join(home, relative, '.swarm', 'memory.db');
+  fs.mkdirSync(path.dirname(db), { recursive: true });
+  sqlite(db, `CREATE TABLE memory_entries(id INTEGER PRIMARY KEY, namespace TEXT, embedding BLOB);
+              CREATE TABLE reasoning_patterns(id INTEGER PRIMARY KEY, promoted INTEGER DEFAULT 0);
+              INSERT INTO memory_entries(namespace, embedding) VALUES ('lessons', x'01');`);
+  return fs.realpathSync(db);
+}
+
+function fakeRuflo(home, marker) {
+  const executable = path.join(home, '.npm-global', 'bin', 'ruflo');
+  fs.mkdirSync(path.dirname(executable), { recursive: true });
+  fs.writeFileSync(executable, `#!/bin/sh
+if [ "$1" = "memory" ] && [ "$2" = "backup" ]; then exit 0; fi
+if [ "$1" = "memory" ] && [ "$2" = "distill" ] && [ "$3" = "run" ]; then
+  shift 3
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--db" ]; then db="$2"; shift 2; else shift; fi
+  done
+  sqlite3 "$db" "INSERT INTO reasoning_patterns(promoted) VALUES (0);"
+  printf '%s\\n' "$db" >> "$DISTILL_MARKER"
+  exit 0
+fi
+exit 1
+`);
+  fs.chmodSync(executable, 0o755);
+  return { ...process.env, HOME: home, DISTILL_MARKER: marker };
+}
+
 const backupsIn = () => fs.readdirSync(dir).filter((f) => f.includes('.rescue-'));
 
 describe('health-repair --repair-memory', () => {
@@ -103,5 +132,39 @@ describe('health-repair --repair-memory', () => {
     const { out, code } = repair(path.join(dir, 'does-not-exist.db'));
     expect(code).toBe(1);
     expect(out).toMatch(/no memory store/i);
+  });
+});
+
+describe('health-repair --distill-fleet discovery', () => {
+  it('uses the shared no-argument fleet policy so hidden known stores are not dropped', () => {
+    const home = path.join(dir, 'home');
+    fs.mkdirSync(home, { recursive: true });
+    const source = seedDistillableStore(home, 'source/hm/a');
+    const global = seedDistillableStore(home, '.claude');
+    const marker = path.join(dir, 'distilled.txt');
+    const run = spawnSync(process.execPath, [SCRIPT, '--distill-fleet'], {
+      env: fakeRuflo(home, marker),
+      encoding: 'utf8',
+      timeout: 120_000,
+    });
+
+    expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
+    expect(fs.readFileSync(marker, 'utf8').trim().split('\n').sort()).toEqual([global, source].sort());
+  });
+
+  it('keeps --root genuinely scoped', () => {
+    const home = path.join(dir, 'home');
+    fs.mkdirSync(home, { recursive: true });
+    const source = seedDistillableStore(home, 'source/hm/a');
+    seedDistillableStore(home, '.claude');
+    const marker = path.join(dir, 'distilled.txt');
+    const run = spawnSync(process.execPath, [SCRIPT, '--distill-fleet', '--root', path.join(home, 'source')], {
+      env: fakeRuflo(home, marker),
+      encoding: 'utf8',
+      timeout: 120_000,
+    });
+
+    expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
+    expect(fs.readFileSync(marker, 'utf8').trim().split('\n')).toEqual([source]);
   });
 });

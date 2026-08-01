@@ -3,7 +3,7 @@ id: ADR-027
 title: The brain advocates, it does not wait — capability advocacy + the death of passive signals
 status: Proposed
 date: 2026-07-21
-updated: 2026-07-22
+updated: 2026-08-01
 authors: [Stuart Kerr, Claude Code]
 tags: [strategy, learning, proactivity, agentdb, sona, reasoningbank, console, health]
 supersedes: []
@@ -203,6 +203,11 @@ console had `patterns` and `learns` on every fleet entry the entire time and nev
 **Still Proposed, and the reason is one sentence: the engine is built and it does not render.**
 
 Landed in 3.5.0-dev:
+
+- **Fleet discovery convergence (issue #81)** makes the North Star executor consume
+  `memory-doctor.mjs`'s shared no-argument machine-wide discovery policy. An explicit `--root`
+  remains scoped, while an unscoped repair includes common roots, configured roots, and the known
+  `~/.claude` store instead of rebuilding an incomplete root list inside `health-repair.mjs`.
 
 - **The Remedy Registry** (`scripts/remedy-registry.mjs`) makes principle 2 structural rather than
   aspirational. Building it exposed that the prohibition was already being violated by the code that
