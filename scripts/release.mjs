@@ -30,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import { validateProtectedPublishInvocation } from './protected-release-invocation.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
@@ -77,6 +78,19 @@ function readReleaseTransaction() {
 }
 
 console.log(`\n${c.b('RuvNet Brain — release / definition-of-done')} ${c.dim('· ' + (PUBLISH ? 'PUBLISH' : 'check-only') + ' · shipping ' + V())}\n`);
+
+// The local CLI remains useful as a read-only preflight, but publication authority lives only in
+// the reviewer-protected workflow. Validate the exact candidate receipt and artifact bytes before
+// any command capable of pushing, tagging, releasing, or publishing can run.
+if (PUBLISH) {
+  const protectedInvocation = validateProtectedPublishInvocation({ root: ROOT });
+  if (protectedInvocation.verdict !== 'PASS') {
+    console.error(`\n${c.r('✗ PROTECTED RELEASE GATE FAILED')}`);
+    for (const failure of protectedInvocation.failures) console.error(`  ${failure}`);
+    console.error(`${c.r('  NOT shipped. Run the protected-release workflow with exact candidate evidence.')}\n`);
+    process.exit(1);
+  }
+}
 
 // A verdict is only about the exact committed candidate. Check-only used to permit a dirty tree
 // while publish checked cleanliness much later, so preflight could certify bytes that would never

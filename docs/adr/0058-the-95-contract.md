@@ -4,7 +4,7 @@ title: The 95 contract — one observable per dimension, one mutant per observab
 status: Proposed
 date: 2026-07-27
 updated: 2026-08-01
-impl: wired
+impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -32,10 +32,12 @@ governs:
   - scripts/release-vector.mjs
   - scripts/release-proof.mjs
   - scripts/release-authority.mjs
+  - scripts/protected-release-invocation.mjs
   - scripts/release.mjs
   - scripts/self-update.mjs
   - scripts/nightly-wrapper.sh
   - .github/workflows/ci.yml
+  - .github/workflows/protected-release.yml
   - plugin/skills/release-proof/SKILL.md
   - plugin/skills/release-proof/scripts/release-proof.mjs
   - tests/qe/gpt56/live-brain-search.test.mjs
@@ -59,6 +61,13 @@ scoped evidence instead of widening; the same query passes in 0.671s, with 118/1
 lineage, zero/skipped/todo work, open issues, exact-SHA GitHub failures, artifact/host/grader binding
 splits, missing self-RVF, deadline-margin breaches, and public-byte drift. GitHub now enforces required
 checks for admins and protects `Production – ruvnet-brain` with required review and no admin bypass.
+The 4.0.4 candidate also has a checked-in protected-release transport: dispatch identity is a full
+candidate SHA, one artifact SHA-256, exact version 4.0.4, and the successful exact-SHA CI run whose
+named `release-qe` job produced the receipt. The publisher cannot start until that proof succeeds,
+then crosses `Production – ruvnet-brain` for reviewer approval and revalidates the same seal before
+invoking the one publisher. `scripts/release.mjs --publish` rejects local and differently named
+workflow invocations before remote mutation. The workflow requires the machine-generated
+publication receipt after the publisher and stays red rather than inventing missing public proof.
 D4 has a current Codex-backed
 3/3 treated versus 0/3 control artifact on source SHA `63e5e67`, plus committed delete-lesson and
 brain-off-treated causal failures in `2b39f68`. D3 now executes its real signal lifecycle from the
@@ -336,6 +345,7 @@ correct: **the strong claim was the defect.**
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-01 | Added the protected 4.0.4 release transport without publishing: `.github/workflows/protected-release.yml` accepts only an exact SHA, artifact SHA-256, version, and successful exact-SHA `release-qe` run; its sole publisher depends on that proof and uses the reviewer-protected `Production – ruvnet-brain` environment. `scripts/protected-release-invocation.mjs` makes local or wrong-workflow `release.mjs --publish` fail before any remote mutation. | Source inspection found the receipt validator and one-publisher scanner but no checked-in workflow carrying either into the protected environment. Eighteen failure-first workflow/invocation tests reject missing approval, dependency, seals, malformed or split identity, artifact tampering, and local publication. The workflow requires a post-publication receipt and fails closed if its public-host/Brain evidence producer is absent; no publication was attempted in this tranche. |
 | 2026-08-01 | Issue #77 tightened the proposed release authority around one exact product generation; this remains candidate enforcement, not a shipped release verdict. `self-update.mjs` is rebuild-only with its dead duplicate publisher removed, the nightly wrapper cannot pass `--publish` or turn a changed tag plus nonzero exit into success, CI runs a named `release-qe` job, and release receipts reject any package/Claude/Codex/bundle/installed-host version split. | The public v4.0.3 label advanced while npm and both host manifests remained v4.0.2. Digest binding alone could not reject that class: the receipt validator previously ignored host versions. Failure-first tests now kill nine candidate splits, seven public splits, a reintroduced second publisher, and the former nightly false-success branch. Publication and exact public-artifact proof remain pending. |
 | 2026-08-01 | Re-read the governed candidate changes without promoting the Proposed decision or release verdict. Bounded hook stdin, protocol-fast discovery, explicit readiness receipts, and installed What's New authority reduce concrete failure surfaces; they do not close the external 95 contract. | `plugin/scripts/hook-shim.mjs` now owns finite, closed stdin for five blocking consumers while preserving handler modes and OFF polarity. Integration commit `b606900` makes `plugin/mcp/server.mjs` return stable `tools/list` declarations without worker warmup, persist `registered | ready | degraded` readiness, and makes `plugin/scripts/session-start-core.mjs` avoid a false live-grounding claim; `bin/install.mjs` adds the matching startup deadline/doctor verdict. The #78 lane reported 138/138 focused tests. Neither these results nor the installed What's New change establish a broad or packed exact-SHA run, clean published candidate, installed MCP latency across hosts, WSL2, zero open issues, or two external grader scores at or above 95. |
 | 2026-07-31 | Tightened the D6 candidate back under the existing 4,096-byte stdout contract without changing a threshold: redundant first-load prose was shortened in `session-start-core.mjs`, while every offered choice and action remains live. | The prior packed PR head failed honestly at 4,129 bytes on macOS and 4,118 bytes on Ubuntu. The corrected real packed macOS scenario passed 76/76 registered firings; focused tests passed 106/106, the plugin battery passed 60/60, and the registered wall-time gate passed at 208ms cold, 143ms p95, and 146ms max. Cross-platform CI is required again on the committed correction before release. |

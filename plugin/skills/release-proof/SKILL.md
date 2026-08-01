@@ -30,6 +30,11 @@ green.
 ## Candidate seal
 
 Generate the receipt from commands in the protected candidate workflow. Do not hand-author it.
+For generation 4.0.4, dispatch `.github/workflows/protected-release.yml` only with the full candidate
+SHA, sealed artifact SHA-256, exact version `4.0.4`, and the successful exact-SHA CI run ID whose
+named `release-qe` job produced `release-evidence-<sha>`. The workflow checks every binding before
+creating its sealed handoff and again after the production reviewer approves. Missing artifacts,
+pending/red jobs, malformed inputs, version splits, and byte mismatches stop before the publisher.
 Validate it from the repository with:
 
 ```bash
@@ -59,6 +64,13 @@ node scripts/release-proof.mjs \
 Only exit 0 permits “shipped,” “deployed,” “green,” or “ready.” If publication occurred but this
 seal fails, say `PUBLICATION DEGRADED`, preserve the previous known-good release, and repair or
 roll back through the release workflow.
+
+`scripts/release.mjs --publish` is intentionally unusable from a local shell or another workflow.
+Its invocation guard requires GitHub Actions workflow `protected-release`, the candidate receipt,
+and matching SHA/digest/version bindings before any push, tag, release, or npm action. The workflow
+then requires `release-evidence/publication-receipt.json` and uploads both append-only receipts only
+after the two-receipt validator exits 0. Missing public-host, Brain, or `published-surface-probe`
+evidence is red, never inferred.
 
 ## Evidence and issue handling
 
