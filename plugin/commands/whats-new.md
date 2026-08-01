@@ -9,14 +9,15 @@ The user wants the headline story of the **major** release they're on — the 4.
 **not** the "3.9.x → 3.9.y" point-release churn. Deliver it warmly and honestly, then offer the Console.
 
 **First, ground — never recite this from memory (it drifts every release):**
-1. Read the running version from `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. State it honestly.
+1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/whats-new.mjs"`. This reads the running version and curated
+   notes from the same immutable installed payload. If it exits nonzero, report that exact failure;
+   do not substitute a checkout, download, or another installed version. State the version honestly.
    **Do NOT claim "you're on 4.0"** unless the version literally starts with `4.` — per ADR-042 the
    number stays `3.9.x-dev` until the 4.0 line is field-verified. The honest framing is: *"these are the
    4.0-line enhancements, and you already have them — the version stamps to 4.0 once they're proven in
    real use."*
-2. Read `docs/RELEASE-NOTES-4.0.md` (the curated highlights + its VERSION STATUS banner). Its content is
-   the source of truth for what follows — summarize it, don't invent beside it, and carry its honest
-   version framing.
+2. Treat the executable's notes as the source of truth — summarize them, don't invent beside them,
+   and carry their honest version framing.
 
 **Then tell them what the 4.0 line is — the honest headline (adapt to the notes file; do NOT overclaim):**
 
@@ -49,8 +50,7 @@ word — or type `/rvbc`."* If they say yes, follow `rvbc.md` in this same direc
 warm heads-up about the ~20s scan).
 
 **Honesty rules for this command (same as the product):**
-- If `docs/RELEASE-NOTES-4.0.md` is missing, say the notes aren't written yet and summarize from what
-  you can verify — never fabricate a highlight.
+- If the installed executable fails, report its failure and do not fabricate a highlight.
 - Never claim a metric ("40% better", "95/100") the release has not independently earned. The self-
   measurement is new and still filling; say so plainly.
 - This is the MAJOR story only. If the user wants the point-release detail, point them at the repo's

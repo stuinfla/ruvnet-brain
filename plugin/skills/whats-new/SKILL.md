@@ -8,10 +8,10 @@ updated: 2026-07-28
 
 Ground the answer in files that exist now; do not recite release claims from memory.
 
-1. Read the installed plugin version from `.codex-plugin/plugin.json` relative to this skill's
-   plugin root. If that is unavailable, read the current checkout's `plugin/.codex-plugin/plugin.json`.
-2. Locate `docs/RELEASE-NOTES-4.0.md` in the current repository, then
-   `~/Code/ruvnet-brain/docs/RELEASE-NOTES-4.0.md`. Read it before summarizing.
+1. Run the installed plugin's `scripts/whats-new.mjs` executable. It reads the version manifest and
+   curated notes from the same immutable plugin payload and exits nonzero if either asset is missing.
+   Do not substitute a checkout, download, or another installed version when it fails.
+2. Read that command's output before summarizing it.
 3. State the installed version exactly. Do not say the user is on 4.0 unless it starts with `4.`.
    For a 3.9 development version, describe verified items as "4.0-line enhancements landing in
    3.9.x", using the release note's own status language.

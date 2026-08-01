@@ -2477,15 +2477,14 @@ function printFootprint({ heading = 'What this put on your machine' } = {}) {
 }
 
 function showWhatsNew() {
-  const notes = path.join(REPO_ROOT, 'docs', 'RELEASE-NOTES-4.0.md');
-  if (!fs.existsSync(notes)) {
-    console.error('RuvNet Brain release notes are missing from this artifact.');
+  const executable = path.join(REPO_ROOT, 'plugin', 'scripts', 'whats-new.mjs');
+  const result = spawnSync(process.execPath, [executable], { stdio: 'inherit' });
+  if (result.error) {
+    console.error(`RuvNet Brain What's New failed: ${result.error.message}`);
     process.exitCode = 1;
     return;
   }
-  const text = fs.readFileSync(notes, 'utf8');
-  process.stdout.write(text);
-  if (!text.endsWith('\n')) process.stdout.write('\n');
+  process.exitCode = result.status === 0 ? 0 : 1;
 }
 
 /**
