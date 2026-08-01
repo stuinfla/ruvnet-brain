@@ -5,23 +5,24 @@ import os from 'node:os';
 import path from 'node:path';
 import { REQUIRED_CHECKS } from '../../scripts/release-proof.mjs';
 import { assertInstalledPayload, generatePublicationReceipt } from '../../scripts/publication-receipt.mjs';
+import { getVersion } from '../../scripts/version.mjs';
 
 const SHA = 'a'.repeat(40);
-const VERSION = '4.0.4';
+const VERSION = getVersion();
 const BYTES = Buffer.from('one immutable public artifact');
 const DIGEST = crypto.createHash('sha256').update(BYTES).digest('hex');
 
 function candidate(root) {
   const evidence = path.join(root, 'release-evidence');
   fs.mkdirSync(evidence, { recursive: true });
-  const artifactPath = path.join(evidence, 'ruvnet-brain-4.0.4.tgz');
+  const artifactPath = path.join(evidence, `ruvnet-brain-${VERSION}.tgz`);
   fs.writeFileSync(artifactPath, BYTES);
   const receipt = {
     schemaVersion: 1, phase: 'candidate', sha: SHA, tree: 'b'.repeat(40), dirty: false,
     version: VERSION, tag: `v${VERSION}`,
     sourceVersions: { package: VERSION, claudePlugin: VERSION, codexPlugin: VERSION },
     artifact: {
-      path: 'release-evidence/ruvnet-brain-4.0.4.tgz', sha256: DIGEST, sourceSha: SHA,
+      path: `release-evidence/ruvnet-brain-${VERSION}.tgz`, sha256: DIGEST, sourceSha: SHA,
       version: VERSION, bundle: { brainVersion: VERSION, releaseTag: `v${VERSION}` },
     },
     releaseVector: { verdict: 'PASS', sha: SHA, unknown: 0, skipped: 0 },
