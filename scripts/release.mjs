@@ -34,6 +34,9 @@ import { validateProtectedPublishInvocation } from './protected-release-invocati
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
+let protectedCandidate = null;
+let sealedPackageArtifact = null;
+let publicationReceiptPath = null;
 const c = { g: (s) => `\x1b[32m${s}\x1b[0m`, r: (s) => `\x1b[31m${s}\x1b[0m`, y: (s) => `\x1b[33m${s}\x1b[0m`, b: (s) => `\x1b[1m${s}\x1b[0m`, dim: (s) => `\x1b[2m${s}\x1b[0m` };
 const V = () => JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/.claude-plugin/plugin.json'), 'utf8')).version;
 
@@ -88,6 +91,14 @@ if (PUBLISH) {
     console.error(`\n${c.r('✗ PROTECTED RELEASE GATE FAILED')}`);
     for (const failure of protectedInvocation.failures) console.error(`  ${failure}`);
     console.error(`${c.r('  NOT shipped. Run the protected-release workflow with exact candidate evidence.')}\n`);
+    process.exit(1);
+  }
+  protectedCandidate = JSON.parse(fs.readFileSync(path.resolve(ROOT, process.env.RUVNET_CANDIDATE_RECEIPT), 'utf8'));
+  sealedPackageArtifact = path.resolve(ROOT, protectedCandidate.artifact.path);
+  publicationReceiptPath = path.resolve(ROOT, process.env.RUVNET_PUBLICATION_RECEIPT || '.missing-publication-receipt');
+  const evidenceRoot = path.join(ROOT, 'release-evidence');
+  if (!publicationReceiptPath.startsWith(`${evidenceRoot}${path.sep}`) || fs.existsSync(publicationReceiptPath)) {
+    console.error(`\n${c.r('✗ PROTECTED RELEASE GATE FAILED')}\n  publication receipt output must be a new file inside release-evidence\n`);
     process.exit(1);
   }
 }
@@ -215,7 +226,7 @@ if (PUBLISH) {
   const v = V();
   const tag = `v${v}`;
   const zip = path.join(ROOT, 'dist', 'ruvnet-brain.zip');
-  const assets = [zip, `${zip}.sig`, `${zip}.sha256`];
+  const assets = [zip, `${zip}.sig`, `${zip}.sha256`, sealedPackageArtifact];
   const head = execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   const priorTxn = readReleaseTransaction();
   const unfinished = priorTxn && priorTxn.state !== 'channels-converged';
@@ -333,7 +344,7 @@ if (PUBLISH) {
   if (already === v) console.log(c.dim(`  ${v} already on npm — skipping publish, just re-asserting the tag`));
   // npm requires an explicit tag for prerelease versions. This project intentionally serves its
   // `-dev` release from `latest`, so make that policy explicit on the publish command itself.
-  else runOrDie('npm publish', 'npm', ['publish', '--tag', 'latest']);
+  else runOrDie('npm publish', 'npm', ['publish', sealedPackageArtifact, '--tag', 'latest']);
   // npm does NOT auto-move `latest` to a prerelease (x.y.z-dev) — force it, or `@latest` stays stale.
   runOrDie('npm dist-tag latest', 'npm', ['dist-tag', 'add', `ruvnet-brain@${v}`, 'latest']);
   recordReleaseTransaction('publish-complete-verification-pending', { version: v, tag, head, bundleSha256 });
@@ -394,6 +405,14 @@ step('D+', 'deploy-surface sweep — what GitHub and Vercel think about what we 
 step('E', 'verify-channels — the live walk of every user path');
 runOrDie('verify-channels', process.execPath, ['scripts/verify-channels.mjs']);
 if (PUBLISH) {
+  runOrDie('publication receipt', process.execPath, [
+    'scripts/publication-receipt.mjs', '--candidate', process.env.RUVNET_CANDIDATE_RECEIPT,
+    '--out', process.env.RUVNET_PUBLICATION_RECEIPT,
+  ]);
+  runOrDie('publication seal', process.execPath, [
+    'scripts/release-proof.mjs', '--candidate', process.env.RUVNET_CANDIDATE_RECEIPT,
+    '--publication', process.env.RUVNET_PUBLICATION_RECEIPT,
+  ]);
   const txn = readReleaseTransaction();
   recordReleaseTransaction('channels-converged', {
     version: V(),

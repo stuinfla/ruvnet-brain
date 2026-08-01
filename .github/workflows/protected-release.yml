@@ -158,6 +158,15 @@ jobs:
           node-version: '20'
           registry-url: https://registry.npmjs.org
 
+      - name: Install current Claude Code and Codex host CLIs into the ephemeral runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global --prefix "$RUNNER_TEMP/host-clis" \
+            @anthropic-ai/claude-code@latest \
+            @openai/codex@latest
+          echo "$RUNNER_TEMP/host-clis/bin" >> "$GITHUB_PATH"
+
       - name: Restore sealed candidate evidence
         uses: actions/download-artifact@v4
         with:
@@ -178,6 +187,7 @@ jobs:
       - name: Invoke the one canonical publisher
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           RUVNET_CANDIDATE_RECEIPT: release-evidence/candidate-receipt.json
           RUVNET_EXPECTED_SHA: ${{ needs.release-qe-proof.outputs.candidate_sha }}
           RUVNET_EXPECTED_ARTIFACT_SHA256: ${{ needs.release-qe-proof.outputs.artifact_sha256 }}

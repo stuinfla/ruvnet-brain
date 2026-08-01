@@ -36,6 +36,7 @@ governs:
   - scripts/release-proof.mjs
   - scripts/release-authority.mjs
   - scripts/protected-release-invocation.mjs
+  - scripts/publication-receipt.mjs
   - scripts/release.mjs
   - scripts/self-update.mjs
   - scripts/nightly-wrapper.sh
@@ -69,8 +70,12 @@ candidate SHA, one artifact SHA-256, exact version 4.0.4, and the successful exa
 named `release-qe` job produced the receipt. The publisher cannot start until that proof succeeds,
 then crosses `Production – ruvnet-brain` for reviewer approval and revalidates the same seal before
 invoking the one publisher. `scripts/release.mjs --publish` rejects local and differently named
-workflow invocations before remote mutation. The workflow requires the machine-generated
-publication receipt after the publisher and stays red rather than inventing missing public proof.
+workflow invocations before remote mutation. After publication, `scripts/publication-receipt.mjs`
+independently downloads the sealed package from npm and the GitHub Release, requires both byte
+digests and channel identities to match the candidate, installs the public npm bytes into virgin
+Claude and Codex homes, exercises the installed MCP self-store within its deadline, and runs the
+exact-SHA published-surface probe. It writes the append-only publication receipt only after the
+existing two-receipt evaluator accepts every observation; missing or split evidence stays red.
 D4 has a current Codex-backed
 3/3 treated versus 0/3 control artifact on source SHA `63e5e67`, plus committed delete-lesson and
 brain-off-treated causal failures in `2b39f68`. D3 now executes its real signal lifecycle from the
@@ -348,6 +353,7 @@ correct: **the strong claim was the defect.**
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-01 | Completed the post-publication evidence path without publishing: `release.mjs` now sends the exact sealed candidate tarball to both npm and GitHub, invokes `scripts/publication-receipt.mjs` only after channel verification, validates both receipts, and only then records channel convergence or prints `SHIPPED`. The protected runner provisions virgin current Claude Code and Codex CLIs for the host-install proof. | The protected workflow previously required `publication-receipt.json` but no producer could create it, so every authorized release was permanently red. The producer refuses overwrite, public-byte drift, SHA/version/tag splits, missing host installs, absent self-RVF/readiness, deadline breaches, and a red or wrong-SHA published-surface probe. No publication was attempted in this tranche. |
 | 2026-08-01 | Added the protected 4.0.4 release transport without publishing: `.github/workflows/protected-release.yml` accepts only an exact SHA, artifact SHA-256, version, and successful exact-SHA `release-qe` run; its sole publisher depends on that proof and uses the reviewer-protected `Production – ruvnet-brain` environment. `scripts/protected-release-invocation.mjs` makes local or wrong-workflow `release.mjs --publish` fail before any remote mutation. | Source inspection found the receipt validator and one-publisher scanner but no checked-in workflow carrying either into the protected environment. Eighteen failure-first workflow/invocation tests reject missing approval, dependency, seals, malformed or split identity, artifact tampering, and local publication. The workflow requires a post-publication receipt and fails closed if its public-host/Brain evidence producer is absent; no publication was attempted in this tranche. |
 | 2026-08-01 | Canonical BGE RVF builds now request Node's below-normal process priority before embedding, with a non-fatal fallback when the host denies reprioritization. | The exact self-RVF rebuild through `kb/forge-big.mjs` held one CPU-heavy Node process for 458 seconds; during that window live PreToolUse hooks exceeded their five-second deadline. `tests/unit/forge-build-priority.test.mjs` injects both the successful `setPriority(0, PRIORITY_BELOW_NORMAL)` path and a permission-denied path, so the responsiveness contract is tested without depending on host privileges. |
 | 2026-08-01 | The proposed D1 release path now separates exact candidate source from ignored release assets: `scripts/build-bundle.mjs --assets <dir>` discovers, audits, and copies only generated RVF families from an explicit external directory while loading the private-store fence and every executable reader from the exact source checkout. The default remains `kb/`, and zero eligible stores still fails closed. | `tests/qe/gpt56/live-brain-search.test.mjs` reproduced 3/3 failures as `Searched 0 RuvNet repos` in the isolated clean candidate because Git correctly excludes RVF binaries and the assembler could only inspect its own empty `kb/`. `tests/integration/build-bundle-fence.test.mjs` now supplies one public and one private RVF in an external asset directory, proves the source-tree private fence still excludes the private store, and proves only the public store reaches the manifest. This repairs candidate assembly; it is not an exact-artifact release verdict until the self-RVF is rebuilt from the candidate and the full live gate passes on the assembled output. |

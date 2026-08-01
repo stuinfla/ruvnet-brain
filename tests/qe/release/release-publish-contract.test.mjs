@@ -39,10 +39,11 @@ describe('release publication is bound to one candidate', () => {
     expect(operations).toEqual([...operations].sort((a, b) => a - b));
   });
 
-  it('requires the bundle, signature, and digest as one release asset set', () => {
-    expect(source).toContain('const assets = [zip, `${zip}.sig`, `${zip}.sha256`]');
+  it('requires the bundle, signature, digest, and sealed package as one release asset set', () => {
+    expect(source).toContain('const assets = [zip, `${zip}.sig`, `${zip}.sha256`, sealedPackageArtifact]');
     expect(source).toContain('signed release asset missing');
     expect(source).toContain("'release', 'create', tag, ...assets");
+    expect(source).toContain("runOrDie('npm publish', 'npm', ['publish', sealedPackageArtifact, '--tag', 'latest'])");
   });
 
   it('rebuilds and audits the exact extracted archive before the signer can run', () => {

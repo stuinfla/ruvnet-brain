@@ -68,9 +68,12 @@ roll back through the release workflow.
 `scripts/release.mjs --publish` is intentionally unusable from a local shell or another workflow.
 Its invocation guard requires GitHub Actions workflow `protected-release`, the candidate receipt,
 and matching SHA/digest/version bindings before any push, tag, release, or npm action. The workflow
-then requires `release-evidence/publication-receipt.json` and uploads both append-only receipts only
-after the two-receipt validator exits 0. Missing public-host, Brain, or `published-surface-probe`
-evidence is red, never inferred.
+then runs `scripts/publication-receipt.mjs` after channel verification. That producer independently
+downloads the sealed package from npm and the GitHub Release, requires both copies to match the
+candidate bytes and identity, installs the npm copy into virgin Claude and Codex homes, proves the
+installed self-RVF/readiness/search deadline, and runs `published-surface-probe` on the candidate
+SHA. It refuses to overwrite an existing receipt. The workflow uploads both append-only receipts
+only after the two-receipt validator exits 0; missing evidence is red, never inferred.
 
 ## Evidence and issue handling
 
