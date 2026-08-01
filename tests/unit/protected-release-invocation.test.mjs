@@ -5,15 +5,16 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { REQUIRED_CHECKS } from '../../scripts/release-proof.mjs';
 import { validateProtectedPublishInvocation } from '../../scripts/protected-release-invocation.mjs';
+import { getVersion } from '../../scripts/version.mjs';
 
 const SHA = 'a'.repeat(40);
-const VERSION = '4.0.4';
+const VERSION = getVersion();
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'protected-release-'));
   const evidence = path.join(root, 'release-evidence');
   fs.mkdirSync(evidence);
-  const artifactPath = path.join(evidence, 'ruvnet-brain-4.0.4.tgz');
+  const artifactPath = path.join(evidence, `ruvnet-brain-${VERSION}.tgz`);
   fs.writeFileSync(artifactPath, 'sealed candidate bytes');
   const digest = crypto.createHash('sha256').update(fs.readFileSync(artifactPath)).digest('hex');
   const receipt = {
@@ -26,7 +27,7 @@ function fixture() {
     tag: `v${VERSION}`,
     sourceVersions: { package: VERSION, claudePlugin: VERSION, codexPlugin: VERSION },
     artifact: {
-      path: 'release-evidence/ruvnet-brain-4.0.4.tgz',
+      path: `release-evidence/ruvnet-brain-${VERSION}.tgz`,
       sha256: digest,
       sourceSha: SHA,
       version: VERSION,

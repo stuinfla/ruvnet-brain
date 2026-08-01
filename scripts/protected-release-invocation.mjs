@@ -5,9 +5,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { evaluateCandidateReceipt } from './release-proof.mjs';
+import { getVersion } from './version.mjs';
 
 export const PROTECTED_WORKFLOW = 'protected-release';
-export const PROTECTED_VERSION = '4.0.4';
+export const PROTECTED_VERSION = getVersion();
 
 const hex = (value, length) => new RegExp(`^[0-9a-f]{${length}}$`).test(String(value || ''));
 const digestOf = (receipt) => String(receipt?.artifact?.sha256 || '').replace(/^sha256:/, '');
