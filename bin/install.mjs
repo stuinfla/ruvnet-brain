@@ -798,6 +798,7 @@ function codexManagedBlock(serverPath) {
     '[mcp_servers.ruvnet-brain]',
     'command = "node"',
     `args = [${JSON.stringify(serverPath)}]`,
+    'startup_timeout_sec = 30',
     CODEX_BLOCK_END,
   ].join('\n');
 }
@@ -855,7 +856,11 @@ function removeCodexWiring() {
 // What the doctor asserts from disk — never from the fact that we once ran. "Wired" means our entry
 // is in the config AND the server.mjs it points at is really there, because a registration pointing
 // at a deleted file is worse than no registration: Codex fails at spawn time with nothing to read.
-export function codexStatus({ configPath = codexConfigPath(), codexDir = codexHomeDir() } = {}) {
+export function codexStatus({
+  configPath = codexConfigPath(),
+  codexDir = codexHomeDir(),
+  brainHome = path.join(path.dirname(codexDir), '.cache', 'ruvnet-brain'),
+} = {}) {
   let host = false;
   try { host = fs.existsSync(codexDir); } catch { /* unreadable — treat as absent */ }
   if (!host) return { host: false, wired: false, serverPath: null, serverExists: false };
@@ -866,7 +871,63 @@ export function codexStatus({ configPath = codexConfigPath(), codexDir = codexHo
   try { serverPath = m ? JSON.parse(m[1]) : null; } catch { /* malformed entry — treat as absent */ }
   let serverExists = false;
   try { serverExists = serverPath ? fs.existsSync(serverPath) : false; } catch { /* unreadable */ }
-  return { host: true, wired: Boolean(serverPath) && serverExists, serverPath, serverExists };
+  const section = m ? text.slice(m.index).split(/\n[ \t]*\[/, 1)[0] : '';
+  const timeoutMatch = /(?:^|\n)[ \t]*startup_timeout_sec\s*=\s*(\d+)/.exec(section);
+  const startupTimeoutSec = timeoutMatch ? Number(timeoutMatch[1]) : null;
+  const readinessReceipt = (() => {
+    try { return JSON.parse(fs.readFileSync(path.join(brainHome, 'mcp-readiness.json'), 'utf8')); }
+    catch { return null; }
+  })();
+  let live = false;
+  if (readinessReceipt?.state === 'ready'
+      && Number.isInteger(readinessReceipt.pid)
+      && Number.isInteger(readinessReceipt.workerPid)) {
+    try {
+      process.kill(readinessReceipt.pid, 0);
+      process.kill(readinessReceipt.workerPid, 0);
+      live = true;
+    } catch { /* stale process or worker receipt */ }
+  }
+  const readiness = live ? 'ready' : readinessReceipt?.state === 'degraded' ? 'degraded' : 'registered';
+  return {
+    host: true,
+    wired: Boolean(serverPath) && serverExists,
+    serverPath,
+    serverExists,
+    startupTimeoutSec,
+    readiness,
+    live,
+    readinessReceipt,
+  };
+}
+
+export function codexMcpGuidance(status) {
+  if (!status?.wired) {
+    return { healthy: false, blocking: true, summary: 'Codex MCP is not registered to a usable server.', detail: null };
+  }
+  if (status.live && status.readiness === 'ready') {
+    return {
+      healthy: true,
+      blocking: false,
+      summary: `Codex MCP ready and live; discovery uses a ${status.startupTimeoutSec ?? 'configured'}s startup deadline.`,
+      detail: 'A running MCP shell completed worker initialize and warmup.',
+    };
+  }
+  if (status.readiness === 'degraded') {
+    const receipt = status.readinessReceipt || {};
+    return {
+      healthy: false,
+      blocking: true,
+      summary: 'Codex MCP is registered but degraded.',
+      detail: `${receipt.phase || 'startup'}: ${receipt.error || 'worker readiness failed'}`,
+    };
+  }
+  return {
+    healthy: false,
+    blocking: false,
+    summary: `Codex MCP is registered with a ${status.startupTimeoutSec ?? 'missing'}s startup deadline; live readiness is not yet proven.`,
+    detail: 'The first real search establishes worker readiness without removing search_ruvnet from discovery.',
+  };
 }
 
 // Atomic file replacement: produce the new bytes BESIDE the target, then rename() over it. Against
@@ -1678,11 +1739,14 @@ async function doctor() {
   // from disk (our entry present AND the server.mjs it names really there), never asserted from the
   // fact that an install once ran.
   const cx = codexStatus();
+  let codexMcp = null;
   let codexLifecycle = null;
   if (!cx.host) {
     console.log(`  ${c.dim('Codex: no host detected (no ~/.codex) — nothing to wire.')}`);
   } else if (cx.wired) {
-    console.log(`  ${c.green('✓ Codex: wired.')} search_ruvnet is registered in ~/.codex/config.toml and its server exists.`);
+    codexMcp = codexMcpGuidance(cx);
+    console.log(`  ${codexMcp.healthy ? c.green('✓') : codexMcp.blocking ? c.yellow('!') : c.dim('○')} ${codexMcp.summary}`);
+    if (codexMcp.detail) console.log(`    ${codexMcp.detail}`);
     codexLifecycle = await codexLifecycleStatus();
     printCodexLifecycle(codexLifecycle);
   } else {
@@ -1751,10 +1815,12 @@ async function doctor() {
     && !codexLifecycleGuidance(codexLifecycle).intentional,
   );
   const codexWiringFailed = Boolean(cx.host && !cx.wired);
+  const codexReadinessFailed = Boolean(codexMcp?.blocking);
   const failed = (hookResult ? hookResult.exitCode !== 0 : !allGreen)
     || groundingUnprovenPersisted
     || codexLifecycleFailed
     || codexWiringFailed
+    || codexReadinessFailed
     || Boolean(rufloOperational && !rufloOperational.healthy);
   if (failed && !hookResult && !groundingUnprovenPersisted) {
     console.log(`  ${c.red('✗ FAILING')} — the warnings above are real. Re-run  ${c.bold('npx ruvnet-brain')}  to repair.`);

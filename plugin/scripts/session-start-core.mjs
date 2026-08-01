@@ -172,6 +172,20 @@ const health = (home, off) => {
   return { problem: '', absentByChoice };
 };
 
+const mcpReadiness = (env, home) => {
+  const brainHome = env.RUVNET_BRAIN_HOME || path.join(home, '.cache', 'ruvnet-brain');
+  const receipt = json(path.join(brainHome, 'mcp-readiness.json'));
+  if (receipt?.state === 'ready' && Number.isInteger(receipt.pid) && Number.isInteger(receipt.workerPid)) {
+    try {
+      process.kill(receipt.pid, 0);
+      process.kill(receipt.workerPid, 0);
+      return { state: 'ready', receipt };
+    } catch { /* a stale receipt is registration evidence, not live evidence */ }
+  }
+  if (receipt?.state === 'degraded') return { state: 'degraded', receipt };
+  return { state: 'registered', receipt };
+};
+
 const announceVersion = ({ running, off, stateDir, consoleInvoke, emit }) => {
   if (off || !running) return;
   const announced = path.join(stateDir, '.last-announced-version');
@@ -412,6 +426,7 @@ export async function runSessionStart({
     }
     const source = json(path.join(home, '.cache', 'ruvnet-brain', 'kb', 'SOURCE.json'), {});
     const kbVersion = typeof source?.releaseTag === 'string' ? source.releaseTag : '';
+    const readiness = mcpReadiness(env, home);
 
     const grounding = json(path.join(stateDir, 'install-state.json'));
     const asciiDrift = path.join(env.CLAUDE_PROJECT_DIR || cwd, 'scripts', 'ascii-drift.mjs');
@@ -437,8 +452,19 @@ export async function runSessionStart({
         emit(`The plugin and its hooks are running, but the brain itself is broken (see the alarm above). Do not claim grounding works. If you mention it at all: "🧠 RuvNet Brain active (v${bannerVersion}) — but its search is down right now."`);
       } else {
         emit(`[RuvNet Brain v${bannerVersion} — active this session${updated ? ` · updated ${updated}` : ''}${kbVersion ? ` · knowledge bundle ${kbVersion}` : ''}]`);
-        emit('USER-LEVEL: one brain (~/.cache/ruvnet-brain/kb) shared by every project and window here — nothing to reinstall per project. search_ruvnet and the grounding hooks are live now.');
-        emit(`Open your FIRST response with ONE short, warm confirmation in your own words (2-3 lines, then move on; never repeat it this session). It must say "🧠 RuvNet Brain active (v${bannerVersion}${kbVersion ? `, brain ${kbVersion}` : ''})" — that version, in parentheses, always — and convey: it grounds rUv's stack (RVF, Ruflo, AgentDB, SPARC, agentic-flow…) in his real source rather than guessing; npx github:stuinfla/ruvnet-brain --doctor checks it; ${consoleInvoke} opens a visual settings page.`);
+        let confidenceInstruction;
+        if (readiness.state === 'ready') {
+          emit('USER-LEVEL: one brain (~/.cache/ruvnet-brain/kb) shared by every project and window here — nothing to reinstall per project. search_ruvnet is ready and live; the grounding hooks are active.');
+          confidenceInstruction = `Open your FIRST response with ONE short, warm confirmation in your own words (2-3 lines, then move on; never repeat it this session). It must say "🧠 RuvNet Brain active (v${bannerVersion}${kbVersion ? `, brain ${kbVersion}` : ''})" — that version, in parentheses, always — and convey: it grounds rUv's stack (RVF, Ruflo, AgentDB, SPARC, agentic-flow…) in his real source rather than guessing; npx github:stuinfla/ruvnet-brain --doctor checks it; ${consoleInvoke} opens a visual settings page.`;
+        } else if (readiness.state === 'degraded') {
+          const receipt = readiness.receipt || {};
+          emit(`USER-LEVEL: one brain (~/.cache/ruvnet-brain/kb) shared by every project and window here — nothing to reinstall per project. search_ruvnet is registered but degraded (${receipt.phase || 'startup'}: ${receipt.error || 'readiness failed'}); the grounding hooks remain active.`);
+          confidenceInstruction = `Open your FIRST response with ONE short line: "🧠 RuvNet Brain active (v${bannerVersion}) — search is degraded right now." Do not claim source grounding until a real search succeeds. npx github:stuinfla/ruvnet-brain --doctor shows the current verdict; ${consoleInvoke} opens the Console.`;
+        } else {
+          emit('USER-LEVEL: one brain (~/.cache/ruvnet-brain/kb) shared by every project and window here — nothing to reinstall per project. search_ruvnet is registered; live readiness is not yet proven. The grounding hooks are active.');
+          confidenceInstruction = `Open your FIRST response with ONE short line: "🧠 RuvNet Brain active (v${bannerVersion}) — search is registered and will prove readiness on first use." Do not claim source grounding until a real search returns a citation. npx github:stuinfla/ruvnet-brain --doctor shows the current verdict; ${consoleInvoke} opens the Console.`;
+        }
+        emit(confidenceInstruction);
       }
 
       const claudeJson = read(path.join(home, '.claude.json'));

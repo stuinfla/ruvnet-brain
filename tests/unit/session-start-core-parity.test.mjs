@@ -176,10 +176,26 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
     });
     expect(result.output).toContain('FIRST LOAD: offer the Console once');
     expect(result.output).toContain('RuvNet Brain v4.0.2-test — active this session');
+    expect(result.output).toContain('search_ruvnet is registered; live readiness is not yet proven');
+    expect(result.output).not.toContain('search_ruvnet and the grounding hooks are live now');
+    expect(result.output).not.toContain("convey: it grounds rUv's stack");
     expect(Object.keys(result.state.home)).toContain('.cache/ruvnet-brain/.console-offered');
     expect(Object.keys(result.state.home)).toContain('.cache/ruvnet-brain/token-ledger.jsonl');
     expect(Object.keys(result.state.project)).toContain('.swarm/ruvnet-brain-settings.json');
     expect(result.state.detach.join('\n')).toContain('first-session-worker.mjs');
+  });
+
+  it('calls search_ruvnet ready and live only when a current MCP receipt names a running process', () => {
+    const result = parity((f) => {
+      warmed(f);
+      write(path.join(f.cache, 'mcp-readiness.json'), {
+        state: 'ready', phase: 'warmup', pid: process.pid, workerPid: process.pid, retryable: false,
+        generation: 'test-generation', elapsedMs: 42, at: new Date().toISOString(),
+      });
+    });
+    expect(result.output).toContain('search_ruvnet is ready and live');
+    expect(result.output).toContain("convey: it grounds rUv's stack");
+    expect(result.output).not.toContain('live readiness is not yet proven');
   });
 
   it('matches alarms, issue/signal transitions, grounding state, and update notices', () => {

@@ -37,7 +37,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CODEX_DIR = path.join(ROOT, '.codex');
 
-let mergeCodexConfig, removeCodexManagedBlock, wireCodexHost, codexStatus, codexMarketplaceRows, classifyCodexLifecycle;
+let mergeCodexConfig, removeCodexManagedBlock, wireCodexHost, codexStatus, codexMcpGuidance, codexMarketplaceRows, classifyCodexLifecycle;
 let wireCodexPlugin, codexPluginStatus, codexLifecycleGuidance;
 beforeAll(async () => {
   // Same import-only contract the other installer tests use, so main() never runs on import.
@@ -47,6 +47,7 @@ beforeAll(async () => {
     removeCodexManagedBlock,
     wireCodexHost,
     codexStatus,
+    codexMcpGuidance,
     codexMarketplaceRows,
     classifyCodexLifecycle,
     wireCodexPlugin,
@@ -72,6 +73,7 @@ describe('mergeCodexConfig — the three outcomes, and only three', () => {
     expect(text).toContain('[mcp_servers.ruvnet-brain]');
     expect(text).toContain('command = "node"');
     expect(text).toContain(`args = [${JSON.stringify(SERVER)}]`);
+    expect(text).toContain('startup_timeout_sec = 30');
     expect(text.startsWith(START)).toBe(true);
     expect(text.trimEnd().endsWith(END)).toBe(true);
   });
@@ -339,7 +341,43 @@ describe('codexStatus — the three doctor states, each derived from disk', () =
     fs.mkdirSync(codexDir, { recursive: true });
     wireCodexHost({ codexDir, serverDir, announce: false });
     const s = codexStatus({ codexDir, configPath: path.join(codexDir, 'config.toml') });
-    expect(s).toMatchObject({ host: true, wired: true, serverExists: true });
+    expect(s).toMatchObject({
+      host: true, wired: true, serverExists: true,
+      startupTimeoutSec: 30, readiness: 'registered', live: false,
+    });
+  });
+
+  it('distinguishes a live ready receipt from a degraded startup receipt', () => {
+    const home = tmpdir();
+    const codexDir = path.join(home, '.codex');
+    const serverDir = path.join(home, '.claude', 'ruvnet-brain', 'mcp');
+    const brainHome = path.join(home, '.cache', 'ruvnet-brain');
+    fs.mkdirSync(codexDir, { recursive: true });
+    fs.mkdirSync(brainHome, { recursive: true });
+    wireCodexHost({ codexDir, serverDir, announce: false });
+    const configPath = path.join(codexDir, 'config.toml');
+
+    fs.writeFileSync(path.join(brainHome, 'mcp-readiness.json'), JSON.stringify({
+      state: 'ready', phase: 'warmup', pid: process.pid, workerPid: process.pid, elapsedMs: 12,
+    }));
+    const ready = codexStatus({ codexDir, configPath, brainHome });
+    expect(ready).toMatchObject({ readiness: 'ready', live: true });
+    expect(codexMcpGuidance(ready)).toMatchObject({ healthy: true, blocking: false });
+
+    fs.writeFileSync(path.join(brainHome, 'mcp-readiness.json'), JSON.stringify({
+      state: 'ready', phase: 'warmup', pid: process.pid, workerPid: 999999, elapsedMs: 12,
+    }));
+    expect(codexStatus({ codexDir, configPath, brainHome })).toMatchObject({
+      readiness: 'registered', live: false,
+    });
+
+    fs.writeFileSync(path.join(brainHome, 'mcp-readiness.json'), JSON.stringify({
+      state: 'degraded', phase: 'warmup', error: 'model failed', pid: 999999,
+    }));
+    const degraded = codexStatus({ codexDir, configPath, brainHome });
+    expect(degraded).toMatchObject({ readiness: 'degraded', live: false });
+    expect(codexMcpGuidance(degraded)).toMatchObject({ healthy: false, blocking: true });
+    expect(codexMcpGuidance(degraded).detail).toContain('model failed');
   });
 
   it('the probe can FAIL on a broken config — deleting the server flips wired to false', () => {

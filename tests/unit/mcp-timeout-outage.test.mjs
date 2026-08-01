@@ -243,6 +243,25 @@ setInterval(() => {}, 1 << 30);
       expect(reply).toContain('temporarily unavailable');
       expect(reply).toContain('failed to initialize');
       expect(reply).not.toContain('bundle is not installed');
+      const readiness = await waitFor(() => {
+        const file = path.join(home, 'mcp-readiness.json');
+        return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
+      }, 5000, 'degraded startup readiness receipt');
+      expect(readiness).toMatchObject({
+        state: 'degraded',
+        phase: 'initialize',
+        retryable: true,
+      });
+      expect(readiness.error).toMatch(/timeout|failed to initialize/i);
+      expect(readiness.elapsedMs).toEqual(expect.any(Number));
+      expect(readiness.generation).toEqual(expect.any(String));
+      expect(readiness.retryState).toBe('next-search-retries');
+      const startupHealth = JSON.parse(fs.readFileSync(path.join(home, 'health.json'), 'utf8'));
+      expect(startupHealth).toMatchObject({
+        status: 'down', source: 'mcp-parent-startup', phase: 'initialize',
+        retryState: 'next-search-retries',
+      });
+      expect(startupHealth.elapsedMs).toEqual(expect.any(Number));
     } finally {
       try { server.proc.kill('SIGKILL'); } catch { /* gone */ }
       fs.rmSync(home, { recursive: true, force: true });
