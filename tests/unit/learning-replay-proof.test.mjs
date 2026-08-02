@@ -58,16 +58,16 @@ function armRecord({ trap, treated, passing }) {
   };
 }
 
-function proofRef({ trap, run, arm, record, sourceSha = HEAD }) {
-  const envelope = { schema: 1, sourceSha, trap, run, arm, record };
+function proofRef({ trap, run, arm, record, sourceSha = HEAD, mutant = null }) {
+  const envelope = { schema: 2, sourceSha, trap, mutant, run, arm, record };
   const bytes = `${JSON.stringify(envelope, null, 2)}\n`;
   const hash = sha256(bytes);
   const file = path.join(dir, `${hash}.json`);
   fs.writeFileSync(file, bytes);
-  return { path: path.relative(ROOT, file), sha256: hash, sourceSha };
+  return { path: path.relative(ROOT, file), sha256: hash, sourceSha, mutant };
 }
 
-function runRecord({ trap, passing = true, i = 1, error = null }) {
+function runRecord({ trap, passing = true, i = 1, error = null, mutant = null }) {
   const treatedRecord = armRecord({ trap, treated: true, passing });
   const controlRecord = armRecord({ trap, treated: false, passing: false });
   return {
@@ -77,13 +77,13 @@ function runRecord({ trap, passing = true, i = 1, error = null }) {
       ? `harness could not measure this run: ${error}`
       : (passing ? 'treated action executed and retrieved' : `treated arm produced "${treatedRecord.class}", not the token`),
     error,
-    treated: { ...treatedRecord, transcript: proofRef({ trap, run: i, arm: 'treated', record: treatedRecord }) },
-    control: { ...controlRecord, transcript: proofRef({ trap, run: i, arm: 'control', record: controlRecord }) },
+    treated: { ...treatedRecord, transcript: proofRef({ trap, mutant, run: i, arm: 'treated', record: treatedRecord }) },
+    control: { ...controlRecord, transcript: proofRef({ trap, mutant, run: i, arm: 'control', record: controlRecord }) },
   };
 }
 
 function artifact({ trap = replay.TRAP.MEMORY_SEARCH, passing = true, mutant = null, run = null, top = {} } = {}) {
-  const row = run || runRecord({ trap, passing });
+  const row = run || runRecord({ trap, passing, mutant });
   const passes = passing ? 1 : 0;
   return {
     invariant: replay.INVARIANT,
@@ -164,6 +164,40 @@ describe('receipt verification recomputes evidence instead of trusting JSON clai
     expect(value.runs[0].treated.transcript.path).toContain(path.basename(dir));
     expect(fs.readFileSync(file, 'utf8')).not.toContain(privateTask);
     expect(replay.checkArtifact({ file, repo: ROOT }).status).toBe(replay.VERDICT.PASS);
+  });
+
+  it('binds proof identity to the mutant, not only trap/run/arm', () => {
+    const treated = armRecord({ trap: replay.TRAP.MEMORY_SEARCH, treated: true, passing: false });
+    const control = armRecord({ trap: replay.TRAP.MEMORY_SEARCH, treated: false, passing: false });
+    const result = replay.aggregate([{
+      i: 1,
+      treatedClass: treated.class,
+      controlClass: control.class,
+      lessonBeforeFirstToolCall: false,
+      treatedSubcommandCorrect: true,
+      treatedExecOk: false,
+      treatedRetrieved: false,
+      treatedExecWhy: treated.exec.why,
+      controlWorked: false,
+      error: null,
+      treated,
+      control,
+    }]);
+    const proofRoot = path.join(dir, 'mutant-proofs');
+    const deleted = replay.writeArtifact(path.join(dir, 'delete.json'), result, {
+      trap: replay.TRAP.MEMORY_SEARCH,
+      mutant: 'delete-lesson',
+      task: 'fixture',
+      proofRoot,
+    });
+    const disabled = replay.writeArtifact(path.join(dir, 'brain-off.json'), result, {
+      trap: replay.TRAP.MEMORY_SEARCH,
+      mutant: 'brain-off-treated',
+      task: 'fixture',
+      proofRoot,
+    });
+    expect(deleted.runs[0].treated.transcript.sha256)
+      .not.toBe(disabled.runs[0].treated.transcript.sha256);
   });
 
   it('rejects a data-only edit that changes top-level counts without changing red runs', () => {

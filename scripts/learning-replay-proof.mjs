@@ -15,7 +15,7 @@ import {
 } from './learning-replay-contract.mjs';
 
 const KEEP_RUNS = 14;
-const PROOF_SCHEMA = 1;
+const PROOF_SCHEMA = 2;
 const PROOF_ROOT = path.join(ROOT, 'data', 'learning-replay-transcripts');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const remove = (target) => {
@@ -80,21 +80,21 @@ function armRecord(arm, treated) {
   return record;
 }
 
-function writeProof({ sourceSha, trap, run, arm, record, proofRoot = PROOF_ROOT }) {
-  const envelope = { schema: PROOF_SCHEMA, sourceSha, trap, run, arm, record };
+function writeProof({ sourceSha, trap, mutant = null, run, arm, record, proofRoot = PROOF_ROOT }) {
+  const envelope = { schema: PROOF_SCHEMA, sourceSha, trap, mutant, run, arm, record };
   const bytes = `${JSON.stringify(envelope, null, 2)}\n`;
   const hash = sha256(bytes);
   const file = path.join(proofRoot, sourceSha, `${hash}.json`);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   if (!fs.existsSync(file)) fs.writeFileSync(file, bytes);
-  return { path: path.relative(ROOT, file), sha256: hash, sourceSha };
+  return { path: path.relative(ROOT, file), sha256: hash, sourceSha, mutant };
 }
 
 function sameJson(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function verifyProof({ ref, artifactArm, sourceSha, trap, run, arm, repo }) {
+function verifyProof({ ref, artifactArm, sourceSha, trap, mutant, run, arm, repo }) {
   if (!ref || typeof ref !== 'object' || !ref.path || !ref.sha256 || !ref.sourceSha) {
     return { ok: false, why: `${arm} transcript reference is incomplete` };
   }
@@ -108,6 +108,9 @@ function verifyProof({ ref, artifactArm, sourceSha, trap, run, arm, repo }) {
   catch (error) { return { ok: false, why: `${arm} transcript is unparseable: ${error.message}` }; }
   if (ref.sourceSha !== sourceSha || envelope.sourceSha !== sourceSha) {
     return { ok: false, why: `${arm} transcript source identity mismatch` };
+  }
+  if ((ref.mutant ?? null) !== mutant || (envelope.mutant ?? null) !== mutant) {
+    return { ok: false, why: `${arm} transcript mutant identity mismatch` };
   }
   if (envelope.schema !== PROOF_SCHEMA || envelope.trap !== trap
     || envelope.run !== run || envelope.arm !== arm || !envelope.record) {
@@ -150,6 +153,7 @@ function verifyRuns(artifact, repo) {
       artifactArm: row.treated,
       sourceSha: artifact.sha,
       trap: artifact.trap,
+      mutant: artifact.mutant || null,
       run,
       arm: 'treated',
       repo,
@@ -160,6 +164,7 @@ function verifyRuns(artifact, repo) {
       artifactArm: row.control,
       sourceSha: artifact.sha,
       trap: artifact.trap,
+      mutant: artifact.mutant || null,
       run,
       arm: 'control',
       repo,
@@ -373,6 +378,7 @@ export function pruneArchive(dirs, { keepRuns = KEEP_RUNS, preservePaths = [] } 
 export function writeArtifact(file, aggregateResult, meta = {}) {
   const sourceSha = headSha();
   const trap = meta.trap || TRAP.MEMORY_SEARCH;
+  const mutant = meta.mutant || null;
   const proofRoot = meta.proofRoot || PROOF_ROOT;
   const runs = (aggregateResult.runs || []).map((run) => {
     const treated = armRecord(run.treated, true);
@@ -384,11 +390,11 @@ export function writeArtifact(file, aggregateResult, meta = {}) {
       error: run.error || null,
       treated: {
         ...treated,
-        transcript: writeProof({ sourceSha, trap, run: run.i, arm: 'treated', record: treated, proofRoot }),
+        transcript: writeProof({ sourceSha, trap, mutant, run: run.i, arm: 'treated', record: treated, proofRoot }),
       },
       control: {
         ...control,
-        transcript: writeProof({ sourceSha, trap, run: run.i, arm: 'control', record: control, proofRoot }),
+        transcript: writeProof({ sourceSha, trap, mutant, run: run.i, arm: 'control', record: control, proofRoot }),
       },
     };
   });
@@ -401,7 +407,7 @@ export function writeArtifact(file, aggregateResult, meta = {}) {
     host: meta.host || null,
     model: meta.model || null,
     modelResolved: runs.map((run) => run.treated.model).find(Boolean) || null,
-    mutant: meta.mutant || null,
+    mutant,
     trap,
     taskHash: meta.task ? sha256(meta.task) : null,
     n: aggregateResult.n,
