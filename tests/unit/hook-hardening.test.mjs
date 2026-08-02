@@ -390,12 +390,13 @@ describe('unprompted speech requires an OCCASION — no payload, no bytes', () =
     expect(r.stdout).toBe('');
   }, 60_000);
 
-  it.skipIf(!hasBinBash)('TEETH: a REAL payload still reaches the producers — the gate is not a mute button', () => {
-    // A trusted fake producer via the documented test seam, so this asserts the payload gate alone
-    // and not any real detector's mood.
-    const emit = path.join(tmp, 'emit.sh');
-    fs.writeFileSync(emit, '#!/bin/bash\nprintf \'%s\\n\' "$CANDIDATE_LINE"\n');
-    fs.chmodSync(emit, 0o755);
+  it('TEETH: a REAL payload still reaches the producers — the gate is not a mute button', () => {
+    // A trusted, cross-platform fake producer via the documented test seam. The behavior under test
+    // is the Node runtime's payload gate, so routing this fixture through /bin/bash added an unrelated
+    // failure mode: a failed shell spawn is deliberately converted to silence by the production
+    // fail-safe and can therefore look exactly like a muted gate.
+    const emit = path.join(tmp, 'emit.mjs');
+    fs.writeFileSync(emit, 'process.stdout.write(`${process.env.CANDIDATE_LINE}\\n`);\n');
     const r = spawnSync(process.execPath,
       [path.join(SCRIPTS, 'unprompted-runtime.mjs'), 'UserPromptSubmit'],
       {
@@ -403,7 +404,7 @@ describe('unprompted speech requires an OCCASION — no payload, no bytes', () =
         input: JSON.stringify({ prompt: 'a real prompt', session_id: 's1' }),
         encoding: 'utf8', timeout: 60_000,
         env: env({
-          RUVNET_UNPROMPTED_PRODUCERS: JSON.stringify([{ argv: ['/bin/bash', emit], feedStdin: true, channels: ['alarm'] }]),
+          RUVNET_UNPROMPTED_PRODUCERS: JSON.stringify([{ argv: [process.execPath, emit], feedStdin: true, channels: ['alarm'] }]),
           CANDIDATE_LINE: JSON.stringify({ channel: 'alarm', effect: 'advisory', copy: 'REAL ALARM', hookEventName: 'UserPromptSubmit' }),
           RUVNET_ADVOCACY_OUTCOMES: path.join(tmp, 'o.jsonl'),
           RUVNET_UNPROMPTED_TIMEOUT_MS: '30000',
