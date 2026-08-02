@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" session-start",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 session-start",
             "timeout": 5
           }
         ]
@@ -18,12 +18,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" ground-ruvnet",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 9000 ground-ruvnet",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" unprompted-speech UserPromptSubmit",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 9000 unprompted-speech UserPromptSubmit",
             "timeout": 10
           }
         ]
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" hijack-ruvnet",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 hijack-ruvnet",
             "timeout": 5
           }
         ]
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" route-dispatch",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 route-dispatch",
             "timeout": 5
           }
         ]
@@ -55,17 +55,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" ground-before-write",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 ground-before-write",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" protect-state",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 protect-state",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" unprompted-speech PreToolUse-write",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 unprompted-speech PreToolUse-write",
             "timeout": 5
           }
         ]
@@ -75,17 +75,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" verify-interface",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 verify-interface",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" design-wall",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 design-wall",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" unprompted-speech PreToolUse-bash",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 unprompted-speech PreToolUse-bash",
             "timeout": 5
           }
         ]
@@ -97,7 +97,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" grounding-stamp",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 grounding-stamp",
             "timeout": 5
           }
         ]
@@ -107,7 +107,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" learn-capture",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 learn-capture",
             "timeout": 5
           }
         ]
@@ -117,7 +117,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" md-stamp",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 md-stamp",
             "timeout": 5
           }
         ]
@@ -127,7 +127,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" signal-watch",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 signal-watch",
             "timeout": 5
           }
         ]
@@ -139,7 +139,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" learn-flush",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 2500 learn-flush",
             "timeout": 3
           }
         ]
@@ -150,7 +150,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.cache/ruvnet-brain/codex-hook.mjs\" continuation-gate",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{input:f.readFileSync(0),encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 9000 continuation-gate",
             "timeout": 10
           }
         ]

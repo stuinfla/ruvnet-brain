@@ -47,7 +47,7 @@ export function createStabilizationReceipt({ root, artifactPath, qe, audit }) {
     schemaVersion: 1,
     phase: 'stabilization-candidate',
     mode: 'stabilization',
-    reason: 'Owner-authorized 4.0.4 stabilization release; >=95 promotion remains open work',
+    reason: `Owner-authorized ${manifest.version} stabilization release; >=95 promotion remains open work`,
     targetScore: 95,
     scoreClaimed: false,
     sha,

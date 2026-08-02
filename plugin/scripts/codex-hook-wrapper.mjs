@@ -4,8 +4,27 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
+const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+const brainHome = process.env.RUVNET_BRAIN_HOME
+  || path.join(path.dirname(codexHome), '.cache', 'ruvnet-brain');
 const versions = path.join(brainHome, 'versions');
+const blockingHooks = new Set([
+  'route-dispatch',
+  'ground-before-write',
+  'protect-state',
+  'design-wall',
+  'unprompted-speech',
+]);
+
+function timeoutFor(hookId) {
+  const override = Number(process.env.RUVNET_CODEX_HOOK_TIMEOUT_MS);
+  if (Number.isFinite(override) && override > 0) return override;
+  if (hookId === 'learn-flush') return 2_250;
+  if (hookId === 'ground-ruvnet' || hookId === 'unprompted-speech' || hookId === 'continuation-gate') {
+    return 8_500;
+  }
+  return 4_000;
+}
 
 function activeRoot() {
   try {
@@ -27,11 +46,24 @@ const root = activeRoot();
 const adapter = root && path.join(root, 'scripts', 'codex-hook-adapter.mjs');
 if (!adapter || !fs.existsSync(adapter)) process.exit(0);
 
+const hookId = process.argv[2] || '';
 const result = spawnSync(process.execPath, [adapter, ...process.argv.slice(2)], {
   input,
   encoding: 'utf8',
   env: process.env,
+  timeout: timeoutFor(hookId),
+  killSignal: 'SIGKILL',
 });
-if (result.stdout) process.stdout.write(result.stdout);
-if (result.stderr) process.stderr.write(result.stderr);
-process.exit(result.status ?? 0);
+
+// A broken optional Brain hook must never degrade the host. The only non-zero status that carries
+// product meaning is an intentional exit-2 refusal from a hook whose contract is blocking.
+if (result.status === 2 && blockingHooks.has(hookId)) {
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  process.exit(2);
+}
+if (result.status === 0) {
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+}
+process.exit(0);

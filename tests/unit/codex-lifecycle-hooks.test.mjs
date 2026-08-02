@@ -84,6 +84,30 @@ function fire(home, id, payload, extraEnv = {}) {
   });
 }
 
+function manifestHandlers() {
+  const hooks = JSON.parse(fs.readFileSync(HOOKS, 'utf8')).hooks;
+  return Object.entries(hooks).flatMap(([event, groups]) => groups.flatMap((group) =>
+    group.hooks.map((hook) => ({ event, ...hook }))));
+}
+
+function fireRegistered(command, home, payload, extraEnv = {}) {
+  return spawnSync(command, {
+    cwd: ROOT,
+    shell: true,
+    env: {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
+      CODEX_HOME: path.join(home, '.codex'),
+      RUVNET_BRAIN_HOME: path.join(home, '.cache', 'ruvnet-brain'),
+      ...extraEnv,
+    },
+    input: JSON.stringify(payload),
+    encoding: 'utf8',
+    timeout: 2_000,
+  });
+}
+
 describe('Codex lifecycle hook packaging', () => {
   it('ships a Codex manifest and schema-valid hook source without Claude-only metadata', () => {
     const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
@@ -163,10 +187,53 @@ describe('Codex lifecycle hook packaging', () => {
 
     expect(handlers.length).toBeGreaterThan(0);
     for (const handler of handlers) {
-      expect(handler.command).toMatch(/\.cache\/ruvnet-brain\/codex-hook\.mjs/);
+      expect(handler.command).toContain("p.join(b,'codex-hook.mjs')");
+      expect(handler.command).toContain('process.env.CODEX_HOME');
+      expect(handler.command).toContain('process.exit(r.status===2?2:0)');
       expect(handler.command).not.toMatch(/PLUGIN_ROOT|CLAUDE_PLUGIN_ROOT|plugins\/cache/);
     }
     expect(hooks.SessionEnd[0].hooks[0].timeout).toBeLessThanOrEqual(3);
+  });
+
+  it('every literal registered command is silent and fail-open when the stable wrapper is absent', () => {
+    const { home } = fixture();
+    for (const handler of manifestHandlers()) {
+      const result = fireRegistered(handler.command, home, {
+        session_id: 'codex-missing-wrapper',
+        hook_event_name: handler.event,
+        cwd: ROOT,
+      });
+      expect(result.error, `${handler.event}: ${result.error?.message}`).toBeUndefined();
+      expect(result.signal, `${handler.event}: signal`).toBeNull();
+      expect(result.status, `${handler.event}: ${result.stderr}`).toBe(0);
+      expect(result.stdout, `${handler.event}: stdout`).toBe('');
+      expect(result.stderr, `${handler.event}: stderr`).toBe('');
+    }
+  });
+
+  it('literal registered commands resolve the stable wrapper beside an isolated CODEX_HOME', () => {
+    const loginHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-login-home-'));
+    const isolatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-codex-home-'));
+    const codexHome = path.join(isolatedRoot, '.codex');
+    const brain = path.join(isolatedRoot, '.cache', 'ruvnet-brain');
+    fs.mkdirSync(codexHome, { recursive: true });
+    installGeneration(brain, 'v1', 'process.stdin.resume(); process.stdin.on("end",()=>process.stdout.write("isolated codex home"));');
+    fs.copyFileSync(WRAPPER, path.join(brain, 'codex-hook.mjs'));
+    const command = manifestHandlers().find(({ event }) => event === 'SessionStart').command;
+
+    const result = fireRegistered(command, loginHome, {
+      session_id: 'codex-isolated-home',
+      hook_event_name: 'SessionStart',
+      source: 'startup',
+      cwd: ROOT,
+    }, {
+      CODEX_HOME: codexHome,
+      RUVNET_BRAIN_HOME: '',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(JSON.parse(result.stdout).hookSpecificOutput.additionalContext).toBe('isolated codex home');
   });
 
   it('installer places the stable wrapper outside every versioned plugin cache', async () => {
@@ -192,6 +259,51 @@ describe('Codex lifecycle hook packaging', () => {
 });
 
 describe('Codex lifecycle adapter', () => {
+  it('fails open and silent when an advisory adapter crashes', () => {
+    const { home, brain } = fixture();
+    const scripts = path.join(brain, 'versions', 'v1', 'scripts');
+    fs.mkdirSync(scripts, { recursive: true });
+    fs.writeFileSync(path.join(scripts, 'codex-hook-adapter.mjs'), 'process.stderr.write("adapter exploded"); process.exit(1);');
+    fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ version: 'v1', codeRoot: 'versions/v1' }));
+
+    const result = fire(home, 'session-start', { hook_event_name: 'SessionStart', cwd: ROOT });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('');
+  });
+
+  it('times out a hung advisory adapter inside the host deadline and fails open silently', () => {
+    const { home, brain } = fixture();
+    const scripts = path.join(brain, 'versions', 'v1', 'scripts');
+    fs.mkdirSync(scripts, { recursive: true });
+    fs.writeFileSync(path.join(scripts, 'codex-hook-adapter.mjs'), 'setInterval(() => {}, 1000);');
+    fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ version: 'v1', codeRoot: 'versions/v1' }));
+    const started = Date.now();
+
+    const result = fire(home, 'session-start', { hook_event_name: 'SessionStart', cwd: ROOT }, {
+      RUVNET_CODEX_HOOK_TIMEOUT_MS: '75',
+    });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('');
+  });
+
+  it('preserves an intentional blocking exit 2 while failing other wrapper errors open', () => {
+    const { home, brain } = fixture();
+    installGeneration(brain, 'v1', 'process.stderr.write("policy refusal"); process.exit(2);');
+
+    const blocked = fire(home, 'ground-before-write', { hook_event_name: 'PreToolUse', cwd: ROOT });
+    expect(blocked.status).toBe(2);
+    expect(blocked.stdout).toBe('');
+    expect(blocked.stderr).toBe('policy refusal');
+
+    const advisory = fire(home, 'session-start', { hook_event_name: 'SessionStart', cwd: ROOT });
+    expect(advisory.status).toBe(0);
+    expect(advisory.stdout).toBe('');
+    expect(advisory.stderr).toBe('');
+  });
+
   it('wraps bracket-prefixed SessionStart text in the exact Codex context envelope', () => {
     const { home, brain } = fixture();
     installGeneration(brain, 'v1', 'process.stdin.resume(); process.stdin.on("end",()=>process.stdout.write("[RuvNet Brain start]"));');

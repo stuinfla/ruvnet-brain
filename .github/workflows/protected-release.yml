@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       version:
-        description: Exact release generation; this workflow is locked to 4.0.5
+        description: Exact release generation; this workflow is locked to 4.0.6
         required: true
         type: string
       release_qe_run_id:
@@ -28,7 +28,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  EXPECTED_VERSION: 4.0.5
+  EXPECTED_VERSION: 4.0.6
   EXPECTED_SHA: ${{ inputs.candidate_sha }}
 
 jobs:
