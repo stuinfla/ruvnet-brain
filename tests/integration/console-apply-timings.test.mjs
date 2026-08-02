@@ -10,11 +10,13 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { consoleFixtureEnvironment } from '../helpers/console-fixture-environment.mjs';
 import { runRenderProbe } from '../ux/render-probe.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CONSOLE = path.join(REPO, 'scripts', 'onboarding-console.mjs');
 const RENDER_PROBE = path.join(REPO, 'tests', 'ux', 'render-probe.mjs');
+const FIXTURE_ENVIRONMENT = path.join(REPO, 'tests', 'helpers', 'console-fixture-environment.mjs');
 
 let fixtureRoot;
 let project;
@@ -88,16 +90,10 @@ beforeAll(async () => {
   port = await reservePort();
   server = spawn(process.execPath, [CONSOLE, '--serve'], {
     cwd: project,
-    env: {
-      ...process.env,
-      RUVNET_CONSOLE_ROOT: fixtureRoot,
-      RUVNET_BRAIN_CONFIG_FILE: path.join(fixtureRoot, '.claude', 'ruvnet-brain', 'config.json'),
-      RUVNET_SETTINGS_FILE: path.join(fixtureRoot, '.config', 'ruvnet-brain', 'settings.json'),
-      RUVNET_BRAIN_SECRETS_FILE: path.join(fixtureRoot, '.config', 'ruvnet-brain', 'secrets.enc.json'),
-      RUVNET_BRAIN_STATE_DIR: path.join(fixtureRoot, '.config', 'ruvnet-brain'),
+    env: consoleFixtureEnvironment(fixtureRoot, { extras: {
       CONSOLE_PORT: String(port),
       RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1',
-    },
+    } }),
     stdio: 'ignore',
   });
   const page = await waitForConsole();
@@ -201,11 +197,14 @@ describe('/api/apply timing receipt', () => {
     const sources = [
       fs.readFileSync(RENDER_PROBE, 'utf8'),
       fs.readFileSync(CONSOLE, 'utf8'),
+      fs.readFileSync(FIXTURE_ENVIRONMENT, 'utf8'),
     ];
-    expect(sources[0]).toContain('RUVNET_CONSOLE_ROOT');
+    expect(sources[0]).toContain("from '../helpers/console-fixture-environment.mjs'");
+    expect(sources[0].match(/consoleFixtureEnvironment\(fixtureRoot\)/g)).toHaveLength(2);
     expect(sources[1]).toContain('RUVNET_CONSOLE_ROOT');
+    expect(sources[2]).toContain('RUVNET_CONSOLE_ROOT');
     for (const source of sources) {
-      expect(source).not.toMatch(/\b(?:HOME|USERPROFILE)\s*:/);
+      expect(source).not.toMatch(/\b(?:HOME|USERPROFILE|CODEX_HOME)\s*:/);
     }
   });
 });

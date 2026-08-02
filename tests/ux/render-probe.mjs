@@ -20,6 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { consoleFixtureEnvironment } from '../helpers/console-fixture-environment.mjs';
 
 // Playwright is resolved via createRequire (CJS resolution), NOT a bare ESM `import`. Reason, verified
 // live 2026-07-24: on this Mac playwright is a GLOBAL install (~/.npm-global/lib/node_modules), and
@@ -99,22 +100,10 @@ function waitForReady(port, timeoutMs = 20000) {
   });
 }
 
-function fixtureEnvironment(fixtureRoot, extras = {}) {
-  return {
-    ...process.env,
-    RUVNET_CONSOLE_ROOT: fixtureRoot,
-    RUVNET_BRAIN_CONFIG_FILE: path.join(fixtureRoot, '.claude', 'ruvnet-brain', 'config.json'),
-    RUVNET_SETTINGS_FILE: path.join(fixtureRoot, '.config', 'ruvnet-brain', 'settings.json'),
-    RUVNET_BRAIN_SECRETS_FILE: path.join(fixtureRoot, '.config', 'ruvnet-brain', 'secrets.enc.json'),
-    RUVNET_BRAIN_STATE_DIR: path.join(fixtureRoot, '.config', 'ruvnet-brain'),
-    ...extras,
-  };
-}
-
 /** Start the console server on `port` with an isolated fixture root, and pre-warm its cache if requested. */
 function startConsole(port, fixtureRoot, cwd = REPO) {
   const env = {
-    ...fixtureEnvironment(fixtureRoot),
+    ...consoleFixtureEnvironment(fixtureRoot),
     CONSOLE_PORT: String(port),
     RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1',
   };
@@ -130,7 +119,7 @@ function startConsole(port, fixtureRoot, cwd = REPO) {
 /** Pre-warm the cache in the temporary fixture root once, so the render is warm-path. */
 function prewarm(fixtureRoot, cwd = REPO) {
   return new Promise((resolve) => {
-    const env = fixtureEnvironment(fixtureRoot);
+    const env = consoleFixtureEnvironment(fixtureRoot);
     const child = spawn(process.execPath, [CONSOLE_MJS, '--refresh-cache'], { env, stdio: 'ignore', cwd });
     let settled = false;
     const finish = () => {
