@@ -20,6 +20,9 @@ export default defineConfig({
       // tests/qe but is absent from this include list is silently ignored even when its path is
       // supplied on the command line — the exact vacuous-green failure this suite is meant to stop.
       'tests/qe/**/*.test.mjs',
+      // Real-host closure for reopened GitHub issues. These tests exercise installed Codex and
+      // browser boundaries and must not become invisible merely because they live outside unit/QE.
+      'tests/acceptance/*.test.mjs',
       // ADR-058 D5: the coexistence suite. Same lesson, stated twice on one file in one night —
       // a directory absent from `include` is invisible to `vitest run` no matter what any npm
       // script or CI step claims to run.
