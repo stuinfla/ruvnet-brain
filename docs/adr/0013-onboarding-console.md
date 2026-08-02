@@ -34,7 +34,11 @@ for subsequent reuse. The issue #79 transaction now stages and syntax-verifies `
 before host activation, persists its exact version/source identity, activates it only after host and
 Stable Spine convergence, and restores the prior runtime if activation or receipt finalization fails.
 The convergence receipt reports `pending-console-restart` when an owned instance still serves older
-bytes; the next launch uses the receipt/token lifecycle above to replace it safely.
+bytes; the next launch uses the receipt/token lifecycle above to replace it safely. The running
+Console reads its version from that staged `runtime-identity.json` before consulting any host plugin
+registry, so a Codex-only installation has a valid ownership receipt and can replace stale bytes on
+the same URL. Real-browser acceptance builds both candidates through the installer's canonical
+runtime transaction rather than a parallel hand-maintained fixture manifest.
 
 **Updated 2026-08-02** — Console integrity issues #83, #85, #86, and #87 make four trust boundaries
 explicit. Bundled maintainer lessons carry imported-owner provenance, legacy fingerprints are

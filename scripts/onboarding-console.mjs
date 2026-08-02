@@ -1866,6 +1866,10 @@ async function fetchReleaseDigest() {
 // in the heading of the console"). Plugin-cache dir first — the truth on installed machines — then
 // the repo's plugin.json for dev checkouts. null hides the chip rather than guessing.
 function brainVersionOnDisk() {
+  const runtimeIdentity = readJSON(path.join(REPO, 'runtime-identity.json'));
+  if (typeof runtimeIdentity?.runtimeVersion === 'string' && runtimeIdentity.runtimeVersion) {
+    return runtimeIdentity.runtimeVersion.replace(/^v/, '');
+  }
   try { const v = readInstallChannel().version; if (v) return String(v).replace(/^v/, ''); } catch { /* fall through */ }
   try { return getVersion(); } catch { return null; }
 }

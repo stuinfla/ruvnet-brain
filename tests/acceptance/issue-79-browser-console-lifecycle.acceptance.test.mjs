@@ -5,24 +5,13 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { installConsoleRuntime } from '../../bin/install.mjs';
+import { consoleFixtureEnvironment } from '../helpers/console-fixture-environment.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const SOURCE = path.join(ROOT, 'scripts', 'onboarding-console.mjs');
 const children = new Set();
 const temps = [];
-
-function copyConsoleCandidate(target) {
-  fs.mkdirSync(target, { recursive: true });
-  for (const directory of ['scripts', 'console', 'data']) {
-    fs.cpSync(path.join(ROOT, directory), path.join(target, directory), { recursive: true });
-  }
-  fs.mkdirSync(path.join(target, 'kb'), { recursive: true });
-  fs.copyFileSync(path.join(ROOT, 'kb', 'brain-profile.mjs'), path.join(target, 'kb', 'brain-profile.mjs'));
-  fs.mkdirSync(path.join(target, 'plugin'), { recursive: true });
-  fs.cpSync(path.join(ROOT, 'plugin', 'scripts'), path.join(target, 'plugin', 'scripts'), { recursive: true });
-  fs.cpSync(path.join(ROOT, 'plugin', '.claude-plugin'), path.join(target, 'plugin', '.claude-plugin'), { recursive: true });
-  fs.copyFileSync(path.join(ROOT, 'package.json'), path.join(target, 'package.json'));
-}
 
 async function freePort() {
   const server = http.createServer();
@@ -33,14 +22,12 @@ async function freePort() {
 }
 
 function runtimeEnv(home, port) {
-  return {
-    ...process.env,
-    HOME: home,
-    USERPROFILE: home,
-    RUVNET_CONSOLE_ROOT: home,
-    CONSOLE_PORT: String(port),
-    RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1',
-  };
+  return consoleFixtureEnvironment(home, {
+    extras: {
+      CONSOLE_PORT: String(port),
+      RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1',
+    },
+  });
 }
 
 function start(script, home, cwd, port) {
@@ -71,10 +58,11 @@ async function waitFor(check, timeoutMs = 20_000) {
 afterEach(async () => {
   const live = [...children].filter((child) => child.exitCode === null);
   for (const child of live) child.kill('SIGTERM');
-  await Promise.all(live.map((child) => new Promise((resolve) => {
+  await Promise.all(live.map((child) => new Promise((resolve, reject) => {
     if (child.exitCode !== null) return resolve();
-    const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 2_000);
-    child.once('exit', () => { clearTimeout(timer); resolve(); });
+    const hardKill = setTimeout(() => child.kill('SIGKILL'), 2_000);
+    const failed = setTimeout(() => reject(new Error(`Console child ${child.pid} did not exit after SIGKILL`)), 4_000);
+    child.once('exit', () => { clearTimeout(hardKill); clearTimeout(failed); resolve(); });
   })));
   children.clear();
   for (const dir of temps.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
@@ -93,17 +81,12 @@ describe('issue #79 installed browser lifecycle', () => {
     temps.push(root);
     const home = path.join(root, 'home');
     const cwd = path.join(root, 'project');
-    const aRoot = path.join(root, 'candidate-a');
-    const bRoot = path.join(root, 'candidate-b');
     fs.mkdirSync(home, { recursive: true });
     fs.mkdirSync(cwd, { recursive: true });
-    // The repository contains multi-gigabyte knowledge artifacts that the Console server never
-    // imports. Copying the entire checkout twice made this real-browser test measure disk cloning,
-    // not lifecycle convergence, and eventually exceeded both test and teardown timeouts.
-    copyConsoleCandidate(aRoot);
-    copyConsoleCandidate(bRoot);
-    const aScript = path.join(aRoot, 'scripts', 'onboarding-console.mjs');
-    const bScript = path.join(bRoot, 'scripts', 'onboarding-console.mjs');
+    // Build both candidates through the same transaction and file manifest the installer uses.
+    // This keeps the acceptance boundary tied to the shipped runtime instead of a second fixture list.
+    const aScript = installConsoleRuntime(path.join(root, 'candidate-a-cache'), ROOT);
+    const bScript = installConsoleRuntime(path.join(root, 'candidate-b-cache'), ROOT);
     fs.appendFileSync(aScript, '\n// issue-79 candidate A digest\n');
     const port = await freePort();
     const first = start(aScript, home, cwd, port);
@@ -144,6 +127,7 @@ describe('issue #79 installed browser lifecycle', () => {
         throw new Error(`${error.message}\nfirst stdout: ${first.testStdout}\nfirst stderr: ${first.testStderr}\nsecond stdout: ${second.testStdout}\nsecond stderr: ${second.testStderr}`);
       }
       expect(secondIdentity.pid).toBe(second.pid);
+      expect(secondIdentity.runtimeVersion).toBe('4.0.7');
       expect(secondIdentity.sourceSha256).not.toBe(firstIdentity.sourceSha256);
       expect(await page.evaluate(async () => (await fetch('/api/capabilities')).status)).toBe(200);
       await page.reload({ waitUntil: 'domcontentloaded' });

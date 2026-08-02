@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { maintainerIssueEntitlement } from '../../plugin/scripts/session-start-core.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const SOURCE_SCRIPTS = path.join(ROOT, 'plugin/scripts');
@@ -296,6 +297,42 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
     });
     expect(result.output).not.toMatch(/open issue/i);
     expect(result.output).not.toContain('#87');
+  });
+
+  it('fails closed for maintainer issue visibility on Windows', () => {
+    const f = makeFixture();
+    const entitlement = path.join(f.state, 'maintainer-issues.json');
+    write(entitlement, { enabled: true, repos: ['stuinfla/ruvnet-brain'] });
+    fs.chmodSync(entitlement, 0o600);
+    expect(maintainerIssueEntitlement({ RUVNET_BRAIN_MAINTAINER_ISSUES_FILE: entitlement }, f.home, 'stuinfla/ruvnet-brain', 'win32')).toBe(false);
+  });
+
+  it('rejects a symlinked maintainer entitlement', () => {
+    const f = makeFixture();
+    const target = path.join(f.state, 'maintainer-issues-target.json');
+    const link = path.join(f.state, 'maintainer-issues.json');
+    write(target, { enabled: true, repos: ['stuinfla/ruvnet-brain'] });
+    fs.chmodSync(target, 0o600);
+    fs.symlinkSync(target, link);
+    expect(maintainerIssueEntitlement({ RUVNET_BRAIN_MAINTAINER_ISSUES_FILE: link }, f.home, 'stuinfla/ruvnet-brain', process.platform)).toBe(false);
+  });
+
+  it('rejects invalid and future-dated issue observations', () => {
+    for (const at of ['not-a-date', new Date(Date.now() + 10 * 60_000).toISOString()]) {
+      const result = parity((f) => {
+        warmed(f);
+        write(path.join(f.cache, 'open-issues.json'), {
+          at,
+          repo: 'stuinfla/ruvnet-brain',
+          issues: [{ number: 87, title: 'invalid observation', ageHours: 2, breach: false }],
+        });
+        const entitlement = path.join(f.state, 'maintainer-issues.json');
+        write(entitlement, { enabled: true, repos: ['stuinfla/ruvnet-brain'] });
+        fs.chmodSync(entitlement, 0o600);
+      });
+      expect(result.output).not.toMatch(/open issue/i);
+      expect(result.output).not.toContain('#87');
+    }
   });
 
   it('matches OFF behavior with an absent KB: one state line, no advertising, offers unconsumed', () => {
