@@ -1,7 +1,7 @@
 name: protected-release
 
 # The candidate CI produces one immutable package + receipt. This workflow proves that exact
-# candidate is current main, carries it across the reviewer-protected Production boundary, and is
+# candidate is current main, carries it across the branch-protected Production boundary, and is
 # the only workflow allowed to invoke the publisher.
 on:
   workflow_dispatch:
@@ -189,7 +189,7 @@ jobs:
           node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}"
           printf '%s\n' "${asset_dirs[0]}" > "$RUNNER_TEMP/release-assets-path"
 
-      - name: Revalidate after approval and invoke the one canonical publisher
+      - name: Revalidate at the Production boundary and invoke the one canonical publisher
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}

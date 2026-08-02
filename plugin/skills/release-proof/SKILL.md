@@ -30,10 +30,10 @@ green.
 ## Candidate seal
 
 Generate the receipt from commands in the protected candidate workflow. Do not hand-author it.
-For generation 4.0.4, dispatch `.github/workflows/protected-release.yml` only with the full candidate
-SHA, sealed artifact SHA-256, exact version `4.0.4`, and the successful exact-SHA CI run ID whose
-named `release-qe` job produced `release-evidence-<sha>`. The workflow checks every binding before
-creating its sealed handoff and again after the production reviewer approves. Missing artifacts,
+Dispatch `.github/workflows/protected-release.yml` only with the full candidate SHA, the exact
+current version, and the successful exact-SHA CI run ID whose named `release-qe` job produced
+`release-evidence-<sha>`. The workflow derives the artifact digest from those sealed bytes and checks
+every binding before creating its handoff and again at the Production boundary. Missing artifacts,
 pending/red jobs, malformed inputs, version splits, and byte mismatches stop before the publisher.
 Validate it from the repository with:
 

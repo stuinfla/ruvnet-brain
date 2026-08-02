@@ -65,14 +65,15 @@ scoped evidence instead of widening; the same query passes in 0.671s, with 118/1
 3/3 live MCP cases. The new `release-proof` skill and executable authority fail closed on dirty
 lineage, zero/skipped/todo work, open issues, exact-SHA GitHub failures, artifact/host/grader binding
 splits, missing self-RVF, deadline-margin breaches, and public-byte drift. GitHub now enforces required
-checks for admins and protects `Production – ruvnet-brain` with required review and no admin bypass.
+checks for admins and protects `Production – ruvnet-brain` with protected-branch deployment policy.
 The 4.0.4 candidate exposed a release-graph defect after merge: the protected workflow consumed a
 `release-evidence-<sha>` artifact that CI never produced. The corrected transport gives the
 `release-qe` job one responsibility: test, pack, and upload an append-only stabilization receipt
 containing only facts that job actually observed. The protected workflow derives the package digest
 from those bytes, requires the candidate to equal current `origin/main`, and independently proves the
-exact-SHA CI run is complete and green. It then crosses `Production – ruvnet-brain` for reviewer
-approval before invoking the sole publisher. The stabilization receipt explicitly makes no >=95
+exact-SHA CI run is complete and green. It then crosses `Production – ruvnet-brain` automatically
+before invoking the sole publisher; Stuart's standing release authorization removed the redundant
+manual reviewer click on 2026-08-02. The stabilization receipt explicitly makes no >=95
 claim; the strict two-grader >=95 promotion contract remains unsatisfied and remains a separate
 program. `scripts/release.mjs --publish` rejects local, differently named, and receipt/mode-mismatched
 invocations before remote mutation. After publication, `scripts/publication-receipt.mjs`
@@ -356,6 +357,7 @@ correct: **the strong claim was the defect.**
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-02 | Removed the redundant human reviewer from `Production – ruvnet-brain` while retaining the environment, protected-branch policy, exact-SHA CI, sealed artifact, sole publisher, and post-publication receipt. | Stuart explicitly granted standing production authorization after the 4.0 launch phase. GitHub environment protection now has zero required reviewers and retains the branch-policy rule; protected-release run `30768302283` crossed the boundary without a pause and published 4.0.6 with both seals green. |
 | 2026-08-02 | Re-read the protected release and Codex hook boundaries for the 4.0.6 emergency candidate. The release remains a stabilization path and makes no 95 claim. | Commit `eab11d8` changes `plugin/hooks/codex-hooks.json`, `plugin/scripts/codex-hook-wrapper.mjs`, `.github/workflows/protected-release.yml`, `scripts/stabilization-receipt.mjs`, and exact source/packed-artifact regressions. Plugin-only, missing-wrapper, retained-plugin-after-uninstall, and isolated `CODEX_HOME` paths now fail open before Node can emit `MODULE_NOT_FOUND`; unexpected crashes/timeouts are silent while intentional blocking exit 2 remains enforced. Focused source gates passed 79/79 and the packed release boundary passed 7/7. Public npm/GitHub bytes, exact-SHA remote CI, and post-publication host proof remain unproven until the protected workflow completes. |
 | 2026-08-02 | Re-read D4 and the release-vector boundary after the learning replay was split into bounded modules and its evidence made source-bound and self-verifying. The eight-dimension minimum contract and the rule that UNKNOWN cannot be averaged into PASS are unchanged. | Commits `b4a8749`, `b044737`, `0f13b43`, `711ff31`, and `2c1acf4` change `scripts/learning-replay.mjs` and `scripts/release-vector.mjs`, add the replay contract/execution/fixture/proof modules, bind each proof to source SHA, arm, run, trap, and mutant identity, isolate destructive mutants, redact host paths, and reject orphaned or mismatched evidence. Exact merged candidate `1e51f06` passed 96/96 focused tests, both portfolio verifiers, all four expected-red mutants, 2,778 unit tests, and 238 integration/browser tests. The proof subsystem remains 94/100 because disk-space preflight and an independently implemented verifier are absent; this row makes no published-package, Windows/WSL2, or two-external-grader >=95 claim. |
 | 2026-08-01 | The protected release asset restore now excludes AppleDouble metadata, deterministically requires exactly one canonical RVF directory, audits every restored RVF before the publisher, and makes `build-bundle.mjs` independently ignore `._*` pseudo-stores. | Protected release run `30727791825` passed 2,735 tests and exact-main proof, then failed before publication because recursive `find` selected a 163-byte `__MACOSX/._*.big.rvf` resource-fork stub from the v4.0.3 ZIP. Replaying the corrected selector against that exact 529.8 MB public artifact chose the real directory and audited 62/62 RVFs successfully. npm remained 4.0.2 and no v4.0.4 GitHub release existed after the failure. |

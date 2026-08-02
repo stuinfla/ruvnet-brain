@@ -39,13 +39,14 @@ describe('protected release rail', () => {
     expect(gitignore()).toMatch(/^\/release-evidence\/$/m);
   });
 
-  it('puts the sole publisher behind Production approval and preserves post-publication proof', () => {
+  it('puts the sole publisher behind the Production boundary without a manual-review dependency', () => {
     const source = workflow();
     expect(source).toContain('environment: Production – ruvnet-brain');
     expect(source.match(/node scripts\/release\.mjs --publish/g)).toHaveLength(1);
     expect(source).toContain('RUVNET_RELEASE_MODE: stabilization');
     expect(source).toContain('--publication release-evidence/publication-receipt.json');
     expect(source).not.toContain('continue-on-error: true');
+    expect(source).not.toMatch(/reviewer|after approval/i);
   });
 
   it('selects and opens a real RVF instead of macOS ZIP metadata', () => {

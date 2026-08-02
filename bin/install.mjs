@@ -1118,11 +1118,27 @@ const CODEX_PLUGIN_ID = 'ruvnet-brain@ruvnet-brain';
 const CODEX_MARKETPLACE = 'ruvnet-brain';
 const CODEX_MARKETPLACE_SOURCE = 'stuinfla/ruvnet-brain';
 
-function prepareCodexMarketplace() {
-  const target = path.join(
+function codexMarketplaceTarget() {
+  return path.join(
     process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain'),
     'codex-marketplace',
   );
+}
+
+function codexMarketplaceReady(target = codexMarketplaceTarget()) {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(target, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    return manifest?.name === CODEX_MARKETPLACE
+      && Array.isArray(manifest.plugins)
+      && manifest.plugins.some((plugin) => plugin?.name === 'ruvnet-brain' && plugin?.source === './plugin')
+      && fs.existsSync(path.join(target, 'plugin', '.codex-plugin', 'plugin.json'));
+  } catch {
+    return false;
+  }
+}
+
+function prepareCodexMarketplace() {
+  const target = codexMarketplaceTarget();
   const staged = `${target}.tmp-${process.pid}`;
   fs.rmSync(staged, { recursive: true, force: true });
   fs.mkdirSync(path.join(staged, '.claude-plugin'), { recursive: true });
@@ -1199,6 +1215,18 @@ export function wireCodexPlugin({
 } = {}) {
   if (!fs.existsSync(codexDir)) return { host: false, action: 'no-host' };
   const options = { codexBin, codexHome, cwd };
+  // Codex loads every configured marketplace before it can report plugin state. Repair only an
+  // absent/malformed Brain-owned snapshot before that probe, or the probe can fail before its own
+  // repair path is reachable. A healthy current cache stays byte-untouched, and plugin enablement
+  // is still read and preserved below.
+  let localMarketplace = null;
+  if (runJson === runCodexJson && !codexMarketplaceReady()) {
+    try { localMarketplace = prepareCodexMarketplace(); }
+    catch (error) {
+      if (announce) warn(`Codex marketplace preparation failed — ${error.message}`);
+      return { host: true, action: 'marketplace-prepare-failed', error: error.message };
+    }
+  }
   const before = codexPluginStatus({ ...options, runJson });
   if (!before.available) {
     if (announce) warn(`Codex plugin lifecycle not installed — ${before.error}`);
@@ -1213,7 +1241,13 @@ export function wireCodexPlugin({
     return { host: true, action: 'unchanged', ...before };
   }
 
-  const localMarketplace = runJson === runCodexJson ? prepareCodexMarketplace() : null;
+  if (runJson === runCodexJson && !localMarketplace) {
+    try { localMarketplace = prepareCodexMarketplace(); }
+    catch (error) {
+      if (announce) warn(`Codex marketplace preparation failed — ${error.message}`);
+      return { host: true, action: 'marketplace-prepare-failed', error: error.message };
+    }
+  }
   const markets = runJson(['plugin', 'marketplace', 'list', '--json'], options);
   if (!markets.ok) {
     if (announce) warn(`Codex marketplace check failed — ${markets.error}`);
