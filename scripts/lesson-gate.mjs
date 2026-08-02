@@ -588,6 +588,18 @@ function renderBody() {
   return lines.join('\n');
 }
 
+// A lesson that reaches context but does not govern the next decision is documentation, not learning.
+// Keep this contract generic: the lesson owns the correction; this preamble only tells the agent how
+// to use relevant knowledge it already received. Advisory remains non-blocking and user-overridable,
+// but it does not mean replacing the requested action with discovery when the lesson supplies the form.
+const ADVISORY_APPLICATION_CONTRACT = [
+  'Your own recorded corrections apply at this moment. They are advisory: they do not refuse',
+  "anything or override the user's current instruction or a safety boundary.",
+  "Apply any relevant correction directly to the user's requested action.",
+  'When a correction already provides the required form, do not replace the requested action with help, setup, status, or other discovery.',
+  'If you intentionally take another path, state why.',
+];
+
 // ── Emit ─────────────────────────────────────────────────────────────────────────────────────────
 
 if (json) {
@@ -639,8 +651,7 @@ if (event) {
       process.stdout.write(JSON.stringify({
         channel: 'lesson', effect: 'advisory', hookEventName: event,
         copy: [
-          'Your own recorded corrections apply at this moment. These are advisory — they do not',
-          'refuse anything, and you may proceed. Weigh them and say so if you go another way.',
+          ...ADVISORY_APPLICATION_CONTRACT,
           renderBody(),
         ].join('\n'),
       }) + '\n');
@@ -662,8 +673,7 @@ if (event) {
       hookSpecificOutput: {
         hookEventName: event,
         additionalContext: [
-          'Your own recorded corrections apply at this moment. These are advisory — they do not',
-          'refuse anything, and you may proceed. Weigh them and say so if you go another way.',
+          ...ADVISORY_APPLICATION_CONTRACT,
           renderBody(),
         ].join('\n'),
       },

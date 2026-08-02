@@ -107,6 +107,20 @@ describe('a NUDGE informs and never refuses', () => {
     expect(JSON.parse(stdout).hookSpecificOutput.additionalContext).toMatch(/advisory/i);
   });
 
+  test('applies an actionable correction instead of replacing the requested action with help discovery', () => {
+    writeStore([blockLesson({
+      id: 'T02-apply-known-command-form',
+      statement: 'Pass a memory-search query with the required query flag, not as a positional phrase.',
+      trigger: 'assert-fact',
+      enforcement: 'checklist',
+      check: 'the requested memory search runs with its query flag',
+    })]);
+    const { stdout } = runGate(['--event', 'UserPromptSubmit', '--trigger', 'assert-fact']);
+    const ctx = JSON.parse(stdout).hookSpecificOutput.additionalContext;
+    expect(ctx).toMatch(/apply .*correction directly to the .*requested action/i);
+    expect(ctx).toMatch(/do not replace .*requested action with .*help.*discovery/i);
+  });
+
   test('truncates long evidence at a WORD boundary, never mid-word', () => {
     // The live defect: the evidence line ended "…the ris" (from "the risk"), which reads as a bug in
     // the lesson, not a length cap. A recognizable marker word is placed so that char 150 falls INSIDE
