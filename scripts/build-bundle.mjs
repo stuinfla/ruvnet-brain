@@ -86,6 +86,7 @@ function discoverBuilt() {
   const excludedPrivate = [];
   if (!fs.existsSync(ASSETS)) return [];
   for (const f of fs.readdirSync(ASSETS)) {
+    if (f.startsWith('._')) continue; // AppleDouble metadata is never a vector store.
     const m = f.match(/^(.+?)\.big\.rvf$/);
     if (!m) continue;
     if (/\.(idmap|embed)\b/.test(f)) continue;

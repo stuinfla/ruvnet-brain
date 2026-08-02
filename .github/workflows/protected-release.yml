@@ -175,9 +175,19 @@ jobs:
           mkdir -p "$RUNNER_TEMP/release-seed"
           gh release download v4.0.3 --repo "$GITHUB_REPOSITORY" --pattern ruvnet-brain.zip --dir "$RUNNER_TEMP/release-seed"
           unzip -q "$RUNNER_TEMP/release-seed/ruvnet-brain.zip" -d "$RUNNER_TEMP/release-seed/extracted"
-          asset="$(find "$RUNNER_TEMP/release-seed/extracted" -name '*.big.rvf' -print -quit)"
-          test -n "$asset" || { echo 'previous public generation contains no RVF assets' >&2; exit 1; }
-          dirname "$asset" > "$RUNNER_TEMP/release-assets-path"
+          # Finder metadata (`__MACOSX/._*.big.rvf`) preserves a filename but is not an RVF. Select
+          # one canonical directory deterministically and fail closed if the archive is ambiguous.
+          mapfile -t asset_dirs < <(
+            find "$RUNNER_TEMP/release-seed/extracted" -type f -name '*.big.rvf' \
+              ! -path '*/__MACOSX/*' ! -name '._*' -printf '%h\n' | LC_ALL=C sort -u
+          )
+          case "${#asset_dirs[@]}" in
+            1) ;;
+            0) echo 'previous public generation contains no canonical RVF assets' >&2; exit 1 ;;
+            *) printf 'ambiguous canonical RVF asset directories:\n%s\n' "${asset_dirs[@]}" >&2; exit 1 ;;
+          esac
+          node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}"
+          printf '%s\n' "${asset_dirs[0]}" > "$RUNNER_TEMP/release-assets-path"
 
       - name: Revalidate after approval and invoke the one canonical publisher
         env:

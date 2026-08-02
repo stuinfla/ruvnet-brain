@@ -48,6 +48,15 @@ describe('protected release rail', () => {
     expect(source).not.toContain('continue-on-error: true');
   });
 
+  it('selects and opens a real RVF instead of macOS ZIP metadata', () => {
+    const source = workflow();
+    expect(source).toContain("-type f -name '*.big.rvf'");
+    expect(source).toContain("! -path '*/__MACOSX/*' ! -name '._*'");
+    expect(source).toContain("LC_ALL=C sort -u");
+    expect(source).toContain('ambiguous canonical RVF asset directories');
+    expect(source).toContain('node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}"');
+  });
+
   it.each([
     ['candidate producer', /stabilization-receipt\.mjs/],
     ['main identity', /git rev-parse origin\/main/],
