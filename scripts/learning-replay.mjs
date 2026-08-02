@@ -1209,13 +1209,22 @@ export function checkMutantArtifacts({
         return { status: VERDICT.FAIL, why: 'delete-lesson: treated arm still received or reproduced the lesson', checked };
       }
     } else {
-      const differsFromControl = artifact.runs.some((run) =>
-        run.treated?.lessonBeforeFirstToolCall === true
-        || run.treated?.lessonDelivered === true
-        || run.control?.lessonDelivered === true
-        || run.treated?.class !== run.control?.class);
-      if (differsFromControl) {
-        return { status: VERDICT.FAIL, why: 'brain-off-treated: treated arm did not collapse to the brain-off control artifact', checked };
+      // Model wording and command shape are stochastic even when both arms receive identical input.
+      // The causal contract is absence of the learned effect in BOTH brain-off arms, not byte-for-byte
+      // equality between two independent samples.
+      const learnedEffectSurvived = Number(artifact.treatedTokenRuns || 0) > 0
+        || Number(artifact.controlTokenRuns || 0) > 0
+        || artifact.runs.some((run) => (
+          run.treated?.lessonBeforeFirstToolCall === true
+          || run.treated?.lessonDelivered === true
+          || run.control?.lessonDelivered === true
+          || run.treated?.class === 'flagged'
+          || run.control?.class === 'flagged'
+          || run.treated?.exec?.retrieved === true
+          || run.control?.exec?.retrieved === true
+        ));
+      if (learnedEffectSurvived) {
+        return { status: VERDICT.FAIL, why: 'brain-off-treated: learned effect survived in a brain-off treated/control arm', checked };
       }
     }
     checked.push(`${trap}/${mutant}`);

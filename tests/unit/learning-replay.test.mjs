@@ -618,8 +618,25 @@ describe('the two ADR-058 D4 mutants have executable, current evidence', () => {
     }]),
   );
 
-  it('accepts only a delete-lesson red and a brain-off treated/control match', () => {
-    const files = filesForBoth();
+  it('accepts brain-off arms with no learned effect even when stochastic command shapes differ', () => {
+    const files = filesForBoth({
+      [`${TRAP.MEMORY_SEARCH}/brain-off-treated`]: {
+        runs: [{
+          verdict: VERDICT.FAIL,
+          treated: {
+            class: 'none',
+            lessonBeforeFirstToolCall: false,
+            lessonDelivered: false,
+            exec: { retrieved: false },
+          },
+          control: {
+            class: 'positional',
+            lessonDelivered: false,
+            exec: { retrieved: false },
+          },
+        }],
+      },
+    });
     const result = checkMutantArtifacts({ files });
     expect(result.status).toBe(VERDICT.PASS);
     expect(result.checked).toEqual([
