@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(import.meta.dirname, '../../..');
@@ -111,6 +111,32 @@ describe('clean host installation from only the packed artifact', () => {
     expect(retry.changed).toBe(false);
     expect(fs.readFileSync(config)).toEqual(before);
     expect(install.codexStatus({ codexDir, configPath: config }).wired).toBe(true);
+  });
+
+  it('keeps every packed Codex hook silent when a plugin-only host has no stable wrapper', () => {
+    const home = fs.mkdtempSync(path.join(temp, 'codex-plugin-only-'));
+    const codexHome = path.join(home, '.codex');
+    const brainHome = path.join(home, '.cache', 'ruvnet-brain');
+    fs.mkdirSync(codexHome, { recursive: true });
+    const hooks = JSON.parse(fs.readFileSync(path.join(artifact, 'plugin/hooks/codex-hooks.json'), 'utf8')).hooks;
+    const handlers = Object.entries(hooks).flatMap(([event, groups]) => groups.flatMap((group) =>
+      group.hooks.map((hook) => ({ event, ...hook }))));
+
+    for (const handler of handlers) {
+      const result = spawnSync(handler.command, {
+        cwd: artifact,
+        shell: true,
+        env: { ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: codexHome, RUVNET_BRAIN_HOME: brainHome },
+        input: JSON.stringify({ hook_event_name: handler.event, cwd: artifact }),
+        encoding: 'utf8',
+        timeout: 2_000,
+      });
+      expect(result.error, `${handler.event}: ${result.error?.message}`).toBeUndefined();
+      expect(result.signal, `${handler.event}: signal`).toBeNull();
+      expect(result.status, `${handler.event}: ${result.stderr}`).toBe(0);
+      expect(result.stdout, `${handler.event}: stdout`).toBe('');
+      expect(result.stderr, `${handler.event}: stderr`).toBe('');
+    }
   });
 
   it('persists a runnable /rvbc runtime with no source checkout', async () => {
