@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
@@ -18,6 +19,14 @@ const KEEP_RUNS = 14;
 const PROOF_SCHEMA = 2;
 const PROOF_ROOT = path.join(ROOT, 'data', 'learning-replay-transcripts');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
+const HOST_HOME_PATHS = [...new Set([os.homedir(), process.env.HOME].filter(Boolean))]
+  .sort((left, right) => right.length - left.length);
+export function redactHostPaths(value) {
+  return HOST_HOME_PATHS.reduce(
+    (text, home) => text.split(home).join('$HOME'),
+    String(value || ''),
+  );
+}
 const remove = (target) => {
   try { fs.rmSync(target, { recursive: true, force: true }); } catch { /* already gone */ }
 };
@@ -51,12 +60,12 @@ function execRecord(execution) {
   if (!execution) return null;
   return {
     ran: execution.ran === true,
-    argv: Array.isArray(execution.argv) ? execution.argv.map(String) : null,
+    argv: Array.isArray(execution.argv) ? execution.argv.map(redactHostPaths) : null,
     exit: Number.isInteger(execution.exit) ? execution.exit : null,
     exitOk: execution.exitOk === true,
     retrieved: execution.retrieved === true,
-    why: String(execution.why || '').slice(0, 400),
-    output: String(execution.output || '').slice(0, 400),
+    why: redactHostPaths(execution.why).slice(0, 400),
+    output: redactHostPaths(execution.output).slice(0, 400),
   };
 }
 
@@ -65,7 +74,7 @@ function armRecord(arm, treated) {
   const record = {
     class: arm.class || 'none',
     subcommandCorrect: arm.subcommandCorrect === true,
-    command: String(arm.command || '').slice(0, 800),
+    command: redactHostPaths(arm.command).slice(0, 800),
     exec: execRecord(arm.exec),
     model: arm.modelUsed || arm.model || null,
   };

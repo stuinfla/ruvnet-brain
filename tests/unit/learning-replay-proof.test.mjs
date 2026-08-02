@@ -166,6 +166,37 @@ describe('receipt verification recomputes evidence instead of trusting JSON clai
     expect(replay.checkArtifact({ file, repo: ROOT }).status).toBe(replay.VERDICT.PASS);
   });
 
+  it('redacts the host home directory before hashing published evidence', () => {
+    const treated = armRecord({ trap: replay.TRAP.MEMORY_SEARCH, treated: true, passing: true });
+    const control = armRecord({ trap: replay.TRAP.MEMORY_SEARCH, treated: false, passing: false });
+    treated.command = `${os.homedir()}/.npm-global/bin/ruflo memory search -q "caching strategy"`;
+    treated.exec.argv = [`${os.homedir()}/.npm-global/bin/ruflo`, 'memory', 'search'];
+    treated.exec.output = `loaded from ${os.homedir()}/private-cache`;
+    const result = replay.aggregate([{
+      i: 1,
+      treatedClass: treated.class,
+      controlClass: control.class,
+      lessonBeforeFirstToolCall: treated.lessonBeforeFirstToolCall,
+      treatedSubcommandCorrect: treated.subcommandCorrect,
+      treatedExecOk: treated.exec.exitOk,
+      treatedRetrieved: treated.exec.retrieved,
+      treatedExecWhy: treated.exec.why,
+      controlWorked: false,
+      error: null,
+      treated,
+      control,
+    }]);
+    const file = path.join(dir, 'redacted.json');
+    const value = replay.writeArtifact(file, result, {
+      trap: replay.TRAP.MEMORY_SEARCH,
+      proofRoot: path.join(dir, 'redacted-proof'),
+    });
+    const bytes = fs.readFileSync(file, 'utf8');
+    expect(bytes).not.toContain(os.homedir());
+    expect(bytes).toContain('$HOME/.npm-global/bin/ruflo');
+    expect(value.runs[0].treated.exec.argv[0]).toBe('$HOME/.npm-global/bin/ruflo');
+  });
+
   it('binds proof identity to the mutant, not only trap/run/arm', () => {
     const treated = armRecord({ trap: replay.TRAP.MEMORY_SEARCH, treated: true, passing: false });
     const control = armRecord({ trap: replay.TRAP.MEMORY_SEARCH, treated: false, passing: false });
