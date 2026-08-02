@@ -6,6 +6,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { installConsoleRuntime } from '../../bin/install.mjs';
+import { getVersion } from '../../scripts/version.mjs';
 import { consoleFixtureEnvironment } from '../helpers/console-fixture-environment.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
@@ -127,7 +128,7 @@ describe('issue #79 installed browser lifecycle', () => {
         throw new Error(`${error.message}\nfirst stdout: ${first.testStdout}\nfirst stderr: ${first.testStderr}\nsecond stdout: ${second.testStdout}\nsecond stderr: ${second.testStderr}`);
       }
       expect(secondIdentity.pid).toBe(second.pid);
-      expect(secondIdentity.runtimeVersion).toBe('4.0.7');
+      expect(secondIdentity.runtimeVersion).toBe(getVersion());
       expect(secondIdentity.sourceSha256).not.toBe(firstIdentity.sourceSha256);
       expect(await page.evaluate(async () => (await fetch('/api/capabilities')).status)).toBe(200);
       await page.reload({ waitUntil: 'domcontentloaded' });
