@@ -216,6 +216,8 @@ export const LOAD_BEARING = Object.freeze([
   'scripts/lesson-store.mjs',
   'plugin/scripts/lesson-store.mjs',
   'plugin/scripts/lesson-gate.mjs',
+  'plugin/scripts/lesson-command-scope.mjs',
+  'plugin/scripts/lesson-presentation.mjs',
   'plugin/scripts/lesson-hooks.sh',
   'plugin/scripts/unprompted-runtime.mjs',
   'plugin/scripts/hook-shim.mjs',

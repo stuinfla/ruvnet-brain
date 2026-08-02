@@ -81,6 +81,21 @@ beforeEach(() => {
 });
 afterEach(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ } });
 
+describe('canonical lesson runtime module boundaries', () => {
+  test('every self-contained plugin source stays below the repository 500-line ceiling', () => {
+    const files = [
+      'lesson-gate.mjs',
+      'lesson-command-scope.mjs',
+      'lesson-presentation.mjs',
+      'lesson-store.mjs',
+    ];
+    for (const file of files) {
+      const source = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', file), 'utf8');
+      expect(source.split('\n').length, `${file} must remain under 500 lines`).toBeLessThan(500);
+    }
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 describe('a NUDGE informs and never refuses', () => {
   test('exits 0 — the action is allowed', () => {

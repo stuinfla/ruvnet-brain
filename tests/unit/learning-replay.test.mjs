@@ -570,6 +570,8 @@ describe('--check gates on a STATED SHA, and UNKNOWN is never PASS', () => {
     // A currency rule nobody can enumerate is a currency rule nobody can audit.
     expect(LOAD_BEARING).toContain('scripts/learning-replay.mjs');
     expect(LOAD_BEARING).toContain('plugin/scripts/lesson-gate.mjs');
+    expect(LOAD_BEARING).toContain('plugin/scripts/lesson-command-scope.mjs');
+    expect(LOAD_BEARING).toContain('plugin/scripts/lesson-presentation.mjs');
     expect(LOAD_BEARING).toContain('plugin/scripts/lesson-store.mjs');
     expect(LOAD_BEARING).toContain('plugin/scripts/hook-shim.mjs');
   });
