@@ -2,14 +2,14 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "FAIL",
   "why": "0/1 runs passed — below the 1/1 bar",
-  "sha": "1b0e67aba678d3a7c991b797d2cbacfe34b25412",
-  "at": "2026-08-02T13:10:39.202Z",
+  "sha": "711ff31ea1a3015a58f09396b6ea969d1b5c9655",
+  "at": "2026-08-02T15:44:25.435Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
   "mutant": "delete-lesson",
   "trap": "memory-search-query",
-  "task": "Earlier in this project someone recorded a note about the caching strategy. Recall it from this project's agent memory with the ruflo CLI. Run the recall command now, then tell me what you ran.",
+  "taskHash": "0308cccebda651705b12b6494468fc06be96fee9d85d05bf9d72b328b174f4ca",
   "n": 1,
   "passes": 0,
   "fails": 1,
@@ -25,7 +25,7 @@
   "rate": 0,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 29.7,
+  "wallSeconds": 25.3,
   "premise": {
     "verified": true,
     "evidence": "-q, --query               Search query (required)"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1785676208604",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-viYsyT/brain-home/versions/d4-refresh-1785676208604",
+    "generation": "d4-refresh-1785685439329",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-RLNJwZ/brain-home/versions/d4-refresh-1785685439329",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -63,11 +63,11 @@
       "i": 1,
       "verdict": "FAIL",
       "why": "treated arm produced \"positional\", not the token",
+      "error": null,
       "treated": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
-        "forcedCommand": false,
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
         "exec": {
           "ran": true,
           "argv": [
@@ -75,19 +75,26 @@
             "memory",
             "search",
             "caching strategy",
-            "--path"
+            "--path",
+            ".swarm/memory.db"
           ],
           "exit": 1,
           "exitOk": false,
           "retrieved": false,
-          "why": "exit 1; the command's own output matched a known FAILURE shape /Required option missing/i",
+          "why": "exit 1; output matched failure shape /Required option missing/i",
           "output": "[ERROR] Required option missing: --query\n"
         },
+        "model": "gpt-5.6-sol",
+        "forcedCommand": false,
         "lessonIndex": -1,
         "firstToolIndex": 0,
         "lessonBeforeFirstToolCall": false,
-        "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-viYsyT/transcripts/run1-treated.stream.jsonl"
+        "transcript": {
+          "path": "data/learning-replay-transcripts/711ff31ea1a3015a58f09396b6ea969d1b5c9655/d22eb18a63c5f77ba83dd9b11705c66e56c21dbeffacec1579e9bd106b932541.json",
+          "sha256": "d22eb18a63c5f77ba83dd9b11705c66e56c21dbeffacec1579e9bd106b932541",
+          "sourceSha": "711ff31ea1a3015a58f09396b6ea969d1b5c9655",
+          "mutant": "delete-lesson"
+        }
       },
       "control": {
         "class": "positional",
@@ -105,12 +112,17 @@
           "exit": 1,
           "exitOk": false,
           "retrieved": false,
-          "why": "exit 1; the command's own output matched a known FAILURE shape /Required option missing/i",
+          "why": "exit 1; output matched failure shape /Required option missing/i",
           "output": "[ERROR] Required option missing: --query\n"
         },
-        "lessonDelivered": false,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-viYsyT/transcripts/run1-control.stream.jsonl"
+        "lessonDelivered": false,
+        "transcript": {
+          "path": "data/learning-replay-transcripts/711ff31ea1a3015a58f09396b6ea969d1b5c9655/7c226e2a4ef2458720d3eb9bfbd464031bb6e62064bd6556fdddea3a33650e55.json",
+          "sha256": "7c226e2a4ef2458720d3eb9bfbd464031bb6e62064bd6556fdddea3a33650e55",
+          "sourceSha": "711ff31ea1a3015a58f09396b6ea969d1b5c9655",
+          "mutant": "delete-lesson"
+        }
       }
     }
   ]
