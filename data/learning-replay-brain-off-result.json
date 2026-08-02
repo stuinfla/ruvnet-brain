@@ -2,8 +2,8 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "FAIL",
   "why": "0/1 runs passed — below the 1/1 bar",
-  "sha": "327ef47823f86863b93796d1ec1fc797d88638d5",
-  "at": "2026-08-02T12:58:27.763Z",
+  "sha": "1b0e67aba678d3a7c991b797d2cbacfe34b25412",
+  "at": "2026-08-02T13:11:15.913Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -25,7 +25,7 @@
   "rate": 0,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 29.3,
+  "wallSeconds": 23.6,
   "premise": {
     "verified": true,
     "evidence": "-q, --query               Search query (required)"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1785675477376",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-uw0OSE/brain-home/versions/d4-refresh-1785675477376",
+    "generation": "d4-refresh-1785676251412",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-L56TEI/brain-home/versions/d4-refresh-1785676251412",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -66,8 +66,33 @@
       "treated": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
         "forcedCommand": false,
+        "exec": {
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "memory",
+            "search",
+            "caching strategy",
+            "--path"
+          ],
+          "exit": 1,
+          "exitOk": false,
+          "retrieved": false,
+          "why": "exit 1; the command's own output matched a known FAILURE shape /Required option missing/i",
+          "output": "[ERROR] Required option missing: --query\n"
+        },
+        "lessonIndex": -1,
+        "firstToolIndex": 0,
+        "lessonBeforeFirstToolCall": false,
+        "model": "gpt-5.6-sol",
+        "transcript": ".ruvnet-brain/learning-replay/run-L56TEI/transcripts/run1-treated.stream.jsonl"
+      },
+      "control": {
+        "class": "positional",
+        "subcommandCorrect": true,
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
         "exec": {
           "ran": true,
           "argv": [
@@ -84,34 +109,9 @@
           "why": "exit 1; the command's own output matched a known FAILURE shape /Required option missing/i",
           "output": "[ERROR] Required option missing: --query\n"
         },
-        "lessonIndex": -1,
-        "firstToolIndex": 0,
-        "lessonBeforeFirstToolCall": false,
-        "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-uw0OSE/transcripts/run1-treated.stream.jsonl"
-      },
-      "control": {
-        "class": "positional",
-        "subcommandCorrect": true,
-        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
-        "exec": {
-          "ran": true,
-          "argv": [
-            "ruflo",
-            "memory",
-            "search",
-            "caching strategy",
-            "--path"
-          ],
-          "exit": 1,
-          "exitOk": false,
-          "retrieved": false,
-          "why": "exit 1; the command's own output matched a known FAILURE shape /Required option missing/i",
-          "output": "[ERROR] Required option missing: --query\n"
-        },
         "lessonDelivered": false,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-uw0OSE/transcripts/run1-control.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-L56TEI/transcripts/run1-control.stream.jsonl"
       }
     }
   ]

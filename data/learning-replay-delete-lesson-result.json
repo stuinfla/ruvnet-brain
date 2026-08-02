@@ -2,8 +2,8 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "FAIL",
   "why": "0/1 runs passed — below the 1/1 bar",
-  "sha": "327ef47823f86863b93796d1ec1fc797d88638d5",
-  "at": "2026-08-02T12:57:46.315Z",
+  "sha": "1b0e67aba678d3a7c991b797d2cbacfe34b25412",
+  "at": "2026-08-02T13:10:39.202Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -25,7 +25,7 @@
   "rate": 0,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 45.6,
+  "wallSeconds": 29.7,
   "premise": {
     "verified": true,
     "evidence": "-q, --query               Search query (required)"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1785675419663",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-enL48a/brain-home/versions/d4-refresh-1785675419663",
+    "generation": "d4-refresh-1785676208604",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-viYsyT/brain-home/versions/d4-refresh-1785676208604",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -87,29 +87,30 @@
         "firstToolIndex": 0,
         "lessonBeforeFirstToolCall": false,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-enL48a/transcripts/run1-treated.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-viYsyT/transcripts/run1-treated.stream.jsonl"
       },
       "control": {
-        "class": "other",
+        "class": "positional",
         "subcommandCorrect": true,
-        "command": "command -v ruflo && ruflo memory search --help",
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
         "exec": {
           "ran": true,
           "argv": [
             "ruflo",
             "memory",
             "search",
-            "--help"
+            "caching strategy",
+            "--path"
           ],
-          "exit": 0,
-          "exitOk": true,
+          "exit": 1,
+          "exitOk": false,
           "retrieved": false,
-          "why": "exit 0; the output names neither the seeded memory key nor its stored text — nothing was retrieved",
-          "output": "\nruflo memory search\nSearch memory with semantic/vector search\n\nOPTIONS:\n  -q, --query               Search query (required)\n  -n, --namespace           Memory namespace\n  -l, --limit               Maximum results [default: 10]\n      --threshold           Similarity threshold (0-1) [default: 0.7]\n  -t, --type                Search type (semantic, keyword, hybrid) [default: semantic]\n      --build-"
+          "why": "exit 1; the command's own output matched a known FAILURE shape /Required option missing/i",
+          "output": "[ERROR] Required option missing: --query\n"
         },
         "lessonDelivered": false,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-enL48a/transcripts/run1-control.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-viYsyT/transcripts/run1-control.stream.jsonl"
       }
     }
   ]
