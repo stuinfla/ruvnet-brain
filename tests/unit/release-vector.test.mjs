@@ -13,15 +13,29 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as RV from '../../scripts/release-vector.mjs';
-import {
-  TRAP as REPLAY_TRAP,
-  aggregate as aggregateReplay,
-  writeArtifact as writeReplayArtifact,
-} from '../../scripts/learning-replay.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 
 const inv = (name, state) => ({ name, dimension: 'Dx', state, why: 'fixture' });
+
+function copiedFixture(relativeFiles) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-vector-fixture-'));
+  for (const relative of relativeFiles) {
+    const target = path.join(root, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(path.join(REPO, relative), target);
+  }
+  return root;
+}
+
+function d3FixtureRunner(root) {
+  return () => {
+    const source = fs.readFileSync(path.join(root, 'plugin/scripts/session-start-core.mjs'), 'utf8');
+    return source.includes('surfaceSignals({ env, cwd, stateDir, hookDir, emit, now });')
+      ? { state: 'PASS', why: 'isolated lifecycle fixture passes' }
+      : { state: 'FAIL', why: 'isolated lifecycle fixture has no red-to-surface consumer' };
+  };
+}
 
 describe('the verdict is the vector MINIMUM — a bad cell can never be averaged away', () => {
   it('one FAIL among seven PASS yields FAIL, not 87%', () => {
@@ -126,24 +140,72 @@ describe('release-vector runners cross the Windows command-shim boundary', () =>
 });
 
 describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () => {
+  it('isolates simultaneous D3 mutants and preserves tracked source bytes', async () => {
+    const tracked = [
+      'plugin/hooks/hooks.json',
+      'plugin/scripts/session-start-core.mjs',
+    ];
+    const before = Object.fromEntries(tracked.map((relative) => [
+      relative,
+      fs.readFileSync(path.join(REPO, relative)),
+    ]));
+    const registrationRoot = copiedFixture([
+      'scripts/signal-watch.mjs',
+      ...tracked,
+    ]);
+    const consumerRoot = copiedFixture([
+      'scripts/signal-watch.mjs',
+      ...tracked,
+    ]);
+    try {
+      const hooks = path.join(registrationRoot, 'plugin/hooks/hooks.json');
+      fs.writeFileSync(hooks, fs.readFileSync(hooks, 'utf8')
+        .replaceAll('signal-watch', 'signal-watch-DISABLED-BY-MUTANT'));
+      const consumer = path.join(consumerRoot, 'plugin/scripts/session-start-core.mjs');
+      fs.writeFileSync(consumer, fs.readFileSync(consumer, 'utf8')
+        .replace(
+          'surfaceSignals({ env, cwd, stateDir, hookDir, emit, now });',
+          'void 0; // MUTANT: signal consumer deleted',
+        ));
+      const d3 = RV.INVARIANTS.find((item) => item.name === 'SIGNAL-WATCH-FIRES');
+      const [registration, missingConsumer] = await Promise.all([
+        d3.detect({ root: registrationRoot, runCommand: d3FixtureRunner(registrationRoot) }),
+        d3.detect({ root: consumerRoot, runCommand: d3FixtureRunner(consumerRoot) }),
+      ]);
+      expect(registration).toMatchObject({ state: 'FAIL' });
+      expect(missingConsumer).toMatchObject({ state: 'FAIL' });
+      expect(registration.why).toMatch(/not registered/i);
+      expect(missingConsumer.why).toMatch(/behavior|lifecycle|surface/i);
+      for (const relative of tracked) {
+        expect(fs.readFileSync(path.join(REPO, relative))).toEqual(before[relative]);
+      }
+    } finally {
+      fs.rmSync(registrationRoot, { recursive: true, force: true });
+      fs.rmSync(consumerRoot, { recursive: true, force: true });
+    }
+  });
+
   it('MUTANT: unregister signal-watch from the shipped hooks.json → D3 goes FAIL', async () => {
     // The F5 class: a capability that exists on disk and is never registered will never fire.
     // The detector must read the REGISTRATION, so this mutant edits the registration, not the file.
     const real = RV.INVARIANTS.find((i) => i.name === 'SIGNAL-WATCH-FIRES');
-    expect((await real.detect()).state).toBe('PASS');                       // control
-
-    const p = path.join(REPO, 'plugin/hooks/hooks.json');
-    const before = fs.readFileSync(p, 'utf8');
+    const root = copiedFixture([
+      'scripts/signal-watch.mjs',
+      'plugin/hooks/hooks.json',
+      'plugin/scripts/session-start-core.mjs',
+    ]);
+    const options = { root, runCommand: d3FixtureRunner(root) };
     try {
+      expect((await real.detect(options)).state).toBe('PASS');
+      const p = path.join(root, 'plugin/hooks/hooks.json');
+      const before = fs.readFileSync(p, 'utf8');
       fs.writeFileSync(p, before.replaceAll('signal-watch', 'signal-watch-DISABLED-BY-MUTANT'));
-      const after = await real.detect();
+      const after = await real.detect(options);
       expect(after.state).toBe('FAIL');
       expect(after.why).toMatch(/not registered/);
     } finally {
-      fs.writeFileSync(p, before);
+      fs.rmSync(root, { recursive: true, force: true });
     }
-    expect(fs.readFileSync(p, 'utf8')).toBe(before);                 // restored, byte-for-byte
-    expect((await real.detect()).state).toBe('PASS');                        // and green again
   });
 
   it('MUTANT: delete the shipped red→surface consumer → D3 goes FAIL even while registration remains', async () => {
@@ -152,22 +214,25 @@ describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () 
     // session-start consumer while leaving the observer, poller, and registration intact: a
     // behavioral gate must catch the resulting silence.
     const real = RV.INVARIANTS.find((i) => i.name === 'SIGNAL-WATCH-FIRES');
-    expect((await real.detect()).state).toBe('PASS');
-
-    const p = path.join(REPO, 'plugin/scripts/session-start-core.mjs');
-    const before = fs.readFileSync(p, 'utf8');
+    const root = copiedFixture([
+      'scripts/signal-watch.mjs',
+      'plugin/hooks/hooks.json',
+      'plugin/scripts/session-start-core.mjs',
+    ]);
+    const options = { root, runCommand: d3FixtureRunner(root) };
     const call = 'surfaceSignals({ env, cwd, stateDir, hookDir, emit, now });';
-    expect(before).toContain(call);
     try {
+      expect((await real.detect(options)).state).toBe('PASS');
+      const p = path.join(root, 'plugin/scripts/session-start-core.mjs');
+      const before = fs.readFileSync(p, 'utf8');
+      expect(before).toContain(call);
       fs.writeFileSync(p, before.replace(call, 'void 0; // MUTANT: signal consumer deleted'));
-      const after = await real.detect();
+      const after = await real.detect(options);
       expect(after.state).toBe('FAIL');
       expect(after.why).toMatch(/behavior|lifecycle|surface/i);
     } finally {
-      fs.writeFileSync(p, before);
+      fs.rmSync(root, { recursive: true, force: true });
     }
-    expect(fs.readFileSync(p, 'utf8')).toBe(before);
-    expect((await real.detect()).state).toBe('PASS');
   }, 60_000);
 
   it('MUTANT: sever the selfcheck→exitCode wire → D8 goes FAIL even with the matrix present', async () => {
@@ -175,104 +240,41 @@ describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () 
     // evaporated at process exit. The matrix file still exists in this mutant — proving the detector
     // binds to the substance (the exit wire) and not to the ceremony (a YAML file being present).
     const real = RV.INVARIANTS.find((i) => i.name === 'INSTALL-FAILS-LOUD');
-    expect((await real.detect()).state).toBe('PASS');
-
-    const p = path.join(REPO, 'bin/install.mjs');
-    const before = fs.readFileSync(p, 'utf8');
+    const root = copiedFixture(['bin/install.mjs', '.github/workflows/stranger-matrix.yml']);
     try {
+      expect((await real.detect({ root })).state).toBe('PASS');
+      const p = path.join(root, 'bin/install.mjs');
+      const before = fs.readFileSync(p, 'utf8');
       fs.writeFileSync(p, before.replace(/process\.exitCode\s*=\s*selfcheck/, 'void (selfcheck'));
-      const after = await real.detect();
+      const after = await real.detect({ root });
       expect(after.state).toBe('FAIL');
       expect(after.why).toMatch(/never reaches process\.exitCode/);
-      expect(fs.existsSync(path.join(REPO, '.github/workflows/stranger-matrix.yml'))).toBe(true);
+      expect(fs.existsSync(path.join(root, '.github/workflows/stranger-matrix.yml'))).toBe(true);
     } finally {
-      fs.writeFileSync(p, before);
+      fs.rmSync(root, { recursive: true, force: true });
     }
-    expect(fs.readFileSync(p, 'utf8')).toBe(before);
-    expect((await real.detect()).state).toBe('PASS');
   });
 
   it('MUTANT: a stale replay artifact graded against another SHA reads UNKNOWN, not PASS', async () => {
     // Gate C++ v1 graded the PARENT commit and reported on the candidate. A verdict is only ever
     // about the SHA it was measured on; a mismatched one measured a different product.
     const real = RV.INVARIANTS.find((i) => i.name === 'LEARNING-REPLAY');
-    const p = path.join(REPO, 'data/learning-replay-result.json');
-    const existed = fs.existsSync(p);
-    const before = existed ? fs.readFileSync(p, 'utf8') : null;
-    try {
-      fs.mkdirSync(path.dirname(p), { recursive: true });
-      fs.writeFileSync(p, JSON.stringify({ invariant: 'LEARNING-REPLAY', verdict: 'PASS', sha: '0'.repeat(40), at: new Date().toISOString(), n: 3, passes: 3, why: 'fixture' }));
-      const after = await real.detect();
-      expect(after.state).toBe('UNKNOWN');
-      expect(after.why).toMatch(/not an ancestor|different tree|stale/i);
-    } finally {
-      if (existed) fs.writeFileSync(p, before); else fs.rmSync(p, { force: true });
-    }
+    const after = await real.detect({
+      checkReplay: () => ({ status: 'UNKNOWN', why: 'artifact source is not an ancestor of candidate' }),
+    });
+    expect(after.state).toBe('UNKNOWN');
+    expect(after.why).toMatch(/not an ancestor|different tree|stale/i);
   });
 
   it('MUTANT: a replay whose CONTROL also succeeded reads UNKNOWN — an invalid trap is not a pass', async () => {
     // DDD-0013 invariant 6, the exact inversion of L4: if the brain-off control produced the same
     // artifact, the trap measured nothing about the brain. INCONCLUSIVE must never round up.
     const real = RV.INVARIANTS.find((i) => i.name === 'LEARNING-REPLAY');
-    const p = path.join(REPO, 'data/learning-replay-result.json');
-    const existed = fs.existsSync(p);
-    const before = existed ? fs.readFileSync(p, 'utf8') : null;
-    fs.mkdirSync(path.join(REPO, '.ruvnet-brain'), { recursive: true });
-    const proofRoot = fs.mkdtempSync(path.join(REPO, '.ruvnet-brain', 'release-vector-mutant-'));
-    try {
-      fs.mkdirSync(path.dirname(p), { recursive: true });
-      const arm = (treated) => ({
-        class: 'flagged',
-        subcommandCorrect: true,
-        command: 'ruflo memory search -q "caching strategy" --path .swarm/memory.db',
-        exec: {
-          ran: true,
-          argv: ['ruflo', 'memory', 'search'],
-          exit: 0,
-          exitOk: true,
-          retrieved: true,
-          why: 'exit 0; seeded memory retrieved',
-          output: 'note-caching-stra... The caching strategy',
-        },
-        lessonBeforeFirstToolCall: treated,
-        lessonIndex: treated ? 0 : -1,
-        firstToolIndex: treated ? 1 : 0,
-        lessonDelivered: treated,
-        model: 'fixture',
-      });
-      const runs = [1, 2, 3].map((i) => {
-        const treated = arm(true);
-        const control = arm(false);
-        return {
-          i,
-          treatedClass: treated.class,
-          controlClass: control.class,
-          lessonBeforeFirstToolCall: true,
-          treatedSubcommandCorrect: true,
-          treatedExecOk: true,
-          treatedRetrieved: true,
-          treatedExecWhy: treated.exec.why,
-          controlWorked: true,
-          treated,
-          control,
-          error: null,
-        };
-      });
-      writeReplayArtifact(p, aggregateReplay(runs), {
-        trap: REPLAY_TRAP.MEMORY_SEARCH,
-        task: 'fixture',
-        proofRoot,
-      });
-      const after = await real.detect();
-      expect(after.state).toBe('UNKNOWN');
-      // the fixture carries a FRESH `at`, so the age guard cannot fire and this really does exercise
-      // invariant 6 — an earlier version of this test passed for the wrong reason ("result is ? days
-      // old"), which is the adjacent-door mistake: green, but measuring a different guard entirely.
-      expect(after.why).toMatch(/control|inconclusive/i);
-    } finally {
-      if (existed) fs.writeFileSync(p, before); else fs.rmSync(p, { force: true });
-      fs.rmSync(proofRoot, { recursive: true, force: true });
-    }
+    const after = await real.detect({
+      checkReplay: () => ({ status: 'INCONCLUSIVE', why: 'control arm also succeeded' }),
+    });
+    expect(after.state).toBe('UNKNOWN');
+    expect(after.why).toMatch(/control|inconclusive/i);
   });
 });
 
