@@ -137,8 +137,25 @@ describe('/api/apply timing receipt', () => {
     const row = probe.acceptance.find((candidate) => candidate.label === 'Fix all executes the real batch endpoint and returns per-item undo');
     expect(row, 'the real browser flow must reach Fix all').toBeTruthy();
     expect(row.timings).toEqual({
-      clickToResponseMs: expect.any(Number),
-      responseToRenderMs: expect.any(Number),
+      serverReadyMs: expect.any(Number),
+      initialState: {
+        responseMs: expect.any(Number),
+        readyMs: expect.any(Number),
+      },
+      recommendation: {
+        stateResponseMs: expect.any(Number),
+        fetchAndRenderMs: expect.any(Number),
+      },
+      fixAll: {
+        visibilityMs: expect.any(Number),
+        clickabilityMs: expect.any(Number),
+        openConfirmationMs: expect.any(Number),
+        confirmationClickToResponseMs: expect.any(Number),
+        responseToRenderMs: expect.any(Number),
+        resultVerificationMs: expect.any(Number),
+        unattributedMs: expect.any(Number),
+        totalMs: expect.any(Number),
+      },
       endpoint: {
         revalidationMs: expect.any(Number),
         undoJournalMs: expect.any(Number),
@@ -146,7 +163,13 @@ describe('/api/apply timing receipt', () => {
         totalMs: expect.any(Number),
       },
     });
-    expect(row.timings.clickToResponseMs).toBeGreaterThanOrEqual(0);
-    expect(row.timings.responseToRenderMs).toBeGreaterThanOrEqual(0);
+    for (const value of [
+      row.timings.serverReadyMs,
+      row.timings.initialState.responseMs,
+      row.timings.initialState.readyMs,
+      row.timings.recommendation.stateResponseMs,
+      row.timings.recommendation.fetchAndRenderMs,
+      ...Object.values(row.timings.fixAll),
+    ]) expect(value).toBeGreaterThanOrEqual(0);
   }, 60_000);
 });

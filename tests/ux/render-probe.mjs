@@ -209,8 +209,16 @@ export async function runRenderProbe() {
     // exercise both ordinary settings through their real HTTP handlers, reload, and prove the
     // chosen values survived. The HOME above is disposable, so this never touches user state.
     const consolePage = await browser.newPage();
+    const initialStateStartedAt = Date.now();
+    const initialStateResponsePromise = consolePage.waitForResponse((response) => (
+      response.request().method() === 'GET'
+      && new URL(response.url()).pathname === '/api/state'
+    ));
     await consolePage.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await initialStateResponsePromise;
+    const initialStateResponseMs = Date.now() - initialStateStartedAt;
     await consolePage.waitForSelector('#field-provider', { state: 'attached' });
+    const initialStateReadyMs = Date.now() - initialStateStartedAt;
     await consolePage.locator('#card-settings > summary').click();
     await consolePage.waitForSelector('#field-provider', { state: 'visible' });
     await consolePage.waitForSelector('#field-advocacy', { state: 'visible' });
@@ -257,7 +265,14 @@ export async function runRenderProbe() {
     await consolePage.locator('#field-advocacy input[value="5"]').check();
     await consolePage.locator('form:has(#field-advocacy) button[type="submit"]').click();
     await consolePage.locator('form:has(#field-advocacy) .form-note.n-ok').waitFor();
+    const recommendationReloadStartedAt = Date.now();
+    const recommendationStateResponsePromise = consolePage.waitForResponse((response) => (
+      response.request().method() === 'GET'
+      && new URL(response.url()).pathname === '/api/state'
+    ));
     await consolePage.reload({ waitUntil: 'domcontentloaded' });
+    await recommendationStateResponsePromise;
+    const recommendationStateResponseMs = Date.now() - recommendationReloadStartedAt;
     await consolePage.waitForSelector('#field-provider input[value="codex"]:checked', { state: 'attached' });
     await consolePage.waitForSelector('#field-advocacy input[value="5"]:checked', { state: 'attached' });
     acceptance.push({
@@ -271,11 +286,14 @@ export async function runRenderProbe() {
     // point to the same fixture root above, so a missing card is a product failure, not a platform
     // condition the oracle may silently accept.
     await consolePage.waitForSelector('article.rec', { state: 'attached' });
+    const recommendationFetchAndRenderMs = Date.now() - recommendationReloadStartedAt;
     stage('console:recommendation-attached');
     const recommendations = await consolePage.locator('article.rec').count();
+    const fixAllVisibilityStartedAt = Date.now();
     await consolePage.locator('#card-recs').evaluate((node) => { node.open = true; });
     const fixAllButton = consolePage.getByRole('button', { name: /^Fix all \(/ });
-    if (recommendations > 0) await fixAllButton.waitFor();
+    if (recommendations > 0) await fixAllButton.waitFor({ state: 'visible' });
+    const fixAllVisibilityMs = Date.now() - fixAllVisibilityStartedAt;
     stage('console:fix-all-visible');
     const fixAll = await fixAllButton.count();
     acceptance.push({
@@ -284,35 +302,63 @@ export async function runRenderProbe() {
       detail: `${recommendations} recommendations; ${fixAll} Fix all button`,
     });
     if (recommendations > 0) {
+      const fixAllClickabilityStartedAt = Date.now();
+      await fixAllButton.click({ trial: true });
+      const fixAllClickabilityMs = Date.now() - fixAllClickabilityStartedAt;
       const fixAllStarted = Date.now();
+      const confirmationOpenedStartedAt = Date.now();
       await fixAllButton.click();
+      const confirmButton = consolePage.getByRole('button', { name: 'Yes, fix all verified items' });
+      await confirmButton.waitFor({ state: 'visible' });
+      const openConfirmationMs = Date.now() - confirmationOpenedStartedAt;
       const applyResponsePromise = consolePage.waitForResponse((response) => (
         response.request().method() === 'POST'
         && new URL(response.url()).pathname === '/api/apply'
       ));
       const applyClickStarted = Date.now();
-      await consolePage.getByRole('button', { name: 'Yes, fix all verified items' }).click();
+      await confirmButton.click();
       const applyResponse = await applyResponsePromise;
-      const clickToResponseMs = Date.now() - applyClickStarted;
+      const confirmationClickToResponseMs = Date.now() - applyClickStarted;
       const endpoint = await applyResponse.json();
       const responseReceivedAt = Date.now();
       await consolePage.getByText(/applied; .* skipped or failed\./).waitFor();
       const responseToRenderMs = Date.now() - responseReceivedAt;
+      const resultVerificationStartedAt = Date.now();
       const applied = await consolePage.getByText('Applied by Fix all — and reversible.').count();
       const undoButtons = await consolePage.getByRole('button', { name: 'Undo this change' }).count();
+      const resultVerificationMs = Date.now() - resultVerificationStartedAt;
       const endpointTimings = endpoint?.timings;
       const timingKeys = ['revalidationMs', 'undoJournalMs', 'childRemedyMs', 'totalMs'];
       const hasEndpointTimings = timingKeys.every((key) => Number.isFinite(endpointTimings?.[key]) && endpointTimings[key] >= 0);
       const fixAllMs = Date.now() - fixAllStarted;
+      const accountedFixAllMs = openConfirmationMs + confirmationClickToResponseMs + responseToRenderMs + resultVerificationMs;
+      const unattributedMs = Math.max(0, fixAllMs - accountedFixAllMs);
       acceptance.push({
         label: 'Fix all executes the real batch endpoint and returns per-item undo',
         pass: applied > 0 && undoButtons === applied && hasEndpointTimings && fixAllMs < 4_000,
         detail: hasEndpointTimings
-          ? `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms total; click→response ${clickToResponseMs}ms; response→render ${responseToRenderMs}ms; endpoint total ${endpointTimings.totalMs}ms (revalidation ${endpointTimings.revalidationMs}ms, undo journal ${endpointTimings.undoJournalMs}ms, child remedy ${endpointTimings.childRemedyMs}ms)`
+          ? `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms Fix all total (confirmation ${openConfirmationMs}ms, confirm click→response ${confirmationClickToResponseMs}ms, response→render ${responseToRenderMs}ms, verification ${resultVerificationMs}ms, unattributed ${unattributedMs}ms); server ready ${readyMs}ms; initial state response/ready ${initialStateResponseMs}/${initialStateReadyMs}ms; recommendation state/render ${recommendationStateResponseMs}/${recommendationFetchAndRenderMs}ms; Fix all visible/clickable ${fixAllVisibilityMs}/${fixAllClickabilityMs}ms; endpoint total ${endpointTimings.totalMs}ms (revalidation ${endpointTimings.revalidationMs}ms, undo journal ${endpointTimings.undoJournalMs}ms, child remedy ${endpointTimings.childRemedyMs}ms)`
           : `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms total; /api/apply timing receipt missing`,
         timings: {
-          clickToResponseMs,
-          responseToRenderMs,
+          serverReadyMs: readyMs,
+          initialState: {
+            responseMs: initialStateResponseMs,
+            readyMs: initialStateReadyMs,
+          },
+          recommendation: {
+            stateResponseMs: recommendationStateResponseMs,
+            fetchAndRenderMs: recommendationFetchAndRenderMs,
+          },
+          fixAll: {
+            visibilityMs: fixAllVisibilityMs,
+            clickabilityMs: fixAllClickabilityMs,
+            openConfirmationMs,
+            confirmationClickToResponseMs,
+            responseToRenderMs,
+            resultVerificationMs,
+            unattributedMs,
+            totalMs: fixAllMs,
+          },
           endpoint: endpointTimings,
         },
       });
