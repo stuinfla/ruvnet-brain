@@ -74,7 +74,7 @@ describe('protected publish invocation guard', () => {
   it('accepts only the protected workflow carrying a valid exact artifact seal', () => {
     const f = fixture();
     expect(validateProtectedPublishInvocation({ root: f.root, env: f.env })).toMatchObject({
-      verdict: 'PASS', sha: SHA, artifactSha256: f.digest, version: VERSION,
+      verdict: 'PASS', sha: SHA, artifactSha256: f.digest, version: VERSION, mode: 'strict',
     });
   });
 
@@ -85,7 +85,9 @@ describe('protected publish invocation guard', () => {
     });
     fs.writeFileSync(path.join(f.root, 'release-evidence/candidate-receipt.json'), JSON.stringify(f.receipt));
     f.env.RUVNET_RELEASE_MODE = 'stabilization';
-    expect(validateProtectedPublishInvocation({ root: f.root, env: f.env }).verdict).toBe('PASS');
+    expect(validateProtectedPublishInvocation({ root: f.root, env: f.env })).toMatchObject({
+      verdict: 'PASS', mode: 'stabilization',
+    });
   });
 
   it.each([

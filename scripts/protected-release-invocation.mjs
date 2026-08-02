@@ -15,6 +15,7 @@ const digestOf = (receipt) => String(receipt?.artifact?.sha256 || '').replace(/^
 
 export function validateProtectedPublishInvocation({ root = process.cwd(), env = process.env } = {}) {
   const failures = [];
+  let releaseMode = 'unknown';
   if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_WORKFLOW !== PROTECTED_WORKFLOW) {
     failures.push('publication is allowed only inside the protected-release GitHub workflow');
   }
@@ -48,6 +49,7 @@ export function validateProtectedPublishInvocation({ root = process.cwd(), env =
     if (receiptDigest !== expectedDigest) failures.push('candidate artifact digest mismatch');
     if (receipt.version !== expectedVersion) failures.push('candidate version mismatch');
     const expectedMode = receipt.phase === 'stabilization-candidate' ? 'stabilization' : 'strict';
+    releaseMode = expectedMode;
     if (env.RUVNET_RELEASE_MODE !== expectedMode) failures.push(`release mode must be ${expectedMode} for this receipt`);
 
     const artifactPath = path.resolve(root, String(receipt.artifact?.path || '.missing-artifact'));
@@ -68,6 +70,7 @@ export function validateProtectedPublishInvocation({ root = process.cwd(), env =
     sha: expectedSha,
     artifactSha256: expectedDigest,
     version: expectedVersion,
+    mode: releaseMode,
     failures,
   };
 }
