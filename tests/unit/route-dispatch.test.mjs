@@ -79,8 +79,17 @@ describe.skipIf(!hasBash || process.platform === 'win32')('route-dispatch.sh —
     expect(r.stderr).toBe('');
   });
 
-  it('BLOCKS a dispatch with no model — the leak becomes a hard error, not a habit', () => {
-    const r = dispatch({ description: 'sweep tests', subagent_type: 'general-purpose' });
+  it.each([
+    ['newline-terminated profile', '{"harnesses":{}}\n'],
+    ['profile without a final newline', '{"harnesses":{}}'],
+  ])('BLOCKS a dispatch with no model for a %s', (_label, profileContent) => {
+    const r = dispatch(
+      { description: 'sweep tests', subagent_type: 'general-purpose' },
+      'Task',
+      {},
+      true,
+      profileContent,
+    );
     expect(r.status).toBe(2); // exit 2 = block, and stderr is fed back to the model as the reason
     expect(r.stderr).toMatch(/SUBAGENT DISPATCH BLOCKED/);
     expect(r.stderr).toMatch(/INHERITS this session's model/);
