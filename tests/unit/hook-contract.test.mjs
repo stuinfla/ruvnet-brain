@@ -391,7 +391,12 @@ describe('registry hygiene', () => {
    * consent guard that switched itself off when the user switched the brain off would guard nothing
    * at the only moment it is needed.
    */
-  const BLOCKING = Object.freeze(['design-wall', 'unprompted-speech', 'protect-state']);
+  const BLOCKING = Object.freeze([
+    'design-wall',
+    'unprompted-speech',
+    'protect-state',
+    'swarm-slot-recycler',
+  ]);
   const isBlocking = (cmd) => BLOCKING.some((b) => cmd.includes(b));
 
   it('gives every ADVISORY hook a `|| true` failsafe — a hook error must never reach the user', () => {

@@ -2,13 +2,20 @@
 id: ADR-008
 status: Accepted
 date: 2026-06-28
-updated: 2026-07-27
+updated: 2026-08-02
 updated_source: derived-from-git
 ---
 # ADR-0008: The autonomous RuvNet-native engineering loop (the build product on top of the brain)
 
 **Status**: Accepted (2026-06-28)
-**Updated**: 2026-07-09 — the loop CONTRACT is now implemented via ADR-0011 Phase 1: autonomy gate in ground-ruvnet.sh (no-halt override, resume-first, hard fence) + scripts/loop-checkpoint.mjs (machine-checkable done-criteria, two-strike no-progress, atomic checkpoints). Full autonomous build-test-score loop remains open.
+**Updated**: 2026-08-02 — automatic parallel work now has one enforceable lifecycle transition on
+Claude Code: the full shared task ledger is created before spawning, execution fills available host
+slots, and a synchronous `TeammateIdle` hook refuses idle while an unassigned, dependency-ready task
+exists. The hook reads Claude's ledger without mutating it; Claude's locked `TaskUpdate` performs the
+claim. Initial decomposition/fan-out remains model-directed. Codex 0.146.0 has no `TeammateIdle` or
+`TaskCompleted` hook or equivalent shared-task hook ledger, so Codex recycling remains explicit
+lead guidance and must not be reported as enforced. The full autonomous build-test-score loop remains
+open.
 **Date**: 2026-06-28
 
 **Origin:** Stuart's "real definition of success" (2026-06-28) — the brain
@@ -65,7 +72,12 @@ Ruflo + RuVector/AgentDB + hooks + an autonomous build-verify skill into a singl
    source so the agent reasons *from* truth); `PreToolUse` hard-deny (block pgvector/pinecone/chroma/weaviate
    deps + hand-rolled cosine/JSON-embeddings when an RVF path exists); `pre-task` auto-spawn for complex tasks;
    `Stop` semantic judge (re-open once if a RuvNet capability is dismissed without a citation). Grounding/
-   routing become **structural, not optional**. Drift is measured against the ADR-0005 SLO each release.
+   routing become **structural, not optional**. For multi-part work, create the complete dependency
+   ledger before spawning and saturate only the native host's available executor capacity. Claude
+   Code's `TeammateIdle` boundary enforces the completion → next-ready-task transition without
+   editing the host ledger. Codex currently provides guidance only for that transition; its manifest
+   deliberately does not claim or register unsupported events. Drift is measured against the
+   ADR-0005 SLO each release.
 
 5. **Auto-visuals as a build step, not an afterthought.** The Completion phase invokes image generation
    (`gen-images.mjs`, gpt-image-1) + the frontend-design discipline to produce the explaining web page /

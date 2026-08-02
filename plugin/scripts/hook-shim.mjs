@@ -108,6 +108,10 @@ const TABLE = {
   // session-start-core.mjs, and that surfacing already lives under SessionStart's 'partial' contract.
   'signal-watch':     { file: 'signal-watch.mjs',    interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   'routing-outcome':  { file: 'routing-outcome-capture.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run' },
+  // Claude Code's synchronous TeammateIdle boundary can prevent a worker slot from going unused
+  // while its host-owned shared ledger has ready work. The body is read-only and fail-open; exit 2
+  // is reserved for one proved, unassigned, dependency-ready task. Codex has no equivalent event.
+  'swarm-slot-recycler': { file: 'swarm-slot-recycler.mjs', interpreter: 'node', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
   // The unprompted-speech chokepoint (ADR-040 / DDD-0004). ONE runtime is the sole writer of
   // user-facing bytes for every unprompted hook: it spawns the real producers (anticipate, lesson)
   // in candidate mode, applies the per-channel policy, and writes the final envelope itself. `channel`
