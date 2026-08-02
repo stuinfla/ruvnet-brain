@@ -3,7 +3,7 @@ id: ADR-050
 title: The issue pipeline may never manufacture its own acknowledgment — awareness, escalation, and a fixer that knows when to stop
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-01
+updated: 2026-08-02
 impl: wired
 authors: [Stuart Kerr, Claude Code]
 tags: [issues, automation, alerting, sla, security, circuit-breaker]
@@ -12,7 +12,7 @@ relates: [ADR-049]
 governs:
   - scripts/issue-watch.mjs
   - scripts/issue-fix.mjs
-  - plugin/scripts/session-start.sh
+  - plugin/scripts/session-start-core.mjs
   - plugin/skills/ruvnet-brain/SKILL.md
   - plugin/skills/release-proof/SKILL.md
 ---
@@ -58,11 +58,15 @@ follow-up: run automation under a dedicated GitHub App/bot identity so the separ
 enforced by GitHub itself rather than by a string convention. Requires an owner-side setup
 action; the marker exclusion is the complete now-fix.)
 
-**I2. Awareness is immediate and unconditional; escalation is the second page, not the first.**
+**I2. Maintainer awareness is immediate and unconditional; escalation is the second page, not the first.**
 The watcher pages ONCE the first time it sees any open issue (delivery-derived state, retried
 until the push actually goes out), independent of SLA math. The 4h SLA breach page remains as
-escalation. The session banner always shows the open count; breaches only change its urgency.
-Awareness latency is now bounded by the watcher cadence (≤1h), not by 4h-plus-never.
+escalation. The session banner shows the open count only when an explicit, owner-only (`0600`),
+repo-scoped local entitlement exists at `~/.config/ruvnet-brain/maintainer-issues.json`; a normal
+installation is silent even if an `open-issues.json` file is present. The installer never creates
+or copies this entitlement. Breaches only change urgency for the entitled maintainer. Awareness
+latency remains bounded by the watcher cadence (≤1h), not by 4h-plus-never, without leaking the
+maintainer's operational queue into an end user's terminal.
 
 **I3. A failing fixer is silent in public and loud in private.** (Amended same day by the
 owner's direct order, which also completed duel Phase 1 item 4 ahead of schedule: *"don't spew
@@ -180,6 +184,7 @@ The four parallel agents working tonight support this distinction. They show tha
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-02 | Restricted the SessionStart open-issue banner to an explicit owner-only, repo-scoped local entitlement; default and wrong-repo installations emit zero issue-count bytes. | The prior unconditional `surfaceIssues()` call fulfilled maintainer awareness but could expose the maintainer repository's operational queue to any installation carrying a fresh status file. `plugin/scripts/session-start-core.mjs` now fails silent without the local entitlement, and parity tests prove normal-user silence plus Stuart-only visibility. |
 | 2026-08-01 | Re-read the issue-pipeline boundary after the publication-receipt skill changed; the accepted supervised fixer, human acknowledgment, escalation, and no-autopublish decisions remain unchanged. | `plugin/skills/release-proof/SKILL.md` now requires a post-publication receipt produced from exact public npm/GitHub bytes and installed-host probes. It does not call `scripts/issue-fix.mjs`, post issue comments, or weaken ADR-050's prohibition on automated public mutations. Issue closure remains downstream of a verified release. |
 | 2026-08-01 | Reconciled the executable fixer boundary with the accepted supervised-worktree decision: scheduled `unattended` mode is now read-only triage, while explicit `supervised` mode may prepare a tested local candidate but cannot push, comment, merge, commit, or promote. Removed the test-only observer from `governs:` so implementation status is derived from production surfaces rather than whether a unit test has a runtime caller. | `scripts/issue-fix.mjs` exposes `executionPolicy()`, defaults to `unattended`, removes git/gh from the worker allowlist, preserves dirty candidate worktrees as recovery evidence, and reports local candidate state to the integration owner. `tests/unit/fix-workstream-guidance.test.mjs` verifies the Brain guidance but is intentionally not a production caller; governing it caused `doc-currency` to downgrade an otherwise wired decision to `built` for the wrong reason. Public automation remains prohibited pending the GitHub App identity follow-up. |
 | 2026-08-01 | Connected the accepted session-supervised worktree decision to the Brain's always-on fix behavior and the existing fail-closed release authority. Every non-trivial writing lane now receives one isolated worktree; focused evidence hands off to one clean integration owner; dirty lanes are retained for recovery; immutable candidate and publication seals govern promotion language. | The decision already required stable worktrees and human-controlled integration, while `plugin/skills/release-proof/SKILL.md` already rejected dirty/unbound release candidates. The missing seam was `plugin/skills/ruvnet-brain/SKILL.md`: it orchestrated fixes without requiring that delivery rail. `tests/unit/fix-workstream-guidance.test.mjs` now makes the connection executable and prevents a future guidance edit from removing it silently. |

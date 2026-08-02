@@ -205,8 +205,14 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
       write(path.join(f.cache, 'health.json'), { status: 'down', error: 'reader failed' });
       write(path.join(f.cache, 'open-issues.json'), {
         at: now,
+        repo: 'stuinfla/ruvnet-brain',
         issues: [{ number: 77, title: 'search is red', ageHours: 4, breach: false }],
       });
+      write(path.join(f.state, 'maintainer-issues.json'), {
+        enabled: true,
+        repos: ['stuinfla/ruvnet-brain'],
+      });
+      fs.chmodSync(path.join(f.state, 'maintainer-issues.json'), 0o600);
       write(path.join(f.cache, 'external-signals/pending.jsonl'), '{"key":"x"}\n');
       write(path.join(f.cache, 'external-signals/ci-status.json'), {
         'repo@deadbeef': {
@@ -228,6 +234,68 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
     expect(result.output).toContain('update available, auto-update not enabled');
     expect(Object.keys(result.state.home)).toContain('.cache/ruvnet-brain/external-signals/surfaced.json');
     expect(result.state.detach.join('\n')).toContain('host-update.mjs');
+  });
+
+  it('never exposes maintainer issue counts to a normal end user', () => {
+    const result = parity((f) => {
+      warmed(f);
+      write(path.join(f.cache, 'open-issues.json'), {
+        at: new Date().toISOString(),
+        repo: 'stuinfla/ruvnet-brain',
+        issues: [{ number: 87, title: 'private maintainer signal', ageHours: 2, breach: false }],
+      });
+    });
+    expect(result.output).not.toMatch(/open issue/i);
+    expect(result.output).not.toContain('#87');
+    expect(result.output).not.toContain('private maintainer signal');
+  });
+
+  it('requires an owner-only, repo-scoped local entitlement before surfacing issue counts', () => {
+    const result = parity((f) => {
+      warmed(f);
+      write(path.join(f.cache, 'open-issues.json'), {
+        at: new Date().toISOString(),
+        repo: 'stuinfla/ruvnet-brain',
+        issues: [{ number: 87, title: 'maintainer signal', ageHours: 2, breach: false }],
+      });
+      const entitlement = path.join(f.state, 'maintainer-issues.json');
+      write(entitlement, { enabled: true, repos: ['stuinfla/ruvnet-brain'] });
+      fs.chmodSync(entitlement, 0o600);
+    });
+    expect(result.output).toContain('1 open issue(s) on stuinfla/ruvnet-brain');
+    expect(result.output).toContain('#87');
+  });
+
+  it('rejects a wrong-repository maintainer entitlement', () => {
+    const result = parity((f) => {
+      warmed(f);
+      write(path.join(f.cache, 'open-issues.json'), {
+        at: new Date().toISOString(),
+        repo: 'stuinfla/ruvnet-brain',
+        issues: [{ number: 87, title: 'must stay private', ageHours: 2, breach: false }],
+      });
+      const entitlement = path.join(f.state, 'maintainer-issues.json');
+      write(entitlement, { enabled: true, repos: ['someone/else'] });
+      fs.chmodSync(entitlement, 0o600);
+    });
+    expect(result.output).not.toMatch(/open issue/i);
+    expect(result.output).not.toContain('#87');
+  });
+
+  it('rejects a group/world-readable maintainer entitlement', () => {
+    const result = parity((f) => {
+      warmed(f);
+      write(path.join(f.cache, 'open-issues.json'), {
+        at: new Date().toISOString(),
+        repo: 'stuinfla/ruvnet-brain',
+        issues: [{ number: 87, title: 'must stay owner-only', ageHours: 2, breach: false }],
+      });
+      const entitlement = path.join(f.state, 'maintainer-issues.json');
+      write(entitlement, { enabled: true, repos: ['stuinfla/ruvnet-brain'] });
+      fs.chmodSync(entitlement, 0o644);
+    });
+    expect(result.output).not.toMatch(/open issue/i);
+    expect(result.output).not.toContain('#87');
   });
 
   it('matches OFF behavior with an absent KB: one state line, no advertising, offers unconsumed', () => {

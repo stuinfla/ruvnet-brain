@@ -62,9 +62,25 @@ const dispatchDetached = (hookDir, ttl, log, command, args = [], env = process.e
     String(ttl), log, command, ...args,
   ], { env, stdio: 'ignore', timeout: 2000 })?.status === 0;
 
-const surfaceIssues = (stateDir, emit, now) => {
+const maintainerIssueEntitlement = (env, home, repo) => {
+  const file = env.RUVNET_BRAIN_MAINTAINER_ISSUES_FILE
+    || path.join(home, '.config', 'ruvnet-brain', 'maintainer-issues.json');
+  let stat;
+  try { stat = fs.statSync(file); } catch { return false; }
+  if (!stat.isFile()) return false;
+  // This is maintainer-only operational data. Refuse group/world-readable opt-ins on POSIX so a
+  // shared machine cannot turn a private maintainer signal into a terminal banner for other users.
+  if (process.platform !== 'win32' && (stat.mode & 0o077) !== 0) return false;
+  const entitlement = json(file);
+  return entitlement?.enabled === true
+    && Array.isArray(entitlement.repos)
+    && entitlement.repos.includes(repo);
+};
+
+const surfaceIssues = (stateDir, emit, now, env, home) => {
   const status = json(path.join(stateDir, 'open-issues.json'));
   if (!status?.at || now - new Date(status.at).getTime() > 6 * 3600_000) return;
+  if (!maintainerIssueEntitlement(env, home, status.repo)) return;
   const open = Array.isArray(status.issues) ? status.issues : [];
   if (!open.length) return;
   const breaches = open.filter((issue) => issue.breach).sort((a, b) => b.ageHours - a.ageHours);
@@ -383,7 +399,7 @@ export async function runSessionStart({
       emit(`Offer ONCE: "Want to see your whole RuvNet stack on one page?" — installed parts, learned project knowledge and reversible fixes, read-only until clicked; later it's ${consoleInvoke}. On yes invoke ${consoleInvoke}; on no, don't re-offer.`);
     }
 
-    surfaceIssues(stateDir, emit, now);
+    surfaceIssues(stateDir, emit, now, env, home);
     surfaceSignals({ env, cwd, stateDir, hookDir, emit, now });
 
     const routerProfile = path.join(home, '.claude', 'model-router', 'profile.json');
