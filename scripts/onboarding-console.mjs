@@ -2064,6 +2064,9 @@ function runNode(scriptRelPath, args) {
   const r = spawnSync(process.execPath, [path.join(REPO, scriptRelPath), ...args], { encoding: 'utf8', timeout: 16 * 60 * 1000, cwd: REPO });
   return { ok: r.status === 0, code: r.status, log: `${r.stdout || ''}${r.stderr || ''}`.trim().slice(-4000) };
 }
+function elapsedMs(startedAt) {
+  return Math.round((performance.now() - startedAt) * 1000) / 1000;
+}
 
 // A wiring recommendation's `project` id is relative to whichever candidate root it was found under
 // (issue #19) — reconstruct the absolute path by checking each root, so reconcile/undo can act on a
@@ -2167,11 +2170,15 @@ function currentValidIds(onlyId = null) {
   return { ids, auditRows };
 }
 function apply(ids) {
+  const startedAt = performance.now();
+  const phaseMs = { revalidationMs: 0, undoJournalMs: 0, childRemedyMs: 0 };
   const results = [];
   for (const id of ids) {
     // Re-read immediately before EACH fix. A batch can change the validity of the next item; one
     // pre-flight snapshot for the whole list would let item 2 run against the world item 1 changed.
+    const revalidationStartedAt = performance.now();
     const { ids: validNow } = currentValidIds(id);
+    phaseMs.revalidationMs += elapsedMs(revalidationStartedAt);
     if (!validNow.has(id)) { results.push({ id, ok: false, skipped: true, error: 'worldMoved', log: 'Skipped — this is already resolved, or your machine changed since the page loaded. Nothing was done. Reload to see the current state.' }); continue; }
 
     // ONE dispatch, through the registry (scripts/remedy-registry.mjs). This used to be a chain of
@@ -2218,11 +2225,17 @@ function apply(ids) {
       args = [...args, '--receipt', receipt];
     }
 
+    const journalStartedAt = performance.now();
     const undoToken = journalUndo(undoSpec);
+    phaseMs.undoJournalMs += elapsedMs(journalStartedAt);
+    const remedyStartedAt = performance.now();
     const res = runNode(plan.exec.script, args);
+    phaseMs.childRemedyMs += elapsedMs(remedyStartedAt);
     results.push({ id, ...res, undoToken });
   }
-  return { results };
+  // This receipt contains only aggregate durations, never the applied ids, paths, command output,
+  // or undo tokens. It makes an end-user-visible delay diagnosable without exposing their machine.
+  return { results, timings: { ...phaseMs, totalMs: elapsedMs(startedAt) } };
 }
 
 function autoEligibleIds(recommendations = []) {

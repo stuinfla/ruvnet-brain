@@ -286,14 +286,35 @@ export async function runRenderProbe() {
     if (recommendations > 0) {
       const fixAllStarted = Date.now();
       await fixAllButton.click();
+      const applyResponsePromise = consolePage.waitForResponse((response) => (
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname === '/api/apply'
+      ));
+      const applyClickStarted = Date.now();
       await consolePage.getByRole('button', { name: 'Yes, fix all verified items' }).click();
+      const applyResponse = await applyResponsePromise;
+      const clickToResponseMs = Date.now() - applyClickStarted;
+      const endpoint = await applyResponse.json();
+      const responseReceivedAt = Date.now();
       await consolePage.getByText(/applied; .* skipped or failed\./).waitFor();
+      const responseToRenderMs = Date.now() - responseReceivedAt;
       const applied = await consolePage.getByText('Applied by Fix all — and reversible.').count();
       const undoButtons = await consolePage.getByRole('button', { name: 'Undo this change' }).count();
+      const endpointTimings = endpoint?.timings;
+      const timingKeys = ['revalidationMs', 'undoJournalMs', 'childRemedyMs', 'totalMs'];
+      const hasEndpointTimings = timingKeys.every((key) => Number.isFinite(endpointTimings?.[key]) && endpointTimings[key] >= 0);
+      const fixAllMs = Date.now() - fixAllStarted;
       acceptance.push({
         label: 'Fix all executes the real batch endpoint and returns per-item undo',
-        pass: applied > 0 && undoButtons === applied && Date.now() - fixAllStarted < 4_000,
-        detail: `${applied} applied cards; ${undoButtons} undo buttons; ${Date.now() - fixAllStarted}ms`,
+        pass: applied > 0 && undoButtons === applied && hasEndpointTimings && fixAllMs < 4_000,
+        detail: hasEndpointTimings
+          ? `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms total; click→response ${clickToResponseMs}ms; response→render ${responseToRenderMs}ms; endpoint total ${endpointTimings.totalMs}ms (revalidation ${endpointTimings.revalidationMs}ms, undo journal ${endpointTimings.undoJournalMs}ms, child remedy ${endpointTimings.childRemedyMs}ms)`
+          : `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms total; /api/apply timing receipt missing`,
+        timings: {
+          clickToResponseMs,
+          responseToRenderMs,
+          endpoint: endpointTimings,
+        },
       });
       if (undoButtons > 0) {
         await consolePage.getByRole('button', { name: 'Undo this change' }).first().click();
