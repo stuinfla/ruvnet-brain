@@ -37,6 +37,7 @@ const PUBLISH = process.argv.includes('--publish');
 let protectedCandidate = null;
 let sealedPackageArtifact = null;
 let publicationReceiptPath = null;
+let protectedReleaseMode = 'strict';
 const c = { g: (s) => `\x1b[32m${s}\x1b[0m`, r: (s) => `\x1b[31m${s}\x1b[0m`, y: (s) => `\x1b[33m${s}\x1b[0m`, b: (s) => `\x1b[1m${s}\x1b[0m`, dim: (s) => `\x1b[2m${s}\x1b[0m` };
 const V = () => JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/.claude-plugin/plugin.json'), 'utf8')).version;
 
@@ -93,6 +94,7 @@ if (PUBLISH) {
     console.error(`${c.r('  NOT shipped. Run the protected-release workflow with exact candidate evidence.')}\n`);
     process.exit(1);
   }
+  protectedReleaseMode = protectedInvocation.mode;
   protectedCandidate = JSON.parse(fs.readFileSync(path.resolve(ROOT, process.env.RUVNET_CANDIDATE_RECEIPT), 'utf8'));
   sealedPackageArtifact = path.resolve(ROOT, protectedCandidate.artifact.path);
   publicationReceiptPath = path.resolve(ROOT, process.env.RUVNET_PUBLICATION_RECEIPT || '.missing-publication-receipt');
@@ -130,15 +132,21 @@ runOrDie('one protected publisher', process.execPath, ['scripts/release-authorit
 // becomes a gate, on the ship path, where this repo's gates run 8/8 against prose's 0/6.
 runOrDie('wired (no orphan modules)', process.execPath, ['scripts/wired-check.mjs', '--check']);
 
-// THE NORTH-STAR VECTOR — a release may not average one broken/unknown invariant into a pass.
-// This is the real ship path, not an npm alias or a test import: every check-only preflight and
-// every publish attempt executes the eight D1-D8 detectors on the candidate SHA.
-runOrDie('release vector (all critical invariants PASS)', process.execPath, ['scripts/release-vector.mjs']);
+// THE NORTH-STAR PROMOTION VECTOR — strict/check-only releases may not average one broken or
+// unknown invariant into a pass. The separately authorized stabilization class makes no 95 claim;
+// it retains every safety, test, artifact, publication, and post-publication gate below while the
+// promotion program remains open. Derive this only from the already-validated sealed receipt, never
+// from a free-standing environment toggle.
+if (protectedReleaseMode === 'strict') {
+  runOrDie('release vector (all critical invariants PASS)', process.execPath, ['scripts/release-vector.mjs']);
 
-// The Top-100 corpus spans naive through expert prompts and grades semantic clauses, citations,
-// abstention, and latency. A manual-only benchmark is a report; a release-path benchmark is a
-// guarantee. The benchmark itself fails closed unless all 100 canonical questions run.
-runOrDie('Top-100 source-grounded recall contract', process.execPath, ['scripts/top100-benchmark.mjs', '--no-write']);
+  // The Top-100 corpus spans naive through expert prompts and grades semantic clauses, citations,
+  // abstention, and latency. A manual-only benchmark is a report; a strict release-path benchmark
+  // is a guarantee. The benchmark itself fails closed unless all 100 canonical questions run.
+  runOrDie('Top-100 source-grounded recall contract', process.execPath, ['scripts/top100-benchmark.mjs', '--no-write']);
+} else {
+  console.log(c.y('  strict >=95 promotion gates: NOT CLAIMED (sealed stabilization; scoreClaimed:false)'));
+}
 
 // A2. Stable Spine restart classifier (ADR-023, red-team finding 18): diff the boot-frozen SHELL
 // (hooks.json, hook-shim, MCP server, .mcp.json, skills/, commands/) against the previous release
