@@ -13,6 +13,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as RV from '../../scripts/release-vector.mjs';
+import {
+  TRAP as REPLAY_TRAP,
+  aggregate as aggregateReplay,
+  writeArtifact as writeReplayArtifact,
+} from '../../scripts/learning-replay.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 
@@ -212,10 +217,52 @@ describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () 
     const p = path.join(REPO, 'data/learning-replay-result.json');
     const existed = fs.existsSync(p);
     const before = existed ? fs.readFileSync(p, 'utf8') : null;
-    const sha = RV.headSha();
+    fs.mkdirSync(path.join(REPO, '.ruvnet-brain'), { recursive: true });
+    const proofRoot = fs.mkdtempSync(path.join(REPO, '.ruvnet-brain', 'release-vector-mutant-'));
     try {
       fs.mkdirSync(path.dirname(p), { recursive: true });
-      fs.writeFileSync(p, JSON.stringify({ invariant: 'LEARNING-REPLAY', verdict: 'INCONCLUSIVE', sha, at: new Date().toISOString(), n: 3, passes: 3, controlTokenRuns: 3, why: 'control arm also succeeded' }));
+      const arm = (treated) => ({
+        class: 'flagged',
+        subcommandCorrect: true,
+        command: 'ruflo memory search -q "caching strategy" --path .swarm/memory.db',
+        exec: {
+          ran: true,
+          argv: ['ruflo', 'memory', 'search'],
+          exit: 0,
+          exitOk: true,
+          retrieved: true,
+          why: 'exit 0; seeded memory retrieved',
+          output: 'note-caching-stra... The caching strategy',
+        },
+        lessonBeforeFirstToolCall: treated,
+        lessonIndex: treated ? 0 : -1,
+        firstToolIndex: treated ? 1 : 0,
+        lessonDelivered: treated,
+        model: 'fixture',
+      });
+      const runs = [1, 2, 3].map((i) => {
+        const treated = arm(true);
+        const control = arm(false);
+        return {
+          i,
+          treatedClass: treated.class,
+          controlClass: control.class,
+          lessonBeforeFirstToolCall: true,
+          treatedSubcommandCorrect: true,
+          treatedExecOk: true,
+          treatedRetrieved: true,
+          treatedExecWhy: treated.exec.why,
+          controlWorked: true,
+          treated,
+          control,
+          error: null,
+        };
+      });
+      writeReplayArtifact(p, aggregateReplay(runs), {
+        trap: REPLAY_TRAP.MEMORY_SEARCH,
+        task: 'fixture',
+        proofRoot,
+      });
       const after = await real.detect();
       expect(after.state).toBe('UNKNOWN');
       // the fixture carries a FRESH `at`, so the age guard cannot fire and this really does exercise
@@ -224,6 +271,7 @@ describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () 
       expect(after.why).toMatch(/control|inconclusive/i);
     } finally {
       if (existed) fs.writeFileSync(p, before); else fs.rmSync(p, { force: true });
+      fs.rmSync(proofRoot, { recursive: true, force: true });
     }
   });
 });

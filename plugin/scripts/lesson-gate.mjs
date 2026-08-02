@@ -75,9 +75,16 @@
  * would be switched off within a day, which is how every over-eager gate dies.
  */
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { loadLessons, lessonsFor, ENFORCEMENT, STATUS, ORIGIN, TRIGGERS } from './lesson-store.mjs';
+import {
+  CONFIG_ROOT,
+  loadLessons,
+  lessonsFor,
+  ENFORCEMENT,
+  STATUS,
+  ORIGIN,
+  TRIGGERS,
+} from './lesson-store.mjs';
 import { looksLikeOutsideRepoMutation } from './lesson-command-scope.mjs';
 import { buildLessonPresentation } from './lesson-presentation.mjs';
 export { looksLikeOutsideRepoMutation } from './lesson-command-scope.mjs';
@@ -143,7 +150,7 @@ const EMIT_CANDIDATES = process.env.RUVNET_EMIT_CANDIDATES === '1';
  * The empty default is the point: no file, no blocking. Consent is never inferred from silence.
  */
 export const OPTIN_PATH = process.env.RUVNET_LESSON_OPTIN
-  || path.join(os.homedir(), '.config', 'ruvnet-brain', 'blocking-optin.json');
+  || path.join(CONFIG_ROOT, 'blocking-optin.json');
 
 if (!triggers.length) {
   console.log('lesson-gate — surface the lessons in force at a decision point\n');
@@ -193,7 +200,7 @@ const optedIn = loadBlockingOptIn();
  * suppression — a gate that goes quiet because it could not read a JSON file is worse than a repeat.
  */
 const GATE_STATE_PATH = process.env.RUVNET_LESSON_GATE_STATE
-  || path.join(os.homedir(), '.config', 'ruvnet-brain', 'lesson-gate-state.json');
+  || path.join(CONFIG_ROOT, 'lesson-gate-state.json');
 const MAX_SHOWS = (() => {
   const n = Number(process.env.RUVNET_LESSON_MAX_SHOWS);
   return Number.isInteger(n) && n > 0 ? n : 3;

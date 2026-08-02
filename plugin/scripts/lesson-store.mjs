@@ -24,7 +24,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const HOME = os.homedir();
+/** Resolve fixture/plugin configuration without mutating the child process account HOME. */
+export function resolveConfigRoot(env = process.env, home = os.homedir()) {
+  return env.RUVNET_CONFIG_ROOT || path.join(home, '.config', 'ruvnet-brain');
+}
+
+export const CONFIG_ROOT = resolveConfigRoot();
 
 /**
  * TRIGGERS — the closed set of moments where behaviour can go wrong.
@@ -241,7 +246,7 @@ export function unenforceable(lessons) {
 // ~/.cache/ruvnet-brain/kb (which `--update` replaces wholesale). A lesson destroyed by the next
 // release never compounds, and compounding is the only point of any of this.
 export const STORE_PATH = process.env.RUVNET_LESSON_STORE
-  || path.join(HOME, '.config', 'ruvnet-brain', 'lessons.json');
+  || path.join(CONFIG_ROOT, 'lessons.json');
 
 export function loadLessons(file = STORE_PATH) {
   try {

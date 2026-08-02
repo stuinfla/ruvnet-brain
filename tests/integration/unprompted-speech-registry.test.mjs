@@ -415,9 +415,7 @@ describe('closed world, functionally: the built-in registry reaches the real pro
 
   it('a standalone copied plugin payload applies an actionable lesson without a marketplace fallback', () => {
     const payloadRoot = path.join(dir, 'standalone-plugin');
-    const isolatedHome = path.join(dir, 'home-with-no-marketplace');
     fs.cpSync(path.join(ROOT, 'plugin'), payloadRoot, { recursive: true });
-    fs.mkdirSync(isolatedHome, { recursive: true });
 
     const store = path.join(dir, 'standalone-lessons.json');
     fs.writeFileSync(store, JSON.stringify({
@@ -434,7 +432,7 @@ describe('closed world, functionally: the built-in registry reaches the real pro
     const r = fireRuntime('UserPromptSubmit', {
       runtime: path.join(payloadRoot, 'scripts', 'unprompted-runtime.mjs'),
       env: {
-        HOME: isolatedHome,
+        RUVNET_CONFIG_ROOT: path.join(dir, 'standalone-config'),
         RUVNET_LESSON_STORE: store,
         RUVNET_LESSON_OPTIN: path.join(dir, 'standalone-no-optin.json'),
         RUVNET_LESSON_GATE_STATE: path.join(dir, 'standalone-gate.json'),
