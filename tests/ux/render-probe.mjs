@@ -158,6 +158,25 @@ async function timeToSelector(browser, url, selector, label) {
   return { label, selector, ms };
 }
 
+/** Verify a button is rendered and enabled without asking Playwright to scroll or click it. */
+async function nonScrollingButtonReadiness(button) {
+  return button.evaluate((node) => {
+    const before = { x: window.scrollX, y: window.scrollY };
+    const style = window.getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    const after = { x: window.scrollX, y: window.scrollY };
+    return {
+      visible: node.isConnected
+        && rect.width > 0
+        && rect.height > 0
+        && style.display !== 'none'
+        && style.visibility !== 'hidden',
+      enabled: !(node instanceof HTMLButtonElement) || !node.disabled,
+      scrollDeltaPx: Math.hypot(after.x - before.x, after.y - before.y),
+    };
+  });
+}
+
 export async function runRenderProbe() {
   const stage = (name) => process.stderr.write(`[render-probe] ${name}\n`);
   if (!chromium) {
@@ -302,15 +321,24 @@ export async function runRenderProbe() {
       detail: `${recommendations} recommendations; ${fixAll} Fix all button`,
     });
     if (recommendations > 0) {
-      const fixAllClickabilityStartedAt = Date.now();
-      await fixAllButton.click({ trial: true });
-      const fixAllClickabilityMs = Date.now() - fixAllClickabilityStartedAt;
+      const readinessStartedAt = Date.now();
+      const readiness = await nonScrollingButtonReadiness(fixAllButton);
+      const readinessMs = Date.now() - readinessStartedAt;
+      if (!readiness.visible || !readiness.enabled || readiness.scrollDeltaPx !== 0) {
+        throw new Error(`Fix all readiness is invalid: visible=${readiness.visible} enabled=${readiness.enabled} scroll=${readiness.scrollDeltaPx}px`);
+      }
+      const actualClickScrollBefore = await consolePage.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
       const fixAllStarted = Date.now();
       const confirmationOpenedStartedAt = Date.now();
       await fixAllButton.click();
       const confirmButton = consolePage.getByRole('button', { name: 'Yes, fix all verified items' });
       await confirmButton.waitFor({ state: 'visible' });
       const openConfirmationMs = Date.now() - confirmationOpenedStartedAt;
+      const actualClickScrollAfter = await consolePage.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
+      const actualClickScrollDeltaPx = Math.hypot(
+        actualClickScrollAfter.x - actualClickScrollBefore.x,
+        actualClickScrollAfter.y - actualClickScrollBefore.y,
+      );
       const applyResponsePromise = consolePage.waitForResponse((response) => (
         response.request().method() === 'POST'
         && new URL(response.url()).pathname === '/api/apply'
@@ -337,7 +365,7 @@ export async function runRenderProbe() {
         label: 'Fix all executes the real batch endpoint and returns per-item undo',
         pass: applied > 0 && undoButtons === applied && hasEndpointTimings && fixAllMs < 4_000,
         detail: hasEndpointTimings
-          ? `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms Fix all total (confirmation ${openConfirmationMs}ms, confirm click→response ${confirmationClickToResponseMs}ms, response→render ${responseToRenderMs}ms, verification ${resultVerificationMs}ms, unattributed ${unattributedMs}ms); server ready ${readyMs}ms; initial state response/ready ${initialStateResponseMs}/${initialStateReadyMs}ms; recommendation state/render ${recommendationStateResponseMs}/${recommendationFetchAndRenderMs}ms; Fix all visible/clickable ${fixAllVisibilityMs}/${fixAllClickabilityMs}ms; endpoint total ${endpointTimings.totalMs}ms (revalidation ${endpointTimings.revalidationMs}ms, undo journal ${endpointTimings.undoJournalMs}ms, child remedy ${endpointTimings.childRemedyMs}ms)`
+          ? `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms Fix all total (confirmation ${openConfirmationMs}ms, actual-click scroll ${actualClickScrollDeltaPx}px, confirm click→response ${confirmationClickToResponseMs}ms, response→render ${responseToRenderMs}ms, verification ${resultVerificationMs}ms, unattributed ${unattributedMs}ms); server ready ${readyMs}ms; initial state response/ready ${initialStateResponseMs}/${initialStateReadyMs}ms; recommendation state/render ${recommendationStateResponseMs}/${recommendationFetchAndRenderMs}ms; pre-click visible/readiness ${fixAllVisibilityMs}/${readinessMs}ms (scroll ${readiness.scrollDeltaPx}px); endpoint total ${endpointTimings.totalMs}ms (revalidation ${endpointTimings.revalidationMs}ms, undo journal ${endpointTimings.undoJournalMs}ms, child remedy ${endpointTimings.childRemedyMs}ms)`
           : `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms total; /api/apply timing receipt missing`,
         timings: {
           serverReadyMs: readyMs,
@@ -349,10 +377,16 @@ export async function runRenderProbe() {
             stateResponseMs: recommendationStateResponseMs,
             fetchAndRenderMs: recommendationFetchAndRenderMs,
           },
-          fixAll: {
+          preClick: {
             visibilityMs: fixAllVisibilityMs,
-            clickabilityMs: fixAllClickabilityMs,
+            readinessMs,
+            readinessScrollDeltaPx: readiness.scrollDeltaPx,
+            visible: readiness.visible,
+            enabled: readiness.enabled,
+          },
+          fixAll: {
             openConfirmationMs,
+            actualClickScrollDeltaPx,
             confirmationClickToResponseMs,
             responseToRenderMs,
             resultVerificationMs,

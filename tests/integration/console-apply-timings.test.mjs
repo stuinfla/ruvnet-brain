@@ -14,6 +14,7 @@ import { runRenderProbe } from '../ux/render-probe.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CONSOLE = path.join(REPO, 'scripts', 'onboarding-console.mjs');
+const RENDER_PROBE = path.join(REPO, 'tests', 'ux', 'render-probe.mjs');
 
 let home;
 let project;
@@ -146,10 +147,16 @@ describe('/api/apply timing receipt', () => {
         stateResponseMs: expect.any(Number),
         fetchAndRenderMs: expect.any(Number),
       },
-      fixAll: {
+      preClick: {
         visibilityMs: expect.any(Number),
-        clickabilityMs: expect.any(Number),
+        readinessMs: expect.any(Number),
+        readinessScrollDeltaPx: 0,
+        visible: true,
+        enabled: true,
+      },
+      fixAll: {
         openConfirmationMs: expect.any(Number),
+        actualClickScrollDeltaPx: expect.any(Number),
         confirmationClickToResponseMs: expect.any(Number),
         responseToRenderMs: expect.any(Number),
         resultVerificationMs: expect.any(Number),
@@ -169,7 +176,21 @@ describe('/api/apply timing receipt', () => {
       row.timings.initialState.readyMs,
       row.timings.recommendation.stateResponseMs,
       row.timings.recommendation.fetchAndRenderMs,
+      row.timings.preClick.visibilityMs,
+      row.timings.preClick.readinessMs,
       ...Object.values(row.timings.fixAll),
-    ]) expect(value).toBeGreaterThanOrEqual(0);
+    ].filter((value) => typeof value === 'number')) expect(value).toBeGreaterThanOrEqual(0);
+    const accounted = row.timings.fixAll.openConfirmationMs
+      + row.timings.fixAll.confirmationClickToResponseMs
+      + row.timings.fixAll.responseToRenderMs
+      + row.timings.fixAll.resultVerificationMs
+      + row.timings.fixAll.unattributedMs;
+    expect(row.timings.fixAll.totalMs).toBe(accounted);
   }, 60_000);
+
+  it('forbids trial clicks, which create a second harness-only auto-scroll', () => {
+    const source = fs.readFileSync(RENDER_PROBE, 'utf8');
+    expect(source).not.toMatch(/\.click\(\s*\{\s*trial\s*:\s*true\s*\}\s*\)/);
+    expect(source.match(/fixAllButton\.click\(/g)).toHaveLength(1);
+  });
 });
