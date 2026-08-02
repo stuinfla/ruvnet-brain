@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { candidateRoots } from '../../scripts/memory-doctor.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const DOCTOR = path.join(REPO, 'scripts', 'memory-doctor.mjs');
@@ -107,5 +108,16 @@ describe('issue #81 — shared AgentDB fleet discovery', () => {
     });
 
     expect(run.stdout).toContain('AgentDB fleet — 1 stores found');
+  });
+
+  it('fails loudly instead of reporting zero when every configured scan root is invalid', () => {
+    const home = isolatedHome();
+    const configPath = path.join(home, 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      scanRoots: ['missing-source', path.join(home, 'also-missing')],
+    }));
+
+    expect(() => candidateRoots({ home, configPath }))
+      .toThrow('configured scanRoots contain no existing directories');
   });
 });

@@ -141,18 +141,34 @@ export function candidateRoots({
   configPath = path.join(home, '.claude', 'ruvnet-brain', 'config.json'),
 } = {}) {
   let configured = [];
+  let configuredCount = 0;
   try {
     const value = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    if (Array.isArray(value.scanRoots)) configured = value.scanRoots.filter((item) => typeof item === 'string' && item.trim());
+    if (Array.isArray(value.scanRoots)) {
+      configuredCount = value.scanRoots.length;
+      configured = value.scanRoots.filter((item) => typeof item === 'string' && item.trim());
+    }
   } catch { /* absent or malformed config does not erase the common roots */ }
 
   const roots = new Set();
-  for (const value of [...DEFAULT_SCAN_ROOTS, ...configured]) {
+  const addRoot = (value) => {
     const absolute = path.isAbsolute(value) ? value : path.join(home, value);
     const canonical = realExisting(absolute);
     try {
-      if (canonical && fs.statSync(canonical).isDirectory()) roots.add(canonical);
+      if (canonical && fs.statSync(canonical).isDirectory()) {
+        roots.add(canonical);
+        return true;
+      }
     } catch { /* missing/non-directory roots are not candidates on this machine */ }
+    return false;
+  };
+  for (const value of DEFAULT_SCAN_ROOTS) addRoot(value);
+  let validConfigured = 0;
+  for (const value of configured) {
+    if (addRoot(value)) validConfigured += 1;
+  }
+  if (configuredCount > 0 && validConfigured === 0) {
+    throw new Error('configured scanRoots contain no existing directories');
   }
   return [...roots].sort();
 }
