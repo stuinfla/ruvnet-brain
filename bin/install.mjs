@@ -802,7 +802,8 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
     'Wiring the Claude Code plugin',
     'this registers search_ruvnet + the grounding hook so Claude uses the brain automatically',
   );
-  const manualMarketplace = 'claude plugin marketplace add stuinfla/ruvnet-brain';
+  const marketplaceSource = process.env.RUVNET_CLAUDE_MARKETPLACE_SOURCE || 'stuinfla/ruvnet-brain';
+  const manualMarketplace = `claude plugin marketplace add ${marketplaceSource}`;
   const manualInstall = 'claude plugin install ruvnet-brain@ruvnet-brain --scope user';
 
   if (!have('claude')) {
@@ -820,7 +821,7 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
   if (requireManaged && !before.managed) return { host: false, wired: false, action: 'unmanaged' };
   const addedMarket = before.managed
     ? tryRun('claude', ['plugin', 'marketplace', 'update', 'ruvnet-brain'])
-    : tryRun('claude', ['plugin', 'marketplace', 'add', 'stuinfla/ruvnet-brain']);
+    : tryRun('claude', ['plugin', 'marketplace', 'add', marketplaceSource]);
   // Deliberately NOT reassuring here. This used to say "it may already be added — that's fine",
   // which is a GUESS about someone else's machine, and when it was wrong the user finished the
   // install with a working search_ruvnet, no slash commands, and a message telling them all was
@@ -1773,6 +1774,21 @@ async function doctor() {
     warn('brain not found here — run the installer first:  npx ruvnet-brain');
     return 1; // "not installed" is a FAILING doctor, not a neutral one
   }
+  const convergencePath = path.join(process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain'), 'host-convergence.json');
+  let hostConvergence = { healthy: true, state: 'not-recorded' };
+  if (fs.existsSync(convergencePath)) {
+    try {
+      hostConvergence = classifyHostConvergence(JSON.parse(fs.readFileSync(convergencePath, 'utf8')));
+      if (hostConvergence.healthy) ok(`host convergence receipt: ${hostConvergence.state}`);
+      else {
+        warn(`host convergence incomplete: ${hostConvergence.state}`);
+        info(`Retry the same generation: ${c.bold('npx ruvnet-brain --update')}${hostConvergence.action ? `; ${hostConvergence.action}` : ''}`);
+      }
+    } catch (error) {
+      hostConvergence = { healthy: false, state: 'invalid-receipt', error: error.message };
+      warn(`host convergence receipt is invalid: ${error.message}`);
+    }
+  }
   have('node') ? ok('node present') : warn('node missing');
   have('npm') ? ok('npm present') : warn('npm missing');
   have('claude') ? ok('claude CLI present') : warn('claude CLI missing (plugin wiring needs it)');
@@ -1953,6 +1969,7 @@ async function doctor() {
     || codexLifecycleFailed
     || codexWiringFailed
     || codexReadinessFailed
+    || !hostConvergence.healthy
     || Boolean(rufloOperational && !rufloOperational.healthy);
   if (failed && !hookResult && !groundingUnprovenPersisted) {
     console.log(`  ${c.red('✗ FAILING')} — the warnings above are real. Re-run  ${c.bold('npx ruvnet-brain')}  to repair.`);
@@ -2288,7 +2305,29 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
     }
   }
   if (!okApplied) return fail({ applyStatus: applied.status, error: applied.error?.message || 'Stable Spine activation failed' });
-  return { ok: true, results, applyStatus: applied.status };
+  const convergence = classifyHostConvergence({
+    desiredVersion: PACKAGE_VERSION,
+    hosts: {
+      claude: { state: results.claude.host ? 'ready' : 'absent', version: results.claude.version || null },
+      codex: { state: results.codex?.action === 'disabled' ? 'disabled' : (results.codexHost?.host ? 'ready' : 'absent'), version: results.codex?.version || null },
+    },
+    consoleRuntime: results.consoleRuntime,
+  });
+  return { ok: convergence.healthy, convergence, results, applyStatus: applied.status };
+}
+
+export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSION) {
+  if (!receipt || receipt.desiredVersion !== expectedVersion) {
+    return { healthy: false, state: 'version-mismatch', action: `required version ${expectedVersion}` };
+  }
+  const hostStates = Object.values(receipt.hosts || {});
+  const badHost = hostStates.find((host) => !['ready', 'disabled', 'absent'].includes(host?.state)
+    || (host.state === 'ready' && host.version !== expectedVersion));
+  if (badHost) return { healthy: false, state: 'host-pending', action: 're-run host synchronization' };
+  if (receipt.consoleRuntime?.state !== 'ready') {
+    return { healthy: false, state: receipt.consoleRuntime?.state || 'console-unproven', action: 'restart Console, then re-run --doctor' };
+  }
+  return { healthy: true, state: 'channels-converged' };
 }
 
 function runUpdate() {

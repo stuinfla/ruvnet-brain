@@ -4,6 +4,8 @@ import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const release = fs.readFileSync(path.join(ROOT, 'scripts/release.mjs'), 'utf8');
+const transaction = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction.mjs'), 'utf8');
+const provider = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction-provider.mjs'), 'utf8');
 const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/protected-release.yml'), 'utf8');
 const producer = fs.readFileSync(path.join(ROOT, 'scripts/publication-receipt.mjs'), 'utf8');
 
@@ -14,18 +16,21 @@ const position = (source, needle) => {
 };
 
 describe('publication receipt wiring', () => {
-  it('publishes the exact sealed candidate tarball to npm and GitHub', () => {
+  it('passes the exact sealed candidate tarball into one provider', () => {
     expect(release).toContain("sealedPackageArtifact = path.resolve(ROOT, protectedCandidate.artifact.path)");
-    expect(release).toContain('const assets = [zip, `${zip}.sig`, `${zip}.sha256`, sealedPackageArtifact]');
-    expect(release).toContain("runOrDie('npm publish', 'npm', ['publish', sealedPackageArtifact, '--tag', 'latest'])");
+    expect(release).toContain('packagePath: sealedPackageArtifact');
+    expect(provider).toContain("command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`])");
+    expect(provider).toContain("command('gh', ['release', 'upload', draft.tag, file, '--repo', REPO])");
   });
 
-  it('generates and validates publication evidence before SHIPPED or channel convergence', () => {
-    const producer = position(release, "runOrDie('publication receipt'");
-    expect(producer).toBeGreaterThan(position(release, "runOrDie('verify-channels'"));
-    expect(producer).toBeLessThan(position(release, "recordReleaseTransaction('channels-converged'"));
-    expect(producer).toBeLessThan(position(release, '✓✓✓ SHIPPED'));
-    expect(release).toContain("'scripts/publication-receipt.mjs', '--candidate'");
+  it('generates and validates publication evidence before remote convergence', () => {
+    expect(position(provider, "'scripts/publication-receipt.mjs'"))
+      .toBeLessThan(position(provider, "'scripts/release-proof.mjs'"));
+    expect(position(transaction, 'adapter.finalize'))
+      .toBeLessThan(position(transaction, "append('channels-converged'"));
+    expect(provider).toContain("'scripts/verify-channels.mjs'");
+    expect(position(transaction, "append('channels-converged'"))
+      .toBeLessThan(position(release, '✓✓✓ SHIPPED'));
   });
 
   it('provisions virgin host CLIs before the protected publisher and gives the producer read-only GitHub access', () => {
@@ -43,14 +48,14 @@ describe('publication receipt wiring', () => {
   });
 
   it('MUTANT: checkout publication cannot replace the sealed artifact command', () => {
-    expect(release).not.toContain("runOrDie('npm publish', 'npm', ['publish', '--tag', 'latest'])");
+    expect(provider).not.toContain("command('npm', ['publish', '--tag', 'latest'])");
   });
 
   it.each([
-    ['MUTANT: omit publication producer', /runOrDie\('publication receipt'/g],
-    ['MUTANT: omit sealed artifact from release assets', /, sealedPackageArtifact/g],
+    ['MUTANT: omit publication producer', /publication-receipt\.mjs/g],
+    ['MUTANT: omit sealed artifact', /assets\.packagePath/g],
   ])('%s', (_name, guard) => {
-    expect(release.replace(guard, '')).not.toMatch(guard);
-    expect(release).toMatch(guard);
+    expect(provider.replace(guard, '')).not.toMatch(guard);
+    expect(provider).toMatch(guard);
   });
 });

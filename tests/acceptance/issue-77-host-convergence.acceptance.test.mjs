@@ -73,4 +73,19 @@ describe('issue #77 installed host convergence boundary', () => {
     expect(fs.readFileSync(path.join(active, 'sentinel.txt'), 'utf8')).toBe('candidate-a');
     expect(fs.existsSync(path.join(home, 'brain', 'host-convergence.json'))).toBe(false);
   });
+
+  it('keeps a running stale Console explicitly non-converged until restart', () => {
+    const receipt = {
+      desiredVersion: VERSION,
+      hosts: {
+        claude: { state: 'ready', version: VERSION },
+        codex: { state: 'disabled', version: VERSION },
+      },
+      consoleRuntime: { state: 'pending-console-restart', runtimeVersion: VERSION },
+    };
+    expect(install.classifyHostConvergence(receipt)).toMatchObject({
+      healthy: false,
+      state: 'pending-console-restart',
+    });
+  });
 });

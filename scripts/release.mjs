@@ -31,6 +31,9 @@ import { spawnSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { validateProtectedPublishInvocation } from './protected-release-invocation.mjs';
+import { runReleaseTransaction } from './release-transaction.mjs';
+import { liveReleaseProvider } from './release-transaction-provider.mjs';
+import { stagedHostVerifier } from './staged-host-verifier.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
@@ -48,36 +51,6 @@ function runOrDie(label, cmd, args, opts = {}) {
     console.error(`\n${c.r('✗ GATE FAILED: ' + label)} ${c.dim('(' + cmd + ' ' + args.join(' ') + ' → ' + (r.error ? r.error.message : 'exit ' + r.status) + ')')}`);
     console.error(`${c.r('  NOT shipped. Fix this, then re-run. No assumptions past a red gate.')}\n`);
     process.exit(1);
-  }
-}
-
-function remoteTagCommit(tag) {
-  const out = execFileSync('git', [
-    'ls-remote', 'origin', `refs/tags/${tag}`, `refs/tags/${tag}^{}`,
-  ], { cwd: ROOT, encoding: 'utf8' }).trim();
-  if (!out) return '';
-  const rows = out.split('\n').map((line) => line.trim().split(/\s+/));
-  return rows.find(([, ref]) => ref?.endsWith('^{}'))?.[0] || rows[0]?.[0] || '';
-}
-
-function recordReleaseTransaction(state, data) {
-  const file = path.join(ROOT, 'dist', 'release-transaction.json');
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const next = {
-    state,
-    updatedAt: new Date().toISOString(),
-    ...data,
-  };
-  const tmp = `${file}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`);
-  fs.renameSync(tmp, file);
-}
-
-function readReleaseTransaction() {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(ROOT, 'dist', 'release-transaction.json'), 'utf8'));
-  } catch {
-    return null;
   }
 }
 
@@ -225,49 +198,25 @@ if (PUBLISH) {
   else runOrDie('git push', 'git', ['-C', ROOT, 'push', 'origin', 'main']);
 }
 
-// D. Publish BOTH delivery channels. This used to advance npm without creating the GitHub Release
-// that verify-channels immediately required, making the sanctioned manual ship path impossible to
-// complete. Build and sign first, then create/update the exact-SHA Release before npm advances.
-// Re-runs are idempotent: a matching Release gets its three assets replaced; a tag bound to any
-// other commit is a hard provenance failure.
+// D. One remotely durable, staged release transaction (ADR-062 / DDD-0015). GitHub remains a draft
+// and npm remains on a non-default candidate tag until exact bytes and all host fixtures pass.
 if (PUBLISH) {
   const v = V();
   const tag = `v${v}`;
   const zip = path.join(ROOT, 'dist', 'ruvnet-brain.zip');
-  const assets = [zip, `${zip}.sig`, `${zip}.sha256`, sealedPackageArtifact];
   const head = execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  const priorTxn = readReleaseTransaction();
-  const unfinished = priorTxn && priorTxn.state !== 'channels-converged';
-  const samePendingCandidate = unfinished && priorTxn.tag === tag && priorTxn.head === head;
-
-  step('D', 'build + sign bundle and publish matching GitHub/npm channels');
-  if (unfinished && !samePendingCandidate) {
-    console.error(`\n${c.r('✗ GATE FAILED: unfinished release transaction requires reconciliation')}`);
-    console.error(c.dim(`  ${priorTxn.state}: ${priorTxn.tag || '?'} @ ${priorTxn.head || '?'}; refusing to overwrite it with ${tag} @ ${head}`));
-    process.exit(1);
-  }
-  if (samePendingCandidate) {
-    if (!assets.every((asset) => fs.existsSync(asset))) {
-      console.error(`\n${c.r('✗ GATE FAILED: pending release assets are missing; reconcile before retrying')}`);
-      process.exit(1);
-    }
-    const declared = fs.readFileSync(`${zip}.sha256`, 'utf8').trim().split(/\s+/)[0];
-    const actual = crypto.createHash('sha256').update(fs.readFileSync(zip)).digest('hex');
-    const verify = spawnSync(process.execPath, ['scripts/verify-bundle.mjs', zip, `${zip}.sig`], {
-      cwd: ROOT, encoding: 'utf8',
-    });
-    if (declared !== priorTxn.bundleSha256 || actual !== declared || verify.status !== 0) {
-      console.error(`\n${c.r('✗ GATE FAILED: pending release assets do not match their signed transaction')}`);
-      process.exit(1);
-    }
-    console.log(c.dim('  resume existing signed release assets for the pending candidate'));
-  } else {
-    const buildArgs = ['scripts/build-bundle.mjs', '--version', tag];
-    if (process.env.RUVNET_RELEASE_ASSETS) buildArgs.push('--assets', process.env.RUVNET_RELEASE_ASSETS);
-    runOrDie('build release bundle', process.execPath, buildArgs);
-    runOrDie('sign release bundle', process.execPath, ['scripts/sign-bundle.mjs', '--bundle', zip]);
-  }
-  for (const asset of assets) {
+  const buildArgs = ['scripts/build-bundle.mjs', '--version', tag];
+  if (process.env.RUVNET_RELEASE_ASSETS) buildArgs.push('--assets', process.env.RUVNET_RELEASE_ASSETS);
+  step('D', 'prepare, stage, promote, and reconcile one signed remote transaction');
+  runOrDie('build release bundle', process.execPath, buildArgs);
+  runOrDie('sign release bundle', process.execPath, ['scripts/sign-bundle.mjs', '--bundle', zip]);
+  const assets = {
+    bundlePath: zip,
+    bundleSignaturePath: `${zip}.sig`,
+    bundleDigestPath: `${zip}.sha256`,
+    packagePath: sealedPackageArtifact,
+  };
+  for (const asset of Object.values(assets)) {
     if (!fs.existsSync(asset)) {
       console.error(`\n${c.r('✗ GATE FAILED: signed release asset missing')} ${c.dim(asset)}`);
       process.exit(1);
@@ -279,87 +228,26 @@ if (PUBLISH) {
     process.exit(1);
   }
 
-  let remoteTagSha = '';
-  try {
-    remoteTagSha = remoteTagCommit(tag);
-  } catch (e) {
-    console.error(`\n${c.r('✗ GATE FAILED: could not verify remote release tag')} ${c.dim(String(e.message || e).split('\n')[0])}`);
-    process.exit(1);
-  }
-  if (remoteTagSha && remoteTagSha !== head) {
-    console.error(`\n${c.r('✗ GATE FAILED: release tag already identifies different bytes')}`);
-    console.error(c.dim(`  ${tag} -> ${remoteTagSha}; candidate HEAD -> ${head}`));
-    process.exit(1);
-  }
-
-  // Cross-provider publication cannot be truly atomic. Persist the exact convergence state before
-  // the first remote mutation so a failed npm publish is recoverable and the next run can converge
-  // the SAME tag/HEAD instead of guessing which channel moved.
-  if (priorTxn && !['channels-converged'].includes(priorTxn.state)) {
-    const sameCandidate = priorTxn.tag === tag
-      && priorTxn.head === head
-      && priorTxn.bundleSha256 === bundleSha256;
-    if (!sameCandidate) {
-      console.error(`\n${c.r('✗ GATE FAILED: unfinished release transaction requires reconciliation')}`);
-      if (priorTxn.tag === tag && priorTxn.head === head && priorTxn.bundleSha256 !== bundleSha256) {
-        console.error(c.dim('  release transaction artifact digest changed for the same tag and HEAD'));
-      }
-      console.error(c.dim(`  ${priorTxn.state}: ${priorTxn.tag || '?'} @ ${priorTxn.head || '?'}; refusing to overwrite it with ${tag} @ ${head}`));
-      process.exit(1);
-    }
-  }
-  recordReleaseTransaction('prepared', { version: v, tag, head, bundleSha256 });
-
-  let releaseExists = false;
-  try {
-    execFileSync('gh', ['release', 'view', tag, '--repo', 'stuinfla/ruvnet-brain'], {
-      cwd: ROOT, stdio: ['ignore', 'ignore', 'ignore'],
-    });
-    releaseExists = true;
-  } catch { /* absent is the expected first-publish state */ }
-
-  if (releaseExists) {
-    if (!remoteTagSha) {
-      console.error(`\n${c.r('✗ GATE FAILED: GitHub Release exists without a verifiable matching tag')} ${c.dim(tag)}`);
-      process.exit(1);
-    }
-    runOrDie('replace signed GitHub Release assets', 'gh', [
-      'release', 'upload', tag, ...assets, '--clobber', '--repo', 'stuinfla/ruvnet-brain',
-    ]);
-  } else {
-    runOrDie('create signed GitHub Release', 'gh', [
-      'release', 'create', tag, ...assets,
-      '--repo', 'stuinfla/ruvnet-brain',
-      '--target', head,
-      '--title', `${tag} — verified release`,
-      '--generate-notes',
-      '--latest',
-    ]);
-  }
-
-  // Confirm the tag GitHub created/retained points to the candidate before touching npm.
-  let publishedTagSha = '';
-  try {
-    publishedTagSha = remoteTagCommit(tag);
-  } catch { /* handled by the mismatch below */ }
-  if (publishedTagSha !== head) {
-    console.error(`\n${c.r('✗ GATE FAILED: published GitHub Release tag is not candidate HEAD')}`);
-    console.error(c.dim(`  ${tag} -> ${publishedTagSha || '(missing)'}; candidate HEAD -> ${head}`));
-    process.exit(1);
-  }
-  recordReleaseTransaction('github-published-npm-pending', { version: v, tag, head, bundleSha256 });
-
-  let already = '';
-  try { already = execFileSync('npm', ['view', `ruvnet-brain@${v}`, 'version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* not published yet */ }
-  if (already === v) console.log(c.dim(`  ${v} already on npm — skipping publish, just re-asserting the tag`));
-  // npm requires an explicit tag for prerelease versions. This project intentionally serves its
-  // `-dev` release from `latest`, so make that policy explicit on the publish command itself.
-  else runOrDie('npm publish', 'npm', ['publish', sealedPackageArtifact, '--tag', 'latest']);
-  // npm does NOT auto-move `latest` to a prerelease (x.y.z-dev) — force it, or `@latest` stays stale.
-  runOrDie('npm dist-tag latest', 'npm', ['dist-tag', 'add', `ruvnet-brain@${v}`, 'latest']);
-  recordReleaseTransaction('publish-complete-verification-pending', { version: v, tag, head, bundleSha256 });
+  const packageIntegrity = `sha512-${crypto.createHash('sha512').update(fs.readFileSync(sealedPackageArtifact)).digest('base64')}`;
+  const identity = {
+    repository: 'stuinfla/ruvnet-brain', package: 'ruvnet-brain', version: v, tag,
+    candidateSha: head, packageIntegrity, bundleSha256,
+  };
+  const privatePem = process.env.RUVNET_SIGNING_KEY;
+  if (!privatePem) throw new Error('RUVNET_SIGNING_KEY is required for signed transaction receipts');
+  const finalReceipt = await runReleaseTransaction({
+    identity, assets, adapter: liveReleaseProvider({
+      root: ROOT,
+      candidateReceipt: process.env.RUVNET_CANDIDATE_RECEIPT,
+      publicationReceipt: process.env.RUVNET_PUBLICATION_RECEIPT,
+    }),
+    privateKey: crypto.createPrivateKey(privatePem),
+    publicKey: crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'keys/ruvnet-brain-signing.pub.pem'), 'utf8')),
+    hostVerifier: stagedHostVerifier({ assets, identity }),
+  });
+  if (finalReceipt.state !== 'channels-converged') throw new Error(`release transaction stopped at ${finalReceipt.state}`);
 } else {
-  step('D', 'GitHub Release + npm publish — SKIPPED (check-only; pass --publish to publish)');
+  step('D', 'remote staged release transaction — SKIPPED (check-only; pass --publish to publish)');
 }
 
 // D+. THE DEPLOY-SURFACE SWEEP (owner standing order, 2026-07-27): "ALWAYS check GitHub CLI and
@@ -414,23 +302,6 @@ step('D+', 'deploy-surface sweep — what GitHub and Vercel think about what we 
 // E. the live channel walk — THE gate that would have caught the stale-2.9.1 + 404
 step('E', 'verify-channels — the live walk of every user path');
 runOrDie('verify-channels', process.execPath, ['scripts/verify-channels.mjs']);
-if (PUBLISH) {
-  runOrDie('publication receipt', process.execPath, [
-    'scripts/publication-receipt.mjs', '--candidate', process.env.RUVNET_CANDIDATE_RECEIPT,
-    '--out', process.env.RUVNET_PUBLICATION_RECEIPT,
-  ]);
-  runOrDie('publication seal', process.execPath, [
-    'scripts/release-proof.mjs', '--candidate', process.env.RUVNET_CANDIDATE_RECEIPT,
-    '--publication', process.env.RUVNET_PUBLICATION_RECEIPT,
-  ]);
-  const txn = readReleaseTransaction();
-  recordReleaseTransaction('channels-converged', {
-    version: V(),
-    tag: `v${V()}`,
-    head: execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-    bundleSha256: txn?.bundleSha256 ?? null,
-  });
-}
 
 if (PUBLISH) {
   console.log(`\n${c.g(c.b('✓✓✓ SHIPPED'))} — every gate passed and every live channel is current. ${c.dim('A user on any path (npm, npx, explainer, --update) gets the working, current build.')}\n`);

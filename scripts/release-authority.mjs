@@ -7,7 +7,10 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CANONICAL_PUBLISHER = 'scripts/release.mjs';
+const CANONICAL_PUBLISHERS = new Set([
+  'scripts/release.mjs',
+  'scripts/release-transaction-provider.mjs',
+]);
 const SOURCE_EXTENSIONS = new Set(['.mjs', '.js', '.cjs', '.sh']);
 
 function executableSource(source) {
@@ -26,6 +29,14 @@ const ACTIONS = [
       /\[\s*['"]release['"]\s*,\s*['"]create['"]/,
     ],
     shellPatterns: [/^\s*gh\s+release\s+create\b/m],
+  },
+  {
+    action: 'github-release-update',
+    jsPatterns: [
+      /['"]PATCH['"][\s\S]{0,120}releases\//,
+      /\[\s*['"]release['"]\s*,\s*['"]edit['"]/,
+    ],
+    shellPatterns: [/^\s*gh\s+(?:release\s+edit|api\s+.*releases\/.*PATCH)\b/m],
   },
   {
     action: 'npm-publish',
@@ -47,7 +58,7 @@ const ACTIONS = [
 
 export function detectPublisherActions(file, source) {
   const relative = file.split(path.sep).join('/');
-  if (relative === CANONICAL_PUBLISHER) return [];
+  if (CANONICAL_PUBLISHERS.has(relative)) return [];
   const executable = executableSource(source);
   const kind = path.extname(relative) === '.sh' ? 'shellPatterns' : 'jsPatterns';
   return ACTIONS
@@ -67,6 +78,7 @@ function sourceFiles(root) {
   };
   visit(path.join(root, 'scripts'));
   visit(path.join(root, 'deploy'));
+  visit(path.join(root, 'bin'));
   return files;
 }
 
