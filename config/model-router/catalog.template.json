@@ -1,6 +1,7 @@
 {
   "_comment": "Model candidate catalog for model-router-engine.mjs. EDIT ME freely. Pricing is $/Mtok. 'verified' names the source+date a price was confirmed live; null pricing means UNKNOWN \u2014 the engine will NOT invent a cost for it (same honesty rule as route-cheap.mjs). 'harness' = which agent(s) can launch each model \u2014 EMPTY [] means landscape-only: known to exist, but no wired execution path yet, so the engine will never select it (see model-router-engine.mjs pool filter). Do not add a real execution path (an entry to route-cheap.mjs PRICING or a harness value) until dispatch is actually implemented and tested \u2014 an engine that 'chooses' a model it can't run is worse than one that doesn't know the model exists. 'subscription' = harness(es) under which this model is covered by a flat subscription (Claude Max, Codex/ChatGPT), so its marginal cost to the user is ~$0 \u2014 the default policy treats those as free and will NOT prefer a billed model over them (never spend where the subscription is free).",
-  "updated": "2026-07-12 (template)",
+  "managedVersion": 2,
+  "updated": "2026-08-02 (managed template)",
   "candidates": [
     {
       "id": "claude-haiku-4-5-20251001",
@@ -44,6 +45,20 @@
         "out": 25
       },
       "verified": "2026-07-07 route-cheap.mjs FRONTIER (API price; $0 under Max)"
+    },
+    {
+      "id": "claude-opus-5",
+      "provider": "anthropic",
+      "harness": [
+        "claude-code"
+      ],
+      "subscription": [
+        "claude-code"
+      ],
+      "tier": "frontier",
+      "costPerMTok": null,
+      "verified": "2026-08-02 Claude Code 2.1.220 subscription launch (canonicalModel claude-opus-5)",
+      "note": "Launchability is host-scoped. The managed row adds the reviewed candidate; the user's subscription profile still decides whether it is available and covered."
     },
     {
       "id": "claude-fable-5",

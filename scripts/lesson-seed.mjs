@@ -17,17 +17,22 @@
 import os from 'node:os';
 import {
   makeLesson, saveLessons, loadLessons, lessonsFor, unenforceable, pending, weightOf,
-  TRIGGERS as T, ENFORCEMENT as E, ORIGIN as O,
+  TRIGGERS as T, ENFORCEMENT as E, ORIGIN as O, SOURCE_CLASS,
 } from './lesson-store.mjs';
 
 // Shipped at CHECKLIST; `intendedEnforcement` records what it becomes once a human ratifies it.
 const blocking = { enforcement: E.CHECKLIST, intendedEnforcement: E.BLOCK };
+const ownerImport = {
+  origin: O.IMPORTED,
+  sourceClass: SOURCE_CLASS.IMPORTED_OWNER,
+  demoted: true,
+};
 
 export const SEED = [
   makeLesson({
     id: 'L01-verify-with-a-capable-channel',
     ...blocking,
-    origin: O.USER_STATED,
+    ...ownerImport,
     severity: 'high',
     statement: 'Before claiming something works, verify through a channel CAPABLE of observing the change — an independent tool, a re-measurement, a read-write connection. Never the exit code of the thing being tested.',
     trigger: T.CLAIM_DONE.key,
@@ -46,7 +51,7 @@ export const SEED = [
   makeLesson({
     id: 'L02-check-before-you-assert',
     ...blocking,
-    origin: O.USER_STATED,
+    ...ownerImport,
     severity: 'high',
     statement: 'Before stating any fact about the world — a version, an API, what a tool does, how an architecture works — read a live source THIS TURN and name it. Recalling is not checking. The urge to skip the check IS the signal you are about to be wrong.',
     trigger: T.ASSERT_FACT.key,
@@ -64,7 +69,7 @@ export const SEED = [
   makeLesson({
     id: 'L03-research-before-recommending',
     enforcement: E.CHECKLIST,
-    origin: O.USER_STATED,
+    ...ownerImport,
     statement: 'Before recommending an architecture, research it: compare at least three real options with tradeoffs, and check whether the ecosystem already ships it. Pattern-matching from training data is not a recommendation.',
     trigger: T.RECOMMEND_ARCH.key,
     evidence: [
@@ -78,7 +83,7 @@ export const SEED = [
   makeLesson({
     id: 'L04-never-relay-a-number',
     enforcement: E.CHECKLIST,
-    origin: O.USER_STATED,
+    ...ownerImport,
     severity: 'high',
     statement: 'Never repeat a score, benchmark, or subagent result without re-checking the underlying artifact yourself. A number you did not measure is a claim you cannot defend.',
     trigger: T.RELAY_NUMBER.key,
@@ -93,7 +98,7 @@ export const SEED = [
   makeLesson({
     id: 'L05-version-is-the-update-signal',
     ...blocking,
-    origin: O.USER_STATED,
+    ...ownerImport,
     severity: 'high',
     statement: 'Any behaviour-changing push bumps the version IN THE SAME COMMIT, and the release narrative is updated to match. A fix label on a new subsystem is a lie about what changed.',
     trigger: T.SHIP.key,
@@ -109,7 +114,7 @@ export const SEED = [
   makeLesson({
     id: 'L06-use-the-real-tool',
     ...blocking,
-    origin: O.USER_STATED,
+    ...ownerImport,
     severity: 'high',
     statement: 'Before writing code in the RuvNet domain, search for the tool that already implements it. If you still disagree after genuinely looking, say so OUT LOUD, cite the source path, and name the hand-roll as a hand-roll. Never silently.',
     trigger: T.WRITE_CODE.key,
@@ -127,7 +132,7 @@ export const SEED = [
   makeLesson({
     id: 'L07-blast-radius-not-social-comfort',
     ...blocking,
-    origin: O.USER_STATED,
+    ...ownerImport,
     severity: 'high',
     statement: 'Gate on blast radius, not on how awkward an action feels. Ask: is it reversible, and is it outward-facing? A silent irreversible change is worse than an awkward reversible one.',
     trigger: T.MUTATE_MACHINE.key,
@@ -143,7 +148,7 @@ export const SEED = [
   makeLesson({
     id: 'L08-status-is-a-table',
     enforcement: E.CHECKLIST,
-    origin: O.USER_STATED,
+    ...ownerImport,
     statement: 'Report status as a structured table with an explicit shipped/tested column, never as narrative. Prose lets unfinished work live inside sentences about progress.',
     trigger: T.REPORT_STATUS.key,
     evidence: [
@@ -159,7 +164,7 @@ export const SEED = [
   makeLesson({
     id: 'L09-gradeable-is-not-valuable',
     enforcement: E.CHECKLIST,
-    origin: O.MODEL_INFERRED,
+    ...ownerImport,
     statement: 'When choosing what to work on, name the ungradeable items explicitly and commit to them. The instinct to pick the task with a green test routes systematically away from the user\'s actual value.',
     trigger: T.CHOOSE_WORK.key,
     evidence: [
@@ -172,7 +177,7 @@ export const SEED = [
   makeLesson({
     id: 'L10-under-enumeration-is-a-tell',
     enforcement: E.CHECKLIST,
-    origin: O.MODEL_INFERRED,
+    ...ownerImport,
     statement: 'When producing a list of failure modes, options, or requirements, state what was left out and why. A satisfyingly round number is evidence of rounding, not of completeness.',
     trigger: T.REPORT_STATUS.key,
     evidence: [
@@ -185,7 +190,7 @@ export const SEED = [
   makeLesson({
     id: 'L11-retrieval-without-volition-is-broken',
     enforcement: E.REVIEW,
-    origin: O.MODEL_INFERRED,
+    ...ownerImport,
     statement: 'A surface that CAN detect something useful and stays silent is broken. Judge every feature by whether it volunteers what it knows, not by whether it can answer when asked.',
     trigger: T.CHOOSE_WORK.key,
     evidence: [
@@ -199,7 +204,7 @@ export const SEED = [
   makeLesson({
     id: 'L12-efficiency-seeking-is-the-tell',
     enforcement: E.REVIEW,
-    origin: O.USER_STATED,
+    ...ownerImport,
     statement: 'Treat the impulse to save a step as a defect signal, not a virtue. Skipping a check to save a turn is the specific mechanism that produces wrong answers — effectiveness first, always.',
     trigger: T.CHOOSE_WORK.key,
     evidence: [
@@ -228,14 +233,14 @@ if (invokedDirectly) {
     for (const l of ls) {
       const shown = l.intendedEnforcement ? `${l.enforcement}→${l.intendedEnforcement}` : l.enforcement;
       console.log(`      ${shown.padEnd(18)} ${l.id}`);
-      console.log(`      ${''.padEnd(18)}   ${l.origin === 'user-stated' ? 'you said it' : 'MODEL-INFERRED (quarantined — can never block)'} · taught ${l.repeatCount}× · weight ${weightOf(l)}`);
+      console.log(`      ${''.padEnd(18)}   IMPORTED MAINTAINER HISTORY (quarantined — never personal policy) · observed ${l.repeatCount}× · weight ${weightOf(l)}`);
     }
     console.log('');
   }
   const un = unenforceable(SEED);
   const pend = pending(SEED);
-  console.log(`  ${pend.length} awaiting YOUR ratification. Nothing here blocks until you agree to it —`);
-  console.log(`  the model does not get to ratify its own rules.`);
+  console.log(`  ${pend.length} awaiting ratification. Bundled maintainer history is quarantined and cannot`);
+  console.log(`  become the installing user's personal policy.`);
   if (un.length) console.log(`  ${un.length} are declared unenforceable (no hook can observe them); checked at review instead.`);
   console.log('');
 

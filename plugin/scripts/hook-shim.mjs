@@ -96,6 +96,7 @@ const TABLE = {
   'protect-state':    { file: 'protect-brain-state.sh', interpreter: 'bash', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
   'learn-capture':    { file: 'learn-capture.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
   'learn-flush':      { file: 'learn-flush.mjs',     interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
+  'session-snapshot': { file: 'session-snapshot-hook.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run', stdinBytes: 65536 },
   'md-stamp':         { file: 'md-stamp.mjs',        interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   // THE EXTERNAL-SIGNAL WATCH PLANE, W1 OBSERVED (ADR-058 §D3; DDD-0013 Context 2). PostToolUse,
   // matcher ^Bash$ (anchored — an unanchored matcher is F3/F4). Classifies gh/vercel/netlify/npm

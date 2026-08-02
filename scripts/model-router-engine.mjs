@@ -113,10 +113,13 @@ export function loadCatalog() {
   } catch {
     /* fall through to a minimal built-in so the engine still answers */
   }
-  // Built-in fallback (verified OpenRouter prices from route-cheap; Anthropic frontier from same).
+  // Built-in fallback. Claude launchability was verified against Claude Code 2.1.220 on 2026-08-02;
+  // prices remain null where the subscription host, rather than a metered API, is authoritative.
   return [
     { id: 'deepseek/deepseek-chat', provider: 'openrouter', harness: ['claude-code', 'codex'], tier: 'cheap', costPerMTok: { in: 0.2, out: 0.8 }, verified: '2026-07-07' },
     { id: 'claude-opus-4-8', provider: 'anthropic', harness: ['claude-code'], tier: 'frontier', costPerMTok: { in: 5.0, out: 25.0 }, verified: '2026-07-07' },
+    { id: 'claude-opus-5', provider: 'anthropic', harness: ['claude-code'], subscription: ['claude-code'], tier: 'frontier', costPerMTok: null, verified: '2026-08-02 Claude Code 2.1.220 launch' },
+    { id: 'claude-fable-5', provider: 'anthropic', harness: ['claude-code'], subscription: ['claude-code'], tier: 'frontier', costPerMTok: null, verified: '2026-08-02 Claude Code 2.1.220 launch' },
     { id: 'gpt-5.5', provider: 'openai', harness: ['codex'], tier: 'frontier', costPerMTok: null, verified: null },
   ];
 }

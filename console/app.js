@@ -2099,17 +2099,24 @@ function renderRouterEngine(re) {
   const pool = Array.isArray(re.pool) ? re.pool : [];
   const TIER_ORDER = { mechanical: 0, cheap: 1, mid: 2, frontier: 3 };
   const byTier = (a, b) => (TIER_ORDER[a.tier] ?? 9) - (TIER_ORDER[b.tier] ?? 9);
-  const lensTable = (rows, costOf, costHead) => el('div', { class: 'scroll-x' },
+  const recommended = (Array.isArray(re.decisions) ? re.decisions : []).find((decision) => decision && decision.model);
+  const lensTable = (rows, costOf, costHead, { showRouting = false } = {}) => el('div', { class: 'scroll-x' },
     el('table', { class: 'tb rp-tb' },
       el('thead', {}, el('tr', {},
         el('th', { scope: 'col' }, 'Bucket'), el('th', { scope: 'col' }, 'Model'),
-        el('th', { scope: 'col' }, costHead))),
+        el('th', { scope: 'col' }, costHead),
+        showRouting ? el('th', { scope: 'col' }, 'Routing') : null)),
       el('tbody', {}, rows.map((p) => el('tr', {},
         el('td', { class: 'rp-band' }, p.tier || '—'),
         el('td', {}, el('div', { class: 'rp-model' }, prettyModel(p.id))),
         el('td', { class: 'cell-mono num' }, costOf(p)),
+        showRouting ? el('td', {}, recommended?.model === p.id
+          ? chip('last selected', 'green', recommended.reason || 'The latest router receipt selected this model.')
+          : 'available') : null,
       )))));
-  // Development: only what this machine's harness can launch; best (cheapest-marginal) per bucket.
+  // Development is an inventory, not a recommendation filter. The previous one-row-per-tier
+  // projection hid equal-cost Fable behind Opus based solely on array order. Every launchable row
+  // remains visible; the latest actual routing receipt is a separate marker.
   const bestPerTier = (rows, price) => {
     const seen = {};
     for (const p of rows) {
@@ -2118,9 +2125,9 @@ function renderRouterEngine(re) {
     }
     return Object.values(seen).sort(byTier);
   };
-  const devRows = bestPerTier(
-    pool.filter((p) => (p.harness || []).includes('claude-code')),
-    (p) => (p.subscriptionCovered ? -1 : p.marginalPerMTok ?? Infinity));
+  const devRows = pool
+    .filter((p) => (p.harness || []).includes('claude-code'))
+    .sort((a, b) => byTier(a, b) || String(a.id).localeCompare(String(b.id)));
   const prodRows = bestPerTier(
     pool.filter((p) => p.listPerMTok != null && p.provider !== 'local'),
     (p) => p.listPerMTok ?? Infinity);
@@ -2130,7 +2137,7 @@ function renderRouterEngine(re) {
       el('span', { class: 'rp-obj' }, 'you, in Claude Code — models your plan covers win at $0 marginal')),
     lensTable(devRows,
       (p) => (p.subscriptionCovered ? el('b', { title: 'covered by your subscription — zero marginal cost' }, '$0 · yours') : money(p.marginalPerMTok)),
-      'Your cost'));
+      'Your cost', { showRouting: true }));
   const prodBlock = el('div', { class: 'rp-profile' },
     el('div', { class: 'rp-head' },
       el('span', { class: 'rp-name' }, 'Production'),
@@ -2140,7 +2147,7 @@ function renderRouterEngine(re) {
   const poolFoot = el('p', { class: 'fineprint' },
     re.catalogSource === 'built-in-fallback'
       ? `No personal catalog found — showing a minimal built-in set of ${pool.length}. Run \`node scripts/model-router-setup.mjs\` to build your real catalog, then the engine weighs yours on every call.`
-      : `Best pick per bucket shown; the engine weighs all ${pool.length} candidates in its catalog on every call — nothing is retired by being off this summary.`);
+      : `All ${devRows.length} launchable Claude Code models are shown. The engine weighs all ${pool.length} candidates; the routing marker comes from its latest receipt, never catalog order.`);
 
   // Decisions: dedupe consecutive identical picks, keep 3, humanize the reason head. The full
   // append-only log stays on disk — this is a pulse, not a table of record.
@@ -4011,6 +4018,7 @@ function renderLessons(data) {
   if (c.awaitingYou) chips.push(chip(`${c.awaitingYou} awaiting you`, 'amber', 'Recorded, but not yet agreed to by you. Until you decide, it does not enforce at full strength.'));
   if (c.active) chips.push(chip(`${c.active} on`, 'green'));
   if (c.off) chips.push(chip(`${c.off} off`, 'grey', 'Switched off by you. The record of where you taught it is kept.'));
+  if (c.quarantined) chips.push(chip(`${c.quarantined} imported`, 'nt', 'Maintainer or demonstration history. It is visible for audit but cannot become your personal policy.'));
   if (c.blocking) chips.push(chip(`${c.blocking} can stop me`, 'cyan', 'These interrupt me at their moment and I cannot continue until the check passes.'));
   setChips('chips-lessons', chips);
 
@@ -4022,6 +4030,7 @@ function renderLessons(data) {
     const box = el('input', {
       type: 'checkbox', class: 'lesson-switch', id: `lsw-${r.id}`,
       'aria-label': `${isOn ? 'Turn off' : 'Turn on'}: ${r.statement.slice(0, 60)}`,
+      disabled: r.quarantined || null,
     });
     box.checked = isOn;
 
@@ -4073,7 +4082,9 @@ function renderLessons(data) {
       chip(r.origin, r.userStated ? 'green' : 'nt',
         r.userStated
           ? 'You said this. Only lessons you stated yourself are allowed to reach the strongest level.'
-          : 'I inferred this from what happened. A lesson I inferred can never be raised to "Stops me", however often it fires — the model does not get to ratify its own rules.'),
+          : r.quarantined
+            ? 'This came from bundled maintainer or demonstration history. It is not your statement and cannot be turned into your personal policy.'
+            : 'I inferred this from what happened. A lesson I inferred can never be raised to "Stops me", however often it fires — the model does not get to ratify its own rules.'),
       r.taughtCount ? chip(`taught ${r.taughtCount}×`, 'grey') : null,
       r.awaitingYou ? chip('awaiting your decision', 'amber', 'Recorded, but you have not agreed to it yet.') : null,
     ].filter(Boolean);
@@ -4097,9 +4108,9 @@ function renderLessons(data) {
           : null,
         r.projects && r.projects.length
           ? el('p', null, el('strong', null, 'Learned in: '), r.projects.join(', ')) : null,
-        el('p', { class: 'muted' },
-          'Turning this off hides the rule without deleting the record of where you taught it — ',
-          'you can switch it back on here at any time.')));
+        el('p', { class: 'muted' }, r.quarantined
+          ? 'This imported record is quarantined for audit. It cannot be switched on or ratified as your policy.'
+          : 'Turning this off hides the rule without deleting the record of where you taught it — you can switch it back on here at any time.')));
 
     list.append(el('div', { class: `cap-row lesson-row${r.demoted ? ' is-off' : ''}` },
       // NO `for=` here. The label WRAPS its checkbox, which is already an implicit association; a
@@ -4142,9 +4153,10 @@ function partitionLessons(list, rows) {
   // the card whose job is to be the truth about it, and printed BECAUSE they used the control we
   // gave them. Found by GPT-5.6-Sol, 2026-07-24. A group's heading must be derivable from the state
   // of the rows inside it, which is why the counts below are computed from the split, never passed in.
-  const asks = [], inForce = [], off = [];
+  const asks = [], inForce = [], off = [], quarantined = [];
   rows.forEach((r, i) => {
-    if (r.demoted) off.push(kids[i]);
+    if (r.quarantined) quarantined.push(kids[i]);
+    else if (r.demoted) off.push(kids[i]);
     else if (r.awaitingYou) asks.push(kids[i]);
     else inForce.push(kids[i]);
   });
@@ -4170,6 +4182,12 @@ function partitionLessons(list, rows) {
       el('summary', null,
         `${off.length} ${off.length === 1 ? 'rule you switched off' : 'rules you switched off'} — not in force; switch back on any time`),
       el('div', { class: 'cap-list' }, ...off)));
+  }
+  if (quarantined.length) {
+    out.push(el('details', { class: 'lessons-more' },
+      el('summary', null,
+        `${quarantined.length} imported maintainer or demonstration ${quarantined.length === 1 ? 'record' : 'records'} — quarantined, not your policy`),
+      el('div', { class: 'cap-list' }, ...quarantined)));
   }
   return out;
 }

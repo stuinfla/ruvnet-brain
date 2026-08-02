@@ -43,7 +43,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { ORIGIN, STATUS, ENFORCEMENT, loadLessons } from './lesson-store.mjs';
+import { ORIGIN, SOURCE_CLASS, STATUS, ENFORCEMENT, loadLessons } from './lesson-store.mjs';
 
 // ── The bars, in one place, as numbers a human can argue with ────────────────────────────────────
 export const RETIREMENT = Object.freeze({
@@ -385,6 +385,7 @@ export function explainGeneralization(lesson, otherProjects = [], { minProjects 
     // `{...lesson, ...proposal}`, so the result cannot block even if the source lesson was ratified
     // and blocking — the trust boundary is enforced by the data, not by the caller remembering.
     origin: ORIGIN.MODEL_INFERRED,
+    sourceClass: SOURCE_CLASS.MODEL_INFERRED,
     status: STATUS.CANDIDATE,
     enforcement: ENFORCEMENT.CHECKLIST,
     intendedEnforcement: null,

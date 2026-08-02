@@ -68,6 +68,7 @@
     "LICENSE",
     "console/",
     "config/model-router/",
+    "data/model-catalog.json",
     "scripts/",
     "kb/verify-citation.mjs",
     "kb/zip-extract.mjs",

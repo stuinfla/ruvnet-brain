@@ -1,6 +1,6 @@
 # DDD — The Onboarding Console
 
-Updated: 2026-07-27
+Updated: 2026-08-02
 Created: 2026-07-14
 
 > **Status: Implemented (2026-07-14).** Contexts 1 (Stack Inventory), 2 (Wiring Survey), 4
@@ -28,6 +28,9 @@ convention, that is deliberate: **we have already proven that advisory rules do 
 | **Recommendation** | A proposal carrying evidence, cost, and a reversal | An instruction |
 | **ChangePlan** | A set of mutations the user explicitly consented to | Anything we do on our own |
 | **Receipt** | A recorded measurement of something that actually happened | An estimate |
+| **Personal lesson** | A current-user statement eligible for explicit ratification | Bundled maintainer, imported, inferred, or demonstration history |
+| **Snapshot** | A fresh artifact that validates against the versioned session schema | An arbitrary file at a familiar path |
+| **Managed candidate** | A reviewed additive model fact shipped by Brain | Permission to overwrite a user override or enable metered spend |
 
 ---
 

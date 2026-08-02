@@ -41,6 +41,8 @@ import { loadCatalog as engineCatalog, catalogSource as engineCatalogSource, loa
 import { effectivePrices, loadLabelledRows, MIN_LABELS, OUTCOMES } from './metaharness-router.mjs';
 import { utilization } from './router-utilization.mjs';
 import { loadCatalog, detectProvider, frontierFor } from './model-catalog.mjs';
+import { providerAvailability } from './provider-availability.mjs';
+import { inspectSessionSnapshots } from './session-snapshot-contract.mjs';
 import { learnings } from './learnings.mjs';
 import { gatesSurvey } from './gates.mjs';
 // The write-safety primitives, borrowed rather than re-implemented. See saveConfig for why.
@@ -59,7 +61,7 @@ import {
 } from '../kb/brain-profile.mjs';
 // Lessons: read model + the two user verbs. Every mutation goes through lesson-store's own
 // updateLessons/ratify/demote/restore — this file adds a SURFACE, never a second writer.
-import { loadLessons, updateLessons, ratify, demote, restore, pending, weightOf, TRIGGERS, ENFORCEMENT, ORIGIN, STATUS } from './lesson-store.mjs';
+import { loadLessons, updateLessons, ratify, demote, restore, pending, weightOf, TRIGGERS, ENFORCEMENT, ORIGIN, SOURCE_CLASS, STATUS } from './lesson-store.mjs';
 import {
   openRouterCredentialStatus,
   saveOpenRouterCredential,
@@ -421,8 +423,19 @@ function probeMemory(projectDir) {
   const db = path.join(projectDir, '.swarm/memory.db');
   const probes = {};
   // compaction survival + session surfacing are filesystem facts, always checkable
-  const snap = fs.existsSync(path.join(projectDir, 'agentdb-sessions.jsonl')) || fs.existsSync(path.join(projectDir, '.swarm/agentdb-sessions.jsonl'));
-  probes.compactionSurvival = snap ? { status: 'ok', detail: 'a PreCompact snapshot file is present' } : { status: 'warn', detail: 'no PreCompact snapshot found for this project yet' };
+  const snapshot = inspectSessionSnapshots(projectDir);
+  const snapshotDetail = snapshot.kind === 'canonical'
+    ? 'a fresh versioned PreCompact snapshot is present in .swarm/agentdb-sessions.jsonl'
+    : snapshot.kind === 'legacy'
+      ? 'a fresh supported Ruflo session snapshot is present (legacy path; migration recommended)'
+      : snapshot.kind === 'malformed'
+        ? 'snapshot files were found but none matched the supported schema'
+        : snapshot.kind !== 'absent'
+          ? 'the newest supported snapshot is stale'
+          : 'no supported PreCompact snapshot found for this project yet';
+  probes.compactionSurvival = snapshot.fresh
+    ? { status: 'ok', detail: snapshotDetail, artifact: snapshot.kind }
+    : { status: 'warn', detail: snapshotDetail, artifact: snapshot.kind };
   probes.sessionSurfacing = sessionHookExists() ? { status: 'ok', detail: 'the global SessionStart hook surfaces project state at launch' } : { status: 'warn', detail: 'no SessionStart recall hook found' };
   // recall quality: honestly NOT probed at render (a true probe needs an embedding query; left for an explicit deep test)
   probes.recallQuality = { status: 'notTested', detail: 'not checked this session — a real recall probe needs an embedding round-trip, which render deliberately avoids' };
@@ -989,7 +1002,15 @@ function gatherLessons() {
   const lessons = all.map((l) => {
     const trig = TRIGGER_BY_KEY.get(l.trigger);
     const meaning = ENFORCEMENT_MEANING[l.enforcement] || { label: l.enforcement, detail: '' };
-    const userStated = l.origin === ORIGIN.USER_STATED;
+    const userStated = l.origin === ORIGIN.USER_STATED && l.sourceClass === SOURCE_CLASS.CURRENT_USER;
+    const quarantined = l.sourceClass === SOURCE_CLASS.IMPORTED_OWNER || l.sourceClass === SOURCE_CLASS.DEMONSTRATION;
+    const origin = l.sourceClass === SOURCE_CLASS.CURRENT_USER
+      ? 'you taught me this'
+      : l.sourceClass === SOURCE_CLASS.IMPORTED_OWNER
+        ? 'imported maintainer history — not yours'
+        : l.sourceClass === SOURCE_CLASS.DEMONSTRATION
+          ? 'demonstration data — not personal policy'
+          : 'I inferred this from what happened';
     return {
       id: l.id,
       statement: l.statement,
@@ -1001,8 +1022,10 @@ function gatherLessons() {
       enforcementLabel: meaning.label,
       enforcementDetail: meaning.detail,
       // Provenance drives trust, so it is stated plainly and never flattened into a badge colour.
-      origin: userStated ? 'you taught me this' : 'I inferred this from what happened',
+      origin,
+      sourceClass: l.sourceClass,
       userStated,
+      quarantined,
       taughtCount: l.repeatCount || 0,
       projects: Array.isArray(l.projects) ? l.projects : [],
       evidence: l.evidence || null,
@@ -1011,10 +1034,11 @@ function gatherLessons() {
       ratified: l.status === STATUS.RATIFIED || l.status === STATUS.ACTIVE,
       demoted: !!l.demoted,
       // The one thing the user is being ASKED, as opposed to merely shown.
-      awaitingYou: l.status === STATUS.CANDIDATE && !l.demoted,
+      awaitingYou: l.status === STATUS.CANDIDATE && !l.demoted && !quarantined,
       // Honest ceiling: ratifying a model-inferred lesson can NOT raise it to block
       // (lesson-store.mjs:380). Say so before they click, not after.
       canReachBlock: userStated,
+      canRatify: !quarantined,
       intendedEnforcement: l.intendedEnforcement || null,
     };
   });
@@ -1038,6 +1062,7 @@ function gatherLessons() {
       active: lessons.filter((l) => l.ratified && !l.demoted).length,
       awaitingYou: lessons.filter((l) => l.awaitingYou).length,
       off: lessons.filter((l) => l.demoted).length,
+      quarantined: lessons.filter((l) => l.quarantined).length,
       blocking: lessons.filter((l) => l.enforcement === 'block' && l.ratified && !l.demoted).length,
     },
     // TASK 2: this endpoint bypasses serveCached entirely and had NO timestamp of any kind. It is
@@ -1068,6 +1093,9 @@ function setLesson(body) {
   }
   const before = loadLessons().find((l) => l.id === id);
   if (!before) return { ok: false, log: `nothing changed — no lesson with id ${id}` };
+  if (action === 'ratify' && (before.sourceClass === SOURCE_CLASS.IMPORTED_OWNER || before.sourceClass === SOURCE_CLASS.DEMONSTRATION)) {
+    return { ok: false, log: 'nothing changed — imported or demonstration history cannot become personal policy' };
+  }
 
   try {
     updateLessons((fresh) => spec.fn(id, fresh));
@@ -1695,7 +1723,10 @@ function gatherRouterEngine() {
   // user's Settings choice is now the single source of truth, via the SAME detectProvider() the
   // savings.utilization frontier calc already uses (config → env → catalog default) — so this and
   // the frontier calc can never disagree either.
-  let house, providerKeys = {};
+  const subscriptions = detectSubscriptions();
+  let house;
+  let providerKeys = providerAvailability(null, subscriptions);
+  let providerCatalog = { status: 'degraded', detail: 'provider catalog was not loaded; native boolean detections are shown' };
   try {
     const hcat = loadCatalog();
     house = detectProvider(hcat, { provider: cfg.provider });
@@ -1704,11 +1735,12 @@ function gatherRouterEngine() {
     // key found". Read each provider's real detect_env vars — minus the CLAUDECODE / CLAUDE_CODE_ENTRYPOINT
     // run-context markers (which are not credentials), exactly as detectProvider() itself filters them —
     // so the UI's "key found / not found" is now true instead of decorative.
-    const IGNORE_ENV = new Set(['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT']);
-    for (const [name, p] of Object.entries(hcat.providers || {})) {
-      providerKeys[name] = (p.detect_env || []).some((k) => !IGNORE_ENV.has(k) && !!process.env[k]);
-    }
-  } catch { house = { provider: cfg.provider && cfg.provider !== 'auto' ? cfg.provider : 'anthropic', source: 'default' }; }
+    providerKeys = providerAvailability(hcat, subscriptions);
+    providerCatalog = { status: 'ok', detail: 'verified provider catalog loaded' };
+  } catch (error) {
+    house = { provider: cfg.provider && cfg.provider !== 'auto' ? cfg.provider : 'anthropic', source: 'default' };
+    providerCatalog = { status: 'degraded', detail: `provider catalog unavailable: ${String(error?.message || error)}` };
+  }
   return {
     engine: {
       package: '@metaharness/router', installed,
@@ -1717,12 +1749,13 @@ function gatherRouterEngine() {
       outcomesLog: OUTCOMES.replace(os.homedir(), '~'),
     },
     keys: { openrouter: openrouterKey, ...providerKeys },
+    providerCatalog,
     // Paid seats, found at USER level. `keys` above is env-var API keys only, which is exactly why a
     // user with ChatGPT Max and Claude Max read as "auto" — neither plan puts a key in the
     // environment. These two fields are what let the UI say "you already have this" instead of
     // asking someone to paste a credential they are already paying not to need.
-    subscriptions: detectSubscriptions(),
-    preferredSeat: preferredSeat(detectSubscriptions()),
+    subscriptions,
+    preferredSeat: preferredSeat(subscriptions),
     profile: { present: !!profile, path: PROFILE_PATH.replace(os.homedir(), '~') },
     catalogSource: engineCatalogSource(),   // 'catalog' | 'built-in-fallback' — so the UI never calls the stub a real catalog
     house,
@@ -2948,6 +2981,7 @@ export {
   saveBrainPower,
   gatherBrainProfile,
   saveBrainProfile,
+  gatherRouterEngine,
   autoEligibleIds,
 };
 // Exported for the cross-project cache-isolation test (console-cache-scope.test.mjs). serveCached's

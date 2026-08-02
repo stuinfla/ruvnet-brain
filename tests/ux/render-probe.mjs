@@ -278,7 +278,21 @@ export async function runRenderProbe() {
 
     const settingsStarted = Date.now();
     await consolePage.locator('#field-provider input[value="codex"]').check();
+    // This disposable render fixture intentionally has no installed KB updater. Keep its unrelated
+    // nightly preference off so the provider persistence check does not ask that absent fixture
+    // dependency to install a schedule as a side effect of submitting the complete settings form.
+    const nightlyToggle = consolePage.locator('#field-nightly input[type="checkbox"]');
+    if (await nightlyToggle.count()) await nightlyToggle.uncheck();
+    const providerSaveResponsePromise = consolePage.waitForResponse((response) => (
+      response.request().method() === 'POST'
+      && new URL(response.url()).pathname === '/api/save-config'
+    ));
     await consolePage.locator('form:has(#field-provider) button[type="submit"]').click();
+    const providerSaveResponse = await providerSaveResponsePromise;
+    const providerSaveBody = await providerSaveResponse.json();
+    if (!providerSaveResponse.ok() || !providerSaveBody?.ok) {
+      throw new Error(`provider save returned ${providerSaveResponse.status()}: ${JSON.stringify(providerSaveBody)}`);
+    }
     await consolePage.locator('form:has(#field-provider) .form-note.n-ok').waitFor();
     await consolePage.locator('#field-advocacy input[value="5"]').check();
     await consolePage.locator('form:has(#field-advocacy) button[type="submit"]').click();

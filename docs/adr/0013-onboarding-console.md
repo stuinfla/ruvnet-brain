@@ -3,7 +3,7 @@ id: ADR-013
 title: The Onboarding Console — RuvNet Brain becomes a mirror, an advisor, and only then a configurator
 status: Implemented
 date: 2026-07-14
-updated: 2026-08-01
+updated: 2026-08-02
 updated_source: derived-from-git
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, config, stack, memory-health, savings, safety]
@@ -35,6 +35,16 @@ before host activation, persists its exact version/source identity, activates it
 Stable Spine convergence, and restores the prior runtime if activation or receipt finalization fails.
 The convergence receipt reports `pending-console-restart` when an owned instance still serves older
 bytes; the next launch uses the receipt/token lifecycle above to replace it safely.
+
+**Updated 2026-08-02** — Console integrity issues #83, #85, #86, and #87 make four trust boundaries
+explicit. Bundled maintainer lessons carry imported-owner provenance, legacy fingerprints are
+quarantined, and imported/demonstration rows cannot become personal policy. Compaction survival now
+requires a fresh structurally valid versioned snapshot (with validated Ruflo legacy migration paths),
+not arbitrary file existence. The packed and staged Console runtime must contain a valid provider
+catalog; native boolean provider detection remains visible with an explicit degraded state if that
+catalog cannot load. Finally, normal installs add reviewed subscription-covered managed models to an
+existing user catalog without overwriting user rows or adding metered authority, while the Console
+shows the complete launchable development inventory and marks the latest routing receipt separately.
 
 **Updated 2026-08-01** — issue #81 identified the residual project-discovery split left after issue #19.
 `scripts/memory-doctor.mjs` now owns the common and configured candidate-root policy, canonical

@@ -24,6 +24,7 @@ import {
   requiredEmbedderModels,
   missingEmbedderModels,
 } from '../kb/model-requirements.mjs';
+import { mergeManagedCatalog } from '../scripts/model-router-catalog.mjs';
 
 // SEC-0010 #6 — the Ed25519 PUBLIC key is EMBEDDED here (not a separate file) so the installer's
 // trust root travels with the installer code itself: an attacker who swaps the downloaded bundle
@@ -616,6 +617,7 @@ export function beginConsoleRuntimeTransaction(cacheDir, sourceRoot = REPO_ROOT)
     ['console', 'console'],
     ['scripts', 'scripts'],
     ['plugin/scripts', 'plugin/scripts'],
+    ['data/model-catalog.json', 'data/model-catalog.json'],
     ['kb/brain-profile.mjs', 'kb/brain-profile.mjs'],
     ['bin/install.mjs', 'bin/install.mjs'],
     ['package.json', 'package.json'],
@@ -641,6 +643,15 @@ export function beginConsoleRuntimeTransaction(cacheDir, sourceRoot = REPO_ROOT)
   if (!packageManifest.version || packageManifest.version !== PACKAGE_VERSION) {
     fs.rmSync(staged, { recursive: true, force: true });
     throw new Error(`console runtime version ${packageManifest.version || '(missing)'} does not match candidate ${PACKAGE_VERSION}`);
+  }
+  try {
+    const providerCatalog = JSON.parse(fs.readFileSync(path.join(staged, 'data', 'model-catalog.json'), 'utf8'));
+    if (!providerCatalog.providers || typeof providerCatalog.providers !== 'object' || !Object.keys(providerCatalog.providers).length) {
+      throw new Error('providers object is missing or empty');
+    }
+  } catch (error) {
+    fs.rmSync(staged, { recursive: true, force: true });
+    throw new Error(`console runtime model-catalog is invalid: ${error.message}`);
   }
   const stagedEntry = path.join(staged, 'scripts', 'onboarding-console.mjs');
   for (const syntaxTarget of [stagedEntry, path.join(staged, 'bin', 'install.mjs')]) {
@@ -2924,7 +2935,28 @@ export async function offerRouterProfile() {
   for (const [src, dst] of [['catalog.template.json', 'catalog.json'], ['policy.default.mjs', 'policy.default.mjs']]) {
     const s = path.join(pkgRoot, 'config', 'model-router', src);
     const d = path.join(routerDir, dst);
-    if (fs.existsSync(s) && !fs.existsSync(d)) { fs.copyFileSync(s, d); ok(`installed ${dst} (edit freely — goldie keeps prices fresh where scheduled)`); }
+    if (!fs.existsSync(s)) continue;
+    if (!fs.existsSync(d)) {
+      fs.copyFileSync(s, d);
+      ok(`installed ${dst} (edit freely — goldie keeps prices fresh where scheduled)`);
+      continue;
+    }
+    if (src === 'catalog.template.json') {
+      try {
+        const existing = JSON.parse(fs.readFileSync(d, 'utf8'));
+        const managed = JSON.parse(fs.readFileSync(s, 'utf8'));
+        const merged = mergeManagedCatalog(existing, managed);
+        if (merged !== existing) {
+          fs.copyFileSync(d, `${d}.pre-managed-merge`);
+          const tmp = `${d}.tmp-${process.pid}`;
+          fs.writeFileSync(tmp, `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
+          fs.renameSync(tmp, d);
+          ok(`merged ${merged.candidates.length - existing.candidates.length} managed subscription model(s); your catalog overrides were preserved`);
+        }
+      } catch (error) {
+        warn(`managed model additions were not merged (${error.message}); your existing catalog was left unchanged`);
+      }
+    }
   }
   let copied = 0;
   // dispatch-receipt + metaharness-receipts added 2026-07-13: without the LOGGER, subagent routing is

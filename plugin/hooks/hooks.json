@@ -23,6 +23,18 @@
         ]
       }
     ],
+    "PreCompact": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-snapshot PreCompact || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "matcher": ".*",
@@ -175,6 +187,16 @@
       }
     ],
     "SessionEnd": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-snapshot SessionEnd || true",
+            "timeout": 5
+          }
+        ]
+      },
       {
         "matcher": ".*",
         "hooks": [
