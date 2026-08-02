@@ -10,7 +10,7 @@
 // touches no account. It is deterministic timing, which is the cleanest possible satisfaction of the
 // owner's "no API keys" rule for the QE suite.
 //
-// It runs the console WARM (against a pre-warmed temp HOME cache) so the number is the common-case
+// It runs the console WARM (against a pre-warmed temp fixture-root cache) so the number is the common-case
 // "open the console" experience, not a one-time cold scan. Cold-start behaviour (the "it's live"
 // completion signal) is a SEPARATE probe — command-probe.mjs — because it measures a different thing.
 import { spawn } from 'node:child_process';
@@ -99,12 +99,22 @@ function waitForReady(port, timeoutMs = 20000) {
   });
 }
 
-/** Start the console server on `port` with an isolated HOME, and pre-warm its cache if requested. */
-function startConsole(port, home, cwd = REPO) {
-  const env = {
+function fixtureEnvironment(fixtureRoot, extras = {}) {
+  return {
     ...process.env,
-    HOME: home,
-    USERPROFILE: home,
+    RUVNET_CONSOLE_ROOT: fixtureRoot,
+    RUVNET_BRAIN_CONFIG_FILE: path.join(fixtureRoot, '.claude', 'ruvnet-brain', 'config.json'),
+    RUVNET_SETTINGS_FILE: path.join(fixtureRoot, '.config', 'ruvnet-brain', 'settings.json'),
+    RUVNET_BRAIN_SECRETS_FILE: path.join(fixtureRoot, '.config', 'ruvnet-brain', 'secrets.enc.json'),
+    RUVNET_BRAIN_STATE_DIR: path.join(fixtureRoot, '.config', 'ruvnet-brain'),
+    ...extras,
+  };
+}
+
+/** Start the console server on `port` with an isolated fixture root, and pre-warm its cache if requested. */
+function startConsole(port, fixtureRoot, cwd = REPO) {
+  const env = {
+    ...fixtureEnvironment(fixtureRoot),
     CONSOLE_PORT: String(port),
     RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1',
   };
@@ -117,10 +127,10 @@ function startConsole(port, home, cwd = REPO) {
   return child;
 }
 
-/** Pre-warm the cache in the temp HOME by running --refresh-cache once, so the render is warm-path. */
-function prewarm(home, cwd = REPO) {
+/** Pre-warm the cache in the temporary fixture root once, so the render is warm-path. */
+function prewarm(fixtureRoot, cwd = REPO) {
   return new Promise((resolve) => {
-    const env = { ...process.env, HOME: home, USERPROFILE: home };
+    const env = fixtureEnvironment(fixtureRoot);
     const child = spawn(process.execPath, [CONSOLE_MJS, '--refresh-cache'], { env, stdio: 'ignore', cwd });
     let settled = false;
     const finish = () => {
@@ -135,7 +145,7 @@ function prewarm(home, cwd = REPO) {
     // State is the only cache this browser control gate needs. It is written first; waiting for the
     // later machine-wide fleet scan made a nominal 30s browser gate depend on a permitted 60s setup
     // operation. Stop the disposable fixture child as soon as state is ready.
-    const stateCache = path.join(home, '.claude', 'ruvnet-brain', 'state-cache.json');
+    const stateCache = path.join(fixtureRoot, '.claude', 'ruvnet-brain', 'state-cache.json');
     const poll = setInterval(() => {
       if (!fs.existsSync(stateCache)) return;
       try { child.kill(process.platform === 'win32' ? undefined : 'SIGKILL'); } catch {}
@@ -182,9 +192,9 @@ export async function runRenderProbe() {
   if (!chromium) {
     return { results: [], notes: [`playwright not loadable (${playwrightLoadError}) — render probe NOT RUN, never faked as pass`] };
   }
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'uxqe-home-'));
-  fs.mkdirSync(path.join(home, '.claude', 'ruvnet-brain'), { recursive: true });
-  const fixtureProject = path.join(home, 'Code', 'dirty-console-fixture');
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'uxqe-root-'));
+  fs.mkdirSync(path.join(fixtureRoot, '.claude', 'ruvnet-brain'), { recursive: true });
+  const fixtureProject = path.join(fixtureRoot, 'Code', 'dirty-console-fixture');
   fs.mkdirSync(path.join(fixtureProject, '.claude'), { recursive: true });
   fs.writeFileSync(path.join(fixtureProject, '.claude', 'settings.json'), `${JSON.stringify({
     hooks: {
@@ -201,9 +211,9 @@ export async function runRenderProbe() {
   const acceptance = [];
   try {
     stage('prewarm:start');
-    await prewarm(home, fixtureProject);   // make the render measure the WARM common case
+    await prewarm(fixtureRoot, fixtureProject);   // make the render measure the WARM common case
     stage('prewarm:done');
-    server = startConsole(port, home, fixtureProject);
+    server = startConsole(port, fixtureRoot, fixtureProject);
     stage('server:spawned');
     const readyMs = await waitForReady(port);
     stage('server:ready');
@@ -226,7 +236,7 @@ export async function runRenderProbe() {
 
     // The release contract is behavioral, not a source-string check: load the rendered console,
     // exercise both ordinary settings through their real HTTP handlers, reload, and prove the
-    // chosen values survived. The HOME above is disposable, so this never touches user state.
+    // chosen values survived. The fixture root above is disposable, so this never touches user state.
     const consolePage = await browser.newPage();
     const initialStateStartedAt = Date.now();
     const initialStateResponsePromise = consolePage.waitForResponse((response) => (
@@ -301,8 +311,8 @@ export async function runRenderProbe() {
     });
     stage('console:settings-accepted');
 
-    // The isolated fixture carries one real npx-wiring defect on every OS. HOME and USERPROFILE
-    // point to the same fixture root above, so a missing card is a product failure, not a platform
+    // The isolated fixture carries one real npx-wiring defect on every OS. Its explicit console root
+    // points to the fixture above, so a missing card is a product failure, not a platform
     // condition the oracle may silently accept.
     await consolePage.waitForSelector('article.rec', { state: 'attached' });
     const recommendationFetchAndRenderMs = Date.now() - recommendationReloadStartedAt;
@@ -420,7 +430,7 @@ export async function runRenderProbe() {
     stage('cleanup:start');
     try { if (browser) await browser.close(); } catch {}
     try { if (server) server.kill(); } catch {}
-    try { fs.rmSync(home, { recursive: true, force: true }); } catch {}
+    try { fs.rmSync(fixtureRoot, { recursive: true, force: true }); } catch {}
     stage('cleanup:done');
   }
   return { results, acceptance, notes };

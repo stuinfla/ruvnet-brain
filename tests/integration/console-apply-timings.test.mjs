@@ -1,6 +1,6 @@
 // console-apply-timings.test.mjs — a real console apply must disclose where its time went.
 //
-// This starts the actual console server against an isolated HOME and applies the same one-item
+// This starts the actual console server against an explicit, isolated console root and applies the same one-item
 // npx-hook reconciliation used by the UX probe. The response may expose durations only: no paths,
 // command output, undo token, or user configuration is accepted as timing telemetry.
 import fs from 'node:fs';
@@ -16,7 +16,7 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const CONSOLE = path.join(REPO, 'scripts', 'onboarding-console.mjs');
 const RENDER_PROBE = path.join(REPO, 'tests', 'ux', 'render-probe.mjs');
 
-let home;
+let fixtureRoot;
 let project;
 let server;
 let port;
@@ -74,8 +74,8 @@ async function waitForConsole() {
 }
 
 beforeAll(async () => {
-  home = fs.mkdtempSync(path.join(os.tmpdir(), 'console-apply-timings-home-'));
-  project = path.join(home, 'Code', 'dirty-console-fixture');
+  fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-apply-timings-root-'));
+  project = path.join(fixtureRoot, 'Code', 'dirty-console-fixture');
   fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
   fs.writeFileSync(path.join(project, '.claude', 'settings.json'), `${JSON.stringify({
     hooks: {
@@ -90,8 +90,11 @@ beforeAll(async () => {
     cwd: project,
     env: {
       ...process.env,
-      HOME: home,
-      USERPROFILE: home,
+      RUVNET_CONSOLE_ROOT: fixtureRoot,
+      RUVNET_BRAIN_CONFIG_FILE: path.join(fixtureRoot, '.claude', 'ruvnet-brain', 'config.json'),
+      RUVNET_SETTINGS_FILE: path.join(fixtureRoot, '.config', 'ruvnet-brain', 'settings.json'),
+      RUVNET_BRAIN_SECRETS_FILE: path.join(fixtureRoot, '.config', 'ruvnet-brain', 'secrets.enc.json'),
+      RUVNET_BRAIN_STATE_DIR: path.join(fixtureRoot, '.config', 'ruvnet-brain'),
       CONSOLE_PORT: String(port),
       RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1',
     },
@@ -105,7 +108,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   try { if (server && !server.killed) server.kill('SIGKILL'); } catch {}
-  try { if (home) fs.rmSync(home, { recursive: true, force: true }); } catch {}
+  try { if (fixtureRoot) fs.rmSync(fixtureRoot, { recursive: true, force: true }); } catch {}
 });
 
 describe('/api/apply timing receipt', () => {
@@ -192,5 +195,17 @@ describe('/api/apply timing receipt', () => {
     const source = fs.readFileSync(RENDER_PROBE, 'utf8');
     expect(source).not.toMatch(/\.click\(\s*\{\s*trial\s*:\s*true\s*\}\s*\)/);
     expect(source.match(/fixAllButton\.click\(/g)).toHaveLength(1);
+  });
+
+  it('uses the explicit console-root fixture contract instead of redefining process home', () => {
+    const sources = [
+      fs.readFileSync(RENDER_PROBE, 'utf8'),
+      fs.readFileSync(CONSOLE, 'utf8'),
+    ];
+    expect(sources[0]).toContain('RUVNET_CONSOLE_ROOT');
+    expect(sources[1]).toContain('RUVNET_CONSOLE_ROOT');
+    for (const source of sources) {
+      expect(source).not.toMatch(/\b(?:HOME|USERPROFILE)\s*:/);
+    }
   });
 });

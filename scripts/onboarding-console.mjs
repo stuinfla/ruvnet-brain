@@ -69,22 +69,43 @@ import { applyNightlyChoice, nightlyStatus } from './nightly-controller.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(__dirname);
 const CONSOLE_DIR = path.join(REPO, 'console');
-const HOME = os.homedir();
-const NPM_PREFIX = path.join(HOME, '.npm-global');
-const CONFIG_DIR = path.join(HOME, '.claude/ruvnet-brain');
+const SYSTEM_HOME = os.homedir();
+
+/**
+ * The console's explicit root boundary. It scopes only console-owned configuration, state, cache,
+ * and discovery; global binaries, account credentials, and external tool state retain SYSTEM_HOME.
+ */
+export function consoleRootFromEnvironment(env = process.env, systemHome = SYSTEM_HOME) {
+  const configured = env.RUVNET_CONSOLE_ROOT;
+  if (!configured) return systemHome;
+  if (typeof configured !== 'string' || !path.isAbsolute(configured)) {
+    throw new Error('RUVNET_CONSOLE_ROOT must be an absolute path');
+  }
+  return path.resolve(configured);
+}
+
+// A test or an embedded caller can isolate the console's owned files and discovery roots without
+// redefining the operating-system home directory. Normal launches retain the OS home exactly.
+const CONSOLE_ROOT = consoleRootFromEnvironment();
+const NPM_PREFIX = path.join(SYSTEM_HOME, '.npm-global');
+const CONFIG_DIR = path.join(CONSOLE_ROOT, '.claude/ruvnet-brain');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
-const UNDO_JOURNAL = path.join(HOME, '.cache/ruvnet-brain/console-undo.jsonl');
+const UNDO_JOURNAL = path.join(CONSOLE_ROOT, '.cache/ruvnet-brain/console-undo.jsonl');
 const INSTALLED_KB = process.env.RUVNET_BRAIN_KB
-  || path.join(HOME, '.cache', 'ruvnet-brain', 'kb');
+  || path.join(CONSOLE_ROOT, '.cache', 'ruvnet-brain', 'kb');
 const COMPLETE_BRAIN_SOURCE = process.env.RUVNET_BRAIN_COMPLETE_SOURCE
   || path.join(REPO, 'dist', 'ruvnet-brain');
 const TOKEN = crypto.randomBytes(24).toString('hex');
-const RUNTIME_RECEIPT_DIR = path.join(HOME, '.cache', 'ruvnet-brain', 'console-instances');
+const RUNTIME_RECEIPT_DIR = path.join(CONSOLE_ROOT, '.cache', 'ruvnet-brain', 'console-instances');
 const RUNTIME_PRODUCT = 'ruvnet-brain-console';
 const RUNTIME_SCHEMA = 1;
 const RUNTIME_API_CONTRACT = 1;
 const RUNTIME_SCRIPT = fs.realpathSync(fileURLToPath(import.meta.url));
 const RUNTIME_SOURCE_SHA256 = crypto.createHash('sha256').update(fs.readFileSync(RUNTIME_SCRIPT)).digest('hex');
+
+function consoleCandidateRoots() {
+  return candidateRoots({ home: CONSOLE_ROOT, configPath: CONFIG_PATH });
+}
 
 function canonicalScope(cwd = process.cwd()) {
   try { return fs.realpathSync(cwd); } catch { return path.resolve(cwd); }
@@ -356,7 +377,7 @@ function wiringSurvey() {
   // must never count the same project twice.
   const seenProjects = new Set();
   const projects = [];
-  for (const root of candidateRoots()) {
+  for (const root of consoleCandidateRoots()) {
     for (const proj of findProjects(root)) {
       const resolved = path.resolve(proj);
       if (seenProjects.has(resolved)) continue;
@@ -394,7 +415,7 @@ function wiringSurvey() {
 
 // ── Memory health (read-only probes for the project the console was launched from) ────────────────
 function sessionHookExists() {
-  return fs.existsSync(path.join(HOME, '.claude/hooks/agentdb-ensure.sh')) || fs.existsSync(path.join(HOME, '.claude/hooks'));
+  return fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks/agentdb-ensure.sh')) || fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks'));
 }
 function probeMemory(projectDir) {
   const db = path.join(projectDir, '.swarm/memory.db');
@@ -462,7 +483,7 @@ function scanFleet() {
 function gatherMemory(cwd, { fleet = true } = {}) {
   // health = for the project the console was launched from (fall back to this repo)
   const project = fs.existsSync(path.join(cwd, '.swarm/memory.db')) ? cwd : REPO;
-  const projName = project.replace(HOME + '/Code/', '').replace(HOME + '/', '~/');
+  const projName = project.replace(CONSOLE_ROOT + '/Code/', '').replace(CONSOLE_ROOT + '/', '~/');
   const health = scoreMemoryHealth({ project: projName, probes: probeMemory(project) });
   return { fleet: fleet ? scanFleet() : null, health };
 }
@@ -471,10 +492,10 @@ function gatherMemory(cwd, { fleet = true } = {}) {
 function gatherSavings() {
   // Primary source is the real routing-receipts ledger written by scripts/route-cheap.mjs.
   const files = [
-    path.join(HOME, '.claude/metaharness/routing-receipts.jsonl'),
-    path.join(HOME, '.cache/ruvnet-brain/metaharness-receipts.jsonl'),
+    path.join(SYSTEM_HOME, '.claude/metaharness/routing-receipts.jsonl'),
+    path.join(SYSTEM_HOME, '.cache/ruvnet-brain/metaharness-receipts.jsonl'),
     // Canonical user-level ledger (issue #36 — the hooks no longer scatter per-CWD copies).
-    path.join(HOME, '.cache/ruvnet-brain/token-ledger.jsonl'),
+    path.join(SYSTEM_HOME, '.cache/ruvnet-brain/token-ledger.jsonl'),
     // Legacy location, still read so an existing user's history is not orphaned by the move.
     path.join(REPO, 'plugin/scripts/.ruvnet-brain/token-ledger.jsonl'),
   ];
@@ -578,7 +599,7 @@ function gatherConfig() {
     });
   }
   return {
-    path: CONFIG_PATH.replace(HOME, '~'),
+    path: CONFIG_PATH.replace(CONSOLE_ROOT, '~'),
     exists: fs.existsSync(CONFIG_PATH),
     values: {
       openrouterKey: credential.configured,                // boolean only — never the secret itself
@@ -627,7 +648,7 @@ function gatherAdvocacy() {
   const chosen = raw && typeof raw === 'object' && raw.settings && typeof raw.settings === 'object'
     ? raw.settings : {};
   return {
-    path: state.path.replace(HOME, '~'),
+    path: state.path.replace(CONSOLE_ROOT, '~'),
     exists: state.exists,
     values: Object.fromEntries(LIVE_USER_FIELDS.map((field) => [
       field.key,
@@ -675,7 +696,7 @@ function saveAdvocacy(values) {
   publishSettingsToCache();
   return {
     ok: true,
-    backup: result.backup ? result.backup.replace(HOME, '~') : null,
+    backup: result.backup ? result.backup.replace(CONSOLE_ROOT, '~') : null,
     values: Object.fromEntries(LIVE_USER_SETTING_KEYS.map((key) => [key, result.values[key]])),
     log: result.log,
   };
@@ -715,7 +736,7 @@ function gatherBrainProfile() {
   const source = measureBrainProfile(COMPLETE_BRAIN_SOURCE);
   const updaterAvailable = fs.existsSync(path.join(INSTALLED_KB, 'forge-update.mjs'));
   return {
-    path: INSTALLED_KB.replace(HOME, '~'),
+    path: INSTALLED_KB.replace(CONSOLE_ROOT, '~'),
     values: { brainProfile: actual },
     stored: settings.values.brainProfile,
     disagreement: settings.values.brainProfile !== actual,
@@ -736,7 +757,7 @@ function gatherBrainProfile() {
         bytes: installed.byStore.ruvector ?? source.byStore.ruvector ?? null,
       },
     },
-    restoreSource: COMPLETE_BRAIN_SOURCE.replace(HOME, '~'),
+    restoreSource: COMPLETE_BRAIN_SOURCE.replace(CONSOLE_ROOT, '~'),
   };
 }
 
@@ -747,7 +768,7 @@ function gatherBrainPower() {
     off: state.off,
     since: state.since,
     reason: state.reason,
-    switchPath: state.path.replace(HOME, '~'),
+    switchPath: state.path.replace(CONSOLE_ROOT, '~'),
     // The RESOLVED answer — what the machine actually does — not the mirror's opinion of it.
     values: { brainEnabled: !state.off },
     defaults: { brainEnabled: BRAIN_FIELD.default },
@@ -829,7 +850,7 @@ function saveBrainProfile(values) {
     removed: changed.removed || [],
     bytesFreed: changed.bytesFreed || 0,
     mirrored: mirrored.ok,
-    backup: mirrored.backup ? mirrored.backup.replace(HOME, '~') : null,
+    backup: mirrored.backup ? mirrored.backup.replace(CONSOLE_ROOT, '~') : null,
     log: mirrored.ok
       ? (profile === PROFILE_RUVECTOR
         ? `RuVector Only is active — ${changed.removed.length} unselected artifact(s) removed`
@@ -917,7 +938,7 @@ function saveBrainPower(values) {
     ok: true,
     off: state.off,
     since: state.since,
-    backup: mirrored.backup ? mirrored.backup.replace(HOME, '~') : null,
+    backup: mirrored.backup ? mirrored.backup.replace(CONSOLE_ROOT, '~') : null,
     values: { brainEnabled: !state.off },
     // Honest about the half-failure rather than reporting a clean success: the switch is what counts
     // and it moved, but say so plainly if the visible record did not follow it.
@@ -1087,7 +1108,7 @@ function setLesson(body) {
 // setImmediate either (deferring synchronous work still blocks the loop when it runs). A machine with
 // no fleet scan yet is reported `warming`, never as a fabricated zero.
 let ACTIVITY_MACHINE_CACHE = null;
-const CONSOLE_CACHE_PATH = path.join(HOME, '.cache/ruvnet-brain/console-cache.json');
+const CONSOLE_CACHE_PATH = path.join(CONSOLE_ROOT, '.cache/ruvnet-brain/console-cache.json');
 
 // ── Warm-cache serving (2026-07-17, the demo-hang fix) ─────────────────────────────────────────────
 // Every read-model here does multi-second synchronous work: gatherState ~13s, gatherStack ~22s,
@@ -1537,7 +1558,7 @@ function refreshFleetCache() {
   const seen = new Set();
   // Scan every candidate root (issue #19) — this is what made machine-wide totals read 0 on a
   // machine whose projects live under ~/source instead of ~/Code.
-  for (const root of candidateRoots()) {
+  for (const root of consoleCandidateRoots()) {
     for (const s of findMemoryStores(root)) {
       const resolved = path.resolve(s.project);
       if (seen.has(resolved)) continue; // a project visible under two roots (e.g. a symlink) counts once
@@ -1816,11 +1837,11 @@ function brainVersionOnDisk() {
   try { return getVersion(); } catch { return null; }
 }
 function readInstallChannel() {
-  const reg = readJSON(path.join(HOME, '.claude/plugins/installed_plugins.json'));
+  const reg = readJSON(path.join(SYSTEM_HOME, '.claude/plugins/installed_plugins.json'));
   const entries = reg && reg.plugins && reg.plugins['ruvnet-brain@ruvnet-brain'];
   const e = Array.isArray(entries) ? entries[0] : null;
   if (!e || !e.installPath || !fs.existsSync(e.installPath)) return { installed: false };
-  const km = readJSON(path.join(HOME, '.claude/plugins/known_marketplaces.json'));
+  const km = readJSON(path.join(SYSTEM_HOME, '.claude/plugins/known_marketplaces.json'));
   const src = km && km['ruvnet-brain'] && km['ruvnet-brain'].source;
   const pinned = !!(src && (src.ref || src.tag || src.commit)); // no pin recorded → tracking latest
   return {
@@ -1828,7 +1849,7 @@ function readInstallChannel() {
     version: path.basename(e.installPath) || e.version || null, // the plugin cache version dir IS the truth
     channel: pinned ? 'pinned' : 'latest',
     lastUpdated: e.lastUpdated || null,
-    cacheDir: String(e.installPath).replace(HOME, '~'),
+    cacheDir: String(e.installPath).replace(SYSTEM_HOME, '~'),
     repo: (src && src.repo) || null,
   };
 }
@@ -1969,7 +1990,7 @@ function gatherState(cwd, { fleet = true } = {}) {
   // agentic-flow, and the Savings card claiming "Smart routing: ON" while the Capabilities card said
   // "not installed" — in the same render — was the contradiction that made the whole page untrustworthy.
   // The card now carries the same measurement the capability row uses, so the two cannot disagree.
-  savings.routingInstalled = fs.existsSync(path.join(HOME, '.npm-global/bin/agentic-flow'));
+  savings.routingInstalled = fs.existsSync(path.join(SYSTEM_HOME, '.npm-global/bin/agentic-flow'));
   try { savings.routerEngine = gatherRouterEngine(); } catch { savings.routerEngine = null; }
   try {
     const cat = loadCatalog();
@@ -2015,7 +2036,7 @@ function gatherState(cwd, { fleet = true } = {}) {
     token: TOKEN,
     generatedAt: new Date().toISOString(),
     preStateHash,
-    host: { user: os.userInfo().username, platform: process.platform, node: process.version, npmPrefix: NPM_PREFIX.replace(HOME, '~'), brainVersion: brainVersionOnDisk() },
+    host: { user: os.userInfo().username, platform: process.platform, node: process.version, npmPrefix: NPM_PREFIX.replace(SYSTEM_HOME, '~'), brainVersion: brainVersionOnDisk() },
     sections: { wiring, memory, savings, config, userSettings, brainPower, gates, recommendations },
   };
   // Cache the last good state so repeat page-loads paint instantly, same as the stack audit does.
@@ -2036,7 +2057,7 @@ function gatherStack() {
   // ISSUE #22 — carry `source` ('npm-global' | 'plugin') + marketplace through so the console can show
   // (and count) tools installed via the Claude Code plugin marketplace, not just `npm install -g` ones.
   const rows = a.rows.map((r) => ({ name: r.name, installed: r.installed, target: r.target, tag: r.tag, state: r.state, source: r.source ?? 'npm-global', marketplace: r.marketplace ?? null }));
-  const shadows = a.shadows.map((s) => ({ name: s.name, version: s.version, global: s.global, dir: String(s.dir).replace(HOME, '~'), stale: !!(s.global && s.version !== s.global) }));
+  const shadows = a.shadows.map((s) => ({ name: s.name, version: s.version, global: s.global, dir: String(s.dir).replace(SYSTEM_HOME, '~'), stale: !!(s.global && s.version !== s.global) }));
   const by = (st) => rows.filter((r) => r.state === st).length;
   const summary = { total: rows.length, behind: by('BEHIND'), broken: by('BROKEN'), ahead: by('AHEAD'), current: by('CURRENT'), unresolved: by('UNRESOLVED'), shadows: shadows.length, stale: a.stale.length };
   const recommendations = buildStackRecommendations({ rows: a.rows, stale: a.stale });
@@ -2072,24 +2093,24 @@ function elapsedMs(startedAt) {
 // (issue #19) — reconstruct the absolute path by checking each root, so reconcile/undo can act on a
 // project under ~/source just as well as one under ~/Code.
 function resolveProjectDir(project) {
-  for (const root of candidateRoots()) {
+  for (const root of consoleCandidateRoots()) {
     const p = path.join(root, project);
     if (fs.existsSync(p)) return p;
   }
-  return path.join(HOME, 'Code', project); // last-resort fallback: the previous fixed behavior
+  return path.join(CONSOLE_ROOT, 'Code', project); // last-resort fallback: the previous fixed behavior
 }
 // Re-derive the currently-valid recommendation set, so apply can only ever act on something STILL true.
 /**
  * Observe the learner's REAL state, for the health recommendations.
  *
- * Deliberately reads the GLOBAL learner (`cwd: HOME`), because that is the store the capture flush
+ * Deliberately reads the global learner, because that is the store the capture flush
  * actually writes to. Reading the project-local `.claude-flow/neural` instead is exactly the mistake
  * that made the console display a dead learner (5 trajectories, last trained 6 days earlier) while
  * the live one held 412 — rUv documents this fragmentation as issue #2245, "four contradictory
  * sources". Until it is unified upstream we read the store that learning writes, never the corpse.
  */
 function observeLearning() {
-  const queueDir = path.join(os.homedir(), '.cache', 'ruvnet-brain', 'learn');
+  const queueDir = path.join(SYSTEM_HOME, '.cache', 'ruvnet-brain', 'learn');
   let queueDepth = 0;
   try {
     for (const f of fs.readdirSync(queueDir)) {
@@ -2100,10 +2121,10 @@ function observeLearning() {
 
   let lastTrainSeconds = null; let trajectories = 0;
   try {
-    const r = spawnSync(path.join(os.homedir(), '.npm-global/bin/ruflo'),
+    const r = spawnSync(path.join(SYSTEM_HOME, '.npm-global/bin/ruflo'),
       ['hooks', 'intelligence', '--status'],
       {
-        cwd: os.homedir(),
+        cwd: SYSTEM_HOME,
         env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
         encoding: 'utf8',
         timeout: 20_000,
@@ -2220,7 +2241,7 @@ function apply(ids) {
     // flag exists so it cannot recur here.
     if (plan.exec.usesServerProject) args = [...args, '--project', process.cwd()];
     if (plan.exec.needsReceipt) {
-      const receipt = path.join(HOME, '.cache', 'ruvnet-brain', 'undo', `${plan.key}-${stamp()}.json`);
+      const receipt = path.join(CONSOLE_ROOT, '.cache', 'ruvnet-brain', 'undo', `${plan.key}-${stamp()}.json`);
       undoSpec.receipt = receipt;
       args = [...args, '--receipt', receipt];
     }
@@ -2307,7 +2328,7 @@ function validateConfigPatch(values) {
  */
 function saveConfig(values) {
   try { fs.mkdirSync(CONFIG_DIR, { recursive: true }); }
-  catch (e) { return { ok: false, log: `could not create ${CONFIG_DIR.replace(HOME, '~')}: ${e.message}` }; }
+  catch (e) { return { ok: false, log: `could not create ${CONFIG_DIR.replace(CONSOLE_ROOT, '~')}: ${e.message}` }; }
 
   const { clean, rejected } = validateConfigPatch(values);
   // Nothing valid to write is not a save. Saying "Saved." here would be the dead-button failure with
@@ -2369,7 +2390,7 @@ function saveConfig(values) {
     // A successfully encrypted credential retires the legacy plaintext field on this same commit.
     if (credentialChange?.ok) delete next.openrouterKey;
     try { writeAtomic(CONFIG_PATH, JSON.stringify(next, null, 2) + '\n'); }
-    catch (e) { return { ok: false, backup, log: `write failed: ${e.message}${backup ? `; your previous settings are at ${backup.replace(HOME, '~')}` : ''}` }; }
+    catch (e) { return { ok: false, backup, log: `write failed: ${e.message}${backup ? `; your previous settings are at ${backup.replace(CONSOLE_ROOT, '~')}` : ''}` }; }
     try { fs.chmodSync(CONFIG_PATH, 0o600); } catch { /* best effort on non-posix */ }
 
     // The undo token is journalled only AFTER the write succeeded. Recording an undo for a save that
@@ -2383,7 +2404,7 @@ function saveConfig(values) {
       secretPath: credentialChange?.path ?? null,
       secretExisted: credentialChange?.existed ?? null,
     });
-    return { ok: true, backup: backup ? backup.replace(HOME, '~') : null, undoToken, rejected };
+    return { ok: true, backup: backup ? backup.replace(CONSOLE_ROOT, '~') : null, undoToken, rejected };
   });
 
   if (held.timedOut) {
@@ -2477,7 +2498,7 @@ function undo(undoToken) {
       try {
         const bytes = fs.readFileSync(entry.backup);
         held = withLock(CONFIG_PATH, () => writeAtomic(CONFIG_PATH, bytes));
-      } catch (e) { return { ok: false, log: `restore failed: ${e.message} — your backup at ${entry.backup.replace(HOME, '~')} is intact` }; }
+      } catch (e) { return { ok: false, log: `restore failed: ${e.message} — your backup at ${entry.backup.replace(CONSOLE_ROOT, '~')} is intact` }; }
       if (held.timedOut) return { ok: false, log: `another process is writing your settings and did not finish within ${LOCK_WAIT_MS}ms — NOTHING was restored and your backup is intact; try again` };
       try { fs.chmodSync(CONFIG_PATH, 0o600); } catch { /* best effort on non-posix */ }
       const effectFailures = restoreConfigEffects(entry);
@@ -2537,10 +2558,10 @@ function undo(undoToken) {
     const base = `${path.basename(entry.db)}.rescue-`;
     let baks = [];
     try { baks = fs.readdirSync(dir).filter((n) => n.startsWith(base)).sort(); } catch { /* dir gone */ }
-    if (!baks.length) return { ok: false, log: `no pre-repair backup found next to ${entry.db.replace(HOME, '~')} — nothing was restored` };
+    if (!baks.length) return { ok: false, log: `no pre-repair backup found next to ${entry.db.replace(CONSOLE_ROOT, '~')} — nothing was restored` };
     const from = path.join(dir, baks[baks.length - 1]);
     try { fs.copyFileSync(from, entry.db); }
-    catch (e) { return { ok: false, log: `could not restore ${from.replace(HOME, '~')}: ${e.message}` }; }
+    catch (e) { return { ok: false, log: `could not restore ${from.replace(CONSOLE_ROOT, '~')}: ${e.message}` }; }
     markUndoConsumed(undoToken);
     return { ok: true, log: `restored your memory store from the snapshot taken before the repair (${baks[baks.length - 1]})` };
   }
@@ -2814,7 +2835,7 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
     // precise moment a first-time user is deciding whether this thing works. The child does that
     // scan now (see --refresh-cache), and gatherActivity reports `warming` until it lands.
     if (open) openBrowser(url);
-    // Browser acceptance pre-warms a disposable HOME and disables only this redundant second scan.
+    // Browser acceptance pre-warms a disposable fixture root and disables only this redundant second scan.
     // The production default is unchanged: every ordinary console start refreshes in the background.
     if (process.env.RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH !== '1') kickRefresh({ force: true });
   });
