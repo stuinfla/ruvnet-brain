@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       version:
-        description: Exact release generation; this workflow is locked to 4.0.6
+        description: Exact release generation; this workflow is locked to 4.0.7
         required: true
         type: string
       release_qe_run_id:
@@ -22,13 +22,14 @@ on:
 permissions:
   actions: read
   contents: read
+  issues: read
 
 concurrency:
   group: protected-release-${{ inputs.version }}
   cancel-in-progress: false
 
 env:
-  EXPECTED_VERSION: 4.0.6
+  EXPECTED_VERSION: 4.0.7
   EXPECTED_SHA: ${{ inputs.candidate_sha }}
 
 jobs:
@@ -62,6 +63,15 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || { echo 'candidate checkout SHA mismatch' >&2; exit 1; }
           test "$(git rev-parse origin/main)" = "$EXPECTED_SHA" || { echo 'candidate is not current origin/main' >&2; exit 1; }
           test -z "$(git status --porcelain)" || { echo 'candidate checkout is dirty' >&2; exit 1; }
+
+      - name: Require zero open repository issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          open_issues="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number --jq 'length')"
+          test "$open_issues" -eq 0 || { echo "$open_issues open repository issue(s) block release" >&2; exit 1; }
 
       - name: Prove exact-SHA CI and release-qe completed successfully
         env:

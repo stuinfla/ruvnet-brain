@@ -32,6 +32,14 @@ describe('protected release rail', () => {
     expect(source).toContain("status === 'completed' && conclusion === 'success'");
   });
 
+  it('fails closed while any repository issue remains open', () => {
+    const source = workflow();
+    expect(source).toContain('issues: read');
+    expect(source).toContain('Require zero open repository issues');
+    expect(source).toContain('gh issue list --repo "$GITHUB_REPOSITORY" --state open');
+    expect(source).toContain('test "$open_issues" -eq 0');
+  });
+
   it('keeps generated evidence outside the checkout until source cleanliness is proven', () => {
     expect(ci()).toContain('$RUNNER_TEMP/release-evidence');
     const source = workflow();
