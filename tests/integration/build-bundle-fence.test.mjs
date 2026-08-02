@@ -110,6 +110,20 @@ describe('build-bundle.mjs — private-store fence (fail-closed)', () => {
 });
 
 describe('build-bundle.mjs — publishable artifact gate (fail-closed)', () => {
+  it('ignores AppleDouble RVF metadata even when it sits beside canonical assets', () => {
+    const assets = path.join(tmp, 'release-assets');
+    fs.mkdirSync(assets);
+    fs.writeFileSync(path.join(tmp, 'kb/PRIVATE-STORES.json'), JSON.stringify({ privateStores: [] }));
+    fs.writeFileSync(path.join(assets, 'public-repo.big.rvf'), '');
+    fs.writeFileSync(path.join(assets, '._public-repo.big.rvf'), '');
+
+    const r = runBuildBundle({}, ['--assets', assets]);
+
+    expect(r.stdout).not.toContain('._public-repo');
+    const manifest = JSON.parse(fs.readFileSync(path.join(tmp, 'dist/ruvnet-brain/manifest.json'), 'utf8'));
+    expect(manifest.builtRepos.map(({ name }) => name)).toEqual(['public-repo']);
+  });
+
   it('assembles explicitly supplied external release assets while keeping the source-tree private fence authoritative', () => {
     const assets = path.join(tmp, 'release-assets');
     fs.mkdirSync(assets);
