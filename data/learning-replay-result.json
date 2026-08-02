@@ -2,8 +2,8 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "PASS",
   "why": "3/3 runs passed (bar 2/3)",
-  "sha": "53d52503e2f4f8370c9e91bd87b4ec9078aed6dd",
-  "at": "2026-08-02T12:15:00.572Z",
+  "sha": "327ef47823f86863b93796d1ec1fc797d88638d5",
+  "at": "2026-08-02T12:54:56.356Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -25,7 +25,7 @@
   "rate": 1,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 67.4,
+  "wallSeconds": 82.9,
   "premise": {
     "verified": true,
     "evidence": "-q, --query               Search query (required)"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1785672830690",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-9XkXSY/brain-home/versions/d4-refresh-1785672830690",
+    "generation": "d4-refresh-1785675210393",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-G8n7jp/brain-home/versions/d4-refresh-1785675210393",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -83,13 +83,13 @@
           "exitOk": true,
           "retrieved": true,
           "why": "exit 0; the output carries the seeded memory (matched \"note-caching\")",
-          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 5ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
+          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 6ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
         },
         "lessonIndex": 0,
         "firstToolIndex": 1,
         "lessonBeforeFirstToolCall": true,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-9XkXSY/transcripts/run1-treated.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-G8n7jp/transcripts/run1-treated.stream.jsonl"
       },
       "control": {
         "class": "positional",
@@ -113,7 +113,7 @@
         },
         "lessonDelivered": false,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-9XkXSY/transcripts/run1-control.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-G8n7jp/transcripts/run1-control.stream.jsonl"
       }
     },
     {
@@ -140,18 +140,18 @@
           "exitOk": true,
           "retrieved": true,
           "why": "exit 0; the output carries the seeded memory (matched \"note-caching\")",
-          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 4ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
+          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 8ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
         },
         "lessonIndex": 0,
         "firstToolIndex": 1,
         "lessonBeforeFirstToolCall": true,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-9XkXSY/transcripts/run2-treated.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-G8n7jp/transcripts/run2-treated.stream.jsonl"
       },
       "control": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
+        "command": "pwd && command -v ruflo && ruflo memory search \"caching strategy\" --path .swarm/memory.db",
         "exec": {
           "ran": true,
           "argv": [
@@ -159,7 +159,8 @@
             "memory",
             "search",
             "caching strategy",
-            "--path"
+            "--path",
+            ".swarm/memory.db"
           ],
           "exit": 1,
           "exitOk": false,
@@ -169,7 +170,7 @@
         },
         "lessonDelivered": false,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-9XkXSY/transcripts/run2-control.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-G8n7jp/transcripts/run2-control.stream.jsonl"
       }
     },
     {
@@ -196,13 +197,13 @@
           "exitOk": true,
           "retrieved": true,
           "why": "exit 0; the output carries the seeded memory (matched \"note-caching\")",
-          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 4ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
+          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 6ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
         },
         "lessonIndex": 0,
         "firstToolIndex": 1,
         "lessonBeforeFirstToolCall": true,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-9XkXSY/transcripts/run3-treated.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-G8n7jp/transcripts/run3-treated.stream.jsonl"
       },
       "control": {
         "class": "positional",
@@ -226,7 +227,7 @@
         },
         "lessonDelivered": false,
         "model": "gpt-5.6-sol",
-        "transcript": ".ruvnet-brain/learning-replay/run-9XkXSY/transcripts/run3-control.stream.jsonl"
+        "transcript": ".ruvnet-brain/learning-replay/run-G8n7jp/transcripts/run3-control.stream.jsonl"
       }
     }
   ]
