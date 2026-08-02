@@ -42,8 +42,8 @@ afterEach(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catc
 
 /** Fire the runtime exactly as hook-shim.mjs dispatches it: `node runtime <CCEvent>`, JSON on stdin,
  *  the three harness-observed channels (code, stdout, stderr) kept strictly apart. */
-function fireRuntime(event, { producers, env = {}, payload } = {}) {
-  const r = spawnSync('node', [RUNTIME, event], {
+function fireRuntime(event, { producers, env = {}, payload, runtime = RUNTIME } = {}) {
+  const r = spawnSync('node', [runtime, event], {
     input: JSON.stringify(payload ?? { prompt: 'a prompt long enough to look like a real goal statement', session_id: 's1' }),
     encoding: 'utf8',
     // TIMEOUT ORDERING (2026-07-27): the OUTER spawn timeout must exceed the INNER producer
@@ -411,6 +411,44 @@ describe('closed world, functionally: the built-in registry reaches the real pro
     expect(r.code).toBe(0);
     expect(r.stdout).not.toBe('');
     expect(JSON.parse(r.stdout).hookSpecificOutput.additionalContext).toContain('built-in registry');
+  });
+
+  it('a standalone copied plugin payload applies an actionable lesson without a marketplace fallback', () => {
+    const payloadRoot = path.join(dir, 'standalone-plugin');
+    const isolatedHome = path.join(dir, 'home-with-no-marketplace');
+    fs.cpSync(path.join(ROOT, 'plugin'), payloadRoot, { recursive: true });
+    fs.mkdirSync(isolatedHome, { recursive: true });
+
+    const store = path.join(dir, 'standalone-lessons.json');
+    fs.writeFileSync(store, JSON.stringify({
+      version: 1,
+      lessons: [{
+        id: 'ADV-standalone-action',
+        statement: 'Pass a memory-search query with its required query flag, not through help discovery.',
+        trigger: 'assert-fact', enforcement: 'checklist', origin: 'user-stated', status: 'ratified',
+        evidence: [{ observed: 'the corrected command form was independently learned twice' }],
+        projects: ['alpha', 'beta'], repeatCount: 4,
+      }],
+    }));
+
+    const r = fireRuntime('UserPromptSubmit', {
+      runtime: path.join(payloadRoot, 'scripts', 'unprompted-runtime.mjs'),
+      env: {
+        HOME: isolatedHome,
+        RUVNET_LESSON_STORE: store,
+        RUVNET_LESSON_OPTIN: path.join(dir, 'standalone-no-optin.json'),
+        RUVNET_LESSON_GATE_STATE: path.join(dir, 'standalone-gate.json'),
+        RUVNET_SETTINGS_FILE: writeSettings('off'),
+        RUVNET_ADVOCACY_OUTCOMES: path.join(dir, 'standalone-outcomes.jsonl'),
+      },
+      payload: { prompt: 'recall the known memory note with the CLI now', session_id: 'standalone-sess' },
+    });
+
+    expect(r.code).toBe(0);
+    const ctx = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain('required query flag');
+    expect(ctx).toMatch(/apply .*correction directly to the .*requested action/i);
+    expect(ctx).toMatch(/do not replace .*requested action with .*help.*discovery/i);
   });
 });
 
