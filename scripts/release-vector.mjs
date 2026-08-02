@@ -33,9 +33,9 @@ export function verdictOf(results) {
   return results.reduce((worst, r) => (RANK.indexOf(r.state) < RANK.indexOf(worst) ? r.state : worst), 'PASS');
 }
 
-export function candidateLineage() {
+export function candidateLineage(root = ROOT) {
   const git = (args) => {
-    const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' });
+    const r = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
     return r.status === 0 ? r.stdout.trim() : '';
   };
   return {
@@ -49,11 +49,8 @@ export function verdictWithLineage(results, lineage) {
   return lineage?.dirty ? 'FAIL' : verdictOf(results);
 }
 
-const exists = (rel) => fs.existsSync(path.join(ROOT, rel));
-const read = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch { return null; } };
-
 /** Run a command; UNKNOWN (not FAIL) when the runner itself could not execute. */
-function run(cmd, args, timeoutMs = 120_000, env = process.env) {
+function runAt(root, cmd, args, timeoutMs = 120_000, env = process.env) {
   // npm installs `npm.cmd` / `npx.cmd` command shims on Windows. Direct spawn does not resolve the
   // extension through PATHEXT, and .cmd files require cmd.exe, so a healthy detector otherwise
   // reads UNKNOWN with ENOENT. Invoke the command interpreter explicitly rather than `shell:true`;
@@ -62,13 +59,25 @@ function run(cmd, args, timeoutMs = 120_000, env = process.env) {
   const executable = windowsCommandShim ? (process.env.ComSpec || 'cmd.exe') : cmd;
   const spawnArgs = windowsCommandShim ? ['/d', '/c', `${cmd}.cmd`, ...args] : args;
   const r = spawnSync(executable, spawnArgs, {
-    cwd: ROOT,
+    cwd: root,
     encoding: 'utf8',
     timeout: timeoutMs,
     env,
   });
   if (r.error || r.status === null) return { state: 'UNKNOWN', why: `runner did not complete: ${r.error?.code || 'killed/timeout'}` };
   return { state: r.status === 0 ? 'PASS' : 'FAIL', why: r.status === 0 ? 'exit 0' : `exit ${r.status}`, out: r.stdout };
+}
+
+/** An explicit detector root makes destructive mutants isolated and concurrency-safe. */
+function detectorScope({ root = ROOT, runCommand = null } = {}) {
+  return {
+    root,
+    exists: (relative) => fs.existsSync(path.join(root, relative)),
+    read: (relative) => {
+      try { return fs.readFileSync(path.join(root, relative), 'utf8'); } catch { return null; }
+    },
+    run: runCommand || ((cmd, args, timeoutMs, env) => runAt(root, cmd, args, timeoutMs, env)),
+  };
 }
 
 // ─── the eight invariants ────────────────────────────────────────────────────────────────────
@@ -80,7 +89,8 @@ export const INVARIANTS = [
     name: 'INSTALL-FAILS-LOUD',
     dimension: 'D8',
     incident: 'verifyInstall() warned and continued; a stranger scored 18/100 on an install that could not fail',
-    detect() {
+    detect(options) {
+      const { exists, read } = detectorScope(options);
       if (!exists('.github/workflows/stranger-matrix.yml')) return { state: 'FAIL', why: 'no stranger matrix' };
       const inst = read('bin/install.mjs');
       if (inst === null) return { state: 'UNKNOWN', why: 'bin/install.mjs unreadable' };
@@ -95,7 +105,8 @@ export const INVARIANTS = [
     name: 'INTERFACE-CORPUS',
     dimension: 'D7',
     incident: 'shell-parsing defects recurred across issues #12/#13/#41/#44, then three stale ADRs reached main because document currency was outside every release gate',
-    detect() {
+    detect(options) {
+      const { exists, run } = detectorScope(options);
       if (!exists('tests/regression/interface-gate-corpus.test.mjs')) return { state: 'FAIL', why: 'no incident corpus' };
       if (!exists('scripts/doc-currency.mjs')) return { state: 'FAIL', why: 'no document-currency gate' };
       const corpus = run('npx', ['vitest', 'run', 'tests/regression/interface-gate-corpus.test.mjs', '--reporter=dot']);
@@ -110,23 +121,29 @@ export const INVARIANTS = [
     name: 'LATENCY-DECISION-LANE',
     dimension: 'D6',
     incident: 'latency breaches only warned; timing regressions did not block shipping',
-    detect: () => (exists('scripts/qe/card-lane-gate.mjs')
-      ? run('node', ['scripts/qe/card-lane-gate.mjs'])
-      : { state: 'FAIL', why: 'no decision-lane gate' }),
+    detect(options) {
+      const { exists, run } = detectorScope(options);
+      return exists('scripts/qe/card-lane-gate.mjs')
+        ? run('node', ['scripts/qe/card-lane-gate.mjs'])
+        : { state: 'FAIL', why: 'no decision-lane gate' };
+    },
   },
   {
     name: 'COEXIST-BYTE-EQUAL',
     dimension: 'D5',
     incident: 'the merged-registry lint found 63 findings across 42 registrations; the prior suite saw 15',
-    detect: () => (exists('tests/mesh/coexistence.test.mjs')
-      ? run('npx', ['vitest', 'run', 'tests/mesh', '--reporter=dot'])
-      : { state: 'FAIL', why: 'no coexistence suite' }),
+    detect(options) {
+      const { exists, run } = detectorScope(options);
+      return exists('tests/mesh/coexistence.test.mjs')
+        ? run('npx', ['vitest', 'run', 'tests/mesh', '--reporter=dot'])
+        : { state: 'FAIL', why: 'no coexistence suite' };
+    },
   },
   {
     name: 'LEARNING-REPLAY',
     dimension: 'D4',
     incident: 'L4 asserted the hook\'s own prose contained words — it proved the brain SPOKE, never that anything LISTENED',
-    async detect() {
+    async detect(options = {}) {
       // DELEGATED to scripts/learning-replay.mjs's own checkArtifact(), not reimplemented here.
       //
       // This detector originally required `artifact.sha === HEAD`, which is WRONG in a way worth
@@ -141,7 +158,9 @@ export const INVARIANTS = [
       try { mod = await import(new URL('./learning-replay.mjs', import.meta.url).href); }
       catch { return { state: 'UNKNOWN', why: 'counterfactual replay harness absent' }; }
       let r;
-      try { r = mod.checkPortfolio(); } catch (e) { return { state: 'UNKNOWN', why: `replay portfolio unreadable: ${e.message}` }; }
+      try {
+        r = options.checkReplay ? options.checkReplay() : mod.checkPortfolio({ repo: options.root || ROOT });
+      } catch (e) { return { state: 'UNKNOWN', why: `replay portfolio unreadable: ${e.message}` }; }
       // `.status` is the field checkArtifact() actually returns — read, not assumed. Reaching for
       // `.verdict` (the name used INSIDE the nested artifact) silently yielded undefined and made a
       // real PASS read UNKNOWN: the delegation "worked" while reporting the opposite of the truth.
@@ -157,7 +176,8 @@ export const INVARIANTS = [
     name: 'SIGNAL-WATCH-FIRES',
     dimension: 'D3',
     incident: 'the OWNER had to report that CI was red — every local surface stayed calm',
-    detect() {
+    detect(options) {
+      const { exists, read, run } = detectorScope(options);
       if (!exists('scripts/signal-watch.mjs')) return { state: 'FAIL', why: 'no signal watcher' };
       const raw = read('plugin/hooks/hooks.json');
       if (raw === null) return { state: 'UNKNOWN', why: 'plugin/hooks/hooks.json unreadable' };
@@ -207,15 +227,19 @@ export const INVARIANTS = [
     name: 'SCENARIOS-CURRENT',
     dimension: 'D2',
     incident: 'ADR-053 specified a mental-model scenario list; it was simply absent',
-    detect: () => (exists('tests/experience/report.mjs')
-      ? run('node', ['tests/experience/report.mjs'])
-      : { state: 'FAIL', why: 'no scenario report' }),
+    detect(options) {
+      const { exists, run } = detectorScope(options);
+      return exists('tests/experience/report.mjs')
+        ? run('node', ['tests/experience/report.mjs'])
+        : { state: 'FAIL', why: 'no scenario report' };
+    },
   },
   {
     name: 'GUARANTEE-RUNS',
     dimension: 'D1',
     incident: 'the product guarantee skipped on every CI runner; REQUIRE_BRAIN=1 was set nowhere in the repo',
-    detect() {
+    detect(options) {
+      const { read, run } = detectorScope(options);
       const ci = read('.github/workflows/ci.yml');
       if (ci === null) return { state: 'UNKNOWN', why: 'ci.yml unreadable' };
       if (!/REQUIRE_BRAIN/.test(ci)) {
@@ -247,12 +271,12 @@ export function headSha() {
 /** Strings a non-PASS verdict mechanically bans from release surfaces (ADR-058). */
 export const BANNED_WHEN_DEGRADED = ['healthy', 'proven', 'all pass'];
 
-export async function evaluate(invariants = INVARIANTS) {
-  const lineage = candidateLineage();
+export async function evaluate(invariants = INVARIANTS, options = {}) {
+  const lineage = candidateLineage(options.root || ROOT);
   const sha = lineage.sha;
   const results = [];
   for (const inv of invariants) {
-    const r = await inv.detect();
+    const r = await inv.detect(options);
     results.push({ name: inv.name, dimension: inv.dimension, state: r.state, why: r.why, sha });
   }
   return { sha, lineage, results, verdict: verdictWithLineage(results, lineage) };

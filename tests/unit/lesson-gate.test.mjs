@@ -81,6 +81,21 @@ beforeEach(() => {
 });
 afterEach(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ } });
 
+describe('canonical lesson runtime module boundaries', () => {
+  test('every self-contained plugin source stays below the repository 500-line ceiling', () => {
+    const files = [
+      'lesson-gate.mjs',
+      'lesson-command-scope.mjs',
+      'lesson-presentation.mjs',
+      'lesson-store.mjs',
+    ];
+    for (const file of files) {
+      const source = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', file), 'utf8');
+      expect(source.split('\n').length, `${file} must remain under 500 lines`).toBeLessThan(500);
+    }
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 describe('a NUDGE informs and never refuses', () => {
   test('exits 0 — the action is allowed', () => {
@@ -105,6 +120,36 @@ describe('a NUDGE informs and never refuses', () => {
     writeStore([blockLesson()]);
     const { stdout } = runGate(['--event', 'Stop', '--trigger', 'claim-done']);
     expect(JSON.parse(stdout).hookSpecificOutput.additionalContext).toMatch(/advisory/i);
+  });
+
+  test('applies an actionable correction instead of replacing the requested action with help discovery', () => {
+    writeStore([blockLesson({
+      id: 'T02-apply-known-command-form',
+      statement: 'Pass a memory-search query with the required query flag, not as a positional phrase.',
+      trigger: 'assert-fact',
+      enforcement: 'checklist',
+      check: 'the requested memory search runs with its query flag',
+    })]);
+    const { stdout } = runGate(['--event', 'UserPromptSubmit', '--trigger', 'assert-fact']);
+    const ctx = JSON.parse(stdout).hookSpecificOutput.additionalContext;
+    expect(ctx).toMatch(/apply .*correction directly to the .*requested action/i);
+    expect(ctx).toMatch(/do not replace .*requested action with .*help.*discovery/i);
+  });
+
+  test('an exact corrective Ruflo command reaches the hook boundary as the first-and-only action', () => {
+    const exact = 'ruflo memory search -q "caching strategy" --path .swarm/memory.db';
+    writeStore([blockLesson({
+      id: 'T02-run-exact-ruflo-command',
+      statement: `Run ${exact}.`,
+      trigger: 'assert-fact',
+      enforcement: 'checklist',
+      check: 'the exact memory search runs without discovery calls',
+    })]);
+    const { stdout } = runGate(['--event', 'UserPromptSubmit', '--trigger', 'assert-fact']);
+    const ctx = JSON.parse(stdout).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain(exact);
+    expect(ctx).toMatch(/FIRST and ONLY Ruflo invocation/);
+    expect(ctx).toMatch(/must not prefix .*--help.*--version.*status/i);
   });
 
   test('truncates long evidence at a WORD boundary, never mid-word', () => {
