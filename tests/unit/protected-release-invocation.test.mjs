@@ -65,6 +65,7 @@ function fixture() {
     RUVNET_EXPECTED_SHA: SHA,
     RUVNET_EXPECTED_ARTIFACT_SHA256: digest,
     RUVNET_EXPECTED_VERSION: VERSION,
+    RUVNET_RELEASE_MODE: 'strict',
   };
   return { root, env, receipt, digest };
 }
@@ -77,6 +78,16 @@ describe('protected publish invocation guard', () => {
     });
   });
 
+  it('accepts an explicit stabilization seal only in stabilization mode', () => {
+    const f = fixture();
+    Object.assign(f.receipt, {
+      phase: 'stabilization-candidate', mode: 'stabilization', targetScore: 95, scoreClaimed: false,
+    });
+    fs.writeFileSync(path.join(f.root, 'release-evidence/candidate-receipt.json'), JSON.stringify(f.receipt));
+    f.env.RUVNET_RELEASE_MODE = 'stabilization';
+    expect(validateProtectedPublishInvocation({ root: f.root, env: f.env }).verdict).toBe('PASS');
+  });
+
   it.each([
     ['local invocation', (f) => { delete f.env.GITHUB_ACTIONS; }],
     ['wrong workflow', (f) => { f.env.GITHUB_WORKFLOW = 'ci'; }],
@@ -84,6 +95,7 @@ describe('protected publish invocation guard', () => {
     ['split SHA', (f) => { f.env.RUVNET_EXPECTED_SHA = 'c'.repeat(40); }],
     ['split digest', (f) => { f.env.RUVNET_EXPECTED_ARTIFACT_SHA256 = 'd'.repeat(64); }],
     ['wrong generation', (f) => { f.env.RUVNET_EXPECTED_VERSION = '4.0.3'; }],
+    ['wrong release mode', (f) => { f.env.RUVNET_RELEASE_MODE = 'stabilization'; }],
     ['tampered artifact', (f) => { fs.appendFileSync(path.join(f.root, f.receipt.artifact.path), '!'); }],
   ])('fails closed on %s', (_name, mutate) => {
     const f = fixture();

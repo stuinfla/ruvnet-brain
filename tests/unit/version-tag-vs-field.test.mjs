@@ -62,4 +62,10 @@ describe('both writers strip before writing — the regression guard', () => {
   it('build-bundle still takes --version as a Release TAG', () => {
     expect(read('scripts/build-bundle.mjs')).toMatch(/arg\('--version', getVersionTag\(\)\)/);
   });
+
+  it('build-bundle rebinds both SOURCE identity fields to the current generation', () => {
+    const src = read('scripts/build-bundle.mjs');
+    expect(src).toContain('doc.brainVersion = getVersion()');
+    expect(src).toContain('doc.releaseTag = getVersionTag()');
+  });
 });

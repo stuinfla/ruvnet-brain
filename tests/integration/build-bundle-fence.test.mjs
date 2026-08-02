@@ -48,6 +48,11 @@ beforeEach(() => {
   fs.writeFileSync(path.join(tmp, 'data/registry.tiers.json'), JSON.stringify({ tiers: {} }));
   // version.mjs's single source of truth — build-bundle.mjs resolves the version tag before the fence.
   fs.writeFileSync(path.join(tmp, 'plugin/.claude-plugin/plugin.json'), JSON.stringify({ version: '0.0.0-test' }));
+  // SOURCE.json is now a required identity surface: the bundle builder rewrites both fields to the
+  // candidate version and must fail before publication if that source surface is absent.
+  fs.writeFileSync(path.join(tmp, 'kb/SOURCE.json'), JSON.stringify({
+    brainVersion: '0.0.0-previous', releaseTag: 'v0.0.0-previous',
+  }));
 });
 afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 

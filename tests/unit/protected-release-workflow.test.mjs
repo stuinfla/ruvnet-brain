@@ -3,71 +3,58 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
-const workflowPath = path.join(ROOT, '.github/workflows/protected-release.yml');
-const readWorkflow = () => fs.readFileSync(workflowPath, 'utf8');
+const workflow = () => fs.readFileSync(path.join(ROOT, '.github/workflows/protected-release.yml'), 'utf8');
+const ci = () => fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+const gitignore = () => fs.readFileSync(path.join(ROOT, '.gitignore'), 'utf8');
 
-describe('protected release workflow', () => {
-  it('accepts only explicit 4.0.4 candidate identity inputs', () => {
-    const workflow = readWorkflow();
-    expect(workflow).toContain('candidate_sha:');
-    expect(workflow).toContain('artifact_sha256:');
-    expect(workflow).toContain('version:');
-    expect(workflow).toContain('EXPECTED_VERSION: 4.0.4');
-    expect(workflow).toContain('EXPECTED_SHA: ${{ inputs.candidate_sha }}');
-    expect(workflow).toContain('EXPECTED_DIGEST: ${{ inputs.artifact_sha256 }}');
+describe('protected release rail', () => {
+  it('has one CI producer for the exact candidate consumed by the publisher', () => {
+    expect(ci()).toContain('node scripts/stabilization-receipt.mjs');
+    expect(ci()).toContain('name: release-evidence-${{ github.sha }}');
+    expect(workflow()).toContain('name: release-evidence-${{ inputs.candidate_sha }}');
+    expect(workflow()).toContain('run-id: ${{ inputs.release_qe_run_id }}');
   });
 
-  it('requires exact-SHA release-qe proof before the publisher can start', () => {
-    const workflow = readWorkflow();
-    expect(workflow).toContain('name: release-qe-proof');
-    expect(workflow).toContain('release_qe_run_id:');
-    expect(workflow).toContain('workflowName == "ci"');
-    expect(workflow).toContain('headSha == env.EXPECTED_SHA');
-    expect(workflow).toContain('name == "release-qe"');
-    expect(workflow).toContain('status == "completed"');
-    expect(workflow).toContain('conclusion == "success"');
-    expect(workflow).toMatch(/publish:\s*\n\s+name: protected-publisher\s*\n\s+needs: release-qe-proof/);
+  it('derives the digest from CI-produced bytes instead of accepting a human digest', () => {
+    const source = workflow();
+    const inputs = source.match(/inputs:\n([\s\S]*?)\n\npermissions:/)?.[1] || '';
+    expect(inputs).not.toContain('artifact_sha256:');
+    expect(source).toContain("crypto.createHash('sha256').update(fs.readFileSync(artifact)).digest('hex')");
+    expect(source).toContain('artifact_sha256=${digest}');
   });
 
-  it('puts the sole publisher behind the reviewer-protected production environment', () => {
-    const workflow = readWorkflow();
-    expect(workflow).toContain('environment: Production – ruvnet-brain');
-    expect(workflow).toContain('node scripts/release-authority.mjs');
-    expect(workflow).toContain('node scripts/release.mjs --publish');
-    expect(workflow.match(/node scripts\/release\.mjs --publish/g)).toHaveLength(1);
+  it('requires the exact candidate to be current main with completed green CI and release QE', () => {
+    const source = workflow();
+    expect(source).toContain('test "$(git rev-parse origin/main)" = "$EXPECTED_SHA"');
+    expect(source).toContain("run.workflowName === 'ci'");
+    expect(source).toContain('run.headSha === process.env.EXPECTED_SHA');
+    expect(source).toContain("name === 'release-qe'");
+    expect(source).toContain("status === 'completed' && conclusion === 'success'");
   });
 
-  it('validates candidate proof before mutation and publication proof afterwards', () => {
-    const workflow = readWorkflow();
-    const candidateSeal = workflow.indexOf('node scripts/release-proof.mjs --candidate release-evidence/candidate-receipt.json');
-    const publisher = workflow.indexOf('node scripts/release.mjs --publish');
-    const publicationSeal = workflow.indexOf('--publication release-evidence/publication-receipt.json');
-    expect(candidateSeal).toBeGreaterThan(-1);
-    expect(publisher).toBeGreaterThan(candidateSeal);
-    expect(publicationSeal).toBeGreaterThan(publisher);
-    expect(workflow).toContain('candidate-receipt.json');
-    expect(workflow).toContain('publication-receipt.json');
+  it('keeps generated evidence outside the checkout until source cleanliness is proven', () => {
+    expect(ci()).toContain('$RUNNER_TEMP/release-evidence');
+    const source = workflow();
+    expect(source.indexOf('candidate checkout is dirty')).toBeLessThan(source.indexOf('Download CI-produced candidate receipt'));
+    expect(gitignore()).toMatch(/^\/release-evidence\/$/m);
   });
 
-  it('fails closed when the receipt, SHA, digest, version, or proof artifact is absent or split', () => {
-    const workflow = readWorkflow();
-    expect(workflow).toContain('set -euo pipefail');
-    expect(workflow).toContain('test -s release-evidence/candidate-receipt.json');
-    expect(workflow).toContain('test -s release-evidence/publication-receipt.json');
-    expect(workflow).toContain('candidate receipt SHA mismatch');
-    expect(workflow).toContain('candidate artifact digest mismatch');
-    expect(workflow).toContain('candidate version mismatch');
-    expect(workflow).not.toContain('continue-on-error: true');
+  it('puts the sole publisher behind Production approval and preserves post-publication proof', () => {
+    const source = workflow();
+    expect(source).toContain('environment: Production – ruvnet-brain');
+    expect(source.match(/node scripts\/release\.mjs --publish/g)).toHaveLength(1);
+    expect(source).toContain('RUVNET_RELEASE_MODE: stabilization');
+    expect(source).toContain('--publication release-evidence/publication-receipt.json');
+    expect(source).not.toContain('continue-on-error: true');
   });
 
   it.each([
-    ['MUTANT: removing production environment removes the approval boundary', /environment: Production – ruvnet-brain/],
-    ['MUTANT: removing release-qe dependency permits unqualified publication', /needs: release-qe-proof/],
-    ['MUTANT: removing candidate seal permits unverified bytes', /release-proof\.mjs --candidate/],
-    ['MUTANT: removing publication seal permits an unverified shipped claim', /--publication release-evidence\/publication-receipt\.json/],
-  ])('%s', (_name, required) => {
-    const workflow = readWorkflow();
-    expect(workflow.replace(new RegExp(required.source, 'g'), '')).not.toMatch(required);
-    expect(workflow).toMatch(required);
+    ['candidate producer', /stabilization-receipt\.mjs/],
+    ['main identity', /git rev-parse origin\/main/],
+    ['production boundary', /environment: Production – ruvnet-brain/],
+    ['candidate seal', /release-proof\.mjs --candidate/],
+    ['publication seal', /--publication release-evidence\/publication-receipt\.json/],
+  ])('retains load-bearing %s', (_name, required) => {
+    expect(`${ci()}\n${workflow()}`).toMatch(required);
   });
 });

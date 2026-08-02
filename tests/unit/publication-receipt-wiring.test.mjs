@@ -29,7 +29,7 @@ describe('publication receipt wiring', () => {
   });
 
   it('provisions virgin host CLIs before the protected publisher and gives the producer read-only GitHub access', () => {
-    const hostTools = position(workflow, 'Install current Claude Code and Codex host CLIs into the ephemeral runner');
+    const hostTools = position(workflow, 'npm install --global --prefix "$RUNNER_TEMP/host-clis"');
     const publisher = position(workflow, 'node scripts/release.mjs --publish');
     expect(hostTools).toBeLessThan(publisher);
     expect(workflow).toContain('@anthropic-ai/claude-code@latest');

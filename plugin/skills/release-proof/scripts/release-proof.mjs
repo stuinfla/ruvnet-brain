@@ -23,7 +23,42 @@ function versionIdentityFailures(expectedVersion, expectedTag, fields) {
   return mismatches;
 }
 
+export function evaluateStabilizationCandidateReceipt(receipt) {
+  const failures = [];
+  const sha = String(receipt?.sha || '');
+  const digest = digestOf(receipt);
+  if (receipt?.schemaVersion !== 1 || receipt?.phase !== 'stabilization-candidate' || receipt?.mode !== 'stabilization') {
+    failures.push(fail('INVALID_STABILIZATION_RECEIPT', 'schemaVersion=1, phase=stabilization-candidate, and mode=stabilization are required'));
+  }
+  if (receipt?.targetScore !== 95 || receipt?.scoreClaimed !== false) {
+    failures.push(fail('STABILIZATION_SCORE_MISREPRESENTED', 'stabilization must preserve the 95 target and explicitly make no 95 claim'));
+  }
+  if (!cleanHex(sha, 40) || !cleanHex(receipt?.tree, 40) || receipt?.dirty !== false) {
+    failures.push(fail('INVALID_LINEAGE', 'clean candidate SHA and tree are required'));
+  }
+  if (!cleanHex(digest, 64) || receipt?.artifact?.sourceSha !== sha) {
+    failures.push(fail('INVALID_ARTIFACT_DIGEST', 'sealed package digest must be bound to the candidate SHA'));
+  }
+  const version = versionField(receipt?.version);
+  const identityMismatches = versionIdentityFailures(version, receipt?.tag, [
+    ['source package', receipt?.sourceVersions?.package],
+    ['source Claude plugin', receipt?.sourceVersions?.claudePlugin],
+    ['source Codex plugin', receipt?.sourceVersions?.codexPlugin],
+    ['packed npm artifact', receipt?.artifact?.version],
+  ]);
+  if (identityMismatches.length) failures.push(fail('VERSION_IDENTITY_MISMATCH', identityMismatches.join(', ')));
+  if (receipt?.security?.status !== 'PASS' || receipt?.security?.critical !== 0 || receipt?.security?.high !== 0) {
+    failures.push(fail('SECURITY_NOT_PASS', 'stabilization requires zero critical/high dependency findings'));
+  }
+  if (!(receipt?.qe?.total > 0) || receipt?.qe?.status !== 'PASS' || receipt?.qe?.failed !== 0
+    || receipt?.qe?.skipped !== 0 || receipt?.qe?.passed !== receipt?.qe?.total) {
+    failures.push(fail('QE_NOT_PASS', 'release QE must execute nonzero work with zero failed/skipped tests'));
+  }
+  return { verdict: failures.length === 0 ? 'PASS' : 'FAIL', sha, artifactSha256: digest, failures };
+}
+
 export function evaluateCandidateReceipt(receipt) {
+  if (receipt?.phase === 'stabilization-candidate') return evaluateStabilizationCandidateReceipt(receipt);
   const failures = [];
   const sha = String(receipt?.sha || '');
   const digest = digestOf(receipt);

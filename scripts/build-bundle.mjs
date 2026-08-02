@@ -17,7 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { getVersionTag, stripTag } from './version.mjs';
+import { getVersion, getVersionTag, stripTag } from './version.mjs';
 import { auditRvfIndexes } from './rvf-index-audit.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -364,18 +364,20 @@ console.log(`[build-bundle] module graph: ${derivedTools.length} modules from ${
 for (const t of tools) cp(t, OUT, { required: true });
 // self-update provenance (where this bundle came from + the canonical manifest URL). Optional: a build
 // without it simply ships a brain whose `forge-update.mjs --check` reports "self-update not configured".
-cp('SOURCE.json', OUT);
+cp('SOURCE.json', OUT, { required: true });
 
-// releaseTag stamp (2026-07-17). Without this SOURCE.json carries NO version, so every install's
-// telemetry ping sent v:"unknown" and the admin page could never show who is stale — the whole point
-// of the counter. Stamp the product version here so installs report a real number; a release workflow
-// that knows the exact git tag may overwrite this with the bundle's own Release tag.
+// Rebind copied SOURCE.json to this build. The external RVFs may come from the previous release,
+// but the installed product identity belongs to the source generation that assembled them.
 try {
   const sj = path.join(OUT, 'SOURCE.json');
   const doc = JSON.parse(fs.readFileSync(sj, 'utf8'));
-  doc.releaseTag = getVersionTag(); // the real product version tag — never the literal "unknown"
+  doc.brainVersion = getVersion();
+  doc.releaseTag = getVersionTag();
   fs.writeFileSync(sj, JSON.stringify(doc, null, 2));
-} catch (e) { console.error(`[build-bundle] WARN: could not stamp releaseTag into SOURCE.json (${e.message}) — installs will report 'unknown' until fixed.`); }
+} catch (e) {
+  console.error(`[build-bundle] FATAL: could not stamp SOURCE.json identity (${e.message}).`);
+  process.exit(1);
+}
 
 // SIGNED AUTO-APPLY trust root (SEC-0010 #6, 2026-07-17). The self-updater must VERIFY a downloaded
 // bundle's Ed25519 signature before extracting executable code over the user's install. For that it
