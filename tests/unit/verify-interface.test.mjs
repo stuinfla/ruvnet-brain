@@ -41,8 +41,11 @@ describe.skipIf(!hasBash || process.platform === 'win32')(
       expect(result.stderr).not.toMatch(/BLOCKED/);
     });
 
-    it('emits migration guidance for an obvious managed-CLI string', () => {
-      const result = run('ruflo memory search -q test');
+    it.each([
+      ['newline-terminated profile', '{}\n'],
+      ['profile without a final newline', '{}'],
+    ])('emits migration guidance with a %s', (_label, profileContent) => {
+      const result = run('ruflo memory search -q test', { profileContent });
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('ruvnet_cli_help');
       expect(result.stdout).toContain('ruvnet_cli_run');

@@ -31,6 +31,7 @@ PROFILE_INPUT=""
 while IFS= read -r _profile_line; do
   PROFILE_INPUT+="$_profile_line"
   [ ${#PROFILE_INPUT} -ge 65536 ] && break
+  true
 done < "$PROFILE" 2>/dev/null || exit 0
 [ -n "${_profile_line:-}" ] && PROFILE_INPUT+="$_profile_line"
 case "$PROFILE_INPUT" in *'"basis"'*'"assumed:'*) exit 0 ;; esac
