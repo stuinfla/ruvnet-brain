@@ -10,7 +10,7 @@
 // touches no account. It is deterministic timing, which is the cleanest possible satisfaction of the
 // owner's "no API keys" rule for the QE suite.
 //
-// It runs the console WARM (against a pre-warmed temp HOME cache) so the number is the common-case
+// It runs the console WARM (against a pre-warmed temp fixture-root cache) so the number is the common-case
 // "open the console" experience, not a one-time cold scan. Cold-start behaviour (the "it's live"
 // completion signal) is a SEPARATE probe — command-probe.mjs — because it measures a different thing.
 import { spawn } from 'node:child_process';
@@ -20,6 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { consoleFixtureEnvironment } from '../helpers/console-fixture-environment.mjs';
 
 // Playwright is resolved via createRequire (CJS resolution), NOT a bare ESM `import`. Reason, verified
 // live 2026-07-24: on this Mac playwright is a GLOBAL install (~/.npm-global/lib/node_modules), and
@@ -99,12 +100,10 @@ function waitForReady(port, timeoutMs = 20000) {
   });
 }
 
-/** Start the console server on `port` with an isolated HOME, and pre-warm its cache if requested. */
-function startConsole(port, home, cwd = REPO) {
+/** Start the console server on `port` with an isolated fixture root, and pre-warm its cache if requested. */
+function startConsole(port, fixtureRoot, cwd = REPO) {
   const env = {
-    ...process.env,
-    HOME: home,
-    USERPROFILE: home,
+    ...consoleFixtureEnvironment(fixtureRoot),
     CONSOLE_PORT: String(port),
     RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1',
   };
@@ -117,10 +116,10 @@ function startConsole(port, home, cwd = REPO) {
   return child;
 }
 
-/** Pre-warm the cache in the temp HOME by running --refresh-cache once, so the render is warm-path. */
-function prewarm(home, cwd = REPO) {
+/** Pre-warm the cache in the temporary fixture root once, so the render is warm-path. */
+function prewarm(fixtureRoot, cwd = REPO) {
   return new Promise((resolve) => {
-    const env = { ...process.env, HOME: home, USERPROFILE: home };
+    const env = consoleFixtureEnvironment(fixtureRoot);
     const child = spawn(process.execPath, [CONSOLE_MJS, '--refresh-cache'], { env, stdio: 'ignore', cwd });
     let settled = false;
     const finish = () => {
@@ -135,7 +134,7 @@ function prewarm(home, cwd = REPO) {
     // State is the only cache this browser control gate needs. It is written first; waiting for the
     // later machine-wide fleet scan made a nominal 30s browser gate depend on a permitted 60s setup
     // operation. Stop the disposable fixture child as soon as state is ready.
-    const stateCache = path.join(home, '.claude', 'ruvnet-brain', 'state-cache.json');
+    const stateCache = path.join(fixtureRoot, '.claude', 'ruvnet-brain', 'state-cache.json');
     const poll = setInterval(() => {
       if (!fs.existsSync(stateCache)) return;
       try { child.kill(process.platform === 'win32' ? undefined : 'SIGKILL'); } catch {}
@@ -158,14 +157,33 @@ async function timeToSelector(browser, url, selector, label) {
   return { label, selector, ms };
 }
 
+/** Verify a button is rendered and enabled without asking Playwright to scroll or click it. */
+async function nonScrollingButtonReadiness(button) {
+  return button.evaluate((node) => {
+    const before = { x: window.scrollX, y: window.scrollY };
+    const style = window.getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    const after = { x: window.scrollX, y: window.scrollY };
+    return {
+      visible: node.isConnected
+        && rect.width > 0
+        && rect.height > 0
+        && style.display !== 'none'
+        && style.visibility !== 'hidden',
+      enabled: !(node instanceof HTMLButtonElement) || !node.disabled,
+      scrollDeltaPx: Math.hypot(after.x - before.x, after.y - before.y),
+    };
+  });
+}
+
 export async function runRenderProbe() {
   const stage = (name) => process.stderr.write(`[render-probe] ${name}\n`);
   if (!chromium) {
     return { results: [], notes: [`playwright not loadable (${playwrightLoadError}) — render probe NOT RUN, never faked as pass`] };
   }
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'uxqe-home-'));
-  fs.mkdirSync(path.join(home, '.claude', 'ruvnet-brain'), { recursive: true });
-  const fixtureProject = path.join(home, 'Code', 'dirty-console-fixture');
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'uxqe-root-'));
+  fs.mkdirSync(path.join(fixtureRoot, '.claude', 'ruvnet-brain'), { recursive: true });
+  const fixtureProject = path.join(fixtureRoot, 'Code', 'dirty-console-fixture');
   fs.mkdirSync(path.join(fixtureProject, '.claude'), { recursive: true });
   fs.writeFileSync(path.join(fixtureProject, '.claude', 'settings.json'), `${JSON.stringify({
     hooks: {
@@ -182,9 +200,9 @@ export async function runRenderProbe() {
   const acceptance = [];
   try {
     stage('prewarm:start');
-    await prewarm(home, fixtureProject);   // make the render measure the WARM common case
+    await prewarm(fixtureRoot, fixtureProject);   // make the render measure the WARM common case
     stage('prewarm:done');
-    server = startConsole(port, home, fixtureProject);
+    server = startConsole(port, fixtureRoot, fixtureProject);
     stage('server:spawned');
     const readyMs = await waitForReady(port);
     stage('server:ready');
@@ -207,10 +225,18 @@ export async function runRenderProbe() {
 
     // The release contract is behavioral, not a source-string check: load the rendered console,
     // exercise both ordinary settings through their real HTTP handlers, reload, and prove the
-    // chosen values survived. The HOME above is disposable, so this never touches user state.
+    // chosen values survived. The fixture root above is disposable, so this never touches user state.
     const consolePage = await browser.newPage();
+    const initialStateStartedAt = Date.now();
+    const initialStateResponsePromise = consolePage.waitForResponse((response) => (
+      response.request().method() === 'GET'
+      && new URL(response.url()).pathname === '/api/state'
+    ));
     await consolePage.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await initialStateResponsePromise;
+    const initialStateResponseMs = Date.now() - initialStateStartedAt;
     await consolePage.waitForSelector('#field-provider', { state: 'attached' });
+    const initialStateReadyMs = Date.now() - initialStateStartedAt;
     await consolePage.locator('#card-settings > summary').click();
     await consolePage.waitForSelector('#field-provider', { state: 'visible' });
     await consolePage.waitForSelector('#field-advocacy', { state: 'visible' });
@@ -257,7 +283,14 @@ export async function runRenderProbe() {
     await consolePage.locator('#field-advocacy input[value="5"]').check();
     await consolePage.locator('form:has(#field-advocacy) button[type="submit"]').click();
     await consolePage.locator('form:has(#field-advocacy) .form-note.n-ok').waitFor();
+    const recommendationReloadStartedAt = Date.now();
+    const recommendationStateResponsePromise = consolePage.waitForResponse((response) => (
+      response.request().method() === 'GET'
+      && new URL(response.url()).pathname === '/api/state'
+    ));
     await consolePage.reload({ waitUntil: 'domcontentloaded' });
+    await recommendationStateResponsePromise;
+    const recommendationStateResponseMs = Date.now() - recommendationReloadStartedAt;
     await consolePage.waitForSelector('#field-provider input[value="codex"]:checked', { state: 'attached' });
     await consolePage.waitForSelector('#field-advocacy input[value="5"]:checked', { state: 'attached' });
     acceptance.push({
@@ -267,15 +300,18 @@ export async function runRenderProbe() {
     });
     stage('console:settings-accepted');
 
-    // The isolated fixture carries one real npx-wiring defect on every OS. HOME and USERPROFILE
-    // point to the same fixture root above, so a missing card is a product failure, not a platform
+    // The isolated fixture carries one real npx-wiring defect on every OS. Its explicit console root
+    // points to the fixture above, so a missing card is a product failure, not a platform
     // condition the oracle may silently accept.
     await consolePage.waitForSelector('article.rec', { state: 'attached' });
+    const recommendationFetchAndRenderMs = Date.now() - recommendationReloadStartedAt;
     stage('console:recommendation-attached');
     const recommendations = await consolePage.locator('article.rec').count();
+    const fixAllVisibilityStartedAt = Date.now();
     await consolePage.locator('#card-recs').evaluate((node) => { node.open = true; });
     const fixAllButton = consolePage.getByRole('button', { name: /^Fix all \(/ });
-    if (recommendations > 0) await fixAllButton.waitFor();
+    if (recommendations > 0) await fixAllButton.waitFor({ state: 'visible' });
+    const fixAllVisibilityMs = Date.now() - fixAllVisibilityStartedAt;
     stage('console:fix-all-visible');
     const fixAll = await fixAllButton.count();
     acceptance.push({
@@ -284,16 +320,80 @@ export async function runRenderProbe() {
       detail: `${recommendations} recommendations; ${fixAll} Fix all button`,
     });
     if (recommendations > 0) {
+      const readinessStartedAt = Date.now();
+      const readiness = await nonScrollingButtonReadiness(fixAllButton);
+      const readinessMs = Date.now() - readinessStartedAt;
+      if (!readiness.visible || !readiness.enabled || readiness.scrollDeltaPx !== 0) {
+        throw new Error(`Fix all readiness is invalid: visible=${readiness.visible} enabled=${readiness.enabled} scroll=${readiness.scrollDeltaPx}px`);
+      }
+      const actualClickScrollBefore = await consolePage.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
       const fixAllStarted = Date.now();
+      const confirmationOpenedStartedAt = Date.now();
       await fixAllButton.click();
-      await consolePage.getByRole('button', { name: 'Yes, fix all verified items' }).click();
+      const confirmButton = consolePage.getByRole('button', { name: 'Yes, fix all verified items' });
+      await confirmButton.waitFor({ state: 'visible' });
+      const openConfirmationMs = Date.now() - confirmationOpenedStartedAt;
+      const actualClickScrollAfter = await consolePage.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
+      const actualClickScrollDeltaPx = Math.hypot(
+        actualClickScrollAfter.x - actualClickScrollBefore.x,
+        actualClickScrollAfter.y - actualClickScrollBefore.y,
+      );
+      const applyResponsePromise = consolePage.waitForResponse((response) => (
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname === '/api/apply'
+      ));
+      const applyClickStarted = Date.now();
+      await confirmButton.click();
+      const applyResponse = await applyResponsePromise;
+      const confirmationClickToResponseMs = Date.now() - applyClickStarted;
+      const endpoint = await applyResponse.json();
+      const responseReceivedAt = Date.now();
       await consolePage.getByText(/applied; .* skipped or failed\./).waitFor();
+      const responseToRenderMs = Date.now() - responseReceivedAt;
+      const resultVerificationStartedAt = Date.now();
       const applied = await consolePage.getByText('Applied by Fix all — and reversible.').count();
       const undoButtons = await consolePage.getByRole('button', { name: 'Undo this change' }).count();
+      const resultVerificationMs = Date.now() - resultVerificationStartedAt;
+      const endpointTimings = endpoint?.timings;
+      const timingKeys = ['revalidationMs', 'undoJournalMs', 'childRemedyMs', 'totalMs'];
+      const hasEndpointTimings = timingKeys.every((key) => Number.isFinite(endpointTimings?.[key]) && endpointTimings[key] >= 0);
+      const fixAllMs = Date.now() - fixAllStarted;
+      const accountedFixAllMs = openConfirmationMs + confirmationClickToResponseMs + responseToRenderMs + resultVerificationMs;
+      const unattributedMs = Math.max(0, fixAllMs - accountedFixAllMs);
       acceptance.push({
         label: 'Fix all executes the real batch endpoint and returns per-item undo',
-        pass: applied > 0 && undoButtons === applied && Date.now() - fixAllStarted < 4_000,
-        detail: `${applied} applied cards; ${undoButtons} undo buttons; ${Date.now() - fixAllStarted}ms`,
+        pass: applied > 0 && undoButtons === applied && hasEndpointTimings && fixAllMs < 4_000,
+        detail: hasEndpointTimings
+          ? `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms Fix all total (confirmation ${openConfirmationMs}ms, actual-click scroll ${actualClickScrollDeltaPx}px, confirm click→response ${confirmationClickToResponseMs}ms, response→render ${responseToRenderMs}ms, verification ${resultVerificationMs}ms, unattributed ${unattributedMs}ms); server ready ${readyMs}ms; initial state response/ready ${initialStateResponseMs}/${initialStateReadyMs}ms; recommendation state/render ${recommendationStateResponseMs}/${recommendationFetchAndRenderMs}ms; pre-click visible/readiness ${fixAllVisibilityMs}/${readinessMs}ms (scroll ${readiness.scrollDeltaPx}px); endpoint total ${endpointTimings.totalMs}ms (revalidation ${endpointTimings.revalidationMs}ms, undo journal ${endpointTimings.undoJournalMs}ms, child remedy ${endpointTimings.childRemedyMs}ms)`
+          : `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms total; /api/apply timing receipt missing`,
+        timings: {
+          serverReadyMs: readyMs,
+          initialState: {
+            responseMs: initialStateResponseMs,
+            readyMs: initialStateReadyMs,
+          },
+          recommendation: {
+            stateResponseMs: recommendationStateResponseMs,
+            fetchAndRenderMs: recommendationFetchAndRenderMs,
+          },
+          preClick: {
+            visibilityMs: fixAllVisibilityMs,
+            readinessMs,
+            readinessScrollDeltaPx: readiness.scrollDeltaPx,
+            visible: readiness.visible,
+            enabled: readiness.enabled,
+          },
+          fixAll: {
+            openConfirmationMs,
+            actualClickScrollDeltaPx,
+            confirmationClickToResponseMs,
+            responseToRenderMs,
+            resultVerificationMs,
+            unattributedMs,
+            totalMs: fixAllMs,
+          },
+          endpoint: endpointTimings,
+        },
       });
       if (undoButtons > 0) {
         await consolePage.getByRole('button', { name: 'Undo this change' }).first().click();
@@ -319,7 +419,7 @@ export async function runRenderProbe() {
     stage('cleanup:start');
     try { if (browser) await browser.close(); } catch {}
     try { if (server) server.kill(); } catch {}
-    try { fs.rmSync(home, { recursive: true, force: true }); } catch {}
+    try { fs.rmSync(fixtureRoot, { recursive: true, force: true }); } catch {}
     stage('cleanup:done');
   }
   return { results, acceptance, notes };
