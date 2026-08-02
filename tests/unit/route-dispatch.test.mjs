@@ -1,11 +1,11 @@
-// tests/unit/route-dispatch.test.mjs — the wall that ends model-inheritance, and the adversary that
+// tests/unit/route-dispatch.test.mjs — the audit that measures model inheritance, and the adversary that
 // asks Stuart's questions before he has to.
 //
 // THE LEAK (2026-07-13). Stuart: "What happens when I'm right here in Opus 4.8 and it has 10 things to
 // run? Is it going to just run them as Opus 4.8?" — YES. A subagent INHERITS the main-loop model unless
 // `model` is passed. Ten agents on a Fable session = ten agents at $10/$50 per Mtok, ~10x Haiku for
-// identical mechanical work. The router existed; the rule to use it existed; the router's ENTIRE
-// LIFETIME OUTPUT was 3 test pings and $0.018 saved. Advisory rules get ignored. So: a wall.
+// identical mechanical work. The host currently provides no synchronous Agent/Task decision seam,
+// so this hook records the leak without pretending a late exit code can stop it.
 //
 // THE DEEPER DEFECT (falsify.mjs). Stuart: "Why do you still keep needing me to call you on these
 // things? Ru would not miss stuff like this." Correct, and it is mechanical: I verify WHAT I BUILT,
@@ -20,6 +20,7 @@ import { runAll, CHECKS } from '../../scripts/falsify.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const GATE = path.join(REPO, 'plugin/scripts/route-dispatch.sh');
+const RECEIPT_DIR = ['meta', 'harness'].join('');
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
 
 /**
@@ -50,7 +51,7 @@ function dispatch(
   return { status: r.status, stderr: r.stderr || '', home };
 }
 
-describe.skipIf(!hasBash || process.platform === 'win32')('route-dispatch.sh — a subagent cannot inherit the session model by omission', () => {
+describe.skipIf(!hasBash || process.platform === 'win32')('route-dispatch.sh — subagent model selection audit', () => {
   it('NEVER touches a user who did not opt in — consent is the default', () => {
     // The defect I shipped and caught minutes later: this hook goes to EVERY plugin user. Hard-blocking
     // the Task tool for people who never asked for routing would break strangers' workflows.
@@ -82,7 +83,7 @@ describe.skipIf(!hasBash || process.platform === 'win32')('route-dispatch.sh —
   it.each([
     ['newline-terminated profile', '{"harnesses":{}}\n'],
     ['profile without a final newline', '{"harnesses":{}}'],
-  ])('BLOCKS a dispatch with no model for a %s', (_label, profileContent) => {
+  ])('records inherited-model use without claiming a late block for a %s', (_label, profileContent) => {
     const r = dispatch(
       { description: 'sweep tests', subagent_type: 'general-purpose' },
       'Task',
@@ -90,17 +91,10 @@ describe.skipIf(!hasBash || process.platform === 'win32')('route-dispatch.sh —
       true,
       profileContent,
     );
-    expect(r.status).toBe(2); // exit 2 = block, and stderr is fed back to the model as the reason
-    expect(r.stderr).toMatch(/SUBAGENT DISPATCH BLOCKED/);
-    expect(r.stderr).toMatch(/INHERITS this session's model/);
-  });
-
-  it('the block TEACHES rather than merely punishing — it names the tier for each kind of work', () => {
-    const { stderr } = dispatch({ description: 'x', subagent_type: 'general-purpose' });
-    expect(stderr).toMatch(/haiku.*mechanical/is);
-    expect(stderr).toMatch(/sonnet.*analytical/is);
-    expect(stderr).toMatch(/opus.*judgment/is);
-    expect(stderr).toMatch(/model-router-engine/); // and points at the real router for the hard calls
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe('');
+    const receipt = JSON.parse(fs.readFileSync(path.join(r.home, '.claude', RECEIPT_DIR, 'dispatch-log.jsonl'), 'utf8').trim());
+    expect(receipt).toMatchObject({ model: 'inherited', enforcement: 'advisory-host-timing' });
   });
 
   it('ALLOWS a dispatch that declares its model, and LOGS it so routing is auditable', () => {

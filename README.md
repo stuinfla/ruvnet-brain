@@ -247,11 +247,11 @@ Our code now does **one honest job**: a price transform. A model your subscripti
 
 Result: **11 jobs supervised, every one producing a fresh successful receipt.** One had been *totally blind* — writing zero bytes on a healthy day, so "ran fine" and "never ran" were indistinguishable. Cured without changing a line of its logic.
 
-### 3. A subagent can no longer inherit your expensive model by accident
+### 3. Inherited subagent models are now auditable
 
 **A subagent inherits your session's model unless something says otherwise.** Ten agents on an Opus session are ten Opus agents; on a Fable session that's `$10/$50` per Mtok — up to **10× what the same mechanical work costs on Haiku**. That single default was the biggest cost leak in the harness, and an advisory rule did not fix it (the router's entire first life saved **$0.018**).
 
-So 2.5.1 makes it a **wall, not advice**: a `PreToolUse` gate that **blocks any subagent dispatch that doesn't declare a `model`**, tells you which tier the task actually needs, and logs every allowed dispatch so routing is *auditable* rather than merely claimed. Forks still inherit — that's what a fork is.
+The hook records both explicit-model and inherited-model dispatches so routing is *auditable* rather than merely claimed. It does not claim to block Agent/Task calls: Claude Code 2.1.220 consumes those `PreToolUse` results only after `tool_dispatch_end` ([issue #84](https://github.com/stuinfla/ruvnet-brain/issues/84), [upstream #83195](https://github.com/anthropics/claude-code/issues/83195)). Forks still inherit — that's what a fork is.
 
 > **`npm run falsify`** — the adversary. Every question that had to be asked of this project ("is the nightly *actually* running?", "is that really rUv's code?", "why is my quota still burning?", "is CI *actually* green?") is now a check that fails on an **unproven claim**, not merely on broken code. Because tests you wrote yourself passing is circular evidence.
 

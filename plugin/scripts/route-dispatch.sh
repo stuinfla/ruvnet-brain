@@ -1,5 +1,5 @@
 #!/bin/bash
-# route-dispatch.sh — PreToolUse gate on subagent dispatch. Ends model-inheritance-by-omission.
+# route-dispatch.sh — bounded PreToolUse audit of subagent model selection.
 #
 # ─────────────────────────────────────────────────────────────────────────────────────────────────
 # THE LEAK (2026-07-13). Stuart: "What happens when I'm right here in Opus 4.8 and it has 10 things
@@ -8,8 +8,12 @@
 #     A SUBAGENT INHERITS THE MAIN-LOOP MODEL UNLESS `model` IS EXPLICITLY PASSED.
 #
 # Ten agents on a Fable session = ten agents at $10/$50 per Mtok, ~10x Haiku for identical mechanical
-# work. The router existed; the rule to use it existed; the router's ENTIRE LIFETIME OUTPUT was 3 test
-# pings and $0.018 saved — because the rule was ADVISORY. So this is a wall, not advice.
+# work. This hook records declared and inherited dispatches so the leak remains measurable.
+#
+# HOST LIMITATION (#84): Claude Code 2.1.220 registers Agent/Task PreToolUse hooks asynchronously,
+# completes the subagent dispatch, and only then consumes the hook result. An exit-2 refusal is
+# therefore too late to block and must not be represented as enforcement. The hook is intentionally
+# silent and advisory until the host provides a synchronous pre-dispatch decision boundary.
 #
 # ─────────────────────────────────────────────────────────────────────────────────────────────────
 # THREE DEFECTS IN MY OWN FIRST VERSION, caught by asking the questions Stuart would have asked
@@ -21,14 +25,10 @@
 #      (a model-router profile.json exists = they answered the two subscription questions). Everyone
 #      else gets NOTHING — not even a warning. Consent is the default.
 #   2. IT REQUIRED python3. The other three plugin hooks are pure bash. A hard dependency inside a
-#      BLOCKING hook is how you brick someone's session. Now pure bash — no interpreters.
-#   3. IT COULD FAIL CLOSED. A blocking hook that errors must never take the session with it. Every
-#      unparseable/ambiguous case now FAILS OPEN (exit 0). A gate that breaks your tools is worse
-#      than the leak it prevents.
+#      hook is how you brick someone's session. Now pure bash — no interpreters.
+#   3. IT COULD FAIL CLOSED. Every unparseable/ambiguous case fails open (exit 0).
 #
-# CONTRACT (verified against this machine's live hook config):
-#   exit 0          → allow
-#   exit 2 + stderr → BLOCK, and stderr comes back to the model as the reason (so it retries correctly)
+# CONTRACT: always exit 0 and emit no user-facing bytes. Audit receipts are best-effort only.
 # ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 set -uo pipefail
@@ -93,9 +93,10 @@ TOOL_USE_ID=$(field tool_use_id)
 SESSION_ID=$(field session_id)
 DESC="${DESC// /_}"; DESC="${DESC:0:40}"   # builtin substitution — no `tr`, no `cut`
 
-if [ -n "$MODEL" ]; then
-  # Declared. Log it so routing is AUDITABLE, not merely claimed — a growing ledger is evidence;
-  # a promise is not. (This log is how the $0.018-lifetime failure became visible in the first place.)
+log_dispatch() {
+  local selected_model="$1"
+  local enforcement="$2"
+  # Log so routing is AUDITABLE, not merely claimed — a growing ledger is evidence; a promise is not.
   # `date` is the ONE external command left, and only on the ALLOW path — so its absence must be
   # silent, not a stderr spew from a hook that just said "yes". (bash's printf %()T would avoid it
   # entirely, but macOS still ships bash 3.2, which does not support it.)
@@ -105,44 +106,17 @@ if [ -n "$MODEL" ]; then
   {
     TS=$(date -u +%FT%TZ) || TS="unknown"   # the one external command, and only on the allow path
     mkdir -p "$HOME/.claude/metaharness"
-    printf '{"ts":"%s","event":"dispatch","model":"%s","agent":"%s","task":"%s","toolUseId":"%s","sessionId":"%s"}\n' \
-      "$TS" "$MODEL" "${SUBTYPE:-unknown}" "${DESC:-unlabeled}" "${TOOL_USE_ID:-}" "${SESSION_ID:-}" \
+    printf '{"ts":"%s","event":"dispatch","model":"%s","enforcement":"%s","agent":"%s","task":"%s","toolUseId":"%s","sessionId":"%s"}\n' \
+      "$TS" "$selected_model" "$enforcement" "${SUBTYPE:-unknown}" "${DESC:-unlabeled}" "${TOOL_USE_ID:-}" "${SESSION_ID:-}" \
       >> "$HOME/.claude/metaharness/dispatch-log.jsonl"
   } 2>/dev/null || true
+}
+
+if [ -n "$MODEL" ]; then
+  log_dispatch "$MODEL" "declared"
   exit 0
 fi
 
-# ── BLOCKED: no model declared → it would silently inherit the session model. ──
-# `read` + `printf` are BUILTINS. The original used `cat >&2 <<EOF`, which made the BLOCK path itself
-# depend on an external binary — the third dependency hole found in my own hook in ten minutes.
-read -r -d '' BLOCK_MSG <<'EOF' || true
-⛔ SUBAGENT DISPATCH BLOCKED — you did not declare a `model`.
-
-An agent with no `model` INHERITS this session's model. On an Opus session that is an Opus agent;
-on a Fable session it is $10/$50 per Mtok — up to 10x what the same work costs on Haiku.
-Inheritance-by-omission is the biggest cost leak in this harness, and an advisory rule did not fix
-it (the router's entire first life saved $0.018). Hence a wall.
-
-Re-issue the SAME Agent call with an explicit `model`, chosen by what the task actually IS:
-
-  model: "haiku"   mechanical — greps, file sweeps, log triage, mechanical edits, fixture rewrites
-  model: "sonnet"  analytical — trace a bug across files, summarize a subsystem, draft tests
-  model: "opus"    judgment   — architecture, root cause, security, anything user-facing
-                   (if it truly needs the main model's judgment, ask whether it should be a
-                    subagent at all, or work you should do inline)
-
-Not sure? Ask rUv's real router — it predicts each model's quality on THIS task and returns the
-cheapest one that clears the bar, with your subscriptions priced at $0:
-
-  node ~/.claude/model-router/bin/model-router-engine.mjs --harness claude-code --prompt "<task>" --json
-
-Then log the receipt when it returns, so the saving is visible instead of asserted:
-
-  node scripts/dispatch-receipt.mjs --model <m> --inherited <this session's model> \
-       --task "<what it did>" --total-tokens <the agent's reported total>
-
-Deliberate exception (rare — and say WHY out loud): RUVNET_ALLOW_INHERITED_MODEL=1
-EOF
-bash "$(dirname "${BASH_SOURCE[0]}")/gate-receipt.sh" route-dispatch "subagent" "would inherit the session model instead of routing to a cheaper one" 2>/dev/null || true
-printf '%s\n' "$BLOCK_MSG" >&2
-exit 2
+# Missing model: record the inheritance leak, but do not emit a late refusal the host cannot enforce.
+log_dispatch "inherited" "advisory-host-timing"
+exit 0

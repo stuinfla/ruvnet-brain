@@ -1,7 +1,7 @@
 # The Conventions Audit — every rule in this repo, and whether anything enforces it
 
 Created: 2026-07-22
-Updated: 2026-07-28 — issue #48 structured CLI boundary and raw-shell demotion
+Updated: 2026-08-02 — issue #84 truthful Agent/Task hook timing semantics
 Why: The owner, 2026-07-22 — *"There are dozens of things like this that are the difference between
 you acting as a smart learning partner and somebody that needs to constantly be reminded of
 everything all the time."* This document is the enumeration of "things like this." It exists because
@@ -96,8 +96,8 @@ Eight enforcement surfaces exist. This is the honest denominator for everything 
 | 2 | **CI `ci.yml` / windows-unit** | full `tests/unit` on win32 | hard red | cross-platform regressions |
 | 3 | **`scripts/git-hooks/pre-push`** | secret scan + `verify-channels --pre-push` | refuses push | live API keys, channel drift |
 | 4 | **`.claude/settings.json` PreToolUse:Bash** | `version-bump-gate.sh` | exit 2 | every push carries a version bump |
-| 5 | **`~/.claude/settings.json` PreToolUse** | `route-dispatch.sh`, `ground-before-write.sh`; `verify-interface.sh` advisory | exit 2 only from the two walls | un-routed subagent fan-out and ungrounded rUv-domain writes; legacy raw-shell CLI calls receive migration guidance only |
-| 6 | **`plugin/hooks/hooks.json`** | hooks via `hook-shim.mjs` | 4 blocking | `route-dispatch`, `design-wall`, `unprompted-speech`, and `protect-state`; interface guidance is advisory |
+| 5 | **`~/.claude/settings.json` PreToolUse** | `ground-before-write.sh`; `verify-interface.sh` advisory | exit 2 only from the grounding wall | ungrounded rUv-domain writes; legacy raw-shell CLI calls receive migration guidance only |
+| 6 | **`plugin/hooks/hooks.json`** | hooks via `hook-shim.mjs` | 3 blocking | `design-wall`, `unprompted-speech`, and `protect-state`; route-dispatch and interface guidance are advisory |
 | 7 | **`scripts/release.mjs`** | gates A–E | aborts ship | both suites, narrative version, clean tree, live channel walk |
 | 8 | **`Stop` hook** | `continuation-gate.mjs` | advisory (exit 0) | unfinished authorized work |
 

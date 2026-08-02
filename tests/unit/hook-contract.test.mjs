@@ -368,7 +368,7 @@ describe('registry hygiene', () => {
    * (anticipate + lesson-hooks) are spawned in candidate mode by `unprompted-runtime.mjs`, and the
    * ONLY thing hooks.json points at for them is `hook-shim.mjs unprompted-speech <CCEvent>`, a
    * mode:'blocking' entry in the shim's table. So the opted-in lesson refusal (exit 2) still
-   * propagates — but through the runtime, exactly like route-dispatch's wall, which is why
+   * propagates — but through the runtime, unlike route-dispatch's host-limited audit, which is why
    * unprompted-speech joins the other three here and `lesson-hooks.sh` leaves (leaving it on the list
    * would be a STALE exemption — it is no longer registered — and the assertion below now proves that).
    *
@@ -391,7 +391,7 @@ describe('registry hygiene', () => {
    * consent guard that switched itself off when the user switched the brain off would guard nothing
    * at the only moment it is needed.
    */
-  const BLOCKING = Object.freeze(['route-dispatch', 'design-wall', 'unprompted-speech', 'protect-state']);
+  const BLOCKING = Object.freeze(['design-wall', 'unprompted-speech', 'protect-state']);
   const isBlocking = (cmd) => BLOCKING.some((b) => cmd.includes(b));
 
   it('gives every ADVISORY hook a `|| true` failsafe — a hook error must never reach the user', () => {

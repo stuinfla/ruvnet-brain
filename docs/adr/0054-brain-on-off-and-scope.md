@@ -99,7 +99,7 @@ brain. The contract, per plane:
   it as success or outage.
 - **Hooks — per-entry `offBehavior` in the shim's table** (silence / run / partial): advertising,
   grounding, and the advisory legacy `verify-interface` notice go silent; the NON-brain safety
-  walls (route-dispatch cost wall and design-wall) STAY ON — they guard money and honesty, not
+  non-retrieval protections (route-dispatch cost audit and design-wall) STAY ON — they guard money and honesty, not
   retrieval. Issue #48 moved interface enforcement to structured MCP arguments.
 - **session-start splits internally**: auto-updater heartbeat, GONG health alarm and SLA banner
   keep running (an off machine must still receive fixes — otherwise the fix for an off-state bug
