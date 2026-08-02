@@ -1,0 +1,35 @@
+{
+  "schema": 2,
+  "sourceSha": "711ff31ea1a3015a58f09396b6ea969d1b5c9655",
+  "trap": "hooks-post-task-persistence",
+  "mutant": "brain-off-treated",
+  "run": 1,
+  "arm": "control",
+  "record": {
+    "class": "partial",
+    "subcommandCorrect": true,
+    "command": "ruflo hooks post-task --task-id \"release-retry-budget-investigation\" --success true --agent \"tester\" --persist-routing",
+    "exec": {
+      "ran": true,
+      "argv": [
+        "ruflo",
+        "hooks",
+        "post-task",
+        "--task-id",
+        "release-retry-budget-investigation",
+        "--success",
+        "true",
+        "--agent",
+        "tester",
+        "--persist-routing"
+      ],
+      "exit": 0,
+      "exitOk": true,
+      "retrieved": false,
+      "why": "exit 0; command lacked --task, --agent, --store-results, or a task id",
+      "output": "[INFO] Recording outcome for task: release-retry-budget-investigation\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  1 |\n| New Patterns     |                  1 |\n| Duration         |               0.3s |\n| Trajectory ID    | tr"
+    },
+    "model": "gpt-5.6-sol",
+    "lessonDelivered": false
+  }
+}

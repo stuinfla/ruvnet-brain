@@ -1,0 +1,38 @@
+{
+  "schema": 2,
+  "sourceSha": "711ff31ea1a3015a58f09396b6ea969d1b5c9655",
+  "trap": "hooks-post-task-persistence",
+  "mutant": null,
+  "run": 1,
+  "arm": "treated",
+  "record": {
+    "class": "flagged",
+    "subcommandCorrect": true,
+    "command": "ruflo hooks post-task --task \"release retry-budget investigation\" --agent tester --success true --store-results",
+    "exec": {
+      "ran": true,
+      "argv": [
+        "ruflo",
+        "hooks",
+        "post-task",
+        "--task",
+        "release retry-budget investigation",
+        "--agent",
+        "tester",
+        "--success",
+        "true",
+        "--store-results"
+      ],
+      "exit": 0,
+      "exitOk": true,
+      "retrieved": true,
+      "why": "exit 0; routing outcome and routing-decision:task_1785685345682_lsfqbm persisted",
+      "output": "[INFO] Recording outcome for task: task_1785685345682_lsfqbm\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  2 |\n| New Patterns     |                  1 |\n| Duration         |               0.2s |\n| Trajectory ID    | traj-178568"
+    },
+    "model": "gpt-5.6-sol",
+    "forcedCommand": false,
+    "lessonIndex": 0,
+    "firstToolIndex": 1,
+    "lessonBeforeFirstToolCall": true
+  }
+}
