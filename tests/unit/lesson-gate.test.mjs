@@ -136,6 +136,22 @@ describe('a NUDGE informs and never refuses', () => {
     expect(ctx).toMatch(/do not replace .*requested action with .*help.*discovery/i);
   });
 
+  test('an exact corrective Ruflo command reaches the hook boundary as the first-and-only action', () => {
+    const exact = 'ruflo memory search -q "caching strategy" --path .swarm/memory.db';
+    writeStore([blockLesson({
+      id: 'T02-run-exact-ruflo-command',
+      statement: `Run ${exact}.`,
+      trigger: 'assert-fact',
+      enforcement: 'checklist',
+      check: 'the exact memory search runs without discovery calls',
+    })]);
+    const { stdout } = runGate(['--event', 'UserPromptSubmit', '--trigger', 'assert-fact']);
+    const ctx = JSON.parse(stdout).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain(exact);
+    expect(ctx).toMatch(/FIRST and ONLY Ruflo invocation/);
+    expect(ctx).toMatch(/must not prefix .*--help.*--version.*status/i);
+  });
+
   test('truncates long evidence at a WORD boundary, never mid-word', () => {
     // The live defect: the evidence line ended "…the ris" (from "the risk"), which reads as a bug in
     // the lesson, not a length cap. A recognizable marker word is placed so that char 150 falls INSIDE

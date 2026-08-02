@@ -145,7 +145,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { findInvocations } from '../plugin/scripts/hook-input.mjs';
+import { commandNodes, findInvocations } from '../plugin/scripts/hook-input.mjs';
 import { makeLesson, saveLessons, loadLessons } from './lesson-store.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -456,7 +456,15 @@ export function executeProducedCommand(cmd, {
   const nope = (why, extra = {}) => ({ ran: false, argv: null, exit: null, exitOk: false, retrieved: false, why, output: '', ...extra });
   const invocations = findInvocations(String(cmd || ''), ['ruflo', 'claude-flow']);
   if (!invocations.length) return nope('no ruflo invocation in the produced command — there was nothing to execute');
+  const nodes = commandNodes(String(cmd || ''));
+  const firstExecutable = path.basename(nodes[0]?.exe || '').split('@')[0];
+  if (invocations.length !== 1 || firstExecutable !== 'ruflo') {
+    return nope('refused to execute: the corrective command was not the first and only Ruflo invocation');
+  }
   const args = invocations[0].args.filter((a) => a !== '');
+  if (args.some((a) => ['--help', '-h', '--version', 'version', 'status'].includes(a))) {
+    return nope('refused to execute: discovery flags or subcommands cannot replace the corrective Ruflo action');
+  }
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -681,8 +689,9 @@ export const REPLAY_PROMPT =
 
 /** The correction as it is written down in fixture-project-A, in project A's own words. */
 export const LESSON_STATEMENT =
-  'When you look something up in agent memory with the ruflo CLI, the query has to be passed with the '
-  + '-q flag; a bare quoted phrase placed after the subcommand is rejected.';
+  'When you look something up in agent memory with the ruflo CLI, run exactly '
+  + '`ruflo memory search -q "<query>" --path .swarm/memory.db` as the first and only Ruflo invocation; '
+  + 'a bare quoted phrase placed after the subcommand is rejected.';
 
 const sh = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', timeout: 120_000, ...opts });
 

@@ -8,6 +8,8 @@ const ADVISORY_APPLICATION_CONTRACT = [
   "anything or override the user's current instruction or a safety boundary.",
   "Apply any relevant correction directly to the user's requested action.",
   'When a correction already provides the required form, do not replace the requested action with help, setup, status, or other discovery.',
+  'When a correction supplies an exact Ruflo command, use it as the FIRST and ONLY Ruflo invocation.',
+  'You must not prefix it with --help, --version, status, or any alternate Ruflo call.',
   'If you intentionally take another path, state why.',
 ];
 

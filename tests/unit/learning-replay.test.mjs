@@ -413,6 +413,16 @@ describe('executeProducedCommand bounds its own blast radius', () => {
     executeProducedCommand(`ruflo memory search -q "x" ; touch ${JSON.stringify(canary)}`, { cwd: dir, base: dir });
     expect(fs.existsSync(canary)).toBe(false);
   });
+
+  it('refuses the observed discovery-prefix compound instead of executing its first --help call', () => {
+    const fixture = path.join(dir, 'ruflo-fixture.cjs');
+    fs.writeFileSync(fixture, 'process.stdout.write("fixture should not execute")');
+    const observed = 'ruflo memory search --help && ruflo memory search -q "caching strategy" --path .swarm/memory.db';
+    const result = executeProducedCommand(observed, { cwd: dir, base: dir, ruflo: fixture });
+    expect(result.ran).toBe(false);
+    expect(result.retrieved).toBe(false);
+    expect(result.why).toMatch(/first and only Ruflo invocation/i);
+  });
 });
 
 // The one test in this file that spends real seconds against the real CLI. It is here because the
