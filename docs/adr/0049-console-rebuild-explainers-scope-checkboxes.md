@@ -3,7 +3,7 @@ id: ADR-049
 title: The console rebuild — explain every section, scope every suggestion, and make the safe ones checkable
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-01
+updated: 2026-08-02
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, console, advocacy, capability, cache, honesty]
 supersedes: []
@@ -114,6 +114,7 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-02 | Re-read the Console timing receipt, explicit fixture-root boundary, and dual-host update-test seam. The explainer, per-recommendation scope, evidence-backed checkbox, project-keyed cache, and two-profile decisions remain unchanged. | `scripts/onboarding-console.mjs` now returns aggregate `revalidationMs`, `undoJournalMs`, `childRemedyMs`, and `totalMs` from the existing revalidate → journal → remedy path; it does not change recommendation construction, scope, consent, or undo. Commit `8f06287` adds the absolute, normalized `RUVNET_CONSOLE_ROOT` fixture boundary with the production default still `os.homedir()`; global binaries and credentials remain on the system home. Commit `c1f5b45` makes `bin/install.mjs` host-update collaborators injectable for the dual-host matrix while retaining its production defaults. |
 | 2026-08-01 | Completed issue #79's installer/update transaction for the persistent Console runtime. | `bin/install.mjs` now stages and syntax-checks the exact candidate runtime, records `runtime-identity.json`, activates only after host/Stable-Spine convergence, rolls back on failure, and binds the identity plus `ready` or `pending-console-restart` into `host-convergence.json`. This changes runtime delivery, not the explainer, recommendation-scope, consent, cache, or profile decisions governed here. |
 | 2026-08-01 | Re-read the governed Console and installer changes on the clean integration candidate. The explainer, recommendation-scope, evidence-backed checkbox, and project-keyed cache decisions remain unchanged. | `scripts/onboarding-console.mjs` now identifies a running Console by a private scoped receipt plus `/api/runtime` identity before reuse or owned replacement; it does not alter recommendation rendering, scope, apply, or cache semantics. `bin/install.mjs` now delegates What's New to the installed payload's `plugin/scripts/whats-new.mjs`; it does not change Console controls or install profiles. Focused candidate tests exist for both changes, but exact-SHA cross-platform and published-artifact proof remain outside this currency review. |
 | 2026-07-30 | Kept Fix All fail-closed while removing unrelated full-machine probes from each per-item revalidation. | Each remedy is still re-read immediately before execution, but `scripts/onboarding-console.mjs` now invokes only the recommendation builder capable of issuing that id. Unknown id families fall back to complete validation; `tests/qe/release/console-control-completeness.test.mjs` pins the per-id call. |
