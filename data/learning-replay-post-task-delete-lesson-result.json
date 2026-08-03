@@ -2,8 +2,8 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "FAIL",
   "why": "0/1 runs passed — below the 1/1 bar",
-  "sha": "711ff31ea1a3015a58f09396b6ea969d1b5c9655",
-  "at": "2026-08-02T15:45:36.391Z",
+  "sha": "3e1ac080582ae2d0efbb4b746aec3329a5b10e2d",
+  "at": "2026-08-03T03:30:52.584Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -25,7 +25,7 @@
   "rate": 0,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 35.9,
+  "wallSeconds": 31.9,
   "premise": {
     "verified": true,
     "evidence": "live help names all flags; success/task-id-only persisted nothing"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1785685499079",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-pXD0fK/brain-home/versions/d4-refresh-1785685499079",
+    "generation": "d4-refresh-1785727819289",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-f4X8ga/brain-home/versions/d4-refresh-1785727819289",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -67,7 +67,7 @@
       "treated": {
         "class": "partial",
         "subcommandCorrect": true,
-        "command": "ruflo hooks post-task --task-id \"release-retry-budget-investigation\" --success true --agent \"tester\" --store-results true",
+        "command": "ruflo hooks post-task --task-id release-retry-budget-investigation --success true --agent tester --store-memory true --decision \"Route future release retry-budget investigations to the tester agent\"",
         "exec": {
           "ran": true,
           "argv": [
@@ -80,8 +80,10 @@
             "true",
             "--agent",
             "tester",
-            "--store-results",
-            "true"
+            "--store-memory",
+            "true",
+            "--decision",
+            "Route future release retry-budget investigations to the tester agent"
           ],
           "exit": 0,
           "exitOk": true,
@@ -95,16 +97,16 @@
         "firstToolIndex": 0,
         "lessonBeforeFirstToolCall": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/711ff31ea1a3015a58f09396b6ea969d1b5c9655/ec22b900b89d3d9c2eeb076e75f795b94003a2dcb639f89e2b1d4a0f0c1d22fc.json",
-          "sha256": "ec22b900b89d3d9c2eeb076e75f795b94003a2dcb639f89e2b1d4a0f0c1d22fc",
-          "sourceSha": "711ff31ea1a3015a58f09396b6ea969d1b5c9655",
+          "path": "data/learning-replay-transcripts/3e1ac080582ae2d0efbb4b746aec3329a5b10e2d/aa94b4ba61257a82acd488cfe9b6e43b4723ca0c8b15bf3b06e2104a2fc52c1f.json",
+          "sha256": "aa94b4ba61257a82acd488cfe9b6e43b4723ca0c8b15bf3b06e2104a2fc52c1f",
+          "sourceSha": "3e1ac080582ae2d0efbb4b746aec3329a5b10e2d",
           "mutant": "delete-lesson"
         }
       },
       "control": {
         "class": "partial",
         "subcommandCorrect": true,
-        "command": "$HOME/.npm-global/bin/ruflo hooks post-task --task-id \"release-retry-budget-investigation\" --success true --agent \"tester\" --store-patterns true",
+        "command": "ruflo hooks post-task --task-id \"release-retry-budget-investigation\" --success true --agent \"tester\" --store-memory true",
         "exec": {
           "ran": true,
           "argv": [
@@ -117,7 +119,7 @@
             "true",
             "--agent",
             "tester",
-            "--store-patterns",
+            "--store-memory",
             "true"
           ],
           "exit": 0,
@@ -129,9 +131,9 @@
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/711ff31ea1a3015a58f09396b6ea969d1b5c9655/eaaae1d8fa6cf7bb150d0948bd203d091fe745baa3004ee26007f2a80b2085da.json",
-          "sha256": "eaaae1d8fa6cf7bb150d0948bd203d091fe745baa3004ee26007f2a80b2085da",
-          "sourceSha": "711ff31ea1a3015a58f09396b6ea969d1b5c9655",
+          "path": "data/learning-replay-transcripts/3e1ac080582ae2d0efbb4b746aec3329a5b10e2d/eb7f0e8f82bea8ae5bef5ae225a3b3cf1e3e8a843b4b4893b8e4c84cb7f2aa2c.json",
+          "sha256": "eb7f0e8f82bea8ae5bef5ae225a3b3cf1e3e8a843b4b4893b8e4c84cb7f2aa2c",
+          "sourceSha": "3e1ac080582ae2d0efbb4b746aec3329a5b10e2d",
           "mutant": "delete-lesson"
         }
       }
