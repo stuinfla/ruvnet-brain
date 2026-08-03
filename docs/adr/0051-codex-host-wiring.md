@@ -253,6 +253,7 @@ native Windows.
   `/hooks` review procedure while definitions are pending.
 
 ## Currency log
+| 2026-08-03 | Re-read Codex wrapper behavior against the packed 4.0.8 host proof; no contract change. | PR #100 exact-SHA release evidence is green; Windows unit remains the sole required red lane. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
