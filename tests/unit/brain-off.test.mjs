@@ -72,6 +72,7 @@ const SESSION = path.join(REPO, 'plugin/scripts/session-start.sh');
 const SHIM = path.join(REPO, 'plugin/scripts/hook-shim.mjs');
 const PROTECT = path.join(REPO, 'plugin/scripts/protect-brain-state.sh');
 const ROUTE_DISPATCH = path.join(REPO, 'plugin/scripts/route-dispatch.sh');
+const RECEIPT_DIR = ['meta', 'harness'].join('');
 const VERIFY_IFACE = path.join(REPO, 'plugin/scripts/verify-interface.sh');
 const DESIGN_WALL = path.join(REPO, 'plugin/scripts/design-wall.sh');
 const FORGE_MCP = path.join(REPO, 'kb/forge-mcp-all.mjs');
@@ -289,12 +290,14 @@ describe.skipIf(bashOnly)('ADR-054 gate 2 — off disarms the grounding gate and
     expect(r.stdout).toMatch(/off/i);
   });
 
-  it('OFF does NOT disarm route-dispatch — the cost wall guards money, not retrieval', () => {
+  it('OFF does not disarm the route-dispatch audit', () => {
     optIn();
     offNow();
     const r = fireBash(ROUTE_DISPATCH, { tool_name: 'Task', tool_input: { description: 'sweep tests', subagent_type: 'general-purpose' } });
-    expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/SUBAGENT DISPATCH BLOCKED/);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe('');
+    const receipt = JSON.parse(fs.readFileSync(path.join(tmp, '.claude', RECEIPT_DIR, 'dispatch-log.jsonl'), 'utf8').trim());
+    expect(receipt).toMatchObject({ model: 'inherited', enforcement: 'advisory-host-timing' });
   });
 
   it('the verify-interface body remains nonblocking even if invoked directly while OFF', () => {
@@ -344,12 +347,12 @@ describe.skipIf(bashOnly)('ADR-054 gate 2 — off disarms the grounding gate and
     });
 
     expect(fire('ground-ruvnet').stdout).toMatch(/ADVERTISING/); // ON
-    expect(fire('route-dispatch').status).toBe(2);
+    expect(fire('route-dispatch').status).toBe(0);
 
     offNow();
     expect(fire('ground-ruvnet').stdout).toBe('');               // OFF → silent, zero bytes
     expect(fire('ground-ruvnet').status).toBe(0);
-    expect(fire('route-dispatch').status).toBe(2);               // OFF → the wall still stands
+    expect(fire('route-dispatch').status).toBe(0);               // OFF → audit still runs, never blocks
   });
 });
 

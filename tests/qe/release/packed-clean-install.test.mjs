@@ -12,13 +12,27 @@ let artifact;
 let install;
 
 beforeAll(async () => {
-  const raw = execFileSync('npm', ['pack', '--json', '--pack-destination', temp], {
-    cwd: ROOT,
-    encoding: 'utf8',
-    shell: process.platform === 'win32',
-  });
-  packed = JSON.parse(raw.slice(raw.indexOf('[')))[0];
-  execFileSync('tar', ['-xzf', path.join(temp, packed.filename), '-C', temp]);
+  const sealed = process.env.RUVNET_SEALED_PACKAGE;
+  if (sealed) {
+    const packageManifest = JSON.parse(execFileSync('tar', ['-xOf', sealed, 'package/package.json'], { encoding: 'utf8' }));
+    packed = {
+      filename: path.basename(sealed),
+      version: packageManifest.version,
+      files: execFileSync('tar', ['-tzf', sealed], { encoding: 'utf8' })
+        .trim().split('\n').map((entry) => ({ path: entry.replace(/^package\//, '').replace(/\/$/, '') })),
+    };
+    execFileSync('tar', ['-xzf', sealed, '-C', temp]);
+  } else {
+    // Local focused runs remain self-contained. CI always supplies RUVNET_SEALED_PACKAGE,
+    // making the release-QE fleet consume the single artifact later published byte-for-byte.
+    const raw = execFileSync('npm', ['pack', '--json', '--pack-destination', temp], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+    });
+    packed = JSON.parse(raw.slice(raw.indexOf('[')))[0];
+    execFileSync('tar', ['-xzf', path.join(temp, packed.filename), '-C', temp]);
+  }
   artifact = path.join(temp, 'package');
   process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
   install = await import(pathToFileURL(path.join(artifact, 'bin/install.mjs')).href);

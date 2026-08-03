@@ -1,7 +1,7 @@
 name: protected-release
 
 # The candidate CI produces one immutable package + receipt. This workflow proves that exact
-# candidate is current main, carries it across the reviewer-protected Production boundary, and is
+# candidate is current main, carries it across the branch-protected Production boundary, and is
 # the only workflow allowed to invoke the publisher.
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       version:
-        description: Exact release generation; this workflow is locked to 4.0.6
+        description: Exact release generation; this workflow is locked to 4.0.7
         required: true
         type: string
       release_qe_run_id:
@@ -22,13 +22,14 @@ on:
 permissions:
   actions: read
   contents: read
+  issues: read
 
 concurrency:
-  group: protected-release-${{ inputs.version }}
+  group: ruvnet-brain-release
   cancel-in-progress: false
 
 env:
-  EXPECTED_VERSION: 4.0.6
+  EXPECTED_VERSION: 4.0.7
   EXPECTED_SHA: ${{ inputs.candidate_sha }}
 
 jobs:
@@ -62,6 +63,15 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || { echo 'candidate checkout SHA mismatch' >&2; exit 1; }
           test "$(git rev-parse origin/main)" = "$EXPECTED_SHA" || { echo 'candidate is not current origin/main' >&2; exit 1; }
           test -z "$(git status --porcelain)" || { echo 'candidate checkout is dirty' >&2; exit 1; }
+
+      - name: Require zero maintainer-governed release blockers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          blockers="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label release-blocker --limit 100 --json number --jq 'length')"
+          test "$blockers" -eq 0 || { echo "$blockers governed release blocker(s) remain open" >&2; exit 1; }
 
       - name: Prove exact-SHA CI and release-qe completed successfully
         env:
@@ -173,7 +183,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/release-seed"
-          gh release download v4.0.3 --repo "$GITHUB_REPOSITORY" --pattern ruvnet-brain.zip --dir "$RUNNER_TEMP/release-seed"
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern ruvnet-brain.zip --dir "$RUNNER_TEMP/release-seed"
           unzip -q "$RUNNER_TEMP/release-seed/ruvnet-brain.zip" -d "$RUNNER_TEMP/release-seed/extracted"
           # Finder metadata (`__MACOSX/._*.big.rvf`) preserves a filename but is not an RVF. Select
           # one canonical directory deterministically and fail closed if the archive is ambiguous.
@@ -189,7 +199,7 @@ jobs:
           node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}"
           printf '%s\n' "${asset_dirs[0]}" > "$RUNNER_TEMP/release-assets-path"
 
-      - name: Revalidate after approval and invoke the one canonical publisher
+      - name: Publish the CI-sealed candidate through the one canonical transaction
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -206,8 +216,6 @@ jobs:
           set -euo pipefail
           RUVNET_RELEASE_ASSETS="$(cat "$RUVNET_RELEASE_ASSETS_FILE")"
           export RUVNET_RELEASE_ASSETS
-          node scripts/release-authority.mjs
-          node scripts/release-proof.mjs --candidate "$RUVNET_CANDIDATE_RECEIPT"
           node scripts/release.mjs --publish
 
       - name: Require the machine-generated publication seal
@@ -220,6 +228,7 @@ jobs:
             --publication release-evidence/publication-receipt.json
 
       - name: Preserve both append-only receipts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: publication-evidence-${{ needs.release-qe-proof.outputs.candidate_sha }}

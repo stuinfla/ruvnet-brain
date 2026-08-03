@@ -8,22 +8,21 @@
 // and only prints "SHIPPED" when every channel a user touches is proven current and working. There is
 // no "I think it's fine" — there is pass or fail.
 //
-// It is idempotent and safe to re-run. Each step verifies the REAL artifact (registry, live URL, the
-// actual command), never the repo state. Repo state != user experience (the whole lesson).
+// Check-only mode evaluates source. Publish mode consumes a CI-sealed package and receipt, then
+// performs only the staged transaction and public verification. It never rebuilds or retests the
+// source: the immutable artifact is the evidence boundary.
 //
 // Usage:
 //   node scripts/release.mjs --check          # run every gate READ-ONLY (no publish) — the pre-flight
-//   node scripts/release.mjs --publish        # sync version, npm publish, then run every gate
+//   node scripts/release.mjs --publish        # publish the exact CI-sealed artifact
 //   node scripts/release.mjs                   # same as --check
 //
 // The gates, in order (fail fast):
 //   A. version single-source-of-truth agrees (sync-version --check)
 //   B. full test suite green (npm test — the 60/60)
 //   C. narrative + unit gates (vitest) incl. the tag/entity-aware "What's new" check
-//   C+. [--publish only] push to origin/main — ONLY now that A–C are green (a red tree can't reach GitHub)
-//   D. [--publish only] build + sign bundle, create/update the exact-SHA GitHub Release,
-//      then npm publish + force `latest` to the shipping version
-//   E. verify-channels — the LIVE walk of npm / self-update manifest / release bundle+sig / explainer / git
+//   D. [--publish only] stage and promote the exact package plus signed RVF bundle
+//   E. [--check only] verify current public channels; publish verifies them inside transaction finalization
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +30,9 @@ import { spawnSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { validateProtectedPublishInvocation } from './protected-release-invocation.mjs';
+import { runReleaseTransaction } from './release-transaction.mjs';
+import { liveReleaseProvider } from './release-transaction-provider.mjs';
+import { stagedHostVerifier } from './staged-host-verifier.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
@@ -48,36 +50,6 @@ function runOrDie(label, cmd, args, opts = {}) {
     console.error(`\n${c.r('✗ GATE FAILED: ' + label)} ${c.dim('(' + cmd + ' ' + args.join(' ') + ' → ' + (r.error ? r.error.message : 'exit ' + r.status) + ')')}`);
     console.error(`${c.r('  NOT shipped. Fix this, then re-run. No assumptions past a red gate.')}\n`);
     process.exit(1);
-  }
-}
-
-function remoteTagCommit(tag) {
-  const out = execFileSync('git', [
-    'ls-remote', 'origin', `refs/tags/${tag}`, `refs/tags/${tag}^{}`,
-  ], { cwd: ROOT, encoding: 'utf8' }).trim();
-  if (!out) return '';
-  const rows = out.split('\n').map((line) => line.trim().split(/\s+/));
-  return rows.find(([, ref]) => ref?.endsWith('^{}'))?.[0] || rows[0]?.[0] || '';
-}
-
-function recordReleaseTransaction(state, data) {
-  const file = path.join(ROOT, 'dist', 'release-transaction.json');
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const next = {
-    state,
-    updatedAt: new Date().toISOString(),
-    ...data,
-  };
-  const tmp = `${file}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`);
-  fs.renameSync(tmp, file);
-}
-
-function readReleaseTransaction() {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(ROOT, 'dist', 'release-transaction.json'), 'utf8'));
-  } catch {
-    return null;
   }
 }
 
@@ -115,10 +87,12 @@ if (initialDirty) {
   process.exit(1);
 }
 
-// A. version single source of truth
-step('A', 'version single-source-of-truth agrees across every surface');
-runOrDie('version sync', process.execPath, ['scripts/sync-version.mjs', '--check']);
-runOrDie('one protected publisher', process.execPath, ['scripts/release-authority.mjs']);
+if (!PUBLISH) {
+  // Source gates belong to candidate CI/check-only mode. The protected publisher has already
+  // validated their exact-SHA receipt and the sealed bytes before reaching this process.
+  step('A', 'version single-source-of-truth agrees across every surface');
+  runOrDie('version sync', process.execPath, ['scripts/sync-version.mjs', '--check']);
+  runOrDie('one protected publisher', process.execPath, ['scripts/release-authority.mjs']);
 
 // WIRED-CHECK — refuses to ship a module with zero callers.
 //
@@ -130,23 +104,23 @@ runOrDie('one protected publisher', process.execPath, ['scripts/release-authorit
 //
 // Seven repetitions of one mistake is not a discipline problem; discipline is what failed. So it
 // becomes a gate, on the ship path, where this repo's gates run 8/8 against prose's 0/6.
-runOrDie('wired (no orphan modules)', process.execPath, ['scripts/wired-check.mjs', '--check']);
+  runOrDie('wired (no orphan modules)', process.execPath, ['scripts/wired-check.mjs', '--check']);
 
 // THE NORTH-STAR PROMOTION VECTOR — strict/check-only releases may not average one broken or
 // unknown invariant into a pass. The separately authorized stabilization class makes no 95 claim;
 // it retains every safety, test, artifact, publication, and post-publication gate below while the
 // promotion program remains open. Derive this only from the already-validated sealed receipt, never
 // from a free-standing environment toggle.
-if (protectedReleaseMode === 'strict') {
-  runOrDie('release vector (all critical invariants PASS)', process.execPath, ['scripts/release-vector.mjs']);
+  if (protectedReleaseMode === 'strict') {
+    runOrDie('release vector (all critical invariants PASS)', process.execPath, ['scripts/release-vector.mjs']);
 
   // The Top-100 corpus spans naive through expert prompts and grades semantic clauses, citations,
   // abstention, and latency. A manual-only benchmark is a report; a strict release-path benchmark
   // is a guarantee. The benchmark itself fails closed unless all 100 canonical questions run.
-  runOrDie('Top-100 source-grounded recall contract', process.execPath, ['scripts/top100-benchmark.mjs', '--no-write']);
-} else {
-  console.log(c.y('  strict >=95 promotion gates: NOT CLAIMED (sealed stabilization; scoreClaimed:false)'));
-}
+    runOrDie('Top-100 source-grounded recall contract', process.execPath, ['scripts/top100-benchmark.mjs', '--no-write']);
+  } else {
+    console.log(c.y('  strict >=95 promotion gates: NOT CLAIMED (sealed stabilization; scoreClaimed:false)'));
+  }
 
 // A2. Stable Spine restart classifier (ADR-023, red-team finding 18): diff the boot-frozen SHELL
 // (hooks.json, hook-shim, MCP server, .mcp.json, skills/, commands/) against the previous release
@@ -154,8 +128,8 @@ if (protectedReleaseMode === 'strict') {
 // remembered — the same shellDiff logic runs client-side in update-apply.mjs at every flip, so the
 // user-facing nag stays honest even if this print is ignored. Informational at ship time; the
 // releasing human sees exactly which shell files changed.
-step('A2', 'Stable Spine — does this release change the boot-frozen shell? (requiresRestart classifier)');
-{
+  step('A2', 'Stable Spine — does this release change the boot-frozen shell? (requiresRestart classifier)');
+  {
   const { execFileSync } = await import('node:child_process');
   const SHELL = ['plugin/hooks/hooks.json', 'plugin/scripts/hook-shim.mjs', 'plugin/mcp/server.mjs', 'plugin/.mcp.json', 'plugin/skills', 'plugin/commands'];
   let prevTag = '';
@@ -176,98 +150,36 @@ step('A2', 'Stable Spine — does this release change the boot-frozen shell? (re
       console.log(`  ${c.g('requiresRestart: false')} — no shell change vs ${prevTag}; this release goes fully live with zero restarts.`);
     }
   }
-}
-
-// B. the full brain test suite (the 60/60)
-step('B', 'full test suite (npm test)');
-runOrDie('npm test', 'npm', ['test']);
-
-// C. unit gates — narrative-version (tag/entity aware), claims, etc.
-step('C', 'unit gates (vitest) — narrative version, claims, guards');
-runOrDie('vitest unit', 'npx', ['vitest', 'run', 'tests/unit']);
-
-// C+. PUSH — only now that A–C are green (publish only). Pushing AFTER the local gates is the fix
-// for the drift that bit on 2026-07-18: a commit was pushed FIRST, then release.mjs's gate B caught a
-// failing plugin-battery test, leaving GitHub at 3.4.10-dev while npm sat at 3.4.9-dev — the exact
-// "pushed but didn't finish" split. The pre-push git hook only checks version/manifest (fast, always),
-// so tests must gate the push HERE. A red tree can no longer reach origin ahead of npm.
-if (PUBLISH) {
-  // C++. REMOTE CI IS A SHIP GATE (ADR-053 §5). Between 2026-07-21 and 07-26 the `ci` workflow was
-  // red for ~70 consecutive runs — six releases shipped right past it, because nothing on the ship
-  // path ever ASKED the remote verdict. Local gates prove this machine; only CI proves ubuntu and
-  // windows. So the latest COMPLETED run on origin/main must be green before we add commits on top
-  // and publish. (The current commit's own run starts after the push — this gate is "never build on
-  // a known-broken main", not "wait for my own run".) Escape hatch for a genuine hotfix:
-  // --ci-override "<reason>" — printed into the release log, never silent.
-  step('C++', 'remote CI on origin/main is green (the ubuntu+windows verdict this machine cannot produce)');
-  {
-    const { fetchLatestCiVerdict, assessCiGate } = await import('./ci-verdict.mjs');
-    const OVERRIDE_IX = process.argv.indexOf('--ci-override');
-    const overrideReason = OVERRIDE_IX >= 0 ? (process.argv[OVERRIDE_IX + 1] || '(no reason given)') : null;
-    const { verdict, sha } = await fetchLatestCiVerdict();
-    const gate = assessCiGate(verdict, overrideReason);
-    if (gate === 'ship') {
-      console.log(c.dim(`  latest completed ci run on origin/main: success (${sha})`));
-    } else if (gate === 'override') {
-      console.log(`  ${c.y('! CI gate OVERRIDDEN')} — verdict was ${verdict ?? 'unknown'} (${sha || 'no run found'}); reason: ${overrideReason}`);
-    } else {
-      console.error(`\n${c.r('✗ GATE FAILED: remote CI on origin/main is ' + (verdict ?? 'unknown'))} ${c.dim('(' + (sha || 'no completed run found') + ')')}`);
-      console.error(`${c.r('  A red or unknown main does not get shipped on top of. Fix CI first (gh run list --workflow ci.yml),')}`);
-      console.error(`${c.r('  or for a genuine hotfix: --ci-override "<reason>" (the reason is printed into the release log).')}\n`);
-      process.exit(1);
-    }
   }
 
-  step('C+', 'push to origin/main — safe now that A–C passed');
-  let ahead = '0';
-  try { ahead = execFileSync('git', ['-C', ROOT, 'rev-list', '--count', 'origin/main..HEAD'], { encoding: 'utf8' }).trim(); } catch { /* origin/main ref missing — push will resolve */ ahead = '?'; }
-  if (ahead === '0') console.log(c.dim('  nothing to push — HEAD already on origin/main'));
-  else runOrDie('git push', 'git', ['-C', ROOT, 'push', 'origin', 'main']);
+// B. the full brain test suite (the 60/60)
+  step('B', 'full test suite (npm test)');
+  runOrDie('npm test', 'npm', ['test']);
+
+// C. unit gates — narrative-version (tag/entity aware), claims, etc.
+  step('C', 'unit gates (vitest) — narrative version, claims, guards');
+  runOrDie('vitest unit', 'npx', ['vitest', 'run', 'tests/unit']);
 }
 
-// D. Publish BOTH delivery channels. This used to advance npm without creating the GitHub Release
-// that verify-channels immediately required, making the sanctioned manual ship path impossible to
-// complete. Build and sign first, then create/update the exact-SHA Release before npm advances.
-// Re-runs are idempotent: a matching Release gets its three assets replaced; a tag bound to any
-// other commit is a hard provenance failure.
+// D. One remotely durable, staged release transaction (ADR-062 / DDD-0015). GitHub remains a draft
+// and npm remains on a non-default candidate tag until exact bytes and all host fixtures pass.
 if (PUBLISH) {
   const v = V();
   const tag = `v${v}`;
   const zip = path.join(ROOT, 'dist', 'ruvnet-brain.zip');
-  const assets = [zip, `${zip}.sig`, `${zip}.sha256`, sealedPackageArtifact];
   const head = execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  const priorTxn = readReleaseTransaction();
-  const unfinished = priorTxn && priorTxn.state !== 'channels-converged';
-  const samePendingCandidate = unfinished && priorTxn.tag === tag && priorTxn.head === head;
-
-  step('D', 'build + sign bundle and publish matching GitHub/npm channels');
-  if (unfinished && !samePendingCandidate) {
-    console.error(`\n${c.r('✗ GATE FAILED: unfinished release transaction requires reconciliation')}`);
-    console.error(c.dim(`  ${priorTxn.state}: ${priorTxn.tag || '?'} @ ${priorTxn.head || '?'}; refusing to overwrite it with ${tag} @ ${head}`));
-    process.exit(1);
-  }
-  if (samePendingCandidate) {
-    if (!assets.every((asset) => fs.existsSync(asset))) {
-      console.error(`\n${c.r('✗ GATE FAILED: pending release assets are missing; reconcile before retrying')}`);
-      process.exit(1);
-    }
-    const declared = fs.readFileSync(`${zip}.sha256`, 'utf8').trim().split(/\s+/)[0];
-    const actual = crypto.createHash('sha256').update(fs.readFileSync(zip)).digest('hex');
-    const verify = spawnSync(process.execPath, ['scripts/verify-bundle.mjs', zip, `${zip}.sig`], {
-      cwd: ROOT, encoding: 'utf8',
-    });
-    if (declared !== priorTxn.bundleSha256 || actual !== declared || verify.status !== 0) {
-      console.error(`\n${c.r('✗ GATE FAILED: pending release assets do not match their signed transaction')}`);
-      process.exit(1);
-    }
-    console.log(c.dim('  resume existing signed release assets for the pending candidate'));
-  } else {
-    const buildArgs = ['scripts/build-bundle.mjs', '--version', tag];
-    if (process.env.RUVNET_RELEASE_ASSETS) buildArgs.push('--assets', process.env.RUVNET_RELEASE_ASSETS);
-    runOrDie('build release bundle', process.execPath, buildArgs);
-    runOrDie('sign release bundle', process.execPath, ['scripts/sign-bundle.mjs', '--bundle', zip]);
-  }
-  for (const asset of assets) {
+  const buildArgs = ['scripts/build-bundle.mjs', '--version', tag];
+  if (process.env.RUVNET_RELEASE_ASSETS) buildArgs.push('--assets', process.env.RUVNET_RELEASE_ASSETS);
+  step('D', 'prepare, stage, promote, and reconcile one signed remote transaction');
+  runOrDie('build release bundle', process.execPath, buildArgs);
+  runOrDie('sign release bundle', process.execPath, ['scripts/sign-bundle.mjs', '--bundle', zip]);
+  const assets = {
+    bundlePath: zip,
+    bundleSignaturePath: `${zip}.sig`,
+    bundleDigestPath: `${zip}.sha256`,
+    packagePath: sealedPackageArtifact,
+  };
+  for (const asset of Object.values(assets)) {
     if (!fs.existsSync(asset)) {
       console.error(`\n${c.r('✗ GATE FAILED: signed release asset missing')} ${c.dim(asset)}`);
       process.exit(1);
@@ -279,157 +191,33 @@ if (PUBLISH) {
     process.exit(1);
   }
 
-  let remoteTagSha = '';
-  try {
-    remoteTagSha = remoteTagCommit(tag);
-  } catch (e) {
-    console.error(`\n${c.r('✗ GATE FAILED: could not verify remote release tag')} ${c.dim(String(e.message || e).split('\n')[0])}`);
-    process.exit(1);
-  }
-  if (remoteTagSha && remoteTagSha !== head) {
-    console.error(`\n${c.r('✗ GATE FAILED: release tag already identifies different bytes')}`);
-    console.error(c.dim(`  ${tag} -> ${remoteTagSha}; candidate HEAD -> ${head}`));
-    process.exit(1);
-  }
-
-  // Cross-provider publication cannot be truly atomic. Persist the exact convergence state before
-  // the first remote mutation so a failed npm publish is recoverable and the next run can converge
-  // the SAME tag/HEAD instead of guessing which channel moved.
-  if (priorTxn && !['channels-converged'].includes(priorTxn.state)) {
-    const sameCandidate = priorTxn.tag === tag
-      && priorTxn.head === head
-      && priorTxn.bundleSha256 === bundleSha256;
-    if (!sameCandidate) {
-      console.error(`\n${c.r('✗ GATE FAILED: unfinished release transaction requires reconciliation')}`);
-      if (priorTxn.tag === tag && priorTxn.head === head && priorTxn.bundleSha256 !== bundleSha256) {
-        console.error(c.dim('  release transaction artifact digest changed for the same tag and HEAD'));
-      }
-      console.error(c.dim(`  ${priorTxn.state}: ${priorTxn.tag || '?'} @ ${priorTxn.head || '?'}; refusing to overwrite it with ${tag} @ ${head}`));
-      process.exit(1);
-    }
-  }
-  recordReleaseTransaction('prepared', { version: v, tag, head, bundleSha256 });
-
-  let releaseExists = false;
-  try {
-    execFileSync('gh', ['release', 'view', tag, '--repo', 'stuinfla/ruvnet-brain'], {
-      cwd: ROOT, stdio: ['ignore', 'ignore', 'ignore'],
-    });
-    releaseExists = true;
-  } catch { /* absent is the expected first-publish state */ }
-
-  if (releaseExists) {
-    if (!remoteTagSha) {
-      console.error(`\n${c.r('✗ GATE FAILED: GitHub Release exists without a verifiable matching tag')} ${c.dim(tag)}`);
-      process.exit(1);
-    }
-    runOrDie('replace signed GitHub Release assets', 'gh', [
-      'release', 'upload', tag, ...assets, '--clobber', '--repo', 'stuinfla/ruvnet-brain',
-    ]);
-  } else {
-    runOrDie('create signed GitHub Release', 'gh', [
-      'release', 'create', tag, ...assets,
-      '--repo', 'stuinfla/ruvnet-brain',
-      '--target', head,
-      '--title', `${tag} — verified release`,
-      '--generate-notes',
-      '--latest',
-    ]);
-  }
-
-  // Confirm the tag GitHub created/retained points to the candidate before touching npm.
-  let publishedTagSha = '';
-  try {
-    publishedTagSha = remoteTagCommit(tag);
-  } catch { /* handled by the mismatch below */ }
-  if (publishedTagSha !== head) {
-    console.error(`\n${c.r('✗ GATE FAILED: published GitHub Release tag is not candidate HEAD')}`);
-    console.error(c.dim(`  ${tag} -> ${publishedTagSha || '(missing)'}; candidate HEAD -> ${head}`));
-    process.exit(1);
-  }
-  recordReleaseTransaction('github-published-npm-pending', { version: v, tag, head, bundleSha256 });
-
-  let already = '';
-  try { already = execFileSync('npm', ['view', `ruvnet-brain@${v}`, 'version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* not published yet */ }
-  if (already === v) console.log(c.dim(`  ${v} already on npm — skipping publish, just re-asserting the tag`));
-  // npm requires an explicit tag for prerelease versions. This project intentionally serves its
-  // `-dev` release from `latest`, so make that policy explicit on the publish command itself.
-  else runOrDie('npm publish', 'npm', ['publish', sealedPackageArtifact, '--tag', 'latest']);
-  // npm does NOT auto-move `latest` to a prerelease (x.y.z-dev) — force it, or `@latest` stays stale.
-  runOrDie('npm dist-tag latest', 'npm', ['dist-tag', 'add', `ruvnet-brain@${v}`, 'latest']);
-  recordReleaseTransaction('publish-complete-verification-pending', { version: v, tag, head, bundleSha256 });
-} else {
-  step('D', 'GitHub Release + npm publish — SKIPPED (check-only; pass --publish to publish)');
-}
-
-// D+. THE DEPLOY-SURFACE SWEEP (owner standing order, 2026-07-27): "ALWAYS check GitHub CLI and
-// Vercel CLI for gotchas with anything you're pushing. This needs to be part of the protocol you use
-// whenever you deploy. I don't want to have to tell you this again."
-//
-// Gate C++ already asks whether CI passed. That is one surface. This asks the two CLIs what the
-// PLATFORMS think — failing workflows other than our own ci, security advisories, and whether the
-// production deployment that serves the explainer is actually Ready. Each is a question a human
-// would otherwise have to remember to ask, which is the definition of a check that eventually
-// doesn't happen.
-//
-// ADVISORY BY DESIGN, LOUD BY CONTRACT: this prints findings and does not exit non-zero, because a
-// GitHub-side hiccup must not wedge a correct release — EXCEPT where it overlaps a hard gate that
-// already exists (C++ for ci, E for the live explainer). Anything it finds is printed in full so it
-// cannot be a diagnostic nobody reads.
-step('D+', 'deploy-surface sweep — what GitHub and Vercel think about what we are pushing');
-{
-  const sh = (cmd, args) => { try { return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore','pipe','ignore'], timeout: 45000 }); } catch { return null; } };
-
-  // 1. Failing workflow runs that are NOT our ci (ci is gate C++'s job). issue-watch exits 1 BY
-  //    DESIGN on an SLA breach, so it is reported as an SLA signal, never as a broken pipeline —
-  //    conflating the two is how a permanently-red workflow trains everyone to ignore red.
-  const runs = sh('gh', ['run','list','--repo','stuinfla/ruvnet-brain','--limit','15','--json','name,conclusion,headBranch']);
-  if (runs) {
-    let bad = [];
-    try { bad = JSON.parse(runs).filter((r) => r.conclusion && r.conclusion !== 'success' && r.name !== 'ci'); } catch { /* unparseable — reported below */ }
-    const sla = bad.filter((r) => r.name === 'issue-watch');
-    const real = bad.filter((r) => r.name !== 'issue-watch');
-    if (sla.length) console.log(`  ${c.y('! issue-watch red x' + sla.length)} ${c.dim('— by design: an open issue is past its 4h SLA. Answer the issue, do not fix the workflow.')}`);
-    if (real.length) console.log(`  ${c.y('! non-ci workflows failing:')} ${real.map((r) => r.name).join(', ')}`);
-    if (!sla.length && !real.length) console.log(c.dim('  no failing workflows outside ci'));
-  } else console.log(c.dim('  gh unavailable — workflow sweep SKIPPED (not a pass)'));
-
-  // 2. Security advisories against what we ship.
-  const dep = sh('gh', ['api','repos/stuinfla/ruvnet-brain/dependabot/alerts','--jq','[.[]|select(.state=="open")]|length']);
-  if (dep !== null) {
-    const n = parseInt(dep.trim(), 10);
-    console.log(n > 0 ? `  ${c.r('! ' + n + ' open dependabot alert(s)')}` : c.dim('  0 open dependabot alerts'));
-  } else console.log(c.dim('  dependabot query unavailable — SKIPPED (not a pass)'));
-
-  // 3. Vercel: the explainer is a shipped surface; a Ready production deployment is the precondition
-  //    for gate E's live check meaning anything.
-  const vc = sh('vercel', ['ls','--yes']);
-  if (vc) {
-    const prod = vc.split('\n').find((l) => l.includes('Production'));
-    const ready = prod && /●\s*Ready/.test(prod);
-    console.log(ready ? c.dim('  vercel: latest production deployment Ready') : `  ${c.y('! vercel: latest production deployment is NOT Ready')} ${c.dim((prod||'').trim().slice(0,90))}`);
-  } else console.log(c.dim('  vercel CLI unavailable/not logged in — SKIPPED (not a pass)'));
-}
-
-// E. the live channel walk — THE gate that would have caught the stale-2.9.1 + 404
-step('E', 'verify-channels — the live walk of every user path');
-runOrDie('verify-channels', process.execPath, ['scripts/verify-channels.mjs']);
-if (PUBLISH) {
-  runOrDie('publication receipt', process.execPath, [
-    'scripts/publication-receipt.mjs', '--candidate', process.env.RUVNET_CANDIDATE_RECEIPT,
-    '--out', process.env.RUVNET_PUBLICATION_RECEIPT,
-  ]);
-  runOrDie('publication seal', process.execPath, [
-    'scripts/release-proof.mjs', '--candidate', process.env.RUVNET_CANDIDATE_RECEIPT,
-    '--publication', process.env.RUVNET_PUBLICATION_RECEIPT,
-  ]);
-  const txn = readReleaseTransaction();
-  recordReleaseTransaction('channels-converged', {
-    version: V(),
-    tag: `v${V()}`,
-    head: execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-    bundleSha256: txn?.bundleSha256 ?? null,
+  const packageIntegrity = `sha512-${crypto.createHash('sha512').update(fs.readFileSync(sealedPackageArtifact)).digest('base64')}`;
+  const identity = {
+    repository: 'stuinfla/ruvnet-brain', package: 'ruvnet-brain', version: v, tag,
+    candidateSha: head, packageIntegrity, bundleSha256,
+  };
+  const privatePem = process.env.RUVNET_SIGNING_KEY;
+  if (!privatePem) throw new Error('RUVNET_SIGNING_KEY is required for signed transaction receipts');
+  const finalReceipt = await runReleaseTransaction({
+    identity, assets, adapter: liveReleaseProvider({
+      root: ROOT,
+      candidateReceipt: process.env.RUVNET_CANDIDATE_RECEIPT,
+      publicationReceipt: process.env.RUVNET_PUBLICATION_RECEIPT,
+    }),
+    privateKey: crypto.createPrivateKey(privatePem),
+    publicKey: crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'keys/ruvnet-brain-signing.pub.pem'), 'utf8')),
+    hostVerifier: stagedHostVerifier({ assets, identity }),
   });
+  if (finalReceipt.state !== 'channels-converged') throw new Error(`release transaction stopped at ${finalReceipt.state}`);
+} else {
+  step('D', 'remote staged release transaction — SKIPPED (check-only; pass --publish to publish)');
+}
+
+// Check-only diagnoses the currently public channels. During publication, transaction finalization
+// performs this walk once, then creates and verifies the publication receipt before convergence.
+if (!PUBLISH) {
+  step('E', 'verify-channels — the live walk of every user path');
+  runOrDie('verify-channels', process.execPath, ['scripts/verify-channels.mjs']);
 }
 
 if (PUBLISH) {

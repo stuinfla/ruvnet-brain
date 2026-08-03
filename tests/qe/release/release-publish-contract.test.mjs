@@ -3,92 +3,89 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '../../..');
-const source = fs.readFileSync(path.join(ROOT, 'scripts/release.mjs'), 'utf8');
-const bundleSource = fs.readFileSync(path.join(ROOT, 'scripts/build-bundle.mjs'), 'utf8');
+const release = fs.readFileSync(path.join(ROOT, 'scripts/release.mjs'), 'utf8');
+const transaction = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction.mjs'), 'utf8');
+const provider = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction-provider.mjs'), 'utf8');
+const bundle = fs.readFileSync(path.join(ROOT, 'scripts/build-bundle.mjs'), 'utf8');
 
-const position = (needle) => {
+const position = (source, needle) => {
   const found = source.indexOf(needle);
   expect(found, `missing release operation: ${needle}`).toBeGreaterThanOrEqual(0);
   return found;
 };
 
-describe('release publication is bound to one candidate', () => {
-  it('targets the exact HEAD and verifies the resulting remote tag before npm changes', () => {
-    expect(source).toContain("const head = execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD']");
-    expect(source).toContain("'--target', head");
-    expect(source).toContain('release tag already identifies different bytes');
-    expect(source).toContain('published GitHub Release tag is not candidate HEAD');
-    expect(position('publishedTagSha !== head')).toBeLessThan(position("runOrDie('npm publish'"));
+describe('release publication is one remote durable staged transaction', () => {
+  it('binds signed append-only receipts to exact candidate and artifact identity', () => {
+    expect(transaction).toContain('transactionIdFor');
+    expect(transaction).toContain('candidateSha: identity.candidateSha');
+    expect(transaction).toContain('packageIntegrity: identity.packageIntegrity');
+    expect(transaction).toContain('bundleSha256: identity.bundleSha256');
+    expect(transaction).toContain('crypto.sign');
+    expect(transaction).toContain('previousReceiptDigest');
+    expect(provider).toContain("command('gh', ['release', 'upload', anchor.tag, file, '--repo', REPO])");
+    expect(provider).toContain('refusing to replace staged asset with different bytes');
+    expect(provider).not.toContain("'--clobber'");
+    expect(provider).toContain("'pack', `${PACKAGE}@candidate-v${identity.version}`");
+    expect(provider).toContain('staged npm package integrity mismatch');
   });
 
-  it('supports annotated and lightweight tags without accepting a collision', () => {
-    expect(source).toContain('`refs/tags/${tag}^{}`');
-    expect(source).toContain("ref?.endsWith('^{}')");
-    expect(source).toMatch(/remoteTagSha && remoteTagSha !== head/);
+  it('creates a remote draft before the first externally visible candidate mutation', () => {
+    expect(position(transaction, "append('remote-prepared'"))
+      .toBeLessThan(position(transaction, "intend('npm-stage-intent'"));
+    expect(position(transaction, "intend('npm-stage-intent'"))
+      .toBeLessThan(position(transaction, 'adapter.stageNpm'));
+    expect(provider).toContain("'-F', 'draft=true'");
   });
 
-  it('fails closed in build-sign-release-npm-verify order', () => {
+  it('stages npm and GitHub non-latest before changing either default', () => {
     const operations = [
-      "runOrDie('build release bundle'",
-      "runOrDie('sign release bundle'",
-      "runOrDie('create signed GitHub Release'",
-      "runOrDie('npm publish'",
-      "runOrDie('npm dist-tag latest'",
-      "runOrDie('verify-channels'",
-    ].map(position);
+      'adapter.stageNpm',
+      'adapter.publishDraftNonLatest',
+      'adapter.promoteNpm',
+      'adapter.makeGithubLatest',
+      "append('channels-converged'",
+    ].map((needle) => position(transaction, needle));
     expect(operations).toEqual([...operations].sort((a, b) => a - b));
+    expect(provider).toContain("'make_latest=false'");
+    expect(provider).toContain("'make_latest=true'");
   });
 
-  it('requires the bundle, signature, digest, and sealed package as one release asset set', () => {
-    expect(source).toContain('const assets = [zip, `${zip}.sig`, `${zip}.sha256`, sealedPackageArtifact]');
-    expect(source).toContain('signed release asset missing');
-    expect(source).toContain("'release', 'create', tag, ...assets");
-    expect(source).toContain("runOrDie('npm publish', 'npm', ['publish', sealedPackageArtifact, '--tag', 'latest'])");
+  it('requires bundle, signature, digest, and sealed package as one staged asset set', () => {
+    expect(release).toContain('const assets = {');
+    expect(release).toContain('bundleSignaturePath: `${zip}.sig`');
+    expect(release).toContain('bundleDigestPath: `${zip}.sha256`');
+    expect(release).toContain('packagePath: sealedPackageArtifact');
+    expect(release).toContain('signed release asset missing');
+    expect(provider).toContain('assets.packagePath');
   });
 
-  it('rebuilds and audits the exact extracted archive before the signer can run', () => {
-    expect(bundleSource).toContain('fs.rmSync(ZIP, { force: true })');
-    expect(bundleSource).toContain("await import('../kb/zip-extract.mjs')");
-    expect(bundleSource).toContain('const packagedAudit = await auditRvfIndexes(packagedRvfs)');
-    expect(bundleSource).toContain('exact archive proof:');
-    expect(position("runOrDie('build release bundle'"))
-      .toBeLessThan(position("runOrDie('sign release bundle'"));
+  it('rebuilds and audits the exact extracted archive before signing', () => {
+    expect(bundle).toContain('fs.rmSync(ZIP, { force: true })');
+    expect(bundle).toContain("await import('../kb/zip-extract.mjs')");
+    expect(bundle).toContain('const packagedAudit = await auditRvfIndexes(packagedRvfs)');
+    expect(position(release, "runOrDie('build release bundle'"))
+      .toBeLessThan(position(release, "runOrDie('sign release bundle'"));
   });
 
-  it('is retryable without moving an existing tag or duplicating assets', () => {
-    expect(source).toContain("'release', 'view', tag");
-    expect(source).toContain("'release', 'upload', tag, ...assets, '--clobber'");
-    expect(source).toContain('already on npm — skipping publish');
-    expect(source).toContain("runOrDie('npm dist-tag latest'");
+  it('fails closed on competing transactions and duplicate drafts', () => {
+    expect(transaction).toContain('pending release ${competing[0].transactionId} blocks');
+    expect(transaction).toContain('duplicate matching drafts require reconciliation');
+    expect(transaction).toContain('release receipt sequence gap or replay');
+    expect(transaction).toContain('release receipt chain conflict');
   });
 
-  it('records a recoverable cross-channel transaction before the first remote mutation', () => {
-    const transaction = position('release-transaction');
-    expect(transaction).toBeLessThan(position("runOrDie('create signed GitHub Release'"));
-    expect(source).toContain('github-published-npm-pending');
-    expect(source).toContain('channels-converged');
+  it('uses guarded compensation and preserves an explicit human-only abort terminal', () => {
+    expect(transaction).toContain("if (observed.version !== identity.version) throw new Error('npm latest changed during compensation')");
+    expect(provider).toContain('refusing compensation: npm latest is');
+    expect(transaction).toContain("if (!authorized) throw new Error('release abort requires explicit human authorization')");
   });
 
-  it('binds the transaction to signed artifact bytes across retries', () => {
-    expect(source).toContain('bundleSha256');
-    expect(source).toContain('priorTxn.bundleSha256 === bundleSha256');
-    expect(source).toContain('unfinished release transaction requires reconciliation');
-  });
-
-  it('does not overwrite an unfinished transaction for another candidate', () => {
-    expect(source).toContain('unfinished release transaction');
-    expect(position('unfinished release transaction'))
-      .toBeLessThan(position("recordReleaseTransaction('prepared'"));
-  });
-
-  it('resumes a pending candidate without rebuilding nondeterministic bundle bytes', () => {
-    expect(position('const priorTxn = readReleaseTransaction()'))
-      .toBeLessThan(position("runOrDie('build release bundle'"));
-    expect(source).toContain('resume existing signed release assets');
-  });
-
-  it('claims channel convergence only after the live channel verifier succeeds', () => {
-    expect(position("recordReleaseTransaction('channels-converged'"))
-      .toBeGreaterThan(position("runOrDie('verify-channels'"));
+  it('creates final public evidence before appending channels-converged', () => {
+    expect(position(provider, "'scripts/publication-receipt.mjs'"))
+      .toBeLessThan(position(provider, "'scripts/release-proof.mjs'"));
+    expect(position(transaction, 'adapter.finalize'))
+      .toBeLessThan(position(transaction, "append('channels-converged'"));
+    expect(provider).toContain("'scripts/verify-channels.mjs'");
+    expect(provider).toContain("'scripts/published-surface-probe.mjs', '--json'");
   });
 });

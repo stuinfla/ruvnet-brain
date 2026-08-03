@@ -23,6 +23,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { BUNDLED_OWNER_SEED_IDS, SOURCE_CLASS } from './lesson-provenance.mjs';
+
+export { BUNDLED_OWNER_SEED_IDS, SOURCE_CLASS } from './lesson-provenance.mjs';
 
 /** Resolve fixture/plugin configuration without mutating the child process account HOME. */
 export function resolveConfigRoot(env = process.env, home = os.homedir()) {
@@ -99,6 +102,8 @@ export const ORIGIN = Object.freeze({
 });
 const ORIGIN_VALUES = new Set(Object.values(ORIGIN));
 
+const SOURCE_CLASS_VALUES = new Set(Object.values(SOURCE_CLASS));
+
 /**
  * STATUS — the ratification ladder. A lesson does not become policy by existing.
  * candidate → ratified (a human agreed) → active (in force at its trigger).
@@ -128,6 +133,11 @@ export function makeLesson(spec) {
     severity = 'normal',              // 'normal' | 'high' — see weightOf()
     intendedEnforcement = null,       // what it should become once a human ratifies it
     ratifiedBy = null,
+    sourceClass = origin === ORIGIN.USER_STATED
+      ? SOURCE_CLASS.CURRENT_USER
+      : origin === ORIGIN.MODEL_INFERRED
+        ? SOURCE_CLASS.MODEL_INFERRED
+        : SOURCE_CLASS.IMPORTED_OWNER,
   } = spec;
   const err = (m) => { throw new Error(`Lesson "${id ?? '?'}" invalid: ${m}`); };
 
@@ -151,6 +161,10 @@ export function makeLesson(spec) {
   }
 
   if (!ORIGIN_VALUES.has(origin)) err(`origin must be one of: ${[...ORIGIN_VALUES].join(', ')}`);
+  if (!SOURCE_CLASS_VALUES.has(sourceClass)) err(`sourceClass must be one of: ${[...SOURCE_CLASS_VALUES].join(', ')}`);
+  if (sourceClass === SOURCE_CLASS.CURRENT_USER && origin !== ORIGIN.USER_STATED) {
+    err('sourceClass:current-user requires origin:user-stated');
+  }
   if (!STATUS_VALUES.has(status)) err(`status must be one of: ${[...STATUS_VALUES].join(', ')}`);
 
   // THE TRUST BOUNDARY. A lesson the model wrote about itself, or one imported from a repo, cannot
@@ -166,7 +180,7 @@ export function makeLesson(spec) {
 
   return Object.freeze({
     id, statement, trigger, enforcement, evidence,
-    surface, origin, status, severity,
+    surface, origin, sourceClass, status, severity,
     intendedEnforcement: intendedEnforcement ?? null,
     ratifiedBy: ratifiedBy ?? null,
     projects: [...projects],
@@ -255,7 +269,12 @@ export function loadLessons(file = STORE_PATH) {
     // to edit and delete these); a malformed entry must be dropped loudly rather than acted upon.
     const out = [];
     const dropped = [];
-    for (const l of raw.lessons || []) {
+    const rows = Array.isArray(raw.lessons) ? raw.lessons : [];
+    const ids = new Set(rows.map((lesson) => lesson?.id));
+    const legacyOwnerSeed = rows.length === BUNDLED_OWNER_SEED_IDS.size
+      && ids.size === BUNDLED_OWNER_SEED_IDS.size
+      && [...BUNDLED_OWNER_SEED_IDS].every((id) => ids.has(id));
+    for (const stored of rows) {
       // SKIP THE BAD ROW, BUT NEVER SILENTLY. An adversarial review proved that a schema change
       // (ADR-035 proposes new enforcement values the current enum rejects) would take this store
       // from 16 lessons to 0 with NO error and exit 0 — output indistinguishable from "no lessons
@@ -264,6 +283,14 @@ export function loadLessons(file = STORE_PATH) {
       //
       // A store that empties itself quietly is the worst possible failure here, because the whole
       // product promise is "you should never have to tell me twice."
+      const l = legacyOwnerSeed ? {
+        ...stored,
+        origin: ORIGIN.IMPORTED,
+        sourceClass: SOURCE_CLASS.IMPORTED_OWNER,
+        status: STATUS.CANDIDATE,
+        demoted: true,
+        ratifiedBy: null,
+      } : stored;
       try { out.push(makeLesson(l)); } catch (e) {
         dropped.push({ id: l && l.id, why: String(e && e.message || e) });
       }
@@ -435,6 +462,7 @@ export function restore(id, lessons) {
 export function ratify(id, lessons, { by = 'user' } = {}) {
   return lessons.map((l) => {
     if (l.id !== id) return l;
+    if (l.sourceClass === SOURCE_CLASS.IMPORTED_OWNER || l.sourceClass === SOURCE_CLASS.DEMONSTRATION) return l;
     const target = l.intendedEnforcement || l.enforcement;
     const canBlock = l.origin === ORIGIN.USER_STATED;
     return makeLesson({
@@ -448,5 +476,7 @@ export function ratify(id, lessons, { by = 'user' } = {}) {
 
 /** Lessons awaiting a human decision — what the management surface must show first. */
 export function pending(lessons) {
-  return lessons.filter((l) => l.status === STATUS.CANDIDATE && !l.demoted);
+  return lessons.filter((l) => l.status === STATUS.CANDIDATE && !l.demoted
+    && l.sourceClass !== SOURCE_CLASS.IMPORTED_OWNER
+    && l.sourceClass !== SOURCE_CLASS.DEMONSTRATION);
 }

@@ -37,7 +37,7 @@ describe('non-trivial fix delivery rail', () => {
 
   it('keeps the accepted living plan aligned with the enforced Brain behavior', () => {
     expect(ADR).toMatch(/status:\s*Accepted/i);
-    expect(ADR).toMatch(/updated:\s*2026-08-01/i);
+    expect(ADR).toMatch(/updated:\s*2026-08-02/i);
     expect(ADR).toMatch(/plugin\/skills\/ruvnet-brain\/SKILL\.md/);
     expect(ADR).toMatch(/tests\/unit\/fix-workstream-guidance\.test\.mjs/);
   });

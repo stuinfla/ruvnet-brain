@@ -107,12 +107,11 @@ describe('protected publish invocation guard', () => {
 
   it('is load-bearing before any remote mutation in the canonical publisher', () => {
     const source = fs.readFileSync(path.resolve(import.meta.dirname, '../../scripts/release.mjs'), 'utf8');
-    const guard = source.indexOf('validateProtectedPublishInvocation');
-    const push = source.indexOf("runOrDie('git push'");
-    const publish = source.indexOf("runOrDie('npm publish'");
+    const guard = source.indexOf('validateProtectedPublishInvocation({ root: ROOT })');
+    const publish = source.indexOf('const finalReceipt = await runReleaseTransaction');
     expect(guard).toBeGreaterThan(-1);
-    expect(guard).toBeLessThan(push);
     expect(guard).toBeLessThan(publish);
+    expect(source).not.toContain("runOrDie('git push'");
     expect(source).toContain('PROTECTED RELEASE GATE FAILED');
   });
 });

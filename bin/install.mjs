@@ -24,6 +24,7 @@ import {
   requiredEmbedderModels,
   missingEmbedderModels,
 } from '../kb/model-requirements.mjs';
+import { mergeManagedCatalog } from '../scripts/model-router-catalog.mjs';
 
 // SEC-0010 #6 — the Ed25519 PUBLIC key is EMBEDDED here (not a separate file) so the installer's
 // trust root travels with the installer code itself: an attacker who swaps the downloaded bundle
@@ -616,6 +617,7 @@ export function beginConsoleRuntimeTransaction(cacheDir, sourceRoot = REPO_ROOT)
     ['console', 'console'],
     ['scripts', 'scripts'],
     ['plugin/scripts', 'plugin/scripts'],
+    ['data/model-catalog.json', 'data/model-catalog.json'],
     ['kb/brain-profile.mjs', 'kb/brain-profile.mjs'],
     ['bin/install.mjs', 'bin/install.mjs'],
     ['package.json', 'package.json'],
@@ -641,6 +643,15 @@ export function beginConsoleRuntimeTransaction(cacheDir, sourceRoot = REPO_ROOT)
   if (!packageManifest.version || packageManifest.version !== PACKAGE_VERSION) {
     fs.rmSync(staged, { recursive: true, force: true });
     throw new Error(`console runtime version ${packageManifest.version || '(missing)'} does not match candidate ${PACKAGE_VERSION}`);
+  }
+  try {
+    const providerCatalog = JSON.parse(fs.readFileSync(path.join(staged, 'data', 'model-catalog.json'), 'utf8'));
+    if (!providerCatalog.providers || typeof providerCatalog.providers !== 'object' || !Object.keys(providerCatalog.providers).length) {
+      throw new Error('providers object is missing or empty');
+    }
+  } catch (error) {
+    fs.rmSync(staged, { recursive: true, force: true });
+    throw new Error(`console runtime model-catalog is invalid: ${error.message}`);
   }
   const stagedEntry = path.join(staged, 'scripts', 'onboarding-console.mjs');
   for (const syntaxTarget of [stagedEntry, path.join(staged, 'bin', 'install.mjs')]) {
@@ -791,7 +802,8 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
     'Wiring the Claude Code plugin',
     'this registers search_ruvnet + the grounding hook so Claude uses the brain automatically',
   );
-  const manualMarketplace = 'claude plugin marketplace add stuinfla/ruvnet-brain';
+  const marketplaceSource = process.env.RUVNET_CLAUDE_MARKETPLACE_SOURCE || 'stuinfla/ruvnet-brain';
+  const manualMarketplace = `claude plugin marketplace add ${marketplaceSource}`;
   const manualInstall = 'claude plugin install ruvnet-brain@ruvnet-brain --scope user';
 
   if (!have('claude')) {
@@ -809,7 +821,7 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
   if (requireManaged && !before.managed) return { host: false, wired: false, action: 'unmanaged' };
   const addedMarket = before.managed
     ? tryRun('claude', ['plugin', 'marketplace', 'update', 'ruvnet-brain'])
-    : tryRun('claude', ['plugin', 'marketplace', 'add', 'stuinfla/ruvnet-brain']);
+    : tryRun('claude', ['plugin', 'marketplace', 'add', marketplaceSource]);
   // Deliberately NOT reassuring here. This used to say "it may already be added — that's fine",
   // which is a GUESS about someone else's machine, and when it was wrong the user finished the
   // install with a working search_ruvnet, no slash commands, and a message telling them all was
@@ -1118,11 +1130,27 @@ const CODEX_PLUGIN_ID = 'ruvnet-brain@ruvnet-brain';
 const CODEX_MARKETPLACE = 'ruvnet-brain';
 const CODEX_MARKETPLACE_SOURCE = 'stuinfla/ruvnet-brain';
 
-function prepareCodexMarketplace() {
-  const target = path.join(
+function codexMarketplaceTarget() {
+  return path.join(
     process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain'),
     'codex-marketplace',
   );
+}
+
+function codexMarketplaceReady(target = codexMarketplaceTarget()) {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(target, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    return manifest?.name === CODEX_MARKETPLACE
+      && Array.isArray(manifest.plugins)
+      && manifest.plugins.some((plugin) => plugin?.name === 'ruvnet-brain' && plugin?.source === './plugin')
+      && fs.existsSync(path.join(target, 'plugin', '.codex-plugin', 'plugin.json'));
+  } catch {
+    return false;
+  }
+}
+
+function prepareCodexMarketplace() {
+  const target = codexMarketplaceTarget();
   const staged = `${target}.tmp-${process.pid}`;
   fs.rmSync(staged, { recursive: true, force: true });
   fs.mkdirSync(path.join(staged, '.claude-plugin'), { recursive: true });
@@ -1199,6 +1227,18 @@ export function wireCodexPlugin({
 } = {}) {
   if (!fs.existsSync(codexDir)) return { host: false, action: 'no-host' };
   const options = { codexBin, codexHome, cwd };
+  // Codex loads every configured marketplace before it can report plugin state. Repair only an
+  // absent/malformed Brain-owned snapshot before that probe, or the probe can fail before its own
+  // repair path is reachable. A healthy current cache stays byte-untouched, and plugin enablement
+  // is still read and preserved below.
+  let localMarketplace = null;
+  if (runJson === runCodexJson && !codexMarketplaceReady()) {
+    try { localMarketplace = prepareCodexMarketplace(); }
+    catch (error) {
+      if (announce) warn(`Codex marketplace preparation failed — ${error.message}`);
+      return { host: true, action: 'marketplace-prepare-failed', error: error.message };
+    }
+  }
   const before = codexPluginStatus({ ...options, runJson });
   if (!before.available) {
     if (announce) warn(`Codex plugin lifecycle not installed — ${before.error}`);
@@ -1213,7 +1253,13 @@ export function wireCodexPlugin({
     return { host: true, action: 'unchanged', ...before };
   }
 
-  const localMarketplace = runJson === runCodexJson ? prepareCodexMarketplace() : null;
+  if (runJson === runCodexJson && !localMarketplace) {
+    try { localMarketplace = prepareCodexMarketplace(); }
+    catch (error) {
+      if (announce) warn(`Codex marketplace preparation failed — ${error.message}`);
+      return { host: true, action: 'marketplace-prepare-failed', error: error.message };
+    }
+  }
   const markets = runJson(['plugin', 'marketplace', 'list', '--json'], options);
   if (!markets.ok) {
     if (announce) warn(`Codex marketplace check failed — ${markets.error}`);
@@ -1728,6 +1774,21 @@ async function doctor() {
     warn('brain not found here — run the installer first:  npx ruvnet-brain');
     return 1; // "not installed" is a FAILING doctor, not a neutral one
   }
+  const convergencePath = path.join(process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain'), 'host-convergence.json');
+  let hostConvergence = { healthy: true, state: 'not-recorded' };
+  if (fs.existsSync(convergencePath)) {
+    try {
+      hostConvergence = classifyHostConvergence(JSON.parse(fs.readFileSync(convergencePath, 'utf8')));
+      if (hostConvergence.healthy) ok(`host convergence receipt: ${hostConvergence.state}`);
+      else {
+        warn(`host convergence incomplete: ${hostConvergence.state}`);
+        info(`Retry the same generation: ${c.bold('npx ruvnet-brain --update')}${hostConvergence.action ? `; ${hostConvergence.action}` : ''}`);
+      }
+    } catch (error) {
+      hostConvergence = { healthy: false, state: 'invalid-receipt', error: error.message };
+      warn(`host convergence receipt is invalid: ${error.message}`);
+    }
+  }
   have('node') ? ok('node present') : warn('node missing');
   have('npm') ? ok('npm present') : warn('npm missing');
   have('claude') ? ok('claude CLI present') : warn('claude CLI missing (plugin wiring needs it)');
@@ -1908,6 +1969,7 @@ async function doctor() {
     || codexLifecycleFailed
     || codexWiringFailed
     || codexReadinessFailed
+    || !hostConvergence.healthy
     || Boolean(rufloOperational && !rufloOperational.healthy);
   if (failed && !hookResult && !groundingUnprovenPersisted) {
     console.log(`  ${c.red('✗ FAILING')} — the warnings above are real. Re-run  ${c.bold('npx ruvnet-brain')}  to repair.`);
@@ -2243,7 +2305,29 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
     }
   }
   if (!okApplied) return fail({ applyStatus: applied.status, error: applied.error?.message || 'Stable Spine activation failed' });
-  return { ok: true, results, applyStatus: applied.status };
+  const convergence = classifyHostConvergence({
+    desiredVersion: PACKAGE_VERSION,
+    hosts: {
+      claude: { state: results.claude.host ? 'ready' : 'absent', version: results.claude.version || null },
+      codex: { state: results.codex?.action === 'disabled' ? 'disabled' : (results.codexHost?.host ? 'ready' : 'absent'), version: results.codex?.version || null },
+    },
+    consoleRuntime: results.consoleRuntime,
+  });
+  return { ok: true, convergence, results, applyStatus: applied.status };
+}
+
+export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSION) {
+  if (!receipt || receipt.desiredVersion !== expectedVersion) {
+    return { healthy: false, state: 'version-mismatch', action: `required version ${expectedVersion}` };
+  }
+  const hostStates = Object.values(receipt.hosts || {});
+  const badHost = hostStates.find((host) => !['ready', 'disabled', 'absent'].includes(host?.state)
+    || (host.state === 'ready' && host.version !== expectedVersion));
+  if (badHost) return { healthy: false, state: 'host-pending', action: 're-run host synchronization' };
+  if (receipt.consoleRuntime?.state !== 'ready') {
+    return { healthy: false, state: receipt.consoleRuntime?.state || 'console-unproven', action: 'restart Console, then re-run --doctor' };
+  }
+  return { healthy: true, state: 'channels-converged' };
 }
 
 function runUpdate() {
@@ -2890,7 +2974,28 @@ export async function offerRouterProfile() {
   for (const [src, dst] of [['catalog.template.json', 'catalog.json'], ['policy.default.mjs', 'policy.default.mjs']]) {
     const s = path.join(pkgRoot, 'config', 'model-router', src);
     const d = path.join(routerDir, dst);
-    if (fs.existsSync(s) && !fs.existsSync(d)) { fs.copyFileSync(s, d); ok(`installed ${dst} (edit freely — goldie keeps prices fresh where scheduled)`); }
+    if (!fs.existsSync(s)) continue;
+    if (!fs.existsSync(d)) {
+      fs.copyFileSync(s, d);
+      ok(`installed ${dst} (edit freely — goldie keeps prices fresh where scheduled)`);
+      continue;
+    }
+    if (src === 'catalog.template.json') {
+      try {
+        const existing = JSON.parse(fs.readFileSync(d, 'utf8'));
+        const managed = JSON.parse(fs.readFileSync(s, 'utf8'));
+        const merged = mergeManagedCatalog(existing, managed);
+        if (merged !== existing) {
+          fs.copyFileSync(d, `${d}.pre-managed-merge`);
+          const tmp = `${d}.tmp-${process.pid}`;
+          fs.writeFileSync(tmp, `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
+          fs.renameSync(tmp, d);
+          ok(`merged ${merged.candidates.length - existing.candidates.length} managed subscription model(s); your catalog overrides were preserved`);
+        }
+      } catch (error) {
+        warn(`managed model additions were not merged (${error.message}); your existing catalog was left unchanged`);
+      }
+    }
   }
   let copied = 0;
   // dispatch-receipt + metaharness-receipts added 2026-07-13: without the LOGGER, subagent routing is

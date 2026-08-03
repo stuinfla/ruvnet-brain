@@ -3,7 +3,7 @@ id: ADR-057
 title: 95 on both graders — closing a 38/53 against a self-reported 83, dimension by dimension
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-01
+updated: 2026-08-02
 impl: verification-expired
 verified: 2026-07-30
 verified_digest: 1c276a7dfbc5
@@ -245,6 +245,7 @@ to the five governed paths; it does not adjudicate the product or substitute for
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-02 | Re-read every final 4.0.7 governed change and kept this plan Proposed with `impl: verification-expired`; no external grade is promoted. | Commits `281df57`, `28baa9c`, `3668b1b`, `67b283e`, and `78e897b` change installer recovery, hook timing, packaged provenance, swarm recycling, and protected publication. These changes preserve the two-independent-grader requirement and do not satisfy it by source inspection. Exact-SHA CI, candidate receipts, published bytes, and post-publication clean installs remain authoritative. |
 | 2026-08-01 | Re-read the governed installer after the four-state Claude/Codex transaction matrix. The plan remains Proposed and `impl: verification-expired`; focused host proof does not promote either external grader or the overall score. | `bin/install.mjs` now exposes the minimum injected seams needed to prove Claude-only, Codex-only, both, neither, disabled-host preservation, and rollback on either host failure. The integrated focused suite passed 70/70, while the full unit run recorded 2,726 passes and two version-fixture failures that were corrected and rerun 43/43. Exact-SHA CI, public-artifact clean installs, and two independent scores at or above 95 remain outstanding. |
 | 2026-08-01 | Re-read the governed installer changes and deliberately downgraded `impl:` from `verified` to `verification-expired`. The 95 plan remains Proposed and every external score/proof limitation remains open. | `bin/install.mjs` now delegates What's New to the installed plugin payload and, in #78 integration commit `b606900`, declares a 30-second Codex MCP startup deadline and reports worker readiness separately from registration. Those changes do not alter the five governed claims in the source ledger below. Nevertheless `verified_digest: 1c276a7dfbc5` no longer recomputes, and a source read plus #78's 138/138 focused tests cannot mint a new verification checkpoint. No broad/packed/exact-SHA/public artifact was proved, no external grader reran, and the downstream substitution/clean-room gaps remain open. |
 | 2026-07-30 | Re-read the governed 4.0.2 source and kept this decision Proposed: local packed/focused evidence is not external release proof or a 95 score. | `bin/install.mjs` now persists Console runtime and validates controls; `plugin/hooks/hooks.json` removed parser-invalid metadata and retains valid description/hooks fields. Still OPEN: external exact-SHA matrix, published clean install, both independent graders, WhitSentry clean-room replay, downstream substitution audit, and D4 N=3 promotion threshold. |

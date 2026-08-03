@@ -41,11 +41,23 @@ name: stranger-matrix
 # named — "wait until the stdout-budget finding has a real fix" — is now discharged; what remains
 # is the admin action and the rest of items 2-9.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  workflow_dispatch: {}
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      release_qe_run_id:
+        description: Successful ci run containing the sealed candidate
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  CANDIDATE_RUN_ID: ${{ github.event.workflow_run.id || inputs.release_qe_run_id }}
+  CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   # ── shared prep, three POSIX-shaped jobs (ubuntu / macos share the exact same steps) ─────────────
@@ -53,11 +65,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: npm pack the candidate SHA
-        run: npm pack --silent --pack-destination "$RUNNER_TEMP"
+      - name: Download the one CI-sealed candidate
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          name: release-evidence-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}
       - name: npm install FROM the tarball into a fresh project (never the checkout)
         run: |
           mkdir -p "$RUNNER_TEMP/proj"
@@ -90,11 +109,18 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: npm pack the candidate SHA
-        run: npm pack --silent --pack-destination "$RUNNER_TEMP"
+      - name: Download the one CI-sealed candidate
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          name: release-evidence-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}
       - name: npm install FROM the tarball into a fresh project (never the checkout)
         run: |
           mkdir -p "$RUNNER_TEMP/proj"
@@ -134,11 +160,18 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: npm pack the candidate SHA
-        run: npm pack --silent --pack-destination "$RUNNER_TEMP"
+      - name: Download the one CI-sealed candidate
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          name: release-evidence-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}
       - name: npm install FROM the tarball into a fresh project (never the checkout)
         run: |
           mkdir -p "$RUNNER_TEMP/proj"
@@ -170,11 +203,18 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: npm pack the candidate SHA
-        run: npm pack --silent --pack-destination "$env:RUNNER_TEMP"
+      - name: Download the one CI-sealed candidate
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          name: release-evidence-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}
       - name: npm install FROM the tarball into a fresh project (never the checkout)
         run: |
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/proj" | Out-Null
@@ -233,12 +273,17 @@ jobs:
       - name: apk add zip/unzip ONLY — explicitly no jq, no gh
         run: apk add --no-cache zip unzip
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
       # No actions/setup-node here: the alpine image's own node/npm are what a musl-based hostile
       # box actually has; actions/setup-node downloads a glibc build that will not run on it.
-      - name: npm pack the candidate SHA
-        run: |
-          mkdir -p /tmp/ci-out
-          npm pack --silent --pack-destination /tmp/ci-out
+      - name: Download the one CI-sealed candidate
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          name: release-evidence-${{ env.CANDIDATE_SHA }}
+          path: /tmp/ci-out
       - name: npm install FROM the tarball into a fresh project (never the checkout)
         run: |
           mkdir -p /tmp/ci-out/proj

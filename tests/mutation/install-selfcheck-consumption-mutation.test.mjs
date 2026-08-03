@@ -81,7 +81,7 @@ function buildFixtureDir({ includeRvf }) {
 function buildScratchRoot({ mutateTo, includeRvf }) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mutant-installer-'));
   scratchDirs.push(root);
-  for (const d of ['bin', 'scripts', 'kb', 'dist', 'console', 'plugin']) fs.mkdirSync(path.join(root, d), { recursive: true });
+  for (const d of ['bin', 'kb', 'dist', 'plugin', 'data']) fs.mkdirSync(path.join(root, d), { recursive: true });
 
   const source = fs.readFileSync(REAL_INSTALLER, 'utf8');
   expect(source.includes(ANCHOR), 'mutation anchor not found in bin/install.mjs — the target moved').toBe(true);
@@ -89,11 +89,9 @@ function buildScratchRoot({ mutateTo, includeRvf }) {
   if (mutateTo !== undefined) expect(written, 'mutation changed nothing — it would silently run the unmutated file').not.toBe(source);
   fs.writeFileSync(path.join(root, 'bin', 'install.mjs'), written);
 
-  // The sibling modules bin/install.mjs's OWN dynamic imports need — scripts/selfcheck.mjs above all,
-  // since it owns the exact `.exitCode` verdict the mutated line does or doesn't consume.
-  for (const rel of ['scripts/selfcheck.mjs', 'scripts/hook-registry.mjs', 'scripts/install-scope.mjs', 'scripts/upgrade-notice.mjs', 'scripts/user-settings.mjs', 'scripts/onboarding-console.mjs']) {
-    fs.copyFileSync(path.join(REPO, rel), path.join(root, rel));
-  }
+  // Use the real runtime directory instead of maintaining a second, partial import list.
+  // Only bin/install.mjs is mutated; every dependency remains byte-identical to the candidate.
+  fs.cpSync(path.join(REPO, 'scripts'), path.join(root, 'scripts'), { recursive: true });
   for (const rel of ['kb/verify-citation.mjs', 'kb/brain-profile.mjs', 'kb/model-requirements.mjs']) {
     fs.copyFileSync(path.join(REPO, rel), path.join(root, rel));
   }
@@ -102,6 +100,7 @@ function buildScratchRoot({ mutateTo, includeRvf }) {
   // it is designed to test instead of failing earlier on an incomplete fake package.
   fs.cpSync(path.join(REPO, 'console'), path.join(root, 'console'), { recursive: true });
   fs.cpSync(path.join(REPO, 'plugin', 'scripts'), path.join(root, 'plugin', 'scripts'), { recursive: true });
+  fs.copyFileSync(path.join(REPO, 'data', 'model-catalog.json'), path.join(root, 'data', 'model-catalog.json'));
   fs.copyFileSync(path.join(REPO, 'package.json'), path.join(root, 'package.json'));
 
   fs.cpSync(buildFixtureDir({ includeRvf }), path.join(root, 'dist', 'ruvnet-brain'), {

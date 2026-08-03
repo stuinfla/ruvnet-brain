@@ -48,7 +48,7 @@ history below; it does not rewrite that history.
   `kb/forge-evidence.mjs`. This closes the current exact-evidence routing gap; it does not claim
   every open-world query can yield a deterministic blocking fact.
 - **Consent remains fail-safe.** Commit `63e5e67` makes an `assumed:` router profile insufficient
-  to activate a blocking wall. The later raw-interface demotion in `4ad464e` narrows that rule:
+  to activate dispatch auditing. The later raw-interface demotion in `4ad464e` narrows that rule:
   route-dispatch still requires confirmed consent; interface guidance is nonblocking regardless.
 
 The ADR is `impl: wired`, not a claim that every aspirational dispatcher in §2 exists. The shipped
@@ -361,7 +361,7 @@ decision planes, not lesson count (ADR-030).
   (GPT-5.6's definition record, adopted).
 - **Distribution tier**: `plugin/hooks/hooks.json` + packed artifact + active-generation spine —
   the ONLY channel that reaches other machines. Therefore the write wall
-  (ground-before-write + grounding-stamp/receipt bridge) and the dispatch wall (route-dispatch,
+  (ground-before-write + grounding-stamp/receipt bridge) and the dispatch audit (route-dispatch,
   matcher `Task|Agent`, anchored) move from this machine's `~/.claude/settings.json` into the
   shipped plugin (opt-in via profile.json preserved — the gates already self-gate);
   marketplace-clone direct paths are retired; user settings keep machine-specific reminders
@@ -523,7 +523,7 @@ vercel 4 · superpowers 1.
 P1/P2 SessionStart startup|resume → session-start (advisory, partial, 5s). P3 UserPromptSubmit
 `.*` → ground-ruvnet (advisory, silence, 5s; warm 153–181ms). P4 UserPromptSubmit `*` →
 unprompted-speech (blocking, silence, 5s; warm 225–265ms). P5 PreToolUse `Write|Edit|Bash` →
-hijack-ruvnet (advisory, silence, 5s; 69–73ms). P6 PreToolUse `Task` → route-dispatch (blocking,
+hijack-ruvnet (advisory, silence, 5s; 69–73ms). P6 PreToolUse `Task|Agent` → route-dispatch (advisory audit,
 run, 5s). P7 PreToolUse `^(Write|Edit|MultiEdit|NotebookEdit)$` → protect-state (blocking, run,
 5s; 61–65ms). P8/P9 PreToolUse `Bash` → verify-interface / design-wall (blocking, run, 5s;
 201–204 / 170–175ms). P10/P11 PreToolUse write/bash → unprompted-speech (blocking, silence, 5s;
@@ -568,9 +568,9 @@ SessionStart worst-case is security-guidance's 180s; SessionEnd = 3 concurrent s
 - **F1** Timeout-unit schism, user layer — **fixed 03:00 tonight; now a regression fixture.**
 - **F2** Untimed blocking route-dispatch (user layer, 600s default) — the ADR-053 duel find
   recreated one layer up — **fixed 03:00 tonight; regression fixture.** (Both duelists.)
-- **F3** Subagent-wall matcher split — **fixed 2026-07-28; regression fixture.** The redundant
-  user-layer dispatch wall was removed, leaving the shipped plugin's anchored registration as the
-  single blocking wall. The merged-registry test now fails if a second copy reappears. (Both.)
+- **F3** Subagent-hook matcher split — **fixed 2026-07-28; regression fixture.** The redundant
+  user-layer dispatch registration was removed, leaving the shipped plugin's anchored registration
+  as the single audit. The merged-registry test now fails if a second copy reappears. (Both.)
 - **F4** Anchoring inconsistency inside hooks.json (`^(...)$` at :71/:101/:111 vs unanchored
   :51/:123); NotebookEdit hits hijack/learn-capture by substring accident. (Fable.)
 - **F5** Stop bypasses the spine — no table entry, no mode, no offBehavior; contradicts the
@@ -684,6 +684,9 @@ delegation drift goes to the interrupt tier (§3.7.9).
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-02 | Kept SessionStart below its byte budget while restoring the build-only L4 behavioral contract in the prompt hook. The four-plane decision law, Brain-OFF split, consent boundary, and outcome-only learning rule remain unchanged. | `plugin/scripts/session-start-core.mjs` remains compact; `plugin/scripts/ground-ruvnet.sh` now carries one concise build-only contract line instead of depending on prose removed from SessionStart. `scripts/behavioral-l1-l4.mjs` and the SessionStart byte probe are the paired acceptance boundaries. |
+| 2026-08-02 | Re-read the final 4.0.7 lesson, SessionStart, hook, and swarm changes. The four-plane decision law, Brain-OFF split, bounded advisory routing, consent boundary, and outcome-only learning rule remain unchanged. | Commits `3668b1b`, `00110e5`, `67b283e`, and `5a638f6` add lesson provenance, private maintainer alerts, completed-slot recycling, and runtime/provider identity through governed hook and SessionStart paths. The new receipts do not promote host completion to artifact correctness, and the advisory dispatch hook still cannot claim a blocking boundary. Exact-SHA and packed-host QE remain release gates. |
+| 2026-08-02 | Corrected `route-dispatch` from a claimed blocking wall to a bounded, silent audit. The registration and shim are advisory, and omitted-model calls record `enforcement: advisory-host-timing` while always exiting 0. | Claude Code 2.1.220 registers Agent/Task `PreToolUse` asynchronously and checks the result only after `tool_dispatch_end` (ruvnet-brain #84; Anthropic #83195). An exit-2 result at that point cannot stop an already-completed dispatch. Focused subprocess tests prove the registered hook returns inside its declared timeout and does not consume or alter a foreign hook process. |
 | 2026-08-02 | Re-read the governed lesson-delivery surface after the source-bound learning replay correction. The four-plane decision law, Brain-OFF behavior, hook registrations, consent boundary, and outcome-only learning rule are unchanged. Lesson delivery is now tested against the direct command form that the stored correction actually requires, with fixture configuration isolated from the operator's real home. | Commits `613a10e`, `71de57b`, `fddd49f`, and `711ff31` change `plugin/scripts/lesson-store.mjs`, `plugin/scripts/lesson-gate.mjs`, `plugin/scripts/lesson-presentation.mjs`, and `plugin/scripts/lesson-command-scope.mjs`; they add direct-action acceptance, split the lesson gate into bounded modules, honor `RUVNET_CONFIG_ROOT`, and redact host paths before proof hashing. Exact merged candidate `1e51f06` passed the 96/96 focused replay suite, the source-bound portfolio check, all four causal mutants, 2,778 unit tests, and 238 integration/browser tests. This is candidate evidence only: it does not establish published-artifact, Windows/WSL2, independent-writer/verifier, or two-grader >=95 proof. |
 | 2026-08-01 | Re-read the governed mesh after bounded hook stdin and truthful MCP readiness changed two transport surfaces. The four-plane decision law, handler modes, OFF behavior, receipts, learning boundary, and single-source hook bodies remain unchanged. | `plugin/scripts/hook-shim.mjs` now captures at most 64 KiB for `route-dispatch`, `ground-before-write`, `design-wall`, `protect-state`, and `unprompted-speech`, then spawns each consumer with finite closed input; the existing 32 KiB quiet-prompt path keeps its classifier. Integration commit `b606900` makes `plugin/scripts/session-start-core.mjs` say `registered`, `ready`, or `degraded` from a process-checked readiness receipt instead of treating registration as grounding proof. OFF-silent handlers still exit before any read, and the OFF SessionStart branch still suppresses advertising. Issue #80's focused hook suite and #78's 138/138 focused tests are not proof that the still-open 20x load/broken-world matrix, packed hosts, or every foreign hook is green. |
 | 2026-07-31 | Restored stdout-budget headroom in the native SessionStart authority by shortening only redundant onboarding prose. The Console, routing, and auto-update offers retain the same one-time triggers, choices, commands, and no-repeat behavior. | The old packed candidate exceeded the 4,096-byte contract by 33 bytes on macOS and 22 bytes on Ubuntu. The corrected real packed macOS scenario passed all 76 registered hook firings; focused SessionStart/console tests passed 106/106, the plugin battery passed 60/60, and the registered latency gate passed at 208ms cold, 143ms p95, and 146ms max. |

@@ -13,8 +13,8 @@
 //     hook-shim-bash.mjs (bash-interpreter resolution, issue #38) — colocated in this same
 //     boot-frozen scripts/ dir, never resolved from the spine. No imports from the hook BODY.
 //   • Typed dispatch table (red-team findings 15/16/30): each hook declares its file, interpreter,
-//     and mode. `blocking` hooks propagate their exact exit code (route-dispatch's deliberate
-//     exit-2 wall survives by CONTRACT); `advisory` hooks can never block a turn — any failure,
+//     and mode. `blocking` hooks propagate their exact exit code; `advisory` hooks can never block
+//     a turn — any failure,
 //     including a missing file, exits 0.
 //   • Containment (finding 13): a codeRoot is honored ONLY if it resolves under
 //     ~/.cache/ruvnet-brain/versions/ — or is the explicit dev-mode checkout declared in
@@ -71,9 +71,9 @@ catch (e) { BRAIN_OFF = !(e && (e.code === 'ENOENT' || e.code === 'ENOTDIR')); }
 //
 //   'silence' — this hook exists to advertise, ground, or learn. Off means it does not run at all
 //               and writes ZERO bytes. Nothing downstream can tell it apart from not being installed.
-//   'run'     — this is a SAFETY WALL that guards money or honesty, not retrieval. route-dispatch
-//               stops a subagent fan-out inheriting an expensive model; design-wall stops an
-//               ungraded surface shipping; protect-state guards the user's own consent record.
+//   'run'     — this protection/audit remains relevant without retrieval. route-dispatch records
+//               inherited-model fan-out; design-wall stops an ungraded surface shipping;
+//               protect-state guards the user's own consent record.
 //               None becomes acceptable because retrieval is off.
 //   'partial' — the hook splits INTERNALLY. session-start-core still runs the auto-updater heartbeat, the
 //               GONG health alarm and the SLA banner (an off machine must still receive fixes,
@@ -84,7 +84,9 @@ const TABLE = {
   'session-start':    { file: 'session-start-core.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'partial' },
   'ground-ruvnet':    { file: 'ground-ruvnet.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence', stdinBytes: 32768 },
   'hijack-ruvnet':    { file: 'hijack-ruvnet.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
-  'route-dispatch':   { file: 'route-dispatch.sh',   interpreter: 'bash', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
+  // Claude Code 2.1.220 consumes Agent/Task PreToolUse results after tool_dispatch_end (#84).
+  // A refusal here would be late and therefore false enforcement; retain only bounded audit.
+  'route-dispatch':   { file: 'route-dispatch.sh',   interpreter: 'bash', mode: 'advisory', offBehavior: 'run', stdinBytes: 65536 },
   'ground-before-write': { file: 'ground-before-write.sh', interpreter: 'bash', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
   'grounding-stamp': { file: 'grounding-stamp.sh', interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
   'verify-interface': { file: 'verify-interface.sh', interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
@@ -94,6 +96,7 @@ const TABLE = {
   'protect-state':    { file: 'protect-brain-state.sh', interpreter: 'bash', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
   'learn-capture':    { file: 'learn-capture.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
   'learn-flush':      { file: 'learn-flush.mjs',     interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
+  'session-snapshot': { file: 'session-snapshot-hook.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run', stdinBytes: 65536 },
   'md-stamp':         { file: 'md-stamp.mjs',        interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   // THE EXTERNAL-SIGNAL WATCH PLANE, W1 OBSERVED (ADR-058 §D3; DDD-0013 Context 2). PostToolUse,
   // matcher ^Bash$ (anchored — an unanchored matcher is F3/F4). Classifies gh/vercel/netlify/npm
@@ -105,6 +108,10 @@ const TABLE = {
   // session-start-core.mjs, and that surfacing already lives under SessionStart's 'partial' contract.
   'signal-watch':     { file: 'signal-watch.mjs',    interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   'routing-outcome':  { file: 'routing-outcome-capture.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run' },
+  // Claude Code's synchronous TeammateIdle boundary can prevent a worker slot from going unused
+  // while its host-owned shared ledger has ready work. The body is read-only and fail-open; exit 2
+  // is reserved for one proved, unassigned, dependency-ready task. Codex has no equivalent event.
+  'swarm-slot-recycler': { file: 'swarm-slot-recycler.mjs', interpreter: 'node', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
   // The unprompted-speech chokepoint (ADR-040 / DDD-0004). ONE runtime is the sole writer of
   // user-facing bytes for every unprompted hook: it spawns the real producers (anticipate, lesson)
   // in candidate mode, applies the per-channel policy, and writes the final envelope itself. `channel`

@@ -1,6 +1,6 @@
 # THE PLAYBOOK — the standing build playbook, in full
 
-Updated: 2026-07-30 | Version 1.0.1
+Updated: 2026-08-02 | Version 1.1.0
 Created: 2026-07-27
 
 **Read this before your first build response in a session.** `plugin/scripts/session-start.sh`
@@ -87,10 +87,25 @@ rule-compliance, cite a source the tools didn't return, or claim a check that di
   Completion, with a QA gate between phases.
 - For a non-trivial domain, model it first (DDD: bounded contexts, aggregates, domain events) and
   capture key decisions as ADRs — design before code.
-- Spin up PARALLEL work where it helps (a Ruflo swarm / multiple agents) instead of serial drudgery.
+- **Parallel-by-default state machine for multi-part work.** Before the first spawn, decompose the
+  whole request, create the complete shared task list/ledger, record dependencies and give every
+  writing task its own worktree. Ruflo coordinates roles and state; the native host executes. Fill
+  available executor slots with independent ready work immediately, without asking, up to the
+  host's configured capacity; never oversubscribe and never put more than one writer in a worktree.
+  A completion moves that task to completed, unblocks its dependents, and the freed slot claims the
+  first unassigned, unblocked pending task immediately. Only allow a slot to idle when no such task
+  exists. Keep dependent integration with the designated integration owner.
+  - **Claude Code:** its shared task ledger and `TeammateIdle` hook make recycling enforceable: the
+    shipped recycler refuses idle while a ready unassigned task exists, then Claude's locked
+    `TaskUpdate` claim performs the transition.
+  - **Codex:** Codex 0.146.0 exposes no `TeammateIdle` or `TaskCompleted` hook and no equivalent
+    shared-task hook ledger. Initial fan-out and completion-notification recycling are guidance,
+    not hook enforcement: the lead must immediately dispatch the next ready ledger item when a
+    collaboration slot completes. State this degraded boundary if it affects the run; never call it
+    enforced.
   If Ruflo / RuVector MCP tools aren't available in this environment, DON'T block or stall — degrade
-  gracefully to Claude Code's native subagents (Task) and local .rvf, and briefly note the tool that
-  would make it better + how to add it. Never demand a tool the user doesn't have.
+  gracefully to the native host's agents and local .rvf, and briefly note the tool that would make
+  it better + how to add it. Never demand a tool the user doesn't have.
 - Persist decisions + state to AgentDB memory so nothing is lost across sessions or compaction.
 - If it has a UI, treat design as a BUILD STEP, not a coat of paint: apply the frontend-design
   discipline and GENERATE the visuals (AI image generation for UI mockups / diagrams / the explainer

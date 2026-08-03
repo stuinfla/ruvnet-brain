@@ -368,9 +368,17 @@ jobs:
         run: node scripts/release-authority.mjs
       - name: Version lockstep at source
         run: npm run version:check
+      - name: Build the immutable npm candidate exactly once
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-evidence"
+          npm pack --json --pack-destination "$RUNNER_TEMP/release-evidence" > "$RUNNER_TEMP/release-evidence/npm-pack.json"
+          artifact="$RUNNER_TEMP/release-evidence/$(node -p "JSON.parse(require('fs').readFileSync(process.env.RUNNER_TEMP + '/release-evidence/npm-pack.json'))[0].filename")"
+          test -s "$artifact"
+          echo "RUVNET_SEALED_PACKAGE=$artifact" >> "$GITHUB_ENV"
       - name: Exact-artifact release QE
         run: |
-          mkdir -p "$RUNNER_TEMP/release-evidence"
           npm exec -- vitest run \
             --config tests/qe/release/vitest.config.mjs \
             --reporter=json \
@@ -379,10 +387,8 @@ jobs:
       - name: Seal the exact stabilization candidate
         run: |
           npm audit --audit-level=high --json > "$RUNNER_TEMP/release-evidence/npm-audit.json"
-          npm pack --json --pack-destination "$RUNNER_TEMP/release-evidence" > "$RUNNER_TEMP/release-evidence/npm-pack.json"
-          artifact="$RUNNER_TEMP/release-evidence/$(node -p "JSON.parse(require('fs').readFileSync(process.env.RUNNER_TEMP + '/release-evidence/npm-pack.json'))[0].filename")"
           node scripts/stabilization-receipt.mjs \
-            --artifact "$artifact" \
+            --artifact "$RUVNET_SEALED_PACKAGE" \
             --qe "$RUNNER_TEMP/release-evidence/release-qe.json" \
             --audit "$RUNNER_TEMP/release-evidence/npm-audit.json" \
             --out "$RUNNER_TEMP/release-evidence/candidate-receipt.json"

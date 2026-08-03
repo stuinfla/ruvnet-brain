@@ -515,9 +515,9 @@ export const CAPABILITIES = [
       // router was in fact never being consulted at all. A quiet week and a severed wire look identical
       // from the receipt file, so read the wire directly.
       //
-      // Two things must both be true for anything to route: a PreToolUse gate on subagent dispatch
-      // (plugin/scripts/route-dispatch.sh, which is what turns "declare a model" from advice into a
-      // wall), and the opt-in profile it refuses to act without (route-dispatch.sh:46 exits 0 when
+      // Two things must both be true for the host-limited dispatch audit to record anything: a
+      // PreToolUse hook on subagent dispatch and the opt-in profile it refuses to act without
+      // (route-dispatch.sh exits 0 when
       // profile.json is absent). Either missing ⇒ the router cannot fire, regardless of how healthy
       // the receipt ledger looks.
       const profile = fs.existsSync(path.join(HOME, '.claude/model-router/profile.json'));

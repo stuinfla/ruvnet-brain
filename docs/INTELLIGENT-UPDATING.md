@@ -1,4 +1,4 @@
-Updated: 2026-07-18 11:20:00 EDT | Version 2.0.0
+Updated: 2026-08-02 18:25:00 EDT | Version 2.0.1
 Created: 2026-07-18 10:55:00 EDT
 
 # Intelligent Updating — how RuvNet Brain stays current without ever trapping you
@@ -83,7 +83,7 @@ one Node shim with an explicit table:
 
 ```
 command: node "${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs" ground-ruvnet     (advisory entries keep `|| true`)
-command: node "${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs" route-dispatch    (blocking entry — NO `|| true`)
+command: node "${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs" route-dispatch || true  (advisory on the host's async Agent/Task boundary)
 ```
 
 `hook-shim.mjs` (part of the frozen shell, designed to never need changing) carries a dispatch

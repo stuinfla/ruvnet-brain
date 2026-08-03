@@ -62,9 +62,30 @@ const dispatchDetached = (hookDir, ttl, log, command, args = [], env = process.e
     String(ttl), log, command, ...args,
   ], { env, stdio: 'ignore', timeout: 2000 })?.status === 0;
 
-const surfaceIssues = (stateDir, emit, now) => {
+export const maintainerIssueEntitlement = (env, home, repo, platform = process.platform) => {
+  const file = env.RUVNET_BRAIN_MAINTAINER_ISSUES_FILE
+    || path.join(home, '.config', 'ruvnet-brain', 'maintainer-issues.json');
+  // Windows ACL ownership is not available through this dependency-free hot path. Fail closed
+  // instead of weakening an owner-only promise into "any local user who can write the file".
+  if (platform === 'win32') return false;
+  let stat;
+  try { stat = fs.lstatSync(file); } catch { return false; }
+  if (!stat.isFile() || stat.isSymbolicLink()) return false;
+  // This is maintainer-only operational data. Refuse group/world-readable opt-ins on POSIX so a
+  // shared machine cannot turn a private maintainer signal into a terminal banner for other users.
+  if ((stat.mode & 0o077) !== 0) return false;
+  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) return false;
+  const entitlement = json(file);
+  return entitlement?.enabled === true
+    && Array.isArray(entitlement.repos)
+    && entitlement.repos.includes(repo);
+};
+
+const surfaceIssues = (stateDir, emit, now, env, home, platform) => {
   const status = json(path.join(stateDir, 'open-issues.json'));
-  if (!status?.at || now - new Date(status.at).getTime() > 6 * 3600_000) return;
+  const observedAt = Date.parse(status?.at || '');
+  if (!Number.isFinite(observedAt) || observedAt > now + 5 * 60_000 || now - observedAt > 6 * 3600_000) return;
+  if (!maintainerIssueEntitlement(env, home, status.repo, platform)) return;
   const open = Array.isArray(status.issues) ? status.issues : [];
   if (!open.length) return;
   const breaches = open.filter((issue) => issue.breach).sort((a, b) => b.ageHours - a.ageHours);
@@ -383,7 +404,7 @@ export async function runSessionStart({
       emit(`Offer ONCE: "Want to see your whole RuvNet stack on one page?" — installed parts, learned project knowledge and reversible fixes, read-only until clicked; later it's ${consoleInvoke}. On yes invoke ${consoleInvoke}; on no, don't re-offer.`);
     }
 
-    surfaceIssues(stateDir, emit, now);
+    surfaceIssues(stateDir, emit, now, env, home, platform);
     surfaceSignals({ env, cwd, stateDir, hookDir, emit, now });
 
     const routerProfile = path.join(home, '.claude', 'model-router', 'profile.json');
@@ -476,10 +497,7 @@ export async function runSessionStart({
 
       const playbook = `${hookDir}${path.sep}..${path.sep}skills${path.sep}ruvnet-brain${path.sep}PLAYBOOK.md`;
       emit('[RuvNet Brain — standing build playbook for this session (referenced by later turns as THE PLAYBOOK)]');
-      emit(`Full text: ${playbook} — read it before your first build response this session. Condensed:`);
-      emit('Every build/change request: take the wheel. FIRST, silently — read the files this touches in THEIR repo; search_ruvnet what the feature technically DOES; check project memory.');
-      emit('⛔ NO SILENT SUBSTITUTION (#1 trust-killer): never hand-roll, or aim a generic Task subagent at, work a RuvNet tool owns — QE=agentic-qe, swarms=ruflo, routing=agentic-flow, vectors=RuVector, memory=AgentDB, red/blue=@metaharness/redblue. Use the real one; if absent offer the exact install; if unusable say so out loud, every time. Never give your own code its name.');
-      emit('Beats A-D are in that file, in full. In short: A RESPOND in one voice (hear them; THE ATTACK as one lettered plan over their real files; why it holds; what you checked; "Build it now?") · B ON A YES EXECUTE END-TO-END (SPARC with a QA gate per phase, DDD, ADRs, PARALLEL Ruflo swarm work, AgentDB persistence, frontend-design + real image generation, a PROVEN result scored to >=98, ONE ask for a missing API key) · C TAKE OVER what you do well · D keep them oriented. RUN THE PROCESS.');
+      emit(`Read ${playbook} before the first build response. It requires source inspection, search_ruvnet grounding, project-memory recall, and the real owning rUv tool—never a silent hand-roll or generic substitute.`);
     }
   } catch (error) {
     if (env.RUVNET_SESSION_TRACE === '1') stderr.write(`SESSION_TRACE native-fail-open ${error?.message || error}\n`);

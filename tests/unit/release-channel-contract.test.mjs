@@ -7,29 +7,36 @@ import { spawnSync } from 'node:child_process';
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
-describe('manual release channel contract', () => {
-  it('builds and signs before creating the GitHub Release, then publishes npm, then verifies', () => {
-    const src = read('scripts/release.mjs');
-    const build = src.indexOf("runOrDie('build release bundle'");
-    const sign = src.indexOf("runOrDie('sign release bundle'");
-    const github = src.indexOf("runOrDie('create signed GitHub Release'");
-    const npm = src.indexOf("runOrDie('npm publish'");
-    const verify = src.indexOf("runOrDie('verify-channels'");
+describe('protected release channel contract', () => {
+  it('builds and signs before the staged transaction promotes GitHub, npm, then verifies', () => {
+    const release = read('scripts/release.mjs');
+    const transaction = read('scripts/release-transaction.mjs');
+    const build = release.indexOf("runOrDie('build release bundle'");
+    const sign = release.indexOf("runOrDie('sign release bundle'");
+    const transactionStart = release.indexOf('const finalReceipt = await runReleaseTransaction');
+    const github = transaction.indexOf('adapter.publishDraftNonLatest');
+    const npm = transaction.indexOf('adapter.promoteNpm');
+    const verify = transaction.indexOf('adapter.finalize');
 
     expect(build).toBeGreaterThanOrEqual(0);
     expect(sign).toBeGreaterThan(build);
-    expect(github).toBeGreaterThan(sign);
+    expect(transactionStart).toBeGreaterThan(sign);
+    expect(github).toBeGreaterThanOrEqual(0);
     expect(npm).toBeGreaterThan(github);
     expect(verify).toBeGreaterThan(npm);
   });
 
   it('fails closed on tag/SHA mismatch and requires all signed assets', () => {
-    const src = read('scripts/release.mjs');
-    expect(src).toContain('release tag already identifies different bytes');
-    expect(src).toContain('published GitHub Release tag is not candidate HEAD');
-    expect(src).toContain('`${zip}.sig`');
-    expect(src).toContain('`${zip}.sha256`');
-    expect(src).toContain("'release', 'upload', tag, ...assets, '--clobber'");
+    const release = read('scripts/release.mjs');
+    const transaction = read('scripts/release-transaction.mjs');
+    const provider = read('scripts/release-transaction-provider.mjs');
+    expect(transaction).toContain("exact(github.sha, identity.candidateSha, 'GitHub candidate SHA')");
+    expect(provider).toContain('refusing to replace staged asset with different bytes');
+    expect(transaction).toContain('pending release ${competing[0].transactionId} blocks');
+    expect(transaction).toContain('release receipt chain conflict');
+    expect(release).toContain('`${zip}.sig`');
+    expect(release).toContain('`${zip}.sha256`');
+    expect(provider).not.toContain("'--clobber'");
   });
 });
 

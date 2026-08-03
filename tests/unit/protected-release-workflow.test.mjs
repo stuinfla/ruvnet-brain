@@ -32,6 +32,21 @@ describe('protected release rail', () => {
     expect(source).toContain("status === 'completed' && conclusion === 'success'");
   });
 
+  it('fails closed on maintainer-governed release blockers without letting unrelated issues wedge releases', () => {
+    const source = workflow();
+    expect(source).toContain('issues: read');
+    expect(source).toContain('Require zero maintainer-governed release blockers');
+    expect(source).toContain('--state open --label release-blocker');
+    expect(source).toContain('test "$blockers" -eq 0');
+  });
+
+  it('serializes all versions through one publisher fence and preserves failure evidence', () => {
+    const source = workflow();
+    expect(source).toContain('group: ruvnet-brain-release');
+    expect(source).toContain('cancel-in-progress: false');
+    expect(source).toContain('if: always()');
+  });
+
   it('keeps generated evidence outside the checkout until source cleanliness is proven', () => {
     expect(ci()).toContain('$RUNNER_TEMP/release-evidence');
     const source = workflow();
@@ -39,13 +54,14 @@ describe('protected release rail', () => {
     expect(gitignore()).toMatch(/^\/release-evidence\/$/m);
   });
 
-  it('puts the sole publisher behind Production approval and preserves post-publication proof', () => {
+  it('puts the sole publisher behind the Production boundary without a manual-review dependency', () => {
     const source = workflow();
     expect(source).toContain('environment: Production – ruvnet-brain');
     expect(source.match(/node scripts\/release\.mjs --publish/g)).toHaveLength(1);
     expect(source).toContain('RUVNET_RELEASE_MODE: stabilization');
     expect(source).toContain('--publication release-evidence/publication-receipt.json');
     expect(source).not.toContain('continue-on-error: true');
+    expect(source).not.toMatch(/reviewer|after approval/i);
   });
 
   it('selects and opens a real RVF instead of macOS ZIP metadata', () => {

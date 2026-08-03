@@ -217,7 +217,7 @@ describe('the merged census — six registries, not one', () => {
     expect(hasFailsafe('node x.mjs')).toBe(false);
   });
 
-  it('the shipped dispatch wall covers Task and Agent exactly, without catching TaskStop', () => {
+  it('the shipped dispatch audit covers Task and Agent exactly, without catching TaskStop', () => {
     const dispatch = mesh(repoReg.records).filter((r) => r.layer === 'plugin' && r.handler === 'route-dispatch.sh');
     expect(dispatch).toHaveLength(1);
     expect(dispatch[0].matcher).toBe('^(Task|Agent)$');
@@ -454,7 +454,7 @@ describe.skipIf(MACHINE_SKIP_REASON)(
       expect(c.mesh, `merged mesh ${c.mesh} vs the ${plugin} hook-contract.test.mjs can see`).toBeGreaterThan(plugin * 2);
     });
 
-    it('F3 — route-dispatch has exactly one blocking registration in the merged mesh', () => {
+    it('F3 — route-dispatch has exactly one registration in the merged mesh', () => {
       // F3 is closed and is no longer an expected-red Appendix-B condition. Keep the live
       // regression here because this merged-machine assertion catches a user-layer duplicate that
       // the repo-only invariant cannot see, but do not record an empty finding as stale debt.

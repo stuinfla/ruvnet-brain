@@ -23,7 +23,7 @@ function candidate(marker) {
   for (const relative of ['console', 'scripts', 'plugin/scripts']) {
     fs.cpSync(path.join(ROOT, relative), path.join(root, relative), { recursive: true });
   }
-  for (const relative of ['kb/brain-profile.mjs', 'bin/install.mjs', 'package.json']) {
+  for (const relative of ['kb/brain-profile.mjs', 'bin/install.mjs', 'package.json', 'data/model-catalog.json']) {
     const target = path.join(root, relative);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.copyFileSync(path.join(ROOT, relative), target);
@@ -71,6 +71,16 @@ afterEach(() => {
 });
 
 describe('issue #79 — Console runtime update transaction', () => {
+  it('stages and validates the provider catalog required by the Console', () => {
+    const cache = temporary('brain-console-cache-');
+    install.installConsoleRuntime(cache, candidate('CATALOG-PRESENT'));
+    expect(JSON.parse(fs.readFileSync(path.join(cache, '.console-runtime', 'data', 'model-catalog.json'), 'utf8')).providers)
+      .toBeTruthy();
+
+    const missing = candidate('CATALOG-MISSING');
+    fs.rmSync(path.join(missing, 'data', 'model-catalog.json'));
+    expect(() => install.beginConsoleRuntimeTransaction(cache, missing)).toThrow(/model-catalog|incomplete/i);
+  });
   it('stages without changing A, then can roll activated B back to A', () => {
     const cache = temporary('brain-console-cache-');
     install.installConsoleRuntime(cache, candidate('GENERATION-A'));

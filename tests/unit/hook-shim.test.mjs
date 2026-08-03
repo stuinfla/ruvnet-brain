@@ -58,10 +58,10 @@ describe.skipIf(process.platform === 'win32')('hook-shim.mjs — restart-free ho
     expect(run('ground-ruvnet').stdout).toMatch(/FROM-GEN-2/); // next fire = new code. No restart.
   });
 
-  it('BLOCKING mode propagates the exact exit code — route-dispatch\'s exit-2 wall survives', () => {
+  it('route-dispatch is advisory even when a stale body tries to return exit 2', () => {
     seedSpine('1.0.0', { 'route-dispatch.sh': '#!/bin/bash\necho BLOCKED >&2\nexit 2\n' });
     const r = run('route-dispatch');
-    expect(r.status).toBe(2); // not 0, not 1 — the CONTRACT code
+    expect(r.status).toBe(0);
     expect(r.stderr).toMatch(/BLOCKED/);
   });
 

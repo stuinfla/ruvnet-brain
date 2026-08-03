@@ -26,7 +26,7 @@
  * correctly, stops using it.
  */
 import os from 'node:os';
-import { loadLessons, saveLessons, ratify, demote, weightOf, pending, ENFORCEMENT, STATUS, ORIGIN, TRIGGERS } from './lesson-store.mjs';
+import { loadLessons, saveLessons, ratify, demote, weightOf, pending, ENFORCEMENT, STATUS, ORIGIN, SOURCE_CLASS, TRIGGERS } from './lesson-store.mjs';
 
 const argv = process.argv.slice(2);
 const arg = (f) => { const i = argv.indexOf(f); return i >= 0 && argv[i + 1] ? argv[i + 1] : null; };
@@ -34,7 +34,7 @@ const has = (f) => argv.includes(f);
 
 const lessons = loadLessons();
 if (!lessons.length) {
-  console.log('\n  No lessons stored yet. Seed them with:  node scripts/lesson-seed.mjs --apply\n');
+  console.log('\n  No personal lessons stored yet. They appear after an explicit user correction is captured.\n');
   process.exit(0);
 }
 
@@ -86,7 +86,10 @@ if (has('--ratify')) {
   // Bulk convenience, deliberately scoped: it can only touch lessons the USER stated. Model-inferred
   // lessons are never swept up by a bulk action — that would be exactly the hole the boundary closes.
   let next = lessons;
-  const targets = lessons.filter((l) => l.origin === ORIGIN.USER_STATED && l.status === STATUS.CANDIDATE && !l.demoted);
+  const targets = lessons.filter((l) => l.origin === ORIGIN.USER_STATED
+    && l.sourceClass === SOURCE_CLASS.CURRENT_USER
+    && l.status === STATUS.CANDIDATE
+    && !l.demoted);
   for (const l of targets) next = ratify(l.id, next);
   saveLessons(next);
   const nowBlocking = next.filter((l) => l.enforcement === ENFORCEMENT.BLOCK).length;
