@@ -54,11 +54,14 @@ export function readStdinBounded({ maxBytes = 65536, idleMs = 50, emptyMs = 250 
     let settled = false;
     let idleTimer;
     let emptyTimer;
+    let poll;
 
     const cleanup = () => {
       clearTimeout(idleTimer);
       clearTimeout(emptyTimer);
+      clearInterval(poll);
       process.stdin.off('data', onData);
+      process.stdin.off('readable', onReadable);
       process.stdin.off('end', onEnd);
       process.stdin.off('error', onError);
       process.stdin.pause();
@@ -87,11 +90,20 @@ export function readStdinBounded({ maxBytes = 65536, idleMs = 50, emptyMs = 250 
     };
     const onEnd = () => finish();
     const onError = () => finish();
+    // Windows inherited pipes can expose bytes through the readable interface without emitting
+    // a data event while the writer keeps stdin open. Drain that interface and poll it briefly;
+    // the envelope contract is one value, never EOF.
+    const onReadable = () => {
+      let chunk;
+      while ((chunk = process.stdin.read()) !== null) onData(chunk);
+    };
 
     process.stdin.on('data', onData);
+    if (process.platform === 'win32') process.stdin.on('readable', onReadable);
     process.stdin.once('end', onEnd);
     process.stdin.once('error', onError);
     emptyTimer = setTimeout(finish, emptyMs);
+    if (process.platform === 'win32') poll = setInterval(onReadable, 10);
     process.stdin.resume();
   });
 }

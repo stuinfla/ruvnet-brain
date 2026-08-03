@@ -681,6 +681,7 @@ clause as the pre-agreed escalation (§3.5); Task-prompt scanning — Fable's re
 delegation drift goes to the interrupt tier (§3.7.9).
 
 ## Currency log
+| 2026-08-03 | Bounded the shared hook-input parser on Windows inherited pipes by draining readable bytes and polling until the existing idle/empty deadlines. | Post-merge main CI run `30847567626` failed only `swarm-slot-recycler.test.mjs` on Windows because the held-open envelope was not surfaced through `data`; `tests/unit/swarm-slot-recycler.test.mjs` and `tests/unit/hook-input.test.mjs` pass 43/43 after the platform-specific parser fix. |
 | 2026-08-03 | Re-read the proactive hook mesh after the Codex staged-host correction; no contract change. | PR #100 exact-SHA release evidence is green; Windows unit remains the sole required red lane. |
 
 | Date | What changed | Why (with referents) |
