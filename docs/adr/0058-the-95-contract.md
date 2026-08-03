@@ -361,6 +361,8 @@ correct: **the strong claim was the defect.**
 
 ## Currency log
 
+| 2026-08-03 | Release candidate 4.0.8 re-read the governed Codex hook surface after the staged-host and Windows held-open regressions; the contract remains unchanged while the verifier now binds the installed Codex payload and the wrapper reads inherited Windows pipes without waiting for EOF. | Candidate PR #100, commits `b33b0ed` and `3926231`; focused Codex lifecycle tests pass 24/24. Hosted packed evidence is still pending a green exact-SHA run. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
 | 2026-08-02 | Re-read every governed 4.0.8 release path and preserved the fail-closed exact-artifact contract. | Commit `8608cfd` implements ADR-062: one signed payload, cross-run reuse, bounded registry polling, resumable receipts, exact-SHA aggregate evidence, no duplicate publisher suites, and public npm/GitHub plus three-host proof. Focused release tests passed 144/144, while the live global Ruflo 3.34.0 memory-store regression remains an explicit external blocker rather than being rounded green. |
