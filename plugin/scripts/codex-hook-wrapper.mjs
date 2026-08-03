@@ -47,11 +47,14 @@ function readHookInput(limit = 1024 * 1024) {
     let bytes = 0;
     let settled = false;
     let idle;
+    let hardDeadline;
 
     const cleanup = () => {
       clearTimeout(idle);
+      clearTimeout(hardDeadline);
       process.stdin.off('data', onData);
       process.stdin.off('end', finish);
+      process.stdin.off('close', finish);
       process.stdin.off('error', finish);
       process.stdin.pause();
     };
@@ -82,7 +85,13 @@ function readHookInput(limit = 1024 * 1024) {
 
     process.stdin.on('data', onData);
     process.stdin.once('end', finish);
+    process.stdin.once('close', finish);
     process.stdin.once('error', finish);
+    // Some Windows pipe handles can deliver repeated readable notifications while the writer
+    // remains open, continually resetting an idle timer. The host contract is one JSON value, not
+    // EOF; an absolute cap makes the wrapper deterministic under that regime without weakening
+    // the normal complete-value fast path.
+    hardDeadline = setTimeout(finish, 250);
     armIdle();
     process.stdin.resume();
   });

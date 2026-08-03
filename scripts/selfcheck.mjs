@@ -159,17 +159,31 @@ export function resolveInstalledSurface({ home = os.homedir(), repo = null } = {
     for (const v of fs.readdirSync(cache)) {
       const root = path.join(cache, v);
       if (fs.existsSync(path.join(root, 'hooks', 'hooks.json'))) {
-        candidates.push({ root, source: `installed:${v}`, mtime: fs.statSync(path.join(root, 'hooks', 'hooks.json')).mtimeMs });
+        candidates.push({ root, source: `installed:${v}`, hooksFile: path.join(root, 'hooks', 'hooks.json'), mtime: fs.statSync(path.join(root, 'hooks', 'hooks.json')).mtimeMs });
       }
     }
   } catch { /* no packed install on this machine */ }
   candidates.sort((a, b) => b.mtime - a.mtime); // newest generation wins; several can coexist
   const clone = path.join(home, '.claude', 'plugins', 'marketplaces', 'ruvnet-brain', 'plugin');
   if (fs.existsSync(path.join(clone, 'hooks', 'hooks.json'))) {
-    candidates.push({ root: clone, source: 'marketplace-clone', mtime: 0 });
+    candidates.push({ root: clone, source: 'marketplace-clone', hooksFile: path.join(clone, 'hooks', 'hooks.json'), mtime: 0 });
   }
+  // Codex installs the same immutable payload under its own cache. A Codex-only machine has no
+  // Claude marketplace clone, so treating that layout as "no plugin" made the real installed
+  // Codex hooks impossible to self-check (the release host matrix caught this). Keep the same
+  // newest-generation rule and read the Codex hook registry from the installed payload itself.
+  const codexCache = path.join(home, '.codex', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain');
+  try {
+    for (const v of fs.readdirSync(codexCache)) {
+      const root = path.join(codexCache, v);
+      if (fs.existsSync(path.join(root, 'hooks', 'codex-hooks.json'))) {
+        candidates.push({ root, source: `codex-installed:${v}`, hooksFile: path.join(root, 'hooks', 'codex-hooks.json'), mtime: fs.statSync(path.join(root, 'hooks', 'codex-hooks.json')).mtimeMs, codex: true });
+      }
+    }
+  } catch { /* no Codex plugin cache on this machine */ }
   if (repo && fs.existsSync(path.join(repo, 'plugin', 'hooks', 'hooks.json'))) {
-    candidates.push({ root: path.join(repo, 'plugin'), source: 'checkout', mtime: 0 });
+    const root = path.join(repo, 'plugin');
+    candidates.push({ root, source: 'checkout', hooksFile: path.join(root, 'hooks', 'hooks.json'), mtime: 0 });
   }
   const chosen = candidates[0];
   if (!chosen) return { ok: false, reason: 'no installed ruvnet-brain plugin payload found on this machine' };
@@ -177,7 +191,7 @@ export function resolveInstalledSurface({ home = os.homedir(), repo = null } = {
     ok: true,
     root: chosen.root,
     source: chosen.source,
-    hooksFile: path.join(chosen.root, 'hooks', 'hooks.json'),
+    hooksFile: chosen.hooksFile,
     shimFile: path.join(chosen.root, 'scripts', 'hook-shim.mjs'),
     alternates: candidates.slice(1).map((c) => c.source),
   };
