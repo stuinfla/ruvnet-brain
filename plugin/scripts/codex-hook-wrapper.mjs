@@ -48,10 +48,12 @@ function readHookInput(limit = 1024 * 1024) {
     let settled = false;
     let idle;
     let hardDeadline;
+    let poll;
 
     const cleanup = () => {
       clearTimeout(idle);
       clearTimeout(hardDeadline);
+      clearInterval(poll);
       process.stdin.off('data', onData);
       process.stdin.off('readable', onReadable);
       process.stdin.off('end', finish);
@@ -100,7 +102,11 @@ function readHookInput(limit = 1024 * 1024) {
     // remains open, continually resetting an idle timer. The host contract is one JSON value, not
     // EOF; an absolute cap makes the wrapper deterministic under that regime without weakening
     // the normal complete-value fast path.
-    hardDeadline = setTimeout(finish, 250);
+    // Some Windows inherited pipes do not emit a readable/data notification until the writer
+    // closes. Poll the non-blocking stream read instead of using fs.readSync, which can block the
+    // event loop before the first pipe chunk is surfaced.
+    poll = setInterval(onReadable, 10);
+    hardDeadline = setTimeout(finish, 500);
     armIdle();
     process.stdin.resume();
   });

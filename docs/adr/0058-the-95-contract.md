@@ -361,7 +361,7 @@ correct: **the strong claim was the defect.**
 
 ## Currency log
 
-| 2026-08-03 | Release candidate 4.0.8 re-read the governed Codex hook surface after the staged-host and Windows held-open regressions; the contract remains unchanged while the verifier now binds the installed Codex payload and the wrapper reads inherited Windows pipes without waiting for EOF. | Candidate PR #100, commits `b33b0ed` and `3926231`; focused Codex lifecycle tests pass 24/24. Hosted packed evidence is still pending a green exact-SHA run. |
+| 2026-08-03 | Release candidate 4.0.8 re-read the governed Codex hook surface after the staged-host and Windows held-open regressions; the contract remains unchanged while the verifier binds the installed Codex payload and the wrapper polls inherited Windows pipes without waiting for EOF. The issue #29 integration guard now skips loudly when its optional model cannot be primed, matching its documented offline behavior. | Candidate PR #100, current local repair; focused Codex lifecycle tests and integration regression proof are required before hosted exact-SHA evidence. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
