@@ -53,6 +53,7 @@ function readHookInput(limit = 1024 * 1024) {
       clearTimeout(idle);
       clearTimeout(hardDeadline);
       process.stdin.off('data', onData);
+      process.stdin.off('readable', onReadable);
       process.stdin.off('end', finish);
       process.stdin.off('close', finish);
       process.stdin.off('error', finish);
@@ -82,8 +83,16 @@ function readHookInput(limit = 1024 * 1024) {
         armIdle();
       }
     };
+    // Windows inherited pipes can expose the first value through the readable interface without
+    // emitting a data event until the writer closes. Drain both interfaces; POSIX keeps the fast
+    // data path and Windows gets the same complete-value contract without waiting for EOF.
+    const onReadable = () => {
+      let chunk;
+      while ((chunk = process.stdin.read()) !== null) onData(chunk);
+    };
 
     process.stdin.on('data', onData);
+    process.stdin.on('readable', onReadable);
     process.stdin.once('end', finish);
     process.stdin.once('close', finish);
     process.stdin.once('error', finish);

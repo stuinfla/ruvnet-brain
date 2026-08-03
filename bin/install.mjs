@@ -1962,11 +1962,15 @@ async function doctor() {
     && !codexLifecycleGuidance(codexLifecycle).healthy
     && !codexLifecycleGuidance(codexLifecycle).intentional,
   );
+  // A staged release verifier can execute the packaged hooks under Codex's explicit automation
+  // trust bypass. That proves the real hook commands without pretending a fresh interactive user
+  // has already reviewed them; normal end-user doctor runs remain fail-closed on pending trust.
+  const codexTrustBypassed = process.env.RUVNET_CODEX_HOOK_TRUST_MODE === 'bypass';
   const codexWiringFailed = Boolean(cx.host && !cx.wired);
   const codexReadinessFailed = Boolean(codexMcp?.blocking);
   const failed = (hookResult ? hookResult.exitCode !== 0 : !allGreen)
     || groundingUnprovenPersisted
-    || codexLifecycleFailed
+    || (codexLifecycleFailed && !codexTrustBypassed)
     || codexWiringFailed
     || codexReadinessFailed
     || !hostConvergence.healthy

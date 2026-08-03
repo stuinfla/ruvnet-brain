@@ -494,7 +494,7 @@ export async function runBattery({ home = os.homedir(), repo = null, cwd = os.tm
     const shimId = reg.shimIdIn(r.command);
     const entry = shimId ? table[shimId] : null;
     const contract = entry ? null : contracts.find((c) => reg.contractMatches(c, { layer: 'plugin', event: r.event, matcher: r.matcher, command: r.command }));
-    const mode = entry?.mode ?? contract?.mode ?? null;
+    const mode = entry?.mode ?? contract?.mode ?? (s.codex ? 'advisory' : null);
     const handler = entry?.file ?? reg.basenamesIn(r.command).filter((b) => b !== 'hook-shim.mjs').pop() ?? null;
     const rec = { ...r, handler, shimId, mode };
 

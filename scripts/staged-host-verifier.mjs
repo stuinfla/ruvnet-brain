@@ -70,6 +70,7 @@ export function stagedHostVerifier({ assets, identity }) {
             RUVNET_BRAIN_HOME: brainHome,
             RUVNET_BRAIN_KB: path.join(brainHome, 'kb'),
             RUVNET_CLAUDE_MARKETPLACE_SOURCE: prepared.packageRoot,
+            RUVNET_CODEX_HOOK_TRUST_MODE: 'bypass',
             CI: 'true',
             PATH: fixturePath(mode, prepared.temp),
           };
