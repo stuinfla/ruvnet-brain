@@ -43,6 +43,18 @@ function activeRoot() {
 
 function readHookInput(limit = 1024 * 1024) {
   return new Promise((resolve) => {
+    // On Windows, an inherited pipe may not surface a complete first write through Node's stream
+    // events until the writer closes. Codex sends one bounded JSON envelope; a direct pipe read
+    // consumes the bytes already delivered without requiring EOF, then the normal async path
+    // remains authoritative on POSIX and for unusual multi-write envelopes.
+    if (process.platform === 'win32') {
+      try {
+        const buffer = Buffer.allocUnsafe(limit);
+        const count = fs.readSync(0, buffer, 0, limit, null);
+        resolve(buffer.subarray(0, count));
+        return;
+      } catch { /* fall through to the bounded stream path */ }
+    }
     const chunks = [];
     let bytes = 0;
     let settled = false;
