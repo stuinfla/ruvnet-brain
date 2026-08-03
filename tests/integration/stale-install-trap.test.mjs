@@ -62,12 +62,17 @@ function runInstaller({ breakLookup = false, latestTag } = {}) {
     script = path.join(work, 'bin', 'install.mjs');
     fs.mkdirSync(path.dirname(script), { recursive: true });
     fs.mkdirSync(path.join(work, 'kb'), { recursive: true });
+    fs.mkdirSync(path.join(work, 'scripts'), { recursive: true });
     const src = fs.readFileSync(INSTALLER, 'utf8')
       .replace("const REPO = 'stuinfla/ruvnet-brain';", "const REPO = 'stuinfla/definitely-not-a-real-repo-xyz';");
     fs.writeFileSync(script, src);
     for (const sibling of ['brain-profile.mjs', 'model-requirements.mjs']) {
       fs.copyFileSync(path.join(ROOT, 'kb', sibling), path.join(work, 'kb', sibling));
     }
+    fs.copyFileSync(
+      path.join(ROOT, 'scripts', 'model-router-catalog.mjs'),
+      path.join(work, 'scripts', 'model-router-catalog.mjs'),
+    );
   }
   const res = spawnSync(process.execPath, [script, '--no-verify'], {
     encoding: 'utf8',

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createSessionSnapshot } from '../../scripts/session-snapshot-contract.mjs';
+import { createSessionSnapshot } from './session-snapshot-contract.mjs';
 
 function regularOrAbsent(file) {
   try {
