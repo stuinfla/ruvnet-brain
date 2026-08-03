@@ -42,6 +42,7 @@ governs:
   - scripts/self-update.mjs
   - scripts/nightly-wrapper.sh
   - .github/workflows/ci.yml
+  - .github/workflows/stranger-matrix.yml
   - .github/workflows/protected-release.yml
   - plugin/skills/release-proof/SKILL.md
   - plugin/skills/release-proof/scripts/release-proof.mjs
@@ -82,6 +83,11 @@ digests and channel identities to match the candidate, installs the public npm b
 Claude and Codex homes, exercises the installed MCP self-store within its deadline, and runs the
 exact-SHA published-surface probe. It writes the append-only publication receipt only after the
 existing two-receipt evaluator accepts every observation; missing or split evidence stays red.
+On 2026-08-02 the candidate path was collapsed into an evidence DAG: `release-qe` creates one npm
+tarball before testing, every release-QE and stranger-host consumer uses those exact uploaded bytes,
+and the publisher no longer repeats source/unit/version/wiring/latest-CI/push gates or a second
+public-channel walk. Exact SHA, digest, security, OS/host, staged transaction, and public receipt
+guarantees remain fail-closed; only duplicate execution was removed.
 D4 has a current Codex-backed
 3/3 treated versus 0/3 control artifact on source SHA `63e5e67`, plus committed delete-lesson and
 brain-off-treated causal failures in `2b39f68`. D3 now executes its real signal lifecycle from the

@@ -32,6 +32,8 @@ describe('protected release channel contract', () => {
     const provider = read('scripts/release-transaction-provider.mjs');
     expect(transaction).toContain("exact(github.sha, identity.candidateSha, 'GitHub candidate SHA')");
     expect(provider).toContain('refusing to replace staged asset with different bytes');
+    expect(transaction).toContain('pending release ${competing[0].transactionId} blocks');
+    expect(transaction).toContain('release receipt chain conflict');
     expect(release).toContain('`${zip}.sig`');
     expect(release).toContain('`${zip}.sha256`');
     expect(provider).not.toContain("'--clobber'");

@@ -8,22 +8,21 @@
 // and only prints "SHIPPED" when every channel a user touches is proven current and working. There is
 // no "I think it's fine" — there is pass or fail.
 //
-// It is idempotent and safe to re-run. Each step verifies the REAL artifact (registry, live URL, the
-// actual command), never the repo state. Repo state != user experience (the whole lesson).
+// Check-only mode evaluates source. Publish mode consumes a CI-sealed package and receipt, then
+// performs only the staged transaction and public verification. It never rebuilds or retests the
+// source: the immutable artifact is the evidence boundary.
 //
 // Usage:
 //   node scripts/release.mjs --check          # run every gate READ-ONLY (no publish) — the pre-flight
-//   node scripts/release.mjs --publish        # sync version, npm publish, then run every gate
+//   node scripts/release.mjs --publish        # publish the exact CI-sealed artifact
 //   node scripts/release.mjs                   # same as --check
 //
 // The gates, in order (fail fast):
 //   A. version single-source-of-truth agrees (sync-version --check)
 //   B. full test suite green (npm test — the 60/60)
 //   C. narrative + unit gates (vitest) incl. the tag/entity-aware "What's new" check
-//   C+. [--publish only] push to origin/main — ONLY now that A–C are green (a red tree can't reach GitHub)
-//   D. [--publish only] build + sign bundle, create/update the exact-SHA GitHub Release,
-//      then npm publish + force `latest` to the shipping version
-//   E. verify-channels — the LIVE walk of npm / self-update manifest / release bundle+sig / explainer / git
+//   D. [--publish only] stage and promote the exact package plus signed RVF bundle
+//   E. [--check only] verify current public channels; publish verifies them inside transaction finalization
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -88,10 +87,12 @@ if (initialDirty) {
   process.exit(1);
 }
 
-// A. version single source of truth
-step('A', 'version single-source-of-truth agrees across every surface');
-runOrDie('version sync', process.execPath, ['scripts/sync-version.mjs', '--check']);
-runOrDie('one protected publisher', process.execPath, ['scripts/release-authority.mjs']);
+if (!PUBLISH) {
+  // Source gates belong to candidate CI/check-only mode. The protected publisher has already
+  // validated their exact-SHA receipt and the sealed bytes before reaching this process.
+  step('A', 'version single-source-of-truth agrees across every surface');
+  runOrDie('version sync', process.execPath, ['scripts/sync-version.mjs', '--check']);
+  runOrDie('one protected publisher', process.execPath, ['scripts/release-authority.mjs']);
 
 // WIRED-CHECK — refuses to ship a module with zero callers.
 //
@@ -103,23 +104,23 @@ runOrDie('one protected publisher', process.execPath, ['scripts/release-authorit
 //
 // Seven repetitions of one mistake is not a discipline problem; discipline is what failed. So it
 // becomes a gate, on the ship path, where this repo's gates run 8/8 against prose's 0/6.
-runOrDie('wired (no orphan modules)', process.execPath, ['scripts/wired-check.mjs', '--check']);
+  runOrDie('wired (no orphan modules)', process.execPath, ['scripts/wired-check.mjs', '--check']);
 
 // THE NORTH-STAR PROMOTION VECTOR — strict/check-only releases may not average one broken or
 // unknown invariant into a pass. The separately authorized stabilization class makes no 95 claim;
 // it retains every safety, test, artifact, publication, and post-publication gate below while the
 // promotion program remains open. Derive this only from the already-validated sealed receipt, never
 // from a free-standing environment toggle.
-if (protectedReleaseMode === 'strict') {
-  runOrDie('release vector (all critical invariants PASS)', process.execPath, ['scripts/release-vector.mjs']);
+  if (protectedReleaseMode === 'strict') {
+    runOrDie('release vector (all critical invariants PASS)', process.execPath, ['scripts/release-vector.mjs']);
 
   // The Top-100 corpus spans naive through expert prompts and grades semantic clauses, citations,
   // abstention, and latency. A manual-only benchmark is a report; a strict release-path benchmark
   // is a guarantee. The benchmark itself fails closed unless all 100 canonical questions run.
-  runOrDie('Top-100 source-grounded recall contract', process.execPath, ['scripts/top100-benchmark.mjs', '--no-write']);
-} else {
-  console.log(c.y('  strict >=95 promotion gates: NOT CLAIMED (sealed stabilization; scoreClaimed:false)'));
-}
+    runOrDie('Top-100 source-grounded recall contract', process.execPath, ['scripts/top100-benchmark.mjs', '--no-write']);
+  } else {
+    console.log(c.y('  strict >=95 promotion gates: NOT CLAIMED (sealed stabilization; scoreClaimed:false)'));
+  }
 
 // A2. Stable Spine restart classifier (ADR-023, red-team finding 18): diff the boot-frozen SHELL
 // (hooks.json, hook-shim, MCP server, .mcp.json, skills/, commands/) against the previous release
@@ -127,8 +128,8 @@ if (protectedReleaseMode === 'strict') {
 // remembered — the same shellDiff logic runs client-side in update-apply.mjs at every flip, so the
 // user-facing nag stays honest even if this print is ignored. Informational at ship time; the
 // releasing human sees exactly which shell files changed.
-step('A2', 'Stable Spine — does this release change the boot-frozen shell? (requiresRestart classifier)');
-{
+  step('A2', 'Stable Spine — does this release change the boot-frozen shell? (requiresRestart classifier)');
+  {
   const { execFileSync } = await import('node:child_process');
   const SHELL = ['plugin/hooks/hooks.json', 'plugin/scripts/hook-shim.mjs', 'plugin/mcp/server.mjs', 'plugin/.mcp.json', 'plugin/skills', 'plugin/commands'];
   let prevTag = '';
@@ -149,53 +150,15 @@ step('A2', 'Stable Spine — does this release change the boot-frozen shell? (re
       console.log(`  ${c.g('requiresRestart: false')} — no shell change vs ${prevTag}; this release goes fully live with zero restarts.`);
     }
   }
-}
-
-// B. the full brain test suite (the 60/60)
-step('B', 'full test suite (npm test)');
-runOrDie('npm test', 'npm', ['test']);
-
-// C. unit gates — narrative-version (tag/entity aware), claims, etc.
-step('C', 'unit gates (vitest) — narrative version, claims, guards');
-runOrDie('vitest unit', 'npx', ['vitest', 'run', 'tests/unit']);
-
-// C+. PUSH — only now that A–C are green (publish only). Pushing AFTER the local gates is the fix
-// for the drift that bit on 2026-07-18: a commit was pushed FIRST, then release.mjs's gate B caught a
-// failing plugin-battery test, leaving GitHub at 3.4.10-dev while npm sat at 3.4.9-dev — the exact
-// "pushed but didn't finish" split. The pre-push git hook only checks version/manifest (fast, always),
-// so tests must gate the push HERE. A red tree can no longer reach origin ahead of npm.
-if (PUBLISH) {
-  // C++. REMOTE CI IS A SHIP GATE (ADR-053 §5). Between 2026-07-21 and 07-26 the `ci` workflow was
-  // red for ~70 consecutive runs — six releases shipped right past it, because nothing on the ship
-  // path ever ASKED the remote verdict. Local gates prove this machine; only CI proves ubuntu and
-  // windows. So the latest COMPLETED run on origin/main must be green before we add commits on top
-  // and publish. (The current commit's own run starts after the push — this gate is "never build on
-  // a known-broken main", not "wait for my own run".) Escape hatch for a genuine hotfix:
-  // --ci-override "<reason>" — printed into the release log, never silent.
-  step('C++', 'remote CI on origin/main is green (the ubuntu+windows verdict this machine cannot produce)');
-  {
-    const { fetchLatestCiVerdict, assessCiGate } = await import('./ci-verdict.mjs');
-    const OVERRIDE_IX = process.argv.indexOf('--ci-override');
-    const overrideReason = OVERRIDE_IX >= 0 ? (process.argv[OVERRIDE_IX + 1] || '(no reason given)') : null;
-    const { verdict, sha } = await fetchLatestCiVerdict();
-    const gate = assessCiGate(verdict, overrideReason);
-    if (gate === 'ship') {
-      console.log(c.dim(`  latest completed ci run on origin/main: success (${sha})`));
-    } else if (gate === 'override') {
-      console.log(`  ${c.y('! CI gate OVERRIDDEN')} — verdict was ${verdict ?? 'unknown'} (${sha || 'no run found'}); reason: ${overrideReason}`);
-    } else {
-      console.error(`\n${c.r('✗ GATE FAILED: remote CI on origin/main is ' + (verdict ?? 'unknown'))} ${c.dim('(' + (sha || 'no completed run found') + ')')}`);
-      console.error(`${c.r('  A red or unknown main does not get shipped on top of. Fix CI first (gh run list --workflow ci.yml),')}`);
-      console.error(`${c.r('  or for a genuine hotfix: --ci-override "<reason>" (the reason is printed into the release log).')}\n`);
-      process.exit(1);
-    }
   }
 
-  step('C+', 'push to origin/main — safe now that A–C passed');
-  let ahead = '0';
-  try { ahead = execFileSync('git', ['-C', ROOT, 'rev-list', '--count', 'origin/main..HEAD'], { encoding: 'utf8' }).trim(); } catch { /* origin/main ref missing — push will resolve */ ahead = '?'; }
-  if (ahead === '0') console.log(c.dim('  nothing to push — HEAD already on origin/main'));
-  else runOrDie('git push', 'git', ['-C', ROOT, 'push', 'origin', 'main']);
+// B. the full brain test suite (the 60/60)
+  step('B', 'full test suite (npm test)');
+  runOrDie('npm test', 'npm', ['test']);
+
+// C. unit gates — narrative-version (tag/entity aware), claims, etc.
+  step('C', 'unit gates (vitest) — narrative version, claims, guards');
+  runOrDie('vitest unit', 'npx', ['vitest', 'run', 'tests/unit']);
 }
 
 // D. One remotely durable, staged release transaction (ADR-062 / DDD-0015). GitHub remains a draft
@@ -250,58 +213,12 @@ if (PUBLISH) {
   step('D', 'remote staged release transaction — SKIPPED (check-only; pass --publish to publish)');
 }
 
-// D+. THE DEPLOY-SURFACE SWEEP (owner standing order, 2026-07-27): "ALWAYS check GitHub CLI and
-// Vercel CLI for gotchas with anything you're pushing. This needs to be part of the protocol you use
-// whenever you deploy. I don't want to have to tell you this again."
-//
-// Gate C++ already asks whether CI passed. That is one surface. This asks the two CLIs what the
-// PLATFORMS think — failing workflows other than our own ci, security advisories, and whether the
-// production deployment that serves the explainer is actually Ready. Each is a question a human
-// would otherwise have to remember to ask, which is the definition of a check that eventually
-// doesn't happen.
-//
-// ADVISORY BY DESIGN, LOUD BY CONTRACT: this prints findings and does not exit non-zero, because a
-// GitHub-side hiccup must not wedge a correct release — EXCEPT where it overlaps a hard gate that
-// already exists (C++ for ci, E for the live explainer). Anything it finds is printed in full so it
-// cannot be a diagnostic nobody reads.
-step('D+', 'deploy-surface sweep — what GitHub and Vercel think about what we are pushing');
-{
-  const sh = (cmd, args) => { try { return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore','pipe','ignore'], timeout: 45000 }); } catch { return null; } };
-
-  // 1. Failing workflow runs that are NOT our ci (ci is gate C++'s job). issue-watch exits 1 BY
-  //    DESIGN on an SLA breach, so it is reported as an SLA signal, never as a broken pipeline —
-  //    conflating the two is how a permanently-red workflow trains everyone to ignore red.
-  const runs = sh('gh', ['run','list','--repo','stuinfla/ruvnet-brain','--limit','15','--json','name,conclusion,headBranch']);
-  if (runs) {
-    let bad = [];
-    try { bad = JSON.parse(runs).filter((r) => r.conclusion && r.conclusion !== 'success' && r.name !== 'ci'); } catch { /* unparseable — reported below */ }
-    const sla = bad.filter((r) => r.name === 'issue-watch');
-    const real = bad.filter((r) => r.name !== 'issue-watch');
-    if (sla.length) console.log(`  ${c.y('! issue-watch red x' + sla.length)} ${c.dim('— by design: an open issue is past its 4h SLA. Answer the issue, do not fix the workflow.')}`);
-    if (real.length) console.log(`  ${c.y('! non-ci workflows failing:')} ${real.map((r) => r.name).join(', ')}`);
-    if (!sla.length && !real.length) console.log(c.dim('  no failing workflows outside ci'));
-  } else console.log(c.dim('  gh unavailable — workflow sweep SKIPPED (not a pass)'));
-
-  // 2. Security advisories against what we ship.
-  const dep = sh('gh', ['api','repos/stuinfla/ruvnet-brain/dependabot/alerts','--jq','[.[]|select(.state=="open")]|length']);
-  if (dep !== null) {
-    const n = parseInt(dep.trim(), 10);
-    console.log(n > 0 ? `  ${c.r('! ' + n + ' open dependabot alert(s)')}` : c.dim('  0 open dependabot alerts'));
-  } else console.log(c.dim('  dependabot query unavailable — SKIPPED (not a pass)'));
-
-  // 3. Vercel: the explainer is a shipped surface; a Ready production deployment is the precondition
-  //    for gate E's live check meaning anything.
-  const vc = sh('vercel', ['ls','--yes']);
-  if (vc) {
-    const prod = vc.split('\n').find((l) => l.includes('Production'));
-    const ready = prod && /●\s*Ready/.test(prod);
-    console.log(ready ? c.dim('  vercel: latest production deployment Ready') : `  ${c.y('! vercel: latest production deployment is NOT Ready')} ${c.dim((prod||'').trim().slice(0,90))}`);
-  } else console.log(c.dim('  vercel CLI unavailable/not logged in — SKIPPED (not a pass)'));
+// Check-only diagnoses the currently public channels. During publication, transaction finalization
+// performs this walk once, then creates and verifies the publication receipt before convergence.
+if (!PUBLISH) {
+  step('E', 'verify-channels — the live walk of every user path');
+  runOrDie('verify-channels', process.execPath, ['scripts/verify-channels.mjs']);
 }
-
-// E. the live channel walk — THE gate that would have caught the stale-2.9.1 + 404
-step('E', 'verify-channels — the live walk of every user path');
-runOrDie('verify-channels', process.execPath, ['scripts/verify-channels.mjs']);
 
 if (PUBLISH) {
   console.log(`\n${c.g(c.b('✓✓✓ SHIPPED'))} — every gate passed and every live channel is current. ${c.dim('A user on any path (npm, npx, explainer, --update) gets the working, current build.')}\n`);

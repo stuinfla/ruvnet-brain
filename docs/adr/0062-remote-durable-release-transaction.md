@@ -5,10 +5,12 @@ status: Accepted
 date: 2026-08-02
 updated: 2026-08-02
 authors: [Stuart Kerr]
-tags: [release, transaction, npm, github, receipts, recovery]
+tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
-relates: [ADR-053]
+relates: [ADR-053, ADR-058]
 governs:
+  - .github/workflows/ci.yml
+  - .github/workflows/stranger-matrix.yml
   - .github/workflows/protected-release.yml
   - scripts/release.mjs
   - scripts/release-transaction.mjs
@@ -51,6 +53,20 @@ idempotent state machine rather than call ordering alone.
 - A pending B blocks B+1.
 - Local files and workflow logs are caches/evidence, never release authority.
 - Tests use provider fakes; no test may create drafts, tags, packages, or dist-tag changes.
+
+## Evidence DAG implementation (2026-08-02)
+
+Candidate CI now packs the npm tarball exactly once, before release QE, and identifies those bytes
+by SHA-256 in the candidate receipt. Release QE and the five stranger-host cells consume that same
+uploaded tarball; no host repacks the checkout. The protected publisher downloads the receipt and
+sealed bytes, rechecks their SHA/version/digest identity at the Production boundary, and passes the
+tarball unchanged into the staged npm/GitHub transaction.
+
+Source tests, unit tests, version/wiring checks, and exact-SHA CI proof are candidate-builder
+responsibilities. The publisher does not rerun them, recheck a weaker "latest CI" verdict, or push
+main. It performs only the receipt boundary, signed bundle assembly, staged host acceptance,
+promotion, one public-channel verification, and final publication receipt. Any source change creates
+a new SHA and therefore a new candidate artifact instead of restarting unrelated publisher gates.
 
 ## Considered approaches
 

@@ -33,8 +33,10 @@ describe('release command wording', () => {
   });
 
   it('publishes only through the canonical release path with an explicit npm tag', () => {
+    const release = fs.readFileSync(path.join(ROOT, 'scripts/release.mjs'), 'utf8');
     const provider = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction-provider.mjs'), 'utf8');
     const nightly = fs.readFileSync(path.join(ROOT, 'scripts/self-update.mjs'), 'utf8');
+    expect(release).toContain('await runReleaseTransaction');
     expect(provider).toContain("command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`])");
     expect(provider).toContain("command('npm', ['dist-tag', 'add', `${PACKAGE}@${identity.version}`, 'latest'])");
     expect(nightly).not.toMatch(/execFileSync\(['"]npm['"],\s*\[['"]publish['"]/);

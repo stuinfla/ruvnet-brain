@@ -199,7 +199,7 @@ jobs:
           node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}"
           printf '%s\n' "${asset_dirs[0]}" > "$RUNNER_TEMP/release-assets-path"
 
-      - name: Revalidate at the Production boundary and invoke the one canonical publisher
+      - name: Publish the CI-sealed candidate through the one canonical transaction
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -216,8 +216,6 @@ jobs:
           set -euo pipefail
           RUVNET_RELEASE_ASSETS="$(cat "$RUVNET_RELEASE_ASSETS_FILE")"
           export RUVNET_RELEASE_ASSETS
-          node scripts/release-authority.mjs
-          node scripts/release-proof.mjs --candidate "$RUVNET_CANDIDATE_RECEIPT"
           node scripts/release.mjs --publish
 
       - name: Require the machine-generated publication seal
