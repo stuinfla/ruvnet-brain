@@ -108,7 +108,7 @@ function fireRegistered(command, home, payload, extraEnv = {}) {
   });
 }
 
-function fireRegisteredHeldOpen(command, home, payload, limitMs = 750) {
+function fireRegisteredHeldOpen(command, home, payload, limitMs = process.platform === 'win32' ? 2_000 : 750) {
   return new Promise((resolve) => {
     const child = spawn(command, {
       cwd: ROOT,
