@@ -35,7 +35,8 @@ describe('release evidence DAG', () => {
   it('verifies public channels once per publish through transaction finalization', () => {
     const release = read('scripts/release.mjs');
     const provider = read('scripts/release-transaction-provider.mjs');
-    expect(provider).toContain("'scripts/verify-channels.mjs'");
+    expect(provider).not.toContain("'scripts/verify-channels.mjs'");
+    expect(provider).toContain('publication.postPublicationChecks');
     expect(release).toContain('if (!PUBLISH) {\n  step(\'E\'');
   });
 });

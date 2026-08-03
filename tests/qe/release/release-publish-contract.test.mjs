@@ -7,6 +7,8 @@ const release = fs.readFileSync(path.join(ROOT, 'scripts/release.mjs'), 'utf8');
 const transaction = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction.mjs'), 'utf8');
 const provider = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction-provider.mjs'), 'utf8');
 const bundle = fs.readFileSync(path.join(ROOT, 'scripts/build-bundle.mjs'), 'utf8');
+const ci = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+const protectedWorkflow = fs.readFileSync(path.join(ROOT, '.github/workflows/protected-release.yml'), 'utf8');
 
 const position = (source, needle) => {
   const found = source.indexOf(needle);
@@ -25,14 +27,15 @@ describe('release publication is one remote durable staged transaction', () => {
     expect(provider).toContain("command('gh', ['release', 'upload', anchor.tag, file, '--repo', REPO])");
     expect(provider).toContain('refusing to replace staged asset with different bytes');
     expect(provider).not.toContain("'--clobber'");
-    expect(provider).toContain("'pack', `${PACKAGE}@candidate-v${identity.version}`");
+    expect(provider).toContain('fetch(metadata.dist.tarball');
+    expect(provider).not.toContain("command('npm', ['pack'");
     expect(provider).toContain('staged npm package integrity mismatch');
   });
 
   it('creates a remote draft before the first externally visible candidate mutation', () => {
     expect(position(transaction, "append('remote-prepared'"))
-      .toBeLessThan(position(transaction, "intend('npm-stage-intent'"));
-    expect(position(transaction, "intend('npm-stage-intent'"))
+      .toBeLessThan(position(transaction, "transition('npm-stage-intent'"));
+    expect(position(transaction, "transition('npm-stage-intent'"))
       .toBeLessThan(position(transaction, 'adapter.stageNpm'));
     expect(provider).toContain("'-F', 'draft=true'");
   });
@@ -43,8 +46,8 @@ describe('release publication is one remote durable staged transaction', () => {
       'adapter.publishDraftNonLatest',
       'adapter.promoteNpm',
       'adapter.makeGithubLatest',
-      "append('channels-converged'",
     ].map((needle) => position(transaction, needle));
+    operations.push(transaction.lastIndexOf("append('channels-converged'"));
     expect(operations).toEqual([...operations].sort((a, b) => a - b));
     expect(provider).toContain("'make_latest=false'");
     expect(provider).toContain("'make_latest=true'");
@@ -52,19 +55,22 @@ describe('release publication is one remote durable staged transaction', () => {
 
   it('requires bundle, signature, digest, and sealed package as one staged asset set', () => {
     expect(release).toContain('const assets = {');
-    expect(release).toContain('bundleSignaturePath: `${zip}.sig`');
-    expect(release).toContain('bundleDigestPath: `${zip}.sha256`');
-    expect(release).toContain('packagePath: sealedPackageArtifact');
+    expect(release).toContain("bundleSignaturePath: path.join(payloadRoot, 'ruvnet-brain.zip.sig')");
+    expect(release).toContain("bundleDigestPath: path.join(payloadRoot, 'ruvnet-brain.zip.sha256')");
+    expect(release).toContain("packagePath: byRole.get('npm')");
     expect(release).toContain('signed release asset missing');
     expect(provider).toContain('assets.packagePath');
   });
 
-  it('rebuilds and audits the exact extracted archive before signing', () => {
+  it('builds once in candidate CI, signs once in the protected seal job, and never rebuilds in the publisher', () => {
     expect(bundle).toContain('fs.rmSync(ZIP, { force: true })');
     expect(bundle).toContain("await import('../kb/zip-extract.mjs')");
     expect(bundle).toContain('const packagedAudit = await auditRvfIndexes(packagedRvfs)');
-    expect(position(release, "runOrDie('build release bundle'"))
-      .toBeLessThan(position(release, "runOrDie('sign release bundle'"));
+    expect(ci).toContain('node scripts/build-bundle.mjs');
+    expect(protectedWorkflow).toContain('Reuse persisted signature or sign exactly once');
+    expect(protectedWorkflow).toContain('node scripts/sign-bundle.mjs');
+    expect(release).not.toContain("runOrDie('build release bundle'");
+    expect(release).not.toContain("runOrDie('sign release bundle'");
   });
 
   it('fails closed on competing transactions and duplicate drafts', () => {
@@ -75,7 +81,7 @@ describe('release publication is one remote durable staged transaction', () => {
   });
 
   it('uses guarded compensation and preserves an explicit human-only abort terminal', () => {
-    expect(transaction).toContain("if (observed.version !== identity.version) throw new Error('npm latest changed during compensation')");
+    expect(transaction).toContain("snapshot.npm?.latestVersion !== prior?.npmLatest");
     expect(provider).toContain('refusing compensation: npm latest is');
     expect(transaction).toContain("if (!authorized) throw new Error('release abort requires explicit human authorization')");
   });
@@ -84,8 +90,9 @@ describe('release publication is one remote durable staged transaction', () => {
     expect(position(provider, "'scripts/publication-receipt.mjs'"))
       .toBeLessThan(position(provider, "'scripts/release-proof.mjs'"));
     expect(position(transaction, 'adapter.finalize'))
-      .toBeLessThan(position(transaction, "append('channels-converged'"));
-    expect(provider).toContain("'scripts/verify-channels.mjs'");
-    expect(provider).toContain("'scripts/published-surface-probe.mjs', '--json'");
+      .toBeLessThan(transaction.lastIndexOf("append('channels-converged'"));
+    expect(provider).not.toContain("'scripts/verify-channels.mjs'");
+    expect(provider).not.toContain("'scripts/published-surface-probe.mjs', '--json'");
+    expect(provider).toContain('publication.postPublicationChecks');
   });
 });

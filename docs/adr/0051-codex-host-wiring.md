@@ -3,7 +3,7 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-02
+updated: 2026-08-03
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -253,9 +253,13 @@ native Windows.
   `/hooks` review procedure while definitions are pending.
 
 ## Currency log
+| 2026-08-03 | Re-read Codex wrapper behavior against the packed 4.0.8 host proof; no contract change. | PR #100 exact-SHA release evidence is green; Windows unit remains the sole required red lane. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-03 | Gave the held-open registered-command probe a 2s process-start budget on every host while retaining the 250ms wrapper input deadline. | The hosted full-suite check still killed the first `SessionStart` process at the 750ms outer budget under runner contention; the assertion itself remains unchanged and still proves completion without stdin EOF. `tests/unit/codex-lifecycle-hooks.test.mjs`, commits `1a1136e` and `70c4441`. |
+| 2026-08-03 | Re-read the governed Codex host surface after the 4.0.8 wrapper and release-QE repairs. | `plugin/scripts/codex-hook-wrapper.mjs` and the installed Codex registration remain aligned: the wrapper is the single generation-independent entrypoint, now with bounded held-open pipe handling; commits `640ae01` and `1e728b0`. |
+| 2026-08-02 | Re-read the 4.0.8 Codex hook and public-proof changes; stable registration and generation-independent dispatch remain intact. | ADR-062 changes `bin/install.mjs`, `plugin/hooks/codex-hooks.json`, `plugin/scripts/codex-hook-wrapper.mjs`, and the release-proof skill so packed hooks must pass held-open stdin and public Codex-only/dual installs must run doctor plus functional MCP search. Exact-SHA CI and public receipts remain authoritative. |
 | 2026-08-02 | Re-read the final 4.0.7 Codex payload and installer changes; stable MCP registration, managed configuration, lifecycle adaptation, generation-independent hooks, and native skill discovery remain intact. | Commits `3668b1b`, `67b283e`, and `78e897b` add installed provenance, bounded swarm-slot recycling, and the remote release transaction through `bin/install.mjs`, the packaged skills, and the Codex plugin manifest. They preserve disabled-plugin state and do not create a second host transport. Exact-SHA CI and public clean-install proof remain release gates. |
 | 2026-08-02 | Repaired a missing or malformed Brain-owned Codex marketplace snapshot before asking Codex to report plugin state; an explicitly disabled plugin remains disabled. | Public 4.0.6 installed the RVF Brain successfully but a retained local marketplace registration pointed at a missing snapshot, so `codex plugin list --json` failed before the old later repair path could run. `bin/install.mjs` now validates and atomically rebuilds only its own snapshot before that probe, reports preparation failures distinctly, and leaves healthy current caches byte-untouched. Real isolated-Codex regressions cover missing, malformed, disabled, and preparation-failure states. |
 | 2026-08-02 | Made the stable Codex hook door fail-open before Node can report a missing module, and aligned it with custom `CODEX_HOME`. | The 4.0.5 manifest invoked the stable wrapper directly. Plugin-only upgrades, a retained plugin after uninstall, or a deleted wrapper therefore failed before the wrapper's safety logic could run; custom Codex homes also wrote and read different paths. Every 4.0.6 registration now uses a cross-platform inline Node trampoline that resolves the installer's stable path, returns silent exit 0 when it is absent or unhealthy, and preserves only intentional blocking exit 2. The wrapper adds an internal deadline below the host deadline and suppresses unexpected adapter failures. Focused source tests pass 23/23 and the packed-artifact regression passes 7/7; exact-SHA CI and public-artifact proof remain the release gates. |

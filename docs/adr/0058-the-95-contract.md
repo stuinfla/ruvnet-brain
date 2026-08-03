@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-02
+updated: 2026-08-03
 impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -361,8 +361,11 @@ correct: **the strong claim was the defect.**
 
 ## Currency log
 
+| 2026-08-03 | Release candidate 4.0.8 re-read the governed Codex hook surface after the staged-host and Windows held-open regressions; the contract remains unchanged while the verifier binds the installed Codex payload and the wrapper polls inherited Windows pipes without waiting for EOF. The issue #29 integration guard now skips loudly when its optional model cannot be primed, matching its documented offline behavior. | Candidate PR #100, current local repair; focused Codex lifecycle tests and integration regression proof are required before hosted exact-SHA evidence. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-02 | Re-read every governed 4.0.8 release path and preserved the fail-closed exact-artifact contract. | Commit `8608cfd` implements ADR-062: one signed payload, cross-run reuse, bounded registry polling, resumable receipts, exact-SHA aggregate evidence, no duplicate publisher suites, and public npm/GitHub plus three-host proof. Focused release tests passed 144/144, while the live global Ruflo 3.34.0 memory-store regression remains an explicit external blocker rather than being rounded green. |
 | 2026-08-02 | Re-read the final 4.0.7 governed release, installer, hook, QE, and lesson surfaces. The vector-minimum law, exact-SHA evidence binding, protected sole publisher, and post-publication seal remain unchanged; this row makes no score or shipped claim. | Commits `28baa9c`, `3668b1b`, `00110e5`, `67b283e`, `5a638f6`, and `78e897b` make dispatch timing truthful, preserve installed provenance, keep owner alerts private, recycle swarm slots, expose provider identity, and make publication remotely recoverable. The protected workflow still requires current-main identity and the successful exact-SHA `release-qe` run before publication, then verifies public bytes and installed hosts. |
 | 2026-08-02 | Removed the redundant human reviewer from `Production – ruvnet-brain` while retaining the environment, protected-branch policy, exact-SHA CI, sealed artifact, sole publisher, and post-publication receipt. | Stuart explicitly granted standing production authorization after the 4.0 launch phase. GitHub environment protection now has zero required reviewers and retains the branch-policy rule; protected-release run `30768302283` crossed the boundary without a pause and published 4.0.6 with both seals green. |
 | 2026-08-02 | Re-read the protected release and Codex hook boundaries for the 4.0.6 emergency candidate. The release remains a stabilization path and makes no 95 claim. | Commit `eab11d8` changes `plugin/hooks/codex-hooks.json`, `plugin/scripts/codex-hook-wrapper.mjs`, `.github/workflows/protected-release.yml`, `scripts/stabilization-receipt.mjs`, and exact source/packed-artifact regressions. Plugin-only, missing-wrapper, retained-plugin-after-uninstall, and isolated `CODEX_HOME` paths now fail open before Node can emit `MODULE_NOT_FOUND`; unexpected crashes/timeouts are silent while intentional blocking exit 2 remains enforced. Focused source gates passed 79/79 and the packed release boundary passed 7/7. Public npm/GitHub bytes, exact-SHA remote CI, and post-publication host proof remain unproven until the protected workflow completes. |

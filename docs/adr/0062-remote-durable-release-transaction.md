@@ -25,6 +25,13 @@ governs:
 
 **Date**: 2026-08-02
 
+**Updated**: 2026-08-02 22:20 EDT · **Revision**: 2.0.0
+
+> 4.0.8 correction: the 4.0.7 implementation proved that publisher-side bundle rebuilding makes
+> retry identity unstable and receipt-history skipping can report false convergence after
+> compensation. Fable 5 and GPT-5.6-Sol adversarially reviewed this revision together with
+> DDD-0015; all surviving corrections are incorporated.
+
 ## Context
 
 Issue #77 proved that a cross-provider release can expose a new GitHub generation while npm and
@@ -45,16 +52,26 @@ idempotent state machine rather than call ordering alone.
 
 ## Decision drivers
 
-- No supported client observes B until B has passed candidate and host gates.
+- No default-channel client observes B until B has passed candidate and host gates.
 - A clean runner can resume B from remote evidence alone.
-- Every provider call is preceded by a durable write-ahead intent and followed by observed-state
-  reconciliation.
+- After deterministic draft-anchor bootstrap, every provider mutation is preceded by a durable
+  write-ahead intent and followed by observed-state reconciliation.
 - Replays are idempotent and bind `version + tag + SHA + npm integrity + bundle digest`.
 - A pending B blocks B+1.
 - Local files and workflow logs are caches/evidence, never release authority.
 - Tests use provider fakes; no test may create drafts, tags, packages, or dist-tag changes.
+- Build, pack, and sign one candidate exactly once; publication and recovery cannot rebuild it.
+- Treat registry propagation as bounded observation, not one-shot success/failure.
+- Use one exact-SHA evidence DAG and one fail-closed aggregate required status.
+- Run broad suites once per SHA; all downstream stages consume receipts and immutable bytes.
+- Give every transaction boundary a named log stage and an interruption/recovery test.
 
-## Evidence DAG implementation (2026-08-02)
+## Target design and current migration gap
+
+The following is a target for 4.0.8, not a claim about current code. Production 4.0.7 still rebuilds
+and signs the ZIP in the publisher, checks only `ci/release-qe` at publication, observes npm once,
+uses historical receipt membership to skip recovery work, and has no sole `release-aggregate`
+status. Those gaps are the migration work governed by this now-accepted ADR.
 
 Candidate CI now packs the npm tarball exactly once, before release QE, and identifies those bytes
 by SHA-256 in the candidate receipt. Release QE and the five stranger-host cells consume that same
@@ -62,11 +79,20 @@ uploaded tarball; no host repacks the checkout. The protected publisher download
 sealed bytes, rechecks their SHA/version/digest identity at the Production boundary, and passes the
 tarball unchanged into the staged npm/GitHub transaction.
 
-Source tests, unit tests, version/wiring checks, and exact-SHA CI proof are candidate-builder
-responsibilities. The publisher does not rerun them, recheck a weaker "latest CI" verdict, or push
-main. It performs only the receipt boundary, signed bundle assembly, staged host acceptance,
-promotion, one public-channel verification, and final publication receipt. Any source change creates
-a new SHA and therefore a new candidate artifact instead of restarting unrelated publisher gates.
+Source tests, unit tests, version/wiring checks, signed bundle assembly, host acceptance, and
+exact-SHA proof are candidate-builder responsibilities. They produce one immutable
+`CandidatePayload`: npm tarball, knowledge bundle ZIP, signature, digest, and canonical payload
+manifest. The manifest binds each member by name, size, digest, source SHA, version, producer run,
+and canonical JSON serialization rules. A separate signed `EvidenceEnvelope` binds the payload ID,
+candidate SHA, required leaf receipts, and aggregate verdict; separating them avoids a circular hash.
+The publisher cannot build, pack, zip, or sign. It only verifies and materializes the persisted
+payload and envelope, stages/promotes those bytes, performs one public-channel
+verification, and writes the final receipt. Any source change creates a new SHA and payload.
+
+The evidence DAG has content-bound leaves for source quality, release QE, stranger/platform cells,
+and Claude-only, Codex-only, and dual-host acceptance. One `release-aggregate` job rejects any
+missing, skipped, neutral, degraded, or identity-mismatched leaf. It emits the sole branch-required
+release status. Publication and retry consume its signed receipt and never rerun broad suites.
 
 ## Considered approaches
 
@@ -84,16 +110,21 @@ Advantages: durable Git object history and natural compare-and-swap semantics.
 Rejected: it creates a second mutable release control plane, requires commits unrelated to product
 source, and complicates branch protection and publisher authority.
 
-### 3. Draft GitHub release plus transaction asset (chosen)
+### 3. Persisted payload plus draft GitHub transaction anchor (chosen)
 
-The draft is already the GitHub staging object for the exact tag/SHA. A canonical
-sequence-named `release-transaction-<sequence>.json` assets make that object the recovery anchor.
+Before npm mutation, the protected publisher transports the already-built `CandidatePayload` and `EvidenceEnvelope` to the
+unique exact-tag/SHA draft, downloads them back, and verifies every digest/signature. The draft is
+the durable recovery source after Actions artifacts expire. Creating/adopting that draft is the one
+named bootstrap exception to the write-ahead-intent rule because it creates the receipt anchor but
+does not change a supported default; every later side effect requires a create-only intent. The
+draft is the GitHub staging object for the exact tag/SHA. Canonical sequence-named
+`release-transaction-<sequence>.json` assets make that object the recovery anchor.
 npm stages the immutable version under `candidate-v<version>` (never `latest`). CI artifacts retain append-only copies of
 the staged and final receipts for audit.
 
-Receipts are create-only, Ed25519-signed, hash-chained, and carry a monotonic sequence plus fencing
-token. The publisher downloads and verifies the just-written asset before crossing the next
-boundary. A duplicate sequence or stale fence loses ownership and performs no further mutation.
+Receipts are create-only, Ed25519-signed, hash-chained, and carry a monotonic sequence. The
+publisher downloads and verifies the just-written asset before crossing the next boundary. A
+duplicate sequence is the compare-and-swap conflict: its writer performs no further mutation.
 Recovery accepts only the highest valid chain for the same immutable identity; conflicting identity,
 signature, chain, or regressed state fails closed.
 
@@ -101,32 +132,47 @@ signature, chain, or regressed state fails closed.
 
 ### Identity
 
-`transactionId = sha256(version | tag | candidateSha | packageSha512 | bundleSha256)`.
+Canonical JSON is UTF-8 RFC 8785/JCS throughout.
 
-Every state and provider observation repeats those fields. Any mismatch is a collision, not a new
-attempt.
+`payloadId = sha256(JCS(payloadManifest))`.
+
+The envelope signature signs `JCS(envelope excluding signature)`.
+
+`evidenceDigest = sha256(JCS(complete signed EvidenceEnvelope))`.
+
+`transactionId = sha256(JCS({schemaVersion, version, tag, candidateSha, payloadId, evidenceDigest}))`.
+
+Every state and provider observation repeats those fields and member digests. Any mismatch is a
+collision, not a new attempt. Retry re-materializes and verifies the original payload from the
+draft when needed. Missing durable bytes are a hard recovery failure; regenerating, repacking, or
+resigning is never a recovery action.
+
+The manifest pins every prior-generation asset digest consumed while assembling the bundle.
+Candidate CI creates these bytes once. If the durable payload cannot be resolved, the transaction
+becomes `manual-intervention-required`; recovery never attempts to re-derive it.
 
 ### Prepare
 
-1. Verify synchronized manifests, exact candidate SHA CI, sealed npm tarball, signed bundle, and
-   candidate receipt.
+1. Resolve the persisted payload and evidence envelope; verify every member, synchronized manifests,
+   exact candidate SHA, and aggregate receipt. Never build, pack, zip, or sign in the publisher.
 2. Under one repository-wide publisher lock, discover all draft/published release anchors and npm
    candidate tags. A pending different identity blocks B. Duplicate/orphan drafts for B are adopted
    only when their tag/SHA identity is exact and unambiguous; otherwise the run fails without mutation.
 3. Create or adopt a GitHub **draft** explicitly targeting the candidate SHA. This does not advance
    `releases/latest`.
-4. Upload signed assets and the initial signed remote transaction receipt; download and verify it.
-5. Verify Claude-only, Codex-only, and dual-host fixtures from digest-addressed local sealed package
-   and bundle files through the supported host interfaces; no public release lookup is used. Record
-   that local result separately from remote staging evidence.
-6. Write `npm-stage-intent`, then publish the sealed tarball with the non-default
-   `candidate-v<version>` tag. Observe registry version, integrity, and candidate tag; record
-   `npm-candidate-staged`.
-7. Re-download the candidate tarball through npm and all bundle assets through the authenticated
-   GitHub draft API, verify their identity digests, then re-run the three fixtures. Record `prepared` only
-   when both staged providers reproduce the same host receipt. A fresh Codex fixture may report
-   `PENDING_REVIEW` only when the real doctor proves the exact plugin installed and names explicit
-   lifecycle-hook trust as its sole nonzero condition; every other nonzero doctor result fails.
+4. Append, download, and verify sequence-zero `remote-prepared`, capturing immutable A. Then append,
+   download, and verify `asset-upload-intent`; only then upload payload/envelope assets and download
+   and verify them.
+5. Verify the staged provider bytes and metadata against the payload. The evidence envelope already
+   contains the one exact-SHA packed/installed Claude-only, Codex-only, and dual-host matrix; do not
+   rerun it during staging.
+6. Write `npm-stage-intent`, then publish the persisted tarball with the non-default
+   `candidate-v<version>` tag. Poll version, integrity, and candidate tag with bounded exponential
+   backoff plus jitter until the exact postcondition appears or the deadline expires. Timeout
+   preserves the same-byte transaction for resume; it never triggers rebuilding or blind republish.
+7. Re-download the candidate tarball through npm and payload assets through the authenticated draft
+   API and verify identity digests. Record `prepared` when both staged providers reproduce the same
+   payload identity; no broad or host suite reruns here.
 
 If any prepare step fails, GitHub remains a draft and npm `latest` remains A. An npm version is
 immutable, so compensation is reconciliation: retain the candidate tag for B and resume or mark the
@@ -140,22 +186,42 @@ draft failed; never reuse B for different bytes.
 4. Observe npm `latest`; record `npm-promoted`.
 5. Record `github-latest-intent`; make the exact published B release latest, observe it, and record
    `defaults-promoted`.
-6. Publish the signed current-release manifest/receipt, run the immediate surface probe, re-run
-   actual Claude/Codex doctor interfaces, and record `channels-converged` only after all agree.
+6. Observe both defaults B; run one public downloaded-artifact install/doctor probe across
+   Claude-only, Codex-only, and dual-host modes plus the surface probe; upload create-only signed
+   `current-release.json` on release B; download and verify it; freshly reobserve both defaults;
+   then append `channels-converged`. Until then user doctor reports pending/unknown.
 
 If non-latest GitHub promotion succeeds and npm promotion fails, retry B; supported defaults remain
-A. If npm promotion succeeds while GitHub remains draft/non-latest, compensate npm `latest` back to
-the receipt's captured A only after re-observing that `latest` still equals B. Any third identity is a
+A. If npm promotion succeeds while GitHub B remains an unpublished draft (non-latest publication
+never observed), compensate npm `latest` back to sequence-zero A only after re-observing that
+`latest` still equals B. npm latest = B with GitHub published non-latest is the normal state
+preceding `github-latest-intent` and resumes forward. Prior A includes npm
+version/integrity and GitHub tag/SHA, is immutable, and is never recaptured on retry. Any third identity is a
 race and becomes `manual-intervention-required`, never a blind rollback. A poisoned immutable B may
 enter signed, explicitly human-authorized terminal `aborted`; automation cannot abort or reuse B.
 
 ### Recovery
 
 - Discover the unique draft/published release whose transaction asset identifies B.
-- Reconcile provider observations before trusting the recorded state; an intent may have completed
+- Resolve and verify the original payload and evidence envelope before any mutation.
+- Feed the last valid state and fresh observations of both providers through one total transition
+  reducer. Receipt history is evidence, never permission to skip a postcondition. An intent may have completed
   even if the process died before its completion receipt.
 - Continue the same B only. A different pending identity blocks the run.
-- A step is skipped only when provider state proves its exact postcondition.
+- A step is skipped only when fresh provider state proves its exact postcondition.
+- `defaults-promoted` requires one reducer invocation that freshly observes npm latest and GitHub
+  latest both name B;
+  compensation and re-promotion never advance from historical receipt names alone.
+- Capture prior A exactly once in sequence zero, including npm version/integrity and GitHub tag/SHA.
+  A retry never recaptures or replaces it. Unknown/failed provider reads prohibit mutation.
+- A prior `channels-converged` receipt is not an early return: replay re-observes the public receipt,
+  npm, GitHub, and host surface; drift is non-success.
+- Discovery paginates all releases/assets and candidate tags. Create-only sequence receipts are the
+  compare-and-swap authority; there is no decorative fencing token.
+- Published-release discovery resolves the tag SHA and verifies signed transaction identity;
+  `target_commitish` is not trusted after publication.
+- Any identity-safe anomaly may enter `manual-intervention-required`. An explicitly authorized
+  `AbortRelease` burns B against its discovered anchor so it cannot block every future release.
 - `doctor` fails for every state other than `channels-converged` and prints the same-candidate resume
   command plus any required host restart/review action.
 - Publisher doctor uses authenticated draft receipts; user doctor trusts only the public signed
@@ -169,13 +235,20 @@ enter signed, explicitly human-authorized terminal `aborted`; automation cannot 
 4. GitHub draft and npm candidate tag never count as the supported current generation.
 5. Receipt state is monotonic; identity is immutable.
 6. Every non-idempotent boundary has a write-ahead intent and an observed postcondition.
-7. `channels-converged` requires the signed final receipt, live surfaces, and actual managed-host
-   interface receipts.
-8. A disabled plugin stays disabled; changed hooks remain pending explicit host review; a live
-   Console is either restarted onto B or reported `pending-console-restart`.
-9. One constant workflow concurrency group plus remote fencing serializes all versions.
+7. `channels-converged` requires the signed final receipt, live surfaces, and isolated
+   installed-artifact host-interface receipts with accurate restart/review metadata.
+8. Existing user-host restart, disabled state, hook approval, and Console state are doctor-reported
+   local postconditions, not global publication blockers.
+9. One constant workflow concurrency group plus create-only receipt CAS serializes all versions.
 10. Ordinary open issues are not release authority; only maintainer-governed release-blocker
     metadata blocks publication.
+11. The publisher has no code path that creates candidate bytes.
+12. One payload ID and evidence digest bind every CI, npm, GitHub, transaction, and installed-host receipt.
+13. Propagation timeout is resumable uncertainty, never proof of provider failure.
+14. GitHub logs separate intent, provider call, observation, and receipt stages and name the
+    transaction/payload IDs, attempt, deadline, and observation without secrets.
+15. Delayed visibility, interruption at every boundary, partial publication, byte mismatch,
+    competing releases, compensation, and re-promotion are mandatory executable recovery tests.
 
 ## Consequences
 
@@ -185,9 +258,15 @@ enter signed, explicitly human-authorized terminal `aborted`; automation cannot 
   This is deliberate evidence, not debris to overwrite.
 - Cross-provider atomicity remains impossible, but no incomplete B is called current and every
   partial promotion has a deterministic compensation/resume path.
-- Exact final-version npm staging can be selected by semver-range consumers even under a non-default
-  tag. The supported-client invariant covers bare/`latest` and explicit-version Brain installs; the
-  receipt and doctor surface the unavoidable registry visibility rather than claiming isolation.
+- Exact-version and semver consumers may observe staged B; they are outside the supported default
+  channel until commit. The receipt and doctor surface that unavoidable registry visibility.
+- Retry may re-download/re-materialize and reverify the same persisted bytes or repeat an idempotent
+  provider mutation. It may not regenerate/repack/resign or repeat broad suites.
+- The version-specific candidate tag remains as transaction evidence after convergence; terminal
+  tags are ignored as pending work. `aborted` requires fresh proof that neither default points to B
+  and both defaults identify a safe supported generation, otherwise state remains
+  `manual-intervention-required`.
+- The per-generation workflow version lock remains explicit and must match source.
 
 ## Authoritative references
 

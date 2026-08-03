@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { commandNodes, findInvocations } from '../plugin/scripts/hook-input.mjs';
-import { optionValue, TRAP } from './learning-replay-contract.mjs';
+import { normalizeRufloExecutable, optionValue, TRAP } from './learning-replay-contract.mjs';
 
 export const PROJECT_B_MEMORY_KEY = 'note-caching-strategy';
 export const PROJECT_B_MEMORY_VALUE =
@@ -90,9 +90,10 @@ export function executeProducedCommand(cmd, {
     output: '',
     ...extra,
   });
-  const invocations = findInvocations(String(cmd || ''), ['ruflo', 'claude-flow']);
+  const normalized = normalizeRufloExecutable(cmd);
+  const invocations = findInvocations(normalized, ['ruflo', 'claude-flow']);
   if (!invocations.length) return reject('no Ruflo invocation to execute');
-  const firstExecutable = path.basename(commandNodes(String(cmd || ''))[0]?.exe || '').split('@')[0];
+  const firstExecutable = path.basename(commandNodes(normalized)[0]?.exe || '').split('@')[0];
   if (invocations.length !== 1 || firstExecutable !== 'ruflo') {
     return reject('corrective command was not the first and only Ruflo invocation');
   }

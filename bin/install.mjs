@@ -1962,11 +1962,15 @@ async function doctor() {
     && !codexLifecycleGuidance(codexLifecycle).healthy
     && !codexLifecycleGuidance(codexLifecycle).intentional,
   );
+  // A staged release verifier can execute the packaged hooks under Codex's explicit automation
+  // trust bypass. That proves the real hook commands without pretending a fresh interactive user
+  // has already reviewed them; normal end-user doctor runs remain fail-closed on pending trust.
+  const codexTrustBypassed = process.env.RUVNET_CODEX_HOOK_TRUST_MODE === 'bypass';
   const codexWiringFailed = Boolean(cx.host && !cx.wired);
   const codexReadinessFailed = Boolean(codexMcp?.blocking);
   const failed = (hookResult ? hookResult.exitCode !== 0 : !allGreen)
     || groundingUnprovenPersisted
-    || codexLifecycleFailed
+    || (codexLifecycleFailed && !codexTrustBypassed)
     || codexWiringFailed
     || codexReadinessFailed
     || !hostConvergence.healthy
@@ -1999,7 +2003,7 @@ async function runSelfCheck({ installState = null, quiet = false } = {}) {
     mod = await import(new URL('../scripts/selfcheck.mjs', import.meta.url).href);
   } catch (e) {
     warn(`self-check could not run (${e && e.message}) — this install has NOT been verified end to end`);
-    return { exitCode: 0, violations: [], lines: [], unavailable: true };
+    return { exitCode: FLAG_DOCTOR_HOOKS ? 1 : 0, violations: [], lines: [], unavailable: true };
   }
   const result = await mod.selfCheck({ installState, security: true });
   if (!quiet || result.violations.length) console.log(mod.formatVerdict(result, { color: c }));

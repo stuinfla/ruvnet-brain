@@ -8,10 +8,10 @@ describe('staged host doctor classification', () => {
     });
   });
 
-  it('preserves explicit Codex hook trust as pending review', () => {
+  it('rejects Codex pending review because publication requires hook-error-free exit zero', () => {
     const stdout = 'Grounding PROVEN\nCodex installed the Brain, but 17 lifecycle hooks await review.';
     expect(classifyDoctorResult({ status: 1, stdout })).toMatchObject({
-      accepted: true, status: 'PENDING_REVIEW',
+      accepted: false, status: 'FAIL',
     });
   });
 

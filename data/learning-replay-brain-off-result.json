@@ -2,8 +2,8 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "FAIL",
   "why": "0/1 runs passed — below the 1/1 bar",
-  "sha": "711ff31ea1a3015a58f09396b6ea969d1b5c9655",
-  "at": "2026-08-02T15:44:55.472Z",
+  "sha": "3e1ac080582ae2d0efbb4b746aec3329a5b10e2d",
+  "at": "2026-08-03T03:28:19.523Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -25,7 +25,7 @@
   "rate": 0,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 25.1,
+  "wallSeconds": 23.4,
   "premise": {
     "verified": true,
     "evidence": "-q, --query               Search query (required)"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1785685469506",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-Xnsjn1/brain-home/versions/d4-refresh-1785685469506",
+    "generation": "d4-refresh-1785727675316",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-K76o8t/brain-home/versions/d4-refresh-1785727675316",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -90,16 +90,16 @@
         "firstToolIndex": 0,
         "lessonBeforeFirstToolCall": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/711ff31ea1a3015a58f09396b6ea969d1b5c9655/b16964c3394927dde9078342c1a01c48baedc0a47e42ed73435e85843203141d.json",
-          "sha256": "b16964c3394927dde9078342c1a01c48baedc0a47e42ed73435e85843203141d",
-          "sourceSha": "711ff31ea1a3015a58f09396b6ea969d1b5c9655",
+          "path": "data/learning-replay-transcripts/3e1ac080582ae2d0efbb4b746aec3329a5b10e2d/0aecb0fe2bc1593c0125b3773de7f7342f23a06ebdbac8fc9dfd33c5b355b6db.json",
+          "sha256": "0aecb0fe2bc1593c0125b3773de7f7342f23a06ebdbac8fc9dfd33c5b355b6db",
+          "sourceSha": "3e1ac080582ae2d0efbb4b746aec3329a5b10e2d",
           "mutant": "brain-off-treated"
         }
       },
       "control": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
         "exec": {
           "ran": true,
           "argv": [
@@ -107,7 +107,8 @@
             "memory",
             "search",
             "caching strategy",
-            "--path"
+            "--path",
+            ".swarm/memory.db"
           ],
           "exit": 1,
           "exitOk": false,
@@ -118,9 +119,9 @@
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/711ff31ea1a3015a58f09396b6ea969d1b5c9655/93753c2c43dcdd05bcdeeb266a5603ae987124694cfcd1ede857bd2f2d664575.json",
-          "sha256": "93753c2c43dcdd05bcdeeb266a5603ae987124694cfcd1ede857bd2f2d664575",
-          "sourceSha": "711ff31ea1a3015a58f09396b6ea969d1b5c9655",
+          "path": "data/learning-replay-transcripts/3e1ac080582ae2d0efbb4b746aec3329a5b10e2d/454d419dee3640d2ee713aed65c2881d1b38455e0785fa270f09b63c0f8ef447.json",
+          "sha256": "454d419dee3640d2ee713aed65c2881d1b38455e0785fa270f09b63c0f8ef447",
+          "sourceSha": "3e1ac080582ae2d0efbb4b746aec3329a5b10e2d",
           "mutant": "brain-off-treated"
         }
       }

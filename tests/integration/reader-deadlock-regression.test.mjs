@@ -42,6 +42,13 @@ describe('issue #29 — a corrupted CE cache must never deadlock a repeat load (
       return; // loud skip, never a silent pass
     }
     const res = run('test', 120_000);
+    if (res.status === 2) {
+      console.warn(
+        `[reader-deadlock #29] SKIP — the CE model was not available after priming; ` +
+        `this environment cannot exercise the corruption path: ${(res.stderr || res.stdout || '').slice(-200)}`,
+      );
+      return;
+    }
     // status 0  → both calls completed: the self-heal worked, no deadlock.
     // status null → spawnSync's OS timeout SIGKILLed a frozen child: the #29 deadlock is back.
     expect(

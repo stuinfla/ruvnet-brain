@@ -21,11 +21,7 @@ const run = (name, args, options) => {
 export function classifyDoctorResult(result) {
   const output = `${result.stdout || ''}\n${result.stderr || ''}`;
   if (!result.error && result.status === 0) return { accepted: true, status: 'PASS', output };
-  const pendingReview = result.status === 1
-    && /Codex installed the Brain, but \d+ lifecycle hooks await review/i.test(output)
-    && /Grounding PROVEN/i.test(output)
-    && !/reader MISSING|search_ruvnet MISSING|host convergence incomplete|receipt is invalid/i.test(output);
-  return { accepted: pendingReview, status: pendingReview ? 'PENDING_REVIEW' : 'FAIL', output };
+  return { accepted: false, status: 'FAIL', output };
 }
 
 const preparePackage = ({ packagePath, bundlePath }) => {
@@ -74,6 +70,7 @@ export function stagedHostVerifier({ assets, identity }) {
             RUVNET_BRAIN_HOME: brainHome,
             RUVNET_BRAIN_KB: path.join(brainHome, 'kb'),
             RUVNET_CLAUDE_MARKETPLACE_SOURCE: prepared.packageRoot,
+            RUVNET_CODEX_HOOK_TRUST_MODE: 'bypass',
             CI: 'true',
             PATH: fixturePath(mode, prepared.temp),
           };
@@ -82,7 +79,7 @@ export function stagedHostVerifier({ assets, identity }) {
             '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline', '--no-selfcheck'], {
             cwd: prepared.packageRoot, env, timeout: 1_200_000,
           });
-          const doctor = spawnSync(process.execPath, [installer, '--doctor'], {
+          const doctor = spawnSync(process.execPath, [installer, '--doctor', '--hooks'], {
             cwd: prepared.packageRoot, env, timeout: 180_000,
           });
           const classified = classifyDoctorResult(doctor);

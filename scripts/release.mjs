@@ -33,6 +33,7 @@ import { validateProtectedPublishInvocation } from './protected-release-invocati
 import { runReleaseTransaction } from './release-transaction.mjs';
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
+import { verifyPayload } from './release-payload.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
@@ -40,6 +41,8 @@ let protectedCandidate = null;
 let sealedPackageArtifact = null;
 let publicationReceiptPath = null;
 let protectedReleaseMode = 'strict';
+let verifiedPayload = null;
+let aggregateEnvelope = null;
 const c = { g: (s) => `\x1b[32m${s}\x1b[0m`, r: (s) => `\x1b[31m${s}\x1b[0m`, y: (s) => `\x1b[33m${s}\x1b[0m`, b: (s) => `\x1b[1m${s}\x1b[0m`, dim: (s) => `\x1b[2m${s}\x1b[0m` };
 const V = () => JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/.claude-plugin/plugin.json'), 'utf8')).version;
 
@@ -74,6 +77,23 @@ if (PUBLISH) {
   if (!publicationReceiptPath.startsWith(`${evidenceRoot}${path.sep}`) || fs.existsSync(publicationReceiptPath)) {
     console.error(`\n${c.r('✗ PROTECTED RELEASE GATE FAILED')}\n  publication receipt output must be a new file inside release-evidence\n`);
     process.exit(1);
+  }
+  const payloadManifestPath = path.resolve(ROOT, process.env.RUVNET_CANDIDATE_PAYLOAD || '');
+  const payloadSignaturePath = path.resolve(ROOT, process.env.RUVNET_CANDIDATE_PAYLOAD_SIGNATURE || '');
+  const aggregatePath = path.resolve(ROOT, process.env.RUVNET_AGGREGATE_ENVELOPE || '');
+  if (![payloadManifestPath, payloadSignaturePath, aggregatePath].every((file) => file.startsWith(`${evidenceRoot}${path.sep}`) && fs.existsSync(file))) {
+    throw new Error('protected publication requires persisted payload manifest, signature, and aggregate envelope');
+  }
+  verifiedPayload = verifyPayload({
+    manifest: JSON.parse(fs.readFileSync(payloadManifestPath, 'utf8')),
+    signature: fs.readFileSync(payloadSignaturePath, 'utf8'),
+    publicKey: crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'keys/ruvnet-brain-signing.pub.pem'), 'utf8')),
+    root: path.dirname(payloadManifestPath),
+  });
+  aggregateEnvelope = JSON.parse(fs.readFileSync(aggregatePath, 'utf8'));
+  if (aggregateEnvelope.verdict !== 'PASS' || aggregateEnvelope.sha !== protectedCandidate.sha
+    || aggregateEnvelope.payloadId !== verifiedPayload.payloadId) {
+    throw new Error('aggregate envelope does not bind the protected candidate payload');
   }
 }
 
@@ -166,18 +186,15 @@ if (!PUBLISH) {
 if (PUBLISH) {
   const v = V();
   const tag = `v${v}`;
-  const zip = path.join(ROOT, 'dist', 'ruvnet-brain.zip');
   const head = execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  const buildArgs = ['scripts/build-bundle.mjs', '--version', tag];
-  if (process.env.RUVNET_RELEASE_ASSETS) buildArgs.push('--assets', process.env.RUVNET_RELEASE_ASSETS);
-  step('D', 'prepare, stage, promote, and reconcile one signed remote transaction');
-  runOrDie('build release bundle', process.execPath, buildArgs);
-  runOrDie('sign release bundle', process.execPath, ['scripts/sign-bundle.mjs', '--bundle', zip]);
+  step('D', 'verify, stage, promote, and reconcile one persisted signed payload');
+  const payloadRoot = verifiedPayload.root;
+  const byRole = new Map(verifiedPayload.manifest.members.map((member) => [member.role, path.join(payloadRoot, member.name)]));
   const assets = {
-    bundlePath: zip,
-    bundleSignaturePath: `${zip}.sig`,
-    bundleDigestPath: `${zip}.sha256`,
-    packagePath: sealedPackageArtifact,
+    bundlePath: byRole.get('bundle'),
+    bundleSignaturePath: path.join(payloadRoot, 'ruvnet-brain.zip.sig'),
+    bundleDigestPath: path.join(payloadRoot, 'ruvnet-brain.zip.sha256'),
+    packagePath: byRole.get('npm'),
   };
   for (const asset of Object.values(assets)) {
     if (!fs.existsSync(asset)) {
@@ -185,16 +202,28 @@ if (PUBLISH) {
       process.exit(1);
     }
   }
-  const bundleSha256 = fs.readFileSync(`${zip}.sha256`, 'utf8').trim().split(/\s+/)[0];
+  const bundleSha256 = fs.readFileSync(assets.bundleDigestPath, 'utf8').trim().split(/\s+/)[0];
   if (!/^[a-f0-9]{64}$/i.test(bundleSha256)) {
     console.error(`\n${c.r('✗ GATE FAILED: release digest is not a SHA-256 value')}`);
     process.exit(1);
   }
 
   const packageIntegrity = `sha512-${crypto.createHash('sha512').update(fs.readFileSync(sealedPackageArtifact)).digest('base64')}`;
+  if (assets.packagePath !== sealedPackageArtifact
+    && !fs.readFileSync(assets.packagePath).equals(fs.readFileSync(sealedPackageArtifact))) {
+    throw new Error('candidate receipt package and payload package bytes differ');
+  }
   const identity = {
     repository: 'stuinfla/ruvnet-brain', package: 'ruvnet-brain', version: v, tag,
-    candidateSha: head, packageIntegrity, bundleSha256,
+    candidateSha: head,
+    payloadId: verifiedPayload.payloadId,
+    evidenceDigest: aggregateEnvelope.evidenceDigest,
+    packageIntegrity,
+    packageSha256: crypto.createHash('sha256').update(fs.readFileSync(assets.packagePath)).digest('hex'),
+    packageAssetName: path.basename(assets.packagePath),
+    bundleSha256,
+    bundleSignatureSha256: crypto.createHash('sha256').update(fs.readFileSync(assets.bundleSignaturePath)).digest('hex'),
+    bundleDigestSha256: crypto.createHash('sha256').update(fs.readFileSync(assets.bundleDigestPath)).digest('hex'),
   };
   const privatePem = process.env.RUVNET_SIGNING_KEY;
   if (!privatePem) throw new Error('RUVNET_SIGNING_KEY is required for signed transaction receipts');

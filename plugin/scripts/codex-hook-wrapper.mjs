@@ -41,7 +41,78 @@ function activeRoot() {
   }
 }
 
-const input = fs.readFileSync(0);
+function readHookInput(limit = 1024 * 1024) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    let bytes = 0;
+    let settled = false;
+    let idle;
+    let hardDeadline;
+    let poll;
+
+    const cleanup = () => {
+      clearTimeout(idle);
+      clearTimeout(hardDeadline);
+      clearInterval(poll);
+      process.stdin.off('data', onData);
+      process.stdin.off('readable', onReadable);
+      process.stdin.off('end', finish);
+      process.stdin.off('close', finish);
+      process.stdin.off('error', finish);
+      process.stdin.pause();
+    };
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(Buffer.concat(chunks));
+    };
+    const armIdle = () => {
+      clearTimeout(idle);
+      idle = setTimeout(finish, 100);
+    };
+    const onData = (chunk) => {
+      if (bytes < limit) {
+        const kept = chunk.subarray(0, limit - bytes);
+        chunks.push(kept);
+        bytes += kept.length;
+      }
+      if (bytes >= limit) return finish();
+      try {
+        JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        return finish();
+      } catch {
+        armIdle();
+      }
+    };
+    // Windows inherited pipes can expose the first value through the readable interface without
+    // emitting a data event until the writer closes. Drain both interfaces; POSIX keeps the fast
+    // data path and Windows gets the same complete-value contract without waiting for EOF.
+    const onReadable = () => {
+      let chunk;
+      while ((chunk = process.stdin.read()) !== null) onData(chunk);
+    };
+
+    process.stdin.on('data', onData);
+    process.stdin.on('readable', onReadable);
+    process.stdin.once('end', finish);
+    process.stdin.once('close', finish);
+    process.stdin.once('error', finish);
+    // Some Windows pipe handles can deliver repeated readable notifications while the writer
+    // remains open, continually resetting an idle timer. The host contract is one JSON value, not
+    // EOF; an absolute cap makes the wrapper deterministic under that regime without weakening
+    // the normal complete-value fast path.
+    // Some Windows inherited pipes do not emit a readable/data notification until the writer
+    // closes. Poll the non-blocking stream read instead of using fs.readSync, which can block the
+    // event loop before the first pipe chunk is surfaced.
+    poll = setInterval(onReadable, 10);
+    hardDeadline = setTimeout(finish, 250);
+    armIdle();
+    process.stdin.resume();
+  });
+}
+
+const input = await readHookInput();
 const root = activeRoot();
 const adapter = root && path.join(root, 'scripts', 'codex-hook-adapter.mjs');
 if (!adapter || !fs.existsSync(adapter)) process.exit(0);

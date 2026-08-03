@@ -59,6 +59,16 @@ export function trapSpec(id = TRAP.MEMORY_SEARCH) {
   };
 }
 
+// Codex commonly prints the global binary as $HOME/.npm-global/bin/ruflo. That is a real shell
+// executable path, not prose, but the shared command parser intentionally does not expand shell
+// variables. Canonicalize only an executable-position prefix; never rewrite quoted mentions.
+export function normalizeRufloExecutable(command) {
+  return String(command || '').replace(
+    /(^|(?:&&|\|\||[;|()\n])\s*)\$(?:HOME|\{HOME\})\/\.npm-global\/bin\/(ruflo|claude-flow)(?=\s|$)/g,
+    '$1$2',
+  );
+}
+
 export const LOAD_BEARING = Object.freeze([
   'scripts/learning-replay.mjs',
   'scripts/learning-replay-contract.mjs',
@@ -80,7 +90,7 @@ export const LOAD_BEARING = Object.freeze([
 ]);
 
 export function classifyCommand(cmd) {
-  const invocations = findInvocations(String(cmd || ''), ['ruflo', 'claude-flow']);
+  const invocations = findInvocations(normalizeRufloExecutable(cmd), ['ruflo', 'claude-flow']);
   if (!invocations.length) return 'none';
   let sawPositional = false;
   for (const inv of invocations) {
@@ -102,7 +112,7 @@ export function classifyCommand(cmd) {
 }
 
 export function subcommandCorrect(cmd) {
-  for (const inv of findInvocations(String(cmd || ''), ['ruflo', 'claude-flow'])) {
+  for (const inv of findInvocations(normalizeRufloExecutable(cmd), ['ruflo', 'claude-flow'])) {
     const words = inv.args.filter((a) => a !== '' && !a.startsWith('-'));
     const memory = words.indexOf('memory');
     if (memory !== -1 && words[memory + 1] === 'search') return true;
@@ -124,7 +134,7 @@ export function optionValue(args, short, long) {
 }
 
 export function classifyPostTaskCommand(cmd) {
-  const invocations = findInvocations(String(cmd || ''), ['ruflo', 'claude-flow']);
+  const invocations = findInvocations(normalizeRufloExecutable(cmd), ['ruflo', 'claude-flow']);
   if (!invocations.length) return 'none';
   let sawPostTask = false;
   for (const inv of invocations) {
@@ -142,7 +152,7 @@ export function classifyPostTaskCommand(cmd) {
 }
 
 export function postTaskSubcommandCorrect(cmd) {
-  return findInvocations(String(cmd || ''), ['ruflo', 'claude-flow']).some((inv) => {
+  return findInvocations(normalizeRufloExecutable(cmd), ['ruflo', 'claude-flow']).some((inv) => {
     const words = inv.args.filter((a) => a !== '' && !a.startsWith('-'));
     const hooks = words.indexOf('hooks');
     return hooks !== -1 && words[hooks + 1] === 'post-task';

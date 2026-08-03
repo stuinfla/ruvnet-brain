@@ -3,7 +3,7 @@ id: ADR-055
 title: Proactivity that meshes — one decision law, four planes, substance-bound enforcement, learning bound to outcomes
 status: Accepted
 date: 2026-07-27
-updated: 2026-08-02
+updated: 2026-08-03
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6 (codex, read-only)]
 tags: [proactivity, hooks, mesh, fourth-wall, learning, grounding, qa]
@@ -681,9 +681,12 @@ clause as the pre-agreed escalation (§3.5); Task-prompt scanning — Fable's re
 delegation drift goes to the interrupt tier (§3.7.9).
 
 ## Currency log
+| 2026-08-03 | Re-read the proactive hook mesh after the Codex staged-host correction; no contract change. | PR #100 exact-SHA release evidence is green; Windows unit remains the sole required red lane. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-03 | Re-read the governed hook mesh after the 4.0.8 held-open-input and offline integration-guard repairs. | The four-plane decision law, hook registrations, and fail-open behavior remain unchanged; `plugin/scripts/codex-hook-wrapper.mjs` adds bounded polling and `tests/integration/reader-deadlock-regression.test.mjs` makes the documented unavailable-model path a loud skip. Commits `640ae01` and `1e728b0`. |
+| 2026-08-02 | Re-read the governed hook mesh after the 4.0.8 held-open-stdin repair; decision-plane semantics and OFF behavior are unchanged. | ADR-062 and `plugin/scripts/codex-hook-wrapper.mjs` add a bounded idle-input boundary for all packaged Codex lifecycle hooks; `plugin/hooks/codex-hooks.json` routes every registration through it. Focused installed-entrypoint tests cover JSON, EOF, large input, and held-open stdin. |
 | 2026-08-02 | Kept SessionStart below its byte budget while restoring the build-only L4 behavioral contract in the prompt hook. The four-plane decision law, Brain-OFF split, consent boundary, and outcome-only learning rule remain unchanged. | `plugin/scripts/session-start-core.mjs` remains compact; `plugin/scripts/ground-ruvnet.sh` now carries one concise build-only contract line instead of depending on prose removed from SessionStart. `scripts/behavioral-l1-l4.mjs` and the SessionStart byte probe are the paired acceptance boundaries. |
 | 2026-08-02 | Re-read the final 4.0.7 lesson, SessionStart, hook, and swarm changes. The four-plane decision law, Brain-OFF split, bounded advisory routing, consent boundary, and outcome-only learning rule remain unchanged. | Commits `3668b1b`, `00110e5`, `67b283e`, and `5a638f6` add lesson provenance, private maintainer alerts, completed-slot recycling, and runtime/provider identity through governed hook and SessionStart paths. The new receipts do not promote host completion to artifact correctness, and the advisory dispatch hook still cannot claim a blocking boundary. Exact-SHA and packed-host QE remain release gates. |
 | 2026-08-02 | Corrected `route-dispatch` from a claimed blocking wall to a bounded, silent audit. The registration and shim are advisory, and omitted-model calls record `enforcement: advisory-host-timing` while always exiting 0. | Claude Code 2.1.220 registers Agent/Task `PreToolUse` asynchronously and checks the result only after `tool_dispatch_end` (ruvnet-brain #84; Anthropic #83195). An exit-2 result at that point cannot stop an already-completed dispatch. Focused subprocess tests prove the registered hook returns inside its declared timeout and does not consume or alter a foreign hook process. |

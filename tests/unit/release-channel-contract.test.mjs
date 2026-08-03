@@ -8,19 +8,19 @@ const ROOT = path.resolve(import.meta.dirname, '../..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 describe('protected release channel contract', () => {
-  it('builds and signs before the staged transaction promotes GitHub, npm, then verifies', () => {
+  it('consumes a signed persisted payload before promoting GitHub, npm, then verifying', () => {
     const release = read('scripts/release.mjs');
     const transaction = read('scripts/release-transaction.mjs');
-    const build = release.indexOf("runOrDie('build release bundle'");
-    const sign = release.indexOf("runOrDie('sign release bundle'");
+    const verifyPayload = release.indexOf('verifiedPayload = verifyPayload');
     const transactionStart = release.indexOf('const finalReceipt = await runReleaseTransaction');
     const github = transaction.indexOf('adapter.publishDraftNonLatest');
     const npm = transaction.indexOf('adapter.promoteNpm');
     const verify = transaction.indexOf('adapter.finalize');
 
-    expect(build).toBeGreaterThanOrEqual(0);
-    expect(sign).toBeGreaterThan(build);
-    expect(transactionStart).toBeGreaterThan(sign);
+    expect(verifyPayload).toBeGreaterThanOrEqual(0);
+    expect(transactionStart).toBeGreaterThan(verifyPayload);
+    expect(release).not.toContain("runOrDie('build release bundle'");
+    expect(release).not.toContain("runOrDie('sign release bundle'");
     expect(github).toBeGreaterThanOrEqual(0);
     expect(npm).toBeGreaterThan(github);
     expect(verify).toBeGreaterThan(npm);
@@ -30,12 +30,12 @@ describe('protected release channel contract', () => {
     const release = read('scripts/release.mjs');
     const transaction = read('scripts/release-transaction.mjs');
     const provider = read('scripts/release-transaction-provider.mjs');
-    expect(transaction).toContain("exact(github.sha, identity.candidateSha, 'GitHub candidate SHA')");
+    expect(transaction).toContain("snapshot.github.sha !== identity.candidateSha");
     expect(provider).toContain('refusing to replace staged asset with different bytes');
     expect(transaction).toContain('pending release ${competing[0].transactionId} blocks');
     expect(transaction).toContain('release receipt chain conflict');
-    expect(release).toContain('`${zip}.sig`');
-    expect(release).toContain('`${zip}.sha256`');
+    expect(release).toContain("'ruvnet-brain.zip.sig'");
+    expect(release).toContain("'ruvnet-brain.zip.sha256'");
     expect(provider).not.toContain("'--clobber'");
   });
 });
