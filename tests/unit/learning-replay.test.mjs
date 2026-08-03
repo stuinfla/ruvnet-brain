@@ -204,6 +204,10 @@ describe('the oracle is a PARSE, not a grep', () => {
   it('sees through npx wrappers and absolute paths', () => {
     expect(classifyCommand('npx ruflo@latest memory search -q "x"')).toBe('flagged');
     expect(classifyCommand('/Users/x/.npm-global/bin/ruflo memory search -q "x"')).toBe('flagged');
+    expect(classifyCommand('$HOME/.npm-global/bin/ruflo memory search "caching strategy"')).toBe('positional');
+    expect(classifyCommand('$HOME/.npm-global/bin/ruflo memory search -q "x"')).toBe('flagged');
+    expect(subcommandCorrect('$HOME/.npm-global/bin/ruflo memory search -q "x"')).toBe(true);
+    expect(classifyCommand('echo "$HOME/.npm-global/bin/ruflo memory search -q x"')).toBe('none');
   });
 
   it('separates the TOKEN from the SUBCOMMAND — both are real, and both are now gated', () => {
