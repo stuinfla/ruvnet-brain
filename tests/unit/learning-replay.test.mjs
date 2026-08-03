@@ -25,6 +25,7 @@ import {
   TRAP, classifyPostTaskCommand, postTaskSubcommandCorrect, verifyPostTaskContract,
   assertPostTaskPersisted,
   cleanupFixtureDaemons,
+  buildFixtures, nightlyRefresh,
 } from '../../scripts/learning-replay.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 
@@ -76,6 +77,20 @@ describe('executor failures remain visible in replay evidence', () => {
 });
 
 describe('Codex subscription replay host', () => {
+  it('installs the stable wrapper that routes fixture hooks into the isolated generation', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'd4-codex-wrapper-'));
+    try {
+      const dirs = buildFixtures(base);
+      const refresh = nightlyRefresh(dirs);
+      expect(fs.existsSync(path.join(dirs.brainHome, 'codex-hook.mjs'))).toBe(true);
+      expect(fs.existsSync(path.join(
+        dirs.brainHome, 'versions', refresh.generation, 'scripts', 'codex-hook-adapter.mjs',
+      ))).toBe(true);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   it('runs Codex read-only with the installed Brain plugin hooks trusted', () => {
     const args = buildCodexArgv({ model: 'gpt-5.6-sol', prompt: 'fixture prompt' });
     expect(args.slice(0, 2)).toEqual(['exec', '--ephemeral']);

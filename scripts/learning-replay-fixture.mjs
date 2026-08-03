@@ -48,6 +48,16 @@ function initMemoryDb(ruflo, db, cwd) {
   return sh(ruflo, ['memory', 'init', '--path', db, '--backend', 'hybrid'], { cwd });
 }
 
+function retrieveExact(ruflo, db, cwd, key, expected) {
+  const result = sh(ruflo, [
+    'memory', 'retrieve', '-k', key, '-n', 'default', '--value-only', '--path', db,
+  ], { cwd });
+  return {
+    exit: result.status,
+    matched: result.status === 0 && String(result.stdout || '').includes(expected),
+  };
+}
+
 export function buildFixtures(baseDir) {
   fs.mkdirSync(baseDir, { recursive: true });
   const dirs = {
@@ -90,6 +100,7 @@ export function recordInProjectA(dirs, {
       'memory', 'search', '-q', spec.recordQuery,
       '-n', 'default', '--path', db, '-t', 'keyword',
     ], { cwd: project });
+    const exact = retrieveExact(ruflo, db, project, key, spec.lesson);
     return {
       project: path.basename(project),
       db,
@@ -97,7 +108,8 @@ export function recordInProjectA(dirs, {
       initExit: init.status,
       storeExit: store.status,
       readBackExit: readBack.status,
-      recorded: fs.existsSync(db),
+      exactReadExit: exact.exit,
+      recorded: exact.matched,
     };
   });
   const lesson = makeLesson({
@@ -138,12 +150,14 @@ export function seedProjectBMemory(dirs, { ruflo = RUFLO_BIN } = {}) {
     'memory', 'store', '-k', PROJECT_B_MEMORY_KEY,
     '--value', PROJECT_B_MEMORY_VALUE, '-n', 'default', '--path', db,
   ], { cwd: dirs.projectB });
+  const exact = retrieveExact(ruflo, db, dirs.projectB, PROJECT_B_MEMORY_KEY, PROJECT_B_MEMORY_VALUE);
   return {
     db,
     key: PROJECT_B_MEMORY_KEY,
     initExit: init.status,
     storeExit: store.status,
-    ok: init.status === 0 && store.status === 0 && fs.existsSync(db),
+    exactReadExit: exact.exit,
+    ok: init.status === 0 && store.status === 0 && exact.matched,
   };
 }
 
@@ -155,6 +169,13 @@ export function nightlyRefresh(dirs, { ruflo = RUFLO_BIN } = {}) {
   fs.copyFileSync(
     path.join(ROOT, 'scripts', 'ci', 'learning-replay-codex-adapter.mjs'),
     path.join(versionDir, 'scripts', 'codex-hook-adapter.mjs'),
+  );
+  // Codex registrations call this stable, generation-independent wrapper. A fixture that only
+  // creates active.json silently falls back to the user's real Brain home and never records the
+  // trap's PreToolUse command, making an expensive replay unmeasurable.
+  fs.copyFileSync(
+    path.join(ROOT, 'plugin', 'scripts', 'codex-hook-wrapper.mjs'),
+    path.join(dirs.brainHome, 'codex-hook.mjs'),
   );
   fs.writeFileSync(path.join(dirs.brainHome, 'active.json'), JSON.stringify({
     codeRoot: versionDir,
