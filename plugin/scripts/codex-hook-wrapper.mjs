@@ -41,7 +41,54 @@ function activeRoot() {
   }
 }
 
-const input = fs.readFileSync(0);
+function readHookInput(limit = 1024 * 1024) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    let bytes = 0;
+    let settled = false;
+    let idle;
+
+    const cleanup = () => {
+      clearTimeout(idle);
+      process.stdin.off('data', onData);
+      process.stdin.off('end', finish);
+      process.stdin.off('error', finish);
+      process.stdin.pause();
+    };
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(Buffer.concat(chunks));
+    };
+    const armIdle = () => {
+      clearTimeout(idle);
+      idle = setTimeout(finish, 100);
+    };
+    const onData = (chunk) => {
+      if (bytes < limit) {
+        const kept = chunk.subarray(0, limit - bytes);
+        chunks.push(kept);
+        bytes += kept.length;
+      }
+      if (bytes >= limit) return finish();
+      try {
+        JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        return finish();
+      } catch {
+        armIdle();
+      }
+    };
+
+    process.stdin.on('data', onData);
+    process.stdin.once('end', finish);
+    process.stdin.once('error', finish);
+    armIdle();
+    process.stdin.resume();
+  });
+}
+
+const input = await readHookInput();
 const root = activeRoot();
 const adapter = root && path.join(root, 'scripts', 'codex-hook-adapter.mjs');
 if (!adapter || !fs.existsSync(adapter)) process.exit(0);

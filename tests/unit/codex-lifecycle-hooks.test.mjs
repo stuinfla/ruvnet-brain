@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -108,6 +108,42 @@ function fireRegistered(command, home, payload, extraEnv = {}) {
   });
 }
 
+function fireRegisteredHeldOpen(command, home, payload, limitMs = 750) {
+  return new Promise((resolve) => {
+    const child = spawn(command, {
+      cwd: ROOT,
+      shell: true,
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        CODEX_HOME: path.join(home, '.codex'),
+        RUVNET_BRAIN_HOME: path.join(home, '.cache', 'ruvnet-brain'),
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    child.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill('SIGKILL');
+      resolve({ completed: false, stdout, stderr });
+    }, limitMs);
+    child.on('exit', (status, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ completed: true, status, signal, stdout, stderr });
+    });
+    child.stdin.write(JSON.stringify(payload));
+    // Deliberately keep stdin open: Codex can retain the pipe after one complete JSON value.
+  });
+}
+
 describe('Codex lifecycle hook packaging', () => {
   it('ships a Codex manifest and schema-valid hook source without Claude-only metadata', () => {
     const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
@@ -208,6 +244,29 @@ describe('Codex lifecycle hook packaging', () => {
       expect(result.status, `${handler.event}: ${result.stderr}`).toBe(0);
       expect(result.stdout, `${handler.event}: stdout`).toBe('');
       expect(result.stderr, `${handler.event}: stderr`).toBe('');
+    }
+  });
+
+  it('all literal registered commands finish after one complete JSON value even when stdin stays open', async () => {
+    const { home, brain } = fixture();
+    installGeneration(brain, 'v1', 'process.exit(0);');
+    fs.copyFileSync(WRAPPER, path.join(brain, 'codex-hook.mjs'));
+
+    const results = await Promise.all(manifestHandlers().map(async (handler) => ({
+      event: handler.event,
+      result: await fireRegisteredHeldOpen(handler.command, home, {
+        session_id: 'codex-held-open',
+        hook_event_name: handler.event,
+        cwd: ROOT,
+      }),
+    })));
+
+    expect(results).toHaveLength(17);
+    for (const { event, result } of results) {
+      expect(result.completed, `${event}: waited for stdin EOF`).toBe(true);
+      expect(result.signal, `${event}: signal`).toBeNull();
+      expect(result.status, `${event}: ${result.stderr}`).toBe(0);
+      expect(result.stderr, `${event}: stderr`).toBe('');
     }
   });
 
