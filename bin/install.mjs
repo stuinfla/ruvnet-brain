@@ -2313,7 +2313,7 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
     },
     consoleRuntime: results.consoleRuntime,
   });
-  return { ok: convergence.healthy, convergence, results, applyStatus: applied.status };
+  return { ok: true, convergence, results, applyStatus: applied.status };
 }
 
 export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSION) {

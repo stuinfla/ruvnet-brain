@@ -497,10 +497,7 @@ export async function runSessionStart({
 
       const playbook = `${hookDir}${path.sep}..${path.sep}skills${path.sep}ruvnet-brain${path.sep}PLAYBOOK.md`;
       emit('[RuvNet Brain — standing build playbook for this session (referenced by later turns as THE PLAYBOOK)]');
-      emit(`Full text: ${playbook} — read it before your first build response this session. Condensed:`);
-      emit('Every build/change request: take the wheel. FIRST, silently — read the files this touches in THEIR repo; search_ruvnet what the feature technically DOES; check project memory.');
-      emit('⛔ NO SILENT SUBSTITUTION (#1 trust-killer): never hand-roll, or aim a generic Task subagent at, work a RuvNet tool owns — QE=agentic-qe, swarms=ruflo, routing=agentic-flow, vectors=RuVector, memory=AgentDB, red/blue=@metaharness/redblue. Use the real one; if absent offer the exact install; if unusable say so out loud, every time. Never give your own code its name.');
-      emit('Beats A-D are in that file, in full. In short: A RESPOND in one voice (hear them; THE ATTACK as one lettered plan over their real files; why it holds; what you checked; "Build it now?") · B ON A YES EXECUTE END-TO-END (SPARC with a QA gate per phase, DDD, ADRs, PARALLEL Ruflo swarm work, AgentDB persistence, frontend-design + real image generation, a PROVEN result scored to >=98, ONE ask for a missing API key) · C TAKE OVER what you do well · D keep them oriented. RUN THE PROCESS.');
+      emit(`Read ${playbook} before the first build response. It requires source inspection, search_ruvnet grounding, project-memory recall, and the real owning rUv tool—never a silent hand-roll or generic substitute.`);
     }
   } catch (error) {
     if (env.RUVNET_SESSION_TRACE === '1') stderr.write(`SESSION_TRACE native-fail-open ${error?.message || error}\n`);

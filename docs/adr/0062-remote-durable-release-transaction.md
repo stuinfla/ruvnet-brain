@@ -1,9 +1,27 @@
-Updated: 2026-08-02 20:59:00 EDT | Version 1.1.0
-Created: 2026-08-02 20:10:00 EDT
+---
+id: ADR-062
+title: Remote-durable staged release transaction
+status: Accepted
+date: 2026-08-02
+updated: 2026-08-02
+authors: [Stuart Kerr]
+tags: [release, transaction, npm, github, receipts, recovery]
+supersedes: []
+relates: [ADR-053]
+governs:
+  - .github/workflows/protected-release.yml
+  - scripts/release.mjs
+  - scripts/release-transaction.mjs
+  - scripts/release-transaction-provider.mjs
+  - scripts/staged-host-verifier.mjs
+  - docs/ddd/0015-release-transaction-context.md
+---
 
 # ADR-062 — Remote-durable staged release transaction
 
-Status: Accepted
+**Status**: Accepted
+
+**Date**: 2026-08-02
 
 ## Context
 
