@@ -186,7 +186,7 @@ describe('automatic swarm slot recycling', () => {
   it('preserves the recycler refusal through its registered stable-spine command', () => {
     task('team-a', 1, { subject: 'Registered path task' });
     const { hook } = recyclerRegistration();
-    const result = spawnSync('/bin/sh', ['-c', hook.command], {
+    const result = spawnSync(process.execPath, [SHIM, 'swarm-slot-recycler'], {
       cwd: REPO,
       input: payload(),
       encoding: 'utf8',

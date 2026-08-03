@@ -124,9 +124,13 @@ describe.skipIf(process.platform === 'win32')('issue #84 — Agent/Task host tim
     const ours = spawnRegistered(missingModelPayload(), home);
     const tool = spawn(process.execPath, ['-e', 'setTimeout(() => process.stdout.write("tool-complete"), 20)']);
 
+    // Attach every close listener immediately. Short-lived siblings may exit while the
+    // tool promise is awaited; attaching later loses their close event and creates a false timeout.
+    const foreignDone = waitFor(foreign);
+    const oursDone = waitFor(ours);
     const toolResult = await waitFor(tool);
     const toolEndedAt = performance.now();
-    const [ourResult, foreignResult] = await Promise.all([waitFor(ours), waitFor(foreign)]);
+    const [ourResult, foreignResult] = await Promise.all([oursDone, foreignDone]);
     const hooksCheckedAt = performance.now();
 
     expect(toolResult).toMatchObject({ status: 0, stdout: 'tool-complete', stderr: '' });
