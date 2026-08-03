@@ -469,13 +469,15 @@ describe('§2b byte-equivalence — ~/.claude/settings.json', () => {
     mutantDirs.push(dir);
     const binDir = path.join(dir, 'bin');
     const kbDir = path.join(dir, 'kb');
+    const scriptsDir = path.join(dir, 'scripts');
     fs.mkdirSync(binDir);
     fs.mkdirSync(kbDir);
+    fs.cpSync(path.join(REPO_ROOT, 'scripts'), scriptsDir, { recursive: true });
     const file = path.join(binDir, 'install-mutant.mjs');
     fs.writeFileSync(file, source.replace(find, replace)); // .replace (no /g) hits ONLY the FIRST
     // occurrence — verified below to be the one inside writeSettingsStatusLine, not the removal path.
-    // Preserve the installer's real module shape. Copying only install.mjs made the mutant crash on
-    // its legitimate ../kb sibling imports before the mutation could be exercised.
+    // Preserve the installer's real module shape. The mutant changes only install.mjs; its runtime
+    // dependencies must remain byte-identical so the test exercises the mutation, not packaging.
     for (const sibling of ['brain-profile.mjs', 'model-requirements.mjs']) {
       fs.copyFileSync(path.join(REPO_ROOT, 'kb', sibling), path.join(kbDir, sibling));
     }
