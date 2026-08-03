@@ -4,47 +4,75 @@ import crypto from 'node:crypto';
 export const RECEIPT_PREFIX = 'release-transaction-';
 export const TERMINAL_STATES = new Set(['channels-converged', 'aborted']);
 
-const canonical = (value) => {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+export const ALLOWED_TRANSITIONS = Object.freeze({
+  'remote-prepared': ['asset-upload-intent', 'manual-intervention-required'],
+  'asset-upload-intent': ['npm-stage-intent', 'manual-intervention-required'],
+  'npm-stage-intent': ['npm-candidate-staged', 'manual-intervention-required'],
+  'npm-candidate-staged': ['remote-materialization-intent', 'manual-intervention-required'],
+  'remote-materialization-intent': ['prepared', 'manual-intervention-required'],
+  prepared: ['github-promote-intent', 'manual-intervention-required'],
+  'github-promote-intent': ['github-promoted-nonlatest', 'manual-intervention-required'],
+  'github-promoted-nonlatest': ['npm-promote-intent', 'manual-intervention-required'],
+  'npm-promote-intent': ['npm-promoted', 'compensation-intent', 'manual-intervention-required'],
+  'npm-promoted': ['github-latest-intent', 'compensation-intent', 'manual-intervention-required'],
+  'github-latest-intent': ['defaults-promoted', 'compensation-intent', 'manual-intervention-required'],
+  'compensation-intent': ['compensated', 'manual-intervention-required'],
+  compensated: ['github-promote-intent', 'npm-promote-intent', 'manual-intervention-required'],
+  'defaults-promoted': ['finalize-intent', 'manual-intervention-required'],
+  'finalize-intent': ['channels-converged', 'manual-intervention-required'],
+  'manual-intervention-required': [],
+  'channels-converged': [],
+  aborted: [],
+});
+
+export const canonicalJson = (value) => {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
   }
   return JSON.stringify(value);
 };
 
 export const receiptPayload = (receipt) => {
   const { signature: _signature, receiptDigest: _digest, ...payload } = receipt;
-  return canonical(payload);
+  return canonicalJson(payload);
 };
 
 export const digestReceipt = (receipt) => crypto.createHash('sha256')
   .update(receiptPayload(receipt)).digest('hex');
 
-export const transactionIdFor = (identity) => crypto.createHash('sha256').update(canonical({
+export const transactionIdFor = (identity) => crypto.createHash('sha256').update(canonicalJson({
+  schemaVersion: 2,
   repository: identity.repository,
   package: identity.package,
   version: identity.version,
   tag: identity.tag,
   candidateSha: identity.candidateSha,
+  payloadId: identity.payloadId || null,
+  evidenceDigest: identity.evidenceDigest || null,
   packageIntegrity: identity.packageIntegrity,
+  packageSha256: identity.packageSha256 || null,
+  packageAssetName: identity.packageAssetName || null,
   bundleSha256: identity.bundleSha256,
+  bundleSignatureSha256: identity.bundleSignatureSha256 || null,
+  bundleDigestSha256: identity.bundleDigestSha256 || null,
 })).digest('hex');
 
 export function signReceipt(receipt, privateKey) {
   const unsigned = { ...receipt, receiptDigest: digestReceipt(receipt) };
   return {
     ...unsigned,
-    signature: crypto.sign(null, Buffer.from(canonical(unsigned)), privateKey).toString('base64'),
+    signature: crypto.sign(null, Buffer.from(canonicalJson(unsigned)), privateKey).toString('base64'),
   };
 }
 
 export function verifyReceipt(receipt, publicKey) {
-  if (!receipt || receipt.schemaVersion !== 1 || !/^[a-f0-9]{64}$/.test(receipt.transactionId || '')) {
+  if (!receipt || ![1, 2].includes(receipt.schemaVersion) || !/^[a-f0-9]{64}$/.test(receipt.transactionId || '')) {
     throw new Error('invalid release transaction receipt');
   }
   const { signature, receiptDigest, ...unsigned } = receipt;
   if (digestReceipt(unsigned) !== receiptDigest) throw new Error('release receipt digest mismatch');
-  if (!crypto.verify(null, Buffer.from(canonical({ ...unsigned, receiptDigest })), publicKey, Buffer.from(signature || '', 'base64'))) {
+  if (!crypto.verify(null, Buffer.from(canonicalJson({ ...unsigned, receiptDigest })), publicKey, Buffer.from(signature || '', 'base64'))) {
     throw new Error('release receipt signature mismatch');
   }
   return receipt;
@@ -56,7 +84,7 @@ export function validateReceiptChain(receipts, identity, publicKey) {
   let previous = null;
   for (let index = 0; index < sorted.length; index += 1) {
     const receipt = verifyReceipt(sorted[index], publicKey);
-    if (receipt.transactionId !== expectedId || canonical(receipt.identity) !== canonical(identity)) {
+    if (receipt.transactionId !== expectedId || canonicalJson(receipt.identity) !== canonicalJson(identity)) {
       throw new Error('release receipt identity conflict');
     }
     if (receipt.sequence !== index) throw new Error('release receipt sequence gap or replay');
@@ -68,13 +96,12 @@ export function validateReceiptChain(receipts, identity, publicKey) {
   return sorted;
 }
 
-const stateReceipt = ({ identity, prior, state, fence, observation = {}, privateKey }) => signReceipt({
-  schemaVersion: 1,
+const stateReceipt = ({ identity, prior, state, observation = {}, privateKey }) => signReceipt({
+  schemaVersion: 2,
   transactionId: transactionIdFor(identity),
   sequence: prior ? prior.sequence + 1 : 0,
   previousReceiptDigest: prior?.receiptDigest || null,
   state,
-  fence,
   identity,
   observation,
   createdAt: new Date().toISOString(),
@@ -83,6 +110,94 @@ const stateReceipt = ({ identity, prior, state, fence, observation = {}, private
 const exact = (actual, expected, label) => {
   if (actual !== expected) throw new Error(`${label} mismatch: ${actual ?? '(missing)'} != ${expected}`);
 };
+
+const npmCandidateExact = (snapshot, identity) => snapshot?.npm?.candidateVersion === identity.version
+  && snapshot?.npm?.candidateIntegrity === identity.packageIntegrity
+  && snapshot?.npm?.candidateTagVersion === identity.version;
+const npmLatestIsB = (snapshot, identity) => snapshot?.npm?.latestVersion === identity.version;
+const githubIsB = (snapshot, identity) => snapshot?.github?.sha === identity.candidateSha
+  && snapshot?.github?.tag === identity.tag;
+
+/**
+ * Pure, total next-action selector. Receipt history is an audit chain, never permission to skip a
+ * provider postcondition. Every invocation consumes one fresh cross-provider observation.
+ */
+export function reduceReleaseState({ lastReceipt, snapshot, identity, prior }) {
+  if (!lastReceipt || !snapshot || snapshot.readError) return { action: 'manual', reason: 'provider observation unavailable' };
+  const assetsExact = snapshot.github?.assetsExact === true;
+  const candidateExact = npmCandidateExact(snapshot, identity);
+  const npmB = npmLatestIsB(snapshot, identity);
+  const githubB = githubIsB(snapshot, identity);
+  const githubPublished = githubB && snapshot.github?.published === true;
+  const githubLatest = githubPublished && snapshot.github?.latest === true;
+
+  if (snapshot.npm?.candidateVersion === identity.version && snapshot.npm?.candidateIntegrity
+    && snapshot.npm.candidateIntegrity !== identity.packageIntegrity) {
+    return { action: 'manual', reason: 'immutable npm candidate bytes mismatch' };
+  }
+  if (snapshot.github?.tag === identity.tag && snapshot.github?.sha
+    && snapshot.github.sha !== identity.candidateSha) {
+    return { action: 'manual', reason: 'GitHub tag resolves to competing SHA' };
+  }
+  if (snapshot.github?.latestTag && snapshot.github.latestTag !== identity.tag
+    && snapshot.github.latestTag !== prior?.githubLatest) {
+    return { action: 'manual', reason: 'GitHub latest is neither captured A nor candidate B' };
+  }
+  if (npmB && snapshot.github?.draft === true) return { action: 'compensate-npm' };
+  if (npmB && githubLatest) {
+    if (lastReceipt.state === 'channels-converged') {
+      return githubPublished && assetsExact && candidateExact
+        && snapshot.publicReceiptExact && snapshot.publicHostsExact
+        ? { action: 'complete' }
+        : { action: 'manual', reason: 'terminal public state drifted' };
+    }
+    return { action: 'finalize' };
+  }
+  if (!assetsExact) return { action: 'upload-assets' };
+  if (!candidateExact) return { action: 'stage-npm' };
+  if (!githubPublished) return { action: 'publish-github-nonlatest' };
+  if (!npmB) {
+    if (snapshot.npm?.latestVersion !== prior?.npmLatest) {
+      return { action: 'manual', reason: 'npm latest is neither captured A nor candidate B' };
+    }
+    return { action: 'promote-npm' };
+  }
+  if (!githubLatest) return { action: 'make-github-latest' };
+  return { action: 'manual', reason: 'unclassified provider state' };
+}
+
+export async function pollObservation(read, predicate, {
+  maxElapsedMs = 120_000,
+  maxAttempts = 12,
+  initialDelayMs = 1_000,
+  maxDelayMs = 15_000,
+  multiplier = 1.8,
+  jitter = () => 0,
+  now = () => Date.now(),
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  const started = now();
+  let delay = initialDelayMs;
+  let last;
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts && now() - started <= maxElapsedMs; attempt += 1) {
+    try {
+      last = await read();
+      const elapsedMs = now() - started;
+      if (predicate(last) && elapsedMs <= maxElapsedMs) return { value: last, attempt, elapsedMs };
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt === maxAttempts) break;
+    const remaining = maxElapsedMs - (now() - started);
+    if (remaining <= 0) break;
+    const wait = Math.max(0, Math.min(remaining, maxDelayMs, delay + jitter(delay, attempt)));
+    await sleep(wait);
+    delay = Math.min(maxDelayMs, Math.ceil(delay * multiplier));
+  }
+  const detail = lastError?.message || canonicalJson(last);
+  throw new Error(`visibility deadline exceeded after ${now() - started}ms: ${detail}`);
+}
 
 export async function runReleaseTransaction({ identity, assets, adapter, privateKey, publicKey, hostVerifier }) {
   const expectedId = transactionIdFor(identity);
@@ -93,111 +208,180 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
 
   let chain = validateReceiptChain(discovered.receipts || [], identity, publicKey);
   let current = chain.at(-1) || null;
-  const fence = current?.fence || discovered.fence || crypto.randomUUID();
-  const draft = discovered.matchingDrafts?.[0] || await adapter.createDraft(identity, fence);
-  const completed = new Set(chain.map(({ state }) => state));
+  const draft = discovered.matchingDrafts?.[0] || await adapter.createDraft(identity);
   const append = async (state, observation = {}) => {
-    const receipt = stateReceipt({ identity, prior: current, state, fence, observation, privateKey });
+    const recoveryCompensation = state === 'compensation-intent' && current
+      && !TERMINAL_STATES.has(current.state) && current.state !== 'manual-intervention-required';
+    if (current && !ALLOWED_TRANSITIONS[current.state]?.includes(state) && current.state !== state
+      && !recoveryCompensation) {
+      throw new Error(`illegal release transition ${current.state} -> ${state}`);
+    }
+    const receipt = stateReceipt({ identity, prior: current, state, observation, privateKey });
     await adapter.appendReceipt(draft, receipt, `${RECEIPT_PREFIX}${String(receipt.sequence).padStart(4, '0')}.json`);
     const observed = await adapter.readReceipt(draft, receipt.sequence);
     verifyReceipt(observed, publicKey);
     exact(observed.receiptDigest, receipt.receiptDigest, 'remote receipt');
     current = receipt;
-    completed.add(state);
     return receipt;
   };
-  const intend = async (state, observation = {}) => {
-    if (!completed.has(state)) await append(state, observation);
+  const transition = async (state, observation = {}) => {
+    if (current?.state !== state) await append(state, observation);
   };
 
-  if (!current) await append('remote-prepared', { draftId: draft.id, prior: discovered.prior });
-  if (TERMINAL_STATES.has(current.state)) return current;
-  if (current.fence !== fence) throw new Error('stale release transaction fence');
+  if (!current) await append('remote-prepared', {
+    draftId: draft.id,
+    prior: discovered.prior,
+    reconciledLegacyTransactions: discovered.legacySettled || [],
+  });
+  const prior = chain[0]?.observation?.prior || current.observation?.prior || discovered.prior;
+  if (!prior?.npmLatest || !prior?.githubLatest) throw new Error('sequence-zero prior generation is incomplete');
 
-  if (!completed.has('local-hosts-verified')) {
-    await intend('asset-upload-intent');
-    await adapter.uploadAssets(draft, assets, identity);
-    await intend('host-verification-intent', { source: 'sealed-local-assets' });
-    const localHosts = await hostVerifier.verify({ source: 'local', identity, assets });
-    if (localHosts.verdict !== 'PASS') throw new Error('local staged host verification failed');
-    await append('local-hosts-verified', { hosts: localHosts });
-  }
-
-  if (!completed.has('npm-candidate-staged')) {
-    await intend('npm-stage-intent');
-    await adapter.stageNpm(identity, assets.packagePath);
-    const stagedNpm = await adapter.observeNpmCandidate(identity);
-    exact(stagedNpm.version, identity.version, 'npm candidate version');
-    exact(stagedNpm.integrity, identity.packageIntegrity, 'npm candidate integrity');
-    await append('npm-candidate-staged', { npm: stagedNpm });
-  }
-
-  if (!completed.has('prepared')) {
-    await intend('remote-host-verification-intent');
-    const staged = await adapter.materializeStagedAssets(draft, identity);
-    try {
-      const remoteHosts = await hostVerifier.verify({ source: 'staged', identity, assets: staged.assets, draft });
-      if (remoteHosts.verdict !== 'PASS') throw new Error('remote staged host verification failed');
-      await append('prepared', { hosts: remoteHosts });
-    } finally {
-      staged.cleanup();
+  for (let step = 0; step < 32; step += 1) {
+    const snapshot = await adapter.observeSnapshot(identity, draft, {
+      forceAssets: current.state === 'finalize-intent' || current.state === 'channels-converged',
+    });
+    if (current.state === 'channels-converged') {
+      const terminal = reduceReleaseState({ lastReceipt: current, snapshot, identity, prior });
+      if (terminal.action === 'complete') return current;
+      throw new Error(`terminal release drift: ${terminal.reason || terminal.action}`);
+    }
+    // A process may die after the provider side effect and before its observation receipt. Rebuild
+    // that missing receipt from fresh state before asking the reducer for the next command.
+    if (current.state === 'npm-stage-intent' && npmCandidateExact(snapshot, identity)) {
+      await transition('npm-candidate-staged', { npm: snapshot.npm, recovered: true });
+      continue;
+    }
+    if (current.state === 'remote-materialization-intent' && snapshot.github?.assetsExact
+      && npmCandidateExact(snapshot, identity)) {
+      await transition('prepared', { recovered: true });
+      continue;
+    }
+    if (current.state === 'github-promote-intent' && githubIsB(snapshot, identity)
+      && snapshot.github?.published && !snapshot.github?.latest) {
+      await transition('github-promoted-nonlatest', { github: snapshot.github, recovered: true });
+      continue;
+    }
+    if (current.state === 'npm-promote-intent' && npmLatestIsB(snapshot, identity)) {
+      await transition('npm-promoted', { npm: snapshot.npm, recovered: true });
+      continue;
+    }
+    if (current.state === 'github-latest-intent' && npmLatestIsB(snapshot, identity)
+      && githubIsB(snapshot, identity) && snapshot.github?.latest) {
+      await transition('defaults-promoted', { npm: snapshot.npm, github: snapshot.github, recovered: true });
+      continue;
+    }
+    if (current.state === 'compensation-intent' && snapshot.npm?.latestVersion === prior.npmLatest) {
+      await transition('compensated', { npm: snapshot.npm, github: snapshot.github, recovered: true });
+      throw new Error('npm compensation recovered; resume the same transaction');
+    }
+    if (current.state === 'finalize-intent' && snapshot.publicReceiptExact && snapshot.publicHostsExact
+      && npmCandidateExact(snapshot, identity) && npmLatestIsB(snapshot, identity)
+      && githubIsB(snapshot, identity) && snapshot.github?.published && snapshot.github?.latest
+      && snapshot.github?.assetsExact) {
+      return append('channels-converged', { verdict: 'PASS', recovered: true });
+    }
+    const decision = reduceReleaseState({ lastReceipt: current, snapshot, identity, prior });
+    const stageRecord = {
+      event: 'release-stage',
+      transactionId: expectedId,
+      payloadId: identity.payloadId || null,
+      sequence: current.sequence,
+      state: current.state,
+      action: decision.action,
+    };
+    console.log(process.env.GITHUB_ACTIONS === 'true'
+      ? `::notice title=Release stage ${decision.action}::${JSON.stringify(stageRecord)}`
+      : JSON.stringify(stageRecord));
+    if (decision.action === 'complete') return current;
+    if (decision.action === 'manual') {
+      await transition('manual-intervention-required', { reason: decision.reason, snapshot });
+      throw new Error(`release requires manual intervention: ${decision.reason}`);
+    }
+    if (decision.action === 'upload-assets') {
+      await transition('asset-upload-intent', { payloadId: identity.payloadId || null });
+      await adapter.uploadAssets(draft, assets, identity);
+      const observed = await adapter.observeSnapshot(identity, draft);
+      if (!observed.github?.assetsExact) throw new Error('staged GitHub payload mismatch');
+      await transition('npm-stage-intent', { github: observed.github });
+      continue;
+    }
+    if (decision.action === 'stage-npm') {
+      await transition('npm-stage-intent');
+      await adapter.stageNpm(identity, assets.packagePath);
+      const polled = await pollObservation(
+        async () => ({ npm: await adapter.observeNpm(identity) }),
+        (value) => npmCandidateExact(value, identity),
+        adapter.observationPolicy,
+      );
+      await transition('npm-candidate-staged', { npm: polled.value.npm, visibility: polled });
+      continue;
+    }
+    if (decision.action === 'publish-github-nonlatest') {
+      if (current.state === 'npm-candidate-staged') await transition('remote-materialization-intent');
+      if (current.state === 'remote-materialization-intent') {
+        const staged = await adapter.materializeStagedAssets(draft, identity);
+        try { await adapter.verifyMaterializedPayload?.(staged.assets, identity); } finally { staged.cleanup(); }
+        await transition('prepared');
+      }
+      await transition('github-promote-intent');
+      await adapter.publishDraftNonLatest(draft, identity);
+      const observed = await adapter.observeSnapshot(identity, draft);
+      if (!(githubIsB(observed, identity) && observed.github.published && !observed.github.latest)) {
+        throw new Error('GitHub non-latest publication not observed');
+      }
+      await transition('github-promoted-nonlatest', { github: observed.github });
+      continue;
+    }
+    if (decision.action === 'promote-npm') {
+      await transition('npm-promote-intent');
+      await adapter.promoteNpm(identity, prior.npmLatest);
+      const polled = await pollObservation(
+        async () => ({ npm: await adapter.observeNpm(identity) }),
+        (value) => npmLatestIsB(value, identity),
+        adapter.observationPolicy,
+      );
+      await transition('npm-promoted', { npm: polled.value.npm, visibility: polled });
+      continue;
+    }
+    if (decision.action === 'make-github-latest') {
+      await transition('github-latest-intent');
+      await adapter.makeGithubLatest(draft, identity, prior.githubLatest);
+      const observed = await adapter.observeSnapshot(identity, draft);
+      if (!(npmLatestIsB(observed, identity) && observed.github?.latest && githubIsB(observed, identity))) {
+        throw new Error('provider defaults not jointly observed at candidate B');
+      }
+      await transition('defaults-promoted', { npm: observed.npm, github: observed.github });
+      continue;
+    }
+    if (decision.action === 'compensate-npm') {
+      await transition('compensation-intent', { restore: prior.npmLatest });
+      await adapter.restoreNpmLatest(prior.npmLatest, identity.version);
+      const polled = await pollObservation(
+        () => adapter.observeNpm(identity),
+        (npm) => npm?.latestVersion === prior.npmLatest,
+        adapter.observationPolicy,
+      );
+      await transition('compensated', { npm: polled.value, github: snapshot.github, visibility: polled });
+      throw new Error('npm compensated to captured prior generation; resume the same transaction');
+    }
+    if (decision.action === 'finalize') {
+      if (current.state !== 'defaults-promoted' && current.state !== 'finalize-intent') {
+        await transition('defaults-promoted', { npm: snapshot.npm, github: snapshot.github });
+      }
+      await transition('finalize-intent');
+      const final = await adapter.finalize(identity, current, hostVerifier);
+      if (final.verdict !== 'PASS') throw new Error('final release convergence failed');
+      const reobserved = await adapter.observeSnapshot(identity, draft, { forceAssets: true });
+      if (!(npmLatestIsB(reobserved, identity) && reobserved.github?.latest && githubIsB(reobserved, identity))) {
+        throw new Error('provider defaults drifted during finalization');
+      }
+      if (!reobserved.github?.assetsExact || !reobserved.publicReceiptExact || !reobserved.publicHostsExact) {
+        throw new Error('public receipt, host, or artifact evidence drifted during finalization');
+      }
+      return append('channels-converged', final);
     }
   }
-
-  if (!completed.has('github-promoted-nonlatest')) {
-    await intend('github-promote-intent');
-    await adapter.publishDraftNonLatest(draft, identity);
-    const github = await adapter.observeGithub(identity);
-    exact(github.sha, identity.candidateSha, 'GitHub candidate SHA');
-    if (github.latest) throw new Error('GitHub candidate advanced latest before npm convergence');
-    await append('github-promoted-nonlatest', { github });
-  }
-
-  if (!completed.has('npm-promoted')) {
-    await intend('npm-promote-intent');
-    try {
-      await adapter.promoteNpm(identity);
-    } catch (error) {
-      throw new Error(`npm promotion pending for ${identity.version}: ${error.message}`);
-    }
-    const npmLatest = await adapter.observeNpmLatest();
-    exact(npmLatest.version, identity.version, 'npm latest');
-    await append('npm-promoted', { npm: npmLatest });
-  }
-
-  // A failed GitHub-latest promotion is compensated back to A. The historical npm-promoted
-  // receipt remains true, but is no longer the current external state, so a clean-runner retry
-  // must explicitly re-promote B before it may retry GitHub.
-  if (current.state === 'compensated') {
-    await append('npm-repromote-intent');
-    await adapter.promoteNpm(identity);
-    const npmLatest = await adapter.observeNpmLatest();
-    exact(npmLatest.version, identity.version, 'npm latest after compensation retry');
-    await append('npm-repromoted', { npm: npmLatest });
-  }
-
-  if (!completed.has('defaults-promoted')) {
-    await intend('github-latest-intent');
-    try {
-      await adapter.makeGithubLatest(draft, identity);
-    } catch (error) {
-      const observed = await adapter.observeNpmLatest();
-      if (observed.version !== identity.version) throw new Error('npm latest changed during compensation');
-      await intend('compensation-intent', { restore: discovered.prior?.npmLatest });
-      await adapter.restoreNpmLatest(discovered.prior?.npmLatest, identity.version);
-      exact((await adapter.observeNpmLatest()).version, discovered.prior?.npmLatest, 'npm compensation');
-      await append('compensated', { reason: error.message });
-      throw new Error(`GitHub latest promotion failed; npm compensated: ${error.message}`);
-    }
-    const githubLatest = await adapter.observeGithubLatest();
-    exact(githubLatest.tag, identity.tag, 'GitHub latest');
-    await append('defaults-promoted', { github: githubLatest });
-  }
-
-  await intend('finalize-intent');
-  const final = await adapter.finalize(identity, current, hostVerifier);
-  if (final.verdict !== 'PASS') throw new Error('final release convergence failed');
-  return append('channels-converged', final);
+  throw new Error('release reducer exceeded its bounded transition count');
 }
 
 export async function abortReleaseTransaction({ identity, receipts, reason, authorized, adapter, privateKey, publicKey }) {
@@ -205,9 +389,15 @@ export async function abortReleaseTransaction({ identity, receipts, reason, auth
   const chain = validateReceiptChain(receipts, identity, publicKey);
   const current = chain.at(-1);
   if (!current || TERMINAL_STATES.has(current.state)) throw new Error('release transaction is not abortable');
+  const snapshot = await adapter.observeSnapshot(identity);
+  const prior = chain[0]?.observation?.prior;
+  if (!prior || snapshot.npm?.latestVersion === identity.version || snapshot.github?.latest === true
+    || snapshot.npm?.latestVersion !== prior.npmLatest || snapshot.github?.latestTag !== prior.githubLatest) {
+    throw new Error('release abort cannot prove both defaults at captured prior generation');
+  }
   const receipt = stateReceipt({
-    identity, prior: current, state: 'aborted', fence: current.fence,
-    observation: { reason, authorized: true }, privateKey,
+    identity, prior: current, state: 'aborted',
+    observation: { reason, authorized: true, snapshot }, privateKey,
   });
   await adapter.appendReceipt(null, receipt, `${RECEIPT_PREFIX}${String(receipt.sequence).padStart(4, '0')}.json`);
   return receipt;

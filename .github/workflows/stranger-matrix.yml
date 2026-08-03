@@ -89,7 +89,7 @@ jobs:
             --scenario healthy \
             --installed "$RUNNER_TEMP/proj/node_modules/ruvnet-brain" \
             --home "$RUNNER_TEMP/home-healthy" \
-            --plugin-src "$GITHUB_WORKSPACE/plugin"
+            --plugin-src "$RUNNER_TEMP/proj/node_modules/ruvnet-brain/plugin"
       - name: M-D8c — a hook that sleeps past its declared timeout makes the battery go RED
         if: always()
         run: |
@@ -103,7 +103,7 @@ jobs:
             --scenario seeded-broken \
             --installed "$RUNNER_TEMP/proj/node_modules/ruvnet-brain" \
             --home "$RUNNER_TEMP/home-broken" \
-            --plugin-src "$GITHUB_WORKSPACE/plugin"
+            --plugin-src "$RUNNER_TEMP/proj/node_modules/ruvnet-brain/plugin"
 
   macos:
     runs-on: macos-latest
@@ -133,7 +133,7 @@ jobs:
             --scenario healthy \
             --installed "$RUNNER_TEMP/proj/node_modules/ruvnet-brain" \
             --home "$RUNNER_TEMP/home-healthy" \
-            --plugin-src "$GITHUB_WORKSPACE/plugin"
+            --plugin-src "$RUNNER_TEMP/proj/node_modules/ruvnet-brain/plugin"
       - name: (b) seeded-broken image (M-D8a) — forge-mcp-all.mjs deleted -> exit NON-ZERO
         if: always()
         run: |
@@ -141,7 +141,7 @@ jobs:
             --scenario seeded-broken \
             --installed "$RUNNER_TEMP/proj/node_modules/ruvnet-brain" \
             --home "$RUNNER_TEMP/home-broken" \
-            --plugin-src "$GITHUB_WORKSPACE/plugin"
+            --plugin-src "$RUNNER_TEMP/proj/node_modules/ruvnet-brain/plugin"
 
   # ── windows, Git-Bash shell — this repo has already been bitten by /bin/bash not existing on
   # Windows runners and by cmd.exe mangling quoted arguments (scripts/selfcheck.mjs's own
@@ -184,7 +184,7 @@ jobs:
             --scenario healthy \
             --installed "$RUNNER_TEMP/proj/node_modules/ruvnet-brain" \
             --home "$RUNNER_TEMP/home-healthy" \
-            --plugin-src "$GITHUB_WORKSPACE/plugin"
+            --plugin-src "$RUNNER_TEMP/proj/node_modules/ruvnet-brain/plugin"
       - name: (b) seeded-broken image (M-D8a) — forge-mcp-all.mjs deleted -> exit NON-ZERO
         if: always()
         run: |
@@ -192,7 +192,7 @@ jobs:
             --scenario seeded-broken \
             --installed "$RUNNER_TEMP/proj/node_modules/ruvnet-brain" \
             --home "$RUNNER_TEMP/home-broken" \
-            --plugin-src "$GITHUB_WORKSPACE/plugin"
+            --plugin-src "$RUNNER_TEMP/proj/node_modules/ruvnet-brain/plugin"
 
   # ── windows, PowerShell shell — the OTHER real Windows path (default terminal for most Windows
   # users who never installed Git Bash). Same driver script; only the wrapping shell differs.
@@ -228,7 +228,7 @@ jobs:
             --scenario healthy `
             --installed "$env:RUNNER_TEMP/proj/node_modules/ruvnet-brain" `
             --home "$env:RUNNER_TEMP/home-healthy" `
-            --plugin-src "$env:GITHUB_WORKSPACE/plugin"
+            --plugin-src "$env:RUNNER_TEMP/proj/node_modules/ruvnet-brain/plugin"
       - name: (b) seeded-broken image (M-D8a) — forge-mcp-all.mjs deleted -> exit NON-ZERO
         if: always()
         run: |
@@ -236,7 +236,7 @@ jobs:
             --scenario seeded-broken `
             --installed "$env:RUNNER_TEMP/proj/node_modules/ruvnet-brain" `
             --home "$env:RUNNER_TEMP/home-broken" `
-            --plugin-src "$env:GITHUB_WORKSPACE/plugin"
+            --plugin-src "$env:RUNNER_TEMP/proj/node_modules/ruvnet-brain/plugin"
 
   # ── the hostile container: no jq, no gh, sh-only, HOME containing a space, network denied ────────
   # node:20-alpine is chosen deliberately: busybox's default shell is `sh` (no bash at all unless
@@ -300,7 +300,7 @@ jobs:
             --scenario healthy \
             --installed /tmp/ci-out/proj/node_modules/ruvnet-brain \
             --home "/tmp/virgin home/healthy" \
-            --plugin-src "$GITHUB_WORKSPACE/plugin"
+            --plugin-src /tmp/ci-out/proj/node_modules/ruvnet-brain/plugin
       - name: (b) seeded-broken image (M-D8a) — forge-mcp-all.mjs deleted -> exit NON-ZERO
         env:
           HTTPS_PROXY: http://127.0.0.1:9
@@ -311,7 +311,7 @@ jobs:
             --scenario seeded-broken \
             --installed /tmp/ci-out/proj/node_modules/ruvnet-brain \
             --home "/tmp/virgin home/broken" \
-            --plugin-src "$GITHUB_WORKSPACE/plugin"
+            --plugin-src /tmp/ci-out/proj/node_modules/ruvnet-brain/plugin
       - name: RUVNET_STRICT_INSTALL=1 — an unproven grounding smoke IS fatal here, though never by default
         env:
           HTTPS_PROXY: http://127.0.0.1:9
@@ -322,4 +322,50 @@ jobs:
             --scenario strict-ungrounded \
             --installed /tmp/ci-out/proj/node_modules/ruvnet-brain \
             --home "/tmp/virgin home/strict" \
-            --plugin-src "$GITHUB_WORKSPACE/plugin"
+            --plugin-src /tmp/ci-out/proj/node_modules/ruvnet-brain/plugin
+
+  evidence-receipt:
+    name: stranger-evidence-receipt
+    needs: [ubuntu, macos, windows-gitbash, windows-powershell, hostile]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Download the exact candidate exercised by every stranger cell
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          name: release-evidence-${{ env.CANDIDATE_SHA }}
+          path: release-evidence
+      - name: Bind the stranger matrix to its source run and payload
+        env:
+          SOURCE_CI_RUN_ID: ${{ env.CANDIDATE_RUN_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release-payload.mjs verify-members --manifest release-evidence/payload-manifest.json > "$RUNNER_TEMP/payload.json"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/payload.json', 'utf8'));
+          fs.writeFileSync('stranger-evidence.json', JSON.stringify({
+            schemaVersion: 1,
+            sha: process.env.CANDIDATE_SHA,
+            payloadId: payload.payloadId,
+            sourceCiRunId: process.env.SOURCE_CI_RUN_ID,
+            strangerRunId: process.env.GITHUB_RUN_ID,
+            verdict: 'PASS',
+            jobs: ['ubuntu', 'macos', 'windows-gitbash', 'windows-powershell', 'hostile'],
+          }, null, 2));
+          NODE
+      - name: Persist exact stranger evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: stranger-evidence-${{ env.CANDIDATE_SHA }}
+          path: stranger-evidence.json
+          if-no-files-found: error
+          retention-days: 90

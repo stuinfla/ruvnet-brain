@@ -145,8 +145,11 @@ export function evaluatePublicationReceipt(candidate, publication) {
   const failures = [...candidateResult.failures];
   const sha = candidateResult.sha;
   const digest = candidateResult.artifactSha256;
-  if (publication?.schemaVersion !== 1 || publication?.phase !== 'publication') failures.push(fail('INVALID_PUBLICATION_RECEIPT', 'schemaVersion=1 and phase=publication are required'));
+  if (publication?.schemaVersion !== 2 || publication?.phase !== 'publication') failures.push(fail('INVALID_PUBLICATION_RECEIPT', 'schemaVersion=2 and phase=publication are required'));
   if (publication?.sha !== sha || publication?.artifactSha256 !== digest) failures.push(fail('PUBLICATION_SEAL_MISMATCH', 'publication does not reference candidate seal'));
+  if (!cleanHex(publication?.payloadId, 64) || !cleanHex(publication?.bundleArtifactSha256, 64)) {
+    failures.push(fail('PUBLIC_PAYLOAD_BINDING_MISSING', 'signed payload and public bundle digests are required'));
+  }
   const version = versionField(candidate?.version);
   const tag = version ? `v${version}` : null;
   const identityMismatches = versionIdentityFailures(version, candidate?.tag, [
@@ -155,8 +158,9 @@ export function evaluatePublicationReceipt(candidate, publication) {
     ['GitHub release tag', publication?.githubRelease?.tag, tag],
     ['bundle brainVersion', publication?.bundle?.brainVersion],
     ['bundle releaseTag', publication?.bundle?.releaseTag, tag],
-    ['installed Claude host', publication?.installed?.claude?.version],
-    ['installed Codex host', publication?.installed?.codex?.version],
+    ['Claude-only host', publication?.installed?.claudeOnly?.version],
+    ['Codex-only host', publication?.installed?.codexOnly?.version],
+    ['dual host', publication?.installed?.dual?.version],
   ]);
   if (identityMismatches.length > 0) {
     failures.push(fail('PUBLIC_VERSION_IDENTITY_MISMATCH', `public surfaces must identify candidate ${version ?? 'UNKNOWN'}: ${identityMismatches.join(', ')}`));
@@ -165,9 +169,12 @@ export function evaluatePublicationReceipt(candidate, publication) {
     const item = publication?.[surface];
     if (item?.sha !== sha || item?.artifactSha256 !== digest) failures.push(fail('PUBLIC_ARTIFACT_MISMATCH', `${surface} differs from candidate seal`));
   }
-  for (const hostName of ['claude', 'codex']) {
+  for (const hostName of ['claudeOnly', 'codexOnly', 'dual']) {
     const host = publication?.installed?.[hostName];
-    if (host?.status !== 'PASS' || host?.artifactSha256 !== digest) failures.push(fail('PUBLIC_HOST_NOT_PASS', `${hostName} is not running sealed public artifact`));
+    if (host?.status !== 'PASS' || host?.doctorExit !== 0 || host?.artifactSha256 !== digest
+      || host?.functionalSearch !== true || !(host?.searchMs <= Number(publication?.brain?.deadlineMs) * 0.8)) {
+      failures.push(fail('PUBLIC_HOST_NOT_PASS', `${hostName} is not running a doctor-clean functional sealed public artifact`));
+    }
   }
   const brain = publication?.brain || {};
   if (brain.status !== 'PASS' || brain.selfStore !== true || !(brain.broadMs <= Number(brain.deadlineMs) * 0.8)) failures.push(fail('PUBLIC_BRAIN_NOT_PASS', 'public installed Brain acceptance failed'));

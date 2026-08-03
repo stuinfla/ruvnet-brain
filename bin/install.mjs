@@ -1999,7 +1999,7 @@ async function runSelfCheck({ installState = null, quiet = false } = {}) {
     mod = await import(new URL('../scripts/selfcheck.mjs', import.meta.url).href);
   } catch (e) {
     warn(`self-check could not run (${e && e.message}) — this install has NOT been verified end to end`);
-    return { exitCode: 0, violations: [], lines: [], unavailable: true };
+    return { exitCode: FLAG_DOCTOR_HOOKS ? 1 : 0, violations: [], lines: [], unavailable: true };
   }
   const result = await mod.selfCheck({ installState, security: true });
   if (!quiet || result.violations.length) console.log(mod.formatVerdict(result, { color: c }));

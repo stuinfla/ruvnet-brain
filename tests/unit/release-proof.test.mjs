@@ -168,17 +168,20 @@ describe('release-proof publication authority', () => {
   it('requires public bytes, installed hosts, active self-RVF, and post-publication checks to match the seal', () => {
     const candidate = greenCandidate();
     const publication = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       phase: 'publication',
       sha: SHA,
       artifactSha256: DIGEST.slice(7),
+      payloadId: 'e'.repeat(64),
+      bundleArtifactSha256: 'f'.repeat(64),
       version: VERSION,
       npm: { version: VERSION, sha: SHA, artifactSha256: DIGEST.slice(7) },
       githubRelease: { tag: `v${VERSION}`, sha: SHA, artifactSha256: DIGEST.slice(7) },
       bundle: { brainVersion: VERSION, releaseTag: `v${VERSION}` },
       installed: {
-        claude: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS' },
-        codex: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS' },
+        claudeOnly: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS', doctorExit: 0, functionalSearch: true, searchMs: 100 },
+        codexOnly: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS', doctorExit: 0, functionalSearch: true, searchMs: 100 },
+        dual: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS', doctorExit: 0, functionalSearch: true, searchMs: 100 },
       },
       brain: { status: 'PASS', selfStore: true, broadMs: 4000, deadlineMs: 30_000 },
       postPublicationChecks: [
@@ -198,22 +201,26 @@ describe('release-proof publication authority', () => {
     ['GitHub tag', (receipt) => { receipt.githubRelease.tag = `v${VERSION}-split`; }],
     ['bundle brainVersion', (receipt) => { receipt.bundle.brainVersion = `${VERSION}-split`; }],
     ['bundle releaseTag', (receipt) => { receipt.bundle.releaseTag = `v${VERSION}-split`; }],
-    ['Claude installed version', (receipt) => { receipt.installed.claude.version = `${VERSION}-split`; }],
-    ['Codex installed version', (receipt) => { receipt.installed.codex.version = `${VERSION}-split`; }],
+    ['Claude-only installed version', (receipt) => { receipt.installed.claudeOnly.version = `${VERSION}-split`; }],
+    ['Codex-only installed version', (receipt) => { receipt.installed.codexOnly.version = `${VERSION}-split`; }],
+    ['dual installed version', (receipt) => { receipt.installed.dual.version = `${VERSION}-split`; }],
   ])('rejects public split identity at %s', (_name, mutate) => {
     const candidate = greenCandidate();
     const publication = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       phase: 'publication',
       sha: SHA,
       artifactSha256: DIGEST.slice(7),
+      payloadId: 'e'.repeat(64),
+      bundleArtifactSha256: 'f'.repeat(64),
       version: VERSION,
       npm: { version: VERSION, sha: SHA, artifactSha256: DIGEST.slice(7) },
       githubRelease: { tag: `v${VERSION}`, sha: SHA, artifactSha256: DIGEST.slice(7) },
       bundle: { brainVersion: VERSION, releaseTag: `v${VERSION}` },
       installed: {
-        claude: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS' },
-        codex: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS' },
+        claudeOnly: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS', doctorExit: 0, functionalSearch: true, searchMs: 100 },
+        codexOnly: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS', doctorExit: 0, functionalSearch: true, searchMs: 100 },
+        dual: { version: VERSION, artifactSha256: DIGEST.slice(7), status: 'PASS', doctorExit: 0, functionalSearch: true, searchMs: 100 },
       },
       brain: { status: 'PASS', selfStore: true, broadMs: 4000, deadlineMs: 30_000 },
       postPublicationChecks: [

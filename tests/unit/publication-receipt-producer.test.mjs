@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { REQUIRED_CHECKS } from '../../scripts/release-proof.mjs';
 import { assertInstalledPayload, generatePublicationReceipt } from '../../scripts/publication-receipt.mjs';
+import { createPayloadManifest, signPayloadManifest } from '../../scripts/release-payload.mjs';
 import { getVersion } from '../../scripts/version.mjs';
 
 const SHA = 'a'.repeat(40);
@@ -17,6 +18,20 @@ function candidate(root) {
   fs.mkdirSync(evidence, { recursive: true });
   const artifactPath = path.join(evidence, `ruvnet-brain-${VERSION}.tgz`);
   fs.writeFileSync(artifactPath, BYTES);
+  const bundlePath = path.join(evidence, 'ruvnet-brain.zip');
+  fs.writeFileSync(bundlePath, 'one immutable public bundle');
+  const manifest = createPayloadManifest({
+    version: VERSION, tag: `v${VERSION}`, candidateSha: SHA, producer: { runId: 'test' },
+    members: [
+      { role: 'npm', name: path.basename(artifactPath), file: artifactPath },
+      { role: 'bundle', name: path.basename(bundlePath), file: bundlePath },
+    ],
+  });
+  const keys = crypto.generateKeyPairSync('ed25519');
+  fs.mkdirSync(path.join(root, 'keys'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'keys', 'ruvnet-brain-signing.pub.pem'), keys.publicKey.export({ type: 'spki', format: 'pem' }));
+  fs.writeFileSync(path.join(evidence, 'payload-manifest.json'), JSON.stringify(manifest));
+  fs.writeFileSync(path.join(evidence, 'payload-manifest.sig'), signPayloadManifest(manifest, keys.privateKey));
   const receipt = {
     schemaVersion: 1, phase: 'candidate', sha: SHA, tree: 'b'.repeat(40), dirty: false,
     version: VERSION, tag: `v${VERSION}`,
@@ -51,11 +66,15 @@ function adapter(overrides = {}) {
   const write = (destination, bytes = BYTES) => { fs.writeFileSync(destination, bytes); return destination; };
   return {
     async downloadNpm({ destination }) { return { path: write(destination), version: VERSION, sha: SHA }; },
-    async downloadGithub({ destination }) { return { path: write(destination), tag: `v${VERSION}`, sha: SHA }; },
+    async downloadGithub({ destination, assetName }) {
+      const bytes = assetName.endsWith('.zip') ? Buffer.from('one immutable public bundle') : BYTES;
+      return { path: write(destination, bytes), tag: `v${VERSION}`, sha: SHA };
+    },
     async installHosts() {
       return {
-        claude: { status: 'PASS', version: VERSION, artifactSha256: DIGEST },
-        codex: { status: 'PASS', version: VERSION, artifactSha256: DIGEST },
+        claudeOnly: { status: 'PASS', doctorExit: 0, version: VERSION, artifactSha256: DIGEST, functionalSearch: true, searchMs: 10 },
+        codexOnly: { status: 'PASS', doctorExit: 0, version: VERSION, artifactSha256: DIGEST, functionalSearch: true, searchMs: 10 },
+        dual: { status: 'PASS', doctorExit: 0, version: VERSION, artifactSha256: DIGEST, functionalSearch: true, searchMs: 10 },
         bundle: { brainVersion: VERSION, releaseTag: `v${VERSION}` },
       };
     },
@@ -97,12 +116,13 @@ describe('publication receipt producer', () => {
     expect(result.verdict).toBe('PASS');
     const receipt = JSON.parse(fs.readFileSync(outPath, 'utf8'));
     expect(receipt).toMatchObject({
-      schemaVersion: 1, phase: 'publication', sha: SHA, artifactSha256: DIGEST, version: VERSION,
+      schemaVersion: 2, phase: 'publication', sha: SHA, artifactSha256: DIGEST, version: VERSION,
       npm: { version: VERSION, sha: SHA, artifactSha256: DIGEST },
       githubRelease: { tag: `v${VERSION}`, sha: SHA, artifactSha256: DIGEST },
       installed: {
-        claude: { status: 'PASS', version: VERSION, artifactSha256: DIGEST },
-        codex: { status: 'PASS', version: VERSION, artifactSha256: DIGEST },
+        claudeOnly: { status: 'PASS', doctorExit: 0, version: VERSION, artifactSha256: DIGEST },
+        codexOnly: { status: 'PASS', doctorExit: 0, version: VERSION, artifactSha256: DIGEST },
+        dual: { status: 'PASS', doctorExit: 0, version: VERSION, artifactSha256: DIGEST },
       },
     });
   });
@@ -119,7 +139,7 @@ describe('publication receipt producer', () => {
     ['GitHub byte drift', { downloadGithub: async ({ destination }) => ({ path: (fs.writeFileSync(destination, 'wrong'), destination), tag: `v${VERSION}`, sha: SHA }) }],
     ['split npm SHA', { downloadNpm: async ({ destination }) => ({ path: (fs.writeFileSync(destination, BYTES), destination), version: VERSION, sha: 'c'.repeat(40) }) }],
     ['split GitHub SHA', { downloadGithub: async ({ destination }) => ({ path: (fs.writeFileSync(destination, BYTES), destination), tag: `v${VERSION}`, sha: 'c'.repeat(40) }) }],
-    ['failed Claude install', { installHosts: async () => ({ claude: { status: 'FAIL', version: VERSION, artifactSha256: DIGEST }, codex: { status: 'PASS', version: VERSION, artifactSha256: DIGEST }, bundle: { brainVersion: VERSION, releaseTag: `v${VERSION}` } }) }],
+    ['failed Claude-only install', { installHosts: async () => ({ claudeOnly: { status: 'FAIL', doctorExit: 1, version: VERSION, artifactSha256: DIGEST }, codexOnly: { status: 'PASS', doctorExit: 0, version: VERSION, artifactSha256: DIGEST }, dual: { status: 'PASS', doctorExit: 0, version: VERSION, artifactSha256: DIGEST }, bundle: { brainVersion: VERSION, releaseTag: `v${VERSION}` } }) }],
     ['missing self store', { probeBrain: async () => ({ status: 'PASS', selfStore: false, broadMs: 40, deadlineMs: 100 }) }],
     ['slow Brain', { probeBrain: async () => ({ status: 'PASS', selfStore: true, broadMs: 81, deadlineMs: 100 }) }],
     ['red surface probe', { probePublishedSurface: async () => ({ name: 'published-surface-probe', status: 'completed', conclusion: 'failure', sha: SHA }) }],

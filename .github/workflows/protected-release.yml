@@ -11,11 +11,15 @@ on:
         required: true
         type: string
       version:
-        description: Exact release generation; this workflow is locked to 4.0.7
+        description: Exact release generation; this workflow is locked to 4.0.8
         required: true
         type: string
       release_qe_run_id:
         description: Successful exact-SHA ci run that uploaded release-evidence
+        required: true
+        type: string
+      aggregate_run_id:
+        description: Successful exact-SHA release-aggregate run
         required: true
         type: string
 
@@ -29,7 +33,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  EXPECTED_VERSION: 4.0.7
+  EXPECTED_VERSION: 4.0.8
   EXPECTED_SHA: ${{ inputs.candidate_sha }}
 
 jobs:
@@ -103,6 +107,34 @@ jobs:
           name: release-evidence-${{ inputs.candidate_sha }}
           path: release-evidence
 
+      - name: Download the sole exact-SHA aggregate envelope
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.aggregate_run_id }}
+          name: release-aggregate-${{ inputs.candidate_sha }}
+          path: release-evidence
+
+      - name: Authenticate the aggregate workflow and exact-SHA job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AGGREGATE_RUN_ID: ${{ inputs.aggregate_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run view "$AGGREGATE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --json workflowName,headSha,status,conclusion,jobs > "$RUNNER_TEMP/aggregate-run.json"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const run = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/aggregate-run.json', 'utf8'));
+          if (run.workflowName !== 'release-aggregate' || run.headSha !== process.env.EXPECTED_SHA
+            || run.status !== 'completed' || run.conclusion !== 'success'
+            || !run.jobs?.some((job) => job.name === 'release-aggregate'
+              && job.status === 'completed' && job.conclusion === 'success')) {
+            throw new Error('aggregate workflow proof is absent, red, pending, or bound to another SHA');
+          }
+          NODE
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -115,32 +147,144 @@ jobs:
           test -s release-evidence/candidate-receipt.json
           test "$(node -p "require('./package.json').version")" = "$EXPECTED_VERSION" || { echo 'candidate version mismatch' >&2; exit 1; }
           node scripts/release-proof.mjs --candidate release-evidence/candidate-receipt.json
+          node scripts/release-payload.mjs verify-members --manifest release-evidence/payload-manifest.json > "$RUNNER_TEMP/payload.json"
           node --input-type=module <<'NODE'
           import crypto from 'node:crypto';
           import fs from 'node:fs';
           import path from 'node:path';
           const receipt = JSON.parse(fs.readFileSync('release-evidence/candidate-receipt.json', 'utf8'));
+          const aggregate = JSON.parse(fs.readFileSync('release-evidence/aggregate-envelope.json', 'utf8'));
+          const leaves = JSON.parse(fs.readFileSync('release-evidence/release-leaves.json', 'utf8'));
+          const manifest = JSON.parse(fs.readFileSync('release-evidence/payload-manifest.json', 'utf8'));
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/payload.json', 'utf8'));
           if (receipt.sha !== process.env.EXPECTED_SHA) throw new Error('candidate receipt SHA mismatch');
           if (receipt.version !== process.env.EXPECTED_VERSION) throw new Error('candidate version mismatch');
+          if (aggregate.verdict !== 'PASS' || aggregate.sha !== process.env.EXPECTED_SHA
+            || aggregate.payloadId !== payload.payloadId) throw new Error('aggregate envelope identity mismatch');
+          if (manifest.candidateSha !== process.env.EXPECTED_SHA || manifest.version !== process.env.EXPECTED_VERSION
+            || manifest.tag !== `v${process.env.EXPECTED_VERSION}`) throw new Error('payload manifest source identity mismatch');
+          const roles = new Set(manifest.members?.map((member) => member.role));
+          if (!roles.has('npm') || !roles.has('bundle') || roles.size !== 2) throw new Error('payload manifest roles are incomplete or ambiguous');
           const relative = String(receipt.artifact?.path || '').replaceAll('\\', '/');
           if (!relative.startsWith('release-evidence/') || relative.includes('../')) throw new Error('candidate artifact path escaped release-evidence');
           const artifact = path.resolve(relative);
           const digest = crypto.createHash('sha256').update(fs.readFileSync(artifact)).digest('hex');
           if (digest !== String(receipt.artifact.sha256).replace(/^sha256:/, '')) throw new Error('candidate artifact digest mismatch');
+          const npmMember = manifest.members.find((member) => member.role === 'npm');
+          if (npmMember.sha256 !== digest || npmMember.name !== path.basename(artifact)) throw new Error('payload npm member differs from candidate seal');
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `candidate_sha=${receipt.sha}\nartifact_sha256=${digest}\nversion=${receipt.version}\n`);
           NODE
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { aggregateEvidence } from './scripts/release-evidence-aggregate.mjs';
+          const envelope = JSON.parse(fs.readFileSync('release-evidence/aggregate-envelope.json', 'utf8'));
+          const leaves = JSON.parse(fs.readFileSync('release-evidence/release-leaves.json', 'utf8'));
+          const recomputed = aggregateEvidence({ sha: envelope.sha, payloadId: envelope.payloadId, leaves });
+          if (JSON.stringify(recomputed) !== JSON.stringify(envelope)) throw new Error('aggregate envelope digest or leaves mismatch');
+          NODE
 
-      - name: Carry immutable candidate evidence to the protected publisher
+  seal-payload:
+    name: seal-or-reuse-immutable-payload
+    needs: release-qe-proof
+    runs-on: ubuntu-latest
+    environment: Production – ruvnet-brain
+    permissions:
+      actions: write
+      contents: read
+    outputs:
+      payload_id: ${{ steps.seal.outputs.payload_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-qe-proof.outputs.candidate_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Restore the original build-once candidate payload
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.release_qe_run_id }}
+          name: release-evidence-${{ needs.release-qe-proof.outputs.candidate_sha }}
+          path: release-evidence
+      - name: Restore the exact-SHA aggregate envelope
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.aggregate_run_id }}
+          name: release-aggregate-${{ needs.release-qe-proof.outputs.candidate_sha }}
+          path: release-evidence
+      - name: Reuse persisted signature or sign exactly once
+        id: seal
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUVNET_SIGNING_KEY: ${{ secrets.RUVNET_SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          unsigned_proof="$(node scripts/release-payload.mjs verify-members --manifest release-evidence/payload-manifest.json)"
+          payload_id="$(node -p "JSON.parse(process.argv[1]).payloadId" "$unsigned_proof")"
+          artifact_name="signed-payload-$payload_id"
+          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100" \
+            --jq '.artifacts | map(select(.expired == false)) | sort_by(.created_at) | reverse | .[0].id // empty')"
+          if [ -n "$artifact_id" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/signed-payload.zip"
+            mkdir -p "$RUNNER_TEMP/reused-signatures"
+            unzip -qo "$RUNNER_TEMP/signed-payload.zip" -d "$RUNNER_TEMP/reused-signatures"
+            cp "$RUNNER_TEMP/reused-signatures/payload-manifest.sig" release-evidence/payload-manifest.sig
+            cp "$RUNNER_TEMP/reused-signatures/ruvnet-brain.zip.sig" release-evidence/ruvnet-brain.zip.sig
+            echo "reused=true" >> "$GITHUB_OUTPUT"
+          else
+            node scripts/sign-bundle.mjs --bundle release-evidence/ruvnet-brain.zip
+            node scripts/release-payload.mjs sign \
+              --manifest release-evidence/payload-manifest.json \
+              --out release-evidence/payload-manifest.sig
+            echo "reused=false" >> "$GITHUB_OUTPUT"
+          fi
+          proof="$(node scripts/release-payload.mjs verify \
+            --manifest release-evidence/payload-manifest.json \
+            --signature release-evidence/payload-manifest.sig \
+            --public-key keys/ruvnet-brain-signing.pub.pem)"
+          node scripts/verify-bundle.mjs release-evidence/ruvnet-brain.zip release-evidence/ruvnet-brain.zip.sig
+          test "$(node -p "JSON.parse(process.argv[1]).payloadId" "$proof")" = "$payload_id"
+          echo "payload_id=$payload_id" >> "$GITHUB_OUTPUT"
+      - name: Persist the one signed payload across retries
+        if: steps.seal.outputs.reused != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: sealed-candidate-${{ inputs.candidate_sha }}
-          path: release-evidence/
+          name: signed-payload-${{ steps.seal.outputs.payload_id }}
+          path: |
+            release-evidence/payload-manifest.json
+            release-evidence/payload-manifest.sig
+            release-evidence/ruvnet-brain-*.tgz
+            release-evidence/ruvnet-brain.zip
+            release-evidence/ruvnet-brain.zip.sig
+            release-evidence/ruvnet-brain.zip.sha256
+            release-evidence/candidate-receipt.json
+            release-evidence/aggregate-envelope.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
+
+      - name: Hand the verified payload to this run's publisher
+        uses: actions/upload-artifact@v4
+        with:
+          name: publisher-payload-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            release-evidence/payload-manifest.json
+            release-evidence/payload-manifest.sig
+            release-evidence/ruvnet-brain-*.tgz
+            release-evidence/ruvnet-brain.zip
+            release-evidence/ruvnet-brain.zip.sig
+            release-evidence/ruvnet-brain.zip.sha256
+            release-evidence/candidate-receipt.json
+            release-evidence/aggregate-envelope.json
+          if-no-files-found: error
+          retention-days: 7
 
   publish:
     name: protected-publisher
-    needs: release-qe-proof
+    needs: [release-qe-proof, seal-payload]
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: Production – ruvnet-brain
@@ -170,34 +314,11 @@ jobs:
             @openai/codex@latest
           echo "$RUNNER_TEMP/host-clis/bin" >> "$GITHUB_PATH"
 
-      - name: Restore sealed candidate evidence
+      - name: Restore the persisted signed payload (never rebuild or resign)
         uses: actions/download-artifact@v4
         with:
-          name: sealed-candidate-${{ needs.release-qe-proof.outputs.candidate_sha }}
+          name: publisher-payload-${{ github.run_id }}-${{ github.run_attempt }}
           path: release-evidence
-
-      - name: Restore immutable RVF assets from the last public generation
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/release-seed"
-          gh release download --repo "$GITHUB_REPOSITORY" --pattern ruvnet-brain.zip --dir "$RUNNER_TEMP/release-seed"
-          unzip -q "$RUNNER_TEMP/release-seed/ruvnet-brain.zip" -d "$RUNNER_TEMP/release-seed/extracted"
-          # Finder metadata (`__MACOSX/._*.big.rvf`) preserves a filename but is not an RVF. Select
-          # one canonical directory deterministically and fail closed if the archive is ambiguous.
-          mapfile -t asset_dirs < <(
-            find "$RUNNER_TEMP/release-seed/extracted" -type f -name '*.big.rvf' \
-              ! -path '*/__MACOSX/*' ! -name '._*' -printf '%h\n' | LC_ALL=C sort -u
-          )
-          case "${#asset_dirs[@]}" in
-            1) ;;
-            0) echo 'previous public generation contains no canonical RVF assets' >&2; exit 1 ;;
-            *) printf 'ambiguous canonical RVF asset directories:\n%s\n' "${asset_dirs[@]}" >&2; exit 1 ;;
-          esac
-          node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}"
-          printf '%s\n' "${asset_dirs[0]}" > "$RUNNER_TEMP/release-assets-path"
 
       - name: Publish the CI-sealed candidate through the one canonical transaction
         env:
@@ -205,8 +326,10 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           RUVNET_SIGNING_KEY: ${{ secrets.RUVNET_SIGNING_KEY }}
           RUVNET_RELEASE_MODE: stabilization
-          RUVNET_RELEASE_ASSETS_FILE: ${{ runner.temp }}/release-assets-path
           RUVNET_CANDIDATE_RECEIPT: release-evidence/candidate-receipt.json
+          RUVNET_CANDIDATE_PAYLOAD: release-evidence/payload-manifest.json
+          RUVNET_CANDIDATE_PAYLOAD_SIGNATURE: release-evidence/payload-manifest.sig
+          RUVNET_AGGREGATE_ENVELOPE: release-evidence/aggregate-envelope.json
           RUVNET_EXPECTED_SHA: ${{ needs.release-qe-proof.outputs.candidate_sha }}
           RUVNET_EXPECTED_ARTIFACT_SHA256: ${{ needs.release-qe-proof.outputs.artifact_sha256 }}
           RUVNET_EXPECTED_VERSION: ${{ needs.release-qe-proof.outputs.version }}
@@ -214,8 +337,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          RUVNET_RELEASE_ASSETS="$(cat "$RUVNET_RELEASE_ASSETS_FILE")"
-          export RUVNET_RELEASE_ASSETS
           node scripts/release.mjs --publish
 
       - name: Require the machine-generated publication seal

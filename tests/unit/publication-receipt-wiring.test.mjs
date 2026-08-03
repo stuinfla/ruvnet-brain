@@ -18,7 +18,8 @@ const position = (source, needle) => {
 describe('publication receipt wiring', () => {
   it('passes the exact sealed candidate tarball into one provider', () => {
     expect(release).toContain("sealedPackageArtifact = path.resolve(ROOT, protectedCandidate.artifact.path)");
-    expect(release).toContain('packagePath: sealedPackageArtifact');
+    expect(release).toContain("packagePath: byRole.get('npm')");
+    expect(release).toContain('candidate receipt package and payload package bytes differ');
     expect(provider).toContain("command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`])");
     expect(provider).toContain("command('gh', ['release', 'upload', draft.tag, file, '--repo', REPO])");
   });
@@ -27,8 +28,9 @@ describe('publication receipt wiring', () => {
     expect(position(provider, "'scripts/publication-receipt.mjs'"))
       .toBeLessThan(position(provider, "'scripts/release-proof.mjs'"));
     expect(position(transaction, 'adapter.finalize'))
-      .toBeLessThan(position(transaction, "append('channels-converged'"));
-    expect(provider).toContain("'scripts/verify-channels.mjs'");
+      .toBeLessThan(transaction.lastIndexOf("append('channels-converged'"));
+    expect(provider).not.toContain("'scripts/verify-channels.mjs'");
+    expect(producer).toContain('githubBundleDigest');
     expect(position(transaction, "append('channels-converged'"))
       .toBeLessThan(position(release, '✓✓✓ SHIPPED'));
   });
@@ -42,9 +44,10 @@ describe('publication receipt wiring', () => {
     expect(workflow).toContain('GITHUB_TOKEN: ${{ github.token }}');
   });
 
-  it('binds both installed plugin payloads to the sealed public package bytes', () => {
-    expect(producer).toContain('assertInstalledPayload(sealedPlugin, path.dirname(path.dirname(claudeManifest)))');
-    expect(producer).toContain('assertInstalledPayload(sealedPlugin, path.dirname(path.dirname(codexManifest)))');
+  it('binds all three isolated public host modes to the sealed package and clean doctor', () => {
+    expect(producer.match(/assertInstalledPayload\(sealedPlugin, path\.dirname\(path\.dirname\(manifest\)\)\)/g)).toHaveLength(2);
+    expect(producer).toContain("for (const mode of ['claudeOnly', 'codexOnly', 'dual'])");
+    expect(producer).toContain("[installer, '--doctor', '--hooks']");
   });
 
   it('MUTANT: checkout publication cannot replace the sealed artifact command', () => {

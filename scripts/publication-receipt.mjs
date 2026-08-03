@@ -10,6 +10,7 @@ import { Readable } from 'node:stream';
 import { spawn, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt, evaluatePublicationReceipt } from './release-proof.mjs';
+import { verifyPayload } from './release-payload.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
 const PACKAGE = 'ruvnet-brain';
@@ -26,6 +27,22 @@ function command(name, args, options = {}) {
     throw new Error(`${name} ${args.join(' ')} failed: ${detail || `exit ${result.status}`}`);
   }
   return String(result.stdout || '').trim();
+}
+
+function locate(name) {
+  try { return command('which', [name]); } catch { return null; }
+}
+
+function isolatedPath(mode, temp) {
+  const bin = path.join(temp, `bin-${mode}`);
+  fs.mkdirSync(bin);
+  const hosts = mode === 'claudeOnly' ? ['claude'] : mode === 'codexOnly' ? ['codex'] : ['claude', 'codex'];
+  for (const name of ['node', 'npm', ...hosts]) {
+    const target = locate(name);
+    if (!target) throw new Error(`${name} CLI unavailable for ${mode} public host fixture`);
+    fs.symlinkSync(target, path.join(bin, name));
+  }
+  return `${bin}:/usr/bin:/bin`;
 }
 
 async function download(url, destination, headers = {}) {
@@ -64,6 +81,23 @@ function findManifest(root, relative, version) {
   });
   if (!match) throw new Error(`installed ${relative} at version ${version} not found in virgin home`);
   return match;
+}
+
+function findMcpServer(home) {
+  const matches = [];
+  const visit = (directory, depth = 0) => {
+    if (depth > 12 || !fs.existsSync(directory)) return;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const child = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) visit(child, depth + 1);
+      else if (entry.isFile() && entry.name === 'server.mjs' && child.includes(`${path.sep}mcp${path.sep}`)) matches.push(child);
+    }
+  };
+  visit(home);
+  const server = matches.find((file) => file.includes('ruvnet-brain'));
+  if (!server) throw new Error('installed host registration has no ruvnet-brain MCP server');
+  return server;
 }
 
 export function assertInstalledPayload(sourceRoot, installedRoot) {
@@ -143,6 +177,7 @@ function rpcSearch(server, env, query, timeoutMs = DEADLINE_MS) {
 
 export function livePublicationAdapter({ root = process.cwd() } = {}) {
   let installContext = null;
+  let installTemp = null;
   return {
     async downloadNpm({ version, destination }) {
       const metadata = JSON.parse(command('npm', ['view', `${PACKAGE}@${version}`, '--json']));
@@ -169,42 +204,66 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
 
     async installHosts({ artifactPath, artifactSha256, version }) {
       const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-public-install-'));
+      installTemp = temp;
       const packageRoot = path.join(temp, 'package');
       command('tar', ['-xzf', artifactPath, '-C', temp]);
-      const home = path.join(temp, 'home');
-      const codexHome = path.join(home, '.codex');
-      const brainHome = path.join(home, '.cache', 'ruvnet-brain');
-      const kb = path.join(brainHome, 'kb');
-      fs.mkdirSync(codexHome, { recursive: true });
-      const env = {
-        ...process.env,
-        HOME: home,
-        CODEX_HOME: codexHome,
-        RUVNET_BRAIN_HOME: brainHome,
-        RUVNET_BRAIN_KB: kb,
-        RUVNET_STRICT_INSTALL: '1',
-        RUVNET_BRAIN_PROFILE: 'complete',
-        CI: 'true',
-      };
-      command(process.execPath, [
-        path.join(packageRoot, 'bin', 'install.mjs'), '--yes', '--force', '--version', `v${version}`,
-        '--no-nightly-prompt', '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline',
-      ], { env, cwd: packageRoot, timeout: 1_200_000, maxBuffer: 32 * 1024 * 1024 });
-
-      const claudeManifest = findManifest(path.join(home, '.claude'), path.join('.claude-plugin', 'plugin.json'), version);
-      const codexManifest = findManifest(path.join(home, '.codex'), path.join('.codex-plugin', 'plugin.json'), version);
       const sealedPlugin = path.join(packageRoot, 'plugin');
-      const claudeFiles = assertInstalledPayload(sealedPlugin, path.dirname(path.dirname(claudeManifest)));
-      const codexFiles = assertInstalledPayload(sealedPlugin, path.dirname(path.dirname(codexManifest)));
-      const config = fs.readFileSync(path.join(codexHome, 'config.toml'), 'utf8');
-      if (!/\[mcp_servers\.ruvnet-brain\]/.test(config)) throw new Error('virgin Codex home is not wired to ruvnet-brain');
-      const source = readJson(path.join(kb, 'SOURCE.json'));
-      if (source.brainVersion !== version || source.releaseTag !== `v${version}`) throw new Error('installed public Brain bundle version mismatch');
-      installContext = { temp, home, codexHome, brainHome, kb, env, packageRoot };
+      const results = {};
+      let bundle = null;
+      for (const mode of ['claudeOnly', 'codexOnly', 'dual']) {
+        const home = path.join(temp, `home-${mode}`);
+        const codexHome = path.join(home, '.codex');
+        const brainHome = path.join(home, '.cache', 'ruvnet-brain');
+        const kb = path.join(brainHome, 'kb');
+        fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+        if (mode !== 'claudeOnly') fs.mkdirSync(codexHome, { recursive: true });
+        const env = {
+          ...process.env,
+          HOME: home,
+          CODEX_HOME: codexHome,
+          RUVNET_BRAIN_HOME: brainHome,
+          RUVNET_BRAIN_KB: kb,
+          RUVNET_STRICT_INSTALL: '1',
+          RUVNET_BRAIN_PROFILE: 'complete',
+          CI: 'true',
+          PATH: isolatedPath(mode, temp),
+        };
+        const installer = path.join(packageRoot, 'bin', 'install.mjs');
+        command(process.execPath, [
+          installer, '--yes', '--force', '--version', `v${version}`,
+          '--no-nightly-prompt', '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline',
+        ], { env, cwd: packageRoot, timeout: 1_200_000, maxBuffer: 32 * 1024 * 1024 });
+        command(process.execPath, [installer, '--doctor', '--hooks'], {
+          env, cwd: packageRoot, timeout: 300_000, maxBuffer: 32 * 1024 * 1024,
+        });
+
+        const verified = {};
+        if (mode !== 'codexOnly') {
+          const manifest = findManifest(path.join(home, '.claude'), path.join('.claude-plugin', 'plugin.json'), version);
+          verified.claudeFiles = assertInstalledPayload(sealedPlugin, path.dirname(path.dirname(manifest)));
+        }
+        if (mode !== 'claudeOnly') {
+          const manifest = findManifest(codexHome, path.join('.codex-plugin', 'plugin.json'), version);
+          verified.codexFiles = assertInstalledPayload(sealedPlugin, path.dirname(path.dirname(manifest)));
+          const config = fs.readFileSync(path.join(codexHome, 'config.toml'), 'utf8');
+          if (!/\[mcp_servers\.ruvnet-brain\]/.test(config)) throw new Error(`${mode} virgin Codex home is not wired to ruvnet-brain`);
+        }
+        const source = readJson(path.join(kb, 'SOURCE.json'));
+        if (source.brainVersion !== version || source.releaseTag !== `v${version}`) {
+          throw new Error(`${mode} installed public Brain bundle version mismatch`);
+        }
+        bundle ||= { brainVersion: source.brainVersion, releaseTag: source.releaseTag };
+        const searched = await rpcSearch(findMcpServer(home), env, 'How does RuvNet Brain prove a public release artifact?', DEADLINE_MS);
+        results[mode] = {
+          status: 'PASS', doctorExit: 0, version, artifactSha256,
+          functionalSearch: true, searchMs: searched.broadMs, hostsOnPath: mode,
+          ...verified,
+        };
+        if (mode === 'dual') installContext = { temp, home, codexHome, brainHome, kb, env, packageRoot };
+      }
       return {
-        claude: { status: 'PASS', version, artifactSha256, payloadFilesVerified: claudeFiles },
-        codex: { status: 'PASS', version, artifactSha256, payloadFilesVerified: codexFiles },
-        bundle: { brainVersion: source.brainVersion, releaseTag: source.releaseTag },
+        ...results,
+        bundle,
       };
     },
 
@@ -231,6 +290,12 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
       if (result.status !== 0 || parsed.verdict !== 'PASS') throw new Error(`published-surface-probe is ${parsed.verdict || `exit ${result.status}`}`);
       return { name: 'published-surface-probe', status: 'completed', conclusion: 'success', sha };
     },
+
+    async dispose() {
+      if (installTemp) fs.rmSync(installTemp, { recursive: true, force: true });
+      installTemp = null;
+      installContext = null;
+    },
   };
 }
 
@@ -246,15 +311,35 @@ export async function generatePublicationReceipt({
   const candidateResult = evaluateCandidateReceipt(candidate);
   if (candidateResult.verdict !== 'PASS') throw new Error(`candidate seal failed: ${candidateResult.failures.map(({ code }) => code).join(',')}`);
   const digest = receiptDigest(candidate);
+  const evidenceRoot = path.dirname(path.resolve(candidatePath));
+  const payloadManifestPath = path.join(evidenceRoot, 'payload-manifest.json');
+  const payloadSignaturePath = path.join(evidenceRoot, 'payload-manifest.sig');
+  const payloadManifest = readJson(payloadManifestPath);
+  const payloadProof = verifyPayload({
+    manifest: payloadManifest,
+    signature: fs.readFileSync(payloadSignaturePath, 'utf8'),
+    publicKey: crypto.createPublicKey(fs.readFileSync(path.join(root, 'keys', 'ruvnet-brain-signing.pub.pem'), 'utf8')),
+    root: evidenceRoot,
+  });
+  if (payloadManifest.version !== candidate.version || payloadManifest.tag !== candidate.tag
+    || payloadManifest.candidateSha !== candidate.sha) throw new Error('signed payload identity differs from candidate seal');
+  const npmMember = payloadManifest.members.find(({ role }) => role === 'npm');
+  const bundleMember = payloadManifest.members.find(({ role }) => role === 'bundle');
+  if (!npmMember || !bundleMember || npmMember.sha256 !== digest) throw new Error('signed payload member set differs from candidate artifact');
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-public-evidence-'));
   try {
     const assetName = path.basename(candidate.artifact.path);
     const npm = await adapter.downloadNpm({ version: candidate.version, destination: path.join(temp, `npm-${assetName}`) });
     const github = await adapter.downloadGithub({ tag: candidate.tag, assetName, destination: path.join(temp, `github-${assetName}`) });
+    const githubBundle = await adapter.downloadGithub({
+      tag: candidate.tag, assetName: bundleMember.name, destination: path.join(temp, `github-${bundleMember.name}`),
+    });
     const npmDigest = sha256(npm.path);
     const githubDigest = sha256(github.path);
     if (npmDigest !== digest) throw new Error(`npm public byte mismatch: ${npmDigest} != ${digest}`);
     if (githubDigest !== digest) throw new Error(`GitHub public byte mismatch: ${githubDigest} != ${digest}`);
+    const githubBundleDigest = sha256(githubBundle.path);
+    if (githubBundleDigest !== bundleMember.sha256) throw new Error(`GitHub public bundle byte mismatch: ${githubBundleDigest} != ${bundleMember.sha256}`);
     if (npm.version !== candidate.version || (npm.sha && npm.sha !== candidate.sha)) throw new Error('npm public identity mismatch');
     if (github.tag !== candidate.tag || github.sha !== candidate.sha) throw new Error('GitHub public identity mismatch');
 
@@ -262,17 +347,23 @@ export async function generatePublicationReceipt({
     const brain = await adapter.probeBrain({ sha: candidate.sha, artifactSha256: digest, version: candidate.version });
     const surface = await adapter.probePublishedSurface({ sha: candidate.sha, artifactSha256: digest, version: candidate.version });
     const publication = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       phase: 'publication',
       sha: candidate.sha,
       artifactSha256: digest,
       version: candidate.version,
+      payloadId: payloadProof.payloadId,
+      bundleArtifactSha256: githubBundleDigest,
       // npm does not guarantee gitHead metadata. Exact public-byte equality with the candidate's
       // SHA-bound sealed artifact is the identity proof; a present but conflicting gitHead is red.
       npm: { version: npm.version, sha: candidate.sha, artifactSha256: npmDigest },
       githubRelease: { tag: github.tag, sha: github.sha, artifactSha256: githubDigest },
       bundle: installed.bundle,
-      installed: { claude: installed.claude, codex: installed.codex },
+      installed: {
+        claudeOnly: installed.claudeOnly,
+        codexOnly: installed.codexOnly,
+        dual: installed.dual,
+      },
       brain,
       postPublicationChecks: [surface],
     };
@@ -282,6 +373,7 @@ export async function generatePublicationReceipt({
     fs.writeFileSync(outPath, `${JSON.stringify(publication, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
     return result;
   } finally {
+    await adapter.dispose?.();
     fs.rmSync(temp, { recursive: true, force: true });
   }
 }

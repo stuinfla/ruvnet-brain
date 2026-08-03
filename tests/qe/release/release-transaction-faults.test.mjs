@@ -3,116 +3,144 @@ import {
   execute, FakeReleaseProvider, identity,
 } from '../../helpers/release-transaction-fixture.mjs';
 
-const PREPARE_FAULTS = [
+const BEFORE_BOUNDARIES = [
   'createDraft', 'append:remote-prepared', 'readReceipt', 'append:asset-upload-intent',
-  'uploadAssets', 'append:host-verification-intent', 'append:local-hosts-verified',
-  'append:npm-stage-intent', 'stageNpm', 'observeNpmCandidate', 'append:npm-candidate-staged',
-  'append:remote-host-verification-intent', 'materializeStagedAssets', 'cleanupStagedAssets',
-  'append:prepared', 'append:github-promote-intent', 'publishDraftNonLatest', 'observeGithub',
-  'append:github-promoted-nonlatest', 'append:npm-promote-intent', 'promoteNpm',
+  'uploadAssets', 'append:npm-stage-intent', 'stageNpm', 'observeSnapshot',
+  'append:npm-candidate-staged', 'append:remote-materialization-intent',
+  'materializeStagedAssets', 'verifyMaterializedPayload', 'cleanupStagedAssets', 'append:prepared',
+  'append:github-promote-intent', 'publishDraftNonLatest', 'append:github-promoted-nonlatest',
+  'append:npm-promote-intent', 'promoteNpm', 'append:npm-promoted',
+  'append:github-latest-intent', 'makeGithubLatest', 'append:defaults-promoted',
+  'append:finalize-intent', 'finalize', 'append:channels-converged',
 ];
 
-const RESUMABLE_PROMOTION_FAULTS = [
-  'observeNpmLatest', 'append:npm-promoted', 'append:github-latest-intent',
-  'observeGithubLatest', 'append:defaults-promoted', 'append:finalize-intent',
-  'finalize', 'append:channels-converged',
+const AFTER_SIDE_EFFECTS = [
+  ['uploadAssets', 'assetsExact'],
+  ['stageNpm', 'candidatePublished'],
+  ['publishDraftNonLatest', 'githubPublished'],
+  ['promoteNpm', 'npmLatest'],
+  ['makeGithubLatest', 'githubLatest'],
+  ['finalize', 'publicReceiptExact'],
 ];
 
-describe('issue #77 failure-first release QE', () => {
-  it.each(PREPARE_FAULTS)('fault at %s never advances a default channel', async (fault) => {
+describe('ADR-062 recovery transaction', () => {
+  it('runs the public host matrix once and never rebuilds candidate bytes', async () => {
+    const provider = new FakeReleaseProvider();
+    const hosts = { calls: [], async verify({ source }) { this.calls.push(source); return { verdict: 'PASS' }; } };
+    const final = await execute(provider, hosts);
+    expect(final.state).toBe('channels-converged');
+    expect(hosts.calls).toEqual(['final']);
+    expect(provider.calls.filter((call) => call === 'stageNpm')).toHaveLength(1);
+  });
+
+  it.each(BEFORE_BOUNDARIES)('fails closed when interrupted at %s', async (fault) => {
     const provider = new FakeReleaseProvider({ fault });
     await expect(execute(provider)).rejects.toThrow();
-    expect(provider.npmLatest).toBe('9.9.8');
-    expect(provider.githubLatest).toBe('v9.9.8');
     expect(provider.receipts.some(({ state }) => state === 'channels-converged')).toBe(false);
   });
 
-  it.each(RESUMABLE_PROMOTION_FAULTS)('fault at %s converges the same B on retry', async (fault) => {
-    const provider = new FakeReleaseProvider({ fault });
-    await expect(execute(provider)).rejects.toThrow();
-    provider.fault = null;
+  it.each(AFTER_SIDE_EFFECTS)('recovers after interruption immediately after %s', async (method) => {
+    const provider = new FakeReleaseProvider();
+    const original = provider[method].bind(provider);
+    let crashed = false;
+    provider[method] = async (...args) => {
+      const result = await original(...args);
+      if (!crashed) { crashed = true; throw new Error(`crash after ${method}`); }
+      return result;
+    };
+    await expect(execute(provider)).rejects.toThrow(`crash after ${method}`);
+    provider[method] = original;
     const final = await execute(provider);
     expect(final.state).toBe('channels-converged');
     expect(provider.npmLatest).toBe(identity.version);
     expect(provider.githubLatest).toBe(identity.tag);
   });
 
-  it.each(['local', 'staged', 'final'])('host fixture failure at %s never records convergence', async (source) => {
-    const provider = new FakeReleaseProvider();
-    const hosts = {
-      async verify(input) {
-        return input.source === source ? { verdict: 'FAIL' } : { verdict: 'PASS' };
-      },
-    };
-    await expect(execute(provider, hosts)).rejects.toThrow();
-    expect(provider.receipts.some(({ state }) => state === 'channels-converged')).toBe(false);
-  });
-
-  it('recovers the same B on a clean runner using remote receipts only', async () => {
-    const provider = new FakeReleaseProvider({ fault: 'promoteNpm' });
-    await expect(execute(provider)).rejects.toThrow('npm promotion pending');
-    const stagedCalls = provider.calls.filter((call) => call === 'stageNpm').length;
-    provider.fault = null;
-    provider.calls = [];
+  it('polls boundedly through delayed npm candidate and latest visibility', async () => {
+    const provider = new FakeReleaseProvider({ visibilityDelay: { candidate: 3, npmLatest: 3 } });
     const final = await execute(provider);
     expect(final.state).toBe('channels-converged');
-    expect(provider.calls.filter((call) => call === 'stageNpm')).toHaveLength(0);
-    expect(stagedCalls).toBe(1);
+    expect(provider.observations).toBeGreaterThan(8);
   });
 
-  it('compensates npm only when GitHub latest promotion fails after npm B', async () => {
-    const provider = new FakeReleaseProvider({ fault: 'makeGithubLatest' });
-    await expect(execute(provider)).rejects.toThrow('npm compensated');
-    expect(provider.npmLatest).toBe('9.9.8');
-    expect(provider.githubLatest).toBe('v9.9.8');
-    expect(provider.receipts.at(-1).state).toBe('compensated');
-  });
-
-  it('re-promotes B before retrying GitHub after a compensated clean-runner recovery', async () => {
-    const provider = new FakeReleaseProvider({ fault: 'makeGithubLatest' });
-    await expect(execute(provider)).rejects.toThrow('npm compensated');
-    provider.fault = null;
-    provider.calls = [];
+  it('times out without republishing and later resumes the same bytes', async () => {
+    const provider = new FakeReleaseProvider({ visibilityDelay: { candidate: 99 } });
+    await expect(execute(provider)).rejects.toThrow('visibility deadline exceeded');
+    expect(provider.calls.filter((call) => call === 'stageNpm')).toHaveLength(1);
+    provider.visibilityDelay.candidate = 0;
     const final = await execute(provider);
     expect(final.state).toBe('channels-converged');
-    expect(provider.calls.indexOf('promoteNpm')).toBeLessThan(provider.calls.indexOf('makeGithubLatest'));
-    expect(provider.npmLatest).toBe(identity.version);
-    expect(provider.githubLatest).toBe(identity.tag);
+    expect(provider.calls.filter((call) => call === 'stageNpm')).toHaveLength(1);
   });
 
-  it('does not overwrite a third-party npm latest during compensation', async () => {
-    const provider = new FakeReleaseProvider({ fault: 'makeGithubLatest' });
-    const original = provider.makeGithubLatest.bind(provider);
-    provider.makeGithubLatest = async (...args) => {
-      provider.npmLatest = '10.0.0';
-      return original(...args);
-    };
-    await expect(execute(provider)).rejects.toThrow('changed during compensation');
-    expect(provider.npmLatest).toBe('10.0.0');
-    expect(provider.calls).not.toContain('restoreNpmLatest');
+  it('compensates an npm-first partial publication and resumes through normal states', async () => {
+    const provider = new FakeReleaseProvider({ fault: 'publishDraftNonLatest' });
+    await expect(execute(provider)).rejects.toThrow();
+    provider.fault = null;
+    provider.npmLatest = identity.version;
+    await expect(execute(provider)).rejects.toThrow('npm compensated');
+    expect(provider.npmLatest).toBe(provider.prior);
+    const final = await execute(provider);
+    expect(final.state).toBe('channels-converged');
   });
 
-  it('fails closed on duplicate orphan drafts instead of guessing ownership', async () => {
+  it('fails closed on immutable npm byte mismatch', async () => {
     const provider = new FakeReleaseProvider();
-    provider.discover = async () => ({
-      pending: [], receipts: [], prior: { npmLatest: '9.9.8' },
-      matchingDrafts: [{ id: 1, tag: identity.tag }, { id: 2, tag: identity.tag }],
+    provider.candidatePublished = true;
+    provider.candidateIntegrity = 'sha512-wrong';
+    await expect(execute(provider)).rejects.toThrow('immutable npm candidate bytes mismatch');
+    expect(provider.calls).not.toContain('promoteNpm');
+  });
+
+  it('fails closed on competing release identity and duplicate anchors', async () => {
+    const competing = new FakeReleaseProvider();
+    competing.pending = [{ transactionId: 'e'.repeat(64) }];
+    await expect(execute(competing)).rejects.toThrow('blocks');
+    const duplicate = new FakeReleaseProvider();
+    duplicate.discover = async () => ({
+      pending: [], receipts: [], prior: { npmLatest: '9.9.8', githubLatest: 'v9.9.8' },
+      matchingDrafts: [{ id: 1 }, { id: 2 }],
     });
-    await expect(execute(provider)).rejects.toThrow('duplicate matching drafts');
+    await expect(execute(duplicate)).rejects.toThrow('duplicate matching drafts');
   });
 
-  it('a concurrent same-sequence writer loses the create-only receipt race', async () => {
+  it('does not overwrite a third-party npm default during recovery', async () => {
+    const provider = new FakeReleaseProvider({ fault: 'promoteNpm' });
+    await expect(execute(provider)).rejects.toThrow();
+    provider.fault = null;
+    provider.npmLatest = '10.0.0';
+    await expect(execute(provider)).rejects.toThrow('neither captured A nor candidate B');
+    expect(provider.npmLatest).toBe('10.0.0');
+  });
+
+  it('revalidates terminal receipts and rejects public drift', async () => {
+    const provider = new FakeReleaseProvider();
+    await execute(provider);
+    provider.publicHostsExact = false;
+    await expect(execute(provider)).rejects.toThrow('terminal release drift');
+  });
+
+  it.each([
+    ['candidate integrity', (provider) => { provider.candidateIntegrity = 'sha512-wrong'; }],
+    ['GitHub assets', (provider) => { provider.assetsExact = false; }],
+  ])('revalidates %s when recovering finalize-intent', async (_name, drift) => {
+    const provider = new FakeReleaseProvider({ fault: 'append:channels-converged' });
+    await expect(execute(provider)).rejects.toThrow();
+    provider.fault = null;
+    drift(provider);
+    await expect(execute(provider)).rejects.toThrow();
+    expect(provider.receipts.at(-1).state).not.toBe('channels-converged');
+  });
+
+  it('a concurrent same-sequence writer loses before any subsequent provider mutation', async () => {
     const provider = new FakeReleaseProvider();
     const original = provider.appendReceipt.bind(provider);
     let raced = false;
     provider.appendReceipt = async (draft, receipt, name) => {
-      if (!raced) {
-        raced = true;
-        provider.receipts.push(structuredClone(receipt));
-      }
+      if (!raced) { raced = true; provider.receipts.push(structuredClone(receipt)); }
       return original(draft, receipt, name);
     };
     await expect(execute(provider)).rejects.toThrow('duplicate receipt sequence');
-    expect(provider.calls).not.toContain('stageNpm');
+    expect(provider.calls).not.toContain('uploadAssets');
   });
 });

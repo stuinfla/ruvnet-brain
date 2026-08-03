@@ -377,6 +377,50 @@ jobs:
           artifact="$RUNNER_TEMP/release-evidence/$(node -p "JSON.parse(require('fs').readFileSync(process.env.RUNNER_TEMP + '/release-evidence/npm-pack.json'))[0].filename")"
           test -s "$artifact"
           echo "RUVNET_SEALED_PACKAGE=$artifact" >> "$GITHUB_ENV"
+      - name: Build the immutable knowledge bundle exactly once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-seed/extracted"
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern ruvnet-brain.zip --dir "$RUNNER_TEMP/release-seed"
+          unzip -q "$RUNNER_TEMP/release-seed/ruvnet-brain.zip" -d "$RUNNER_TEMP/release-seed/extracted"
+          mapfile -t asset_dirs < <(find "$RUNNER_TEMP/release-seed/extracted" -type f -name '*.big.rvf' ! -path '*/__MACOSX/*' ! -name '._*' -printf '%h\n' | LC_ALL=C sort -u)
+          test "${#asset_dirs[@]}" -eq 1
+          node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}"
+          node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" --assets "${asset_dirs[0]}"
+          cp dist/ruvnet-brain.zip "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip"
+          sha256sum "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" > "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip.sha256"
+      - name: Persist the canonical candidate payload manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release-payload.mjs create \
+            --version "$(node -p "require('./package.json').version")" \
+            --tag "v$(node -p "require('./package.json').version")" \
+            --sha "$GITHUB_SHA" \
+            --member "npm=$RUVNET_SEALED_PACKAGE" \
+            --member "bundle=$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \
+            --out "$RUNNER_TEMP/release-evidence/payload-manifest.json" \
+            | tee "$RUNNER_TEMP/release-evidence/payload-id.json"
+      - name: Install current Claude and Codex hosts for the one candidate matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global --prefix "$RUNNER_TEMP/host-clis" \
+            @anthropic-ai/claude-code@latest \
+            @openai/codex@latest
+          echo "$RUNNER_TEMP/host-clis/bin" >> "$GITHUB_PATH"
+      - name: Claude-only, Codex-only, and dual-host candidate evidence (run once)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/candidate-host-evidence.mjs \
+            --manifest "$RUNNER_TEMP/release-evidence/payload-manifest.json" \
+            --package "$RUVNET_SEALED_PACKAGE" \
+            --bundle "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \
+            --out "$RUNNER_TEMP/release-evidence/candidate-host-evidence.json"
       - name: Exact-artifact release QE
         run: |
           npm exec -- vitest run \

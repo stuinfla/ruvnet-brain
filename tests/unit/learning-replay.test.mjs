@@ -452,14 +452,14 @@ describe('the live CLI still behaves the way the gate assumes (Rule 0, re-checke
   });
 
   t('the CORRECT command retrieves', () => {
-    const e = executeProducedCommand('ruflo memory search -q "caching strategy"', { cwd: dir, base: dir });
+    const e = executeProducedCommand('ruflo memory search -q "caching strategy" --path .swarm/memory.db', { cwd: dir, base: dir });
     expect(e.ran).toBe(true);
     expect(e.exit).toBe(0);
     expect(e.retrieved).toBe(true);
   }, 180_000);
 
   t('`ruflo memory recall -q` EXITS 0 and retrieves NOTHING — the exact defect exit status cannot see', () => {
-    const e = executeProducedCommand('ruflo memory recall -q "caching strategy"', { cwd: dir, base: dir });
+    const e = executeProducedCommand('ruflo memory recall -q "caching strategy" --path .swarm/memory.db', { cwd: dir, base: dir });
     expect(e.ran).toBe(true);
     expect(e.exit).toBe(0);          // <- an exit-status gate passes this
     expect(e.retrieved).toBe(false); // <- the retrieval assertion does not
@@ -471,7 +471,7 @@ describe('the live CLI still behaves the way the gate assumes (Rule 0, re-checke
     fs.rmSync(path.dirname(db), { recursive: true, force: true });
     fs.mkdirSync(path.dirname(db), { recursive: true });
     spawnSync(RUFLO_BIN, ['memory', 'init', '--path', db, '--backend', 'hybrid'], { encoding: 'utf8', timeout: 120_000, cwd: dir });
-    const e = executeProducedCommand('ruflo memory search -q "caching strategy"', { cwd: dir, base: dir });
+    const e = executeProducedCommand('ruflo memory search -q "caching strategy" --path .swarm/memory.db', { cwd: dir, base: dir });
     expect(e.exit).toBe(0);
     expect(e.retrieved).toBe(false);
   }, 180_000);
