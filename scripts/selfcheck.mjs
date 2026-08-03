@@ -193,6 +193,7 @@ export function resolveInstalledSurface({ home = os.homedir(), repo = null } = {
     source: chosen.source,
     hooksFile: chosen.hooksFile,
     shimFile: path.join(chosen.root, 'scripts', 'hook-shim.mjs'),
+    codex: Boolean(chosen.codex),
     alternates: candidates.slice(1).map((c) => c.source),
   };
 }
