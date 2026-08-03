@@ -106,7 +106,7 @@ function readHookInput(limit = 1024 * 1024) {
     // closes. Poll the non-blocking stream read instead of using fs.readSync, which can block the
     // event loop before the first pipe chunk is surfaced.
     poll = setInterval(onReadable, 10);
-    hardDeadline = setTimeout(finish, 500);
+    hardDeadline = setTimeout(finish, 250);
     armIdle();
     process.stdin.resume();
   });
