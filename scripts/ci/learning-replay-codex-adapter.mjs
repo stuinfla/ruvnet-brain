@@ -23,8 +23,20 @@ const probe = process.env.RUVNET_REPLAY_LESSON_PROBE || '';
 if (event === 'PreToolUse') {
   const recorder = process.env.RUVNET_REPLAY_RECORDER || '';
   if (!recorder) process.exit(2);
+  // Codex emits exec_command with tool_input.cmd; the shared Claude/Ruflo boundary consumes
+  // Bash with tool_input.command. Normalize the real host envelope before the recorder parses it.
+  const recorderInput = Buffer.from(JSON.stringify({
+    ...input,
+    tool_name: /^(?:functions[._]{1,2})?exec_command$/.test(String(input.tool_name || ''))
+      ? 'Bash'
+      : input.tool_name,
+    tool_input: {
+      ...(input.tool_input || {}),
+      command: input.tool_input?.command ?? input.tool_input?.cmd ?? input.command ?? '',
+    },
+  }));
   const result = spawnSync(process.execPath, [recorder, attemptsFile, sequenceFile], {
-    input: raw,
+    input: recorderInput,
     encoding: 'utf8',
     env: process.env,
   });

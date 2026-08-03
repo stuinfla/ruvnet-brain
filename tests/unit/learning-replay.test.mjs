@@ -91,6 +91,44 @@ describe('Codex subscription replay host', () => {
     }
   });
 
+  it('records and blocks a synthetic Codex command through the complete stable-wrapper path', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'd4-codex-hook-path-'));
+    try {
+      const dirs = buildFixtures(base);
+      nightlyRefresh(dirs);
+      const attempts = path.join(dirs.transcripts, 'preflight.attempts.jsonl');
+      const sequence = path.join(dirs.transcripts, 'preflight.sequence.jsonl');
+      const command = 'ruflo memory search -q "caching strategy" --path .swarm/memory.db';
+      const result = spawnSync(process.execPath, [
+        path.join(dirs.brainHome, 'codex-hook.mjs'), 'unprompted-speech', 'PreToolUse-bash',
+      ], {
+        cwd: dirs.projectB,
+        encoding: 'utf8',
+        input: JSON.stringify({
+          hook_event_name: 'PreToolUse',
+          tool_name: 'exec_command',
+          tool_input: { cmd: command },
+          cwd: dirs.projectB,
+          session_id: 'd4-preflight',
+        }),
+        env: {
+          ...process.env,
+          RUVNET_BRAIN_HOME: dirs.brainHome,
+          RUVNET_REPLAY_ATTEMPTS_FILE: attempts,
+          RUVNET_REPLAY_SEQUENCE_FILE: sequence,
+          RUVNET_REPLAY_RECORDER: path.join(
+            path.resolve(import.meta.dirname, '../..'), 'scripts', 'ci', 'learning-replay-recorder.mjs',
+          ),
+        },
+      });
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(2);
+      expect(JSON.parse(fs.readFileSync(attempts, 'utf8').trim()).command).toBe(command);
+      expect(JSON.parse(fs.readFileSync(sequence, 'utf8').trim()).kind).toBe('tool');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   it('runs Codex read-only with the installed Brain plugin hooks trusted', () => {
     const args = buildCodexArgv({ model: 'gpt-5.6-sol', prompt: 'fixture prompt' });
     expect(args.slice(0, 2)).toEqual(['exec', '--ephemeral']);
