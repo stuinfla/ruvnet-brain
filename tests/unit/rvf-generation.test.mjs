@@ -57,6 +57,46 @@ describe('checksum-bound RVF generation identity', () => {
     ]);
   });
 
+  // The pre-push gate (scripts/sync-version.mjs) verifies the COMMITTED ledger only. `kb/*.rvf` is
+  // gitignored, so byte comparison there described the machine rather than the commit and blocked
+  // every push — tags included — with a remedy line that could not clear it. These cases pin the
+  // narrow contract of that mode: it drops byte checks and ONLY byte checks.
+  it('verifyBytes:false ignores byte drift and absent RVFs — the push-time contract', () => {
+    const dir = fixtureDir();
+    fs.writeFileSync(path.join(dir, 'demo.big.rvf'), Buffer.from('rvf generation one'));
+    writeRvfGeneration({ dir, store: 'demo', model: 'm', dimensions: 768, sourceCommit: 'abc123' });
+
+    // byte drift: fails closed by default, ignored under the push-time contract
+    fs.appendFileSync(path.join(dir, 'demo.big.rvf'), 'changed');
+    expect(verifyRvfGenerations(dir).failures).toEqual([expect.stringContaining('demo: sha256=')]);
+    expect(verifyRvfGenerations(dir, { verifyBytes: false }).failures).toEqual([]);
+
+    // absent RVF: the real shape (ledger has 72 stores, a working checkout has 71)
+    fs.rmSync(path.join(dir, 'demo.big.rvf'));
+    expect(verifyRvfGenerations(dir).failures).toEqual([expect.stringContaining('demo: missing')]);
+    expect(verifyRvfGenerations(dir, { verifyBytes: false }).failures).toEqual([]);
+  });
+
+  it('TEETH: verifyBytes:false is NOT a mute button — committed ledger drift still fails', () => {
+    const dir = fixtureDir();
+    fs.writeFileSync(path.join(dir, 'demo.big.rvf'), Buffer.from('rvf generation one'));
+    writeRvfGeneration({ dir, store: 'demo', model: 'm', dimensions: 768, sourceCommit: 'abc123' });
+
+    // brainVersion/releaseTag ARE committed, so they must still fail closed in push-time mode.
+    const file = path.join(dir, RVF_GENERATIONS_FILE);
+    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+    manifest.brainVersion = '0.0.0-wrong';
+    fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
+
+    expect(verifyRvfGenerations(dir, { verifyBytes: false }).failures).toEqual([
+      expect.stringContaining('brainVersion=0.0.0-wrong'),
+    ]);
+    // and a store the ledger has never heard of is still reported, bytes or not
+    expect(
+      verifyRvfGenerations(dir, { verifyBytes: false, requiredStores: ['ghost'] }).failures,
+    ).toContainEqual(expect.stringContaining('ghost: no generation record'));
+  });
+
   it('merges another store without losing the previous generation record', () => {
     const dir = fixtureDir();
     fs.writeFileSync(path.join(dir, 'one.big.rvf'), 'one');
