@@ -24,8 +24,12 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { findStores, diagnose } from './memory-doctor.mjs';
+import { loadRuntimePreferences } from '../plugin/scripts/runtime-preferences.mjs';
 
 const HOME = os.homedir();
+// The SAME project root learn-flush.mjs computes, by the same rule — the two halves of the flush
+// have to agree about which project they mean or they address different queues (issue #104).
+const PROJECT = process.env.RUVNET_BRAIN_PROJECT_DIR || process.cwd();
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
 
@@ -93,25 +97,94 @@ function repairMemory() {
   return { ok: true, log: `repaired — integrity ok, ${rowsAfter} entries intact (was ${rowsBefore}). Backup: ${backup.replace(HOME, '~')}`, backup };
 }
 
-/** Drain the capture queue into rUv's learner — his tool, not ours. */
+/**
+ * Drain the capture queue into rUv's learner — his tool, not ours.
+ *
+ * ISSUE #104: this measured one queue and drained another, so it could only ever report "fed 0".
+ * The flusher was spawned with NO environment, so inside learn-flush.mjs RUVNET_LEARNING_SCOPE was
+ * unset and defaulted to 'project' — it drained `<project>/.swarm/ruvnet-brain-learn/` while THIS
+ * function counted `<user>/.cache/ruvnet-brain/learn/`. `before - after` was structurally 0: it
+ * could not report truthfully in either direction even on a flush that worked, and the real queue
+ * grew forever. Two independent defaults are not an agreement.
+ *
+ * So: resolve the scope ONCE, from the same policy module learn-flush reads, derive the queue root
+ * FROM that scope, pass the scope (and the exact queue file) to the child explicitly, and measure
+ * the root that was actually drained.
+ *
+ * And LOOP. learn-flush feeds at most MAX_ACTIONS distinct actions per invocation and writes the
+ * remainder back on purpose (a SessionEnd hook must stay fast), so one call cannot drain a deep
+ * queue — the reporter needed 15 rounds for 293 entries. A single call would leave a queue that
+ * "flushes" every time and never empties, which is the same lie in slow motion.
+ */
 function flushLearning() {
   const flusher = path.join(HOME, '.claude', 'plugins', 'marketplaces', 'ruvnet-brain', 'plugin', 'scripts', 'learn-flush.mjs');
-  const local = path.join(process.cwd(), 'plugin', 'scripts', 'learn-flush.mjs');
+  const local = path.join(PROJECT, 'plugin', 'scripts', 'learn-flush.mjs');
   const script = fs.existsSync(flusher) ? flusher : (fs.existsSync(local) ? local : null);
   if (!script) return { ok: false, log: 'learn-flush.mjs not found — cannot drain the queue' };
 
-  const queueDir = path.join(HOME, '.cache', 'ruvnet-brain', 'learn');
-  const depth = () => {
-    try {
-      return fs.readdirSync(queueDir).filter((f) => f.endsWith('.jsonl'))
-        .reduce((n, f) => n + fs.readFileSync(path.join(queueDir, f), 'utf8').split('\n').filter(Boolean).length, 0);
-    } catch { return 0; }
+  const configured = process.env.RUVNET_LEARNING_SCOPE
+    || loadRuntimePreferences({ cwd: PROJECT }).values.learningScope;
+  const scope = ['off', 'project', 'user'].includes(configured) ? configured : 'project';
+  if (scope === 'off') {
+    return { ok: true, noop: true, log: 'learning is switched off for this project — nothing is being captured, so there is nothing to feed' };
+  }
+
+  // Derived from the scope, never assumed: this is the directory the child will actually read.
+  const queueDir = scope === 'user'
+    ? path.join(HOME, '.cache', 'ruvnet-brain', 'learn')
+    : path.join(PROJECT, '.swarm', 'ruvnet-brain-learn');
+  const where = queueDir.replace(HOME, '~');
+
+  const queueFiles = () => {
+    try { return fs.readdirSync(queueDir).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(queueDir, f)); }
+    catch { return []; }
   };
+  const depthOf = (f) => {
+    try { return fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).length; } catch { return 0; }
+  };
+  const depth = () => queueFiles().reduce((n, f) => n + depthOf(f), 0);
+
   const before = depth();
-  try { execFileSync(process.execPath, [script], { stdio: 'ignore', timeout: 600_000 }); }
-  catch (e) { return { ok: false, log: `flush failed: ${e.message} — the queue is preserved for retry` }; }
+  if (!before) return { ok: true, noop: true, log: `nothing queued in ${where} — the learner is already caught up` };
+
+  const env = { ...process.env, RUVNET_LEARNING_SCOPE: scope, RUVNET_BRAIN_PROJECT_DIR: PROJECT };
+  const deadline = Date.now() + 540_000; // inside the 600s this action is allowed overall
+  const stalled = [];
+  for (const file of queueFiles()) {
+    let d = depthOf(file);
+    while (d > 0 && Date.now() < deadline) {
+      try {
+        execFileSync(process.execPath, [script], {
+          env: { ...env, LEARN_QUEUE: file },
+          stdio: 'ignore',
+          timeout: Math.min(120_000, Math.max(1_000, deadline - Date.now())),
+        });
+      } catch (e) { stalled.push(`${path.basename(file)}: ${String(e.message).split('\n')[0].slice(0, 80)}`); break; }
+      const next = depthOf(file);
+      // STRICT progress, or stop. learn-flush KEEPS a queue it could not feed (by design — the queue
+      // is evidence), so a round that shrinks nothing means the learner is not accepting the work.
+      // Spinning on it would burn the whole budget and still report zero.
+      if (next >= d) { stalled.push(`${path.basename(file)}: ${d} entr${d === 1 ? 'y' : 'ies'} would not feed`); break; }
+      d = next;
+    }
+  }
+
   const after = depth();
-  return { ok: true, log: `fed ${Math.max(0, before - after)} captured events into the learner (queue ${before} → ${after})` };
+  const fed = before - after;
+  if (fed <= 0) {
+    // Name the most likely cause instead of shrugging: learn-flush invokes ruflo at a FIXED path,
+    // so on a machine with a different npm prefix it feeds nothing and honestly keeps the queue.
+    const rufloAtFixedPath = fs.existsSync(path.join(HOME, '.npm-global/bin/ruflo'));
+    const why = stalled.length ? ` (${stalled.slice(0, 3).join('; ')})` : '';
+    const hint = rufloAtFixedPath ? '' : ' ruflo is not at ~/.npm-global/bin/ruflo, which is where the flusher looks for it —'
+      + ' `npm i -g ruflo@latest` installs it there.';
+    return { ok: false, log: `fed 0 of ${before} queued events from ${where}${why} — the queue is preserved for retry.${hint}` };
+  }
+  return {
+    ok: true,
+    log: `fed ${fed} captured events into the ${scope} learner (queue ${before} → ${after} in ${where})`
+      + (after ? ` — ${after} remain and will drain on the next flush` : ''),
+  };
 }
 
 /** One training cycle, via rUv's own CLI, in the GLOBAL (cross-project) learner. */

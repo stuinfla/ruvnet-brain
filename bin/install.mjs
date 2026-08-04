@@ -2230,6 +2230,37 @@ const xmlEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').
 const cronExample = (kbDir) =>
   `47 3 * * *  cd ${kbDir} && ${process.execPath} forge-update.mjs --apply >> ${kbDir}/update.log 2>&1`;
 
+/**
+ * kb/forge-update.mjs exit 11 = "the download completed but the bundle on disk did NOT change"
+ * (its `EXIT_NOT_LANDED`). Duplicated as a literal on purpose: the updater lives in the KB BUNDLE,
+ * which versions and ships independently of this installer, so there is no import to share. The
+ * two are pinned together by tests/unit/update-not-landed-exit.test.mjs, which reads the constant
+ * out of kb/forge-update.mjs and fails if they ever drift.
+ */
+export const UPDATE_NOT_LANDED = 11;
+
+/**
+ * What `--update` does with the KB updater's exit code (issue #106).
+ *
+ * `--update` used to convert an honest failure into a reported success. The updater detected the
+ * problem itself and said so — "UPDATE MISMATCH: SOURCE.json on disk is IDENTICAL to before the
+ * update … REFUSING to report success" — and then the fresh-install FALLBACK below ran, succeeded
+ * at re-installing the very same bytes, and its exit 0 became the exit code of the whole command.
+ * A user's scheduled job read that as success while the corpus had not moved.
+ *
+ * The fallback exists for ONE thing: an old bundle whose canonical manifest URL 404s, where a fresh
+ * install genuinely rescues the user. "Nothing landed" is not that case — it is a TRUE verdict
+ * about an intact KB, and re-downloading the same bundle cannot change it. So that verdict is
+ * terminal and keeps its own exit code; every other failure keeps today's fallback behaviour.
+ */
+export function classifyUpdaterExit(status, { fallbackAllowed = true } = {}) {
+  if (status === 0) return { verdict: 'updated', fallback: false, exitCode: 0 };
+  if (status === UPDATE_NOT_LANDED) {
+    return { verdict: 'not-landed', fallback: false, exitCode: UPDATE_NOT_LANDED };
+  }
+  return { verdict: 'failed', fallback: fallbackAllowed, exitCode: status || 1 };
+}
+
 function missingUpdaterHelp(kbDir) {
   console.error(`\n${c.red('✗ can\'t update:')} ${c.bold('forge-update.mjs')} is missing from ${kbDir}.`);
   console.error(`  Either no brain is installed there, or the bundle predates the self-updater.`);
@@ -2366,12 +2397,29 @@ function runUpdate() {
   // real user, Jan Lafko, hit). NEVER leave the user stranded at a 404: re-run THIS installer as a
   // fresh install, which pulls the latest Release DIRECTLY (releases/latest) and never touches the
   // manifest — so --update always succeeds and self-heals the stale SOURCE.json in one shot.
-  if (updateStatus !== 0 && !process.env.RUVNET_BRAIN_NO_UPDATE_FALLBACK) {
+  //
+  // Scoped again 2026-08-04 (issue #106): "nothing landed" is excluded, because for THAT verdict the
+  // fallback re-installed identical bytes and its exit 0 became the command's exit code, turning the
+  // updater's own correct refusal into a reported success.
+  const outcome = classifyUpdaterExit(updateStatus, {
+    fallbackAllowed: !process.env.RUVNET_BRAIN_NO_UPDATE_FALLBACK,
+  });
+  if (outcome.verdict === 'not-landed') {
+    console.error(`\n    ${c.red('✗ the knowledge bundle did not change.')} The updater downloaded a bundle and refused to`);
+    console.error(`      call it an update because the copy on disk is identical to the one it replaced.`);
+    console.error(`      Nothing is broken and nothing was lost — but this run is ${c.bold('not')} a success, so it exits`);
+    console.error(`      ${c.bold(String(UPDATE_NOT_LANDED))} rather than 0 and a scheduled job will see the failure (issue #106).`);
+    console.error(`      If you believe a newer build exists, check:  ${c.bold('node forge-update.mjs --check')}  in ${kbDir}`);
+    process.exit(outcome.exitCode);
+  }
+  if (outcome.fallback) {
     warn("\nthe bundle's own updater couldn't complete — falling back to a fresh install of the latest Release (this always works)…\n");
     const self = fileURLToPath(import.meta.url);
     const fr = spawnSync(process.execPath, [self, '--force'], { stdio: 'inherit',
       env: { ...process.env, RUVNET_BRAIN_NO_UPDATE_FALLBACK: '1' } });
     updateStatus = fr.error ? 1 : (fr.status === null ? 1 : fr.status);
+  } else {
+    updateStatus = outcome.exitCode;
   }
   }
   if (updateStatus === 0) {
