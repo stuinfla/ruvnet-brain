@@ -49,12 +49,20 @@ import path from 'node:path';
 export function resolveRuflo({ env = process.env, home = os.homedir() } = {}) {
   if (env.RUFLO_BIN) return env.RUFLO_BIN;
 
-  const preferred = path.join(home, '.npm-global/bin/ruflo');
-  if (fs.existsSync(preferred)) return preferred;
-
   // On Windows a global npm ruflo is `ruflo.cmd`; the extensionless sibling is a POSIX shell wrapper
   // that Node cannot exec (and refuses to spawn without a shell since CVE-2024-27980).
   const exts = process.platform === 'win32' ? ['.cmd', '.exe', ''] : [''];
+
+  // The preferred path needs that SAME rule. It first checked a bare `ruflo` only, so on Windows it
+  // either missed the real `ruflo.cmd` entirely or returned the POSIX wrapper the comment above
+  // says is unrunnable — and the caller then reported "ruflo is not at ~/.npm-global/bin/ruflo" to
+  // someone who had ruflo installed. That is the exact complaint #99 and #105 were filed about,
+  // reintroduced one platform over.
+  const preferredDir = path.join(home, '.npm-global', 'bin');
+  for (const ext of exts) {
+    const cand = path.join(preferredDir, `ruflo${ext}`);
+    try { if (fs.existsSync(cand) && fs.statSync(cand).isFile()) return cand; } catch { /* unreadable */ }
+  }
   for (const dir of String(env.PATH || '').split(path.delimiter)) {
     if (!dir) continue;
     for (const ext of exts) {

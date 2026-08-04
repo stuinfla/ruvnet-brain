@@ -68,8 +68,17 @@ afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
 /** rUv's learner, stubbed at the ONE path learn-flush.mjs invokes, recording every call. */
 function installRuflo() {
-  const bin = path.join(home, '.npm-global', 'bin', 'ruflo');
-  fs.mkdirSync(path.dirname(bin), { recursive: true });
+  const dir = path.join(home, '.npm-global', 'bin');
+  fs.mkdirSync(dir, { recursive: true });
+  if (process.platform === 'win32') {
+    // A real global npm install puts `ruflo.cmd` here. The extensionless sibling is a POSIX shell
+    // wrapper Node cannot exec, so staging only that one made this fixture test a shape Windows
+    // never has — and the product correctly reported "ruflo is not at ~/.npm-global/bin/ruflo".
+    fs.writeFileSync(path.join(dir, 'ruflo.cmd'),
+      '@echo off\r\n>>"%RUFLO_CALL_MARKER%" echo %*\r\nexit /b 0\r\n');
+    return;
+  }
+  const bin = path.join(dir, 'ruflo');
   fs.writeFileSync(bin, '#!/bin/sh\nprintf "%s\\n" "$*" >> "$RUFLO_CALL_MARKER"\nexit 0\n');
   fs.chmodSync(bin, 0o755);
 }
