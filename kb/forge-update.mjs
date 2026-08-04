@@ -36,7 +36,60 @@ const APPLY = argv.includes('--apply');
 const RESTORE_COMPLETE = argv.includes('--restore-complete');
 const ONLY = argv.find((a) => !a.startsWith('--'));
 
-function die(msg, code = 1) { console.error(`\n[forge-update] ERROR: ${msg}`); process.exit(code); }
+/**
+ * EXIT CODES — anything scripting this (a cron line, a LaunchAgent, `npx ruvnet-brain --update`)
+ * reads only this number, so each one means exactly one thing:
+ *
+ *    0  --check: current  ·  --apply: the bundle on disk genuinely moved
+ *    1  configuration/verification error; local copy may need the rollback beside it
+ *    2  network / canonical manifest unreachable — nothing was touched
+ *    3  the signature could not be fetched — refused to apply
+ *    4  signature verification FAILED — refused to apply
+ *   10  --check: a newer build exists
+ *   11  --apply: the download completed but the bundle on disk did NOT change (issue #106)
+ *
+ * 11 is deliberately NOT 1: it is a truthful verdict about an intact KB, not a broken updater, so
+ * a caller can tell "nothing landed" apart from "something went wrong" — and must not retry it as
+ * if a fresh install would help.
+ */
+export const EXIT_NOT_LANDED = 11;
+
+// ── ROLLBACK COPIES — ONE settlement point, on EVERY exit path ────────────────────────────────
+// `process.exit()` does NOT run `finally` blocks, so a die() anywhere below the directory swap used
+// to leave a multi-gigabyte rollback copy behind with nothing to release it. Issue #108 measured
+// exactly that: ~1.6 GB stranded per night, ten copies (~16 GB) before the owner noticed — and the
+// run that stranded them had actually SUCCEEDED. Every exit now passes through settleRollback(), so
+// the copy is either RELEASED or deliberately KEPT and named. Never silently stranded.
+const backupsMade = [];
+let rollbackSettled = false;
+function settleRollback({ reclaimable, keepReason = null, intentionallyRemovedStores = [] }) {
+  if (rollbackSettled) return;
+  rollbackSettled = true;
+  if (!reclaimable) {
+    // A rollback copy is only dead weight once the copy in place is known good. When it is NOT,
+    // this directory is the user's recovery — deleting it to "not strand resources" would be the
+    // far worse bug. Keep it, and say where it is and why.
+    for (const b of backupsMade) {
+      console.error(`\n  ROLLBACK COPY KEPT: ${b}`);
+      console.error(`    ${keepReason || 'the copy now in place could not be verified — restore this directory if the KB is broken,'}`);
+      console.error(`    then remove it once you are satisfied (or re-run this updater after fixing the cause).`);
+    }
+    return;
+  }
+  const { removed, kept, freed } = reclaimBackups({ kbDir: KB_DIR, backupsMade, intentionallyRemovedStores });
+  if (removed.length) {
+    console.log(`\nreleased ${removed.length} rollback ${removed.length === 1 ? 'copy' : 'copies'} — ${(freed / 1e9).toFixed(2)} GB reclaimed`);
+    console.log(`  (the copy in place is intact; this exact build is re-downloadable at any time)`);
+  }
+  for (const [b, why] of kept) console.log(`\n  KEPT ${b}\n    ${why}`);
+}
+
+function die(msg, code = 1) {
+  console.error(`\n[forge-update] ERROR: ${msg}`);
+  // Cleanup must never mask the error that caused it.
+  try { settleRollback({ reclaimable: false }); } catch { /* ignore */ }
+  process.exit(code);
+}
 
 if (!fs.existsSync(SOURCE_PATH)) {
   die(`no SOURCE.json next to this script (${SOURCE_PATH}). This bundle predates the evergreen ` +
@@ -46,11 +99,22 @@ let source;
 try { source = JSON.parse(fs.readFileSync(SOURCE_PATH, 'utf8')); }
 catch (e) { die(`SOURCE.json is unreadable/corrupt: ${e.message}`); }
 
-const stores = Array.isArray(source.stores)
+// The RELEASE TAG IS A PROPERTY OF THE BUNDLE, and every store inside it shares that tag (issue
+// #108 bug 2). It is written once, at the top level of SOURCE.json; the per-store entries never
+// carry it. isBehind() short-circuits on `canon.releaseTag && local.releaseTag`, so with the local
+// side always undefined that branch could never fire — every store fell through to a timestamp
+// compare against the RELEASE's publish time, which is always later than the forge time of the KB
+// inside it. Result: all 15 stores read BEHIND on every run, forever, immediately after a
+// successful update. `--check` exited 10 permanently and was useless as a monitoring signal, and
+// `--apply` re-downloaded half a gigabyte every night to change nothing. Inheriting the tag the
+// bundle already records is the whole fix; a store that carries its own still wins.
+const withBundleTag = (s) => (s && s.releaseTag == null && source.releaseTag != null
+  ? { ...s, releaseTag: source.releaseTag } : s);
+const stores = (Array.isArray(source.stores)
   ? source.stores
   : (source.stores && typeof source.stores === 'object')
     ? Object.entries(source.stores).map(([kbName, v]) => ({ kbName, ...v }))
-    : [source];
+    : [source]).map(withBundleTag);
 
 const manifestUrl = source.canonicalManifestUrl || stores.find((s) => s.canonicalManifestUrl)?.canonicalManifestUrl;
 if (!manifestUrl) {
@@ -266,6 +330,21 @@ export function resolveBundleUrl({ canon, local, source }) {
 }
 
 /**
+ * The identity of a WHOLE bundle, as recorded at the top level of its SOURCE.json.
+ *
+ * This is what advances when a new bundle is published, regardless of which individual stores were
+ * re-forged into it — which is precisely why the "did anything land" question belongs here and not
+ * on a single store (issue #108). Returns null when a SOURCE.json carries no such identity at all
+ * (bundles predating `releaseTag`/`brainVersion`, or a plain forge manifest), so callers can tell
+ * "identical" apart from "no signal to compare".
+ */
+export function bundleIdentity(src) {
+  if (!src || typeof src !== 'object') return null;
+  const parts = [src.releaseTag, src.brainVersion, src.builtUtc].map((v) => (v == null ? '' : String(v)));
+  return parts.some(Boolean) ? parts.join('|') : null;
+}
+
+/**
  * Confirm the download+extraction actually changed what is on disk (issue #35 item 2, Dr. Mark
  * Allen / @mamd69).
  *
@@ -287,16 +366,36 @@ export function resolveBundleUrl({ canon, local, source }) {
  * carried a real digest, this also verifies the downloaded bytes against it — the one place a
  * directly comparable "resolved vs. landed" fact actually exists in a GitHub Release payload.
  *
- * @returns {{ok: boolean, reason: string|null, landed: object|null}}
+ * THE QUESTION IS ASKED OF THE BUNDLE, NOT OF ONE STORE (issue #108). The first version compared a
+ * PER-STORE fingerprint and treated equality as fatal — but stores are forged INDEPENDENTLY, and a
+ * store whose upstream repo did not move is re-shipped byte-identical inside a genuinely new
+ * bundle. On the reporter's copy 8 of 15 stores shared one stamp, so the first unchanged store in
+ * iteration order aborted the entire run: nightly updates "failed" for three weeks while actually
+ * succeeding, and the abort skipped the rollback release, stranding ~1.6 GB a night. Whitelisting
+ * the store would not have helped — the next unchanged one simply takes its place.
+ *
+ * So the fatal question is the one issue #35 actually asked: did ANYTHING land? That is bundle
+ * identity (releaseTag / brainVersion / top-level builtUtc), which advances whenever a new bundle
+ * is published. Per-store equality is now what it always was in reality — ordinary, and reported
+ * as `storeUnchanged` rather than raised as a failure. A bundle whose identity did NOT move AND
+ * whose store did not move either is the real no-op, and is still refused (issue #106).
+ *
+ * `kind` says what a caller may do about a failure: 'noop' means the KB in place is intact and the
+ * rollback copy is redundant; 'damaged' means the copy in place is suspect and the rollback must
+ * be kept.
+ *
+ * @returns {{ok: boolean, reason: string|null, landed: object|null, kind: 'noop'|'damaged'|null,
+ *            storeUnchanged: boolean, bundleChanged: boolean|null}}
  */
-export function verifyLanded({ kbDir, kbName, before, expectedDigest = null, downloadedBuffer = null }) {
+export function verifyLanded({ kbDir, kbName, before, beforeBundle = null, expectedDigest = null, downloadedBuffer = null }) {
+  const damaged = (reason, landed = null) => ({ ok: false, kind: 'damaged', reason, landed, storeUnchanged: false, bundleChanged: null });
   const p = path.join(kbDir, 'SOURCE.json');
   if (!fs.existsSync(p)) {
-    return { ok: false, reason: `no SOURCE.json found at ${p} after extraction — cannot confirm what actually landed`, landed: null };
+    return damaged(`no SOURCE.json found at ${p} after extraction — cannot confirm what actually landed`);
   }
   let landedSource;
   try { landedSource = JSON.parse(fs.readFileSync(p, 'utf8')); }
-  catch (e) { return { ok: false, reason: `SOURCE.json on disk after extraction is unreadable/corrupt: ${e.message}`, landed: null }; }
+  catch (e) { return damaged(`SOURCE.json on disk after extraction is unreadable/corrupt: ${e.message}`); }
 
   const list = Array.isArray(landedSource.stores)
     ? landedSource.stores
@@ -322,29 +421,47 @@ export function verifyLanded({ kbDir, kbName, before, expectedDigest = null, dow
     // Legacy caller upgrading into the modern schema: any single landed store is unambiguous.
     || (legacyCaller && list.length === 1 ? { kbName: list[0].kbName, ...list[0] } : null);
   if (!landed) {
-    return { ok: false, reason: `SOURCE.json on disk after extraction has no entry for store "${kbName}"`, landed: null };
+    return damaged(`SOURCE.json on disk after extraction has no entry for store "${kbName}"`);
   }
 
-  const fingerprint = (r) => `${r.builtUtc || ''}|${r.sourceCommit || ''}|${r.sourceDescribe || ''}`;
-  if (before && fingerprint(landed) === fingerprint(before)) {
-    return {
-      ok: false,
-      reason: `SOURCE.json on disk is IDENTICAL to before the update (built ${landed.builtUtc || '?'}` +
-        `${landed.sourceDescribe ? `, ${landed.sourceDescribe}` : ''}) — nothing actually changed. ` +
-        `This is the exact failure reported in issue #35: bytes replaced with an identical copy while success was printed.`,
-      landed,
-    };
-  }
-
+  // Bytes that do not match what the release declared are a HARD failure whatever the identities
+  // say, and the copy now in place is suspect — so this is checked before anything else.
   if (expectedDigest && downloadedBuffer) {
     const algo = expectedDigest.includes(':') ? expectedDigest.split(':')[0] : 'sha256';
     const actual = `${algo}:${createHash(algo).update(downloadedBuffer).digest('hex')}`;
     if (actual !== expectedDigest) {
-      return { ok: false, reason: `downloaded bundle digest ${actual} does not match the release-declared digest ${expectedDigest}`, landed };
+      return damaged(`downloaded bundle digest ${actual} does not match the release-declared digest ${expectedDigest}`, landed);
     }
   }
 
-  return { ok: true, reason: null, landed };
+  const fingerprint = (r) => `${r.builtUtc || ''}|${r.sourceCommit || ''}|${r.sourceDescribe || ''}`;
+  const storeUnchanged = Boolean(before) && fingerprint(landed) === fingerprint(before);
+
+  const landedBundle = bundleIdentity(landedSource);
+  const priorBundle = bundleIdentity(beforeBundle);
+  // null = one side carries no bundle identity at all (a pre-releaseTag bundle, or a plain forge
+  // manifest). There is then nothing to compare, so the per-store fingerprint is the ONLY signal
+  // available and the original behaviour stands — a fallback, never the primary test.
+  const bundleChanged = (landedBundle && priorBundle) ? landedBundle !== priorBundle : null;
+
+  const nothingMoved = bundleChanged === null ? storeUnchanged : (!bundleChanged && storeUnchanged);
+  if (nothingMoved) {
+    const detail = bundleChanged === null
+      ? `store "${kbName}" on disk is IDENTICAL to before the update (built ${landed.builtUtc || '?'}` +
+        `${landed.sourceDescribe ? `, ${landed.sourceDescribe}` : ''}), and this bundle carries no top-level identity to cross-check`
+      : `the BUNDLE on disk is IDENTICAL to before the update (${landedBundle}) and store "${kbName}" did not move either`;
+    return {
+      ok: false,
+      kind: 'noop',
+      reason: `${detail} — nothing actually changed. Bytes were replaced with an identical copy while the ` +
+        `download reported success: issue #35, and the reason issue #106 must not exit 0.`,
+      landed,
+      storeUnchanged,
+      bundleChanged,
+    };
+  }
+
+  return { ok: true, kind: null, reason: null, landed, storeUnchanged, bundleChanged };
 }
 
 async function main() {
@@ -367,8 +484,6 @@ async function main() {
   console.log(`canonical built:    ${canonLabel}\n`);
 
   let anyBehind = false; const behindStores = [];
-  // Rollback copies taken during this run. Released once the new copy verifies — see RECLAIM below.
-  const backupsMade = [];
   for (const local of targets) {
     const c = canonicalFor(canon, local.kbName);
     const behind = RESTORE_COMPLETE || isBehind(local, c);
@@ -395,8 +510,16 @@ async function main() {
   // #35 item 2. Populated by verifyLanded() as each store is applied; main() dies loudly before
   // reaching the summary if any store's landed copy does not check out.
   const landedByStore = new Map();
+  // Stores that landed byte-identical because their upstream repo did not move. ORDINARY, and named
+  // in the summary so "unchanged" never has to be inferred from silence (issue #108).
+  const unchangedStores = [];
+  // Stores whose bundle demonstrably did not move at all. Non-zero exit, counted in the summary
+  // rather than only in the mid-log line a cron job never reads (issue #106).
+  const mismatches = [];
+  let attempted = 0;
 
   for (const { local } of behindStores) {
+    attempted++;
     // ── RESOLVE THE BUNDLE URL FROM THE LIVE MANIFEST, NOT THE PINNED LOCAL COPY (issue #35 item 1) ─
     const resolved = resolveBundleUrl({ canon, local, source });
     if (!resolved.url) die(`[${local.kbName}] no canonicalBundleUrl in SOURCE.json and no resolvable asset in the live manifest — cannot self-update this store.`);
@@ -459,11 +582,50 @@ async function main() {
     // Do NOT trust `canon` here — that lookup happened before any download and says nothing about
     // what is now actually on disk. See verifyLanded()'s doc comment for why this can't reuse
     // isBehind() safely.
-    const verified = verifyLanded({ kbDir: KB_DIR, kbName: local.kbName, before: local, expectedDigest: resolved.digest, downloadedBuffer: buf });
+    const verified = verifyLanded({
+      kbDir: KB_DIR, kbName: local.kbName, before: local, beforeBundle: source,
+      expectedDigest: resolved.digest, downloadedBuffer: buf,
+    });
     if (!verified.ok) {
-      die(`[${local.kbName}] UPDATE MISMATCH: ${verified.reason}\n  Previous copy is backed up beside the KB dir (*.bak-*); restore it if needed. REFUSING to report success.`);
+      // 'damaged' — the copy in place is suspect. die() KEEPS the rollback and names it.
+      if (verified.kind !== 'noop') {
+        die(`[${local.kbName}] UPDATE MISMATCH: ${verified.reason}\n  REFUSING to report success.`);
+      }
+      // --restore-complete deliberately re-lands the SAME bundle, to bring back artifacts a profile
+      // removed. An unchanged identity is the EXPECTED outcome of that request, not a failed
+      // update: what it restores is FILES, which SOURCE.json's identity has nothing to say about.
+      if (RESTORE_COMPLETE) {
+        unchangedStores.push(local.kbName);
+        landedByStore.set(local.kbName, { landed: verified.landed, origin: resolved.origin, assetName: resolved.assetName });
+        continue;
+      }
+      // 'noop' — the bundle did not move. The KB in place is intact (it is what the rollback copy
+      // already holds), so there is nothing to roll back TO that differs, and the run is settled
+      // once below rather than aborting here. Every store in this bundle shares its identity, so
+      // re-downloading the rest to prove the same thing would cost gigabytes for no new fact.
+      mismatches.push({ kbName: local.kbName, reason: verified.reason });
+      break;
     }
+    if (verified.storeUnchanged) unchangedStores.push(local.kbName);
     landedByStore.set(local.kbName, { landed: verified.landed, origin: resolved.origin, assetName: resolved.assetName });
+  }
+
+  if (mismatches.length) {
+    // ── THE BUNDLE DID NOT MOVE — SAY SO IN THE EXIT CODE (issue #106) ───────────────────────────
+    // The mid-log error was already correct and named the issue; what a script or a scheduled job
+    // reads is the exit code, and that used to be swallowed. Release the rollback copy FIRST
+    // (issue #108): nothing changed, so it duplicates the copy in place byte for byte and is pure
+    // waste — ~1.6 GB of it per run, which is how the two issues turned out to be one run.
+    settleRollback({ reclaimable: true });
+    console.error(`\n[forge-update] ERROR: [${mismatches[0].kbName}] UPDATE MISMATCH: ${mismatches[0].reason}`);
+    console.error(`\n=== NOT DONE — 0 of ${behindStores.length} store(s) moved ===`);
+    console.error(`  ${mismatches.length} store(s) reported UPDATE MISMATCH: ${mismatches.map((m) => m.kbName).join(', ')}`);
+    if (attempted < behindStores.length) {
+      console.error(`  stopped at the first mismatch; ${behindStores.length - attempted} store(s) not attempted (same bundle, same verdict).`);
+    }
+    console.error(`  exiting ${EXIT_NOT_LANDED}: the download completed but the corpus on disk did not change, so no`);
+    console.error(`  script or scheduled job may read this run as success.`);
+    process.exit(EXIT_NOT_LANDED);
   }
 
   // Re-verify only the updated store(s) with the bundled guard. forge-guard.mjs takes the KB
@@ -499,16 +661,10 @@ async function main() {
   // forge-guard would still pass, because it verifies the store it was asked about, not whatever went
   // missing. Deleting there would destroy the only copy of a user's private data. So: compare store
   // inventories first, and keep any backup holding something the new copy lost.
-  const { removed, kept, freed } = reclaimBackups({
-    kbDir: KB_DIR,
-    backupsMade,
-    intentionallyRemovedStores,
-  });
-  if (removed.length) {
-    console.log(`\nreleased ${removed.length} rollback ${removed.length === 1 ? 'copy' : 'copies'} — ${(freed / 1e9).toFixed(2)} GB reclaimed`);
-    console.log(`  (the new copy verified; this exact build is re-downloadable at any time)`);
-  }
-  for (const [b, why] of kept) console.log(`\n  KEPT ${b}\n    ${why}`);
+  //
+  // Routed through settleRollback() so this is the SAME release the failure paths use, rather than a
+  // happy-path-only call that a die() can step over — that step-over is issue #108.
+  settleRollback({ reclaimable: true, intentionallyRemovedStores });
 
   // ── FINAL MESSAGE — DERIVED FROM WHAT LANDED, NOT FROM THE TAG LOOKUP (issue #35 item 2) ────────
   // The old line above printed `canon.tag_name` regardless of what the download actually contained
@@ -523,6 +679,13 @@ async function main() {
     const l = r.landed;
     console.log(`[${local.kbName}] SOURCE.json on disk now reads: built ${l.builtUtc || '?'} from ${short(l.sourceCommit)}${l.sourceDescribe ? ` (${l.sourceDescribe})` : ''}`);
     console.log(`  fetched from: ${r.origin === 'latest-release-asset' ? `release asset "${r.assetName}"` : r.origin === 'live-manifest' ? 'live manifest entry' : 'PINNED FALLBACK — see warning above'}`);
+  }
+  if (unchangedStores.length) {
+    // NAMED, not silent. Stores are forged independently, so a store whose upstream repo did not
+    // move is re-shipped byte-identical inside a genuinely new bundle — normal, and the thing that
+    // used to abort the whole run (issue #108).
+    console.log(`\n${unchangedStores.length} of ${behindStores.length} store(s) were already at the canonical build and did not change: ${unchangedStores.join(', ')}`);
+    console.log(`  (stores are forged independently — an unchanged store means its upstream repo did not move, not a failed update.)`);
   }
   console.log(`\n(the above is read back from disk, verified — not a tag lookup)`);
   process.exit(0);

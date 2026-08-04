@@ -8,6 +8,13 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { spawn, spawnSync } from 'node:child_process';
+// ONE doctor rule and ONE mode vocabulary, shared with the staged-side check in
+// scripts/staged-host-verifier.mjs. This file kept its own copies, spelled claudeOnly/
+// codexOnly/dual against the other's claude/codex/dual, so `hosts.claudeOnly` and
+// `fixtures.claude` described the same fixture and nothing could tell. The richer
+// post-publication proofs below (payload assertions, MCP wiring, SOURCE.json, rpcSearch)
+// stay here — they are this side's job, not duplication.
+import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor } from './host-install-matrix.mjs';
 import { pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt, evaluatePublicationReceipt } from './release-proof.mjs';
 import { verifyPayload } from './release-payload.mjs';
@@ -210,7 +217,9 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
       const sealedPlugin = path.join(packageRoot, 'plugin');
       const results = {};
       let bundle = null;
-      for (const mode of ['claudeOnly', 'codexOnly', 'dual']) {
+      // Derived from HOST_MODES, so a fourth host shape is added in ONE place and this loop
+      // cannot fall behind the staged-side check the way it did.
+      for (const mode of HOST_MODES.map((m) => RECEIPT_MODE_NAMES[m])) {
         const home = path.join(temp, `home-${mode}`);
         const codexHome = path.join(home, '.codex');
         const brainHome = path.join(home, '.cache', 'ruvnet-brain');

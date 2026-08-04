@@ -1236,6 +1236,11 @@ details.sub .sub-body > *:first-child { margin-top: 4px; }
 .plan-key-mark { font-weight: 700; }
 .plan-key.yes .plan-key-mark { color: var(--green-text); }
 .plan-key.no, .plan-key.no .plan-key-mark { color: var(--faint); }
+/* Not checked (issue #86): visually distinct from "no key found" so a degraded catalog never reads
+   as a finding about the user's machine. */
+.plan-key.unknown { color: var(--muted); }
+.plan-key.unknown .plan-key-mark { color: var(--amber); }
+.plan-keys-note { flex-basis: 100%; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
 
 /* WP2b — first-run empty state: confident, designed, not an apology */
 .mh-empty {

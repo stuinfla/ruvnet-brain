@@ -109,3 +109,8 @@ kb/ruv-meetings-*.md
 kb/models-cache/
 .env*
 .claude/worktrees/
+
+# The 529MB knowledge bundle — a release ASSET, never repo content.
+ruvnet-brain.zip
+ruvnet-brain.zip.sha256
+ruvnet-brain.zip.sig

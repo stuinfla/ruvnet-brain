@@ -5,6 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { consoleRuntimeDigest } from '../../scripts/console-runtime-identity.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const CONSOLE = path.join(REPO, 'scripts', 'onboarding-console.mjs');
@@ -34,7 +35,9 @@ function candidateIdentity(port) {
     scope: path.resolve(REPO),
     scriptRealpath: fs.realpathSync(CONSOLE),
     runtimeVersion: PACKAGE_VERSION,
-    sourceSha256: crypto.createHash('sha256').update(fs.readFileSync(CONSOLE)).digest('hex'),
+    // The generation is the whole runtime surface, not this one file (#79) — one definition, shared
+    // with the installer and the running server.
+    sourceSha256: consoleRuntimeDigest(REPO),
   };
 }
 

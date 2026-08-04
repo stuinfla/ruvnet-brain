@@ -2313,6 +2313,25 @@ function renderDistribution(u) {
     el('p', { class: 'fineprint' }, u.note));
 }
 
+// One provider's key chip. THREE states, never two: found, not found, and NOT CHECKED. The third
+// exists because an instrument that could not run has found nothing — it has not found "no key"
+// (issue #86). Pure and total, so the not-checked branch cannot be reached by accident.
+function providerKeyChip(id, keys, keysVerified, names) {
+  const name = names[id] || id;
+  if (!keysVerified) {
+    return el('span', {
+      class: 'plan-key unknown',
+      title: `Not checked: Brain could not load its provider catalog, so it cannot tell whether an API key for ${name} is set on this machine`,
+    }, el('span', { class: 'plan-key-mark', 'aria-hidden': 'true' }, '?'), ` ${name}`);
+  }
+  const found = !!keys[id];
+  return el('span', {
+    class: `plan-key ${found ? 'yes' : 'no'}`,
+    title: found ? `An API key for ${name} is set on this machine`
+                 : `No API key for ${name} found on this machine`,
+  }, el('span', { class: 'plan-key-mark', 'aria-hidden': 'true' }, found ? '✓' : '✗'), ` ${name}`);
+}
+
 // Plan block (issue #24, applying sparkling's #21 redesign) — three genuinely different questions
 // used to render as one flat row of identical "chips": which subscription this runs on ("house" — a
 // word nobody outside the source knows), whether cheap-task routing is on, and which OTHER API keys
@@ -2339,19 +2358,21 @@ function renderProviders(sv) {
 
   // BOX 1 — YOUR PLAN. The one choice here that changes cost: which subscription MetaHarness treats
   // as $0. Footer checklist: which OTHER providers have a real API key on this machine — honest now.
+  //
+  // Issue #86: `keys` is only a MEASUREMENT while the verified provider catalog actually loaded. When
+  // that asset was missing from the packaged runtime, the server fell back to native detections and
+  // said so in providerCatalog — and this checklist ignored it, printing a confident "✗ … No API key
+  // for Gemini found on this machine" straight off `keys`. That turned an internal packaging failure
+  // into a stated fact about the user's credentials. Not-checked is now its own third state.
+  const catalogHealth = re.providerCatalog || null;
+  const keysVerified = !catalogHealth
+    || (catalogHealth.keysVerified !== false && catalogHealth.status !== 'degraded');
   const others = ['anthropic', 'openai', 'google', 'xai'].filter((id) => id !== house.provider);
   const checklist = el('div', { class: 'plan-keys' },
-    el('span', { class: 'plan-keys-lab' }, 'Other keys found:'),
-    ...others.map((id) => {
-      const ok = !!keys[id];
-      return el('span', {
-        class: `plan-key ${ok ? 'yes' : 'no'}`,
-        title: ok ? `An API key for ${KEY_NAME[id]} is set on this machine`
-                  : `No API key for ${KEY_NAME[id]} found on this machine`,
-      },
-        el('span', { class: 'plan-key-mark', 'aria-hidden': 'true' }, ok ? '✓' : '✗'),
-        ` ${KEY_NAME[id]}`);
-    }));
+    el('span', { class: 'plan-keys-lab' }, keysVerified ? 'Other keys found:' : 'Other keys:'),
+    ...others.map((id) => providerKeyChip(id, keys, keysVerified, KEY_NAME)),
+    ...(keysVerified ? [] : [el('span', { class: 'plan-keys-note' },
+      `Not checked — Brain could not load its provider catalog${catalogHealth && catalogHealth.detail ? ` (${catalogHealth.detail})` : ''}.`)]));
   const planBox = el('div', { class: 'plan-box' },
     el('span', { class: 'plan-label' }, 'Your plan', infoBtn('Your plan and OpenRouter', PROVIDERS_INFO)),
     head('is-house', houseName, action('Change', 'provider')),

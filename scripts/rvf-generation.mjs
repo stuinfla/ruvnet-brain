@@ -83,14 +83,31 @@ export function verifyRvfGenerations(dir, {
   releaseTag = getVersionTag(),
   requiredStores = [],
   allowMissingFiles = false,
+  verifyBytes = true,
 } = {}) {
   const manifest = readRvfGenerations(dir);
   const failures = [];
   if (manifest.brainVersion !== version) failures.push(`brainVersion=${manifest.brainVersion}, expected ${version}`);
   if (manifest.releaseTag !== releaseTag) failures.push(`releaseTag=${manifest.releaseTag}, expected ${releaseTag}`);
+  // `verifyBytes: false` verifies ONLY the committed ledger fields above.
+  //
+  // WHY: the `.rvf` binaries are gitignored (.gitignore:28 `kb/*.rvf`), so a byte comparison is a
+  // statement about the machine running the check, not about the commit being pushed. This ledger
+  // records 72 stores; a working checkout routinely has a different set — the nightly rebuilds RVFs
+  // and regenerates the ledger together (kb/forge-refresh.mjs:242), so between those two moments any
+  // developer tree disagrees. Wired into the pre-push gate this was unsatisfiable: it blocked EVERY
+  // push, including tags, and its own remedy line ("Run: node scripts/sync-version.mjs") could not
+  // clear it because the byte check lives under `if (CHECK)` and write mode never regenerates. That
+  // is what forced the 4.0.7 emergency promotion.
+  //
+  // release.mjs:100 already states the governing principle for this repo: "A verdict is only about
+  // the exact committed candidate." Bytes are verified where they are actually present and actually
+  // shipped — scripts/build-bundle.mjs:204-214, at bundle assembly — which is exactly what the
+  // deferral comment in sync-version.mjs promised but never had a caller for.
   for (const store of requiredStores) {
     if (!manifest.stores[store]) failures.push(`${store}: no generation record`);
   }
+  if (!verifyBytes) return { manifest, failures };
   for (const [store, generation] of Object.entries(manifest.stores)) {
     const file = path.join(dir, generation.file || `${store}.big.rvf`);
     if (!fs.existsSync(file)) {

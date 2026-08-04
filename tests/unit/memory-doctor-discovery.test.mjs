@@ -13,7 +13,13 @@ const homes = [];
 function isolatedHome() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-memory-discovery-'));
   homes.push(home);
-  return home;
+  // Canonicalise, so expectations are built in the SAME namespace the product reports in.
+  // Discovery now de-duplicates by the OS's own answer (fs.realpathSync.native, via
+  // plugin/scripts/project-identity.mjs) rather than by string. On Windows os.tmpdir() hands back
+  // the 8.3 short form — C:\Users\RUNNER~1\AppData\Local\Temp — while realpath resolves the long
+  // one, so a raw mkdtemp path and a discovered path are two spellings of one directory and
+  // toEqual fails on a difference that is not a defect. macOS has the same hazard via /var -> /private/var.
+  return fs.realpathSync.native(home);
 }
 
 function store(home, relative) {

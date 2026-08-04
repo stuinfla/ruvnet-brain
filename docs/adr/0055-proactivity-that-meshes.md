@@ -3,7 +3,7 @@ id: ADR-055
 title: Proactivity that meshes — one decision law, four planes, substance-bound enforcement, learning bound to outcomes
 status: Accepted
 date: 2026-07-27
-updated: 2026-08-03
+updated: 2026-08-04
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6 (codex, read-only)]
 tags: [proactivity, hooks, mesh, fourth-wall, learning, grounding, qa]
@@ -26,6 +26,9 @@ governs:
 **Status**: Accepted (duel-verified two-sided 2026-07-27 — full record below, incl. the first run's process failure)
 **Date**: 2026-07-27
 **Related**: ADR-012, ADR-017, ADR-023, ADR-028, ADR-030, ADR-040, ADR-043, ADR-050, ADR-052, ADR-053, ADR-054
+
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved: two new modules under `plugin/scripts/` — `ruflo-bin.mjs` (one resolver for the global ruflo, issues #99/#105) and `project-identity.mjs` (one answer to "which directory is this", issues #85/#107) — plus `session-snapshot-hook.mjs` rewired onto the latter. Checked against this decision: both are consolidations of logic the mesh already performed at several sites, adding no hook, no event and no new proactive surface. Nothing here is contradicted or superseded.
 
 ## Current implementation checkpoint — 2026-07-28 recovery candidate
 

@@ -37,9 +37,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { resolveRuflo, RUFLO_MISSING } from '../plugin/scripts/ruflo-bin.mjs';
 
 const HOME = os.homedir();
-const RUFLO = process.env.RUFLO_BIN || path.join(HOME, '.npm-global/bin/ruflo');
+// Issue #99: this was `process.env.RUFLO_BIN || path.join(HOME, '.npm-global/bin/ruflo')`, so every
+// install whose npm prefix is not the owner's (Homebrew, nvm, Volta, plain `npm -g`) was told its
+// tool was missing while ruflo sat on their PATH. One resolver, shared — see ruflo-bin.mjs.
+const RUFLO = resolveRuflo();
 const RUFLO_ENV = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
 
 const argv = process.argv.slice(2);
@@ -126,6 +130,10 @@ if (has('--restore')) {
 }
 
 // ── PRE-FLIGHT ─────────────────────────────────────────────────────────────────────────────────────
+// Two different facts, so two different sentences. `null` means we looked everywhere and found
+// nothing; a path that does not exist means the user pointed RUFLO_BIN somewhere empty, and naming
+// that exact path back to them is the whole value of the message.
+if (!RUFLO) die(RUFLO_MISSING);
 if (!fs.existsSync(RUFLO)) die(`ruflo is not at ${RUFLO.replace(HOME, '~')} — install it with \`npm i -g ruflo@latest\``);
 if (!fs.existsSync(DB)) die(`no memory store at ${DB.replace(HOME, '~')} — nothing to distill for this project`);
 

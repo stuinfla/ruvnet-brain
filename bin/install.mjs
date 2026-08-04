@@ -24,7 +24,10 @@ import {
   requiredEmbedderModels,
   missingEmbedderModels,
 } from '../kb/model-requirements.mjs';
-import { mergeManagedCatalog } from '../scripts/model-router-catalog.mjs';
+import { applyManagedCatalogUpdate } from '../scripts/model-router-catalog.mjs';
+import {
+  CONSOLE_RUNTIME_SURFACE, CONSOLE_RUNTIME_IDENTITY_FILE, consoleRuntimeDigest,
+} from '../scripts/console-runtime-identity.mjs';
 
 // SEC-0010 #6 — the Ed25519 PUBLIC key is EMBEDDED here (not a separate file) so the installer's
 // trust root travels with the installer code itself: an attacker who swaps the downloaded bundle
@@ -613,22 +616,17 @@ export function beginConsoleRuntimeTransaction(cacheDir, sourceRoot = REPO_ROOT)
   fs.rmSync(prior, { recursive: true, force: true });
   fs.mkdirSync(staged, { recursive: true, mode: 0o700 });
 
-  const required = [
-    ['console', 'console'],
-    ['scripts', 'scripts'],
-    ['plugin/scripts', 'plugin/scripts'],
-    ['data/model-catalog.json', 'data/model-catalog.json'],
-    ['kb/brain-profile.mjs', 'kb/brain-profile.mjs'],
-    ['bin/install.mjs', 'bin/install.mjs'],
-    ['package.json', 'package.json'],
-  ];
-  for (const [from, to] of required) {
-    const source = path.join(sourceRoot, from);
+  // The copy list IS the generation's digest input (scripts/console-runtime-identity.mjs). Adding a
+  // file the runtime needs adds it to the runtime's identity in the same edit, so an asset can never
+  // again travel separately from the executable that reads it (#76) and a candidate can never again
+  // be indistinguishable from the one it replaces (#79).
+  for (const relative of CONSOLE_RUNTIME_SURFACE) {
+    const source = path.join(sourceRoot, relative);
     if (!fs.existsSync(source)) {
       fs.rmSync(staged, { recursive: true, force: true });
-      throw new Error(`console runtime is incomplete: missing ${from}`);
+      throw new Error(`console runtime is incomplete: missing ${relative}`);
     }
-    const target = path.join(staged, to);
+    const target = path.join(staged, relative);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.cpSync(source, target, { recursive: true, force: true, preserveTimestamps: true });
   }
@@ -661,15 +659,28 @@ export function beginConsoleRuntimeTransaction(cacheDir, sourceRoot = REPO_ROOT)
       throw new Error(`console runtime failed syntax verification: ${path.relative(staged, syntaxTarget)}`);
     }
   }
+  // #76: prove the installed What's New boundary from the staged bytes, not from a file listing. The
+  // executable exits nonzero when its version manifest or curated notes are absent, so a runtime that
+  // would have to tell the user "the notes are unavailable" never activates in the first place.
+  const stagedWhatsNew = path.join(staged, 'plugin', 'scripts', 'whats-new.mjs');
+  const whatsNew = spawnSync(process.execPath, [stagedWhatsNew], { encoding: 'utf8' });
+  if (whatsNew.error || whatsNew.status !== 0) {
+    const detail = (whatsNew.stderr || whatsNew.error?.message || `exit ${whatsNew.status}`).trim();
+    fs.rmSync(staged, { recursive: true, force: true });
+    throw new Error(`console runtime cannot report its own release notes: ${detail}`);
+  }
   const identity = {
     product: 'ruvnet-brain-console-runtime',
     schema: 1,
     apiContract: 1,
     runtimeVersion: packageManifest.version,
     entrypoint: 'scripts/onboarding-console.mjs',
-    sourceSha256: crypto.createHash('sha256').update(fs.readFileSync(stagedEntry)).digest('hex'),
+    // The WHOLE runtime, not just its entrypoint (#79). The launcher compares this against a live
+    // server's self-reported identity, so it has to change whenever anything the server executes or
+    // serves changes — otherwise a stale process passes as current.
+    sourceSha256: consoleRuntimeDigest(staged),
   };
-  fs.writeFileSync(path.join(staged, 'runtime-identity.json'), `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600 });
+  fs.writeFileSync(path.join(staged, CONSOLE_RUNTIME_IDENTITY_FILE), `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600 });
 
   let state = 'staged';
   const entry = path.join(runtime, identity.entrypoint);
@@ -2230,6 +2241,37 @@ const xmlEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').
 const cronExample = (kbDir) =>
   `47 3 * * *  cd ${kbDir} && ${process.execPath} forge-update.mjs --apply >> ${kbDir}/update.log 2>&1`;
 
+/**
+ * kb/forge-update.mjs exit 11 = "the download completed but the bundle on disk did NOT change"
+ * (its `EXIT_NOT_LANDED`). Duplicated as a literal on purpose: the updater lives in the KB BUNDLE,
+ * which versions and ships independently of this installer, so there is no import to share. The
+ * two are pinned together by tests/unit/update-not-landed-exit.test.mjs, which reads the constant
+ * out of kb/forge-update.mjs and fails if they ever drift.
+ */
+export const UPDATE_NOT_LANDED = 11;
+
+/**
+ * What `--update` does with the KB updater's exit code (issue #106).
+ *
+ * `--update` used to convert an honest failure into a reported success. The updater detected the
+ * problem itself and said so — "UPDATE MISMATCH: SOURCE.json on disk is IDENTICAL to before the
+ * update … REFUSING to report success" — and then the fresh-install FALLBACK below ran, succeeded
+ * at re-installing the very same bytes, and its exit 0 became the exit code of the whole command.
+ * A user's scheduled job read that as success while the corpus had not moved.
+ *
+ * The fallback exists for ONE thing: an old bundle whose canonical manifest URL 404s, where a fresh
+ * install genuinely rescues the user. "Nothing landed" is not that case — it is a TRUE verdict
+ * about an intact KB, and re-downloading the same bundle cannot change it. So that verdict is
+ * terminal and keeps its own exit code; every other failure keeps today's fallback behaviour.
+ */
+export function classifyUpdaterExit(status, { fallbackAllowed = true } = {}) {
+  if (status === 0) return { verdict: 'updated', fallback: false, exitCode: 0 };
+  if (status === UPDATE_NOT_LANDED) {
+    return { verdict: 'not-landed', fallback: false, exitCode: UPDATE_NOT_LANDED };
+  }
+  return { verdict: 'failed', fallback: fallbackAllowed, exitCode: status || 1 };
+}
+
 function missingUpdaterHelp(kbDir) {
   console.error(`\n${c.red('✗ can\'t update:')} ${c.bold('forge-update.mjs')} is missing from ${kbDir}.`);
   console.error(`  Either no brain is installed there, or the bundle predates the self-updater.`);
@@ -2366,12 +2408,29 @@ function runUpdate() {
   // real user, Jan Lafko, hit). NEVER leave the user stranded at a 404: re-run THIS installer as a
   // fresh install, which pulls the latest Release DIRECTLY (releases/latest) and never touches the
   // manifest — so --update always succeeds and self-heals the stale SOURCE.json in one shot.
-  if (updateStatus !== 0 && !process.env.RUVNET_BRAIN_NO_UPDATE_FALLBACK) {
+  //
+  // Scoped again 2026-08-04 (issue #106): "nothing landed" is excluded, because for THAT verdict the
+  // fallback re-installed identical bytes and its exit 0 became the command's exit code, turning the
+  // updater's own correct refusal into a reported success.
+  const outcome = classifyUpdaterExit(updateStatus, {
+    fallbackAllowed: !process.env.RUVNET_BRAIN_NO_UPDATE_FALLBACK,
+  });
+  if (outcome.verdict === 'not-landed') {
+    console.error(`\n    ${c.red('✗ the knowledge bundle did not change.')} The updater downloaded a bundle and refused to`);
+    console.error(`      call it an update because the copy on disk is identical to the one it replaced.`);
+    console.error(`      Nothing is broken and nothing was lost — but this run is ${c.bold('not')} a success, so it exits`);
+    console.error(`      ${c.bold(String(UPDATE_NOT_LANDED))} rather than 0 and a scheduled job will see the failure (issue #106).`);
+    console.error(`      If you believe a newer build exists, check:  ${c.bold('node forge-update.mjs --check')}  in ${kbDir}`);
+    process.exit(outcome.exitCode);
+  }
+  if (outcome.fallback) {
     warn("\nthe bundle's own updater couldn't complete — falling back to a fresh install of the latest Release (this always works)…\n");
     const self = fileURLToPath(import.meta.url);
     const fr = spawnSync(process.execPath, [self, '--force'], { stdio: 'inherit',
       env: { ...process.env, RUVNET_BRAIN_NO_UPDATE_FALLBACK: '1' } });
     updateStatus = fr.error ? 1 : (fr.status === null ? 1 : fr.status);
+  } else {
+    updateStatus = outcome.exitCode;
   }
   }
   if (updateStatus === 0) {
@@ -2380,6 +2439,25 @@ function runUpdate() {
     if (!convergence.ok) {
       warn(`host synchronization is incomplete — runtime stays on the prior verified generation${convergence.error ? ` (${convergence.error})` : ''}`);
       updateStatus = 1;
+    }
+  }
+  // Issue #87: a normal lifecycle update must also carry MANAGED MODEL additions to an existing
+  // user. This call used to live only in offerRouterProfile() — the fresh-install path — so someone
+  // who already had ~/.claude/model-router/catalog.json (i.e. every existing user, the only ones who
+  // can be behind) never received a newly shipped managed candidate no matter how often they
+  // updated. Additive and non-interactive; their overrides win, metered rows are never auto-enabled,
+  // and a failure here is reported but never fails an otherwise-good update.
+  if (updateStatus === 0) {
+    try {
+      const managed = applyManagedCatalogUpdate({
+        routerDir: path.join(os.homedir(), '.claude', 'model-router'),
+        packageRoot: REPO_ROOT,
+      });
+      if (managed.action === 'merged' && managed.added.length) {
+        ok(`model router: added ${managed.added.length} managed model(s) — ${managed.added.join(', ')} (your catalog edits were preserved)`);
+      }
+    } catch (e) {
+      warn(`managed model additions were not merged (${e.message}); your catalog was left unchanged`);
     }
   }
   // `--update --auto` = update now AND enroll in Evergreen, so this is the LAST time it's ever run by
@@ -2975,31 +3053,20 @@ export async function offerRouterProfile() {
   );
 
   fs.mkdirSync(path.join(routerDir, 'bin'), { recursive: true });
-  for (const [src, dst] of [['catalog.template.json', 'catalog.json'], ['policy.default.mjs', 'policy.default.mjs']]) {
-    const s = path.join(pkgRoot, 'config', 'model-router', src);
-    const d = path.join(routerDir, dst);
-    if (!fs.existsSync(s)) continue;
-    if (!fs.existsSync(d)) {
-      fs.copyFileSync(s, d);
-      ok(`installed ${dst} (edit freely — goldie keeps prices fresh where scheduled)`);
-      continue;
-    }
-    if (src === 'catalog.template.json') {
-      try {
-        const existing = JSON.parse(fs.readFileSync(d, 'utf8'));
-        const managed = JSON.parse(fs.readFileSync(s, 'utf8'));
-        const merged = mergeManagedCatalog(existing, managed);
-        if (merged !== existing) {
-          fs.copyFileSync(d, `${d}.pre-managed-merge`);
-          const tmp = `${d}.tmp-${process.pid}`;
-          fs.writeFileSync(tmp, `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
-          fs.renameSync(tmp, d);
-          ok(`merged ${merged.candidates.length - existing.candidates.length} managed subscription model(s); your catalog overrides were preserved`);
-        }
-      } catch (error) {
-        warn(`managed model additions were not merged (${error.message}); your existing catalog was left unchanged`);
-      }
-    }
+  const policySrc = path.join(pkgRoot, 'config', 'model-router', 'policy.default.mjs');
+  const policyDst = path.join(routerDir, 'policy.default.mjs');
+  if (fs.existsSync(policySrc) && !fs.existsSync(policyDst)) {
+    fs.copyFileSync(policySrc, policyDst);
+    ok('installed policy.default.mjs (edit freely — goldie keeps prices fresh where scheduled)');
+  }
+  // ONE implementation of the managed-catalog step, shared with runUpdate() (issue #87). It used to
+  // live here only, which is exactly why existing users never received managed additions.
+  try {
+    const managed = applyManagedCatalogUpdate({ routerDir, packageRoot: pkgRoot });
+    if (managed.action === 'created') ok('installed catalog.json (edit freely — goldie keeps prices fresh where scheduled)');
+    if (managed.action === 'merged') ok(`merged ${managed.added.length} managed subscription model(s); your catalog overrides were preserved`);
+  } catch (error) {
+    warn(`managed model additions were not merged (${error.message}); your existing catalog was left unchanged`);
   }
   let copied = 0;
   // dispatch-receipt + metaharness-receipts added 2026-07-13: without the LOGGER, subagent routing is
