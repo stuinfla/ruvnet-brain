@@ -48,7 +48,11 @@ function packedFiles() {
   const report = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json'], {
     cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
   }));
-  return report[0].files.map((entry) => entry.path);
+  // npm reports paths with the HOST separator, so on Windows every entry comes back as
+  // `data\\model-catalog.json` and every comparison against the declared `data/model-catalog.json`
+  // fails — a green-on-POSIX, red-on-Windows test that says nothing about packaging. The manifest
+  // is defined in forward slashes because that is what npm publishes, so normalise to that.
+  return report[0].files.map((entry) => entry.path.split(path.sep).join('/'));
 }
 
 describe('issue #86 — the model catalog must actually ship', () => {
