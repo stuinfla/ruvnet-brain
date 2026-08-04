@@ -408,6 +408,7 @@ export function evaluateDoc(root, rel, opts = {}) {
     status: k.status ?? null,
     date: k.date ?? null,
     updated: k.updated ?? null,
+    updatedPinned: k.updated_pinned === true || k.updated_pinned === 'true',
     implStored: k.impl ?? null,
     verifiedStamp: k.verified ?? null,
     verifiedDigestStored: k.verified_digest ?? null,
@@ -455,7 +456,19 @@ export function evaluateDoc(root, rel, opts = {}) {
     if (Number.isFinite(d) && Number.isFinite(g)) {
       const deltaDays = Math.round((g - d) / 86400000);
       if (deltaDays >= 1) {
-        add(BLOCK, 'stamp-lags-doc',
+        // `updated_pinned: true` — the date is a HISTORICAL RECORD, not a currency stamp.
+        //
+        // Some documents record WHEN SOMETHING HAPPENED, not when the file was last edited.
+        // ADR-050's `updated: 2026-08-02` is an incident cutoff and is asserted by
+        // tests/unit/fix-workstream-guidance. A blanket "make the stamp match the last commit"
+        // rule cannot tell those apart, so it silently rewrote the pinned date — putting two gates
+        // into direct contradiction, one demanding the pinned value and one demanding the commit
+        // date, with no way to satisfy both. The document itself is the only thing that knows
+        // which kind of date it carries, so it now says so, and --fix must never overwrite it.
+        if (doc.updatedPinned) {
+          add(WARN, 'stamp-pinned',
+            `updated: ${doc.updated} is PINNED (updated_pinned: true) and deliberately does not track the last commit ${docCommit.date} — it records an event, not the edit`);
+        } else add(BLOCK, 'stamp-lags-doc',
           `updated: ${doc.updated} but the document's own last commit is ${docCommit.date} (${docCommit.sha.slice(0, 8)}) — edited without touching its own stamp`);
       } else if (deltaDays <= -1) {
         // Typed ahead. WARN only: a stamp dated today on a change not yet committed is CORRECT, and
@@ -610,7 +623,7 @@ export function planFix(root, doc) {
     if (doc.dirty) blocked.push({ code: 'missing-updated', why: 'working tree is modified — the last commit date is not the date of the current contents' });
     else if (doc.docCommit) changes.push({ key: 'updated', value: doc.docCommit.date, source: 'derived-from-git', evidence: `git log -1 ${doc.file} → ${doc.docCommit.sha.slice(0, 8)}` });
     else blocked.push({ code: 'missing-updated', why: 'git reports no commit touching this path' });
-  } else if (doc.findings.some((f) => f.code === 'stamp-lags-doc') && doc.docCommit && !doc.dirty) {
+  } else if (!doc.updatedPinned && doc.findings.some((f) => f.code === 'stamp-lags-doc') && doc.docCommit && !doc.dirty) {
     changes.push({ key: 'updated', value: doc.docCommit.date, source: 'derived-from-git', replaces: doc.updated, evidence: `git log -1 ${doc.file} → ${doc.docCommit.sha.slice(0, 8)}` });
   }
   return { changes, blocked };

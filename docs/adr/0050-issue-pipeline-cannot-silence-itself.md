@@ -4,6 +4,9 @@ title: The issue pipeline may never manufacture its own acknowledgment — aware
 status: Accepted
 date: 2026-07-24
 updated: 2026-08-02
+# PINNED: this records the incident cutoff, not the last edit. Asserted by
+# tests/unit/fix-workstream-guidance.test.mjs. Do not let a currency stamp move it.
+updated_pinned: true
 impl: wired
 authors: [Stuart Kerr, Claude Code]
 tags: [issues, automation, alerting, sla, security, circuit-breaker]
