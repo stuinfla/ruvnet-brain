@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-02
+updated: 2026-08-04
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -31,6 +31,9 @@ governs:
 > retry identity unstable and receipt-history skipping can report false convergence after
 > compensation. Fable 5 and GPT-5.6-Sol adversarially reviewed this revision together with
 > DDD-0015; all surviving corrections are incorporated.
+
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `scripts/release-transaction-provider.mjs` finalize() now MEASURES the host verdict instead of declaring it. It previously accepted the verifier as `_hostVerifier`, ignored it, and set `hosts.verdict` to the literal 'PASS', so every release asserted host convergence with no host verified — while the test fixture called the seam faithfully, certifying wiring production never ran. The verifier is now invoked, its verdict is the release verdict, a missing verifier is itself a FAIL, and it runs before publication and sealing so an unusable artifact stops cheaply. Checked against this decision: this IMPLEMENTS the convergence evidence it already requires; no clause is contradicted or superseded. It does NOT deliver ADR-062 durable transaction, which remains a target.
 
 ## Context
 
