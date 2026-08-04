@@ -35,6 +35,9 @@ governs:
 
 > **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `scripts/release-transaction-provider.mjs` finalize() now MEASURES the host verdict instead of declaring it. It previously accepted the verifier as `_hostVerifier`, ignored it, and set `hosts.verdict` to the literal 'PASS', so every release asserted host convergence with no host verified — while the test fixture called the seam faithfully, certifying wiring production never ran. The verifier is now invoked, its verdict is the release verdict, a missing verifier is itself a FAIL, and it runs before publication and sealing so an unusable artifact stops cheaply. Checked against this decision: this IMPLEMENTS the convergence evidence it already requires; no clause is contradicted or superseded. It does NOT deliver ADR-062 durable transaction, which remains a target.
 
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved for the 4.0.9 release-integrity work: scripts/host-install-matrix.mjs now holds the ONE host-install harness (modes, env, doctor rule) that scripts/staged-host-verifier.mjs and scripts/publication-receipt.mjs had each been carrying a divergent copy of; release-transaction-provider.finalize() measures the host verdict through the injected verifier instead of declaring a literal PASS; and plugin/scripts/ruflo-bin.mjs applies the Windows extension rule to the preferred path as well as the PATH walk. Checked against this decision: each change IMPLEMENTS evidence this ADR already requires and removes a second representation of a fact it assumes is single. No clause is contradicted or superseded.
+
 ## Context
 
 Issue #77 proved that a cross-provider release can expose a new GitHub generation while npm and
