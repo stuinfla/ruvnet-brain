@@ -45,7 +45,11 @@ async function requiredConsoleAssets() {
 
 /** The REAL published file list, from npm itself — never a restatement of package.json#files. */
 function packedFiles() {
-  const report = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json'], {
+  // On Windows npm is `npm.cmd`; execFileSync spawns without a shell, so a bare 'npm' is
+  // ENOENT there. Third instance of this exact class on this branch (ruflo.cmd was the other
+  // two), which is why the name is resolved rather than assumed.
+  const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const report = JSON.parse(execFileSync(NPM, ['pack', '--dry-run', '--json'], {
     cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
   }));
   // npm reports paths with the HOST separator, so on Windows every entry comes back as
