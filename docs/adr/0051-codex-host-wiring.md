@@ -31,6 +31,9 @@ governs:
 
 > **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` now exits non-zero when `--update` lands nothing (issue #106), `kb/forge-update.mjs` releases its rollback on the no-op path and keeps it on the damaged path (#108), and `scripts/health-repair.mjs` no longer reports a hollow "fed 0" (#104). Checked against this decision: these changes implement its honesty requirement — no clause here is contradicted or superseded.
 
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` (runUpdate now converges the managed router catalog, #87), `console/app.js` + `console/style.css` (a third not-checked provider state so an unloadable catalog is never rendered as a finding about the user credentials, #86), and `scripts/model-router-catalog.mjs`. Checked against this decision: the host wiring, the grader contract and the 95 thresholds are unchanged — these make an existing claim honest and reach an existing merge from the update path. Console re-graded 96/100 at 1440 and 1920 under the design wall. No clause contradicted or superseded.
+
 ## Context
 
 Issue #42 (Henrik Pettersen, observed on 3.9.68-dev / plugin 3.9.70-dev, `npx ruvnet-brain` on
