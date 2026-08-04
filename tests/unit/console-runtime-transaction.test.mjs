@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { CONSOLE_RUNTIME_SURFACE, consoleRuntimeDigest } from '../../scripts/console-runtime-identity.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const INSTALLER = path.join(ROOT, 'bin', 'install.mjs');
@@ -18,15 +19,15 @@ function temporary(prefix) {
   return value;
 }
 
+// The candidate is built from the shipped surface, not a list of this fixture's own. A second
+// enumeration is how the runtime came to carry plugin/scripts/whats-new.mjs without the assets it
+// reads (#76); a fixture that keeps its own copy of the list just relocates that failure into CI.
 function candidate(marker) {
   const root = temporary('brain-console-candidate-');
-  for (const relative of ['console', 'scripts', 'plugin/scripts']) {
-    fs.cpSync(path.join(ROOT, relative), path.join(root, relative), { recursive: true });
-  }
-  for (const relative of ['kb/brain-profile.mjs', 'bin/install.mjs', 'package.json', 'data/model-catalog.json']) {
+  for (const relative of CONSOLE_RUNTIME_SURFACE) {
     const target = path.join(root, relative);
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.copyFileSync(path.join(ROOT, relative), target);
+    fs.cpSync(path.join(ROOT, relative), target, { recursive: true });
   }
   fs.appendFileSync(path.join(root, 'scripts', 'onboarding-console.mjs'), `\n// ${marker}\n`);
   return root;
@@ -198,9 +199,9 @@ describe('issue #79 — Console runtime update transaction', () => {
     const receiptDir = temporary('brain-console-receipts-');
     const generationB = candidate('GENERATION-B');
     install.installConsoleRuntime(cache, candidate('GENERATION-A'));
-    const sourceSha256 = crypto.createHash('sha256')
-      .update(fs.readFileSync(path.join(generationB, 'scripts', 'onboarding-console.mjs')))
-      .digest('hex');
+    // The generation is the whole runtime surface (#79). A candidate source is laid out exactly as the
+    // staged runtime, so digesting it here is the same fact the installer stamps into the receipt.
+    const sourceSha256 = consoleRuntimeDigest(generationB);
     fs.writeFileSync(path.join(receiptDir, 'current.json'), JSON.stringify({
       product: 'ruvnet-brain-console', schema: 1, sourceSha256,
     }));

@@ -32,6 +32,7 @@ import { buildStackRecommendations, buildWiringRecommendations, summarizeWiring,
 import { planFor } from './remedy-registry.mjs';
 import { auditAll as capabilityAuditAll } from './capability-registry.mjs';
 import { getVersion } from './version.mjs';
+import { consoleRuntimeDigest } from './console-runtime-identity.mjs';
 // L5 (ADR-028): the audit is the one place that observes live capability state, so it is where an
 // OFFERED-then-now-`on` transition becomes an APPLIED — the numerator of the precision metric that
 // tells the owner whether advocacy is landing or nagging. Both are pure reads/appends and never throw.
@@ -106,7 +107,12 @@ const RUNTIME_PRODUCT = 'ruvnet-brain-console';
 const RUNTIME_SCHEMA = 1;
 const RUNTIME_API_CONTRACT = 1;
 const RUNTIME_SCRIPT = fs.realpathSync(fileURLToPath(import.meta.url));
-const RUNTIME_SOURCE_SHA256 = crypto.createHash('sha256').update(fs.readFileSync(RUNTIME_SCRIPT)).digest('hex');
+// The generation this process IS, derived from every byte it executes and serves — not from this one
+// file. #79: a Console whose entrypoint was unchanged but whose imported modules and frontend had been
+// replaced reported the same identity as the candidate that replaced it, so the launcher reused a
+// pre-update router behind a post-update page. Same function, same surface, same list as the installer
+// stages (scripts/console-runtime-identity.mjs), so the two halves of this fact cannot drift.
+const RUNTIME_SOURCE_SHA256 = consoleRuntimeDigest(REPO);
 
 function consoleCandidateRoots() {
   return candidateRoots({ home: CONSOLE_ROOT, configPath: CONFIG_PATH });

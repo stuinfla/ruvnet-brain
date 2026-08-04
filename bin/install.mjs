@@ -25,6 +25,9 @@ import {
   missingEmbedderModels,
 } from '../kb/model-requirements.mjs';
 import { mergeManagedCatalog } from '../scripts/model-router-catalog.mjs';
+import {
+  CONSOLE_RUNTIME_SURFACE, CONSOLE_RUNTIME_IDENTITY_FILE, consoleRuntimeDigest,
+} from '../scripts/console-runtime-identity.mjs';
 
 // SEC-0010 #6 — the Ed25519 PUBLIC key is EMBEDDED here (not a separate file) so the installer's
 // trust root travels with the installer code itself: an attacker who swaps the downloaded bundle
@@ -613,22 +616,17 @@ export function beginConsoleRuntimeTransaction(cacheDir, sourceRoot = REPO_ROOT)
   fs.rmSync(prior, { recursive: true, force: true });
   fs.mkdirSync(staged, { recursive: true, mode: 0o700 });
 
-  const required = [
-    ['console', 'console'],
-    ['scripts', 'scripts'],
-    ['plugin/scripts', 'plugin/scripts'],
-    ['data/model-catalog.json', 'data/model-catalog.json'],
-    ['kb/brain-profile.mjs', 'kb/brain-profile.mjs'],
-    ['bin/install.mjs', 'bin/install.mjs'],
-    ['package.json', 'package.json'],
-  ];
-  for (const [from, to] of required) {
-    const source = path.join(sourceRoot, from);
+  // The copy list IS the generation's digest input (scripts/console-runtime-identity.mjs). Adding a
+  // file the runtime needs adds it to the runtime's identity in the same edit, so an asset can never
+  // again travel separately from the executable that reads it (#76) and a candidate can never again
+  // be indistinguishable from the one it replaces (#79).
+  for (const relative of CONSOLE_RUNTIME_SURFACE) {
+    const source = path.join(sourceRoot, relative);
     if (!fs.existsSync(source)) {
       fs.rmSync(staged, { recursive: true, force: true });
-      throw new Error(`console runtime is incomplete: missing ${from}`);
+      throw new Error(`console runtime is incomplete: missing ${relative}`);
     }
-    const target = path.join(staged, to);
+    const target = path.join(staged, relative);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.cpSync(source, target, { recursive: true, force: true, preserveTimestamps: true });
   }
@@ -661,15 +659,28 @@ export function beginConsoleRuntimeTransaction(cacheDir, sourceRoot = REPO_ROOT)
       throw new Error(`console runtime failed syntax verification: ${path.relative(staged, syntaxTarget)}`);
     }
   }
+  // #76: prove the installed What's New boundary from the staged bytes, not from a file listing. The
+  // executable exits nonzero when its version manifest or curated notes are absent, so a runtime that
+  // would have to tell the user "the notes are unavailable" never activates in the first place.
+  const stagedWhatsNew = path.join(staged, 'plugin', 'scripts', 'whats-new.mjs');
+  const whatsNew = spawnSync(process.execPath, [stagedWhatsNew], { encoding: 'utf8' });
+  if (whatsNew.error || whatsNew.status !== 0) {
+    const detail = (whatsNew.stderr || whatsNew.error?.message || `exit ${whatsNew.status}`).trim();
+    fs.rmSync(staged, { recursive: true, force: true });
+    throw new Error(`console runtime cannot report its own release notes: ${detail}`);
+  }
   const identity = {
     product: 'ruvnet-brain-console-runtime',
     schema: 1,
     apiContract: 1,
     runtimeVersion: packageManifest.version,
     entrypoint: 'scripts/onboarding-console.mjs',
-    sourceSha256: crypto.createHash('sha256').update(fs.readFileSync(stagedEntry)).digest('hex'),
+    // The WHOLE runtime, not just its entrypoint (#79). The launcher compares this against a live
+    // server's self-reported identity, so it has to change whenever anything the server executes or
+    // serves changes — otherwise a stale process passes as current.
+    sourceSha256: consoleRuntimeDigest(staged),
   };
-  fs.writeFileSync(path.join(staged, 'runtime-identity.json'), `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600 });
+  fs.writeFileSync(path.join(staged, CONSOLE_RUNTIME_IDENTITY_FILE), `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600 });
 
   let state = 'staged';
   const entry = path.join(runtime, identity.entrypoint);
