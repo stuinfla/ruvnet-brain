@@ -41,9 +41,28 @@ beforeEach(() => {
   fs.mkdirSync(project, { recursive: true });
   // The flusher where a real install puts it, so this test is fair to the code it is judging:
   // nothing here depends on which of the two lookup locations is used.
+  //
+  // WINDOWS: the marketplace path is SIX segments below HOME, and HOME is already inside the
+  // runner's temp dir — deep enough to run into MAX_PATH, where cpSync fails and the only symptom
+  // is the PRODUCT's own "learn-flush.mjs not found", i.e. the fixture's setup failure reported as
+  // a defect in the thing under test. So: prefer the shallow project-local location that
+  // flushLearning() also honours, keep the deep one as a best-effort so the real install shape is
+  // still exercised where the filesystem allows it, and assert the outcome either way.
+  const srcScripts = path.join(ROOT, 'plugin', 'scripts');
+  const localDst = path.join(project, 'plugin', 'scripts');
+  fs.mkdirSync(path.dirname(localDst), { recursive: true });
+  fs.cpSync(srcScripts, localDst, { recursive: true });
+
   const dst = path.join(home, '.claude', 'plugins', 'marketplaces', 'ruvnet-brain', 'plugin', 'scripts');
-  fs.mkdirSync(path.dirname(dst), { recursive: true });
-  fs.cpSync(path.join(ROOT, 'plugin', 'scripts'), dst, { recursive: true });
+  try {
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.cpSync(srcScripts, dst, { recursive: true });
+  } catch { /* deep-path filesystems only; the project-local copy above is the one that must hold */ }
+
+  // Fail as the fixture, naming itself, rather than letting the product take the blame.
+  if (!fs.existsSync(path.join(localDst, 'learn-flush.mjs'))) {
+    throw new Error(`fixture setup failed: learn-flush.mjs was not staged at ${localDst}`);
+  }
 });
 afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
