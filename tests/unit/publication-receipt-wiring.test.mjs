@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { HOST_MODES, RECEIPT_MODE_NAMES } from '../../scripts/host-install-matrix.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -46,7 +47,15 @@ describe('publication receipt wiring', () => {
 
   it('binds all three isolated public host modes to the sealed package and clean doctor', () => {
     expect(producer.match(/assertInstalledPayload\(sealedPlugin, path\.dirname\(path\.dirname\(manifest\)\)\)/g)).toHaveLength(2);
-    expect(producer).toContain("for (const mode of ['claudeOnly', 'codexOnly', 'dual'])");
+    // Was: an exact source-string match on the mode list. That is the defect class GPT-5.6-Sol
+    // flagged here — a wiring test that pins TEXT passes on broken behaviour and fails on
+    // improved code, which is exactly what it did when the loop started deriving its modes from
+    // HOST_MODES. Assert the PROPERTY instead: the producer covers every host shape the matrix
+    // defines, whatever the loop looks like, and adding a fourth shape cannot silently skip it.
+    for (const mode of HOST_MODES) {
+      expect(producer, `the producer must cover the ${mode} host`).toContain(RECEIPT_MODE_NAMES[mode]);
+    }
+    expect(producer, 'the mode list must be derived, not restated').toContain('HOST_MODES');
     expect(producer).toContain("[installer, '--doctor', '--hooks']");
   });
 
