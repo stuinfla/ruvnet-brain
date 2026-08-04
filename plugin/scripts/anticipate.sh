@@ -64,28 +64,67 @@ set +e
 SELF_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)
 [ -n "$SELF_DIR" ] || exit 0
 
-# <codeRoot>/plugin/scripts/anticipate.sh → <codeRoot>. Resolved from THIS file's own location, so
-# it is correct under the Stable Spine (an immutable ~/.cache/ruvnet-brain/versions/<gen> tree) and
-# in a dev checkout alike, without reading active.json — hook-shim.mjs has already chosen the tree
-# by the time it executes this body.
-CODE_ROOT=$(CDPATH='' cd -- "$SELF_DIR/../.." 2>/dev/null && pwd)
-[ -n "$CODE_ROOT" ] || exit 0
+# WHERE THE THREE MODULES LIVE — resolved by PROBE, not by assertion (2026-08-04).
+#
+# This block used to be one line — `CODE_ROOT=$SELF_DIR/../..` — justified by the claim, repeated in
+# the ADVOCACY_MODULE comment below, that a dev checkout and the Stable Spine "both keep `scripts/`
+# as a sibling of `plugin/`". MEASURED on a real install, that is FALSE in both shipped layouts, and
+# true only in the one layout that never reaches a user:
+#
+#   <plugin-cache>/ruvnet-brain/4.0.7/scripts/anticipate.sh  → ../.. = <plugin-cache>/ruvnet-brain
+#   ~/.cache/ruvnet-brain/versions/<gen>/scripts/anticipate.sh → ../.. = .../versions
+#   <src>/plugin/scripts/anticipate.sh                       → ../.. = <src>            ← only this
+#
+# Both distribution channels FLATTEN the `plugin/` level, so `../..` overshoots by one directory and
+# $CODE_ROOT/scripts/goal-match.mjs never existed. The `[ -f "$GOAL_MATCH" ] || exit 0` guard below
+# then did exactly what it promises — it stayed silent — so the L4 surface shipped permanently and
+# INVISIBLY inert. A hook whose only failure mode is silence cannot report its own breakage; that is
+# precisely why this needs a probe and not a comment.
+#
+# THE FIX IS TO ASK THE FILESYSTEM. Try each candidate directory and take the first that actually
+# holds the matcher. That is the same discipline the rest of this file already applies to the
+# machine's state: never render an assumption as a fact. Candidates, in order:
+#
+#   1. $SELF_DIR              — modules shipped as SIBLINGS of this script (the flattened plugin
+#                               zip and the Stable Spine, once packaging ships them; see below)
+#   2. $SELF_DIR/../../scripts — the source/dev layout <src>/plugin/scripts → <src>/scripts
+#   3. $SELF_DIR/../scripts   — a root that keeps scripts/ one level up from this file
+#
+# PACKAGING IS THE OTHER HALF, and neither half works alone. goal-match.mjs, capability-registry.mjs
+# and advocacy-outcomes.mjs currently live ONLY in the repo-root `scripts/`, which the plugin zip
+# does not carry; this resolver finds nothing until they are shipped into `plugin/scripts/` beside
+# this file. Fixing the path without the packaging leaves it silent, and vice versa.
+#
+# If NO candidate holds the matcher we deliberately fall through to the historical path, so the
+# "missing module" diagnostics below still name the location a maintainer would expect — and the
+# no-node fast path keeps this hook free. Silence on doubt, never a guess: rule 4, unchanged.
+resolve_module_dir() {
+  for _cand in "$SELF_DIR" "$SELF_DIR/../../scripts" "$SELF_DIR/../scripts"; do
+    _r=$(CDPATH='' cd -- "$_cand" 2>/dev/null && pwd) || continue
+    if [ -n "$_r" ] && [ -f "$_r/goal-match.mjs" ]; then printf '%s' "$_r"; return 0; fi
+  done
+  _r=$(CDPATH='' cd -- "$SELF_DIR/../.." 2>/dev/null && pwd) || return 1
+  [ -n "$_r" ] && printf '%s' "$_r/scripts"
+}
+MODULE_DIR=$(resolve_module_dir)
+[ -n "$MODULE_DIR" ] || exit 0
 
 # All THREE module paths are env-overridable, matching the RUVNET_LESSON_STORE / RUVNET_SETTINGS_FILE
 # idiom already used across this repo — so tests never load the real registry or touch a real user's
 # state, and a future relocation needs no edit here.
-GOAL_MATCH="${RUVNET_GOAL_MATCH:-$CODE_ROOT/scripts/goal-match.mjs}"
-CAP_REGISTRY="${RUVNET_CAPABILITY_REGISTRY:-$CODE_ROOT/scripts/capability-registry.mjs}"
+GOAL_MATCH="${RUVNET_GOAL_MATCH:-$MODULE_DIR/goal-match.mjs}"
+CAP_REGISTRY="${RUVNET_CAPABILITY_REGISTRY:-$MODULE_DIR/capability-registry.mjs}"
 # THE SINGLE SUPPRESSION POLICY (2026-07-23). Until this build this file decided "is X suppressed"
 # with its OWN local dismissed-Set in anticipate-state.json — one dismissal muted forever, no
 # severity, no budget — while advocacy-outcomes.mjs's shouldStillOffer()/DISMISSAL_BUDGET (a nag dies
 # on 1 dismissal, a high-severity finding needs 3, with a state-change reprieve) sat completely
 # uncalled. Two thresholds for one decision is the exact hazard named below for the confidence floor;
 # the fix is the same shape — wire this module the IDENTICAL env-var-with-a-default way as the two
-# above, NOT a hardcoded `../scripts` path, so it resolves correctly whether this file runs from a dev
-# checkout or the Stable Spine's `<gen>/plugin/scripts/anticipate.sh` (both keep `scripts/` as a
-# sibling of `plugin/`, per this file's own CODE_ROOT comment above).
-ADVOCACY_MODULE="${RUVNET_ADVOCACY_OUTCOMES_MODULE:-$CODE_ROOT/scripts/advocacy-outcomes.mjs}"
+# above, NOT a hardcoded `../scripts` path, so it resolves wherever this file actually runs from.
+# (CORRECTED 2026-08-04: this comment previously asserted that a dev checkout and the Spine "both
+# keep `scripts/` as a sibling of `plugin/`". They do not — see the measured table above. The three
+# modules now resolve through MODULE_DIR, which probes rather than assumes.)
+ADVOCACY_MODULE="${RUVNET_ADVOCACY_OUTCOMES_MODULE:-$MODULE_DIR/advocacy-outcomes.mjs}"
 
 # ── Subcommands (dismiss/undismiss/status) run the same node program in a different mode ─────────
 MODE="suggest"
