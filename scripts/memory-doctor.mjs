@@ -221,9 +221,9 @@ export function findStores(root) {
 }
 
 export function displayStoreName(db, home = HOME) {
-  const canonicalDb = realExisting(db) || path.resolve(db);
+  const canonicalDb = canonicalPath(db) || path.resolve(db);
   const project = path.dirname(path.dirname(canonicalDb));
-  const canonicalHome = realExisting(home) || path.resolve(home);
+  const canonicalHome = canonicalPath(home) || path.resolve(home);
   const relative = path.relative(canonicalHome, project);
   if (relative === '') return '~';
   if (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) {
