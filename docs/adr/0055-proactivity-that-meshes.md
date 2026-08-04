@@ -30,6 +30,9 @@ governs:
 
 > **Reviewed 2026-08-04 (4.0.9).** Governed code moved: two new modules under `plugin/scripts/` — `ruflo-bin.mjs` (one resolver for the global ruflo, issues #99/#105) and `project-identity.mjs` (one answer to "which directory is this", issues #85/#107) — plus `session-snapshot-hook.mjs` rewired onto the latter. Checked against this decision: both are consolidations of logic the mesh already performed at several sites, adding no hook, no event and no new proactive surface. Nothing here is contradicted or superseded.
 
+
+> **Reviewed 2026-08-04 (4.0.10).** Governed code moved: plugin/scripts/continuation-gate.mjs now derives open work from open-issues.json in addition to the self-reported ledger, because the ledger had been empty since 2026-07-25 and the gate was therefore silent for ten days — a guard armed only by the model remembering to arm it. Checked against this decision: it strengthens the proactivity contract this ADR states and adds no hook, event or new surface.
+
 ## Current implementation checkpoint — 2026-07-28 recovery candidate
 
 This checkpoint supersedes present-tense implementation claims in the dated incident and build

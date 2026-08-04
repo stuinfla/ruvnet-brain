@@ -21,9 +21,6 @@ governs:
 
 **Status**: Accepted (implemented)
 
-
-> **Reviewed 2026-08-04 (4.0.10).** Governed code moved: plugin/scripts/session-start-core.mjs now surfaces ONE customer-facing version. It previously printed the plugin version and the knowledge-bundle tag together ("v4.0.8, brain v4.0.7"), which asked every user to adjudicate whether their own install was out of sync. Divergence is now routed to the maintainer-only channel instead, since a bundle behind its plugin is a release defect. Checked against this decision: it strengthens the single-generation requirement this ADR already states (issue #77) and contradicts no clause.
-
 ## Context: the 2026-07-24 incident
 
 Four real, high-quality user issues (#38, #39, #41, #42) sat open for up to 28 hours with
