@@ -28,7 +28,18 @@ function runGate(items, hookInput = {}) {
     out = execFileSync(process.execPath, [GATE], {
       input: payload,
       encoding: 'utf8',
-      env: { ...process.env, RUVNET_WORK_LEDGER: ledger, RUVNET_CONTINUATION_COOLDOWN_MS: '0' },
+      env: {
+        ...process.env,
+        RUVNET_WORK_LEDGER: ledger,
+        RUVNET_CONTINUATION_COOLDOWN_MS: '0',
+        // The sandbox is the ledger AND the artifact source. The gate now also derives open
+        // work from open-issues.json (a file the issue-watch pipeline writes, so the guard is
+        // not armed solely by the model remembering to arm it). Without pinning it here these
+        // cases read the DEVELOPER's real SLA breaches and a "must stay silent" assertion
+        // fails for a true reason — the same incomplete-sandbox shape as HOME-without-PATH.
+        // Artifact-derived behaviour has its own file: continuation-gate-artifact-derived.
+        RUVNET_OPEN_ISSUES_FILE: path.join(dir, 'no-such-open-issues.json'),
+      },
     });
   } catch (e) { out = e.stdout || ''; }
   finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -96,7 +107,18 @@ describe('continuation-gate — forces the turn to continue while work is open',
       out = execFileSync(process.execPath, [GATE], {
         input: JSON.stringify({ session_id: 's', stop_hook_active: false, cwd: dir }),
         encoding: 'utf8',
-        env: { ...process.env, RUVNET_WORK_LEDGER: ledger, RUVNET_CONTINUATION_COOLDOWN_MS: '0' },
+        env: {
+        ...process.env,
+        RUVNET_WORK_LEDGER: ledger,
+        RUVNET_CONTINUATION_COOLDOWN_MS: '0',
+        // The sandbox is the ledger AND the artifact source. The gate now also derives open
+        // work from open-issues.json (a file the issue-watch pipeline writes, so the guard is
+        // not armed solely by the model remembering to arm it). Without pinning it here these
+        // cases read the DEVELOPER's real SLA breaches and a "must stay silent" assertion
+        // fails for a true reason — the same incomplete-sandbox shape as HOME-without-PATH.
+        // Artifact-derived behaviour has its own file: continuation-gate-artifact-derived.
+        RUVNET_OPEN_ISSUES_FILE: path.join(dir, 'no-such-open-issues.json'),
+      },
       });
     } catch (e) { out = e.stdout || ''; } finally { fs.rmSync(dir, { recursive: true, force: true }); }
     expect(JSON.parse(out).hookSpecificOutput.hookEventName).toBe('Stop');

@@ -3,7 +3,7 @@ id: ADR-050
 title: The issue pipeline may never manufacture its own acknowledgment — awareness, escalation, and a fixer that knows when to stop
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-04
+updated: 2026-08-02
 impl: wired
 authors: [Stuart Kerr, Claude Code]
 tags: [issues, automation, alerting, sla, security, circuit-breaker]

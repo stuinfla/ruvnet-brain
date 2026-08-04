@@ -160,7 +160,47 @@ const nowMs = Date.now();
 // force. This closes the empty-stdin hole that LOOP-SAFETY 1's `__source` check does not cover.
 if (!hookInput.session_id) process.exit(EXIT_ALLOW);
 
-const open = led.items.filter((i) => !i.done);
+/**
+ * ARTIFACT-DERIVED OPEN WORK — the half that cannot be forgotten.
+ *
+ * WHY THIS EXISTS, measured rather than supposed. On 2026-08-04 the owner asked why the model had
+ * gone back to stopping early, and the ledger answered: 25 items, ZERO open, last written 2026-07-25.
+ * The gate had been structurally silent for ten days. Not broken — starved.
+ *
+ * The cause is the design, not the drift. Until now the ONLY source of "is work outstanding" was
+ * `--commit-to`, i.e. the model noticing its own commitment and recording it. So the guard against
+ * the model stopping early depended on the model remembering to arm it, and the failure mode is
+ * silent in exactly the sessions where it matters most. That is this project's oldest rule broken
+ * inside the mechanism meant to enforce it: status must be DERIVED FROM A VERIFIABLE ARTIFACT,
+ * never asserted.
+ *
+ * So the gate now also reads work that exists whether or not anyone remembered to write it down.
+ * `open-issues.json` is produced by the issue-watch pipeline against the real repo; an issue past
+ * its response SLA is outstanding work by definition, and no amount of forgetting can erase it.
+ *
+ * Deliberately narrow: ONLY SLA breaches, never the full backlog — a permanently non-empty backlog
+ * would make this fire forever, which is nagging, not enforcement. And only a FRESH observation
+ * (<6h, the same window session-start-core uses), because a stale file is not evidence of anything.
+ */
+function artifactOpenWork() {
+  try {
+    const file = process.env.RUVNET_OPEN_ISSUES_FILE
+      || path.join(HOME, '.cache', 'ruvnet-brain', 'open-issues.json');
+    const status = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const observedAt = Date.parse(status?.at || '');
+    if (!Number.isFinite(observedAt) || nowMs - observedAt > 6 * 3600_000) return [];
+    return (Array.isArray(status.issues) ? status.issues : [])
+      .filter((issue) => issue?.breach)
+      .map((issue) => ({
+        text: `issue #${issue.number} on ${status.repo} is ${issue.ageHours}h past its response SLA — ${String(issue.title || '').slice(0, 80)}`,
+        done: false,
+        at: new Date(observedAt).toISOString(),
+        derived: true,
+      }));
+  } catch { return []; }
+}
+
+const open = [...led.items.filter((i) => !i.done), ...artifactOpenWork()];
 if (!open.length) process.exit(EXIT_ALLOW);   // nothing outstanding: silence is correct
 
 /**
