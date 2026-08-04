@@ -140,7 +140,10 @@ export function runHostMatrix({ packageRoot, version, variant = 'staged', locate
       if (!classified.accepted) {
         verdict = 'FAIL';
         fixtures[mode].output = classified.output.slice(-5000);
-        error = error || `doctor failed for ${mode}`;
+        // The output belongs IN the error. The previous harness put it there and I dropped it in
+        // the consolidation, so CI reported a bare "doctor failed for claude" and the one thing
+        // needed to act on it — what the doctor actually said — was thrown away.
+        error = error || `doctor failed for ${mode} (exit ${doctor.status}): ${classified.output.slice(-4000)}`;
       }
     } catch (e) {
       verdict = 'FAIL';
