@@ -1742,7 +1742,12 @@ function gatherRouterEngine() {
   const subscriptions = detectSubscriptions();
   let house;
   let providerKeys = providerAvailability(null, subscriptions);
-  let providerCatalog = { status: 'degraded', detail: 'provider catalog was not loaded; native boolean detections are shown' };
+  // `keysVerified` is the machine-readable half of `status`, and it is the field every consumer must
+  // consult BEFORE presenting `keys` as a fact about the user's machine (issue #86). `status` alone
+  // was published and then ignored: the Console rendered a confident "✗ no API key found" per
+  // provider straight off `keys`, so a missing catalog asset — an internal packaging failure — was
+  // shown to the user as a verified finding about their credentials. Unknown outranks off.
+  let providerCatalog = { status: 'degraded', keysVerified: false, detail: 'provider catalog was not loaded; native boolean detections are shown' };
   try {
     const hcat = loadCatalog();
     house = detectProvider(hcat, { provider: cfg.provider });
@@ -1752,10 +1757,10 @@ function gatherRouterEngine() {
     // run-context markers (which are not credentials), exactly as detectProvider() itself filters them —
     // so the UI's "key found / not found" is now true instead of decorative.
     providerKeys = providerAvailability(hcat, subscriptions);
-    providerCatalog = { status: 'ok', detail: 'verified provider catalog loaded' };
+    providerCatalog = { status: 'ok', keysVerified: true, detail: 'verified provider catalog loaded' };
   } catch (error) {
     house = { provider: cfg.provider && cfg.provider !== 'auto' ? cfg.provider : 'anthropic', source: 'default' };
-    providerCatalog = { status: 'degraded', detail: `provider catalog unavailable: ${String(error?.message || error)}` };
+    providerCatalog = { status: 'degraded', keysVerified: false, detail: `provider catalog unavailable: ${String(error?.message || error)}` };
   }
   return {
     engine: {

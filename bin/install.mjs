@@ -24,7 +24,7 @@ import {
   requiredEmbedderModels,
   missingEmbedderModels,
 } from '../kb/model-requirements.mjs';
-import { mergeManagedCatalog } from '../scripts/model-router-catalog.mjs';
+import { applyManagedCatalogUpdate } from '../scripts/model-router-catalog.mjs';
 import {
   CONSOLE_RUNTIME_SURFACE, CONSOLE_RUNTIME_IDENTITY_FILE, consoleRuntimeDigest,
 } from '../scripts/console-runtime-identity.mjs';
@@ -2441,6 +2441,25 @@ function runUpdate() {
       updateStatus = 1;
     }
   }
+  // Issue #87: a normal lifecycle update must also carry MANAGED MODEL additions to an existing
+  // user. This call used to live only in offerRouterProfile() — the fresh-install path — so someone
+  // who already had ~/.claude/model-router/catalog.json (i.e. every existing user, the only ones who
+  // can be behind) never received a newly shipped managed candidate no matter how often they
+  // updated. Additive and non-interactive; their overrides win, metered rows are never auto-enabled,
+  // and a failure here is reported but never fails an otherwise-good update.
+  if (updateStatus === 0) {
+    try {
+      const managed = applyManagedCatalogUpdate({
+        routerDir: path.join(os.homedir(), '.claude', 'model-router'),
+        packageRoot: REPO_ROOT,
+      });
+      if (managed.action === 'merged' && managed.added.length) {
+        ok(`model router: added ${managed.added.length} managed model(s) — ${managed.added.join(', ')} (your catalog edits were preserved)`);
+      }
+    } catch (e) {
+      warn(`managed model additions were not merged (${e.message}); your catalog was left unchanged`);
+    }
+  }
   // `--update --auto` = update now AND enroll in Evergreen, so this is the LAST time it's ever run by
   // hand. Only enroll if the update itself succeeded — never promise "you're set forever" on a failed
   // update. enableNightly() prints its own real verification (plist path + launchctl result).
@@ -3034,31 +3053,20 @@ export async function offerRouterProfile() {
   );
 
   fs.mkdirSync(path.join(routerDir, 'bin'), { recursive: true });
-  for (const [src, dst] of [['catalog.template.json', 'catalog.json'], ['policy.default.mjs', 'policy.default.mjs']]) {
-    const s = path.join(pkgRoot, 'config', 'model-router', src);
-    const d = path.join(routerDir, dst);
-    if (!fs.existsSync(s)) continue;
-    if (!fs.existsSync(d)) {
-      fs.copyFileSync(s, d);
-      ok(`installed ${dst} (edit freely — goldie keeps prices fresh where scheduled)`);
-      continue;
-    }
-    if (src === 'catalog.template.json') {
-      try {
-        const existing = JSON.parse(fs.readFileSync(d, 'utf8'));
-        const managed = JSON.parse(fs.readFileSync(s, 'utf8'));
-        const merged = mergeManagedCatalog(existing, managed);
-        if (merged !== existing) {
-          fs.copyFileSync(d, `${d}.pre-managed-merge`);
-          const tmp = `${d}.tmp-${process.pid}`;
-          fs.writeFileSync(tmp, `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
-          fs.renameSync(tmp, d);
-          ok(`merged ${merged.candidates.length - existing.candidates.length} managed subscription model(s); your catalog overrides were preserved`);
-        }
-      } catch (error) {
-        warn(`managed model additions were not merged (${error.message}); your existing catalog was left unchanged`);
-      }
-    }
+  const policySrc = path.join(pkgRoot, 'config', 'model-router', 'policy.default.mjs');
+  const policyDst = path.join(routerDir, 'policy.default.mjs');
+  if (fs.existsSync(policySrc) && !fs.existsSync(policyDst)) {
+    fs.copyFileSync(policySrc, policyDst);
+    ok('installed policy.default.mjs (edit freely — goldie keeps prices fresh where scheduled)');
+  }
+  // ONE implementation of the managed-catalog step, shared with runUpdate() (issue #87). It used to
+  // live here only, which is exactly why existing users never received managed additions.
+  try {
+    const managed = applyManagedCatalogUpdate({ routerDir, packageRoot: pkgRoot });
+    if (managed.action === 'created') ok('installed catalog.json (edit freely — goldie keeps prices fresh where scheduled)');
+    if (managed.action === 'merged') ok(`merged ${managed.added.length} managed subscription model(s); your catalog overrides were preserved`);
+  } catch (error) {
+    warn(`managed model additions were not merged (${error.message}); your existing catalog was left unchanged`);
   }
   let copied = 0;
   // dispatch-receipt + metaharness-receipts added 2026-07-13: without the LOGGER, subagent routing is
