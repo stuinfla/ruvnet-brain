@@ -133,7 +133,11 @@ function flushLearning() {
   const queueDir = scope === 'user'
     ? path.join(HOME, '.cache', 'ruvnet-brain', 'learn')
     : path.join(PROJECT, '.swarm', 'ruvnet-brain-learn');
-  const where = queueDir.replace(HOME, '~');
+  // Displayed to a human and matched by tests, so it is normalised to forward slashes on every
+  // platform. Without this, Windows reports `~\.cache\ruvnet-brain\learn` while macOS and Linux
+  // report `~/.cache/ruvnet-brain/learn` — the same location under two spellings, which is the
+  // exact defect class this branch has been closing (one fact, two representations).
+  const where = queueDir.replace(HOME, '~').split(path.sep).join('/');
 
   const queueFiles = () => {
     try { return fs.readdirSync(queueDir).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(queueDir, f)); }

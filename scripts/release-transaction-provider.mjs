@@ -341,9 +341,34 @@ export function liveReleaseProvider({
       if (current !== expected) throw new Error(`refusing compensation: npm latest is ${current}, expected ${expected}`);
       command('npm', ['dist-tag', 'add', `${PACKAGE}@${prior}`, 'latest']);
     },
-    async finalize(identity, receipt, _hostVerifier) {
+    async finalize(identity, receipt, hostVerifier) {
       if (!candidateReceipt || !publicationReceipt) {
         throw new Error('final convergence requires candidate and publication receipt paths');
+      }
+      // THE HOST VERDICT IS MEASURED, NOT DECLARED — and it is measured FIRST.
+      //
+      // finalize() used to accept the verifier as `_hostVerifier` and ignore it, then build
+      // `hosts = { verdict: 'PASS', … }` as a literal. Every release therefore asserted host
+      // convergence with no host verified, while tests/helpers/release-transaction-fixture.mjs:153
+      // called the seam faithfully — a fault-injection suite certifying wiring the real publisher
+      // never ran. Fable 5 and GPT-5.6-Sol independently made this their #1 finding.
+      //
+      // It runs BEFORE publication and sealing because the order encodes the meaning: you seal a
+      // release you have verified, not the reverse. It is also the cheapest way to fail — an
+      // unusable artifact stops here instead of after a 20-minute publish.
+      if (!hostVerifier || typeof hostVerifier.verify !== 'function') {
+        return { verdict: 'FAIL', hostVerifierError: 'no host verifier was supplied to finalize' };
+      }
+      // No `assets` override: stagedHostVerifier is constructed in release.mjs:238 with the exact
+      // staged bytes for this candidate and defaults to them (staged-host-verifier.mjs:57), so
+      // passing nothing is what keeps production verifying the artifact actually being shipped.
+      const verified = await hostVerifier.verify({ source: 'final', identity });
+      if (verified.verdict !== 'PASS') {
+        return {
+          verdict: 'FAIL',
+          hosts: { verdict: verified.verdict, verifier: { error: verified.error, fixtures: verified.fixtures } },
+          previousReceiptDigest: receipt.receiptDigest,
+        };
       }
       if (!fs.existsSync(path.resolve(root, publicationReceipt))) {
         const publication = spawnSync(process.execPath, [
@@ -360,11 +385,14 @@ export function liveReleaseProvider({
         return { verdict: 'FAIL', sealError: String(seal.stderr || seal.error?.message) };
       }
       const publication = JSON.parse(fs.readFileSync(path.resolve(root, publicationReceipt), 'utf8'));
+
+      // `verified` was measured at the top of finalize, before publication and sealing.
       const hosts = {
-        verdict: 'PASS',
+        verdict: verified.verdict,
         claudeOnly: publication.installed?.claudeOnly,
         codexOnly: publication.installed?.codexOnly,
         dual: publication.installed?.dual,
+        verifier: { artifactSha256: verified.artifactSha256, fixtures: verified.fixtures, error: verified.error },
       };
       const observed = publication.postPublicationChecks?.find(({ name }) => name === 'published-surface-probe');
       const result = {
