@@ -3,7 +3,7 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-02
+updated: 2026-08-04
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -49,6 +49,9 @@ governs:
 > throwing on an unreadable state directory, so the first draft of the sentinel reader reproduced the
 > very fail-open polarity §2 chose the sentinel to dissolve. Gate 5 caught it. All five readers now
 > treat only genuine absence (ENOENT/ENOTDIR, or a readable dir with no file) as ON.
+
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` now exits non-zero when `--update` lands nothing (issue #106), `kb/forge-update.mjs` releases its rollback on the no-op path and keeps it on the damaged path (#108), and `scripts/health-repair.mjs` no longer reports a hollow "fed 0" (#104). Checked against this decision: these changes implement its honesty requirement — no clause here is contradicted or superseded.
 
 ## Context
 
