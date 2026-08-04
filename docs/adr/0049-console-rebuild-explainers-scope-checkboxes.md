@@ -25,6 +25,9 @@ governs:
 
 > **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` now exits non-zero when `--update` lands nothing (issue #106), `kb/forge-update.mjs` releases its rollback on the no-op path and keeps it on the damaged path (#108), and `scripts/health-repair.mjs` no longer reports a hollow "fed 0" (#104). Checked against this decision: these changes implement its honesty requirement — no clause here is contradicted or superseded.
 
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `scripts/console-runtime-identity.mjs` now defines `CONSOLE_RUNTIME_SURFACE` as the single enumeration serving BOTH the installer copy list and the runtime digest, and `scripts/onboarding-console.mjs` derives its generation identity from it (issues #76/#79). Checked against this decision: the Console scope and checkbox model are unchanged — this replaces a one-file sha256 proxy with an identity over the real runtime surface. Nothing here is contradicted.
+
 ## Context
 
 ADR-013 built the Onboarding Console as "a mirror, an advisor, and only then a configurator." In

@@ -53,6 +53,9 @@ governs:
 
 > **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` now exits non-zero when `--update` lands nothing (issue #106), `kb/forge-update.mjs` releases its rollback on the no-op path and keeps it on the damaged path (#108), and `scripts/health-repair.mjs` no longer reports a hollow "fed 0" (#104). Checked against this decision: these changes implement its honesty requirement — no clause here is contradicted or superseded.
 
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` and `scripts/onboarding-console.mjs` for the console runtime generation identity (#76/#79), plus `kb/forge-update.mjs` for the no-op update verdict (#106/#108). Checked against this decision: on/off semantics and scope resolution are untouched; both changes concern whether a runtime or a bundle is CURRENT, not whether the brain is enabled or what scope it answers in.
+
 ## Context
 
 A user feature request (2026-07-26, relayed by the owner): (1) turn RuvNet-Brain on and off;
