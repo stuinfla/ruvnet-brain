@@ -67,6 +67,9 @@ import {
   saveOpenRouterCredential,
 } from '../plugin/scripts/runtime-preferences.mjs';
 import { applyNightlyChoice, nightlyStatus } from './nightly-controller.mjs';
+// One canonical answer to "which directory is this, and have I counted it already?" — shared with
+// the PreCompact snapshot producer (#85) and with memory-doctor's root scan (#107).
+import { canonicalPath, pathIdentity, projectDirectory } from '../plugin/scripts/project-identity.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(__dirname);
@@ -110,7 +113,7 @@ function consoleCandidateRoots() {
 }
 
 function canonicalScope(cwd = process.cwd()) {
-  try { return fs.realpathSync(cwd); } catch { return path.resolve(cwd); }
+  return canonicalPath(cwd) ?? path.resolve(cwd);
 }
 
 function runtimeReceiptPath(cwd = process.cwd()) {
@@ -381,7 +384,7 @@ function wiringSurvey() {
   const projects = [];
   for (const root of consoleCandidateRoots()) {
     for (const proj of findProjects(root)) {
-      const resolved = path.resolve(proj);
+      const resolved = pathIdentity(proj) ?? path.resolve(proj);
       if (seenProjects.has(resolved)) continue;
       seenProjects.add(resolved);
       projects.push({ proj, root });
@@ -494,8 +497,12 @@ function scanFleet() {
   return fleet;
 }
 function gatherMemory(cwd, { fleet = true } = {}) {
-  // health = for the project the console was launched from (fall back to this repo)
-  const project = fs.existsSync(path.join(cwd, '.swarm/memory.db')) ? cwd : REPO;
+  // health = for the project the console was launched from (fall back to this repo). The scope is
+  // resolved through projectDirectory() — the same call the PreCompact producer makes — so a console
+  // launched from a subdirectory probes the project root the hook actually wrote to, instead of
+  // warning that a snapshot it can see on disk does not exist (#85).
+  const scope = projectDirectory({ cwd });
+  const project = fs.existsSync(path.join(scope, '.swarm/memory.db')) ? scope : REPO;
   const projName = project.replace(CONSOLE_ROOT + '/Code/', '').replace(CONSOLE_ROOT + '/', '~/');
   const health = scoreMemoryHealth({ project: projName, probes: probeMemory(project) });
   return { fleet: fleet ? scanFleet() : null, health };
@@ -1588,8 +1595,11 @@ function refreshFleetCache() {
   // machine whose projects live under ~/source instead of ~/Code.
   for (const root of consoleCandidateRoots()) {
     for (const s of findMemoryStores(root)) {
-      const resolved = path.resolve(s.project);
-      if (seen.has(resolved)) continue; // a project visible under two roots (e.g. a symlink) counts once
+      // pathIdentity, not path.resolve: resolve() normalises `.`/`..` and nothing else, so a project
+      // reached through a symlink OR through the other capitalisation of a case-insensitive volume
+      // was two distinct strings for one directory, and its memories were summed twice (#107).
+      const resolved = pathIdentity(s.project) ?? path.resolve(s.project);
+      if (seen.has(resolved)) continue; // a project visible under two roots counts once
       seen.add(resolved);
       const n = Number(robustRead(s.db, "SELECT COUNT(*) FROM memory_entries WHERE status='active'").value || 0);
       if (n > 0) {
@@ -2211,7 +2221,7 @@ function currentValidIds(onlyId = null) {
   // offering nothing to do about it — detection without a remedy, which ADR-027 prohibits.
   if (validateAll || healthOnly) {
     try {
-      const project = process.cwd();
+      const project = projectDirectory();
       const health = scoreMemoryHealth({ project: path.basename(project), probes: probeMemory(project) });
       for (const r of buildHealthRecommendations({ memory: health, learning: observeLearning() })) ids.add(r.id);
     } catch { /* an advisory surface must never break the apply path */ }
@@ -2923,7 +2933,8 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('onboarding-consol
       const fleet = scanFleet();
       let recommendations = [];
       try {
-        const health = scoreMemoryHealth({ project: path.basename(process.cwd()), probes: probeMemory(process.cwd()) });
+        const project = projectDirectory();
+        const health = scoreMemoryHealth({ project: path.basename(project), probes: probeMemory(project) });
         recommendations = buildHealthRecommendations({ memory: health, learning: { ...observeLearning(), fleet } });
       } catch { /* advisory only */ }
       writeCache(MEMORY_CACHE, new Date().toISOString(), { fleet, recommendations }, process.cwd());

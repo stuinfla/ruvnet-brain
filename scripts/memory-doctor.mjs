@@ -41,6 +41,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { canonicalPath, pathIdentity } from '../plugin/scripts/project-identity.mjs';
 
 const HOME = os.homedir();
 const DEFAULT_SCAN_ROOTS = ['Code', 'code', 'src', 'source', 'projects', 'dev', 'work'];
@@ -132,10 +133,6 @@ const q = (db, sql) => {
 // n() returns null for "unknown" and a number only when we genuinely counted. Callers must handle null.
 const n = (r) => (r.ok ? (r.value === null || r.value === '' ? null : parseInt(r.value, 10)) : null);
 
-function realExisting(value) {
-  try { return fs.realpathSync(value); } catch { return null; }
-}
-
 export function candidateRoots({
   home = HOME,
   configPath = path.join(home, '.claude', 'ruvnet-brain', 'config.json'),
@@ -150,13 +147,18 @@ export function candidateRoots({
     }
   } catch { /* absent or malformed config does not erase the common roots */ }
 
-  const roots = new Set();
+  // Keyed by pathIdentity, not by the spelling. DEFAULT_SCAN_ROOTS deliberately lists both `Code`
+  // and `code` so neither convention is missed, and on a case-insensitive volume those are ONE
+  // directory — which the old Set-of-strings admitted twice and then scanned, counted and summed
+  // twice (#107). On a case-sensitive volume they are two inodes and both are still kept.
+  const roots = new Map();
   const addRoot = (value) => {
     const absolute = path.isAbsolute(value) ? value : path.join(home, value);
-    const canonical = realExisting(absolute);
+    const canonical = canonicalPath(absolute);
     try {
       if (canonical && fs.statSync(canonical).isDirectory()) {
-        roots.add(canonical);
+        const identity = pathIdentity(canonical) ?? canonical;
+        if (!roots.has(identity)) roots.set(identity, canonical);
         return true;
       }
     } catch { /* missing/non-directory roots are not candidates on this machine */ }
@@ -170,12 +172,14 @@ export function candidateRoots({
   if (configuredCount > 0 && validConfigured === 0) {
     throw new Error('configured scanRoots contain no existing directories');
   }
-  return [...roots].sort();
+  return [...roots.values()].sort();
 }
 
+// Keyed by pathIdentity for the same reason candidateRoots is: one store reached by two names is
+// one store. Values are the canonical spelling, which is what every caller reads back.
 function storesBelow(root) {
-  const out = new Set();
-  const canonicalRoot = realExisting(root);
+  const out = new Map();
+  const canonicalRoot = canonicalPath(root);
   if (!canonicalRoot) return out;
   const walk = (dir, depth) => {
     if (depth > 4) return;
@@ -186,8 +190,8 @@ function storesBelow(root) {
       if (e.name === 'node_modules' || e.name === '.git') continue;
       if (e.name === '.swarm') {
         const db = path.join(dir, '.swarm/memory.db');
-        const canonical = realExisting(db);
-        if (canonical) out.add(canonical);
+        const canonical = canonicalPath(db);
+        if (canonical) out.set(pathIdentity(canonical) ?? canonical, canonical);
         continue;
       }
       if (e.name.startsWith('.') && e.name !== '.swarm') continue;
@@ -199,22 +203,21 @@ function storesBelow(root) {
 }
 
 export function findStores(root) {
-  const out = new Set();
+  const out = new Map();
+  const collect = (found) => { for (const [identity, db] of found) if (!out.has(identity)) out.set(identity, db); };
   if (root !== undefined) {
-    for (const db of storesBelow(root)) out.add(db);
-    return [...out].sort();
+    collect(storesBelow(root));
+    return [...out.values()].sort();
   }
 
-  for (const candidate of candidateRoots()) {
-    for (const db of storesBelow(candidate)) out.add(db);
-  }
+  for (const candidate of candidateRoots()) collect(storesBelow(candidate));
   // These two stores intentionally sit outside the project-root convention. They belong only to
   // the fleet-wide no-argument scan; an explicit root must remain genuinely scoped.
   for (const extra of [path.join(HOME, '.claude/.swarm/memory.db'), path.join(HOME, 'cognitum-trader/.swarm/memory.db')]) {
-    const canonical = realExisting(extra);
-    if (canonical) out.add(canonical);
+    const canonical = canonicalPath(extra);
+    if (canonical) collect([[pathIdentity(canonical) ?? canonical, canonical]]);
   }
-  return [...out].sort();
+  return [...out.values()].sort();
 }
 
 export function displayStoreName(db, home = HOME) {
