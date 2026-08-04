@@ -228,7 +228,7 @@ describe.skipIf(!CAN_ZIP)('forge-update --check (issue #108 bug 2)', () => {
       releaseTag: 'v4.0.7', brainVersion: '4.0.7', builtUtc: '2026-07-31T04:39:28.414Z', stores: [STORE_A],
     });
     layDown(kbDir, current);
-    publish(current, 'v4.0.9');
+    publish(current, 'v99.0.0'); // synthetic 'newer', never a real release
 
     const { code, out } = await run('--check');
 
