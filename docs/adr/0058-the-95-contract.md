@@ -121,6 +121,9 @@ converged classes — is the incident record and is not restated.
 
 > **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` (runUpdate now converges the managed router catalog, #87), `console/app.js` + `console/style.css` (a third not-checked provider state so an unloadable catalog is never rendered as a finding about the user credentials, #86), and `scripts/model-router-catalog.mjs`. Checked against this decision: the host wiring, the grader contract and the 95 thresholds are unchanged — these make an existing claim honest and reach an existing merge from the update path. Console re-graded 96/100 at 1440 and 1920 under the design wall. No clause contradicted or superseded.
 
+
+> **Reviewed 2026-08-04 (4.0.10).** Governed code moved for release integrity: .github/workflows/protected-release.yml no longer pins EXPECTED_VERSION to the literal 4.0.8 (it derives the generation from package.json at the candidate SHA, so the publisher can release any version and still proves the dispatch input matches the commit), and .github/workflows/integration-linux.yml no longer derives its verdict from the ABSENCE of a failure token — a crashed suite used to go green and be laundered into a PASS leaf. Checked against this decision: both changes IMPLEMENT evidence requirements it already states and weaken nothing. ADR-062 durable transaction remains a target, not a claim about current code.
+
 ## The law, restated once, because every row below is an instance of it
 
 > A test may only claim what it can observe. A grader awards 95 only to an observable a machine
