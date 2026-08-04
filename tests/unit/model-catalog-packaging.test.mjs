@@ -45,12 +45,14 @@ async function requiredConsoleAssets() {
 
 /** The REAL published file list, from npm itself — never a restatement of package.json#files. */
 function packedFiles() {
-  // On Windows npm is `npm.cmd`; execFileSync spawns without a shell, so a bare 'npm' is
-  // ENOENT there. Third instance of this exact class on this branch (ruflo.cmd was the other
-  // two), which is why the name is resolved rather than assumed.
-  const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const report = JSON.parse(execFileSync(NPM, ['pack', '--dry-run', '--json'], {
+  // WINDOWS: npm is a .cmd shim, and since Node's CVE-2024-27980 hardening a .cmd CANNOT be
+  // spawned without a shell at all — so renaming 'npm' to 'npm.cmd' only converts ENOENT into
+  // EINVAL. `shell:` on win32 is the idiom that actually works, and this repo already proved it
+  // green on Windows at tests/unit/npm-tarball-codex.test.mjs:44. Args here are fixed literals,
+  // so the shell carries no injection surface.
+  const report = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json'], {
     cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+    shell: process.platform === 'win32',
   }));
   // npm reports paths with the HOST separator, so on Windows every entry comes back as
   // `data\\model-catalog.json` and every comparison against the declared `data/model-catalog.json`

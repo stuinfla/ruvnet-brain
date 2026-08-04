@@ -49,13 +49,51 @@ jobs:
       - name: Integration suite (continue on failure so we see EVERY error, not just the first)
         id: run
         continue-on-error: true
-        run: npx vitest run tests/integration --reporter=verbose 2>&1 | tee /tmp/integration.log
+        shell: bash
+        run: |
+          # pipefail, or the pipeline reports tee's status (always 0) and vitest's verdict is lost.
+          set -o pipefail
+          npx vitest run tests/integration --reporter=verbose 2>&1 | tee /tmp/integration.log
+          echo "vitest_exit=$?" >> "$GITHUB_OUTPUT"
 
       - name: Summarize
+        shell: bash
+        env:
+          # Passed through env rather than interpolated into the script body — this one is a number
+          # we produced ourselves, but inlining step outputs into shell is the habit that turns an
+          # untrusted field into command injection, so the safe form is the only form used here.
+          VITEST_EXIT: ${{ steps.run.outputs.vitest_exit }}
         run: |
+          set -euo pipefail
           echo "### Linux integration results" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           grep -E "✓|×|↓|Test Files|Tests " /tmp/integration.log | tail -40 >> "$GITHUB_STEP_SUMMARY" || true
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          # Fail the job if anything actually failed, now that the log is captured.
-          ! grep -qE "^\s*×|Failed Tests" /tmp/integration.log
+
+          # THE VERDICT IS POSITIVE EVIDENCE, NOT THE ABSENCE OF A FAILURE TOKEN.
+          #
+          # This step used to be exactly `! grep -qE "^\s*×|Failed Tests" /tmp/integration.log`.
+          # Combined with `continue-on-error: true` and a `| tee` without pipefail, that meant a
+          # vitest CRASH — OOM, a config error, a module that fails to import, the runner dying
+          # before it printed anything — produced a log containing NEITHER token, so the grep found
+          # nothing, the `!` made it true, and the job went GREEN. release-aggregate.yml then reads
+          # job conclusions only, so a suite that never ran was laundered into a PASS leaf of the
+          # release evidence.
+          #
+          # Three things must now hold, and each is a positive statement:
+          #   1. vitest itself exited 0 (captured above, with pipefail so it is really vitest's).
+          #   2. the log carries vitest's own summary line — proof it ran to completion.
+          #   3. no failure token appears.
+          if [ "${VITEST_EXIT:-1}" != "0" ]; then
+            echo "::error::integration suite exited ${VITEST_EXIT:-<none>} — the run itself failed" >&2
+            exit 1
+          fi
+          if ! grep -qE "^ *Test Files +[0-9]" /tmp/integration.log; then
+            echo "::error::no vitest summary line in the log — the suite did not run to completion, so there is no verdict to report" >&2
+            exit 1
+          fi
+          if grep -qE "^\s*×|Failed Tests" /tmp/integration.log; then
+            echo "::error::integration tests failed — see the summary above" >&2
+            exit 1
+          fi
+          echo "integration suite ran to completion and reported no failures"
