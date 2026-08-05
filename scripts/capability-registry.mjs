@@ -56,6 +56,12 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+// Two facts this file must NOT restate in its own words, because it already did and both were wrong
+// (issues #112, #113): the name of the nightly job the installer loads, and which hooks a session
+// really has wired. Both are imported from the modules that own them, statically — a missing sibling
+// here is a broken build caught by tests, not a runtime degradation to paper over.
+import { NIGHTLY_LABEL } from './nightly-controller.mjs';
+import { buildRegistry } from './hook-registry.mjs';
 
 const HOME = os.homedir();
 
@@ -157,6 +163,46 @@ function mtimeOf(file) {
 function lineCount(file) {
   try { return fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim()).length; }
   catch { return null; }
+}
+
+/**
+ * Is a PreToolUse gate on subagent dispatch wired to the cheap-model router?
+ *
+ * READ THE MERGED REGISTRY, NOT ONE FILE (issue #112). This used to scan `~/.claude/settings.json`
+ * for the literal string `route-dispatch.sh`, which is how the LEGACY standalone install wires the
+ * gate — and is invisible to the way most people now have it. A plugin-marketplace install wires it
+ * in the plugin's own `hooks.json` as `hook-shim.mjs route-dispatch`, never touching settings.json,
+ * so `gateWired` was false for every plugin user no matter how correctly the hook was installed. The
+ * console then told them "nothing can invoke it" about a gate that was wired.
+ *
+ * hook-registry.mjs already enumerates every registry a session loads and resolves each command to
+ * its HANDLER through hook-shim.mjs's own dispatch table — so `route-dispatch.sh` is recognised
+ * whether it is named directly or reached through the shim, and the wiring is found in whichever
+ * layer holds it. That module is the authority; this one asks it rather than describing hooks again.
+ *
+ * WHICH COPY COUNTS, and this is the whole care of the function. The question is what THIS MACHINE
+ * loads, so the two code copies nothing boots are excluded: the repo's own `plugin/hooks/hooks.json`
+ * is the PREIMAGE (a checkout can be ahead of the installed plugin, and reading the preimage instead
+ * of the booted copy is the adjacent-door defect ADR-055 F16 names), and the marketplace clone is
+ * where installs are fetched FROM. What Claude Code actually booted on a marketplace install is the
+ * plugin-cache copy — and because a cache directory outlives the plugin being switched off, that one
+ * counts only while the plugin is enabled.
+ */
+export function dispatchGateWiring({ repo = REPO, home = HOME } = {}) {
+  const PREIMAGE = new Set(['plugin', 'marketplace-clone']);
+  let records;
+  try { records = buildRegistry({ repo, home }).records; }
+  catch { return { wired: false, layer: null, unreadable: true }; }
+  const hits = records.filter((r) => r.event === 'PreToolUse'
+    && r.handler === 'route-dispatch.sh'
+    && r.tools.some((t) => t === 'Task' || t === 'Agent' || t === '*')
+    && !PREIMAGE.has(r.layer));
+  const external = hits.find((r) => r.layer !== 'plugin-installed');
+  if (external) return { wired: true, layer: external.layer, unreadable: false };
+  const enabled = Object.entries(readJSON(path.join(home, '.claude/settings.json')).value?.enabledPlugins || {})
+    .some(([k, v]) => k.startsWith('ruvnet-brain@') && v === true);
+  const ours = enabled ? hits[0] : null;
+  return { wired: Boolean(ours), layer: ours ? ours.layer : null, unreadable: false };
 }
 
 /**
@@ -521,13 +567,14 @@ export const CAPABILITIES = [
       // profile.json is absent). Either missing ⇒ the router cannot fire, regardless of how healthy
       // the receipt ledger looks.
       const profile = fs.existsSync(path.join(HOME, '.claude/model-router/profile.json'));
-      let gateWired = false;
-      try {
-        const s = JSON.parse(fs.readFileSync(path.join(HOME, '.claude/settings.json'), 'utf8'));
-        gateWired = (s?.hooks?.PreToolUse || []).some((h) =>
-          /Task|Agent/.test(String(h.matcher || ''))
-          && (h.hooks || []).some((x) => /route-dispatch\.sh/.test(String(x.command || ''))));
-      } catch { gateWired = false; }
+      // ONE READING OF THE WIRING, from the module that owns it — see dispatchGateWiring(). Scanning
+      // settings.json here was a second, narrower implementation of that question, and it answered
+      // "not wired" for every plugin-marketplace install (issue #112).
+      const gate = dispatchGateWiring();
+      const gateWired = gate.wired;
+      // THE ONE RULE OF THIS FILE. A census we could not take is not a gate we observed to be
+      // missing, and "nothing can invoke it" is a claim about the user's machine.
+      if (gate.unreadable) return row(STATE.UNKNOWN, `${n} routing receipt${n === 1 ? '' : 's'} recorded, but the hook registries on this machine could not be read — whether anything is wired to invoke the router was not checked`);
 
       if (!gateWired || !profile) {
         const missing = [!gateWired && 'no PreToolUse gate on Task|Agent is wired to route-dispatch.sh',
@@ -774,13 +821,22 @@ export const CAPABILITIES = [
       // routing-flywheel, brain-gists, npx-72h-verdict and nightly-watchdog. Exactly ONE of the
       // eleven (brain-nightly) was the thing the sentence claimed to describe. Ten unrelated jobs
       // were being offered as evidence for a capability none of them implements.
+      //
+      // AND THE UNDER-COUNTING TWIN, which cost more (issue #113). The pattern below is a guess at
+      // what a refresh job is CALLED, and the one job this row is actually about is not called that:
+      // the installer loads `com.ruvnet.brain-update`, which contains neither "nightly" nor
+      // "refresh". So the console reported "no nightly refresh job is loaded" about a job that was
+      // loaded, scheduled for 03:47 and running nightly — a detector blind to its own installer.
+      // The label is now taken from nightly-controller.mjs, the module the console already uses to
+      // turn this job on and off, instead of being described a second time as a pattern here.
       const NIGHTLY = /^com\.ruvnet\.[\w.-]*(nightly|refresh)/i;
       const all = out.split('\n')
         .map((l) => l.split('\t'))
         .filter((c) => c.length >= 3 && /^com\.ruvnet\./.test(c[2] || ''))
         .map((c) => ({ label: c[2].trim(), exit: c[1] }));
       // The watchdog watches the refresh; it is not the refresh, and counting it inflates the answer.
-      const jobs = all.filter((j) => NIGHTLY.test(j.label) && !/watchdog/i.test(j.label));
+      const jobs = all.filter((j) => j.label === NIGHTLY_LABEL
+        || (NIGHTLY.test(j.label) && !/watchdog/i.test(j.label)));
       if (!jobs.length) {
         return row(STATE.ABSENT, all.length
           ? `no nightly refresh job is loaded on this machine (${all.length} other RuvNet job${all.length === 1 ? '' : 's'} are scheduled, but none of them is the knowledge-base refresh)`

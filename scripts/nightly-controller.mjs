@@ -12,15 +12,30 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const INSTALLER = path.join(ROOT, 'bin', 'install.mjs');
-const LABEL = 'com.ruvnet.brain-update';
+
+/**
+ * THE NIGHTLY JOB'S NAME, stated once for everything that has to recognise it.
+ *
+ * Exported because issue #113 was two files disagreeing about this exact string with nothing to
+ * notice: bin/install.mjs writes a LaunchAgent labelled `com.ruvnet.brain-update`, while
+ * capability-registry.mjs looked for launchd jobs matching `/(nightly|refresh)/` — so the console
+ * reported "not installed" about the very job the installer had loaded, scheduled and run. A label
+ * is an interface between the writer and everyone who looks for it; spelling it out per reader is
+ * how the two drift apart silently.
+ *
+ * bin/install.mjs still holds its own literal (installer-owned code, changed under its own review);
+ * tests/unit/nightly-job-identity.test.mjs asserts the two are the same string, so a drift is a red
+ * test rather than a capability that quietly disappears from the console.
+ */
+export const NIGHTLY_LABEL = 'com.ruvnet.brain-update';
 
 export function nightlyArtifact({ env = process.env, platform = process.platform } = {}) {
   const home = env.HOME || os.homedir();
   return {
     supported: platform === 'darwin',
     platform,
-    path: path.join(home, 'Library', 'LaunchAgents', `${LABEL}.plist`),
-    label: LABEL,
+    path: path.join(home, 'Library', 'LaunchAgents', `${NIGHTLY_LABEL}.plist`),
+    label: NIGHTLY_LABEL,
   };
 }
 

@@ -23,9 +23,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { BUNDLED_OWNER_SEED_IDS, SOURCE_CLASS } from './lesson-provenance.mjs';
+import { SOURCE_CLASS, STATUS, isUntouchedOwnerSeedRow } from './lesson-provenance.mjs';
 
-export { BUNDLED_OWNER_SEED_IDS, SOURCE_CLASS } from './lesson-provenance.mjs';
+export { BUNDLED_OWNER_SEED_IDS, SOURCE_CLASS, STATUS, isUntouchedOwnerSeedRow } from './lesson-provenance.mjs';
 
 /** Resolve fixture/plugin configuration without mutating the child process account HOME. */
 export function resolveConfigRoot(env = process.env, home = os.homedir()) {
@@ -104,15 +104,8 @@ const ORIGIN_VALUES = new Set(Object.values(ORIGIN));
 
 const SOURCE_CLASS_VALUES = new Set(Object.values(SOURCE_CLASS));
 
-/**
- * STATUS — the ratification ladder. A lesson does not become policy by existing.
- * candidate → ratified (a human agreed) → active (in force at its trigger).
- */
-export const STATUS = Object.freeze({
-  CANDIDATE: 'candidate',
-  RATIFIED: 'ratified',
-  ACTIVE: 'active',
-});
+// STATUS — the ratification ladder (candidate → ratified → active) — lives in lesson-provenance.mjs
+// beside the seed identity it is read with, and is re-exported above for every existing importer.
 const STATUS_VALUES = new Set(Object.values(STATUS));
 
 /**
@@ -262,50 +255,55 @@ export function unenforceable(lessons) {
 export const STORE_PATH = process.env.RUVNET_LESSON_STORE
   || path.join(CONFIG_ROOT, 'lessons.json');
 
+/**
+ * Read the store, returning BOTH what parsed and the raw rows that did not.
+ *
+ * `loadLessons` exposes only the valid rows, which is the right contract for every reader — but a
+ * WRITER that sees only them will write only them, and the rows this version could not parse are
+ * gone forever. See updateLessons: that is the second half of issue #111.
+ */
+function readStore(file) {
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  // Re-validate on READ, not just on write. A hand-edited store is expected (the user must be able
+  // to edit and delete these); a malformed entry must be dropped loudly rather than acted upon.
+  const out = [];
+  const dropped = [];
+  const rows = Array.isArray(raw.lessons) ? raw.lessons : [];
+  for (const stored of rows) {
+    // SKIP THE BAD ROW, BUT NEVER SILENTLY. An adversarial review proved that a schema change
+    // (ADR-035 proposes new enforcement values the current enum rejects) would take this store
+    // from 16 lessons to 0 with NO error and exit 0 — output indistinguishable from "no lessons
+    // apply". Every ratified rule the owner had personally approved would vanish, and the first
+    // symptom would be the model quietly misbehaving again.
+    //
+    // A store that empties itself quietly is the worst possible failure here, because the whole
+    // product promise is "you should never have to tell me twice."
+    const l = isUntouchedOwnerSeedRow(stored) ? {
+      ...stored,
+      origin: ORIGIN.IMPORTED,
+      sourceClass: SOURCE_CLASS.IMPORTED_OWNER,
+      status: STATUS.CANDIDATE,
+      demoted: true,
+      ratifiedBy: null,
+    } : stored;
+    try { out.push(makeLesson(l)); } catch (e) {
+      dropped.push({ row: stored, id: l && l.id, why: String(e && e.message || e) });
+    }
+  }
+  if (dropped.length) {
+    // stderr, not stdout: a hook's stdout may be a JSON protocol channel, and corrupting it would
+    // turn a data-integrity warning into a broken tool call.
+    process.stderr.write(
+      `\n  ⚠ lesson store: ${dropped.length} of ${rows.length} lesson(s) could not be loaded and were IGNORED.\n`
+      + dropped.slice(0, 5).map((d) => `      ${d.id || '(no id)'} — ${d.why.slice(0, 120)}\n`).join('')
+      + `      Your rules are still in the file; they are not being applied. This is usually a schema change.\n\n`,
+    );
+  }
+  return { lessons: out, dropped };
+}
+
 export function loadLessons(file = STORE_PATH) {
-  try {
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-    // Re-validate on READ, not just on write. A hand-edited store is expected (the user must be able
-    // to edit and delete these); a malformed entry must be dropped loudly rather than acted upon.
-    const out = [];
-    const dropped = [];
-    const rows = Array.isArray(raw.lessons) ? raw.lessons : [];
-    const ids = new Set(rows.map((lesson) => lesson?.id));
-    const legacyOwnerSeed = rows.length === BUNDLED_OWNER_SEED_IDS.size
-      && ids.size === BUNDLED_OWNER_SEED_IDS.size
-      && [...BUNDLED_OWNER_SEED_IDS].every((id) => ids.has(id));
-    for (const stored of rows) {
-      // SKIP THE BAD ROW, BUT NEVER SILENTLY. An adversarial review proved that a schema change
-      // (ADR-035 proposes new enforcement values the current enum rejects) would take this store
-      // from 16 lessons to 0 with NO error and exit 0 — output indistinguishable from "no lessons
-      // apply". Every ratified rule the owner had personally approved would vanish, and the first
-      // symptom would be the model quietly misbehaving again.
-      //
-      // A store that empties itself quietly is the worst possible failure here, because the whole
-      // product promise is "you should never have to tell me twice."
-      const l = legacyOwnerSeed ? {
-        ...stored,
-        origin: ORIGIN.IMPORTED,
-        sourceClass: SOURCE_CLASS.IMPORTED_OWNER,
-        status: STATUS.CANDIDATE,
-        demoted: true,
-        ratifiedBy: null,
-      } : stored;
-      try { out.push(makeLesson(l)); } catch (e) {
-        dropped.push({ id: l && l.id, why: String(e && e.message || e) });
-      }
-    }
-    if (dropped.length) {
-      // stderr, not stdout: a hook's stdout may be a JSON protocol channel, and corrupting it would
-      // turn a data-integrity warning into a broken tool call.
-      process.stderr.write(
-        `\n  ⚠ lesson store: ${dropped.length} of ${(raw.lessons || []).length} lesson(s) could not be loaded and were IGNORED.\n`
-        + dropped.slice(0, 5).map((d) => `      ${d.id || '(no id)'} — ${d.why.slice(0, 120)}\n`).join('')
-        + `      Your rules are still in the file; they are not being applied. This is usually a schema change.\n\n`,
-      );
-    }
-    return out;
-  } catch { return []; }
+  try { return readStore(file).lessons; } catch { return []; }
 }
 
 /**
@@ -412,7 +410,20 @@ export function updateLessons(transform, file = STORE_PATH) {
   if (fd === null) throw new Error('lesson store is locked by another writer — nothing was saved, try again');
 
   try {
-    const fresh = loadLessons(file);          // INSIDE the lock, which is what the old comment promised
+    // READ THE WHOLE FILE, NOT JUST THE PART THIS VERSION UNDERSTANDS. Second half of issue #111:
+    // the shrink guard below was computed against `loadLessons()`, which silently omits every row
+    // that failed validation — so a store whose rows this version cannot parse presented a SMALLER
+    // baseline, nothing appeared to shrink, and the write erased those rows for good. The guard's own
+    // reader was the deletion path it exists to refuse, and the file's own comment says an
+    // unparseable row is the EXPECTED case ("this is usually a schema change").
+    //
+    // A row we cannot parse is still the user's rule. It is carried through the write byte-for-byte,
+    // so a future version that understands it finds it intact.
+    let fresh = [];
+    let dropped = [];
+    // Same tolerance loadLessons has always had: no store yet (a first write) is not an error.
+    try { ({ lessons: fresh, dropped } = readStore(file)); } catch { /* absent or unreadable — treated as empty, exactly as before */ }
+
     const next = transform(fresh);
     if (!Array.isArray(next)) throw new Error('updateLessons: transform must return an array of lessons');
     if (next.length < fresh.length) {
@@ -420,7 +431,7 @@ export function updateLessons(transform, file = STORE_PATH) {
       // Deletion has its own path (demote), so refuse rather than lose a rule silently.
       throw new Error(`updateLessons refused: would drop ${fresh.length - next.length} lesson(s). Use demote() to retire one.`);
     }
-    return saveLessons(next, file, { lockHeld: true });
+    return saveLessons(dropped.length ? [...next, ...dropped.map((d) => d.row)] : next, file, { lockHeld: true });
   } finally {
     try { fs.closeSync(fd); } catch { /* already closed */ }
     try { fs.rmSync(lock, { force: true }); } catch { /* best effort */ }
