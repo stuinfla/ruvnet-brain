@@ -3,7 +3,7 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-04
+updated: 2026-08-05
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -36,6 +36,9 @@ governs:
 
 
 > **Reviewed 2026-08-04 (4.0.11).** Governed code moved: plugin/.codex-plugin/plugin.json carries the 4.0.11 generation, and plugin/scripts/session-start-core.mjs now surfaces ONE customer-facing version (the plugin/bundle split is routed to the maintainer instead of printed to users, per #77). Checked against this decision: the Codex host wiring, its hook registration and its skill payload are untouched; this changes what is DISPLAYED, not what is wired. No clause contradicted.
+
+
+> **Reviewed 2026-08-05 (4.0.12 PUBLISHED).** Governed code moved: plugin/.codex-plugin/plugin.json carries the 4.0.12 generation, promoted from 4.0.12-dev and published to npm. Checked against this decision: the Codex host wiring, hook registration and skill payload are unchanged — this is a version promotion, not a wiring change. No clause contradicted.
 
 ## Context
 

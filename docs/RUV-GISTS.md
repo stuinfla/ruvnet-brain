@@ -5,16 +5,33 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_449 gists · refreshed 2026-07-28_
+_466 gists · refreshed 2026-08-05_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-08-04 | [rvqr-overview.md](https://gist.github.com/ruvnet/6d99e837736eaf45b62a9a00cddbe4e5) | rvQR — moving files between devices with a screen and a camera: what it is, and what measuring it actually found |
+| 2026-08-04 | [rvforge-overview.md](https://gist.github.com/ruvnet/d08d9c00e140f570fb896256dc7cb1f7) | RVForge — turn an AI agent into an app anyone can install (plain-language overview) |
+| 2026-08-01 | [jjs.md](https://gist.github.com/ruvnet/60e5749c934077c7040ab32b542539d0) | Jujutsu vs Git Worktrees: Key Differences |
+| 2026-08-01 | [MED.md](https://gist.github.com/ruvnet/e27b77949b0b0d5564ea447edcaf95c3) | Various Medical Discoveries |
+| 2026-07-31 | [agntcy-announcement.md](https://gist.github.com/ruvnet/36e0f0658a29e171eabadb86bc27d789) | AGNTCY integration is live in ruflo + metaharness — what you can do with it today |
+| 2026-07-31 | [ruflo-release-notes.md](https://gist.github.com/ruvnet/d6fc9bea2758049fd87424a2718dec1e) | ruflo ADR-378/379/380 — npm Trusted Publishing, statusline segments, AGNTCY/Outshift runtime integration (PR #2879) |
+| 2026-07-31 | [metaharness-adr240-gist.md](https://gist.github.com/ruvnet/c6d197dedc27acbec7c1f0ed98518f17) | metaharness ADR-240 — AGNTCY identity, OASF export, observability, CASA compiler (PR #155) |
+| 2026-07-30 | [agentdb-agentic-flow-governance-release.md](https://gist.github.com/ruvnet/3890b019b125840d9bc5f281c9931b49) | AgentDB 3.0.0-alpha.20 + agentic-flow 2.1.2 governed MetaHarness release overview |
+| 2026-07-29 | [ruvector-0.2.40-guide.md](https://gist.github.com/ruvnet/ec2e0b472762837e355d0ed4c4f12831) | RuVector 0.2.40 end-user guide: MetaHarness, Darwin, Flywheel, CLI, SDK, and MCP |
+| 2026-07-29 | [v3.32.38.md](https://gist.github.com/ruvnet/4c86fef7e8291b35e25740d836d0eba0) | Ruflo v3.32.38 — daemon auto-start is now scoped to initialized Ruflo projects |
+| 2026-07-29 | [v3.32.37.md](https://gist.github.com/ruvnet/8ab541d7f9cad2611921cef6b7d82da8) | Ruflo v3.32.37 — complete reports, consistent initialization, and safer memory/ADR indexing |
+| 2026-07-29 | [v3.32.36.md](https://gist.github.com/ruvnet/ef3f9e78bdf436f205df40885947d8ef) | Ruflo v3.32.36 — trustworthy runtime signals and portable Codex workflows |
+| 2026-07-29 | [v3.32.35.md](https://gist.github.com/ruvnet/1231345811353d6425e98b2cf08f44bb) | Ruflo v3.32.35: adaptive swarms, safer flywheel anchors, and reliable learning loops |
+| 2026-07-29 | [ruflo-capability-brain-guide.md](https://gist.github.com/ruvnet/934130093d333bde1a3f0f83d7d95115) | Ruflo v3.32.30 Capability Brain — end-user guide, use cases, safety model, and upgrade path |
+| 2026-07-29 | [ruview-community-metaharness-0.3.1.md](https://gist.github.com/ruvnet/1ae4551a1b53584f0c9181e93a5a1788) | RuView 0.3.1 source-cited guidance MCP, Claude/Codex adapters, shared brain, and guarded Darwin/Flywheel learning |
+| 2026-07-29 | [ruflo-capability-brain-guide.md](https://gist.github.com/ruvnet/e2bf4cc56fa94eec1ccc7fff41683b47) | Ruflo Capability Brain v3.32.28 — discover, route, govern, and release with the complete agentic implementation loop |
+| 2026-07-29 | [ruflo-v3.32.27-quick-start.md](https://gist.github.com/ruvnet/19ef247dbc7d0b3507f5dfbd5cbb0e87) | Ruflo v3.32.27 agentic policy engine — end-user quick start |
+| 2026-07-28 | [ruflo-v3.32.26-end-user-guide.md](https://gist.github.com/ruvnet/ed0b740580ae86a26fd41b1c98ed4391) | Let Ruflo improve retrieval—without changing production on its own |
+| 2026-07-28 | [ruflo-daily-2026-07-27.md](https://gist.github.com/ruvnet/cfe0733efdff7c570e776c68146f7550) | Ruflo Daily Update — 2026-07-27 (14 releases v3.32.10→23, 11 issues closed, 9 dream-cycle features) |
 | 2026-07-27 | [homecore-v2051-release.md](https://gist.github.com/ruvnet/0d25c085278bda17cb812cb6b9fe769d) | HOMECORE v2051 platform runtime — capabilities, validation, and compatibility boundaries |
 | 2026-07-27 | [.codex-homecore-v2050.md](https://gist.github.com/ruvnet/448b0466dd45105e4b306eed39e828b7) | RuView v2050 — HOMECORE runtime hardening, validation, and capability status |
 | 2026-07-26 | [pr-body-tracker-sweep-2026-07-26.md](https://gist.github.com/ruvnet/04082cca329b693fb5d4b1d428e56132) | Ruflo v3.32.10 release notes — 2026-07-26 tracker sweep |
-| 2026-07-24 | [jjs.md](https://gist.github.com/ruvnet/60e5749c934077c7040ab32b542539d0) | Jujutsu vs Git Worktrees: Key Differences |
 | 2026-07-22 | [wifi-densepose-2.0-python-sota-announcement.md](https://gist.github.com/ruvnet/274c55f2849a20b8b31512c41a9766a5) | wifi-densepose 2.0 — Python SOTA extras (AETHER, MERIDIAN, MAT) |
-| 2026-07-22 | [MED.md](https://gist.github.com/ruvnet/e27b77949b0b0d5564ea447edcaf95c3) | Various Medical Discoveries |
 | 2026-07-21 | [tutorial.md](https://gist.github.com/ruvnet/c9a6b4d88e887de392d0b10fe088f1f4) | Train Your Own AI Models for Free Using Google AI Studio |
 | 2026-07-21 | [readme.md](https://gist.github.com/ruvnet/1f278d1994e3bcf8802bf26488258e61) | AgentDB Browser Demo: Agentic Marketing Intelligence System: An intelligent marketing optimization system that uses Agen |
 | 2026-07-19 | [.gist-v0.6.5.md](https://gist.github.com/ruvnet/8c099b17eeb589370b36eff74df08890) | RuView v0.6.5-esp32 — open-source WiFi sensing on a $9 ESP32 board (presence, vitals, motion through walls — no camera) |
