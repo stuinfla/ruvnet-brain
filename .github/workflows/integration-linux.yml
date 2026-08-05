@@ -53,8 +53,16 @@ jobs:
         run: |
           # pipefail, or the pipeline reports tee's status (always 0) and vitest's verdict is lost.
           set -o pipefail
-          npx vitest run tests/integration --reporter=verbose 2>&1 | tee /tmp/integration.log
-          echo "vitest_exit=$?" >> "$GITHUB_OUTPUT"
+          # `if` rather than a bare pipeline + $?: GitHub runs `shell: bash` with -e, so a non-zero
+          # pipeline aborts the script BEFORE the exit code can be recorded, leaving the output
+          # unset — which the verdict step then reads as failure. That fails a green run, which is
+          # exactly what it did on 75f9310 (31 files / 234 tests passed, job red). A condition is
+          # exempt from -e, so the code is captured on both paths.
+          if npx vitest run tests/integration --reporter=verbose 2>&1 | tee /tmp/integration.log; then
+            echo "vitest_exit=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "vitest_exit=$?" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Summarize
         shell: bash
