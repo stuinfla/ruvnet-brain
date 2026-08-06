@@ -105,6 +105,24 @@ sh scripts/memdb-health.sh .swarm/memory.db >> "$LOG" 2>&1 \
 # thrown away though — it is written to the log by name, because 0/1/3/4 are four different facts
 # (PASS / the lesson stopped transferring / the trap was invalidated / it could not be measured) and
 # collapsing them into "failed" is how the seven prior silent-death bugs in this file happened.
+# ── RELEASE CONVERGENCE (issue #77, added 2026-08-06). Runs every night, does nothing almost every
+# night, and finishes the release on the one night it can.
+#
+# Context: the published surfaces named different generations (npm 4.0.12, GitHub v4.0.7). The rail
+# that fixes that was itself dead three independent ways; all three are repaired. The only remaining
+# blocker was a GitHub Actions MAJOR OUTAGE — and the publisher IS an Actions workflow — with the
+# maintainer away for a month. So the last step is handed to the nightly, which is already the thing
+# that runs unattended.
+#
+# It does NOT publish. self-update.mjs:56 refuses --publish and only protected-release.yml may ship;
+# this DISPATCHES that workflow, so every gate (exact-SHA evidence, clean worktree, release-proof,
+# host verification, post-publication seal) still runs exactly as designed. It stands down on any
+# unexpected state — dirty tree, open PRs, no green exact-SHA evidence, a -dev version, a stalled
+# Actions plane — because a watchdog acting on a partial picture is worse than no watchdog.
+echo "===== RELEASE-CONVERGENCE watchdog — $(date -u +%FT%TZ) =====" >> "$LOG"
+/usr/local/bin/node scripts/release-convergence-watchdog.mjs --dispatch >> "$LOG" 2>&1 \
+  || echo "[release-watchdog] exited non-zero — see above; nightly continues" >> "$LOG"
+
 echo "===== LEARNING-REPLAY counterfactual trap — $(date -u +%FT%TZ) =====" >> "$LOG"
 /usr/local/bin/node scripts/learning-replay.mjs --n 3 --model haiku >> "$LOG" 2>&1
 LR_RC=$?
