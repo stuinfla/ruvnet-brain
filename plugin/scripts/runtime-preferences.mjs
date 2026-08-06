@@ -66,6 +66,18 @@ function validSettings(raw = {}) {
     newProjectDefaults: source.newProjectDefaults === true,
     advocacy: Number.isInteger(source.advocacy) && source.advocacy >= 1 && source.advocacy <= 5
       ? source.advocacy : 3,
+    // ADR-063 / issue #103. Unknown keys are DROPPED by this function, so a setting absent here is
+    // silently unreadable no matter what the Console writes — which is how the first cut of the
+    // managed-memory boundary read `advise` even when the file said `block`.
+    //
+    // NOTE THE DUPLICATION, deliberately not "fixed" here: scripts/user-settings.mjs SETTINGS_SCHEMA
+    // is the authority for these keys and this is a second enumeration of it. Deriving one from the
+    // other is the obvious move and it is the WRONG one — this file ships inside plugin/, that one
+    // does not, so the import would resolve in the checkout and throw ERR_MODULE_NOT_FOUND on a real
+    // install. Same trap as kb/forge-update.mjs reaching for ../scripts. The honest fix is a drift
+    // test that reads both files, not a bridge that breaks installs.
+    managedMemoryBoundary: ['advise', 'read-only', 'block'].includes(source.managedMemoryBoundary)
+      ? source.managedMemoryBoundary : 'advise',
   };
 }
 
@@ -263,6 +275,12 @@ export function seedProjectDefaults(options = {}) {
 
 if (process.argv.includes('--learning-scope')) {
   process.stdout.write(`${loadRuntimePreferences().values.learningScope}\n`);
+} else if (process.argv.includes('--managed-memory-boundary')) {
+  // ADR-063 / issue #103. hijack-ruvnet.sh is POSIX sh and must not parse JSON, so it asks here —
+  // the same idiom learn-capture.sh already uses for --learning-scope. Falls back to the shipped
+  // default rather than erroring: a hook that cannot read a preference must never refuse a command
+  // because of it, so an unreadable settings file degrades to `advise`, which blocks nothing.
+  process.stdout.write(`${loadRuntimePreferences().values.managedMemoryBoundary || 'advise'}\n`);
 } else if (process.argv.includes('--seed-project')) {
   const result = seedProjectDefaults();
   if (!result.ok) process.exitCode = 1;

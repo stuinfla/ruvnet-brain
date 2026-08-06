@@ -10,6 +10,7 @@ const brainHome = process.env.RUVNET_BRAIN_HOME
 const versions = path.join(brainHome, 'versions');
 const blockingHooks = new Set([
   'route-dispatch',
+  'hijack-ruvnet',   // ADR-063: opt-in managed-memory refusal; exits 0 at the default
   'ground-before-write',
   'protect-state',
   'design-wall',

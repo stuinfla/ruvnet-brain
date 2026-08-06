@@ -88,10 +88,54 @@ fi
 # start of payload, or after a shell separator) AND a managed-store target.
 _managed_store='(\.swarm/|agentdb|memory\.db|ruvnet-brain.*\.db)'
 _cmd_pos='(^|[;&|(]|&&|\|\||[[:space:]]-c[[:space:]]|`|\$\()[[:space:]]*'
-if printf '%s' "$PAYLOAD" | grep -qiE "${_cmd_pos}(sqlite3?|redis-cli)([[:space:]]|$).*${_managed_store}" \
+_direct_managed_access=0
+if printf '%s' "$PAYLOAD" | grep -qiE "${_cmd_pos}(sqlite3?|redis-cli)([[:space:]]|$).*${_managed_store}"; then
+  _direct_managed_access=1
+fi
+if [ "$_direct_managed_access" = "1" ] \
    || printf '%s' "$PAYLOAD" | grep -qiE 'mem0|zep[- ]memory' \
    || printf '%s' "$PAYLOAD" | grep -qiE "${_cmd_pos}redis-cli([[:space:]]|$).*(embedding|vector)"; then
   add "For durable agent memory use AgentDB (causal, explainable, 'why did I recall that?') rather than hand-rolled Redis/SQLite glue."
+fi
+
+# ── ENFORCEMENT (ADR-063, issue #103) ────────────────────────────────────────────────────────────
+#
+# The reporter measured a long Codex session: 59 shell calls went straight at managed memory stores,
+# the Brain prevented NONE, and 49 did not even ask for read-only. The advisory was neutered five
+# independent ways, each sufficient alone, so fixing any one changed nothing.
+#
+# DEFAULT IS UNCHANGED. `advise` is the shipped value and reaches none of this — a user who changes
+# nothing sees byte-identical behaviour. Only an explicit opt-in refuses a command, because this repo
+# has already shipped three gates that could never pass; one that merely nags is a nuisance, one that
+# BLOCKS is an outage.
+#
+# Refusal rides on the #102 matcher above — an invocation in command position against a managed
+# store — never on prose. A boundary built on a prose matcher would refuse someone for writing a
+# sentence about sqlite.
+#
+# Contract is the shared one (ground-before-write.sh:33): exit 2 + stderr = BLOCK, and stderr is
+# returned to the model as the reason. So the refusal NAMES the sanctioned path — the reporter's
+# nine failures were an agent guessing schema it should never have needed to guess.
+if [ "$_direct_managed_access" = "1" ]; then
+  # Asked via the CLI flag, the idiom learn-capture.sh already uses for --learning-scope — this is
+  # POSIX sh and must not parse JSON. Any failure degrades to `advise`, which refuses nothing.
+  _boundary=$("$NODE_BIN" "$(dirname "$0")/runtime-preferences.mjs" --managed-memory-boundary 2>/dev/null) || _boundary="advise"
+  [ -z "$_boundary" ] && _boundary="advise"
+
+  # read-only refuses a WRITE; block refuses any direct access. A read under `read-only` is allowed
+  # and still advised, which is the shape most people want: look freely, never write behind Ruflo.
+  _is_write=0
+  printf '%s' "$PAYLOAD" | grep -qiE '(insert|update|delete|drop|alter|create|replace|vacuum|pragma[[:space:]]+[a-z_]+[[:space:]]*=|\.import|\.restore)' && _is_write=1
+
+  if [ "$_boundary" = "block" ] || { [ "$_boundary" = "read-only" ] && [ "$_is_write" = "1" ]; }; then
+    printf '%s\n' "[RuvNet Brain] REFUSED: direct access to a Ruflo-managed memory store." >&2
+    printf '%s\n' "Your setting managedMemoryBoundary=$_boundary refuses this. Ruflo owns these stores; two writers on one file is how they corrupt." >&2
+    printf '%s\n' "Use the sanctioned path instead — it needs no schema knowledge:" >&2
+    printf '%s\n' "  ruflo memory search  -q \"<query>\" --path <project>/.swarm/memory.db" >&2
+    printf '%s\n' "  ruflo memory store   -k \"<key>\" --value \"<text>\" --path <project>/.swarm/memory.db" >&2
+    printf '%s\n' "To allow this, set managedMemoryBoundary back to 'advise' (or 'read-only' for reads) in the Console." >&2
+    exit 2
+  fi
 fi
 
 [ -z "$MSG" ] && exit 0

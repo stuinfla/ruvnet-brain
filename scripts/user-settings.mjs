@@ -141,6 +141,38 @@ export const SETTINGS_SCHEMA = Object.freeze([
   }),
 
   Object.freeze({
+    key: 'managedMemoryBoundary',
+    label: 'Direct access to managed memory stores',
+    type: 'enum',
+    options: Object.freeze(['advise', 'read-only', 'block']),
+    default: 'advise',
+    escalates: Object.freeze(['read-only', 'block']),
+    help: 'Whether a direct sqlite3 call against a Ruflo-managed AgentDB store is merely advised against, refused when it would WRITE, or refused outright.',
+    // ADR-063, issue #103. The reporter measured a long Codex session in which 59 shell calls went
+    // straight at memory stores: the Brain prevented NONE, and 49 did not even ask for read-only.
+    // The advisory was neutered five independent ways (hijack-ruvnet's hardcoded `defer`, the shim's
+    // advisory mode, `|| true` on the registration, the Codex adapter deleting permissionDecision,
+    // and the 1–5 dial being speech-only) — each sufficient on its own, so fixing any one changed
+    // nothing.
+    //
+    // WHY THIS IS ITS OWN SETTING AND NOT THE 1–5 DIAL. ADR-040 scopes that dial to SPEECH and
+    // user-settings says so at the `advocacy` entry below: "no value of this setting writes anything
+    // anywhere". Someone who picked "Maximum help" asked to be TALKED to more. Turning a verbosity
+    // preference into a command-authorization preference is the kind of surprise that makes people
+    // distrust every other control on the page — and the reporter names exactly that confusion as
+    // part of the defect.
+    //
+    // WHY THE DEFAULT IS `advise`. The rule at the top of this file: nothing that acts beyond the
+    // current project may default to on. Both other values REFUSE a command the user typed, and
+    // this repo has already shipped three gates that could never pass (the RVF byte-compare,
+    // EXPECTED_VERSION, the colorized `Test Files` grep). An unsatisfiable gate that nags is a
+    // nuisance; one that BLOCKS is an outage. `escalates` lists both non-default values, so the
+    // existing test forbidding an escalating default binds this automatically — no new machinery.
+    whyItMatters: 'Ruflo owns these stores. Reading one directly is usually harmless and occasionally necessary; writing one behind Ruflo\'s back is how two writers end up on one file and a store gets corrupted. "Read-only" is the setting that matches what most people actually want: look freely, never write.',
+    downside: 'On "read-only" or "block", a legitimate direct query you intended can be refused, and you will have to route it through `ruflo memory` or change this setting back. On "advise" — the default — nothing is ever refused and the boundary is a suggestion only.',
+  }),
+
+  Object.freeze({
     key: 'advocacy',
     label: 'How much it jumps in',
     type: 'enum',
