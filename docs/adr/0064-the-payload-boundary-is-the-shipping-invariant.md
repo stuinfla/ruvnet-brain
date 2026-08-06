@@ -184,6 +184,45 @@ The first run of the gate also caught **itself**: greedy backtracking matched `t
 list is now anchored with `(?![\w-])`. A gate that fails on a correct file gets muted, and a muted
 gate is not guarding the thing it was written for either.
 
+## Four more places `..` changed meaning — and how each was found
+
+The two regressions above were reasoned out from the code. **The suite then found four more,
+and review had found none of them.** That ratio is the most useful thing in this ADR, so each is
+recorded with the evidence that caught it rather than as a tidy list of edits.
+
+| # | Where | Found by |
+|---|---|---|
+| 1 | `nightly-controller.mjs` `ROOT` — the **third** instance of the `..` flip, and the only one with a user-visible symptom | `console-apply-timings.test.mjs`, driving a real `/api/apply` through the real console server |
+| 2 | `proactivity-metrics.mjs` `REAL_REGISTRY` pointed at what is now a shim | `proactivity-detector-mutation.test.mjs` — ADR-041's own falsifiability proof |
+| 3 | `anticipate-module-resolution.test.mjs` copied the **shims** into its fixture | itself, going red on both layouts |
+| 4 | `hook-registry.mjs` carried a `/Users/<ellipsis>/` example into `plugin/`'s leak-scan scope | `codex-wiring.test.mjs` |
+
+**(1) is worth reading in full.** The console returned HTTP **200** carrying:
+
+> `"Nightly refresh did not reach off: Error: Cannot find module '<root>/plugin/bin/install.mjs'"`
+
+The remedy reported its own failure honestly — the machinery worked exactly as designed — and it
+failed for a packaging reason no reviewer would have guessed from the diff.
+
+`ROOT` is now resolved by an **exact layout test rather than a probe**: this file's directory *is*
+`<candidate>/plugin/scripts` **iff** `<candidate>` is a non-flattened root. `hook-registry.mjs`'s
+`resolveRoot()` was switched to the same test, because its first version probed for
+`plugin/hooks/hooks.json` — which is **absent from the Console's runtime root**
+(`CONSOLE_RUNTIME_SURFACE` carries `plugin/scripts`, `plugin/docs` and `plugin/.claude-plugin`, but
+not `plugin/hooks`), so the heuristic would have silently mis-rooted there. *An existence probe
+answers "is this file present". The question was "is this a root".*
+
+**(2) is the harness catching itself going blind.** The measurement would still have been correct —
+the shim runs the same code — but the mutation test reads that path's **source** to build its
+mutants, and a shim has no `return row(STATE.OFF, …)` to mutate. It threw the exact error it was
+written to throw: *"mutation changed nothing — the target string moved. This test would otherwise run
+an UNMUTATED copy and pass for the wrong reason."*
+
+**(3)** is the fixture lesson stated once: a fixture must carry the bytes a user receives. Copying a
+compatibility stub into an isolated directory grades something nobody runs.
+
+**(4)** is a guard firing on a file that entered its scope. That is the guard working.
+
 ## L4 proven live
 
 A flattened-layout fixture (the payload's contents copied flat, so `anticipate.sh` sits beside its
@@ -217,3 +256,11 @@ Note what the *before* `--status` line proves independently: the fallback path r
 - `capability-registry.test.mjs`'s "hardcodes no version literal" check was repointed at the payload
   copy. Left on `scripts/`, it would have read the four-line shim and passed **vacuously forever** —
   the same green-guarding-nothing failure, third instance in this one change.
+- **Every test that reads a moved module's SOURCE, or copies it into a fixture, must name the payload
+  path.** Importing the shim is fine and stays fine; reading or copying it is not. That is now the
+  standing rule, and it is what findings (2) and (3) above cost to learn.
+- **The version was deliberately NOT bumped here.** This repo's rule is that a behaviour-changing
+  *push* carries a bump in the same commit; this branch is not pushed, and a bump in a worktree
+  running beside other agents is a guaranteed conflict in `package.json` and
+  `plugin/.claude-plugin/plugin.json`. The integration owner bumps at merge. Flagged rather than
+  silently skipped.
