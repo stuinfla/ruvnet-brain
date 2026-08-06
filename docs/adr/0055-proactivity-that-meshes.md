@@ -3,7 +3,7 @@ id: ADR-055
 title: Proactivity that meshes — one decision law, four planes, substance-bound enforcement, learning bound to outcomes
 status: Accepted
 date: 2026-07-27
-updated: 2026-08-05
+updated: 2026-08-06
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6 (codex, read-only)]
 tags: [proactivity, hooks, mesh, fourth-wall, learning, grounding, qa]
@@ -35,6 +35,8 @@ governs:
 
 
 > **Reviewed 2026-08-05 (4.0.15-dev).** Governed code moved: plugin/scripts/hijack-ruvnet.sh's managed-memory advisory now matches an executable invocation against a managed store rather than a flat payload string (issue #102). The old bracket expression `[^\n]` is {backslash,n} negated in POSIX ERE, so every sqlite3 flag containing an n defeated it, and prose mentioning sqlite tripped it. Checked against this decision: the advisory's channel, dial-independence and fail-open posture are unchanged — this makes it fire on the right input, and stop firing at people already using the sanctioned tool.
+
+> **Reviewed 2026-08-06 (ADR-063).** Governed code moved for ADR-063 / issue #103: plugin/scripts/hijack-ruvnet.sh can now REFUSE a direct invocation against a Ruflo-managed store, hook-shim.mjs declares it mode:'blocking' and codex-hook-wrapper.mjs adds it to blockingHooks, and runtime-preferences.mjs reads the new managedMemoryBoundary setting. Checked against this decision: the shipped default is `advise`, which reaches none of the enforcement path, so behaviour is byte-identical for anyone who changes nothing; the hook's fail-open posture and its speech channel are unchanged. This raises the CEILING of what the hook may do, not what it does. No clause contradicted.
 
 ## Current implementation checkpoint — 2026-07-28 recovery candidate
 

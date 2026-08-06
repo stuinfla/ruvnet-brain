@@ -83,7 +83,10 @@ catch (e) { BRAIN_OFF = !(e && (e.code === 'ENOENT' || e.code === 'ENOTDIR')); }
 const TABLE = {
   'session-start':    { file: 'session-start-core.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'partial' },
   'ground-ruvnet':    { file: 'ground-ruvnet.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence', stdinBytes: 32768 },
-  'hijack-ruvnet':    { file: 'hijack-ruvnet.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
+  // ADR-063 / issue #103: `blocking` so an opt-in refusal can actually reach the host. The hook
+  // still exits 0 for every user at the shipped default (managedMemoryBoundary=advise), so this
+  // changes the CEILING of what it may do, not what it does.
+  'hijack-ruvnet':    { file: 'hijack-ruvnet.sh',    interpreter: 'bash', mode: 'blocking', offBehavior: 'silence' },
   // Claude Code 2.1.220 consumes Agent/Task PreToolUse results after tool_dispatch_end (#84).
   // A refusal here would be late and therefore false enforcement; retain only bounded audit.
   'route-dispatch':   { file: 'route-dispatch.sh',   interpreter: 'bash', mode: 'advisory', offBehavior: 'run', stdinBytes: 65536 },

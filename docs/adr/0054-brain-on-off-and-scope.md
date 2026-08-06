@@ -3,7 +3,7 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-04
+updated: 2026-08-06
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -55,6 +55,8 @@ governs:
 
 
 > **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` and `scripts/onboarding-console.mjs` for the console runtime generation identity (#76/#79), plus `kb/forge-update.mjs` for the no-op update verdict (#106/#108). Checked against this decision: on/off semantics and scope resolution are untouched; both changes concern whether a runtime or a bundle is CURRENT, not whether the brain is enabled or what scope it answers in.
+
+> **Reviewed 2026-08-06 (ADR-063).** Governed code moved for ADR-063 / issue #103: plugin/scripts/hijack-ruvnet.sh can now REFUSE a direct invocation against a Ruflo-managed store, hook-shim.mjs declares it mode:'blocking' and codex-hook-wrapper.mjs adds it to blockingHooks, and runtime-preferences.mjs reads the new managedMemoryBoundary setting. Checked against this decision: the shipped default is `advise`, which reaches none of the enforcement path, so behaviour is byte-identical for anyone who changes nothing; the hook's fail-open posture and its speech channel are unchanged. This raises the CEILING of what the hook may do, not what it does. No clause contradicted.
 
 ## Context
 
