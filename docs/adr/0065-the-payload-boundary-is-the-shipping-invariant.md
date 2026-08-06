@@ -1,5 +1,5 @@
 ---
-id: ADR-064
+id: ADR-065
 title: The payload boundary is the shipping invariant, and it is now a gate
 status: Accepted
 date: 2026-08-06
@@ -16,7 +16,7 @@ governs:
   - tests/unit/payload-self-contained.test.mjs
 ---
 
-# ADR-064 — The payload boundary is the shipping invariant, and it is now a gate
+# ADR-065 — The payload boundary is the shipping invariant, and it is now a gate
 
 **Status**: Accepted
 

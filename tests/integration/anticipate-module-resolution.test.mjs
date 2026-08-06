@@ -72,7 +72,7 @@ function makeLayout(name, nested) {
   fs.mkdirSync(hookDir, { recursive: true });
   fs.mkdirSync(modDir, { recursive: true });
   fs.copyFileSync(HOOK_SRC, path.join(hookDir, 'anticipate.sh'));
-  // FROM THE PAYLOAD, not from `scripts/`. Since ADR-064 the three modules live in
+  // FROM THE PAYLOAD, not from `scripts/`. Since ADR-065 the three modules live in
   // `plugin/scripts/` — which is the only thing that ships — and `scripts/<name>.mjs` is a four-line
   // re-export shim over it. Copying the SHIM into a fixture that has no `plugin/` sibling produces a
   // module that cannot resolve, so the hook falls into its own silent-degradation path and both

@@ -410,7 +410,7 @@ export function codeRootOf(rec, repo = REPO, home = os.homedir()) {
     return rec.shimId ? 'spine' : 'plugin-root';
   }
   // (`<user>` below is a DECLARED placeholder from codex-wiring.test.mjs's allowlist, not a real
-  // account. That scan covers everything under plugin/, which this file joined in ADR-064; the
+  // account. That scan covers everything under plugin/, which this file joined in ADR-065; the
   // example previously wrote an ellipsis where the account name goes, and an ellipsis is
   // indistinguishable from a leaked home directory to a scanner that cannot read intent.)
   // The SCRIPT path, not the interpreter's: `/bin/bash "/Users/<user>/route-dispatch.sh"` names two

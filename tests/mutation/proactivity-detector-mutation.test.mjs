@@ -10,7 +10,7 @@
 // The mutant is written INTO plugin/scripts/ (its relative sibling imports resolve there) with a name that
 // ends in "capability-registry.mjs" (so its own invokedDirectly CLI guard fires — registry.mjs:687), and is
 // removed in a finally + afterEach. It moved from scripts/ to plugin/scripts/ with the registry itself
-// (ADR-064): the mutant must sit beside the REAL nightly-controller/hook-registry/memory-doctor it
+// (ADR-065): the mutant must sit beside the REAL nightly-controller/hook-registry/memory-doctor it
 // statically and lazily imports, not beside the re-export shims that now stand at the old path.
 
 import { describe, it, expect, afterEach } from 'vitest';

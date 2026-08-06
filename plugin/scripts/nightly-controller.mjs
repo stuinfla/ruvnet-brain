@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 // ROOT is the tree that holds `bin/install.mjs`, and it is resolved by an EXACT layout test rather
 // than by `..` — because `..` means two different things since this file moved into the payload
-// (ADR-064). From `<root>/scripts/` it was the root; from `<root>/plugin/scripts/` it is
+// (ADR-065). From `<root>/scripts/` it was the root; from `<root>/plugin/scripts/` it is
 // `<root>/plugin`, and `<root>/plugin/bin/install.mjs` does not exist. Caught live by
 // console-apply-timings.test.mjs, which drove a real /api/apply through the console and got
 // `Error: Cannot find module '<root>/plugin/bin/install.mjs'` back inside a 200 response — a remedy

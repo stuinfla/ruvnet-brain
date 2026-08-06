@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { buildState, readManifest } from '../tests/helpers/ground-truth-machine.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-// THE PAYLOAD COPY. Since ADR-064 the registry ships inside plugin/scripts/ and `scripts/` holds a
+// THE PAYLOAD COPY. Since ADR-065 the registry ships inside plugin/scripts/ and `scripts/` holds a
 // four-line re-export shim. Pointing this at the shim would still MEASURE correctly (the shim runs
 // the same code), but proactivity-detector-mutation.test.mjs reads this path's SOURCE to build its
 // mutants — and a shim has no `return row(STATE.OFF, …)` to mutate, so every mutation would change
