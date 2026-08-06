@@ -1,0 +1,320 @@
+{
+  "schema": "qwntik-rvf-family-manifest-v1",
+  "state": "active",
+  "familyName": "qwntik-testimate-cluster",
+  "repo": "testimate",
+  "sourceRepo": "https://github.com/BishalN/testimate.git",
+  "sourceCommit": "3344ae0438c871e1e1b07eba222e15a029fc53b6",
+  "embeddingProfiles": {
+    "primarySource": {
+      "model": "Xenova/all-MiniLM-L6-v2",
+      "revision": "751bff37182d3f1213fa05d7196b954e230abad9",
+      "dimensions": 384,
+      "metric": "cosine",
+      "pooling": "mean"
+    },
+    "companionMaps": {
+      "model": "Xenova/bge-base-en-v1.5",
+      "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+      "dimensions": 768,
+      "metric": "cosine",
+      "pooling": "cls"
+    }
+  },
+  "stores": [
+    {
+      "name": "testimate",
+      "role": "primary-source",
+      "producer": "forge-build",
+      "dimensions": 384,
+      "profile": {
+        "model": "Xenova/all-MiniLM-L6-v2",
+        "revision": "751bff37182d3f1213fa05d7196b954e230abad9",
+        "dimensions": 384,
+        "metric": "cosine",
+        "pooling": "mean"
+      },
+      "passages": 281,
+      "files": [
+        {
+          "path": "source/testimate.rvf",
+          "sha256": "f255f89112a45f03ce997b51afff3ce4a32efe698f62ece8ba77c501d082c289",
+          "bytes": 437785
+        },
+        {
+          "path": "source/testimate.rvf.idmap.json",
+          "sha256": "dae9f7c9039672d3378f63be40ad4f53785f15b94abf1753daf9e9380481d626",
+          "bytes": 43665
+        },
+        {
+          "path": "source/testimate.rvf.embed.json",
+          "sha256": "1557114062915fce0725efe05cc4da4d3de382d03d87b2365f01525d5c180634",
+          "bytes": 339
+        },
+        {
+          "path": "source/testimate.meta.json",
+          "sha256": "e76d864feaeb90605cad8277e32838c22cf2f78a914580b039184ffaa8279393",
+          "bytes": 159219
+        },
+        {
+          "path": "source/testimate.passages.jsonl",
+          "sha256": "40a0e58656376cf971b119926a4466751bf0e3c85f95465872548d831cbb387b",
+          "bytes": 806044
+        }
+      ]
+    },
+    {
+      "name": "testimate-graphify",
+      "role": "structural-communities-blast-radius",
+      "producer": "graphify",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 461,
+      "files": [
+        {
+          "path": "maps/graphify/testimate-graphify.big.rvf",
+          "sha256": "5a8680eb36642ea4552ef59dd5af1e1ddf6b654e6103a6695c3cd5ca8216de95",
+          "bytes": 1420997
+        },
+        {
+          "path": "maps/graphify/testimate-graphify.big.rvf.idmap.json",
+          "sha256": "3274fd59c0083f697ef08d567367704afd97e2ddae0d04b32c6199f0c09c6aa0",
+          "bytes": 36709
+        },
+        {
+          "path": "maps/graphify/testimate-graphify.big.rvf.embed.json",
+          "sha256": "adb081fcc2bbd5c89cdec519af0ab666bfa0665df98c30145a704fb3af85d225",
+          "bytes": 463
+        },
+        {
+          "path": "maps/graphify/testimate-graphify.big.meta.json",
+          "sha256": "a215fc2f6f2544054cc04c3a6c270447f04ea8fc59f68c4bf6f46506d02a503c",
+          "bytes": 63512
+        },
+        {
+          "path": "maps/graphify/testimate-graphify.passages.jsonl",
+          "sha256": "0a80531eefb2628eab778cbbc2e0fa9af8e3d06c318f5589afdf569525205b39",
+          "bytes": 3574262
+        }
+      ]
+    },
+    {
+      "name": "testimate-ix",
+      "role": "exact-symbols-and-edges",
+      "producer": "ix",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 2333,
+      "files": [
+        {
+          "path": "maps/ix/testimate-ix.big.rvf",
+          "sha256": "2e6f1c1934b2705f4fc4357434e1a65db32613524f46ecd1f493a37ce8989dc6",
+          "bytes": 7289359
+        },
+        {
+          "path": "maps/ix/testimate-ix.big.rvf.idmap.json",
+          "sha256": "fbf3ab1a76925714e812b31f241ba3f4b1f65c5cf1db44ec6e5a03b3502b3653",
+          "bytes": 189138
+        },
+        {
+          "path": "maps/ix/testimate-ix.big.rvf.embed.json",
+          "sha256": "6f1acdc5ce8428613d3fb0ef6889fdceb7bd0e99e8e1ddae49c1dbc9b161536e",
+          "bytes": 457
+        },
+        {
+          "path": "maps/ix/testimate-ix.big.meta.json",
+          "sha256": "f4e17c31ede7bff93ca15c121ea054ffeeb72fccd0debd7bb63fdae93f29fb67",
+          "bytes": 415707
+        },
+        {
+          "path": "maps/ix/testimate-ix.passages.jsonl",
+          "sha256": "dfec2904c9b5c7a7e7c9ab1102be879ec7fe0b9c0b0179e8c0eab2f1466312e6",
+          "bytes": 1803308
+        }
+      ]
+    },
+    {
+      "name": "testimate-repowise",
+      "role": "readable-subsystem-context",
+      "producer": "repowise",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 293,
+      "files": [
+        {
+          "path": "maps/repowise/testimate-repowise.big.rvf",
+          "sha256": "4634575d48bbc4eb93caf116202c78a543e93c26fe360f2ba42873042030a1cd",
+          "bytes": 903556
+        },
+        {
+          "path": "maps/repowise/testimate-repowise.big.rvf.idmap.json",
+          "sha256": "012bcb99848d085b03f2682d32b6be6c96d6aa08950ffcc1723f435634f3b7c1",
+          "bytes": 23269
+        },
+        {
+          "path": "maps/repowise/testimate-repowise.big.rvf.embed.json",
+          "sha256": "48dbca46fe3f0ec3d1029eff1265139978170e4c26667db48a811710f9fac938",
+          "bytes": 463
+        },
+        {
+          "path": "maps/repowise/testimate-repowise.big.meta.json",
+          "sha256": "4bb0c47c3194c49dea30145473d160e9c9947e522d1d178c7a21acc2f02d6aca",
+          "bytes": 57669
+        },
+        {
+          "path": "maps/repowise/testimate-repowise.passages.jsonl",
+          "sha256": "8d5de40db5049db596e362dc0ce93743442313d902eb2c806cb99be2a6440784",
+          "bytes": 564788
+        }
+      ]
+    },
+    {
+      "name": "testimate-ua",
+      "role": "semantic-architecture",
+      "producer": "understand-anything",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 1372,
+      "files": [
+        {
+          "path": "maps/ua/testimate-ua.big.rvf",
+          "sha256": "4e9e294b5e4b4f7b0736d64beba826d1a6a5d49b22d1ed19ac5a7152461456d3",
+          "bytes": 4282927
+        },
+        {
+          "path": "maps/ua/testimate-ua.big.rvf.idmap.json",
+          "sha256": "6372e94e8fb795ccf7468a94a7ba53fc9ccf357ae0ca8ae0c32ae9cdb59bda92",
+          "bytes": 110336
+        },
+        {
+          "path": "maps/ua/testimate-ua.big.rvf.embed.json",
+          "sha256": "9e58d6c092fa0b5d75ba54835c4bb06feb1aa323c4f700bedb9d3e5755c66f30",
+          "bytes": 457
+        },
+        {
+          "path": "maps/ua/testimate-ua.big.meta.json",
+          "sha256": "25eefdfaf65410dd41980121b7f9619592398506f74bbe5392e550053df9d595",
+          "bytes": 189623
+        },
+        {
+          "path": "maps/ua/testimate-ua.passages.jsonl",
+          "sha256": "8cbcefd853a4b819bd4b2f736864e2e6078697914ee5c0206ccc0324cec5df08",
+          "bytes": 1311179
+        }
+      ]
+    },
+    {
+      "name": "testimate-grok-wiki",
+      "role": "documentation-navigation-and-cross-view-synthesis",
+      "producer": "grok-wiki",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 134,
+      "files": [
+        {
+          "path": "maps/grok-wiki/testimate-grok-wiki.big.rvf",
+          "sha256": "0a601387787067b12caebe2c547669da5ac82c45cd373b4fc56ee943e614b622",
+          "bytes": 413322
+        },
+        {
+          "path": "maps/grok-wiki/testimate-grok-wiki.big.rvf.idmap.json",
+          "sha256": "a345223d05fd0d6a71be9d178b8cc87c85d4106b37de291e5a4734ba7feb7361",
+          "bytes": 10549
+        },
+        {
+          "path": "maps/grok-wiki/testimate-grok-wiki.big.rvf.embed.json",
+          "sha256": "fb039bb98283a3d56f4a15866edf76164f1a1b846852f0ef9bd8a76f5e671183",
+          "bytes": 464
+        },
+        {
+          "path": "maps/grok-wiki/testimate-grok-wiki.big.meta.json",
+          "sha256": "b55a87dc3292a7d45a9b1ddbb0e13d3273576b1dc630714c6980c7ca565c4620",
+          "bytes": 26316
+        },
+        {
+          "path": "maps/grok-wiki/testimate-grok-wiki.passages.jsonl",
+          "sha256": "6430ed8b80c9cb41cfdc26539c590571d4ed51fcd54e904fd6c022bdaf25f279",
+          "bytes": 619673
+        }
+      ]
+    }
+  ],
+  "routing": {
+    "alias": "qwntik-testimate-cluster",
+    "mode": "evidence-aware-smallest-scope",
+    "notConcatenated": true,
+    "routes": {
+      "implementation": [
+        "testimate",
+        "testimate-ix"
+      ],
+      "exactSymbolsAndEdges": [
+        "testimate-ix"
+      ],
+      "structuralBlastRadius": [
+        "testimate-graphify"
+      ],
+      "semanticArchitecture": [
+        "testimate-ua",
+        "testimate-repowise"
+      ],
+      "documentationNavigation": [
+        "testimate-grok-wiki",
+        "testimate-repowise"
+      ],
+      "crossViewSynthesis": [
+        "testimate",
+        "testimate-graphify",
+        "testimate-ix",
+        "testimate-repowise",
+        "testimate-ua",
+        "testimate-grok-wiki"
+      ]
+    },
+    "citationRequired": true,
+    "thinEvidenceLabel": true
+  },
+  "refs": {
+    "scopeHash": "e0f9f0d87f4da9793ea2895c1f101b7203355f551077b760d05c62813ef947bd",
+    "stagingRoot": "/opt/quantic-impact/artifacts/ruvnet-brain-rvf/testimate-family-staging-20260805T2125Z",
+    "rollback": "ROLLBACK-MANIFEST.json",
+    "familyManifestHash": "cca58a5dbbcfb6ffc972a00068a030683c7498a6888fc94a58b48d3f99e6a470",
+    "packetHash": "0d13b65f39aedace15feb963a1000e84712d6bf5af87daa76bac5651c593978e"
+  },
+  "registration": {
+    "activeRegistration": true,
+    "superbIngest": false
+  },
+  "familyManifestHash": "cca58a5dbbcfb6ffc972a00068a030683c7498a6888fc94a58b48d3f99e6a470",
+  "packetHash": "0d13b65f39aedace15feb963a1000e84712d6bf5af87daa76bac5651c593978e"
+}

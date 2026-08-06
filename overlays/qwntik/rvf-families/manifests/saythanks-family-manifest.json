@@ -1,0 +1,364 @@
+{
+  "schema": "qwntik-rvf-family-manifest-v1",
+  "state": "active-reference-only",
+  "familyName": "saythanks-reference-cluster",
+  "repo": "saythanks",
+  "sourceRepo": "https://github.com/Bolivar1234/saythanks.git",
+  "sourceCommit": "28065a099d44bd48a93f6fa5dd54d9825a4a667f",
+  "provenanceCaveat": "Only the broad source store carries the frozen commit; map projections remain sourceCommit null and are reference-only.",
+  "embeddingProfiles": {
+    "allStores": {
+      "model": "Xenova/bge-base-en-v1.5",
+      "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+      "dimensions": 768,
+      "metric": "cosine",
+      "pooling": "cls"
+    }
+  },
+  "stores": [
+    {
+      "name": "saythanks",
+      "role": "primary-source-reference",
+      "producer": "forge-big",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 8806,
+      "sourceCommit": "28065a099d44bd48a93f6fa5dd54d9825a4a667f",
+      "files": [
+        {
+          "path": "saythanks.big.rvf",
+          "sha256": "7307849d086f43faae2fc386d18c9625220263097296cd9543de12f1453d5df3",
+          "bytes": 27645670
+        },
+        {
+          "path": "saythanks.big.rvf.idmap.json",
+          "sha256": "81d8a0d4801adb5e80faa56ca512f0eecd78240f6d25da7626d7cf0cf2082307",
+          "bytes": 1389180
+        },
+        {
+          "path": "saythanks.big.rvf.embed.json",
+          "sha256": "2bb4d1c311c35efb4cd41288ee9165c6b4a336958aae9327303bd80209c1a439",
+          "bytes": 454
+        },
+        {
+          "path": "saythanks.meta.json",
+          "sha256": "b7227d245f6b806f70d1459d122ac1617a34d4716f6b99f15239af980188986e",
+          "bytes": 5101270
+        },
+        {
+          "path": "saythanks.passages.jsonl",
+          "sha256": "0bb162280bc273dbb7b8c8d62a968da2b409a4f8e1ea6958c3ea3dc4f044d71c",
+          "bytes": 25332530
+        }
+      ]
+    },
+    {
+      "name": "saythanks-graphify",
+      "role": "structural-communities-blast-radius",
+      "producer": "graphify",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 4507,
+      "sourceCommit": null,
+      "files": [
+        {
+          "path": "saythanks-graphify.big.rvf",
+          "sha256": "1bd43c4b59357413ceae98117f5e88b85cc7599b2489c2ab35eaaf65cdf1231f",
+          "bytes": 14125217
+        },
+        {
+          "path": "saythanks-graphify.big.rvf.idmap.json",
+          "sha256": "a99632ac5fd390508b43e6214f9639e9d485ae67c70d59d51601ef7945847b26",
+          "bytes": 709938
+        },
+        {
+          "path": "saythanks-graphify.big.rvf.embed.json",
+          "sha256": "deeca1d7ccfbc9c352d28cab34ef1c5fb415a5fef116eebcfce657911282738b",
+          "bytes": 463
+        },
+        {
+          "path": "saythanks-graphify.meta.json",
+          "sha256": "6ed8b6a1cc67e0e5dc0642306d9e3b5677b58eada2e7846c4845403874e8711c",
+          "bytes": 2296214
+        },
+        {
+          "path": "saythanks-graphify.passages.jsonl",
+          "sha256": "64d02ecde3d817106be704f1edfb39be81b9c4027a5bc4214b27778473e5d62c",
+          "bytes": 18075660
+        }
+      ]
+    },
+    {
+      "name": "saythanks-ua",
+      "role": "semantic-summary-small",
+      "producer": "understand-anything",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 294,
+      "sourceCommit": null,
+      "files": [
+        {
+          "path": "saythanks-ua.big.rvf",
+          "sha256": "b1de870c512a408b86131bdbad1cd7e94a5509e411b5cff39b54d3b3d1e78fcc",
+          "bytes": 907888
+        },
+        {
+          "path": "saythanks-ua.big.rvf.idmap.json",
+          "sha256": "d337f8190c5be1ce5a79343182973e40ef436b3eb68887badd9249c3b670811c",
+          "bytes": 45693
+        },
+        {
+          "path": "saythanks-ua.big.rvf.embed.json",
+          "sha256": "37bd31d2ac4b5a656d80a8fb30f443793612bc768b32920637e4cd8c14dbbde2",
+          "bytes": 457
+        },
+        {
+          "path": "saythanks-ua.meta.json",
+          "sha256": "74e4644f19162df77c5c78fb418dd3c2c728a4fa4092c026ffb279a6a2d27c3a",
+          "bytes": 138630
+        },
+        {
+          "path": "saythanks-ua.passages.jsonl",
+          "sha256": "f95ee3ce26b4140f8f42e3f98542dc6859ee3f592db21eb2ad15ce90df014491",
+          "bytes": 1115475
+        }
+      ]
+    },
+    {
+      "name": "saythanks-repowise",
+      "role": "readable-subsystem-context",
+      "producer": "repowise",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 2898,
+      "sourceCommit": null,
+      "files": [
+        {
+          "path": "saythanks-repowise.big.rvf",
+          "sha256": "d56fa8978a4dadedeffa6ce1fe6e088cccbd306c7af232ea1674eebf71449f7f",
+          "bytes": 9066012
+        },
+        {
+          "path": "saythanks-repowise.big.rvf.idmap.json",
+          "sha256": "e4ad76cbac869f16fab43587b021944e6ba6f69c469bf57cfe3d62ceb38d45b2",
+          "bytes": 455716
+        },
+        {
+          "path": "saythanks-repowise.big.rvf.embed.json",
+          "sha256": "e3197f67a63976553363ddebf90a5545483744ac3e6f85253f9ac5b89c916b2f",
+          "bytes": 463
+        },
+        {
+          "path": "saythanks-repowise.meta.json",
+          "sha256": "74ee776c590c2d15234d1f1527699f771a7bb37b241340c5e61ccbdeee69b938",
+          "bytes": 1422310
+        },
+        {
+          "path": "saythanks-repowise.passages.jsonl",
+          "sha256": "8d5a0cb23443ca16c5977928e69d8ae5b349952db82e6c801703a79ad513de80",
+          "bytes": 11365301
+        }
+      ]
+    },
+    {
+      "name": "saythanks-ix",
+      "role": "exact-symbol-router-small",
+      "producer": "ix",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 32,
+      "sourceCommit": null,
+      "files": [
+        {
+          "path": "saythanks-ix.big.rvf",
+          "sha256": "29440d27716cec1b16e4ff8690f493d43f92ff5d31f8f57bb31af4bcc2e3204b",
+          "bytes": 100924
+        },
+        {
+          "path": "saythanks-ix.big.rvf.idmap.json",
+          "sha256": "a3cfb27a6b6e9e5662499533cef047f6e57bfddde2550e54a2562a47c591a578",
+          "bytes": 4954
+        },
+        {
+          "path": "saythanks-ix.big.rvf.embed.json",
+          "sha256": "5a1a934d2246b70fc46070070487f468f60a6942ee0965e83a7fc0812b6d0fed",
+          "bytes": 457
+        },
+        {
+          "path": "saythanks-ix.meta.json",
+          "sha256": "854d086a17f26be6744a442770af3047b3be54bcea095bc1d85fb196b992498f",
+          "bytes": 16513
+        },
+        {
+          "path": "saythanks-ix.passages.jsonl",
+          "sha256": "ca8045e722705f1b93ccd8022b452d5cfd85cfd8e0d11d075597b113fa228180",
+          "bytes": 106808
+        }
+      ]
+    },
+    {
+      "name": "saythanks-ua-large",
+      "role": "semantic-node-edge-large",
+      "producer": "understand-anything",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 26182,
+      "sourceCommit": null,
+      "files": [
+        {
+          "path": "saythanks-ua-large.big.rvf",
+          "sha256": "52aef2eec1659f00be94790e067d15579e2ad438e0e2cf0f371992210a20b664",
+          "bytes": 82616625
+        },
+        {
+          "path": "saythanks-ua-large.big.rvf.idmap.json",
+          "sha256": "d6519cb8e8dc734ada05920acf756cc09acc307896efefa2825861eaf39b3999",
+          "bytes": 4166955
+        },
+        {
+          "path": "saythanks-ua-large.big.rvf.embed.json",
+          "sha256": "b96867f3d534b6a7d041ad55b3bdec6bfe686bbc967764d53ec6b0e7630232a0",
+          "bytes": 463
+        },
+        {
+          "path": "saythanks-ua-large.meta.json",
+          "sha256": "7e0dd03c70140ae217d44e9c5c399eed3888982530352a8fae4e64fac640898d",
+          "bytes": 21520990
+        },
+        {
+          "path": "saythanks-ua-large.passages.jsonl",
+          "sha256": "bc805b172c884c5a6ef68cd1c0fa887e88411f120a013f6f6b7a05eb20098934",
+          "bytes": 100412439
+        }
+      ]
+    },
+    {
+      "name": "saythanks-ix-large",
+      "role": "exact-symbol-router-large",
+      "producer": "ix",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 4185,
+      "sourceCommit": null,
+      "files": [
+        {
+          "path": "saythanks-ix-large.big.rvf",
+          "sha256": "bc53a6bc77acfbf4a30d0144228bc164c2524ce123f4a2ad669f248cb782cd28",
+          "bytes": 13090414
+        },
+        {
+          "path": "saythanks-ix-large.big.rvf.idmap.json",
+          "sha256": "975dd8c8b03cc83f2f3d349b05f7e8b748883f17e38a0e87ce18556e81a6f8f2",
+          "bytes": 659062
+        },
+        {
+          "path": "saythanks-ix-large.big.rvf.embed.json",
+          "sha256": "7ed9331c1cb3752f30076d8e20bb55eba90326ea156383c24f775c458e096971",
+          "bytes": 463
+        },
+        {
+          "path": "saythanks-ix-large.meta.json",
+          "sha256": "6261730ad2d51afa610581f2b2d271a4efb167ede93c90913e30a2753ddb7cb7",
+          "bytes": 3308755
+        },
+        {
+          "path": "saythanks-ix-large.passages.jsonl",
+          "sha256": "243186cb3a3aff25bfc313a3344cd9cecaa31c5acc3549728595cccb5eb8c89a",
+          "bytes": 10752188
+        }
+      ]
+    }
+  ],
+  "routing": {
+    "mode": "evidence-aware-smallest-scope",
+    "notConcatenated": true,
+    "routes": {
+      "implementation": [
+        "saythanks",
+        "saythanks-ix",
+        "saythanks-ix-large"
+      ],
+      "exactSymbolsAndEdges": [
+        "saythanks-ix",
+        "saythanks-ix-large"
+      ],
+      "structuralBlastRadius": [
+        "saythanks-graphify"
+      ],
+      "semanticArchitecture": [
+        "saythanks-ua",
+        "saythanks-ua-large",
+        "saythanks-repowise"
+      ],
+      "documentationNavigation": [
+        "saythanks-repowise"
+      ],
+      "crossViewSynthesis": [
+        "saythanks",
+        "saythanks-graphify",
+        "saythanks-ua",
+        "saythanks-repowise",
+        "saythanks-ix",
+        "saythanks-ua-large",
+        "saythanks-ix-large"
+      ]
+    },
+    "citationRequired": true,
+    "thinEvidenceLabel": true
+  },
+  "refs": {
+    "scopeHash": "e99610d0c5c44ff31a1cdb379912c249e16b74c904b7d3ea1ab0ee4fe31768b6",
+    "rollback": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/backups/rvf-cluster-repair-20260806T160018Z-P5",
+    "recipe": "/opt/quantic-impact/artifacts/ruvnet-brain-rvf/saythanks-big/ruvnet-brain-src/kb/saythanks-map-recipe.json",
+    "packetHash": "4dfb737721a64e6faeb9bd77845ceee43d9d4cbad97f074105cff4d4654e2cbe",
+    "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096"
+  },
+  "registration": {
+    "activeRegistration": true,
+    "superbIngest": false
+  },
+  "packetHash": "4dfb737721a64e6faeb9bd77845ceee43d9d4cbad97f074105cff4d4654e2cbe",
+  "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096"
+}

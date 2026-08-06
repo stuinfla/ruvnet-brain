@@ -1,0 +1,54 @@
+{
+  "schema": "qwntik-rvf-routing-alias-v1",
+  "alias": "qwntik-makerkit-cluster",
+  "familyManifestHash": "53a4dec8caa4d69eaf35f0123b6b8c483208a1c2d14547d1c64ca6d3fb0f09bc",
+  "sourceCommit": "91abe428f62281088bc0876dfdde4dc0adb3ccaf",
+  "mode": "evidence-aware-smallest-scope",
+  "notConcatenated": true,
+  "stores": [
+    "makerkit-source",
+    "makerkit-graphify",
+    "makerkit-ix",
+    "makerkit-repowise",
+    "makerkit-ua",
+    "makerkit"
+  ],
+  "routes": {
+    "implementation": [
+      "makerkit-source",
+      "makerkit-ix"
+    ],
+    "exactSymbolsAndEdges": [
+      "makerkit-ix"
+    ],
+    "structuralBlastRadius": [
+      "makerkit-graphify"
+    ],
+    "semanticArchitecture": [
+      "makerkit-ua",
+      "makerkit-repowise"
+    ],
+    "documentationNavigation": [
+      "makerkit",
+      "makerkit-repowise"
+    ],
+    "crossViewSynthesis": [
+      "makerkit-source",
+      "makerkit-graphify",
+      "makerkit-ix",
+      "makerkit-repowise",
+      "makerkit-ua",
+      "makerkit"
+    ]
+  },
+  "citationRequired": true,
+  "thinEvidenceLabel": true,
+  "registration": {
+    "activeRegistration": true,
+    "superbIngest": false,
+    "activatedUtc": "2026-08-06T15:56:10.309Z",
+    "activationMode": "rvf-cluster-repair-P4",
+    "refresh": "record-preserving-native-maps"
+  },
+  "packetHash": "d113643efab85928cdbf06da3e0616dcd93c962639432704e3bc6545c158ff56"
+}

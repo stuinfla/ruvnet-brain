@@ -1,0 +1,59 @@
+{
+  "schema": "qwntik-rvf-routing-alias-v1",
+  "alias": "saythanks-reference-cluster",
+  "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+  "sourceCommit": "28065a099d44bd48a93f6fa5dd54d9825a4a667f",
+  "mode": "evidence-aware-smallest-scope",
+  "notConcatenated": true,
+  "stores": [
+    "saythanks",
+    "saythanks-graphify",
+    "saythanks-ua",
+    "saythanks-repowise",
+    "saythanks-ix",
+    "saythanks-ua-large",
+    "saythanks-ix-large"
+  ],
+  "routes": {
+    "implementation": [
+      "saythanks",
+      "saythanks-ix",
+      "saythanks-ix-large"
+    ],
+    "exactSymbolsAndEdges": [
+      "saythanks-ix",
+      "saythanks-ix-large"
+    ],
+    "structuralBlastRadius": [
+      "saythanks-graphify"
+    ],
+    "semanticArchitecture": [
+      "saythanks-ua",
+      "saythanks-ua-large",
+      "saythanks-repowise"
+    ],
+    "documentationNavigation": [
+      "saythanks-repowise"
+    ],
+    "crossViewSynthesis": [
+      "saythanks",
+      "saythanks-graphify",
+      "saythanks-ua",
+      "saythanks-repowise",
+      "saythanks-ix",
+      "saythanks-ua-large",
+      "saythanks-ix-large"
+    ]
+  },
+  "citationRequired": true,
+  "thinEvidenceLabel": true,
+  "provenanceCaveat": "Only the broad source store carries the frozen commit; map projections remain sourceCommit null and are reference-only.",
+  "registration": {
+    "activeRegistration": true,
+    "superbIngest": false,
+    "activatedUtc": "2026-08-06T16:00:20.648Z",
+    "activationMode": "rvf-cluster-repair-P5",
+    "refresh": "reference-family-registration"
+  },
+  "packetHash": "4dfb737721a64e6faeb9bd77845ceee43d9d4cbad97f074105cff4d4654e2cbe"
+}

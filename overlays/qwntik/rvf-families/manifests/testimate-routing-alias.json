@@ -1,0 +1,54 @@
+{
+  "schema": "qwntik-rvf-routing-alias-v1",
+  "alias": "qwntik-testimate-cluster",
+  "familyManifestHash": "cca58a5dbbcfb6ffc972a00068a030683c7498a6888fc94a58b48d3f99e6a470",
+  "sourceCommit": "3344ae0438c871e1e1b07eba222e15a029fc53b6",
+  "mode": "evidence-aware-smallest-scope",
+  "notConcatenated": true,
+  "stores": [
+    "testimate",
+    "testimate-graphify",
+    "testimate-ix",
+    "testimate-repowise",
+    "testimate-ua",
+    "testimate-grok-wiki"
+  ],
+  "routes": {
+    "implementation": [
+      "testimate",
+      "testimate-ix"
+    ],
+    "exactSymbolsAndEdges": [
+      "testimate-ix"
+    ],
+    "structuralBlastRadius": [
+      "testimate-graphify"
+    ],
+    "semanticArchitecture": [
+      "testimate-ua",
+      "testimate-repowise"
+    ],
+    "documentationNavigation": [
+      "testimate-grok-wiki",
+      "testimate-repowise"
+    ],
+    "crossViewSynthesis": [
+      "testimate",
+      "testimate-graphify",
+      "testimate-ix",
+      "testimate-repowise",
+      "testimate-ua",
+      "testimate-grok-wiki"
+    ]
+  },
+  "citationRequired": true,
+  "thinEvidenceLabel": true,
+  "registration": {
+    "activeRegistration": true,
+    "superbIngest": false,
+    "activatedUtc": "2026-08-05T15:15:19.272880Z",
+    "activationMode": "external-kb-live-test",
+    "refresh": "deepwiki-supplement"
+  },
+  "packetHash": "0d13b65f39aedace15feb963a1000e84712d6bf5af87daa76bac5651c593978e"
+}

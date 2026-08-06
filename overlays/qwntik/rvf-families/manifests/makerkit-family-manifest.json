@@ -1,0 +1,319 @@
+{
+  "schema": "qwntik-rvf-family-manifest-v1",
+  "state": "active",
+  "familyName": "qwntik-makerkit-cluster",
+  "repo": "makerkit",
+  "sourceRepo": "https://github.com/makerkit/makerkit.git",
+  "sourceCommit": "91abe428f62281088bc0876dfdde4dc0adb3ccaf",
+  "embeddingProfiles": {
+    "primarySource": {
+      "model": "Xenova/all-MiniLM-L6-v2",
+      "revision": "751bff37182d3f1213fa05d7196b954e230abad9",
+      "dimensions": 384,
+      "metric": "cosine",
+      "pooling": "mean"
+    },
+    "companionMaps": {
+      "model": "Xenova/bge-base-en-v1.5",
+      "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+      "dimensions": 768,
+      "metric": "cosine",
+      "pooling": "cls"
+    }
+  },
+  "stores": [
+    {
+      "name": "makerkit-source",
+      "role": "primary-source",
+      "producer": "forge-build",
+      "dimensions": 384,
+      "profile": {
+        "model": "Xenova/all-MiniLM-L6-v2",
+        "revision": "751bff37182d3f1213fa05d7196b954e230abad9",
+        "dimensions": 384,
+        "metric": "cosine",
+        "pooling": "mean"
+      },
+      "passages": 1483,
+      "files": [
+        {
+          "path": "makerkit-source.rvf",
+          "sha256": "ac0b0747d9699ba5c2f47274005981ffff7530ccb56a09a2f546c74bb12415b0",
+          "bytes": 2398255
+        },
+        {
+          "path": "makerkit-source.rvf.idmap.json",
+          "sha256": "2c3cccb11c4b380d0f07d93b8ab08e68ad59c2fd2aaf38e9b97a90912abe357a",
+          "bytes": 232146
+        },
+        {
+          "path": "makerkit-source.rvf.embed.json",
+          "sha256": "2ac087384d5eeb1e98c24732bae51233b789acb8f03296d1daf36cd12a14aef8",
+          "bytes": 345
+        },
+        {
+          "path": "makerkit-source.meta.json",
+          "sha256": "17baad4e2a16416a1afabcc324f863b3657913986a217697f7f2c121d021e88b",
+          "bytes": 866438
+        },
+        {
+          "path": "makerkit-source.passages.jsonl",
+          "sha256": "c4353790aeacedfa03cacb2293d8de2d01ca27d551978096a3b6d8c021326ceb",
+          "bytes": 3952394
+        }
+      ]
+    },
+    {
+      "name": "makerkit-graphify",
+      "role": "structural-communities-blast-radius",
+      "producer": "graphify",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 3543,
+      "files": [
+        {
+          "path": "makerkit-graphify.big.rvf",
+          "sha256": "5a6aa0f379456b4362abdad4c05292a2a3f6fbaa86a6ac9a491f634ba337f31b",
+          "bytes": 11076004
+        },
+        {
+          "path": "makerkit-graphify.big.rvf.idmap.json",
+          "sha256": "877b08b7625c10f6824bccbaccb7d7627dcc6c9dffd8f8b37c6648625a02c754",
+          "bytes": 557626
+        },
+        {
+          "path": "makerkit-graphify.big.rvf.embed.json",
+          "sha256": "5ee0966a2ff32d80c16f0532032169738ce1c3e548dc762545ba7eaa757d3350",
+          "bytes": 462
+        },
+        {
+          "path": "makerkit-graphify.meta.json",
+          "sha256": "5f4a290b413e136b41e4c50925bc291509243e4b2c7660c5db15442a8ec94375",
+          "bytes": 1797008
+        },
+        {
+          "path": "makerkit-graphify.passages.jsonl",
+          "sha256": "49900dfeea530b3f0b37112ec72ac548e44cb8d9cf1ddcf7f7743af5dc74877e",
+          "bytes": 11121068
+        }
+      ]
+    },
+    {
+      "name": "makerkit-ix",
+      "role": "exact-symbols-and-edges",
+      "producer": "ix",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 116,
+      "files": [
+        {
+          "path": "makerkit-ix.big.rvf",
+          "sha256": "33b5fc2cce33bc0b947274ef4b0bb94de221e33da221e76fd23d632d84e20a81",
+          "bytes": 357882
+        },
+        {
+          "path": "makerkit-ix.big.rvf.idmap.json",
+          "sha256": "8f7aa925c6749e6fda348a30864127c89fd5be68d270b8a96292c1efd4881a10",
+          "bytes": 17925
+        },
+        {
+          "path": "makerkit-ix.big.rvf.embed.json",
+          "sha256": "60aaef3e67d0d0a20f793efccf807f8da1cbc4d3b203afb5134f5f8a0b825ad3",
+          "bytes": 456
+        },
+        {
+          "path": "makerkit-ix.meta.json",
+          "sha256": "4dfdc7927e57d2321c6f61cbe7bb40bfd347432951b93508b180d211b8fc92ce",
+          "bytes": 65734
+        },
+        {
+          "path": "makerkit-ix.passages.jsonl",
+          "sha256": "9cda8962effa73120e03788bf7afd04c171616f56b9408df24f8ac199db5a44b",
+          "bytes": 65579
+        }
+      ]
+    },
+    {
+      "name": "makerkit-repowise",
+      "role": "readable-subsystem-context",
+      "producer": "repowise",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 1087,
+      "files": [
+        {
+          "path": "makerkit-repowise.big.rvf",
+          "sha256": "846ef2d9e7a1f82501bd19995399c103c9e0e3620fa36ecea50c9020bb302f6b",
+          "bytes": 3392816
+        },
+        {
+          "path": "makerkit-repowise.big.rvf.idmap.json",
+          "sha256": "9a6696f9b8a085223ee7424bd9ee76a6f51cfbbba7072f7659253ddbfc509289",
+          "bytes": 169578
+        },
+        {
+          "path": "makerkit-repowise.big.rvf.embed.json",
+          "sha256": "24cacd541b179f97fc5e108d8baf1fe651973bda0e959d9ffa6a0b8faa0b09b0",
+          "bytes": 462
+        },
+        {
+          "path": "makerkit-repowise.meta.json",
+          "sha256": "c174203e949ef653bf43c0be6f09099033c9337d00ec7583af3bf5677de1de94",
+          "bytes": 637580
+        },
+        {
+          "path": "makerkit-repowise.passages.jsonl",
+          "sha256": "72753460d59b9e45bebb4bf0636c795d0f4f38e4dbd254dc82c98334ea8e1083",
+          "bytes": 2210364
+        }
+      ]
+    },
+    {
+      "name": "makerkit-ua",
+      "role": "semantic-architecture",
+      "producer": "understand-anything",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 1297,
+      "files": [
+        {
+          "path": "makerkit-ua.big.rvf",
+          "sha256": "5a63656087a946298af09b69ea35d1a0e998fcb5757c0fed8053e4eaf8b525e4",
+          "bytes": 4049036
+        },
+        {
+          "path": "makerkit-ua.big.rvf.idmap.json",
+          "sha256": "04138ec6ca021d195aad4998502722296774ba40751c09b0ed3ad96b79055f9a",
+          "bytes": 202758
+        },
+        {
+          "path": "makerkit-ua.big.rvf.embed.json",
+          "sha256": "c91b01c0af182b7abdbd9fc8cb47e47d4f1101b270a67c1006e5d9e4defa284f",
+          "bytes": 456
+        },
+        {
+          "path": "makerkit-ua.meta.json",
+          "sha256": "1a5216b03c80de687f3bd361288122829e6cccb88dac6700cea2f3bde5580a1d",
+          "bytes": 731302
+        },
+        {
+          "path": "makerkit-ua.passages.jsonl",
+          "sha256": "56c88768ee46a1d3d968326a8fe1231a11f6bec18f1ef5b957ae9e2da95118ec",
+          "bytes": 3029260
+        }
+      ]
+    },
+    {
+      "name": "makerkit",
+      "role": "documentation-navigation-and-cross-view-synthesis",
+      "producer": "grok-wiki",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 751,
+      "files": [
+        {
+          "path": "makerkit.big.rvf",
+          "sha256": "a5c9df2d1d1061f0d4b32140157c3173d7eefdaf2235b2df8e44bb649eaf471c",
+          "bytes": 2315452
+        },
+        {
+          "path": "makerkit.big.rvf.idmap.json",
+          "sha256": "05685cfaa4be1cdffb992276ddb05e8b2364145dc1c89ff3c713446b015dec2e",
+          "bytes": 116985
+        },
+        {
+          "path": "makerkit.big.rvf.embed.json",
+          "sha256": "07fd2659db5084136b72218fe8b9dd1951c649b3378f1d28f7f76b99a3830760",
+          "bytes": 453
+        },
+        {
+          "path": "makerkit.big.meta.json",
+          "sha256": "3b5e35849dec88e9bef0f76df2898991745d4d09899694c7d3e458f3dc088d47",
+          "bytes": 1521163
+        },
+        {
+          "path": "makerkit.big.passages.jsonl",
+          "sha256": "eb67b621caaf7ad7a9adf9e6fb4f03d5e97dfb174b3e7c0c328d58fafb4bc6b4",
+          "bytes": 1258339
+        }
+      ]
+    }
+  ],
+  "routing": {
+    "mode": "evidence-aware-smallest-scope",
+    "notConcatenated": true,
+    "routes": {
+      "implementation": [
+        "makerkit-source",
+        "makerkit-ix"
+      ],
+      "exactSymbolsAndEdges": [
+        "makerkit-ix"
+      ],
+      "structuralBlastRadius": [
+        "makerkit-graphify"
+      ],
+      "semanticArchitecture": [
+        "makerkit-ua",
+        "makerkit-repowise"
+      ],
+      "documentationNavigation": [
+        "makerkit",
+        "makerkit-repowise"
+      ],
+      "crossViewSynthesis": [
+        "makerkit-source",
+        "makerkit-graphify",
+        "makerkit-ix",
+        "makerkit-repowise",
+        "makerkit-ua",
+        "makerkit"
+      ]
+    },
+    "citationRequired": true,
+    "thinEvidenceLabel": true
+  },
+  "refs": {
+    "scopeHash": "cdfb6465690a0cc155efb059fedb881827c54a85834f306b4520ee39e34f14b1",
+    "stagingRoot": "/opt/quantic-impact/artifacts/ruvnet-brain-rvf/makerkit-family-candidate-v3-20260806T5sPgOs",
+    "rollback": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/backups/rvf-cluster-repair-20260806T155610Z-P4",
+    "packetHash": "d113643efab85928cdbf06da3e0616dcd93c962639432704e3bc6545c158ff56",
+    "familyManifestHash": "53a4dec8caa4d69eaf35f0123b6b8c483208a1c2d14547d1c64ca6d3fb0f09bc"
+  },
+  "registration": {
+    "activeRegistration": true,
+    "superbIngest": false
+  },
+  "packetHash": "d113643efab85928cdbf06da3e0616dcd93c962639432704e3bc6545c158ff56",
+  "familyManifestHash": "53a4dec8caa4d69eaf35f0123b6b8c483208a1c2d14547d1c64ca6d3fb0f09bc"
+}

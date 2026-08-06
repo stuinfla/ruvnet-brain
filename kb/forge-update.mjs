@@ -116,6 +116,142 @@ const stores = (Array.isArray(source.stores)
     ? Object.entries(source.stores).map(([kbName, v]) => ({ kbName, ...v }))
     : [source]).map(withBundleTag);
 
+/**
+ * Return only stores the public evergreen updater is allowed to replace.
+ *
+ * Private deployment overlays still belong in SOURCE.json for provenance, but they do not have a
+ * public release asset. `updateManaged: false` keeps those entries visible while preventing a
+ * public bundle update from treating them as downloadable targets.
+ */
+export function selectUpdateManagedStores(allStores, activeProfile = 'complete') {
+  const managed = (Array.isArray(allStores) ? allStores : [])
+    .filter((store) => store?.updateManaged !== false);
+  return activeProfile === 'ruvector'
+    ? managed.filter((store) => store.kbName === 'ruvector')
+    : managed;
+}
+
+function sameJson(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function atomicJson(file, value) {
+  const temp = `${file}.tmp-${process.pid}`;
+  fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`);
+  fs.renameSync(temp, file);
+}
+
+function cardSections(markdown) {
+  const sections = new Map();
+  const matches = [...String(markdown || '').matchAll(/^## ([^\n]+)\n/gm)];
+  for (let index = 0; index < matches.length; index++) {
+    const start = matches[index].index;
+    const end = matches[index + 1]?.index ?? markdown.length;
+    sections.set(matches[index][1].trim(), markdown.slice(start, end).trimEnd());
+  }
+  return sections;
+}
+
+function mergePrivateEntries(publicEntries, privateEntries, label) {
+  const merged = { ...(publicEntries || {}) };
+  for (const [name, entry] of Object.entries(privateEntries || {})) {
+    if (Object.hasOwn(merged, name) && !sameJson(merged[name], entry)) {
+      throw new Error(`${label} collision for private store ${name}`);
+    }
+    merged[name] = entry;
+  }
+  return merged;
+}
+
+function sha256File(file) {
+  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function relativeFiles(dir, prefix = '') {
+  const files = [];
+  for (const entry of fs.readdirSync(path.join(dir, prefix), { withFileTypes: true })) {
+    const relative = path.join(prefix, entry.name);
+    if (entry.isDirectory()) files.push(...relativeFiles(dir, relative));
+    else if (entry.isFile()) files.push(relative);
+  }
+  return files;
+}
+
+/** Snapshot private deployment metadata before a public bundle overwrites shared registry files. */
+export function capturePrivateOverlayState({ kbDir, allStores }) {
+  const privateSource = Object.fromEntries((Array.isArray(allStores) ? allStores : [])
+    .filter((store) => store?.updateManaged === false && store.kbName)
+    .map((store) => [store.kbName, { ...store }]));
+  const privateNames = new Set(Object.keys(privateSource));
+  if (!privateNames.size) return null;
+
+  const generations = JSON.parse(fs.readFileSync(path.join(kbDir, 'RVF-GENERATIONS.json'), 'utf8'));
+  const aliases = JSON.parse(fs.readFileSync(path.join(kbDir, 'repo-aliases.json'), 'utf8'));
+  const privateGenerations = {};
+  for (const name of privateNames) {
+    if (!generations.stores?.[name]) throw new Error(`private store ${name} has no RVF generation record`);
+    privateGenerations[name] = generations.stores[name];
+  }
+  const privateAliases = Object.fromEntries(Object.entries(aliases).filter(([name, values]) =>
+    privateNames.has(name)
+    || (Array.isArray(values) && values.some((value) => privateNames.has(value)))));
+  const privateCardNames = new Set([...privateNames, ...Object.keys(privateAliases)]);
+  const cardsFile = path.join(kbDir, 'capability-cards.md');
+  const cards = fs.existsSync(cardsFile) ? cardSections(fs.readFileSync(cardsFile, 'utf8')) : new Map();
+  const privateCards = Object.fromEntries([...cards].filter(([name]) => privateCardNames.has(name)));
+  const privateFiles = Object.fromEntries(relativeFiles(kbDir)
+    .filter((relative) => [...privateNames].some((name) => {
+      const basename = path.basename(relative);
+      return basename === name || basename.startsWith(`${name}.`) || basename.startsWith(`${name}-`);
+    }))
+    .map((relative) => {
+      const file = path.join(kbDir, relative);
+      return [relative, { bytes: fs.statSync(file).size, sha256: sha256File(file) }];
+    }));
+  return { sourceStores: privateSource, generationStores: privateGenerations, aliases: privateAliases, cards: privateCards, files: privateFiles };
+}
+
+/** Restore private metadata after public extraction, refusing collisions before writing anything. */
+export function restorePrivateOverlayState({ kbDir, overlay }) {
+  if (!overlay) return { restored: 0 };
+  const sourceFile = path.join(kbDir, 'SOURCE.json');
+  const generationsFile = path.join(kbDir, 'RVF-GENERATIONS.json');
+  const aliasesFile = path.join(kbDir, 'repo-aliases.json');
+  const cardsFile = path.join(kbDir, 'capability-cards.md');
+  const source = JSON.parse(fs.readFileSync(sourceFile, 'utf8'));
+  const generations = JSON.parse(fs.readFileSync(generationsFile, 'utf8'));
+  const aliases = JSON.parse(fs.readFileSync(aliasesFile, 'utf8'));
+  const mergedSource = mergePrivateEntries(source.stores, overlay.sourceStores, 'SOURCE.json');
+  const mergedGenerations = mergePrivateEntries(generations.stores, overlay.generationStores, 'RVF-GENERATIONS.json');
+  const mergedAliases = mergePrivateEntries(aliases, overlay.aliases, 'repo-aliases.json');
+  for (const [relative, expected] of Object.entries(overlay.files || {})) {
+    const file = path.join(kbDir, relative);
+    if (!fs.existsSync(file)) throw new Error(`private file missing after update: ${relative}`);
+    if (fs.statSync(file).size !== expected.bytes || sha256File(file) !== expected.sha256) {
+      throw new Error(`private file changed during public update: ${relative}`);
+    }
+  }
+
+  const publicCardsText = fs.existsSync(cardsFile) ? fs.readFileSync(cardsFile, 'utf8') : '';
+  const publicCards = cardSections(publicCardsText);
+  for (const [name, section] of Object.entries(overlay.cards || {})) {
+    if (publicCards.has(name) && publicCards.get(name) !== section) {
+      throw new Error(`capability-cards.md collision for private store ${name}`);
+    }
+    publicCards.set(name, section);
+  }
+  const preambleEnd = publicCardsText.search(/^## /m);
+  const preamble = preambleEnd >= 0 ? publicCardsText.slice(0, preambleEnd).trimEnd() : publicCardsText.trimEnd();
+  const mergedCards = `${preamble}${preamble ? '\n\n' : ''}${[...publicCards.values()].join('\n\n')}\n`;
+
+  atomicJson(sourceFile, { ...source, stores: mergedSource });
+  atomicJson(generationsFile, { ...generations, stores: mergedGenerations });
+  atomicJson(aliasesFile, mergedAliases);
+  fs.writeFileSync(`${cardsFile}.tmp-${process.pid}`, mergedCards);
+  fs.renameSync(`${cardsFile}.tmp-${process.pid}`, cardsFile);
+  return { restored: Object.keys(overlay.sourceStores).length };
+}
+
 const manifestUrl = source.canonicalManifestUrl || stores.find((s) => s.canonicalManifestUrl)?.canonicalManifestUrl;
 if (!manifestUrl) {
   die(`self-update not configured for this build — SOURCE.json has no canonicalManifestUrl ` +
@@ -185,6 +321,43 @@ function copyTree(srcDir, dstDir) {
     const s = path.join(srcDir, ent.name), d = path.join(dstDir, ent.name);
     if (ent.isDirectory()) { fs.mkdirSync(d, { recursive: true }); copyTree(s, d); }
     else { fs.mkdirSync(path.dirname(d), { recursive: true }); fs.copyFileSync(s, d); }
+  }
+}
+
+function restoreTreeExact(srcDir, dstDir) {
+  fs.mkdirSync(dstDir, { recursive: true });
+  const sourceNames = new Set(fs.readdirSync(srcDir));
+  for (const name of fs.readdirSync(dstDir)) {
+    if (!sourceNames.has(name)) fs.rmSync(path.join(dstDir, name), { recursive: true, force: true });
+  }
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const source = path.join(srcDir, entry.name);
+    const target = path.join(dstDir, entry.name);
+    if (entry.isDirectory()) {
+      if (fs.existsSync(target) && !fs.statSync(target).isDirectory()) fs.rmSync(target, { force: true });
+      restoreTreeExact(source, target);
+    } else {
+      if (fs.existsSync(target) && fs.statSync(target).isDirectory()) fs.rmSync(target, { recursive: true, force: true });
+      fs.copyFileSync(source, target);
+    }
+  }
+}
+
+/** Apply a public bundle while preserving private metadata; restore the full backup on failure. */
+export function applyPublicBundlePreservingPrivate({ extractDir, kbDir, backupPath, overlay }) {
+  const privateFiles = new Set(Object.keys(overlay?.files || {}));
+  const collision = relativeFiles(extractDir).find((relative) => privateFiles.has(relative));
+  if (collision) throw new Error(`public bundle collides with private file ${collision}; refusing to copy`);
+  try {
+    copyTree(extractDir, kbDir);
+    return restorePrivateOverlayState({ kbDir, overlay });
+  } catch (error) {
+    try {
+      restoreTreeExact(backupPath, kbDir);
+    } catch (rollbackError) {
+      throw new Error(`${error.message}; automatic rollback also failed: ${rollbackError.message}`);
+    }
+    throw new Error(`${error.message}; restored pre-update bytes from ${backupPath}`);
   }
 }
 
@@ -467,9 +640,7 @@ export function verifyLanded({ kbDir, kbName, before, beforeBundle = null, expec
 async function main() {
   const canon = await fetchJson(manifestUrl);
   const activeProfile = RESTORE_COMPLETE ? 'complete' : readBrainProfile();
-  const profileStores = activeProfile === 'ruvector'
-    ? stores.filter((s) => s.kbName === 'ruvector')
-    : stores;
+  const profileStores = selectUpdateManagedStores(stores, activeProfile);
   if (activeProfile === 'ruvector' && profileStores.length === 0) {
     die(`SOURCE.json has no ruvector store, so the selected RuVector Only profile cannot update safely.`);
   }
@@ -517,6 +688,9 @@ async function main() {
   // rather than only in the mid-log line a cron job never reads (issue #106).
   const mismatches = [];
   let attempted = 0;
+  let privateOverlay;
+  try { privateOverlay = capturePrivateOverlayState({ kbDir: KB_DIR, allStores: stores }); }
+  catch (e) { die(`private overlay preflight failed: ${e.message} — refusing to update.`); }
 
   for (const { local } of behindStores) {
     attempted++;
@@ -572,7 +746,13 @@ async function main() {
     console.log(`  (temporary — released automatically once the new copy verifies)`);
     fs.cpSync(KB_DIR, backupPath, { recursive: true });
     backupsMade.push(backupPath);
-    copyTree(extractDir, KB_DIR);
+    try {
+      const restored = applyPublicBundlePreservingPrivate({ extractDir, kbDir: KB_DIR, backupPath, overlay: privateOverlay });
+      if (restored.restored) console.log(`  restored ${restored.restored} private overlay registration(s).`);
+    } catch (e) {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      die(`[${local.kbName}] PRIVATE OVERLAY RESTORE FAILED: ${e.message}\n  Previous copy remains at ${backupPath}. REFUSING to reclaim it or report success.`);
+    }
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(`  files replaced.`);
 
