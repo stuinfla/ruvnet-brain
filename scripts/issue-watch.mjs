@@ -209,6 +209,112 @@ export async function run({ dryRun = false, now = Date.now(), repo = REPO } = {}
   return { results, alertsSent, checkedAt: new Date(now).toISOString() };
 }
 
+/**
+ * AN OPEN PR YOU OPENED IS UNFINISHED WORK. Added 2026-08-06.
+ *
+ * The continuation gate could already see two kinds of outstanding work — an issue past its SLA,
+ * and a red CI run. It could not see the third and most common kind: a pull request that is sitting
+ * open, fully green, one `gh pr merge` from done. Measured that day: PRs #117, #118 and #119 were
+ * opened and the gate said nothing at the Stop boundary, because a PR is neither an issue nor a CI
+ * failure and nobody had called `--commit-to`. The owner's reaction — "why the hell have you
+ * stopped?" — was the gate's blind spot talking, not a missing rule.
+ *
+ * This is the producer half. `issue-watch.mjs` already answers "what is outstanding on GitHub" once
+ * an hour and already writes the artifact the gate reads; it simply only knew about issues. Teaching
+ * it PRs needs no new pipeline, no new writer, and no network call at the Stop boundary — which is
+ * the whole reason to put it here rather than in the gate.
+ *
+ * DELIBERATELY NARROW, for the same reason the issues source reports only breaches: a permanently
+ * non-empty list makes the gate nag forever, which trains people to ignore it.
+ *   - DRAFT PRs are excluded. A draft is explicitly "not ready" — nagging about it is noise.
+ *   - `checksState` is recorded, never filtered on here. The gate decides what is actionable, so
+ *     this stays a plain observation and the policy lives in one place.
+ * Failure is silent-and-empty by design: this is best-effort decoration on a status file whose
+ * absence must never break the watcher, and a PR list that cannot be read is not evidence of work.
+ */
+export function collectOpenPrs() {
+  try {
+    const prs = ghJson(['pr', 'list', '--repo', REPO, '--state', 'open', '--json',
+      'number,title,isDraft,mergeable,statusCheckRollup,url,author']);
+    if (!Array.isArray(prs)) return [];
+    return prs.filter((p) => !p.isDraft).map((p) => {
+      const rollup = Array.isArray(p.statusCheckRollup) ? p.statusCheckRollup : [];
+      // A check is UNRESOLVED while it has no conclusion yet. Same discipline as redCiOpenWork:
+      // a run still in flight is not yet evidence of anything.
+      const unresolved = rollup.filter((c) => {
+        const s = String(c?.status || '').toUpperCase();
+        const concl = String(c?.conclusion || c?.state || '');
+        return s === 'IN_PROGRESS' || s === 'QUEUED' || s === 'PENDING' || (!concl && s !== 'COMPLETED');
+      }).length;
+      const failing = rollup.filter((c) => {
+        const v = String(c?.conclusion || c?.state || '').toUpperCase();
+        return v === 'FAILURE' || v === 'TIMED_OUT' || v === 'CANCELLED' || v === 'ERROR';
+      }).length;
+      let checksState = 'none';
+      if (rollup.length) checksState = unresolved ? 'pending' : (failing ? 'failing' : 'passing');
+      return {
+        number: p.number,
+        title: String(p.title || '').slice(0, 80),
+        author: p.author?.login || '',
+        checksState,
+        failing,
+        mergeable: p.mergeable || 'UNKNOWN',
+        url: p.url || `https://github.com/${REPO}/pull/${p.number}`,
+      };
+    });
+  } catch { return []; }
+}
+
+/**
+ * THE THINGS GITHUB EMAILS THE OWNER ABOUT. Added 2026-08-06, at his request:
+ *
+ *   "That stuff that keeps coming to me as an email that I seem to have to tell you and you don't
+ *    know. I want you to know about anything that would cause GitHub to spit out a notify note."
+ *
+ * That is a real asymmetry: GitHub pushes Dependabot and secret-scanning findings to his inbox, and
+ * nothing pulled them into this session, so he had to relay them by hand. A watcher that already
+ * answers "what is outstanding on GitHub" every hour is the right place to close it.
+ *
+ * Failed workflow runs are deliberately NOT collected here — scripts/signal-watch.mjs is the SINGLE
+ * WRITER of ci-status.json and the continuation gate already reads red CI from it. Duplicating that
+ * signal would give one fact two owners, which is the one-poisoned-predicate hazard ADR-050 exists
+ * to prevent.
+ *
+ * Each endpoint is independent and best-effort: a repo with code scanning disabled 404s, a token
+ * without `security_events` 403s, and neither is evidence of a problem — an alert we cannot read is
+ * not an alert. Never let this fail the watcher.
+ */
+export function collectSecurityAlerts() {
+  const alerts = [];
+  const safe = (args) => { try { const v = ghJson(args); return Array.isArray(v) ? v : []; } catch { return []; } };
+
+  for (const a of safe(['api', `repos/${REPO}/dependabot/alerts?state=open&per_page=50`])) {
+    alerts.push({
+      kind: 'dependabot',
+      severity: String(a?.security_advisory?.severity || 'unknown').toLowerCase(),
+      title: `${a?.dependency?.package?.name || 'dependency'}: ${String(a?.security_advisory?.summary || '').slice(0, 70)}`,
+      url: a?.html_url || `https://github.com/${REPO}/security/dependabot`,
+    });
+  }
+  for (const a of safe(['api', `repos/${REPO}/secret-scanning/alerts?state=open&per_page=50`])) {
+    alerts.push({
+      kind: 'secret-scanning',
+      severity: 'critical', // a live credential in a public repo has exactly one severity
+      title: String(a?.secret_type_display_name || a?.secret_type || 'secret'),
+      url: a?.html_url || `https://github.com/${REPO}/security/secret-scanning`,
+    });
+  }
+  for (const a of safe(['api', `repos/${REPO}/code-scanning/alerts?state=open&per_page=50`])) {
+    alerts.push({
+      kind: 'code-scanning',
+      severity: String(a?.rule?.security_severity_level || a?.rule?.severity || 'unknown').toLowerCase(),
+      title: String(a?.rule?.description || a?.rule?.id || 'code scanning alert').slice(0, 70),
+      url: a?.html_url || `https://github.com/${REPO}/security/code-scanning`,
+    });
+  }
+  return alerts;
+}
+
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
   const asJson = process.argv.includes('--json');
@@ -260,6 +366,8 @@ async function main() {
       fs.writeFileSync(STATUS_PATH, JSON.stringify({
         at: new Date().toISOString(), repo: REPO,
         open: issues.length, breaches: issues.filter((i) => i.breach).length, issues,
+        prs: collectOpenPrs(),
+        securityAlerts: collectSecurityAlerts(),
       }, null, 2));
     } catch { /* status file is best-effort; never break the watcher */ }
   }
