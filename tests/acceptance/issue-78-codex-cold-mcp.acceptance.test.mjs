@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { skipIfCodexHostUnavailable } from '../helpers/codex-host.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const CODEX = process.env.RUVNET_CODEX_BIN || 'codex';
@@ -17,7 +18,7 @@ describe('issue #78 real Codex cold MCP discovery', () => {
   const auth = path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'auth.json');
   const test = available && fs.existsSync(auth) ? it : it.skip;
 
-  test('keeps Brain managed-CLI tools callable while worker warmup exceeds the host deadline', () => {
+  test('keeps Brain managed-CLI tools callable while worker warmup exceeds the host deadline', (ctx) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-issue78-codex-'));
     temps.push(root);
     const codexHome = path.join(root, 'codex');
@@ -63,6 +64,12 @@ rl.on('line', (line) => {
       maxBuffer: 20 * 1024 * 1024,
     });
     const elapsedMs = performance.now() - started;
+
+    // A quota-exhausted or unreachable Codex is not a Brain result. Skip loudly rather than report
+    // someone else's billing state as our regression. The host-independent proof of this same
+    // guarantee is tests/regression/issue-78-tools-survive-cold-warmup.test.mjs, which needs no
+    // account and therefore still runs on days like that one.
+    if (skipIfCodexHostUnavailable(ctx, result)) return;
 
     expect(result.status, result.stderr || result.stdout).toBe(0);
     expect(elapsedMs).toBeLessThan(55_000);

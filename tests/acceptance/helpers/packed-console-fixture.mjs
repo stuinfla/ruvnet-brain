@@ -6,6 +6,26 @@ import path from 'node:path';
 
 export const REPO = path.resolve(import.meta.dirname, '../../..');
 
+// TEARDOWN BUDGET for a fixture of this shape — measured 2026-08-06, issue #83.
+//
+// A packed-console test tears down TWO slow things: a real Chromium process, and a temp tree
+// holding a genuine `npm install` of the packed tarball (thousands of small files, which is where
+// macOS `rm -rf` actually spends its time). vitest's global hookTimeout is 20s
+// (vitest.config.mjs:51) and that is MARGINAL here, not generous: measured warm, this file's whole
+// run is 6.6s; measured cold — first Chromium launch of the session — the SAME afterEach blew 20s
+// and reported `Hook timed out in 20000ms`.
+//
+// The failure mode is what makes this worth a named constant rather than a shrug: the test's
+// ASSERTIONS had already passed. A cleanup overrun turns a green proof into a red one, which is a
+// false red on an issue-closure test — the precise signal we rely on to tell us a reopened issue is
+// genuinely fixed. This repo has already been burned three times by gates that reported something
+// other than what they measured; a flaky red is the same disease pointed the other way.
+//
+// This does NOT re-hide a hang. It bounds CLEANUP, which asserts nothing; every product timing
+// claim in these files is still made by the test body against its own budget. Same reasoning the
+// config records for maxWorkers/testTimeout: fit the number to the platform, never weaken the test.
+export const PACKED_TEARDOWN_BUDGET_MS = 120_000;
+
 function checked(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: 'utf8', timeout: 120_000, ...options });
   if (result.error || result.status !== 0) {
