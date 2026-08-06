@@ -37,7 +37,19 @@ describe('non-trivial fix delivery rail', () => {
 
   it('keeps the accepted living plan aligned with the enforced Brain behavior', () => {
     expect(ADR).toMatch(/status:\s*Accepted/i);
-    expect(ADR).toMatch(/updated:\s*2026-08-02/i);
+    // NOT a hardcoded date. This read `/updated:\s*2026-08-02/` and went red on 2026-08-06 the
+    // moment ADR-050 was legitimately re-read and its currency row appended — the doc-currency gate
+    // REQUIRES that stamp to move, so a frozen literal here makes two of our own gates demand
+    // opposite things and guarantees a red on any correct maintenance of this ADR. The suite has
+    // been bitten by stray literals before; sync-version even ships a scanner for them.
+    //
+    // The real invariant is that this living plan carries a well-formed stamp no older than its
+    // creation date — that it is STAMPED and COHERENT, not that it is stamped on one specific day.
+    const created = ADR.match(/^date:\s*(\d{4}-\d{2}-\d{2})/mi)?.[1];
+    const updated = ADR.match(/^updated:\s*(\d{4}-\d{2}-\d{2})/mi)?.[1];
+    expect(updated, 'the living plan must carry an `updated:` stamp doc-currency can verify').toBeTruthy();
+    expect(created, 'and an immutable `date:` to measure it against').toBeTruthy();
+    expect(updated >= created, `updated (${updated}) must not predate created (${created})`).toBe(true);
     expect(ADR).toMatch(/plugin\/skills\/ruvnet-brain\/SKILL\.md/);
     expect(ADR).toMatch(/tests\/unit\/fix-workstream-guidance\.test\.mjs/);
   });
