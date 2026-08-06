@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-05
+updated: 2026-08-06
 impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -372,6 +372,9 @@ correct: **the strong claim was the defect.**
    land ≥95. No self-score counts; the 83-vs-38 category error is not repeated.
 
 ## Currency log
+
+| 2026-08-06 | Re-read the governed release/nightly surface after the corpus-QA machinery fix. The 95 contract is UNCHANGED — this touches how a failure is *reported*, never what is accepted. `scripts/self-update.mjs` now captures and re-emits both child streams on the two verdict-carrying steps and prints every failure reason instead of only the argv; `scripts/nightly-wrapper.sh` samples `tail -25 \| cut -c1-2000` instead of `tail -8 \| cut -c1-600`. | The nightly publish failed 6× across 3 nights (`logs/nightly.log:16531,16891,17307,17662,18117,18489`) and the escalation channel carried no reason: corpus-qa prints its verdict to **stdout**, so with `stdio:'inherit'` the child's `e.stderr` was `null` and `e.message` was only the argv, which `nightly-wrapper.sh:159` then truncated mid-argv. Root cause of the failures themselves was `scripts/corpus-qa.mjs:159` sampling deterministically from `rows.length`: metaharness moved 8979→8986 passages and the sampler re-rolled from `[5565,1433,4850]` to `[1188,1945,8660]`, landing on index 1945 — verified independently, `kb/metaharness.passages.jsonl` line 1946 is the exact chunk named in the log. See ADR-064. |
+| 2026-08-06 | Governed hook surface moved under ADR-063 (`plugin/scripts/hijack-ruvnet.sh`, `plugin/scripts/hook-shim.mjs`, `plugin/scripts/codex-hook-wrapper.mjs`) for the managed-memory boundary; re-read against this contract, no change required. | Commit `af373f0` (issue #103) adds an opt-in, default-off refusal. Measured live across all three modes: `advise` → exit 0, `read-only` → exit 2 on a write and 0 on a read, `block` → exit 2; prose and unrelated databases stay exit 0. The 95 contract's acceptance criteria are untouched because the default path reaches none of the new code. |
 
 | 2026-08-03 | Release candidate 4.0.8 re-read the governed Codex hook surface after the staged-host and Windows held-open regressions; the contract remains unchanged while the verifier binds the installed Codex payload and the wrapper polls inherited Windows pipes without waiting for EOF. The issue #29 integration guard now skips loudly when its optional model cannot be primed, matching its documented offline behavior. | Candidate PR #100, current local repair; focused Codex lifecycle tests and integration regression proof are required before hosted exact-SHA evidence. |
 
