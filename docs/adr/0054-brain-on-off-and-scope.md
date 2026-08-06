@@ -197,6 +197,8 @@ failure. v1 draft's Decision + risks register superseded above; Context stands.
 
 ## Currency log
 
+| 2026-08-06 | `user-settings.mjs` moved from `scripts/` into `plugin/scripts/`; `scripts/` keeps an `export *` shim. The on/off contract and every scope rule are UNCHANGED — the module is byte-identical, only its home moved. | ADR-065: only `plugin/` reaches a user (`marketplace.json` `"source": "./plugin"`; `update-apply.mjs` `stagePayload()` copies it verbatim) and every shipped layout flattens it, so this file was unreachable on real installs. `unprompted-runtime.mjs:238` — the consumer that reads the 1–5 dial this ADR governs — resolved it through a `CODE_ROOT` overshoot and `catch`-ed to defaults, so the dial was silently unread wherever the Brain actually ships. Re-read against this ADR: no contract change, the control simply now exists where it is looked for. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
 | 2026-08-02 | Re-read the governed installer after the 4.0.8 public host-proof change; Brain ON/OFF and scope semantics are unchanged. | Commit `8608cfd` changes `bin/install.mjs` only at the `--doctor --hooks` failure boundary. Three isolated publication fixtures exercise installed behavior without changing persisted Brain scope or user preferences. |

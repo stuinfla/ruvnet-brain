@@ -77,12 +77,25 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readStdinBounded } from './hook-input.mjs';
 
-// <codeRoot>/plugin/scripts/unprompted-runtime.mjs → <codeRoot>. Resolved from THIS file's own
-// location so it is correct under the Stable Spine (an immutable versions/<gen> tree) and in a dev
-// checkout alike — hook-shim.mjs has already chosen the tree by the time it dispatches this body.
+// WHERE THIS FILE'S SIBLINGS LIVE. Resolved from THIS file's own location so it is correct under the
+// Stable Spine (an immutable versions/<gen> tree) and in a dev checkout alike — hook-shim.mjs has
+// already chosen the tree by the time it dispatches this body.
+//
+// THIS USED TO ALSO COMPUTE `CODE_ROOT = SCRIPTS_DIR/../..`, and that line was WRONG in exactly the
+// way anticipate.sh's was (PR #114): it assumed `scripts/` is a sibling of `plugin/`, which holds
+// ONLY in a git checkout. Both shipped layouts flatten the `plugin/` level —
+//
+//   ~/.cache/ruvnet-brain/versions/<gen>/scripts/…        → ../.. = …/versions
+//   ~/.claude/plugins/cache/…/<ver>/scripts/…             → ../.. = …/ruvnet-brain
+//   <src>/plugin/scripts/…                                → ../.. = <src>            ← only this one
+//
+// — so `$CODE_ROOT/scripts/user-settings.mjs` pointed at nothing on every real install. Both consumers
+// (the 1–5 advocacy dial and the DismissalLedger, wired at SETTINGS_MODULE/ADVOCACY_MODULE below)
+// `catch` an import failure and fall back to defaults, so the dial was silently UNREAD for every user
+// while the code read as if it were honoured. Same defect class, same fix: the modules are SIBLINGS of
+// this file inside the payload, so name them from SCRIPTS_DIR and never reach outside it.
 const SELF = fileURLToPath(import.meta.url);
-const SCRIPTS_DIR = path.dirname(SELF);                     // <codeRoot>/plugin/scripts
-const CODE_ROOT = path.resolve(SCRIPTS_DIR, '..', '..');    // <codeRoot>
+const SCRIPTS_DIR = path.dirname(SELF);                     // the payload's scripts/ dir, whatever its parent
 
 // The CC event name the shim forwarded. No event → nothing to run; stay silent.
 const EVENT = process.argv[2] || '';
@@ -235,8 +248,10 @@ if (!candidates.length) silent();
 // RUVNET_SETTINGS_FILE); suppression comes from advocacy-outcomes.shouldStillOffer()/record(). Both
 // are loaded only if an advocacy/promotion candidate is actually present, so a lesson- or alarm-only
 // event pays nothing for them.
-const SETTINGS_MODULE = process.env.RUVNET_USER_SETTINGS_MODULE || path.join(CODE_ROOT, 'scripts', 'user-settings.mjs');
-const ADVOCACY_MODULE = process.env.RUVNET_ADVOCACY_OUTCOMES_MODULE || path.join(CODE_ROOT, 'scripts', 'advocacy-outcomes.mjs');
+// SIBLINGS, not `$CODE_ROOT/scripts/…` — see the SCRIPTS_DIR note at the top of this file for the
+// measured layouts that made the old path resolve to nothing on every shipped install.
+const SETTINGS_MODULE = process.env.RUVNET_USER_SETTINGS_MODULE || path.join(SCRIPTS_DIR, 'user-settings.mjs');
+const ADVOCACY_MODULE = process.env.RUVNET_ADVOCACY_OUTCOMES_MODULE || path.join(SCRIPTS_DIR, 'advocacy-outcomes.mjs');
 
 // THE 1–5 DIAL (ADR-052). This runtime is the SINGLE enforcement chokepoint (DDD-0004): the level maps
 // to exactly what each channel is allowed to deliver, and no producer decides. LEVEL_POLICY is the one
