@@ -73,6 +73,12 @@ afterEach(() => { rmHome(tmpHome, tmp); });
 const hookEnv = (env = {}) => ({
   ...process.env,
   HOME: tmpHome,
+  // USERPROFILE as well as HOME (25cda46's class, measured here). detach.mjs's receipt path is
+  // `XDG_CACHE_HOME || <os.homedir()>/.cache`, and os.homedir() reads USERPROFILE on Windows and
+  // ignores HOME. MEASURED under Windows homedir semantics before this line: still GREEN, but
+  // `.cache/ruvnet-brain/detached-jobs.jsonl` landed in the runner's real profile — the header
+  // above promises "no real state files touched", and on Windows that promise was not kept.
+  USERPROFILE: tmpHome,
   CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT,
   RUVNET_BRAIN_METER: '0',
   RUVNET_AUTONOMOUS: '',

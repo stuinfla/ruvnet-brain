@@ -62,7 +62,14 @@ function runGroundHook(prompt, { env = {} } = {}) {
     input: JSON.stringify({ prompt }),
     encoding: 'utf8',
     timeout: 15000,
-    env: { ...process.env, HOME: tmpHome, XDG_CACHE_HOME: path.join(tmpHome, '.cache'), CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, RUVNET_AUTONOMOUS: '', ...env },
+    // USERPROFILE as well as HOME, in every one of these env literals (25cda46's class, measured
+    // here). XDG_CACHE_HOME is NOT enough: kb/telemetry-ping.mjs's defaultStateDir() and
+    // kb/brain-alarm.mjs's STATE_DIR are both `path.join(os.homedir(), '.cache', 'ruvnet-brain')`,
+    // which consults neither XDG_CACHE_HOME nor HOME — and os.homedir() reads USERPROFILE on
+    // Windows. MEASURED under Windows homedir semantics before this line: still GREEN, but
+    // `.cache/ruvnet-brain/.grounded-once` was written into the runner's real profile, so the
+    // "PRE-SEEDED stamps" this file's header relies on described a directory nothing was reading.
+    env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, XDG_CACHE_HOME: path.join(tmpHome, '.cache'), CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, RUVNET_AUTONOMOUS: '', ...env },
   });
   return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 }
@@ -72,7 +79,7 @@ function runSessionHook({ env = {} } = {}) {
     cwd: tmp,
     encoding: 'utf8',
     timeout: 15000,
-    env: { ...process.env, HOME: tmpHome, XDG_CACHE_HOME: path.join(tmpHome, '.cache'), CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, ...env },
+    env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, XDG_CACHE_HOME: path.join(tmpHome, '.cache'), CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, ...env },
   });
   return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 }
@@ -181,7 +188,7 @@ describe('forge-mcp-all.mjs — one mcp ledger line per search_ruvnet call (empt
       input: req + '\n',
       encoding: 'utf8',
       timeout: 60000,
-      env: { ...process.env, HOME: tmpHome, XDG_CACHE_HOME: path.join(tmpHome, '.cache'), KB_DIR: kbEmpty, ...env },
+      env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, XDG_CACHE_HOME: path.join(tmpHome, '.cache'), KB_DIR: kbEmpty, ...env },
     });
     fs.rmSync(kbEmpty, { recursive: true, force: true });
     return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
@@ -215,7 +222,7 @@ describe('token-report.mjs — aggregates the ledger into per-class count / p50 
   function runReport(args) {
     const r = spawnSync('node', [REPORT, ...args], {
       cwd: tmp, encoding: 'utf8', timeout: 15000,
-      env: { ...process.env, HOME: tmpHome, XDG_CACHE_HOME: path.join(tmpHome, '.cache') },
+      env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, XDG_CACHE_HOME: path.join(tmpHome, '.cache') },
     });
     return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   }
@@ -266,7 +273,7 @@ describe('issue #36 — no writer may create .ruvnet-brain/ in a project tree', 
       cwd: deep, // the exact repro: a step that cd'd into a subfolder before the hook fired
       input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'implement the retry workflow' }),
       encoding: 'utf8', timeout: 30000,
-      env: { ...process.env, HOME: tmpHome, XDG_CACHE_HOME: path.join(tmpHome, '.cache'), CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, RUVNET_AUTONOMOUS: '' },
+      env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, XDG_CACHE_HOME: path.join(tmpHome, '.cache'), CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, RUVNET_AUTONOMOUS: '' },
     });
     expect(r.status).toBe(0);
     // Not one stray directory anywhere beneath the project — not at the root, not in the subdir.
