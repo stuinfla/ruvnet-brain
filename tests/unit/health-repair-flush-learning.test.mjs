@@ -117,6 +117,13 @@ function flush() {
     env: {
       ...process.env,
       HOME: home,
+      // USERPROFILE as well as HOME (25cda46's class, measured here). health-repair.mjs,
+      // memory-doctor.mjs and learn-flush.mjs each take `const HOME = os.homedir()` at module load
+      // — no env.HOME fallback — and os.homedir() reads USERPROFILE on Windows and ignores HOME.
+      // MEASURED under Windows homedir semantics before this line: 3 failed | 12 passed. The two
+      // halves of the flush must agree about which project they mean (issue #104); on Windows they
+      // agreed on the runner's real profile instead of this sandbox.
+      USERPROFILE: home,
       RUVNET_BRAIN_PROJECT_DIR: project,
       RUFLO_CALL_MARKER: marker,
       // The sandbox is HOME **and** PATH. learn-flush resolves ruflo through

@@ -59,6 +59,13 @@ afterEach(() => { rmHome(tmpHome, tmp); });
 const env = (extra = {}) => ({
   ...process.env,
   HOME: tmpHome,
+  // USERPROFILE as well as HOME (25cda46's class, measured here). update-apply.mjs, learn-flush.mjs,
+  // detach.mjs, lesson-store.mjs and ruflo-bin.mjs all resolve their state root from os.homedir(),
+  // which reads USERPROFILE on Windows and ignores HOME. MEASURED under Windows homedir semantics
+  // before this line: the suite went RED **and** wrote 83 files — a staged version tree, an update
+  // transaction and its lock — into the runner's real profile. An isolated HOME that isolates
+  // nothing is worse than no isolation, because it reports success while doing it.
+  USERPROFILE: tmpHome,
   CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT,
   RUVNET_BRAIN_METER: '0',
   RUVNET_AUTONOMOUS: '',
