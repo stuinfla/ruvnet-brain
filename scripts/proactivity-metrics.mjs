@@ -25,7 +25,14 @@ import { fileURLToPath } from 'node:url';
 import { buildState, readManifest } from '../tests/helpers/ground-truth-machine.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const REAL_REGISTRY = path.join(REPO, 'scripts', 'capability-registry.mjs');
+// THE PAYLOAD COPY. Since ADR-065 the registry ships inside plugin/scripts/ and `scripts/` holds a
+// four-line re-export shim. Pointing this at the shim would still MEASURE correctly (the shim runs
+// the same code), but proactivity-detector-mutation.test.mjs reads this path's SOURCE to build its
+// mutants — and a shim has no `return row(STATE.OFF, …)` to mutate, so every mutation would change
+// nothing. That test throws on exactly that ("the target string moved… this test would otherwise run
+// an UNMUTATED copy and pass for the wrong reason"), which is how the move was caught. Name the real
+// file so both the measurement and its falsifiability proof read the same bytes.
+export const REAL_REGISTRY = path.join(REPO, 'plugin', 'scripts', 'capability-registry.mjs');
 
 /** Run the real detector against a scratch machine; return { key: state } for every row it emitted. */
 export function runDetector(home, project, registryPath = REAL_REGISTRY) {

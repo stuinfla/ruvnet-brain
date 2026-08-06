@@ -564,10 +564,37 @@ NODE_PID=$!
 # 5s hook budget that ground-ruvnet.sh has already partly spent. A SIGKILL mid-write can at worst
 # truncate one advisory line — it can never fail the turn, and the state file was already committed
 # by then (see the persist-first ordering above).
-( sleep 2; kill -9 "$NODE_PID" 2>/dev/null ) >/dev/null 2>&1 &
+# THE SLEEP MUST BE OURS TO KILL (2026-08-06). This block used to be:
+#
+#     ( sleep 2; kill -9 "$NODE_PID" 2>/dev/null ) &
+#     WATCHDOG_PID=$!
+#     wait "$NODE_PID"; kill "$WATCHDOG_PID"
+#
+# `kill` signals the SUBSHELL. The `sleep` it forked is a separate process this script never had a
+# handle on, so it was simply ORPHANED and kept running for the remainder of its 2 seconds.
+# selfcheck.mjs measures exactly that (§5 PROCESS-TREE HYGIENE, WATCHDOG_GRACE_MS = 2000) and
+# reported it in BOTH the [valid] and [held] regimes as
+# "left descendants alive after SIGTERM to its process group".
+#
+# It is deterministic on Linux rather than flaky because the watchdog's lifetime and the grace
+# window are the SAME 2000ms, and the sleep starts marginally after the clock the checker uses — so
+# it always outlives the probe by the spawn delta. macOS passes; ubuntu fails every time.
+#
+# It had never fired before because it was UNREACHABLE. Until the payload boundary was fixed
+# (ADR-065) the `[ -f "$GOAL_MATCH" ] || exit 0` guard above returned first on every real install, so
+# this line only ever ran in a dev checkout. Making L4 work is what woke it up — the fix did not
+# create this leak, it revealed one that had been shipping dormant.
+#
+# FIX: fork the sleep as OUR OWN child so we hold its pid, and reap both. A `trap` inside the
+# subshell was tried first and MEASURED WORSE (it defeats the shell's exec optimisation and leaked
+# where the original did not) — hence the explicit two-pid form rather than anything cleverer.
+sleep 2 &
+SLEEP_PID=$!
+( wait "$SLEEP_PID" 2>/dev/null && kill -9 "$NODE_PID" 2>/dev/null ) >/dev/null 2>&1 &
 WATCHDOG_PID=$!
 wait "$NODE_PID" 2>/dev/null
-kill "$WATCHDOG_PID" 2>/dev/null
+kill "$SLEEP_PID" "$WATCHDOG_PID" 2>/dev/null
+wait "$SLEEP_PID" "$WATCHDOG_PID" 2>/dev/null
 
 # ALWAYS. Every failure above already routed to silence; this makes the guarantee unconditional.
 exit 0

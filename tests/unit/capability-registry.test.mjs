@@ -300,7 +300,11 @@ describe('house rules', () => {
   it('hardcodes no version literal', () => {
     // A gate greps the repo for X.Y.Z-dev literals; a capability list is exactly the kind of file
     // that tempts someone to pin "requires 3.4.1-dev".
-    const src = fs.readFileSync(path.join(REPO, 'scripts/capability-registry.mjs'), 'utf8');
+    // THE PAYLOAD COPY, not scripts/. Since the L4 payload-boundary move (2026-08-06) the file at
+    // `scripts/capability-registry.mjs` is a four-line re-export shim: reading THAT would satisfy this
+    // assertion trivially, forever, while the real 900-line registry went unchecked — a green test
+    // guarding nothing, which is the same failure shape as the inert hook that move existed to fix.
+    const src = fs.readFileSync(path.join(REPO, 'plugin/scripts/capability-registry.mjs'), 'utf8');
     expect(/\b\d+\.\d+\.\d+-dev\b/.test(src), 'version literal found').toBe(false);
   });
 

@@ -3,7 +3,7 @@ id: ADR-048
 title: Measuring latency-to-surface, and claiming the right to speak
 status: Accepted
 date: 2026-07-24
-updated: 2026-07-24
+updated: 2026-08-06
 authors: [Stuart Kerr, Claude Code]
 tags: [proactive, advocacy, L3, metrics, latency, concurrency, 4.0]
 supersedes: []
@@ -111,3 +111,9 @@ dormancy history, so the metric honestly reports "no data". The 21-day baseline 
 real dormancy is observed and surfaced. The ground-truth cohort is still 2 of 11 capabilities.
 `offer_id` and `session_id` identity, and a monotonic state generation, remain open from Sol's list —
 `claimOffer` addresses the race, not the identity model. **3.9.x-dev remains the honest version.**
+
+## Currency log
+
+| Date | What changed | Why (with referents) |
+|---|---|---|
+| 2026-08-06 | `advocacy-outcomes.mjs` moved from `scripts/` into `plugin/scripts/`; `scripts/advocacy-outcomes.mjs` is now an `export *` shim. No measurement, threshold, or claim in this ADR changes — the module is byte-identical, only its home moved. | ADR-065: only `plugin/` reaches a user (`.claude-plugin/marketplace.json` declares `"source": "./plugin"`, and `update-apply.mjs` `stagePayload()` copies that directory verbatim), so a module outside it can never ship. Measured on this machine before the move: an install-shaped flattened fixture running `anticipate.sh --status` printed `advocacy-outcomes module not found at <fixture>/../../scripts/advocacy-outcomes.mjs` — the DismissalLedger this ADR governs was unreachable on every real install. After the move the same fixture renders the real ledger. `scripts/latency-to-surface.mjs` is untouched by that change and was re-read against this ADR: no drift. |
