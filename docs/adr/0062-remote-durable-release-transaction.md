@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-05
+updated: 2026-08-06
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -12,6 +12,7 @@ governs:
   - .github/workflows/ci.yml
   - .github/workflows/stranger-matrix.yml
   - .github/workflows/protected-release.yml
+  - .github/workflows/release-aggregate.yml
   - scripts/release.mjs
   - scripts/release-transaction.mjs
   - scripts/release-transaction-provider.mjs
@@ -20,6 +21,12 @@ governs:
 ---
 
 # ADR-062 — Remote-durable staged release transaction
+
+## Currency log
+
+| Date | What changed | Why (with referents) |
+|---|---|---|
+| 2026-08-03 | `release-aggregate` now runs only for a successful stranger-matrix completion or explicit recovery dispatch. | Post-merge run `30847604771` attempted to download `stranger-evidence-9de40a59…` from a failed run with no artifact; run `30848438803` then proved successful stranger evidence still waits for exact-SHA CI convergence. `.github/workflows/release-aggregate.yml`. |
 
 **Status**: Accepted
 

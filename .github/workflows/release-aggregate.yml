@@ -22,6 +22,9 @@ permissions:
 jobs:
   release-aggregate:
     name: release-aggregate
+    # Failed stranger runs have no binding receipt; only successful workflow_run events and
+    # explicit recovery dispatches are valid aggregate inputs.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
