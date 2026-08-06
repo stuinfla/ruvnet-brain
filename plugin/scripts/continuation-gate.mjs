@@ -237,7 +237,98 @@ function redCiOpenWork() {
   } catch { return []; }
 }
 
-const open = [...led.items.filter((i) => !i.done), ...artifactOpenWork(), ...redCiOpenWork()];
+/**
+ * AN OPEN PR IS UNFINISHED WORK — the third source, added 2026-08-06.
+ *
+ * WHY, precisely. The two sources above cover an issue past its SLA and a red build. Neither covers
+ * the most common shape of half-finished work there is: a pull request sitting open and green, one
+ * `gh pr merge` from done. Measured that day — #117, #118 and #119 were opened, every required check
+ * passed, and this gate stayed silent at the Stop boundary. It was not malfunctioning: `open` was
+ * genuinely empty, because a PR is neither an issue nor a CI failure and nothing had been written to
+ * the ledger. The owner asked "why the hell have you stopped?" and the honest answer was that the
+ * gate could not see the work. A rule in a memory file cannot fix that; a source can.
+ *
+ * Read from open-issues.json's `prs` array, produced by scripts/issue-watch.mjs — the same file, the
+ * same single producer, the same freshness window as the issues source. No `gh` call happens here:
+ * a Stop hook must not depend on the network, and an artifact that cannot be read is not evidence.
+ *
+ * NARROW ON PURPOSE, so this can never become a permanent nag:
+ *   - `passing` → actionable: merge it. `failing` → actionable: fix it.
+ *   - `pending` → NOT actionable, and deliberately silent. A run in flight is not yet evidence,
+ *     exactly as redCiOpenWork treats an unresolved run. Waiting for CI is not stopping early.
+ *   - `none` (no checks at all) → treated as actionable, because nothing will ever arrive to
+ *     resolve it; leaving it open is a decision someone has to make, not a wait.
+ *   - drafts are already excluded by the producer.
+ * The item self-clears the moment the PR merges or closes, so unlike a ledger entry there is nothing
+ * to remember to mark done — which is the failure that produced this gap in the first place.
+ */
+function openPrWork() {
+  try {
+    const file = process.env.RUVNET_OPEN_ISSUES_FILE
+      || path.join(HOME, '.cache', 'ruvnet-brain', 'open-issues.json');
+    const status = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const observedAt = Date.parse(status?.at || '');
+    if (!Number.isFinite(observedAt) || nowMs - observedAt > 6 * 3600_000) return [];
+    return (Array.isArray(status.prs) ? status.prs : [])
+      .filter((pr) => pr && pr.checksState !== 'pending')
+      .map((pr) => ({
+        text: pr.checksState === 'failing'
+          ? `PR #${pr.number} on ${status.repo} is RED (${pr.failing} failing check(s)) — fix it, do not leave it open: ${pr.title}`
+          : `PR #${pr.number} on ${status.repo} is open and its checks are ${pr.checksState === 'none' ? 'not configured' : 'GREEN'} — merge it or say why not: ${pr.title}`,
+        done: false,
+        at: new Date(observedAt).toISOString(),
+        derived: true,
+      }));
+  } catch { return []; }
+}
+
+/**
+ * WHAT GITHUB EMAILS THE OWNER, HE SHOULD NOT HAVE TO RELAY. Fourth source, 2026-08-06.
+ *
+ * GitHub PUSHES Dependabot, secret-scanning and code-scanning findings to his inbox. Nothing pulled
+ * them into the session, so the only path from "GitHub found a vulnerability" to "the agent knows"
+ * was the owner reading an email and typing it out. His words: "that stuff that keeps coming to me
+ * as an email that I seem to have to tell you and you don't know."
+ *
+ * A published npm package and a signed bundle make this the highest-consequence blind spot of the
+ * four — an unpatched advisory ships to every user of the plugin.
+ *
+ * NARROW, so it stays a signal rather than a backlog:
+ *   - only HIGH and CRITICAL. A permanently non-empty low-severity list is a nag, and this gate is
+ *     worthless the moment it is ignored. Lower severities still reach the Console and the inbox.
+ *   - secret-scanning is ALWAYS included regardless of severity: a live credential in a public repo
+ *     is never "medium", and it is the one finding where minutes matter.
+ *   - collapsed to ONE item per kind, with a count. Twelve advisories is one job — "patch the
+ *     advisories" — not twelve reasons to refuse to stop.
+ */
+function securityAlertWork() {
+  try {
+    const file = process.env.RUVNET_OPEN_ISSUES_FILE
+      || path.join(HOME, '.cache', 'ruvnet-brain', 'open-issues.json');
+    const status = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const observedAt = Date.parse(status?.at || '');
+    if (!Number.isFinite(observedAt) || nowMs - observedAt > 6 * 3600_000) return [];
+    const alerts = (Array.isArray(status.securityAlerts) ? status.securityAlerts : [])
+      .filter((a) => a && (a.kind === 'secret-scanning' || a.severity === 'high' || a.severity === 'critical'));
+    if (!alerts.length) return [];
+    const byKind = new Map();
+    for (const a of alerts) {
+      if (!byKind.has(a.kind)) byKind.set(a.kind, []);
+      byKind.get(a.kind).push(a);
+    }
+    return [...byKind.entries()].map(([kind, list]) => ({
+      text: `${list.length} open ${kind} alert(s) on ${status.repo} — GitHub has already emailed these; highest: ${list[0].title}`,
+      done: false,
+      at: new Date(observedAt).toISOString(),
+      derived: true,
+    }));
+  } catch { return []; }
+}
+
+const open = [
+  ...led.items.filter((i) => !i.done),
+  ...artifactOpenWork(), ...redCiOpenWork(), ...openPrWork(), ...securityAlertWork(),
+];
 if (!open.length) process.exit(EXIT_ALLOW);   // nothing outstanding: silence is correct
 
 /**
