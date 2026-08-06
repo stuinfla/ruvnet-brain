@@ -32,11 +32,12 @@ function unitVec(seed) {
   return v.map((x) => x / n);
 }
 
-/** Create a real store fixture: .rvf with `vectors` rows, passages.jsonl with `rows`, embed.json. */
-async function mkStore(name, { rows, vectors = rows.length }) {
+/** Create a real store fixture: .rvf with `vectors` rows, passages.jsonl with `rows`, embed.json.
+ *  `vecs` (optional) supplies exact vectors so a test can engineer exact ranks and gaps. */
+async function mkStore(name, { rows, vectors = rows.length, vecs = null }) {
   const rvf = path.join(tmp, `${name}.rvf`);
   const db = await RvfDatabase.create(rvf, { dimensions: DIMS, metric: 'cosine' });
-  const batch = Array.from({ length: vectors }, (_, i) => ({ id: String(i + 1), vector: unitVec(i + 1) }));
+  const batch = Array.from({ length: vectors }, (_, i) => ({ id: String(i + 1), vector: vecs ? vecs[i] : unitVec(i + 1) }));
   if (batch.length) await db.ingestBatch(batch);
   await db.close();
   fs.writeFileSync(path.join(tmp, `${name}.passages.jsonl`),
@@ -142,23 +143,256 @@ describeRvf('corpus-qa — discovery + deterministic sampling', () => {
   });
 });
 
-// The R1 round-trip block (qaStore's roundtrip=true path, lines ~138-173 of corpus-qa.mjs) is the
-// most bug-prone logic in this file — the `matches()` triple-fallback (id, path, or exact text) and
-// the NEAR_DUP_EPS photo-finish forgiveness arm — and it has ZERO coverage above. It's blocked the
-// same way ~19 other files in this suite are: getPipeline() calls the real ONNX transformers
-// pipeline with no injection seam, so exercising it needs either a live KB_MODEL_CACHE (the
-// live-infra tier: prove.mjs, eval-brain.mjs, brain-grade-groundtruth.mjs) or exporting a pure
-// decision function out of the loop (e.g. `classifyRoundtrip({rank, distances, sampleId, byId, row})`
-// that qaStore calls) — a test-only mock of getPipeline's return value would make this instant and
-// model-free, same recommendation this suite has made for every other DI-blocked file. Flagging,
-// not performing — same sign-off norm as the rest of this suite.
-describe.todo('corpus-qa — R1 round-trip decision logic (blocked: no DI seam for the embed pipeline)', () => {
-  it.todo('top-3 rank match on exact id counts as a hit');
-  it.todo('top-3 rank match via path-equality fallback counts as a hit (id drifted, doc did not)');
-  it.todo('top-3 rank match via exact-text fallback counts as a hit (overlapping chunk, different id/path)');
-  it.todo('a sampled row entirely absent from top-10 is a hard FAIL, never forgiven by the epsilon arm');
-  it.todo('a match ranked 4th+ within NEAR_DUP_EPS of rank 1 counts as a hit AND appends a `notes` entry (photo-finish, not a broken store)');
-  it.todo('a match ranked 4th+ but MORE than NEAR_DUP_EPS behind rank 1 is a hard FAIL (drift ≠ near-dup crowding)');
-  it.todo('an embed dimension mismatch (out.dims[1] !== embedConf.dimensions) throws and is captured as an R1 error, not silently ignored');
-  it.todo('roundtrip is reported "skipped" (not attempted) when an S3 vector-count-mismatch fail already exists, even if roundtrip=true was requested');
+// R1 round-trip decision logic — the most bug-prone code in corpus-qa.mjs (the `matches()`
+// triple-fallback, the NEAR_DUP_EPS photo-finish arm, and the wide-k crowd arm). This block was
+// `describe.todo` until 2026-08-06, blocked on "getPipeline() calls the real ONNX pipeline with no
+// injection seam". qaStore now takes an optional `pipeline` seam (production passes null), which is
+// exactly the test-only mock the todo recommended — so the tier stays model-free and instant while
+// the STORAGE layer stays real (real .rvf fixtures, same @ruvector/rvf the pipeline uses).
+//
+// Ranks and gaps are ENGINEERED, not hoped for: distances are measured exact to ~1e-8 against
+// 1-cos(theta) in a real .rvf (verified before these tests were written), so a test that says
+// "rank 15, Δ0.3000" is asserting the number the gate will actually print.
+
+/** Unit vector at angle `theta` in the (e0,e1) plane; cosine distance from QUERY is 1-cos(theta). */
+const vecAt = (theta) => [Math.cos(theta), Math.sin(theta), 0, 0, 0, 0, 0, 0];
+const QUERY = vecAt(0);
+const thetaFor = (d) => Math.acos(1 - d);
+
+/**
+ * Exact cosine distances for `n` rows placing `target` at 1-based `rank` with `targetDist` from
+ * QUERY, and the rank-1 row sitting exactly ON the query (distance 0) so Δ-behind-#1 == targetDist.
+ */
+function distsForTargetRank(n, target, rank, targetDist) {
+  const dists = new Array(n);
+  dists[target] = targetDist;
+  const others = [];
+  for (let i = 0; i < n; i++) if (i !== target) others.push(i);
+  others.forEach((idx, j) => {
+    if (rank > 1 && j === 0) dists[idx] = 0;                        // #1, exactly on the query
+    else if (rank > 1 && j < rank - 1) dists[idx] = (targetDist * j) / rank; // strictly inside (0, targetDist)
+    else dists[idx] = targetDist + 0.1 + j * 1e-3;                  // strictly beyond the target
+  });
+  return dists;
+}
+
+const vecsFor = (dists) => dists.map((d) => vecAt(thetaFor(d)));
+
+/** Fake embed pipeline matching getPipeline()'s resolved shape: (texts, opts) => {dims, data}. */
+function fakePipe(vector, { dims } = {}) {
+  const calls = [];
+  const fn = async (texts, opts) => {
+    calls.push({ texts, opts });
+    return { dims: [1, dims ?? vector.length], data: Float32Array.from(vector) };
+  };
+  fn.calls = calls;
+  return fn;
+}
+
+// A shared opening long enough that crowdKey()'s 200-char normalized prefix falls entirely inside
+// it — siblings share the prefix but differ in their tails, so they crowd the ranking WITHOUT
+// tripping matches()' exact-text fallback.
+const SHARED_PREFIX = ('export PATH=/opt/miniconda3/envs/testbed/bin:/usr/bin:/bin '
+  + 'export CONDA_PREFIX=/opt/miniconda3/envs/testbed CONDA_SHLVL=2 DEFAULT_ENV=testbed '
+  + 'activate testbed and run the django test suite with the standard settings module ').slice(0, 250);
+
+describeRvf('corpus-qa — R1 round-trip decision logic', () => {
+  const N = 40;                    // wideKFor(40) = min(500, max(10, 20)) = 20
+  const WIDE_K = 20;
+  let uid = 0;
+  const nextName = () => `zzz-r1-${uid++}`;
+
+  /** Pick the row index qaStore will deterministically sample for this store name (samples=1). */
+  const pickFor = (name) => sampleIndices(`${name}.small`, N, 1)[0];
+
+  it('a rank-1 self-retrieval counts as a clean hit — no fails, and NO note (it is not a photo-finish)', async () => {
+    const name = nextName();
+    const p = pickFor(name);
+    const rows = Array.from({ length: N }, (_, i) => row(i + 1));
+    await mkStore(name, { rows, vecs: vecsFor(distsForTargetRank(N, p, 1, 0)) });
+
+    const pipe = fakePipe(QUERY);
+    const r = await qaStore(tmp, name, 'small', { samples: 1, pipeline: pipe });
+    expect(r.fails).toEqual([]);
+    expect(r.roundtrip).toBe('1/1');
+    expect(r.notes).toEqual([]);                            // the top-3 arm, not the eps arm
+    expect(pipe.calls.length).toBe(1);                      // it really went through the embed arm
+    expect(pipe.calls[0].texts[0]).toContain(rows[p].text); // and embedded the SAMPLED row
+  });
+
+  it('top-3 rank match on exact id counts as a hit where ONLY the id clause can match (duplicate passage ids)', async () => {
+    // Isolating the id clause needs a fixture where byId.get(r.id) is NOT r — i.e. two passages
+    // sharing an id (last one wins the Map). With unique ids — which is what every real store has
+    // today (metaharness.big: 8,979 rows / 8,979 distinct ids, checked 2026-08-06) — the id clause
+    // is redundant: whenever it is true, byId.get(t.id) === r and the path AND text clauses are
+    // true too. So this fixture is the only thing standing between that clause and dead code.
+    const name = nextName();
+    const p = pickFor(name);
+    const q = p + 1 < N ? p + 1 : p - 1;
+    expect(q).toBeGreaterThan(p);                           // later row must win the byId Map
+    const rows = Array.from({ length: N }, (_, i) => row(i + 1));
+    rows[p] = { id: String(q + 1), path: 'src/target.rs', title: 'target.rs', text: 'target body' };
+    const dists = distsForTargetRank(N, p, 30, 0.5);
+    dists[q] = 0;                                           // the row carrying the shared id wins
+    await mkStore(name, { rows, vecs: vecsFor(dists) });
+
+    const r = await qaStore(tmp, name, 'small', { samples: 1, pipeline: fakePipe(QUERY) });
+    expect(r.fails).toEqual([]);
+    expect(r.roundtrip).toBe('1/1');
+    expect(r.notes).toEqual([]);
+    expect(rows[q].path).not.toBe(rows[p].path);            // path clause CANNOT have matched
+    expect(rows[q].text).not.toBe(rows[p].text);            // text clause CANNOT have matched
+  });
+
+  it('top-3 rank match via path-equality fallback counts as a hit (id drifted, doc did not)', async () => {
+    const name = nextName();
+    const p = pickFor(name);
+    const rows = Array.from({ length: N }, (_, i) => row(i + 1));
+    // Decoy at rank 1: different id, different text, SAME path as the sampled row.
+    const decoy = p === 0 ? 1 : 0;
+    rows[decoy] = { ...rows[decoy], path: rows[p].path, text: `entirely different body ${decoy}` };
+    const dists = distsForTargetRank(N, p, 30, 0.5);        // sampled row itself buried
+    dists[decoy] = 0;                                       // decoy wins outright
+    await mkStore(name, { rows, vecs: vecsFor(dists) });
+
+    const r = await qaStore(tmp, name, 'small', { samples: 1, pipeline: fakePipe(QUERY) });
+    expect(r.fails).toEqual([]);
+    expect(r.roundtrip).toBe('1/1');
+    expect(r.notes).toEqual([]);                            // rank 1 => clean top-3, never a note
+    expect(rows[decoy].id).not.toBe(rows[p].id);            // proves it matched on path, not id
+    expect(rows[decoy].text).not.toBe(rows[p].text);        // ...and not on text
+  });
+
+  it('top-3 rank match via exact-text fallback counts as a hit (overlapping chunk, different id/path)', async () => {
+    const name = nextName();
+    const p = pickFor(name);
+    const rows = Array.from({ length: N }, (_, i) => row(i + 1));
+    const decoy = p === 0 ? 1 : 0;
+    rows[decoy] = { ...rows[decoy], text: rows[p].text };   // identical text, own id + own path
+    const dists = distsForTargetRank(N, p, 30, 0.5);
+    dists[decoy] = 0;
+    await mkStore(name, { rows, vecs: vecsFor(dists) });
+
+    const r = await qaStore(tmp, name, 'small', { samples: 1, pipeline: fakePipe(QUERY) });
+    expect(r.fails).toEqual([]);
+    expect(r.roundtrip).toBe('1/1');
+    expect(r.notes).toEqual([]);
+    expect(rows[decoy].id).not.toBe(rows[p].id);
+    expect(rows[decoy].path).not.toBe(rows[p].path);        // proves it matched on text alone
+  });
+
+  it('a sampled row absent from the WIDE-k window is a hard FAIL, never forgiven by any arm', async () => {
+    const name = nextName();
+    const p = pickFor(name);
+    const rows = Array.from({ length: N }, (_, i) => row(i + 1));
+    // rank 25 of 40 — past top-10 AND past wide k=20. This is the class the gate exists for
+    // (missing / zero / mis-slotted vector, broken read path): absent at ANY k.
+    await mkStore(name, { rows, vecs: vecsFor(distsForTargetRank(N, p, 25, 0.5)) });
+
+    const r = await qaStore(tmp, name, 'small', { samples: 1, pipeline: fakePipe(QUERY) });
+    expect(r.roundtrip).toBe('0/1');
+    expect(r.fails.length).toBe(1);
+    expect(r.fails[0]).toContain('R1 self-retrieval missed');
+    expect(r.fails[0]).toContain(`ABSENT from top-${WIDE_K}`);
+    expect(r.fails[0]).toContain(`id=${rows[p].id}`);
+    expect(r.notes).toEqual([]);                            // no consolation note on a hard FAIL
+  });
+
+  it('a match ranked 4th+ within NEAR_DUP_EPS of rank 1 is a hit AND appends a near-dup `note` (photo-finish)', async () => {
+    const name = nextName();
+    const p = pickFor(name);
+    const rows = Array.from({ length: N }, (_, i) => row(i + 1));
+    const GAP = 0.016;                                      // inside NEAR_DUP_EPS (0.02), not trivially so
+    await mkStore(name, { rows, vecs: vecsFor(distsForTargetRank(N, p, 5, GAP)) });
+
+    const r = await qaStore(tmp, name, 'small', { samples: 1, pipeline: fakePipe(QUERY) });
+    expect(r.fails).toEqual([]);
+    expect(r.roundtrip).toBe('1/1');
+    expect(r.notes.length).toBe(1);
+    expect(r.notes[0]).toMatch(/^near-dup crowd:/);         // the eps arm, NOT the wide-k arm
+    expect(r.notes[0]).toContain('rank 5');
+    const delta = Number(/Δ([0-9.]+)/.exec(r.notes[0])[1]); // bound the magnitude, not the direction
+    expect(delta).toBeCloseTo(GAP, 4);
+    expect(delta).toBeLessThanOrEqual(0.02);
+    expect(delta).toBeGreaterThan(0.01);
+  });
+
+  it('a match ranked 4th+ and MORE than NEAR_DUP_EPS behind #1 still PASSes via wide-k, with a `deep crowd` note', async () => {
+    // Behaviour CHANGED 2026-08-06 (ADR-0064). Previously a hard FAIL. A row at rank 5 with a big
+    // gap is exactly as stored-and-readable as one at rank 188; failing the shallow crowd while
+    // passing the deep one was the perverse edge the wide-k arm had to remove.
+    const name = nextName();
+    const p = pickFor(name);
+    const rows = Array.from({ length: N }, (_, i) => row(i + 1));
+    const GAP = 0.30;                                       // 15x NEAR_DUP_EPS — nowhere near a tie
+    await mkStore(name, { rows, vecs: vecsFor(distsForTargetRank(N, p, 5, GAP)) });
+
+    const r = await qaStore(tmp, name, 'small', { samples: 1, pipeline: fakePipe(QUERY) });
+    expect(r.fails).toEqual([]);
+    expect(r.roundtrip).toBe('1/1');
+    expect(r.notes.length).toBe(1);
+    expect(r.notes[0]).toMatch(/^deep crowd:/);
+    expect(r.notes[0]).toContain(`rank 5/${WIDE_K}`);
+    expect(r.notes[0]).not.toContain('absent from top-10'); // it WAS in top-10, just far back
+    const delta = Number(/Δ([0-9.]+)/.exec(r.notes[0])[1]);
+    expect(delta).toBeCloseTo(GAP, 4);
+    expect(delta).toBeGreaterThan(0.02);                    // provably outside the eps arm
+  });
+
+  it('WIDE-K ARM: a row absent from top-10 but present at wide k PASSes, and the note carries rank + crowd size', async () => {
+    // The nightly-blocking case in miniature (metaharness.big chunk:2b7c2755…: ABSENT from top-10,
+    // rank 188/500, 187/187 ahead of it near-duplicates of it). Here: rank 15/20, 14/14 siblings.
+    const name = nextName();
+    const p = pickFor(name);
+    const rows = Array.from({ length: N }, (_, i) => ({
+      id: String(i + 1), path: `src/u${i}.rs`, title: `u${i}.rs`, text: `unrelated body ${i}`,
+    }));
+    rows[p] = { ...rows[p], path: 'logs/django__django-13315/test_output.txt', text: `${SHARED_PREFIX} tail-target` };
+    const dists = distsForTargetRank(N, p, 15, 0.4);
+    // The 14 rows ranked ahead of it share its 200-char opening but differ in tail/id/path —
+    // crowd members, not matches().
+    const ahead = dists.map((d, i) => ({ d, i })).filter((x) => x.i !== p && x.d < dists[p])
+      .sort((a, b) => a.d - b.d).map((x) => x.i);
+    expect(ahead.length).toBe(14);
+    for (const i of ahead) rows[i] = { ...rows[i], text: `${SHARED_PREFIX} tail-sibling-${i}` };
+    await mkStore(name, { rows, vecs: vecsFor(dists) });
+
+    const r = await qaStore(tmp, name, 'small', { samples: 1, pipeline: fakePipe(QUERY) });
+    expect(r.fails).toEqual([]);                            // the whole point: no longer a FAIL
+    expect(r.roundtrip).toBe('1/1');
+    expect(r.notes.length).toBe(1);
+    expect(r.notes[0]).toMatch(/^deep crowd:/);
+    expect(r.notes[0]).toContain(`rank 15/${WIDE_K}`);
+    expect(r.notes[0]).toContain('(absent from top-10)');   // loud about WHY it needed the wide arm
+    expect(r.notes[0]).toContain('14/14 ahead are near-duplicates');
+    expect(r.notes[0]).toContain(rows[p].path);
+    const delta = Number(/Δ([0-9.]+)/.exec(r.notes[0])[1]);
+    expect(delta).toBeCloseTo(0.4, 4);
+  });
+
+  it('an embed dimension mismatch is captured as an R1 error, not silently ignored', async () => {
+    const name = nextName();
+    const rows = Array.from({ length: N }, (_, i) => row(i + 1));
+    await mkStore(name, { rows, vecs: vecsFor(distsForTargetRank(N, pickFor(name), 1, 0)) });
+
+    // embed.json says 8 dims; the pipeline reports 4 — a real read-path/config divergence.
+    const r = await qaStore(tmp, name, 'small', { samples: 1, pipeline: fakePipe(QUERY, { dims: 4 }) });
+    expect(r.roundtrip).toBe('error');
+    expect(r.fails.length).toBe(1);
+    expect(r.fails[0]).toContain('R1 round-trip error');
+    expect(r.fails[0]).toContain(`embed dim 4 != ${DIMS}`);
+  });
+
+  it('roundtrip is "skipped" — genuinely NOT attempted — when an S3 vector-count mismatch already failed', async () => {
+    const name = nextName();
+    const rows = Array.from({ length: 6 }, (_, i) => row(i + 1));
+    await mkStore(name, { rows, vectors: 4 });              // 6 passages, 4 vectors => S3 FAIL
+
+    const pipe = fakePipe(QUERY);
+    const r = await qaStore(tmp, name, 'small', { samples: 1, pipeline: pipe });
+    expect(r.fails.some((f) => f.startsWith('S3') && f.includes('vectors=4 != passages=6'))).toBe(true);
+    expect(r.roundtrip).toBe('skipped');
+    expect(r.fails.some((f) => f.startsWith('R1'))).toBe(false);
+    expect(pipe.calls.length).toBe(0);                      // "not attempted" means the embedder never ran
+  });
 });

@@ -156,7 +156,11 @@ fi
 
 # Both attempts genuinely failed. Escalate loudly AND leave a marker the next session cannot miss.
 AFTER=$(gh release view --json tagName -q .tagName 2>/dev/null || echo "unknown")
-TAIL=$(tail -8 "$LOG" | tr '\n' ' ' | cut -c1-600)
+# Was `tail -8 | cut -c1-600`. self-update's [FATAL] block is 4+ lines on its own and now carries a
+# 'reason:' line per failed repo, so 8 lines / 600 chars truncated the alert mid-argv — every one of
+# the six identical 2026-08-03..08-06 failures escalated with no reason in it. Widen enough that the
+# whole [FATAL] block, reasons included, reaches the marker file and the push.
+TAIL=$(tail -25 "$LOG" | tr '\n' ' ' | cut -c1-2000)
 mkdir -p .ruvnet-brain
 python3 -c "
 import json, datetime

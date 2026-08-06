@@ -85,6 +85,13 @@ function stubRuflo(dir, body) {
 const env = (extra = {}) => ({
   ...process.env,
   HOME: tmpHome,
+  // USERPROFILE as well as HOME (25cda46's class, measured here). resolveRuflo() defaults `home` to
+  // os.homedir(), which reads USERPROFILE on Windows and ignores HOME entirely — so in-process cases
+  // that pass `home:` explicitly are fine, but every case that crosses the PROCESS boundary was
+  // pointing the resolver at the REAL user profile, which is exactly the ~/.npm-global this fixture
+  // exists to guarantee is absent. MEASURED under Windows homedir semantics before this line:
+  // 2 failed | 11 passed, both #105 learn-flush cases red.
+  USERPROFILE: tmpHome,
   PATH: binDir + path.delimiter + (process.env.PATH || ''),
   RUFLO_BIN: undefined,
   ...extra,

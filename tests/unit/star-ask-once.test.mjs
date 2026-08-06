@@ -35,7 +35,13 @@ function run() {
   // 'bash' via PATH, not /bin/bash: Windows runners resolve this to Git Bash — the same shell
   // Claude Code uses for hooks on real Windows machines, so the test matches production there.
   const r = spawnSync('bash', [SCRIPT], {
-    env: { ...process.env, HOME: home, CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'), RUVNET_BRAIN_METER: '0' },
+    // USERPROFILE as well as HOME (25cda46's class, measured here). The hook's node half resolves
+    // ~/.cache/ruvnet-brain from os.homedir(), which reads USERPROFILE on Windows and ignores HOME.
+    // MEASURED under Windows homedir semantics before this line: the suite stayed GREEN while
+    // writing 81 files — a staged version tree plus an update transaction and lock — into the
+    // runner's real profile. Green is the dangerous half: the fixture below seeds `.grounded-once`
+    // and the star stamp, so on Windows the assertions were reading a profile nobody seeded.
+    env: { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'), RUVNET_BRAIN_METER: '0' },
     encoding: 'utf8',
     timeout: 15000,
   });

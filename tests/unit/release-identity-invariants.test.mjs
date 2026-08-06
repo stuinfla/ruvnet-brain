@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,12 +46,46 @@ describe('release identity — one number, and it means one thing', () => {
     const version = readJson('plugin/.claude-plugin/plugin.json').version;
     // A clean X.Y.Z on main is a claim that this exact tree is what customers are running. That is
     // only true in the instant a release promotes it, so in the repo it must carry the suffix.
-    // If this fails on a release commit, the release is what should clear it — not this test.
-    expect(
-      version,
-      `main carries the clean version ${version}, which asserts it is the shipped generation. `
-      + 'Unreleased work must be X.Y.Z-dev; a release promotes it.',
-    ).toMatch(/-dev$/);
+    //
+    // THE RELEASE-COMMIT EXEMPTION IS NOT A LOOPHOLE — IT IS THE ONE MOMENT THE CLAIM IS TRUE, AND
+    // WITHOUT IT THIS TEST DEADLOCKS THE PUBLISHER (measured 2026-08-06).
+    //
+    // The first version of this test said "if this fails on a release commit, the release is what
+    // should clear it." That is impossible, and the impossibility is circular:
+    //
+    //   · protected-release.yml:170/183/186/187 require the receipt, the manifest and the tag to
+    //     equal package.json AT THE CANDIDATE SHA — so a release candidate must carry the CLEAN
+    //     version. There is no promotion step inside the workflow; the commit IS the promotion.
+    //   · that same workflow refuses any candidate whose exact-SHA `ci` run did not conclude
+    //     successfully.
+    //   · this assertion made `ci` red on precisely those commits.
+    //
+    // So every release candidate was red by construction, and the only workflow allowed to sign and
+    // publish could never accept one. Combined with the unbound EXPECTED_VERSION in the same file,
+    // the rail was dead in two independent ways — which is why releases were being done by hand,
+    // and hand-releases are how npm and GitHub came to name different generations (#77).
+    //
+    // The exemption is derived from the COMMIT ITSELF, never from an env var or a skip flag: a
+    // release commit must say so in its subject AND name this exact version. Any other commit
+    // carrying a clean version is the lingering-drift case this invariant exists to catch, and
+    // still fails. You cannot take the exemption by accident — you have to label the commit a
+    // release of this version, which is the claim being checked in the first place.
+    if (!/-dev$/.test(version)) {
+      let subject = '';
+      try {
+        subject = execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: ROOT, encoding: 'utf8' }).trim();
+      } catch { /* no git (packed tarball) — fall through to the strict assertion below */ }
+      const isReleaseCommitForThisVersion =
+        /^release\s*\(/i.test(subject) && subject.includes(version);
+      expect(
+        isReleaseCommitForThisVersion,
+        `main carries the clean version ${version}, which asserts it is the shipped generation, but `
+        + `HEAD is not a release commit for it (subject: "${subject}"). Unreleased work must be `
+        + 'X.Y.Z-dev; only the release commit that publishes this exact version may carry it clean.',
+      ).toBe(true);
+      return;
+    }
+    expect(version).toMatch(/-dev$/);
   });
 
   it('TEETH: the suffix check can actually fail, and the surfaces check can actually fail', () => {

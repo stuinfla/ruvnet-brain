@@ -43,7 +43,19 @@ env:
   # checked against it. The safety property is unchanged and actually stronger: it used to assert
   # "matches the literal someone last edited", it now asserts "the version you asked to release is
   # the version that commit actually is".
-  REQUESTED_VERSION: ${{ inputs.version }}
+  #
+  # THE RENAME ABOVE SHIPPED HALF-DONE, AND IT BRICKED THE PUBLISHER (found 2026-08-06).
+  # `EXPECTED_VERSION: 4.0.8` was replaced with `REQUESTED_VERSION` here, but the five USES kept the
+  # old name (lines 64, 158, 171, 174, 175). Every one of those runs under `set -euo pipefail` or
+  # reads `process.env.EXPECTED_VERSION`, so the first check aborted on an unbound variable before it
+  # could compare anything — this workflow, the ONLY path allowed to sign and publish, could not
+  # complete a release at all. Unpinning the version and disabling the publisher landed in the same
+  # commit (`da42a21`), so "the release rail is fixed" and "no release can run" were true together.
+  #
+  # That is the source of #77, not a symptom of it: with the rail dead, every release since was done
+  # by hand, and hand-releases are exactly how npm and GitHub came to name different generations.
+  # The name is now defined once, where it is used.
+  EXPECTED_VERSION: ${{ inputs.version }}
   EXPECTED_SHA: ${{ inputs.candidate_sha }}
 
 jobs:
