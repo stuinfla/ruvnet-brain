@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
-import { chromeExecutable, installPackedConsole } from './helpers/packed-console-fixture.mjs';
+import { PACKED_TEARDOWN_BUDGET_MS, chromeExecutable, installPackedConsole } from './helpers/packed-console-fixture.mjs';
 
 const fixtures = [];
 const browsers = [];
@@ -26,7 +26,7 @@ const fable = {
 afterEach(async () => {
   await Promise.all(browsers.splice(0).map((browser) => browser.close()));
   await Promise.all(fixtures.splice(0).map((fixture) => fixture.cleanup()));
-});
+}, PACKED_TEARDOWN_BUDGET_MS);
 
 async function installedInventory(candidates) {
   const fixture = await installPackedConsole({
