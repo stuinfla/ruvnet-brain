@@ -296,8 +296,36 @@ export function deriveDrift(root, docRel, governed) {
   const doc = lastCommit(root, docRel);
   if (!doc) return { state: 'not-applicable', commits: 0, days: 0, reason: 'document has no git history' };
 
-  const rl = git(root, ['rev-list', '--count', `${doc.sha}..HEAD`, '--', ...paths]);
-  const commits = rl.ok ? parseInt(rl.out || '0', 10) || 0 : 0;
+  // A VERSION BUMP IS NOT DRIFT (2026-08-06). `scripts/sync-version.mjs` rewrites the plugin
+  // manifests, package.json, kb/package.json and RVF-GENERATIONS.json on EVERY release bump, and
+  // several ADRs legitimately `govern:` those files. So every bump marked those documents
+  // presumed-stale whether or not anything they decide had moved — measured four times in one day
+  // on ADR-050/051/057/058, each time resolving to "re-read, nothing changed but a version string".
+  //
+  // That is not a harmless nuisance. A gate that fires on every bump teaches people to stamp
+  // without reading, and this repo has already blanket-stamped 61 ADRs from a bad grep exactly
+  // once. It also blocks unattended release automation, which cannot author a currency row.
+  //
+  // Drift is MOVEMENT IN WHAT THE DOCUMENT DECIDES. A commit whose entire diff inside the governed
+  // paths is version-identifier lines cannot have changed any decision, so it does not count. Any
+  // commit touching one substantive line still counts in full — this narrows the trigger, never the
+  // verdict.
+  const shas = (() => {
+    const r = git(root, ['rev-list', `${doc.sha}..HEAD`, '--', ...paths]);
+    return r.ok && r.out ? r.out.split('\n').filter(Boolean) : [];
+  })();
+  const VERSION_FIELD = /^[+-]\s*"?(version|releaseTag|brainVersion|softwareVersion|tag)"?\s*[:=]/i;
+  const isVersionOnly = (sha) => {
+    const d = git(root, ['show', '--unified=0', '--format=', sha, '--', ...paths]);
+    if (!d.ok || !d.out) return false;
+    const changed = d.out.split('\n')
+      .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l));
+    // No changed lines at all (pure rename/mode) is not evidence of a decision change either, but
+    // be conservative: only EXEMPT when there is at least one line and every one is a version field.
+    return changed.length > 0 && changed.every((l) => VERSION_FIELD.test(l));
+  };
+  const substantive = shas.filter((s) => !isVersionOnly(s));
+  const commits = substantive.length;
 
   const codeR = git(root, ['log', '-1', '--format=%ad', '--date=short', `${doc.sha}..HEAD`, '--', ...paths]);
   const codeDate = codeR.ok && codeR.out ? codeR.out.split('\n')[0] : null;
