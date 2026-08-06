@@ -71,17 +71,27 @@ describe('release identity — one number, and it means one thing', () => {
     // still fails. You cannot take the exemption by accident — you have to label the commit a
     // release of this version, which is the claim being checked in the first place.
     if (!/-dev$/.test(version)) {
-      let subject = '';
+      // Scans RECENT HISTORY, not just HEAD. First version of this check required HEAD itself to be
+      // the release commit, and that broke within the hour: a release commit is routinely followed
+      // by the ADR currency rows the pre-push gate demands before it will accept the push, so HEAD
+      // stops being the release commit before the release can even be dispatched. The honest
+      // question is not "is HEAD a release commit" but "was this clean version introduced by a
+      // release of THIS version" — which survives ordinary follow-up commits and still fails for a
+      // clean version nobody ever released.
+      let subjects = [];
       try {
-        subject = execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: ROOT, encoding: 'utf8' }).trim();
+        subjects = execFileSync('git', ['log', '-25', '--pretty=%s'], { cwd: ROOT, encoding: 'utf8' })
+          .split('\n').map((s) => s.trim()).filter(Boolean);
       } catch { /* no git (packed tarball) — fall through to the strict assertion below */ }
+      const subject = subjects[0] || '';
       const isReleaseCommitForThisVersion =
-        /^release\s*\(/i.test(subject) && subject.includes(version);
+        subjects.some((s) => /^release\s*\(/i.test(s) && s.includes(version));
       expect(
         isReleaseCommitForThisVersion,
         `main carries the clean version ${version}, which asserts it is the shipped generation, but `
-        + `HEAD is not a release commit for it (subject: "${subject}"). Unreleased work must be `
-        + 'X.Y.Z-dev; only the release commit that publishes this exact version may carry it clean.',
+        + `no release commit for ${version} appears in the last ${subjects.length} commits `
+        + `(HEAD is "${subject}"). Unreleased work must be X.Y.Z-dev; a clean version is permitted `
+        + 'only once a release(<version>) commit has introduced it.',
       ).toBe(true);
       return;
     }
