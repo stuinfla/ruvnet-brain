@@ -15,9 +15,29 @@ on:
 # The notify job needs nothing from the repo — strip the token to read-nothing so an injected
 # payload (were one ever to slip through again) has no credential to steal.
 permissions: {}
+
+# A NOTIFIER MUST NEVER BE ABLE TO STARVE THE THING IT NOTIFIES ABOUT (added 2026-08-06).
+#
+# Measured during the 4.0.19 release: this workflow had NO `timeout-minutes`. It fires on
+# `workflow_run` for every CI workflow, so it is the most frequently launched job in the repo — and
+# two of its runs sat `in_progress` from 16:19 and 16:23 with no progress, holding BOTH available
+# concurrency slots while 21 real runs queued behind them. CI, integration, ux-qe, three PRs and the
+# release candidate were all stalled for over ten minutes by a job whose entire purpose is to send
+# one alert. Cancelling the two hung runs freed the queue immediately.
+#
+# Two guards, because they fail differently. `timeout-minutes` bounds a run that hangs (a slot is
+# returned even in the worst case), and `concurrency` stops the pile-up: alerts are only worth
+# sending about the LATEST state, so superseded ones should die rather than wait for a runner. A
+# stale alert has no value, but a stale alert holding a runner has negative value.
+concurrency:
+  group: ntfy-alerts-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   notify:
     runs-on: ubuntu-latest
+    # Generous for one HTTP POST, and still 1/12th of the time the hung runs above burned.
+    timeout-minutes: 5
     steps:
       - name: send
         # SECURITY: issue/PR titles and user logins are ATTACKER-CONTROLLED on a public repo, and
