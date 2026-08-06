@@ -87,7 +87,12 @@ function detectInHome(key, home) {
        const c = m.CAPABILITIES.find((x) => x.key === ${JSON.stringify(key)});
        process.stdout.write(JSON.stringify(c.detect({ project: process.cwd() })));
      });`,
-  ], { encoding: 'utf8', env: { ...process.env, HOME: home }, cwd: home });
+    // USERPROFILE as well as HOME. os.homedir() — which installedPluginHooks() defaults to — reads
+    // USERPROFILE on Windows and ignores HOME entirely, so a fixture that sets only HOME points the
+    // detector at the REAL user profile, where none of these fixtures exist. It then correctly
+    // answers `absent`, and the test reads that as the product being broken on Windows when it is
+    // the fixture that never described a Windows machine.
+  ], { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home }, cwd: home });
   return JSON.parse(out);
 }
 

@@ -200,7 +200,44 @@ function artifactOpenWork() {
   } catch { return []; }
 }
 
-const open = [...led.items.filter((i) => !i.done), ...artifactOpenWork()];
+/**
+ * RED CI IS OUTSTANDING WORK. Added 2026-08-06, after the owner asked "is it working? I'm still
+ * getting GitHub errors" while `ci` was red on main and this gate said nothing.
+ *
+ * The SLA source above only knows about ISSUES. A broken build on the branch users install from is
+ * the most urgent kind of unfinished work there is, and it was the one kind the gate could not see —
+ * so the model could finish a turn, report progress, and leave main red, which is exactly the
+ * "stopping in the middle of the work" the owner is describing.
+ *
+ * Read from scripts/signal-watch.mjs's ci-status.json, whose header names it the SINGLE WRITER of
+ * that file. Same discipline as the issues source: only a FRESH observation counts, and only a
+ * RESOLVED-and-failed verdict — a run still in flight is not yet evidence of anything, and treating
+ * it as such would nag through every normal build.
+ */
+function redCiOpenWork() {
+  try {
+    const file = process.env.RUVNET_CI_STATUS_FILE
+      || path.join(HOME, '.cache', 'ruvnet-brain', 'external-signals', 'ci-status.json');
+    const status = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const seen = new Set();
+    return Object.values(status || {})
+      .filter((d) => d?.state === 'resolved' && d.conclusion && d.conclusion !== 'success')
+      .filter((d) => {
+        const at = Date.parse(d.checkedAt || '');
+        return Number.isFinite(at) && nowMs - at <= 6 * 3600_000;
+      })
+      // one item per workflow, not per run — the same red build observed twice is one job to do
+      .filter((d) => (seen.has(d.workflowName) ? false : seen.add(d.workflowName)))
+      .map((d) => ({
+        text: `CI is RED on ${d.repo}: ${d.workflowName} concluded ${d.conclusion} at ${String(d.ref || '').slice(0, 7)}`,
+        done: false,
+        at: d.checkedAt,
+        derived: true,
+      }));
+  } catch { return []; }
+}
+
+const open = [...led.items.filter((i) => !i.done), ...artifactOpenWork(), ...redCiOpenWork()];
 if (!open.length) process.exit(EXIT_ALLOW);   // nothing outstanding: silence is correct
 
 /**

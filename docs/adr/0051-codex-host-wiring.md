@@ -3,7 +3,7 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-05
+updated: 2026-08-06
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -42,6 +42,8 @@ governs:
 
 
 > **Reviewed again 2026-08-05, later same day (4.0.14-dev).** tests/unit/dispatch-gate-wiring.test.mjs now uses pathToFileURL() for its dynamic import: a raw absolute path throws ERR_UNSUPPORTED_ESM_URL_SCHEME on Windows, where the drive letter reads as a URL scheme. ci.yml:147 records this as cluster 7, fixed 2026-07-26; that test reintroduced it the day it was written. Codex host wiring, hook registration and the skill payload are unchanged.
+
+> **Reviewed 2026-08-06 (4.0.16-dev).** Governed code moved: plugin/scripts/continuation-gate.mjs now also derives open work from signal-watch's ci-status.json, so a RED build on main counts as outstanding work — the gate previously saw only open issues and stayed silent while ci was red. tests/unit/dispatch-gate-wiring now sets USERPROFILE alongside HOME, because os.homedir() ignores HOME on Windows and the fixture was pointing the detector at the real user profile. Checked against this decision: the gate's channel, its fail-open posture and its loop-safety guards are unchanged; this widens what counts as evidence, not what it may say.
 
 ## Context
 
