@@ -113,16 +113,16 @@ for (const rel of ['kb/RVF-GENERATIONS.json']) {
 
 if (CHECK && fs.existsSync(path.join(ROOT, 'kb/RVF-GENERATIONS.json'))) {
   const kbDir = path.join(ROOT, 'kb');
-  const requiredStores = fs.readdirSync(kbDir)
-    .filter((file) => file.endsWith('.big.rvf'))
-    .map((file) => file.slice(0, -'.big.rvf'.length));
-  // CI/source-only clones intentionally omit the gitignored RVF binaries. In that shape, validate
-  // the committed ledger's version fields but defer byte checks to bundle assembly, where the RVFs
-  // are present. A checkout containing any canonical RVF remains fail-closed for every ledger row.
-  const { failures } = verifyRvfGenerations(kbDir, {
-    requiredStores,
-    allowMissingFiles: requiredStores.length === 0,
-  });
+  // Validate the committed ledger's version fields ONLY. The previous form scanned the working
+  // directory for `*.big.rvf` and byte-compared every ledger row against whatever this machine
+  // happened to have — but those binaries are gitignored, so the verdict described the machine, not
+  // the commit. It was unsatisfiable in practice (ledger: 72 stores; a real checkout: 71, because
+  // the nightly rebuilds RVFs and regenerates the ledger as one step) and it blocked every push,
+  // tags included, while pointing at a remedy that cannot clear it. Byte verification now happens
+  // where the bytes are genuinely present and genuinely shipped: scripts/build-bundle.mjs:204-214.
+  // This is the same rule release.mjs:100 already applies — a verdict is only about the committed
+  // candidate.
+  const { failures } = verifyRvfGenerations(kbDir, { verifyBytes: false });
   for (const failure of failures) {
     console.error(`[version] RVF GENERATION DRIFT: ${failure}`);
     drift++;

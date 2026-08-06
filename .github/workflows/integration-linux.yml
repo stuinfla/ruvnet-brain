@@ -49,13 +49,85 @@ jobs:
       - name: Integration suite (continue on failure so we see EVERY error, not just the first)
         id: run
         continue-on-error: true
-        run: npx vitest run tests/integration --reporter=verbose 2>&1 | tee /tmp/integration.log
+        shell: bash
+        run: |
+          # pipefail, or the pipeline reports tee's status (always 0) and vitest's verdict is lost.
+          set -o pipefail
+          # `if` rather than a bare pipeline + $?: GitHub runs `shell: bash` with -e, so a non-zero
+          # pipeline aborts the script BEFORE the exit code can be recorded, leaving the output
+          # unset — which the verdict step then reads as failure. That fails a green run, which is
+          # exactly what it did on 75f9310 (31 files / 234 tests passed, job red). A condition is
+          # exempt from -e, so the code is captured on both paths.
+          # --reporter=json writes a MACHINE ARTIFACT. The human-readable reporter stays for the log,
+          # but no verdict is ever derived from it — see the note in Summarize.
+          if npx vitest run tests/integration \
+               --reporter=verbose --reporter=json --outputFile.json=/tmp/integration.json \
+               2>&1 | tee /tmp/integration.log; then
+            echo "vitest_exit=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "vitest_exit=$?" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Summarize
+        shell: bash
+        env:
+          # Passed through env rather than interpolated into the script body — this one is a number
+          # we produced ourselves, but inlining step outputs into shell is the habit that turns an
+          # untrusted field into command injection, so the safe form is the only form used here.
+          VITEST_EXIT: ${{ steps.run.outputs.vitest_exit }}
         run: |
+          set -euo pipefail
           echo "### Linux integration results" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           grep -E "✓|×|↓|Test Files|Tests " /tmp/integration.log | tail -40 >> "$GITHUB_STEP_SUMMARY" || true
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          # Fail the job if anything actually failed, now that the log is captured.
-          ! grep -qE "^\s*×|Failed Tests" /tmp/integration.log
+
+          # THE VERDICT COMES FROM A MACHINE ARTIFACT. NEVER FROM GREPPING A DECORATED LOG.
+          #
+          # History, because this line has now been wrong twice in opposite directions:
+          #
+          #  1. It was `! grep -qE "^\s*×|Failed Tests"` — success meaning the ABSENCE of a failure
+          #     token. Under `continue-on-error` + a pipe without pipefail, a vitest CRASH produced a
+          #     log with neither token, so grep found nothing, `!` made it true, and the job went
+          #     GREEN. release-aggregate reads conclusions only, so a suite that never ran was
+          #     laundered into a PASS leaf of the release evidence.
+          #
+          #  2. The fix replaced it with `grep -qE "^ *Test Files +[0-9]"` as positive proof of
+          #     completion. That regex CANNOT MATCH: vitest colorizes, so the real bytes are
+          #     `\e[2m Test Files \e[22m \e[1m\e[32m31 passed` — ANSI before "Test Files" and between
+          #     it and the digit. Measured on run 31054877336: exit 0, 31 files / 234 tests passed,
+          #     job RED. An unsatisfiable gate, which is the third instance of that exact class here
+          #     (after the RVF byte-compare and EXPECTED_VERSION) and was created while fixing the
+          #     second one.
+          #
+          # Both failures share one cause: a verdict derived from human-facing text. Text is styled,
+          # localized and reformatted at will, so it is evidence of nothing. vitest's JSON reporter
+          # is a contract. Read that instead — and note it is written even when tests fail, so its
+          # ABSENCE genuinely means "the runner never got far enough to report", which is the crash
+          # case (1) was trying to catch.
+          if [ "${VITEST_EXIT:-1}" != "0" ]; then
+            echo "::error::integration suite exited ${VITEST_EXIT:-<none>} — the run itself failed" >&2
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          let report;
+          try {
+            report = JSON.parse(fs.readFileSync('/tmp/integration.json', 'utf8'));
+          } catch (error) {
+            console.log(`::error::no parseable vitest JSON report — the suite did not run to completion, so there is no verdict to report (${error.message})`);
+            process.exit(1);
+          }
+          const failed = report.numFailedTests ?? 0;
+          const suitesFailed = report.numFailedTestSuites ?? 0;
+          const total = report.numTotalTests ?? 0;
+          if (total === 0) {
+            console.log('::error::vitest reported ZERO tests — a suite that ran nothing is not a pass');
+            process.exit(1);
+          }
+          if (failed > 0 || suitesFailed > 0) {
+            console.log(`::error::integration tests failed: ${failed} test(s), ${suitesFailed} suite(s) — see the summary above`);
+            process.exit(1);
+          }
+          console.log(`integration suite ran to completion: ${report.numPassedTests ?? 0}/${total} passed, 0 failed`);
+          NODE

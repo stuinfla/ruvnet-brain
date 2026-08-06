@@ -160,7 +160,84 @@ const nowMs = Date.now();
 // force. This closes the empty-stdin hole that LOOP-SAFETY 1's `__source` check does not cover.
 if (!hookInput.session_id) process.exit(EXIT_ALLOW);
 
-const open = led.items.filter((i) => !i.done);
+/**
+ * ARTIFACT-DERIVED OPEN WORK — the half that cannot be forgotten.
+ *
+ * WHY THIS EXISTS, measured rather than supposed. On 2026-08-04 the owner asked why the model had
+ * gone back to stopping early, and the ledger answered: 25 items, ZERO open, last written 2026-07-25.
+ * The gate had been structurally silent for ten days. Not broken — starved.
+ *
+ * The cause is the design, not the drift. Until now the ONLY source of "is work outstanding" was
+ * `--commit-to`, i.e. the model noticing its own commitment and recording it. So the guard against
+ * the model stopping early depended on the model remembering to arm it, and the failure mode is
+ * silent in exactly the sessions where it matters most. That is this project's oldest rule broken
+ * inside the mechanism meant to enforce it: status must be DERIVED FROM A VERIFIABLE ARTIFACT,
+ * never asserted.
+ *
+ * So the gate now also reads work that exists whether or not anyone remembered to write it down.
+ * `open-issues.json` is produced by the issue-watch pipeline against the real repo; an issue past
+ * its response SLA is outstanding work by definition, and no amount of forgetting can erase it.
+ *
+ * Deliberately narrow: ONLY SLA breaches, never the full backlog — a permanently non-empty backlog
+ * would make this fire forever, which is nagging, not enforcement. And only a FRESH observation
+ * (<6h, the same window session-start-core uses), because a stale file is not evidence of anything.
+ */
+function artifactOpenWork() {
+  try {
+    const file = process.env.RUVNET_OPEN_ISSUES_FILE
+      || path.join(HOME, '.cache', 'ruvnet-brain', 'open-issues.json');
+    const status = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const observedAt = Date.parse(status?.at || '');
+    if (!Number.isFinite(observedAt) || nowMs - observedAt > 6 * 3600_000) return [];
+    return (Array.isArray(status.issues) ? status.issues : [])
+      .filter((issue) => issue?.breach)
+      .map((issue) => ({
+        text: `issue #${issue.number} on ${status.repo} is ${issue.ageHours}h past its response SLA — ${String(issue.title || '').slice(0, 80)}`,
+        done: false,
+        at: new Date(observedAt).toISOString(),
+        derived: true,
+      }));
+  } catch { return []; }
+}
+
+/**
+ * RED CI IS OUTSTANDING WORK. Added 2026-08-06, after the owner asked "is it working? I'm still
+ * getting GitHub errors" while `ci` was red on main and this gate said nothing.
+ *
+ * The SLA source above only knows about ISSUES. A broken build on the branch users install from is
+ * the most urgent kind of unfinished work there is, and it was the one kind the gate could not see —
+ * so the model could finish a turn, report progress, and leave main red, which is exactly the
+ * "stopping in the middle of the work" the owner is describing.
+ *
+ * Read from scripts/signal-watch.mjs's ci-status.json, whose header names it the SINGLE WRITER of
+ * that file. Same discipline as the issues source: only a FRESH observation counts, and only a
+ * RESOLVED-and-failed verdict — a run still in flight is not yet evidence of anything, and treating
+ * it as such would nag through every normal build.
+ */
+function redCiOpenWork() {
+  try {
+    const file = process.env.RUVNET_CI_STATUS_FILE
+      || path.join(HOME, '.cache', 'ruvnet-brain', 'external-signals', 'ci-status.json');
+    const status = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const seen = new Set();
+    return Object.values(status || {})
+      .filter((d) => d?.state === 'resolved' && d.conclusion && d.conclusion !== 'success')
+      .filter((d) => {
+        const at = Date.parse(d.checkedAt || '');
+        return Number.isFinite(at) && nowMs - at <= 6 * 3600_000;
+      })
+      // one item per workflow, not per run — the same red build observed twice is one job to do
+      .filter((d) => (seen.has(d.workflowName) ? false : seen.add(d.workflowName)))
+      .map((d) => ({
+        text: `CI is RED on ${d.repo}: ${d.workflowName} concluded ${d.conclusion} at ${String(d.ref || '').slice(0, 7)}`,
+        done: false,
+        at: d.checkedAt,
+        derived: true,
+      }));
+  } catch { return []; }
+}
+
+const open = [...led.items.filter((i) => !i.done), ...artifactOpenWork(), ...redCiOpenWork()];
 if (!open.length) process.exit(EXIT_ALLOW);   // nothing outstanding: silence is correct
 
 /**

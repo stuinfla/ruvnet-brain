@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       version:
-        description: Exact release generation; this workflow is locked to 4.0.8
+        description: Exact release generation (must equal package.json at candidate_sha)
         required: true
         type: string
       release_qe_run_id:
@@ -33,7 +33,17 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  EXPECTED_VERSION: 4.0.8
+  # NOT a hardcoded version. This was `EXPECTED_VERSION: 4.0.8`, which pinned the ONLY workflow
+  # allowed to sign and publish to a single generation — so 4.0.9 and 4.0.10 could not be released
+  # by the release rail at all, and every release after 4.0.8 was done by hand or by "emergency
+  # promotion". That is the whole reason the release process has felt broken: the publisher was
+  # version-locked in a literal, the same one-fact-stated-twice defect as everywhere else.
+  #
+  # The generation is now DERIVED from package.json at the candidate SHA, and the dispatch input is
+  # checked against it. The safety property is unchanged and actually stronger: it used to assert
+  # "matches the literal someone last edited", it now asserts "the version you asked to release is
+  # the version that commit actually is".
+  REQUESTED_VERSION: ${{ inputs.version }}
   EXPECTED_SHA: ${{ inputs.candidate_sha }}
 
 jobs:

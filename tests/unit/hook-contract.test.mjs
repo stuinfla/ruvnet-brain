@@ -37,6 +37,12 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
+// The continuation gate has TWO sources of open work: the ledger, and open-issues.json —
+// an artifact the issue-watch pipeline writes, added so the guard is not armed solely by the
+// model remembering to arm it. A sandbox that pins only the ledger reads the DEVELOPER's real
+// SLA breaches, and every "must stay silent" case fails for a true reason. Pin both.
+const NO_ISSUES = path.join(os.tmpdir(), 'ruvnet-hook-contract-no-such-open-issues.json');
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CONTINUATION_GATE = path.join(ROOT, 'plugin/scripts/continuation-gate.mjs');
 const LESSON_HOOKS = path.join(ROOT, 'plugin/scripts/lesson-hooks.sh');
@@ -76,7 +82,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     const ledger = tempLedger([{ text: 'unfinished work', done: false }]);
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: true, session_id: 'sess-guard' },
-      { RUVNET_WORK_LEDGER: ledger });
+      { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES });
 
     // The whole incident in one assertion: outstanding work AND already-continuing must yield silence.
     expect(r.stdout).toBe('');
@@ -87,7 +93,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     const ledger = tempLedger([{ text: 'ship the fix', done: false }]);
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: false, session_id: 'sess-fresh' },
-      { RUVNET_WORK_LEDGER: ledger });
+      { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES });
 
     expect(r.code).toBe(0);
     const parsed = JSON.parse(r.stdout);            // throws if the envelope is malformed
@@ -99,7 +105,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     const ledger = tempLedger([{ text: 'visible item', done: false }]);
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: false, session_id: 'sess-stream' },
-      { RUVNET_WORK_LEDGER: ledger });
+      { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES });
 
     // The original bug: 922 bytes of intervention written to a stream the harness does not read.
     expect(r.stdout).toContain('additionalContext');
@@ -117,7 +123,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     // Cooldown disabled here so the two rapid fires test PURE re-engagement; the cooldown is proven
     // separately below. In production the two stops are minutes apart and the cooldown never bites.
     const ledger = tempLedger([{ text: 'repeat me', done: false }]);
-    const env = { RUVNET_WORK_LEDGER: ledger, RUVNET_CONTINUATION_COOLDOWN_MS: '0' };
+    const env = { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES, RUVNET_CONTINUATION_COOLDOWN_MS: '0' };
     const first = fireHook('node', [CONTINUATION_GATE], { stop_hook_active: false, session_id: 'sess-reengage' }, env);
     const second = fireHook('node', [CONTINUATION_GATE], { stop_hook_active: false, session_id: 'sess-reengage' }, env);
 
@@ -193,7 +199,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     fs.writeFileSync(p, JSON.stringify({ items: [{ text: 'no timestamp', done: false }] }));  // NO `at`
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: false, session_id: 'sess-noat' },
-      { RUVNET_WORK_LEDGER: p, RUVNET_CONTINUATION_COOLDOWN_MS: '0' });
+      { RUVNET_WORK_LEDGER: p, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES, RUVNET_CONTINUATION_COOLDOWN_MS: '0' });
     expect(r.stdout).toBe('');   // missing/invalid `at` → stale → no force
   });
 
@@ -201,7 +207,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     const ledger = tempLedger([{ text: 'all done', done: true }]);
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: false, session_id: 'sess-empty' },
-      { RUVNET_WORK_LEDGER: ledger });
+      { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES });
     expect(r.stdout).toBe('');
   });
 });

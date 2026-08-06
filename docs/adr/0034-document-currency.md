@@ -3,7 +3,7 @@ id: ADR-034
 title: A document's status is a claim about code — derive it, stamp it with something you cannot type from memory
 status: Proposed
 date: 2026-07-22
-updated: 2026-07-28
+updated: 2026-08-04
 impl: unbuilt
 governs:
   - scripts/doc-currency.mjs
@@ -43,6 +43,9 @@ This document proposes a schema and then wears it. Its own `impl:` is derived, n
 > documents are its subjects, not its implementation.** `governs:` is now the two files that
 > implement it. The gate itself lands in `scripts/git-hooks/pre-push` per ADR-056 §5, not in the
 > separate `doc-currency-gate.sh` this document originally imagined.
+
+
+> **Reviewed 2026-08-04 (4.0.10).** Governed code moved: scripts/doc-currency.mjs now understands a PINNED date. A blanket "make the stamp match the last commit" rule cannot tell a currency stamp from a historical record, and it silently rewrote ADR-050's incident cutoff — putting this gate into direct contradiction with tests/unit/fix-workstream-guidance, which asserts that exact date, with no way to satisfy both. Documents now declare it with `updated_pinned: true`; pinned dates WARN instead of BLOCK and --fix is forbidden from rewriting them. Checked against this decision: it preserves every currency guarantee stated here and closes a case where the fixer corrupted the record it exists to protect. No clause superseded.
 
 ## The critique this exists to answer
 

@@ -60,8 +60,42 @@ env:
   CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
+  # ── THE GUARD: one condition, read by every cell below ──────────────────────────────────────────
+  #
+  # WHY. This workflow triggers on `workflow_run: [ci] types: [completed]`, and `completed` fires
+  # REGARDLESS OF CONCLUSION and regardless of branch. So it also ran on:
+  #   - ci runs that FAILED, where release-qe never uploaded the sealed candidate; and
+  #   - pull_request ci runs, where ci uploads `release-evidence-${{ github.sha }}` under the MERGE
+  #     commit while this workflow asks for `workflow_run.head_sha` — two different names.
+  # In both cases every cell died instantly on
+  #   "Unable to download artifact(s): Artifact not found for name: release-evidence-<sha>"
+  # — all five OS jobs red together, which reads like a five-platform outage and is actually one
+  # missing file.
+  #
+  # MEASURED 2026-08-05: stranger-matrix passed 9 of 20 runs on main (45%). release-aggregate.yml
+  # requires ci AND stranger AND integration-linux AND ux-qe green on the SAME sha, so at
+  # 0.70 x 0.45 x 0.70 x 0.95 a release attempt succeeded about ONE TIME IN FIVE. This gate was the
+  # dominant term, and almost none of its failures were real findings.
+  #
+  # The condition lives ONCE here and the five cells read it through `needs:`. Repeating an `if:`
+  # five times is how the two host harnesses drifted apart; one fact, one place.
+  gate:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.event == 'push')
+    steps:
+      - name: Why this run is eligible
+        run: |
+          echo "trigger:    ${{ github.event_name }}"
+          echo "ci verdict: ${{ github.event.workflow_run.conclusion || 'n/a (dispatch)' }}"
+          echo "branch:     ${{ github.event.workflow_run.head_branch || 'n/a (dispatch)' }}"
+          echo "candidate:  ${{ github.event.workflow_run.head_sha || github.sha }}"
   # ── shared prep, three POSIX-shaped jobs (ubuntu / macos share the exact same steps) ─────────────
   ubuntu:
+    needs: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -106,6 +140,7 @@ jobs:
             --plugin-src "$RUNNER_TEMP/proj/node_modules/ruvnet-brain/plugin"
 
   macos:
+    needs: gate
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -154,6 +189,7 @@ jobs:
   # under Git Bash (MSYS2 unzip receiving native backslash paths through cmd.exe), and the product
   # now extracts in-process with node:zlib via kb/zip-extract.mjs.
   windows-gitbash:
+    needs: gate
     runs-on: windows-latest
     defaults:
       run:
@@ -197,6 +233,7 @@ jobs:
   # ── windows, PowerShell shell — the OTHER real Windows path (default terminal for most Windows
   # users who never installed Git Bash). Same driver script; only the wrapping shell differs.
   windows-powershell:
+    needs: gate
     runs-on: windows-latest
     defaults:
       run:
@@ -253,6 +290,7 @@ jobs:
   # calls, verified: the only two network functions in bin/install.mjs, resolveRelease's fetchJson and
   # download(), are both skipped in --local mode) fails FAST instead of silently succeeding or hanging.
   hostile:
+    needs: gate
     runs-on: ubuntu-latest
     container:
       image: node:20-alpine

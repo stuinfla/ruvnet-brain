@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-03
+updated: 2026-08-05
 impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -114,6 +114,18 @@ seed and the normal 15-minute retry remains armed.
 
 Extends ADR-057's build order. ADR-057's diagnosis — the three concealment mechanisms, the five
 converged classes — is the incident record and is not restated.
+
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` now exits non-zero when `--update` lands nothing (issue #106), `kb/forge-update.mjs` releases its rollback on the no-op path and keeps it on the damaged path (#108), and `scripts/health-repair.mjs` no longer reports a hollow "fed 0" (#104). Checked against this decision: these changes implement its honesty requirement — no clause here is contradicted or superseded.
+
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` (runUpdate now converges the managed router catalog, #87), `console/app.js` + `console/style.css` (a third not-checked provider state so an unloadable catalog is never rendered as a finding about the user credentials, #86), and `scripts/model-router-catalog.mjs`. Checked against this decision: the host wiring, the grader contract and the 95 thresholds are unchanged — these make an existing claim honest and reach an existing merge from the update path. Console re-graded 96/100 at 1440 and 1920 under the design wall. No clause contradicted or superseded.
+
+
+> **Reviewed 2026-08-04 (4.0.10).** Governed code moved for release integrity: .github/workflows/protected-release.yml no longer pins EXPECTED_VERSION to the literal 4.0.8 (it derives the generation from package.json at the candidate SHA, so the publisher can release any version and still proves the dispatch input matches the commit), and .github/workflows/integration-linux.yml no longer derives its verdict from the ABSENCE of a failure token — a crashed suite used to go green and be laundered into a PASS leaf. Checked against this decision: both changes IMPLEMENT evidence requirements it already states and weaken nothing. ADR-062 durable transaction remains a target, not a claim about current code.
+
+
+> **Reviewed 2026-08-05 (4.0.15-dev).** Governed code moved: scripts/capability-registry.mjs corrected a drifted VERIFIED NULL (issue #116 — ruflo v3.34.0 ships evolve, bench and flywheel, re-measured live), wired a turnOn that discloses its OPENROUTER_API_KEY precondition per brain-score/SKILL.md:97, and fixed a header count that claimed four turnOn:null rows when there were seven. Checked against this decision: it strengthens the no-unearned-claims requirement this ADR states. No clause contradicted.
 
 ## The law, restated once, because every row below is an instance of it
 

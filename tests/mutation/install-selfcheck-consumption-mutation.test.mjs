@@ -37,6 +37,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { CONSOLE_RUNTIME_SURFACE } from '../../scripts/console-runtime-identity.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const REAL_INSTALLER = path.join(REPO, 'bin/install.mjs');
@@ -95,13 +96,16 @@ function buildScratchRoot({ mutateTo, includeRvf }) {
   for (const rel of ['kb/verify-citation.mjs', 'kb/brain-profile.mjs', 'kb/model-requirements.mjs']) {
     fs.copyFileSync(path.join(REPO, rel), path.join(root, rel));
   }
-  // installConsoleRuntime() is now part of the real installer contract. Mirror its
-  // required source surface so this mutation still reaches the self-check verdict
-  // it is designed to test instead of failing earlier on an incomplete fake package.
-  fs.cpSync(path.join(REPO, 'console'), path.join(root, 'console'), { recursive: true });
-  fs.cpSync(path.join(REPO, 'plugin', 'scripts'), path.join(root, 'plugin', 'scripts'), { recursive: true });
-  fs.copyFileSync(path.join(REPO, 'data', 'model-catalog.json'), path.join(root, 'data', 'model-catalog.json'));
-  fs.copyFileSync(path.join(REPO, 'package.json'), path.join(root, 'package.json'));
+  // installConsoleRuntime() is part of the real installer contract, so this fake package must carry
+  // the runtime surface or the mutation fails earlier than the self-check verdict it targets. Taken
+  // from the shipped list rather than copied into a fourth private enumeration of it — bin/install.mjs
+  // is the only file this fixture is allowed to differ on.
+  for (const relative of CONSOLE_RUNTIME_SURFACE) {
+    if (relative === 'bin/install.mjs') continue;   // the mutant, already written above
+    const target = path.join(root, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.cpSync(path.join(REPO, relative), target, { recursive: true });
+  }
 
   fs.cpSync(buildFixtureDir({ includeRvf }), path.join(root, 'dist', 'ruvnet-brain'), {
     recursive: true,

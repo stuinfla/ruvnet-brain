@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createSessionSnapshot } from './session-snapshot-contract.mjs';
+import { projectDirectory } from './project-identity.mjs';
 
 function regularOrAbsent(file) {
   try {
@@ -30,5 +31,7 @@ export function writeSessionSnapshot(projectDir, event) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-hook.mjs')) {
-  writeSessionSnapshot(process.env.CLAUDE_PROJECT_DIR || process.cwd(), process.argv[2] || 'SessionEnd');
+  // projectDirectory() is the SAME derivation the Console's detector uses. Deriving it here
+  // independently is what let this hook write a receipt the Console then reported as missing (#85).
+  writeSessionSnapshot(projectDirectory(), process.argv[2] || 'SessionEnd');
 }

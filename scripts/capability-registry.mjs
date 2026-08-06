@@ -27,19 +27,37 @@
  * THE SECOND RULE: `turnOn` is null unless the exact command was run with `--help` and the
  * subcommand confirmed present. A confidently-wrong command is worse than no command — it sends a
  * person to a shell to be told "unknown subcommand", which costs them trust in every other row on
- * the page. Four of the eleven capabilities below have `turnOn: null` for that reason, and each one
- * records the negative check that produced the null, so nobody re-litigates it from memory:
+ * the page. Six of the eleven capabilities below have `turnOn: null` for that reason, and each one
+ * records the negative check that produced the null, so nobody re-litigates it from memory.
+ *
+ * (That count said FOUR until 2026-08-05 and the real number was seven — stale by three, in the
+ * paragraph explaining why nulls must be re-checked. Counted, not remembered:
+ * `grep -c '^    turnOn: null,'`. Issue #116 removed one, leaving six.)
  *
  *   learning-hooks       `ruflo hooks --help` lists list/route/metrics/pretrain/... and NO
  *                        enable|disable subcommand (grep for "enable" exits 1). There is no CLI
  *                        that flips them on; inventing one would be fabrication. Deeper still,
  *                        that capability's own detector proves there is no readable on/off state
  *                        to flip — see the long note on it before trusting any hook table.
- *   harness-evolution    `ruflo metaharness --help` enumerates its subcommands explicitly:
- *                        score|genome|mcp-scan|threat-model|oia-audit|audit-list|audit-trend|
- *                        similarity|drift-from-history|mint|redblue|learn|gepa. No `evolve`.
- *                        (The MCP tool `metaharness_evolve` exists — the CLI surface does not, and
- *                        this registry only ships commands a person can paste into a terminal.)
+ *   harness-evolution    CORRECTED 2026-08-05 (issue #116). This block used to read "No `evolve`"
+ *                        and called it VERIFIED NULL. That measurement DRIFTED. Re-measured live
+ *                        against ruflo v3.34.0, which is what a user actually has:
+ *                          --subcommand  One of: score | genome | mcp-scan | threat-model |
+ *                          oia-audit | audit-list | audit-trend | similarity | drift-from-history |
+ *                          mint | redblue | learn | gepa | evolve | bench | flywheel
+ *                        `evolve` is there, and so are `bench` and `flywheel`.
+ *
+ *                        The stale claim was LOAD-BEARING, not commentary: it justified
+ *                        `turnOn: null`, so the console could never offer an action that had since
+ *                        started existing. A null justified by a measurement must be re-measured,
+ *                        or it silently becomes a lie — the same failure mode as every other
+ *                        drifted assertion in this repo, sitting inside the registry whose whole
+ *                        job is to describe what is actually available.
+ *
+ *                        The offer names its precondition. plugin/skills/brain-score/SKILL.md:97 is
+ *                        explicit that the WRITE layer needs OPENROUTER_API_KEY and that we must
+ *                        never claim the evolve loop "just works" without it, so the human text
+ *                        says so rather than handing someone a command that will fail.
  *   lessons-in-force     Deliberate, not missing: `lesson-seed.mjs --apply` stores CANDIDATES only,
  *                        because "the model does not get to ratify its own rules." A turnOn here
  *                        would hand the model the pen it was explicitly denied.
@@ -56,6 +74,12 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+// Two facts this file must NOT restate in its own words, because it already did and both were wrong
+// (issues #112, #113): the name of the nightly job the installer loads, and which hooks a session
+// really has wired. Both are imported from the modules that own them, statically — a missing sibling
+// here is a broken build caught by tests, not a runtime degradation to paper over.
+import { NIGHTLY_LABEL } from './nightly-controller.mjs';
+import { buildRegistry } from './hook-registry.mjs';
 
 const HOME = os.homedir();
 
@@ -157,6 +181,46 @@ function mtimeOf(file) {
 function lineCount(file) {
   try { return fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim()).length; }
   catch { return null; }
+}
+
+/**
+ * Is a PreToolUse gate on subagent dispatch wired to the cheap-model router?
+ *
+ * READ THE MERGED REGISTRY, NOT ONE FILE (issue #112). This used to scan `~/.claude/settings.json`
+ * for the literal string `route-dispatch.sh`, which is how the LEGACY standalone install wires the
+ * gate — and is invisible to the way most people now have it. A plugin-marketplace install wires it
+ * in the plugin's own `hooks.json` as `hook-shim.mjs route-dispatch`, never touching settings.json,
+ * so `gateWired` was false for every plugin user no matter how correctly the hook was installed. The
+ * console then told them "nothing can invoke it" about a gate that was wired.
+ *
+ * hook-registry.mjs already enumerates every registry a session loads and resolves each command to
+ * its HANDLER through hook-shim.mjs's own dispatch table — so `route-dispatch.sh` is recognised
+ * whether it is named directly or reached through the shim, and the wiring is found in whichever
+ * layer holds it. That module is the authority; this one asks it rather than describing hooks again.
+ *
+ * WHICH COPY COUNTS, and this is the whole care of the function. The question is what THIS MACHINE
+ * loads, so the two code copies nothing boots are excluded: the repo's own `plugin/hooks/hooks.json`
+ * is the PREIMAGE (a checkout can be ahead of the installed plugin, and reading the preimage instead
+ * of the booted copy is the adjacent-door defect ADR-055 F16 names), and the marketplace clone is
+ * where installs are fetched FROM. What Claude Code actually booted on a marketplace install is the
+ * plugin-cache copy — and because a cache directory outlives the plugin being switched off, that one
+ * counts only while the plugin is enabled.
+ */
+export function dispatchGateWiring({ repo = REPO, home = HOME } = {}) {
+  const PREIMAGE = new Set(['plugin', 'marketplace-clone']);
+  let records;
+  try { records = buildRegistry({ repo, home }).records; }
+  catch { return { wired: false, layer: null, unreadable: true }; }
+  const hits = records.filter((r) => r.event === 'PreToolUse'
+    && r.handler === 'route-dispatch.sh'
+    && r.tools.some((t) => t === 'Task' || t === 'Agent' || t === '*')
+    && !PREIMAGE.has(r.layer));
+  const external = hits.find((r) => r.layer !== 'plugin-installed');
+  if (external) return { wired: true, layer: external.layer, unreadable: false };
+  const enabled = Object.entries(readJSON(path.join(home, '.claude/settings.json')).value?.enabledPlugins || {})
+    .some(([k, v]) => k.startsWith('ruvnet-brain@') && v === true);
+  const ours = enabled ? hits[0] : null;
+  return { wired: Boolean(ours), layer: ours ? ours.layer : null, unreadable: false };
 }
 
 /**
@@ -521,13 +585,14 @@ export const CAPABILITIES = [
       // profile.json is absent). Either missing ⇒ the router cannot fire, regardless of how healthy
       // the receipt ledger looks.
       const profile = fs.existsSync(path.join(HOME, '.claude/model-router/profile.json'));
-      let gateWired = false;
-      try {
-        const s = JSON.parse(fs.readFileSync(path.join(HOME, '.claude/settings.json'), 'utf8'));
-        gateWired = (s?.hooks?.PreToolUse || []).some((h) =>
-          /Task|Agent/.test(String(h.matcher || ''))
-          && (h.hooks || []).some((x) => /route-dispatch\.sh/.test(String(x.command || ''))));
-      } catch { gateWired = false; }
+      // ONE READING OF THE WIRING, from the module that owns it — see dispatchGateWiring(). Scanning
+      // settings.json here was a second, narrower implementation of that question, and it answered
+      // "not wired" for every plugin-marketplace install (issue #112).
+      const gate = dispatchGateWiring();
+      const gateWired = gate.wired;
+      // THE ONE RULE OF THIS FILE. A census we could not take is not a gate we observed to be
+      // missing, and "nothing can invoke it" is a claim about the user's machine.
+      if (gate.unreadable) return row(STATE.UNKNOWN, `${n} routing receipt${n === 1 ? '' : 's'} recorded, but the hook registries on this machine could not be read — whether anything is wired to invoke the router was not checked`);
 
       if (!gateWired || !profile) {
         const missing = [!gateWired && 'no PreToolUse gate on Task|Agent is wired to route-dispatch.sh',
@@ -619,6 +684,14 @@ export const CAPABILITIES = [
   {
     key: 'harness-evolution',
     label: 'Harness self-improvement',
+    // Issue #116: this was `turnOn: null`, justified by a "VERIFIED NULL: evolve is not among them"
+    // measurement that has since drifted — ruflo v3.34.0 ships evolve, bench and flywheel. The
+    // precondition is named in the human text because brain-score/SKILL.md:97 requires the WRITE
+    // layer's OPENROUTER_API_KEY to be disclosed rather than discovered on failure.
+    turnOn: {
+      human: 'Evolve the harness and keep only measured winners (needs OPENROUTER_API_KEY; without it, `--subcommand score` is the free read-only layer)',
+      cmd: 'ruflo metaharness --subcommand evolve',
+    },
     whatItBuysYou: 'The rules your AI works by get tested against each other, and the version that measurably does better becomes the new default.',
     scope: SCOPE.MACHINE,
     // VERIFIED NULL: `ruflo metaharness --help` enumerates its subcommands and `evolve` is not among them.
@@ -774,13 +847,22 @@ export const CAPABILITIES = [
       // routing-flywheel, brain-gists, npx-72h-verdict and nightly-watchdog. Exactly ONE of the
       // eleven (brain-nightly) was the thing the sentence claimed to describe. Ten unrelated jobs
       // were being offered as evidence for a capability none of them implements.
+      //
+      // AND THE UNDER-COUNTING TWIN, which cost more (issue #113). The pattern below is a guess at
+      // what a refresh job is CALLED, and the one job this row is actually about is not called that:
+      // the installer loads `com.ruvnet.brain-update`, which contains neither "nightly" nor
+      // "refresh". So the console reported "no nightly refresh job is loaded" about a job that was
+      // loaded, scheduled for 03:47 and running nightly — a detector blind to its own installer.
+      // The label is now taken from nightly-controller.mjs, the module the console already uses to
+      // turn this job on and off, instead of being described a second time as a pattern here.
       const NIGHTLY = /^com\.ruvnet\.[\w.-]*(nightly|refresh)/i;
       const all = out.split('\n')
         .map((l) => l.split('\t'))
         .filter((c) => c.length >= 3 && /^com\.ruvnet\./.test(c[2] || ''))
         .map((c) => ({ label: c[2].trim(), exit: c[1] }));
       // The watchdog watches the refresh; it is not the refresh, and counting it inflates the answer.
-      const jobs = all.filter((j) => NIGHTLY.test(j.label) && !/watchdog/i.test(j.label));
+      const jobs = all.filter((j) => j.label === NIGHTLY_LABEL
+        || (NIGHTLY.test(j.label) && !/watchdog/i.test(j.label)));
       if (!jobs.length) {
         return row(STATE.ABSENT, all.length
           ? `no nightly refresh job is loaded on this machine (${all.length} other RuvNet job${all.length === 1 ? '' : 's'} are scheduled, but none of them is the knowledge-base refresh)`

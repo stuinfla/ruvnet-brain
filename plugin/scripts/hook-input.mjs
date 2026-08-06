@@ -93,9 +93,21 @@ export function readStdinBounded({ maxBytes = 65536, idleMs = 50, emptyMs = 250 
     // Windows inherited pipes can expose bytes through the readable interface without emitting
     // a data event while the writer keeps stdin open. Drain that interface and poll it briefly;
     // the envelope contract is one value, never EOF.
+    //
+    // DRAIN ONLY — never hand the chunk to onData yourself. `Readable.prototype.read()` EMITS
+    // 'data' for the chunk it returns, so the registered onData listener already receives it.
+    // Calling onData(chunk) here as well counted every chunk TWICE: a 79-byte envelope arrived
+    // as 158 bytes of the payload concatenated with itself, JSON.parse threw, and readStdinBounded
+    // returned an empty envelope — so every gate field read as '' and the PreToolUse wall FAILED
+    // OPEN on every Windows invocation. That is strictly worse than the held-open pipe this block
+    // exists to fix: the original bug stalled, this one silently waved commands through.
+    //
+    // Attaching a 'readable' listener also pins the stream in paused mode — resume() computes
+    // `flowing = !readableListening`, so it cannot restore flowing mode while this listener is
+    // attached. Draining here is therefore the ONLY path bytes take on win32, which is exactly
+    // why double-counting them was total rather than intermittent.
     const onReadable = () => {
-      let chunk;
-      while ((chunk = process.stdin.read()) !== null) onData(chunk);
+      while (process.stdin.read() !== null);
     };
 
     process.stdin.on('data', onData);

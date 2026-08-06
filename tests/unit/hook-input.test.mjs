@@ -5,6 +5,11 @@
 // failed open on it.
 import { describe, it, expect } from 'vitest';
 import { parseHookEvent, toolName, commandOf, field, commandNodes, findInvocations } from '../../plugin/scripts/hook-input.mjs';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 describe('hook-input — the shared PreToolUse payload parser (ADR-0021)', () => {
   it('KNOWN-BAD (the #13 fail-open): a command with embedded quotes is returned WHOLE, not truncated', () => {
@@ -255,5 +260,63 @@ describe('findInvocations — the name must be the EXECUTABLE, and the right bin
     expect(findInvocations('ruflo init', [])).toEqual([]);
     expect(findInvocations('ruflo init', 'agentic-qe')).toEqual([]);
     expect(() => findInvocations(null, 'ruflo')).not.toThrow();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// readStdinBounded on the win32 branch — THE BYTE COUNT IS THE ASSERTION.
+//
+// The win32 drain exists because a Windows inherited pipe can hold stdin open and expose bytes
+// through the readable interface without ever emitting 'data'. The first version of that drain
+// called `onData(chunk)` on what `process.stdin.read()` returned — but read() ITSELF emits 'data',
+// so the registered listener already had the chunk. Every byte was counted twice: a 79-byte
+// envelope came back as 158 bytes of the payload concatenated with itself, JSON.parse threw, and
+// the gate read every field as '' — failing OPEN on every Windows invocation. CI caught it only as
+// 30 downstream assertions in two unrelated files ("expected '' to contain 'ruvnet_cli_help'"),
+// which is what an unguarded parser defect looks like from the outside.
+//
+// So this asserts MAGNITUDE, not direction: exact payload length, not "> 0". A doubling passes any
+// non-empty check. It must run in a child process because readStdinBounded reads the real
+// process.stdin, and it must cross that process boundary to force `process.platform` — an in-process
+// stub would not exercise the stream state machine that causes the bug.
+describe('hook-input — readStdinBounded drains win32 without double-counting', () => {
+  const PROBE = `
+    Object.defineProperty(process, 'platform', { value: process.env.FORCE_PLAT });
+    const { readStdinBounded } = await import(process.env.TARGET);
+    const buf = await readStdinBounded({ maxBytes: 65536, idleMs: 50, emptyMs: 250 });
+    let parsed = 'OK'; try { JSON.parse(buf.toString('utf8')); } catch { parsed = 'PARSE-FAIL'; }
+    process.stdout.write(JSON.stringify({ bytes: buf.length, parsed }));
+  `;
+
+  function readUnder(platform, payload) {
+    const target = pathToFileURL(path.join(ROOT, 'plugin', 'scripts', 'hook-input.mjs')).href;
+    const res = spawnSync(process.execPath, ['--input-type=module', '-e', PROBE], {
+      input: payload,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: { ...process.env, FORCE_PLAT: platform, TARGET: target },
+    });
+    return JSON.parse(res.stdout);
+  }
+
+  const ENVELOPE = JSON.stringify({ hook_event_name: 'PreToolUse', tool_input: { command: 'ruflo memory search' } });
+
+  it('win32 returns EXACTLY the payload length — a doubled read is the regression', () => {
+    const got = readUnder('win32', ENVELOPE);
+    expect(got.bytes).toBe(Buffer.byteLength(ENVELOPE)); // 158 on the broken drain, 79 correct
+    expect(got.parsed).toBe('OK');
+  });
+
+  it('the non-win32 path is unchanged by the drain', () => {
+    const got = readUnder('linux', ENVELOPE);
+    expect(got.bytes).toBe(Buffer.byteLength(ENVELOPE));
+    expect(got.parsed).toBe('OK');
+  });
+
+  it('what the gate actually sees survives the win32 round-trip', () => {
+    // The byte count is the mechanism; this is the consequence the 30 CI failures reported.
+    const got = readUnder('win32', ENVELOPE);
+    expect(got.parsed).toBe('OK');
+    expect(commandOf(parseHookEvent(ENVELOPE))).toBe('ruflo memory search');
   });
 });

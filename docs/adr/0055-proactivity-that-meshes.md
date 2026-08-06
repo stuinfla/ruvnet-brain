@@ -3,7 +3,7 @@ id: ADR-055
 title: Proactivity that meshes — one decision law, four planes, substance-bound enforcement, learning bound to outcomes
 status: Accepted
 date: 2026-07-27
-updated: 2026-08-03
+updated: 2026-08-05
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6 (codex, read-only)]
 tags: [proactivity, hooks, mesh, fourth-wall, learning, grounding, qa]
@@ -26,6 +26,15 @@ governs:
 **Status**: Accepted (duel-verified two-sided 2026-07-27 — full record below, incl. the first run's process failure)
 **Date**: 2026-07-27
 **Related**: ADR-012, ADR-017, ADR-023, ADR-028, ADR-030, ADR-040, ADR-043, ADR-050, ADR-052, ADR-053, ADR-054
+
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved: two new modules under `plugin/scripts/` — `ruflo-bin.mjs` (one resolver for the global ruflo, issues #99/#105) and `project-identity.mjs` (one answer to "which directory is this", issues #85/#107) — plus `session-snapshot-hook.mjs` rewired onto the latter. Checked against this decision: both are consolidations of logic the mesh already performed at several sites, adding no hook, no event and no new proactive surface. Nothing here is contradicted or superseded.
+
+
+> **Reviewed 2026-08-04 (4.0.10).** Governed code moved: plugin/scripts/continuation-gate.mjs now derives open work from open-issues.json in addition to the self-reported ledger, because the ledger had been empty since 2026-07-25 and the gate was therefore silent for ten days — a guard armed only by the model remembering to arm it. Checked against this decision: it strengthens the proactivity contract this ADR states and adds no hook, event or new surface.
+
+
+> **Reviewed 2026-08-05 (4.0.15-dev).** Governed code moved: plugin/scripts/hijack-ruvnet.sh's managed-memory advisory now matches an executable invocation against a managed store rather than a flat payload string (issue #102). The old bracket expression `[^\n]` is {backslash,n} negated in POSIX ERE, so every sqlite3 flag containing an n defeated it, and prose mentioning sqlite tripped it. Checked against this decision: the advisory's channel, dial-independence and fail-open posture are unchanged — this makes it fire on the right input, and stop firing at people already using the sanctioned tool.
 
 ## Current implementation checkpoint — 2026-07-28 recovery candidate
 
@@ -681,7 +690,8 @@ clause as the pre-agreed escalation (§3.5); Task-prompt scanning — Fable's re
 delegation drift goes to the interrupt tier (§3.7.9).
 
 ## Currency log
-| 2026-08-03 | Bounded the shared hook-input parser on Windows inherited pipes by draining readable bytes and polling until the existing idle/empty deadlines. | Post-merge main CI run `30847567626` failed only `swarm-slot-recycler.test.mjs` on Windows because the held-open envelope was not surfaced through `data`; `tests/unit/swarm-slot-recycler.test.mjs` and `tests/unit/hook-input.test.mjs` pass 43/43 after the platform-specific parser fix. |
+| 2026-08-06 | The win32 drain now DRAINS ONLY — `process.stdin.read()` already emits `data`, so handing the chunk to `onData` as well double-counted every byte. Guarded by a byte-exact win32 test. | The first draft of this row claimed the parser fix passed 43/43; measured, the drain returned **158 bytes for a 79-byte envelope** (payload concatenated with itself), `JSON.parse` threw, and every gate field read `''` — the PreToolUse wall FAILED OPEN on every Windows invocation. CI reported it only as 30 downstream assertions in `codex-lifecycle-hooks.test.mjs` and `continuation-gate.test.mjs` (`expected '' to contain 'ruvnet_cli_help'`), run `30858227845`. Root cause is platform-independent Node stream semantics: a `readable` listener pins the stream paused (`resume()` computes `flowing = !readableListening`), so the drain is the only byte path on win32 and the double-count was total, not intermittent. `tests/unit/hook-input.test.mjs` now asserts `bytes === Buffer.byteLength(envelope)`; reintroducing the double-read fails it `expected 158 to be 79`. |
+| 2026-08-03 | Bounded the shared hook-input parser on Windows inherited pipes by draining readable bytes and polling until the existing idle/empty deadlines. | Post-merge main CI run `30847567626` failed only `swarm-slot-recycler.test.mjs` on Windows because the held-open envelope was not surfaced through `data`. Superseded by the 2026-08-06 row: the fix as first written was itself a fail-open regression. |
 | 2026-08-03 | Re-read the proactive hook mesh after the Codex staged-host correction; no contract change. | PR #100 exact-SHA release evidence is green; Windows unit remains the sole required red lane. |
 
 | Date | What changed | Why (with referents) |

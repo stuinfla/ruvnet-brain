@@ -472,11 +472,28 @@ export async function runSessionStart({
         emit(`[RuvNet Brain v${bannerVersion} — active this session, RETRIEVAL DOWN]`);
         emit(`The plugin and its hooks are running, but the brain itself is broken (see the alarm above). Do not claim grounding works. If you mention it at all: "🧠 RuvNet Brain active (v${bannerVersion}) — but its search is down right now."`);
       } else {
-        emit(`[RuvNet Brain v${bannerVersion} — active this session${updated ? ` · updated ${updated}` : ''}${kbVersion ? ` · knowledge bundle ${kbVersion}` : ''}]`);
+        // ONE VERSION, CUSTOMER-FACING (issue #77, restated from the customer's side).
+        //
+        // This printed the plugin version and the knowledge bundle's tag side by side —
+        // "RuvNet Brain active (v4.0.8, brain v4.0.7)". Those are two internal artefacts of ONE
+        // product. Showing both makes every user adjudicate whether their install is out of sync,
+        // a question they cannot answer and should never have been asked. Keeping the two in
+        // lockstep is this project's job; printing the seam is an admission leaking into the UI.
+        //
+        // The divergence is NOT hidden — when the tags differ it goes to the maintainer on the
+        // same private entitlement that gates open-issue alerts, because a bundle behind its
+        // plugin is a RELEASE defect to fix, not a banner to annotate.
+        emit(`[RuvNet Brain v${bannerVersion} — active this session${updated ? ` · updated ${updated}` : ''}]`);
+        const bundleTag = String(kbVersion).replace(/^v/, '');
+        if (bundleTag && bannerVersion !== 'unknown' && bundleTag !== bannerVersion
+            && maintainerIssueEntitlement(env, home, 'stuinfla/ruvnet-brain')) {
+          emit('[RuvNet Brain — MAINTAINER ONLY: the shipped generation is split. Do NOT surface this to the user.]');
+          emit(`Plugin is ${bannerVersion}; the knowledge bundle on this machine is ${kbVersion}. Per issue #77 these ship as ONE generation, so a split means a release published the plugin without its matching bundle asset. The user is correctly shown a single version (${bannerVersion}) — fix the release, never annotate the banner.`);
+        }
         let confidenceInstruction;
         if (readiness.state === 'ready') {
           emit('USER-LEVEL: one brain (~/.cache/ruvnet-brain/kb) shared by every project and window here — nothing to reinstall per project. search_ruvnet is ready and live; the grounding hooks are active.');
-          confidenceInstruction = `Open your FIRST response with ONE short, warm confirmation in your own words (2-3 lines, then move on; never repeat it this session). It must say "🧠 RuvNet Brain active (v${bannerVersion}${kbVersion ? `, brain ${kbVersion}` : ''})" — that version, in parentheses, always — and convey: it grounds rUv's stack (RVF, Ruflo, AgentDB, SPARC, agentic-flow…) in his real source rather than guessing; npx github:stuinfla/ruvnet-brain --doctor checks it; ${consoleInvoke} opens a visual settings page.`;
+          confidenceInstruction = `Open your FIRST response with ONE short, warm confirmation in your own words (2-3 lines, then move on; never repeat it this session). It must say "🧠 RuvNet Brain active (v${bannerVersion})" — ONE version, in parentheses, always; never a second number, never a bundle tag beside it — and convey: it grounds rUv's stack (RVF, Ruflo, AgentDB, SPARC, agentic-flow…) in his real source rather than guessing; npx github:stuinfla/ruvnet-brain --doctor checks it; ${consoleInvoke} opens a visual settings page.`;
         } else if (readiness.state === 'degraded') {
           const receipt = readiness.receipt || {};
           emit(`USER-LEVEL: one brain (~/.cache/ruvnet-brain/kb) shared by every project and window here — nothing to reinstall per project. search_ruvnet is registered but degraded (${receipt.phase || 'startup'}: ${receipt.error || 'readiness failed'}); the grounding hooks remain active.`);

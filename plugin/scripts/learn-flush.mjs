@@ -14,6 +14,13 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { readStdinBounded } from './hook-input.mjs';
 import { loadRuntimePreferences } from './runtime-preferences.mjs';
+import { resolveRuflo, RUFLO_MISSING } from './ruflo-bin.mjs';
+
+// ONE BOUNDED LINE ON STDERR. stderr because a SessionEnd hook's stdout is not surfaced, and bounded
+// because a hook that prints a stack trace on every `/clear` gets muted — and a muted diagnostic is
+// no diagnostic at all (the same lesson as the session-start line that reported its own defect every
+// session for eight days and went unread).
+const warn = (msg) => { try { process.stderr.write(`learn-flush: ${msg}\n`); } catch { /* stderr gone */ } };
 
 const HOME = os.homedir();
 const PROJECT = process.env.RUVNET_BRAIN_PROJECT_DIR || process.cwd();
@@ -48,7 +55,11 @@ const QUEUE_ROOT = LEARNING_SCOPE === 'user'
   ? path.join(HOME, '.cache', 'ruvnet-brain', 'learn')
   : path.join(PROJECT, '.swarm', 'ruvnet-brain-learn');
 const QUEUE = process.env.LEARN_QUEUE || path.join(QUEUE_ROOT, `session-${SID}.jsonl`);
-const RUFLO = path.join(HOME, '.npm-global/bin/ruflo');
+// Issue #105: this was a hardcoded `path.join(HOME, '.npm-global/bin/ruflo')` — the owner's npm
+// prefix. On any other prefix (Homebrew, nvm, Volta, plain `npm -g`) the path simply did not exist,
+// every feed below threw ENOENT, and every throw landed in a `catch {}` that said nothing. One
+// resolver, shared with distill-project.mjs and health-repair.mjs's original — see ruflo-bin.mjs.
+const RUFLO = resolveRuflo();
 const RUFLO_ENV = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
 const MAX_ACTIONS = 8; // bound the work so SessionEnd stays fast
 
@@ -98,7 +109,16 @@ for (const line of lines) {
 const actions = allDistinct.slice(0, MAX_ACTIONS);
 const deferred = allDistinct.slice(MAX_ACTIONS);
 
+// ruflo is genuinely not on this machine. SAY SO — once — and keep the queue. Exiting 0 keeps the
+// best-effort contract (an absent optional learner must never break SessionEnd); saying nothing at
+// all is what turned #105 into eight invisible ENOENTs and a queue that never drained.
+if (!RUFLO && actions.length) {
+  warn(`0/${actions.length} fed — ${RUFLO_MISSING}. The queue is KEPT for retry.`);
+  process.exit(0);
+}
+
 let fed = 0;
+const failures = [];              // WHY each feed failed — the thing `catch {}` used to destroy
 let stoppedAt = actions.length;   // how far the feed actually got before the deadline
 for (let i = 0; i < actions.length; i++) {
   const remaining = DEADLINE - Date.now();
@@ -120,7 +140,22 @@ for (let i = 0; i < actions.length; i++) {
       timeout: Math.min(6000, remaining),
     });
     fed++;
-  } catch { /* best-effort — one slow/failed record must not stall session end */ }
+  } catch (e) {
+    // BEST-EFFORT, NOT SILENT. The old `catch { /* best-effort */ }` swallowed the reason, so a
+    // machine where every call failed looked exactly like one where every call worked: exit 0,
+    // no output, and the only trace a queue that never shrank. "Reports success while doing
+    // nothing" is the defect class this project treats as the worst thing it can ship. Keep going
+    // (one bad record must not stall session end), but keep the reason.
+    failures.push(String(e?.message || e).split('\n')[0].slice(0, 120));
+  }
+}
+// SURFACE IT. Distinct reasons only, at most two: eight copies of the same ENOENT is noise, and the
+// second distinct reason is usually where the real information is.
+if (failures.length) {
+  const distinct = [...new Set(failures)];
+  warn(`${failures.length}/${actions.length} feed call(s) FAILED via ${RUFLO}`
+    + ` — ${distinct.slice(0, 2).join(' | ')}${distinct.length > 2 ? ` (+${distinct.length - 2} more kind(s))` : ''}`
+    + (fed === 0 ? '. Nothing was learned; the queue is KEPT for retry.' : `. ${fed} succeeded.`));
 }
 // Whatever the deadline cut off is WORK, not waste: it goes back on the front of the queue so the
 // next flush continues from there. Dropping it would turn a time limit into the same silent data

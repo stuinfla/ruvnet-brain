@@ -3,7 +3,7 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-03
+updated: 2026-08-06
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -27,6 +27,23 @@ governs:
 **Status**: Implemented
 **Date**: 2026-07-24
 **Related**: ADR-023
+
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` now exits non-zero when `--update` lands nothing (issue #106), `kb/forge-update.mjs` releases its rollback on the no-op path and keeps it on the damaged path (#108), and `scripts/health-repair.mjs` no longer reports a hollow "fed 0" (#104). Checked against this decision: these changes implement its honesty requirement — no clause here is contradicted or superseded.
+
+
+> **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` (runUpdate now converges the managed router catalog, #87), `console/app.js` + `console/style.css` (a third not-checked provider state so an unloadable catalog is never rendered as a finding about the user credentials, #86), and `scripts/model-router-catalog.mjs`. Checked against this decision: the host wiring, the grader contract and the 95 thresholds are unchanged — these make an existing claim honest and reach an existing merge from the update path. Console re-graded 96/100 at 1440 and 1920 under the design wall. No clause contradicted or superseded.
+
+
+> **Reviewed 2026-08-04 (4.0.11).** Governed code moved: plugin/.codex-plugin/plugin.json carries the 4.0.11 generation, and plugin/scripts/session-start-core.mjs now surfaces ONE customer-facing version (the plugin/bundle split is routed to the maintainer instead of printed to users, per #77). Checked against this decision: the Codex host wiring, its hook registration and its skill payload are untouched; this changes what is DISPLAYED, not what is wired. No clause contradicted.
+
+
+> **Reviewed 2026-08-05 (4.0.12 PUBLISHED).** Governed code moved: plugin/.codex-plugin/plugin.json carries the 4.0.12 generation, promoted from 4.0.12-dev and published to npm. Checked against this decision: the Codex host wiring, hook registration and skill payload are unchanged — this is a version promotion, not a wiring change. No clause contradicted.
+
+
+> **Reviewed again 2026-08-05, later same day (4.0.14-dev).** tests/unit/dispatch-gate-wiring.test.mjs now uses pathToFileURL() for its dynamic import: a raw absolute path throws ERR_UNSUPPORTED_ESM_URL_SCHEME on Windows, where the drive letter reads as a URL scheme. ci.yml:147 records this as cluster 7, fixed 2026-07-26; that test reintroduced it the day it was written. Codex host wiring, hook registration and the skill payload are unchanged.
+
+> **Reviewed 2026-08-06 (4.0.16-dev).** Governed code moved: plugin/scripts/continuation-gate.mjs now also derives open work from signal-watch's ci-status.json, so a RED build on main counts as outstanding work — the gate previously saw only open issues and stayed silent while ci was red. tests/unit/dispatch-gate-wiring now sets USERPROFILE alongside HOME, because os.homedir() ignores HOME on Windows and the fixture was pointing the detector at the real user profile. Checked against this decision: the gate's channel, its fail-open posture and its loop-safety guards are unchanged; this widens what counts as evidence, not what it may say.
 
 ## Context
 
