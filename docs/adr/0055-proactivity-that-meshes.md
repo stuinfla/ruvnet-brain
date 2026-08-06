@@ -3,7 +3,7 @@ id: ADR-055
 title: Proactivity that meshes — one decision law, four planes, substance-bound enforcement, learning bound to outcomes
 status: Accepted
 date: 2026-07-27
-updated: 2026-08-04
+updated: 2026-08-05
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6 (codex, read-only)]
 tags: [proactivity, hooks, mesh, fourth-wall, learning, grounding, qa]
@@ -32,6 +32,9 @@ governs:
 
 
 > **Reviewed 2026-08-04 (4.0.10).** Governed code moved: plugin/scripts/continuation-gate.mjs now derives open work from open-issues.json in addition to the self-reported ledger, because the ledger had been empty since 2026-07-25 and the gate was therefore silent for ten days — a guard armed only by the model remembering to arm it. Checked against this decision: it strengthens the proactivity contract this ADR states and adds no hook, event or new surface.
+
+
+> **Reviewed 2026-08-05 (4.0.15-dev).** Governed code moved: plugin/scripts/hijack-ruvnet.sh's managed-memory advisory now matches an executable invocation against a managed store rather than a flat payload string (issue #102). The old bracket expression `[^\n]` is {backslash,n} negated in POSIX ERE, so every sqlite3 flag containing an n defeated it, and prose mentioning sqlite tripped it. Checked against this decision: the advisory's channel, dial-independence and fail-open posture are unchanged — this makes it fire on the right input, and stop firing at people already using the sanctioned tool.
 
 ## Current implementation checkpoint — 2026-07-28 recovery candidate
 

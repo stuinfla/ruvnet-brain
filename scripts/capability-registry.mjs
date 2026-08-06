@@ -27,19 +27,37 @@
  * THE SECOND RULE: `turnOn` is null unless the exact command was run with `--help` and the
  * subcommand confirmed present. A confidently-wrong command is worse than no command — it sends a
  * person to a shell to be told "unknown subcommand", which costs them trust in every other row on
- * the page. Four of the eleven capabilities below have `turnOn: null` for that reason, and each one
- * records the negative check that produced the null, so nobody re-litigates it from memory:
+ * the page. Six of the eleven capabilities below have `turnOn: null` for that reason, and each one
+ * records the negative check that produced the null, so nobody re-litigates it from memory.
+ *
+ * (That count said FOUR until 2026-08-05 and the real number was seven — stale by three, in the
+ * paragraph explaining why nulls must be re-checked. Counted, not remembered:
+ * `grep -c '^    turnOn: null,'`. Issue #116 removed one, leaving six.)
  *
  *   learning-hooks       `ruflo hooks --help` lists list/route/metrics/pretrain/... and NO
  *                        enable|disable subcommand (grep for "enable" exits 1). There is no CLI
  *                        that flips them on; inventing one would be fabrication. Deeper still,
  *                        that capability's own detector proves there is no readable on/off state
  *                        to flip — see the long note on it before trusting any hook table.
- *   harness-evolution    `ruflo metaharness --help` enumerates its subcommands explicitly:
- *                        score|genome|mcp-scan|threat-model|oia-audit|audit-list|audit-trend|
- *                        similarity|drift-from-history|mint|redblue|learn|gepa. No `evolve`.
- *                        (The MCP tool `metaharness_evolve` exists — the CLI surface does not, and
- *                        this registry only ships commands a person can paste into a terminal.)
+ *   harness-evolution    CORRECTED 2026-08-05 (issue #116). This block used to read "No `evolve`"
+ *                        and called it VERIFIED NULL. That measurement DRIFTED. Re-measured live
+ *                        against ruflo v3.34.0, which is what a user actually has:
+ *                          --subcommand  One of: score | genome | mcp-scan | threat-model |
+ *                          oia-audit | audit-list | audit-trend | similarity | drift-from-history |
+ *                          mint | redblue | learn | gepa | evolve | bench | flywheel
+ *                        `evolve` is there, and so are `bench` and `flywheel`.
+ *
+ *                        The stale claim was LOAD-BEARING, not commentary: it justified
+ *                        `turnOn: null`, so the console could never offer an action that had since
+ *                        started existing. A null justified by a measurement must be re-measured,
+ *                        or it silently becomes a lie — the same failure mode as every other
+ *                        drifted assertion in this repo, sitting inside the registry whose whole
+ *                        job is to describe what is actually available.
+ *
+ *                        The offer names its precondition. plugin/skills/brain-score/SKILL.md:97 is
+ *                        explicit that the WRITE layer needs OPENROUTER_API_KEY and that we must
+ *                        never claim the evolve loop "just works" without it, so the human text
+ *                        says so rather than handing someone a command that will fail.
  *   lessons-in-force     Deliberate, not missing: `lesson-seed.mjs --apply` stores CANDIDATES only,
  *                        because "the model does not get to ratify its own rules." A turnOn here
  *                        would hand the model the pen it was explicitly denied.
@@ -666,6 +684,14 @@ export const CAPABILITIES = [
   {
     key: 'harness-evolution',
     label: 'Harness self-improvement',
+    // Issue #116: this was `turnOn: null`, justified by a "VERIFIED NULL: evolve is not among them"
+    // measurement that has since drifted — ruflo v3.34.0 ships evolve, bench and flywheel. The
+    // precondition is named in the human text because brain-score/SKILL.md:97 requires the WRITE
+    // layer's OPENROUTER_API_KEY to be disclosed rather than discovered on failure.
+    turnOn: {
+      human: 'Evolve the harness and keep only measured winners (needs OPENROUTER_API_KEY; without it, `--subcommand score` is the free read-only layer)',
+      cmd: 'ruflo metaharness --subcommand evolve',
+    },
     whatItBuysYou: 'The rules your AI works by get tested against each other, and the version that measurably does better becomes the new default.',
     scope: SCOPE.MACHINE,
     // VERIFIED NULL: `ruflo metaharness --help` enumerates its subcommands and `evolve` is not among them.
