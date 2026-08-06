@@ -7,9 +7,11 @@
 // something (mutant !== original), so a refactor that relocates the target string fails LOUDLY rather
 // than silently running an unmutated copy.
 //
-// The mutant is written INTO scripts/ (its relative sibling imports resolve there) with a name that ends
-// in "capability-registry.mjs" (so its own invokedDirectly CLI guard fires — registry.mjs:687), and is
-// removed in a finally + afterEach.
+// The mutant is written INTO plugin/scripts/ (its relative sibling imports resolve there) with a name that
+// ends in "capability-registry.mjs" (so its own invokedDirectly CLI guard fires — registry.mjs:687), and is
+// removed in a finally + afterEach. It moved from scripts/ to plugin/scripts/ with the registry itself
+// (ADR-064): the mutant must sit beside the REAL nightly-controller/hook-registry/memory-doctor it
+// statically and lazily imports, not beside the re-export shims that now stand at the old path.
 
 import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
@@ -18,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { measure, REAL_REGISTRY } from '../../scripts/proactivity-metrics.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const MUTANT = path.join(REPO, 'scripts', '_mutant-capability-registry.mjs');
+const MUTANT = path.join(REPO, 'plugin', 'scripts', '_mutant-capability-registry.mjs');
 
 function withMutant(mutate, fn) {
   const src = fs.readFileSync(REAL_REGISTRY, 'utf8');

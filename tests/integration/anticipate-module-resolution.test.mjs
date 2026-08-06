@@ -72,7 +72,13 @@ function makeLayout(name, nested) {
   fs.mkdirSync(hookDir, { recursive: true });
   fs.mkdirSync(modDir, { recursive: true });
   fs.copyFileSync(HOOK_SRC, path.join(hookDir, 'anticipate.sh'));
-  for (const m of MODULES) fs.copyFileSync(path.join(ROOT, 'scripts', m), path.join(modDir, m));
+  // FROM THE PAYLOAD, not from `scripts/`. Since ADR-064 the three modules live in
+  // `plugin/scripts/` — which is the only thing that ships — and `scripts/<name>.mjs` is a four-line
+  // re-export shim over it. Copying the SHIM into a fixture that has no `plugin/` sibling produces a
+  // module that cannot resolve, so the hook falls into its own silent-degradation path and both
+  // layouts read as broken. The fixture must materialise the bytes a user actually receives; copying
+  // a compatibility stub instead would make this test grade something nobody runs.
+  for (const m of MODULES) fs.copyFileSync(path.join(ROOT, 'plugin', 'scripts', m), path.join(modDir, m));
   // The registry is the one module we stub, so the assertion is about resolution, not about the
   // state of the machine running the suite.
   fs.writeFileSync(path.join(modDir, 'capability-registry.mjs'), STUB_REGISTRY);

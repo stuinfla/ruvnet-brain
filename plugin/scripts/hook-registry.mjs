@@ -75,18 +75,20 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
  * / {} / no contracts. The census would have gone QUIET rather than red — the same shape of failure
  * as the inert hook this move exists to fix.
  *
- * So ask the filesystem instead of asserting, the same discipline shimTable()/loadContracts() below
- * already apply per call. `plugin/hooks/hooks.json` exists only under a source checkout's ROOT; in a
- * flattened install the payload IS the root and carries `hooks/hooks.json`. Measured layouts:
+ * The test below is EXACT rather than a heuristic, and deliberately so: this file's own directory is
+ * `<candidate>/plugin/scripts` if and ONLY IF `<candidate>` is a non-flattened root. It therefore
+ * needs no probe file, and cannot be fooled by a root that legitimately omits one — the Console's
+ * runtime root, for instance, carries `plugin/scripts` but not `plugin/hooks` (see
+ * CONSOLE_RUNTIME_SURFACE in scripts/console-runtime-identity.mjs). Measured layouts:
  *
- *   <src>/plugin/scripts/hook-registry.mjs             → ../.. = <src>       holds plugin/hooks/  ✓
- *   ~/.cache/ruvnet-brain/versions/<gen>/scripts/…      → ../.. = …/versions  does not             → ..
- *   ~/.claude/plugins/cache/…/<ver>/scripts/…           → ../.. = …/ruvnet-brain does not          → ..
+ *   <src>/plugin/scripts/hook-registry.mjs             → ../../plugin/scripts === HERE  → <src>
+ *   ~/.cache/ruvnet-brain/versions/<gen>/scripts/…      → does not match                 → ..  (<gen>)
+ *   ~/.claude/plugins/cache/…/<ver>/scripts/…           → does not match                 → ..  (<ver>)
  */
 function resolveRoot(here) {
-  const checkout = path.resolve(here, '..', '..');
-  if (fs.existsSync(path.join(checkout, 'plugin', 'hooks', 'hooks.json'))) return checkout;
-  return path.resolve(here, '..');
+  return path.resolve(here, '..', '..', 'plugin', 'scripts') === here
+    ? path.resolve(here, '..', '..')
+    : path.resolve(here, '..');
 }
 export const REPO = resolveRoot(HERE);
 
@@ -407,7 +409,11 @@ export function codeRootOf(rec, repo = REPO, home = os.homedir()) {
     // plugin root — that indirection is the whole point of ADR-023.
     return rec.shimId ? 'spine' : 'plugin-root';
   }
-  // The SCRIPT path, not the interpreter's: `/bin/bash "/Users/…/route-dispatch.sh"` names two
+  // (`<user>` below is a DECLARED placeholder from codex-wiring.test.mjs's allowlist, not a real
+  // account. That scan covers everything under plugin/, which this file joined in ADR-064; the
+  // example previously wrote an ellipsis where the account name goes, and an ellipsis is
+  // indistinguishable from a leaked home directory to a scanner that cannot read intent.)
+  // The SCRIPT path, not the interpreter's: `/bin/bash "/Users/<user>/route-dispatch.sh"` names two
   // absolute paths and only the second one says which copy of the code runs. Taking the first
   // reported every user-layer hook as living in /bin, which would have hidden F3's whole point.
   const paths = c.match(/\/[^\s"']+/g) ?? [];

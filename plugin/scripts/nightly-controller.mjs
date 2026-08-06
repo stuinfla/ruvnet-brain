@@ -10,7 +10,24 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// ROOT is the tree that holds `bin/install.mjs`, and it is resolved by an EXACT layout test rather
+// than by `..` — because `..` means two different things since this file moved into the payload
+// (ADR-064). From `<root>/scripts/` it was the root; from `<root>/plugin/scripts/` it is
+// `<root>/plugin`, and `<root>/plugin/bin/install.mjs` does not exist. Caught live by
+// console-apply-timings.test.mjs, which drove a real /api/apply through the console and got
+// `Error: Cannot find module '<root>/plugin/bin/install.mjs'` back inside a 200 response — a remedy
+// that reported failure honestly, but failed for a packaging reason nobody would have guessed.
+//
+// The test is exact, not a heuristic: this file's directory IS `<candidate>/plugin/scripts` if and
+// only if `<candidate>` is a non-flattened root. A flattened install (the Spine's versions/<gen>/,
+// the plugin cache's <ver>/) has no `plugin/` level, so `../..` is some unrelated parent and the
+// answer falls back to `..` — where `bin/` also does not exist, and applyNightlyChoice() then
+// reports that honestly instead of silently spawning nothing. nightlyStatus() only reads a plist and
+// needs no installer at all, so status stays correct in every layout.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(HERE, '..', '..', 'plugin', 'scripts') === HERE
+  ? path.resolve(HERE, '..', '..')
+  : path.resolve(HERE, '..');
 const INSTALLER = path.join(ROOT, 'bin', 'install.mjs');
 
 /**
