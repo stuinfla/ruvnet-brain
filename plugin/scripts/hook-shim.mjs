@@ -272,7 +272,15 @@ function runHook(file) {
     process.stderr.write(`[hook-shim] ${entry.file}: ${r.error.message}\n`);
     return entry.mode === 'blocking' ? 1 : 0;
   }
-  // Blocking hooks: the exit code IS the contract (route-dispatch's exit-2 wall). Advisory: always 0.
+  // Blocking hooks: the exit code IS the contract — ground-before-write, design-wall, protect-state,
+  // and hijack-ruvnet at an opted-in managedMemoryBoundary (ADR-063). Advisory hooks: always 0.
+  //
+  // This comment used to cite "route-dispatch's exit-2 wall" as the example. That was FALSE and had
+  // to go (issue #84): route-dispatch is `mode: 'advisory'` in the table above, and it is advisory
+  // for a measured reason — Claude Code registers PreToolUse:Agent/Task hooks asynchronously and
+  // consumes the result ~140ms AFTER tool_dispatch_end, so an exit-2 there arrives after the
+  // subagent has already run. A comment naming an advisory hook as the canonical wall is exactly the
+  // kind of internal contradiction that later gets read as a capability we ship. We do not.
   return entry.mode === 'blocking' ? (r.status ?? 0) : 0;
 }
 
