@@ -13,7 +13,7 @@ import path from 'node:path';
 vi.mock('../../kb/forge-ask.mjs', () => ({ searchKb: vi.fn() }));
 vi.mock('../../kb/forge-rerank.mjs', () => ({ rerankPairs: vi.fn() }));
 
-import { discoverRepos, searchAll } from '../../kb/forge-ask-all.mjs';
+import { deployedFamilyReposFromQuery, discoverRepos, searchAll } from '../../kb/forge-ask-all.mjs';
 import { searchKb } from '../../kb/forge-ask.mjs';
 import { rerankPairs } from '../../kb/forge-rerank.mjs';
 
@@ -44,6 +44,28 @@ describe('discoverRepos — which repos live in a bundle dir', () => {
   it('returns [] for a dir with no stores', () => {
     const d = mkdirWith(['README.md']);
     expect(discoverRepos(d)).toEqual([]);
+  });
+});
+
+describe('deployedFamilyReposFromQuery — exact deployed-family boundary', () => {
+  it('requires at least two deployed members before treating an alias as a family', () => {
+    const d = mkdirWith([]);
+    fs.writeFileSync(path.join(d, 'repo-aliases.json'), JSON.stringify({
+      makerkit: ['makerkit-source', 'makerkit-ix'],
+    }));
+    expect(deployedFamilyReposFromQuery('Explain MakerKit', d, ['makerkit-source'])).toEqual([]);
+  });
+
+  it('does not match a family name embedded inside a different token', () => {
+    const d = mkdirWith([]);
+    fs.writeFileSync(path.join(d, 'repo-aliases.json'), JSON.stringify({
+      makerkit: ['makerkit-source', 'makerkit-ix'],
+    }));
+    expect(deployedFamilyReposFromQuery(
+      'Explain notmakerkit behavior',
+      d,
+      ['makerkit-source', 'makerkit-ix'],
+    )).toEqual([]);
   });
 });
 
@@ -3003,6 +3025,45 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(answer).toContain('recordFeedback');
     expect(answer).toContain('Self-Learning Vector Search');
     expect(answer).not.toContain('no API example');
+  });
+
+  it('prefers a named deployed RVF family over a conflicting capability-card route', async () => {
+    const d = mkdirWith([
+      'testimate.rvf',
+      'testimate-graphify.rvf',
+      'testimate-ix.rvf',
+      'ruvnet-brain.rvf',
+    ]);
+    fs.writeFileSync(path.join(d, 'repo-aliases.json'), JSON.stringify({
+      testimate: ['testimate-graphify', 'testimate-ix'],
+    }));
+    fs.writeFileSync(path.join(d, 'capability-cards.md'), [
+      '## ruvnet-brain',
+      'The Brain coordinates testimonial moderation workflows and architecture guidance.',
+    ].join('\n'));
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({
+      path: `${name}/source.md`,
+      repo: name,
+    })]);
+    vi.mocked(rerankPairs).mockImplementation(async (_q, cands) =>
+      cands.map((candidate) => ({ ...candidate, ceScore: 7.0 })));
+
+    const out = await searchAll({
+      dir: d,
+      query: 'How does Testimate handle testimonial moderation?',
+    });
+
+    expect(out.repos).toEqual(['testimate', 'testimate-graphify', 'testimate-ix']);
+    expect(out.routing).toMatchObject({
+      attempted: true,
+      accepted: true,
+      confidence: 'named',
+    });
+    expect(vi.mocked(searchKb).mock.calls.map(([args]) => args.name).sort()).toEqual([
+      'testimate',
+      'testimate-graphify',
+      'testimate-ix',
+    ]);
   });
 
   it('keeps an explicitly named repository scoped when its evidence is thin', async () => {

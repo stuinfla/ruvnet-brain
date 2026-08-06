@@ -21,6 +21,7 @@ import { rerankPairs, cePrefilterScores } from './forge-rerank.mjs';
 import {
   contentTokens,
   loadCards,
+  loadRepoAliases,
   repositoryNames,
   routeReposFromCards,
 } from './card-lane.mjs';
@@ -2323,6 +2324,88 @@ export function discoverRepos(dir) {
   return [...names].sort();
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function deployedFamilyReposFromQuery(query, dir, availableRepos) {
+  const available = Array.isArray(availableRepos) ? availableRepos : [];
+  if (!available.length) return [];
+  const byLower = new Map(available.map((repo) => [String(repo).toLowerCase(), repo]));
+  const qIdentityPhrase = String(query || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!qIdentityPhrase) return [];
+  for (const [canonical, aliases] of Object.entries(loadRepoAliases(dir))) {
+    const identityNames = [canonical, ...aliases];
+    const queryNamesFamily = identityNames.some((name) => {
+      const phrase = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      return phrase.length >= 3
+        && new RegExp(`(?:^|\\s)${escapeRegExp(phrase)}(?:$|\\s)`).test(qIdentityPhrase);
+    });
+    if (!queryNamesFamily) continue;
+    const repos = [...new Set(identityNames
+      .map((name) => byLower.get(String(name).toLowerCase()))
+      .filter(Boolean))];
+    if (repos.length >= 2) return repos;
+  }
+  return [];
+}
+
+function inventoryReposFromQuery(query, dir, availableRepos) {
+  const available = Array.isArray(availableRepos) ? availableRepos : [];
+  if (!available.length) return null;
+  const byLower = new Map(available.map((repo) => [String(repo).toLowerCase(), repo]));
+  const directives = [...String(query || '').matchAll(/\brepo:([a-z0-9._-]+)/gi)]
+    .map((match) => byLower.get(match[1].toLowerCase()))
+    .filter(Boolean);
+  if (directives.length) {
+    const repos = [...new Set(directives)];
+    return {
+      repos,
+      namedRepos: repos,
+      cardRepos: {},
+      inventoryScope: true,
+      confidence: 'named',
+      reason: `query explicitly selects deployed inventory repo(s): ${repos.join(', ')}`,
+    };
+  }
+
+  const qIdentityPhrase = String(query || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!qIdentityPhrase) return null;
+  const familyRepos = deployedFamilyReposFromQuery(query, dir, available);
+  if (familyRepos.length) {
+    return {
+      repos: familyRepos,
+      namedRepos: familyRepos,
+      cardRepos: {},
+      inventoryScope: true,
+      familyScope: true,
+      confidence: 'named',
+      reason: `query names deployed inventory family: ${familyRepos.join(', ')}`,
+    };
+  }
+  const named = [];
+  for (const repo of available) {
+    const names = repositoryNames(repo, dir);
+    if (names.some((name) => {
+      const phrase = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      return phrase.length >= 3
+        && new RegExp(`(?:^|\\s)${escapeRegExp(phrase)}(?:$|\\s)`).test(qIdentityPhrase);
+    })) {
+      named.push(repo);
+    }
+  }
+  if (!named.length) return null;
+  const repos = [...new Set(named)];
+  return {
+    repos,
+    namedRepos: repos,
+    cardRepos: {},
+    inventoryScope: true,
+    confidence: 'named',
+    reason: `query names deployed inventory repo(s): ${repos.join(', ')}`,
+  };
+}
+
 // The scoped `@scope/name` tokens a query explicitly contains. ONE definition, because two places
 // need it — the pre-rerank rescue in searchAll and the exact-artifact boost in selectResults — and
 // two copies of this regex would be free to drift apart, silently rescuing candidates that the
@@ -2663,7 +2746,13 @@ export async function searchAll({
   const discovered = (repos && repos.length) ? repos : discoverRepos(dir);
   let routing = null;
   if ((!repos || !repos.length) && !_routeStage) {
-    const planned = routeReposFromCards(query, dir, discovered);
+    const inventoryDirective = inventoryReposFromQuery(query, dir, discovered);
+    const planned = inventoryDirective && (
+      inventoryDirective.familyScope
+      || /\brepo:[a-z0-9._-]+\b/i.test(String(query || ''))
+    )
+      ? inventoryDirective
+      : routeReposFromCards(query, dir, discovered);
     const escalationRepo = ['meta', 'harness'].join('');
     if (cheapFirstFailureEscalationQuestion(query) && discovered.includes(escalationRepo)) {
       planned.repos = [

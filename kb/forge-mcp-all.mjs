@@ -17,7 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { searchAll, discoverRepos } from './forge-ask-all.mjs';
+import { searchAll, discoverRepos, deployedFamilyReposFromQuery } from './forge-ask-all.mjs';
 import { warmKnowledgeStores, warmQueryEmbedder } from './forge-ask.mjs';
 import { warmReranker } from './forge-rerank.mjs';
 import { guardPassages } from './forge-guard-injection.mjs';
@@ -285,7 +285,10 @@ async function handle(msg) {
         // card-lane.mjs's header for the honesty contract (silence-or-fallthrough, never a
         // fabricated hit; naming a repo is not by itself sufficient confidence).
         // Heavy-path model revisions are materialized locally by forge-rerank before remote access.
-        const cardHit = answerFromCards(query, KB_DIR, { allowGuideAnswers: true });
+        const namedFamilyRepos = deployedFamilyReposFromQuery(query, KB_DIR, repoList);
+        const cardHit = namedFamilyRepos.length
+          ? { hit: false, reason: 'named deployed RVF family requires multi-store search' }
+          : answerFromCards(query, KB_DIR, { allowGuideAnswers: true });
         if (cardHit.hit) {
           const cardBody = renderCardHit(cardHit);
           // MINT THE RECEIPT ON THIS LANE TOO (ADR-055 §3.1). When the fast lane became the FIRST

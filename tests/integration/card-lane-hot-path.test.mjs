@@ -170,6 +170,14 @@ describe('card lane — a REAL caller in invocation shape, and consulted BEFORE 
     expect(cardIdx).toBeLessThan(searchAllIdx);
   });
 
+  it('bypasses the card lane only when a configured identity resolves to a deployed RVF family', () => {
+    const familyIdx = src.indexOf('deployedFamilyReposFromQuery(query, KB_DIR, repoList)');
+    const cardIdx = src.indexOf('answerFromCards(query, KB_DIR');
+    expect(familyIdx).toBeGreaterThan(-1);
+    expect(familyIdx).toBeLessThan(cardIdx);
+    expect(src.slice(familyIdx, cardIdx)).toMatch(/namedFamilyRepos\.length/);
+  });
+
   it('a card hit RETURNS before reaching searchAll — no fall-through path can run both', () => {
     // Between the card-hit branch's opening brace and its own return statement there must be a
     // `return` and NO reachable call to searchAll — i.e. the branch is a real early-exit, not a
