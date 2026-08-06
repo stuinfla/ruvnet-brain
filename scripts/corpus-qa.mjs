@@ -26,9 +26,12 @@
 //         drift (~0.035 measured) exceeds the true gap between near-dups — the row IS stored and
 //         readable (fact.big id=722: rank 6, Δ0.007 behind rank 1), so that's a photo-finish,
 //         not a broken store. Photo-finish passes are still surfaced as a `note` so the
-//         near-dup-noise signal feeds the dedup backlog instead of being hidden. A row absent
-//         from top-10 (or far from the leader) remains a hard FAIL — missing/zero vectors and
-//         broken read paths cannot hide behind the epsilon.
+//         near-dup-noise signal feeds the dedup backlog instead of being hidden.
+//         Anything that is NOT a top-3 hit and NOT a photo-finish is RE-QUERIED WIDE (WIDE_K,
+//         bounded to half the corpus) before any verdict — see the wide-k arm at R1 below.
+//         Present at wide k => PASS with a loud `deep crowd` note carrying rank + crowd size.
+//         ABSENT at wide k => hard FAIL, always: a missing vector, a zero vector, a mis-slotted
+//         vector and a broken read path are absent at ANY k, and nothing forgives them.
 //         Proves embed-write AND read-path in one check. Retrieval QUALITY (real questions) stays
 //         forge-guard/prove's job; this gate proves the machinery, not the answers.
 //
@@ -62,6 +65,24 @@ const FULL_BODY_MARK = '(full body):';
 // distance (fact.big id=722 replay); near-dup siblings sit within ~0.005 of each other. 0.02
 // forgives the drift-scale tie WITHOUT forgiving genuinely different rows.
 const NEAR_DUP_EPS = 0.02;
+// R1 wide-k arm. Measured 2026-08-06 on the store that failed the nightly six times in three
+// nights (metaharness.big, chunk:2b7c2755…, submissions/swe-bench-lite/…/django__django-13315/
+// test_output.txt): ABSENT from top-10, but rank 188 at k=500, Δ0.0557 behind #1 — and all 187
+// hits ahead of it were near-duplicates of it (187/187, conda-activation boilerplate). 49.3% of
+// that corpus (4,428 of 8,979 rows) is submissions/swe-bench-lite/** of that shape, so a row with
+// ordinary embed drift sinks below its own siblings. That is a corpus-composition fact, not a
+// broken store, and asserting otherwise made this gate assert retrieval QUALITY — explicitly not
+// its job (see header). 500 is ~5.6% of that corpus: deep enough to see under the crowd, far too
+// shallow for a missing/zero/mis-slotted vector to hide in.
+const WIDE_K = 500;
+// Never let wide k reach the whole corpus — a k that returns every row makes "present" vacuous and
+// would silently retire the failure class this gate exists for. Half the corpus is the ceiling.
+const wideKFor = (n) => Math.min(WIDE_K, Math.max(10, Math.floor(n / 2)));
+// Crowd measure for the note: how many hits ahead of the row open with the same normalized text.
+// Cheap, deterministic, model-free — it turns "rank 188" into "rank 188 behind 187 of its own
+// near-duplicates", which is the signal the dedup backlog actually needs.
+const CROWD_PREFIX = 200;
+const crowdKey = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, CROWD_PREFIX);
 
 function fnv1a(s) {
   let h = 0x811c9dc5;
@@ -113,7 +134,7 @@ function getPipeline(embedConf) {
  * `fails` is [] on PASS; every entry is a specific reason string (receipts, not adjectives).
  * `notes` are non-fatal signals (e.g. near-dup crowding) that should reach the dedup backlog.
  */
-export async function qaStore(dir, store, variant, { roundtrip = true, samples = 3 } = {}) {
+export async function qaStore(dir, store, variant, { roundtrip = true, samples = 3, pipeline = null } = {}) {
   const base = variant === 'big' ? `${store}.big` : store;
   const rvfPath = path.join(dir, `${base}.rvf`);
   const variantPassages = path.join(dir, `${base}.passages.jsonl`);
@@ -160,7 +181,10 @@ export async function qaStore(dir, store, variant, { roundtrip = true, samples =
       const byId = new Map(rows.map((r) => [String(r.id), r]));
       let hit = 0;
       const misses = [];
-      const pipe = await getPipeline(embedConf);
+      // `pipeline` is the unit tier's injection seam (same shape as getPipeline's resolved value:
+      // (texts, opts) => { dims, data }). Production always passes null and loads the real model.
+      const pipe = pipeline || await getPipeline(embedConf);
+      const wideK = wideKFor(rows.length);
       for (const i of picks) {
         const r = rows[i];
         // Re-embed EXACTLY what the pipeline indexed for this variant (forge-build/forge-big):
@@ -179,7 +203,21 @@ export async function qaStore(dir, store, variant, { roundtrip = true, samples =
           hit++; // photo-finish behind near-duplicates: stored + readable; surface the crowd as a note
           res.notes.push(`near-dup crowd: id=${r.id} rank ${rank + 1}, Δ${(top[rank].distance - top[0].distance).toFixed(4)} behind #1 (${r.path})`);
         } else {
-          misses.push(`id=${r.id} ${rank < 0 ? 'ABSENT from top-10' : `rank ${rank + 1}, Δ${(top[rank].distance - top[0].distance).toFixed(4)}`} ${r.path}`);
+          // Not a top-3 hit and not a photo-finish. Before declaring the store broken, ask the
+          // question this gate is actually for: is the row IN there and READABLE at all? Re-query
+          // wide. This covers BOTH shapes of miss — absent from top-10 (a deep near-dup crowd) and
+          // present-but-far inside top-10 (a shallow one) — because the alternative is perverse:
+          // a row buried under 187 siblings would pass while the same row buried under 5 failed.
+          const wide = await db.query(Array.from(out.data), wideK);
+          const wideRank = wide.findIndex(matches);
+          if (wideRank >= 0) {
+            hit++; // stored + readable, just outranked by its own near-duplicates
+            const mine = crowdKey(r.text);
+            const crowd = wide.slice(0, wideRank).filter((t) => crowdKey(byId.get(String(t.id))?.text) === mine).length;
+            res.notes.push(`deep crowd: id=${r.id} rank ${wideRank + 1}/${wideK}${rank < 0 ? ' (absent from top-10)' : ''}, Δ${(wide[wideRank].distance - wide[0].distance).toFixed(4)} behind #1, ${crowd}/${wideRank} ahead are near-duplicates (${r.path})`);
+          } else {
+            misses.push(`id=${r.id} ABSENT from top-${wideK} ${r.path}`);
+          }
         }
       }
       res.roundtrip = `${hit}/${picks.length}`;
