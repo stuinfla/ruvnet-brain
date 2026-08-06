@@ -16,7 +16,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
 import { withSubmoduleSymlinksDetached } from './git-clone-refresh.mjs';
@@ -228,6 +228,42 @@ if (!APPLY) {
 }
 
 const NOTIFY = (t, m, p) => { try { execFileSync('sh', [path.join(ROOT, 'scripts/notify.sh'), t, m, p || 'default']); } catch { /* alerting never breaks the pipeline */ } };
+
+// ---- child steps that can explain themselves -------------------------------------------------
+// With stdio:'inherit' a failing child's Error carries NO output: e.stdout and e.stderr are both
+// null and e.message is only "Command failed: <argv>" (verified 2026-08-06). That empty reason is
+// what propagated into the [FATAL] summary, which is in turn what nightly-wrapper.sh samples for
+// the escalation — so six identical nightly failures escalated saying nothing, while the log had
+// the answer the whole time.
+//
+// Capture, then RE-EMIT verbatim so the log is byte-identical to what stdio:'inherit' produced,
+// and keep a tail for the failure record.
+//   captureStdout=false (clone/fetch/reset/symbols): stdout stays inherited so those steps stream
+//     live and survive a kill; only stderr is buffered (small: stacks and warnings).
+//   captureStdout=true  (every step that carries a corpus-QA verdict — [refresh] and [qa]): BOTH
+//     streams, because corpus-qa prints its verdict table and every '↳ <reason>' line via
+//     console.log — i.e. on STDOUT. Capturing stderr alone would have captured nothing for the
+//     exact failure this exists to explain. Measured output is ~34 lines/step, so it costs nothing.
+const STEP_TAIL_LINES = 14;
+function runStep(label, file, args, opts = {}, { captureStdout = false } = {}) {
+  const r = spawnSync(file, args, {
+    ...opts,
+    stdio: ['inherit', captureStdout ? 'pipe' : 'inherit', 'pipe'],
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (r.stdout?.length) process.stdout.write(r.stdout);
+  if (r.stderr?.length) process.stderr.write(r.stderr);
+  if (r.error) { r.error.step = label; throw r.error; }
+  if (r.status !== 0) {
+    const tail = Buffer.concat([r.stdout || Buffer.alloc(0), r.stderr || Buffer.alloc(0)]).toString()
+      .split('\n').map((l) => l.trim()).filter(Boolean).slice(-STEP_TAIL_LINES).join(' | ');
+    const err = new Error(`${label} exited ${r.status}${tail ? ` — ${tail}` : ' — (child produced no output)'}`);
+    err.step = label;
+    err.status = r.status;
+    err.output = tail;
+    throw err;
+  }
+}
 const failures = []; // per-repo build failures collected here; ANY failure aborts before publish (see below)
 for (const p of todo) {
   const dir = clonePath(p.name);
@@ -235,15 +271,15 @@ for (const p of todo) {
     if (!fs.existsSync(path.join(dir, '.git'))) {
       console.log(`[clone] ${p.name}`);
       fs.mkdirSync(CLONE_DIR, { recursive: true });
-      execFileSync('git', ['clone', '--depth', '1', `https://github.com/${p.owner || p.org || 'ruvnet'}/${p.repo || p.name}`, dir], { stdio: 'inherit' });
+      runStep(`[clone] ${p.name}`, 'git', ['clone', '--depth', '1', `https://github.com/${p.owner || p.org || 'ruvnet'}/${p.repo || p.name}`, dir]);
     } else {
       // Some cached clones deduplicate large submodules with symlinks to another clone. Git refuses
       // even a fetch when a gitlink path is a symlink ("expected submodule path ... not to be a
       // symbolic link"). Detach only those declared submodule symlinks for fetch/reset, then restore
       // them in finally so a network/reset failure cannot strand the cache in a half-repaired state.
       withSubmoduleSymlinksDetached(dir, () => {
-        execFileSync('git', ['-C', dir, 'fetch', '--depth', '1', 'origin'], { stdio: 'inherit' });
-        execFileSync('git', ['-C', dir, 'reset', '--hard', 'origin/HEAD'], { stdio: 'inherit' });
+        runStep(`[fetch] ${p.name}`, 'git', ['-C', dir, 'fetch', '--depth', '1', 'origin']);
+        runStep(`[reset] ${p.name}`, 'git', ['-C', dir, 'reset', '--hard', 'origin/HEAD']);
       });
     }
     const env = { ...process.env, KB_MODEL_CACHE: MODEL_CACHE };
@@ -255,26 +291,43 @@ for (const p of todo) {
     if (full) buildArgs.push('--full', full);
     if (keep) buildArgs.push('--keep', keep);
     console.log(`[refresh] ${kb}`);
-    execFileSync(NODE, buildArgs, { cwd: path.join(ROOT, 'kb'), env, stdio: 'inherit' });
+    // captureStdout: forge-refresh runs corpus-qa against its CANDIDATE dir and refuses to promote
+    // on a FAIL — so this step, not the [qa] step below, is where the six 2026-08-03..08-06 nightly
+    // failures actually died, and the verdict table naming the offending chunk is on ITS stdout.
+    // Steps produce ~34 lines at most (largest measured [refresh] section in logs/nightly.log), so
+    // buffering costs nothing; the tradeoff is that the log flushes at step end rather than live.
+    runStep(`[refresh] ${kb}`, NODE, buildArgs, { cwd: path.join(ROOT, 'kb'), env }, { captureStdout: true });
     console.log(`[symbols] ${kb}`);
-    execFileSync(NODE, ['scripts/build-symbols.mjs', '--name', kb], { cwd: ROOT, env, stdio: 'inherit' });
+    runStep(`[symbols] ${kb}`, NODE, ['scripts/build-symbols.mjs', '--name', kb], { cwd: ROOT, env });
     // Corpus QA gate (scripts/corpus-qa.mjs): structural (passages>0, full-bodies>0 where
     // FULL_HINTS demands them, vectors==passages, embed.json present) + deterministic
     // self-retrieval round trip on every canonical store. Non-zero exit throws -> failures[] ->
     // the run aborts before stamp/bundle/publish. This is the machine version of the
     // 2026-07-10 hand-verification: a store that embeds wrong or reads wrong cannot ship.
     console.log(`[qa] ${kb}`);
-    execFileSync(NODE, ['scripts/corpus-qa.mjs', '--store', kb], { cwd: ROOT, env, stdio: 'inherit' });
-  } catch (e) { console.error(`[FAIL] ${p.name}: ${e.message}`); failures.push({ name: p.name, error: e.message }); }
+    // captureStdout: corpus-qa's verdict table and its '↳ <reason>' lines go to stdout.
+    runStep(`[qa] ${kb}`, NODE, ['scripts/corpus-qa.mjs', '--store', kb], { cwd: ROOT, env }, { captureStdout: true });
+  } catch (e) {
+    console.error(`[FAIL] ${p.name}: ${e.message}`);
+    failures.push({ name: p.name, step: e.step || '(unknown step)', error: e.message, reason: e.output || '' });
+  }
 }
 
 // A per-repo build failure used to be logged and swallowed before the run re-stamped and re-bundled
 // partial data. Fail loud: if ANY repo failed, abort before stamp/bundle. This rebuild process has no
 // publication authority; a later protected release may consume only a fully prepared candidate.
 if (failures.length) {
-  NOTIFY('🔴 Nightly brain rebuild ABORTED', `${failures.length} repo build(s) failed — no candidate prepared. See logs/nightly.log`, 'urgent');
+  // Carry the REASON, not just the count. The wrapper samples this block's tail for the push
+  // escalation, so whatever is not printed here is not in the alert either.
+  const first = failures[0];
+  NOTIFY('🔴 Nightly brain rebuild ABORTED',
+    `${failures.length} repo build(s) failed — no candidate prepared. First: ${first.name} ${first.step} — ${first.reason || first.error}`,
+    'urgent');
   console.error(`\n[FATAL] ${failures.length} repo build(s) failed this run — aborting before stamp/bundle. No candidate prepared:`);
-  for (const f of failures) console.error(`  - ${f.name}: ${f.error}`);
+  for (const f of failures) {
+    console.error(`  - ${f.name} ${f.step}: ${f.error}`);
+    if (f.reason) console.error(`      reason: ${f.reason}`);
+  }
   console.error('Fix the failing repo(s) and re-run.');
   process.exit(1);
 }
