@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dispatchGateWiring } from '../../scripts/capability-registry.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -79,7 +79,11 @@ function runtimeShapedRepo() {
 function detectInHome(key, home) {
   const out = execFileSync(process.execPath, [
     '-e',
-    `import(${JSON.stringify(REGISTRY)}).then((m) => {
+    // pathToFileURL, ALWAYS. A raw absolute path in a dynamic import() throws
+    // ERR_UNSUPPORTED_ESM_URL_SCHEME on Windows, where the path begins `D:\\a\\...` and the drive
+    // letter reads as an unknown URL scheme. ci.yml documents this as cluster 7, already fixed once
+    // on 2026-07-26 — this test reintroduced it the day it was written.
+    `import(${JSON.stringify(pathToFileURL(REGISTRY).href)}).then((m) => {
        const c = m.CAPABILITIES.find((x) => x.key === ${JSON.stringify(key)});
        process.stdout.write(JSON.stringify(c.detect({ project: process.cwd() })));
      });`,

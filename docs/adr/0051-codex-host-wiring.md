@@ -40,6 +40,9 @@ governs:
 
 > **Reviewed 2026-08-05 (4.0.12 PUBLISHED).** Governed code moved: plugin/.codex-plugin/plugin.json carries the 4.0.12 generation, promoted from 4.0.12-dev and published to npm. Checked against this decision: the Codex host wiring, hook registration and skill payload are unchanged — this is a version promotion, not a wiring change. No clause contradicted.
 
+
+> **Reviewed again 2026-08-05, later same day (4.0.14-dev).** tests/unit/dispatch-gate-wiring.test.mjs now uses pathToFileURL() for its dynamic import: a raw absolute path throws ERR_UNSUPPORTED_ESM_URL_SCHEME on Windows, where the drive letter reads as a URL scheme. ci.yml:147 records this as cluster 7, fixed 2026-07-26; that test reintroduced it the day it was written. Codex host wiring, hook registration and the skill payload are unchanged.
+
 ## Context
 
 Issue #42 (Henrik Pettersen, observed on 3.9.68-dev / plugin 3.9.70-dev, `npx ruvnet-brain` on

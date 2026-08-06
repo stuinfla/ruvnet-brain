@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-04
+updated: 2026-08-05
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -37,6 +37,9 @@ governs:
 
 
 > **Reviewed 2026-08-04 (4.0.9).** Governed code moved for the 4.0.9 release-integrity work: scripts/host-install-matrix.mjs now holds the ONE host-install harness (modes, env, doctor rule) that scripts/staged-host-verifier.mjs and scripts/publication-receipt.mjs had each been carrying a divergent copy of; release-transaction-provider.finalize() measures the host verdict through the injected verifier instead of declaring a literal PASS; and plugin/scripts/ruflo-bin.mjs applies the Windows extension rule to the preferred path as well as the PATH walk. Checked against this decision: each change IMPLEMENTS evidence this ADR already requires and removes a second representation of a fact it assumes is single. No clause is contradicted or superseded.
+
+
+> **Reviewed 2026-08-05 (4.0.14-dev).** Governed code moved: .github/workflows/integration-linux.yml derives its verdict from vitest JSON rather than grepping a colorized log (the previous regex could never match, failing a run with 234 tests passing), and .github/workflows/stranger-matrix.yml gained one eligibility gate so it stops running after failed or pull_request ci runs where the sealed candidate does not exist. Measured cause: the four required exact-SHA runs passed at 70/45/70/95 percent, so a release attempt succeeded ~1 in 5. Checked against this decision: both IMPLEMENT its exact-SHA evidence requirement. Its durable-transaction target remains a target, not a claim about current code.
 
 ## Context
 
