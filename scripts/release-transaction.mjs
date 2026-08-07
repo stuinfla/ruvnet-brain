@@ -36,7 +36,15 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
   'github-promote-intent': ['github-promoted-nonlatest', 'manual-intervention-required', ...ABORTABLE],
   'github-promoted-nonlatest': ['npm-promote-intent', 'manual-intervention-required', ...ABORTABLE],
   'npm-promote-intent': ['npm-promoted', 'compensation-intent', 'manual-intervention-required', ...ABORTABLE],
-  'npm-promoted': ['github-latest-intent', 'compensation-intent', 'manual-intervention-required', ...ABORTABLE],
+  // `defaults-promoted` added 2026-08-07: when GitHub is ALREADY latest at the moment npm is
+  // promoted, the reducer correctly chooses `finalize` and the finalize path moves straight to
+  // `defaults-promoted` (release-transaction.mjs:406) — there is no `github-latest-intent` to pass
+  // through, because there is nothing left to intend. The table assumed that hop was mandatory, so
+  // the 4.0.24 publish promoted BOTH channels successfully and then died on its own bookkeeping
+  // with `illegal release transition npm-promoted -> defaults-promoted`. The publication was real;
+  // only the ledger entry was refused. Both defaults genuinely are promoted in that state, so this
+  // records what happened rather than permitting anything new.
+  'npm-promoted': ['github-latest-intent', 'defaults-promoted', 'compensation-intent', 'manual-intervention-required', ...ABORTABLE],
   'github-latest-intent': ['defaults-promoted', 'compensation-intent', 'manual-intervention-required', ...ABORTABLE],
   'compensation-intent': ['compensated', 'manual-intervention-required', ...ABORTABLE],
   compensated: ['github-promote-intent', 'npm-promote-intent', 'manual-intervention-required', ...ABORTABLE],
