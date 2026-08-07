@@ -1,6 +1,6 @@
 {
   "builder": "rvf-kb-forge",
-  "builtUtc": "2026-08-06T17:28:27.516Z",
+  "builtUtc": "2026-08-07T07:16:42.850Z",
   "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
   "selfUpdate": "node forge-update.mjs",
   "stores": {
@@ -18,9 +18,9 @@
     "ruvector": {
       "kbName": "ruvector",
       "sourceRepo": "https://github.com/ruvnet/RuVector",
-      "sourceCommit": "abb7033c93586c5da9ec449d0274d29e908e6d39",
-      "sourceDescribe": "abb7033",
-      "builtUtc": "2026-08-06T17:27:44.972Z",
+      "sourceCommit": "9e12078ae2af74d0613ae604266cf22fb1113b10",
+      "sourceDescribe": "9e12078",
+      "builtUtc": "2026-08-07T07:16:42.850Z",
       "builder": "rvf-kb-forge",
       "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/ruvector-kb-bundle.zip",
@@ -258,6 +258,6 @@
       "selfUpdate": "node forge-update.mjs rucelium"
     }
   },
-  "brainVersion": "4.0.20-dev",
-  "releaseTag": "v4.0.20-dev"
+  "brainVersion": "4.0.23-dev",
+  "releaseTag": "v4.0.23-dev"
 }

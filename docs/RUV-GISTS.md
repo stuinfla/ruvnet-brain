@@ -5,12 +5,13 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_466 gists · refreshed 2026-08-05_
+_466 gists · refreshed 2026-08-07_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-08-06 | [.roomodes.json](https://gist.github.com/ruvnet/a206de8d484e710499398e4c39fa6299) | This guide introduces Roo Code and the innovative Boomerang task concept, now integrated into SPARC Orchestration. By fo |
+| 2026-08-05 | [rvforge-overview.md](https://gist.github.com/ruvnet/d08d9c00e140f570fb896256dc7cb1f7) | The Sandbox Is Not the Boundary — why RVF, RVM, and RVForge exist, what ships today, and a verified tutorial |
 | 2026-08-04 | [rvqr-overview.md](https://gist.github.com/ruvnet/6d99e837736eaf45b62a9a00cddbe4e5) | rvQR — moving files between devices with a screen and a camera: what it is, and what measuring it actually found |
-| 2026-08-04 | [rvforge-overview.md](https://gist.github.com/ruvnet/d08d9c00e140f570fb896256dc7cb1f7) | RVForge — turn an AI agent into an app anyone can install (plain-language overview) |
 | 2026-08-01 | [jjs.md](https://gist.github.com/ruvnet/60e5749c934077c7040ab32b542539d0) | Jujutsu vs Git Worktrees: Key Differences |
 | 2026-08-01 | [MED.md](https://gist.github.com/ruvnet/e27b77949b0b0d5564ea447edcaf95c3) | Various Medical Discoveries |
 | 2026-07-31 | [agntcy-announcement.md](https://gist.github.com/ruvnet/36e0f0658a29e171eabadb86bc27d789) | AGNTCY integration is live in ruflo + metaharness — what you can do with it today |
@@ -46,7 +47,6 @@ _466 gists · refreshed 2026-08-05_
 | 2026-07-14 | [redaction.md](https://gist.github.com/ruvnet/332336ad5e0516daa810d98f8f0ddca9) | Redaction hooks for Claude Code |
 | 2026-07-14 | [daemon-flywheel-fix.md](https://gist.github.com/ruvnet/f4cda824aaf58e1f2dae72368e692220) | The worktree-daemon flywheel: how ruflo accidentally invented a Claude-quota DoS against itself (#2661) |
 | 2026-07-12 | [ruvector-lattice-embeddings-rust-npm-cve-fix.md](https://gist.github.com/ruvnet/cf3877071a2b1ab9252785673340ab95) | RuVector 2.3.0: local Rust & npm embeddings via Lattice, plus a full cargo-audit/cargo-deny CVE cleanup |
-| 2026-07-11 | [.roomodes.json](https://gist.github.com/ruvnet/a206de8d484e710499398e4c39fa6299) | This guide introduces Roo Code and the innovative Boomerang task concept, now integrated into SPARC Orchestration. By fo |
 | 2026-07-10 | [claude-flow-firsts-executive-brief.md](https://gist.github.com/ruvnet/a8df1bae4686ebf3914dd61c8afe6d69) | Claude-Flow / Ruflo: Year One Executive Brief — 31 verified first-mover positions, harness-not-model thesis, top 20 inno |
 | 2026-07-09 | [ruflo-3.24.0-flywheel.md](https://gist.github.com/ruvnet/f8e2851fd307df5d5de7b5c70c37fa0c) | ruflo 3.24.0 — Self-Learning Flywheel: what it is, how it works, usage & upgrade notes |
 | 2026-07-08 | [ruflo-v3.25.5-release.md](https://gist.github.com/ruvnet/ed276119404d4d3fffdadfc0797705f8) | ruflo v3.25.5 npm release: wrapper publish + CI-red fixes |

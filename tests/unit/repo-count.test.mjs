@@ -43,6 +43,14 @@ const MIN_CORPUS_MAGNITUDE = 20;
 const EXEMPT = new Set([
   'README.md::24 repos', // v1 (pre-2.0) baseline column in the "what 2.0 proved" before/after table
   'README.md::24→69 verified repos', // same v1-baseline row, "24→<current>" delta phrasing
+  // 2026-08-06: the corpus grew 69 → 71 (tonight's rebuild). The CURRENT claims were updated to 71
+  // in README.md and SKILL.md, but these two are HISTORICAL — they describe what release 2.0
+  // proved, inside a collapsed "Earlier — what 2.0 proved" section and its before/after table.
+  // Rewriting them to 71 would be the easy way to make this gate green and would falsify the record:
+  // 2.0 shipped with 69, not 71. A gate that pressures you into editing history is worse than the
+  // stale number it caught, so historical mentions are exempted by name and current ones are not.
+  'README.md::69 verified repos', // "what 2.0 proved" summary line — a claim about 2.0, not today
+  'README.md::69 repos', // the 2.0 column of the same v1→v2.0 before/after table
 ]);
 
 /** @param {string} src @returns {{text: string, n: number}[]} */
@@ -154,21 +162,28 @@ describe(`repo-count literals match data/manifest.json coverage (built=${coverag
     }
   });
 
-  it('detector: does not flag the correct literals (57 / 181 / 248), the documented v1 baseline, or an open "N+" qualifier', () => {
+  it(`detector: does not flag the correct literals (${coverage.built} / ${coverage.catalogued} / ${coverage.orgTotalApprox}), the documented v1 baseline, or an open "N+" qualifier`, () => {
+    // BUILT FROM THE LIVE MANIFEST, NOT FROZEN DIGITS. This block used to spell 69/192 literally,
+    // and the title still said "(57 / 181 / 248)" from an even earlier corpus — so every time the
+    // corpus grew, the gate that exists to catch stale numbers went red on its OWN stale numbers.
+    // It did exactly that on 2026-08-06 when the rebuild took built 69 -> 71, and a red suite blocks
+    // the release rail, which is how a documentation gate ends up stalling a publish. Interpolating
+    // the same source of truth the detector uses means this fixture can never rot again.
+    const B = coverage.built, C = coverage.catalogued, O = coverage.orgTotalApprox;
     const known_good = [
-      'You have a source-grounded brain over 69 RuvNet (rUv / Reuven Cohen) repositories, exposed through the `ruvnet-brain` MCP server.',
-      '**69 repos** built (of 248 in the org), each verified by a live retrieval query',
-      'across the full 69-repo corpus, not just the 3-4 names that come to mind first',
-      'Covers: 69/192 repos built @ pinned SHAs',
-      '24 repos built | **69 repos** built (of 248 in the org)', // v1 baseline + current, same row
-      '24→69 verified repos', // v1-baseline delta phrasing
+      `You have a source-grounded brain over ${B} RuvNet (rUv / Reuven Cohen) repositories, exposed through the \`ruvnet-brain\` MCP server.`,
+      `**${B} repos** built (of ${O} in the org), each verified by a live retrieval query`,
+      `across the full ${B}-repo corpus, not just the 3-4 names that come to mind first`,
+      `Covers: ${B}/${C} repos built @ pinned SHAs`,
+      `24 repos built | **${B} repos** built (of ${O} in the org)`, // v1 baseline + current, same row
+      '24→69 verified repos', // v1-baseline delta phrasing (2.0 shipped 69 — a historical fact, never re-derived)
       "or any of rUv's 20+ repos", // deliberately open lower-bound, not a precise count
       'This is a 20+-repo ecosystem, not just the 2-3 most commonly cited',
-      'any of the 192 catalogued, or any rUv repo',
+      `any of the ${C} catalogued, or any rUv repo`,
       // explainer B4/B5 — the fixed forms
-      '<span data-count="69" data-decimals="0">57</span> repos',
-      '69 repos indexed in total. Together they show the reassuring breadth',
-      'SPARC and 69 indexed repos',
+      `<span data-count="${B}" data-decimals="0">57</span> repos`,
+      `${B} repos indexed in total. Together they show the reassuring breadth`,
+      `SPARC and ${B} indexed repos`,
     ];
     for (const src of known_good) {
       expect(staleLiterals('README.md', src), `unexpected stale hit in: ${src}`).toEqual([]);

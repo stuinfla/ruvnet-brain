@@ -1,7 +1,7 @@
 {
-  "brainVersion": "4.0.23-dev",
-  "generated": "2026-08-06T17:28:30.003Z",
-  "generatedHuman": "Thu, 06 Aug 2026 17:28:30 GMT",
+  "brainVersion": "4.0.24",
+  "generated": "2026-08-07T07:16:52.333Z",
+  "generatedHuman": "Fri, 07 Aug 2026 07:16:52 GMT",
   "coverage": {
     "built": 71,
     "catalogued": 194,
@@ -29,7 +29,7 @@
       "name": "RuVector",
       "tier": "T0",
       "stars": 4296,
-      "builtFromSha": "abb7033c93586c5da9ec449d0274d29e908e6d39",
+      "builtFromSha": "9e12078ae2af74d0613ae604266cf22fb1113b10",
       "latestRemoteSha": null,
       "status": "built"
     },

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "brainVersion": "4.0.23-dev",
-  "releaseTag": "v4.0.23-dev",
+  "brainVersion": "4.0.24",
+  "releaseTag": "v4.0.24",
   "stores": {
     "agentdb": {
       "file": "agentdb.big.rvf",
@@ -482,12 +482,12 @@
     },
     "ruvector": {
       "file": "ruvector.big.rvf",
-      "sha256": "2de8aab2593073838d32ae75b4044c3c24525bfb523cd29e212a9085c0b2acbc",
-      "bytes": 99942959,
+      "sha256": "1ebd41eb197025b442871f08f8f7ab03e19888f8ede4868ff11efdf23cb40c0f",
+      "bytes": 102001190,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": "abb7033c93586c5da9ec449d0274d29e908e6d39",
-      "builtUtc": "2026-08-06T17:27:45.015Z"
+      "sourceCommit": "9e12078ae2af74d0613ae604266cf22fb1113b10",
+      "builtUtc": "2026-08-07T07:16:42.921Z"
     },
     "ruview": {
       "file": "ruview.big.rvf",
