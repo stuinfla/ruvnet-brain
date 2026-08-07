@@ -216,7 +216,21 @@ export function liveReleaseProvider({
       const pending = [];
       for (const { receipt, release } of latestByTransaction.values()) {
         if (TERMINAL_STATES.has(receipt.state)) continue;
-        const settled = receipt.schemaVersion === 1 && release.draft === false
+        // CONVERGENCE IS A FACT ABOUT THE CHANNELS, NOT ABOUT THE RECEIPT FORMAT (fixed 2026-08-07).
+        //
+        // This required `receipt.schemaVersion === 1`. Receipts are written as schemaVersion 2
+        // (release-transaction.mjs stateReceipt), so NO current transaction could ever be recognised
+        // as settled — it stayed `pending` forever and blocked every later release, which is the
+        // same deadlock shape as `aborted` being unreachable. It bit immediately: 4.0.24 published
+        // successfully to both channels, failed only on its final ledger entry, and then blocked
+        // 4.0.27 with `pending release 064b6b4e… blocks …`.
+        //
+        // The three conditions below are what actually prove convergence: the release is published,
+        // and this transaction's exact version and tag are what npm and GitHub currently serve. If
+        // all three hold, the transaction reached its goal whatever schema its receipts use. The
+        // check is not weakened — the schema clause was never load-bearing for that question, it
+        // just silently expired when the schema moved on.
+        const settled = release.draft === false
           && receipt.identity?.version === npmLatest && receipt.identity?.tag === githubLatest;
         if (settled) legacySettled.push(receipt.transactionId);
         else pending.push(receipt);
