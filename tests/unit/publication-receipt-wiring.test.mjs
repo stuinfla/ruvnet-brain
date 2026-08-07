@@ -32,7 +32,22 @@ describe('publication receipt wiring', () => {
       .toBeLessThan(transaction.lastIndexOf("append('channels-converged'"));
     expect(provider).not.toContain("'scripts/verify-channels.mjs'");
     expect(producer).toContain('githubBundleDigest');
-    expect(position(transaction, "append('channels-converged'"))
+    // ACROSS TWO FILES, A CHARACTER OFFSET MEANS NOTHING (fixed 2026-08-07).
+    //
+    // This read:
+    //     expect(position(transaction, "append('channels-converged'"))
+    //       .toBeLessThan(position(release, '✓✓✓ SHIPPED'));
+    // comparing a byte offset inside release-transaction.mjs (15649) against a byte offset inside
+    // release.mjs (15242) — two unrelated coordinate systems. It asserted nothing about ordering or
+    // behaviour and passed only by coincidence of file sizes. Adding a comment to one file flipped
+    // it red, which is how it was caught: a gate that fails for a reason unrelated to what it tests.
+    //
+    // The claim worth making is causal and lives INSIDE release.mjs: the SHIPPED banner may only be
+    // printed after the transaction has actually run and converged. That is checkable in one file's
+    // own coordinate system, and it fails if anyone moves the banner above the await.
+    expect(transaction, 'the transaction must be able to reach convergence')
+      .toContain("append('channels-converged'");
+    expect(position(release, 'await runReleaseTransaction'), 'SHIPPED must come after the transaction, not before it')
       .toBeLessThan(position(release, '✓✓✓ SHIPPED'));
   });
 
