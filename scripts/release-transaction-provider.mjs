@@ -25,17 +25,54 @@ const tagSha = (tag, root) => {
   return rows.find(([, ref]) => ref?.endsWith('^{}'))?.[0] || rows[0]?.[0] || '';
 };
 
-const assetBytes = (asset) => {
+// THE RELEASE BUNDLE OUTGREW spawnSync's BUFFER, AND THAT IS WHAT BROKE EVERY PUBLISH (#77).
+//
+// This buffered the whole asset in memory via `spawnSync(..., encoding: 'buffer')`. The knowledge
+// bundle is ~529MB, far past spawnSync's maxBuffer, so the download died with
+//     cannot download transaction asset ruvnet-brain.zip: spawnSync gh ENOBUFS
+// and the caller reported it as `staged GitHub payload mismatch` — sending three days of
+// investigation after a corruption that never existed. Every asset actually matched the sealed
+// identity byte-for-byte, GitHub's own digest agreed, and the publish still failed.
+//
+// This was never a digest problem and it was never version drift. It is a size ceiling that the
+// corpus crossed, so it would have broken EVERY release from that moment on regardless of content,
+// and it is why hand-publishing became the only way to ship.
+//
+// Assets now stream to a temp file and are hashed incrementally, so peak memory is one 1MB chunk
+// instead of the whole bundle and there is no ceiling to outgrow. Small assets (receipts) still
+// come back as bytes, because callers parse them as JSON.
+const assetToFile = (asset, destination) => {
   const result = spawnSync('gh', ['api', asset.url, '-H', 'Accept: application/octet-stream'], {
-    encoding: 'buffer', stdio: ['ignore', 'pipe', 'pipe'], timeout: ASSET_DOWNLOAD_TIMEOUT_MS,
+    stdio: ['ignore', fs.openSync(destination, 'w'), 'pipe'], timeout: ASSET_DOWNLOAD_TIMEOUT_MS,
   });
   if (result.error || result.signal || result.status !== 0) {
     throw new Error(`cannot download transaction asset ${asset.name}: ${result.error?.message || result.signal || `exit ${result.status}`}`);
   }
-  return Buffer.from(result.stdout);
+  return destination;
 };
+const withTempAsset = (asset, fn) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-asset-'));
+  const file = path.join(dir, path.basename(asset.name) || 'asset.bin');
+  try { return fn(assetToFile(asset, file)); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+};
+const assetBytes = (asset) => withTempAsset(asset, (file) => fs.readFileSync(file));
 const assetReceipt = (asset) => JSON.parse(assetBytes(asset).toString('utf8'));
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+// Streamed digest — never materialises the asset in memory, so a bundle of any size can be verified.
+const sha256File = (file) => {
+  const hash = crypto.createHash('sha256');
+  const fd = fs.openSync(file, 'r');
+  try {
+    const buffer = Buffer.allocUnsafe(1024 * 1024);
+    for (;;) {
+      const read = fs.readSync(fd, buffer, 0, buffer.length, null);
+      if (read <= 0) break;
+      hash.update(buffer.subarray(0, read));
+    }
+  } finally { fs.closeSync(fd); }
+  return hash.digest('hex');
+};
+const assetDigest = (asset) => withTempAsset(asset, sha256File);
 const OBSERVATION_POLICY = {
   maxElapsedMs: Number(process.env.RUVNET_NPM_VISIBILITY_TIMEOUT_MS || 180_000),
   maxAttempts: Number(process.env.RUVNET_NPM_VISIBILITY_ATTEMPTS || 14),
@@ -86,7 +123,7 @@ export function liveReleaseProvider({
   const digestAsset = (asset, force = false) => {
     const key = `${asset.id}:${asset.size}`;
     if (!force && assetDigestCache.has(key)) return assetDigestCache.get(key);
-    const digest = sha256(assetBytes(asset));
+    const digest = assetDigest(asset);   // streamed — the 529MB bundle must never be buffered
     assetDigestCache.set(key, digest);
     return digest;
   };
@@ -111,10 +148,13 @@ export function liveReleaseProvider({
         const remote = release.assets?.find((asset) => asset.name === name);
         if (!remote) throw new Error(`staged GitHub asset missing: ${name}`);
         const file = path.join(temp, name);
-        fs.writeFileSync(file, assetBytes(remote), { flag: 'wx', mode: 0o600 });
+        // Streamed straight to disk. Buffering here would reintroduce the ENOBUFS ceiling the
+        // 529MB bundle already crossed once — the defect that broke every publish (#77).
+        assetToFile(remote, file);
+        fs.chmodSync(file, 0o600);
         assets[key] = file;
       }
-      if (sha256(fs.readFileSync(assets.bundlePath)) !== identity.bundleSha256) {
+      if (sha256File(assets.bundlePath) !== identity.bundleSha256) {
         throw new Error('staged GitHub bundle digest does not match transaction identity');
       }
       if (identity.bundleSignatureSha256
