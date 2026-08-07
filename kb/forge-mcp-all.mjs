@@ -461,6 +461,36 @@ function maybeExit() { if (ended && inFlight === 0) process.exit(0); }
 // the event loop alive on its own (normal stdin-'end' exit still applies).
 const orphanGuard = setInterval(() => { if (process.ppid === 1) process.exit(0); }, 30000);
 orphanGuard.unref();
+
+// IDLE EXIT (issue #122). The orphan guard above only fires on reparent-to-init, so a parent that
+// is ALIVE BUT IDLE left this server resident indefinitely. The reporter measured four concurrent
+// instances at 3.7 / 3.3 / 3.0 / 15.7 GB — ~25 GB held by sessions that had gone quiet, each having
+// burned ~5 CPU-minutes warming an embedder, a cross-encoder and the knowledge stores.
+//
+// This is safe to do BECAUSE THIS PROCESS IS NOT THE MCP SERVER. plugin/mcp/server.mjs is what the
+// host speaks to; it stays alive, answers initialize/tools/list itself, and owns ensureChild(),
+// which respawns this worker on the next call (server.mjs:260 already relies on exactly that after
+// a timeout kill). So exiting when idle costs one warm-up on the next query and returns gigabytes
+// in the meantime — the host never sees a dropped server.
+//
+// Never exits mid-request: `inFlight` must be zero, and any traffic resets the clock.
+const IDLE_EXIT_MS = Number(process.env.RUVNET_BRAIN_IDLE_EXIT_MS ?? 15 * 60_000);
+let lastActivity = Date.now();
+export const noteActivity = () => { lastActivity = Date.now(); };
+if (IDLE_EXIT_MS > 0) {
+  const idleGuard = setInterval(() => {
+    if (inFlight > 0) { lastActivity = Date.now(); return; }
+    if (Date.now() - lastActivity < IDLE_EXIT_MS) return;
+    // stderr, not stdout: stdout is the JSON-RPC channel and a stray line would corrupt a reply.
+    const forHuman = IDLE_EXIT_MS >= 60_000 ? `${Math.round(IDLE_EXIT_MS / 60_000)}m` : `${Math.round(IDLE_EXIT_MS / 1000)}s`;
+    process.stderr.write(`[ruvnet-brain] worker idle ${forHuman} — exiting to release memory; it respawns on the next query.\n`);
+    process.exit(0);
+  // Poll at half the budget (capped at 30s) so a short budget is actually observable — a guard
+  // that only ticks every 30s cannot be tested with a 3s budget, and an untestable guard is one
+  // nobody can prove still works.
+  }, Math.max(250, Math.min(30_000, Math.floor(IDLE_EXIT_MS / 2))));
+  idleGuard.unref();
+}
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => {
   buf += chunk;
@@ -472,6 +502,7 @@ process.stdin.on('data', (chunk) => {
     let m;
     try { m = JSON.parse(line); } catch { continue; }
     inFlight++;
+    noteActivity();   // any traffic resets the idle-exit clock (#122)
     Promise.resolve(handle(m))
       .catch((e) => { if (m && m.id != null) err(m.id, -32603, e.message); })
       .finally(() => { inFlight--; maybeExit(); });
