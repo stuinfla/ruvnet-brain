@@ -322,8 +322,24 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
     if (decision.action === 'upload-assets') {
       await transition('asset-upload-intent', { payloadId: identity.payloadId || null });
       await adapter.uploadAssets(draft, assets, identity);
-      const observed = await adapter.observeSnapshot(identity, draft);
-      if (!observed.github?.assetsExact) throw new Error('staged GitHub payload mismatch');
+      // FORCE the digests, and never report a read failure as a mismatch (2026-08-07, #77).
+      //
+      // This read `observeSnapshot(identity, draft)` then `if (!observed.github?.assetsExact)`.
+      // Two distinct failures collapsed into one misleading sentence:
+      //   · the snapshot's own catch returns `{ readError }`, leaving `github` UNDEFINED — so a
+      //     transient API error or an OOM hashing the ~529MB bundle reported "payload mismatch",
+      //     which sends you hunting a corruption that never happened. Verified against the real
+      //     staged draft: all four assets (zip, .sig, .sha256, .tgz) matched the sealed identity
+      //     byte-for-byte, and GitHub's own asset digest agreed — yet this line still threw.
+      //   · digests are memoised by `${asset.id}:${asset.size}`, so a value computed BEFORE the
+      //     upload finished could satisfy a later check from cache. Immediately after uploading is
+      //     exactly when that cache must not be trusted, so this observation forces a re-read.
+      const observed = await adapter.observeSnapshot(identity, draft, { forceAssets: true });
+      if (observed.readError) {
+        throw new Error(`could not read the staged GitHub payload (this is NOT a digest mismatch): ${observed.readError}`);
+      }
+      if (!observed.github) throw new Error('staged GitHub draft not observable after upload');
+      if (!observed.github.assetsExact) throw new Error('staged GitHub payload mismatch');
       await transition('npm-stage-intent', { github: observed.github });
       continue;
     }
