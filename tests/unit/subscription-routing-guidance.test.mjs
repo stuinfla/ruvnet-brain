@@ -39,7 +39,21 @@ describe('subscription-only swarm execution guidance', () => {
 
   it('keeps the living ADR aligned with the enforced skill boundary', () => {
     expect(ADR).toMatch(/status:\s*Proposed/i);
-    expect(ADR).toMatch(/updated:\s*2026-08-01/i);
+    // NOT a frozen date — the second instance of this exact trap (see the same fix in
+    // tests/unit/fix-workstream-guidance.test.mjs for ADR-050). `scripts/doc-currency.mjs` BLOCKS a
+    // push when an ADR's governed code moves and its `updated:` stamp does not follow. Freezing the
+    // stamp here makes two of our own gates demand opposite things: currency says "move it", this
+    // says "never move it", and correct maintenance of the ADR is then impossible. It fired for real
+    // on 2026-08-07 — the Codex subscription probe changed, the ADR was re-read and re-stamped as
+    // currency requires, and CI went red on the stamp it had just correctly updated.
+    //
+    // The invariant worth asserting is that this living plan carries a well-formed stamp that does
+    // not predate its immutable creation date, not that it was stamped on one particular day.
+    const created = ADR.match(/^date:\s*(\d{4}-\d{2}-\d{2})/mi)?.[1];
+    const updated = ADR.match(/^updated:\s*(\d{4}-\d{2}-\d{2})/mi)?.[1];
+    expect(updated, 'the living ADR must carry an `updated:` stamp doc-currency can verify').toBeTruthy();
+    expect(created, 'and an immutable `date:` to measure it against').toBeTruthy();
+    expect(updated >= created, `updated (${updated}) must not predate created (${created})`).toBe(true);
     expect(ADR).toMatch(/plugin\/skills\/ruvnet-brain\/SKILL\.md/);
     expect(ADR).toMatch(/Ruflo.*coordination.*native.*subscription.*execution/is);
     expect(ADR).toMatch(/provider-backed execution.*explicit.*opt-in/is);
