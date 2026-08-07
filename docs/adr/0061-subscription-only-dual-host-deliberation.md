@@ -162,3 +162,13 @@ Ruflo coordination now leads to native Claude Code or Codex subscription executi
 while every provider-backed path is explicit opt-in only. A structural regression test protects
 that boundary. This documentation repair does not satisfy the outstanding two-host acceptance
 requirements, so the ADR remains Proposed.
+
+On 2026-08-07, the governed code was re-read after `scripts/subscription-hosts.mjs` moved; the
+decision is unchanged and the ADR stays **Proposed**. The change is two lines in the Codex
+subscription probe: auth status is now read from `stdout` AND `stderr` combined, and the match
+anchors on line boundaries rather than the whole string. Codex prints `Logged in using ChatGPT`
+to stderr, so the previous stdout-only, whole-string test reported a genuinely subscribed host as
+unsubscribed — which would silently route a subscription-only deliberation onto a provider-backed
+path, the exact outcome this ADR forbids. Detecting the subscription correctly strengthens the
+boundary rather than relaxing it: no provider-backed path became implicit, and opt-in remains
+explicit. The outstanding two-host acceptance requirement is untouched by this repair.
