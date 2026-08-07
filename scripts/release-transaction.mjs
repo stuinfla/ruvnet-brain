@@ -4,22 +4,44 @@ import crypto from 'node:crypto';
 export const RECEIPT_PREFIX = 'release-transaction-';
 export const TERMINAL_STATES = new Set(['channels-converged', 'aborted']);
 
+// `aborted` WAS UNREACHABLE, AND THAT BRICKED THE RELEASE RAIL (found 2026-08-07, issue #77).
+//
+// `aborted` has always been in TERMINAL_STATES, but no state below listed it as a target — so it
+// was a terminal state nothing could ever enter. Combined with `manual-intervention-required`
+// (which has NO outgoing transitions and is NOT terminal), an interrupted release had exactly two
+// destinations and both were permanent non-terminal dead ends.
+//
+// That is not theoretical. The v4.0.7 transaction (b2ac9b69…) stopped at `npm-stage-intent` and
+// stayed there. `runReleaseTransaction` treats every non-terminal receipt from another transaction
+// as competing, so it refused EVERY later release with
+//     `pending release b2ac9b69… blocks <new>`
+// and there was no legal move that could clear it. npm was then hand-moved to 4.0.12, which also
+// disqualified the provider's `settled` escape hatch (it requires receipt.version === npmLatest).
+// So the rail deadlocked itself, hand-publishing became the only way to ship, and hand-publishing
+// is precisely how npm and GitHub came to name different generations — the whole of #77.
+//
+// The fix is to give abandonment a legal move, which is what `aborted` was declared for. Any
+// non-terminal state may now abort. This LOOSENS nothing about a live release: `aborted` is
+// terminal, so a transaction that aborts can never resume and claim to have shipped, and the
+// competing-transaction guard still refuses two genuinely in-flight releases.
+const ABORTABLE = ['aborted'];
+
 export const ALLOWED_TRANSITIONS = Object.freeze({
-  'remote-prepared': ['asset-upload-intent', 'manual-intervention-required'],
-  'asset-upload-intent': ['npm-stage-intent', 'manual-intervention-required'],
-  'npm-stage-intent': ['npm-candidate-staged', 'manual-intervention-required'],
-  'npm-candidate-staged': ['remote-materialization-intent', 'manual-intervention-required'],
-  'remote-materialization-intent': ['prepared', 'manual-intervention-required'],
-  prepared: ['github-promote-intent', 'manual-intervention-required'],
-  'github-promote-intent': ['github-promoted-nonlatest', 'manual-intervention-required'],
-  'github-promoted-nonlatest': ['npm-promote-intent', 'manual-intervention-required'],
-  'npm-promote-intent': ['npm-promoted', 'compensation-intent', 'manual-intervention-required'],
-  'npm-promoted': ['github-latest-intent', 'compensation-intent', 'manual-intervention-required'],
-  'github-latest-intent': ['defaults-promoted', 'compensation-intent', 'manual-intervention-required'],
-  'compensation-intent': ['compensated', 'manual-intervention-required'],
-  compensated: ['github-promote-intent', 'npm-promote-intent', 'manual-intervention-required'],
-  'defaults-promoted': ['finalize-intent', 'manual-intervention-required'],
-  'finalize-intent': ['channels-converged', 'manual-intervention-required'],
+  'remote-prepared': ['asset-upload-intent', 'manual-intervention-required', ...ABORTABLE],
+  'asset-upload-intent': ['npm-stage-intent', 'manual-intervention-required', ...ABORTABLE],
+  'npm-stage-intent': ['npm-candidate-staged', 'manual-intervention-required', ...ABORTABLE],
+  'npm-candidate-staged': ['remote-materialization-intent', 'manual-intervention-required', ...ABORTABLE],
+  'remote-materialization-intent': ['prepared', 'manual-intervention-required', ...ABORTABLE],
+  prepared: ['github-promote-intent', 'manual-intervention-required', ...ABORTABLE],
+  'github-promote-intent': ['github-promoted-nonlatest', 'manual-intervention-required', ...ABORTABLE],
+  'github-promoted-nonlatest': ['npm-promote-intent', 'manual-intervention-required', ...ABORTABLE],
+  'npm-promote-intent': ['npm-promoted', 'compensation-intent', 'manual-intervention-required', ...ABORTABLE],
+  'npm-promoted': ['github-latest-intent', 'compensation-intent', 'manual-intervention-required', ...ABORTABLE],
+  'github-latest-intent': ['defaults-promoted', 'compensation-intent', 'manual-intervention-required', ...ABORTABLE],
+  'compensation-intent': ['compensated', 'manual-intervention-required', ...ABORTABLE],
+  compensated: ['github-promote-intent', 'npm-promote-intent', 'manual-intervention-required', ...ABORTABLE],
+  'defaults-promoted': ['finalize-intent', 'manual-intervention-required', ...ABORTABLE],
+  'finalize-intent': ['channels-converged', 'manual-intervention-required', ...ABORTABLE],
   'manual-intervention-required': [],
   'channels-converged': [],
   aborted: [],
