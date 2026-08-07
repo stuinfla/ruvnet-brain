@@ -416,7 +416,23 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
       }
       await transition('finalize-intent');
       const final = await adapter.finalize(identity, current, hostVerifier);
-      if (final.verdict !== 'PASS') throw new Error('final release convergence failed');
+      // SAY WHICH CONVERGENCE FAILED, AND WHY (2026-08-07). This threw the bare sentence
+      // `final release convergence failed` while `finalize` had already returned exactly the reason
+      // — hostVerifierError, hosts.verifier.error, publicationError or sealError — and the throw
+      // discarded every one of them. That is the same defect that let `spawnSync ENOBUFS` masquerade
+      // as `staged GitHub payload mismatch` for three days: an error that reports its category and
+      // withholds its evidence. Publication had ALREADY succeeded on both channels here, so the
+      // operator is reading this line while npm and GitHub are correct, with nothing to act on.
+      if (final.verdict !== 'PASS') {
+        const why = final.hostVerifierError
+          || final.hosts?.verifier?.error
+          || final.publicationError
+          || final.sealError
+          || `verdict=${final.verdict ?? '(none)'}`;
+        const fixtures = final.hosts?.verifier?.fixtures;
+        const detail = fixtures ? ` | fixtures: ${JSON.stringify(fixtures).slice(0, 400)}` : '';
+        throw new Error(`final release convergence failed: ${why}${detail}`);
+      }
       const reobserved = await adapter.observeSnapshot(identity, draft, { forceAssets: true });
       if (!(npmLatestIsB(reobserved, identity) && reobserved.github?.latest && githubIsB(reobserved, identity))) {
         throw new Error('provider defaults drifted during finalization');
