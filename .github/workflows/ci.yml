@@ -391,7 +391,22 @@ jobs:
           node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}"
           node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" --assets "${asset_dirs[0]}"
           cp dist/ruvnet-brain.zip "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip"
-          sha256sum "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" > "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip.sha256"
+          # THE SIDECAR MUST NAME THE FILE, NOT THE MACHINE THAT BUILT IT (fixed 2026-08-07, #77).
+          #
+          # This was `sha256sum "$RUNNER_TEMP/.../ruvnet-brain.zip" > ...sha256`, and sha256sum writes
+          # the path it was GIVEN into the file, so the sidecar shipped as:
+          #     a35724de…  /home/runner/work/_temp/release-evidence/ruvnet-brain.zip
+          # Two consequences, one fatal. For a user, `shasum -c` then looks for a file at a CI
+          # runner's temp path that does not exist on their machine — the sidecar cannot verify the
+          # download it exists to verify. For the release rail, the sidecar's OWN sha256 becomes
+          # environment-dependent, so `assetsExact` compared it against a digest sealed elsewhere and
+          # failed every time with `staged GitHub payload mismatch`. That was the last thing standing
+          # between #77 and a convergent release, after the aborted-state deadlock was cleared.
+          #
+          # `cd` first so the recorded name is the bare basename — identical to what
+          # scripts/sign-bundle.mjs:59 writes (`${digest}  ${path.basename(bundle)}`), which is the
+          # format the verifier and every user's `shasum -c` both expect.
+          ( cd "$RUNNER_TEMP/release-evidence" && sha256sum ruvnet-brain.zip > ruvnet-brain.zip.sha256 )
       - name: Persist the canonical candidate payload manifest
         shell: bash
         run: |
