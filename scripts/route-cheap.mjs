@@ -55,6 +55,20 @@ export const CLAUDE_TIERS = {
   'claude-sonnet-5': { in: 2.0, out: 10.0 },
   'claude-opus-4.8': { in: 5.0, out: 25.0 },
   'claude-fable-5': { in: 10.0, out: 50.0 },
+  // OPUS 5 ADDED 2026-08-08, and its absence was silently costing every receipt.
+  //
+  // dispatch-receipt refuses to price an unknown model ("refusing to invent savings"), which is the
+  // right call — but it means a session running on a model this table does not know can NEVER record
+  // a dispatch. Opus 5 is the current main-loop model, so every subagent routed from one of those
+  // sessions produced no receipt at all, and `/savings` read as "routing stopped" when what actually
+  // stopped was RECORDING. That is why the ledger sat unchanged for 14 days.
+  //
+  // Prices verified LIVE against the OpenRouter /models API on 2026-08-08, per this file's own
+  // standing rule — never recalled, never inferred from the 4.8 row:
+  //     anthropic/claude-opus-5        in $5.00/Mtok  out $25.00/Mtok
+  //     anthropic/claude-opus-5-fast   in $10.00/Mtok out $50.00/Mtok
+  'claude-opus-5': { in: 5.0, out: 25.0 },
+  'claude-opus-5-fast': { in: 10.0, out: 50.0 },
 };
 
 /** Price lookup across both tables. Unknown model → null (never invent a savings number). */

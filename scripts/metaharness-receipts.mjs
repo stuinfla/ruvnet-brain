@@ -105,8 +105,34 @@ export function formatTable(rows) {
   const withBar = totalFrontier > 0 ? Math.min(BAR, Math.max(1, Math.round(BAR * (totalCost / totalFrontier)))) : BAR;
   const drawBar = (n) => '█'.repeat(n) + '░'.repeat(BAR - n);
   const rule = '─'.repeat(70);
+  // ── IS THIS STILL HAPPENING, OR IS IT A SOUVENIR? (added 2026-08-08) ──────────────────────────
+  //
+  // This card reported "SAVED ~61% · 43 routed tasks" for FOURTEEN DAYS after routing had entirely
+  // stopped. Every number was true and every number was history: the newest receipt was 2026-07-24,
+  // and in the fortnight since — including three days of heavy work — not one task was routed. The
+  // card looked like a live dashboard and was actually a museum plaque.
+  //
+  // SKILL.md already records this exact failure once ("after two days, the receipts log held 3
+  // entries, all test pings, $0.018 saved — while real work was done inline in the most expensive
+  // model") and answered it by making the routing rule a floor rather than advice. That did not
+  // help, because nothing MEASURED whether the floor was being honoured. A silent zero reads
+  // identically to a healthy system, which is the same disease as every other defect fixed this
+  // week: a surface reporting something other than what it measured.
+  //
+  // So the card now leads with recency. Savings you earned last month are not savings you are
+  // earning, and a stale ledger must say so before it says anything else.
+  const newest = rows.map((r) => Date.parse(r.ts || r.date || r.at || 0)).filter(Boolean).sort().at(-1);
+  const idleDays = newest ? (Date.now() - newest) / 86_400_000 : Infinity;
+  const staleness = !Number.isFinite(idleDays)
+    ? '  ⚠ NO ROUTING RECEIPTS AT ALL — these numbers describe nothing that has happened.'
+    : idleDays >= 3
+      ? `  ⚠ STALE: nothing has been routed in ${Math.floor(idleDays)} days (newest receipt ${new Date(newest).toISOString().slice(0, 10)}).\n`
+        + '     The figures below are HISTORY, not current performance — mechanical work is running unrouted.'
+      : null;
+
   return [
     rule,
+    ...(staleness ? [staleness, ''] : []),
     `  💰 SAVED ~${pct}%${speedBadge}  ·  ~${ratio}× cheaper  ·  ${rows.length} routed task(s) (${subagents} subagent, ${rows.length - subagents} openrouter/calibration)`,
     '',
     `  without routing    ${drawBar(BAR)}  ${fmt$(totalFrontier)}`,
