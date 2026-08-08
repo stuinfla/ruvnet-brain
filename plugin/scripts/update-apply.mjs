@@ -316,10 +316,14 @@ function gc() {
   console.log(`gc: kept ${[...keep].join(', ') || '(none)'} · removed ${removed}`);
 }
 
+// Version ordering, hoisted to module scope so BOTH the exact payload selector and the
+// already-converged check below can use one comparator (#126). Two copies is how the
+// selection rule and the convergence rule would drift apart.
+const semverish = (v) => String(v).split(/[.-]/).map((x) => (Number.isFinite(+x) ? +x : x));
+const cmp = (a, b) => { const A = semverish(a), B = semverish(b); for (let i = 0; i < Math.max(A.length, B.length); i++) { if ((A[i] ?? 0) === (B[i] ?? 0)) continue; if (typeof A[i] === 'number' && typeof B[i] === 'number') return A[i] - B[i]; return String(A[i] ?? '') < String(B[i] ?? '') ? -1 : 1; } return 0; };
+
 // ── sources ─────────────────────────────────────────────────────────────────────────────────────
 function newestStagedCC(expectedVersion = null) {
-  const semverish = (v) => v.split(/[.-]/).map((x) => (Number.isFinite(+x) ? +x : x));
-  const cmp = (a, b) => { const A = semverish(a), B = semverish(b); for (let i = 0; i < Math.max(A.length, B.length); i++) { if ((A[i] ?? 0) === (B[i] ?? 0)) continue; if (typeof A[i] === 'number' && typeof B[i] === 'number') return A[i] - B[i]; return String(A[i] ?? '') < String(B[i] ?? '') ? -1 : 1; } return 0; };
   const candidates = [];
   for (const cache of PLUGIN_CACHES) {
     if (!fs.existsSync(cache)) continue;
@@ -327,23 +331,7 @@ function newestStagedCC(expectedVersion = null) {
       if (!version.startsWith('.') && fs.existsSync(path.join(cache, version, 'scripts'))) {
         const dir = path.join(cache, version);
         const payloadVersion = versionOfPayload(dir, version);
-        // NOT BEHIND, not exactly-equal (issue #126, the sibling of #123).
-        //
-        // This required `payloadVersion === expectedVersion`. After a release the plugin is bumped to
-        // the next -dev generation, so the staged payload is routinely AHEAD of the published version
-        // the updater asks for — 4.0.33-dev staged, 4.0.28 expected. No candidate matched, the spine
-        // aborted with "no staged host payload exactly matches", host sync reported incomplete, and
-        // the Console runtime refresh (which happens inside that same sync) was rolled back.
-        //
-        // The user-visible result was the worst kind: the Console header offered "⟳ update available
-        // — click to update", the click copied `npx ruvnet-brain --update`, the command exited 0, and
-        // the header never moved. A remedy that runs clean and changes nothing is worse than no
-        // remedy, because it burns the one action the user was given.
-        //
-        // A payload NEWER than requested already satisfies "at least this version". Only an OLDER
-        // one is a miss. Uses this file's own cmp — plugin/ ships standalone inside the payload, so
-        // importing scripts/ would be MODULE_NOT_FOUND on a real install (that has shipped twice).
-        if (!expectedVersion || cmp(payloadVersion, expectedVersion) >= 0) candidates.push({ version: payloadVersion, dir });
+        if (!expectedVersion || payloadVersion === expectedVersion) candidates.push({ version: payloadVersion, dir });
       }
     }
   }
@@ -416,7 +404,28 @@ function main() {
     const active = readJSON(ACTIVE);
     if (!staged) {
       if (expectedVersion) {
-        console.error(`✗ no staged host payload is at or above expected version ${expectedVersion} — spine unchanged`);
+        // ALREADY AHEAD IS ALREADY CONVERGED (issue #126) — but the SELECTION above stays exact.
+        //
+        // Issue #64 requires that we never apply "a different newer payload in another host cache",
+        // and that requirement is right: the caches are per-host, so grabbing a newer payload from
+        // .codex to satisfy a .claude request installs something nobody asked for. My first attempt
+        // at #126 loosened newestStagedCC() to "newest >= expected" and reintroduced exactly that
+        // bug — tests/qe/release/issue-64-host-convergence.test.mjs caught it.
+        //
+        // The real defect is one layer up: after a release the plugin is bumped to the next -dev
+        // generation, so the ACTIVE host is routinely ahead of the published version the updater
+        // requests. No payload matched, this returned 1, host sync reported incomplete, and the
+        // Console runtime refresh inside that sync was rolled back — so the header's
+        // "⟳ update available — click to update" ran clean and changed nothing, forever.
+        //
+        // Nothing to apply because you are already past it is SUCCESS, not failure. This asserts
+        // that about the ACTIVE spine only; it never selects an unrequested payload.
+        const activeNow = readJSON(ACTIVE);
+        if (activeNow?.version && cmp(activeNow.version, expectedVersion) >= 0) {
+          console.log(`already on ${activeNow.version}, at or above requested ${expectedVersion} — nothing to apply.`);
+          return 0;
+        }
+        console.error(`✗ no staged host payload exactly matches expected version ${expectedVersion} — spine unchanged`);
         return 1;
       }
       console.log('no host-staged version found — nothing to apply.');
