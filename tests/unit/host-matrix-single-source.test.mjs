@@ -75,3 +75,23 @@ describe('host matrix — one definition, enforced', () => {
     }
   });
 });
+
+describe('published and staged fixtures agree on what a virgin home can prove', () => {
+  it('BOTH variants waive interactive Codex hook trust — a runner can never record it', () => {
+    // The published variant omitted this and the staged one carried it, so every release published
+    // both channels successfully and then failed its post-publication seal on the one condition a
+    // fixture cannot satisfy: "17 lifecycle hooks await review — run /hooks and trust". Correct
+    // advice for a human, impossible for CI, and it made a GOOD release report as a bad one.
+    expect(VARIANTS.staged.env({ packageRoot: '/x' }).RUVNET_CODEX_HOOK_TRUST_MODE).toBe('bypass');
+    expect(VARIANTS.published.env({ packageRoot: '/x' }).RUVNET_CODEX_HOOK_TRUST_MODE,
+      'a fresh automated Codex home has no interactive trust to record').toBe('bypass');
+  });
+
+  it('TEETH: the bypass waives ONLY pending trust — strictness is untouched', () => {
+    // If this ever loosens into "skip the host checks", the seal stops meaning anything. The
+    // published fixture must still install strictly and demand the complete profile.
+    const p = VARIANTS.published.env({ packageRoot: '/x' });
+    expect(p.RUVNET_STRICT_INSTALL, 'published installs stay strict').toBe('1');
+    expect(p.RUVNET_BRAIN_PROFILE, 'and still demand the complete payload').toBe('complete');
+  });
+});

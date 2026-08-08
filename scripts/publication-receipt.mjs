@@ -14,7 +14,7 @@ import { spawn, spawnSync } from 'node:child_process';
 // `fixtures.claude` described the same fixture and nothing could tell. The richer
 // post-publication proofs below (payload assertions, MCP wiring, SOURCE.json, rpcSearch)
 // stay here — they are this side's job, not duplication.
-import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor } from './host-install-matrix.mjs';
+import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor, VARIANTS } from './host-install-matrix.mjs';
 import { pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt, evaluatePublicationReceipt } from './release-proof.mjs';
 import { verifyPayload } from './release-payload.mjs';
@@ -232,8 +232,12 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
           CODEX_HOME: codexHome,
           RUVNET_BRAIN_HOME: brainHome,
           RUVNET_BRAIN_KB: kb,
-          RUVNET_STRICT_INSTALL: '1',
-          RUVNET_BRAIN_PROFILE: 'complete',
+          // Env comes from the ONE variant table (host-install-matrix VARIANTS.published), not a
+          // second hand-written copy — this file's own header promises "ONE doctor rule and ONE mode
+          // vocabulary, shared with the staged-side check", and the copy had already drifted: it
+          // omitted the Codex hook-trust bypass the staged side carries, which failed the seal on
+          // every release.
+          ...VARIANTS.published.env({ packageRoot }),
           CI: 'true',
           PATH: isolatedPath(mode, temp),
         };

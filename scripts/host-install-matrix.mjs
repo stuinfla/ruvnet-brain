@@ -70,6 +70,27 @@ export const VARIANTS = Object.freeze({
     env: () => ({
       RUVNET_STRICT_INSTALL: '1',
       RUVNET_BRAIN_PROFILE: 'complete',
+      // A VIRGIN AUTOMATED HOME CAN NEVER HAVE RECORDED CODEX HOOK TRUST (fixed 2026-08-08).
+      //
+      // The staged variant above has carried this since it was written; the published variant did
+      // not, and that asymmetry failed the post-publication seal on EVERY release. The doctor ran
+      // green on everything that matters — "✓ Healthy", "✓ Grounding PROVEN", "✓ Self-check passed",
+      // 17 hook registrations across 68 firings — and then exited non-zero on the one condition a
+      // fixture cannot satisfy:
+      //
+      //     ! Codex installed the Brain, but 17 lifecycle hooks await review.
+      //       Fix: Start a fresh Codex session, run /hooks, and trust ruvnet-brain@ruvnet-brain.
+      //
+      // That instruction is correct for a human and impossible for a runner: hook trust is recorded
+      // interactively. So each release published both channels successfully and then reported
+      // failure, which is the exact "gate reporting something other than what it measured" pattern
+      // this repo has spent a week removing — and worse here, because it made a GOOD release look bad.
+      //
+      // This does NOT weaken the check. install.mjs:1994 documents the bypass as executing the real
+      // hook commands "without pretending a fresh interactive user has already reviewed them", and
+      // the hooks still run — 68 firings, all inside contract. Only the pending-trust verdict is
+      // waived, and only for an automated fixture. End-user doctor runs remain fail-closed.
+      RUVNET_CODEX_HOOK_TRUST_MODE: 'bypass',
     }),
   }),
 });
