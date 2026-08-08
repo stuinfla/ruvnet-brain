@@ -15,7 +15,9 @@ const GATE = path.resolve(import.meta.dirname, '../../plugin/scripts/version-bum
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
 const hasGit = spawnSync('git', ['--version']).status === 0;
 
-function git(cwd, ...args) { return execFileSync('git', args, { cwd, encoding: 'utf8' }); }
+function git(cwd, ...args) {
+  return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd, encoding: 'utf8' });
+}
 
 // A real repo pair: bare "origin" + working clone with plugin.json at v1.0.0, pushed.
 function fixtureRepo() {

@@ -24,7 +24,7 @@ function fixture() {
   execFileSync('git', ['config', 'user.email', 'qe@example.invalid'], { cwd: root });
   execFileSync('git', ['config', 'user.name', 'QE'], { cwd: root });
   execFileSync('git', ['add', '.'], { cwd: root });
-  execFileSync('git', ['commit', '-qm', 'fixture'], { cwd: root });
+  execFileSync('git', ['-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'test(receipt): seed fixture'], { cwd: root });
   return {
     root,
     artifactPath,

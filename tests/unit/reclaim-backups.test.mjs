@@ -20,6 +20,10 @@ const mk = (dir, files) => {
   return dir;
 };
 
+const writeGenerations = (dir, stores) => {
+  fs.writeFileSync(path.join(dir, 'RVF-GENERATIONS.json'), JSON.stringify({ stores }));
+};
+
 beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'reclaim-test-')); });
 afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
@@ -48,6 +52,58 @@ describe('reclaimBackups (issue #35)', () => {
     expect(removed).toEqual([]);
     expect(kept).toHaveLength(1);
     expect(kept[0][1]).toMatch(/cognitum-seed\.rvf/);
+  });
+
+  it('keeps only-copy stores declared with opaque or nested generation files', () => {
+    const kb = mk(path.join(root, 'kb'), { 'public.rvf': 64 });
+    writeGenerations(kb, { public: { file: 'public.rvf' } });
+    const opaque = mk(path.join(root, 'kb.bak-2026-07-01'), {
+      'public.rvf': 64,
+      'opaque-store.bin': 128,
+    });
+    writeGenerations(opaque, {
+      public: { file: 'public.rvf' },
+      privateOpaque: { file: 'opaque-store.bin' },
+    });
+    const nested = mk(path.join(root, 'kb.bak-2026-07-02'), { 'public.rvf': 64 });
+    fs.mkdirSync(path.join(nested, 'nested'));
+    fs.writeFileSync(path.join(nested, 'nested', 'private.rvf'), Buffer.alloc(256, 2));
+    writeGenerations(nested, {
+      public: { file: 'public.rvf' },
+      privateNested: { file: 'nested/private.rvf' },
+    });
+
+    const { removed, kept } = reclaimBackups({ kbDir: kb, backupsMade: [opaque, nested], env: {} });
+
+    expect(removed).toEqual([]);
+    expect(kept).toHaveLength(2);
+    expect(kept.map(([, reason]) => reason).join('\n')).toContain('opaque-store.bin');
+    expect(kept.map(([, reason]) => reason).join('\n')).toContain('nested/private.rvf');
+    expect(fs.existsSync(opaque)).toBe(true);
+    expect(fs.existsSync(nested)).toBe(true);
+  });
+
+  it('reclaims an opaque generation only when its logical store is explicitly removed', () => {
+    const kb = mk(path.join(root, 'kb'), { 'public.rvf': 64 });
+    writeGenerations(kb, { public: { file: 'public.rvf' } });
+    const backup = mk(path.join(root, 'kb.bak-2026-07-01'), {
+      'public.rvf': 64,
+      'opaque-store.bin': 128,
+    });
+    writeGenerations(backup, {
+      public: { file: 'public.rvf' },
+      privateOpaque: { file: 'opaque-store.bin' },
+    });
+
+    const { removed, kept } = reclaimBackups({
+      kbDir: kb,
+      backupsMade: [backup],
+      env: {},
+      intentionallyRemovedStores: ['privateOpaque'],
+    });
+
+    expect(removed).toEqual([backup]);
+    expect(kept).toEqual([]);
   });
 
   it('reclaims public stores intentionally removed by a selected profile but still keeps private stores', () => {
@@ -114,5 +170,20 @@ describe('reclaimBackups (issue #35)', () => {
     const kb = mk(path.join(root, 'kb'), { 'a.rvf': 64 });
     const { removed, kept, freed } = reclaimBackups({ kbDir: kb, backupsMade: [], env: {} });
     expect(removed).toEqual([]); expect(kept).toEqual([]); expect(freed).toBe(0);
+  });
+
+  it('keeps a backup when generation metadata is corrupt and an opaque artifact is unclassified', () => {
+    const kb = mk(path.join(root, 'kb'), { 'public.rvf': 64 });
+    const backup = mk(path.join(root, 'kb.bak-2026-07-01'), {
+      'public.rvf': 64,
+      'private-opaque.bin': 128,
+    });
+    fs.writeFileSync(path.join(backup, 'RVF-GENERATIONS.json'), '{not-json');
+
+    const { removed, kept } = reclaimBackups({ kbDir: kb, backupsMade: [backup], env: {} });
+
+    expect(removed).toEqual([]);
+    expect(kept).toHaveLength(1);
+    expect(fs.existsSync(path.join(backup, 'private-opaque.bin'))).toBe(true);
   });
 });

@@ -171,6 +171,7 @@ function relativeFiles(dir, prefix = '') {
   const files = [];
   for (const entry of fs.readdirSync(path.join(dir, prefix), { withFileTypes: true })) {
     const relative = path.join(prefix, entry.name);
+    if (entry.isSymbolicLink()) throw new Error(`symbolic link is not a governed regular file: ${relative}`);
     if (entry.isDirectory()) files.push(...relativeFiles(dir, relative));
     else if (entry.isFile()) files.push(relative);
   }
@@ -188,9 +189,41 @@ export function capturePrivateOverlayState({ kbDir, allStores }) {
   const generations = JSON.parse(fs.readFileSync(path.join(kbDir, 'RVF-GENERATIONS.json'), 'utf8'));
   const aliases = JSON.parse(fs.readFileSync(path.join(kbDir, 'repo-aliases.json'), 'utf8'));
   const privateGenerations = {};
+  const privateArtifactFiles = new Set();
+  const privateArtifactPrefixes = [];
   for (const name of privateNames) {
     if (!generations.stores?.[name]) throw new Error(`private store ${name} has no RVF generation record`);
-    privateGenerations[name] = generations.stores[name];
+    const generation = generations.stores[name];
+    if (typeof generation.file !== 'string' || !generation.file.trim()) {
+      throw new Error(`private store ${name} has no RVF generation file`);
+    }
+    const relative = path.normalize(generation.file);
+    const resolved = path.resolve(kbDir, relative);
+    if (path.isAbsolute(generation.file) || resolved === path.resolve(kbDir)
+      || !resolved.startsWith(`${path.resolve(kbDir)}${path.sep}`)) {
+      throw new Error(`private store ${name} has unsafe RVF generation file: ${generation.file}`);
+    }
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`private store ${name} RVF generation file is missing: ${generation.file}`);
+    }
+    const artifactStat = fs.lstatSync(resolved);
+    if (artifactStat.isSymbolicLink()) {
+      throw new Error(`private store ${name} RVF generation file is a symbolic link: ${generation.file}`);
+    }
+    if (!artifactStat.isFile()) {
+      throw new Error(`private store ${name} RVF generation file is not a regular file: ${generation.file}`);
+    }
+    const realKbDir = fs.realpathSync(kbDir);
+    const realArtifact = fs.realpathSync(resolved);
+    if (!realArtifact.startsWith(`${realKbDir}${path.sep}`)) {
+      throw new Error(`private store ${name} RVF generation file resolves outside the KB: ${generation.file}`);
+    }
+    privateGenerations[name] = generation;
+    privateArtifactFiles.add(relative);
+    const directory = path.dirname(relative);
+    const basename = path.basename(relative);
+    const stem = basename.replace(/(?:\.big)?\.rvf$/i, '');
+    privateArtifactPrefixes.push({ directory, basename, stem });
   }
   const privateAliases = Object.fromEntries(Object.entries(aliases).filter(([name, values]) =>
     privateNames.has(name)
@@ -200,14 +233,28 @@ export function capturePrivateOverlayState({ kbDir, allStores }) {
   const cards = fs.existsSync(cardsFile) ? cardSections(fs.readFileSync(cardsFile, 'utf8')) : new Map();
   const privateCards = Object.fromEntries([...cards].filter(([name]) => privateCardNames.has(name)));
   const privateFiles = Object.fromEntries(relativeFiles(kbDir)
-    .filter((relative) => [...privateNames].some((name) => {
+    .filter((relative) => privateArtifactFiles.has(relative)
+      || [...privateNames].some((name) => {
       const basename = path.basename(relative);
       return basename === name || basename.startsWith(`${name}.`) || basename.startsWith(`${name}-`);
-    }))
+      })
+      || privateArtifactPrefixes.some((artifact) => {
+        if (path.dirname(relative) !== artifact.directory) return false;
+        const basename = path.basename(relative);
+        return basename === artifact.basename
+          || basename.startsWith(`${artifact.basename}.`)
+          || basename.startsWith(`${artifact.stem}.`)
+          || basename.startsWith(`${artifact.stem}-`);
+      }))
     .map((relative) => {
       const file = path.join(kbDir, relative);
       return [relative, { bytes: fs.statSync(file).size, sha256: sha256File(file) }];
     }));
+  for (const relative of privateArtifactFiles) {
+    if (!Object.hasOwn(privateFiles, relative)) {
+      throw new Error(`private RVF generation file was not captured: ${relative}`);
+    }
+  }
   return { sourceStores: privateSource, generationStores: privateGenerations, aliases: privateAliases, cards: privateCards, files: privateFiles };
 }
 
@@ -316,28 +363,54 @@ function isBehind(local, canon) {
 }
 function short(s) { return s ? String(s).slice(0, 12) : '(none)'; }
 function stamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
-function copyTree(srcDir, dstDir) {
+function assertNoFollowPath(root, target) {
+  const rootPath = path.resolve(root);
+  const targetPath = path.resolve(target);
+  const relative = path.relative(rootPath, targetPath);
+  if (relative.startsWith(`..${path.sep}`) || relative === '..' || path.isAbsolute(relative)) {
+    throw new Error(`path escapes KB root: ${target}`);
+  }
+  const rootStat = fs.lstatSync(rootPath);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) throw new Error(`KB root is not a real directory: ${root}`);
+  let current = rootPath;
+  for (const part of relative ? relative.split(path.sep) : []) {
+    current = path.join(current, part);
+    let stat;
+    try { stat = fs.lstatSync(current); }
+    catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+    if (stat.isSymbolicLink()) throw new Error(`symlink destination is not allowed: ${path.relative(rootPath, current)}`);
+  }
+  return targetPath;
+}
+
+function copyTree(srcDir, dstDir, root = dstDir, prefix = '') {
   for (const ent of fs.readdirSync(srcDir, { withFileTypes: true })) {
-    const s = path.join(srcDir, ent.name), d = path.join(dstDir, ent.name);
-    if (ent.isDirectory()) { fs.mkdirSync(d, { recursive: true }); copyTree(s, d); }
-    else { fs.mkdirSync(path.dirname(d), { recursive: true }); fs.copyFileSync(s, d); }
+    if (ent.isSymbolicLink()) throw new Error(`source bundle contains a symbolic link: ${path.join(prefix, ent.name)}`);
+    const relative = path.join(prefix, ent.name);
+    const s = path.join(srcDir, ent.name), d = assertNoFollowPath(root, path.join(dstDir, ent.name));
+    if (ent.isDirectory()) { if (!fs.existsSync(d)) fs.mkdirSync(d); copyTree(s, d, root, relative); }
+    else { if (!fs.existsSync(path.dirname(d))) fs.mkdirSync(path.dirname(d), { recursive: true }); fs.copyFileSync(s, d); }
   }
 }
 
-function restoreTreeExact(srcDir, dstDir) {
-  fs.mkdirSync(dstDir, { recursive: true });
+function restoreTreeExact(srcDir, dstDir, root = dstDir, prefix = '') {
+  assertNoFollowPath(root, dstDir);
+  if (!fs.existsSync(dstDir)) fs.mkdirSync(dstDir);
   const sourceNames = new Set(fs.readdirSync(srcDir));
   for (const name of fs.readdirSync(dstDir)) {
-    if (!sourceNames.has(name)) fs.rmSync(path.join(dstDir, name), { recursive: true, force: true });
+    const target = assertNoFollowPath(root, path.join(dstDir, name));
+    if (!sourceNames.has(name)) fs.rmSync(target, { recursive: true, force: true });
   }
   for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) throw new Error(`backup contains a symbolic link: ${path.join(prefix, entry.name)}`);
     const source = path.join(srcDir, entry.name);
-    const target = path.join(dstDir, entry.name);
+    const target = assertNoFollowPath(root, path.join(dstDir, entry.name));
     if (entry.isDirectory()) {
-      if (fs.existsSync(target) && !fs.statSync(target).isDirectory()) fs.rmSync(target, { force: true });
-      restoreTreeExact(source, target);
+      if (fs.existsSync(target) && !fs.lstatSync(target).isDirectory()) fs.rmSync(target, { force: true });
+      if (!fs.existsSync(target)) fs.mkdirSync(target);
+      restoreTreeExact(source, target, root, path.join(prefix, entry.name));
     } else {
-      if (fs.existsSync(target) && fs.statSync(target).isDirectory()) fs.rmSync(target, { recursive: true, force: true });
+      if (fs.existsSync(target) && fs.lstatSync(target).isDirectory()) fs.rmSync(target, { recursive: true, force: true });
       fs.copyFileSync(source, target);
     }
   }
@@ -361,9 +434,58 @@ export function applyPublicBundlePreservingPrivate({ extractDir, kbDir, backupPa
   }
 }
 
-/** `.rvf` store filenames in a directory — the inventory the safety check compares. */
-function rvfNames(dir) {
-  try { return new Set(fs.readdirSync(dir).filter((n) => n.endsWith('.rvf'))); } catch { return new Set(); }
+/** Authoritative store identities in a directory, with recursive `.rvf` fallback for old backups. */
+function storeInventory(dir) {
+  const stores = new Map();
+  const declaredFiles = new Set();
+  let complete = true;
+  let reason = null;
+  const generationFile = path.join(dir, 'RVF-GENERATIONS.json');
+  const hasGenerationFile = fs.existsSync(generationFile);
+  try {
+    const generations = JSON.parse(fs.readFileSync(generationFile, 'utf8'));
+    for (const [name, generation] of Object.entries(generations.stores || {})) {
+      if (typeof generation?.file !== 'string' || !generation.file.trim() || path.isAbsolute(generation.file)) {
+        complete = false; reason = `invalid generation path for ${name}`; continue;
+      }
+      const root = path.resolve(dir);
+      const file = path.resolve(root, path.normalize(generation.file));
+      if (file === root || !file.startsWith(`${root}${path.sep}`) || !fs.existsSync(file)) {
+        complete = false; reason = `missing or escaping generation file for ${name}`; continue;
+      }
+      const stat = fs.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink()) {
+        complete = false; reason = `non-regular generation file for ${name}`; continue;
+      }
+      const realRoot = fs.realpathSync(root);
+      const realFile = fs.realpathSync(file);
+      if (!realFile.startsWith(`${realRoot}${path.sep}`)) {
+        complete = false; reason = `generation file escapes root for ${name}`; continue;
+      }
+      stores.set(`store:${name}`, generation.file);
+      declaredFiles.add(generation.file);
+    }
+  } catch (error) {
+    if (hasGenerationFile) { complete = false; reason = `unreadable RVF-GENERATIONS.json: ${error.message}`; }
+  }
+  try {
+    const files = relativeFiles(dir);
+    for (const relative of files.filter((name) => name.endsWith('.rvf'))) {
+      if (!declaredFiles.has(relative)) {
+        stores.set(`file:${relative}`, relative);
+      }
+    }
+    const legacyMetadata = new Set([
+      'SOURCE.json', 'repo-aliases.json', 'capability-cards.md', 'package.json', 'package-lock.json',
+      'forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'manifest.json',
+    ]);
+    if (!hasGenerationFile && files.some((name) => !name.endsWith('.rvf') && !legacyMetadata.has(path.basename(name)))) {
+      complete = false; reason = 'legacy inventory contains unclassified non-RVF files';
+    }
+  } catch (error) {
+    complete = false; reason = `unreadable inventory tree: ${error.message}`;
+  }
+  return { stores, complete, reason };
 }
 
 /** Recursive byte size, for honestly reporting how much was actually reclaimed. */
@@ -407,18 +529,25 @@ export function reclaimBackups({
 
   const all = [...new Set([...backupsMade, ...stranded])];
   const removed = []; const kept = []; let freed = 0;
-  const liveStores = rvfNames(kbDir);
+  const liveInventory = storeInventory(kbDir);
   const allowedMissing = new Set(intentionallyRemovedStores.flatMap((store) => [
-    `${store}.rvf`,
-    `${store}.big.rvf`,
+    `store:${store}`,
+    `file:${store}.rvf`,
+    `file:${store}.big.rvf`,
   ]));
 
   for (const b of all) {
     if (!fs.existsSync(b)) continue;
     if (env.RUVNET_KEEP_BACKUP === '1') { kept.push([b, 'RUVNET_KEEP_BACKUP=1 is set']); continue; }
-    const lost = [...rvfNames(b)].filter((n) => !liveStores.has(n) && !allowedMissing.has(n));
+    const backupInventory = storeInventory(b);
+    if (!liveInventory.complete || !backupInventory.complete) {
+      kept.push([b, `inventory is incomplete; refusing destructive reclaim (${backupInventory.reason || liveInventory.reason || 'unknown'})`]);
+      continue;
+    }
+    const lost = [...backupInventory.stores].filter(([identity]) => !liveInventory.stores.has(identity) && !allowedMissing.has(identity));
     if (lost.length) {
-      kept.push([b, `it holds ${lost.length} store(s) the new copy does NOT have: ${lost.slice(0, 3).join(', ')}${lost.length > 3 ? '…' : ''}`]);
+      const labels = lost.map(([, file]) => file);
+      kept.push([b, `it holds ${lost.length} store(s) the new copy does NOT have: ${labels.slice(0, 3).join(', ')}${lost.length > 3 ? '…' : ''}`]);
       continue;
     }
     const size = dirSize(b);

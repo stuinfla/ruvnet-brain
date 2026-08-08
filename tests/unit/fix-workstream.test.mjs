@@ -11,11 +11,11 @@ const CLI = path.join(ROOT, 'scripts/fix-workstream.mjs');
 const temporaryRoots = [];
 
 function git(cwd, ...args) {
-  return execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim();
+  return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', cwd, ...args], { encoding: 'utf8' }).trim();
 }
 
 function gitRaw(cwd, ...args) {
-  return execFileSync('git', ['-C', cwd, ...args]);
+  return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', cwd, ...args]);
 }
 
 function write(file, value) {

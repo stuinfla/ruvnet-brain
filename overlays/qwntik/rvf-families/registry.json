@@ -32,14 +32,12 @@
     {
       "name": "saythanks",
       "alias": "saythanks-reference-cluster",
-      "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+      "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
       "sourceCommit": "28065a099d44bd48a93f6fa5dd54d9825a4a667f",
       "stores": [
         "saythanks",
         "saythanks-graphify",
-        "saythanks-ua",
         "saythanks-repowise",
-        "saythanks-ix",
         "saythanks-ua-large",
         "saythanks-ix-large"
       ]
@@ -52,9 +50,7 @@
       "say thanks",
       "Bolivar1234/saythanks",
       "saythanks-graphify",
-      "saythanks-ua",
       "saythanks-repowise",
-      "saythanks-ix",
       "saythanks-ua-large",
       "saythanks-ix-large"
     ],
@@ -309,7 +305,7 @@
         "sourceCommit": "28065a099d44bd48a93f6fa5dd54d9825a4a667f",
         "builtUtc": "2026-08-02T03:08:13.403Z",
         "family": "saythanks-reference-cluster",
-        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
         "producer": "forge-big",
         "role": "primary-source-reference",
         "passages": 8806
@@ -323,24 +319,10 @@
         "sourceCommit": null,
         "builtUtc": "2026-08-02T03:38:09.364Z",
         "family": "saythanks-reference-cluster",
-        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
         "producer": "graphify",
         "role": "structural-communities-blast-radius",
         "passages": 4507
-      },
-      "saythanks-ua": {
-        "file": "saythanks-ua.big.rvf",
-        "sha256": "b1de870c512a408b86131bdbad1cd7e94a5509e411b5cff39b54d3b3d1e78fcc",
-        "bytes": 907888,
-        "model": "Xenova/bge-base-en-v1.5",
-        "dimensions": 768,
-        "sourceCommit": null,
-        "builtUtc": "2026-08-02T03:51:40.432Z",
-        "family": "saythanks-reference-cluster",
-        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
-        "producer": "understand-anything",
-        "role": "semantic-summary-small",
-        "passages": 294
       },
       "saythanks-repowise": {
         "file": "saythanks-repowise.big.rvf",
@@ -351,24 +333,10 @@
         "sourceCommit": null,
         "builtUtc": "2026-08-02T03:59:22.761Z",
         "family": "saythanks-reference-cluster",
-        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
         "producer": "repowise",
         "role": "readable-subsystem-context",
         "passages": 2898
-      },
-      "saythanks-ix": {
-        "file": "saythanks-ix.big.rvf",
-        "sha256": "29440d27716cec1b16e4ff8690f493d43f92ff5d31f8f57bb31af4bcc2e3204b",
-        "bytes": 100924,
-        "model": "Xenova/bge-base-en-v1.5",
-        "dimensions": 768,
-        "sourceCommit": null,
-        "builtUtc": "2026-08-02T04:01:05.531Z",
-        "family": "saythanks-reference-cluster",
-        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
-        "producer": "ix",
-        "role": "exact-symbol-router-small",
-        "passages": 32
       },
       "saythanks-ua-large": {
         "file": "saythanks-ua-large.big.rvf",
@@ -379,7 +347,7 @@
         "sourceCommit": null,
         "builtUtc": "2026-08-02T06:33:41.849Z",
         "family": "saythanks-reference-cluster",
-        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
         "producer": "understand-anything",
         "role": "semantic-node-edge-large",
         "passages": 26182
@@ -393,7 +361,7 @@
         "sourceCommit": null,
         "builtUtc": "2026-08-02T07:12:21.331Z",
         "family": "saythanks-reference-cluster",
-        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
         "producer": "ix",
         "role": "exact-symbol-router-large",
         "passages": 4185
@@ -605,7 +573,7 @@
       "selfUpdate": null,
       "updateManaged": false,
       "family": "saythanks-reference-cluster",
-      "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+      "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
       "role": "primary-source-reference",
       "provenanceState": "commit-pinned"
     },
@@ -621,24 +589,8 @@
       "selfUpdate": null,
       "updateManaged": false,
       "family": "saythanks-reference-cluster",
-      "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+      "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
       "role": "structural-communities-blast-radius",
-      "provenanceState": "reference-only-unpinned-map"
-    },
-    "saythanks-ua": {
-      "kbName": "saythanks-ua",
-      "sourceRepo": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
-      "sourceCommit": null,
-      "sourceDescribe": null,
-      "builtUtc": "2026-08-02T03:51:40.432Z",
-      "builder": "qwntik-private-overlay:understand-anything",
-      "canonicalManifestUrl": null,
-      "canonicalBundleUrl": null,
-      "selfUpdate": null,
-      "updateManaged": false,
-      "family": "saythanks-reference-cluster",
-      "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
-      "role": "semantic-summary-small",
       "provenanceState": "reference-only-unpinned-map"
     },
     "saythanks-repowise": {
@@ -653,24 +605,8 @@
       "selfUpdate": null,
       "updateManaged": false,
       "family": "saythanks-reference-cluster",
-      "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+      "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
       "role": "readable-subsystem-context",
-      "provenanceState": "reference-only-unpinned-map"
-    },
-    "saythanks-ix": {
-      "kbName": "saythanks-ix",
-      "sourceRepo": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
-      "sourceCommit": null,
-      "sourceDescribe": null,
-      "builtUtc": "2026-08-02T04:01:05.531Z",
-      "builder": "qwntik-private-overlay:ix",
-      "canonicalManifestUrl": null,
-      "canonicalBundleUrl": null,
-      "selfUpdate": null,
-      "updateManaged": false,
-      "family": "saythanks-reference-cluster",
-      "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
-      "role": "exact-symbol-router-small",
       "provenanceState": "reference-only-unpinned-map"
     },
     "saythanks-ua-large": {
@@ -685,7 +621,7 @@
       "selfUpdate": null,
       "updateManaged": false,
       "family": "saythanks-reference-cluster",
-      "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+      "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
       "role": "semantic-node-edge-large",
       "provenanceState": "reference-only-unpinned-map"
     },
@@ -701,7 +637,7 @@
       "selfUpdate": null,
       "updateManaged": false,
       "family": "saythanks-reference-cluster",
-      "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+      "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
       "role": "exact-symbol-router-large",
       "provenanceState": "reference-only-unpinned-map"
     }
@@ -896,7 +832,7 @@
       "artifact": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/kb",
       "family": "saythanks-reference-cluster",
       "family_manifest": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/manifests/saythanks-family-manifest.json",
-      "family_manifest_hash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+      "family_manifest_hash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
       "role": "primary-source-reference",
       "provenance_state": "commit-pinned",
       "build": {
@@ -915,7 +851,7 @@
       "artifact": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/kb",
       "family": "saythanks-reference-cluster",
       "family_manifest": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/manifests/saythanks-family-manifest.json",
-      "family_manifest_hash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+      "family_manifest_hash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
       "role": "structural-communities-blast-radius",
       "provenance_state": "reference-only-unpinned-map",
       "build": {
@@ -923,25 +859,6 @@
         "vectors": 4507,
         "passages": 4507,
         "big_rvf_sha256": "1bd43c4b59357413ceae98117f5e88b85cc7599b2489c2ab35eaaf65cdf1231f"
-      }
-    },
-    {
-      "name": "saythanks-ua",
-      "producer": "understand-anything",
-      "scope": "semantic-summary-small",
-      "source": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
-      "source_commit": null,
-      "artifact": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/kb",
-      "family": "saythanks-reference-cluster",
-      "family_manifest": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/manifests/saythanks-family-manifest.json",
-      "family_manifest_hash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
-      "role": "semantic-summary-small",
-      "provenance_state": "reference-only-unpinned-map",
-      "build": {
-        "chunks": 294,
-        "vectors": 294,
-        "passages": 294,
-        "big_rvf_sha256": "b1de870c512a408b86131bdbad1cd7e94a5509e411b5cff39b54d3b3d1e78fcc"
       }
     },
     {
@@ -953,7 +870,7 @@
       "artifact": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/kb",
       "family": "saythanks-reference-cluster",
       "family_manifest": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/manifests/saythanks-family-manifest.json",
-      "family_manifest_hash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+      "family_manifest_hash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
       "role": "readable-subsystem-context",
       "provenance_state": "reference-only-unpinned-map",
       "build": {
@@ -961,25 +878,6 @@
         "vectors": 2898,
         "passages": 2898,
         "big_rvf_sha256": "d56fa8978a4dadedeffa6ce1fe6e088cccbd306c7af232ea1674eebf71449f7f"
-      }
-    },
-    {
-      "name": "saythanks-ix",
-      "producer": "ix",
-      "scope": "exact-symbol-router-small",
-      "source": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
-      "source_commit": null,
-      "artifact": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/kb",
-      "family": "saythanks-reference-cluster",
-      "family_manifest": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/manifests/saythanks-family-manifest.json",
-      "family_manifest_hash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
-      "role": "exact-symbol-router-small",
-      "provenance_state": "reference-only-unpinned-map",
-      "build": {
-        "chunks": 32,
-        "vectors": 32,
-        "passages": 32,
-        "big_rvf_sha256": "29440d27716cec1b16e4ff8690f493d43f92ff5d31f8f57bb31af4bcc2e3204b"
       }
     },
     {
@@ -991,7 +889,7 @@
       "artifact": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/kb",
       "family": "saythanks-reference-cluster",
       "family_manifest": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/manifests/saythanks-family-manifest.json",
-      "family_manifest_hash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+      "family_manifest_hash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
       "role": "semantic-node-edge-large",
       "provenance_state": "reference-only-unpinned-map",
       "build": {
@@ -1010,7 +908,7 @@
       "artifact": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/kb",
       "family": "saythanks-reference-cluster",
       "family_manifest": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/manifests/saythanks-family-manifest.json",
-      "family_manifest_hash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+      "family_manifest_hash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
       "role": "exact-symbol-router-large",
       "provenance_state": "reference-only-unpinned-map",
       "build": {
@@ -1037,8 +935,8 @@
     "testimate-routing-alias.json": "0df5c1b75beef08e222d9b9cc9f3202202945f47a6c4ca6c68eeea0e8484afb3",
     "makerkit-family-manifest.json": "69aa77a03d57b6a307a197bc0a62c1a2a9599dbf51616056544aef8a796e7d0b",
     "makerkit-routing-alias.json": "dd79fa99b8e5cdf58181ce5b942f3f588a5a9a4e8bebdd533089498831b9243a",
-    "saythanks-family-manifest.json": "e1dd3a5b0db5c2f8f194c4cc0e8774bd925e9a3ea1949a8b79117e951ac02d6b",
-    "saythanks-routing-alias.json": "c56a942f6bca5af1f57ec337a22f4366dd49a6c3569cc783c78f968d38c7a9d6"
+    "saythanks-family-manifest.json": "ba32ec77d1ac59171d9ee8afe1e287eddec976b4bd15120d18112f0f16f5b045",
+    "saythanks-routing-alias.json": "fa51b1cc475e2596c04a790a341d134c0d27cbd5f7b2a3891012147f46394551"
   },
   "liveManifestDigests": {
     "testimate-family-manifest.json": "e3dac0973bd28e7198f715d99bfd97b99de4749f705ca05b4b0e7da7dd87eca8",
@@ -1412,13 +1310,118 @@
       "makerkit-repowise": null,
       "makerkit-ua": null,
       "makerkit": null,
-      "saythanks": null,
-      "saythanks-graphify": null,
-      "saythanks-ua": null,
-      "saythanks-repowise": null,
-      "saythanks-ix": null,
-      "saythanks-ua-large": null,
-      "saythanks-ix-large": null
+      "saythanks": {
+        "kbName": "saythanks",
+        "sourceRepo": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
+        "sourceCommit": "28065a099d44bd48a93f6fa5dd54d9825a4a667f",
+        "sourceDescribe": "28065a099d44",
+        "builtUtc": "2026-08-02T03:08:13.403Z",
+        "builder": "qwntik-private-overlay:forge-big",
+        "canonicalManifestUrl": null,
+        "canonicalBundleUrl": null,
+        "selfUpdate": null,
+        "updateManaged": false,
+        "family": "saythanks-reference-cluster",
+        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "role": "primary-source-reference",
+        "provenanceState": "commit-pinned"
+      },
+      "saythanks-graphify": {
+        "kbName": "saythanks-graphify",
+        "sourceRepo": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
+        "sourceCommit": null,
+        "sourceDescribe": null,
+        "builtUtc": "2026-08-02T03:38:09.364Z",
+        "builder": "qwntik-private-overlay:graphify",
+        "canonicalManifestUrl": null,
+        "canonicalBundleUrl": null,
+        "selfUpdate": null,
+        "updateManaged": false,
+        "family": "saythanks-reference-cluster",
+        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "role": "structural-communities-blast-radius",
+        "provenanceState": "reference-only-unpinned-map"
+      },
+      "saythanks-ua": {
+        "kbName": "saythanks-ua",
+        "sourceRepo": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
+        "sourceCommit": null,
+        "sourceDescribe": null,
+        "builtUtc": "2026-08-02T03:51:40.432Z",
+        "builder": "qwntik-private-overlay:understand-anything",
+        "canonicalManifestUrl": null,
+        "canonicalBundleUrl": null,
+        "selfUpdate": null,
+        "updateManaged": false,
+        "family": "saythanks-reference-cluster",
+        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "role": "semantic-summary-small",
+        "provenanceState": "reference-only-unpinned-map"
+      },
+      "saythanks-repowise": {
+        "kbName": "saythanks-repowise",
+        "sourceRepo": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
+        "sourceCommit": null,
+        "sourceDescribe": null,
+        "builtUtc": "2026-08-02T03:59:22.761Z",
+        "builder": "qwntik-private-overlay:repowise",
+        "canonicalManifestUrl": null,
+        "canonicalBundleUrl": null,
+        "selfUpdate": null,
+        "updateManaged": false,
+        "family": "saythanks-reference-cluster",
+        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "role": "readable-subsystem-context",
+        "provenanceState": "reference-only-unpinned-map"
+      },
+      "saythanks-ix": {
+        "kbName": "saythanks-ix",
+        "sourceRepo": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
+        "sourceCommit": null,
+        "sourceDescribe": null,
+        "builtUtc": "2026-08-02T04:01:05.531Z",
+        "builder": "qwntik-private-overlay:ix",
+        "canonicalManifestUrl": null,
+        "canonicalBundleUrl": null,
+        "selfUpdate": null,
+        "updateManaged": false,
+        "family": "saythanks-reference-cluster",
+        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "role": "exact-symbol-router-small",
+        "provenanceState": "reference-only-unpinned-map"
+      },
+      "saythanks-ua-large": {
+        "kbName": "saythanks-ua-large",
+        "sourceRepo": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
+        "sourceCommit": null,
+        "sourceDescribe": null,
+        "builtUtc": "2026-08-02T06:33:41.849Z",
+        "builder": "qwntik-private-overlay:understand-anything",
+        "canonicalManifestUrl": null,
+        "canonicalBundleUrl": null,
+        "selfUpdate": null,
+        "updateManaged": false,
+        "family": "saythanks-reference-cluster",
+        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "role": "semantic-node-edge-large",
+        "provenanceState": "reference-only-unpinned-map"
+      },
+      "saythanks-ix-large": {
+        "kbName": "saythanks-ix-large",
+        "sourceRepo": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
+        "sourceCommit": null,
+        "sourceDescribe": null,
+        "builtUtc": "2026-08-02T07:12:21.331Z",
+        "builder": "qwntik-private-overlay:ix",
+        "canonicalManifestUrl": null,
+        "canonicalBundleUrl": null,
+        "selfUpdate": null,
+        "updateManaged": false,
+        "family": "saythanks-reference-cluster",
+        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "role": "exact-symbol-router-large",
+        "provenanceState": "reference-only-unpinned-map"
+      }
     },
     "customStores": {
       "testimate": {
@@ -1745,6 +1748,324 @@
       "saythanks-graphify-direct": "## saythanks-graphify-direct\nDirect Graphify recipe for SayThanks. Use this when RB decides the question needs communities, clusters, dependency neighborhoods, surprising relationships, blast radius, god-node anchors, focus slices, or connected implementation areas. Query the SayThanks Graphify sidecar for the feature or source path, then return the community or focus-slice id, important nodes, confidence labels, line locations when present, source files, and edge types. A good answer names the Graphify community or focus slice first, then gives the files a code agent should inspect. Corroborate exact symbols or line ranges with IX or source after Graphify identifies the area.",
       "saythanks-ua-direct": "## saythanks-ua-direct\nDirect Understand-Anything recipe for SayThanks. Use this when RB decides the question needs semantic node/edge architecture explanation, layer classification, conceptual dependency, or a prompt for understand-explain. Run the Understand-Anything skill or CLI against a specific file, symbol, or narrowed feature prompt; ask for architecture layer, incoming and outgoing edges, connected nodes, source path, and confidence/provenance. A good answer explains what the code means in the architecture and names the UA node records backing that explanation. Corroborate stale or trash-heavy UA evidence against current source before treating it as current.",
       "saythanks-repowise-direct": "## saythanks-repowise-direct\nDirect RepoWise recipe for SayThanks. Use this when RB decides the question needs readable subsystem overview, docs/wiki context, ADR or plan understanding, workflow guidance, audit findings, onboarding, operations packets, or human prose before exact code work. Query the SayThanks RepoWise wiki/audit sidecar for the subsystem or document, return the relevant page ids/titles, summary, caveats, and source paths to verify. A good answer uses RepoWise to frame the work, then hands exact symbol or graph questions to IX, Graphify, UA, or current source."
+    },
+    "familyRoutes": {
+      "saythanks-reference-cluster": {
+        "schema": "qwntik-rvf-routing-alias-v1",
+        "alias": "saythanks-reference-cluster",
+        "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+        "sourceCommit": "28065a099d44bd48a93f6fa5dd54d9825a4a667f",
+        "mode": "evidence-aware-smallest-scope",
+        "notConcatenated": true,
+        "stores": [
+          "saythanks",
+          "saythanks-graphify",
+          "saythanks-ua",
+          "saythanks-repowise",
+          "saythanks-ix",
+          "saythanks-ua-large",
+          "saythanks-ix-large"
+        ],
+        "routes": {
+          "implementation": [
+            "saythanks",
+            "saythanks-ix",
+            "saythanks-ix-large"
+          ],
+          "exactSymbolsAndEdges": [
+            "saythanks-ix",
+            "saythanks-ix-large"
+          ],
+          "structuralBlastRadius": [
+            "saythanks-graphify"
+          ],
+          "semanticArchitecture": [
+            "saythanks-ua",
+            "saythanks-ua-large",
+            "saythanks-repowise"
+          ],
+          "documentationNavigation": [
+            "saythanks-repowise"
+          ],
+          "crossViewSynthesis": [
+            "saythanks",
+            "saythanks-graphify",
+            "saythanks-ua",
+            "saythanks-repowise",
+            "saythanks-ix",
+            "saythanks-ua-large",
+            "saythanks-ix-large"
+          ]
+        },
+        "citationRequired": true,
+        "thinEvidenceLabel": true,
+        "provenanceCaveat": "Only the broad source store carries the frozen commit; map projections remain sourceCommit null and are reference-only.",
+        "registration": {
+          "activeRegistration": true,
+          "superbIngest": false,
+          "activatedUtc": "2026-08-06T16:00:20.648Z",
+          "activationMode": "rvf-cluster-repair-P5",
+          "refresh": "reference-family-registration"
+        },
+        "packetHash": "4dfb737721a64e6faeb9bd77845ceee43d9d4cbad97f074105cff4d4654e2cbe"
+      }
+    },
+    "retiredStores": {
+      "saythanks-ua": {
+        "generation": {
+          "file": "saythanks-ua.big.rvf",
+          "sha256": "b1de870c512a408b86131bdbad1cd7e94a5509e411b5cff39b54d3b3d1e78fcc",
+          "bytes": 907888,
+          "model": "Xenova/bge-base-en-v1.5",
+          "dimensions": 768,
+          "sourceCommit": null,
+          "builtUtc": "2026-08-02T03:51:40.432Z",
+          "family": "saythanks-reference-cluster",
+          "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+          "producer": "understand-anything",
+          "role": "semantic-summary-small",
+          "passages": 294
+        },
+        "source": {
+          "kbName": "saythanks-ua",
+          "sourceRepo": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
+          "sourceCommit": null,
+          "sourceDescribe": null,
+          "builtUtc": "2026-08-02T03:51:40.432Z",
+          "builder": "qwntik-private-overlay:understand-anything",
+          "canonicalManifestUrl": null,
+          "canonicalBundleUrl": null,
+          "selfUpdate": null,
+          "updateManaged": false,
+          "family": "saythanks-reference-cluster",
+          "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+          "role": "semantic-summary-small",
+          "provenanceState": "reference-only-unpinned-map"
+        },
+        "custom": {
+          "name": "saythanks-ua",
+          "producer": "understand-anything",
+          "scope": "semantic-summary-small",
+          "source": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
+          "source_commit": null,
+          "artifact": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/kb",
+          "family": "saythanks-reference-cluster",
+          "family_manifest": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/manifests/saythanks-family-manifest.json",
+          "family_manifest_hash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+          "role": "semantic-summary-small",
+          "provenance_state": "reference-only-unpinned-map",
+          "build": {
+            "chunks": 294,
+            "vectors": 294,
+            "passages": 294,
+            "big_rvf_sha256": "b1de870c512a408b86131bdbad1cd7e94a5509e411b5cff39b54d3b3d1e78fcc"
+          }
+        },
+        "card": null
+      },
+      "saythanks-ix": {
+        "generation": {
+          "file": "saythanks-ix.big.rvf",
+          "sha256": "29440d27716cec1b16e4ff8690f493d43f92ff5d31f8f57bb31af4bcc2e3204b",
+          "bytes": 100924,
+          "model": "Xenova/bge-base-en-v1.5",
+          "dimensions": 768,
+          "sourceCommit": null,
+          "builtUtc": "2026-08-02T04:01:05.531Z",
+          "family": "saythanks-reference-cluster",
+          "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+          "producer": "ix",
+          "role": "exact-symbol-router-small",
+          "passages": 32
+        },
+        "source": {
+          "kbName": "saythanks-ix",
+          "sourceRepo": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
+          "sourceCommit": null,
+          "sourceDescribe": null,
+          "builtUtc": "2026-08-02T04:01:05.531Z",
+          "builder": "qwntik-private-overlay:ix",
+          "canonicalManifestUrl": null,
+          "canonicalBundleUrl": null,
+          "selfUpdate": null,
+          "updateManaged": false,
+          "family": "saythanks-reference-cluster",
+          "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+          "role": "exact-symbol-router-small",
+          "provenanceState": "reference-only-unpinned-map"
+        },
+        "custom": {
+          "name": "saythanks-ix",
+          "producer": "ix",
+          "scope": "exact-symbol-router-small",
+          "source": "/opt/quantic-impact/clients/daxiom/sidecars/repo-workspaces/saythanks",
+          "source_commit": null,
+          "artifact": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/kb",
+          "family": "saythanks-reference-cluster",
+          "family_manifest": "/opt/quantic-impact/clients/daxiom/ruvnet-brain/manifests/saythanks-family-manifest.json",
+          "family_manifest_hash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+          "role": "exact-symbol-router-small",
+          "provenance_state": "reference-only-unpinned-map",
+          "build": {
+            "chunks": 32,
+            "vectors": 32,
+            "passages": 32,
+            "big_rvf_sha256": "29440d27716cec1b16e4ff8690f493d43f92ff5d31f8f57bb31af4bcc2e3204b"
+          }
+        },
+        "card": null
+      }
     }
-  }
+  },
+  "familyRoutes": {
+    "saythanks-reference-cluster": {
+      "schema": "qwntik-rvf-routing-alias-v1",
+      "alias": "saythanks-reference-cluster",
+      "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
+      "sourceCommit": "28065a099d44bd48a93f6fa5dd54d9825a4a667f",
+      "mode": "evidence-aware-smallest-scope",
+      "notConcatenated": true,
+      "stores": [
+        "saythanks",
+        "saythanks-graphify",
+        "saythanks-repowise",
+        "saythanks-ua-large",
+        "saythanks-ix-large"
+      ],
+      "routes": {
+        "implementation": [
+          "saythanks",
+          "saythanks-ix-large"
+        ],
+        "exactSymbolsAndEdges": [
+          "saythanks-ix-large"
+        ],
+        "structuralBlastRadius": [
+          "saythanks-graphify"
+        ],
+        "semanticArchitecture": [
+          "saythanks-ua-large",
+          "saythanks-repowise"
+        ],
+        "documentationNavigation": [
+          "saythanks-repowise"
+        ],
+        "crossViewSynthesis": [
+          "saythanks",
+          "saythanks-graphify",
+          "saythanks-repowise",
+          "saythanks-ua-large",
+          "saythanks-ix-large"
+        ]
+      },
+      "citationRequired": true,
+      "thinEvidenceLabel": true,
+      "provenanceCaveat": "Only the broad source store carries the frozen commit; map projections remain sourceCommit null and are reference-only.",
+      "registration": {
+        "activeRegistration": true,
+        "superbIngest": false,
+        "activatedUtc": "2026-08-06T16:00:20.648Z",
+        "activationMode": "rvf-cluster-repair-P5",
+        "refresh": "retire-redundant-compact-ix-ua",
+        "refreshedUtc": "2026-08-08T00:59:30.000Z"
+      },
+      "packetHash": "8314104cc2437c79cee29842bf7b1adf08367f9b1bcc23a608c1425dc3372b9b",
+      "retiredStores": [
+        "saythanks-ua",
+        "saythanks-ix"
+      ]
+    }
+  },
+  "retiredStores": [
+    {
+      "name": "saythanks-ua",
+      "role": "semantic-summary-small",
+      "producer": "understand-anything",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 294,
+      "sourceCommit": null,
+      "files": [
+        {
+          "path": "saythanks-ua.big.rvf",
+          "sha256": "b1de870c512a408b86131bdbad1cd7e94a5509e411b5cff39b54d3b3d1e78fcc",
+          "bytes": 907888
+        },
+        {
+          "path": "saythanks-ua.big.rvf.idmap.json",
+          "sha256": "d337f8190c5be1ce5a79343182973e40ef436b3eb68887badd9249c3b670811c",
+          "bytes": 45693
+        },
+        {
+          "path": "saythanks-ua.big.rvf.embed.json",
+          "sha256": "37bd31d2ac4b5a656d80a8fb30f443793612bc768b32920637e4cd8c14dbbde2",
+          "bytes": 457
+        },
+        {
+          "path": "saythanks-ua.meta.json",
+          "sha256": "74e4644f19162df77c5c78fb418dd3c2c728a4fa4092c026ffb279a6a2d27c3a",
+          "bytes": 138630
+        },
+        {
+          "path": "saythanks-ua.passages.jsonl",
+          "sha256": "f95ee3ce26b4140f8f42e3f98542dc6859ee3f592db21eb2ad15ce90df014491",
+          "bytes": 1115475
+        }
+      ],
+      "replacement": "saythanks-ua-large",
+      "reason": "redundant compact tier; logical surface retained by replacement",
+      "retiredUtc": "2026-08-08T00:59:30.000Z"
+    },
+    {
+      "name": "saythanks-ix",
+      "role": "exact-symbol-router-small",
+      "producer": "ix",
+      "dimensions": 768,
+      "profile": {
+        "model": "Xenova/bge-base-en-v1.5",
+        "revision": "4d6cd88e18e51a5e020c2c305726d76ada9c03cf",
+        "dimensions": 768,
+        "metric": "cosine",
+        "pooling": "cls"
+      },
+      "passages": 32,
+      "sourceCommit": null,
+      "files": [
+        {
+          "path": "saythanks-ix.big.rvf",
+          "sha256": "29440d27716cec1b16e4ff8690f493d43f92ff5d31f8f57bb31af4bcc2e3204b",
+          "bytes": 100924
+        },
+        {
+          "path": "saythanks-ix.big.rvf.idmap.json",
+          "sha256": "a3cfb27a6b6e9e5662499533cef047f6e57bfddde2550e54a2562a47c591a578",
+          "bytes": 4954
+        },
+        {
+          "path": "saythanks-ix.big.rvf.embed.json",
+          "sha256": "5a1a934d2246b70fc46070070487f468f60a6942ee0965e83a7fc0812b6d0fed",
+          "bytes": 457
+        },
+        {
+          "path": "saythanks-ix.meta.json",
+          "sha256": "854d086a17f26be6744a442770af3047b3be54bcea095bc1d85fb196b992498f",
+          "bytes": 16513
+        },
+        {
+          "path": "saythanks-ix.passages.jsonl",
+          "sha256": "ca8045e722705f1b93ccd8022b452d5cfd85cfd8e0d11d075597b113fa228180",
+          "bytes": 106808
+        }
+      ],
+      "replacement": "saythanks-ix-large",
+      "reason": "redundant compact tier; logical surface retained by replacement",
+      "retiredUtc": "2026-08-08T00:59:30.000Z"
+    }
+  ]
 }

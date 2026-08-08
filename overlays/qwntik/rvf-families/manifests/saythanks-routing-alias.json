@@ -1,34 +1,29 @@
 {
   "schema": "qwntik-rvf-routing-alias-v1",
   "alias": "saythanks-reference-cluster",
-  "familyManifestHash": "acde609b9ebc1c572d3a459a88e9f8bc731ed61fda3e8a64715c21372f681096",
+  "familyManifestHash": "a1c57efdeff1f4573bebe5edeee40cc8160d1d5e972aab9528b4930ccebcb0e2",
   "sourceCommit": "28065a099d44bd48a93f6fa5dd54d9825a4a667f",
   "mode": "evidence-aware-smallest-scope",
   "notConcatenated": true,
   "stores": [
     "saythanks",
     "saythanks-graphify",
-    "saythanks-ua",
     "saythanks-repowise",
-    "saythanks-ix",
     "saythanks-ua-large",
     "saythanks-ix-large"
   ],
   "routes": {
     "implementation": [
       "saythanks",
-      "saythanks-ix",
       "saythanks-ix-large"
     ],
     "exactSymbolsAndEdges": [
-      "saythanks-ix",
       "saythanks-ix-large"
     ],
     "structuralBlastRadius": [
       "saythanks-graphify"
     ],
     "semanticArchitecture": [
-      "saythanks-ua",
       "saythanks-ua-large",
       "saythanks-repowise"
     ],
@@ -38,9 +33,7 @@
     "crossViewSynthesis": [
       "saythanks",
       "saythanks-graphify",
-      "saythanks-ua",
       "saythanks-repowise",
-      "saythanks-ix",
       "saythanks-ua-large",
       "saythanks-ix-large"
     ]
@@ -53,7 +46,12 @@
     "superbIngest": false,
     "activatedUtc": "2026-08-06T16:00:20.648Z",
     "activationMode": "rvf-cluster-repair-P5",
-    "refresh": "reference-family-registration"
+    "refresh": "retire-redundant-compact-ix-ua",
+    "refreshedUtc": "2026-08-08T00:59:30.000Z"
   },
-  "packetHash": "4dfb737721a64e6faeb9bd77845ceee43d9d4cbad97f074105cff4d4654e2cbe"
+  "packetHash": "8314104cc2437c79cee29842bf7b1adf08367f9b1bcc23a608c1425dc3372b9b",
+  "retiredStores": [
+    "saythanks-ua",
+    "saythanks-ix"
+  ]
 }

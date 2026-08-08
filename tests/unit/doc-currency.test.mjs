@@ -45,6 +45,7 @@ function newRepo() {
   sh(dir, 'git', ['config', 'user.email', 'test@example.invalid']);
   sh(dir, 'git', ['config', 'user.name', 'Currency Fixture']);
   sh(dir, 'git', ['config', 'commit.gpgsign', 'false']);
+  sh(dir, 'git', ['config', 'core.hooksPath', '/dev/null']);
   fs.mkdirSync(path.join(dir, 'docs/adr'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
   return dir;

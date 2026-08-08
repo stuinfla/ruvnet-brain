@@ -376,7 +376,7 @@ describe('learning replay source boundaries', () => {
     spawnSync('git', ['init', '-q'], { cwd: repo });
     fs.writeFileSync(path.join(repo, 'gate.mjs'), 'export const gate = true;\n');
     spawnSync('git', ['add', 'gate.mjs'], { cwd: repo });
-    spawnSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+    spawnSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
       'commit', '-qm', 'fixture'], { cwd: repo });
     expect(replay.checkSourceIdentity).toBeTypeOf('function');
     expect(replay.checkSourceIdentity({ repo, loadBearing: ['gate.mjs'] }).clean).toBe(true);

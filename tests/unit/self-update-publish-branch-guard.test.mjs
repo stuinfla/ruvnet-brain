@@ -15,7 +15,10 @@ const GIT_CLONE_REFRESH_SRC = path.join(REPO_ROOT, 'scripts/git-clone-refresh.mj
 
 const hasGit = spawnSync('git', ['--version']).status === 0;
 
-function git(cwd, ...args) { return execFileSync('git', args, { cwd, encoding: 'utf8' }); }
+function git(cwd, ...args) {
+  // These repos exercise self-update's publication guard, not the operator's global Git hooks.
+  return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd, encoding: 'utf8' });
+}
 
 // A throwaway repo with self-update.mjs and its relative imports copied in, so ROOT — derived
 // inside the script from its OWN file location, not the caller's cwd — resolves to this disposable
@@ -35,7 +38,7 @@ function fixtureRepo() {
   fs.writeFileSync(path.join(dir, 'data/registry.tiers.json'),
     JSON.stringify({ tiers: { T0: { repos: [] }, T1: { repos: [] }, T2: { repos: [] }, T3: { repos: [] } } }));
   git(dir, 'add', '-A');
-  git(dir, 'commit', '-m', 'seed');
+  git(dir, 'commit', '-m', 'test(update): seed disposable fixture');
   return dir;
 }
 

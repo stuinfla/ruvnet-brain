@@ -73,7 +73,7 @@ function fixtureRepo() {
   fs.writeFileSync(path.join(dir, 'data/registry.tiers.json'),
     JSON.stringify({ tiers: { T0: { repos: [] }, T1: { repos: [] }, T2: { repos: [] }, T3: { repos: [] } } }));
   execFileSync('git', ['add', '-A'], { cwd: dir });
-  execFileSync('git', ['commit', '-m', 'seed'], { cwd: dir });
+  execFileSync('git', ['-c', 'core.hooksPath=/dev/null', 'commit', '-m', 'test(update): seed fixture'], { cwd: dir });
   return dir;
 }
 

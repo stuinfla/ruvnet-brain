@@ -49,8 +49,9 @@
  * F4 (unanchored matchers; NotebookEdit reaching four hooks by substring accident) ·
  * F14 (offBehavior declared for the shim's eleven and nothing else) · F18 (thirteen third-party
  * handlers with no timeout at all, plus a 180s SessionStart dominating every cold start).
- * F16 is not a finding here — it is the defect this file's existence closes, and the census
- * assertion below measures it: 42 registrations visible where the old test could see 15.
+ * F16 is not a finding here — it is the defect this file's existence closes. The census assertion
+ * below proves every present mesh registry with declared hooks appears in the normalized records;
+ * the 42-versus-15 figures above are the historical born-red measurement, not a fixed ratio.
  *
  * NOT COVERED, said plainly rather than implied: F17 (Codex's plugin parser rejects hooks.json's
  * `_note`) is a cross-host PARSER question, not a registry-shape one — ADR-055 §7.14, and it
@@ -116,6 +117,14 @@ const machinePresent = discoverSources({ repo: REPO }).some((s) => s.machineLoca
  * check that cannot fail is not a check.
  */
 const foreignRegs = mesh(fullReg.records).filter((r) => r.layer === 'user' || r.layer.startsWith('third-party'));
+
+const declaredRegistrationCount = (file) => {
+  const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const hooks = doc.hooks ?? doc;
+  return Object.values(hooks).reduce((total, groups) => total + (Array.isArray(groups)
+    ? groups.reduce((eventTotal, group) => eventTotal + (Array.isArray(group?.hooks) ? group.hooks.length : 0), 0)
+    : 0), 0);
+};
 
 const MACHINE_SKIP_REASON =
   process.env.CI === 'true' ? 'CI — no user or third-party registries exist here'
@@ -448,10 +457,15 @@ describe.skipIf(MACHINE_SKIP_REASON)(
       );
     });
 
-    it('the mesh is far larger than the one file the old suite could read (F16, measured)', () => {
-      const c = census(fullReg);
-      const plugin = c.rows.find((r) => r.layer === 'plugin').count;
-      expect(c.mesh, `merged mesh ${c.mesh} vs the ${plugin} hook-contract.test.mjs can see`).toBeGreaterThan(plugin * 2);
+    it('the merged mesh includes every present registry that declares a hook (F16)', () => {
+      const expectedFiles = fullReg.sources
+        .filter((source) => source.present && source.inMesh && declaredRegistrationCount(source.file) > 0)
+        .map((source) => source.file)
+        .sort();
+      const representedFiles = [...new Set(mesh(fullReg.records).map((record) => record.file))].sort();
+      expect(fullReg.errors, 'a malformed present registry makes the merged census incomplete').toEqual([]);
+      expect(representedFiles, 'every present mesh registry with declared hooks must be represented').toEqual(expectedFiles);
+      expect(foreignRegs.length, 'the machine block must include at least one non-plugin registration').toBeGreaterThan(0);
     });
 
     it('F3 — route-dispatch has exactly one registration in the merged mesh', () => {

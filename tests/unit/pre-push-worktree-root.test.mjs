@@ -34,8 +34,9 @@ describe('pre-push gate worktree routing', () => {
     fs.writeFileSync(path.join(repo, 'tracked.txt'), 'fixture\n');
     expect(spawnSync('git', ['add', 'tracked.txt'], { cwd: repo }).status).toBe(0);
     expect(spawnSync('git', [
+      '-c', 'core.hooksPath=/dev/null',
       '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
-      'commit', '-qm', 'fixture',
+      'commit', '-qm', 'test(git): create pre-push fixture',
     ], { cwd: repo }).status).toBe(0);
     expect(spawnSync('git', ['init', '--bare', '-q'], { cwd: remote }).status).toBe(0);
     expect(spawnSync('git', ['remote', 'add', 'origin', remote], { cwd: repo }).status).toBe(0);

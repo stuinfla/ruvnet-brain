@@ -10,7 +10,9 @@ const hasGit = spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
 
 function git(cwd, args) {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  // Disposable repositories must not inherit the operator's user-level hooks. Those hooks test
+  // real commits, while this fixture is only constructing topology for ground-ruvnet.
+  const result = spawnSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd, encoding: 'utf8' });
   expect(result.status, result.stderr).toBe(0);
   return result.stdout.trim();
 }

@@ -196,7 +196,7 @@ describe('plugin/scripts/signal-watch.mjs — PostToolUse observer (real recorde
     spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: repoDir });
     spawnSync('git', ['config', 'user.name', 'Test'], { cwd: repoDir });
     spawnSync('git', ['remote', 'add', 'origin', 'https://github.com/stuinfla/ruvnet-brain.git'], { cwd: repoDir });
-    spawnSync('git', ['commit', '--allow-empty', '-q', '-m', 'seed'], { cwd: repoDir });
+    spawnSync('git', ['-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-q', '-m', 'test(signal): seed fixture'], { cwd: repoDir });
     const sha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf8' }).stdout.trim();
 
     const ev = {

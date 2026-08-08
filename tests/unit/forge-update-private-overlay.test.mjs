@@ -118,6 +118,58 @@ describe('forge-update private overlay boundary', () => {
     expect(fs.readFileSync(path.join(kbDir, 'makerkit-source.rvf'))).toEqual(before);
   });
 
+  it('uses the generation file as authority when the private logical name and filename differ', () => {
+    const { kbDir } = registryFixture();
+    const privateStore = { kbName: 'privateLogical', updateManaged: false };
+    writeJson(path.join(kbDir, 'SOURCE.json'), { stores: { privateLogical: privateStore } });
+    writeJson(path.join(kbDir, 'RVF-GENERATIONS.json'), {
+      stores: { privateLogical: { file: 'opaque.rvf', sha256: 'private' } },
+    });
+    fs.writeFileSync(path.join(kbDir, 'opaque.rvf'), 'private-opaque-bytes');
+    const overlay = capturePrivateOverlayState({ kbDir, allStores: [privateStore] });
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-opaque-rvf-'));
+    const backupPath = path.join(workspace, 'backup');
+    const extractDir = path.join(workspace, 'extract');
+    fs.cpSync(kbDir, backupPath, { recursive: true });
+    fs.mkdirSync(extractDir);
+    fs.writeFileSync(path.join(extractDir, 'opaque.rvf'), 'public-collision');
+
+    expect(Object.keys(overlay.files)).toContain('opaque.rvf');
+    expect(() => applyPublicBundlePreservingPrivate({ extractDir, kbDir, backupPath, overlay }))
+      .toThrow(/collides with private file opaque\.rvf/);
+    expect(fs.readFileSync(path.join(kbDir, 'opaque.rvf'), 'utf8')).toBe('private-opaque-bytes');
+    expect(fs.existsSync(backupPath)).toBe(true);
+  });
+
+  it('fails preflight when a private generation does not resolve to a live artifact', () => {
+    const { kbDir } = registryFixture();
+    const privateStore = { kbName: 'privateLogical', updateManaged: false };
+    writeJson(path.join(kbDir, 'SOURCE.json'), { stores: { privateLogical: privateStore } });
+    writeJson(path.join(kbDir, 'RVF-GENERATIONS.json'), {
+      stores: { privateLogical: { file: 'missing.rvf', sha256: 'private' } },
+    });
+
+    expect(() => capturePrivateOverlayState({ kbDir, allStores: [privateStore] }))
+      .toThrow(/RVF generation file is missing: missing\.rvf/);
+  });
+
+  it.skipIf(process.platform === 'win32')('rejects a private generation symlink before a public update can write through it', () => {
+    const { kbDir } = registryFixture();
+    const privateStore = { kbName: 'privateLogical', updateManaged: false };
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-outside-'));
+    const outsideFile = path.join(outsideDir, 'sentinel.rvf');
+    fs.writeFileSync(outsideFile, 'do-not-touch');
+    fs.symlinkSync(outsideFile, path.join(kbDir, 'opaque.rvf'));
+    writeJson(path.join(kbDir, 'SOURCE.json'), { stores: { privateLogical: privateStore } });
+    writeJson(path.join(kbDir, 'RVF-GENERATIONS.json'), {
+      stores: { privateLogical: { file: 'opaque.rvf', sha256: 'private' } },
+    });
+
+    expect(() => capturePrivateOverlayState({ kbDir, allStores: [privateStore] }))
+      .toThrow(/RVF generation file is a symbolic link: opaque\.rvf/);
+    expect(fs.readFileSync(outsideFile, 'utf8')).toBe('do-not-touch');
+  });
+
   it('restores exact pre-update state when the filesystem copy itself fails partway through', () => {
     const { kbDir, privateStore } = registryFixture();
     const overlay = capturePrivateOverlayState({ kbDir, allStores: [privateStore] });
@@ -135,5 +187,43 @@ describe('forge-update private overlay boundary', () => {
       .toThrow(/restored pre-update bytes/);
     expect(fs.existsSync(path.join(kbDir, 'a-introduced.txt'))).toBe(false);
     expect(fs.readFileSync(path.join(kbDir, 'z-block'), 'utf8')).toBe('existing file');
+  });
+
+  it.skipIf(process.platform === 'win32')('rejects destination ancestor symlinks before copy or rollback can leave the KB root', () => {
+    const { kbDir, privateStore } = registryFixture();
+    const overlay = capturePrivateOverlayState({ kbDir, allStores: [privateStore] });
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-destination-link-'));
+    const backupPath = path.join(workspace, 'backup');
+    const extractDir = path.join(workspace, 'extract');
+    fs.cpSync(kbDir, backupPath, { recursive: true });
+    fs.mkdirSync(extractDir, { recursive: true });
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-outside-destination-'));
+    const sentinel = path.join(outside, 'sentinel.txt');
+    fs.writeFileSync(sentinel, 'DO-NOT-TOUCH');
+    fs.symlinkSync(outside, path.join(kbDir, 'linked'), 'dir');
+    fs.mkdirSync(path.join(extractDir, 'linked'));
+    fs.writeFileSync(path.join(extractDir, 'linked', 'sentinel.txt'), 'PUBLIC-BYTES');
+
+    expect(() => applyPublicBundlePreservingPrivate({ extractDir, kbDir, backupPath, overlay }))
+      .toThrow(/symlink destination is not allowed|automatic rollback also failed/);
+    expect(fs.readFileSync(sentinel, 'utf8')).toBe('DO-NOT-TOUCH');
+  });
+
+  it.skipIf(process.platform === 'win32')('rejects dangling destination symlinks instead of following them outside the KB', () => {
+    const { kbDir, privateStore } = registryFixture();
+    const overlay = capturePrivateOverlayState({ kbDir, allStores: [privateStore] });
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-dangling-link-'));
+    const backupPath = path.join(workspace, 'backup');
+    const extractDir = path.join(workspace, 'extract');
+    fs.cpSync(kbDir, backupPath, { recursive: true });
+    fs.mkdirSync(extractDir, { recursive: true });
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-dangling-outside-'));
+    const target = path.join(outside, 'pwned.txt');
+    fs.symlinkSync(target, path.join(kbDir, 'linked.txt'));
+    fs.writeFileSync(path.join(extractDir, 'linked.txt'), 'ATTACK');
+
+    expect(() => applyPublicBundlePreservingPrivate({ extractDir, kbDir, backupPath, overlay }))
+      .toThrow(/symlink destination is not allowed|automatic rollback also failed/);
+    expect(fs.existsSync(target)).toBe(false);
   });
 });
