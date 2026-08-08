@@ -709,11 +709,27 @@ export const CAPABILITIES = [
 
       const S = helpers.lessonStore.STATUS || {};
       const inForce = lessons.filter((l) => l?.status === S.RATIFIED || l?.status === S.ACTIVE).length;
-      const candidates = lessons.filter((l) => l?.status === S.CANDIDATE).length;
-      // A candidate can never block (lesson-store.mjs). Counting all 12 as "your lessons" would be
-      // the flattering number; the honest one is how many can actually affect a decision.
+      // AWAITING YOU means RATIFIABLE BY YOU (issue #125). This counted every CANDIDATE, including
+      // the seeded imported-owner lessons — which `ratify()` refuses by design and `pending()`
+      // excludes, so `lesson-ratify --list` correctly reported "0 awaiting your decision" while this
+      // card said 12 were awaiting ratification. Two surfaces, two answers, and the card's was the
+      // one asking the user to act on something that cannot be acted on. The quarantine is right;
+      // describing it as a pending decision is not.
+      //
+      // Delegated to the store's own pending(), rather than re-deriving the predicate here — a
+      // second copy is exactly how these two numbers drifted apart in the first place.
+      const ratifiable = typeof helpers.lessonStore.pending === 'function'
+        ? helpers.lessonStore.pending(lessons).length
+        : lessons.filter((l) => l?.status === S.CANDIDATE && !l?.demoted).length;
+      const quarantined = lessons.filter((l) => l?.status === S.CANDIDATE).length - ratifiable;
       if (inForce > 0) return row(STATE.ON, `${inForce} of ${lessons.length} lessons are ratified and can affect what your AI does`);
-      return row(STATE.OFF, `all ${candidates} recorded lessons are still candidates awaiting your ratification — none of them can influence anything yet`);
+      if (ratifiable > 0) {
+        return row(STATE.OFF, `${ratifiable} recorded lesson(s) are candidates awaiting your ratification — none of them can influence anything yet`);
+      }
+      // Nothing is actually waiting on the user. Say what IS true instead of inventing a decision.
+      return row(STATE.OFF, quarantined > 0
+        ? `${quarantined} bundled maintainer lesson(s) are quarantined and cannot be ratified — nothing is awaiting your decision`
+        : 'no lessons are in force yet, and none are awaiting your decision');
     },
   },
 

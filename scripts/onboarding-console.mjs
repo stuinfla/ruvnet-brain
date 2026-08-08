@@ -428,8 +428,39 @@ function wiringSurvey() {
 function sessionHookExists() {
   return fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks/agentdb-ensure.sh')) || fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks'));
 }
+// WHICH FILE IS THE PROJECT'S MEMORY STORE IS NOT A CONSTANT (issue #127).
+//
+// This probed only `.swarm/memory.db`. A reporter on ruflo 3.34.0 measured their live store — 31MB
+// with a fresh project-state checkpoint — sitting in `.swarm/agentdb-memory.db`, so the card scored
+// the project on an empty file and reported "no project-state checkpoint found" and "liveness: 1
+// entries" about a store that had neither problem. The card's own remedy could not fix it, because
+// the data was never missing; the probe was looking elsewhere.
+//
+// I could NOT reproduce their attribution on this machine: same ruflo 3.34.0, both with and without
+// an explicit --path, a fresh `ruflo memory store` lands in `.swarm/memory.db` (proven by exact-key
+// SQL against both files). So which name the CLI picks is evidently config- or environment-
+// dependent, and hard-coding EITHER name is how this breaks again on the next machine.
+//
+// So the probe stops guessing and asks the filesystem: consider both known names, and use whichever
+// actually holds rows. That is correct on their machine and on mine without knowing why they differ.
+const MEMORY_DB_NAMES = ['memory.db', 'agentdb-memory.db'];
+export function resolveMemoryDb(projectDir) {
+  const candidates = MEMORY_DB_NAMES
+    .map((name) => path.join(projectDir, '.swarm', name))
+    .filter((file) => fs.existsSync(file));
+  if (!candidates.length) return path.join(projectDir, '.swarm/memory.db'); // canonical name for the "absent" message
+  if (candidates.length === 1) return candidates[0];
+  // Both present: prefer the one with real content. Size is a proxy for rows that costs no query and
+  // cannot throw on a locked or WAL-mode database — this runs inside a UI probe that must never hang.
+  return candidates.sort((a, b) => {
+    const sa = (() => { try { return fs.statSync(a).size; } catch { return 0; } })();
+    const sb = (() => { try { return fs.statSync(b).size; } catch { return 0; } })();
+    return sb - sa;
+  })[0];
+}
+
 function probeMemory(projectDir) {
-  const db = path.join(projectDir, '.swarm/memory.db');
+  const db = resolveMemoryDb(projectDir);
   const probes = {};
   // compaction survival + session surfacing are filesystem facts, always checkable
   const snapshot = inspectSessionSnapshots(projectDir);
@@ -1633,7 +1664,10 @@ function findMemoryStores(root) {
       const p = path.join(dir, e.name);
       if (VENDOR.some((m) => (p + '/').includes(m))) continue;
       if (e.name === '.swarm') {
-        if (fs.existsSync(path.join(p, 'memory.db'))) out.push({ project: dir, db: path.join(p, 'memory.db') });
+        // Same resolution as probeMemory — the fleet walk had the identical hardcoded assumption (#127).
+        const resolved = ['memory.db', 'agentdb-memory.db'].map((n) => path.join(p, n)).filter((f) => fs.existsSync(f))
+          .sort((a, b) => { const sz = (f) => { try { return fs.statSync(f).size; } catch { return 0; } }; return sz(b) - sz(a); })[0];
+        if (resolved) out.push({ project: dir, db: resolved });
         continue;
       }
       if (e.name.startsWith('.') || e.name === 'node_modules') continue;

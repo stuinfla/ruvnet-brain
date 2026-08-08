@@ -327,7 +327,23 @@ function newestStagedCC(expectedVersion = null) {
       if (!version.startsWith('.') && fs.existsSync(path.join(cache, version, 'scripts'))) {
         const dir = path.join(cache, version);
         const payloadVersion = versionOfPayload(dir, version);
-        if (!expectedVersion || payloadVersion === expectedVersion) candidates.push({ version: payloadVersion, dir });
+        // NOT BEHIND, not exactly-equal (issue #126, the sibling of #123).
+        //
+        // This required `payloadVersion === expectedVersion`. After a release the plugin is bumped to
+        // the next -dev generation, so the staged payload is routinely AHEAD of the published version
+        // the updater asks for — 4.0.33-dev staged, 4.0.28 expected. No candidate matched, the spine
+        // aborted with "no staged host payload exactly matches", host sync reported incomplete, and
+        // the Console runtime refresh (which happens inside that same sync) was rolled back.
+        //
+        // The user-visible result was the worst kind: the Console header offered "⟳ update available
+        // — click to update", the click copied `npx ruvnet-brain --update`, the command exited 0, and
+        // the header never moved. A remedy that runs clean and changes nothing is worse than no
+        // remedy, because it burns the one action the user was given.
+        //
+        // A payload NEWER than requested already satisfies "at least this version". Only an OLDER
+        // one is a miss. Uses this file's own cmp — plugin/ ships standalone inside the payload, so
+        // importing scripts/ would be MODULE_NOT_FOUND on a real install (that has shipped twice).
+        if (!expectedVersion || cmp(payloadVersion, expectedVersion) >= 0) candidates.push({ version: payloadVersion, dir });
       }
     }
   }
@@ -400,7 +416,7 @@ function main() {
     const active = readJSON(ACTIVE);
     if (!staged) {
       if (expectedVersion) {
-        console.error(`✗ no staged host payload exactly matches expected version ${expectedVersion} — spine unchanged`);
+        console.error(`✗ no staged host payload is at or above expected version ${expectedVersion} — spine unchanged`);
         return 1;
       }
       console.log('no host-staged version found — nothing to apply.');
