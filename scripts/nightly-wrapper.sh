@@ -119,6 +119,18 @@ sh scripts/memdb-health.sh .swarm/memory.db >> "$LOG" 2>&1 \
 # host verification, post-publication seal) still runs exactly as designed. It stands down on any
 # unexpected state — dirty tree, open PRs, no green exact-SHA evidence, a -dev version, a stalled
 # Actions plane — because a watchdog acting on a partial picture is worse than no watchdog.
+# ── GITHUB HEALTH (2026-08-08). Stuart: "You should never ever let it be in a situation where
+# it's got failed pushes. Your job is to always be looking out for GitHub." Every prior signal
+# watched exactly ONE thing — signal-watch CI verdicts, issue-watch the SLA, published-surface
+# npm-vs-GitHub — and nothing watched the states that actually stall work: a red main, a PR that
+# silently went CONFLICTING, a stalled Actions queue, branches left behind after a merge.
+#
+# REPORTS ONLY. It cannot push, merge, close or publish (asserted by test). Exit 1 means a human
+# needs to look, and the reasons print in full rather than as a count.
+echo "===== GITHUB-HEALTH watch — $(date -u +%FT%TZ) =====" >> "$LOG"
+/usr/local/bin/node scripts/github-health-watch.mjs >> "$LOG" 2>&1 \
+  || echo "[github-health] findings above need attention" >> "$LOG"
+
 echo "===== RELEASE-CONVERGENCE watchdog — $(date -u +%FT%TZ) =====" >> "$LOG"
 /usr/local/bin/node scripts/release-convergence-watchdog.mjs --dispatch >> "$LOG" 2>&1 \
   || echo "[release-watchdog] exited non-zero — see above; nightly continues" >> "$LOG"
