@@ -25,6 +25,24 @@ import {
   missingEmbedderModels,
 } from '../kb/model-requirements.mjs';
 import { applyManagedCatalogUpdate } from '../scripts/model-router-catalog.mjs';
+import { cmpVersion } from '../scripts/stack-sync.mjs';
+
+// ISSUE #123 — AN INSTALL THAT IS AHEAD OF THE PUBLISHED RELEASE IS NOT A BROKEN INSTALL.
+// Host convergence compared installed === PACKAGE_VERSION, so 4.0.29-dev against a published
+// 4.0.28 read EXACTLY like being behind: --update exited 1 with 'host synchronization is
+// incomplete' and --doctor printed '✗ FAILING' while every displayed check was green (121 repos
+// indexed, grounding proven, Codex MCP live, 17 hooks enabled). The prescribed repair —
+// reinstalling the plugin extras — was a no-op, because the extras were present and firing.
+// Telling someone their working install is broken, then handing them a fix that changes nothing,
+// is the worst kind of false alarm: it burns trust AND time.
+// Convergence means NOT BEHIND. Ordering comes from cmpVersion, which is prerelease-aware and is
+// documented as the only place ordering is decided in this system.
+const versionSatisfies = (installed, expected) => {
+  if (!expected) return true;
+  if (!installed) return false;
+  if (installed === expected) return true;
+  try { return cmpVersion(installed, expected) >= 0; } catch { return installed === expected; }
+};
 import {
   CONSOLE_RUNTIME_SURFACE, CONSOLE_RUNTIME_IDENTITY_FILE, consoleRuntimeDigest,
 } from '../scripts/console-runtime-identity.mjs';
@@ -847,7 +865,7 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
   // code says the command ran, not that the plugin is usable; the commands either exist on disk or
   // they do not. This is the difference between `/rvbc` working and "Unknown command: /rvbc".
   const installed = claudePluginStatus();
-  if (installed.installed && (!expectedVersion || installed.version === expectedVersion)) {
+  if (installed.installed && versionSatisfies(installed.version, expectedVersion)) {
     ok(`plugin installed at user scope (global, alongside Ruflo / RuVector) — exact version ${installed.version}`);
     info(`  commands available after a restart: ${c.bold('/rvbc')}, ${c.bold('/ruvnet-brain:configure')}`);
     return { host: true, wired: true, version: installed.version, manualMarketplace, manualInstall };
@@ -855,7 +873,7 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
 
   // The honest failure. The brain still WORKS — this is the difference between a broken install and
   // a partial one, and the user is told exactly which they have instead of being congratulated.
-  const mismatch = installed.installed && expectedVersion && installed.version !== expectedVersion;
+  const mismatch = installed.installed && !versionSatisfies(installed.version, expectedVersion);
   warn(mismatch
     ? `Claude installed ${installed.version || 'an unknown version'}, not required ${expectedVersion}; refusing to call this host converged.`
     : `the plugin did NOT land — so slash commands like ${c.bold('/rvbc')} will not exist yet.`);
@@ -1259,7 +1277,7 @@ export function wireCodexPlugin({
     if (announce) warn(`Codex Brain plugin is installed but disabled by user or policy — left disabled (${CODEX_PLUGIN_ID}).`);
     return { host: true, action: 'disabled', ...before };
   }
-  if (before.installed && before.enabled && (!expectedVersion || before.version === expectedVersion)) {
+  if (before.installed && before.enabled && versionSatisfies(before.version, expectedVersion)) {
     if (announce) ok(`Codex Brain plugin already installed and enabled (${before.version || 'version unknown'}) — no changes.`);
     return { host: true, action: 'unchanged', ...before };
   }
@@ -1297,7 +1315,7 @@ export function wireCodexPlugin({
     return { host: true, action: 'plugin-failed', error: added.error };
   }
   const after = codexPluginStatus({ ...options, runJson });
-  if (!after.installed || !after.enabled || (expectedVersion && after.version !== expectedVersion)) {
+  if (!after.installed || !after.enabled || !versionSatisfies(after.version, expectedVersion)) {
     if (announce) warn('Codex accepted the install command but the Brain plugin is not installed and enabled.');
     return { host: true, action: 'verification-failed', expectedVersion, ...after };
   }
@@ -2363,12 +2381,15 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
 }
 
 export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSION) {
-  if (!receipt || receipt.desiredVersion !== expectedVersion) {
+  // Same 'ahead is not behind' rule as host convergence above (#123). A receipt written by a
+  // NEWER generation than the installer currently running is not a version mismatch — it is a
+  // machine that is further along. Only a receipt for an OLDER generation is stale.
+  if (!receipt || !versionSatisfies(receipt.desiredVersion, expectedVersion)) {
     return { healthy: false, state: 'version-mismatch', action: `required version ${expectedVersion}` };
   }
   const hostStates = Object.values(receipt.hosts || {});
   const badHost = hostStates.find((host) => !['ready', 'disabled', 'absent'].includes(host?.state)
-    || (host.state === 'ready' && host.version !== expectedVersion));
+    || (host.state === 'ready' && !versionSatisfies(host.version, expectedVersion)));
   if (badHost) return { healthy: false, state: 'host-pending', action: 're-run host synchronization' };
   if (receipt.consoleRuntime?.state !== 'ready') {
     return { healthy: false, state: receipt.consoleRuntime?.state || 'console-unproven', action: 'restart Console, then re-run --doctor' };

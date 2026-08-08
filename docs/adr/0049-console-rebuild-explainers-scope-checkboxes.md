@@ -3,7 +3,7 @@ id: ADR-049
 title: The console rebuild — explain every section, scope every suggestion, and make the safe ones checkable
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-06
+updated: 2026-08-08
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, console, advocacy, capability, cache, honesty]
 supersedes: []
@@ -122,6 +122,7 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-08 | **Re-read after the #123 convergence fix; the Console contract is unchanged.** | `bin/install.mjs` and `console/app.js` are governed here. The change is confined to how host convergence COMPARES two version strings — `installed === expected` became `installed >= expected`, so a `-dev` build ahead of the published release stops being reported as broken (`--update` exited 1, `--doctor` printed FAILING, and the prescribed repair was a no-op while every check was green). The Console's rebuild, its explainers, its scope checkboxes and its consent-gated Apply are untouched; what moved is a predicate feeding the doctor's verdict, not anything the Console renders or offers. |
 | 2026-08-02 | Re-read the governed installer after the 4.0.8 release-process change; Console scope and user controls are unchanged. | Commit `8608cfd` changes `bin/install.mjs` only so `--doctor --hooks` fails closed when packaged selfcheck is unavailable. It does not change Console actions, defaults, or consent boundaries. |
 | 2026-08-02 | Re-read the final 4.0.7 Console and installer changes; the explainer, scoped recommendations, evidence-backed controls, project cache, and profile decisions remain unchanged. | Commits `3668b1b`, `5a638f6`, and `78e897b` add runtime provenance, owner-only issue inventory, provider availability, and a remotely durable release transaction through `console/app.js`, `scripts/onboarding-console.mjs`, and `bin/install.mjs`. Those changes expose state and protect delivery; they do not broaden recommendation scope, consent, Fix All, undo, cache, or profile semantics. Exact-SHA CI and public-artifact proof remain release gates. |
 | 2026-08-02 | Re-read the Console timing receipt, explicit fixture-root boundary, and dual-host update-test seam. The explainer, per-recommendation scope, evidence-backed checkbox, project-keyed cache, and two-profile decisions remain unchanged. | `scripts/onboarding-console.mjs` now returns aggregate `revalidationMs`, `undoJournalMs`, `childRemedyMs`, and `totalMs` from the existing revalidate → journal → remedy path; it does not change recommendation construction, scope, consent, or undo. Commit `8f06287` adds the absolute, normalized `RUVNET_CONSOLE_ROOT` fixture boundary with the production default still `os.homedir()`; global binaries and credentials remain on the system home. Commit `c1f5b45` makes `bin/install.mjs` host-update collaborators injectable for the dual-host matrix while retaining its production defaults. |

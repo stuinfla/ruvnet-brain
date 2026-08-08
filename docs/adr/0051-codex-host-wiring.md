@@ -3,7 +3,7 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-06
+updated: 2026-08-08
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -274,6 +274,7 @@ native Windows.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-07 | **Re-read after the #123 convergence fix; Codex host wiring is unchanged.** | `bin/install.mjs` is governed here, and the change is confined to version COMPARISON in host convergence — `installed === expected` became `installed >= expected`, so a `-dev` build ahead of the published release stops being reported as a broken install. The Codex registration, the stable wrapper, the adapter and the doctor's three Codex lines are untouched. Notably this ADR is titled '…without version-pinned commands', and the defect being fixed was precisely a version pin in disguise: an equality test standing in for an ordering test. The fix moves further in this decision's direction, not against it. |
 | 2026-08-06 | **Fourth re-read today; NO change required. Same version-only cause.** | `4.0.19 → 4.0.20-dev` (`sync-version.mjs`) after the 4.0.19 candidate was withdrawn: the publisher rejected its own evidence on a key-order comparison, so main stopped asserting a clean version it had not shipped. Only the manifest `version` field moved; no Codex wiring, adapter, wrapper, skill or command file. See the structural note in the row below — this ADR governs a file rewritten by every bump, which is why it lands here on each one. |
 | 2026-08-06 | **Third re-read today; still NO change required — and the repetition is the finding.** | Same cause a third time: the only governed movement is `plugin/.codex-plugin/plugin.json` `"version"` (`4.0.18 → 4.0.19-dev`, `c83c1b0`), no Codex wiring touched. Worth naming rather than repeating silently: this ADR `governs:` the codex plugin manifest, and `sync-version.mjs` rewrites that manifest on EVERY version bump, so every bump marks this document presumed-stale regardless of whether anything it describes moved. That is a false positive by construction, and a currency gate that fires on every bump trains people to stamp without reading — the exact failure that produced a blanket 61-ADR stamp in this repo. The honest fix is to narrow `governs:` to the Codex wiring this ADR actually decides, not the manifest's version field; recorded here rather than done in a release-repair commit. |
 | 2026-08-06 | **Re-read again after the release-rail repair; still NO change required.** | Flagged `presumed-stale` a second time the same day. Same cause, same verdict: across all 23 governed paths the only movement is `plugin/.codex-plugin/plugin.json` `"version"`, this time `4.0.18 → 4.0.18-dev` as `sync-version.mjs` returned main to the unreleased suffix after the release-identity deadlock was found (`66e71ea`). No Codex registration, adapter, wrapper, skill or command file moved. Restating the reason rather than pointing at the row below, because "same as last time" is how a currency log stops being read: this ADR is titled "…without version-pinned commands", so a version string is the one class of change it is constructed to be immune to. |

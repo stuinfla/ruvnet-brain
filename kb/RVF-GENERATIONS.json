@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "brainVersion": "4.0.29-dev",
-  "releaseTag": "v4.0.29-dev",
+  "brainVersion": "4.0.30-dev",
+  "releaseTag": "v4.0.30-dev",
   "stores": {
     "agentdb": {
       "file": "agentdb.big.rvf",
@@ -338,12 +338,12 @@
     },
     "open-claude-code": {
       "file": "open-claude-code.big.rvf",
-      "sha256": "a8cd0cab83d28ded802f5a630232a02725590962a9acb2dc62f643d6f99edef5",
-      "bytes": 614507,
+      "sha256": "c5061c5b2cce674f543b99099d7eee08ace34090004e720799b524f3f276ff14",
+      "bytes": 619474,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": "731578dcdd54007c2bcc9ef9bcf8a22f339faa54",
-      "builtUtc": "2026-08-06T17:27:57.653Z"
+      "sourceCommit": "1575642bfd4348f59a9e478582c4e6b4da52a66b",
+      "builtUtc": "2026-08-08T07:15:35.672Z"
     },
     "photonlayer": {
       "file": "photonlayer.big.rvf",
