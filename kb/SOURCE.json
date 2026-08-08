@@ -1,15 +1,15 @@
 {
   "builder": "rvf-kb-forge",
-  "builtUtc": "2026-08-07T07:16:42.850Z",
+  "builtUtc": "2026-08-08T07:15:35.571Z",
   "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
   "selfUpdate": "node forge-update.mjs",
   "stores": {
     "open-claude-code": {
       "kbName": "open-claude-code",
       "sourceRepo": "https://github.com/ruvnet/open-claude-code",
-      "sourceCommit": "731578dcdd54007c2bcc9ef9bcf8a22f339faa54",
-      "sourceDescribe": "v2.0.0-nightly.20260806",
-      "builtUtc": "2026-08-06T17:27:57.611Z",
+      "sourceCommit": "1575642bfd4348f59a9e478582c4e6b4da52a66b",
+      "sourceDescribe": "v2.0.0-nightly.20260808",
+      "builtUtc": "2026-08-08T07:15:35.571Z",
       "builder": "rvf-kb-forge",
       "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/open-claude-code-kb-bundle.zip",
@@ -258,6 +258,6 @@
       "selfUpdate": "node forge-update.mjs rucelium"
     }
   },
-  "brainVersion": "4.0.23-dev",
-  "releaseTag": "v4.0.23-dev"
+  "brainVersion": "4.0.29-dev",
+  "releaseTag": "v4.0.29-dev"
 }

@@ -1,7 +1,7 @@
 {
   "brainVersion": "4.0.30-dev",
-  "generated": "2026-08-07T07:16:52.333Z",
-  "generatedHuman": "Fri, 07 Aug 2026 07:16:52 GMT",
+  "generated": "2026-08-08T07:15:40.148Z",
+  "generatedHuman": "Sat, 08 Aug 2026 07:15:40 GMT",
   "coverage": {
     "built": 71,
     "catalogued": 194,
@@ -213,7 +213,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "731578dcdd54007c2bcc9ef9bcf8a22f339faa54",
+      "builtFromSha": "1575642bfd4348f59a9e478582c4e6b4da52a66b",
       "latestRemoteSha": null,
       "status": "built"
     },

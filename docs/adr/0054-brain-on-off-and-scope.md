@@ -3,7 +3,7 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-06
+updated: 2026-08-08
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -201,6 +201,7 @@ failure. v1 draft's Decision + risks register superseded above; Context stands.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-07 | **Re-read after the #123 convergence fix in `bin/install.mjs`; the on/off and scope decisions are unchanged.** | Host convergence compared `installed === PACKAGE_VERSION`, so an install AHEAD of the published release (a `-dev` build) was reported as broken: `--update` exited 1 and `--doctor` printed FAILING while every check was green, and the prescribed repair was a no-op. Six comparisons now order rather than equate, delegating to `scripts/stack-sync.mjs` cmpVersion. This ADR governs the brain's OFF switch and scope boundary — the sentinel read, the per-operation snapshot, the soft answer — none of which is touched by how two version strings are compared. The off-switch path in this file is unchanged and still read per call, never cached. |
 | 2026-08-02 | Re-read the governed installer after the 4.0.8 public host-proof change; Brain ON/OFF and scope semantics are unchanged. | Commit `8608cfd` changes `bin/install.mjs` only at the `--doctor --hooks` failure boundary. Three isolated publication fixtures exercise installed behavior without changing persisted Brain scope or user preferences. |
 | 2026-08-02 | Re-read every final 4.0.7 change touching the installer, hook shim, SessionStart core, and Console. Sentinel authority, per-plane OFF behavior, maintenance choice, and Complete/RuVector profile semantics remain unchanged; `impl: verification-expired` remains honest. | Commits `28baa9c`, `3668b1b`, `00110e5`, `67b283e`, `5a638f6`, and `78e897b` make dispatch timing truthful, keep maintainer issue alerts private, recycle completed swarm slots, expose provider/runtime identity, and harden remote release recovery. Each path still resolves Brain-OFF before user-facing activity and none writes or overrides the sentinel. This re-read does not rerun the eight multi-host OFF gates or mint a new digest. |
 | 2026-08-02 | Re-read the Console's timing receipt and explicit fixture-root boundary. They do not change sentinel authority, the `brainEnabled` mirror, per-plane OFF behavior, maintenance choice, or Complete/RuVector profile semantics; `impl: verification-expired` remains honest. | Commit `7b8b41d` only exposes aggregate timing for the existing apply path. Commit `8f06287` adds `RUVNET_CONSOLE_ROOT` for console-owned config/state/cache/discovery in isolated tests, with production retaining `os.homedir()` and global binaries/credentials left on the system home. `scripts/brain-state.mjs` still owns the sentinel through its existing explicit `RUVNET_BRAIN_STATE_DIR` seam. The focused root/timing tests and local browser trials do not rerun this ADR's eight multi-host OFF gates, so no new `verified` date or digest is claimed. |
