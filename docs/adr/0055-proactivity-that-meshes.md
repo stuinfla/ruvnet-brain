@@ -3,7 +3,7 @@ id: ADR-055
 title: Proactivity that meshes — one decision law, four planes, substance-bound enforcement, learning bound to outcomes
 status: Accepted
 date: 2026-07-27
-updated: 2026-08-06
+updated: 2026-08-08
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6 (codex, read-only)]
 tags: [proactivity, hooks, mesh, fourth-wall, learning, grounding, qa]
@@ -701,6 +701,7 @@ delegation drift goes to the interrupt tier (§3.7.9).
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-08 | **Re-read after PR #124 and the #123 convergence fix; the proactive mesh is unchanged.** | Governed files moved for two unrelated reasons: PR #124 hardens the private RVF overlay updater against symlink attack and fixes closed on corrupt inventories, and the #123 fix makes host convergence order versions instead of equating them, so a `-dev` install ahead of the published release is no longer reported as broken. Neither changes a hook, a threshold, a channel, or what the mesh is allowed to say — one is filesystem safety, the other is a comparison operator. The gate's fail-open posture and loop-safety guards are untouched. |
 | 2026-08-03 | Re-read the governed hook mesh after the 4.0.8 held-open-input and offline integration-guard repairs. | The four-plane decision law, hook registrations, and fail-open behavior remain unchanged; `plugin/scripts/codex-hook-wrapper.mjs` adds bounded polling and `tests/integration/reader-deadlock-regression.test.mjs` makes the documented unavailable-model path a loud skip. Commits `640ae01` and `1e728b0`. |
 | 2026-08-02 | Re-read the governed hook mesh after the 4.0.8 held-open-stdin repair; decision-plane semantics and OFF behavior are unchanged. | ADR-062 and `plugin/scripts/codex-hook-wrapper.mjs` add a bounded idle-input boundary for all packaged Codex lifecycle hooks; `plugin/hooks/codex-hooks.json` routes every registration through it. Focused installed-entrypoint tests cover JSON, EOF, large input, and held-open stdin. |
 | 2026-08-02 | Kept SessionStart below its byte budget while restoring the build-only L4 behavioral contract in the prompt hook. The four-plane decision law, Brain-OFF split, consent boundary, and outcome-only learning rule remain unchanged. | `plugin/scripts/session-start-core.mjs` remains compact; `plugin/scripts/ground-ruvnet.sh` now carries one concise build-only contract line instead of depending on prose removed from SessionStart. `scripts/behavioral-l1-l4.mjs` and the SessionStart byte probe are the paired acceptance boundaries. |
