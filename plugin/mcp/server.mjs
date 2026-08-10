@@ -194,11 +194,23 @@ async function ensureChild() {
         const waiter = c.pending.get(msg.id);
         if (waiter) { c.pending.delete(msg.id); waiter.resolve(msg); }
       });
-      proc.on('exit', () => {
+      proc.on('exit', (code, signal) => {
         if (child === c) child = null;
         for (const [, p] of c.pending) p.reject(new Error('brain worker exited'));
         c.pending.clear();
-        if (!c.intentionalStop) {
+        // A CLEAN EXIT IS NOT A CRASH (issue #133, the sibling of the #122 idle-exit fix).
+        //
+        // #122 gave the worker a 15-minute idle retirement so a quiet session stops holding 3-15GB.
+        // It exits deliberately, with process.exit(0). This handler only knew about
+        // `intentionalStop`, which the PARENT sets when IT kills the child — so the worker retiring
+        // ITSELF was recorded as `degraded / worker-exit … exited unexpectedly`, and --doctor then
+        // exited 1 on a machine where nothing was wrong and the next search would respawn it by
+        // design. A fix that frees memory should not make the product report itself broken.
+        //
+        // Exit 0 with no signal is a deliberate stop — the idle retirement, or stdin EOF when the
+        // host goes away. A crash carries a non-zero code or a signal, and still degrades.
+        const cleanExit = code === 0 && !signal;
+        if (!c.intentionalStop && !cleanExit) {
           writeReadiness({
             state: 'degraded', phase: 'worker-exit', generation: c.generation,
             elapsedMs: Date.now() - startedAt, retryable: true,

@@ -3,7 +3,7 @@ id: ADR-060
 title: The two-stage cross-encoder cascade — reading every passage, cheaply, before reading a few properly
 status: Accepted
 date: 2026-07-27
-updated: 2026-08-07
+updated: 2026-08-10
 authors: [Stuart Kerr, Claude Code]
 tags: [retrieval, latency, cross-encoder, cascade, measurement]
 supersedes: [ADR-059]
@@ -229,6 +229,7 @@ opt in with `KB_CE_CASCADE_K=64`; this ADR does not accept that value as the def
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-10 | **Re-read after the #133 clean-exit fix; the cascade is unchanged.** | The parent no longer reports the worker's intentional 15-minute idle retirement as an unexpected crash, so `--doctor` stops exiting 1 on a healthy idle machine. Nothing about how the cascade scores or re-ranks moved; the worker still respawns on the next search exactly as this ADR assumes. |
 | 2026-08-07 | **Re-read after the #122 memory work; the cascade decision is unchanged, and the residency it implies is now bounded in time.** | `kb/forge-mcp-all.mjs` gained an idle exit (15m default, `RUVNET_BRAIN_IDLE_EXIT_MS`, never mid-request) and `plugin/scripts/session-start-core.mjs` corrected a banner claim. This ADR decides HOW the cross-encoder cascade re-scores a pooled candidate set; it does not decide how long a warm encoder should sit idle in RAM, and nothing about the cascade itself moved. The reporter measured four workers at 3.7/3.3/3.0/15.7 GB — roughly 25 GB held by quiet sessions — against the "~0.5 GB" the source comment still claims, so that comment is stale independent of this decision. Open and NOT closed by this row: the 15.7 GB outlier, which is a different shape from normal model residency and is unreproduced. Idle exit bounds the damage in wall-clock time; it does not explain the magnitude, and this ADR should not be read as having accounted for it. |
 | 2026-07-31 | Re-verified the off-by-default cross-encoder cascade after the release-oracle fixes. | Commit `14f654e` changes only source-backed query classification, capability-card supplementation after source proof, and question-specific replayable-promotion evidence selection in `kb/forge-ask-all.mjs`. It does not change `CE_CASCADE_K_DEFAULT`, `cascadeRerankPool`, model loading, or the heavy cross-encoder path. The impacted broad gate passed 273/273 and the production Top-100 gate passed 100/100 semantic with a 3.723s maximum. |
 | 2026-07-30 | Reconciled the source-backed-card fast lane and persistent-worker readiness without changing the cascade default or claiming a new measurement. | `kb/forge-ask-all.mjs` may satisfy source-backed cards before the heavy full-corpus cross-encoder path; the two-stage cascade contract applies to that heavy path. `CE_CASCADE_K_DEFAULT` remains 0. `kb/forge-rerank.mjs`, `kb/forge-mcp-all.mjs`, and `plugin/mcp/server.mjs` prime the existing reranker inside the persistent MCP worker, not at host SessionStart. |

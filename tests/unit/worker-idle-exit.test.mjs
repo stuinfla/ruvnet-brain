@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -63,4 +64,23 @@ describe('issue #122 — the idle worker releases its memory', () => {
     expect(signal, 'disabled means it must still be alive when this test kills it').toBe('SIGKILL');
     expect(code).toBeNull();
   }, 60_000);
+});
+
+describe('issue #133 — a deliberate exit is not a crash', () => {
+  it('the parent only degrades readiness on an UNCLEAN exit', () => {
+    // #122 gave the worker a 15-minute idle retirement. The parent recorded that deliberate
+    // process.exit(0) as "degraded / worker-exit … exited unexpectedly", so --doctor exited 1 on a
+    // healthy machine where the next search would respawn the worker by design. A fix that frees
+    // 3-15GB must not make the product report itself broken.
+    const source = fs.readFileSync(
+      path.join(path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url)))), 'plugin', 'mcp', 'server.mjs'),
+      'utf8',
+    );
+    expect(source, 'the exit handler must receive the code and signal to judge cleanliness')
+      .toMatch(/proc\.on\('exit',\s*\(code,\s*signal\)/);
+    expect(source, 'exit 0 with no signal is deliberate — idle retirement or stdin EOF')
+      .toMatch(/const cleanExit = code === 0 && !signal/);
+    expect(source, 'and degradation must be gated on it')
+      .toMatch(/!c\.intentionalStop && !cleanExit/);
+  });
 });

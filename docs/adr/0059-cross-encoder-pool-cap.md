@@ -3,7 +3,7 @@ id: ADR-059
 title: Bounding the cross-encoder pool — the measurement, and why the cap ships OFF
 status: Superseded
 date: 2026-07-27
-updated: 2026-07-28
+updated: 2026-08-10
 authors: [Stuart Kerr, Claude Code]
 tags: [retrieval, latency, cross-encoder, measurement, negative-result]
 supersedes: []
@@ -199,5 +199,6 @@ to no reader (`:105-106`) and is discarded. A 30% cut does not rescue that; it i
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-10 | **Re-read after the #133 clean-exit fix; the pool cap is unchanged.** | `plugin/mcp/server.mjs` now distinguishes a deliberate worker exit (code 0, no signal — the #122 idle retirement) from a crash, instead of recording both as `degraded / worker-exit`. This changes how an exit is CLASSIFIED, not how many cross-encoder workers may exist or how large the pool may grow. |
 | 2026-07-28 | Re-read all governed paths; retained this as a superseded negative result and kept `CE_MAX_PAIRS_DEFAULT = 0`. The numeric tables remain the historical measurements from the recorded 2026-07-27 run, not a fresh benchmark of today’s candidate pool. | Commits `2de0c58` and `859a16d` changed `kb/forge-ask-all.mjs` after the prior stamp by adding implementation-evidence checks, query-scoped routing, and exact-evidence rescue lanes. Those additions can change pool composition and selected results, so the old timing and identity ratios are not claimed as freshly reproduced. `capRerankPool` and the opt-in `KB_CE_MAX_PAIRS` path remain wired; `scripts/rerank-cap-eval.mjs` and `scripts/rerank-cap-warm-ab.mjs` did not move in that range. Known governed-source comment debt remains: the header of `scripts/rerank-cap-eval.mjs` calls subset replay “EXACT” while its collection path correctly records the measured ±0.26-logit batch-composition effect; this ADR retains the honest “approximation” classification. |
 | 2026-07-27 | Re-verified, and superseded by ADR-060. | `capRerankPool` remained present and `CE_MAX_PAIRS_DEFAULT` remained 0. ADR-060’s completed 24-question cascade run measured −59.3% rather than this cap’s −30.4% and retained s-05 by ordering the cut with a prefix cross-encoder score; s-05’s answer was rank 593/608 by distance and 1/608 by cross-encoder. |
