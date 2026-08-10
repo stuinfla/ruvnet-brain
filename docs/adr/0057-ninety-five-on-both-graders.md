@@ -3,7 +3,7 @@ id: ADR-057
 title: 95 on both graders — closing a 38/53 against a self-reported 83, dimension by dimension
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-04
+updated: 2026-08-10
 impl: verification-expired
 verified: 2026-07-30
 verified_digest: 1c276a7dfbc5
@@ -60,7 +60,8 @@ contains certain WORDS, and the harness printed `OVERALL: PASS` on a run of ZERO
 all pass" was never evidence of behaviour, on either count.
 
 | Dim | | Fable | GPT | worst |
-|---|---|---|---|---|
+|---|---|---|
+| 2026-08-10 | Re-read after #128/#129; this plan stays Proposed and no score is promoted. | The governed `bin/install.mjs` changes are scheduling convergence (#129) and stale-generation pruning (#128). Neither adds, removes or relaxes a grader, a dimension or an observable, and neither is offered as evidence toward 95. `impl: verification-expired` is unchanged — two independent graders at or above 95 remain outstanding. |---|---|
 | D1 | Works well under real conditions | 50 | 60 | 50 |
 | D2 | Works as the user expects | 55 | 42 | 42 |
 | D3 | Proactive and measured | 69 | 53 | 53 |

@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-08
+updated: 2026-08-10
 impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -163,6 +163,7 @@ Verified first-hand at file:line, not relayed:
 
 | Deduction | State on main today | What still gates the points |
 |---|---|---|
+| 2026-08-10 | Re-read after #128/#129; no observable, mutant or budget changed. | `bin/install.mjs` is governed here. #129 makes every scheduler run the host-convergent entrypoint and makes `--enable-nightly` exit non-zero when it installs nothing; #128 adds `prunePluginGenerations()`. Both are guarded by their own mutation-proved suites (`tests/unit/nightly-convergence.test.mjs`, `tests/unit/plugin-generation-prune.test.mjs`), and neither alters a PLATFORM_BUDGET, a dimension observable, or the external-signal watch plane this ADR defines. |
 | D8 −35 "verification failures do not stop installation" | **Narrowed.** `bin/install.mjs:3240-3248` consumes `runSelfCheck()` and sets `process.exitCode` | No stranger-machine matrix exercises it; no mutant proves the line is load-bearing |
 | D8 −20 "grounding smoke never fatal" | Still true **by design** | §D8 decides it explicitly rather than dodging |
 | D7 −30 "regex parses shell semantics" | **Closed at the authorization boundary.** `e089074` enforces managed CLI help/run through structured schemas and literal argv; `4ad464e` makes raw-shell `verify-interface.sh` advisory-only. `tests/regression/interface-gate-corpus.test.mjs` proves every historical shell shape exits 0, and `tests/unit/verify-interface.test.mjs` ratchets out blocking dependencies on shell-structure reconstruction. | Packed/published-host proof is still required under D8; the raw hook is migration guidance, never authority. |

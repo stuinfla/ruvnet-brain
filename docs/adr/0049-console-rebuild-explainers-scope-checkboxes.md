@@ -3,7 +3,7 @@ id: ADR-049
 title: The console rebuild — explain every section, scope every suggestion, and make the safe ones checkable
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-08
+updated: 2026-08-10
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, console, advocacy, capability, cache, honesty]
 supersedes: []
@@ -122,6 +122,7 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-10 | **Re-read after #128/#129; the Console contract is unchanged.** | `bin/install.mjs` is governed here. Two additions: `NIGHTLY_ARGV`/`cronExample`/`enableNightly` now schedule the host-convergent entrypoint (issue #129), and `prunePluginGenerations()` removes plugin-cache generations the registry does not reference (issue #128). Neither touches what this ADR decides. The prune runs in the same `okApplied` branch as `runtimeTransaction.activate()` but deletes only directories under a registered `installPath`'s parent that carry their own `.claude-plugin/plugin.json`; the Console runtime lives under its own receipt dir and is excluded by construction. The explainers, the scoped suggestions, the checkboxes and the consent-gated Apply are untouched. |
 | 2026-08-08 | **Re-read after the #123 convergence fix; the Console contract is unchanged.** | `bin/install.mjs` and `console/app.js` are governed here. The change is confined to how host convergence COMPARES two version strings — `installed === expected` became `installed >= expected`, so a `-dev` build ahead of the published release stops being reported as broken (`--update` exited 1, `--doctor` printed FAILING, and the prescribed repair was a no-op while every check was green). The Console's rebuild, its explainers, its scope checkboxes and its consent-gated Apply are untouched; what moved is a predicate feeding the doctor's verdict, not anything the Console renders or offers. |
 | 2026-08-02 | Re-read the governed installer after the 4.0.8 release-process change; Console scope and user controls are unchanged. | Commit `8608cfd` changes `bin/install.mjs` only so `--doctor --hooks` fails closed when packaged selfcheck is unavailable. It does not change Console actions, defaults, or consent boundaries. |
 | 2026-08-02 | Re-read the final 4.0.7 Console and installer changes; the explainer, scoped recommendations, evidence-backed controls, project cache, and profile decisions remain unchanged. | Commits `3668b1b`, `5a638f6`, and `78e897b` add runtime provenance, owner-only issue inventory, provider availability, and a remotely durable release transaction through `console/app.js`, `scripts/onboarding-console.mjs`, and `bin/install.mjs`. Those changes expose state and protect delivery; they do not broaden recommendation scope, consent, Fix All, undo, cache, or profile semantics. Exact-SHA CI and public-artifact proof remain release gates. |

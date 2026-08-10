@@ -545,6 +545,99 @@ async function unzipInto(zipPath, cacheDir, sourceDir = null) {
   ok(`brain unpacked to ${cacheDir}`);
 }
 
+/**
+ * ISSUE #128 — STALE PLUGIN GENERATIONS ARE STILL DISCOVERED.
+ *
+ * `pruneUnlistedStores` below states the rule this repo already believes: "an update is a
+ * replacement, not an overlay." That rule was applied to KB stores and never to the plugin cache.
+ *
+ * Measured on the maintainer's machine 2026-08-10: the registry names ONE generation and the cache
+ * held TWENTY-EIGHT, 22 MB, each a complete generation with its own `skills/` and `hooks/`. Claude
+ * Code resolves skills by walking that directory rather than by honouring `installPath`, so old
+ * generations keep answering. One session announced three different versions, none of them the one
+ * executing, and the stale block's mandatory phrasing — "must say ONE version, never a second
+ * number" — made the assistant state the wrong version authoritatively in its first sentence.
+ *
+ * Worse than cosmetic: the three blocks CONTRADICT each other inside one session (one says do not
+ * restart, one says an update is landing, one mandates a third version), so whichever the model
+ * obeys, the user is misinformed by a source that sounds definitive.
+ *
+ * WHAT MAKES DELETION SAFE HERE, since this removes directories from someone's machine:
+ *   • The registry is the ONLY authority. Unreadable, missing, or naming no ruvnet-brain install →
+ *     nothing is removed and a reason is returned. Never guess what to delete — the same discipline
+ *     as pruneUnlistedStores' catch, for a far larger blast radius.
+ *   • Only siblings of a registered installPath are considered, so the scan cannot wander.
+ *   • A candidate must LOOK like a generation (its own .claude-plugin/plugin.json). Anything else is
+ *     someone else's data and is left alone.
+ *   • Symlinks are never followed or removed: scripts/dev-plugin-link.sh links a dev checkout in
+ *     here, and deleting through that link would delete the working tree.
+ *   • EVERY registered installPath is protected, not just the first — the plugin may legitimately be
+ *     installed at both user and project scope, and treating one as stale would delete a live install.
+ *   • The active generation is excluded by RESOLVED PATH, never by version string.
+ *   • Report-only unless `apply` is set, and every removal is returned by name, so a silent sweep is
+ *     impossible.
+ */
+export function prunePluginGenerations({
+  registryPath = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'),
+  apply = false,
+} = {}) {
+  const nothing = (why) => ({ active: [], stale: [], removed: [], bytes: 0, why });
+  let registry;
+  try { registry = JSON.parse(fs.readFileSync(registryPath, 'utf8')); } catch (e) {
+    return nothing(`plugin registry unreadable (${e.code || e.message}) — refusing to remove anything`);
+  }
+  const active = Object.entries(registry?.plugins || {})
+    .filter(([name]) => /^ruvnet-brain@/.test(name))
+    .flatMap(([, v]) => (Array.isArray(v) ? v : []))
+    .map((e) => e?.installPath)
+    .filter((p) => typeof p === 'string' && p);
+  if (!active.length) return nothing('no ruvnet-brain install is registered — refusing to remove anything');
+
+  const keep = new Set(active.map((p) => path.resolve(p)));
+  const stale = [];
+  for (const parent of new Set(active.map((p) => path.dirname(path.resolve(p))))) {
+    let names = [];
+    try { names = fs.readdirSync(parent); } catch { continue; }
+    for (const name of names) {
+      const full = path.resolve(parent, name);
+      if (keep.has(full)) continue;
+      let st;
+      try { st = fs.lstatSync(full); } catch { continue; }
+      if (st.isSymbolicLink() || !st.isDirectory()) continue;
+      if (!fs.existsSync(path.join(full, '.claude-plugin', 'plugin.json'))) continue;
+      stale.push({ path: full, version: name, bytes: dirBytes(full) });
+    }
+  }
+  const bytes = stale.reduce((n, s) => n + s.bytes, 0);
+  if (!apply) return { active, stale, removed: [], bytes, why: null };
+
+  const removed = [];
+  let freed = 0;
+  for (const s of stale) {
+    // One unremovable generation (a permissions quirk, a file held open) must not abort the rest.
+    try { fs.rmSync(s.path, { recursive: true, force: true }); removed.push(s); freed += s.bytes; }
+    catch { /* left in place; it is still reported in `stale` */ }
+  }
+  return { active, stale, removed, bytes: freed, why: null };
+}
+
+/** Size of a directory tree, best-effort — used only to report what was or would be freed. */
+function dirBytes(dir) {
+  let total = 0;
+  const walk = (d) => {
+    let items = [];
+    try { items = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const it of items) {
+      const p = path.join(d, it.name);
+      if (it.isSymbolicLink()) continue;
+      if (it.isDirectory()) { walk(p); continue; }
+      try { total += fs.statSync(p).size; } catch { /* vanished mid-walk */ }
+    }
+  };
+  walk(dir);
+  return total;
+}
+
 export function pruneUnlistedStores(cacheDir) {
   try {
     const manifest = JSON.parse(fs.readFileSync(path.join(cacheDir, 'manifest.json'), 'utf8'));
@@ -2407,6 +2500,23 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   const applied = runStableSpine(apply);
   const okApplied = !applied.error && applied.status === 0;
   if (okApplied) {
+    // ISSUE #128 — prune here and nowhere else. This is the moment "an update is a replacement, not
+    // an overlay" becomes true for the host: the new generation is registered and the Stable Spine
+    // has applied, so every OTHER generation in that cache is unreachable by design and can only
+    // mislead — its skills still load, its hooks still fire, and its version banner still speaks.
+    // Making it a consequence of updating, rather than a command someone has to remember, is the
+    // whole point; a cleanup that must be invoked is a cleanup that does not happen.
+    // Best-effort and reported by name — it must never turn a good update into a failed one.
+    try {
+      const gens = prunePluginGenerations({ apply: true });
+      if (gens.removed.length) {
+        ok(`pruned ${gens.removed.length} stale plugin generation(s), freed ${(gens.bytes / 1048576).toFixed(1)} MB: ${gens.removed.map((g) => g.version).join(', ')}`);
+      } else if (gens.why) {
+        warn(`stale plugin generations were not pruned: ${gens.why}`);
+      }
+    } catch (e) {
+      warn(`stale plugin generations were not pruned (${e.message}); nothing was removed`);
+    }
     const receiptPath = path.join(brainHome, 'host-convergence.json');
     try {
       runtimeTransaction.activate();

@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// Imported under RUVNET_BRAIN_IMPORT_ONLY=1 so the installer main() never runs as an import side
+// effect — the same pattern as install-plan-choices / offerNightly / telemetry. The first version of
+// this file imported it bare; that happened to return in 221ms today because the no-argv path is
+// currently inert, which is luck, not a contract. A test that runs the REAL INSTALLER on a
+// maintainer's machine because a flag branch changed is not a risk worth carrying for one import.
+let installCronEntry;
+beforeAll(async () => {
+  process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+  ({ installCronEntry } = await import('../../bin/install.mjs'));
+});
 
 /**
  * ISSUE #129 — the scheduled update paths bypassed host convergence.
@@ -71,7 +82,6 @@ describe('issue #129 — every scheduler runs the one host-convergent command', 
 
 describe('issue #129 — enable-nightly reports what it actually did', () => {
   it('installs the entry, and is idempotent when it is already there', async () => {
-    const { installCronEntry } = await import('../../bin/install.mjs');
     const calls = [];
     const fake = (cmd, args, opts) => {
       calls.push({ cmd, args, input: opts?.input });
@@ -93,7 +103,6 @@ describe('issue #129 — enable-nightly reports what it actually did', () => {
   });
 
   it('TEETH: a failure returns a REASON, and never reports success', async () => {
-    const { installCronEntry } = await import('../../bin/install.mjs');
     const noBinary = installCronEntry('x', { run: () => ({ error: new Error('ENOENT') }) });
     expect(noBinary.ok).toBe(false);
     expect(noBinary.why).toMatch(/no crontab command/);
