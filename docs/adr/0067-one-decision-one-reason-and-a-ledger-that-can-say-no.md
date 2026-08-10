@@ -11,9 +11,11 @@ relates: [ADR-040, ADR-054, ADR-063, ADR-065, ADR-066, ADR-0012]
 governs:
   - plugin/scripts/decision-gate.mjs
   - plugin/scripts/decision-outcomes.mjs
+  - plugin/scripts/mcp-readiness.mjs
   - plugin/hooks/hooks.json
   - tests/unit/decision-gate.test.mjs
   - tests/unit/decision-outcomes.test.mjs
+  - tests/integration/bridge-to-model-e2e.test.mjs
 ---
 
 # ADR-067 — One decision, one reason
@@ -119,4 +121,5 @@ by name, most because they duplicate a native or global lesson and a second copy
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-10 | **Decisions 4 and 5 landed: the end-to-end proof, and promotion that reports whether it acted.** | (4) `tests/integration/bridge-to-model-e2e.test.mjs` walks the WHOLE chain with real processes — tagged AgentDB row → bridge → lessons.json → lesson-gate → unprompted-runtime → decision-gate → the model's additionalContext — in a hermetic HOME. Every prior test covered ONE hop, which is how two excellent halves stayed unconnected for 18 days. Mutation-proved: disabling the bridge turns 2 of 3 cases red, and two TEETH cases prove the trigger is load-bearing (an untagged row travels no further than the store; a lesson tagged for `ship` does not fire at `write-code`). (5) `lesson-promote --apply` now prints a DERIVED firing status — "31 of 34 machine-wide lessons reach a decision point" — and names the inert ones. It deliberately does NOT auto-assign a trigger: guessing the moment is the keyword-classifier mistake ADR-065 recorded in its own numbers, and a test asserts the store is untouched by a report. |
 | 2026-08-10 | Accepted as built: `decision-gate.mjs`, `decision-outcomes.mjs`, `hooks.json` rewired from 7 PreToolUse entries (4 able to refuse) to 4 (1 able to refuse). | Live-fired both paths: allow → exit 0, 1525B advisory forwarded, byte-empty stderr; refuse → exit 2, the policy's own words, byte-empty stdout. Obedience loop proven end-to-end: refuse → retry → scored `repeated`; a dead session's debt → `abandoned`. 152/152 across the six affected suites, and the structural invariant is mutation-proved (re-adding a second refuser fails two cases). |

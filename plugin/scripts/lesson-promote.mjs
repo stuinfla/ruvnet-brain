@@ -40,6 +40,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+// Read the global store through the bridge's own reader, and the moment vocabulary through the
+// store's own enum — the firing status must be DERIVED from the same code the bridge acts on, or it
+// becomes a second opinion about the same fact.
+import { readGlobalRows } from './lesson-bridge.mjs';
+import { TRIGGERS } from './lesson-store.mjs';
 
 const HOME = os.homedir();
 const PROJECTS = path.join(HOME, '.claude', 'projects');
@@ -254,9 +259,54 @@ if (invokedDirectly) {
     const res = applyPromotion(result, { file, now: new Date().toISOString().slice(0, 10) });
     console.log(`\n  ${res.ok ? '✓' : '✗'} ${res.log}`);
     if (res.backup) console.log(`     backup: ${res.backup.replace(HOME, '~')}`);
+    reportFiringStatus();
     process.exit(res.ok ? 0 : 1);
   } else {
     console.log(`\n  This was a REPORT — nothing was written.`);
     console.log(`  To promote these into your global instructions:  node scripts/lesson-promote.mjs --apply\n`);
   }
 }
+
+/**
+ * PROMOTION IS NOT DONE WHEN THE PROSE IS WRITTEN (ADR-067).
+ *
+ * `--apply` writes a block into ~/.claude/CLAUDE.md and reported success. That block is PROSE, and
+ * this project's founding measurement is what prose is worth:
+ *
+ *     gates that could interrupt:  8 fired,  8 obeyed   (100%)
+ *     prose in CLAUDE.md:          6 chances, 0 obeyed
+ *
+ * So the pipeline built to stop the owner repeating himself 87 times terminated in the one medium
+ * already measured at zero, and called that "promoted".
+ *
+ * THIS DOES NOT AUTO-ASSIGN A TRIGGER, and that restraint is the design. A trigger is the claim
+ * "this lesson belongs at THIS moment"; ADR-066 refuses to guess it because a keyword classifier is
+ * what put a false positive into ADR-065's own numbers. Promotion cannot know the moment.
+ *
+ * What it CAN do is stop reporting a half-finished promotion as a finished one. The firing status is
+ * DERIVED from the global store — how many machine-wide lessons carry a trigger tag and therefore
+ * reach a decision point, versus how many are inert prose — and printed with the one command that
+ * arms one. The gap becomes visible instead of silent, which is the same discipline lesson-bridge
+ * already applies to every untagged row it refuses to carry.
+ */
+function reportFiringStatus() {
+  let rows = [];
+  try { rows = readGlobalRows(); } catch { /* no global store on this machine */ }
+  if (!rows.length) {
+    console.log('\n  FIRING STATUS: no machine-wide lesson store on this machine — nothing promoted here can fire yet.');
+    return;
+  }
+  const firing = rows.filter((r) => /trigger:/.test(String(r.tags || '')));
+  const inert = rows.filter((r) => !/trigger:/.test(String(r.tags || '')));
+  console.log(`\n  FIRING STATUS — ${firing.length} of ${rows.length} machine-wide lesson(s) reach a decision point.`);
+  if (!inert.length) return;
+  console.log(`\n  ${inert.length} are PROSE ONLY. This repo measured prose at 0/6 obeyed against 8/8 for a`);
+  console.log('  gate that can interrupt, so a lesson without a moment is a lesson that does not act:');
+  for (const r of inert.slice(0, 8)) console.log(`      · ${r.key}`);
+  if (inert.length > 8) console.log(`      … and ${inert.length - 8} more (node plugin/scripts/lesson-bridge.mjs lists every one)`);
+  console.log('\n  Name the moment and the bridge does the rest:');
+  console.log('      ruflo memory store --path ~/.claude/global-memory/.swarm/memory.db -n global \\');
+  console.log('        -k "<key>" --value "<its text>" --tags "trigger:<moment>,enforce:checklist"');
+  console.log(`      moments: ${Object.values(TRIGGERS).map((x) => x.key).join(', ')}`);
+}
+
