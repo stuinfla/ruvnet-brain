@@ -481,6 +481,15 @@ describe('§2b byte-equivalence — ~/.claude/settings.json', () => {
     for (const sibling of ['brain-profile.mjs', 'model-requirements.mjs']) {
       fs.copyFileSync(path.join(REPO_ROOT, 'kb', sibling), path.join(kbDir, sibling));
     }
+    // The installer also imports from `plugin/scripts/` (ADR-067 added mcp-readiness there). The
+    // whole POINT of this fixture is that only install.mjs is mutated and its dependencies stay
+    // byte-identical — so the tree it needs is copied rather than hand-listed. A hand-list is what
+    // broke: adding one import to install.mjs made this fixture fail to load, reporting a mutation
+    // failure that was really a packaging one, three layers from its cause.
+    const pluginScripts = path.join(REPO_ROOT, 'plugin', 'scripts');
+    if (fs.existsSync(pluginScripts)) {
+      fs.cpSync(pluginScripts, path.join(dir, 'plugin', 'scripts'), { recursive: true });
+    }
     process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
     try {
       const mod = await import(pathToFileURL(file).href);

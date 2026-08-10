@@ -196,6 +196,7 @@ RUVNET_SETTINGS_FILE env splits; telemetry must never count disabled soft-answer
 failure. v1 draft's Decision + risks register superseded above; Context stands.
 
 ## Currency log
+| 2026-08-10 | **The consent guard is now the FIRST policy of the ADR-067 decision gate; the on/off contract is unchanged.** | `protect-brain-state.sh` is no longer its own registration — decision-gate consults it ahead of every other wall, which is this ADR §3's rule made structural rather than incidental. `tests/unit/brain-off.test.mjs` asserts that ordering directly. `plugin/mcp/server.mjs` also changed: readiness is per-process (#133), which touches no sentinel and no scope. |
 
 | 2026-08-06 | `user-settings.mjs` moved from `scripts/` into `plugin/scripts/`; `scripts/` keeps an `export *` shim. The on/off contract and every scope rule are UNCHANGED — the module is byte-identical, only its home moved. | ADR-065: only `plugin/` reaches a user (`marketplace.json` `"source": "./plugin"`; `update-apply.mjs` `stagePayload()` copies it verbatim) and every shipped layout flattens it, so this file was unreachable on real installs. `unprompted-runtime.mjs:238` — the consumer that reads the 1–5 dial this ADR governs — resolved it through a `CODE_ROOT` overshoot and `catch`-ed to defaults, so the dial was silently unread wherever the Brain actually ships. Re-read against this ADR: no contract change, the control simply now exists where it is looked for. |
 

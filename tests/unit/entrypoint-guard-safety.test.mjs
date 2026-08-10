@@ -87,3 +87,43 @@ describe('a shipped module never crashes the process that imports it', () => {
     expect(/import\.meta\.url\s*\)\s*\.pathname/.test(code(good))).toBe(false);
   });
 });
+
+/**
+ * ADR-067 addendum — A COPIED FILE CARRIES ITS IMPORTS OR IT IS DEAD ON ARRIVAL.
+ *
+ * Adding ONE import to `plugin/mcp/server.mjs` broke shipping in two places at once, and neither
+ * failure named its cause:
+ *
+ *   the Codex host   `wireCodexHost` copied a HAND-LISTED set of dependencies, so the new sibling
+ *                    was absent beside the copied server. Symptom: "no reply to initialize in 15s"
+ *                    — a dead server on the packaging boundary.
+ *   a mutation test  copied `bin/install.mjs` alone into a temp tree. Symptom: a MUTATION failure
+ *                    that was really a packaging one, three layers from its cause.
+ *
+ * Both are the same defect this repo keeps paying for: a file's import graph, restated somewhere
+ * else, drifting the moment the real one changes. Both are now DERIVED. This guard makes sure they
+ * stay derived, because the next person to add an import will not remember any of it.
+ */
+describe('a file that gets copied alone must have its dependencies copied with it', () => {
+  it('wireCodexHost derives the server\'s dependencies instead of listing them', () => {
+    const install = fs.readFileSync(path.join(ROOT, 'bin', 'install.mjs'), 'utf8');
+    expect(install, 'the derived walk must exist').toMatch(/export function serverDependencies/);
+    const wire = install.slice(install.indexOf('export function wireCodexHost'));
+    const body = wire.slice(0, wire.indexOf('\n}\n'));
+    expect(body, 'the copy list must come from the walk').toMatch(/serverDependencies\(source\)/);
+    expect(body, 'a hand-listed dependency is what broke — it must not come back')
+      .not.toMatch(/const managedCliSource = path\.join/);
+  });
+
+  it('TEETH: the walk really finds every relative import of the real server', async () => {
+    process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+    const { serverDependencies } = await import('../../bin/install.mjs');
+    const server = path.join(ROOT, 'plugin', 'mcp', 'server.mjs');
+    const found = serverDependencies(server).map((d) => d.spec).sort();
+    // Derived from the source on both sides — the test states no literal the product does not.
+    const declared = [...fs.readFileSync(server, 'utf8')
+      .matchAll(/^\s*import[^'"\n]*from\s*['"](\.[^'"]+)['"]/gm)].map((m) => m[1]).sort();
+    expect(declared.length, 'the server must still have relative imports, or this is vacuous').toBeGreaterThan(0);
+    for (const spec of declared) expect(found, `${spec} would not be copied beside the server`).toContain(spec);
+  });
+});

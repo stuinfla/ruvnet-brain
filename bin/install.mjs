@@ -639,6 +639,33 @@ function dirBytes(dir) {
   return total;
 }
 
+
+/**
+ * Every relative module `server.mjs` needs, transitively — read from the source, never restated.
+ *
+ * Bounded and cycle-safe. Returns `{ spec, from }` with the spec EXACTLY as written, because the
+ * copy target is resolved against the destination using that same spec: preserving the specifier is
+ * what makes `./sibling.mjs` and `../scripts/sibling.mjs` both land where the server will look.
+ */
+export function serverDependencies(source, seen = new Set()) {
+  const out = [];
+  const walk = (file, specPrefix) => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    let src = '';
+    try { src = fs.readFileSync(file, 'utf8'); } catch { return; }
+    for (const m of src.matchAll(/^\s*(?:import|export)[^'"\n]*from\s*['"](\.[^'"]+)['"]/gm)) {
+      const spec = specPrefix ? path.join(specPrefix, m[1]) : m[1];
+      const from = path.resolve(path.dirname(file), m[1]);
+      if (out.some((d) => d.from === from)) continue;
+      out.push({ spec: spec.startsWith('.') ? spec : `./${spec}`, from });
+      walk(from, path.dirname(spec));
+    }
+  };
+  walk(source, '');
+  return out;
+}
+
 export function pruneUnlistedStores(cacheDir) {
   try {
     const manifest = JSON.parse(fs.readFileSync(path.join(cacheDir, 'manifest.json'), 'utf8'));
@@ -1216,27 +1243,46 @@ export function wireCodexHost({
     if (announce) warn('MCP server missing from this bundle — Codex left untouched (non-fatal)');
     return { host: true, action: 'no-source' };
   }
-  const managedCliSource = path.join(path.dirname(source), 'managed-cli-interface.mjs');
-  if (!fs.existsSync(managedCliSource)) {
-    if (announce) warn('MCP structured-interface module missing from this bundle — Codex left untouched (non-fatal)');
-    return { host: true, action: 'no-source' };
-  }
-  if (!fs.existsSync(runtimePreferencesSource)) {
-    if (announce) warn('MCP runtime-preferences module missing from this bundle — Codex left untouched (non-fatal)');
+  // THE DEPENDENCY LIST IS DERIVED FROM server.mjs ITSELF, never hand-maintained.
+  //
+  // It used to name `managed-cli-interface.mjs` and `runtime-preferences.mjs` as literals — a second
+  // copy of the server's own import graph, and therefore a fact in two places with no producer. It
+  // failed exactly the way that always fails: ADR-067 added ONE import to server.mjs, this list did
+  // not know, and the Codex host shipped a server whose sibling was absent. The npm-tarball suite
+  // caught it as "no reply to initialize in 15s" — a dead server, on the packaging boundary, from a
+  // change that looked local.
+  //
+  // Relative specifiers are preserved verbatim on copy, so `./x.mjs` and `../scripts/y.mjs` both
+  // land where the server will look for them, and the walk is transitive because a dependency's own
+  // dependency is no less required.
+  const deps = serverDependencies(source);
+  const missing = deps.filter((d) => !fs.existsSync(d.from));
+  if (missing.length) {
+    if (announce) warn(`MCP server dependency missing from this bundle (${missing.map((d) => d.spec).join(', ')}) — Codex left untouched (non-fatal)`);
     return { host: true, action: 'no-source' };
   }
   const serverPath = path.join(serverDir, 'server.mjs');
-  const managedCliPath = path.join(serverDir, 'managed-cli-interface.mjs');
-  const runtimePreferencesPath = path.join(path.dirname(serverDir), 'scripts', 'runtime-preferences.mjs');
+  // Named for the return contract that callers and tests already depend on — RESOLVED from the
+  // derived list rather than re-stated, so they cannot drift from what is actually copied.
+  const depTarget = (suffix) => {
+    const hit = deps.find((d) => d.spec.endsWith(suffix));
+    return hit ? path.resolve(serverDir, hit.spec) : null;
+  };
+  const managedCliPath = depTarget('managed-cli-interface.mjs');
+  const runtimePreferencesPath = depTarget('runtime-preferences.mjs');
   fs.mkdirSync(serverDir, { recursive: true });
   // Write-beside-then-rename, both here and for the config below (issue #43): an interrupted plain
   // copy leaves a TORN server.mjs at the exact path a prior install's config already points at, so
   // Codex spawns half a file. rename() over the target is atomic; a failure leaves the old bytes.
   // Copy the dependency first. If the later server swap fails, the previously registered server
   // remains byte-intact and continues to import a backward-compatible module at the same path.
-  fs.mkdirSync(path.dirname(runtimePreferencesPath), { recursive: true });
-  atomicReplace(runtimePreferencesPath, (tmp) => fs.copyFileSync(runtimePreferencesSource, tmp));
-  atomicReplace(managedCliPath, (tmp) => fs.copyFileSync(managedCliSource, tmp));
+  // Dependencies FIRST, server last: if the server swap fails, the previously registered server
+  // remains byte-intact and continues to import backward-compatible modules at the same paths.
+  for (const dep of deps) {
+    const target = path.resolve(serverDir, dep.spec);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    atomicReplace(target, (tmp) => fs.copyFileSync(dep.from, tmp));
+  }
   atomicReplace(serverPath, (tmp) => fs.copyFileSync(source, tmp));
   if (fs.existsSync(hookWrapperSource)) {
     fs.mkdirSync(path.dirname(hookWrapperPath), { recursive: true });

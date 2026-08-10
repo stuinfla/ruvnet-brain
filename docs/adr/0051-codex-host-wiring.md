@@ -270,6 +270,7 @@ native Windows.
   `/hooks` review procedure while definitions are pending.
 
 ## Currency log
+| 2026-08-10 | **The Codex host's dependency copy is now DERIVED from server.mjs, and this ADR's contract is strengthened.** | The wiring hand-listed `managed-cli-interface.mjs` and `runtime-preferences.mjs` — a second copy of the server's own import graph. ADR-067 added one import and the Codex host shipped a server whose sibling was absent: `tests/unit/npm-tarball-codex.test.mjs` caught it on the packaging boundary as "no reply to initialize in 15s". `serverDependencies()` now walks the real imports transitively and preserves each specifier so `./x` and `../scripts/y` both land where the server looks. Registration, wrapper, adapter and doctor lines unchanged; what changed is that a future import cannot silently break this host. |
 | 2026-08-03 | Re-read Codex wrapper behavior against the packed 4.0.8 host proof; no contract change. | PR #100 exact-SHA release evidence is green; Windows unit remains the sole required red lane. |
 
 | Date | What changed | Why (with referents) |
