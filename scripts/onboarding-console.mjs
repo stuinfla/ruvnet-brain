@@ -2213,10 +2213,22 @@ function observeLearning() {
 
   let lastTrainSeconds = null; let trajectories = 0;
   try {
+    // ISSUE #136 — THE LEARNER IS PROJECT-SCOPED, so this must ask about the SERVED project.
+    //
+    // `ruflo hooks intelligence --status` reports `Data Dir: <cwd>/.claude-flow/neural`. With
+    // `cwd: SYSTEM_HOME` this measured `~/.claude-flow/neural` — a store nothing writes to on a
+    // machine whose work happens inside project directories. Measured on one machine, one minute:
+    // the home store held 1,216 trajectories last trained 6.9 DAYS ago while the served project held
+    // 9,940 last trained 22 SECONDS ago. The card said "Your learner has gone quiet" about a learner
+    // training every few seconds.
+    //
+    // This file already carries the verdict on this exact mistake at the refresh-child spawn: "cwd =
+    // the SERVED project, NOT REPO … it was a real console-honesty bug". Same rule, same file,
+    // different call site — #104's and #134's residual arriving a third time.
     const r = spawnSync(path.join(SYSTEM_HOME, '.npm-global/bin/ruflo'),
       ['hooks', 'intelligence', '--status'],
       {
-        cwd: SYSTEM_HOME,
+        cwd: process.cwd(),
         env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
         encoding: 'utf8',
         timeout: 20_000,

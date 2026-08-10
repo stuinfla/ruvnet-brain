@@ -195,7 +195,11 @@ function flushLearning() {
 function trainLearning() {
   if (!RUFLO) return { ok: false, log: 'ruflo is not on this machine — install it with `npm i -g ruflo@latest` to enable learning' };
   try {
-    execFileSync(RUFLO, ['hooks', 'intelligence', '--train'], { cwd: HOME, env: RUFLO_ENV, stdio: 'ignore', timeout: 600_000 });
+    // ISSUE #136: train the SAME store the console card reads. With `cwd: HOME` the card read the
+    // project's learner and this trained the home one, so the button could never clear the card it
+    // was offered for — a remedy that cannot resolve its own finding is worse than no button.
+    // PROJECT is the same root learn-flush.mjs and learn-capture.sh resolve (#134).
+    execFileSync(RUFLO, ['hooks', 'intelligence', '--train'], { cwd: PROJECT, env: RUFLO_ENV, stdio: 'ignore', timeout: 600_000 });
   } catch (e) { return { ok: false, log: `training cycle failed: ${e.message}` }; }
   return { ok: true, log: 'ran one training cycle in the cross-project learner' };
 }

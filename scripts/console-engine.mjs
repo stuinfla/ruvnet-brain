@@ -126,7 +126,7 @@ export function buildHealthRecommendations({ memory = null, learning = null } = 
   if (Number.isFinite(age) && age > STALE_TRAIN_SECONDS) {
     recs.push(makeRecommendation({
       id: 'learning:train',
-      scope: 'user',
+      scope: 'project',
       title: 'Your learner has gone quiet',
       rationale: 'It is installed and switched on, but it has not learned anything recently — so it is not getting smarter.',
       severity: 'SUGGESTED',
