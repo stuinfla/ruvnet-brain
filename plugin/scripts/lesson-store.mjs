@@ -239,11 +239,11 @@ export function lessonsFor(trigger, lessons, { limit = 3 } = {}) {
     // than no boundary, because the comment made it look closed.
     .filter((l) => l.trigger === trigger && !l.demoted
       && (l.status === STATUS.RATIFIED || l.status === STATUS.ACTIVE))
-    // SEVERITY BREAKS THE TIE BEFORE REPETITION — weightOf's reasoning above, applied where `limit`
-    // decides who speaks. Measured 2026-08-10 as the machine-wide lessons bridged in: five compete at
-    // `write-code`, and the severity:high one (issue #122's lesson) lost to whichever row loaded first.
-    .sort((a, b) => (rank[a.enforcement] - rank[b.enforcement])
+    // ORDER: refusal, SEVERITY, force, repetition. Severity above enforcement class on purpose —
+    // measured twice 2026-08-10: #122's lesson lost its slot to array order, then to ten checklists.
+    .sort((a, b) => ((a.enforcement === 'block' ? 0 : 1) - (b.enforcement === 'block' ? 0 : 1))
       || ((b.severity === 'high' ? 1 : 0) - (a.severity === 'high' ? 1 : 0))
+      || (rank[a.enforcement] - rank[b.enforcement])
       || (b.repeatCount - a.repeatCount))
     .slice(0, limit);
 }

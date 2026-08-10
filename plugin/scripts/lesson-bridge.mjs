@@ -92,10 +92,29 @@ import { makeLesson, updateLessons, loadLessons, ENFORCEMENT, ORIGIN, STATUS, TR
 
 /** Every bridged lesson id starts with this. It is how a merge knows which rows it owns. */
 export const BRIDGE_PREFIX = 'G-';
+/** Project-tier ids. Distinct prefix so a merge can own both sets without confusing them. */
+export const PROJECT_PREFIX = 'P-';
+/** Any id this bridge owns and may replace wholesale on the next run. */
+export const isBridged = (id) => String(id).startsWith(BRIDGE_PREFIX) || String(id).startsWith(PROJECT_PREFIX);
 
 const GLOBAL_DB = process.env.RUVNET_GLOBAL_MEMORY_DB
   || path.join(os.homedir(), '.claude', 'global-memory', '.swarm', 'memory.db');
 const GLOBAL_NS = process.env.RUVNET_GLOBAL_MEMORY_NS || 'global';
+
+/**
+ * THE PROJECT TIER (ADR-067). Global memory holds lessons that already won twice; a project's own
+ * `.swarm/memory.db` holds the ones learned HERE. Both are knowledge with no way to speak, and the
+ * bridge was reading only one of them.
+ *
+ * The difference that matters is SCOPE, and lesson-gate already enforces it: a lesson carrying
+ * `projects: [name]` speaks only in that project, while an unscoped one speaks anywhere. So a global
+ * row bridges unscoped and a project row bridges scoped to its own directory — no new mechanism, the
+ * existing `isHome` check does the work. Without that, a ruvnet-brain lesson would interrupt someone
+ * working in a different repo, which is precisely the breakage recorded in lesson-gate.mjs on
+ * 2026-07-22: "I've got other repos that are using this thing, and they're breaking."
+ */
+const PROJECT_DB = process.env.RUVNET_PROJECT_MEMORY_DB
+  || path.join(process.cwd(), '.swarm', 'memory.db');
 
 const TRIGGER_KEYS = new Set(Object.values(TRIGGERS).map((t) => t.key));
 const ENFORCEMENTS = new Set(Object.values(ENFORCEMENT));
@@ -123,6 +142,28 @@ export function readGlobalRows(dbPath = GLOBAL_DB, ns = GLOBAL_NS) {
     return Array.isArray(rows) ? rows : [];
   } catch { return []; }
 }
+/**
+ * Every `lesson*` row in a store, across ALL namespaces — the project tier scatters them (`lessons`,
+ * the project dirname, `default`), and enumerating namespaces by hand is the restatement this repo
+ * keeps paying for. The key prefix is the selector, exactly as the promotion tooling already uses it.
+ */
+export function readProjectRows(dbPath = PROJECT_DB) {
+  const sql = `SELECT key, content, COALESCE(tags,'') AS tags, COALESCE(provenance_type,'unknown') AS provenance,
+               COALESCE(updated_at, created_at) AS ts
+               FROM memory_entries WHERE key LIKE 'lesson%' ORDER BY key`;
+  if (!fs.existsSync(dbPath)) return [];
+  try {
+    const { DatabaseSync } = require$('node:sqlite');
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try { return db.prepare(sql).all(); } finally { db.close(); }
+  } catch { /* fall through */ }
+  try {
+    const out = execFileSync('sqlite3', ['-json', dbPath, sql], { encoding: 'utf8', maxBuffer: 1 << 24 });
+    const rows = JSON.parse(out || '[]');
+    return Array.isArray(rows) ? rows : [];
+  } catch { return []; }
+}
+
 /** Indirection so a missing node:sqlite is a caught throw rather than a module-load crash. */
 function require$(id) { return process.getBuiltinModule ? process.getBuiltinModule(id) : null; }
 
@@ -177,7 +218,7 @@ export const idFor = (key) => BRIDGE_PREFIX + String(key).replace(/^lesson-/, ''
  * Build a lesson from one AgentDB row, or explain in one line why it cannot be built.
  * Returns { lesson } or { skip: '<reason>' } — never throws, so one bad row cannot stop the bridge.
  */
-export function lessonFromRow(row) {
+export function lessonFromRow(row, { projects = [], idPrefix = BRIDGE_PREFIX, source = 'global' } = {}) {
   const key = String(row?.key || '');
   if (!key) return { skip: 'row has no key' };
   const tags = parseTags(row.tags);
@@ -195,17 +236,17 @@ export function lessonFromRow(row) {
   try {
     return {
       lesson: makeLesson({
-        id: idFor(key),
+        id: idPrefix + String(key).replace(/^lesson-/, ''),
         statement: statementOf(row.content),
         trigger: tags.trigger,
         enforcement,
         // Real provenance, not a sentence invented to satisfy a non-empty check: where the row is and
         // when it was last written. Anyone can go read it.
-        evidence: [`AgentDB ${GLOBAL_NS}/${key} — machine-wide lesson store, promoted ${when}`],
-        // Unscoped ON PURPOSE. lesson-gate treats an empty `projects` as "applies anywhere by
-        // declaration", which is exactly what Tier 1 means: it already won twice, in projects that
-        // could not see each other, so it has earned the right to travel.
-        projects: [],
+        evidence: [`AgentDB ${source}/${key} — ${source === 'global' ? 'machine-wide' : 'project'} lesson store, recorded ${when}`],
+        // SCOPE IS THE WHOLE DIFFERENCE BETWEEN THE TIERS. Empty = "applies anywhere by
+        // declaration" (Tier 1 earned that by winning twice in projects that could not see each
+        // other). A project row carries its own directory, so lesson-gate's isHome() keeps it home.
+        projects,
         // NOT invented. Repetition is only used to order lessons of equal force, and a bridged lesson
         // has no per-project repeat count to honestly claim — so it sorts behind the user's directly
         // taught native lessons, which is the correct precedence.
@@ -213,7 +254,7 @@ export function lessonFromRow(row) {
         severity: tags.severity === 'high' ? 'high' : 'normal',
         origin,
         status: STATUS.RATIFIED,   // the tag on the row IS the human act of ratification
-        ratifiedBy: `agentdb-tag:${GLOBAL_NS}/${key}`,
+        ratifiedBy: `agentdb-tag:${source}/${key}`,
       }),
     };
   } catch (e) { return { skip: String(e?.message || e).slice(0, 160) }; }
@@ -226,7 +267,7 @@ export function lessonFromRow(row) {
  * Pure, so the test can assert the merge without touching a real store.
  */
 export function mergeBridged(existing, bridged) {
-  return [...existing.filter((l) => !String(l.id).startsWith(BRIDGE_PREFIX)), ...bridged];
+  return [...existing.filter((l) => !isBridged(l.id)), ...bridged];
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────
@@ -257,15 +298,30 @@ if (isMain()) {
   const prune = argv.includes('--prune');
   const json = argv.includes('--json');
 
-  const rows = readGlobalRows();
+  const here = path.basename(process.cwd());
+  const sources = [
+    { name: 'global', rows: readGlobalRows(), opts: { projects: [], idPrefix: BRIDGE_PREFIX, source: 'global' } },
+    // Scoped to THIS project by name, so lesson-gate's isHome() keeps it from speaking elsewhere.
+    { name: `project:${here}`, rows: readProjectRows(), opts: { projects: [here], idPrefix: PROJECT_PREFIX, source: `project:${here}` } },
+  ];
   const bridged = [];
   const skipped = [];
-  for (const row of rows) {
-    const r = lessonFromRow(row);
-    if (r.lesson) bridged.push(r.lesson); else skipped.push({ key: row.key, why: r.skip });
+  const seen = new Set();
+  for (const src of sources) {
+    for (const row of src.rows) {
+      const r = lessonFromRow(row, src.opts);
+      if (!r.lesson) { skipped.push({ key: `${src.name}/${row.key}`, why: r.skip }); continue; }
+      // A lesson promoted from a project to global exists in BOTH stores. The global copy wins: it
+      // is the one that earned the right to travel, and surfacing the same correction twice teaches
+      // the reader to skim (lesson-gate's own dedupe reasoning, applied across sources).
+      const slug = String(row.key).replace(/^lesson-/, '');
+      if (seen.has(slug)) { skipped.push({ key: `${src.name}/${row.key}`, why: 'already bridged from a higher tier' }); continue; }
+      seen.add(slug);
+      bridged.push(r.lesson);
+    }
   }
 
-  const alreadyBridged = loadLessons().filter((l) => String(l.id).startsWith(BRIDGE_PREFIX)).length;
+  const alreadyBridged = loadLessons().filter((l) => isBridged(l.id)).length;
   // THE ANTI-WIPE GUARD. A read failure (store moved, sqlite missing, permissions) produces zero
   // candidates, and without this a "successful" apply would quietly delete every lesson the bridge
   // had previously installed. Nothing about that would look like an error.
@@ -273,15 +329,16 @@ if (isMain()) {
 
   if (json) {
     console.log(JSON.stringify({
-      store: GLOBAL_DB, namespace: GLOBAL_NS, rows: rows.length,
+      sources: sources.map((s) => ({ name: s.name, rows: s.rows.length })),
       bridged: bridged.map((l) => ({ id: l.id, trigger: l.trigger, enforcement: l.enforcement, origin: l.origin })),
       untagged: skipped, alreadyBridged, wouldWipe, applied: false,
     }, null, 2));
     process.exit(0);
   }
 
-  console.log(`\n  lesson-bridge — ${GLOBAL_DB}`);
-  console.log(`  ${rows.length} row(s) in namespace "${GLOBAL_NS}"; ${bridged.length} carry a trigger tag.\n`);
+  console.log('\n  lesson-bridge');
+  for (const s of sources) console.log(`    ${s.name.padEnd(24)} ${s.rows.length} row(s)`);
+  console.log(`  ${bridged.length} carry a trigger tag.\n`);
   const byTrigger = new Map();
   for (const l of bridged) byTrigger.set(l.trigger, [...(byTrigger.get(l.trigger) || []), l]);
   for (const [trigger, ls] of [...byTrigger].sort()) {

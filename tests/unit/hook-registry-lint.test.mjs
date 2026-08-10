@@ -101,6 +101,44 @@ import {
 const REPO = path.resolve(import.meta.dirname, '../..');
 const SHIM = path.join(REPO, 'plugin/scripts/hook-shim.mjs');
 
+
+/** `version` from a plugin.json, or null. Never throws — a missing mirror is not a test failure. */
+function readVersion(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')).version || null; } catch { return null; }
+}
+
+/**
+ * The version Claude Code has actually INSTALLED, read from its registry rather than guessed from a
+ * directory name — the registry is the only authority on which generation is live (issue #128 is the
+ * whole story of what happens when the cache is trusted instead).
+ */
+function installedPluginVersion() {
+  try {
+    const reg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), 'utf8'));
+    const rows = Object.entries(reg?.plugins || {})
+      .filter(([name]) => /^ruvnet-brain@/.test(name))
+      .flatMap(([, v]) => (Array.isArray(v) ? v : []));
+    return rows[0]?.version || null;
+  } catch { return null; }
+}
+
+/** Numeric-segment compare; a prerelease sorts BELOW its release, as semver requires. */
+function cmpVersion(a, b) {
+  const parse = (v) => {
+    const [core, pre] = String(v).split('-');
+    return { nums: core.split('.').map((n) => Number(n) || 0), pre: pre || null };
+  };
+  const A = parse(a); const B = parse(b);
+  for (let i = 0; i < Math.max(A.nums.length, B.nums.length); i++) {
+    const d = (A.nums[i] || 0) - (B.nums[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  if (A.pre && !B.pre) return -1;
+  if (!A.pre && B.pre) return 1;
+  if (A.pre && B.pre) return A.pre === B.pre ? 0 : (A.pre > B.pre ? 1 : -1);
+  return 0;
+}
+
 /** Repo-owned layers only — exactly what a CI runner has. Must be, and stay, clean. */
 const repoReg = buildRegistry({ repo: REPO, includeMachine: false });
 /** The full merged mesh, including this machine's user + third-party registries. */
@@ -201,12 +239,31 @@ describe('the merged census — six registries, not one', () => {
           + 'publish; `npm run release` + restart Claude Code refreshes it. Reported, not failed.',
         );
       }
-      expect(
-        row.count,
-        `${row.layer} mirror has ${row.count} registration(s) but the repo declares only ${repoCount}. `
-          + 'The installed copy is AHEAD of this checkout — you are on an older branch, and publishing '
-          + 'from here would REGRESS the shipped registry. Rebase onto the branch that shipped them.',
-      ).toBeLessThanOrEqual(repoCount);
+      // VERSION IS THE DISCRIMINATOR THIS CHECK WAS MISSING (ADR-067). A higher mirror count means
+      // "you are on an older branch" ONLY when the installed copy is actually newer. It is equally the
+      // signature of a deliberate CONSOLIDATION: ADR-067 merged four PreToolUse walls into one gate
+      // and legitimately REMOVED four registrations, and this fired as a hard red on the very commit
+      // that improved the registry. Counting alone cannot tell a regression from a simplification;
+      // comparing the versions can, and refusing to compare them is how a good guard becomes one
+      // people learn to override.
+      const repoVersion = readVersion(path.join(REPO, 'plugin', '.claude-plugin', 'plugin.json'));
+      const mirrorVersion = installedPluginVersion();
+      const repoIsNewer = repoVersion && mirrorVersion && cmpVersion(repoVersion, mirrorVersion) > 0;
+      if (row.count > repoCount && repoIsNewer) {
+        driftNotes.push(
+          `${row.layer} mirror has ${row.count} registration(s); the repo declares ${repoCount}, and the `
+          + `repo (${repoVersion}) is NEWER than the mirror (${mirrorVersion}). Fewer registrations in a `
+          + 'newer tree is a consolidation, not a regression. Reported, not failed.',
+        );
+      } else {
+        expect(
+          row.count,
+          `${row.layer} mirror has ${row.count} registration(s) but the repo declares only ${repoCount}, `
+            + `and the repo (${repoVersion || '?'}) is NOT newer than the mirror (${mirrorVersion || '?'}). `
+            + 'The installed copy is AHEAD of this checkout — you are on an older branch, and publishing '
+            + 'from here would REGRESS the shipped registry. Rebase onto the branch that shipped them.',
+        ).toBeLessThanOrEqual(repoCount);
+      }
     }
     expect(c.mesh + c.mirrors).toBe(c.total);
   });

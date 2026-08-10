@@ -1,5 +1,5 @@
 {
-  "_note": "OUT-OF-SHIM HOOK CONTRACTS (ADR-055 §6). The per-hook contract — event, matcher, layer, codeRoot, mode, offBehavior, failureBehavior, timeout, budgets, state, dependencies, reachesStrangers, owner — is carried NATIVELY by plugin/scripts/hook-shim.mjs's dispatch table for every shim-routed registration. Everything registered outside that table has nowhere to carry it, which is how the whole non-plugin two thirds of this machine's mesh ended up with no declared answer to 'what happens when the brain is off' (ADR-055 F14). This file is the other half: a checked-in contract for every registration this REPO owns but does not route through the shim. scripts/hook-registry.mjs reads both, and tests/unit/hook-registry-lint.test.mjs fails any repo-owned registration absent from both — so a new one cannot be added silently. SCOPE, deliberately: this file declares only registrations THIS repo owns (plugin/hooks/hooks.json and this project's .claude/settings.json). It does NOT declare contracts for the machine owner's ~/.claude/settings.json or for third-party plugins — those are not ours to specify, and inventing an offBehavior for someone else's hook would be exactly the fiction the lint exists to prevent. They stay visible as documented machine-local findings in the lint's expected-red block.",
+  "_note": "OUT-OF-SHIM HOOK CONTRACTS (ADR-055 \u00a76). The per-hook contract \u2014 event, matcher, layer, codeRoot, mode, offBehavior, failureBehavior, timeout, budgets, state, dependencies, reachesStrangers, owner \u2014 is carried NATIVELY by plugin/scripts/hook-shim.mjs's dispatch table for every shim-routed registration. Everything registered outside that table has nowhere to carry it, which is how the whole non-plugin two thirds of this machine's mesh ended up with no declared answer to 'what happens when the brain is off' (ADR-055 F14). This file is the other half: a checked-in contract for every registration this REPO owns but does not route through the shim. scripts/hook-registry.mjs reads both, and tests/unit/hook-registry-lint.test.mjs fails any repo-owned registration absent from both \u2014 so a new one cannot be added silently. SCOPE, deliberately: this file declares only registrations THIS repo owns (plugin/hooks/hooks.json and this project's .claude/settings.json). It does NOT declare contracts for the machine owner's ~/.claude/settings.json or for third-party plugins \u2014 those are not ours to specify, and inventing an offBehavior for someone else's hook would be exactly the fiction the lint exists to prevent. They stay visible as documented machine-local findings in the lint's expected-red block.",
   "_version": 1,
   "contracts": [
     {
@@ -10,17 +10,23 @@
       "commandIncludes": "version-bump-gate.sh",
       "mode": "blocking",
       "offBehavior": "run",
-      "offReason": "ADR-054's discriminator, applied literally: this is an HONESTY wall, not a retrieval feature. It refuses a commit that changes behaviour without bumping the version — the signal every user's updater reads. Nothing about that becomes acceptable because the owner switched the retrieval brain off, and the gate reads git state only: no corpus, no network, no brain.",
-      "failureBehavior": "fail-open — a crash or unparseable payload permits the command and records degraded health; malfunction is never a decision (ADR-055 §1.2)",
+      "offReason": "ADR-054's discriminator, applied literally: this is an HONESTY wall, not a retrieval feature. It refuses a commit that changes behaviour without bumping the version \u2014 the signal every user's updater reads. Nothing about that becomes acceptable because the owner switched the retrieval brain off, and the gate reads git state only: no corpus, no network, no brain.",
+      "failureBehavior": "fail-open \u2014 a crash or unparseable payload permits the command and records degraded health; malfunction is never a decision (ADR-055 \u00a71.2)",
       "timeoutSeconds": 5,
       "warmP95BudgetMs": 50,
       "coldBudgetMs": 500,
       "stdoutCapBytes": 4096,
-      "stateRead": ["git HEAD", "plugin/.claude-plugin/plugin.json"],
+      "stateRead": [
+        "git HEAD",
+        "plugin/.claude-plugin/plugin.json"
+      ],
       "stateWritten": [],
-      "dependencies": ["bash", "git"],
+      "dependencies": [
+        "bash",
+        "git"
+      ],
       "reachesStrangers": false,
-      "owner": "ruvnet-brain (this repo only — ADR-053; it enforces a rule that is true here and nowhere else)",
+      "owner": "ruvnet-brain (this repo only \u2014 ADR-053; it enforces a rule that is true here and nowhere else)",
       "note": "Project-scoped on purpose: it lived in the GLOBAL settings until 2026-07-14, taxing every Bash call in 34+ projects with a rule true in one."
     }
   ],
@@ -28,26 +34,10 @@
     {
       "layer": "plugin",
       "event": "PreToolUse",
-      "matcher": "Write|Edit|Bash",
-      "handler": "hijack-ruvnet.sh",
-      "reason": "UNANCHORED, known (ADR-055 F4). Claude Code SEARCHES the tool name, so this also selects MultiEdit, NotebookEdit, TodoWrite and BashOutput — an advisory hook firing on four tools nobody chose. Advisory, so the blast radius is wasted latency rather than a wrong refusal.",
-      "retiredBy": "ADR-055 build item 3 (four plane dispatchers) — registration changes are SHELL changes and item 2 (battery v2) must land first, so this is recorded, not fixed out of order."
-    },
-    {
-      "layer": "plugin",
-      "event": "PreToolUse",
       "matcher": "Bash",
       "handler": "verify-interface.sh",
-      "reason": "UNANCHORED, known (ADR-055 F4/F12): also selects BashOutput. One of three blocking walls on the same event that each re-parse the same payload — the parse-once execution-guard is the real fix, not six anchor characters.",
-      "retiredBy": "ADR-055 build item 3 (execution-guard.mjs — ONE registration, ONE parse)"
-    },
-    {
-      "layer": "plugin",
-      "event": "PreToolUse",
-      "matcher": "Bash",
-      "handler": "design-wall.sh",
-      "reason": "UNANCHORED, known (ADR-055 F4/F12) — same pair as verify-interface above, same fix.",
-      "retiredBy": "ADR-055 build item 3 (execution-guard.mjs)"
+      "reason": "UNANCHORED, known (ADR-055 F4/F12): also selects BashOutput. One of three blocking walls on the same event that each re-parse the same payload \u2014 the parse-once execution-guard is the real fix, not six anchor characters.",
+      "retiredBy": "ADR-055 build item 3 (execution-guard.mjs \u2014 ONE registration, ONE parse)"
     },
     {
       "layer": "plugin",

@@ -146,14 +146,30 @@ describe('lesson-bridge — machine-wide lessons reach the gate that already fir
     const chosen = lessonsFor('write-code', pool, { limit: 3 }).map((l) => l.id);
     expect(chosen, 'severity must break the tie before load order does').toContain('G-critical');
     expect(chosen[0]).toBe('G-critical');
-    // And it must not have achieved that by ignoring force: a stronger enforcement still outranks it.
-    const withBlockish = lessonsFor('write-code', [
+    // RULE CHANGED 2026-08-10, deliberately, and this case records why rather than just flipping.
+    // This previously asserted "checklist outranks inject REGARDLESS of severity". Bridging ten
+    // project checklists then displaced the high-severity global inject — issue #122's own lesson —
+    // from `write-code` for the second time in one day. With `limit: 3`, selection is the scarce
+    // resource, so severity now sits above enforcement class: what matters more must not lose a slot
+    // to what merely acts more forcefully.
+    const withChecklist = lessonsFor('write-code', [
       ...pool, makeLesson({
         id: 'L-native', statement: 'A native checklist lesson that says what to do', trigger: 'write-code',
         enforcement: ENFORCEMENT.CHECKLIST, evidence: ['measured'], status: STATUS.RATIFIED, origin: ORIGIN.IMPORTED,
       }),
     ], { limit: 3 }).map((l) => l.id);
-    expect(withBlockish[0], 'checklist outranks inject regardless of severity').toBe('L-native');
+    expect(withChecklist[0], 'high severity outranks a normal-severity checklist').toBe('G-critical');
+
+    // …but enforcement still decides between lessons of EQUAL severity, or the class would be inert.
+    const equalSeverity = lessonsFor('write-code', [
+      at('G-inject-normal', 'normal'),
+      makeLesson({
+        id: 'L-checklist-normal', statement: 'A native checklist lesson that says what to do',
+        trigger: 'write-code', enforcement: ENFORCEMENT.CHECKLIST, evidence: ['measured'],
+        status: STATUS.RATIFIED, origin: ORIGIN.IMPORTED,
+      }),
+    ], { limit: 3 }).map((l) => l.id);
+    expect(equalSeverity[0], 'at equal severity, the stronger enforcement leads').toBe('L-checklist-normal');
   });
 
   it('parses the shape ruflo actually stores, and the shape its flag accepts', () => {

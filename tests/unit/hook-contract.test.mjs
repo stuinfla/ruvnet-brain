@@ -397,13 +397,22 @@ describe('registry hygiene', () => {
    * consent guard that switched itself off when the user switched the brain off would guard nothing
    * at the only moment it is needed.
    */
-  const BLOCKING = Object.freeze([
-    'design-wall',
-    'unprompted-speech',
-    'protect-state',
-    'swarm-slot-recycler',
-  ]);
-  const isBlocking = (cmd) => BLOCKING.some((b) => cmd.includes(b));
+  /**
+   * DERIVED FROM THE SHIM TABLE, not restated here (ADR-065/067).
+   *
+   * This was a hand-maintained list of four names — a second copy of a fact hook-shim.mjs already
+   * owns — and it rotted the moment ADR-067 consolidated the PreToolUse walls: `design-wall` and
+   * `protect-state` are still `mode:'blocking'` bodies, but they are now POLICIES consulted by
+   * decision-gate rather than hooks registered in their own right, and the new gate was classified
+   * advisory because nobody had added it to the copy. Reading the table makes both problems
+   * structurally impossible.
+   */
+  const SHIM_SRC = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', 'hook-shim.mjs'), 'utf8');
+  const BLOCKING = Object.freeze(
+    [...SHIM_SRC.matchAll(/'([a-z-]+)':\s*\{[^}]*mode:\s*'blocking'/g)].map((m) => m[1]),
+  );
+  const idOfCommand = (cmd) => (/hook-shim\.mjs"\s+([a-z-]+)/.exec(String(cmd || '')) || [])[1] || '';
+  const isBlocking = (cmd) => BLOCKING.includes(idOfCommand(cmd));
 
   it('gives every ADVISORY hook a `|| true` failsafe — a hook error must never reach the user', () => {
     const offenders = [];
@@ -432,10 +441,17 @@ describe('registry hygiene', () => {
       }
     }
     expect(disarmed, `blocking hook(s) disarmed by a failsafe:\n  ${disarmed.join('\n  ')}`).toEqual([]);
-    // And the exemption list must not rot into fiction: every name on it is really registered.
+    // ANTI-FICTION, restated as the property that actually matters. The old check demanded that every
+    // blocking BODY be registered as its own hook — which ADR-067 deliberately ended: four walls became
+    // one gate that consults them. What must still hold is the reverse and stronger claim: every
+    // registered hook names an id the shim actually knows, so a typo or a deleted body cannot sit in
+    // hooks.json looking armed.
     const all = Object.values(reg.hooks).flatMap((es) => es.flatMap((m) => (m.hooks ?? []).map((h) => h.command)));
-    for (const b of BLOCKING) {
-      expect(all.some((c) => c.includes(b)), `${b} is exempted but not registered — stale exemption`).toBe(true);
+    const known = new Set([...SHIM_SRC.matchAll(/'([a-z-]+)':\s*\{\s*file:/g)].map((m) => m[1]));
+    expect(known.size, 'sanity: the shim table must parse, or every check here is vacuous').toBeGreaterThan(5);
+    for (const cmd of all) {
+      const id = idOfCommand(cmd);
+      expect(known.has(id), `hooks.json registers "${id}", which hook-shim.mjs does not declare`).toBe(true);
     }
   });
 });

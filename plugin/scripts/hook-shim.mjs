@@ -97,6 +97,13 @@ const TABLE = {
   // The consent guard (ADR-054 §3): it protects the OFF state itself, so it is the one hook that
   // matters MORE while the brain is off. 'run', permanently.
   'protect-state':    { file: 'protect-brain-state.sh', interpreter: 'bash', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
+  // THE REFUSAL CHOKEPOINT (ADR-067). ONE PreToolUse decision, composed from every policy that could
+  // refuse, with declared precedence and ONE reason. It replaces four independent hooks that could
+  // each exit 2 on the same Write with no precedence and no shared context — the concrete form of
+  // "constraints that collapse on each other". Same shape as 'unprompted-speech' one layer up: that
+  // one is the sole writer of unprompted BYTES, this one is the sole author of a REFUSAL. The four
+  // policies it consults are unchanged and still individually tested; the gate only composes them.
+  'decision-gate':    { file: 'decision-gate.mjs',   interpreter: 'node', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
   'learn-capture':    { file: 'learn-capture.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
   'learn-flush':      { file: 'learn-flush.mjs',     interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   'session-snapshot': { file: 'session-snapshot-hook.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run', stdinBytes: 65536 },

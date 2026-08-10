@@ -1,5 +1,5 @@
 {
-  "description": "POSIX Stable Spine (ADR-023): every hook routes through hook-shim.mjs, which resolves the active generation per invocation. Advisory hooks fail open; blocking hooks preserve their exit-code contract.",
+  "description": "POSIX Stable Spine (ADR-023): every hook routes through hook-shim.mjs, which resolves the active generation per invocation. Advisory hooks fail open. ADR-067: exactly ONE hook may refuse a given tool call \u2014 decision-gate.mjs composes every policy into one decision.",
   "hooks": {
     "SessionStart": [
       {
@@ -59,11 +59,21 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Write|Edit|Bash",
+        "matcher": "^(Write|Edit|MultiEdit|NotebookEdit)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" hijack-ruvnet || true",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" decision-gate write",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" decision-gate bash",
             "timeout": 5
           }
         ]
@@ -79,56 +89,11 @@
         ]
       },
       {
-        "matcher": "^(Write|Edit|MultiEdit|NotebookEdit)$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" ground-before-write || true",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" protect-state",
-            "timeout": 5
-          }
-        ]
-      },
-      {
         "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" verify-interface || true",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" design-wall",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "^(Write|Edit|MultiEdit)$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" unprompted-speech PreToolUse-write",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "^Bash$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" unprompted-speech PreToolUse-bash",
             "timeout": 5
           }
         ]
