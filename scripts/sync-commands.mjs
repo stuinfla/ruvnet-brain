@@ -67,9 +67,17 @@ function rebuild(aliasText, canonicalFrontmatter, canonicalBody) {
 // one commit earlier (importing bin/install.mjs ran the installer main); it recurred here because that
 // fix was applied to the CALLER instead of to the module. Fixing it at the module is what makes it
 // stop recurring — same reasoning as ADR-066: one producer, not a rule every caller must remember.
-const isMain = process.argv[1]
-  && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
-if (!isMain) { /* imported for its exports — do nothing else */ } else {
+// realpathSync THROWS on a path that does not resolve, and under vitest on Windows `process.argv[1]`
+// is not a real file — measured in CI as `ENOENT: lstat 'D:\D:'`, which failed the whole SUITE at
+// import time rather than any assertion. A guard that decides "am I the entrypoint" must never be
+// able to crash the caller that merely imported this module: not-resolvable means not-main.
+function resolvedIsMain() {
+  try {
+    return Boolean(process.argv[1])
+      && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch { return false; }
+}
+if (!resolvedIsMain()) { /* imported for its exports — do nothing else */ } else {
 
 const canonicalText = fs.readFileSync(path.join(DIR, CANONICAL), 'utf8');
 const { frontmatter: canonicalFrontmatter, body: canonicalBody } = splitFrontmatter(canonicalText);

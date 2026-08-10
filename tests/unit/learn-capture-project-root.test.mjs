@@ -44,7 +44,17 @@ const queued = (root) => {
   return fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')) : [];
 };
 
-describe('issue #134 — captured events land where the flush looks', () => {
+/**
+ * The two behavioural cases spawn the real hook through `/bin/bash`, which does not exist on Windows
+ * — they failed there with an empty queue and an assertion that read like a product defect. The hook
+ * itself is a `.sh` dispatched through `hook-shim-bash.mjs`, so on a host with no bash it does not
+ * run at all and there is nothing for this to observe. Skipped explicitly rather than left red, and
+ * the SOURCE-level parity case below still runs on every platform, so a future edit that
+ * reintroduces the asymmetry goes red on Windows too.
+ */
+const behavioural = process.platform === 'win32' ? describe.skip : describe;
+
+behavioural('issue #134 — captured events land where the flush looks', () => {
   it('honours RUVNET_BRAIN_PROJECT_DIR even when the shell has drifted below the root', () => {
     const project = mktemp();
     const drifted = path.join(project, 'tests', 'fixtures');
@@ -68,6 +78,9 @@ describe('issue #134 — captured events land where the flush looks', () => {
     cleanup();
   });
 
+});
+
+describe('issue #134 — the invariant is pinned in source, on every platform', () => {
   it('the writer and the reader resolve the project root by the same rule, in source', () => {
     // The behavioural cases above cover today. This one fails if a future edit reintroduces the
     // asymmetry in either file — which is how #104 came back as #134 in the first place.
