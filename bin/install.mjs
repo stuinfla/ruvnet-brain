@@ -2254,10 +2254,73 @@ const TEST_MODE = process.env.RUVNET_BRAIN_TEST === '1';
 const IMPORT_ONLY = process.env.RUVNET_BRAIN_IMPORT_ONLY === '1';
 const xmlEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// The same nightly command, cron-flavored — the pattern forge-update.mjs documents in its header.
-// 03:47 on purpose: an off-hour minute, so it never piles onto the :00 cron rush.
+/**
+ * THE ONE SCHEDULED-UPDATE COMMAND (issue #129). Every scheduler — cron, systemd, LaunchAgent —
+ * runs THIS, and it is byte-for-byte the entrypoint plugin/scripts/host-update.mjs already uses on
+ * SessionStart.
+ *
+ * It used to be `forge-update.mjs --apply`, which advances the KB BYTES ONLY. That path never
+ * reaches host convergence, so a scheduled run could move the corpus forward while the Stable Spine,
+ * the Claude and Codex plugin payloads, the Console runtime and `host-convergence.json` all stayed
+ * behind — silently, on a schedule, with the update log reporting success. A machine updating itself
+ * into a split state overnight is worse than one that never updates, because nothing looks wrong.
+ *
+ * Two entrypoints for one job is the defect; naming it once here is the fix. 03:47 on purpose: an
+ * off-hour minute, so it never piles onto the :00 cron rush.
+ */
+const NIGHTLY_ARGV = ['--yes', 'ruvnet-brain@latest', '--update', '--host-sync-only', '--no-nightly-prompt'];
+const nightlyCommand = () => `npx ${NIGHTLY_ARGV.join(' ')}`;
+
+/**
+ * Absolute path to npx, resolved at install time — a scheduler has no shell profile, so a bare name
+ * would resolve only on installs whose npx happens to sit in launchd's minimal PATH. Falls back to
+ * the bare name rather than refusing: a wrong-but-present command is fixable by the user, whereas a
+ * refusal to install any schedule leaves them with nothing.
+ */
+function npxPath() {
+  const local = path.join(path.dirname(process.execPath), process.platform === 'win32' ? 'npx.cmd' : 'npx');
+  if (fs.existsSync(local)) return local;
+  try {
+    const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['npx'], { encoding: 'utf8' });
+    const found = String(r.stdout || '').split('\n')[0].trim();
+    if (found && fs.existsSync(found)) return found;
+  } catch { /* not on PATH here either — fall through */ }
+  return process.platform === 'win32' ? 'npx.cmd' : 'npx';
+}
+/**
+ * Add the nightly line to the user's crontab, idempotently (issue #129).
+ *
+ * Read-modify-write through `crontab -l` / `crontab -` because that is the only portable interface;
+ * writing /var/spool/cron directly needs root and bypasses the daemon's reload. Every failure mode
+ * returns a REASON rather than a boolean: "no crontab binary" and "the write was rejected" need
+ * different things from the user, and collapsing them into "failed" is how a person ends up
+ * re-running a command that can never work.
+ */
+export function installCronEntry(line, { run = spawnSync } = {}) {
+  const marker = 'ruvnet-brain@latest';
+  const list = run('crontab', ['-l'], { encoding: 'utf8' });
+  if (list.error) return { ok: false, why: 'no crontab command was found on this system' };
+  // Exit 1 with no output is the documented "this user has no crontab yet" case, not an error.
+  const current = String(list.stdout || '');
+  if (current.split('\n').some((l) => l.includes(marker) && !l.trim().startsWith('#'))) {
+    return { ok: true, already: true };
+  }
+  const next = `${current.replace(/\n*$/, '')}\n${line}\n`.replace(/^\n+/, '');
+  const write = run('crontab', ['-'], { input: next, encoding: 'utf8' });
+  if (write.error) return { ok: false, why: `crontab could not be written (${write.error.message})` };
+  if (write.status !== 0) {
+    return { ok: false, why: `crontab rejected the entry (exit ${write.status})${String(write.stderr || '').trim() ? `: ${String(write.stderr).trim()}` : ''}` };
+  }
+  return { ok: true, already: false };
+}
+
+/** launchd's own minimal PATH, plus the directory node/npx actually live in on this machine. */
+const launchdPath = () => [...new Set([
+  path.dirname(process.execPath), path.dirname(npxPath()),
+  '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin',
+])].filter(Boolean).join(':');
 const cronExample = (kbDir) =>
-  `47 3 * * *  cd ${kbDir} && ${process.execPath} forge-update.mjs --apply >> ${kbDir}/update.log 2>&1`;
+  `47 3 * * *  ${nightlyCommand()} >> ${kbDir}/update.log 2>&1`;
 
 /**
  * kb/forge-update.mjs exit 11 = "the download completed but the bundle on disk did NOT change"
@@ -2496,12 +2559,24 @@ function enableNightly() {
   const kbDir = resolvedKbDir();
 
   if (process.platform !== 'darwin') {
-    info('The LaunchAgent scheduler is macOS-only (for now).');
-    info("On this platform, schedule the bundle's self-updater with cron — the pattern");
-    info('forge-update.mjs itself documents:');
-    console.log(`\n    ${c.bold(cronExample(kbDir))}\n`);
+    // ISSUE #129 — A COMMAND NAMED `--enable-nightly` MAY NOT EXIT 0 WITHOUT ENABLING ANYTHING.
+    //
+    // This printed a cron recipe and returned success. Every automated check of "is Evergreen on?"
+    // — a provisioning script, a CI step, a user reading the exit code — was told yes on a machine
+    // where no schedule existed. So it now INSTALLS the entry, and when it cannot, it says so and
+    // exits non-zero rather than dressing a manual instruction up as a completed action.
+    const line = cronExample(kbDir);
+    const installed = installCronEntry(line);
+    if (installed.ok) {
+      ok(`installed a nightly crontab entry (03:47 local):\n\n    ${c.bold(line)}\n`);
+      info(`(${c.bold('crontab -l')} to see it, ${c.bold('crontab -e')} to remove it.)`);
+      return;
+    }
+    console.error(`\n${c.red('✗ nightly updates were NOT enabled:')} ${installed.why}`);
+    info('\nAdd this line by hand and nightly updates will work exactly as they do on macOS:');
+    console.log(`\n    ${c.bold(line)}\n`);
     info(`(${c.bold('crontab -e')}, paste the line, save. Remove the line to disable.)`);
-    return; // exit 0 — the user got the working recipe
+    process.exit(1);   // the caller asked for a schedule and does not have one
   }
 
   info(`brain dir: ${c.bold(kbDir)}`);
@@ -2526,12 +2601,24 @@ function enableNightly() {
 <dict>
   <key>Label</key>
   <string>${NIGHTLY_LABEL}</string>
+  <!-- Issue #129: the SAME host-convergent entrypoint the session updater runs, not the KB-only
+       forge-update.mjs it used to schedule. See NIGHTLY_ARGV. Still no `/bin/sh -c` (ADR-038) —
+       this execs npx directly. -->
   <key>ProgramArguments</key>
   <array>
-    <string>${xmlEscape(process.execPath)}</string>
-    <string>forge-update.mjs</string>
-    <string>--apply</string>
+    <string>${xmlEscape(npxPath())}</string>
+${NIGHTLY_ARGV.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n')}
   </array>
+  <!-- launchd starts agents with a MINIMAL PATH (/usr/bin:/bin:/usr/sbin:/sbin) - it does not read
+       the user's shell profile. npx resolved by bare name would therefore fail to launch on every
+       Homebrew/nvm/Volta install, which is most of them, and the only symptom would be a nightly
+       that silently never ran. The absolute path above is resolved at install time; PATH is also set
+       so npx can find node and the package's own bin shims once it starts. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>${xmlEscape(launchdPath())}</string>
+  </dict>
   <key>WorkingDirectory</key>
   <string>${xmlEscape(kbDir)}</string>
   <key>StandardOutPath</key>

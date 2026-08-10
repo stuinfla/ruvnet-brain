@@ -83,6 +83,19 @@ RUFLO_DAEMON_AUTOSTART=0 ~/.npm-global/bin/ruflo memory distill run --path .swar
 # automatically (keeps last 14), zero risk to the live DB (reads only).
 RUFLO_DAEMON_AUTOSTART=0 ~/.npm-global/bin/ruflo memory backup --db .swarm/memory.db --keep 14 >> "$LOG" 2>&1 || true
 
+# LESSON BRIDGE (ADR-066, 2026-08-10) — carry newly-tagged machine-wide lessons into the store the
+# hooks actually read. Without this the bridge is a command someone has to remember, and a learning
+# system that depends on being remembered is the thing ADR-066 was written to fix: knowledge sat in
+# AgentDB for 18 days while the repo re-made the mistake it described.
+#
+# Safe to run unattended and to run when nothing changed: it is idempotent (bridged rows are replaced
+# wholesale, native rows are never touched), it writes through the store's locked atomic writer, and
+# it REFUSES to apply when it reads zero rows while bridged lessons are installed — so a transient
+# read failure can never strip the store. Best-effort, never blocks the rebuild.
+echo "===== lesson-bridge — $(date -u +%FT%TZ) =====" >> "$LOG"
+/usr/local/bin/node plugin/scripts/lesson-bridge.mjs --apply >> "$LOG" 2>&1 \
+  || echo "===== lesson-bridge: SKIPPED (see line above) =====" >> "$LOG"
+
 # AgentDB drift canary (2026-07-23, P7 wiring sweep) — scripts/memdb-health.sh existed unwired since
 # 2026-07-09/10, the exact nights idx_bridge_key/idx_bridge_ns corruption recurred 3x on this very DB
 # while in WAL mode. Best-effort, same shape as its brain-health/key-health siblings below: never

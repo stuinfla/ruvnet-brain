@@ -88,6 +88,7 @@ describe('canonical lesson runtime module boundaries', () => {
       'lesson-command-scope.mjs',
       'lesson-presentation.mjs',
       'lesson-store.mjs',
+      'lesson-bridge.mjs',
     ];
     for (const file of files) {
       const source = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', file), 'utf8');

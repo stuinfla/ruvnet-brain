@@ -463,7 +463,12 @@ describe('T4 — a non-answer mints nothing (the ADR-054 §3 discipline, extende
     // the heavy one. The card lane cannot reach them: it mints only inside `if (cardHit.hit)`.
     const heavy = sites[sites.length - 1];
     expect(at('RUVNET BRAIN IS DOWN')).toBeLessThan(heavy);                      // outage
-    expect(at('(no results — the search ran')).toBeLessThan(heavy);              // empty
+    // The empty-result refusal used to be anchored on its own literal text, `(no results — the
+    // search ran`. Issue #132 moved that wording into kb/search-outcome.mjs, because forge-mcp-all
+    // starts a server on import and a MESSAGE has to be assertable by what it says. The ORDERING
+    // property this test guards is unchanged; only the marker moved, so it now anchors on the site
+    // where the empty-result body is chosen rather than on the sentence it happens to produce.
+    expect(at('+ emptyBody;')).toBeLessThan(heavy);                              // empty
     expect(at('search_ruvnet error:')).toBeGreaterThan(heavy);                   // thrown: in the catch, below
     expect(src.slice(0, sites[0])).toMatch(/if \(cardHit\.hit\)/);               // card lane guarded by a HIT
 

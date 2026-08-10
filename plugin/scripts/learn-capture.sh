@@ -122,7 +122,19 @@ SID="${SID//[^A-Za-z0-9_-]/}"           # a filename COMPONENT, never a path
 if [ "$SCOPE" = "user" ]; then
   DIR="$HOME/.cache/ruvnet-brain/learn"
 else
-  DIR="$PWD/.swarm/ruvnet-brain-learn"
+  # ISSUE #134 — THE SAME PROJECT ROOT THE READER COMPUTES, BY THE SAME RULE.
+  #
+  # This was bare `$PWD` while learn-flush.mjs:26 and health-repair.mjs:32 both resolve
+  # `RUVNET_BRAIN_PROJECT_DIR || cwd`. This hook is wired on PostToolUse, so it runs after EVERY tool
+  # call — and any command that leaves the shell below the project root (a test run, a build, any
+  # tooling that cd's) made the WRITER create a queue in a directory the READER never looks in. Those
+  # events are not misfiled, they are orphaned: nothing ever drains them.
+  #
+  # This is issue #104's residual. #104 fixed the two halves of the FLUSH to agree about which project
+  # they mean; the component that actually creates the queue was not brought along, so the invariant
+  # held for two of three participants and was violated by the one doing the writing. Same shape as
+  # ADR-066: a writer and a reader that disagree about the store make the recording theatre.
+  DIR="${RUVNET_BRAIN_PROJECT_DIR:-$PWD}/.swarm/ruvnet-brain-learn"
 fi
 # Owner-only (0700 dir / 0600 file). This queue was 0644 inside a 0755 dir: on macOS every local
 # account is normally in `staff`, so any other user on a shared or corporate machine could read it.

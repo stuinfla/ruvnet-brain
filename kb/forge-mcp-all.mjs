@@ -23,6 +23,7 @@ import { warmReranker } from './forge-rerank.mjs';
 import { guardPassages } from './forge-guard-injection.mjs';
 import { answerFromCards, renderCardHit } from './card-lane.mjs';
 import { implementationNotice } from './implementation-evidence.mjs';
+import { describeSearchOutcome } from './search-outcome.mjs';
 import { groundedToolResult } from './grounded-response.mjs';
 
 // ── THE GONG (brain-alarm.mjs): a total retrieval failure must NEVER read as "(no results)". ──
@@ -398,15 +399,32 @@ async function handle(msg) {
           : '';
         // Same discipline for cross-repo ADR-number collisions (issue #33 Part B).
         const adrNote = adrCollision ? `⚠ ${adrCollision.note}\n\n` : '';
-        const header = `Searched ${repos.length} RuvNet repos (${repos.join(', ')}).\n${staleness}`;
+        // ISSUE #132 — "Searched 0 RuvNet repos ()" IS NOT WHAT HAPPENED, AND IT READS AS THE ONE
+        // THING THIS TOOL MUST NEVER IMPLY: that the user's brain is empty.
+        //
+        // When the capability-card router declines (ambiguous cards, nothing over threshold), no
+        // search is run at all — `repos` is empty because NOTHING WAS CONSULTED, not because nothing
+        // matched. Rendered through the normal banner that became "Searched 0 RuvNet repos ()"
+        // followed by "nothing in the corpus matched this query", which a reader correctly parses as
+        // an empty installation. The reporter concluded exactly that and told their user twice, on a
+        // machine holding 1.5 GB across 30+ working repos.
+        //
+        // Absence of routing is not absence of corpus — the same distinction the evidence grade and
+        // the GONG already make for thin coverage and for outages. So the declined case gets its own
+        // sentence, and it states the corpus size, which makes the wrong reading impossible rather
+        // than merely less likely. The wording lives in kb/search-outcome.mjs because this file
+        // starts a server on import, so nothing here can be asserted by a test that reads it.
+        const { declined, header, emptyBody } = describeSearchOutcome({
+          repos, routing, staleness, installedRepoCount: repoList.length,
+        });
         const truthNote = implementationNotice(implementation);
         const body = text
           ? degraded + header + adrNote + truthNote + evidenceNote + text
           : degraded + header + adrNote
             + truthNote
-            + '(no results — the search ran; nothing in the corpus matched this query)\n'
-            + '➡ This means THIS QUERY found nothing, NOT that the capability is absent from the ecosystem. '
-            + 'Try a narrower query or name a specific repo or artifact before concluding it must be built.';
+            // `emptyBody` is chosen by the same call that chose the header, so the two halves of the
+            // message can never disagree about which event they are describing.
+            + emptyBody;
         meterLog({ ts: new Date().toISOString(), source: 'mcp', tool: 'search_ruvnet', k, bytes: body.length });
         // Local grounded-once stamp (never leaves the machine) + opt-in count ping. Guarded:
         // telemetry can never break or delay the response being returned right below.
