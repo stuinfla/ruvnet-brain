@@ -169,10 +169,18 @@ describe('closed world: the real hooks.json routes every unprompted producer thr
       es.flatMap((m) => (m.hooks || []).map((h) => h.command))
         .filter((c) => c.includes('unprompted-speech'))
         .map((c) => `${event}::${c.split('unprompted-speech')[1].trim()}`));
-    // UserPromptSubmit (anticipate + lesson), PreToolUse-write (lesson), PreToolUse-bash (lesson).
+    // UserPromptSubmit still routes directly. ADR-067 moved the two PreToolUse routes BEHIND
+    // decision-gate, which spawns unprompted-runtime with the same sub-event tokens — so the
+    // invariant this test protects ("every unprompted producer reaches the user only through the
+    // runtime") is unchanged and in fact strengthened: there is now one process that can speak OR
+    // refuse on the write path, instead of two. What must not regress is a BARE producer, which the
+    // validator case below still proves.
     expect(routes).toContain('UserPromptSubmit::UserPromptSubmit');
-    expect(routes).toContain('PreToolUse::PreToolUse-write');
-    expect(routes).toContain('PreToolUse::PreToolUse-bash');
+    const gate = fs.readFileSync(path.join(ROOT, 'plugin/scripts/decision-gate.mjs'), 'utf8');
+    expect(gate, 'the gate must still route PreToolUse speech through the runtime')
+      .toMatch(/unprompted-runtime\.mjs/);
+    expect(gate).toMatch(/PreToolUse-bash/);
+    expect(gate).toMatch(/PreToolUse-write/);
   });
 
   it('BREAK IT: a bare `bash rogue-emitter.sh || true` unprompted line MUST fail the validator', () => {

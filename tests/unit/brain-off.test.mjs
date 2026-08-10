@@ -641,8 +641,17 @@ describe.skipIf(bashOnly)('ADR-054 — the PreToolUse guard on the consent recor
   it('is registered on PreToolUse writes, through the shim, with an explicit ≤5s timeout', () => {
     const reg = JSON.parse(fs.readFileSync(path.join(REPO, 'plugin/hooks/hooks.json'), 'utf8'));
     const entries = (reg.hooks.PreToolUse || []).flatMap((m) => (m.hooks || []).map((h) => ({ m: m.matcher, ...h })));
-    const guard = entries.find((h) => h.command.includes('protect-state'));
-    expect(guard, 'the guard is not wired into hooks.json at all').toBeTruthy();
+    // ADR-067: the consent guard is no longer its own registration — it is the FIRST policy
+    // decision-gate consults, ahead of every other wall, because ADR-054 §3 says it matters more
+    // while the brain is off. What must hold is that it is still reachable on the write path with a
+    // bounded timeout, and that nothing was demoted below it.
+    const guard = entries.find((h) => h.command.includes('protect-state'))
+      || entries.find((h) => h.command.includes('decision-gate write'));
+    expect(guard, 'no PreToolUse write guard is wired into hooks.json at all').toBeTruthy();
+    const gateSrc = fs.readFileSync(path.join(REPO, 'plugin/scripts/decision-gate.mjs'), 'utf8');
+    expect(gateSrc, 'protect-state must be a consulted policy').toMatch(/protect-brain-state\.sh/);
+    const order = [...gateSrc.matchAll(/POLICY\('([a-z-]+)'/g)].map((m) => m[1]);
+    expect(order[0], 'the consent guard outranks every other policy').toBe('protect-state');
     expect(guard.command).toContain('hook-shim.mjs');
     expect(guard.command).not.toContain('|| true');   // it is a wall; a failsafe would disarm it
     expect(typeof guard.timeout).toBe('number');

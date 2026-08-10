@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { readAll as readAllReadiness, aggregate as aggregateReadiness } from '../plugin/scripts/mcp-readiness.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import readline from 'node:readline';
 import crypto from 'node:crypto';
@@ -1095,7 +1096,23 @@ export function codexStatus({
   const section = m ? text.slice(m.index).split(/\n[ \t]*\[/, 1)[0] : '';
   const timeoutMatch = /(?:^|\n)[ \t]*startup_timeout_sec\s*=\s*(\d+)/.exec(section);
   const startupTimeoutSec = timeoutMatch ? Number(timeoutMatch[1]) : null;
+  // ISSUE #133: read the DERIVED machine state, not one contested file. Every MCP shell used to
+  // overwrite `mcp-readiness.json`, so this read the state of whichever process wrote last and
+  // presented it as the state of the machine. Per-process records are aggregated (degraded wins over
+  // ready — a machine with one broken shell HAS a broken shell) with dead pids pruned on read. The
+  // legacy file is still the fallback, so a machine mid-update, whose server predates the split,
+  // reports something true rather than nothing.
   const readinessReceipt = (() => {
+    try {
+      const live = readAllReadiness(brainHome);
+      if (live.length) {
+        const agg = aggregateReadiness(live);
+        // Carry the winning record forward so every downstream field (pid, workerPid, phase) still
+        // describes ONE real process rather than a blend of several.
+        const chosen = live.find((r) => r.state === agg.state) || live[0];
+        return { ...chosen, ...agg, shells: live.length };
+      }
+    } catch { /* fall through to the legacy single file */ }
     try { return JSON.parse(fs.readFileSync(path.join(brainHome, 'mcp-readiness.json'), 'utf8')); }
     catch { return null; }
   })();

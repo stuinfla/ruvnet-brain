@@ -86,11 +86,20 @@ describe.skipIf(process.platform === 'win32')('issue #84 — Agent/Task host tim
     expect(group.matcher).toBe('^(Task|Agent)$');
     expect(hook.command).toMatch(/route-dispatch \|\| true$/);
     expect(hook.timeout).toBe(5);
-    expect(hooks[groupIndex - 1].hooks[0].command).toContain('hijack-ruvnet');
-    expect(hooks[groupIndex + 1].hooks.map((entry) => entry.command)).toEqual([
-      'node "${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs" ground-before-write || true',
-      'node "${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs" protect-state',
-    ]);
+    // ADJACENCY BY INDEX WAS THE WRONG ASSERTION. It pinned the POSITION of two unrelated
+    // registrations, so it broke the moment ADR-067 consolidated them — reporting a neighbour change
+    // as if this hook had regressed. The property it meant to protect is that registering
+    // route-dispatch did not disturb the OTHER PreToolUse entries, which is about their continued
+    // existence and shape, not their array index.
+    const others = hooks.filter((_, i) => i !== groupIndex);
+    expect(others.length, 'route-dispatch must not be the only PreToolUse registration').toBeGreaterThan(0);
+    for (const g of others) {
+      expect(g.matcher, 'every sibling matcher must still be anchored or explicitly allowlisted').toBeTruthy();
+      for (const h of g.hooks) {
+        expect(h.command, 'a sibling must still dispatch through the shim').toMatch(/hook-shim\.mjs/);
+        expect(h.timeout, 'and keep a bounded prompt-path timeout').toBeLessThanOrEqual(5);
+      }
+    }
   });
 
   it('returns before its declared timeout and never claims a late block', () => {

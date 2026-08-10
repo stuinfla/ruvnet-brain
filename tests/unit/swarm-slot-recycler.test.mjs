@@ -203,11 +203,24 @@ describe('automatic swarm slot recycling', () => {
     expect(result.stderr).toMatch(/Registered path task/);
   });
 
-  it('preserves every pre-existing hook group byte-for-byte except the new event', () => {
-    const current = JSON.parse(fs.readFileSync(HOOKS, 'utf8'));
-    delete current.hooks.TeammateIdle;
-    const digest = crypto.createHash('sha256').update(JSON.stringify(current)).digest('hex');
-    expect(digest).toBe('084f7c2bfe547e5903d6a0356192687a2479dcb306ae2e49e5a40e0832c5cf05');
+  it('adds TeammateIdle WITHOUT reaching into any other event', () => {
+    // THIS WAS A FROZEN SHA256 of the whole file minus TeammateIdle, and it is the restated-truth
+    // failure ADR-065 is about: a digest cannot tell "someone broke an adjacent group" from "someone
+    // legitimately edited one". Its only signal in practice was a FALSE RED on ADR-067 — the commit
+    // that improved the registry — which is how a guard trains people to override it.
+    //
+    // The durable property is scope: this feature owns exactly one event, and its body is registered
+    // nowhere else. That fails on the mistake the digest was reaching for (a stray registration in
+    // another event) and stays quiet for edits that are none of its business.
+    const reg = JSON.parse(fs.readFileSync(HOOKS, 'utf8')).hooks;
+    expect(Object.keys(reg), 'the event this feature owns').toContain('TeammateIdle');
+    expect(reg.TeammateIdle.flatMap((g) => g.hooks.map((h) => h.command)))
+      .toEqual([`node "\${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs" swarm-slot-recycler`]);
+    const elsewhere = Object.entries(reg)
+      .filter(([event]) => event !== 'TeammateIdle')
+      .flatMap(([event, gs]) => gs.flatMap((g) => g.hooks.map((h) => ({ event, cmd: h.command }))))
+      .filter((h) => h.cmd.includes('swarm-slot-recycler'));
+    expect(elsewhere, 'swarm-slot-recycler must be registered on TeammateIdle and nowhere else').toEqual([]);
   });
 
   it('teaches deterministic initial saturation and the completion-to-next-task transition', () => {

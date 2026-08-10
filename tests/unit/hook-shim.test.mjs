@@ -67,27 +67,38 @@ describe.skipIf(process.platform === 'win32')('hook-shim.mjs — restart-free ho
 
   it('the registered blocking shim sends one bounded payload to its consuming hook body', () => {
     seedSpine('1.0.0', {
-      'protect-brain-state.sh': [
-        '#!/bin/bash',
-        'INPUT=""',
-        'while IFS= read -r -t 1 _line; do INPUT+="$_line"; done',
-        '[ -n "$_line" ] && INPUT+="$_line"',
-        'printf "%s" "${#INPUT}"',
-      ].join('\n'),
+      // ADR-067: the registered blocking hook on the write path is now decision-gate. The BOUND is
+      // the property under test and it is unchanged — declared as `stdinBytes: 65536` on the shim
+      // table entry — so the stub simply reports how many bytes actually arrived.
+      'decision-gate.mjs': 'let n = 0;\nprocess.stdin.on("data", (c) => { n += c.length; });\nprocess.stdin.on("end", () => process.stdout.write(String(n)));\n',
     });
-    const result = runRegistered('protect-state', 'p'.repeat(70_000));
+    const result = runRegistered('decision-gate', 'p'.repeat(70_000));
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toBe('65536');
+    expect(result.stdout, 'a 70KB payload must arrive truncated to the declared bound').toBe('65536');
   });
 
   it('every registered blocking payload consumer receives the exact closed-pipe payload', () => {
-    const consumers = [
-      ['route-dispatch', 'route-dispatch.sh'],
-      ['ground-before-write', 'ground-before-write.sh'],
-      ['design-wall', 'design-wall.sh'],
-      ['protect-state', 'protect-brain-state.sh'],
-      ['unprompted-speech', 'unprompted-runtime.mjs'],
-    ];
+    // ADR-067 collapsed four PreToolUse walls into one gate, so `ground-before-write`, `design-wall`
+    // and `protect-state` are no longer registered hooks — they are policies the gate spawns. This
+    // list is therefore DERIVED from hooks.json rather than restated, which is also why it went stale
+    // the moment the registry changed: a hand-listed set of registrations is a second copy of the
+    // registry. The gate's own forwarding to its policies is covered by decision-gate.test.mjs.
+    const registeredIds = [...new Set(
+      Object.values(JSON.parse(fs.readFileSync(HOOKS, "utf8")).hooks)
+        .flatMap((groups) => groups.flatMap((g) => (g.hooks || []).map((h) => h.command)))
+        .map((c) => (/hook-shim\.mjs"\s+([a-z-]+)/.exec(c) || [])[1])
+        .filter(Boolean),
+    )];
+    const FILES = {
+      'route-dispatch': 'route-dispatch.sh',
+      'unprompted-speech': 'unprompted-runtime.mjs',
+      'ground-ruvnet': 'ground-ruvnet.sh',
+      'verify-interface': 'verify-interface.sh',
+      'learn-capture': 'learn-capture.sh',
+    };
+    const consumers = registeredIds.filter((id) => FILES[id]).map((id) => [id, FILES[id]]);
+    expect(consumers.length, 'derived nothing — the registry parse is wrong and this is vacuous')
+      .toBeGreaterThan(2);
     for (const [hookId, file] of consumers) {
       const payload = `payload-for-${hookId}`;
       seedSpine('1.0.0', {

@@ -33,6 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import readline from 'node:readline';
+import { writeOwn as writeOwnReadiness } from '../scripts/mcp-readiness.mjs';
 import { callManagedCli, MANAGED_CLI_TOOLS } from './managed-cli-interface.mjs';
 
 const BRAIN_HOME = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
@@ -66,12 +67,16 @@ const clientOk = (id, result) => out({ jsonrpc: '2.0', id, result });
 const clientErr = (id, code, message) => out({ jsonrpc: '2.0', id, error: { code, message } });
 const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 
+/**
+ * ISSUE #133 (second half). This used to write ONE shared file, last writer wins — so a second MCP
+ * shell's `degraded` overwrote this one's `ready`, and `--doctor` reported the state of whichever
+ * process wrote last as the state of the machine. A process now owns only its own record; the
+ * machine-level answer is DERIVED from the live ones by mcp-readiness.mjs. Same fix as everything
+ * else closed today: one producer per fact.
+ */
 function writeReadiness(value) {
   try {
-    fs.mkdirSync(BRAIN_HOME, { recursive: true });
-    const tmp = `${READINESS}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify({ ...value, pid: process.pid, at: new Date().toISOString() })}\n`, { mode: 0o600 });
-    fs.renameSync(tmp, READINESS);
+    writeOwnReadiness(BRAIN_HOME, value);
   } catch (error) {
     console.error(`[ruvnet-brain] could not persist MCP readiness: ${error.message}`);
   }
