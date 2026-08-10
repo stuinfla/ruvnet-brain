@@ -1,0 +1,23 @@
+{
+  "note": "FROZEN DEBT — see no-restated-truth.test.mjs. Each entry is a gate that spells a truth instead of deriving it. Entries may be REMOVED (by converting the gate) but never ADDED. Generated with the gate's own predicate, never a separate grep.",
+  "frozenAt": "2026-08-10",
+  "files": [
+    "claims-artifact-freshness.test.mjs",
+    "claims-verify.test.mjs",
+    "dispatch-receipt.test.mjs",
+    "doc-currency.test.mjs",
+    "forge-corpus.test.mjs",
+    "hook-shim.test.mjs",
+    "host-matrix-single-source.test.mjs",
+    "install-scope.test.mjs",
+    "learnings.test.mjs",
+    "md-stamp.test.mjs",
+    "ping-active-versions.test.mjs",
+    "release-channel-contract.test.mjs",
+    "routing-flywheel.test.mjs",
+    "stack-plugins.test.mjs",
+    "subscription-hosts.test.mjs",
+    "update-apply.test.mjs",
+    "version-tag-vs-field.test.mjs"
+  ]
+}
