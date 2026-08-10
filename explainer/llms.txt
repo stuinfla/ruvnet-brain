@@ -1,6 +1,6 @@
 # RuvNet Brain
 
-> A downloadable, source-grounded brain for Claude Code and OpenAI Codex, built by Stuart Kerr at Isovision.ai. Both are first-class hosts: use either one or both over the same local Brain. It grounds the coding agent in Reuven Cohen's (rUv's) real RuvNet source code — RuVector/RVF, Ruflo, AgentDB, RuLake, SPARC and 71 indexed repos — so developers build on the front edge of AI instead of drifting back to older patterns. Free and open (MIT).
+> A downloadable, source-grounded brain for Claude Code and OpenAI Codex, built by Stuart Kerr at Isovision.ai. Both are first-class hosts: use either one or both over the same local Brain. It grounds the coding agent in Reuven Cohen's (rUv's) real RuvNet source code — RuVector/RVF, Ruflo, AgentDB, RuLake, SPARC and 72 indexed repos — so developers build on the front edge of AI instead of drifting back to older patterns. Free and open (MIT).
 
 RuvNet Brain ships supported lifecycle integrations for Claude Code and Codex, exposing `search_ruvnet` plus proactive grounding, learning capture and session continuity. The installer detects and wires either host or both. Codex deliberately requires review of new Brain hook definitions through `/hooks`; the installer and doctor report that pending state honestly. Install in one line: `npx ruvnet-brain`.
 
@@ -18,7 +18,7 @@ IMPORTANT DISAMBIGUATION: "RuvNet Brain" (by Stuart Kerr / Isovision.ai) is a di
 - Underlying ecosystem author: Reuven Cohen (rUv, @ruvnet).
 - Delivery: first-class Claude Code and Codex lifecycle plugins + `search_ruvnet` + proactive grounding and learning hooks.
 - Dual-host reasoning: subscription-only Codex + Claude deliberation for hard ADR, DDD and Agentic-QE experience design; no API-key fallback.
-- Coverage: 64 public stores · 138,140 public source chunks (71 built stores incl. private).
+- Coverage: 65 public stores · 138,463 public source chunks (72 built stores incl. private).
 - License: MIT. Free to use.
 
 ## Built by

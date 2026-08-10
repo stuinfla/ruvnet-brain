@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "brainVersion": "4.0.36",
-  "releaseTag": "v4.0.36",
+  "brainVersion": "4.0.37-dev",
+  "releaseTag": "v4.0.37-dev",
   "stores": {
     "agentdb": {
       "file": "agentdb.big.rvf",
@@ -293,12 +293,12 @@
     },
     "metaharness": {
       "file": "metaharness.big.rvf",
-      "sha256": "fb7e035e1d3550cd3e89a78faabe6071b7bfcfa127cba3f97a10329a7bc0cddb",
-      "bytes": 38017958,
+      "sha256": "4b266ebcad1a07e6a6ed597c07d5a800ebca726ef6c5e06edb1056bff5b75cd2",
+      "bytes": 39773191,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": "4db1c8f86696f58cf7224e8fee5ff96886978ad0",
-      "builtUtc": "2026-08-06T17:27:34.283Z"
+      "sourceCommit": "6db0923816525ed7ca26951e45f71664a2f77aa5",
+      "builtUtc": "2026-08-09T07:19:13.705Z"
     },
     "midstream": {
       "file": "midstream.big.rvf",
@@ -396,8 +396,8 @@
       "bytes": 3586719,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": null,
-      "builtUtc": "2026-07-30T17:24:56.309Z"
+      "sourceCommit": "554f0a60b948e0dfe6d4813dd6a096758a46a5d9",
+      "builtUtc": "2026-08-09T07:19:20.995Z"
     },
     "rupixel": {
       "file": "rupixel.big.rvf",
@@ -500,12 +500,12 @@
     },
     "ruvnet": {
       "file": "ruvnet.big.rvf",
-      "sha256": "ff345d79a37bb58d2310f3da189a521dfda6535734575cc30d27f2240ade9d9e",
-      "bytes": 322122,
+      "sha256": "304920f5d09ec8015c85ca0a588e318246f641a147335374a3d795b85acdd7dd",
+      "bytes": 339053,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": "651c07934a16e1f0ec99e412c09f8dd6f7247260",
-      "builtUtc": "2026-08-06T17:28:10.507Z"
+      "sourceCommit": "81cada87b281e058d9c34664229056a7fd85bf28",
+      "builtUtc": "2026-08-10T07:15:53.589Z"
     },
     "rvcsi": {
       "file": "rvcsi.big.rvf",
@@ -650,6 +650,15 @@
       "dimensions": 768,
       "sourceCommit": "813da13eb9a46b6acf78fe7ecc8c220ecf83b386",
       "builtUtc": "2026-08-06T17:28:27.559Z"
+    },
+    "wifi-veil": {
+      "file": "wifi-veil.big.rvf",
+      "sha256": "48aa9f1dc84679edd6ca6c777ee7b9e227d5004a256de298bd7e10a006f930cb",
+      "bytes": 335008,
+      "model": "Xenova/bge-base-en-v1.5",
+      "dimensions": 768,
+      "sourceCommit": "018468b5d2bf41f35c552910f35659830af0eb91",
+      "builtUtc": "2026-08-10T07:17:07.817Z"
     }
   }
 }

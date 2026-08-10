@@ -5,10 +5,12 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_466 gists · refreshed 2026-08-08_
+_466 gists · refreshed 2026-08-10_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-08-09 | [*claude.md](https://gist.github.com/ruvnet/e8bb444c6149e6e060a785d1a693a194) | The Claude-SPARC Automated Development System is a comprehensive, agentic workflow for automated software development us |
+| 2026-08-08 | [tutorial.md](https://gist.github.com/ruvnet/c9a6b4d88e887de392d0b10fe088f1f4) | Train Your Own AI Models for Free Using Google AI Studio |
 | 2026-08-06 | [.roomodes.json](https://gist.github.com/ruvnet/a206de8d484e710499398e4c39fa6299) | This guide introduces Roo Code and the innovative Boomerang task concept, now integrated into SPARC Orchestration. By fo |
 | 2026-08-05 | [rvforge-overview.md](https://gist.github.com/ruvnet/d08d9c00e140f570fb896256dc7cb1f7) | The Sandbox Is Not the Boundary — why RVF, RVM, and RVForge exist, what ships today, and a verified tutorial |
 | 2026-08-04 | [rvqr-overview.md](https://gist.github.com/ruvnet/6d99e837736eaf45b62a9a00cddbe4e5) | rvQR — moving files between devices with a screen and a camera: what it is, and what measuring it actually found |
@@ -33,7 +35,6 @@ _466 gists · refreshed 2026-08-08_
 | 2026-07-27 | [.codex-homecore-v2050.md](https://gist.github.com/ruvnet/448b0466dd45105e4b306eed39e828b7) | RuView v2050 — HOMECORE runtime hardening, validation, and capability status |
 | 2026-07-26 | [pr-body-tracker-sweep-2026-07-26.md](https://gist.github.com/ruvnet/04082cca329b693fb5d4b1d428e56132) | Ruflo v3.32.10 release notes — 2026-07-26 tracker sweep |
 | 2026-07-22 | [wifi-densepose-2.0-python-sota-announcement.md](https://gist.github.com/ruvnet/274c55f2849a20b8b31512c41a9766a5) | wifi-densepose 2.0 — Python SOTA extras (AETHER, MERIDIAN, MAT) |
-| 2026-07-21 | [tutorial.md](https://gist.github.com/ruvnet/c9a6b4d88e887de392d0b10fe088f1f4) | Train Your Own AI Models for Free Using Google AI Studio |
 | 2026-07-21 | [readme.md](https://gist.github.com/ruvnet/1f278d1994e3bcf8802bf26488258e61) | AgentDB Browser Demo: Agentic Marketing Intelligence System: An intelligent marketing optimization system that uses Agen |
 | 2026-07-19 | [.gist-v0.6.5.md](https://gist.github.com/ruvnet/8c099b17eeb589370b36eff74df08890) | RuView v0.6.5-esp32 — open-source WiFi sensing on a $9 ESP32 board (presence, vitals, motion through walls — no camera) |
 | 2026-07-19 | [ruview-hardware-sensing-update-2026-07-18.md](https://gist.github.com/ruvnet/5ca5a27f2e607dcfcf0e3655fdec2d62) | RuView update: Realtek, MediaTek, Qualcomm, and vendor sensing program (2026-07-18) |
@@ -58,7 +59,6 @@ _466 gists · refreshed 2026-08-08_
 | 2026-07-05 | [ruflo-lattice-wasm.md](https://gist.github.com/ruvnet/d9c7611170025156baad38de3ddec878) | ruflo 3.25.0 — Lattice WASM embedder tier: real multi-model embeddings, fail-closed, usage & upgrade notes |
 | 2026-07-05 | [ruvector-0.2.34-overview.md](https://gist.github.com/ruvnet/06d0ec4e9b470b785528c86783d79425) | RuVector 0.2.34 — RVF DX + privacy fixes, lattice Metal backend (plain-language overview) |
 | 2026-07-05 | [*readme.md](https://gist.github.com/ruvnet/1b458ea3dcce8d3dd05503fe3c5307a1) | — |
-| 2026-07-04 | [*claude.md](https://gist.github.com/ruvnet/e8bb444c6149e6e060a785d1a693a194) | The Claude-SPARC Automated Development System is a comprehensive, agentic workflow for automated software development us |
 | 2026-07-03 | [soul-signature-gist.md](https://gist.github.com/ruvnet/f7418e475e3c3fe7279f3dd88d4865c3) | RuView Soul Signature — passive WiFi biometric identity from hardware (no camera, no wearable). Repo: https://github.com |
 | 2026-07-02 | [fable.md](https://gist.github.com/ruvnet/dbe163c3fc9accfe62198f70a667b339) | Fable 5 — Performance, Capabilities & Cost |
 | 2026-06-30 | [AgentBBS.md](https://gist.github.com/ruvnet/e54f62d30bcb90377817702ea79ed016) | AgentBBS — the first BBS for agents and humans: anonymous, signed, federated boards with a web UI, MCP/SSH for agents, a |

@@ -6,8 +6,8 @@
 RuvNet Brain supplies supported lifecycle plugins for Claude Code and Codex. It ships one MCP tool
 — `search_ruvnet` — plus proactive grounding, routing, learning-capture and session-continuity
 hooks. Before the coding agent answers a question about rUv's stack, the brain retrieves the
-relevant passages from rUv's actual source code (138,140 public source chunks across 64 public
-stores; 71 built stores incl. private) and grounds the answer in cited source paths instead of
+relevant passages from rUv's actual source code (138,463 public source chunks across 65 public
+stores; 72 built stores incl. private) and grounds the answer in cited source paths instead of
 the model's stale priors.
 
 Install in one line: `npx ruvnet-brain`. The installer detects Claude Code and Codex and wires
@@ -45,7 +45,7 @@ https://github.com/stuinfla/ruvnet-brain.
 ## What's inside the brain (the RuvNet building blocks it indexes)
 Orchestration: Ruflo. Vectors + memory: RuVector / RVF, AgentDB, RuLake. Agents + tooling:
 agentic-flow, SPARC, agent-harness-generator. Safety: AIDefence (AIMDS). Plus specialized repos
-(QuDAG, SAFLA, ruv-FANN, agenticow, and more) — 57 repos indexed in total.
+(QuDAG, SAFLA, ruv-FANN, agenticow, and more) — 72 repos indexed in total.
 
 ## Facts
 - Maintainer: Stuart Kerr — Isovision.ai (https://isovision.ai), strategic AI consultant.

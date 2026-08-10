@@ -1,10 +1,10 @@
 {
-  "brainVersion": "4.0.36",
-  "generated": "2026-08-08T07:15:40.148Z",
-  "generatedHuman": "Sat, 08 Aug 2026 07:15:40 GMT",
+  "brainVersion": "4.0.37-dev",
+  "generated": "2026-08-10T07:17:11.349Z",
+  "generatedHuman": "Mon, 10 Aug 2026 07:17:11 GMT",
   "coverage": {
-    "built": 71,
-    "catalogued": 194,
+    "built": 72,
+    "catalogued": 195,
     "orgTotalApprox": 248,
     "pending": 123
   },
@@ -61,7 +61,7 @@
       "name": "metaharness",
       "tier": "T1",
       "stars": 330,
-      "builtFromSha": "4db1c8f86696f58cf7224e8fee5ff96886978ad0",
+      "builtFromSha": "6db0923816525ed7ca26951e45f71664a2f77aa5",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -189,7 +189,7 @@
       "name": "RuLake",
       "tier": "T1",
       "stars": 11,
-      "builtFromSha": "8f2c40863788eb38f260edb4fdbee4e07e1631d4",
+      "builtFromSha": "554f0a60b948e0dfe6d4813dd6a096758a46a5d9",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -221,7 +221,7 @@
       "name": "ruvnet",
       "tier": "T2",
       "stars": 217,
-      "builtFromSha": "651c07934a16e1f0ec99e412c09f8dd6f7247260",
+      "builtFromSha": "81cada87b281e058d9c34664229056a7fd85bf28",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -553,6 +553,13 @@
       "name": "rvqr",
       "tier": "fresh",
       "builtFromSha": "5632240501685d4d37c11565b18767a37c490e4c",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "wifi-veil",
+      "tier": "fresh",
+      "builtFromSha": "018468b5d2bf41f35c552910f35659830af0eb91",
       "latestRemoteSha": null,
       "status": "built"
     }

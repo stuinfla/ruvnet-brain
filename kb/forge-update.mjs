@@ -167,12 +167,37 @@ function sha256File(file) {
   return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
-function relativeFiles(dir, prefix = '') {
+// SYMLINK POLICY IS PER-CALLER (issues #130/#131, fixed 2026-08-10).
+//
+// This threw on ANY symlink anywhere in the tree. That is exactly right when validating a governed
+// store payload — a store file that is a symlink is an attack surface, and PR #124 hardened it for
+// good reason. It is exactly WRONG when merely inventorying a backup, because a KB backup contains
+// node_modules, and npm's `.bin` entries are ALWAYS symlinks. So the first `.bin/semver` link made
+// every backup inventory "incomplete", reclaimBackups() fail closed, and the refusal was permanent
+// rather than incidental:
+//
+//     KEPT kb.bak-… — inventory is incomplete; refusing destructive reclaim
+//       (unreadable inventory tree: symbolic link is not a governed regular file: node_modules/…)
+//
+// Measured consequence on this machine: 63 backups, ~72 GB, every one refused for the same reason,
+// growing by ~1.2 GB per nightly run. The refusal was safe and the scope was wrong — a guard that
+// can never pass is not protecting anything, it is just leaking disk.
+//
+// `strict` (the default) keeps the original behaviour for every governed-payload caller. The
+// inventory walk opts out — but ONLY for symlinks that cannot be a store file; a symlinked `.rvf`
+// still throws, because that is the case the hardening exists for.
+function relativeFiles(dir, prefix = '', { strict = true } = {}) {
   const files = [];
   for (const entry of fs.readdirSync(path.join(dir, prefix), { withFileTypes: true })) {
     const relative = path.join(prefix, entry.name);
-    if (entry.isSymbolicLink()) throw new Error(`symbolic link is not a governed regular file: ${relative}`);
-    if (entry.isDirectory()) files.push(...relativeFiles(dir, relative));
+    if (entry.isSymbolicLink()) {
+      // A symlinked store file is never acceptable, in either mode.
+      if (strict || /\.rvf$/i.test(entry.name)) {
+        throw new Error(`symbolic link is not a governed regular file: ${relative}`);
+      }
+      continue; // ordinary tooling symlink (npm .bin, etc.) — not ours to govern, not ours to follow
+    }
+    if (entry.isDirectory()) files.push(...relativeFiles(dir, relative, { strict }));
     else if (entry.isFile()) files.push(relative);
   }
   return files;
@@ -469,7 +494,8 @@ function storeInventory(dir) {
     if (hasGenerationFile) { complete = false; reason = `unreadable RVF-GENERATIONS.json: ${error.message}`; }
   }
   try {
-    const files = relativeFiles(dir);
+    // Inventory only: tolerate ordinary tooling symlinks (npm .bin). A symlinked .rvf still throws.
+    const files = relativeFiles(dir, '', { strict: false });
     for (const relative of files.filter((name) => name.endsWith('.rvf'))) {
       if (!declaredFiles.has(relative)) {
         stores.set(`file:${relative}`, relative);
@@ -821,6 +847,7 @@ async function main() {
   try { privateOverlay = capturePrivateOverlayState({ kbDir: KB_DIR, allStores: stores }); }
   catch (e) { die(`private overlay preflight failed: ${e.message} — refusing to update.`); }
 
+  let runBackupPath = null;   // one snapshot for the whole run (#130)
   for (const { local } of behindStores) {
     attempted++;
     // ── RESOLVE THE BUNDLE URL FROM THE LIVE MANIFEST, NOT THE PINNED LOCAL COPY (issue #35 item 1) ─
@@ -870,11 +897,29 @@ async function main() {
     // the offending entry, and NOTHING local is touched before this succeeds.
     try { await extractZip(zipPath, extractDir); }
     catch (e) { fs.rmSync(tmp, { recursive: true, force: true }); die(`[${local.kbName}] extraction failed: ${e.message} — local files untouched.`); }
-    const backupPath = path.join(path.dirname(KB_DIR), `${path.basename(KB_DIR)}.bak-${stamp()}`);
-    console.log(`  backing up current copy -> ${backupPath}`);
-    console.log(`  (temporary — released automatically once the new copy verifies)`);
-    fs.cpSync(KB_DIR, backupPath, { recursive: true });
-    backupsMade.push(backupPath);
+    // ONE ROLLBACK SNAPSHOT PER RUN, NOT PER STORE (issue #130, fixed 2026-08-10).
+    //
+    // Every behind store took this branch, and each one copied the ENTIRE KB — so a run with 23
+    // stores behind produced 23 full-KB snapshots of ~1.2 GB each from a SINGLE combined release
+    // bundle. The reporter measured 23 backups (~43 GiB) created in one run, 27 total on disk
+    // (~50 GiB); the maintainer's machine reached 63 backups and ~72 GB before it was noticed,
+    // because #131 also made the reclaimer unable to release any of them.
+    //
+    // The rollback semantics are unchanged: the snapshot is still taken BEFORE anything local is
+    // touched, and it is still the exact pre-update KB. It simply does not need to be re-copied for
+    // each store, because every store in this loop is applied from the same downloaded bundle
+    // against the same KB directory — the second copy onward is a byte-identical duplicate of a
+    // state that has already been captured.
+    if (!runBackupPath) {
+      runBackupPath = path.join(path.dirname(KB_DIR), `${path.basename(KB_DIR)}.bak-${stamp()}`);
+      console.log(`  backing up current copy -> ${runBackupPath}`);
+      console.log(`  (temporary — released automatically once the new copy verifies)`);
+      fs.cpSync(KB_DIR, runBackupPath, { recursive: true });
+      backupsMade.push(runBackupPath);
+    } else {
+      console.log(`  reusing this run's rollback snapshot -> ${runBackupPath}`);
+    }
+    const backupPath = runBackupPath;
     try {
       const restored = applyPublicBundlePreservingPrivate({ extractDir, kbDir: KB_DIR, backupPath, overlay: privateOverlay });
       if (restored.restored) console.log(`  restored ${restored.restored} private overlay registration(s).`);

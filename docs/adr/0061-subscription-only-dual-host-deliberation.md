@@ -3,7 +3,7 @@ id: ADR-061
 title: Subscription-only dual-host deliberation for hard problems
 status: Proposed
 date: 2026-07-28
-updated: 2026-08-07
+updated: 2026-08-10
 authors: [Stuart Kerr, GPT-5.6-Sol]
 tags: [claude-code, codex, subscriptions, adr, ddd, agentic-qe, deliberation]
 supersedes: []
@@ -172,3 +172,5 @@ unsubscribed — which would silently route a subscription-only deliberation ont
 path, the exact outcome this ADR forbids. Detecting the subscription correctly strengthens the
 boundary rather than relaxing it: no provider-backed path became implicit, and opt-in remains
 explicit. The outstanding two-host acceptance requirement is untouched by this repair.
+
+On 2026-08-10, **Re-read after #130/#131; subscription routing is unchanged.** Governed files moved for update-rail reasons only — rollback cardinality and symlink-guard scope. No provider path became implicit and opt-in remains explicit. 
