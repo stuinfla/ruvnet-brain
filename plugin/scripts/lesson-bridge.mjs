@@ -87,6 +87,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { makeLesson, updateLessons, loadLessons, ENFORCEMENT, ORIGIN, STATUS, TRIGGERS } from './lesson-store.mjs';
 
 /** Every bridged lesson id starts with this. It is how a merge knows which rows it owns. */
@@ -231,8 +232,27 @@ export function mergeBridged(existing, bridged) {
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────
 
 const argv = process.argv.slice(2);
-const isMain = process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(new URL(import.meta.url).pathname);
-if (isMain) {
+/**
+ * "Am I the entrypoint?" — and it must NEVER be able to crash the caller that merely imported this.
+ *
+ * The first version had both Windows defects at once, and CI found them: `new URL(import.meta.url)
+ * .pathname` yields `/D:/…` on Windows, which `path`/`fs` then mangle into `D:\D:` — the exact
+ * `ENOENT: lstat 'D:\D:'` that failed this module's whole test SUITE at import time. And
+ * `realpathSync` THROWS on anything that does not resolve, which under vitest `process.argv[1]`
+ * does not.
+ *
+ * `fileURLToPath` is the fix for the first (hook-shim.mjs learned this in issue #38: "on Windows,
+ * pathname yields '/C:/…' which path.resolve mangles into 'C:\\C:\\…'"), and try/catch for the
+ * second. Both were ALREADY correct in scripts/selfcheck.mjs:660 and plugin/scripts/hook-input.mjs
+ * — the pattern existed in this repo and I wrote a new one instead of reading it.
+ */
+function isMain() {
+  try {
+    if (!process.argv[1]) return false;
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch { return false; }
+}
+if (isMain()) {
   const apply = argv.includes('--apply');
   const prune = argv.includes('--prune');
   const json = argv.includes('--json');

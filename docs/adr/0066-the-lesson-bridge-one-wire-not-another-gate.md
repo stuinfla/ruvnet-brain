@@ -124,3 +124,10 @@ store being violated by the file built to carry it:
   counter.
 - **Not addressed here**: the four independent blocking hooks that can each refuse the same
   `Write`/`Edit` with no shared precedence. That is a separate consolidation, still open.
+
+## Currency log
+
+| Date | What changed | Why (with referents) |
+|---|---|---|
+| 2026-08-10 | `lesson-bridge.mjs`'s entrypoint guard and its test structure changed. **The decision is unchanged** — the tag-on-the-row design, the trust boundary, and the "no new gates" constraint all stand. | Two Windows/Node defects in MY code, found by CI, not by review. (1) `new URL(import.meta.url).pathname` yields `/D:/…` on Windows and `realpathSync` throws on an unresolvable `process.argv[1]`, so the guard crashed the suite that merely imported the module (`ENOENT: lstat 'D:\D:'`). Fixed to the pattern already present in `scripts/selfcheck.mjs:660` and `plugin/scripts/hook-input.mjs:538`, and swept across every shipped `.mjs` by `tests/unit/entrypoint-guard-safety.test.mjs`. (2) The test imported `node:sqlite`, absent on Node 20 which CI's `check` job runs — the PRODUCT was always fine (it probes, falls back to the `sqlite3` CLI, then to a no-op), only the test was absolutist. Restructured so every case encoding a trust boundary or refusal runs on plain rows on EVERY runtime, and only the two database-reader cases are conditional. |
+| 2026-08-10 | **Honesty boundary corrected.** This ADR claimed "the bridge is wired and delivering — measured live". That measurement was taken on macOS/Node 24 only, and CI then failed on Node 20 and on Windows. The delivery claim holds for the platform it was measured on; it was not evidence about anyone else's machine. | `lesson-test-the-artifact-not-the-checkout`. The three CI defects above were all invisible to a green local run, by construction. |
