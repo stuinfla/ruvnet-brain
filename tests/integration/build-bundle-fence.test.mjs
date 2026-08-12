@@ -28,6 +28,10 @@ import path from 'node:path';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 
+// Imported under RUVNET_BRAIN_IMPORT_ONLY=1 so the installer main never runs on import.
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { serverDependencies } = await import(path.join(REPO_ROOT, 'bin/install.mjs'));
+
 let tmp;
 beforeEach(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'build-bundle-fence-'));
@@ -35,9 +39,24 @@ beforeEach(() => {
   fs.mkdirSync(path.join(tmp, 'kb'), { recursive: true });
   fs.mkdirSync(path.join(tmp, 'data'), { recursive: true });
   fs.mkdirSync(path.join(tmp, 'plugin/.claude-plugin'), { recursive: true });
-  fs.copyFileSync(path.join(REPO_ROOT, 'scripts/build-bundle.mjs'), path.join(tmp, 'scripts/build-bundle.mjs'));
-  fs.copyFileSync(path.join(REPO_ROOT, 'scripts/version.mjs'), path.join(tmp, 'scripts/version.mjs'));
-  fs.copyFileSync(path.join(REPO_ROOT, 'kb/zip-extract.mjs'), path.join(tmp, 'kb/zip-extract.mjs'));
+  // THE DEPENDENCY LIST IS DERIVED, NOT HAND-LISTED (2026-08-12).
+  //
+  // This copied build-bundle.mjs plus two siblings named as literals — a second copy of that file's
+  // import graph. Adding ONE import to build-bundle (the derived org-repo count) broke all nine cases
+  // here with `node:internal/modules/esm/resolve`, and the symptom read as "the private-store fence
+  // stopped FATALing" — a packaging failure wearing a security-gate's clothes.
+  //
+  // Third occurrence of this exact class in one session: wireCodexHost hand-listed the MCP server's
+  // deps, the mesh mutation fixture hand-listed the installer's, and this hand-listed build-bundle's.
+  // All three now walk the real imports. `serverDependencies` is generic over any entry file, which
+  // is why it is reused here rather than reimplemented a fourth time.
+  const src = path.join(REPO_ROOT, 'scripts/build-bundle.mjs');
+  fs.copyFileSync(src, path.join(tmp, 'scripts/build-bundle.mjs'));
+  for (const dep of serverDependencies(src)) {
+    const target = path.resolve(path.join(tmp, 'scripts'), dep.spec);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(dep.from, target);
+  }
   // This suite measures only the private-store fence. The production bundle builder's independent
   // RVF-index gate is covered by rvf-index-audit.test.mjs and build-bundle release tests; using
   // empty placeholder RVFs here cannot exercise the native reader. Keep the dependency present and

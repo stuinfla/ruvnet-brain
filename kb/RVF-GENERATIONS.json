@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "brainVersion": "4.0.50-dev",
-  "releaseTag": "v4.0.50-dev",
+  "brainVersion": "4.0.51-dev",
+  "releaseTag": "v4.0.51-dev",
   "stores": {
     "agentdb": {
       "file": "agentdb.big.rvf",
@@ -658,7 +658,7 @@
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
       "sourceCommit": "018468b5d2bf41f35c552910f35659830af0eb91",
-      "builtUtc": "2026-08-10T07:17:07.817Z"
+      "builtUtc": "2026-08-12T16:50:59.381Z"
     }
   }
 }

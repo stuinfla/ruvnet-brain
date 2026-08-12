@@ -1,6 +1,6 @@
 {
   "builder": "rvf-kb-forge",
-  "builtUtc": "2026-08-12T07:28:10.075Z",
+  "builtUtc": "2026-08-12T16:50:59.206Z",
   "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
   "selfUpdate": "node forge-update.mjs",
   "stores": {
@@ -273,13 +273,13 @@
       "sourceRepo": "https://github.com/ruvnet/wifi-veil",
       "sourceCommit": "018468b5d2bf41f35c552910f35659830af0eb91",
       "sourceDescribe": "v0.1.0",
-      "builtUtc": "2026-08-10T07:16:00.217Z",
+      "builtUtc": "2026-08-12T16:50:59.206Z",
       "builder": "rvf-kb-forge",
       "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/wifi-veil-kb-bundle.zip",
       "selfUpdate": "node forge-update.mjs wifi-veil"
     }
   },
-  "brainVersion": "4.0.48-dev",
-  "releaseTag": "v4.0.48-dev"
+  "brainVersion": "4.0.50-dev",
+  "releaseTag": "v4.0.50-dev"
 }
