@@ -9,7 +9,12 @@ const GROUND = path.join(ROOT, 'plugin/scripts/ground-ruvnet.sh');
 const SHIM = path.join(ROOT, 'plugin/scripts/hook-shim.mjs');
 const SHIM_BASH = path.join(ROOT, 'plugin/scripts/hook-shim-bash.mjs');
 const ADAPTER = path.join(ROOT, 'plugin/scripts/codex-hook-adapter.mjs');
-const MARKER = '[RuvNet Brain — the self-learning flywheel is available here and switched OFF]';
+// THE BLOCK'S IDENTITY, not its full sentence. This was the entire headline verbatim — a copy of a
+// product string living in a test — so issue #138's rewording ("switched OFF" -> "is NOT running",
+// because a settings entry is not the daemon's environment) made this count 0 and read as "the
+// advisory stopped firing". It had not; only the copy had changed. Anchoring on the stable prefix
+// keeps the CADENCE property under test without pinning the wording it is indifferent to.
+const MARKER = '[RuvNet Brain — the self-learning flywheel';
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
 
 let home;
