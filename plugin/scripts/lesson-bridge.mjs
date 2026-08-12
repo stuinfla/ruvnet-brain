@@ -119,6 +119,9 @@ const PROJECT_DB = process.env.RUVNET_PROJECT_MEMORY_DB
 const TRIGGER_KEYS = new Set(Object.values(TRIGGERS).map((t) => t.key));
 const ENFORCEMENTS = new Set(Object.values(ENFORCEMENT));
 
+/** A local, one-shot read query. Generous for a wedged lock; still a hard ceiling on a hook path. */
+const SQLITE_CLI_TIMEOUT_MS = Number(process.env.RUVNET_SQLITE_CLI_TIMEOUT_MS) || 5_000;
+
 // ── Reading the store ────────────────────────────────────────────────────────────────────────────
 // node:sqlite is preferred: in-process, no shell, exact bytes, no quoting hazard on multi-paragraph
 // lesson text. It is stable on Node 22.5+/24 but absent on older runtimes, so the sqlite3 CLI is the
@@ -136,8 +139,14 @@ export function readGlobalRows(dbPath = GLOBAL_DB, ns = GLOBAL_NS) {
     try { return db.prepare(SQL).all(ns); } finally { db.close(); }
   } catch { /* fall through to the CLI */ }
   try {
+    // Unbounded: an execFileSync with no `timeout` blocks the ENTIRE main thread on a synchronous
+    // syscall, which stalls vitest's own async testTimeout too (it can't fire without a free event
+    // loop) — measured as two consecutive 6h GitHub Actions job-ceiling kills, no error, no test
+    // name, after this file's own tests started using this path (2026-08-10). A busy/locked
+    // sqlite3 CLI, or one waiting on a lock this process already holds via node:sqlite above, must
+    // die on its own schedule, not the host's.
     const out = execFileSync('sqlite3', ['-json', dbPath, SQL.replace('?', `'${ns.replace(/'/g, "''")}'`)],
-      { encoding: 'utf8', maxBuffer: 1 << 24 });
+      { encoding: 'utf8', maxBuffer: 1 << 24, timeout: SQLITE_CLI_TIMEOUT_MS });
     const rows = JSON.parse(out || '[]');
     return Array.isArray(rows) ? rows : [];
   } catch { return []; }
@@ -158,7 +167,8 @@ export function readProjectRows(dbPath = PROJECT_DB) {
     try { return db.prepare(sql).all(); } finally { db.close(); }
   } catch { /* fall through */ }
   try {
-    const out = execFileSync('sqlite3', ['-json', dbPath, sql], { encoding: 'utf8', maxBuffer: 1 << 24 });
+    const out = execFileSync('sqlite3', ['-json', dbPath, sql],
+      { encoding: 'utf8', maxBuffer: 1 << 24, timeout: SQLITE_CLI_TIMEOUT_MS });
     const rows = JSON.parse(out || '[]');
     return Array.isArray(rows) ? rows : [];
   } catch { return []; }

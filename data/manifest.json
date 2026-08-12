@@ -1,7 +1,7 @@
 {
-  "brainVersion": "4.0.48-dev",
-  "generated": "2026-08-10T07:17:11.349Z",
-  "generatedHuman": "Mon, 10 Aug 2026 07:17:11 GMT",
+  "brainVersion": "4.0.49-dev",
+  "generated": "2026-08-12T07:28:17.056Z",
+  "generatedHuman": "Wed, 12 Aug 2026 07:28:17 GMT",
   "coverage": {
     "built": 72,
     "catalogued": 195,
@@ -13,7 +13,7 @@
       "name": "RuView",
       "tier": "T0",
       "stars": 75658,
-      "builtFromSha": "5780c239e4cdcd4389eed37a96d19a98154ebe03",
+      "builtFromSha": "de27336fa1db971d4689fd2db19610e8a7966dee",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -21,7 +21,7 @@
       "name": "ruflo",
       "tier": "T0",
       "stars": 61698,
-      "builtFromSha": "913f9eaedee92627950544424e50339feaf98271",
+      "builtFromSha": "6b01dc5a687b26b3e218f796de45ec51f8fa9e8c",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -61,7 +61,7 @@
       "name": "metaharness",
       "tier": "T1",
       "stars": 330,
-      "builtFromSha": "6db0923816525ed7ca26951e45f71664a2f77aa5",
+      "builtFromSha": "68402755f017e0df5f493c6ee608218420540d17",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -213,7 +213,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "1575642bfd4348f59a9e478582c4e6b4da52a66b",
+      "builtFromSha": "b5a0db59c87da2cfeb964514be832e351e509f39",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -221,7 +221,7 @@
       "name": "ruvnet",
       "tier": "T2",
       "stars": 217,
-      "builtFromSha": "81cada87b281e058d9c34664229056a7fd85bf28",
+      "builtFromSha": "bd5656a9b168d65bb0226eb41efd581b6dab14bf",
       "latestRemoteSha": null,
       "status": "built"
     },

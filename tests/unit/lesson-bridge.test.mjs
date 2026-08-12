@@ -208,3 +208,49 @@ withDb('lesson-bridge — reading a real AgentDB store (needs a sqlite backend)'
     cleanup();
   });
 });
+
+/**
+ * THE 2026-08-10 HANG, root-caused: `readGlobalRows`'s `sqlite3` CLI fallback ran through
+ * `execFileSync` with NO `timeout`. That's not "eventually slow" — a synchronous call blocks the
+ * WHOLE main thread on the underlying syscall, so vitest's own async testTimeout (which needs a
+ * free event loop to fire a setTimeout callback) never got a chance to run either. Two consecutive
+ * `check` job runs died silently at GitHub Actions' 6h job ceiling: no error, no test name printed,
+ * nothing — because nothing INSIDE the process was ever going to time out on its own.
+ *
+ * Deliberately unconditional (no `withDb` gate): a corrupt file makes `node:sqlite` refuse to open
+ * it exactly the same way an ABSENT `node:sqlite` does, so this exercises the CLI fallback on every
+ * Node version — including Node 20, which is what the `check` job that actually hung runs.
+ */
+describe('readGlobalRows — the sqlite3 CLI fallback must not be able to hang the caller', () => {
+  it('TEETH: a wedged `sqlite3` process is killed inside its budget, not left to run', () => {
+    const dir = mktemp();
+    // Not a valid database — forces node:sqlite's open to throw, so this reaches the CLI branch.
+    const dbPath = path.join(dir, 'not-a-db.db');
+    fs.writeFileSync(dbPath, 'not a sqlite file');
+
+    // A fake `sqlite3` that never returns. If the fix regresses (timeout dropped again), this test
+    // would itself hang rather than fail red — the same failure mode it exists to catch — so its
+    // own it() budget below is the backstop, not the proof; the elapsed-time assertion is the proof.
+    const fakeBin = path.join(dir, 'bin');
+    fs.mkdirSync(fakeBin);
+    const fakeSqlite3 = path.join(fakeBin, 'sqlite3');
+    fs.writeFileSync(fakeSqlite3, '#!/bin/sh\nsleep 100\n');
+    fs.chmodSync(fakeSqlite3, 0o755);
+
+    const realPath = process.env.PATH;
+    process.env.PATH = `${fakeBin}:${realPath}`;
+    let rows; let elapsed;
+    try {
+      const started = Date.now();
+      rows = readGlobalRows(dbPath, 'global');
+      elapsed = Date.now() - started;
+    } finally {
+      process.env.PATH = realPath;
+      cleanup();
+    }
+
+    expect(rows, 'a killed CLI must degrade to no rows, exactly like "sqlite3 not installed" already does').toEqual([]);
+    expect(elapsed, 'must be bounded by the CLI timeout (default 5s), not the fake process\'s 100s sleep')
+      .toBeLessThan(15_000);
+  }, 20_000);
+});

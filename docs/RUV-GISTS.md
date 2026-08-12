@@ -5,10 +5,13 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_466 gists · refreshed 2026-08-10_
+_468 gists · refreshed 2026-08-12_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-08-11 | [pr1579-release-notes-plain.md](https://gist.github.com/ruvnet/20cc9a198eef99be5685151433642039) | WiFi Sensing Trust Layer — plain-language preview release notes (RuView PR #1579) |
+| 2026-08-10 | [ruflo-3.35.0-explained.md](https://gist.github.com/ruvnet/0202e6a060b04b3a4f5d9bd18345169d) | ruflo v3.35.0 explained — MetaHarness dependency fix, ADR-381 sequential-evidence governance, and 3 concurrency bugs fou |
+| 2026-08-10 | [.gist-v0.6.5.md](https://gist.github.com/ruvnet/8c099b17eeb589370b36eff74df08890) | RuView v0.6.5-esp32 — open-source WiFi sensing on a $9 ESP32 board (presence, vitals, motion through walls — no camera) |
 | 2026-08-09 | [*claude.md](https://gist.github.com/ruvnet/e8bb444c6149e6e060a785d1a693a194) | The Claude-SPARC Automated Development System is a comprehensive, agentic workflow for automated software development us |
 | 2026-08-08 | [tutorial.md](https://gist.github.com/ruvnet/c9a6b4d88e887de392d0b10fe088f1f4) | Train Your Own AI Models for Free Using Google AI Studio |
 | 2026-08-06 | [.roomodes.json](https://gist.github.com/ruvnet/a206de8d484e710499398e4c39fa6299) | This guide introduces Roo Code and the innovative Boomerang task concept, now integrated into SPARC Orchestration. By fo |
@@ -36,7 +39,6 @@ _466 gists · refreshed 2026-08-10_
 | 2026-07-26 | [pr-body-tracker-sweep-2026-07-26.md](https://gist.github.com/ruvnet/04082cca329b693fb5d4b1d428e56132) | Ruflo v3.32.10 release notes — 2026-07-26 tracker sweep |
 | 2026-07-22 | [wifi-densepose-2.0-python-sota-announcement.md](https://gist.github.com/ruvnet/274c55f2849a20b8b31512c41a9766a5) | wifi-densepose 2.0 — Python SOTA extras (AETHER, MERIDIAN, MAT) |
 | 2026-07-21 | [readme.md](https://gist.github.com/ruvnet/1f278d1994e3bcf8802bf26488258e61) | AgentDB Browser Demo: Agentic Marketing Intelligence System: An intelligent marketing optimization system that uses Agen |
-| 2026-07-19 | [.gist-v0.6.5.md](https://gist.github.com/ruvnet/8c099b17eeb589370b36eff74df08890) | RuView v0.6.5-esp32 — open-source WiFi sensing on a $9 ESP32 board (presence, vitals, motion through walls — no camera) |
 | 2026-07-19 | [ruview-hardware-sensing-update-2026-07-18.md](https://gist.github.com/ruvnet/5ca5a27f2e607dcfcf0e3655fdec2d62) | RuView update: Realtek, MediaTek, Qualcomm, and vendor sensing program (2026-07-18) |
 | 2026-07-18 | [Liar-Ai.md](https://gist.github.com/ruvnet/481d0f8c2190decead7b14164ae3323c) | Liar Ai: Multi-Modal Lie Detection System |
 | 2026-07-17 | [META_PROXY_V0_4.md](https://gist.github.com/ruvnet/f6fee134339afd1b3eaf7105557ec934) | Meta Proxy v0.4.0 — signed routing sidecar for MetaHarness and Ruflo |

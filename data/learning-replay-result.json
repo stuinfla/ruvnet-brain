@@ -2,8 +2,8 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "UNKNOWN",
   "why": "3/3 run(s) could not be measured; executor error: spawnSync codex ENOENT",
-  "sha": "b70fb01fadc7b333b03fea0dae516d10d2b5bc3a",
-  "at": "2026-08-10T07:15:17.665Z",
+  "sha": "71c2107c08a22aa0b07b7f1d28f6fea7e17873c1",
+  "at": "2026-08-12T07:15:18.258Z",
   "host": "codex",
   "model": "haiku",
   "modelResolved": "haiku",
@@ -52,8 +52,8 @@
     "ok": false
   },
   "refresh": {
-    "generation": "d4-refresh-1786346117217",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-i1tNgZ/brain-home/versions/d4-refresh-1786346117217",
+    "generation": "d4-refresh-1786518917783",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-ayfUNX/brain-home/versions/d4-refresh-1786518917783",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -83,9 +83,9 @@
         "firstToolIndex": -1,
         "lessonBeforeFirstToolCall": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/b70fb01fadc7b333b03fea0dae516d10d2b5bc3a/8a49bbd1caa0c0c3b72dca7fac79a853c6d7674f2202502e2116ac18b0af3217.json",
-          "sha256": "8a49bbd1caa0c0c3b72dca7fac79a853c6d7674f2202502e2116ac18b0af3217",
-          "sourceSha": "b70fb01fadc7b333b03fea0dae516d10d2b5bc3a",
+          "path": "data/learning-replay-transcripts/71c2107c08a22aa0b07b7f1d28f6fea7e17873c1/8f93ddb11beab0e3c199c3ab1dc98aaed77171d52fdccd81258666328475ab9e.json",
+          "sha256": "8f93ddb11beab0e3c199c3ab1dc98aaed77171d52fdccd81258666328475ab9e",
+          "sourceSha": "71c2107c08a22aa0b07b7f1d28f6fea7e17873c1",
           "mutant": null
         }
       },
@@ -105,9 +105,9 @@
         "model": "haiku",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/b70fb01fadc7b333b03fea0dae516d10d2b5bc3a/3245550f096458e8a38322572dce45221a37e5a2ecfc608e0619546a8d22aaf2.json",
-          "sha256": "3245550f096458e8a38322572dce45221a37e5a2ecfc608e0619546a8d22aaf2",
-          "sourceSha": "b70fb01fadc7b333b03fea0dae516d10d2b5bc3a",
+          "path": "data/learning-replay-transcripts/71c2107c08a22aa0b07b7f1d28f6fea7e17873c1/c37ff3f7bcdee04884ed53bdcae4b6a261f5502649de9316be4c5ea7f9630e3c.json",
+          "sha256": "c37ff3f7bcdee04884ed53bdcae4b6a261f5502649de9316be4c5ea7f9630e3c",
+          "sourceSha": "71c2107c08a22aa0b07b7f1d28f6fea7e17873c1",
           "mutant": null
         }
       }
@@ -136,9 +136,9 @@
         "firstToolIndex": -1,
         "lessonBeforeFirstToolCall": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/b70fb01fadc7b333b03fea0dae516d10d2b5bc3a/c87644b53b2c92c482bb873d9fe7d84f1e8149f15b9112f762a7a8cc7e45400d.json",
-          "sha256": "c87644b53b2c92c482bb873d9fe7d84f1e8149f15b9112f762a7a8cc7e45400d",
-          "sourceSha": "b70fb01fadc7b333b03fea0dae516d10d2b5bc3a",
+          "path": "data/learning-replay-transcripts/71c2107c08a22aa0b07b7f1d28f6fea7e17873c1/217b2d7edfcf21a11975839425db7e0cf59983f986f9f2a5090d15a607869f15.json",
+          "sha256": "217b2d7edfcf21a11975839425db7e0cf59983f986f9f2a5090d15a607869f15",
+          "sourceSha": "71c2107c08a22aa0b07b7f1d28f6fea7e17873c1",
           "mutant": null
         }
       },
@@ -158,9 +158,9 @@
         "model": "haiku",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/b70fb01fadc7b333b03fea0dae516d10d2b5bc3a/0d3047c3f02b211cdb456ef1cd7d86da377226c0dbf69c4b3ef1bbe035312448.json",
-          "sha256": "0d3047c3f02b211cdb456ef1cd7d86da377226c0dbf69c4b3ef1bbe035312448",
-          "sourceSha": "b70fb01fadc7b333b03fea0dae516d10d2b5bc3a",
+          "path": "data/learning-replay-transcripts/71c2107c08a22aa0b07b7f1d28f6fea7e17873c1/9c71c06fc5501fa3da8bc4809fbecff21bc7135b67faac7c690cf31661553ac6.json",
+          "sha256": "9c71c06fc5501fa3da8bc4809fbecff21bc7135b67faac7c690cf31661553ac6",
+          "sourceSha": "71c2107c08a22aa0b07b7f1d28f6fea7e17873c1",
           "mutant": null
         }
       }
@@ -189,9 +189,9 @@
         "firstToolIndex": -1,
         "lessonBeforeFirstToolCall": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/b70fb01fadc7b333b03fea0dae516d10d2b5bc3a/bfb5b56679712ab1252811849d9a6f22634fc8ad74a356839117f0f2bd97a2ce.json",
-          "sha256": "bfb5b56679712ab1252811849d9a6f22634fc8ad74a356839117f0f2bd97a2ce",
-          "sourceSha": "b70fb01fadc7b333b03fea0dae516d10d2b5bc3a",
+          "path": "data/learning-replay-transcripts/71c2107c08a22aa0b07b7f1d28f6fea7e17873c1/5585c046568a119c4cecd8ebf15c51b2178c79c5470e0af10256c9ba53bf9e0d.json",
+          "sha256": "5585c046568a119c4cecd8ebf15c51b2178c79c5470e0af10256c9ba53bf9e0d",
+          "sourceSha": "71c2107c08a22aa0b07b7f1d28f6fea7e17873c1",
           "mutant": null
         }
       },
@@ -211,9 +211,9 @@
         "model": "haiku",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/b70fb01fadc7b333b03fea0dae516d10d2b5bc3a/c11f4330f710449eead628ea943aef5a2e9b306c1c58bdf9c903d0cb416e8bbc.json",
-          "sha256": "c11f4330f710449eead628ea943aef5a2e9b306c1c58bdf9c903d0cb416e8bbc",
-          "sourceSha": "b70fb01fadc7b333b03fea0dae516d10d2b5bc3a",
+          "path": "data/learning-replay-transcripts/71c2107c08a22aa0b07b7f1d28f6fea7e17873c1/579918360e023e990639e5aeb7898abe8661b3955f4aa4805db3f6849f44a6c6.json",
+          "sha256": "579918360e023e990639e5aeb7898abe8661b3955f4aa4805db3f6849f44a6c6",
+          "sourceSha": "71c2107c08a22aa0b07b7f1d28f6fea7e17873c1",
           "mutant": null
         }
       }

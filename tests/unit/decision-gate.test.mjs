@@ -93,7 +93,22 @@ describe('ADR-067 — one decision, composed from many policies', () => {
   });
 });
 
-describe('ADR-067 — the real gate, fired the way the host fires it', () => {
+/**
+ * THE REAL-GATE CASES NEED BASH, and Windows CI does not have it.
+ *
+ * Every refusal policy is a `.sh` file. `resolveBash()` returns nothing on a runner without Git
+ * Bash, so `runPolicy` contributes no verdict, nothing can refuse, and the gate correctly FAILS OPEN
+ * — the same behaviour those four walls always had on a bashless host, where hook-shim already
+ * declines to run bash hooks and says so once.
+ *
+ * So the product is right and the assertion was wrong: it demanded a refusal that cannot occur.
+ * Skipped explicitly rather than left red, and the pure `decide()` / `policiesFor()` cases above —
+ * which carry the precedence rule and the composition contract — still run on EVERY platform.
+ */
+const hasBash = process.platform !== 'win32' || Boolean(process.env.CLAUDE_CODE_GIT_BASH_PATH || process.env.RUVNET_BRAIN_BASH);
+const withBash = hasBash ? describe : describe.skip;
+
+withBash('ADR-067 — the real gate, fired the way the host fires it', () => {
   it('refuses a write to the user\'s protected settings, with byte-empty stdout', () => {
     const r = fire('write', { file_path: path.join(os.homedir(), '.config', 'ruvnet-brain', 'settings.json'), content: '{}' });
     expect(r.code, 'exit 2 is the only code the host reads as a refusal').toBe(2);

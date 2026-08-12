@@ -177,14 +177,42 @@ fi
 # not prove that the store command wrote the canonical database.
 
 # ── Self-learning flywheel (ruflo ≥3.24, ADR-176) — OFFER it, never switch it on for them ────────
-# Opt-in is a single env var; `harnessLoopOptedIn()` in @claude-flow/cli reads process.env directly,
-# so a project enables it via .claude/settings.json `env`. Unset is a true no-op. We detect BOTH so
-# an already-enabled project is never nagged.
+#
+# ISSUE #138 — CONFIGURED IS NOT OPERATIONAL, AND THIS CONFLATED THEM.
+#
+# The previous detector treated ANY occurrence of the string RUFLO_HARNESS_LOOP in
+# .claude/settings.json as proof the flywheel was on, and then went silent. That is not ruflo's
+# contract. Verified against rUv's source at f35c545, not recalled:
+#
+#   harness-worker.ts:41   /^(1|true|yes|on)$/i.test(process.env.RUFLO_HARNESS_LOOP ?? '')
+#   harness-worker.ts:54   if (!optedIn) return { ran: false, reason: 'opt-in required (…)' }
+#
+# It reads the DAEMON PROCESS ENVIRONMENT. A Claude settings file does not put anything into the
+# environment of a daemon launched by Codex, launchd, systemd, a monitor, or another shell — so the
+# grep proved a FILE MENTIONS A NAME, never that the running daemon inherited it. The Brain then
+# stayed quiet while ruflo recorded "opt-in required" every cycle: a false ENABLED state, which is
+# strictly worse than a false disabled one because nobody goes looking.
+#
+# Same shape as the console learner card (#136): a surface reporting a proxy as if it were the
+# answer. The rule is `lesson-audit-the-answer-not-the-wiring` — a mention is not a measurement.
+#
+# So there are now THREE states, and only the process environment can prove the third:
+#   off        nothing set anywhere            → offer it
+#   declared   a settings file names it, but   → say so, and say what is still missing
+#              THIS process did not inherit it
+#   on         this process HAS it truthy      → stay silent, it is genuinely opted in
 FLYWHEEL=off
 case "${RUFLO_HARNESS_LOOP:-}" in 1|true|yes|on|TRUE|Yes|On) FLYWHEEL=on ;; esac
 if [ "$FLYWHEEL" = "off" ] && grep -qs 'RUFLO_HARNESS_LOOP' .claude/settings.json .claude/settings.local.json 2>/dev/null; then
-  FLYWHEEL=on
+  FLYWHEEL=declared
 fi
+# THE SECOND GATE, and it is not optional (ruflo #2840 / PR #2848). A downstream project must ALSO
+# carry a hash-pinned project-local anchor or the runtime fails closed with
+# "project-local flywheel anchor required" — harness-project-anchor.ts:186. Its canonical path is
+# DEFAULT_PROJECT_ANCHOR_MANIFEST = .claude/eval/flywheel-anchor.manifest.json (same file, :32).
+# Guidance that omits it cannot produce a working setup, which is why "TURN IT ON" below now names it.
+ANCHOR=missing
+[ -f .claude/eval/flywheel-anchor.manifest.json ] && ANCHOR=present
 
 # The cadence belongs to the hook, not to an instruction asking the model to remember whether it
 # already spoke (issue #53). A directory create is the portable atomic primitive here: for one
@@ -208,18 +236,30 @@ claim_flywheel_day() {
   )
 }
 
-if [ "$RUFLO_STATE" = "yes" ] && [ "$FLYWHEEL" = "off" ] && claim_flywheel_day; then
+if [ "$RUFLO_STATE" = "yes" ] && [ "$FLYWHEEL" != "on" ] && claim_flywheel_day; then
   cat <<'EOF'
-[RuvNet Brain — the self-learning flywheel is available here and switched OFF]
-This project runs Ruflo, and ruflo ≥3.24 ships a self-optimizing flywheel that is OFF by default. Offer it plainly and warmly — then drop it. NEVER enable it without an explicit yes. The hook enforces the delivery cadence; do not repeat this advisory yourself.
+[RuvNet Brain — the self-learning flywheel is available here and is NOT running]
+This project runs Ruflo, and ruflo ≥3.24 ships a self-optimizing flywheel that is OFF by default.
+IF a settings file already names RUFLO_HARNESS_LOOP, say so plainly and do not call it enabled: a
+settings entry is not the daemon's environment, and ruflo reports "opt-in required" until the
+process that runs the loop actually carries it. Configured is not operational. Offer it plainly and warmly — then drop it. NEVER enable it without an explicit yes. The hook enforces the delivery cadence; do not repeat this advisory yourself.
 
 Explain it in the user's words, not the plumbing's:
 - WHAT IT IS: ruflo can improve one of its own operating policies over time — specifically how it finds the right stored memory for a query (the BM25/cosine blend, diversity, etc.). Each candidate is scored against a frozen, human-labelled relevance set; a change is promoted ONLY if it measurably beats the current champion on held-out data. Every promotion leaves a signed receipt you can replay yourself, and a drift canary auto-rolls-back on regression. Think "git for decision-policies": each generation has a parent, a diff, evidence, a signature, and an immutable root you can walk back to.
 - WHY IT'S DIFFERENT: most "self-improving agent" claims are unfalsifiable. This one only turns the wheel when an improvement is independently proven, and it hands you the receipt.
 - WHAT IT COSTS: $0. No LLM calls and no network on the decision path.
-- HONEST CAVEAT (say this, don't hide it): it stays idle until the project has accumulated at least 12 stored neural patterns to harvest a corpus from. Before that it reports "store too small" and does nothing. On a brand-new project that means it earns its keep later, not today.
-- TURN IT ON: add {"env":{"RUFLO_HARNESS_LOOP":"1"}} to .claude/settings.json, then `ruflo daemon start`
-  (the GLOBAL binary — never `npx ruflo@latest`, which runs its own private copy and hides drift).
+- HONEST CAVEAT (say this, don't hide it): it stays idle until the project has accumulated at least 12 stored neural patterns to harvest a corpus from — and GENERATION needs more still: at least 20 harvested held-out tasks. Before that it reports "store too small" and does nothing. On a brand-new project it earns its keep later, not today.
+- TURN IT ON — BOTH steps, or ruflo fails closed (verified in rUv's source at f35c545, not recalled):
+    1. the DAEMON'S OWN ENVIRONMENT must carry it. `harness-worker.ts:41` tests
+       `process.env.RUFLO_HARNESS_LOOP` inside the daemon process, so a Claude settings file only
+       helps if the daemon is launched from a shell that inherited it. Export it where the daemon
+       actually starts, then `ruflo daemon start` (the GLOBAL binary — never `npx ruflo@latest`,
+       which runs its own private copy and hides drift).
+    2. a PROJECT-LOCAL ANCHOR is required for a downstream repo (ruflo #2840 / PR #2848):
+       `.claude/eval/flywheel-anchor.manifest.json`, hash-pinned. Without it the runtime refuses with
+       "project-local flywheel anchor required" — `harness-project-anchor.ts:186`.
+  Verify it is genuinely running rather than merely configured: `ruflo hooks intelligence --status`
+  in THIS project, and read the reason it prints. "opt-in required" or "anchor required" means off.
 - TURN IT OFF: remove that env var (and `RUFLO_DAEMON_AUTOSTART=0` stops the daemon auto-starting).
 
 Offer like this: "Ruflo can quietly tune how it recalls memory — testing changes against a frozen benchmark and only keeping what provably wins, with a receipt you can replay. It's free, it's off by default, and it does nothing until this project has enough history. Want me to turn it on?" If they decline, respect it and never raise it again unless they ask.

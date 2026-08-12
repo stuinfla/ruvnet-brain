@@ -92,7 +92,10 @@ withSqlite('a tagged AgentDB row reaches the model, through every real hop', () 
     seedGlobalStore(globalDb, { tags: 'trigger:write-code,enforce:inject,severity:high' });
 
     // HOP 1-2: the bridge reads the store and writes the lesson the gate reads.
-    const applied = execFileSync(process.execPath, [BRIDGE, '--apply'], { encoding: 'utf8', env: env() });
+    // timeout is load-bearing, not decorative: execFileSync with none blocks the WHOLE main thread
+    // synchronously, so vitest's own it(...) timeout can never fire (it needs a free event loop) —
+    // this is what turned a hang into two silent 6h GitHub Actions job-ceiling kills (2026-08-10).
+    const applied = execFileSync(process.execPath, [BRIDGE, '--apply'], { encoding: 'utf8', env: env(), timeout: 40_000 });
     expect(applied, 'the bridge must report what it installed').toMatch(/applied: store/);
     const store = JSON.parse(fs.readFileSync(path.join(configRoot, 'lessons.json'), 'utf8'));
     expect(store.lessons.map((l) => l.id)).toContain('G-e2e-proof');
@@ -107,7 +110,7 @@ withSqlite('a tagged AgentDB row reaches the model, through every real hop', () 
     // Without this, the assertion above could pass on a chain that delivers everything regardless of
     // whether the bridge ran at all — the fixture would not be falsifying its own choice.
     seedGlobalStore(globalDb, { tags: 'severity:high' });   // no trigger: → must not bridge
-    execFileSync(process.execPath, [BRIDGE, '--apply'], { encoding: 'utf8', env: env() });
+    execFileSync(process.execPath, [BRIDGE, '--apply'], { encoding: 'utf8', env: env(), timeout: 40_000 });
     const store = JSON.parse(fs.readFileSync(path.join(configRoot, 'lessons.json'), 'utf8'));
     expect(store.lessons.map((l) => l.id)).not.toContain('G-e2e-proof');
     expect(fireWrite('e2e-untagged').context).not.toContain(STATEMENT);
@@ -117,7 +120,7 @@ withSqlite('a tagged AgentDB row reaches the model, through every real hop', () 
     // Proves the trigger is load-bearing rather than decorative — a chain that delivered every lesson
     // at every decision point would pass the first case and be useless.
     seedGlobalStore(globalDb, { tags: 'trigger:ship,enforce:inject,severity:high' });
-    execFileSync(process.execPath, [BRIDGE, '--apply'], { encoding: 'utf8', env: env() });
+    execFileSync(process.execPath, [BRIDGE, '--apply'], { encoding: 'utf8', env: env(), timeout: 40_000 });
     const store = JSON.parse(fs.readFileSync(path.join(configRoot, 'lessons.json'), 'utf8'));
     expect(store.lessons.map((l) => l.id), 'it must still bridge').toContain('G-e2e-proof');
     expect(fireWrite('e2e-ship').context, 'but must not speak at write-code').not.toContain(STATEMENT);
