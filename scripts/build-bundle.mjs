@@ -19,6 +19,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getVersion, getVersionTag, stripTag } from './version.mjs';
 import { auditRvfIndexes } from './rvf-index-audit.mjs';
+// The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
+// sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
+import { orgRepoCount } from './org-repo-count.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KB = path.join(ROOT, 'kb');
@@ -395,11 +398,12 @@ cp(path.join(ROOT, 'keys', 'ruvnet-brain-signing.pub.pem'), path.join(OUT, 'keys
 const builtLower = new Set(built.map((b) => b.toLowerCase()));
 const pendingRepos = regFlat.filter((r) => !builtLower.has(r.name.toLowerCase())).map((r) => ({ name: r.name, tier: r.tier }));
 const now = new Date();
+const ORG = orgRepoCount();
 const manifest = {
   brainVersion: stripTag(BRAIN_VERSION), // FIELD = bare literal; BRAIN_VERSION stays the v-prefixed Release tag
   generated: now.toISOString(),
   generatedHuman: now.toUTCString(),
-  coverage: { built: builtRepos.length, catalogued: regFlat.length, orgTotalApprox: 248, pending: pendingRepos.length },
+  coverage: { built: builtRepos.length, catalogued: regFlat.length, orgTotalApprox: ORG.count, orgTotalSource: ORG.source, orgTotalAt: ORG.at, pending: pendingRepos.length },
   crossRepoTool: { mcp: 'forge-mcp-all.mjs', cli: 'forge-ask-all.mjs', tool: 'search_ruvnet' },
   conceptsStore: hasConcepts ? { store: 'concepts.big.rvf', note: 'L2 synthesis + per-repo primers embedded as prose; unioned by search_ruvnet so code-implemented capabilities are retrievable as high-confidence prose.' } : null,
   builtRepos,

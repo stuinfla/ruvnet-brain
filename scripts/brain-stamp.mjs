@@ -10,6 +10,9 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { canonicalRvfStores, hasCanonicalRvfStore } from './rvf-generation.mjs';
 import { getVersionTag, stripTag } from './version.mjs';
+// The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
+// sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
+import { orgRepoCount } from './org-repo-count.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
@@ -70,11 +73,12 @@ for (const store of canonicalRvfStores(KB_DIR)) {
   });
 }
 const built = repos.filter((r) => r.status === 'built');
+const ORG = orgRepoCount();
 const manifest = {
   brainVersion: stripTag(BRAIN_VERSION), // FIELD = bare literal; the "v" tag is display-only (see version.mjs)
   generated: NOW,
   generatedHuman: new Date(NOW).toUTCString(),
-  coverage: { built: built.length, catalogued: repos.length, orgTotalApprox: 248, pending: repos.length - built.length },
+  coverage: { built: built.length, catalogued: repos.length, orgTotalApprox: ORG.count, orgTotalSource: ORG.source, orgTotalAt: ORG.at, pending: repos.length - built.length },
   builtRepos: built,
   pendingRepos: repos.filter((r) => r.status === 'pending').map((r) => ({ name: r.name, tier: r.tier })),
 };
