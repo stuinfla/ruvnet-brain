@@ -56,6 +56,15 @@ case "$(field tool_name)" in Write|Edit|MultiEdit|NotebookEdit) ;; *) exit 0 ;; 
 FILE_PATH=$(field file_path)
 [ -n "$FILE_PATH" ] || exit 0
 
+# Windows sends `C:\Users\me\.config\ruvnet-brain\settings.json`, and because the payload is JSON,
+# field() — which does no unescaping — hands us DOUBLED backslashes. Every pattern below is written
+# with `/`, so without this the case block matched nothing and the guard exited 0: the consent
+# boundary failed OPEN for every Windows user, silently. Measured on windows-unit 2026-08-10
+# (`expected +0 to be 2`), and reproduced on macOS — it is the payload's shape, not the host.
+# Normalization is for MATCHING ONLY; nothing here opens the file.
+FILE_PATH=${FILE_PATH//\\\\/\\}   # JSON-doubled backslash → one
+FILE_PATH=${FILE_PATH//\\//}      # separator → the one every pattern below is written in
+
 # The same two paths brain-state.mjs and user-settings.mjs compute, resolved the same way. The env
 # overrides exist so this suite (and a second machine profile) can point them elsewhere; the literal
 # defaults are matched TOO, so the guard protects a real user even when no override is set — a gate

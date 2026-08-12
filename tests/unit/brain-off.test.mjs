@@ -622,6 +622,38 @@ describe.skipIf(bashOnly)('ADR-054 — the PreToolUse guard on the consent recor
     expect(r.status).toBe(2);
   });
 
+  it('BLOCKS a WINDOWS-style path — the separator is not the protection', () => {
+    // windows-unit went red on exactly this (2026-08-10). Claude Code sends `C:\Users\me\.config\…`,
+    // the payload is JSON, and field() does no unescaping — so the script receives DOUBLED
+    // backslashes. Every glob in the case block is written with `/`, so nothing matched and the
+    // guard exited 0: the consent boundary failed OPEN for every Windows user. The bug is in the
+    // payload SHAPE, not the host, so this reproduces on POSIX and needs no Windows runner.
+    for (const p of [
+      'C:\\Users\\someone\\.config\\ruvnet-brain\\settings.json',
+      'C:\\Users\\someone\\.config\\ruvnet-brain\\brain-off',
+      'C:\\Users\\someone\\.config\\ruvnet-brain\\settings.json.bak-2026-01-01',
+    ]) {
+      const r = spawnSync('bash', [PROTECT], {
+        input: JSON.stringify(write(p)),
+        env: { ...process.env, HOME: 'C:\\Users\\someone', RUVNET_BRAIN_STATE_DIR: '', RUVNET_SETTINGS_FILE: '' },
+        encoding: 'utf8',
+      });
+      expect(r.status, `${p} was not protected`).toBe(2);
+    }
+  });
+
+  it('TEETH: normalising separators does not turn the guard into a blanket refusal', () => {
+    // Without this, "block everything with a backslash" would pass the test above.
+    for (const p of ['C:\\Users\\someone\\code\\app.mjs', 'C:\\Users\\someone\\.claude\\settings.json']) {
+      const r = spawnSync('bash', [PROTECT], {
+        input: JSON.stringify(write(p)),
+        env: { ...process.env, HOME: 'C:\\Users\\someone', RUVNET_BRAIN_STATE_DIR: '', RUVNET_SETTINGS_FILE: '' },
+        encoding: 'utf8',
+      });
+      expect(r.status, `${p} must pass untouched`).toBe(0);
+    }
+  });
+
   it('never teaches the model the lever it just refused', () => {
     const r = fireBash(PROTECT, write(sentinel));
     expect(r.stderr).not.toMatch(/\brm\b|unlink|setBrainOn|delete (the|this) file/i);
