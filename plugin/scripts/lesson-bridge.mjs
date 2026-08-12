@@ -1,87 +1,21 @@
 #!/usr/bin/env node
 /**
- * lesson-bridge.mjs — carry AgentDB's machine-wide lessons into the gate that already fires.
+ * lesson-bridge.mjs — carry AgentDB's tagged lessons into the store lesson-gate already reads.
  *
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- * THE MEASURED GAP (2026-08-10, on the owner's own machine — not hypothetical).
+ * WHY: two stores of "what we learned" existed with nothing connecting them. The full measurement,
+ * the trust-boundary reasoning, and what it cost to learn are in docs/adr/0066 — not repeated here.
  *
- * This project has TWO stores of "what we learned", and until this file they were not connected by
- * anything. A grep for a reader proved it: no lesson-* script referenced `.swarm/memory.db`.
+ * THE ONE RULE THAT SURPRISES PEOPLE: the trigger lives as a TAG ON THE AGENTDB ROW, never inferred
+ * from the text. An untagged lesson does not bridge and is reported by name. Guessing which moment a
+ * lesson belongs to is the keyword-classifier mistake ADR-065 recorded in its own numbers.
  *
- *     ~/.config/ruvnet-brain/lessons.json               17 lessons   → reaches lesson-gate → the model
- *     ~/.claude/global-memory/.swarm/memory.db (global) 33 lessons   → reaches NOTHING
+ * Bridged lessons are origin:imported, so makeLesson structurally forbids them from blocking work.
+ * Fail-safe both ways: no store → no-op; zero candidates → REFUSES to write (a read failure must not
+ * silently strip installed lessons; removal is explicit via --prune).
  *
- * The 33 are the EXPENSIVE ones. Global memory is Tier 1 of the promotion ladder: a lesson only
- * lands there after it has been independently rediscovered in more than one project (ruflo ADR-G008,
- * "win twice to promote"). They are, by construction, the lessons that generalise — and they were
- * the ones with no way to speak.
- *
- * What that cost, concretely. `lesson-tests-that-cannot-fail-on-broken-code` has been in the global
- * store since 2026-07-21: "WOULD THIS TEST FAIL IF THE THING IT GUARDS WERE BROKEN? Prove it by
- * breaking the code and watching it fail." On 2026-08-08 this repo shipped issue #122's guard as a
- * test piping /dev/null, where stdin EOF made the enabled and disabled cases BOTH exit 0 — a test
- * that could not fail, written 18 days after the lesson that names that exact mistake was recorded.
- * The knowledge was on the machine. Nothing put it in front of the decision.
- *
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- * WHY A BRIDGE AND NOT A NEW GATE.
- *
- * The reflex this repo has to unlearn is answering every incident with another gate; 47% of its 76
- * issues are gates that cannot pass or surfaces that state something false (ADR-065). So this adds
- * ZERO hooks, ZERO matchers, and ZERO new decision points. It feeds the pipeline that already exists
- * and is already proven live:
- *
- *     AgentDB global store ─▶ [this file] ─▶ lessons.json ─▶ lesson-gate ─▶ unprompted-runtime ─▶ model
- *                                            (unchanged)     (unchanged)    (the ONE chokepoint)
- *
- * Everything downstream — frequency cap, project scope, nudge-not-block, the ADR-040 chokepoint that
- * is the sole writer of user bytes — applies to a bridged lesson exactly as to a native one, because
- * a bridged lesson IS a native one by the time anything reads it.
- *
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- * THE TRIGGER LIVES ON THE ROW, NOT IN A SIDE-FILE. This is the design decision worth defending.
- *
- * A lesson with no trigger is prose (lesson-store.mjs says so, and refuses it). So bridging needs a
- * trigger per lesson, and the obvious implementations are both wrong:
- *
- *   • CLASSIFY THE TEXT — a keyword mapper guessing "this one is about writing code". ADR-065 was
- *     written three hours earlier about exactly this: its own 17/0 split came from a keyword
- *     classifier and spot-checking immediately found a false positive. Guessing which moment a rule
- *     belongs to is how you get a rule that fires at the wrong moment, which is worse than silence.
- *   • A SEPARATE MANIFEST FILE — a second file naming the same rows. That is the disease: two places
- *     holding one fact, drifting the first time a lesson is added to one and not the other.
- *
- * So the trigger is a TAG ON THE AGENTDB ROW ITSELF, using rUv's own structured fields:
- *
- *     ruflo memory store --path ~/.claude/global-memory/.swarm/memory.db -n global \
- *       -k "lesson-tests-that-cannot-fail-on-broken-code" --value "<text>" \
- *       --tags "trigger:write-code,enforce:inject" --provenance user_claim
- *
- * One fact, one place, carried by the store that already owns the lesson. This is
- * `lesson-govern-at-structured-boundaries` — "when you find yourself parsing an unstructured string
- * to enforce a rule, you have chosen the wrong boundary" — applied to the bridge itself.
- *
- * AN UNTAGGED LESSON DOES NOT BRIDGE, AND IS REPORTED BY NAME. Silence would read as "that is all
- * there is", which is the same lie as a truncated list. Tagging is the human act of saying "this one
- * should interrupt me, here"; nothing enters enforcement because a machine thought it fit.
- *
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- * THE TRUST BOUNDARY IS NOT WIDENED. A bridged lesson carries origin `imported` unless the row's own
- * `provenance` column says `user_claim`, and makeLesson REFUSES `enforcement:block` on anything that
- * is not `user-stated`. Blocking additionally requires the opt-in file the mining pipeline never
- * writes. So the worst a planted global row can achieve, even if tagged, is an advisory the user sees
- * and can delete — never a refusal of their work.
- *
- * FAIL-SAFE, in both directions:
- *   • no global store / no sqlite / unreadable → 0 bridged, exit 0, nothing written. A machine
- *     without global memory (every fresh install) sees no change at all.
- *   • zero candidates found → REFUSES to write, so a transient read failure can never silently strip
- *     lessons that are already in the store. Removal is explicit: --prune.
- *
- *   node plugin/scripts/lesson-bridge.mjs             # report only — what would bridge, and what is untagged
- *   node plugin/scripts/lesson-bridge.mjs --apply     # merge into lessons.json (locked, atomic, backed up)
- *   node plugin/scripts/lesson-bridge.mjs --json      # machine-readable
- *   node plugin/scripts/lesson-bridge.mjs --apply --prune   # allow removing bridged rows when none remain
+ *   node plugin/scripts/lesson-bridge.mjs            # report what would bridge, and what is untagged
+ *   node plugin/scripts/lesson-bridge.mjs --apply    # merge (locked, atomic, backed up)
+ *   node plugin/scripts/lesson-bridge.mjs --json     # machine-readable
  */
 import fs from 'node:fs';
 import os from 'node:os';

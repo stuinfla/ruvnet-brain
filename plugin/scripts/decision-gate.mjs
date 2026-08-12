@@ -2,55 +2,18 @@
 /**
  * decision-gate.mjs — ONE PreToolUse decision, from N policies, with ONE reason.
  *
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- * THE MEASUREMENT. Read from hooks.json's own matchers on 2026-08-10:
+ * WHY: four independent processes could each refuse the same Write, with no precedence and no shared
+ * context, so the user got one arbitrary reason and no hint a second wall stood behind it. The
+ * measurement and the full rationale are in docs/adr/0067 — not repeated here.
  *
- *     Write | Edit  →  hijack-ruvnet · ground-before-write · protect-state · unprompted-speech
- *     Bash          →  hijack-ruvnet · design-wall · unprompted-speech
+ * This is ADR-040's speech-chokepoint invariant applied to REFUSAL. One pattern used twice, not two.
  *
- * FOUR independent processes could each refuse the same Write, and THREE the same Bash. Five separate
- * `exit 2` sites across four bash scripts, no precedence between them, no shared context, and no way
- * for any of them to know what the others thought. Whichever refused first won, and the user got that
- * one's reason and no hint that a second wall was also standing.
+ * THE POLICIES ARE UNCHANGED. Each already speaks `exit 0` = allow, `exit 2` + stderr = refuse — a
+ * verdict function that was only ever missing a caller. The gate runs each as a CAPTURED child and
+ * composes one decision, naming every policy that refused, in declared precedence order.
  *
- * The owner named this before it was measured: *"not just a bunch of constraints rules that break and
- * collapse on each other."* That is the concrete form of it. Nothing owned the decision, so everything
- * had an opinion about it.
- *
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- * THE FIX IS NOT A FIFTH WALL. It is the chokepoint pattern this repo ALREADY proved for speech —
- * ADR-040 / DDD-0004, `unprompted-runtime.mjs`: "Every unprompted utterance passes through ONE runtime
- * that alone decides whether bytes reach the user." That invariant was built for advisories and left
- * refusals alone. This file is the same invariant for the other half:
- *
- *     Every refusal of a tool call passes through ONE gate that consults every policy and alone
- *     decides. A policy returns a verdict; it never writes to the user's streams.
- *
- * Deliberately NOT a second mechanism with its own vocabulary — one pattern, applied twice, is how a
- * codebase stays learnable. Inventing a parallel one here would be the exact mistake ADR-066 records
- * (the right pattern existed and a new one got written beside it).
- *
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- * WHY THE POLICIES DO NOT CHANGE. Each of the four already speaks a precise contract — `exit 0` allow,
- * `exit 2` + stderr refuse — documented identically at the top of all four files. That contract is
- * exactly a verdict function; it was only ever missing a caller. So the gate runs each policy as a
- * CAPTURED child in its existing mode and reads (code, stderr). Zero edits to any policy, zero new
- * candidate protocol to keep in sync, and every existing per-policy test still exercises the real
- * thing. A rewrite of four working guards to add a new emit-mode would have been change for its own
- * sake, and the risk lands on a hot path that can refuse a user's work.
- *
- * WHAT THE USER GAINS, concretely:
- *   • ONE refusal message, naming the policy that refused AND every other policy that also would have
- *     — because the gate runs them all and reports what it saw, instead of stopping at the first.
- *   • DECLARED PRECEDENCE (POLICIES below, in order). Consent before grounding before taste.
- *   • ONE process on the hot path instead of four, under ONE global deadline.
- *
- * FAIL-OPEN, and this is a decision, not an oversight. Any failure of the GATE ITSELF — unreadable
- * policy, spawn error, blown deadline — allows the action. `lesson-gate.mjs` states the rule this
- * repo learned the hard way: "a gate that blocked a push because it could not read a config file
- * would be worse than no gate, and would be switched off within a day, which is how every over-eager
- * gate dies." A policy that genuinely refuses still refuses; only the gate's own malfunction is
- * resolved toward allowing.
+ * FAIL-OPEN, deliberately: any failure of the GATE ITSELF allows. A gate that blocks because it
+ * cannot read a file is one users switch off, and a disabled gate protects nothing.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -137,21 +100,19 @@ export function decide(verdicts) {
 
 const firstLine = (s) => String(s || '').trim().split('\n').map((l) => l.trim()).filter(Boolean)[0] || '';
 
-/**
- * The sub-event token unprompted-runtime already switches on.
- *
- * A hoisted `function`, not a `const` arrow: the top-level `if (isMain())` block below runs DURING
- * module evaluation, so an arrow declared after it sits in the temporal dead zone and throws
- * `Cannot access 'speechEventFor' before initialization` on the first real refusal. Measured, not
- * theorised — it fired on the first live-fire of this gate.
- */
-
 /** Payload accessors — tolerant, because a malformed payload must degrade to "no measurement". */
 function parsed(payload) { try { const o = JSON.parse(payload); return o && typeof o === 'object' ? o : {}; } catch { return {}; } }
 function sessionOf(payload) { return String(parsed(payload).session_id || ''); }
 function payloadTool(payload) { return String(parsed(payload).tool_name || ''); }
 function payloadInput(payload) { return parsed(payload).tool_input || {}; }
 
+/**
+ * The sub-event token unprompted-runtime switches on.
+ *
+ * A hoisted `function`, not a `const` arrow: the `if (isMain())` block below runs DURING module
+ * evaluation, so an arrow declared after it sits in the temporal dead zone — it threw
+ * `Cannot access 'speechEventFor' before initialization` on this gate's first live refusal.
+ */
 function speechEventFor(event) { return event === 'bash' ? 'PreToolUse-bash' : 'PreToolUse-write'; }
 
 // ── Runtime ──────────────────────────────────────────────────────────────────────────────────────
