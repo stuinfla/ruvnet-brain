@@ -3,7 +3,7 @@ id: ADR-066
 title: The lesson bridge — machine-wide knowledge reaches the gate that already fires
 status: Accepted
 date: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-12
 authors: [Stuart Kerr, Claude Code]
 tags: [learning, hooks, memory, agentdb, simplification]
 supersedes: []
@@ -129,5 +129,6 @@ store being violated by the file built to carry it:
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-12 | Re-read after #138; the bridge's decision is unchanged, and a live finding is recorded against its honesty boundary. | `lesson-bridge.mjs` and `lesson-store.mjs` are governed here and moved only for the ADR-067 work already logged. What is NEW and belongs on this ADR: the bridge's whole premise is that a tagged AgentDB row reaches the model, and on 2026-08-12 `ruflo memory store` (global v3.38.0) stopped persisting — it prints a full receipt with an entry id and `[OK] Data stored successfully`, and `ruflo memory retrieve -k` then reports `Key not found` while direct SQL shows no row, on BOTH the project and global stores, daemon running or stopped. The newest row in the global store is stamped `2026-08-10 16:59`. So ADR-066's delivery path is intact for lessons ALREADY bridged (they live in `lessons.json`, not in AgentDB), but NEW lessons cannot currently enter the store this ADR reads from. Recorded rather than fixed: the defect is upstream of this repo. |
 | 2026-08-10 | `lesson-bridge.mjs`'s entrypoint guard and its test structure changed. **The decision is unchanged** — the tag-on-the-row design, the trust boundary, and the "no new gates" constraint all stand. | Two Windows/Node defects in MY code, found by CI, not by review. (1) `new URL(import.meta.url).pathname` yields `/D:/…` on Windows and `realpathSync` throws on an unresolvable `process.argv[1]`, so the guard crashed the suite that merely imported the module (`ENOENT: lstat 'D:\D:'`). Fixed to the pattern already present in `scripts/selfcheck.mjs:660` and `plugin/scripts/hook-input.mjs:538`, and swept across every shipped `.mjs` by `tests/unit/entrypoint-guard-safety.test.mjs`. (2) The test imported `node:sqlite`, absent on Node 20 which CI's `check` job runs — the PRODUCT was always fine (it probes, falls back to the `sqlite3` CLI, then to a no-op), only the test was absolutist. Restructured so every case encoding a trust boundary or refusal runs on plain rows on EVERY runtime, and only the two database-reader cases are conditional. |
 | 2026-08-10 | **Honesty boundary corrected.** This ADR claimed "the bridge is wired and delivering — measured live". That measurement was taken on macOS/Node 24 only, and CI then failed on Node 20 and on Windows. The delivery claim holds for the platform it was measured on; it was not evidence about anyone else's machine. | `lesson-test-the-artifact-not-the-checkout`. The three CI defects above were all invisible to a green local run, by construction. |
