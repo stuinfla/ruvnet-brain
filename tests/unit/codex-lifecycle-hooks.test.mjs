@@ -19,10 +19,19 @@ function fixture() {
   return { home, brain };
 }
 
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { serverDependencies } = await import(new URL('../../bin/install.mjs', import.meta.url).href);
+
 function installGeneration(brain, version, shimSource) {
   const scripts = path.join(brain, 'versions', version, 'scripts');
   fs.mkdirSync(scripts, { recursive: true });
+  // Same rule as every other isolated-copy fixture: carry the adapter's REAL imports, derived.
   fs.copyFileSync(ADAPTER, path.join(scripts, 'codex-hook-adapter.mjs'));
+  for (const dep of serverDependencies(ADAPTER)) {
+    const target = path.resolve(scripts, dep.spec);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    try { fs.copyFileSync(dep.from, target); } catch { /* a generation fixture may stub it instead */ }
+  }
   fs.writeFileSync(path.join(scripts, 'hook-shim.mjs'), shimSource);
   fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({
     generation: version,

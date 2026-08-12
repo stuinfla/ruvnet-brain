@@ -24,6 +24,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { serverDependencies } = await import(new URL('../../bin/install.mjs', import.meta.url).href);
+
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 
 let tmp;
@@ -36,11 +39,17 @@ beforeEach(() => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ingest-repo-')));
   fs.mkdirSync(path.join(tmp, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(tmp, 'kb'), { recursive: true });
-  fs.copyFileSync(path.join(REPO_ROOT, 'scripts/ingest-repo.mjs'), path.join(tmp, 'scripts/ingest-repo.mjs'));
-  // ingest-repo.mjs statically imports the SHARED depth config (scripts/full-hints.mjs — the
-  // one map both it and self-update.mjs read, so --full/--keep hints can never drift between
-  // entrypoints again). The isolated ROOT must carry the script's real dependency set.
-  fs.copyFileSync(path.join(REPO_ROOT, 'scripts/full-hints.mjs'), path.join(tmp, 'scripts/full-hints.mjs'));
+  // The isolated ROOT must carry the script's real dependency set — DERIVED, not named. This block
+  // already knew the rule and still hand-listed `full-hints.mjs`, which is how the same class broke
+  // three other fixtures on 2026-08-12 (the Codex host, the mesh mutant, the build-bundle fence).
+  // A list of a file's imports, written anywhere but that file, drifts the moment an import lands.
+  const ingestSrc = path.join(REPO_ROOT, 'scripts/ingest-repo.mjs');
+  fs.copyFileSync(ingestSrc, path.join(tmp, 'scripts/ingest-repo.mjs'));
+  for (const dep of serverDependencies(ingestSrc)) {
+    const target = path.resolve(path.join(tmp, 'scripts'), dep.spec);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(dep.from, target);
+  }
 
   binDir = path.join(tmp, 'stub-bin');
   fs.mkdirSync(binDir);

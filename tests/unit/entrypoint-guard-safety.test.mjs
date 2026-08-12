@@ -127,3 +127,65 @@ describe('a file that gets copied alone must have its dependencies copied with i
     for (const spec of declared) expect(found, `${spec} would not be copied beside the server`).toContain(spec);
   });
 });
+
+/**
+ * THE SWEEP, MADE PERMANENT — no fixture may hand-list a script's imports.
+ *
+ * On 2026-08-12 this exact class broke FOUR places, and I found them one at a time instead of
+ * sweeping:
+ *
+ *   wireCodexHost               hand-listed the MCP server's deps  -> shipped a dead Codex server
+ *   tests/mesh/coexistence      hand-listed the installer's        -> a "mutation failure" that was packaging
+ *   build-bundle-fence          hand-listed build-bundle's         -> nine "private-store fence broken" failures
+ *   ingest-repo / codex-lifecycle  latent, found only by grepping for the shape
+ *
+ * The ingest fixture even carried a comment saying "the isolated ROOT must carry the script's real
+ * dependency set" — it knew the rule and hand-listed anyway. That is the tell: knowing a rule is not
+ * enforcing it. `lesson-store.mjs` names the shape — "one bug, found once, fixed once, left
+ * everywhere else, which is the shape of nearly every failure in this project's history."
+ *
+ * A fixture that copies an entry script into an isolated tree must DERIVE what to copy beside it.
+ */
+describe('no fixture hand-lists the imports of a script it isolates', () => {
+  const suspects = (() => {
+    const out = [];
+    const walk = (d) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const q = path.join(d, e.name);
+        if (e.isDirectory()) { if (!/node_modules|\.git/.test(e.name)) walk(q); continue; }
+        if (!/\.(mjs|js)$/.test(e.name)) continue;
+        const src = fs.readFileSync(q, 'utf8');
+        const copies = [...src.matchAll(/copyFileSync\([^)]*['"`]([^'"`]*\.(?:mjs|js))['"`]/g)];
+        if (copies.length >= 2) out.push({ rel: path.relative(ROOT, q), src, copies: copies.length });
+      }
+    };
+    for (const d of ['tests', 'scripts', 'bin']) {
+      const full = path.join(ROOT, d);
+      if (fs.existsSync(full)) walk(full);
+    }
+    return out;
+  })();
+
+  it('finds the fixtures to check at all', () => {
+    // Without this a path typo makes the assertion below vacuously true.
+    expect(suspects.length, 'the scan found no multi-copy fixtures — the walk is wrong').toBeGreaterThan(0);
+  });
+
+  it('every multi-copy fixture derives rather than names its dependencies', () => {
+    // THE PREDICATE MUST REQUIRE THE CALL, NOT THE MENTION. The first version tested
+    // /serverDependencies/ against the whole file, so a fixture that IMPORTED the walker and then
+    // hand-listed anyway passed — proven by mutation: removing the loop and restoring the literal
+    // left this green. A guard that cannot fail on the broken shape is not a guard.
+    const derives = (src) => /for\s*\(\s*const\s+\w+\s+of\s+serverDependencies\(/.test(src)
+      || /cpSync\(/.test(src);
+    const handListed = suspects
+      .filter((s) => !derives(s.src))
+      .map((s) => `${s.rel} (${s.copies} literal copies)`);
+    expect(
+      handListed,
+      'these copy a script into an isolated tree and NAME its siblings. Walk the real imports '
+      + 'instead — serverDependencies() in bin/install.mjs is generic over any entry file. A list '
+      + 'of a file\'s imports, written anywhere but that file, drifts the moment an import lands.',
+    ).toEqual([]);
+  });
+});
