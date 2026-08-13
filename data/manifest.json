@@ -1,14 +1,14 @@
 {
-  "brainVersion": "4.0.52-dev",
-  "generated": "2026-08-12T07:28:17.056Z",
-  "generatedHuman": "Wed, 12 Aug 2026 07:28:17 GMT",
+  "brainVersion": "4.0.53-dev",
+  "generated": "2026-08-13T07:20:14.050Z",
+  "generatedHuman": "Thu, 13 Aug 2026 07:20:14 GMT",
   "coverage": {
     "built": 72,
     "catalogued": 195,
     "orgTotalApprox": 200,
-    "pending": 123,
     "orgTotalSource": "live",
-    "orgTotalAt": "2026-08-12T16:31:15.373Z"
+    "orgTotalAt": "2026-08-13T07:20:15.096Z",
+    "pending": 123
   },
   "builtRepos": [
     {
@@ -23,7 +23,7 @@
       "name": "ruflo",
       "tier": "T0",
       "stars": 61698,
-      "builtFromSha": "6b01dc5a687b26b3e218f796de45ec51f8fa9e8c",
+      "builtFromSha": "5efd5937e588d6e2d20d974f14593a4795562ef8",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -31,7 +31,7 @@
       "name": "RuVector",
       "tier": "T0",
       "stars": 4296,
-      "builtFromSha": "9e12078ae2af74d0613ae604266cf22fb1113b10",
+      "builtFromSha": "0f24c7a75106f5ac9fb99f0de1db63e917ea8e54",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -215,7 +215,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "b5a0db59c87da2cfeb964514be832e351e509f39",
+      "builtFromSha": "591d9337dc4634b6f49d72e401439d862470fbd5",
       "latestRemoteSha": null,
       "status": "built"
     },
