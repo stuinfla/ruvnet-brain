@@ -4,6 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// THE ONE WAY THIS REPO FINDS BASH. This file originally spawned '/bin/bash' directly — the only
+// place in the whole test suite that did — and every assertion here failed on windows-unit with
+// `expected '' to match …`, because the hook never ran and an empty string matches nothing. The
+// resolver already existed (issue #38, @tkmeownow's patch) and I wrote a second, wrong answer next
+// to it. That is the same defect as `orgTotalApprox: 248` and the seven store-root expressions:
+// one fact, restated somewhere it will drift. A second way to do a thing IS the bug.
+import { resolveBash } from '../../plugin/scripts/hook-shim-bash.mjs';
 
 /**
  * ISSUE #138 — CONFIGURED IS NOT OPERATIONAL.
@@ -41,10 +48,19 @@ afterEach(() => {
   for (const d of [dir, cache]) { try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* best effort */ } }
 });
 
+/**
+ * No usable bash on this machine (a Windows runner without Git for Windows) is a PLATFORM fact, not
+ * a product defect — hook-shim itself skips in exactly that case. Asserting against a hook that
+ * cannot run produced six failures that all read as "the flywheel advisory is broken" and were
+ * really "bash was never found", which is a diagnosis three layers from its cause.
+ */
+const BASH = resolveBash();
+const onlyWithBash = BASH ? it : it.skip;
+
 /** Fire the hook the way UserPromptSubmit does: payload on stdin, no tty, from the project. */
 function fire({ env = {}, settings = null } = {}) {
   if (settings) fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(settings));
-  const r = spawnSync('/bin/bash', [HOOK], {
+  const r = spawnSync(BASH, [HOOK], {
     cwd: dir,
     input: JSON.stringify({ session_id: `fw-${Math.random().toString(16).slice(2)}`, prompt: 'build a feature' }),
     encoding: 'utf8',
@@ -64,27 +80,27 @@ function fire({ env = {}, settings = null } = {}) {
 const mentionsFlywheel = (out) => /self-learning flywheel/i.test(out);
 
 describe('issue #138 — a settings entry is not the daemon environment', () => {
-  it('TEETH: a settings file that NAMES the var no longer counts as enabled', () => {
+  onlyWithBash('TEETH: a settings file that NAMES the var no longer counts as enabled', () => {
     // The exact defect. Before this, the string in the file silenced the advisory entirely.
     const out = fire({ settings: { env: { RUFLO_HARNESS_LOOP: '1' } } });
     expect(mentionsFlywheel(out), 'a declared-but-not-inherited var must NOT silence the advisory').toBe(true);
     expect(out, 'and it must say plainly that configured is not running').toMatch(/Configured is not operational/i);
   }, 40_000);
 
-  it('stays silent when THIS process genuinely carries the var', () => {
+  onlyWithBash('stays silent when THIS process genuinely carries the var', () => {
     // The one state that proves opt-in: ruflo reads process.env, so this is the real signal. Without
     // this case the fix could have been "always nag", which is a different defect.
     const out = fire({ env: { RUFLO_HARNESS_LOOP: '1' } });
     expect(mentionsFlywheel(out), 'a genuinely opted-in project must never be nagged').toBe(false);
   }, 40_000);
 
-  it('offers it when nothing is set anywhere', () => {
+  onlyWithBash('offers it when nothing is set anywhere', () => {
     expect(mentionsFlywheel(fire()), 'the offer is the whole point of the advisory').toBe(true);
   }, 40_000);
 });
 
 describe('issue #138 — the guidance can actually produce a working setup', () => {
-  it('names the project-local anchor, without which ruflo fails closed', () => {
+  onlyWithBash('names the project-local anchor, without which ruflo fails closed', () => {
     // ruflo #2840 / PR #2848. Guidance that omits this cannot produce a working downstream setup —
     // the user follows it exactly and still gets "project-local flywheel anchor required".
     const out = fire();
@@ -92,11 +108,11 @@ describe('issue #138 — the guidance can actually produce a working setup', () 
     expect(out).toMatch(/project-local flywheel anchor required/i);
   }, 40_000);
 
-  it('says the env must reach the DAEMON, not merely a settings file', () => {
+  onlyWithBash('says the env must reach the DAEMON, not merely a settings file', () => {
     expect(fire()).toMatch(/DAEMON'S OWN ENVIRONMENT|daemon is launched from a shell that inherited/i);
   }, 40_000);
 
-  it('states BOTH data gates, not just the first', () => {
+  onlyWithBash('states BOTH data gates, not just the first', () => {
     // 12 patterns is only the harvest gate; generation additionally needs 20 held-out tasks. Quoting
     // one number as "the" caveat understates when the wheel will actually turn.
     const out = fire();
@@ -104,7 +120,7 @@ describe('issue #138 — the guidance can actually produce a working setup', () 
     expect(out).toMatch(/20 harvested held-out tasks/);
   }, 40_000);
 
-  it('tells the user how to VERIFY rather than assume', () => {
+  onlyWithBash('tells the user how to VERIFY rather than assume', () => {
     // The whole issue is a proxy mistaken for an answer, so the fix must hand over the real check.
     expect(fire()).toMatch(/ruflo hooks intelligence --status/);
   }, 40_000);

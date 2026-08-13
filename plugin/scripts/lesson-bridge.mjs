@@ -197,8 +197,21 @@ export function lessonFromRow(row, { projects = [], idPrefix = BRIDGE_PREFIX, so
         repeatCount: 0,
         severity: tags.severity === 'high' ? 'high' : 'normal',
         origin,
-        status: STATUS.RATIFIED,   // the tag on the row IS the human act of ratification
-        ratifiedBy: `agentdb-tag:${source}/${key}`,
+        // A TAG IS NOT A HUMAN ACT. This said `STATUS.RATIFIED`, commented "the tag on the row IS the
+        // human act of ratification" — but `ruflo memory store --tags` runs in every session, from
+        // hooks and from the model itself. I wrote a tagged row by hand on 2026-08-13, which under
+        // the old line would have RATIFIED MY OWN LESSON. Combined with nightly-wrapper.sh running
+        // `lesson-bridge --apply` unattended, any process able to write a `lesson-*` row could inject
+        // standing instructions into every later session, stamped as ratified policy — the injection
+        // path ADR-066/067 closed at the front door, left open on a timer at the side.
+        //
+        // The distinction was already computed eight lines up. rUv's typed provenance (ADR-323,
+        // v3/@claude-flow/cli/src/commands/memory.ts) marks `user_claim` as the one value meaning a
+        // human said it; `origin` honoured that and `status` ignored it. Both now read the same fact.
+        // Anything else arrives CANDIDATE, which lessonsFor() will not deliver and makeLesson() will
+        // not let block.
+        status: origin === ORIGIN.USER_STATED ? STATUS.RATIFIED : STATUS.CANDIDATE,
+        ratifiedBy: origin === ORIGIN.USER_STATED ? `agentdb-provenance:user_claim ${source}/${key}` : null,
       }),
     };
   } catch (e) { return { skip: String(e?.message || e).slice(0, 160) }; }
@@ -289,6 +302,22 @@ if (isMain()) {
     console.log(`  ▸ ${trigger}`);
     for (const l of ls) console.log(`      ${l.enforcement.padEnd(9)} ${l.id}`);
   }
+  // BRIDGED BUT NOT DELIVERED IS ITS OWN STATE, AND IT MUST BE LOUD. A candidate is merged into the
+  // store and then filtered out by lessonsFor(), so counting it under "bridged" would report 43
+  // lessons in force while 20 of them never fire — the same lie as the flywheel's "configured"
+  // reported as "operational". These are the rows the model wrote about itself (`agent_output`);
+  // self-ratification is the hole, but going quiet about it would be the bigger one.
+  const candidates = bridged.filter((l) => l.status === STATUS.CANDIDATE);
+  if (candidates.length) {
+    console.log(`\n  BRIDGED BUT NOT DELIVERED (${candidates.length}) — provenance is not user_claim, so`);
+    console.log('  these merge as CANDIDATES: lessonsFor() will not surface them and they cannot block.');
+    for (const l of candidates) console.log(`      ${l.trigger.padEnd(24)} ${l.id}`);
+    console.log('\n      To put one in force, the HUMAN restates it — a tag the model can write is not');
+    console.log('      a human act, which is why these are held:');
+    console.log(`      ruflo memory store --path ${GLOBAL_DB} -n ${GLOBAL_NS} \\`);
+    console.log('        -k "<key>" --value "<text>" --tags "trigger:<key>,enforce:checklist" --provenance user_claim');
+  }
+
   if (skipped.length) {
     // NAMED, never a count. A list that says "12 skipped" and stops is the truncation that reads as
     // completeness — the exact failure Rule 23 was written about.

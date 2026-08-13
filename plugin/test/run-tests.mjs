@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
+import { resolveBash } from '../scripts/hook-shim-bash.mjs';
 import { fileURLToPath } from 'node:url';
 import {
   resolveModelCache,
@@ -59,7 +60,7 @@ for (const f of ['skills/ruvnet-brain/SKILL.md', 'skills/brain-score/SKILL.md', 
 // 2. grounding hook
 section('2. grounding hook (enforcement)');
 const hookPath = path.join(ROOT, 'scripts/ground-ruvnet.sh');
-const runHook = (input) => spawnSync('/bin/bash', [hookPath], { input, encoding: 'utf8' });
+const runHook = (input) => spawnSync(resolveBash(), [hookPath], { input, encoding: 'utf8' });
 const onTopic = runHook(JSON.stringify({ prompt: 'does ruflo support agent swarms?' }));
 check('fires on a RuvNet prompt', /search_ruvnet/.test(onTopic.stdout) && /ground before you assert/i.test(onTopic.stdout));
 check('exits 0 on a RuvNet prompt', onTopic.status === 0);

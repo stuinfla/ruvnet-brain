@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "brainVersion": "4.0.52-dev",
-  "releaseTag": "v4.0.52-dev",
+  "brainVersion": "4.0.53-dev",
+  "releaseTag": "v4.0.53-dev",
   "stores": {
     "agentdb": {
       "file": "agentdb.big.rvf",
@@ -338,12 +338,12 @@
     },
     "open-claude-code": {
       "file": "open-claude-code.big.rvf",
-      "sha256": "6dd55428d31ac0f3a74b43003bba10d1d9950577a134fa9ea0133aaf69c637ea",
-      "bytes": 630210,
+      "sha256": "3f900bda199542adf76fd1cc3fc0f75f86239226acc8eb6712b8312c1f23779c",
+      "bytes": 635977,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": "b5a0db59c87da2cfeb964514be832e351e509f39",
-      "builtUtc": "2026-08-12T07:27:09.563Z"
+      "sourceCommit": "591d9337dc4634b6f49d72e401439d862470fbd5",
+      "builtUtc": "2026-08-13T07:20:07.930Z"
     },
     "photonlayer": {
       "file": "photonlayer.big.rvf",
@@ -383,12 +383,12 @@
     },
     "ruflo": {
       "file": "ruflo.big.rvf",
-      "sha256": "d763ede72b0d8379df99c72aa32279243acc63c69f5fa64a431bf395418f869e",
-      "bytes": 51965842,
+      "sha256": "3cb67ba61a9b5e91978ac9d12429f9bb680d9ebc947bdf9c4032fbd574e5d3f8",
+      "bytes": 53593570,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": "6b01dc5a687b26b3e218f796de45ec51f8fa9e8c",
-      "builtUtc": "2026-08-12T07:27:03.631Z"
+      "sourceCommit": "5efd5937e588d6e2d20d974f14593a4795562ef8",
+      "builtUtc": "2026-08-13T07:20:00.380Z"
     },
     "rulake": {
       "file": "rulake.big.rvf",
@@ -482,12 +482,12 @@
     },
     "ruvector": {
       "file": "ruvector.big.rvf",
-      "sha256": "1ebd41eb197025b442871f08f8f7ab03e19888f8ede4868ff11efdf23cb40c0f",
-      "bytes": 102001190,
+      "sha256": "c83708dc5a79542cd8dd651277b2daef695329bdc9e59d86e789105ff238b032",
+      "bytes": 104294751,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": "9e12078ae2af74d0613ae604266cf22fb1113b10",
-      "builtUtc": "2026-08-07T07:16:42.921Z"
+      "sourceCommit": "0f24c7a75106f5ac9fb99f0de1db63e917ea8e54",
+      "builtUtc": "2026-08-13T07:17:29.839Z"
     },
     "ruview": {
       "file": "ruview.big.rvf",
@@ -640,7 +640,7 @@
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
       "sourceCommit": "5632240501685d4d37c11565b18767a37c490e4c",
-      "builtUtc": "2026-08-06T17:28:23.586Z"
+      "builtUtc": "2026-08-12T17:03:00.073Z"
     },
     "rucelium": {
       "file": "rucelium.big.rvf",
@@ -649,7 +649,7 @@
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
       "sourceCommit": "813da13eb9a46b6acf78fe7ecc8c220ecf83b386",
-      "builtUtc": "2026-08-06T17:28:27.559Z"
+      "builtUtc": "2026-08-12T17:02:52.396Z"
     },
     "wifi-veil": {
       "file": "wifi-veil.big.rvf",

@@ -129,6 +129,78 @@ describe('a file that gets copied alone must have its dependencies copied with i
 });
 
 /**
+ * ONE WAY TO FIND BASH — and `/bin/bash` written anywhere but the resolver is not it.
+ *
+ * On 2026-08-13 `flywheel-configured-vs-operational.test.mjs` spawned `/bin/bash` directly. It was
+ * the ONLY file in the suite that did. On windows-unit the path does not resolve, the hook never
+ * ran, and six assertions failed with `expected '' to match …` — a message that names neither bash
+ * nor Windows, and reads instead as "the flywheel advisory is broken". It blocked a dependabot PR
+ * that had nothing to do with any of it.
+ *
+ * `resolveBash()` already existed for exactly this (issue #38, from @tkmeownow's tested patch). A
+ * second answer written next to a working one is the same defect as `orgTotalApprox: 248` in two
+ * producers and seven store-root expressions across 29 call sites: one fact, restated where it will
+ * drift. The instance is one line; the CLASS is what keeps costing days, so the class gets the guard.
+ */
+describe('nothing hardcodes a bash path — the resolver is the only answer', () => {
+  const sources = (() => {
+    const out = [];
+    const walk = (d) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const q = path.join(d, e.name);
+        if (e.isDirectory()) { if (!/node_modules|\.git|clones/.test(e.name)) walk(q); continue; }
+        if (!/\.(mjs|js)$/.test(e.name)) continue;
+        out.push({ rel: path.relative(ROOT, q), text: fs.readFileSync(q, 'utf8') });
+      }
+    };
+    for (const d of ['tests', 'scripts', 'bin', 'plugin']) {
+      const full = path.join(ROOT, d);
+      if (fs.existsSync(full)) walk(full);
+    }
+    return out;
+  })();
+
+  it('finds sources to check at all', () => {
+    expect(sources.length, 'the scan found nothing — the directory list is wrong').toBeGreaterThan(20);
+  });
+
+  /**
+   * The precise defect is SPAWNING a path that may not exist — not mentioning the string. A fixture
+   * that asserts on the literal, and the resolver's own test that pins `resolveBash({},'darwin') ===
+   * '/bin/bash'`, are both correct and must stay. So the predicate targets the executable position
+   * of a spawn, and clears a file that either uses the resolver or guards on the path existing.
+   * A broader rule would flag correct code, and a guard that flags correct code gets deleted.
+   */
+  const SPAWNS_LITERAL = /(?:spawnSync|execFileSync|execFile|spawn)\(\s*['"`]\/bin\/bash['"`]/;
+  const isSafe = (src) => /resolveBash/.test(src) || /existsSync\(\s*['"`]\/bin\/bash['"`]\s*\)/.test(src);
+
+  it('TEETH: no file spawns a literal /bin/bash unguarded', () => {
+    const offenders = sources
+      .filter((f) => !/hook-shim-bash\.mjs$/.test(f.rel)) // the resolver is where the literal belongs
+      .filter((f) => SPAWNS_LITERAL.test(code(f.text)) && !isSafe(code(f.text)))
+      .map((f) => f.rel);
+    expect(
+      offenders,
+      'import { resolveBash } from plugin/scripts/hook-shim-bash.mjs. It returns /bin/bash on POSIX, '
+      + 'Git-for-Windows bash on win32, and null when there is none — and a null means SKIP, because '
+      + 'a platform with no bash is not a product defect. Guarding with existsSync is also accepted.',
+    ).toEqual([]);
+  });
+
+  it('TEETH: the detector fires on the line that broke CI, and clears the correct forms', () => {
+    // Proven by mutation both ways: a pattern that never fires and one that fires on everything are
+    // equally useless, and this repo has shipped the first kind already.
+    expect(SPAWNS_LITERAL.test("const r = spawnSync('/bin/bash', [HOOK], {")).toBe(true);
+    expect(SPAWNS_LITERAL.test("execFileSync('/bin/bash', [CAPTURE], {")).toBe(true);
+    expect(SPAWNS_LITERAL.test('const r = spawnSync(BASH, [HOOK], {')).toBe(false);
+    // …and a file that merely asserts on the string, or guards first, is not an offender.
+    expect(isSafe("expect(resolveBash({}, 'darwin')).toBe('/bin/bash');")).toBe(true);
+    expect(isSafe("const hasBinBash = fs.existsSync('/bin/bash');")).toBe(true);
+    expect(isSafe("spawnSync('/bin/bash', [p])")).toBe(false);
+  });
+});
+
+/**
  * THE SWEEP, MADE PERMANENT — no fixture may hand-list a script's imports.
  *
  * On 2026-08-12 this exact class broke FOUR places, and I found them one at a time instead of

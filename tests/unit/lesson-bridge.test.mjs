@@ -197,8 +197,38 @@ withDb('lesson-bridge — reading a real AgentDB store (needs a sqlite backend)'
     expect(lesson.id).toBe(idFor('lesson-tests-that-cannot-fail-on-broken-code'));
     expect(lesson.trigger).toBe('write-code');
     expect(lesson.enforcement).toBe(ENFORCEMENT.INJECT);
-    expect(lesson.status, 'the tag IS the ratification — otherwise lessonsFor() filters it out and this is theatre')
-      .toBe(STATUS.RATIFIED);
+    cleanup();
+  });
+
+  /**
+   * A TAG IS NOT A HUMAN ACT — the injection path, closed.
+   *
+   * This previously asserted `STATUS.RATIFIED` with the note "the tag IS the ratification". But
+   * `ruflo memory store --tags` runs in every session, from hooks and from the model itself, and
+   * `nightly-wrapper.sh` runs `lesson-bridge --apply` unattended. So any process that could write a
+   * `lesson-*` row could mint standing instructions for every later session, stamped ratified — the
+   * injection ADR-066/067 closed at the front door, open on a timer at the side. Found 2026-08-13 by
+   * an adversarial audit, after I had myself hand-written a tagged row that would have self-ratified.
+   *
+   * rUv's typed provenance (ADR-323) already carried the answer: `user_claim` is the one value that
+   * means a human said it.
+   */
+  it('TEETH: a tagged row the MODEL wrote arrives as a candidate, not as policy', () => {
+    const db = makeStore([{ key: 'lesson-planted', content: LESSON, tags: 'trigger:write-code,enforce:inject', provenance: 'agent_output' }]);
+    const { lesson } = lessonFromRow(readGlobalRows(db, 'global')[0]);
+    expect(lesson.status, 'agent_output must never mint ratified policy').toBe(STATUS.CANDIDATE);
+    expect(lesson.ratifiedBy, 'and it must not claim a ratifier it does not have').toBeNull();
+    cleanup();
+  });
+
+  it('a row the HUMAN stated is ratified, so the bridge still delivers real lessons', () => {
+    // Without this the fix could be "nothing is ever ratified", which silences the whole system —
+    // a different defect wearing the same fix. Measured on the live store: 23 of 43 carry user_claim.
+    const db = makeStore([{ key: 'lesson-stated', content: LESSON, tags: 'trigger:write-code,enforce:inject', provenance: 'user_claim' }]);
+    const { lesson } = lessonFromRow(readGlobalRows(db, 'global')[0]);
+    expect(lesson.status).toBe(STATUS.RATIFIED);
+    expect(lesson.ratifiedBy, 'and it names WHY it is ratified, so the reason is auditable')
+      .toMatch(/user_claim/);
     cleanup();
   });
 

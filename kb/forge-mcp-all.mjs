@@ -17,6 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { storeRoot } from './store-root.mjs';
 import { searchAll, discoverRepos, deployedFamilyReposFromQuery } from './forge-ask-all.mjs';
 import { warmKnowledgeStores, warmQueryEmbedder } from './forge-ask.mjs';
 import { warmReranker } from './forge-rerank.mjs';
@@ -147,7 +148,10 @@ function disabledResult(id, k, state) {
   return ok(id, { content: [{ type: 'text', text: body }], isError: false, disabled: true, _meta: { disabled: true } });
 }
 
-const KB_DIR = process.env.KB_DIR || process.cwd();
+// ONE RESOLVER (2026-08-13). This was `process.env.KB_DIR || process.cwd()`, so the brain you got
+// depended on where you stood — an ingest wrote one root while this read another, and three repos
+// reported 'searchable now' while search found none of them.
+const KB_DIR = storeRoot();
 const REPOS = (process.env.KB_REPOS || '').split(',').map((s) => s.trim()).filter(Boolean);
 let discovered = [];
 try { discovered = discoverRepos(KB_DIR); } catch { /* dir checked at call time */ }
