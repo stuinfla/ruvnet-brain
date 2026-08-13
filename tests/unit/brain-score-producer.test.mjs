@@ -118,6 +118,14 @@ describe('a score presented as CURRENT carries the date it was measured', () => 
    * as today's answer on 2026-08-13, on the public README, by me.
    */
   const CURRENT = /\b(current|currently|today|now|live|latest|as of)\b/i;
+  /**
+   * Past-tense narrative is a RECORD, and records stay true. This guard's first run flagged
+   * "Detection without a remedy is **now** structurally impossible. The console **used to** …
+   * score it 49/100" — a sentence about a fixed defect, caught because it contains "now". A guard
+   * that flags correct prose gets deleted, and then it protects nothing; the same review that
+   * caught a sibling hook fabricating a diagnosis made exactly this point about credibility.
+   */
+  const PAST = /\b(used to|previously|before|was |were |shipped \d{4}|had )\b/i;
 
   it('TEETH: "Current baseline … 100/100" with no date is the exact public defect', () => {
     const bad = 'Current baseline (n=120): **grounded 100/100 · routed 63/80**';
@@ -134,7 +142,7 @@ describe('a score presented as CURRENT carries the date it was measured', () => 
       const text = fs.readFileSync(p, 'utf8');
       for (const m of text.matchAll(/(\d{1,3})\s*\/\s*(?:100|\d{1,3})\b/g)) {
         const line = text.slice(text.lastIndexOf('\n', m.index) + 1, text.indexOf('\n', m.index));
-        if (CURRENT.test(line) && !/\d{4}-\d{2}-\d{2}/.test(line)) offenders.push(`${rel}: ${line.trim().slice(0, 100)}`);
+        if (CURRENT.test(line) && !PAST.test(line) && !/\d{4}-\d{2}-\d{2}/.test(line)) offenders.push(`${rel}: ${line.trim().slice(0, 100)}`);
       }
     }
     expect(

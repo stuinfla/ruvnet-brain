@@ -31,7 +31,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
@@ -46,8 +46,26 @@ const STALE = new Set(['presumed-stale']);
  * with git calls per document, which is fine for a pre-push gate and far too slow for something on
  * the Write path. Same logic, narrower question.
  */
+/**
+ * doc-currency lives OUTSIDE the payload, and that is correct rather than an oversight worked
+ * around. `plugin/` is what reaches a user (marketplace.json `"source": "./plugin"`), a user's
+ * install has no `docs/adr/`, and a gate about THIS repo's ADRs has nothing to say there. A static
+ * `import('../../scripts/doc-currency.mjs')` would have shipped a specifier that resolves only in a
+ * checkout and throws ERR_MODULE_NOT_FOUND on every real install — the exact defect ADR-065 exists
+ * to stop, which `payload-self-contained.test.mjs` caught in the very commit citing ADR-065.
+ *
+ * So the dependency is resolved at runtime and its ABSENCE IS A CLEAN SKIP, not an error: outside a
+ * checkout this gate simply has no opinion.
+ */
+async function loadDocCurrency(root) {
+  const p = path.join(root, 'scripts', 'doc-currency.mjs');
+  if (!fs.existsSync(p)) return null;
+  try { return await import(pathToFileURL(p).href); } catch { return null; }
+}
+
 export async function staleGovernorsOf(relPath, { root = REPO, docCurrency = null, readFile = null } = {}) {
-  const mod = docCurrency ?? await import('../../scripts/doc-currency.mjs');
+  const mod = docCurrency ?? await loadDocCurrency(root);
+  if (!mod) return [];
   const { listDocs, evaluateDoc, parseFrontmatter, DEFAULT_DIRS, isGitRepo } = mod;
   // `readFile` is injectable for one reason, and it is not tidiness: with `fs.readFileSync` hardcoded
   // here, a test that injects `listDocs`/`parseFrontmatter` never reaches them — the read throws on a
