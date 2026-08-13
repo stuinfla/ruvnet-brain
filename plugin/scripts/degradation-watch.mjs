@@ -65,7 +65,12 @@ function defaultRun(cmd, args) {
  * semantic-search hit, the .db mtime, the daemon being up, or which driver is loaded.
  */
 export function proveMemoryDurable(dbPath = defaultDb(), { run = defaultRun } = {}) {
-  if (!fs.existsSync(dbPath)) return { ok: true, why: `no store at ${dbPath} — nothing claims to persist`, skipped: true };
+  // AN ABSENT STORE IS NOT AN EXEMPTION. This returned `{ok:true, skipped:true}` when the file did
+  // not exist, which — as an independent audit put it — means "the first `ruflo memory store`, the
+  // operation that CREATES the store, is precisely the write the guard cannot falsify." That is a
+  // hole shaped exactly like the moment durability matters most: a fresh machine, first write, and
+  // the sql.js fallback silently swallowing it. `ruflo memory store` creates the file, so probing an
+  // absent path is a valid question with a real answer; only a path we cannot even attempt is a skip.
   const key = `durability-probe-${process.pid}-${Date.now()}`;
   try {
     run('ruflo', ['memory', 'store', '--path', dbPath, '-n', 'default', '-k', key, '--value', 'probe']);
@@ -144,36 +149,47 @@ export function refusalFor(event, degradations) {
  * drops it, or shipping while claiming the project learned something it did not.
  */
 export const DEPENDENT_COMMANDS = [
-  { event: 'record-lesson', match: /\bruflo\s+memory\s+store\b|lesson-bridge|memory_store/ },
-  { event: 'ship', match: /\bgit\s+push\b|npm\s+publish|release\.mjs/ },
+  // `cat lesson-bridge.mjs` used to match `record-lesson`, so READING the file needed to fix a
+  // degradation was refused while degraded. The verb has to be in the pattern, not just the noun.
+  { event: 'record-lesson', match: /\bruflo\s+memory\s+store\b|lesson-bridge\.mjs\s+--apply/ },
+  // `git -C <path> push` and `git --git-dir=… push` are the forms an agent with absolute paths
+  // actually writes — this environment's own instructions mandate them — and the first version
+  // matched neither. Two independent audits caught that the same day, and both also caught the
+  // inverse: `grep -n "npm publish" docs/…` matched, so reading ABOUT shipping counted as shipping.
+  { event: 'ship', match: /\bgit\b[^|;&]*\bpush\b|\b(?:npm|yarn|pnpm)\s+publish\b|\bgh\s+release\s+create\b|release\.mjs/ },
 ];
 
+/**
+ * QUOTED TEXT IS AN ARGUMENT, NOT A COMMAND. The same correction identifier-preflight.mjs needed
+ * hours earlier: the truth-maker is what will EXECUTE, and a prompt, a grep pattern or a commit
+ * message is not that. Without it, `git commit -m "ready to git push"` reads as shipping.
+ */
+const executablePart = (cmd) => String(cmd || '').replace(/"[^"]*"/g, ' ').replace(/'[^']*'/g, ' ');
+
 export function dependentEvent(command, table = DEPENDENT_COMMANDS) {
-  return table.find((c) => c.match.test(String(command || '')))?.event ?? null;
+  const cmd = executablePart(command);
+  return table.find((c) => c.match.test(cmd))?.event ?? null;
 }
 
-/** Cache briefly so a gate consulted many times in one turn does not re-probe on each call. */
-const CACHE = path.join(os.tmpdir(), `ruvnet-degradation-${process.env.USER || 'u'}.json`);
-const TTL_MS = 5 * 60_000;
-
+/**
+ * THE CACHE IS GONE, AND ITS REMOVAL IS THE FIX.
+ *
+ * It was keyed `/tmp/ruvnet-degradation-$USER.json` while the probe targets a PER-PROJECT path. Two
+ * independent adversarial audits, blind to each other, each found a different bug in it on the same
+ * day — which is the strongest signal available that the cache, not its key, was the defect:
+ *
+ *   · a DEGRADED project cached ok:false, so `git push` in a HEALTHY project was refused for five
+ *     minutes citing another repo's evidence;
+ *   · a HEALTHY project cached ok:true, so a BROKEN project shipped inside the TTL without ever
+ *     being probed — the direction that actually costs data.
+ *
+ * The probe runs only on `git push`, `npm publish` and `ruflo memory store`: rare, deliberate acts
+ * where one or two seconds is invisible and a wrong answer is expensive. Caching bought latency
+ * nobody was asking for and sold correctness to pay for it. A cache whose key is not the thing that
+ * determines the answer is a restated fact, which is the defect this whole file exists to close.
+ */
 export function cachedDegradations(opts = {}) {
-  if (!opts.noCache) {
-    try {
-      const c = JSON.parse(fs.readFileSync(CACHE, 'utf8'));
-      if (Date.now() - c.at < TTL_MS) {
-        return c.ids.map((id) => ({ ...SIGNATURES.find((s) => s.id === id), verdict: c.why[id] })).filter((d) => d.id);
-      }
-    } catch { /* a cold cache is not an error */ }
-  }
-  const live = activeDegradations(SIGNATURES, opts);
-  try {
-    fs.writeFileSync(CACHE, JSON.stringify({
-      at: Date.now(),
-      ids: live.map((d) => d.id),
-      why: Object.fromEntries(live.map((d) => [d.id, d.verdict])),
-    }));
-  } catch { /* the cache is an optimisation, never a correctness requirement */ }
-  return live;
+  return activeDegradations(SIGNATURES, opts);
 }
 
 /**
