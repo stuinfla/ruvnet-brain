@@ -93,8 +93,17 @@ export function check(command, opts = {}) {
   const known = hit.cli.known(opts.home);
   if (!known.length) return { verdict: 'unknown', why: `cannot enumerate ${hit.cli.id} models on this machine` };
   if (known.includes(hit.value)) return { verdict: 'ok', value: hit.value };
+  // A CONFIGURED MODEL IS A DEFAULT, NOT AN ALLOWLIST — and an audit was right to call the first
+  // version a false-refusal waiting to happen: an account may accept several models, so `o3` or
+  // `gpt-5.1-codex` are UNKNOWN here, not wrong, and must pass. What is knowably wrong is a NEAR MISS
+  // of the configured value, because that is a typo rather than a choice — and it is exactly what
+  // happened: `gpt-5.6` for `gpt-5.6-sol`, a truncation, 400 + exit 0, fifty minutes lost.
+  const nearMiss = known.find((k) => k.startsWith(hit.value) || hit.value.startsWith(k)
+    || k.replace(/[-._]/g, '') === hit.value.replace(/[-._]/g, ''));
+  if (!nearMiss) return { verdict: 'unknown', why: `${hit.value} is not this machine's configured model, but may still be valid for the account` };
   return {
     verdict: 'wrong',
+    nearMiss,
     value: hit.value,
     known,
     reason:

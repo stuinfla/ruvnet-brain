@@ -53,7 +53,25 @@ import path from 'node:path';
 // reading the code and believing it.
 import { fileURLToPath } from 'node:url';
 
-const defaultDb = () => path.join(process.env.RUVNET_BRAIN_PROJECT_DIR || process.cwd(), '.swarm', 'memory.db');
+/**
+ * THE PROBE TARGET IS A SCRATCH DB, NOT THE PROJECT'S.
+ *
+ * This was `process.cwd()/.swarm/memory.db`. The hook runs MACHINE-WIDE, so in any repo that is not
+ * ruvnet-brain it ran `ruflo memory store --path <that repo>/.swarm/memory.db` — CREATING a .swarm
+ * directory and writing a probe row into somebody else's project. An independent audit named it
+ * "unrelated-project mutation", and it is the plainest possible violation of this project's own rule
+ * (ADR-058 D5: never touch what we do not own). Shipped by me, today, in the hook whose entire
+ * purpose is to stop silent damage.
+ *
+ * The fix is not tighter scoping — it is noticing the question was mis-framed. "Does `ruflo memory
+ * store` durably persist?" is a property of the SQLite DRIVER and its ABI against the running node.
+ * That is machine-wide. It has nothing to do with which repo you happen to be standing in, so a
+ * scratch database answers it exactly as well, mutates nothing, and additionally covers the case an
+ * audit flagged separately: with a real project path, an ABSENT store had to be skipped, which made
+ * the store-CREATING first write the one write the guard could never falsify. A scratch path is
+ * always absent and always created — the first-write case is now the ONLY case.
+ */
+const defaultDb = () => path.join(os.tmpdir(), `ruvnet-durability-probe-${process.pid}.db`);
 
 function defaultRun(cmd, args) {
   return execFileSync(cmd, args, { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -78,10 +96,14 @@ export function proveMemoryDurable(dbPath = defaultDb(), { run = defaultRun } = 
     if (rows !== '1') {
       return { ok: false, why: `stored a row, SQL found ${rows} — the store reports a success it cannot honour` };
     }
-    try { run('sqlite3', [dbPath, `DELETE FROM memory_entries WHERE key='${key}';`]); } catch { /* probe row is harmless */ }
     return { ok: true, why: 'store → SQL round-trip confirmed the exact row on disk' };
   } catch (e) {
     return { ok: false, why: `probe could not complete: ${String(e?.message ?? e).split('\n')[0]}` };
+  } finally {
+    // The scratch db is ours alone; remove it and its WAL siblings rather than leaving litter in tmp.
+    for (const suffix of ['', '-wal', '-shm']) {
+      try { fs.unlinkSync(dbPath + suffix); } catch { /* never existed, or already gone */ }
+    }
   }
 }
 

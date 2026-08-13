@@ -42,7 +42,22 @@ describe('a known-wrong identifier is refused, with the right answer attached', 
   });
 
   it('reads the short flag too, since that is how it will be typed next time', () => {
-    expect(check('codex exec -m gpt-4o "x"', { home: cfg('gpt-5.6-sol') }).verdict).toBe('wrong');
+    expect(check('codex exec -m gpt-5.6 "x"', { home: cfg('gpt-5.6-sol') }).verdict).toBe('wrong');
+  });
+
+  it('TEETH: a DIFFERENT model is unknown, not wrong — a config value is a default, not an allowlist', () => {
+    // An audit called the first version a false-refusal waiting to happen, and it was right: an
+    // account may accept several models, so refusing everything but the configured one would block
+    // legitimate work. Only a NEAR MISS is knowably wrong, because that is a typo rather than a
+    // choice — which is exactly the failure this file was built for (`gpt-5.6` for `gpt-5.6-sol`).
+    const home = cfg('gpt-5.6-sol');
+    for (const other of ['o3', 'gpt-5.1-codex', 'claude-opus-5']) {
+      expect(check(`codex exec --model ${other} "x"`, { home }).verdict, `${other} must pass`).toBe('unknown');
+    }
+    // …while truncations and punctuation slips of the configured name are still caught.
+    for (const typo of ['gpt-5.6', 'gpt56sol', 'gpt-5.6-sol-extra']) {
+      expect(check(`codex exec --model ${typo} "x"`, { home }).verdict, `${typo} must be caught`).toBe('wrong');
+    }
   });
 });
 
