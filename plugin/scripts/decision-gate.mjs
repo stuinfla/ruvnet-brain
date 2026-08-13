@@ -56,6 +56,21 @@ const REFUSE = 2;
 const POLICY = (id, file, interpreter = 'bash') => ({ id, file, interpreter });
 const REFUSAL_POLICIES = [
   POLICY('protect-state', 'protect-brain-state.sh'),
+  // degradation-watch sits second because it decides whether ANY record this system keeps is real.
+  // Measured 2026-08-13: better_sqlite3.node was built for NODE_MODULE_VERSION 141 against a node
+  // needing 137, ruflo fell back to sql.js, and nothing persisted for three days while every write
+  // printed `[OK] Data stored successfully`. A warning was printed on every one of those writes and
+  // read. It could not stop anything, because a warning is text and text is skimmable — so this is
+  // a refusal instead. It probes only for commands whose truth DEPENDS on durable memory (a lesson
+  // store, a ship), so ordinary Bash pays nothing.
+  POLICY('degradation-watch', 'degradation-watch.mjs', 'node'),
+  // identifier-preflight is FIRST among the cheap checks and costs one file read: it refuses a
+  // command that names a model this machine's CLI does not accept. `codex exec --model gpt-5.6`
+  // (correct: gpt-5.6-sol, in ~/.codex/config.toml) printed a 400 and EXITED 0 into a redirected
+  // file on 2026-08-13, so a 50-minute audit produced nothing and there was no exit code to catch.
+  // It refuses ONLY a positively-known-wrong value and allows every unknown, because a wall that
+  // fabricates a reason is one people learn to route around.
+  POLICY('identifier-preflight', 'identifier-preflight.mjs', 'node'),
   POLICY('hijack-ruvnet', 'hijack-ruvnet.sh'),
   POLICY('ground-before-write', 'ground-before-write.sh'),
   POLICY('design-wall', 'design-wall.sh'),
@@ -65,7 +80,9 @@ const SPEECH = { id: 'unprompted-speech', file: 'unprompted-runtime.mjs', interp
 /** Which policies apply to which PreToolUse sub-event, mirroring the matchers they replaced. */
 const REGISTRY = {
   'write': ['protect-state', 'hijack-ruvnet', 'ground-before-write'],
-  'bash': ['protect-state', 'hijack-ruvnet', 'design-wall'],
+  // degradation-watch is bash-only on purpose: the acts it guards — `ruflo memory store`, `git
+  // push` — are commands, so the dependency is observable there and nowhere else.
+  'bash': ['protect-state', 'identifier-preflight', 'degradation-watch', 'hijack-ruvnet', 'design-wall'],
 };
 
 export function policiesFor(event, registry = REGISTRY, all = REFUSAL_POLICIES) {

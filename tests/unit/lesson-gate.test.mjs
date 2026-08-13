@@ -27,6 +27,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const GATE = path.join(ROOT, 'scripts', 'lesson-gate.mjs');
 const DISPATCH = path.join(ROOT, 'plugin', 'scripts', 'lesson-hooks.sh');
+import { resolveBash } from '../../plugin/scripts/hook-shim-bash.mjs';
+const resolveBashForTest = () => resolveBash();
 
 let dir, storePath, optInPath, gateStatePath;
 
@@ -593,4 +595,51 @@ describe('PER-SESSION FREQUENCY CAP: a reminder stops repeating; a refusal never
       expect(r.stdout).toContain('ADVMARKD');
     }
   });
+});
+
+/**
+ * THE `ship` TRIGGER FIRES ON A REAL `git push` — because for months it fired on nothing.
+ *
+ * Measured 2026-08-13. `lesson-hooks.sh` carried `PreToolUse-push) TRIGGERS="ship"`, and NOTHING
+ * ever sends that token: hooks.json emits only `unprompted-speech UserPromptSubmit`, and
+ * decision-gate.mjs maps every PreToolUse to exactly `PreToolUse-bash` or `PreToolUse-write`. So
+ * `git push` always arrived as `mutate-machine`, and FIVE ratified ship lessons in the live store
+ * had never fired once — including `G-remote-ci-gates-shipping` and
+ * `G-test-the-artifact-not-the-checkout`, the two that would have spoken up before I shipped a test
+ * that broke windows-unit and red-lit a dependabot PR that had nothing to do with it.
+ *
+ * The audit missed it for the same reason it existed: wired-check's Check C greps this file's own
+ * case labels to decide what is wired, so it read "ship" off the dead branch and stayed green — an
+ * audit that could not fail on the exact class it was built for. A case label nobody sends is not a
+ * wire; the DISPATCHER is the truth-maker for what fires.
+ */
+describe('ship lessons reach a real push', () => {
+  const bash = resolveBashForTest();
+  const gated = bash ? test : test.skip;
+
+  const fireBash = (command) => spawnSync(bash, [DISPATCH, 'PreToolUse-bash'], {
+    encoding: 'utf8',
+    timeout: 30_000,
+    input: JSON.stringify({ session_id: `ship-${Math.random().toString(16).slice(2)}`, tool_name: 'Bash', tool_input: { command } }),
+  });
+
+  // A ship lesson's own words, from the ratified store — asserted on the STATEMENT rather than an
+  // id, because the id never appears in what actually reaches the model.
+  const SHIP_TEXT = /bumps the version IN THE SAME COMMIT/;
+
+  gated('TEETH: `git push` delivers ship lessons — the case that fired on nothing for months', () => {
+    expect(SHIP_TEXT.test(fireBash('git push origin main').stdout || '')).toBe(true);
+  }, 40_000);
+
+  gated('npm publish counts as shipping too', () => {
+    expect(SHIP_TEXT.test(fireBash('npm publish').stdout || '')).toBe(true);
+  }, 40_000);
+
+  gated('TEETH: an ordinary command does NOT — or the fix is just a new nag', () => {
+    // Without this, "always request ship" would pass the case above while making every `ls` noisy.
+    // The mutate-machine false-positive nag is a defect this dispatcher already paid for once.
+    for (const cmd of ['ls -la', 'git status', 'grep -r foo .']) {
+      expect(SHIP_TEXT.test(fireBash(cmd).stdout || ''), `${cmd} must not pull ship lessons`).toBe(false);
+    }
+  }, 60_000);
 });

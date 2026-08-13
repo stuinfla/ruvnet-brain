@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveBash } from '../../plugin/scripts/hook-shim-bash.mjs';
 
 /**
  * ISSUE #134 — the writer and the reader must name the SAME queue.
@@ -35,7 +36,7 @@ function capture({ cwd, projectDir }) {
   });
   const env = { ...process.env, RUVNET_LEARNING_SCOPE: 'project' };
   if (projectDir) env.RUVNET_BRAIN_PROJECT_DIR = projectDir; else delete env.RUVNET_BRAIN_PROJECT_DIR;
-  try { execFileSync('/bin/bash', [CAPTURE], { cwd, env, input: payload, stdio: 'pipe', timeout: 20_000 }); }
+  try { execFileSync(resolveBash(), [CAPTURE], { cwd, env, input: payload, stdio: 'pipe', timeout: 20_000 }); }
   catch { /* the hook fails open by design; the queue on disk is what this asserts */ }
 }
 
@@ -45,14 +46,17 @@ const queued = (root) => {
 };
 
 /**
- * The two behavioural cases spawn the real hook through `/bin/bash`, which does not exist on Windows
- * — they failed there with an empty queue and an assertion that read like a product defect. The hook
- * itself is a `.sh` dispatched through `hook-shim-bash.mjs`, so on a host with no bash it does not
- * run at all and there is nothing for this to observe. Skipped explicitly rather than left red, and
- * the SOURCE-level parity case below still runs on every platform, so a future edit that
- * reintroduces the asymmetry goes red on Windows too.
+ * The two behavioural cases spawn the real hook through bash. On a host with no bash the hook does
+ * not run at all, so there is nothing to observe — skipped explicitly rather than left red.
+ *
+ * The condition is the RESOLVER, not `platform === 'win32'`. That platform check was a proxy for
+ * "there is no bash here" and got it wrong in both directions: a Windows box WITH Git-for-Windows
+ * can run this perfectly and was being skipped (coverage silently lost on the platform that most
+ * needs it), while a stripped Linux container without bash would still have failed. Same proxy
+ * mistake as reading `.claude/settings.json` to decide whether a daemon is running — ask the thing
+ * that actually decides.
  */
-const behavioural = process.platform === 'win32' ? describe.skip : describe;
+const behavioural = resolveBash() ? describe : describe.skip;
 
 behavioural('issue #134 — captured events land where the flush looks', () => {
   it('honours RUVNET_BRAIN_PROJECT_DIR even when the shell has drifted below the root', () => {

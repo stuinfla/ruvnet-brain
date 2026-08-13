@@ -183,6 +183,24 @@ fi
 if [ "$EVENT" = "PreToolUse-bash" ] && [ -f "$HOOK_INPUT_JS" ]; then
   CMD=$(printf '%s' "$INPUT" | node "$HOOK_INPUT_JS" command 2>/dev/null) || CMD=""
   ARGS+=(--command "$CMD")
+
+  # SHIP RIDES ON THE BASH PAYLOAD, BECAUSE NOTHING EVER SENDS "PreToolUse-push".
+  #
+  # The `PreToolUse-push) TRIGGERS="ship"` branch above has never executed. hooks.json emits only
+  # `unprompted-speech UserPromptSubmit`, and decision-gate.mjs maps EVERY PreToolUse to exactly
+  # `PreToolUse-bash` or `PreToolUse-write` — so `git push` has always arrived here as
+  # `mutate-machine`, never as `ship`. Measured 2026-08-13: FIVE ratified ship lessons in the live
+  # store had therefore never fired once, among them `G-remote-ci-gates-shipping` and
+  # `G-test-the-artifact-not-the-checkout` — the two that would have spoken up before I shipped a
+  # test that broke windows-unit and red-lit someone else's dependabot PR.
+  #
+  # Worse, wired-check's Check C greps THIS FILE's case labels to decide which triggers are wired, so
+  # it read "ship" off the dead branch and reported it green — an audit that cannot fail on the exact
+  # defect class it was written for. The dispatcher is the truth-maker for what fires; a case label
+  # nobody sends is not a wire.
+  case "$CMD" in
+    *"git push"*|*"npm publish"*|*"release.mjs"*|*"gh release"*) ARGS+=(--trigger ship) ;;
+  esac
 fi
 
 # A hard timeout, because this runs on every matching event and must never add perceptible latency.

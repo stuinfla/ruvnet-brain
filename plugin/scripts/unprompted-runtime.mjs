@@ -76,6 +76,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readStdinBounded } from './hook-input.mjs';
+import { resolveBash } from './hook-shim-bash.mjs';
 
 // WHERE THIS FILE'S SIBLINGS LIVE. Resolved from THIS file's own location so it is correct under the
 // Stable Spine (an immutable versions/<gen> tree) and in a dev checkout alike — hook-shim.mjs has
@@ -127,8 +128,17 @@ function silent() { process.exit(0); }
 // `channels` binds each producer to the ONLY channels it is authorised to emit (GPT-5.6-Sol anti-spoof).
 // Without it, any producer could emit `{channel:'alarm'}` (always-delivered) or `lesson:block` (force
 // exit 2) and bypass its intended per-channel policy — defeating the whole point of the chokepoint.
-const ANTICIPATE = { argv: ['/bin/bash', path.join(SCRIPTS_DIR, 'anticipate.sh')], feedStdin: true, channels: ['advocacy', 'promotion'] };
-const lesson = (subEvent) => ({ argv: ['/bin/bash', path.join(SCRIPTS_DIR, 'lesson-hooks.sh'), subEvent], feedStdin: true, channels: ['lesson'] });
+// BASH COMES FROM THE RESOLVER, NEVER A LITERAL. Found 2026-08-13 by an adversarial audit: with
+// `/bin/bash` hardcoded here, win32 has no such file, spawnSync errors, the fail-closed filter at
+// `!r.error && r.status === 0` discards every candidate, and the runtime exits 0 through silent().
+// That is the ENTIRE unprompted plane — every lesson delivery, every advocacy card, every promotion
+// — dead on Windows and indistinguishable from "nothing to say". The invariant tests all inject
+// producers through the RUVNET_UNPROMPTED_PRODUCERS seam, so they stay green while the real registry
+// is broken: a suite that cannot fail on the shipped path. resolveBash() has handled this since
+// issue #38 and sat one import away.
+const BASH = resolveBash();
+const ANTICIPATE = { argv: [BASH, path.join(SCRIPTS_DIR, 'anticipate.sh')], feedStdin: true, channels: ['advocacy', 'promotion'] };
+const lesson = (subEvent) => ({ argv: [BASH, path.join(SCRIPTS_DIR, 'lesson-hooks.sh'), subEvent], feedStdin: true, channels: ['lesson'] });
 
 const BUILTIN_REGISTRY = {
   'UserPromptSubmit': [ANTICIPATE, lesson('UserPromptSubmit')],

@@ -3,7 +3,7 @@ id: ADR-065
 title: The payload boundary is the shipping invariant, and it is now a gate
 status: Accepted
 date: 2026-08-06
-updated: 2026-08-06
+updated: 2026-08-13
 authors: [Stuart Kerr, Claude Code]
 tags: [packaging, payload, l4, anticipate, advocacy, hooks, guard, issue-114]
 supersedes: []
@@ -264,3 +264,9 @@ Note what the *before* `--status` line proves independently: the fallback path r
   running beside other agents is a guaranteed conflict in `package.json` and
   `plugin/.claude-plugin/plugin.json`. The integration owner bumps at merge. Flagged rather than
   silently skipped.
+
+## Currency log
+
+| Date | What changed | Why (with referents) |
+|---|---|---|
+| 2026-08-13 | **`unprompted-runtime` no longer hardcodes `/bin/bash`; the whole plane was dead on Windows.** | The built-in producer registry spawned `['/bin/bash', anticipate.sh]` and `['/bin/bash', lesson-hooks.sh, sub]`. On win32 that path does not exist, spawnSync errors, the fail-closed filter at `!r.error && r.status === 0` discards every candidate, and the runtime exits 0 through `silent()` — every lesson delivery, every advocacy card, every promotion absent with no diagnostic, indistinguishable from "nothing to say". The suite stayed green because its invariant tests inject producers through the `RUVNET_UNPROMPTED_PRODUCERS` seam and never exercise the shipped registry: a payload-boundary test that could not fail on the shipped payload. `resolveBash()` has handled this since issue #38 and sat one import away. Swept as a class, not an instance: `update-apply.mjs` had the same literal, which meant win32 SKIPPED the syntax check on every `.sh` it was about to install, and a guard in `entrypoint-guard-safety.test.mjs` now fails on any unguarded literal spawn. **OPEN:** `resolveBash()` can return null, and the new call site does not yet call `skipNoBash()` — on a bashless host the plane still exits 0 silently. |

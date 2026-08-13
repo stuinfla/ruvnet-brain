@@ -37,6 +37,10 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+// The one resolver (issue #38). `fs.existsSync('/bin/bash')` here meant win32 SKIPPED the syntax
+// check on every .sh it was about to install — the platform most likely to receive a broken hook
+// was the one platform that never checked. Git-for-Windows bash can run `bash -n` perfectly well.
+import { resolveBash } from './hook-shim-bash.mjs';
 
 const BRAIN_HOME = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
 const ACTIVE = path.join(BRAIN_HOME, 'active.json');
@@ -112,12 +116,13 @@ function gateCandidate(dir) {
   // Interpreter-true, platform-honest: bash-check .sh only where /bin/bash exists (the hooks are
   // "_platform":"posix"-declared — on Windows they never execute, so a bash syntax check there
   // would be checking with an interpreter the machine doesn't have). node --check gates everywhere.
-  const haveBash = fs.existsSync('/bin/bash');
+  const bashPath = resolveBash();
+  const haveBash = Boolean(bashPath);
   for (const f of fs.existsSync(scripts) ? fs.readdirSync(scripts) : []) {
     const p = path.join(scripts, f);
     if (f.endsWith('.sh')) {
       if (!haveBash) continue;
-      const r = spawnSync('/bin/bash', ['-n', p], { encoding: 'utf8' });
+      const r = spawnSync(bashPath, ['-n', p], { encoding: 'utf8' });
       if (r.status !== 0) problems.push(`bash -n ${f}: ${(r.stderr || '').trim()}`);
     } else if (f.endsWith('.mjs') || f.endsWith('.js')) {
       const r = spawnSync(process.execPath, ['--check', p], { encoding: 'utf8' });
