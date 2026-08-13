@@ -64,6 +64,13 @@ const REFUSAL_POLICIES = [
   // a refusal instead. It probes only for commands whose truth DEPENDS on durable memory (a lesson
   // store, a ship), so ordinary Bash pays nothing.
   POLICY('degradation-watch', 'degradation-watch.mjs', 'node'),
+  // identifier-preflight is FIRST among the cheap checks and costs one file read: it refuses a
+  // command that names a model this machine's CLI does not accept. `codex exec --model gpt-5.6`
+  // (correct: gpt-5.6-sol, in ~/.codex/config.toml) printed a 400 and EXITED 0 into a redirected
+  // file on 2026-08-13, so a 50-minute audit produced nothing and there was no exit code to catch.
+  // It refuses ONLY a positively-known-wrong value and allows every unknown, because a wall that
+  // fabricates a reason is one people learn to route around.
+  POLICY('identifier-preflight', 'identifier-preflight.mjs', 'node'),
   POLICY('hijack-ruvnet', 'hijack-ruvnet.sh'),
   POLICY('ground-before-write', 'ground-before-write.sh'),
   POLICY('design-wall', 'design-wall.sh'),
@@ -75,7 +82,7 @@ const REGISTRY = {
   'write': ['protect-state', 'hijack-ruvnet', 'ground-before-write'],
   // degradation-watch is bash-only on purpose: the acts it guards — `ruflo memory store`, `git
   // push` — are commands, so the dependency is observable there and nowhere else.
-  'bash': ['protect-state', 'degradation-watch', 'hijack-ruvnet', 'design-wall'],
+  'bash': ['protect-state', 'identifier-preflight', 'degradation-watch', 'hijack-ruvnet', 'design-wall'],
 };
 
 export function policiesFor(event, registry = REGISTRY, all = REFUSAL_POLICIES) {
