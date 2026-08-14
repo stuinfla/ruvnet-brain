@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "brainVersion": "4.0.53-dev",
-  "releaseTag": "v4.0.53-dev",
+  "brainVersion": "4.0.54-dev",
+  "releaseTag": "v4.0.54-dev",
   "stores": {
     "agentdb": {
       "file": "agentdb.big.rvf",
@@ -293,12 +293,12 @@
     },
     "metaharness": {
       "file": "metaharness.big.rvf",
-      "sha256": "7cb6bfa9aa8faf7a6f98f401a0913e931a024905de97171ac2ccf3f9d5619334",
-      "bytes": 42011373,
+      "sha256": "27781cc47403a1740a36e103067c208567095c54851c976bdddac1bae1786301",
+      "bytes": 42801696,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": "68402755f017e0df5f493c6ee608218420540d17",
-      "builtUtc": "2026-08-12T07:28:10.150Z"
+      "sourceCommit": "20a43693434b91eae0956097b27c608a93283270",
+      "builtUtc": "2026-08-14T07:16:12.641Z"
     },
     "midstream": {
       "file": "midstream.big.rvf",
@@ -338,12 +338,12 @@
     },
     "open-claude-code": {
       "file": "open-claude-code.big.rvf",
-      "sha256": "3f900bda199542adf76fd1cc3fc0f75f86239226acc8eb6712b8312c1f23779c",
-      "bytes": 635977,
+      "sha256": "2e5568b83b2d4b1b534ab7b328eb66521630930a2a4add18ddb20fb606f7b60e",
+      "bytes": 642010,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": "591d9337dc4634b6f49d72e401439d862470fbd5",
-      "builtUtc": "2026-08-13T07:20:07.930Z"
+      "sourceCommit": "edf9ad8aa74771f62e93d8f02f66fb0d4e9d866b",
+      "builtUtc": "2026-08-14T07:15:59.339Z"
     },
     "photonlayer": {
       "file": "photonlayer.big.rvf",
@@ -383,12 +383,12 @@
     },
     "ruflo": {
       "file": "ruflo.big.rvf",
-      "sha256": "3cb67ba61a9b5e91978ac9d12429f9bb680d9ebc947bdf9c4032fbd574e5d3f8",
-      "bytes": 53593570,
+      "sha256": "e01c523ffd81011a1428fbf8807799a29cbd4b73ae7e85756ef9c28b9069ffac",
+      "bytes": 54577614,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": "5efd5937e588d6e2d20d974f14593a4795562ef8",
-      "builtUtc": "2026-08-13T07:20:00.380Z"
+      "sourceCommit": "01bece31c8390c4dda51487bc9d25c5a47d319f8",
+      "builtUtc": "2026-08-14T07:15:56.194Z"
     },
     "rulake": {
       "file": "rulake.big.rvf",
@@ -482,12 +482,12 @@
     },
     "ruvector": {
       "file": "ruvector.big.rvf",
-      "sha256": "c83708dc5a79542cd8dd651277b2daef695329bdc9e59d86e789105ff238b032",
-      "bytes": 104294751,
+      "sha256": "c1f36138c6a28839623390b24786f10e8cc506b6787065215bce356227aa174c",
+      "bytes": 106234672,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
-      "sourceCommit": "0f24c7a75106f5ac9fb99f0de1db63e917ea8e54",
-      "builtUtc": "2026-08-13T07:17:29.839Z"
+      "sourceCommit": "74d2a60171402992206dddc172e068ce1808ed8b",
+      "builtUtc": "2026-08-14T07:16:35.431Z"
     },
     "ruview": {
       "file": "ruview.big.rvf",
@@ -659,6 +659,15 @@
       "dimensions": 768,
       "sourceCommit": "018468b5d2bf41f35c552910f35659830af0eb91",
       "builtUtc": "2026-08-12T16:50:59.381Z"
+    },
+    "dream-machine": {
+      "file": "dream-machine.big.rvf",
+      "sha256": "e09dbcdc2a38b066423c6e924876ff7e277b54eb484cfc0d22d38b3aa205ad4b",
+      "bytes": 227208,
+      "model": "Xenova/bge-base-en-v1.5",
+      "dimensions": 768,
+      "sourceCommit": "7bbb851d337067d16ede31175896bb5e587a7d22",
+      "builtUtc": "2026-08-14T07:17:00.106Z"
     }
   }
 }

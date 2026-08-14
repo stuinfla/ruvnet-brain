@@ -1,0 +1,27 @@
+{
+  "schema": 2,
+  "sourceSha": "a70ad4e48ccfaeabaf33bfd02d72040d9f7eb2fd",
+  "trap": "memory-search-query",
+  "mutant": null,
+  "run": 3,
+  "arm": "treated",
+  "record": {
+    "class": "none",
+    "subcommandCorrect": false,
+    "command": "",
+    "exec": {
+      "ran": false,
+      "argv": null,
+      "exit": null,
+      "exitOk": false,
+      "retrieved": false,
+      "why": "no Ruflo invocation to execute",
+      "output": ""
+    },
+    "model": "haiku",
+    "forcedCommand": false,
+    "lessonIndex": -1,
+    "firstToolIndex": -1,
+    "lessonBeforeFirstToolCall": false
+  }
+}

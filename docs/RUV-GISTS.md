@@ -5,10 +5,17 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_468 gists · refreshed 2026-08-12_
+_474 gists · refreshed 2026-08-14_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-08-13 | [dm-gist.md](https://gist.github.com/ruvnet/cd4101aa0c9b317de96fa2f3fe44f059) | Dream Machine v0.1.0 — nightly, evidence-gated repository evolution (npx dream-machine) |
+| 2026-08-13 | [meta-proxy-tutorial.md](https://gist.github.com/ruvnet/e546a3495c1fc3f3c7b10d67aa593c91) | Meta Proxy (ruflo proxy) — technical tutorial: architecture, install/verify pipeline, data planes, full CLI reference |
+| 2026-08-13 | [dream-machine-tutorial.md](https://gist.github.com/ruvnet/889ffa92dab49d508e70b123c940e1b9) | The Dream Machine — a tutorial on Ruflo's nightly Dream Cycle v3 evolution loop |
+| 2026-08-13 | [ruvector-pr-sweep-2026-08-13.md](https://gist.github.com/ruvnet/d049ba7b4cf9ccfa8d96a630db48a4d7) | RuVector PR sweep 2026-08-13: CI shard-split root cause found & fixed, two research PRs merged with corrected claims, ex |
+| 2026-08-12 | [gist-body.md](https://gist.github.com/ruvnet/a5ab06c9d331ac6a7272510dd8777ce0) | agent-harness-generator — plain-English explainer for the new sister project to ruflo (Claude Code + Codex + pi.dev + He |
+| 2026-08-12 | [v2235-plain-language-release-notes.md](https://gist.github.com/ruvnet/e0fb8eebe820d40e4195aaf48f42a124) | RuView v2235 — plain-language release notes: issue-fix batch + certificate-spine wiring |
+| 2026-08-12 | [adr-382-writeup.md](https://gist.github.com/ruvnet/ca6e5e63dce4fece0d7dafa60c77808b) | ADR-382 — Init scaffold content drift remediation (ruflo v3.38.0) |
 | 2026-08-11 | [pr1579-release-notes-plain.md](https://gist.github.com/ruvnet/20cc9a198eef99be5685151433642039) | WiFi Sensing Trust Layer — plain-language preview release notes (RuView PR #1579) |
 | 2026-08-10 | [ruflo-3.35.0-explained.md](https://gist.github.com/ruvnet/0202e6a060b04b3a4f5d9bd18345169d) | ruflo v3.35.0 explained — MetaHarness dependency fix, ADR-381 sequential-evidence governance, and 3 concurrency bugs fou |
 | 2026-08-10 | [.gist-v0.6.5.md](https://gist.github.com/ruvnet/8c099b17eeb589370b36eff74df08890) | RuView v0.6.5-esp32 — open-source WiFi sensing on a $9 ESP32 board (presence, vitals, motion through walls — no camera) |
@@ -121,7 +128,6 @@ _468 gists · refreshed 2026-08-12_
 | 2026-06-14 | [.tmp-gist-iter62.md](https://gist.github.com/ruvnet/1b46293206a9dd9a729b18c48c305222) | agent-harness-generator — plain-language explainer |
 | 2026-06-13 | [Gemini.md](https://gist.github.com/ruvnet/811aeab1aea67eb49ddf9c4b860c5f7b) | Free & Secure API Key Rotator for Google Gemini 2.5 Pro (Deno Edge Functions) |
 | 2026-06-13 | [ruvnet-packages.md](https://gist.github.com/ruvnet/184a167aff069937d19fed52a0384d39) | rUv — Packages & Libraries Index: all 322 crates, 284 npm, 8 PyPI, 22 Hugging Face artifacts, grouped by project with li |
-| 2026-06-13 | [gist-body.md](https://gist.github.com/ruvnet/a5ab06c9d331ac6a7272510dd8777ce0) | agent-harness-generator — plain-English explainer for the new sister project to ruflo (Claude Code + Codex + pi.dev + He |
 | 2026-06-13 | [ruvector-prior-art.md](https://gist.github.com/ruvnet/86d6968783ff1629e7481d9c92d0bed8) | RuVector: implementation provenance & prior-art timeline — dated first commits + scoped global-first claims with proof |
 | 2026-06-13 | [ruvnet-prior-art.md](https://gist.github.com/ruvnet/67c255a099984c94190c57ab08e7ad35) | ruvnet org-wide prior-art & provenance dossier — 247 repos, genesis commits with dates+links, scoped first-of-kind claim |
 | 2026-06-13 | [claude-flow-firsts-academic.md](https://gist.github.com/ruvnet/1a88c9fc7b7eaa99b4ea2f0dd0891c49) | Claude-Flow / Ruflo: Prior Art Dossier (Academic Edition) — 31 verified firsts in 4 categories, 7 asserted as earliest k |

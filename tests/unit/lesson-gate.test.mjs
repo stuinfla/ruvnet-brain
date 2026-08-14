@@ -643,3 +643,45 @@ describe('ship lessons reach a real push', () => {
     }
   }, 60_000);
 });
+
+/**
+ * ONE DEFINITION OF "IS THIS A SHIP?", NOT TWO.
+ *
+ * `degradation-watch.mjs` (DEPENDENT_COMMANDS) and `lesson-hooks.sh` each decide whether a command
+ * ships. They were written hours apart on 2026-08-13 and, as two independent adversarial audits both
+ * noted, SHIPPED ALREADY DISAGREEING — `gh release` was in one and not the other. One fact restated
+ * in two files, drifted on day one: the exact defect that produced `orgTotalApprox: 248` in two
+ * producers and seven store-root expressions across 29 call sites.
+ *
+ * They cannot share code across the JS/bash boundary, so the parity is asserted instead — including
+ * both directions the original globs got wrong: `git -C <abs> push` (the form an agent with absolute
+ * paths writes, and which this environment's instructions mandate) matched NOTHING, while
+ * `grep -n "npm publish" docs/…` matched, so reading ABOUT shipping counted as shipping.
+ */
+describe('the two ship definitions agree', () => {
+  const bash2 = resolveBashForTest();
+  const gated2 = bash2 ? test : test.skip;
+  const SHIP_TEXT2 = /bumps the version IN THE SAME COMMIT/;
+  const viaBash = (command) => SHIP_TEXT2.test(spawnSync(bash2, [DISPATCH, 'PreToolUse-bash'], {
+    encoding: 'utf8', timeout: 30_000,
+    input: JSON.stringify({ session_id: `par-${Math.random().toString(16).slice(2)}`, tool_name: 'Bash', tool_input: { command } }),
+  }).stdout || '');
+
+  gated2('TEETH: both agree on every case the audits raised, in both directions', async () => {
+    const { dependentEvent } = await import('../../plugin/scripts/degradation-watch.mjs');
+    const cases = [
+      ['git push origin main', true],
+      ['git -C /abs/path push', true],          // matched NOTHING before
+      ['npm publish', true],
+      ['gh release create v1.0.0', true],
+      ['grep -n "npm publish" docs/adr/0050.md', false],  // matched BEFORE — reading ≠ shipping
+      ['git commit -m "ready to git push"', false],
+      ['ls -la', false],
+      ['git status', false],
+    ];
+    for (const [cmd, wantShip] of cases) {
+      expect(dependentEvent(cmd) === 'ship', `degradation-watch: ${cmd}`).toBe(wantShip);
+      expect(viaBash(cmd), `lesson-hooks.sh: ${cmd}`).toBe(wantShip);
+    }
+  }, 120_000);
+});

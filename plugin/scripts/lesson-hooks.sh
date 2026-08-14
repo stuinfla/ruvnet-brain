@@ -198,9 +198,17 @@ if [ "$EVENT" = "PreToolUse-bash" ] && [ -f "$HOOK_INPUT_JS" ]; then
   # it read "ship" off the dead branch and reported it green — an audit that cannot fail on the exact
   # defect class it was written for. The dispatcher is the truth-maker for what fires; a case label
   # nobody sends is not a wire.
-  case "$CMD" in
-    *"git push"*|*"npm publish"*|*"release.mjs"*|*"gh release"*) ARGS+=(--trigger ship) ;;
-  esac
+  # THE SAME PATTERNS AS degradation-watch.mjs DEPENDENT_COMMANDS, and a test asserts they agree.
+  # Two audits noted these two definitions of "is this a ship?" shipped already disagreeing on day
+  # one — one fact restated in two files, which is the defect this repo keeps paying for. They also
+  # caught both directions of the original glob being wrong: `git -C <abs> push` (the form an agent
+  # with absolute paths writes) matched NOTHING, while `grep -n "npm publish" docs/` matched, so
+  # reading ABOUT shipping counted as shipping. Quoted regions are stripped first because the
+  # truth-maker is what will EXECUTE — a commit message is not a command.
+  CMD_EXEC=$(printf '%s' "$CMD" | sed -e 's/"[^"]*"/ /g' -e "s/'[^']*'/ /g")
+  if printf '%s' "$CMD_EXEC" | grep -qE '\bgit\b[^|;&]*\bpush\b|\b(npm|yarn|pnpm) publish\b|\bgh release create\b|release\.mjs'; then
+    ARGS+=(--trigger ship)
+  fi
 fi
 
 # A hard timeout, because this runs on every matching event and must never add perceptible latency.

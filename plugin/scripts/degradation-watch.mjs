@@ -53,7 +53,25 @@ import path from 'node:path';
 // reading the code and believing it.
 import { fileURLToPath } from 'node:url';
 
-const defaultDb = () => path.join(process.env.RUVNET_BRAIN_PROJECT_DIR || process.cwd(), '.swarm', 'memory.db');
+/**
+ * THE PROBE TARGET IS A SCRATCH DB, NOT THE PROJECT'S.
+ *
+ * This was `process.cwd()/.swarm/memory.db`. The hook runs MACHINE-WIDE, so in any repo that is not
+ * ruvnet-brain it ran `ruflo memory store --path <that repo>/.swarm/memory.db` — CREATING a .swarm
+ * directory and writing a probe row into somebody else's project. An independent audit named it
+ * "unrelated-project mutation", and it is the plainest possible violation of this project's own rule
+ * (ADR-058 D5: never touch what we do not own). Shipped by me, today, in the hook whose entire
+ * purpose is to stop silent damage.
+ *
+ * The fix is not tighter scoping — it is noticing the question was mis-framed. "Does `ruflo memory
+ * store` durably persist?" is a property of the SQLite DRIVER and its ABI against the running node.
+ * That is machine-wide. It has nothing to do with which repo you happen to be standing in, so a
+ * scratch database answers it exactly as well, mutates nothing, and additionally covers the case an
+ * audit flagged separately: with a real project path, an ABSENT store had to be skipped, which made
+ * the store-CREATING first write the one write the guard could never falsify. A scratch path is
+ * always absent and always created — the first-write case is now the ONLY case.
+ */
+const defaultDb = () => path.join(os.tmpdir(), `ruvnet-durability-probe-${process.pid}.db`);
 
 function defaultRun(cmd, args) {
   return execFileSync(cmd, args, { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -65,7 +83,12 @@ function defaultRun(cmd, args) {
  * semantic-search hit, the .db mtime, the daemon being up, or which driver is loaded.
  */
 export function proveMemoryDurable(dbPath = defaultDb(), { run = defaultRun } = {}) {
-  if (!fs.existsSync(dbPath)) return { ok: true, why: `no store at ${dbPath} — nothing claims to persist`, skipped: true };
+  // AN ABSENT STORE IS NOT AN EXEMPTION. This returned `{ok:true, skipped:true}` when the file did
+  // not exist, which — as an independent audit put it — means "the first `ruflo memory store`, the
+  // operation that CREATES the store, is precisely the write the guard cannot falsify." That is a
+  // hole shaped exactly like the moment durability matters most: a fresh machine, first write, and
+  // the sql.js fallback silently swallowing it. `ruflo memory store` creates the file, so probing an
+  // absent path is a valid question with a real answer; only a path we cannot even attempt is a skip.
   const key = `durability-probe-${process.pid}-${Date.now()}`;
   try {
     run('ruflo', ['memory', 'store', '--path', dbPath, '-n', 'default', '-k', key, '--value', 'probe']);
@@ -73,10 +96,33 @@ export function proveMemoryDurable(dbPath = defaultDb(), { run = defaultRun } = 
     if (rows !== '1') {
       return { ok: false, why: `stored a row, SQL found ${rows} — the store reports a success it cannot honour` };
     }
-    try { run('sqlite3', [dbPath, `DELETE FROM memory_entries WHERE key='${key}';`]); } catch { /* probe row is harmless */ }
     return { ok: true, why: 'store → SQL round-trip confirmed the exact row on disk' };
   } catch (e) {
-    return { ok: false, why: `probe could not complete: ${String(e?.message ?? e).split('\n')[0]}` };
+    // "CANNOT PROBE" IS NOT "PROBED AND FAILED", and collapsing them shipped the worst
+    // stranger-facing bug in this repo. Measured with PATH=/usr/bin:/bin — i.e. most machines that
+    // install this plugin but not ruflo — EVERY `git push`, `npm publish` and `gh release create`
+    // was refused, with instructions to `npm rebuild better-sqlite3` in a package the user never
+    // installed. Same for a missing `sqlite3`, which is normal on Linux and Windows.
+    //
+    // The rule was already written, one file away, in identifier-preflight.mjs's header: "FAIL OPEN.
+    // An identifier this cannot resolve is ALLOWED, silently... a fabricated diagnosis is worse than
+    // no check, because it burns the credibility the channel runs on." That header even cites THIS
+    // file as the sibling whose bug taught the rule. The rule was recorded and not applied to the
+    // file it was learned from — the same shape as freshness machinery pointed at coverage but not
+    // the eval, and resolveBash existing but unused at a new call site.
+    //
+    // A missing binary means this machine cannot answer the question. It does not mean the answer
+    // is "broken".
+    const msg = String(e?.message ?? e);
+    if (/ENOENT|not found|spawnSync .* ENOENT/i.test(msg)) {
+      return { ok: true, why: `cannot probe on this machine (${msg.split('\n')[0]}) — declining to guess`, skipped: true };
+    }
+    return { ok: false, why: `probe could not complete: ${msg.split('\n')[0]}` };
+  } finally {
+    // The scratch db is ours alone; remove it and its WAL siblings rather than leaving litter in tmp.
+    for (const suffix of ['', '-wal', '-shm']) {
+      try { fs.unlinkSync(dbPath + suffix); } catch { /* never existed, or already gone */ }
+    }
   }
 }
 
@@ -144,36 +190,47 @@ export function refusalFor(event, degradations) {
  * drops it, or shipping while claiming the project learned something it did not.
  */
 export const DEPENDENT_COMMANDS = [
-  { event: 'record-lesson', match: /\bruflo\s+memory\s+store\b|lesson-bridge|memory_store/ },
-  { event: 'ship', match: /\bgit\s+push\b|npm\s+publish|release\.mjs/ },
+  // `cat lesson-bridge.mjs` used to match `record-lesson`, so READING the file needed to fix a
+  // degradation was refused while degraded. The verb has to be in the pattern, not just the noun.
+  { event: 'record-lesson', match: /\bruflo\s+memory\s+store\b|lesson-bridge\.mjs\s+--apply/ },
+  // `git -C <path> push` and `git --git-dir=… push` are the forms an agent with absolute paths
+  // actually writes — this environment's own instructions mandate them — and the first version
+  // matched neither. Two independent audits caught that the same day, and both also caught the
+  // inverse: `grep -n "npm publish" docs/…` matched, so reading ABOUT shipping counted as shipping.
+  { event: 'ship', match: /\bgit\b[^|;&]*\bpush\b|\b(?:npm|yarn|pnpm)\s+publish\b|\bgh\s+release\s+create\b|release\.mjs/ },
 ];
 
+/**
+ * QUOTED TEXT IS AN ARGUMENT, NOT A COMMAND. The same correction identifier-preflight.mjs needed
+ * hours earlier: the truth-maker is what will EXECUTE, and a prompt, a grep pattern or a commit
+ * message is not that. Without it, `git commit -m "ready to git push"` reads as shipping.
+ */
+const executablePart = (cmd) => String(cmd || '').replace(/"[^"]*"/g, ' ').replace(/'[^']*'/g, ' ');
+
 export function dependentEvent(command, table = DEPENDENT_COMMANDS) {
-  return table.find((c) => c.match.test(String(command || '')))?.event ?? null;
+  const cmd = executablePart(command);
+  return table.find((c) => c.match.test(cmd))?.event ?? null;
 }
 
-/** Cache briefly so a gate consulted many times in one turn does not re-probe on each call. */
-const CACHE = path.join(os.tmpdir(), `ruvnet-degradation-${process.env.USER || 'u'}.json`);
-const TTL_MS = 5 * 60_000;
-
+/**
+ * THE CACHE IS GONE, AND ITS REMOVAL IS THE FIX.
+ *
+ * It was keyed `/tmp/ruvnet-degradation-$USER.json` while the probe targets a PER-PROJECT path. Two
+ * independent adversarial audits, blind to each other, each found a different bug in it on the same
+ * day — which is the strongest signal available that the cache, not its key, was the defect:
+ *
+ *   · a DEGRADED project cached ok:false, so `git push` in a HEALTHY project was refused for five
+ *     minutes citing another repo's evidence;
+ *   · a HEALTHY project cached ok:true, so a BROKEN project shipped inside the TTL without ever
+ *     being probed — the direction that actually costs data.
+ *
+ * The probe runs only on `git push`, `npm publish` and `ruflo memory store`: rare, deliberate acts
+ * where one or two seconds is invisible and a wrong answer is expensive. Caching bought latency
+ * nobody was asking for and sold correctness to pay for it. A cache whose key is not the thing that
+ * determines the answer is a restated fact, which is the defect this whole file exists to close.
+ */
 export function cachedDegradations(opts = {}) {
-  if (!opts.noCache) {
-    try {
-      const c = JSON.parse(fs.readFileSync(CACHE, 'utf8'));
-      if (Date.now() - c.at < TTL_MS) {
-        return c.ids.map((id) => ({ ...SIGNATURES.find((s) => s.id === id), verdict: c.why[id] })).filter((d) => d.id);
-      }
-    } catch { /* a cold cache is not an error */ }
-  }
-  const live = activeDegradations(SIGNATURES, opts);
-  try {
-    fs.writeFileSync(CACHE, JSON.stringify({
-      at: Date.now(),
-      ids: live.map((d) => d.id),
-      why: Object.fromEntries(live.map((d) => [d.id, d.verdict])),
-    }));
-  } catch { /* the cache is an optimisation, never a correctness requirement */ }
-  return live;
+  return activeDegradations(SIGNATURES, opts);
 }
 
 /**

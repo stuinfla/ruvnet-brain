@@ -74,12 +74,20 @@ const REFUSAL_POLICIES = [
   POLICY('hijack-ruvnet', 'hijack-ruvnet.sh'),
   POLICY('ground-before-write', 'ground-before-write.sh'),
   POLICY('design-wall', 'design-wall.sh'),
+  // adr-currency-gate fires on the EDIT, where the pre-push gate fires on the push. Same rule, same
+  // machinery (it calls doc-currency.mjs, never a second copy of the logic) — moved to the earliest
+  // moment it has enough information. On 2026-08-13 four ADRs went stale together and were caught
+  // only at push, after three commits, when the work read as a toll booth. A gate at the end cannot
+  // shape the work; it can only penalise it, and it trains running at the wall. This one refuses
+  // DEBT, not change: you may edit governed code freely, but not while a document governing it is
+  // still unreconciled from the last round.
+  POLICY('adr-currency', 'adr-currency-gate.mjs', 'node'),
 ];
 const SPEECH = { id: 'unprompted-speech', file: 'unprompted-runtime.mjs', interpreter: 'node' };
 
 /** Which policies apply to which PreToolUse sub-event, mirroring the matchers they replaced. */
 const REGISTRY = {
-  'write': ['protect-state', 'hijack-ruvnet', 'ground-before-write'],
+  'write': ['protect-state', 'hijack-ruvnet', 'ground-before-write', 'adr-currency'],
   // degradation-watch is bash-only on purpose: the acts it guards — `ruflo memory store`, `git
   // push` — are commands, so the dependency is observable there and nowhere else.
   'bash': ['protect-state', 'identifier-preflight', 'degradation-watch', 'hijack-ruvnet', 'design-wall'],
