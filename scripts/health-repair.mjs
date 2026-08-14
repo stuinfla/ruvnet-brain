@@ -24,7 +24,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { findStores, diagnose } from './memory-doctor.mjs';
-import { loadRuntimePreferences } from '../plugin/scripts/runtime-preferences.mjs';
+import { learnerCwd, loadRuntimePreferences } from '../plugin/scripts/runtime-preferences.mjs';
 
 const HOME = os.homedir();
 // The SAME project root learn-flush.mjs computes, by the same rule — the two halves of the flush
@@ -199,7 +199,12 @@ function trainLearning() {
     // project's learner and this trained the home one, so the button could never clear the card it
     // was offered for — a remedy that cannot resolve its own finding is worse than no button.
     // PROJECT is the same root learn-flush.mjs and learn-capture.sh resolve (#134).
-    execFileSync(RUFLO, ['hooks', 'intelligence', '--train'], { cwd: PROJECT, env: RUFLO_ENV, stdio: 'ignore', timeout: 600_000 });
+    // ISSUE #139 — now that ruflo v3.38.9 made `--train` REAL (ruvnet/ruflo#2940 was a no-op
+    // before), training the wrong store is no longer harmless: it moves that store's
+    // lastAdaptation to 0s and the card SILENTLY SELF-CLEARS while the learner the operator
+    // actually uses is untouched. #136 already moved this off `cwd: HOME`; it now shares the
+    // console's resolver so the remedy provably trains the store the card measured.
+    execFileSync(RUFLO, ['hooks', 'intelligence', '--train'], { cwd: learnerCwd({ cwd: PROJECT }), env: RUFLO_ENV, stdio: 'ignore', timeout: 600_000 });
   } catch (e) { return { ok: false, log: `training cycle failed: ${e.message}` }; }
   return { ok: true, log: 'ran one training cycle in the cross-project learner' };
 }

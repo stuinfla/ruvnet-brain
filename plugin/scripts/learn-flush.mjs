@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { readStdinBounded } from './hook-input.mjs';
-import { loadRuntimePreferences } from './runtime-preferences.mjs';
+import { learningScope, loadRuntimePreferences } from './runtime-preferences.mjs';
 import { resolveRuflo, RUFLO_MISSING } from './ruflo-bin.mjs';
 
 // ONE BOUNDED LINE ON STDERR. stderr because a SessionEnd hook's stdout is not surfaced, and bounded
@@ -24,10 +24,10 @@ const warn = (msg) => { try { process.stderr.write(`learn-flush: ${msg}\n`); } c
 
 const HOME = os.homedir();
 const PROJECT = process.env.RUVNET_BRAIN_PROJECT_DIR || process.cwd();
-const configuredScope = process.env.RUVNET_LEARNING_SCOPE
-  || loadRuntimePreferences({ cwd: PROJECT }).values.learningScope;
-const LEARNING_SCOPE = ['off', 'project', 'user'].includes(configuredScope)
-  ? configuredScope : 'project';
+// ISSUE #139 — this WRITER resolved scope correctly while two READERS hardcoded it, so they agreed
+// only by coincidence. The resolution moved into runtime-preferences.mjs and all three now call it;
+// a future scope is one edit, not three. Behaviour here is unchanged by design.
+const LEARNING_SCOPE = learningScope({ cwd: PROJECT });
 if (LEARNING_SCOPE === 'off') process.exit(0);
 
 // THE SESSION ID COMES OFF THE PAYLOAD, exactly as it does in learn-capture.sh (fixed 2026-07-27).
