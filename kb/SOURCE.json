@@ -1,15 +1,15 @@
 {
   "builder": "rvf-kb-forge",
-  "builtUtc": "2026-08-13T07:20:07.859Z",
+  "builtUtc": "2026-08-14T07:16:39.347Z",
   "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
   "selfUpdate": "node forge-update.mjs",
   "stores": {
     "open-claude-code": {
       "kbName": "open-claude-code",
       "sourceRepo": "https://github.com/ruvnet/open-claude-code",
-      "sourceCommit": "591d9337dc4634b6f49d72e401439d862470fbd5",
-      "sourceDescribe": "v2.0.0-nightly.20260813",
-      "builtUtc": "2026-08-13T07:20:07.859Z",
+      "sourceCommit": "edf9ad8aa74771f62e93d8f02f66fb0d4e9d866b",
+      "sourceDescribe": "v2.0.0-nightly.20260814",
+      "builtUtc": "2026-08-14T07:15:59.279Z",
       "builder": "rvf-kb-forge",
       "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/open-claude-code-kb-bundle.zip",
@@ -18,9 +18,9 @@
     "ruvector": {
       "kbName": "ruvector",
       "sourceRepo": "https://github.com/ruvnet/RuVector",
-      "sourceCommit": "0f24c7a75106f5ac9fb99f0de1db63e917ea8e54",
-      "sourceDescribe": "0f24c7a",
-      "builtUtc": "2026-08-13T07:17:29.766Z",
+      "sourceCommit": "74d2a60171402992206dddc172e068ce1808ed8b",
+      "sourceDescribe": "74d2a60",
+      "builtUtc": "2026-08-14T07:16:35.368Z",
       "builder": "rvf-kb-forge",
       "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/ruvector-kb-bundle.zip",
@@ -29,9 +29,9 @@
     "ruflo": {
       "kbName": "ruflo",
       "sourceRepo": "https://github.com/ruvnet/ruflo",
-      "sourceCommit": "5efd5937e588d6e2d20d974f14593a4795562ef8",
-      "sourceDescribe": "v3.38.8",
-      "builtUtc": "2026-08-13T07:20:00.177Z",
+      "sourceCommit": "01bece31c8390c4dda51487bc9d25c5a47d319f8",
+      "sourceDescribe": "01bece31c",
+      "builtUtc": "2026-08-14T07:15:56.038Z",
       "builder": "rvf-kb-forge",
       "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/ruflo-kb-bundle.zip",
@@ -139,9 +139,9 @@
     "metaharness": {
       "kbName": "metaharness",
       "sourceRepo": "https://github.com/ruvnet/metaharness",
-      "sourceCommit": "68402755f017e0df5f493c6ee608218420540d17",
-      "sourceDescribe": "v0.4.5",
-      "builtUtc": "2026-08-12T07:28:10.075Z",
+      "sourceCommit": "20a43693434b91eae0956097b27c608a93283270",
+      "sourceDescribe": "20a4369",
+      "builtUtc": "2026-08-14T07:16:12.572Z",
       "builder": "rvf-kb-forge",
       "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/metaharness-kb-bundle.zip",
@@ -278,8 +278,19 @@
       "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/wifi-veil-kb-bundle.zip",
       "selfUpdate": "node forge-update.mjs wifi-veil"
+    },
+    "dream-machine": {
+      "kbName": "dream-machine",
+      "sourceRepo": "https://github.com/ruvnet/dream-machine",
+      "sourceCommit": "7bbb851d337067d16ede31175896bb5e587a7d22",
+      "sourceDescribe": "7bbb851",
+      "builtUtc": "2026-08-14T07:16:39.347Z",
+      "builder": "rvf-kb-forge",
+      "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
+      "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/dream-machine-kb-bundle.zip",
+      "selfUpdate": "node forge-update.mjs dream-machine"
     }
   },
-  "brainVersion": "4.0.52-dev",
-  "releaseTag": "v4.0.52-dev"
+  "brainVersion": "4.0.53-dev",
+  "releaseTag": "v4.0.53-dev"
 }

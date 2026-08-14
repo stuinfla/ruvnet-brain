@@ -5,10 +5,14 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_470 gists · refreshed 2026-08-13_
+_474 gists · refreshed 2026-08-14_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-08-13 | [dm-gist.md](https://gist.github.com/ruvnet/cd4101aa0c9b317de96fa2f3fe44f059) | Dream Machine v0.1.0 — nightly, evidence-gated repository evolution (npx dream-machine) |
+| 2026-08-13 | [meta-proxy-tutorial.md](https://gist.github.com/ruvnet/e546a3495c1fc3f3c7b10d67aa593c91) | Meta Proxy (ruflo proxy) — technical tutorial: architecture, install/verify pipeline, data planes, full CLI reference |
+| 2026-08-13 | [dream-machine-tutorial.md](https://gist.github.com/ruvnet/889ffa92dab49d508e70b123c940e1b9) | The Dream Machine — a tutorial on Ruflo's nightly Dream Cycle v3 evolution loop |
+| 2026-08-13 | [ruvector-pr-sweep-2026-08-13.md](https://gist.github.com/ruvnet/d049ba7b4cf9ccfa8d96a630db48a4d7) | RuVector PR sweep 2026-08-13: CI shard-split root cause found & fixed, two research PRs merged with corrected claims, ex |
 | 2026-08-12 | [gist-body.md](https://gist.github.com/ruvnet/a5ab06c9d331ac6a7272510dd8777ce0) | agent-harness-generator — plain-English explainer for the new sister project to ruflo (Claude Code + Codex + pi.dev + He |
 | 2026-08-12 | [v2235-plain-language-release-notes.md](https://gist.github.com/ruvnet/e0fb8eebe820d40e4195aaf48f42a124) | RuView v2235 — plain-language release notes: issue-fix batch + certificate-spine wiring |
 | 2026-08-12 | [adr-382-writeup.md](https://gist.github.com/ruvnet/ca6e5e63dce4fece0d7dafa60c77808b) | ADR-382 — Init scaffold content drift remediation (ruflo v3.38.0) |

@@ -1,13 +1,13 @@
 {
-  "brainVersion": "4.0.53-dev",
-  "generated": "2026-08-13T07:20:14.050Z",
-  "generatedHuman": "Thu, 13 Aug 2026 07:20:14 GMT",
+  "brainVersion": "4.0.54-dev",
+  "generated": "2026-08-14T07:17:02.032Z",
+  "generatedHuman": "Fri, 14 Aug 2026 07:17:02 GMT",
   "coverage": {
-    "built": 72,
-    "catalogued": 195,
-    "orgTotalApprox": 200,
+    "built": 73,
+    "catalogued": 196,
+    "orgTotalApprox": 201,
     "orgTotalSource": "live",
-    "orgTotalAt": "2026-08-13T07:20:15.096Z",
+    "orgTotalAt": "2026-08-14T07:17:03.000Z",
     "pending": 123
   },
   "builtRepos": [
@@ -23,7 +23,7 @@
       "name": "ruflo",
       "tier": "T0",
       "stars": 61698,
-      "builtFromSha": "5efd5937e588d6e2d20d974f14593a4795562ef8",
+      "builtFromSha": "01bece31c8390c4dda51487bc9d25c5a47d319f8",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -31,7 +31,7 @@
       "name": "RuVector",
       "tier": "T0",
       "stars": 4296,
-      "builtFromSha": "0f24c7a75106f5ac9fb99f0de1db63e917ea8e54",
+      "builtFromSha": "74d2a60171402992206dddc172e068ce1808ed8b",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -63,7 +63,7 @@
       "name": "metaharness",
       "tier": "T1",
       "stars": 330,
-      "builtFromSha": "68402755f017e0df5f493c6ee608218420540d17",
+      "builtFromSha": "20a43693434b91eae0956097b27c608a93283270",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -215,7 +215,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "591d9337dc4634b6f49d72e401439d862470fbd5",
+      "builtFromSha": "edf9ad8aa74771f62e93d8f02f66fb0d4e9d866b",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -506,6 +506,13 @@
       "name": "concepts",
       "tier": "fresh",
       "builtFromSha": "unknown",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "dream-machine",
+      "tier": "fresh",
+      "builtFromSha": "7bbb851d337067d16ede31175896bb5e587a7d22",
       "latestRemoteSha": null,
       "status": "built"
     },

@@ -98,7 +98,26 @@ export function proveMemoryDurable(dbPath = defaultDb(), { run = defaultRun } = 
     }
     return { ok: true, why: 'store → SQL round-trip confirmed the exact row on disk' };
   } catch (e) {
-    return { ok: false, why: `probe could not complete: ${String(e?.message ?? e).split('\n')[0]}` };
+    // "CANNOT PROBE" IS NOT "PROBED AND FAILED", and collapsing them shipped the worst
+    // stranger-facing bug in this repo. Measured with PATH=/usr/bin:/bin — i.e. most machines that
+    // install this plugin but not ruflo — EVERY `git push`, `npm publish` and `gh release create`
+    // was refused, with instructions to `npm rebuild better-sqlite3` in a package the user never
+    // installed. Same for a missing `sqlite3`, which is normal on Linux and Windows.
+    //
+    // The rule was already written, one file away, in identifier-preflight.mjs's header: "FAIL OPEN.
+    // An identifier this cannot resolve is ALLOWED, silently... a fabricated diagnosis is worse than
+    // no check, because it burns the credibility the channel runs on." That header even cites THIS
+    // file as the sibling whose bug taught the rule. The rule was recorded and not applied to the
+    // file it was learned from — the same shape as freshness machinery pointed at coverage but not
+    // the eval, and resolveBash existing but unused at a new call site.
+    //
+    // A missing binary means this machine cannot answer the question. It does not mean the answer
+    // is "broken".
+    const msg = String(e?.message ?? e);
+    if (/ENOENT|not found|spawnSync .* ENOENT/i.test(msg)) {
+      return { ok: true, why: `cannot probe on this machine (${msg.split('\n')[0]}) — declining to guess`, skipped: true };
+    }
+    return { ok: false, why: `probe could not complete: ${msg.split('\n')[0]}` };
   } finally {
     // The scratch db is ours alone; remove it and its WAL siblings rather than leaving litter in tmp.
     for (const suffix of ['', '-wal', '-shm']) {
