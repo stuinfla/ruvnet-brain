@@ -3,7 +3,7 @@ id: ADR-063
 title: The managed-memory boundary is enforceable, opt-in, and default-off
 status: Accepted
 date: 2026-08-06
-updated: 2026-08-06
+updated: 2026-08-14
 authors: [Stuart Kerr, Claude Code]
 tags: [enforcement, memory, agentdb, hooks, consent, issue-103]
 supersedes: []
@@ -98,4 +98,5 @@ that merely nags is a nuisance; an unsatisfiable gate that *blocks* is an outage
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-14 | hijack-ruvnet still enforces the boundary unchanged; it now runs inside a gate whose budget provably fits the host timeout, so it can no longer be silently killed mid-decision. |
 | 2026-08-06 | Governed hook surface moved into the payload (`plugin/scripts/`) under ADR-065; the boundary itself is UNCHANGED and still ships default-off. | The move touches `hook-shim.mjs` and `session-start-core.mjs`, which this ADR governs, so the boundary was re-verified live against the shipped `hijack-ruvnet.sh` rather than assumed: `advise` (the shipped default) → exit 0 on a managed-store `sqlite3` call; `read-only` → exit 2 on a write, exit 0 on a read; `block` → exit 2; and `sqlite3 -json <managed store>` — the exact invocation the #102 matcher used to miss — now blocks. Prose mentioning sqlite and an unrelated `/tmp/myapp.db` both stay exit 0. Reporter's open criterion is unchanged and still unmet: `tests/unit/managed-memory-boundary.test.mjs` asserts `code === 2`, a deny-shaped response, not proof the command did not execute. |

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decide, policiesFor } from '../../plugin/scripts/decision-gate.mjs';
+import { DEFAULT_BUDGET_MS, MIN_HEADROOM_MS, decide, policiesFor, skipReason } from '../../plugin/scripts/decision-gate.mjs';
 
 /**
  * ADR-067 — EXACTLY ONE HOOK MAY REFUSE A GIVEN TOOL CALL.
@@ -29,18 +29,26 @@ const HOOKS = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin', 'hooks', 'hoo
 
 const verdict = (id, code, stderr = '') => ({ id, code, stderr, stdout: '' });
 
-/** Fire the real gate the way PreToolUse does: argv sub-event, JSON on stdin, no tty. */
-function fire(event, toolInput, toolName = 'Write') {
+/**
+ * Fire the real gate the way PreToolUse does: argv sub-event, JSON on stdin, no tty.
+ *
+ * spawnSync, not execFileSync. The execFileSync version returned a HARDCODED `stderr: ''` on its
+ * success branch — execFileSync forwards a child's stderr to the parent rather than capturing it
+ * unless `stdio` says otherwise — so `expect(r.stderr).toBe('')` on the allow case below was
+ * asserting a string literal against itself and could not fail on any gate, however noisy. A test
+ * that cannot fail on broken code is not a test; spawnSync captures both streams on both paths and
+ * makes that assertion load-bearing, which matters now that a blown budget writes to stderr.
+ */
+function fire(event, toolInput, toolName = 'Write', env = {}) {
   const payload = JSON.stringify({
     session_id: `dg-${Math.round(Number(process.env.VITEST_WORKER_ID || 1))}`,
     hook_event_name: 'PreToolUse', tool_name: toolName, cwd: ROOT, tool_input: toolInput,
   });
-  try {
-    const stdout = execFileSync(process.execPath, [GATE, event], { input: payload, encoding: 'utf8', timeout: 30_000 });
-    return { code: 0, stdout, stderr: '' };
-  } catch (e) {
-    return { code: e.status, stdout: String(e.stdout || ''), stderr: String(e.stderr || '') };
-  }
+  const t0 = Date.now();
+  const r = spawnSync(process.execPath, [GATE, event], {
+    input: payload, encoding: 'utf8', timeout: 30_000, env: { ...process.env, ...env },
+  });
+  return { code: r.status, stdout: String(r.stdout || ''), stderr: String(r.stderr || ''), ms: Date.now() - t0 };
 }
 
 describe('ADR-067 — one decision, composed from many policies', () => {

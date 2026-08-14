@@ -16,12 +16,21 @@ export function writeSessionSnapshot(projectDir, event) {
   const swarm = path.join(projectDir, '.swarm');
   const target = path.join(swarm, 'agentdb-sessions.jsonl');
   try {
-    if (fs.existsSync(swarm)) {
-      const stat = fs.lstatSync(swarm);
-      if (!stat.isDirectory() || stat.isSymbolicLink()) return false;
-    } else {
-      fs.mkdirSync(swarm, { recursive: false, mode: 0o700 });
-    }
+    // WE DO NOT CREATE `.swarm` — WE ONLY WRITE INTO ONE THAT EXISTS.
+    //
+    // This hook runs machine-wide, so `mkdirSync(swarm)` planted a `.swarm/` directory in EVERY
+    // repository the user opened, alongside a session receipt they never asked for. Measured
+    // 2026-08-14 by the both-hosts conformance gate, in a temp project with no git and no brain
+    // artifacts: PreCompact, PostToolUse and SessionEnd each left `.swarm` behind. ADR-058 D5 —
+    // never touch what we do not own — and the owner's report was blunter: opening the plugin in
+    // another project produced files and errors he did not ask for.
+    //
+    // `.swarm` is Ruflo's own convention and `ruflo init` creates it, so its PRESENCE is the
+    // project's opt-in and its ABSENCE is a project that has not adopted the brain. Writing a
+    // receipt into a store that exists is participation; conjuring the store is trespass.
+    if (!fs.existsSync(swarm)) return false;
+    const stat = fs.lstatSync(swarm);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) return false;
     if (!regularOrAbsent(target)) return false;
     fs.appendFileSync(target, `${JSON.stringify(createSessionSnapshot({ event }))}\n`, { mode: 0o600 });
     return true;

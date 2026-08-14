@@ -1,4 +1,31 @@
 #!/usr/bin/env node
+/**
+ * codex-hook-adapter.mjs — the host boundary. Codex payloads in, shared Brain hook bodies out, and
+ * Codex-VALID output back.
+ *
+ * THE OUTPUT CONTRACT IS NOT GUESSED. Every rule below was read out of the real host: the JSON
+ * schemas Codex 0.147.0 carries inside its own binary (`<event>.command.output`, extracted
+ * 2026-08-14 from /Users/stuartkerr/.codex/packages/standalone/releases/0.147.0-aarch64-apple-darwin
+ * /bin/codex) plus its own error strings. The three that shaped this file:
+ *
+ *   · "hook returned invalid post-tool-use JSON output"  — PostToolUse stdout is PARSED. Plain text
+ *     is a host error, not a message. signal-watch.mjs prints one advisory LINE on a failed
+ *     gh/vercel/npm command, which reached Codex as invalid JSON on every such command, and nothing
+ *     in this file wrapped it: the old envelope branch covered SessionStart and UserPromptSubmit
+ *     only. Measured before the fix: raw text passed straight through.
+ *   · The events that may carry `hookSpecificOutput.additionalContext` are exactly the ones with a
+ *     *HookSpecificOutputWire definition — PreToolUse, PostToolUse, PermissionRequest, SessionStart,
+ *     SubagentStart, UserPromptSubmit. `session-end.command.output` DOES NOT EXIST, and
+ *     pre-compact/post-compact/stop/subagent-stop have no additionalContext at all. So for those,
+ *     unparseable stdout is DROPPED. Wrapping it would trade a silent no-op for a host error.
+ *   · "PreToolUse hook returned unsupported permissionDecision:allow" / ":ask" — the wire enum has
+ *     three values and Codex accepts exactly one of them, `deny`. Anything else is stripped, which
+ *     is why the pre-existing `defer` strip is now a general rule rather than one special case.
+ *
+ * Exit-2-plus-stderr is the refusal channel on every blocking event ("PreToolUse hook exited with
+ * code 2 but did not write a blocking reason to stderr" is the host's complaint when the stderr half
+ * is missing), so a non-zero status is forwarded verbatim and never reinterpreted.
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -13,8 +40,27 @@ const event = String(input.hook_event_name || '');
 let adapted = false;
 const codexToolName = String(input.tool_name).toLowerCase();
 
+/**
+ * Events whose output schema defines a *HookSpecificOutputWire with `additionalContext`. Only these
+ * may carry a hook's prose back to the model.
+ */
+const CONTEXT_EVENTS = new Set([
+  'PreToolUse', 'PostToolUse', 'PermissionRequest', 'SessionStart', 'SubagentStart', 'UserPromptSubmit',
+]);
+
+/** Every file an apply_patch touches, in patch order. Codex patches are routinely multi-file. */
+export function patchFiles(patch) {
+  const out = [];
+  for (const m of String(patch || '').matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)) {
+    const f = m[1].trim();
+    if (f && !out.includes(f)) out.push(f);
+  }
+  return out;
+}
+
 // Codex names these tools differently from the shared Claude hook contracts. Normalize at the
 // host boundary once so every existing safety/learning body sees the same typed event.
+let files = [];
 if (['exec_command', 'functions.exec_command', 'functions__exec_command'].includes(codexToolName)) {
   input.tool_name = 'Bash';
   input.tool_input = {
@@ -24,11 +70,11 @@ if (['exec_command', 'functions.exec_command', 'functions__exec_command'].includ
   adapted = true;
 } else if (codexToolName === 'apply_patch') {
   const patch = typeof input.tool_input?.command === 'string' ? input.tool_input.command : '';
-  const filePath = patch.match(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/m)?.[1]?.trim() || '';
+  files = patchFiles(patch);
   input.tool_name = 'Edit';
   input.tool_input = {
     ...(input.tool_input || {}),
-    ...(filePath ? { file_path: filePath } : {}),
+    ...(files[0] ? { file_path: files[0] } : {}),
     new_string: patch,
   };
   adapted = true;
@@ -51,40 +97,95 @@ const env = {
   CLAUDE_PROJECT_DIR: String(input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd()),
   RUVNET_HOOK_HOST: 'codex',
 };
-const result = spawnSync(process.execPath, [shim, hookId, ...process.argv.slice(3)], {
-  input: hookInput,
-  encoding: 'utf8',
-  env,
+
+const runShim = (payload) => spawnSync(process.execPath, [shim, hookId, ...process.argv.slice(3)], {
+  input: payload, encoding: 'utf8', env,
 });
 
-if (result.status && result.stderr) process.stderr.write(result.stderr);
-if (result.status) process.exit(result.status);
+/**
+ * ONE PAYLOAD PER FILE for a multi-file patch.
+ *
+ * Every write policy on both hosts reads a single `tool_input.file_path` (protect-brain-state.sh
+ * line 56, ground-before-write.sh line 109, adr-currency-gate.mjs line 137). A Codex `apply_patch`
+ * carries N files in one call, so exposing only the first meant files 2..N were never shown to any
+ * wall — the same shape as every other defect in this area: the check exists and points one surface
+ * away from the failure.
+ *
+ * BOUNDED, because the wrapper SIGKILLs this process at its own budget and a kill is invisible. The
+ * wrapper hands its budget down; iteration stops at 75% of it and ALLOWS, which is decision-gate's
+ * own rule for a blown budget ("a blown budget ALLOWS and says nothing"): the gate's slowness must
+ * never be indistinguishable from the user doing something wrong.
+ */
+const BUDGET_MS = Number(process.env.RUVNET_CODEX_BUDGET_MS) || 0;
+const started = Date.now();
+const spent = () => Date.now() - started;
 
-const stdout = result.stdout || '';
-if (!stdout) process.exit(0);
+const payloads = files.length > 1
+  ? files.map((file) => JSON.stringify({
+    ...input,
+    tool_input: { ...input.tool_input, file_path: file },
+  }))
+  : [hookInput];
+
+const stdouts = [];
+for (const payload of payloads) {
+  const r = runShim(payload);
+  // A refusal (or any error) from ANY file is the decision for the whole patch, forwarded verbatim
+  // and immediately — there is nothing to compose once one wall has said no.
+  if (r.status && r.stderr) process.stderr.write(r.stderr);
+  if (r.status) process.exit(r.status);
+  if (r.stdout) stdouts.push(r.stdout);
+  if (BUDGET_MS && spent() > BUDGET_MS * 0.75) break;
+}
+
+if (!stdouts.length) process.exit(0);
+
+/** Merge N bodies' output into ONE value. Envelopes join by context; anything else joins as text. */
+function merge(outs) {
+  if (outs.length === 1) return outs[0];
+  const parsedAll = outs.map((s) => { try { return JSON.parse(s); } catch { return null; } });
+  const contexts = parsedAll.map((p) => p?.hookSpecificOutput?.additionalContext);
+  if (parsedAll.every((p) => p) && contexts.every((c) => typeof c === 'string')) {
+    const first = parsedAll[0];
+    return JSON.stringify({
+      ...first,
+      hookSpecificOutput: { ...first.hookSpecificOutput, additionalContext: contexts.join('\n') },
+    });
+  }
+  return outs.map((s) => s.trim()).filter(Boolean).join('\n');
+}
+
+const stdout = merge(stdouts);
 
 let parsed = null;
-try { parsed = JSON.parse(stdout); } catch { /* plain text is valid for some Codex events */ }
+try { parsed = JSON.parse(stdout); } catch { /* a shared body may legitimately print prose */ }
 
 if (event === 'Stop') {
   const reason = parsed?.hookSpecificOutput?.additionalContext
     || parsed?.reason
     || parsed?.stopReason;
+  // `stop.command.output` has no hookSpecificOutput; `decision: "block"` REQUIRES a non-empty
+  // `reason` ("Stop hook returned decision:block without a non-empty reason"). No reason ⇒ say
+  // nothing at all, which is the allow.
   if (reason) process.stdout.write(JSON.stringify({ decision: 'block', reason }));
   process.exit(0);
 }
 
-if ((event === 'SessionStart' || event === 'UserPromptSubmit') && !parsed) {
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: event,
-      additionalContext: stdout,
-    },
-  }));
+if (!parsed) {
+  // Prose from a shared body. It is only deliverable on an event whose schema has somewhere to put
+  // it; everywhere else it is dropped rather than emitted as output the host will reject.
+  if (CONTEXT_EVENTS.has(event)) {
+    process.stdout.write(JSON.stringify({
+      hookSpecificOutput: { hookEventName: event, additionalContext: stdout },
+    }));
+  }
   process.exit(0);
 }
 
-if (parsed?.hookSpecificOutput?.permissionDecision === 'defer') {
+// `deny` is the only permissionDecision Codex accepts; `allow`, `ask` and the shared bodies' own
+// `defer` are all rejected by name. Strip, then drop an envelope that has nothing left to say.
+const decision = parsed?.hookSpecificOutput?.permissionDecision;
+if (decision && decision !== 'deny') {
   delete parsed.hookSpecificOutput.permissionDecision;
   if (Object.keys(parsed.hookSpecificOutput).length === 1 && parsed.hookSpecificOutput.hookEventName) {
     delete parsed.hookSpecificOutput;

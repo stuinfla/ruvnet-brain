@@ -17,14 +17,14 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 // resolveBash ONLY. `skipNoBash` is not a predicate — it is a one-time notice emitter that returns 0
 // and WRITES TO STDERR, which on this hot path is the refusal channel: calling it would have injected
 // an install hint into the middle of a refusal reason, or manufactured stderr on an allow. Read the
 // signature, do not infer it from the name.
 import { resolveBash } from './hook-shim-bash.mjs';
-import { actionKey, recordRefusal, resolve as resolveOutcome, sweepStale } from './decision-outcomes.mjs';
+import { append as appendOutcome, actionKey, recordRefusal, resolve as resolveOutcome, sweepStale } from './decision-outcomes.mjs';
 
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const EVENT = process.argv[2] || '';
@@ -32,6 +32,36 @@ const EVENT = process.argv[2] || '';
 /** Exit codes that mean something to the host. Anything else from a policy is an ERROR, not a refusal. */
 const ALLOW = 0;
 const REFUSE = 2;
+
+/**
+ * ── THE BUDGET AND THE HOST TIMEOUT ARE ONE NUMBER, NOT TWO ──────────────────────────────────────
+ *
+ * THE DEFECT, measured by an adversarial audit on 2026-08-13. hooks.json declared `timeout: 5` for
+ * both PreToolUse entries; this file enforced an internal 4000ms budget. Those two numbers were never
+ * compared anywhere — not in code, not in a test — and 4000ms of policy work plus two node boots does
+ * not fit in 5000ms. Fourteen timed runs, in projects with no ruvnet-brain content:
+ *
+ *     3166 3579 3622 3816 4431 4464 4615 4959 | 5109 5118 5401 5526 5579 5700 ms
+ *                                             ^ the 5s manifest timeout
+ *
+ * SIX OF FOURTEEN were killed by the host — including a plain `ls -la` at 5109ms and a Write at
+ * 5401ms. The host renders a killed hook as a FAILED PreToolUse HOOK, so the guard that exists to
+ * teach was instead producing the owner's literal complaint: "a ton of hook errors" on opening this
+ * plugin in another project. The gate was not refusing anything. It was timing out, and a timeout
+ * looks exactly like a broken plugin.
+ *
+ * The relationship, stated once so it can be asserted (tests/unit/decision-gate.test.mjs derives the
+ * manifest value FROM hooks.json — restating 5000 in the test would only re-create the drift):
+ *
+ *     DEFAULT_BUDGET_MS + MIN_HEADROOM_MS  ≤  hooks.json PreToolUse timeout × 1000
+ *
+ * MIN_HEADROOM_MS is not padding. It is the work outside the budget's control: the shim's node boot,
+ * this gate's node boot, the outcome-ledger writes, and the SIGKILL teardown of whatever the budget
+ * just cancelled. On the audit's machine a bare node boot measured ~300ms — roughly 5× this one — so
+ * the margin is sized for the slow host, which is the host that was failing.
+ */
+export const DEFAULT_BUDGET_MS = 4000;
+export const MIN_HEADROOM_MS = 5000;
 
 /**
  * THE POLICY REGISTRY — the whole point of this file, and the thing that was previously scattered
@@ -82,6 +112,13 @@ const REFUSAL_POLICIES = [
   // DEBT, not change: you may edit governed code freely, but not while a document governing it is
   // still unreconciled from the last round.
   POLICY('adr-currency', 'adr-currency-gate.mjs', 'node'),
+  // spend-guard refuses an agent FLEET that would inherit metered API keys. The $1,600 of
+  // agentic-qe#557: ~374 headless agents billed api.anthropic.com per-token for 11 hours while the
+  // Claude Max subscription sat unused. The rule was stored, ratified and severity:high — and
+  // delivered as advisory text, which is what gets skimmed. `claude` and `codex` are the seats and
+  // are never touched; OPENROUTER is metered and deliberately allowed, because cost-optimal routing
+  // exists to spend it and a gate that fires on the feature you configured is the gate you disable.
+  POLICY('spend-guard', 'spend-guard.mjs', 'node'),
 ];
 const SPEECH = { id: 'unprompted-speech', file: 'unprompted-runtime.mjs', interpreter: 'node' };
 
@@ -90,7 +127,7 @@ const REGISTRY = {
   'write': ['protect-state', 'hijack-ruvnet', 'ground-before-write', 'adr-currency'],
   // degradation-watch is bash-only on purpose: the acts it guards — `ruflo memory store`, `git
   // push` — are commands, so the dependency is observable there and nowhere else.
-  'bash': ['protect-state', 'identifier-preflight', 'degradation-watch', 'hijack-ruvnet', 'design-wall'],
+  'bash': ['protect-state', 'identifier-preflight', 'spend-guard', 'degradation-watch', 'hijack-ruvnet', 'design-wall'],
 };
 
 export function policiesFor(event, registry = REGISTRY, all = REFUSAL_POLICIES) {
@@ -98,6 +135,44 @@ export function policiesFor(event, registry = REGISTRY, all = REFUSAL_POLICIES) 
   // Ordered by REFUSAL_POLICIES, never by the registry entry — precedence is a property of the
   // policy, not of where someone happened to list it.
   return all.filter((p) => ids.includes(p.id));
+}
+
+/**
+ * ── APPLICABILITY: THE CHEAPEST POLICY IS THE ONE NEVER SPAWNED ──────────────────────────────────
+ *
+ * degradation-watch was spawned for EVERY Bash call and then exited 0 on its own second line — its
+ * `dependentEvent()` returns null for anything that is not a ship or a memory store, which is nearly
+ * everything. Measured here on 2026-08-14: 63-65ms of node boot bought to learn that `ls -la` is not
+ * `git push`, on every single Bash tool call, on the machine where a node boot costs 60ms. On the
+ * audit's machine that same boot is ~300ms.
+ *
+ * The predicate is IMPORTED, never restated. Copying the DEPENDENT_COMMANDS regexes up here would
+ * make two answers to one question and guarantee they drift — the same reason adr-currency-gate calls
+ * doc-currency.mjs instead of carrying a second copy of the logic.
+ *
+ * FAIL TOWARD RUNNING THE POLICY. If the import fails, or the predicate throws, the policy is
+ * spawned exactly as before: this is a latency optimisation and it may never become a way to silently
+ * disable a guard.
+ */
+let dependentEvent = null;   // set from degradation-watch.mjs at startup; null → spawn it as before
+/**
+ * Resolved once per invocation by the runtime block below; null means no bash on this host.
+ *
+ * Declared HERE, above that block, and not next to runPolicy() where it reads more naturally: the
+ * `if (isMain())` block runs during module evaluation, so a `let` declared after it sits in the
+ * temporal dead zone and the assignment throws — the identical mistake `speechEventFor` was already
+ * a hoisted `function` to avoid, recorded a few lines further down.
+ */
+let BASH = null;
+const APPLICABILITY = {
+  'degradation-watch': (input) => (dependentEvent ? Boolean(dependentEvent(input.command)) : true),
+};
+
+/** Returns a skip reason, or null if the policy must be consulted. */
+export function skipReason(policy, toolInput, table = APPLICABILITY) {
+  const test = table[policy.id];
+  if (!test) return null;
+  try { return test(toolInput || {}) ? null : 'not-applicable'; } catch { return null; }
 }
 
 /**
@@ -144,23 +219,44 @@ function speechEventFor(event) { return event === 'bash' ? 'PreToolUse-bash' : '
 
 
 if (isMain()) {
+  const started = Date.now();
   const payload = readPayload();
   const selected = policiesFor(EVENT);
   // An unknown event is not an occasion to refuse anything. Same rule as unprompted-runtime's
   // "never speak on a guess", pointed at the other decision.
   if (!selected.length && EVENT !== 'write' && EVENT !== 'bash') process.exit(ALLOW);
 
-  const budgetMs = Number(process.env.RUVNET_DECISION_BUDGET_MS) || 4000;
-  const deadline = Date.now() + budgetMs;
-  const verdicts = [];
+  const budgetMs = Number(process.env.RUVNET_DECISION_BUDGET_MS) || DEFAULT_BUDGET_MS;
+  const deadline = started + budgetMs;
+  // Resolved ONCE. On win32 resolveBash() can shell out to `where.exe`; four bash policies meant up
+  // to four of those per tool call, for an answer that cannot change mid-invocation.
+  BASH = resolveBash();
+  // Best-effort, and deliberately not a static import: a missing or broken degradation-watch.mjs
+  // must cost us the optimisation, not the whole gate. `runPolicy` already tolerates a missing
+  // policy file; a top-level `import` of it would have made that tolerance a lie.
+  try { ({ dependentEvent } = await import('./degradation-watch.mjs')); } catch { dependentEvent = null; }
+
+  const trace = [];            // one row per policy — surfaced by RUVNET_DECISION_TRACE=1
+  const unconsulted = [];      // policies the budget cost us. NEVER silent; see reportBudget().
+  const toolInput = payloadInput(payload);
+  const consulted = [];
   for (const p of selected) {
-    const left = deadline - Date.now();
-    // A blown budget ALLOWS and says nothing. The alternative — refusing because we ran out of time
-    // — would make the gate's own slowness indistinguishable from the user doing something wrong.
-    if (left <= 0) break;
-    const v = runPolicy(p, payload, left);
-    if (v) verdicts.push(v);
+    const why = skipReason(p, toolInput);
+    if (why) trace.push({ id: p.id, ms: 0, skipped: why });
+    else consulted.push(p);
   }
+
+  // ── PARALLEL, and the reason is arithmetic ─────────────────────────────────────────────────────
+  // Sequentially the gate's wall time was SUM(policies); run together it is MAX(policies). Measured
+  // on a `git push` payload by the 2026-08-13 audit: 182 + 345 + 2145..3990 + 629 + 743 ≈ 4.0-5.9s
+  // sequential, against a 5s host timeout. Nothing about these policies wanted to be sequential —
+  // they share no state, write no files (only stderr), and `decide()` re-sorts the verdicts into
+  // REFUSAL_POLICIES precedence order regardless of which finished first. Every selected policy ran
+  // on every call before this change too: the gate never short-circuited on the first refusal,
+  // because naming EVERY wall is the whole point of ADR-067.
+  const results = await Promise.all(consulted.map((p) => runPolicy(p, payload, deadline, undefined, trace)));
+  const verdicts = results.filter((r) => typeof r.code === 'number');
+  for (const r of results) if (r.skipped === 'budget') unconsulted.push(r.id);
 
   const decision = decide(verdicts);
 
@@ -169,9 +265,9 @@ if (isMain()) {
   // hook: resolve first (did this call retry something we refused?), then open a new debt if we are
   // about to refuse. Order matters — resolving after recording would close the debt we just opened.
   // Entirely best-effort: measurement may never affect the verdict, so it runs after `decide`.
+  const session = sessionOf(payload);
   try {
-    const session = sessionOf(payload);
-    const key = actionKey(payloadTool(payload), payloadInput(payload));
+    const key = actionKey(payloadTool(payload), toolInput);
     const ts = Date.now();
     if (session && key) {
       sweepStale({ session, ts });   // debts from dead sessions become `abandoned`, never vanish
@@ -181,48 +277,125 @@ if (isMain()) {
   } catch { /* a ledger must never break a tool call */ }
 
   if (!decision.allow) {
+    reportBudget({ session, unconsulted, trace, started, budgetMs });
     process.stderr.write(`${decision.reason}\n`);
     process.exit(REFUSE);
   }
 
   // Nothing refused: run the speech chokepoint and forward its envelope verbatim. It owns its own
   // per-channel policy; this gate does not inspect or re-decide anything it says.
-  const left = deadline - Date.now();
-  if (left > 0) {
-    const speech = runPolicy(SPEECH, payload, left, speechEventFor(EVENT));
-    if (speech?.code === REFUSE) {
+  //
+  // SEQUENTIAL ON PURPOSE, unlike the batch above. unprompted-runtime.mjs records an OFFERED row in
+  // the advocacy ledger when it delivers (its line ~372), so starting it in parallel and discarding
+  // its stdout after a refusal would book an offer the user never saw — inflating the denominator
+  // this project has a CI gate against fabricating. A saved ~280ms is not worth a fabricated number.
+  if (deadline - Date.now() <= 0) {
+    unconsulted.push(SPEECH.id);
+  } else {
+    const speech = await runPolicy(SPEECH, payload, deadline, speechEventFor(EVENT), trace);
+    if (speech.skipped === 'budget') unconsulted.push(SPEECH.id);
+    if (speech.code === REFUSE) {
+      reportBudget({ session, unconsulted, trace, started, budgetMs });
       process.stderr.write(`${(speech.stderr || '').trim()}\n`);
       process.exit(REFUSE);
     }
-    if (speech?.stdout?.trim()) process.stdout.write(speech.stdout);
+    reportBudget({ session, unconsulted, trace, started, budgetMs });
+    if (speech.stdout?.trim()) process.stdout.write(speech.stdout);
+    process.exit(ALLOW);
   }
+  reportBudget({ session, unconsulted, trace, started, budgetMs });
   process.exit(ALLOW);
 }
 
-/** Run one policy as a CAPTURED child. Never lets its bytes touch the real streams. */
-function runPolicy(p, payload, timeout, extraArg) {
+/**
+ * ── A BUDGET THAT CAN BE EXCEEDED SILENTLY FAILS OPEN WITHOUT SAYING SO ──────────────────────────
+ *
+ * The old loop did `break` when the budget ran out. Every remaining policy AND the speech chokepoint
+ * were then skipped with no record anywhere — the gate allowed, and nothing distinguished "five
+ * policies agreed this was fine" from "we ran out of time and stopped asking". That is this repo's
+ * signature defect wearing a different hat: silence standing in for a measurement. degradation-watch
+ * exists because a warning was printed and skimmed; this exists because nothing was printed at all.
+ *
+ * TWO CHANNELS, because each fails differently:
+ *   · the outcome ledger (~/.config/ruvnet-brain/, survives `--update`) so a trip COMPOUNDS into
+ *     evidence instead of scrolling past. `kind: 'budget-exceeded'` is inert in report()'s buckets —
+ *     it counts neither as a refusal nor as a resolution, so it cannot move the obedience rate.
+ *   · one stderr line, unconditionally, allow or refuse. Yes, that puts bytes on stderr during an
+ *     exit-0 allow, which tests/unit/decision-gate.test.mjs asserts never happens on an ordinary
+ *     write. That assertion is now a SECOND tripwire and is meant to be: after the parallel batch and
+ *     the applicability skip, an ordinary write measures ~360ms against a 4000ms budget, so a trip
+ *     there is not noise to be tolerated — it is the defect, and the suite should go red for it.
+ */
+function reportBudget({ session, unconsulted, trace, started, budgetMs }) {
+  const elapsed = Date.now() - started;
+  if (process.env.RUVNET_DECISION_TRACE === '1') {
+    process.stderr.write(`[decision-gate] ${EVENT} ${elapsed}ms budget=${budgetMs}ms ${JSON.stringify(trace)}\n`);
+  }
+  if (!unconsulted.length) return;
+  try {
+    appendOutcome({ kind: 'budget-exceeded', event: EVENT, session, unconsulted, elapsedMs: elapsed, budgetMs, ts: Date.now() });
+  } catch { /* a ledger must never break a tool call */ }
+  process.stderr.write(
+    `[decision-gate] ${budgetMs}ms budget exhausted after ${elapsed}ms — ALLOWED WITHOUT CONSULTING: `
+    + `${unconsulted.join(', ')}. These policies did not vote; this allow is a timeout, not a verdict.\n`,
+  );
+}
+
+/**
+ * Run one policy as a CAPTURED child. Never lets its bytes touch the real streams.
+ *
+ * Always resolves, never rejects, and always to an object — `{ id, code }` for a real verdict, or
+ * `{ id, skipped }` for anything else. The old version returned bare `null` for a missing file, a
+ * missing bash, a crash AND a timeout alike, which is precisely why a blown budget could not be
+ * reported: by the time the caller saw the result, the reason was gone.
+ */
+function runPolicy(p, payload, deadline, extraArg, trace) {
+  const t0 = Date.now();
+  const done = (r) => {
+    trace?.push({ id: p.id, ms: Date.now() - t0, ...(r.skipped ? { skipped: r.skipped } : { code: r.code }) });
+    return r;
+  };
   const file = path.join(SCRIPTS_DIR, p.file);
-  if (!fs.existsSync(file)) return null;          // a missing policy is not a refusal
-  let cmd; let args;
+  if (!fs.existsSync(file)) return Promise.resolve(done({ id: p.id, skipped: 'missing' }));
+  let cmd; const args = [file];
   if (p.interpreter === 'bash') {
-    const bash = resolveBash();
-    if (!bash) return null;                       // no bash on this host → this policy cannot speak
-    cmd = bash; args = [file];
+    if (!BASH) return Promise.resolve(done({ id: p.id, skipped: 'no-bash' }));  // this policy cannot speak here
+    cmd = BASH;
   } else {
-    cmd = process.execPath; args = [file];
+    cmd = process.execPath;
   }
   if (extraArg) args.push(extraArg);
-  try {
-    const r = spawnSync(cmd, args, {
-      input: payload, encoding: 'utf8', timeout, maxBuffer: 1 << 20,
-      env: { ...process.env, RUVNET_DECISION_GATE: '1' },
+  const left = deadline - Date.now();
+  if (left <= 0) return Promise.resolve(done({ id: p.id, skipped: 'budget' }));
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const finish = (r) => { if (settled) return; settled = true; clearTimeout(timer); resolve(done(r)); };
+    let child;
+    try {
+      child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, RUVNET_DECISION_GATE: '1' } });
+    } catch { return finish({ id: p.id, skipped: 'spawn' }); }
+    // SIGKILL, not SIGTERM: a bash policy that has spawned its own child (jq, node, ruflo) can sit in
+    // a TERM handler, and the host's own kill is what we are racing. The whole batch shares ONE
+    // deadline, so a single slow policy cancels only the time it actually consumed.
+    timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* already gone */ } finish({ id: p.id, skipped: 'budget' }); }, left);
+    let stdout = ''; let stderr = ''; let bytes = 0;
+    const MAX = 1 << 20;   // same ceiling spawnSync's maxBuffer enforced; a policy is not a data source
+    child.stdout.on('data', (d) => { if (bytes < MAX) { stdout += d; bytes += d.length; } });
+    child.stderr.on('data', (d) => { if (bytes < MAX) { stderr += d; bytes += d.length; } });
+    child.on('error', () => finish({ id: p.id, skipped: 'spawn' }));
+    // EPIPE when a policy exits before reading its payload (degradation-watch's fast path does).
+    // Unhandled, that error event would take the whole gate down and turn an allow into a hook error.
+    child.stdin.on('error', () => { /* the child did not want the payload; that is not a failure */ });
+    child.on('close', (code) => {
+      // A spawn failure, a timeout, or any code other than 0/2 is an ERROR — and an error here must
+      // never be mistaken for a refusal. That distinction is the one lesson-gate.mjs had to learn twice.
+      if (code !== ALLOW && code !== REFUSE) return finish({ id: p.id, skipped: `exit:${code}` });
+      finish({ id: p.id, code, stderr, stdout });
     });
-    // A spawn failure, a timeout, or any code other than 0/2 is an ERROR — and an error here must
-    // never be mistaken for a refusal. That distinction is the one lesson-gate.mjs had to learn twice.
-    if (r.error || typeof r.status !== 'number') return null;
-    if (r.status !== ALLOW && r.status !== REFUSE) return null;
-    return { id: p.id, code: r.status, stderr: r.stderr || '', stdout: r.stdout || '' };
-  } catch { return null; }
+    try { child.stdin.end(payload); } catch { /* handled by the stdin error listener above */ }
+  });
 }
 
 function readPayload() {

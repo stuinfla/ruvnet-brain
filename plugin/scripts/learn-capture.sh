@@ -136,6 +136,16 @@ else
   # ADR-066: a writer and a reader that disagree about the store make the recording theatre.
   DIR="${RUVNET_BRAIN_PROJECT_DIR:-$PWD}/.swarm/ruvnet-brain-learn"
 fi
+# PROJECT SCOPE MEANS THE PROJECT MUST HAVE OPTED IN. In project scope $DIR sits under `.swarm`,
+# which is Ruflo's own convention and is created by `ruflo init` — so its PRESENCE is the project's
+# opt-in and its ABSENCE is a project that has not adopted the brain. This hook runs machine-wide on
+# every PostToolUse, so an unconditional mkdir planted `.swarm/` in EVERY repository the user opened.
+# Measured 2026-08-14 by the both-hosts conformance gate in a temp project with no git and no brain
+# artifacts; ADR-058 D5 — never touch what we do not own. User scope is unaffected: that queue lives
+# under the brain's OWN cache directory, which we do own and may create.
+case "$DIR" in
+  */.swarm/*) [ -d "$(dirname "$DIR")" ] || exit 0 ;;
+esac
 # Owner-only (0700 dir / 0600 file). This queue was 0644 inside a 0755 dir: on macOS every local
 # account is normally in `staff`, so any other user on a shared or corporate machine could read it.
 ( umask 077 && mkdir -p "$DIR" ) 2>/dev/null || exit 0

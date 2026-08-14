@@ -9,6 +9,11 @@ const brainHome = process.env.RUVNET_BRAIN_HOME
   || path.join(path.dirname(codexHome), '.cache', 'ruvnet-brain');
 const versions = path.join(brainHome, 'versions');
 const blockingHooks = new Set([
+  // decision-gate composes every refusal policy into ONE verdict and speaks the same exit-2 +
+  // stderr contract Codex documents ("PreToolUse hook exited with code 2 but did not write a
+  // blocking reason to stderr"). Absent from this set it would be wired and toothless: the exit 2
+  // would be swallowed here and every refusal would silently become an allow.
+  'decision-gate',
   'route-dispatch',
   'hijack-ruvnet',   // ADR-063: opt-in managed-memory refusal; exits 0 at the default
   'ground-before-write',
@@ -17,10 +22,30 @@ const blockingHooks = new Set([
   'unprompted-speech',
 ]);
 
+/**
+ * THE BUDGET IS DERIVED FROM WHAT THE HOOK MEASURABLY COSTS, never from what looks tidy.
+ *
+ * A budget smaller than the work is not a limit, it is a silent deletion: this wrapper SIGKILLs the
+ * child and exits 0 with `status === null`, so nothing is printed and nothing is logged. Measured
+ * 2026-08-14 on this machine, that is exactly what `learn-flush` had been doing.
+ */
 function timeoutFor(hookId) {
   const override = Number(process.env.RUVNET_CODEX_HOOK_TIMEOUT_MS);
   if (Number.isFinite(override) && override > 0) return override;
-  if (hookId === 'learn-flush') return 2_250;
+  // learn-flush self-bounds at LEARN_FLUSH_DEADLINE_MS (18s) and then writes back what it did not
+  // feed. MEASURED with a real 10-entry queue and the real `ruflo` on this machine: 18342 / 18347 /
+  // 18384 ms — it saturates its own deadline every time. The old budget here was 2250ms, so the
+  // process was killed at 12% of its work: measured through this exact wrapper, exit 0, 2760ms, ZERO
+  // bytes of stdout, ZERO bytes of stderr, and a 10-line queue still 10 lines afterwards. Codex
+  // lessons never flushed, and nothing anywhere said so. 22s leaves the write-back and teardown
+  // inside the 30s host registration, matching what Claude Code already grants the same hook.
+  if (hookId === 'learn-flush') return 22_000;
+  // decision-gate's own internal budget is 4000ms (RUVNET_DECISION_BUDGET_MS) and it is allowed to
+  // spend all of it: measured 986–4015ms across ten runs in a project this plugin does not own. A
+  // budget at or below the gate's own would make the gate's slowest legitimate refusal indis-
+  // tinguishable from a crash; 6000ms covers the gate's cap plus this chain's spawn overhead
+  // (measured 773–1145ms end-to-end warm, so ~150–400ms of that is the wrapper/adapter/shim).
+  if (hookId === 'decision-gate') return 6_000;
   if (hookId === 'ground-ruvnet' || hookId === 'unprompted-speech' || hookId === 'continuation-gate') {
     return 8_500;
   }
@@ -119,11 +144,15 @@ const adapter = root && path.join(root, 'scripts', 'codex-hook-adapter.mjs');
 if (!adapter || !fs.existsSync(adapter)) process.exit(0);
 
 const hookId = process.argv[2] || '';
+const budgetMs = timeoutFor(hookId);
 const result = spawnSync(process.execPath, [adapter, ...process.argv.slice(2)], {
   input,
   encoding: 'utf8',
-  env: process.env,
-  timeout: timeoutFor(hookId),
+  // The adapter may fan one multi-file patch out into several body runs, and only this process knows
+  // when the axe falls. Hand the budget down so it can stop and fail open instead of being killed
+  // mid-loop with nothing written — a SIGKILL here is invisible to the host and to the user.
+  env: { ...process.env, RUVNET_CODEX_BUDGET_MS: String(budgetMs) },
+  timeout: budgetMs,
   killSignal: 'SIGKILL',
 });
 

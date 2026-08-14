@@ -117,7 +117,16 @@ function fireRegistered(command, home, payload, extraEnv = {}) {
   });
 }
 
-function fireRegisteredHeldOpen(command, home, payload, limitMs = 2_000) {
+// The property under test is "finishes after one complete JSON value WITHOUT waiting for stdin EOF".
+// A hook that waits for EOF here never finishes at all, so any finite cap proves it — the cap is a
+// liveness bound, not a latency budget, and tuning it down does not make the test stricter.
+//
+// It was 2000ms, which made it fail on machine LOAD rather than on behaviour: this file spawns every
+// registered handler concurrently, and when a second vitest suite runs beside it the spawns queue.
+// MEASURED 2026-08-14 on an idle machine, 5 rounds × 16 concurrent handlers = 80 samples: max 1197ms,
+// nothing above 2000ms — and 1 failure in 3 runs once other suites were running. 6000ms is 5× the
+// measured worst case and still infinitely short of "waits for EOF".
+function fireRegisteredHeldOpen(command, home, payload, limitMs = 6_000) {
   return new Promise((resolve) => {
     const child = spawn(command, {
       cwd: ROOT,
@@ -165,7 +174,13 @@ describe('Codex lifecycle hook packaging', () => {
     expect(projectHooks._note).toBeUndefined();
     expect(hooks.hooks.SessionStart).toBeTruthy();
     expect(hooks.hooks.Stop).toBeTruthy();
-    expect(JSON.stringify(hooks.hooks.PreToolUse)).toContain('ground-before-write');
+    // PreToolUse refusal is ONE registration per sub-event on BOTH hosts (ADR-067). Asserting the
+    // gate rather than a policy name is the point: this file used to name `ground-before-write`
+    // directly, which is exactly the pattern that let identifier-preflight, degradation-watch and
+    // adr-currency ship to Claude Code and never reach Codex — a manifest that lists policies one by
+    // one has to be edited for each new one, and nothing failed when it wasn't.
+    expect(JSON.stringify(hooks.hooks.PreToolUse)).toContain(' decision-gate write');
+    expect(JSON.stringify(hooks.hooks.PreToolUse)).toContain(' decision-gate bash');
     expect(JSON.stringify(hooks.hooks.PostToolUse)).toContain('grounding-stamp');
     expect(hooks.hooks.PostToolUse.some((group) =>
       group.matcher?.includes('search_ruvnet')
@@ -206,23 +221,45 @@ describe('Codex lifecycle hook packaging', () => {
     const groupsFor = (event, hookId) => hooks[event].filter((group) =>
       group.hooks.some((hook) => hook.command.includes(` ${hookId}`)));
 
-    for (const event of ['PreToolUse', 'PostToolUse']) {
-      for (const group of groupsFor(event, event === 'PreToolUse' ? 'hijack-ruvnet' : 'learn-capture')) {
-        expect(group.matcher).toMatch(/exec_command/);
-        expect(group.matcher).toMatch(/functions\\\.exec_command/);
-        expect(group.matcher).toMatch(/apply_patch/);
-      }
+    // EVERY loop below asserts a group was FOUND first. The previous version iterated
+    // `groupsFor(...)` directly, so when the policies it named moved behind decision-gate the loops
+    // ran zero times and the test went green by having nothing left to check — a test that cannot
+    // fail is the defect this whole area keeps producing.
+    const requireGroups = (event, hookId) => {
+      const found = groupsFor(event, hookId);
+      expect(found.length, `${event} registers no ${hookId} — nothing is being checked here`)
+        .toBeGreaterThan(0);
+      return found;
+    };
+
+    // The write-class gate must see Codex's own patch tool; the bash-class gate must see all three
+    // spellings of its exec tool. The adapter normalizes AFTER the matcher has already selected, so
+    // a matcher written in Claude's vocabulary simply never fires on Codex.
+    for (const group of requireGroups('PreToolUse', 'decision-gate write')) {
+      expect(group.matcher).toMatch(/apply_patch/);
     }
-    for (const hookId of ['verify-interface', 'design-wall']) {
-      for (const group of groupsFor('PreToolUse', hookId)) {
-        expect(group.matcher).toMatch(/exec_command/);
-        expect(group.matcher).toMatch(/functions\\\.exec_command/);
-      }
+    for (const group of requireGroups('PreToolUse', 'decision-gate bash')) {
+      expect(group.matcher).toMatch(/exec_command/);
+      expect(group.matcher).toMatch(/functions\\\.exec_command/);
+      expect(group.matcher).toMatch(/functions__exec_command/);
     }
-    for (const hookId of ['ground-before-write', 'protect-state']) {
-      for (const group of groupsFor('PreToolUse', hookId)) {
-        expect(group.matcher).toMatch(/apply_patch/);
-      }
+    for (const group of requireGroups('PostToolUse', 'learn-capture')) {
+      expect(group.matcher).toMatch(/exec_command/);
+      expect(group.matcher).toMatch(/functions\\\.exec_command/);
+      expect(group.matcher).toMatch(/apply_patch/);
+    }
+    for (const group of requireGroups('PreToolUse', 'verify-interface')) {
+      expect(group.matcher).toMatch(/exec_command/);
+      expect(group.matcher).toMatch(/functions\\\.exec_command/);
+    }
+    for (const group of requireGroups('PostToolUse', 'md-stamp')) {
+      expect(group.matcher).toMatch(/apply_patch/);
+    }
+    for (const group of requireGroups('PostToolUse', 'routing-outcome')) {
+      expect(group.matcher).toMatch(/spawn_agent/);
+    }
+    for (const group of requireGroups('PreToolUse', 'route-dispatch')) {
+      expect(group.matcher).toMatch(/spawn_agent/);
     }
   });
 
@@ -237,7 +274,50 @@ describe('Codex lifecycle hook packaging', () => {
       expect(handler.command).toContain('process.exit(r.status===2?2:0)');
       expect(handler.command).not.toMatch(/PLUGIN_ROOT|CLAUDE_PLUGIN_ROOT|plugins\/cache/);
     }
-    expect(hooks.SessionEnd[0].hooks[0].timeout).toBeLessThanOrEqual(3);
+  });
+
+  it('gives every SessionEnd hook more time than the work it registers actually takes', () => {
+    // THE ASSERTION THIS REPLACES WAS `SessionEnd[0].hooks[0].timeout <= 3`, and it was a rule about
+    // tidiness enforced against a hook whose measured cost is 18s.
+    //
+    // MEASURED 2026-08-14 on this machine, real 10-entry queue, real `ruflo`: learn-flush.mjs ran
+    // 18342 / 18347 / 18384 ms — it saturates its own LEARN_FLUSH_DEADLINE_MS every time. Through
+    // the Codex wrapper at the old 2250ms budget: exit 0, 2760ms, ZERO bytes out, ZERO bytes of
+    // stderr, and the 10-line queue still 10 lines. Nothing flushed and nothing said so, on every
+    // Codex session end, because a SIGKILL leaves `status === null` and the wrapper prints nothing.
+    //
+    // So the rule is not "SessionEnd must be small". It is "a budget must be larger than the work,
+    // or it is a silent deletion". Derived from learn-flush's own declared deadline so the two can
+    // never drift apart again.
+    const flush = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', 'learn-flush.mjs'), 'utf8');
+    const deadlineMs = Number(flush.match(/LEARN_FLUSH_DEADLINE_MS\) \|\| (\d+)_?(\d*)/)
+      ?.slice(1).join('') || 0);
+    expect(deadlineMs, 'learn-flush.mjs no longer declares a deadline').toBeGreaterThan(0);
+
+    for (const hookFile of [CLAUDE_HOOKS, HOOKS]) {
+      const hooks = JSON.parse(fs.readFileSync(hookFile, 'utf8')).hooks;
+      const flushHandler = (hooks.SessionEnd ?? []).flatMap((g) => g.hooks ?? [])
+        .find((h) => h.command.includes(' learn-flush'));
+      expect(flushHandler, `${path.basename(hookFile)} does not register learn-flush`).toBeTruthy();
+      expect(
+        flushHandler.timeout * 1_000,
+        `${path.basename(hookFile)} kills learn-flush before its own ${deadlineMs}ms deadline, and a `
+        + 'kill here is invisible — no output, no exit code, no trace',
+      ).toBeGreaterThan(deadlineMs);
+    }
+
+    // The Codex chain nests three budgets; each outer one must outlive the one it supervises, or the
+    // inner deadline is decorative. host timeout > inline `node -e` timeout > wrapper budget.
+    const codex = JSON.parse(fs.readFileSync(HOOKS, 'utf8')).hooks;
+    for (const [event, groups] of Object.entries(codex)) {
+      for (const handler of groups.flatMap((g) => g.hooks ?? [])) {
+        const inlineMs = Number(handler.command.match(/" (\d+) [a-z-]+/)?.[1]);
+        expect(inlineMs, `${event}: no inline budget parsed from ${handler.command.slice(-40)}`)
+          .toBeGreaterThan(0);
+        expect(handler.timeout * 1_000, `${event}: inline budget ${inlineMs}ms is not inside the `
+          + `${handler.timeout}s host registration`).toBeGreaterThan(inlineMs);
+      }
+    }
   });
 
   it('every literal registered command is silent and fail-open when the stable wrapper is absent', () => {
@@ -270,7 +350,7 @@ describe('Codex lifecycle hook packaging', () => {
       }),
     })));
 
-    expect(results).toHaveLength(17);
+    expect(results).toHaveLength(16);
     for (const { event, result } of results) {
       expect(result.completed, `${event}: waited for stdin EOF`).toBe(true);
       expect(result.signal, `${event}: signal`).toBeNull();

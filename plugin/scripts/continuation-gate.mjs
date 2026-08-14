@@ -70,6 +70,97 @@ function projectKey() {
 const LEDGER = process.env.RUVNET_WORK_LEDGER
   || path.join(HOME, '.config', 'ruvnet-brain', 'work-ledgers', `${projectKey()}.json`);
 
+/**
+ * THE SAME PARTITION, APPLIED TO THE DERIVED SOURCES — added 2026-08-14 after this file was caught
+ * doing exactly what projectKey() above exists to prevent, one layer down.
+ *
+ * The ledger has been partitioned per project since day one, for the reason stated above: a
+ * commitment made in one repo must never fire in another. Every artifact-derived source added later
+ * (issues, red CI, open PRs, security alerts) read a MACHINE-GLOBAL file under ~/.cache/ruvnet-brain
+ * with no such partition. So the explicit half was scoped and the derived half was not, and the
+ * derived half is the half that is always populated.
+ *
+ * MEASURED, not supposed. Firing Stop in a fresh git repo whose remote is
+ * `someone-else/totally-unrelated`, with an EMPTY ledger:
+ *   {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"You have unfinished work you
+ *    committed to. … ☐ PR #137 on stuinfla/ruvnet-brain is RED …"}}
+ * `additionalContext` at Stop CONTINUES THE TURN, so a stranger's every turn-end was being forced
+ * with orders to go fix another repository's pull requests. The forensic trail was already on this
+ * machine before anyone looked: ~/.config/ruvnet-brain/work-ledgers/AppealArmor.json holds ZERO
+ * items, yet AppealArmor.json.cooldown exists — and that lock is written ONLY on the path that
+ * forces. The gate forced a continuation in AppealArmor on 2026-08-13T21:39Z with nothing of
+ * AppealArmor's to say. Same for Ruv-Explainer, T, verify-prod and notgit.
+ *
+ * THE RULE: a derived item may only ever speak about a repository THIS working tree points at.
+ * Ownership is read from the git remotes, which is the only durable statement of "which repo is
+ * this" available at a Stop boundary — no network, no `gh`, no spawn.
+ *
+ * FAIL CLOSED ON SCOPE, FAIL OPEN ON BEHAVIOUR. Not a git repo, no remotes, unreadable config →
+ * we cannot confirm ownership, so the derived sources contribute NOTHING and the gate exits 0 in
+ * silence. It never blocks, never errors, never speaks about a repo it cannot prove is ours. The
+ * work LEDGER is untouched by all of this: a real commitment recorded in this project still forces
+ * exactly as before, which is the one behaviour that must never be weakened.
+ */
+function gitConfigPath(start) {
+  let dir = start;
+  for (let i = 0; i < 12; i++) {
+    const dot = path.join(dir, '.git');
+    try {
+      const st = fs.statSync(dot);
+      if (st.isDirectory()) return path.join(dot, 'config');
+      if (st.isFile()) {
+        // A linked worktree / submodule: `.git` is a file naming the real gitdir. The remotes live
+        // in the COMMON dir (…/.git), not in …/.git/worktrees/<name>, so follow `commondir` when
+        // it is present. Getting this wrong would silently return "owns nothing" in a worktree.
+        const m = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(dot, 'utf8'));
+        if (!m) return null;
+        const gitdir = path.resolve(dir, m[1].trim());
+        try {
+          const common = fs.readFileSync(path.join(gitdir, 'commondir'), 'utf8').trim();
+          return path.join(path.resolve(gitdir, common), 'config');
+        } catch { return path.join(gitdir, 'config'); }
+      }
+    } catch { /* no .git here — keep walking up */ }
+    const up = path.dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
+  return null;
+}
+
+/** `https://github.com/Owner/Name.git`, `git@github.com:Owner/Name`, `Owner/Name` → `owner/name`. */
+function slugOf(raw) {
+  const s = String(raw ?? '').trim().replace(/\/+$/, '').replace(/\.git$/i, '');
+  if (!s) return null;
+  const tail = s
+    .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\//i, '')   // scheme://host/
+    .replace(/^[^/@]+@[^:/]+:/, '');                  // user@host:
+  const parts = tail.split('/').filter(Boolean);
+  return parts.length >= 2 ? parts.slice(-2).join('/').toLowerCase() : null;
+}
+
+function ownedRepoSlugs() {
+  const owned = new Set();
+  try {
+    const cfg = gitConfigPath(process.cwd());
+    if (!cfg) return owned;                            // no git → owns nothing → derived sources mute
+    const text = fs.readFileSync(cfg, 'utf8');
+    // Every remote, not just origin: a fork legitimately owns both its origin and its upstream, and
+    // the artifacts name the upstream slug.
+    for (const m of text.matchAll(/^\s*url\s*=\s*(.+)$/gm)) {
+      const slug = slugOf(m[1]);
+      if (slug) owned.add(slug);
+    }
+  } catch { /* unreadable config → owns nothing */ }
+  return owned;
+}
+const OWNED_REPOS = ownedRepoSlugs();
+/** True only when `repo` names a repository THIS working tree actually points at. */
+const ownsRepo = (repo) => {
+  const slug = slugOf(repo);
+  return Boolean(slug) && OWNED_REPOS.has(slug);
+};
+
 const argv = process.argv.slice(2);
 const arg = (f) => { const i = argv.indexOf(f); return i >= 0 && argv[i + 1] ? argv[i + 1] : null; };
 const has = (f) => argv.includes(f);
@@ -187,6 +278,7 @@ function artifactOpenWork() {
     const file = process.env.RUVNET_OPEN_ISSUES_FILE
       || path.join(HOME, '.cache', 'ruvnet-brain', 'open-issues.json');
     const status = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!ownsRepo(status?.repo)) return [];   // another repo's backlog is not this project's work
     const observedAt = Date.parse(status?.at || '');
     if (!Number.isFinite(observedAt) || nowMs - observedAt > 6 * 3600_000) return [];
     return (Array.isArray(status.issues) ? status.issues : [])
@@ -221,6 +313,9 @@ function redCiOpenWork() {
     const status = JSON.parse(fs.readFileSync(file, 'utf8'));
     const seen = new Set();
     return Object.values(status || {})
+      // Per ENTRY, not per file: this artifact genuinely mixes repositories (measured on this
+      // machine — stuinfla/ruvnet-brain and stuinfla/AppealArmor rows sit side by side in it).
+      .filter((d) => ownsRepo(d?.repo))
       .filter((d) => d?.state === 'resolved' && d.conclusion && d.conclusion !== 'success')
       .filter((d) => {
         const at = Date.parse(d.checkedAt || '');
@@ -267,6 +362,7 @@ function openPrWork() {
     const file = process.env.RUVNET_OPEN_ISSUES_FILE
       || path.join(HOME, '.cache', 'ruvnet-brain', 'open-issues.json');
     const status = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!ownsRepo(status?.repo)) return [];   // never send a stranger to merge our pull requests
     const observedAt = Date.parse(status?.at || '');
     if (!Number.isFinite(observedAt) || nowMs - observedAt > 6 * 3600_000) return [];
     return (Array.isArray(status.prs) ? status.prs : [])
@@ -306,6 +402,7 @@ function securityAlertWork() {
     const file = process.env.RUVNET_OPEN_ISSUES_FILE
       || path.join(HOME, '.cache', 'ruvnet-brain', 'open-issues.json');
     const status = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!ownsRepo(status?.repo)) return [];   // GitHub emailed the OWNER of that repo, not this one
     const observedAt = Date.parse(status?.at || '');
     if (!Number.isFinite(observedAt) || nowMs - observedAt > 6 * 3600_000) return [];
     const alerts = (Array.isArray(status.securityAlerts) ? status.securityAlerts : [])
@@ -362,12 +459,20 @@ if (!open.length) process.exit(EXIT_ALLOW);   // nothing outstanding: silence is
 const forceable = open.filter((i) => Number.isFinite(Date.parse(i.at)));
 if (!forceable.length) process.exit(EXIT_ALLOW);
 
-/** Age, only ever used to LABEL an item — never to suppress one. See the note above. */
+/**
+ * Age, only ever used to LABEL an item — never to suppress one. See the note above.
+ *
+ * The VERB is part of the honesty, not decoration. A ledger row was `committed` to — the model
+ * agreed to it, and that agreement is what makes stopping a defect. A derived row was `observed`:
+ * its `at` is when the watcher last looked at GitHub, and nobody promised anything. Printing
+ * "committed 2h ago" against a Dependabot PR states an agreement that was never made.
+ */
 const ageLabel = (i) => {
   const h = (nowMs - Date.parse(i.at)) / 3_600_000;
   if (h < 1) return '';
-  if (h < 24) return ` (committed ${Math.round(h)}h ago)`;
-  return ` (committed ${Math.round(h / 24)}d ago — still open)`;
+  const verb = i.derived ? 'observed' : 'committed';
+  if (h < 24) return ` (${verb} ${Math.round(h)}h ago)`;
+  return ` (${verb} ${Math.round(h / 24)}d ago — still open)`;
 };
 
 /**
@@ -395,17 +500,49 @@ if (!claimCooldown(nowMs, COOLDOWN_MS)) process.exit(EXIT_ALLOW);
  * DELIVERY. `additionalContext` in a Stop envelope forces the continuation (same protection as
  * decision:block). Directive copy — continue, do not look for an exit.
  */
+/**
+ * SAY WHAT THESE ACTUALLY ARE (2026-08-14). One header served both halves and it said "You have
+ * unfinished work you committed to" — true of a ledger row, FALSE of every derived one. Nobody
+ * committed to Dependabot's PR; a watcher observed it. Under a gate that forces the turn to
+ * continue, that sentence does not merely misdescribe the item, it manufactures an obligation and
+ * attributes it to the reader, which is the fabrication this whole project exists to refuse.
+ *
+ * So the two kinds are named separately and never merged into one claim.
+ */
+const committed = forceable.filter((i) => !i.derived);
+const observed = forceable.filter((i) => i.derived);
+// Every derived item names its own repo in its text; this is for the header, where the ONE repo
+// this tree points at is the honest thing to say.
+const repoLabel = [...OWNED_REPOS][0] || 'this repository';
+
+const header = committed.length && observed.length
+  ? [`You have unfinished work you committed to, and ${repoLabel} has open work of its own.`,
+     'Do NOT end the turn — continue now.']
+  : committed.length
+    ? ['You have unfinished work you committed to. Do NOT end the turn — continue now.']
+    : [`${repoLabel} has open work: this is the repository's own current state as last observed —`,
+       'a breached issue, a red build, an unmerged PR or a security alert — NOT something you',
+       'committed to. Do NOT end the turn — continue now.'];
+
 const lines = [
-  'You have unfinished work you committed to. Do NOT end the turn — continue now.',
+  ...header,
   'Pick the highest-leverage open item below and make real progress on it this turn. Stop only when',
   'EVERY item is genuinely done or blocked; if one is blocked, say why in a single line and move to',
   'the next — never stop on the first obstacle, and never manufacture a reason to go quiet.',
   '',
-  // Age is LABELLED, never used to suppress — an item open for days is the one most worth naming.
-  ...forceable.slice(0, 8).map((i) => `  ☐ ${i.text}${ageLabel(i)}`),
+  // Committed first, then observed: the promise outranks the backlog. Age is LABELLED, never used
+  // to suppress — an item open for days is the one most worth naming.
+  ...[...committed, ...observed].slice(0, 8).map((i) => `  ☐ ${i.text}${ageLabel(i)}`),
   ...(forceable.length > 8 ? [`  … and ${forceable.length - 8} more`] : []),
   '',
-  'Mark each item done as you complete it:  node plugin/scripts/continuation-gate.mjs --done "<exact item text>"',
+  // Only the ledger has a --done. A derived item clears by DOING the thing (merge it, fix the
+  // build, answer the issue, patch the advisory) and the next watcher run stops reporting it —
+  // which is the point of deriving it rather than remembering it. Offering --done for one would be
+  // offering a way to mark a red build finished without fixing it.
+  ...(committed.length
+    ? ['Mark each item done as you complete it:  node plugin/scripts/continuation-gate.mjs --done "<exact item text>"']
+    : ['These clear by being done, not by being marked: merge or fix the PR, get the build green,',
+       'answer the issue, patch the advisory. The next observation stops listing them.']),
   // THE HONEST EXIT, and it is what makes forcing old items safe.
   //
   // Fable's red-team #3 was right that a stale item pressuring every turn "breeds
@@ -417,7 +554,10 @@ const lines = [
   // So the resolution is neither silence nor endless nagging: keep forcing, and name the honest
   // disposal out loud. An item that is genuinely dead gets cleared — a deliberate, recorded act —
   // instead of expiring on a timer nobody sees, or being falsely marked done to stop the noise.
-  ...(forceable.some((i) => (nowMs - Date.parse(i.at)) > 24 * 3_600_000)
+  // COMMITTED items only. A derived item is at most 6h old by construction (the freshness window),
+  // and "clear it, that is a legitimate answer" is advice about a promise — you cannot clear a red
+  // build by declaring it no longer real.
+  ...(committed.some((i) => (nowMs - Date.parse(i.at)) > 24 * 3_600_000)
     ? ['', 'Some of these are days old. If one is genuinely no longer real, say so and CLEAR it —',
        'that is a legitimate answer and the right one. What is never acceptable is marking it done',
        'without doing it, or letting it age quietly out of view.']

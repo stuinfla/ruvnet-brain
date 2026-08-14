@@ -1,5 +1,17 @@
 {
-  "description": "RuvNet Brain lifecycle hooks for Codex. Every command enters through a generation-independent wrapper and adapts the shared Brain hook bodies to Codex contracts.",
+  "description": "RuvNet Brain lifecycle hooks for Codex. Every command enters through a generation-independent wrapper and adapts the shared Brain hook bodies to Codex contracts. HOST PARITY (ADR-067): PreToolUse refusal routes through decision-gate.mjs on BOTH hosts, so the gate registry is the single list of policies and neither host can gain or lose one silently. Anything Claude Code has that Codex does not is declared in hostParity below, with the host fact that makes it so.",
+  "hostParity": {
+    "_measured": "2026-08-14, against Codex 0.147.0 (codex --version) and the hook JSON schemas carried inside that binary.",
+    "gateRouted": "protect-state, degradation-watch, identifier-preflight, hijack-ruvnet, ground-before-write, design-wall, adr-currency, unprompted-speech — all reached through decision-gate on both hosts. Adding a policy to decision-gate.mjs REFUSAL_POLICIES now reaches Codex with no edit here, which is the whole point: the three policies added 2026-08-13 (identifier-preflight, degradation-watch, adr-currency) were Claude-Code-only purely because this file listed policies one by one.",
+    "declaredAbsent": [
+      {
+        "hook": "swarm-slot-recycler",
+        "claudeEvent": "TeammateIdle",
+        "reason": "Codex 0.147.0 has no TeammateIdle hook event. Its complete event set is pre_tool_use, permission_request, post_tool_use, pre_compact, post_compact, session_start, session_end, user_prompt_submit, subagent_start, subagent_stop, stop — read from the binary, not assumed. There is nothing to register against."
+      }
+    ],
+    "outputContract": "PostToolUse/PreToolUse/SessionStart/UserPromptSubmit stdout is PARSED by Codex (\"hook returned invalid post-tool-use JSON output\"); SessionEnd has no output schema at all and PreCompact has no additionalContext. codex-hook-adapter.mjs enforces this per event."
+  },
   "hooks": {
     "SessionStart": [
       {
@@ -8,6 +20,18 @@
           {
             "type": "command",
             "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 session-start",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 session-snapshot PreCompact",
             "timeout": 5
           }
         ]
@@ -31,12 +55,22 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(Bash|Edit|Write|exec_command|functions\\.exec_command|functions__exec_command|apply_patch)$",
+        "matcher": "^(Edit|Write|MultiEdit|apply_patch)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 hijack-ruvnet",
-            "timeout": 5
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 6500 decision-gate write",
+            "timeout": 8
+          }
+        ]
+      },
+      {
+        "matcher": "^(Bash|exec_command|functions\\.exec_command|functions__exec_command)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 6500 decision-gate bash",
+            "timeout": 8
           }
         ]
       },
@@ -51,41 +85,11 @@
         ]
       },
       {
-        "matcher": "^(Edit|Write|apply_patch)$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 ground-before-write",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 protect-state",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 unprompted-speech PreToolUse-write",
-            "timeout": 5
-          }
-        ]
-      },
-      {
         "matcher": "^(Bash|exec_command|functions\\.exec_command|functions__exec_command)$",
         "hooks": [
           {
             "type": "command",
             "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 verify-interface",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 design-wall",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 unprompted-speech PreToolUse-bash",
             "timeout": 5
           }
         ]
@@ -103,7 +107,7 @@
         ]
       },
       {
-        "matcher": "^(Bash|Edit|Write|exec_command|functions\\.exec_command|functions__exec_command|apply_patch)$",
+        "matcher": "^(Bash|Edit|Write|MultiEdit|exec_command|functions\\.exec_command|functions__exec_command|apply_patch)$",
         "hooks": [
           {
             "type": "command",
@@ -113,7 +117,7 @@
         ]
       },
       {
-        "matcher": "^(Edit|Write|apply_patch)$",
+        "matcher": "^(Edit|Write|MultiEdit|apply_patch)$",
         "hooks": [
           {
             "type": "command",
@@ -131,16 +135,31 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "^(Agent|spawn_agent)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 routing-outcome",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SessionEnd": [
       {
-        "matcher": "other",
+        "matcher": ".*",
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 2500 learn-flush",
-            "timeout": 3
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 session-snapshot SessionEnd",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 25000 learn-flush",
+            "timeout": 30
           }
         ]
       }
