@@ -1,13 +1,13 @@
 {
-  "brainVersion": "4.0.58-dev",
-  "generated": "2026-08-14T07:17:02.032Z",
-  "generatedHuman": "Fri, 14 Aug 2026 07:17:02 GMT",
+  "brainVersion": "4.0.60-dev",
+  "generated": "2026-08-18T07:17:48.159Z",
+  "generatedHuman": "Tue, 18 Aug 2026 07:17:48 GMT",
   "coverage": {
-    "built": 73,
-    "catalogued": 196,
-    "orgTotalApprox": 201,
+    "built": 77,
+    "catalogued": 200,
+    "orgTotalApprox": 205,
     "orgTotalSource": "live",
-    "orgTotalAt": "2026-08-14T07:17:03.000Z",
+    "orgTotalAt": "2026-08-18T07:17:48.932Z",
     "pending": 123
   },
   "builtRepos": [
@@ -15,7 +15,7 @@
       "name": "RuView",
       "tier": "T0",
       "stars": 75658,
-      "builtFromSha": "de27336fa1db971d4689fd2db19610e8a7966dee",
+      "builtFromSha": "a76adc3c2fdf715919ea2bec5cec3a26d36cce74",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -23,7 +23,7 @@
       "name": "ruflo",
       "tier": "T0",
       "stars": 61698,
-      "builtFromSha": "01bece31c8390c4dda51487bc9d25c5a47d319f8",
+      "builtFromSha": "fa13ee4ad60ac2090b1480656eb233521790d640",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -63,7 +63,7 @@
       "name": "metaharness",
       "tier": "T1",
       "stars": 330,
-      "builtFromSha": "20a43693434b91eae0956097b27c608a93283270",
+      "builtFromSha": "5453c8c990824b54e05f289774e5a8b2cea0a32e",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -215,7 +215,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "edf9ad8aa74771f62e93d8f02f66fb0d4e9d866b",
+      "builtFromSha": "f9d3214219722f1121091010beeed64200915aad",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -343,7 +343,7 @@
       "name": "worldgraph",
       "tier": "T2",
       "stars": 7,
-      "builtFromSha": "75e29dbf9f631c6a590300e8d5436162f2108e97",
+      "builtFromSha": "360ef48a2536d45033cdbe0c40c0f522b8f75ae7",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -408,6 +408,20 @@
       "tier": "T3",
       "stars": 95,
       "builtFromSha": "1511b93c2abd82883b9234fa90231c4c3e207744",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ai-text-watermark",
+      "tier": "fresh",
+      "builtFromSha": "a88fcadeb87e43cdd0fcda3bba75840e4edee9db",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "autogenous",
+      "tier": "fresh",
+      "builtFromSha": "d22d0010d38c452f819d061e4415f9e61848fb34",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -512,7 +526,7 @@
     {
       "name": "dream-machine",
       "tier": "fresh",
-      "builtFromSha": "7bbb851d337067d16ede31175896bb5e587a7d22",
+      "builtFromSha": "8ce385786faa5e63cc0e7105cc6e96f663a51f07",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -520,6 +534,20 @@
       "name": "hackerone",
       "tier": "fresh",
       "builtFromSha": "1e3bcde8258d472a733abe9d9de9219f8ae06f16",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "latentmesh",
+      "tier": "fresh",
+      "builtFromSha": "0a7812863bc48687b5335273c1c2e561a79e3af0",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "llm-stream-reformat",
+      "tier": "fresh",
+      "builtFromSha": "74e1d2cef896afd7f49b4cd891978bb64f67d698",
       "latestRemoteSha": null,
       "status": "built"
     },
