@@ -3,7 +3,7 @@ id: ADR-053
 title: Experience-level QA — test the journey a user actually has, on every host, OS, and install path
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-07
+updated: 2026-08-19
 authors: [Stuart Kerr, Claude Code]
 tags: [qa, testing, experience, cross-platform, codex, agentic-qe, ci]
 supersedes: []
@@ -203,6 +203,7 @@ budgets (500ms vs 1s prompt-path), the stricter number won. v1's matrix section 
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-19 | **Re-read after ci.yml gained job timeouts; the experience-level contract is unchanged.** | The only governed path that moved is `.github/workflows/ci.yml`, which gained `timeout-minutes` on all four jobs after EIGHT consecutive main runs wedged on the vitest step for up to three hours (see ADR-058's 2026-08-19 row). No scenario, no report shape, and no grader threshold in this document is affected: the change bounds how long a job may hang, not what it asserts. `tests/experience/scenarios.json` and `report.mjs` are untouched. |
 | 2026-08-07 | **Re-read after the experience-QA surface moved; the decision is unchanged and is now more nearly true than when written.** | `.github/workflows/ux-qe.yml` is a real 43-line workflow running on push, pull_request and dispatch across an OS matrix, and `tests/experience/{scenarios.json,report.mjs,report.test.mjs}` moved with the merges of #119/#120/#121. This ADR argues that experience-level QA must execute rather than exist as a listed-but-uninvoked suite — the same lesson ADR-058 §D7 records about a mutation corpus that sat in `include` for days with no CI step ever running it. A governed suite gaining its own CI lane implements that requirement; it contradicts nothing here. Verified the lane is reachable (it reported success at `886eeb5`) rather than assuming a workflow file means a workflow runs — the distinction this ADR exists to make. |
 | 2026-08-02 | Re-read the governed CI surface after the 4.0.8 evidence-DAG change; experience-level QA remains a required exact-SHA input. | Commit `8608cfd` builds the immutable npm and bundle artifacts once in `.github/workflows/ci.yml`, runs candidate host evidence from those bytes, and makes the derived aggregate the sole publication input. It does not weaken the UX or session-start gates. |
 | 2026-08-02 | Re-read the final 4.0.7 browser probe after Console provenance and inventory landed; the 4,000ms gate and three-OS journey architecture remain unchanged. | Commit `3668b1b` updates `tests/ux/render-probe.mjs` to observe the new runtime identity and owner-only issue inventory exposed by the shipped Console. It does not weaken the click path, timing oracle, OS-derived controls, or failure conditions. Exact-SHA CI remains the cross-platform authority. |
