@@ -617,15 +617,48 @@ describe('ship lessons reach a real push', () => {
   const bash = resolveBashForTest();
   const gated = bash ? test : test.skip;
 
-  const fireBash = (command) => spawnSync(bash, [DISPATCH, 'PreToolUse-bash'], {
-    encoding: 'utf8',
-    timeout: 30_000,
-    input: JSON.stringify({ session_id: `ship-${Math.random().toString(16).slice(2)}`, tool_name: 'Bash', tool_input: { command } }),
+  // A ship lesson's own words — asserted on the STATEMENT rather than an id, because the id never
+  // appears in what actually reaches the model.
+  const SHIP_TEXT = /bumps the version IN THE SAME COMMIT/;
+
+  /**
+   * SEED THE STORE. THIS TEST USED TO MEASURE THE DEVELOPER'S MACHINE.
+   *
+   * `fireBash` passed no `RUVNET_LESSON_STORE`, unlike its sibling `runDispatch` twenty lines up, so
+   * the dispatcher read the REAL `~/.config/ruvnet-brain/lessons.json`. That file is user-accumulated
+   * — `bin/install.mjs` deliberately never creates it — so it exists on the machine where this test
+   * was written and on no fresh host. Green here, red on every clean runner.
+   *
+   * windows-unit proved it: the diagnostic added the same day reported `exit: 0, stderr: "",
+   * stdout: ""` — the dispatcher ran fine and had nothing to say, because there were no lessons to
+   * say it with. Not a crash, an empty store.
+   *
+   * This is the same shape as the both-hosts conformance gap: a test that runs where it was written
+   * proves the machine, not the product. Seeding a ratified ship lesson tests what this file claims
+   * to test — that a `git push` PULLS ship lessons through the dispatcher — on any host.
+   */
+  const shipLesson = () => blockLesson({
+    id: 'T02-version-is-the-update-signal',
+    statement: 'Any behaviour-changing push bumps the version IN THE SAME COMMIT.',
+    trigger: 'ship',
+    enforcement: 'checklist',   // advisory: it must be DELIVERED, not refuse the push
+    check: 'the version field moved in the same commit as the behaviour change',
   });
 
-  // A ship lesson's own words, from the ratified store — asserted on the STATEMENT rather than an
-  // id, because the id never appears in what actually reaches the model.
-  const SHIP_TEXT = /bumps the version IN THE SAME COMMIT/;
+  const fireBash = (command) => {
+    writeStore([shipLesson()]);
+    return spawnSync(bash, [DISPATCH, 'PreToolUse-bash'], {
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        RUVNET_LESSON_STORE: storePath,
+        RUVNET_LESSON_OPTIN: optInPath,
+        RUVNET_LESSON_GATE_STATE: gateStatePath,
+      },
+      input: JSON.stringify({ session_id: `ship-${Math.random().toString(16).slice(2)}`, tool_name: 'Bash', tool_input: { command } }),
+    });
+  };
 
   /**
    * A FAILING ASSERTION MUST NAME ITS CAUSE, NOT JUST SAY `false`.

@@ -20,11 +20,18 @@ import { fileURLToPath } from 'node:url';
  * nothing — and a night that measures nothing still writes a ledger row, which is the worst
  * possible outcome: a durable record of a result nobody produced.
  */
-// `npx` IS `npx.cmd` ON WINDOWS, and execFileSync does not do PATHEXT resolution — it looks for a
-// file named exactly `npx` and throws ENOENT. Both engine checks below were red on windows-unit
-// for this and nothing else: rUv's compiler and ledger verifier were never actually invoked
-// there, so the one validation that counts was silently not running on that host.
+// RUNNING `npx` ON WINDOWS TAKES TWO FIXES, AND THE FIRST ONE ALONE JUST MOVES THE ERROR.
+//
+// Both engine checks below were red on windows-unit, and fixing only the name changed
+// `spawnSync npx ENOENT` into `spawnSync npx.cmd EINVAL` — still red, still not validating.
+//   1. NAME: the binary is `npx.cmd`, and execFileSync does no PATHEXT resolution — it looks for a
+//      file named exactly `npx`.
+//   2. SHELL: since the CVE-2024-27980 hardening, Node refuses to execute a `.cmd`/`.bat` through
+//      execFile without a shell, because argument escaping cannot be made safe otherwise.
+// Until both were right, rUv's compiler and ledger verifier — per ADR-068 the only validation of
+// dream.config.json that counts — were never actually invoked on that host.
 const NPX = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const NPX_OPTS = { encoding: 'utf8', shell: process.platform === 'win32' };
 const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'dream.config.json'), 'utf8'));
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
@@ -47,7 +54,7 @@ describe('the nightly config points at things that exist', () => {
     const ledger = path.join(ROOT, cfg.ledgerPath);
     expect(fs.existsSync(ledger), `${cfg.ledgerPath} is missing — the durable memory has no file`).toBe(true);
     const out = execFileSync(NPX, ['-y', 'dream-machine@0.1.1', 'ledger', 'verify', '--path', cfg.ledgerPath],
-      { cwd: ROOT, encoding: 'utf8', timeout: 180_000 });
+      { cwd: ROOT, ...NPX_OPTS, timeout: 180_000 });
     expect(out, 'rUv\'s own verifier must accept the ledger shape').toMatch(/ledger OK/);
   }, 200_000);
 
@@ -77,7 +84,7 @@ describe('the nightly config points at things that exist', () => {
     const out = path.join(ROOT, 'node_modules', '.cache', 'dream-tonight.md');
     fs.mkdirSync(path.dirname(out), { recursive: true });
     execFileSync(NPX, ['-y', 'dream-machine@0.1.1', 'compile', 'dream.config.json', '--out', out],
-      { cwd: ROOT, encoding: 'utf8', timeout: 180_000 });
+      { cwd: ROOT, ...NPX_OPTS, timeout: 180_000 });
     const prompt = fs.readFileSync(out, 'utf8');
     expect(prompt.length, 'a compiled routine must be substantial').toBeGreaterThan(5000);
     for (const s of cfg.slots.map((x) => x.deep)) {
