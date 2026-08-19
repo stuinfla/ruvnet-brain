@@ -456,7 +456,6 @@ export function writeArtifact(file, aggregateResult, meta = {}) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
 
   // AN ENVIRONMENT THAT CANNOT MEASURE MUST NOT OVERWRITE ONE THAT DID.
-  //
   // Measured 2026-08-19: `learning-replay` had been red on main since 2026-08-11 because the
   // artifact was re-recorded carrying `verdict: UNKNOWN` and "3/3 run(s) could not be measured;
   // executor error: spawnSync codex ENOENT" — written by a nightly container with no `codex` on
@@ -465,9 +464,8 @@ export function writeArtifact(file, aggregateResult, meta = {}) {
   // right; its INPUT had been destroyed by a host that could never produce one. Same distinction
   // `restore-local-ingests.mjs` and `degradation-watch` both needed: CANNOT-MEASURE is not
   // MEASURED-AND-FAILED. A real FAIL still overwrites — that is a measurement, and it must land.
-  //
-  // "PARTIALLY MEASURED" IS NOT "COULD NOT MEASURE", and the first version of this guard got that
-  // wrong within the hour — the same conflation it exists to prevent, committed inside it. The
+  // "PARTIALLY MEASURED" IS NOT "COULD NOT MEASURE" either, and the first version of this guard got
+  // that wrong within the hour — the same conflation it exists to prevent, committed inside it. Its
   // predicate was a substring match on "could not be measured", so a run reporting
   // "1/3 run(s) could not be measured; 1/3 passed" — a genuine mixed result carrying a live
   // regression signal — was swallowed, leaving a PASS from 2026-08-03 standing. It suppressed
