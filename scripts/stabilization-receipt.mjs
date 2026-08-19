@@ -52,7 +52,12 @@ export function createStabilizationReceipt({ root, artifactPath, qe, audit }) {
     scoreClaimed: false,
     sha,
     tree: git('rev-parse', 'HEAD^{tree}'),
+    // NAME WHAT IS DIRTY, or the failure is unactionable. `release-qe` has failed on EVERY main run
+    // with a bare `INVALID_LINEAGE`, which says a clean tree is required and not one word about what
+    // made it unclean — so the release chain has been blocked with no way to see why from the log.
+    // The receipt now carries the offending paths; the seal is unchanged, only its evidence is.
     dirty: Boolean(git('status', '--porcelain')),
+    dirtyPaths: String(git('status', '--porcelain') || '').split('\n').filter(Boolean).slice(0, 40),
     version: manifest.version,
     tag: `v${manifest.version}`,
     sourceVersions: { package: manifest.version, claudePlugin: claude.version, codexPlugin: codex.version },
@@ -75,7 +80,12 @@ export function createStabilizationReceipt({ root, artifactPath, qe, audit }) {
     ],
   };
   const result = evaluateStabilizationCandidateReceipt(receipt);
-  if (result.verdict !== 'PASS') throw new Error(`stabilization seal failed: ${result.failures.map(({ code }) => code).join(',')}`);
+  if (result.verdict !== 'PASS') {
+    const detail = receipt.dirty && receipt.dirtyPaths?.length
+      ? `\n  working tree is dirty (${receipt.dirtyPaths.length} path(s)):\n    ${receipt.dirtyPaths.join('\n    ')}`
+      : '';
+    throw new Error(`stabilization seal failed: ${result.failures.map(({ code }) => code).join(',')}${detail}`);
+  }
   return receipt;
 }
 
