@@ -627,12 +627,31 @@ describe('ship lessons reach a real push', () => {
   // id, because the id never appears in what actually reaches the model.
   const SHIP_TEXT = /bumps the version IN THE SAME COMMIT/;
 
+  /**
+   * A FAILING ASSERTION MUST NAME ITS CAUSE, NOT JUST SAY `false`.
+   *
+   * These two were red on windows-unit and the CI log carried only "expected false to be true" —
+   * no stderr, no exit code, no stdout. Undiagnosable from the log, on a host nobody can reproduce
+   * locally, which is how they stayed red. That is the same defect that cost eleven days this week
+   * one layer up: `INVALID_LINEAGE` named neither of the two states it covered, and the moment the
+   * seal was made to name the dirty path, the cause was obvious in one run.
+   */
+  const shipDiagnostic = (command, r) => [
+    `\`${command}\` delivered no ship lesson.`,
+    `  exit   : ${r.status}${r.signal ? ` (signal ${r.signal})` : ''}`,
+    r.error ? `  spawn  : ${r.error.message}` : '',
+    `  stderr : ${JSON.stringify(String(r.stderr || '').slice(0, 400))}`,
+    `  stdout : ${JSON.stringify(String(r.stdout || '').slice(0, 400))}`,
+  ].filter(Boolean).join('\n');
+
   gated('TEETH: `git push` delivers ship lessons — the case that fired on nothing for months', () => {
-    expect(SHIP_TEXT.test(fireBash('git push origin main').stdout || '')).toBe(true);
+    const r = fireBash('git push origin main');
+    expect(SHIP_TEXT.test(r.stdout || ''), shipDiagnostic('git push origin main', r)).toBe(true);
   }, 40_000);
 
   gated('npm publish counts as shipping too', () => {
-    expect(SHIP_TEXT.test(fireBash('npm publish').stdout || '')).toBe(true);
+    const r = fireBash('npm publish');
+    expect(SHIP_TEXT.test(r.stdout || ''), shipDiagnostic('npm publish', r)).toBe(true);
   }, 40_000);
 
   gated('TEETH: an ordinary command does NOT — or the fix is just a new nag', () => {

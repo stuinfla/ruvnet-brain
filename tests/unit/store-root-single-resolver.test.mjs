@@ -30,9 +30,13 @@ describe('the store root has exactly one answer', () => {
   });
 
   it('honours the overrides a fixture and a dev checkout need, in a stated precedence', () => {
-    expect(storeRoot({ RUVNET_BRAIN_KB: '/a' })).toBe('/a');
-    expect(storeRoot({ KB_DIR: '/b' })).toBe('/b');
-    expect(storeRoot({ RUVNET_BRAIN_KB: '/a', KB_DIR: '/b' }), 'the more specific name wins').toBe('/a');
+    // COMPARE AGAINST path.resolve, NOT THE LITERAL. `storeRoot` normalises with `path.resolve`
+    // deliberately — that is what stops two components disagreeing about the same root — and on
+    // Windows `path.resolve('/a')` is `D:\a`. Asserting the bare literal tested POSIX, not the
+    // contract, and windows-unit had been red on exactly this: `expected 'D:\a' to be '/a'`.
+    expect(storeRoot({ RUVNET_BRAIN_KB: '/a' })).toBe(path.resolve('/a'));
+    expect(storeRoot({ KB_DIR: '/b' })).toBe(path.resolve('/b'));
+    expect(storeRoot({ RUVNET_BRAIN_KB: '/a', KB_DIR: '/b' }), 'the more specific name wins').toBe(path.resolve('/a'));
   });
 
   it('TEETH: NEVER falls back to process.cwd()', () => {
@@ -51,7 +55,7 @@ describe('the store root has exactly one answer', () => {
   });
 
   it('says WHY it chose a root, so two components can be compared instead of guessed about', () => {
-    expect(explain({ KB_DIR: '/b' })).toMatchObject({ root: '/b', source: 'KB_DIR' });
+    expect(explain({ KB_DIR: '/b' })).toMatchObject({ root: path.resolve('/b'), source: 'KB_DIR' });
     expect(explain({}, '/home/x')).toMatchObject({ source: 'default' });
   });
 });
