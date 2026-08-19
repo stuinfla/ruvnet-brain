@@ -18,7 +18,7 @@ jobs:
     # can't-tell-two-states-apart defect this repo keeps finding. These ceilings are generous
     # against measured wall time (check ~8m, windows ~12m, warm-brain ~10m, release-qe ~15m); they
     # exist to convert a hang into a red X in minutes instead of a jammed queue for six hours.
-    timeout-minutes: 30
+    timeout-minutes: 45   # 30 normally; raised while #145's serial diagnostic runs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,7 +72,7 @@ jobs:
       - name: Install dependencies
         run: npm i --no-audit --no-fund --loglevel=error
       - name: Unit tests + coverage (vitest)
-        # `--reporter=verbose` is a DIAGNOSTIC, and it is here to answer one question (#145).
+        # `--no-file-parallelism` is a DIAGNOSTIC, and it is here to answer one question (#145).
         #
         # This step hangs deterministically on ubuntu: two runs, 38 minutes apart, both went silent
         # after the SAME file with the same six files before it, and both left the same orphan
@@ -80,14 +80,19 @@ jobs:
         # COMPLETION only, so a file that starts and never finishes is structurally invisible — the
         # log can say where it stopped but never what it stopped ON. verbose prints start events.
         #
-        # The controlled comparison already in this file narrows it: `windows-unit` below runs the
-        # SAME directory without `--coverage` and completes; this job runs it WITH coverage and
-        # hangs. Locally, macOS WITH coverage completes in under 15 minutes (3334 passing), so
-        # coverage alone is not sufficient — it is coverage on this platform.
+        # `--reporter=verbose` was tried FIRST and did not work: in run mode vitest buffers a file's
+        # output and prints it on COMPLETION, so verbose gives per-test lines for finished files and
+        # still says nothing about a file that started and never finished. Three hangs, same stop
+        # point, still no name.
         #
-        # Remove this flag once #145 names the file. A verbose log is a cost; an unbounded hang that
-        # blocks every release is a bigger one.
-        run: npm run test:cov -- --reporter=verbose
+        # Serial execution removes the ambiguity by construction: with one file at a time, the
+        # culprit is simply the file AFTER the last one that completed. `timeout-minutes` on this job
+        # is raised to 45 for the same reason — a serial run is legitimately slower than a parallel
+        # one, and a benign overrun killed at 30 would look exactly like the hang it is meant to
+        # identify. That is the same two-states-one-signal trap this whole issue is about.
+        #
+        # Remove both once #145 names the file.
+        run: npm run test:cov -- --no-file-parallelism
       - name: Mutation tests (the guards must FALL on broken code)
         # tests/mutation/*.test.mjs was listed in vitest.config.mjs's include from the day it was
         # written, but NO npm script and NO CI step ever ran that directory — so the falsifiability
