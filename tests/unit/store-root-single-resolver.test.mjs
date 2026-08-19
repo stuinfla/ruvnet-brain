@@ -66,6 +66,23 @@ describe('a store is not done until it is REACHABLE', () => {
     if (cards) fs.writeFileSync(path.join(dir, 'capability-cards.md'), cards.map((c) => `## ${c}\nbody\n`).join('\n'));
   };
 
+  it('TEETH: a store reachable ONLY through an alias is NOT dark — the false positive that broke routing', () => {
+    // `darkStores` compared store names to card HEADINGS while the router resolves through
+    // `repositoryNames()` first, so `metaharness` — reached via the `agent-harness-generator` card —
+    // was reported DARK. Acting on that false positive, a DUPLICATE `## metaharness` card was added,
+    // it collided with `agent-harness-generator`, and alias resolution broke outright. The detector
+    // manufactured work that damaged the thing it detects. ADR-058 carried this as open.
+    seed(['metaharness', 'orphan-store'], ['agent-harness-generator']);
+    fs.writeFileSync(path.join(dir, 'repo-aliases.json'),
+      JSON.stringify({ 'agent-harness-generator': ['metaharness'] }));
+
+    const dark = darkStores(dir);
+    expect(dark, 'reachable under an alias — not dark').not.toContain('metaharness');
+    // And it must not flatter: a store with no card and no alias is still dark, or the fix would
+    // just be "report nothing", which passes the assertion above while measuring nothing.
+    expect(dark, 'no card, no alias — genuinely dark').toContain('orphan-store');
+  });
+
   it('counts stores regardless of the .rvf/.big.rvf suffix, without double-counting', () => {
     fs.writeFileSync(path.join(dir, 'alpha.big.rvf'), 'x');
     fs.writeFileSync(path.join(dir, 'alpha.rvf'), 'x');
