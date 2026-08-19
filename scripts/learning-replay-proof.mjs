@@ -469,8 +469,22 @@ export function writeArtifact(file, aggregateResult, meta = {}) {
   // `degradation-watch` needed: CANNOT-MEASURE is not MEASURED-AND-FAILED, and collapsing them
   // turns a missing tool into a false verdict. A real FAIL still overwrites — that is a
   // measurement and it must land. Only the unmeasurable case is refused.
+  // "PARTIALLY MEASURED" IS NOT "COULD NOT MEASURE" — and the first version of this guard got that
+  // wrong within the hour, which is the same conflation it exists to prevent, committed inside it.
+  //
+  // The predicate was a substring match on "could not be measured". A real run then reported
+  // "1/3 run(s) could not be measured; 1/3 passed" — one FAIL, one UNKNOWN, one PASS, i.e. a genuine
+  // mixed result carrying a live regression signal — and the guard swallowed it, leaving a PASS from
+  // 2026-08-03 standing. It suppressed exactly the finding it should have let through.
+  //
+  // A host that cannot measure produces NO measurements: every run unknown. If even one run yielded
+  // a pass or a fail, the executor plainly ran and the result is real, however unwelcome.
+  const runsTotal = Number(artifact.n ?? 0);
+  const runsUnknown = Number(artifact.unknowns ?? 0);
+  const nothingMeasured = runsTotal > 0 && runsUnknown === runsTotal;
   const unmeasurable = artifact.verdict === 'UNKNOWN'
-    && /ENOENT|executor error|could not be measured/i.test(String(artifact.why ?? ''));
+    && nothingMeasured
+    && /ENOENT|executor error/i.test(String(artifact.why ?? ''));
   if (unmeasurable && fs.existsSync(file)) {
     try {
       const prior = JSON.parse(fs.readFileSync(file, 'utf8'));
