@@ -1,6 +1,52 @@
 # RuvNet Brain — Build Progress (living tracker)
 
-`Updated: 2026-07-27 late-morning EDT` · honest status, no overclaiming. "DONE" means proven with pasted evidence.
+`Updated: 2026-08-19 midday EDT` · honest status, no overclaiming. "DONE" means proven with pasted evidence.
+
+---
+
+## 2026-08-19 — a read was writing, and it had blocked EVERY release for eleven days — v4.0.70-dev
+
+**`release-qe` had failed on every single run of `main` since 2026-08-08.** Not on PRs only — I
+said that earlier and it was wrong. Forty-six commits landed and nothing published (#141), because
+the stabilization seal refused the candidate with one word:
+
+```
+stabilization seal failed: INVALID_LINEAGE
+```
+
+**That word is why it took eleven days.** `INVALID_LINEAGE` covers a bad commit lineage AND a dirty
+working tree, and the seal named neither — the same collapse-two-states-into-one-signal defect this
+repo keeps finding. Yesterday's `68126ce` made the seal name its cause. It answered on the first run:
+
+```
+stabilization seal failed: INVALID_LINEAGE
+  working tree is dirty (1 path(s)):
+    M data/org-repo-count.json
+```
+
+**The actual bug: reading a number rewrote a tracked file.** `orgRepoCount()` persisted the live
+reading on *every* call — and both production callers (`build-bundle.mjs:421`, `brain-stamp.mjs:76`)
+are BUILD scripts. CI runs `build-bundle.mjs` (ci.yml:392) and then seals (ci.yml:449), so the build
+dirtied the tree with a fresh `at` timestamp seconds before the seal demanded a clean one. The build
+was failing itself.
+
+**Fix — persistence is now opt-in, and refreshing the record is a deliberate act.** `persist`
+defaults to `false`, so a read is a read. The committed record still matters and still ships: it is
+the honest offline fallback that lets an air-gapped or rate-limited build reuse the last REAL
+reading instead of inventing one, and `brain-score.mjs:128` reads it directly. Refreshing it is now
+`npm run orgcount:refresh` — the same read/write separation `refresh-model-catalog.mjs` already uses
+for the model snapshot. The `--record` path refuses to rewrite a remembered number as if it were
+fresh: if the live read fails, it exits 1 rather than restamping a stale count with a new timestamp.
+
+**Proven, not asserted.** The new guard was run against the OLD unconditional write and FAILED
+(`expected true to be false` — the record existed), then passed against the fix. A test that cannot
+fail on broken code is not a test.
+
+**One thing found and deliberately NOT bundled in.** `brain-stamp.mjs` rewrites `data/manifest.json`
+with fresh `generated` / `generatedHuman` / `orgTotalAt` timestamps even when nothing substantive
+changed, so running it locally always dirties the tree. It is NOT in the CI release path
+(`build-bundle` → seal), so it is not what blocked the release — but it is the same latent defect
+and will block anyone who wires stamping into a release. Filed, not silently expanded into this fix.
 
 ---
 
