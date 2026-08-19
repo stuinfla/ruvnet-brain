@@ -12,8 +12,25 @@ relates: [ADR-012, ADR-017, ADR-023, ADR-028, ADR-030, ADR-040, ADR-043, ADR-050
 governs:
   - plugin/hooks/hooks.json
   - plugin/hooks/codex-hooks.json
-  - plugin/scripts/*.mjs
-  - plugin/scripts/*.sh
+  # NARROWED 2026-08-19. These were `plugin/scripts/*.mjs` and `*.sh` — wildcards over EVERY
+  # script, so any hook change anywhere made this ADR presumed-stale. It blocked five pushes
+  # across three sessions, each time demanding a currency row about code this decision does not
+  # actually decide. A governs list that matches everything carries no information: it cannot
+  # distinguish "the proactivity contract drifted" from "somebody edited a refusal policy".
+  # The REFUSAL policies (spend-guard, identifier-preflight, degradation-watch, adr-currency,
+  # ground-before-write, protect-brain-state, hijack-ruvnet, design-wall) belong to ADR-067,
+  # which governs them explicitly. This ADR keeps the surface that carries PROACTIVE speech.
+  - plugin/scripts/anticipate.sh
+  - plugin/scripts/unprompted-runtime.mjs
+  - plugin/scripts/ground-ruvnet.sh
+  - plugin/scripts/continuation-gate.mjs
+  - plugin/scripts/lesson-hooks.sh
+  - plugin/scripts/lesson-gate.mjs
+  - plugin/scripts/lesson-store.mjs
+  - plugin/scripts/lesson-bridge.mjs
+  - plugin/scripts/signal-watch.mjs
+  - plugin/scripts/capability-registry.mjs
+  - plugin/scripts/session-start-core.mjs
   - kb/forge-mcp-all.mjs
   - kb/forge-evidence.mjs
   - tests/mesh/*.mjs
@@ -704,6 +721,7 @@ delegation drift goes to the interrupt tier (§3.7.9).
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-19 | **`governs:` narrowed from two wildcards to the eleven files this decision actually decides.** | It listed `plugin/scripts/*.mjs` and `*.sh` — every script in the plugin — so ANY hook edit anywhere made this ADR presumed-stale. It blocked five pushes across three sessions, each demanding a currency row about code this decision does not govern. A list that matches everything carries no information: it cannot distinguish "the proactivity contract drifted" from "somebody edited a refusal policy". The refusal policies belong to ADR-067, which names them explicitly; this ADR keeps the surface that carries PROACTIVE speech. Narrowing REDUCES coverage, which is the real trade — the defence is that ADR-067 now owns what left, so nothing became ungoverned, it became correctly governed. Also in this window: issue #140's fix removed raw-SQLite guidance from `ground-ruvnet.sh`'s per-turn MEMORY DIAGNOSIS prompt, the highest-traffic instruction surface here. |
 | 2026-08-19 | **Codex host parity landed, and the Dream Machine now owns this repo's nights.** | The Codex adapter no longer diverges from Claude Code: `codex-hooks.json` wired policies individually and never invoked decision-gate, so identifier-preflight, degradation-watch, spend-guard and adr-currency existed on one host and were unreachable on the other. Also corrected: the Codex learn-flush wrapper budget was 2500ms against a measured 2.8-6.6s runtime, so the wrapper SIGKILLed it and exited 0 silently — Codex lessons plausibly never flushed, invisibly. Separately, ADR-068 adopts ruvnet/dream-machine as the nightly evolution engine; its rotation surfaces are the five places this repo demonstrably broke in the last week (cross-host conformance, brain currency, enforcement integrity, grounding quality, memory durability) rather than the scaffold's generic defaults, and `autoMerge:false` keeps this surface's gates from becoming a formality. Also: managed memory is now verified through `ruflo memory retrieve` rather than raw SQLite (#140), which removes the last instruction in shipped guidance that told an agent to bypass the managed-memory boundary this ADR's hooks enforce. |
 | 2026-08-14 | **Both hosts now pass a conformance gate in a project the plugin does not own — 5/5.** | The owner's "ton of hook errors" had five causes, all on this surface. (1) TIMEOUT STRADDLE, the direct one: hooks.json declared 5s while decision-gate self-capped at 4000ms, and 6 of 14 audited runs exceeded 5s — up to 5700ms, a plain `ls -la` at 5109ms. The host kills an over-timeout hook and renders it as a FAILED hook; the gate was never refusing, it was being killed. Manifest now 10s and the relationship is ASSERTED (DEFAULT_BUDGET_MS + MIN_HEADROOM_MS vs the value read out of hooks.json), measured 543ms after. (2) UNRELATED-PROJECT MUTATION: session-snapshot and learn-capture created `.swarm/` in every repo opened. `.swarm` is Ruflo's convention — its PRESENCE is the project's opt-in, so writing into an existing store is participation and conjuring one is trespass (ADR-058 D5). (3) HOST DIVERGENCE: Codex never invoked decision-gate, leaving three policies unreachable; now wired and asserted. AND THE GATE WAS GRADING THE WRONG ARTIFACT — it dispatched through hook-shim, which resolves the spine from $RUVNET_BRAIN_HOME, so it measured the INSTALLED 4.0.52-dev and reported already-fixed defects as live. It now forces the frozen-plugin fallback, the path a fresh install takes. |
 | 2026-08-14 | **A both-hosts hook conformance gate now runs every registered hook in a project this plugin does not own.** | The owner's standing instruction after the cross-project hook failures: always check all the hooks before production, for BOTH Codex and Claude Code, every time. So it is a test rather than a promise — `tests/integration/hook-conformance-both-hosts.test.mjs` fires every command in both manifests inside a stranger project and asserts RESTRAINT, not capability: exit 0 or 2, nothing on stderr, nothing created in the working tree, finishing inside the host's own timeout. None of the audit's cross-project findings was catchable before, because every existing test ran the hooks INSIDE this repo, on this machine, on one host — they proved the hooks work where they were written. It failed on its first run, which is the point: 4 hooks still create `.swarm/` in a stranger's tree, and Codex never invokes decision-gate so three policies are unreachable there. Both are now permanently caught rather than rediscovered by the owner. Also in this window: degradation-watch's spawn-ENOENT no longer reads as "your memory store is broken" — on a machine without `ruflo` that refused EVERY `git push`. |
