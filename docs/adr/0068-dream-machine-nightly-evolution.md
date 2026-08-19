@@ -18,6 +18,8 @@ governs:
 
 ## Status
 
+**Status**: Accepted
+
 Accepted 2026-08-19. The config is committed and validated; the nightly schedule is a separate,
 human-performed step (see **Turning it on**), because creating a cloud routine spends the owner's
 account and is his to authorize.

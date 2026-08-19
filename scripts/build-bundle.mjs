@@ -266,6 +266,26 @@ if (hasGists) for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.j
     fs.writeFileSync(path.join(OUT, 'capability-cards.md'), parts[0] + kept.join(''));
     copied++;
     if (filteredAny) console.log('[build-bundle] filtered private repo card(s) out of shipped capability-cards.md');
+
+    // repo-aliases.json TRAVELS WITH THE CARDS OR EVERY ALIAS IS DEAD ON ARRIVAL.
+    //
+    // card-lane.mjs reads it (REPO_ALIASES_FILE) to resolve a PRODUCT name to its installed store:
+    // `agent-harness-generator -> metaharness`, `ruvnet-brain -> brain`, `ruvector -> rvf`,
+    // `agentic-qe -> qe`. The bundle never copied it, so on every install those mappings were absent
+    // and the fast lane could not route them. Measured 2026-08-19 against the live store root:
+    // repo-aliases.json ABSENT, and `search_ruvnet("metaharness: what does Darwin mode mutate?")`
+    // answered "card router was ambiguous" — the product cannot be found by its own name.
+    //
+    // `forge-update.mjs:505` already lists this file among the ones it manages, so the updater knew
+    // about it and the builder did not — one fact, two shipping paths, only one of them told. Same
+    // shape as the reader/writer store-root split and the ingest `--out` bug fixed this week.
+    const aliasesSrc = path.join(KB, 'repo-aliases.json');
+    if (fs.existsSync(aliasesSrc)) {
+      fs.copyFileSync(aliasesSrc, path.join(OUT, 'repo-aliases.json'));
+      copied++;
+    } else {
+      console.log('[build-bundle] note: kb/repo-aliases.json absent — product-name aliases will not resolve on install');
+    }
   } else {
     console.log('[build-bundle] note: kb/capability-cards.md absent — the fast lane ships with no card source and will honestly fall through on every query');
   }
