@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 const brainHome = process.env.RUVNET_BRAIN_HOME
@@ -23,23 +23,31 @@ const blockingHooks = new Set([
 ]);
 
 /**
- * THE BUDGET IS DERIVED FROM WHAT THE HOOK MEASURABLY COSTS, never from what looks tidy.
+ * HOOKS WHOSE WORK OUTLIVES ANY BUDGET THE HOST WILL GRANT, so waiting for them is not an option.
  *
- * A budget smaller than the work is not a limit, it is a silent deletion: this wrapper SIGKILLs the
- * child and exits 0 with `status === null`, so nothing is printed and nothing is logged. Measured
- * 2026-08-14 on this machine, that is exactly what `learn-flush` had been doing.
+ * MEASURED 2026-08-14 on a live Codex 0.147.0 session — the host prints it itself:
+ *
+ *     warning: clamping SessionEnd hook timeout to 3s in .../hooks.json
+ *
+ * SessionEnd is HARD-CAPPED at 3 seconds and no registration can ask for more. learn-flush needs
+ * 18s: measured with a real 10-entry queue and the real `ruflo`, 18342 / 18347 / 18384 ms, because
+ * one `ruflo hooks` call alone costs seconds and it self-bounds at LEARN_FLUSH_DEADLINE_MS.
+ *
+ * So the arithmetic never closes, and what shipped was the worst version of that: this wrapper
+ * budgeted 2250ms, SIGKILLed the flush, and exited 0 with `status === null` — measured end to end,
+ * exit 0, 2760ms, ZERO bytes of stdout, ZERO bytes of stderr, and a 10-line queue still 10 lines
+ * afterwards. Codex lessons never flushed, on every session, and nothing on any surface said so.
+ *
+ * The host caps how long it will WAIT, not how long work may take. Detaching honours the cap
+ * exactly — the hook returns immediately — while the flush runs to its own deadline and does its
+ * own write-back. Raising the number instead would have been a fiction the host silently clamps.
  */
+const DETACHED_HOOKS = new Set(['learn-flush']);
+
+/** THE BUDGET IS DERIVED FROM WHAT THE HOOK MEASURABLY COSTS, never from what looks tidy. */
 function timeoutFor(hookId) {
   const override = Number(process.env.RUVNET_CODEX_HOOK_TIMEOUT_MS);
   if (Number.isFinite(override) && override > 0) return override;
-  // learn-flush self-bounds at LEARN_FLUSH_DEADLINE_MS (18s) and then writes back what it did not
-  // feed. MEASURED with a real 10-entry queue and the real `ruflo` on this machine: 18342 / 18347 /
-  // 18384 ms — it saturates its own deadline every time. The old budget here was 2250ms, so the
-  // process was killed at 12% of its work: measured through this exact wrapper, exit 0, 2760ms, ZERO
-  // bytes of stdout, ZERO bytes of stderr, and a 10-line queue still 10 lines afterwards. Codex
-  // lessons never flushed, and nothing anywhere said so. 22s leaves the write-back and teardown
-  // inside the 30s host registration, matching what Claude Code already grants the same hook.
-  if (hookId === 'learn-flush') return 22_000;
   // decision-gate's own internal budget is 4000ms (RUVNET_DECISION_BUDGET_MS) and it is allowed to
   // spend all of it: measured 986–4015ms across ten runs in a project this plugin does not own. A
   // budget at or below the gate's own would make the gate's slowest legitimate refusal indis-
@@ -144,6 +152,26 @@ const adapter = root && path.join(root, 'scripts', 'codex-hook-adapter.mjs');
 if (!adapter || !fs.existsSync(adapter)) process.exit(0);
 
 const hookId = process.argv[2] || '';
+
+if (DETACHED_HOOKS.has(hookId)) {
+  // stdio ignored on purpose: a detached child outlives this process, so anything it wrote would
+  // arrive at a host that has already moved on — and stderr from a hook is what a host renders as a
+  // hook error. It reports through its own channels or not at all.
+  const child = spawn(process.execPath, [adapter, ...process.argv.slice(2)], {
+    detached: true, stdio: ['pipe', 'ignore', 'ignore'], env: process.env,
+  });
+  child.unref();
+  child.stdin.on('error', () => { /* a dead optional child must never surface to the host */ });
+  // AWAIT THE FLUSH, don't assume it. `process.exit()` on the line after `end()` truncates the pipe
+  // and the detached child reads an empty payload — which is the same silent no-op this whole change
+  // exists to remove, reintroduced one layer down. Bounded so a stuck pipe cannot hold the host.
+  await new Promise((resolve) => {
+    try { child.stdin.end(input, resolve); } catch { resolve(); }
+    setTimeout(resolve, 250);
+  });
+  process.exit(0);
+}
+
 const budgetMs = timeoutFor(hookId);
 const result = spawnSync(process.execPath, [adapter, ...process.argv.slice(2)], {
   input,

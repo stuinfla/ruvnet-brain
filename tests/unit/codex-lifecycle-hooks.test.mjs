@@ -276,44 +276,59 @@ describe('Codex lifecycle hook packaging', () => {
     }
   });
 
-  it('gives every SessionEnd hook more time than the work it registers actually takes', () => {
-    // THE ASSERTION THIS REPLACES WAS `SessionEnd[0].hooks[0].timeout <= 3`, and it was a rule about
-    // tidiness enforced against a hook whose measured cost is 18s.
+  it('respects the host SessionEnd cap, and DETACHES the work that cannot fit inside it', () => {
+    // THE ASSERTION THIS REPLACES WAS `SessionEnd[0].hooks[0].timeout <= 3` with no stated reason,
+    // so it read as tidiness and was removed on the way to raising the budget to 30s. It was not
+    // tidiness. MEASURED 2026-08-14 on a LIVE Codex 0.147.0 session, which prints it itself:
     //
-    // MEASURED 2026-08-14 on this machine, real 10-entry queue, real `ruflo`: learn-flush.mjs ran
-    // 18342 / 18347 / 18384 ms — it saturates its own LEARN_FLUSH_DEADLINE_MS every time. Through
-    // the Codex wrapper at the old 2250ms budget: exit 0, 2760ms, ZERO bytes out, ZERO bytes of
-    // stderr, and the 10-line queue still 10 lines. Nothing flushed and nothing said so, on every
-    // Codex session end, because a SIGKILL leaves `status === null` and the wrapper prints nothing.
+    //     warning: clamping SessionEnd hook timeout to 3s in .../hooks.json
     //
-    // So the rule is not "SessionEnd must be small". It is "a budget must be larger than the work,
-    // or it is a silent deletion". Derived from learn-flush's own declared deadline so the two can
-    // never drift apart again.
+    // SessionEnd is hard-capped. A 30 in this file is not a longer budget, it is a number the host
+    // silently corrects — and the same run confirmed the cap applies to the whole registration.
+    //
+    // learn-flush needs 18s (18342/18347/18384 ms measured with a real queue and real ruflo). Under
+    // the old 2250ms wrapper budget it was SIGKILLed: exit 0, 2760ms, ZERO bytes out, ZERO bytes of
+    // stderr, queue unchanged at 10 lines. Silent total failure, every Codex session.
+    //
+    // The cap governs how long the host WAITS, not how long work may take, so the wrapper detaches.
+    // Measured after the fix: hook returned in 200ms, queue 10 -> 2 twenty-five seconds later.
+    const codex = JSON.parse(fs.readFileSync(HOOKS, 'utf8')).hooks;
+    const wrapper = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', 'codex-hook-wrapper.mjs'), 'utf8');
+    const detached = wrapper.match(/DETACHED_HOOKS = new Set\(\[([^\]]*)\]\)/)?.[1] ?? '';
+    expect(detached, 'the wrapper declares no detached hooks').toBeTruthy();
+
     const flush = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', 'learn-flush.mjs'), 'utf8');
     const deadlineMs = Number(flush.match(/LEARN_FLUSH_DEADLINE_MS\) \|\| (\d+)_?(\d*)/)
       ?.slice(1).join('') || 0);
     expect(deadlineMs, 'learn-flush.mjs no longer declares a deadline').toBeGreaterThan(0);
 
-    for (const hookFile of [CLAUDE_HOOKS, HOOKS]) {
-      const hooks = JSON.parse(fs.readFileSync(hookFile, 'utf8')).hooks;
-      const flushHandler = (hooks.SessionEnd ?? []).flatMap((g) => g.hooks ?? [])
-        .find((h) => h.command.includes(' learn-flush'));
-      expect(flushHandler, `${path.basename(hookFile)} does not register learn-flush`).toBeTruthy();
-      expect(
-        flushHandler.timeout * 1_000,
-        `${path.basename(hookFile)} kills learn-flush before its own ${deadlineMs}ms deadline, and a `
-        + 'kill here is invisible — no output, no exit code, no trace',
-      ).toBeGreaterThan(deadlineMs);
+    for (const handler of (codex.SessionEnd ?? []).flatMap((g) => g.hooks ?? [])) {
+      expect(handler.timeout, `SessionEnd "${handler.command.slice(-30)}" asks for `
+        + `${handler.timeout}s; the host clamps SessionEnd to 3s and says so in a warning`)
+        .toBeLessThanOrEqual(3);
+      const id = handler.command.match(/" \d+ ([a-z][a-z0-9-]+)/)?.[1];
+      // Anything that cannot finish inside the cap must be detached, or the host kills it and the
+      // wrapper reports nothing — which is indistinguishable from the work having been done.
+      if (id === 'learn-flush') {
+        expect(detached, `${id} needs ${deadlineMs}ms and SessionEnd is capped at 3s, so it must be `
+          + 'in the wrapper DETACHED_HOOKS set or its work is silently discarded').toContain(id);
+      }
     }
 
-    // The Codex chain nests three budgets; each outer one must outlive the one it supervises, or the
-    // inner deadline is decorative. host timeout > inline `node -e` timeout > wrapper budget.
-    const codex = JSON.parse(fs.readFileSync(HOOKS, 'utf8')).hooks;
+    // Claude Code has no such cap, so there the budget must simply exceed the work.
+    const claude = JSON.parse(fs.readFileSync(CLAUDE_HOOKS, 'utf8')).hooks;
+    const ccFlush = (claude.SessionEnd ?? []).flatMap((g) => g.hooks ?? [])
+      .find((h) => h.command.includes(' learn-flush'));
+    expect(ccFlush, 'Claude Code does not register learn-flush').toBeTruthy();
+    expect(ccFlush.timeout * 1_000, 'Claude Code kills learn-flush before its own deadline')
+      .toBeGreaterThan(deadlineMs);
+
+    // The Codex chain nests budgets; each outer one must outlive the one it supervises, or the inner
+    // deadline is decorative. host timeout > inline `node -e` timeout > wrapper budget.
     for (const [event, groups] of Object.entries(codex)) {
       for (const handler of groups.flatMap((g) => g.hooks ?? [])) {
         const inlineMs = Number(handler.command.match(/" (\d+) [a-z-]+/)?.[1]);
-        expect(inlineMs, `${event}: no inline budget parsed from ${handler.command.slice(-40)}`)
-          .toBeGreaterThan(0);
+        expect(inlineMs, `${event}: no inline budget parsed`).toBeGreaterThan(0);
         expect(handler.timeout * 1_000, `${event}: inline budget ${inlineMs}ms is not inside the `
           + `${handler.timeout}s host registration`).toBeGreaterThan(inlineMs);
       }

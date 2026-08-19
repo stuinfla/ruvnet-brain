@@ -25,8 +25,9 @@ import { policiesFor } from '../../plugin/scripts/decision-gate.mjs';
  * new policy or a new hook is covered the moment it is added, which is the only way this stays true.
  *
  * ABSENCE IS ALLOWED — SILENCE IS NOT. A capability Codex genuinely cannot host is a legitimate
- * decision, and `hostParity.declaredAbsent` in codex-hooks.json is where it is recorded, with the
- * host fact behind it. A declaration is checked in both directions: it must name something Claude
+ * decision, and a "DECLARED ABSENT — <hook>" block in codex-hooks.json's `description` is where it is
+ * recorded, with the host fact behind it (that string is the ONLY place it can live — see below). A
+ * declaration is checked in both directions: it must name something Claude
  * Code really registers and Codex really does not, so the escape hatch cannot become a place to
  * park things by writing a sentence.
  */
@@ -86,17 +87,33 @@ describe('the Codex manifest cannot silently lose a policy the gate owns', () =>
     }
   });
 
-  it('reaches every policy in the live gate registry from the Codex manifest', () => {
-    // Imported from decision-gate.mjs, so a policy added there is covered here with no edit — the
-    // exact failure mode this test was written after.
-    const policies = [...new Set([...policiesFor('write'), ...policiesFor('bash')].map((p) => p.id))];
-    expect(policies.length, 'the gate registry is empty — this test is checking nothing')
-      .toBeGreaterThan(3);
+  it('wires the gate for EVERY sub-event Claude Code gates, not just the ones that existed today', () => {
+    // Derived from the Claude manifest, never listed here. The first version of this test required
+    // codex-hooks.json to ENUMERATE the gate's policies, and within the hour a policy was added to
+    // the registry and the enumeration went stale — which is the very maintenance burden that made
+    // the three 2026-08-13 policies Codex-invisible in the first place. Naming things by hand is the
+    // bug; a test that demands it by hand is the bug with a green tick next to it.
+    //
+    // The right invariant is about the MECHANISM: a sub-event routed through the gate on one host is
+    // routed through it on the other. Policies then travel for free, forever.
+    // From the COMMANDS, not the file text: both manifests carry prose that mentions the gate, and
+    // matching that would assert against documentation instead of against what runs.
+    const commandsOf = (file) => Object.values(read(file).hooks ?? {})
+      .flatMap((groups) => (groups ?? []).flatMap((g) => (g.hooks ?? []).map((h) => String(h.command))));
+    const subEvents = [...new Set(commandsOf(CLAUDE_HOOKS)
+      .flatMap((c) => [...c.matchAll(/decision-gate (\w+)/g)].map((m) => m[1])))];
+    const cx = commandsOf(CODEX_HOOKS).join('\n');
+    expect(subEvents.length, 'Claude Code routes nothing through decision-gate — nothing to compare')
+      .toBeGreaterThan(1);
+    const missing = subEvents.filter((s) => !cx.includes(`decision-gate ${s}`));
+    expect(missing, 'Claude Code gates these PreToolUse sub-events and Codex does not, so every '
+      + 'policy the gate holds for them is unreachable on Codex').toEqual([]);
 
-    const declared = read(CODEX_HOOKS).hostParity?.gateRouted ?? '';
-    const missing = policies.filter((id) => !declared.includes(id));
-    expect(missing, 'codex-hooks.json hostParity.gateRouted does not account for these gate '
-      + 'policies, so nobody reading that file can tell what Codex actually enforces').toEqual([]);
+    // And the registry must be non-empty for each, or the gate is a pass-through and the parity is
+    // real but worthless. Imported from decision-gate.mjs so it tracks the live registry.
+    for (const sub of subEvents) {
+      expect(policiesFor(sub).length, `decision-gate has no policies for "${sub}"`).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -107,8 +124,11 @@ describe('every Claude Code hook is registered on Codex or declared absent with 
     expect(claude.size, 'no Claude hook ids parsed — the derivation is broken').toBeGreaterThan(8);
     expect(codex.size, 'no Codex hook ids parsed — the derivation is broken').toBeGreaterThan(8);
 
-    const parity = read(CODEX_HOOKS).hostParity ?? {};
-    const declaredAbsent = parity.declaredAbsent ?? [];
+    // The declaration lives in `description`, because MEASURED on a live Codex 0.147.0 session that
+    // is the only key besides `hooks` this file may carry: an extra top-level object produced
+    // `unknown field \`hostParity\`, expected \`description\` or \`hooks\`` and Codex dropped the
+    // ENTIRE manifest — every hook off, on one warning line. So the record is prose, and this reads it.
+    const description = String(read(CODEX_HOOKS).description ?? '');
     // decision-gate subsumes the individual refusal policies on both hosts, so a policy id is
     // "registered" wherever the gate is.
     const gatePolicies = new Set([...policiesFor('write'), ...policiesFor('bash')].map((p) => p.id));
@@ -118,7 +138,7 @@ describe('every Claude Code hook is registered on Codex or declared absent with 
     const onClaude = reachable(claude);
 
     const undeclared = [...onClaude].filter((id) => !onCodex.has(id)
-      && !declaredAbsent.some((d) => d.hook === id));
+      && !new RegExp(`DECLARED ABSENT — ${id}\\b`).test(description));
     expect(undeclared, 'these run on Claude Code and not on Codex, with nothing in '
       + 'codex-hooks.json hostParity.declaredAbsent saying why').toEqual([]);
   });
@@ -127,13 +147,25 @@ describe('every Claude Code hook is registered on Codex or declared absent with 
     // The escape hatch must cost as much as the wiring, or it becomes the cheaper option.
     const claude = hookIds(CLAUDE_HOOKS);
     const codex = hookIds(CODEX_HOOKS);
-    for (const d of read(CODEX_HOOKS).hostParity?.declaredAbsent ?? []) {
-      expect(claude.has(d.hook), `declaredAbsent names "${d.hook}", which Claude Code does not `
-        + 'register either — the declaration describes nothing').toBe(true);
-      expect(codex.has(d.hook), `declaredAbsent names "${d.hook}" but Codex registers it`).toBe(false);
-      expect(String(d.reason || '').length, `"${d.hook}" is declared absent with no reason`)
-        .toBeGreaterThan(40);
+    const description = String(read(CODEX_HOOKS).description ?? '');
+    const declared = [...description.matchAll(/DECLARED ABSENT — ([a-z][a-z0-9-]+)([\s\S]*?)(?=\n\n|$)/g)];
+    expect(declared.length, 'no declaration parsed — either none exists or the format drifted and '
+      + 'this check has quietly stopped checking').toBeGreaterThan(0);
+    for (const [, hook, reason] of declared) {
+      expect(claude.has(hook), `"${hook}" is declared absent but Claude Code does not register it `
+        + 'either — the declaration describes nothing').toBe(true);
+      expect(codex.has(hook), `"${hook}" is declared absent but Codex registers it`).toBe(false);
+      expect(reason.trim().length, `"${hook}" is declared absent with no host reason`)
+        .toBeGreaterThan(60);
     }
+  });
+
+  it('carries ONLY the two top-level keys Codex will accept', () => {
+    // MEASURED on a live Codex 0.147.0 session, and the reason this assertion exists at all: a third
+    // top-level key made Codex log `unknown field \`hostParity\`, expected \`description\` or
+    // \`hooks\`` and discard the entire manifest — all 16 hooks off, no error, no exit code, one
+    // warning line. The blast radius of the tidy-metadata habit is every hook on the host.
+    expect(Object.keys(read(CODEX_HOOKS)).sort()).toEqual(['description', 'hooks']);
   });
 });
 

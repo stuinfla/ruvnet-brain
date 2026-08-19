@@ -4,9 +4,10 @@
  * Codex-VALID output back.
  *
  * THE OUTPUT CONTRACT IS NOT GUESSED. Every rule below was read out of the real host: the JSON
- * schemas Codex 0.147.0 carries inside its own binary (`<event>.command.output`, extracted
- * 2026-08-14 from /Users/stuartkerr/.codex/packages/standalone/releases/0.147.0-aarch64-apple-darwin
- * /bin/codex) plus its own error strings. The three that shaped this file:
+ * schemas Codex 0.147.0 carries inside its own binary — `<event>.command.output`, extracted
+ * 2026-08-14 with `strings` from
+ * `~/.codex/packages/standalone/releases/0.147.0-aarch64-apple-darwin/bin/codex` — plus the host's
+ * own error strings. The three that shaped this file:
  *
  *   · "hook returned invalid post-tool-use JSON output"  — PostToolUse stdout is PARSED. Plain text
  *     is a host error, not a message. signal-watch.mjs prints one advisory LINE on a failed
