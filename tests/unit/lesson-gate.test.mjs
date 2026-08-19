@@ -48,6 +48,15 @@ const blockLesson = (over = {}) => ({
   ...over,
 });
 
+/** A ratified SHIP lesson, advisory so it must be DELIVERED rather than refuse the push. */
+const shipLesson = () => blockLesson({
+  id: 'T02-version-is-the-update-signal',
+  statement: 'Any behaviour-changing push bumps the version IN THE SAME COMMIT.',
+  trigger: 'ship',
+  enforcement: 'checklist',
+  check: 'the version field moved in the same commit as the behaviour change',
+});
+
 function writeStore(lessons) {
   fs.writeFileSync(storePath, JSON.stringify({ version: 1, lessons }, null, 2));
 }
@@ -637,14 +646,6 @@ describe('ship lessons reach a real push', () => {
    * proves the machine, not the product. Seeding a ratified ship lesson tests what this file claims
    * to test — that a `git push` PULLS ship lessons through the dispatcher — on any host.
    */
-  const shipLesson = () => blockLesson({
-    id: 'T02-version-is-the-update-signal',
-    statement: 'Any behaviour-changing push bumps the version IN THE SAME COMMIT.',
-    trigger: 'ship',
-    enforcement: 'checklist',   // advisory: it must be DELIVERED, not refuse the push
-    check: 'the version field moved in the same commit as the behaviour change',
-  });
-
   const fireBash = (command) => {
     writeStore([shipLesson()]);
     return spawnSync(bash, [DISPATCH, 'PreToolUse-bash'], {
@@ -714,10 +715,22 @@ describe('the two ship definitions agree', () => {
   const bash2 = resolveBashForTest();
   const gated2 = bash2 ? test : test.skip;
   const SHIP_TEXT2 = /bumps the version IN THE SAME COMMIT/;
-  const viaBash = (command) => SHIP_TEXT2.test(spawnSync(bash2, [DISPATCH, 'PreToolUse-bash'], {
-    encoding: 'utf8', timeout: 30_000,
-    input: JSON.stringify({ session_id: `par-${Math.random().toString(16).slice(2)}`, tool_name: 'Bash', tool_input: { command } }),
-  }).stdout || '');
+  // Seeded for the same reason `fireBash` is: reading the real ~/.config store made this assert the
+  // developer's machine. windows-unit was red here with an EMPTY store, so `git push` — a genuine
+  // ship — came back false, and the two definitions "disagreed" when only one of them had any data.
+  const viaBash = (command) => {
+    writeStore([shipLesson()]);
+    return SHIP_TEXT2.test(spawnSync(bash2, [DISPATCH, 'PreToolUse-bash'], {
+      encoding: 'utf8', timeout: 30_000,
+      env: {
+        ...process.env,
+        RUVNET_LESSON_STORE: storePath,
+        RUVNET_LESSON_OPTIN: optInPath,
+        RUVNET_LESSON_GATE_STATE: gateStatePath,
+      },
+      input: JSON.stringify({ session_id: `par-${Math.random().toString(16).slice(2)}`, tool_name: 'Bash', tool_input: { command } }),
+    }).stdout || '');
+  };
 
   gated2('TEETH: both agree on every case the audits raised, in both directions', async () => {
     const { dependentEvent } = await import('../../plugin/scripts/degradation-watch.mjs');
