@@ -1,26 +1,41 @@
 {
   "repo": "stuinfla/ruvnet-brain",
-  "cron": "0 8 * * *",
+  "cron": "30 8 * * *",
   "slots": [
     {
       "deep": "cross-host-conformance",
-      "scan": ["codex-parity", "stranger-project-behaviour"]
+      "scan": [
+        "codex-parity",
+        "stranger-project-behaviour"
+      ]
     },
     {
       "deep": "brain-currency",
-      "scan": ["dark-stores", "corpus-freshness"]
+      "scan": [
+        "dark-stores",
+        "corpus-freshness"
+      ]
     },
     {
       "deep": "enforcement-integrity",
-      "scan": ["lesson-delivery", "gate-teeth"]
+      "scan": [
+        "lesson-delivery",
+        "gate-teeth"
+      ]
     },
     {
       "deep": "grounding-quality",
-      "scan": ["retrieval-precision", "citation-binding"]
+      "scan": [
+        "retrieval-precision",
+        "citation-binding"
+      ]
     },
     {
       "deep": "memory-durability",
-      "scan": ["managed-boundary", "round-trip-proof"]
+      "scan": [
+        "managed-boundary",
+        "round-trip-proof"
+      ]
     }
   ],
   "bonusModuli": {
@@ -59,6 +74,10 @@
   ],
   "ledgerPath": "docs/dream-cycle/LEDGER.md",
   "branchPrefix": "dream/",
-  "labels": ["dream-cycle", "research"],
-  "autoMerge": false
+  "labels": [
+    "dream-cycle",
+    "research"
+  ],
+  "autoMerge": false,
+  "_cronNote": "Staggered 30 minutes off the hour DELIBERATELY. stuinfla/AppealArmor holds \"0 8 * * *\"; two Dream Machine nights firing into the same slot contend for the same runner capacity and the same GitHub API budget. Measured 2026-08-19: the registered cloud routine already ran 30 8 while this file still declared 0 8 \u2014 the ROUTINE was right and this declaration was the stale copy, so the config was corrected to reality rather than the reverse. `dream-machine schedule` compiles from here, so leaving the drift would have reset the stagger on the next recompile."
 }

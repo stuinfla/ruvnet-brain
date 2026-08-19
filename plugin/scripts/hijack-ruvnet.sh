@@ -128,11 +128,19 @@ if [ "$_direct_managed_access" = "1" ]; then
   printf '%s' "$PAYLOAD" | grep -qiE '(insert|update|delete|drop|alter|create|replace|vacuum|pragma[[:space:]]+[a-z_]+[[:space:]]*=|\.import|\.restore)' && _is_write=1
 
   if [ "$_boundary" = "block" ] || { [ "$_boundary" = "read-only" ] && [ "$_is_write" = "1" ]; }; then
+    # NAME THE STORE THEY ACTUALLY REACHED FOR (#140). The reporter was at a USER-level store,
+    # `~/.claude-flow/user-memory.db`; a refusal that hardcodes <project>/.swarm/memory.db points
+    # them at a DIFFERENT file, so the "sanctioned path" reads as not understanding the situation
+    # — and an agent that cannot see its own store in the substitute goes back to guessing schema,
+    # which is the exact failure #103 measured nine times.
+    _target_store=$(printf '%s' "$PAYLOAD" | grep -oiE '[^ "]*(\.swarm/[a-zA-Z-]*memory\.db|user-memory\.db|agentdb[a-zA-Z-]*\.db|memory\.db)' | head -n 1)
+    [ -z "$_target_store" ] && _target_store="<project>/.swarm/memory.db"
     printf '%s\n' "[RuvNet Brain] REFUSED: direct access to a Ruflo-managed memory store." >&2
     printf '%s\n' "Your setting managedMemoryBoundary=$_boundary refuses this. Ruflo owns these stores; two writers on one file is how they corrupt." >&2
-    printf '%s\n' "Use the sanctioned path instead — it needs no schema knowledge:" >&2
-    printf '%s\n' "  ruflo memory search  -q \"<query>\" --path <project>/.swarm/memory.db" >&2
-    printf '%s\n' "  ruflo memory store   -k \"<key>\" --value \"<text>\" --path <project>/.swarm/memory.db" >&2
+    printf '%s\n' "Use the sanctioned path instead — it needs no schema knowledge, and --path reaches ANY store, user-level ones included:" >&2
+    printf '%s\n' "  ruflo memory search   -q \"<query>\" --path $_target_store" >&2
+    printf '%s\n' "  ruflo memory retrieve -k \"<key>\"   --path $_target_store   # exact key; the returned VALUE is the proof" >&2
+    printf '%s\n' "  ruflo memory store    -k \"<key>\" --value \"<text>\" --path $_target_store" >&2
     printf '%s\n' "To allow this, set managedMemoryBoundary back to 'advise' (or 'read-only' for reads) in the Console." >&2
     exit 2
   fi

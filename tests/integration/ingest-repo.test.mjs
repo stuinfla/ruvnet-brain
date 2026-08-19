@@ -125,10 +125,25 @@ onPosix('ingest-repo.mjs — clone vs. update branch selection', () => {
 });
 
 onPosix('ingest-repo.mjs — refresh pipeline invocation + cwd', () => {
-  it('runs one transactional forge-refresh.mjs call from the kb/ cwd', () => {
+  it('runs one transactional forge-refresh.mjs call, writing to the root RETRIEVAL reads', async () => {
+    // SUPERSEDED CONTRACT (2026-08-19). This required `--out \.` — the tool's own cwd, i.e. the
+    // repo's kb/. That was the reader/writer split: ingest wrote to the checkout while
+    // kb/forge-mcp-all.mjs reads storeRoot() (~/.cache/ruvnet-brain/kb by default). It is why on
+    // 2026-08-12 three repos ingested cleanly, each printed "roundtrip 3/3 PASS · searchable now",
+    // and NONE could be found by search. The fix pointed `--out` at storeRoot(); `cwd` stays the
+    // tools directory because that is where forge-refresh.mjs LIVES — one name, `KB`, had been
+    // doing both jobs.
+    //
+    // So the assertion is now the RELATIONSHIP, not a literal: whatever `--out` receives must be
+    // the same root the reader resolves. Pinning `\.` again would re-pin the bug — a test that
+    // defends a hardcode defends the defect, the same correction issue #139 forced on the
+    // learner-scope test.
+    const { storeRoot } = await import('../../kb/store-root.mjs');
     const r = runIngest(['--name', 'zzz-fixture']);
     const nodeCalls = r.calls.filter((c) => c.startsWith('node '));
-    expect(nodeCalls[0]).toMatch(/forge-refresh\.mjs --repo .* --out \. --name zzz-fixture --canonical-url/);
+    expect(nodeCalls[0]).toMatch(/forge-refresh\.mjs --repo .* --out \S+ --name zzz-fixture --canonical-url/);
+    const out = nodeCalls[0].match(/--out (\S+)/)?.[1];
+    expect(out, '--out must be the root retrieval reads, never the tool directory').toBe(storeRoot());
     expect(nodeCalls.filter((c) => /forge-(build|big)\.mjs/.test(c))).toEqual([]);
     expect(r.stdout).toMatch(/\[refresh bge-768\] zzz-fixture/);
   });

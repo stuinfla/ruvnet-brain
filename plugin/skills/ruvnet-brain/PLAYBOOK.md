@@ -1,6 +1,6 @@
 # THE PLAYBOOK — the standing build playbook, in full
 
-Updated: 2026-08-02 | Version 1.1.0
+Updated: 2026-08-19 | Version 1.1.0
 Created: 2026-07-27
 
 **Read this before your first build response in a session.** `plugin/scripts/session-start.sh`
@@ -44,8 +44,17 @@ the exact lie that makes people distrust rUv's code.
 - Diagnose memory only through one canonical absolute path, and ONLY through the managed
   interface: store a unique key with `ruflo memory store --path <project>/.swarm/memory.db`,
   then `ruflo memory retrieve --path <project>/.swarm/memory.db -k <key>`. The retrieved
-  VALUE is the proof.
+  VALUE is the proof — read it in stdout, NEVER the exit status, which is 0 even when the CLI
+  prints `[ERROR]`.
   A semantic-search miss, a DB/WAL mtime, or daemon startup proves neither failure nor success.
+  ANY store, not just the project one: `--path` takes an explicit absolute path, so a
+  user-level or otherwise non-default store — `~/.claude-flow/user-memory.db`, a global
+  lessons store — is searched and retrieved exactly the same way, with no raw database
+  access. Reaching for `sqlite3` because a store is "not the project one" is the bypass
+  issue #140 reports; the flag already covers it. When semantic `memory search` returns
+  truncated keys or previews, that is a display bound, NOT a missing row: take the key from
+  the search hit and `memory retrieve -k <key> --path <same store>` to get the exact,
+  untruncated value.
   NEVER open a Ruflo/AgentDB-managed store with `sqlite3` — issue #140, and rUv's own
   v3.32.34 release note is explicit: "No manual SQL is required." Since that release the
   bridge FAILS CLOSED and reports the real error rather than a false success, which was the
