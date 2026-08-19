@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DIMENSIONS, brainScore, composite, staleness } from '../../scripts/brain-score.mjs';
+import { DIMENSIONS, brainScore, composite, isRoutable, staleness } from '../../scripts/brain-score.mjs';
 
 /**
  * A SCORE ABOUT THIS PRODUCT IS GENERATED, NEVER TYPED.
@@ -151,5 +151,34 @@ describe('a score presented as CURRENT carries the date it was measured', () => 
       + 'the date from the artifact (evals/baseline.json carries `recorded`), or drop the word '
       + '"current". A month-old reading quoted as today\'s is how 2026-08-13 went wrong.',
     ).toEqual([]);
+  });
+});
+
+describe('routability is measured the way the ROUTER resolves, not by name equality', () => {
+  // The registry the router actually consults: one canonical card, one alias pointing at it.
+  const resolve = (store) => (
+    store === 'metaharness' || store === 'agent-harness-generator'
+      ? ['agent-harness-generator', 'metaharness']
+      : [store]);
+
+  it('TEETH: a store reachable ONLY through an alias counts as routable', () => {
+    // The defect this replaces: `cards.has(store)` compared a store name to card HEADINGS, so
+    // `metaharness` — reachable through the `agent-harness-generator` card — was scored unroutable.
+    // Measured 2026-08-19: the metric called 30 stores unroutable when 26 actually were.
+    //
+    // It was not a cosmetic under-count. A false "dark store" reading is what led to a DUPLICATE
+    // `## metaharness` card being added, which collided with `agent-harness-generator` and broke
+    // alias resolution outright — the metric manufactured work that damaged what it measured.
+    const cards = new Set(['agent-harness-generator']);
+    expect(isRoutable('metaharness', cards, '/irrelevant', resolve)).toBe(true);
+    expect(isRoutable('agent-harness-generator', cards, '/irrelevant', resolve)).toBe(true);
+  });
+
+  it('TEETH: a store with no card and no alias is still UNroutable — the fix must not flatter', () => {
+    // Without this, "always true" would satisfy the case above and the metric would report a brain
+    // that reaches everything. `ruv-gists` and `concepts` are real gaps measured the same day.
+    const cards = new Set(['agent-harness-generator']);
+    expect(isRoutable('ruv-gists', cards, '/irrelevant', resolve)).toBe(false);
+    expect(isRoutable('concepts', cards, '/irrelevant', resolve)).toBe(false);
   });
 });

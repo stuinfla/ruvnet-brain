@@ -89,6 +89,18 @@ export const DIMENSIONS = [
   },
 ];
 
+/**
+ * Is this store reachable by a by-description query? ALIAS-AWARE, because the router is.
+ *
+ * Pure and exported so the rule can be tested without a live store root — the previous version was
+ * an inline `cards.has(s)` buried in an async reader, which is why nobody noticed it disagreed with
+ * the router. `resolve` is injected rather than imported here so a fixture can supply its own
+ * registry; production passes `repositoryNames` from kb/card-lane.mjs, the router's own resolver.
+ */
+export function isRoutable(store, cards, root, resolve) {
+  return resolve(store, root).some((name) => cards.has(name));
+}
+
 const pct = (s) => (s && Number.isFinite(s.p) ? Math.round(s.p * 1000) / 10 : null);
 const frac = (s) => (s && Number.isFinite(s.k) ? `${s.k}/${s.n}` : null);
 
@@ -122,12 +134,26 @@ function readPanel() {
  */
 async function readCoverage() {
   const { storeRoot, storesAt, cardsAt } = await import('../kb/store-root.mjs');
+  // ROUTABILITY IS ALIAS-AWARE, BECAUSE THE ROUTER IS.
+  //
+  // `carded` was `stores.filter((s) => cards.has(s))` — a direct name match against card HEADINGS,
+  // while the real router resolves a store through `repositoryNames()` first. So a store reachable
+  // ONLY under an alias counted as unroutable, and this metric under-reported the brain's own
+  // reachability: measured 2026-08-19, 30 stores called unroutable when 26 actually are —
+  // `metaharness` among the four, which is reachable through the `agent-harness-generator` card.
+  //
+  // That is not a rounding error, it is the same alias-blindness ADR-058 records as open in
+  // `darkStores()`, and it already cost something real: a false "dark store" reading led to a
+  // DUPLICATE `## metaharness` card being added, which collided with `agent-harness-generator` and
+  // broke alias resolution outright. A metric that cannot see aliases manufactures work that
+  // damages the thing it measures.
+  const { repositoryNames } = await import('../kb/card-lane.mjs');
   const root = storeRoot();
   const stores = storesAt(root);
   const cards = new Set(cardsAt(root));
   const org = readJson('data/org-repo-count.json');
   const total = Number.isFinite(org?.count) && org.count > 0 ? org.count : null;
-  const carded = stores.filter((s) => cards.has(s)).length;
+  const carded = stores.filter((s) => isRoutable(s, cards, root, repositoryNames)).length;
   return {
     catalogue: {
       value: total ? Math.round((stores.length / total) * 1000) / 10 : null,
