@@ -30,15 +30,32 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 const ok = (n) => () => ({ status: 0, stdout: `${n}\n` });
 
 describe('the count is derived, and its provenance travels with it', () => {
-  it('a live read reports source "live" and records itself for later', () => {
-    const r = orgRepoCount({ file: record, fetch: () => 200 });
+  it('a live read reports source "live", and records itself ONLY when asked', () => {
+    const r = orgRepoCount({ file: record, fetch: () => 200, persist: true });
     expect(r).toMatchObject({ count: 200, source: 'live' });
     expect(JSON.parse(fs.readFileSync(record, 'utf8')).count, 'the reading must be recorded').toBe(200);
   });
 
+  it('TEETH: READING THE COUNT WRITES NOTHING — this is the bug that blocked every release', () => {
+    // `data/org-repo-count.json` is TRACKED. Persisting used to be unconditional, and both
+    // production callers (brain-stamp.mjs, build-bundle.mjs) are BUILD scripts — so building the
+    // release candidate dirtied the working tree with a fresh `at` timestamp, and release-qe's
+    // stabilization seal requires dirty === false. Measured 2026-08-19, after the seal was taught
+    // to name its cause instead of printing only the code INVALID_LINEAGE:
+    //
+    //     stabilization seal failed: INVALID_LINEAGE
+    //       working tree is dirty (1 path(s)):
+    //         M data/org-repo-count.json
+    //
+    // Eleven days, 46 commits, nothing published (issue #141) — for one file rewriting itself
+    // whenever a build read a number off it. A read is not a write.
+    expect(orgRepoCount({ file: record, fetch: () => 200 })).toMatchObject({ count: 200, source: 'live' });
+    expect(fs.existsSync(record), 'a plain read must leave the tracked record untouched').toBe(false);
+  });
+
   it('TEETH: offline reuses the LAST REAL READING and says it is not live', () => {
     // The honest fallback. A build with no network must not present a remembered number as current.
-    orgRepoCount({ file: record, fetch: () => 200 });
+    orgRepoCount({ file: record, fetch: () => 200, persist: true });
     const r = orgRepoCount({ file: record, fetch: () => null });
     expect(r).toMatchObject({ count: 200, source: 'recorded' });
     expect(r.at, 'a recorded reading carries when it was taken').toBeTruthy();

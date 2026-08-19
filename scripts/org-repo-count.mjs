@@ -56,17 +56,64 @@ const readRecord = (file) => {
  * The count, its provenance, and when it was taken.
  * A successful live read updates the record, so the offline fallback is always a real past reading.
  */
-export function orgRepoCount({ owner = OWNER, file = RECORD_PATH, now = new Date(), fetch = fetchLiveCount } = {}) {
+/**
+ * READING A NUMBER MUST NOT MUTATE A TRACKED FILE.
+ *
+ * `persist` defaults to FALSE, and that default is the fix for a release that could not ship.
+ * Every call used to write `data/org-repo-count.json` — a TRACKED file — with a fresh `at`
+ * timestamp. Both production callers (`brain-stamp.mjs`, `build-bundle.mjs`) are BUILD scripts, so
+ * building the release candidate dirtied the working tree, and `release-qe`'s stabilization seal
+ * requires `dirty === false`. Measured 2026-08-19, once the seal was made to name its cause:
+ *
+ *     stabilization seal failed: INVALID_LINEAGE
+ *       working tree is dirty (1 path(s)):
+ *         M data/org-repo-count.json
+ *
+ * That single line had blocked EVERY release since 2026-08-08 (issue #141: nothing published in
+ * eleven days while main advanced 46 commits), because the seal previously reported only the code
+ * `INVALID_LINEAGE` and named nothing.
+ *
+ * The committed record still matters — it is the honest offline fallback, so an air-gapped or
+ * rate-limited build reuses the last REAL reading instead of inventing one. It just may not be
+ * written as a side effect of being read. Refreshing it is now a deliberate act (`--record`), the
+ * same separation `refresh-model-catalog.mjs` already uses for the model snapshot.
+ */
+export function orgRepoCount({ owner = OWNER, file = RECORD_PATH, now = new Date(), fetch = fetchLiveCount, persist = false } = {}) {
   const live = fetch(owner);
   if (live) {
     const at = now.toISOString();
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, `${JSON.stringify({ owner, count: live, at }, null, 2)}\n`);
+      if (persist) fs.writeFileSync(file, `${JSON.stringify({ owner, count: live, at }, null, 2)}\n`);
     } catch { /* recording is best-effort; the live number still stands */ }
     return { count: live, source: 'live', at };
   }
   const rec = readRecord(file);
   if (rec) return { count: rec.count, source: 'recorded', at: rec.at || null };
   return { count: null, source: 'unknown', at: null };
+}
+
+/**
+ * Refreshing the committed record is a DELIBERATE ACT, never a side effect of a build.
+ *
+ *     node scripts/org-repo-count.mjs --record
+ *
+ * Same separation `refresh-model-catalog.mjs` uses for the model snapshot: a build READS, a human
+ * (or a scheduled refresh that commits its own result) WRITES. That boundary is what keeps the
+ * working tree clean for `release-qe`'s stabilization seal.
+ */
+const isMain = (() => {
+  try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
+  catch { return false; }
+})();
+
+if (isMain) {
+  const record = process.argv.includes('--record');
+  const r = orgRepoCount({ persist: record });
+  process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
+  if (record && r.source !== 'live') {
+    process.stderr.write('NOT recorded: the live read failed, and a remembered number may not be '
+      + 'rewritten as if it were fresh.\n');
+    process.exit(1);
+  }
 }
