@@ -43,7 +43,11 @@ fresh: if the live read fails, it exits 1 rather than restamping a stale count w
 fail on broken code is not a test.
 
 **AND IT WAS NOT THE ONLY THING RED.** Looking past the seal: the last 22 *completed* `ci` runs
-on main were ALL failures, and eight more were WEDGED `in_progress` for up to three hours. No job
+on main had NOT PASSED since 2026-08-10T11:06 — sixteen consecutive completed runs failed across nine
+days — and eight more were WEDGED `in_progress` for up to three hours. (First written as "the last 22
+completed runs were all failures", which was a sample of six generalised across sixteen I had not
+looked at; corrected after measuring. The narrower claim is also the more useful one: it dates the
+regression to 2026-08-10 between 11:06 and 16:23.) No job
 in `ci.yml` declared `timeout-minutes`, so a hung step ran toward GitHub's six-hour default. The
 second-order damage was worse than the lost minutes — `gh run view --log-failed` refuses while a
 run is in progress, so the wedged `check` job HID `release-qe`'s and `windows-unit`'s already-red
