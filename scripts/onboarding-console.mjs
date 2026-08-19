@@ -66,6 +66,7 @@ import { loadLessons, updateLessons, ratify, demote, restore, pending, weightOf,
 import {
   openRouterCredentialStatus,
   saveOpenRouterCredential,
+  learnerCwd,
 } from '../plugin/scripts/runtime-preferences.mjs';
 import { applyNightlyChoice, nightlyStatus } from './nightly-controller.mjs';
 // One canonical answer to "which directory is this, and have I counted it already?" — shared with
@@ -2225,10 +2226,17 @@ function observeLearning() {
     // This file already carries the verdict on this exact mistake at the refresh-child spawn: "cwd =
     // the SERVED project, NOT REPO … it was a real console-honesty bug". Same rule, same file,
     // different call site — #104's and #134's residual arriving a third time.
+    // ISSUE #139 (@ObiWanKenobi) — `process.cwd()` was a HARDCODE in the opposite direction from
+    // #136's `SYSTEM_HOME`. Neither asked which scope was in effect; the first was wrong by default
+    // and the second is right only BECAUSE `project` is the default. Under
+    // `RUVNET_LEARNING_SCOPE=user` the flush feeds ~/.claude-flow/neural while this read
+    // <project>/.claude-flow/neural — the same false-positive card, inverted. The writer and this
+    // reader now call ONE resolver (runtime-preferences.learnerCwd), so they agree by construction
+    // instead of by coincidence.
     const r = spawnSync(path.join(SYSTEM_HOME, '.npm-global/bin/ruflo'),
       ['hooks', 'intelligence', '--status'],
       {
-        cwd: process.cwd(),
+        cwd: learnerCwd(),
         env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
         encoding: 'utf8',
         timeout: 20_000,

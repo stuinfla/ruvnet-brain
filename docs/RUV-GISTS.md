@@ -5,10 +5,14 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_474 gists · refreshed 2026-08-14_
+_477 gists · refreshed 2026-08-19_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-08-19 | [current.md](https://gist.github.com/ruvnet/924cfc81f62bd6ad252cb2907c289984) | RuView + Cognitum Spaces: End-User Guide |
+| 2026-08-16 | [watermark-explainer.md](https://gist.github.com/ruvnet/b87f9055710e2aadf0ee3a8c360c476d) | The Invisible Signature — how AI text watermarking works (plain-language guide to @claude-flow/watermark) |
+| 2026-08-15 | [ADR-323-RuView-Physics-Pose-Refinement.md](https://gist.github.com/ruvnet/b807dba097ef88e4bc2cc6f7f61ff305) | RuView ADR-323: native Rust physics-constrained pose refinement, architecture, safeguards, validation, and rollout gates |
+| 2026-08-15 | [metaharness-dossier.md](https://gist.github.com/ruvnet/19d166ff9acf368c9da4172d91ac9113) | MetaHarness × Ruflo — Integration Research Dossier (ADR-150 companion) |
 | 2026-08-13 | [dm-gist.md](https://gist.github.com/ruvnet/cd4101aa0c9b317de96fa2f3fe44f059) | Dream Machine v0.1.0 — nightly, evidence-gated repository evolution (npx dream-machine) |
 | 2026-08-13 | [meta-proxy-tutorial.md](https://gist.github.com/ruvnet/e546a3495c1fc3f3c7b10d67aa593c91) | Meta Proxy (ruflo proxy) — technical tutorial: architecture, install/verify pipeline, data planes, full CLI reference |
 | 2026-08-13 | [dream-machine-tutorial.md](https://gist.github.com/ruvnet/889ffa92dab49d508e70b123c940e1b9) | The Dream Machine — a tutorial on Ruflo's nightly Dream Cycle v3 evolution loop |
@@ -102,7 +106,6 @@ _474 gists · refreshed 2026-08-14_
 | 2026-06-17 | [gist479-1.md](https://gist.github.com/ruvnet/f78beca458b506b9c6356f27ee8a75c2) | Productionizing ruvector gnn-rerank (#479) — Step 1: baseline |
 | 2026-06-17 | [adr-256-gist.md](https://gist.github.com/ruvnet/aaa5a83dd7a6a819b963e728418faaf3) | ADR-256: making npx ruvector its own agent harness without adding a dependency (plain-language overview) |
 | 2026-06-16 | [metaharness-release-guide.md](https://gist.github.com/ruvnet/7779bccde2084b3788b58dfe1a66ae1f) | MetaHarness — what's new + how to use it (June 2026 release): all 9 hosts, 3 real-install schema fixes, @metaharness/har |
-| 2026-06-16 | [metaharness-dossier.md](https://gist.github.com/ruvnet/19d166ff9acf368c9da4172d91ac9113) | MetaHarness × Ruflo — Integration Research Dossier (ADR-150 companion) |
 | 2026-06-15 | [draco-gist.md](https://gist.github.com/ruvnet/9e469d28497cb7501bd1011470651379) | DRACO: does a deep-research harness beat a single strong LLM call? Honest, mechanistic answer (ADR-038) — 4 frontier Ope |
 | 2026-06-15 | [GIST.md](https://gist.github.com/ruvnet/524174ae72215ef264ba9a1b1a130a0e) | Symbolic Scribe PR #2 — review, fixes, native optimization (5.4x compress), live openrouter/fusion benchmark, agent harn |
 | 2026-06-14 | [gist-gha.md](https://gist.github.com/ruvnet/a77366913e70fe65d9cffa12d59f8ef9) | MetaHarness × GitHub Actions: a one-command non-interactive CI/CD agent harness — .github/workflows + composite action,  |

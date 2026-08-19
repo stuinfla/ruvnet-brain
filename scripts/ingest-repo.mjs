@@ -108,6 +108,27 @@ const carded = (() => {
       .test(fs.readFileSync(path.join(KB, 'capability-cards.md'), 'utf8'));
   } catch { return false; }
 })();
+// AN ARTIFACT WITH NO COMMITTED RECIPE IS NOT DURABLE WORK — it is a local side effect with a
+// countdown on it. Proven overnight 2026-08-13 -> 08-14: a scheduled bundle apply extracted an
+// Aug-8 bundle over the live cache. capability-cards.md SURVIVED because it was committed and the
+// brain was restored from the repo in one command. helix, rvQR, RuCelium and wifi-veil — ingested
+// and VERIFIED ROUTING hours earlier — were gone without a trace, because a .rvf is a 32MB
+// gitignored build artifact that existed in exactly one directory on one machine.
+//
+// The stores themselves cannot be committed. The FACT that they were ingested can, so a wipe
+// becomes detectable and replayable instead of silent and permanent. This record is the recipe.
+if (ok) {
+  try {
+    const ledger = path.join(ROOT, 'kb', 'local-ingests.json');
+    const prior = fs.existsSync(ledger) ? JSON.parse(fs.readFileSync(ledger, 'utf8')) : { ingests: [] };
+    const rest = (prior.ingests || []).filter((e) => e.name !== NAME);
+    rest.push({ name: NAME, org: ORG, at: new Date().toISOString(), store: kb });
+    rest.sort((a, b) => a.name.localeCompare(b.name));
+    fs.writeFileSync(ledger, `${JSON.stringify({ ingests: rest }, null, 2)}\n`);
+    console.log(`[record] kb/local-ingests.json — ${rest.length} local ingest(s) recorded. COMMIT THIS.`);
+  } catch (e) { console.log(`[record] could not record the ingest: ${e.message}`); }
+}
+
 console.log(!ok
   ? `\n[FAIL] ${NAME}: expected stores missing after build.`
   : carded

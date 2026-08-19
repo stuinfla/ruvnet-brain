@@ -3,7 +3,7 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-10
+updated: 2026-08-14
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -202,6 +202,7 @@ failure. v1 draft's Decision + risks register superseded above; Context stands.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-13 | **Learning SCOPE is now resolved by one function that the writer and both readers share.** | Issue #139 (@ObiWanKenobi): #136 read the learner at `cwd: SYSTEM_HOME`, its fix changed that to `cwd: process.cwd()`, and BOTH are hardcodes — the second is right only because `project` is the default, and inverts under `RUVNET_LEARNING_SCOPE=user` (the flush feeds `~/.claude-flow/neural` while the console reads `<project>/.claude-flow/neural`). Newly dangerous rather than merely wrong: ruflo v3.38.9 made `hooks intelligence --train` REAL (ruvnet/ruflo#2940 was a no-op), so training the wrong store now moves ITS `lastAdaptation` to 0s and the stale card SILENTLY SELF-CLEARS while the operator's real learner is untouched. `learningScope()` / `learnerCwd()` now live in runtime-preferences.mjs beside the preferences they read; learn-flush, onboarding-console and health-repair all call them. This same fact scattered across files has now arrived as #104, #134, #136 and #139 — it agreed by coincidence, and now agrees by construction. |
 | 2026-08-10 | **Re-read after #128/#129; the on/off contract and every scope rule are unchanged.** | `bin/install.mjs` and `plugin/scripts/hook-shim.mjs` are governed here. Neither change touches the sentinel, `brain-state.mjs`, or any per-part scope: `prunePluginGenerations()` (issue #128) only removes directories under a registered `installPath`'s parent, and the sentinel lives in `~/.config/ruvnet-brain`, outside that tree. It moves *toward* this ADR: a stale generation ships its own boot-frozen `hook-shim.mjs`, and this ADR's per-invocation contract assumes one generation answers. #129 changes which command a scheduler runs; it reads no brain state. |
 | 2026-08-10 | **Re-read after #130/#131; the off-switch and scope decisions are unchanged.** | The update rail now takes ONE rollback snapshot per run instead of one per behind store, and the symlink guard is per-caller so an npm `.bin` link no longer makes every backup inventory unreadable (63 backups / ~72GB had accumulated). Neither touches the sentinel read, the per-operation snapshot, or the soft answer. |
 | 2026-08-08 | **Re-read after the RVF private-overlay hardening (PR #124); the off-switch and scope decisions are unchanged.** | `bin/install.mjs`, `kb/forge-update.mjs` and `kb/forge-mcp-all.mjs` are governed here and moved in that PR. The change hardens the PRIVATE OVERLAY UPDATER against symlink attack — direct, ancestor and dangling — validates every overlay generation and sidecar as a contained regular file, fails closed on corrupt backup inventories, and makes retirement idempotent. None of that touches the brain's OFF switch, its per-call sentinel read, or the soft answer: those remain read per operation and never cached. A safer updater is orthogonal to what the brain is permitted to answer. |

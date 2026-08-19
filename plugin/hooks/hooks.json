@@ -1,5 +1,5 @@
 {
-  "description": "POSIX Stable Spine (ADR-023): every hook routes through hook-shim.mjs, which resolves the active generation per invocation. Advisory hooks fail open. ADR-067: exactly ONE hook may refuse a given tool call \u2014 decision-gate.mjs composes every policy into one decision.",
+  "description": "POSIX Stable Spine (ADR-023): every hook routes through hook-shim.mjs, which resolves the active generation per invocation. Advisory hooks fail open. ADR-067: exactly ONE hook may refuse a given tool call \u2014 decision-gate.mjs composes every policy into one decision. TIMEOUTS ARE A CONTRACT, NOT A GUESS: the two decision-gate PreToolUse entries declare 10s, not the 5s they shipped with. decision-gate.mjs self-caps at DEFAULT_BUDGET_MS=4000, and 4000ms of policy work plus the shim's node boot, the gate's node boot and the outcome-ledger writes does not fit inside 5000ms \u2014 an audit on 2026-08-13 timed 14 runs in unrelated projects and SIX exceeded 5s (up to 5700ms, including a plain `ls -la` at 5109ms). The host kills an over-timeout hook and renders it as a FAILED PreToolUse HOOK, which is the \"ton of hook errors\" this plugin was reported for; the gate was not refusing anything, it was being killed. The number is asserted, not asserted-to: decision-gate.mjs exports DEFAULT_BUDGET_MS + MIN_HEADROOM_MS and tests/unit/decision-gate.test.mjs reads the timeout out of THIS file and goes red if the two stop fitting. A higher ceiling costs nothing on a fast call \u2014 measured wall time is ~360-750ms \u2014 it only stops a slow one being reported as broken. Comment keys (_note and friends) must NOT be added to this file: ADR-055 F17 records that Codex's plugin parser rejects them.",
   "hooks": {
     "SessionStart": [
       {
@@ -64,7 +64,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" decision-gate write",
-            "timeout": 5
+            "timeout": 10
           }
         ]
       },
@@ -74,7 +74,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" decision-gate bash",
-            "timeout": 5
+            "timeout": 10
           }
         ]
       },

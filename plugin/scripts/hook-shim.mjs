@@ -225,6 +225,50 @@ function readHookInput(limit) {
   });
 }
 
+/**
+ * THE LOUD FALLBACK, ONCE — not once per hook fire (2026-08-14).
+ *
+ * Finding 25 is right that a broken spine must never masquerade as health, and the message below is
+ * KEPT verbatim for that reason. What was wrong was the CADENCE. Both fallback lines were written on
+ * EVERY invocation, and this shim is registered ~19 times across the two manifests, on
+ * UserPromptSubmit / PreToolUse / PostToolUse / Stop. Measured on a seeded-but-broken spine: five
+ * consecutive fires of ONE hook id produced five identical stderr lines; a single prompt that runs a
+ * few tools fires far more than five. stderr is precisely what a host renders as "hook error", so a
+ * broken spine did not report itself once — it reported itself as the owner's literal complaint,
+ * "a ton of hook errors".
+ *
+ * Loudness is a fair design choice. Loudness PER INVOCATION is not information; it is noise that
+ * gets the whole surface muted, which is how a real warning stops being read.
+ *
+ * KEYED BY GENERATION + KIND, in a marker file — the same shape as skipNoBash's notice, and for the
+ * same reason. The key changes when the spine changes, so a NEW breakage always announces itself
+ * even if an older one was already reported.
+ *
+ * WHY A TTL RATHER THAN A TRUE SESSION ID, stated plainly rather than implied: no session identifier
+ * reaches this dispatcher. Claude Code does not set CLAUDE_SESSION_ID (learn-flush.mjs documents the
+ * same finding), and the only place `session_id` exists is the stdin payload — which the majority of
+ * these table entries deliberately never read. So the window is an approximation of a session, not a
+ * claim to be one: it bounds a persistent breakage to roughly one line per working session instead
+ * of one per tool call, and re-announces it in tomorrow's session rather than going silent forever.
+ * Never let it block or fail: a notice we could not record is still worth saying.
+ */
+const NOTICE_FILE = path.join(BRAIN_HOME, '.spine-fallback-notice');
+const NOTICE_TTL_MS = Number(process.env.RUVNET_SPINE_NOTICE_TTL_MS ?? 4 * 3600_000);
+function warnOnce(key, message) {
+  try {
+    const prev = JSON.parse(fs.readFileSync(NOTICE_FILE, 'utf8'));
+    const at = Date.parse(prev?.at || '');
+    // Same breakage, still inside the window → already said. Anything else (different key, no
+    // marker, unparseable marker, expired window) falls through and speaks.
+    if (prev?.key === key && Number.isFinite(at) && (Date.now() - at) <= NOTICE_TTL_MS) return;
+  } catch { /* no marker yet, or unreadable → say it */ }
+  try {
+    fs.mkdirSync(BRAIN_HOME, { recursive: true });
+    fs.writeFileSync(NOTICE_FILE, JSON.stringify({ key, at: new Date().toISOString() }) + '\n');
+  } catch { /* best effort — an unrecordable claim must not cost us the warning */ }
+  process.stderr.write(message);
+}
+
 /** Resolve the active code root. Returns { root, source } or null (→ fallback). */
 function resolveCodeRoot() {
   // Dev mode wins when explicitly declared and the target still looks like the checkout it names.
@@ -300,14 +344,18 @@ function dispatchHook() {
     if (fs.existsSync(spineFile)) {
       return runHook(spineFile);
     }
-    // Spine resolved but the body file is missing — fall back LOUDLY (finding 25).
-    process.stderr.write(`[hook-shim] spine (${spine.source}) missing ${entry.file} — falling back to frozen plugin\n`);
+    // Spine resolved but the body file is missing — fall back LOUDLY (finding 25), once per
+    // generation. The key omits entry.file on purpose: one broken generation is ONE piece of news,
+    // and keying per hook would put ~19 identical diagnoses of the same fault on the user's screen.
+    warnOnce(`missing-body:${spine.source}`,
+      `[hook-shim] spine (${spine.source}) missing ${entry.file} — falling back to frozen plugin\n`);
     return runHook(fallbackFile);
   }
   // No spine at all. First-install is the normal quiet case; a previously-seeded-but-broken spine
   // still lands here — the seed marker distinguishes them so breakage is loud, first-run silent.
   if (fs.existsSync(path.join(BRAIN_HOME, '.spine-seeded'))) {
-    process.stderr.write(`[hook-shim] spine unreadable — running frozen plugin fallback (run: node scripts/update-apply.mjs --doctor)\n`);
+    warnOnce('no-spine',
+      `[hook-shim] spine unreadable — running frozen plugin fallback (run: node scripts/update-apply.mjs --doctor)\n`);
   }
   return runHook(fallbackFile);
 }

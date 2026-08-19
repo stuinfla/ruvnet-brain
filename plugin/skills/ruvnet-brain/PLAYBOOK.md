@@ -41,10 +41,16 @@ the exact lie that makes people distrust rUv's code.
   token exchange", not "does RuvNet apply") — the useful hit can be in ANY of the 32 repos, never
   trust memory about what the corpus does or doesn't have.
 - Check project memory (ruflo memory search / AgentDB) for prior decisions on this area.
-- Diagnose memory only through one canonical absolute path: store a unique key with
-  `ruflo memory store --path <project>/.swarm/memory.db`, retrieve that exact key with the same
-  `--path`, then confirm the exact row through SQLite. A semantic-search miss, DB/WAL mtime,
-  daemon startup, or `[OK] Data stored successfully` alone proves neither failure nor success.
+- Diagnose memory only through one canonical absolute path, and ONLY through the managed
+  interface: store a unique key with `ruflo memory store --path <project>/.swarm/memory.db`,
+  then `ruflo memory retrieve --path <project>/.swarm/memory.db -k <key>`. The retrieved
+  VALUE is the proof.
+  A semantic-search miss, a DB/WAL mtime, or daemon startup proves neither failure nor success.
+  NEVER open a Ruflo/AgentDB-managed store with `sqlite3` — issue #140, and rUv's own
+  v3.32.34 release note is explicit: "No manual SQL is required." Since that release the
+  bridge FAILS CLOSED and reports the real error rather than a false success, which was the
+  only reason raw SQL was ever justified here. For health rather than a single row, use the
+  `agentdb_health` MCP tool. (Unrelated application databases are outside this rule.)
 - Invoke Ruflo MCP tools first for capabilities they already expose. For a CLI-only interface,
   use the brain's `ruvnet_cli_help` then `ruvnet_cli_run` tools with literal argv; never guess flags
   by reconstructing a raw shell command.

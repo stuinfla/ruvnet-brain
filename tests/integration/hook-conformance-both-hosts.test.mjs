@@ -81,6 +81,15 @@ function fire({ command, event, cwd }) {
       CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'),
       RUVNET_BRAIN_PROJECT_DIR: cwd,
       RUVNET_CONFIG_ROOT: path.join(cwd, '.conformance-config'), // keep real ledgers untouched
+      // TEST THE PAYLOAD BEING SHIPPED, NOT THE COPY ALREADY INSTALLED HERE.
+      //
+      // hook-shim resolves the Stable Spine (ADR-023) from $RUVNET_BRAIN_HOME/active.json and
+      // dispatches THAT generation — so without this the gate measured the spine at 4.0.52-dev and
+      // reported defects already fixed in the working tree as still present. A conformance gate that
+      // grades the installed copy answers "is this machine currently OK", when the question a commit
+      // needs answered is "is what I am about to ship OK". Pointing it at an empty home forces the
+      // frozen-plugin fallback, which is exactly the path a fresh install takes.
+      RUVNET_BRAIN_HOME: path.join(cwd, '.conformance-home'),
     },
   });
   return { ...r, ms: Date.now() - started };
@@ -121,7 +130,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
       try {
         const before = fs.readdirSync(dir).sort().join(',');
         fire({ ...c, cwd: dir });
-        const after = fs.readdirSync(dir).filter((n) => n !== '.conformance-config').sort().join(',');
+        const after = fs.readdirSync(dir).filter((n) => !n.startsWith('.conformance-')).sort().join(',');
         if (after !== before) offenders.push(`${c.host}/${c.event}: left behind ${after}`);
       } finally { fs.rmSync(dir, { recursive: true, force: true }); }
     }

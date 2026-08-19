@@ -3,7 +3,7 @@ id: ADR-061
 title: Subscription-only dual-host deliberation for hard problems
 status: Proposed
 date: 2026-07-28
-updated: 2026-08-10
+updated: 2026-08-19
 authors: [Stuart Kerr, GPT-5.6-Sol]
 tags: [claude-code, codex, subscriptions, adr, ddd, agentic-qe, deliberation]
 supersedes: []
@@ -173,4 +173,10 @@ path, the exact outcome this ADR forbids. Detecting the subscription correctly s
 boundary rather than relaxing it: no provider-backed path became implicit, and opt-in remains
 explicit. The outstanding two-host acceptance requirement is untouched by this repair.
 
-On 2026-08-10, **Re-read after #130/#131; subscription routing is unchanged.** Governed files moved for update-rail reasons only — rollback cardinality and symlink-guard scope. No provider path became implicit and opt-in remains explicit. 
+On 2026-08-10, **Re-read after #130/#131; subscription routing is unchanged.** Governed files moved for update-rail reasons only — rollback cardinality and symlink-guard scope. No provider path became implicit and opt-in remains explicit.
+
+## Currency log
+
+| Date | What changed | Why (with referents) |
+|---|---|---|
+| 2026-08-19 | Codex wiring changed under this decision (gate routing + wrapper budget); the subscription-only posture is UNCHANGED — no host gained a metered path. Reinforced rather than eroded: `spend-guard` now refuses an agent fleet that would inherit ANTHROPIC_API_KEY / OPENAI_API_KEY on either host, after agentic-qe#557 billed $1,600 across ~374 headless agents while the Max subscription sat unused. `claude` and `codex` are the seats and are never blocked. |

@@ -78,9 +78,10 @@ function defaultRun(cmd, args) {
 }
 
 /**
- * THE ONLY ACCEPTABLE PROOF OF A WRITE: store, then confirm the exact row through SQL on the same
- * path. Explicitly NOT evidence, each having been believed once: the `[OK]` success line, a
- * semantic-search hit, the .db mtime, the daemon being up, or which driver is loaded.
+ * THE ONLY ACCEPTABLE PROOF OF A WRITE: store, then RETRIEVE that exact key through the managed
+ * interface and read the value back. Explicitly NOT evidence, each having been believed once: the
+ * `[OK]` success line, a semantic-search hit, the .db mtime, the daemon being up, or which driver is
+ * loaded. And explicitly NOT permitted, per issue #140: opening the managed store with `sqlite3`.
  */
 export function proveMemoryDurable(dbPath = defaultDb(), { run = defaultRun } = {}) {
   // AN ABSENT STORE IS NOT AN EXEMPTION. This returned `{ok:true, skipped:true}` when the file did
@@ -91,12 +92,24 @@ export function proveMemoryDurable(dbPath = defaultDb(), { run = defaultRun } = 
   // absent path is a valid question with a real answer; only a path we cannot even attempt is a skip.
   const key = `durability-probe-${process.pid}-${Date.now()}`;
   try {
-    run('ruflo', ['memory', 'store', '--path', dbPath, '-n', 'default', '-k', key, '--value', 'probe']);
-    const rows = run('sqlite3', [dbPath, `SELECT COUNT(*) FROM memory_entries WHERE key='${key}';`]).trim();
-    if (rows !== '1') {
-      return { ok: false, why: `stored a row, SQL found ${rows} — the store reports a success it cannot honour` };
+    // THE PROOF IS THE RETRIEVED VALUE, NOT A SQL ROWCOUNT (issue #140, @sparkling).
+    //
+    // This read the row back with `sqlite3`, which opens a Ruflo-MANAGED store directly — the exact
+    // boundary violation ADR-063 and `hijack-ruvnet` exist to stop, committed by the hook that
+    // guards durability. The justification was real at the time: a write could report success and
+    // persist nothing. But rUv closed that upstream in v3.32.34 ("No manual SQL is required"; the
+    // bridge now FAILS CLOSED and reports the native error instead of a misleading fallback), and
+    // the 2026-08-13 incident confirms retrieve was always sufficient — it answered `Key not found`
+    // on precisely the writes that had evaporated. Verified on ruflo 3.38.12 before this change:
+    // the round-trip returns the stored VALUE, and a damaged store answers `[ERROR] no such table`
+    // rather than a false success.
+    const probeValue = `probe-${key}`;
+    run('ruflo', ['memory', 'store', '--path', dbPath, '-n', 'default', '-k', key, '--value', probeValue]);
+    const back = run('ruflo', ['memory', 'retrieve', '--path', dbPath, '-n', 'default', '-k', key]);
+    if (!String(back).includes(probeValue)) {
+      return { ok: false, why: 'stored a key and retrieving it did not return the value — the store reports a success it cannot honour' };
     }
-    return { ok: true, why: 'store → SQL round-trip confirmed the exact row on disk' };
+    return { ok: true, why: 'store → retrieve round-trip returned the exact value through the managed interface' };
   } catch (e) {
     // "CANNOT PROBE" IS NOT "PROBED AND FAILED", and collapsing them shipped the worst
     // stranger-facing bug in this repo. Measured with PATH=/usr/bin:/bin — i.e. most machines that

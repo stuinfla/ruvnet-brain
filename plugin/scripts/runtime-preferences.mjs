@@ -285,3 +285,43 @@ if (process.argv.includes('--learning-scope')) {
   const result = seedProjectDefaults();
   if (!result.ok) process.exitCode = 1;
 }
+
+/**
+ * WHERE THE LEARNER LIVES — ONE ANSWER, SHARED BY THE WRITER AND EVERY READER.
+ *
+ * ISSUE #139, filed by @ObiWanKenobi, and he is right about the shape. `learn-flush.mjs` resolves
+ * the learning scope properly and then writes to `HOME` or `PROJECT` accordingly. The console read
+ * the learner with a HARDCODED cwd — first `SYSTEM_HOME` (issue #136), then `process.cwd()` after
+ * the fix. Both are hardcodes. Neither asks which scope is in effect.
+ *
+ * In his words: `process.cwd()` "happens to be correct only because `project` is the default. Set
+ * `RUVNET_LEARNING_SCOPE=user` and the bug inverts: the flush feeds `~/.claude-flow/neural` while
+ * the console reads `<project>/.claude-flow/neural`. Same card, same false positive, opposite
+ * direction."
+ *
+ * That is this repo's signature defect once more — one fact (WHERE the learner is) implemented in
+ * three places, agreeing by coincidence rather than by construction. It has now arrived as #104,
+ * #134, #136 and #139. So the fact moves here, next to the preferences it depends on, and the
+ * writer and the readers call the same function. A future scope becomes one edit, not three.
+ */
+export function learningScope(options = {}) {
+  const env = options.env ?? process.env;
+  const cwd = options.cwd ?? process.env.RUVNET_BRAIN_PROJECT_DIR ?? process.cwd();
+  const configured = env.RUVNET_LEARNING_SCOPE
+    || loadRuntimePreferences({ ...options, cwd }).values.learningScope;
+  return ['off', 'project', 'user'].includes(configured) ? configured : 'project';
+}
+
+/**
+ * The cwd to run `ruflo hooks intelligence` in — the directory whose `.claude-flow/neural` the
+ * configured scope actually uses. `ruflo` reports `Data Dir: <cwd>/.claude-flow/neural`, so cwd IS
+ * the store selector; getting it wrong measures a store nothing writes to. Measured on one machine
+ * during #136: the home store held 1,216 trajectories last trained 6.9 DAYS ago while the served
+ * project held 9,940 last trained 22 SECONDS ago, and the console said "your learner has gone
+ * quiet" about the one training every few seconds.
+ */
+export function learnerCwd(options = {}) {
+  const home = options.home ?? os.homedir();
+  const project = options.cwd ?? process.env.RUVNET_BRAIN_PROJECT_DIR ?? process.cwd();
+  return learningScope(options) === 'user' ? home : project;
+}
