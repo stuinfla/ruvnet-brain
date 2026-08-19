@@ -42,6 +42,57 @@ fresh: if the live read fails, it exits 1 rather than restamping a stale count w
 (`expected true to be false` — the record existed), then passed against the fix. A test that cannot
 fail on broken code is not a test.
 
+**AND IT WAS NOT THE ONLY THING RED.** Looking past the seal: the last 22 *completed* `ci` runs
+on main were ALL failures, and eight more were WEDGED `in_progress` for up to three hours. No job
+in `ci.yml` declared `timeout-minutes`, so a hung step ran toward GitHub's six-hour default. The
+second-order damage was worse than the lost minutes — `gh run view --log-failed` refuses while a
+run is in progress, so the wedged `check` job HID `release-qe`'s and `windows-unit`'s already-red
+results behind it. A hang did not stop one job; it blinded the whole run. All four jobs now carry
+ceilings, and the eight wedged runs were cancelled. **The hang itself is still undiagnosed** — the
+same command (`npm run test:cov`) completed locally in under fifteen minutes with 3334 passing, so
+it does not reproduce here and is environment-specific. Timeouts bound the damage; they do not
+explain it.
+
+**Twelve unit failures, none of them from the release work.**
+
+- **Six stale public claims.** Surfaces advertised "72 repos" and "195 catalogued" against a
+  manifest of 77/200/206, and the explainer read *"195 built today, 195 catalogued repos still
+  pending"* — the same number substituted twice, describing no state that can exist. Now "77 built
+  today, 123 of the 200 catalogued repos still pending", which is what the manifest actually says.
+- **Three hook-timeout tests that were right while I was wrong.** I had widened the PreToolUse
+  budget to 10s on 2026-08-14, and that was honest then: six of fourteen audited runs really were
+  killed at 5s. What made it stale was the adr-currency two-pass fix, which stopped the gate reading
+  all 83 ADR bodies per tool call. Re-measured through the FULL registered path — 405-438ms in a
+  stranger project, 412-438ms here — about 10x faster, twelve times the headroom. ADR-055 (`timeout
+  <= 5s`) and ADR-058 line 276 ("hooks retain 5s") had BOTH been violated for six days; narrowing
+  restored compliance with two documents written before the mistake. The rule now lives in the
+  source: **a budget widened by evidence must be narrowed again when that evidence expires**, or
+  every emergency ratchets the ceiling up permanently and nothing ratchets it back.
+- **Literal backslashes were being injected into the model's context.** `ground-ruvnet.sh` escaped
+  the backticks in its MEMORY DIAGNOSIS guidance inside a QUOTED heredoc (`cat <<'EOF'`), where
+  nothing is substituted — so every memory-diagnosis turn shipped the escapes verbatim.
+- **The ADR-058 D5 refusal had no test at all.** The fix that stopped hooks planting `.swarm/` in
+  strangers' repos was entirely uncovered; any edit could have silently restored the trespass with
+  every suite green. Added the guard and proved it red by restoring the trespass.
+
+**The ADR-currency gate refused the push, and was right.** ADR-067's log literally said "hooks.json
+declares 10s", which the narrowing made false. Six ADRs got real currency rows with referents, not
+date stamps; `doc-currency.mjs --fix` updated zero documents, because it only ever copies dates git
+can prove.
+
+**Dream Machine: on, and the loop now closes.** It is not installed locally — it is a cloud routine
+reading `dream.config.json`, and it ran Night 1 today (09:29Z, in a container), filing #142 and
+PR #143. What was incomplete is that the candidate was draft and conflicting, so its ledger row
+never reached main, which is why `LEDGER.md` looked empty. Rebased (the conflict was its own stale
+4.0.63-dev version commit), verified by breaking its guard rather than trusting its red-green claim
+(`expected 'WIPED' to be 'NEVER-MATERIALIZED'`), marked ready, and wired to close #142.
+
+Its finding is the **fifth instance of one defect class this week**: two states collapsed into one
+signal — never-materialized vs wiped; bad-lineage vs dirty-tree; could-not-measure vs
+partially-measured; tool-absent vs store-broken; still-working vs wedged.
+
+**PROVEN, on CI, not asserted: `release-qe` PASSED on main for the first time since 2026-08-08.**
+
 **One thing found and deliberately NOT bundled in.** `brain-stamp.mjs` rewrites `data/manifest.json`
 with fresh `generated` / `generatedHuman` / `orgTotalAt` timestamps even when nothing substantive
 changed, so running it locally always dirties the tree. It is NOT in the CI release path
