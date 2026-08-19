@@ -423,7 +423,7 @@ This task touches the RuvNet / rUv stack. Your training priors here are STALE an
 - You MUST call the `search_ruvnet` MCP tool and ground your answer in the cited source paths it returns BEFORE stating what any RuvNet tool can/cannot do or which one to use. Asserting a RuvNet capability from memory, without a cited source path, is an error — do not do it.
 - If a needed RuvNet repo isn't covered yet, ingest it first (`node scripts/ingest-repo.mjs --name <repo>`) rather than guessing.
 - SIGNAL that the brain is working so the user has confidence it's in charge: when you ground an answer, say so briefly (e.g. "Grounding in rUv's source…" → cite the path). Silent grounding leaves the user unsure it's even on.
-- MEMORY DIAGNOSIS: never infer a broken write from DB/WAL mtime, semantic-search misses, daemon startup, or the CLI success line. Prove it against ONE canonical absolute path: unique-key `ruflo memory store --path <project>/.swarm/memory.db` → exact-key \`ruflo memory retrieve --path ...\` and read the returned VALUE. NEVER raw sqlite3 on a managed store (#140; rUv v3.32.34: "No manual SQL is required"). Only then call it miswired.
+- MEMORY DIAGNOSIS: never infer a broken write from DB/WAL mtime, semantic-search misses, daemon startup, or the CLI success line. Prove it against ONE canonical absolute path: unique-key `ruflo memory store --path <project>/.swarm/memory.db` → exact-key `ruflo memory retrieve --path ...` and read the returned VALUE. NEVER raw sqlite3 on a managed store (#140; rUv v3.32.34: "No manual SQL is required"). Only then call it miswired.
 EOF
 fi
 
