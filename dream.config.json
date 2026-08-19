@@ -1,0 +1,64 @@
+{
+  "repo": "stuinfla/ruvnet-brain",
+  "cron": "0 8 * * *",
+  "slots": [
+    {
+      "deep": "cross-host-conformance",
+      "scan": ["codex-parity", "stranger-project-behaviour"]
+    },
+    {
+      "deep": "brain-currency",
+      "scan": ["dark-stores", "corpus-freshness"]
+    },
+    {
+      "deep": "enforcement-integrity",
+      "scan": ["lesson-delivery", "gate-teeth"]
+    },
+    {
+      "deep": "grounding-quality",
+      "scan": ["retrieval-precision", "citation-binding"]
+    },
+    {
+      "deep": "memory-durability",
+      "scan": ["managed-boundary", "round-trip-proof"]
+    }
+  ],
+  "bonusModuli": {
+    "25": "coverage-gap-review",
+    "75": "self-hosting-review"
+  },
+  "controlPlaneProbes": [
+    "node scripts/brain-score.mjs 2>&1 | tail -20 || true",
+    "node scripts/restore-local-ingests.mjs 2>&1 | tail -8 || true",
+    "node -e \"import('./kb/store-root.mjs').then(m=>console.log('stores',m.storesAt(m.storeRoot()).length,'dark',m.darkStores().length))\" || true"
+  ],
+  "buildStep": {
+    "cmd": "npm ci",
+    "degradeOnWasmFailure": true
+  },
+  "evaluatorEntrypoints": {
+    "bench": "npm run eval:gate",
+    "tests": "npm run test:all",
+    "integration": "npm run test:integration",
+    "claims": "npm run claims:verify",
+    "darwin": "npx @metaharness/darwin evolve --sandbox mock"
+  },
+  "adrConvention": "4-digit",
+  "competitors": [
+    "Sakana AI Scientist",
+    "OpenHands",
+    "DSPy/GEPA",
+    "SWE-agent",
+    "Cursor background agents"
+  ],
+  "extraDisciplines": [
+    "evaluation-is-not-promotion",
+    "witness-every-quantitative-claim",
+    "a-guard-that-cannot-fail-is-not-a-guard",
+    "never-hand-roll-what-ruv-already-ships"
+  ],
+  "ledgerPath": "docs/dream-cycle/LEDGER.md",
+  "branchPrefix": "dream/",
+  "labels": ["dream-cycle", "research"],
+  "autoMerge": false
+}
