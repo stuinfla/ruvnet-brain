@@ -15,6 +15,19 @@ set -uo pipefail
 # RUVNET_LEARNING_SCOPE so the two halves cannot disagree during one hook invocation.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 SCOPE="${RUVNET_LEARNING_SCOPE:-}"
+# CONFIGURED vs DEFAULTED, and this must be captured BEFORE the preferences fallback below.
+#
+# `project` is the DEFAULT scope, and `runtime-preferences.mjs --learning-scope` RESOLVES it —
+# measured 2026-08-19 against an empty config root, it returns "project", not "". So after the
+# fallback runs, an explicit opt-in and a bare default are indistinguishable. The first version of
+# this guard read SCOPE afterwards and was therefore always "configured", which let the
+# stranger-project mutation straight back in.
+#
+# The env var is the one signal that is unambiguously explicit: nothing sets it by default. A
+# project that opted in through the console instead is still covered by the `.swarm` clause below,
+# because adopting Ruflo's convention is itself the opt-in.
+SCOPE_CONFIGURED=0
+[ -n "$SCOPE" ] && SCOPE_CONFIGURED=1
 if [ -z "$SCOPE" ] && [ -f "$HERE/runtime-preferences.mjs" ] && command -v node >/dev/null 2>&1; then
   SCOPE=$(node "$HERE/runtime-preferences.mjs" --learning-scope 2>/dev/null) || SCOPE=""
 fi
@@ -143,8 +156,22 @@ fi
 # Measured 2026-08-14 by the both-hosts conformance gate in a temp project with no git and no brain
 # artifacts; ADR-058 D5 — never touch what we do not own. User scope is unaffected: that queue lives
 # under the brain's OWN cache directory, which we do own and may create.
+# CREATE THE QUEUE ONLY WHERE THE PROJECT ACTUALLY OPTED IN.
+#
+# First attempt required an existing `.swarm`, which stopped the stranger-project mutation but ALSO
+# broke a legitimate first run: a project that explicitly sets RUVNET_LEARNING_SCOPE=project before
+# it has ever captured anything got nothing, and `learning-scope-policy` went red. Presence of
+# `.swarm` was the wrong discriminator — it answers "has Ruflo run here", not "did this project ask
+# for learning".
+#
+# The right one is whether the scope was CONFIGURED (env or runtime-preferences) rather than
+# inherited from the default. A stranger's repo sets neither, so nothing is created there; a project
+# that opted in gets its queue on the very first capture, `.swarm` or not. An existing `.swarm` is
+# still honoured on its own, because a repo already carrying Ruflo's convention has plainly adopted it.
 case "$DIR" in
-  */.swarm/*) [ -d "$(dirname "$DIR")" ] || exit 0 ;;
+  */.swarm/*)
+    if [ "$SCOPE_CONFIGURED" != "1" ] && [ ! -d "$(dirname "$DIR")" ]; then exit 0; fi
+    ;;
 esac
 # Owner-only (0700 dir / 0600 file). This queue was 0644 inside a 0755 dir: on macOS every local
 # account is normally in `staff`, so any other user on a shared or corporate machine could read it.
