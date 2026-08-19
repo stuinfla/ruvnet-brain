@@ -61,10 +61,18 @@ jobs:
         # SKIPS — now LOUDLY (run-tests prints "CORE CAPABILITY BATTERY SKIPPED" so green never
         # masquerades as "the brain works"). This fast job covers structure/hook/guard only.
         run: npm test
+      # ONE STEP MUST NOT COVER TWO OPERATIONS. This was a single step named "Unit tests + coverage
+      # (vitest)" that ALSO performed the job's only dependency install. When it wedged for three
+      # hours (2026-08-19, eight consecutive main runs), the step name asserted "the tests are
+      # running" while the truth might equally have been "npm i never returned" — and there is no way
+      # to tell them apart from the outside, because a step reports one status for everything inside
+      # it. Same shape as INVALID_LINEAGE covering both a bad lineage and a dirty tree, and as the
+      # replay guard covering both could-not-measure and partially-measured. Split, so the job's own
+      # step list names which half is stuck.
+      - name: Install dependencies
+        run: npm i --no-audit --no-fund --loglevel=error
       - name: Unit tests + coverage (vitest)
-        run: |
-          npm i --no-audit --no-fund --loglevel=error
-          npm run test:cov
+        run: npm run test:cov
       - name: Mutation tests (the guards must FALL on broken code)
         # tests/mutation/*.test.mjs was listed in vitest.config.mjs's include from the day it was
         # written, but NO npm script and NO CI step ever ran that directory — so the falsifiability
