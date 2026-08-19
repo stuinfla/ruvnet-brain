@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-14
+updated: 2026-08-19
 impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -384,6 +384,7 @@ correct: **the strong claim was the defect.**
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-19 | **The 95 contract held against its own evidence gate, and the gate caught a real lie.** | `check` was red on EVERY open PR — the Dream Machine's #143, dependabot's #137 — at "Model catalog live-verified (ADR-0016)": the snapshot was 17.6d old against a 14d budget. The gate was correct; its INPUT had gone stale, which blocks unrelated work exactly the way a stale ADR does. Refreshing against 415 live models then caught three genuine price movements the cost-routing surface had quoted wrong for 17 days — `gpt-5.6-sol` halved, `terra` and `luna` doubled. Anyone asking "do this cheaper" was choosing on wrong numbers in BOTH directions. Prices are now derived from the snapshot rather than hand-patched; I corrected two by hand and caught myself starting a third, which is the restated-fact defect this repo keeps paying for. |
 | 2026-08-14 | Hook surface changed under this contract: both-hosts conformance gate added, decision-gate timeout/budget reconciled, cross-project mutation closed. No change to the contract itself. |
 | 2026-08-08 | **Re-read after PR #124, the #123 convergence fix, and the new GitHub health watcher; the 95 contract is unchanged.** | Three governed movements, none touching what a release must PROVE. (1) PR #124 hardens the private RVF overlay updater against symlink attack and fails closed on corrupt backup inventories — filesystem safety on the update path. (2) The #123 fix makes host convergence ORDER versions instead of equating them, so a `-dev` install ahead of the published release is no longer reported as broken; the thresholds and the evidence a release must carry are untouched, only the comparison operator changed. (3) `scripts/github-health-watch.mjs` was added and REPORTS only — it cannot push, merge, close or publish, asserted by scanning its own source in test. Full unit suite verified at 3,073 passed / 0 failed on the merged tree before landing. |
 | 2026-08-07 | **Re-read after the #122 worker-lifetime change; no contract change.** | `kb/forge-mcp-all.mjs` now exits when idle, so a warm worker is no longer guaranteed to be resident for the life of a session. This ADR's quality contract is about what a query must PROVE, not about process lifetime: the first query after an idle exit pays one warm-up and then answers under the same gates as any other, because `plugin/mcp/server.mjs` owns `ensureChild()` and respawns transparently (server.mjs:260 already relied on that after a timeout kill). Verified the full unit suite at 3035 passed / 0 failed with the change in place. |

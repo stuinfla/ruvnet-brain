@@ -1,15 +1,15 @@
 {
   "builder": "rvf-kb-forge",
-  "builtUtc": "2026-08-18T07:17:32.181Z",
+  "builtUtc": "2026-08-19T07:15:50.679Z",
   "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
   "selfUpdate": "node forge-update.mjs",
   "stores": {
     "open-claude-code": {
       "kbName": "open-claude-code",
       "sourceRepo": "https://github.com/ruvnet/open-claude-code",
-      "sourceCommit": "f9d3214219722f1121091010beeed64200915aad",
-      "sourceDescribe": "v2.0.0-nightly.20260818",
-      "builtUtc": "2026-08-18T07:16:36.337Z",
+      "sourceCommit": "5d007f09c43be0e7c0849f039df447d6fbbbe04d",
+      "sourceDescribe": "v2.0.0-nightly.20260819",
+      "builtUtc": "2026-08-19T07:15:48.156Z",
       "builder": "rvf-kb-forge",
       "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/open-claude-code-kb-bundle.zip",
@@ -106,9 +106,9 @@
     "ruview": {
       "kbName": "ruview",
       "sourceRepo": "https://github.com/ruvnet/RuView",
-      "sourceCommit": "a76adc3c2fdf715919ea2bec5cec3a26d36cce74",
-      "sourceDescribe": "v2272",
-      "builtUtc": "2026-08-18T07:16:33.481Z",
+      "sourceCommit": "d36f346bbaa360ba8e3e29ab90164bbaddc883ce",
+      "sourceDescribe": "v2288",
+      "builtUtc": "2026-08-19T07:15:44.971Z",
       "builder": "rvf-kb-forge",
       "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/ruview-kb-bundle.zip",
@@ -293,9 +293,9 @@
     "latentmesh": {
       "kbName": "latentmesh",
       "sourceRepo": "https://github.com/ruvnet/LatentMesh",
-      "sourceCommit": "0a7812863bc48687b5335273c1c2e561a79e3af0",
-      "sourceDescribe": "0a78128",
-      "builtUtc": "2026-08-18T07:16:44.153Z",
+      "sourceCommit": "922ea196ddfd653ca47c6e900f9aae58f6f26c9d",
+      "sourceDescribe": "922ea19",
+      "builtUtc": "2026-08-19T07:15:50.679Z",
       "builder": "rvf-kb-forge",
       "canonicalManifestUrl": "https://api.github.com/repos/stuinfla/ruvnet-brain/releases/latest",
       "canonicalBundleUrl": "https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb/latentmesh-kb-bundle.zip",
@@ -335,6 +335,6 @@
       "selfUpdate": "node forge-update.mjs ai-text-watermark"
     }
   },
-  "brainVersion": "4.0.58-dev",
-  "releaseTag": "v4.0.58-dev"
+  "brainVersion": "4.0.62-dev",
+  "releaseTag": "v4.0.62-dev"
 }

@@ -1,13 +1,13 @@
 {
   "brainVersion": "4.0.62-dev",
-  "generated": "2026-08-18T07:17:48.159Z",
-  "generatedHuman": "Tue, 18 Aug 2026 07:17:48 GMT",
+  "generated": "2026-08-19T07:15:51.713Z",
+  "generatedHuman": "Wed, 19 Aug 2026 07:15:51 GMT",
   "coverage": {
     "built": 77,
     "catalogued": 200,
-    "orgTotalApprox": 205,
+    "orgTotalApprox": 206,
     "orgTotalSource": "live",
-    "orgTotalAt": "2026-08-18T07:17:48.932Z",
+    "orgTotalAt": "2026-08-19T07:15:52.436Z",
     "pending": 123
   },
   "builtRepos": [
@@ -15,7 +15,7 @@
       "name": "RuView",
       "tier": "T0",
       "stars": 75658,
-      "builtFromSha": "a76adc3c2fdf715919ea2bec5cec3a26d36cce74",
+      "builtFromSha": "d36f346bbaa360ba8e3e29ab90164bbaddc883ce",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -215,7 +215,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "f9d3214219722f1121091010beeed64200915aad",
+      "builtFromSha": "5d007f09c43be0e7c0849f039df447d6fbbbe04d",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -540,7 +540,7 @@
     {
       "name": "latentmesh",
       "tier": "fresh",
-      "builtFromSha": "0a7812863bc48687b5335273c1c2e561a79e3af0",
+      "builtFromSha": "922ea196ddfd653ca47c6e900f9aae58f6f26c9d",
       "latestRemoteSha": null,
       "status": "built"
     },
