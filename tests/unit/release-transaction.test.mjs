@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   abortReleaseTransaction,
+  canonicalJson,
+  digestReceipt,
   signReceipt,
   validateReceiptChain,
 } from '../../scripts/release-transaction.mjs';
@@ -51,5 +53,43 @@ describe('remote durable release transaction', () => {
       adapter: provider, privateKey: keys.privateKey, publicKey: keys.publicKey,
     });
     expect(aborted.state).toBe('aborted');
+  });
+});
+
+describe('the digest serialiser agrees with the one that writes the file', () => {
+  // THIS SILENTLY CORRUPTED THE TERMINAL RECEIPT OF EVERY SUCCESSFUL RELEASE.
+  //
+  // Measured 2026-08-20 on v4.0.36 and v4.0.90-dev: both `channels-converged` receipts failed their
+  // own digest check, with the same key missing. `canonicalJson` KEPT keys whose value was
+  // `undefined` (emitting `"error":undefined`, which is not even valid JSON) while `JSON.stringify`
+  // DROPS them when the receipt is written. The converge observation carries optional fields and on
+  // a clean run `verified.error` is undefined — so the digest was computed over a shape that could
+  // never be read back. `runReleaseTransaction` appends, re-reads and verifies, so the publish died
+  // with `release receipt digest mismatch` AFTER npm and GitHub were both promoted: the release
+  // shipped and the rail reported failure.
+
+  it('TEETH: a receipt holding an undefined field digests the same after a write/read round-trip', () => {
+    const receipt = {
+      schemaVersion: 2,
+      state: 'channels-converged',
+      observation: { hosts: { verifier: { artifactSha256: 'abc', error: undefined } } },
+    };
+    const before = digestReceipt(receipt);
+    const afterWriteAndRead = JSON.parse(JSON.stringify(receipt));
+    expect(digestReceipt(afterWriteAndRead), 'the digest must survive the trip through disk').toBe(before);
+  });
+
+  it('TEETH: canonicalJson omits undefined exactly as JSON.stringify does — objects AND arrays', () => {
+    // Without this the fix could regress to "emit something different but still stable".
+    expect(canonicalJson({ a: 1, b: undefined })).toBe(JSON.stringify({ a: 1, b: undefined }));
+    expect(canonicalJson([1, undefined, 2])).toBe(JSON.stringify([1, undefined, 2]));
+  });
+
+  it('does NOT change the digest of a receipt that never held an undefined value', () => {
+    // Every receipt that currently verifies must keep verifying; this fix repairs the writer, it
+    // does not re-date history.
+    const clean = { schemaVersion: 2, state: 'prepared', observation: { verdict: 'PASS' } };
+    expect(digestReceipt(clean)).toBe(digestReceipt(JSON.parse(JSON.stringify(clean))));
+    expect(canonicalJson(clean)).toBe('{"observation":{"verdict":"PASS"},"schemaVersion":2,"state":"prepared"}');
   });
 });

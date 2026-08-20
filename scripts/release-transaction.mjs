@@ -55,10 +55,36 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
   aborted: [],
 });
 
+/**
+ * THE DIGEST SERIALISER MUST AGREE WITH THE ONE THAT WRITES THE FILE.
+ *
+ * It did not, and it silently corrupted the terminal receipt of EVERY successful release. Measured
+ * 2026-08-20 on v4.0.36 and v4.0.90-dev — both `channels-converged` receipts, both digest=BAD, both
+ * with the same missing key:
+ *
+ *     canonicalJson({a: undefined})  ->  {"a":undefined}      key KEPT (and not even valid JSON)
+ *     JSON.stringify({a: undefined}) ->  {}                   key DROPPED
+ *
+ * The converge observation carries optional fields — `hosts.verifier.error`, `claudeOnly`,
+ * `codexOnly`, `dual` — and on a clean run `verified.error` is `undefined`. So the digest was
+ * computed over `…"error":undefined…` while the bytes written omitted `error` entirely: a digest
+ * over a shape that can never be read back. `runReleaseTransaction` appends a receipt, reads it
+ * back and verifies it, so the publish then died with `release receipt digest mismatch` AFTER npm
+ * and GitHub had both been promoted — the release shipped and the rail reported failure.
+ *
+ * Proven by reconstruction: restoring `observation.hosts.verifier.error = undefined` on the stored
+ * receipt makes `digestReceipt` reproduce the stored digest exactly.
+ *
+ * Arrays have the same asymmetry (`JSON.stringify([undefined])` is `[null]`), so both are matched
+ * here. This does not change the digest of any receipt that never held an undefined value, which is
+ * every receipt that currently verifies.
+ */
 export const canonicalJson = (value) => {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (Array.isArray(value)) return `[${value.map((item) => (item === undefined ? 'null' : canonicalJson(item))).join(',')}]`;
   if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+    return `{${Object.keys(value).sort()
+      .filter((key) => value[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
   }
   return JSON.stringify(value);
 };
