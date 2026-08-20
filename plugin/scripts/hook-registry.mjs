@@ -18,16 +18,27 @@
  * plus the derived fields the lint needs (`handler`, `shimId`, `codeRoot`, `hasFailsafe`,
  * `declaredMode`, `tools`, `anchored`, `asyncRewake`, `contractSource`).
  *
- * THE SIX REGISTRIES (ADR-055 appendix A), and one deliberate split:
+ * THE SEVEN REGISTRIES (ADR-055 appendix A plus the Codex host, added 2026-08-20 — Dream Cycle
+ * cross-host-conformance finding: this file enumerated six registries and Codex's was not one of
+ * them, so none of M1/M3/M5/M6 had ever run over `codex-hooks.json`), and one deliberate split:
  *
  *   layer                | file                                                    | inMesh
  *   ---------------------|---------------------------------------------------------|-------
  *   plugin               | <repo>/plugin/hooks/hooks.json                          | yes
+ *   codex                | <repo>/plugin/hooks/codex-hooks.json                    | yes
  *   user                 | ~/.claude/settings.json                                 | yes
  *   project              | <repo>/.claude/settings.json                            | yes
  *   third-party:<name>   | <plugin install>/hooks/hooks.json (enabled plugins only)| yes
  *   plugin-installed     | ~/.claude/plugins/cache/ruvnet-brain/<v>/hooks/hooks.json | NO (mirror)
  *   marketplace-clone    | ~/.claude/plugins/marketplaces/ruvnet-brain/…/hooks.json | NO (mirror)
+ *
+ * CODEX RECORDS NEVER ROUTE THROUGH `hook-shim.mjs` — Codex's own wrapper chain
+ * (`codex-hook-wrapper.mjs` → `codex-hook-adapter.mjs`) resolves the active spine generation and
+ * dispatches by a trailing CLI token instead (`codexDispatchIdIn()`, below). That token is drawn
+ * from the SAME id space as `hook-shim.mjs`'s dispatch TABLE — verified 2026-08-20: every id
+ * `codex-hooks.json` uses (`decision-gate`, `route-dispatch`, `learn-capture`, …) already exists as
+ * a table key — so a codex registration's `mode`/`offBehavior` resolve from that one table too,
+ * exactly like a plugin registration. No new contract file, no invented declaration.
  *
  * The last two are the SAME registrations as `plugin`, delivered as different code copies — the
  * repo copy is the preimage, the cache copy is what Claude Code booted, the marketplace clone is
@@ -105,6 +116,10 @@ export const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse']);
 export const TOOLS = Object.freeze([
   'Task', 'TaskStop', 'Agent', 'Bash', 'BashOutput', 'Read', 'Write', 'Edit', 'MultiEdit',
   'NotebookEdit', 'NotebookRead', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'TodoWrite', 'Skill',
+  // Codex's own tool names (ADR-051) — `exec_command` and `apply_patch` are what `codex-hooks.json`
+  // matchers actually target; without them here M5 could not see whether a Codex matcher anchors
+  // the tool it claims to guard.
+  'exec_command', 'apply_patch',
 ]);
 
 /** `*` and `.*` and `` are Claude Code's "everything" spellings; `*` is not a legal regex. */
@@ -146,6 +161,19 @@ export function basenamesIn(command) {
 /** The hook-shim dispatch id, when this command routes through the shim. */
 export function shimIdIn(command) {
   const m = (command ?? '').match(/hook-shim\.mjs["'`]?\s+([a-zA-Z][\w-]*)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * The Codex wrapper's dispatch id. `codex-hooks.json` never names `hook-shim.mjs` — its inline
+ * bootstrap (`node -e "<script>" <budgetMs> <hookId>[ <extra>]`) spawns `codex-hook.mjs` and hands
+ * it `<hookId>` as `process.argv[2]`, exactly as `codex-hook-wrapper.mjs` itself reads it
+ * (`const hookId = process.argv[2] || '';`). The closing quote of the `-e` argument followed by a
+ * bare number is what marks where the CLI args begin; verified against all 16 live entries
+ * 2026-08-20, zero false matches.
+ */
+export function codexDispatchIdIn(command) {
+  const m = (command ?? '').match(/"\s+\d+\s+([a-zA-Z][\w-]*)/);
   return m ? m[1] : null;
 }
 
@@ -313,8 +341,13 @@ export function discoverSources({ repo = REPO, home = os.homedir(), includeMachi
   // so the mesh census silently described a machine with no shipped hooks at all.
   const pluginHooks = ['plugin/hooks/hooks.json', 'hooks/hooks.json']
     .map((rel) => path.join(repo, rel));
+  const codexHooks = ['plugin/hooks/codex-hooks.json', 'hooks/codex-hooks.json']
+    .map((rel) => path.join(repo, rel));
   const sources = [
     { layer: 'plugin', file: pluginHooks.find((f) => fs.existsSync(f)) ?? pluginHooks[0], role: 'shipped', inMesh: true, reachesStrangers: true, machineLocal: false },
+    // Repo-owned and shipped exactly like `plugin` (package.json ships the whole `plugin/` tree) —
+    // just a different host manifest, so it belongs in the same CI-gated block, not the machine one.
+    { layer: 'codex', file: codexHooks.find((f) => fs.existsSync(f)) ?? codexHooks[0], role: 'shipped', inMesh: true, reachesStrangers: true, machineLocal: false },
     { layer: 'project', file: path.join(repo, '.claude/settings.json'), role: 'active', inMesh: true, reachesStrangers: false, machineLocal: false },
   ];
   if (includeMachine) {
@@ -345,7 +378,12 @@ export function buildRegistry({ repo = REPO, home = os.homedir(), includeMachine
     try { regs = readRegistrations(src.file); } catch (e) { errors.push({ file: src.file, layer: src.layer, error: String(e.message ?? e) }); continue; }
     for (const r of regs) {
       const shimId = shimIdIn(r.command);
-      const shim = shimId ? table[shimId] : null;
+      // Codex commands never name hook-shim.mjs, so shimId is always null there — fall back to the
+      // Codex wrapper's own dispatch token, which is drawn from the same table (see the header note
+      // above codex-hooks.json's row in this file's doc comment).
+      const codexHookId = !shimId && src.layer === 'codex' ? codexDispatchIdIn(r.command) : null;
+      const dispatchId = shimId ?? codexHookId;
+      const shim = dispatchId ? table[dispatchId] : null;
       const base = {
         layer: src.layer,
         file: src.file,
@@ -363,7 +401,8 @@ export function buildRegistry({ repo = REPO, home = os.homedir(), includeMachine
         inMesh: src.inMesh,
         machineLocal: src.machineLocal,
         shimId,
-        handler: shim?.file ?? basenamesIn(r.command).filter((b) => b !== 'hook-shim.mjs').pop() ?? null,
+        codexHookId,
+        handler: shim?.file ?? basenamesIn(r.command).filter((b) => b !== 'hook-shim.mjs' && b !== 'codex-hook.mjs').pop() ?? null,
         hasFailsafe: hasFailsafe(r.command),
         anchored: isAnchored(r.matcher),
         tools: matchedTools(r.matcher, r.event),
@@ -408,6 +447,12 @@ export function codeRootOf(rec, repo = REPO, home = os.homedir()) {
     // Shim-routed commands resolve their BODY from the active spine generation, not from the
     // plugin root — that indirection is the whole point of ADR-023.
     return rec.shimId ? 'spine' : 'plugin-root';
+  }
+  if (rec.layer === 'codex') {
+    // codex-hook-wrapper.mjs's activeRoot() resolves the SAME active spine generation
+    // (`$RUVNET_BRAIN_HOME/versions/<gen>`) that hook-shim.mjs resolves for Claude Code — the two
+    // wrappers are two doors onto one axis, so a dispatch-table hit is 'spine' here too.
+    return rec.codexHookId ? 'spine' : 'unknown';
   }
   // (`<user>` below is a DECLARED placeholder from codex-wiring.test.mjs's allowlist, not a real
   // account. That scan covers everything under plugin/, which this file joined in ADR-065; the
