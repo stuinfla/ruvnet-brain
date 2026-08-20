@@ -228,26 +228,48 @@ function writePostTaskFixtureBinary(dir) {
 const fs = require('node:fs');
 const path = require('node:path');
 const args = process.argv.slice(2);
+const option = (short, long) => {
+  const i = args.findIndex((arg) => arg === short || arg === long);
+  return i >= 0 ? args[i + 1] : null;
+};
 if (args[0] === 'memory' && args[1] === 'init') {
-  const i = args.indexOf('--path');
-  const db = args[i + 1];
+  const db = option('--path', '--db');
   fs.mkdirSync(path.dirname(db), { recursive: true });
   fs.writeFileSync(db, 'fixture AgentDB');
   process.exit(0);
 }
+if (args[0] === 'memory' && args[1] === 'store') {
+  const db = option('--path', '--db');
+  const rowsFile = db + '.rows.json';
+  let rows = {};
+  try { rows = JSON.parse(fs.readFileSync(rowsFile, 'utf8')); } catch {}
+  rows[option('-k', '--key')] = option('--value', '--value');
+  fs.writeFileSync(rowsFile, JSON.stringify(rows));
+  process.exit(0);
+}
+if (args[0] === 'memory' && args[1] === 'retrieve') {
+  const db = option('--path', '--db');
+  let rows = {};
+  try { rows = JSON.parse(fs.readFileSync(db + '.rows.json', 'utf8')); } catch {}
+  const found = rows[option('-k', '--key')];
+  if (found == null) process.exit(1);
+  console.log(found);
+  process.exit(0);
+}
+if (args[0] === 'memory' && args[1] === 'search') {
+  console.log('[INFO] Found 1 result');
+  process.exit(0);
+}
+if (args[0] === 'memory' && ['distill', 'backup'].includes(args[1])) process.exit(0);
 if (args.includes('--help')) {
   console.log('--task Task description. Without this + --agent, no routing outcome is recorded.');
   console.log('--agent Agent that executed the task');
   console.log('--store-results Also persist the routing decision');
   process.exit(0);
 }
-const value = (short, long) => {
-  const i = args.findIndex((arg) => arg === short || arg === long);
-  return i >= 0 ? args[i + 1] : null;
-};
-const id = value('-i', '--task-id') || 'fixture-auto';
-const task = value('-t', '--task');
-const agent = value('-a', '--agent');
+const id = option('-i', '--task-id') || 'fixture-auto';
+const task = option('-t', '--task');
+const agent = option('-a', '--agent');
 console.log('[INFO] Recording outcome for task: ' + id);
 console.log('[OK] Task outcome recorded: SUCCESS');
 if (task && agent) {
@@ -286,6 +308,41 @@ describe('the independent hooks post-task persistence trap', () => {
       expect(initialized.key).toBeNull();
       expect(fs.existsSync(path.join(dirs.projectB, '.swarm', 'memory.db'))).toBe(true);
     } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('the post-task CLI dry-run enters Codex with project-B AgentDB already materialized', () => {
+    const repo = path.resolve(import.meta.dirname, '../..');
+    const archive = path.join(repo, '.ruvnet-brain', 'learning-replay');
+    fs.mkdirSync(archive, { recursive: true });
+    const before = new Set(fs.readdirSync(archive));
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'd4-post-task-cli-'));
+    const out = path.join(base, 'result.json');
+    const fixture = writePostTaskFixtureBinary(base);
+    let created = [];
+    try {
+      const result = spawnSync(process.execPath, [
+        'scripts/learning-replay.mjs', '--trap', TRAP.POST_TASK,
+        '--dry-run', '--keep-fixtures', '--out', out,
+      ], {
+        cwd: repo,
+        encoding: 'utf8',
+        timeout: 120_000,
+        env: { ...process.env, RUVNET_RUFLO_BIN: fixture },
+      });
+      created = fs.readdirSync(archive).filter((entry) => !before.has(entry));
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(EXIT.UNKNOWN);
+      expect(created).toHaveLength(1);
+      const db = path.join(
+        archive, created[0], 'fixture-project-b', '.swarm', 'memory.db',
+      );
+      expect(fs.existsSync(db)).toBe(true);
+      expect(fs.existsSync(`${db}.rows.json`)).toBe(false);
+    } finally {
+      for (const entry of created) {
+        fs.rmSync(path.join(archive, entry), { recursive: true, force: true });
+      }
       fs.rmSync(base, { recursive: true, force: true });
     }
   });
