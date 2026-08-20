@@ -244,13 +244,22 @@ function lineCount(file) {
  */
 export function dispatchGateWiring({ repo = REPO, home = HOME } = {}) {
   const PREIMAGE = new Set(['plugin', 'marketplace-clone']);
+  // 'codex' joined hook-registry.mjs's mesh 2026-08-20 (Dream Cycle cross-host-conformance) so M1/
+  // M3/M5/M6 could see codex-hooks.json — but this function asks a CLAUDE CODE question ("is a
+  // PreToolUse gate on subagent dispatch wired to the cheap-model router" for THIS session), and
+  // Claude Code never loads codex-hooks.json under any circumstance. Without this exclusion, a
+  // resolved codex route-dispatch registration (now correctly matched to route-dispatch.sh via the
+  // shared shim table) reported `wired: true` on a machine that had never installed Codex at all —
+  // caught by re-running this function before/after the hook-registry.mjs change.
+  const NOT_CLAUDE_CODE = new Set(['codex']);
   let records;
   try { records = buildRegistry({ repo, home }).records; }
   catch { return { wired: false, layer: null, unreadable: true }; }
   const hits = records.filter((r) => r.event === 'PreToolUse'
     && r.handler === 'route-dispatch.sh'
     && r.tools.some((t) => t === 'Task' || t === 'Agent' || t === '*')
-    && !PREIMAGE.has(r.layer));
+    && !PREIMAGE.has(r.layer)
+    && !NOT_CLAUDE_CODE.has(r.layer));
   const external = hits.find((r) => r.layer !== 'plugin-installed');
   if (external) return { wired: true, layer: external.layer, unreadable: false };
   const enabled = Object.entries(readJSON(path.join(home, '.claude/settings.json')).value?.enabledPlugins || {})

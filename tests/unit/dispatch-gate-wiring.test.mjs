@@ -143,6 +143,22 @@ describe('dispatchGateWiring reads every registry a session loads', () => {
     expect(gate.wired).toBe(false);
   });
 
+  // Dream Cycle 2026-08-20 (cross-host-conformance): hook-registry.mjs's mesh census learned to
+  // read plugin/hooks/codex-hooks.json, and Codex's own `route-dispatch` registration correctly
+  // resolves to handler `route-dispatch.sh` through the SAME shim table Claude Code uses. Without
+  // an explicit exclusion here, that alone flipped this function to `wired: true, layer: 'codex'`
+  // on a machine that never installed Codex — reproduced by reverting the exclusion below and
+  // re-running this test, which goes red.
+  it('does not report Claude Code\'s gate as wired by Codex\'s own manifest', () => {
+    const home = temporary('brain-dispatch-codex-only-');
+    // A bare machine: no marketplace install, no plugin cache, no legacy settings.json entry —
+    // the ONLY route-dispatch registration anywhere is codex-hooks.json, which this repo ships but
+    // Claude Code never loads.
+    const gate = dispatchGateWiring({ repo: REPO, home });
+    expect(gate.layer).not.toBe('codex');
+    expect(gate.wired).toBe(false);
+  });
+
   it('reports a hook on a tool OTHER than subagent dispatch as not wiring this gate', () => {
     const home = temporary('brain-dispatch-othertool-');
     write(path.join(home, '.claude', 'settings.json'), {

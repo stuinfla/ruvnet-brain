@@ -437,6 +437,29 @@ describe('coexistence — enumerate the user\'s hooks, never execute them', () =
     fs.rmSync(home, { recursive: true, force: true });
   });
 
+  // Dream Cycle 2026-08-20 (cross-host-conformance): `ours` omitted the 'codex' layer, so
+  // checkCoexistence() silently undercounted `ourCount` and dropped every codex-hooks.json
+  // registration from both buckets the moment hook-registry.mjs's mesh learned to read it — caught
+  // by an independent critique, not by this file, before it shipped. Pinned here with an exact
+  // count (not `toBeGreaterThan(0)`) specifically because a vacuous-but-truthy assertion is what
+  // let the original gap through unnoticed.
+  it('classifies codex-hooks.json registrations as OURS, not foreign or invisible', async () => {
+    const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'selfcheck-coex-codex-')));
+    const declaredIn = (rel) => {
+      const doc = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8'));
+      return Object.values(doc.hooks)
+        .reduce((total, groups) => total + groups.reduce((n, g) => n + (g.hooks?.length ?? 0), 0), 0);
+    };
+    // EXACT, not >= : an >= assertion here is the vacuous shape that let the original gap through —
+    // plugin/hooks/hooks.json alone already declares more registrations than codex-hooks.json does,
+    // so a >= bound stays green whether or not codex's 16 are actually counted.
+    const expectedOurCount = declaredIn('plugin/hooks/hooks.json') + declaredIn('plugin/hooks/codex-hooks.json');
+    const c = await checkCoexistence({ home, repo: REPO_ROOT });
+    expect(c.ourCount, 'ourCount must include codex-hooks.json\'s registrations').toBe(expectedOurCount);
+    expect(c.foreign.some((f) => f.layer === 'codex'), 'codex misclassified as foreign').toBe(false);
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
   it('FIXTURE double-registration: one handler from two code roots is detected (reuses lintM1)', async () => {
     const { lintM1 } = await import('../../scripts/hook-registry.mjs');
     // Synthetic records — the invariant is a pure function, which is exactly why it can be proven
