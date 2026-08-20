@@ -24,6 +24,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { repositoryNames } from './card-lane.mjs';
 
 /** Precedence, highest first. Named so `explain()` can say WHY a caller got the root it got. */
 const SOURCES = [
@@ -91,8 +92,21 @@ export function cardsAt(root = storeRoot()) {
  * BYTE-VERIFICATION IS NOT DELIVERY.
  */
 export function darkStores(root = storeRoot()) {
+  // ALIAS-AWARE, BECAUSE THE ROUTER IS. This compared store names to card HEADINGS, while the
+  // router resolves a store through `repositoryNames()` first — so a store reachable ONLY under an
+  // alias was reported DARK. `metaharness` is the standing example: it is reached through the
+  // `agent-harness-generator` card and this function called it dark anyway.
+  //
+  // That false positive did real damage. Acting on it, a DUPLICATE `## metaharness` card was added,
+  // which collided with `agent-harness-generator` and broke alias resolution outright — the
+  // detector manufactured work that damaged the thing it detects. ADR-058 has carried this as an
+  // open defect since; the sibling metric in scripts/brain-score.mjs was fixed the same day.
+  //
+  // `repositoryNames` is the ROUTER'S OWN resolver, imported rather than reimplemented. Neither
+  // this module nor card-lane.mjs is in the plugin payload (`marketplace.json` ships only
+  // `plugin/`), and both travel together in the bundle, so this adds no reachable-module risk.
   const cards = new Set(cardsAt(root));
-  return storesAt(root).filter((s) => !cards.has(s));
+  return storesAt(root).filter((s) => !repositoryNames(s, root).some((name) => cards.has(name)));
 }
 
 /** One line every component can print, so two components can be compared instead of guessed about. */

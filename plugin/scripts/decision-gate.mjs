@@ -57,11 +57,27 @@ const REFUSE = 2;
  *
  * MIN_HEADROOM_MS is not padding. It is the work outside the budget's control: the shim's node boot,
  * this gate's node boot, the outcome-ledger writes, and the SIGKILL teardown of whatever the budget
- * just cancelled. On the audit's machine a bare node boot measured ~300ms — roughly 5× this one — so
- * the margin is sized for the slow host, which is the host that was failing.
+ * just cancelled.
+ *
+ * NARROWED BACK 2026-08-19, from 4000+5000 (which required a 10s manifest) to 2000+3000 (which fits
+ * the original 5s). The widening above was honest when it was made — those fourteen runs really did
+ * straddle the limit. What made it stale was the adr-currency-gate two-pass fix, which stopped the
+ * gate reading all 83 ADR bodies on every tool call. Re-measured through the FULL registered path
+ * (`hook-shim.mjs decision-gate write`, the way the host actually invokes it), eight runs in a
+ * stranger project and six in this repo:
+ *
+ *     stranger:  424 405 405 415 417 416 411 415 ms
+ *     this repo: 438 416 412 416 412 436 ms
+ *
+ * ~415ms against a 5000ms ceiling — twelve times the headroom, where before SIX OF FOURTEEN runs
+ * were being killed. The 10s ceiling was no longer buying anything, and a ceiling is not free: a
+ * sibling test caps PreToolUse at 5s precisely because the USER waits behind this hook on every
+ * Write and every Bash, and a 10s stall is the /rvbc hang that already burned people. THE RULE THIS
+ * ENCODES: a budget widened by evidence must be narrowed again when the evidence expires. Otherwise
+ * every emergency ratchets the ceiling up one notch permanently and nothing ever ratchets it back.
  */
-export const DEFAULT_BUDGET_MS = 4000;
-export const MIN_HEADROOM_MS = 5000;
+export const DEFAULT_BUDGET_MS = 2000;
+export const MIN_HEADROOM_MS = 3000;
 
 /**
  * THE POLICY REGISTRY — the whole point of this file, and the thing that was previously scattered

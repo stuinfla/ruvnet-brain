@@ -48,6 +48,15 @@ const blockLesson = (over = {}) => ({
   ...over,
 });
 
+/** A ratified SHIP lesson, advisory so it must be DELIVERED rather than refuse the push. */
+const shipLesson = () => blockLesson({
+  id: 'T02-version-is-the-update-signal',
+  statement: 'Any behaviour-changing push bumps the version IN THE SAME COMMIT.',
+  trigger: 'ship',
+  enforcement: 'checklist',
+  check: 'the version field moved in the same commit as the behaviour change',
+});
+
 function writeStore(lessons) {
   fs.writeFileSync(storePath, JSON.stringify({ version: 1, lessons }, null, 2));
 }
@@ -617,22 +626,66 @@ describe('ship lessons reach a real push', () => {
   const bash = resolveBashForTest();
   const gated = bash ? test : test.skip;
 
-  const fireBash = (command) => spawnSync(bash, [DISPATCH, 'PreToolUse-bash'], {
-    encoding: 'utf8',
-    timeout: 30_000,
-    input: JSON.stringify({ session_id: `ship-${Math.random().toString(16).slice(2)}`, tool_name: 'Bash', tool_input: { command } }),
-  });
-
-  // A ship lesson's own words, from the ratified store — asserted on the STATEMENT rather than an
-  // id, because the id never appears in what actually reaches the model.
+  // A ship lesson's own words — asserted on the STATEMENT rather than an id, because the id never
+  // appears in what actually reaches the model.
   const SHIP_TEXT = /bumps the version IN THE SAME COMMIT/;
 
+  /**
+   * SEED THE STORE. THIS TEST USED TO MEASURE THE DEVELOPER'S MACHINE.
+   *
+   * `fireBash` passed no `RUVNET_LESSON_STORE`, unlike its sibling `runDispatch` twenty lines up, so
+   * the dispatcher read the REAL `~/.config/ruvnet-brain/lessons.json`. That file is user-accumulated
+   * — `bin/install.mjs` deliberately never creates it — so it exists on the machine where this test
+   * was written and on no fresh host. Green here, red on every clean runner.
+   *
+   * windows-unit proved it: the diagnostic added the same day reported `exit: 0, stderr: "",
+   * stdout: ""` — the dispatcher ran fine and had nothing to say, because there were no lessons to
+   * say it with. Not a crash, an empty store.
+   *
+   * This is the same shape as the both-hosts conformance gap: a test that runs where it was written
+   * proves the machine, not the product. Seeding a ratified ship lesson tests what this file claims
+   * to test — that a `git push` PULLS ship lessons through the dispatcher — on any host.
+   */
+  const fireBash = (command) => {
+    writeStore([shipLesson()]);
+    return spawnSync(bash, [DISPATCH, 'PreToolUse-bash'], {
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        RUVNET_LESSON_STORE: storePath,
+        RUVNET_LESSON_OPTIN: optInPath,
+        RUVNET_LESSON_GATE_STATE: gateStatePath,
+      },
+      input: JSON.stringify({ session_id: `ship-${Math.random().toString(16).slice(2)}`, tool_name: 'Bash', tool_input: { command } }),
+    });
+  };
+
+  /**
+   * A FAILING ASSERTION MUST NAME ITS CAUSE, NOT JUST SAY `false`.
+   *
+   * These two were red on windows-unit and the CI log carried only "expected false to be true" —
+   * no stderr, no exit code, no stdout. Undiagnosable from the log, on a host nobody can reproduce
+   * locally, which is how they stayed red. That is the same defect that cost eleven days this week
+   * one layer up: `INVALID_LINEAGE` named neither of the two states it covered, and the moment the
+   * seal was made to name the dirty path, the cause was obvious in one run.
+   */
+  const shipDiagnostic = (command, r) => [
+    `\`${command}\` delivered no ship lesson.`,
+    `  exit   : ${r.status}${r.signal ? ` (signal ${r.signal})` : ''}`,
+    r.error ? `  spawn  : ${r.error.message}` : '',
+    `  stderr : ${JSON.stringify(String(r.stderr || '').slice(0, 400))}`,
+    `  stdout : ${JSON.stringify(String(r.stdout || '').slice(0, 400))}`,
+  ].filter(Boolean).join('\n');
+
   gated('TEETH: `git push` delivers ship lessons — the case that fired on nothing for months', () => {
-    expect(SHIP_TEXT.test(fireBash('git push origin main').stdout || '')).toBe(true);
+    const r = fireBash('git push origin main');
+    expect(SHIP_TEXT.test(r.stdout || ''), shipDiagnostic('git push origin main', r)).toBe(true);
   }, 40_000);
 
   gated('npm publish counts as shipping too', () => {
-    expect(SHIP_TEXT.test(fireBash('npm publish').stdout || '')).toBe(true);
+    const r = fireBash('npm publish');
+    expect(SHIP_TEXT.test(r.stdout || ''), shipDiagnostic('npm publish', r)).toBe(true);
   }, 40_000);
 
   gated('TEETH: an ordinary command does NOT — or the fix is just a new nag', () => {
@@ -662,10 +715,22 @@ describe('the two ship definitions agree', () => {
   const bash2 = resolveBashForTest();
   const gated2 = bash2 ? test : test.skip;
   const SHIP_TEXT2 = /bumps the version IN THE SAME COMMIT/;
-  const viaBash = (command) => SHIP_TEXT2.test(spawnSync(bash2, [DISPATCH, 'PreToolUse-bash'], {
-    encoding: 'utf8', timeout: 30_000,
-    input: JSON.stringify({ session_id: `par-${Math.random().toString(16).slice(2)}`, tool_name: 'Bash', tool_input: { command } }),
-  }).stdout || '');
+  // Seeded for the same reason `fireBash` is: reading the real ~/.config store made this assert the
+  // developer's machine. windows-unit was red here with an EMPTY store, so `git push` — a genuine
+  // ship — came back false, and the two definitions "disagreed" when only one of them had any data.
+  const viaBash = (command) => {
+    writeStore([shipLesson()]);
+    return SHIP_TEXT2.test(spawnSync(bash2, [DISPATCH, 'PreToolUse-bash'], {
+      encoding: 'utf8', timeout: 30_000,
+      env: {
+        ...process.env,
+        RUVNET_LESSON_STORE: storePath,
+        RUVNET_LESSON_OPTIN: optInPath,
+        RUVNET_LESSON_GATE_STATE: gateStatePath,
+      },
+      input: JSON.stringify({ session_id: `par-${Math.random().toString(16).slice(2)}`, tool_name: 'Bash', tool_input: { command } }),
+    }).stdout || '');
+  };
 
   gated2('TEETH: both agree on every case the audits raised, in both directions', async () => {
     const { dependentEvent } = await import('../../plugin/scripts/degradation-watch.mjs');

@@ -456,21 +456,28 @@ export function writeArtifact(file, aggregateResult, meta = {}) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
 
   // AN ENVIRONMENT THAT CANNOT MEASURE MUST NOT OVERWRITE ONE THAT DID.
-  //
-  // Measured 2026-08-19: `learning-replay` had been red on main since 2026-08-11. The artifact was
-  // re-recorded that morning at 07:15Z carrying `verdict: UNKNOWN` and
-  // "3/3 run(s) could not be measured; executor error: spawnSync codex ENOENT" — written by a
-  // nightly container with no `codex` on PATH. `codex` resolves fine on the owner's machine
-  // (0.148.0), so a real PASS was replaced by "I could not look", and every CI run afterwards
-  // correctly refused a non-PASS verdict. The gate was right; its INPUT had been destroyed by a
-  // host that was never able to produce one.
-  //
-  // This is the same distinction `restore-local-ingests.mjs` needed and the same one
-  // `degradation-watch` needed: CANNOT-MEASURE is not MEASURED-AND-FAILED, and collapsing them
-  // turns a missing tool into a false verdict. A real FAIL still overwrites — that is a
-  // measurement and it must land. Only the unmeasurable case is refused.
+  // Measured 2026-08-19: `learning-replay` had been red on main since 2026-08-11 because the
+  // artifact was re-recorded carrying `verdict: UNKNOWN` and "3/3 run(s) could not be measured;
+  // executor error: spawnSync codex ENOENT" — written by a nightly container with no `codex` on
+  // PATH. `codex` resolves fine on the owner's machine (0.148.0), so a real PASS was replaced by
+  // "I could not look", and every later CI run correctly refused the non-PASS verdict. The gate was
+  // right; its INPUT had been destroyed by a host that could never produce one. Same distinction
+  // `restore-local-ingests.mjs` and `degradation-watch` both needed: CANNOT-MEASURE is not
+  // MEASURED-AND-FAILED. A real FAIL still overwrites — that is a measurement, and it must land.
+  // "PARTIALLY MEASURED" IS NOT "COULD NOT MEASURE" either, and the first version of this guard got
+  // that wrong within the hour — the same conflation it exists to prevent, committed inside it. Its
+  // predicate was a substring match on "could not be measured", so a run reporting
+  // "1/3 run(s) could not be measured; 1/3 passed" — a genuine mixed result carrying a live
+  // regression signal — was swallowed, leaving a PASS from 2026-08-03 standing. It suppressed
+  // exactly the finding it should have let through. A host that cannot measure produces NO
+  // measurements: every run unknown. If even one run yielded a pass or a fail, the executor plainly
+  // ran and the result is real, however unwelcome.
+  const runsTotal = Number(artifact.n ?? 0);
+  const runsUnknown = Number(artifact.unknowns ?? 0);
+  const nothingMeasured = runsTotal > 0 && runsUnknown === runsTotal;
   const unmeasurable = artifact.verdict === 'UNKNOWN'
-    && /ENOENT|executor error|could not be measured/i.test(String(artifact.why ?? ''));
+    && nothingMeasured
+    && /ENOENT|executor error/i.test(String(artifact.why ?? ''));
   if (unmeasurable && fs.existsSync(file)) {
     try {
       const prior = JSON.parse(fs.readFileSync(file, 'utf8'));

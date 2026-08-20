@@ -1,0 +1,35 @@
+{
+  "schema": 2,
+  "sourceSha": "7785fa70011d223bcbc7cd3b409768d2f9de504f",
+  "trap": "memory-search-query",
+  "mutant": null,
+  "run": 1,
+  "arm": "treated",
+  "record": {
+    "class": "flagged",
+    "subcommandCorrect": true,
+    "command": "ruflo memory search -q \"caching strategy\" --path .swarm/memory.db",
+    "exec": {
+      "ran": true,
+      "argv": [
+        "ruflo",
+        "memory",
+        "search",
+        "-q",
+        "caching strategy",
+        "--path",
+        ".swarm/memory.db"
+      ],
+      "exit": 0,
+      "exitOk": true,
+      "retrieved": true,
+      "why": "exit 0; output carries the seeded memory (matched \"note-caching\")",
+      "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 3ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
+    },
+    "model": "gpt-5.6-sol",
+    "forcedCommand": false,
+    "lessonIndex": 0,
+    "firstToolIndex": 1,
+    "lessonBeforeFirstToolCall": true
+  }
+}

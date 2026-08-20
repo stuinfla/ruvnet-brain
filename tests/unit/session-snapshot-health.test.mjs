@@ -26,6 +26,12 @@ afterEach(() => {
 describe('issue #85 — versioned compaction snapshot contract', () => {
   it('ships a PreCompact producer that writes the same canonical receipt the Console validates', () => {
     const project = temporary();
+    // `.swarm/` IS THE OPT-IN, so the test must opt in like a real project does. This line used to
+    // be absent and the assertion still passed, because the hook created `.swarm/` itself — which
+    // is exactly the trespass ADR-058 D5 removed on 2026-08-14 after the conformance gate caught
+    // PreCompact, PostToolUse and SessionEnd each planting a `.swarm/` directory, plus a receipt
+    // nobody asked for, in every unrelated repository the owner opened.
+    fs.mkdirSync(path.join(project, '.swarm'), { recursive: true });
     expect(writeSessionSnapshot(project, 'PreCompact')).toBe(true);
     expect(inspectSessionSnapshots(project)).toMatchObject({ kind: 'canonical', fresh: true });
 
@@ -33,6 +39,18 @@ describe('issue #85 — versioned compaction snapshot contract', () => {
     const command = hooks.PreCompact.flatMap((group) => group.hooks)
       .find((hook) => hook.command.includes('session-snapshot PreCompact'));
     expect(command?.command).toMatch(/\|\| true$/);
+  });
+
+  it('TEETH: writes NOTHING into a project that never opted in — no .swarm, no receipt', () => {
+    // The D5 behaviour had NO test. The hook refusing to conjure `.swarm/` is the entire fix from
+    // 2026-08-14, and nothing anywhere asserted it — so a future edit could silently restore the
+    // trespass and every suite would stay green. `.swarm` is Ruflo's own convention: its presence
+    // is the project's opt-in, its absence is a project that has not adopted the brain. Writing a
+    // receipt into a store that exists is participation; creating the store is trespass.
+    const stranger = temporary();
+    const before = fs.readdirSync(stranger);
+    expect(writeSessionSnapshot(stranger, 'PreCompact'), 'must refuse, not create').toBe(false);
+    expect(fs.readdirSync(stranger), 'left something behind in a stranger project').toEqual(before);
   });
 
   it('accepts a fresh canonical receipt with the documented schema', () => {

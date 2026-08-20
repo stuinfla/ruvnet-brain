@@ -18,6 +18,8 @@ governs:
 
 ## Status
 
+**Status**: Accepted
+
 Accepted 2026-08-19. The config is committed and validated; the nightly schedule is a separate,
 human-performed step (see **Turning it on**), because creating a cloud routine spends the owner's
 account and is his to authorize.
@@ -131,4 +133,5 @@ committed config).
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-19 | **The engine validation this ADR relies on was never running on Windows.** | Decision 1 says the config is validated by rUv's own engine — 'the only validation that counts'. `tests/unit/dream-config.test.mjs` invoked it with `execFileSync('npx', ...)`, and on Windows the binary is `npx.cmd` while execFileSync does no PATHEXT resolution, so both the `compile` and `ledger verify` checks threw ENOENT on that host — red for days inside a windows-unit failure that was itself unreadable, because a wedged sibling job blocked log access for the whole run. Fixing only the NAME moved the error to `spawnSync npx.cmd EINVAL`: since the CVE-2024-27980 hardening, Node refuses to exec a `.cmd` without a shell. Both fixes are needed, and a fix that only changes the error message is not a fix. The config itself was never at fault and is unchanged; what was broken is that one of its two graders was silently absent on one host. |
 | 2026-08-19 | **Accepted as configured, not as running.** | `dream.config.json` committed and validated against `dream-machine@0.1.1` (version verified live on npm before writing this). Slots, evaluators and `autoMerge:false` are this repo's decisions, NOT the scaffold's defaults — the scaffold's generic `correctness/security/architecture/performance/developer-experience` were replaced with the five surfaces where this repo has demonstrably broken in the last week. The schedule is deliberately left to the owner: creating a cloud routine spends his account. |

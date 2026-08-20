@@ -95,7 +95,12 @@ const walkMd = (dir, acc = []) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walkMd(p, acc);
-    else if (/\.md$/.test(e.name)) acc.push(path.relative(ROOT, p));
+    // POSIX-FORM IDS, ON EVERY PLATFORM. `path.relative` yields `plugin\\skills\\...` on Windows
+    // while every assertion and offender message here is written with forward slashes, so the
+    // scan discovered PLAYBOOK.md and then failed to recognise it as the file it had just read.
+    // windows-unit was red on exactly that. `path.join` accepts either form, so normalising the
+    // ID costs nothing and keeps the offender list readable and identical across hosts.
+    else if (/\.md$/.test(e.name)) acc.push(path.relative(ROOT, p).split(path.sep).join('/'));
   }
   return acc;
 };
