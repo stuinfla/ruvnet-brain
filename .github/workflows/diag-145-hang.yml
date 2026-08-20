@@ -1,0 +1,71 @@
+# DIAGNOSTIC ONLY — delete once #145 names its mechanism.
+#
+# #145: `check`'s vitest step hangs deterministically on the ubuntu runner. Four runs, identical
+# stop point, identical orphan signature (three stray `node` pids at GitHub's own cleanup). The
+# file was identified by construction (serial execution + verified size-descending sequencing) as
+# tests/unit/decision-outcomes.test.mjs, and quarantining it turned a never-finishing job into a
+# six-minute one — so it is certainly WHERE the pool stalls.
+#
+# But it is not obviously WHAT stalls: that file completes standalone with coverage on macOS under
+# node 22 AND node 24, and the module it imports is pure synchronous fs — no spawn, no timers, no
+# handles. The full suite with coverage also completes on macOS under both.
+#
+# The variable never controlled for is the ENVIRONMENT: `check` runs vitest under node 20 on a
+# 2-core ubuntu runner, while every local reproduction used node 22/24 on darwin/arm64.
+#
+# This workflow isolates that. Three jobs, one variable each:
+#   suspect-alone  — the quarantined file, alone, node 20, ubuntu, WITH coverage
+#   suspect-alone-no-coverage — same, without coverage (is coverage load-bearing?)
+#   full-suite-unquarantined  — the whole suite INCLUDING the quarantined file
+#
+# Each is bounded so a hang is a bounded red X, never a jammed queue — that lesson is already paid
+# for. `continue-on-error` so one hanging job never hides the others' answers.
+name: diag-145-hang
+
+on:
+  workflow_dispatch:
+
+jobs:
+  suspect-alone:
+    name: suspect file alone (node 20, coverage)
+    timeout-minutes: 12
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm i --no-audit --no-fund --loglevel=error
+      - name: nproc / memory (the runner shape is part of the question)
+        run: nproc; free -m || true
+      - run: npx vitest run tests/unit/decision-outcomes.test.mjs --coverage
+
+  suspect-alone-no-coverage:
+    name: suspect file alone (node 20, NO coverage)
+    timeout-minutes: 12
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm i --no-audit --no-fund --loglevel=error
+      - run: npx vitest run tests/unit/decision-outcomes.test.mjs
+
+  full-suite-unquarantined:
+    name: full suite INCLUDING the quarantined file (node 20, coverage)
+    timeout-minutes: 35
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm i --no-audit --no-fund --loglevel=error
+      - name: nproc / memory
+        run: nproc; free -m || true
+      - name: full suite, quarantine REMOVED
+        run: npm run test:cov
