@@ -4,6 +4,9 @@ Capability-phrased, keyword-rich descriptions of each RuvNet building block. The
 DESCRIBED need ("what should I use to do X?") to the right repo even when the user never names it.
 One card per building block, grounded in each repo's primer.
 
+## latentmesh
+LatentMesh is rUv's causally-verified latent communication fabric for continuously evolving agent collectives — a Rust workspace (1.77+) for agents that hand work to each other WITHOUT first serialising their reasoning into words. Today an agent must explain its whole train of thought in text before another can act on it; LatentMesh carries the latent representation itself over a reference wire type (`LatentFrame`, the latent packet protocol) with causal verification, so the receiving agent gets the state rather than a re-narration of it. Reach for it when the question is agent-to-agent transfer of internal state, latent-space message passing between models, causal ordering or provenance across an agent collective, or the wire format such a mesh would need. Its own README states plainly that it is a RESEARCH PROTOTYPE with 9 ADRs, most of them design contracts rather than shipped systems, and each ADR says what is and is not built — treat it as a design corpus and prior-art map, not as a deployable dependency, and read the ADR status before claiming any part of it ships.
+
 ## ruvnet-brain
 Source-grounded knowledge layer for Claude Code and Codex. Uses per-repository RuVector RVF stores,
 returns cited source paths through search_ruvnet, shares one Stable Spine runtime across hosts, and

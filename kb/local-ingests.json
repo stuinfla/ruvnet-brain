@@ -13,6 +13,12 @@
       "store": "helix"
     },
     {
+      "name": "LatentMesh",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:02:01.790Z",
+      "store": "latentmesh"
+    },
+    {
       "name": "RuCelium",
       "org": "ruvnet",
       "at": "2026-08-19T18:15:37.892Z",
@@ -23,6 +29,12 @@
       "org": "ruvnet",
       "at": "2026-08-19T18:16:19.308Z",
       "store": "rvqr"
+    },
+    {
+      "name": "ultrasonic",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:04:51.394Z",
+      "store": "ultrasonic"
     },
     {
       "name": "wifi-veil",
