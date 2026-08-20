@@ -532,7 +532,15 @@ export async function runBattery({ home = os.homedir(), repo = null, cwd = os.tm
 export async function checkCoexistence({ home = os.homedir(), repo = null } = {}) {
   const reg = await loadRegistry();
   const registry = reg.buildRegistry({ repo: repo ?? reg.REPO, home, includeMachine: true });
-  const ours = registry.records.filter((r) => r.layer === 'plugin' || r.layer === 'plugin-installed' || r.layer === 'marketplace-clone');
+  // 'codex' joined hook-registry.mjs's mesh 2026-08-20 (Dream Cycle cross-host-conformance) — it is
+  // OURS (plugin/hooks/codex-hooks.json, shipped in package.json's "files" tree same as plugin/),
+  // never a foreign registration. Omitting it here silently undercounted `ourCount` and dropped all
+  // 16 Codex registrations from both buckets — caught by an independent critique before this shipped.
+  // 'codex' joined hook-registry.mjs's mesh 2026-08-20 (Dream Cycle cross-host-conformance) — it is
+  // OURS (plugin/hooks/codex-hooks.json, shipped in package.json's "files" tree same as plugin/),
+  // never a foreign registration. Omitting it here silently undercounted `ourCount` and dropped all
+  // 16 Codex registrations from both buckets — caught by an independent critique before this shipped.
+  const ours = registry.records.filter((r) => r.layer === 'plugin' || r.layer === 'codex' || r.layer === 'plugin-installed' || r.layer === 'marketplace-clone');
   const foreign = registry.records.filter((r) => r.layer === 'user' || r.layer.startsWith('third-party:') || r.layer === 'project');
 
   // DOUBLE REGISTRATION — reused wholesale from hook-registry (ADR-055 M1): one handler, an

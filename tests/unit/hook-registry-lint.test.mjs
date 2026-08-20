@@ -95,7 +95,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   buildRegistry, discoverSources, census, lintM1, lintM3, lintM5, lintAllowlistStale, lintM6,
-  matchedTools, isAnchored, hasFailsafe, mesh, OFF_BEHAVIORS,
+  matchedTools, isAnchored, hasFailsafe, mesh, OFF_BEHAVIORS, codexDispatchIdIn,
 } from '../../scripts/hook-registry.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
@@ -194,10 +194,11 @@ describe('the merged census — six registries, not one', () => {
       for (const k of REQUIRED) expect(Object.keys(r), `${r.layer} ${r.locator} missing ${k}`).toContain(k);
       expect(r.locator, 'a locator with no line number cannot point anybody at anything').toMatch(/:\d+$/);
     }
-    // `reachesStrangers` is not decoration: the plugin registry is the ONLY channel that reaches
-    // another machine (ADR-055 §5), and an invariant that treats a local hook and a shipped hook
-    // as equally consequential is not reading the same product the users are.
-    expect(repoReg.records.filter((r) => r.reachesStrangers).every((r) => r.layer === 'plugin')).toBe(true);
+    // `reachesStrangers` is not decoration: the plugin and codex registries are the ONLY channels
+    // that reach another machine (ADR-055 §5; codex-hooks.json joined 2026-08-20 — it ships in
+    // package.json's "files" tree exactly like plugin/), and an invariant that treats a local hook
+    // and a shipped hook as equally consequential is not reading the same product the users are.
+    expect(repoReg.records.filter((r) => r.reachesStrangers).every((r) => r.layer === 'plugin' || r.layer === 'codex')).toBe(true);
     expect(repoReg.records.some((r) => r.layer === 'project' && !r.reachesStrangers)).toBe(true);
   });
 
@@ -283,6 +284,41 @@ describe('the merged census — six registries, not one', () => {
     expect(hasFailsafe('node x.mjs')).toBe(false);
   });
 
+  it('discovers codex-hooks.json as a repo-owned, in-mesh layer (Dream Cycle 2026-08-20)', () => {
+    // BORN RED 2026-08-20: before this candidate, discoverSources() enumerated exactly two
+    // repo-owned layers ('plugin', 'project') — codex-hooks.json existed, shipped to strangers, and
+    // was invisible to every invariant below. `git show HEAD~1:...hook-registry.mjs` reproduces it.
+    const sources = discoverSources({ repo: REPO, includeMachine: false });
+    const codex = sources.find((s) => s.layer === 'codex');
+    expect(codex, 'no codex layer in discoverSources()').toBeTruthy();
+    expect(codex.present).toBe(true);
+    expect(codex.inMesh).toBe(true);
+    expect(codex.reachesStrangers, 'codex-hooks.json ships in the package.json "files" tree, same as plugin/').toBe(true);
+    expect(codex.file.endsWith('codex-hooks.json')).toBe(true);
+
+    const codexRecs = mesh(repoReg.records).filter((r) => r.layer === 'codex');
+    const declared = declaredRegistrationCount(codex.file);
+    expect(declared, 'codex-hooks.json unexpectedly declares zero registrations').toBeGreaterThan(0);
+    expect(codexRecs).toHaveLength(declared);
+    // Non-vacuous resolution: every codex record's dispatch id hits hook-shim.mjs's table, so
+    // handler/mode/offBehavior come from the SAME declared contract Claude Code uses — not nulls
+    // that would make M1/M3/M5/M6 pass merely because nothing was resolved.
+    for (const r of codexRecs) {
+      expect(r.codexHookId, `${r.locator} resolved no Codex dispatch id`).toBeTruthy();
+      expect(r.handler, `${r.locator} (${r.codexHookId}) has no handler`).toBeTruthy();
+      expect(OFF_BEHAVIORS, `${r.locator} (${r.codexHookId}) offBehavior not declared`).toContain(r.offBehavior);
+      expect(r.codeRoot).toBe('spine');
+    }
+  });
+
+  it('codexDispatchIdIn() reads the wrapper\'s trailing CLI token, not any earlier quoted word', () => {
+    expect(codexDispatchIdIn('node -e "...body..." 4500 session-start')).toBe('session-start');
+    expect(codexDispatchIdIn('node -e "...body..." 9000 unprompted-speech UserPromptSubmit')).toBe('unprompted-speech');
+    expect(codexDispatchIdIn('node -e "const w=p.join(b,\'codex-hook.mjs\')" 6500 decision-gate write')).toBe('decision-gate');
+    expect(codexDispatchIdIn('plain command with no budget/id suffix')).toBeNull();
+    expect(codexDispatchIdIn(null)).toBeNull();
+  });
+
   it('the shipped dispatch audit covers Task and Agent exactly, without catching TaskStop', () => {
     const dispatch = mesh(repoReg.records).filter((r) => r.layer === 'plugin' && r.handler === 'route-dispatch.sh');
     expect(dispatch).toHaveLength(1);
@@ -338,9 +374,19 @@ describe('mesh invariants over the layers this repo OWNS (must stay clean — th
     }
   });
 
-  it('exactly ONE Stop-plane registration in the layers this repo owns (ADR-055 §3.4: no second Stop hook)', () => {
+  it('exactly ONE Stop-plane registration per shipped host manifest (ADR-055 §3.4, extended to Codex 2026-08-20)', () => {
+    // ADR-055 §3.4 said "no second Stop hook" back when 'plugin' was the only shipped manifest.
+    // 'codex' joining the mesh legitimately adds a SECOND Stop registration overall — but it lives
+    // in an independent host manifest Claude Code never loads, so it cannot collide with plugin's.
+    // The invariant that still matters is per-manifest: each shipped host gets exactly one Stop
+    // hook, and 'project' (F6) gets none.
     const stops = mesh(repoReg.records).filter((r) => r.event === 'Stop');
-    expect(stops.map((r) => `${r.layer} ${r.locator} ${r.handler}`)).toHaveLength(1);
+    const byLayer = new Map();
+    for (const s of stops) byLayer.set(s.layer, [...(byLayer.get(s.layer) ?? []), `${s.locator} ${s.handler}`]);
+    expect(byLayer.get('plugin'), `plugin Stop-plane: ${JSON.stringify(byLayer.get('plugin'))}`).toHaveLength(1);
+    expect(byLayer.get('codex'), `codex Stop-plane: ${JSON.stringify(byLayer.get('codex'))}`).toHaveLength(1);
+    expect(byLayer.has('project'), 'F6: project must not reintroduce a Stop override').toBe(false);
+    expect(stops).toHaveLength(2);
   });
 });
 
