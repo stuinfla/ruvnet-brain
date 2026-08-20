@@ -45,6 +45,38 @@ function strangerProject() {
   return d;
 }
 
+/**
+ * MEASURED 2026-08-20: pointing `RUVNET_BRAIN_HOME` at an empty directory (below) is correct — it
+ * keeps real ledgers untouched — but it also means every Codex hook command hits TWO independent,
+ * undocumented silent-exit branches (`codex-hooks.json`'s trampoline has no installed
+ * `codex-hook.mjs`; `codex-hook-wrapper.mjs` has no resolvable spine) before ever reaching
+ * `codex-hook-adapter.mjs` or a shared hook body. Claude Code hits an analogous gap and recovers via
+ * `hook-shim.mjs`'s LOUD frozen fallback, straight to `${CLAUDE_PLUGIN_ROOT}` (the real checkout, no
+ * install required). Codex has no such fallback — it depends on an installed Stable Spine, full
+ * stop — so without this fixture every "no stderr / no artifacts / within timeout" assertion below
+ * was passing by construction for Codex, never by measurement: the hook never ran.
+ *
+ * Installs a minimal, REAL Stable Spine (ADR-023) so a Codex-host `fire()` reaches the same shared
+ * hook bodies Claude Code already exercises here. Same fixture shape as
+ * `tests/unit/codex-lifecycle-hooks.test.mjs`'s `installGeneration()` helpers, generalized to a full
+ * `plugin/` copy because this file sweeps every hook rather than one at a time. Test-only: no
+ * production file is read from anywhere but the real checkout, and nothing here is imported by
+ * shipped code.
+ */
+function installCodexSpine(brainHome) {
+  const version = 'conformance';
+  const codeRoot = path.join(brainHome, 'versions', version);
+  fs.mkdirSync(codeRoot, { recursive: true });
+  fs.cpSync(path.join(ROOT, 'plugin'), codeRoot, { recursive: true });
+  fs.writeFileSync(path.join(brainHome, 'active.json'), JSON.stringify({
+    generation: version, version, codeRoot: `versions/${version}`,
+  }));
+  fs.copyFileSync(
+    path.join(ROOT, 'plugin', 'scripts', 'codex-hook-wrapper.mjs'),
+    path.join(brainHome, 'codex-hook.mjs'),
+  );
+}
+
 /** Every command both manifests register, with the event it fires on. */
 export function hookCommands() {
   const out = [];
@@ -69,8 +101,14 @@ const payloadFor = (event) => JSON.stringify({
   tool_response: { success: true },
 });
 
-function fire({ command, event, cwd }) {
+function fire({ command, event, cwd, host }) {
   const started = Date.now();
+  const brainHome = path.join(cwd, '.conformance-home');
+  // Claude Code reaches its real hook bodies via the frozen fallback below with nothing further
+  // needed. Codex has no such fallback (see installCodexSpine's docstring) — it must find a real
+  // spine at RUVNET_BRAIN_HOME or every hook silently no-ops. Build one per call so each stranger
+  // project stays isolated, matching every other root here.
+  if (host === 'codex') installCodexSpine(brainHome);
   const r = spawnSync(BASH, ['-c', command], {
     cwd,
     input: payloadFor(event),
@@ -88,8 +126,9 @@ function fire({ command, event, cwd }) {
       // reported defects already fixed in the working tree as still present. A conformance gate that
       // grades the installed copy answers "is this machine currently OK", when the question a commit
       // needs answered is "is what I am about to ship OK". Pointing it at an empty home forces the
-      // frozen-plugin fallback, which is exactly the path a fresh install takes.
-      RUVNET_BRAIN_HOME: path.join(cwd, '.conformance-home'),
+      // frozen-plugin fallback on Claude Code, which is exactly the path a fresh install takes — and,
+      // as of tonight, a real (also freshly-built) spine on Codex, for the same reason.
+      RUVNET_BRAIN_HOME: brainHome,
     },
   });
   return { ...r, ms: Date.now() - started };
