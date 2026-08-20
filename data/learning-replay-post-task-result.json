@@ -1,9 +1,9 @@
 {
   "invariant": "LEARNING-REPLAY",
-  "verdict": "UNKNOWN",
-  "why": "3/3 run(s) could not be measured; 0/3 passed",
-  "sha": "5841feb2ef09eca7c8231b738b11eba5e2d73cb7",
-  "at": "2026-08-19T13:11:48.716Z",
+  "verdict": "PASS",
+  "why": "3/3 runs passed (bar 2/3)",
+  "sha": "85837f7346d82a9cdb9861cf430cdae270177e5d",
+  "at": "2026-08-20T05:46:53.482Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -11,9 +11,9 @@
   "trap": "hooks-post-task-persistence",
   "taskHash": "33b60b9f4540abd180a07e75e42de9e040dc0c217539f48c8c34ededc597f4a0",
   "n": 3,
-  "passes": 0,
+  "passes": 3,
   "fails": 0,
-  "unknowns": 3,
+  "unknowns": 0,
   "controlTokenRuns": 0,
   "controlWorkedRuns": 0,
   "treatedTokenRuns": 3,
@@ -22,10 +22,10 @@
     "treatedExecutedRuns": 3,
     "treatedRetrievedRuns": 3
   },
-  "rate": 0,
+  "rate": 1,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 107.5,
+  "wallSeconds": 78.7,
   "premise": {
     "verified": true,
     "evidence": "live help names all flags; success/task-id-only persisted nothing"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1787144999478",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-oPrYbJ/brain-home/versions/d4-refresh-1787144999478",
+    "generation": "d4-refresh-1787204731851",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-hNScT2/brain-home/versions/d4-refresh-1787204731851",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -61,13 +61,13 @@
   "runs": [
     {
       "i": 1,
-      "verdict": "UNKNOWN",
-      "why": "the control arm produced no ruflo invocation at all — there is no comparable artifact to difference against",
+      "verdict": "PASS",
+      "why": "treated \"flagged\" vs control \"partial\"; the produced command executed and returned the required outcome",
       "error": null,
       "treated": {
         "class": "flagged",
         "subcommandCorrect": true,
-        "command": "ruflo hooks post-task --task \"release retry-budget investigation\" --agent tester --store-results",
+        "command": "ruflo hooks post-task --task \"release retry-budget investigation\" --agent tester --success --store-results",
         "exec": {
           "ran": true,
           "argv": [
@@ -78,13 +78,14 @@
             "release retry-budget investigation",
             "--agent",
             "tester",
+            "--success",
             "--store-results"
           ],
           "exit": 0,
           "exitOk": true,
           "retrieved": true,
-          "why": "exit 0; routing outcome and routing-decision:task_1787145018807_grejqj persisted",
-          "output": "[INFO] Recording outcome for task: task_1787145018807_grejqj\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  2 |\n| New Patterns     |                  1 |\n| Duration         |               0.2s |\n| Trajectory ID    | traj-178714"
+          "why": "exit 0; routing outcome and routing-decision:task_1787204744438_r8hos6 persisted",
+          "output": "[INFO] Recording outcome for task: task_1787204744438_r8hos6\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  2 |\n| New Patterns     |                  1 |\n| Duration         |               0.2s |\n| Trajectory ID    | traj-178720"
         },
         "model": "gpt-5.6-sol",
         "forcedCommand": false,
@@ -92,44 +93,56 @@
         "firstToolIndex": 1,
         "lessonBeforeFirstToolCall": true,
         "transcript": {
-          "path": "data/learning-replay-transcripts/5841feb2ef09eca7c8231b738b11eba5e2d73cb7/a5ba0346001bf2c0365f9b982b5fa14dc7766459a02c3d63174768fbf6398dff.json",
-          "sha256": "a5ba0346001bf2c0365f9b982b5fa14dc7766459a02c3d63174768fbf6398dff",
-          "sourceSha": "5841feb2ef09eca7c8231b738b11eba5e2d73cb7",
+          "path": "data/learning-replay-transcripts/85837f7346d82a9cdb9861cf430cdae270177e5d/e2e5bed3ad28f57bac52d02fb62eaa5214442f81197dfe23178bc84833074bef.json",
+          "sha256": "e2e5bed3ad28f57bac52d02fb62eaa5214442f81197dfe23178bc84833074bef",
+          "sourceSha": "85837f7346d82a9cdb9861cf430cdae270177e5d",
           "mutant": null
         }
       },
       "control": {
-        "class": "none",
-        "subcommandCorrect": false,
-        "command": "",
+        "class": "partial",
+        "subcommandCorrect": true,
+        "command": "ruflo hooks post-task --task-id release-retry-budget-investigation --success true --agent tester --store-memory true",
         "exec": {
-          "ran": false,
-          "argv": null,
-          "exit": null,
-          "exitOk": false,
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "hooks",
+            "post-task",
+            "--task-id",
+            "release-retry-budget-investigation",
+            "--success",
+            "true",
+            "--agent",
+            "tester",
+            "--store-memory",
+            "true"
+          ],
+          "exit": 0,
+          "exitOk": true,
           "retrieved": false,
-          "why": "no Ruflo invocation to execute",
-          "output": ""
+          "why": "exit 0; command lacked --task, --agent, --store-results, or a task id",
+          "output": "[INFO] Recording outcome for task: release-retry-budget-investigation\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  2 |\n| New Patterns     |                  1 |\n| Duration         |               0.2s |\n| Trajectory ID    | tr"
         },
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/5841feb2ef09eca7c8231b738b11eba5e2d73cb7/e2d224bc51ab8030fde2cc0f1e2cd95e344729d9f4be6d9418c178c248cd90d0.json",
-          "sha256": "e2d224bc51ab8030fde2cc0f1e2cd95e344729d9f4be6d9418c178c248cd90d0",
-          "sourceSha": "5841feb2ef09eca7c8231b738b11eba5e2d73cb7",
+          "path": "data/learning-replay-transcripts/85837f7346d82a9cdb9861cf430cdae270177e5d/9d0ea56abff4350add53bb2934ef570926630a110fb4dcb5f441a40828dee0c6.json",
+          "sha256": "9d0ea56abff4350add53bb2934ef570926630a110fb4dcb5f441a40828dee0c6",
+          "sourceSha": "85837f7346d82a9cdb9861cf430cdae270177e5d",
           "mutant": null
         }
       }
     },
     {
       "i": 2,
-      "verdict": "UNKNOWN",
-      "why": "the control arm produced no ruflo invocation at all — there is no comparable artifact to difference against",
+      "verdict": "PASS",
+      "why": "treated \"flagged\" vs control \"partial\"; the produced command executed and returned the required outcome",
       "error": null,
       "treated": {
         "class": "flagged",
         "subcommandCorrect": true,
-        "command": "ruflo hooks post-task --task \"release retry-budget investigation\" --agent tester --store-results",
+        "command": "ruflo hooks post-task --task \"release retry-budget investigation\" --agent tester --success true --store-results",
         "exec": {
           "ran": true,
           "argv": [
@@ -140,13 +153,15 @@
             "release retry-budget investigation",
             "--agent",
             "tester",
+            "--success",
+            "true",
             "--store-results"
           ],
           "exit": 0,
           "exitOk": true,
           "retrieved": true,
-          "why": "exit 0; routing outcome and routing-decision:task_1787145065035_obl7u9 persisted",
-          "output": "[INFO] Recording outcome for task: task_1787145065035_obl7u9\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  2 |\n| New Patterns     |                  1 |\n| Duration         |               0.2s |\n| Trajectory ID    | traj-178714"
+          "why": "exit 0; routing outcome and routing-decision:task_1787204773076_u5nua5 persisted",
+          "output": "[INFO] Recording outcome for task: task_1787204773076_u5nua5\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  2 |\n| New Patterns     |                  1 |\n| Duration         |               0.2s |\n| Trajectory ID    | traj-178720"
         },
         "model": "gpt-5.6-sol",
         "forcedCommand": false,
@@ -154,44 +169,56 @@
         "firstToolIndex": 1,
         "lessonBeforeFirstToolCall": true,
         "transcript": {
-          "path": "data/learning-replay-transcripts/5841feb2ef09eca7c8231b738b11eba5e2d73cb7/2192de8ec5ef9d644ffbb4745b273fe5955dc7a2f0989651b0f94b8d977eae5a.json",
-          "sha256": "2192de8ec5ef9d644ffbb4745b273fe5955dc7a2f0989651b0f94b8d977eae5a",
-          "sourceSha": "5841feb2ef09eca7c8231b738b11eba5e2d73cb7",
+          "path": "data/learning-replay-transcripts/85837f7346d82a9cdb9861cf430cdae270177e5d/910b06c645fe3e4d15f06d18760223a4e09e32ca3cb5eef42db83002b18938bc.json",
+          "sha256": "910b06c645fe3e4d15f06d18760223a4e09e32ca3cb5eef42db83002b18938bc",
+          "sourceSha": "85837f7346d82a9cdb9861cf430cdae270177e5d",
           "mutant": null
         }
       },
       "control": {
-        "class": "none",
-        "subcommandCorrect": false,
-        "command": "",
+        "class": "partial",
+        "subcommandCorrect": true,
+        "command": "ruflo hooks post-task --task-id release-retry-budget-investigation --success true --agent tester --persist-routing true",
         "exec": {
-          "ran": false,
-          "argv": null,
-          "exit": null,
-          "exitOk": false,
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "hooks",
+            "post-task",
+            "--task-id",
+            "release-retry-budget-investigation",
+            "--success",
+            "true",
+            "--agent",
+            "tester",
+            "--persist-routing",
+            "true"
+          ],
+          "exit": 0,
+          "exitOk": true,
           "retrieved": false,
-          "why": "no Ruflo invocation to execute",
-          "output": ""
+          "why": "exit 0; command lacked --task, --agent, --store-results, or a task id",
+          "output": "[INFO] Recording outcome for task: release-retry-budget-investigation\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  1 |\n| New Patterns     |                  1 |\n| Duration         |               0.2s |\n| Trajectory ID    | tr"
         },
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/5841feb2ef09eca7c8231b738b11eba5e2d73cb7/41e75ddb21d8deee5b200e65affa7c8702dc91aebdbdffa4e0e033b8a7413cdb.json",
-          "sha256": "41e75ddb21d8deee5b200e65affa7c8702dc91aebdbdffa4e0e033b8a7413cdb",
-          "sourceSha": "5841feb2ef09eca7c8231b738b11eba5e2d73cb7",
+          "path": "data/learning-replay-transcripts/85837f7346d82a9cdb9861cf430cdae270177e5d/8619abf0ae209c42611cd444f4a2467910b297c8513e15c2d432e45f231a3a32.json",
+          "sha256": "8619abf0ae209c42611cd444f4a2467910b297c8513e15c2d432e45f231a3a32",
+          "sourceSha": "85837f7346d82a9cdb9861cf430cdae270177e5d",
           "mutant": null
         }
       }
     },
     {
       "i": 3,
-      "verdict": "UNKNOWN",
-      "why": "the control arm produced no ruflo invocation at all — there is no comparable artifact to difference against",
+      "verdict": "PASS",
+      "why": "treated \"flagged\" vs control \"partial\"; the produced command executed and returned the required outcome",
       "error": null,
       "treated": {
         "class": "flagged",
         "subcommandCorrect": true,
-        "command": "ruflo hooks post-task --task 'release retry-budget investigation' --agent tester --store-results --success",
+        "command": "ruflo hooks post-task --task \"release retry-budget investigation\" --agent tester --success --store-results",
         "exec": {
           "ran": true,
           "argv": [
@@ -202,14 +229,14 @@
             "release retry-budget investigation",
             "--agent",
             "tester",
-            "--store-results",
-            "--success"
+            "--success",
+            "--store-results"
           ],
           "exit": 0,
           "exitOk": true,
           "retrieved": true,
-          "why": "exit 0; routing outcome and routing-decision:task_1787145094122_6urs51 persisted",
-          "output": "[INFO] Recording outcome for task: task_1787145094122_6urs51\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  2 |\n| New Patterns     |                  1 |\n| Duration         |               0.2s |\n| Trajectory ID    | traj-178714"
+          "why": "exit 0; routing outcome and routing-decision:task_1787204799858_oedf84 persisted",
+          "output": "[INFO] Recording outcome for task: task_1787204799858_oedf84\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  2 |\n| New Patterns     |                  1 |\n| Duration         |               0.2s |\n| Trajectory ID    | traj-178720"
         },
         "model": "gpt-5.6-sol",
         "forcedCommand": false,
@@ -217,31 +244,43 @@
         "firstToolIndex": 1,
         "lessonBeforeFirstToolCall": true,
         "transcript": {
-          "path": "data/learning-replay-transcripts/5841feb2ef09eca7c8231b738b11eba5e2d73cb7/90f5c517dc74f9b034c7a9877ad24bdcc5676a3922ece79ad1627c990d505685.json",
-          "sha256": "90f5c517dc74f9b034c7a9877ad24bdcc5676a3922ece79ad1627c990d505685",
-          "sourceSha": "5841feb2ef09eca7c8231b738b11eba5e2d73cb7",
+          "path": "data/learning-replay-transcripts/85837f7346d82a9cdb9861cf430cdae270177e5d/86742a93054ae2898c5593566e6e70ac84b3c065dcea378f094f8ea22401bd75.json",
+          "sha256": "86742a93054ae2898c5593566e6e70ac84b3c065dcea378f094f8ea22401bd75",
+          "sourceSha": "85837f7346d82a9cdb9861cf430cdae270177e5d",
           "mutant": null
         }
       },
       "control": {
-        "class": "none",
-        "subcommandCorrect": false,
-        "command": "",
+        "class": "partial",
+        "subcommandCorrect": true,
+        "command": "ruflo hooks post-task --task-id \"release-retry-budget-investigation\" --success true --agent \"tester\" --store-results true",
         "exec": {
-          "ran": false,
-          "argv": null,
-          "exit": null,
-          "exitOk": false,
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "hooks",
+            "post-task",
+            "--task-id",
+            "release-retry-budget-investigation",
+            "--success",
+            "true",
+            "--agent",
+            "tester",
+            "--store-results",
+            "true"
+          ],
+          "exit": 0,
+          "exitOk": true,
           "retrieved": false,
-          "why": "no Ruflo invocation to execute",
-          "output": ""
+          "why": "exit 0; command lacked --task, --agent, --store-results, or a task id",
+          "output": "[INFO] Recording outcome for task: release-retry-budget-investigation\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  1 |\n| New Patterns     |                  1 |\n| Duration         |               0.2s |\n| Trajectory ID    | tr"
         },
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/5841feb2ef09eca7c8231b738b11eba5e2d73cb7/b946e6282dddbc73b5cac6b60a00162ffc11562a79be90264c58033b50450e3b.json",
-          "sha256": "b946e6282dddbc73b5cac6b60a00162ffc11562a79be90264c58033b50450e3b",
-          "sourceSha": "5841feb2ef09eca7c8231b738b11eba5e2d73cb7",
+          "path": "data/learning-replay-transcripts/85837f7346d82a9cdb9861cf430cdae270177e5d/9139f2d5ceaa436ba2c2df5e6802816dd98acb1447af3a0beaf6e1380536aba8.json",
+          "sha256": "9139f2d5ceaa436ba2c2df5e6802816dd98acb1447af3a0beaf6e1380536aba8",
+          "sourceSha": "85837f7346d82a9cdb9861cf430cdae270177e5d",
           "mutant": null
         }
       }

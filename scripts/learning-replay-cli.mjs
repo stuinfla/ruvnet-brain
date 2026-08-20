@@ -132,9 +132,14 @@ export async function main(argv = process.argv.slice(2)) {
   const dirs = buildFixtures(base);
   process.once('exit', () => cleanupFixtureDaemons(dirs));
   const record = recordInProjectA(dirs, { trap });
-  const seed = trap === TRAP.MEMORY_SEARCH
-    ? seedProjectBMemory(dirs)
-    : { key: null, storeExit: null, ok: true, skipped: 'not required' };
+  // Every target fixture needs a real AgentDB file before Codex starts. The global SessionStart
+  // contract otherwise injects an opt-in question and requires the model to wait for an answer,
+  // which prevents both post-task arms from producing the command this trap is meant to compare.
+  // Only the memory-search trap needs the independent cache note; post-task needs an initialized,
+  // otherwise empty store so its control differs solely on the lesson under test.
+  const seed = seedProjectBMemory(dirs, {
+    includeFixtureRecord: trap === TRAP.MEMORY_SEARCH,
+  });
   const refresh = nightlyRefresh(dirs);
   console.log(`  record: ${record.projectCount} sources; promoted=${record.promoted}; ok=${record.ok}`);
   console.log(`  seed: ${seed.skipped || `ok=${seed.ok}`}`);
