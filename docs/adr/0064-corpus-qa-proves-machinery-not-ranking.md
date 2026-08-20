@@ -3,7 +3,7 @@ id: ADR-064
 title: The corpus-QA round trip proves the machinery, not the ranking
 status: Accepted
 date: 2026-08-06
-updated: 2026-08-08
+updated: 2026-08-20
 authors: [Stuart Kerr, Claude Code]
 tags: [corpus-qa, nightly, retrieval, near-duplicates, diagnosability, escalation]
 supersedes: []
@@ -175,3 +175,9 @@ label. Noted, not load-bearing for anything published.
   fixture was written, so tests assert the numbers the gate really prints.
 - Mutation campaign: 13 mutants across `corpus-qa.mjs`, `self-update.mjs`, `nightly-wrapper.sh` —
   every one killed by the intended test; sources restored and re-verified byte-identical.
+
+## Currency log
+
+| Date | What changed | Why (with referents) |
+|---|---|---|
+| 2026-08-20 | **Corpus coverage now closes on its own instead of being measured and left.** | `nightly-wrapper.sh` gained daily ingestion via the new `scripts/ingest-new-repos.mjs`. Nothing had ever loaded new rUv repos — measured 181 live, 69 ingested, 125 missing — while `brain-stamp.mjs` computed that gap every night and nothing consumed it. The QA machinery this ADR governs was never wrong about the number; it had no actuator. The new script ingests newest-first, bounded per night, and refuses to invent capability cards for what it ingests, because a card written from a repo NAME would route real questions to a corpus nobody grounded in the source. It also exits 1 on a failed org listing rather than reporting "0 new repos" — a list you could not fetch is not an empty list. |

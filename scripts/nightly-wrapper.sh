@@ -7,6 +7,29 @@
 # class a blind retry can fix) -> if it fails AGAIN, loud phone alert + a durable marker file that
 # ground-ruvnet.sh surfaces at the top of the very next session, unprompted. Success or a legitimate
 # "nothing was due tonight" no-op: log only, phone stays silent.
+
+# WHICH NODE RUNS THIS DECIDES WHETHER TONIGHT'S WRITES SURVIVE (measured 2026-08-20).
+#
+# This file hardcoded "$NODE_BIN" in eight places. That is node v22.13.1 (ABI 127), and the
+# better-sqlite3 binding agentdb needs is built for ABI 137 — so under it agentdb SILENTLY falls
+# back to non-persistent sql.js and every write is lost. Silently, because better-sqlite3 is an
+# OPTIONAL dependency (ruvnet/ruflo#2219): the failure never errors and the CLI still prints a
+# success table. `lesson-bridge.mjs --apply` and `learning-replay.mjs` both write, so the nightly
+# was discarding its own results. Measured, same command, same DB, only the interpreter differing:
+#   "$NODE_BIN"   v22.13.1  ->  2 sql.js fallback msgs, DURABLE=NO
+#   /opt/homebrew/bin/node v24.18.0 ->  0 fallback msgs,        DURABLE=YES
+# Resolve a node whose ABI matches the binding, and fail loudly rather than silently losing data.
+NODE_BIN=""
+for _cand in /opt/homebrew/opt/node@24/bin/node /opt/homebrew/bin/node "$(command -v node 2>/dev/null)"; do
+  [ -x "$_cand" ] || continue
+  if [ "$("$_cand" -p 'process.versions.modules' 2>/dev/null)" = "137" ]; then NODE_BIN="$_cand"; break; fi
+done
+if [ -z "$NODE_BIN" ]; then
+  echo "[nightly] FATAL: no node with ABI 137 found — agentdb writes would silently not persist." >&2
+  echo "[nightly] checked: /opt/homebrew/opt/node@24/bin/node /opt/homebrew/bin/node \$(command -v node)" >&2
+  exit 1
+fi
+
 set -u
 # kb/models-cache (the fallback) starts cold every time -> every nightly re-downloads the ONNX
 # embedder from HuggingFace. Point at the already-warm cache instead (verified present).
@@ -55,9 +78,9 @@ run_once() {
   { echo "===== nightly-wrapper rebuild attempt $1 — $(date -u +%FT%TZ) ====="
     if [ "$SMOKE" = "1" ]; then
       echo "[SMOKE] dry-run: exercising the full chain, NOT building"
-      /usr/local/bin/node scripts/self-update.mjs --fresh-window 60
+      "$NODE_BIN" scripts/self-update.mjs --fresh-window 60
     else
-      /usr/local/bin/node scripts/self-update.mjs --apply --fresh-window 60
+      "$NODE_BIN" scripts/self-update.mjs --apply --fresh-window 60
     fi
   } >> "$LOG" 2>&1
   rc=$?
@@ -93,7 +116,7 @@ RUFLO_DAEMON_AUTOSTART=0 ~/.npm-global/bin/ruflo memory backup --db .swarm/memor
 # it REFUSES to apply when it reads zero rows while bridged lessons are installed — so a transient
 # read failure can never strip the store. Best-effort, never blocks the rebuild.
 echo "===== lesson-bridge — $(date -u +%FT%TZ) =====" >> "$LOG"
-/usr/local/bin/node plugin/scripts/lesson-bridge.mjs --apply >> "$LOG" 2>&1 \
+"$NODE_BIN" plugin/scripts/lesson-bridge.mjs --apply >> "$LOG" 2>&1 \
   || echo "===== lesson-bridge: SKIPPED (see line above) =====" >> "$LOG"
 
 # AgentDB drift canary (2026-07-23, P7 wiring sweep) — scripts/memdb-health.sh existed unwired since
@@ -141,15 +164,27 @@ sh scripts/memdb-health.sh .swarm/memory.db >> "$LOG" 2>&1 \
 # REPORTS ONLY. It cannot push, merge, close or publish (asserted by test). Exit 1 means a human
 # needs to look, and the reasons print in full rather than as a count.
 echo "===== GITHUB-HEALTH watch — $(date -u +%FT%TZ) =====" >> "$LOG"
-/usr/local/bin/node scripts/github-health-watch.mjs >> "$LOG" 2>&1 \
+# LOAD WHAT rUv SHIPPED, WITHOUT BEING ASKED (added 2026-08-20).
+#
+# The owner: "aren't you loading everything Ruv creates every day?????" The answer was no — this
+# file had ZERO ingestion, so new repos only entered the brain when a human typed the command.
+# Measured the day this landed: 181 live repos, 69 ingested, 125 missing. `brain-stamp.mjs` had
+# been COMPUTING that gap nightly and nothing acted on it.
+#
+# Bounded to 3/night on purpose: ingestion embeds a whole repository, and 125 in one run would
+# starve everything after it here. The corpus converges over days and the run says how many
+# remain rather than implying it finished. A failed repo is left missing so the next night retries.
+"$NODE_BIN" scripts/ingest-new-repos.mjs --apply --max 3 >> "$LOG" 2>&1 || true
+
+"$NODE_BIN" scripts/github-health-watch.mjs >> "$LOG" 2>&1 \
   || echo "[github-health] findings above need attention" >> "$LOG"
 
 echo "===== RELEASE-CONVERGENCE watchdog — $(date -u +%FT%TZ) =====" >> "$LOG"
-/usr/local/bin/node scripts/release-convergence-watchdog.mjs --dispatch >> "$LOG" 2>&1 \
+"$NODE_BIN" scripts/release-convergence-watchdog.mjs --dispatch >> "$LOG" 2>&1 \
   || echo "[release-watchdog] exited non-zero — see above; nightly continues" >> "$LOG"
 
 echo "===== LEARNING-REPLAY counterfactual trap — $(date -u +%FT%TZ) =====" >> "$LOG"
-/usr/local/bin/node scripts/learning-replay.mjs --n 3 --model haiku >> "$LOG" 2>&1
+"$NODE_BIN" scripts/learning-replay.mjs --n 3 --model haiku >> "$LOG" 2>&1
 LR_RC=$?
 case "$LR_RC" in
   0) echo "===== LEARNING-REPLAY: PASS =====" >> "$LOG" ;;
@@ -165,7 +200,7 @@ esac
 BRAIN_KB="$HOME/.cache/ruvnet-brain/kb"
 if [ -f "$BRAIN_KB/forge-ask-all.mjs" ]; then
   echo "===== brain-health canary — $(date -u +%FT%TZ) =====" >> "$LOG"
-  if (cd "$BRAIN_KB" && /usr/local/bin/node forge-ask-all.mjs --dir . --q "HNSW vector index" --k 1) >> "$LOG" 2>&1; then
+  if (cd "$BRAIN_KB" && "$NODE_BIN" forge-ask-all.mjs --dir . --q "HNSW vector index" --k 1) >> "$LOG" 2>&1; then
     echo "===== brain-health canary: OK =====" >> "$LOG"
   else
     echo "===== brain-health canary: DOWN — escalating =====" >> "$LOG"
@@ -181,7 +216,7 @@ fi
 # The canary itself handles urgent pushes on alive->DEAD transitions (and recovery notices), so a
 # known-dead key doesn't re-alarm every night; here we only log.
 echo "===== key-health canary — $(date -u +%FT%TZ) =====" >> "$LOG"
-zsh -lc 'cd /Users/stuartkerr/Code/ruvnet-brain && /usr/local/bin/node scripts/key-canary.mjs --notify' >> "$LOG" 2>&1 \
+zsh -lc 'cd /Users/stuartkerr/Code/ruvnet-brain && "$NODE_BIN" scripts/key-canary.mjs --notify' >> "$LOG" 2>&1 \
   && echo "===== key-health canary: all present keys alive =====" >> "$LOG" \
   || echo "===== key-health canary: at least one key DEAD (push sent on new deaths) =====" >> "$LOG"
 
