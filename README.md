@@ -4,7 +4,7 @@
 
 # 🧠 RuvNet Brain
 
-### 🧠 RuvNet Brain — [![RuvNet Brain version 4.2.1-dev — updated 2026-07-30 03:24 EDT](https://img.shields.io/badge/version_4.2.1--dev-updated_2026--07--30_03:24_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
+### 🧠 RuvNet Brain — [![RuvNet Brain version 4.2.2-dev — updated 2026-07-30 03:24 EDT](https://img.shields.io/badge/version_4.2.2--dev-updated_2026--07--30_03:24_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
 
 **A portable, source-grounded brain over Reuven Cohen's (rUv's) RuvNet stack — delivered as a Claude Code plugin that makes Claude _use_ the stack instead of fighting it.**
 
@@ -56,7 +56,30 @@
 
 ---
 
-## What's new in 4.0 — it anticipates, and it learns whether it was right
+## What's new in 4.2 — it loads what rUv ships, without being asked
+
+**The corpus stopped drifting behind the org.** Until 4.2 nothing ever ingested a new repo: the
+nightly refreshed lessons, health and proofs and contained *zero* ingestion, so a repo entered the
+brain only when a human typed the command. `brain-stamp.mjs` had been measuring that gap every
+night and nothing consumed it. Measured the day it was fixed: **181 live repos, 69 ingested.**
+
+- **187 stores, up from 69.** Everything rUv ships that has content, pulled in and kept level by
+  `scripts/ingest-new-repos.mjs` running nightly, newest-first. Empty repos (`size=0KB`) are skipped
+  rather than retried forever — a permanent nightly failure that is actually correct behaviour
+  trains you to ignore the failure line, which is how a real one would hide inside it.
+- **174 capability cards, up from 39.** Ingesting a repo is not the same as making it reachable: a
+  store with no card is *dark* — valid bytes no by-description query can find. Cards are written
+  from each repo's **own** description and README, never from its name, and where there is no
+  grounded source text the store is **left dark and reported** rather than given an invented
+  sentence. 13 remain dark for exactly that reason.
+- **The download barely grew** for 2.4x the corpus — most of rUv's repos are small, so the bulk
+  of the bundle was always the large ones. (No size is hand-typed here: a number typed onto a
+  public page rots the moment the next bundle is built, and this repo gates against exactly that.)
+- **The nightly stopped discarding its own writes.** It hardcoded a node whose ABI did not match
+  agentdb's binding, so `lesson-bridge --apply` and `learning-replay` wrote into a silent
+  non-persistent fallback. It now resolves an ABI-matched interpreter and fails loudly instead.
+
+## What's new in 4.2 — it anticipates, and it learns whether it was right
 
 **Building toward L4/L5 (3.9.x, dev).** The mechanisms for the top two rungs of the proactivity
 ladder are built and wired — but they are **not yet verified to 4.0's bar**, which requires all five
