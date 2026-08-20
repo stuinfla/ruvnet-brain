@@ -42,13 +42,22 @@ const gated = BASH ? it : it.skip;
  * MEASURED in CI 2026-08-20 (run 32351326320): `learn-flush` is DETACHED by design
  * (`codex-hook-wrapper.mjs`'s `DETACHED_HOOKS` — it must outlive its parent because Codex hard-caps
  * SessionEnd at 3s while a real flush needs up to 18s), which the spine fixture below makes reachable
- * for the first time. The detached child can still be writing under `RUVNET_BRAIN_HOME` a few hundred
- * ms after `fire()` returns, racing this cleanup's `rmSync` and intermittently throwing `ENOTEMPTY` —
- * a test-fixture-lifecycle race, not a product defect (a real install's `~/.cache/ruvnet-brain` is
- * never deleted out from under a running hook). `fs.rmSync`'s own retry option exists for exactly
- * this transient-EBUSY/ENOTEMPTY class; use it rather than widening what the assertions tolerate.
+ * for the first time. The detached child can still be writing under `RUVNET_BRAIN_HOME` after `fire()`
+ * returns, racing this cleanup's `rmSync` and intermittently throwing `ENOTEMPTY` — a
+ * test-fixture-lifecycle race, not a product defect (a real install's `~/.cache/ruvnet-brain` is never
+ * deleted out from under a running hook). `fs.rmSync`'s own retry option exists for exactly this
+ * transient-EBUSY/ENOTEMPTY class; use it rather than widening what the assertions tolerate.
+ *
+ * A first pass budgeted 500ms total (maxRetries:5 × retryDelay:100) and still hit ENOTEMPTY in CI
+ * (run 32371674603) — nowhere near covering `codex-hooks.json`'s own documented worst case for THIS
+ * hook: "measured 18342/18347/18384 ms with a real queue and real ruflo". `RM_OPTS` keeps that short
+ * budget as the general safety net (every other hook is fully synchronous by the time `fire()`
+ * returns, so it never needs more); `RM_OPTS_LEARN_FLUSH` is scoped to the one command that is
+ * DETACHED by design, with a ceiling comfortably above the documented worst case.
  */
 const RM_OPTS = { recursive: true, force: true, maxRetries: 5, retryDelay: 100 };
+const RM_OPTS_LEARN_FLUSH = { recursive: true, force: true, maxRetries: 60, retryDelay: 500 };
+const rmOptsFor = (command) => (command.includes('learn-flush') ? RM_OPTS_LEARN_FLUSH : RM_OPTS);
 
 /** A project this plugin has never seen: no git, no kb, no .swarm, no docs/adr, no evals. */
 function strangerProject() {
@@ -166,7 +175,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
         if (err && r.status !== 2) offenders.push(`${c.host}/${c.event}: STDERR "${err.slice(0, 90)}"`);
         if (r.status !== 0 && r.status !== 2) offenders.push(`${c.host}/${c.event}: exit ${r.status}`);
         if (r.error) offenders.push(`${c.host}/${c.event}: ${r.error.message.slice(0, 80)}`);
-      } finally { fs.rmSync(dir, RM_OPTS); }
+      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
     }
     expect(offenders, 'these emit noise or fail in a project that is not ruvnet-brain — a host '
       + 'renders that to the user as a hook error').toEqual([]);
@@ -183,7 +192,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
         fire({ ...c, cwd: dir });
         const after = fs.readdirSync(dir).filter((n) => !n.startsWith('.conformance-')).sort().join(',');
         if (after !== before) offenders.push(`${c.host}/${c.event}: left behind ${after}`);
-      } finally { fs.rmSync(dir, RM_OPTS); }
+      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
     }
     expect(offenders, 'these mutate a project the plugin does not own').toEqual([]);
   }, 600_000);
@@ -199,7 +208,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
         const r = fire({ ...c, cwd: dir });
         const budget = (c.timeout ?? 30) * 1000;
         if (r.ms > budget * 0.8) offenders.push(`${c.host}/${c.event}: ${r.ms}ms of a ${budget}ms budget`);
-      } finally { fs.rmSync(dir, RM_OPTS); }
+      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
     }
     expect(offenders, 'these run too close to the host timeout that kills them; the host reports '
       + 'the kill as a hook error, intermittently, on ordinary tool calls').toEqual([]);
