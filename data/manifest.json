@@ -1,13 +1,13 @@
 {
-  "brainVersion": "4.0.86-dev",
-  "generated": "2026-08-19T07:15:51.713Z",
-  "generatedHuman": "Wed, 19 Aug 2026 07:15:51 GMT",
+  "brainVersion": "4.0.88-dev",
+  "generated": "2026-08-20T07:16:21.648Z",
+  "generatedHuman": "Thu, 20 Aug 2026 07:16:21 GMT",
   "coverage": {
     "built": 77,
     "catalogued": 200,
     "orgTotalApprox": 206,
     "orgTotalSource": "live",
-    "orgTotalAt": "2026-08-19T07:15:52.436Z",
+    "orgTotalAt": "2026-08-20T07:16:22.447Z",
     "pending": 123
   },
   "builtRepos": [
@@ -15,7 +15,7 @@
       "name": "RuView",
       "tier": "T0",
       "stars": 75658,
-      "builtFromSha": "d36f346bbaa360ba8e3e29ab90164bbaddc883ce",
+      "builtFromSha": "a3b6e1d500df784b9ad1846dd39deb07e2c69a34",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -31,7 +31,7 @@
       "name": "RuVector",
       "tier": "T0",
       "stars": 4296,
-      "builtFromSha": "74d2a60171402992206dddc172e068ce1808ed8b",
+      "builtFromSha": "7b38d0bdd25ad97f0f8eb05633af3db678b6fd6c",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -215,7 +215,7 @@
       "name": "open-claude-code",
       "tier": "T2",
       "stars": 416,
-      "builtFromSha": "5d007f09c43be0e7c0849f039df447d6fbbbe04d",
+      "builtFromSha": "9e2e08c03d9b5d009eac14fc10a50d223a73de70",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -303,7 +303,7 @@
       "name": "musica",
       "tier": "T2",
       "stars": 17,
-      "builtFromSha": "e6fa3d4190cba6a11a4bea7ad9dbf8280165d9fc",
+      "builtFromSha": "617b61395682b9b3fe6e330206bf3ff41aef9d67",
       "latestRemoteSha": null,
       "status": "built"
     },
@@ -421,7 +421,7 @@
     {
       "name": "autogenous",
       "tier": "fresh",
-      "builtFromSha": "d22d0010d38c452f819d061e4415f9e61848fb34",
+      "builtFromSha": "b5c6e8380a40481d1f7d81e3c777504f487fed9a",
       "latestRemoteSha": null,
       "status": "built"
     },
