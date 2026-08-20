@@ -1,22 +1,52 @@
 {
   "//": "PRIVATE store names. These KBs are built from PRIVATE GitHub source (cognitum-one org) and MUST be excluded from any publishable / shipped bundle. scripts/build-bundle.mjs reads this file and skips these store names during discovery. Keep this file in sync whenever a private repo is ingested.",
   "privateStores": [
-    "cognitum-seed",
-    "cognitum-v0-appliance",
+    "cognitum-api",
     "cognitum-platform-docs",
+    "cognitum-seed",
     "cognitum-spoton",
     "cognitum-trader",
     "cognitum-trader-jackishim",
+    "cognitum-v0-appliance",
     "ruv-meetings"
   ],
   "details": {
-    "cognitum-seed": { "repo": "cognitum-one/seed", "visibility": "private" },
-    "cognitum-v0-appliance": { "repo": "cognitum-one/v0-appliance", "visibility": "private" },
-    "cognitum-platform-docs": { "repo": "cognitum-one/platform-docs", "visibility": "private" },
-    "cognitum-spoton": { "repo": "cognitum-one/spoton", "visibility": "private", "note": "fence entry added BEFORE first ingest (2026-07-18) so no bundle-build window ever saw the store unfenced" },
-    "cognitum-trader": { "repo": "stuinfla/cognitum-trader", "visibility": "private", "note": "Stuart's own private trading project; fenced BEFORE first ingest (2026-07-18)" },
-    "cognitum-trader-jackishim": { "repo": "jackishim/cognitum-trader", "visibility": "private", "note": "a COLLABORATOR's private repo (third-party IP) — local store only, fenced BEFORE first ingest (2026-07-18); distinct store name avoids collision with stuinfla/cognitum-trader" },
-    "ruv-meetings": { "repo": "(none — Read.ai transcripts of semi-private community calls; participants did not consent to public redistribution)", "visibility": "private" }
+    "cognitum-seed": {
+      "repo": "cognitum-one/seed",
+      "visibility": "private"
+    },
+    "cognitum-v0-appliance": {
+      "repo": "cognitum-one/v0-appliance",
+      "visibility": "private"
+    },
+    "cognitum-platform-docs": {
+      "repo": "cognitum-one/platform-docs",
+      "visibility": "private"
+    },
+    "cognitum-spoton": {
+      "repo": "cognitum-one/spoton",
+      "visibility": "private",
+      "note": "fence entry added BEFORE first ingest (2026-07-18) so no bundle-build window ever saw the store unfenced"
+    },
+    "cognitum-trader": {
+      "repo": "stuinfla/cognitum-trader",
+      "visibility": "private",
+      "note": "Stuart's own private trading project; fenced BEFORE first ingest (2026-07-18)"
+    },
+    "cognitum-trader-jackishim": {
+      "repo": "jackishim/cognitum-trader",
+      "visibility": "private",
+      "note": "a COLLABORATOR's private repo (third-party IP) — local store only, fenced BEFORE first ingest (2026-07-18); distinct store name avoids collision with stuinfla/cognitum-trader"
+    },
+    "ruv-meetings": {
+      "repo": "(none — Read.ai transcripts of semi-private community calls; participants did not consent to public redistribution)",
+      "visibility": "private"
+    },
+    "cognitum-api": {
+      "repo": "(none — local-only clone, origin is a file:// path with no upstream)",
+      "visibility": "UNVERIFIABLE",
+      "note": "Fenced 2026-08-20 on the fail-closed rule, not on evidence of privacy. Its clone's origin is file:///…/clones/cognitum-api, so there is no upstream to ask about visibility, and it holds a full per-endpoint API reference + developers page for the cognitum platform (committed 2026-07-18). Every sibling cognitum-* store resolved to a PUBLIC upstream when checked; this one alone could not be resolved either way. Unverifiable is not the same as public, and a bundle is irreversible once downloaded — so it stays out until someone can name its source. Remove this entry the moment its provenance is established."
+    }
   },
   "publicNote": "cognitum-cogs (cognitum-one/cogs) and cognitum-support (cognitum-one/support) are PUBLIC and bundle-safe."
 }
