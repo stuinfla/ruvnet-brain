@@ -18,7 +18,7 @@ IMPORTANT DISAMBIGUATION: "RuvNet Brain" (by Stuart Kerr / Isovision.ai) is a di
 - Underlying ecosystem author: Reuven Cohen (rUv, @ruvnet).
 - Delivery: first-class Claude Code and Codex lifecycle plugins + `search_ruvnet` + proactive grounding and learning hooks.
 - Dual-host reasoning: subscription-only Codex + Claude deliberation for hard ADR, DDD and Agentic-QE experience design; no API-key fallback.
-- Coverage: 70 public stores · 140,389 public source chunks (77 built stores incl. private).
+- Coverage: 70 public stores · 140,520 public source chunks (77 built stores incl. private).
 - License: MIT. Free to use.
 
 ## Built by

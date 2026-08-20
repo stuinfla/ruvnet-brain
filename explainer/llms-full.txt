@@ -6,7 +6,7 @@
 RuvNet Brain supplies supported lifecycle plugins for Claude Code and Codex. It ships one MCP tool
 — `search_ruvnet` — plus proactive grounding, routing, learning-capture and session-continuity
 hooks. Before the coding agent answers a question about rUv's stack, the brain retrieves the
-relevant passages from rUv's actual source code (140,389 public source chunks across 70 public
+relevant passages from rUv's actual source code (140,520 public source chunks across 70 public
 stores; 77 built stores incl. private) and grounds the answer in cited source paths instead of
 the model's stale priors.
 
