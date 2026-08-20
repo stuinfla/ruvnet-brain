@@ -1,6 +1,12 @@
 {
   "ingests": [
     {
+      "name": "2BotTalk",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:30.064Z",
+      "store": "2bottalk"
+    },
+    {
       "name": "Agent-Name-Service",
       "org": "ruvnet",
       "at": "2026-08-20T17:21:12.168Z",
@@ -11,6 +17,18 @@
       "org": "ruvnet",
       "at": "2026-08-20T17:33:26.654Z",
       "store": "agentic-artifacts"
+    },
+    {
+      "name": "agentic-capacity-exchange",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:33:50.862Z",
+      "store": "agentic-capacity-exchange"
+    },
+    {
+      "name": "agentic-dashboard",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:33:40.559Z",
+      "store": "agentic-dashboard"
     },
     {
       "name": "agentic-devops",
@@ -55,6 +73,12 @@
       "store": "agentic-preview"
     },
     {
+      "name": "agentic-reports",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:02.723Z",
+      "store": "agentic-reports"
+    },
+    {
       "name": "agentic-scraper",
       "org": "ruvnet",
       "at": "2026-08-20T17:31:24.071Z",
@@ -85,6 +109,12 @@
       "store": "agenticsjs"
     },
     {
+      "name": "agentX",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:35:09.935Z",
+      "store": "agentx"
+    },
+    {
       "name": "agentXNG",
       "org": "ruvnet",
       "at": "2026-08-20T17:33:05.038Z",
@@ -103,10 +133,34 @@
       "store": "ai-browse"
     },
     {
+      "name": "Ai-Code-Generator-",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:47.749Z",
+      "store": "ai-code-generator-"
+    },
+    {
+      "name": "ai-gist",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:21.535Z",
+      "store": "ai-gist"
+    },
+    {
+      "name": "ai-stream",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:28.885Z",
+      "store": "ai-stream"
+    },
+    {
       "name": "ai-text-watermark",
       "org": "ruvnet",
       "at": "2026-08-20T17:13:43.661Z",
       "store": "ai-text-watermark"
+    },
+    {
+      "name": "ai-video",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:25.360Z",
+      "store": "ai-video"
     },
     {
       "name": "AiCodeCalc",
@@ -121,16 +175,40 @@
       "store": "aido"
     },
     {
+      "name": "AiHCC",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:38.690Z",
+      "store": "aihcc"
+    },
+    {
       "name": "aihl",
       "org": "ruvnet",
       "at": "2026-08-20T17:30:30.933Z",
       "store": "aihl"
     },
     {
+      "name": "aiscreenplay",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:57.841Z",
+      "store": "aiscreenplay"
+    },
+    {
+      "name": "AiToml",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:51.196Z",
+      "store": "aitoml"
+    },
+    {
       "name": "alienator",
       "org": "ruvnet",
       "at": "2026-08-20T17:18:29.497Z",
       "store": "alienator"
+    },
+    {
+      "name": "AP-Casper",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:45.163Z",
+      "store": "ap-casper"
     },
     {
       "name": "ARCADIA",
@@ -151,10 +229,52 @@
       "store": "autogenous"
     },
     {
+      "name": "aws-dev",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:33.794Z",
+      "store": "aws-dev"
+    },
+    {
+      "name": "Bot-Generator-Bot",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:35:46.791Z",
+      "store": "bot-generator-bot"
+    },
+    {
+      "name": "chatgpt_plugin_python",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:41.272Z",
+      "store": "chatgpt_plugin_python"
+    },
+    {
+      "name": "chatgpt_tatum_plugin",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:22.276Z",
+      "store": "chatgpt_tatum_plugin"
+    },
+    {
+      "name": "chatgpt-aws-price-list-plugin",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:18.588Z",
+      "store": "chatgpt-aws-price-list-plugin"
+    },
+    {
       "name": "chatgpt-dev-mode",
       "org": "ruvnet",
       "at": "2026-08-20T17:17:12.339Z",
       "store": "chatgpt-dev-mode"
+    },
+    {
+      "name": "chatgpt-openai-api-plugin",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:35:36.684Z",
+      "store": "chatgpt-openai-api-plugin"
+    },
+    {
+      "name": "ChatGPT-Trading-Bot-for-KuCoin",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:35.227Z",
+      "store": "chatgpt-trading-bot-for-kucoin"
     },
     {
       "name": "claude-test",
@@ -169,16 +289,34 @@
       "store": "code-mesh"
     },
     {
+      "name": "codecraft",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:11.548Z",
+      "store": "codecraft"
+    },
+    {
       "name": "codex-one",
       "org": "ruvnet",
       "at": "2026-08-20T17:20:39.852Z",
       "store": "codex-one"
     },
     {
+      "name": "coding-wingman",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:35:21.810Z",
+      "store": "coding-wingman"
+    },
+    {
       "name": "Connectome-OS",
       "org": "ruvnet",
       "at": "2026-08-20T17:13:54.091Z",
       "store": "connectome-os"
+    },
+    {
+      "name": "console-streamer",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:25.622Z",
+      "store": "console-streamer"
     },
     {
       "name": "contextual-retrevial",
@@ -247,6 +385,12 @@
       "store": "gpts"
     },
     {
+      "name": "guardrail",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:35:17.936Z",
+      "store": "guardrail"
+    },
+    {
       "name": "hacker-league",
       "org": "ruvnet",
       "at": "2026-08-20T17:26:36.236Z",
@@ -313,6 +457,12 @@
       "store": "local-logic"
     },
     {
+      "name": "markov-chains",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:05.600Z",
+      "store": "markov-chains"
+    },
+    {
       "name": "nova",
       "org": "ruvnet",
       "at": "2026-08-20T17:27:10.656Z",
@@ -331,10 +481,82 @@
       "store": "onnx-agent"
     },
     {
+      "name": "open-space",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:33:54.378Z",
+      "store": "open-space"
+    },
+    {
+      "name": "openai_devops",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:59.952Z",
+      "store": "openai_devops"
+    },
+    {
+      "name": "openai-cost-estimator",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:35:24.061Z",
+      "store": "openai-cost-estimator"
+    },
+    {
+      "name": "p2pGPT",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:02.001Z",
+      "store": "p2pgpt"
+    },
+    {
+      "name": "paris",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:15.709Z",
+      "store": "paris"
+    },
+    {
       "name": "phone-agent",
       "org": "ruvnet",
       "at": "2026-08-20T17:24:31.622Z",
       "store": "phone-agent"
+    },
+    {
+      "name": "pipackager",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:18.390Z",
+      "store": "pipackager"
+    },
+    {
+      "name": "powerprompt",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:37:03.080Z",
+      "store": "powerprompt"
+    },
+    {
+      "name": "Prompt-Engine",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:35:32.121Z",
+      "store": "prompt-engine"
+    },
+    {
+      "name": "promptlang",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:35:13.937Z",
+      "store": "promptlang"
+    },
+    {
+      "name": "pygentic",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:09.350Z",
+      "store": "pygentic"
+    },
+    {
+      "name": "q-space",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:16.069Z",
+      "store": "q-space"
+    },
+    {
+      "name": "q-star",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:35:07.570Z",
+      "store": "q-star"
     },
     {
       "name": "quantum_cryptocurrency",
@@ -355,10 +577,22 @@
       "store": "quantum-virtual-machine"
     },
     {
+      "name": "r-flow",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:56.127Z",
+      "store": "r-flow"
+    },
+    {
       "name": "reflective-engineer",
       "org": "ruvnet",
       "at": "2026-08-20T17:29:27.976Z",
       "store": "reflective-engineer"
+    },
+    {
+      "name": "retro-ai-ui",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:35:03.316Z",
+      "store": "retro-ai-ui"
     },
     {
       "name": "roomodes",
@@ -377,6 +611,12 @@
       "org": "ruvnet",
       "at": "2026-08-20T17:13:57.742Z",
       "store": "ruos-macair"
+    },
+    {
+      "name": "rUv-Enterprise-AI-Guide",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:53.566Z",
+      "store": "ruv-enterprise-ai-guide"
     },
     {
       "name": "ruv.io",
@@ -409,10 +649,34 @@
       "store": "strawberry-phi"
     },
     {
+      "name": "supa-ruv",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:34:23.190Z",
+      "store": "supa-ruv"
+    },
+    {
       "name": "supabase-authentication",
       "org": "ruvnet",
       "at": "2026-08-20T17:32:36.004Z",
       "store": "supabase-authentication"
+    },
+    {
+      "name": "Surfer",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:35:59.680Z",
+      "store": "surfer"
+    },
+    {
+      "name": "SVGart",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:37:05.537Z",
+      "store": "svgart"
+    },
+    {
+      "name": "Swagger-ChatGPT-Plugin-Creator",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:07.101Z",
+      "store": "swagger-chatgpt-plugin-creator"
     },
     {
       "name": "swarm-world",
@@ -427,10 +691,22 @@
       "store": "tariffic"
     },
     {
+      "name": "textclassifier",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:56.034Z",
+      "store": "textclassifier"
+    },
+    {
       "name": "ultrasonic",
       "org": "ruvnet",
       "at": "2026-08-20T17:04:51.394Z",
       "store": "ultrasonic"
+    },
+    {
+      "name": "vcbot",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:53.021Z",
+      "store": "vcbot"
     },
     {
       "name": "vibecast",
@@ -443,6 +719,12 @@
       "org": "ruvnet",
       "at": "2026-08-20T17:24:41.547Z",
       "store": "vibing"
+    },
+    {
+      "name": "VIVIAN",
+      "org": "ruvnet",
+      "at": "2026-08-20T17:36:12.685Z",
+      "store": "vivian"
     },
     {
       "name": "voicebot",

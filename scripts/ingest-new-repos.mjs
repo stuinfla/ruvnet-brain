@@ -48,10 +48,19 @@ const MAX = Number(arg('--max', '3'));
 function liveOrgRepos() {
   try {
     const out = execFileSync('gh', [
-      'repo', 'list', OWNER, '--limit', '500', '--no-archived', '--json', 'name,isFork,pushedAt',
+      'repo', 'list', OWNER, '--limit', '500', '--no-archived', '--json', 'name,isFork,pushedAt,diskUsage',
     ], { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
     return JSON.parse(out)
       .filter((r) => !r.isFork)
+      // AN EMPTY REPO IS NOT A FAILURE TO RETRY FOREVER (measured 2026-08-20).
+      //
+      // The first bulk run reported 7 failures; six of them are size=0KB — genuinely empty
+      // repositories (socket, Auto-GPT, CodeGPT, ruvGPT2, rUvGPT, AIConverse). `git fetch` succeeds
+      // and there is simply nothing to embed, so ingestion fails correctly and then the repo stays
+      // "missing", so the NEXT night retries it, forever. A permanent nightly failure that is
+      // actually correct behaviour trains the reader to ignore the failure line — which is how a
+      // real failure would then hide inside it.
+      .filter((r) => Number(r.diskUsage ?? 1) > 0)
       // Newest first: if the budget only allows a few tonight, spend it on what rUv shipped most
       // recently, which is what a question is most likely to be about.
       .sort((a, b) => String(b.pushedAt).localeCompare(String(a.pushedAt)))
