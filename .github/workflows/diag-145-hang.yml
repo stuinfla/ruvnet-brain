@@ -69,3 +69,21 @@ jobs:
         run: nproc; free -m || true
       - name: full suite, quarantine REMOVED
         run: npm run test:cov
+
+  control-innocent-file:
+    name: CONTROL — a different single file (node 20, no coverage)
+    timeout-minutes: 12
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm i --no-audit --no-fund --loglevel=error
+      # THE INSTRUMENT CHECK. The suspect hung after printing only `RUN v4.1.10` — before any test
+      # executed. That is equally consistent with "this file hangs" and with "ANY single-file vitest
+      # run hangs on node 20 + ubuntu in this repo", which would make the suspect innocent and the
+      # size-ordering coincidence. This file is known-good and unrelated; if it hangs too, the
+      # instrument is the story, not decision-outcomes.
+      - run: npx vitest run tests/unit/org-repo-count.test.mjs
