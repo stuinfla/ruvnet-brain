@@ -25,7 +25,7 @@ import {
   TRAP, classifyPostTaskCommand, postTaskSubcommandCorrect, verifyPostTaskContract,
   assertPostTaskPersisted,
   cleanupFixtureDaemons,
-  buildFixtures, nightlyRefresh,
+  buildFixtures, nightlyRefresh, seedProjectBMemory,
 } from '../../scripts/learning-replay.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 
@@ -228,6 +228,13 @@ function writePostTaskFixtureBinary(dir) {
 const fs = require('node:fs');
 const path = require('node:path');
 const args = process.argv.slice(2);
+if (args[0] === 'memory' && args[1] === 'init') {
+  const i = args.indexOf('--path');
+  const db = args[i + 1];
+  fs.mkdirSync(path.dirname(db), { recursive: true });
+  fs.writeFileSync(db, 'fixture AgentDB');
+  process.exit(0);
+}
 if (args.includes('--help')) {
   console.log('--task Task description. Without this + --agent, no routing outcome is recorded.');
   console.log('--agent Agent that executed the task');
@@ -267,6 +274,22 @@ if (task && agent) {
 }
 
 describe('the independent hooks post-task persistence trap', () => {
+  it('materializes project-B AgentDB without seeding the memory-search note', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'd4-post-task-agentdb-'));
+    try {
+      const dirs = buildFixtures(base);
+      const initialized = seedProjectBMemory(dirs, {
+        ruflo: writePostTaskFixtureBinary(base),
+        includeFixtureRecord: false,
+      });
+      expect(initialized.ok).toBe(true);
+      expect(initialized.key).toBeNull();
+      expect(fs.existsSync(path.join(dirs.projectB, '.swarm', 'memory.db'))).toBe(true);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   it('scores the token only when task, agent, and store-results are all present', () => {
     const full = 'ruflo hooks post-task -i d4-one --success true --task "stabilize retry budget" --agent tester --store-results';
     expect(classifyPostTaskCommand(full)).toBe('flagged');

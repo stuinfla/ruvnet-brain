@@ -23,11 +23,16 @@ import {
 const CLAUDE_BIN = process.env.RUVNET_CLAUDE_BIN
   || path.join(os.homedir(), '.npm-global', 'bin', 'claude');
 const CODEX_BIN = process.env.RUVNET_CODEX_BIN || 'codex';
-const sh = (cmd, args, options = {}) => spawnSync(cmd, args, {
-  encoding: 'utf8',
-  timeout: 120_000,
-  ...options,
-});
+const sh = (cmd, args, options = {}) => {
+  const [binary, argv] = /\.[cm]?js$/i.test(cmd)
+    ? [process.execPath, [cmd, ...args]]
+    : [cmd, args];
+  return spawnSync(binary, argv, {
+    encoding: 'utf8',
+    timeout: 120_000,
+    ...options,
+  });
+};
 const remove = (target) => {
   try { fs.rmSync(target, { recursive: true, force: true }); } catch { /* already gone */ }
 };
@@ -143,9 +148,23 @@ export function recordInProjectA(dirs, {
   };
 }
 
-export function seedProjectBMemory(dirs, { ruflo = RUFLO_BIN } = {}) {
+export function seedProjectBMemory(dirs, {
+  ruflo = RUFLO_BIN,
+  includeFixtureRecord = true,
+} = {}) {
   const db = path.join(dirs.projectB, '.swarm', 'memory.db');
   const init = initMemoryDb(ruflo, db, dirs.projectB);
+  if (!includeFixtureRecord) {
+    return {
+      db,
+      key: null,
+      initExit: init.status,
+      storeExit: null,
+      exactReadExit: null,
+      ok: init.status === 0 && fs.existsSync(db),
+      skipped: 'AgentDB initialized; memory-search record not required',
+    };
+  }
   const store = sh(ruflo, [
     'memory', 'store', '-k', PROJECT_B_MEMORY_KEY,
     '--value', PROJECT_B_MEMORY_VALUE, '-n', 'default', '--path', db,
