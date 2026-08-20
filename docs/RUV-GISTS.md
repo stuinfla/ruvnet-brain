@@ -5,10 +5,13 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_477 gists · refreshed 2026-08-19_
+_479 gists · refreshed 2026-08-20_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-08-19 | [ruview-project-integration-map.md](https://gist.github.com/ruvnet/5110d7f546aab61c478afc9b353ae833) | Plain-language map of how RuView and Cognitum Spaces use Autogenous and Midstream today, and why LatentMesh is not yet i |
+| 2026-08-19 | [COGNITUM-SPACES.md](https://gist.github.com/ruvnet/30b32dee30cde9d4e3d135a75e7c254c) | Cognitum Spaces for RuView: production status, OAuth activation, capabilities comparison, APIs, memory, governed actions |
+| 2026-08-19 | [memory.md](https://gist.github.com/ruvnet/4a55971e8971a3c430a009c7f5b49d12) | Claude Memory Template |
 | 2026-08-19 | [current.md](https://gist.github.com/ruvnet/924cfc81f62bd6ad252cb2907c289984) | RuView + Cognitum Spaces: End-User Guide |
 | 2026-08-16 | [watermark-explainer.md](https://gist.github.com/ruvnet/b87f9055710e2aadf0ee3a8c360c476d) | The Invisible Signature — how AI text watermarking works (plain-language guide to @claude-flow/watermark) |
 | 2026-08-15 | [ADR-323-RuView-Physics-Pose-Refinement.md](https://gist.github.com/ruvnet/b807dba097ef88e4bc2cc6f7f61ff305) | RuView ADR-323: native Rust physics-constrained pose refinement, architecture, safeguards, validation, and rollout gates |
@@ -64,7 +67,6 @@ _477 gists · refreshed 2026-08-19_
 | 2026-07-10 | [claude-flow-firsts-executive-brief.md](https://gist.github.com/ruvnet/a8df1bae4686ebf3914dd61c8afe6d69) | Claude-Flow / Ruflo: Year One Executive Brief — 31 verified first-mover positions, harness-not-model thesis, top 20 inno |
 | 2026-07-09 | [ruflo-3.24.0-flywheel.md](https://gist.github.com/ruvnet/f8e2851fd307df5d5de7b5c70c37fa0c) | ruflo 3.24.0 — Self-Learning Flywheel: what it is, how it works, usage & upgrade notes |
 | 2026-07-08 | [ruflo-v3.25.5-release.md](https://gist.github.com/ruvnet/ed276119404d4d3fffdadfc0797705f8) | ruflo v3.25.5 npm release: wrapper publish + CI-red fixes |
-| 2026-07-08 | [memory.md](https://gist.github.com/ruvnet/4a55971e8971a3c430a009c7f5b49d12) | Claude Memory Template |
 | 2026-07-08 | [anv-gist.md](https://gist.github.com/ruvnet/0d858ad440a4439b4a2281a40c39b1a0) | Agent-Native Versioning (ANV) — the BC→AD versioning scheme for ruflo (ADR-184) |
 | 2026-07-08 | [Ruvnet-first-to-market.md](https://gist.github.com/ruvnet/0aaad8499c8f7dfac1279bd0afa4e898) | The list of firsts |
 | 2026-07-07 | [jacobian-lens-interpretability-open-weight-llms.md](https://gist.github.com/ruvnet/197eb50028368d4f278e8530e9432387) | Jacobian-Lens interpretability for open-weight LLMs — @metaharness/workspace-lens (runtime mechanistic governance, IntOp |
