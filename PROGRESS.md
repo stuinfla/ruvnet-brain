@@ -1,6 +1,81 @@
 # RuvNet Brain — Build Progress (living tracker)
 
-`Updated: 2026-08-19 midday EDT` · honest status, no overclaiming. "DONE" means proven with pasted evidence.
+`Updated: 2026-08-20 midday EDT` · honest status, no overclaiming. "DONE" means proven with pasted evidence.
+
+---
+
+## 2026-08-20 — the rail shipped a release and called it a failure — v4.0.92-dev
+
+**`4.0.90-dev` IS PUBLISHED.** npm `latest` = 4.0.90-dev, GitHub `v4.0.90-dev` marked Latest,
+tarball downloaded and unpacked to verify: 1,569,920 bytes, 303 files, `package.json` inside reads
+`ruvnet-brain@4.0.90-dev`. The twelve-day gap (#141) is closed.
+
+**Three blockers stood in a line, and each was invisible until the one in front of it cleared.**
+
+1. **The seal** (`INVALID_LINEAGE`, fixed 2026-08-19) — a read that wrote.
+2. **A stale transaction.** `v4.0.35` stalled at `finalize-intent` on 2026-08-08 and blocked every
+   later release, because `runReleaseTransaction` refuses to start while any other transaction has a
+   non-terminal receipt. Cleared with the repo's own `release-abort-stale.mjs` — written for this
+   exact error after #77 — not a hand-rolled fix. **The newest tag was not the offender**: v4.0.35
+   stalled *before* v4.0.36 converged. Scanning every tag in report mode found it in one pass.
+3. **The digest serialiser** (#151) — the real one, and it had silently corrupted the terminal
+   receipt of *every* successful release.
+
+**THE SERIALISER BUG.** `canonicalJson` KEPT keys whose value was `undefined`; `JSON.stringify`
+DROPS them:
+
+```
+canonicalJson({a: undefined})   ->  {"a":undefined}    key KEPT (not even valid JSON)
+JSON.stringify({a: undefined})  ->  {}                 key DROPPED
+```
+
+The converge observation carries optional fields, and on a clean run `verified.error` is undefined.
+So the digest was computed over a shape that **can never be read back**. `runReleaseTransaction`
+appends a receipt, re-reads it and verifies it — so the publish died with `release receipt digest
+mismatch` AFTER npm and GitHub were both promoted. The release shipped; the rail reported failure.
+
+Proven by reconstruction rather than argument: restoring `observation.hosts.verifier.error =
+undefined` on the stored receipt reproduces the stored digest exactly. And it is NOT corruption —
+the full chain walk of v4.0.36 shows `0000..0011` ok and linked, `0012` BAD *but still linked*.
+Tampering breaks linkage; this did not. It reproduces identically on v4.0.90-dev.
+
+Fixed by making `canonicalJson` omit undefined exactly as `JSON.stringify` does, objects and arrays
+both. No receipt that previously verified changed digest (v4.0.36: 12 ok / 1 bad before and after).
+Historical bad receipts stay unverifiable **deliberately** — re-signing them would mean rewriting
+signed audit history to make a number look right, and they are terminal so they block nothing.
+
+**AGENTDB "KEEPS BREAKING" — ROOT CAUSE, AND IT WAS NEVER better-sqlite3.** `ruflo`'s shebang is
+`#!/usr/bin/env node`, so PATH picks the interpreter, and the compiled binding targets ONE ABI.
+Under any other node agentdb falls back to non-persistent sql.js — silently, because better-sqlite3
+is an OPTIONAL dependency (ruvnet/ruflo#2219), so it never errors and still prints a success table.
+
+Measured, same command, same DB, only PATH differing:
+
+```
+OLD  node=/usr/local/bin/node    v22.13.1  fallback=2  DURABLE=NO
+NEW  node=/opt/homebrew/bin/node v24.18.0  fallback=0  DURABLE=YES
+```
+
+**Five launchd agents** declared PATH with `/usr/local/bin` ahead of `/opt/homebrew/bin` —
+including `brain-nightly`, which runs `ruflo memory distill run` and `ruflo memory backup`
+(`nightly-wrapper.sh:81,84`) by ABSOLUTE path, so PATH never affected finding ruflo, only which
+node its shebang picked. **The nightly AgentDB maintenance ran under a non-durable node every
+night.** Fixed: `brew link node@24`, PATH reordered in the five plists (backups kept), agents
+reloaded, all eight verified on ABI 137.
+
+The probe that misled every prior attempt was corrected too: it blamed better-sqlite3 merely
+because the output MENTIONED it, and prescribed `npm rebuild better-sqlite3` — which npm's
+allowScripts silently refuses, which is exactly why that "fix" kept appearing to work. It now
+reports WHICH NODE ran.
+
+**Retracted:** I had recommended removing `/usr/local/bin/node` as the last landmine. Checked
+before acting — two `com.cds.*` agents invoke it by ABSOLUTE path, so removing it would have broken
+another project's automation. They carry zero ruflo/agentdb references, so no data is at risk there.
+
+**Dream Machine night 2** fired on its first scheduled night and produced two independent findings
+(#147/#149) with candidate PRs, both verified by breaking their guards by hand and merged. It also
+detected that the night had fired TWICE and said so in the ledger rather than presenting itself as
+the only run.
 
 ---
 
