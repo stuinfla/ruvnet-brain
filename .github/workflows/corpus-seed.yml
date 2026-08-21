@@ -11,12 +11,12 @@ on:
         required: true
         type: string
       seed_tag:
-        description: Immutable GitHub corpus tag corpus-sha256-<seed_sha256>
-        required: true
+        description: Deprecated; the committed data/corpus-seed.json is authoritative
+        required: false
         type: string
       seed_sha256:
         description: Exact SHA-256 of the configured bootstrap ruvnet-brain.zip
-        required: true
+        required: false
         type: string
   workflow_call:
     inputs:
@@ -24,10 +24,10 @@ on:
         required: true
         type: string
       seed_tag:
-        required: true
+        required: false
         type: string
       seed_sha256:
-        required: true
+        required: false
         type: string
     outputs:
       artifact_name:
@@ -54,19 +54,12 @@ jobs:
       archive_sha256: ${{ steps.seal.outputs.archive_sha256 }}
     env:
       EXPECTED_SHA: ${{ inputs.candidate_sha }}
-      SEED_TAG: ${{ inputs.seed_tag }}
-      SEED_SHA256: ${{ inputs.seed_sha256 }}
     steps:
       - name: Reject ambiguous seed or source identities
         shell: bash
         run: |
           set -euo pipefail
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'candidate_sha must be 40 lowercase hex characters' >&2; exit 1; }
-          [[ "$SEED_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo 'seed_sha256 must be 64 lowercase hex characters' >&2; exit 1; }
-          test "$SEED_TAG" = "corpus-sha256-$SEED_SHA256" || {
-            echo 'seed_tag must be derived from the configured seed_sha256' >&2
-            exit 1
-          }
 
       - uses: actions/checkout@v4
         with:
@@ -82,6 +75,15 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || { echo 'candidate checkout SHA mismatch' >&2; exit 1; }
           test "$(git rev-parse origin/main)" = "$EXPECTED_SHA" || { echo 'candidate is not current origin/main' >&2; exit 1; }
           test -z "$(git status --porcelain)" || { echo 'candidate checkout is dirty before reconciliation' >&2; exit 1; }
+
+      - name: Load the committed exact corpus seed identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const s=require('./data/corpus-seed.json'); if(!/^[0-9a-f]{64}$/.test(s.sha256)||!Number.isSafeInteger(s.bytes)||s.bytes<1||!s.tag||s.asset!=='ruvnet-brain.zip') process.exit(1)"
+          echo "SEED_TAG=$(node -p "require('./data/corpus-seed.json').tag")" >> "$GITHUB_ENV"
+          echo "SEED_SHA256=$(node -p "require('./data/corpus-seed.json').sha256")" >> "$GITHUB_ENV"
+          echo "SEED_BYTES=$(node -p "require('./data/corpus-seed.json').bytes")" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -103,8 +105,8 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const release = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/corpus-seed-release.json', 'utf8'));
-          if (release.tagName !== process.env.SEED_TAG || release.isDraft || !release.isPrerelease) {
-            throw new Error('configured corpus seed is absent, draft, mutable, or names another tag');
+          if (release.tagName !== process.env.SEED_TAG || release.isDraft) {
+            throw new Error('configured corpus seed is absent, draft, or names another tag');
           }
           const matches = (release.assets || []).filter(({ name }) => name === 'ruvnet-brain.zip');
           if (matches.length !== 1) throw new Error(`configured corpus seed must carry exactly one ruvnet-brain.zip; found ${matches.length}`);
@@ -113,6 +115,7 @@ jobs:
             --pattern 'ruvnet-brain.zip' --dir "$RUNNER_TEMP/corpus-seed-download"
           test "$(find "$RUNNER_TEMP/corpus-seed-download" -maxdepth 1 -type f -name 'ruvnet-brain.zip' | wc -l | tr -d ' ')" = 1
           printf '%s  %s\n' "$SEED_SHA256" "$RUNNER_TEMP/corpus-seed-download/ruvnet-brain.zip" | sha256sum --check --strict
+          test "$(stat -c %s "$RUNNER_TEMP/corpus-seed-download/ruvnet-brain.zip")" = "$SEED_BYTES"
 
       - name: Reconcile exact upstream SHAs and seal a candidate
         shell: bash
@@ -124,6 +127,7 @@ jobs:
             --seed-archive "$RUNNER_TEMP/corpus-seed-download/ruvnet-brain.zip" \
             --seed-tag "$SEED_TAG" \
             --seed-sha256 "$SEED_SHA256" \
+            --allow-pinned-seed-tag \
             --assets "$RUNNER_TEMP/corpus-assets" \
             --workspace "$RUNNER_TEMP/corpus-clones" \
             --coverage "$GITHUB_WORKSPACE/data/source-coverage.json" \

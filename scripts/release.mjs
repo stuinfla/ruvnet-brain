@@ -337,6 +337,8 @@ if (PUBLISH) {
     bundleSignaturePath: path.join(payloadRoot, 'ruvnet-brain.zip.sig'),
     bundleDigestPath: path.join(payloadRoot, 'ruvnet-brain.zip.sha256'),
     packagePath: byRole.get('npm'),
+    corpusSeedPath: byRole.get('corpus-seed'),
+    generationLedgerPath: byRole.get('generation-ledger'),
   };
   for (const asset of Object.values(assets)) {
     if (!fs.existsSync(asset)) {
@@ -366,6 +368,8 @@ if (PUBLISH) {
     bundleSha256,
     bundleSignatureSha256: crypto.createHash('sha256').update(fs.readFileSync(assets.bundleSignaturePath)).digest('hex'),
     bundleDigestSha256: crypto.createHash('sha256').update(fs.readFileSync(assets.bundleDigestPath)).digest('hex'),
+    corpusSeedSha256: crypto.createHash('sha256').update(fs.readFileSync(assets.corpusSeedPath)).digest('hex'),
+    generationLedgerSha256: crypto.createHash('sha256').update(fs.readFileSync(assets.generationLedgerPath)).digest('hex'),
   };
   const privatePem = process.env.RUVNET_SIGNING_KEY;
   if (!privatePem) throw new Error('RUVNET_SIGNING_KEY is required for signed transaction receipts');

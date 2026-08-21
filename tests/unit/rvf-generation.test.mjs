@@ -7,6 +7,7 @@ import {
   canonicalRvfStores,
   hasCanonicalRvfStore,
   verifyRvfGenerations,
+  validateSelectedRvfGenerations,
   writeRvfGeneration,
 } from '../../scripts/rvf-generation.mjs';
 import { getVersion, getVersionTag } from '../../scripts/version.mjs';
@@ -14,6 +15,31 @@ import { getVersion, getVersionTag } from '../../scripts/version.mjs';
 const dirs = [];
 afterEach(() => {
   while (dirs.length) fs.rmSync(dirs.pop(), { recursive: true, force: true });
+});
+
+describe('release-selected RVF ledger closure', () => {
+  it('rejects missing, extra, aliased, private, byte-drifted, and incomplete rows', () => {
+    const dir = fixtureDir();
+    fs.writeFileSync(path.join(dir, 'demo.big.rvf'), 'demo');
+    writeRvfGeneration({ dir, store: 'demo', model: 'bge', dimensions: 768, sourceCommit: 'abc1234' });
+    expect(validateSelectedRvfGenerations(dir, { selectedStores: ['demo'] }).failures).toEqual([]);
+    const file = path.join(dir, RVF_GENERATIONS_FILE);
+    const base = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const mutate of [
+      (m) => { delete m.stores.demo; },
+      (m) => { m.stores.extra = { ...m.stores.demo, file: 'extra.big.rvf' }; },
+      (m) => { m.stores.Demo = m.stores.demo; delete m.stores.demo; },
+      (m) => { m.stores.demo.bytes += 1; },
+      (m) => { m.stores.demo.model = ''; },
+    ]) {
+      const manifest = structuredClone(base); mutate(manifest);
+      fs.writeFileSync(file, JSON.stringify(manifest));
+      expect(validateSelectedRvfGenerations(dir, { selectedStores: ['demo'] }).failures.length).toBeGreaterThan(0);
+    }
+    fs.writeFileSync(file, JSON.stringify(base));
+    expect(validateSelectedRvfGenerations(dir, { selectedStores: ['demo'], privateStores: ['demo'] }).failures)
+      .toContainEqual(expect.stringContaining('private'));
+  });
 });
 
 function fixtureDir() {

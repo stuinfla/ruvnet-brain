@@ -112,6 +112,8 @@ export const transactionIdFor = (identity) => crypto.createHash('sha256').update
   bundleSha256: identity.bundleSha256,
   bundleSignatureSha256: identity.bundleSignatureSha256 || null,
   bundleDigestSha256: identity.bundleDigestSha256 || null,
+  ...(identity.corpusSeedSha256 ? { corpusSeedSha256: identity.corpusSeedSha256 } : {}),
+  ...(identity.generationLedgerSha256 ? { generationLedgerSha256: identity.generationLedgerSha256 } : {}),
 })).digest('hex');
 
 export function signReceipt(receipt, privateKey) {

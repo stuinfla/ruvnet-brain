@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "tag": "v4.2.1-dev",
+  "asset": "ruvnet-brain.zip",
+  "sha256": "940901397c180e5558db7a5c781bdaa875ab67c7e9afaf66e3e92363f4a5feac",
+  "bytes": 567832189,
+  "sourceCommit": "63e0b1236299b7c5cf68af590c3ccec418884bda"
+}

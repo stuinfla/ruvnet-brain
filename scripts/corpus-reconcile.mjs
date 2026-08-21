@@ -43,9 +43,9 @@ function readJson(file, label) {
   }
 }
 
-export function assertBootstrapIdentity({ archiveFile, tag, sha256 }) {
+export function assertBootstrapIdentity({ archiveFile, tag, sha256, allowPinnedTag = false }) {
   const expected = String(sha256 || '').toLowerCase();
-  if (!HEX64.test(expected) || tag !== `corpus-sha256-${expected}`) {
+  if (!HEX64.test(expected) || (!allowPinnedTag && tag !== `corpus-sha256-${expected}`) || !tag || tag === 'latest') {
     fail('bootstrap requires the exact digest-derived tag corpus-sha256-<configured sha256>; latest is forbidden');
   }
   const actual = sha256File(path.resolve(archiveFile || ''));
@@ -233,7 +233,7 @@ export async function main(argv = process.argv.slice(2)) {
   const builderSha = String(arg(argv, '--builder-sha', '')).toLowerCase();
   const owner = arg(argv, '--owner', 'ruvnet');
 
-  assertBootstrapIdentity({ archiveFile, tag: seedTag, sha256: seedSha256 });
+  assertBootstrapIdentity({ archiveFile, tag: seedTag, sha256: seedSha256, allowPinnedTag: process.argv.includes('--allow-pinned-seed-tag') });
   if (fs.existsSync(assetsDir) && fs.readdirSync(assetsDir).length) fail(`bootstrap assets directory is not empty (${assetsDir})`);
   fs.mkdirSync(path.dirname(assetsDir), { recursive: true });
   const extractParent = fs.mkdtempSync(path.join(path.dirname(assetsDir), '.corpus-seed-extract-'));
@@ -243,6 +243,8 @@ export async function main(argv = process.argv.slice(2)) {
   if (!fs.existsSync(privateFence)) fail(`canonical private-store fence missing (${privateFence})`);
   fs.copyFileSync(privateFence, path.join(assetsDir, 'PRIVATE-STORES.json'), fs.constants.COPYFILE_EXCL);
   fs.rmSync(extractParent, { recursive: true, force: true });
+  const coverageScript = path.join(root, 'scripts', 'source-coverage.mjs');
+  checked(defaultRun, process.execPath, [coverageScript, '--owner', owner, '--assets', assetsDir, '--write'], { stdio: 'inherit' });
   const policy = readJson(coverageFile, 'source coverage policy');
   const ledger = readJson(path.join(assetsDir, 'RVF-GENERATIONS.json'), 'bootstrap RVF generation ledger');
   const plan = planReconciliation({ coverage: policy, ledger });

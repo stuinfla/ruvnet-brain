@@ -186,7 +186,8 @@ jobs:
           if (manifest.candidateSha !== process.env.EXPECTED_SHA || manifest.version !== process.env.EXPECTED_VERSION
             || manifest.tag !== `v${process.env.EXPECTED_VERSION}`) throw new Error('payload manifest source identity mismatch');
           const roles = new Set(manifest.members?.map((member) => member.role));
-          if (!roles.has('npm') || !roles.has('bundle') || roles.size !== 2) throw new Error('payload manifest roles are incomplete or ambiguous');
+          if (!roles.has('npm') || !roles.has('bundle') || !roles.has('corpus-seed')
+            || !roles.has('generation-ledger') || roles.size !== 4) throw new Error('payload manifest roles are incomplete or ambiguous');
           const relative = String(receipt.artifact?.path || '').replaceAll('\\', '/');
           if (!relative.startsWith('release-evidence/') || relative.includes('../')) throw new Error('candidate artifact path escaped release-evidence');
           const artifact = path.resolve(relative);
@@ -309,6 +310,8 @@ jobs:
             release-evidence/ruvnet-brain.zip
             release-evidence/ruvnet-brain.zip.sig
             release-evidence/ruvnet-brain.zip.sha256
+            release-evidence/corpus-seed.json
+            release-evidence/RVF-GENERATIONS.json
             release-evidence/candidate-receipt.json
             release-evidence/aggregate-envelope.json
           if-no-files-found: error
@@ -325,6 +328,8 @@ jobs:
             release-evidence/ruvnet-brain.zip
             release-evidence/ruvnet-brain.zip.sig
             release-evidence/ruvnet-brain.zip.sha256
+            release-evidence/corpus-seed.json
+            release-evidence/RVF-GENERATIONS.json
             release-evidence/candidate-receipt.json
             release-evidence/aggregate-envelope.json
           if-no-files-found: error
@@ -385,6 +390,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git fetch --no-tags origin main
+          test "$(git rev-parse HEAD)" = "$RUVNET_EXPECTED_SHA"
+          test "$(git rev-parse origin/main)" = "$RUVNET_EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
           node scripts/release.mjs --publish
 
       - name: Require the machine-generated publication seal

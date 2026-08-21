@@ -406,13 +406,22 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/release-seed/extracted"
-          gh release download --repo "$GITHUB_REPOSITORY" --pattern ruvnet-brain.zip --dir "$RUNNER_TEMP/release-seed"
-          unzip -q "$RUNNER_TEMP/release-seed/ruvnet-brain.zip" -d "$RUNNER_TEMP/release-seed/extracted"
+          SEED_TAG="$(node -p "require('./data/corpus-seed.json').tag")"
+          SEED_ASSET="$(node -p "require('./data/corpus-seed.json').asset")"
+          SEED_SHA256="$(node -p "require('./data/corpus-seed.json').sha256")"
+          SEED_BYTES="$(node -p "require('./data/corpus-seed.json').bytes")"
+          gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$SEED_ASSET" --dir "$RUNNER_TEMP/release-seed"
+          seed="$RUNNER_TEMP/release-seed/$SEED_ASSET"
+          test "$(sha256sum "$seed" | cut -d' ' -f1)" = "$SEED_SHA256"
+          test "$(stat -c %s "$seed")" = "$SEED_BYTES"
+          unzip -q "$seed" -d "$RUNNER_TEMP/release-seed/extracted"
           mapfile -t asset_dirs < <(find "$RUNNER_TEMP/release-seed/extracted" -type f -name '*.big.rvf' ! -path '*/__MACOSX/*' ! -name '._*' -printf '%h\n' | LC_ALL=C sort -u)
           test "${#asset_dirs[@]}" -eq 1
           node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}"
           node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" --assets "${asset_dirs[0]}"
           cp dist/ruvnet-brain.zip "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip"
+          cp data/corpus-seed.json "$RUNNER_TEMP/release-evidence/corpus-seed.json"
+          cp dist/ruvnet-brain/RVF-GENERATIONS.json "$RUNNER_TEMP/release-evidence/RVF-GENERATIONS.json"
           # THE SIDECAR MUST NAME THE FILE, NOT THE MACHINE THAT BUILT IT (fixed 2026-08-07, #77).
           #
           # This was `sha256sum "$RUNNER_TEMP/.../ruvnet-brain.zip" > ...sha256`, and sha256sum writes
@@ -439,6 +448,8 @@ jobs:
             --sha "$GITHUB_SHA" \
             --member "npm=$RUVNET_SEALED_PACKAGE" \
             --member "bundle=$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \
+            --member "corpus-seed=$RUNNER_TEMP/release-evidence/corpus-seed.json" \
+            --member "generation-ledger=$RUNNER_TEMP/release-evidence/RVF-GENERATIONS.json" \
             --out "$RUNNER_TEMP/release-evidence/payload-manifest.json" \
             | tee "$RUNNER_TEMP/release-evidence/payload-id.json"
       - name: Install current Claude and Codex hosts for the one candidate matrix

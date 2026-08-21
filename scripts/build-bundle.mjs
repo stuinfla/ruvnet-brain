@@ -19,6 +19,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getVersion, getVersionTag, stripTag } from './version.mjs';
 import { auditRvfIndexes } from './rvf-index-audit.mjs';
+import { validateSelectedRvfGenerations } from './rvf-generation.mjs';
 // The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
 // sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
 import { orgRepoCount } from './org-repo-count.mjs';
@@ -162,6 +163,15 @@ if (built.length === 0) {
   console.error('[build-bundle] FATAL: zero public RVF stores are eligible for release. Refusing to publish an empty brain bundle.');
   process.exit(1);
 }
+const generationValidation = validateSelectedRvfGenerations(ASSETS, {
+  selectedStores: built,
+  privateStores: [...PRIVATE_STORES],
+});
+if (generationValidation.failures.length) {
+  console.error('[build-bundle] FATAL: RVF generation ledger does not exactly bind selected roots:');
+  for (const failure of generationValidation.failures) console.error(`  ${failure}`);
+  process.exit(1);
+}
 const rvfIndexAudit = await auditRvfIndexes(
   built.map((name) => path.join(ASSETS, `${name}.big.rvf`)),
 );
@@ -208,7 +218,7 @@ for (const name of built) {
   if (!fs.existsSync(generationsFile)) {
     missing.push('RVF-GENERATIONS.json');
   } else {
-    const source = JSON.parse(fs.readFileSync(generationsFile, 'utf8'));
+    const source = generationValidation.manifest;
     const stores = {};
     for (const { name } of builtRepos) {
       if (!source.stores?.[name]) missing.push(`RVF-GENERATIONS.json:${name}`);
@@ -216,8 +226,8 @@ for (const name of built) {
     }
     fs.writeFileSync(path.join(OUT, 'RVF-GENERATIONS.json'), `${JSON.stringify({
       schemaVersion: source.schemaVersion,
-      brainVersion: source.brainVersion,
-      releaseTag: source.releaseTag,
+      brainVersion: stripTag(BRAIN_VERSION),
+      releaseTag: BRAIN_VERSION,
       stores,
     }, null, 2)}\n`);
     copied++;

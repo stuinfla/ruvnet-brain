@@ -119,3 +119,47 @@ export function verifyRvfGenerations(dir, {
   }
   return { manifest, failures };
 }
+
+// Release-time closure check for the exact public roots selected for a bundle. Unlike the
+// source-only verifier above, this rejects every ambiguity in the byte-bearing asset directory.
+export function validateSelectedRvfGenerations(dir, {
+  selectedStores = canonicalRvfStores(dir),
+  privateStores = [],
+  version,
+  releaseTag,
+} = {}) {
+  const manifest = readRvfGenerations(dir);
+  const failures = [];
+  const selected = [...new Set(selectedStores)].sort();
+  const selectedLower = new Map(selected.map((name) => [name.toLowerCase(), name]));
+  const privateLower = new Set(privateStores.map((name) => String(name).toLowerCase()));
+  if (version !== undefined && manifest.brainVersion !== version) failures.push(`brainVersion=${manifest.brainVersion}, expected ${version}`);
+  if (releaseTag !== undefined && manifest.releaseTag !== releaseTag) failures.push(`releaseTag=${manifest.releaseTag}, expected ${releaseTag}`);
+  for (const name of selected) if (privateLower.has(name.toLowerCase())) failures.push(`${name}: private store selected`);
+  for (const [store, row] of Object.entries(manifest.stores || {})) {
+    const canonical = selectedLower.get(store.toLowerCase());
+    if (!canonical) {
+      if (!privateLower.has(store.toLowerCase())) failures.push(`${store}: extra generation record`);
+      continue;
+    }
+    if (canonical !== store) failures.push(`${store}: alias differs from selected store ${canonical}`);
+    const expectedFile = `${canonical}.big.rvf`;
+    if (row?.file !== expectedFile) failures.push(`${store}: file=${row?.file}, expected ${expectedFile}`);
+    const file = path.join(dir, expectedFile);
+    if (!fs.existsSync(file)) failures.push(`${store}: missing ${expectedFile}`);
+    else {
+      const stat = fs.statSync(file);
+      if (row?.bytes !== stat.size) failures.push(`${store}: bytes=${row?.bytes}, actual ${stat.size}`);
+      const digest = sha256File(file);
+      if (row?.sha256 !== digest) failures.push(`${store}: sha256=${digest}, recorded ${row?.sha256}`);
+    }
+    if (typeof row?.model !== 'string' || !row.model.trim()) failures.push(`${store}: invalid model`);
+    if (!Number.isInteger(row?.dimensions) || row.dimensions <= 0) failures.push(`${store}: invalid dimensions`);
+    if (row?.sourceCommit !== null && (typeof row?.sourceCommit !== 'string' || !/^[a-f0-9]{7,64}$/i.test(row.sourceCommit))) failures.push(`${store}: invalid sourceCommit`);
+    if (typeof row?.builtUtc !== 'string' || !Number.isFinite(Date.parse(row.builtUtc))) failures.push(`${store}: invalid builtUtc`);
+  }
+  for (const name of selected) if (!manifest.stores?.[name]) failures.push(`${name}: no exact generation record`);
+  const publicRows = Object.keys(manifest.stores || {}).filter((name) => !privateLower.has(name.toLowerCase()));
+  if (publicRows.length !== selected.length) failures.push(`store count=${publicRows.length}, selected ${selected.length}`);
+  return { manifest, selectedStores: selected, failures };
+}
