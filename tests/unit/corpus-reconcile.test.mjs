@@ -106,6 +106,20 @@ describe('reconciliation planning', () => {
       { ...repo({ name: 'alpha' }), url: 'https://example.com/alpha' },
     ]), ledger })).toThrow(/GitHub repository URL/i);
   });
+
+  it('rebuilds a source-current store when its generation receipt does not bind the seed bytes', () => {
+    const assetsDir = temp();
+    fs.writeFileSync(path.join(assetsDir, 'alpha.big.rvf'), 'actual seed bytes');
+    const rows = [repo({ name: 'alpha', upstream: sha('a') })];
+    const ledger = { stores: { alpha: {
+      file: 'alpha.big.rvf', sourceCommit: sha('a'), bytes: 1, sha256: '0'.repeat(64),
+    } } };
+    expect(planReconciliation({ coverage: coverage(rows), ledger, assetsDir })).toEqual([{
+      name: 'alpha', store: 'alpha', url: 'https://github.com/ruvnet/alpha',
+      upstreamSha: sha('a'), ledgerSourceCommit: sha('a'),
+      reason: 'generation receipt differs from seed bytes',
+    }]);
+  });
 });
 
 describe('reconciliation execution', () => {

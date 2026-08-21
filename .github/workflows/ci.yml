@@ -405,7 +405,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/release-seed/extracted"
+          mkdir -p "$RUNNER_TEMP/release-seed"
           SEED_TAG="$(node -p "require('./data/corpus-seed.json').tag")"
           SEED_ASSET="$(node -p "require('./data/corpus-seed.json').asset")"
           SEED_SHA256="$(node -p "require('./data/corpus-seed.json').sha256")"
@@ -414,14 +414,22 @@ jobs:
           seed="$RUNNER_TEMP/release-seed/$SEED_ASSET"
           test "$(sha256sum "$seed" | cut -d' ' -f1)" = "$SEED_SHA256"
           test "$(stat -c %s "$seed")" = "$SEED_BYTES"
-          unzip -q "$seed" -d "$RUNNER_TEMP/release-seed/extracted"
-          mapfile -t asset_dirs < <(find "$RUNNER_TEMP/release-seed/extracted" -type f -name '*.big.rvf' ! -path '*/__MACOSX/*' ! -name '._*' -printf '%h\n' | LC_ALL=C sort -u)
-          test "${#asset_dirs[@]}" -eq 1
-          node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}"
-          node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" --assets "${asset_dirs[0]}"
-          cp dist/ruvnet-brain.zip "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip"
+          node scripts/corpus-reconcile.mjs \
+            --root "$GITHUB_WORKSPACE" \
+            --seed-archive "$seed" \
+            --seed-tag "$SEED_TAG" \
+            --seed-sha256 "$SEED_SHA256" \
+            --allow-pinned-seed-tag \
+            --assets "$RUNNER_TEMP/release-assets" \
+            --workspace "$RUNNER_TEMP/release-clones" \
+            --coverage "$GITHUB_WORKSPACE/data/source-coverage.json" \
+            --candidate-out "$RUNNER_TEMP/release-candidate/ruvnet-brain" \
+            --receipt-out "$RUNNER_TEMP/release-evidence/corpus-receipt.json" \
+            --builder-sha "$GITHUB_SHA" \
+            --owner ruvnet | tee "$RUNNER_TEMP/release-evidence/corpus-reconcile.log"
+          cp "$RUNNER_TEMP/release-candidate/ruvnet-brain.zip" "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip"
           cp data/corpus-seed.json "$RUNNER_TEMP/release-evidence/corpus-seed.json"
-          cp dist/ruvnet-brain/RVF-GENERATIONS.json "$RUNNER_TEMP/release-evidence/RVF-GENERATIONS.json"
+          cp "$RUNNER_TEMP/release-assets/RVF-GENERATIONS.json" "$RUNNER_TEMP/release-evidence/RVF-GENERATIONS.json"
           # THE SIDECAR MUST NAME THE FILE, NOT THE MACHINE THAT BUILT IT (fixed 2026-08-07, #77).
           #
           # This was `sha256sum "$RUNNER_TEMP/.../ruvnet-brain.zip" > ...sha256`, and sha256sum writes

@@ -89,7 +89,7 @@ function repositorySlug(url) {
   return match ? `${match[1]}/${match[2]}` : null;
 }
 
-export function planReconciliation({ coverage, ledger }) {
+export function planReconciliation({ coverage, ledger, assetsDir = null }) {
   if (coverage?.schemaVersion !== 1 || !Array.isArray(coverage.rows) || !coverage.coverageGeneration) {
     fail('coverage policy is missing a supported complete generation');
   }
@@ -110,14 +110,25 @@ export function planReconciliation({ coverage, ledger }) {
     if (!repositorySlug(row.url)) fail(`${row?.name || store} has no exact GitHub repository URL`);
     const generation = Object.entries(ledger.stores).find(([name]) => name.toLowerCase() === folded)?.[1] || null;
     const current = String(generation?.sourceCommit || '').toLowerCase();
-    if (current === upstreamSha) continue;
+    let reason = generation?.sourceCommit ? 'sourceCommit differs' : 'missing ledger receipt';
+    if (current === upstreamSha) {
+      if (!assetsDir) continue;
+      const expectedFile = `${store}.big.rvf`;
+      const rvfFile = path.join(path.resolve(assetsDir), expectedFile);
+      const receiptMatches = generation?.file === expectedFile
+        && fs.existsSync(rvfFile)
+        && generation?.bytes === fs.statSync(rvfFile).size
+        && generation?.sha256 === sha256File(rvfFile);
+      if (receiptMatches) continue;
+      reason = 'generation receipt differs from seed bytes';
+    }
     plan.push({
       name: String(row.name || store),
       store,
       url: row.url,
       upstreamSha,
       ledgerSourceCommit: generation?.sourceCommit || null,
-      reason: generation?.sourceCommit ? 'sourceCommit differs' : 'missing ledger receipt',
+      reason,
     });
   }
   return plan.sort((a, b) => a.store.localeCompare(b.store));
@@ -247,7 +258,7 @@ export async function main(argv = process.argv.slice(2)) {
   checked(defaultRun, process.execPath, [coverageScript, '--owner', owner, '--assets', assetsDir, '--write'], { stdio: 'inherit' });
   const policy = readJson(coverageFile, 'source coverage policy');
   const ledger = readJson(path.join(assetsDir, 'RVF-GENERATIONS.json'), 'bootstrap RVF generation ledger');
-  const plan = planReconciliation({ coverage: policy, ledger });
+  const plan = planReconciliation({ coverage: policy, ledger, assetsDir });
   const reconciliation = executeReconciliation({ plan, assetsDir, workspaceDir, root });
   const candidate = prepareCorpusCandidate({ root, assetsDir, owner, builderSha, candidateDir, receiptFile, coverageFile });
   process.stdout.write(`${JSON.stringify({ ok: true, seedTag, seedSha256, plan, ...reconciliation, ...candidate }, null, 2)}\n`);
