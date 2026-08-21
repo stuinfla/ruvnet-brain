@@ -61,7 +61,7 @@
 **The corpus stopped drifting behind the org.** Until 4.2 nothing ever ingested a new repo: the
 nightly refreshed lessons, health and proofs and contained *zero* ingestion, so a repo entered the
 brain only when a human typed the command. `brain-stamp.mjs` had been measuring that gap every
-night and nothing consumed it. Measured the day it was fixed: **181 live repos, 69 ingested.**
+night, but nothing consumed it until the ingestion loop shipped.
 
 - **187 stores, up from 69.** Everything rUv ships that has content, pulled in and kept level by
   `scripts/ingest-new-repos.mjs` running nightly, newest-first. Empty repos (`size=0KB`) are skipped

@@ -45,7 +45,7 @@ https://github.com/stuinfla/ruvnet-brain.
 ## What's inside the brain (the RuvNet building blocks it indexes)
 Orchestration: Ruflo. Vectors + memory: RuVector / RVF, AgentDB, RuLake. Agents + tooling:
 agentic-flow, SPARC, agent-harness-generator. Safety: AIDefence (AIMDS). Plus specialized repos
-(QuDAG, SAFLA, ruv-FANN, agenticow, and more) — 72 repos indexed in total.
+(QuDAG, SAFLA, ruv-FANN, agenticow, and more) — 77 repos indexed in total.
 
 ## Facts
 - Maintainer: Stuart Kerr — Isovision.ai (https://isovision.ai), strategic AI consultant.
