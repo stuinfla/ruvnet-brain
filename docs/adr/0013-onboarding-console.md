@@ -1,24 +1,37 @@
 ---
 id: ADR-013
 title: The Onboarding Console — RuvNet Brain becomes a mirror, an advisor, and only then a configurator
-status: Implemented
+status: Accepted
 date: 2026-07-14
-updated: 2026-08-02
-updated_source: derived-from-git
+updated: 2026-08-21
+updated_source: authored-current
 authors: [Stuart Kerr, Claude Code]
-tags: [onboarding, ux, config, stack, memory-health, savings, safety]
+tags: [onboarding, ux, config, stack, memory-health, savings, safety, coverage]
 supersedes: []
-related: [ADR-0012 (grounding gate), ruflo/plugins/ruflo-ruvector ADR-0001 (pin + smoke-test contract)]
+related: [ADR-0012 (grounding gate), ADR-0069 (artifact-bound source coverage), ruflo/plugins/ruflo-ruvector ADR-0001 (pin + smoke-test contract)]
+governs:
+  - scripts/onboarding-console.mjs
+  - scripts/console-runtime-identity.mjs
+  - console/*
+  - plugin/commands/configure.md
+  - plugin/commands/coverage.md
+  - plugin/scripts/coverage.mjs
+created_at: 2026-07-14T17:28:48-04:00
+created_at_source: derived-from-git
+updated_at: 2026-08-21T08:10:43-04:00
+updated_at_source: authored-current
 ---
 
 # ADR-013: The Onboarding Console
 
-**Status**: Implemented
+**Status**: Accepted; the Console is implemented. Decision status and implementation state are
+separate axes: `Accepted` records the architectural decision, while the governed runtime and tests
+establish what is built.
 **Date**: 2026-07-14
-**Updated**: 2026-07-18 — reconciled the body status with the frontmatter (`Implemented`): the console
-shipped and is live (`/configure` / `/rvbc`, served from `scripts/onboarding-console.mjs`). The body had
-been left at `Proposed` while the frontmatter said `Implemented` — a file disagreeing with itself, exactly
-the ADR-drift this project's own hooks warn about.
+**Updated**: 2026-07-18 — recorded that the console shipped and is live (`/configure` / `/rvbc`,
+served from `scripts/onboarding-console.mjs`). That revision used `Implemented` as the decision status;
+the 2026-08-21 currency pass corrected the decision axis to `Accepted` while retaining implementation
+truth in the governed runtime, tests, and this record.
 
 **Updated 2026-07-30** — the Settings surface now distinguishes a working control from a persisted
 preference. A choice is interactive only when a runtime consumes it and the effect can be verified;
@@ -55,6 +68,28 @@ shows the complete launchable development inventory and marks the latest routing
 root/store de-duplication, scoped explicit-root behavior, and display naming. The standalone doctor
 and Console import that same policy, so a machine-wide fleet count can no longer mean `~/Code` on
 one surface while the Console scans `~/source`, `~/work`, or user-configured roots on another.
+
+**Updated 2026-08-21** — Coverage is now the Console's third linked page, alongside the primary
+Console and How to Use It. `console/coverage.html`, `coverage.css`, and `coverage.js` render a
+read-only searchable projection through `GET /api/coverage`; `gatherSourceCoverage()` reads the
+installed knowledge bundle's canonical `COVERAGE.json` first and accepts `source-coverage.json`
+only as a compatibility filename. Missing, malformed, unsupported, or internally incoherent data is
+shown as unavailable, never as zero or complete coverage. The page reads the installed KB on each
+request rather than embedding a checkout snapshot in the persistent Console runtime.
+
+The page and API follow the existing Console lifecycle rather than creating another server. The
+whole `console/` directory is already a member of `CONSOLE_RUNTIME_SURFACE`, so the page participates
+in the staged runtime digest and atomic activation transaction. A running Console with old frontend
+bytes cannot pass as the new runtime merely because its Node entrypoint is unchanged. Coverage data
+has the separate knowledge-bundle lifecycle: refreshing `COVERAGE.json` does not require replacing
+the Console runtime.
+
+The installed plugin also supplies `/ruvnet-brain:coverage`. Its command declaration is boot-frozen
+host metadata and therefore appears only after the host loads the plugin generation that contains
+it. Once loaded, `plugin/scripts/coverage.mjs` resolves the managed KB path per invocation and reads
+that generation's installed `COVERAGE.json`; it never substitutes repository state or remembered
+counts. This is intentionally a compact terminal projection of the same ledger, not a fourth source
+of coverage facts.
 
 ## Context
 
@@ -232,6 +267,15 @@ their computer; they just want it to work."* This becomes **principle 6**:
 - **Proven live:** `--print-state` returns real data from this machine (773 wiring sites across 12
   projects, 104 memory stores, memory health 100/100 on 4 probed dims); `--print-stack` returns the
   real 39-package audit; the 15 engine tests pass.
-- **Known follow-up (public ship):** the console currently runs from the repo. To ship inside the
-  installed plugin bundle for all users, the server + engines need vendoring under `plugin/` (the
-  engines live in `scripts/`). Filed, not yet done.
+- **Public installation:** implemented. `beginConsoleRuntimeTransaction()` stages the complete
+  `CONSOLE_RUNTIME_SURFACE` under the installed KB, validates it, binds its byte digest into
+  `runtime-identity.json`, and activates it only after host convergence. The Coverage page travels
+  inside that same runtime; the coverage ledger itself travels inside the knowledge bundle as
+  `COVERAGE.json` and `COVERAGE.md`.
+
+## Currency log
+
+| Date | What changed | Why (with referents) |
+|---|---|---|
+| 2026-08-21 | Added the third Coverage page, installed-ledger API, terminal command, and their two-track lifecycle contract; corrected decision status to `Accepted` while retaining the implemented runtime truth. | `console/coverage.html`, `console/coverage.js`, `scripts/onboarding-console.mjs`, `scripts/console-runtime-identity.mjs`, `plugin/commands/coverage.md`, and `plugin/scripts/coverage.mjs` now expose one installed `COVERAGE.json` projection without creating another mutable source of facts. |
+| 2026-08-02 | Recorded the shipped provider, runtime-identity, compaction, provenance, and project-discovery trust boundaries. | Issues #79, #81, #83, #85, #86, and #87 changed the governed Console runtime and its acceptance boundaries. |
