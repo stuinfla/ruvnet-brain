@@ -36,7 +36,9 @@ updated_at_source: authored-current
 
 # ADR-069 — Source coverage is artifact-bound, complete, and release-blocking
 
-**Status**: Proposed. A useful vertical slice is implemented, but the decision's release-proof
+**Status**: Proposed
+
+A useful vertical slice is implemented, but the decision's release-proof
 contract is not. The generator, JSON/Markdown repository projections, strict candidate-CI call,
 bundle projections, installed command, and third Console page exist and have focused tests. Signed
 enumeration, a closed immutable candidate snapshot, routing/focused-QA receipts, signed expiring

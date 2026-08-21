@@ -24,7 +24,9 @@ updated_at_source: authored-current
 
 # ADR-013: The Onboarding Console
 
-**Status**: Accepted; the Console is implemented. Decision status and implementation state are
+**Status**: Accepted
+
+The Console is implemented. Decision status and implementation state are
 separate axes: `Accepted` records the architectural decision, while the governed runtime and tests
 establish what is built.
 **Date**: 2026-07-14

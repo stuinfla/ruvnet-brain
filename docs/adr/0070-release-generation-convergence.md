@@ -22,7 +22,9 @@ governs:
 
 # ADR-070 — One release generation across corpus, package, hosts, and retained state
 
-**Status**: Accepted — Fable 5 and GPT-5.6-Sol converged on the corrected design before implementation.
+**Status**: Accepted
+
+Fable 5 and GPT-5.6-Sol converged on the corrected design before implementation.
 
 ## Context
 
