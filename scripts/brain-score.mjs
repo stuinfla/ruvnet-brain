@@ -132,7 +132,7 @@ function readPanel() {
  * than a guess when the denominator is unknown — a wrong denominator still renders, which is worse
  * than an absent one.
  */
-async function readCoverage() {
+export async function readCoverage(rootOverride) {
   const { storeRoot, storesAt, cardsAt } = await import('../kb/store-root.mjs');
   // ROUTABILITY IS ALIAS-AWARE, BECAUSE THE ROUTER IS.
   //
@@ -148,25 +148,34 @@ async function readCoverage() {
   // broke alias resolution outright. A metric that cannot see aliases manufactures work that
   // damages the thing it measures.
   const { repositoryNames } = await import('../kb/card-lane.mjs');
-  const root = storeRoot();
+  const root = rootOverride ?? storeRoot();
+  // NEVER-MATERIALIZED, THE SAME AMBIGUITY `restore-local-ingests.mjs`'s `classify()` WAS FIXED
+  // FOR (PR #143, Night 1) — but never carried here. `storesAt()`/`cardsAt()` silently return
+  // `[]` on ENOENT, so a host whose store root was never restored (a fresh checkout, this very
+  // nightly agent's own ephemeral container) reads IDENTICALLY to a materialized root that
+  // genuinely has zero coverage. Checked once, here, before either derived number is computed —
+  // a wrong `0` still renders, which is worse than an honestly unmeasured one.
+  const neverMaterialized = !fs.existsSync(root);
   const stores = storesAt(root);
   const cards = new Set(cardsAt(root));
   const org = readJson('data/org-repo-count.json');
   const total = Number.isFinite(org?.count) && org.count > 0 ? org.count : null;
   const carded = stores.filter((s) => isRoutable(s, cards, root, repositoryNames)).length;
+  const absentDetail = 'store root does not exist on this host (never materialized) — not evidence of live coverage';
   return {
     catalogue: {
-      value: total ? Math.round((stores.length / total) * 1000) / 10 : null,
-      detail: total ? `${stores.length}/${total} live repos` : `${stores.length} stores, org total UNKNOWN`,
-      at: org?.at ?? null,
+      value: neverMaterialized ? null : (total ? Math.round((stores.length / total) * 1000) / 10 : null),
+      detail: neverMaterialized ? absentDetail
+        : (total ? `${stores.length}/${total} live repos` : `${stores.length} stores, org total UNKNOWN`),
+      at: neverMaterialized ? null : (org?.at ?? null),
     },
     routable: {
-      value: stores.length ? Math.round((carded / stores.length) * 1000) / 10 : null,
-      detail: `${carded}/${stores.length} built stores have a card`,
+      value: neverMaterialized || !stores.length ? null : Math.round((carded / stores.length) * 1000) / 10,
+      detail: neverMaterialized ? absentDetail : `${carded}/${stores.length} built stores have a card`,
       // Derived from the live store root at this instant, so it is current BY CONSTRUCTION. A
       // read-now value reported as stale would train the reader to ignore the stale flag, which
       // costs more than the flag is worth.
-      at: new Date().toISOString(),
+      at: neverMaterialized ? null : new Date().toISOString(),
     },
   };
 }
