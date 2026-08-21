@@ -76,9 +76,16 @@ export function buildCard(repo, { description, readme }) {
   return `## ${repo.toLowerCase()}\n${body}\n(${MARKER}; a hand-written card saying when to reach for it, and when not to, would be better.)\n`;
 }
 
-function insertSorted(file, card, name) {
+// GitHub repo names may contain `.` (this corpus already has one: `ruv.io`), and an unescaped `.`
+// in a RegExp matches ANY character — so an un-escaped existence check can false-positive-match a
+// DIFFERENT heading that merely resembles the name once the dot is treated as a wildcard, silently
+// skip the write, and still be counted a success by the caller (which never inspects the return
+// value). Escaping makes this an exact literal match, matching what "already has a card" means.
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export function insertSorted(file, card, name) {
   const s = fs.readFileSync(file, 'utf8');
-  if (new RegExp(`^## ${name}$`, 'mi').test(s)) return false;
+  if (new RegExp(`^## ${escapeRegExp(name)}$`, 'mi').test(s)) return false;
   const heads = [...s.matchAll(/^## (.+)$/gm)].map((m) => [m.index, m[1].trim().toLowerCase()]);
   const pos = heads.find(([, n]) => n > name)?.[0];
   fs.writeFileSync(file, pos === undefined ? `${s.replace(/\n+$/, '')}\n\n${card}` : s.slice(0, pos) + card + '\n' + s.slice(pos));
