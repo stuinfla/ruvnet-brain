@@ -547,7 +547,7 @@ async function unzipInto(zipPath, cacheDir, sourceDir = null) {
 }
 
 /**
- * ISSUE #128 — STALE PLUGIN GENERATIONS ARE STILL DISCOVERED.
+ * ISSUE #128 / #153 — STALE PLUGIN GENERATIONS MAY STILL BACK LIVE SESSIONS.
  *
  * `pruneUnlistedStores` below states the rule this repo already believes: "an update is a
  * replacement, not an overlay." That rule was applied to KB stores and never to the plugin cache.
@@ -563,6 +563,12 @@ async function unzipInto(zipPath, cacheDir, sourceDir = null) {
  * restart, one says an update is landing, one mandates a third version), so whichever the model
  * obeys, the user is misinformed by a source that sounds definitive.
  *
+ * Registry reachability identifies candidates; it is not deletion proof. Claude freezes
+ * CLAUDE_PLUGIN_ROOT at session start, so an unregistered generation can remain live until that
+ * session exits. Modern roots expose `.in_use` PID-incarnation leases. Live or ambiguous leases
+ * retain the complete root; dead leases are collected. Legacy roots without the protocol receive
+ * a 14-day compatibility grace.
+ *
  * WHAT MAKES DELETION SAFE HERE, since this removes directories from someone's machine:
  *   • The registry is the ONLY authority. Unreadable, missing, or naming no ruvnet-brain install →
  *     nothing is removed and a reason is returned. Never guess what to delete — the same discipline
@@ -574,17 +580,26 @@ async function unzipInto(zipPath, cacheDir, sourceDir = null) {
  *     here, and deleting through that link would delete the working tree.
  *   • EVERY registered installPath is protected, not just the first — the plugin may legitimately be
  *     installed at both user and project scope, and treating one as stale would delete a live install.
- *   • The active generation is excluded by RESOLVED PATH, never by version string.
+ *   • Registered generations are excluded by RESOLVED PATH, never by version string.
+ *   • The registry is re-read immediately before deletion; any byte change retains the candidate.
+ *   • Malformed, unreadable, symlinked, live, or unverifiable lease state fails closed.
  *   • Report-only unless `apply` is set, and every removal is returned by name, so a silent sweep is
  *     impossible.
  */
 export function prunePluginGenerations({
   registryPath = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'),
   apply = false,
+  now = () => Date.now(),
+  graceMs = 14 * 24 * 60 * 60 * 1000,
+  processIdentity = pluginProcessIdentity,
 } = {}) {
-  const nothing = (why) => ({ active: [], stale: [], removed: [], bytes: 0, why });
+  const nothing = (why) => ({ active: [], stale: [], marked: [], removed: [], bytes: 0, staleBytes: 0, cleanupBlocked: [], why });
+  let registryRaw;
   let registry;
-  try { registry = JSON.parse(fs.readFileSync(registryPath, 'utf8')); } catch (e) {
+  try {
+    registryRaw = fs.readFileSync(registryPath, 'utf8');
+    registry = JSON.parse(registryRaw);
+  } catch (e) {
     return nothing(`plugin registry unreadable (${e.code || e.message}) — refusing to remove anything`);
   }
   const active = Object.entries(registry?.plugins || {})
@@ -609,17 +624,126 @@ export function prunePluginGenerations({
       stale.push({ path: full, version: name, bytes: dirBytes(full) });
     }
   }
-  const bytes = stale.reduce((n, s) => n + s.bytes, 0);
-  if (!apply) return { active, stale, removed: [], bytes, why: null };
+  const staleBytes = stale.reduce((n, s) => n + s.bytes, 0);
+  if (!apply) return { active, stale, marked: [], removed: [], bytes: 0, staleBytes, cleanupBlocked: [], why: null };
 
+  const marked = [];
   const removed = [];
+  const cleanupBlocked = [];
   let freed = 0;
-  for (const s of stale) {
-    // One unremovable generation (a permissions quirk, a file held open) must not abort the rest.
-    try { fs.rmSync(s.path, { recursive: true, force: true }); removed.push(s); freed += s.bytes; }
-    catch { /* left in place; it is still reported in `stale` */ }
+  for (const candidate of stale) {
+    const marker = path.join(candidate.path, '.orphaned_at');
+    if (!fs.existsSync(marker)) {
+      const temporary = `${marker}.tmp.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
+      try {
+        fs.writeFileSync(temporary, String(now()), { flag: 'wx', mode: 0o600 });
+        fs.renameSync(temporary, marker);
+        marked.push(candidate.version);
+      } catch {
+        try { fs.rmSync(temporary, { force: true }); } catch { /* retain on ambiguity */ }
+      }
+    }
+
+    let orphanedAt;
+    try {
+      const markerStat = fs.lstatSync(marker);
+      if (!markerStat.isFile() || markerStat.isSymbolicLink()) {
+        cleanupBlocked.push({ version: candidate.version, reason: '.orphaned_at is not a trusted file' });
+        continue;
+      }
+      orphanedAt = Number(fs.readFileSync(marker, 'utf8').trim());
+      if (!Number.isFinite(orphanedAt) || orphanedAt <= 0) {
+        cleanupBlocked.push({ version: candidate.version, reason: '.orphaned_at is malformed' });
+        continue;
+      }
+    } catch {
+      cleanupBlocked.push({ version: candidate.version, reason: '.orphaned_at could not be inspected' });
+      continue;
+    }
+
+    const leaseDir = path.join(candidate.path, '.in_use');
+    let leaseCapable = false;
+    let leaseNames = [];
+    try {
+      if (fs.existsSync(leaseDir)) {
+        const leaseDirStat = fs.lstatSync(leaseDir);
+        if (leaseDirStat.isSymbolicLink() || !leaseDirStat.isDirectory()) {
+          cleanupBlocked.push({ version: candidate.version, reason: '.in_use is not a trusted directory' });
+          continue;
+        }
+        leaseCapable = true;
+        leaseNames = fs.readdirSync(leaseDir);
+      }
+    } catch {
+      cleanupBlocked.push({ version: candidate.version, reason: '.in_use could not be inspected' });
+      continue;
+    }
+
+    if (!leaseCapable && now() - orphanedAt < graceMs) continue;
+    let safeToReap = true;
+    for (const leaseName of leaseNames) {
+      const leasePath = path.join(leaseDir, leaseName);
+      let lease;
+      try {
+        const leaseStat = fs.lstatSync(leasePath);
+        if (!leaseStat.isFile() || leaseStat.isSymbolicLink()) throw new Error('not a trusted file');
+        lease = JSON.parse(fs.readFileSync(leasePath, 'utf8'));
+        if (!Number.isSafeInteger(lease?.pid) || lease.pid <= 0 || typeof lease?.procStart !== 'string' || !lease.procStart.trim()) {
+          throw new Error('malformed');
+        }
+      } catch {
+        cleanupBlocked.push({ version: candidate.version, reason: `lease ${leaseName} is malformed or unreadable` });
+        safeToReap = false;
+        break;
+      }
+      const state = processIdentity(lease);
+      if (state !== 'dead') {
+        cleanupBlocked.push({ version: candidate.version, reason: `lease ${leaseName} is ${state === 'live' ? 'live' : 'ambiguous'}` });
+        safeToReap = false;
+        break;
+      }
+      try { fs.rmSync(leasePath); } catch {
+        cleanupBlocked.push({ version: candidate.version, reason: `dead lease ${leaseName} could not be removed` });
+        safeToReap = false;
+        break;
+      }
+    }
+    if (!safeToReap) continue;
+
+    // The host registry can advance while the collector scans. Any byte change invalidates the
+    // original authority snapshot; retain every candidate rather than deleting on stale evidence.
+    let currentRaw;
+    try { currentRaw = fs.readFileSync(registryPath, 'utf8'); } catch { continue; }
+    if (currentRaw !== registryRaw) continue;
+    try {
+      fs.rmSync(candidate.path, { recursive: true });
+      removed.push(candidate.version);
+      freed += candidate.bytes;
+    } catch { /* retained for a later pass */ }
   }
-  return { active, stale, removed, bytes: freed, why: null };
+  return {
+    active, stale, marked, removed, bytes: freed, staleBytes, cleanupBlocked,
+    why: stale.length
+      ? 'lease-proven orphan reconciliation; legacy generations receive a 14-day grace and live or ambiguous generations are retained'
+      : null,
+  };
+}
+
+/** Verify the exact PID incarnation recorded by a plugin generation lease. */
+function pluginProcessIdentity({ pid, procStart }) {
+  try { process.kill(pid, 0); } catch (error) {
+    return error?.code === 'ESRCH' ? 'dead' : 'unknown';
+  }
+  const result = process.platform === 'win32'
+    ? spawnSync('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-Command',
+      `$p=Get-Process -Id ${pid} -ErrorAction Stop; $p.StartTime.ToUniversalTime().ToString('ddd MMM dd HH:mm:ss yyyy',[Globalization.CultureInfo]::InvariantCulture)`,
+    ], { encoding: 'utf8' })
+    : spawnSync('ps', ['-p', String(pid), '-o', 'lstart='], {
+      encoding: 'utf8', env: { ...process.env, TZ: 'UTC', LC_ALL: 'C', LANG: 'C' },
+    });
+  if (result.status !== 0 || !String(result.stdout || '').trim()) return 'unknown';
+  return String(result.stdout).trim() === procStart.trim() ? 'live' : 'dead';
 }
 
 /** Size of a directory tree, best-effort — used only to report what was or would be freed. */
@@ -2563,18 +2687,16 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   const applied = runStableSpine(apply);
   const okApplied = !applied.error && applied.status === 0;
   if (okApplied) {
-    // ISSUE #128 — prune here and nowhere else. This is the moment "an update is a replacement, not
-    // an overlay" becomes true for the host: the new generation is registered and the Stable Spine
-    // has applied, so every OTHER generation in that cache is unreachable by design and can only
-    // mislead — its skills still load, its hooks still fire, and its version banner still speaks.
-    // Making it a consequence of updating, rather than a command someone has to remember, is the
-    // whole point; a cleanup that must be invoked is a cleanup that does not happen.
-    // Best-effort and reported by name — it must never turn a good update into a failed one.
+    // ISSUE #153 — running Claude sessions freeze their plugin root. Collect only generations whose
+    // leases prove that exact PID incarnation dead, or legacy roots past the compatibility grace.
     try {
       const gens = prunePluginGenerations({ apply: true });
       if (gens.removed.length) {
-        ok(`pruned ${gens.removed.length} stale plugin generation(s), freed ${(gens.bytes / 1048576).toFixed(1)} MB: ${gens.removed.map((g) => g.version).join(', ')}`);
-      } else if (gens.why) {
+        ok(`pruned ${gens.removed.length} stale plugin generation(s), freed ${(gens.bytes / 1048576).toFixed(1)} MB: ${gens.removed.join(', ')}`);
+      }
+      if (gens.cleanupBlocked?.length) {
+        warn(`plugin cleanup retained ${gens.cleanupBlocked.length} generation(s): ${gens.cleanupBlocked.map((item) => `${item.version} (${item.reason})`).join(', ')}`);
+      } else if (!gens.removed.length && gens.why) {
         warn(`stale plugin generations were not pruned: ${gens.why}`);
       }
     } catch (e) {
