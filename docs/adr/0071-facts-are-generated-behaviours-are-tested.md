@@ -1,5 +1,5 @@
 ---
-id: ADR-065
+id: ADR-071
 title: Facts are generated, behaviours are tested — retire the fact-gates
 status: Proposed
 date: 2026-08-10
@@ -14,7 +14,7 @@ governs:
   - tests/unit/no-restated-truth.test.mjs
 ---
 
-# ADR-065 — Facts are generated, behaviours are tested
+# ADR-071 — Facts are generated, behaviours are tested
 
 **Status**: Proposed
 

@@ -536,6 +536,13 @@ export function answerFromCards(query, dir, { allowGuideAnswers = false } = {}) 
   const qTokens = contentTokens(q);
   if (!qTokens.length) return { hit: false, reason: 'query has no scoreable content words' };
   const qIdentity = wholeTokens(q); // exact whole-token set, for the "is this repo NAMED?" test only
+  // In ecosystem-selection questions, "RuvNet" names the umbrella, not the `ruvnet` repository.
+  // Treating it as a repo identity forces every "Which RuvNet tool …?" query onto the generic
+  // card before the requested capability can rank. Direct questions such as "What is ruvnet?"
+  // retain their exact-identity behavior.
+  if (/\b(?:what|which)\s+ruvnet\s+(?:tool|repo|repository|package)\b/i.test(q)) {
+    qIdentity.delete('ruvnet');
+  }
   let preferredGuideRepo = null;
   if (allowGuideAnswers) {
     if (/\b(?:chatbot|settings\s+screen|install\s+is\s+healthy|question\s+to\s+a\s+cited\s+answer|work\s+in\s+codex|turn\s+the\s+brain\s+off|green\s+test\s+run\s+prove|every\s+capability\s+described\s+in\s+an?\s+adr|what\s+exact\s+evidence)\b/i.test(q)) {
