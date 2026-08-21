@@ -25,6 +25,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 
@@ -84,6 +85,29 @@ function runBuildBundle(env = {}, args = []) {
   return { code: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
 
+function stampGenerationLedger(assets, stores) {
+  const rows = {};
+  for (const store of stores) {
+    const file = `${store}.big.rvf`;
+    const bytes = fs.readFileSync(path.join(assets, file));
+    rows[store] = {
+      file,
+      sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
+      bytes: bytes.length,
+      model: 'fixture-model',
+      dimensions: 384,
+      sourceCommit: 'a'.repeat(40),
+      builtUtc: '2026-08-21T00:00:00.000Z',
+    };
+  }
+  fs.writeFileSync(path.join(assets, 'RVF-GENERATIONS.json'), JSON.stringify({
+    schemaVersion: 1,
+    brainVersion: '0.0.0-test',
+    releaseTag: 'v0.0.0-test',
+    stores: rows,
+  }));
+}
+
 describe('build-bundle.mjs — private-store fence (fail-closed)', () => {
   it('FATALs (exit 1) when PRIVATE-STORES.json is missing and no bypass is set', () => {
     const r = runBuildBundle();
@@ -117,6 +141,7 @@ describe('build-bundle.mjs — private-store fence (fail-closed)', () => {
     // Placeholder store files — discoverBuilt() matches by filename only, never opens them.
     fs.writeFileSync(path.join(tmp, 'kb/cognitum-seed.big.rvf'), '');
     fs.writeFileSync(path.join(tmp, 'kb/public-repo.big.rvf'), '');
+    stampGenerationLedger(path.join(tmp, 'kb'), ['cognitum-seed', 'public-repo']);
     const r = runBuildBundle();
     expect(r.stdout).toMatch(/EXCLUDED 1 PRIVATE store\(s\): cognitum-seed/);
     const manifest = JSON.parse(fs.readFileSync(path.join(tmp, 'dist/ruvnet-brain/manifest.json'), 'utf8'));
@@ -135,6 +160,7 @@ describe('build-bundle.mjs — publishable artifact gate (fail-closed)', () => {
     fs.writeFileSync(path.join(tmp, 'kb/PRIVATE-STORES.json'), JSON.stringify({ privateStores: [] }));
     fs.writeFileSync(path.join(assets, 'public-repo.big.rvf'), '');
     fs.writeFileSync(path.join(assets, '._public-repo.big.rvf'), '');
+    stampGenerationLedger(assets, ['public-repo']);
 
     const r = runBuildBundle({}, ['--assets', assets]);
 
@@ -149,6 +175,7 @@ describe('build-bundle.mjs — publishable artifact gate (fail-closed)', () => {
     fs.writeFileSync(path.join(tmp, 'kb/PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['private-repo'] }));
     fs.writeFileSync(path.join(assets, 'private-repo.big.rvf'), '');
     fs.writeFileSync(path.join(assets, 'public-repo.big.rvf'), '');
+    stampGenerationLedger(assets, ['private-repo', 'public-repo']);
 
     const r = runBuildBundle({}, ['--assets', assets]);
 
@@ -171,6 +198,7 @@ describe('build-bundle.mjs — publishable artifact gate (fail-closed)', () => {
   it('FATALs instead of publishing a ZIP when any required bundle file is missing', () => {
     fs.writeFileSync(path.join(tmp, 'kb/PRIVATE-STORES.json'), JSON.stringify({ privateStores: [] }));
     fs.writeFileSync(path.join(tmp, 'kb/public-repo.big.rvf'), '');
+    stampGenerationLedger(path.join(tmp, 'kb'), ['public-repo']);
 
     const r = runBuildBundle();
 
