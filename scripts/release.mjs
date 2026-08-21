@@ -37,6 +37,7 @@ import { verifyPayload } from './release-payload.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
+const CORPUS_SEED = process.argv.includes('--corpus-seed');
 let protectedCandidate = null;
 let sealedPackageArtifact = null;
 let publicationReceiptPath = null;
@@ -55,6 +56,147 @@ function runOrDie(label, cmd, args, opts = {}) {
     process.exit(1);
   }
 }
+
+const cliArg = (argv, name) => {
+  const index = argv.indexOf(name);
+  return index >= 0 ? argv[index + 1] : undefined;
+};
+const isHex = (value, length) => new RegExp(`^[a-f0-9]{${length}}$`).test(String(value || ''));
+const sha256File = (file) => {
+  const hash = crypto.createHash('sha256');
+  const fd = fs.openSync(file, 'r');
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    let bytes;
+    while ((bytes = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, bytes));
+  } finally {
+    fs.closeSync(fd);
+  }
+  return hash.digest('hex');
+};
+const exactFileIdentity = (value) => value && typeof value.file === 'string'
+  && isHex(value.sha256, 64) && Number.isSafeInteger(value.bytes) && value.bytes >= 0;
+
+function corpusFailure(message) {
+  throw new Error(`[corpus-seed] ${message}`);
+}
+
+export function runProtectedCorpusSeed({
+  argv = process.argv.slice(2),
+  env = process.env,
+  root = ROOT,
+  run = (command, args, options) => spawnSync(command, args, { encoding: 'utf8', ...options }),
+} = {}) {
+  if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_WORKFLOW !== 'protected-release'
+    || env.GITHUB_REPOSITORY !== 'stuinfla/ruvnet-brain') {
+    corpusFailure('publication is allowed only inside the protected-release GitHub workflow for stuinfla/ruvnet-brain');
+  }
+
+  const tag = cliArg(argv, '--corpus-tag');
+  const bundleFile = cliArg(argv, '--corpus-bundle');
+  const receiptFile = cliArg(argv, '--corpus-receipt');
+  const target = cliArg(argv, '--target');
+  const repo = cliArg(argv, '--repo') || env.GITHUB_REPOSITORY;
+  const digestMatch = String(tag || '').match(/^corpus-sha256-([a-f0-9]{64})$/);
+  if (!digestMatch) corpusFailure('corpus tag must be corpus-sha256- followed by 64 lowercase hex characters');
+  if (repo !== env.GITHUB_REPOSITORY || repo !== 'stuinfla/ruvnet-brain') corpusFailure('repository does not match the protected workflow');
+
+  for (const [label, file] of [['bundle', bundleFile], ['receipt', receiptFile]]) {
+    if (!file || !path.isAbsolute(file)) corpusFailure(`${label} must be an absolute regular file`);
+    try {
+      const stat = fs.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink()) corpusFailure(`${label} must be an absolute regular file`);
+    } catch (error) {
+      if (String(error.message).startsWith('[corpus-seed]')) throw error;
+      corpusFailure(`${label} must be an absolute regular file (${error.message})`);
+    }
+  }
+
+  const headResult = run('git', ['rev-parse', 'HEAD'], {
+    cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (headResult.error || headResult.status !== 0) corpusFailure('cannot resolve release HEAD');
+  const head = String(headResult.stdout || '').trim();
+
+  let receipt;
+  try {
+    receipt = JSON.parse(fs.readFileSync(receiptFile, 'utf8'));
+  } catch (error) {
+    corpusFailure(`corpus receipt is unreadable/corrupt (${error.message})`);
+  }
+  if (!isHex(target, 40) || target !== head || target !== env.GITHUB_SHA || target !== receipt.builderSourceSha) {
+    corpusFailure('target must exactly equal HEAD, GITHUB_SHA, and the corpus receipt builderSourceSha');
+  }
+
+  const boundaryIdentities = [receipt.privateFence, receipt.eligibilityPolicy, receipt.generationLedger];
+  const storeBindingsValid = Number.isSafeInteger(receipt.storeCount) && receipt.storeCount > 0
+    && Array.isArray(receipt.stores) && receipt.stores.length === receipt.storeCount
+    && receipt.stores.every((store) => typeof store?.name === 'string' && store.name.length > 0
+      && /^[a-f0-9]{7,64}$/.test(String(store.sourceCommit || ''))
+      && typeof store.builtUtc === 'string' && Number.isFinite(Date.parse(store.builtUtc))
+      && typeof store.model === 'string' && store.model.length > 0
+      && Number.isSafeInteger(store.dimensions) && store.dimensions > 0
+      && Array.isArray(store.files) && store.files.length > 0 && store.files.every(exactFileIdentity));
+  const emptyFailureArrays = ['duplicateRvfDigests', 'unreceiptedRvfFiles', 'missingSidecars']
+    .every((key) => Array.isArray(receipt[key]) && receipt[key].length === 0);
+  const privateExclusionsValid = Array.isArray(receipt.excludedPrivateStores)
+    && receipt.excludedPrivateStores.every((name) => typeof name === 'string' && name.length > 0);
+  const generatorFile = path.join(root, 'scripts/corpus-candidate.mjs');
+  const generatorValid = fs.existsSync(generatorFile)
+    && receipt.generator?.corpusCandidateSha256 === sha256File(generatorFile);
+  if (receipt.schemaVersion !== 1 || receipt.kind !== 'ruvnet-brain-corpus-candidate'
+    || !receipt.createdAt || !receipt.coverageGeneration || !storeBindingsValid || !emptyFailureArrays
+    || !privateExclusionsValid || !boundaryIdentities.every(exactFileIdentity) || !exactFileIdentity(receipt.archive)
+    || !generatorValid
+    || receipt.archive.file !== path.basename(bundleFile)) {
+    corpusFailure('corpus receipt bindings are incomplete or invalid');
+  }
+
+  const archiveSha256 = sha256File(bundleFile);
+  if (archiveSha256 !== receipt.archive.sha256 || fs.statSync(bundleFile).size !== receipt.archive.bytes) {
+    corpusFailure('archive bytes do not match the corpus receipt');
+  }
+  if (digestMatch[1] !== archiveSha256) corpusFailure('corpus tag digest does not match the receipt and archive');
+
+  const viewArgs = ['release', 'view', tag, '--json', 'tagName', '--repo', repo];
+  const view = run('gh', viewArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  if (!view.error && view.status === 0) corpusFailure(`release ${tag} already exists; refusing to overwrite immutable corpus seed`);
+  const viewError = String(view.error?.message || view.stderr || view.stdout || '');
+  if (!/(release not found|no release found)/i.test(viewError)) corpusFailure(`cannot prove ${tag} is absent (${viewError.trim() || `gh exited ${view.status}`})`);
+
+  const notes = [
+    'Content-addressed RuvNet Brain corpus seed.',
+    `Archive SHA-256: ${archiveSha256}`,
+    `Receipt SHA-256: ${sha256File(receiptFile)}`,
+    `Stores: ${receipt.storeCount}`,
+    `Coverage generation: ${receipt.coverageGeneration}`,
+    'This published prerelease is immutable and must never be replaced.',
+  ].join('\n');
+  const createArgs = [
+    'release', 'create', tag,
+    '--prerelease', '--latest=false',
+    '--target', target,
+    '--repo', repo,
+    '--title', `Immutable corpus seed ${archiveSha256.slice(0, 16)}`,
+    '--notes', notes,
+    bundleFile, receiptFile,
+  ];
+  const create = run('gh', createArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  if (create.error || create.status !== 0) {
+    corpusFailure(`protected corpus publication failed (${String(create.error?.message || create.stderr || create.stdout || '').trim()})`);
+  }
+  return { tag, target, repository: repo, archiveSha256, receiptSha256: sha256File(receiptFile) };
+}
+
+if (CORPUS_SEED) {
+  try {
+    const result = runProtectedCorpusSeed();
+    console.log(JSON.stringify({ ok: true, mode: 'corpus-seed', ...result }, null, 2));
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+} else {
 
 console.log(`\n${c.b('RuvNet Brain — release / definition-of-done')} ${c.dim('· ' + (PUBLISH ? 'PUBLISH' : 'check-only') + ' · shipping ' + V())}\n`);
 
@@ -253,4 +395,5 @@ if (PUBLISH) {
   console.log(`\n${c.g(c.b('✓✓✓ SHIPPED'))} — every gate passed and every live channel is current. ${c.dim('A user on any path (npm, npx, explainer, --update) gets the working, current build.')}\n`);
 } else {
   console.log(`\n${c.g(c.b('✓✓✓ PREFLIGHT PASS — NOT PUBLISHED'))} — the committed candidate passed every check-only gate.\n`);
+}
 }
