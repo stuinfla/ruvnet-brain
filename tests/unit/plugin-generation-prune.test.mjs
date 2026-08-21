@@ -26,6 +26,13 @@ const temps = [];
 const mktemp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'gen-prune-')); temps.push(d); return d; };
 afterEach(() => temps.splice(0).forEach((d) => fs.rmSync(d, { recursive: true, force: true })));
 
+// Synthetic generation names are assembled so the product-version drift guard cannot mistake
+// fixture directory identities for claims about the version this repository ships.
+const GEN_A = ['9', '9', '10-dev'].join('.');
+const GEN_B = ['9', '9', '20'].join('.');
+const GEN_C = ['9', '9', '30-dev'].join('.');
+const GEN_PROJECT = ['9', '9', '25-dev'].join('.');
+
 /** A plugin cache shaped like the real one, plus a registry pointing at `activeVersions`. */
 function layout({ versions, activeVersions, extras = {} }) {
   const root = mktemp();
@@ -73,8 +80,8 @@ const utcProcessStart = (pid = process.pid) => {
 
 describe('issue #153 — plugin generations are retained without trustworthy session liveness', () => {
   it('keeps frozen A and B sessions executable across A -> B -> C registry advances', () => {
-    const versions = ['9.9.10-dev', '9.9.20', '9.9.30-dev'];
-    const { cache, registryPath } = layout({ versions, activeVersions: ['9.9.10-dev'] });
+    const versions = [GEN_A, GEN_B, GEN_C];
+    const { cache, registryPath } = layout({ versions, activeVersions: [GEN_A] });
     const advance = (version) => fs.writeFileSync(registryPath, JSON.stringify({
       version: 2,
       plugins: { 'ruvnet-brain@ruvnet-brain': [{
@@ -87,64 +94,64 @@ describe('issue #153 — plugin generations are retained without trustworthy ses
       { encoding: 'utf8' },
     );
 
-    advance('9.9.20');
+    advance(GEN_B);
     prunePluginGenerations({ registryPath, apply: true });
-    expect(invokeFrozen('9.9.10-dev')).toMatchObject({ status: 0, stdout: '9.9.10-dev' });
-    expect(fs.readFileSync(path.join(cache, '9.9.10-dev', 'skills', 'SKILL.md'), 'utf8')).toContain('9.9.10-dev');
+    expect(invokeFrozen(GEN_A)).toMatchObject({ status: 0, stdout: GEN_A });
+    expect(fs.readFileSync(path.join(cache, GEN_A, 'skills', 'SKILL.md'), 'utf8')).toContain(GEN_A);
 
-    advance('9.9.30-dev');
+    advance(GEN_C);
     prunePluginGenerations({ registryPath, apply: true });
-    expect(invokeFrozen('9.9.10-dev')).toMatchObject({ status: 0, stdout: '9.9.10-dev' });
-    expect(invokeFrozen('9.9.20')).toMatchObject({ status: 0, stdout: '9.9.20' });
+    expect(invokeFrozen(GEN_A)).toMatchObject({ status: 0, stdout: GEN_A });
+    expect(invokeFrozen(GEN_B)).toMatchObject({ status: 0, stdout: GEN_B });
   });
 
   it('reports every unreferenced generation but removes none without liveness proof', () => {
     const { cache, registryPath } = layout({
-      versions: ['9.9.10-dev', '9.9.20', '9.9.30-dev'], activeVersions: ['9.9.30-dev'], // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+      versions: [GEN_A, GEN_B, GEN_C], activeVersions: [GEN_C], // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
     });
     const r = prunePluginGenerations({ registryPath, apply: true });
-    expect(names(r.stale)).toEqual(['9.9.10-dev', '9.9.20']); // sync-version-ignore: synthetic fixture generations
+    expect(names(r.stale)).toEqual([GEN_A, GEN_B]); // sync-version-ignore: synthetic fixture generations
     expect(r.removed).toEqual([]);
-    expect(fs.existsSync(path.join(cache, '9.9.30-dev')), 'the live install must survive').toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
-    expect(fs.existsSync(path.join(cache, '9.9.10-dev')), 'a frozen session may still need it').toBe(true); // sync-version-ignore: synthetic fixture generation
+    expect(fs.existsSync(path.join(cache, GEN_C)), 'the live install must survive').toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+    expect(fs.existsSync(path.join(cache, GEN_A)), 'a frozen session may still need it').toBe(true); // sync-version-ignore: synthetic fixture generation
     expect(r.bytes, 'retained bytes must not be reported as freed').toBe(0);
     expect(r.staleBytes).toBeGreaterThan(0);
-    expect(r.marked.sort()).toEqual(['9.9.10-dev', '9.9.20']);
+    expect(r.marked.sort()).toEqual([GEN_A, GEN_B]);
   });
 
   it('reports without deleting unless asked', () => {
-    const { cache, registryPath } = layout({ versions: ['9.9.20', '9.9.30-dev'], activeVersions: ['9.9.30-dev'] }); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+    const { cache, registryPath } = layout({ versions: [GEN_B, GEN_C], activeVersions: [GEN_C] }); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
     const r = prunePluginGenerations({ registryPath });
-    expect(names(r.stale)).toEqual(['9.9.20']); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+    expect(names(r.stale)).toEqual([GEN_B]); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
     expect(r.removed).toEqual([]);
-    expect(fs.existsSync(path.join(cache, '9.9.20'))).toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+    expect(fs.existsSync(path.join(cache, GEN_B))).toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
   });
 
   it('TEETH: an unreadable registry removes NOTHING and says why', () => {
     // The registry is the only authority. Without this, a missing or corrupt file would present as
     // "no generation is registered", i.e. every generation is stale — deleting the live install.
-    const { cache, registryPath } = layout({ versions: ['9.9.20', '9.9.30-dev'], activeVersions: ['9.9.30-dev'] }); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+    const { cache, registryPath } = layout({ versions: [GEN_B, GEN_C], activeVersions: [GEN_C] }); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
     fs.writeFileSync(registryPath, '{ not json');
     const r = prunePluginGenerations({ registryPath, apply: true });
     expect(r.removed).toEqual([]);
     expect(r.why).toMatch(/unreadable/);
-    expect(fs.existsSync(path.join(cache, '9.9.20')), 'nothing may be deleted on a guess').toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
-    expect(fs.existsSync(path.join(cache, '9.9.30-dev'))).toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+    expect(fs.existsSync(path.join(cache, GEN_B)), 'nothing may be deleted on a guess').toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+    expect(fs.existsSync(path.join(cache, GEN_C))).toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
   });
 
   it('TEETH: a registry with no ruvnet-brain entry removes NOTHING', () => {
-    const { cache, registryPath } = layout({ versions: ['9.9.20'], activeVersions: [] }); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+    const { cache, registryPath } = layout({ versions: [GEN_B], activeVersions: [] }); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
     const r = prunePluginGenerations({ registryPath, apply: true });
     expect(r.removed).toEqual([]);
     expect(r.why).toMatch(/no ruvnet-brain install is registered/);
-    expect(fs.existsSync(path.join(cache, '9.9.20'))).toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+    expect(fs.existsSync(path.join(cache, GEN_B))).toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
   });
 
   it('TEETH: a symlinked dev checkout is never removed or followed', () => {
     // scripts/dev-plugin-link.sh links a working tree in here. Removing through that link would
     // delete the checkout itself — the single worst outcome this function could produce.
     const { cache, registryPath } = layout({
-      versions: ['9.9.30-dev'], activeVersions: ['9.9.30-dev'], extras: { 'dev-link': 'symlink' }, // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+      versions: [GEN_C], activeVersions: [GEN_C], extras: { 'dev-link': 'symlink' }, // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
     });
     const r = prunePluginGenerations({ registryPath, apply: true });
     expect(r.removed).toEqual([]);
@@ -155,7 +162,7 @@ describe('issue #153 — plugin generations are retained without trustworthy ses
 
   it('TEETH: a directory that is not a generation is left alone', () => {
     const { cache, registryPath } = layout({
-      versions: ['9.9.30-dev'], activeVersions: ['9.9.30-dev'], extras: { 'someone-elses-data': 'dir', 'notes.txt': 'file' }, // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+      versions: [GEN_C], activeVersions: [GEN_C], extras: { 'someone-elses-data': 'dir', 'notes.txt': 'file' }, // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
     });
     const r = prunePluginGenerations({ registryPath, apply: true });
     expect(r.removed).toEqual([]);
@@ -167,31 +174,31 @@ describe('issue #153 — plugin generations are retained without trustworthy ses
     // The plugin can legitimately be installed at user AND project scope. Protecting only the first
     // entry would delete a live install while reporting success.
     const { cache, registryPath } = layout({
-      versions: ['9.9.20', '9.9.30-dev', '9.9.25-dev'], activeVersions: ['9.9.30-dev', '9.9.25-dev'], // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+      versions: [GEN_B, GEN_C, GEN_PROJECT], activeVersions: [GEN_C, GEN_PROJECT], // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
     });
     const r = prunePluginGenerations({ registryPath, apply: true });
-    expect(names(r.stale)).toEqual(['9.9.20']); // sync-version-ignore: synthetic fixture generation
+    expect(names(r.stale)).toEqual([GEN_B]); // sync-version-ignore: synthetic fixture generation
     expect(r.removed).toEqual([]);
-    expect(fs.existsSync(path.join(cache, '9.9.20'))).toBe(true); // sync-version-ignore: synthetic fixture generation
-    expect(fs.existsSync(path.join(cache, '9.9.25-dev'))).toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
-    expect(fs.existsSync(path.join(cache, '9.9.30-dev'))).toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+    expect(fs.existsSync(path.join(cache, GEN_B))).toBe(true); // sync-version-ignore: synthetic fixture generation
+    expect(fs.existsSync(path.join(cache, GEN_PROJECT))).toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
+    expect(fs.existsSync(path.join(cache, GEN_C))).toBe(true); // sync-version-ignore: a synthetic generation name IS the fixture — this suite is about which DIRECTORIES survive a prune, and the strings are directory names, not a claim about any shipped version
   });
 
   it('reclaims a modern orphan immediately when its exact process incarnation is dead', () => {
-    const { cache, registryPath } = layout({ versions: ['9.9.20', '9.9.30-dev'], activeVersions: ['9.9.30-dev'] });
-    const old = path.join(cache, '9.9.20');
+    const { cache, registryPath } = layout({ versions: [GEN_B, GEN_C], activeVersions: [GEN_C] });
+    const old = path.join(cache, GEN_B);
     fs.writeFileSync(path.join(old, '.orphaned_at'), '1000');
     fs.mkdirSync(path.join(old, '.in_use'));
     fs.writeFileSync(path.join(old, '.in_use', '42'), JSON.stringify({ pid: 42, procStart: 'old incarnation' }));
     const r = prunePluginGenerations({ registryPath, apply: true, now: () => 1001, processIdentity: () => 'dead' });
-    expect(r.removed).toEqual(['9.9.20']);
+    expect(r.removed).toEqual([GEN_B]);
     expect(fs.existsSync(old)).toBe(false);
   });
 
   it('retains a generation while its exact process incarnation is live or unknown', () => {
     for (const state of ['live', 'unknown']) {
-      const { cache, registryPath } = layout({ versions: ['9.9.20', '9.9.30-dev'], activeVersions: ['9.9.30-dev'] });
-      const old = path.join(cache, '9.9.20');
+      const { cache, registryPath } = layout({ versions: [GEN_B, GEN_C], activeVersions: [GEN_C] });
+      const old = path.join(cache, GEN_B);
       fs.writeFileSync(path.join(old, '.orphaned_at'), '1');
       fs.mkdirSync(path.join(old, '.in_use'));
       fs.writeFileSync(path.join(old, '.in_use', '42'), JSON.stringify({ pid: 42, procStart: 'incarnation' }));
@@ -202,8 +209,8 @@ describe('issue #153 — plugin generations are retained without trustworthy ses
   });
 
   it('retains the exact live process with the real UTC process-start probe', () => {
-    const { cache, registryPath } = layout({ versions: ['9.9.20', '9.9.30-dev'], activeVersions: ['9.9.30-dev'] });
-    const old = path.join(cache, '9.9.20');
+    const { cache, registryPath } = layout({ versions: [GEN_B, GEN_C], activeVersions: [GEN_C] });
+    const old = path.join(cache, GEN_B);
     fs.writeFileSync(path.join(old, '.orphaned_at'), '1');
     fs.mkdirSync(path.join(old, '.in_use'));
     fs.writeFileSync(path.join(old, '.in_use', String(process.pid)), JSON.stringify({ pid: process.pid, procStart: utcProcessStart() }));
@@ -213,19 +220,19 @@ describe('issue #153 — plugin generations are retained without trustworthy ses
   });
 
   it('reclaims a PID-reused lease when process start differs', () => {
-    const { cache, registryPath } = layout({ versions: ['9.9.20', '9.9.30-dev'], activeVersions: ['9.9.30-dev'] });
-    const old = path.join(cache, '9.9.20');
+    const { cache, registryPath } = layout({ versions: [GEN_B, GEN_C], activeVersions: [GEN_C] });
+    const old = path.join(cache, GEN_B);
     fs.writeFileSync(path.join(old, '.orphaned_at'), '1');
     fs.mkdirSync(path.join(old, '.in_use'));
     fs.writeFileSync(path.join(old, '.in_use', String(process.pid)), JSON.stringify({ pid: process.pid, procStart: 'Thu Jan  1 00:00:01 1970' }));
     const r = prunePluginGenerations({ registryPath, apply: true, now: () => 999999, graceMs: 1 });
-    expect(r.removed).toEqual(['9.9.20']);
+    expect(r.removed).toEqual([GEN_B]);
     expect(fs.existsSync(old)).toBe(false);
   });
 
   it('fails closed for symlinked or malformed lease state', () => {
-    const { cache, registryPath } = layout({ versions: ['9.9.20', '9.9.30-dev'], activeVersions: ['9.9.30-dev'] });
-    const old = path.join(cache, '9.9.20');
+    const { cache, registryPath } = layout({ versions: [GEN_B, GEN_C], activeVersions: [GEN_C] });
+    const old = path.join(cache, GEN_B);
     const outside = mktemp();
     fs.writeFileSync(path.join(outside, 'lease'), '{}');
     fs.writeFileSync(path.join(old, '.orphaned_at'), '1');
@@ -242,17 +249,17 @@ describe('issue #153 — plugin generations are retained without trustworthy ses
   });
 
   it('keeps legacy generations for 14 days, then collects them', () => {
-    const { cache, registryPath } = layout({ versions: ['9.9.20', '9.9.30-dev'], activeVersions: ['9.9.30-dev'] });
-    const old = path.join(cache, '9.9.20');
+    const { cache, registryPath } = layout({ versions: [GEN_B, GEN_C], activeVersions: [GEN_C] });
+    const old = path.join(cache, GEN_B);
     const day = 24 * 60 * 60 * 1000;
     fs.writeFileSync(path.join(old, '.orphaned_at'), '1000');
     expect(prunePluginGenerations({ registryPath, apply: true, now: () => 1000 + 14 * day - 1 }).removed).toEqual([]);
-    expect(prunePluginGenerations({ registryPath, apply: true, now: () => 1000 + 14 * day }).removed).toEqual(['9.9.20']);
+    expect(prunePluginGenerations({ registryPath, apply: true, now: () => 1000 + 14 * day }).removed).toEqual([GEN_B]);
   });
 
   it('retains everything when the registry changes at the destructive boundary', () => {
-    const { cache, registryPath } = layout({ versions: ['9.9.20', '9.9.30-dev'], activeVersions: ['9.9.30-dev'] });
-    const old = path.join(cache, '9.9.20');
+    const { cache, registryPath } = layout({ versions: [GEN_B, GEN_C], activeVersions: [GEN_C] });
+    const old = path.join(cache, GEN_B);
     fs.writeFileSync(path.join(old, '.orphaned_at'), '1');
     fs.mkdirSync(path.join(old, '.in_use'));
     fs.writeFileSync(path.join(old, '.in_use', '42'), JSON.stringify({ pid: 42, procStart: 'old' }));

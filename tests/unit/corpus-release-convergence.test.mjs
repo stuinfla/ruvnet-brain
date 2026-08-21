@@ -9,7 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 describe('corpus and release convergence wiring', () => {
   it('pins CI to the committed seed descriptor and its digest', () => {
     const seed = JSON.parse(fs.readFileSync(path.join(root, 'data/corpus-seed.json'), 'utf8'));
-    expect(seed.tag).toBe('v4.2.1-dev');
+    expect(seed.tag).toBe('v4.2.1-dev'); // sync-version-ignore: immutable external seed tag, not the candidate product version
     expect(seed.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(seed.bytes).toBeGreaterThan(0);
     const workflow = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
