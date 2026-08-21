@@ -3,7 +3,7 @@ id: ADR-049
 title: The console rebuild — explain every section, scope every suggestion, and make the safe ones checkable
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-14
+updated: 2026-08-21
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, console, advocacy, capability, cache, honesty]
 supersedes: []
@@ -122,6 +122,7 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-21 | Re-read after issue #153 changed plugin-cache retirement; Console behavior is unchanged. | `bin/install.mjs` now retains unregistered version roots while an exact process-incarnation lease may still hold them and fails closed on ambiguous liveness. The change protects already-running host sessions; it does not alter Console recommendations, controls, scope, consent, or runtime ownership. `tests/unit/plugin-generation-prune.test.mjs` exercises the frozen A-to-B-to-C path. |
 | 2026-08-13 | **The console's learner probe stopped hardcoding a working directory.** | Per issue #139 (@ObiWanKenobi) the probe now calls `learnerCwd()` rather than pinning `process.cwd()` (or, before #136, `SYSTEM_HOME`). Both were hardcodes; the second was right only because `project` is the default and inverted under `RUVNET_LEARNING_SCOPE=user`. The console now measures whichever store the configured scope actually uses, so its card and the remedy behind it refer to the same learner by construction. A test that had pinned `cwd: process.cwd()` verbatim was updated to require RESOLUTION instead — a test defending a hardcode is a test defending the bug. |
 | 2026-08-10 | **Re-read after the derived Codex dependency walk; the Console contract is unchanged.** | `bin/install.mjs` is governed here. The change is confined to `wireCodexHost`: its dependency copy list is now derived from `plugin/mcp/server.mjs`'s real imports instead of hand-listed, after one added import shipped a Codex server whose sibling was absent. `runtime-preferences.mjs` is now copied because the walk found it, not because a literal named it — the same file, the same destination, arrived at by derivation. Nothing the Console renders, explains, scopes, or offers was touched, and its consent-gated Apply is untouched. |
 | 2026-08-10 | **Re-read after #128/#129; the Console contract is unchanged.** | `bin/install.mjs` is governed here. Two additions: `NIGHTLY_ARGV`/`cronExample`/`enableNightly` now schedule the host-convergent entrypoint (issue #129), and `prunePluginGenerations()` removes plugin-cache generations the registry does not reference (issue #128). Neither touches what this ADR decides. The prune runs in the same `okApplied` branch as `runtimeTransaction.activate()` but deletes only directories under a registered `installPath`'s parent that carry their own `.claude-plugin/plugin.json`; the Console runtime lives under its own receipt dir and is excluded by construction. The explainers, the scoped suggestions, the checkboxes and the consent-gated Apply are untouched. |

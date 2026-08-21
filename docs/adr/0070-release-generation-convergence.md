@@ -182,4 +182,9 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 6. A fresh public install and a fresh host window report the same release generation.
 7. Coverage documentation is generated from the sealed manifest, source ledger, and gist inventory.
 
+## Currency log
+
+| Date | What changed | Why (with referents) |
+|---|---|---|
+| 2026-08-21 | Implemented the emergency correctness slice after Fable 5 and GPT-5.6-Sol convergence. | `.github/workflows/ci.yml` pins the immutable corpus seed; `scripts/build-bundle.mjs` validates strict ledger closure; `bin/install.mjs` retains live plugin roots by exact process-incarnation leases; and the protected publisher rechecks `origin/main` immediately before mutation. Focused integrated tests cover these paths. Rollback-storage receipts, fresh interactive-window proof, and generated coverage remain explicit post-restoration work and are not claimed shipped by this row. |
 
