@@ -6,6 +6,8 @@ import {
   actionKey, recordRefusal, report, resolve, sweepStale, abandonSession,
 } from '../../plugin/scripts/decision-outcomes.mjs';
 
+const MODULE = path.resolve('plugin/scripts/decision-outcomes.mjs');
+
 /**
  * ADR-067 §outcomes — the refusal ledger, and specifically the ways it could lie.
  *
@@ -26,6 +28,13 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 const T = 1_754_800_000_000;   // fixed clock: the caller owns time, so these are hermetic
 
 describe('the action key decides what counts as "the same thing again"', () => {
+  it('TEETH: the JavaScript source contains no raw NUL bytes', () => {
+    // A raw NUL made Git and source tools classify this module as binary. The source escape keeps
+    // the exact runtime separator without hiding implementation from review or instrumentation.
+    expect(fs.readFileSync(MODULE).includes(0)).toBe(false);
+    expect(fs.readFileSync(MODULE, 'utf8').match(/\\u0000/g)).toHaveLength(2);
+  });
+
   it('keys a write on its target, not its content', () => {
     // A model that fixes a refusal usually changes the CONTENT and keeps the target. Keying on
     // content would score every correction as a brand-new action, making `repeated` unreachable —
@@ -114,7 +123,12 @@ describe('the report cannot flatter itself', () => {
   });
 
   it('a write failure never throws — a ledger may not break a tool call', () => {
-    const bad = { ledger: '/proc/nope/x.jsonl', pending: '/proc/nope/p.json' };
+    // A regular file used as a parent produces an immediate, deterministic write failure on every
+    // supported platform. `/proc/nope` was not an ordinary unwritable directory on Linux: Node 20's
+    // recursive mkdir could block on procfs forever, hanging this file before Vitest flushed output.
+    const blocker = path.join(dir, 'not-a-directory');
+    fs.writeFileSync(blocker, 'x');
+    const bad = { ledger: path.join(blocker, 'x.jsonl'), pending: path.join(blocker, 'p.json') };
     expect(() => recordRefusal({ session: 's', key: 'k', policies: [], ts: T }, bad)).not.toThrow();
     expect(() => resolve({ session: 's', key: 'k', allowed: true, ts: T }, bad)).not.toThrow();
     expect(() => sweepStale({ session: 's', ts: T }, bad)).not.toThrow();

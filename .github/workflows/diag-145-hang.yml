@@ -1,89 +1,42 @@
-# DIAGNOSTIC ONLY — delete once #145 names its mechanism.
-#
-# #145: `check`'s vitest step hangs deterministically on the ubuntu runner. Four runs, identical
-# stop point, identical orphan signature (three stray `node` pids at GitHub's own cleanup). The
-# file was identified by construction (serial execution + verified size-descending sequencing) as
-# tests/unit/decision-outcomes.test.mjs, and quarantining it turned a never-finishing job into a
-# six-minute one — so it is certainly WHERE the pool stalls.
-#
-# But it is not obviously WHAT stalls: that file completes standalone with coverage on macOS under
-# node 22 AND node 24, and the module it imports is pure synchronous fs — no spawn, no timers, no
-# handles. The full suite with coverage also completes on macOS under both.
-#
-# The variable never controlled for is the ENVIRONMENT: `check` runs vitest under node 20 on a
-# 2-core ubuntu runner, while every local reproduction used node 22/24 on darwin/arm64.
-#
-# This workflow isolates that. Three jobs, one variable each:
-#   suspect-alone  — the quarantined file, alone, node 20, ubuntu, WITH coverage
-#   suspect-alone-no-coverage — same, without coverage (is coverage load-bearing?)
-#   full-suite-unquarantined  — the whole suite INCLUDING the quarantined file
-#
-# Each is bounded so a hang is a bounded red X, never a jammed queue — that lesson is already paid
-# for. `continue-on-error` so one hanging job never hides the others' answers.
+# DIAGNOSTIC ONLY — manual, bounded proof for issue #145.
 name: diag-145-hang
 
 on:
   workflow_dispatch:
 
 jobs:
-  suspect-alone:
-    name: suspect file alone (node 20, coverage)
-    timeout-minutes: 12
-    continue-on-error: true
+  root-cause-proof:
+    name: procfs root cause and repaired test (Ubuntu, Node 20)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
       - run: npm i --no-audit --no-fund --loglevel=error
-      - name: nproc / memory (the runner shape is part of the question)
-        run: nproc; free -m || true
-      - run: npx vitest run tests/unit/decision-outcomes.test.mjs --coverage
 
-  suspect-alone-no-coverage:
-    name: suspect file alone (node 20, NO coverage)
-    timeout-minutes: 12
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm i --no-audit --no-fund --loglevel=error
-      - run: npx vitest run tests/unit/decision-outcomes.test.mjs
+      - name: Prove the module is inspectable text with the same escaped separator
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const bytes = fs.readFileSync('plugin/scripts/decision-outcomes.mjs');
+          if (bytes.includes(0)) throw new Error('raw NUL byte remains in JavaScript source');
+          const escaped = bytes.toString('utf8').match(/\\u0000/g) || [];
+          if (escaped.length !== 2) throw new Error(`expected two escaped separators, found ${escaped.length}`);
+          NODE
 
-  full-suite-unquarantined:
-    name: full suite INCLUDING the quarantined file (node 20, coverage)
-    timeout-minutes: 35
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm i --no-audit --no-fund --loglevel=error
-      - name: nproc / memory
-        run: nproc; free -m || true
-      - name: full suite, quarantine REMOVED
-        run: npm run test:cov
+      - name: Reproduce the retired procfs fixture without hanging the job
+        shell: bash
+        run: |
+          set +e
+          timeout 10s node -e "require('node:fs').mkdirSync('/proc/nope', { recursive: true })"
+          status=$?
+          set -e
+          test "$status" -eq 124 || {
+            echo "expected Node 20 recursive mkdir on procfs to time out; exit=$status" >&2
+            exit 1
+          }
 
-  control-innocent-file:
-    name: CONTROL — a different single file (node 20, no coverage)
-    timeout-minutes: 12
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm i --no-audit --no-fund --loglevel=error
-      # THE INSTRUMENT CHECK. The suspect hung after printing only `RUN v4.1.10` — before any test
-      # executed. That is equally consistent with "this file hangs" and with "ANY single-file vitest
-      # run hangs on node 20 + ubuntu in this repo", which would make the suspect innocent and the
-      # size-ordering coincidence. This file is known-good and unrelated; if it hangs too, the
-      # instrument is the story, not decision-outcomes.
-      - run: npx vitest run tests/unit/org-repo-count.test.mjs
+      - name: Prove the deterministic replacement exits and passes
+        run: timeout 60s npx vitest run tests/unit/decision-outcomes.test.mjs
