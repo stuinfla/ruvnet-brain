@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-21
+updated: 2026-08-22
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -26,6 +26,7 @@ governs:
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-22 | Re-read the transaction after replacing its private canonical serializer with the shared coverage-integrity implementation. | Commit `4f59bc6` changes only `scripts/release-transaction.mjs`: it imports and re-exports `canonicalJson` from `scripts/coverage-integrity.mjs` and removes the duplicate declaration. `tests/unit/release-transaction.test.mjs` still passes all seven hostile mutation, sequence, and recovery cases; provider authority, immutable payload identity, and publication ordering are unchanged. |
 | 2026-08-21 | Re-read the staged transaction after correcting candidate bundle assembly; transaction authority and immutable payload rules are unchanged. | `.github/workflows/ci.yml` repairs stale seed ledger hashes before sealing the candidate, but still produces the npm and bundle artifacts once for the existing protected publisher. No publication mutation or receipt bypass was added. |
 | 2026-08-21 | Bound the existing resumable transaction to the immutable corpus seed and generation ledger, and rechecked remote-main immediately before publication. | `scripts/release-transaction.mjs` and `scripts/release.mjs` carry the new payload roles; `.github/workflows/protected-release.yml` fetches `origin/main` and requires an exact clean match directly before `release.mjs --publish`. Provider operations remain serialized and guarded, not falsely described as atomic compare-and-swap. |
 | 2026-08-20 | **The digest serialiser disagreed with the one that writes the file, and it corrupted the terminal receipt of EVERY successful release.** | `canonicalJson` KEPT keys whose value was `undefined` (emitting `"error":undefined`, not even valid JSON) while `JSON.stringify` DROPS them on write. The converge observation carries optional fields and on a clean run `verified.error` is undefined, so the digest was computed over a shape that could never be read back. `runReleaseTransaction` appends a receipt, re-reads it and verifies it — so the publish died with `release receipt digest mismatch` AFTER npm and GitHub were both promoted: **4.0.90-dev actually shipped to both channels while the rail reported failure**, the same shape the provider already records for 4.0.24. Measured on v4.0.36 and v4.0.90-dev — both `channels-converged`, both digest=BAD, both missing `hosts.verifier.error`; chain LINKAGE was intact on both, which is what ruled out tampering. Proven by reconstruction: restoring `observation.hosts.verifier.error = undefined` reproduces the stored digest exactly. Fixed by making `canonicalJson` omit undefined exactly as `JSON.stringify` does, for objects AND arrays (`JSON.stringify([undefined])` is `[null]`). Verified no receipt that previously verified changed digest (v4.0.36: 12 ok / 1 bad before and after). Historical bad receipts stay unverifiable — their digests were computed by the broken serialiser — but they are terminal, and terminal receipts are skipped by the pending-transaction scan, so they block nothing. Guard added and proven to fail on the old serialiser. |
