@@ -54,14 +54,35 @@ describe('protected release rail', () => {
     expect(gitignore()).toMatch(/^\/release-evidence\/$/m);
   });
 
-  it('puts the sole publisher behind the Production boundary without a manual-review dependency', () => {
+  it('puts the sole publisher behind Production and requires both exact-SHA reviews before mutation', () => {
     const source = workflow();
     expect(source).toContain('environment: Production – ruvnet-brain');
     expect(source.match(/node scripts\/release\.mjs --publish/g)).toHaveLength(1);
     expect(source).toContain('RUVNET_RELEASE_MODE: stabilization');
-    expect(source).toContain('--publication release-evidence/publication-receipt.json');
+    expect(source).toContain("run.workflowName !== 'product-integrity-review'");
+    expect(source).toContain('product-integrity-reviews-${{ inputs.candidate_sha }}');
+    expect(source.indexOf('independent review artifact must contain exactly two JSON receipts'))
+      .toBeLessThan(source.indexOf('node scripts/release.mjs --publish'));
     expect(source).not.toContain('continue-on-error: true');
-    expect(source).not.toMatch(/reviewer|after approval/i);
+  });
+
+  it('stops channel publication at signed PUBLISHED_NOT_VERIFIED before public install proof', () => {
+    const source = workflow();
+    expect(source).toContain('RUVNET_RELEASE_IDENTITY: release-evidence/release-identity.json');
+    expect(source).toContain('RUVNET_CHANNEL_RECEIPT: release-evidence/channels-converged-receipt.json');
+    expect(source).toContain("receipt.state !== 'channels-converged'");
+    expect(source).toContain("receipt.observation?.verdict !== 'PUBLISHED_NOT_VERIFIED'");
+  });
+
+  it('runs the exact public 3x3 matrix and only then persists install-verified', () => {
+    const source = workflow();
+    for (const lane of ['ubuntu-latest, os_name: linux', 'macos-latest, os_name: macos',
+      'windows-latest, os_name: windows']) expect(source).toContain(lane);
+    expect(source).toContain('node scripts/public-verification-lane.mjs');
+    expect(source).toContain('pattern: public-verification-*-${{ needs.release-qe-proof.outputs.candidate_sha }}');
+    expect(source).toContain('node scripts/public-verification-aggregate.mjs');
+    expect(source).toContain('node scripts/public-verification-finalizer.mjs');
+    expect(source).toContain('--out release-evidence/install-verified-receipt.json');
   });
 
   it('selects and opens a real RVF instead of macOS ZIP metadata', () => {
@@ -77,7 +98,8 @@ describe('protected release rail', () => {
     ['main identity', /git rev-parse origin\/main/],
     ['production boundary', /environment: Production – ruvnet-brain/],
     ['candidate seal', /release-proof\.mjs --candidate/],
-    ['publication seal', /--publication release-evidence\/publication-receipt\.json/],
+    ['nonterminal channel seal', /channels-converged-receipt\.json/],
+    ['terminal public seal', /install-verified-receipt\.json/],
   ])('retains load-bearing %s', (_name, required) => {
     expect(`${ci()}\n${workflow()}`).toMatch(required);
   });

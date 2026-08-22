@@ -32,11 +32,14 @@ describe('release evidence DAG', () => {
     expect(release).not.toContain('fetchLatestCiVerdict');
   });
 
-  it('verifies public channels once per publish through transaction finalization', () => {
+  it('moves public-byte verification out of publication and into the protected OS matrix', () => {
     const release = read('scripts/release.mjs');
     const provider = read('scripts/release-transaction-provider.mjs');
+    const workflow = read('.github/workflows/protected-release.yml');
     expect(provider).not.toContain("'scripts/verify-channels.mjs'");
-    expect(provider).toContain('publication.postPublicationChecks');
+    expect(provider).not.toContain('publication.postPublicationChecks');
+    expect(workflow).toContain('node scripts/public-verification-lane.mjs');
+    expect(workflow).toContain('node scripts/public-verification-finalizer.mjs');
     expect(release).toContain('if (!PUBLISH) {\n  step(\'E\'');
   });
 });
