@@ -73,6 +73,67 @@ function normalizeSourceIdentity(value, checkoutRoot) {
   return { ...value, checkoutPath: canonicalCheckout };
 }
 
+const OBSERVATION_TEXT_LIMIT = 4_096;
+
+function boundedText(value) {
+  if (typeof value !== 'string' || !value) return undefined;
+  return value.length <= OBSERVATION_TEXT_LIMIT
+    ? value
+    : `${value.slice(0, OBSERVATION_TEXT_LIMIT)}...[truncated]`;
+}
+
+function toolAction(payload) {
+  const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
+  const command = boundedText(input.command ?? input.cmd);
+  const filePath = boundedText(input.file_path ?? input.path);
+  const action = command || filePath;
+  if (!action && !payload.tool_name) return null;
+
+  const response = payload.tool_response;
+  const responseRecord = response && typeof response === 'object' && !Array.isArray(response)
+    ? response
+    : null;
+  const exitCode = responseRecord && [responseRecord.exit_code, responseRecord.exitCode, responseRecord.status]
+    .find((value) => Number.isSafeInteger(value));
+  const interrupted = responseRecord?.interrupted === true;
+  const failed = interrupted || (Number.isSafeInteger(exitCode) && exitCode !== 0);
+  const outcome = payload.hook_event_name === 'PostToolUse'
+    ? (failed ? 'failure' : response === undefined ? 'unknown' : 'success')
+    : 'pending';
+  const observation = {
+    trigger: payload.hook_event_name,
+    tool: boundedText(payload.tool_name) || 'unknown',
+    ...(command ? { command } : {}),
+    ...(filePath && !command ? { filePath } : {}),
+    outcome,
+    ...(Number.isSafeInteger(exitCode) ? { exitCode } : {}),
+    ...(interrupted ? { interrupted: true } : {}),
+  };
+  if (responseRecord) {
+    const stdout = boundedText(responseRecord.stdout);
+    const stderr = boundedText(responseRecord.stderr);
+    if (stdout) observation.stdout = stdout;
+    if (stderr) observation.stderr = stderr;
+  } else {
+    const text = boundedText(response);
+    if (text) observation.result = text;
+  }
+  return observation;
+}
+
+function enrichStateWithObservation(state, payload) {
+  requireRecord(state, 'completeProjectState');
+  const observation = toolAction(payload);
+  if (!observation) return state;
+  const commands = Array.isArray(state.commands) ? state.commands : [];
+  const failures = Array.isArray(state.failures) ? state.failures : [];
+  return {
+    ...state,
+    commands: [...commands, observation],
+    ...(observation.outcome === 'failure' ? { failures: [...failures, observation] } : {}),
+  };
+}
+
 function verifyReceipt(snapshot, receipt) {
   if (!receipt || typeof receipt !== 'object'
     || receipt.eventKey !== snapshot.eventKey
@@ -124,7 +185,10 @@ export function captureProjectTransition({
     trigger,
     parentEventKeys: aliased(progression, 'parentEventKeys', 'parent_event_keys'),
     dedupId: aliased(progression, 'dedupId', 'dedup_id'),
-    completeProjectState: aliased(progression, 'completeProjectState', 'complete_project_state'),
+    completeProjectState: enrichStateWithObservation(
+      aliased(progression, 'completeProjectState', 'complete_project_state'),
+      payload,
+    ),
   });
   const receipt = store.capture(snapshot);
   verifyReceipt(snapshot, receipt);

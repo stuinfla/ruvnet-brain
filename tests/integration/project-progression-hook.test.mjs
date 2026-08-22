@@ -254,7 +254,54 @@ describe('ADR-073 host-neutral progression capture', () => {
     expect(first.receipt.alreadyStored).toBe(false);
     expect(retry.receipt.alreadyStored).toBe(true);
   });
-});
+
+  it('captures a bounded PostToolUse outcome in the full snapshot without persisting the prompt', () => {
+    const project = temporaryProject();
+    const store = recordingStore(project);
+    const prompt = 'PRIVATE PROMPT THAT MUST NOT BECOME PROJECT STATE';
+    const payload = envelope(project, 'codex', {}, {
+      prompt,
+      tool_name: 'Bash',
+      tool_input: { command: 'npm test' },
+      tool_response: {
+        stdout: 'tests passed',
+        stderr: '',
+        exit_code: 0,
+      },
+    });
+
+    const { snapshot } = captureProjectTransition({
+      host: 'codex', payload, projectDir: project, adapterVersion: getVersion(), storeFactory: store.factory,
+    });
+
+    expect(snapshot.completeProjectState.commands).toContainEqual(expect.objectContaining({
+      trigger: 'PostToolUse', tool: 'Bash', command: 'npm test', outcome: 'success', exitCode: 0,
+      stdout: 'tests passed',
+    }));
+    expect(JSON.stringify(snapshot)).not.toContain(prompt);
+  });
+
+  it('records failed tool outcomes, including stderr, while bounding captured output', () => {
+    const project = temporaryProject();
+    const store = recordingStore(project);
+    const stderr = 'failure '.repeat(2_000);
+    const { snapshot } = captureProjectTransition({
+      host: 'claude',
+      payload: envelope(project, 'claude', {}, {
+        tool_name: 'Bash',
+        tool_input: { command: 'npm test' },
+        tool_response: { stdout: '', stderr, exitCode: 1 },
+      }),
+      projectDir: project,
+      adapterVersion: getVersion(),
+      storeFactory: store.factory,
+    });
+    const observation = snapshot.completeProjectState.commands.at(-1);
+
+    expect(observation).toMatchObject({ trigger: 'PostToolUse', outcome: 'failure', exitCode: 1 });
+    expect(observation.stderr.length).toBeLessThanOrEqual(4_096 + '...[truncated]'.length);
+    expect(observation.stderr).toContain('[truncated]');
+  });
 
 describe('the existing dual-host session snapshot hook is the production caller', () => {
   it('preserves the metadata receipt and forwards an explicit progression envelope', () => {
@@ -286,4 +333,5 @@ describe('the existing dual-host session snapshot hook is the production caller'
     expect(result).toEqual({ metadataWritten: true, progressionCaptured: false, receipt: null });
     expect(called).toBe(false);
   });
+});
 });
