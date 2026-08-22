@@ -3,8 +3,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { canonicalJson } from './coverage-integrity.mjs';
 import {
-  pollObservation, RECEIPT_PREFIX, TERMINAL_STATES, transactionIdFor,
+  pollObservation, RECEIPT_PREFIX, receiptDisposition, transactionIdFor,
 } from './release-transaction.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
@@ -215,7 +216,8 @@ export function liveReleaseProvider({
       const legacySettled = [];
       const pending = [];
       for (const { receipt, release } of latestByTransaction.values()) {
-        if (TERMINAL_STATES.has(receipt.state)) continue;
+        const disposition = receiptDisposition(receipt);
+        if (['verified', 'closed-unsuccessful', 'legacy-closed'].includes(disposition)) continue;
         // CONVERGENCE IS A FACT ABOUT THE CHANNELS, NOT ABOUT THE RECEIPT FORMAT (fixed 2026-08-07).
         //
         // This required `receipt.schemaVersion === 1`. Receipts are written as schemaVersion 2
@@ -230,7 +232,7 @@ export function liveReleaseProvider({
         // all three hold, the transaction reached its goal whatever schema its receipts use. The
         // check is not weakened — the schema clause was never load-bearing for that question, it
         // just silently expired when the schema moved on.
-        const settled = release.draft === false
+        const settled = receipt.schemaVersion <= 2 && release.draft === false
           && receipt.identity?.version === npmLatest && receipt.identity?.tag === githubLatest;
         if (settled) legacySettled.push(receipt.transactionId);
         else pending.push(receipt);
@@ -313,6 +315,43 @@ export function liveReleaseProvider({
       try {
         fs.writeFileSync(file, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
         command('gh', ['release', 'upload', anchor.tag, file, '--repo', REPO]);
+      } finally {
+        fs.rmSync(temp, { recursive: true, force: true });
+      }
+    },
+
+    async materializePublicVerificationAggregate({ aggregate }) {
+      const anchor = activeDraft;
+      if (!anchor) throw new Error('no release anchor for public verification aggregate');
+      const release = hydratedRelease(releaseById(anchor.id));
+      const aggregateAsset = Buffer.from(canonicalJson(aggregate));
+      const signatureAsset = Buffer.from(aggregate.signature, 'base64');
+      const expected = {
+        'public-verification-aggregate.json': aggregateAsset,
+        'public-verification-aggregate.sig': signatureAsset,
+      };
+      const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-public-aggregate-'));
+      try {
+        for (const [name, bytes] of Object.entries(expected)) {
+          const existing = release.assets?.find((asset) => asset.name === name);
+          if (existing) {
+            if (!assetBytes(existing).equals(bytes)) throw new Error(`public verification asset conflict: ${name}`);
+            continue;
+          }
+          const file = path.join(temp, name);
+          fs.writeFileSync(file, bytes, { flag: 'wx', mode: 0o600 });
+          command('gh', ['release', 'upload', anchor.tag, file, '--repo', REPO]);
+        }
+        const observed = hydratedRelease(releaseById(anchor.id));
+        for (const [name, bytes] of Object.entries(expected)) {
+          const asset = observed.assets?.find((item) => item.name === name);
+          if (!asset || !assetBytes(asset).equals(bytes)) throw new Error(`public verification asset readback differs: ${name}`);
+        }
+        return {
+          aggregateSha256: aggregate.aggregateSha256,
+          aggregateAssetSha256: sha256(aggregateAsset),
+          signatureAssetSha256: sha256(signatureAsset),
+        };
       } finally {
         fs.rmSync(temp, { recursive: true, force: true });
       }
