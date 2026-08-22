@@ -117,7 +117,7 @@ function classPartition(root, stores) {
   const evidenceFiles = [{ kind: 'class-registry', path: 'public-store-classes.json',
     sha256: sha(fs.readFileSync(classes)), bytes: fs.statSync(classes).size }];
   const ordered = [...stores].sort();
-  return digest({ repositories: ordered, gistAggregate: null, derived: [], publicStores: ordered, evidenceFiles });
+  return digest({ repositories: ordered, excludedRepositories: [], gistAggregate: null, derived: [], publicStores: ordered, evidenceFiles });
 }
 
 function writeStore(root, store) {
