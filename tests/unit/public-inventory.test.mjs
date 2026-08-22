@@ -59,6 +59,22 @@ describe('typed public inventory partition', () => {
     expect(result).toMatchObject({ repositories: ['alpha'], gistAggregate: 'ruv-gists', derived: ['concepts'],
       publicStores: ['alpha', 'concepts', 'ruv-gists'] });
     expect(result.partitionSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.evidenceFiles.map(({ kind, path: relative }) => [kind, relative])).toEqual([
+      ['derived-input', 'alpha.md'],
+      ['derived-passages', 'concepts.passages.jsonl'],
+      ['derived-receipt', 'concepts.sources.json'],
+      ['class-registry', 'public-store-classes.json'],
+      ['gist-passages', 'ruv-gists.passages.jsonl'],
+      ['gist-receipt', 'ruv-gists.sources.json'],
+    ]);
+  });
+
+  it('binds the exact classification evidence bytes into the partition digest', () => {
+    const f = fixture();
+    const before = validatePublicInventory({ assetsDir: f.root, coverage: f.coverage, ledger: f.ledger });
+    fs.appendFileSync(path.join(f.root, 'public-store-classes.json'), '\n');
+    const after = validatePublicInventory({ assetsDir: f.root, coverage: f.coverage, ledger: f.ledger });
+    expect(after.partitionSha256).not.toBe(before.partitionSha256);
   });
 
   it.each([

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
+import { validatePublicInventory } from './public-inventory.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REQUIRED_SUFFIXES = [
@@ -131,7 +132,6 @@ async function buildReceipt({
     fail('RVF generation ledger has no stores object');
   }
   const policy = readJson(path.resolve(policyFile || ''), 'eligibility policy');
-  const counts = assertPolicyCurrent(policy);
 
   const rvfFiles = fs.readdirSync(assets).filter((name) => /^.+\.big\.rvf$/.test(name)).sort();
   const rvfByStore = new Map(rvfFiles.map((file) => [file.slice(0, -'.big.rvf'.length), file]));
@@ -153,6 +153,8 @@ async function buildReceipt({
     .filter(([, owners]) => owners.length > 1)
     .map(([sha256, owners]) => ({ sha256, stores: owners.sort() }));
   if (duplicateRvfDigests.length) fail(`duplicate RVF bytes: ${duplicateRvfDigests.map((row) => row.stores.join('/')).join(', ')}`);
+  const publicInventory = validatePublicInventory({ assetsDir: assets, coverage: policy, ledger });
+  const counts = assertPolicyCurrent(policy);
 
   const missingSidecars = [];
   const stores = [];
@@ -187,6 +189,13 @@ async function buildReceipt({
   }
   if (missingSidecars.length) fail(`missing sidecars: ${missingSidecars.join(', ')}`);
   if (!stores.length) fail('zero public corpus stores remain after the private fence');
+  const finalByteFiles = stores.flatMap((store) => store.files.map((file) => ({ store: store.name, ...file })))
+    .sort((a, b) => a.file.localeCompare(b.file) || a.store.localeCompare(b.store));
+  const finalBytePartitionSha256 = crypto.createHash('sha256').update(canonicalJson({
+    publicInventoryPartitionSha256: publicInventory.partitionSha256,
+    publicStores: publicInventory.publicStores,
+    files: finalByteFiles,
+  })).digest('hex');
   const archive = await verifyArchive({ bundleFile: path.resolve(bundleFile || ''), stores, privateStores });
   const policyIdentity = fileIdentity(path.resolve(policyFile));
   const fenceIdentity = fileIdentity(fenceFile);
@@ -206,6 +215,8 @@ async function buildReceipt({
     privateFence: fenceIdentity,
     eligibilityPolicy: policyIdentity,
     generationLedger: ledgerIdentity,
+    publicInventory,
+    finalBytePartitionSha256,
     excludedPrivateStores: privateStores.filter((privateStore) =>
       [...rvfByStore.keys()].some((store) => store.toLowerCase() === privateStore)),
     duplicateRvfDigests,

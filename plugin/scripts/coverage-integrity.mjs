@@ -117,6 +117,15 @@ function containedRegular(root, relative, label) {
   return resolved;
 }
 
+function evidenceIdentity(root, file, kind) {
+  return {
+    kind,
+    path: path.relative(root, file).split(path.sep).join('/'),
+    sha256: sha256File(file),
+    bytes: fs.statSync(file).size,
+  };
+}
+
 const canonicalStores = (root) => {
   const stores = [];
   for (const name of fs.readdirSync(root).filter((entry) => !entry.startsWith('._'))) {
@@ -177,6 +186,7 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
     throw new Error('private fence stores are missing or duplicated');
   }
   const privateSet = new Set(privateStores);
+  const evidenceFiles = [];
   const uniqueStores = (rows, family) => {
     const stores = rows.map((row) => String(row?.artifact?.store || '').toLowerCase());
     if (stores.some((store) => !store) || new Set(stores).size !== stores.length) throw new Error(`${family} stores are missing or duplicated`);
@@ -192,16 +202,21 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
     const gistStores = new Set(gists.map((row) => String(row?.artifact?.store || '').toLowerCase()));
     if (gistStores.size !== 1 || !gistStores.has('ruv-gists')) throw new Error('eligible gists must use the ruv-gists aggregate');
     if (!selectedSet || selectedSet.has('ruv-gists')) {
-      const receipt = readJson(path.join(root, 'ruv-gists.sources.json'), 'gist aggregate receipt');
+      const receiptFile = path.join(root, 'ruv-gists.sources.json');
+      const receipt = readJson(receiptFile, 'gist aggregate receipt');
       const passages = path.join(root, 'ruv-gists.passages.jsonl');
       const ids = gists.map((row) => String(row.key || '').replace(/^gist:/, ''));
       if (ids.some((id) => !id)) throw new Error('gist coverage row identity is missing');
       validateGistAggregateReceipt({ receipt, passagesFile: passages, expectedIds: ids,
         sourceObservationSha256: coverage.sourceObservationSha256 });
+      evidenceFiles.push(evidenceIdentity(root, passages, 'gist-passages'));
+      evidenceFiles.push(evidenceIdentity(root, receiptFile, 'gist-receipt'));
     }
     gistAggregate = 'ruv-gists';
   }
-  const classes = readJson(path.join(root, 'public-store-classes.json'), 'public store classes');
+  const classesFile = path.join(root, 'public-store-classes.json');
+  const classes = readJson(classesFile, 'public store classes');
+  evidenceFiles.push(evidenceIdentity(root, classesFile, 'class-registry'));
   if (classes.schemaVersion !== 1 || !Array.isArray(classes.derived)) throw new Error('derived store classes are malformed');
   const derived = classes.derived.map((entry) => String(entry?.store || '').toLowerCase()).sort();
   if (derived.some((store) => !store) || new Set(derived).size !== derived.length) throw new Error('derived stores are missing or duplicated');
@@ -222,7 +237,10 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
       if (!inputFile || !HEX64.test(String(input.sha256 || '')) || input.sha256 !== sha256File(inputFile)) {
         throw new Error(`derived ${store} input receipt differs from ${input?.path || '(missing)'}`);
       }
+      evidenceFiles.push(evidenceIdentity(root, inputFile, 'derived-input'));
     }
+    evidenceFiles.push(evidenceIdentity(root, passages, 'derived-passages'));
+    evidenceFiles.push(evidenceIdentity(root, receiptFile, 'derived-receipt'));
   }
   const expected = [...repositories, ...(gistAggregate ? [gistAggregate] : []), ...derived].sort();
   if (new Set(expected).size !== expected.length) throw new Error('public store classes overlap');
@@ -258,9 +276,11 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
     }
   }
   const publicStores = expected;
+  evidenceFiles.sort((a, b) => a.path.localeCompare(b.path) || a.kind.localeCompare(b.kind));
   return { repositories, gistAggregate, derived, publicStores,
     installedPublicStores: installedExpected,
-    partitionSha256: digest({ repositories, gistAggregate, derived, publicStores }) };
+    evidenceFiles,
+    partitionSha256: digest({ repositories, gistAggregate, derived, publicStores, evidenceFiles }) };
 }
 
 export function coverageGenerationFor({ generatorSourceSha, snapshotRoot, sourceObservationSha256 = null, rows, enumerationReceipt,

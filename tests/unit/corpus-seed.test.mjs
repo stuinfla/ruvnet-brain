@@ -77,8 +77,11 @@ function fixture() {
   fs.writeFileSync(policyFile, JSON.stringify({
     schemaVersion: 1,
     coverageGeneration: 'coverage-2026-08-21',
-    sources: [{ name: 'alpha', status: 'CURRENT', eligible: true }],
+    sourceObservationSha256: 'd'.repeat(64),
+    rows: [{ key: 'repo:alpha', kind: 'repository', name: 'alpha', disposition: 'eligible',
+      status: 'CURRENT', artifact: { store: 'alpha' } }],
   }));
+  fs.writeFileSync(path.join(assetsDir, 'public-store-classes.json'), JSON.stringify({ schemaVersion: 1, derived: [] }));
   const bundle = path.join(root, 'ruvnet-brain.zip');
   writeStoredDirectoryZip({ archiveFile: bundle, sourceDir: bundleDir, rootName: 'ruvnet-brain' });
   return {
@@ -117,7 +120,15 @@ describe('immutable corpus candidate receipt', () => {
       duplicateRvfDigests: [],
       unreceiptedRvfFiles: [],
       missingSidecars: [],
+      publicInventory: {
+        repositories: ['alpha'],
+        gistAggregate: null,
+        derived: [],
+        publicStores: ['alpha'],
+      },
     });
+    expect(receipt.publicInventory.partitionSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(receipt.finalBytePartitionSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(receipt.privateFence.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(receipt.eligibilityPolicy.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(receipt.archive.sha256).toMatch(/^[a-f0-9]{64}$/);
@@ -188,6 +199,46 @@ describe('immutable corpus candidate receipt', () => {
       bundleFile: policyFixture.bundle,
       policyFile: policyFixture.policyFile,
     })).rejects.toThrow(/eligibility policy/i);
+  });
+
+  it('fails candidate sealing for stale, private-colliding, or unclassified public stores', async () => {
+    const stale = fixture();
+    const stalePolicy = JSON.parse(fs.readFileSync(stale.policyFile));
+    stalePolicy.rows[0].status = 'STALE';
+    fs.writeFileSync(stale.policyFile, JSON.stringify(stalePolicy));
+    await expect(create(stale)).rejects.toThrow(/eligible repository is not CURRENT/i);
+
+    const collision = fixture();
+    fs.writeFileSync(path.join(collision.assetsDir, 'PRIVATE-STORES.json'),
+      JSON.stringify({ privateStores: ['alpha', 'secret'] }));
+    await expect(create(collision)).rejects.toThrow(/private\/public store collision.*alpha/i);
+
+    const extra = fixture();
+    const ledgerFile = path.join(extra.assetsDir, 'RVF-GENERATIONS.json');
+    const ledger = JSON.parse(fs.readFileSync(ledgerFile));
+    for (const suffix of ['.big.rvf', '.big.rvf.idmap.json', '.big.rvf.embed.json', '.passages.jsonl', '.meta.json']) {
+      fs.writeFileSync(path.join(extra.assetsDir, `beta${suffix}`), `beta${suffix}`);
+    }
+    ledger.stores.beta = {
+      file: 'beta.big.rvf',
+      sha256: sha256(path.join(extra.assetsDir, 'beta.big.rvf')),
+      bytes: fs.statSync(path.join(extra.assetsDir, 'beta.big.rvf')).size,
+      model: 'local', dimensions: 384, sourceCommit: 'e'.repeat(40), builtUtc: '2026-08-21T12:00:00.000Z',
+    };
+    fs.writeFileSync(ledgerFile, JSON.stringify(ledger));
+    await expect(create(extra)).rejects.toThrow(/unclassified public stores.*beta/i);
+  });
+
+  it('rejects classification-evidence byte drift after the candidate receipt is sealed', async () => {
+    const f = fixture();
+    await create(f);
+    fs.appendFileSync(path.join(f.assetsDir, 'public-store-classes.json'), '\n');
+    await expect(verifyCorpusReceipt({
+      receiptFile: f.receiptFile,
+      assetsDir: f.assetsDir,
+      bundleFile: f.bundle,
+      policyFile: f.policyFile,
+    })).rejects.toThrow(/receipt does not match the exact corpus inputs/i);
   });
 
   it('rejects duplicate required filenames even when both entries extract successfully', async () => {
