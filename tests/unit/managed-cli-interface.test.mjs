@@ -5,10 +5,12 @@ import path from 'node:path';
 
 import {
   MANAGED_EXECUTABLES,
+  callManagedCli,
   helpKey,
   resolveManagedExecutable,
   stampKeysForHelp,
 } from '../../plugin/mcp/managed-cli-interface.mjs';
+import { readLiveSurfaceReceipts } from '../../plugin/scripts/capability-claim-evidence.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 
@@ -58,6 +60,28 @@ describe('managed CLI structured interface policy', () => {
     fs.chmodSync(canonical, 0o755);
     expect(resolveManagedExecutable('ruflo', { HOME: home })).toBe(canonical);
     expect(resolveManagedExecutable('agentic-qe', { HOME: home })).toBe('agentic-qe');
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it('mints a content-bound current-version receipt from the exact managed CLI execution', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-ruflo-receipt-'));
+    const canonical = path.join(home, '.npm-global', 'bin', 'ruflo');
+    const evidence = path.join(home, 'live-evidence.jsonl');
+    fs.mkdirSync(path.dirname(canonical), { recursive: true });
+    fs.writeFileSync(canonical, '#!/bin/sh\nprintf "ruflo v3.38.16\\n"\n');
+    fs.chmodSync(canonical, 0o755);
+    const env = {
+      ...process.env,
+      HOME: home,
+      RUVNET_BRAIN_HOME: path.join(home, '.cache', 'ruvnet-brain'),
+      RUVNET_CAPABILITY_LIVE_EVIDENCE: evidence,
+      RUVNET_HOOK_HOST: 'codex',
+    };
+    const result = await callManagedCli('ruvnet_cli_help', { executable: 'ruflo', argv: [] }, env);
+    expect(result.isError).toBe(false);
+    expect(readLiveSurfaceReceipts({ file: evidence })).toEqual([
+      expect.objectContaining({ executable: 'ruflo', observationClass: 'current-version', observedVersion: '3.38.16' }),
+    ]);
     fs.rmSync(home, { recursive: true, force: true });
   });
 

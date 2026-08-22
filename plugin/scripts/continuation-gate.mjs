@@ -42,6 +42,7 @@ import {
   auditCapabilityClaims,
   buildCapabilityInventoryReceipt,
 } from './capability-inventory-receipt.mjs';
+import { auditCurrentCapabilityEvidence } from './capability-claim-evidence.mjs';
 
 const HOME = os.homedir();
 
@@ -272,9 +273,19 @@ function capabilityClaimWork() {
   try {
     const receipt = buildCapabilityInventoryReceipt();
     const audit = auditCapabilityClaims(message, receipt);
-    if (audit.verdict === 'PASS') return [];
+    const evidenceAudit = auditCurrentCapabilityEvidence(message, { now: new Date(nowMs).toISOString() });
+    const evidenceWork = [...evidenceAudit.contradictions, ...evidenceAudit.unresolved].map((finding) => ({
+      text: evidenceAudit.contradictions.includes(finding)
+        ? `RuvNet ${finding.class} claim "${finding.text}" contradicts fresh typed evidence: ${finding.reason || 'claim mismatch'}`
+        : `RuvNet ${finding.class} claim "${finding.text}" is UNKNOWN: ${finding.reason}; verify the exact live/source surface before asserting it`,
+      done: false,
+      at: new Date(nowMs).toISOString(),
+      derived: true,
+      kind: 'capability-claim-integrity',
+    }));
+    if (audit.verdict === 'PASS') return evidenceWork;
     if (audit.verdict === 'FAIL') {
-      return audit.contradictions.map((finding) => ({
+      return [...audit.contradictions.map((finding) => ({
         text: finding.matchedRef
           ? `RuvNet capability claim "${finding.text}" contradicts the sealed ${audit.host} inventory: ${finding.matchedRef} is present at ${finding.sourcePath}`
           : `RuvNet capability claim "${finding.text}" contradicts the complete sealed ${audit.host} inventory: no matching installed capability exists`,
@@ -282,15 +293,15 @@ function capabilityClaimWork() {
         at: new Date(nowMs).toISOString(),
         derived: true,
         kind: 'capability-claim-integrity',
-      }));
+      })), ...evidenceWork];
     }
-    return audit.unresolved.map((finding) => ({
+    return [...audit.unresolved.map((finding) => ({
       text: `RuvNet capability claim "${finding.text}" is UNKNOWN because the ${audit.host} inventory is incomplete; verify the live host before asserting absence`,
       done: false,
       at: new Date(nowMs).toISOString(),
       derived: true,
       kind: 'capability-claim-integrity',
-    }));
+    })), ...evidenceWork];
   } catch {
     // The Stop hook remains fail-open on machinery failure. The receipt builder represents
     // ordinary incomplete enumeration as UNKNOWN; reaching this catch means the gate itself broke.

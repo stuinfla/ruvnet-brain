@@ -1,9 +1,10 @@
-Updated: 2026-08-22 12:00:00 EDT | Version 0.1.0
+Updated: 2026-08-22 16:15:00 EDT | Version 0.2.0
 Created: 2026-08-22 12:00:00 EDT
 
 # DDD-0020 — Capability claim integrity context
 
-Status: Accepted; installation claims are partially implemented and full S-12 proof remains open
+Status: Accepted; local installation, behavior, current-version, and health enforcement are built,
+while latest-version and full S-12 release proof remain open
 
 Governs: ADR-074 and the claim-evidence boundary used by `HostConvergence`,
 `PublicVerification`, and `ProductIntegrityCase`.
@@ -51,6 +52,7 @@ Invariants:
 | `SourceClaimReceipt` | Exact repository/path/content identity that supports or contradicts a behavior claim. |
 | `LiveSurfaceReceipt` | Command/registry/round-trip observation for version, publication, health, or reachability. |
 | `ClaimFinding` | PASS, contradiction, or UNKNOWN with the evidence identity and correction requirement. |
+| `CapabilityClaimAggregate` | Signed exact-source/artifact projection whose per-lane claim classes derive `PASS`, `PARTIAL`, or `FAIL`. |
 
 ## Commands and events
 
@@ -58,6 +60,7 @@ Invariants:
 - `AuditFinalInstallationClaims(message, inventory)` -> `ClaimPassed | ClaimContradicted | ClaimUnknown`
 - `BindSourceClaim(claim, sourceReceipt)` -> `SourceClaimBound`
 - `BindLiveClaim(claim, liveReceipt)` -> `LiveClaimBound`
+- `SignCapabilityClaimAggregate(identity, lanes, untested)` -> `CapabilityClaimAggregateSigned`
 - `RefuseUnprovenFinalAnswer(case)` -> `CorrectionTurnRequired`
 
 All receipts are immutable. Re-running an inventory creates a new identity; it never rewrites the
@@ -75,9 +78,12 @@ block that class yet.
 
 ## Current status and open proof
 
-The installation-claim slice has a content-bound skill inventory and focused direct-Stop tests,
-including quoted-history, inline-code, and hypothetical separation. A locally packed candidate also
-proves both Claude and Codex registrations block the exact false ADR Verify claim. The following
-remain open: Linux/Windows packed leaves, broader false-positive measurement, behavior/API source
-binding, live version/health binding, signed S-12 public aggregate, and any native Grok lifecycle
-adapter.
+The working candidate has a content-bound skill inventory, full-SHA behavior receipts derived from
+fresh grounding evidence, and sanitized managed-CLI receipts for installed-current version and
+health. The shared Stop body binds live receipts to the active host or an explicitly shared machine
+surface. A locally packed candidate exercises those results through both Claude and Codex, including
+the exact false ADR Verify statement and an `UNKNOWN` latest-version claim. Signed aggregate logic
+preserves typed claim-class verdicts and incomplete lanes as `PARTIAL`, but only the primitive is
+unit-proven; no release aggregate exists. Linux/Windows leaves, a registry/latest receipt producer,
+broader false-positive measurement, public-byte binding, and any native Grok lifecycle adapter
+remain open.

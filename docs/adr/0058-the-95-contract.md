@@ -3,8 +3,8 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-21
-impl: built
+updated: 2026-08-22
+impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -384,6 +384,7 @@ correct: **the strong claim was the defect.**
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-22 | Re-read the combined installer, author-maintenance, and Windows corpus-release changes; no quality dimension, observable, mutant, threshold, or public-proof gate was weakened. | `6336c52` retires primary-checkout nightly mutation and makes `scripts/nightly-wrapper.sh`/`scripts/self-update.mjs` require a clean isolated linked worktree, with `scripts/worktree-integrity.mjs` verifying the primary snapshot even on failure. `6bf4afb` makes `scripts/release.mjs` import-side-effect-free so Windows corpus tests exercise the intended function instead of starting the whole release CLI. `4e68453` retains live plugin generations using lease proof. These changes strengthen D5/D7 integrity; they do not constitute a 95 score or public-byte verification. |
 | 2026-08-21 | Re-read the governed release gates after the emergency seed-ledger repair; no dimension, mutant, or threshold was weakened. | `.github/workflows/ci.yml` still builds one immutable candidate and runs exact-artifact QE; it now restamps only byte-stale generation rows after the index audit and before `build-bundle.mjs` enforces strict closure. The Linux integration and UX lanes passed on `c2b9fb0`; public publication remains gated. |
 | 2026-08-21 | Re-read the release and installer surfaces after the emergency convergence fixes; no score is promoted by this review. | `bin/install.mjs` adds exact process-incarnation retention for live plugin roots; `scripts/build-bundle.mjs` adds strict corpus-ledger closure; `.github/workflows/ci.yml` removes the #145 quarantine and pins the corpus seed. Focused tests establish those mechanisms, while exact-SHA remote CI and public-byte proof remain required before any release verdict. |
 | 2026-08-20 | **The nightly was discarding its own writes, and never loaded new repos at all.** | `nightly-wrapper.sh` gained daily corpus ingestion and a durable-node resolver (2026-08-20). Nothing had ever loaded new rUv repos — measured 181 live repos, 69 ingested, 125 missing — while `brain-stamp.mjs` computed that gap every night and nothing acted on it. New `scripts/ingest-new-repos.mjs` diffs the live org against the store root and ingests newest-first, bounded per night, refusing to invent capability cards for what it ingests (a card written from a repo NAME would route real questions to a corpus nobody grounded). Separately the file hardcoded `/usr/local/bin/node` (ABI 127) in eight places while agentdb's binding is ABI 137, so agentdb silently fell back to non-persistent sql.js and the nightly discarded its own `lesson-bridge --apply` and `learning-replay` writes; it now resolves an ABI-matched node and FAILS LOUD if none exists. |

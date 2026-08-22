@@ -11,12 +11,18 @@ relates: [ADR-020, ADR-055, ADR-067, ADR-072, ADR-073]
 governs:
   - docs/ddd/0020-capability-claim-integrity-context.md
   - plugin/scripts/capability-inventory-receipt.mjs
+  - plugin/scripts/capability-claim-evidence.mjs
   - plugin/scripts/continuation-gate.mjs
+  - plugin/mcp/managed-cli-interface.mjs
+  - kb/forge-evidence.mjs
   - plugin/scripts/codex-hook-adapter.mjs
   - plugin/hooks/hooks.json
   - plugin/hooks/codex-hooks.json
   - tests/unit/capability-inventory-receipt.test.mjs
+  - tests/unit/capability-claim-evidence.test.mjs
   - tests/unit/continuation-gate-capability-truth.test.mjs
+  - tests/unit/managed-cli-interface.test.mjs
+  - tests/unit/grounding-receipt-lanes.test.mjs
   - tests/acceptance/adr-074-packed-capability-claims.acceptance.test.mjs
 ---
 
@@ -24,10 +30,11 @@ governs:
 
 **Status**: Accepted
 
-Accepted by Stuart's 2026-08-22 mandate. Installation-claim enforcement is implemented in the
-working candidate and proven through locally packed Claude/Codex hook wiring; behavior/version
-claim enforcement and the required OS/public matrix remain open. Nothing in this document is a
-shipped-capability claim.
+Accepted by Stuart's 2026-08-22 mandate. Installation, exact-source behavior, current-installed
+version, and health claim enforcement are implemented in the working candidate and exercised
+through locally packed Claude/Codex hook wiring. Latest-version claims deliberately remain
+`UNKNOWN` because no registry receipt producer exists. The required non-local OS and public-byte
+matrix remains open. Nothing in this document is a shipped-capability claim.
 
 ## Context
 
@@ -57,7 +64,9 @@ One evidence source cannot prove every kind of claim:
 | Behavior, API, support, or limitation | Fresh source-grounding receipt whose exact source path and content identity bind the claim | No binding or design-only evidence is `UNKNOWN`; absence of retrieval never proves absence of capability |
 | Current version, latest, healthy, or reachable | Fresh live command/registry/round-trip receipt for the exact installed/public surface | A stale document, version string alone, or adjacent path is `UNKNOWN` |
 
-The current implementation closes only the first row. The other rows remain required release work.
+The current implementation covers the first row, exact-source behavior claims, installed-current
+version, and managed-CLI health observations. It does not yet produce registry evidence for
+"latest" and therefore blocks that claim as `UNKNOWN`.
 
 ### 3. CapabilityInventoryReceipt is exhaustive or UNKNOWN
 
@@ -107,15 +116,19 @@ adapter.
 
 ## Current implementation status
 
-`Accepted, partially implemented.` `CapabilityInventoryReceipt` and installation/presence claim
-auditing are wired into the shared Stop body with focused mutation tests. One locally packed
-candidate now proves the exact false claim is blocked through both Claude and Codex registrations;
-Linux/Windows packed leaves, behavior/source binding, current-version binding, Grok adapter proof,
-and the signed public S-12 receipt are not implemented or proven.
+`Accepted, partially implemented.` `CapabilityInventoryReceipt`, full-SHA `SourceClaimReceipt`,
+managed-CLI `LiveSurfaceReceipt`, and their claim audits are wired into the shared Stop body. One
+locally packed candidate exercises installation, behavior, current-version, health, and
+`UNKNOWN`-latest outcomes through both Claude and Codex registrations. The code can sign and verify
+an aggregate that derives `PASS | PARTIAL | FAIL` from typed per-lane claim verdicts; only its schema
+and cryptography are unit-proven, and no release candidate aggregate has been minted. Linux/Windows
+packed leaves, registry/latest evidence, Grok adapter proof, false-positive measurement, and the
+signed public S-12 aggregate remain unproven.
 
 ## Currency log
 
 | Date | What changed | Why |
 |---|---|---|
+| 2026-08-22 | Added full-SHA behavior receipts, managed-CLI current-version/health receipts, host-bound Stop auditing, typed signed aggregate logic, and packed Claude/Codex cases; latest remains `UNKNOWN`. | `plugin/scripts/capability-claim-evidence.mjs`, `plugin/mcp/managed-cli-interface.mjs`, and `tests/acceptance/adr-074-packed-capability-claims.acceptance.test.mjs` now distinguish evidence classes instead of treating installation as proof of behavior or currency. |
 | 2026-08-22 | Added locally packed Claude/Codex Stop-path acceptance for the installation-claim slice. | Direct shared-body tests did not prove either host registration preserved the final answer and enforcement output. |
 | 2026-08-22 | Established S-12 and implemented the first installation-claim receipt/audit slice. | A host asserted that an installed Ruflo ADR skill was absent because it searched one guessed path instead of the active inventory. |

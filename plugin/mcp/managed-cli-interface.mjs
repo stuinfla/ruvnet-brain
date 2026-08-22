@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadRuntimePreferences, runtimeChildEnv } from '../scripts/runtime-preferences.mjs';
+import { recordManagedCliObservation } from '../scripts/capability-claim-evidence.mjs';
 
 export const MANAGED_EXECUTABLES = Object.freeze([
   'ruflo',
@@ -223,6 +224,7 @@ export async function callManagedCli(toolName, args, env = process.env) {
       const commandArgv = [...argv, '--help'];
       const execution = await execute(executable, commandArgv, env);
       if (execution.code === 0 && !execution.error) writeStamps(executable, argv, env);
+      recordManagedCliObservation({ toolName, executable, argv: commandArgv, execution, env });
       return resultOf(executable, commandArgv, execution);
     }
 
@@ -263,7 +265,9 @@ export async function callManagedCli(toolName, args, env = process.env) {
       const childEnv = (executable === 'agentic-flow' || executable === 'agentic-qe')
         ? runtimeChildEnv({ env, cwd: env.RUVNET_BRAIN_PROJECT_DIR || process.cwd() })
         : env;
-      return resultOf(executable, argv, await execute(executable, argv, childEnv));
+      const execution = await execute(executable, argv, childEnv);
+      recordManagedCliObservation({ toolName, executable, argv, execution, env });
+      return resultOf(executable, argv, execution);
     }
 
     return {

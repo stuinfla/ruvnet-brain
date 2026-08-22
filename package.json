@@ -50,6 +50,8 @@
     "learning:replay:dry": "node scripts/learning-replay.mjs --dry-run",
     "wired:check": "node scripts/wired-check.mjs --check",
     "doc:currency": "node scripts/doc-currency.mjs --check",
+    "integrity:trace:check": "node scripts/product-integrity-contract.mjs --check-markdown docs/reviews/adr-072-traceability.md",
+    "integrity:trace:json": "node scripts/product-integrity-contract.mjs",
     "status:check": "node scripts/status-honesty.mjs",
     "cap:collect": "node scripts/rerank-cap-eval.mjs --collect",
     "cap:report": "node scripts/rerank-cap-eval.mjs --report",
