@@ -19,7 +19,10 @@ describe('the seven formerly-unclassified first-party entrypoints', () => {
       expect(rows.get(name).callers, name).toContain('scripts/git-hooks/pre-push');
     }
 
-    for (const name of ['card-from-source', 'rebuild-gists-from-receipts', 'release-abort-stale']) {
+    expect(rows.get('rebuild-gists-from-receipts')).toMatchObject({ state: 'wired' });
+    expect(rows.get('rebuild-gists-from-receipts').callers).toContain('scripts/corpus-aggregates.mjs');
+
+    for (const name of ['card-from-source', 'release-abort-stale']) {
       expect(rows.get(name), name).toMatchObject({ state: 'manual' });
       expect(rows.get(name).callers, name).toEqual(['package.json']);
       expect(rows.get(name).why, name).toMatch(/reachable only by a human typing/i);
