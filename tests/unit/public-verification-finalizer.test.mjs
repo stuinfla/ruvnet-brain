@@ -1,4 +1,7 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { canonicalJson, digest } from '../../scripts/coverage-integrity.mjs';
 import { runRetrievalCanaries } from '../../scripts/retrieval-canary.mjs';
@@ -10,6 +13,7 @@ import {
   signPublicVerificationAggregate,
 } from '../../scripts/public-verification-aggregate.mjs';
 import { finalizeReleaseTransaction, transactionIdFor } from '../../scripts/release-transaction.mjs';
+import { finalizePublicVerification } from '../../scripts/public-verification-finalizer.mjs';
 import { execute, FakeReleaseProvider, identity, keys } from '../helpers/release-transaction-fixture.mjs';
 import { getVersionTag } from '../../scripts/version.mjs';
 
@@ -108,5 +112,22 @@ describe('schema-3 install-verified finalizer', () => {
     badMaterialization.materializePublicVerificationAggregate = async () => ({ aggregateSha256: '0'.repeat(64), signatureSha256: '0'.repeat(64) });
     await expect(finalizeReleaseTransaction({ identity, aggregate: evidence, adapter: badMaterialization,
       privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey })).rejects.toThrow(/differs/);
+  });
+
+  it('persists the exact install-verified receipt once through the workflow-facing producer', async () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'public-finalizer-'));
+    const identityFile = path.join(temp, 'identity.json');
+    const aggregateFile = path.join(temp, 'aggregate.json');
+    const publicKeyFile = path.join(temp, 'public.pem');
+    const outputFile = path.join(temp, 'install-verified.json');
+    fs.writeFileSync(identityFile, JSON.stringify(identity));
+    fs.writeFileSync(aggregateFile, JSON.stringify(await aggregate()));
+    fs.writeFileSync(publicKeyFile, keys.publicKey.export({ type: 'spki', format: 'pem' }));
+    const options = { identityFile, aggregateFile, outputFile, publicKeyFile,
+      privatePem: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }), adapter: await convergedProvider() };
+    const receipt = await finalizePublicVerification(options);
+    expect(receipt.state).toBe('install-verified');
+    expect(JSON.parse(fs.readFileSync(outputFile, 'utf8'))).toEqual(receipt);
+    await expect(finalizePublicVerification(options)).rejects.toThrow(/refusing to overwrite/);
   });
 });
