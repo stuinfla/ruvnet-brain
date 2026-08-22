@@ -10,7 +10,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
-import { observeSourceUniverse, sourceObservationDigest } from './source-coverage.mjs';
+import { buildCoverage, observeSourceUniverse, sourceObservationDigest } from './source-coverage.mjs';
 import { reconcileGistReceipts } from './gist-receipts.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 
@@ -417,6 +417,34 @@ export async function observeAndMaterializeGistReceipts({ owner = 'ruvnet', asse
   return { observation, ...materialized };
 }
 
+export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, workspaceDir,
+  root = DEFAULT_ROOT, maxRounds = 3,
+  observeAndMaterialize = null,
+  build = (observation) => buildCoverage({ owner, kbDir: assetsDir, policyDir: assetsDir, observation }),
+  readLedger = () => readJson(path.join(path.resolve(assetsDir || ''), 'RVF-GENERATIONS.json'),
+    'RVF generation ledger'),
+  execute = executeReconciliation,
+  prune = () => ({ pruned: [] }),
+  rebuild = () => ({ rebuilt: [] }),
+} = {}) {
+  if (!assetsDir || !workspaceDir) fail('stable reconciliation requires explicit assets and workspace directories');
+  const workspace = path.resolve(workspaceDir || '');
+  return reconcileUntilStable({
+    maxRounds,
+    assetsDir,
+    observe: async () => (await (observeAndMaterialize
+      ? observeAndMaterialize({ owner, assetsDir })
+      : observeAndMaterializeGistReceipts({ owner, assetsDir }))).observation,
+    build,
+    readLedger,
+    execute: (plan, round) => execute({
+      plan, assetsDir, workspaceDir: path.join(workspace, `round-${round}`), root,
+    }),
+    prune,
+    rebuild,
+  });
+}
+
 export async function reconcileAndPrepareCorpusCandidate({ plan, assetsDir, workspaceDir, root = DEFAULT_ROOT,
   owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile,
   execute = executeReconciliation, prepare = prepareCorpusCandidate } = {}) {
@@ -490,16 +518,12 @@ export async function main(argv = process.argv.slice(2)) {
   if (!fs.existsSync(privateFence)) fail(`canonical private-store fence missing (${privateFence})`);
   fs.copyFileSync(privateFence, path.join(assetsDir, 'PRIVATE-STORES.json'), fs.constants.COPYFILE_EXCL);
   fs.rmSync(extractParent, { recursive: true, force: true });
-  await observeAndMaterializeGistReceipts({ owner, assetsDir });
-  const coverageScript = path.join(root, 'scripts', 'source-coverage.mjs');
-  checked(defaultRun, process.execPath, [coverageScript, '--owner', owner, '--assets', assetsDir, '--write'], { stdio: 'inherit' });
-  const policy = readJson(coverageFile, 'source coverage policy');
-  const ledger = readJson(path.join(assetsDir, 'RVF-GENERATIONS.json'), 'bootstrap RVF generation ledger');
-  const plan = planReconciliation({ coverage: policy, ledger, assetsDir });
   const { reconciliation, candidate } = await reconcileAndPrepareCorpusCandidate({
-    plan, assetsDir, workspaceDir, root, owner, builderSha, candidateDir, receiptFile, coverageFile,
+    plan: [], assetsDir, workspaceDir, root, owner, builderSha, candidateDir, receiptFile, coverageFile,
+    execute: () => reconcileCorpusUntilStable({ owner, assetsDir, workspaceDir, root }),
   });
-  process.stdout.write(`${JSON.stringify({ ok: true, seedTag, seedSha256, plan, ...reconciliation, ...candidate }, null, 2)}\n`);
+  const plan = reconciliation.rounds.flatMap((round) => round.plan);
+  process.stdout.write(`${JSON.stringify({ ok: true, seedTag, seedSha256, plan, reconciliation, ...candidate }, null, 2)}\n`);
   return 0;
 }
 

@@ -415,6 +415,36 @@ describe('generated gist receipt lifecycle', () => {
 });
 
 describe('candidate preparation', () => {
+  it('adapts production reconciliation through distinct rounds until the source observation is stable', async () => {
+    expect(corpusReconcileModule.reconcileCorpusUntilStable).toBeTypeOf('function');
+    const assetsDir = temp();
+    const workspaceDir = temp();
+    const observations = ['1', '2', '2'].map((observationSha256) => ({ observationSha256 }));
+    let observationIndex = 0;
+    let ledger = { stores: {} };
+    const executions = [];
+    const result = await corpusReconcileModule.reconcileCorpusUntilStable({
+      owner: 'ruvnet', assetsDir, workspaceDir, root: '/fixture/root', maxRounds: 3,
+      observeAndMaterialize: async () => ({ observation: observations[observationIndex++] }),
+      build: (observation) => coverage([repo({ name: 'alpha', upstream: sha(observation.observationSha256) })]),
+      readLedger: () => ledger,
+      execute: async ({ plan, workspaceDir: roundWorkspace }) => {
+        executions.push({ plan, workspaceDir: roundWorkspace });
+        const file = 'alpha.big.rvf';
+        const bytes = Buffer.from(plan[0].upstreamSha);
+        fs.writeFileSync(path.join(assetsDir, file), bytes);
+        ledger = { stores: { alpha: { sourceCommit: plan[0].upstreamSha, file, bytes: bytes.length,
+          sha256: crypto.createHash('sha256').update(bytes).digest('hex') } } };
+        return { refreshed: ['alpha'] };
+      },
+    });
+    expect(result.observation).toEqual({ observationSha256: '2' });
+    expect(result.rounds).toHaveLength(2);
+    expect(executions.map(({ workspaceDir: value }) => path.relative(workspaceDir, value)))
+      .toEqual(['round-1', 'round-2']);
+    expect(executions.map(({ plan }) => plan[0].upstreamSha)).toEqual([sha('1'), sha('2')]);
+  });
+
   it('settles repository reconciliation before candidate preparation begins', async () => {
     expect(corpusReconcileModule.reconcileAndPrepareCorpusCandidate).toBeTypeOf('function');
     const events = [];
