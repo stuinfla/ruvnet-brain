@@ -9,6 +9,8 @@ const transaction = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction
 const provider = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction-provider.mjs'), 'utf8');
 const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/protected-release.yml'), 'utf8');
 const producer = fs.readFileSync(path.join(ROOT, 'scripts/publication-receipt.mjs'), 'utf8');
+const publicLane = fs.readFileSync(path.join(ROOT, 'scripts/public-verification-lane.mjs'), 'utf8');
+const finalizer = fs.readFileSync(path.join(ROOT, 'scripts/public-verification-finalizer.mjs'), 'utf8');
 
 const position = (source, needle) => {
   const index = source.indexOf(needle);
@@ -25,30 +27,18 @@ describe('publication receipt wiring', () => {
     expect(provider).toContain("command('gh', ['release', 'upload', draft.tag, file, '--repo', REPO])");
   });
 
-  it('generates and validates publication evidence before remote convergence', () => {
-    expect(position(provider, "'scripts/publication-receipt.mjs'"))
-      .toBeLessThan(position(provider, "'scripts/release-proof.mjs'"));
-    expect(position(transaction, 'adapter.finalize'))
-      .toBeLessThan(transaction.lastIndexOf("append('channels-converged'"));
+  it('keeps channel convergence nonterminal and moves public proof into the protected finalizer path', () => {
+    expect(transaction).not.toContain('adapter.finalize');
+    expect(transaction).toContain("return append('channels-converged', { verdict: 'PUBLISHED_NOT_VERIFIED'");
     expect(provider).not.toContain("'scripts/verify-channels.mjs'");
     expect(producer).toContain('githubBundleDigest');
-    // ACROSS TWO FILES, A CHARACTER OFFSET MEANS NOTHING (fixed 2026-08-07).
-    //
-    // This read:
-    //     expect(position(transaction, "append('channels-converged'"))
-    //       .toBeLessThan(position(release, '✓✓✓ SHIPPED'));
-    // comparing a byte offset inside release-transaction.mjs (15649) against a byte offset inside
-    // release.mjs (15242) — two unrelated coordinate systems. It asserted nothing about ordering or
-    // behaviour and passed only by coincidence of file sizes. Adding a comment to one file flipped
-    // it red, which is how it was caught: a gate that fails for a reason unrelated to what it tests.
-    //
-    // The claim worth making is causal and lives INSIDE release.mjs: the SHIPPED banner may only be
-    // printed after the transaction has actually run and converged. That is checkable in one file's
-    // own coordinate system, and it fails if anyone moves the banner above the await.
+    expect(publicLane).toContain('generatePublicationReceipt');
+    expect(finalizer).toContain('finalizeReleaseTransaction');
     expect(transaction, 'the transaction must be able to reach convergence')
       .toContain("append('channels-converged'");
-    expect(position(release, 'await runReleaseTransaction'), 'SHIPPED must come after the transaction, not before it')
-      .toBeLessThan(position(release, '✓✓✓ SHIPPED'));
+    expect(position(release, 'await runReleaseTransaction'), 'the nonterminal banner must follow channel convergence')
+      .toBeLessThan(position(release, 'PUBLISHED, NOT VERIFIED'));
+    expect(release).not.toContain('✓✓✓ SHIPPED');
   });
 
   it('provisions virgin host CLIs before the protected publisher and gives the producer read-only GitHub access', () => {
@@ -79,10 +69,10 @@ describe('publication receipt wiring', () => {
   });
 
   it.each([
-    ['MUTANT: omit publication producer', /publication-receipt\.mjs/g],
-    ['MUTANT: omit sealed artifact', /assets\.packagePath/g],
-  ])('%s', (_name, guard) => {
-    expect(provider.replace(guard, '')).not.toMatch(guard);
-    expect(provider).toMatch(guard);
+    ['MUTANT: omit publication producer', publicLane, /generatePublicationReceipt/g],
+    ['MUTANT: omit sealed artifact', provider, /assets\.packagePath/g],
+  ])('%s', (_name, source, guard) => {
+    expect(source.replace(guard, '')).not.toMatch(guard);
+    expect(source).toMatch(guard);
   });
 });
