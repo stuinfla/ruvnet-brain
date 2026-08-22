@@ -15,6 +15,8 @@ import {
   syncCorpusInputs,
 } from '../../scripts/corpus-reconcile.mjs';
 import { sourceObservationDigest } from '../../scripts/source-coverage.mjs';
+import { sealGistReceipt, sealGistReceiptSet } from '../../scripts/gist-receipts.mjs';
+import { validatePublicInventory } from '../../scripts/public-inventory.mjs';
 
 const temps = [];
 const temp = () => {
@@ -414,6 +416,88 @@ describe('generated gist receipt lifecycle', () => {
   });
 });
 
+describe('source-bound aggregate rebuild', () => {
+  const aggregateFixture = () => {
+    const assetsDir = temp();
+    fs.mkdirSync(path.join(assetsDir, 'l2'));
+    fs.writeFileSync(path.join(assetsDir, 'PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['secret'] }));
+    fs.writeFileSync(path.join(assetsDir, 'RVF-GENERATIONS.json'), JSON.stringify({ schemaVersion: 1, stores: {} }));
+    fs.writeFileSync(path.join(assetsDir, 'capability-cards.md'), '## alpha\nPublic capability.\n\n## secret\nPrivate capability.\n');
+    fs.writeFileSync(path.join(assetsDir, 'alpha-primer.md'), '# Alpha\n\nPublic primer.');
+    fs.writeFileSync(path.join(assetsDir, 'secret-primer.md'), '# Secret\n\nPRIVATE PRIMER.');
+    fs.writeFileSync(path.join(assetsDir, 'l2-topics.alpha.json'), JSON.stringify([{ slug: 'alpha-topic' }]));
+    fs.writeFileSync(path.join(assetsDir, 'l2-topics.secret.json'), JSON.stringify([{ slug: 'secret-topic' }]));
+    fs.writeFileSync(path.join(assetsDir, 'l2', 'alpha-topic.md'), '# Alpha topic\n\nPublic L2.');
+    fs.writeFileSync(path.join(assetsDir, 'l2', 'secret-topic.md'), '# Secret topic\n\nPRIVATE L2.');
+    const gistId = 'a'.repeat(32);
+    const body = 'Exact gist body.';
+    const gist = sealGistReceipt({ gistId, versionSha: 'b'.repeat(40),
+      updatedAt: '2026-08-21T11:00:00.000Z', ingestedAt: '2026-08-21T12:00:00.000Z', complete: true,
+      files: [{ filename: 'note.md', included: true,
+        sha256: crypto.createHash('sha256').update(body).digest('hex'), bytes: Buffer.byteLength(body) }] });
+    const sources = sealGistReceiptSet({ owner: 'ruvnet', generated: '2026-08-21T12:00:00.000Z',
+      observedAt: '2026-08-21T11:00:00.000Z', sourceObservationSha256: 'd'.repeat(64),
+      passagesSha256: null, gists: { [gistId]: gist } });
+    fs.writeFileSync(path.join(assetsDir, 'ruv-gists.sources.json'), JSON.stringify(sources));
+    return { assetsDir, gistId, body, observation: { observationSha256: 'd'.repeat(64) } };
+  };
+  const buildVector = async ({ assetsDir, store }) => {
+    for (const [suffix, body] of [
+      ['.big.rvf', `${store}-rvf`],
+      ['.big.rvf.idmap.json', '{}'],
+      ['.big.rvf.embed.json', '{}'],
+    ]) fs.writeFileSync(path.join(assetsDir, `${store}${suffix}`), body);
+  };
+
+  it('atomically rebuilds schema-3 gists and public concepts from the exact stable observation', async () => {
+    expect(corpusReconcileModule.rebuildCorpusAggregates).toBeTypeOf('function');
+    const f = aggregateFixture();
+    const result = await corpusReconcileModule.rebuildCorpusAggregates({
+      assetsDir: f.assetsDir, observation: f.observation, root: '/fixture/root',
+      fetchFn: async () => ({ ok: true, status: 200, arrayBuffer: async () => Buffer.from(f.body) }),
+      buildVector,
+      now: () => '2026-08-21T13:00:00.000Z',
+    });
+    expect(result).toMatchObject({ rebuilt: ['concepts', 'ruv-gists'], sourceObservationSha256: 'd'.repeat(64) });
+    const concepts = fs.readFileSync(path.join(f.assetsDir, 'concepts.passages.jsonl'), 'utf8');
+    expect(concepts).toContain('Public primer.');
+    expect(concepts).toContain('Public L2.');
+    expect(concepts).not.toMatch(/PRIVATE/);
+    const ledger = JSON.parse(fs.readFileSync(path.join(f.assetsDir, 'RVF-GENERATIONS.json'), 'utf8'));
+    expect(ledger.stores['ruv-gists'].sourceCommit).toBe('d'.repeat(64));
+    expect(ledger.stores.concepts.sourceCommit).toBe('d'.repeat(64));
+    const coverage = { sourceObservationSha256: 'd'.repeat(64), rows: [
+      { key: `gist:${f.gistId}`, kind: 'gist', disposition: 'eligible', status: 'CURRENT',
+        artifact: { store: 'ruv-gists' } },
+    ] };
+    expect(validatePublicInventory({ assetsDir: f.assetsDir, coverage, ledger })).toMatchObject({
+      gistAggregate: 'ruv-gists', derived: ['concepts'], publicStores: ['concepts', 'ruv-gists'],
+    });
+  });
+
+  it('rejects observation drift and never promotes a partially rebuilt aggregate set', async () => {
+    expect(corpusReconcileModule.rebuildCorpusAggregates).toBeTypeOf('function');
+    const moved = aggregateFixture();
+    await expect(corpusReconcileModule.rebuildCorpusAggregates({
+      assetsDir: moved.assetsDir, observation: { observationSha256: 'e'.repeat(64) },
+      fetchFn: async () => ({ ok: true, status: 200, arrayBuffer: async () => Buffer.from(moved.body) }), buildVector,
+    })).rejects.toThrow(/observation/i);
+    expect(fs.existsSync(path.join(moved.assetsDir, 'ruv-gists.passages.jsonl'))).toBe(false);
+
+    const failed = aggregateFixture();
+    await expect(corpusReconcileModule.rebuildCorpusAggregates({
+      assetsDir: failed.assetsDir, observation: failed.observation,
+      fetchFn: async () => ({ ok: true, status: 200, arrayBuffer: async () => Buffer.from(failed.body) }),
+      buildVector: async (options) => {
+        if (options.store === 'concepts') throw new Error('concept vector build failed');
+        await buildVector(options);
+      },
+    })).rejects.toThrow(/concept vector build failed/i);
+    expect(fs.existsSync(path.join(failed.assetsDir, 'ruv-gists.passages.jsonl'))).toBe(false);
+    expect(JSON.parse(fs.readFileSync(path.join(failed.assetsDir, 'RVF-GENERATIONS.json'), 'utf8')).stores).toEqual({});
+  });
+});
+
 describe('candidate preparation', () => {
   it('adapts production reconciliation through distinct rounds until the source observation is stable', async () => {
     expect(corpusReconcileModule.reconcileCorpusUntilStable).toBeTypeOf('function');
@@ -437,6 +521,7 @@ describe('candidate preparation', () => {
           sha256: crypto.createHash('sha256').update(bytes).digest('hex') } } };
         return { refreshed: ['alpha'] };
       },
+      rebuild: () => ({ rebuilt: [] }),
     });
     expect(result.observation).toEqual({ observationSha256: '2' });
     expect(result.rounds).toHaveLength(2);

@@ -13,6 +13,9 @@ import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
 import { buildCoverage, observeSourceUniverse, sourceObservationDigest } from './source-coverage.mjs';
 import { reconcileGistReceipts } from './gist-receipts.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
+import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';
+
+export { rebuildCorpusAggregates };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(HERE, '..');
@@ -425,7 +428,7 @@ export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, 
     'RVF generation ledger'),
   execute = executeReconciliation,
   prune = () => ({ pruned: [] }),
-  rebuild = () => ({ rebuilt: [] }),
+  rebuild = (_coverage, observation) => rebuildCorpusAggregates({ assetsDir, observation, root }),
 } = {}) {
   if (!assetsDir || !workspaceDir) fail('stable reconciliation requires explicit assets and workspace directories');
   const workspace = path.resolve(workspaceDir || '');
