@@ -64,7 +64,10 @@ export function validateGistAggregateReceipt({ receipt, passagesFile, expectedId
   }
   const sourceSet = ids.map((id) => ({ id, receiptSha256: receipt.gists[id].receiptSha256 }));
   if (receipt.sourceSetSha256 !== digest(sourceSet)) throw new Error('gist source set digest differs');
-  if (!passagesFile || !fs.existsSync(passagesFile) || !HEX64.test(String(receipt.passagesSha256 || ''))
+  let passagesStat = null;
+  try { passagesStat = fs.lstatSync(passagesFile); } catch { /* handled below */ }
+  if (!passagesFile || !passagesStat?.isFile() || passagesStat.isSymbolicLink()
+    || !HEX64.test(String(receipt.passagesSha256 || ''))
     || receipt.passagesSha256 !== sha256File(passagesFile)) {
     throw new Error('gist aggregate receipt does not bind its passage bytes');
   }
@@ -94,9 +97,39 @@ const readJson = (file, label) => {
   catch (error) { throw new Error(`${label} is unreadable: ${error.message}`); }
 };
 
-const canonicalStores = (root) => fs.readdirSync(root)
-  .filter((name) => !name.startsWith('._'))
-  .map((name) => name.match(/^(.+)\.big\.rvf$/)?.[1]).filter(Boolean).sort();
+function containedRegular(root, relative, label) {
+  if (typeof relative !== 'string' || !relative || path.isAbsolute(relative)
+    || relative.split(/[\\/]/).includes('..')) throw new Error(`${label} path escapes the public inventory root`);
+  const resolved = path.resolve(root, relative);
+  const within = path.relative(root, resolved);
+  if (!within || within.startsWith('..') || path.isAbsolute(within)) {
+    throw new Error(`${label} path escapes the public inventory root`);
+  }
+  let stat;
+  try { stat = fs.lstatSync(resolved); } catch { throw new Error(`${label} is missing`); }
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`${label} is not a trusted regular file`);
+  const realRoot = fs.realpathSync(root);
+  const realFile = fs.realpathSync(resolved);
+  const realWithin = path.relative(realRoot, realFile);
+  if (!realWithin || realWithin.startsWith('..') || path.isAbsolute(realWithin)) {
+    throw new Error(`${label} resolves outside the public inventory root`);
+  }
+  return resolved;
+}
+
+const canonicalStores = (root) => {
+  const stores = [];
+  for (const name of fs.readdirSync(root).filter((entry) => !entry.startsWith('._'))) {
+    const store = name.match(/^(.+)\.big\.rvf$/)?.[1];
+    if (!store) continue;
+    const stat = fs.lstatSync(path.join(root, name));
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`${store} canonical RVF is not a trusted regular file`);
+    stores.push(store);
+  }
+  const folded = stores.map((store) => store.toLowerCase());
+  if (new Set(folded).size !== folded.length) throw new Error('canonical RVF store names have case-fold aliases');
+  return stores.sort();
+};
 
 export function projectPublicGenerationLedger({ ledger, publicStores, version, sourceSnapshot }) {
   if (!ledger?.stores || typeof ledger.stores !== 'object' || Array.isArray(ledger.stores)) {
@@ -129,13 +162,21 @@ export function generationLedgerBytes(ledger) {
 
 export function validatePublicInventory({ assetsDir, coverage, ledger, installedPublicStores = null }) {
   const root = path.resolve(assetsDir);
-  const selectedSet = installedPublicStores === null ? null : new Set(installedPublicStores);
+  const selected = installedPublicStores === null ? null : [...installedPublicStores].map((store) => String(store).toLowerCase());
+  if (selected && (selected.some((store) => !store) || new Set(selected).size !== selected.length)) {
+    throw new Error('installed public store selection is missing or duplicated');
+  }
+  const selectedSet = selected === null ? null : new Set(selected);
   if (!Array.isArray(coverage?.rows) || !ledger?.stores || typeof ledger.stores !== 'object' || Array.isArray(ledger.stores)) {
     throw new Error('coverage rows or generation ledger stores are malformed');
   }
   const fence = readJson(path.join(root, 'PRIVATE-STORES.json'), 'private fence');
   if (!Array.isArray(fence.privateStores)) throw new Error('private fence has no privateStores array');
-  const privateSet = new Set(fence.privateStores.map((store) => String(store).toLowerCase()));
+  const privateStores = fence.privateStores.map((store) => String(store).toLowerCase());
+  if (privateStores.some((store) => !store) || new Set(privateStores).size !== privateStores.length) {
+    throw new Error('private fence stores are missing or duplicated');
+  }
+  const privateSet = new Set(privateStores);
   const uniqueStores = (rows, family) => {
     const stores = rows.map((row) => String(row?.artifact?.store || '').toLowerCase());
     if (stores.some((store) => !store) || new Set(stores).size !== stores.length) throw new Error(`${family} stores are missing or duplicated`);
@@ -167,30 +208,39 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
   for (const entry of classes.derived) {
     const store = String(entry.store || '').toLowerCase();
     if (selectedSet && !selectedSet.has(store)) continue;
-    const receipt = readJson(path.join(root, String(entry.receipt || '')), `derived ${store} receipt`);
-    const passages = path.join(root, `${store}.passages.jsonl`);
+    const receiptFile = containedRegular(root, entry.receipt, `derived ${store} receipt`);
+    const receipt = readJson(receiptFile, `derived ${store} receipt`);
+    const passages = containedRegular(root, `${store}.passages.jsonl`, `derived ${store} passages`);
     if (receipt.schemaVersion !== 1 || receipt.kind !== 'ruvnet-brain-derived-store-receipt'
       || String(receipt.store || '').toLowerCase() !== store || !Array.isArray(receipt.inputs) || receipt.inputs.length === 0
       || !HEX64.test(String(receipt.passagesSha256 || '')) || receipt.passagesSha256 !== sha256File(passages)) {
       throw new Error(`derived ${store} receipt does not bind its passage bytes`);
     }
     for (const input of receipt.inputs) {
-      if (typeof input?.path !== 'string' || !input.path || path.isAbsolute(input.path) || input.path.split(/[\\/]/).includes('..')
-        || !HEX64.test(String(input.sha256 || '')) || input.sha256 !== sha256File(path.join(root, input.path))) {
+      let inputFile = null;
+      try { inputFile = containedRegular(root, input?.path, `derived ${store} input`); } catch { /* handled below */ }
+      if (!inputFile || !HEX64.test(String(input.sha256 || '')) || input.sha256 !== sha256File(inputFile)) {
         throw new Error(`derived ${store} input receipt differs from ${input?.path || '(missing)'}`);
       }
     }
   }
   const expected = [...repositories, ...(gistAggregate ? [gistAggregate] : []), ...derived].sort();
   if (new Set(expected).size !== expected.length) throw new Error('public store classes overlap');
-  const installedExpected = installedPublicStores === null ? expected : [...installedPublicStores].sort();
+  const privateCollision = expected.filter((store) => privateSet.has(store));
+  if (privateCollision.length) throw new Error(`private/public store collision: ${privateCollision.join(', ')}`);
+  const installedExpected = selected === null ? expected : [...selected].sort();
   if (installedExpected.some((store) => !expected.includes(store))) throw new Error('installed profile selects an unknown public store');
   const actual = canonicalStores(root).filter((store) => !privateSet.has(store.toLowerCase())).sort();
   const missing = installedExpected.filter((store) => !actual.includes(store));
   const extras = actual.filter((store) => !installedExpected.includes(store));
   if (missing.length) throw new Error(`${missing.join(', ')} public store is missing`);
   if (extras.length) throw new Error(`unclassified public stores: ${extras.join(', ')}`);
-  const publicLedgerStores = Object.keys(ledger.stores).filter((store) => !privateSet.has(store.toLowerCase())).sort();
+  const ledgerStores = Object.keys(ledger.stores);
+  const foldedLedgerStores = ledgerStores.map((store) => store.toLowerCase());
+  if (new Set(foldedLedgerStores).size !== foldedLedgerStores.length) {
+    throw new Error('generation ledger store names have case-fold aliases');
+  }
+  const publicLedgerStores = ledgerStores.filter((store) => !privateSet.has(store.toLowerCase())).sort();
   if (canonicalJson(publicLedgerStores) !== canonicalJson(expected)) throw new Error('public generation ledger store set differs from the inventory partition');
   for (const store of expected) {
     const generation = ledger.stores[store];
