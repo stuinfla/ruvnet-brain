@@ -98,11 +98,10 @@ const STANDALONE = [
   ['fix-workstream', 'session-supervised coordination CLI run explicitly by the integration owner or an '
     + 'isolated writing agent to start and hand off a fix lane. Scheduling it would violate its safety '
     + 'boundary: it prepares evidence but never merges, pushes, publishes, deletes, or cleans worktrees'],
-  // Run by the launchd nightly, which lives OUTSIDE this repo — so no in-repo caller can exist.
-  // This is the one category the scanner genuinely cannot reach, and saying so is the honest form.
-  ['self-update', 'launchd nightly (out-of-repo scheduler)'],
+  ['self-update', 'author-run candidate rebuild; --apply is guarded by worktree-integrity.mjs and is not scheduled'],
+  ['ingest-new-repos', 'author-run corpus expansion; --apply is guarded by worktree-integrity.mjs and is not scheduled'],
   ['count-chunks', 'human-run CLI — recount + restamp chunk surfaces (--check for drift); no scheduler'],
-  ['brain-stamp', 'invoked by self-update.mjs:249, the nightly launchd driver (com.ruvnet.brain-nightly)'],
+  ['brain-stamp', 'invoked by the author-run self-update.mjs candidate builder'],
   ['lesson-promote', 'human-run CLI — promotion is manual (--apply); no scheduler yet (automation is ADR-029 #4, open)'],
   ['behavioral-l1-l4', 'behavioural harness invoked by its own test file — not a product path'],
   // A measurement harness, not a product path: it answers "would bounding the cross-encoder pool
@@ -129,8 +128,7 @@ const STANDALONE = [
     + 'com.stuartkerr.clear-claude-tmp.plist is loaded and its ProgramArguments invoke this exact file'],
   ['nightly-gists', 'launchd nightly 21:47 (out-of-repo scheduler) — confirmed live: '
     + 'com.ruvnet.brain-gists.plist is loaded and its ProgramArguments invoke this exact file'],
-  ['nightly-wrapper', 'launchd nightly 03:15 (out-of-repo scheduler) — confirmed live: '
-    + 'com.ruvnet.brain-nightly.plist is loaded and its ProgramArguments invoke this exact file'],
+  ['nightly-wrapper', 'author-run maintenance harness, deliberately unscheduled; refuses primary, nested, and dirty worktrees'],
   ['routing-flywheel', 'launchd nightly 04:45 --dry-run (out-of-repo scheduler) — confirmed live: '
     + 'com.ruvnet.routing-flywheel.plist is loaded and its ProgramArguments invoke this exact file'],
   ['install-npx-witness', 'one-shot idempotent installer for the com.ruvnet.npx-witness launchd job, '

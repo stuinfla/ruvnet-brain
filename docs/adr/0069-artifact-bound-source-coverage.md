@@ -3,7 +3,7 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-22
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -30,7 +30,7 @@ governs:
   - docs/ddd/0016-source-coverage-context.md
 created_at: 2026-08-21T05:32:00-04:00
 created_at_source: authored-current
-updated_at: 2026-08-21T08:10:43-04:00
+updated_at: 2026-08-22T12:15:00-04:00
 updated_at_source: authored-current
 ---
 
@@ -216,6 +216,7 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-22 | Isolated every implemented source-coverage mutation from the primary checkout; broader coverage acceptance remains Proposed. | `ingest-new-repos.mjs --apply` and `self-update.mjs --apply` share `scripts/worktree-integrity.mjs`, which accepts only a clean linked worktree outside the primary. The retired `com.ruvnet.brain-nightly` scheduler and plist are gone; a manual author wrapper additionally verifies that primary HEAD/index/tracked/untracked state is unchanged. This closes the dirty-checkout transport defect, not this ADR's still-unbuilt signed enumeration, exemption, UI, or public-artifact coherence requirements. |
 | 2026-08-21 | Re-read the emergency release rail and kept the broader source-coverage system explicitly unbuilt. | `.github/workflows/ci.yml` does not call the absent `scripts/source-coverage.mjs` or claim its absent projections. It uses the committed immutable seed identity plus strict repaired generation receipts to restore service; this ADR's complete coverage generator remains deferred. |
 | 2026-08-21 | Corrected the earlier implementation claim: the coverage command and Console projection remain planned, not shipped. | The named `plugin/commands/coverage.md`, `plugin/scripts/coverage.mjs`, and Console coverage files do not exist in this candidate. The emergency release implements corpus-seed and ledger identity only; the broader coverage read model remains Proposed and is explicitly deferred until after service is restored. |
 | 2026-08-21 | Re-read the governed release paths after emergency corpus convergence. | `scripts/build-bundle.mjs` now fails closed on seed/ledger byte and metadata disagreement and `.github/workflows/ci.yml` consumes an exact sealed seed. This advances the artifact boundary but does not satisfy this ADR's unbuilt UI, exemptions, or full coverage-report contract. |

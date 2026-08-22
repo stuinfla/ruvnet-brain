@@ -67,14 +67,16 @@ function fixtureRepo() {
   execFileSync('git', ['config', 'user.name', 't'], { cwd: dir });
   fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
-  for (const f of ['self-update.mjs', 'full-hints.mjs', 'git-clone-refresh.mjs']) {
+  for (const f of ['self-update.mjs', 'full-hints.mjs', 'git-clone-refresh.mjs', 'worktree-integrity.mjs']) {
     fs.copyFileSync(path.join(REPO_ROOT, 'scripts', f), path.join(dir, 'scripts', f));
   }
   fs.writeFileSync(path.join(dir, 'data/registry.tiers.json'),
     JSON.stringify({ tiers: { T0: { repos: [] }, T1: { repos: [] }, T2: { repos: [] }, T3: { repos: [] } } }));
   execFileSync('git', ['add', '-A'], { cwd: dir });
   execFileSync('git', ['-c', 'core.hooksPath=/dev/null', 'commit', '-m', 'test(update): seed fixture'], { cwd: dir });
-  return dir;
+  const writer = path.join(home, 'writer');
+  execFileSync('git', ['worktree', 'add', '-b', 'test/promoted-survival', writer, 'HEAD'], { cwd: dir });
+  return writer;
 }
 
 describe.skipIf(!hasGit || process.platform === 'win32')('promoted lessons survive an update', () => {

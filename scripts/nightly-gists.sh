@@ -10,9 +10,9 @@
 #   3. re-embed        — the expensive step (~18 min, 8 shards). SKIPPED ENTIRELY when step 2
 #                        reports "nothing to do". A quiet night costs seconds, not minutes.
 #
-# PATH is set explicitly: launchd does not inherit a login shell's environment, which is why the
-# sibling agent com.ruvnet.brain-nightly has been dying on `spawnSync gh ENOENT` — gh lives in
-# /opt/homebrew/bin and launchd never saw it.
+# PATH is set explicitly because launchd does not inherit a login shell's environment. The retired
+# com.ruvnet.brain-nightly source writer previously exposed this exact failure mode: gh lived in
+# /opt/homebrew/bin and launchd could not see it.
 
 set -eu
 

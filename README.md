@@ -35,7 +35,7 @@
 > **One Brain generation everywhere.** npm, the GitHub tag/release, bundle manifests, source metadata, and checksum-bound RVF generations must share the same product version. Headline claims are regenerated and checked by the claims ledger (`scripts/claims-verify.mjs`); other numbers below are hand-stamped and dated:
 > - **`plugin`** (badge above) — the Claude Code plugin itself: SKILL.md, the grounding hooks, the MCP server. Read live from [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json). Updates often — this is where behavior fixes land.
 > - **`installer (npm)`** (badge above) — the `npx ruvnet-brain` setup script. Read live from the [npm registry](https://www.npmjs.com/package/ruvnet-brain). Only moves when the installer script itself changes — rare.
-> - **Brain Release** (the downloadable knowledge bundle, linked from the "download" badge above) — always resolves to [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest) (the nightly publishes fresh bundles as the corpus grows). Only moves when the underlying knowledge base is rebuilt — separate again from the two above.
+> - **Brain Release** (the downloadable knowledge bundle, linked from the "download" badge above) — always resolves to [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest). It moves only when the protected exact-SHA release workflow accepts rebuilt knowledge bytes — separate again from the two above.
 > - **On an old version? One line makes you current — and, with `--auto`, keeps you current forever:**
 >   ```
 >   npx ruvnet-brain@latest --update --auto
@@ -58,14 +58,15 @@
 
 ## What's new in 4.2 — it loads what rUv ships, without being asked
 
-**The corpus stopped drifting behind the org.** Until 4.2 nothing ever ingested a new repo: the
-nightly refreshed lessons, health and proofs and contained *zero* ingestion, so a repo entered the
-brain only when a human typed the command. `brain-stamp.mjs` had been measuring that gap every
-night, but nothing consumed it until the ingestion loop shipped.
+**The corpus gained an explicit new-repository ingestion path.** Until 4.2 nothing ingested a new
+repo. `brain-stamp.mjs` measured the gap, but nothing consumed it until
+`scripts/ingest-new-repos.mjs` shipped. Its mutating mode is now deliberately human-run from a clean
+linked worktree; the former primary-checkout scheduler was retired rather than allowed to trade
+corpus freshness for uncontrolled source changes.
 
-- **187 stores, up from 69.** Everything rUv ships that has content, pulled in and kept level by
-  `scripts/ingest-new-repos.mjs` running nightly, newest-first. Empty repos (`size=0KB`) are skipped
-  rather than retried forever — a permanent nightly failure that is actually correct behaviour
+- **187 stores, up from 69.** Content-bearing rUv repositories can be pulled newest-first through
+  `scripts/ingest-new-repos.mjs`. Empty repos (`size=0KB`) are skipped
+  rather than retried forever — a permanent repeated failure that is actually correct behaviour
   trains you to ignore the failure line, which is how a real one would hide inside it.
 - **174 capability cards, up from 39.** Ingesting a repo is not the same as making it reachable: a
   store with no card is *dark* — valid bytes no by-description query can find. Cards are written
@@ -412,7 +413,7 @@ You install once. After that, three mechanisms keep you on the current brain wit
   `🧠 RuvNet Brain jumped in · guidance only, no source read · v3.4.18-dev`
   An unearned citation is worse than no citation, so the line may only name a path the tools genuinely returned — and on a prompt where nothing fires, it stays silent rather than manufacture a receipt. The version shown is the one **actually loaded in memory** for this session; if a newer one is staged awaiting a restart, the line says so plainly (`… vX staged, restart to load`). So you never have to wonder whether the brain is on, which version is acting, or whether an answer was grounded or guessed.
 
-- **Nightly publish → `releases/latest` chain** (`scripts/self-update.mjs --publish`, run by the `deploy/com.ruvnet.brain-nightly.plist` LaunchAgent at 03:15). The nightly rebuilds only the repos whose upstream changed, and **if anything was rebuilt** it bumps the product version, cuts a GitHub Release, and advances [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest). Plugin and knowledge bundle move under **one** version number, so the heartbeat above picks up both automatically. The exact author-vs-end-user schedules, incremental algorithm, failure behavior, and hosting recommendation are documented in [Nightly refresh and publish](docs/NIGHTLY-REFRESH.md). (The LaunchAgent is not auto-installed — enabling a system scheduler needs explicit owner approval.)
+- **Separated overnight paths.** The Dream Machine runs evidence-only evaluation with `autoMerge:false`; the optional `com.ruvnet.brain-update` LaunchAgent updates one installed cache from an already-published bundle. The former `com.ruvnet.brain-nightly` source writer was retired on 2026-08-22 because it accumulated generated changes in the primary developer checkout. Author rebuilds are now explicit, clean linked-worktree operations; `self-update.mjs --publish` is refused and only the protected exact-SHA workflow may release. See [Nightly refresh, evaluation, and author rebuilds](docs/NIGHTLY-REFRESH.md).
 
 ---
 
