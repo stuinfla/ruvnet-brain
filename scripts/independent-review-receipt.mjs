@@ -426,7 +426,7 @@ function parseCli(args) {
     if (Object.hasOwn(options, name)) throw new Error(`${name} may be supplied only once`);
     options[name] = value;
   }
-  const required = allowed.filter((name) => !['--expected-identity', '--retrieval-plan'].includes(name));
+  const required = allowed.filter((name) => name !== '--expected-identity');
   const missing = required.filter((name) => !options[name]);
   if (missing.length) throw new Error(`${command} requires ${missing.join(', ')}`);
   return { command, options };
@@ -484,8 +484,8 @@ export function main(args = process.argv.slice(2), runtime = {}) {
       },
       expectedIdentity: options['--expected-identity']
         ? readJson(options['--expected-identity'], 'expected review identity') : null,
-      expectedOracle: options['--retrieval-plan'] ? retrievalOracleExpectationFromPlan(
-        readJson(options['--retrieval-plan'], 'retrieval canary plan')) : null,
+      expectedOracle: retrievalOracleExpectationFromPlan(
+        readJson(options['--retrieval-plan'], 'retrieval canary plan')),
     });
     const reviews = ordered.map(({ id, receiptSha256 }) => ({ id, receiptSha256 }));
     stdout.write(`${JSON.stringify({ verdict: 'PASS', reviews, pairSha256: digest(reviews) })}\n`);

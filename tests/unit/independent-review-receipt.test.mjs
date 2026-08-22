@@ -416,7 +416,8 @@ describe('independent review receipt CLI', () => {
       '--fable-public-key', fablePublic, '--sol-public-key', solPublic,
       '--retrieval-plan', retrievalPlan], { stdout: sink(), stderr })).toBe(0);
     expect(main(['verify-pair', '--fable', fableReceipt, '--sol', solReceipt,
-      '--fable-public-key', fablePublic, '--sol-public-key', solPublic], { stdout: sink(), stderr })).toBe(0);
+      '--fable-public-key', fablePublic, '--sol-public-key', solPublic], { stdout: sink(), stderr })).toBe(1);
+    expect(stderr.read()).toMatch(/verify-pair requires --retrieval-plan/);
     expect(main(['produce', '--input', fableInputFile, '--out', fableReceipt], {
       env: { RUVNET_REVIEW_SIGNING_KEY: fableKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }) }, stdout, stderr,
     })).toBe(1);
