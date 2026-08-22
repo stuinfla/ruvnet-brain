@@ -93,7 +93,7 @@ describe('reconciliation planning', () => {
       execute: (plan) => { ledger = { stores: { alpha: { sourceCommit: plan[0].upstreamSha } } }; return { refreshed: ['alpha'] }; },
       prune: () => ({ pruned: [] }), rebuild: () => ({ rebuilt: [] }) });
     expect(result.rounds).toHaveLength(2);
-    expect(result.observation.observationSha256).toBe('2');
+    expect(result.observation.observationSha256).toBe(observations.at(-1).observationSha256);
     await expect(reconcileUntilStable({ maxRounds: 1, observe: (() => { let i = 0; return () => ({ observationSha256: String(i++) }); })(),
       build: (observation) => coverage([repo({ name: 'alpha', upstream: sha(String(Number(observation.observationSha256) % 10)) })]),
       readLedger: () => ({ stores: {} }), execute: () => ({}), prune: () => ({}), rebuild: () => ({}) }))
