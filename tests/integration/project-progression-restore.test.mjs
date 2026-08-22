@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createProgressionSnapshot, digestCanonical } from '../../plugin/scripts/project-progression-contract.mjs';
 import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
+import { getVersion } from '../../scripts/version.mjs';
 
 const NAMESPACE = 'project-progression';
 const temporaryRoots = [];
@@ -52,7 +53,7 @@ function snapshot(project, {
       untrackedDigest: 'c'.repeat(64),
       dirtyTreeDigest: 'd'.repeat(64),
     },
-    hostIdentity: { host: session.startsWith('claude') ? 'claude' : 'codex', adapterVersion: '4.2.3-dev' },
+    hostIdentity: { host: session.startsWith('claude') ? 'claude' : 'codex', adapterVersion: getVersion() },
     sessionIdentity: session,
     sequence,
     occurredAt: new Date(Date.parse('2026-08-22T18:00:00.000Z') + sequence).toISOString(),
