@@ -415,6 +415,28 @@ describe('generated gist receipt lifecycle', () => {
 });
 
 describe('candidate preparation', () => {
+  it('settles repository reconciliation before candidate preparation begins', async () => {
+    expect(corpusReconcileModule.reconcileAndPrepareCorpusCandidate).toBeTypeOf('function');
+    const events = [];
+    let settle;
+    const worker = new Promise((resolve) => { settle = resolve; });
+    const pending = corpusReconcileModule.reconcileAndPrepareCorpusCandidate({
+      plan: [{ store: 'alpha' }], assetsDir: '/fixture/assets', workspaceDir: '/fixture/workspace',
+      root: '/fixture/root', owner: 'ruvnet', builderSha: sha('e'), candidateDir: '/fixture/candidate',
+      receiptFile: '/fixture/receipt.json', coverageFile: '/fixture/coverage.json',
+      execute: async () => { events.push('reconcile-start'); await worker; events.push('reconcile-settled');
+        return { refreshed: ['alpha'] }; },
+      prepare: () => { events.push('candidate'); return { receiptFile: '/fixture/receipt.json' }; },
+    });
+    await Promise.resolve();
+    expect(events).toEqual(['reconcile-start']);
+    settle();
+    await expect(pending).resolves.toEqual({
+      reconciliation: { refreshed: ['alpha'] }, candidate: { receiptFile: '/fixture/receipt.json' },
+    });
+    expect(events).toEqual(['reconcile-start', 'reconcile-settled', 'candidate']);
+  });
+
   it('runs strict coverage before building and sealing, and never invokes a publisher', () => {
     const root = temp();
     fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });

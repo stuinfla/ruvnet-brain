@@ -417,6 +417,14 @@ export async function observeAndMaterializeGistReceipts({ owner = 'ruvnet', asse
   return { observation, ...materialized };
 }
 
+export async function reconcileAndPrepareCorpusCandidate({ plan, assetsDir, workspaceDir, root = DEFAULT_ROOT,
+  owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile,
+  execute = executeReconciliation, prepare = prepareCorpusCandidate } = {}) {
+  const reconciliation = await execute({ plan, assetsDir, workspaceDir, root });
+  const candidate = await prepare({ root, assetsDir, owner, builderSha, candidateDir, receiptFile, coverageFile });
+  return { reconciliation, candidate };
+}
+
 export function prepareCorpusCandidate({
   root = DEFAULT_ROOT,
   assetsDir,
@@ -488,8 +496,9 @@ export async function main(argv = process.argv.slice(2)) {
   const policy = readJson(coverageFile, 'source coverage policy');
   const ledger = readJson(path.join(assetsDir, 'RVF-GENERATIONS.json'), 'bootstrap RVF generation ledger');
   const plan = planReconciliation({ coverage: policy, ledger, assetsDir });
-  const reconciliation = executeReconciliation({ plan, assetsDir, workspaceDir, root });
-  const candidate = prepareCorpusCandidate({ root, assetsDir, owner, builderSha, candidateDir, receiptFile, coverageFile });
+  const { reconciliation, candidate } = await reconcileAndPrepareCorpusCandidate({
+    plan, assetsDir, workspaceDir, root, owner, builderSha, candidateDir, receiptFile, coverageFile,
+  });
   process.stdout.write(`${JSON.stringify({ ok: true, seedTag, seedSha256, plan, ...reconciliation, ...candidate }, null, 2)}\n`);
   return 0;
 }
