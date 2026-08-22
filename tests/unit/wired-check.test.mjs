@@ -50,7 +50,18 @@ describe('the predicate — a mention is not a caller', () => {
   it('an npm script NOBODY runs is MANUAL, not wired (the doc-currency false green)', () => {
     w('scripts/widget.mjs', 'export const x = 1;\n');
     w('package.json', JSON.stringify({ scripts: { go: 'node scripts/widget.mjs' } }));
-    expect(stateOf(audit({ repo, standalone: [], held: {} }), 'scripts/widget.mjs')).toBe('manual');
+    const row = audit({ repo, standalone: [], held: {} }).rows.find((r) => r.rel === 'scripts/widget.mjs');
+    expect(row.state).toBe('manual');
+    expect(row.why).toMatch(/does not establish operational correctness/i);
+    expect(row.why).not.toMatch(/built and correct|works|healthy/i);
+  });
+
+  it('an executable Dream manifest is a real caller', () => {
+    w('scripts/widget.mjs', 'export const x = 1;\n');
+    w('dream.config.json', JSON.stringify({ controlPlaneProbes: ['node scripts/widget.mjs --check'] }));
+    expect(stateOf(audit({ repo, standalone: [], held: {} }), 'scripts/widget.mjs')).toBe('wired');
+    w('dream.config.json', JSON.stringify({ controlPlaneProbes: [] }));
+    expect(stateOf(audit({ repo, standalone: [], held: {} }), 'scripts/widget.mjs')).toBe('unwired');
   });
 
   it('an npm script a WORKFLOW runs is wired', () => {
@@ -268,6 +279,30 @@ describe('hook wiring — reachable from a real hook config, not merely mentione
     const row = res.rows.find((r) => r.file === 'my-gate.sh');
     expect(row.state).toBe('wired');
     expect(row.sources.join(' ')).toMatch(/hook-shim id "my-id"/);
+  });
+
+  it('resolves Codex\'s installed Stable Spine wrapper and its adapter spawn', () => {
+    w('plugin/scripts/codex-hook-wrapper.mjs', "import path from 'node:path';\n"
+      + "const adapter = path.join(root, 'scripts', 'codex-hook-adapter.mjs');\n");
+    w('plugin/scripts/codex-hook-adapter.mjs', '#!/usr/bin/env node\n'
+      + '/** codex-hook-adapter — the PostToolUse hook host boundary. */\n');
+    w('plugin/scripts/hook-shim.mjs', "const TABLE = {\n"
+      + "  'my-id': { file: 'my-gate.sh', interpreter: 'bash', mode: 'blocking' },\n};\n");
+    w('plugin/hooks/codex-hooks.json', JSON.stringify({
+      hooks: { SessionStart: [{ hooks: [{ type: 'command',
+        command: 'node -e "const w=p.join(b,\'codex-hook.mjs\')" 4500 my-id' }] }] },
+    }));
+    w('bin/install.mjs', "const codexHookWrapperPath = (codexDir) => path.join(codexDir, 'codex-hook.mjs');\n"
+      + "function wire({ hookWrapperSource = path.join(root, 'plugin', 'scripts', 'codex-hook-wrapper.mjs') }) {\n"
+      + '  atomicReplace(hookWrapperPath, (tmp) => fs.copyFileSync(hookWrapperSource, tmp));\n}\n');
+
+    const res = hookWiringAudit({ repo, homeSettingsFile: NO_HOME(), held: {} });
+    const wrapper = res.rows.find((r) => r.file === 'codex-hook-wrapper.mjs');
+    const adapter = res.rows.find((r) => r.file === 'codex-hook-adapter.mjs');
+    expect(wrapper).toMatchObject({ state: 'wired' });
+    expect(wrapper.sources.join(' ')).toMatch(/codex-hooks\.json.*Stable Spine copy/i);
+    expect(adapter).toMatchObject({ state: 'wired' });
+    expect(adapter.sources).toContain('spawned by plugin/scripts/codex-hook-wrapper.mjs');
   });
 
   it('WIRES a hook found ONLY in ~/.claude/settings.json — the real route-dispatch.sh fix, reproduced', () => {

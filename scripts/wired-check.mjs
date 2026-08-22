@@ -296,7 +296,12 @@ const INVENTORY_ROOTS = [
  * invoker outside the roots proves the ROOTS are incomplete — the fix is to add the root, never to
  * write an exemption. That rule caught its own author within a minute of the gate first running.
  */
-const CALLER_ROOTS = ['scripts', 'plugin', 'console', 'bin', '.github', '.claude', 'package.json'];
+// `dream.config.json` is executable configuration, not documentation: the Dream compiler runs its
+// controlPlaneProbes and evaluatorEntrypoints. Excluding it made two real scheduled callers look
+// dead while the same scanner already trusted workflow YAML and package.json command manifests.
+const CALLER_ROOTS = [
+  'scripts', 'plugin', 'console', 'bin', '.github', '.claude', 'package.json', 'dream.config.json',
+];
 const CALLER_EXTS = new Set(['.mjs', '.js', '.sh', '.json', '.html', '.yml', '.yaml']);
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))
@@ -530,7 +535,8 @@ export function audit({ repo = REPO, standalone = STANDALONE, held = HELD } = {}
           state = 'manual';
           const list = names.map((n) => `\`${n}\``).join(', ');
           why = `defined as npm script ${list} and invoked by NOTHING automated — reachable only by a `
-            + `human typing \`npm run ${names[0]}\`. Built and correct; not in any ship path.`;
+            + `human typing \`npm run ${names[0]}\`. This wiring audit does not establish operational `
+            + `correctness.`;
         }
       }
     }
@@ -565,9 +571,12 @@ export function audit({ repo = REPO, standalone = STANDALONE, held = HELD } = {}
  * exists to prevent), different surface. Two new, narrow predicates, each modelling the REAL
  * mechanism Claude Code / the lesson dispatcher actually uses, not a generic text search:
  *
- *   CHECK B — HOOK WIRING. Walks the real reachability chain: plugin/hooks/hooks.json (what we
- *   ship) → hook-shim.mjs's own TABLE (resolving its id-based indirection explicitly, since a hook
- *   id like "route-dispatch" is not the string "route-dispatch.sh") → this repo's own
+ *   CHECK B — HOOK WIRING. Walks the real reachability chain for both supported hosts:
+ *   plugin/hooks/hooks.json (Claude Code) → hook-shim.mjs's own TABLE (resolving its id-based
+ *   indirection explicitly, since a hook id like "route-dispatch" is not the string
+ *   "route-dispatch.sh"); and plugin/hooks/codex-hooks.json → bin/install.mjs's Stable Spine copy
+ *   (codex-hook-wrapper.mjs installed as codex-hook.mjs) → codex-hook-adapter.mjs. It also reads
+ *   this repo's own
  *   .claude/settings.json → the user's REAL ~/.claude/settings.json (what is actually installed on
  *   THIS machine — never checked before). One further hop is closed by a small fixed-point pass
  *   (the unprompted-speech runtime spawns anticipate.sh/lesson-hooks.sh as candidate producers),
@@ -669,6 +678,28 @@ function hookShimIdIn(cmd) {
   return m ? m[1] : null;
 }
 
+/** The dispatch id after Codex's inline bootstrap and numeric timeout. Same grammar as hook-registry. */
+function codexHookIdIn(cmd) {
+  const m = cmd.match(/"\s+\d+\s+([a-zA-Z][\w-]*)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Derive the Stable Spine wrapper copy from the installer source. The Codex manifest names the
+ * durable installed target (`codex-hook.mjs`), while the repository inventory contains its source
+ * (`codex-hook-wrapper.mjs`). Both names plus the actual copy operation must be present; otherwise
+ * there is no proven bridge and the hook stays unwired.
+ */
+function installedCodexHookWrapper(repo) {
+  let src = '';
+  try { src = fs.readFileSync(path.join(repo, 'bin/install.mjs'), 'utf8'); } catch { return null; }
+  const stripped = stripComments(src, '.mjs');
+  const source = stripped.match(/hookWrapperSource\s*=\s*path\.join\([^\n]*['"]([\w.-]+\.mjs)['"]\)/)?.[1];
+  const target = stripped.match(/const codexHookWrapperPath[\s\S]{0,260}?['"]([\w.-]+\.mjs)['"]\)/)?.[1];
+  const copiesSource = /fs\.copyFileSync\(hookWrapperSource,\s*tmp\)/.test(stripped);
+  return source && target && copiesSource ? { source, target } : null;
+}
+
 /** hook-shim.mjs's own dispatch TABLE: id -> file. Parsed, not re-implemented — it IS the authority. */
 function hookShimTable(repo) {
   let src = '';
@@ -689,9 +720,9 @@ function hookHeaderDeclares(src) { return HOOK_EVENT_RE.test(src.slice(0, 1600))
 
 /**
  * CHECK B — HOOK WIRING. See the file-level comment above for the full reasoning. Walks the real
- * chain from the real entry points (plugin/hooks/hooks.json, this repo's .claude/settings.json, the
- * user's actual ~/.claude/settings.json) through hook-shim.mjs's id-based indirection, then closes
- * one further hop with a small fixed-point pass restricted to files already proven reachable.
+ * chain from the real entry points (both plugin hook manifests, this repo's .claude/settings.json,
+ * the user's actual ~/.claude/settings.json) through each host's real indirection, then closes one
+ * further hop with a small fixed-point pass restricted to files already proven reachable.
  */
 export function hookWiringAudit({
   repo = REPO,
@@ -699,6 +730,7 @@ export function hookWiringAudit({
   held = HOOK_HELD,
 } = {}) {
   const table = hookShimTable(repo);
+  const codexWrapper = installedCodexHookWrapper(repo);
   const reached = new Map(); // basename -> Set(reason)
   const add = (name, reason) => {
     if (!name) return;
@@ -706,16 +738,21 @@ export function hookWiringAudit({
     reached.get(name).add(reason);
   };
 
-  const scanConfig = (file, label) => {
+  const scanConfig = (file, label, { codex = false } = {}) => {
     const doc = readJsonSafe(file);
     if (!doc || !doc.hooks) return;
     for (const cmd of commandStrings(doc.hooks)) {
-      for (const b of basenamesIn(cmd)) add(b, label);
-      const id = hookShimIdIn(cmd);
-      if (id && table[id]) add(table[id], `${label} (hook-shim id "${id}")`);
+      const basenames = basenamesIn(cmd);
+      for (const b of basenames) add(b, label);
+      const id = codex ? codexHookIdIn(cmd) : hookShimIdIn(cmd);
+      if (id && table[id]) add(table[id], `${label} (${codex ? 'Codex dispatch' : 'hook-shim'} id "${id}")`);
+      if (codex && codexWrapper && basenames.includes(codexWrapper.target)) {
+        add(codexWrapper.source, `${label} via bin/install.mjs Stable Spine copy (${codexWrapper.target})`);
+      }
     }
   };
   scanConfig(path.join(repo, 'plugin/hooks/hooks.json'), 'plugin/hooks/hooks.json');
+  scanConfig(path.join(repo, 'plugin/hooks/codex-hooks.json'), 'plugin/hooks/codex-hooks.json', { codex: true });
   scanConfig(path.join(repo, '.claude/settings.json'), '.claude/settings.json (this repo)');
   scanConfig(homeSettingsFile, '~/.claude/settings.json (this machine)');
 
@@ -828,7 +865,7 @@ if (invokedDirectly) {
     if (dupes.length) console.log(`  ✗ DUPLICATE exemption(s): ${dupes.join(', ')}\n`);
 
     // ── CHECK B: HOOK WIRING ──────────────────────────────────────────────────────────────────
-    console.log(`\n  ── HOOK WIRING — plugin/scripts/*.sh|*.mjs vs plugin/hooks/hooks.json, `
+    console.log(`\n  ── HOOK WIRING — plugin/scripts/*.sh|*.mjs vs plugin/hooks/{hooks,codex-hooks}.json, `
       + `.claude/settings.json, ~/.claude/settings.json ──\n`);
     console.log(`  ${hookAudit.rows.length} hook-intended script(s) in the census`);
     console.log(`    ${hookBy('wired').length} wired · ${hookBy('held').length} held · `

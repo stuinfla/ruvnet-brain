@@ -7,7 +7,9 @@ import {
   paragraphChunks,
   provenanceBanner,
   rawUrlFor,
+  main,
   reconstructGists,
+  resolveSourcesFile,
   validateSourceReceipts,
   writeReconstruction,
 } from '../../scripts/rebuild-gists-from-receipts.mjs';
@@ -78,6 +80,33 @@ describe('receipt validation and deterministic shaping', () => {
 });
 
 describe('raw receipt reconstruction', () => {
+  it('resolves the durable installed receipt and completes from a clean clone with no local receipt', async () => {
+    const root = temp();
+    const cleanClone = path.join(root, 'clean-clone');
+    const home = path.join(root, 'home');
+    const installedKb = path.join(home, '.cache', 'ruvnet-brain', 'kb');
+    fs.mkdirSync(path.join(cleanClone, 'kb'), { recursive: true });
+    fs.mkdirSync(installedKb, { recursive: true });
+    const gistId = 'a'.repeat(32);
+    const input = sources({ [gistId]: sourceReceipt({ body: 'Installed receipt body.' }) });
+    const receipt = path.join(installedKb, 'ruv-gists.sources.json');
+    fs.writeFileSync(receipt, JSON.stringify(input));
+
+    expect(resolveSourcesFile({ repoRoot: cleanClone, env: {}, home })).toBe(receipt);
+    await expect(main([], {
+      repoRoot: cleanClone,
+      env: {},
+      home,
+      fetchFn: async () => ({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => Buffer.from('Installed receipt body.'),
+      }),
+    })).resolves.toBe(0);
+    expect(fs.existsSync(path.join(installedKb, 'ruv-gists.passages.jsonl'))).toBe(true);
+    expect(JSON.parse(fs.readFileSync(path.join(installedKb, 'ruv-gists.sources.json'), 'utf8')).schemaVersion).toBe(2);
+  });
+
   it('fetches with bounded concurrency while preserving receipt order and exact per-gist identities', async () => {
     const firstId = 'a'.repeat(32);
     const secondId = 'c'.repeat(32);
