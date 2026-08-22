@@ -40,7 +40,8 @@ function plan(releaseCoverage) {
     schemaVersion: 2, kind: 'ruvnet-brain-retrieval-canary-plan',
     coverage: { sha256: digest(releaseCoverage), bytes: 100,
       releaseCoverageGeneration: releaseCoverage.releaseCoverageGeneration },
-    baseline: { tag: releaseCoverage.corpusSeed.tag, archiveSha256: releaseCoverage.corpusSeed.archiveSha256,
+    baseline: { schemaVersion: 1, kind: 'ruvnet-brain-verified-public-baseline',
+      tag: releaseCoverage.corpusSeed.tag, archiveSha256: releaseCoverage.corpusSeed.archiveSha256,
       archiveBytes: releaseCoverage.corpusSeed.archiveBytes, archiveManifestSha256: 'f'.repeat(64),
       verificationReceiptSha256: releaseCoverage.corpusSeed.receiptSha256, stores: ['old'], storeCount: 1,
       storeSetSha256: digest(['old']) },
@@ -107,6 +108,34 @@ describe('public verification OS lane', () => {
     expect(leaves.every(({ releaseTransactionId }) => releaseTransactionId === transactionIdFor(f.identity))).toBe(true);
     expect(leaves.every(({ retrieval }) => retrieval.metrics.recallAt10 === 1
       && retrieval.metrics.deltaCitationRate === 1)).toBe(true);
+  });
+
+  it('measures against an observed failed-public baseline without accepting it as candidate identity', async () => {
+    const f = fixture();
+    f.retrievalPlan.baseline = {
+      ...f.retrievalPlan.baseline,
+      kind: 'ruvnet-brain-observed-failed-public-baseline',
+      integrity: 'DEGRADED',
+      historicalCorpusReceipt: false,
+      candidateVerificationEligible: false,
+      observationReceiptSha256: f.releaseCoverage.corpusSeed.receiptSha256,
+      discrepancyDigest: '7'.repeat(64),
+    };
+    delete f.retrievalPlan.baseline.verificationReceiptSha256;
+    f.retrievalPlan.planSha256 = digest(Object.fromEntries(
+      Object.entries(f.retrievalPlan).filter(([key]) => key !== 'planSha256'),
+    ));
+    const leaves = await createPublicVerificationLane({ os: 'linux', ...f,
+      coverageIdentity: { sha256: digest(f.releaseCoverage), bytes: 100 } });
+    expect(leaves).toHaveLength(3);
+
+    f.retrievalPlan.candidate.sourceSha = '9'.repeat(40);
+    f.retrievalPlan.planSha256 = digest(Object.fromEntries(
+      Object.entries(f.retrievalPlan).filter(([key]) => key !== 'planSha256'),
+    ));
+    await expect(createPublicVerificationLane({ os: 'linux', ...f,
+      coverageIdentity: { sha256: digest(f.releaseCoverage), bytes: 100 } }))
+      .rejects.toThrow(/candidate identity differs from the release transaction/i);
   });
 
   it.each([

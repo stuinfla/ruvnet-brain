@@ -412,6 +412,7 @@ jobs:
           SEED_BYTES="$(node -p "require('./data/corpus-seed.json').bytes")"
           gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$SEED_ASSET" --dir "$RUNNER_TEMP/release-seed"
           seed="$RUNNER_TEMP/release-seed/$SEED_ASSET"
+          echo "RUVNET_SEED_BUNDLE=$seed" >> "$GITHUB_ENV"
           test "$(sha256sum "$seed" | cut -d' ' -f1)" = "$SEED_SHA256"
           test "$(stat -c %s "$seed")" = "$SEED_BYTES"
           unzip -q "$seed" -d "$RUNNER_TEMP/release-seed/extracted"
@@ -440,6 +441,19 @@ jobs:
           # scripts/sign-bundle.mjs:59 writes (`${digest}  ${path.basename(bundle)}`), which is the
           # format the verifier and every user's `shasum -c` both expect.
           ( cd "$RUNNER_TEMP/release-evidence" && sha256sum ruvnet-brain.zip > ruvnet-brain.zip.sha256 )
+      - name: Derive public verification inputs from exact candidate bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s data/retrieval-query-evidence.json
+          node scripts/public-verification-inputs.mjs \
+            --baseline-bundle "$RUVNET_SEED_BUNDLE" \
+            --candidate-bundle "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \
+            --candidate-package "$RUVNET_SEALED_PACKAGE" \
+            --oracle data/retrieval-query-evidence.json \
+            --repo "$GITHUB_WORKSPACE" \
+            --out-dir "$RUNNER_TEMP/release-evidence" \
+            --observed-baseline
       - name: Persist the canonical candidate payload manifest
         shell: bash
         run: |

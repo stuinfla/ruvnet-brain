@@ -19,7 +19,8 @@ import { getVersionTag } from '../../scripts/version.mjs';
 
 const plan = { schemaVersion: 2, kind: 'ruvnet-brain-retrieval-canary-plan',
   coverage: { sha256: '4'.repeat(64), bytes: 100, releaseCoverageGeneration: 'f'.repeat(64) },
-  baseline: { tag: getVersionTag(), archiveSha256: '1'.repeat(64), archiveBytes: 100,
+  baseline: { schemaVersion: 1, kind: 'ruvnet-brain-verified-public-baseline',
+    tag: getVersionTag(), archiveSha256: '1'.repeat(64), archiveBytes: 100,
     archiveManifestSha256: '2'.repeat(64), verificationReceiptSha256: '3'.repeat(64), stores: ['old'],
     storeCount: 1, storeSetSha256: digest(['old']) },
   candidate: { sourceSha: identity.candidateSha, packageSha256: identity.packageSha256,

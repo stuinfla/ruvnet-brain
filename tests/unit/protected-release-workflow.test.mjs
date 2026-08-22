@@ -87,6 +87,25 @@ describe('protected release rail', () => {
     expect(source).toContain('--out release-evidence/install-verified-receipt.json');
   });
 
+  it('derives public inputs once from exact candidate bytes before sealing the payload', () => {
+    const source = ci();
+    expect(source.match(/node scripts\/public-verification-inputs\.mjs/g)).toHaveLength(1);
+    expect(source.indexOf('Build the immutable knowledge bundle exactly once'))
+      .toBeLessThan(source.indexOf('node scripts/public-verification-inputs.mjs'));
+    expect(source.indexOf('node scripts/public-verification-inputs.mjs'))
+      .toBeLessThan(source.indexOf('Persist the canonical candidate payload manifest'));
+    for (const argument of [
+      '--baseline-bundle "$RUVNET_SEED_BUNDLE"',
+      '--candidate-bundle "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip"',
+      '--candidate-package "$RUVNET_SEALED_PACKAGE"',
+      '--oracle data/retrieval-query-evidence.json',
+      '--repo "$GITHUB_WORKSPACE"',
+      '--out-dir "$RUNNER_TEMP/release-evidence"',
+      '--observed-baseline',
+    ]) expect(source).toContain(argument);
+    expect(source).toContain('test -s data/retrieval-query-evidence.json');
+  });
+
   it('selects and opens a real RVF instead of macOS ZIP metadata', () => {
     const source = ci();
     expect(source).toContain("-type f -name '*.big.rvf'");

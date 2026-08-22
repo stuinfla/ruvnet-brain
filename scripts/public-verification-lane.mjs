@@ -95,7 +95,7 @@ export async function createPublicVerificationLane({
     || releaseCoverage.releaseCoverageGeneration !== retrievalPlan.coverage.releaseCoverageGeneration) {
     throw new Error('retrieval plan coverage byte identity differs');
   }
-  validatePlanAgainstCoverage(retrievalPlan, releaseCoverage);
+  validatePlanAgainstCoverage(retrievalPlan, releaseCoverage, { allowObservedBaseline: true });
   if (retrievalPlan.candidate.sourceSha !== identity.candidateSha
     || retrievalPlan.candidate.packageSha256 !== identity.packageSha256
     || retrievalPlan.candidate.archiveSha256 !== identity.bundleSha256) {
