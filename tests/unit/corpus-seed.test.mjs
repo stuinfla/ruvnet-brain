@@ -161,6 +161,11 @@ describe('immutable corpus candidate receipt', () => {
     expect(receipt.storeCount).toBe(1);
     expect(receipt.publicInventory.excludedRepositories).toEqual(['excluded']);
 
+    fs.copyFileSync(path.join(f.assetsDir, 'excluded.meta.json'), path.join(f.bundleDir, 'excluded.meta.json'));
+    writeStoredDirectoryZip({ archiveFile: f.bundle, sourceDir: f.bundleDir, rootName: 'ruvnet-brain' });
+    await expect(create(f)).rejects.toThrow(/unclassified archive store.*excluded/i);
+    fs.rmSync(path.join(f.bundleDir, 'excluded.meta.json'));
+
     fs.copyFileSync(path.join(f.assetsDir, 'excluded.big.rvf'), path.join(f.bundleDir, 'excluded.big.rvf'));
     writeStoredDirectoryZip({ archiveFile: f.bundle, sourceDir: f.bundleDir, rootName: 'ruvnet-brain' });
     await expect(create(f)).rejects.toThrow(/unclassified archive store.*excluded/i);

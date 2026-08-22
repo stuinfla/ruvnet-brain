@@ -105,11 +105,20 @@ async function verifyArchive({ bundleFile, stores, privateStores }) {
         if (sha256File(extracted) !== expected.sha256) fail(`archive ${expected.file} differs from canonical assets`);
       }
     }
-    const selectedStores = new Set(stores.map(({ name }) => name.toLowerCase()));
-    const archiveStores = entries.map((entry) => path.posix.basename(entry.replaceAll('\\', '/')))
-      .map((name) => name.match(/^(.+)\.big\.rvf$/)?.[1]).filter(Boolean);
-    const unclassified = [...new Set(archiveStores.filter((store) => !selectedStores.has(store.toLowerCase())))].sort();
+    const selectedStores = new Map(stores.map(({ name }) => [name.toLowerCase(), name]));
+    const storeSuffixes = [...REQUIRED_SUFFIXES, ...OPTIONAL_SHIPPED_SUFFIXES]
+      .sort((left, right) => right.length - left.length);
+    const archiveFamilies = entries.map((entry) => path.posix.basename(entry.replaceAll('\\', '/')))
+      .map((name) => {
+        const suffix = storeSuffixes.find((candidate) => name.toLowerCase().endsWith(candidate));
+        return suffix ? { name, store: name.slice(0, -suffix.length) } : null;
+      }).filter(Boolean);
+    const unclassified = [...new Set(archiveFamilies.filter(({ store }) => !selectedStores.has(store.toLowerCase()))
+      .map(({ store }) => store))].sort();
     if (unclassified.length) fail(`unclassified archive store(s): ${unclassified.join(', ')}`);
+    const aliases = archiveFamilies.filter(({ store }) => selectedStores.get(store.toLowerCase()) !== store)
+      .map(({ name }) => name).sort();
+    if (aliases.length) fail(`archive store-family alias differs by case: ${aliases.join(', ')}`);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
