@@ -10,7 +10,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
-import { sourceObservationDigest } from './source-coverage.mjs';
+import { observeSourceUniverse, sourceObservationDigest } from './source-coverage.mjs';
 import { reconcileGistReceipts } from './gist-receipts.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 
@@ -406,6 +406,17 @@ export async function materializeGistReceipts({ observation, assetsDir, fetchGis
   return { sourceFile, receipt };
 }
 
+export async function observeAndMaterializeGistReceipts({ owner = 'ruvnet', assetsDir,
+  observe = observeSourceUniverse, fetchGist, fetchBody, now } = {}) {
+  const assets = path.resolve(assetsDir || '');
+  const externalFile = path.join(assets, 'external-sources.json');
+  const policy = fs.existsSync(externalFile) ? readJson(externalFile, 'external source policy') : { sources: [] };
+  if (!Array.isArray(policy.sources)) fail('external source policy has no sources array');
+  const observation = await observe({ owner, externalSources: policy.sources });
+  const materialized = await materializeGistReceipts({ observation, assetsDir: assets, fetchGist, fetchBody, now });
+  return { observation, ...materialized };
+}
+
 export function prepareCorpusCandidate({
   root = DEFAULT_ROOT,
   assetsDir,
@@ -471,6 +482,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (!fs.existsSync(privateFence)) fail(`canonical private-store fence missing (${privateFence})`);
   fs.copyFileSync(privateFence, path.join(assetsDir, 'PRIVATE-STORES.json'), fs.constants.COPYFILE_EXCL);
   fs.rmSync(extractParent, { recursive: true, force: true });
+  await observeAndMaterializeGistReceipts({ owner, assetsDir });
   const coverageScript = path.join(root, 'scripts', 'source-coverage.mjs');
   checked(defaultRun, process.execPath, [coverageScript, '--owner', owner, '--assets', assetsDir, '--write'], { stdio: 'inherit' });
   const policy = readJson(coverageFile, 'source coverage policy');

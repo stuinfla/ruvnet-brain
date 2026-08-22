@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import * as corpusReconcileModule from '../../scripts/corpus-reconcile.mjs';
 import {
   assertBootstrapIdentity,
   executeReconciliation,
@@ -379,6 +380,37 @@ describe('generated gist receipt lifecycle', () => {
     moved.gists.rows[0].updated_at = '2026-08-22T03:00:00Z';
     await expect(materializeGistReceipts({ observation: moved, assetsDir: assets }))
       .rejects.toThrow(/exact sealed source observation/);
+  });
+
+  it('observes the complete configured source universe before materializing production gist receipts', async () => {
+    expect(corpusReconcileModule.observeAndMaterializeGistReceipts).toBeTypeOf('function');
+    const assets = temp();
+    const externalSources = [{ store: 'external', repository: 'ruvnet/external' }];
+    fs.writeFileSync(path.join(assets, 'external-sources.json'), JSON.stringify({ sources: externalSources }));
+    const gistId = 'c'.repeat(32);
+    const listedFile = { filename: 'notes.md', raw_url: `https://gist.example/${gistId}/raw/${'d'.repeat(40)}/notes.md`,
+      size: 5, type: 'text/plain', language: 'Markdown' };
+    const base = { schemaVersion: 1, kind: 'ruvnet-brain-source-observation', owner: 'ruvnet',
+      observedAt: '2026-08-22T03:00:00Z', repositories: { rows: [], expected: 0, pages: [] },
+      gists: { rows: [{ id: gistId, updated_at: '2026-08-22T02:00:00Z', files: { 'notes.md': listedFile } }],
+        expected: 1, pages: [] } };
+    const observation = { ...base, observationSha256: sourceObservationDigest(base) };
+    const observe = ({ owner, externalSources: received }) => {
+      expect(owner).toBe('ruvnet');
+      expect(received).toEqual(externalSources);
+      return observation;
+    };
+
+    const result = await corpusReconcileModule.observeAndMaterializeGistReceipts({ owner: 'ruvnet', assetsDir: assets,
+      observe,
+      fetchGist: async () => ({ id: gistId, updated_at: '2026-08-22T02:00:00Z',
+        history: [{ version: 'd'.repeat(40) }],
+        files: { 'notes.md': { ...listedFile, content: 'notes', truncated: false } } }),
+      now: () => '2026-08-22T04:00:00Z' });
+    expect(result.observation).toEqual(observation);
+    expect(result.receipt).toMatchObject({ schemaVersion: 3,
+      sourceObservationSha256: observation.observationSha256, gistSet: { count: 1 } });
+    expect(JSON.parse(fs.readFileSync(path.join(assets, 'ruv-gists.sources.json'), 'utf8'))).toEqual(result.receipt);
   });
 });
 
