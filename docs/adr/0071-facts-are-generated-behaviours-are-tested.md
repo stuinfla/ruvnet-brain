@@ -3,7 +3,7 @@ id: ADR-071
 title: Facts are generated, behaviours are tested — retire the fact-gates
 status: Proposed
 date: 2026-08-10
-updated: 2026-08-21
+updated: 2026-08-22
 updated_source: derived-from-git
 authors: [Stuart Kerr, Claude Code]
 tags: [architecture, gates, drift, simplification]
@@ -110,3 +110,9 @@ publisher, host-convergence, idle-exit and refusal tests all stay.
   this ADR is therefore a hand audit of the 17, file by file, sorting each into GENERATED (retire),
   BEHAVIOUR (keep), or CONSTANT (keep). Acting on the unaudited number would repeat the mistake this
   ADR exists to stop: trusting a measurement because it was convenient.
+
+## Currency log
+
+| Date | What changed | Why (with referents) |
+|---|---|---|
+| 2026-08-22 | `tests/unit/no-restated-truth.test.mjs`'s `isDebt()` now strips lines carrying a `// sync-version-ignore` comment before testing them against `RESTATED`. Dream Cycle 2026-08-22 (`enforcement-integrity`/`gate-teeth`) found the marker this gate's own failure message names as the sanctioned remediation ("add `sync-version-ignore` on the line and say why") was never read by `isDebt()` — an annotated line was flagged identically to an unannotated one, proven live with a red-before/green-after TEETH test. Zero of the 6 files (28 line occurrences, re-grepped directly — an earlier draft of this row said "7", which conflated a prose-only mention in `sync-version-drift.test.mjs`'s comments with a real per-line annotation; corrected before this ADR was touched again, per an independent adversarial critic's review of this same diff) currently using the marker were exercising it as a real exemption — each already escaped the narrow `RESTATED` regexes for an unrelated reason (a `v`-prefixed version string, a literal passed as a function argument rather than an assertion, a variable reference) — so this closes a latent gap rather than fixing a live false-positive. The strip also requires a `//` prefix, not a bare substring match, so the marker cannot be smuggled inside a string literal under test to blanket-exempt a real, unrelated offender sharing its line — a second finding from the same critic pass, fixed before this diff shipped. This is exactly the disease this ADR names — a documented remediation is a restated claim about the gate's own behaviour until the gate itself derives it — applied to the frozen-debt gate itself, not yet to the 17-file sweep this ADR still has open. | See `tests/unit/no-restated-truth.test.mjs`. |

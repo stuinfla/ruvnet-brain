@@ -51,7 +51,24 @@ const RESTATED = [
   /toContain\('\d{2,}[\d,]*'\)/,              // toContain('138,140')
 ];
 
-const isDebt = (source) => RESTATED.some((re) => re.test(source));
+/**
+ * The guard's own remediation, quoted verbatim in the failure message below: "If the literal
+ * genuinely IS the fixture, add `sync-version-ignore` on the line and say why." A line carrying that
+ * marker AS A COMMENT is the sanctioned way a new fixture literal passes this gate without going on
+ * the frozen debt list. Strip such lines before testing so the marker is an actual gate input, not
+ * prose the gate never reads. Requires the `//` prefix (not a bare substring match) so the marker
+ * cannot be smuggled into a string literal under test to blanket-exempt a real offender sharing its
+ * line — the same reason `no-restated-truth`'s own TEETH fixtures below are excluded by filename, not
+ * by hoping their content never collides with an unrelated check.
+ */
+const SYNC_VERSION_IGNORE = /\/\/\s*sync-version-ignore\b/;
+const stripSyncVersionIgnoredLines = (source) =>
+  source
+    .split('\n')
+    .filter((line) => !SYNC_VERSION_IGNORE.test(line))
+    .join('\n');
+
+const isDebt = (source) => RESTATED.some((re) => re.test(stripSyncVersionIgnoredLines(source)));
 
 const debt = JSON.parse(fs.readFileSync(DEBT_FILE, 'utf8'));
 const frozen = new Set(debt.files);
@@ -106,5 +123,23 @@ describe('no restated truth — a gate may not spell a fact it could derive', ()
     expect(isDebt('expect(rows.length).toBe(3)'), 'a small count is not a restated truth').toBe(false);
     expect(isDebt("expect(state).toBe('aborted')"), 'a state name is not a number').toBe(false);
     expect(isDebt('expect(result.status).toBe(0)'), 'an exit code is not a restated truth').toBe(false);
+  });
+
+  it('TEETH: sync-version-ignore is a real gate input, not prose the gate never reads', () => {
+    // The failure message on the first test in this file tells the author to add this exact marker.
+    // Prove the marker actually changes the verdict, and that an identical unmarked line still does not.
+    const unmarked = "expect(v).toBe('4.0.28');";
+    const marked = "expect(v).toBe('4.0.28'); // sync-version-ignore: the example IS the fixture";
+    expect(isDebt(unmarked), 'an unmarked restated truth must still be caught').toBe(true);
+    expect(isDebt(marked), "the guard's own documented remediation must actually suppress the line it annotates").toBe(false);
+    // A marker on an unrelated line must not blanket-exempt a real offender elsewhere in the same file.
+    const mixedFile = [unmarked, marked].join('\n');
+    expect(isDebt(mixedFile), 'one annotated line must not exempt a different, unmarked offending line').toBe(true);
+    // The marker text appearing INSIDE a string under test — not as a `//` comment — must not smuggle
+    // an exemption for a real, unrelated offender sharing that same line. Found live by an independent
+    // adversarial critic reviewing this diff, 2026-08-22: a naive substring match on the raw line would
+    // have let this through.
+    const smuggled = "expect(v).toBe('4.0.28'); expect(x).toBe('sync-version-ignore');";
+    expect(isDebt(smuggled), 'the marker text inside a string literal is not a comment and must not suppress the line').toBe(true);
   });
 });
