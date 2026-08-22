@@ -4,6 +4,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { coverageGenerationFor, digest } from '../../scripts/coverage-integrity.mjs';
+import { getVersionTag } from '../../scripts/version.mjs';
 import {
   buildRetrievalCanaryPlan,
   runRetrievalCanaries,
@@ -37,7 +38,7 @@ function fixture() {
     snapshotRoot: base.snapshotRoot, sourceObservationSha256: base.sourceObservationSha256, rows,
     enumerationReceipt, policyDispositionDigests: [], exemptionDigests: [] });
   const coverage = { ...base, coverageGeneration };
-  const baseline = { schemaVersion: 1, kind: 'ruvnet-brain-verified-public-baseline', tag: 'v4.2.2-dev',
+  const baseline = { schemaVersion: 1, kind: 'ruvnet-brain-verified-public-baseline', tag: getVersionTag(),
     archiveSha256: '1'.repeat(64), archiveBytes: 1234, archiveManifestSha256: '2'.repeat(64),
     verificationReceiptSha256: '3'.repeat(64), stores: ['old-a', 'old-b', 'old-c', 'old-d'], storeCount: 4 };
   const coverageIdentity = { sha256: digest(coverage), bytes: Buffer.byteLength(JSON.stringify(coverage)) };
