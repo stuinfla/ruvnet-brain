@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { acquireRefreshLock, beginRefreshSettlement, openRefreshReceipt, recordRefreshPhase,
   recordRefreshAdvisory, releaseRefreshLock, REFRESH_PHASE_CONTRACT, REQUIRED_REFRESH_PHASES,
   settleRefreshRun, UPDATE_REFRESH_PHASES } from '../../kb/refresh-run.mjs';
+import { getVersion } from '../../scripts/version.mjs';
 
 const roots = [];
 const fixture = () => {
@@ -80,7 +81,7 @@ describe('whole refresh transaction', () => {
   it('writes an append-only phase ledger and exactly one terminal state', () => {
     const { root, kbDir } = fixture();
     const lock = acquireRefreshLock({ kbDir, pid: 101, isAlive: () => true });
-    const handle = openRefreshReceipt({ brainHome: root, lock, action: 'nightly', desiredVersion: '4.2.3-dev',
+    const handle = openRefreshReceipt({ brainHome: root, lock, action: 'nightly', desiredVersion: getVersion(),
       now: () => '2026-08-21T12:00:00Z' });
     for (const phase of REQUIRED_REFRESH_PHASES) {
       recordRefreshPhase(handle, phase, 'PASS', { coverageGeneration: 'abc' }, () => '2026-08-21T12:01:00Z');
