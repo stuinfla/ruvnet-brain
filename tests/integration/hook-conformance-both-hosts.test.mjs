@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveBash } from '../../plugin/scripts/hook-shim-bash.mjs';
-import { reapDetached } from '../helpers/reap-detached.mjs';
+import { rmAfterReap } from '../helpers/reap-detached.mjs';
 
 /**
  * EVERY HOOK, BOTH HOSTS, IN A PROJECT THAT IS NOT THIS ONE.
@@ -46,11 +46,8 @@ const gated = BASH ? it : it.skip;
  * receipt, and only then remove its files. Retrying `rmSync` against a live writer is a livelock:
  * integration run 32563909774 spent 917s in each of two cases and still ended at ENOTEMPTY.
  */
-const RM_OPTS = { recursive: true, force: true, maxRetries: 20, retryDelay: 50 };
-
 function cleanupStranger(dir) {
-  reapDetached(path.join(dir, '.conformance-home'));
-  fs.rmSync(dir, RM_OPTS);
+  rmAfterReap(path.join(dir, '.conformance-home'), dir);
 }
 
 /** A project this plugin has never seen: no git, no kb, no .swarm, no docs/adr, no evals. */
