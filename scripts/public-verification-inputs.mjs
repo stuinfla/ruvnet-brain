@@ -236,6 +236,72 @@ function retrospectiveBaselineFromTree({ extractedRoot, bundleFile, expectedTag,
   return { receipt, bytes, fileSha256: crypto.createHash('sha256').update(bytes).digest('hex'), root, archiveManifest };
 }
 
+function observedBaselineFromTree({ extractedRoot, bundleFile, expectedTag, expectedSha256, expectedBytes }) {
+  const ledgerFile = findNamed(extractedRoot, 'RVF-GENERATIONS.json');
+  const root = path.dirname(ledgerFile);
+  const { value: ledger } = readJson(ledgerFile, 'historical baseline generation ledger');
+  const ledgerNames = Object.keys(ledger?.stores || {}).sort();
+  if (ledger.schemaVersion !== 1 || typeof ledger.brainVersion !== 'string' || !ledger.brainVersion
+    || typeof ledger.releaseTag !== 'string' || !ledger.releaseTag || !ledgerNames.length
+    || new Set(ledgerNames.map((name) => name.toLowerCase())).size !== ledgerNames.length) {
+    fail('historical baseline generation ledger is malformed');
+  }
+  const archive = namedIdentity(bundleFile);
+  if (ledger.releaseTag !== expectedTag) fail('historical baseline differs from the expected public release tag');
+  if (!HEX64.test(String(expectedSha256 || '')) || archive.sha256 !== expectedSha256) {
+    fail('historical baseline differs from the expected public archive SHA-256');
+  }
+  if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 1 || archive.bytes !== expectedBytes) {
+    fail('historical baseline differs from the expected public archive byte length');
+  }
+  const archiveFiles = filesUnder(root, '', { includeManifest: true });
+  const archiveManifest = { schemaVersion: 1, kind: 'ruvnet-brain-retrospective-archive-manifest',
+    fileCount: archiveFiles.length, totalBytes: archiveFiles.reduce((total, row) => total + row.bytes, 0),
+    files: archiveFiles };
+  const actualRvfs = new Map(archiveFiles.filter(({ path: relative }) => relative.endsWith('.big.rvf')).map((row) => {
+    const name = path.posix.basename(row.path).slice(0, -'.big.rvf'.length).toLowerCase();
+    return [name, { file: path.posix.basename(row.path), sha256: row.sha256, bytes: row.bytes }];
+  }));
+  if (actualRvfs.size !== archiveFiles.filter(({ path: relative }) => relative.endsWith('.big.rvf')).length) {
+    fail('historical baseline RVF names have case-fold aliases');
+  }
+  const ledgerByName = new Map(ledgerNames.map((name) => [name.toLowerCase(), ledger.stores[name]]));
+  const allNames = [...new Set([...actualRvfs.keys(), ...ledgerByName.keys()])].sort();
+  const ledgerDiscrepancies = [];
+  for (const name of allNames) {
+    const actual = actualRvfs.get(name);
+    const expected = ledgerByName.get(name);
+    if (!expected) ledgerDiscrepancies.push({ store: name, type: 'unreceipted-rvf', archive: actual });
+    else if (!actual) ledgerDiscrepancies.push({ store: name, type: 'missing-rvf', ledger: {
+      file: expected.file, sha256: expected.sha256, bytes: expected.bytes } });
+    else if (expected.file !== actual.file || expected.sha256 !== actual.sha256 || expected.bytes !== actual.bytes) {
+      ledgerDiscrepancies.push({ store: name, type: 'byte-identity-mismatch',
+        ledger: { file: expected.file, sha256: expected.sha256, bytes: expected.bytes }, archive: actual });
+    }
+  }
+  const stores = [...actualRvfs].map(([name, actual]) => {
+    const row = ledgerByName.get(name) || {};
+    return { name, ...actual, model: typeof row.model === 'string' ? row.model : null,
+      dimensions: Number.isInteger(row.dimensions) ? row.dimensions : null,
+      sourceCommit: row.sourceCommit === null ? null : String(row.sourceCommit || '').toLowerCase() || null,
+      builtUtc: typeof row.builtUtc === 'string' ? row.builtUtc : null };
+  });
+  const provenanceGaps = stores.filter(({ sourceCommit }) => sourceCommit === null).map(({ name }) => name);
+  const discrepancyDigest = digest({ ledgerDiscrepancies, provenanceGaps });
+  const payload = { schemaVersion: 1, kind: 'ruvnet-brain-observed-failed-public-baseline', integrity: 'DEGRADED',
+    historicalCorpusReceipt: false, candidateVerificationEligible: false, releaseTag: ledger.releaseTag,
+    brainVersion: ledger.brainVersion, archive, archiveManifestSha256: digest(archiveManifest),
+    generationLedger: namedIdentity(ledgerFile), storeCount: stores.length,
+    storeSetSha256: digest(stores.map(({ name }) => name)), stores, ledgerDiscrepancies, provenanceGaps,
+    discrepancyDigest, limitations: [
+      'no historical corpus receipt was published with these bytes',
+      'observation binds actual public archive members but is not corpus, candidate, or release integrity proof',
+    ] };
+  const receipt = { ...payload, receiptSha256: digest(payload) };
+  const bytes = encoded(receipt);
+  return { receipt, bytes, fileSha256: crypto.createHash('sha256').update(bytes).digest('hex'), root, archiveManifest };
+}
+
 function writeExactFile(file, bytes, label) {
   const output = path.resolve(file);
   if (fs.existsSync(output)) {
@@ -265,6 +331,20 @@ export async function createRetrospectiveBaselineVerification({ baselineBundle,
   }
 }
 
+export async function createObservedBaselineReceipt({ baselineBundle, expectedTag, expectedSha256, expectedBytes,
+  outFile = 'release-evidence/baseline-observation-receipt.json' } = {}) {
+  const archive = trustedFile(baselineBundle, 'baseline archive');
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'observed-baseline-'));
+  try {
+    try { await extractZip(archive, temp); }
+    catch (error) { fail(`baseline archive extraction failed: ${error.message}`); }
+    const result = observedBaselineFromTree({ extractedRoot: temp, bundleFile: archive,
+      expectedTag, expectedSha256, expectedBytes });
+    writeExactFile(outFile, result.bytes, 'baseline-observation-receipt.json');
+    return result;
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+}
+
 function writeExactOutputs(outDir, outputs) {
   const root = path.resolve(outDir || 'release-evidence');
   for (const [name, bytes] of Object.entries(outputs)) {
@@ -282,7 +362,7 @@ function writeExactOutputs(outDir, outputs) {
 }
 
 export async function createPublicVerificationInputs({ baselineBundle, candidateBundle,
-  candidatePackage, oracleFile, repo = process.cwd(), outDir = 'release-evidence' } = {}) {
+  candidatePackage, oracleFile, repo = process.cwd(), outDir = 'release-evidence', baselineMode = 'verified' } = {}) {
   const baselineArchive = trustedFile(baselineBundle, 'baseline archive');
   const candidateArchive = trustedFile(candidateBundle, 'candidate archive');
   const packageFile = trustedFile(candidatePackage, 'candidate package');
@@ -301,23 +381,31 @@ export async function createPublicVerificationInputs({ baselineBundle, candidate
     const candidateTree = validateArchive(candidateExtracted);
     const candidateResult = validateCandidate({ root: candidateTree.root, bundleFile: candidateArchive, packageFile });
     const seed = candidateResult.coverage.corpusSeed;
-    const baselineProof = retrospectiveBaselineFromTree({ extractedRoot: baselineExtracted, bundleFile: baselineArchive,
-      expectedTag: seed.tag, expectedSha256: seed.archiveSha256, expectedBytes: seed.archiveBytes });
+    if (!['verified', 'observed'].includes(baselineMode)) fail('baseline mode must be verified or observed');
+    const baselineProof = baselineMode === 'observed'
+      ? observedBaselineFromTree({ extractedRoot: baselineExtracted, bundleFile: baselineArchive,
+        expectedTag: seed.tag, expectedSha256: seed.archiveSha256, expectedBytes: seed.archiveBytes })
+      : retrospectiveBaselineFromTree({ extractedRoot: baselineExtracted, bundleFile: baselineArchive,
+        expectedTag: seed.tag, expectedSha256: seed.archiveSha256, expectedBytes: seed.archiveBytes });
     if (seed.archiveSha256 !== baselineProof.receipt.archive.sha256
       || seed.archiveBytes !== baselineProof.receipt.archive.bytes) {
       fail('baseline archive bytes differ from release coverage');
     }
-    if (seed.receiptSha256 !== baselineProof.fileSha256) {
-      fail('retrospective baseline verification receipt differs from release coverage');
-    }
+    if (seed.receiptSha256 !== baselineProof.fileSha256) fail('baseline receipt differs from release coverage');
     if (seed.tag !== baselineProof.receipt.releaseTag) {
       fail('baseline release tag differs from release coverage');
     }
     const baselineStores = baselineProof.receipt.stores.map(({ name }) => name);
-    const baseline = { schemaVersion: 1, kind: 'ruvnet-brain-verified-public-baseline', tag: seed.tag,
+    const baseline = { schemaVersion: 1,
+      kind: baselineMode === 'observed' ? 'ruvnet-brain-observed-failed-public-baseline' : 'ruvnet-brain-verified-public-baseline',
+      ...(baselineMode === 'observed' ? { integrity: 'DEGRADED', historicalCorpusReceipt: false,
+        candidateVerificationEligible: false, observationReceiptSha256: baselineProof.fileSha256,
+        discrepancyDigest: baselineProof.receipt.discrepancyDigest,
+        ledgerDiscrepancies: baselineProof.receipt.ledgerDiscrepancies,
+        provenanceGaps: baselineProof.receipt.provenanceGaps } : {}), tag: seed.tag,
       archiveSha256: seed.archiveSha256, archiveBytes: seed.archiveBytes,
       archiveManifestSha256: baselineProof.receipt.archiveManifestSha256,
-      verificationReceiptSha256: baselineProof.fileSha256,
+      ...(baselineMode === 'verified' ? { verificationReceiptSha256: baselineProof.fileSha256 } : {}),
       stores: baselineStores, storeCount: baselineStores.length };
     const { value: queryEvidence } = readJson(oraclePath, 'independent strict-ancestor query oracle');
     validateRetrievalQueryEvidence(queryEvidence);
@@ -326,7 +414,7 @@ export async function createPublicVerificationInputs({ baselineBundle, candidate
       candidate: candidateResult.candidate, coverageIdentity: candidateResult.coverageIdentity,
       queryEvidence, assetsDir: candidateTree.root });
     writeExactOutputs(outDir, {
-      'baseline-verification-receipt.json': baselineProof.bytes,
+      [baselineMode === 'observed' ? 'baseline-observation-receipt.json' : 'baseline-verification-receipt.json']: baselineProof.bytes,
       'COVERAGE.json': candidateResult.coverageBytes,
       'retrieval-baseline.json': encoded(baseline),
       'retrieval-candidate.json': encoded(candidateResult.candidate),
@@ -353,6 +441,16 @@ export async function main(argv = process.argv.slice(2)) {
       stores: result.receipt.storeCount, receiptFileSha256: result.fileSha256 }));
     return result;
   }
+  if (argv[0] === 'observe-baseline') {
+    const result = await createObservedBaselineReceipt({ baselineBundle: arg(argv, '--baseline-bundle'),
+      expectedTag: arg(argv, '--expected-tag'), expectedSha256: arg(argv, '--expected-sha256'),
+      expectedBytes: Number(arg(argv, '--expected-bytes')),
+      outFile: arg(argv, '--out') || 'release-evidence/baseline-observation-receipt.json' });
+    console.log(JSON.stringify({ ok: true, mode: 'observe-baseline', releaseTag: result.receipt.releaseTag,
+      stores: result.receipt.storeCount, discrepancies: result.receipt.ledgerDiscrepancies.length,
+      provenanceGaps: result.receipt.provenanceGaps.length, receiptFileSha256: result.fileSha256 }));
+    return result;
+  }
   const result = await createPublicVerificationInputs({
     baselineBundle: arg(argv, '--baseline-bundle'),
     candidateBundle: arg(argv, '--candidate-bundle'),
@@ -360,6 +458,7 @@ export async function main(argv = process.argv.slice(2)) {
     oracleFile: arg(argv, '--oracle'),
     repo: arg(argv, '--repo') || process.cwd(),
     outDir: arg(argv, '--out-dir') || 'release-evidence',
+    baselineMode: argv.includes('--observed-baseline') ? 'observed' : 'verified',
   });
   console.log(JSON.stringify({ ok: true, sourceSha: result.candidate.sourceSha,
     coverageGeneration: result.coverage.releaseCoverageGeneration, cases: result.plan.cases.length }));

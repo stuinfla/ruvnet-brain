@@ -11,6 +11,7 @@ import {
   sealRetrievalQueryEvidence,
   validateRetrievalCanaryPlan,
   validateRetrievalCanaryReceipt,
+  validatePlanAgainstCoverage,
   verifyQueryOracleSource,
 } from '../../scripts/retrieval-canary.mjs';
 
@@ -113,6 +114,25 @@ describe('coverage-derived retrieval canaries', () => {
     expect(validateRetrievalCanaryPlan(a)).toBe(a);
   });
 
+  it('binds a degraded observation denominator without making it candidate-verification eligible', () => {
+    const input = fixture();
+    input.baseline = { schemaVersion: 1, kind: 'ruvnet-brain-observed-failed-public-baseline',
+      integrity: 'DEGRADED', historicalCorpusReceipt: false, candidateVerificationEligible: false,
+      tag: input.baseline.tag, archiveSha256: input.baseline.archiveSha256,
+      archiveBytes: input.baseline.archiveBytes, archiveManifestSha256: input.baseline.archiveManifestSha256,
+      observationReceiptSha256: '7'.repeat(64), discrepancyDigest: '8'.repeat(64),
+      ledgerDiscrepancies: [{ store: 'old-a', type: 'byte-identity-mismatch' }], provenanceGaps: ['old-a'],
+      stores: input.baseline.stores, storeCount: input.baseline.storeCount };
+    const plan = buildRetrievalCanaryPlan(input);
+    expect(plan.baseline).toMatchObject({ integrity: 'DEGRADED', candidateVerificationEligible: false,
+      observationReceiptSha256: '7'.repeat(64), discrepancyDigest: '8'.repeat(64) });
+    expect(() => validatePlanAgainstCoverage(plan, input.coverage)).toThrow(/not candidate-verification eligible/i);
+    expect(validatePlanAgainstCoverage(plan, input.coverage, { allowObservedBaseline: true })).toBe(plan);
+    const tampered = structuredClone(plan);
+    tampered.baseline.discrepancyDigest = '9'.repeat(64);
+    expect(() => validateRetrievalCanaryPlan(tampered)).toThrow(/digest mismatch/);
+  });
+
   it('fails closed when eligible coverage is stale or the failed-seed delta is absent', () => {
     const stale = fixture();
     stale.coverage.rows[0].status = 'STALE';
@@ -129,6 +149,14 @@ describe('coverage-derived retrieval canaries', () => {
     plan.cases[0].query += ' tampered';
     expect(() => validateRetrievalCanaryPlan(plan)).toThrow(/digest mismatch/);
     expect(() => buildRetrievalCanaryPlan({ ...input, readPassages: () => [] })).toThrow(/no queryable/);
+  });
+
+  it('rejects a non-canonical baseline kind even with a verification-shaped receipt', () => {
+    const input = fixture();
+    const plan = buildRetrievalCanaryPlan({ ...input, legacySampleSize: 4 });
+    plan.baseline.kind = 'foreign-verification-shaped-baseline';
+    plan.planSha256 = digest(Object.fromEntries(Object.entries(plan).filter(([key]) => key !== 'planSha256')));
+    expect(() => validateRetrievalCanaryPlan(plan)).toThrow(/malformed/);
   });
 
   it('derives Recall@10 and delta citation rate from exact repo/path hits', async () => {

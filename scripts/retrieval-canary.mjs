@@ -113,12 +113,17 @@ export function verifyQueryOracleSource(queryEvidence, candidateSourceSha, { cwd
 }
 
 const sha256Buffer = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
-
 export function validateRetrievalCanaryPlan(plan) {
+  const observedBaseline = plan?.baseline?.kind === 'ruvnet-brain-observed-failed-public-baseline';
+  const baselineReceiptValid = observedBaseline
+    ? plan.baseline.integrity === 'DEGRADED' && plan.baseline.historicalCorpusReceipt === false && plan.baseline.candidateVerificationEligible === false
+      && HEX64.test(String(plan.baseline.observationReceiptSha256 || '')) && HEX64.test(String(plan.baseline.discrepancyDigest || ''))
+    : plan?.baseline?.kind === 'ruvnet-brain-verified-public-baseline'
+      && HEX64.test(String(plan?.baseline?.verificationReceiptSha256 || ''));
   if (plan?.schemaVersion !== 2 || plan?.kind !== 'ruvnet-brain-retrieval-canary-plan'
     || !HEX64.test(String(plan.coverage?.sha256 || '')) || !Number.isSafeInteger(plan.coverage?.bytes)
     || plan.coverage.bytes < 1 || !HEX64.test(String(plan.coverage?.releaseCoverageGeneration || ''))
-    || !HEX64.test(String(plan.baseline?.archiveSha256 || '')) || !HEX64.test(String(plan.baseline?.verificationReceiptSha256 || ''))
+    || !HEX64.test(String(plan.baseline?.archiveSha256 || '')) || !baselineReceiptValid
     || !HEX64.test(String(plan.baseline?.archiveManifestSha256 || '')) || !Number.isSafeInteger(plan.baseline?.archiveBytes)
     || !Number.isSafeInteger(plan.baseline?.storeCount) || plan.baseline.storeCount < 1
     || !Array.isArray(plan.baseline?.stores) || plan.baseline.stores.length !== plan.baseline.storeCount
@@ -171,9 +176,11 @@ export function validateRetrievalCanaryPlan(plan) {
   if (digest(planPayload(plan)) !== plan.planSha256) throw new Error('retrieval canary plan digest mismatch');
   return plan;
 }
-
-export function validatePlanAgainstCoverage(plan, coverage) {
+export function validatePlanAgainstCoverage(plan, coverage, { allowObservedBaseline = false } = {}) {
   validateRetrievalCanaryPlan(plan);
+  if (plan.baseline.kind === 'ruvnet-brain-observed-failed-public-baseline' && !allowObservedBaseline) {
+    throw new Error('observed failed-public baseline is not candidate-verification eligible');
+  }
   const checked = validateCoverageLedger(coverage);
   if (!checked.valid) throw new Error(`coverage ledger is invalid: ${checked.failures.join('; ')}`);
   const generation = coverage.kind === 'ruvnet-brain-release-coverage'
@@ -193,7 +200,6 @@ export function validatePlanAgainstCoverage(plan, coverage) {
   }
   return plan;
 }
-
 export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, coverageIdentity = null, queryEvidence, assetsDir = '.',
   readPassages = defaultReadPassages, legacySampleSize } = {}) {
   const checked = validateCoverageLedger(coverage);
@@ -201,9 +207,16 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
   const coverageGeneration = coverage.kind === 'ruvnet-brain-release-coverage'
     ? coverage.releaseCoverageGeneration : coverage.coverageGeneration;
   if (!HEX64.test(String(coverageGeneration || ''))) throw new Error('coverage has no exact generation identity');
-  if (baseline?.schemaVersion !== 1 || baseline?.kind !== 'ruvnet-brain-verified-public-baseline'
+  const observedBaseline = baseline?.kind === 'ruvnet-brain-observed-failed-public-baseline';
+  const receiptValid = observedBaseline
+    ? baseline?.integrity === 'DEGRADED' && baseline?.historicalCorpusReceipt === false && baseline?.candidateVerificationEligible === false
+      && HEX64.test(String(baseline?.observationReceiptSha256 || '')) && HEX64.test(String(baseline?.discrepancyDigest || ''))
+      && Array.isArray(baseline?.ledgerDiscrepancies) && Array.isArray(baseline?.provenanceGaps)
+    : baseline?.kind === 'ruvnet-brain-verified-public-baseline'
+      && HEX64.test(String(baseline?.verificationReceiptSha256 || ''));
+  if (baseline?.schemaVersion !== 1 || !receiptValid
     || !HEX64.test(String(baseline.archiveSha256 || '')) || !Number.isSafeInteger(baseline.archiveBytes) || baseline.archiveBytes < 1
-    || !HEX64.test(String(baseline.archiveManifestSha256 || '')) || !HEX64.test(String(baseline.verificationReceiptSha256 || ''))
+    || !HEX64.test(String(baseline.archiveManifestSha256 || ''))
     || !Array.isArray(baseline.stores) || baseline.stores.length === 0 || baseline.storeCount !== baseline.stores.length
     || new Set(baseline.stores.map((store) => String(store).toLowerCase())).size !== baseline.stores.length) {
     throw new Error('verified failed-public baseline identity is malformed');
@@ -221,10 +234,10 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
     throw new Error('candidate public artifact identity is malformed');
   }
   if (coverage.kind === 'ruvnet-brain-release-coverage') {
+    const baselineReceiptSha256 = observedBaseline ? baseline.observationReceiptSha256 : baseline.verificationReceiptSha256;
     if (baseline.tag !== coverage.corpusSeed?.tag || baseline.archiveSha256 !== coverage.corpusSeed?.archiveSha256
-      || baseline.archiveBytes !== coverage.corpusSeed?.archiveBytes
-      || baseline.verificationReceiptSha256 !== coverage.corpusSeed?.receiptSha256) {
-      throw new Error('verified baseline differs from the release corpus seed identity');
+      || baseline.archiveBytes !== coverage.corpusSeed?.archiveBytes || baselineReceiptSha256 !== coverage.corpusSeed?.receiptSha256) {
+      throw new Error('failed-public baseline differs from the release corpus seed identity');
     }
     if (candidate.publicLedgerSha256 !== coverage.generationLedger?.sha256
       || candidate.publicLedgerBytes !== coverage.generationLedger?.bytes
@@ -306,8 +319,11 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
     kind: 'ruvnet-brain-retrieval-canary-plan',
     coverage: { sha256: coverageIdentity.sha256, bytes: coverageIdentity.bytes,
       releaseCoverageGeneration: coverageGeneration },
-    baseline: { tag: baseline.tag, archiveSha256: baseline.archiveSha256, archiveBytes: baseline.archiveBytes,
-      archiveManifestSha256: baseline.archiveManifestSha256, verificationReceiptSha256: baseline.verificationReceiptSha256,
+    baseline: { kind: baseline.kind, tag: baseline.tag, archiveSha256: baseline.archiveSha256, archiveBytes: baseline.archiveBytes,
+      archiveManifestSha256: baseline.archiveManifestSha256,
+      ...(observedBaseline ? { integrity: baseline.integrity, historicalCorpusReceipt: false,
+        candidateVerificationEligible: false, observationReceiptSha256: baseline.observationReceiptSha256,
+        discrepancyDigest: baseline.discrepancyDigest } : { verificationReceiptSha256: baseline.verificationReceiptSha256 }),
       stores: ordered(baseline.stores.map((store) => String(store).toLowerCase())),
       storeCount: baseline.storeCount,
       storeSetSha256: digest(ordered(baseline.stores.map((store) => String(store).toLowerCase()))) },
@@ -333,9 +349,8 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
     cases,
   };
   const plan = validateRetrievalCanaryPlan({ ...payload, planSha256: digest(payload) });
-  return validatePlanAgainstCoverage(plan, coverage);
+  return validatePlanAgainstCoverage(plan, coverage, { allowObservedBaseline: observedBaseline });
 }
-
 function resultRows(value) {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.results)) return value.results;
@@ -346,7 +361,6 @@ function receiptPayload(receipt) {
   const { receiptSha256: _receiptSha256, ...payload } = receipt;
   return payload;
 }
-
 export function validateRetrievalCanaryReceipt(receipt, { plan, requireAcceptance = true } = {}) {
   validateRetrievalCanaryPlan(plan);
   if (receipt?.schemaVersion !== 1 || receipt?.kind !== 'ruvnet-brain-retrieval-canary-receipt'

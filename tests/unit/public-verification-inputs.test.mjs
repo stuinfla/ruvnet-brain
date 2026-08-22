@@ -12,8 +12,10 @@ import {
 import { sealRetrievalQueryEvidence } from '../../scripts/retrieval-canary.mjs';
 import {
   createPublicVerificationInputs,
+  createObservedBaselineReceipt,
   createRetrospectiveBaselineVerification,
 } from '../../scripts/public-verification-inputs.mjs';
+import { validatePlanAgainstCoverage } from '../../scripts/retrieval-canary.mjs';
 import { writeStoredZip } from '../helpers/zip-fixture.mjs';
 
 const roots = [];
@@ -213,6 +215,29 @@ function fixture() {
     candidateRoot, candidateBundle, candidatePackage, oracleFile, outDir: path.join(root, 'release-evidence') };
 }
 
+function resealCandidate(f) {
+  f.coverage.releaseCoverageGeneration = releaseCoverageGenerationFor(f.coverage);
+  writeJson(path.join(f.candidateRoot, 'COVERAGE.json'), f.coverage);
+  fs.rmSync(path.join(f.candidateRoot, 'ARCHIVE-MANIFEST.json'));
+  sealDirectory(f.candidateRoot, { version: '9.9.9', releaseTag: 'v9.9.9' });
+  zipDirectory(f.candidateRoot, f.candidateBundle);
+}
+
+async function observedFixture() {
+  const f = fixture();
+  f.baselineLedger.stores.old.sha256 = '0'.repeat(64);
+  f.baselineLedger.stores.old.sourceCommit = null;
+  writeJson(path.join(f.baselineRoot, 'RVF-GENERATIONS.json'), f.baselineLedger);
+  zipDirectory(f.baselineRoot, f.baselineBundle);
+  const observation = await createObservedBaselineReceipt({ baselineBundle: f.baselineBundle,
+    outFile: path.join(f.root, 'seed-observation.json'), expectedTag: 'v4.2.1-dev',
+    expectedSha256: fileId(f.baselineBundle).sha256, expectedBytes: fileId(f.baselineBundle).bytes });
+  f.coverage.corpusSeed = { tag: 'v4.2.1-dev', archiveSha256: fileId(f.baselineBundle).sha256,
+    archiveBytes: fileId(f.baselineBundle).bytes, receiptSha256: observation.fileSha256 };
+  resealCandidate(f);
+  return { f, observation };
+}
+
 afterEach(() => roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
 
 describe('public verification input producer', () => {
@@ -263,6 +288,61 @@ describe('public verification input producer', () => {
     expect(result.receipt.provenanceGaps).toEqual(['old']);
     expect(result.receipt.stores[0].sourceCommit).toBeNull();
     expect(result.receipt.limitations.join(' ')).toMatch(/null sourceCommit/i);
+  });
+
+  it('records a degraded observation of contradictory public bytes without making it verification-eligible', async () => {
+    const f = fixture();
+    f.baselineLedger.stores.old.sha256 = '0'.repeat(64);
+    f.baselineLedger.stores.old.bytes = 1;
+    f.baselineLedger.stores.old.sourceCommit = null;
+    writeJson(path.join(f.baselineRoot, 'RVF-GENERATIONS.json'), f.baselineLedger);
+    zipDirectory(f.baselineRoot, f.baselineBundle);
+    const result = await createObservedBaselineReceipt({ baselineBundle: f.baselineBundle,
+      outFile: path.join(f.root, 'observed.json'), expectedTag: 'v4.2.1-dev',
+      expectedSha256: fileId(f.baselineBundle).sha256, expectedBytes: fileId(f.baselineBundle).bytes });
+    expect(result.receipt).toMatchObject({ kind: 'ruvnet-brain-observed-failed-public-baseline',
+      integrity: 'DEGRADED', historicalCorpusReceipt: false, candidateVerificationEligible: false,
+      storeCount: 1, provenanceGaps: ['old'] });
+    expect(result.receipt.ledgerDiscrepancies).toHaveLength(1);
+    expect(result.receipt.ledgerDiscrepancies[0]).toMatchObject({ store: 'old', type: 'byte-identity-mismatch' });
+    expect(result.receipt.discrepancyDigest).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('changes observation identity when contradictory bytes are repaired and repacked', async () => {
+    const f = fixture();
+    f.baselineLedger.stores.old.sha256 = '0'.repeat(64);
+    writeJson(path.join(f.baselineRoot, 'RVF-GENERATIONS.json'), f.baselineLedger);
+    zipDirectory(f.baselineRoot, f.baselineBundle);
+    const first = await createObservedBaselineReceipt({ baselineBundle: f.baselineBundle,
+      outFile: path.join(f.root, 'observed-before.json'), expectedTag: 'v4.2.1-dev',
+      expectedSha256: fileId(f.baselineBundle).sha256, expectedBytes: fileId(f.baselineBundle).bytes });
+    f.baselineLedger.stores.old = generation('old', 'd'.repeat(40), path.join(f.baselineRoot, 'old.big.rvf'));
+    writeJson(path.join(f.baselineRoot, 'RVF-GENERATIONS.json'), f.baselineLedger);
+    zipDirectory(f.baselineRoot, f.baselineBundle);
+    const repaired = await createObservedBaselineReceipt({ baselineBundle: f.baselineBundle,
+      outFile: path.join(f.root, 'observed-after.json'), expectedTag: 'v4.2.1-dev',
+      expectedSha256: fileId(f.baselineBundle).sha256, expectedBytes: fileId(f.baselineBundle).bytes });
+    expect(repaired.fileSha256).not.toBe(first.fileSha256);
+    expect(repaired.receipt.archiveManifestSha256).not.toBe(first.receipt.archiveManifestSha256);
+    expect(repaired.receipt.discrepancyDigest).not.toBe(first.receipt.discrepancyDigest);
+  });
+
+  it('binds an observed denominator into the retrieval plan but cannot satisfy candidate verification', async () => {
+    const { f, observation } = await observedFixture();
+    const result = await createPublicVerificationInputs({ ...f, baselineMode: 'observed' });
+    expect(result.plan.baseline).toMatchObject({ integrity: 'DEGRADED', candidateVerificationEligible: false,
+      discrepancyDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      observationReceiptSha256: observation.fileSha256 });
+    expect(() => validatePlanAgainstCoverage(result.plan, result.coverage)).toThrow(/not candidate-verification eligible/i);
+    expect(validatePlanAgainstCoverage(result.plan, result.coverage, { allowObservedBaseline: true })).toBe(result.plan);
+  });
+
+  it('rejects release coverage bound to the wrong degraded observation receipt', async () => {
+    const { f } = await observedFixture();
+    f.coverage.corpusSeed.receiptSha256 = 'f'.repeat(64);
+    resealCandidate(f);
+    await expect(createPublicVerificationInputs({ ...f, baselineMode: 'observed' }))
+      .rejects.toThrow(/baseline receipt differs from release coverage/i);
   });
 
   it('derives exact coverage, verified baseline, candidate identity, and strict-ancestor plan from artifact bytes', async () => {
