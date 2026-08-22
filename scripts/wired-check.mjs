@@ -304,6 +304,7 @@ const CALLER_ROOTS = [
 ];
 const CALLER_EXTS = new Set(['.mjs', '.js', '.sh', '.json', '.html', '.yml', '.yaml']);
 export const REQUIRED_OPERATIONAL_EXPORTS = [
+  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'syncCorpusInputs' },
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'materializeGistReceipts' },
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'observeAndMaterializeGistReceipts' },
   { rel: 'scripts/corpus-aggregates.mjs', symbol: 'rebuildCorpusAggregates' },

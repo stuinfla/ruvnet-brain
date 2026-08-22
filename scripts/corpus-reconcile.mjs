@@ -521,6 +521,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (!fs.existsSync(privateFence)) fail(`canonical private-store fence missing (${privateFence})`);
   fs.copyFileSync(privateFence, path.join(assetsDir, 'PRIVATE-STORES.json'), fs.constants.COPYFILE_EXCL);
   fs.rmSync(extractParent, { recursive: true, force: true });
+  syncCorpusInputs({ root, assetsDir });
   const { reconciliation, candidate } = await reconcileAndPrepareCorpusCandidate({
     plan: [], assetsDir, workspaceDir, root, owner, builderSha, candidateDir, receiptFile, coverageFile,
     execute: () => reconcileCorpusUntilStable({ owner, assetsDir, workspaceDir, root }),
