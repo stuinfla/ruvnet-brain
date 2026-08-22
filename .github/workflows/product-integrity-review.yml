@@ -97,7 +97,8 @@ jobs:
             --fable review-evidence/receipts/claude-fable-5.json \
             --sol review-evidence/receipts/gpt-5.6-sol.json \
             --fable-public-key review-evidence/keys/claude-fable-5.pub.pem \
-            --sol-public-key review-evidence/keys/gpt-5.6-sol.pub.pem
+            --sol-public-key review-evidence/keys/gpt-5.6-sol.pub.pem \
+            --retrieval-plan release-evidence/retrieval-canary-plan.json
           node scripts/release-payload.mjs verify-members \
             --manifest release-evidence/payload-manifest.json > "$RUNNER_TEMP/payload.json"
           node --input-type=module <<'NODE'
@@ -106,7 +107,7 @@ jobs:
           import { execFileSync } from 'node:child_process';
           import { canonicalJson } from './scripts/coverage-integrity.mjs';
           import { transactionIdFor } from './scripts/release-transaction.mjs';
-          import { validateIndependentReviewPair } from './scripts/independent-review-receipt.mjs';
+          import { retrievalOracleExpectationFromPlan, validateIndependentReviewPair } from './scripts/independent-review-receipt.mjs';
           const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
           const candidate = JSON.parse(fs.readFileSync('release-evidence/candidate-receipt.json', 'utf8'));
           const aggregate = JSON.parse(fs.readFileSync('release-evidence/aggregate-envelope.json', 'utf8'));
@@ -125,11 +126,15 @@ jobs:
           expectedRelease.transactionId = transactionIdFor(expectedRelease);
           const fable = JSON.parse(fs.readFileSync('review-evidence/receipts/claude-fable-5.json', 'utf8'));
           const sol = JSON.parse(fs.readFileSync('review-evidence/receipts/gpt-5.6-sol.json', 'utf8'));
+          const retrievalPlan = JSON.parse(fs.readFileSync('release-evidence/retrieval-canary-plan.json', 'utf8'));
+          const expectedOracle = retrievalOracleExpectationFromPlan(retrievalPlan);
           const keys = {
             'claude-fable-5': fs.readFileSync('review-evidence/keys/claude-fable-5.pub.pem', 'utf8'),
             'gpt-5.6-sol': fs.readFileSync('review-evidence/keys/gpt-5.6-sol.pub.pem', 'utf8'),
           };
-          const reviewed = validateIndependentReviewPair([fable, sol], { publicKeysByReviewer: keys });
+          const reviewed = validateIndependentReviewPair([fable, sol], {
+            publicKeysByReviewer: keys, expectedOracle,
+          });
           const expected = {
             sourceSha: candidate.sha,
             sourceTree: execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim(),
@@ -141,6 +146,9 @@ jobs:
           };
           for (const receipt of reviewed) {
             if (canonicalJson(receipt.releaseIdentity) !== canonicalJson(expectedRelease)
+              || receipt.retrievalOracleReview.oracleReceiptSha256 !== expectedOracle.oracleReceiptSha256
+              || receipt.retrievalOracleReview.queryStoreSetSha256 !== expectedOracle.queryStoreSetSha256
+              || receipt.retrievalOracleReview.recordCount !== expectedOracle.stores.length
               || Object.entries(expected).some(([key, value]) => receipt[key] !== value)) {
               throw new Error(`${receipt.id} review differs from exact immutable review inputs`);
             }

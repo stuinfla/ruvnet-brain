@@ -27,6 +27,10 @@ describe('product integrity review ingress', () => {
     expect(source).toContain("sha256(fs.readFileSync('release-evidence/payload-manifest.json'))");
     expect(source).toContain("sha256(fs.readFileSync('scripts/product-integrity-contract.mjs'))");
     expect(source).toContain("sha256(fs.readFileSync('docs/qe/GRADING-RUBRIC.md'))");
+    expect(source).toContain('--retrieval-plan release-evidence/retrieval-canary-plan.json');
+    expect(source).toContain('receipt.retrievalOracleReview.oracleReceiptSha256');
+    expect(source).toContain('receipt.retrievalOracleReview.queryStoreSetSha256');
+    expect(source).toContain('receipt.retrievalOracleReview.recordCount');
     expect(source.indexOf('validateIndependentReviewPair'))
       .toBeLessThan(source.indexOf('name: product-integrity-reviews-${{ inputs.candidate_sha }}'));
   });

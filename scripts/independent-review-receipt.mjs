@@ -5,20 +5,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest } from './coverage-integrity.mjs';
 import { transactionIdFor } from './release-transaction.mjs';
-
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-
 export const ALLOWED_INDEPENDENT_REVIEWERS = Object.freeze([
   Object.freeze({ identity: 'claude-fable-5', model: 'claude-fable-5', provider: 'firstParty' }),
-  Object.freeze({ identity: 'gpt-5.6-sol', model: 'gpt-5.6-sol', provider: 'openai' }),
-]);
+  Object.freeze({ identity: 'gpt-5.6-sol', model: 'gpt-5.6-sol', provider: 'openai' })]);
 
 const INPUT_KEYS = Object.freeze([
   'artifactSha256', 'deductions', 'execution', 'findings', 'id', 'independent', 'model', 'payloadId',
   'payloadSha256', 'productContractSha256', 'provider', 'releaseIdentity', 'reviewedAt', 'rubricSha256',
-  'score', 'sourceSha', 'sourceTree', 'subjectProducerIdentity', 'untested', 'verdict',
+  'retrievalOracleReview', 'score', 'sourceSha', 'sourceTree', 'subjectProducerIdentity', 'untested', 'verdict',
 ]);
 const CORE_KEYS = Object.freeze([
   ...INPUT_KEYS, 'kind', 'releaseIdentitySha256', 'schemaVersion', 'signatureAlgorithm', 'signingKeyId',
@@ -36,6 +33,11 @@ const REQUIRED_RELEASE_KEYS = Object.freeze([
 const FINDING_KEYS = Object.freeze(['code', 'evidence', 'severity', 'summary']);
 const DEDUCTION_KEYS = Object.freeze(['code', 'evidence', 'points', 'reason']);
 const SEVERITIES = Object.freeze(['info', 'minor', 'major', 'critical']);
+const ORACLE_REVIEW_KEYS = Object.freeze(['kind', 'oracleReceiptSha256', 'queryStoreSetSha256', 'recordCount',
+  'recordSetSha256', 'records', 'schemaVersion', 'untested', 'verdict']);
+const ORACLE_RECORD_KEYS = Object.freeze(['evidence', 'oracleRecordSha256', 'relevant', 'store', 'untested', 'verdict']);
+const EXPECTED_ORACLE_KEYS = Object.freeze(['oracleReceiptSha256', 'queryStoreSetSha256', 'records', 'stores']);
+const EXPECTED_ORACLE_REQUIRED = Object.freeze(['oracleReceiptSha256', 'queryStoreSetSha256', 'stores']);
 
 function plainObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
@@ -52,13 +54,10 @@ function exactKeys(value, allowed, label, required = allowed) {
 }
 
 function text(value, label) {
-  if (typeof value !== 'string' || !value.trim() || value !== value.trim()) throw new Error(`${label} is invalid`);
-  return value;
+  if (typeof value !== 'string' || !value.trim() || value !== value.trim()) throw new Error(`${label} is invalid`); return value;
 }
-
 function hex(value, pattern, label) {
-  if (typeof value !== 'string' || !pattern.test(value)) throw new Error(`${label} is invalid`);
-  return value;
+  if (typeof value !== 'string' || !pattern.test(value)) throw new Error(`${label} is invalid`); return value;
 }
 
 function sortedUniqueStrings(values, label, { allowEmpty = true } = {}) {
@@ -100,6 +99,99 @@ function normalizeDeductions(deductions) {
   }).sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right)));
   if (new Set(rows.map(({ code }) => code)).size !== rows.length) throw new Error('deductions contain duplicate codes');
   return rows;
+}
+
+export function validateRetrievalOracleReview(review, { requireAcceptance = false } = {}) {
+  exactKeys(review, ORACLE_REVIEW_KEYS, 'retrieval oracle semantic review');
+  if (review.schemaVersion !== 1 || review.kind !== 'ruvnet-brain-retrieval-oracle-semantic-review') {
+    throw new Error('retrieval oracle semantic review schema is invalid');
+  }
+  hex(review.oracleReceiptSha256, HEX64, 'retrieval oracle receipt SHA-256');
+  hex(review.queryStoreSetSha256, HEX64, 'retrieval oracle store-set SHA-256');
+  hex(review.recordSetSha256, HEX64, 'retrieval oracle record-set SHA-256');
+  if (!Array.isArray(review.records) || !review.records.length) throw new Error('retrieval oracle semantic records are missing');
+  const records = review.records.map((record, index) => {
+    exactKeys(record, ORACLE_RECORD_KEYS, `retrieval oracle semantic records[${index}]`);
+    const store = text(record.store, `retrieval oracle semantic records[${index}].store`);
+    if (store !== store.toLowerCase()) throw new Error('retrieval oracle semantic record store is not canonical');
+    hex(record.oracleRecordSha256, HEX64, `retrieval oracle semantic records[${index}].oracleRecordSha256`);
+    if (typeof record.relevant !== 'boolean' || !['PASS', 'FAIL'].includes(record.verdict)) {
+      throw new Error('retrieval oracle semantic record verdict is invalid');
+    }
+    const evidence = sortedUniqueStrings(record.evidence, `retrieval oracle semantic records[${index}].evidence`,
+      { allowEmpty: false });
+    const untested = sortedUniqueStrings(record.untested, `retrieval oracle semantic records[${index}].untested`);
+    const blocked = record.relevant !== true || untested.length > 0;
+    if ((record.verdict === 'PASS') === blocked) throw new Error('retrieval oracle semantic record verdict is not evidence-derived');
+    return { store, oracleRecordSha256: record.oracleRecordSha256, relevant: record.relevant,
+      verdict: record.verdict, evidence, untested };
+  }).sort((left, right) => left.store.localeCompare(right.store));
+  if (new Set(records.map(({ store }) => store)).size !== records.length) {
+    throw new Error('retrieval oracle semantic records contain duplicate stores');
+  }
+  if (!Number.isSafeInteger(review.recordCount) || review.recordCount !== records.length) {
+    throw new Error('retrieval oracle semantic record count is incomplete');
+  }
+  const stores = records.map(({ store }) => store);
+  const recordSet = records.map(({ store, oracleRecordSha256 }) => ({ store, oracleRecordSha256 }));
+  if (review.queryStoreSetSha256 !== digest(stores) || review.recordSetSha256 !== digest(recordSet)) {
+    throw new Error('retrieval oracle semantic store or record set digest differs');
+  }
+  const untested = sortedUniqueStrings(review.untested, 'retrieval oracle semantic untested scope');
+  if (!['PASS', 'FAIL'].includes(review.verdict)) throw new Error('retrieval oracle semantic review verdict is invalid');
+  const blocked = untested.length > 0 || records.some(({ verdict }) => verdict !== 'PASS');
+  if ((review.verdict === 'PASS') === blocked) throw new Error('retrieval oracle semantic review verdict is not evidence-derived');
+  if (requireAcceptance && blocked) throw new Error('retrieval oracle semantic review is failed or untested');
+  return { schemaVersion: 1, kind: review.kind, oracleReceiptSha256: review.oracleReceiptSha256,
+    queryStoreSetSha256: review.queryStoreSetSha256, recordCount: records.length, recordSetSha256: review.recordSetSha256,
+    records, verdict: review.verdict, untested };
+}
+
+function normalizeExpectedOracle(expected) {
+  exactKeys(expected, EXPECTED_ORACLE_KEYS, 'expected retrieval oracle', EXPECTED_ORACLE_REQUIRED);
+  hex(expected.oracleReceiptSha256, HEX64, 'expected retrieval oracle receipt SHA-256');
+  hex(expected.queryStoreSetSha256, HEX64, 'expected retrieval oracle store-set SHA-256');
+  const stores = sortedUniqueStrings(expected.stores, 'expected retrieval oracle stores', { allowEmpty: false });
+  if (canonicalJson(stores) !== canonicalJson(expected.stores)
+    || digest(stores) !== expected.queryStoreSetSha256) throw new Error('expected retrieval oracle store set is invalid');
+  const records = expected.records === undefined ? null : expected.records.map((record, index) => {
+    exactKeys(record, ['oracleRecordSha256', 'store'], `expected retrieval oracle records[${index}]`);
+    text(record.store, `expected retrieval oracle records[${index}].store`);
+    hex(record.oracleRecordSha256, HEX64, `expected retrieval oracle records[${index}].oracleRecordSha256`);
+    return { store: record.store, oracleRecordSha256: record.oracleRecordSha256 };
+  }).sort((left, right) => left.store.localeCompare(right.store));
+  if (records && canonicalJson(records.map(({ store }) => store)) !== canonicalJson(stores)) {
+    throw new Error('expected retrieval oracle records differ from its store set');
+  }
+  return { oracleReceiptSha256: expected.oracleReceiptSha256, queryStoreSetSha256: expected.queryStoreSetSha256,
+    stores, ...(records ? { records } : {}) };
+}
+
+export function retrievalOracleExpectationFromPlan(plan) {
+  if (plan?.schemaVersion !== 2 || plan?.kind !== 'ruvnet-brain-retrieval-canary-plan') {
+    throw new Error('retrieval canary plan is invalid for semantic review');
+  }
+  const stores = plan.denominator?.eligibleStores;
+  const queries = plan.oracle?.evidence?.queries;
+  if (!queries || typeof queries !== 'object' || Array.isArray(queries)
+    || canonicalJson(Object.keys(queries).sort()) !== canonicalJson(stores)) {
+    throw new Error('retrieval canary plan lacks complete sealed oracle query evidence');
+  }
+  return normalizeExpectedOracle({ oracleReceiptSha256: plan.oracle?.receiptSha256,
+    queryStoreSetSha256: plan.oracle?.queryStoreSetSha256,
+    stores, records: stores.map((store) => ({ store, oracleRecordSha256: queries[store]?.recordSha256 })) });
+}
+
+function assertOracleReviewMatches(review, expected) {
+  const normalized = validateRetrievalOracleReview(review, { requireAcceptance: true });
+  if (normalized.oracleReceiptSha256 !== expected.oracleReceiptSha256
+    || normalized.queryStoreSetSha256 !== expected.queryStoreSetSha256
+    || canonicalJson(normalized.records.map(({ store }) => store)) !== canonicalJson(expected.stores)) {
+    throw new Error('review does not cover the complete oracle store set or exact oracle identity');
+  }
+  if (expected.records && normalized.recordSetSha256 !== digest(expected.records)) {
+    throw new Error('retrieval oracle record identity differs from the sealed oracle');
+  }
 }
 
 function normalizeReleaseIdentity(identity) {
@@ -154,6 +246,7 @@ function normalizeInput(input) {
   const findings = normalizeFindings(input.findings);
   const deductions = normalizeDeductions(input.deductions);
   const untested = sortedUniqueStrings(input.untested, 'untested scope');
+  const retrievalOracleReview = validateRetrievalOracleReview(input.retrievalOracleReview);
   text(input.subjectProducerIdentity, 'subject producer identity');
   if (input.subjectProducerIdentity === input.id) throw new Error('self-review is forbidden');
   hex(input.sourceSha, HEX40, 'source SHA');
@@ -169,7 +262,11 @@ function normalizeInput(input) {
     throw new Error('review score does not equal 100 minus deductions');
   }
   if (!['PASS', 'FAIL'].includes(input.verdict)) throw new Error('review verdict is invalid');
-  const blocked = input.score < 95 || untested.length > 0 || findings.some(({ severity }) => severity === 'critical');
+  const blocked = input.score < 95 || untested.length > 0 || retrievalOracleReview.verdict !== 'PASS'
+    || findings.some(({ severity }) => severity === 'critical');
+  if (input.verdict === 'PASS' && retrievalOracleReview.verdict !== 'PASS') {
+    throw new Error('PASS review has a failed or untested retrieval oracle semantic review');
+  }
   if (input.verdict === 'PASS' && blocked) throw new Error('PASS review has a score below 95, critical finding, or untested scope');
   if (input.verdict === 'FAIL' && !blocked) throw new Error('FAIL review has no acceptance blocker');
   if (typeof input.reviewedAt !== 'string' || Number.isNaN(Date.parse(input.reviewedAt))
@@ -180,6 +277,7 @@ function normalizeInput(input) {
     findings,
     deductions,
     untested,
+    retrievalOracleReview,
     execution: normalizeExecution(input.execution, reviewer),
   };
 }
@@ -206,7 +304,7 @@ function signingPayload(receipt) {
 
 function assertNormalizedCore(core) {
   exactKeys(core, CORE_KEYS, 'independent review receipt core');
-  if (core.schemaVersion !== 1 || core.kind !== 'ruvnet-brain-independent-review'
+  if (core.schemaVersion !== 2 || core.kind !== 'ruvnet-brain-independent-review'
     || core.signatureAlgorithm !== 'Ed25519') throw new Error('independent review receipt schema is invalid');
   hex(core.releaseIdentitySha256, HEX64, 'release identity SHA-256');
   hex(core.signingKeyId, HEX64, 'review signing key id');
@@ -222,7 +320,7 @@ export function createIndependentReviewReceipt(input, privateKey) {
   const privateObject = asKey(privateKey, 'private');
   const publicObject = crypto.createPublicKey(privateObject);
   const payload = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'ruvnet-brain-independent-review',
     ...normalized,
     releaseIdentitySha256: digest(normalized.releaseIdentity),
@@ -252,9 +350,7 @@ export function verifyIndependentReviewReceipt(receipt, publicKey) {
 }
 
 function publicKeyFor(source, identity) {
-  if (source instanceof Map) return source.get(identity);
-  if (source && typeof source === 'object') return source[identity];
-  return undefined;
+  return source instanceof Map ? source.get(identity) : source && typeof source === 'object' ? source[identity] : undefined;
 }
 
 const reviewedIdentity = (receipt) => ({
@@ -267,9 +363,16 @@ const reviewedIdentity = (receipt) => ({
   releaseIdentitySha256: receipt.releaseIdentitySha256,
   productContractSha256: receipt.productContractSha256,
   rubricSha256: receipt.rubricSha256,
+  retrievalOracleReview: {
+    oracleReceiptSha256: receipt.retrievalOracleReview.oracleReceiptSha256,
+    queryStoreSetSha256: receipt.retrievalOracleReview.queryStoreSetSha256,
+    recordCount: receipt.retrievalOracleReview.recordCount,
+    recordSetSha256: receipt.retrievalOracleReview.recordSetSha256,
+  },
 });
 
-export function validateIndependentReviewPair(receipts, { publicKeysByReviewer, expectedIdentity = null } = {}) {
+export function validateIndependentReviewPair(receipts, { publicKeysByReviewer, expectedIdentity = null,
+  expectedOracle = null } = {}) {
   if (!Array.isArray(receipts) || receipts.length !== ALLOWED_INDEPENDENT_REVIEWERS.length) {
     throw new Error('independent review pair requires exactly two receipts');
   }
@@ -286,6 +389,7 @@ export function validateIndependentReviewPair(receipts, { publicKeysByReviewer, 
     if (receipt.verdict !== 'PASS' || receipt.score < 95 || receipt.untested.length) {
       throw new Error('public verification requires two passing reviews with no untested scope');
     }
+    validateRetrievalOracleReview(receipt.retrievalOracleReview, { requireAcceptance: true });
   }
   const identity = reviewedIdentity(ordered[0]);
   if (ordered.slice(1).some((receipt) => canonicalJson(reviewedIdentity(receipt)) !== canonicalJson(identity))) {
@@ -294,6 +398,10 @@ export function validateIndependentReviewPair(receipts, { publicKeysByReviewer, 
   if (expectedIdentity && canonicalJson(identity) !== canonicalJson(expectedIdentity)) {
     throw new Error('independent review pair differs from expected reviewed identity');
   }
+  if (expectedOracle) {
+    const expected = normalizeExpectedOracle(expectedOracle);
+    ordered.forEach((receipt) => assertOracleReviewMatches(receipt.retrievalOracleReview, expected));
+  }
   return ordered;
 }
 
@@ -301,7 +409,7 @@ const CLI_OPTIONS = Object.freeze({
   produce: Object.freeze(['--input', '--out']),
   verify: Object.freeze(['--public-key', '--receipt']),
   'verify-pair': Object.freeze([
-    '--expected-identity', '--fable', '--fable-public-key', '--sol', '--sol-public-key',
+    '--expected-identity', '--fable', '--fable-public-key', '--retrieval-plan', '--sol', '--sol-public-key',
   ]),
 });
 
@@ -318,7 +426,7 @@ function parseCli(args) {
     if (Object.hasOwn(options, name)) throw new Error(`${name} may be supplied only once`);
     options[name] = value;
   }
-  const required = allowed.filter((name) => name !== '--expected-identity');
+  const required = allowed.filter((name) => !['--expected-identity', '--retrieval-plan'].includes(name));
   const missing = required.filter((name) => !options[name]);
   if (missing.length) throw new Error(`${command} requires ${missing.join(', ')}`);
   return { command, options };
@@ -341,9 +449,7 @@ function readJson(file, label) {
 }
 
 function writeReceipt(file, receipt) {
-  const resolved = path.resolve(file);
-  fs.writeFileSync(resolved, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
-}
+  fs.writeFileSync(path.resolve(file), `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 }); }
 
 export function main(args = process.argv.slice(2), runtime = {}) {
   const env = runtime.env || process.env;
@@ -378,6 +484,8 @@ export function main(args = process.argv.slice(2), runtime = {}) {
       },
       expectedIdentity: options['--expected-identity']
         ? readJson(options['--expected-identity'], 'expected review identity') : null,
+      expectedOracle: options['--retrieval-plan'] ? retrievalOracleExpectationFromPlan(
+        readJson(options['--retrieval-plan'], 'retrieval canary plan')) : null,
     });
     const reviews = ordered.map(({ id, receiptSha256 }) => ({ id, receiptSha256 }));
     stdout.write(`${JSON.stringify({ verdict: 'PASS', reviews, pairSha256: digest(reviews) })}\n`);
@@ -388,6 +496,4 @@ export function main(args = process.argv.slice(2), runtime = {}) {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  process.exitCode = main();
-}
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = main();

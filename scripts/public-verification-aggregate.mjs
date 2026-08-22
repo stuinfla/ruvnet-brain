@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest } from './coverage-integrity.mjs';
+import { retrievalOracleExpectationFromPlan, validateRetrievalOracleReview } from './independent-review-receipt.mjs';
 import { validateRetrievalCanaryPlan, validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
 
 export const PUBLIC_VERIFICATION_OS = Object.freeze(['linux', 'macos', 'windows']);
@@ -67,7 +68,7 @@ function reviewPayload(review) {
 }
 
 export function validateIndependentReviewReceipt(review) {
-  if (review?.schemaVersion !== 1 || review?.kind !== 'ruvnet-brain-independent-review'
+  if (review?.schemaVersion !== 2 || review?.kind !== 'ruvnet-brain-independent-review'
     || !REQUIRED_REVIEW_MODELS.includes(review.model) || review.id !== review.model
     || review.independent !== true || review.verdict !== 'PASS' || !Number.isInteger(review.score) || review.score < 95
     || !HEX40.test(String(review.sourceSha || '')) || !HEX64.test(String(review.artifactSha256 || ''))
@@ -84,13 +85,39 @@ export function validateIndependentReviewReceipt(review) {
     || !review.execution.threadId || !HEX64.test(String(review.execution.catalogRowSha256 || '')))) {
     throw new Error('GPT-5.6-Sol review lacks live catalog and thread evidence');
   }
+  const semantic = validateRetrievalOracleReview(review.retrievalOracleReview, { requireAcceptance: true });
+  if (canonicalJson(semantic) !== canonicalJson(review.retrievalOracleReview)) {
+    throw new Error('retrieval oracle semantic review is not canonical');
+  }
   if (digest(reviewPayload(review)) !== review.receiptSha256) throw new Error('independent review receipt digest mismatch');
   return review;
 }
 
 export function createIndependentReviewReceipt(input) {
-  const payload = { schemaVersion: 1, kind: 'ruvnet-brain-independent-review', ...input };
+  const semantic = validateRetrievalOracleReview(input?.retrievalOracleReview, { requireAcceptance: true });
+  const payload = { schemaVersion: 2, kind: 'ruvnet-brain-independent-review', ...input,
+    retrievalOracleReview: semantic };
   return validateIndependentReviewReceipt({ ...payload, receiptSha256: digest(payload) });
+}
+
+function validateReviewOracleAgainstPlan(review, retrievalPlan) {
+  const expected = retrievalOracleExpectationFromPlan(retrievalPlan);
+  const semantic = validateRetrievalOracleReview(review.retrievalOracleReview, { requireAcceptance: true });
+  const stores = semantic.records.map(({ store }) => store);
+  if (semantic.oracleReceiptSha256 !== expected.oracleReceiptSha256
+    || semantic.queryStoreSetSha256 !== expected.queryStoreSetSha256
+    || canonicalJson(stores) !== canonicalJson(expected.stores)) {
+    throw new Error(`${review.model} semantic review does not cover the complete oracle store set or exact oracle identity`);
+  }
+  const oracleQueries = retrievalPlan.oracle?.evidence?.queries;
+  if (!oracleQueries || typeof oracleQueries !== 'object' || Array.isArray(oracleQueries)
+    || canonicalJson(Object.keys(oracleQueries).sort()) !== canonicalJson(expected.stores)) {
+    throw new Error('retrieval plan lacks complete sealed oracle query evidence');
+  }
+  if (semantic.records.some((row) => oracleQueries[row.store]?.recordSha256 !== row.oracleRecordSha256)) {
+    throw new Error(`${review.model} semantic review record differs from the retrieval plan`);
+  }
+  return semantic;
 }
 
 const identityOf = (leaf) => ({
@@ -148,11 +175,16 @@ export function buildPublicVerificationAggregate(leaves, reviews) {
     throw new Error('required independent review models are missing or duplicated');
   }
   const firstReview = byModel.get(REQUIRED_REVIEW_MODELS[0]);
+  const semanticIdentity = validateReviewOracleAgainstPlan(firstReview, first.retrievalPlan);
   for (const model of REQUIRED_REVIEW_MODELS) {
     const review = byModel.get(model);
+    const semantic = validateReviewOracleAgainstPlan(review, first.retrievalPlan);
     if (review.sourceSha !== identity.sourceSha || review.artifactSha256 !== identity.artifactSha256
       || review.payloadId !== identity.payloadId || review.productContractSha256 !== firstReview.productContractSha256
-      || review.rubricSha256 !== firstReview.rubricSha256) throw new Error(`${model} review identity or rubric differs`);
+      || review.rubricSha256 !== firstReview.rubricSha256
+      || semantic.recordSetSha256 !== semanticIdentity.recordSetSha256) {
+      throw new Error(`${model} review identity, rubric, or oracle identity differs`);
+    }
   }
   return {
     schemaVersion: 1,
@@ -166,6 +198,12 @@ export function buildPublicVerificationAggregate(leaves, reviews) {
       reviews: REQUIRED_REVIEW_MODELS.map((model) => structuredClone(byModel.get(model))) },
     productContractSha256: firstReview.productContractSha256,
     rubricSha256: firstReview.rubricSha256,
+    retrievalOracle: {
+      oracleReceiptSha256: semanticIdentity.oracleReceiptSha256,
+      queryStoreSetSha256: semanticIdentity.queryStoreSetSha256,
+      recordCount: semanticIdentity.recordCount,
+      recordSetSha256: semanticIdentity.recordSetSha256,
+    },
     metrics,
     verdict: 'PASS',
     untested: [],
@@ -214,6 +252,12 @@ export function verifyPublicVerificationAggregate(aggregate, publicKey, expected
       && Number.isInteger(row.score) && row.score >= 95 && HEX64.test(String(row.receiptSha256 || ''))))
     || !HEX64.test(String(aggregate.productContractSha256 || '')) || !HEX64.test(String(aggregate.rubricSha256 || ''))) {
     throw new Error('public verification aggregate reviews are incomplete');
+  }
+  if (aggregate.retrievalOracle?.oracleReceiptSha256 !== aggregate.evidence.leaves[0].retrievalPlan.oracle.receiptSha256
+    || aggregate.retrievalOracle?.queryStoreSetSha256 !== aggregate.evidence.leaves[0].retrievalPlan.oracle.queryStoreSetSha256
+    || aggregate.retrievalOracle?.recordCount !== aggregate.evidence.leaves[0].retrievalPlan.denominator.eligibleStores.length
+    || !HEX64.test(String(aggregate.retrievalOracle?.recordSetSha256 || ''))) {
+    throw new Error('public verification aggregate retrieval oracle review is incomplete');
   }
   if (expectedIdentity && canonicalJson(aggregate.identity) !== canonicalJson(expectedIdentity)) {
     throw new Error('public verification aggregate identity differs from the release transaction');

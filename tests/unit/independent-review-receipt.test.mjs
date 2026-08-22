@@ -12,6 +12,7 @@ import {
   ALLOWED_INDEPENDENT_REVIEWERS,
   createIndependentReviewReceipt,
   main,
+  retrievalOracleExpectationFromPlan,
   validateIndependentReviewPair,
   verifyIndependentReviewReceipt,
 } from '../../scripts/independent-review-receipt.mjs';
@@ -38,6 +39,29 @@ const release = {
 };
 release.transactionId = transactionIdFor(release);
 
+const oracleRecords = [
+  { store: 'new', oracleRecordSha256: '9'.repeat(64), relevant: true, verdict: 'PASS',
+    evidence: ['data/retrieval-query-evidence.json#new'], untested: [] },
+  { store: 'old', oracleRecordSha256: 'a'.repeat(64), relevant: true, verdict: 'PASS',
+    evidence: ['data/retrieval-query-evidence.json#old'], untested: [] },
+];
+const retrievalOracleReview = {
+  schemaVersion: 1,
+  kind: 'ruvnet-brain-retrieval-oracle-semantic-review',
+  oracleReceiptSha256: 'b'.repeat(64),
+  queryStoreSetSha256: digest(['new', 'old']),
+  recordCount: oracleRecords.length,
+  recordSetSha256: digest(oracleRecords.map(({ store, oracleRecordSha256 }) => ({ store, oracleRecordSha256 }))),
+  records: oracleRecords,
+  verdict: 'PASS',
+  untested: [],
+};
+const expectedOracle = {
+  oracleReceiptSha256: retrievalOracleReview.oracleReceiptSha256,
+  queryStoreSetSha256: retrievalOracleReview.queryStoreSetSha256,
+  stores: ['new', 'old'],
+};
+
 const common = {
   subjectProducerIdentity: 'ruvnet-brain-release-builder',
   sourceSha: release.candidateSha,
@@ -48,6 +72,7 @@ const common = {
   releaseIdentity: release,
   productContractSha256: '4'.repeat(64),
   rubricSha256: '5'.repeat(64),
+  retrievalOracleReview,
   independent: true,
   verdict: 'PASS',
   score: 97,
@@ -114,7 +139,7 @@ describe('independent review receipt', () => {
 
     expect(first).toEqual(reordered);
     expect(first).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       kind: 'ruvnet-brain-independent-review',
       id: 'claude-fable-5',
       model: 'claude-fable-5',
@@ -127,6 +152,7 @@ describe('independent review receipt', () => {
       reviewedAt: '2026-08-22T16:00:00.000Z',
       signatureAlgorithm: 'Ed25519',
     });
+    expect(first.retrievalOracleReview).toEqual(retrievalOracleReview);
     expect(first.findings.map(({ code }) => code)).toEqual(['F-001', 'F-002']);
     expect(first.signature).toMatch(/^[A-Za-z0-9+/]+={0,2}$/);
     expect(first.receiptSha256).toMatch(/^[a-f0-9]{64}$/);
@@ -187,7 +213,7 @@ describe('independent review receipt', () => {
     expect(() => createIndependentReviewReceipt(fableInput(), 'not-a-private-key')).toThrow(/private key is invalid/);
 
     const schemaDrift = structuredClone(fable());
-    schemaDrift.schemaVersion = 2;
+    schemaDrift.schemaVersion = 1;
     expect(() => verifyIndependentReviewReceipt(schemaDrift, fableKeys.publicKey)).toThrow(/schema/);
     const noncanonical = structuredClone(fable());
     noncanonical.findings.reverse();
@@ -230,6 +256,60 @@ describe('independent review receipt', () => {
     expect(() => fable({ artifactSha256: '9'.repeat(64) })).toThrow(/release identity/);
     expect(() => fable({ releaseIdentity: { ...release, transactionId: '9'.repeat(64) } })).toThrow(/release transaction identity/);
     expect(() => fable({ releaseIdentity: { ...release, tag: 'v9.9.9' } })).toThrow(/release tag|release transaction identity/);
+  });
+
+  it('binds the signed review to complete, relevant, exact-oracle rows', () => {
+    expect(validateIndependentReviewPair([fable(), sol()], {
+      publicKeysByReviewer: publicKeys(), expectedOracle,
+    })).toHaveLength(2);
+
+    const stale = structuredClone(retrievalOracleReview);
+    stale.oracleReceiptSha256 = 'f'.repeat(64);
+    expect(() => validateIndependentReviewPair([fable({ retrievalOracleReview: stale }), sol()], {
+      publicKeysByReviewer: publicKeys(), expectedOracle,
+    })).toThrow(/oracle identity|reviewed identity/i);
+
+    const partial = structuredClone(retrievalOracleReview);
+    partial.records = partial.records.slice(0, 1);
+    partial.recordCount = 1;
+    partial.queryStoreSetSha256 = digest(['new']);
+    partial.recordSetSha256 = digest(partial.records.map(({ store, oracleRecordSha256 }) => ({ store, oracleRecordSha256 })));
+    expect(() => validateIndependentReviewPair([
+      fable({ retrievalOracleReview: partial }), sol({ retrievalOracleReview: partial }),
+    ], { publicKeysByReviewer: publicKeys(), expectedOracle })).toThrow(/complete oracle store set/i);
+
+    const irrelevant = structuredClone(retrievalOracleReview);
+    irrelevant.records[0].relevant = false;
+    irrelevant.records[0].verdict = 'FAIL';
+    irrelevant.verdict = 'FAIL';
+    expect(() => fable({ retrievalOracleReview: irrelevant })).toThrow(/PASS review.*oracle semantic/i);
+
+    const untested = structuredClone(retrievalOracleReview);
+    untested.records[0].untested = ['query relevance'];
+    untested.records[0].verdict = 'FAIL';
+    untested.verdict = 'FAIL';
+    expect(() => fable({ retrievalOracleReview: untested })).toThrow(/PASS review.*oracle semantic/i);
+
+    const honestFailure = fable({ retrievalOracleReview: irrelevant, verdict: 'FAIL' });
+    expect(verifyIndependentReviewReceipt(honestFailure, fableKeys.publicKey).verdict).toBe('FAIL');
+    expect(() => validateIndependentReviewPair([honestFailure, sol()], {
+      publicKeysByReviewer: publicKeys(), expectedOracle,
+    })).toThrow(/passing reviews/);
+
+    const exactExpected = retrievalOracleExpectationFromPlan({ schemaVersion: 2,
+      kind: 'ruvnet-brain-retrieval-canary-plan',
+      oracle: { receiptSha256: expectedOracle.oracleReceiptSha256,
+        queryStoreSetSha256: expectedOracle.queryStoreSetSha256,
+        evidence: { queries: Object.fromEntries(oracleRecords.map(({ store, oracleRecordSha256 }) =>
+          [store, { recordSha256: oracleRecordSha256 }])) } },
+      denominator: { eligibleStores: expectedOracle.stores } });
+    const wrongRecord = structuredClone(retrievalOracleReview);
+    wrongRecord.records[1].oracleRecordSha256 = 'f'.repeat(64);
+    wrongRecord.recordSetSha256 = digest(wrongRecord.records
+      .map(({ store, oracleRecordSha256 }) => ({ store, oracleRecordSha256 })));
+    expect(() => validateIndependentReviewPair([
+      fable({ retrievalOracleReview: wrongRecord }), sol({ retrievalOracleReview: wrongRecord }),
+    ], { publicKeysByReviewer: publicKeys(), expectedOracle: exactExpected })).toThrow(/record.*oracle/i);
   });
 });
 
@@ -287,6 +367,13 @@ describe('independent review receipt CLI', () => {
     }));
     fs.writeFileSync(fablePublic, fableKeys.publicKey.export({ type: 'spki', format: 'pem' }));
     fs.writeFileSync(solPublic, solKeys.publicKey.export({ type: 'spki', format: 'pem' }));
+    const retrievalPlan = path.join(root, 'retrieval-plan.json');
+    fs.writeFileSync(retrievalPlan, JSON.stringify({ schemaVersion: 2, kind: 'ruvnet-brain-retrieval-canary-plan',
+      oracle: { receiptSha256: expectedOracle.oracleReceiptSha256,
+        queryStoreSetSha256: expectedOracle.queryStoreSetSha256,
+        evidence: { queries: Object.fromEntries(oracleRecords.map(({ store, oracleRecordSha256 }) =>
+          [store, { recordSha256: oracleRecordSha256 }])) } },
+      denominator: { eligibleStores: expectedOracle.stores } }));
     const stdout = sink();
     const stderr = sink();
 
@@ -310,14 +397,24 @@ describe('independent review receipt CLI', () => {
       releaseIdentitySha256: fableRow.releaseIdentitySha256,
       productContractSha256: fableRow.productContractSha256,
       rubricSha256: fableRow.rubricSha256,
+      retrievalOracleReview: {
+        oracleReceiptSha256: fableRow.retrievalOracleReview.oracleReceiptSha256,
+        queryStoreSetSha256: fableRow.retrievalOracleReview.queryStoreSetSha256,
+        recordCount: fableRow.retrievalOracleReview.recordCount,
+        recordSetSha256: fableRow.retrievalOracleReview.recordSetSha256,
+      },
     }));
     const pairOut = sink();
     expect(main(['verify-pair', '--fable', fableReceipt, '--sol', solReceipt,
       '--fable-public-key', fablePublic, '--sol-public-key', solPublic,
+      '--retrieval-plan', retrievalPlan,
       '--expected-identity', expectedIdentity], { stdout: pairOut, stderr })).toBe(0);
     expect(JSON.parse(pairOut.read())).toMatchObject({ verdict: 'PASS', reviews: [
       { id: 'claude-fable-5' }, { id: 'gpt-5.6-sol' },
     ] });
+    expect(main(['verify-pair', '--fable', fableReceipt, '--sol', solReceipt,
+      '--fable-public-key', fablePublic, '--sol-public-key', solPublic,
+      '--retrieval-plan', retrievalPlan], { stdout: sink(), stderr })).toBe(0);
     expect(main(['verify-pair', '--fable', fableReceipt, '--sol', solReceipt,
       '--fable-public-key', fablePublic, '--sol-public-key', solPublic], { stdout: sink(), stderr })).toBe(0);
     expect(main(['produce', '--input', fableInputFile, '--out', fableReceipt], {

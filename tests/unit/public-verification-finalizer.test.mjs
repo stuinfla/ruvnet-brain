@@ -71,7 +71,17 @@ async function aggregate(reviewKeys = keys) {
   }
   const reviewCommon = { sourceSha: identity.candidateSha, artifactSha256: identity.packageSha256,
     payloadId: identity.payloadId, productContractSha256: '3'.repeat(64), rubricSha256: '4'.repeat(64),
-    independent: true, verdict: 'PASS', score: 96, deductions: [], untested: [] };
+    independent: true, verdict: 'PASS', score: 96, deductions: [], untested: [],
+    retrievalOracleReview: {
+      schemaVersion: 1, kind: 'ruvnet-brain-retrieval-oracle-semantic-review',
+      oracleReceiptSha256: plan.oracle.receiptSha256, queryStoreSetSha256: plan.oracle.queryStoreSetSha256,
+      recordCount: 2, recordSetSha256: digest(plan.cases.map(({ expected, oracleRecordSha256 }) =>
+        ({ store: expected.repo, oracleRecordSha256 })).sort((left, right) => left.store.localeCompare(right.store))),
+      records: plan.cases.map(({ expected, oracleRecordSha256 }) => ({ store: expected.repo, oracleRecordSha256,
+        relevant: true, verdict: 'PASS', evidence: [`data/retrieval-query-evidence.json#${expected.repo}`],
+        untested: [] })).sort((left, right) => left.store.localeCompare(right.store)),
+      verdict: 'PASS', untested: [],
+    } };
   const reviews = [
     createIndependentReviewReceipt({ ...reviewCommon, id: 'claude-fable-5', model: 'claude-fable-5', provider: 'firstParty',
       execution: { subscriptionAuthenticated: true, invocationDigest: '5'.repeat(64) } }),

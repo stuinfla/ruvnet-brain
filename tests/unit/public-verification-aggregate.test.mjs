@@ -25,15 +25,15 @@ const plan = { schemaVersion: 2, kind: 'ruvnet-brain-retrieval-canary-plan',
   coverage: { sha256: '6'.repeat(64), bytes: 100, releaseCoverageGeneration: identity.coverageGeneration },
   baseline: { schemaVersion: 1, kind: 'ruvnet-brain-verified-public-baseline',
     tag: getVersionTag(), archiveSha256: '3'.repeat(64), archiveBytes: 100,
-    archiveManifestSha256: '4'.repeat(64), verificationReceiptSha256: '5'.repeat(64), stores: ['old'],
-    storeCount: 1, storeSetSha256: digest(['old']) },
+    archiveManifestSha256: '4'.repeat(64), verificationReceiptSha256: '5'.repeat(64), stores: ['old', 'old-unselected'],
+    storeCount: 2, storeSetSha256: digest(['old', 'old-unselected']) },
   candidate: { sourceSha: identity.sourceSha, packageSha256: identity.artifactSha256,
     archiveSha256: identity.bundleSha256, coverageSha256: '6'.repeat(64),
-    publicLedgerSha256: '7'.repeat(64), publicLedgerBytes: 200, publicStoreCount: 2,
+    publicLedgerSha256: '7'.repeat(64), publicLedgerBytes: 200, publicStoreCount: 3,
     publicInventoryPartitionSha256: '8'.repeat(64) },
-  denominator: { eligibleStores: ['new', 'old'], eligibleStoreSetSha256: digest(['new', 'old']),
+  denominator: { eligibleStores: ['new', 'old', 'old-unselected'], eligibleStoreSetSha256: digest(['new', 'old', 'old-unselected']),
     deltaStores: ['new'], deltaStoreSetSha256: digest(['new']),
-    legacyPopulationStores: ['old'], legacyPopulationStoreSetSha256: digest(['old']),
+    legacyPopulationStores: ['old', 'old-unselected'], legacyPopulationStoreSetSha256: digest(['old', 'old-unselected']),
     legacySelectedStores: ['old'], legacySelectedStoreSetSha256: digest(['old']) },
   oracle: {},
   cohorts: { delta: 1, legacy: 1 }, k: 10,
@@ -45,14 +45,32 @@ const planQueries = Object.fromEntries(plan.cases.map(({ query, expected }) => {
   const bound = { path: expected.path, passageSha256: expected.passageSha256 };
   return [expected.repo, { query, expected: bound, recordSha256: digest({ store: expected.repo, query, expected: bound }) }];
 }));
+const unselectedExpected = { path: 'src/old-unselected.mjs', passageSha256: 'c'.repeat(64) };
+const unselectedQuery = 'unselected legacy repository exact behavior query';
+planQueries['old-unselected'] = { query: unselectedQuery, expected: unselectedExpected,
+  recordSha256: digest({ store: 'old-unselected', query: unselectedQuery, expected: unselectedExpected }) };
 const planEvidence = sealRetrievalQueryEvidence({ schemaVersion: 2, kind: 'ruvnet-brain-retrieval-query-evidence',
   sourceCommit: 'b'.repeat(40), sourcePath: 'data/retrieval-query-evidence.json',
-  queryStoreSetSha256: digest(['new', 'old']), queries: planQueries });
+  queryStoreSetSha256: digest(['new', 'old', 'old-unselected']), queries: planQueries });
 plan.cases.forEach((row) => { row.oracleRecordSha256 = planQueries[row.expected.repo].recordSha256; });
 plan.oracle = { receiptSha256: planEvidence.receiptSha256, queryStoreSetSha256: planEvidence.queryStoreSetSha256,
   sourceCommit: planEvidence.sourceCommit, sourceBlobSha256: planEvidence.sourceBlobSha256, evidence: planEvidence };
 plan.planSha256 = digest(Object.fromEntries(Object.entries(plan).filter(([key]) => key !== 'planSha256')));
 identity.canaryPlanSha256 = plan.planSha256;
+
+const semanticRecords = plan.denominator.eligibleStores.map((store) => {
+  const selected = plan.cases.find(({ expected }) => expected.repo === store);
+  return { store, oracleRecordSha256: selected?.oracleRecordSha256 || plan.oracle.evidence.queries[store].recordSha256,
+    relevant: true, verdict: 'PASS',
+    evidence: [`data/retrieval-query-evidence.json#${store}`], untested: [] };
+});
+const retrievalOracleReview = {
+  schemaVersion: 1, kind: 'ruvnet-brain-retrieval-oracle-semantic-review',
+  oracleReceiptSha256: plan.oracle.receiptSha256, queryStoreSetSha256: plan.oracle.queryStoreSetSha256,
+  recordCount: semanticRecords.length,
+  recordSetSha256: digest(semanticRecords.map(({ store, oracleRecordSha256 }) => ({ store, oracleRecordSha256 }))),
+  records: semanticRecords, verdict: 'PASS', untested: [],
+};
 
 async function leaves() {
   const result = [];
@@ -76,7 +94,7 @@ async function leaves() {
 function reviews() {
   const shared = { sourceSha: identity.sourceSha, artifactSha256: identity.artifactSha256, payloadId: identity.payloadId,
     productContractSha256: '4'.repeat(64), rubricSha256: '5'.repeat(64), independent: true, verdict: 'PASS',
-    score: 96, deductions: [], untested: [] };
+    score: 96, deductions: [], untested: [], retrievalOracleReview };
   return [
     createIndependentReviewReceipt({ ...shared, id: 'claude-fable-5', model: 'claude-fable-5', provider: 'firstParty',
       execution: { subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64) } }),
@@ -134,8 +152,40 @@ describe('signed public 3x3 verification aggregate', () => {
     stale[1].sourceSha = '9'.repeat(40);
     stale[1].receiptSha256 = digest(Object.fromEntries(Object.entries(stale[1]).filter(([key]) => key !== 'receiptSha256')));
     expect(() => signPublicVerificationAggregate({ leaves: rows, reviews: stale }, crypto.generateKeyPairSync('ed25519').privateKey))
-      .toThrow(/identity or rubric differs/);
+      .toThrow(/identity, rubric, or oracle identity differs/);
     expect(() => createIndependentReviewReceipt({ ...reviews()[0], receiptSha256: undefined, score: 94 })).toThrow(/below 95/);
+
+    const staleOracle = reviews();
+    staleOracle[1].retrievalOracleReview.oracleReceiptSha256 = 'f'.repeat(64);
+    staleOracle[1].receiptSha256 = digest(Object.fromEntries(Object.entries(staleOracle[1])
+      .filter(([key]) => key !== 'receiptSha256')));
+    expect(() => signPublicVerificationAggregate({ leaves: rows, reviews: staleOracle }, crypto.generateKeyPairSync('ed25519').privateKey))
+      .toThrow(/oracle identity|semantic review/i);
+
+    const partial = structuredClone(retrievalOracleReview);
+    partial.records.pop();
+    partial.recordCount = partial.records.length;
+    partial.queryStoreSetSha256 = digest(partial.records.map(({ store }) => store));
+    partial.recordSetSha256 = digest(partial.records.map(({ store, oracleRecordSha256 }) => ({ store, oracleRecordSha256 })));
+    expect(() => signPublicVerificationAggregate({ leaves: rows, reviews: reviews().map((review) =>
+      createIndependentReviewReceipt({ ...review, receiptSha256: undefined, retrievalOracleReview: partial })) },
+    crypto.generateKeyPairSync('ed25519').privateKey)).toThrow(/complete oracle store set/i);
+
+    const failed = structuredClone(retrievalOracleReview);
+    failed.records[0].relevant = false;
+    failed.records[0].verdict = 'FAIL';
+    failed.verdict = 'FAIL';
+    expect(() => createIndependentReviewReceipt({ ...reviews()[0], receiptSha256: undefined,
+      retrievalOracleReview: failed })).toThrow(/oracle semantic review/i);
+
+    const unselected = structuredClone(retrievalOracleReview);
+    const unselectedRow = unselected.records.find(({ store }) => store === 'old-unselected');
+    unselectedRow.oracleRecordSha256 = 'f'.repeat(64);
+    unselected.recordSetSha256 = digest(unselected.records
+      .map(({ store, oracleRecordSha256 }) => ({ store, oracleRecordSha256 })));
+    expect(() => signPublicVerificationAggregate({ leaves: rows, reviews: reviews().map((review) =>
+      createIndependentReviewReceipt({ ...review, receiptSha256: undefined, retrievalOracleReview: unselected })) },
+    crypto.generateKeyPairSync('ed25519').privateKey)).toThrow(/record differs from the retrieval plan/i);
   });
 
   it('signs exactly three immutable OS lane receipts plus two review receipts through the CLI', async () => {
