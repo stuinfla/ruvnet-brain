@@ -70,6 +70,7 @@
  * Everything here is READ-ONLY. It observes; it never installs, enables, or writes.
  */
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -967,6 +968,7 @@ export function auditAll({ project = process.cwd() } = {}) {
   // The default is the CALLER'S directory, not this package's. See the note on REPO: taking no
   // argument at all is what made every project-scoped row describe the wrong folder.
   const ctx = { project: path.resolve(project), home: HOME };
+  const observedAt = new Date().toISOString();
   return CAPABILITIES.map((c) => {
     let r;
     try { r = c.detect(ctx); }
@@ -984,6 +986,10 @@ export function auditAll({ project = process.cwd() } = {}) {
       turnOn: c.turnOn,
       state,
       evidence,
+      // A digest binds proactive routing to this audit invocation's observed bytes. Synthetic test
+      // registries do not carry it and remain compatible with the delivery seam.
+      evidenceDigest: crypto.createHash('sha256').update(evidence).digest('hex'),
+      evidenceObservedAt: observedAt,
       // WHICH project a project-scoped row is about, named rather than assumed. "no memory store
       // exists for this project" is only checkable by a reader who can see which folder was read.
       ...(c.scope === SCOPE.PROJECT ? { project: ctx.project } : {}),
