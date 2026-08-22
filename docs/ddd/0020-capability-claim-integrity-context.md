@@ -1,10 +1,10 @@
-Updated: 2026-08-22 16:15:00 EDT | Version 0.2.0
+Updated: 2026-08-22 12:41:08 EDT | Version 0.3.0
 Created: 2026-08-22 12:00:00 EDT
 
 # DDD-0020 — Capability claim integrity context
 
-Status: Accepted; local installation, behavior, current-version, and health enforcement are built,
-while latest-version and full S-12 release proof remain open
+Status: Accepted; local installation, behavior, current-version, latest-version, and health
+enforcement are built, while full S-12 release proof remains open
 
 Governs: ADR-074 and the claim-evidence boundary used by `HostConvergence`,
 `PublicVerification`, and `ProductIntegrityCase`.
@@ -80,10 +80,11 @@ block that class yet.
 
 The working candidate has a content-bound skill inventory, full-SHA behavior receipts derived from
 fresh grounding evidence, and sanitized managed-CLI receipts for installed-current version and
-health. The shared Stop body binds live receipts to the active host or an explicitly shared machine
-surface. A locally packed candidate exercises those results through both Claude and Codex, including
-the exact false ADR Verify statement and an `UNKNOWN` latest-version claim. Signed aggregate logic
-preserves typed claim-class verdicts and incomplete lanes as `PARTIAL`, but only the primitive is
-unit-proven; no release aggregate exists. Linux/Windows leaves, a registry/latest receipt producer,
+health. The read-only registry probe records latest-version evidence as an explicitly shared public
+surface. The shared Stop body binds receipts to the active host or that shared surface. A locally
+packed candidate exercises those results through both Claude and Codex, including the exact false
+ADR Verify statement and matching/mismatched latest-version claims. Signed aggregate logic preserves
+typed claim-class verdicts and incomplete lanes as `PARTIAL`, but only the primitive is unit-proven;
+no release aggregate exists. Linux/Windows leaves, a real candidate/public registry observation,
 broader false-positive measurement, public-byte binding, and any native Grok lifecycle adapter
 remain open.

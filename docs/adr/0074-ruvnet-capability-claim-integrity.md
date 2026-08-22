@@ -32,8 +32,8 @@ governs:
 
 Accepted by Stuart's 2026-08-22 mandate. Installation, exact-source behavior, current-installed
 version, and health claim enforcement are implemented in the working candidate and exercised
-through locally packed Claude/Codex hook wiring. Latest-version claims deliberately remain
-`UNKNOWN` because no registry receipt producer exists. The required non-local OS and public-byte
+through locally packed Claude/Codex hook wiring. A read-only registry producer now binds
+latest-version claims through the same packed Stop paths. The required non-local OS and public-byte
 matrix remains open. Nothing in this document is a shipped-capability claim.
 
 ## Context
@@ -65,8 +65,9 @@ One evidence source cannot prove every kind of claim:
 | Current version, latest, healthy, or reachable | Fresh live command/registry/round-trip receipt for the exact installed/public surface | A stale document, version string alone, or adjacent path is `UNKNOWN` |
 
 The current implementation covers the first row, exact-source behavior claims, installed-current
-version, and managed-CLI health observations. It does not yet produce registry evidence for
-"latest" and therefore blocks that claim as `UNKNOWN`.
+version, managed-CLI health observations, and a dedicated public-registry latest-version probe.
+The probe is read-only and emits a content-bound receipt only after an exact successful registry
+response; lookup failure or malformed metadata remains `UNKNOWN`.
 
 ### 3. CapabilityInventoryReceipt is exhaustive or UNKNOWN
 
@@ -119,16 +120,17 @@ adapter.
 `Accepted, partially implemented.` `CapabilityInventoryReceipt`, full-SHA `SourceClaimReceipt`,
 managed-CLI `LiveSurfaceReceipt`, and their claim audits are wired into the shared Stop body. One
 locally packed candidate exercises installation, behavior, current-version, health, and
-`UNKNOWN`-latest outcomes through both Claude and Codex registrations. The code can sign and verify
+registry-latest outcomes through both Claude and Codex registrations. The code can sign and verify
 an aggregate that derives `PASS | PARTIAL | FAIL` from typed per-lane claim verdicts; only its schema
 and cryptography are unit-proven, and no release candidate aggregate has been minted. Linux/Windows
-packed leaves, registry/latest evidence, Grok adapter proof, false-positive measurement, and the
-signed public S-12 aggregate remain unproven.
+packed leaves, a real candidate/public registry receipt, Grok adapter proof, false-positive
+measurement, and the signed public S-12 aggregate remain unproven.
 
 ## Currency log
 
 | Date | What changed | Why |
 |---|---|---|
+| 2026-08-22 | Added the read-only `ruvnet_registry_latest` MCP probe, content-bound registry receipts, exact version comparison, and packed Claude/Codex latest-version cases. | “Latest” is a public-surface claim; installed CLI output cannot prove it. Network failure and malformed registry metadata still emit no receipt, so the answer remains `UNKNOWN` instead of inheriting a cached or adjacent version. |
 | 2026-08-22 | Added full-SHA behavior receipts, managed-CLI current-version/health receipts, host-bound Stop auditing, typed signed aggregate logic, and packed Claude/Codex cases; latest remains `UNKNOWN`. | `plugin/scripts/capability-claim-evidence.mjs`, `plugin/mcp/managed-cli-interface.mjs`, and `tests/acceptance/adr-074-packed-capability-claims.acceptance.test.mjs` now distinguish evidence classes instead of treating installation as proof of behavior or currency. |
 | 2026-08-22 | Added locally packed Claude/Codex Stop-path acceptance for the installation-claim slice. | Direct shared-body tests did not prove either host registration preserved the final answer and enforcement output. |
 | 2026-08-22 | Established S-12 and implemented the first installation-claim receipt/audit slice. | A host asserted that an installed Ruflo ADR skill was absent because it searched one guessed path instead of the active inventory. |

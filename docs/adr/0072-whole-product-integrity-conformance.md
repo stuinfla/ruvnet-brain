@@ -199,7 +199,7 @@ The baseline measured 2026-08-21 is MetaHarness 75/100, task coverage
 65, and publish readiness 0.7. Security audit was clean, but S-1 through S-10 are not yet jointly
 proven. S-11 is not yet implemented or proven. S-12 installation, full-SHA behavior,
 installed-current-version, and health enforcement now run through locally packed Claude/Codex
-paths; latest-version remains `UNKNOWN`, the non-local OS/public matrix is absent, and no signed
+paths; latest-version is locally receipt-bound, the non-local OS/public matrix is absent, and no signed
 candidate aggregate exists. `scripts/adr-072-completion.mjs` rejects an unsigned, partial, stale, or
 non-3x2 capability aggregate. ADR-070 and DDD-0017 provide the release-convergence model. The partial-supersession map above
 is now the documentation authority; implementation must still change before the code may claim
@@ -209,6 +209,7 @@ conformance.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-22 | Added a read-only public-registry receipt producer for S-12 latest-version claims. | The prior local packed proof correctly left “latest” `UNKNOWN`; `ruvnet_registry_latest` now mints exact response-bound evidence, while network/malformed responses remain non-authoritative and no candidate/public PASS is claimed. |
 | 2026-08-22 | Bound S-12 into the executable trace and completion boundary with typed source/live receipts and a signed aggregate. | `scripts/product-integrity-contract.mjs` now names every S-12 producer/test/receipt, while `scripts/adr-072-completion.mjs` cryptographically rejects incomplete OS/host or claim-class evidence. `plugin/scripts/capability-claim-evidence.mjs` leaves latest-version `UNKNOWN`; no candidate/public PASS is claimed. |
 | 2026-08-22 | Added S-12 and ADR-074/DDD-0020 for evidence-bound RuvNet capability claims. | A host declared `ruflo-adr:adr-verify` absent even though its live skill inventory contained it; prompt-level verify-first guidance did not prevent the false final answer. |
 | 2026-08-22 | Added S-11 and ADR-073/DDD-0019 for complete perennial project continuity. | The active eight-process repair existed in a Codex-private transcript but was absent from the exact project checkpoint stream restored by Claude Code. AgentDB storage worked; continuous capture and host-neutral restore did not. |

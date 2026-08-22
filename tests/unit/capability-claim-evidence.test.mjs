@@ -8,6 +8,7 @@ import {
   buildSourceClaimReceipt,
   readLiveSurfaceReceipts,
   recordManagedCliObservation,
+  recordRegistryLatestObservation,
   signCapabilityClaimAggregate,
   verifyCapabilityClaimAggregate,
 } from '../../plugin/scripts/capability-claim-evidence.mjs';
@@ -130,6 +131,32 @@ describe('live version and health evidence', () => {
     expect(auditEvidenceBoundCapabilityClaims('Ruflo is unhealthy.', {
       sourceClaims: [], liveSurfaces: [health], host: 'codex', now: '2026-08-22T12:01:00.000Z',
     })).toMatchObject({ verdict: 'FAIL' });
+  });
+
+  it('binds latest-version claims only to an exact fresh registry receipt', () => {
+    const evidenceFile = path.join(makeRoot(), 'live.jsonl');
+    const latest = recordRegistryLatestObservation({
+      executable: 'ruflo', packageName: 'ruflo', version: '3.38.16',
+      registryUrl: 'https://registry.npmjs.org/ruflo/latest',
+      responseBody: '{"name":"ruflo","version":"3.38.16"}',
+      env: { RUVNET_CAPABILITY_LIVE_EVIDENCE: evidenceFile, RUVNET_HOOK_HOST: 'codex' },
+      observedAt: '2026-08-22T12:00:00.000Z',
+    });
+    expect(latest).toMatchObject({
+      host: 'shared', executable: 'ruflo', observationClass: 'latest-version',
+      observedVersion: '3.38.16', registryPackage: 'ruflo',
+    });
+    expect(auditEvidenceBoundCapabilityClaims('Ruflo 3.38.16 is the latest version.', {
+      sourceClaims: [], liveSurfaces: [latest], host: 'claude', now: '2026-08-22T12:01:00.000Z',
+    })).toMatchObject({ verdict: 'PASS' });
+    expect(auditEvidenceBoundCapabilityClaims('Ruflo 3.37.0 is the latest version.', {
+      sourceClaims: [], liveSurfaces: [latest], host: 'codex', now: '2026-08-22T12:01:00.000Z',
+    })).toMatchObject({ verdict: 'FAIL' });
+    expect(() => recordRegistryLatestObservation({
+      executable: 'ruflo', packageName: 'ruflo', version: 'not-semver',
+      registryUrl: 'https://registry.npmjs.org/ruflo/latest', responseBody: '{}',
+      env: { RUVNET_CAPABILITY_LIVE_EVIDENCE: evidenceFile },
+    })).toThrow(/semantic version/i);
   });
 });
 

@@ -100,6 +100,12 @@ async function seedPackedClaimEvidence() {
     execution: { code: 0, stdout: 'ruflo v3.38.16', stderr: '', error: null },
     env: { RUVNET_CAPABILITY_LIVE_EVIDENCE: fixture.env.RUVNET_CAPABILITY_LIVE_EVIDENCE },
   });
+  evidence.recordRegistryLatestObservation({
+    executable: 'ruflo', packageName: 'ruflo', version: '3.38.16',
+    registryUrl: 'https://registry.npmjs.org/ruflo/latest',
+    responseBody: '{"name":"ruflo","version":"3.38.16"}',
+    env: { RUVNET_CAPABILITY_LIVE_EVIDENCE: fixture.env.RUVNET_CAPABILITY_LIVE_EVIDENCE },
+  });
   evidence.recordManagedCliObservation({
     toolName: 'ruvnet_cli_run', executable: 'ruflo', argv: ['doctor'],
     execution: { code: 0, stdout: 'All checks passed. System healthy.', stderr: '', error: null },
@@ -184,11 +190,11 @@ describe('ADR-074 packed capability-claim enforcement', () => {
     expect(contradicted.stdout).toContain('contradicts fresh typed evidence');
   });
 
-  it.each(['claude', 'codex'])('keeps latest-version claims UNKNOWN through packed %s wiring without registry proof', (host) => {
-    const result = firePacked(host, `Ruflo 3.38.16 is the latest version on ${host}.`);
-    expect(result.status).toBe(0);
-    expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('latest-version claim');
-    expect(result.stdout).toContain('UNKNOWN');
+  it.each(['claude', 'codex'])('binds latest-version claims to a fresh registry receipt through packed %s wiring', (host) => {
+    expect(firePacked(host, `Ruflo 3.38.16 is the latest version on ${host}.`).stdout).toBe('');
+    const mismatch = firePacked(host, `Ruflo 3.37.0 is the latest version on ${host}.`);
+    expect(mismatch.status).toBe(0);
+    expect(mismatch.stderr).toBe('');
+    expect(mismatch.stdout).toContain('public registry latest version is 3.38.16');
   });
 });

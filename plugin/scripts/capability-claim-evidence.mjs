@@ -121,13 +121,18 @@ function livePayload(receipt) {
 export function validateLiveSurfaceReceipt(receipt) {
   if (receipt?.schemaVersion !== 1 || receipt?.kind !== 'ruvnet-brain-live-surface'
     || !['claude', 'codex', 'shared'].includes(receipt.host) || !receipt.executable
-    || !['current-version', 'health'].includes(receipt.observationClass)
+    || !['current-version', 'latest-version', 'health'].includes(receipt.observationClass)
     || !HEX64.test(String(receipt.outputSha256 || '')) || !HEX64.test(String(receipt.receiptSha256 || ''))
     || digest(livePayload(receipt)) !== receipt.receiptSha256) {
     throw new Error('live surface receipt is malformed or digest-invalid');
   }
   if (receipt.observationClass === 'current-version' && !VERSION.test(String(receipt.observedVersion || ''))) {
     throw new Error('live version receipt has no observed semantic version');
+  }
+  if (receipt.observationClass === 'latest-version'
+    && (receipt.host !== 'shared' || !VERSION.test(String(receipt.observedVersion || ''))
+      || !receipt.registryPackage || !/^https:\/\/registry\.npmjs\.org\//.test(String(receipt.registryUrl || '')))) {
+    throw new Error('registry latest receipt has no exact public semantic version observation');
   }
   if (receipt.observationClass === 'health' && !['PASS', 'FAIL', 'UNKNOWN'].includes(receipt.healthVerdict)) {
     throw new Error('live health receipt has no typed verdict');
@@ -183,6 +188,32 @@ export function recordManagedCliObservation({ toolName, executable, argv, execut
     appendReceipt(liveEvidenceFile(env), receipt);
     return receipt;
   } catch { return null; }
+}
+
+export function recordRegistryLatestObservation({ executable, packageName, version, registryUrl, responseBody,
+  env = process.env, observedAt = new Date().toISOString() } = {}) {
+  const matched = VERSION.exec(String(version || ''));
+  const normalizedVersion = String(version || '').replace(/^v/, '');
+  if (!executable || !packageName || !matched || matched[1] !== normalizedVersion) {
+    throw new Error('registry latest receipt requires an exact semantic version');
+  }
+  const payload = {
+    schemaVersion: 1,
+    kind: 'ruvnet-brain-live-surface',
+    host: 'shared',
+    observedAt,
+    toolName: 'ruvnet_registry_latest',
+    executable,
+    argv: [packageName],
+    observationClass: 'latest-version',
+    outputSha256: sha256(String(responseBody || '')),
+    observedVersion: normalizedVersion,
+    registryPackage: packageName,
+    registryUrl,
+  };
+  const receipt = validateLiveSurfaceReceipt({ ...payload, receiptSha256: digest(payload) });
+  appendReceipt(liveEvidenceFile(env), receipt);
+  return receipt;
 }
 
 export function readLiveSurfaceReceipts({ file = null, env = process.env, limit = 100 } = {}) {
@@ -291,7 +322,11 @@ export function auditEvidenceBoundCapabilityClaims(message, {
         reason: `live current version is ${observed.observedVersion}`, evidence: observed.receiptSha256 });
       else passed.push({ ...claim, evidence: observed.receiptSha256, reason: 'current version matches live receipt' });
     } else if (claim.class === 'latest-version') {
-      unresolved.push({ ...claim, reason: 'latest version has no fresh registry receipt' });
+      const observed = candidates.find((receipt) => receipt.observationClass === 'latest-version');
+      if (!observed) unresolved.push({ ...claim, reason: 'latest version has no fresh registry receipt' });
+      else if (observed.observedVersion !== claim.version) contradictions.push({ ...claim,
+        reason: `public registry latest version is ${observed.observedVersion}`, evidence: observed.receiptSha256 });
+      else passed.push({ ...claim, evidence: observed.receiptSha256, reason: 'latest version matches registry receipt' });
     } else {
       const observed = candidates.find((receipt) => receipt.observationClass === 'health');
       let state = 'UNKNOWN';

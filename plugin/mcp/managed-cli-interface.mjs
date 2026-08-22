@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadRuntimePreferences, runtimeChildEnv } from '../scripts/runtime-preferences.mjs';
-import { recordManagedCliObservation } from '../scripts/capability-claim-evidence.mjs';
+import { recordManagedCliObservation, recordRegistryLatestObservation } from '../scripts/capability-claim-evidence.mjs';
 
 export const MANAGED_EXECUTABLES = Object.freeze([
   'ruflo',
@@ -16,6 +16,15 @@ export const MANAGED_EXECUTABLES = Object.freeze([
 ]);
 
 const MANAGED = new Set(MANAGED_EXECUTABLES);
+const REGISTRY_PACKAGES = Object.freeze({
+  ruflo: 'ruflo',
+  'claude-flow': '@claude-flow/cli',
+  'agentic-flow': 'agentic-flow',
+  'agentic-qe': 'agentic-qe',
+  ruvector: 'ruvector',
+  'agent-browser': 'agent-browser',
+  'ruv-swarm': 'ruv-swarm',
+});
 const SUBCOMMAND = /^[a-z][a-z0-9-]*$/;
 const MAX_ARGS = 256;
 const MAX_ARG_BYTES = 8192;
@@ -30,6 +39,17 @@ const executableSchema = {
 };
 
 export const MANAGED_CLI_TOOLS = Object.freeze([
+  {
+    name: 'ruvnet_registry_latest',
+    description: 'Read the exact npm registry latest version for a managed RuvNet executable and record a content-bound public-registry receipt.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: { executable: executableSchema },
+      required: ['executable'],
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+  },
   {
     name: 'ruvnet_cli_help',
     description: 'Read a managed CLI interface from the executable itself. Runs only the supplied subcommand path plus --help and records a fresh stamp only after exit 0.',
@@ -214,10 +234,30 @@ function resultOf(executable, argv, result) {
   };
 }
 
-export async function callManagedCli(toolName, args, env = process.env) {
+export async function callManagedCli(toolName, args, env = process.env, fetchImpl = globalThis.fetch) {
   try {
     const executable = assertExecutable(args?.executable);
-    const argv = literalArgv(args?.argv);
+    const argv = literalArgv(args?.argv ?? []);
+
+    if (toolName === 'ruvnet_registry_latest') {
+      const packageName = REGISTRY_PACKAGES[executable];
+      const registryUrl = `https://registry.npmjs.org/${packageName.replace('/', '%2F')}/latest`;
+      const response = await fetchImpl(registryUrl, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+      const body = await response.text();
+      if (!response.ok) throw new Error(`registry latest lookup failed with HTTP ${response.status}`);
+      let metadata;
+      try { metadata = JSON.parse(body); } catch { throw new Error('registry latest response was not JSON'); }
+      const receipt = recordRegistryLatestObservation({
+        executable, packageName, version: metadata?.version, registryUrl, responseBody: body, env,
+      });
+      return {
+        content: [{ type: 'text', text: `${packageName} latest version: ${receipt.observedVersion} (registry receipt ${receipt.receiptSha256})` }],
+        isError: false,
+      };
+    }
 
     if (toolName === 'ruvnet_cli_help') {
       stampKeysForHelp(executable, argv);
