@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest } from './coverage-integrity.mjs';
 import { validateRetrievalCanaryPlan, validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
 
@@ -216,4 +219,80 @@ export function verifyPublicVerificationAggregate(aggregate, publicKey, expected
     throw new Error('public verification aggregate identity differs from the release transaction');
   }
   return aggregate;
+}
+
+function parseCliArgs(argv) {
+  const parsed = {};
+  for (let index = 0; index < argv.length; index += 2) {
+    const flag = argv[index];
+    const value = argv[index + 1];
+    if (!['--lanes', '--reviews', '--out'].includes(flag) || !value) {
+      throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --reviews <dir> --out <file>');
+    }
+    parsed[flag.slice(2)] = value;
+  }
+  if (!parsed.lanes || !parsed.reviews || !parsed.out || Object.keys(parsed).length !== 3) {
+    throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --reviews <dir> --out <file>');
+  }
+  return parsed;
+}
+
+function readExactJsonFiles(directory, count, label) {
+  const entries = fs.readdirSync(directory, { withFileTypes: true });
+  if (entries.length !== count || entries.some((entry) => !entry.isFile() || !entry.name.endsWith('.json'))) {
+    throw new Error(`${label} directory must contain exactly ${count} JSON files`);
+  }
+  return entries.sort((left, right) => left.name.localeCompare(right.name))
+    .map((entry) => JSON.parse(fs.readFileSync(path.join(directory, entry.name), 'utf8')));
+}
+
+function readLaneLeaves(directory) {
+  const wrappers = readExactJsonFiles(directory, PUBLIC_VERIFICATION_OS.length, 'lane');
+  const byOs = new Map();
+  for (const wrapper of wrappers) {
+    const payload = { schemaVersion: wrapper?.schemaVersion, kind: wrapper?.kind, os: wrapper?.os,
+      leaves: wrapper?.leaves };
+    if (payload.schemaVersion !== 1 || payload.kind !== 'ruvnet-brain-public-verification-os-lane'
+      || !PUBLIC_VERIFICATION_OS.includes(payload.os) || byOs.has(payload.os)
+      || !Array.isArray(payload.leaves) || payload.leaves.length !== PUBLIC_VERIFICATION_MODES.length
+      || payload.leaves.some((leaf) => leaf?.os !== payload.os)
+      || digest(payload) !== wrapper.laneSha256) {
+      throw new Error('public verification OS lane wrapper is malformed, duplicated, or tampered');
+    }
+    payload.leaves.forEach(validatePublicVerificationLeaf);
+    byOs.set(payload.os, payload.leaves);
+  }
+  if (PUBLIC_VERIFICATION_OS.some((osName) => !byOs.has(osName))) {
+    throw new Error('public verification OS lane wrapper is missing');
+  }
+  return PUBLIC_VERIFICATION_OS.flatMap((osName) => byOs.get(osName));
+}
+
+export function generatePublicVerificationAggregate({ lanesDirectory, reviewsDirectory, outputFile, privateKey }) {
+  if (!privateKey) throw new Error('RUVNET_SIGNING_KEY is required');
+  if (fs.existsSync(outputFile)) throw new Error(`refusing to overwrite existing aggregate: ${outputFile}`);
+  const leaves = readLaneLeaves(lanesDirectory);
+  const reviews = readExactJsonFiles(reviewsDirectory, REQUIRED_REVIEW_MODELS.length, 'review');
+  const aggregate = signPublicVerificationAggregate({ leaves, reviews }, privateKey);
+  fs.writeFileSync(outputFile, `${JSON.stringify(aggregate, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+  return aggregate;
+}
+
+async function main() {
+  const options = parseCliArgs(process.argv.slice(2));
+  const aggregate = generatePublicVerificationAggregate({
+    lanesDirectory: options.lanes,
+    reviewsDirectory: options.reviews,
+    outputFile: options.out,
+    privateKey: process.env.RUVNET_SIGNING_KEY,
+  });
+  process.stdout.write(`${JSON.stringify({ ok: true, aggregateSha256: aggregate.aggregateSha256,
+    leaves: aggregate.metrics.leaves, reviews: aggregate.reviews.length })}\n`);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  });
 }

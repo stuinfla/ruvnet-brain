@@ -1,4 +1,8 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { canonicalJson, digest } from '../../scripts/coverage-integrity.mjs';
 import { runRetrievalCanaries } from '../../scripts/retrieval-canary.mjs';
@@ -122,5 +126,28 @@ describe('signed public 3x3 verification aggregate', () => {
     expect(() => signPublicVerificationAggregate({ leaves: rows, reviews: stale }, crypto.generateKeyPairSync('ed25519').privateKey))
       .toThrow(/identity or rubric differs/);
     expect(() => createIndependentReviewReceipt({ ...reviews()[0], receiptSha256: undefined, score: 94 })).toThrow(/below 95/);
+  });
+
+  it('signs exactly three immutable OS lane receipts plus two review receipts through the CLI', async () => {
+    const signingKeys = crypto.generateKeyPairSync('ed25519');
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'public-aggregate-'));
+    const lanesDir = path.join(temp, 'lanes'); const reviewsDir = path.join(temp, 'reviews');
+    fs.mkdirSync(lanesDir); fs.mkdirSync(reviewsDir);
+    const allLeaves = await leaves();
+    for (const osName of PUBLIC_VERIFICATION_OS) {
+      const payload = { schemaVersion: 1, kind: 'ruvnet-brain-public-verification-os-lane', os: osName,
+        leaves: allLeaves.filter(({ os: leafOs }) => leafOs === osName) };
+      fs.writeFileSync(path.join(lanesDir, `${osName}.json`), JSON.stringify({ ...payload, laneSha256: digest(payload) }));
+    }
+    for (const receipt of reviews()) fs.writeFileSync(path.join(reviewsDir, `${receipt.model}.json`), JSON.stringify(receipt));
+    const out = path.join(temp, 'aggregate.json');
+    const env = { ...process.env, RUVNET_SIGNING_KEY: signingKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }) };
+    const args = ['scripts/public-verification-aggregate.mjs', '--lanes', lanesDir, '--reviews', reviewsDir, '--out', out];
+    const first = spawnSync(process.execPath, args, { cwd: path.resolve(import.meta.dirname, '../..'), env, encoding: 'utf8' });
+    expect(first.status, first.stderr).toBe(0);
+    expect(verifyPublicVerificationAggregate(JSON.parse(fs.readFileSync(out, 'utf8')), signingKeys.publicKey, identity)).toBeTruthy();
+    const second = spawnSync(process.execPath, args, { cwd: path.resolve(import.meta.dirname, '../..'), env, encoding: 'utf8' });
+    expect(second.status).not.toBe(0);
+    expect(second.stderr).toMatch(/refusing to overwrite/);
   });
 });
