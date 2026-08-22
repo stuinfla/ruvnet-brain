@@ -3,7 +3,7 @@ id: ADR-060
 title: The two-stage cross-encoder cascade — reading every passage, cheaply, before reading a few properly
 status: Accepted
 date: 2026-07-27
-updated: 2026-08-10
+updated: 2026-08-22
 authors: [Stuart Kerr, Claude Code]
 tags: [retrieval, latency, cross-encoder, cascade, measurement]
 supersedes: [ADR-059]
@@ -17,7 +17,7 @@ governs:
   - plugin/mcp/server.mjs
 ---
 
-Updated: 2026-07-31 | Version 1.0.3
+Updated: 2026-08-22 | Version 1.0.4
 Created: 2026-07-27
 
 # ADR-060 — The two-stage cross-encoder cascade
@@ -229,6 +229,7 @@ opt in with `KB_CE_CASCADE_K=64`; this ADR does not accept that value as the def
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-22 | Re-read after the public-registry evidence route; retrieval and the cascade are untouched. | `plugin/mcp/server.mjs` dispatches `ruvnet_registry_latest` before the `search_ruvnet` branch and returns the registry result directly. It does not call `ensureChild()`, load a model, generate a candidate pool, or enter `forge-mcp-all.mjs`; `CE_CASCADE_K_DEFAULT` and every reranker path remain unchanged. |
 | 2026-08-10 | Re-read after #133; retrieval is untouched. | `plugin/mcp/server.mjs` changed only in how it PERSISTS readiness — per-process records instead of one shared last-writer-wins file. No cascade stage, threshold or reranker path was read or modified. |
 | 2026-08-10 | **Re-read after the #133 clean-exit fix; the cascade is unchanged.** | The parent no longer reports the worker's intentional 15-minute idle retirement as an unexpected crash, so `--doctor` stops exiting 1 on a healthy idle machine. Nothing about how the cascade scores or re-ranks moved; the worker still respawns on the next search exactly as this ADR assumes. |
 | 2026-08-07 | **Re-read after the #122 memory work; the cascade decision is unchanged, and the residency it implies is now bounded in time.** | `kb/forge-mcp-all.mjs` gained an idle exit (15m default, `RUVNET_BRAIN_IDLE_EXIT_MS`, never mid-request) and `plugin/scripts/session-start-core.mjs` corrected a banner claim. This ADR decides HOW the cross-encoder cascade re-scores a pooled candidate set; it does not decide how long a warm encoder should sit idle in RAM, and nothing about the cascade itself moved. The reporter measured four workers at 3.7/3.3/3.0/15.7 GB — roughly 25 GB held by quiet sessions — against the "~0.5 GB" the source comment still claims, so that comment is stale independent of this decision. Open and NOT closed by this row: the 15.7 GB outlier, which is a different shape from normal model residency and is unreproduced. Idle exit bounds the damage in wall-clock time; it does not explain the magnitude, and this ADR should not be read as having accounted for it. |

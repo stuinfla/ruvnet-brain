@@ -3,7 +3,7 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-21
+updated: 2026-08-22
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -202,6 +202,7 @@ failure. v1 draft's Decision + risks register superseded above; Context stands.
 ## Currency log
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-22 | **A read-only public-registry probe joined the existing explicit MCP interface tools; Brain OFF and scope semantics are unchanged.** | `plugin/mcp/server.mjs` now dispatches `ruvnet_registry_latest` in the parent alongside `ruvnet_cli_help`/`ruvnet_cli_run`. It runs only after an explicit tool call, starts no search worker, performs no install or update, writes no setting or OFF sentinel, and cannot change retrieval scope. This is maintenance/interface evidence, not background Brain activity; `tests/unit/brain-off.test.mjs` remains the focused OFF boundary. |
 | 2026-08-21 | **Re-read after the rollback-inventory identity fix; the off-switch and scope decisions are unchanged.** | `bin/install.mjs` formerly keyed an undeclared RVF as `file:<path>` while the live generation keyed the same artifact as `store:<name>`, falsely classifying identical local stores as missing and retaining full-KB backups indefinitely. Inventory identity is now the normalized governed artifact path in both cases; true only-copy stores still fail closed. |
 | 2026-08-13 | **Learning SCOPE is now resolved by one function that the writer and both readers share.** | Issue #139 (@ObiWanKenobi): #136 read the learner at `cwd: SYSTEM_HOME`, its fix changed that to `cwd: process.cwd()`, and BOTH are hardcodes — the second is right only because `project` is the default, and inverts under `RUVNET_LEARNING_SCOPE=user` (the flush feeds `~/.claude-flow/neural` while the console reads `<project>/.claude-flow/neural`). Newly dangerous rather than merely wrong: ruflo v3.38.9 made `hooks intelligence --train` REAL (ruvnet/ruflo#2940 was a no-op), so training the wrong store now moves ITS `lastAdaptation` to 0s and the stale card SILENTLY SELF-CLEARS while the operator's real learner is untouched. `learningScope()` / `learnerCwd()` now live in runtime-preferences.mjs beside the preferences they read; learn-flush, onboarding-console and health-repair all call them. This same fact scattered across files has now arrived as #104, #134, #136 and #139 — it agreed by coincidence, and now agrees by construction. |
 | 2026-08-10 | **Re-read after #128/#129; the on/off contract and every scope rule are unchanged.** | `bin/install.mjs` and `plugin/scripts/hook-shim.mjs` are governed here. Neither change touches the sentinel, `brain-state.mjs`, or any per-part scope: `prunePluginGenerations()` (issue #128) only removes directories under a registered `installPath`'s parent, and the sentinel lives in `~/.config/ruvnet-brain`, outside that tree. It moves *toward* this ADR: a stale generation ships its own boot-frozen `hook-shim.mjs`, and this ADR's per-invocation contract assumes one generation answers. #129 changes which command a scheduler runs; it reads no brain state. |
