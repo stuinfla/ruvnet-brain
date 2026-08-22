@@ -11,10 +11,11 @@ import {
 } from '../../scripts/public-verification-aggregate.mjs';
 import { finalizeReleaseTransaction, transactionIdFor } from '../../scripts/release-transaction.mjs';
 import { execute, FakeReleaseProvider, identity, keys } from '../helpers/release-transaction-fixture.mjs';
+import { getVersionTag } from '../../scripts/version.mjs';
 
 const plan = { schemaVersion: 2, kind: 'ruvnet-brain-retrieval-canary-plan',
   coverage: { sha256: '4'.repeat(64), bytes: 100, releaseCoverageGeneration: 'f'.repeat(64) },
-  baseline: { tag: 'v4.2.2-dev', archiveSha256: '1'.repeat(64), archiveBytes: 100,
+  baseline: { tag: getVersionTag(), archiveSha256: '1'.repeat(64), archiveBytes: 100,
     archiveManifestSha256: '2'.repeat(64), verificationReceiptSha256: '3'.repeat(64), stores: ['old'],
     storeCount: 1, storeSetSha256: digest(['old']) },
   candidate: { sourceSha: identity.candidateSha, packageSha256: identity.packageSha256,

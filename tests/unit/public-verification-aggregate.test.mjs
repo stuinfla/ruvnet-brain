@@ -10,15 +10,16 @@ import {
   signPublicVerificationAggregate,
   verifyPublicVerificationAggregate,
 } from '../../scripts/public-verification-aggregate.mjs';
+import { getVersion, getVersionTag } from '../../scripts/version.mjs';
 
 const identity = {
-  sourceSha: 'a'.repeat(40), version: '9.9.9-dev', tag: 'v9.9.9-dev', artifactSha256: 'b'.repeat(64),
+  sourceSha: 'a'.repeat(40), version: getVersion(), tag: getVersionTag(), artifactSha256: 'b'.repeat(64),
   bundleSha256: 'c'.repeat(64), payloadId: 'd'.repeat(64), hostRegistryDigest: 'e'.repeat(64),
   coverageGeneration: 'f'.repeat(64), canaryPlanSha256: '1'.repeat(64), releaseTransactionId: '2'.repeat(64),
 };
 const plan = { schemaVersion: 2, kind: 'ruvnet-brain-retrieval-canary-plan',
   coverage: { sha256: '6'.repeat(64), bytes: 100, releaseCoverageGeneration: identity.coverageGeneration },
-  baseline: { tag: 'v4.2.2-dev', archiveSha256: '3'.repeat(64), archiveBytes: 100,
+  baseline: { tag: getVersionTag(), archiveSha256: '3'.repeat(64), archiveBytes: 100,
     archiveManifestSha256: '4'.repeat(64), verificationReceiptSha256: '5'.repeat(64), stores: ['old'],
     storeCount: 1, storeSetSha256: digest(['old']) },
   candidate: { sourceSha: identity.sourceSha, packageSha256: identity.artifactSha256,
