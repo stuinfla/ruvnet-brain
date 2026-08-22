@@ -178,3 +178,4 @@ recovery evidence, not proof of continuous capture or cross-host automatic resto
 | Date | What changed | Why |
 |---|---|---|
 | 2026-08-22 | Established the binary, host-neutral AgentDB continuity contract and fail-closed acceptance test. | Claude Code could not recover the active eight-process repair because current progression was absent from the automatically restored checkpoint stream. |
+| 2026-08-22 | Recorded the pure progression snapshot, redaction, validation, and deterministic restoration core in `916db4a`, with canonical adapter-version fixtures in `faf458a` (16 focused tests; 51 with version/restated-truth gates). Host hooks, managed AgentDB transport, outbox replay, and cross-host crash acceptance remain unbuilt and unproven. | The domain contract moved after this ADR. This row binds the implemented slice without overstating the lifecycle behavior required for acceptance. |
