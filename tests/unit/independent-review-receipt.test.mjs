@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { canonicalJson, digest } from '../../scripts/coverage-integrity.mjs';
 import { transactionIdFor } from '../../scripts/release-transaction.mjs';
+import { getVersion } from '../../scripts/version.mjs';
 import { validateIndependentReviewReceipt as validateAggregateReviewReceipt } from '../../scripts/public-verification-aggregate.mjs';
 import {
   ALLOWED_INDEPENDENT_REVIEWERS,
@@ -18,18 +19,19 @@ import {
 const fableKeys = crypto.generateKeyPairSync('ed25519');
 const solKeys = crypto.generateKeyPairSync('ed25519');
 const strangerKeys = crypto.generateKeyPairSync('ed25519');
+const version = getVersion();
 
 const release = {
   repository: 'stuinfla/ruvnet-brain',
   package: 'ruvnet-brain',
-  version: '4.2.2-dev',
-  tag: 'v4.2.2-dev',
+  version,
+  tag: `v${version}`,
   candidateSha: 'a'.repeat(40),
   payloadId: 'b'.repeat(64),
   evidenceDigest: 'c'.repeat(64),
   packageIntegrity: `sha512-${Buffer.alloc(64, 7).toString('base64')}`,
   packageSha256: 'd'.repeat(64),
-  packageAssetName: 'ruvnet-brain-4.2.2-dev.tgz',
+  packageAssetName: `ruvnet-brain-${version}.tgz`,
   bundleSha256: 'e'.repeat(64),
   bundleSignatureSha256: 'f'.repeat(64),
   bundleDigestSha256: '1'.repeat(64),
