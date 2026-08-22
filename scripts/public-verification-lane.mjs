@@ -132,12 +132,15 @@ export async function createPublicVerificationLane({
       search: ({ query, k }) => adapter.searchInstalled({ mode, query, k }),
       citationResolver: (matched, expected) => adapter.resolveInstalledCitation({ mode, matched, expected }),
     });
-    validateRetrievalCanaryReceipt(retrieval, { plan: retrievalPlan, requireAcceptance: true });
+    const verifiedRetrieval = validateRetrievalCanaryReceipt(
+      retrieval,
+      { plan: retrievalPlan, requireAcceptance: true },
+    );
     leaves.push(createPublicVerificationLeaf({
       ...common,
       os,
       mode,
-      status: 'completed',
+      status: verifiedRetrieval.receiptSha256 === retrieval.receiptSha256 ? 'completed' : 'failed',
       verdict: 'PASS',
       publicBytes: { npmExact: true, githubExact: true, bundleExact: true },
       installed: { version: installed.version, loaderVerified: true },
