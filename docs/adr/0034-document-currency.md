@@ -3,7 +3,7 @@ id: ADR-034
 title: A document's status is a claim about code — derive it, stamp it with something you cannot type from memory
 status: Proposed
 date: 2026-07-22
-updated: 2026-08-04
+updated: 2026-08-22
 impl: unbuilt
 governs:
   - scripts/doc-currency.mjs
@@ -23,8 +23,9 @@ relates: [ADR-009, ADR-020, ADR-024, ADR-030]
      modelled as a SECOND axis alongside rUv's, never as a replacement for it (anti-corruption
      boundary, DDD-0008). -->
 
-**Decision date**: 2026-07-22 · **Last updated**: 2026-07-27 · **Why**: this document had drifted from
-its own implementation — see the currency log; corrected under ADR-056
+**Decision date**: 2026-07-22 · **Last updated**: 2026-08-22 · **Why**: this document had drifted from
+its own implementation — see the currency log; corrected under ADR-056 and re-reviewed after the
+pre-push convergence wiring in `b1172a7`
 **Implementation**: built (derived) · **Verified in sync**: never
 
 This document proposes a schema and then wears it. Its own `impl:` is derived, not asserted, and on
@@ -383,6 +384,7 @@ profile check, and it holds here for the same reason.
 
 | Date | What changed | Why |
 |---|---|---|
+| 2026-08-22 | Re-read `scripts/doc-currency.mjs` and `scripts/git-hooks/pre-push`; no decision change. | Commit `b1172a7` added the already-declared `sync-census.mjs --check` and `sync-commands.mjs --check` authorities to the same pre-push boundary that invokes document currency. The additions strengthen the boundary's single-purpose checks without changing this ADR's derivation, drift, or fail-open rules. |
 | 2026-07-28 | Re-read `scripts/doc-currency.mjs` and `scripts/git-hooks/pre-push`; no decision change. | The adversarial release run at SHA `879b928` correctly blocked on six stale governed documents. This row is committed with the repaired documents and code, proving the chokepoint remains fail-closed rather than bypassing its findings. |
 | 2026-07-27 | **Corrected this document's drift from its own implementation**, under ADR-056. `impl:` claim `unbuilt` → derived `built`; removed `plugin/scripts/doc-currency-gate.sh` from `governs:` (never built — one unresolvable path dragged the whole weakest-member-wins derivation to `unbuilt`, so the honest mechanism reported the dishonest answer for an honest reason); replaced the `docs/adr/` + `docs/ddd/` **directories** — which this document's own §6 forbids — not with globs (the set expanded to all 67 docs and went permanently `presumed-stale`) but with the two files that actually implement it. The gate now lives in `scripts/git-hooks/pre-push` per ADR-056 §5 | The body asserted *"`scripts/doc-currency.mjs` does not exist"* for five days while that file sat beside it at 780 lines with 43KB of tests, committed the same day. Found 2026-07-27 by the owner's third rule; `wired-check` had also been reporting the script `wired` because `package.json:35` DEFINED an npm alias for it — now `wired` for real, caller `scripts/git-hooks/pre-push` |
 | 2026-07-22 | Created | Owner, 2026-07-22: *"Is it VERIFIED TO BE IN SYNC with the resulting output?"* — measured the same day: 12 of 32 ADRs in `docs/adr/` carry no status or date, and 4 of the 20 stamped ones already carry an `updated:` older than their own last commit |
