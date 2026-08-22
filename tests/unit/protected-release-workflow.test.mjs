@@ -76,6 +76,8 @@ describe('protected release rail', () => {
 
   it('runs the exact public 3x3 matrix and only then persists install-verified', () => {
     const source = workflow();
+    expect(source.match(/release-evidence\/COVERAGE\.json/g).length).toBeGreaterThanOrEqual(3);
+    expect(source.match(/release-evidence\/retrieval-canary-plan\.json/g).length).toBeGreaterThanOrEqual(3);
     for (const lane of ['ubuntu-latest, os_name: linux', 'macos-latest, os_name: macos',
       'windows-latest, os_name: windows']) expect(source).toContain(lane);
     expect(source).toContain('node scripts/public-verification-lane.mjs');
