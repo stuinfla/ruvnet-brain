@@ -76,6 +76,8 @@ block that class yet.
 ## Current status and open proof
 
 The installation-claim slice has a content-bound skill inventory and focused direct-Stop tests,
-including quoted-history, inline-code, and hypothetical separation. The following remain open:
-packed Claude/Codex execution, broader false-positive measurement, behavior/API source binding,
-live version/health binding, signed S-12 public aggregate, and any native Grok lifecycle adapter.
+including quoted-history, inline-code, and hypothetical separation. A locally packed candidate also
+proves both Claude and Codex registrations block the exact false ADR Verify claim. The following
+remain open: Linux/Windows packed leaves, broader false-positive measurement, behavior/API source
+binding, live version/health binding, signed S-12 public aggregate, and any native Grok lifecycle
+adapter.

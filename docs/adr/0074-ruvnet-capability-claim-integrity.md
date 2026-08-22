@@ -17,6 +17,7 @@ governs:
   - plugin/hooks/codex-hooks.json
   - tests/unit/capability-inventory-receipt.test.mjs
   - tests/unit/continuation-gate-capability-truth.test.mjs
+  - tests/acceptance/adr-074-packed-capability-claims.acceptance.test.mjs
 ---
 
 # ADR-074 — RuvNet capability claims require live evidence
@@ -24,8 +25,9 @@ governs:
 **Status**: Accepted
 
 Accepted by Stuart's 2026-08-22 mandate. Installation-claim enforcement is implemented in the
-working candidate; behavior/version claim enforcement and packed cross-host proof remain open.
-Nothing in this document is a shipped-capability claim.
+working candidate and proven through locally packed Claude/Codex hook wiring; behavior/version
+claim enforcement and the required OS/public matrix remain open. Nothing in this document is a
+shipped-capability claim.
 
 ## Context
 
@@ -106,12 +108,14 @@ adapter.
 ## Current implementation status
 
 `Accepted, partially implemented.` `CapabilityInventoryReceipt` and installation/presence claim
-auditing are wired into the shared Stop body with focused mutation tests. Packed host execution,
-behavior/source binding, current-version binding, Grok adapter proof, and the signed public S-12
-receipt are not implemented or proven.
+auditing are wired into the shared Stop body with focused mutation tests. One locally packed
+candidate now proves the exact false claim is blocked through both Claude and Codex registrations;
+Linux/Windows packed leaves, behavior/source binding, current-version binding, Grok adapter proof,
+and the signed public S-12 receipt are not implemented or proven.
 
 ## Currency log
 
 | Date | What changed | Why |
 |---|---|---|
+| 2026-08-22 | Added locally packed Claude/Codex Stop-path acceptance for the installation-claim slice. | Direct shared-body tests did not prove either host registration preserved the final answer and enforcement output. |
 | 2026-08-22 | Established S-12 and implemented the first installation-claim receipt/audit slice. | A host asserted that an installed Ruflo ADR skill was absent because it searched one guessed path instead of the active inventory. |
