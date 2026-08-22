@@ -36,6 +36,7 @@ import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const IS_MAIN = path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url);
 const PUBLISH = process.argv.includes('--publish');
 const CORPUS_SEED = process.argv.includes('--corpus-seed');
 let protectedCandidate = null;
@@ -188,7 +189,7 @@ export function runProtectedCorpusSeed({
   return { tag, target, repository: repo, archiveSha256, receiptSha256: sha256File(receiptFile) };
 }
 
-if (CORPUS_SEED) {
+if (IS_MAIN && CORPUS_SEED) {
   try {
     const result = runProtectedCorpusSeed();
     console.log(JSON.stringify({ ok: true, mode: 'corpus-seed', ...result }, null, 2));
@@ -196,7 +197,7 @@ if (CORPUS_SEED) {
     console.error(error.message);
     process.exitCode = 1;
   }
-} else {
+} else if (IS_MAIN) {
 
 console.log(`\n${c.b('RuvNet Brain — release / definition-of-done')} ${c.dim('· ' + (PUBLISH ? 'PUBLISH' : 'check-only') + ' · shipping ' + V())}\n`);
 

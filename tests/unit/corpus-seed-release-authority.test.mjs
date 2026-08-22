@@ -3,10 +3,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { runProtectedCorpusSeed } from '../../scripts/release.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
-const RELEASE = path.join(ROOT, 'scripts/release.mjs');
 const HEAD = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
 const dirs = [];
 
@@ -19,23 +19,6 @@ const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file
 function fixture() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-authority-'));
   dirs.push(dir);
-  const bin = path.join(dir, 'bin');
-  fs.mkdirSync(bin);
-  const log = path.join(dir, 'gh-calls.jsonl');
-  const gh = path.join(bin, 'gh');
-  fs.writeFileSync(gh, `#!/usr/bin/env node
-import fs from 'node:fs';
-const args = process.argv.slice(2);
-fs.appendFileSync(process.env.GH_CALL_LOG, JSON.stringify(args) + '\\n');
-if (args[0] === 'release' && args[1] === 'view') {
-  if (process.env.GH_VIEW_MODE === 'exists') process.exit(0);
-  console.error(process.env.GH_VIEW_MODE === 'ambiguous' ? 'network timeout' : 'release not found');
-  process.exit(1);
-}
-process.exit(0);
-`);
-  fs.chmodSync(gh, 0o755);
-
   const bundle = path.join(dir, 'ruvnet-brain.zip');
   fs.writeFileSync(bundle, 'sealed corpus bundle');
   const digest = sha256(bundle);
@@ -73,24 +56,36 @@ process.exit(0);
   ];
   const env = {
     ...process.env,
-    PATH: `${bin}${path.delimiter}${process.env.PATH}`,
-    GH_CALL_LOG: log,
     GH_VIEW_MODE: 'missing',
     GITHUB_ACTIONS: 'true',
     GITHUB_WORKFLOW: 'protected-release',
     GITHUB_SHA: HEAD,
     GITHUB_REPOSITORY: 'stuinfla/ruvnet-brain',
   };
-  return { dir, bundle, digest, receipt, receiptFile, tag, args, env, log };
+  return { dir, bundle, digest, receipt, receiptFile, tag, args, env, calls: [] };
 }
 
 function run(f, { args = f.args, env = f.env } = {}) {
-  return spawnSync(process.execPath, [RELEASE, ...args], {
-    cwd: ROOT,
-    env,
-    encoding: 'utf8',
-    timeout: 15_000,
-  });
+  const commandRun = (command, commandArgs) => {
+    if (command === 'git') return { status: 0, stdout: `${HEAD}\n`, stderr: '' };
+    if (command !== 'gh') return { status: 127, stdout: '', stderr: `unexpected command: ${command}` };
+    f.calls.push(commandArgs);
+    if (commandArgs[0] === 'release' && commandArgs[1] === 'view') {
+      if (env.GH_VIEW_MODE === 'exists') return { status: 0, stdout: '', stderr: '' };
+      return {
+        status: 1,
+        stdout: '',
+        stderr: env.GH_VIEW_MODE === 'ambiguous' ? 'network timeout' : 'release not found',
+      };
+    }
+    return { status: 0, stdout: 'created', stderr: '' };
+  };
+  try {
+    const result = runProtectedCorpusSeed({ argv: args, env, root: ROOT, run: commandRun });
+    return { status: 0, stdout: JSON.stringify(result), stderr: '' };
+  } catch (error) {
+    return { status: 1, stdout: '', stderr: error.message };
+  }
 }
 
 function replaceArg(args, name, value) {
@@ -114,7 +109,7 @@ describe('protected corpus-seed release authority', () => {
     const result = run(f);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/protected-release GitHub workflow/i);
-    expect(fs.existsSync(f.log)).toBe(false);
+    expect(f.calls).toEqual([]);
   });
 
   it.each([
@@ -127,7 +122,7 @@ describe('protected corpus-seed release authority', () => {
     const result = run(f);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/target.*HEAD.*GITHUB_SHA.*receipt/i);
-    expect(fs.existsSync(f.log)).toBe(false);
+    expect(f.calls).toEqual([]);
   });
 
   it('requires a full lowercase digest tag bound to the receipt and bundle bytes', () => {
@@ -155,7 +150,7 @@ describe('protected corpus-seed release authority', () => {
     const result = run(f);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/absolute regular file/i);
-    expect(fs.existsSync(f.log)).toBe(false);
+    expect(f.calls).toEqual([]);
   });
 
   it.each([
@@ -174,7 +169,7 @@ describe('protected corpus-seed release authority', () => {
     const result = run(f);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/corpus receipt/i);
-    expect(fs.existsSync(f.log)).toBe(false);
+    expect(f.calls).toEqual([]);
   });
 
   it.each([
@@ -186,19 +181,17 @@ describe('protected corpus-seed release authority', () => {
     const result = run(f);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(message);
-    const calls = fs.readFileSync(f.log, 'utf8').trim().split('\n').map(JSON.parse);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toEqual(['release', 'view', f.tag, '--json', 'tagName', '--repo', 'stuinfla/ruvnet-brain']);
+    expect(f.calls).toHaveLength(1);
+    expect(f.calls[0]).toEqual(['release', 'view', f.tag, '--json', 'tagName', '--repo', 'stuinfla/ruvnet-brain']);
   });
 
   it('creates one non-latest non-draft prerelease containing exactly the bound bundle and receipt', () => {
     const f = fixture();
     const result = run(f);
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-    const calls = fs.readFileSync(f.log, 'utf8').trim().split('\n').map(JSON.parse);
-    expect(calls).toHaveLength(2);
-    expect(calls[0]).toEqual(['release', 'view', f.tag, '--json', 'tagName', '--repo', 'stuinfla/ruvnet-brain']);
-    expect(calls[1]).toEqual([
+    expect(f.calls).toHaveLength(2);
+    expect(f.calls[0]).toEqual(['release', 'view', f.tag, '--json', 'tagName', '--repo', 'stuinfla/ruvnet-brain']);
+    expect(f.calls[1]).toEqual([
       'release', 'create', f.tag,
       '--prerelease', '--latest=false',
       '--target', HEAD,
@@ -207,7 +200,7 @@ describe('protected corpus-seed release authority', () => {
       '--notes', expect.stringContaining(`Archive SHA-256: ${f.digest}`),
       f.bundle, f.receiptFile,
     ]);
-    expect(calls[1]).not.toContain('--draft');
-    expect(calls[1]).not.toContain('--clobber');
+    expect(f.calls[1]).not.toContain('--draft');
+    expect(f.calls[1]).not.toContain('--clobber');
   });
 });

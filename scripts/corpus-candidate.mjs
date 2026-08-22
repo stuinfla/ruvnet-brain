@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { extractZip } from '../kb/zip-extract.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REQUIRED_SUFFIXES = [
@@ -76,35 +77,27 @@ function assertPolicyCurrent(policy) {
   };
 }
 
-function archiveEntries(bundleFile) {
-  const result = spawnSync('unzip', ['-Z1', bundleFile], { encoding: 'utf8' });
-  if (result.status !== 0) fail(`cannot list archive (${result.stderr.trim() || `exit ${result.status}`})`);
-  const entries = result.stdout.split(/\r?\n/).filter(Boolean);
-  for (const entry of entries) {
-    const normalized = entry.replaceAll('\\', '/');
-    if (normalized.startsWith('/') || normalized.split('/').includes('..')) {
-      fail(`archive contains unsafe path ${JSON.stringify(entry)}`);
-    }
-  }
-  return entries;
-}
-
-function verifyArchive({ bundleFile, stores, privateStores }) {
+async function verifyArchive({ bundleFile, stores, privateStores }) {
   if (!bundleFile || !fs.existsSync(bundleFile)) fail(`bundle missing (${bundleFile || 'no path supplied'})`);
-  const entries = archiveEntries(bundleFile);
-  for (const privateStore of privateStores) {
-    const escaped = privateStore.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const privateFile = new RegExp(`(?:^|/)${escaped}(?:\\.|$)`, 'i');
-    if (entries.some((entry) => privateFile.test(entry))) fail(`private store ${privateStore} is present in archive`);
-  }
-
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-candidate-'));
   try {
-    const extraction = spawnSync('unzip', ['-qq', bundleFile, '-d', tmp], { encoding: 'utf8' });
-    if (extraction.status !== 0) fail(`cannot extract archive (${extraction.stderr.trim() || `exit ${extraction.status}`})`);
+    let extraction;
+    try {
+      extraction = await extractZip(bundleFile, tmp);
+    } catch (error) {
+      fail(`cannot extract archive (${error.message})`);
+    }
+    const entries = extraction.entryNames;
+    for (const privateStore of privateStores) {
+      const escaped = privateStore.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const privateFile = new RegExp(`(?:^|/)${escaped}(?:\\.|$)`, 'i');
+      if (entries.some((entry) => privateFile.test(entry.replaceAll('\\', '/')))) {
+        fail(`private store ${privateStore} is present in archive`);
+      }
+    }
     for (const store of stores) {
       for (const expected of store.files) {
-        const matches = entries.filter((entry) => path.posix.basename(entry) === expected.file);
+        const matches = entries.filter((entry) => path.posix.basename(entry.replaceAll('\\', '/')) === expected.file);
         if (matches.length !== 1) fail(`archive must contain exactly one ${expected.file}; found ${matches.length}`);
         const extracted = path.join(tmp, ...matches[0].replaceAll('\\', '/').split('/'));
         if (sha256File(extracted) !== expected.sha256) fail(`archive ${expected.file} differs from canonical assets`);
@@ -116,7 +109,7 @@ function verifyArchive({ bundleFile, stores, privateStores }) {
   return fileIdentity(bundleFile);
 }
 
-function buildReceipt({
+async function buildReceipt({
   assetsDir,
   bundleFile,
   policyFile,
@@ -194,7 +187,7 @@ function buildReceipt({
   }
   if (missingSidecars.length) fail(`missing sidecars: ${missingSidecars.join(', ')}`);
   if (!stores.length) fail('zero public corpus stores remain after the private fence');
-  const archive = verifyArchive({ bundleFile: path.resolve(bundleFile || ''), stores, privateStores });
+  const archive = await verifyArchive({ bundleFile: path.resolve(bundleFile || ''), stores, privateStores });
   const policyIdentity = fileIdentity(path.resolve(policyFile));
   const fenceIdentity = fileIdentity(fenceFile);
   const ledgerIdentity = fileIdentity(ledgerFile);
@@ -229,9 +222,9 @@ function currentGitSha() {
   return result.stdout.trim();
 }
 
-export function createCorpusReceipt(options) {
+export async function createCorpusReceipt(options) {
   const receiptFile = path.resolve(options.receiptFile || 'dist/corpus-receipt.json');
-  const receipt = buildReceipt({
+  const receipt = await buildReceipt({
     ...options,
     builderSourceSha: options.builderSourceSha || currentGitSha(),
     createdAt: options.createdAt || new Date().toISOString(),
@@ -241,7 +234,7 @@ export function createCorpusReceipt(options) {
   return receipt;
 }
 
-export function verifyCorpusReceipt(options) {
+export async function verifyCorpusReceipt(options) {
   const receipt = readJson(path.resolve(options.receiptFile || ''), 'corpus receipt');
   if (receipt.kind !== 'ruvnet-brain-corpus-candidate' || receipt.schemaVersion !== 1) fail('unsupported corpus receipt');
   const exactFiles = [
@@ -262,7 +255,7 @@ export function verifyCorpusReceipt(options) {
     if (sha256File(file) !== expected?.sha256) fail(`${label} sha256 differs from receipt`);
     if (fs.statSync(file).size !== expected?.bytes) fail(`${label} byte length differs from receipt`);
   }
-  const actual = buildReceipt({
+  const actual = await buildReceipt({
     ...options,
     builderSourceSha: receipt.builderSourceSha,
     createdAt: receipt.createdAt,
@@ -285,7 +278,7 @@ async function main() {
     receiptFile: arg('--receipt', arg('--out', 'dist/corpus-receipt.json')),
     builderSourceSha: arg('--builder-source-sha'),
   };
-  const receipt = mode === 'verify' ? verifyCorpusReceipt(options) : createCorpusReceipt(options);
+  const receipt = mode === 'verify' ? await verifyCorpusReceipt(options) : await createCorpusReceipt(options);
   console.log(JSON.stringify({ ok: true, mode, archive: receipt.archive, stores: receipt.storeCount }, null, 2));
 }
 

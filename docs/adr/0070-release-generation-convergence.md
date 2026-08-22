@@ -3,7 +3,7 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-22
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -14,6 +14,8 @@ governs:
   - kb/forge-update.mjs
   - scripts/brain-stamp.mjs
   - scripts/build-bundle.mjs
+  - scripts/corpus-candidate.mjs
+  - scripts/corpus-seed-publish.mjs
   - scripts/release.mjs
   - scripts/release-transaction-provider.mjs
   - scripts/self-update.mjs
@@ -188,5 +190,6 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-22 | Made immutable corpus receipt verification and its release-authority tests independent of Unix archive and executable conventions. | `scripts/corpus-candidate.mjs` now uses the existing built-in `kb/zip-extract.mjs` path instead of requiring `unzip`; corpus fixtures build deterministic stored ZIPs with Node; protected-release authority tests inject the existing `run` boundary instead of relying on an extensionless shebang executable; and reconciliation assertions accept both native separators. Archive entry names remain available to enforce the exactly-one-file and private-store fences. Focused corpus, reconciliation, release-authority, and extractor tests pass without weakening overwrite refusal, exact-SHA binding, or ambiguous-release fail-closed behavior. |
 | 2026-08-21 | Re-read the shipped-code path after the release-QE failure exposed three index-persistence hash mismatches. | `.github/workflows/ci.yml` now invokes the existing `rvf-index-audit.mjs --repair` restamp before `scripts/build-bundle.mjs` enforces exact ledger closure. A local reproduction on the configured v4.2.1 seed reported `stamped=3`, then assembled 186 audited RVFs with zero index failures; no recursive latest lookup or unbuilt coverage generator is used. |
 | 2026-08-21 | Implemented the emergency correctness slice after Fable 5 and GPT-5.6-Sol convergence. | `.github/workflows/ci.yml` pins the immutable corpus seed; `scripts/build-bundle.mjs` validates strict ledger closure; `bin/install.mjs` retains live plugin roots by exact process-incarnation leases; and the protected publisher rechecks `origin/main` immediately before mutation. Focused integrated tests cover these paths. Rollback-storage receipts, fresh interactive-window proof, and generated coverage remain explicit post-restoration work and are not claimed shipped by this row. |

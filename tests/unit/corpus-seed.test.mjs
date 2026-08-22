@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import {
   createCorpusReceipt,
   verifyCorpusReceipt,
@@ -13,8 +13,10 @@ import {
   publishCorpusSeed,
 } from '../../scripts/corpus-seed-publish.mjs';
 import { getVersion, getVersionTag } from '../../scripts/version.mjs';
+import { writeStoredDirectoryZip, writeStoredZip } from '../helpers/zip-fixture.mjs';
 
 const dirs = [];
+const CORPUS_CANDIDATE = path.resolve(import.meta.dirname, '../../scripts/corpus-candidate.mjs');
 afterEach(() => {
   vi.restoreAllMocks();
   while (dirs.length) fs.rmSync(dirs.pop(), { recursive: true, force: true });
@@ -78,10 +80,11 @@ function fixture() {
     sources: [{ name: 'alpha', status: 'CURRENT', eligible: true }],
   }));
   const bundle = path.join(root, 'ruvnet-brain.zip');
-  execFileSync('zip', ['-qr', bundle, 'ruvnet-brain'], { cwd: path.dirname(bundleDir) });
+  writeStoredDirectoryZip({ archiveFile: bundle, sourceDir: bundleDir, rootName: 'ruvnet-brain' });
   return {
     root,
     assetsDir,
+    bundleDir,
     bundle,
     policyFile,
     receiptFile: path.join(root, 'corpus-receipt.json'),
@@ -100,9 +103,9 @@ function create(f) {
 }
 
 describe('immutable corpus candidate receipt', () => {
-  it('creates and verifies a receipt binding every public store, sidecar, fence, policy, and archive byte', () => {
+  it('creates and verifies a receipt binding every public store, sidecar, fence, policy, and archive byte', async () => {
     const f = fixture();
-    const receipt = create(f);
+    const receipt = await create(f);
 
     expect(receipt).toMatchObject({
       schemaVersion: 1,
@@ -119,15 +122,15 @@ describe('immutable corpus candidate receipt', () => {
     expect(receipt.eligibilityPolicy.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(receipt.archive.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(receipt.stores[0].files).toHaveLength(7);
-    expect(verifyCorpusReceipt({
+    await expect(verifyCorpusReceipt({
       receiptFile: f.receiptFile,
       assetsDir: f.assetsDir,
       bundleFile: f.bundle,
       policyFile: f.policyFile,
-    })).toEqual(receipt);
+    })).resolves.toEqual(receipt);
   });
 
-  it('fails closed for unreceipted RVFs, missing sidecars, duplicate RVFs, and orphan ledger rows', () => {
+  it('fails closed for unreceipted RVFs, missing sidecars, duplicate RVFs, and orphan ledger rows', async () => {
     const mutations = [
       (f) => fs.writeFileSync(path.join(f.assetsDir, 'orphan.big.rvf'), 'orphan'),
       (f) => fs.rmSync(path.join(f.assetsDir, 'alpha.meta.json')),
@@ -148,66 +151,101 @@ describe('immutable corpus candidate receipt', () => {
       },
     ];
     const expected = [/unreceipted/i, /missing sidecars/i, /duplicate RVF/i, /ledger rows without RVFs/i];
-    mutations.forEach((mutate, index) => {
+    for (const [index, mutate] of mutations.entries()) {
       const f = fixture();
       mutate(f);
-      expect(() => create(f)).toThrow(expected[index]);
-    });
+      await expect(create(f)).rejects.toThrow(expected[index]);
+    }
   });
 
-  it('rejects private corpus bytes in the archive and any post-receipt byte or policy drift', () => {
+  it('rejects private corpus bytes in the archive and any post-receipt byte or policy drift', async () => {
     const privateFixture = fixture();
     const archiveRoot = path.join(privateFixture.root, 'bundle', 'ruvnet-brain');
     fs.writeFileSync(path.join(archiveRoot, 'secret.big.rvf'), 'private-rvf');
-    execFileSync('zip', ['-q', '-u', privateFixture.bundle, 'ruvnet-brain/secret.big.rvf'], {
-      cwd: path.dirname(archiveRoot),
+    writeStoredDirectoryZip({
+      archiveFile: privateFixture.bundle,
+      sourceDir: archiveRoot,
+      rootName: 'ruvnet-brain',
     });
-    expect(() => create(privateFixture)).toThrow(/private store.*archive/i);
+    await expect(create(privateFixture)).rejects.toThrow(/private store.*archive/i);
 
     const driftFixture = fixture();
-    create(driftFixture);
+    await create(driftFixture);
     fs.appendFileSync(driftFixture.bundle, 'tampered');
-    expect(() => verifyCorpusReceipt({
+    await expect(verifyCorpusReceipt({
       receiptFile: driftFixture.receiptFile,
       assetsDir: driftFixture.assetsDir,
       bundleFile: driftFixture.bundle,
       policyFile: driftFixture.policyFile,
-    })).toThrow(/archive sha256/i);
+    })).rejects.toThrow(/archive sha256/i);
 
     const policyFixture = fixture();
-    create(policyFixture);
+    await create(policyFixture);
     fs.appendFileSync(policyFixture.policyFile, '\n');
-    expect(() => verifyCorpusReceipt({
+    await expect(verifyCorpusReceipt({
       receiptFile: policyFixture.receiptFile,
       assetsDir: policyFixture.assetsDir,
       bundleFile: policyFixture.bundle,
       policyFile: policyFixture.policyFile,
-    })).toThrow(/eligibility policy/i);
+    })).rejects.toThrow(/eligibility policy/i);
+  });
+
+  it('rejects duplicate required filenames even when both entries extract successfully', async () => {
+    const f = fixture();
+    const entries = fs.readdirSync(f.bundleDir).sort().map((name) => ({
+      name: `ruvnet-brain/${name}`,
+      data: fs.readFileSync(path.join(f.bundleDir, name)),
+    }));
+    entries.push({ name: 'shadow/alpha.big.rvf', data: fs.readFileSync(path.join(f.bundleDir, 'alpha.big.rvf')) });
+    writeStoredZip({ archiveFile: f.bundle, entries });
+
+    await expect(create(f)).rejects.toThrow(/exactly one alpha\.big\.rvf; found 2/i);
+  });
+
+  it('creates and verifies through the public CLI without host archive commands', () => {
+    const f = fixture();
+    const common = [
+      '--assets', f.assetsDir,
+      '--bundle', f.bundle,
+      '--policy', f.policyFile,
+      '--receipt', f.receiptFile,
+    ];
+    const created = spawnSync(process.execPath, [
+      CORPUS_CANDIDATE,
+      ...common,
+      '--builder-source-sha', 'c'.repeat(40),
+    ], { encoding: 'utf8' });
+    expect(created.status, created.stderr).toBe(0);
+    expect(JSON.parse(created.stdout)).toMatchObject({ ok: true, mode: 'create', stores: 1 });
+
+    const verified = spawnSync(process.execPath, [CORPUS_CANDIDATE, '--verify', ...common], { encoding: 'utf8' });
+    expect(verified.status, verified.stderr).toBe(0);
+    expect(JSON.parse(verified.stdout)).toMatchObject({ ok: true, mode: 'verify', stores: 1 });
   });
 });
 
 describe('immutable corpus seed publishing', () => {
-  it('derives the tag from the archive digest and refuses to overwrite an existing release', () => {
+  it('derives the tag from the archive digest and refuses to overwrite an existing release', async () => {
     const f = fixture();
-    const receipt = create(f);
+    const receipt = await create(f);
     const tag = corpusSeedTag(receipt);
     expect(tag).toBe(`corpus-sha256-${receipt.archive.sha256}`);
 
     const run = vi.fn(() => ({ status: 0, stdout: '', stderr: '' }));
-    expect(() => publishCorpusSeed({
+    await expect(publishCorpusSeed({
       receiptFile: f.receiptFile,
       bundleFile: f.bundle,
       assetsDir: f.assetsDir,
       policyFile: f.policyFile,
       run,
     }))
-      .toThrow(/already exists.*refusing to overwrite/i);
+      .rejects.toThrow(/already exists.*refusing to overwrite/i);
     expect(run).toHaveBeenCalledWith('gh', ['release', 'view', tag, '--json', 'tagName'], expect.any(Object));
   });
 
-  it('hands a new digest-tagged prerelease to the repository\'s sole release authority', () => {
+  it('hands a new digest-tagged prerelease to the repository\'s sole release authority', async () => {
     const f = fixture();
-    const receipt = create(f);
+    const receipt = await create(f);
     const calls = [];
     const run = (command, args, options) => {
       calls.push({ command, args, options });
@@ -215,18 +253,18 @@ describe('immutable corpus seed publishing', () => {
       return { status: 0, stdout: 'created', stderr: '' };
     };
 
-    expect(publishCorpusSeed({
+    await expect(publishCorpusSeed({
       receiptFile: f.receiptFile,
       bundleFile: f.bundle,
       assetsDir: f.assetsDir,
       policyFile: f.policyFile,
       run,
     }))
-      .toMatchObject({ tag: corpusSeedTag(receipt), archiveSha256: receipt.archive.sha256 });
+      .resolves.toMatchObject({ tag: corpusSeedTag(receipt), archiveSha256: receipt.archive.sha256 });
     expect(calls[1]).toMatchObject({
       command: process.execPath,
       args: expect.arrayContaining([
-        expect.stringMatching(/scripts\/release\.mjs$/),
+        expect.stringMatching(/scripts[\\/]release\.mjs$/),
         '--corpus-seed',
         '--corpus-tag', corpusSeedTag(receipt),
         '--corpus-bundle', f.bundle,
