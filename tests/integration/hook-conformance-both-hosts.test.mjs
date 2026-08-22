@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveBash } from '../../plugin/scripts/hook-shim-bash.mjs';
+import { reapDetached } from '../helpers/reap-detached.mjs';
 
 /**
  * EVERY HOOK, BOTH HOSTS, IN A PROJECT THAT IS NOT THIS ONE.
@@ -39,26 +40,18 @@ const BASH = resolveBash();
 const gated = BASH ? it : it.skip;
 
 /**
- * MEASURED in CI 2026-08-20 (run 32351326320): `learn-flush` is DETACHED by design
- * (`codex-hook-wrapper.mjs`'s `DETACHED_HOOKS` — it must outlive its parent because Codex hard-caps
- * SessionEnd at 3s while a real flush needs up to 18s), which the spine fixture below makes reachable
- * for the first time. The detached child can still be writing under `RUVNET_BRAIN_HOME` after `fire()`
- * returns, racing this cleanup's `rmSync` and intermittently throwing `ENOTEMPTY` — a
- * test-fixture-lifecycle race, not a product defect (a real install's `~/.cache/ruvnet-brain` is never
- * deleted out from under a running hook). `fs.rmSync`'s own retry option exists for exactly this
- * transient-EBUSY/ENOTEMPTY class; use it rather than widening what the assertions tolerate.
- *
- * A first pass budgeted 500ms total (maxRetries:5 × retryDelay:100) and still hit ENOTEMPTY in CI
- * (run 32371674603) — nowhere near covering `codex-hooks.json`'s own documented worst case for THIS
- * hook: "measured 18342/18347/18384 ms with a real queue and real ruflo". `RM_OPTS` keeps that short
- * budget as the general safety net (every other hook is fully synchronous by the time `fire()`
- * returns, so it never needs more); `RM_OPTS_LEARN_FLUSH` is scoped to the one command that is
- * DETACHED by design, with a ceiling comfortably above the documented worst case.
+ * SessionStart deliberately launches Stable-Spine maintenance beyond the hook's lifetime through
+ * `detach.mjs`. The product records those jobs under HOME so they remain observable and killable.
+ * A conformance fixture must therefore own HOME as well as RUVNET_BRAIN_HOME, reap the product's
+ * receipt, and only then remove its files. Retrying `rmSync` against a live writer is a livelock:
+ * integration run 32563909774 spent 917s in each of two cases and still ended at ENOTEMPTY.
  */
-const RM_OPTS_LEARN_FLUSH = { recursive: true, force: true, maxRetries: 60, retryDelay: 500 };
-// A manifest command can dispatch learn-flush without naming it in the trampoline text, so the
-// cleanup cannot safely infer detached-child lifetime from the outer command string.
-const rmOptsFor = () => RM_OPTS_LEARN_FLUSH;
+const RM_OPTS = { recursive: true, force: true, maxRetries: 20, retryDelay: 50 };
+
+function cleanupStranger(dir) {
+  reapDetached(path.join(dir, '.conformance-home'));
+  fs.rmSync(dir, RM_OPTS);
+}
 
 /** A project this plugin has never seen: no git, no kb, no .swarm, no docs/adr, no evals. */
 function strangerProject() {
@@ -138,6 +131,11 @@ function fire({ command, event, cwd, host }) {
     timeout: 30_000,
     env: {
       ...process.env,
+      // Detached maintenance records its lifecycle under HOME. Keep both POSIX and Windows home
+      // resolution inside this fixture so teardown can reap only jobs this exact invocation owns;
+      // without these overrides the test wrote receipts into the runner/user's real profile.
+      HOME: brainHome,
+      USERPROFILE: brainHome,
       CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'),
       RUVNET_BRAIN_PROJECT_DIR: cwd,
       RUVNET_CONFIG_ROOT: path.join(cwd, '.conformance-config'), // keep real ledgers untouched
@@ -165,6 +163,31 @@ describe('every registered hook behaves in a project this plugin does not own', 
     expect(byHost.codex ?? 0, 'no Codex hooks found — Codex is not being checked at all').toBeGreaterThan(3);
   });
 
+  gated('the fixture owns and can reap detached hook work before deleting its HOME', () => {
+    const command = commands.find((c) => c.host === 'claude-code' && c.event === 'SessionStart');
+    expect(command, 'no Claude Code SessionStart hook found').toBeTruthy();
+    const dir = strangerProject();
+    const brainHome = path.join(dir, '.conformance-home');
+    const receipt = path.join(brainHome, '.cache', 'ruvnet-brain', 'detached-jobs.jsonl');
+    try {
+      const result = fire({ ...command, cwd: dir });
+      expect(result.status).toBe(0);
+      const deadline = Date.now() + 3_000;
+      while (!fs.existsSync(receipt) && Date.now() < deadline) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+      }
+      expect(fs.existsSync(receipt), 'SessionStart detached work escaped the disposable HOME, so '
+        + 'the fixture cannot identify or reap its writer').toBe(true);
+      const rows = fs.readFileSync(receipt, 'utf8').split('\n').filter(Boolean)
+        .map((line) => JSON.parse(line));
+      expect(rows.some((row) => row.state === 'started' && Number.isInteger(row.pid)),
+        'the detach receipt must name the process teardown owns').toBe(true);
+    } finally {
+      cleanupStranger(dir);
+    }
+    expect(fs.existsSync(dir), 'cleanup returned while the disposable project still existed').toBe(false);
+  }, 30_000);
+
   gated('TEETH: no hook writes to stderr or fails in a stranger project', () => {
     // stderr is what a host renders as "hook error". This is the owner's literal complaint.
     const offenders = [];
@@ -176,7 +199,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
         if (err && r.status !== 2) offenders.push(`${c.host}/${c.event}: STDERR "${err.slice(0, 90)}"`);
         if (r.status !== 0 && r.status !== 2) offenders.push(`${c.host}/${c.event}: exit ${r.status}`);
         if (r.error) offenders.push(`${c.host}/${c.event}: ${r.error.message.slice(0, 80)}`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally { cleanupStranger(dir); }
     }
     expect(offenders, 'these emit noise or fail in a project that is not ruvnet-brain — a host '
       + 'renders that to the user as a hook error').toEqual([]);
@@ -193,7 +216,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
         fire({ ...c, cwd: dir });
         const after = fs.readdirSync(dir).filter((n) => !n.startsWith('.conformance-')).sort().join(',');
         if (after !== before) offenders.push(`${c.host}/${c.event}: left behind ${after}`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally { cleanupStranger(dir); }
     }
     expect(offenders, 'these mutate a project the plugin does not own').toEqual([]);
   }, 600_000);
@@ -209,7 +232,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
         const r = fire({ ...c, cwd: dir });
         const budget = (c.timeout ?? 30) * 1000;
         if (r.ms > budget * 0.8) offenders.push(`${c.host}/${c.event}: ${r.ms}ms of a ${budget}ms budget`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally { cleanupStranger(dir); }
     }
     expect(offenders, 'these run too close to the host timeout that kills them; the host reports '
       + 'the kill as a hook error, intermittently, on ordinary tool calls').toEqual([]);
