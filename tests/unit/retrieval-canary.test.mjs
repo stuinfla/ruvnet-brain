@@ -47,18 +47,20 @@ function fixture() {
     coverageSha256: coverageIdentity.sha256,
     publicLedgerSha256: '5'.repeat(64), publicLedgerBytes: 4321, publicStoreCount: 6,
     publicInventoryPartitionSha256: '6'.repeat(64) };
+  const passagesFor = (store) => Array.from({ length: stores.indexOf(store) + 1 }, (_, index) => ({
+    id: `${store}-${index}`, path: `src/${store}-${index}.mjs`, title: `${store} architecture`,
+    text: `The ${store} implementation owns a unique deterministic boundary and verifies its exact runtime behavior with source evidence number ${index}.` }));
   const queries = Object.fromEntries(stores.map((store) => {
+    const passage = passagesFor(store)[0];
     const value = { query: `independently authored behavior question for ${store} runtime boundary`,
-      sourceSha256: digest(`query:${store}`) };
+      expected: { path: passage.path, passageSha256: digest(passage) } };
     return [store, { ...value, recordSha256: digest({ store, ...value }) }];
   }));
   const queryEvidence = sealRetrievalQueryEvidence({
-    schemaVersion: 1, kind: 'ruvnet-brain-retrieval-query-evidence',
+    schemaVersion: 2, kind: 'ruvnet-brain-retrieval-query-evidence',
     sourceCommit: 'd'.repeat(40), sourcePath: 'data/retrieval-query-evidence.json',
     queryStoreSetSha256: digest([...stores].sort()), queries });
-  const readPassages = (_dir, store) => Array.from({ length: stores.indexOf(store) + 1 }, (_, index) => ({
-    id: `${store}-${index}`, path: `src/${store}-${index}.mjs`, title: `${store} architecture`,
-    text: `The ${store} implementation owns a unique deterministic boundary and verifies its exact runtime behavior with source evidence number ${index}.` }));
+  const readPassages = (_dir, store) => passagesFor(store);
   return { coverage, coverageIdentity, baseline, candidate, queryEvidence, readPassages };
 }
 
@@ -74,13 +76,15 @@ describe('coverage-derived retrieval canaries', () => {
     const base = git(root, 'rev-parse', 'HEAD');
 
     const sourcePath = 'data/retrieval-query-evidence.json';
-    const queries = { alpha: { query: 'independent alpha behavior question with source evidence',
-      sourceSha256: digest('alpha'), recordSha256: digest({ store: 'alpha', query: 'independent alpha behavior question with source evidence', sourceSha256: digest('alpha') }) } };
-    const sourcePayload = { schemaVersion: 1, kind: 'ruvnet-brain-retrieval-query-evidence',
+    const expected = { path: 'src/alpha.mjs', passageSha256: digest('alpha passage') };
+    const queries = { alpha: { query: 'independent alpha behavior question with source evidence', expected,
+      recordSha256: digest({ store: 'alpha', query: 'independent alpha behavior question with source evidence', expected }) } };
+    const sourcePayload = { schemaVersion: 2, kind: 'ruvnet-brain-retrieval-query-evidence',
       queryStoreSetSha256: digest(['alpha']), queries };
     fs.mkdirSync(path.join(root, 'data'));
     fs.writeFileSync(path.join(root, sourcePath), `${JSON.stringify(sourcePayload)}\n`);
-    git(root, 'add', sourcePath); git(root, 'commit', '-qm', 'freeze query source');
+    fs.writeFileSync(path.join(root, 'data/external-query-evidence.json'), `${JSON.stringify(sourcePayload)}\n`);
+    git(root, 'add', 'data'); git(root, 'commit', '-qm', 'freeze query source');
     const sourceCommit = git(root, 'rev-parse', 'HEAD');
     const evidence = sealRetrievalQueryEvidence({ ...sourcePayload, sourceCommit, sourcePath });
     expect(evidence.sourceBlobSha256).toBe(digest(sourcePayload));
@@ -93,8 +97,15 @@ describe('coverage-derived retrieval canaries', () => {
 
     const moved = structuredClone(evidence);
     moved.queries.alpha.query += ' moved';
+    moved.queries.alpha.recordSha256 = digest({ store: 'alpha', query: moved.queries.alpha.query,
+      expected: moved.queries.alpha.expected });
     const resealedMoved = sealRetrievalQueryEvidence(moved);
     expect(() => verifyQueryOracleSource(resealedMoved, candidate, { cwd: root })).toThrow(/source payload differs/);
+
+    const external = sealRetrievalQueryEvidence({ ...sourcePayload, sourceCommit,
+      sourcePath: 'data/external-query-evidence.json' });
+    expect(() => verifyQueryOracleSource(external, candidate, { cwd: root }))
+      .toThrow(/differs from candidate tracked bytes/);
 
     git(root, 'checkout', '-qb', 'divergent', base);
     fs.writeFileSync(path.join(root, 'divergent.txt'), 'not descended from the source\n');
@@ -147,8 +158,50 @@ describe('coverage-derived retrieval canaries', () => {
     const input = fixture();
     const plan = buildRetrievalCanaryPlan({ ...input, legacySampleSize: 4 });
     plan.cases[0].query += ' tampered';
-    expect(() => validateRetrievalCanaryPlan(plan)).toThrow(/digest mismatch/);
-    expect(() => buildRetrievalCanaryPlan({ ...input, readPassages: () => [] })).toThrow(/no queryable/);
+    expect(() => validateRetrievalCanaryPlan(plan)).toThrow(/malformed/);
+    expect(() => buildRetrievalCanaryPlan({ ...input, readPassages: () => [] }))
+      .toThrow(/no sealed independent query evidence/);
+    expect(() => buildRetrievalCanaryPlan({ ...input, readPassages: (dir, store) => {
+      const rows = input.readPassages(dir, store);
+      return [structuredClone(rows[0]), ...rows];
+    } })).toThrow(/no sealed independent query evidence/);
+  });
+
+  it('rejects duplicate queries and every broken expected-passage binding', () => {
+    const duplicate = fixture();
+    const first = duplicate.queryEvidence.queries['old-a'];
+    duplicate.queryEvidence.queries['old-b'].query = first.query;
+    duplicate.queryEvidence.queries['old-b'].recordSha256 = digest({ store: 'old-b', query: first.query,
+      expected: duplicate.queryEvidence.queries['old-b'].expected });
+    duplicate.queryEvidence = sealRetrievalQueryEvidence(duplicate.queryEvidence);
+    expect(() => buildRetrievalCanaryPlan(duplicate)).toThrow(/malformed/);
+
+    for (const mutate of [
+      (row) => { delete row.expected; },
+      (row) => { row.expected.path = 'src/missing.mjs'; },
+      (row) => { row.expected.passageSha256 = '0'.repeat(64); },
+    ]) {
+      const input = fixture();
+      const row = input.queryEvidence.queries['new-e'];
+      mutate(row);
+      if (row.expected) row.recordSha256 = digest({ store: 'new-e', query: row.query, expected: row.expected });
+      input.queryEvidence = sealRetrievalQueryEvidence(input.queryEvidence);
+      expect(() => buildRetrievalCanaryPlan(input)).toThrow(/malformed|no sealed independent query evidence/);
+    }
+  });
+
+  it('rejects stale oracle receipts and downstream plan rehashes not backed by the sealed evidence', () => {
+    const input = fixture();
+    input.queryEvidence.queries['new-e'].query += ' stale';
+    expect(() => buildRetrievalCanaryPlan(input)).toThrow(/malformed|digest mismatch/);
+
+    const plan = buildRetrievalCanaryPlan({ ...fixture(), legacySampleSize: 4 });
+    const row = plan.cases.find(({ expected }) => expected.repo === 'new-e');
+    row.query = 'attacker authored unrelated banana query for the public runtime';
+    row.oracleRecordSha256 = digest({ store: 'new-e', query: row.query,
+      expected: { path: row.expected.path, passageSha256: row.expected.passageSha256 } });
+    plan.planSha256 = digest(Object.fromEntries(Object.entries(plan).filter(([key]) => key !== 'planSha256')));
+    expect(() => validateRetrievalCanaryPlan(plan)).toThrow(/malformed/);
   });
 
   it('rejects a non-canonical baseline kind even with a verification-shaped receipt', () => {

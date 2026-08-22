@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { digest, releaseCoverageGenerationFor } from '../../scripts/coverage-integrity.mjs';
+import { sealRetrievalQueryEvidence } from '../../scripts/retrieval-canary.mjs';
 import { buildHostRegistry } from '../../scripts/host-registry.mjs';
 import { transactionIdFor } from '../../scripts/release-transaction.mjs';
 import { createPublicVerificationLane } from '../../scripts/public-verification-lane.mjs';
@@ -53,8 +54,7 @@ function plan(releaseCoverage) {
       deltaStores: ['new'], deltaStoreSetSha256: digest(['new']),
       legacyPopulationStores: ['old'], legacyPopulationStoreSetSha256: digest(['old']),
       legacySelectedStores: ['old'], legacySelectedStoreSetSha256: digest(['old']) },
-    oracle: { receiptSha256: '0'.repeat(64), queryStoreSetSha256: digest(['new', 'old']),
-      sourceCommit: 'a'.repeat(40), sourceBlobSha256: '0'.repeat(64) },
+    oracle: {},
     cohorts: { delta: 1, legacy: 1 }, k: 10,
     cases: [
       { id: 'delta:new', cohort: 'delta', query: 'new exact source behavior query fixture', oracleRecordSha256: '1'.repeat(64),
@@ -63,6 +63,16 @@ function plan(releaseCoverage) {
         expected: { repo: 'old', path: 'src/old.mjs', passageSha256: '4'.repeat(64) }, source: {} },
     ],
   };
+  const queries = Object.fromEntries(value.cases.map(({ query, expected }) => {
+    const bound = { path: expected.path, passageSha256: expected.passageSha256 };
+    return [expected.repo, { query, expected: bound, recordSha256: digest({ store: expected.repo, query, expected: bound }) }];
+  }));
+  const evidence = sealRetrievalQueryEvidence({ schemaVersion: 2, kind: 'ruvnet-brain-retrieval-query-evidence',
+    sourceCommit: 'a'.repeat(40), sourcePath: 'data/retrieval-query-evidence.json',
+    queryStoreSetSha256: digest(['new', 'old']), queries });
+  value.cases.forEach((row) => { row.oracleRecordSha256 = queries[row.expected.repo].recordSha256; });
+  value.oracle = { receiptSha256: evidence.receiptSha256, queryStoreSetSha256: evidence.queryStoreSetSha256,
+    sourceCommit: evidence.sourceCommit, sourceBlobSha256: evidence.sourceBlobSha256, evidence };
   value.planSha256 = digest(value);
   return value;
 }

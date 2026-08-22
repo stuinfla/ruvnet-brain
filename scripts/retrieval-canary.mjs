@@ -29,14 +29,6 @@ function defaultReadPassages(assetsDir, store) {
   });
 }
 
-function selectPassage(passages, seed) {
-  const candidates = passages.filter((row) => typeof row?.path === 'string' && row.path
-    && typeof row?.text === 'string' && row.text.trim().length >= 80);
-  if (!candidates.length) throw new Error('passage inventory has no queryable source passage');
-  return [...candidates].sort((a, b) => digest(`${seed}:${a.path}:${a.id || ''}`)
-    .localeCompare(digest(`${seed}:${b.path}:${b.id || ''}`)))[0];
-}
-
 function planPayload(plan) {
   const { planSha256: _planSha256, ...payload } = plan;
   return payload;
@@ -57,6 +49,8 @@ function queryEvidenceSourcePayload(evidence) {
     queries: evidence?.queries,
   };
 }
+
+const normalizedQuery = (query) => String(query || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
 function queryEvidenceReceiptPayload(evidence) {
   const { receiptSha256: _receiptSha256, ...payload } = evidence;
@@ -79,7 +73,7 @@ export function validateRetrievalQueryEvidence(evidence) {
   const expectedKeys = ['kind', 'queries', 'queryStoreSetSha256', 'receiptSha256', 'schemaVersion',
     'sourceBlobSha256', 'sourceCommit', 'sourcePath'];
   if (canonicalJson(keys) !== canonicalJson(expectedKeys)
-    || evidence?.schemaVersion !== 1 || evidence?.kind !== 'ruvnet-brain-retrieval-query-evidence'
+    || evidence?.schemaVersion !== 2 || evidence?.kind !== 'ruvnet-brain-retrieval-query-evidence'
     || !HEX40.test(String(evidence.sourceCommit || '')) || typeof evidence.sourcePath !== 'string'
     || !evidence.sourcePath || path.isAbsolute(evidence.sourcePath)
     || evidence.sourcePath.split(/[\\/]/).includes('..')
@@ -89,6 +83,27 @@ export function validateRetrievalQueryEvidence(evidence) {
     || evidence.sourceBlobSha256 !== digest(queryEvidenceSourcePayload(evidence))
     || evidence.receiptSha256 !== digest(queryEvidenceReceiptPayload(evidence))) {
     throw new Error('independent retrieval query evidence is malformed');
+  }
+  const stores = ordered(Object.keys(evidence.queries));
+  if (digest(stores) !== evidence.queryStoreSetSha256) {
+    throw new Error('independent retrieval query evidence store set is invalid');
+  }
+  const seenQueries = new Set();
+  for (const store of stores) {
+    const row = evidence.queries[store];
+    const expected = row?.expected;
+    const normalized = normalizedQuery(row?.query);
+    if (Object.keys(row || {}).sort().join(',') !== 'expected,query,recordSha256'
+      || typeof row.query !== 'string' || row.query !== row.query.trim().replace(/\s+/g, ' ')
+      || normalized.length < 24 || seenQueries.has(normalized)
+      || !expected || Object.keys(expected).sort().join(',') !== 'passageSha256,path'
+      || typeof expected.path !== 'string' || !expected.path || path.isAbsolute(expected.path)
+      || expected.path.split(/[\\/]/).includes('..')
+      || !HEX64.test(String(expected.passageSha256 || ''))
+      || row.recordSha256 !== digest({ store, query: row.query, expected })) {
+      throw new Error(`independent retrieval query evidence for ${store} is malformed`);
+    }
+    seenQueries.add(normalized);
   }
   return evidence;
 }
@@ -108,6 +123,15 @@ export function verifyQueryOracleSource(queryEvidence, candidateSourceSha, { cwd
   catch { throw new Error('query oracle source payload is not valid JSON'); }
   if (shown.error || shown.status !== 0 || digest(sourcePayload) !== queryEvidence.sourceBlobSha256) {
     throw new Error('query oracle source payload differs from its immutable Git identity');
+  }
+  const candidateShown = run('git', ['show', `${candidateSourceSha}:${queryEvidence.sourcePath}`],
+    { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  let candidateEvidence;
+  try { candidateEvidence = JSON.parse(String(candidateShown.stdout || '')); }
+  catch { throw new Error('candidate query oracle evidence is not valid JSON'); }
+  if (candidateShown.error || candidateShown.status !== 0
+    || canonicalJson(candidateEvidence) !== canonicalJson(queryEvidence)) {
+    throw new Error('supplied query oracle evidence differs from candidate tracked bytes');
   }
   return queryEvidence;
 }
@@ -140,6 +164,13 @@ export function validateRetrievalCanaryPlan(plan) {
     || !plan.denominator || plan.k !== 10
     || !Array.isArray(plan.cases) || plan.cases.length === 0) throw new Error('retrieval canary plan is malformed');
   const ids = plan.cases.map((row) => row.id);
+  const evidence = validateRetrievalQueryEvidence(plan.oracle?.evidence);
+  if (evidence.receiptSha256 !== plan.oracle.receiptSha256
+    || evidence.queryStoreSetSha256 !== plan.oracle.queryStoreSetSha256
+    || evidence.sourceCommit !== plan.oracle.sourceCommit
+    || evidence.sourceBlobSha256 !== plan.oracle.sourceBlobSha256) {
+    throw new Error('retrieval canary oracle differs from its sealed query evidence');
+  }
   const baselineStores = ordered(plan.baseline.stores.map((store) => String(store).toLowerCase()));
   if (new Set(baselineStores).size !== baselineStores.length
     || digest(baselineStores) !== plan.baseline.storeSetSha256) throw new Error('retrieval baseline store set is invalid');
@@ -157,12 +188,16 @@ export function validateRetrievalCanaryPlan(plan) {
     throw new Error('retrieval canary plan requires delta and legacy cohorts');
   }
   for (const row of plan.cases) {
+    const oracleRow = evidence.queries[row.expected?.repo];
     if (!['delta', 'legacy'].includes(row.cohort) || typeof row.query !== 'string' || row.query.length < 24
       || typeof row.expected?.repo !== 'string' || !row.expected.repo
       || typeof row.expected?.path !== 'string' || !row.expected.path
       || row.id !== `${row.cohort}:${row.expected.repo}`
       || !HEX64.test(String(row.expected?.passageSha256 || ''))
-      || !HEX64.test(String(row.oracleRecordSha256 || ''))) {
+      || !HEX64.test(String(row.oracleRecordSha256 || ''))
+      || !oracleRow || row.query !== oracleRow.query
+      || canonicalJson(row.expected) !== canonicalJson({ repo: row.expected.repo, ...oracleRow.expected })
+      || row.oracleRecordSha256 !== oracleRow.recordSha256) {
       throw new Error(`retrieval canary ${row.id || '(missing)'} is malformed`);
     }
   }
@@ -295,11 +330,10 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
     .map(({ row, cohort, stratum = null, passageCount }) => {
       const store = storeOf(row);
       const observedPassageCount = passageCount ?? passages.get(store).length;
-      const passage = selectPassage(passages.get(store), `${coverageGeneration}:${cohort}:${store}`);
       const evidence = queryEvidence.queries[store];
-      if (!evidence || typeof evidence.query !== 'string' || evidence.query.trim().length < 24
-        || !HEX64.test(String(evidence.sourceSha256 || '')) || !HEX64.test(String(evidence.recordSha256 || ''))
-        || evidence.recordSha256 !== digest({ store, query: evidence.query, sourceSha256: evidence.sourceSha256 })) {
+      const matches = passages.get(store).filter((row) => row.path === evidence?.expected?.path
+        && digest(row) === evidence.expected.passageSha256);
+      if (!evidence || matches.length !== 1) {
         throw new Error(`${store} has no sealed independent query evidence`);
       }
       return {
@@ -309,9 +343,9 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
         passageCount: observedPassageCount,
         query: evidence.query.trim(),
         oracleRecordSha256: evidence.recordSha256,
-        expected: { repo: store, path: passage.path, passageSha256: digest(passage) },
+        expected: { repo: store, ...evidence.expected },
         source: { key: row.key, upstreamSha: row.upstream?.sha || null, artifactSha256: row.artifact?.rvfSha256 || null,
-          querySourceSha256: evidence.sourceSha256 },
+          queryEvidenceReceiptSha256: queryEvidence.receiptSha256 },
       };
     }).sort((a, b) => a.id.localeCompare(b.id));
   const payload = {
@@ -340,7 +374,8 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
     },
     oracle: { receiptSha256: queryEvidence.receiptSha256,
       queryStoreSetSha256: queryEvidence.queryStoreSetSha256,
-      sourceCommit: queryEvidence.sourceCommit, sourceBlobSha256: queryEvidence.sourceBlobSha256 },
+      sourceCommit: queryEvidence.sourceCommit, sourceBlobSha256: queryEvidence.sourceBlobSha256,
+      evidence: structuredClone(queryEvidence) },
     cohorts: { delta: delta.length, legacy: legacy.length,
       legacyStrata: [...strata.keys()].sort().map((stratum) => ({ stratum,
         population: rankedLegacy.filter((_entry, index) => Math.min(3, Math.floor(index * 4 / rankedLegacy.length)) === stratum).length,

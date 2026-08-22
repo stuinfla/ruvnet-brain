@@ -19,6 +19,8 @@ import { validatePlanAgainstCoverage } from '../../scripts/retrieval-canary.mjs'
 import { writeStoredZip } from '../helpers/zip-fixture.mjs';
 
 const roots = [];
+const FAILED_SEED_VERSION = '4.2.1-dev'; // sync-version-ignore: immutable external failed-seed identity, not candidate product version
+const FAILED_SEED_TAG = `v${FAILED_SEED_VERSION}`; // sync-version-ignore: immutable external failed-seed identity, not candidate product version
 const sha = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const fileId = (file) => ({ file: path.basename(file), sha256: sha(fs.readFileSync(file)), bytes: fs.statSync(file).size });
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
@@ -126,10 +128,14 @@ function writeStore(root, store) {
   fs.writeFileSync(path.join(root, files.rvf), `rvf:${store}`);
   writeJson(path.join(root, files.idmap), { store, ids: [1] });
   writeJson(path.join(root, files.embed), { store, dimensions: 8 });
-  fs.writeFileSync(path.join(root, files.passages), `${JSON.stringify({ id: `${store}-1`, path: `src/${store}.mjs`,
-    title: `${store} boundary`, text: `${store} owns a deterministic public runtime boundary whose exact source behavior is independently verified by this long fixture passage.` })}\n`);
+  fs.writeFileSync(path.join(root, files.passages), `${JSON.stringify(passageFor(store))}\n`);
   writeJson(path.join(root, files.meta), { store, chunks: 1 });
   return Object.values(files).map((name) => fileId(path.join(root, name)));
+}
+
+function passageFor(store) {
+  return { id: `${store}-1`, path: `src/${store}.mjs`,
+    title: `${store} boundary`, text: `${store} owns a deterministic public runtime boundary whose exact source behavior is independently verified by this long fixture passage.` };
 }
 
 function makeGitOracle(root, stores) {
@@ -140,19 +146,21 @@ function makeGitOracle(root, stores) {
   git(repo, 'config', 'user.name', 'Oracle Fixture');
   const queries = Object.fromEntries([...stores].sort().map((store) => {
     const query = `independently authored source behavior question for the ${store} public runtime boundary`;
-    const sourceSha256 = digest(`query-source:${store}`);
-    return [store, { query, sourceSha256, recordSha256: digest({ store, query, sourceSha256 }) }];
+    const expected = { path: passageFor(store).path, passageSha256: digest(passageFor(store)) };
+    return [store, { query, expected, recordSha256: digest({ store, query, expected }) }];
   }));
-  const sourcePayload = { schemaVersion: 1, kind: 'ruvnet-brain-retrieval-query-evidence',
+  const sourcePayload = { schemaVersion: 2, kind: 'ruvnet-brain-retrieval-query-evidence',
     queryStoreSetSha256: digest([...stores].sort()), queries };
   const sourcePath = 'data/retrieval-query-evidence.json';
   writeJson(path.join(repo, sourcePath), sourcePayload);
   git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'independent query oracle');
   const sourceCommit = git(repo, 'rev-parse', 'HEAD');
+  const evidence = sealRetrievalQueryEvidence({ ...sourcePayload, sourceCommit, sourcePath });
+  writeJson(path.join(repo, sourcePath), evidence);
   fs.writeFileSync(path.join(repo, 'candidate.txt'), 'candidate\n');
   git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'candidate');
   const candidateSha = git(repo, 'rev-parse', 'HEAD');
-  return { repo, candidateSha, evidence: sealRetrievalQueryEvidence({ ...sourcePayload, sourceCommit, sourcePath }) };
+  return { repo, candidateSha, evidence };
 }
 
 function fixture() {
@@ -166,7 +174,7 @@ function fixture() {
   writeJson(path.join(baselineRoot, 'public-store-classes.json'), { schemaVersion: 1, derived: [] });
   writeStore(baselineRoot, 'old');
   const oldRvf = path.join(baselineRoot, 'old.big.rvf');
-  const baselineLedger = { schemaVersion: 1, brainVersion: '4.2.1-dev', releaseTag: 'v4.2.1-dev',
+  const baselineLedger = { schemaVersion: 1, brainVersion: FAILED_SEED_VERSION, releaseTag: FAILED_SEED_TAG,
     stores: { old: generation('old', 'd'.repeat(40), oldRvf) } };
   writeJson(path.join(baselineRoot, 'RVF-GENERATIONS.json'), baselineLedger);
   const corpus = corpusCoverage(['old']);
@@ -192,7 +200,7 @@ function fixture() {
     observedAt: '2026-08-22T00:00:00.000Z', generatorSourceSha: '4'.repeat(64),
     sourceObservationSha256: '5'.repeat(64), snapshotRoot: '6'.repeat(64),
     releaseIdentity: { version: '9.9.9', tag: 'v9.9.9', sourceSnapshot: candidateSha },
-    corpusSeed: { tag: 'v4.2.1-dev', archiveSha256: fileId(baselineBundle).sha256,
+    corpusSeed: { tag: FAILED_SEED_TAG, archiveSha256: fileId(baselineBundle).sha256,
       archiveBytes: fileId(baselineBundle).bytes, receiptSha256: baselineProof.fileSha256 },
     corpusCoverage: { sha256: fileId(path.join(baselineRoot, 'CORPUS-COVERAGE.json')).sha256,
       coverageGeneration: corpus.coverageGeneration },
@@ -230,9 +238,9 @@ async function observedFixture() {
   writeJson(path.join(f.baselineRoot, 'RVF-GENERATIONS.json'), f.baselineLedger);
   zipDirectory(f.baselineRoot, f.baselineBundle);
   const observation = await createObservedBaselineReceipt({ baselineBundle: f.baselineBundle,
-    outFile: path.join(f.root, 'seed-observation.json'), expectedTag: 'v4.2.1-dev',
+    outFile: path.join(f.root, 'seed-observation.json'), expectedTag: FAILED_SEED_TAG,
     expectedSha256: fileId(f.baselineBundle).sha256, expectedBytes: fileId(f.baselineBundle).bytes });
-  f.coverage.corpusSeed = { tag: 'v4.2.1-dev', archiveSha256: fileId(f.baselineBundle).sha256,
+  f.coverage.corpusSeed = { tag: FAILED_SEED_TAG, archiveSha256: fileId(f.baselineBundle).sha256,
     archiveBytes: fileId(f.baselineBundle).bytes, receiptSha256: observation.fileSha256 };
   resealCandidate(f);
   return { f, observation };
@@ -245,10 +253,10 @@ describe('public verification input producer', () => {
     const f = fixture();
     const outFile = path.join(f.root, 'retrospective-baseline.json');
     const result = await createRetrospectiveBaselineVerification({ baselineBundle: f.baselineBundle, outFile,
-      expectedTag: 'v4.2.1-dev', expectedSha256: fileId(f.baselineBundle).sha256,
+      expectedTag: FAILED_SEED_TAG, expectedSha256: fileId(f.baselineBundle).sha256,
       expectedBytes: fileId(f.baselineBundle).bytes });
     expect(result.receipt).toMatchObject({ kind: 'ruvnet-brain-retrospective-baseline-verification',
-      historicalCorpusReceipt: false, releaseTag: 'v4.2.1-dev', storeCount: 1, stores: [{ name: 'old' }] });
+      historicalCorpusReceipt: false, releaseTag: FAILED_SEED_TAG, storeCount: 1, stores: [{ name: 'old' }] });
     expect(result.receipt.limitations).toContain('no historical corpus receipt was published with these bytes');
     expect(result.fileSha256).toBe(fileId(outFile).sha256);
   });
@@ -260,7 +268,7 @@ describe('public verification input producer', () => {
   ])('rejects a retrospective baseline with the wrong external %s identity', async (_label, override, message) => {
     const f = fixture();
     await expect(createRetrospectiveBaselineVerification({ baselineBundle: f.baselineBundle,
-      outFile: path.join(f.root, 'wrong.json'), expectedTag: 'v4.2.1-dev',
+      outFile: path.join(f.root, 'wrong.json'), expectedTag: FAILED_SEED_TAG,
       expectedSha256: fileId(f.baselineBundle).sha256, expectedBytes: fileId(f.baselineBundle).bytes,
       ...override })).rejects.toThrow(message);
   });
@@ -272,7 +280,7 @@ describe('public verification input producer', () => {
   ])('rejects a retrospective baseline with %s', async (_label, mutate, message) => {
     const f = fixture(); mutate(f); zipDirectory(f.baselineRoot, f.baselineBundle);
     await expect(createRetrospectiveBaselineVerification({ baselineBundle: f.baselineBundle,
-      outFile: path.join(f.root, 'invalid.json'), expectedTag: 'v4.2.1-dev',
+      outFile: path.join(f.root, 'invalid.json'), expectedTag: FAILED_SEED_TAG,
       expectedSha256: fileId(f.baselineBundle).sha256,
       expectedBytes: fileId(f.baselineBundle).bytes })).rejects.toThrow(message);
   });
@@ -283,7 +291,7 @@ describe('public verification input producer', () => {
     writeJson(path.join(f.baselineRoot, 'RVF-GENERATIONS.json'), f.baselineLedger);
     zipDirectory(f.baselineRoot, f.baselineBundle);
     const result = await createRetrospectiveBaselineVerification({ baselineBundle: f.baselineBundle,
-      outFile: path.join(f.root, 'null-provenance.json'), expectedTag: 'v4.2.1-dev',
+      outFile: path.join(f.root, 'null-provenance.json'), expectedTag: FAILED_SEED_TAG,
       expectedSha256: fileId(f.baselineBundle).sha256, expectedBytes: fileId(f.baselineBundle).bytes });
     expect(result.receipt.provenanceGaps).toEqual(['old']);
     expect(result.receipt.stores[0].sourceCommit).toBeNull();
@@ -298,7 +306,7 @@ describe('public verification input producer', () => {
     writeJson(path.join(f.baselineRoot, 'RVF-GENERATIONS.json'), f.baselineLedger);
     zipDirectory(f.baselineRoot, f.baselineBundle);
     const result = await createObservedBaselineReceipt({ baselineBundle: f.baselineBundle,
-      outFile: path.join(f.root, 'observed.json'), expectedTag: 'v4.2.1-dev',
+      outFile: path.join(f.root, 'observed.json'), expectedTag: FAILED_SEED_TAG,
       expectedSha256: fileId(f.baselineBundle).sha256, expectedBytes: fileId(f.baselineBundle).bytes });
     expect(result.receipt).toMatchObject({ kind: 'ruvnet-brain-observed-failed-public-baseline',
       integrity: 'DEGRADED', historicalCorpusReceipt: false, candidateVerificationEligible: false,
@@ -314,13 +322,13 @@ describe('public verification input producer', () => {
     writeJson(path.join(f.baselineRoot, 'RVF-GENERATIONS.json'), f.baselineLedger);
     zipDirectory(f.baselineRoot, f.baselineBundle);
     const first = await createObservedBaselineReceipt({ baselineBundle: f.baselineBundle,
-      outFile: path.join(f.root, 'observed-before.json'), expectedTag: 'v4.2.1-dev',
+      outFile: path.join(f.root, 'observed-before.json'), expectedTag: FAILED_SEED_TAG,
       expectedSha256: fileId(f.baselineBundle).sha256, expectedBytes: fileId(f.baselineBundle).bytes });
     f.baselineLedger.stores.old = generation('old', 'd'.repeat(40), path.join(f.baselineRoot, 'old.big.rvf'));
     writeJson(path.join(f.baselineRoot, 'RVF-GENERATIONS.json'), f.baselineLedger);
     zipDirectory(f.baselineRoot, f.baselineBundle);
     const repaired = await createObservedBaselineReceipt({ baselineBundle: f.baselineBundle,
-      outFile: path.join(f.root, 'observed-after.json'), expectedTag: 'v4.2.1-dev',
+      outFile: path.join(f.root, 'observed-after.json'), expectedTag: FAILED_SEED_TAG,
       expectedSha256: fileId(f.baselineBundle).sha256, expectedBytes: fileId(f.baselineBundle).bytes });
     expect(repaired.fileSha256).not.toBe(first.fileSha256);
     expect(repaired.receipt.archiveManifestSha256).not.toBe(first.receipt.archiveManifestSha256);

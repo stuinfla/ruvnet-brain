@@ -5,7 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { canonicalJson, digest } from '../../scripts/coverage-integrity.mjs';
-import { runRetrievalCanaries } from '../../scripts/retrieval-canary.mjs';
+import { runRetrievalCanaries, sealRetrievalQueryEvidence } from '../../scripts/retrieval-canary.mjs';
 import {
   createPublicVerificationLeaf,
   createIndependentReviewReceipt,
@@ -23,7 +23,8 @@ const identity = {
 };
 const plan = { schemaVersion: 2, kind: 'ruvnet-brain-retrieval-canary-plan',
   coverage: { sha256: '6'.repeat(64), bytes: 100, releaseCoverageGeneration: identity.coverageGeneration },
-  baseline: { tag: getVersionTag(), archiveSha256: '3'.repeat(64), archiveBytes: 100,
+  baseline: { schemaVersion: 1, kind: 'ruvnet-brain-verified-public-baseline',
+    tag: getVersionTag(), archiveSha256: '3'.repeat(64), archiveBytes: 100,
     archiveManifestSha256: '4'.repeat(64), verificationReceiptSha256: '5'.repeat(64), stores: ['old'],
     storeCount: 1, storeSetSha256: digest(['old']) },
   candidate: { sourceSha: identity.sourceSha, packageSha256: identity.artifactSha256,
@@ -34,13 +35,22 @@ const plan = { schemaVersion: 2, kind: 'ruvnet-brain-retrieval-canary-plan',
     deltaStores: ['new'], deltaStoreSetSha256: digest(['new']),
     legacyPopulationStores: ['old'], legacyPopulationStoreSetSha256: digest(['old']),
     legacySelectedStores: ['old'], legacySelectedStoreSetSha256: digest(['old']) },
-  oracle: { receiptSha256: '9'.repeat(64), queryStoreSetSha256: digest(['new', 'old']),
-    sourceCommit: 'b'.repeat(40), sourceBlobSha256: '9'.repeat(64) },
+  oracle: {},
   cohorts: { delta: 1, legacy: 1 }, k: 10,
   cases: [
     { id: 'delta:new', cohort: 'delta', query: 'new repository exact source behavior query', oracleRecordSha256: 'a'.repeat(64), expected: { repo: 'new', path: 'src/new.mjs', passageSha256: 'a'.repeat(64) }, source: {} },
     { id: 'legacy:old', cohort: 'legacy', query: 'legacy repository exact behavior query', oracleRecordSha256: 'a'.repeat(64), expected: { repo: 'old', path: 'src/old.mjs', passageSha256: 'a'.repeat(64) }, source: {} },
   ] };
+const planQueries = Object.fromEntries(plan.cases.map(({ query, expected }) => {
+  const bound = { path: expected.path, passageSha256: expected.passageSha256 };
+  return [expected.repo, { query, expected: bound, recordSha256: digest({ store: expected.repo, query, expected: bound }) }];
+}));
+const planEvidence = sealRetrievalQueryEvidence({ schemaVersion: 2, kind: 'ruvnet-brain-retrieval-query-evidence',
+  sourceCommit: 'b'.repeat(40), sourcePath: 'data/retrieval-query-evidence.json',
+  queryStoreSetSha256: digest(['new', 'old']), queries: planQueries });
+plan.cases.forEach((row) => { row.oracleRecordSha256 = planQueries[row.expected.repo].recordSha256; });
+plan.oracle = { receiptSha256: planEvidence.receiptSha256, queryStoreSetSha256: planEvidence.queryStoreSetSha256,
+  sourceCommit: planEvidence.sourceCommit, sourceBlobSha256: planEvidence.sourceBlobSha256, evidence: planEvidence };
 plan.planSha256 = digest(Object.fromEntries(Object.entries(plan).filter(([key]) => key !== 'planSha256')));
 identity.canaryPlanSha256 = plan.planSha256;
 
