@@ -136,6 +136,7 @@ function fire({ command, event, cwd, host }) {
       // without these overrides the test wrote receipts into the runner/user's real profile.
       HOME: brainHome,
       USERPROFILE: brainHome,
+      XDG_CACHE_HOME: path.join(brainHome, '.cache'),
       CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'),
       RUVNET_BRAIN_PROJECT_DIR: cwd,
       RUVNET_CONFIG_ROOT: path.join(cwd, '.conformance-config'), // keep real ledgers untouched

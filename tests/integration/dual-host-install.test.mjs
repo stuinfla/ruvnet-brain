@@ -27,6 +27,9 @@ describe('subscription-only dual-host installer wiring', () => {
       env: {
         ...process.env,
         HOME: home,
+        // This case owns a disposable HOME and intentionally exercises the unsuppressed installer.
+        // Do not inherit an outer isolated-suite guard that would turn the subject under test off.
+        RUVNET_BRAIN_TEST: '0',
         RUVNET_BRAIN_IMPORT_ONLY: '1',
         RUVNET_BRAIN_NO_COLOR: '1',
       },
