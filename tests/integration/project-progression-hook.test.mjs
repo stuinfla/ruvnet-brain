@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { captureProjectTransition } from '../../plugin/scripts/project-progression-hook.mjs';
 import { runSessionSnapshotHook } from '../../plugin/scripts/session-snapshot-hook.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
+import { getVersion } from '../../scripts/version.mjs';
 
 const temporaryRoots = [];
 
@@ -122,12 +123,12 @@ describe('ADR-073 host-neutral progression capture', () => {
       host,
       payload: envelope(project, host),
       projectDir: project,
-      adapterVersion: '4.2.3-dev',
+      adapterVersion: getVersion(),
       storeFactory: store.factory,
     });
 
     expect(result.snapshot).toMatchObject({
-      hostIdentity: { host, adapterVersion: '4.2.3-dev' },
+      hostIdentity: { host, adapterVersion: getVersion() },
       sessionIdentity: `${host}-session`,
       sequence: 4,
       trigger: 'PostToolUse',
@@ -155,7 +156,7 @@ describe('ADR-073 host-neutral progression capture', () => {
     });
 
     const { snapshot } = captureProjectTransition({
-      host: 'codex', payload, projectDir: project, adapterVersion: '4.2.3-dev', storeFactory: store.factory,
+      host: 'codex', payload, projectDir: project, adapterVersion: getVersion(), storeFactory: store.factory,
     });
     const serialized = JSON.stringify(snapshot);
 
@@ -189,7 +190,7 @@ describe('ADR-073 host-neutral progression capture', () => {
       host: changes.host ?? 'codex',
       payload,
       projectDir: project,
-      adapterVersion: '4.2.3-dev',
+      adapterVersion: getVersion(),
       storeFactory: store.factory,
     })).toThrow(expected);
     expect(store.snapshots).toEqual([]);
@@ -205,7 +206,7 @@ describe('ADR-073 host-neutral progression capture', () => {
 
     for (const payload of [ambiguous, incomplete]) {
       expect(() => captureProjectTransition({
-        host: 'codex', payload, projectDir: project, adapterVersion: '4.2.3-dev', storeFactory: store.factory,
+        host: 'codex', payload, projectDir: project, adapterVersion: getVersion(), storeFactory: store.factory,
       })).toThrow();
     }
     expect(store.snapshots).toEqual([]);
@@ -219,7 +220,7 @@ describe('ADR-073 host-neutral progression capture', () => {
       host: 'claude',
       payload: envelope(project, 'claude'),
       projectDir: project,
-      adapterVersion: '4.2.3-dev',
+      adapterVersion: getVersion(),
       storeFactory: store.factory,
     })).toThrow('exact readback failed');
     expect(store.snapshots).toHaveLength(1);
@@ -242,10 +243,10 @@ describe('ADR-073 host-neutral progression capture', () => {
     const payload = envelope(project, 'codex');
 
     const first = captureProjectTransition({
-      host: 'codex', payload, projectDir: project, adapterVersion: '4.2.3-dev', storeFactory: store.factory,
+      host: 'codex', payload, projectDir: project, adapterVersion: getVersion(), storeFactory: store.factory,
     });
     const retry = captureProjectTransition({
-      host: 'codex', payload, projectDir: project, adapterVersion: '4.2.3-dev', storeFactory: store.factory,
+      host: 'codex', payload, projectDir: project, adapterVersion: getVersion(), storeFactory: store.factory,
     });
 
     expect(retry.snapshot).toEqual(first.snapshot);

@@ -7,6 +7,7 @@ import { createProgressionSnapshot, digestCanonical } from '../../plugin/scripts
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
 import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
 import { resolveRuflo } from '../../plugin/scripts/ruflo-bin.mjs';
+import { getVersion } from '../../scripts/version.mjs';
 
 const NAMESPACE = 'project-progression';
 let temporaryRoots = [];
@@ -30,7 +31,7 @@ function progression(projectRoot, overrides = {}) {
       untrackedDigest: 'c'.repeat(64),
       dirtyTreeDigest: 'd'.repeat(64),
     },
-    hostIdentity: { host: 'codex', adapterVersion: '4.2.2-dev' },
+    hostIdentity: { host: 'codex', adapterVersion: getVersion() },
     sessionIdentity: 'session-a',
     sequence: 1,
     occurredAt: '2026-08-22T17:30:00.000Z',
