@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "kind": "ruvnet-brain-host-adapter",
+  "id": "claude",
+  "displayName": "Claude Code",
+  "os": ["linux", "macos", "windows"],
+  "modes": ["claude", "dual"],
+  "manifest": "plugin/.claude-plugin/plugin.json",
+  "hooks": "plugin/hooks/hooks.json",
+  "loader": "bin/install.mjs"
+}
