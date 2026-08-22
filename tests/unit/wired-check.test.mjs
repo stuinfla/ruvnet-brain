@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import * as wiredCheckModule from '../../scripts/wired-check.mjs';
 import { audit, callerPattern, hookWiringAudit, lessonTriggerAudit } from '../../scripts/wired-check.mjs';
 
 let repo;
@@ -234,6 +235,30 @@ describe('callerPattern', () => {
     expect(callerPattern('widget.mjs').test("import x from './widget.mjs'")).toBe(true);
     expect(callerPattern('widget.mjs').test('the widget module')).toBe(false);
     expect(callerPattern('widget.mjs').test('run: node scripts/widget.mjs')).toBe(true);
+  });
+});
+
+describe('operational export wiring', () => {
+  it('does not count definitions, imports, re-exports, or an unreachable export-to-export bridge as operation', () => {
+    expect(wiredCheckModule.operationalExportAudit).toBeTypeOf('function');
+    w('scripts/receipt.mjs', 'export async function materializeReceipt() { return true; }\n');
+    w('scripts/bridge.mjs', "import { materializeReceipt } from './receipt.mjs';\n"
+      + 'export async function runReceiptStage() { return materializeReceipt(); }\n');
+    w('scripts/facade.mjs', "export { materializeReceipt } from './receipt.mjs';\n");
+    const required = [
+      { rel: 'scripts/receipt.mjs', symbol: 'materializeReceipt' },
+      { rel: 'scripts/bridge.mjs', symbol: 'runReceiptStage' },
+    ];
+
+    let rows = wiredCheckModule.operationalExportAudit({ repo, required }).rows;
+    expect(rows.find((row) => row.symbol === 'materializeReceipt')).toMatchObject({
+      state: 'wired', callers: ['scripts/bridge.mjs'],
+    });
+    expect(rows.find((row) => row.symbol === 'runReceiptStage')).toMatchObject({ state: 'unwired', callers: [] });
+
+    w('scripts/main.mjs', "import { runReceiptStage } from './bridge.mjs';\nawait runReceiptStage();\n");
+    rows = wiredCheckModule.operationalExportAudit({ repo, required }).rows;
+    expect(rows.every((row) => row.state === 'wired')).toBe(true);
   });
 });
 

@@ -303,6 +303,10 @@ const CALLER_ROOTS = [
   'scripts', 'plugin', 'console', 'bin', '.github', '.claude', 'package.json', 'dream.config.json',
 ];
 const CALLER_EXTS = new Set(['.mjs', '.js', '.sh', '.json', '.html', '.yml', '.yaml']);
+export const REQUIRED_OPERATIONAL_EXPORTS = [
+  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'materializeGistReceipts' },
+  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'observeAndMaterializeGistReceipts' },
+];
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))
   || f.includes(`${path.sep}tests${path.sep}`) || f.startsWith(`tests${path.sep}`);
@@ -508,7 +512,33 @@ export function callersOf(mod, files, repo = REPO) {
   return hits;
 }
 
-export function audit({ repo = REPO, standalone = STANDALONE, held = HELD } = {}) {
+export function operationalExportAudit({ repo = REPO, required = REQUIRED_OPERATIONAL_EXPORTS } = {}) {
+  const files = callerFiles(repo);
+  const rows = required.map(({ rel, symbol }) => {
+    const sourceFile = path.join(repo, rel);
+    let source = '';
+    try { source = fs.readFileSync(sourceFile, 'utf8'); } catch { /* reported as missing below */ }
+    const quoted = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const exported = new RegExp(`\\bexport\\s+(?:async\\s+)?function\\s+${quoted}\\s*\\(`).test(source);
+    if (!exported) return { rel, symbol, state: 'missing', callers: [] };
+    const declaration = new RegExp(`\\bexport\\s+(?:async\\s+)?function\\s+${quoted}\\s*\\(`, 'g');
+    const invocation = new RegExp(`\\b${quoted}\\s*\\(`);
+    const callers = [];
+    for (const file of files) {
+      const callerRel = path.relative(repo, file).split(path.sep).join('/');
+      if (isTestFile(callerRel)) continue;
+      let body = '';
+      try { body = stripComments(fs.readFileSync(file, 'utf8'), path.extname(file)); } catch { continue; }
+      body = body.replace(declaration, 'export function __operational_definition__(');
+      if (invocation.test(body)) callers.push(callerRel);
+    }
+    return { rel, symbol, state: callers.length ? 'wired' : 'unwired', callers };
+  });
+  return { rows };
+}
+
+export function audit({ repo = REPO, standalone = STANDALONE, held = HELD,
+  operationalExports = REQUIRED_OPERATIONAL_EXPORTS } = {}) {
   const dupes = [];
   const seen = new Map();
   for (const [name, why] of standalone) {
@@ -542,7 +572,8 @@ export function audit({ repo = REPO, standalone = STANDALONE, held = HELD } = {}
     }
     rows.push({ ...m, state, callers, ...(why ? { why } : {}) });
   }
-  return { rows, dupes, inventory: all.length };
+  const operationalRows = operationalExportAudit({ repo, required: operationalExports }).rows;
+  return { rows, operationalRows, dupes, inventory: all.length };
 }
 
 /**
@@ -828,9 +859,10 @@ const invokedDirectly = process.argv[1]
   && path.resolve(process.argv[1]).endsWith(`wired-check${path.extname(process.argv[1])}`);
 
 if (invokedDirectly) {
-  const { rows, dupes, inventory } = audit();
+  const { rows, operationalRows, dupes, inventory } = audit();
   const by = (s) => rows.filter((r) => r.state === s);
   const unwired = by('unwired');
+  const operationalUnwired = operationalRows.filter((row) => row.state !== 'wired');
 
   const hookAudit = hookWiringAudit();
   const hookBy = (s) => hookAudit.rows.filter((r) => r.state === s);
@@ -847,6 +879,16 @@ if (invokedDirectly) {
     if (unwired.length) {
       console.log(`\n  A module with no caller is not a feature. Either wire it to a real user path,`);
       console.log(`  or add it to STANDALONE in this file WITH A TRUE REASON.\n`);
+    }
+
+    console.log(`  ${operationalRows.length} release-critical operational export(s) checked · `
+      + `${operationalUnwired.length} UNWIRED\n`);
+    for (const row of operationalUnwired) {
+      console.log(`    ✗ ${row.rel}#${row.symbol} — exported, but no production invocation reaches it`);
+    }
+    if (operationalUnwired.length) {
+      console.log('\n  Importing or re-exporting a function is not operation. A release-critical export must');
+      console.log('  be invoked through a production path whose module is itself wired.\n');
     }
 
     // Every exemption, every run. v1 never printed these, so 3 false reasons rotted unseen for a
@@ -906,6 +948,6 @@ if (invokedDirectly) {
     }
   }
 
-  const bad = unwired.length || dupes.length || hookUnwired.length;
+  const bad = unwired.length || operationalUnwired.length || dupes.length || hookUnwired.length;
   process.exit(argv.includes('--check') && bad ? 1 : 0);
 }
