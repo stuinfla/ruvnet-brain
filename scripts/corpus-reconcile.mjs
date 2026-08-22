@@ -10,6 +10,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
+import { sourceObservationDigest } from './source-coverage.mjs';
+import { reconcileGistReceipts } from './gist-receipts.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -366,6 +368,42 @@ export async function executeReconciliation({
   promoteArtifactSet({ liveDir: assets, candidateDir: merge, files: promotedFiles.sort() });
   return { refreshed: results.map(({ store }) => store),
     workers: results.map(({ output: _output, ...receipt }) => receipt) };
+}
+
+export function syncCorpusInputs({ root = DEFAULT_ROOT, assetsDir }) {
+  const sourceKb = path.join(path.resolve(root), 'kb');
+  const assets = path.resolve(assetsDir || '');
+  const required = ['capability-cards.md', 'external-sources.json', 'no-corpus-repos.json',
+    'public-store-classes.json'];
+  for (const name of required) {
+    const source = path.join(sourceKb, name);
+    if (!fs.existsSync(source) || !fs.statSync(source).isFile()) fail(`canonical corpus input missing (${source})`);
+    fs.copyFileSync(source, path.join(assets, name));
+  }
+  const sourceL2 = path.join(sourceKb, 'l2');
+  if (!fs.existsSync(sourceL2) || !fs.statSync(sourceL2).isDirectory()) fail(`canonical L2 input missing (${sourceL2})`);
+  fs.rmSync(path.join(assets, 'l2'), { recursive: true, force: true });
+  fs.cpSync(sourceL2, path.join(assets, 'l2'), { recursive: true });
+  for (const entry of fs.readdirSync(sourceKb)) {
+    if (entry.endsWith('-primer.md') || /^l2-topics\..+\.json$/.test(entry)) {
+      fs.copyFileSync(path.join(sourceKb, entry), path.join(assets, entry));
+    }
+  }
+  return { copied: required };
+}
+
+export async function materializeGistReceipts({ observation, assetsDir, fetchGist, fetchBody, now } = {}) {
+  if (observation?.observationSha256 !== sourceObservationDigest(observation)) {
+    fail('gist receipts require an exact sealed source observation');
+  }
+  const sourceFile = path.join(path.resolve(assetsDir || ''), 'ruv-gists.sources.json');
+  const existing = fs.existsSync(sourceFile) ? readJson(sourceFile, 'existing gist receipts') : null;
+  const receipt = await reconcileGistReceipts({ observation, existing, fetchGist, fetchBody, now });
+  if (receipt.sourceObservationSha256 !== observation.observationSha256) {
+    fail('gist receipts differ from the sealed source observation');
+  }
+  writeJsonAtomic(sourceFile, receipt);
+  return { sourceFile, receipt };
 }
 
 export function prepareCorpusCandidate({

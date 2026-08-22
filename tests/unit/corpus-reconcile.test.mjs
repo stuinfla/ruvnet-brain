@@ -6,11 +6,14 @@ import path from 'node:path';
 import {
   assertBootstrapIdentity,
   executeReconciliation,
+  materializeGistReceipts,
   normalizeExtractedCorpus,
   planReconciliation,
   prepareCorpusCandidate,
   reconcileUntilStable,
+  syncCorpusInputs,
 } from '../../scripts/corpus-reconcile.mjs';
+import { sourceObservationDigest } from '../../scripts/source-coverage.mjs';
 
 const temps = [];
 const temp = () => {
@@ -339,6 +342,43 @@ describe('reconciliation execution', () => {
       .toEqual(['alpha', 'beta']);
     expect(Object.keys(JSON.parse(fs.readFileSync(path.join(assetsDir, 'SOURCE.json'), 'utf8')).stores))
       .toEqual(['alpha', 'beta']);
+  });
+});
+
+describe('generated gist receipt lifecycle', () => {
+  it('starts without a generated gist receipt and materializes it from the sealed live observation', async () => {
+    const root = temp();
+    const kb = path.join(root, 'kb');
+    const assets = path.join(root, 'assets');
+    fs.mkdirSync(path.join(kb, 'l2'), { recursive: true });
+    fs.mkdirSync(assets);
+    for (const name of ['capability-cards.md', 'external-sources.json', 'no-corpus-repos.json',
+      'public-store-classes.json']) fs.writeFileSync(path.join(kb, name), `${name}\n`);
+    fs.writeFileSync(path.join(kb, 'l2', 'topic.md'), 'topic\n');
+    const synced = syncCorpusInputs({ root, assetsDir: assets });
+    expect(synced.copied).not.toContain('ruv-gists.sources.json');
+    expect(fs.existsSync(path.join(assets, 'ruv-gists.sources.json'))).toBe(false);
+
+    const gistId = 'a'.repeat(32);
+    const file = { filename: 'notes.md', raw_url: `https://gist.example/${gistId}/raw/${'b'.repeat(40)}/notes.md`,
+      size: 5, type: 'text/plain', language: 'Markdown' };
+    const base = { schemaVersion: 1, kind: 'ruvnet-brain-source-observation', owner: 'ruvnet',
+      observedAt: '2026-08-22T01:00:00Z', repositories: { rows: [], expected: 0, pages: [] },
+      gists: { rows: [{ id: gistId, updated_at: '2026-08-22T00:00:00Z', files: { 'notes.md': file } }],
+        expected: 1, pages: [] } };
+    const observation = { ...base, observationSha256: sourceObservationDigest(base) };
+    const result = await materializeGistReceipts({ observation, assetsDir: assets,
+      fetchGist: async () => ({ id: gistId, updated_at: '2026-08-22T00:00:00Z',
+        history: [{ version: 'b'.repeat(40) }], files: { 'notes.md': { ...file, content: 'notes', truncated: false } } }),
+      now: () => '2026-08-22T02:00:00Z' });
+    expect(result.receipt).toMatchObject({ schemaVersion: 3,
+      sourceObservationSha256: observation.observationSha256, gistSet: { count: 1 } });
+    expect(JSON.parse(fs.readFileSync(result.sourceFile, 'utf8'))).toEqual(result.receipt);
+
+    const moved = structuredClone(observation);
+    moved.gists.rows[0].updated_at = '2026-08-22T03:00:00Z';
+    await expect(materializeGistReceipts({ observation: moved, assetsDir: assets }))
+      .rejects.toThrow(/exact sealed source observation/);
   });
 });
 
