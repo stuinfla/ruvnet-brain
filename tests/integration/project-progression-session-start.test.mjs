@@ -11,6 +11,7 @@ import {
 } from '../../plugin/scripts/project-progression-session-start.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
 import { runSessionStart } from '../../plugin/scripts/session-start-core.mjs';
+import { getVersion } from '../../scripts/version.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const NAMESPACE = 'project-progression';
@@ -59,7 +60,7 @@ function snapshot(project, { host, dedupId, nextAction }) {
       untrackedDigest: 'c'.repeat(64),
       dirtyTreeDigest: 'd'.repeat(64),
     },
-    hostIdentity: { host, adapterVersion: '4.2.3-dev' },
+    hostIdentity: { host, adapterVersion: getVersion() },
     sessionIdentity: `${host}-session`,
     sequence: 1,
     occurredAt: host === 'claude' ? '2026-08-22T20:00:00.000Z' : '2026-08-22T20:00:01.000Z',
