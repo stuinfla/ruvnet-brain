@@ -267,7 +267,8 @@ jobs:
             --fable release-evidence/independent-review/receipts/claude-fable-5.json \
             --sol release-evidence/independent-review/receipts/gpt-5.6-sol.json \
             --fable-public-key release-evidence/independent-review/keys/claude-fable-5.pub.pem \
-            --sol-public-key release-evidence/independent-review/keys/gpt-5.6-sol.pub.pem
+            --sol-public-key release-evidence/independent-review/keys/gpt-5.6-sol.pub.pem \
+            --retrieval-plan release-evidence/retrieval-canary-plan.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import path from 'node:path';

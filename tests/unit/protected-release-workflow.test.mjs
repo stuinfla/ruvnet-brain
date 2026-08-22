@@ -66,6 +66,17 @@ describe('protected release rail', () => {
     expect(source).not.toContain('continue-on-error: true');
   });
 
+  it('validates both reviews against the exact retrieval plan before provider mutation', () => {
+    const source = workflow();
+    const reviewVerification = source.indexOf('node scripts/independent-review-receipt.mjs verify-pair');
+    const retrievalPlan = source.indexOf('--retrieval-plan release-evidence/retrieval-canary-plan.json', reviewVerification);
+    const publish = source.indexOf('node scripts/release.mjs --publish');
+    expect(reviewVerification).toBeGreaterThan(-1);
+    expect(retrievalPlan).toBeGreaterThan(reviewVerification);
+    expect(publish).toBeGreaterThan(retrievalPlan);
+    expect(source.match(/--retrieval-plan release-evidence\/retrieval-canary-plan\.json/g)).toHaveLength(1);
+  });
+
   it('stops channel publication at signed PUBLISHED_NOT_VERIFIED before public install proof', () => {
     const source = workflow();
     expect(source).toContain('RUVNET_RELEASE_IDENTITY: release-evidence/release-identity.json');
