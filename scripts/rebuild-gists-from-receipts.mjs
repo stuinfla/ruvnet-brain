@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sealGistReceiptSet, validateGistReceiptSet } from './gist-receipts.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const NAME = 'ruv-gists';
@@ -33,6 +34,19 @@ function validateFilename(filename, label) {
 }
 
 export function validateSourceReceipts(source) {
+  if (source?.schemaVersion === 3) {
+    const observation = {
+      owner: source.owner,
+      observedAt: source.observedAt,
+      observationSha256: source.sourceObservationSha256,
+      gists: { rows: Object.entries(source.gists || {}).map(([id, receipt]) => ({
+        id, updated_at: receipt?.updatedAt,
+      })) },
+    };
+    try { validateGistReceiptSet(source, observation); }
+    catch (error) { fail(`schema-3 source receipt is invalid: ${error.message}`); }
+    return source;
+  }
   if (![1, 2].includes(source?.schemaVersion)) fail('source receipt schemaVersion must be 1 or 2');
   if (!/^[A-Za-z0-9-]{1,39}$/.test(String(source.owner || ''))) fail('source receipt owner is malformed');
   if (!validDate(source.generated)) fail('source receipt generated timestamp is malformed');
@@ -178,11 +192,14 @@ export async function reconstructGists(source, { fetchFn = globalThis.fetch, con
     note: "rUv's public gists — announcements and thinking, PROPOSED unless confirmed in repo source.",
     entries,
   };
+  const passagesSha256 = sha256(passageBody);
   return {
     passages,
     passageBody,
     meta,
-    sources: { ...source, schemaVersion: 2, passagesSha256: sha256(passageBody), gists: source.gists },
+    sources: source.schemaVersion === 3
+      ? sealGistReceiptSet({ ...source, passagesSha256 })
+      : { ...source, schemaVersion: 2, passagesSha256, gists: source.gists },
   };
 }
 

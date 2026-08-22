@@ -13,6 +13,8 @@ import {
   validateSourceReceipts,
   writeReconstruction,
 } from '../../scripts/rebuild-gists-from-receipts.mjs';
+import { sealGistReceipt, sealGistReceiptSet } from '../../scripts/gist-receipts.mjs';
+import { validateGistAggregateReceipt } from '../../scripts/coverage-integrity.mjs';
 
 const temps = [];
 const temp = () => {
@@ -80,6 +82,27 @@ describe('receipt validation and deterministic shaping', () => {
 });
 
 describe('raw receipt reconstruction', () => {
+  it('preserves and reseals the schema-3 observation receipt around rebuilt passage bytes', async () => {
+    const root = temp();
+    const gistId = 'a'.repeat(32);
+    const body = 'Schema three body.';
+    const gist = sealGistReceipt({ gistId, versionSha: 'b'.repeat(40),
+      updatedAt: '2026-08-21T11:00:00.000Z', ingestedAt: '2026-08-21T12:00:00.000Z', complete: true,
+      files: [fileReceipt('note.md', body)] });
+    const input = sealGistReceiptSet({ owner: 'ruvnet', generated: '2026-08-21T12:00:00.000Z',
+      observedAt: '2026-08-21T11:00:00.000Z', sourceObservationSha256: 'd'.repeat(64),
+      passagesSha256: null, gists: { [gistId]: gist } });
+    const result = await reconstructGists(input, {
+      fetchFn: async () => ({ ok: true, status: 200, arrayBuffer: async () => Buffer.from(body) }),
+    });
+    const written = writeReconstruction(result, { outDir: root });
+    expect(result.sources).toMatchObject({ schemaVersion: 3, kind: 'ruvnet-brain-gist-source-receipts',
+      sourceObservationSha256: 'd'.repeat(64), passagesSha256: sha256(result.passageBody) });
+    expect(() => validateGistAggregateReceipt({ receipt: result.sources,
+      passagesFile: written.passagesFile, expectedIds: [gistId], sourceObservationSha256: 'd'.repeat(64) }))
+      .not.toThrow();
+  });
+
   it('resolves the durable installed receipt and completes from a clean clone with no local receipt', async () => {
     const root = temp();
     const cleanClone = path.join(root, 'clean-clone');
