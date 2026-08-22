@@ -9,6 +9,7 @@ import {
   normalizeExtractedCorpus,
   planReconciliation,
   prepareCorpusCandidate,
+  reconcileUntilStable,
 } from '../../scripts/corpus-reconcile.mjs';
 
 const temps = [];
@@ -31,6 +32,7 @@ const repo = ({ name, store = name.toLowerCase(), upstream = sha('a'), dispositi
   name,
   url: `https://github.com/ruvnet/${name}`,
   disposition,
+  status: 'CURRENT',
   upstream: { sha: upstream },
   artifact: { store },
 });
@@ -77,6 +79,60 @@ describe('exact corpus bootstrap identity', () => {
 });
 
 describe('reconciliation planning', () => {
+  it('reobserves after building until the source universe is stable and fails at the bound', async () => {
+    const observations = ['1', '2', '2'].map((value) => ({ observationSha256: value }));
+    let observed = 0;
+    let ledger = { stores: {} };
+    const result = await reconcileUntilStable({ maxRounds: 3,
+      observe: () => observations[observed++] || observations.at(-1),
+      build: (observation) => coverage([repo({ name: 'alpha', upstream: sha(observation.observationSha256) })]),
+      readLedger: () => ledger,
+      execute: (plan) => { ledger = { stores: { alpha: { sourceCommit: plan[0].upstreamSha } } }; return { refreshed: ['alpha'] }; },
+      prune: () => ({ pruned: [] }), rebuild: () => ({ rebuilt: [] }) });
+    expect(result.rounds).toHaveLength(2);
+    expect(result.observation.observationSha256).toBe('2');
+    await expect(reconcileUntilStable({ maxRounds: 1, observe: (() => { let i = 0; return () => ({ observationSha256: String(i++) }); })(),
+      build: (observation) => coverage([repo({ name: 'alpha', upstream: sha(String(Number(observation.observationSha256) % 10)) })]),
+      readLedger: () => ({ stores: {} }), execute: () => ({}), prune: () => ({}), rebuild: () => ({}) }))
+      .rejects.toThrow(/did not stabilize/);
+  });
+
+  it('reobserves a moving gist snapshot instead of accepting mixed-time detail bytes', async () => {
+    const observations = ['one', 'two', 'two'].map((observationSha256) => ({ observationSha256 }));
+    let index = 0;
+    let rebuilds = 0;
+    const result = await reconcileUntilStable({ maxRounds: 3,
+      observe: () => observations[index++] || observations.at(-1), build: () => coverage([]),
+      readLedger: () => ({ stores: {} }), execute: () => ({ refreshed: [] }), prune: () => ({ pruned: [] }),
+      rebuild: () => {
+        if (rebuilds++ === 0) {
+          const error = new Error('moved'); error.code = 'GIST_OBSERVATION_MOVED'; error.gistId = 'abc'; throw error;
+        }
+        return { rebuilt: ['ruv-gists'] };
+      } });
+    expect(result.observation.observationSha256).toBe('two');
+    expect(result.rounds[0].invalidated).toEqual(expect.objectContaining({ gistId: 'abc' }));
+    expect(result.rounds[1].rebuilt).toEqual(['ruv-gists']);
+  });
+
+  it('rejects a stable observation while repository artifacts remain unresolved', async () => {
+    await expect(reconcileUntilStable({ maxRounds: 1,
+      observe: () => ({ observationSha256: 'stable' }),
+      build: () => coverage([repo({ name: 'alpha', upstream: sha('a') })]),
+      readLedger: () => ({ stores: {} }),
+      execute: () => ({ refreshed: [] }), prune: () => ({ pruned: [] }), rebuild: () => ({ rebuilt: [] }),
+    })).rejects.toThrow(/stabilized with 1 unresolved repository artifact/);
+  });
+
+  it('rejects a stable observation while an eligible source is not CURRENT', async () => {
+    const row = { ...repo({ name: 'alpha', upstream: sha('a') }), status: 'STALE' };
+    await expect(reconcileUntilStable({ maxRounds: 1,
+      observe: () => ({ observationSha256: 'stable' }), build: () => coverage([row]),
+      readLedger: () => ({ stores: { alpha: { sourceCommit: sha('a') } } }),
+      execute: () => ({ refreshed: [] }), prune: () => ({ pruned: [] }), rebuild: () => ({ rebuilt: [] }),
+    })).rejects.toThrow(/stabilized with 1 unresolved eligible source/);
+  });
+
   it('plans only eligible repositories whose ledger sourceCommit is absent or differs', () => {
     const rows = [
       repo({ name: 'alpha', upstream: sha('a') }),

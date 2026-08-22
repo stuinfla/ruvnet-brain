@@ -134,6 +134,47 @@ export function planReconciliation({ coverage, ledger, assetsDir = null }) {
   return plan.sort((a, b) => a.store.localeCompare(b.store));
 }
 
+export async function reconcileUntilStable({ maxRounds = 3, assetsDir = null, observe, build, readLedger: currentLedger,
+  execute, prune, rebuild } = {}) {
+  if (!Number.isSafeInteger(maxRounds) || maxRounds < 1 || maxRounds > 10
+    || [observe, build, currentLedger, execute, prune, rebuild].some((fn) => typeof fn !== 'function')) {
+    fail('bounded reconciliation loop configuration is invalid');
+  }
+  const rounds = [];
+  let observation = await observe();
+  for (let round = 1; round <= maxRounds; round += 1) {
+    const preliminary = await build(observation);
+    const plan = planReconciliation({ coverage: preliminary, ledger: currentLedger(), assetsDir });
+    const reconciliation = await execute(plan, round);
+    const pruning = await prune(preliminary, round);
+    let aggregates;
+    try {
+      aggregates = await rebuild(preliminary, observation, round);
+    } catch (error) {
+      if (error?.code !== 'GIST_OBSERVATION_MOVED') throw error;
+      const nextObservation = await observe();
+      rounds.push({ round, before: observation.observationSha256, after: nextObservation.observationSha256,
+        plan, ...reconciliation, ...pruning, rebuilt: [], invalidated: {
+          reason: 'gist observation moved during exact detail fetch', gistId: error.gistId || null } });
+      observation = nextObservation;
+      continue;
+    }
+    const nextObservation = await observe();
+    rounds.push({ round, before: observation.observationSha256, after: nextObservation.observationSha256,
+      plan, ...reconciliation, ...pruning, ...aggregates });
+    if (nextObservation.observationSha256 === observation.observationSha256) {
+      const coverage = await build(nextObservation);
+      const remaining = planReconciliation({ coverage, ledger: currentLedger(), assetsDir });
+      if (remaining.length) fail(`reconciliation stabilized with ${remaining.length} unresolved repository artifact(s)`);
+      const unresolved = coverage.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
+      if (unresolved.length) fail(`reconciliation stabilized with ${unresolved.length} unresolved eligible source(s)`);
+      return { observation: nextObservation, coverage, rounds };
+    }
+    observation = nextObservation;
+  }
+  fail(`source observation did not stabilize within ${maxRounds} reconciliation rounds`);
+}
+
 function defaultRun(command, args, options = {}) {
   return spawnSync(command, args, { encoding: 'utf8', ...options });
 }
