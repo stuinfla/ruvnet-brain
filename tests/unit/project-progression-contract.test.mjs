@@ -8,6 +8,7 @@ import {
   restoreProjectProgression,
   validateProgressionSnapshot,
 } from '../../plugin/scripts/project-progression-contract.mjs';
+import { getVersion } from '../../scripts/version.mjs';
 
 const PROJECT = Object.freeze({
   id: 'stuinfla/ruvnet-brain',
@@ -47,7 +48,7 @@ function input(overrides = {}) {
   return {
     projectIdentity: PROJECT,
     sourceIdentity: SOURCE,
-    hostIdentity: { host: 'codex', adapterVersion: '4.2.2-dev' },
+    hostIdentity: { host: 'codex', adapterVersion: getVersion() },
     sessionIdentity: 'session-a',
     sequence: 7,
     occurredAt: '2026-08-22T17:00:00.000Z',
@@ -284,7 +285,7 @@ describe('causal restoration', () => {
       completeProjectState: { ...STATE, plan: [{ id: 'contract', status: 'complete' }] },
     }));
     const removed = createProgressionSnapshot(input({
-      hostIdentity: { host: 'claude', adapterVersion: '4.2.2-dev' },
+      hostIdentity: { host: 'claude', adapterVersion: getVersion() },
       sessionIdentity: 'session-b',
       sequence: 1,
       dedupId: 'plan-removed',
@@ -319,7 +320,7 @@ describe('causal restoration', () => {
       },
     }));
     const claude = createProgressionSnapshot(input({
-      hostIdentity: { host: 'claude', adapterVersion: '4.2.2-dev' },
+      hostIdentity: { host: 'claude', adapterVersion: getVersion() },
       sessionIdentity: 'session-b',
       sequence: 1,
       dedupId: 'claude-head',
