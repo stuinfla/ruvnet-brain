@@ -751,7 +751,14 @@ export function hookWiringAudit({
   return { rows, plumbing: HOOK_PLUMBING };
 }
 
-/** The trigger tokens requested by lesson-hooks.sh's `case "$EVENT" in` block — the sole authority. */
+/**
+ * The trigger tokens requested by lesson-hooks.sh — the sole authority. A trigger reaches the gate
+ * two ways: a static `case "$EVENT" in ... TRIGGERS="<name>"` label, or a dynamic conditional append
+ * (`ARGS+=(--trigger <name>)`, e.g. `ship`, appended only when a live regex matches the real command
+ * text). Reading only the static form means a trigger whose SOLE live path is dynamic is invisible
+ * to this audit — and Check C would then depend on an unrelated dead case label merely coexisting in
+ * the file to report it correctly, which breaks the moment that dead label is ever cleaned up.
+ */
 function lessonHooksRequestedTriggers(repo) {
   let src = '';
   try { src = fs.readFileSync(path.join(repo, 'plugin/scripts/lesson-hooks.sh'), 'utf8'); } catch { return new Set(); }
@@ -760,6 +767,8 @@ function lessonHooksRequestedTriggers(repo) {
   const re = /TRIGGERS="([^"]*)"/g;
   let m;
   while ((m = re.exec(stripped))) { for (const t of m[1].split(/\s+/)) if (t) requested.add(t); }
+  const dynRe = /ARGS\+=\(--trigger\s+"?([A-Za-z][\w-]*)"?\)/g;
+  while ((m = dynRe.exec(stripped))) { requested.add(m[1]); }
   return requested;
 }
 

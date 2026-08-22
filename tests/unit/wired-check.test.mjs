@@ -367,4 +367,40 @@ describe('lesson-trigger wiring — inert is a trigger no event in lesson-hooks.
     expect(res.checked).toBe(0);
     expect(res.inert).toEqual([]);
   });
+
+  it('does NOT flag a trigger requested only dynamically — the real `ship` shape, no dead case label present', () => {
+    // No static `TRIGGERS="ship"` case label anywhere — as if the dead PreToolUse-push branch had
+    // already been cleaned up. `ship` reaches the gate ONLY via the dynamic conditional append, same
+    // as production lesson-hooks.sh really does today.
+    w('plugin/scripts/lesson-hooks.sh', '#!/bin/bash\ncase "$EVENT" in\n'
+      + '  PreToolUse-bash) TRIGGERS="mutate-machine"; CLAUDE_EVENT="X" ;;\n'
+      + '  *) exit 0 ;;\n'
+      + 'esac\n'
+      + 'ARGS=()\n'
+      + 'if printf \'%s\' "$CMD_EXEC" | grep -qE \'\\bgit\\b[^|;&]*\\bpush\\b\'; then\n'
+      + '  ARGS+=(--trigger ship)\n'
+      + 'fi\n');
+    const lessonsFile = path.join(repo, 'lessons-ship.json');
+    w('lessons-ship.json', JSON.stringify({ lessons: [lesson('G-remote-ci-gates-shipping', 'ship')] }));
+    const res = lessonTriggerAudit({ repo, lessonsFile });
+    expect(res.requested).toContain('ship');
+    expect(res.inert.map((l) => l.id)).not.toContain('G-remote-ci-gates-shipping');
+  });
+
+  it('the generic per-trigger dispatch loop (`ARGS+=(--trigger "$t")`) is a variable, not a literal — never pollutes `requested`', () => {
+    // Mirrors production lesson-hooks.sh's actual dispatch loop: `for t in $TRIGGERS; do
+    // ARGS+=(--trigger "$t"); done`. `$t` is a shell variable reference, not a trigger name — the
+    // dynamic-append regex must not capture it as if it were a literal token.
+    w('plugin/scripts/lesson-hooks.sh', '#!/bin/bash\ncase "$EVENT" in\n'
+      + '  *) exit 0 ;;\n'
+      + 'esac\n'
+      + 'ARGS=()\n'
+      + 'for t in $TRIGGERS; do ARGS+=(--trigger "$t"); done\n');
+    const lessonsFile = path.join(repo, 'lessons-none.json');
+    w('lessons-none.json', JSON.stringify({ lessons: [lesson('L-unrelated', 'relay-number')] }));
+    const res = lessonTriggerAudit({ repo, lessonsFile });
+    expect(res.requested).not.toContain('t');
+    expect(res.requested).not.toContain('$t');
+    expect(res.requested).toEqual([]);
+  });
 });
