@@ -575,7 +575,7 @@ describe('candidate preparation', () => {
     const joined = calls.map((call) => call.join(' '));
     expect(joined[0]).toMatch(/source-coverage\.mjs .*--write/);
     expect(joined[1]).toMatch(/source-coverage\.mjs .*--check .*--strict/);
-    expect(joined[2]).toMatch(/build-bundle\.mjs/);
+    expect(joined[2]).toMatch(/build-bundle\.mjs .*--coverage .*source-coverage\.json/);
     expect(joined[3]).toMatch(/corpus-candidate\.mjs/);
     expect(joined[4]).toMatch(/corpus-candidate\.mjs .*--verify/);
     expect(joined.join('\n')).not.toMatch(/corpus-seed-publish|release create|--publish/);

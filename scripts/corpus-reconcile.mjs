@@ -484,7 +484,8 @@ export function prepareCorpusCandidate({
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
   checked(run, process.execPath, [coverageScript, '--owner', owner, '--assets', assets, '--write'], { stdio: 'inherit' });
   checked(run, process.execPath, [coverageScript, '--owner', owner, '--assets', assets, '--check', '--strict'], { stdio: 'inherit' });
-  checked(run, process.execPath, [buildScript, '--assets', assets, '--out', candidate], { stdio: 'inherit' });
+  checked(run, process.execPath, [buildScript, '--assets', assets, '--out', candidate,
+    '--coverage', policy], { stdio: 'inherit' });
   const bundleFile = path.join(path.dirname(candidate), `${path.basename(candidate)}.zip`);
   checked(run, process.execPath, [receiptScript, '--assets', assets, '--bundle', bundleFile,
     '--policy', policy, '--receipt', receipt, '--builder-source-sha', builderSha], { stdio: 'inherit' });

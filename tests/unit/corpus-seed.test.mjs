@@ -141,6 +141,31 @@ describe('immutable corpus candidate receipt', () => {
     })).resolves.toEqual(receipt);
   });
 
+  it('excludes policy-ineligible local evidence and rejects it if it enters the archive', async () => {
+    const f = fixture();
+    for (const suffix of ['.big.rvf', '.big.rvf.idmap.json', '.big.rvf.embed.json', '.passages.jsonl', '.meta.json']) {
+      fs.writeFileSync(path.join(f.assetsDir, `excluded${suffix}`), `excluded${suffix}`);
+    }
+    const ledgerFile = path.join(f.assetsDir, 'RVF-GENERATIONS.json');
+    const ledger = JSON.parse(fs.readFileSync(ledgerFile));
+    ledger.stores.excluded = { file: 'excluded.big.rvf', sha256: sha256(path.join(f.assetsDir, 'excluded.big.rvf')),
+      bytes: fs.statSync(path.join(f.assetsDir, 'excluded.big.rvf')).size, model: 'local', dimensions: 384,
+      sourceCommit: 'e'.repeat(40), builtUtc: '2026-08-21T12:00:00.000Z' };
+    fs.writeFileSync(ledgerFile, JSON.stringify(ledger));
+    const policy = JSON.parse(fs.readFileSync(f.policyFile));
+    policy.rows.push({ key: 'repo:excluded', kind: 'repository', name: 'excluded',
+      disposition: 'excluded-no-corpus', status: 'INELIGIBLE', artifact: { store: 'excluded' } });
+    fs.writeFileSync(f.policyFile, JSON.stringify(policy));
+
+    const receipt = await create(f);
+    expect(receipt.storeCount).toBe(1);
+    expect(receipt.publicInventory.excludedRepositories).toEqual(['excluded']);
+
+    fs.copyFileSync(path.join(f.assetsDir, 'excluded.big.rvf'), path.join(f.bundleDir, 'excluded.big.rvf'));
+    writeStoredDirectoryZip({ archiveFile: f.bundle, sourceDir: f.bundleDir, rootName: 'ruvnet-brain' });
+    await expect(create(f)).rejects.toThrow(/unclassified archive store.*excluded/i);
+  });
+
   it('fails closed for unreceipted RVFs, missing sidecars, duplicate RVFs, and orphan ledger rows', async () => {
     const mutations = [
       (f) => fs.writeFileSync(path.join(f.assetsDir, 'orphan.big.rvf'), 'orphan'),

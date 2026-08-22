@@ -69,6 +69,17 @@ describe('typed public inventory partition', () => {
     ]);
   });
 
+  it('retains explicitly ineligible local evidence outside the public partition', () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.root, 'excluded.big.rvf'), 'excluded');
+    f.ledger.stores.excluded = { file: 'excluded.big.rvf', sha256: sha256('excluded'), bytes: 8 };
+    f.coverage.rows.push({ key: 'repo:excluded', kind: 'repository', disposition: 'excluded-no-corpus',
+      status: 'INELIGIBLE', artifact: { store: 'excluded' } });
+    const result = validatePublicInventory({ assetsDir: f.root, coverage: f.coverage, ledger: f.ledger });
+    expect(result.publicStores).toEqual(['alpha', 'concepts', 'ruv-gists']);
+    expect(result.excludedRepositories).toEqual(['excluded']);
+  });
+
   it('binds the exact classification evidence bytes into the partition digest', () => {
     const f = fixture();
     const before = validatePublicInventory({ assetsDir: f.root, coverage: f.coverage, ledger: f.ledger });

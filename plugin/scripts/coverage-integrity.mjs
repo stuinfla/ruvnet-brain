@@ -195,6 +195,10 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
   const repos = coverage.rows.filter((row) => row.kind === 'repository' && row.disposition === 'eligible');
   if (repos.some((row) => row.status !== 'CURRENT')) throw new Error('an eligible repository is not CURRENT');
   const repositories = uniqueStores(repos, 'repository');
+  const excludedRepositories = uniqueStores(coverage.rows.filter((row) => row.kind === 'repository'
+    && row.disposition !== 'eligible'), 'excluded repository');
+  const excludedSet = new Set(excludedRepositories);
+  if (repositories.some((store) => excludedSet.has(store))) throw new Error('eligible and excluded repository stores overlap');
   const gists = coverage.rows.filter((row) => row.kind === 'gist' && row.disposition === 'eligible');
   if (gists.some((row) => row.status !== 'CURRENT')) throw new Error('an eligible gist is not CURRENT');
   let gistAggregate = null;
@@ -244,11 +248,14 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
   }
   const expected = [...repositories, ...(gistAggregate ? [gistAggregate] : []), ...derived].sort();
   if (new Set(expected).size !== expected.length) throw new Error('public store classes overlap');
+  const excludedCollision = expected.filter((store) => excludedSet.has(store));
+  if (excludedCollision.length) throw new Error(`excluded/public store collision: ${excludedCollision.join(', ')}`);
   const privateCollision = expected.filter((store) => privateSet.has(store));
   if (privateCollision.length) throw new Error(`private/public store collision: ${privateCollision.join(', ')}`);
   const installedExpected = selected === null ? expected : [...selected].sort();
   if (installedExpected.some((store) => !expected.includes(store))) throw new Error('installed profile selects an unknown public store');
-  const actual = canonicalStores(root).filter((store) => !privateSet.has(store.toLowerCase())).sort();
+  const actual = canonicalStores(root).filter((store) => !privateSet.has(store.toLowerCase())
+    && !excludedSet.has(store.toLowerCase())).sort();
   const missing = installedExpected.filter((store) => !actual.includes(store));
   const extras = actual.filter((store) => !installedExpected.includes(store));
   if (missing.length) throw new Error(`${missing.join(', ')} public store is missing`);
@@ -258,7 +265,8 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
   if (new Set(foldedLedgerStores).size !== foldedLedgerStores.length) {
     throw new Error('generation ledger store names have case-fold aliases');
   }
-  const publicLedgerStores = ledgerStores.filter((store) => !privateSet.has(store.toLowerCase())).sort();
+  const publicLedgerStores = ledgerStores.filter((store) => !privateSet.has(store.toLowerCase())
+    && !excludedSet.has(store.toLowerCase())).sort();
   if (canonicalJson(publicLedgerStores) !== canonicalJson(expected)) throw new Error('public generation ledger store set differs from the inventory partition');
   for (const store of expected) {
     const generation = ledger.stores[store];
@@ -277,10 +285,10 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
   }
   const publicStores = expected;
   evidenceFiles.sort((a, b) => a.path.localeCompare(b.path) || a.kind.localeCompare(b.kind));
-  return { repositories, gistAggregate, derived, publicStores,
+  return { repositories, excludedRepositories, gistAggregate, derived, publicStores,
     installedPublicStores: installedExpected,
     evidenceFiles,
-    partitionSha256: digest({ repositories, gistAggregate, derived, publicStores, evidenceFiles }) };
+    partitionSha256: digest({ repositories, excludedRepositories, gistAggregate, derived, publicStores, evidenceFiles }) };
 }
 
 export function coverageGenerationFor({ generatorSourceSha, snapshotRoot, sourceObservationSha256 = null, rows, enumerationReceipt,

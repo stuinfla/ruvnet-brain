@@ -70,11 +70,12 @@ function policyRows(policy) {
 
 function assertPolicyCurrent(policy) {
   const rows = policyRows(policy);
-  const stale = rows.filter((row) => row?.eligible !== false && row?.status !== 'CURRENT');
+  const eligible = (row) => row?.eligible !== false && (!row?.disposition || row.disposition === 'eligible');
+  const stale = rows.filter((row) => eligible(row) && row?.status !== 'CURRENT');
   if (stale.length) fail(`eligibility policy has ${stale.length} eligible row(s) that are not CURRENT`);
   return {
-    eligibleRepoCount: rows.filter((row) => row?.eligible !== false && row?.status === 'CURRENT').length,
-    gistCount: rows.filter((row) => /gist/i.test(String(row?.kind || row?.type || ''))).length,
+    eligibleRepoCount: rows.filter((row) => eligible(row) && row?.kind === 'repository' && row?.status === 'CURRENT').length,
+    gistCount: rows.filter((row) => eligible(row) && /gist/i.test(String(row?.kind || row?.type || ''))).length,
   };
 }
 
@@ -104,6 +105,11 @@ async function verifyArchive({ bundleFile, stores, privateStores }) {
         if (sha256File(extracted) !== expected.sha256) fail(`archive ${expected.file} differs from canonical assets`);
       }
     }
+    const selectedStores = new Set(stores.map(({ name }) => name.toLowerCase()));
+    const archiveStores = entries.map((entry) => path.posix.basename(entry.replaceAll('\\', '/')))
+      .map((name) => name.match(/^(.+)\.big\.rvf$/)?.[1]).filter(Boolean);
+    const unclassified = [...new Set(archiveStores.filter((store) => !selectedStores.has(store.toLowerCase())))].sort();
+    if (unclassified.length) fail(`unclassified archive store(s): ${unclassified.join(', ')}`);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -154,6 +160,7 @@ async function buildReceipt({
     .map(([sha256, owners]) => ({ sha256, stores: owners.sort() }));
   if (duplicateRvfDigests.length) fail(`duplicate RVF bytes: ${duplicateRvfDigests.map((row) => row.stores.join('/')).join(', ')}`);
   const publicInventory = validatePublicInventory({ assetsDir: assets, coverage: policy, ledger });
+  const publicSet = new Set(publicInventory.publicStores);
   const counts = assertPolicyCurrent(policy);
 
   const missingSidecars = [];
@@ -167,7 +174,7 @@ async function buildReceipt({
     if (!generation.sourceCommit || !generation.builtUtc || !generation.model || !Number.isInteger(generation.dimensions)) {
       fail(`${store}: generation receipt lacks sourceCommit, builtUtc, model, or dimensions provenance`);
     }
-    if (privateSet.has(store.toLowerCase())) continue;
+    if (privateSet.has(store.toLowerCase()) || !publicSet.has(store.toLowerCase())) continue;
     const files = [];
     for (const suffix of REQUIRED_SUFFIXES) {
       const file = path.join(assets, `${store}${suffix}`);

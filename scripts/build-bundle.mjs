@@ -19,7 +19,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getVersion, getVersionTag, stripTag } from './version.mjs';
 import { auditRvfIndexes } from './rvf-index-audit.mjs';
-import { validateSelectedRvfGenerations } from './rvf-generation.mjs';
+import { readRvfGenerations, validateSelectedRvfGenerations } from './rvf-generation.mjs';
+import { validatePublicInventory } from './public-inventory.mjs';
 // The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
 // sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
 import { orgRepoCount } from './org-repo-count.mjs';
@@ -33,6 +34,7 @@ const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && proc
 // source/runtime files rooted in this exact checkout; only generated RVF families come from ASSETS.
 const ASSETS = path.resolve(ROOT, arg('--assets', 'kb'));
 const OUT = path.resolve(ROOT, arg('--out', 'dist/ruvnet-brain'));
+const COVERAGE = arg('--coverage', null);
 const BRAIN_VERSION = arg('--version', getVersionTag()); // inherits the single source of truth
 
 // ---- registry: tier + the full 169-repo pending list -------------------------------------------
@@ -158,7 +160,39 @@ fs.rmSync(OUT, { recursive: true, force: true });
 fs.rmSync(ZIP, { force: true });
 fs.mkdirSync(OUT, { recursive: true });
 
-const built = discoverBuilt();
+let built = discoverBuilt();
+let excludedPublicStores = [];
+if (COVERAGE) {
+  const coverageFile = path.resolve(COVERAGE);
+  if (!fs.existsSync(coverageFile)) {
+    console.error(`[build-bundle] FATAL: coverage policy missing (${coverageFile})`);
+    process.exit(1);
+  }
+  let coverage;
+  try { coverage = JSON.parse(fs.readFileSync(coverageFile, 'utf8')); }
+  catch (error) {
+    console.error(`[build-bundle] FATAL: coverage policy unreadable (${error.message})`);
+    process.exit(1);
+  }
+  let inventory;
+  try {
+    inventory = validatePublicInventory({ assetsDir: ASSETS, coverage, ledger: readRvfGenerations(ASSETS) });
+  } catch (error) {
+    console.error(`[build-bundle] FATAL: public inventory is not exhaustive (${error.message})`);
+    process.exit(1);
+  }
+  const selected = new Set(inventory.publicStores);
+  built = built.filter((store) => selected.has(store.toLowerCase()));
+  excludedPublicStores = inventory.excludedRepositories;
+  const missing = inventory.publicStores.filter((store) => !built.some((candidate) => candidate.toLowerCase() === store));
+  if (missing.length) {
+    console.error(`[build-bundle] FATAL: classified public store(s) missing: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+  if (excludedPublicStores.length) {
+    console.log(`[build-bundle] EXCLUDED ${excludedPublicStores.length} policy-ineligible public store(s): ${excludedPublicStores.join(', ')}`);
+  }
+}
 if (built.length === 0) {
   console.error('[build-bundle] FATAL: zero public RVF stores are eligible for release. Refusing to publish an empty brain bundle.');
   process.exit(1);
@@ -166,6 +200,7 @@ if (built.length === 0) {
 const generationValidation = validateSelectedRvfGenerations(ASSETS, {
   selectedStores: built,
   privateStores: [...PRIVATE_STORES],
+  excludedStores: excludedPublicStores,
 });
 if (generationValidation.failures.length) {
   console.error('[build-bundle] FATAL: RVF generation ledger does not exactly bind selected roots:');
