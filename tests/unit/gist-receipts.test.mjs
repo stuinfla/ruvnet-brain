@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { digest } from '../../scripts/coverage-integrity.mjs';
-import { reconcileGistReceipts, sealGistReceipt, validateGistReceiptSet } from '../../scripts/gist-receipts.mjs';
+import { reconcileGistReceipts, sealGistReceipt, sealGistReceiptSet,
+  validateGistReceiptSet } from '../../scripts/gist-receipts.mjs';
 import { sourceObservationDigest } from '../../scripts/source-coverage.mjs';
 
 const id = (char) => char.repeat(32);
@@ -34,6 +35,27 @@ const observation = () => {
 };
 
 describe('exact live gist receipt reconciliation', () => {
+  it('seals mixed-case filenames in the canonical order required by validation', () => {
+    const gistId = id('f');
+    const observed = {
+      owner: 'ruvnet', observedAt: '2026-08-22T01:30:00Z', observationSha256: 'e'.repeat(64),
+      gists: { rows: [{ id: gistId, updated_at: '2026-08-22T01:00:00Z' }] },
+    };
+    const gist = sealGistReceipt({ gistId, versionSha: 'd'.repeat(40),
+      updatedAt: '2026-08-22T01:00:00Z', ingestedAt: '2026-08-22T02:00:00Z', complete: true,
+      files: [
+        { filename: 'backtest.mjs', included: true, sha256: digest('backtest'), bytes: 8 },
+        { filename: 'HammerStarSweep.mq5', included: false, reason: 'non-text policy exclusion', size: 1 },
+      ] });
+    const receipt = sealGistReceiptSet({ owner: observed.owner, generated: '2026-08-22T02:00:00Z',
+      observedAt: observed.observedAt, sourceObservationSha256: observed.observationSha256,
+      passagesSha256: null, gists: { [gistId]: gist } });
+
+    expect(receipt.gists[gistId].files.map(({ filename }) => filename))
+      .toEqual(['HammerStarSweep.mq5', 'backtest.mjs']);
+    expect(validateGistReceiptSet(receipt, observed)).toBe(receipt);
+  });
+
   it('reuses only unchanged exact receipts and fetches every changed or missing gist', async () => {
     const seen = [];
     const existingFile = { filename: 'old.md', included: true, sha256: digest('old'), bytes: 3 };

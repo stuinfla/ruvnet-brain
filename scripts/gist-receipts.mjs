@@ -8,6 +8,8 @@ const TEXT_EXT = new Set(['.md', '.markdown', '.txt', '.rst']);
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
+const compareCanonicalText = (left, right) => String(left) < String(right) ? -1
+  : String(left) > String(right) ? 1 : 0;
 
 const withoutReceiptDigest = ({ receiptSha256: _receiptSha256, ...payload }) => payload;
 
@@ -16,7 +18,7 @@ function validDate(value) {
 }
 
 export function sealGistReceipt(receipt) {
-  const files = [...(receipt.files || [])].sort((a, b) => String(a.filename).localeCompare(String(b.filename)));
+  const files = [...(receipt.files || [])].sort((a, b) => compareCanonicalText(a.filename, b.filename));
   const payload = {
     schemaVersion: 3,
     kind: 'ruvnet-brain-gist-source-receipt',
@@ -69,7 +71,7 @@ async function defaultFetchBody(file) {
 }
 
 function listedFileIdentity(gist) {
-  return Object.entries(gist?.files || {}).sort(([a], [b]) => a.localeCompare(b)).map(([key, file]) => ({
+  return Object.entries(gist?.files || {}).sort(([a], [b]) => compareCanonicalText(a, b)).map(([key, file]) => ({
     key, filename: file?.filename, rawUrl: file?.raw_url, size: file?.size, type: file?.type,
     language: file?.language ?? null,
   }));
@@ -96,7 +98,7 @@ function reusableReceipt(row, { gistId, updatedAt }) {
     || row.files.some((file) => !exactFileIdentity(file))) return false;
   const filenames = row.files.map(({ filename }) => filename);
   return new Set(filenames).size === filenames.length
-    && canonicalJson(filenames) === canonicalJson([...filenames].sort())
+    && canonicalJson(filenames) === canonicalJson([...filenames].sort(compareCanonicalText))
     && canonicalJson(row) === canonicalJson(sealGistReceipt(row));
 }
 
@@ -124,7 +126,7 @@ export function validateGistReceiptSet(receipt, observation) {
     const filenames = row.files.map(({ filename }) => filename);
     if (filenames.some((filename) => typeof filename !== 'string' || !filename)
       || new Set(filenames).size !== filenames.length
-      || canonicalJson(filenames) !== canonicalJson([...filenames].sort())) {
+      || canonicalJson(filenames) !== canonicalJson([...filenames].sort(compareCanonicalText))) {
       throw new Error(`gist ${id} file inventory is not unique and sorted`);
     }
     if (row.contentDigest !== digest(row.files)) throw new Error(`gist ${id} content digest differs`);
