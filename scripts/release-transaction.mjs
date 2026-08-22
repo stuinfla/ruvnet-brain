@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto';
+import { canonicalJson } from './coverage-integrity.mjs';
+
+export { canonicalJson };
 
 export const RECEIPT_PREFIX = 'release-transaction-';
 export const TERMINAL_STATES = new Set(['channels-converged', 'aborted']);
@@ -79,16 +82,6 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
  * here. This does not change the digest of any receipt that never held an undefined value, which is
  * every receipt that currently verifies.
  */
-export const canonicalJson = (value) => {
-  if (Array.isArray(value)) return `[${value.map((item) => (item === undefined ? 'null' : canonicalJson(item))).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort()
-      .filter((key) => value[key] !== undefined)
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
-};
-
 export const receiptPayload = (receipt) => {
   const { signature: _signature, receiptDigest: _digest, ...payload } = receipt;
   return canonicalJson(payload);
