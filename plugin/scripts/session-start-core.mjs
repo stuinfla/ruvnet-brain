@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { restoreProgressionForSession } from './project-progression-session-start.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (file, fallback = '') => {
@@ -350,6 +351,7 @@ export async function runSessionStart({
   stdout = process.stdout,
   stderr = process.stderr,
   platform = process.platform,
+  restoreContinuity = restoreProgressionForSession,
 } = {}) {
   const lines = [];
   const emit = (line = '') => lines.push(String(line));
@@ -368,6 +370,14 @@ export async function runSessionStart({
       stderr.write(`SESSION_TRACE ${Date.now() / 1000} ${stage}\n`);
     }
   };
+
+  try {
+    const continuity = await restoreContinuity({ env, cwd });
+    if (continuity?.context) emit(continuity.context);
+  } catch {
+    emit('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]');
+    emit('The SessionStart restore boundary failed unexpectedly. Do not claim project state was restored; verify the canonical store before relying on remembered state.');
+  }
 
   try {
     trace('body-start');

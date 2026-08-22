@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 import { ProgressionOutbox } from './project-progression-outbox.mjs';
 import {
   digestCanonical,
@@ -84,7 +85,7 @@ export class ProjectProgressionStore {
 
   run(args) {
     return this.runner(this.rufloBinary, args, {
-      cwd: this.resolution.checkoutRoot,
+      cwd: path.dirname(this.resolution.canonicalAgentDbPath),
       encoding: 'utf8',
       timeout: 120_000,
       env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
