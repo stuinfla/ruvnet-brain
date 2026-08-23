@@ -81,13 +81,26 @@ function corpusFailure(message) {
   throw new Error(`[corpus-seed] ${message}`);
 }
 
+function windowsShellArg(value) {
+  const text = String(value);
+  return `"${text.replaceAll('"', '\\"')}"`;
+}
+
 function defaultReleaseRun(command, args, options) {
+  if (process.platform === 'win32') {
+    const commandLine = [command, ...args]
+      .map((value, index) => index === 0 ? String(value) : windowsShellArg(value))
+      .join(' ');
+    return spawnSync(commandLine, {
+      encoding: 'utf8',
+      ...options,
+      shell: true,
+      windowsVerbatimArguments: true,
+    });
+  }
   return spawnSync(command, args, {
     encoding: 'utf8',
     ...options,
-    // Windows resolves the test and CI gh.cmd shims through the shell; preserve the same
-    // executable boundary used by corpus-seed-publish.mjs.
-    ...(process.platform === 'win32' ? { shell: true } : {}),
   });
 }
 
