@@ -31,7 +31,6 @@ const LANES = Object.freeze({
       'tests/unit/npm-tarball-codex.test.mjs',
       'tests/unit/codex-lifecycle-hooks.test.mjs',
       'tests/unit/codex-console-invocation.test.mjs',
-      'tests/unit/learning-replay.test.mjs',
       'tests/unit/console-advocacy-dial.test.mjs',
       'tests/unit/console-advocacy-precision.test.mjs',
       'tests/unit/mcp-timeout-outage.test.mjs',
@@ -53,6 +52,7 @@ const LANES = Object.freeze({
     vitest([
       'tests/qe/gpt56/worker-concurrency-retirement.test.mjs',
       'tests/unit/mcp-timeout-outage.test.mjs',
+      'tests/unit/learning-replay.test.mjs',
     ], 180_000),
   ],
 });
@@ -134,7 +134,9 @@ function main() {
   if (!requestedLane || !LANES[lane]) throw new Error(`unknown lane: ${requestedLane || '<missing>'}`);
   const dir = outputDir();
   fs.rmSync(path.join(dir, `${requestedLane}.json`), { force: true });
-  const steps = LANES[lane].map((step, index) => runStep(step, index, dir));
+  const runDir = path.join(dir, `.run-${requestedLane}-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(runDir, { recursive: true });
+  const steps = LANES[lane].map((step, index) => runStep(step, index, runDir));
   const status = steps.every((step) => step.status === 'PASS') ? 'PASS' : 'FAIL';
   const receipt = {
     schema: 'ruvnet-brain.agentic-qe.receipt', receiptVersion: RECEIPT_VERSION,
@@ -144,6 +146,7 @@ function main() {
   };
   const file = path.join(dir, `${requestedLane}.json`);
   fs.writeFileSync(file, `${JSON.stringify(receipt, null, 2)}\n`);
+  fs.rmSync(runDir, { recursive: true, force: true });
   console.log(JSON.stringify({ lane: requestedLane, status, receipt: file, sha: receipt.sha }));
   process.exitCode = status === 'PASS' ? 0 : 1;
 }
