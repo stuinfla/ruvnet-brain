@@ -421,7 +421,20 @@ jobs:
           # --repair also re-seals stale ledger hashes after index persistence. The v4.2.1 seed
           # exposed three roots whose HNSW bytes had advanced after their ledger rows were written.
           node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}" --repair
+          node scripts/source-coverage.mjs --assets "${asset_dirs[0]}"
+          node scripts/public-verification-inputs.mjs observe-baseline \
+            --baseline-bundle "$seed" --expected-tag "$SEED_TAG" --expected-sha256 "$SEED_SHA256" \
+            --expected-bytes "$SEED_BYTES" --out "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json"
           node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" --assets "${asset_dirs[0]}"
+          baseline_receipt_sha256="$(sha256sum "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json" | cut -d' ' -f1)"
+          node scripts/release-projection.mjs \
+            --corpus data/source-coverage.json --assets dist/ruvnet-brain \
+            --out "$RUNNER_TEMP/release-projection" \
+            --version "$(node -p "require('./package.json').version")" --source-snapshot "$GITHUB_SHA" \
+            --baseline-receipt-sha256 "$baseline_receipt_sha256" --seed-tag "$SEED_TAG" \
+            --seed-sha256 "$SEED_SHA256" --seed-bytes "$SEED_BYTES"
+          node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" \
+            --assets "${asset_dirs[0]}" --projection "$RUNNER_TEMP/release-projection"
           cp dist/ruvnet-brain.zip "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip"
           cp data/corpus-seed.json "$RUNNER_TEMP/release-evidence/corpus-seed.json"
           cp dist/ruvnet-brain/RVF-GENERATIONS.json "$RUNNER_TEMP/release-evidence/RVF-GENERATIONS.json"

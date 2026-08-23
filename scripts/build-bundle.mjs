@@ -36,6 +36,7 @@ const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && proc
 const ASSETS = path.resolve(ROOT, arg('--assets', 'kb'));
 const OUT = path.resolve(ROOT, arg('--out', 'dist/ruvnet-brain'));
 const COVERAGE = arg('--coverage', null);
+const PROJECTION = arg('--projection', null);
 const BRAIN_VERSION = arg('--version', getVersionTag()); // inherits the single source of truth
 
 // ---- registry: tier + the full 169-repo pending list -------------------------------------------
@@ -460,6 +461,14 @@ cp(path.join(ROOT, 'scripts', 'verify-bundle.mjs'), OUT, { required: true });
 fs.mkdirSync(path.join(OUT, 'keys'), { recursive: true });
 cp(path.join(ROOT, 'keys', 'ruvnet-brain-signing.pub.pem'), path.join(OUT, 'keys'), { required: true });
 
+// ReleaseProjection is generated from the exact candidate asset tree immediately before this
+// assembly. Copy all three linked ledgers together; a partial projection is never publishable.
+if (PROJECTION) {
+  for (const file of ['COVERAGE.json', 'CORPUS-COVERAGE.json', 'PUBLIC-RVF-GENERATIONS.json']) {
+    cp(path.join(path.resolve(PROJECTION), file), OUT, { required: true });
+  }
+}
+
 // ---- manifest ----------------------------------------------------------------------------------
 const builtLower = new Set(built.map((b) => b.toLowerCase()));
 const pendingRepos = regFlat.filter((r) => !builtLower.has(r.name.toLowerCase())).map((r) => ({ name: r.name, tier: r.tier }));
@@ -552,10 +561,7 @@ function collectArchiveFiles(dir, prefix = '') {
   }
 }
 collectArchiveFiles(OUT);
-// Use an explicit bytewise order so the manifest has identical array ordering on every host.
-// Default sort and localeCompare disagree on case/punctuation across platforms.
-const archiveOrder = (left, right) => left < right ? -1 : left > right ? 1 : 0;
-archiveFiles.sort(archiveOrder);
+archiveFiles.sort();
 // Bind the exact archive payload before release verification. The manifest excludes itself;
 // verifiers recompute the same payload set and then validate this file's identities.
 function archiveIdentity(relative) {
@@ -580,7 +586,7 @@ const archiveManifest = {
 };
 fs.writeFileSync(path.join(OUT, 'ARCHIVE-MANIFEST.json'), `${JSON.stringify(archiveManifest, null, 2)}\n`);
 archiveFiles.push('ARCHIVE-MANIFEST.json');
-archiveFiles.sort(archiveOrder);
+archiveFiles.sort();
 const zipped = process.platform === 'win32'
   ? spawnSync('powershell.exe', [
     '-NoProfile',
