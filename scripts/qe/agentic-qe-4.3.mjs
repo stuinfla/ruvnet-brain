@@ -87,7 +87,7 @@ function runStep(step, index, dir) {
   const startedAt = now();
   const report = path.join(dir, `vitest-${index}.json`);
   const args = step.kind === 'vitest'
-    ? [...step.args, '--reporter=json', `--outputFile=${report}`]
+    ? [...step.args, '--reporter=json', '--reporter=verbose', `--outputFile=${report}`]
     : step.args;
   const result = spawnSync(step.command, args, {
     cwd: ROOT,

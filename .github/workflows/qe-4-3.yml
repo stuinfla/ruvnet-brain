@@ -134,5 +134,6 @@ jobs:
         with:
           pattern: qe-*-${{ github.sha }}
           merge-multiple: true
+          path: .qe/receipts
       - name: Reject missing, skipped, stale, or non-PASS receipts
         run: node scripts/qe/aggregate-4.3.mjs
