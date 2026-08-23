@@ -81,11 +81,21 @@ function corpusFailure(message) {
   throw new Error(`[corpus-seed] ${message}`);
 }
 
+function defaultReleaseRun(command, args, options) {
+  return spawnSync(command, args, {
+    encoding: 'utf8',
+    ...options,
+    // Windows resolves the test and CI gh.cmd shims through the shell; preserve the same
+    // executable boundary used by corpus-seed-publish.mjs.
+    ...(process.platform === 'win32' ? { shell: true } : {}),
+  });
+}
+
 export function runProtectedCorpusSeed({
   argv = process.argv.slice(2),
   env = process.env,
   root = ROOT,
-  run = (command, args, options) => spawnSync(command, args, { encoding: 'utf8', ...options }),
+  run = defaultReleaseRun,
 } = {}) {
   if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_WORKFLOW !== 'protected-release'
     || env.GITHUB_REPOSITORY !== 'stuinfla/ruvnet-brain') {
