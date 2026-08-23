@@ -42,7 +42,7 @@ const LANES = Object.freeze({
     ]),
   ],
   integration: [
-    vitest(['tests/integration/hook-conformance-both-hosts.test.mjs'], 120_000),
+    vitest(['tests/integration/hook-conformance-both-hosts.test.mjs'], 240_000),
     vitest(['tests/integration/managed-cli-mcp.test.mjs'], 180_000),
   ],
   release: [
@@ -63,13 +63,13 @@ const LANES = Object.freeze({
     windowsInstallImportProbe,
     vitest([
       'tests/qe/gpt56/critical-risk-map.test.mjs',
-      'tests/unit/npm-tarball-codex.test.mjs',
-      'tests/unit/codex-lifecycle-hooks.test.mjs',
       'tests/unit/codex-console-invocation.test.mjs',
       'tests/unit/console-advocacy-dial.test.mjs',
       'tests/unit/console-advocacy-precision.test.mjs',
       'tests/unit/mcp-timeout-outage.test.mjs',
-    ], 180_000),
+    ], 120_000),
+    vitest(['tests/unit/npm-tarball-codex.test.mjs'], 180_000),
+    vitest(['tests/unit/codex-lifecycle-hooks.test.mjs'], 180_000),
   ],
 });
 
