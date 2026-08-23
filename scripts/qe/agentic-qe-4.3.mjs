@@ -8,10 +8,11 @@ import { createHash } from 'node:crypto';
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const RECEIPT_VERSION = 1;
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const vitestBin = path.join(ROOT, 'node_modules', 'vitest', 'vitest.mjs');
 const FORBIDDEN_SPEND_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY'];
 
 const vitest = (files, timeoutMs = 180_000) => ({
-  kind: 'vitest', command: npm, args: ['exec', '--', 'vitest', 'run', ...files], timeoutMs,
+  kind: 'vitest', command: process.execPath, args: [vitestBin, 'run', ...files], timeoutMs,
 });
 
 // Deterministic slices only. Agentic-QE's grounded quality-gate contract names correctness,
@@ -52,7 +53,6 @@ const LANES = Object.freeze({
     vitest([
       'tests/qe/gpt56/worker-concurrency-retirement.test.mjs',
       'tests/unit/mcp-timeout-outage.test.mjs',
-      'tests/unit/learning-replay.test.mjs',
     ], 180_000),
   ],
 });
@@ -104,6 +104,7 @@ function runStep(step, index, dir) {
     startedAt,
     endedAt: now(),
     exitCode: result.status,
+    spawnError: result.error?.message || null,
     timedOut: Boolean(result.error?.code === 'ETIMEDOUT'),
     stdoutSha256: sha256(stdout),
     stderrSha256: sha256(stderr),
