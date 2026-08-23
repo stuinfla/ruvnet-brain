@@ -139,7 +139,7 @@ describe('reconciliation execution', () => {
       calls.push([command, ...args]);
       if (command === 'git' && args[0] === 'clone') fs.mkdirSync(args.at(-1), { recursive: true });
       if (command === 'git' && args.includes('rev-parse')) return { status: 0, stdout: `${sha('a')}\n`, stderr: '' };
-      if (command === process.execPath && args[0].endsWith('kb/forge-refresh.mjs')) {
+      if (command === process.execPath && args[0].replaceAll('\\', '/').endsWith('kb/forge-refresh.mjs')) {
         fs.writeFileSync(ledgerFile, JSON.stringify({ stores: { alpha: { sourceCommit: sha('a') } } }));
       }
       return { status: 0, stdout: '', stderr: '' };
@@ -150,7 +150,7 @@ describe('reconciliation execution', () => {
       ['git', 'clone', '--no-checkout', '--filter=blob:none', 'https://github.com/ruvnet/alpha', expect.stringContaining('alpha')],
       ['git', '-C', expect.stringContaining('alpha'), 'fetch', '--depth=1', 'origin', sha('a')],
       ['git', '-C', expect.stringContaining('alpha'), 'checkout', '--detach', 'FETCH_HEAD'],
-      [process.execPath, expect.stringMatching(/kb\/forge-refresh\.mjs$/), '--repo', expect.stringContaining('alpha'), '--out', assetsDir, '--name', 'alpha'],
+      [process.execPath, expect.stringMatching(/kb[\\/]forge-refresh\.mjs$/), '--repo', expect.stringContaining('alpha'), '--out', assetsDir, '--name', 'alpha'],
     ]));
     expect(calls.find((call) => call[0] === process.execPath))
       .toBeTruthy();
