@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rerankKb } from '../kb/forge-rerank.mjs';
+import { countRefs, isGrounded, writeGated } from './lib/citation-gate.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
@@ -57,17 +58,23 @@ for (const a of ARCHES) {
 }
 
 const primer = `# ${NAME} — Primer\n\n<!-- Generated primer · grounded in real source via rerankKb (${VARIANT}) · archetypes: ${ARCHES.map(a => a.key).join(', ')} -->\n\n${sections.join('\n')}`;
-const countRefs = (txt) => [...new Set([...allPaths].filter((p) => txt.includes(p) || txt.includes(p.split('/').pop())))];
-const refs = countRefs(primer);
-const outFile = path.join(KB, `${NAME}-primer.md`);
-fs.writeFileSync(outFile, primer);
+const MIN_PRIMER_REFS = 6;
+const refs = countRefs(primer, allPaths);
+const grounded = isGrounded(refs, MIN_PRIMER_REFS);          // checked BEFORE the write, not after
+const { outPath } = writeGated({
+  liveDir: KB,
+  rejectedDir: path.join(KB, 'rejected'),
+  filename: `${NAME}-primer.md`,
+  content: primer,
+  grounded,
+});
 
 // 3-vendor "is this a complete, correct primer?" score (informational; the hard gate is citation count)
 const jsys = 'Grade 1-100 whether this repo primer is COMPLETE, CORRECT and CONFIDENT for an engineer new to the repo (98=excellent/actionable; vague-or-hedgy=POISON<50). Return ONLY {"score":N,"reason":"<=15 words"}.';
 const scores = [];
 for (const j of JUDGES) { try { scores.push(Number(JSON.parse((await or(j, jsys, `PRIMER:\n${primer.slice(0, 9000)}`, 120)).match(/\{[\s\S]*\}/)[0]).score)); } catch { /* skip */ } }
 const avg = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) : null;
-console.log(`\n## ${NAME}-primer.md  [${refs.length >= 6 ? 'GROUNDED' : 'THIN — only ' + refs.length + ' refs'}]`);
+console.log(`\n## ${NAME}-primer.md  [${grounded ? 'GROUNDED' : 'REJECTED — only ' + refs.length + ' refs, needed ' + MIN_PRIMER_REFS}]`);
 console.log(`   verified source refs: ${refs.length}`);
 console.log(`   3-vendor primer score: [${scores.join(', ')}] → avg ${avg?.toFixed(1)}`);
-console.log(`   written: kb/${NAME}-primer.md`);
+console.log(`   written: ${path.relative(ROOT, outPath)}`);
