@@ -31,7 +31,13 @@ export function corpusSeedTag(receipt) {
 }
 
 function defaultRun(command, args, options) {
-  return spawnSync(command, args, { encoding: 'utf8', ...options });
+  return spawnSync(command, args, {
+    encoding: 'utf8',
+    ...options,
+    // Windows resolves console shims such as gh.cmd through a shell; keep the same
+    // command boundary used by the protected release workflow on every platform.
+    ...(process.platform === 'win32' ? { shell: true } : {}),
+  });
 }
 
 export function publishCorpusSeed({
