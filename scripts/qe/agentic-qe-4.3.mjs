@@ -8,11 +8,16 @@ import { createHash } from 'node:crypto';
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const RECEIPT_VERSION = 1;
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const vitestBin = path.join(ROOT, 'node_modules', 'vitest', 'vitest.mjs');
 const FORBIDDEN_SPEND_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY'];
-
 const vitest = (files, timeoutMs = 180_000) => ({
-  kind: 'vitest', command: npm, args: ['exec', '--', 'vitest', 'run', ...files], timeoutMs,
+  kind: 'vitest', command: process.execPath, args: [vitestBin, 'run', ...files], timeoutMs,
 });
+const windowsInstallImportProbe = {
+  kind: 'command', command: process.execPath,
+  args: ['--input-type=module', '-e', "process.env.RUVNET_BRAIN_IMPORT_ONLY='1'; await import('./bin/install.mjs')"],
+  timeoutMs: 30_000,
+};
 
 // Deterministic slices only. Agentic-QE's grounded quality-gate contract names correctness,
 // safety, reliability, test adequacy, parity, performance, distribution, and release evidence.
@@ -52,7 +57,18 @@ const LANES = Object.freeze({
     vitest([
       'tests/qe/gpt56/worker-concurrency-retirement.test.mjs',
       'tests/unit/mcp-timeout-outage.test.mjs',
-      'tests/unit/learning-replay.test.mjs',
+    ], 180_000),
+  ],
+  'windows-unit': [
+    windowsInstallImportProbe,
+    vitest([
+      'tests/qe/gpt56/critical-risk-map.test.mjs',
+      'tests/unit/npm-tarball-codex.test.mjs',
+      'tests/unit/codex-lifecycle-hooks.test.mjs',
+      'tests/unit/codex-console-invocation.test.mjs',
+      'tests/unit/console-advocacy-dial.test.mjs',
+      'tests/unit/console-advocacy-precision.test.mjs',
+      'tests/unit/mcp-timeout-outage.test.mjs',
     ], 180_000),
   ],
 });
@@ -87,7 +103,7 @@ function runStep(step, index, dir) {
   const startedAt = now();
   const report = path.join(dir, `vitest-${index}.json`);
   const args = step.kind === 'vitest'
-    ? [...step.args, '--reporter=json', `--outputFile=${report}`]
+    ? [...step.args, '--reporter=json', '--reporter=verbose', `--outputFile=${report}`]
     : step.args;
   const result = spawnSync(step.command, args, {
     cwd: ROOT,
@@ -104,9 +120,12 @@ function runStep(step, index, dir) {
     startedAt,
     endedAt: now(),
     exitCode: result.status,
+    spawnError: result.error?.message || null,
     timedOut: Boolean(result.error?.code === 'ETIMEDOUT'),
     stdoutSha256: sha256(stdout),
     stderrSha256: sha256(stderr),
+    stdoutTail: stdout.slice(-4000),
+    stderrTail: stderr.slice(-4000),
   };
   if (step.kind === 'vitest') {
     try {
@@ -118,6 +137,17 @@ function runStep(step, index, dir) {
         skipped: json.numPendingTests ?? 0,
         suitesFailed: json.numFailedTestSuites ?? 0,
       };
+      stepReceipt.failedTests = (json.testResults || []).flatMap((suite) =>
+        (suite.assertionResults || [])
+          .filter((test) => test.status === 'failed')
+          .map((test) => ({ file: suite.name, name: test.fullName })));
+      stepReceipt.skippedTests = (json.testResults || []).flatMap((suite) =>
+        (suite.assertionResults || [])
+          .filter((test) => test.status === 'pending' || test.status === 'skipped')
+          .map((test) => ({ file: suite.name, name: test.fullName })));
+      stepReceipt.suiteErrors = (json.testResults || [])
+        .filter((suite) => suite.status === 'failed' || suite.message)
+        .map((suite) => ({ file: suite.name, message: suite.message || 'suite failed' }));
     } catch (error) { stepReceipt.reportError = error.message; }
   }
   stepReceipt.status = result.error || result.status !== 0 ? 'FAIL' : 'PASS';
@@ -130,18 +160,13 @@ function runStep(step, index, dir) {
 function main() {
   enforceZeroSpend();
   const requestedLane = arg('--lane');
-  const lane = requestedLane === 'windows-unit' ? 'check' : requestedLane;
+  const lane = requestedLane;
   if (!requestedLane || !LANES[lane]) throw new Error(`unknown lane: ${requestedLane || '<missing>'}`);
   const dir = outputDir();
   fs.rmSync(path.join(dir, `${requestedLane}.json`), { force: true });
   const runDir = path.join(dir, `.run-${requestedLane}-${process.pid}-${Date.now()}`);
   fs.mkdirSync(runDir, { recursive: true });
-  const steps = [];
-  for (const [index, step] of LANES[lane].entries()) {
-    const result = runStep(step, index, runDir);
-    steps.push(result);
-    if (result.status !== 'PASS') break;
-  }
+  const steps = LANES[lane].map((step, index) => runStep(step, index, runDir));
   const status = steps.every((step) => step.status === 'PASS') ? 'PASS' : 'FAIL';
   const receipt = {
     schema: 'ruvnet-brain.agentic-qe.receipt', receiptVersion: RECEIPT_VERSION,
@@ -152,7 +177,10 @@ function main() {
   const file = path.join(dir, `${requestedLane}.json`);
   fs.writeFileSync(file, `${JSON.stringify(receipt, null, 2)}\n`);
   fs.rmSync(runDir, { recursive: true, force: true });
-  console.log(JSON.stringify({ lane: requestedLane, status, receipt: file, sha: receipt.sha }));
+  console.log(JSON.stringify({
+    lane: requestedLane, status, receipt: file, sha: receipt.sha,
+    failedTests: steps.flatMap((step) => step.failedTests || []),
+  }));
   process.exitCode = status === 'PASS' ? 0 : 1;
 }
 
