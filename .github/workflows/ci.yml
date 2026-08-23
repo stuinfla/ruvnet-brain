@@ -421,7 +421,10 @@ jobs:
           # --repair also re-seals stale ledger hashes after index persistence. The v4.2.1 seed
           # exposed three roots whose HNSW bytes had advanced after their ledger rows were written.
           node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}" --repair
-          node scripts/source-coverage.mjs --assets "${asset_dirs[0]}"
+          # Source coverage is a committed, independently generated observation. The Actions
+          # token cannot read the ruvnet user's gists endpoint (403), so release CI must consume the
+          # exact checked-in observation rather than silently inventing a partial live substitute.
+          test -s data/source-coverage.json
           node scripts/public-verification-inputs.mjs observe-baseline \
             --baseline-bundle "$seed" --expected-tag "$SEED_TAG" --expected-sha256 "$SEED_SHA256" \
             --expected-bytes "$SEED_BYTES" --out "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json"

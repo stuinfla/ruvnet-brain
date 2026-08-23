@@ -1,0 +1,22 @@
+{
+  "agentic-flows": {
+    "reason": "repository contains only a heading-only README, license, and git metadata — no functional corpus",
+    "pushedAt": "2024-08-27T15:41:11Z",
+    "at": "2026-08-21T10:58:00.000Z"
+  },
+  "agentic-music": {
+    "reason": "repository contains only a heading-only README, license, and git metadata — no functional corpus",
+    "pushedAt": "2024-08-14T18:17:36Z",
+    "at": "2026-08-21T10:58:00.000Z"
+  },
+  "santa-ai-workshop": {
+    "reason": "0 chunks produced — nothing embeddable (forge exit 3)",
+    "pushedAt": "2023-12-22T21:14:33Z",
+    "at": "2026-08-21T07:15:12.466Z"
+  },
+  "codegpt": {
+    "reason": "repository contains one empty readme.md and git metadata — no functional corpus",
+    "pushedAt": "2023-04-17T16:49:26Z",
+    "at": "2026-08-21T12:31:00.000Z"
+  }
+}
