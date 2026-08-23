@@ -8,15 +8,10 @@ import { createHash } from 'node:crypto';
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const RECEIPT_VERSION = 1;
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const vitestBin = path.join(ROOT, 'node_modules', 'vitest', 'vitest.mjs');
 const FORBIDDEN_SPEND_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY'];
-const WINDOWS_VITEST_ISOLATION = process.platform === 'win32'
-  ? ['--pool=forks', '--maxWorkers=1']
-  : [];
 
 const vitest = (files, timeoutMs = 180_000) => ({
-  kind: 'vitest', command: process.execPath,
-  args: [vitestBin, 'run', ...files, ...WINDOWS_VITEST_ISOLATION], timeoutMs,
+  kind: 'vitest', command: npm, args: ['exec', '--', 'vitest', 'run', ...files], timeoutMs,
 });
 
 // Deterministic slices only. Agentic-QE's grounded quality-gate contract names correctness,
@@ -57,6 +52,7 @@ const LANES = Object.freeze({
     vitest([
       'tests/qe/gpt56/worker-concurrency-retirement.test.mjs',
       'tests/unit/mcp-timeout-outage.test.mjs',
+      'tests/unit/learning-replay.test.mjs',
     ], 180_000),
   ],
 });
@@ -91,7 +87,7 @@ function runStep(step, index, dir) {
   const startedAt = now();
   const report = path.join(dir, `vitest-${index}.json`);
   const args = step.kind === 'vitest'
-    ? [...step.args, '--reporter=json', '--reporter=verbose', `--outputFile=${report}`]
+    ? [...step.args, '--reporter=json', `--outputFile=${report}`]
     : step.args;
   const result = spawnSync(step.command, args, {
     cwd: ROOT,
@@ -108,12 +104,9 @@ function runStep(step, index, dir) {
     startedAt,
     endedAt: now(),
     exitCode: result.status,
-    spawnError: result.error?.message || null,
     timedOut: Boolean(result.error?.code === 'ETIMEDOUT'),
     stdoutSha256: sha256(stdout),
     stderrSha256: sha256(stderr),
-    stdoutTail: stdout.slice(-4000),
-    stderrTail: stderr.slice(-4000),
   };
   if (step.kind === 'vitest') {
     try {
@@ -129,13 +122,6 @@ function runStep(step, index, dir) {
         (suite.assertionResults || [])
           .filter((test) => test.status === 'failed')
           .map((test) => ({ file: suite.name, name: test.fullName })));
-      stepReceipt.skippedTests = (json.testResults || []).flatMap((suite) =>
-        (suite.assertionResults || [])
-          .filter((test) => test.status === 'pending' || test.status === 'skipped')
-          .map((test) => ({ file: suite.name, name: test.fullName })));
-      stepReceipt.suiteErrors = (json.testResults || [])
-        .filter((suite) => suite.status === 'failed' || suite.message)
-        .map((suite) => ({ file: suite.name, message: suite.message || 'suite failed' }));
     } catch (error) { stepReceipt.reportError = error.message; }
   }
   stepReceipt.status = result.error || result.status !== 0 ? 'FAIL' : 'PASS';
