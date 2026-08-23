@@ -39,6 +39,23 @@ function createArchive(bundle, bundleRoot) {
   return execFileSync('zip', ['-qr', bundle, 'ruvnet-brain'], { cwd: path.dirname(bundleRoot), encoding: 'utf8' });
 }
 
+function updateArchive(bundle, archiveRoot, relativeFile) {
+  if (process.platform === 'win32') {
+    const escapedFile = path.join(archiveRoot, relativeFile).replaceAll("'", "''");
+    const escapedBundle = bundle.replaceAll("'", "''");
+    return execFileSync('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `Compress-Archive -Path '${escapedFile}' -DestinationPath '${escapedBundle}' -Update`,
+    ], { encoding: 'utf8' });
+  }
+  return execFileSync('zip', ['-q', '-u', bundle, `ruvnet-brain/${relativeFile}`], {
+    cwd: path.dirname(archiveRoot),
+    encoding: 'utf8',
+  });
+}
+
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-seed-'));
   dirs.push(root);
@@ -174,9 +191,7 @@ describe('immutable corpus candidate receipt', () => {
     const privateFixture = fixture();
     const archiveRoot = path.join(privateFixture.root, 'bundle', 'ruvnet-brain');
     fs.writeFileSync(path.join(archiveRoot, 'secret.big.rvf'), 'private-rvf');
-    execFileSync('zip', ['-q', '-u', privateFixture.bundle, 'ruvnet-brain/secret.big.rvf'], {
-      cwd: path.dirname(archiveRoot),
-    });
+    updateArchive(privateFixture.bundle, archiveRoot, 'secret.big.rvf');
     expect(() => create(privateFixture)).toThrow(/private store.*archive/i);
 
     const driftFixture = fixture();

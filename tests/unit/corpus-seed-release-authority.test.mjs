@@ -35,6 +35,9 @@ if (args[0] === 'release' && args[1] === 'view') {
 process.exit(0);
 `);
   fs.chmodSync(gh, 0o755);
+  if (process.platform === 'win32') {
+    fs.writeFileSync(path.join(bin, 'gh.cmd'), `@echo off\r\nnode "%~dp0gh" %*\r\n`);
+  }
 
   const bundle = path.join(dir, 'ruvnet-brain.zip');
   fs.writeFileSync(bundle, 'sealed corpus bundle');
