@@ -123,6 +123,13 @@ function runStep(step, index, dir) {
         (suite.assertionResults || [])
           .filter((test) => test.status === 'failed')
           .map((test) => ({ file: suite.name, name: test.fullName })));
+      stepReceipt.skippedTests = (json.testResults || []).flatMap((suite) =>
+        (suite.assertionResults || [])
+          .filter((test) => test.status === 'pending' || test.status === 'skipped')
+          .map((test) => ({ file: suite.name, name: test.fullName })));
+      stepReceipt.suiteErrors = (json.testResults || [])
+        .filter((suite) => suite.status === 'failed' || suite.message)
+        .map((suite) => ({ file: suite.name, message: suite.message || 'suite failed' }));
     } catch (error) { stepReceipt.reportError = error.message; }
   }
   stepReceipt.status = result.error || result.status !== 0 ? 'FAIL' : 'PASS';
