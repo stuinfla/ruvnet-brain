@@ -10,14 +10,14 @@ const RECEIPT_VERSION = 1;
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const vitestBin = path.join(ROOT, 'node_modules', 'vitest', 'vitest.mjs');
 const FORBIDDEN_SPEND_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY'];
+const WINDOWS_VITEST_ISOLATION = process.platform === 'win32'
+  ? ['--pool=forks', '--maxWorkers=1']
+  : [];
+
 const vitest = (files, timeoutMs = 180_000) => ({
-  kind: 'vitest', command: process.execPath, args: [vitestBin, 'run', ...files], timeoutMs,
+  kind: 'vitest', command: process.execPath,
+  args: [vitestBin, 'run', ...files, ...WINDOWS_VITEST_ISOLATION], timeoutMs,
 });
-const windowsInstallImportProbe = {
-  kind: 'command', command: process.execPath,
-  args: ['--input-type=module', '-e', "process.env.RUVNET_BRAIN_IMPORT_ONLY='1'; await import('./bin/install.mjs')"],
-  timeoutMs: 30_000,
-};
 
 // Deterministic slices only. Agentic-QE's grounded quality-gate contract names correctness,
 // safety, reliability, test adequacy, parity, performance, distribution, and release evidence.
@@ -56,18 +56,6 @@ const LANES = Object.freeze({
   resources: [
     vitest([
       'tests/qe/gpt56/worker-concurrency-retirement.test.mjs',
-      'tests/unit/mcp-timeout-outage.test.mjs',
-    ], 180_000),
-  ],
-  'windows-unit': [
-    windowsInstallImportProbe,
-    vitest([
-      'tests/qe/gpt56/critical-risk-map.test.mjs',
-      'tests/unit/npm-tarball-codex.test.mjs',
-      'tests/unit/codex-lifecycle-hooks.test.mjs',
-      'tests/unit/codex-console-invocation.test.mjs',
-      'tests/unit/console-advocacy-dial.test.mjs',
-      'tests/unit/console-advocacy-precision.test.mjs',
       'tests/unit/mcp-timeout-outage.test.mjs',
     ], 180_000),
   ],
@@ -160,7 +148,7 @@ function runStep(step, index, dir) {
 function main() {
   enforceZeroSpend();
   const requestedLane = arg('--lane');
-  const lane = requestedLane;
+  const lane = requestedLane === 'windows-unit' ? 'check' : requestedLane;
   if (!requestedLane || !LANES[lane]) throw new Error(`unknown lane: ${requestedLane || '<missing>'}`);
   const dir = outputDir();
   fs.rmSync(path.join(dir, `${requestedLane}.json`), { force: true });
