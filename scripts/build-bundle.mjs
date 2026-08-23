@@ -161,6 +161,10 @@ fs.rmSync(OUT, { recursive: true, force: true });
 // A failed rebuild must not leave an older archive looking like this invocation's output.
 fs.rmSync(ZIP, { force: true });
 fs.mkdirSync(OUT, { recursive: true });
+// The shipped bundle must carry the exact policy boundary used during assembly. The public
+// inventory validator consumes this file from the candidate output, so reading it only from the
+// source checkout would leave the release projection unable to prove its private-store exclusion.
+cp(path.join(KB, 'PRIVATE-STORES.json'), OUT, { required: true });
 
 let built = discoverBuilt();
 let excludedPublicStores = [];

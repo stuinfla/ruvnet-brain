@@ -98,9 +98,9 @@ describe('protected release rail', () => {
     expect(source).toContain('--out release-evidence/install-verified-receipt.json');
   });
 
-  it('derives public inputs once from exact candidate bytes before sealing the payload', () => {
+  it('derives baseline and candidate inputs from exact bytes before sealing the payload', () => {
     const source = ci();
-    expect(source.match(/node scripts\/public-verification-inputs\.mjs/g)).toHaveLength(1);
+    expect(source.match(/node scripts\/public-verification-inputs\.mjs/g)).toHaveLength(2);
     expect(source.indexOf('Build the immutable knowledge bundle exactly once'))
       .toBeLessThan(source.indexOf('node scripts/public-verification-inputs.mjs'));
     expect(source.indexOf('node scripts/public-verification-inputs.mjs'))
