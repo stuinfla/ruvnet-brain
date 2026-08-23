@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-22
+updated: 2026-08-23
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -26,6 +26,7 @@ governs:
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-23 | Bound release-QE to checked-in source-coverage evidence when the Actions token cannot read the user-gists API, and added exact candidate coverage/generation projection before bundle sealing. | `data/source-coverage.json`, `scripts/release-projection.mjs`, and `.github/workflows/ci.yml` now preserve source-grounded evidence without silently substituting a live 403 result; production proof remains exact-artifact and protected-publisher gated. |
 | 2026-08-22 | Required exact retrieval-plan attestation by both independent reviews before the protected transaction may call its provider. | Commit `f06624a` extends the existing `verify-pair` boundary with `--retrieval-plan release-evidence/retrieval-canary-plan.json`, and the workflow test proves ordering before `release.mjs --publish`. The verifier-side S-10 implementation is still pending, so this is a fail-closed caller contract, not a completed or executed public transaction. |
 | 2026-08-22 | Extended the durable transaction beyond channel convergence into a separately executed, signed public-install verification workflow. | `246d3c4`, `184f968`, and `2d1af27` implement the OS/mode leaves, nine-leaf aggregate, and immutable install-verified receipt. `89b2f2b`, `3489b6e`, `4a901d6`, and `ddae606` require two independent signed reviews, carry exact coverage/retrieval inputs across the sealed handoff, stop the publisher at `channels-converged`, and run public lanes/finalization afterward. The transaction remains resumable and overwrite-refusing; no real final-candidate transaction or public matrix is claimed by these source tests. |
 | 2026-08-22 | Re-read the transaction after replacing its private canonical serializer with the shared coverage-integrity implementation. | Commit `4f59bc6` changes only `scripts/release-transaction.mjs`: it imports and re-exports `canonicalJson` from `scripts/coverage-integrity.mjs` and removes the duplicate declaration. `tests/unit/release-transaction.test.mjs` still passes all seven hostile mutation, sequence, and recovery cases; provider authority, immutable payload identity, and publication ordering are unchanged. |
