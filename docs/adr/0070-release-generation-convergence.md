@@ -3,7 +3,7 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-23
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -186,7 +186,19 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 
 ## Currency log
 
+| 2026-08-23 | Candidate receipts now bind not only pass/fail counts but the skipped and failed suite identities used to decide convergence. | Commit `cc25c24` prevents a partial cross-platform observation from masquerading as a converged generation. |
+| 2026-08-23 | Windows candidate qualification probes the shared installer import before running its suites. | Hosted exact-SHA evidence isolated the failure to installer-import suites; convergence still requires every assertion and every receipt to PASS. |
+| 2026-08-23 | Candidate lane steps fail fast and preserve the exact partial receipt. | A failed step no longer launches later unrelated checks; convergence still requires every required receipt to PASS. |
+| 2026-08-23 | Windows installer-import evidence is process-isolated and the hosted conformance bound reflects measured execution. | Convergence still requires every separate receipt to PASS; no assertion is removed or weakened. |
+| 2026-08-23 | Candidate generation now uses only deterministic resource evidence; live-only preconditions remain an explicit separate regime, and Windows test invocation is shell-independent. | Commit `0e30d68` preserves one-generation artifact binding while removing two false blockers from the candidate path. |
+| 2026-08-23 | The candidate cannot enter artifact qualification unless all required QE lanes have completed, and failed receipts remain available for diagnosis. | Commit `b570e25` strengthens the one-generation release boundary without changing payload identity or publication authority. |
+| 2026-08-23 | Candidate convergence now consumes the new six-lane exact-SHA QE aggregate before artifact publication; the one-generation payload and public-channel rules are unchanged. | Commit `b3ddb0d` replaces the auto-triggered legacy matrix with fail-fast preflight, isolated receipts, and a zero-spend local deterministic contract in `.github/workflows/qe-4-3.yml`; no publication mutation was added. |
+| 2026-08-23 | Corrected the Windows argv boundary after exact-SHA job `97218861232` split the immutable release title; generation identity and artifact binding remain unchanged. | `scripts/windows-command.mjs` shares the measured cmd invocation contract with the release authority, and the focused authority suite asserts title, notes, bundle, and receipt remain distinct arguments. |
+| 2026-08-23 | Re-read the release-generation boundary after issue #163 exposed Windows shell argument splitting; one-generation and immutable-artifact requirements remain unchanged. | `scripts/release.mjs` preserves the exact title, notes, bundle, and receipt arguments on Windows; focused corpus-seed tests prove the release payload. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-23 | QE artifact download now targets the canonical receipt directory, and Vitest retains bounded verbose diagnostics. | This prevents a converged candidate from being rejected because evidence landed one directory away, while preserving exact-SHA convergence rules. |
+| 2026-08-23 | Candidate receipts now retain bounded stdout/stderr tails for process-level failures. | Commit `1310fb6` makes convergence failures diagnosable from exact-SHA evidence without changing the one-generation or publication rules. |
 | 2026-08-21 | Re-read the shipped-code path after the release-QE failure exposed three index-persistence hash mismatches. | `.github/workflows/ci.yml` now invokes the existing `rvf-index-audit.mjs --repair` restamp before `scripts/build-bundle.mjs` enforces exact ledger closure. A local reproduction on the configured v4.2.1 seed reported `stamped=3`, then assembled 186 audited RVFs with zero index failures; no recursive latest lookup or unbuilt coverage generator is used. |
 | 2026-08-21 | Implemented the emergency correctness slice after Fable 5 and GPT-5.6-Sol convergence. | `.github/workflows/ci.yml` pins the immutable corpus seed; `scripts/build-bundle.mjs` validates strict ledger closure; `bin/install.mjs` retains live plugin roots by exact process-incarnation leases; and the protected publisher rechecks `origin/main` immediately before mutation. Focused integrated tests cover these paths. Rollback-storage receipts, fresh interactive-window proof, and generated coverage remain explicit post-restoration work and are not claimed shipped by this row. |

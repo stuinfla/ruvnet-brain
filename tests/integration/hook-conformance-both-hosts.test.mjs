@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveBash } from '../../plugin/scripts/hook-shim-bash.mjs';
+import { reapDetached } from '../helpers/reap-detached.mjs';
 
 /**
  * EVERY HOOK, BOTH HOSTS, IN A PROJECT THAT IS NOT THIS ONE.
@@ -176,7 +177,10 @@ describe('every registered hook behaves in a project this plugin does not own', 
         if (err && r.status !== 2) offenders.push(`${c.host}/${c.event}: STDERR "${err.slice(0, 90)}"`);
         if (r.status !== 0 && r.status !== 2) offenders.push(`${c.host}/${c.event}: exit ${r.status}`);
         if (r.error) offenders.push(`${c.host}/${c.event}: ${r.error.message.slice(0, 80)}`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally {
+        reapDetached(dir);
+        fs.rmSync(dir, rmOptsFor(c.command));
+      }
     }
     expect(offenders, 'these emit noise or fail in a project that is not ruvnet-brain — a host '
       + 'renders that to the user as a hook error').toEqual([]);
@@ -193,7 +197,10 @@ describe('every registered hook behaves in a project this plugin does not own', 
         fire({ ...c, cwd: dir });
         const after = fs.readdirSync(dir).filter((n) => !n.startsWith('.conformance-')).sort().join(',');
         if (after !== before) offenders.push(`${c.host}/${c.event}: left behind ${after}`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally {
+        reapDetached(dir);
+        fs.rmSync(dir, rmOptsFor(c.command));
+      }
     }
     expect(offenders, 'these mutate a project the plugin does not own').toEqual([]);
   }, 600_000);
@@ -209,7 +216,10 @@ describe('every registered hook behaves in a project this plugin does not own', 
         const r = fire({ ...c, cwd: dir });
         const budget = (c.timeout ?? 30) * 1000;
         if (r.ms > budget * 0.8) offenders.push(`${c.host}/${c.event}: ${r.ms}ms of a ${budget}ms budget`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally {
+        reapDetached(dir);
+        fs.rmSync(dir, rmOptsFor(c.command));
+      }
     }
     expect(offenders, 'these run too close to the host timeout that kills them; the host reports '
       + 'the kill as a hook error, intermittently, on ordinary tool calls').toEqual([]);

@@ -1,11 +1,11 @@
 name: ux-qe
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch: {}
+
+concurrency:
+  group: ruvnet-brain-ux-qe-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ux-qe:

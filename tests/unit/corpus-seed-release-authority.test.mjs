@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { releaseShellInvocation } from '../../scripts/windows-command.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const RELEASE = path.join(ROOT, 'scripts/release.mjs');
@@ -35,6 +36,9 @@ if (args[0] === 'release' && args[1] === 'view') {
 process.exit(0);
 `);
   fs.chmodSync(gh, 0o755);
+  if (process.platform === 'win32') {
+    fs.writeFileSync(path.join(bin, 'gh.cmd'), `@echo off\r\nnode "%~dp0gh" %*\r\n`);
+  }
 
   const bundle = path.join(dir, 'ruvnet-brain.zip');
   fs.writeFileSync(bundle, 'sealed corpus bundle');
@@ -104,6 +108,22 @@ function writeReceipt(f) {
 }
 
 describe('protected corpus-seed release authority', () => {
+  it('builds the measured Windows cmd boundary without splitting spaced release arguments', () => {
+    const invocation = releaseShellInvocation('gh', [
+      'release', 'create', 'corpus-sha256-' + 'a'.repeat(64),
+      '--title', 'Immutable corpus seed 6453c77422ce7417',
+      '--notes', 'Archive SHA-256: ' + 'b'.repeat(64),
+    ], 'win32', { ComSpec: 'C:\\Windows\\System32\\cmd.exe' });
+    expect(invocation.file).toBe('C:\\Windows\\System32\\cmd.exe');
+    expect(invocation.args.slice(0, 3)).toEqual(['/d', '/s', '/c']);
+    expect(invocation.args[3]).toBe(
+      '"gh "release" "create" "corpus-sha256-' + 'a'.repeat(64)
+      + '" "--title" "Immutable corpus seed 6453c77422ce7417" "--notes" '
+      + '"Archive SHA-256: ' + 'b'.repeat(64) + '""',
+    );
+    expect(invocation.windowsVerbatimArguments).toBe(true);
+  });
+
   it.each([
     ['outside GitHub Actions', (f) => { delete f.env.GITHUB_ACTIONS; }],
     ['wrong workflow', (f) => { f.env.GITHUB_WORKFLOW = 'ci'; }],

@@ -34,6 +34,7 @@ import { runReleaseTransaction } from './release-transaction.mjs';
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
+import { releaseShellInvocation } from './windows-command.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
@@ -81,11 +82,20 @@ function corpusFailure(message) {
   throw new Error(`[corpus-seed] ${message}`);
 }
 
+function defaultReleaseRun(command, args, options) {
+  const invocation = releaseShellInvocation(command, args);
+  return spawnSync(invocation.file, invocation.args, {
+    encoding: 'utf8',
+    ...options,
+    windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+  });
+}
+
 export function runProtectedCorpusSeed({
   argv = process.argv.slice(2),
   env = process.env,
   root = ROOT,
-  run = (command, args, options) => spawnSync(command, args, { encoding: 'utf8', ...options }),
+  run = defaultReleaseRun,
 } = {}) {
   if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_WORKFLOW !== 'protected-release'
     || env.GITHUB_REPOSITORY !== 'stuinfla/ruvnet-brain') {
@@ -171,7 +181,9 @@ export function runProtectedCorpusSeed({
     `Stores: ${receipt.storeCount}`,
     `Coverage generation: ${receipt.coverageGeneration}`,
     'This published prerelease is immutable and must never be replaced.',
-  ].join('\n');
+  // Keep the shell-facing release argument single-line on Windows; every receipt field remains
+  // present, while cmd.exe cannot treat embedded newlines as command separators.
+  ].join(' ');
   const createArgs = [
     'release', 'create', tag,
     '--prerelease', '--latest=false',
