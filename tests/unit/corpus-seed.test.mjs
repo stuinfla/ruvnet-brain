@@ -24,6 +24,21 @@ function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
+function createArchive(bundle, bundleRoot) {
+  if (process.platform === 'win32') {
+    const escapedRoot = bundleRoot.replaceAll("'", "''");
+    const escapedBundle = bundle.replaceAll("'", "''");
+    const result = execFileSync('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `Compress-Archive -Path '${escapedRoot}' -DestinationPath '${escapedBundle}' -Force`,
+    ], { encoding: 'utf8' });
+    return result;
+  }
+  return execFileSync('zip', ['-qr', bundle, 'ruvnet-brain'], { cwd: path.dirname(bundleRoot), encoding: 'utf8' });
+}
+
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-seed-'));
   dirs.push(root);
@@ -78,7 +93,7 @@ function fixture() {
     sources: [{ name: 'alpha', status: 'CURRENT', eligible: true }],
   }));
   const bundle = path.join(root, 'ruvnet-brain.zip');
-  execFileSync('zip', ['-qr', bundle, 'ruvnet-brain'], { cwd: path.dirname(bundleDir) });
+  createArchive(bundle, bundleDir);
   return {
     root,
     assetsDir,
