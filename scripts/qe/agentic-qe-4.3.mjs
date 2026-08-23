@@ -108,6 +108,8 @@ function runStep(step, index, dir) {
     timedOut: Boolean(result.error?.code === 'ETIMEDOUT'),
     stdoutSha256: sha256(stdout),
     stderrSha256: sha256(stderr),
+    stdoutTail: stdout.slice(-4000),
+    stderrTail: stderr.slice(-4000),
   };
   if (step.kind === 'vitest') {
     try {
