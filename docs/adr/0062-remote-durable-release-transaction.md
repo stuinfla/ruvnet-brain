@@ -24,6 +24,7 @@ governs:
 
 ## Currency log
 
+| 2026-08-23 | Failed candidate evidence now preserves suite-level diagnostics and skipped-test identities for remote recovery. | Commit `cc25c24` improves diagnosis only; publication authority and mutation boundaries remain unchanged. |
 | 2026-08-23 | Candidate publication evidence now excludes unavailable live-only checks and uses a platform-neutral Node test entrypoint. | Commit `0e30d68` keeps the transaction downstream of deterministic exact-SHA evidence without laundering live skips into green or relying on `npm.cmd`. |
 | 2026-08-23 | Release qualification now waits on every required QE receipt and preserves failed-lane artifacts for diagnosis. | Commit `b570e25` keeps the durable publication transaction downstream of complete exact-SHA quality evidence; no publication mutation was added. |
 | 2026-08-23 | The transaction now receives its pre-publication quality evidence from the new exact-SHA QE aggregate, while publication authority and mutation fences remain unchanged. | Commit `b3ddb0d` makes `.github/workflows/qe-4-3.yml` the auto-triggered candidate lane; legacy CI is manual-only, and `scripts/qe/aggregate-4.3.mjs` rejects any missing, skipped, stale, or non-PASS receipt before release work can proceed. |
