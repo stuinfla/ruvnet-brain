@@ -185,7 +185,9 @@ export function acquireRefreshLock({
       return { path: lockPath, token, runId, owned: true, owner };
     } catch (error) {
       fs.rmSync(staged, { recursive: true, force: true });
-      if (!['EEXIST', 'ENOTEMPTY'].includes(error?.code)) throw error;
+      // Windows refuses rename-over-existing with EPERM/EACCES rather than EEXIST. Treat those
+      // codes as contention, then inspect the owner through the same liveness fence.
+      if (!['EEXIST', 'ENOTEMPTY', 'EPERM', 'EACCES'].includes(error?.code)) throw error;
       let owner = null;
       try { owner = JSON.parse(fs.readFileSync(path.join(lockPath, 'owner.json'), 'utf8')); } catch {
         throw new Error(`refresh lock owner is incomplete or unreadable; refusing stale takeover (${lockPath})`);

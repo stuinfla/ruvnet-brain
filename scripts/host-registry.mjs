@@ -23,7 +23,9 @@ function trackedFile(root, relative, label) {
   let stat;
   try { stat = fs.lstatSync(absolute); } catch { throw new Error(`${label} is not a tracked file: ${relative}`); }
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`${label} is not a tracked file: ${relative}`);
-  return absolute;
+  // Windows may expose the same temp path through 8.3 and long-name aliases. Bind receipts to
+  // the filesystem's canonical spelling so cross-host verification compares identity, not alias.
+  return fs.realpathSync(absolute);
 }
 
 function expectedModes(id) {
