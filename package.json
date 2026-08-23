@@ -20,6 +20,8 @@
     "test:mutation": "vitest run tests/mutation",
     "test:regression": "vitest run tests/regression",
     "qe:ux": "node scripts/qe/ux-suite.mjs",
+    "qe:preflight": "node scripts/qe/agentic-qe-4.3.mjs --lane preflight",
+    "qe:aggregate": "node scripts/qe/aggregate-4.3.mjs",
     "test:cov": "vitest run tests/unit --coverage",
     "test:release:preflight": "vitest run tests/unit/public-verification-inputs.test.mjs",
     "test:all": "npm run test:unit && npm run test:mesh && npm run test:mutation && npm run test:regression && npm run test:integration && npm test",

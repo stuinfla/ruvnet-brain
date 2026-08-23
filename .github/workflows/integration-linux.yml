@@ -15,11 +15,11 @@ name: integration-linux
 # and nothing stopped it, because this suite was dispatch-only. The tests skip LOUDLY when the brain
 # is absent; what remains is brain-independent and must hold on Linux.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch: {}
+
+concurrency:
+  group: ruvnet-brain-integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   integration:
