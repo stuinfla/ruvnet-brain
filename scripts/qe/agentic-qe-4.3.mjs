@@ -10,9 +10,13 @@ const RECEIPT_VERSION = 1;
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const vitestBin = path.join(ROOT, 'node_modules', 'vitest', 'vitest.mjs');
 const FORBIDDEN_SPEND_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY'];
+const WINDOWS_VITEST_ISOLATION = process.platform === 'win32'
+  ? ['--pool=forks', '--maxWorkers=1']
+  : [];
 
 const vitest = (files, timeoutMs = 180_000) => ({
-  kind: 'vitest', command: process.execPath, args: [vitestBin, 'run', ...files], timeoutMs,
+  kind: 'vitest', command: process.execPath,
+  args: [vitestBin, 'run', ...files, ...WINDOWS_VITEST_ISOLATION], timeoutMs,
 });
 
 // Deterministic slices only. Agentic-QE's grounded quality-gate contract names correctness,
