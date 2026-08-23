@@ -3,13 +3,39 @@ name: ci
 # Runs the brain-independent checks on every push/PR: version single-source-of-truth, structure,
 # grounding-hook behavior, and the injection-guard unit test. None of these need the 512 MB bundle.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ruvnet-brain-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  candidate-preflight:
+    name: candidate-preflight
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact candidate dependencies
+        run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Validate changed release and grounding paths before the matrix
+        run: |
+          set -euo pipefail
+          node --check scripts/release.mjs
+          node --check scripts/windows-command.mjs
+          npm exec -- vitest run \
+            tests/unit/corpus-seed-release-authority.test.mjs \
+            tests/unit/corpus-seed.test.mjs \
+            tests/unit/countrefs-primer-l2-drift.test.mjs \
+            --reporter=dot
+
   check:
+    needs: candidate-preflight
     # A HUNG JOB MUST FAIL, NOT JAM THE QUEUE. No job in this file declared a timeout, so a step
     # that never returns ran to GitHub's 6-hour default. Measured 2026-08-19: EIGHT consecutive `ci`
     # runs on main sat in_progress for up to three hours, all stuck on "Unit tests + coverage",
@@ -144,6 +170,7 @@ jobs:
         run: cd kb && npm ci --no-audit --no-fund --ignore-scripts && npm audit --audit-level=high
 
   windows-unit:
+    needs: candidate-preflight
     timeout-minutes: 40
     # ADR-0011 engineering_reliability: "Windows is completely untested" while the installer
     # claims cross-platform prebuilds. This job is the first real evidence, not a claim.
@@ -221,6 +248,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   warm-brain:
+    needs: candidate-preflight
     timeout-minutes: 30
     # ADR-058 D1: the REQUIRE_BRAIN lane (50 -> 95). plugin/test/run-tests.mjs (~193-229) ALREADY
     # converts a SKIPPED core-capability battery into a FAILURE when REQUIRE_BRAIN=1 (both when the
@@ -374,6 +402,7 @@ jobs:
         run: npm test
 
   release-qe:
+    needs: candidate-preflight
     timeout-minutes: 40
     name: release-qe
     runs-on: ubuntu-latest
