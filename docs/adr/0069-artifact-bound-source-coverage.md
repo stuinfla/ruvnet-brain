@@ -30,7 +30,7 @@ governs:
   - docs/ddd/0016-source-coverage-context.md
 created_at: 2026-08-21T05:32:00-04:00
 created_at_source: authored-current
-updated_at: 2026-08-22T12:15:00-04:00
+updated_at: 2026-08-23T10:35:00-04:00
 updated_at_source: authored-current
 ---
 
@@ -216,6 +216,7 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-23 | Bound the checked-in corpus ledger to the v4.2.1 baseline seed scope and added a release preflight that rejects non-current eligible rows. | Commit `efcecad` updates `data/source-coverage.json`, `kb/no-corpus-repos.json`, and `.github/workflows/ci.yml`; the release projection now receives a corpus-kind ledger with the stale self-store explicitly excluded. The ADR remains Proposed because the baseline seed still needs the complete derived receipt set for final artifact proof. |
 | 2026-08-22 | Required the protected publisher to validate both independent reviews against the exact coverage-derived retrieval plan before mutation. | Commit `f06624a` passes the sealed `release-evidence/retrieval-canary-plan.json` into the pair verifier and adds an ordering assertion before `release.mjs --publish`. The verifier's S-10 per-row relevance implementation and real source-bound oracle remain absent, so artifact-bound coverage acceptance is still Proposed and release-blocking. |
 | 2026-08-22 | Re-read the implemented coverage receipts, corpus-input reconciliation, and protected-release handoff at convergence tip `ddae606`; they strengthen source binding without completing this ADR's missing human projection or live enumeration proof. | `578fbab`, `510e3bf`, `91cfbb9`, `efcaedc`, `41b2c12`, and `17fe54b` add content-bound coverage/retrieval evidence and stable source/gist reconciliation. `4a901d6` carries `COVERAGE.json` and the retrieval-canary plan through the sealed publisher artifact. The named Console/command surfaces and real upstream pagination/public-byte acceptance remain absent, so this ADR stays Proposed and partially unbuilt. |
 | 2026-08-22 | Isolated every implemented source-coverage mutation from the primary checkout; broader coverage acceptance remains Proposed. | `ingest-new-repos.mjs --apply` and `self-update.mjs --apply` share `scripts/worktree-integrity.mjs`, which accepts only a clean linked worktree outside the primary. The retired `com.ruvnet.brain-nightly` scheduler and plist are gone; a manual author wrapper additionally verifies that primary HEAD/index/tracked/untracked state is unchanged. This closes the dirty-checkout transport defect, not this ADR's still-unbuilt signed enumeration, exemption, UI, or public-artifact coherence requirements. |
