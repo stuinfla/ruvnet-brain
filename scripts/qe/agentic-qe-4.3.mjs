@@ -166,7 +166,12 @@ function main() {
   fs.rmSync(path.join(dir, `${requestedLane}.json`), { force: true });
   const runDir = path.join(dir, `.run-${requestedLane}-${process.pid}-${Date.now()}`);
   fs.mkdirSync(runDir, { recursive: true });
-  const steps = LANES[lane].map((step, index) => runStep(step, index, runDir));
+  const steps = [];
+  for (const [index, step] of LANES[lane].entries()) {
+    const result = runStep(step, index, runDir);
+    steps.push(result);
+    if (result.status !== 'PASS') break;
+  }
   const status = steps.every((step) => step.status === 'PASS') ? 'PASS' : 'FAIL';
   const receipt = {
     schema: 'ruvnet-brain.agentic-qe.receipt', receiptVersion: RECEIPT_VERSION,
