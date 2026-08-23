@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-08-20
+updated: 2026-08-23
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -131,6 +131,7 @@ committed config).
 
 ## Currency log
 
+| 2026-08-23 | Re-read the governed Dream Machine files while clearing the document-currency chokepoint for the protected release candidate; no Dream Machine behavior changed. | `dream.config.json`, `docs/dream-cycle/LEDGER.md`, and `tests/unit/dream-config.test.mjs` remain the governed surface; this row records the current review boundary rather than claiming a new nightly result. |
 | Date | What changed | Why (with referents) |
 |---|---|---|
 | 2026-08-20 (night 2) | **The routine FIRED TWICE, and the ledger says so rather than hiding it.** | First scheduled night after the routine was created this morning; SLOT 0 = cross-host-conformance. Two concurrent firings produced two independent, non-overlapping findings: #147/#148 (Codex TEETH assertions vacuous) and #149/#150 (mesh census blind to codex-hooks.json). #150's own row names the collision — 'CONCURRENT NIGHT — a separate firing of this same routine (same SLOT=0/DEEP) landed first as #147/#148' — which is the discipline working: it detected the overlap and recorded it instead of presenting itself as the only run. BOTH rows kept for 2026-08-20; the one-row-per-night convention assumed one firing, and collapsing them would erase the double-fire. WHY it fired twice is NOT established and is not claimed here. Both candidates were verified independently before promotion (guards broken by hand, watched go red, restored) and merged; `autoMerge:false` held — the machine proposed, a human promoted. |

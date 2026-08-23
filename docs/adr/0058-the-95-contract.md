@@ -374,6 +374,7 @@ correct: **the strong claim was the defect.**
 
 ## Currency log
 
+| 2026-08-23 | Repaired the Windows release-argument oracle after exact-SHA job `97218861232` failed the protected corpus authority suite; acceptance thresholds are unchanged. | `scripts/windows-command.mjs` uses the measured shell boundary and `tests/unit/corpus-seed-release-authority.test.mjs` covers the spaced-argument invariant without importing the executable release entrypoint. |
 | 2026-08-23 | Re-read the release authority after issue #163 exposed a Windows argument-boundary failure; the 95 contract and release thresholds remain unchanged. | `scripts/release.mjs` now preserves complete Windows `gh` arguments, with focused corpus-seed authority tests covering the corrected boundary. |
 | 2026-08-10 | Re-read after ADR-067; no observable, mutant or budget changed. | Two new mutation-proved suites landed (`decision-gate`, `decision-outcomes`) and two existing guards were converted from restated truth to derived properties (`hook-contract`'s blocking list, `swarm-slot-recycler`'s frozen digest). No PLATFORM_BUDGET, dimension observable, or watch-plane definition moved. |
 

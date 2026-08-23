@@ -24,6 +24,7 @@ governs:
 
 ## Currency log
 
+| 2026-08-23 | Replaced the incomplete Windows shell-string repair after exact-SHA job `97218861232` still split the `--title` argument; the protected mutation fence remains unchanged. | `scripts/windows-command.mjs` now uses the measured `cmd.exe /d /s /c` boundary from `scripts/selfcheck.mjs`, and `tests/unit/corpus-seed-release-authority.test.mjs` asserts the complete argv shape before hosted verification. |
 | 2026-08-23 | Re-read the protected corpus-seed publisher after issue #163 exposed Windows shell argument splitting; the staged transaction and mutation fence remain unchanged. | `scripts/release.mjs` quotes complete Windows `gh release create` arguments before the protected mutation, and `tests/unit/corpus-seed-release-authority.test.mjs` proves the exact bundle and receipt payload. |
 
 | Date | What changed | Why (with referents) |

@@ -34,6 +34,7 @@ import { runReleaseTransaction } from './release-transaction.mjs';
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
+import { releaseShellInvocation } from './windows-command.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
@@ -81,26 +82,12 @@ function corpusFailure(message) {
   throw new Error(`[corpus-seed] ${message}`);
 }
 
-function windowsShellArg(value) {
-  const text = String(value);
-  return `"${text.replaceAll('"', '\\"')}"`;
-}
-
 function defaultReleaseRun(command, args, options) {
-  if (process.platform === 'win32') {
-    const commandLine = [command, ...args]
-      .map((value, index) => index === 0 ? String(value) : windowsShellArg(value))
-      .join(' ');
-    return spawnSync(commandLine, {
-      encoding: 'utf8',
-      ...options,
-      shell: true,
-      windowsVerbatimArguments: true,
-    });
-  }
-  return spawnSync(command, args, {
+  const invocation = releaseShellInvocation(command, args);
+  return spawnSync(invocation.file, invocation.args, {
     encoding: 'utf8',
     ...options,
+    windowsVerbatimArguments: invocation.windowsVerbatimArguments,
   });
 }
 
