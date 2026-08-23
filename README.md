@@ -56,7 +56,7 @@
 
 ---
 
-## What's new in 4.2 — it loads what rUv ships, without being asked
+## What's new in 4.3 — it loads what rUv ships, without being asked
 
 **The corpus gained an explicit new-repository ingestion path.** Until 4.2 nothing ingested a new
 repo. `brain-stamp.mjs` measured the gap, but nothing consumed it until
@@ -80,7 +80,7 @@ corpus freshness for uncontrolled source changes.
   agentdb's binding, so `lesson-bridge --apply` and `learning-replay` wrote into a silent
   non-persistent fallback. It now resolves an ABI-matched interpreter and fails loudly instead.
 
-## What's new in 4.2 — it anticipates, and it learns whether it was right
+## What's new in 4.3 — it anticipates, and it learns whether it was right
 
 **Building toward L4/L5 (3.9.x, dev).** The mechanisms for the top two rungs of the proactivity
 ladder are built and wired — but they are **not yet verified to 4.0's bar**, which requires all five

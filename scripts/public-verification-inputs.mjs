@@ -60,8 +60,9 @@ function namedIdentity(file) {
 
 function filesUnder(root, prefix = '', { includeManifest = false } = {}) {
   const rows = [];
+  const archiveOrder = (left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
   for (const entry of fs.readdirSync(path.join(root, prefix), { withFileTypes: true })
-    .sort((left, right) => left.name.localeCompare(right.name))) {
+    .sort(archiveOrder)) {
     const relative = prefix ? path.join(prefix, entry.name) : entry.name;
     if (!includeManifest && relative === MANIFEST) continue;
     const file = path.join(root, relative);

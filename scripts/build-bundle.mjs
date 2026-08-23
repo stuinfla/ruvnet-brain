@@ -552,7 +552,10 @@ function collectArchiveFiles(dir, prefix = '') {
   }
 }
 collectArchiveFiles(OUT);
-archiveFiles.sort();
+// Use an explicit bytewise order so the manifest has identical array ordering on every host.
+// Default sort and localeCompare disagree on case/punctuation across platforms.
+const archiveOrder = (left, right) => left < right ? -1 : left > right ? 1 : 0;
+archiveFiles.sort(archiveOrder);
 // Bind the exact archive payload before release verification. The manifest excludes itself;
 // verifiers recompute the same payload set and then validate this file's identities.
 function archiveIdentity(relative) {
@@ -577,7 +580,7 @@ const archiveManifest = {
 };
 fs.writeFileSync(path.join(OUT, 'ARCHIVE-MANIFEST.json'), `${JSON.stringify(archiveManifest, null, 2)}\n`);
 archiveFiles.push('ARCHIVE-MANIFEST.json');
-archiveFiles.sort();
+archiveFiles.sort(archiveOrder);
 const zipped = process.platform === 'win32'
   ? spawnSync('powershell.exe', [
     '-NoProfile',
