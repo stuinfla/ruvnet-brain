@@ -3,7 +3,7 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-23
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -185,6 +185,8 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 7. Coverage documentation is generated from the sealed manifest, source ledger, and gist inventory.
 
 ## Currency log
+
+| 2026-08-23 | Re-read the release-generation boundary after issue #163 exposed Windows shell argument splitting; one-generation and immutable-artifact requirements remain unchanged. | `scripts/release.mjs` preserves the exact title, notes, bundle, and receipt arguments on Windows; focused corpus-seed tests prove the release payload. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|

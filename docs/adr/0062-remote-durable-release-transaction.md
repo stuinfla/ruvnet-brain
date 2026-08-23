@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-21
+updated: 2026-08-23
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -23,6 +23,8 @@ governs:
 # ADR-062 — Remote-durable staged release transaction
 
 ## Currency log
+
+| 2026-08-23 | Re-read the protected corpus-seed publisher after issue #163 exposed Windows shell argument splitting; the staged transaction and mutation fence remain unchanged. | `scripts/release.mjs` quotes complete Windows `gh release create` arguments before the protected mutation, and `tests/unit/corpus-seed-release-authority.test.mjs` proves the exact bundle and receipt payload. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|

@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-21
+updated: 2026-08-23
 impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -373,6 +373,8 @@ correct: **the strong claim was the defect.**
    land ≥95. No self-score counts; the 83-vs-38 category error is not repeated.
 
 ## Currency log
+
+| 2026-08-23 | Re-read the release authority after issue #163 exposed a Windows argument-boundary failure; the 95 contract and release thresholds remain unchanged. | `scripts/release.mjs` now preserves complete Windows `gh` arguments, with focused corpus-seed authority tests covering the corrected boundary. |
 | 2026-08-10 | Re-read after ADR-067; no observable, mutant or budget changed. | Two new mutation-proved suites landed (`decision-gate`, `decision-outcomes`) and two existing guards were converted from restated truth to derived properties (`hook-contract`'s blocking list, `swarm-slot-recycler`'s frozen digest). No PLATFORM_BUDGET, dimension observable, or watch-plane definition moved. |
 
 | 2026-08-06 | `scripts/qe/ux-suite.mjs` now judges the BEST of up to 3 render samples instead of one. The 95 contract and every PLATFORM_BUDGET value are UNCHANGED — this fixes the SAMPLING, not the bar. | Measured on hosted windows-latest, same gate, unchanged product: job `92610172864` 877ms PASS, job `92625527103` 4523ms FAIL, and 5535ms FAIL — a 6x spread against a hard 4000ms budget, so roughly a third of Windows runs went red on contention alone. PRs #109 and #117 were each held red by it and each went green on a bare re-run with no code change. Raising win32 to 6000ms was rejected: it buys quiet by blinding the gate to the regression it exists for, and this file already states the budgets are "release budgets, not performance claims about GitHub's hardware" with "CI receipts make future recalibration evidence-based rather than guessed" — the receipts say the budget is right. Best-of-N strictly cannot pass anything a single attempt would have passed; a real regression is slow every attempt and still fails. Guarded by `tests/unit/ux-render-best-of-n.test.mjs`, whose load-bearing case is the negative one ("uniformly slow stays RED after every attempt"), 8/8. |
