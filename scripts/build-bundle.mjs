@@ -12,6 +12,7 @@
 //
 //   node scripts/build-bundle.mjs [--assets /path/to/release-assets]
 //                                 [--out dist/ruvnet-brain] [--version v0.2.0-dev]
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -551,6 +552,31 @@ function collectArchiveFiles(dir, prefix = '') {
   }
 }
 collectArchiveFiles(OUT);
+archiveFiles.sort();
+// Bind the exact archive payload before release verification. The manifest excludes itself;
+// verifiers recompute the same payload set and then validate this file's identities.
+function archiveIdentity(relative) {
+  const file = path.join(OUT, relative);
+  const hash = crypto.createHash('sha256');
+  const fd = fs.openSync(file, 'r');
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    let bytes;
+    while ((bytes = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, bytes));
+  } finally { fs.closeSync(fd); }
+  return { path: relative.split(path.sep).join('/'), sha256: hash.digest('hex'), bytes: fs.statSync(file).size };
+}
+const archiveManifest = {
+  schemaVersion: 1,
+  kind: 'ruvnet-brain-archive-manifest',
+  version: stripTag(BRAIN_VERSION),
+  releaseTag: BRAIN_VERSION,
+  fileCount: archiveFiles.length,
+  totalBytes: archiveFiles.reduce((total, file) => total + fs.statSync(path.join(OUT, file)).size, 0),
+  files: archiveFiles.map(archiveIdentity),
+};
+fs.writeFileSync(path.join(OUT, 'ARCHIVE-MANIFEST.json'), `${JSON.stringify(archiveManifest, null, 2)}\n`);
+archiveFiles.push('ARCHIVE-MANIFEST.json');
 archiveFiles.sort();
 const zipped = process.platform === 'win32'
   ? spawnSync('powershell.exe', [
