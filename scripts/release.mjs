@@ -181,7 +181,9 @@ export function runProtectedCorpusSeed({
     `Stores: ${receipt.storeCount}`,
     `Coverage generation: ${receipt.coverageGeneration}`,
     'This published prerelease is immutable and must never be replaced.',
-  ].join('\n');
+  // Keep the shell-facing release argument single-line on Windows; every receipt field remains
+  // present, while cmd.exe cannot treat embedded newlines as command separators.
+  ].join(' ');
   const createArgs = [
     'release', 'create', tag,
     '--prerelease', '--latest=false',
