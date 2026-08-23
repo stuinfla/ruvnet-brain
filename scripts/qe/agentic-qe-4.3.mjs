@@ -10,10 +10,14 @@ const RECEIPT_VERSION = 1;
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const vitestBin = path.join(ROOT, 'node_modules', 'vitest', 'vitest.mjs');
 const FORBIDDEN_SPEND_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY'];
-
 const vitest = (files, timeoutMs = 180_000) => ({
   kind: 'vitest', command: process.execPath, args: [vitestBin, 'run', ...files], timeoutMs,
 });
+const windowsInstallImportProbe = {
+  kind: 'command', command: process.execPath,
+  args: ['--input-type=module', '-e', "process.env.RUVNET_BRAIN_IMPORT_ONLY='1'; await import('./bin/install.mjs')"],
+  timeoutMs: 30_000,
+};
 
 // Deterministic slices only. Agentic-QE's grounded quality-gate contract names correctness,
 // safety, reliability, test adequacy, parity, performance, distribution, and release evidence.
@@ -38,7 +42,7 @@ const LANES = Object.freeze({
     ]),
   ],
   integration: [
-    vitest(['tests/integration/hook-conformance-both-hosts.test.mjs'], 120_000),
+    vitest(['tests/integration/hook-conformance-both-hosts.test.mjs'], 240_000),
     vitest(['tests/integration/managed-cli-mcp.test.mjs'], 180_000),
   ],
   release: [
@@ -54,6 +58,18 @@ const LANES = Object.freeze({
       'tests/qe/gpt56/worker-concurrency-retirement.test.mjs',
       'tests/unit/mcp-timeout-outage.test.mjs',
     ], 180_000),
+  ],
+  'windows-unit': [
+    windowsInstallImportProbe,
+    vitest([
+      'tests/qe/gpt56/critical-risk-map.test.mjs',
+      'tests/unit/codex-console-invocation.test.mjs',
+      'tests/unit/console-advocacy-dial.test.mjs',
+      'tests/unit/console-advocacy-precision.test.mjs',
+      'tests/unit/mcp-timeout-outage.test.mjs',
+    ], 120_000),
+    vitest(['tests/unit/npm-tarball-codex.test.mjs'], 180_000),
+    vitest(['tests/unit/codex-lifecycle-hooks.test.mjs'], 180_000),
   ],
 });
 
@@ -144,13 +160,18 @@ function runStep(step, index, dir) {
 function main() {
   enforceZeroSpend();
   const requestedLane = arg('--lane');
-  const lane = requestedLane === 'windows-unit' ? 'check' : requestedLane;
+  const lane = requestedLane;
   if (!requestedLane || !LANES[lane]) throw new Error(`unknown lane: ${requestedLane || '<missing>'}`);
   const dir = outputDir();
   fs.rmSync(path.join(dir, `${requestedLane}.json`), { force: true });
   const runDir = path.join(dir, `.run-${requestedLane}-${process.pid}-${Date.now()}`);
   fs.mkdirSync(runDir, { recursive: true });
-  const steps = LANES[lane].map((step, index) => runStep(step, index, runDir));
+  const steps = [];
+  for (const [index, step] of LANES[lane].entries()) {
+    const result = runStep(step, index, runDir);
+    steps.push(result);
+    if (result.status !== 'PASS') break;
+  }
   const status = steps.every((step) => step.status === 'PASS') ? 'PASS' : 'FAIL';
   const receipt = {
     schema: 'ruvnet-brain.agentic-qe.receipt', receiptVersion: RECEIPT_VERSION,
