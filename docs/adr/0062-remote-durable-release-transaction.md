@@ -24,6 +24,7 @@ governs:
 
 ## Currency log
 
+| 2026-08-23 | Release qualification now waits on every required QE receipt and preserves failed-lane artifacts for diagnosis. | Commit `b570e25` keeps the durable publication transaction downstream of complete exact-SHA quality evidence; no publication mutation was added. |
 | 2026-08-23 | The transaction now receives its pre-publication quality evidence from the new exact-SHA QE aggregate, while publication authority and mutation fences remain unchanged. | Commit `b3ddb0d` makes `.github/workflows/qe-4-3.yml` the auto-triggered candidate lane; legacy CI is manual-only, and `scripts/qe/aggregate-4.3.mjs` rejects any missing, skipped, stale, or non-PASS receipt before release work can proceed. |
 | 2026-08-23 | Replaced the incomplete Windows shell-string repair after exact-SHA job `97218861232` still split the `--title` argument; the protected mutation fence remains unchanged. | `scripts/windows-command.mjs` now uses the measured `cmd.exe /d /s /c` boundary from `scripts/selfcheck.mjs`, and `tests/unit/corpus-seed-release-authority.test.mjs` asserts the complete argv shape before hosted verification. |
 | 2026-08-23 | Re-read the protected corpus-seed publisher after issue #163 exposed Windows shell argument splitting; the staged transaction and mutation fence remain unchanged. | `scripts/release.mjs` quotes complete Windows `gh release create` arguments before the protected mutation, and `tests/unit/corpus-seed-release-authority.test.mjs` proves the exact bundle and receipt payload. |

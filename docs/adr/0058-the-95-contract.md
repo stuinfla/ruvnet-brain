@@ -374,6 +374,7 @@ correct: **the strong claim was the defect.**
 
 ## Currency log
 
+| 2026-08-23 | The receipt contract now retains failed-test identities and uploads red-lane evidence; downstream release work is blocked by every required lane. | Commit `b570e25` makes a failing quality observation actionable without rerunning unrelated lanes or reading decorated logs. |
 | 2026-08-23 | Replaced the release test marathon with the fail-fast Agentic-QE receipt contract; the 95 rubric remains the quality standard, but partial lane green is no longer a release verdict. | Commit `b3ddb0d` adds preflight, isolated behavior/resource/artifact lanes, exact-SHA receipts, zero-spend enforcement, and an aggregate that rejects missing, skipped, stale, or failed evidence. |
 | 2026-08-23 | Repaired the Windows release-argument oracle after exact-SHA job `97218861232` failed the protected corpus authority suite; acceptance thresholds are unchanged. | `scripts/windows-command.mjs` uses the measured shell boundary and `tests/unit/corpus-seed-release-authority.test.mjs` covers the spaced-argument invariant without importing the executable release entrypoint. |
 | 2026-08-23 | Re-read the release authority after issue #163 exposed a Windows argument-boundary failure; the 95 contract and release thresholds remain unchanged. | `scripts/release.mjs` now preserves complete Windows `gh` arguments, with focused corpus-seed authority tests covering the corrected boundary. |
