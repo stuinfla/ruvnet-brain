@@ -256,7 +256,7 @@ describe('immutable corpus seed publishing', () => {
     expect(calls[1]).toMatchObject({
       command: process.execPath,
       args: expect.arrayContaining([
-        expect.stringMatching(/scripts\/release\.mjs$/),
+        expect.stringMatching(/scripts[\\/]release\.mjs$/),
         '--corpus-seed',
         '--corpus-tag', corpusSeedTag(receipt),
         '--corpus-bundle', f.bundle,
