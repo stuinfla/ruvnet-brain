@@ -51,6 +51,7 @@ jobs:
         with:
           name: qe-check-${{ github.sha }}
           path: .qe/receipts/check.json
+        if: always()
 
   integration:
     needs: preflight
@@ -67,9 +68,10 @@ jobs:
         with:
           name: qe-integration-${{ github.sha }}
           path: .qe/receipts/integration.json
+        if: always()
 
   release-qe:
-    needs: [preflight, check, integration]
+    needs: [preflight, check, integration, resources, windows-unit]
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -83,6 +85,7 @@ jobs:
         with:
           name: qe-release-${{ github.sha }}
           path: .qe/receipts/release.json
+        if: always()
 
   resources:
     name: warm-brain
@@ -100,6 +103,7 @@ jobs:
         with:
           name: qe-resources-${{ github.sha }}
           path: .qe/receipts/resources.json
+        if: always()
 
   windows-unit:
     needs: preflight
@@ -116,6 +120,7 @@ jobs:
         with:
           name: qe-windows-unit-${{ github.sha }}
           path: .qe/receipts/windows-unit.json
+        if: always()
 
   aggregate:
     name: qe-aggregate

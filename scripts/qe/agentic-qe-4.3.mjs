@@ -118,6 +118,10 @@ function runStep(step, index, dir) {
         skipped: json.numPendingTests ?? 0,
         suitesFailed: json.numFailedTestSuites ?? 0,
       };
+      stepReceipt.failedTests = (json.testResults || []).flatMap((suite) =>
+        (suite.assertionResults || [])
+          .filter((test) => test.status === 'failed')
+          .map((test) => ({ file: suite.name, name: test.fullName })));
     } catch (error) { stepReceipt.reportError = error.message; }
   }
   stepReceipt.status = result.error || result.status !== 0 ? 'FAIL' : 'PASS';
@@ -147,7 +151,10 @@ function main() {
   const file = path.join(dir, `${requestedLane}.json`);
   fs.writeFileSync(file, `${JSON.stringify(receipt, null, 2)}\n`);
   fs.rmSync(runDir, { recursive: true, force: true });
-  console.log(JSON.stringify({ lane: requestedLane, status, receipt: file, sha: receipt.sha }));
+  console.log(JSON.stringify({
+    lane: requestedLane, status, receipt: file, sha: receipt.sha,
+    failedTests: steps.flatMap((step) => step.failedTests || []),
+  }));
   process.exitCode = status === 'PASS' ? 0 : 1;
 }
 
