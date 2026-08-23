@@ -418,6 +418,11 @@ jobs:
           unzip -q "$seed" -d "$RUNNER_TEMP/release-seed/extracted"
           mapfile -t asset_dirs < <(find "$RUNNER_TEMP/release-seed/extracted" -type f -name '*.big.rvf' ! -path '*/__MACOSX/*' ! -name '._*' -printf '%h\n' | LC_ALL=C sort -u)
           test "${#asset_dirs[@]}" -eq 1
+          # The v4.2.1 seed predates the release projection and therefore has no private fence.
+          # Rebind that required security boundary from the checked-in source before any derived
+          # projection is produced; without it, the exact seed can assemble but cannot be audited.
+          test -s kb/PRIVATE-STORES.json
+          cp kb/PRIVATE-STORES.json "${asset_dirs[0]}/PRIVATE-STORES.json"
           # --repair also re-seals stale ledger hashes after index persistence. The v4.2.1 seed
           # exposed three roots whose HNSW bytes had advanced after their ledger rows were written.
           node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}" --repair
