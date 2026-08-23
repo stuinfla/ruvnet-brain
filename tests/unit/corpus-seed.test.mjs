@@ -24,20 +24,19 @@ function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
-function createArchive(bundle, root, { update = false, file = null } = {}) {
+function createArchive(bundle, bundleRoot) {
   if (process.platform === 'win32') {
-    const source = file || path.join(root, 'ruvnet-brain');
-    const quote = (value) => `'${value.replaceAll("'", "''")}'`;
-    const command = update
-      ? `Compress-Archive -LiteralPath ${quote(source)} -Update -DestinationPath ${quote(bundle)}`
-      : `Compress-Archive -Path ${quote(source)} -DestinationPath ${quote(bundle)} -Force`;
-    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command]);
-    return;
+    const escapedRoot = bundleRoot.replaceAll("'", "''");
+    const escapedBundle = bundle.replaceAll("'", "''");
+    const result = execFileSync('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `Compress-Archive -Path '${escapedRoot}' -DestinationPath '${escapedBundle}' -Force`,
+    ], { encoding: 'utf8' });
+    return result;
   }
-  const args = update
-    ? ['-q', '-u', bundle, path.relative(root, file)]
-    : ['-qr', bundle, 'ruvnet-brain'];
-  execFileSync('zip', args, { cwd: root });
+  return execFileSync('zip', ['-qr', bundle, 'ruvnet-brain'], { cwd: path.dirname(bundleRoot), encoding: 'utf8' });
 }
 
 function fixture() {
@@ -91,13 +90,10 @@ function fixture() {
   fs.writeFileSync(policyFile, JSON.stringify({
     schemaVersion: 1,
     coverageGeneration: 'coverage-2026-08-21',
-    rows: [{ kind: 'repository', disposition: 'eligible', status: 'CURRENT', artifact: { store: 'alpha' } }],
-  }));
-  fs.writeFileSync(path.join(assetsDir, 'public-store-classes.json'), JSON.stringify({
-    schemaVersion: 1, derived: [],
+    sources: [{ name: 'alpha', status: 'CURRENT', eligible: true }],
   }));
   const bundle = path.join(root, 'ruvnet-brain.zip');
-  createArchive(bundle, path.dirname(bundleDir));
+  createArchive(bundle, bundleDir);
   return {
     root,
     assetsDir,
@@ -107,7 +103,7 @@ function fixture() {
   };
 }
 
-async function create(f) {
+function create(f) {
   return createCorpusReceipt({
     assetsDir: f.assetsDir,
     bundleFile: f.bundle,
@@ -119,9 +115,9 @@ async function create(f) {
 }
 
 describe('immutable corpus candidate receipt', () => {
-  it('creates and verifies a receipt binding every public store, sidecar, fence, policy, and archive byte', async () => {
+  it('creates and verifies a receipt binding every public store, sidecar, fence, policy, and archive byte', () => {
     const f = fixture();
-    const receipt = await create(f);
+    const receipt = create(f);
 
     expect(receipt).toMatchObject({
       schemaVersion: 1,
@@ -138,15 +134,15 @@ describe('immutable corpus candidate receipt', () => {
     expect(receipt.eligibilityPolicy.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(receipt.archive.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(receipt.stores[0].files).toHaveLength(7);
-    await expect(verifyCorpusReceipt({
+    expect(verifyCorpusReceipt({
       receiptFile: f.receiptFile,
       assetsDir: f.assetsDir,
       bundleFile: f.bundle,
       policyFile: f.policyFile,
-    })).resolves.toEqual(receipt);
+    })).toEqual(receipt);
   });
 
-  it('fails closed for unreceipted RVFs, missing sidecars, duplicate RVFs, and orphan ledger rows', async () => {
+  it('fails closed for unreceipted RVFs, missing sidecars, duplicate RVFs, and orphan ledger rows', () => {
     const mutations = [
       (f) => fs.writeFileSync(path.join(f.assetsDir, 'orphan.big.rvf'), 'orphan'),
       (f) => fs.rmSync(path.join(f.assetsDir, 'alpha.meta.json')),
@@ -167,65 +163,66 @@ describe('immutable corpus candidate receipt', () => {
       },
     ];
     const expected = [/unreceipted/i, /missing sidecars/i, /duplicate RVF/i, /ledger rows without RVFs/i];
-    for (const [index, mutate] of mutations.entries()) {
+    mutations.forEach((mutate, index) => {
       const f = fixture();
       mutate(f);
-      await expect(create(f)).rejects.toThrow(expected[index]);
-    }
+      expect(() => create(f)).toThrow(expected[index]);
+    });
   });
 
-  it('rejects private corpus bytes in the archive and any post-receipt byte or policy drift', async () => {
+  it('rejects private corpus bytes in the archive and any post-receipt byte or policy drift', () => {
     const privateFixture = fixture();
     const archiveRoot = path.join(privateFixture.root, 'bundle', 'ruvnet-brain');
     fs.writeFileSync(path.join(archiveRoot, 'secret.big.rvf'), 'private-rvf');
-    createArchive(privateFixture.bundle, path.dirname(archiveRoot), {
-      update: true, file: path.join(archiveRoot, 'secret.big.rvf'),
+    execFileSync('zip', ['-q', '-u', privateFixture.bundle, 'ruvnet-brain/secret.big.rvf'], {
+      cwd: path.dirname(archiveRoot),
     });
-    await expect(create(privateFixture)).rejects.toThrow(/private store.*archive/i);
+    expect(() => create(privateFixture)).toThrow(/private store.*archive/i);
 
     const driftFixture = fixture();
-    await create(driftFixture);
+    create(driftFixture);
     fs.appendFileSync(driftFixture.bundle, 'tampered');
     expect(() => verifyCorpusReceipt({
       receiptFile: driftFixture.receiptFile,
       assetsDir: driftFixture.assetsDir,
       bundleFile: driftFixture.bundle,
       policyFile: driftFixture.policyFile,
-    })).rejects.toThrow(/archive sha256/i);
+    })).toThrow(/archive sha256/i);
 
     const policyFixture = fixture();
-    await create(policyFixture);
+    create(policyFixture);
     fs.appendFileSync(policyFixture.policyFile, '\n');
     expect(() => verifyCorpusReceipt({
       receiptFile: policyFixture.receiptFile,
       assetsDir: policyFixture.assetsDir,
       bundleFile: policyFixture.bundle,
       policyFile: policyFixture.policyFile,
-    })).rejects.toThrow(/eligibility policy/i);
+    })).toThrow(/eligibility policy/i);
   });
 });
 
 describe('immutable corpus seed publishing', () => {
-  it('derives the tag from the archive digest and refuses to overwrite an existing release', async () => {
+  it('derives the tag from the archive digest and refuses to overwrite an existing release', () => {
     const f = fixture();
-    const receipt = await create(f);
+    const receipt = create(f);
     const tag = corpusSeedTag(receipt);
     expect(tag).toBe(`corpus-sha256-${receipt.archive.sha256}`);
 
     const run = vi.fn(() => ({ status: 0, stdout: '', stderr: '' }));
-    await expect(publishCorpusSeed({
+    expect(() => publishCorpusSeed({
       receiptFile: f.receiptFile,
       bundleFile: f.bundle,
       assetsDir: f.assetsDir,
       policyFile: f.policyFile,
       run,
-    })).rejects.toThrow(/already exists.*refusing to overwrite/i);
+    }))
+      .toThrow(/already exists.*refusing to overwrite/i);
     expect(run).toHaveBeenCalledWith('gh', ['release', 'view', tag, '--json', 'tagName'], expect.any(Object));
   });
 
-  it('hands a new digest-tagged prerelease to the repository\'s sole release authority', async () => {
+  it('hands a new digest-tagged prerelease to the repository\'s sole release authority', () => {
     const f = fixture();
-    const receipt = await create(f);
+    const receipt = create(f);
     const calls = [];
     const run = (command, args, options) => {
       calls.push({ command, args, options });
@@ -233,13 +230,14 @@ describe('immutable corpus seed publishing', () => {
       return { status: 0, stdout: 'created', stderr: '' };
     };
 
-    await expect(publishCorpusSeed({
+    expect(publishCorpusSeed({
       receiptFile: f.receiptFile,
       bundleFile: f.bundle,
       assetsDir: f.assetsDir,
       policyFile: f.policyFile,
       run,
-    })).resolves.toMatchObject({ tag: corpusSeedTag(receipt), archiveSha256: receipt.archive.sha256 });
+    }))
+      .toMatchObject({ tag: corpusSeedTag(receipt), archiveSha256: receipt.archive.sha256 });
     expect(calls[1]).toMatchObject({
       command: process.execPath,
       args: expect.arrayContaining([
