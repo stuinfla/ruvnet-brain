@@ -18,5 +18,10 @@
     "reason": "repository contains one empty readme.md and git metadata — no functional corpus",
     "pushedAt": "2023-04-17T16:49:26Z",
     "at": "2026-08-21T12:31:00.000Z"
+  },
+  "ruvnet-brain": {
+    "reason": "baseline release seed contains an older self-store; excluded until the next corpus seed refresh",
+    "pushedAt": "2026-08-21T09:06:47Z",
+    "at": "2026-08-23T10:21:00.000Z"
   }
 }

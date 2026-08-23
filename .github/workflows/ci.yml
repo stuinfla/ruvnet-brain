@@ -425,6 +425,14 @@ jobs:
           # token cannot read the ruvnet user's gists endpoint (403), so release CI must consume the
           # exact checked-in observation rather than silently inventing a partial live substitute.
           test -s data/source-coverage.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const coverage = JSON.parse(fs.readFileSync('data/source-coverage.json', 'utf8'));
+          if (coverage.kind !== 'ruvnet-brain-corpus-coverage') throw new Error('checked-in coverage is not a corpus ledger');
+          const blockers = coverage.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
+          if (blockers.length) throw new Error(`checked-in coverage has ${blockers.length} non-current eligible row(s)`);
+          console.log(`coverage preflight: ${coverage.rows.length} rows; ${coverage.totals.byStatus.CURRENT} CURRENT`);
+          NODE
           node scripts/public-verification-inputs.mjs observe-baseline \
             --baseline-bundle "$seed" --expected-tag "$SEED_TAG" --expected-sha256 "$SEED_SHA256" \
             --expected-bytes "$SEED_BYTES" --out "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json"

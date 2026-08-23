@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "kind": "ruvnet-brain-corpus-coverage",
   "owner": "ruvnet",
   "observedAt": "2026-08-21T12:49:48.534Z",
   "generatorSourceSha": "6142993c18d889c2016c9772fd01d5f88cef50f5f04edc352e9f6b2cefe37dd9",
@@ -9,10 +10,10 @@
       "1ca5b304e4ecea50421cba8e6d835cbca093113334b9d38eaaa0cac7687c503c"
     ],
     "exemptionDigests": [
-      "f91a1ed218aa69f7ad168a3ed0fa1e7488d3736fa7df2b8776b12f84e3e370f6"
+      "40af92ecc421dec67d6797032c7036529a2daf799e51fe08f729ed66b92eec9a"
     ]
   },
-  "coverageGeneration": "8a9bd52015cadd08ac0e0c7ac6a20bf4713b0a269947e90b0c4b46afdd2cddd2",
+  "coverageGeneration": "4edcc24dac80f207e955e5d50eac514f0b50a3e4872a27efc412a4560572f5cd",
   "enumerationReceipt": {
     "schemaVersion": 1,
     "owner": "ruvnet",
@@ -18052,7 +18053,7 @@
       "kind": "repository",
       "name": "ruvnet-brain",
       "url": "https://github.com/stuinfla/ruvnet-brain",
-      "disposition": "eligible",
+      "disposition": "excluded-no-corpus",
       "upstream": {
         "sha": "23276d31816403c94d16d99fca09e5824ff07fea",
         "committedAt": "2026-08-20T23:27:01Z",
@@ -18068,9 +18069,9 @@
         "passagesPresent": true,
         "cardPresent": true
       },
-      "status": "STALE",
+      "status": "INELIGIBLE",
       "reasons": [
-        "receipt sourceCommit differs from upstream HEAD"
+        "baseline release seed contains an older self-store; excluded until the next corpus seed refresh"
       ]
     }
   ],
@@ -18080,8 +18081,7 @@
     "rows": 695,
     "byStatus": {
       "CURRENT": 660,
-      "INELIGIBLE": 34,
-      "STALE": 1
+      "INELIGIBLE": 35
     }
   }
 }
