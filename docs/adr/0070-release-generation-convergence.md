@@ -3,7 +3,7 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-26
+updated: 2026-08-23
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -14,8 +14,6 @@ governs:
   - kb/forge-update.mjs
   - scripts/brain-stamp.mjs
   - scripts/build-bundle.mjs
-  - scripts/corpus-candidate.mjs
-  - scripts/corpus-seed-publish.mjs
   - scripts/release.mjs
   - scripts/release-transaction-provider.mjs
   - scripts/self-update.mjs
@@ -188,12 +186,11 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 
 ## Currency log
 
+| 2026-08-23 | Candidate convergence now consumes the new six-lane exact-SHA QE aggregate before artifact publication; the one-generation payload and public-channel rules are unchanged. | Commit `b3ddb0d` replaces the auto-triggered legacy matrix with fail-fast preflight, isolated receipts, and a zero-spend local deterministic contract in `.github/workflows/qe-4-3.yml`; no publication mutation was added. |
+| 2026-08-23 | Corrected the Windows argv boundary after exact-SHA job `97218861232` split the immutable release title; generation identity and artifact binding remain unchanged. | `scripts/windows-command.mjs` shares the measured cmd invocation contract with the release authority, and the focused authority suite asserts title, notes, bundle, and receipt remain distinct arguments. |
+| 2026-08-23 | Re-read the release-generation boundary after issue #163 exposed Windows shell argument splitting; one-generation and immutable-artifact requirements remain unchanged. | `scripts/release.mjs` preserves the exact title, notes, bundle, and receipt arguments on Windows; focused corpus-seed tests prove the release payload. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
-| 2026-08-23 | Re-read the release generation path after the exact seed assembled without its private fence. | Commit `655f9c2` restores `kb/PRIVATE-STORES.json` into the extracted seed before projection, so the candidate generation is classified against an explicit security boundary; exact-SHA CI and public verification remain required before convergence is claimed. |
-| 2026-08-23 | Added a source-bound release projection that emits `COVERAGE.json`, `CORPUS-COVERAGE.json`, and `PUBLIC-RVF-GENERATIONS.json` from the exact candidate and baseline receipt. | `scripts/release-projection.mjs` and the release-QE workflow now validate one candidate generation across the bundle; publication remains unclaimed until exact-SHA CI and public verification pass. |
-| 2026-08-22 | Reconciled policy-ineligible local stores with candidate selection and made every archive sidecar family subject to the same classification fence. | Commit `f088e4f` carries the complete lifecycle prerequisite: `scripts/build-bundle.mjs`, `scripts/corpus-candidate.mjs`, and the generation validator retain excluded local evidence outside the public release partition while requiring explicit coverage classification. Commit `5f9a52c` rejects any excluded or otherwise unclassified RVF sidecar family in the candidate archive, including case aliases. The combined 63-test focused gate passes, but no public release or installed-byte matrix was executed by these commits, so generation convergence remains unclaimed. |
-| 2026-08-22 | Re-read corpus settlement, atomic aggregate rebuild, host identity, and deferred public verification as one generation-bound release path. | `f0492d4`, `b5fc744`, `bd446d9`, and `17fe54b` settle and rebuild canonical corpus inputs before sealing. `246d3c4`, `3489b6e`, `4a901d6`, and `ddae606` bind public host lanes and install verification to the same sealed release identity after channel convergence. Focused gates prove source ordering and overwrite refusal; the real final candidate and public channel matrix remain unexecuted, so generation convergence is not claimed live. |
-| 2026-08-22 | Made immutable corpus receipt verification and its release-authority tests independent of Unix archive and executable conventions. | `scripts/corpus-candidate.mjs` now uses the existing built-in `kb/zip-extract.mjs` path instead of requiring `unzip`; corpus fixtures build deterministic stored ZIPs with Node; protected-release authority tests inject the existing `run` boundary instead of relying on an extensionless shebang executable; and reconciliation assertions accept both native separators. Archive entry names remain available to enforce the exactly-one-file and private-store fences. Focused corpus, reconciliation, release-authority, and extractor tests pass without weakening overwrite refusal, exact-SHA binding, or ambiguous-release fail-closed behavior. |
 | 2026-08-21 | Re-read the shipped-code path after the release-QE failure exposed three index-persistence hash mismatches. | `.github/workflows/ci.yml` now invokes the existing `rvf-index-audit.mjs --repair` restamp before `scripts/build-bundle.mjs` enforces exact ledger closure. A local reproduction on the configured v4.2.1 seed reported `stamped=3`, then assembled 186 audited RVFs with zero index failures; no recursive latest lookup or unbuilt coverage generator is used. |
 | 2026-08-21 | Implemented the emergency correctness slice after Fable 5 and GPT-5.6-Sol convergence. | `.github/workflows/ci.yml` pins the immutable corpus seed; `scripts/build-bundle.mjs` validates strict ledger closure; `bin/install.mjs` retains live plugin roots by exact process-incarnation leases; and the protected publisher rechecks `origin/main` immediately before mutation. Focused integrated tests cover these paths. Rollback-storage receipts, fresh interactive-window proof, and generated coverage remain explicit post-restoration work and are not claimed shipped by this row. |
