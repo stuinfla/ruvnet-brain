@@ -4,7 +4,6 @@ title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
 updated: 2026-08-23
-updated: 2026-08-22
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []

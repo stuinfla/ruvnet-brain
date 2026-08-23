@@ -4,7 +4,6 @@ title: The 95 contract — one observable per dimension, one mutant per observab
 status: Proposed
 date: 2026-07-27
 updated: 2026-08-23
-updated: 2026-08-22
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
