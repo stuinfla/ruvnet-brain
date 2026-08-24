@@ -22,7 +22,7 @@ function fixture() {
   const bin = path.join(dir, 'bin');
   fs.mkdirSync(bin);
   const log = path.join(dir, 'gh-calls.jsonl');
-  const gh = path.join(bin, 'gh');
+  const gh = path.join(bin, process.platform === 'win32' ? 'gh-fixture.mjs' : 'gh');
   fs.writeFileSync(gh, `#!/usr/bin/env node
 import fs from 'node:fs';
 const args = process.argv.slice(2);
@@ -35,6 +35,9 @@ if (args[0] === 'release' && args[1] === 'view') {
 process.exit(0);
 `);
   fs.chmodSync(gh, 0o755);
+  if (process.platform === 'win32') {
+    fs.writeFileSync(path.join(bin, 'gh.cmd'), `@echo off\r\nnode "%~dp0gh-fixture.mjs" %*\r\n`);
+  }
 
   const bundle = path.join(dir, 'ruvnet-brain.zip');
   fs.writeFileSync(bundle, 'sealed corpus bundle');
