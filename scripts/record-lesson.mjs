@@ -19,6 +19,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { resolveRuflo, RUFLO_MISSING } from '../plugin/scripts/ruflo-bin.mjs';
 
 const arg = (name, def = '') => {
   const i = process.argv.indexOf(`--${name}`);
@@ -46,6 +47,12 @@ if (!fs.existsSync(db)) {
   process.exit(2);
 }
 
+const RUFLO = resolveRuflo();
+if (!RUFLO) {
+  console.error(`ERROR: ${RUFLO_MISSING}`);
+  process.exit(2);
+}
+
 const key = `lesson-${slug}`;
 const value = [
   `TASK: ${task}`,
@@ -56,21 +63,37 @@ const value = [
 ].filter(Boolean).join(' ');
 
 const ruflo = (args) =>
-  execFileSync('ruflo', args, { cwd: dir, encoding: 'utf8', timeout: 60000 });
+  // A global npm ruflo is ruflo.cmd on Windows; Node refuses to exec .cmd without a shell
+  // (CVE-2024-27980) -- same guard scripts/distill-project.mjs already carries for this binary.
+  execFileSync(RUFLO, args, { cwd: dir, encoding: 'utf8', timeout: 60000, shell: process.platform === 'win32' });
 
 console.log(`\nRecording lesson into ${path.basename(dir)}/.swarm/memory.db  (namespace: ${ns})`);
 console.log(`  key: ${key}`);
 
-// 1. STORE (native, signal namespace) — L1 content + L2 embedding
-let stored = false;
+// 1a. STORE (native, signal namespace) — L1 content + L2 embedding
 try {
-  const out = ruflo(['memory', 'store', '-k', key, '-n', ns, '--value', value]);
-  stored = /OK|stored/i.test(out);
+  ruflo(['memory', 'store', '-k', key, '-n', ns, '--value', value]);
 } catch (e) {
   console.error('  store FAILED:', String(e.stdout || e.message).split('\n')[0]);
   process.exit(1);
 }
-console.log(`  1. store   -> ${stored ? 'OK' : '?'}`);
+
+// 1b. PROVE THE WRITE (exact-key round trip, ADR-063). `ruflo memory store` printing "[OK] Data
+// stored successfully" is not evidence of a write — that exact line was on stdout throughout the
+// 2026-08-13 incident that left three days of memory unrecoverable (rowcount 0, no store-side
+// error). The only accepted proof in this repo is retrieving the SAME key back through the managed
+// interface and reading the VALUE, the pattern `degradation-watch.mjs`'s `proveMemoryDurable()` and
+// `learning-replay-fixture.mjs`'s `retrieveExact()` already establish — never the store command's
+// own claimed-success wording, and never its exit status (the CLI can exit 0 while printing
+// `[ERROR]`).
+let stored = false;
+try {
+  const back = ruflo(['memory', 'retrieve', '-k', key, '-n', ns, '--value-only', '--path', db]);
+  stored = String(back).includes(value);
+} catch (e) {
+  console.error('  round-trip FAILED:', String(e.stdout || e.message).split('\n')[0]);
+}
+console.log(`  1. store   -> ${stored ? 'OK (round-trip verified)' : 'store reported no error, but retrieve did not return the value'}`);
 
 // 2. REFINE (native) — L3 patterns + L4 episodes
 let batchEpisodes = '?';
