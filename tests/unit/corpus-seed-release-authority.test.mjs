@@ -80,6 +80,7 @@ process.exit(0);
     GITHUB_WORKFLOW: 'protected-release',
     GITHUB_SHA: HEAD,
     GITHUB_REPOSITORY: 'stuinfla/ruvnet-brain',
+    GH_TOKEN: 'fixture-token',
   };
   return { dir, bundle, digest, receipt, receiptFile, tag, args, env, log };
 }
