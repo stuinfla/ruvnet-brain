@@ -42,8 +42,18 @@ function run(args, { rufloBody = null } = {}) {
   const dir = tmp || sandbox();
   let ruflo = '/nonexistent/ruflo';
   if (rufloBody) {
-    ruflo = path.join(dir, 'fake-ruflo');
-    fs.writeFileSync(ruflo, rufloBody, { mode: 0o755 });
+    if (process.platform === 'win32') {
+      // No shebang execution on Windows: keep the POSIX body as-is and shim it through the
+      // Git Bash the windows CI job already relies on -- same pattern distill-project.test.mjs
+      // uses for this exact binary, and record-lesson.mjs's own `shell: win32` guard now expects.
+      const sh = path.join(dir, 'fake-ruflo.sh');
+      fs.writeFileSync(sh, rufloBody);
+      ruflo = path.join(dir, 'fake-ruflo.cmd');
+      fs.writeFileSync(ruflo, `@bash "${sh}" %*\r\n`);
+    } else {
+      ruflo = path.join(dir, 'fake-ruflo');
+      fs.writeFileSync(ruflo, rufloBody, { mode: 0o755 });
+    }
   }
   return spawnSync(process.execPath, [SCRIPT, '--dir', dir, ...args], {
     encoding: 'utf8',

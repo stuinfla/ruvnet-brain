@@ -63,7 +63,9 @@ const value = [
 ].filter(Boolean).join(' ');
 
 const ruflo = (args) =>
-  execFileSync(RUFLO, args, { cwd: dir, encoding: 'utf8', timeout: 60000 });
+  // A global npm ruflo is ruflo.cmd on Windows; Node refuses to exec .cmd without a shell
+  // (CVE-2024-27980) -- same guard scripts/distill-project.mjs already carries for this binary.
+  execFileSync(RUFLO, args, { cwd: dir, encoding: 'utf8', timeout: 60000, shell: process.platform === 'win32' });
 
 console.log(`\nRecording lesson into ${path.basename(dir)}/.swarm/memory.db  (namespace: ${ns})`);
 console.log(`  key: ${key}`);
