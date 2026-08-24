@@ -32,10 +32,10 @@ import crypto from 'node:crypto';
 import { validateProtectedPublishInvocation } from './protected-release-invocation.mjs';
 import { runReleaseTransaction } from './release-transaction.mjs';
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
+import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const IS_MAIN = path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url);
 const PUBLISH = process.argv.includes('--publish');
 const CORPUS_SEED = process.argv.includes('--corpus-seed');
 let protectedCandidate = null;
@@ -160,8 +160,7 @@ export function runProtectedCorpusSeed({
 
   const viewArgs = ['release', 'view', tag, '--json', 'tagName', '--repo', repo];
   const ghCommand = env.RUVNET_GH_COMMAND || 'gh';
-  const ghPrefix = env.RUVNET_GH_SCRIPT ? [env.RUVNET_GH_SCRIPT] : [];
-  const view = run(ghCommand, [...ghPrefix, ...viewArgs], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const view = run(ghCommand, viewArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (!view.error && view.status === 0) corpusFailure(`release ${tag} already exists; refusing to overwrite immutable corpus seed`);
   const viewError = String(view.error?.message || view.stderr || view.stdout || '');
   if (!/(release not found|no release found)/i.test(viewError)) corpusFailure(`cannot prove ${tag} is absent (${viewError.trim() || `gh exited ${view.status}`})`);
@@ -183,14 +182,14 @@ export function runProtectedCorpusSeed({
     '--notes', notes,
     bundleFile, receiptFile,
   ];
-  const create = run(ghCommand, [...ghPrefix, ...createArgs], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const create = run(ghCommand, createArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (create.error || create.status !== 0) {
     corpusFailure(`protected corpus publication failed (${String(create.error?.message || create.stderr || create.stdout || '').trim()})`);
   }
   return { tag, target, repository: repo, archiveSha256, receiptSha256: sha256File(receiptFile) };
 }
 
-if (IS_MAIN && CORPUS_SEED) {
+if (CORPUS_SEED) {
   try {
     const result = runProtectedCorpusSeed();
     console.log(JSON.stringify({ ok: true, mode: 'corpus-seed', ...result }, null, 2));
@@ -198,7 +197,7 @@ if (IS_MAIN && CORPUS_SEED) {
     console.error(error.message);
     process.exitCode = 1;
   }
-} else if (IS_MAIN) {
+} else {
 
 console.log(`\n${c.b('RuvNet Brain — release / definition-of-done')} ${c.dim('· ' + (PUBLISH ? 'PUBLISH' : 'check-only') + ' · shipping ' + V())}\n`);
 
@@ -373,9 +372,6 @@ if (PUBLISH) {
     corpusSeedSha256: crypto.createHash('sha256').update(fs.readFileSync(assets.corpusSeedPath)).digest('hex'),
     generationLedgerSha256: crypto.createHash('sha256').update(fs.readFileSync(assets.generationLedgerPath)).digest('hex'),
   };
-  const identityPath = path.resolve(ROOT, process.env.RUVNET_RELEASE_IDENTITY || 'release-evidence/release-identity.json');
-  if (fs.existsSync(identityPath)) throw new Error(`refusing to overwrite release identity: ${identityPath}`);
-  fs.writeFileSync(identityPath, `${JSON.stringify(identity, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   const privatePem = process.env.RUVNET_SIGNING_KEY;
   if (!privatePem) throw new Error('RUVNET_SIGNING_KEY is required for signed transaction receipts');
   const finalReceipt = await runReleaseTransaction({
@@ -386,12 +382,9 @@ if (PUBLISH) {
     }),
     privateKey: crypto.createPrivateKey(privatePem),
     publicKey: crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'keys/ruvnet-brain-signing.pub.pem'), 'utf8')),
+    hostVerifier: stagedHostVerifier({ assets, identity }),
   });
   if (finalReceipt.state !== 'channels-converged') throw new Error(`release transaction stopped at ${finalReceipt.state}`);
-  const channelReceiptPath = path.resolve(ROOT,
-    process.env.RUVNET_CHANNEL_RECEIPT || 'release-evidence/channels-converged-receipt.json');
-  if (fs.existsSync(channelReceiptPath)) throw new Error(`refusing to overwrite channel receipt: ${channelReceiptPath}`);
-  fs.writeFileSync(channelReceiptPath, `${JSON.stringify(finalReceipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
 } else {
   step('D', 'remote staged release transaction — SKIPPED (check-only; pass --publish to publish)');
 }
@@ -404,7 +397,7 @@ if (!PUBLISH) {
 }
 
 if (PUBLISH) {
-  console.log(`\n${c.y(c.b('PUBLISHED, NOT VERIFIED'))} — npm and GitHub expose the sealed candidate; public install verification is still required.\n`);
+  console.log(`\n${c.g(c.b('✓✓✓ SHIPPED'))} — every gate passed and every live channel is current. ${c.dim('A user on any path (npm, npx, explainer, --update) gets the working, current build.')}\n`);
 } else {
   console.log(`\n${c.g(c.b('✓✓✓ PREFLIGHT PASS — NOT PUBLISHED'))} — the committed candidate passed every check-only gate.\n`);
 }

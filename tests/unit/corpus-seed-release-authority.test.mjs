@@ -81,6 +81,7 @@ process.exit(0);
     GITHUB_SHA: HEAD,
     GITHUB_REPOSITORY: 'stuinfla/ruvnet-brain',
     GH_TOKEN: 'fixture-token',
+    RUVNET_GH_COMMAND: process.platform === 'win32' ? path.join(bin, 'gh.cmd') : path.join(bin, 'gh'),
   };
   return { dir, bundle, digest, receipt, receiptFile, tag, args, env, log };
 }
