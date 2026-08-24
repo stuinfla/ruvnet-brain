@@ -151,13 +151,6 @@ identical value and wrongly report success. This is a pre-existing property of t
 introduced by tonight's diff, and is orthogonal to the incident shape this candidate targets
 (first-write loss) — flagged as a fast-follow, not chased tonight to keep one conceptual change.
 
-## Security Review
-
-No new attack surface. The new code path adds one additional read-only `ruflo memory retrieve` call
-against the same managed store already written to in the same process, at the same trust level. No
-new network call, credential, or write path. `resolveRuflo()` itself is unmodified — this diff only
-adds a caller.
-
 ## Competitors (external landscape, graded)
 
 | System | Memory-durability stance (as documented) | Evidence grade |
@@ -220,8 +213,8 @@ No new attack surface identified.
 
 ```
 SESSION_COMMIT = 72f079f3fb4c562da91aa848e7fade448ff665b6
-REPORT_HASH    = f0d5881f3014cd070c73c71827b3ff530d6f64add3446e64f33786e846e57cf3
-WITNESS        = 11335aa0780f4d092cf9168f0d18c31fb048bd38b10616042070f8f859899c16
+REPORT_HASH    = f8d451c860fbd4352293df7e9503eb40a4ec7565d223fed608e4a31eed5e6c3d
+WITNESS        = bae5c608807325951610fbb554fab2f30396fccf6cca6fc5c5ade0a5587cb4d1
 ```
 
 Verifier (5 steps, reproducible by anyone):
