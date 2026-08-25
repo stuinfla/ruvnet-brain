@@ -172,6 +172,13 @@ if (event === 'Stop') {
   process.exit(0);
 }
 
+// Dream Cycle 2026-08-25: this event's schema has nowhere to carry an envelope at all — see
+// CONTEXT_EVENTS above. The `!parsed` branch below already dropped unparseable prose here; a body
+// that happens to emit VALID JSON (e.g. a stray hookSpecificOutput.additionalContext) used to skip
+// that guard and fall through to a verbatim stdout write, which Codex rejects exactly like prose
+// would. No shipped body does this today, but nothing enforced that it couldn't start.
+if (!CONTEXT_EVENTS.has(event)) process.exit(0);
+
 if (!parsed) {
   // Prose from a shared body. It is only deliverable on an event whose schema has somewhere to put
   // it; everywhere else it is dropped rather than emitted as output the host will reject.
