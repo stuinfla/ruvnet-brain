@@ -204,6 +204,21 @@ describe('the adapter emits output Codex will accept, per event', () => {
     expect(r.stdout, `${event} accepts no output; anything here is a host error`).toBe('');
   });
 
+  it.each(NO_CONTEXT_EVENTS)('drops a body\'s JSON envelope on %s too, not only unparseable prose', (event) => {
+    // Dream Cycle 2026-08-25: the test above only ever fed the adapter TEXT that fails JSON.parse.
+    // A body that happens to emit VALID JSON — e.g. a stray hookSpecificOutput.additionalContext
+    // envelope — skips the `!parsed` guard entirely and fell through to a verbatim stdout write,
+    // even though this event's own Codex schema has nowhere for that envelope to go (same "no
+    // additionalContext at all" / "output does not exist" fact the prose test above already states).
+    // No shipped hook body constructs that today, but nothing stopped one from starting to.
+    const r = runAdapter({
+      shim: 'process.stdin.resume();process.stdin.on("end",()=>process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:"leaked"}})));',
+      payload: { session_id: 'p', hook_event_name: event, cwd: os.tmpdir() },
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout, `${event} accepts no output; a JSON envelope here is as much a host error as prose`).toBe('');
+  });
+
   it('strips every permissionDecision Codex rejects, and keeps deny', () => {
     // The wire enum has allow/deny/ask and Codex accepts one: "PreToolUse hook returned unsupported
     // permissionDecision:allow" / ":ask". The shared bodies also speak "defer", which is in no enum.

@@ -3,7 +3,7 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-20
+updated: 2026-08-25
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -270,6 +270,7 @@ native Windows.
   `/hooks` review procedure while definitions are pending.
 
 ## Currency log
+| 2026-08-25 | **`codex-hook-adapter.mjs`'s output-contract drop only covered unparseable prose; valid-but-wrong-shaped JSON on the two no-output events fell straight through.** | Dream Cycle 2026-08-25 (cross-host-conformance / codex-parity, DEEP+SCAN): §7's OUTPUT CONTRACT states `SessionEnd`/`PreCompact` have no envelope schema at all, and the adapter already dropped unparseable stdout there (the `!parsed` branch, gated on `CONTEXT_EVENTS.has(event)`). But if a body emitted stdout that happened to `JSON.parse` successfully, that guard was skipped entirely and the bytes reached the unconditional `process.stdout.write(stdout)` at the bottom of the file — forwarded to Codex verbatim, on an event whose schema has nowhere to put it. Reproduced live: feeding the adapter `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"leaked"}}` on `hook_event_name:"SessionEnd"` wrote that JSON straight to stdout. No shipped body currently constructs JSON on those two events (`session-snapshot-hook.mjs` writes to a file via `fs.appendFileSync`, never stdout; `learn-flush.mjs`'s only stdout is plain-text `console.log`), so this was latent, not a live incident — the same "check exists and points one surface away from the failure" shape as §7's own `apply_patch` multi-file fix. Fixed with one guard, `if (!CONTEXT_EVENTS.has(event)) process.exit(0);`, placed right after the `Stop` block so it uniformly covers prose and JSON alike. `tests/unit/codex-claude-hook-parity.test.mjs` gains a sibling `it.each(NO_CONTEXT_EVENTS)` case proving the JSON half red-before/green-after; the file's own `wraps a body's plain text` test proved prose already worked. §7's wrapper/adapter architecture, translation rules and doctor lines are otherwise unchanged. |
 | 2026-08-10 | **The Codex host's dependency copy is now DERIVED from server.mjs, and this ADR's contract is strengthened.** | The wiring hand-listed `managed-cli-interface.mjs` and `runtime-preferences.mjs` — a second copy of the server's own import graph. ADR-067 added one import and the Codex host shipped a server whose sibling was absent: `tests/unit/npm-tarball-codex.test.mjs` caught it on the packaging boundary as "no reply to initialize in 15s". `serverDependencies()` now walks the real imports transitively and preserves each specifier so `./x` and `../scripts/y` both land where the server looks. Registration, wrapper, adapter and doctor lines unchanged; what changed is that a future import cannot silently break this host. |
 | 2026-08-03 | Re-read Codex wrapper behavior against the packed 4.0.8 host proof; no contract change. | PR #100 exact-SHA release evidence is green; Windows unit remains the sole required red lane. |
 
