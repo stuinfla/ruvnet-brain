@@ -55,7 +55,7 @@ const gated = BASH ? it : it.skip;
  * returns, so it never needs more); `RM_OPTS_LEARN_FLUSH` is scoped to the one command that is
  * DETACHED by design, with a ceiling comfortably above the documented worst case.
  */
-const RM_OPTS_LEARN_FLUSH = { recursive: true, force: true, maxRetries: 120, retryDelay: 500 };
+const RM_OPTS_LEARN_FLUSH = { recursive: true, force: true, maxRetries: 300, retryDelay: 500 };
 // A manifest command can dispatch learn-flush without naming it in the trampoline text, so the
 // cleanup cannot safely infer detached-child lifetime from the outer command string.
 const rmOptsFor = () => RM_OPTS_LEARN_FLUSH;
