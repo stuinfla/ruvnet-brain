@@ -36,7 +36,10 @@ function validateLegacyGistAggregateReceipt({ receipt, passagesFile, expectedIds
       || files.some((file) => file?.included !== true || typeof file.filename !== 'string'
         || !file.filename || !HEX64.test(String(file.sha256 || ''))
         || !Number.isSafeInteger(file.bytes) || file.bytes < 0)
-      || row.contentDigest !== digest(files)) {
+      // Schema 2 was generated with JSON.stringify(array), before the
+      // canonical-json contract was introduced for schema 3. Preserve that
+      // historical receipt format while keeping the stricter contract below.
+      || row.contentDigest !== crypto.createHash('sha256').update(JSON.stringify(files)).digest('hex')) {
       throw new Error(`legacy gist ${id} receipt is incomplete or internally inconsistent`);
     }
   }
