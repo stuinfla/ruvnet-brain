@@ -505,6 +505,8 @@ jobs:
           # scripts/sign-bundle.mjs:59 writes (`${digest}  ${path.basename(bundle)}`), which is the
           # format the verifier and every user's `shasum -c` both expect.
           ( cd "$RUNNER_TEMP/release-evidence" && sha256sum ruvnet-brain.zip > ruvnet-brain.zip.sha256 )
+      - name: Release preflight regression suite — before host/QE stages
+        run: npm run test:release:preflight
       - name: Derive public verification inputs from exact candidate bytes
         shell: bash
         run: |
