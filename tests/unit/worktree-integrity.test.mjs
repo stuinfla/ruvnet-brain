@@ -12,6 +12,10 @@ import {
 
 const roots = [];
 const git = (cwd, ...args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', cwd, ...args], { encoding: 'utf8' }).trim();
+const canonicalPath = (value) => {
+  const resolved = fs.realpathSync.native(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+};
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mutation-worktree-'));
@@ -103,6 +107,6 @@ describe('author automation mutation boundary', () => {
     expect(allowed.status, allowed.stderr).toBe(0);
     const allowedResult = JSON.parse(allowed.stdout);
     expect(allowedResult).toMatchObject({ allowed: true });
-    expect(fs.realpathSync(allowedResult.worktreeRoot)).toBe(fs.realpathSync(f.linked));
+    expect(canonicalPath(allowedResult.worktreeRoot)).toBe(canonicalPath(f.linked));
   });
 });

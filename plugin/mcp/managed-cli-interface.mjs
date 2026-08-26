@@ -174,9 +174,30 @@ export function resolveManagedExecutable(executable, env = process.env) {
   }) || executable;
 }
 
+function quoteWindowsCommandArg(value) {
+  // cmd.exe is required for npm's .cmd shims. Keep the child_process call itself shell:false,
+  // and quote every literal token so shell metacharacters remain data rather than syntax.
+  // Delayed expansion is disabled by default; doubling percent signs prevents environment
+  // expansion while cmd parses the /c command line.
+  return `"${value.replace(/%/g, '%%').replace(/"/g, '""')}"`;
+}
+
+function spawnSpec(executable, argv, env) {
+  const resolved = resolveManagedExecutable(executable, env);
+  if (process.platform !== 'win32' || !resolved.toLowerCase().endsWith('.cmd')) {
+    return { file: resolved, args: argv };
+  }
+  const command = [resolved, ...argv].map(quoteWindowsCommandArg).join(' ');
+  return {
+    file: env.ComSpec || env.COMSPEC || 'cmd.exe',
+    args: ['/d', '/s', '/c', command],
+  };
+}
+
 function execute(executable, argv, env) {
   return new Promise((resolve) => {
-    const child = spawn(resolveManagedExecutable(executable, env), argv, {
+    const spec = spawnSpec(executable, argv, env);
+    const child = spawn(spec.file, spec.args, {
       env,
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
