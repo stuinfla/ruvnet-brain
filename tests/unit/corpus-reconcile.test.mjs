@@ -123,7 +123,7 @@ describe('reconciliation planning', () => {
 });
 
 describe('reconciliation execution', () => {
-  it('fresh-clones, checks out and verifies the exact SHA before forge-refresh, then verifies the ledger', () => {
+  it('fresh-clones, checks out and verifies the exact SHA before forge-refresh, then verifies the ledger', async () => {
     const root = temp();
     const assetsDir = path.join(root, 'assets');
     const workspaceDir = path.join(root, 'clones');
@@ -140,23 +140,35 @@ describe('reconciliation execution', () => {
       if (command === 'git' && args[0] === 'clone') fs.mkdirSync(args.at(-1), { recursive: true });
       if (command === 'git' && args.includes('rev-parse')) return { status: 0, stdout: `${sha('a')}\n`, stderr: '' };
       if (command === process.execPath && /[\\/]kb[\\/]forge-refresh\.mjs$/.test(args[0])) {
-        fs.writeFileSync(ledgerFile, JSON.stringify({ stores: { alpha: { sourceCommit: sha('a') } } }));
+        const output = args[args.indexOf('--out') + 1];
+        fs.mkdirSync(output, { recursive: true });
+        for (const suffix of ['.big.rvf', '.big.rvf.idmap.json', '.big.rvf.embed.json', '.passages.jsonl', '.meta.json']) {
+          fs.writeFileSync(path.join(output, `alpha${suffix}`), suffix.endsWith('.rvf') ? 'rvf' : '{}');
+        }
+        const rvfDigest = crypto.createHash('sha256').update('rvf').digest('hex');
+        fs.writeFileSync(path.join(output, 'RVF-GENERATIONS.json'), JSON.stringify({ stores: { alpha: {
+          file: 'alpha.big.rvf', sourceCommit: sha('a'), sha256: rvfDigest, bytes: 3,
+          model: 'local', dimensions: 384, builtUtc: '2026-08-21T12:00:00.000Z',
+        } } }));
+        fs.writeFileSync(path.join(output, 'SOURCE.json'), JSON.stringify({ stores: { alpha: { sourceCommit: sha('a') } } }));
       }
       return { status: 0, stdout: '', stderr: '' };
     };
 
-    expect(executeReconciliation({ plan, assetsDir, workspaceDir, root, run })).toEqual({ refreshed: ['alpha'] });
+    await expect(executeReconciliation({ plan, assetsDir, workspaceDir, root, run }))
+      .resolves.toMatchObject({ refreshed: ['alpha'], workers: [{ store: 'alpha', sourceCommit: sha('a') }] });
     expect(calls).toEqual(expect.arrayContaining([
-      ['git', 'clone', '--no-checkout', '--filter=blob:none', 'https://github.com/ruvnet/alpha', expect.stringContaining('alpha')],
-      ['git', '-C', expect.stringContaining('alpha'), 'fetch', '--depth=1', 'origin', sha('a')],
-      ['git', '-C', expect.stringContaining('alpha'), 'checkout', '--detach', 'FETCH_HEAD'],
-      [process.execPath, expect.stringMatching(/[\\/]kb[\\/]forge-refresh\.mjs$/), '--repo', expect.stringContaining('alpha'), '--out', assetsDir, '--name', 'alpha'],
+      ['git', 'clone', '--no-checkout', '--filter=blob:none', 'https://github.com/ruvnet/alpha', expect.stringContaining('/clones/workers/alpha/clone')],
+      ['git', '-C', expect.stringContaining('/clones/workers/alpha/clone'), 'fetch', '--depth=1', 'origin', sha('a')],
+      ['git', '-C', expect.stringContaining('/clones/workers/alpha/clone'), 'checkout', '--detach', 'FETCH_HEAD'],
+      ['git', '-C', expect.stringContaining('/clones/workers/alpha/clone'), 'rev-parse', 'HEAD'],
+      [process.execPath, expect.stringMatching(/[\\/]kb[\\/]forge-refresh\.mjs$/), '--repo', expect.stringContaining('/clones/workers/alpha/clone'), '--out', expect.stringContaining('/clones/workers/alpha/assets'), '--name', 'alpha'],
     ]));
     expect(calls.find((call) => call[0] === process.execPath))
       .toBeTruthy();
   });
 
-  it('stops when forge-refresh does not produce the exact upstream ledger receipt', () => {
+  it('stops when forge-refresh does not produce the exact upstream ledger receipt', async () => {
     const root = temp();
     const assetsDir = path.join(root, 'assets');
     fs.mkdirSync(assetsDir, { recursive: true });
@@ -168,10 +180,23 @@ describe('reconciliation execution', () => {
     const run = (command, args) => {
       if (command === 'git' && args[0] === 'clone') fs.mkdirSync(args.at(-1), { recursive: true });
       if (command === 'git' && args.includes('rev-parse')) return { status: 0, stdout: `${sha('a')}\n`, stderr: '' };
+      if (command === process.execPath && /[\\/]kb[\\/]forge-refresh\.mjs$/.test(args[0])) {
+        const output = args[args.indexOf('--out') + 1];
+        fs.mkdirSync(output, { recursive: true });
+        for (const suffix of ['.big.rvf', '.big.rvf.idmap.json', '.big.rvf.embed.json', '.passages.jsonl', '.meta.json']) {
+          fs.writeFileSync(path.join(output, `alpha${suffix}`), suffix.endsWith('.rvf') ? 'rvf' : '{}');
+        }
+        const rvfDigest = crypto.createHash('sha256').update('rvf').digest('hex');
+        fs.writeFileSync(path.join(output, 'RVF-GENERATIONS.json'), JSON.stringify({ stores: { alpha: {
+          file: 'alpha.big.rvf', sourceCommit: sha('a'), sha256: rvfDigest, bytes: 3,
+          model: 'local', dimensions: 384, builtUtc: '2026-08-21T12:00:00.000Z',
+        } } }));
+        fs.writeFileSync(path.join(output, 'SOURCE.json'), JSON.stringify({ stores: { alpha: { sourceCommit: sha('0') } } }));
+      }
       return { status: 0, stdout: '', stderr: '' };
     };
-    expect(() => executeReconciliation({ plan, assetsDir, workspaceDir: path.join(root, 'clones'), root, run }))
-      .toThrow(/did not bind alpha to the exact upstream SHA/i);
+    await expect(executeReconciliation({ plan, assetsDir, workspaceDir: path.join(root, 'clones'), root, run }))
+      .rejects.toThrow(/worker SOURCE manifest does not bind exact source/i);
   });
 });
 
