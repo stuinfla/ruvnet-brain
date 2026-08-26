@@ -25,8 +25,7 @@ export function digest(value) {
 function validateLegacyGistAggregateReceipt({ receipt, passagesFile, expectedIds }) {
   const ids = Object.keys(receipt?.gists || {});
   if (receipt?.schemaVersion !== 2 || receipt?.owner !== 'ruvnet' || !ids.length
-    || canonicalJson(ids) !== canonicalJson([...ids].sort())
-    || (expectedIds && canonicalJson(ids) !== canonicalJson([...expectedIds].map(String).sort()))) {
+    || (expectedIds && canonicalJson([...ids].sort()) !== canonicalJson([...expectedIds].map(String).sort()))) {
     throw new Error('legacy gist aggregate receipt is malformed or has the wrong gist set');
   }
   for (const id of ids) {
