@@ -24,6 +24,10 @@ on:
 jobs:
   integration:
     runs-on: ubuntu-latest
+    # A blocked child process must fail the workflow instead of consuming GitHub's six-hour default.
+    # The full suite normally completes in under two minutes; fifteen minutes leaves room for cold
+    # dependency/model setup while keeping a runner wedge observable.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
