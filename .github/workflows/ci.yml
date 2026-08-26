@@ -436,6 +436,25 @@ jobs:
           # source identity it will publish.
           test -s kb/ruv-gists.sources.json
           cp kb/ruv-gists.sources.json "${asset_dirs[0]}/ruv-gists.sources.json"
+          # Older seeds also predate the derived-store class registry. Recreate it
+          # from the receipts actually present in this immutable seed; never invent
+          # a store name or silently omit a derived receipt.
+          ASSET_DIR="${asset_dirs[0]}" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const root = process.env.ASSET_DIR;
+          const derived = fs.readdirSync(root).filter((name) => name.endsWith('.sources.json'))
+            .map((name) => {
+              try { return { name, receipt: JSON.parse(fs.readFileSync(path.join(root, name), 'utf8')) }; }
+              catch { return null; }
+            }).filter((entry) => entry?.receipt?.kind === 'ruvnet-brain-derived-store-receipt')
+            .map(({ name, receipt }) => ({ store: String(receipt.store).toLowerCase(), receipt: name }))
+            .filter(({ store }) => store && store !== 'ruv-gists')
+            .sort((a, b) => a.store.localeCompare(b.store));
+          if (new Set(derived.map(({ store }) => store)).size !== derived.length) throw new Error('seed has duplicate derived store receipts');
+          fs.writeFileSync(path.join(root, 'public-store-classes.json'), `${JSON.stringify({ schemaVersion: 1, derived }, null, 2)}\n`);
+          console.log(`derived-store classes: ${derived.length} (${derived.map(({ store }) => store).join(', ') || 'none'})`);
+          NODE
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const coverage = JSON.parse(fs.readFileSync('data/source-coverage.json', 'utf8'));
