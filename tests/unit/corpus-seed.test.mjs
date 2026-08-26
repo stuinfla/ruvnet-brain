@@ -24,6 +24,22 @@ function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
+function createArchive(bundle, root, { update = false, file = null } = {}) {
+  if (process.platform === 'win32') {
+    const source = file || path.join(root, 'ruvnet-brain');
+    const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+    const command = update
+      ? `Compress-Archive -LiteralPath ${quote(source)} -Update -DestinationPath ${quote(bundle)}`
+      : `Compress-Archive -Path ${quote(source)} -DestinationPath ${quote(bundle)} -Force`;
+    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command]);
+    return;
+  }
+  const args = update
+    ? ['-q', '-u', bundle, path.relative(root, file)]
+    : ['-qr', bundle, 'ruvnet-brain'];
+  execFileSync('zip', args, { cwd: root });
+}
+
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-seed-'));
   dirs.push(root);
@@ -78,7 +94,7 @@ function fixture() {
     sources: [{ name: 'alpha', status: 'CURRENT', eligible: true }],
   }));
   const bundle = path.join(root, 'ruvnet-brain.zip');
-  execFileSync('zip', ['-qr', bundle, 'ruvnet-brain'], { cwd: path.dirname(bundleDir) });
+  createArchive(bundle, path.dirname(bundleDir));
   return {
     root,
     assetsDir,
@@ -159,8 +175,8 @@ describe('immutable corpus candidate receipt', () => {
     const privateFixture = fixture();
     const archiveRoot = path.join(privateFixture.root, 'bundle', 'ruvnet-brain');
     fs.writeFileSync(path.join(archiveRoot, 'secret.big.rvf'), 'private-rvf');
-    execFileSync('zip', ['-q', '-u', privateFixture.bundle, 'ruvnet-brain/secret.big.rvf'], {
-      cwd: path.dirname(archiveRoot),
+    createArchive(privateFixture.bundle, path.dirname(archiveRoot), {
+      update: true, file: path.join(archiveRoot, 'secret.big.rvf'),
     });
     expect(() => create(privateFixture)).toThrow(/private store.*archive/i);
 
@@ -226,7 +242,7 @@ describe('immutable corpus seed publishing', () => {
     expect(calls[1]).toMatchObject({
       command: process.execPath,
       args: expect.arrayContaining([
-        expect.stringMatching(/scripts\/release\.mjs$/),
+        expect.stringMatching(/[\\/]scripts[\\/]release\.mjs$/),
         '--corpus-seed',
         '--corpus-tag', corpusSeedTag(receipt),
         '--corpus-bundle', f.bundle,
