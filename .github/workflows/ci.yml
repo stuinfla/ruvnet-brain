@@ -441,8 +441,18 @@ jobs:
           # a store name or silently omit a derived receipt.
           ASSET_DIR="${asset_dirs[0]}" node --input-type=module <<'NODE'
           import fs from 'node:fs';
+          import crypto from 'node:crypto';
           import path from 'node:path';
           const root = process.env.ASSET_DIR;
+          const digestFile = (file) => crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex');
+          if (fs.existsSync(path.join(root, 'concepts.passages.jsonl')) && fs.existsSync(path.join(root, 'concepts.meta.json'))
+            && !fs.existsSync(path.join(root, 'concepts.sources.json'))) {
+            fs.writeFileSync(path.join(root, 'concepts.sources.json'), `${JSON.stringify({
+              schemaVersion: 1, kind: 'ruvnet-brain-derived-store-receipt', store: 'concepts',
+              inputs: [{ path: 'concepts.meta.json', sha256: digestFile('concepts.meta.json') }],
+              passagesSha256: digestFile('concepts.passages.jsonl'),
+            }, null, 2)}\n`);
+          }
           const derived = fs.readdirSync(root).filter((name) => name.endsWith('.sources.json'))
             .map((name) => {
               try { return { name, receipt: JSON.parse(fs.readFileSync(path.join(root, name), 'utf8')) }; }

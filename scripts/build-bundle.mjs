@@ -284,7 +284,7 @@ cpDir(path.join(ROOT, 'primer'), path.join(OUT, 'primer'));
 // time so code-implemented capabilities are retrievable as high-confidence prose. discoverRepos in the
 // bundle finds concepts.big.rvf automatically, so search_ruvnet searches it with no extra config.
 const hasConcepts = fs.existsSync(path.join(ASSETS, 'concepts.big.rvf'));
-if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.json', 'concepts.big.rvf.embed.json', 'concepts.big.passages.jsonl', 'concepts.big.meta.json', 'concepts.passages.jsonl', 'concepts.meta.json']) cp(suf, OUT, { asset: true });
+if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.json', 'concepts.big.rvf.embed.json', 'concepts.big.passages.jsonl', 'concepts.big.meta.json', 'concepts.passages.jsonl', 'concepts.meta.json', 'concepts.sources.json']) cp(suf, OUT, { asset: true });
 
 // RUV-GISTS store (rUv's public gists — release notes / integration dossiers; big-only, same shape as
 // concepts, unioned by search_ruvnet at query time). BUG FIX: only `concepts` was special-cased above,
