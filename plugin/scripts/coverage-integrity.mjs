@@ -33,9 +33,11 @@ function validateLegacyGistAggregateReceipt({ receipt, passagesFile, expectedIds
     const files = row?.files;
     if (!HEX_GIST.test(id) || !/^[a-f0-9]{40}$/.test(String(row?.versionSha || ''))
       || !Array.isArray(files) || !files.length
-      || files.some((file) => file?.included !== true || typeof file.filename !== 'string'
-        || !file.filename || !HEX64.test(String(file.sha256 || ''))
-        || !Number.isSafeInteger(file.bytes) || file.bytes < 0)
+      || files.some((file) => typeof file?.filename !== 'string' || !file.filename
+        || (file.included === true
+          ? !HEX64.test(String(file.sha256 || '')) || !Number.isSafeInteger(file.bytes) || file.bytes < 0
+          : file.included !== false || typeof file.reason !== 'string' || !file.reason
+            || !Number.isSafeInteger(file.size) || file.size < 0))
       // Schema 2 was generated with JSON.stringify(array), before the
       // canonical-json contract was introduced for schema 3. Preserve that
       // historical receipt format while keeping the stricter contract below.
