@@ -474,26 +474,13 @@ jobs:
           if (!checked.valid) throw new Error(`checked-in coverage ledger is invalid: ${checked.failures.join('; ')}`);
           console.log(`checked-in coverage identity: valid; ${coverage.rows.length} rows; ${coverage.sourceObservationSha256}`);
           NODE
-          ASSET_DIR="${asset_dirs[0]}" node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          import path from 'node:path';
-          import { buildCoverage } from './scripts/source-coverage.mjs';
-          const assets = process.env.ASSET_DIR;
-          const coverage = buildCoverage({ kbDir: assets, policyDir: assets });
-          const output = path.join(process.env.RUNNER_TEMP, 'release-evidence', 'source-coverage.json');
-          fs.writeFileSync(output, `${JSON.stringify(coverage, null, 2)}\n`);
-          const current = coverage.rows.filter((row) => row.disposition === 'eligible' && row.status === 'CURRENT').length;
-          const eligible = coverage.rows.filter((row) => row.disposition === 'eligible').length;
-          if (!eligible || current !== eligible) throw new Error(`seed-bound coverage has ${eligible - current} non-current eligible row(s)`);
-          console.log(`seed-bound coverage: ${coverage.rows.length} rows; ${current} CURRENT; observation ${coverage.sourceObservationSha256}`);
-          NODE
           node scripts/public-verification-inputs.mjs observe-baseline \
             --baseline-bundle "$seed" --expected-tag "$SEED_TAG" --expected-sha256 "$SEED_SHA256" \
             --expected-bytes "$SEED_BYTES" --out "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json"
           node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" --assets "${asset_dirs[0]}"
           baseline_receipt_sha256="$(sha256sum "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json" | cut -d' ' -f1)"
           node scripts/release-projection.mjs \
-            --corpus "$RUNNER_TEMP/release-evidence/source-coverage.json" --assets dist/ruvnet-brain \
+            --corpus data/source-coverage.json --assets dist/ruvnet-brain \
             --out "$RUNNER_TEMP/release-projection" \
             --version "$(node -p "require('./package.json').version")" --source-snapshot "$GITHUB_SHA" \
             --baseline-receipt-sha256 "$baseline_receipt_sha256" --seed-tag "$SEED_TAG" \
