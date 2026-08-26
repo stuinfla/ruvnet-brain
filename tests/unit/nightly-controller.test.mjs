@@ -49,7 +49,7 @@ describe('nightly controller delegates to the installer scheduler', () => {
     expect(fs.existsSync(path.join(f.home, 'Library'))).toBe(false);
   });
 
-  it('keeps a console fixture disable inside its explicit root and never calls launchctl', () => {
+  it.skipIf(process.platform !== 'darwin')('keeps a console fixture disable inside its explicit root and never calls launchctl', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-nightly-real-door-'));
     roots.push(root);
     const liveHome = path.join(root, 'live-home');
