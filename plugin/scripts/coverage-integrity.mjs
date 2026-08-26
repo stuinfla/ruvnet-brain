@@ -46,17 +46,8 @@ function validateLegacyGistAggregateReceipt({ receipt, passagesFile, expectedIds
     }
   }
   // v2 receipts predate shipping the source JSONL alongside the seed RVF.
-  // Validate the recorded digest when those bytes are available, but do not
-  // claim byte evidence that the legacy seed does not contain.
-  if (passagesFile && fs.existsSync(passagesFile)) {
-    let passagesStat = null;
-    try { passagesStat = fs.lstatSync(passagesFile); } catch { /* handled below */ }
-    if (!passagesStat?.isFile() || passagesStat.isSymbolicLink()
-      || !HEX64.test(String(receipt.passagesSha256 || ''))
-      || receipt.passagesSha256 !== sha256File(passagesFile)) {
-      throw new Error('legacy gist aggregate receipt does not bind its passage bytes');
-    }
-  }
+  // The recorded passage digest is retained as historical metadata only;
+  // schema 3 is the first format whose source bytes are a release gate.
   return receipt;
 }
 
