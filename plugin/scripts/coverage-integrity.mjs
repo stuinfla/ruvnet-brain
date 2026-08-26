@@ -22,8 +22,40 @@ export function digest(value) {
   return crypto.createHash('sha256').update(typeof value === 'string' ? value : canonicalJson(value)).digest('hex');
 }
 
+function validateLegacyGistAggregateReceipt({ receipt, passagesFile, expectedIds }) {
+  const ids = Object.keys(receipt?.gists || {});
+  if (receipt?.schemaVersion !== 2 || receipt?.owner !== 'ruvnet' || !ids.length
+    || canonicalJson(ids) !== canonicalJson([...ids].sort())
+    || (expectedIds && canonicalJson(ids) !== canonicalJson([...expectedIds].map(String).sort()))) {
+    throw new Error('legacy gist aggregate receipt is malformed or has the wrong gist set');
+  }
+  for (const id of ids) {
+    const row = receipt.gists[id];
+    const files = row?.files;
+    if (!HEX_GIST.test(id) || !/^[a-f0-9]{40}$/.test(String(row?.versionSha || ''))
+      || !Array.isArray(files) || !files.length
+      || files.some((file) => file?.included !== true || typeof file.filename !== 'string'
+        || !file.filename || !HEX64.test(String(file.sha256 || ''))
+        || !Number.isSafeInteger(file.bytes) || file.bytes < 0)
+      || row.contentDigest !== digest(files)) {
+      throw new Error(`legacy gist ${id} receipt is incomplete or internally inconsistent`);
+    }
+  }
+  let passagesStat = null;
+  try { passagesStat = fs.lstatSync(passagesFile); } catch { /* handled below */ }
+  if (!passagesStat?.isFile() || passagesStat.isSymbolicLink()
+    || !HEX64.test(String(receipt.passagesSha256 || ''))
+    || receipt.passagesSha256 !== sha256File(passagesFile)) {
+    throw new Error('legacy gist aggregate receipt does not bind its passage bytes');
+  }
+  return receipt;
+}
+
 export function validateGistAggregateReceipt({ receipt, passagesFile, expectedIds = null,
   sourceObservationSha256 = null }) {
+  if (receipt?.schemaVersion === 2 && sourceObservationSha256 === null) {
+    return validateLegacyGistAggregateReceipt({ receipt, passagesFile, expectedIds });
+  }
   if (receipt?.schemaVersion !== 3 || receipt?.kind !== 'ruvnet-brain-gist-source-receipts'
     || !receipt.gists || typeof receipt.gists !== 'object' || Array.isArray(receipt.gists)
     || !HEX64.test(String(receipt.sourceObservationSha256 || ''))) {
