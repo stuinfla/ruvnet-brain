@@ -158,11 +158,11 @@ describe('reconciliation execution', () => {
     await expect(executeReconciliation({ plan, assetsDir, workspaceDir, root, run }))
       .resolves.toMatchObject({ refreshed: ['alpha'], workers: [{ store: 'alpha', sourceCommit: sha('a') }] });
     expect(calls).toEqual(expect.arrayContaining([
-      ['git', 'clone', '--no-checkout', '--filter=blob:none', 'https://github.com/ruvnet/alpha', expect.stringContaining('/clones/workers/alpha/clone')],
-      ['git', '-C', expect.stringContaining('/clones/workers/alpha/clone'), 'fetch', '--depth=1', 'origin', sha('a')],
-      ['git', '-C', expect.stringContaining('/clones/workers/alpha/clone'), 'checkout', '--detach', 'FETCH_HEAD'],
-      ['git', '-C', expect.stringContaining('/clones/workers/alpha/clone'), 'rev-parse', 'HEAD'],
-      [process.execPath, expect.stringMatching(/[\\/]kb[\\/]forge-refresh\.mjs$/), '--repo', expect.stringContaining('/clones/workers/alpha/clone'), '--out', expect.stringContaining('/clones/workers/alpha/assets'), '--name', 'alpha'],
+      ['git', 'clone', '--no-checkout', '--filter=blob:none', 'https://github.com/ruvnet/alpha', expect.stringMatching(/[\\/]clones[\\/]workers[\\/]alpha[\\/]clone$/)],
+      ['git', '-C', expect.stringMatching(/[\\/]clones[\\/]workers[\\/]alpha[\\/]clone$/), 'fetch', '--depth=1', 'origin', sha('a')],
+      ['git', '-C', expect.stringMatching(/[\\/]clones[\\/]workers[\\/]alpha[\\/]clone$/), 'checkout', '--detach', 'FETCH_HEAD'],
+      ['git', '-C', expect.stringMatching(/[\\/]clones[\\/]workers[\\/]alpha[\\/]clone$/), 'rev-parse', 'HEAD'],
+      [process.execPath, expect.stringMatching(/[\\/]kb[\\/]forge-refresh\.mjs$/), '--repo', expect.stringMatching(/[\\/]clones[\\/]workers[\\/]alpha[\\/]clone$/), '--out', expect.stringMatching(/[\\/]clones[\\/]workers[\\/]alpha[\\/]assets$/), '--name', 'alpha'],
     ]));
     expect(calls.find((call) => call[0] === process.execPath))
       .toBeTruthy();

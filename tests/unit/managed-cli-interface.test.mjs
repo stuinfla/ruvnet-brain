@@ -55,7 +55,7 @@ describe('managed CLI structured interface policy', () => {
 
   it('pins Ruflo to the one global binary when it exists', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-ruflo-home-'));
-    const canonical = path.join(home, '.npm-global', 'bin', 'ruflo');
+    const canonical = path.join(home, '.npm-global', 'bin', process.platform === 'win32' ? 'ruflo.cmd' : 'ruflo');
     fs.mkdirSync(path.dirname(canonical), { recursive: true });
     fs.writeFileSync(canonical, '#!/bin/sh\nexit 0\n');
     fs.chmodSync(canonical, 0o755);
@@ -69,7 +69,9 @@ describe('managed CLI structured interface policy', () => {
     const canonical = path.join(home, '.npm-global', 'bin', 'ruflo');
     const evidence = path.join(home, 'live-evidence.jsonl');
     fs.mkdirSync(path.dirname(canonical), { recursive: true });
-    fs.writeFileSync(canonical, '#!/bin/sh\nprintf "ruflo v3.38.16\\n"\n');
+    fs.writeFileSync(canonical, process.platform === 'win32'
+      ? '@echo ruflo v3.38.16\r\n'
+      : '#!/bin/sh\nprintf "ruflo v3.38.16\\n"\n');
     fs.chmodSync(canonical, 0o755);
     const env = {
       ...process.env,

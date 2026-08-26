@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
 import { digest, releaseCoverageGenerationFor } from '../../scripts/coverage-integrity.mjs';
 import { sealRetrievalQueryEvidence } from '../../scripts/retrieval-canary.mjs';
 import { buildHostRegistry } from '../../scripts/host-registry.mjs';
 import { transactionIdFor } from '../../scripts/release-transaction.mjs';
 import { createPublicVerificationLane } from '../../scripts/public-verification-lane.mjs';
 
-const ROOT = new URL('../..', import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const artifactSha256 = 'a'.repeat(64);
 const bundleSha256 = 'b'.repeat(64);
 const sourceSha = 'c'.repeat(40);

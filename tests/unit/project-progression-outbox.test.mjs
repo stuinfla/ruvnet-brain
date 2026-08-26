@@ -41,7 +41,7 @@ describe('ProjectProgression crash outbox', () => {
 
     expect(appended).toMatchObject({ type: 'snapshot', eventKey: snapshot().eventKey });
     expect(synced).toHaveLength(1);
-    expect(fs.statSync(outbox.path).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') expect(fs.statSync(outbox.path).mode & 0o777).toBe(0o600);
     expect(outbox.pendingSnapshots()).toEqual([snapshot()]);
 
     outbox.markCommitted({

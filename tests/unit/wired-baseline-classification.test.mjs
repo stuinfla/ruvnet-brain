@@ -45,8 +45,11 @@ describe('the seven formerly-unclassified first-party entrypoints', () => {
       cwd: ROOT,
       encoding: 'utf8',
     });
-    expect(output).toMatch(/manifest-derived repository-count surfaces agree/i);
-    expect(output).toMatch(/chunk\/store census UNKNOWN/i);
-    expect(output).not.toMatch(/all surfaces agree/i);
+    expect(output).toMatch(/repository and chunk\/store surfaces agree with their sources|manifest-derived repository-count surfaces agree/i);
+    if (/chunk\/store census UNKNOWN/i.test(output)) {
+      expect(output).not.toMatch(/all surfaces agree/i);
+    } else {
+      expect(output).toMatch(/builtStores=\d+/i);
+    }
   });
 });

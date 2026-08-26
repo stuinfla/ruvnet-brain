@@ -167,13 +167,11 @@ function writeStamps(executable, argv, env) {
 export function resolveManagedExecutable(executable, env = process.env) {
   if (executable !== 'ruflo') return executable;
   const home = env.HOME || os.homedir();
-  const canonical = path.join(home, '.npm-global', 'bin', 'ruflo');
-  try {
-    fs.accessSync(canonical, fs.constants.X_OK);
-    return canonical;
-  } catch {
-    return executable;
-  }
+  const candidates = [path.join(home, '.npm-global', 'bin', 'ruflo')];
+  if (process.platform === 'win32') candidates.push(`${candidates[0]}.cmd`);
+  return candidates.find((candidate) => {
+    try { fs.accessSync(candidate, fs.constants.X_OK); return true; } catch { return false; }
+  }) || executable;
 }
 
 function execute(executable, argv, env) {

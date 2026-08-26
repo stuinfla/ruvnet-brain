@@ -101,9 +101,8 @@ describe('author automation mutation boundary', () => {
     expect(denied.status).toBe(2);
     expect(denied.stderr).toMatch(/primary checkout is immutable/i);
     expect(allowed.status, allowed.stderr).toBe(0);
-    expect(JSON.parse(allowed.stdout)).toMatchObject({
-      allowed: true,
-      worktreeRoot: fs.realpathSync(f.linked),
-    });
+    const allowedResult = JSON.parse(allowed.stdout);
+    expect(allowedResult).toMatchObject({ allowed: true });
+    expect(path.normalize(allowedResult.worktreeRoot)).toBe(path.normalize(fs.realpathSync(f.linked)));
   });
 });

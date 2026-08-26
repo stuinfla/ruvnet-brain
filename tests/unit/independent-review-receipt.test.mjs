@@ -383,7 +383,7 @@ describe('independent review receipt CLI', () => {
     expect(main(['produce', '--input', solInputFile, '--out', solReceipt], {
       env: { RUVNET_REVIEW_SIGNING_KEY: solKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }) }, stdout, stderr,
     })).toBe(0);
-    expect(fs.statSync(fableReceipt).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') expect(fs.statSync(fableReceipt).mode & 0o777).toBe(0o600);
     expect(main(['verify', '--receipt', fableReceipt, '--public-key', fablePublic], { stdout, stderr })).toBe(0);
     const expectedIdentity = path.join(root, 'expected-identity.json');
     const fableRow = JSON.parse(fs.readFileSync(fableReceipt, 'utf8'));

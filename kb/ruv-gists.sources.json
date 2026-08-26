@@ -2,13 +2,13 @@
   "schemaVersion": 3,
   "kind": "ruvnet-brain-gist-source-receipts",
   "owner": "ruvnet",
-  "generated": "2026-08-26T18:43:12.944Z",
-  "observedAt": "2026-08-26T18:42:42.525Z",
-  "sourceObservationSha256": "4c7355afc15d3827b4705393e39e88a62c81e7a6f8f25db4e609d91cfdc452b7",
+  "generated": "2026-08-26T20:18:58.639Z",
+  "observedAt": "2026-08-26T20:18:33.143Z",
+  "sourceObservationSha256": "000f8d547c279efcdc95f376b23f48a5d9f77d8fdb937f756396e4edbe8b26b3",
   "gistSet": {
     "count": 479,
     "idsSha256": "1ed787ea4461a098fbae09bf1d8215241f238bb1511723472738ba6b64b190f3",
-    "observationSha256": "4c7355afc15d3827b4705393e39e88a62c81e7a6f8f25db4e609d91cfdc452b7"
+    "observationSha256": "000f8d547c279efcdc95f376b23f48a5d9f77d8fdb937f756396e4edbe8b26b3"
   },
   "sourceSetSha256": "3bbbb95a818ac1d3053cea8dcce6a9c195ce813e4b32f8689ef4e87e7e2ddadf",
   "passagesSha256": "aa05bde0bc0f29b2ab95210131e090c763c0a7ee655af55f7004ba953334bd7f",
@@ -11268,5 +11268,5 @@
       "receiptSha256": "c30c8d95edb2634e9175355996aa1380b6c8dfffe006e299d3fd0e9bba8c4019"
     }
   },
-  "receiptSha256": "6a25b04c10ed133bed17c40ff093e7abfef434a38d60f20ff05842fb93fdbb25"
+  "receiptSha256": "f250fad1f68ed34322f676ed5273527d7e9e98b78e88841baae76745a7cd5523"
 }
