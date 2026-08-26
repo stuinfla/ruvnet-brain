@@ -3,7 +3,7 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-26
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -216,6 +216,7 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-26 | `scripts/brain-stamp.mjs`'s `builtFromSha` now prefers `kb/RVF-GENERATIONS.json`'s recorded `sourceCommit` over the local clone's live HEAD, via a new pure `scripts/brain-stamp-resolve.mjs` helper; falls back to live HEAD only when no generation record exists. Does not itself satisfy this ADR's still-unbuilt signed enumeration, closed snapshot, or `data/source-coverage.json` generator. | Dream Cycle 2026-08-26 (issue #175) confirmed live the exact "clone freshness is not artifact freshness" gap this ADR's 2026-08-21 audit named against `scripts/brain-stamp.mjs`: the repo's own committed `kb/RVF-GENERATIONS.json` already disagreed with a live-HEAD read for `synthlang` (`sourceCommit` `69599563...`) and `autogenous` (`sourceCommit` `b5c6e838...`), the same two repos this ADR's Context section cites. |
 | 2026-08-21 | Re-read the emergency release rail and kept the broader source-coverage system explicitly unbuilt. | `.github/workflows/ci.yml` does not call the absent `scripts/source-coverage.mjs` or claim its absent projections. It uses the committed immutable seed identity plus strict repaired generation receipts to restore service; this ADR's complete coverage generator remains deferred. |
 | 2026-08-21 | Corrected the earlier implementation claim: the coverage command and Console projection remain planned, not shipped. | The named `plugin/commands/coverage.md`, `plugin/scripts/coverage.mjs`, and Console coverage files do not exist in this candidate. The emergency release implements corpus-seed and ledger identity only; the broader coverage read model remains Proposed and is explicitly deferred until after service is restored. |
 | 2026-08-21 | Re-read the governed release paths after emergency corpus convergence. | `scripts/build-bundle.mjs` now fails closed on seed/ledger byte and metadata disagreement and `.github/workflows/ci.yml` consumes an exact sealed seed. This advances the artifact boundary but does not satisfy this ADR's unbuilt UI, exemptions, or full coverage-report contract. |
