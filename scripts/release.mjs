@@ -159,7 +159,9 @@ export function runProtectedCorpusSeed({
   if (digestMatch[1] !== archiveSha256) corpusFailure('corpus tag digest does not match the receipt and archive');
 
   const viewArgs = ['release', 'view', tag, '--json', 'tagName', '--repo', repo];
-  const view = run('gh', viewArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const ghCommand = env.RUVNET_GH_COMMAND || 'gh';
+  const ghPrefix = env.RUVNET_GH_SCRIPT ? [env.RUVNET_GH_SCRIPT] : [];
+  const view = run(ghCommand, [...ghPrefix, ...viewArgs], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (!view.error && view.status === 0) corpusFailure(`release ${tag} already exists; refusing to overwrite immutable corpus seed`);
   const viewError = String(view.error?.message || view.stderr || view.stdout || '');
   if (!/(release not found|no release found)/i.test(viewError)) corpusFailure(`cannot prove ${tag} is absent (${viewError.trim() || `gh exited ${view.status}`})`);
@@ -181,7 +183,7 @@ export function runProtectedCorpusSeed({
     '--notes', notes,
     bundleFile, receiptFile,
   ];
-  const create = run('gh', createArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const create = run(ghCommand, [...ghPrefix, ...createArgs], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (create.error || create.status !== 0) {
     corpusFailure(`protected corpus publication failed (${String(create.error?.message || create.stderr || create.stdout || '').trim()})`);
   }
