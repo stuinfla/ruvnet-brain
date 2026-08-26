@@ -431,6 +431,11 @@ jobs:
           # token cannot read the ruvnet user's gists endpoint (403), so release CI must consume the
           # exact checked-in observation rather than silently inventing a partial live substitute.
           test -s data/source-coverage.json
+          # The immutable seed predates the tracked gist aggregate receipt. Rebind that receipt
+          # from this candidate before bundle assembly so ReleaseProjection can validate the same
+          # source identity it will publish.
+          test -s kb/ruv-gists.sources.json
+          cp kb/ruv-gists.sources.json "${asset_dirs[0]}/ruv-gists.sources.json"
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const coverage = JSON.parse(fs.readFileSync('data/source-coverage.json', 'utf8'));
