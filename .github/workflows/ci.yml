@@ -467,8 +467,11 @@ jobs:
           NODE
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
+          import { validateCoverageLedger } from './plugin/scripts/coverage-integrity.mjs';
           const coverage = JSON.parse(fs.readFileSync('data/source-coverage.json', 'utf8'));
           if (coverage.kind !== 'ruvnet-brain-corpus-coverage') throw new Error('checked-in coverage is not a corpus ledger');
+          const checked = validateCoverageLedger(coverage);
+          if (!checked.valid) throw new Error(`checked-in coverage ledger is invalid: ${checked.failures.join('; ')}`);
           const blockers = coverage.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
           if (blockers.length) throw new Error(`checked-in coverage has ${blockers.length} non-current eligible row(s)`);
           console.log(`coverage preflight: ${coverage.rows.length} rows; ${coverage.totals.byStatus.CURRENT} CURRENT`);
