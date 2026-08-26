@@ -436,6 +436,15 @@ jobs:
           # source identity it will publish.
           test -s kb/ruv-gists.sources.json
           cp kb/ruv-gists.sources.json "${asset_dirs[0]}/ruv-gists.sources.json"
+          # The seed's gist RVF is also immutable and can lag the checked-in receipt when rUv edits
+          # a gist. Reconstruct the canonical passages from the exact versioned raw files and forge
+          # that aggregate before projection; overlaying metadata onto stale vectors is forbidden.
+          npm ci --prefix kb --ignore-scripts
+          node scripts/rebuild-gists-from-receipts.mjs \
+            --sources "${asset_dirs[0]}/ruv-gists.sources.json" \
+            --out-dir "${asset_dirs[0]}" --concurrency 12
+          node kb/forge-big.mjs both --dir "${asset_dirs[0]}" --name ruv-gists
+          node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}" --repair
           # Older seeds also predate the derived-store class registry. Recreate it
           # from the receipts actually present in this immutable seed; never invent
           # a store name or silently omit a derived receipt.
