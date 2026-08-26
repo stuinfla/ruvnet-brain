@@ -32,6 +32,9 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   const eligible = corpusCoverage.rows.filter((row) => row.disposition === 'eligible');
   if (!eligible.length || eligible.some((row) => row.status !== 'CURRENT')) throw new Error('eligible corpus rows are not all CURRENT');
   const publicStores = [...new Set(eligible.map((row) => String(row.artifact.store).toLowerCase()))];
+  // Derived public stores are not corpus rows, but they are still part of the
+  // exact shipped generation ledger when the candidate asset set contains them.
+  if (sourceLedger.stores?.concepts && !publicStores.includes('concepts')) publicStores.push('concepts');
   const ledger = projectPublicGenerationLedger({ ledger: sourceLedger, publicStores, version, sourceSnapshot });
   const releaseBase = {
     schemaVersion: 1, kind: 'ruvnet-brain-release-coverage', owner: corpusCoverage.owner,
