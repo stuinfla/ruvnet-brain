@@ -1,1 +1,716 @@
-699 rows
+# RuvNet Brain source coverage
+
+Generated: 2026-08-26T18:42:42.525Z  
+Coverage generation: `d61c4f947ab60acc86facbd53b2c39a5f8cde13ae65065325c72c4e261c1b968`  
+Repositories: 220 · Gists: 479 · CURRENT 479 · INELIGIBLE 34 · MISSING 186
+
+> `CURRENT` is artifact-bound. Clone state and timestamps alone never establish freshness.
+
+## Repositories
+
+| Repository | Upstream updated | Upstream SHA | Ingested | Ingested SHA | State | Reason |
+|---|---:|---|---:|---|---|---|
+| [claude-test](https://github.com/ruvnet/claude-test) | 2025-06-24T18:31:38Z | 294a32462f21c2bc3399b1dd85cdaee1b64912d4 | — | — | MISSING | canonical RVF is absent |
+| [QuDAG](https://github.com/ruvnet/QuDAG) | 2026-05-23T09:15:50Z | 6c17c5974b75e5ab367b6023256d10d2b20e033a | 2026-07-30T17:24:56.258Z | — | MISSING | canonical RVF is absent |
+| [dreamfactory](https://github.com/ruvnet/dreamfactory) | 2025-05-15T16:09:14Z | 4dd4a4bd5cb1265781a3ad7669301440686e4f01 | — | — | INELIGIBLE | fork |
+| [yyz-agentics-june](https://github.com/ruvnet/yyz-agentics-june) | 2025-06-25T16:46:03Z | 1f1ec86361dd6b4782a642a24afd77de857ba4f7 | — | — | MISSING | canonical RVF is absent |
+| [ruv-FANN](https://github.com/ruvnet/ruv-FANN) | 2026-05-23T09:12:08Z | 1d93b35a1f49ad4ee6c7ac9223f74f6a6255b25d | 2026-07-30T17:24:56.321Z | — | MISSING | canonical RVF is absent |
+| [swarm-world](https://github.com/ruvnet/swarm-world) | 2025-07-12T16:08:18Z | c6eb5e7af089ab4f94806ba3a25b96882d0e2c90 | — | — | MISSING | canonical RVF is absent |
+| [Synaptic-Mesh](https://github.com/ruvnet/Synaptic-Mesh) | 2026-05-23T09:04:21Z | 7b70a3d59ba14bdfa632730f03d65b46d68e0625 | 2026-07-30T17:24:56.472Z | — | MISSING | canonical RVF is absent |
+| [code-mesh](https://github.com/ruvnet/code-mesh) | 2025-07-17T15:52:21Z | 3a6fe2f1df7a096b217cbdbc65d5f126ebf0b0b9 | — | — | MISSING | canonical RVF is absent |
+| [Quantum-Virtual-Machine](https://github.com/ruvnet/Quantum-Virtual-Machine) | 2025-08-11T19:06:39Z | b8930802741c1680ad59dacc8d77a507836df4b9 | — | — | MISSING | canonical RVF is absent |
+| [alienator](https://github.com/ruvnet/alienator) | 2025-08-14T22:54:40Z | faf36f827d8c3f3d76bc5bdba47ee75c2cb6cf20 | — | — | MISSING | canonical RVF is absent |
+| [flow-nexus](https://github.com/ruvnet/flow-nexus) | 2025-09-10T22:44:35Z | 1511b93c2abd82883b9234fa90231c4c3e207744 | 2026-07-29T12:58:09.409Z | — | MISSING | canonical RVF is absent |
+| [chatgpt-dev-mode](https://github.com/ruvnet/chatgpt-dev-mode) | 2025-09-13T23:11:14Z | bc038e524526ba25dcbd98adcc1fc431be7ec2a2 | — | — | MISSING | canonical RVF is absent |
+| [sublinear-time-solver](https://github.com/ruvnet/sublinear-time-solver) | 2026-08-02T19:08:11Z | 6ef45761e9a27029cf968322b3967364499e3b5d | 2026-08-06T17:28:14.171Z | 6ef45761e9a27029cf968322b3967364499e3b5d | MISSING | canonical RVF is absent |
+| [agentdb](https://github.com/ruvnet/agentdb) | 2026-07-30T00:59:00Z | 6cdefe451f6afe7395bc88d3587a0225d161089b | 2026-07-30T17:24:56.062Z | 6cdefe451f6afe7395bc88d3587a0225d161089b | MISSING | canonical RVF is absent |
+| [ruv.io](https://github.com/ruvnet/ruv.io) | 2025-11-13T20:38:32Z | 68620d325b7f2322402137c322d62be103d2115f | — | — | MISSING | canonical RVF is absent |
+| [RuVector](https://github.com/ruvnet/RuVector) | 2026-08-23T22:36:29Z | c6bb23c842d7c220e06e6141d5e55ae52077fe12 | 2026-08-20T07:16:12.306Z | 7b38d0bdd25ad97f0f8eb05633af3db678b6fd6c | MISSING | canonical RVF is absent |
+| [musicai](https://github.com/ruvnet/musicai) | 2026-05-23T08:38:46Z | 92c0c53f2ca81d82a3e392f8781cc521f25b2c21 | 2026-07-29T12:58:09.429Z | — | MISSING | canonical RVF is absent |
+| [tribe-knowledgegraph](https://github.com/ruvnet/tribe-knowledgegraph) | 2025-11-16T18:47:41Z | fc6844dc0c705cde35c5a1f9bc5daf19452953c7 | — | — | INELIGIBLE | fork |
+| [marketing](https://github.com/ruvnet/marketing) | 2026-05-23T07:58:56Z | 835c98d4f63270fc8ce7f178fd49b0555f7d560b | 2026-07-29T12:58:09.411Z | — | MISSING | canonical RVF is absent |
+| [Dossier](https://github.com/ruvnet/Dossier) | 2026-05-23T07:51:27Z | 3d656049eb379cde0bf273ba60836af934d44166 | — | — | INELIGIBLE | fork |
+| [video-sync](https://github.com/ruvnet/video-sync) | 2026-05-23T08:01:21Z | 71facfb3182ab0727433d9ab9119e891586cdb48 | — | — | INELIGIBLE | fork |
+| [rudevolution](https://github.com/ruvnet/rudevolution) | 2026-05-23T09:33:17Z | c6ca63020687487bf0c07dc43714f10d1996d0b4 | 2026-07-30T17:24:56.267Z | — | MISSING | canonical RVF is absent |
+| [rvm](https://github.com/ruvnet/rvm) | 2026-08-24T00:07:41Z | 580c006b89b09aa207c999f7d25a2dd61142bf31 | 2026-08-06T17:28:00.769Z | 1a055716c9c544b35f89162e32e7946e3ac2f8f2 | MISSING | canonical RVF is absent |
+| [musica](https://github.com/ruvnet/musica) | 2026-08-19T21:20:09Z | 617b61395682b9b3fe6e330206bf3ff41aef9d67 | 2026-08-20T07:16:17.065Z | 617b61395682b9b3fe6e330206bf3ff41aef9d67 | MISSING | canonical RVF is absent |
+| [ruos-macair](https://github.com/ruvnet/ruos-macair) | 2026-04-17T23:47:37Z | b65969d224606c7b3fdbdc49cfe14c35200a1e87 | — | — | MISSING | canonical RVF is absent |
+| [obsidian-brain](https://github.com/ruvnet/obsidian-brain) | 2026-05-23T07:49:49Z | 68457cea6ab42c10dcd74ebdb84616ce2f2f9c87 | 2026-07-29T12:58:09.430Z | — | MISSING | canonical RVF is absent |
+| [Connectome-OS](https://github.com/ruvnet/Connectome-OS) | 2026-04-23T04:01:04Z | d54a5270227ca91abe69a92ac9e9d813769f3954 | — | — | MISSING | canonical RVF is absent |
+| [RuLake](https://github.com/ruvnet/RuLake) | 2026-08-08T17:45:33Z | 554f0a60b948e0dfe6d4813dd6a096758a46a5d9 | 2026-08-09T07:19:20.995Z | 554f0a60b948e0dfe6d4813dd6a096758a46a5d9 | MISSING | canonical RVF is absent |
+| [cognitum-claude-plugin](https://github.com/ruvnet/cognitum-claude-plugin) | 2026-04-29T15:51:48Z | 4367b5fce874c572d194e2f203aa4a803b17bcd8 | 2026-07-29T12:58:09.342Z | — | MISSING | canonical RVF is absent |
+| [rvcsi](https://github.com/ruvnet/rvcsi) | 2026-08-02T19:08:09Z | 2ef4fd1e3a30dad68cb7969135a809a0ef230656 | 2026-08-06T17:28:18.352Z | 2ef4fd1e3a30dad68cb7969135a809a0ef230656 | MISSING | canonical RVF is absent |
+| [skygraph](https://github.com/ruvnet/skygraph) | 2026-06-14T20:29:50Z | 12381dbc003b6763fd29a83cd727812a2c1004cc | 2026-07-29T12:58:09.541Z | — | MISSING | canonical RVF is absent |
+| [ruv-neural](https://github.com/ruvnet/ruv-neural) | 2026-08-04T01:51:38Z | c600537f9f2c3fe62c11ddc970337a6b8530d4a7 | 2026-08-06T17:28:03.623Z | c600537f9f2c3fe62c11ddc970337a6b8530d4a7 | MISSING | canonical RVF is absent |
+| [metaharness](https://github.com/ruvnet/metaharness) | 2026-08-26T11:56:24Z | 6f8c60216f47eac391a076fe27fd804470a07e10 | 2026-08-18T07:16:39.923Z | 5453c8c990824b54e05f289774e5a8b2cea0a32e | MISSING | canonical RVF is absent |
+| [rufield](https://github.com/ruvnet/rufield) | 2026-08-25T23:57:49Z | 995567283606b86594439d6594387ff551a21ede | 2026-08-06T17:28:21.167Z | 43b1df3dc3c436a21e3fc85dc34475458a1eca9d | MISSING | canonical RVF is absent |
+| [ruv-drone](https://github.com/ruvnet/ruv-drone) | 2026-08-22T18:55:44Z | cfe8b662bd648e9ea19a4047275dfce2c5c8e699 | 2026-07-29T12:58:09.465Z | — | MISSING | canonical RVF is absent |
+| [worldgraph](https://github.com/ruvnet/worldgraph) | 2026-08-14T23:05:52Z | 360ef48a2536d45033cdbe0c40c0f522b8f75ae7 | 2026-08-15T07:16:45.062Z | 360ef48a2536d45033cdbe0c40c0f522b8f75ae7 | MISSING | canonical RVF is absent |
+| [ruvn](https://github.com/ruvnet/ruvn) | 2026-06-16T19:59:38Z | 5b5dd7247bd9e0f61bdce2fee6730692b9606977 | — | — | MISSING | canonical RVF is absent |
+| [unsorry](https://github.com/ruvnet/unsorry) | 2026-06-16T20:26:41Z | df91149f6c1188ad6077adf0e2dc266bd4b0f0eb | — | — | INELIGIBLE | fork |
+| [rvdna](https://github.com/ruvnet/rvdna) | 2026-06-17T21:42:38Z | b751cbdaa2ab8516126b129e9589555e5b719067 | 2026-07-29T12:58:09.536Z | — | MISSING | canonical RVF is absent |
+| [ruqu](https://github.com/ruvnet/ruqu) | 2026-06-17T20:42:51Z | 026d63ef900ab689c863b6b3254f5dce8c068bf6 | 2026-07-29T12:58:09.464Z | — | MISSING | canonical RVF is absent |
+| [PhotonLayer](https://github.com/ruvnet/PhotonLayer) | 2026-06-18T18:01:05Z | fe86c9fad9a1572ce46e337f118656961bdf4ebb | 2026-07-29T12:58:09.431Z | — | MISSING | canonical RVF is absent |
+| [SonicChamber](https://github.com/ruvnet/SonicChamber) | 2026-06-22T19:30:00Z | c1bc0c90c8d9511846270ed565a3006c468bf36d | 2026-07-29T12:58:09.541Z | — | MISSING | canonical RVF is absent |
+| [rupixel](https://github.com/ruvnet/rupixel) | 2026-06-26T15:47:40Z | bb1269fb9f4b0920de5944d248e4e79a01f3b80c | 2026-07-29T12:58:09.463Z | — | MISSING | canonical RVF is absent |
+| [experiments](https://github.com/ruvnet/experiments) | 2026-03-29T17:52:12Z | 2f15350cd32becc4569e0d826361048555b605c0 | — | — | INELIGIBLE | fork |
+| [helix](https://github.com/ruvnet/helix) | 2026-08-04T01:51:40Z | e8d8fe780becff4d95008e052742e5c3b0ad3b5c | — | — | MISSING | canonical RVF is absent |
+| [Repo-Explainer](https://github.com/ruvnet/Repo-Explainer) | 2026-06-26T11:35:52Z | 539e3c8c5db7b857051676bcb849f3d0dd171b61 | — | — | INELIGIBLE | fork |
+| [hackerone](https://github.com/ruvnet/hackerone) | 2026-06-29T14:34:22Z | 1e3bcde8258d472a733abe9d9de9219f8ae06f16 | 2026-07-29T12:58:09.410Z | — | MISSING | canonical RVF is absent |
+| [CVE-bench](https://github.com/ruvnet/CVE-bench) | 2026-06-27T22:35:01Z | 47abc2b2b522f4d8afd07296d2a35042d8639f1d | 2026-07-29T12:58:09.399Z | — | MISSING | canonical RVF is absent |
+| [agenticow](https://github.com/ruvnet/agenticow) | 2026-07-04T02:08:52Z | dd4f437b92d2dbbc1f40dfa00023eed6e9c3bd84 | 2026-07-29T12:58:09.340Z | — | MISSING | canonical RVF is absent |
+| [AgentBBS](https://github.com/ruvnet/AgentBBS) | 2026-07-14T12:18:40Z | 9f2dd89f50f0a56b439b94b60817eeac6a71cf0f | — | — | INELIGIBLE | fork |
+| [retort](https://github.com/ruvnet/retort) | 2026-06-14T09:30:39Z | 6302b22ff98919d4f2241feb1c1c6fd0a6990640 | — | — | INELIGIBLE | fork |
+| [rvFACE](https://github.com/ruvnet/rvFACE) | 2026-07-02T19:25:57Z | 612a09e5b16ec9ff7cec1623c2845ff64ca2544b | 2026-07-29T12:58:09.536Z | — | MISSING | canonical RVF is absent |
+| [RuCelium](https://github.com/ruvnet/RuCelium) | 2026-08-02T13:57:54Z | 813da13eb9a46b6acf78fe7ecc8c220ecf83b386 | 2026-08-12T17:02:52.396Z | 813da13eb9a46b6acf78fe7ecc8c220ecf83b386 | MISSING | canonical RVF is absent |
+| [rvQR](https://github.com/ruvnet/rvQR) | 2026-08-04T14:16:56Z | 5632240501685d4d37c11565b18767a37c490e4c | 2026-08-12T17:03:00.073Z | 5632240501685d4d37c11565b18767a37c490e4c | MISSING | canonical RVF is absent |
+| [wifi-veil](https://github.com/ruvnet/wifi-veil) | 2026-08-09T18:19:31Z | 018468b5d2bf41f35c552910f35659830af0eb91 | 2026-08-12T16:50:59.381Z | 018468b5d2bf41f35c552910f35659830af0eb91 | MISSING | canonical RVF is absent |
+| [dream-machine](https://github.com/ruvnet/dream-machine) | 2026-08-26T12:22:03Z | 7933c3599abe22df5290f4609d1f93f598feb3de | 2026-08-18T07:16:42.472Z | 8ce385786faa5e63cc0e7105cc6e96f663a51f07 | MISSING | canonical RVF is absent |
+| [ai-text-watermark](https://github.com/ruvnet/ai-text-watermark) | 2026-08-16T02:57:23Z | a88fcadeb87e43cdd0fcda3bba75840e4edee9db | 2026-08-18T07:17:47.091Z | a88fcadeb87e43cdd0fcda3bba75840e4edee9db | MISSING | canonical RVF is absent |
+| [llm-stream-reformat](https://github.com/ruvnet/llm-stream-reformat) | 2026-08-17T13:36:16Z | 74e1d2cef896afd7f49b4cd891978bb64f67d698 | 2026-08-18T07:17:30.009Z | 74e1d2cef896afd7f49b4cd891978bb64f67d698 | MISSING | canonical RVF is absent |
+| [autogenous](https://github.com/ruvnet/autogenous) | 2026-08-20T13:26:12Z | 9215c7472f65746c3ec15b8c760a72c93dbaefdc | 2026-08-20T07:16:20.727Z | b5c6e8380a40481d1f7d81e3c777504f487fed9a | MISSING | canonical RVF is absent |
+| [LatentMesh](https://github.com/ruvnet/LatentMesh) | 2026-08-26T12:10:44Z | 1c65dde47e7bccc14b11b77d70cc5bb30b02c666 | 2026-08-19T07:15:50.736Z | 922ea196ddfd653ca47c6e900f9aae58f6f26c9d | MISSING | canonical RVF is absent |
+| [buzz](https://github.com/ruvnet/buzz) | 2026-08-18T12:47:53Z | f0234f1449ab8a6d52d45a9e1ec19cc675b40fe9 | — | — | INELIGIBLE | fork |
+| [Event-Horizon](https://github.com/ruvnet/Event-Horizon) | 2026-08-21T15:37:25Z | 86c3dc18e25f99628dba20169602d68d80354878 | — | — | MISSING | canonical RVF is absent |
+| [Group-Field-Theory](https://github.com/ruvnet/Group-Field-Theory) | 2026-08-22T02:08:28Z | fa952005b10f10c8d660d12cf522d1117e756032 | — | — | MISSING | canonical RVF is absent |
+| [openAVO](https://github.com/ruvnet/openAVO) | 2026-08-22T20:02:30Z | e099ec8753b2fdbd3cfa2652f3ea7b68057c82eb | — | — | MISSING | canonical RVF is absent |
+| [batvu](https://github.com/ruvnet/batvu) | 2026-08-26T12:09:44Z | 1cca5fd0d07fb5aa79b5ccf6ceb1b60c38b76575 | — | — | MISSING | canonical RVF is absent |
+| [dapp-list](https://github.com/ruvnet/dapp-list) | 2022-02-08T18:01:12Z | 7ffef29909617b58d24c8c8867660c832afd224b | — | — | INELIGIBLE | fork |
+| [powerprompt](https://github.com/ruvnet/powerprompt) | 2023-02-15T05:18:41Z | 1f280f9bbff04571bd151cdd9e1258f21a660d2e | — | — | MISSING | canonical RVF is absent |
+| [daa](https://github.com/ruvnet/daa) | 2026-05-23T09:01:48Z | ca4e3a3c7e962098152f018a123db2bf67cf5d46 | 2026-07-30T17:24:56.215Z | — | MISSING | canonical RVF is absent |
+| [openai_devops](https://github.com/ruvnet/openai_devops) | 2023-03-15T21:14:15Z | 70aaa6f3b4549925914b78deb57429cde6218cc4 | — | — | MISSING | canonical RVF is absent |
+| [promptlang](https://github.com/ruvnet/promptlang) | 2023-12-12T21:37:42Z | 791366aca806dcd4fe8fc68f69c850b3c98f638d | — | — | MISSING | canonical RVF is absent |
+| [aiscreenplay](https://github.com/ruvnet/aiscreenplay) | 2023-03-18T20:44:27Z | 76944cd94a418adf6f1dbf000f2f03e34ec78e62 | — | — | MISSING | canonical RVF is absent |
+| [textclassifier](https://github.com/ruvnet/textclassifier) | 2023-03-19T15:06:21Z | ef4d8062d8edc88b70698d889ee692c92916be85 | — | — | MISSING | canonical RVF is absent |
+| [streamlit-example](https://github.com/ruvnet/streamlit-example) | 2023-03-20T13:21:40Z | 7e810c53293ccdd9ab5924171dee2210b4c710a7 | — | — | INELIGIBLE | fork |
+| [vcbot](https://github.com/ruvnet/vcbot) | 2023-03-21T03:45:52Z | 52bb2d49b92686ed7d43389e32b5ab9716b1fdab | — | — | MISSING | canonical RVF is absent |
+| [Ai-Code-Generator-](https://github.com/ruvnet/Ai-Code-Generator-) | 2023-03-21T19:37:05Z | b225bf7ce3827e1b9c8899a7411f0de6be42f272 | — | — | MISSING | canonical RVF is absent |
+| [AiToml](https://github.com/ruvnet/AiToml) | 2023-03-21T05:20:16Z | 85095f8230479f7afe9a54e93c395c0102e6ec6f | — | — | MISSING | canonical RVF is absent |
+| [retro-ai-ui](https://github.com/ruvnet/retro-ai-ui) | 2024-04-06T15:52:31Z | 9df0c607747d04260b4196b7172086259bdf7e34 | — | — | MISSING | canonical RVF is absent |
+| [AP-Casper](https://github.com/ruvnet/AP-Casper) | 2023-03-23T16:46:26Z | dee998fe5246d8a28e8dbd829252d1ae554aae9b | — | — | MISSING | canonical RVF is absent |
+| [chatgpt_plugin_python](https://github.com/ruvnet/chatgpt_plugin_python) | 2023-03-23T20:10:03Z | 0d78b8ddfd0ddb171543c270c7e7142edd8e7724 | — | — | MISSING | canonical RVF is absent |
+| [ChatGPT-Trading-Bot-for-KuCoin](https://github.com/ruvnet/ChatGPT-Trading-Bot-for-KuCoin) | 2023-03-24T04:15:44Z | efa4a58cde8700fa0272d04d97fcf3659413da10 | — | — | MISSING | canonical RVF is absent |
+| [AIConverse](https://github.com/ruvnet/AIConverse) | 2026-07-27T04:48:49Z | — | — | — | INELIGIBLE | empty |
+| [2BotTalk](https://github.com/ruvnet/2BotTalk) | 2023-03-26T18:53:31Z | bbe7824e9a9ae3513cd71f183aaf3a67fbf27294 | — | — | MISSING | canonical RVF is absent |
+| [console-streamer](https://github.com/ruvnet/console-streamer) | 2023-03-26T20:51:50Z | 0d26c2ead5bb852f6d806f8c8e5d7ef9d2bb94d4 | — | — | MISSING | canonical RVF is absent |
+| [chatgpt_tatum_plugin](https://github.com/ruvnet/chatgpt_tatum_plugin) | 2023-03-28T16:32:58Z | 804611405291c7d08fe05d8a708a07b658ab3e31 | — | — | MISSING | canonical RVF is absent |
+| [chatgpt-aws-price-list-plugin](https://github.com/ruvnet/chatgpt-aws-price-list-plugin) | 2023-03-28T18:01:37Z | efc6e5120fd4acb58bf672895904fb4576ad9c3c | — | — | MISSING | canonical RVF is absent |
+| [Swagger-ChatGPT-Plugin-Creator](https://github.com/ruvnet/Swagger-ChatGPT-Plugin-Creator) | 2023-04-06T22:20:21Z | b2e39f1fd717d0db20346048fed972ed9d508ee1 | — | — | MISSING | canonical RVF is absent |
+| [paris](https://github.com/ruvnet/paris) | 2023-03-30T20:47:53Z | 79f3344fffb77eb07440f331eb872134557c896b | — | — | MISSING | canonical RVF is absent |
+| [VIVIAN](https://github.com/ruvnet/VIVIAN) | 2023-04-02T05:46:28Z | 70bd3a4b3502c970ad2c2780ba7767dbe0287e1e | — | — | MISSING | canonical RVF is absent |
+| [Bot-Generator-Bot](https://github.com/ruvnet/Bot-Generator-Bot) | 2023-04-29T20:38:56Z | 502bde81f7c1e346bd081e4ed15d88620a3aee79 | — | — | MISSING | canonical RVF is absent |
+| [ruvnet](https://github.com/ruvnet/ruvnet) | 2026-08-24T05:45:30Z | 7fefc2088f2ff1f3c31d9b024a68a7c35cf92122 | 2026-08-12T07:27:27.061Z | bd5656a9b168d65bb0226eb41efd581b6dab14bf | MISSING | canonical RVF is absent |
+| [ARCADIA](https://github.com/ruvnet/ARCADIA) | 2025-10-20T23:47:48Z | 13bb48fef4208892257f9ef3f30d7120a3e45f60 | — | — | MISSING | canonical RVF is absent |
+| [Surfer](https://github.com/ruvnet/Surfer) | 2023-04-13T05:54:35Z | e7af25f8a2d2cd5c843e21a1068276d613493633 | — | — | MISSING | canonical RVF is absent |
+| [rUvGPT](https://github.com/ruvnet/rUvGPT) | 2026-07-27T04:44:06Z | — | — | — | INELIGIBLE | empty |
+| [ruvGPT2](https://github.com/ruvnet/ruvGPT2) | 2026-07-27T04:43:11Z | — | — | — | INELIGIBLE | empty |
+| [CodeGPT](https://github.com/ruvnet/CodeGPT) | 2023-04-17T16:49:26Z | 3e79f75b4465fc4fdc12f42d6c97c579771aab27 | — | — | INELIGIBLE | repository contains one empty readme.md and git metadata — no functional corpus |
+| [Auto-GPT](https://github.com/ruvnet/Auto-GPT) | 2026-07-27T04:42:40Z | — | — | — | INELIGIBLE | empty |
+| [p2pGPT](https://github.com/ruvnet/p2pGPT) | 2023-04-17T20:54:46Z | 3024ab62879d7ec7c6c056d6f6b0960bb1694166 | — | — | MISSING | canonical RVF is absent |
+| [chatgpt-openai-api-plugin](https://github.com/ruvnet/chatgpt-openai-api-plugin) | 2023-04-22T22:11:58Z | 866d24bd1e28953b7496f7c547cc5d8755ea33a0 | — | — | MISSING | canonical RVF is absent |
+| [Prompt-Engine](https://github.com/ruvnet/Prompt-Engine) | 2023-05-03T23:18:12Z | 21a9712fd4a58dbf52d11e36d981ecc4e73f6dfc | — | — | MISSING | canonical RVF is absent |
+| [openai-cost-estimator](https://github.com/ruvnet/openai-cost-estimator) | 2023-10-24T15:10:31Z | 31556ff831bf2e9233e20455f8401e1695924416 | — | — | MISSING | canonical RVF is absent |
+| [coding-wingman](https://github.com/ruvnet/coding-wingman) | 2023-11-16T15:40:49Z | 5995accabd8ddf4f66f5f730d4401e0f7dbfd32f | — | — | MISSING | canonical RVF is absent |
+| [q-star](https://github.com/ruvnet/q-star) | 2023-11-24T17:31:42Z | 833d4c921421781eae2bb552010eeed599c46ac1 | — | — | MISSING | canonical RVF is absent |
+| [gpts](https://github.com/ruvnet/gpts) | 2024-06-10T01:13:48Z | df774213d52a20cd375e6a223b47444face741c6 | — | — | MISSING | canonical RVF is absent |
+| [guardrail](https://github.com/ruvnet/guardrail) | 2023-12-12T21:20:22Z | 67cc25b7c52acf69bcdea00b094962e06760efe5 | — | — | MISSING | canonical RVF is absent |
+| [ruvbot](https://github.com/ruvnet/ruvbot) | 2026-05-23T09:35:18Z | 31b54e74339ca93ba75d69d2936ffb18df4bf5ff | 2026-07-29T12:58:09.483Z | — | MISSING | canonical RVF is absent |
+| [agentX](https://github.com/ruvnet/agentX) | 2023-12-14T15:59:47Z | 73bc804ffc7557df7fd1ba6602b0decfb61c11ec | — | — | MISSING | canonical RVF is absent |
+| [santa-ai-workshop](https://github.com/ruvnet/santa-ai-workshop) | 2023-12-22T21:14:33Z | f9daec0baf89a46c6d07b99f245396ae9b47ed3a | — | — | INELIGIBLE | 0 chunks produced — nothing embeddable (forge exit 3) |
+| [SVGart](https://github.com/ruvnet/SVGart) | 2016-12-19T21:27:18Z | 0ed8d3243abfeaccd5aaa542718c349661ae5e32 | — | — | MISSING | canonical RVF is absent |
+| [rUv-dev](https://github.com/ruvnet/rUv-dev) | 2026-05-23T08:10:03Z | 0cfebab80af28e55aec6830be51f5662e72f6b04 | 2026-07-29T12:58:09.464Z | — | MISSING | canonical RVF is absent |
+| [r-flow](https://github.com/ruvnet/r-flow) | 2024-04-08T02:10:21Z | 721cfb17d1ce8523c52e23cf2e8d6b0f27afe1a2 | — | — | MISSING | canonical RVF is absent |
+| [rUv-Enterprise-AI-Guide](https://github.com/ruvnet/rUv-Enterprise-AI-Guide) | 2024-05-03T14:37:14Z | 5536257d34d939ad73a20c667b547a0181e20bd4 | — | — | MISSING | canonical RVF is absent |
+| [AiHCC](https://github.com/ruvnet/AiHCC) | 2024-05-07T21:21:41Z | a982abd795cfc7fb5b55e2224fb43f6804107649 | — | — | MISSING | canonical RVF is absent |
+| [socket](https://github.com/ruvnet/socket) | 2026-03-14T16:20:44Z | — | — | — | INELIGIBLE | empty |
+| [agentic-employment](https://github.com/ruvnet/agentic-employment) | 2024-06-03T04:19:07Z | 372d940279d65746a4336082c37ba0e61206b956 | — | — | MISSING | canonical RVF is absent |
+| [aws-dev](https://github.com/ruvnet/aws-dev) | 2024-05-20T21:50:26Z | 101687cf16c25061a5301df684deb2fb24ff2e7e | — | — | MISSING | canonical RVF is absent |
+| [agileagents](https://github.com/ruvnet/agileagents) | 2024-06-27T15:14:33Z | f102a5d85c866a7e1bd7dd6547a20aafb7f44181 | — | — | MISSING | canonical RVF is absent |
+| [ai-stream](https://github.com/ruvnet/ai-stream) | 2024-05-24T04:18:24Z | 012fdebdf36aa826550d4684563b53533d255c04 | — | — | MISSING | canonical RVF is absent |
+| [ai-video](https://github.com/ruvnet/ai-video) | 2024-05-24T14:05:55Z | 3b2a95bacd01d53c5781f8bf7ed78702af639328 | — | — | MISSING | canonical RVF is absent |
+| [supa-ruv](https://github.com/ruvnet/supa-ruv) | 2024-05-24T21:07:41Z | ceb1b2a07c0e6be7f1b63d88a05d26df2d8a0432 | — | — | MISSING | canonical RVF is absent |
+| [q-space](https://github.com/ruvnet/q-space) | 2024-05-26T06:08:35Z | 7d854bcd61ff558737e7382c5fa82715911a0731 | — | — | MISSING | canonical RVF is absent |
+| [ai-gist](https://github.com/ruvnet/ai-gist) | 2024-05-26T05:10:15Z | 02a8dad6363567134a5e76b60558334225ed9338 | — | — | MISSING | canonical RVF is absent |
+| [pygentic](https://github.com/ruvnet/pygentic) | 2024-06-01T17:42:59Z | 828cfde2882b6a28fd79a20c53a0bbb953ec318d | — | — | MISSING | canonical RVF is absent |
+| [pipackager](https://github.com/ruvnet/pipackager) | 2024-05-26T05:42:46Z | fbd7b1d6dea39398de1343153ff238703c1279ff | — | — | MISSING | canonical RVF is absent |
+| [codecraft](https://github.com/ruvnet/codecraft) | 2024-05-26T20:10:40Z | cd31ec634f180d6b310d60e7323b85faceeb6085 | — | — | MISSING | canonical RVF is absent |
+| [agentic-reports](https://github.com/ruvnet/agentic-reports) | 2024-06-03T19:37:33Z | c0627d9873c8f1d1bc3d2f8dcd929b584bc44699 | — | — | MISSING | canonical RVF is absent |
+| [markov-chains](https://github.com/ruvnet/markov-chains) | 2024-06-02T03:21:22Z | f536b18e73eab5cf2bcc7df7a59f67c0728e0625 | — | — | MISSING | canonical RVF is absent |
+| [agentic-voice](https://github.com/ruvnet/agentic-voice) | 2024-07-15T15:26:01Z | 7203b5e8ea2feacd5ee3b5fbb2aeca92640cb652 | — | — | MISSING | canonical RVF is absent |
+| [open-space](https://github.com/ruvnet/open-space) | 2024-06-08T13:49:01Z | 8fefd551b51b28439e70c2e366517072dba441f4 | — | — | MISSING | canonical RVF is absent |
+| [agentic-capacity-exchange](https://github.com/ruvnet/agentic-capacity-exchange) | 2024-06-08T21:54:11Z | 70f08e111e8e6671efada7ee16e0c76125e23235 | — | — | MISSING | canonical RVF is absent |
+| [micro-agent](https://github.com/ruvnet/micro-agent) | 2024-06-08T02:50:19Z | 05070973b9c71bd7f3b6f24e203d67314954f5ad | — | — | INELIGIBLE | fork |
+| [agentic-devops](https://github.com/ruvnet/agentic-devops) | 2024-06-12T19:34:56Z | 520da11e3337e234b3193018d343adb33b5299f1 | — | — | MISSING | canonical RVF is absent |
+| [agentic-dashboard](https://github.com/ruvnet/agentic-dashboard) | 2024-06-19T18:50:40Z | ebce7a068ed1b2996bcf9d6898a9560a5ee3e86c | — | — | MISSING | canonical RVF is absent |
+| [agentic-artifacts](https://github.com/ruvnet/agentic-artifacts) | 2024-06-24T14:36:37Z | 68406bfffe1157332c0aee9be588dc030f3e4f71 | — | — | MISSING | canonical RVF is absent |
+| [agentic-gradio](https://github.com/ruvnet/agentic-gradio) | 2024-06-25T15:00:23Z | 0472b249d9040836cbe73170f4de81e42cf24bf0 | — | — | MISSING | canonical RVF is absent |
+| [agentXNG](https://github.com/ruvnet/agentXNG) | 2024-07-05T14:46:14Z | 82845cb32a198d649b2fa1250af889cae6a93cec | — | — | MISSING | canonical RVF is absent |
+| [agentic-robotics](https://github.com/ruvnet/agentic-robotics) | 2026-05-23T08:38:50Z | d84bba2be6cf60e01db6056fdba464ccfad130d7 | 2026-07-29T12:58:09.338Z | — | MISSING | canonical RVF is absent |
+| [agentic-music](https://github.com/ruvnet/agentic-music) | 2024-08-14T18:17:36Z | 75b5146e57f346d3bd0fb8e63f5d9ed4492769aa | — | — | INELIGIBLE | repository contains only a heading-only README, license, and git metadata — no functional corpus |
+| [voicebot](https://github.com/ruvnet/voicebot) | 2024-09-28T21:56:13Z | 33832620c9fa9d26de2efd61af7c449bd13522a7 | — | — | MISSING | canonical RVF is absent |
+| [agentic-flows](https://github.com/ruvnet/agentic-flows) | 2024-08-27T15:41:11Z | 3ec27c798b50a355f70e8afa8a780b262b5beb8a | — | — | INELIGIBLE | repository contains only a heading-only README, license, and git metadata — no functional corpus |
+| [supabase-authentication](https://github.com/ruvnet/supabase-authentication) | 2024-08-30T16:13:10Z | 1606fb4e986593342771eed4974b970abefaf364 | — | — | MISSING | canonical RVF is absent |
+| [agentic-flow](https://github.com/ruvnet/agentic-flow) | 2026-07-30T01:18:20Z | d3735a33533da2e12a68439177a791bf1c5c91e1 | 2026-07-30T17:24:56.082Z | d3735a33533da2e12a68439177a791bf1c5c91e1 | MISSING | canonical RVF is absent |
+| [llamastack](https://github.com/ruvnet/llamastack) | 2024-09-10T22:07:55Z | 157d38208af6054d73931023f63c6ca213b9a673 | — | — | MISSING | canonical RVF is absent |
+| [aihl](https://github.com/ruvnet/aihl) | 2024-10-17T17:01:33Z | 8e80355b595cbc534f0f5f2097f978b0dfefc332 | — | — | MISSING | canonical RVF is absent |
+| [strawberry-phi](https://github.com/ruvnet/strawberry-phi) | 2024-09-13T06:01:12Z | 368ca6e6c12a3efe15938c4eb1ac51eb6383383f | — | — | MISSING | canonical RVF is absent |
+| [hft](https://github.com/ruvnet/hft) | 2024-09-14T12:50:11Z | 33d35f6b1275faa9402c16c58a8ff8aa795aa76f | — | — | MISSING | canonical RVF is absent |
+| [drupaljs](https://github.com/ruvnet/drupaljs) | 2024-09-16T20:36:57Z | 585b78fb9ccfb7560f11258eafe2ea9516d574a8 | 2026-07-29T12:58:09.405Z | — | MISSING | canonical RVF is absent |
+| [agenticsjs](https://github.com/ruvnet/agenticsjs) | 2024-09-25T05:10:14Z | a08e8c8360f244888d515a79eb267598543a9f7a | — | — | MISSING | canonical RVF is absent |
+| [infinity-ui](https://github.com/ruvnet/infinity-ui) | 2024-09-19T02:55:56Z | 6b15c59db4a95b465f0f171520e52cd038943777 | — | — | MISSING | canonical RVF is absent |
+| [runme](https://github.com/ruvnet/runme) | 2024-09-17T18:20:15Z | 54acee3c459facd4200fe6ae6c942e84b341c0e0 | — | — | INELIGIBLE | fork |
+| [drupal](https://github.com/ruvnet/drupal) | 2024-09-20T10:33:38Z | 8877452481a878cc51814b8471a2a88ed018246f | — | — | INELIGIBLE | fork |
+| [Electo1](https://github.com/ruvnet/Electo1) | 2024-09-22T00:24:41Z | b77671bfc33df19617749667a517ca58696dd030 | — | — | MISSING | canonical RVF is absent |
+| [electo1-js](https://github.com/ruvnet/electo1-js) | 2024-09-23T14:52:37Z | b18b44e4f81cad34ef223c0dbcca99df6488461f | — | — | MISSING | canonical RVF is absent |
+| [ruv-engineer](https://github.com/ruvnet/ruv-engineer) | 2024-09-28T15:00:16Z | b1cfb0d99b55c8763155e96e0e44051af7df2783 | — | — | INELIGIBLE | fork |
+| [agentic-search](https://github.com/ruvnet/agentic-search) | 2024-10-04T20:59:07Z | c984310389e533ff12b20a2a857ff947363e7848 | — | — | MISSING | canonical RVF is absent |
+| [agentic-preview](https://github.com/ruvnet/agentic-preview) | 2024-10-11T04:47:20Z | 3b677b8aa6461565b392c5260793b17d20028095 | — | — | MISSING | canonical RVF is absent |
+| [sparc](https://github.com/ruvnet/sparc) | 2026-05-23T09:10:46Z | 9656782ea9ed8d96e1d9c76a7f98b4718d365296 | 2026-07-29T12:58:09.542Z | — | MISSING | canonical RVF is absent |
+| [fireflies-webook](https://github.com/ruvnet/fireflies-webook) | 2024-11-01T17:14:11Z | 7c636b241b8fc249e58bacfb840cdd78e9490746 | — | — | MISSING | canonical RVF is absent |
+| [contextual-retrevial](https://github.com/ruvnet/contextual-retrevial) | 2024-10-18T15:50:52Z | b30673831e44d54225101e017875b950fed8ab90 | — | — | MISSING | canonical RVF is absent |
+| [swirl-search](https://github.com/ruvnet/swirl-search) | 2024-10-30T19:02:23Z | c008d3d24ab73855870cf0ee507d6eaabaaf5af7 | — | — | INELIGIBLE | fork |
+| [agentic-scraper](https://github.com/ruvnet/agentic-scraper) | 2024-10-21T13:55:55Z | 263e2af3676739ee5d36e6bb1ef5b599b8c14ce7 | — | — | MISSING | canonical RVF is absent |
+| [anthropic-quickstarts](https://github.com/ruvnet/anthropic-quickstarts) | 2024-10-22T17:09:02Z | 3347e36f7911f2cd2702108078b0ccbe5189cf7b | — | — | INELIGIBLE | fork |
+| [local-logic](https://github.com/ruvnet/local-logic) | 2024-10-29T03:33:23Z | 99b2d03045bd2d0319b8db545eb809348f461578 | — | — | MISSING | canonical RVF is absent |
+| [demo-proxy-app](https://github.com/ruvnet/demo-proxy-app) | 2024-10-26T00:52:23Z | 6aca049b5ea0c1b42bdcdc6b07f4fafbd0d131a6 | — | — | MISSING | canonical RVF is absent |
+| [phoenix](https://github.com/ruvnet/phoenix) | 2024-10-28T16:32:59Z | be1a1030d19eb40b7d4edcab45c3991f6e6c7359 | — | — | INELIGIBLE | fork |
+| [agentic-security](https://github.com/ruvnet/agentic-security) | 2026-05-23T09:32:45Z | 0d862e0d5704d41df8141a31b84c3d8ff82ee759 | 2026-07-29T12:58:09.339Z | — | MISSING | canonical RVF is absent |
+| [test-react-lib](https://github.com/ruvnet/test-react-lib) | 2024-11-06T17:16:37Z | aa9cf6319fa4347dc488102eeb270bca56135344 | — | — | INELIGIBLE | fork |
+| [aido](https://github.com/ruvnet/aido) | 2024-11-15T19:24:56Z | 20429341646a6834019599e8ae313d5ee06208e4 | — | — | MISSING | canonical RVF is absent |
+| [federated-mcp](https://github.com/ruvnet/federated-mcp) | 2024-11-26T22:11:23Z | 486dc9c022a51bea0775e645e206336ee66212de | — | — | MISSING | canonical RVF is absent |
+| [symbolic-scribe](https://github.com/ruvnet/symbolic-scribe) | 2026-06-15T15:35:28Z | 8a31e52797dbd73703cad368d3f1e5657179bec2 | 2026-07-29T12:58:09.548Z | — | MISSING | canonical RVF is absent |
+| [quantum_cryptocurrency](https://github.com/ruvnet/quantum_cryptocurrency) | 2024-12-10T21:21:37Z | 1e9dd478353b054efb08363a75cb133c557d6204 | — | — | MISSING | canonical RVF is absent |
+| [reflective-engineer](https://github.com/ruvnet/reflective-engineer) | 2024-12-18T17:47:33Z | 2a6a80cef4c29fbd30924cce70911f06df162a31 | — | — | MISSING | canonical RVF is absent |
+| [deco](https://github.com/ruvnet/deco) | 2024-12-12T17:39:08Z | bd3ebfe0b3cb18a08a124854108a95e4ebf87bf5 | — | — | INELIGIBLE | fork |
+| [omnipotent](https://github.com/ruvnet/omnipotent) | 2025-03-04T17:31:42Z | 40681052f435a67a5b11cb39486460cbf01ff845 | — | — | MISSING | canonical RVF is absent |
+| [genesis](https://github.com/ruvnet/genesis) | 2025-09-05T15:23:05Z | 9f02f62e4e421f0c5970b70a387955c2bc6ca8f6 | — | — | MISSING | canonical RVF is absent |
+| [SynthLang](https://github.com/ruvnet/SynthLang) | 2026-05-23T09:30:13Z | cf16b42178b39f0470f3392994da2605aaf7a64a | 2026-07-31T03:23:58.336Z | 6959956375073c333b6a57bb9b2ff70ccd8b86ea | MISSING | canonical RVF is absent |
+| [midstream](https://github.com/ruvnet/midstream) | 2026-08-02T19:08:05Z | 583b32ef35dfdb60c7d3d5c28c68f1f635b55b21 | 2026-08-06T17:28:06.356Z | 583b32ef35dfdb60c7d3d5c28c68f1f635b55b21 | MISSING | canonical RVF is absent |
+| [inflight](https://github.com/ruvnet/inflight) | 2025-01-07T23:29:32Z | f77cc4c80760a645a5592eaa781189c21c354718 | — | — | MISSING | canonical RVF is absent |
+| [ai-browse](https://github.com/ruvnet/ai-browse) | 2025-01-11T15:29:57Z | 1b1e1de8b16196eb77b631d3d9a3137b31aacc30 | — | — | MISSING | canonical RVF is absent |
+| [AiCodeCalc](https://github.com/ruvnet/AiCodeCalc) | 2025-01-12T16:46:18Z | 29fbf90f42ae396f48d85d348bb886020a9dd082 | — | — | MISSING | canonical RVF is absent |
+| [auto-browser](https://github.com/ruvnet/auto-browser) | 2025-01-20T20:20:50Z | a7873b4f11e0b905a847ef240f4fac7b9830d95a | — | — | MISSING | canonical RVF is absent |
+| [hacker-league](https://github.com/ruvnet/hacker-league) | 2025-02-06T16:29:30Z | f3d4d260f8ec527e52f1bf656c11c81d3a0c36ed | — | — | MISSING | canonical RVF is absent |
+| [nova](https://github.com/ruvnet/nova) | 2025-01-31T02:54:40Z | 952a21fe59aa5597ffc64ce2c2832914b37446da | — | — | MISSING | canonical RVF is absent |
+| [tariffic](https://github.com/ruvnet/tariffic) | 2025-04-07T17:31:35Z | 1e6ac196d88cd93230967d6b7237cd89fcd6eec3 | — | — | MISSING | canonical RVF is absent |
+| [hello_world_agent](https://github.com/ruvnet/hello_world_agent) | 2025-03-08T23:19:24Z | 42584fa15554719b6eaf32e14f59008b2c59cdde | — | — | MISSING | canonical RVF is absent |
+| [dspy.ts](https://github.com/ruvnet/dspy.ts) | 2026-05-23T09:30:37Z | 535d0e41901fb291a8af8b4131fd46af456829d4 | 2026-07-29T12:58:09.406Z | — | MISSING | canonical RVF is absent |
+| [onnx-agent](https://github.com/ruvnet/onnx-agent) | 2025-02-24T02:34:23Z | 7b3690f297197f5411cfdb9ce1f0553e5dfd6bad | — | — | MISSING | canonical RVF is absent |
+| [open-claude-code](https://github.com/ruvnet/open-claude-code) | 2026-08-26T12:11:56Z | 65d45b9b590ee7bfdf66eba114cabf135001f801 | 2026-08-20T07:15:56.601Z | 9e2e08c03d9b5d009eac14fc10a50d223a73de70 | MISSING | canonical RVF is absent |
+| [vibing](https://github.com/ruvnet/vibing) | 2025-03-20T21:26:36Z | 035c43f06009142af14cee1395a330c343853cf3 | — | — | MISSING | canonical RVF is absent |
+| [phone-agent](https://github.com/ruvnet/phone-agent) | 2025-04-01T15:15:49Z | c38e310d6fb36478420a6de703beca71061a2c3f | — | — | MISSING | canonical RVF is absent |
+| [roomodes](https://github.com/ruvnet/roomodes) | 2025-04-06T13:37:57Z | 1ec9aa6c0ce39b5f9736e2a6132994afbf2a02c0 | — | — | MISSING | canonical RVF is absent |
+| [quantum-magnetic-navigation](https://github.com/ruvnet/quantum-magnetic-navigation) | 2025-04-18T14:48:06Z | e1334568d96236a6ee60c377191151a2e3ab8561 | — | — | MISSING | canonical RVF is absent |
+| [image-agent](https://github.com/ruvnet/image-agent) | 2025-04-25T18:09:43Z | 4bf96fe1e944d9383e93fcdd2582e28c8cede618 | — | — | MISSING | canonical RVF is absent |
+| [Roo-Code-Docs](https://github.com/ruvnet/Roo-Code-Docs) | 2025-04-25T02:13:03Z | d897706d7e1842c805cd378ce2480abf7061f474 | — | — | INELIGIBLE | fork |
+| [vsc-remote-mcp](https://github.com/ruvnet/vsc-remote-mcp) | 2025-04-27T05:21:51Z | c80ebf76fe94613d71fa83a8f7fddb4ededd81f8 | — | — | MISSING | canonical RVF is absent |
+| [dynamo-mcp](https://github.com/ruvnet/dynamo-mcp) | 2025-04-26T15:17:35Z | 4eaf6b54e35d063af20f4afb620130d6269eed24 | — | — | MISSING | canonical RVF is absent |
+| [vibecast](https://github.com/ruvnet/vibecast) | 2025-05-01T15:44:46Z | 2fdbbc51198c143203304534ba0f15263a4dfc52 | — | — | MISSING | canonical RVF is absent |
+| [sparc-ide](https://github.com/ruvnet/sparc-ide) | 2025-05-06T22:14:05Z | ffd5249e523ef5db6e9ddb2f526fc954cbf0563a | — | — | MISSING | canonical RVF is absent |
+| [agentics-meetup](https://github.com/ruvnet/agentics-meetup) | 2025-05-06T23:21:50Z | 8ad3546031fd0e3acfdf0bd368684624a58bf244 | — | — | MISSING | canonical RVF is absent |
+| [agentic-difusion](https://github.com/ruvnet/agentic-difusion) | 2025-05-12T14:49:45Z | f068cb3a6f9162d81415d4ace23aaa2800ef6206 | — | — | MISSING | canonical RVF is absent |
+| [codespaces-jupyter](https://github.com/ruvnet/codespaces-jupyter) | 2025-03-26T14:44:52Z | 45ffb92abb2688217cd3d77333ec67b1e8f268d4 | — | — | INELIGIBLE | fork |
+| [ruv-code](https://github.com/ruvnet/ruv-code) | 2025-05-13T17:48:47Z | 836bbf75d04a4c9b01d882bb005690febaca2635 | — | — | INELIGIBLE | fork |
+| [open-agentics](https://github.com/ruvnet/open-agentics) | 2025-05-15T00:45:03Z | 87d38b2387b4f29fdeccb53325b1b5279bcfc728 | — | — | INELIGIBLE | fork |
+| [Agent-Name-Service](https://github.com/ruvnet/Agent-Name-Service) | 2025-05-16T12:34:26Z | 976e9e91e77213698cb7af479aa94bdaae084fa6 | — | — | MISSING | canonical RVF is absent |
+| [codex-one](https://github.com/ruvnet/codex-one) | 2025-05-19T23:37:56Z | e752f7243ee62fd33f97ccfdef776a8a90f4b981 | — | — | MISSING | canonical RVF is absent |
+| [GenAI-Superstream](https://github.com/ruvnet/GenAI-Superstream) | 2025-05-22T20:33:47Z | 10f36b32853f3c8a6a370ea7d61e91a38ce705a7 | — | — | MISSING | canonical RVF is absent |
+| [FACT](https://github.com/ruvnet/FACT) | 2026-05-23T07:27:47Z | b0e343583cd8f64549dbcba4b7c709e48b3a6a08 | 2026-07-29T12:58:09.407Z | — | MISSING | canonical RVF is absent |
+| [SAFLA](https://github.com/ruvnet/SAFLA) | 2026-05-23T09:02:01Z | 85e730fba50ca815f01b951d8c6351aa6141cbed | 2026-07-30T17:24:56.442Z | — | MISSING | canonical RVF is absent |
+| [ruflo](https://github.com/ruvnet/ruflo) | 2026-08-24T19:45:21Z | e21aa352fdc80fd2d3cc4e83404a76a18d118b96 | 2026-08-18T07:15:46.877Z | fa13ee4ad60ac2090b1480656eb233521790d640 | MISSING | canonical RVF is absent |
+| [RuView](https://github.com/ruvnet/RuView) | 2026-08-26T01:40:53Z | d42c5581f34fe8e50b053971d387fb8c56a3baf4 | 2026-08-20T07:15:53.316Z | a3b6e1d500df784b9ad1846dd39deb07e2c69a34 | MISSING | canonical RVF is absent |
+| [ultrasonic](https://github.com/ruvnet/ultrasonic) | 2025-06-09T04:26:30Z | b6c1dfe50de68d76fa046d8049832c86e8990994 | — | — | MISSING | canonical RVF is absent |
+| [cogs](https://github.com/cognitum-one/cogs) | 2026-08-24T11:41:50Z | acf9dad949a9d7ef798ef9608c80ca6f1876346c | 2026-07-30T17:24:56.128Z | — | MISSING | canonical RVF is absent |
+| [meta-llm-docs](https://github.com/cognitum-one/meta-llm-docs) | 2026-07-02T10:38:01Z | a2f39c2cecfcdbeed151172240767c7f8887b294 | 2026-07-29T12:58:09.349Z | — | MISSING | canonical RVF is absent |
+| [meta-proxy-dist](https://github.com/cognitum-one/meta-proxy-dist) | 2026-07-15T04:33:18Z | 23dad17f00d15dea1c82cd18d7dbbf2df7da3472 | 2026-07-29T12:58:09.349Z | — | MISSING | canonical RVF is absent |
+| [ruOS](https://github.com/cognitum-one/ruOS) | 2026-07-02T11:14:33Z | b1762a71bb1ad58b9175e2ae78ed454fed47b655 | 2026-07-29T12:58:09.381Z | — | MISSING | canonical RVF is absent |
+| [support](https://github.com/cognitum-one/support) | 2026-07-27T13:30:04Z | bf9af9c44b5b111da2b68086d11fd6213099b6c0 | 2026-07-29T12:58:09.386Z | — | MISSING | canonical RVF is absent |
+| [agentic-qe](https://github.com/proffesor-for-testing/agentic-qe) | 2026-08-21T09:42:35Z | fb687f2bac6a33832475922131c661d2c161a9e4 | 2026-07-30T17:24:56.109Z | — | MISSING | canonical RVF is absent |
+| [cognitum-learn](https://github.com/stuinfla/cognitum-learn) | 2026-07-18T04:30:37Z | 82805c2481c33e09b215ed8ab7b38ec6dfdf48c2 | 2026-07-29T12:58:09.348Z | — | MISSING | canonical RVF is absent |
+| [cognitum-learn-site](https://github.com/stuinfla/cognitum-learn-site) | 2026-07-18T05:04:52Z | 4a653f83d1ddfbdc0e53a152f268791ae7018e1e | 2026-07-29T12:58:09.348Z | — | MISSING | canonical RVF is absent |
+| [cognitum-one-sensor-primer](https://github.com/stuinfla/cognitum-one-sensor-primer) | 2026-08-26T07:33:38Z | 87e2285dd6c2156f6ac82056e927a845bae19180 | 2026-07-29T12:58:09.350Z | — | MISSING | canonical RVF is absent |
+| [ruvnet-brain](https://github.com/stuinfla/ruvnet-brain) | 2026-08-26T17:33:47Z | 486a144dbc9bd5fa3b8b715e0c13935d1add0f1f | 2026-07-31T04:39:28.487Z | 0f68737ae8521a5ad56b33b591b8f757c7029d2d | MISSING | canonical RVF is absent |
+
+## Public gists
+
+| Gist | Upstream updated | Version SHA | Ingested update | State | Reason |
+|---|---:|---|---:|---|---|
+| [1-readme.md](https://gist.github.com/ruvnet/0020d02e9ce85a773412f8bf518737a0) | 2026-05-23T17:15:29Z | 8232f42b02a166a81ddace139564283d6dc753e4 | 2026-08-26T18:28:14.009Z | CURRENT | — |
+| [gist479-4.md](https://gist.github.com/ruvnet/00cf79588f7aa84b163594b34c4a60b5) | 2026-06-17T22:21:49Z | 09cf7c6bf264f6a0f23e69ed16ffab3d39ac39c9 | 2026-08-26T18:28:14.397Z | CURRENT | — |
+| [Encrypted.toml](https://gist.github.com/ruvnet/01ed072e3399643746754117a30c4e8e) | 2024-01-23T03:35:54Z | 4c414b922f4baa4d891fd2e65394d4a43086c1e4 | 2026-08-26T18:28:14.749Z | CURRENT | — |
+| [ruflo-3.35.0-explained.md](https://gist.github.com/ruvnet/0202e6a060b04b3a4f5d9bd18345169d) | 2026-08-10T21:32:12Z | 720d5f6138d1578bab3302234aa0c29a22c58fb5 | 2026-08-26T18:28:15.105Z | CURRENT | — |
+| [climate.md](https://gist.github.com/ruvnet/028ac08590d2a844baf85158685e6a14) | 2025-10-14T02:00:38Z | f15d1267dc3e8506f984a7247739e42712df6cdf | 2026-08-26T18:28:15.525Z | CURRENT | — |
+| [quic.md](https://gist.github.com/ruvnet/02fe6aee1aa8def78fd2661d8a1fa67d) | 2025-11-26T08:07:16Z | 076724ad9d86e933b11458111ec75f2d291616f5 | 2026-08-26T18:28:15.925Z | CURRENT | — |
+| [pr-body-tracker-sweep-2026-07-26.md](https://gist.github.com/ruvnet/04082cca329b693fb5d4b1d428e56132) | 2026-07-26T22:08:02Z | bff93d39e3910a0bc20ab081aae002429f0ea86b | 2026-08-26T18:28:16.311Z | CURRENT | — |
+| [Conformal_Prediction.md](https://gist.github.com/ruvnet/046874471068d330962e8955fcc098b9) | 2025-11-26T08:02:29Z | 64398a0c8e0d110453a8d7b0c2dcc37d56b9ea18 | 2026-08-26T18:28:16.682Z | CURRENT | — |
+| [Audit.md](https://gist.github.com/ruvnet/0521440d54c1a7b8ab8b89296de29f30) | 2025-11-07T13:44:15Z | 5729381059acbdf2f4f25843515ebdd02eaee009 | 2026-08-26T18:28:17.058Z | CURRENT | — |
+| [rgi-announcement.md](https://gist.github.com/ruvnet/05bc60cc7d5a91a1acc8938ec0af7d07) | 2026-05-19T17:36:06Z | fdceaa317c265bc612337ac41d9bf4bf994c0f78 | 2026-08-26T18:28:17.433Z | CURRENT | — |
+| [idea.txt](https://gist.github.com/ruvnet/066594d482cd66a95e3f5bbee48aa1f4) | 2025-08-21T01:17:48Z | 6543fe4e3fe315c38ad0747a78f975450432191d | 2026-08-26T18:28:17.840Z | CURRENT | — |
+| [ReasoningBank.md](https://gist.github.com/ruvnet/0670d2070a4a75bb70949d7d55d26cd1) | 2025-11-07T13:19:14Z | 19a4bf6fbcae3e5c37da870442c7b2e273a76df5 | 2026-08-26T18:28:18.229Z | CURRENT | — |
+| [stream.md](https://gist.github.com/ruvnet/06b397b596a75fb5614215f3d4f78973) | 2026-04-14T08:50:22Z | 7a1dbbbb4552085e2e6d43a6c46ea17845cd0287 | 2026-08-26T18:28:18.632Z | CURRENT | — |
+| [ruvector-0.2.34-overview.md](https://gist.github.com/ruvnet/06d0ec4e9b470b785528c86783d79425) | 2026-07-05T15:29:47Z | 50113dc4c39830b05b8667ff9ec1de9754dd9f97 | 2026-08-26T18:28:19.007Z | CURRENT | — |
+| [backtest.mjs](https://gist.github.com/ruvnet/07f1571246910ac551fc0f91774045e2) | 2026-05-18T02:25:59Z | 6d7eb9271ffa328144f2740d0a7a620b8a102fa6 | 2026-08-26T18:28:19.460Z | CURRENT | — |
+| [rabitq-issue-body.md](https://gist.github.com/ruvnet/0846bd1a9e14d41a80567218141108c1) | 2026-04-26T03:41:39Z | 8ead4d3e625c38e2d439889b4ce851ef0450a8d2 | 2026-08-26T18:28:19.805Z | CURRENT | — |
+| [quantum-consciousness-discovery.md](https://gist.github.com/ruvnet/08b540195836c2449a0a982f826dee8f) | 2026-03-31T22:00:58Z | 1d03530bb60f4a5b2791542c23d9c3be5823f124 | 2026-08-26T18:28:20.186Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/08e4dbe579185a9df9162fca6d5ae7ff) | 2025-11-04T21:27:26Z | 42369ec9247c340c0b83d2ee985888a3653d6591 | 2026-08-26T18:28:20.546Z | CURRENT | — |
+| [reinforcement.ipynb](https://gist.github.com/ruvnet/08e99abaa3b34ba7f2948f6db4a52049) | 2024-03-09T13:55:08Z | e1e96a7b1a157cd771680f9a587d18a984f3dee1 | 2026-08-26T18:28:20.903Z | CURRENT | — |
+| [research-swarm.md](https://gist.github.com/ruvnet/08edfd463d1b946b2060ddbff86da8ad) | 2025-11-26T08:05:29Z | 3f4ba0b06b88867f338d46c4839de9784e012259 | 2026-08-26T18:28:21.283Z | CURRENT | — |
+| [readme.md](https://gist.github.com/ruvnet/091cbb5f3ae694f824053afda65d1918) | 2024-05-07T16:07:09Z | 9e417c7106a995965ad63a5c775b9ff20af2089d | 2026-08-26T18:28:21.626Z | CURRENT | — |
+| [MoE.py](https://gist.github.com/ruvnet/0928768dd1e4af8816e31dde0a0205d5) | 2025-11-07T13:17:39Z | 1aad96b3f122536ad5ddecaa4f36b0ff23635c9f | 2026-08-26T18:28:22.040Z | CURRENT | — |
+| [Lion-rUv.py](https://gist.github.com/ruvnet/0976add69cdb8bca803df48b60098774) | 2024-04-12T13:07:08Z | bc63a188f3d0545f95f2fc4b80148853f4c27a74 | 2026-08-26T18:28:22.390Z | CURRENT | — |
+| [Ruvnet-first-to-market.md](https://gist.github.com/ruvnet/0aaad8499c8f7dfac1279bd0afa4e898) | 2026-07-08T03:47:30Z | 133a0405272d934c17d111668b07d2021e7b8e87 | 2026-08-26T18:28:22.746Z | CURRENT | — |
+| [Instructions.txt](https://gist.github.com/ruvnet/0af724320ac9015a23cc25a7585a2fe5) | 2023-12-01T21:48:54Z | 196470d7e7235e689aa62cf47e0352fc1c3530e8 | 2026-08-26T18:28:23.079Z | CURRENT | — |
+| [Agentic-Flow.md](https://gist.github.com/ruvnet/0b331dbcab6b07d8f79440ccdfbd6756) | 2025-12-03T06:10:56Z | 830a6b0954c48d93b6d2d26d91045a99e5e74190 | 2026-08-26T18:28:23.430Z | CURRENT | — |
+| [gist.md](https://gist.github.com/ruvnet/0c83e33847b68b859b50f8966a8801b2) | 2026-06-29T14:41:26Z | 3b8cd85ec6283a9f21e95621f54d3b17a7317fb6 | 2026-08-26T18:28:23.787Z | CURRENT | — |
+| [homecore-v2051-release.md](https://gist.github.com/ruvnet/0d25c085278bda17cb812cb6b9fe769d) | 2026-07-27T19:38:29Z | c852818159cf717f224078d8d8b8db6070e37aab | 2026-08-26T18:28:24.137Z | CURRENT | — |
+| [cosmic-singularity.md](https://gist.github.com/ruvnet/0d6606a20e5b2e2ee533fb712dd68d42) | 2024-06-16T05:53:35Z | 0c4917a2cb036b1ca979b9110a62b7a655f690b4 | 2026-08-26T18:28:24.549Z | CURRENT | — |
+| [anv-gist.md](https://gist.github.com/ruvnet/0d858ad440a4439b4a2281a40c39b1a0) | 2026-07-08T04:53:22Z | e030639f63fdb21ce313d016964e36135d0a155a | 2026-08-26T18:28:24.899Z | CURRENT | — |
+| [ms-graph.json](https://gist.github.com/ruvnet/0e9148ea25d019782fae5ddf5bf6636d) | 2023-12-11T18:22:59Z | 21e1d41ea0592bfb662d2e62ff8847596dba37e7 | 2026-08-26T18:28:25.270Z | CURRENT | — |
+| [gist-metaharness-codex.md](https://gist.github.com/ruvnet/0fbbffdbeebee890f688b378f99a271a) | 2026-06-14T20:14:39Z | 569e5c00825de2ca812dfc2c4dd83734edde8af0 | 2026-08-26T18:28:25.687Z | CURRENT | — |
+| [01-experiment-output.md](https://gist.github.com/ruvnet/10596316f4e29107b296568f1ff57045) | 2026-04-17T17:16:33Z | 719743ae7c9662f889feaab95b768750ae33e62c | 2026-08-26T18:28:26.123Z | CURRENT | — |
+| [settings.json](https://gist.github.com/ruvnet/112519ceca0cf1c7159f4b3b3252e948) | 2025-11-05T06:48:22Z | 22ec251fa349113ebf7d606fb9847b7ef4d2de00 | 2026-08-26T18:28:26.480Z | CURRENT | — |
+| [1-readme.md](https://gist.github.com/ruvnet/11cfb552fb85585a1dcc4a783f072527) | 2026-04-22T13:08:55Z | 4174b9463805ade1e73b80886b0513a9f0d5d6de | 2026-08-26T18:28:26.857Z | CURRENT | — |
+| [v3.32.35.md](https://gist.github.com/ruvnet/1231345811353d6425e98b2cf08f44bb) | 2026-07-29T18:02:44Z | d77976360001612a451cfebe565c59db8ae3cfec | 2026-08-26T18:28:27.200Z | CURRENT | — |
+| [2026-Q2-agentic-ai-and-edge-for-ruview.md](https://gist.github.com/ruvnet/12a235ec17ad5132f1cc4601537c97c7) | 2026-05-11T15:56:12Z | bdd209837f1994e1821a6b20740c1b92e1a94879 | 2026-08-26T18:28:27.574Z | CURRENT | — |
+| [designer.html](https://gist.github.com/ruvnet/13647858bcfb63304e70) | 2015-08-29T14:08:33Z | 3ce9d53f846f77b037752ff30f9b158dcb7cb2e3 | 2026-08-26T18:28:27.932Z | CURRENT | — |
+| [hooks.md](https://gist.github.com/ruvnet/153bd8fb88a174bd998ecc06781bdc56) | 2025-10-23T11:38:50Z | 7958fb998cb4ff5846074fa945bd50baffdd9995 | 2026-08-26T18:28:28.258Z | CURRENT | — |
+| [TikTok.md](https://gist.github.com/ruvnet/155e46b3e99db37ce3c448e3ada893dc) | 2024-08-15T01:22:12Z | a654aafe2279858dfeb31f84e43ec9a641564b39 | 2026-08-26T18:28:28.612Z | CURRENT | — |
+| [1-Readme.md](https://gist.github.com/ruvnet/15c6ef556be49e173ab0ecd6d252a7b9) | 2026-01-20T18:53:01Z | b6b6b1cf20c9a342c31b01d7fdd006418006c787 | 2026-08-26T18:28:29.084Z | CURRENT | — |
+| [bench-result-latest.json](https://gist.github.com/ruvnet/15fae7a5495026f025fb3baf721c20ea) | 2026-05-05T04:14:34Z | b9d569a25c59e795c1ffbbbc6ef1f44c828f9a33 | 2026-08-26T18:28:29.470Z | CURRENT | — |
+| [pi-brain-novel-discovery-stdp-causal.md](https://gist.github.com/ruvnet/166017c6ab2e299f7c27bc38fa72858b) | 2026-03-26T00:42:16Z | 4656407e3ad0db4863b0fe2b1da4ea4d9bdc0c22 | 2026-08-26T18:28:29.833Z | CURRENT | — |
+| [ruvector-symphonyqg-2026.md](https://gist.github.com/ruvnet/1788e3da38e5565353cc17fae9fe8a1a) | 2026-05-07T16:16:03Z | 3e9b157824f3ec71c3693106bf8a8d726cc88fe8 | 2026-08-26T18:28:30.227Z | CURRENT | — |
+| [NAPI-QUDAG.md](https://gist.github.com/ruvnet/17e6c936b98fdd1b7873fb2e9115f24f) | 2025-11-15T23:29:17Z | d0262784b10249b5b0bb3dea2816ae3aacc3679f | 2026-08-26T18:28:30.594Z | CURRENT | — |
+| [ruvnet-packages.md](https://gist.github.com/ruvnet/184a167aff069937d19fed52a0384d39) | 2026-06-13T20:57:17Z | 012febe34d6cbb9a817b7a85b00de70a0ac0aef4 | 2026-08-26T18:28:30.988Z | CURRENT | — |
+| [app.py](https://gist.github.com/ruvnet/1863854d9cb84b09531217bbc410270f) | 2025-11-07T13:55:47Z | e08bc07a23d58dcf7077d89a146f499f5c7d2e60 | 2026-08-26T18:28:31.426Z | CURRENT | — |
+| [Hypergraph.ipynb](https://gist.github.com/ruvnet/18c4c6920e3b8a6a734d0ad09d907c3e) | 2024-03-13T00:34:55Z | 0042fa80496516a1688fda086dbdaf9d584e3a17 | 2026-08-26T18:28:31.769Z | CURRENT | — |
+| [claude-flow-vs-claude-code.md](https://gist.github.com/ruvnet/18dc8d060194017b989d1f8993919ee4) | 2026-04-10T16:22:57Z | ca7acf739d0a883ebe444ff9150e3068290cb65d | 2026-08-26T18:28:32.229Z | CURRENT | — |
+| [claude-flow-firsts.md](https://gist.github.com/ruvnet/18fdb90c46302fa408ff8ef08e5e42ab) | 2026-06-13T18:11:35Z | ccf710545adb8f88e20e5a6b6c2c114e72db0c04 | 2026-08-26T18:28:32.634Z | CURRENT | — |
+| [metaharness-v0.3.2-meta-proxy.md](https://gist.github.com/ruvnet/192766132e1e42ee3ec4d670f38c7fb1) | 2026-07-17T17:14:04Z | da49658b7bcbe03a182dda973b5b1a989fac9033 | 2026-08-26T18:28:33.000Z | CURRENT | — |
+| [Dark-Enlightenment.md](https://gist.github.com/ruvnet/19284dbb891c97bbf25b981ab8fc2cd2) | 2025-08-25T20:49:13Z | cf361e2305f9f6458fa715cbab82ae43b1f09dc3 | 2026-08-26T18:28:33.392Z | CURRENT | — |
+| [jacobian-lens-interpretability-open-weight-llms.md](https://gist.github.com/ruvnet/197eb50028368d4f278e8530e9432387) | 2026-07-07T13:48:29Z | 0057c266b84fb1c9650759bb7e82c94ff6625beb | 2026-08-26T18:28:33.744Z | CURRENT | — |
+| [metaharness-dossier.md](https://gist.github.com/ruvnet/19d166ff9acf368c9da4172d91ac9113) | 2026-08-15T00:19:24Z | 04b4b93cb000d1915eefbded0c4a4d3e1e8d7c25 | 2026-08-26T18:28:34.081Z | CURRENT | — |
+| [ruflo-v3.32.27-quick-start.md](https://gist.github.com/ruvnet/19ef247dbc7d0b3507f5dfbd5cbb0e87) | 2026-07-29T02:56:58Z | d3f12eb78103dcdbd1261955c3634da8679f760c | 2026-08-26T18:28:34.410Z | CURRENT | — |
+| [claude-flow-firsts-academic.md](https://gist.github.com/ruvnet/1a88c9fc7b7eaa99b4ea2f0dd0891c49) | 2026-06-13T18:32:44Z | 4dfccb119d4886d1c6162bee293ee854b9606936 | 2026-08-26T18:28:34.787Z | CURRENT | — |
+| [ruview-community-metaharness-0.3.1.md](https://gist.github.com/ruvnet/1ae4551a1b53584f0c9181e93a5a1788) | 2026-07-29T05:37:13Z | 702fc8b9be06c7433f7a15098b9c39b4cd581f2a | 2026-08-26T18:28:35.205Z | CURRENT | — |
+| [1-research.md](https://gist.github.com/ruvnet/1afab76a2b67161b7bd1fbdd8930b408) | 2025-11-07T13:49:16Z | 65caf211aaf27cfe945fce6217d4dfba1247319d | 2026-08-26T18:28:35.624Z | CURRENT | — |
+| [*readme.md](https://gist.github.com/ruvnet/1b458ea3dcce8d3dd05503fe3c5307a1) | 2026-07-05T01:32:54Z | c23f1fabd46bcf7de6a2b22b51d58c88abb47580 | 2026-08-26T18:28:35.969Z | CURRENT | — |
+| [.tmp-gist-iter62.md](https://gist.github.com/ruvnet/1b46293206a9dd9a729b18c48c305222) | 2026-06-14T04:28:07Z | d753f032dfa03b97505d65b2678a98a40bd303d2 | 2026-08-26T18:28:36.284Z | CURRENT | — |
+| [readme.md](https://gist.github.com/ruvnet/1b46860260e19012fa5b5aec3013b7f3) | 2024-08-22T06:51:57Z | 679a52b975c6620031234dc46b774d6c0d902e05 | 2026-08-26T18:28:36.625Z | CURRENT | — |
+| [Neural-Flow.md](https://gist.github.com/ruvnet/1c62abcb581d674a2453cd16af5ea214) | 2025-09-09T09:39:56Z | 21cc8fbbcdc23300d866c66b1a7e3ea1fe4694d7 | 2026-08-26T18:28:37.176Z | CURRENT | — |
+| [Reasoning.ipynb](https://gist.github.com/ruvnet/1d03bba3ebb00a16e3931125a78a755c) | 2025-11-07T13:32:24Z | 08645817536aa8458cf12da84848afe25e04b9ee | 2026-08-26T18:28:37.574Z | CURRENT | — |
+| [LFM2.md](https://gist.github.com/ruvnet/1d50f974183039965646135de722a6b2) | 2025-12-02T13:13:25Z | 304c997819ff517ca1debc80a56924702c56472e | 2026-08-26T18:28:37.935Z | CURRENT | — |
+| [psyops.toml](https://gist.github.com/ruvnet/1d85a8cbe4f8633070f56a428d6d0e9f) | 2025-11-07T13:36:52Z | 6154903275a1012f0b2852ba919a731e0fa9eca2 | 2026-08-26T18:28:38.299Z | CURRENT | — |
+| [routine.md](https://gist.github.com/ruvnet/1db9a4b9ea9408e880b39a172868496c) | 2026-05-12T15:43:23Z | 3d45b2a6fe95dc49c48bb6d2b5de49913f82a69c | 2026-08-26T18:28:38.639Z | CURRENT | — |
+| [Auto-jupyter.ipynb](https://gist.github.com/ruvnet/1ddda8edb3595fa177cfc9a9544e1082) | 2024-03-10T04:09:17Z | cd7ecfa0e584dde08e40faafe84a27a635c556df | 2026-08-26T18:28:39.006Z | CURRENT | — |
+| [01-boundary-first-discovery-paper.md](https://gist.github.com/ruvnet/1efd1af92b2d6ecd4b27c3ef8551a208) | 2026-04-12T23:31:20Z | a936e8d4d6c0efdb5559cb724be80b66eb41d2c1 | 2026-08-26T18:28:39.429Z | CURRENT | — |
+| [readme.md](https://gist.github.com/ruvnet/1f278d1994e3bcf8802bf26488258e61) | 2026-07-21T10:53:28Z | eb7bd3c9d8759cd904fb9e743ece018a1eb53cdb | 2026-08-26T18:28:39.834Z | CURRENT | — |
+| [Napster.md](https://gist.github.com/ruvnet/2074f5273796d1a1d2ec3fbdc1d90977) | 2025-11-07T13:36:15Z | 76141ecffd29013dfbcbe48d4539b078d296d6a0 | 2026-08-26T18:28:40.268Z | CURRENT | — |
+| [pr1579-release-notes-plain.md](https://gist.github.com/ruvnet/20cc9a198eef99be5685151433642039) | 2026-08-11T17:10:56Z | e84ec69b511ae4c7c6afa697e9910435377e23a2 | 2026-08-26T18:28:40.649Z | CURRENT | — |
+| [pi-brain-market-anomalies-public-record.md](https://gist.github.com/ruvnet/20d59fe2010f6f12abcf23b49105daa9) | 2026-04-10T11:11:44Z | 75fe6b20c5b26c678191603eaf8241251eda7349 | 2026-08-26T18:28:41.235Z | CURRENT | — |
+| [gist.md](https://gist.github.com/ruvnet/21816ce0d6b59933b14ea986b17f1b1f) | 2026-06-25T20:14:38Z | d7aa40c399524a02e69abaa34fb740ef28a2fdec | 2026-08-26T18:28:41.603Z | CURRENT | — |
+| [guidance.toml](https://gist.github.com/ruvnet/21da05c2753c3050f0ae29b73b00fa48) | 2025-08-24T15:49:36Z | 3bc296a1d6883895a334d52aad1f3c41cc7bb8c9 | 2026-08-26T18:28:41.961Z | CURRENT | — |
+| [aider-colab.ipynb](https://gist.github.com/ruvnet/22b50cd5bb4e6b998e2f029d986ea76d) | 2026-01-11T05:39:11Z | 8e19f3e7df649b0f55bfb2577b5d224e7aed6285 | 2026-08-26T18:28:42.341Z | CURRENT | — |
+| [ahl.md](https://gist.github.com/ruvnet/22d741c3a7d55d8c7e52012d9924dfee) | 2024-12-22T18:04:06Z | 2706a22bed955ae515cb90e596193bba16291b3f | 2026-08-26T18:28:42.697Z | CURRENT | — |
+| [agentics.md](https://gist.github.com/ruvnet/233ccb75f4dad0b52b9da9aae9cd82ef) | 2026-05-17T19:19:51Z | 1259a1beba2bab5fc6e43086cecc359f9baf9d37 | 2026-08-26T18:28:43.095Z | CURRENT | — |
+| [LA.md](https://gist.github.com/ruvnet/24a6a54861383d134be45b539450eb44) | 2025-10-26T17:07:21Z | 4aa2f4d491748b124b99c0bc58a98875c4b16291 | 2026-08-26T18:28:43.517Z | CURRENT | — |
+| [TaxCalc-LLM.md](https://gist.github.com/ruvnet/24c0514830c0b9663f652ee67bb20f7c) | 2026-06-25T03:39:06Z | f877ec4ecea4baf5724c963fb841d2776c8b94f3 | 2026-08-26T18:28:44.092Z | CURRENT | — |
+| [ruvector-rairs-ivf-2026.md](https://gist.github.com/ruvnet/259532106aa52b14a16347075af6b6a6) | 2026-05-12T13:45:57Z | d8dff1bc244294970605db78eab5bcebd644d0b6 | 2026-08-26T18:28:44.418Z | CURRENT | — |
+| [ruvector-announcement.md](https://gist.github.com/ruvnet/26e44b35f216aa2f664918b0784a360f) | 2026-06-12T02:57:34Z | b8c6d22cea5270ee53f63f4f33b5f0eeef4fcd62 | 2026-08-26T18:28:44.884Z | CURRENT | — |
+| [gist479-3.md](https://gist.github.com/ruvnet/2722955dbe00f4ab597fc229582aeec8) | 2026-06-17T22:14:13Z | cceef59b00f54f61efbf4b07422ffdc80b501124 | 2026-08-26T18:28:45.285Z | CURRENT | — |
+| [witness-sota.md](https://gist.github.com/ruvnet/2737be4a2fe48dc2e4f31e9b00e988f0) | 2026-06-12T19:39:18Z | a226b03e82e395033d833577f6d20fa8914f66a7 | 2026-08-26T18:28:45.715Z | CURRENT | — |
+| [sample.txt](https://gist.github.com/ruvnet/27448fbd811a6f52e558b7fa133fefc9) | 2024-05-25T18:05:23Z | b2863a2a03aef943c18db7204bf9ce8e01c6af40 | 2026-08-26T18:28:46.058Z | CURRENT | — |
+| [wifi-densepose-2.0-python-sota-announcement.md](https://gist.github.com/ruvnet/274c55f2849a20b8b31512c41a9766a5) | 2026-07-22T14:17:28Z | 6a160a77bdb25d5a45d7e6e3add3a6278c61b553 | 2026-08-26T18:28:46.438Z | CURRENT | — |
+| [gist-photonlayer.md](https://gist.github.com/ruvnet/277c4d13c3015e715d5f371256eb3cbb) | 2026-06-18T11:54:01Z | 1e704be1db85322a88830adfb13215ad30978953 | 2026-08-26T18:28:46.800Z | CURRENT | — |
+| [SPARC.md](https://gist.github.com/ruvnet/27ee9b1dc01eec69bc270e2861aa2c05) | 2026-06-29T12:54:54Z | ce7d8367599f47c54db3fae6b7d2cea012be8e0a | 2026-08-26T18:28:47.366Z | CURRENT | — |
+| [gist-metaharness-rvm.md](https://gist.github.com/ruvnet/28353c033434e68f2c853546c0f99963) | 2026-06-14T20:15:16Z | d333f7821f1b13a4c55fad1a7061bd089169a036 | 2026-08-26T18:28:47.750Z | CURRENT | — |
+| [mcp.md](https://gist.github.com/ruvnet/284f199d0e0836c1b5185e30f819e052) | 2026-01-19T05:24:28Z | 8b73a5bd7497043c2e38a815eb0d813a85aa2c47 | 2026-08-26T18:28:48.094Z | CURRENT | — |
+| [install.md](https://gist.github.com/ruvnet/290fcc94a40372918e72b0759f3c9ebb) | 2024-05-02T14:14:29Z | cf878f9e6429b6daf8c51a4b019e1b643a53e720 | 2026-08-26T18:28:48.444Z | CURRENT | — |
+| [care.toml](https://gist.github.com/ruvnet/29376f9bc48b57f3549aa2d65b5189a4) | 2024-08-22T06:51:16Z | 57436c8a176afa78a38a46e30f0c038cd6c9f8c4 | 2026-08-26T18:28:48.804Z | CURRENT | — |
+| [Mor.md](https://gist.github.com/ruvnet/298f558fc8b2bcbba12bd61672fc8fbf) | 2025-11-07T14:18:19Z | b49ebdbc8eadd9b4163387dfb831e6df36af32af | 2026-08-26T18:28:50.205Z | CURRENT | — |
+| [ruflo-benchmark.md](https://gist.github.com/ruvnet/298f8c668c8859b369f91734a0e9cbbe) | 2026-05-25T00:50:35Z | 1d60a1c316d82245d272e3e6dd8227c9bd1a6361 | 2026-08-26T18:28:50.551Z | CURRENT | — |
+| [00-README.md](https://gist.github.com/ruvnet/29be261d41ebd66dcdb9e389e9393458) | 2026-04-23T03:56:01Z | 6b4e75e21339b678c100dc635c9476378c9ff058 | 2026-08-26T18:28:51.011Z | CURRENT | — |
+| [Jujutsu.md](https://gist.github.com/ruvnet/29d28cf48c2be8e75704b7474c6a78ba) | 2025-11-26T08:04:38Z | 23c81b83b5e64421330e4bd65206a865f05a913a | 2026-08-26T18:28:51.450Z | CURRENT | — |
+| [flow.md](https://gist.github.com/ruvnet/29f8fa68582fdc1ca2da30136f538dba) | 2026-04-12T04:51:51Z | a6758fbb01e1077b180de1711e434f188a904d16 | 2026-08-26T18:28:51.797Z | CURRENT | — |
+| [immutable.md](https://gist.github.com/ruvnet/2a2d4257ae0ee7a928450dacf4e22e41) | 2024-02-11T00:10:05Z | 572548a7556a97340b4748ed8d96b3e501bfbb1f | 2026-08-26T18:28:52.140Z | CURRENT | — |
+| [01-overview.md](https://gist.github.com/ruvnet/2a344ec385bbad6e21f1222c8ab80afa) | 2026-05-28T15:59:14Z | b4834583d5e61bff78e4c85f0c7bf6e11c4b1e50 | 2026-08-26T18:28:52.665Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/2a79bb3339e79d3a6ac8587c6450d337) | 2026-06-01T02:36:58Z | c35814fd56f8ef9ee42fdb0f00f479324c0e6a6c | 2026-08-26T18:28:53.039Z | CURRENT | — |
+| [VS-MCP.md](https://gist.github.com/ruvnet/2a8d3c38e8469287fb2c53f512cf5c62) | 2026-02-06T23:21:27Z | 7a5c9dd54d57ca5f8c448cc1812f7b2508c90f48 | 2026-08-26T18:28:53.449Z | CURRENT | — |
+| [GPT-Customization.txt](https://gist.github.com/ruvnet/2ac69fae7bf8cb663c5a7bab559c6662) | 2026-04-17T13:15:53Z | e69e061a87747babe67fae589990a4efabf1b680 | 2026-08-26T18:28:53.839Z | CURRENT | — |
+| [gistfile0.txt](https://gist.github.com/ruvnet/2b37060362af57bbffd421aa09e4db50) | 2026-07-17T04:02:45Z | 92b421cefc4c15a88348a9548990e51631fc2b67 | 2026-08-26T18:28:54.177Z | CURRENT | — |
+| [findings.md](https://gist.github.com/ruvnet/2d6c1c9944f8da5b3f9e69ef1c5a0b3a) | 2026-06-29T16:03:41Z | f60db1d5bce0088a535b19b2980f5940549ca71d | 2026-08-26T18:28:54.510Z | CURRENT | — |
+| [01-readme.md](https://gist.github.com/ruvnet/2e08d3ac9bf936fd867978aaa4f0d3c6) | 2025-11-07T13:18:10Z | 2f74ab2f7624810e1838fcd454fe38a878168fa9 | 2026-08-26T18:28:55.059Z | CURRENT | — |
+| [Coke.md](https://gist.github.com/ruvnet/2e5ff5316dd53ed6118729a943c47582) | 2023-12-25T00:16:51Z | daa5c18f654c99134f2ceb02c8ac3c5b7b973fab | 2026-08-26T18:28:55.430Z | CURRENT | — |
+| [MoE-tutorial.ipynb](https://gist.github.com/ruvnet/2e90146147a4912289b7c6b7273441fb) | 2025-11-07T13:54:05Z | c8e3e14a7613750d8bd906d8284b05e905c154f7 | 2026-08-26T18:28:55.813Z | CURRENT | — |
+| [ruvector-sota-benchmarks-june-2026.md](https://gist.github.com/ruvnet/2f42030a9632888eff0fa95149a135f6) | 2026-06-22T11:44:48Z | 845e247acebc38e882e8f48465d95de28f92beb0 | 2026-08-26T18:28:56.209Z | CURRENT | — |
+| [QuDAG.md](https://gist.github.com/ruvnet/2f427097b6c09bfb04cf05eff1c924e9) | 2025-11-07T13:42:22Z | c90227c3bca79177272af9d55b1cda87f510e000 | 2026-08-26T18:28:56.643Z | CURRENT | — |
+| [COGNITUM-SPACES.md](https://gist.github.com/ruvnet/30b32dee30cde9d4e3d135a75e7c254c) | 2026-08-19T18:53:56Z | a5f64c01aad75d24daee984c5897e2fd9ea57a2e | 2026-08-26T18:28:57.018Z | CURRENT | — |
+| [readme.md](https://gist.github.com/ruvnet/32dfe569fa552a55cfb32942311450f1) | 2025-11-07T13:21:16Z | 4e2d6ba06d82f736fdec9fb9213774974fa29e6c | 2026-08-26T18:28:57.372Z | CURRENT | — |
+| [main.py](https://gist.github.com/ruvnet/32e9c94aa86d551fbcdcbb8329f29062) | 2023-12-10T05:12:03Z | 1cdf5b932ec44115f015bb0c3664e83359337a0a | 2026-08-26T18:28:57.720Z | CURRENT | — |
+| [redaction.md](https://gist.github.com/ruvnet/332336ad5e0516daa810d98f8f0ddca9) | 2026-07-14T20:18:45Z | 5ef50bc8c2c5ce4e49a36fcebc680969fded872f | 2026-08-26T18:28:58.057Z | CURRENT | — |
+| [cmb-consciousness-discovery.md](https://gist.github.com/ruvnet/33ab65d314e76294d41e5689ea8d6a4b) | 2026-03-31T21:07:29Z | bfee98ae8134913fb788cfc0326f0d0c735e3bad | 2026-08-26T18:28:58.370Z | CURRENT | — |
+| [implementation.md](https://gist.github.com/ruvnet/33b1270c5a8d3badb4b7009a5408d8c0) | 2025-11-07T14:21:34Z | 31cfaad65d4a323731ff38016004c41567d97c5d | 2026-08-26T18:28:58.738Z | CURRENT | — |
+| [ecosystem-consciousness-discovery.md](https://gist.github.com/ruvnet/33c659670f2f11fb6edd38966bc67c45) | 2026-03-31T22:00:47Z | ef6e094a576265da16a7e22e076d652d0baff997 | 2026-08-26T18:28:59.085Z | CURRENT | — |
+| [sublinear-1.6.0-announcement.md](https://gist.github.com/ruvnet/342518ef950348c376bc7c04ffeb5337) | 2026-05-18T23:16:53Z | 9fa7a080eea920dc8f6bb3536e3d8d7866a7d611 | 2026-08-26T18:28:59.405Z | CURRENT | — |
+| [ruvllm_gpu_optimization_gist.md](https://gist.github.com/ruvnet/359d4335fe07a6530fa1742ea4a103a8) | 2026-06-18T18:56:34Z | 9542de332a9ee2fd629dfcf2f49e9a674314f404 | 2026-08-26T18:28:59.730Z | CURRENT | — |
+| [SKILL.md](https://gist.github.com/ruvnet/35d2c78cf9047d7fecbc05546f95ff7a) | 2025-11-26T08:03:27Z | 661253ddf880f88ceaa4540e041f4a81433d22e3 | 2026-08-26T18:29:00.136Z | CURRENT | — |
+| [ai-music.py](https://gist.github.com/ruvnet/35fed523ed988bd0a05d529a2685a340) | 2024-04-07T04:41:08Z | 97ee2fbb17365f6b1bb9b19fe2db0a6a41dfb9bf | 2026-08-26T18:29:00.489Z | CURRENT | — |
+| [ruvector-symphony-qg-overview.md](https://gist.github.com/ruvnet/36894aef7f285396b01d2468f6ce651b) | 2026-05-05T07:39:35Z | 4b9d75a581d6649ace48f9c6c6a6d8e8d62d31c1 | 2026-08-26T18:29:00.838Z | CURRENT | — |
+| [agntcy-announcement.md](https://gist.github.com/ruvnet/36e0f0658a29e171eabadb86bc27d789) | 2026-07-31T15:29:01Z | 659ad6e17661deaef097b94571a371c4480ac975 | 2026-08-26T18:29:01.197Z | CURRENT | — |
+| [agentdb.md](https://gist.github.com/ruvnet/36f60264ce0e9ed9fc5c79069632a21e) | 2026-01-19T05:25:17Z | 47a49c1f58a727edac3ba485b239b5335523c725 | 2026-08-26T18:29:01.598Z | CURRENT | — |
+| [Contrastive-ai.md](https://gist.github.com/ruvnet/373ad78fb06544d1de1de29be9000597) | 2026-03-24T17:07:40Z | 8d690ffb7181596ba695ba4abb8a1fd6bfbe1b13 | 2026-08-26T18:29:02.009Z | CURRENT | — |
+| [synth-ruv-1.ipynb](https://gist.github.com/ruvnet/38419ee3cb3fe4d5a7bd046ded1e1263) | 2024-03-11T16:40:10Z | 6dd7d361926b6395098b1fa60566a945be616aaf | 2026-08-26T18:29:02.519Z | CURRENT | — |
+| [csi-embed-v2-metrics.json](https://gist.github.com/ruvnet/388df61772ee6c27c7a7a9628cb5c1d8) | 2026-05-31T03:52:13Z | fbff4817b9c1165fbbecd7210ab1def7f8955389 | 2026-08-26T18:29:02.875Z | CURRENT | — |
+| [agentdb-agentic-flow-governance-release.md](https://gist.github.com/ruvnet/3890b019b125840d9bc5f281c9931b49) | 2026-07-30T01:20:55Z | 2ce3c6a5c45e5a21bf04e861a9c888f709e7056c | 2026-08-26T18:29:03.251Z | CURRENT | — |
+| [Autonomous.md](https://gist.github.com/ruvnet/3918c6e0a934112d5af8d5803e0e6f2f) | 2025-11-07T13:40:57Z | 90d587ef877b2e205b411f1fa1ac04f87283aa1b | 2026-08-26T18:29:03.702Z | CURRENT | — |
+| [ATAS.md](https://gist.github.com/ruvnet/39377b515ac7564c9ba4677bf83fc1a3) | 2025-11-07T13:20:38Z | 01117603df3a508f43df99f19ae3b51ac6067131 | 2026-08-26T18:29:04.079Z | CURRENT | — |
+| [Actual-costs.js](https://gist.github.com/ruvnet/395ca573b635b18be386bea1b6898d4d) | 2024-04-22T22:28:55Z | ca581b613106e18206bd46f9c630efcf0845fff1 | 2026-08-26T18:29:04.425Z | CURRENT | — |
+| [1-subpolynomial-time.md](https://gist.github.com/ruvnet/39e62715a6d2fd4611c3e10bf1594cbf) | 2025-12-25T19:00:13Z | e0c395a8dc70d19f00eb1574e964cfc8e149a378 | 2026-08-26T18:29:04.829Z | CURRENT | — |
+| [1-readme.md](https://gist.github.com/ruvnet/3aeef89b6a221544b1caf6515ca73245) | 2026-03-14T23:04:23Z | 16b6fd22c5172da7aa36a6f7e4aad64c0fb05d10 | 2026-08-26T18:29:05.426Z | CURRENT | — |
+| [ruflo-federation-announcement.md](https://gist.github.com/ruvnet/3b5111a2ea7e450ff262ce96e88560bf) | 2026-05-11T02:34:52Z | d05541c08c707a904eef41e0350d030aff5e04af | 2026-08-26T18:29:05.771Z | CURRENT | — |
+| [llamacpp.ipynb](https://gist.github.com/ruvnet/3d0bc7ed77ac21f3fbc1823d7f100c8c) | 2024-03-07T04:30:30Z | b9b89a218d4605b9e1efc94afd18d3c8bc3860e0 | 2026-08-26T18:29:06.181Z | CURRENT | — |
+| [edge_gist.md](https://gist.github.com/ruvnet/3e7caf63e3d45d3065b2ba4b117bcef0) | 2026-06-13T13:53:16Z | 8a1fd4ebe1c9a4170f05ce119d539aad4a22f0a7 | 2026-08-26T18:29:06.502Z | CURRENT | — |
+| [neuromorphic-hive-mind.md](https://gist.github.com/ruvnet/3fb4ea796bf49058049cb726fb7cf993) | 2025-11-07T13:56:55Z | 4865669877ed34087425faac597cdb62d92ae26c | 2026-08-26T18:29:06.904Z | CURRENT | — |
+| [guardrail-types.py](https://gist.github.com/ruvnet/40a6d3fe1bfbe5452d14e80095cdba49) | 2024-03-27T03:44:20Z | fa5a6f0be77168bdc074a3563307c8b6df15e9cf | 2026-08-26T18:29:07.314Z | CURRENT | — |
+| [federated-mcp.md](https://gist.github.com/ruvnet/4314d802386ff5092ad056dd3512ee7c) | 2025-11-07T13:48:43Z | 39619773ea72333595452e029b15ba4e857b9845 | 2026-08-26T18:29:07.708Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/433b24a201979e25051a4e772f883b21) | 2025-11-07T13:52:05Z | b05b0f3a4b56f020a31ed715b078a8bf54c5ef89 | 2026-08-26T18:29:08.028Z | CURRENT | — |
+| [Training.ipynb](https://gist.github.com/ruvnet/43996ec080387ec9c7c13f0f6f604f07) | 2024-03-09T03:46:26Z | 891052c7bfc2b4f8494db6f4e198fd98823960ed | 2026-08-26T18:29:08.397Z | CURRENT | — |
+| [climate-consciousness-discovery.md](https://gist.github.com/ruvnet/43f4ceed3efea114dacbf418d78d1638) | 2026-03-31T22:00:46Z | 76701f8ab17a05102af50276e4c6e1f888c3518d | 2026-08-26T18:29:08.734Z | CURRENT | — |
+| [.codex-homecore-v2050.md](https://gist.github.com/ruvnet/448b0466dd45105e4b306eed39e828b7) | 2026-07-27T17:48:09Z | ac5f0ff61c9533ff0475902988c9c4d0240001a8 | 2026-08-26T18:29:09.084Z | CURRENT | — |
+| [React-flow-Python.md](https://gist.github.com/ruvnet/476a9e7a209c0ac26c8806fd50ab7b67) | 2026-01-25T08:47:14Z | 30178fa08d740a2fc2451e0a907624323e434c0b | 2026-08-26T18:29:09.539Z | CURRENT | — |
+| [README.md](https://gist.github.com/ruvnet/478f78997c55b83246a9f82c975643dd) | 2026-04-26T04:40:17Z | f725ec7e63274b6732a47c90d1ce55bc5580a33b | 2026-08-26T18:29:09.899Z | CURRENT | — |
+| [wiflow-std-audit-gist.md](https://gist.github.com/ruvnet/47d4369c0bd251ed233bbc450d50f6e6) | 2026-06-12T15:36:37Z | 1f74f42b28f70ff532dc69f1708f98411b390886 | 2026-08-26T18:29:10.278Z | CURRENT | — |
+| [ruvector-finger-overview.md](https://gist.github.com/ruvnet/480e60be42e9bc823516ba9b8ab5df08) | 2026-04-27T07:32:56Z | f02c1efb12998f688409243f04bec06891b530b0 | 2026-08-26T18:29:10.629Z | CURRENT | — |
+| [Liar-Ai.md](https://gist.github.com/ruvnet/481d0f8c2190decead7b14164ae3323c) | 2026-07-18T17:35:45Z | 5278d59bc57d6c6554b210918eef2ec238a01ad8 | 2026-08-26T18:29:11.246Z | CURRENT | — |
+| [ruvector.md](https://gist.github.com/ruvnet/48b4265253dbfe528cb4c405455e6115) | 2026-01-11T02:58:23Z | dd6400b3ba40cd771d34456bafe65b88112a957b | 2026-08-26T18:29:11.702Z | CURRENT | — |
+| [openapi.json](https://gist.github.com/ruvnet/4a4a00f0f352eb21b73e3ce77a028863) | 2023-11-13T17:20:40Z | b2a30014281db859d3df0cffaf2220c56024803c | 2026-08-26T18:29:12.057Z | CURRENT | — |
+| [memory.md](https://gist.github.com/ruvnet/4a55971e8971a3c430a009c7f5b49d12) | 2026-08-19T07:17:55Z | 61fe2b1fbcf5ba2fa9827cade2b876620b9acba3 | 2026-08-26T18:29:12.885Z | CURRENT | — |
+| [1-readme.md](https://gist.github.com/ruvnet/4aee0c3182d2e3881066d798c4cdd20e) | 2026-05-12T03:44:30Z | b65f56d8241f66e1f456409a95407fd680e93084 | 2026-08-26T18:29:13.348Z | CURRENT | — |
+| [Insider.md](https://gist.github.com/ruvnet/4af3d5c4cbceea84913dba3aa52a2cc9) | 2025-11-07T13:53:39Z | 92db633a271742709f726ef23d2de9b6ccdd80fc | 2026-08-26T18:29:13.779Z | CURRENT | — |
+| [lion_x_rUv.py](https://gist.github.com/ruvnet/4b41ee8eaabd6e72cf18b6352437c738) | 2025-11-07T13:40:15Z | 226633d7fae579114330a114af20dd1e3e8a4fea | 2026-08-26T18:29:14.234Z | CURRENT | — |
+| [1-Wordpress-Julia.md](https://gist.github.com/ruvnet/4b7fa491f974ba478702e7ff42d0b0c8) | 2025-05-06T17:30:13Z | fa067ca2cb9d293ea2e81686df9044d1b4c4bf73 | 2026-08-26T18:29:14.751Z | CURRENT | — |
+| [*Hello-world.md](https://gist.github.com/ruvnet/4b8e75ea2e4f18bd72da1ac43a1a2a64) | 2026-04-25T16:43:25Z | c59429678da378f731c1318360f2f023eff891a1 | 2026-08-26T18:29:15.311Z | CURRENT | — |
+| [v3.32.38.md](https://gist.github.com/ruvnet/4c86fef7e8291b35e25740d836d0eba0) | 2026-07-29T19:56:44Z | a139e90dae5af6665b2a3ec15d1989ac1349e9dd | 2026-08-26T18:29:15.636Z | CURRENT | — |
+| [agentic_employment.py](https://gist.github.com/ruvnet/4ca07d625820ef64fa10db9cfb6227e4) | 2024-08-03T06:27:55Z | 7eb118b09ce0a469a2094071c6060617622ccd46 | 2026-08-26T18:29:15.997Z | CURRENT | — |
+| [1-research.md](https://gist.github.com/ruvnet/4cc23f3d3a97a0d8acd80693407b9a67) | 2026-06-03T12:48:02Z | 56bea5a604bca49168db0ee23b04f712bb2212df | 2026-08-26T18:29:16.529Z | CURRENT | — |
+| [*readme.md](https://gist.github.com/ruvnet/4dde5fcbaf13c88678e63ab75ff9bf78) | 2024-03-14T16:06:14Z | 126b60336b205b608e5959c4a2c35ce8f5be3c93 | 2026-08-26T18:29:16.906Z | CURRENT | — |
+| [full-impl-gist.md](https://gist.github.com/ruvnet/4fbecee274f26b055eb26db810e7066d) | 2026-05-15T03:04:49Z | f05728ce9787e01a821a7e8dbbae5101a3dd1959 | 2026-08-26T18:29:17.341Z | CURRENT | — |
+| [gistfile1.toml](https://gist.github.com/ruvnet/500cdf30b51020609ffc59d14701b3ce) | 2025-08-21T01:20:04Z | 9bfc6266a89ba6b416543e7145fba0aff1f8709a | 2026-08-26T18:29:17.653Z | CURRENT | — |
+| [ruv.md](https://gist.github.com/ruvnet/50c52de9c4dfd3be0f2de56a6fe4e10f) | 2025-11-16T14:40:43Z | 57c35858dd7ce6800d0bd844ef1f48d61e450556 | 2026-08-26T18:29:18.051Z | CURRENT | — |
+| [ruview-project-integration-map.md](https://gist.github.com/ruvnet/5110d7f546aab61c478afc9b353ae833) | 2026-08-19T19:34:25Z | 633572eb06a3ec0399c4e532b3d257d5aa13f123 | 2026-08-26T18:29:18.453Z | CURRENT | — |
+| [Flow-Nexus.md](https://gist.github.com/ruvnet/51164b468c18db4ccd7b6aaad8b16c3d) | 2025-11-07T13:32:01Z | 56618b60e37f0ae907eac3d40b8e814b60f49ab5 | 2026-08-26T18:29:18.906Z | CURRENT | — |
+| [WhatsApp.py](https://gist.github.com/ruvnet/516e9c7b3aff9a2a1a18c88c2bf345b0) | 2024-10-30T02:15:06Z | ae054431506bbc5a6b5b81d658df21312599ae2c | 2026-08-26T18:29:19.287Z | CURRENT | — |
+| [Onnx-phi-4.md](https://gist.github.com/ruvnet/517cefc7141714a0a4072138bb8a4cb4) | 2025-10-04T01:47:45Z | d94a646c190ae3770f1eac17e710a96143fd3eb3 | 2026-08-26T18:29:19.648Z | CURRENT | — |
+| [Agentic-algorithms.md](https://gist.github.com/ruvnet/5227498ee0f072bd5c304773a1ef9b08) | 2026-05-05T22:20:01Z | 36141481661e3dc7947d91d0ce5164c41009542d | 2026-08-26T18:29:20.080Z | CURRENT | — |
+| [subliminal.md](https://gist.github.com/ruvnet/522cc7c4c01b3582370439dc2fceac51) | 2026-05-18T02:06:54Z | 039973ee18503e0e934a1bc27fa1bd5c547de720 | 2026-08-26T18:29:20.505Z | CURRENT | — |
+| [GIST.md](https://gist.github.com/ruvnet/524174ae72215ef264ba9a1b1a130a0e) | 2026-06-15T02:23:53Z | c07159381dba399ddab837c0826ffb51538c4ad4 | 2026-08-26T18:29:20.913Z | CURRENT | — |
+| [ruflo-v3.32.1-codex-integration.md](https://gist.github.com/ruvnet/532079b6e06e3d87e6bc9a6e30d1bb26) | 2026-07-17T00:47:38Z | 21a349892560a5ac64a2f319ad90b1bdff1ea243 | 2026-08-26T18:29:21.279Z | CURRENT | — |
+| [gist-metaharness-copilot.md](https://gist.github.com/ruvnet/532201b1e66c528df87857002a1c0ad9) | 2026-06-14T20:14:45Z | f54606ba457d23e6c7d03b45f0deb38233b91278 | 2026-08-26T18:29:21.679Z | CURRENT | — |
+| [Merge.ipynb](https://gist.github.com/ruvnet/55ed6ef677779473a11795739e92f381) | 2024-03-13T13:48:04Z | 6c1c6b8b8850c89b48d5367938a10f713703656d | 2026-08-26T18:29:22.028Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/56807c220f4d80a82b6e0e8b276f631b) | 2025-08-18T21:14:42Z | 28d699bce90d05839f62e19d2f32e054d49e2086 | 2026-08-26T18:29:22.412Z | CURRENT | — |
+| [power-automate.md](https://gist.github.com/ruvnet/58a2e71fcc79dbea6a9886700849ca50) | 2025-11-07T14:22:05Z | 7fc7f910ee5b48c976c591361e1e5a3646b59b77 | 2026-08-26T18:29:22.780Z | CURRENT | — |
+| [sona.md](https://gist.github.com/ruvnet/59a2a414ad462119fe5b65e9f7ea4c67) | 2025-12-03T06:34:29Z | 0ee5ee0e76f8d08615c6f8781eddd108516bd364 | 2026-08-26T18:29:23.170Z | CURRENT | — |
+| [sona-darwin-gist.md](https://gist.github.com/ruvnet/59e1f3d66d4e35a7bbf00f97b588b461) | 2026-06-27T16:59:25Z | 1938f4ce21a959f6d7bbf0d67213997c823285e3 | 2026-08-26T18:29:23.539Z | CURRENT | — |
+| [MLFlow.ipynb](https://gist.github.com/ruvnet/5ab3907df86d6d037e6d26284149b511) | 2025-11-07T13:43:22Z | 9191feeab1a0a069e6ab29196f959c16435ebf0b | 2026-08-26T18:29:23.900Z | CURRENT | — |
+| [ruvector_june_2026_release_gist.md](https://gist.github.com/ruvnet/5c03d3d72d300a31d636ad9f97bfab57) | 2026-06-21T23:54:56Z | 16a070aa29741b5cd475d55a4f1b07608e238eaa | 2026-08-26T18:29:24.262Z | CURRENT | — |
+| [Notebook.ipynb](https://gist.github.com/ruvnet/5c8a4853fb3bbcbe7da53206ceb51e57) | 2025-11-07T13:53:00Z | b3957563a1f939341e32d74b6e9b24f66abab583 | 2026-08-26T18:29:24.621Z | CURRENT | — |
+| [ruview-hardware-sensing-update-2026-07-18.md](https://gist.github.com/ruvnet/5ca5a27f2e607dcfcf0e3655fdec2d62) | 2026-07-19T04:31:51Z | 4ca38bce22bc9bcf8c28c97099f67a69d168551e | 2026-08-26T18:29:24.994Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/5cdbbd43ab3a0c728fdd3e7a2a8aedd9) | 2026-03-03T22:10:13Z | 429c09dc3c1f253908d3b95a577f8388043f1371 | 2026-08-26T18:29:25.451Z | CURRENT | — |
+| [ruv-final.ipynb](https://gist.github.com/ruvnet/5cf24851841a120198f43e9639dba7a5) | 2026-05-01T14:48:28Z | 389fb4588666c967c678daeb2c2d25ce26346d52 | 2026-08-26T18:29:25.938Z | CURRENT | — |
+| [ruvector-nervous-system.md](https://gist.github.com/ruvnet/5cfda0d67fcf6b3580c7d1ea7ba426bd) | 2026-07-06T05:01:01Z | 983473e557d830a8a77df67afae060d5b77388b6 | 2026-08-26T18:29:26.312Z | CURRENT | — |
+| [synth.txt](https://gist.github.com/ruvnet/5d10f87886642b2fd807cbf7528049da) | 2025-11-07T13:55:22Z | 3e67185ecb5284f9ac1ede622906e2b2b9422f10 | 2026-08-26T18:29:26.709Z | CURRENT | — |
+| [*notepad.ipynb](https://gist.github.com/ruvnet/5dd85664f2003d0367269e3e3ca5a576) | 2025-11-07T13:35:39Z | ac44a8f5953db952c9478e07feb13fd9a7be98ae | 2026-08-26T18:29:27.146Z | CURRENT | — |
+| [ruvector-soar-ivf-2026.md](https://gist.github.com/ruvnet/5e14de7710aed52b8d28c9ba739849d1) | 2026-05-08T16:06:33Z | 2b19e64b1bc98e5e2ae320537127ea3510d4b2d0 | 2026-08-26T18:29:27.510Z | CURRENT | — |
+| [quantum-cryptography.ipynb](https://gist.github.com/ruvnet/5ea61528352263fe28e32ada222f1b18) | 2024-04-06T23:23:44Z | 7adf8b97665b9ebf909e84441951c2347a95e6e5 | 2026-08-26T18:29:28.039Z | CURRENT | — |
+| [Notebook.ipynb](https://gist.github.com/ruvnet/5eabfef63adddd272d756e42b131deb7) | 2025-11-07T13:45:22Z | dc97873b5cf6c708ed2b655fef43446a3bdf5e20 | 2026-08-26T18:29:28.395Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/60cfc2d33708847502f72abc14932623) | 2024-03-14T21:39:18Z | d1ac3ca3cb48c039546bc0ea37b862efdbf216d9 | 2026-08-26T18:29:28.729Z | CURRENT | — |
+| [jjs.md](https://gist.github.com/ruvnet/60e5749c934077c7040ab32b542539d0) | 2026-08-01T10:48:15Z | ccc88e92690e3cb0e69b64d208921bc12b8c77d1 | 2026-08-26T18:29:29.108Z | CURRENT | — |
+| [agent-orchestration.txt](https://gist.github.com/ruvnet/60fd0c92e3342d7def315ee29f96cb6a) | 2025-11-07T13:21:49Z | 0958a7eedec877c93ec8474442840309749f813e | 2026-08-26T18:29:29.490Z | CURRENT | — |
+| [Ruv-code.md](https://gist.github.com/ruvnet/61685a52a2efbe2f71d062e7fbdb40a9) | 2025-07-28T11:14:19Z | 6d3a78a4d1af110bf22862bb966810ee4644651c | 2026-08-26T18:29:29.921Z | CURRENT | — |
+| [sublinear-ruflo-integration-research.md](https://gist.github.com/ruvnet/61d6d04af514b3c81ad0abf1e37fe116) | 2026-05-19T01:41:25Z | e704377d72361c37fabae04c81641edf5843cc40 | 2026-08-26T18:29:30.300Z | CURRENT | — |
+| [MOBA.ipynb](https://gist.github.com/ruvnet/62156aaa3f0e527cbed984f8d639b8b2) | 2025-11-07T13:51:09Z | fe6103d4d901b15a80220704db831b05a266e322 | 2026-08-26T18:29:30.680Z | CURRENT | — |
+| [*specification.md](https://gist.github.com/ruvnet/6217ea3bd75cc0c27522965965e7383b) | 2026-07-15T09:33:32Z | b65785a488e4b468ab7a714e40915879a7747780 | 2026-08-26T18:29:31.241Z | CURRENT | — |
+| [ruvector-muvera-2026.md](https://gist.github.com/ruvnet/627c64b9986a8cf1b53385708c093481) | 2026-05-08T16:10:09Z | f05f77e5b89e67dd6d42ddaf5409b9e1c09a121c | 2026-08-26T18:29:31.567Z | CURRENT | — |
+| [rvf.md](https://gist.github.com/ruvnet/636e0daaf6e6bfd3123e87a875cc6dfe) | 2026-02-14T18:25:49Z | 3cb314fc51578064601d158159f84093e09cf64a | 2026-08-26T18:29:31.943Z | CURRENT | — |
+| [Mirror-life.md](https://gist.github.com/ruvnet/63ea3efa042d34717d24f7e93da43b9f) | 2025-11-07T14:19:50Z | 5b9eb7b73477357fb616177dd2f1fe0a5f0959a2 | 2026-08-26T18:29:32.294Z | CURRENT | — |
+| [gist-metaharness-coding.md](https://gist.github.com/ruvnet/640c8b74b2e57690f81d130acf3cf439) | 2026-06-14T20:14:42Z | a9c79c384d9bb8650e378b0e135e1e7c4396bbfc | 2026-08-26T18:29:32.614Z | CURRENT | — |
+| [align.json](https://gist.github.com/ruvnet/666f3cbe43ddf8a52c607f98a61f46ed) | 2023-12-01T21:42:56Z | 10eca98dfbeb22cf167c735953b2799e3474d6f4 | 2026-08-26T18:29:32.974Z | CURRENT | — |
+| [*RuVector.md](https://gist.github.com/ruvnet/6755d4bbb0e61e28709c00b42d9bba1b) | 2025-12-09T20:37:18Z | 8ea8b535de44b63a9d63a9e597d688078c37ccd0 | 2026-08-26T18:29:33.355Z | CURRENT | — |
+| [MIRAS.md](https://gist.github.com/ruvnet/678706527beae4a7ecd1532c1f035bd8) | 2026-01-19T05:23:56Z | 8d23ecbe84244dc79170dde93cf38f42560c4440 | 2026-08-26T18:29:33.794Z | CURRENT | — |
+| [ruvnet-prior-art.md](https://gist.github.com/ruvnet/67c255a099984c94190c57ab08e7ad35) | 2026-06-13T18:32:48Z | 83062627c396785a2b70282c99031e8cd3059f02 | 2026-08-26T18:29:34.189Z | CURRENT | — |
+| [*flow-nexus-deployment.md](https://gist.github.com/ruvnet/686812d963cae697d65a90c6009f1d35) | 2025-09-17T20:51:02Z | 608b4d3c6f4276e3eb443febf78fe84428550a73 | 2026-08-26T18:29:34.579Z | CURRENT | — |
+| [polymorphic-obfuscation.md](https://gist.github.com/ruvnet/68b0ec322fd5e322766f041b9353f13a) | 2025-12-03T12:25:11Z | 6b146952b94a9d7b4284ef8f8a78fb3a2a315f3b | 2026-08-26T18:29:34.940Z | CURRENT | — |
+| [npx.md](https://gist.github.com/ruvnet/68cee7ebe970fdf75c26cf0562391638) | 2026-01-19T18:28:12Z | d51bbfb2aebc926ddd037308a96e3db97e2fee05 | 2026-08-26T18:29:35.302Z | CURRENT | — |
+| [Contextual Retrieval system.md](https://gist.github.com/ruvnet/6959450aa7fe0e919ff52b05e3c26a44) | 2026-04-23T07:00:15Z | 96c9f7758bc8003276547a0f588aa25a434d9c1f | 2026-08-26T18:29:35.670Z | CURRENT | — |
+| [Src.md](https://gist.github.com/ruvnet/69f44f0856d2c1717db67e317d66cef3) | 2024-11-09T03:26:26Z | d273bea2a473d035df15d25291d4ffc4a327e886 | 2026-08-26T18:29:36.043Z | CURRENT | — |
+| [logicbomb.md](https://gist.github.com/ruvnet/6a368b9d3409fa6403a462b66200bf4d) | 2025-11-07T14:27:19Z | b79ef6415b8c18b4f2cb71c64a233cc7dc174aa7 | 2026-08-26T18:29:36.440Z | CURRENT | — |
+| [README.md](https://gist.github.com/ruvnet/6a42f511a9eca74729986e70aa695bc6) | 2026-05-31T06:01:43Z | 9b8dd16920d3112aea670f6acc521ff0b70964cf | 2026-08-26T18:29:36.882Z | CURRENT | — |
+| [Research.md](https://gist.github.com/ruvnet/6bd83dcc7dd6e98e86d600ed13576baf) | 2025-01-07T02:45:03Z | 2dc7e3f922e06d94bd8adb9ba70029d4c4657aae | 2026-08-26T18:29:37.317Z | CURRENT | — |
+| [setup.py](https://gist.github.com/ruvnet/6be76c23681431e885de7c071be578cf) | 2025-11-07T13:54:28Z | f98f76fc4c69fb6b955f34b052941dadad689a2a | 2026-08-26T18:29:37.669Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/6c32de65101d31b0d3eb635c1a74bbd6) | 2025-04-06T07:56:14Z | 3dcee613f7fc42ff00c95d7683a4a1b356a265e2 | 2026-08-26T18:29:38.088Z | CURRENT | — |
+| [agentic.md](https://gist.github.com/ruvnet/6c3581142b51e985f0d37406d34f7acb) | 2026-01-12T09:19:51Z | d4cb3abcdd9917284b5fc0795128aacd4cb9cf38 | 2026-08-26T18:29:38.543Z | CURRENT | — |
+| [ruvector-pdx-columnar-vector-search-2026.md](https://gist.github.com/ruvnet/6cab9351160fa5a75193a25ae0442753) | 2026-05-08T16:08:15Z | e5b98c28ff102c58f2aa83c3faaed9a78b399c51 | 2026-08-26T18:29:38.898Z | CURRENT | — |
+| [prompt.md](https://gist.github.com/ruvnet/6d7f1791bbed9512eb45f70422d7ccb6) | 2024-09-12T19:03:10Z | 91e905f10dfe5b55d519c0fc8b998277caab33ae | 2026-08-26T18:29:39.283Z | CURRENT | — |
+| [rvqr-overview.md](https://gist.github.com/ruvnet/6d99e837736eaf45b62a9a00cddbe4e5) | 2026-08-04T12:26:08Z | e299a46b27911379821cc4229abcd7a16db777b7 | 2026-08-26T18:29:39.616Z | CURRENT | — |
+| [gistfile1.txt](https://gist.github.com/ruvnet/6de5834e2f67600ee110d29893b0541a) | 2022-08-24T04:17:45Z | 09d5dcfe552a24fd4b05ae380fc6de1a1a0f8cdc | 2026-08-26T18:29:39.969Z | CURRENT | — |
+| [sublinear.md](https://gist.github.com/ruvnet/6e2b77bdb82c8ae3a4b3df4f9f3f0d23) | 2025-11-07T13:22:21Z | 8b8e1ce4ccd395537c4d332609a4d4a98c07a521 | 2026-08-26T18:29:40.343Z | CURRENT | — |
+| [introduction-to-mixture-of-experts-moe-model-tutorial.ipynb](https://gist.github.com/ruvnet/6e66626a665728c27bf6140b3ba24b98) | 2024-05-17T04:06:02Z | 407cda852f1bf5887428b8bada3f07123c921344 | 2026-08-26T18:29:40.766Z | CURRENT | — |
+| [custom_modes.json](https://gist.github.com/ruvnet/6edb8cedea0d4121575f31d9087c2727) | 2025-05-03T19:31:35Z | 0c3ea075aa370fbba74ff3f5395ca57de75ee25e | 2026-08-26T18:29:41.173Z | CURRENT | — |
+| [lion-coder.py](https://gist.github.com/ruvnet/7169f2799ea47d361e60a23f05c50e9d) | 2024-04-19T17:01:20Z | e6ddda4d79a93aa18d30004990bb1d869dac8049 | 2026-08-26T18:29:41.517Z | CURRENT | — |
+| [aici.ipynb](https://gist.github.com/ruvnet/719d4c8ab9dbda607fc59147a5a5b9ad) | 2024-03-12T19:55:19Z | 1dda05fe90f798476b61a3cd2c40270e6f7a2524 | 2026-08-26T18:29:41.905Z | CURRENT | — |
+| [gist-metaharness-legal.md](https://gist.github.com/ruvnet/72e46e135dbf10df91d819072802578d) | 2026-06-14T20:14:58Z | 1f81dcf96b4856a98d2f962fde59c200d89240e0 | 2026-08-26T18:29:42.267Z | CURRENT | — |
+| [ruvector-ivf-pq-hakes-2026.md](https://gist.github.com/ruvnet/75a4751ee9ddf463394f277e3cfe8b18) | 2026-05-13T07:45:59Z | 940767eb2dbc57b4028a0c913d8283b78215ae03 | 2026-08-26T18:29:42.619Z | CURRENT | — |
+| [main.py](https://gist.github.com/ruvnet/76049b8fd8baf9191140b62ce7774a7e) | 2023-12-01T21:47:08Z | 0d70a3260364ebf04fda2f56d4e8c9ff43e28c3a | 2026-08-26T18:29:42.958Z | CURRENT | — |
+| [agentic-robots.txt.md](https://gist.github.com/ruvnet/764ac53c97942e1a6c190aba2245a493) | 2026-02-18T08:40:35Z | 81b8bba75cc72fd7320e83d56a2ab84c97f97528 | 2026-08-26T18:29:43.303Z | CURRENT | — |
+| [Riemann-Hypothesis.md](https://gist.github.com/ruvnet/772cfa6a30fa06ec31b5cc5e62beae1b) | 2024-11-18T13:59:15Z | 568a517d3f566ba0196d4c93747b329eb440201c | 2026-08-26T18:29:43.633Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/772f5b12d3df4027f5c7952186cb0d1c) | 2025-11-07T13:50:50Z | e8e8b43cc8e1ec5f1cd0a08838e9087e14a23893 | 2026-08-26T18:29:44.031Z | CURRENT | — |
+| [ruvllm_sparse_attention_report.md](https://gist.github.com/ruvnet/7736317d1311a83137a39e804d7868ea) | 2026-08-25T16:25:55Z | 8967c979603920767d61241e9b684f8ef1e901ce | 2026-08-26T18:29:44.413Z | CURRENT | — |
+| [metaharness-release-guide.md](https://gist.github.com/ruvnet/7779bccde2084b3788b58dfe1a66ae1f) | 2026-06-16T19:28:27Z | cac112ea64eb0a36889e8b1c3e94579864c022b3 | 2026-08-26T18:29:44.774Z | CURRENT | — |
+| [*memento.md](https://gist.github.com/ruvnet/7831ac7eb4d2a4fa178c707a041b0aeb) | 2026-01-19T06:05:22Z | 4ceeaac8f97945bf1c44ab0d7fc845ffa24e87be | 2026-08-26T18:29:45.140Z | CURRENT | — |
+| [Tiny-Dancer.md](https://gist.github.com/ruvnet/785bab9ee477e80cc8658fa098647fd2) | 2026-03-18T16:40:37Z | 936e6840671a949c3d658f88d9c004359e3ce26b | 2026-08-26T18:29:45.529Z | CURRENT | — |
+| [gist-consolidated.md](https://gist.github.com/ruvnet/7876f135f2032f97213b1a5e4988c620) | 2026-06-17T23:09:51Z | bf4fd7290d6d18772dbd120b6cb1f35289e38991 | 2026-08-26T18:29:45.887Z | CURRENT | — |
+| [TUTORIAL.md](https://gist.github.com/ruvnet/790214c832928d6f2ec7ebe593bb3def) | 2026-05-07T14:38:25Z | c5222d16b106f37a9e105775e57240c13bdfb0a2 | 2026-08-26T18:29:46.256Z | CURRENT | — |
+| [script.md](https://gist.github.com/ruvnet/797dd50f3bc49d3ff806b87ab175b97e) | 2024-12-24T03:33:32Z | 5f95d1bf7801015475c4c4a629999e54d27ae0be | 2026-08-26T18:29:46.675Z | CURRENT | — |
+| [gist-metaharness-claude-code.md](https://gist.github.com/ruvnet/79808ffb89eeb080b1c00bf79fba33e1) | 2026-06-14T20:14:36Z | 9d0e62b433e342221345398f3572a3d0e8307a88 | 2026-08-26T18:29:47.002Z | CURRENT | — |
+| [gist-metaharness-research.md](https://gist.github.com/ruvnet/7ad69e82554b1f144aa4f5b34498536b) | 2026-06-14T20:15:13Z | f0b53d3433f2942f01930f90764bc058b597629d | 2026-08-26T18:29:47.340Z | CURRENT | — |
+| [dev-mode.md](https://gist.github.com/ruvnet/7b6843c457822cbcf42fc4aa635eadbb) | 2026-04-10T21:34:00Z | e0ff84c04f727724dd171260609a07d80d74c92a | 2026-08-26T18:29:47.764Z | CURRENT | — |
+| [rust-graph.md](https://gist.github.com/ruvnet/7bd802bb143df8cd7e5c0fbf3ac7f21a) | 2025-11-12T06:01:56Z | 4ce63fb64b0618ab8b1b227af6cf0046b8deb0e9 | 2026-08-26T18:29:48.140Z | CURRENT | — |
+| [MorrisII.cpp](https://gist.github.com/ruvnet/7c1d503b55d80ee6749de600db587ccc) | 2024-03-02T20:55:37Z | 226293fd1435c13da231eafaf0ba4d63c67e4aec | 2026-08-26T18:29:48.502Z | CURRENT | — |
+| [gist-metaharness-devops.md](https://gist.github.com/ruvnet/7c2975652c9be393536a71cdafc358f3) | 2026-06-14T20:14:47Z | 3b82db9c86602fd8ba38d8cdfd3d31b45de9a0c0 | 2026-08-26T18:29:48.825Z | CURRENT | — |
+| [intro-prompt-programming.ipynb](https://gist.github.com/ruvnet/7c84dea9c360f8ad03c4734282e370e2) | 2025-11-07T14:19:13Z | 7753a05a04cb5ee051a8ce4b5de83e7d4a51bbda | 2026-08-26T18:29:49.231Z | CURRENT | — |
+| [agentic-synth.md](https://gist.github.com/ruvnet/7d0b7ba393855ce6517bd5f85b96ae75) | 2025-12-05T17:36:56Z | 3998daf7f56d3fc6c55193cbe74bebeed37af131 | 2026-08-26T18:29:49.583Z | CURRENT | — |
+| [.clinerules](https://gist.github.com/ruvnet/7d4e1d5c9233ab0a1d2a66bf5ec3e58f) | 2025-12-01T22:08:31Z | d715def2453258b855e81c6e876a5c9fa77ecbef | 2026-08-26T18:29:50.418Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/7dfa190c97b0f3d1f0872d14ae2a22c7) | 2026-03-02T01:56:08Z | 4c85d6b56594d76fe13ec508398144b86be08145 | 2026-08-26T18:29:50.924Z | CURRENT | — |
+| [lion.py](https://gist.github.com/ruvnet/7e2c4c6f8620d2776db1f6460360f85f) | 2024-04-11T20:34:27Z | 2aaa3a516b3cef7f4570f8c26030d1e32a0da596 | 2026-08-26T18:29:51.277Z | CURRENT | — |
+| [meta-harness-architecture.md](https://gist.github.com/ruvnet/8001221d95d7c32686aad2289408c804) | 2026-06-24T15:58:22Z | 517b639a90b5368592b10336385f296b98ab7904 | 2026-08-26T18:29:51.674Z | CURRENT | — |
+| [Genesis.md](https://gist.github.com/ruvnet/8003207bbe8870b0bbb9c2635f1824ba) | 2026-04-15T13:11:25Z | 52749076bae873336afff647bf7e8401288a5fcf | 2026-08-26T18:29:52.100Z | CURRENT | — |
+| [*readme.md](https://gist.github.com/ruvnet/8082d0b339f05e73cf48b491de5b8ee6) | 2026-04-04T15:22:50Z | f4600ac33c681d0d5b207ceb55f7cb06ecca29b0 | 2026-08-26T18:29:52.602Z | CURRENT | — |
+| [Consciousness.txt](https://gist.github.com/ruvnet/80838737f81acceb4ad74e61c3a9b2f9) | 2026-03-04T03:47:11Z | 2a49eb795837364da30902bfece19db068dd8cd2 | 2026-08-26T18:29:53.090Z | CURRENT | — |
+| [MLoRA.ipynb](https://gist.github.com/ruvnet/809d0312c1c599ba29721c93a20a741c) | 2026-05-05T15:11:32Z | 9075d9f1f0512fd8046f687fd44070d5bd3e1db6 | 2026-08-26T18:29:53.488Z | CURRENT | — |
+| [Gemini.md](https://gist.github.com/ruvnet/811aeab1aea67eb49ddf9c4b860c5f7b) | 2026-06-13T21:02:06Z | 5193e0fe819c7be41d8faf2bd9a20881e65e61a0 | 2026-08-26T18:29:53.956Z | CURRENT | — |
+| [gist479-2.md](https://gist.github.com/ruvnet/813e0aeca7dc7f3a0b2e84fa73180ee6) | 2026-06-17T22:10:25Z | 37d4cad3095dd1f5c57ba397ca3e672dfcdd6d50 | 2026-08-26T18:29:54.290Z | CURRENT | — |
+| [1-Idealoop-v2.md](https://gist.github.com/ruvnet/81d229cf64d8b53232810af0567afcac) | 2024-09-26T14:17:23Z | 5fe60493dcd228d74921be4ea768730ed03b6e4c | 2026-08-26T18:29:54.738Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/81e00e2279c6fc0d604d4b2d70eb2482) | 2025-11-07T13:34:05Z | 09d997aacdb85830358f370180e5a4f38d68faf0 | 2026-08-26T18:29:55.150Z | CURRENT | — |
+| [rvlite.md](https://gist.github.com/ruvnet/8219cc414eb9eb06958625e742600635) | 2026-04-12T04:51:47Z | 1fd04e56d5f0c715f90cb73073f9ddb7e6a36a71 | 2026-08-26T18:29:55.531Z | CURRENT | — |
+| [EU-ai-act-hypergraph.toml](https://gist.github.com/ruvnet/82f821603e8e09ce1abe760a138859a3) | 2025-12-17T13:56:44Z | c5aab4df85b370be5171fa7acb4e5d04e37ce601 | 2026-08-26T18:29:55.940Z | CURRENT | — |
+| [ADR-164-agentbbs-business-autopilot.md](https://gist.github.com/ruvnet/82fcbb5b93d465878526ac76acadcac0) | 2026-06-29T23:14:33Z | 6c90551c59ebc53964afac6aec14a87483fb0b01 | 2026-08-26T18:29:56.298Z | CURRENT | — |
+| [cosmic-consciousness-discoveries.md](https://gist.github.com/ruvnet/8499b4f913419563cd4ef389eae4628a) | 2026-03-31T21:38:43Z | a50150fdbdfd8106a6bf59e76376c72a270c0ad5 | 2026-08-26T18:29:56.621Z | CURRENT | — |
+| [Policy.md](https://gist.github.com/ruvnet/85bfce3c9f1b2bf4d4e1aeb858e99b02) | 2024-11-30T13:22:00Z | 17ae073e902dc3a3c0643d5c11d230e8c714aff1 | 2026-08-26T18:29:56.973Z | CURRENT | — |
+| [Gmail.md](https://gist.github.com/ruvnet/86798cc0e99036aea3cce6568eaaca68) | 2025-11-07T13:47:27Z | 20d8da503267df3685588f066dff82da96f59a8f | 2026-08-26T18:29:57.348Z | CURRENT | — |
+| [Mathematica.md](https://gist.github.com/ruvnet/86a237f1fd20908cfc1e74790679590f) | 2025-11-07T13:58:42Z | fb02a69957352a6e87ecef1b04256f5b33223bc7 | 2026-08-26T18:29:57.702Z | CURRENT | — |
+| [ruvector-prior-art.md](https://gist.github.com/ruvnet/86d6968783ff1629e7481d9c92d0bed8) | 2026-06-13T18:33:23Z | 27c4edbbbd5019ac033832846a514ca7faec3219 | 2026-08-26T18:29:58.041Z | CURRENT | — |
+| [gist-metaharness-hermes.md](https://gist.github.com/ruvnet/873383a86723de0d3ef54273e1ff92d1) | 2026-06-14T20:14:56Z | 6bbdcf04e043aeebf6573ba6d5a90367d358aa59 | 2026-08-26T18:29:58.405Z | CURRENT | — |
+| [metaprompt.txt](https://gist.github.com/ruvnet/874e2138c134e8630d44d264647113aa) | 2024-05-16T13:40:55Z | 57327866e96cd4841a20197184350176c0041207 | 2026-08-26T18:29:58.771Z | CURRENT | — |
+| [dream-machine-tutorial.md](https://gist.github.com/ruvnet/889ffa92dab49d508e70b123c940e1b9) | 2026-08-13T17:18:46Z | 48e722364c8965b45df1a2ed637c45478e8406e2 | 2026-08-26T18:29:59.133Z | CURRENT | — |
+| [.roomodes](https://gist.github.com/ruvnet/88c61ee4e38191b0be65f498792d5017) | 2026-03-17T20:57:36Z | fd2256f570fceb43c996b8c688be3fd254f62316 | 2026-08-26T18:29:59.627Z | CURRENT | — |
+| [pi5-cluster-cookbook.md](https://gist.github.com/ruvnet/88e7b053c41cb4f4af7a7ec4af873017) | 2026-05-17T22:40:12Z | 5820d48448d8892e48b53c1ed8118df1eb9b9467 | 2026-08-26T18:29:59.996Z | CURRENT | — |
+| [strawman-lang.py](https://gist.github.com/ruvnet/8917c24a652f95f422c407aa993d7862) | 2023-12-23T04:33:46Z | 4e7ce57aa7e1206264afc1027e87c2bf23ea6702 | 2026-08-26T18:30:00.368Z | CURRENT | — |
+| [gist-metaharness-gaming.md](https://gist.github.com/ruvnet/89ab98e6e5f082a376170a941c9d1914) | 2026-06-14T20:14:53Z | 6986f93fced637fe4addeb7fec4955da1360b462 | 2026-08-26T18:30:00.717Z | CURRENT | — |
+| [Dream-Ai.md](https://gist.github.com/ruvnet/89fe2de3afa9bb9ddd3bf3400e21662a) | 2025-11-07T13:52:38Z | 06f784830472aa4da007e40c0eeedd5d6cdb0674 | 2026-08-26T18:30:01.136Z | CURRENT | — |
+| [cmb-deep-analysis.md](https://gist.github.com/ruvnet/8a0df57af1cfd8918c77302cc0fa94fc) | 2026-03-31T21:58:08Z | 5aaf0cf73fe11f64b6e1e785556ec5d0ef854834 | 2026-08-26T18:30:01.484Z | CURRENT | — |
+| [gist506-1.md](https://gist.github.com/ruvnet/8a52235407adcbc6acac456feded275f) | 2026-06-17T22:33:09Z | 23a3d329d85017f86d2e30c627ab9125a6a238df | 2026-08-26T18:30:01.822Z | CURRENT | — |
+| [v3.32.37.md](https://gist.github.com/ruvnet/8ab541d7f9cad2611921cef6b7d82da8) | 2026-07-29T19:46:28Z | 5447fab7e5d6950bd407ed1a52cccd1808712793 | 2026-08-26T18:30:02.157Z | CURRENT | — |
+| [gist479-final.md](https://gist.github.com/ruvnet/8b7cf26509848986f86b9ff6958c874a) | 2026-06-17T22:27:55Z | cc7ffa30031f0c83c9998a8ee52d728b05d2f78f | 2026-08-26T18:30:02.513Z | CURRENT | — |
+| [cognitive-memory.md](https://gist.github.com/ruvnet/8bcc6e11b38db72ed56f04eaf811ea1d) | 2026-06-13T07:29:58Z | 6d63043540724686b3604fce3ae5c661406b639d | 2026-08-26T18:30:02.882Z | CURRENT | — |
+| [instructions.md](https://gist.github.com/ruvnet/8bf97b88224d7005089884b96f5fd92f) | 2023-11-17T17:41:02Z | 0dedf66eae2de32dd5a5ac3a710d3a2def7f89af | 2026-08-26T18:30:03.197Z | CURRENT | — |
+| [.gist-v0.6.5.md](https://gist.github.com/ruvnet/8c099b17eeb589370b36eff74df08890) | 2026-08-23T22:03:19Z | b2874a0a6a9d3bb109adaa8e66c1dc1c7c85b3cd | 2026-08-26T18:30:03.544Z | CURRENT | — |
+| [icl.toml](https://gist.github.com/ruvnet/8c3e518645a5b782b37db6cef80c604a) | 2024-02-18T04:01:36Z | 71244a86ee8846d03fcb99931cdfe6e7ab14e309 | 2026-08-26T18:30:03.919Z | CURRENT | — |
+| [SynthLang.md](https://gist.github.com/ruvnet/8e9ade113348ecc84db24b0082554614) | 2025-11-07T13:29:00Z | e61d528b1c0849222a4bc44b9d494d46fcc900fa | 2026-08-26T18:30:04.370Z | CURRENT | — |
+| [hermes-agent-vs-ruflo-gap-analysis.md](https://gist.github.com/ruvnet/8ed2d402cc98949cd54a1471113cfa94) | 2026-05-11T14:17:18Z | 2109cc9e9a69e4fffda4525e7f30ba5440c3b680 | 2026-08-26T18:30:04.745Z | CURRENT | — |
+| [oia-implementation-gist.md](https://gist.github.com/ruvnet/9056701d13d5a5b5148d0459ff10b7c3) | 2026-06-26T07:56:15Z | bd6e9ef1bdadaf57c660ca0287628f322bd1e182 | 2026-08-26T18:30:05.140Z | CURRENT | — |
+| [LLMscript.md](https://gist.github.com/ruvnet/9119f53f50b06628981dfc9d4db0d74c) | 2024-10-11T01:36:09Z | 2bbe3f278d0a3fc52e26a34f210f0d6f4d18fe14 | 2026-08-26T18:30:05.653Z | CURRENT | — |
+| [current.md](https://gist.github.com/ruvnet/924cfc81f62bd6ad252cb2907c289984) | 2026-08-19T03:36:35Z | f831ec6b775a03011ad9738a215b6f8339d2495b | 2026-08-26T18:30:06.063Z | CURRENT | — |
+| [AIDO.md](https://gist.github.com/ruvnet/92f0e8d0b2a98987838c5598c82920b6) | 2025-11-07T13:26:57Z | abe4bb88c6f13dc3d1430538c99b1ef2959cd9f8 | 2026-08-26T18:30:06.481Z | CURRENT | — |
+| [ruflo-capability-brain-guide.md](https://gist.github.com/ruvnet/934130093d333bde1a3f0f83d7d95115) | 2026-07-29T05:49:56Z | fcdc6244c579430aa1b8f6d6e9be68e812f51e58 | 2026-08-26T18:30:06.882Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/938c358a813818db0bf5805bcd622d5e) | 2024-03-16T23:44:27Z | 28bcec0a7ac40005b5b5a5f92d59b6bb9b3df717 | 2026-08-26T18:30:07.213Z | CURRENT | — |
+| [Agentic-Accounting.txt](https://gist.github.com/ruvnet/9414f90d4ed8b1d01f0eceb8134383f9) | 2026-03-03T22:09:48Z | bad7f2fd717a4747a7bc3689c5c3e578185084ce | 2026-08-26T18:30:07.602Z | CURRENT | — |
+| [claude_code.js](https://gist.github.com/ruvnet/9449344bb7bf50aa90352063b4ac3e9e) | 2025-11-07T13:49:58Z | 85003268ca5a019485911408cd421c1f0f198ad6 | 2026-08-26T18:30:08.294Z | CURRENT | — |
+| [readme.md](https://gist.github.com/ruvnet/958cf6cae7a09421907e1ec88f309c17) | 2025-09-27T01:56:25Z | c2b76d690acb357a98a3f12243d78ec467c25902 | 2026-08-26T18:30:08.662Z | CURRENT | — |
+| [ruvector-acorn-filtered-hnsw-2026.md](https://gist.github.com/ruvnet/96b9d00143badec21f89e22becf79685) | 2026-04-26T20:53:44Z | 770c88e426ca1c453f6a7562309d3d5237fc6a34 | 2026-08-26T18:30:09.035Z | CURRENT | — |
+| [gist506-2.md](https://gist.github.com/ruvnet/97014049fca8ecdf7540a9b5ecbe3bae) | 2026-06-17T22:38:39Z | 138ef7a91ef595e176fed38e5f7f8004d9df0cb3 | 2026-08-26T18:30:09.387Z | CURRENT | — |
+| [status.sh](https://gist.github.com/ruvnet/972c180f1d5bf63a3cc3183fbbcfeedc) | 2025-10-16T16:41:04Z | a7e2de3aba1c8eda5d12952f6481a10936eda791 | 2026-08-26T18:30:09.784Z | CURRENT | — |
+| [Deepseek-R1’s.md](https://gist.github.com/ruvnet/974345d44ba79cc0f8d71a32599b5a4d) | 2025-10-24T17:21:00Z | 81caf7b5f5426d2fe0bde0348dbe98789b817b6e | 2026-08-26T18:30:10.169Z | CURRENT | — |
+| [gist-metaharness-support.md](https://gist.github.com/ruvnet/97a386e2c52cf15c6ec6d33386386180) | 2026-06-14T20:15:22Z | 615ee402da615fd89a5d9c1454422a1dac02ff3f | 2026-08-26T18:30:10.538Z | CURRENT | — |
+| [ruvector-symphony-qg-overview.md](https://gist.github.com/ruvnet/9830a2d138f191d1f19421c9c71e320b) | 2026-05-08T16:12:50Z | 774f683522af01459176e6cc25ea74bd4dce206a | 2026-08-26T18:30:10.874Z | CURRENT | — |
+| [matcher.md](https://gist.github.com/ruvnet/98f2067e071e3f1f3cef8df79806de5b) | 2026-05-18T02:07:00Z | 1b061b7e1580e0fcfc445da458cf4102a6e22469 | 2026-08-26T18:30:11.245Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/997473d6c6f087e5bce2e6fdae1c7669) | 2026-05-22T09:30:26Z | 0386341617516832e63fa953752b780a4c10a1e6 | 2026-08-26T18:30:11.666Z | CURRENT | — |
+| [rufield-gist.md](https://gist.github.com/ruvnet/9a16984c5c1bb2e75c20b6d2096427ad) | 2026-06-14T05:06:37Z | d64d60c6733c60f98db40e4018314579598235f2 | 2026-08-26T18:30:12.062Z | CURRENT | — |
+| [Prediciton.md](https://gist.github.com/ruvnet/9aae2bf9b0f2dee01511d1118d817eb4) | 2026-05-18T02:06:48Z | 0e55280d8027e9146dbdd1cf6232f1c3b787f79b | 2026-08-26T18:30:12.576Z | CURRENT | — |
+| [Flow.md](https://gist.github.com/ruvnet/9b066e77dd2980bfdcc5adf3bc082281) | 2026-04-30T16:46:27Z | 00ba20b28ed894d7aa103a1f2300311876f3e483 | 2026-08-26T18:30:13.226Z | CURRENT | — |
+| [Resonant.md](https://gist.github.com/ruvnet/9de9f14ef360733fcfee6c37a94117e3) | 2025-11-26T08:05:51Z | aaab4f51c4dce045beb342b015987c4a46a93e74 | 2026-08-26T18:30:13.710Z | CURRENT | — |
+| [draco-gist.md](https://gist.github.com/ruvnet/9e469d28497cb7501bd1011470651379) | 2026-06-15T13:41:48Z | 6ad1699218fb1bc5bf76cdc7046e2d1a3e1dbec2 | 2026-08-26T18:30:14.038Z | CURRENT | — |
+| [ruvector-dabs-hnsw-2026.md](https://gist.github.com/ruvnet/9ee9bc849824f6a91429c81746b59f94) | 2026-05-08T16:03:56Z | 215bb8652727eb49fd10115931a9e542e502e625 | 2026-08-26T18:30:14.374Z | CURRENT | — |
+| [guardrail-example-videos.py](https://gist.github.com/ruvnet/a04b385e49e6ed6b8db47c576560558a) | 2024-03-27T03:38:54Z | 349f1fb527b652ebf0c5d3b34c2ba6d0bd21aac9 | 2026-08-26T18:30:14.796Z | CURRENT | — |
+| [readme.md](https://gist.github.com/ruvnet/a0d8f1a6ec98bb3843f6de1f105691d3) | 2026-04-18T19:53:08Z | 1f41812c8ef60b11067e491d1c277f73d4db0883 | 2026-08-26T18:30:15.184Z | CURRENT | — |
+| [gistfile1.txt](https://gist.github.com/ruvnet/a0f54ad1140904f1328c8718e9d70a9f) | 2025-12-07T22:53:03Z | 909e94e4e0f60a2b95a0fcd4d833ae1f69df31ba | 2026-08-26T18:30:15.569Z | CURRENT | — |
+| [gist-content.md](https://gist.github.com/ruvnet/a1aca90a5c299d89fa92e905dab11041) | 2026-05-14T19:13:06Z | 837c7dc816417ec301ca9c32de89dd08735c6c29 | 2026-08-26T18:30:15.959Z | CURRENT | — |
+| [gist-metaharness-repo-maintainer.md](https://gist.github.com/ruvnet/a1e9a4b3da25e64ccfcc1124515f722d) | 2026-06-14T20:15:10Z | 3e6af019a5bd0f516ddd42939143c816600557e3 | 2026-08-26T18:30:16.300Z | CURRENT | — |
+| [.roomodes.json](https://gist.github.com/ruvnet/a206de8d484e710499398e4c39fa6299) | 2026-08-06T13:46:41Z | 3b4b042f311573c38b34e77904d4cbb3dd5b7eab | 2026-08-26T18:30:17.763Z | CURRENT | — |
+| [Research.md](https://gist.github.com/ruvnet/a3d61ebc299ef0ad53dd57081f2000e3) | 2026-05-09T17:01:44Z | c139c93acf63bd9b91dc25ff1815a3c1cf210aec | 2026-08-26T18:30:18.143Z | CURRENT | — |
+| [*DeepSeek-uncensored.md](https://gist.github.com/ruvnet/a4beba51960f6027edc003e05f3a350e) | 2026-06-12T01:10:56Z | a480a7256e81bd3c0edb413eb7509d08fbc7a235 | 2026-08-26T18:30:18.977Z | CURRENT | — |
+| [gist-body.md](https://gist.github.com/ruvnet/a5ab06c9d331ac6a7272510dd8777ce0) | 2026-08-12T23:54:29Z | 015c7db1fcd0480c453095051b52d9a272ff563f | 2026-08-26T18:30:19.359Z | CURRENT | — |
+| [Latin.txt](https://gist.github.com/ruvnet/a5be54d686f8b2509ce1c04b4ae18753) | 2025-11-07T13:59:46Z | 44e657fc958c35e2812348a8e4379467450677e0 | 2026-08-26T18:30:20.003Z | CURRENT | — |
+| [accelerator-plane-deep.md](https://gist.github.com/ruvnet/a61af62e204cde0480618123c4da21e9) | 2026-04-27T22:43:55Z | 1adabdacd18ff364dd688d934d3f3e323a9ac832 | 2026-08-26T18:30:20.349Z | CURRENT | — |
+| [aidefence-2.3.0-gist.md](https://gist.github.com/ruvnet/a70791186a3a4c39aff24654396b7ba6) | 2026-05-15T01:49:36Z | ea137789a05e52841598dbbb84f54ca4de041625 | 2026-08-26T18:30:20.747Z | CURRENT | — |
+| [ANNOUNCEMENT.md](https://gist.github.com/ruvnet/a708fafb1375ed69bc48377df47fa2ac) | 2026-05-18T22:57:31Z | 9e5074e35e1d74e51e81d9cbd0e70ba7c692321a | 2026-08-26T18:30:21.092Z | CURRENT | — |
+| [gist-gha.md](https://gist.github.com/ruvnet/a77366913e70fe65d9cffa12d59f8ef9) | 2026-06-14T21:12:16Z | 217e88f7d858800293471bfa36ab03aa0db16410 | 2026-08-26T18:30:21.458Z | CURRENT | — |
+| [Auto-fixer.md](https://gist.github.com/ruvnet/a84d2ba9077a989da37dbe3cf6524c43) | 2024-12-17T01:35:19Z | a62dfeb2a4149d89ddfd3cbd677cc099b5f84998 | 2026-08-26T18:30:21.869Z | CURRENT | — |
+| [cohen.md](https://gist.github.com/ruvnet/a872ec910082974116584f623a33b068) | 2026-02-01T21:07:09Z | 2df132a67979745a8c9eb55b3afbe2828c59e3db | 2026-08-26T18:30:22.316Z | CURRENT | — |
+| [darwin-swebench-gist.md](https://gist.github.com/ruvnet/a8b48fcdaaba5fc35b0a8bd4efc45db7) | 2026-06-22T20:57:39Z | 7b199e1f759c4af53240f65b8a6c79bb690ba5a2 | 2026-08-26T18:30:22.706Z | CURRENT | — |
+| [claude-flow-firsts-executive-brief.md](https://gist.github.com/ruvnet/a8df1bae4686ebf3914dd61c8afe6d69) | 2026-07-10T12:49:22Z | db0ed9e57a039fafa4012e9103fb721701a67650 | 2026-08-26T18:30:23.162Z | CURRENT | — |
+| [adr-256-gist.md](https://gist.github.com/ruvnet/aaa5a83dd7a6a819b963e728418faaf3) | 2026-06-17T03:15:13Z | a68020f973994341df6b54adbe08e96b1b8ff855 | 2026-08-26T18:30:23.479Z | CURRENT | — |
+| [git-ai-projects.md](https://gist.github.com/ruvnet/ac1ec98a770d57571afe077b21676a1d) | 2025-11-07T13:53:22Z | 5dae9d8bbede43c9543d514cf7c469fae80fa36d | 2026-08-26T18:30:23.945Z | CURRENT | — |
+| [sublinear-time-linear.md](https://gist.github.com/ruvnet/af063501d45c83689428a41a696ec902) | 2025-11-07T13:24:12Z | 0ab474e96f4268ebc566d2d360c83a4a6c50ed03 | 2026-08-26T18:30:24.416Z | CURRENT | — |
+| [drum_patterns.rs](https://gist.github.com/ruvnet/af1638d7db2961f60d732467b4282ad5) | 2026-05-08T18:49:57Z | 8f15c615f6aa426f7cb16cc940fcdaa3b2e898e5 | 2026-08-26T18:30:24.945Z | CURRENT | — |
+| [RuView-MMFi-SOTA.md](https://gist.github.com/ruvnet/af2fbc1c7674dddf09c15509b3c7f785) | 2026-05-31T03:32:38Z | c44067de4b692b4853ecea9b56d9d02e99d9dada | 2026-08-26T18:30:25.288Z | CURRENT | — |
+| [AgentDB-GNN.md](https://gist.github.com/ruvnet/b002db14f02f17d019a3f4c2fdc83342) | 2025-11-28T18:33:47Z | e5bacb317211bae1b2af01ca942c9dda4d0d98da | 2026-08-26T18:30:25.680Z | CURRENT | — |
+| [q.py](https://gist.github.com/ruvnet/b110bd43b66c107393e31fe475a14be9) | 2026-05-01T07:41:20Z | 6c1028f49b82969be04ee1018bc045ad90a5e7c8 | 2026-08-26T18:30:26.165Z | CURRENT | — |
+| [captcha-bot.md](https://gist.github.com/ruvnet/b169200e32ccec4a9116c5e4efbc6779) | 2025-11-07T14:25:15Z | 6a4a5aaadd7d526a3abb829f9e9e8e90f5d4fbdb | 2026-08-26T18:30:26.561Z | CURRENT | — |
+| [Automated_Theorem_Proving.md](https://gist.github.com/ruvnet/b22905b7e453c37c987ab9b9b3d7bf00) | 2025-11-07T13:56:06Z | a3018d177cc2bf073066eb5ac8170ce0db682f63 | 2026-08-26T18:30:26.951Z | CURRENT | — |
+| [1-quantum-agent-manager.md](https://gist.github.com/ruvnet/b259d2174f901d63d805b34fc6aa9cef) | 2026-05-16T15:04:55Z | 0d11e7b1aca126eda166952cc94d6017612de648 | 2026-08-26T18:30:27.378Z | CURRENT | — |
+| [registry-optimizer.md](https://gist.github.com/ruvnet/b2fa2192f2baec848d6abbcec8807591) | 2026-04-13T01:57:18Z | 92bf78bae868fc191a4fcaa7ef45084318b26dd7 | 2026-08-26T18:30:27.799Z | CURRENT | — |
+| [Badge.md](https://gist.github.com/ruvnet/b4b0a453caea81046d08fba3e96ac42a) | 2025-10-21T01:11:05Z | 7ed17f3b48faf7efd6f3e5d0cb2ff79dd9d97967 | 2026-08-26T18:30:28.188Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/b4b29101a99b1e45bf7da5c8b3cc2fb3) | 2026-03-25T08:17:35Z | 0345dadc7031f203516562851e6cf788ee3b9d2e | 2026-08-26T18:30:28.575Z | CURRENT | — |
+| [ruvector-graph-condense.md](https://gist.github.com/ruvnet/b64a0a3773101197d7803e0fe9ed2d91) | 2026-06-08T00:35:32Z | a25e81d44a843ad974822aca0919adf78cedef3a | 2026-08-26T18:30:28.914Z | CURRENT | — |
+| [Facilitator.toml](https://gist.github.com/ruvnet/b6b7f2a8df13c97af4781cdc030853dd) | 2024-02-07T09:51:36Z | 573542c1a21be40c7fa2051b952891e0322fd1a1 | 2026-08-26T18:30:29.258Z | CURRENT | — |
+| [ruv_code.txt](https://gist.github.com/ruvnet/b6cae644453de36403f991a0bfc61635) | 2025-11-07T13:41:31Z | 2ce5cd315a82556adf6ec1a60e8a7c339ac98bc9 | 2026-08-26T18:30:29.650Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/b72336a7f838b2f2ae7e175275967060) | 2026-04-08T06:00:05Z | 03d5a100275e5bebeacc0294eac2a4d379d4d9a4 | 2026-08-26T18:30:30.002Z | CURRENT | — |
+| [ADR-323-RuView-Physics-Pose-Refinement.md](https://gist.github.com/ruvnet/b807dba097ef88e4bc2cc6f7f61ff305) | 2026-08-15T21:12:13Z | 94986142a54eba791535b59a8888738e2fad1c9f | 2026-08-26T18:30:30.407Z | CURRENT | — |
+| [watermark-explainer.md](https://gist.github.com/ruvnet/b87f9055710e2aadf0ee3a8c360c476d) | 2026-08-16T01:41:29Z | 9d00232674b0a4c61d9e29de26501074ec18e969 | 2026-08-26T18:30:30.759Z | CURRENT | — |
+| [rvlte.json](https://gist.github.com/ruvnet/b8bd06f3b3b1b65cf5058ddf09a6c27d) | 2025-12-11T17:54:44Z | 7a0d6fde7bef43f6620f979f25c66470afeaa9d1 | 2026-08-26T18:30:31.397Z | CURRENT | — |
+| [report-generator.py](https://gist.github.com/ruvnet/b999cd29a55ae84193e0bb8dbe65ea46) | 2024-05-31T14:49:58Z | 8094ce1b1d3908ed65b7d082fc03f8f87cba9a60 | 2026-08-26T18:30:31.797Z | CURRENT | — |
+| [*README.md](https://gist.github.com/ruvnet/ba1497632143ea9f12062c9c2c1879ad) | 2026-05-24T19:26:54Z | d2b9c7d75a8ec7c6f97de8fdaf0ef2bc5a18b6f5 | 2026-08-26T18:30:32.247Z | CURRENT | — |
+| [consultant.toml](https://gist.github.com/ruvnet/ba19289220102e7485540e9a4cf3f6ee) | 2024-01-14T17:19:13Z | 202392bd4abe38bd9b26544438aa22a77a1c1d1f | 2026-08-26T18:30:32.601Z | CURRENT | — |
+| [pi-brain-self-awareness-examination.md](https://gist.github.com/ruvnet/badec8d5768397342a7a153db7985606) | 2026-05-18T02:27:59Z | 42672867073480b0d847b862da68087e7ecea5f2 | 2026-08-26T18:30:32.952Z | CURRENT | — |
+| [notebook.json](https://gist.github.com/ruvnet/bb2927c2fb043e0e70355be988fe1c19) | 2025-11-07T13:37:13Z | e0e2d1a55663501ea5637ec437fe2ebcc93b86d3 | 2026-08-26T18:30:33.360Z | CURRENT | — |
+| [HiveMindLang.md](https://gist.github.com/ruvnet/bc1cca9f3668c2a4e67d34937ec6e9a4) | 2025-11-07T13:28:43Z | 80216a67764df84691741797db46b2396ab4f367 | 2026-08-26T18:30:33.759Z | CURRENT | — |
+| [readme.md](https://gist.github.com/ruvnet/bce2ade6fb7d51710f72c3b7bad83e85) | 2025-03-29T16:38:58Z | 22deea2eb9df9fe4fdf030c5fe6a3d7e4891ed7a | 2026-08-26T18:30:34.192Z | CURRENT | — |
+| [SHARQ.md](https://gist.github.com/ruvnet/bd8f22006c42738e817936b073d63bd9) | 2025-11-07T13:58:08Z | d2b6fe88f2f2aef7ce815ff4c00fc9ae8644e67a | 2026-08-26T18:30:34.579Z | CURRENT | — |
+| [APM.md](https://gist.github.com/ruvnet/beaf2435053b78c68bf9460976720447) | 2026-06-18T20:47:02Z | 5a1619efccac5981d5d3e84c7b132caf5a93f41b | 2026-08-26T18:30:35.030Z | CURRENT | — |
+| [Stockdex.ipynb](https://gist.github.com/ruvnet/bf03ebf203e4cf4efab166e01e29f1cb) | 2024-03-09T15:03:52Z | 34842d4f09732855447fa66c25e45669a2227db9 | 2026-08-26T18:30:35.362Z | CURRENT | — |
+| [cline.prompt.txt](https://gist.github.com/ruvnet/bf1e6e627e170ed82bfd7227956198bf) | 2025-03-09T11:45:27Z | fa9eb8b69d2cac193adb38dc336477c6157c4699 | 2026-08-26T18:30:35.736Z | CURRENT | — |
+| [rap.toml](https://gist.github.com/ruvnet/c003e726c528eb8562fdc8fb21e6148b) | 2024-02-05T03:24:41Z | cedbb66c9588e9fc611655ecc91453e7f6542b9e | 2026-08-26T18:30:36.104Z | CURRENT | — |
+| [src.md](https://gist.github.com/ruvnet/c00766be3f7ea5eb323e9270fd4ecdd1) | 2025-08-13T16:00:55Z | d745f8d2e5239debc913c7bb478ea10abef17739 | 2026-08-26T18:30:36.503Z | CURRENT | — |
+| [Overview.md](https://gist.github.com/ruvnet/c096402350222e58ab3f895949aeb996) | 2025-08-24T15:29:17Z | 5c04203e7515fb8184cf01b98a92a254e3ca1c02 | 2026-08-26T18:30:36.902Z | CURRENT | — |
+| [agent-swarm-tutorial.ipynb](https://gist.github.com/ruvnet/c0acb81e02cb5c052e1def32e3f8df04) | 2026-03-02T02:01:46Z | dfb4839712cf91fc8b1061fe1399d326221776f2 | 2026-08-26T18:30:37.312Z | CURRENT | — |
+| [Architecture-editor.md](https://gist.github.com/ruvnet/c28198574e1363f313a6e734ef831250) | 2025-11-07T13:59:23Z | ddbf24f88463743d1b169338ac8a174d707226f2 | 2026-08-26T18:30:37.724Z | CURRENT | — |
+| [ecosystem-consciousness-discovery.md](https://gist.github.com/ruvnet/c37460e6fa6dc1f21357cf819ab0af40) | 2026-03-31T22:01:08Z | 611c10a325a4178c7f6943fe4634219a39ad75f5 | 2026-08-26T18:30:38.067Z | CURRENT | — |
+| [gist-metaharness-education.md](https://gist.github.com/ruvnet/c459b1590580a91bee8cc879140196c6) | 2026-06-14T20:14:50Z | 1482816c794d3d7c628602a1b95b7cbfcb81ad8f | 2026-08-26T18:30:38.417Z | CURRENT | — |
+| [ruvector-GNN.md](https://gist.github.com/ruvnet/c5c4a1916ff8a03a6400e7bca90a12d2) | 2025-11-26T04:34:59Z | 0705a95203483be55bde16abdce97997d2a98d57 | 2026-08-26T18:30:38.793Z | CURRENT | — |
+| [adr-111-phases-1-3.md](https://gist.github.com/ruvnet/c640fc71c7a6ced37908e645d5db84c5) | 2026-05-11T02:33:51Z | b852d3b320aae62a95221a1badf0ba04118efb37 | 2026-08-26T18:30:39.168Z | CURRENT | — |
+| [metaharness-adr240-gist.md](https://gist.github.com/ruvnet/c6d197dedc27acbec7c1f0ed98518f17) | 2026-07-31T05:16:57Z | 68ea2a6f7ddaff49a950e82bbb52735a490ac14f | 2026-08-26T18:30:39.505Z | CURRENT | — |
+| [ruvector-muvera-fde.md](https://gist.github.com/ruvnet/c74fbbf13352e92a0b116736dab9293f) | 2026-05-08T16:26:37Z | 3309c65a4bbe67e371b3470b0b39a75fae4b4580 | 2026-08-26T18:30:39.860Z | CURRENT | — |
+| [gist.md](https://gist.github.com/ruvnet/c7718d3d51392cf74656729f3399a71e) | 2026-06-25T20:14:40Z | fbe9997d4d0703d3630ba5eba5b66790ec96da6d | 2026-08-26T18:30:40.260Z | CURRENT | — |
+| [tt.md](https://gist.github.com/ruvnet/c881335e4a32069594503a5bfb750008) | 2025-11-26T07:59:00Z | ae98154879acf0ee39edab4f9c29ffe74dba432b | 2026-08-26T18:30:40.643Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/c8855ccb2315fb6d5c773e6618350058) | 2024-03-16T20:42:47Z | 874bb8c71bd5609e89f1f6d357b53f89d337c3b5 | 2026-08-26T18:30:41.011Z | CURRENT | — |
+| [notebook.ipynb](https://gist.github.com/ruvnet/c9331b8ce93c4fcf1bbeec864b51a938) | 2026-01-19T05:42:04Z | da8a7b0b2bded976030a7fc1e825d4511620877d | 2026-08-26T18:30:41.472Z | CURRENT | — |
+| [swarm_intelligence.md](https://gist.github.com/ruvnet/c94eabcbb50e3d1b5017be303ec6760d) | 2026-05-04T03:14:26Z | a0967a05149c277889e00fcc592e3ddd9d21efa8 | 2026-08-26T18:30:41.839Z | CURRENT | — |
+| [tutorial.md](https://gist.github.com/ruvnet/c9a6b4d88e887de392d0b10fe088f1f4) | 2026-08-08T04:35:53Z | 87be0fe43468ea7cb39397061f83c2953165f893 | 2026-08-26T18:30:42.384Z | CURRENT | — |
+| [adr-382-writeup.md](https://gist.github.com/ruvnet/ca6e5e63dce4fece0d7dafa60c77808b) | 2026-08-12T02:09:35Z | bbf42ad801bc7310ee34c0d86288b6699cf6294a | 2026-08-26T18:30:42.710Z | CURRENT | — |
+| [ruvector-residual-vq.md](https://gist.github.com/ruvnet/cadf124e2e8220682452c268210b09a0) | 2026-05-16T07:38:46Z | 69072e6efe3242a2062deb678bb0e787abf77989 | 2026-08-26T18:30:43.042Z | CURRENT | — |
+| [quad-vault.md](https://gist.github.com/ruvnet/cc4bf2055b9455277a04ad0dc944e460) | 2025-11-07T13:43:01Z | e7fdddf4e8026d53911f35f1c990cd2b08503130 | 2026-08-26T18:30:43.418Z | CURRENT | — |
+| [gene-consciousness-discovery.md](https://gist.github.com/ruvnet/cd18e1358dcbd6ccc335816894bddc63) | 2026-03-31T22:00:46Z | 27b04d3cca4e059b9e4e59ebcf13a8891708fe05 | 2026-08-26T18:30:43.784Z | CURRENT | — |
+| [dm-gist.md](https://gist.github.com/ruvnet/cd4101aa0c9b317de96fa2f3fe44f059) | 2026-08-13T21:56:20Z | 197df1241dabfd11a2acefb0d8eec01207e50880 | 2026-08-26T18:30:44.157Z | CURRENT | — |
+| [1-jailbreak.md](https://gist.github.com/ruvnet/cddd4d62c3cb0b3550a6de50810d3980) | 2026-01-19T05:29:45Z | 4c76a3de1debbb1f0c67ef0baea4391b15d13a43 | 2026-08-26T18:30:44.528Z | CURRENT | — |
+| [neuro-morphic-SPARC.md](https://gist.github.com/ruvnet/ce834222426b29537fc6ce831b3e6ae4) | 2025-11-07T14:19:28Z | 18c2745dfee175c5577b5424ef4a776598297f57 | 2026-08-26T18:30:44.894Z | CURRENT | — |
+| [Instructions.toml](https://gist.github.com/ruvnet/cf115f390f36d71c21effae87d127a20) | 2026-04-17T14:57:48Z | 06ca5ba7ea9af6f0026d4f31dc977583c8596a47 | 2026-08-26T18:30:45.254Z | CURRENT | — |
+| [ruvector-lattice-embeddings-rust-npm-cve-fix.md](https://gist.github.com/ruvnet/cf3877071a2b1ab9252785673340ab95) | 2026-07-12T18:21:35Z | aeb0363ba0df41c140cd480b58e51fb32db801a1 | 2026-08-26T18:30:45.601Z | CURRENT | — |
+| [agentic_reports.ipynb](https://gist.github.com/ruvnet/cf6fc998c0c721f85543f78eb1a1a169) | 2024-06-22T08:36:02Z | cc9a1a745210b48da28a7dbc441b3558b5e6963c | 2026-08-26T18:30:45.992Z | CURRENT | — |
+| [ruflo-daily-2026-07-27.md](https://gist.github.com/ruvnet/cfe0733efdff7c570e776c68146f7550) | 2026-07-28T03:39:46Z | 621331281c70950c730b98e8792c257f3e1c1e3a | 2026-08-26T18:30:46.360Z | CURRENT | — |
+| [ruvector-pr-sweep-2026-08-13.md](https://gist.github.com/ruvnet/d049ba7b4cf9ccfa8d96a630db48a4d7) | 2026-08-13T15:13:34Z | fa1feeb4cf7f01a739d76d10ced82fe8f62ac8e5 | 2026-08-26T18:30:46.694Z | CURRENT | — |
+| [MoE.ipynb](https://gist.github.com/ruvnet/d082a373eef6edc9ec77afa413b11551) | 2024-03-05T21:13:35Z | f85a0fcad0b0637f22d008dc80f38c11fe05361c | 2026-08-26T18:30:47.097Z | CURRENT | — |
+| [rvforge-overview.md](https://gist.github.com/ruvnet/d08d9c00e140f570fb896256dc7cb1f7) | 2026-08-05T12:59:20Z | 7f1e9499d21d4b60296655331584edeb56f1ed20 | 2026-08-26T18:30:47.456Z | CURRENT | — |
+| [Poison.md](https://gist.github.com/ruvnet/d0979347decadcffeac8a2b924c6ff8d) | 2026-05-26T14:47:56Z | 2bd94dccc03e308f20f229917bc974a5f706e650 | 2026-08-26T18:30:47.832Z | CURRENT | — |
+| [Nero-synth.md](https://gist.github.com/ruvnet/d0dddac1674aaa7d08308ed4c0cb2273) | 2025-01-01T05:46:00Z | 957a6c70bc3eaa53c300dae0c0e263910a010aa4 | 2026-08-26T18:30:48.178Z | CURRENT | — |
+| [codeq-ruvector-overview.md](https://gist.github.com/ruvnet/d10fe656bd0fa68b4eb873ad299c6d4e) | 2026-05-11T12:35:14Z | e1b9d757aab12098130d12dac627d14fb2c564d4 | 2026-08-26T18:30:49.904Z | CURRENT | — |
+| [synthetic-data-prompt.toml](https://gist.github.com/ruvnet/d2a3325aabffa57632a893fb25c357e7) | 2023-12-17T02:39:23Z | 41ce09e18f9da0f68b91c79b61ab27a0a98811f2 | 2026-08-26T18:30:50.321Z | CURRENT | — |
+| [functions-json.ipynb](https://gist.github.com/ruvnet/d381e91b8db4c2734628cc70fb7c120a) | 2024-03-10T22:34:46Z | 6d14f79318e69175bb6c1c72be439398ba48392a | 2026-08-26T18:30:50.661Z | CURRENT | — |
+| [README.md](https://gist.github.com/ruvnet/d3e0aaa7af2745b678a9eecddf610301) | 2026-05-08T18:35:08Z | 170904644af424d891ef93713feef6bbf49c5758 | 2026-08-26T18:30:51.110Z | CURRENT | — |
+| [Ruflo.md](https://gist.github.com/ruvnet/d40ce2dcfd9c9dea26e84d86ceab6b54) | 2026-05-09T12:57:35Z | 454e64d1f759a67b5304aaddca895d15d05ce8c1 | 2026-08-26T18:30:51.488Z | CURRENT | — |
+| [ruvector-muvera-fde-2026.md](https://gist.github.com/ruvnet/d5783fe3ec893249b1f7590f00a2c087) | 2026-05-09T20:52:09Z | 1e4d408f6b0cb9515edba59bdadb4dc1c040adcc | 2026-08-26T18:30:51.836Z | CURRENT | — |
+| [Language-style.md](https://gist.github.com/ruvnet/d599d46edc7a572d8530a5045f32fe6b) | 2024-05-16T15:18:59Z | c5e8fd4b94ca4fd11e3443b760bfaa3ba851dd1d | 2026-08-26T18:30:52.180Z | CURRENT | — |
+| [goal-planner.md](https://gist.github.com/ruvnet/d5d7686dd96d83fc7ef8968cb57d4b57) | 2026-05-29T19:06:44Z | 1ab7a581cba0a8a6e2ea0f38d6bd2da991076e88 | 2026-08-26T18:30:52.532Z | CURRENT | — |
+| [1-readme.md](https://gist.github.com/ruvnet/d5e09fe3b9d98e4c58f85ce869294edf) | 2024-09-14T12:42:30Z | ffc79022b49d0af0ba86b815c7d1e21652c47197 | 2026-08-26T18:30:52.950Z | CURRENT | — |
+| [Theorum.md](https://gist.github.com/ruvnet/d688e4527219d438ebbcaeeafb7e83aa) | 2025-11-26T08:08:04Z | 7ac7fd15338904d5607e9e47b85baa969ed1d369 | 2026-08-26T18:30:53.338Z | CURRENT | — |
+| [ROS3.md](https://gist.github.com/ruvnet/d6b68faf212f3a33807e02cb1ea38af3) | 2026-04-10T00:53:07Z | 8248497dd6d0bf305f3833bd2599889b69953176 | 2026-08-26T18:30:53.806Z | CURRENT | — |
+| [time.md](https://gist.github.com/ruvnet/d6d2739400943037443b78c3ef86d8a5) | 2025-11-18T23:43:22Z | 4ce3c9f2b88b5ccfa953841aa851a808355827b1 | 2026-08-26T18:30:54.208Z | CURRENT | — |
+| [agenticow-gist.md](https://gist.github.com/ruvnet/d6e2716ad7bed315cd4355954a4a880e) | 2026-06-28T19:48:46Z | 846f0d8858b60b0f00dcff2b21fd51a7ff2ac8df | 2026-08-26T18:30:54.586Z | CURRENT | — |
+| [ruflo-release-notes.md](https://gist.github.com/ruvnet/d6fc9bea2758049fd87424a2718dec1e) | 2026-07-31T05:20:24Z | db28a82793c6fbe1384829b735af0d8ec901c179 | 2026-08-26T18:30:54.923Z | CURRENT | — |
+| [rvf.md](https://gist.github.com/ruvnet/d72c063d68b9058855b44e425d85563c) | 2026-03-24T17:07:54Z | 94f584149444b5f17f7cba2e4aa5064bd0eb7786 | 2026-08-26T18:30:55.293Z | CURRENT | — |
+| [gist-metaharness-openclaw.md](https://gist.github.com/ruvnet/d88608ce148db9ca410243d35997d38a) | 2026-06-14T20:15:01Z | e31bdf39ca515d1efe61167d6a24d261637cf688 | 2026-08-26T18:30:55.687Z | CURRENT | — |
+| [embeddings-announcement.md](https://gist.github.com/ruvnet/d8884ebdf2528f4fa1ccffdb9e26c9be) | 2026-05-18T15:37:44Z | 3354f28715af2cc0a82791fabec4763bc60d5151 | 2026-08-26T18:30:56.058Z | CURRENT | — |
+| [Gemini-2.txt](https://gist.github.com/ruvnet/d916c0711436f8dc12b710cc3a6fa19d) | 2025-11-07T13:56:46Z | f87e5e708a442b13f36082fc19d01f63435019b6 | 2026-08-26T18:30:56.476Z | CURRENT | — |
+| [rUv-resume-hypergraph.toml](https://gist.github.com/ruvnet/d9c04cb0518ab8accec6838371514a6f) | 2024-03-17T17:53:56Z | 9533303f763a0bb3683f38f1b014e493d31c766e | 2026-08-26T18:30:56.860Z | CURRENT | — |
+| [ruflo-lattice-wasm.md](https://gist.github.com/ruvnet/d9c7611170025156baad38de3ddec878) | 2026-07-05T17:33:50Z | d45b1af9af1bb7a898f3da0251f346202e7f7fad | 2026-08-26T18:30:57.235Z | CURRENT | — |
+| [Genetic.md](https://gist.github.com/ruvnet/d9f5b7c0667e48446f44f65d1fa2fd15) | 2024-10-24T15:52:05Z | 58ecd0cf22bb2e220a1fdf838afd6e3d5f9f53fc | 2026-08-26T18:30:57.573Z | CURRENT | — |
+| [OpenAI-primary.toml](https://gist.github.com/ruvnet/da331d447396bce3444e9e11d2dffe18) | 2024-08-21T06:05:00Z | ec41e86ed252c2607dcfea88028c0ee3a8a87322 | 2026-08-26T18:30:57.976Z | CURRENT | — |
+| [ICE.md](https://gist.github.com/ruvnet/da9609939270e3870de465a63352b005) | 2026-03-14T17:24:40Z | c56bc40cc0835b35fd98ae1ada400f3ed78be931 | 2026-08-26T18:30:58.437Z | CURRENT | — |
+| [iter65-gist.md](https://gist.github.com/ruvnet/dad3948cdc1608bcbfab0befa6b76c1d) | 2026-05-28T16:54:43Z | f87f3448957b5f5a0f8f07444ab2009e0b294dc6 | 2026-08-26T18:30:58.771Z | CURRENT | — |
+| [1-drupalJS.md](https://gist.github.com/ruvnet/daff4f083bac647d23daf57339271272) | 2024-09-14T21:44:06Z | 953e2747e5b64817d0ab9ad766eae062649f5c4c | 2026-08-26T18:30:59.117Z | CURRENT | — |
+| [ruvector-lorann-overview.md](https://gist.github.com/ruvnet/db102223f89f7c76f04f905d5ca7cd0d) | 2026-05-08T16:15:06Z | 550f2845f251740b009b26130b442da38a8ca8a6 | 2026-08-26T18:30:59.455Z | CURRENT | — |
+| [fable.md](https://gist.github.com/ruvnet/dbe163c3fc9accfe62198f70a667b339) | 2026-07-02T15:46:02Z | 00051dfcca0f92d50d735bfe229d1c8c6864a21c | 2026-08-26T18:30:59.872Z | CURRENT | — |
+| [Codeit.md](https://gist.github.com/ruvnet/e0a88730b1567d766995eef8660624f6) | 2025-11-07T13:28:14Z | 52c5c5b32cb19e6877fc7119150393bbd0fd7fe3 | 2026-08-26T18:31:00.251Z | CURRENT | — |
+| [claude-flow-firsts-patent-defense.md](https://gist.github.com/ruvnet/e0cfdfc17f722fadd8844275a7b2e922) | 2026-06-13T18:21:34Z | 1d803f0968799ef48373d628123db68a0b3bc30f | 2026-08-26T18:31:00.634Z | CURRENT | — |
+| [v2235-plain-language-release-notes.md](https://gist.github.com/ruvnet/e0fb8eebe820d40e4195aaf48f42a124) | 2026-08-12T02:10:42Z | 9f84fc19ec392bba1bdb40520d667eefd04e62f3 | 2026-08-26T18:31:01.017Z | CURRENT | — |
+| [meta-wrapper.md](https://gist.github.com/ruvnet/e1008e2a4aa13bf2a991e6aca4028d03) | 2026-07-16T16:34:38Z | 41b10a4079d362c2ff6679bf8fed2449b7c75d0a | 2026-08-26T18:31:01.425Z | CURRENT | — |
+| [Sora-prompts.md](https://gist.github.com/ruvnet/e20537eb50866b2d837d4d13b066bd88) | 2026-08-24T03:56:57Z | 8e51252d89f917980a97d756571c375d629d549f | 2026-08-26T18:31:02.481Z | CURRENT | — |
+| [main.py](https://gist.github.com/ruvnet/e23ab65153392160c11d03db76e953a2) | 2023-12-11T18:45:52Z | d6abe2ab475d91d4ac43b5974e7568ea8cb9f6cd | 2026-08-26T18:31:02.829Z | CURRENT | — |
+| [MED.md](https://gist.github.com/ruvnet/e27b77949b0b0d5564ea447edcaf95c3) | 2026-08-01T05:52:05Z | 51d20d908c54d89c66effd8162e3ffdcf02d48fb | 2026-08-26T18:31:03.281Z | CURRENT | — |
+| [ruflo-capability-brain-guide.md](https://gist.github.com/ruvnet/e2bf4cc56fa94eec1ccc7fff41683b47) | 2026-07-29T04:14:08Z | 753f264a179cc440bd41a092b9f3318c8256cfc7 | 2026-08-26T18:31:03.724Z | CURRENT | — |
+| [Eco_Intel_AI.toml](https://gist.github.com/ruvnet/e4354de74f5405d3adaba012251a4d87) | 2024-03-08T14:14:02Z | 6b7a9fb59f89bfae91e3b6c9857d738bb63d85de | 2026-08-26T18:31:04.207Z | CURRENT | — |
+| [16-ghost-murmur-ruview-spec.md](https://gist.github.com/ruvnet/e44d0c3f0ad10d9c4933a196a16d405c) | 2026-04-26T21:40:45Z | 2d5aabc58ee8928d8956002d8ac656add18f011a | 2026-08-26T18:31:04.569Z | CURRENT | — |
+| [agents.md](https://gist.github.com/ruvnet/e45a79e6240d9158aa17c75455cb3309) | 2025-07-05T05:27:37Z | 11694bf2b5c54f48d55e6598b4cc116f10fa4c6d | 2026-08-26T18:31:04.973Z | CURRENT | — |
+| [coherence_engine.md](https://gist.github.com/ruvnet/e511e4d7015996d11ab1a1ac6d5876c0) | 2026-03-01T16:12:36Z | b78457146ac4690eaf368d7ff1e85430d257ff5c | 2026-08-26T18:31:05.401Z | CURRENT | — |
+| [intro.ipynb](https://gist.github.com/ruvnet/e52f6c391fbebeb31225649c6458101c) | 2024-03-16T20:01:38Z | b5a24e6cc08e6b2c593d78712788b1fbe637357f | 2026-08-26T18:31:05.844Z | CURRENT | — |
+| [meta-proxy-tutorial.md](https://gist.github.com/ruvnet/e546a3495c1fc3f3c7b10d67aa593c91) | 2026-08-13T18:09:26Z | b3cf4eade5c10122c6dc80099b60c332a87cca31 | 2026-08-26T18:31:06.199Z | CURRENT | — |
+| [AgentBBS.md](https://gist.github.com/ruvnet/e54f62d30bcb90377817702ea79ed016) | 2026-06-30T02:36:50Z | 21738fdd26ec53308c3c35c2f84ae2b665ccd15b | 2026-08-26T18:31:06.582Z | CURRENT | — |
+| [.roomodes](https://gist.github.com/ruvnet/e6141839f5ad3222be40c751069e0d61) | 2025-11-21T19:39:33Z | 8bf739ff1598929bd995647664ae2ced6a9b6405 | 2026-08-26T18:31:07.036Z | CURRENT | — |
+| [Notebook.ipynb](https://gist.github.com/ruvnet/e61bfbe49c7bc2258553649437dd6983) | 2025-02-09T15:50:27Z | d870197961eee77a801b0983c78f118c294a5004 | 2026-08-26T18:31:07.371Z | CURRENT | — |
+| [gist-metaharness-opencode.md](https://gist.github.com/ruvnet/e620f3ee6fd0a71bb7c76237e09cb7a4) | 2026-06-14T20:15:04Z | 8b4ad059ea59a6a4c1128963e7d31b42a5ed4cf0 | 2026-08-26T18:31:07.954Z | CURRENT | — |
+| [*hypergraph-prompting.md](https://gist.github.com/ruvnet/e6ca1de83d9122b87a6f72180c7fe583) | 2026-01-19T05:41:31Z | a5496ada823eb72f08137324db8296cb055de742 | 2026-08-26T18:31:08.410Z | CURRENT | — |
+| [smart-llm.md](https://gist.github.com/ruvnet/e7b9bfa62c62a95aabd15c22710fd624) | 2025-07-09T21:46:59Z | 0a61ab1bf9590400e27a54c3b42b2789812374ce | 2026-08-26T18:31:08.787Z | CURRENT | — |
+| [*claude.md](https://gist.github.com/ruvnet/e8bb444c6149e6e060a785d1a693a194) | 2026-08-09T08:16:25Z | 58196a7b39f7e25dc9ece644c7b63e3480bf805d | 2026-08-26T18:31:10.253Z | CURRENT | — |
+| [gist506-3.md](https://gist.github.com/ruvnet/e963e74470b6d1018814f0dc41de4740) | 2026-06-17T22:43:34Z | b7d2fe594018bfa0077c82a745dde76e86441eec | 2026-08-26T18:31:10.596Z | CURRENT | — |
+| [adr-119-120-gist.md](https://gist.github.com/ruvnet/e99c58b59776a12fec34857a14bbdd81) | 2026-05-15T02:32:41Z | 502f0cd344e5d7aab34af51f9c8892a7b86c429d | 2026-08-26T18:31:10.964Z | CURRENT | — |
+| [gist-metaharness-sales.md](https://gist.github.com/ruvnet/e9cf34f47cf78308196a6e65c4a35322) | 2026-06-14T20:15:19Z | e0779022b9034d45d38845be22d7885ba06578c2 | 2026-08-26T18:31:11.384Z | CURRENT | — |
+| [ruv-mcp.js](https://gist.github.com/ruvnet/ea1ec6678b1552c3ff3ae92dc1001d23) | 2025-11-26T08:05:06Z | c1c9d96bdafaf8e9192e973781860d71f2cadb88 | 2026-08-26T18:31:11.797Z | CURRENT | — |
+| [performance.md](https://gist.github.com/ruvnet/eb28152cb122c9e0336cb8b1b25c01b3) | 2026-06-10T21:18:02Z | b6d5df5d715e00a66dd712e12efa8ffcc3c107f6 | 2026-08-26T18:31:12.709Z | CURRENT | — |
+| [ruvector-0.2.40-guide.md](https://gist.github.com/ruvnet/ec2e0b472762837e355d0ed4c4f12831) | 2026-07-29T22:14:28Z | 8d90c1422ffec0dbd2c41478c86d209de1abf564 | 2026-08-26T18:31:13.055Z | CURRENT | — |
+| [gist-metaharness-pi-dev.md](https://gist.github.com/ruvnet/ec3c2bb303ba99d83dc5cb36306d6380) | 2026-06-14T20:15:07Z | 05b04bfd22c3d4356007e28a2b032fa6f8e03202 | 2026-08-26T18:31:13.461Z | CURRENT | — |
+| [Super-Turing.md](https://gist.github.com/ruvnet/ec75041bf3cf1c6ce8c18fc0ba1d967d) | 2026-02-07T08:42:03Z | 44728e6e31babb99bb7136b93139b4af01353d7d | 2026-08-26T18:31:13.937Z | CURRENT | — |
+| [ruflo-v3.32.26-end-user-guide.md](https://gist.github.com/ruvnet/ed0b740580ae86a26fd41b1c98ed4391) | 2026-07-28T20:29:58Z | 669003d13b540a3e958dd4c4be9211ad88508253 | 2026-08-26T18:31:14.297Z | CURRENT | — |
+| [ruflo-v3.25.5-release.md](https://gist.github.com/ruvnet/ed276119404d4d3fffdadfc0797705f8) | 2026-07-08T17:27:27Z | eead572e2a702b8c2fc2ef5d08d57a2a0f4973f3 | 2026-08-26T18:31:14.666Z | CURRENT | — |
+| [sample.txt](https://gist.github.com/ruvnet/ed83037a530cbfb8c91e87b350c0c1d9) | 2024-05-25T18:11:02Z | 71ff69e17d4d0526f3d5f9447f7eeda0d92be812 | 2026-08-26T18:31:14.984Z | CURRENT | — |
+| [funko.toml](https://gist.github.com/ruvnet/ee4303e1af6ea7a01ac08972c83d43d2) | 2023-12-20T14:00:13Z | 4b92e28c0bd3aac6fcaf6098e35366ac20e93c07 | 2026-08-26T18:31:15.325Z | CURRENT | — |
+| [pygentic.md](https://gist.github.com/ruvnet/ee5936eec19a16edcc54a48922591d28) | 2024-05-25T19:28:56Z | b08498ac3ac1586e21028c324f59a9a0b3f2815b | 2026-08-26T18:31:15.682Z | CURRENT | — |
+| [agentic-validation-system.md](https://gist.github.com/ruvnet/ee7763c36f7a9a1c1886da783abc872b) | 2026-05-09T03:25:28Z | 27571bbdacdc68d09d0bc43e62b08c45a6db95c4 | 2026-08-26T18:31:16.016Z | CURRENT | — |
+| [PowerInfer.txt](https://gist.github.com/ruvnet/eea94075d68d958b0779b48880668335) | 2026-01-05T02:09:26Z | 131392308fe35ddf7917ab4e0590bc4b1c5029c3 | 2026-08-26T18:31:16.439Z | CURRENT | — |
+| [v3.32.36.md](https://gist.github.com/ruvnet/ef3f9e78bdf436f205df40885947d8ef) | 2026-07-29T19:14:00Z | e2fc23991b9db8979358759612ca9578edd54b13 | 2026-08-26T18:31:16.798Z | CURRENT | — |
+| [gw-causal-fingerprints.md](https://gist.github.com/ruvnet/f1de5902e5d90ce7637fcb2233a0ff36) | 2026-03-31T21:58:09Z | 743d6cbeb38123f98fe19916c79d70a4d7a495b2 | 2026-08-26T18:31:17.134Z | CURRENT | — |
+| [agent.py](https://gist.github.com/ruvnet/f274b08f493ba6f7be782cefb3563ac0) | 2026-01-19T05:42:27Z | 38f35d683066d9909b7f7862e923cccf5e105bf4 | 2026-08-26T18:31:17.552Z | CURRENT | — |
+| [Input.toml](https://gist.github.com/ruvnet/f2c5acc0c805bc55a883212f83469a43) | 2025-05-25T00:52:54Z | 3bee226729152d675c932e3fac368d1583532422 | 2026-08-26T18:31:17.933Z | CURRENT | — |
+| [Readme.md](https://gist.github.com/ruvnet/f4ac76cb411c8da0b954f91197ca1774) | 2026-01-19T05:45:35Z | b17c95d0bd270a54ff11f03a381e74586bb6c2e5 | 2026-08-26T18:31:18.335Z | CURRENT | — |
+| [readme.md](https://gist.github.com/ruvnet/f4bbad18b09ea137aebf305c8fd10a40) | 2024-06-06T01:52:17Z | a8dba9d3cf28e21508ff77aca69ac59085b88496 | 2026-08-26T18:31:18.706Z | CURRENT | — |
+| [daemon-flywheel-fix.md](https://gist.github.com/ruvnet/f4cda824aaf58e1f2dae72368e692220) | 2026-07-14T04:46:39Z | 0414bf7524ba0c2799992a875c52e935fee29ab4 | 2026-08-26T18:31:19.072Z | CURRENT | — |
+| [Heuristic-Thinkers.md](https://gist.github.com/ruvnet/f5d35a42823ded322116c48ea3bbbc92) | 2025-08-24T15:35:16Z | dcba13eecb29e5d6b7c2465ee98f17249d2c2b3a | 2026-08-26T18:31:19.437Z | CURRENT | — |
+| [Psycho-Symbolic.md](https://gist.github.com/ruvnet/f5ed127e9500e20b62a082844257f43a) | 2025-10-30T18:14:50Z | 9e83d091486b62bbbf674aa23e0c2e07c7cf8662 | 2026-08-26T18:31:19.812Z | CURRENT | — |
+| [META_PROXY_V0_4.md](https://gist.github.com/ruvnet/f6fee134339afd1b3eaf7105557ec934) | 2026-07-17T19:48:41Z | 3633cd6f7e92ee4026d592e9066e355f17a30e5d | 2026-08-26T18:31:20.165Z | CURRENT | — |
+| [soul-signature-gist.md](https://gist.github.com/ruvnet/f7418e475e3c3fe7279f3dd88d4865c3) | 2026-07-03T17:32:09Z | 39bcd34bb107d82c5bd91f85f41ebd7f80fbf3d8 | 2026-08-26T18:31:20.559Z | CURRENT | — |
+| [customer-service.toml](https://gist.github.com/ruvnet/f760b3300fdd43ba177d42bd561c5650) | 2023-12-17T19:40:19Z | e1e95625729011db0d92779153eadea537a596ef | 2026-08-26T18:31:20.943Z | CURRENT | — |
+| [autonomous.md](https://gist.github.com/ruvnet/f763620dbb895ea6410aed952bfa4cf5) | 2024-05-17T04:06:59Z | 415e01b1b7162cf335a7056682691ee518e3746e | 2026-08-26T18:31:21.396Z | CURRENT | — |
+| [gist479-1.md](https://gist.github.com/ruvnet/f78beca458b506b9c6356f27ee8a75c2) | 2026-06-17T22:05:34Z | e52cffee319524c1100479349f10a94e8281d843 | 2026-08-26T18:31:21.735Z | CURRENT | — |
+| [wasm.txt](https://gist.github.com/ruvnet/f7b451a5dd353f691cd0ea20a2d93c50) | 2025-11-07T13:45:07Z | 75c7ee55b4f80533e2459bf23b819ee346360479 | 2026-08-26T18:31:22.224Z | CURRENT | — |
+| [ICO.sol](https://gist.github.com/ruvnet/f7d049f39150123f415fe4a45a7f0fd4) | 2018-03-02T05:45:28Z | 61cc14e8cd9f6e68a9c0a57da9347f15352f0ac2 | 2026-08-26T18:31:22.796Z | CURRENT | — |
+| [*SNM.md](https://gist.github.com/ruvnet/f89b040c999108b49e964620186f2397) | 2026-04-17T20:00:25Z | c47e8f9fdf6c5555be315e55f78e4a9c3cf7ad78 | 2026-08-26T18:31:23.283Z | CURRENT | — |
+| [LAM.ipynb](https://gist.github.com/ruvnet/f8d09429163449c92f86563d43708e7d) | 2024-03-10T15:39:30Z | d0ce6af3ef76fb12e47bc369583018b87770e9ca | 2026-08-26T18:31:23.910Z | CURRENT | — |
+| [ruflo-3.24.0-flywheel.md](https://gist.github.com/ruvnet/f8e2851fd307df5d5de7b5c70c37fa0c) | 2026-07-09T16:04:18Z | 4b801351cdc1b4307f30bea69305d587b1096904 | 2026-08-26T18:31:24.271Z | CURRENT | — |
+| [Fermyon-p2p-mesh.md](https://gist.github.com/ruvnet/f98f7e56769511c6becae178eab8be08) | 2024-09-26T03:19:26Z | 81f024bcdffc9651c59a2c2f8807ac8a395c88b0 | 2026-08-26T18:31:24.661Z | CURRENT | — |
+| [Ruvector.md](https://gist.github.com/ruvnet/f9b631bae8303cb114bd7bf3a8e39217) | 2025-11-26T08:01:43Z | ac79345cbed01315ecb3a5ec8e22eb3ade3d7eff | 2026-08-26T18:31:25.054Z | CURRENT | — |
+| [gist-metaharness-trading.md](https://gist.github.com/ruvnet/fa8db9614701ebde371cdd327031537e) | 2026-06-14T20:15:26Z | c5bea386bce084f5a0da9a15af19b2ffb282e64b | 2026-08-26T18:31:25.376Z | CURRENT | — |
+| [QVM.md](https://gist.github.com/ruvnet/fbb2c309408114dfe7facf5389794f87) | 2025-11-07T13:38:32Z | 2d7a759718cd63d40ba14e23fcf5954c799da264 | 2026-08-26T18:31:25.832Z | CURRENT | — |
+| [emergent-time-gist.md](https://gist.github.com/ruvnet/fc70bf37c590a2db541967fe2cb59f45) | 2026-06-13T15:47:30Z | df3dee7041ce907f41fb1ef9664eb1f9c764d959 | 2026-08-26T18:31:26.188Z | CURRENT | — |
+| [Anomaly.md](https://gist.github.com/ruvnet/fc979c4e581c254bad17372f0d018702) | 2026-05-17T19:20:57Z | 713bc2f0ae94e683af2b552ddb7412622557d203 | 2026-08-26T18:31:26.594Z | CURRENT | — |
+| [guidance-sota-gist.md](https://gist.github.com/ruvnet/fcf31c97644acb3cb001f8fdfb4c25f4) | 2026-05-22T03:52:51Z | 3bd709770eea72b9919ea015262b36f44cc9dad0 | 2026-08-26T18:31:26.928Z | CURRENT | — |
+| [ruvector-rabitq-2026-overview.md](https://gist.github.com/ruvnet/fd5478f67c526a0375257d260d1efaac) | 2026-04-24T17:30:44Z | c353dfdcfcfd42890f2bcaaa9d02a71126fa3da4 | 2026-08-26T18:31:27.296Z | CURRENT | — |
+| [Implementation.md](https://gist.github.com/ruvnet/ff246cff60a69d00dc161e194d43a889) | 2025-11-07T13:50:27Z | b17c1624d6e41268758ac99ada84ece69fb9495c | 2026-08-26T18:31:27.682Z | CURRENT | — |
+| [reasoning.md](https://gist.github.com/ruvnet/ffd91e2fc35192e0fbb7e0b77b4b15b9) | 2025-11-07T13:37:45Z | ee83298409d34bd52ee8037b63ce5bd8ca21f7e0 | 2026-08-26T18:31:28.106Z | CURRENT | — |
+| [gist479-5.md](https://gist.github.com/ruvnet/ffdc21e0511f6137591fada811cc0b17) | 2026-06-17T22:24:48Z | 4053b831f911a2588eeee3530f45c19a8fd59f52 | 2026-08-26T18:31:28.491Z | CURRENT | — |
