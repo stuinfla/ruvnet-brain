@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-23
+updated: 2026-08-26
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
