@@ -22,7 +22,7 @@ function fixture() {
   const bin = path.join(dir, 'bin');
   fs.mkdirSync(bin);
   const log = path.join(dir, 'gh-calls.jsonl');
-  const gh = path.join(bin, 'gh');
+  const gh = path.join(bin, 'gh-fixture.mjs');
   fs.writeFileSync(gh, `#!/usr/bin/env node
 import fs from 'node:fs';
 const args = process.argv.slice(2);
@@ -80,6 +80,9 @@ process.exit(0);
     GITHUB_WORKFLOW: 'protected-release',
     GITHUB_SHA: HEAD,
     GITHUB_REPOSITORY: 'stuinfla/ruvnet-brain',
+    GH_TOKEN: 'fixture-token',
+    RUVNET_GH_COMMAND: process.execPath,
+    RUVNET_GH_SCRIPT: path.join(bin, 'gh-fixture.mjs'),
   };
   return { dir, bundle, digest, receipt, receiptFile, tag, args, env, log };
 }
