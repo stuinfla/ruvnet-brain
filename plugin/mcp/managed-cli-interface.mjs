@@ -185,7 +185,7 @@ function quoteWindowsCommandArg(value) {
 function spawnSpec(executable, argv, env) {
   const resolved = resolveManagedExecutable(executable, env);
   if (process.platform !== 'win32' || !resolved.toLowerCase().endsWith('.cmd')) {
-    return { file: resolved, args: argv };
+    return { file: resolved, args: argv, windowsVerbatimArguments: false };
   }
   // `/s /c` removes the first and last quote characters from its command string. The outer
   // envelope therefore preserves the inner quotes around a shim path containing spaces.
@@ -193,6 +193,7 @@ function spawnSpec(executable, argv, env) {
   return {
     file: env.ComSpec || env.COMSPEC || 'cmd.exe',
     args: ['/d', '/s', '/c', command],
+    windowsVerbatimArguments: true,
   };
 }
 
@@ -202,6 +203,7 @@ function execute(executable, argv, env) {
     const child = spawn(spec.file, spec.args, {
       env,
       shell: false,
+      windowsVerbatimArguments: spec.windowsVerbatimArguments,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     const stdout = [];
