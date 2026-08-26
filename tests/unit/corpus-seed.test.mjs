@@ -174,9 +174,8 @@ describe('immutable corpus candidate receipt', () => {
     const privateFixture = fixture();
     const archiveRoot = path.join(privateFixture.root, 'bundle', 'ruvnet-brain');
     fs.writeFileSync(path.join(archiveRoot, 'secret.big.rvf'), 'private-rvf');
-    execFileSync('zip', ['-q', '-u', privateFixture.bundle, 'ruvnet-brain/secret.big.rvf'], {
-      cwd: path.dirname(archiveRoot),
-    });
+    fs.rmSync(privateFixture.bundle);
+    createArchive(privateFixture.bundle, archiveRoot);
     expect(() => create(privateFixture)).toThrow(/private store.*archive/i);
 
     const driftFixture = fixture();
