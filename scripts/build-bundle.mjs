@@ -291,7 +291,7 @@ if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.
 // so ruv-gists — a PUBLIC store, not private-fenced — was silently omitted from EVERY bundle ever
 // shipped. Include it, WITH .big.passages.jsonl (the big variant opens it by name, same as concepts).
 const hasGists = fs.existsSync(path.join(ASSETS, 'ruv-gists.big.rvf'));
-if (hasGists) for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json', 'ruv-gists.big.passages.jsonl', 'ruv-gists.big.meta.json', 'ruv-gists.passages.jsonl', 'ruv-gists.meta.json']) cp(suf, OUT, { asset: true });
+if (hasGists) for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json', 'ruv-gists.big.passages.jsonl', 'ruv-gists.big.meta.json', 'ruv-gists.passages.jsonl', 'ruv-gists.meta.json', 'ruv-gists.sources.json']) cp(suf, OUT, { asset: true });
 
 // capability-cards.md — the FAST LANE's zero-ML answer source (kb/card-lane.mjs, the first
 // responder search_ruvnet consults before the heavy cross-repo search). Ships as its own small
