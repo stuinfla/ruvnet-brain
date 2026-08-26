@@ -66,7 +66,7 @@ describe('managed CLI structured interface policy', () => {
 
   it('mints a content-bound current-version receipt from the exact managed CLI execution', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-ruflo-receipt-'));
-    const canonical = path.join(home, '.npm-global', 'bin', 'ruflo');
+    const canonical = path.join(home, '.npm-global', 'bin', process.platform === 'win32' ? 'ruflo.cmd' : 'ruflo');
     const evidence = path.join(home, 'live-evidence.jsonl');
     fs.mkdirSync(path.dirname(canonical), { recursive: true });
     fs.writeFileSync(canonical, process.platform === 'win32'

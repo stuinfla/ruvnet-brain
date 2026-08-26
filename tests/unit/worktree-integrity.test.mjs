@@ -103,6 +103,6 @@ describe('author automation mutation boundary', () => {
     expect(allowed.status, allowed.stderr).toBe(0);
     const allowedResult = JSON.parse(allowed.stdout);
     expect(allowedResult).toMatchObject({ allowed: true });
-    expect(path.normalize(allowedResult.worktreeRoot)).toBe(path.normalize(fs.realpathSync(f.linked)));
+    expect(fs.realpathSync(allowedResult.worktreeRoot)).toBe(fs.realpathSync(f.linked));
   });
 });
