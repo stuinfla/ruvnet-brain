@@ -45,12 +45,17 @@ function validateLegacyGistAggregateReceipt({ receipt, passagesFile, expectedIds
       throw new Error(`legacy gist ${id} receipt is incomplete or internally inconsistent`);
     }
   }
-  let passagesStat = null;
-  try { passagesStat = fs.lstatSync(passagesFile); } catch { /* handled below */ }
-  if (!passagesStat?.isFile() || passagesStat.isSymbolicLink()
-    || !HEX64.test(String(receipt.passagesSha256 || ''))
-    || receipt.passagesSha256 !== sha256File(passagesFile)) {
-    throw new Error('legacy gist aggregate receipt does not bind its passage bytes');
+  // v2 receipts predate shipping the source JSONL alongside the seed RVF.
+  // Validate the recorded digest when those bytes are available, but do not
+  // claim byte evidence that the legacy seed does not contain.
+  if (passagesFile && fs.existsSync(passagesFile)) {
+    let passagesStat = null;
+    try { passagesStat = fs.lstatSync(passagesFile); } catch { /* handled below */ }
+    if (!passagesStat?.isFile() || passagesStat.isSymbolicLink()
+      || !HEX64.test(String(receipt.passagesSha256 || ''))
+      || receipt.passagesSha256 !== sha256File(passagesFile)) {
+      throw new Error('legacy gist aggregate receipt does not bind its passage bytes');
+    }
   }
   return receipt;
 }
@@ -249,7 +254,7 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
       if (ids.some((id) => !id)) throw new Error('gist coverage row identity is missing');
       validateGistAggregateReceipt({ receipt, passagesFile: passages, expectedIds: ids,
         sourceObservationSha256: coverage.sourceObservationSha256 });
-      evidenceFiles.push(evidenceIdentity(root, passages, 'gist-passages'));
+      if (receipt.schemaVersion === 3) evidenceFiles.push(evidenceIdentity(root, passages, 'gist-passages'));
       evidenceFiles.push(evidenceIdentity(root, receiptFile, 'gist-receipt'));
     }
     gistAggregate = 'ruv-gists';
