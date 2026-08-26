@@ -567,7 +567,7 @@ function collectArchiveFiles(dir, prefix = '') {
   }
 }
 collectArchiveFiles(OUT);
-archiveFiles.sort();
+archiveFiles.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
 // Bind the exact archive payload before release verification. The manifest excludes itself;
 // verifiers recompute the same payload set and then validate this file's identities.
 function archiveIdentity(relative) {
@@ -592,7 +592,7 @@ const archiveManifest = {
 };
 fs.writeFileSync(path.join(OUT, 'ARCHIVE-MANIFEST.json'), `${JSON.stringify(archiveManifest, null, 2)}\n`);
 archiveFiles.push('ARCHIVE-MANIFEST.json');
-archiveFiles.sort();
+archiveFiles.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
 const zipped = process.platform === 'win32'
   ? spawnSync('powershell.exe', [
     '-NoProfile',

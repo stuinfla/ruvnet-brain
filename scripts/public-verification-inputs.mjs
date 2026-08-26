@@ -96,7 +96,10 @@ function validateArchive(root) {
     || typeof manifest.version !== 'string' || !manifest.version || typeof manifest.releaseTag !== 'string'
     || !manifest.releaseTag || !Array.isArray(manifest.files)) fail('archive manifest schema is invalid');
   const actual = filesUnder(archiveRoot);
-  if (canonicalJson(actual) !== canonicalJson(manifest.files)) fail('archive file set or bytes differ from ARCHIVE-MANIFEST.json');
+  const byPath = (left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0;
+  if (canonicalJson([...actual].sort(byPath)) !== canonicalJson([...manifest.files].sort(byPath))) {
+    fail('archive file set or bytes differ from ARCHIVE-MANIFEST.json');
+  }
   if (manifest.fileCount !== actual.length
     || manifest.totalBytes !== actual.reduce((total, row) => total + row.bytes, 0)) {
     fail('archive manifest totals differ from its file rows');
