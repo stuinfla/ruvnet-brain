@@ -743,6 +743,13 @@ describe('the two ship definitions agree', () => {
       ['git commit -m "ready to git push"', false],
       ['ls -la', false],
       ['git status', false],
+      // 2026-08-27: irregular whitespace — templated/wrapped commands a real agent can emit.
+      // The JS side already tolerates it (`\s+`); the bash side required a literal single space,
+      // so this whole matrix passed 6/8 while missing the exact shape that would actually drift.
+      ['npm  publish', true],
+      ['npm\tpublish', true],
+      ['yarn\npublish', true],
+      ['gh  release   create v1.0.0', true],
     ];
     for (const [cmd, wantShip] of cases) {
       expect(dependentEvent(cmd) === 'ship', `degradation-watch: ${cmd}`).toBe(wantShip);
