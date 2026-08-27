@@ -205,14 +205,22 @@ if [ "$EVENT" = "PreToolUse-bash" ] && [ -f "$HOOK_INPUT_JS" ]; then
   # with absolute paths writes) matched NOTHING, while `grep -n "npm publish" docs/` matched, so
   # reading ABOUT shipping counted as shipping. Quoted regions are stripped first because the
   # truth-maker is what will EXECUTE — a commit message is not a command.
-  # tr collapses embedded newlines/tabs to spaces BEFORE grep sees the text: grep matches one line at
-  # a time, so a real newline inside $CMD (a wrapped/templated command) would otherwise split it
-  # across two grep-internal lines and never match a pattern that spans it, however the pattern is
-  # written. [[:space:]]+ (not a literal space) then matches degradation-watch.mjs's `\s+` on what's
-  # left. 2026-08-27: the two definitions still disagreed on a tab/doubled-space/wrapped-newline
+  # tr runs BEFORE sed, not after: sed matches one line at a time, so a double/single-quoted string
+  # that legitimately SPANS a real newline (a multi-line commit message, a heredoc body) would
+  # otherwise never get stripped — its opening quote sits on one sed-internal line with no closer,
+  # its closing quote on another with no opener — leaking whatever words it quotes (e.g. "npm" and
+  # "publish" mentioned in prose) into CMD_EXEC as if they were unquoted. Collapsing newlines/tabs to
+  # spaces FIRST makes the whole command one logical line, so the existing quote-stripping regexes
+  # then span it correctly, same as they already do for a single-line quoted string. Caught live by
+  # an adversarial critic pass on the first cut of this fix (which ran tr after sed): a multi-line
+  # `git commit -m "...npm\npublish is unaffected..."` false-positived as a ship command on this side
+  # while degradation-watch.mjs's `dependentEvent()` (unmodified, not line-oriented) correctly said no
+  # — the exact "two ship definitions disagree" defect this diff exists to close, reopened in a new
+  # shape. [[:space:]]+ (not a literal space) then matches degradation-watch.mjs's `\s+` on what's
+  # left. 2026-08-27: the two definitions also disagreed on a tab/doubled-space/wrapped-newline
   # `npm publish`/`gh release create`, which the JS side (already `\s+`-tolerant on a plain string)
   # caught and this side missed silently.
-  CMD_EXEC=$(printf '%s' "$CMD" | sed -e 's/"[^"]*"/ /g' -e "s/'[^']*'/ /g" | tr '\n\t' '  ')
+  CMD_EXEC=$(printf '%s' "$CMD" | tr '\n\t' '  ' | sed -e 's/"[^"]*"/ /g' -e "s/'[^']*'/ /g")
   if printf '%s' "$CMD_EXEC" | grep -qE '\bgit\b[^|;&]*\bpush\b|\b(npm|yarn|pnpm)[[:space:]]+publish\b|\bgh[[:space:]]+release[[:space:]]+create\b|release\.mjs'; then
     ARGS+=(--trigger ship)
   fi

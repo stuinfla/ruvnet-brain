@@ -750,6 +750,10 @@ describe('the two ship definitions agree', () => {
       ['npm\tpublish', true],
       ['yarn\npublish', true],
       ['gh  release   create v1.0.0', true],
+      // TEETH (adversarial-critic-caught regression in this same diff's first cut): a quoted
+      // string that legitimately SPANS a real newline — a multi-line commit message — must still
+      // be stripped before matching, not leak "npm"/"publish" into CMD_EXEC as unquoted text.
+      ['git commit -m "release notes\nnpm\npublish is unaffected by this change"', false],
     ];
     for (const [cmd, wantShip] of cases) {
       expect(dependentEvent(cmd) === 'ship', `degradation-watch: ${cmd}`).toBe(wantShip);
