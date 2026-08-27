@@ -65,13 +65,22 @@ function writeOptIn(ids) {
 }
 
 /** Run the gate as a real process. Returns the full truth: code AND both streams, never one. */
-function runGate(args, env = {}) {
+function runGate(args, env = {}, cwd = undefined) {
   const r = spawnSync(process.execPath, [GATE, ...args], {
     encoding: 'utf8',
+    cwd,
     env: { ...process.env, RUVNET_LESSON_STORE: storePath, RUVNET_LESSON_OPTIN: optInPath,
       RUVNET_LESSON_GATE_STATE: gateStatePath, ...env },
   });
   return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+}
+
+/** Make a directory the gate's HERE-detection will resolve to `name`: it walks up from cwd looking
+ *  for a directory that directly contains `.git`, then takes that directory's basename. */
+function fakeProjectDir(root, name) {
+  const p = path.join(root, name);
+  fs.mkdirSync(path.join(p, '.git'), { recursive: true });
+  return p;
 }
 
 /** Run the dispatcher the way hooks.json runs it — bash, one event argument. */
@@ -110,7 +119,7 @@ describe('canonical lesson runtime module boundaries', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────────────────
 describe('a NUDGE informs and never refuses', () => {
   test('exits 0 — the action is allowed', () => {
     writeStore([blockLesson()]);
@@ -216,7 +225,7 @@ describe('a NUDGE informs and never refuses', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────────────────
 describe('CONSENT: a ratified block lesson is a nudge until the user says otherwise', () => {
   test('a ratified enforcement:block lesson does NOT block without opt-in', () => {
     // The reframe, in one assertion. The owner: "Nudging somebody is very fair. Forcing them through
@@ -275,7 +284,7 @@ describe('CONSENT: a ratified block lesson is a nudge until the user says otherw
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────────────────
 describe('an opted-in BLOCK actually refuses', () => {
   beforeEach(() => { writeStore([blockLesson()]); writeOptIn(['T01-verify-with-a-capable-channel']); });
 
@@ -296,7 +305,7 @@ describe('an opted-in BLOCK actually refuses', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────────────────
 describe('the dispatcher propagates faithfully in BOTH directions', () => {
   test('propagates a block: exit 2 with the reason on stderr', () => {
     // `|| true` plus `exit 0` used to erase this. The dispatcher printed the word BLOCKED and
@@ -344,7 +353,7 @@ describe('the dispatcher propagates faithfully in BOTH directions', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────────────────
 describe('FAILS OPEN on malfunction — but never on a decision', () => {
   test('a corrupt store allows the action', () => {
     fs.writeFileSync(storePath, '{ not json at all');
@@ -373,8 +382,8 @@ describe('FAILS OPEN on malfunction — but never on a decision', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────────────────
 describe('mutate-machine: narrowed to commands that PLAUSIBLY mutate outside this repo', () => {
   /**
    * WHY THIS DESCRIBE BLOCK EXISTS. An independent grader reading real session transcripts (2026-07-
@@ -490,7 +499,65 @@ describe('mutate-machine: narrowed to commands that PLAUSIBLY mutate outside thi
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────────────────
+describe('PROJECT SCOPE: isHome() must not leak across unrelated projects that merely share a suffix', () => {
+  /**
+   * WHY THIS DESCRIBE BLOCK EXISTS. isHome()'s fallback match — `HERE.endsWith(n) || n.endsWith(HERE)`
+   * — was added to tolerate a `Code-` prefix (already stripped one line above) and directory-naming
+   * variations. It was never given a boundary check, so it also matches any project name that happens
+   * to be a plain suffix of another, unrelated one: a lesson scoped to project "Sentry" fires inside
+   * "WhitSentry" for no reason but four shared trailing letters. This is exactly the class of bug the
+   * 2026-07-22 project-scope fix (this same file, `isHome`'s own header comment) was written to close
+   * — "I've got other repos that are using this thing, and they're breaking" — reintroduced by the
+   * escape hatch meant to make that fix tolerant of naming variance.
+   */
+  const sentryLesson = () => blockLesson({
+    id: 'T09-unrelated-sentry-lesson',
+    trigger: 'write-code',
+    enforcement: 'inject',
+    check: null,
+    status: 'ratified',
+    origin: 'model-inferred',
+    statement: 'This lesson belongs to a project named "Sentry" and nothing else.',
+    projects: ['Sentry'],
+  });
+
+  function classifyIn(cwd) {
+    const { stdout, code } = runGate(['--trigger', 'write-code', '--json'], {}, cwd);
+    expect(code).toBe(0);
+    return JSON.parse(stdout);
+  }
+
+  describe('TEETH: the pre-fix matcher leaked on a bare suffix — this assertion is the guard', () => {
+    test('project "Sentry" must NOT fire inside an unrelated project "WhitSentry"', () => {
+      writeStore([sentryLesson()]);
+      const home = fakeProjectDir(dir, 'WhitSentry');
+      expect(classifyIn(home).inForce.map((l) => l.id)).not.toContain('T09-unrelated-sentry-lesson');
+    });
+  });
+
+  describe('the fix must not silence the legitimate case it was added for', () => {
+    test('a lesson scoped to "brain" still fires inside "ruvnet-brain" — a delimiter-bounded suffix', () => {
+      writeStore([{ ...sentryLesson(), id: 'T10-brain-lesson', projects: ['brain'] }]);
+      const home = fakeProjectDir(dir, 'ruvnet-brain');
+      expect(classifyIn(home).inForce.map((l) => l.id)).toContain('T10-brain-lesson');
+    });
+
+    test('an EXACT project match always fires, regardless of the boundary rule', () => {
+      writeStore([{ ...sentryLesson(), id: 'T11-exact', projects: ['WhitSentry'] }]);
+      const home = fakeProjectDir(dir, 'WhitSentry');
+      expect(classifyIn(home).inForce.map((l) => l.id)).toContain('T11-exact');
+    });
+  });
+
+  test('an unrelated project with NO suffix relationship at all stays silent (sanity check)', () => {
+    writeStore([sentryLesson()]);
+    const home = fakeProjectDir(dir, 'totally-different-project');
+    expect(classifyIn(home).inForce.map((l) => l.id)).not.toContain('T09-unrelated-sentry-lesson');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
 describe('CLI mode stays backward compatible', () => {
   test('plain text on stdout, because version-bump-gate.sh embeds it verbatim', () => {
     // plugin/scripts/version-bump-gate.sh:78 captures this stdout and appends it under
@@ -519,7 +586,7 @@ describe('CLI mode stays backward compatible', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────────────────
 describe('PER-SESSION FREQUENCY CAP: a reminder stops repeating; a refusal never does', () => {
   /** A pure-advisory (cappable) lesson — enforcement:checklist, like the T03/T05/T06 fixtures above.
    *  Neither block nor block-capable, so the frequency cap governs it. Carries a unique marker so the
