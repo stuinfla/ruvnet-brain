@@ -205,8 +205,15 @@ if [ "$EVENT" = "PreToolUse-bash" ] && [ -f "$HOOK_INPUT_JS" ]; then
   # with absolute paths writes) matched NOTHING, while `grep -n "npm publish" docs/` matched, so
   # reading ABOUT shipping counted as shipping. Quoted regions are stripped first because the
   # truth-maker is what will EXECUTE — a commit message is not a command.
-  CMD_EXEC=$(printf '%s' "$CMD" | sed -e 's/"[^"]*"/ /g' -e "s/'[^']*'/ /g")
-  if printf '%s' "$CMD_EXEC" | grep -qE '\bgit\b[^|;&]*\bpush\b|\b(npm|yarn|pnpm) publish\b|\bgh release create\b|release\.mjs'; then
+  # tr collapses embedded newlines/tabs to spaces BEFORE grep sees the text: grep matches one line at
+  # a time, so a real newline inside $CMD (a wrapped/templated command) would otherwise split it
+  # across two grep-internal lines and never match a pattern that spans it, however the pattern is
+  # written. [[:space:]]+ (not a literal space) then matches degradation-watch.mjs's `\s+` on what's
+  # left. 2026-08-27: the two definitions still disagreed on a tab/doubled-space/wrapped-newline
+  # `npm publish`/`gh release create`, which the JS side (already `\s+`-tolerant on a plain string)
+  # caught and this side missed silently.
+  CMD_EXEC=$(printf '%s' "$CMD" | sed -e 's/"[^"]*"/ /g' -e "s/'[^']*'/ /g" | tr '\n\t' '  ')
+  if printf '%s' "$CMD_EXEC" | grep -qE '\bgit\b[^|;&]*\bpush\b|\b(npm|yarn|pnpm)[[:space:]]+publish\b|\bgh[[:space:]]+release[[:space:]]+create\b|release\.mjs'; then
     ARGS+=(--trigger ship)
   fi
 fi
