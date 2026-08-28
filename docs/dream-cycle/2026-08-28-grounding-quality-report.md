@@ -22,14 +22,18 @@ look-alike text does not organically continue.
 
 - `parseCitations()` in `kb/verify-citation.mjs` now enforces two invariants implicit in
   `forge-ask-all.mjs`'s own output contract but never checked: (a) a citation's `path`/`title` must
-  come from its own block, not from a later or earlier one; (b) citation ranks must be exactly
-  `expectedRank, expectedRank+1, …` starting at 1 — any out-of-sequence or repeated rank is treated
-  as look-alike text, not a real hit.
+  come from its own block, not from a later or earlier one; (b) a rank slot (`#1`, `#2`, …) is only
+  ever filled by the first header at that rank whose own block actually resolves a `path` — any
+  header at that rank with no path is a look-alike, is skipped, and does **not** consume the slot, so
+  a later, genuine header at that same rank can still fill it. (This second point was corrected
+  mid-review from an initial, subtly-wrong version — see Correction below.)
 - Zero behavior change for any currently-passing fixture or real reader output (`forge-ask-all.mjs`
   always emits ranks `#1..#N` in strict order with `path`/`title` immediately following each header —
-  confirmed by reading the printer at `kb/forge-ask-all.mjs:3192-3200`).
-- Two new failing-then-passing tests added to the existing `tests/unit/verify-citation.test.mjs`
-  suite, plus an end-to-end `verifyGrounding` test demonstrating the exact false-positive this closes.
+  confirmed by reading the printer at `kb/forge-ask-all.mjs:3192-3200`, and by checking every other
+  emitter of this format in the repo for compatibility with the invariant).
+- Five new failing-then-passing tests added to the existing `tests/unit/verify-citation.test.mjs`
+  suite (two from the initial fix, one added and one corrected after independent review, plus an
+  end-to-end `verifyGrounding` test demonstrating the exact false-positive this closes).
 
 ## Competitors / prior art (grade C — internal code reading, not externally re-verified tonight)
 
@@ -86,16 +90,28 @@ code path, not a substitute metric.
 
 ## Baseline vs candidate
 
-- **Baseline** (`git stash` of the two changed files, reproducing pre-candidate `HEAD`):
-  `tests/unit/verify-citation.test.mjs` — 16/16 pre-existing tests pass; the 4 new tests fail exactly
-  as predicted (missing-path cross-block bleed, embedded look-alike fabricating a citation, repeated
-  rank accepted, and the end-to-end `verifyGrounding` false-positive).
-- **Candidate**: all 20/20 tests pass, including the 4 new ones.
-- **Full `test:unit`** (386s, 277 files, 3596 tests): 3407 pass, 4 fail — byte-identical failure set
-  to baseline (confirmed by re-running the 3 affected files against baseline: same 3 failures,
-  `advocacy-outcomes.test.mjs`, `hook-shim-fallback-once.test.mjs`, `user-settings.test.mjs`, all
-  pre-existing `chmod`-based EACCES fixtures that don't enforce under this container's root user —
-  the exact same class the 2026-08-26 ledger row documented, not introduced tonight).
+- **Baseline** (`git show 486a144:...` of the two changed files, reproducing pre-candidate `HEAD`
+  exactly): `tests/unit/verify-citation.test.mjs` — 16/16 pre-existing tests pass; the 6 new tests
+  fail exactly as predicted (missing-path cross-block bleed, embedded look-alike fabricating a
+  citation, the resync case, the critic's next-rank-fragment false negative, repeated rank accepted,
+  and the end-to-end `verifyGrounding` false-positive).
+- **Candidate (final, post-correction)**: all 22/22 tests pass, including the 6 new ones. The
+  intermediate (pre-correction) version passed 21/21 — it had not yet been given a test for the
+  critic's false-negative — which is exactly why an independent review mattered here: the tests
+  written by the same session that wrote the fix did not cover the failure mode a fresh reviewer
+  found in under 3 minutes of tracing.
+- **Full `test:unit`** (277 files, 3598 tests): 3408 pass, 5 fail this run — but that failing SET is
+  not stable across runs (chmod/EACCES-under-root fixtures are order/parallelism-sensitive; a
+  targeted re-run of just `advocacy-ignored.test.mjs`, `advocacy-outcomes.test.mjs`,
+  `hook-shim-fallback-once.test.mjs`, `user-settings.test.mjs` reproduces 4 of the 5 independently of
+  this candidate). The 5th failure in this run's set, `dream-config.test.mjs`, was real and
+  self-inflicted — not from the code candidate but from this report's own ledger row: `dream-machine
+  ledger verify` rejects any `Evaluated?` value outside the literal enum `yes|no|blocked`, and the
+  first-drafted row used `yes (unit, not eval:gate)`. Caught by running the full suite before
+  push, corrected to bare `yes` with the nuance kept in the Verdict/Effect prose instead, re-verified
+  green. All 5 failures are therefore accounted for and unrelated to `kb/verify-citation.mjs` itself
+  — the same `chmod`-under-root class the 2026-08-26 ledger row documented, plus this session's own
+  ledger-formatting slip, not a code regression.
 - **`test:integration`**: 30/38 files pass; 5 fail, all pre-existing environmental blockers
   (`sqlite3` binary ENOENT, `@xenova/transformers` unresolved — the wasm/NAPI degradation this
   container's `npm ci` already recorded), zero of which reference `verify-citation.mjs` (verified by
@@ -129,6 +145,12 @@ evolution theater, not a real search. Skipped deliberately rather than run vacuo
   (`meetings/totally/made/up`, does not resolve) is masked by the embedded look-alike resolving
   instead, reporting `grounded: true`; post-fix: correctly reports `grounded: false,
   reason: 'citations-do-not-resolve'`.
+- MEASUREMENT (found by independent review, not this session's own testing): the *intermediate*
+  fix version — rank check correct, but `expectedRank` advanced before the path check — silently
+  dropped a REAL, later citation whenever an earlier hit's body contained a bare, pathless fragment
+  at the next rank. Reproduced directly: with that ordering, a real rank-2 citation vanishes
+  entirely from `parseCitations`'s output; with the corrected ordering (advance only after a
+  resolving path is found), the real rank-2 citation survives.
 - INFERENCE: this defect class most plausibly manifests when this repo's own retrieval-format
   documentation (this file, ADR-025, or any future doc explaining the citation format) is itself
   indexed into a self-referential corpus store and later retrieved — not verified end-to-end tonight
@@ -136,11 +158,35 @@ evolution theater, not a real search. Skipped deliberately rather than run vacuo
 
 ## Reward-hack / gaming check
 
-The fix only ever makes `parseCitations`/`verifyGrounding` STRICTER (rejects strictly more, never
-fewer, citations than before) — it cannot inflate a grounding score, only prevent a false inflation.
-No threshold, gold answer, or held-out question was touched. No new dependency, no cache, no hidden
-cost. Independent-critic pass (self-critique, no separate evaluator identity available in this
-session): CLEAR, with one residual risk disclosed below.
+The corrected fix (see Correction below) only ever rejects a rank once it is clear no valid header
+can still fill it later in the stream — it never rejects a rank a genuine citation goes on to fill,
+and it never accepts a citation whose own block lacks a resolving path. No threshold, gold answer, or
+held-out question was touched. No new dependency, no cache, no hidden cost. An INDEPENDENT critic
+subagent (genuinely separate from the candidate's author, not self-critique) reviewed the *initial*
+version of this fix and found a real problem — see Correction below. The corrected version's
+self-critique: CLEAR, with one residual risk disclosed below.
+
+## Correction (found by independent review, before this PR left draft)
+
+The first version of this fix advanced `expectedRank` as soon as a header's rank matched, **before**
+checking whether that block actually had a `path` line. An independent critic subagent traced every
+real emitter of this citation format in the repo and found a concrete false negative: a retrieved
+document's body containing an incidental, *partial* look-alike fragment (a bare `#N  repo=X  ce=...`
+line with no `path`/`title` following — plausible in any prose that merely mentions the format, not
+just a full worked example) would consume the next rank slot and permanently reject the REAL citation
+that later filled that same rank — silently turning a genuinely grounded answer into `grounded:
+false`. That is a worse failure than the fabrication this guard exists to prevent.
+
+Fixed by moving the `expectedRank` advance to after the `path` check, so only a block that actually
+resolves a path fills a rank slot; a pathless match at the current rank is skipped without burning
+it, so a later, genuine header at that same rank can still resolve. Verified independently: reverting
+just the ordering of that one line reproduces the critic's exact false negative (a real second
+citation vanishing); the corrected order fixes it while still passing every test for the original
+fabrication defect. One test written before this correction encoded the old, incorrect expectation
+(that a pathless citation at rank 1 should let rank 2 through even though rank 1 never resolves) —
+corrected to assert the actual, safe invariant instead (no field-bleeding, ever) and a new test added
+to demonstrate the resync case explicitly (a pathless match at rank 1, followed by a genuine header at
+rank 1, still resolves).
 
 ## Security review
 
@@ -171,18 +217,23 @@ implicit.
 
 ## Witness
 
+This report was revised once, after independent review found a real bug in the fix's first version
+(see Correction above) — the hash below is over the FINAL, corrected content, not the version this
+session first drafted.
+
 - Session commit: `486a144dbc9bd5fa3b8b715e0c13935d1add0f1f`
-- Report sha256 (of this file's content up to and including the "## Recommendation" section, i.e.
-  everything ABOVE this Witness section's own hash values, which cannot include themselves):
-  `e3f4193fe9fc2f600ce7e288daabd492aea199e1d20fabe875a5ac6534bfc4e4`
+- Report sha256 (of this file's content from the start through the line immediately before this
+  "## Witness" heading — i.e. everything above this section, which cannot hash itself):
+  `1816529d4eb6e59eedad8c6e53bf15f1a099ffab3532ab7140bfc7edca33bffd`
 - Witness stamp (`sha256(REPORT_HASH + SESSION_COMMIT)`):
-  `552aad71b3858c769ebceed2e665ad2ef85f4fb6c1d5bc014e47692c508c981f`
+  `d9a6323e24a8557d55ab98921d447b0c49214decb3f62ace9b8b2d2ee166e7b0`
 - Verifier procedure: (1) `git checkout 486a144dbc9bd5fa3b8b715e0c13935d1add0f1f`; (2) apply the
-  candidate diff from PR branch `dream/2026-08-28-grounding-quality`; (3) take this published gist,
-  delete this "## Witness" section and everything after it (i.e. reproduce the exact pre-stamp
-  document), `sha256sum` it, and confirm it matches the Report sha256 above; (4)
-  `printf '%s%s' REPORT_HASH SESSION_COMMIT | sha256sum` and confirm it matches the Witness stamp
-  above; (5) run `npx vitest run tests/unit/verify-citation.test.mjs` and confirm 20/20 pass.
+  candidate diff from PR branch `dream/2026-08-28-grounding-quality`; (3) take this committed report,
+  keep only its content from the start through the line immediately before this "## Witness" heading
+  (i.e. drop this section and "## Recommendation" below it), `sha256sum` that, and confirm it matches
+  the Report sha256 above; (4) `printf '%s%s' REPORT_HASH SESSION_COMMIT | sha256sum` and confirm it
+  matches the Witness stamp above; (5) run `npx vitest run tests/unit/verify-citation.test.mjs` and
+  confirm 22/22 pass.
 
 ## Recommendation
 

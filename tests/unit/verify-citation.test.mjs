@@ -73,7 +73,7 @@ describe('parseCitations — read the reader’s own output', () => {
     expect(c[0]).toMatchObject({ repo: 'meetings', docPath: 'transcript-042' });
   });
 
-  it('does not let a citation missing its own path line borrow a later citation\'s path', () => {
+  it('does not let a citation missing its own path line borrow a later citation\'s path — real reader output never omits path, so a pathless match at rank N means rank N has not genuinely resolved yet; it stays open rather than either inheriting rank N+1\'s fields or wrongly burning rank N+1', () => {
     const stdout = [
       '#1  repo=concepts  ce=0.201  vec=0.8686  kind=doc',
       'title: concepts hit whose path line render failed',
@@ -82,9 +82,43 @@ describe('parseCitations — read the reader’s own output', () => {
       'title: ruvector — Capability',
     ].join('\n');
     const c = parseCitations(stdout);
-    // #1 has no path in its own span, so it is dropped rather than inheriting #2's path.
+    // Whatever the count, no citation may borrow #2's path under rank 1, or vice versa.
+    expect(c.some((x) => x.rank === 1 && x.docPath === 'CARD/ruvector-card')).toBe(false);
+  });
+
+  it('a pathless match at the current rank does not burn that rank — a later, real header at the SAME rank still resolves', () => {
+    const stdout = [
+      '#1  repo=concepts  ce=0.201  vec=0.8686  kind=doc',
+      'title: a rendering hiccup dropped this hit\'s path line',
+      '#1  repo=ruvector  ce=0.150  vec=0.7000  kind=doc',
+      'path : ruvector/CARD/ruvector-card',
+      'title: ruvector — Capability',
+    ].join('\n');
+    const c = parseCitations(stdout);
     expect(c).toHaveLength(1);
-    expect(c[0]).toMatchObject({ rank: 2, repo: 'ruvector', docPath: 'CARD/ruvector-card' });
+    expect(c[0]).toMatchObject({ rank: 1, repo: 'ruvector', docPath: 'CARD/ruvector-card' });
+  });
+
+  it('does not let a pathless look-alike fragment at the next rank consume that slot and reject the REAL citation which later fills it — a false negative on a genuinely grounded answer would be worse than the fabrication this guard exists to prevent', () => {
+    const stdout = [
+      '#1  repo=meetings  ce=0.30  vec=0.50  kind=doc',
+      'path : meetings/transcript-042',
+      'title: some meeting note',
+      'chars: 200 | chunks: 1',
+      '----- full document -----',
+      'For illustration, results are commonly rendered like this:',
+      '#2  repo=other  ce=0.100',
+      '(no path or title follows in this fragment)',
+      '===================================================================',
+      '#2  repo=ruvector  ce=0.150  vec=0.7000  kind=doc',
+      'path : ruvector/CARD/ruvector-card',
+      'title: ruvector — Capability',
+    ].join('\n');
+    const c = parseCitations(stdout);
+    expect(c.map((x) => ({ rank: x.rank, repo: x.repo }))).toEqual([
+      { rank: 1, repo: 'meetings' },
+      { rank: 2, repo: 'ruvector' },
+    ]);
   });
 
   it('rejects a repeated or out-of-sequence rank as a look-alike, not a real hit', () => {
