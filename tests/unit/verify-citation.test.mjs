@@ -51,6 +51,57 @@ describe('parseCitations — read the reader’s own output', () => {
     expect(parseCitations('')).toEqual([]);
     expect(parseCitations(undefined)).toEqual([]);
   });
+
+  it('does not fabricate a citation from a look-alike block inside a retrieved document\'s own dumped body — a real hit\'s "full document" text can legitimately quote this exact format (this file\'s own header comment does)', () => {
+    const embeddedLookAlike = [
+      'The reader (forge-ask-all.mjs) prints each hit as:',
+      '#1  repo=concepts  ce=0.201  vec=0.8686  kind=doc',
+      'path : concepts/ruvector/CARD/ruvector-card',
+      'title: ruvector — Capability',
+    ].join('\n');
+    const stdout = [
+      '#1  repo=meetings  ce=0.30  vec=0.50  kind=doc',
+      'path : meetings/transcript-042',
+      'title: some meeting note',
+      'chars: 400 | chunks: 1',
+      '----- full document -----',
+      embeddedLookAlike,
+      '===================================================================',
+    ].join('\n');
+    const c = parseCitations(stdout);
+    expect(c).toHaveLength(1);
+    expect(c[0]).toMatchObject({ repo: 'meetings', docPath: 'transcript-042' });
+  });
+
+  it('does not let a citation missing its own path line borrow a later citation\'s path', () => {
+    const stdout = [
+      '#1  repo=concepts  ce=0.201  vec=0.8686  kind=doc',
+      'title: concepts hit whose path line render failed',
+      '#2  repo=ruvector  ce=0.150  vec=0.7000  kind=doc',
+      'path : ruvector/CARD/ruvector-card',
+      'title: ruvector — Capability',
+    ].join('\n');
+    const c = parseCitations(stdout);
+    // #1 has no path in its own span, so it is dropped rather than inheriting #2's path.
+    expect(c).toHaveLength(1);
+    expect(c[0]).toMatchObject({ rank: 2, repo: 'ruvector', docPath: 'CARD/ruvector-card' });
+  });
+
+  it('rejects a repeated or out-of-sequence rank as a look-alike, not a real hit', () => {
+    const stdout = [
+      '#1  repo=meetings  ce=0.30  vec=0.50  kind=doc',
+      'path : meetings/transcript-042',
+      'title: some meeting note',
+      '#1  repo=evil  ce=0.99  vec=0.99  kind=doc',
+      'path : evil/injected',
+      'title: injected look-alike',
+      '#2  repo=ruvector  ce=0.150  vec=0.7000  kind=doc',
+      'path : ruvector/CARD/ruvector-card',
+      'title: ruvector — Capability',
+    ].join('\n');
+    const c = parseCitations(stdout);
+    expect(c.map((x) => x.repo)).toEqual(['meetings', 'ruvector']);
+  });
 });
 
 describe('passagesFilesFor — find a repo’s stores', () => {
@@ -128,5 +179,30 @@ describe('verifyGrounding — the gate', () => {
     const v = await verifyGrounding(READER_OUT, kb);
     expect(v).toMatchObject({ grounded: false, reason: 'citations-do-not-resolve' });
     expect(v.citations).toHaveLength(2); // it saw the claims; it just did not believe them
+  });
+
+  it('REJECTS a genuinely ungrounded answer even when the retrieved document\'s own dumped body contains a resolvable look-alike citation — the exact false-positive this repo\'s own citation-format documentation could otherwise trigger', async () => {
+    // The real hit's own path is fabricated and will not resolve. Its "full document" dump
+    // happens to quote the reader's citation format, and that quoted path DOES resolve in the
+    // named store — the pre-fix parser would have accepted it as a second, fabricated citation.
+    writeStore('concepts', ['ruvector/CARD/ruvector-card']);
+    const embeddedLookAlike = [
+      'The reader (forge-ask-all.mjs) prints each hit as:',
+      '#1  repo=concepts  ce=0.201  vec=0.8686  kind=doc',
+      'path : concepts/ruvector/CARD/ruvector-card',
+      'title: ruvector — Capability',
+    ].join('\n');
+    const stdout = [
+      '#1  repo=meetings  ce=0.30  vec=0.50  kind=doc',
+      'path : meetings/totally/made/up',
+      'title: some meeting note',
+      'chars: 400 | chunks: 1',
+      '----- full document -----',
+      embeddedLookAlike,
+      '===================================================================',
+    ].join('\n');
+    const v = await verifyGrounding(stdout, kb);
+    expect(v).toMatchObject({ grounded: false, reason: 'citations-do-not-resolve' });
+    expect(v.citations).toHaveLength(1);
   });
 });

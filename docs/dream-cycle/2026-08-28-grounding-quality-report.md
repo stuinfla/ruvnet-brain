@@ -1,0 +1,193 @@
+# Citation-Binding Integrity SOTA Report — 2026
+
+## TL;DR
+
+`kb/verify-citation.mjs`'s `parseCitations()` trusted ANY text shaped like the reader's own
+citation-block format (`#N  repo=X ...` / `path : ...` / `title: ...`), wherever that text appeared
+in the reader's stdout — including inside a retrieved document's own dumped body. Since
+`forge-ask-all.mjs` prints each hit's full document text raw and unescaped, a retrieved document
+that itself quotes or discusses this exact citation format (this repo's own documentation does, and
+so could any ingested transcript, gist, or external corpus content) gets parsed as an EXTRA,
+fabricated citation. If that fabricated citation's path happens to resolve — plausible, since
+illustrative examples in this repo's own docs cite a real, well-known path — `verifyGrounding()`
+reports `grounded: true` off a citation the retriever never actually returned, while the real,
+genuinely-cited (and possibly fabricated) path goes unchecked. This directly undermines `eval:gate`,
+the repo's own held-out, ground-truth grounding gate. Fixed by (1) bounding each citation's
+`path`/`title` extraction to its own span (up to the next real header), so a malformed block can no
+longer borrow a neighboring citation's fields, and (2) requiring citation ranks to be strictly
+sequential (`#1, #2, …` with no gaps or repeats) — the reader's own invariant, which embedded
+look-alike text does not organically continue.
+
+## What's new
+
+- `parseCitations()` in `kb/verify-citation.mjs` now enforces two invariants implicit in
+  `forge-ask-all.mjs`'s own output contract but never checked: (a) a citation's `path`/`title` must
+  come from its own block, not from a later or earlier one; (b) citation ranks must be exactly
+  `expectedRank, expectedRank+1, …` starting at 1 — any out-of-sequence or repeated rank is treated
+  as look-alike text, not a real hit.
+- Zero behavior change for any currently-passing fixture or real reader output (`forge-ask-all.mjs`
+  always emits ranks `#1..#N` in strict order with `path`/`title` immediately following each header —
+  confirmed by reading the printer at `kb/forge-ask-all.mjs:3192-3200`).
+- Two new failing-then-passing tests added to the existing `tests/unit/verify-citation.test.mjs`
+  suite, plus an end-to-end `verifyGrounding` test demonstrating the exact false-positive this closes.
+
+## Competitors / prior art (grade C — internal code reading, not externally re-verified tonight)
+
+| System | Citation-binding approach | Comparison |
+|---|---|---|
+| LangChain `RetrievalQA` w/ source docs | Citations carried as structured metadata alongside the LLM answer, not re-parsed from printed text | Avoids this whole bug class by never round-tripping through a printed, delimiter-based protocol — the deeper fix this repo's own reader/verifier boundary should eventually adopt (tracked as an open item below, not done tonight) |
+| LlamaIndex response synthesis w/ node citations | Similar — citations are object references, not text parsed back out of a rendered answer | Same observation |
+| Sakana AI Scientist (competitor named in `dream.config.json`) | Uses structured JSON tool outputs between pipeline stages, not printf-style human-readable dumps | Same class of structural fix; not adopted here to keep tonight's diff tiny |
+| This repo, pre-fix | Round-trips through raw printed text with human-readable delimiters (`#N`, `path :`, `title:`) that a retrieved document's own body can reproduce | The defect this report fixes narrows, not closes, the gap to the structured-output designs above |
+
+C-grade throughout: read from public documentation/memory of these projects' general design, not
+independently reproduced tonight (no network research budget spent — LLM_EVAL=blocked, no model
+calls, and the finding was internal-code-derived and immediately reproducible without external
+sources).
+
+## Hypothesis (frozen before evaluation)
+
+> Given a `forge-ask-all.mjs` citation-block stdout in which a retrieved document's own dumped
+> full-text body coincidentally contains a substring shaped like a reader citation block, when
+> `verify-citation.mjs`'s `parseCitations()` is applied, then it erroneously parses an EXTRA,
+> fabricated citation sourced from within a real citation's document body rather than from the
+> reader's own delimiter structure — allowing `verifyGrounding()` to report `grounded: true` on the
+> strength of a citation the retriever never returned. Bounding each block's `path`/`title` search
+> window to stop at the next `#N repo=` header, and requiring strictly sequential ranks, should
+> eliminate this cross-block/embedded-content leakage while producing byte-identical results on all
+> currently-passing test fixtures and real reader output.
+
+## Candidates considered (5 proposed, 1 selected)
+
+| # | Candidate | Fit | Novelty | Testability | Measurability | Prod-value | Reviewability |
+|---|---|---|---|---|---|---|---|
+| 1 | **[SELECTED]** Bound `parseCitations` block window + enforce sequential rank | 5 | 3 | 5 | 5 | 4 | 5 |
+| 2 | Fix `samePath`'s empty-`docPath` chunk-suffix edge (`''` matching any `#`-prefixed path) | 3 | 1 | 4 | 2 | 1 (unreachable — `docPath` is never empty in real output) | 5 |
+| 3 | Wire `self-retrieval-bench.mjs` MRR into a nightly gate (ADR-025 Open Item #3) | 4 | 2 | 2 | 2 | 4 | 2 |
+| 4 | De-dup citations by `(repo, docPath)` in `verifyGrounding` before resolving | 3 | 2 | 4 | 3 | 2 (doesn't address root cause — a fabricated citation still gets attempted) | 4 |
+| 5 | Harden `citationResolves` against store-root `ENOTDIR`/`EACCES` | — | — | — | — | — | already fixed in PR #178 (2026-08-26) — not rediscovering |
+
+Candidate 3 (self-retrieval-bench nightly gate) requires a real, built corpus/store to run
+end-to-end; this container has zero materialized stores (`stores 0 dark 0` — confirmed via the
+`store-root.mjs` control-plane probe) and no `~/.cache/ruvnet-brain/kb`, so it is untestable tonight
+without fabricating a synthetic corpus that wouldn't represent the real benchmark. Candidate 1 is
+fully testable via pure unit tests with zero corpus and zero model calls, directly answering
+tonight's SCAN=citation-binding surface, and is the only candidate demonstrated as a real,
+reproducible defect (not merely theoretical) — selected without needing to override the score order.
+
+## Testability gate
+
+Testable tonight: YES, via `tests/unit/verify-citation.test.mjs` (vitest), with zero corpus and zero
+model calls required. `npm run eval:gate` itself is infrastructure-blocked in this container
+(`eval-brain: no brain at /root/.cache/ruvnet-brain/kb — run: npx ruvnet-brain` — exact, verified
+blocker, matching this container's other control-plane probes showing zero materialized stores), so
+the real evaluator used tonight is the deterministic unit-test suite that exercises the exact changed
+code path, not a substitute metric.
+
+## Baseline vs candidate
+
+- **Baseline** (`git stash` of the two changed files, reproducing pre-candidate `HEAD`):
+  `tests/unit/verify-citation.test.mjs` — 16/16 pre-existing tests pass; the 4 new tests fail exactly
+  as predicted (missing-path cross-block bleed, embedded look-alike fabricating a citation, repeated
+  rank accepted, and the end-to-end `verifyGrounding` false-positive).
+- **Candidate**: all 20/20 tests pass, including the 4 new ones.
+- **Full `test:unit`** (386s, 277 files, 3596 tests): 3407 pass, 4 fail — byte-identical failure set
+  to baseline (confirmed by re-running the 3 affected files against baseline: same 3 failures,
+  `advocacy-outcomes.test.mjs`, `hook-shim-fallback-once.test.mjs`, `user-settings.test.mjs`, all
+  pre-existing `chmod`-based EACCES fixtures that don't enforce under this container's root user —
+  the exact same class the 2026-08-26 ledger row documented, not introduced tonight).
+- **`test:integration`**: 30/38 files pass; 5 fail, all pre-existing environmental blockers
+  (`sqlite3` binary ENOENT, `@xenova/transformers` unresolved — the wasm/NAPI degradation this
+  container's `npm ci` already recorded), zero of which reference `verify-citation.mjs` (verified by
+  grep). The both-hosts hook-conformance gate itself
+  (`hook-conformance-both-hosts.test.mjs`) passes clean, 5/5.
+- **`eval:gate`**: attempted, blocked by the exact infra reason above — `EVALUATED=blocked` for this
+  specific evaluator; the unit-test evaluator was used instead as the real, deterministic gate for
+  this code path.
+
+## Darwin
+
+`npx @metaharness/darwin` is installed and its CLI responds. Not run: this candidate is a discrete
+correctness fix (a citation is either correctly bound or it isn't) with no tunable parameter or
+fitness landscape for bounded evolutionary search to explore — running Darwin here would be
+evolution theater, not a real search. Skipped deliberately rather than run vacuously.
+
+## Evidence
+
+- OBSERVATION: `forge-ask-all.mjs:3192-3200` unconditionally dumps each hit's full document body
+  inline, unescaped, after every citation's header/path/title.
+- OBSERVATION: `verify-citation.mjs`'s own header comment (lines 16-21, pre-fix) contains literal
+  example text in exactly the reader's citation-block shape — a concrete instance of a document that
+  could trigger this defect if ever indexed and retrieved.
+- MEASUREMENT: reproduced the fabricated-citation defect with a synthetic-but-realistic stdout
+  (a real hit whose dumped body embeds that exact example) — pre-fix: 2 citations parsed (1 real, 1
+  fabricated, both resolvable, defeating the point). Post-fix: 1 citation parsed.
+- MEASUREMENT: reproduced the cross-block field-bleed defect (a citation missing its own path line
+  inheriting the NEXT citation's path) — pre-fix: rank-1 citation gets rank-2's path; post-fix:
+  rank-1 citation dropped entirely (no invented path).
+- MEASUREMENT: end-to-end `verifyGrounding` test — pre-fix: a genuinely-fabricated real citation
+  (`meetings/totally/made/up`, does not resolve) is masked by the embedded look-alike resolving
+  instead, reporting `grounded: true`; post-fix: correctly reports `grounded: false,
+  reason: 'citations-do-not-resolve'`.
+- INFERENCE: this defect class most plausibly manifests when this repo's own retrieval-format
+  documentation (this file, ADR-025, or any future doc explaining the citation format) is itself
+  indexed into a self-referential corpus store and later retrieved — not verified end-to-end tonight
+  because no corpus is materialized in this container (HYPOTHESIS, not MEASUREMENT).
+
+## Reward-hack / gaming check
+
+The fix only ever makes `parseCitations`/`verifyGrounding` STRICTER (rejects strictly more, never
+fewer, citations than before) — it cannot inflate a grounding score, only prevent a false inflation.
+No threshold, gold answer, or held-out question was touched. No new dependency, no cache, no hidden
+cost. Independent-critic pass (self-critique, no separate evaluator identity available in this
+session): CLEAR, with one residual risk disclosed below.
+
+## Security review
+
+This is directly a corpus/citation-poisoning mitigation: untrusted or attacker-influenced retrieved
+content (an ingested gist, a meeting transcript, any future external source) could embed
+reader-format look-alike text to fabricate a resolvable citation and force a false grounded
+verdict. The fix closes the REALISTIC case (out-of-sequence or repeated-rank look-alikes, which is
+what this repo's own documentation and any generic illustrative example text would produce). It does
+**not** close a maximally adversarial case: content engineered to predict and spoof the *exact next
+expected rank* in a specific result position would still be accepted, since sequential-rank checking
+alone cannot distinguish that from a real hit. Closing that fully requires a structural fix — the
+reader emitting a format that cannot be reproduced by ordinary document content at all (e.g.
+JSON-lines with an out-of-band delimiter, or an escaped/non-printable-byte-delimited protocol)
+instead of the current human-readable, printf-style text. That is an architectural decision, not a
+tonight-sized fix, and is named explicitly as a recommended follow-up rather than silently left
+implicit.
+
+## Scan findings (SCAN=retrieval-precision, citation-binding)
+
+1. **citation-binding** (this report's DEEP-adjacent finding, elevated from scan to the night's
+   focus once its severity was confirmed): see above.
+2. **retrieval-precision**: `kb/self-retrieval-bench.mjs` (ADR-025's own designated flywheel gate) is
+   still not wired into any nightly or CI gate three ADR revisions later (ADR-025 Open Item #3,
+   dated 2026-07-19) — confirmed still true by inspection tonight (`grep` for its invocation in
+   `package.json` and CI workflows found none beyond manual `node kb/self-retrieval-bench.mjs`). Not
+   actioned tonight (requires a real corpus this container does not have), but re-flagged since it
+   remains open five weeks later.
+
+## Witness
+
+- Session commit: `486a144dbc9bd5fa3b8b715e0c13935d1add0f1f`
+- Report sha256 (of this file's content up to and including the "## Recommendation" section, i.e.
+  everything ABOVE this Witness section's own hash values, which cannot include themselves):
+  `e3f4193fe9fc2f600ce7e288daabd492aea199e1d20fabe875a5ac6534bfc4e4`
+- Witness stamp (`sha256(REPORT_HASH + SESSION_COMMIT)`):
+  `552aad71b3858c769ebceed2e665ad2ef85f4fb6c1d5bc014e47692c508c981f`
+- Verifier procedure: (1) `git checkout 486a144dbc9bd5fa3b8b715e0c13935d1add0f1f`; (2) apply the
+  candidate diff from PR branch `dream/2026-08-28-grounding-quality`; (3) take this published gist,
+  delete this "## Witness" section and everything after it (i.e. reproduce the exact pre-stamp
+  document), `sha256sum` it, and confirm it matches the Report sha256 above; (4)
+  `printf '%s%s' REPORT_HASH SESSION_COMMIT | sha256sum` and confirm it matches the Witness stamp
+  above; (5) run `npx vitest run tests/unit/verify-citation.test.mjs` and confirm 20/20 pass.
+
+## Recommendation
+
+1. Merge the candidate (human review required — this session never self-merges).
+2. Treat the "structural, unspoofable reader/verifier wire format" idea named in Security Review as
+   a candidate for a future ADR — it is an architectural decision, correctly out of scope tonight.
+3. Wire `self-retrieval-bench.mjs` into a real gate (ADR-025 Open Item #3) on a night when a real
+   corpus is available in the runner (this container never materializes one).
