@@ -49,14 +49,19 @@ export function parseCitations(stdout) {
   while ((m = blockRe.exec(text)) !== null) {
     const rank = Number(m[1]);
     if (rank !== expectedRank) continue; // out-of-sequence header: a look-alike, not a real hit
-    expectedRank = rank + 1;
     const blockStart = m.index + m[0].length;
     nextHeaderRe.lastIndex = blockStart;
     const next = nextHeaderRe.exec(text);
     const block = text.slice(blockStart, next ? next.index : text.length);
     const pathM = /^path\s*:\s*(.+)$/m.exec(block);
     const titleM = /^title\s*:\s*(.+)$/m.exec(block);
+    // Only a block that actually resolves to a path fills this rank slot. Advancing on rank match
+    // alone (before this check) let a headerless-of-path look-alike fragment (e.g. an incidental
+    // "#N repo=..." mention with no path/title following) consume the slot, permanently rejecting
+    // the REAL citation at that rank when it appeared later in the stream — a false negative on a
+    // genuinely grounded answer, worse than the fabrication this rank check exists to prevent.
     if (!pathM) continue;
+    expectedRank = rank + 1;
     const repo = m[2];
     const fullPath = pathM[1].trim();
     // Strip the repo prefix the reader adds, so the remainder can be matched against the store.
