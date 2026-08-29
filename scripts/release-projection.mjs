@@ -29,7 +29,12 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   }
   const assets = path.resolve(assetsDir);
   const sourceLedger = readRvfGenerations(assets);
-  const eligible = corpusCoverage.rows.filter((row) => row.disposition === 'eligible');
+  // The coverage ledger describes the full upstream universe. A release candidate contains
+  // only the immutable seed's asset set, so absent-but-eligible upstream rows are not release
+  // blockers; shipped stores must still all be CURRENT.
+  const availableStores = new Set(Object.keys(sourceLedger.stores || {}).map((store) => store.toLowerCase()));
+  const eligible = corpusCoverage.rows.filter((row) => row.disposition === 'eligible'
+    && availableStores.has(String(row.artifact?.store || '').toLowerCase()));
   if (!eligible.length || eligible.some((row) => row.status !== 'CURRENT')) throw new Error('eligible corpus rows are not all CURRENT');
   const publicStores = [...new Set(eligible.map((row) => String(row.artifact.store).toLowerCase()))];
   // Derived public stores are not corpus rows, but they are still part of the

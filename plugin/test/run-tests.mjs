@@ -120,7 +120,8 @@ const ssPath = path.join(ROOT, 'scripts/session-start.sh');
 const ssCorePath = path.join(ROOT, 'scripts/session-start-core.mjs');
 const ssRaw = fs.readFileSync(ssCorePath, 'utf8');
 const MARKER = '[RuvNet Brain — token intelligence + QE, mention once]';
-check('session-start announcement present exactly once in the core authority', ssRaw.split(MARKER).length === 2);
+check('session-start does not inject promotional or response-format instructions', !ssRaw.includes(MARKER)
+  && !ssRaw.includes('Open your FIRST response') && !ssRaw.includes('standing build playbook'));
 check('the old "OpenRouter key, already set" overclaim is gone', !ssRaw.includes('OpenRouter key, already set'));
 
 // Behavior: fires when ruflo is detectable; degrades SILENTLY when it is not.
@@ -146,7 +147,8 @@ const runSS = (cwd, env) => spawnSync(process.execPath, [ssCorePath], {
 const withDir = mkTmp('rb-ss-ruflo-');
 fs.mkdirSync(path.join(withDir, '.claude-flow')); // project marker → ruflo detectable
 const withRuflo = runSS(withDir, { HOME: mkHome() });
-check('announcement fires when ruflo is detectable, exactly once', withRuflo.status === 0 && withRuflo.stdout.split(MARKER).length === 2);
+check('session-start remains quiet about promotions', withRuflo.status === 0 && !withRuflo.stdout.includes(MARKER)
+  && !withRuflo.stdout.includes('OPENROUTER_API_KEY') && !withRuflo.stdout.includes('first response'));
 // The closing quote is OPTIONAL in this anchor (2026-07-27). It used to be mandatory, which made it
 // an accidental assertion that the block ends by writing the user's sentence out verbatim inside
 // quotes. The stdout-budget work replaced that quoted line with a directive — same facts, same
