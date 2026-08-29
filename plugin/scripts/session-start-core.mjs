@@ -431,7 +431,8 @@ export async function runSessionStart({
       emit('On no or silence: drop it, never re-offer.');
     }
 
-    announceVersion({ running, off: brain.off, stateDir, consoleInvoke, emit });
+    // Version announcements belong to the explicit update/what's-new flows, not SessionStart.
+    // Keeping this hook context-only prevents host sessions from receiving response scripts.
     const autoPref = path.join(stateDir, '.auto-update-pref');
     if (!exists(autoPref)) {
       emit('[RuvNet Brain — one-time setup question]');

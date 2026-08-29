@@ -75,8 +75,8 @@ check('grounding gates stay silent on a non-RuvNet prompt (status footer is inte
 const malformed = runHook('this is not json');
 check('handles malformed input without erroring (exit 0)', malformed.status === 0);
 
-// 2b. brain-score skill + the 2.0 token-intelligence announcement (default-on vs key-gated, honestly)
-section('2b. brain-score skill + 2.0 announcement');
+// 2b. brain-score skill and quiet session-start contract
+section('2b. brain-score skill + quiet session-start contract');
 const skillRaw = (() => { try { return fs.readFileSync(path.join(ROOT, 'skills/brain-score/SKILL.md'), 'utf8'); } catch { return ''; } })();
 const fm = skillRaw.match(/^---\n([\s\S]*?)\n---\n/);
 check('brain-score frontmatter parses (name: brain-score + description)', !!fm && /(^|\n)name:\s*brain-score\s*(\n|$)/.test(fm[1]) && /(^|\n)description:\s*\S/.test(fm[1]));
@@ -149,16 +149,6 @@ fs.mkdirSync(path.join(withDir, '.claude-flow')); // project marker → ruflo de
 const withRuflo = runSS(withDir, { HOME: mkHome() });
 check('session-start remains quiet about promotions', withRuflo.status === 0 && !withRuflo.stdout.includes(MARKER)
   && !withRuflo.stdout.includes('OPENROUTER_API_KEY') && !withRuflo.stdout.includes('first response'));
-// The closing quote is OPTIONAL in this anchor (2026-07-27). It used to be mandatory, which made it
-// an accidental assertion that the block ends by writing the user's sentence out verbatim inside
-// quotes. The stdout-budget work replaced that quoted line with a directive — same facts, same
-// required phrases below, ~50 fewer bytes — and the anchor stopped matching, reporting the block as
-// absent rather than as changed. What this check is FOR (the 512-byte budget and the trigger
-// phrases) is untouched; only the boundary it uses to find the block is now shape-agnostic.
-const block = withRuflo.stdout.match(/\[RuvNet Brain — token intelligence \+ QE, mention once\][\s\S]*?OPENROUTER_API_KEY\."?\n/);
-const blockBytes = block ? Buffer.byteLength(block[0], 'utf8') : -1;
-check(`announcement under the 512-byte budget (actual: ${blockBytes})`, blockBytes > 0 && blockBytes <= 512);
-check('announcement names the triggers + the key gate', !!block && ["do this cheaper", "score my harness", "score this repo", '/brain-build', '/brain-prompt', 'OPENROUTER_API_KEY'].every((s) => block[0].includes(s)));
 
 const noDir = mkTmp('rb-ss-noruflo-');
 // no project markers, ruflo stripped off PATH, fresh HOME with no ~/.claude.json
