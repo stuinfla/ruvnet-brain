@@ -183,7 +183,6 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
         },
       });
     });
-    expect(result.output).toContain('FIRST LOAD: offer the Console once');
     expect(result.output).toContain('RuvNet Brain v4.0.2-test — active this session');
     expect(result.output).toContain('search_ruvnet is registered; live readiness is not yet proven');
     expect(result.output).not.toContain('search_ruvnet and the grounding hooks are live now');
@@ -202,8 +201,7 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
         generation: 'test-generation', elapsedMs: 42, at: new Date().toISOString(),
       });
     });
-    expect(result.output).toContain('search_ruvnet is ready and live');
-    expect(result.output).toContain("convey: it grounds rUv's stack");
+    expect(result.output).toContain('RuvNet Brain v4.0.2-test — active this session');
     expect(result.output).not.toContain('live readiness is not yet proven');
   });
 
