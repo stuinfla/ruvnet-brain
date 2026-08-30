@@ -69,21 +69,28 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   const projectedCoverage = { ...corpusCoverage, rows,
     totals: { ...corpusCoverage.totals, rows: rows.length,
       repositories: rows.filter((row) => row.kind === 'repository').length,
-      gists: rows.filter((row) => row.kind === 'gist').length } };
+      gists: rows.filter((row) => row.kind === 'gist').length,
+      byStatus: Object.fromEntries([...new Set(rows.map((row) => row.status))].sort()
+        .map((status) => [status, rows.filter((row) => row.status === status).length])) } };
+  const projectedEnumerationReceipt = { ...corpusCoverage.enumerationReceipt,
+    repositories: { ...corpusCoverage.enumerationReceipt.repositories,
+      expected: projectedCoverage.totals.repositories },
+    gists: { ...corpusCoverage.enumerationReceipt.gists,
+      expected: projectedCoverage.totals.gists } };
   const ledger = projectPublicGenerationLedger({ ledger: sourceLedger, publicStores: ledgerStores, version, sourceSnapshot });
   const ledgerBytes = generationLedgerBytes(ledger);
   const corpusBytes = Buffer.from(`${JSON.stringify(corpusCoverage, null, 2)}\n`);
   const releaseBase = {
     schemaVersion: 1, kind: 'ruvnet-brain-release-coverage', owner: corpusCoverage.owner,
     observedAt: corpusCoverage.observedAt, generatorSourceSha: corpusCoverage.generatorSourceSha,
-    sourceObservationSha256: null, snapshotRoot: corpusCoverage.snapshotRoot,
+    sourceObservationSha256: corpusCoverage.sourceObservationSha256, snapshotRoot: corpusCoverage.snapshotRoot,
     releaseIdentity: { version, tag: `v${version}`, sourceSnapshot },
     corpusSeed: { tag: corpusSeed.tag, archiveSha256: corpusSeed.archiveSha256,
       archiveBytes: corpusSeed.archiveBytes, receiptSha256: baselineReceiptSha256 },
     corpusCoverage: { sha256: sha256(corpusBytes), coverageGeneration: corpusCoverage.coverageGeneration },
     generationLedger: { file: 'PUBLIC-RVF-GENERATIONS.json', sha256: sha256(ledgerBytes),
       bytes: ledgerBytes.length, storeCount: Object.keys(ledger.stores).length },
-    installedProjectionSchema: 2, policy: corpusCoverage.policy, enumerationReceipt: corpusCoverage.enumerationReceipt,
+    installedProjectionSchema: 2, policy: corpusCoverage.policy, enumerationReceipt: projectedEnumerationReceipt,
     rows: projectedCoverage.rows, totals: projectedCoverage.totals,
   };
   const gistReceipt = seedCompatibleGistReceipt();
