@@ -1459,5 +1459,9 @@
       },
       "recordSha256": "4dea68176043d7fe2665a45ac0fdf700504352b2a9b2dfbf6bd53d6ff67f8cae"
     }
-  }
+  },
+  "sourceCommit": "f146fff7d4f10eb5d5089a36d325e0850c423d77",
+  "sourcePath": "data/retrieval-query-evidence.json",
+  "sourceBlobSha256": "4469391dcbe1a09c03ffa44970d67e21233134687e0409149ab7e0921b15f25a",
+  "receiptSha256": "9aa9933597a01af1ef7a2bb72b3549df540668b3e7b88dce992798d52c7e76cb"
 }
