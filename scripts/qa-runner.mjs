@@ -12,6 +12,7 @@ const timeoutMs = Number(process.env.QA_TIMEOUT_MS || (release ? 15 * 60_000 : 8
 const lanes = [
   ['version', 'npm', ['run', 'version:check']],
   ['convergence', 'npm', ['run', 'convergence:check']],
+  ['execution-policy', 'npm', ['run', 'execution-policy:check']],
   ['docs', 'npm', ['run', 'doc:currency']],
   ['wiring', 'npm', ['run', 'wired:check']],
   ['substitution', 'npm', ['run', 'substitution:check']],

@@ -2811,7 +2811,16 @@ function runUpdate() {
     console.error(`      If you believe a newer build exists, check:  ${c.bold('node forge-update.mjs --check')}  in ${kbDir}`);
     process.exit(outcome.exitCode);
   }
-  if (outcome.fallback) {
+  if (outcome.fallback && FLAG_HOST_SYNC_ONLY) {
+    // Host synchronization has a narrower contract than a full update: it must converge the
+    // executable plugin/spine to the published package even when an optional large KB asset is
+    // missing. The old path fell through to a fresh install here, which required the same missing
+    // zip and stranded every host on its previous generation. Keep the KB failure visible, but
+    // continue to the host-sync transaction; the published-surface/release gates still fail the
+    // release until the signed KB asset exists.
+    warn("the knowledge bundle could not refresh; continuing with executable host synchronization only");
+    updateStatus = 0;
+  } else if (outcome.fallback) {
     warn("\nthe bundle's own updater couldn't complete — falling back to a fresh install of the latest Release (this always works)…\n");
     const self = fileURLToPath(import.meta.url);
     const fr = spawnSync(process.execPath, [self, '--force'], { stdio: 'inherit',

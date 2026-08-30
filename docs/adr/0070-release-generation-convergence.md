@@ -186,6 +186,8 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 
 ## Currency log
 
+| 2026-08-30 | Reconciled the host-only updater after live v4.3.1 had no GitHub assets and the updater stranded the Stable Spine on 4.2.2-dev. | `bin/install.mjs` now keeps executable host synchronization moving when the optional KB refresh is unavailable; the release asset gate remains authoritative. |
+
 | 2026-08-30 | Automatic PR checks now converge through one bounded canonical runner; the older matrix is manual diagnostic coverage. | `.github/workflows/ci.yml`, `.github/workflows/qe-4-3.yml`, and `scripts/qa-runner.mjs` reduce duplicate observations while leaving protected publication authority unchanged. |
 
 | 2026-08-30 | Version propagation is now a single source edit followed by consistency verification, and release QA binds the candidate to one SHA. | `scripts/set-version.mjs`, `scripts/sync-version.mjs`, and `scripts/qa-runner.mjs` remove the emergency publish path that let public and source versions diverge. |

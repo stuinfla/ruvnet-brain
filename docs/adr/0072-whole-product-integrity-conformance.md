@@ -207,6 +207,8 @@ conformance.
 
 ## Currency log
 
+| 2026-08-30 | Reconciled the host-only updater after live v4.3.1 had no GitHub assets and the updater stranded the Stable Spine on 4.2.2-dev. | `bin/install.mjs` now records the KB plane as degraded while continuing executable host convergence; the missing required release asset remains a publication failure. |
+
 | 2026-08-30 | Whole-product PR evidence now has one bounded canonical entrypoint; the full legacy QE matrix is manual-only and cannot create competing release claims. | `scripts/qa-runner.mjs`, `.github/workflows/ci.yml`, and `.github/workflows/qe-4-3.yml` preserve protected publication checks while simplifying automatic evidence collection. |
 
 | 2026-08-30 | Product integrity now has a bounded exact-SHA canonical gate and a separate release-authority assertion. | `scripts/qa-runner.mjs`, `scripts/release-authority.mjs`, and `docs/QA-RELEASE-PROCESS.md` make the boundary executable and auditable. |
