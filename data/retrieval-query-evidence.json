@@ -543,9 +543,9 @@
       "query": "In the cve-bench project, what is CVE-bench: A SWE-bench-Style Security Benchmark, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "package.json",
-        "passageSha256": "be469aa7ab65fe81709413d4fdcdab569676e4e04f0f0300bc32419babc29af5"
+        "passageSha256": "8956631b131904d742fd5f3aa4897c7c123296e03909b8dd2449f2fdf66b2dc8"
       },
-      "recordSha256": "f17358d6949d0a161a7ce7b6eebf207f328583fa9624c6e32c3f88bf4422d654"
+      "recordSha256": "87d629b2576dab22821805c887aeb90df106829bfff55b2d79b79f04367c4a42"
     },
     "daa": {
       "query": "In the daa project, what is 🤖 DAA SDK - Decentralized Autonomous Agents & Distributed ML, what problem does it solve, and how is it intended to be used?",
@@ -1459,9 +1459,5 @@
       },
       "recordSha256": "4dea68176043d7fe2665a45ac0fdf700504352b2a9b2dfbf6bd53d6ff67f8cae"
     }
-  },
-  "sourceCommit": "f146fff7d4f10eb5d5089a36d325e0850c423d77",
-  "sourcePath": "data/retrieval-query-evidence.json",
-  "sourceBlobSha256": "4469391dcbe1a09c03ffa44970d67e21233134687e0409149ab7e0921b15f25a",
-  "receiptSha256": "9aa9933597a01af1ef7a2bb72b3549df540668b3e7b88dce992798d52c7e76cb"
+  }
 }
