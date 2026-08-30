@@ -3,8 +3,8 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-21
-impl: built
+updated: 2026-08-30
+impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -373,6 +373,26 @@ correct: **the strong claim was the defect.**
    land ≥95. No self-score counts; the 83-vs-38 category error is not repeated.
 
 ## Currency log
+
+| 2026-08-30 | Release-QE now consumes the committed source-bound coverage snapshot instead of calling the user-gists API with GitHub's restricted Actions token; release projection selects only eligible stores present in the immutable seed and still requires those seeded rows to be CURRENT. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`. |
+
+| 2026-08-30 | The restart-free Stable Spine identity handoff is now covered by a real hook-shim test; quiet SessionStart CI signals retain factual details while excluding response instructions. | `plugin/scripts/hook-shim.mjs`, `plugin/scripts/session-start-core.mjs`, `tests/unit/hook-shim.test.mjs`, `tests/unit/signal-lifecycle.test.mjs`; focused 28/28 and canonical QA 322/322 pass. |
+| 2026-08-30 | Re-read the complete governed release and hook surface after the convergence-manifest and hook-conformance cleanup. The contract remains unchanged; its ownership is now checked by `scripts/convergence-manifest.mjs`, and detached-job fixture teardown now uses the product receipt rather than a livelocking delete retry. | `9f3cb36`, `scripts/convergence-manifest.mjs`, `tests/integration/hook-conformance-both-hosts.test.mjs`; focused conformance evidence is 8/8, and the full integration lane is 41 passed / 1 skipped / 0 failed with KB dependencies installed. |
+| 2026-08-30 | The final host adapter and SessionStart changes were rechecked against the exact bounded contract before hosted publication. | `tests/integration/project-progression-session-start.test.mjs` passes 13/13; `scripts/qa-runner.mjs` remains the canonical exact-SHA release gate. |
+
+| 2026-08-30 | QA publication is fail-closed through one bounded runner: failed lanes stop, timeouts fail the receipt, and every lane binds to the current SHA. | `scripts/qa-runner.mjs`, `scripts/release-authority.mjs`, and `.github/workflows/ci.yml` provide the executable contract. |
+
+| 2026-08-23 | Receipt evidence now names skipped tests and suite errors, preventing a count-only quality claim. | Commit `cc25c24` strengthens the 95 contract's evidence requirement without treating skipped or unavailable checks as green. |
+| 2026-08-23 | Hosted parser diagnostics now retain bounded stdout/stderr tails in the receipt. | Commit `1310fb6` makes a Windows process failure actionable from the artifact itself; skipped and unavailable checks remain non-PASS. |
+| 2026-08-23 | The receipt aggregate now reads the directory populated by merged workflow artifacts, and Vitest preserves verbose failure context. | The workflow correction prevents a transport-path false red; the receipt remains exact-SHA and unknown/skipped evidence remains non-PASS. |
+| 2026-08-23 | The Windows candidate adds a direct installer import probe before the artifact/lifecycle suites. | Run `32654608558` isolated the failure to two installer-import suites with no failed assertions; the probe preserves the unknown-on-failure contract and does not remove tests. |
+| 2026-08-23 | Candidate lane execution now stops after the first non-PASS step and records the partial receipt. | This prevents a red focused step from launching unrelated work; aggregate still rejects the incomplete receipt. |
+| 2026-08-23 | Windows installer-import suites are separately bounded, and hosted conformance uses a measured 240-second ceiling. | The split is based on exact failure isolation; the longer ceiling accommodates observed host execution without changing any test assertion or acceptance bar. |
+| 2026-08-23 | The candidate contract separates live-precondition evidence from hermetic resources and removes the Windows shell launcher from the test path. | Commit `0e30d68` preserves the rule that unknown/skipped is not PASS while making the deterministic candidate lane runnable on hosted Windows. |
+| 2026-08-23 | The receipt contract now retains failed-test identities and uploads red-lane evidence; downstream release work is blocked by every required lane. | Commit `b570e25` makes a failing quality observation actionable without rerunning unrelated lanes or reading decorated logs. |
+| 2026-08-23 | Replaced the release test marathon with the fail-fast Agentic-QE receipt contract; the 95 rubric remains the quality standard, but partial lane green is no longer a release verdict. | Commit `b3ddb0d` adds preflight, isolated behavior/resource/artifact lanes, exact-SHA receipts, zero-spend enforcement, and an aggregate that rejects missing, skipped, stale, or failed evidence. |
+| 2026-08-23 | Repaired the Windows release-argument oracle after exact-SHA job `97218861232` failed the protected corpus authority suite; acceptance thresholds are unchanged. | `scripts/windows-command.mjs` uses the measured shell boundary and `tests/unit/corpus-seed-release-authority.test.mjs` covers the spaced-argument invariant without importing the executable release entrypoint. |
+| 2026-08-23 | Re-read the release authority after issue #163 exposed a Windows argument-boundary failure; the 95 contract and release thresholds remain unchanged. | `scripts/release.mjs` now preserves complete Windows `gh` arguments, with focused corpus-seed authority tests covering the corrected boundary. |
 | 2026-08-10 | Re-read after ADR-067; no observable, mutant or budget changed. | Two new mutation-proved suites landed (`decision-gate`, `decision-outcomes`) and two existing guards were converted from restated truth to derived properties (`hook-contract`'s blocking list, `swarm-slot-recycler`'s frozen digest). No PLATFORM_BUDGET, dimension observable, or watch-plane definition moved. |
 
 | 2026-08-06 | `scripts/qe/ux-suite.mjs` now judges the BEST of up to 3 render samples instead of one. The 95 contract and every PLATFORM_BUDGET value are UNCHANGED — this fixes the SAMPLING, not the bar. | Measured on hosted windows-latest, same gate, unchanged product: job `92610172864` 877ms PASS, job `92625527103` 4523ms FAIL, and 5535ms FAIL — a 6x spread against a hard 4000ms budget, so roughly a third of Windows runs went red on contention alone. PRs #109 and #117 were each held red by it and each went green on a bare re-run with no code change. Raising win32 to 6000ms was rejected: it buys quiet by blinding the gate to the regression it exists for, and this file already states the budgets are "release budgets, not performance claims about GitHub's hardware" with "CI receipts make future recalibration evidence-based rather than guessed" — the receipts say the budget is right. Best-of-N strictly cannot pass anything a single attempt would have passed; a real regression is slow every attempt and still fails. Guarded by `tests/unit/ux-render-best-of-n.test.mjs`, whose load-bearing case is the negative one ("uniformly slow stays RED after every attempt"), 8/8. |

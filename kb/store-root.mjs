@@ -57,6 +57,18 @@ export function explain(env = process.env, home = os.homedir()) {
   return { root: DEFAULT_ROOT(home), source: 'default' };
 }
 
+/**
+ * True when `root` cannot be read as a store directory at all — absent (ENOENT), a stray file
+ * where a directory belongs (ENOTDIR), or unreadable (EACCES). `storesAt`/`cardsAt` swallow all
+ * three identically into `[]`; a caller that checked only `fs.existsSync(root)` treated the latter
+ * two as "materialized," letting that `[]` render as a real, current zero — the exact ambiguity
+ * PR #143/#155's `NEVER-MATERIALIZED` fix targeted, just for a different errno class than ENOENT.
+ */
+export function rootNeverMaterialized(root = storeRoot()) {
+  try { fs.readdirSync(root); return false; }
+  catch (e) { return !!e && (e.code === 'ENOENT' || e.code === 'ENOTDIR' || e.code === 'EACCES'); }
+}
+
 /** Store names present at a root, suffixes stripped and deduped. */
 export function storesAt(root = storeRoot()) {
   try {

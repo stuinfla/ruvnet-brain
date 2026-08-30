@@ -327,7 +327,8 @@ async function handleClient(msg) {
       return clientOk(id, { tools: FALLBACK_TOOLS });
     }
     case 'tools/call': {
-      if (params?.name === 'ruvnet_cli_help' || params?.name === 'ruvnet_cli_run') {
+      if (params?.name === 'ruvnet_cli_help' || params?.name === 'ruvnet_cli_run'
+        || params?.name === 'ruvnet_registry_latest') {
         return clientOk(id, await callManagedCli(params.name, params.arguments || {}));
       }
       if (params?.name !== 'search_ruvnet') return clientErr(id, -32602, `unknown tool: ${params?.name}`);

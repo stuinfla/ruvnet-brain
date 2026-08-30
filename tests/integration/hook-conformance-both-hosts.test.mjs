@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveBash } from '../../plugin/scripts/hook-shim-bash.mjs';
+import { rmAfterReap } from '../helpers/reap-detached.mjs';
 
 /**
  * EVERY HOOK, BOTH HOSTS, IN A PROJECT THAT IS NOT THIS ONE.
@@ -55,10 +56,9 @@ const gated = BASH ? it : it.skip;
  * returns, so it never needs more); `RM_OPTS_LEARN_FLUSH` is scoped to the one command that is
  * DETACHED by design, with a ceiling comfortably above the documented worst case.
  */
-const RM_OPTS_LEARN_FLUSH = { recursive: true, force: true, maxRetries: 60, retryDelay: 500 };
-// A manifest command can dispatch learn-flush without naming it in the trampoline text, so the
-// cleanup cannot safely infer detached-child lifetime from the outer command string.
-const rmOptsFor = () => RM_OPTS_LEARN_FLUSH;
+// A manifest command can dispatch learn-flush without naming it in the trampoline text. Reap from
+// the product's detached-job receipt instead of retrying deletion against a live writer.
+const cleanupStranger = (dir) => rmAfterReap(path.join(dir, '.conformance-home'), dir);
 
 /** A project this plugin has never seen: no git, no kb, no .swarm, no docs/adr, no evals. */
 function strangerProject() {
@@ -123,7 +123,7 @@ const payloadFor = (event) => JSON.stringify({
   tool_response: { success: true },
 });
 
-function fire({ command, event, cwd, host }) {
+function fire({ command, event, cwd, host, env: envOverride, payload }) {
   const started = Date.now();
   const brainHome = path.join(cwd, '.conformance-home');
   // Claude Code reaches its real hook bodies via the frozen fallback below with nothing further
@@ -133,7 +133,7 @@ function fire({ command, event, cwd, host }) {
   if (host === 'codex') installCodexSpine(brainHome);
   const r = spawnSync(BASH, ['-c', command], {
     cwd,
-    input: payloadFor(event),
+    input: payload ?? payloadFor(event),
     encoding: 'utf8',
     timeout: 30_000,
     env: {
@@ -151,6 +151,10 @@ function fire({ command, event, cwd, host }) {
       // frozen-plugin fallback on Claude Code, which is exactly the path a fresh install takes — and,
       // as of tonight, a real (also freshly-built) spine on Codex, for the same reason.
       RUVNET_BRAIN_HOME: brainHome,
+      // Optional per-call overrides (e.g. RUVNET_SETTINGS_FILE for a boundary fixture). `decision-gate
+      // .mjs` spawns each policy with `{...process.env}` (decision-gate.mjs:393), so anything set here
+      // reaches hijack-ruvnet.sh's `runtime-preferences.mjs --managed-memory-boundary` read unmodified.
+      ...envOverride,
     },
   });
   return { ...r, ms: Date.now() - started };
@@ -176,7 +180,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
         if (err && r.status !== 2) offenders.push(`${c.host}/${c.event}: STDERR "${err.slice(0, 90)}"`);
         if (r.status !== 0 && r.status !== 2) offenders.push(`${c.host}/${c.event}: exit ${r.status}`);
         if (r.error) offenders.push(`${c.host}/${c.event}: ${r.error.message.slice(0, 80)}`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally { cleanupStranger(dir); }
     }
     expect(offenders, 'these emit noise or fail in a project that is not ruvnet-brain — a host '
       + 'renders that to the user as a hook error').toEqual([]);
@@ -193,7 +197,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
         fire({ ...c, cwd: dir });
         const after = fs.readdirSync(dir).filter((n) => !n.startsWith('.conformance-')).sort().join(',');
         if (after !== before) offenders.push(`${c.host}/${c.event}: left behind ${after}`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally { cleanupStranger(dir); }
     }
     expect(offenders, 'these mutate a project the plugin does not own').toEqual([]);
   }, 600_000);
@@ -209,11 +213,91 @@ describe('every registered hook behaves in a project this plugin does not own', 
         const r = fire({ ...c, cwd: dir });
         const budget = (c.timeout ?? 30) * 1000;
         if (r.ms > budget * 0.8) offenders.push(`${c.host}/${c.event}: ${r.ms}ms of a ${budget}ms budget`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally { cleanupStranger(dir); }
     }
     expect(offenders, 'these run too close to the host timeout that kills them; the host reports '
       + 'the kill as a hook error, intermittently, on ordinary tool calls').toEqual([]);
   }, 600_000);
+});
+
+/**
+ * ADR-063 / issue #103 — the managed-memory boundary, but wired, not isolated.
+ *
+ * `tests/unit/managed-memory-boundary.test.mjs` proves `hijack-ruvnet.sh` alone returns `code === 2`
+ * for a refused command. ADR-063's own currency log has named the gap that leaves open since
+ * 2026-08-06: that assertion is "a deny-shaped response, not proof the command did not execute" —
+ * and nothing in this repo can prove a HOST actually halts execution on exit 2 (that is the closed
+ * host's job; see anthropics/claude-code#13744 for a documented case where it did not, for Write/Edit
+ * specifically). What this repo CAN prove, and until now never did, is the one link entirely inside
+ * it: that the refusal SURVIVES the real composition path — `hijack-ruvnet.sh` invoked as one of N
+ * policies inside `decision-gate.mjs`, dispatched through the exact manifest command each host ships
+ * (`hook-shim.mjs` / `codex-hook-wrapper.mjs`) — in a project this plugin does not own, on BOTH hosts.
+ * The describe block above already fires `decision-gate bash` on both hosts every run; its one fixed
+ * payload (`ls -la`) never matches the managed-store pattern, so the refusal branch inside
+ * `hijack-ruvnet.sh` has never once executed inside this harness. This closes exactly that gap, using
+ * the same stranger-project rigor as every other assertion in this file — no more, no less.
+ */
+const managedStorePayload = () => JSON.stringify({
+  session_id: `conformance-boundary-${Math.random().toString(16).slice(2)}`,
+  hook_event_name: 'PreToolUse',
+  prompt: 'inspect the memory store',
+  tool_name: 'Bash',
+  tool_input: { command: "sqlite3 .swarm/memory.db 'DELETE FROM memory_entries'" },
+  tool_response: { success: true },
+});
+
+function boundarySettingsFile(boundary) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boundary-settings-'));
+  const file = path.join(dir, 'settings.json');
+  fs.writeFileSync(file, JSON.stringify({ version: 1, settings: { managedMemoryBoundary: boundary } }));
+  return { dir, file };
+}
+
+describe('ADR-063 refusal survives the wired decision-gate composition, on both hosts, in a stranger project', () => {
+  const bashCommands = hookCommands().filter((c) => c.command.includes('decision-gate bash'));
+
+  it('finds the bash policy chain on both hosts, or this whole block is vacuous', () => {
+    const hosts = bashCommands.map((c) => c.host).sort();
+    expect(hosts).toEqual(['claude-code', 'codex']);
+  });
+
+  gated('TEETH: managedMemoryBoundary=block refuses a managed-store command through the full wired pipeline', () => {
+    const offenders = [];
+    for (const c of bashCommands) {
+      const dir = strangerProject();
+      const { dir: settingsDir, file: settings } = boundarySettingsFile('block');
+      try {
+        const r = fire({ ...c, cwd: dir, env: { RUVNET_SETTINGS_FILE: settings }, payload: managedStorePayload() });
+        if (r.status !== 2) offenders.push(`${c.host}: expected exit 2 (refused), got ${r.status}`);
+        const err = String(r.stderr || '');
+        if (!/ruflo memory (search|retrieve|store)/.test(err)) {
+          offenders.push(`${c.host}: refusal stderr missing sanctioned-path guidance: "${err.slice(0, 160)}"`);
+        }
+      } finally {
+        fs.rmSync(settingsDir, { recursive: true, force: true });
+        cleanupStranger(dir);
+      }
+    }
+    expect(offenders, 'the ADR-063 refusal must survive decision-gate composition on both hosts, in a '
+      + 'project this plugin does not own — not just the isolated script').toEqual([]);
+  }, 60_000);
+
+  gated('TEETH: the default (advise) still refuses nothing for the same managed-store command — no regression to the byte-identical-default invariant', () => {
+    const offenders = [];
+    for (const c of bashCommands) {
+      const dir = strangerProject();
+      const { dir: settingsDir, file: settings } = boundarySettingsFile('advise');
+      try {
+        const r = fire({ ...c, cwd: dir, env: { RUVNET_SETTINGS_FILE: settings }, payload: managedStorePayload() });
+        if (r.status !== 0) offenders.push(`${c.host}: expected exit 0 at default advise, got ${r.status}`);
+      } finally {
+        fs.rmSync(settingsDir, { recursive: true, force: true });
+        cleanupStranger(dir);
+      }
+    }
+    expect(offenders, 'a user who has not opted in must see byte-identical behaviour for a managed-store '
+      + 'command too, in a project this plugin does not own').toEqual([]);
+  }, 60_000);
 });
 
 describe('the two hosts do not silently diverge', () => {

@@ -53,10 +53,18 @@
   },
   "evaluatorEntrypoints": {
     "bench": "npm run eval:gate",
-    "tests": "npm run test:all",
+    "tests": "npm run qa:pr",
     "integration": "npm run test:integration",
     "claims": "npm run claims:verify",
     "darwin": "npx @metaharness/darwin evolve --sandbox mock"
+  },
+  "findingPolicy": {
+    "ledgerFirst": true,
+    "dedupeBy": ["deep", "scan", "path", "signature"],
+    "openIssueOnlyWhen": ["new", "reproduced", "actionable"],
+    "skipIf": ["already-fixed", "duplicate-open-issue", "existing-fix-pr", "environment-only"],
+    "createDraftPr": "only-after-failing-test-and-bounded-fix",
+    "closeIntegratedWork": true
   },
   "adrConvention": "4-digit",
   "competitors": [

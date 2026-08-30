@@ -162,6 +162,7 @@ describe('ONE REAL debt, end to end: learning-replay.yml went red on 2026-07-28 
     expect(red1Out).toContain(GREEN.workflowName);          // which workflow
     expect(red1Out).toContain('concluded failure');          // what it concluded
     expect(red1Out).toContain(`gh run list --repo ${REPO} --commit ${RED_1.headSha}`); // how to look
+    expect(red1Out).not.toMatch(/say it plainly|offer to look/i); // quiet mode must not inject response instructions
     expect(JSON.parse(fs.readFileSync(surfacedFile, 'utf8')).debts[key1]).toBe('red');
 
     // ── 3. THE SAME STILL-RED DEBT IS NEVER RE-NAGGED (inv. 7). This is the whole reason the

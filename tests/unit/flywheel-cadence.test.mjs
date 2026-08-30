@@ -9,6 +9,7 @@ const GROUND = path.join(ROOT, 'plugin/scripts/ground-ruvnet.sh');
 const SHIM = path.join(ROOT, 'plugin/scripts/hook-shim.mjs');
 const SHIM_BASH = path.join(ROOT, 'plugin/scripts/hook-shim-bash.mjs');
 const ADAPTER = path.join(ROOT, 'plugin/scripts/codex-hook-adapter.mjs');
+const ADAPTER_EVENTS = path.join(ROOT, 'plugin/scripts/codex-hook-events.mjs');
 // THE BLOCK'S IDENTITY, not its full sentence. This was the entire headline verbatim — a copy of a
 // product string living in a test — so issue #138's rewording ("switched OFF" -> "is NOT running",
 // because a settings entry is not the daemon's environment) made this count 0 and read as "the
@@ -62,7 +63,7 @@ function claude(project, extra = {}) {
 function seedCodexGeneration() {
   const root = path.join(home, '.cache', 'ruvnet-brain', 'versions', 'test');
   fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
-  for (const source of [GROUND, SHIM, SHIM_BASH, ADAPTER]) {
+  for (const source of [GROUND, SHIM, SHIM_BASH, ADAPTER, ADAPTER_EVENTS]) {
     fs.copyFileSync(source, path.join(root, 'scripts', path.basename(source)));
   }
   fs.writeFileSync(path.join(home, '.cache', 'ruvnet-brain', 'active.json'), JSON.stringify({

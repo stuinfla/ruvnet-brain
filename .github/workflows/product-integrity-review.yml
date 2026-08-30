@@ -1,0 +1,163 @@
+name: product-integrity-review
+
+# The two subscription reviewers run on the owner's authenticated machine. This workflow is the
+# immutable ingress boundary: it accepts only their signed public receipts/keys, rebinds them to the
+# exact CI payload and aggregate, and emits one Actions artifact the protected publisher can trust.
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact 40-character candidate SHA
+        required: true
+        type: string
+      release_qe_run_id:
+        description: Exact-SHA CI run containing the candidate payload
+        required: true
+        type: string
+      aggregate_run_id:
+        description: Exact-SHA release-aggregate run
+        required: true
+        type: string
+      signed_review_bundle_b64:
+        description: Base64 JSON containing the two signed receipts and public keys
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  product-integrity-review:
+    name: product-integrity-review
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Require exact candidate source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.candidate_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "${{ inputs.candidate_sha }}"
+          test -z "$(git status --porcelain)"
+      - name: Restore the exact candidate payload
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.release_qe_run_id }}
+          name: release-evidence-${{ inputs.candidate_sha }}
+          path: release-evidence
+      - name: Restore the exact aggregate envelope
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.aggregate_run_id }}
+          name: release-aggregate-${{ inputs.candidate_sha }}
+          path: release-evidence
+      - name: Decode into fixed paths without archive extraction
+        env:
+          SIGNED_REVIEW_BUNDLE_B64: ${{ inputs.signed_review_bundle_b64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const decoded = Buffer.from(process.env.SIGNED_REVIEW_BUNDLE_B64 || '', 'base64').toString('utf8');
+          const bundle = JSON.parse(decoded);
+          if (!bundle || Object.keys(bundle).sort().join(',') !== 'fable,sol') {
+            throw new Error('signed review bundle must contain exactly fable and sol');
+          }
+          const rows = [['fable', 'claude-fable-5'], ['sol', 'gpt-5.6-sol']];
+          fs.mkdirSync('review-evidence/receipts', { recursive: true });
+          fs.mkdirSync('review-evidence/keys', { recursive: true });
+          for (const [slot, identity] of rows) {
+            const row = bundle[slot];
+            if (!row || Object.keys(row).sort().join(',') !== 'publicKeyPem,receipt'
+              || row.receipt?.id !== identity || typeof row.publicKeyPem !== 'string') {
+              throw new Error(`${slot} signed review bundle row is malformed`);
+            }
+            fs.writeFileSync(`review-evidence/receipts/${identity}.json`, `${JSON.stringify(row.receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+            fs.writeFileSync(`review-evidence/keys/${identity}.pub.pem`, row.publicKeyPem, { flag: 'wx', mode: 0o600 });
+          }
+          NODE
+      - name: Verify signatures and exact reviewed source, tree, payload, contract, and rubric
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/independent-review-receipt.mjs verify-pair \
+            --fable review-evidence/receipts/claude-fable-5.json \
+            --sol review-evidence/receipts/gpt-5.6-sol.json \
+            --fable-public-key review-evidence/keys/claude-fable-5.pub.pem \
+            --sol-public-key review-evidence/keys/gpt-5.6-sol.pub.pem \
+            --retrieval-plan release-evidence/retrieval-canary-plan.json
+          node scripts/release-payload.mjs verify-members \
+            --manifest release-evidence/payload-manifest.json > "$RUNNER_TEMP/payload.json"
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          import { canonicalJson } from './scripts/coverage-integrity.mjs';
+          import { transactionIdFor } from './scripts/release-transaction.mjs';
+          import { retrievalOracleExpectationFromPlan, validateIndependentReviewPair } from './scripts/independent-review-receipt.mjs';
+          const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+          const candidate = JSON.parse(fs.readFileSync('release-evidence/candidate-receipt.json', 'utf8'));
+          const aggregate = JSON.parse(fs.readFileSync('release-evidence/aggregate-envelope.json', 'utf8'));
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/payload.json', 'utf8'));
+          const manifest = JSON.parse(fs.readFileSync('release-evidence/payload-manifest.json', 'utf8'));
+          const packageFile = candidate.artifact.path;
+          const packageBytes = fs.readFileSync(packageFile);
+          const bundle = manifest.members.find(({ role }) => role === 'bundle');
+          const expectedRelease = {
+            repository: 'stuinfla/ruvnet-brain', package: 'ruvnet-brain', version: candidate.version,
+            tag: candidate.tag, candidateSha: candidate.sha, payloadId: payload.payloadId,
+            evidenceDigest: aggregate.evidenceDigest,
+            packageIntegrity: `sha512-${crypto.createHash('sha512').update(packageBytes).digest('base64')}`,
+            packageSha256: sha256(packageBytes), bundleSha256: bundle.sha256,
+          };
+          expectedRelease.transactionId = transactionIdFor(expectedRelease);
+          const fable = JSON.parse(fs.readFileSync('review-evidence/receipts/claude-fable-5.json', 'utf8'));
+          const sol = JSON.parse(fs.readFileSync('review-evidence/receipts/gpt-5.6-sol.json', 'utf8'));
+          const retrievalPlan = JSON.parse(fs.readFileSync('release-evidence/retrieval-canary-plan.json', 'utf8'));
+          const expectedOracle = retrievalOracleExpectationFromPlan(retrievalPlan);
+          const keys = {
+            'claude-fable-5': fs.readFileSync('review-evidence/keys/claude-fable-5.pub.pem', 'utf8'),
+            'gpt-5.6-sol': fs.readFileSync('review-evidence/keys/gpt-5.6-sol.pub.pem', 'utf8'),
+          };
+          const reviewed = validateIndependentReviewPair([fable, sol], {
+            publicKeysByReviewer: keys, expectedOracle,
+          });
+          const expected = {
+            sourceSha: candidate.sha,
+            sourceTree: execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim(),
+            artifactSha256: expectedRelease.packageSha256,
+            payloadId: payload.payloadId,
+            payloadSha256: sha256(fs.readFileSync('release-evidence/payload-manifest.json')),
+            productContractSha256: sha256(fs.readFileSync('scripts/product-integrity-contract.mjs')),
+            rubricSha256: sha256(fs.readFileSync('docs/qe/GRADING-RUBRIC.md')),
+          };
+          for (const receipt of reviewed) {
+            if (canonicalJson(receipt.releaseIdentity) !== canonicalJson(expectedRelease)
+              || receipt.retrievalOracleReview.oracleReceiptSha256 !== expectedOracle.oracleReceiptSha256
+              || receipt.retrievalOracleReview.queryStoreSetSha256 !== expectedOracle.queryStoreSetSha256
+              || receipt.retrievalOracleReview.recordCount !== expectedOracle.stores.length
+              || Object.entries(expected).some(([key, value]) => receipt[key] !== value)) {
+              throw new Error(`${receipt.id} review differs from exact immutable review inputs`);
+            }
+          }
+          NODE
+      - name: Preserve the verified signed review pair
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-integrity-reviews-${{ inputs.candidate_sha }}
+          path: review-evidence/
+          if-no-files-found: error
+          retention-days: 90

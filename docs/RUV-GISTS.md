@@ -5,10 +5,13 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_479 gists · refreshed 2026-08-20_
+_479 gists · refreshed 2026-08-26_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-08-25 | [ruvllm_sparse_attention_report.md](https://gist.github.com/ruvnet/7736317d1311a83137a39e804d7868ea) | ruvllm_sparse_attention: Subquadratic Sparse Attention for Edge LLM Inference on Hailo-10H Pi 5 Cluster |
+| 2026-08-24 | [Sora-prompts.md](https://gist.github.com/ruvnet/e20537eb50866b2d837d4d13b066bd88) | Crafting Cinematic Sora Video Prompts: A complete guide |
+| 2026-08-23 | [.gist-v0.6.5.md](https://gist.github.com/ruvnet/8c099b17eeb589370b36eff74df08890) | RuView v0.6.5-esp32 — open-source WiFi sensing on a $9 ESP32 board (presence, vitals, motion through walls — no camera) |
 | 2026-08-19 | [ruview-project-integration-map.md](https://gist.github.com/ruvnet/5110d7f546aab61c478afc9b353ae833) | Plain-language map of how RuView and Cognitum Spaces use Autogenous and Midstream today, and why LatentMesh is not yet i |
 | 2026-08-19 | [COGNITUM-SPACES.md](https://gist.github.com/ruvnet/30b32dee30cde9d4e3d135a75e7c254c) | Cognitum Spaces for RuView: production status, OAuth activation, capabilities comparison, APIs, memory, governed actions |
 | 2026-08-19 | [memory.md](https://gist.github.com/ruvnet/4a55971e8971a3c430a009c7f5b49d12) | Claude Memory Template |
@@ -25,7 +28,6 @@ _479 gists · refreshed 2026-08-20_
 | 2026-08-12 | [adr-382-writeup.md](https://gist.github.com/ruvnet/ca6e5e63dce4fece0d7dafa60c77808b) | ADR-382 — Init scaffold content drift remediation (ruflo v3.38.0) |
 | 2026-08-11 | [pr1579-release-notes-plain.md](https://gist.github.com/ruvnet/20cc9a198eef99be5685151433642039) | WiFi Sensing Trust Layer — plain-language preview release notes (RuView PR #1579) |
 | 2026-08-10 | [ruflo-3.35.0-explained.md](https://gist.github.com/ruvnet/0202e6a060b04b3a4f5d9bd18345169d) | ruflo v3.35.0 explained — MetaHarness dependency fix, ADR-381 sequential-evidence governance, and 3 concurrency bugs fou |
-| 2026-08-10 | [.gist-v0.6.5.md](https://gist.github.com/ruvnet/8c099b17eeb589370b36eff74df08890) | RuView v0.6.5-esp32 — open-source WiFi sensing on a $9 ESP32 board (presence, vitals, motion through walls — no camera) |
 | 2026-08-09 | [*claude.md](https://gist.github.com/ruvnet/e8bb444c6149e6e060a785d1a693a194) | The Claude-SPARC Automated Development System is a comprehensive, agentic workflow for automated software development us |
 | 2026-08-08 | [tutorial.md](https://gist.github.com/ruvnet/c9a6b4d88e887de392d0b10fe088f1f4) | Train Your Own AI Models for Free Using Google AI Studio |
 | 2026-08-06 | [.roomodes.json](https://gist.github.com/ruvnet/a206de8d484e710499398e4c39fa6299) | This guide introduces Roo Code and the innovative Boomerang task concept, now integrated into SPARC Orchestration. By fo |
@@ -83,7 +85,6 @@ _479 gists · refreshed 2026-08-20_
 | 2026-06-29 | [SPARC.md](https://gist.github.com/ruvnet/27ee9b1dc01eec69bc270e2861aa2c05) | The SPARC framework is a structured methodology for rapidly developing highly functional and scalable projects by system |
 | 2026-06-28 | [agenticow-gist.md](https://gist.github.com/ruvnet/d6e2716ad7bed315cd4355954a4a880e) | agenticow — Git for Agent Memory: Copy-On-Write vector branching (83x faster / 3000x smaller snapshots). Plain-English e |
 | 2026-06-27 | [sona-darwin-gist.md](https://gist.github.com/ruvnet/59e1f3d66d4e35a7bbf00f97b588b461) | Metaharness-Darwin for SONA: evolving a self-learner's config beyond hand-tuning (ruvector-sona 0.2.1, ADR-271, Ornith-1 |
-| 2026-06-26 | [Sora-prompts.md](https://gist.github.com/ruvnet/e20537eb50866b2d837d4d13b066bd88) | Crafting Cinematic Sora Video Prompts: A complete guide |
 | 2026-06-26 | [oia-implementation-gist.md](https://gist.github.com/ruvnet/9056701d13d5a5b5148d0459ff10b7c3) | Ruflo × MetaHarness Integration: OIA-Layered Walkthrough (ADR-150 implementation across 28 /loop iterations) |
 | 2026-06-25 | [gist.md](https://gist.github.com/ruvnet/c7718d3d51392cf74656729f3399a71e) | ruvector 2026: Capability-Gated ANN Search for Rust Vector Databases |
 | 2026-06-25 | [gist.md](https://gist.github.com/ruvnet/21816ce0d6b59933b14ea986b17f1b1f) | ruvector 2026: SPANN Partition Spilling for Boundary-Safe Rust Vector Search |
@@ -92,7 +93,6 @@ _479 gists · refreshed 2026-08-20_
 | 2026-06-22 | [darwin-swebench-gist.md](https://gist.github.com/ruvnet/a8b48fcdaaba5fc35b0a8bd4efc45db7) | Darwin Mode — SWE-bench Lite: 7.7% → 68.3% (official harness, batch-verified, full tail). The 58.3% ceiling was model-bo |
 | 2026-06-22 | [ruvector-sota-benchmarks-june-2026.md](https://gist.github.com/ruvnet/2f42030a9632888eff0fa95149a135f6) | RuVector — June 2026 SOTA Benchmark Results: 6 Categories, NeurIPS Target Beaten |
 | 2026-06-21 | [ruvector_june_2026_release_gist.md](https://gist.github.com/ruvnet/5c03d3d72d300a31d636ad9f97bfab57) | RuVector — June 2026 Release Notes: LSM-ANN, Matryoshka ANN, PQ-ADC, 10 nightly PoCs, CI guard, ruvllm fixes |
-| 2026-06-21 | [ruvllm_sparse_attention_report.md](https://gist.github.com/ruvnet/7736317d1311a83137a39e804d7868ea) | ruvllm_sparse_attention: Subquadratic Sparse Attention for Edge LLM Inference on Hailo-10H Pi 5 Cluster |
 | 2026-06-18 | [APM.md](https://gist.github.com/ruvnet/beaf2435053b78c68bf9460976720447) | Agent Package Management |
 | 2026-06-18 | [ruvllm_gpu_optimization_gist.md](https://gist.github.com/ruvnet/359d4335fe07a6530fa1742ea4a103a8) | ruvllm GPU Optimization Sweep: RDT + OpenMythos on RTX 5080 (ADR-258) |
 | 2026-06-18 | [gist-photonlayer.md](https://gist.github.com/ruvnet/277c4d13c3015e715d5f371256eb3cbb) | PhotonLayer — deep review, more-data benchmark, roadmap |

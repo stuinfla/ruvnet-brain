@@ -3,7 +3,7 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-30
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -14,6 +14,7 @@ governs:
   - scripts/ingest-gists.mjs
   - scripts/nightly-wrapper.sh
   - scripts/source-coverage.mjs
+  - scripts/release-projection.mjs
   - scripts/build-bundle.mjs
   - scripts/onboarding-console.mjs
   - scripts/console-runtime-identity.mjs
@@ -214,8 +215,15 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
 
 ## Currency log
 
+| 2026-08-30 | Clarified the two coverage planes: the complete source observation remains immutable evidence, while release `COVERAGE.json` is projected from actual seed RVFs and byte-bound generation records. | Issue #201; `scripts/source-coverage.mjs`; `scripts/release-projection.mjs`; `.github/workflows/ci.yml`. |
+
+| 2026-08-30 | Re-read the governed source-coverage and release-boundary files after the convergence-manifest and public-verification wiring changes. The broader signed coverage projection remains explicitly unbuilt; the manifest records that status instead of implying completion. | `9f3cb36`, `scripts/convergence-manifest.mjs`, `.github/workflows/ci.yml`; no absent coverage command or projection was reintroduced. |
+
+| 2026-08-30 | The CI process now uses a bounded canonical QA runner while preserving source-coverage work as an explicit release/nightly concern. | `.github/workflows/ci.yml`, `scripts/qa-runner.mjs`, and `docs/QA-RELEASE-PROCESS.md` keep coverage evidence tied to the candidate rather than silently treating unrelated PR checks as release proof. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-26 | `scripts/brain-stamp.mjs`'s `builtFromSha` now prefers `kb/RVF-GENERATIONS.json`'s recorded `sourceCommit` over the local clone's live HEAD, via a new pure `scripts/brain-stamp-resolve.mjs` helper; falls back to live HEAD only when no generation record exists. Does not itself satisfy this ADR's still-unbuilt signed enumeration, closed snapshot, or `data/source-coverage.json` generator. | Dream Cycle 2026-08-26 (issue #175) confirmed live the exact "clone freshness is not artifact freshness" gap this ADR's 2026-08-21 audit named against `scripts/brain-stamp.mjs`: the repo's own committed `kb/RVF-GENERATIONS.json` already disagreed with a live-HEAD read for `synthlang` (`sourceCommit` `69599563...`) and `autogenous` (`sourceCommit` `b5c6e838...`), the same two repos this ADR's Context section cites. |
 | 2026-08-21 | Re-read the emergency release rail and kept the broader source-coverage system explicitly unbuilt. | `.github/workflows/ci.yml` does not call the absent `scripts/source-coverage.mjs` or claim its absent projections. It uses the committed immutable seed identity plus strict repaired generation receipts to restore service; this ADR's complete coverage generator remains deferred. |
 | 2026-08-21 | Corrected the earlier implementation claim: the coverage command and Console projection remain planned, not shipped. | The named `plugin/commands/coverage.md`, `plugin/scripts/coverage.mjs`, and Console coverage files do not exist in this candidate. The emergency release implements corpus-seed and ledger identity only; the broader coverage read model remains Proposed and is explicitly deferred until after service is restored. |
 | 2026-08-21 | Re-read the governed release paths after emergency corpus convergence. | `scripts/build-bundle.mjs` now fails closed on seed/ledger byte and metadata disagreement and `.github/workflows/ci.yml` consumes an exact sealed seed. This advances the artifact boundary but does not satisfy this ADR's unbuilt UI, exemptions, or full coverage-report contract. |

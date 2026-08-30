@@ -42,7 +42,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { storeRoot, storesAt } from '../kb/store-root.mjs';
+import { storeRoot, storesAt, rootNeverMaterialized } from '../kb/store-root.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const LEDGER = path.join(ROOT, 'kb', 'local-ingests.json');
@@ -71,7 +71,7 @@ export function missingIngests({ ledgerFile = LEDGER, root = storeRoot() } = {})
 export function classify({ ledgerFile = LEDGER, root = storeRoot() } = {}) {
   const missing = missingIngests({ ledgerFile, root });
   if (!missing.length) return { state: OK, missing };
-  if (!fs.existsSync(root)) return { state: NEVER_MATERIALIZED, missing };
+  if (rootNeverMaterialized(root)) return { state: NEVER_MATERIALIZED, missing };
   return { state: WIPED, missing };
 }
 

@@ -4,7 +4,7 @@
 
 # 🧠 RuvNet Brain
 
-### 🧠 RuvNet Brain — [![RuvNet Brain version 4.2.3-dev — updated 2026-07-30 03:24 EDT](https://img.shields.io/badge/version_4.2.3--dev-updated_2026--07--30_03:24_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
+### 🧠 RuvNet Brain — [![RuvNet Brain version 4.3.3-dev — updated 2026-07-30 03:24 EDT](https://img.shields.io/badge/version_4.3.3--dev-updated_2026--07--30_03:24_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
 
 **A portable, source-grounded brain over Reuven Cohen's (rUv's) RuvNet stack — delivered as a Claude Code plugin that makes Claude _use_ the stack instead of fighting it.**
 
@@ -56,7 +56,7 @@
 
 ---
 
-## What's new in 4.2 — it loads what rUv ships, without being asked
+## Earlier — 4.2 loaded what rUv ships, without being asked
 
 **The corpus stopped drifting behind the org.** Until 4.2 nothing ever ingested a new repo: the
 nightly refreshed lessons, health and proofs and contained *zero* ingestion, so a repo entered the
@@ -79,7 +79,7 @@ night, but nothing consumed it until the ingestion loop shipped.
   agentdb's binding, so `lesson-bridge --apply` and `learning-replay` wrote into a silent
   non-persistent fallback. It now resolves an ABI-matched interpreter and fails loudly instead.
 
-## What's new in 4.2 — it anticipates, and it learns whether it was right
+## Earlier — 4.2 anticipated, and learned whether it was right
 
 **Building toward L4/L5 (3.9.x, dev).** The mechanisms for the top two rungs of the proactivity
 ladder are built and wired — but they are **not yet verified to 4.0's bar**, which requires all five
@@ -412,7 +412,7 @@ You install once. After that, three mechanisms keep you on the current brain wit
   `🧠 RuvNet Brain jumped in · guidance only, no source read · v3.4.18-dev`
   An unearned citation is worse than no citation, so the line may only name a path the tools genuinely returned — and on a prompt where nothing fires, it stays silent rather than manufacture a receipt. The version shown is the one **actually loaded in memory** for this session; if a newer one is staged awaiting a restart, the line says so plainly (`… vX staged, restart to load`). So you never have to wonder whether the brain is on, which version is acting, or whether an answer was grounded or guessed.
 
-- **Nightly publish → `releases/latest` chain** (`scripts/self-update.mjs --publish`, run by the `deploy/com.ruvnet.brain-nightly.plist` LaunchAgent at 03:15). The nightly rebuilds only the repos whose upstream changed, and **if anything was rebuilt** it bumps the product version, cuts a GitHub Release, and advances [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest). Plugin and knowledge bundle move under **one** version number, so the heartbeat above picks up both automatically. The exact author-vs-end-user schedules, incremental algorithm, failure behavior, and hosting recommendation are documented in [Nightly refresh and publish](docs/NIGHTLY-REFRESH.md). (The LaunchAgent is not auto-installed — enabling a system scheduler needs explicit owner approval.)
+- **Nightly publish → `releases/latest` chain** (the protected release workflow). The nightly rebuilds only the repos whose upstream changed, and **if anything was rebuilt** it bumps the product version, cuts a GitHub Release, and advances [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest). Plugin and knowledge bundle move under **one** version number, so the heartbeat above picks up both automatically. The exact author-vs-end-user schedules, incremental algorithm, failure behavior, and hosting recommendation are documented in [Nightly refresh and publish](docs/NIGHTLY-REFRESH.md). The retired primary-checkout LaunchAgent is not part of the supported path.
 
 ---
 

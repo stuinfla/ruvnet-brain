@@ -5,11 +5,51 @@ name: ci
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ruvnet-brain-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  canonical-qa:
+    name: canonical-qa
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Run the same bounded QA contract used locally
+        run: npm run qa:pr
+
+  candidate-preflight:
+    name: candidate-preflight
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact candidate dependencies
+        run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Validate changed release and grounding paths before the matrix
+        run: |
+          set -euo pipefail
+          node --check scripts/release.mjs
+          npm run version:check
+          npm run release:authority
+
   check:
+    needs: candidate-preflight
     # A HUNG JOB MUST FAIL, NOT JAM THE QUEUE. No job in this file declared a timeout, so a step
     # that never returns ran to GitHub's 6-hour default. Measured 2026-08-19: EIGHT consecutive `ci`
     # runs on main sat in_progress for up to three hours, all stuck on "Unit tests + coverage",
@@ -144,6 +184,7 @@ jobs:
         run: cd kb && npm ci --no-audit --no-fund --ignore-scripts && npm audit --audit-level=high
 
   windows-unit:
+    needs: candidate-preflight
     timeout-minutes: 40
     # ADR-0011 engineering_reliability: "Windows is completely untested" while the installer
     # claims cross-platform prebuilds. This job is the first real evidence, not a claim.
@@ -221,6 +262,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   warm-brain:
+    needs: candidate-preflight
     timeout-minutes: 30
     # ADR-058 D1: the REQUIRE_BRAIN lane (50 -> 95). plugin/test/run-tests.mjs (~193-229) ALREADY
     # converts a SKIPPED core-capability battery into a FAILURE when REQUIRE_BRAIN=1 (both when the
@@ -374,6 +416,7 @@ jobs:
         run: npm test
 
   release-qe:
+    needs: candidate-preflight
     timeout-minutes: 40
     name: release-qe
     runs-on: ubuntu-latest
@@ -412,6 +455,7 @@ jobs:
           SEED_BYTES="$(node -p "require('./data/corpus-seed.json').bytes")"
           gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$SEED_ASSET" --dir "$RUNNER_TEMP/release-seed"
           seed="$RUNNER_TEMP/release-seed/$SEED_ASSET"
+          echo "RUVNET_SEED_BUNDLE=$seed" >> "$GITHUB_ENV"
           test "$(sha256sum "$seed" | cut -d' ' -f1)" = "$SEED_SHA256"
           test "$(stat -c %s "$seed")" = "$SEED_BYTES"
           unzip -q "$seed" -d "$RUNNER_TEMP/release-seed/extracted"
@@ -420,7 +464,24 @@ jobs:
           # --repair also re-seals stale ledger hashes after index persistence. The v4.2.1 seed
           # exposed three roots whose HNSW bytes had advanced after their ledger rows were written.
           node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}" --repair
+          # Do not re-observe GitHub here. GITHUB_TOKEN cannot read user gists (HTTP 403), and
+          # release-QE must consume the checked-in, source-bound observation that was validated
+          # when the corpus candidate was prepared. A separate credentialed refresh updates that
+          # input; this publisher never silently substitutes a partial live observation.
+          node scripts/public-verification-inputs.mjs observe-baseline \
+            --baseline-bundle "$seed" --expected-tag "$SEED_TAG" --expected-sha256 "$SEED_SHA256" \
+            --expected-bytes "$SEED_BYTES" --out "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json"
           node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" --assets "${asset_dirs[0]}"
+          baseline_receipt_sha256="$(sha256sum "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json" | cut -d' ' -f1)"
+          node scripts/release-projection.mjs \
+            --corpus data/source-coverage.json --assets dist/ruvnet-brain \
+            --out "$RUNNER_TEMP/release-projection" \
+            --version "$(node -p "require('./package.json').version")" --source-snapshot "$GITHUB_SHA" \
+            --baseline-receipt-sha256 "$baseline_receipt_sha256" --seed-tag "$SEED_TAG" \
+            --seed-sha256 "$SEED_SHA256" --seed-bytes "$SEED_BYTES"
+          node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" \
+            --assets "${asset_dirs[0]}" --coverage "$RUNNER_TEMP/release-projection/COVERAGE.json" \
+            --projection "$RUNNER_TEMP/release-projection"
           cp dist/ruvnet-brain.zip "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip"
           cp data/corpus-seed.json "$RUNNER_TEMP/release-evidence/corpus-seed.json"
           cp dist/ruvnet-brain/RVF-GENERATIONS.json "$RUNNER_TEMP/release-evidence/RVF-GENERATIONS.json"
@@ -440,6 +501,19 @@ jobs:
           # scripts/sign-bundle.mjs:59 writes (`${digest}  ${path.basename(bundle)}`), which is the
           # format the verifier and every user's `shasum -c` both expect.
           ( cd "$RUNNER_TEMP/release-evidence" && sha256sum ruvnet-brain.zip > ruvnet-brain.zip.sha256 )
+      - name: Derive public verification inputs from exact candidate bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s data/retrieval-query-evidence.json
+          node scripts/public-verification-inputs.mjs \
+            --baseline-bundle "$RUVNET_SEED_BUNDLE" \
+            --candidate-bundle "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \
+            --candidate-package "$RUVNET_SEALED_PACKAGE" \
+            --oracle data/retrieval-query-evidence.json \
+            --repo "$GITHUB_WORKSPACE" \
+            --out-dir "$RUNNER_TEMP/release-evidence" \
+            --observed-baseline
       - name: Persist the canonical candidate payload manifest
         shell: bash
         run: |

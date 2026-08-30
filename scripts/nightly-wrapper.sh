@@ -1,5 +1,9 @@
 #!/bin/bash
-# nightly-wrapper.sh — the ONLY thing launchd invokes for the nightly. Per Stuart's standing order
+# nightly-wrapper.sh — author-side maintenance, intentionally NOT a primary-checkout scheduler.
+# The old com.ruvnet.brain-nightly LaunchAgent invoked this in the primary checkout and accumulated
+# generated source changes beside active human work. That job is retired. The supported scheduled
+# updater is com.ruvnet.brain-update and mutates only the installed cache. If this author harness is
+# run manually, every source-writing command below requires a clean linked worktree.
 # (2026-07-12): no noise for success or no-op — only ACTIVE alerts for real failure, and the system
 # must attempt to self-heal before escalating, then make failure impossible to miss next session.
 #
@@ -34,22 +38,42 @@ set -u
 # kb/models-cache (the fallback) starts cold every time -> every nightly re-downloads the ONNX
 # embedder from HuggingFace. Point at the already-warm cache instead (verified present).
 export KB_MODEL_CACHE="/Users/stuartkerr/Code/PowerPlatePulse/scripts/models-cache"
-cd /Users/stuartkerr/Code/ruvnet-brain 2>/dev/null || {
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)
+WORKTREE_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." 2>/dev/null && pwd)
+cd "$WORKTREE_ROOT" 2>/dev/null || {
   curl -sS --max-time 10 -H "Title: 🔴 Nightly CRASHED before it could even start" \
     -H "Priority: urgent" -H "Tags: rotating_light" \
     -d "cd into the repo failed — filesystem or mount problem. Investigate the machine directly." \
     "https://ntfy.sh/$(grep -m1 '^NTFY_TOPIC=' /Users/stuartkerr/Code/ruvnet-brain/.env 2>/dev/null | cut -d= -f2)" >/dev/null 2>&1
   exit 1
 }
-mkdir -p logs .ruvnet-brain
-LOG=logs/nightly.log
-MARKER=.ruvnet-brain/nightly-failure.json
-LOCK=.ruvnet-brain/nightly.lock
+GIT_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 1
+PRIMARY_ROOT=$(dirname "$GIT_COMMON_DIR")
+export RUVNET_PROJECT_MEMORY_DB="$PRIMARY_ROOT/.swarm/memory.db"
+mkdir -p "$PRIMARY_ROOT/logs" "$PRIMARY_ROOT/.ruvnet-brain"
+LOG="$PRIMARY_ROOT/logs/nightly.log"
+MARKER="$PRIMARY_ROOT/.ruvnet-brain/nightly-failure.json"
+LOCK="$PRIMARY_ROOT/.ruvnet-brain/nightly.lock"
+PRIMARY_SNAPSHOT=$(mktemp "${TMPDIR:-/tmp}/ruvnet-brain-primary-snapshot.XXXXXX") || exit 1
+if ! "$NODE_BIN" scripts/worktree-integrity.mjs snapshot "$WORKTREE_ROOT" > "$PRIMARY_SNAPSHOT"; then
+  rm -f "$PRIMARY_SNAPSHOT"
+  exit 2
+fi
 
-# Single-instance guard (2026-07-12): the plist has no built-in one. The updater is incremental now,
-# but a very large upstream change, a slow model, or a stalled gate can still outlive the window and
-# overlap the NEXT scheduled 3:15am fire. A stale lock from a crashed run (PID no longer alive) is
-# treated as no lock.
+finish() {
+  rc=$?
+  trap - EXIT
+  rm -f "$LOCK"
+  if ! "$NODE_BIN" scripts/worktree-integrity.mjs verify "$WORKTREE_ROOT" "$PRIMARY_SNAPSHOT" >> "$LOG" 2>&1; then
+    echo "===== FATAL: primary checkout changed during isolated author maintenance =====" >> "$LOG"
+    rc=3
+  fi
+  rm -f "$PRIMARY_SNAPSHOT"
+  exit "$rc"
+}
+
+# Single-instance guard for explicit author invocations. A stale lock from a crashed run (PID no
+# longer alive) is treated as no lock.
 if [ -f "$LOCK" ]; then
   OLD_PID=$(cat "$LOCK" 2>/dev/null)
   if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
@@ -61,17 +85,13 @@ if [ -f "$LOCK" ]; then
   echo "===== $(date -u +%FT%TZ) — stale lock from pid $OLD_PID (not running) — clearing =====" >> "$LOG"
 fi
 echo $$ > "$LOCK"
-trap 'rm -f "$LOCK"' EXIT
+trap finish EXIT
 
-# NIGHTLY_SMOKE=1 — prove this whole chain (launchd -> heartbeat wrapper -> here -> node -> the repo
-# scan -> the log) WITHOUT a multi-hour rebuild. self-update.mjs is dry-run by default, so dropping
-# --apply exercises every link except the build itself. Publication is never part of this job.
-# WHY IT EXISTS (2026-07-13): the 03:15 fire on 07-12 died before it could even write its own log
-# ("/bin/bash: logs/nightly.log: No such file or directory" — relative path, no working directory) and
-# NOBODY KNEW, because the only way to test this chain was to wait until 03:15 and hope. A scheduled job
-# you can only test by waiting for it is a job you are not testing. Now: `NIGHTLY_SMOKE=1 <the exact
-# plist command>` proves it on demand, any time, in seconds.
+# NIGHTLY_SMOKE=1 exercises the author harness and source planner without a multi-hour rebuild. It
+# still requires an isolated clean linked worktree: a diagnostic escape hatch must not reopen the
+# primary-checkout writer. Publication is never part of this job.
 SMOKE="${NIGHTLY_SMOKE:-0}"
+"$NODE_BIN" scripts/worktree-integrity.mjs "$WORKTREE_ROOT" "nightly author maintenance" >> "$LOG" 2>&1 || exit 2
 
 run_once() {
   local rc
@@ -98,13 +118,42 @@ run_once() {
   return 0
 }
 
+# Prepare the source candidate before any optional evidence refresh that writes tracked artifacts.
+# Otherwise learning-replay dirties the isolated lane first and self-update correctly refuses it.
+if run_once 1; then
+  if [ "$SMOKE" = "1" ]; then exit 0; fi
+else
+  echo "===== first attempt failed — waiting 3 min, retrying once (self-heal for transient issues) =====" >> "$LOG"
+  sleep 180
+  if run_once 2; then
+    echo "===== SELF-HEALED on retry — no escalation needed =====" >> "$LOG"
+  else
+    # Both attempts genuinely failed. Escalate loudly AND leave a marker the next session cannot miss.
+    AFTER=$(gh release view --json tagName -q .tagName 2>/dev/null || echo "unknown")
+    TAIL=$(tail -25 "$LOG" | tr '\n' ' ' | cut -c1-2000)
+    mkdir -p "$(dirname "$MARKER")"
+    python3 -c "
+import json, datetime
+json.dump({
+  'at': datetime.datetime.utcnow().isoformat() + 'Z',
+  'last_release_tag_observed': '$AFTER',
+  'tail': '''$TAIL''',
+  'note': 'Author candidate rebuild failed twice (immediate + 3min retry). See logs/nightly.log.'
+}, open('$MARKER', 'w'), indent=2)
+"
+    sh scripts/notify.sh "🔴 Author candidate rebuild FAILED twice" "candidate rebuild failed; last release remains $AFTER. Last: $TAIL" urgent "rotating_light"
+    echo "===== ESCALATED: marker written at $MARKER =====" >> "$LOG"
+    exit 1
+  fi
+fi
+
 # Memory distillation (ADR-174) had gone stale 3 days — same silent-death pattern as everything
 # else tonight. Independent of rebuild success/failure: mine raw memory_entries into structured
 # episodes/reasoning_patterns on every nightly run. Best-effort, never blocks the real job.
-RUFLO_DAEMON_AUTOSTART=0 ~/.npm-global/bin/ruflo memory distill run --path .swarm/memory.db >> "$LOG" 2>&1 || true
+RUFLO_DAEMON_AUTOSTART=0 ~/.npm-global/bin/ruflo memory distill run --path "$RUVNET_PROJECT_MEMORY_DB" >> "$LOG" 2>&1 || true
 # Durability: was a one-off manual snapshot before tonight. Now recurring — WAL-safe, rotates
 # automatically (keeps last 14), zero risk to the live DB (reads only).
-RUFLO_DAEMON_AUTOSTART=0 ~/.npm-global/bin/ruflo memory backup --db .swarm/memory.db --keep 14 >> "$LOG" 2>&1 || true
+RUFLO_DAEMON_AUTOSTART=0 ~/.npm-global/bin/ruflo memory backup --db "$RUVNET_PROJECT_MEMORY_DB" --keep 14 >> "$LOG" 2>&1 || true
 
 # LESSON BRIDGE (ADR-066, 2026-08-10) — carry newly-tagged machine-wide lessons into the store the
 # hooks actually read. Without this the bridge is a command someone has to remember, and a learning
@@ -124,7 +173,7 @@ echo "===== lesson-bridge — $(date -u +%FT%TZ) =====" >> "$LOG"
 # while in WAL mode. Best-effort, same shape as its brain-health/key-health siblings below: never
 # blocks the real rebuild, just makes a WAL-mode/integrity regression loud instead of silent.
 echo "===== memdb-health canary — $(date -u +%FT%TZ) =====" >> "$LOG"
-sh scripts/memdb-health.sh .swarm/memory.db >> "$LOG" 2>&1 \
+sh scripts/memdb-health.sh "$RUVNET_PROJECT_MEMORY_DB" >> "$LOG" 2>&1 \
   && echo "===== memdb-health canary: OK =====" >> "$LOG" \
   || echo "===== memdb-health canary: UNHEALTHY (see line above) =====" >> "$LOG"
 
@@ -164,18 +213,6 @@ sh scripts/memdb-health.sh .swarm/memory.db >> "$LOG" 2>&1 \
 # REPORTS ONLY. It cannot push, merge, close or publish (asserted by test). Exit 1 means a human
 # needs to look, and the reasons print in full rather than as a count.
 echo "===== GITHUB-HEALTH watch — $(date -u +%FT%TZ) =====" >> "$LOG"
-# LOAD WHAT rUv SHIPPED, WITHOUT BEING ASKED (added 2026-08-20).
-#
-# The owner: "aren't you loading everything Ruv creates every day?????" The answer was no — this
-# file had ZERO ingestion, so new repos only entered the brain when a human typed the command.
-# Measured the day this landed: 181 live repos, 69 ingested, 125 missing. `brain-stamp.mjs` had
-# been COMPUTING that gap nightly and nothing acted on it.
-#
-# Bounded to 3/night on purpose: ingestion embeds a whole repository, and 125 in one run would
-# starve everything after it here. The corpus converges over days and the run says how many
-# remain rather than implying it finished. A failed repo is left missing so the next night retries.
-"$NODE_BIN" scripts/ingest-new-repos.mjs --apply --max 3 >> "$LOG" 2>&1 || true
-
 "$NODE_BIN" scripts/github-health-watch.mjs >> "$LOG" 2>&1 \
   || echo "[github-health] findings above need attention" >> "$LOG"
 
@@ -216,39 +253,8 @@ fi
 # The canary itself handles urgent pushes on alive->DEAD transitions (and recovery notices), so a
 # known-dead key doesn't re-alarm every night; here we only log.
 echo "===== key-health canary — $(date -u +%FT%TZ) =====" >> "$LOG"
-zsh -lc 'cd /Users/stuartkerr/Code/ruvnet-brain && "$NODE_BIN" scripts/key-canary.mjs --notify' >> "$LOG" 2>&1 \
+zsh -lc 'cd "$1" && "$2" scripts/key-canary.mjs --notify' _ "$WORKTREE_ROOT" "$NODE_BIN" >> "$LOG" 2>&1 \
   && echo "===== key-health canary: all present keys alive =====" >> "$LOG" \
   || echo "===== key-health canary: at least one key DEAD (push sent on new deaths) =====" >> "$LOG"
 
-if run_once 1; then
-  exit 0
-fi
-
-echo "===== first attempt failed — waiting 3 min, retrying once (self-heal for transient issues) =====" >> "$LOG"
-sleep 180
-
-if run_once 2; then
-  echo "===== SELF-HEALED on retry — no escalation needed =====" >> "$LOG"
-  exit 0
-fi
-
-# Both attempts genuinely failed. Escalate loudly AND leave a marker the next session cannot miss.
-AFTER=$(gh release view --json tagName -q .tagName 2>/dev/null || echo "unknown")
-# Was `tail -8 | cut -c1-600`. self-update's [FATAL] block is 4+ lines on its own and now carries a
-# 'reason:' line per failed repo, so 8 lines / 600 chars truncated the alert mid-argv — every one of
-# the six identical 2026-08-03..08-06 failures escalated with no reason in it. Widen enough that the
-# whole [FATAL] block, reasons included, reaches the marker file and the push.
-TAIL=$(tail -25 "$LOG" | tr '\n' ' ' | cut -c1-2000)
-mkdir -p .ruvnet-brain
-python3 -c "
-import json, datetime
-json.dump({
-  'at': datetime.datetime.utcnow().isoformat() + 'Z',
-  'last_release_tag_observed': '$AFTER',
-  'tail': '''$TAIL''',
-  'note': 'Nightly failed twice (immediate + 3min retry). Needs a live session to diagnose — see logs/nightly.log.'
-}, open('$MARKER', 'w'), indent=2)
-"
-sh scripts/notify.sh "🔴 Nightly FAILED twice — needs you" "candidate rebuild failed; last release remains $AFTER. Last: $TAIL" urgent "rotating_light"
-echo "===== ESCALATED: marker written at $MARKER =====" >> "$LOG"
-exit 1
+exit 0

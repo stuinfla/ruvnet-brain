@@ -378,7 +378,7 @@ describe.skipIf(bashOnly)('ADR-054 gate 4 — session-start goes quiet without g
   it('ON: the advertising is there (the control — otherwise "zero bytes" proves nothing)', () => {
     const out = session().stdout;
     expect(out).toContain('RuvNet Brain active');
-    expect(out).toContain('standing build playbook');
+    expect(out).not.toContain('standing build playbook');
   }, 30_000);
 
   it('OFF: ZERO advertising bytes, and exactly ONE state line naming the date', () => {

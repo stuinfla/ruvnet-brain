@@ -12,6 +12,7 @@
 //
 //   node scripts/build-bundle.mjs [--assets /path/to/release-assets]
 //                                 [--out dist/ruvnet-brain] [--version v0.2.0-dev]
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,7 +20,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getVersion, getVersionTag, stripTag } from './version.mjs';
 import { auditRvfIndexes } from './rvf-index-audit.mjs';
-import { validateSelectedRvfGenerations } from './rvf-generation.mjs';
+import { readRvfGenerations, validateSelectedRvfGenerations } from './rvf-generation.mjs';
+import { validatePublicInventory } from './public-inventory.mjs';
 // The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
 // sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
 import { orgRepoCount } from './org-repo-count.mjs';
@@ -33,6 +35,8 @@ const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && proc
 // source/runtime files rooted in this exact checkout; only generated RVF families come from ASSETS.
 const ASSETS = path.resolve(ROOT, arg('--assets', 'kb'));
 const OUT = path.resolve(ROOT, arg('--out', 'dist/ruvnet-brain'));
+const COVERAGE = arg('--coverage', null);
+const PROJECTION = arg('--projection', null);
 const BRAIN_VERSION = arg('--version', getVersionTag()); // inherits the single source of truth
 
 // ---- registry: tier + the full 169-repo pending list -------------------------------------------
@@ -157,8 +161,44 @@ fs.rmSync(OUT, { recursive: true, force: true });
 // A failed rebuild must not leave an older archive looking like this invocation's output.
 fs.rmSync(ZIP, { force: true });
 fs.mkdirSync(OUT, { recursive: true });
+// The shipped bundle must carry the exact policy boundary used during assembly. The public
+// inventory validator consumes this file from the candidate output, so reading it only from the
+// source checkout would leave the release projection unable to prove its private-store exclusion.
+cp(path.join(KB, 'PRIVATE-STORES.json'), OUT, { required: true });
 
-const built = discoverBuilt();
+let built = discoverBuilt();
+let excludedPublicStores = [];
+if (COVERAGE) {
+  const coverageFile = path.resolve(COVERAGE);
+  if (!fs.existsSync(coverageFile)) {
+    console.error(`[build-bundle] FATAL: coverage policy missing (${coverageFile})`);
+    process.exit(1);
+  }
+  let coverage;
+  try { coverage = JSON.parse(fs.readFileSync(coverageFile, 'utf8')); }
+  catch (error) {
+    console.error(`[build-bundle] FATAL: coverage policy unreadable (${error.message})`);
+    process.exit(1);
+  }
+  let inventory;
+  try {
+    inventory = validatePublicInventory({ assetsDir: ASSETS, coverage, ledger: readRvfGenerations(ASSETS) });
+  } catch (error) {
+    console.error(`[build-bundle] FATAL: public inventory is not exhaustive (${error.message})`);
+    process.exit(1);
+  }
+  const selected = new Set(inventory.publicStores);
+  built = built.filter((store) => selected.has(store.toLowerCase()));
+  excludedPublicStores = inventory.excludedRepositories;
+  const missing = inventory.publicStores.filter((store) => !built.some((candidate) => candidate.toLowerCase() === store));
+  if (missing.length) {
+    console.error(`[build-bundle] FATAL: classified public store(s) missing: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+  if (excludedPublicStores.length) {
+    console.log(`[build-bundle] EXCLUDED ${excludedPublicStores.length} policy-ineligible public store(s): ${excludedPublicStores.join(', ')}`);
+  }
+}
 if (built.length === 0) {
   console.error('[build-bundle] FATAL: zero public RVF stores are eligible for release. Refusing to publish an empty brain bundle.');
   process.exit(1);
@@ -166,6 +206,7 @@ if (built.length === 0) {
 const generationValidation = validateSelectedRvfGenerations(ASSETS, {
   selectedStores: built,
   privateStores: [...PRIVATE_STORES],
+  excludedStores: excludedPublicStores,
 });
 if (generationValidation.failures.length) {
   console.error('[build-bundle] FATAL: RVF generation ledger does not exactly bind selected roots:');
@@ -243,14 +284,16 @@ cpDir(path.join(ROOT, 'primer'), path.join(OUT, 'primer'));
 // time so code-implemented capabilities are retrievable as high-confidence prose. discoverRepos in the
 // bundle finds concepts.big.rvf automatically, so search_ruvnet searches it with no extra config.
 const hasConcepts = fs.existsSync(path.join(ASSETS, 'concepts.big.rvf'));
-if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.json', 'concepts.big.rvf.embed.json', 'concepts.big.passages.jsonl', 'concepts.big.meta.json', 'concepts.passages.jsonl', 'concepts.meta.json']) cp(suf, OUT, { asset: true });
+if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.json', 'concepts.big.rvf.embed.json', 'concepts.big.passages.jsonl', 'concepts.big.meta.json', 'concepts.passages.jsonl', 'concepts.meta.json', 'concepts.sources.json']) cp(suf, OUT, { asset: true });
 
 // RUV-GISTS store (rUv's public gists — release notes / integration dossiers; big-only, same shape as
 // concepts, unioned by search_ruvnet at query time). BUG FIX: only `concepts` was special-cased above,
 // so ruv-gists — a PUBLIC store, not private-fenced — was silently omitted from EVERY bundle ever
 // shipped. Include it, WITH .big.passages.jsonl (the big variant opens it by name, same as concepts).
 const hasGists = fs.existsSync(path.join(ASSETS, 'ruv-gists.big.rvf'));
-if (hasGists) for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json', 'ruv-gists.big.passages.jsonl', 'ruv-gists.big.meta.json', 'ruv-gists.passages.jsonl', 'ruv-gists.meta.json']) cp(suf, OUT, { asset: true });
+if (hasGists) for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json', 'ruv-gists.big.passages.jsonl', 'ruv-gists.big.meta.json', 'ruv-gists.passages.jsonl', 'ruv-gists.meta.json', 'ruv-gists.sources.json']) cp(suf, OUT, { asset: true });
+// The inventory projection consumes this registry from the assembled bundle, not the checkout.
+cp('public-store-classes.json', OUT, { asset: true });
 
 // capability-cards.md — the FAST LANE's zero-ML answer source (kb/card-lane.mjs, the first
 // responder search_ruvnet consults before the heavy cross-repo search). Ships as its own small
@@ -424,6 +467,14 @@ cp(path.join(ROOT, 'scripts', 'verify-bundle.mjs'), OUT, { required: true });
 fs.mkdirSync(path.join(OUT, 'keys'), { recursive: true });
 cp(path.join(ROOT, 'keys', 'ruvnet-brain-signing.pub.pem'), path.join(OUT, 'keys'), { required: true });
 
+// ReleaseProjection is generated from the exact candidate asset tree immediately before this
+// assembly. Copy all three linked ledgers together; a partial projection is never publishable.
+if (PROJECTION) {
+  for (const file of ['COVERAGE.json', 'CORPUS-COVERAGE.json', 'PUBLIC-RVF-GENERATIONS.json']) {
+    cp(path.join(path.resolve(PROJECTION), file), OUT, { required: true });
+  }
+}
+
 // ---- manifest ----------------------------------------------------------------------------------
 const builtLower = new Set(built.map((b) => b.toLowerCase()));
 const pendingRepos = regFlat.filter((r) => !builtLower.has(r.name.toLowerCase())).map((r) => ({ name: r.name, tier: r.tier }));
@@ -516,7 +567,32 @@ function collectArchiveFiles(dir, prefix = '') {
   }
 }
 collectArchiveFiles(OUT);
-archiveFiles.sort();
+archiveFiles.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+// Bind the exact archive payload before release verification. The manifest excludes itself;
+// verifiers recompute the same payload set and then validate this file's identities.
+function archiveIdentity(relative) {
+  const file = path.join(OUT, relative);
+  const hash = crypto.createHash('sha256');
+  const fd = fs.openSync(file, 'r');
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    let bytes;
+    while ((bytes = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, bytes));
+  } finally { fs.closeSync(fd); }
+  return { path: relative.split(path.sep).join('/'), sha256: hash.digest('hex'), bytes: fs.statSync(file).size };
+}
+const archiveManifest = {
+  schemaVersion: 1,
+  kind: 'ruvnet-brain-archive-manifest',
+  version: stripTag(BRAIN_VERSION),
+  releaseTag: BRAIN_VERSION,
+  fileCount: archiveFiles.length,
+  totalBytes: archiveFiles.reduce((total, file) => total + fs.statSync(path.join(OUT, file)).size, 0),
+  files: archiveFiles.map(archiveIdentity),
+};
+fs.writeFileSync(path.join(OUT, 'ARCHIVE-MANIFEST.json'), `${JSON.stringify(archiveManifest, null, 2)}\n`);
+archiveFiles.push('ARCHIVE-MANIFEST.json');
+archiveFiles.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
 const zipped = process.platform === 'win32'
   ? spawnSync('powershell.exe', [
     '-NoProfile',

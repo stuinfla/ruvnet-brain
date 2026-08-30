@@ -133,7 +133,7 @@ function readPanel() {
  * than an absent one.
  */
 export async function readCoverage(rootOverride) {
-  const { storeRoot, storesAt, cardsAt } = await import('../kb/store-root.mjs');
+  const { storeRoot, storesAt, cardsAt, rootNeverMaterialized } = await import('../kb/store-root.mjs');
   // ROUTABILITY IS ALIAS-AWARE, BECAUSE THE ROUTER IS.
   //
   // `carded` was `stores.filter((s) => cards.has(s))` — a direct name match against card HEADINGS,
@@ -155,7 +155,12 @@ export async function readCoverage(rootOverride) {
   // nightly agent's own ephemeral container) reads IDENTICALLY to a materialized root that
   // genuinely has zero coverage. Checked once, here, before either derived number is computed —
   // a wrong `0` still renders, which is worse than an honestly unmeasured one.
-  const neverMaterialized = !fs.existsSync(root);
+  //
+  // `rootNeverMaterialized()` (kb/store-root.mjs), not `fs.existsSync(root)`: the latter returns
+  // `true` for a stray FILE at `root` (ENOTDIR) or an unreadable directory (EACCES), so either
+  // rendered "materialized" here and let the exact same false-current-`0` back in for a different
+  // errno class than ENOENT — flagged as an accepted, unfixed gap by the ENOENT-only fix itself.
+  const neverMaterialized = rootNeverMaterialized(root);
   const stores = storesAt(root);
   const cards = new Set(cardsAt(root));
   const org = readJson('data/org-repo-count.json');

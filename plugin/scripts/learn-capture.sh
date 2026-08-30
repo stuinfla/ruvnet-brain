@@ -147,7 +147,19 @@ else
   # they mean; the component that actually creates the queue was not brought along, so the invariant
   # held for two of three participants and was violated by the one doing the writing. Same shape as
   # ADR-066: a writer and a reader that disagree about the store make the recording theatre.
-  DIR="${RUVNET_BRAIN_PROJECT_DIR:-$PWD}/.swarm/ruvnet-brain-learn"
+  # RESIDUAL of #134/#104: RUVNET_BRAIN_PROJECT_DIR is never set by real hook dispatch on either
+  # host (neither hook-shim.mjs nor codex-hook-adapter.mjs seeds it), so it degraded back to bare
+  # $PWD in production. CLAUDE_PROJECT_DIR is the one project-root signal both hosts DO provide on
+  # every invocation. Trusted only when $PWD actually lies inside it — the SAME containment rule
+  # project-identity.mjs's projectDirectory() applies for the identical reason (#85/#107: an
+  # unrelated declared root must never overrule a cwd it does not contain). A plain string-prefix
+  # check, not a realpath/inode compare, to honour this hook's own no-process-spawn contract.
+  ROOT_DIR="$PWD"
+  if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+    CPD="${CLAUDE_PROJECT_DIR%/}"
+    case "$PWD/" in "$CPD"/*) ROOT_DIR="$CPD" ;; esac
+  fi
+  DIR="${RUVNET_BRAIN_PROJECT_DIR:-$ROOT_DIR}/.swarm/ruvnet-brain-learn"
 fi
 # PROJECT SCOPE MEANS THE PROJECT MUST HAVE OPTED IN. In project scope $DIR sits under `.swarm`,
 # which is Ruflo's own convention and is created by `ruflo init` — so its PRESENCE is the project's

@@ -374,6 +374,16 @@ describe('answerFromCards — NEGATIVE: silence-or-fallthrough, NEVER a fabricat
     }
   });
 
+  it('never lets a named source path terminate in the generic repository card', () => {
+    const hit = answerFromCards(
+      'ruvnet-brain scripts/nightly-wrapper.sh run_once ingest-new-repos self-update primary checkout worktree',
+      KB,
+      { allowGuideAnswers: true },
+    );
+    expect(hit.hit).toBe(false);
+    expect(hit.reason).toMatch(/exact path|file query|source retrieval/i);
+  });
+
   it('no card in this bundle ever cites a privately-fenced repo, even under adversarial phrasing', () => {
     for (const term of PRIVATE_STORES) {
       const hit = answerFromCards(`what does ${term} do and how do I use it`, KB);
