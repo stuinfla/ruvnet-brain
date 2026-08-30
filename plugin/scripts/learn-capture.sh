@@ -160,7 +160,9 @@ else
     # Git Bash presents PWD as /c/... while Node supplies CLAUDE_PROJECT_DIR as C:\\... on
     # Windows. Compare normalized, case-folded spellings so the real project-root signal works
     # on both hosts without spawning a platform-specific path converter.
-    _pwd_cmp=$(printf '%s' "$PWD" | tr '\\\\' '/' | tr '[:upper:]' '[:lower:]')
+    _pwd_for_compare="$PWD"
+    if [ -n "$(pwd -W 2>/dev/null || true)" ]; then _pwd_for_compare="$(pwd -W)"; fi
+    _pwd_cmp=$(printf '%s' "$_pwd_for_compare" | tr '\\\\' '/' | tr '[:upper:]' '[:lower:]')
     _cpd_cmp=$(printf '%s' "$CPD" | tr '\\\\' '/' | tr '[:upper:]' '[:lower:]')
     case "$_pwd_cmp/" in "$_cpd_cmp"/*) ROOT_DIR="$CPD" ;; esac
   fi
