@@ -14,6 +14,11 @@ import { runSessionStart } from '../../plugin/scripts/session-start-core.mjs';
 import { getVersion } from '../../scripts/version.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
+// Derived, not hand-listed (tests/unit/entrypoint-guard-safety.test.mjs's "no fixture hand-lists the
+// imports of a script it isolates" sweep): walks the adapter's real import graph instead of a second
+// copyFileSync naming its sibling by hand.
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { serverDependencies } = await import(new URL('../../bin/install.mjs', import.meta.url).href);
 const NAMESPACE = 'project-progression';
 const temporaryRoots = [];
 
@@ -360,10 +365,13 @@ describe('ADR-073 Slice F SessionStart restore bridge', () => {
     const context = '[RuvNet Brain — PROJECT CONTINUITY RESTORED]\n{"heads":["claude","codex"]}';
     const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'progression-host-adapter-')));
     temporaryRoots.push(dir);
-    fs.copyFileSync(
-      path.join(ROOT, 'plugin/scripts/codex-hook-adapter.mjs'),
-      path.join(dir, 'codex-hook-adapter.mjs'),
-    );
+    const adapter = path.join(ROOT, 'plugin/scripts/codex-hook-adapter.mjs');
+    fs.copyFileSync(adapter, path.join(dir, 'codex-hook-adapter.mjs'));
+    for (const dep of serverDependencies(adapter)) {
+      const target = path.resolve(dir, dep.spec);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(dep.from, target);
+    }
     fs.writeFileSync(path.join(dir, 'hook-shim.mjs'), `process.stdin.resume();process.stdin.on('end',()=>process.stdout.write(${JSON.stringify(context)}));`);
 
     const codex = spawnSync(process.execPath, [path.join(dir, 'codex-hook-adapter.mjs'), 'session-start'], {
