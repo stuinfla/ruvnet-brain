@@ -192,6 +192,13 @@ if (COVERAGE) {
       if (fs.existsSync(classesFile)) fs.copyFileSync(classesFile, path.join(ASSETS, 'public-store-classes.json'));
       const conceptsReceipt = path.join(projectionDir, 'concepts.sources.json');
       if (fs.existsSync(conceptsReceipt)) fs.copyFileSync(conceptsReceipt, path.join(ASSETS, 'concepts.sources.json'));
+      // The projection is derived from the public seed and therefore does not
+      // contain the repository's release-policy fence.  The inventory validator
+      // still needs that fence when validating the projected input.
+      const privateStores = path.join(KB, 'PRIVATE-STORES.json');
+      if (fs.existsSync(privateStores) && !fs.existsSync(path.join(ASSETS, 'PRIVATE-STORES.json'))) {
+        fs.copyFileSync(privateStores, path.join(ASSETS, 'PRIVATE-STORES.json'));
+      }
     }
     inventory = validatePublicInventory({ assetsDir: ASSETS, coverage, ledger: readRvfGenerations(ASSETS), gistReceipt });
   } catch (error) {
