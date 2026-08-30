@@ -291,9 +291,17 @@ if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.
 // so ruv-gists — a PUBLIC store, not private-fenced — was silently omitted from EVERY bundle ever
 // shipped. Include it, WITH .big.passages.jsonl (the big variant opens it by name, same as concepts).
 const hasGists = fs.existsSync(path.join(ASSETS, 'ruv-gists.big.rvf'));
-if (hasGists) for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json', 'ruv-gists.big.passages.jsonl', 'ruv-gists.big.meta.json', 'ruv-gists.passages.jsonl', 'ruv-gists.meta.json', 'ruv-gists.sources.json']) cp(suf, OUT, { asset: true });
+if (hasGists) {
+  // RVF and passage bytes come from the sealed seed; the source receipt is governed source
+  // evidence from this checkout. The seed predates shipping that receipt, so sourcing every file
+  // from ASSETS makes the release projection fail closed even though the exact gist bytes exist.
+  for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json', 'ruv-gists.big.passages.jsonl', 'ruv-gists.big.meta.json', 'ruv-gists.passages.jsonl', 'ruv-gists.meta.json']) cp(suf, OUT, { asset: true });
+  cp('ruv-gists.sources.json', OUT, { required: !PROJECTION });
+}
 // The inventory projection consumes this registry from the assembled bundle, not the checkout.
-cp('public-store-classes.json', OUT, { asset: true });
+// Store-class policy is source-controlled release metadata, not a corpus asset. The baseline
+// seed predates this registry, so sourcing it from ASSETS makes a valid seed fail projection.
+cp('public-store-classes.json', OUT, { required: true });
 
 // capability-cards.md — the FAST LANE's zero-ML answer source (kb/card-lane.mjs, the first
 // responder search_ruvnet consults before the heavy cross-repo search). Ships as its own small
@@ -470,7 +478,7 @@ cp(path.join(ROOT, 'keys', 'ruvnet-brain-signing.pub.pem'), path.join(OUT, 'keys
 // ReleaseProjection is generated from the exact candidate asset tree immediately before this
 // assembly. Copy all three linked ledgers together; a partial projection is never publishable.
 if (PROJECTION) {
-  for (const file of ['COVERAGE.json', 'CORPUS-COVERAGE.json', 'PUBLIC-RVF-GENERATIONS.json']) {
+  for (const file of ['COVERAGE.json', 'CORPUS-COVERAGE.json', 'PUBLIC-RVF-GENERATIONS.json', 'ruv-gists.sources.json']) {
     cp(path.join(path.resolve(PROJECTION), file), OUT, { required: true });
   }
 }

@@ -374,6 +374,10 @@ correct: **the strong claim was the defect.**
 
 ## Currency log
 
+| 2026-08-30 | Rechecked bundle assembly after exact-SHA release-QE showed that source-controlled store policy was incorrectly expected inside the corpus seed; the builder now takes it from the canonical checkout. | `scripts/build-bundle.mjs`; `kb/public-store-classes.json`; exact-SHA release-QE. |
+
+| 2026-08-30 | Rechecked the release projection and bundle assembly after the exact-SHA release-QE failure; seed-bound gist evidence is now explicit and the current source observation remains separate. | Commit `f526bab`; `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; `plugin/scripts/coverage-integrity.mjs`. |
+
 | 2026-08-30 | Release-QE now consumes the committed source-bound coverage snapshot instead of calling the user-gists API with GitHub's restricted Actions token; release projection selects only eligible stores present in the immutable seed and still requires those seeded rows to be CURRENT. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`. |
 
 | 2026-08-30 | The restart-free Stable Spine identity handoff is now covered by a real hook-shim test; quiet SessionStart CI signals retain factual details while excluding response instructions. | `plugin/scripts/hook-shim.mjs`, `plugin/scripts/session-start-core.mjs`, `tests/unit/hook-shim.test.mjs`, `tests/unit/signal-lifecycle.test.mjs`; focused 28/28 and canonical QA 322/322 pass. |

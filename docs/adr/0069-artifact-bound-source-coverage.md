@@ -215,6 +215,8 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
 
 ## Currency log
 
+| 2026-08-30 | Rechecked artifact-bound source coverage after release-QE separated current observation from the immutable seed; projection and bundle assembly now bind the correct evidence plane and source policy registry. | `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; `data/source-coverage.json`; exact-SHA release-QE. |
+
 | 2026-08-30 | Clarified the two coverage planes: the complete source observation remains immutable evidence, while release `COVERAGE.json` is projected from actual seed RVFs and byte-bound generation records. | Issue #201; `scripts/source-coverage.mjs`; `scripts/release-projection.mjs`; `.github/workflows/ci.yml`. |
 
 | 2026-08-30 | Re-read the governed source-coverage and release-boundary files after the convergence-manifest and public-verification wiring changes. The broader signed coverage projection remains explicitly unbuilt; the manifest records that status instead of implying completion. | `9f3cb36`, `scripts/convergence-manifest.mjs`, `.github/workflows/ci.yml`; no absent coverage command or projection was reintroduced. |
