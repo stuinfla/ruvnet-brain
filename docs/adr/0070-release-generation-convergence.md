@@ -186,6 +186,8 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 
 ## Currency log
 
+| 2026-08-30 | Automatic PR checks now converge through one bounded canonical runner; the older matrix is manual diagnostic coverage. | `.github/workflows/ci.yml`, `.github/workflows/qe-4-3.yml`, and `scripts/qa-runner.mjs` reduce duplicate observations while leaving protected publication authority unchanged. |
+
 | 2026-08-30 | Version propagation is now a single source edit followed by consistency verification, and release QA binds the candidate to one SHA. | `scripts/set-version.mjs`, `scripts/sync-version.mjs`, and `scripts/qa-runner.mjs` remove the emergency publish path that let public and source versions diverge. |
 
 | 2026-08-23 | Candidate receipts now bind not only pass/fail counts but the skipped and failed suite identities used to decide convergence. | Commit `cc25c24` prevents a partial cross-platform observation from masquerading as a converged generation. |

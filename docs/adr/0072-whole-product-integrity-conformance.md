@@ -207,6 +207,8 @@ conformance.
 
 ## Currency log
 
+| 2026-08-30 | Whole-product PR evidence now has one bounded canonical entrypoint; the full legacy QE matrix is manual-only and cannot create competing release claims. | `scripts/qa-runner.mjs`, `.github/workflows/ci.yml`, and `.github/workflows/qe-4-3.yml` preserve protected publication checks while simplifying automatic evidence collection. |
+
 | 2026-08-30 | Product integrity now has a bounded exact-SHA canonical gate and a separate release-authority assertion. | `scripts/qa-runner.mjs`, `scripts/release-authority.mjs`, and `docs/QA-RELEASE-PROCESS.md` make the boundary executable and auditable. |
 
 | Date | What changed | Why (with referents) |
