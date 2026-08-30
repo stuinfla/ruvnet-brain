@@ -105,6 +105,29 @@ describe('distill-project — it must refuse rather than mutate without an undo'
     expect(r.stderr).toMatch(/no snapshot file is present|undo cannot be located/i);
   });
 
+  it('REFUSES when backup reports success but only a STALE snapshot from a prior run is present — a leftover file is not evidence of THIS backup', () => {
+    const dir = sandbox();
+    fs.writeFileSync(path.join(dir, '.swarm/memory.db'), 'x');
+    const backups = path.join(dir, '.swarm/backups');
+    fs.mkdirSync(backups, { recursive: true });
+    const stale = path.join(backups, 'memory-stale.db');
+    fs.writeFileSync(stale, 'STALE');
+    // Backdate it well outside the mtime-truncation grace window so it cannot be mistaken for a
+    // write that happened during this run.
+    const old = new Date(Date.now() - 60 * 60 * 1000);
+    fs.utimesSync(stale, old, old);
+
+    const body = '#!/bin/sh\n'
+      + 'case "$2" in\n'
+      + '  distill) echo "reasoning_patterns | 10"; echo "episodes | 5"; exit 0;;\n'
+      + '  backup)  exit 0;;\n'   // claims success, writes NOTHING new into the backups dir
+      + 'esac\nexit 0\n';
+    const r = run([], { rufloBody: body });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/REFUSING TO DISTILL/);
+    expect(r.stderr).toMatch(/undo cannot be located/i);
+  });
+
   it('--dry-run takes no snapshot and writes no receipt', () => {
     const dir = sandbox();
     fs.writeFileSync(path.join(dir, '.swarm/memory.db'), 'x');
