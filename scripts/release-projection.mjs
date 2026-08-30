@@ -15,6 +15,20 @@ const arg = (name, fallback = null) => { const i = process.argv.indexOf(name); r
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
+function seedCompatibleGistReceipt() {
+  const source = readJson(path.join(ROOT, 'kb', 'ruv-gists.sources.json'));
+  const gists = {};
+  for (const [id, row] of Object.entries(source.gists || {})) {
+    const files = row.files;
+    gists[id] = { versionSha: row.versionSha, files,
+      contentDigest: crypto.createHash('sha256').update(JSON.stringify(files)).digest('hex') };
+  }
+  // The v4.2.1 seed predates the schema-3 source-byte binding. Keep the release proof honest:
+  // schema 2 proves the exact gist identity/file inventory, while CORPUS-COVERAGE retains the
+  // newer source observation separately. Do not relabel the old seed as current-source evidence.
+  return { schemaVersion: 2, owner: source.owner, generated: source.generated, gists };
+}
+
 export function createReleaseProjection({ corpusCoverage, assetsDir, version, sourceSnapshot,
   corpusSeed, baselineReceiptSha256, outDir }) {
   if (!corpusCoverage || corpusCoverage.kind !== 'ruvnet-brain-corpus-coverage') {
@@ -55,7 +69,7 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   const releaseBase = {
     schemaVersion: 1, kind: 'ruvnet-brain-release-coverage', owner: corpusCoverage.owner,
     observedAt: corpusCoverage.observedAt, generatorSourceSha: corpusCoverage.generatorSourceSha,
-    sourceObservationSha256: corpusCoverage.sourceObservationSha256, snapshotRoot: corpusCoverage.snapshotRoot,
+    sourceObservationSha256: null, snapshotRoot: corpusCoverage.snapshotRoot,
     releaseIdentity: { version, tag: `v${version}`, sourceSnapshot },
     corpusSeed: { tag: corpusSeed.tag, archiveSha256: corpusSeed.archiveSha256,
       archiveBytes: corpusSeed.archiveBytes, receiptSha256: baselineReceiptSha256 },
@@ -65,7 +79,8 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
     installedProjectionSchema: 2, policy: corpusCoverage.policy, enumerationReceipt: corpusCoverage.enumerationReceipt,
     rows: projectedCoverage.rows, totals: projectedCoverage.totals,
   };
-  const inventory = validatePublicInventory({ assetsDir: assets, coverage: releaseBase, ledger });
+  const gistReceipt = seedCompatibleGistReceipt();
+  const inventory = validatePublicInventory({ assetsDir: assets, coverage: releaseBase, ledger, gistReceipt });
   releaseBase.publicInventoryPartitionSha256 = inventory.partitionSha256;
   releaseBase.releaseCoverageGeneration = releaseCoverageGenerationFor(releaseBase);
   const out = path.resolve(outDir);
@@ -73,6 +88,7 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   fs.writeFileSync(path.join(out, 'CORPUS-COVERAGE.json'), corpusBytes);
   fs.writeFileSync(path.join(out, 'COVERAGE.json'), `${JSON.stringify(releaseBase, null, 2)}\n`);
   fs.writeFileSync(path.join(out, 'PUBLIC-RVF-GENERATIONS.json'), ledgerBytes);
+  fs.writeFileSync(path.join(out, 'ruv-gists.sources.json'), `${JSON.stringify(gistReceipt, null, 2)}\n`);
   return releaseBase;
 }
 

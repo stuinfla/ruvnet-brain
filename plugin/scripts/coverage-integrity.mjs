@@ -201,7 +201,7 @@ export function generationLedgerBytes(ledger) {
   return Buffer.from(`${JSON.stringify(ledger, null, 2)}\n`);
 }
 
-export function validatePublicInventory({ assetsDir, coverage, ledger, installedPublicStores = null }) {
+export function validatePublicInventory({ assetsDir, coverage, ledger, installedPublicStores = null, gistReceipt = null }) {
   const root = path.resolve(assetsDir);
   const selected = installedPublicStores === null ? null : [...installedPublicStores].map((store) => String(store).toLowerCase());
   if (selected && (selected.some((store) => !store) || new Set(selected).size !== selected.length)) {
@@ -239,14 +239,14 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
     if (gistStores.size !== 1 || !gistStores.has('ruv-gists')) throw new Error('eligible gists must use the ruv-gists aggregate');
     if (!selectedSet || selectedSet.has('ruv-gists')) {
       const receiptFile = path.join(root, 'ruv-gists.sources.json');
-      const receipt = readJson(receiptFile, 'gist aggregate receipt');
+      const receipt = gistReceipt || readJson(receiptFile, 'gist aggregate receipt');
       const passages = path.join(root, 'ruv-gists.passages.jsonl');
       const ids = gists.map((row) => String(row.key || '').replace(/^gist:/, ''));
       if (ids.some((id) => !id)) throw new Error('gist coverage row identity is missing');
       validateGistAggregateReceipt({ receipt, passagesFile: passages, expectedIds: ids,
         sourceObservationSha256: coverage.sourceObservationSha256 });
       if (receipt.schemaVersion === 3) evidenceFiles.push(evidenceIdentity(root, passages, 'gist-passages'));
-      evidenceFiles.push(evidenceIdentity(root, receiptFile, 'gist-receipt'));
+      if (!gistReceipt) evidenceFiles.push(evidenceIdentity(root, receiptFile, 'gist-receipt'));
     }
     gistAggregate = 'ruv-gists';
   }

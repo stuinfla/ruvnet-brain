@@ -186,6 +186,8 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 
 ## Currency log
 
+| 2026-08-30 | Rechecked generation convergence after the exact-SHA release-QE failure; the immutable seed's legacy gist evidence is carried explicitly into the projected bundle and is not labeled current-source evidence. | Commit `f526bab`; `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; `data/corpus-seed.json`. |
+
 | 2026-08-30 | Removed the forbidden live gists observation from the release-QE bundle step and made the coverage projection explicitly derive its public generation set from the sealed seed ledger. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`. |
 
 | 2026-08-30 | Reconciled the host-only updater after live v4.3.1 had no GitHub assets and the updater stranded the Stable Spine on 4.2.2-dev. | `bin/install.mjs` now keeps executable host synchronization moving when the optional KB refresh is unavailable; the release asset gate remains authoritative. |
