@@ -380,6 +380,7 @@ export async function runSessionStart({
       || s.startsWith('USER-LEVEL:')
       || s.startsWith('[ASCII→SVG]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]')
+      || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY RESTORED]')
       || s.startsWith('[RuvNet Brain — MAINTAINER ONLY:');
   };
   const emit = (line = '') => {
