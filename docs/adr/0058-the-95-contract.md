@@ -374,6 +374,8 @@ correct: **the strong claim was the defect.**
 
 ## Currency log
 
+| 2026-08-30 | Re-read after `abc1731` added explicit squash-merge oracle provenance handling; the 95 contract remains unchanged and the new path has a failing-then-passing regression test. | `scripts/retrieval-canary.mjs`, `.github/workflows/ci.yml`, `tests/unit/retrieval-canary.test.mjs`; focused suite passed 11/11. |
+
 | 2026-08-30 | Re-read the governed release builder and CI after the 4.3.3 candidate exposed projection evidence arriving after validation and PRs bypassing release gates. | `scripts/build-bundle.mjs`, `scripts/release-projection.mjs`, `plugin/scripts/coverage-integrity.mjs`, `.github/workflows/ci.yml`; local `npm run qa:pr` passed 10/10 lanes and hosted exact-SHA release proof remains required. |
 
 | 2026-08-30 | Rechecked bundle assembly after exact-SHA release-QE showed that source-controlled store policy was incorrectly expected inside the corpus seed; the builder now takes it from the canonical checkout. | `scripts/build-bundle.mjs`; `kb/public-store-classes.json`; exact-SHA release-QE. |

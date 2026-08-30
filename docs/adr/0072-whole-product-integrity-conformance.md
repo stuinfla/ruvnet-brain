@@ -207,6 +207,8 @@ conformance.
 
 ## Currency log
 
+| 2026-08-30 | Re-read after `abc1731` repaired the squash-merge provenance boundary; whole-product conformance is unchanged except that release-QE now fetches and validates the pre-candidate oracle source explicitly. | `scripts/retrieval-canary.mjs`, `.github/workflows/ci.yml`; focused suite passed 11/11. |
+
 | 2026-08-30 | Re-read whole-product release conformance after the candidate build found that seed exclusions, derived stores, and projection receipts were not entering one validation boundary, and after confirming PRs did not run `ci.yml`. | `scripts/build-bundle.mjs`, `scripts/release-projection.mjs`, `plugin/scripts/coverage-integrity.mjs`, `.github/workflows/ci.yml`; local canonical QA passed, while hosted exact-SHA publication proof remains the release boundary. |
 
 | 2026-08-30 | Rechecked whole-product integrity after release-QE isolated a missing policy registry in the baseline seed; the final bundle now carries the canonical source-controlled registry explicitly. | `scripts/build-bundle.mjs`; `kb/public-store-classes.json`; exact-SHA release-QE. |
