@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadRuntimePreferences, runtimeChildEnv } from '../scripts/runtime-preferences.mjs';
+import { projectDirectory } from '../scripts/project-identity.mjs';
 import { recordManagedCliObservation, recordRegistryLatestObservation } from '../scripts/capability-claim-evidence.mjs';
 
 export const MANAGED_EXECUTABLES = Object.freeze([
@@ -261,6 +262,7 @@ export async function callManagedCli(toolName, args, env = process.env, fetchImp
   try {
     const executable = assertExecutable(args?.executable);
     const argv = literalArgv(args?.argv ?? []);
+    const projectRoot = env.RUVNET_BRAIN_PROJECT_DIR || projectDirectory({ env });
 
     if (toolName === 'ruvnet_registry_latest') {
       const packageName = REGISTRY_PACKAGES[executable];
@@ -299,7 +301,7 @@ export async function callManagedCli(toolName, args, env = process.env, fetchImp
           isError: true,
         };
       }
-      const policy = loadRuntimePreferences({ env, cwd: env.RUVNET_BRAIN_PROJECT_DIR || process.cwd() });
+      const policy = loadRuntimePreferences({ env, cwd: projectRoot });
       if (executable === 'agentic-flow' && policy.values.routing !== 'auto') {
         return {
           content: [{
@@ -326,7 +328,7 @@ export async function callManagedCli(toolName, args, env = process.env, fetchImp
         };
       }
       const childEnv = (executable === 'agentic-flow' || executable === 'agentic-qe')
-        ? runtimeChildEnv({ env, cwd: env.RUVNET_BRAIN_PROJECT_DIR || process.cwd() })
+        ? runtimeChildEnv({ env, cwd: projectRoot })
         : env;
       const execution = await execute(executable, argv, childEnv);
       recordManagedCliObservation({ toolName, executable, argv, execution, env });
