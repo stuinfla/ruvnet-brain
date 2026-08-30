@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "kind": "ruvnet-brain-retrieval-query-evidence",
-  "queryStoreSetSha256": "06d2afb7526749233f63886a27e5bacfb30effe762da48a3b2d007815c0e0b88",
+  "queryStoreSetSha256": "cf39400af897ef765020666ae30d96cf74c7de7d605fa828fd3fe1b01b14bae6",
   "queries": {
     "2bottalk": {
       "query": "In the 2bottalk project, what is 2 BoT Talk AI-powered Bot Duo, what problem does it solve, and how is it intended to be used?",
