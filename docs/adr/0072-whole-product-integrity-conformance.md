@@ -207,6 +207,8 @@ conformance.
 
 ## Currency log
 
+| 2026-08-30 | Rechecked whole-product integrity after release-QE isolated a missing policy registry in the baseline seed; the final bundle now carries the canonical source-controlled registry explicitly. | `scripts/build-bundle.mjs`; `kb/public-store-classes.json`; exact-SHA release-QE. |
+
 | 2026-08-30 | Rechecked whole-product integrity after release-QE found the seed/source gist-byte mismatch; the projection now preserves the full observation while validating the actual seeded asset plane with an explicit baseline receipt. | Commit `f526bab`; `scripts/release-projection.mjs`; `plugin/scripts/coverage-integrity.mjs`; Issue #201. |
 
 | 2026-08-30 | Reconciled the whole-product release path after exact-SHA CI exposed the Actions-token gists 403: the publisher now uses the prepared source-bound observation and retains fail-closed seeded-row freshness checks. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`; `tests/unit/corpus-seed.test.mjs`. |
