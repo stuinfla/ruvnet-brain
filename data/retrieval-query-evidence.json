@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "kind": "ruvnet-brain-retrieval-query-evidence",
-  "queryStoreSetSha256": "cf39400af897ef765020666ae30d96cf74c7de7d605fa828fd3fe1b01b14bae6",
+  "queryStoreSetSha256": "15c9b34624d9689ce8f95bafae3d4769840af7c1047900ba05a0ff02df05313e",
   "queries": {
     "2bottalk": {
       "query": "In the 2bottalk project, what is 2 BoT Talk AI-powered Bot Duo, what problem does it solve, and how is it intended to be used?",
@@ -611,14 +611,6 @@
       },
       "recordSha256": "bd73165f4b7e0c0c230c8a881734c90c89cdaaabf530bfdf366784ce6a6037b0"
     },
-    "event-horizon": {
-      "query": "In the event-horizon project, what is Event Horizon Laboratory, what problem does it solve, and how is it intended to be used?",
-      "expected": {
-        "path": "README.md",
-        "passageSha256": "ee53b85a2be6c5a618f5d76cd6f851771c9598ae03cafb2d5db5d2bf35b7ad79"
-      },
-      "recordSha256": "5215fb6e95e1a9fe493e16a721839494acced4240a2bd701381526cdb0d0ed8e"
-    },
     "fact": {
       "query": "In the fact project, what is FACT: Fast Augmented Context Tools, what problem does it solve, and how is it intended to be used?",
       "expected": {
@@ -674,14 +666,6 @@
         "passageSha256": "130f5fd713b45eceb5450aecfebf1277f5435052b8998944cc5c998c81fcfd16"
       },
       "recordSha256": "b384d8824261e74cd6b58f48bf53b8b7663ea414c4e2e3930de289d450e8858e"
-    },
-    "group-field-theory": {
-      "query": "What research question and working hypothesis does the Group Field Theory project use to study spacetime emerging without primitive coordinates or universal time?",
-      "expected": {
-        "path": "docs/01_research_overview.md",
-        "passageSha256": "f313a77db9a855f0a2a8f6e480f21dae64c2e78b1fe8fe7bcce126911bc74be8"
-      },
-      "recordSha256": "8d1ea3257135e864c99644c9f70bab103f15d2ce0403b8fc5faa955ecd919e8b"
     },
     "guardrail": {
       "query": "In the guardrail project, what is GuardRail OSS - Open Source Ai Guidance & Analysis API, what problem does it solve, and how is it intended to be used?",
@@ -1475,9 +1459,5 @@
       },
       "recordSha256": "4dea68176043d7fe2665a45ac0fdf700504352b2a9b2dfbf6bd53d6ff67f8cae"
     }
-  },
-  "sourceCommit": "4cddabf28356fad0db0859f39d1855919fa4e398",
-  "sourcePath": "data/retrieval-query-evidence.json",
-  "sourceBlobSha256": "fd3583db9f8dc79a5adc85732911cfa9268e5fe89bf66eaac104a346d370c24e",
-  "receiptSha256": "6c912ea1848eed174379cd7d4500b8c83d4cc87029226eb959bc77a7abefb342"
+  }
 }
