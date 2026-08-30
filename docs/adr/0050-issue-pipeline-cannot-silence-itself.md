@@ -3,7 +3,7 @@ id: ADR-050
 title: The issue pipeline may never manufacture its own acknowledgment — awareness, escalation, and a fixer that knows when to stop
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-19
+updated: 2026-08-29
 # PINNED: this records the incident cutoff, not the last edit. Asserted by
 # tests/unit/fix-workstream-guidance.test.mjs. Do not let a currency stamp move it.
 updated_pinned: true
@@ -188,8 +188,13 @@ The four parallel agents working tonight support this distinction. They show tha
 
 ## Currency log
 
+| date | why |
+|---|---|
+| 2026-08-30 | Rechecked plugin/scripts/session-start-core.mjs in 05cabf0: SessionStart output is now opt-in diagnostics, so unsolicited issue/workflow prose cannot enter a host session. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-22 | Re-read every governed issue-pipeline and host-start surface at convergence tip `ddae606`; the issue watcher still derives awareness from external issue state, and the fixer still cannot manufacture acknowledgment or bypass its stop conditions. | `adeba05` extends `plugin/scripts/session-start-core.mjs` with fail-closed project-progression restoration; it does not write issue acknowledgments or change `scripts/issue-watch.mjs` / `scripts/issue-fix.mjs`. The two governed skills continue to require evidence-backed issue handling. This currency review records compatibility only; it does not claim the intentionally held paid auto-fixer is scheduled. |
 | 2026-08-19 | **Issue #140 resolved through the pipeline as designed — reported, verified line-by-line, swept, fixed, tested, closed.** | @sparkling reported that the Brain's own playbook and skill instructed agents to inspect a Ruflo-managed store with raw SQLite and to trust a DB mtime. Both citations confirmed verbatim; the mtime line additionally contradicted this project's own standing lesson. The sweep found a THIRD surface the report did not name — `ground-ruvnet.sh`'s per-turn MEMORY DIAGNOSIS prompt — which is the highest-traffic instruction surface in the product. The pipeline's value here was not the fix but the refusal to stop at the two cited files. |
 | 2026-08-10 | **Re-read after the #130/#131 update-rail fixes and the new census writer; no contract change.** | `kb/forge-update.mjs` (per-run rollback snapshot, per-caller symlink policy) and the public surfaces moved. This ADR decides that the issue pipeline may never manufacture its own acknowledgment — untouched by how backups are inventoried or how corpus counts reach a README. |
 | 2026-08-07 | **The continuation gate gained two real SOURCES — open PRs and GitHub security alerts — and issue-watch grew the matching reporting path.** No change to this ADR's contract. | PR #121 (`f5e8995`) adds 93 lines to `plugin/scripts/continuation-gate.mjs` and 108 to `scripts/issue-watch.mjs`. This ADR's rule is that the issue pipeline cannot silence itself; adding SOURCES the gate can see strengthens that rule rather than altering it — the 2026-07-24 incident was one poisoned predicate treating every channel as satisfied, so more independent evidence channels is the direction this decision already points. The owner-only, repo-scoped entitlement for the SessionStart banner (row below) is untouched; no default or wrong-repo install gains a new signal. Re-read the diff rather than the file list before writing this row. |

@@ -9,6 +9,7 @@ const provider = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction-pr
 const bundle = fs.readFileSync(path.join(ROOT, 'scripts/build-bundle.mjs'), 'utf8');
 const ci = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');
 const protectedWorkflow = fs.readFileSync(path.join(ROOT, '.github/workflows/protected-release.yml'), 'utf8');
+const publicLane = fs.readFileSync(path.join(ROOT, 'scripts/public-verification-lane.mjs'), 'utf8');
 
 const position = (source, needle) => {
   const found = source.indexOf(needle);
@@ -86,13 +87,16 @@ describe('release publication is one remote durable staged transaction', () => {
     expect(transaction).toContain("if (!authorized) throw new Error('release abort requires explicit human authorization')");
   });
 
-  it('creates final public evidence before appending channels-converged', () => {
-    expect(position(provider, "'scripts/publication-receipt.mjs'"))
-      .toBeLessThan(position(provider, "'scripts/release-proof.mjs'"));
-    expect(position(transaction, 'adapter.finalize'))
-      .toBeLessThan(transaction.lastIndexOf("append('channels-converged'"));
+  it('stops publication at channel convergence and defers public evidence to the protected matrix', () => {
+    expect(transaction).not.toContain('adapter.finalize');
     expect(provider).not.toContain("'scripts/verify-channels.mjs'");
     expect(provider).not.toContain("'scripts/published-surface-probe.mjs', '--json'");
-    expect(provider).toContain('publication.postPublicationChecks');
+    expect(provider).not.toContain('publication.postPublicationChecks');
+    expect(publicLane).toContain('generatePublicationReceipt');
+    expect(protectedWorkflow).toContain('needs: [release-qe-proof, publish]');
+    expect(position(protectedWorkflow, 'node scripts/release.mjs --publish'))
+      .toBeLessThan(position(protectedWorkflow, 'node scripts/public-verification-lane.mjs'));
+    expect(position(protectedWorkflow, 'node scripts/public-verification-lane.mjs'))
+      .toBeLessThan(position(protectedWorkflow, 'node scripts/public-verification-finalizer.mjs'));
   });
 });

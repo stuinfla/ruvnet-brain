@@ -508,6 +508,11 @@ export function answerFromCards(query, dir, { allowGuideAnswers = false } = {}) 
   if (scopedPackage) {
     return { hit: false, reason: `scoped package detail requires source retrieval (${scopedPackage})` };
   }
+  const exactArtifact = /(?:^|[\s'"`])(?:\.{0,2}[\\/])?(?:[A-Za-z0-9_.-]+[\\/])+[A-Za-z0-9_.-]+(?:$|[\s'"`,:;?)])/u.test(q)
+    || /\b[A-Za-z0-9_.-]+\.(?:c|cc|cpp|go|h|hpp|java|js|jsx|mjs|cjs|md|py|rs|sh|sql|toml|ts|tsx|yaml|yml)\b/i.test(q);
+  if (exactArtifact) {
+    return { hit: false, reason: 'exact path or file query requires source retrieval' };
+  }
   const sourceDetail =
     /\b(?:adr[-\s_]?\d+|api|sdk|backends?|exports?|registered|source code|code path|(?:code|working)\s+example|(?:three|\d+)\s+lines?\s+of\s+code|snippet|actually\s+mutate|supported?\s+topolog(?:y|ies)|topolog(?:y|ies)\s+does\s+it\s+support|package names?|crate names?|workspace|supersedes?|deployment\s+process|exact[-\s]+artifact|github\s+checks?|independent\s+graders?)\b/i;
   const claimValidation =

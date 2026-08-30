@@ -1,4 +1,4 @@
-Updated: 2026-08-02 18:25:00 EDT | Version 1.0.2
+Updated: 2026-08-22 12:15:00 EDT | Version 1.1.0
 Created: 2026-07-22 11:05:00 EDT
 
 # The Architecture Map — what the pieces ARE, and what you lose if you take only some
@@ -81,7 +81,7 @@ corpus built 2026-07-21. Your machine will differ; the commands are the point, n
 | 5 | **Console** | `console/*` + `scripts/onboarding-console.mjs` | Yes | Local page: what's installed, what's dormant, one-click reversible fixes |
 | 6 | **Capability registry** | `scripts/capability-registry.mjs` | Yes | 11-row audit of what you own and whether it's switched on |
 | 7 | **Lesson store** | `~/.config/ruvnet-brain/lessons.json` | Yes | Your recorded corrections, replayed at the moment they apply |
-| 8 | **Nightly refresh** | launchd `com.ruvnet.brain-nightly` | Yes | Rebuilds the corpus so it doesn't rot |
+| 8 | **Evergreen + Dream evaluation** | `com.ruvnet.brain-update` + Dream Machine | Yes | Updates installed bytes and evaluates repo changes without writing the primary checkout |
 | 9 | **Commands & skills** | `plugin/commands/` (4), `plugin/skills/` (5) | Yes | `/rvbc`, `/configure`, and the behavioral skills |
 
 Pieces 2–9 are all genuinely optional. Piece 1 is the substrate: remove it and the MCP server still
@@ -432,36 +432,33 @@ store currently records one lesson you have had to give **6 times across 1 proje
 
 ---
 
-## 8 · The nightly refresh
+## 8 · Evergreen updates and nightly evaluation
 
-**What it is.** A macOS LaunchAgent (`com.ruvnet.brain-nightly`) running
-`scripts/nightly-wrapper.sh` at 03:15. It is launchd, not cron. It compares upstream commits,
-keeps unchanged chunks/vectors, and embeds only additions and modifications before publishing a
-staged, gated release. The separate optional end-user LaunchAgent
-(`com.ruvnet.brain-update`, 03:47) only downloads the newest signed release.
+**What it is.** Two non-overlapping paths: the optional end-user LaunchAgent
+(`com.ruvnet.brain-update`, 03:47) downloads and verifies the newest published release, while the
+Dream Machine evaluates repository changes and proposes evidence without merging. The former
+`com.ruvnet.brain-nightly` author-source writer was retired on 2026-08-22 after it accumulated
+generated changes in the primary developer checkout.
 
 **What it gives you.** A corpus that doesn't rot. rUv ships fast — Ruflo went 3.26 → 3.28 inside an
 18-hour window.
 
-**Its operating discipline** (the owner's standing order, 2026-07-12): no noise for success or a
-no-op. Run once → on failure wait and retry **once** (the only class a blind retry can fix) → on a
-second failure, a loud phone alert **plus a durable marker file** that `session-start.sh` surfaces
-unprompted at the top of the very next session. A single-instance lock prevents a very large change,
-slow model, or stalled gate from overlapping the next 03:15 fire.
-Exit 75 is reserved for "skipped, previous run still going" so a skip is never recorded as a failure.
+**Its operating discipline.** Installed-cache updates never build or publish source. Dream cycles
+never merge. A maintainer may run `scripts/nightly-wrapper.sh` manually, but the shared mutation
+boundary refuses primary, nested, non-linked, and dirty worktrees and verifies afterward that the
+primary HEAD, index, tracked diff, and untracked-file set did not change.
 
-**What it costs.** A LaunchAgent plist — a real machine mutation, which is why the installer asks
-for the end-user updater behind its own flag and `-y` cannot silently accept it. Normal no-op nights
-do not embed the corpus; changed repositories consume local CPU, disk I/O, and network proportional
-to their changed chunks.
+**What it costs.** The end-user LaunchAgent is a real machine mutation, so the installer keeps it
+behind explicit consent. Author rebuilds consume local CPU, disk, and network only when explicitly
+started in an isolated worktree.
 
 **What you lose without it.** Corpus freshness, degrading continuously. The in-band staleness line on
 every `search_ruvnet` response tells you how bad it has become (`newest store Nd old, oldest Nd`), so
 this degrades *visibly* — which is the design. You can also refresh by hand:
 `node ~/.cache/ruvnet-brain/kb/forge-update.mjs`.
 
-The full runbook and the rationale for keeping the publisher on a trusted build machine rather than
-a public-repo self-hosted runner are in [Nightly refresh and publish](NIGHTLY-REFRESH.md).
+The full separation and author-worktree contract are in
+[Nightly refresh, evaluation, and author rebuilds](NIGHTLY-REFRESH.md).
 
 ---
 
@@ -553,7 +550,7 @@ you'd be turning off.
 | `~/.cache/ruvnet-brain/console-undo.jsonl` | console apply | the inverse of every change, journalled first |
 | `~/.config/ruvnet-brain/lessons.json` | lesson-ratify | your ratified corrections |
 | `~/.claude/ruvnet-brain/config.json` | console save | your console preferences |
-| launchd plists | **only if you say yes** | nightly refresh and friends |
+| launchd plists | **only if you say yes** | installed-cache updates and other explicitly enabled jobs |
 
 **Nothing is written into your project directories.** That is load-bearing and it was once false —
 see the issue #36 note in §2.

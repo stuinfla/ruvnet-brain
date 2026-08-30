@@ -42,6 +42,7 @@ const DRY = argv.includes('--dry-run');
 // and ship via Release, so nightly CI can keep the INDEX fresh even though it cannot commit vectors.
 const INDEX_ONLY = argv.includes('--index-only');
 const INDEX_PATH = path.join(ROOT, 'docs', 'RUV-GISTS.md');
+const FETCH_TIMEOUT_MS = Number(process.env.RUVNET_GISTS_FETCH_TIMEOUT_MS || 30_000);
 
 // Markdown/text only. A gist's code files are better read from the repo they land in; prose is the
 // thing repos don't carry.
@@ -49,8 +50,17 @@ const TEXT_EXT = new Set(['.md', '.markdown', '.txt', '.rst']);
 
 /** Authenticated GitHub calls via `gh` — 5000 req/hr instead of 60, and no token handling here. */
 function gh(endpointArgs) {
-  const r = spawnSync('gh', endpointArgs, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (r.status !== 0) throw new Error(`gh ${endpointArgs.join(' ')} failed: ${(r.stderr || '').trim().slice(0, 200)}`);
+  const r = spawnSync('gh', endpointArgs, {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: FETCH_TIMEOUT_MS,
+  });
+  if (r.status !== 0) {
+    const detail = r.error?.code === 'ETIMEDOUT' || r.signal
+      ? `timed out after ${FETCH_TIMEOUT_MS}ms`
+      : (r.stderr || '').trim().slice(0, 200);
+    throw new Error(`gh ${endpointArgs.join(' ')} failed: ${detail}`);
+  }
   return r.stdout;
 }
 
@@ -187,11 +197,23 @@ async function main() {
   for (const [i, stub] of gists.entries()) {
     if (i % 25 === 0) process.stdout.write(`\r  fetching ${i}/${gists.length}…`);
     let g;
-    try { g = fetchGist(stub.id); } catch { skipped++; continue; }
+    try {
+      g = fetchGist(stub.id);
+    } catch (err) {
+      skipped++;
+      console.error(`\n  fetch failed for gist ${stub.id}: ${err.message}`);
+      continue;
+    }
     for (const [fname, f] of Object.entries(g.files || {})) {
       if (!TEXT_EXT.has(path.extname(fname).toLowerCase())) continue;
-      const body = f.truncated && f.raw_url ? '' : (f.content || '');
-      if (!body.trim()) { skipped++; continue; }
+      // JSONL readers treat U+2028/U+2029 as physical line separators on some runtimes. Normalize
+      // them before serialization so one JSON object always remains one physical passage line.
+      const body = (f.truncated && f.raw_url ? '' : (f.content || '')).replace(/[\u2028\u2029]/g, '\n');
+      if (!body.trim()) {
+        skipped++;
+        console.error(`\n  empty or truncated text file: ${stub.id}/${fname}`);
+        continue;
+      }
       const title = (g.description || fname).replace(/\s+/g, ' ').trim().slice(0, 180) || fname;
       const head = banner(g, fname);
       // Banner on EVERY chunk, not just the first. Retrieval returns ONE chunk — if the provenance
@@ -211,6 +233,13 @@ async function main() {
     cache[stub.id] = stub.updated_at;
   }
   process.stdout.write('\r');
+
+  // A receipt-only or partial corpus is more dangerous than a failed run: its RVF idmap can look
+  // healthy while silently omitting live source. Preserve the previous complete corpus and make
+  // the nightly job retry instead of publishing incomplete search data.
+  if (skipped > 0) {
+    throw new Error(`ingest-gists: refusing to write partial corpus (${skipped} fetch/content failures)`);
+  }
 
   fs.writeFileSync(path.join(KB, `${NAME}.passages.jsonl`), passages.map((p) => JSON.stringify(p)).join('\n') + '\n');
   fs.writeFileSync(path.join(KB, `${NAME}.meta.json`), JSON.stringify({

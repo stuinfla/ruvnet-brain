@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
+import readline from 'node:readline';
 import { spawn, spawnSync } from 'node:child_process';
 // ONE doctor rule and ONE mode vocabulary, shared with the staged-side check in
 // scripts/staged-host-verifier.mjs. This file kept its own copies, spelled claudeOnly/
@@ -18,6 +19,8 @@ import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor,
 import { pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt, evaluatePublicationReceipt } from './release-proof.mjs';
 import { verifyPayload } from './release-payload.mjs';
+import { digest, sha256File } from './coverage-integrity.mjs';
+import { parseCitations } from '../kb/verify-citation.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
 const PACKAGE = 'ruvnet-brain';
@@ -183,7 +186,8 @@ function rpcSearch(server, env, query, timeoutMs = DEADLINE_MS) {
 }
 
 export function livePublicationAdapter({ root = process.cwd() } = {}) {
-  let installContext = null;
+  const installContexts = new Map();
+  const passageFileDigests = new Map();
   let installTemp = null;
   return {
     async downloadNpm({ version, destination }) {
@@ -272,7 +276,7 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
           functionalSearch: true, searchMs: searched.broadMs, hostsOnPath: mode,
           ...verified,
         };
-        if (mode === 'dual') installContext = { temp, home, codexHome, brainHome, kb, env, packageRoot };
+        installContexts.set(MODE_FROM_RECEIPT_NAME[mode], { temp, home, codexHome, brainHome, kb, env, packageRoot });
       }
       return {
         ...results,
@@ -280,8 +284,9 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
       };
     },
 
-    async probeBrain() {
-      if (!installContext) throw new Error('public hosts must be installed before Brain proof');
+    async probeBrain({ mode = 'dual' } = {}) {
+      const installContext = installContexts.get(mode);
+      if (!installContext) throw new Error(`${mode} public host must be installed before Brain proof`);
       const rvfs = fs.readdirSync(installContext.kb).filter((name) => /ruvnet-brain.*\.rvf$/i.test(name));
       if (rvfs.length === 0) throw new Error('installed public Brain has no ruvnet-brain self RVF');
       const server = path.join(installContext.home, '.claude', 'ruvnet-brain', 'mcp', 'server.mjs');
@@ -290,6 +295,43 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
       const readiness = readJson(path.join(installContext.brainHome, 'mcp-readiness.json'));
       if (readiness.state !== 'ready') throw new Error(`installed Brain readiness is ${readiness.state || 'missing'}`);
       return { status: 'PASS', selfStore: true, broadMs: result.broadMs, deadlineMs: DEADLINE_MS };
+    },
+
+    async searchInstalled({ mode, query }) {
+      const context = installContexts.get(mode);
+      if (!context) throw new Error(`${mode} public host is not installed`);
+      const result = await rpcSearch(findMcpServer(context.home), context.env, query, DEADLINE_MS);
+      return parseCitations(result.text).map((citation) => ({
+        repo: citation.repo.toLowerCase(),
+        path: citation.docPath,
+      }));
+    },
+
+    async resolveInstalledCitation({ mode, matched, expected }) {
+      const context = installContexts.get(mode);
+      if (!context) throw new Error(`${mode} public host is not installed`);
+      if (String(matched?.repo || '').toLowerCase() !== expected.repo || matched?.path !== expected.path) {
+        return { resolved: false };
+      }
+      const files = [
+        path.join(context.kb, `${expected.repo}.passages.jsonl`),
+        path.join(context.kb, `${expected.repo}.big.passages.jsonl`),
+      ].filter((file) => fs.existsSync(file));
+      for (const file of files) {
+        const rows = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
+        try {
+          for await (const line of rows) {
+            let record;
+            try { record = JSON.parse(line); } catch { continue; }
+            if (record?.path !== expected.path) continue;
+            const passageSha256 = digest(record);
+            if (passageSha256 !== expected.passageSha256) return { resolved: false };
+            if (!passageFileDigests.has(file)) passageFileDigests.set(file, sha256File(file));
+            return { resolved: true, evidence: { passageSha256, passageFileSha256: passageFileDigests.get(file) } };
+          }
+        } finally { rows.close(); }
+      }
+      return { resolved: false };
     },
 
     async probePublishedSurface({ sha }) {
@@ -307,7 +349,8 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
     async dispose() {
       if (installTemp) fs.rmSync(installTemp, { recursive: true, force: true });
       installTemp = null;
-      installContext = null;
+      installContexts.clear();
+      passageFileDigests.clear();
     },
   };
 }
@@ -317,6 +360,7 @@ export async function generatePublicationReceipt({
   candidatePath,
   outPath,
   adapter = livePublicationAdapter({ root }),
+  disposeAdapter = true,
 } = {}) {
   if (!candidatePath || !outPath) throw new Error('candidatePath and outPath are required');
   if (fs.existsSync(outPath)) throw new Error(`refusing to overwrite existing publication receipt: ${outPath}`);
@@ -386,7 +430,7 @@ export async function generatePublicationReceipt({
     fs.writeFileSync(outPath, `${JSON.stringify(publication, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
     return result;
   } finally {
-    await adapter.dispose?.();
+    if (disposeAdapter) await adapter.dispose?.();
     fs.rmSync(temp, { recursive: true, force: true });
   }
 }
