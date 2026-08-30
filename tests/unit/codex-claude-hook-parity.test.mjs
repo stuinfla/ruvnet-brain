@@ -5,6 +5,14 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { policiesFor } from '../../plugin/scripts/decision-gate.mjs';
+import { CONTEXT_EVENTS as ADAPTER_CONTEXT_EVENTS, ALL_HOST_EVENTS } from '../../plugin/scripts/codex-hook-events.mjs';
+
+// DERIVED, not hand-listed (tests/unit/entrypoint-guard-safety.test.mjs's "no fixture hand-lists the
+// imports of a script it isolates" sweep, 2026-08-12): a second literal `copyFileSync` naming the
+// adapter's new sibling is exactly the shape that guard exists to catch. `serverDependencies()` walks
+// the adapter's real import graph instead, so a future import is carried into the sandbox for free.
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { serverDependencies } = await import(new URL('../../bin/install.mjs', import.meta.url).href);
 
 /**
  * CODEX AND CLAUDE CODE ARE ONE PRODUCT, OR THE SECOND HOST IS A DECORATION.
@@ -62,6 +70,11 @@ function hookIds(file) {
 function runAdapter({ shim, payload, args = ['probe'], env = {} }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-adapter-'));
   fs.copyFileSync(ADAPTER, path.join(dir, 'codex-hook-adapter.mjs'));
+  for (const dep of serverDependencies(ADAPTER)) {
+    const target = path.resolve(dir, dep.spec);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(dep.from, target);
+  }
   fs.writeFileSync(path.join(dir, 'hook-shim.mjs'), shim);
   try {
     return spawnSync(process.execPath, [path.join(dir, 'codex-hook-adapter.mjs'), ...args], {
@@ -175,9 +188,18 @@ describe('the adapter emits output Codex will accept, per event', () => {
    * "hook returned invalid post-tool-use JSON output". The events that may carry prose are exactly
    * the ones whose output schema defines a *HookSpecificOutputWire. signal-watch.mjs prints one
    * plain advisory LINE on PostToolUse, and before this fix the adapter passed it through raw.
+   *
+   * DERIVED, not hand-copied (Dream Cycle 2026-08-30). This block used to carry its own 4-item
+   * CONTEXT_EVENTS array — a second, independent copy of the adapter's real 6-item set, silently
+   * missing `PermissionRequest` and `SubagentStart`, so this "per event" proof never once ran for
+   * either. Same for NO_CONTEXT_EVENTS: hand-listing 2 of the host's actual 4 no-context,
+   * non-Stop events (`PostCompact`, `SubagentStop` had zero coverage). Reading both from the
+   * adapter's own exports and the host's full event catalogue means a future event added to either
+   * side is exercised the moment it exists, the same discipline this file's own header already
+   * states for policy ids and hook ids above.
    */
-  const CONTEXT_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'PreToolUse'];
-  const NO_CONTEXT_EVENTS = ['PreCompact', 'SessionEnd'];
+  const CONTEXT_EVENTS = [...ADAPTER_CONTEXT_EVENTS];
+  const NO_CONTEXT_EVENTS = ALL_HOST_EVENTS.filter((e) => e !== 'Stop' && !ADAPTER_CONTEXT_EVENTS.has(e));
 
   it.each(CONTEXT_EVENTS)('wraps a body\'s plain text in a valid %s envelope', (event) => {
     const r = runAdapter({
