@@ -294,7 +294,10 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
   const eligibleStores = ordered(eligible.map(storeOf));
   if (queryEvidence.queryStoreSetSha256 !== setDigest(eligibleStores)
     || canonicalJson(ordered(Object.keys(queryEvidence.queries))) !== canonicalJson(eligibleStores)) {
-    throw new Error('independent query oracle does not cover the exact eligible store set');
+    const oracleStores = new Set(Object.keys(queryEvidence.queries));
+    const missing = eligibleStores.filter((store) => !oracleStores.has(store));
+    const extra = [...oracleStores].filter((store) => !eligibleStores.includes(store)).sort();
+    throw new Error(`independent query oracle does not cover the exact eligible store set (eligible=${eligibleStores.length}, oracle=${oracleStores.size}, missing=${missing.join(',') || 'none'}, extra=${extra.join(',') || 'none'})`);
   }
   const baselineStores = new Set(baseline.stores.map((name) => String(name).toLowerCase()));
   const delta = eligible.filter((row) => !baselineStores.has(storeOf(row)));
