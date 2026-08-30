@@ -3,7 +3,7 @@ id: ADR-057
 title: 95 on both graders — closing a 38/53 against a self-reported 83, dimension by dimension
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-22
+updated: 2026-08-30
 impl: verification-expired
 verified: 2026-07-30
 verified_digest: 1c276a7dfbc5

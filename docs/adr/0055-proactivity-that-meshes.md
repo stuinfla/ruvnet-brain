@@ -3,7 +3,7 @@ id: ADR-055
 title: Proactivity that meshes — one decision law, four planes, substance-bound enforcement, learning bound to outcomes
 status: Accepted
 date: 2026-07-27
-updated: 2026-08-29
+updated: 2026-08-30
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6 (codex, read-only)]
 tags: [proactivity, hooks, mesh, fourth-wall, learning, grounding, qa]
