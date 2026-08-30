@@ -3,7 +3,7 @@ id: ADR-050
 title: The issue pipeline may never manufacture its own acknowledgment — awareness, escalation, and a fixer that knows when to stop
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-29
+updated: 2026-08-30
 # PINNED: this records the incident cutoff, not the last edit. Asserted by
 # tests/unit/fix-workstream-guidance.test.mjs. Do not let a currency stamp move it.
 updated_pinned: true
@@ -187,6 +187,7 @@ The four parallel agents working tonight support this distinction. They show tha
   regressions (8 of 12 assertions fail on the pre-fix code, proven by stash-mutation).
 
 ## Currency log
+| 2026-08-30 | SessionStart issue surfacing remains enabled while response-script prose is filtered from host context. | `plugin/scripts/session-start-core.mjs` preserves the issue count and maintainer alarm required by this ADR while removing non-factual instructions. |
 
 | date | why |
 |---|---|

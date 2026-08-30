@@ -373,6 +373,7 @@ correct: **the strong claim was the defect.**
    land ≥95. No self-score counts; the 83-vs-38 category error is not repeated.
 
 ## Currency log
+| 2026-08-30 | The final host adapter and SessionStart changes were rechecked against the exact bounded contract before hosted publication. | `tests/integration/project-progression-session-start.test.mjs` passes 13/13; `scripts/qa-runner.mjs` remains the canonical exact-SHA release gate. |
 
 | 2026-08-30 | QA publication is fail-closed through one bounded runner: failed lanes stop, timeouts fail the receipt, and every lane binds to the current SHA. | `scripts/qa-runner.mjs`, `scripts/release-authority.mjs`, and `.github/workflows/ci.yml` provide the executable contract. |
 
