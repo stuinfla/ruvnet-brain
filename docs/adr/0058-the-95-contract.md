@@ -4,7 +4,7 @@ title: The 95 contract — one observable per dimension, one mutant per observab
 status: Proposed
 date: 2026-07-27
 updated: 2026-08-30
-impl: built
+impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -373,6 +373,8 @@ correct: **the strong claim was the defect.**
    land ≥95. No self-score counts; the 83-vs-38 category error is not repeated.
 
 ## Currency log
+
+| 2026-08-30 | Re-read the complete governed release and hook surface after the convergence-manifest and hook-conformance cleanup. The contract remains unchanged; its ownership is now checked by `scripts/convergence-manifest.mjs`, and detached-job fixture teardown now uses the product receipt rather than a livelocking delete retry. | `9f3cb36`, `scripts/convergence-manifest.mjs`, `tests/integration/hook-conformance-both-hosts.test.mjs`; focused conformance evidence is 8/8, and the full integration lane is 41 passed / 1 skipped / 0 failed with KB dependencies installed. |
 | 2026-08-30 | The final host adapter and SessionStart changes were rechecked against the exact bounded contract before hosted publication. | `tests/integration/project-progression-session-start.test.mjs` passes 13/13; `scripts/qa-runner.mjs` remains the canonical exact-SHA release gate. |
 
 | 2026-08-30 | QA publication is fail-closed through one bounded runner: failed lanes stop, timeouts fail the receipt, and every lane binds to the current SHA. | `scripts/qa-runner.mjs`, `scripts/release-authority.mjs`, and `.github/workflows/ci.yml` provide the executable contract. |

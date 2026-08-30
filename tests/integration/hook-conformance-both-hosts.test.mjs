@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveBash } from '../../plugin/scripts/hook-shim-bash.mjs';
+import { rmAfterReap } from '../helpers/reap-detached.mjs';
 
 /**
  * EVERY HOOK, BOTH HOSTS, IN A PROJECT THAT IS NOT THIS ONE.
@@ -55,10 +56,9 @@ const gated = BASH ? it : it.skip;
  * returns, so it never needs more); `RM_OPTS_LEARN_FLUSH` is scoped to the one command that is
  * DETACHED by design, with a ceiling comfortably above the documented worst case.
  */
-const RM_OPTS_LEARN_FLUSH = { recursive: true, force: true, maxRetries: 300, retryDelay: 500 };
-// A manifest command can dispatch learn-flush without naming it in the trampoline text, so the
-// cleanup cannot safely infer detached-child lifetime from the outer command string.
-const rmOptsFor = () => RM_OPTS_LEARN_FLUSH;
+// A manifest command can dispatch learn-flush without naming it in the trampoline text. Reap from
+// the product's detached-job receipt instead of retrying deletion against a live writer.
+const cleanupStranger = (dir) => rmAfterReap(path.join(dir, '.conformance-home'), dir);
 
 /** A project this plugin has never seen: no git, no kb, no .swarm, no docs/adr, no evals. */
 function strangerProject() {
@@ -180,7 +180,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
         if (err && r.status !== 2) offenders.push(`${c.host}/${c.event}: STDERR "${err.slice(0, 90)}"`);
         if (r.status !== 0 && r.status !== 2) offenders.push(`${c.host}/${c.event}: exit ${r.status}`);
         if (r.error) offenders.push(`${c.host}/${c.event}: ${r.error.message.slice(0, 80)}`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally { cleanupStranger(dir); }
     }
     expect(offenders, 'these emit noise or fail in a project that is not ruvnet-brain — a host '
       + 'renders that to the user as a hook error').toEqual([]);
@@ -197,7 +197,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
         fire({ ...c, cwd: dir });
         const after = fs.readdirSync(dir).filter((n) => !n.startsWith('.conformance-')).sort().join(',');
         if (after !== before) offenders.push(`${c.host}/${c.event}: left behind ${after}`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally { cleanupStranger(dir); }
     }
     expect(offenders, 'these mutate a project the plugin does not own').toEqual([]);
   }, 600_000);
@@ -213,7 +213,7 @@ describe('every registered hook behaves in a project this plugin does not own', 
         const r = fire({ ...c, cwd: dir });
         const budget = (c.timeout ?? 30) * 1000;
         if (r.ms > budget * 0.8) offenders.push(`${c.host}/${c.event}: ${r.ms}ms of a ${budget}ms budget`);
-      } finally { fs.rmSync(dir, rmOptsFor(c.command)); }
+      } finally { cleanupStranger(dir); }
     }
     expect(offenders, 'these run too close to the host timeout that kills them; the host reports '
       + 'the kill as a hook error, intermittently, on ordinary tool calls').toEqual([]);
@@ -275,7 +275,7 @@ describe('ADR-063 refusal survives the wired decision-gate composition, on both 
         }
       } finally {
         fs.rmSync(settingsDir, { recursive: true, force: true });
-        fs.rmSync(dir, rmOptsFor(c.command));
+        cleanupStranger(dir);
       }
     }
     expect(offenders, 'the ADR-063 refusal must survive decision-gate composition on both hosts, in a '
@@ -292,7 +292,7 @@ describe('ADR-063 refusal survives the wired decision-gate composition, on both 
         if (r.status !== 0) offenders.push(`${c.host}: expected exit 0 at default advise, got ${r.status}`);
       } finally {
         fs.rmSync(settingsDir, { recursive: true, force: true });
-        fs.rmSync(dir, rmOptsFor(c.command));
+        cleanupStranger(dir);
       }
     }
     expect(offenders, 'a user who has not opted in must see byte-identical behaviour for a managed-store '
