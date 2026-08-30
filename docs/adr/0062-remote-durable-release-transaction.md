@@ -26,6 +26,7 @@ governs:
 
 | 2026-08-30 | Automatic PR execution now has one canonical bounded path; the legacy matrix remains available only by manual dispatch. | `.github/workflows/ci.yml` and `.github/workflows/qe-4-3.yml` remove competing automatic release-quality paths without changing the protected publication transaction. |
 | 2026-08-30 | Protected publication now consumes the canonical bounded QA receipt before release dispatch. | `scripts/qa-runner.mjs` binds the candidate SHA and artifact lanes; `docs/QA-RELEASE-PROCESS.md` records recovery and promotion. |
+| 2026-08-30 | Candidate sealing now has an executable coverage-projection producer; an archive without `COVERAGE.json` and `CORPUS-COVERAGE.json` cannot reach public verification. | `scripts/release-projection.mjs` and `.github/workflows/ci.yml` generate and embed the linked ledgers before `public-verification-inputs.mjs` consumes the exact archive. |
 
 | 2026-08-23 | Failed candidate evidence now preserves suite-level diagnostics and skipped-test identities for remote recovery. | Commit `cc25c24` improves diagnosis only; publication authority and mutation boundaries remain unchanged. |
 | 2026-08-23 | Hosted process failures now preserve bounded stdout/stderr tails in candidate receipts. | Commit `1310fb6` improves remote diagnosis only; publication authority and mutation boundaries remain unchanged. |
