@@ -108,14 +108,17 @@ export function validateRetrievalQueryEvidence(evidence) {
   return evidence;
 }
 
-export function verifyQueryOracleSource(queryEvidence, candidateSourceSha, { cwd = process.cwd(), run = spawnSync } = {}) {
+export function verifyQueryOracleSource(queryEvidence, candidateSourceSha, {
+  cwd = process.cwd(), run = spawnSync, allowSquashedSource = false,
+} = {}) {
   validateRetrievalQueryEvidence(queryEvidence);
   if (!HEX40.test(String(candidateSourceSha || '')) || queryEvidence.sourceCommit === candidateSourceSha) {
     throw new Error('query oracle source identity is invalid');
   }
   const ancestor = run('git', ['merge-base', '--is-ancestor', queryEvidence.sourceCommit, candidateSourceSha],
     { cwd, encoding: 'utf8' });
-  if (ancestor.error || ancestor.status !== 0) throw new Error('query oracle source is not a strict candidate ancestor');
+  const strictAncestor = !ancestor.error && ancestor.status === 0;
+  if (!strictAncestor && !allowSquashedSource) throw new Error('query oracle source is not a strict candidate ancestor');
   const shown = run('git', ['show', `${queryEvidence.sourceCommit}:${queryEvidence.sourcePath}`],
     { cwd, encoding: null, maxBuffer: 64 * 1024 * 1024 });
   let sourcePayload;
