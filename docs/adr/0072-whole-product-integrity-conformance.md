@@ -207,6 +207,8 @@ conformance.
 
 ## Currency log
 
+| 2026-08-30 | Reconciled the whole-product release path after exact-SHA CI exposed the Actions-token gists 403: the publisher now uses the prepared source-bound observation and retains fail-closed seeded-row freshness checks. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`; `tests/unit/corpus-seed.test.mjs`. |
+
 | 2026-08-30 | Reconciled the host-only updater after live v4.3.1 had no GitHub assets and the updater stranded the Stable Spine on 4.2.2-dev. | `bin/install.mjs` now records the KB plane as degraded while continuing executable host convergence; the missing required release asset remains a publication failure. |
 
 | 2026-08-30 | Whole-product PR evidence now has one bounded canonical entrypoint; the full legacy QE matrix is manual-only and cannot create competing release claims. | `scripts/qa-runner.mjs`, `.github/workflows/ci.yml`, and `.github/workflows/qe-4-3.yml` preserve protected publication checks while simplifying automatic evidence collection. |
