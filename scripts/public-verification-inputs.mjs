@@ -415,7 +415,7 @@ export async function createPublicVerificationInputs({ baselineBundle, candidate
     verifyQueryOracleSource(queryEvidence, candidateResult.candidate.sourceSha, { cwd: path.resolve(repo) });
     const plan = buildRetrievalCanaryPlan({ coverage: candidateResult.coverage, baseline,
       candidate: candidateResult.candidate, coverageIdentity: candidateResult.coverageIdentity,
-      queryEvidence, assetsDir: candidateTree.root });
+      queryEvidence, assetsDir: candidateTree.root, allowNoDelta: true });
     writeExactOutputs(outDir, {
       [baselineMode === 'observed' ? 'baseline-observation-receipt.json' : 'baseline-verification-receipt.json']: baselineProof.bytes,
       'COVERAGE.json': candidateResult.coverageBytes,
