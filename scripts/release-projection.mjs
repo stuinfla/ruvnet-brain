@@ -61,7 +61,11 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
     return { ...row, status: 'CURRENT', artifact: { ...row.artifact,
       sourceCommit: generation.sourceCommit, rvfSha256: generation.sha256 } };
   });
-  const publicStores = [...new Set(rows.map((row) => String(row.artifact.store).toLowerCase()))];
+  // The release ledger is the shipped public set, not a catalog of policy-excluded rows.
+  // Excluded rows remain in COVERAGE.json as auditable policy evidence, but must not be
+  // inserted into PUBLIC-RVF-GENERATIONS.json or counted as installed public stores.
+  const publicStores = [...new Set(rows.filter((row) => row.disposition === 'eligible')
+    .map((row) => String(row.artifact.store).toLowerCase()))];
   const classesFile = path.join(assets, 'public-store-classes.json');
   const derivedStores = fs.existsSync(classesFile)
     ? readJson(classesFile).derived.map((entry) => String(entry.store).toLowerCase()) : [];
