@@ -131,6 +131,8 @@ committed config).
 
 ## Currency log
 
+| 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
+
 | 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |
 
 | Date | What changed | Why (with referents) |

@@ -24,6 +24,8 @@ governs:
 
 ## Currency log
 
+| 2026-08-30 | Reviewed against release candidate 4.3.3: hosted exact-SHA failures were corrected in the release workflow, reconciliation fixtures, and canonical release wording; the protected transaction remains the only publication path. | 1beedaa |
+
 | 2026-08-30 | Re-read the remote release transaction boundary after exact-SHA CI exposed the forbidden user-gists call; release-QE now prepares and seals coverage from the immutable seed before the protected transaction. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`. |
 
 | 2026-08-30 | Automatic PR execution now has one canonical bounded path; the legacy matrix remains available only by manual dispatch. | `.github/workflows/ci.yml` and `.github/workflows/qe-4-3.yml` remove competing automatic release-quality paths without changing the protected publication transaction. |
