@@ -299,7 +299,9 @@ if (hasGists) {
   cp('ruv-gists.sources.json', OUT, { required: !PROJECTION });
 }
 // The inventory projection consumes this registry from the assembled bundle, not the checkout.
-cp('public-store-classes.json', OUT, { asset: true });
+// Store-class policy is source-controlled release metadata, not a corpus asset. The baseline
+// seed predates this registry, so sourcing it from ASSETS makes a valid seed fail projection.
+cp('public-store-classes.json', OUT, { required: true });
 
 // capability-cards.md — the FAST LANE's zero-ML answer source (kb/card-lane.mjs, the first
 // responder search_ruvnet consults before the heavy cross-repo search). Ships as its own small
