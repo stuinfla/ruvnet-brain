@@ -46,12 +46,8 @@ jobs:
         run: |
           set -euo pipefail
           node --check scripts/release.mjs
-          node --check scripts/windows-command.mjs
-          npm exec -- vitest run \
-            tests/unit/corpus-seed-release-authority.test.mjs \
-            tests/unit/corpus-seed.test.mjs \
-            tests/unit/countrefs-primer-l2-drift.test.mjs \
-            --reporter=dot
+          npm run version:check
+          npm run release:authority
 
   check:
     needs: candidate-preflight
