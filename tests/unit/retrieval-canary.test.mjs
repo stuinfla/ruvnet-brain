@@ -112,6 +112,22 @@ describe('coverage-derived retrieval canaries', () => {
     git(root, 'add', 'divergent.txt'); git(root, 'commit', '-qm', 'divergent candidate');
     const divergent = git(root, 'rev-parse', 'HEAD');
     expect(() => verifyQueryOracleSource(evidence, divergent, { cwd: root })).toThrow(/strict candidate ancestor/);
+
+    // A squash merge preserves the source bytes but not the source commit's ancestry. The
+    // release workflow explicitly opts into this mode only after fetching that commit.
+    git(root, 'checkout', '-qb', 'squashed-source', base);
+    fs.mkdirSync(path.join(root, 'data'));
+    fs.writeFileSync(path.join(root, sourcePath), `${JSON.stringify(sourcePayload)}\n`);
+    git(root, 'add', 'data'); git(root, 'commit', '-qm', 'source on squashed branch');
+    const squashedSource = git(root, 'rev-parse', 'HEAD');
+    const squashedEvidence = sealRetrievalQueryEvidence({ ...sourcePayload, sourceCommit: squashedSource, sourcePath });
+    git(root, 'checkout', '-qb', 'squashed-candidate', base);
+    fs.mkdirSync(path.join(root, 'data'));
+    fs.writeFileSync(path.join(root, sourcePath), `${JSON.stringify(squashedEvidence)}\n`);
+    git(root, 'add', 'data'); git(root, 'commit', '-qm', 'squash source evidence');
+    const squashedCandidate = git(root, 'rev-parse', 'HEAD');
+    expect(verifyQueryOracleSource(squashedEvidence, squashedCandidate, { cwd: root, allowSquashedSource: true }))
+      .toBe(squashedEvidence);
   });
 
   it('includes every delta store and a deterministic legacy sample', () => {

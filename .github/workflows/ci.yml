@@ -508,6 +508,8 @@ jobs:
         run: |
           set -euo pipefail
           test -s data/retrieval-query-evidence.json
+          ORACLE_SOURCE_COMMIT="$(node -p "require('./data/retrieval-query-evidence.json').sourceCommit")"
+          git fetch --no-tags origin "$ORACLE_SOURCE_COMMIT"
           node scripts/public-verification-inputs.mjs \
             --baseline-bundle "$RUVNET_SEED_BUNDLE" \
             --candidate-bundle "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \
