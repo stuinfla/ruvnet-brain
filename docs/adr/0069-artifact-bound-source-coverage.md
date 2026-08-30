@@ -3,7 +3,7 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
-updated: 2026-08-26
+updated: 2026-08-30
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -216,6 +216,7 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-30 | Merged `main` into PR #176 to clear a merge conflict against `docs/dream-cycle/LEDGER.md`-adjacent history (main had since landed `test:integration`'s corpus fixtures and a `source-coverage`/`retrieval-canary` build-out this ADR doesn't yet track). No functional change to this ADR's own content beyond the merge; re-stamped because the merge commit is now this file's own last-touching commit. | PR #176 mergeable_state flipped from `blocked` to `dirty` after ~4 days idle while `main` advanced past `d519177` (PR #160 convergence). Resolved by merging `origin/main`, keeping this candidate's 2026-08-26 row plus main's four 2026-08-22–23 rows in newest-first order; `resolveBuiltFromSha`'s own diff against `scripts/brain-stamp.mjs` was verified unchanged by the merge (`git diff --cached origin/main -- scripts/brain-stamp.mjs scripts/brain-stamp-resolve.mjs`). |
 | 2026-08-26 | `scripts/brain-stamp.mjs`'s `builtFromSha` now prefers `kb/RVF-GENERATIONS.json`'s recorded `sourceCommit` over the local clone's live HEAD, via a new pure `scripts/brain-stamp-resolve.mjs` helper; falls back to live HEAD only when no generation record exists. Does not itself satisfy this ADR's still-unbuilt signed enumeration, closed snapshot, or `data/source-coverage.json` generator. | Dream Cycle 2026-08-26 (issue #175) confirmed live the exact "clone freshness is not artifact freshness" gap this ADR's 2026-08-21 audit named against `scripts/brain-stamp.mjs`: the repo's own committed `kb/RVF-GENERATIONS.json` already disagreed with a live-HEAD read for `synthlang` (`sourceCommit` `69599563...`) and `autogenous` (`sourceCommit` `b5c6e838...`), the same two repos this ADR's Context section cites. |
 | 2026-08-23 | Reconciled candidate assembly with the artifact-bound coverage boundary. | `scripts/build-bundle.mjs` now ships `PRIVATE-STORES.json` alongside the assembled candidate so `release-projection.mjs` validates the same fence that governs the artifact. |
 | 2026-08-23 | Bound the checked-in corpus ledger to the v4.2.1 baseline seed scope and added a release preflight that rejects non-current eligible rows. | Commit `efcecad` updates `data/source-coverage.json`, `kb/no-corpus-repos.json`, and `.github/workflows/ci.yml`; the release projection now receives a corpus-kind ledger with the stale self-store explicitly excluded. The ADR remains Proposed because the baseline seed still needs the complete derived receipt set for final artifact proof. |

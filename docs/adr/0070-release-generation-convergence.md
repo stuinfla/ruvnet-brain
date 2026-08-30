@@ -3,7 +3,7 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-26
+updated: 2026-08-30
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -190,6 +190,7 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-30 | Re-read after PR #176 (Dream Cycle 2026-08-26, `scripts/brain-stamp.mjs`) merged `main` in to clear a stale-branch merge conflict. `brain-stamp.mjs`'s change is the same one already logged in ADR-069 on 2026-08-26 — `builtFromSha` now prefers `kb/RVF-GENERATIONS.json`'s recorded `sourceCommit` over the local clone's live HEAD — and does not touch this ADR's release-generation aggregate, install-cache retention, or self-seeding decisions. No behavior this ADR asserts changed; re-stamped because the doc-currency gate's commit-DAG check (`git rev-list <doc-sha>..HEAD`) counts PR #176's own branch-local commits touching `scripts/brain-stamp.mjs` as unseen once `main`'s divergent history is merged in. | PR #176 (stuinfla/ruvnet-brain#176), issue #175. `node scripts/doc-currency.mjs --check` flagged `presumed-stale` (5 commits, 4d) against this ADR's governed-path list only after the merge; the flagged commits are `fd5d485`/`8ef9894` (this PR's own history) becoming reachable-but-unmerged-into relative to this doc's last commit (`7527438`) once both DAG sides combined — not new decisions in `main`. |
 | 2026-08-23 | Re-read the release generation path after the exact seed assembled without its private fence. | Commit `655f9c2` restores `kb/PRIVATE-STORES.json` into the extracted seed before projection, so the candidate generation is classified against an explicit security boundary; exact-SHA CI and public verification remain required before convergence is claimed. |
 | 2026-08-23 | Added a source-bound release projection that emits `COVERAGE.json`, `CORPUS-COVERAGE.json`, and `PUBLIC-RVF-GENERATIONS.json` from the exact candidate and baseline receipt. | `scripts/release-projection.mjs` and the release-QE workflow now validate one candidate generation across the bundle; publication remains unclaimed until exact-SHA CI and public verification pass. |
 | 2026-08-22 | Reconciled policy-ineligible local stores with candidate selection and made every archive sidecar family subject to the same classification fence. | Commit `f088e4f` carries the complete lifecycle prerequisite: `scripts/build-bundle.mjs`, `scripts/corpus-candidate.mjs`, and the generation validator retain excluded local evidence outside the public release partition while requiring explicit coverage classification. Commit `5f9a52c` rejects any excluded or otherwise unclassified RVF sidecar family in the candidate archive, including case aliases. The combined 63-test focused gate passes, but no public release or installed-byte matrix was executed by these commits, so generation convergence remains unclaimed. |
