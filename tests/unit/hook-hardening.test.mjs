@@ -305,10 +305,10 @@ describe.skipIf(bashOnly)('session-start: the once-per-session context cost is b
     expect(steady).toBeLessThanOrEqual(10_500);
   }, 60_000);
 
-  it('TEETH: SessionStart points to the playbook and the prompt gate carries its compact L4 contract', () => {
+  it('TEETH: SessionStart stays neutral while the prompt gate carries its compact L4 contract', () => {
     const out = session().stdout;
     expect(out).toContain('RuvNet Brain active');
-    expect(out).toContain('standing build playbook');
+    expect(out).not.toContain('standing build playbook');
     const promptGate = fs.readFileSync(path.join(SCRIPTS, 'ground-ruvnet.sh'), 'utf8');
     for (const marker of ['take the wheel', 'SPARC', 'DDD', 'ADR', 'swarm', 'QA gate', '98',
       'frontend-design', 'image generation', 'API key', 'PROVEN', 'PARALLEL']) {

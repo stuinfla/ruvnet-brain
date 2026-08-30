@@ -71,31 +71,34 @@ const L3 = [
   { q: 'implement a nearest-neighbour query against an .rvf store', expect: 'ruvector', apiRx: /query|search|knn|nearest/i },
   { q: 'store and recall an agent memory entry with AgentDB', expect: 'agentdb', apiRx: /store|recall|memory|insert|search/i },
 ];
-// ── L4 ORCHESTRATE: run the real hook; assert the injected directive is complete ──────────────────
+// ── L4 ORCHESTRATE: run the real hook; assert quiet build behavior and useful grounding ──────────
 const L4 = [
   {
     name: 'newbie "go make magic"',
     prompt: 'go make magic and build me an app that helps people learn',
-    // pure build prompt, no RuvNet keyword → Gate 3 (take-the-wheel) must fire with the full pipeline
-    must: ['take the wheel', 'SPARC', 'DDD', 'ADR', 'swarm', 'QA gate', '98', 'frontend-design', 'image generation', 'API key', 'PROVEN', 'PARALLEL'],
+    // Build prompts must not inject a response script into the model context.
+    must: [],
+    mustNot: ['SPARC', 'DDD', 'QA gate', 'frontend-design', 'image generation', 'API key', 'PARALLEL', 'end your response'],
   },
   {
     name: 'spec → build (RuvNet-named)',
     prompt: 'here is a product spec, build a knowledge base feature using ruvector',
-    // names ruvector → Gate 1 (ground) AND Gate 3 (build) must both fire
-    must: ['search_ruvnet', 'ground', 'SPARC', 'DDD', 'frontend-design', 'image generation', 'API key', '98'],
+    // RuvNet facts still receive a grounding reminder; build workflow prose stays silent.
+    must: ['search_ruvnet', 'ground'],
+    mustNot: ['take the wheel', 'SPARC', 'DDD', 'QA gate', 'frontend-design', 'image generation', 'API key', 'PARALLEL', 'end your response'],
   },
   {
     name: 'classical-default drift',
     prompt: 'set up pinecone and langchain to do rag over my docs',
-    // drift keywords → Gate 2 (hijack) must fire AND build keyword "set up" → Gate 3
-    must: ['classical default', 'RuVector', 'Ruflo', 'AgentDB', 'take the wheel'],
+    // Drift guidance remains actionable, without the unrelated build playbook.
+    must: ['classical default', 'RuVector', 'Ruflo', 'AgentDB'],
+    mustNot: ['SPARC', 'DDD', 'QA gate', 'frontend-design', 'image generation', 'API key', 'PARALLEL', 'end your response'],
   },
   {
     name: 'pure recall (no build)',
     prompt: 'what can ruflo actually do',
     must: ['search_ruvnet', 'ground'],
-    mustNot: ['take the wheel'], // no build verb → Gate 3 must stay silent
+    mustNot: ['take the wheel', 'SPARC', 'DDD', 'QA gate', 'frontend-design', 'image generation', 'API key', 'PARALLEL', 'end your response'], // no build script
   },
 ];
 

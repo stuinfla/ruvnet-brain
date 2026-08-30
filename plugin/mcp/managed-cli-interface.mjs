@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadRuntimePreferences, runtimeChildEnv } from '../scripts/runtime-preferences.mjs';
+import { recordManagedCliObservation, recordRegistryLatestObservation } from '../scripts/capability-claim-evidence.mjs';
 
 export const MANAGED_EXECUTABLES = Object.freeze([
   'ruflo',
@@ -15,6 +16,15 @@ export const MANAGED_EXECUTABLES = Object.freeze([
 ]);
 
 const MANAGED = new Set(MANAGED_EXECUTABLES);
+const REGISTRY_PACKAGES = Object.freeze({
+  ruflo: 'ruflo',
+  'claude-flow': '@claude-flow/cli',
+  'agentic-flow': 'agentic-flow',
+  'agentic-qe': 'agentic-qe',
+  ruvector: 'ruvector',
+  'agent-browser': 'agent-browser',
+  'ruv-swarm': 'ruv-swarm',
+});
 const SUBCOMMAND = /^[a-z][a-z0-9-]*$/;
 const MAX_ARGS = 256;
 const MAX_ARG_BYTES = 8192;
@@ -29,6 +39,17 @@ const executableSchema = {
 };
 
 export const MANAGED_CLI_TOOLS = Object.freeze([
+  {
+    name: 'ruvnet_registry_latest',
+    description: 'Read the exact npm registry latest version for a managed RuvNet executable and record a content-bound public-registry receipt.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: { executable: executableSchema },
+      required: ['executable'],
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+  },
   {
     name: 'ruvnet_cli_help',
     description: 'Read a managed CLI interface from the executable itself. Runs only the supplied subcommand path plus --help and records a fresh stamp only after exit 0.',
@@ -146,20 +167,43 @@ function writeStamps(executable, argv, env) {
 export function resolveManagedExecutable(executable, env = process.env) {
   if (executable !== 'ruflo') return executable;
   const home = env.HOME || os.homedir();
-  const canonical = path.join(home, '.npm-global', 'bin', 'ruflo');
-  try {
-    fs.accessSync(canonical, fs.constants.X_OK);
-    return canonical;
-  } catch {
-    return executable;
+  const candidates = [path.join(home, '.npm-global', 'bin', 'ruflo')];
+  if (process.platform === 'win32') candidates.push(`${candidates[0]}.cmd`);
+  return candidates.find((candidate) => {
+    try { fs.accessSync(candidate, fs.constants.X_OK); return true; } catch { return false; }
+  }) || executable;
+}
+
+function quoteWindowsCommandArg(value) {
+  // cmd.exe is required for npm's .cmd shims. Keep the child_process call itself shell:false,
+  // and quote every literal token so shell metacharacters remain data rather than syntax.
+  // Delayed expansion is disabled by default; doubling percent signs prevents environment
+  // expansion while cmd parses the /c command line.
+  return `"${value.replace(/%/g, '%%').replace(/"/g, '""')}"`;
+}
+
+function spawnSpec(executable, argv, env) {
+  const resolved = resolveManagedExecutable(executable, env);
+  if (process.platform !== 'win32' || !resolved.toLowerCase().endsWith('.cmd')) {
+    return { file: resolved, args: argv, windowsVerbatimArguments: false };
   }
+  // `/s /c` removes the first and last quote characters from its command string. The outer
+  // envelope therefore preserves the inner quotes around a shim path containing spaces.
+  const command = `"${[resolved, ...argv].map(quoteWindowsCommandArg).join(' ')}"`;
+  return {
+    file: env.ComSpec || env.COMSPEC || 'cmd.exe',
+    args: ['/d', '/s', '/c', command],
+    windowsVerbatimArguments: true,
+  };
 }
 
 function execute(executable, argv, env) {
   return new Promise((resolve) => {
-    const child = spawn(resolveManagedExecutable(executable, env), argv, {
+    const spec = spawnSpec(executable, argv, env);
+    const child = spawn(spec.file, spec.args, {
       env,
       shell: false,
+      windowsVerbatimArguments: spec.windowsVerbatimArguments,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     const stdout = [];
@@ -213,16 +257,37 @@ function resultOf(executable, argv, result) {
   };
 }
 
-export async function callManagedCli(toolName, args, env = process.env) {
+export async function callManagedCli(toolName, args, env = process.env, fetchImpl = globalThis.fetch) {
   try {
     const executable = assertExecutable(args?.executable);
-    const argv = literalArgv(args?.argv);
+    const argv = literalArgv(args?.argv ?? []);
+
+    if (toolName === 'ruvnet_registry_latest') {
+      const packageName = REGISTRY_PACKAGES[executable];
+      const registryUrl = `https://registry.npmjs.org/${packageName.replace('/', '%2F')}/latest`;
+      const response = await fetchImpl(registryUrl, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+      const body = await response.text();
+      if (!response.ok) throw new Error(`registry latest lookup failed with HTTP ${response.status}`);
+      let metadata;
+      try { metadata = JSON.parse(body); } catch { throw new Error('registry latest response was not JSON'); }
+      const receipt = recordRegistryLatestObservation({
+        executable, packageName, version: metadata?.version, registryUrl, responseBody: body, env,
+      });
+      return {
+        content: [{ type: 'text', text: `${packageName} latest version: ${receipt.observedVersion} (registry receipt ${receipt.receiptSha256})` }],
+        isError: false,
+      };
+    }
 
     if (toolName === 'ruvnet_cli_help') {
       stampKeysForHelp(executable, argv);
       const commandArgv = [...argv, '--help'];
       const execution = await execute(executable, commandArgv, env);
       if (execution.code === 0 && !execution.error) writeStamps(executable, argv, env);
+      recordManagedCliObservation({ toolName, executable, argv: commandArgv, execution, env });
       return resultOf(executable, commandArgv, execution);
     }
 
@@ -263,7 +328,9 @@ export async function callManagedCli(toolName, args, env = process.env) {
       const childEnv = (executable === 'agentic-flow' || executable === 'agentic-qe')
         ? runtimeChildEnv({ env, cwd: env.RUVNET_BRAIN_PROJECT_DIR || process.cwd() })
         : env;
-      return resultOf(executable, argv, await execute(executable, argv, childEnv));
+      const execution = await execute(executable, argv, childEnv);
+      recordManagedCliObservation({ toolName, executable, argv, execution, env });
+      return resultOf(executable, argv, execution);
     }
 
     return {

@@ -7,10 +7,14 @@ import {
   paragraphChunks,
   provenanceBanner,
   rawUrlFor,
+  main,
   reconstructGists,
+  resolveSourcesFile,
   validateSourceReceipts,
   writeReconstruction,
 } from '../../scripts/rebuild-gists-from-receipts.mjs';
+import { sealGistReceipt, sealGistReceiptSet } from '../../scripts/gist-receipts.mjs';
+import { validateGistAggregateReceipt } from '../../scripts/coverage-integrity.mjs';
 
 const temps = [];
 const temp = () => {
@@ -78,6 +82,54 @@ describe('receipt validation and deterministic shaping', () => {
 });
 
 describe('raw receipt reconstruction', () => {
+  it('preserves and reseals the schema-3 observation receipt around rebuilt passage bytes', async () => {
+    const root = temp();
+    const gistId = 'a'.repeat(32);
+    const body = 'Schema three body.';
+    const gist = sealGistReceipt({ gistId, versionSha: 'b'.repeat(40),
+      updatedAt: '2026-08-21T11:00:00.000Z', ingestedAt: '2026-08-21T12:00:00.000Z', complete: true,
+      files: [fileReceipt('note.md', body)] });
+    const input = sealGistReceiptSet({ owner: 'ruvnet', generated: '2026-08-21T12:00:00.000Z',
+      observedAt: '2026-08-21T11:00:00.000Z', sourceObservationSha256: 'd'.repeat(64),
+      passagesSha256: null, gists: { [gistId]: gist } });
+    const result = await reconstructGists(input, {
+      fetchFn: async () => ({ ok: true, status: 200, arrayBuffer: async () => Buffer.from(body) }),
+    });
+    const written = writeReconstruction(result, { outDir: root });
+    expect(result.sources).toMatchObject({ schemaVersion: 3, kind: 'ruvnet-brain-gist-source-receipts',
+      sourceObservationSha256: 'd'.repeat(64), passagesSha256: sha256(result.passageBody) });
+    expect(() => validateGistAggregateReceipt({ receipt: result.sources,
+      passagesFile: written.passagesFile, expectedIds: [gistId], sourceObservationSha256: 'd'.repeat(64) }))
+      .not.toThrow();
+  });
+
+  it('resolves the durable installed receipt and completes from a clean clone with no local receipt', async () => {
+    const root = temp();
+    const cleanClone = path.join(root, 'clean-clone');
+    const home = path.join(root, 'home');
+    const installedKb = path.join(home, '.cache', 'ruvnet-brain', 'kb');
+    fs.mkdirSync(path.join(cleanClone, 'kb'), { recursive: true });
+    fs.mkdirSync(installedKb, { recursive: true });
+    const gistId = 'a'.repeat(32);
+    const input = sources({ [gistId]: sourceReceipt({ body: 'Installed receipt body.' }) });
+    const receipt = path.join(installedKb, 'ruv-gists.sources.json');
+    fs.writeFileSync(receipt, JSON.stringify(input));
+
+    expect(resolveSourcesFile({ repoRoot: cleanClone, env: {}, home })).toBe(receipt);
+    await expect(main([], {
+      repoRoot: cleanClone,
+      env: {},
+      home,
+      fetchFn: async () => ({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => Buffer.from('Installed receipt body.'),
+      }),
+    })).resolves.toBe(0);
+    expect(fs.existsSync(path.join(installedKb, 'ruv-gists.passages.jsonl'))).toBe(true);
+    expect(JSON.parse(fs.readFileSync(path.join(installedKb, 'ruv-gists.sources.json'), 'utf8')).schemaVersion).toBe(2);
+  });
+
   it('fetches with bounded concurrency while preserving receipt order and exact per-gist identities', async () => {
     const firstId = 'a'.repeat(32);
     const secondId = 'c'.repeat(32);

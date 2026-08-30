@@ -2594,9 +2594,18 @@ export function installCronEntry(line, { run = spawnSync } = {}) {
   return { ok: true, already: false };
 }
 
-/** launchd's own minimal PATH, plus the directory node/npx actually live in on this machine. */
+/**
+ * launchd's minimal PATH plus the user-level executable homes used by the supported hosts.
+ *
+ * The updater does more than run npx: --host-sync-only executes the installed Claude and Codex
+ * doors. A real 2026-08-22 launchd run found npx but then failed with `claude unavailable` and
+ * `spawnSync codex ENOENT`; interactive shells had supplied ~/.npm-global/bin and ~/.local/bin,
+ * launchd had not. Derive these from HOME so the fix is portable rather than pinned to one user.
+ */
 const launchdPath = () => [...new Set([
   path.dirname(process.execPath), path.dirname(npxPath()),
+  path.join(os.homedir(), '.npm-global', 'bin'), path.join(os.homedir(), '.local', 'bin'),
+  ...(process.platform === 'darwin' ? ['/Applications/Codex.app/Contents/Resources'] : []),
   '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin',
 ])].filter(Boolean).join(':');
 const cronExample = (kbDir) =>
@@ -2897,7 +2906,7 @@ function enableNightly() {
   <key>Label</key>
   <string>${NIGHTLY_LABEL}</string>
   <!-- Issue #129: the SAME host-convergent entrypoint the session updater runs, not the KB-only
-       forge-update.mjs it used to schedule. See NIGHTLY_ARGV. Still no `/bin/sh -c` (ADR-038) —
+       forge-update.mjs it used to schedule. See NIGHTLY_ARGV. Still no shell wrapper (ADR-038) —
        this execs npx directly. -->
   <key>ProgramArguments</key>
   <array>

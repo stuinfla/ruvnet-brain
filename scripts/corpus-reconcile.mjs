@@ -6,15 +6,29 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
+import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
+import { buildCoverage, observeSourceUniverse, sourceObservationDigest } from './source-coverage.mjs';
+import { reconcileGistReceipts } from './gist-receipts.mjs';
+import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
+import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';
+
+export { rebuildCorpusAggregates };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(HERE, '..');
 const HEX40 = /^[0-9a-f]{40}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 const SAFE_STORE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const STORE_ARTIFACT_SUFFIXES = [
+  '.big.rvf', '.big.rvf.idmap.json', '.big.rvf.embed.json', '.big.passages.jsonl',
+  '.big.meta.json', '.passages.jsonl', '.meta.json',
+];
+const REQUIRED_STORE_ARTIFACT_SUFFIXES = [
+  '.big.rvf', '.big.rvf.idmap.json', '.big.rvf.embed.json', '.passages.jsonl', '.meta.json',
+];
 
 function fail(message) {
   throw new Error(`[corpus-reconcile] ${message}`);
@@ -134,6 +148,47 @@ export function planReconciliation({ coverage, ledger, assetsDir = null }) {
   return plan.sort((a, b) => a.store.localeCompare(b.store));
 }
 
+export async function reconcileUntilStable({ maxRounds = 3, assetsDir = null, observe, build, readLedger: currentLedger,
+  execute, prune, rebuild } = {}) {
+  if (!Number.isSafeInteger(maxRounds) || maxRounds < 1 || maxRounds > 10
+    || [observe, build, currentLedger, execute, prune, rebuild].some((fn) => typeof fn !== 'function')) {
+    fail('bounded reconciliation loop configuration is invalid');
+  }
+  const rounds = [];
+  let observation = await observe();
+  for (let round = 1; round <= maxRounds; round += 1) {
+    const preliminary = await build(observation);
+    const plan = planReconciliation({ coverage: preliminary, ledger: currentLedger(), assetsDir });
+    const reconciliation = await execute(plan, round);
+    const pruning = await prune(preliminary, round);
+    let aggregates;
+    try {
+      aggregates = await rebuild(preliminary, observation, round);
+    } catch (error) {
+      if (error?.code !== 'GIST_OBSERVATION_MOVED') throw error;
+      const nextObservation = await observe();
+      rounds.push({ round, before: observation.observationSha256, after: nextObservation.observationSha256,
+        plan, ...reconciliation, ...pruning, rebuilt: [], invalidated: {
+          reason: 'gist observation moved during exact detail fetch', gistId: error.gistId || null } });
+      observation = nextObservation;
+      continue;
+    }
+    const nextObservation = await observe();
+    rounds.push({ round, before: observation.observationSha256, after: nextObservation.observationSha256,
+      plan, ...reconciliation, ...pruning, ...aggregates });
+    if (nextObservation.observationSha256 === observation.observationSha256) {
+      const coverage = await build(nextObservation);
+      const remaining = planReconciliation({ coverage, ledger: currentLedger(), assetsDir });
+      if (remaining.length) fail(`reconciliation stabilized with ${remaining.length} unresolved repository artifact(s)`);
+      const unresolved = coverage.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
+      if (unresolved.length) fail(`reconciliation stabilized with ${unresolved.length} unresolved eligible source(s)`);
+      return { observation: nextObservation, coverage, rounds };
+    }
+    observation = nextObservation;
+  }
+  fail(`source observation did not stabilize within ${maxRounds} reconciliation rounds`);
+}
+
 function defaultRun(command, args, options = {}) {
   return spawnSync(command, args, { encoding: 'utf8', ...options });
 }
@@ -147,14 +202,104 @@ function checked(run, command, args, options = {}) {
   return result;
 }
 
-export function executeReconciliation({
+function defaultRunAsync(command, args, options = {}) {
+  return new Promise((resolve) => {
+    const inherited = options.stdio === 'inherit';
+    const child = spawn(command, args, { ...options, encoding: undefined,
+      stdio: inherited ? 'inherit' : ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    if (!inherited) {
+      child.stdout.on('data', (chunk) => { stdout += chunk; });
+      child.stderr.on('data', (chunk) => { stderr += chunk; });
+    }
+    child.on('error', (error) => resolve({ status: null, error, stdout, stderr }));
+    child.on('close', (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+async function checkedAsync(run, command, args, options = {}) {
+  const result = await run(command, args, options) || {};
+  if (result.error || result.status !== 0) {
+    const detail = String(result.stderr || result.stdout || result.error?.message || `exit ${result.status}`).trim();
+    fail(`${command} ${args.join(' ')} failed${detail ? ` (${detail})` : ''}`);
+  }
+  return result;
+}
+
+const storeArtifacts = (store) => STORE_ARTIFACT_SUFFIXES.map((suffix) => `${store}${suffix}`);
+
+function writeJsonAtomic(file, value) {
+  const temporary = `${file}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+  fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+  fs.renameSync(temporary, file);
+}
+
+function seedWorkerAssets({ assets, output, store, ledger, source }) {
+  fs.mkdirSync(output, { recursive: true });
+  for (const name of storeArtifacts(store)) {
+    const input = path.join(assets, name);
+    if (!fs.existsSync(input)) continue;
+    const stat = fs.lstatSync(input);
+    if (!stat.isFile() || stat.isSymbolicLink()) fail(`${store}: canonical seed artifact is not a regular file (${name})`);
+    fs.copyFileSync(input, path.join(output, name));
+  }
+  writeJsonAtomic(path.join(output, 'RVF-GENERATIONS.json'), {
+    ...ledger, stores: ledger.stores?.[store] ? { [store]: ledger.stores[store] } : {},
+  });
+  writeJsonAtomic(path.join(output, 'SOURCE.json'), {
+    ...(source || { builder: 'rvf-kb-forge' }), stores: source?.stores?.[store] ? { [store]: source.stores[store] } : {},
+  });
+}
+
+function validateWorkerOutput({ output, item }) {
+  const allowed = new Set([...storeArtifacts(item.store), 'RVF-GENERATIONS.json', 'SOURCE.json']);
+  const names = fs.readdirSync(output).filter((name) => !name.startsWith('._')).sort();
+  const unexpected = names.filter((name) => !allowed.has(name));
+  if (unexpected.length) fail(`${item.store}: worker emitted unexpected artifact(s): ${unexpected.join(', ')}`);
+  const caseFolded = names.map((name) => name.toLowerCase());
+  if (new Set(caseFolded).size !== names.length) fail(`${item.store}: worker emitted case-fold aliases`);
+  for (const name of names) {
+    const stat = fs.lstatSync(path.join(output, name));
+    if (!stat.isFile() || stat.isSymbolicLink()) fail(`${item.store}: worker artifact is not a regular file (${name})`);
+  }
+  for (const suffix of REQUIRED_STORE_ARTIFACT_SUFFIXES) {
+    if (!names.includes(`${item.store}${suffix}`)) fail(`${item.store}: worker artifact family is incomplete (${suffix})`);
+  }
+  const ledger = readJson(path.join(output, 'RVF-GENERATIONS.json'), `${item.store} worker ledger`);
+  const ledgerStores = Object.keys(ledger.stores || {});
+  if (ledgerStores.length !== 1 || ledgerStores[0] !== item.store) fail(`${item.store}: worker ledger must contain exactly its own store`);
+  const generation = ledger.stores[item.store];
+  const expectedRvf = `${item.store}.big.rvf`;
+  if (generation?.file !== expectedRvf || String(generation.sourceCommit || '').toLowerCase() !== item.upstreamSha
+    || !fs.existsSync(path.join(output, expectedRvf))
+    || generation.sha256 !== sha256File(path.join(output, expectedRvf))
+    || generation.bytes !== fs.statSync(path.join(output, expectedRvf)).size) {
+    fail(`${item.store}: worker generation does not bind exact source and RVF bytes`);
+  }
+  const source = readJson(path.join(output, 'SOURCE.json'), `${item.store} worker source manifest`);
+  if (Object.keys(source.stores || {}).length !== 1 || !source.stores[item.store]
+    || String(source.stores[item.store].sourceCommit || '').toLowerCase() !== item.upstreamSha) {
+    fail(`${item.store}: worker SOURCE manifest does not bind exact source`);
+  }
+  const files = names.filter((name) => !['RVF-GENERATIONS.json', 'SOURCE.json'].includes(name))
+    .map((name) => ({ name, sha256: sha256File(path.join(output, name)), bytes: fs.statSync(path.join(output, name)).size }));
+  const payload = { schemaVersion: 1, kind: 'ruvnet-brain-corpus-worker-result', store: item.store,
+    sourceCommit: item.upstreamSha, generation, source: source.stores[item.store], files };
+  return { ...payload, receiptSha256: crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex'), output };
+}
+
+export async function executeReconciliation({
   plan,
   assetsDir,
   workspaceDir,
   root = DEFAULT_ROOT,
-  run = defaultRun,
+  run = defaultRunAsync,
+  concurrency = 5,
 }) {
-  if (!Array.isArray(plan)) fail('reconciliation plan must be an array');
+  if (!Array.isArray(plan) || !Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 10) {
+    fail('reconciliation plan or worker concurrency is invalid');
+  }
   const assets = path.resolve(assetsDir || '');
   const workspace = path.resolve(workspaceDir || '');
   const ledgerFile = path.join(assets, 'RVF-GENERATIONS.json');
@@ -163,30 +308,152 @@ export function executeReconciliation({
   fs.mkdirSync(workspace, { recursive: true });
   const forge = path.join(path.resolve(root), 'kb', 'forge-refresh.mjs');
   if (!fs.existsSync(forge)) fail(`forge-refresh missing (${forge})`);
-  const refreshed = [];
+  const canonicalLedger = readJson(ledgerFile, 'RVF generation ledger');
+  const sourceFile = path.join(assets, 'SOURCE.json');
+  const canonicalSource = fs.existsSync(sourceFile) ? readJson(sourceFile, 'SOURCE manifest') : { builder: 'rvf-kb-forge', stores: {} };
+  const orderedPlan = [...plan].sort((a, b) => a.store.localeCompare(b.store));
+  const lowerStores = orderedPlan.map(({ store }) => store.toLowerCase());
+  if (new Set(lowerStores).size !== lowerStores.length) fail('reconciliation plan has duplicate or case-fold-colliding stores');
 
-  for (const item of plan) {
+  const worker = async (item) => {
     if (!SAFE_STORE.test(item.store) || !HEX40.test(item.upstreamSha) || !repositorySlug(item.url)) {
       fail(`unsafe reconciliation item for ${item?.store || item?.name || 'unknown store'}`);
     }
-    const cloneDir = path.join(workspace, item.store);
-    if (fs.existsSync(cloneDir)) fail(`fresh clone target already exists (${cloneDir})`);
-    checked(run, 'git', ['clone', '--no-checkout', '--filter=blob:none', item.url, cloneDir]);
-    checked(run, 'git', ['-C', cloneDir, 'fetch', '--depth=1', 'origin', item.upstreamSha]);
-    checked(run, 'git', ['-C', cloneDir, 'checkout', '--detach', 'FETCH_HEAD']);
-    const head = checked(run, 'git', ['-C', cloneDir, 'rev-parse', 'HEAD']);
+    const workerRoot = path.join(workspace, 'workers', item.store);
+    const cloneDir = path.join(workerRoot, 'clone');
+    const output = path.join(workerRoot, 'assets');
+    fs.mkdirSync(workerRoot, { recursive: true });
+    seedWorkerAssets({ assets, output, store: item.store, ledger: canonicalLedger, source: canonicalSource });
+    await checkedAsync(run, 'git', ['clone', '--no-checkout', '--filter=blob:none', item.url, cloneDir]);
+    await checkedAsync(run, 'git', ['-C', cloneDir, 'fetch', '--depth=1', 'origin', item.upstreamSha]);
+    await checkedAsync(run, 'git', ['-C', cloneDir, 'checkout', '--detach', 'FETCH_HEAD']);
+    const head = await checkedAsync(run, 'git', ['-C', cloneDir, 'rev-parse', 'HEAD']);
     if (String(head.stdout || '').trim().toLowerCase() !== item.upstreamSha) {
       fail(`${item.store}: fresh clone did not resolve the exact upstream SHA`);
     }
-    checked(run, process.execPath, [forge, '--repo', cloneDir, '--out', assets, '--name', item.store], { stdio: 'inherit' });
-    const ledger = readJson(ledgerFile, 'RVF generation ledger after forge-refresh');
-    const generation = Object.entries(ledger.stores || {}).find(([name]) => name.toLowerCase() === item.store.toLowerCase())?.[1];
-    if (String(generation?.sourceCommit || '').toLowerCase() !== item.upstreamSha) {
-      fail(`forge-refresh did not bind ${item.store} to the exact upstream SHA`);
+    await checkedAsync(run, process.execPath, [forge, '--repo', cloneDir, '--out', output, '--name', item.store,
+      ...(FULL_HINTS[item.store] ? ['--full', FULL_HINTS[item.store]] : []),
+      ...(KEEP_DIRS[item.store] ? ['--keep', KEEP_DIRS[item.store]] : []),
+    ], { stdio: 'inherit', env: { ...process.env, RUVNET_BIG_SHARDS: '1' } });
+    return validateWorkerOutput({ output, item });
+  };
+
+  const results = new Array(orderedPlan.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, orderedPlan.length) }, async () => {
+    while (next < orderedPlan.length) {
+      const index = next++;
+      results[index] = await worker(orderedPlan[index]);
     }
-    refreshed.push(item.store);
+  }));
+  if (!results.length) return { refreshed: [], workers: [] };
+
+  const merge = path.join(workspace, 'merge-candidate');
+  fs.mkdirSync(merge);
+  const mergedLedger = structuredClone(canonicalLedger);
+  const mergedSource = structuredClone(canonicalSource);
+  mergedLedger.stores ||= {};
+  mergedSource.stores ||= {};
+  const promotedFiles = [];
+  for (const result of results) {
+    for (const file of result.files) {
+      fs.copyFileSync(path.join(result.output, file.name), path.join(merge, file.name), fs.constants.COPYFILE_EXCL);
+      promotedFiles.push(file.name);
+    }
+    mergedLedger.stores[result.store] = result.generation;
+    mergedSource.stores[result.store] = result.source;
   }
-  return { refreshed };
+  mergedLedger.stores = Object.fromEntries(Object.entries(mergedLedger.stores).sort(([a], [b]) => a.localeCompare(b)));
+  mergedSource.stores = Object.fromEntries(Object.entries(mergedSource.stores).sort(([a], [b]) => a.localeCompare(b)));
+  writeJsonAtomic(path.join(merge, 'RVF-GENERATIONS.json'), mergedLedger);
+  writeJsonAtomic(path.join(merge, 'SOURCE.json'), mergedSource);
+  promotedFiles.push('RVF-GENERATIONS.json', 'SOURCE.json');
+  promoteArtifactSet({ liveDir: assets, candidateDir: merge, files: promotedFiles.sort() });
+  return { refreshed: results.map(({ store }) => store),
+    workers: results.map(({ output: _output, ...receipt }) => receipt) };
+}
+
+export function syncCorpusInputs({ root = DEFAULT_ROOT, assetsDir }) {
+  const sourceKb = path.join(path.resolve(root), 'kb');
+  const assets = path.resolve(assetsDir || '');
+  const required = ['capability-cards.md', 'external-sources.json', 'no-corpus-repos.json',
+    'public-store-classes.json'];
+  for (const name of required) {
+    const source = path.join(sourceKb, name);
+    if (!fs.existsSync(source) || !fs.statSync(source).isFile()) fail(`canonical corpus input missing (${source})`);
+    fs.copyFileSync(source, path.join(assets, name));
+  }
+  const sourceL2 = path.join(sourceKb, 'l2');
+  if (!fs.existsSync(sourceL2) || !fs.statSync(sourceL2).isDirectory()) fail(`canonical L2 input missing (${sourceL2})`);
+  fs.rmSync(path.join(assets, 'l2'), { recursive: true, force: true });
+  fs.cpSync(sourceL2, path.join(assets, 'l2'), { recursive: true });
+  for (const entry of fs.readdirSync(sourceKb)) {
+    if (entry.endsWith('-primer.md') || /^l2-topics\..+\.json$/.test(entry)) {
+      fs.copyFileSync(path.join(sourceKb, entry), path.join(assets, entry));
+    }
+  }
+  return { copied: required };
+}
+
+export async function materializeGistReceipts({ observation, assetsDir, fetchGist, fetchBody, now } = {}) {
+  if (observation?.observationSha256 !== sourceObservationDigest(observation)) {
+    fail('gist receipts require an exact sealed source observation');
+  }
+  const sourceFile = path.join(path.resolve(assetsDir || ''), 'ruv-gists.sources.json');
+  const existing = fs.existsSync(sourceFile) ? readJson(sourceFile, 'existing gist receipts') : null;
+  const receipt = await reconcileGistReceipts({ observation, existing, fetchGist, fetchBody, now });
+  if (receipt.sourceObservationSha256 !== observation.observationSha256) {
+    fail('gist receipts differ from the sealed source observation');
+  }
+  writeJsonAtomic(sourceFile, receipt);
+  return { sourceFile, receipt };
+}
+
+export async function observeAndMaterializeGistReceipts({ owner = 'ruvnet', assetsDir,
+  observe = observeSourceUniverse, fetchGist, fetchBody, now } = {}) {
+  const assets = path.resolve(assetsDir || '');
+  const externalFile = path.join(assets, 'external-sources.json');
+  const policy = fs.existsSync(externalFile) ? readJson(externalFile, 'external source policy') : { sources: [] };
+  if (!Array.isArray(policy.sources)) fail('external source policy has no sources array');
+  const observation = await observe({ owner, externalSources: policy.sources });
+  const materialized = await materializeGistReceipts({ observation, assetsDir: assets, fetchGist, fetchBody, now });
+  return { observation, ...materialized };
+}
+
+export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, workspaceDir,
+  root = DEFAULT_ROOT, maxRounds = 3,
+  observeAndMaterialize = null,
+  build = (observation) => buildCoverage({ owner, kbDir: assetsDir, policyDir: assetsDir, observation }),
+  readLedger = () => readJson(path.join(path.resolve(assetsDir || ''), 'RVF-GENERATIONS.json'),
+    'RVF generation ledger'),
+  execute = executeReconciliation,
+  prune = () => ({ pruned: [] }),
+  rebuild = (_coverage, observation) => rebuildCorpusAggregates({ assetsDir, observation, root }),
+} = {}) {
+  if (!assetsDir || !workspaceDir) fail('stable reconciliation requires explicit assets and workspace directories');
+  const workspace = path.resolve(workspaceDir || '');
+  return reconcileUntilStable({
+    maxRounds,
+    assetsDir,
+    observe: async () => (await (observeAndMaterialize
+      ? observeAndMaterialize({ owner, assetsDir })
+      : observeAndMaterializeGistReceipts({ owner, assetsDir }))).observation,
+    build,
+    readLedger,
+    execute: (plan, round) => execute({
+      plan, assetsDir, workspaceDir: path.join(workspace, `round-${round}`), root,
+    }),
+    prune,
+    rebuild,
+  });
+}
+
+export async function reconcileAndPrepareCorpusCandidate({ plan, assetsDir, workspaceDir, root = DEFAULT_ROOT,
+  owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile,
+  execute = executeReconciliation, prepare = prepareCorpusCandidate } = {}) {
+  const reconciliation = await execute({ plan, assetsDir, workspaceDir, root });
+  const candidate = await prepare({ root, assetsDir, owner, builderSha, candidateDir, receiptFile, coverageFile });
+  return { reconciliation, candidate };
 }
 
 export function prepareCorpusCandidate({
@@ -217,7 +484,8 @@ export function prepareCorpusCandidate({
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
   checked(run, process.execPath, [coverageScript, '--owner', owner, '--assets', assets, '--write'], { stdio: 'inherit' });
   checked(run, process.execPath, [coverageScript, '--owner', owner, '--assets', assets, '--check', '--strict'], { stdio: 'inherit' });
-  checked(run, process.execPath, [buildScript, '--assets', assets, '--out', candidate], { stdio: 'inherit' });
+  checked(run, process.execPath, [buildScript, '--assets', assets, '--out', candidate,
+    '--coverage', policy], { stdio: 'inherit' });
   const bundleFile = path.join(path.dirname(candidate), `${path.basename(candidate)}.zip`);
   checked(run, process.execPath, [receiptScript, '--assets', assets, '--bundle', bundleFile,
     '--policy', policy, '--receipt', receipt, '--builder-source-sha', builderSha], { stdio: 'inherit' });
@@ -254,14 +522,13 @@ export async function main(argv = process.argv.slice(2)) {
   if (!fs.existsSync(privateFence)) fail(`canonical private-store fence missing (${privateFence})`);
   fs.copyFileSync(privateFence, path.join(assetsDir, 'PRIVATE-STORES.json'), fs.constants.COPYFILE_EXCL);
   fs.rmSync(extractParent, { recursive: true, force: true });
-  const coverageScript = path.join(root, 'scripts', 'source-coverage.mjs');
-  checked(defaultRun, process.execPath, [coverageScript, '--owner', owner, '--assets', assetsDir, '--write'], { stdio: 'inherit' });
-  const policy = readJson(coverageFile, 'source coverage policy');
-  const ledger = readJson(path.join(assetsDir, 'RVF-GENERATIONS.json'), 'bootstrap RVF generation ledger');
-  const plan = planReconciliation({ coverage: policy, ledger, assetsDir });
-  const reconciliation = executeReconciliation({ plan, assetsDir, workspaceDir, root });
-  const candidate = prepareCorpusCandidate({ root, assetsDir, owner, builderSha, candidateDir, receiptFile, coverageFile });
-  process.stdout.write(`${JSON.stringify({ ok: true, seedTag, seedSha256, plan, ...reconciliation, ...candidate }, null, 2)}\n`);
+  syncCorpusInputs({ root, assetsDir });
+  const { reconciliation, candidate } = await reconcileAndPrepareCorpusCandidate({
+    plan: [], assetsDir, workspaceDir, root, owner, builderSha, candidateDir, receiptFile, coverageFile,
+    execute: () => reconcileCorpusUntilStable({ owner, assetsDir, workspaceDir, root }),
+  });
+  const plan = reconciliation.rounds.flatMap((round) => round.plan);
+  process.stdout.write(`${JSON.stringify({ ok: true, seedTag, seedSha256, plan, reconciliation, ...candidate }, null, 2)}\n`);
   return 0;
 }
 

@@ -1,12 +1,30 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto';
+import { canonicalJson } from './coverage-integrity.mjs';
+import { verifyPublicVerificationAggregate } from './public-verification-aggregate.mjs';
+
+export { canonicalJson };
 
 export const RECEIPT_PREFIX = 'release-transaction-';
-export const TERMINAL_STATES = new Set(['channels-converged', 'aborted']);
+export const CURRENT_RECEIPT_SCHEMA_VERSION = 3;
+export const SUCCESS_CLOSED_STATES = new Set(['install-verified']);
+export const UNSUCCESSFUL_CLOSED_STATES = new Set(['aborted', 'abandoned', 'superseded']);
+
+export function receiptDisposition(receipt) {
+  if (!receipt || !Number.isInteger(receipt.schemaVersion)) return 'invalid';
+  if (receipt.schemaVersion <= 2 && receipt.state === 'channels-converged') return 'legacy-closed';
+  if (receipt.schemaVersion >= 3 && SUCCESS_CLOSED_STATES.has(receipt.state)) return 'verified';
+  if (UNSUCCESSFUL_CLOSED_STATES.has(receipt.state)) return 'closed-unsuccessful';
+  if (receipt.schemaVersion >= 3 && receipt.state === 'channels-converged') return 'pending-public-verification';
+  return 'pending';
+}
+
+export const isClosedReceipt = (receipt) => ['verified', 'closed-unsuccessful', 'legacy-closed']
+  .includes(receiptDisposition(receipt));
 
 // `aborted` WAS UNREACHABLE, AND THAT BRICKED THE RELEASE RAIL (found 2026-08-07, issue #77).
 //
-// `aborted` has always been in TERMINAL_STATES, but no state below listed it as a target — so it
+// `aborted` was historically declared terminal, but no state below listed it as a target — so it
 // was a terminal state nothing could ever enter. Combined with `manual-intervention-required`
 // (which has NO outgoing transitions and is NOT terminal), an interrupted release had exactly two
 // destinations and both were permanent non-terminal dead ends.
@@ -33,7 +51,7 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
   'npm-candidate-staged': ['remote-materialization-intent', 'manual-intervention-required', ...ABORTABLE],
   'remote-materialization-intent': ['prepared', 'manual-intervention-required', ...ABORTABLE],
   prepared: ['github-promote-intent', 'manual-intervention-required', ...ABORTABLE],
-  'github-promote-intent': ['github-promoted-nonlatest', 'manual-intervention-required', ...ABORTABLE],
+  'github-promote-intent': ['github-promoted-nonlatest', 'compensation-intent', 'manual-intervention-required', ...ABORTABLE],
   'github-promoted-nonlatest': ['npm-promote-intent', 'manual-intervention-required', ...ABORTABLE],
   'npm-promote-intent': ['npm-promoted', 'compensation-intent', 'manual-intervention-required', ...ABORTABLE],
   // `defaults-promoted` added 2026-08-07: when GitHub is ALREADY latest at the moment npm is
@@ -51,7 +69,10 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
   'defaults-promoted': ['finalize-intent', 'manual-intervention-required', ...ABORTABLE],
   'finalize-intent': ['channels-converged', 'manual-intervention-required', ...ABORTABLE],
   'manual-intervention-required': [],
-  'channels-converged': [],
+  'channels-converged': ['install-verified', 'abandoned', 'superseded'],
+  'install-verified': [],
+  abandoned: [],
+  superseded: [],
   aborted: [],
 });
 
@@ -79,16 +100,6 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
  * here. This does not change the digest of any receipt that never held an undefined value, which is
  * every receipt that currently verifies.
  */
-export const canonicalJson = (value) => {
-  if (Array.isArray(value)) return `[${value.map((item) => (item === undefined ? 'null' : canonicalJson(item))).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort()
-      .filter((key) => value[key] !== undefined)
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
-};
-
 export const receiptPayload = (receipt) => {
   const { signature: _signature, receiptDigest: _digest, ...payload } = receipt;
   return canonicalJson(payload);
@@ -125,7 +136,8 @@ export function signReceipt(receipt, privateKey) {
 }
 
 export function verifyReceipt(receipt, publicKey) {
-  if (!receipt || ![1, 2].includes(receipt.schemaVersion) || !/^[a-f0-9]{64}$/.test(receipt.transactionId || '')) {
+  if (!receipt || ![1, 2, CURRENT_RECEIPT_SCHEMA_VERSION].includes(receipt.schemaVersion)
+    || !/^[a-f0-9]{64}$/.test(receipt.transactionId || '')) {
     throw new Error('invalid release transaction receipt');
   }
   const { signature, receiptDigest, ...unsigned } = receipt;
@@ -149,13 +161,20 @@ export function validateReceiptChain(receipts, identity, publicKey) {
     if ((receipt.previousReceiptDigest || null) !== (previous?.receiptDigest || null)) {
       throw new Error('release receipt chain conflict');
     }
+    if (previous && receipt.schemaVersion >= 3 && receiptDisposition(previous) === 'legacy-closed') {
+      throw new Error('legacy-closed release receipt cannot be promoted into schema 3');
+    }
+    if (previous && receipt.schemaVersion >= 3
+      && !ALLOWED_TRANSITIONS[previous.state]?.includes(receipt.state)) {
+      throw new Error(`illegal release transition ${previous.state} -> ${receipt.state}`);
+    }
     previous = receipt;
   }
   return sorted;
 }
 
 const stateReceipt = ({ identity, prior, state, observation = {}, privateKey }) => signReceipt({
-  schemaVersion: 2,
+  schemaVersion: CURRENT_RECEIPT_SCHEMA_VERSION,
   transactionId: transactionIdFor(identity),
   sequence: prior ? prior.sequence + 1 : 0,
   previousReceiptDigest: prior?.receiptDigest || null,
@@ -203,11 +222,15 @@ export function reduceReleaseState({ lastReceipt, snapshot, identity, prior }) {
   }
   if (npmB && snapshot.github?.draft === true) return { action: 'compensate-npm' };
   if (npmB && githubLatest) {
+    if (lastReceipt.state === 'install-verified') {
+      return githubPublished && assetsExact && candidateExact
+        ? { action: 'complete' }
+        : { action: 'manual', reason: 'verified public channels drifted' };
+    }
     if (lastReceipt.state === 'channels-converged') {
       return githubPublished && assetsExact && candidateExact
-        && snapshot.publicReceiptExact && snapshot.publicHostsExact
-        ? { action: 'complete' }
-        : { action: 'manual', reason: 'terminal public state drifted' };
+        ? { action: 'await-install-verification' }
+        : { action: 'manual', reason: 'channel-converged state drifted' };
     }
     return { action: 'finalize' };
   }
@@ -257,7 +280,7 @@ export async function pollObservation(read, predicate, {
   throw new Error(`visibility deadline exceeded after ${now() - started}ms: ${detail}`);
 }
 
-export async function runReleaseTransaction({ identity, assets, adapter, privateKey, publicKey, hostVerifier }) {
+export async function runReleaseTransaction({ identity, assets, adapter, privateKey, publicKey }) {
   const expectedId = transactionIdFor(identity);
   const discovered = await adapter.discover(identity);
   const competing = discovered.pending?.filter((item) => item.transactionId !== expectedId) || [];
@@ -269,7 +292,8 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
   const draft = discovered.matchingDrafts?.[0] || await adapter.createDraft(identity);
   const append = async (state, observation = {}) => {
     const recoveryCompensation = state === 'compensation-intent' && current
-      && !TERMINAL_STATES.has(current.state) && current.state !== 'manual-intervention-required';
+      && !isClosedReceipt(current) && current.state !== 'manual-intervention-required'
+      && current.state !== 'channels-converged';
     if (current && !ALLOWED_TRANSITIONS[current.state]?.includes(state) && current.state !== state
       && !recoveryCompensation) {
       throw new Error(`illegal release transition ${current.state} -> ${state}`);
@@ -298,10 +322,10 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
     const snapshot = await adapter.observeSnapshot(identity, draft, {
       forceAssets: current.state === 'finalize-intent' || current.state === 'channels-converged',
     });
-    if (current.state === 'channels-converged') {
-      const terminal = reduceReleaseState({ lastReceipt: current, snapshot, identity, prior });
-      if (terminal.action === 'complete') return current;
-      throw new Error(`terminal release drift: ${terminal.reason || terminal.action}`);
+    if (current.state === 'channels-converged' || current.state === 'install-verified') {
+      const disposition = reduceReleaseState({ lastReceipt: current, snapshot, identity, prior });
+      if (['complete', 'await-install-verification'].includes(disposition.action)) return current;
+      throw new Error(`release state drift: ${disposition.reason || disposition.action}`);
     }
     // A process may die after the provider side effect and before its observation receipt. Rebuild
     // that missing receipt from fresh state before asking the reducer for the next command.
@@ -332,11 +356,11 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
       await transition('compensated', { npm: snapshot.npm, github: snapshot.github, recovered: true });
       throw new Error('npm compensation recovered; resume the same transaction');
     }
-    if (current.state === 'finalize-intent' && snapshot.publicReceiptExact && snapshot.publicHostsExact
-      && npmCandidateExact(snapshot, identity) && npmLatestIsB(snapshot, identity)
+    if (current.state === 'finalize-intent' && npmCandidateExact(snapshot, identity) && npmLatestIsB(snapshot, identity)
       && githubIsB(snapshot, identity) && snapshot.github?.published && snapshot.github?.latest
       && snapshot.github?.assetsExact) {
-      return append('channels-converged', { verdict: 'PASS', recovered: true });
+      return append('channels-converged', { verdict: 'PUBLISHED_NOT_VERIFIED', recovered: true,
+        npm: snapshot.npm, github: snapshot.github });
     }
     const decision = reduceReleaseState({ lastReceipt: current, snapshot, identity, prior });
     const stageRecord = {
@@ -351,6 +375,7 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
       ? `::notice title=Release stage ${decision.action}::${JSON.stringify(stageRecord)}`
       : JSON.stringify(stageRecord));
     if (decision.action === 'complete') return current;
+    if (decision.action === 'await-install-verification') return current;
     if (decision.action === 'manual') {
       await transition('manual-intervention-required', { reason: decision.reason, snapshot });
       throw new Error(`release requires manual intervention: ${decision.reason}`);
@@ -443,32 +468,15 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
         await transition('defaults-promoted', { npm: snapshot.npm, github: snapshot.github });
       }
       await transition('finalize-intent');
-      const final = await adapter.finalize(identity, current, hostVerifier);
-      // SAY WHICH CONVERGENCE FAILED, AND WHY (2026-08-07). This threw the bare sentence
-      // `final release convergence failed` while `finalize` had already returned exactly the reason
-      // — hostVerifierError, hosts.verifier.error, publicationError or sealError — and the throw
-      // discarded every one of them. That is the same defect that let `spawnSync ENOBUFS` masquerade
-      // as `staged GitHub payload mismatch` for three days: an error that reports its category and
-      // withholds its evidence. Publication had ALREADY succeeded on both channels here, so the
-      // operator is reading this line while npm and GitHub are correct, with nothing to act on.
-      if (final.verdict !== 'PASS') {
-        const why = final.hostVerifierError
-          || final.hosts?.verifier?.error
-          || final.publicationError
-          || final.sealError
-          || `verdict=${final.verdict ?? '(none)'}`;
-        const fixtures = final.hosts?.verifier?.fixtures;
-        const detail = fixtures ? ` | fixtures: ${JSON.stringify(fixtures).slice(0, 400)}` : '';
-        throw new Error(`final release convergence failed: ${why}${detail}`);
-      }
       const reobserved = await adapter.observeSnapshot(identity, draft, { forceAssets: true });
       if (!(npmLatestIsB(reobserved, identity) && reobserved.github?.latest && githubIsB(reobserved, identity))) {
-        throw new Error('provider defaults drifted during finalization');
+        throw new Error('provider defaults drifted before channel convergence');
       }
-      if (!reobserved.github?.assetsExact || !reobserved.publicReceiptExact || !reobserved.publicHostsExact) {
-        throw new Error('public receipt, host, or artifact evidence drifted during finalization');
+      if (!reobserved.github?.assetsExact || !npmCandidateExact(reobserved, identity)) {
+        throw new Error('provider artifacts drifted before channel convergence');
       }
-      return append('channels-converged', final);
+      return append('channels-converged', { verdict: 'PUBLISHED_NOT_VERIFIED',
+        npm: reobserved.npm, github: reobserved.github });
     }
   }
   throw new Error('release reducer exceeded its bounded transition count');
@@ -478,7 +486,9 @@ export async function abortReleaseTransaction({ identity, receipts, reason, auth
   if (!authorized) throw new Error('release abort requires explicit human authorization');
   const chain = validateReceiptChain(receipts, identity, publicKey);
   const current = chain.at(-1);
-  if (!current || TERMINAL_STATES.has(current.state)) throw new Error('release transaction is not abortable');
+  if (!current || isClosedReceipt(current) || !ALLOWED_TRANSITIONS[current.state]?.includes('aborted')) {
+    throw new Error('release transaction is not abortable');
+  }
   const snapshot = await adapter.observeSnapshot(identity);
   const prior = chain[0]?.observation?.prior;
   if (!prior || snapshot.npm?.latestVersion === identity.version || snapshot.github?.latest === true
@@ -491,4 +501,82 @@ export async function abortReleaseTransaction({ identity, receipts, reason, auth
   });
   await adapter.appendReceipt(null, receipt, `${RECEIPT_PREFIX}${String(receipt.sequence).padStart(4, '0')}.json`);
   return receipt;
+}
+
+export async function finalizeReleaseTransaction({
+  identity,
+  aggregate,
+  adapter,
+  privateKey,
+  publicKey,
+  aggregatePublicKey,
+} = {}) {
+  if (!adapter || typeof adapter.discover !== 'function' || typeof adapter.observeSnapshot !== 'function'
+    || typeof adapter.materializePublicVerificationAggregate !== 'function'
+    || typeof adapter.appendReceipt !== 'function' || typeof adapter.readReceipt !== 'function') {
+    throw new Error('public verification finalizer adapter is incomplete');
+  }
+  const expectedAggregateIdentity = {
+    ...aggregate?.identity,
+    sourceSha: identity?.candidateSha,
+    version: identity?.version,
+    tag: identity?.tag,
+    artifactSha256: identity?.packageSha256,
+    bundleSha256: identity?.bundleSha256,
+    payloadId: identity?.payloadId,
+    releaseTransactionId: transactionIdFor(identity),
+  };
+  verifyPublicVerificationAggregate(aggregate, aggregatePublicKey, expectedAggregateIdentity);
+  const discovered = await adapter.discover(identity);
+  const chain = validateReceiptChain(discovered.receipts || [], identity, publicKey);
+  const current = chain.at(-1);
+  if (!current) throw new Error('release transaction has no receipt chain');
+  if (current.state === 'install-verified') {
+    if (current.observation?.publicVerification?.aggregateSha256 !== aggregate.aggregateSha256) {
+      throw new Error('release is already install-verified by a different aggregate');
+    }
+    return current;
+  }
+  if (current.schemaVersion < 3 || current.state !== 'channels-converged') {
+    throw new Error(`public verification finalizer requires schema-3 channels-converged, found ${current.state}`);
+  }
+  const snapshot = await adapter.observeSnapshot(identity, discovered.matchingDrafts?.[0], { forceAssets: true });
+  if (snapshot.readError || !npmLatestIsB(snapshot, identity) || !npmCandidateExact(snapshot, identity)
+    || !githubIsB(snapshot, identity) || snapshot.github?.published !== true || snapshot.github?.latest !== true
+    || snapshot.github?.assetsExact !== true) throw new Error('public channels drifted before install verification');
+  const materialized = await adapter.materializePublicVerificationAggregate({ identity, aggregate });
+  const aggregateAssetSha256 = crypto.createHash('sha256').update(canonicalJson(aggregate)).digest('hex');
+  const signatureAssetSha256 = crypto.createHash('sha256').update(Buffer.from(aggregate.signature, 'base64')).digest('hex');
+  if (materialized?.aggregateSha256 !== aggregate.aggregateSha256
+    || materialized?.aggregateAssetSha256 !== aggregateAssetSha256
+    || materialized?.signatureAssetSha256 !== signatureAssetSha256) {
+    throw new Error('materialized public verification aggregate differs from signed evidence');
+  }
+  const receipt = stateReceipt({
+    identity,
+    prior: current,
+    state: 'install-verified',
+    observation: {
+      verdict: 'INSTALL_VERIFIED',
+      publicVerification: {
+        aggregateSha256: aggregate.aggregateSha256,
+        aggregateAssetSha256,
+        signatureAssetSha256,
+        lanes: aggregate.metrics.leaves,
+        recallAt10: aggregate.metrics.recallAt10,
+        deltaCitationRate: aggregate.metrics.deltaCitationRate,
+        reviewReceipts: aggregate.reviews,
+      },
+      npm: snapshot.npm,
+      github: snapshot.github,
+    },
+    privateKey,
+  });
+  const name = `${RECEIPT_PREFIX}${String(receipt.sequence).padStart(4, '0')}.json`;
+  await adapter.appendReceipt(discovered.matchingDrafts?.[0] || null, receipt, name);
+  const persisted = await adapter.readReceipt(discovered.matchingDrafts?.[0] || null, receipt.sequence);
+  verifyReceipt(persisted, publicKey);
+  if (canonicalJson(persisted) !== canonicalJson(receipt)) throw new Error('install-verified receipt readback differs');
+  validateReceiptChain([...chain, persisted], identity, publicKey);
+  return persisted;
 }

@@ -979,33 +979,31 @@ RUVNET_BRAIN_METER=0              # stop the measuring (editing hooks.json stops
     </div>
   </details>
 
-  <!-- 8 · NIGHTLY -->
+  <!-- 8 · EVERGREEN + DREAM -->
   <details class="card rail-prove">
     <summary>
       <span class="card-ic ic-prove" aria-hidden="true">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><polyline points="12 6.8 12 12 15.6 14"/></svg>
       </span>
       <span class="card-head">
-        <h2>8 · The nightly refresh</h2>
-        <span class="q">Rebuilds the corpus so it does not rot. The only piece that installs a scheduled job.</span>
+        <h2>8 · Evergreen + Dream evaluation</h2>
+        <span class="q">Updates installed bytes and evaluates changes without writing the primary checkout.</span>
       </span>
       <span class="chips"><span class="chip tone-opt">optional</span><span class="chip tone-cost">changes your machine</span></span>
       <span class="chev" aria-hidden="true">›</span>
     </summary>
     <div class="body">
       <dl class="beat">
-        <dt>What</dt><dd>A scheduled job that rebuilds the corpus from upstream.</dd>
-        <dt>Gives</dt><dd>A corpus that does not go stale. rUv ships fast — one of his tools went from 3.26 to 3.28 inside an 18-hour window.</dd>
-        <dt>Costs</dt><dd>A launchd plist: a <b>real machine mutation</b>, which is why the installer asks for it behind its own flag and a blanket "yes to everything" cannot silently accept it. Hours of CPU on rebuild nights. Network.</dd>
+        <dt>What</dt><dd>An optional installed-cache updater plus a non-merging Dream Machine evaluation cycle.</dd>
+        <dt>Gives</dt><dd>Fresh published bytes on installed hosts and evidence-backed improvement proposals without unattended source writes.</dd>
+        <dt>Costs</dt><dd>A launchd plist for Evergreen is a <b>real machine mutation</b>, which is why the installer asks for it behind its own flag. Author rebuild CPU and disk are spent only after an explicit clean linked-worktree run.</dd>
         <dt class="lose">Lose</dt><dd class="lose">Freshness, degrading continuously — but <b>visibly</b>. The staleness line on every search response prints the real age of the stores it queried, so you can always see how bad it has become. You can also refresh by hand at any time.</dd>
       </dl>
-      <div class="why"><b>Its operating discipline: no noise for success or a no-op.</b> Run once → on
-      failure wait and retry <i>once</i> (the only class a blind retry can fix) → on a second failure, a
-      loud alert <i>plus</i> a durable marker file that the session-start hook surfaces unprompted at
-      the top of the very next session. A single-instance lock guards against a rebuild that can run for
-      hours (verified: 2 h 29 m and still embedding) still being alive when the next night's run fires.
-      A reserved exit code marks "skipped, previous run still going" so a skip is never recorded as a
-      failure — <b>silence is never allowed to mean health</b>.</div>
+      <div class="why"><b>The primary checkout is not an automation workspace.</b> The former
+      <code>com.ruvnet.brain-nightly</code> source writer was retired after it accumulated generated
+      changes beside active work. Author rebuilds now refuse primary, nested, non-linked, and dirty
+      worktrees and verify afterward that primary HEAD, index, tracked files, and untracked-file set
+      did not change. Dream evaluation cannot merge; Evergreen updates the installed cache only.</div>
     </div>
   </details>
 
@@ -1171,7 +1169,7 @@ RUVNET_BRAIN_METER=0              # stop the measuring (editing hooks.json stops
         <tr><td class="cell-name">…/health.json</td><td>brain alarm</td><td>last known retrieval health</td></tr>
         <tr><td class="cell-name">…/console-undo.jsonl</td><td>console apply</td><td>the inverse of every change, journalled <i>first</i></td></tr>
         <tr><td class="cell-name">~/.config/ruvnet-brain/lessons.json</td><td>you, ratifying</td><td>your corrections</td></tr>
-        <tr><td class="cell-name">launchd plists</td><td><b>only if you say yes</b></td><td>the nightly refresh and friends</td></tr>
+        <tr><td class="cell-name">launchd plists</td><td><b>only if you say yes</b></td><td>installed-cache updates and other explicitly enabled jobs</td></tr>
       </tbody>
     </table>
   </div>
