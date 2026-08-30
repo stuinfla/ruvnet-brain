@@ -90,8 +90,12 @@ function fixture() {
   fs.writeFileSync(policyFile, JSON.stringify({
     schemaVersion: 1,
     coverageGeneration: 'coverage-2026-08-21',
-    sources: [{ name: 'alpha', status: 'CURRENT', eligible: true }],
+    rows: [
+      { key: 'repo:alpha', kind: 'repository', name: 'alpha', disposition: 'eligible', status: 'CURRENT', artifact: { store: 'alpha' } },
+      { key: 'repo:secret', kind: 'repository', name: 'secret', disposition: 'private', status: 'CURRENT', artifact: { store: 'secret' } },
+    ],
   }));
+  fs.writeFileSync(path.join(assetsDir, 'public-store-classes.json'), JSON.stringify({ schemaVersion: 1, derived: [] }));
   const bundle = path.join(root, 'ruvnet-brain.zip');
   createArchive(bundle, bundleDir);
   return {
@@ -103,7 +107,7 @@ function fixture() {
   };
 }
 
-function create(f) {
+async function create(f) {
   return createCorpusReceipt({
     assetsDir: f.assetsDir,
     bundleFile: f.bundle,
@@ -115,9 +119,9 @@ function create(f) {
 }
 
 describe('immutable corpus candidate receipt', () => {
-  it('creates and verifies a receipt binding every public store, sidecar, fence, policy, and archive byte', () => {
+  it('creates and verifies a receipt binding every public store, sidecar, fence, policy, and archive byte', async () => {
     const f = fixture();
-    const receipt = create(f);
+    const receipt = await create(f);
 
     expect(receipt).toMatchObject({
       schemaVersion: 1,
@@ -134,15 +138,15 @@ describe('immutable corpus candidate receipt', () => {
     expect(receipt.eligibilityPolicy.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(receipt.archive.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(receipt.stores[0].files).toHaveLength(7);
-    expect(verifyCorpusReceipt({
+    await expect(verifyCorpusReceipt({
       receiptFile: f.receiptFile,
       assetsDir: f.assetsDir,
       bundleFile: f.bundle,
       policyFile: f.policyFile,
-    })).toEqual(receipt);
+    })).resolves.toEqual(receipt);
   });
 
-  it('fails closed for unreceipted RVFs, missing sidecars, duplicate RVFs, and orphan ledger rows', () => {
+  it('fails closed for unreceipted RVFs, missing sidecars, duplicate RVFs, and orphan ledger rows', async () => {
     const mutations = [
       (f) => fs.writeFileSync(path.join(f.assetsDir, 'orphan.big.rvf'), 'orphan'),
       (f) => fs.rmSync(path.join(f.assetsDir, 'alpha.meta.json')),
@@ -163,65 +167,65 @@ describe('immutable corpus candidate receipt', () => {
       },
     ];
     const expected = [/unreceipted/i, /missing sidecars/i, /duplicate RVF/i, /ledger rows without RVFs/i];
-    mutations.forEach((mutate, index) => {
+    for (const [index, mutate] of mutations.entries()) {
       const f = fixture();
       mutate(f);
-      expect(() => create(f)).toThrow(expected[index]);
-    });
+      await expect(create(f)).rejects.toThrow(expected[index]);
+    }
   });
 
-  it('rejects private corpus bytes in the archive and any post-receipt byte or policy drift', () => {
+  it('rejects private corpus bytes in the archive and any post-receipt byte or policy drift', async () => {
     const privateFixture = fixture();
     const archiveRoot = path.join(privateFixture.root, 'bundle', 'ruvnet-brain');
     fs.writeFileSync(path.join(archiveRoot, 'secret.big.rvf'), 'private-rvf');
     fs.rmSync(privateFixture.bundle);
     createArchive(privateFixture.bundle, archiveRoot);
-    expect(() => create(privateFixture)).toThrow(/private store.*archive/i);
+    await expect(create(privateFixture)).rejects.toThrow(/private store.*archive/i);
 
     const driftFixture = fixture();
-    create(driftFixture);
+    await create(driftFixture);
     fs.appendFileSync(driftFixture.bundle, 'tampered');
-    expect(() => verifyCorpusReceipt({
+    await expect(verifyCorpusReceipt({
       receiptFile: driftFixture.receiptFile,
       assetsDir: driftFixture.assetsDir,
       bundleFile: driftFixture.bundle,
       policyFile: driftFixture.policyFile,
-    })).toThrow(/archive sha256/i);
+    })).rejects.toThrow(/archive sha256/i);
 
     const policyFixture = fixture();
-    create(policyFixture);
+    await create(policyFixture);
     fs.appendFileSync(policyFixture.policyFile, '\n');
-    expect(() => verifyCorpusReceipt({
+    await expect(verifyCorpusReceipt({
       receiptFile: policyFixture.receiptFile,
       assetsDir: policyFixture.assetsDir,
       bundleFile: policyFixture.bundle,
       policyFile: policyFixture.policyFile,
-    })).toThrow(/eligibility policy/i);
+    })).rejects.toThrow(/eligibility policy/i);
   });
 });
 
 describe('immutable corpus seed publishing', () => {
-  it('derives the tag from the archive digest and refuses to overwrite an existing release', () => {
+  it('derives the tag from the archive digest and refuses to overwrite an existing release', async () => {
     const f = fixture();
-    const receipt = create(f);
+    const receipt = await create(f);
     const tag = corpusSeedTag(receipt);
     expect(tag).toBe(`corpus-sha256-${receipt.archive.sha256}`);
 
     const run = vi.fn(() => ({ status: 0, stdout: '', stderr: '' }));
-    expect(() => publishCorpusSeed({
+    await expect(publishCorpusSeed({
       receiptFile: f.receiptFile,
       bundleFile: f.bundle,
       assetsDir: f.assetsDir,
       policyFile: f.policyFile,
       run,
     }))
-      .toThrow(/already exists.*refusing to overwrite/i);
+      .rejects.toThrow(/already exists.*refusing to overwrite/i);
     expect(run).toHaveBeenCalledWith('gh', ['release', 'view', tag, '--json', 'tagName'], expect.any(Object));
   });
 
-  it('hands a new digest-tagged prerelease to the repository\'s sole release authority', () => {
+  it('hands a new digest-tagged prerelease to the repository\'s sole release authority', async () => {
     const f = fixture();
-    const receipt = create(f);
+    const receipt = await create(f);
     const calls = [];
     const run = (command, args, options) => {
       calls.push({ command, args, options });
@@ -229,14 +233,14 @@ describe('immutable corpus seed publishing', () => {
       return { status: 0, stdout: 'created', stderr: '' };
     };
 
-    expect(publishCorpusSeed({
+    await expect(publishCorpusSeed({
       receiptFile: f.receiptFile,
       bundleFile: f.bundle,
       assetsDir: f.assetsDir,
       policyFile: f.policyFile,
       run,
     }))
-      .toMatchObject({ tag: corpusSeedTag(receipt), archiveSha256: receipt.archive.sha256 });
+      .resolves.toMatchObject({ tag: corpusSeedTag(receipt), archiveSha256: receipt.archive.sha256 });
     expect(calls[1]).toMatchObject({
       command: process.execPath,
       args: expect.arrayContaining([

@@ -464,7 +464,10 @@ jobs:
           # --repair also re-seals stale ledger hashes after index persistence. The v4.2.1 seed
           # exposed three roots whose HNSW bytes had advanced after their ledger rows were written.
           node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}" --repair
-          node scripts/source-coverage.mjs --assets "${asset_dirs[0]}"
+          # Do not re-observe GitHub here. GITHUB_TOKEN cannot read user gists (HTTP 403), and
+          # release-QE must consume the checked-in, source-bound observation that was validated
+          # when the corpus candidate was prepared. A separate credentialed refresh updates that
+          # input; this publisher never silently substitutes a partial live observation.
           node scripts/public-verification-inputs.mjs observe-baseline \
             --baseline-bundle "$seed" --expected-tag "$SEED_TAG" --expected-sha256 "$SEED_SHA256" \
             --expected-bytes "$SEED_BYTES" --out "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json"

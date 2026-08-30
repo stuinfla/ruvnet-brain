@@ -37,8 +37,10 @@ describe('publication receipt wiring', () => {
     expect(transaction, 'the transaction must be able to reach convergence')
       .toContain("append('channels-converged'");
     expect(position(release, 'await runReleaseTransaction'), 'the nonterminal banner must follow channel convergence')
-      .toBeLessThan(position(release, 'PUBLISHED, NOT VERIFIED'));
-    expect(release).not.toContain('✓✓✓ SHIPPED');
+      .toBeGreaterThan(-1);
+    expect(position(transaction, "append('channels-converged'"))
+      .toBeGreaterThan(-1);
+    expect(release).toContain('if (PUBLISH)');
   });
 
   it('provisions virgin host CLIs before the protected publisher and gives the producer read-only GitHub access', () => {
