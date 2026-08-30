@@ -23,6 +23,7 @@
     "version:sync": "node scripts/sync-version.mjs",
     "convergence:write": "node scripts/convergence-manifest.mjs --write",
     "convergence:check": "node scripts/convergence-manifest.mjs",
+    "execution-policy:check": "node scripts/execution-policy.mjs '{\"action\":\"delegate\",\"description\":\"architecture audit\",\"nativeHosts\":[\"codex\"]}'",
     "test:unit": "vitest run tests/unit",
     "test:mesh": "vitest run tests/mesh",
     "test:mutation": "vitest run tests/mutation",
