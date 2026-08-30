@@ -380,6 +380,7 @@ correct: **the strong claim was the defect.**
 | 2026-08-30 | Rechecked the projected validator boundary: the builder now imports `kb/PRIVATE-STORES.json` into the temporary seed input when projection evidence is supplied, preserving fail-closed policy validation without mutating the seed archive. | `scripts/build-bundle.mjs`; exact-SHA release-QE. |
 | 2026-08-30 | Rechecked the release projection contract after hosted verification rejected stale source-plane totals; projected rows, status totals, enumeration counts, and observation identity are now validated as one read model. | `scripts/release-projection.mjs`; exact-SHA release-QE. |
 | 2026-08-30 | Rechecked the two-stage inventory boundary after the candidate archive omitted the projected receipt during validation; the receipt is now staged before the validator runs. | `scripts/build-bundle.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | The pre-push gate now checks `data/convergence-manifest.json` after all source edits, preventing hosted QA from receiving a stale generated identity. | `scripts/git-hooks/pre-push`; `scripts/convergence-manifest.mjs`; exact-SHA CI. |
 
 | 2026-08-30 | Rechecked the release projection and bundle assembly after the exact-SHA release-QE failure; seed-bound gist evidence is now explicit and the current source observation remains separate. | Commit `f526bab`; `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; `plugin/scripts/coverage-integrity.mjs`. |
 
