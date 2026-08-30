@@ -7,6 +7,10 @@ The repository has two intentionally small gates:
   writes `.qa/<lane>.json`; `.qa/aggregate.json` is the only verdict consumed by CI.
 * `npm run qa:release` adds mutation and claims checks. It is the release-candidate gate and must
   run against one clean commit. The receipt records the exact SHA, version, lane status, and timing.
+* `npm run convergence:check` validates `data/convergence-manifest.json`, the deterministic identity
+  boundary for tracked implementation files, version surfaces, ADR inventory, and ownership checks.
+  Any source, ADR, version, or inventory change requires `npm run convergence:write` in the same
+  change; a stale manifest fails QA.
 
 The plugin manifest (`plugin/.claude-plugin/plugin.json`) is the only hand-edited version field.
 Use `npm run version:set -- X.Y.Z` to propagate and immediately verify all package, bundle, README,

@@ -21,6 +21,8 @@
     "claims:verify": "node scripts/claims-verify.mjs",
     "claims:fix": "node scripts/claims-verify.mjs --fix",
     "version:sync": "node scripts/sync-version.mjs",
+    "convergence:write": "node scripts/convergence-manifest.mjs --write",
+    "convergence:check": "node scripts/convergence-manifest.mjs",
     "test:unit": "vitest run tests/unit",
     "test:mesh": "vitest run tests/mesh",
     "test:mutation": "vitest run tests/mutation",
