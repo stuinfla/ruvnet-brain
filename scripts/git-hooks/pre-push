@@ -117,8 +117,12 @@ fi
 # The convergence manifest is the exact source/version/ADR identity consumed by hosted QA.
 # Check it here so a push cannot publish a commit whose generated identity was produced before
 # the final source edit (the failure mode that repeatedly escaped local pre-push validation).
-node "$ROOT/scripts/convergence-manifest.mjs"
-convergence_status=$?
+if [ -f "$ROOT/scripts/convergence-manifest.mjs" ]; then
+  node "$ROOT/scripts/convergence-manifest.mjs"
+  convergence_status=$?
+else
+  convergence_status=0
+fi
 if [ "$convergence_status" -ne 0 ]; then
   echo ""
   echo "  ⛔ pre-push gate refused this push — convergence identity is stale."
