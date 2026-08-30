@@ -1,1 +1,1467 @@
-{"schemaVersion":2,"kind":"ruvnet-brain-retrieval-query-evidence","queryStoreSetSha256":"cf39400af897ef765020666ae30d96cf74c7de7d605fa828fd3fe1b01b14bae6","queries":{"2bottalk":{"query":"In the 2bottalk project, what is 2 BoT Talk AI-powered Bot Duo, what problem does it solve, and how is it intended to be used?","expected":{"path":"readme.md","passageSha256":"ce2fecea1d688f8c540fe9c01e70e0ef23ce2f3bd42cde10b322502938f0c93e"},"recordSha256":"81acfbbaab3954f65932e94da604f3ad371e665d48a4ffcc101e2d3703052bb6"},"agent-name-service":{"query":"In the agent-name-service project, what is Agent Name Service (ANS), what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/architecture/ans_architecture_overview.md","passageSha256":"c2070a6a87c8949a4958569703951f5dc3f3dc4481fde0b4ae5785f729c1f9b2"},"recordSha256":"29d486e4cc251e783253b92e346d122f53ee0cedb4e5cceed1047172635cd756"},"agentdb":{"query":"In the agentdb project, what is AgentDB, what problem does it solve, and how is it intended to be used?","expected":{"path":"src/cli/agentdb-cli.ts","passageSha256":"7fb656685ee4a80bfb7f642fbf8c693b0c0f9090b65e89ae98b7001558bb1a9e"},"recordSha256":"9c65b34067f115f2ca80ab86058dfa6491e1e20a0db276ed205ac5fc31d5c98b"},"agentic-artifacts":{"query":"How does Agentic Artifacts turn an AI user prompt into generated React code files and a CodeSandbox artifact URL?","expected":{"path":"agentic_artifacts/services/code_generator.py","passageSha256":"72b2ad8c287c00a1a682d7fa6860feea0724ad0538003fe492ae0a683c67f5a1"},"recordSha256":"af420aba9229251a05759d26d06fcb437a68ac9cd66505d4dd6011eb25abc8af"},"agentic-capacity-exchange":{"query":"In the agentic-capacity-exchange project, what is agentic-capacity-exchange, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"b69526a8984ac4758e9a5e367e3af9898d6c8b4a03bff12904b43d7291ca64a8"},"recordSha256":"1019020319450e1ac0927737552e8aee07759db867ebc03bdf814b6f7628d4a3"},"agentic-dashboard":{"query":"In the agentic-dashboard project, what is Agentic Dashboard, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"e1ff42a8af39056982bd5017632ac8c766fe2972d49a648bd5d3bf9df19bb7df"},"recordSha256":"efc11900c908642e0f3242ba361c8abef9e77451728873486c299190beaf2a0b"},"agentic-devops":{"query":"How does the Agentic DevOps CLI coder menu dispatch coding actions and let users return to its main menu?","expected":{"path":"devops-cli/coder.py","passageSha256":"4d9afd152273e4b1c3a8641170e286e42af36264469141745f09fa3009a74a3d"},"recordSha256":"7271cc1e4d389006b81c160cd3de68764167f39f07beaf674c6f4eddff4213a5"},"agentic-difusion":{"query":"In the agentic-difusion project, what is Agentic Diffusion, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/system_overview.md","passageSha256":"8d5495aeda0f473eb5c011d28df0366befb7433662423cdd507ab9b9e975cceb"},"recordSha256":"d120dbc0abc74e1ca160bafacd2447f449e7b6749c1b8e7a2e7b510a8a89bc62"},"agentic-employment":{"query":"In the agentic-employment project, what is 🪰 Agentic Employment Infrastructure, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"6dcc819ac7ecf6522dbb98065456e51feda659a45184f8d0277de1d5f3e53647"},"recordSha256":"59ec565a14f05de2959fc2e660cfb62bfe3c652fe47fd6542e2460abfe9fc776"},"agentic-flow":{"query":"In the agentic-flow project, what is 🚀 Agentic-Flow v2, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/plans/agentic-flow-v2/sparc/03-architecture.md","passageSha256":"a73115c3015ae764b1f0d0b688d610aaa5983def9fd73e383c1cf04aff6fefa0"},"recordSha256":"6dfee6602887505351748e621eef45aa1a9a170ba6542a8f6dce0a84a3b2f1a6"},"agentic-gradio":{"query":"In the agentic-gradio project, what is Agentic Gradio, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"9d46a720c6e906e1ac988ba23cb7be09d7bd04c6fba1e49bbc0a53e0518a5143"},"recordSha256":"33944cd29d64283756c9f1b478b628ae4decf519875f5a9e8f5f3b79f0e4df9f"},"agentic-preview":{"query":"In the agentic-preview project, what is Agentic Preview, what problem does it solve, and how is it intended to be used?","expected":{"path":"doc/agentic_preview.md","passageSha256":"4318c4f87f9c728276f78c0b3a3413e693b00f605f086e2f3ea2293c152d90b2"},"recordSha256":"76edd03e8eb958b68d3028a3213a658f5cd4d814e036933d71fd58e827c2162a"},"agentic-qe":{"query":"What specialized quality-engineering skills does the Agentic QE Fleet provide, how are they organized, and how does an agent invoke them?","expected":{"path":".agentic-qe/docs/skills.md","passageSha256":"8abfee12ba0dcb00e32a5a9411be82d8da40bcb01de4468dce9eca9c90551926"},"recordSha256":"4f4c42eecec130ec4c303b3aef2614c276f358496c78f24aa8a43ed564b392c4"},"agentic-reports":{"query":"In the agentic-reports project, what is Agentic Reports, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"bd8bbdd37f6077c73d4b92d6fbdf5517a56f780798ae7e4e409d135e051d803c"},"recordSha256":"e0d59cb071d3177f7600d2c7fb20c685a9e86546e694bfbe794bef3190f13150"},"agentic-robotics":{"query":"In the agentic-robotics project, what is Agentic Robotics, what problem does it solve, and how is it intended to be used?","expected":{"path":"crates/agentic-robotics-rt/README.md","passageSha256":"ed544266e0bc56f298df58cb6c8dcbb666671ed514124fd3335ced58bb9509d1"},"recordSha256":"1ff12562a82acc8d01259ad8fbb6cb3409c1d339a4bae4e13133670901a7d431"},"agentic-scraper":{"query":"In the agentic-scraper project, what is Agentic Scraper, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"6ecf41b46fcab7c5c67df28dc8cc84342677cdd66c1ca51ec065228be817a3fd"},"recordSha256":"8df0fb1e6c65cdcbcc08f54333e8389b2fa629fa9d91fa4cd470f6bf49441b3b"},"agentic-search":{"query":"In the agentic-search project, what is Agentic Github Copilot Extension, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"5129aaf17ca429ca9db019b1f7dc56c530851fb8dd4c947b3b5eb01dce5b2287"},"recordSha256":"bf0a1204945fcd855262e80418b569ad7b2718d75a7083aeae301aaf019c5dda"},"agentic-security":{"query":"In the agentic-security project, what is Agentic Security, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/architecture/README.md","passageSha256":"f40b9d4b58154fb1e4655f584a55f6ea70cb25f7384161d589237fc41a0e4e53"},"recordSha256":"1f3e244f0066e51bad5d922e70b2ebe22ea0f237b15037674ae17dd89bf444d2"},"agentic-voice":{"query":"Where does Agentic Voice define its base instructions, assistant persona, greeting, common answers, and silent audio constant?","expected":{"path":"agentic-voice/app/lib/constants.ts","passageSha256":"a06fbbc409275d96bb3e94371c3d5cd025977f6de3be5084dd5a0dcdd1d42d33"},"recordSha256":"c6a3c7cb886f8dc107e8248cfb20dce8aa7f195b59bf321ffd6d6b159f9799bc"},"agenticow":{"query":"In the agenticow project, what is agenticow — Git for Agent Memory: Copy-On-Write vector branching (83× faster, 3000× smaller snapshots), what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/index.html","passageSha256":"d11cd121b39d2b1f0d0cb02f7734e0f76c3063f87f1de29cdc9024be7352a227"},"recordSha256":"68da1b3af65639dd1d415763ba9f2a824fda0a6ecfb3b9ef0324cf253134ca3e"},"agentics-meetup":{"query":"In the agentics-meetup project, what is agentics-meetup, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"672c17f7ac8e9b021242c53210c78e2cae8374b6250a978334c936777f15aaa2"},"recordSha256":"19d6b2c4e5e055eb99836dbebdd4c1f43357205fadde31c1e438b5bbddbdd97b"},"agenticsjs":{"query":"In the agenticsjs project, what is AgenticsJS, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"1cea8022d66ac83ebd1fabd87e3dbc1f4ebde204bb2c49d6fbe6c057f504326c"},"recordSha256":"8ee0f42705c8dc94c53673e6a60af40b80ba08ed36d3c86f0236a341bd1ce951"},"agentx":{"query":"In the agentx project, what shared comment state, data schemas, and DOM update behavior do its web pages depend on?","expected":{"path":"shared_dependencies.md","passageSha256":"e3622c450409e911b56ef5b34d5f26d571dc38a45b18fa78346f94f7b1e2347f"},"recordSha256":"9c0308c815929bf92c0c703072f36e56cdb5a323f079a7c2563953c89acca2e3"},"agentxng":{"query":"In the agentxng project, what is agentX, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"fa53f4ac9173cb6e3ef3af997bb1183fb27f29a7410069f5400237da01c5d28f"},"recordSha256":"93de936ccdec8753f74666316d78cc13a8f86cc9524bf7a4625f933a62aa99ad"},"agileagents":{"query":"In the agileagents project, what is Agile Agents (A2), what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"94d908aabd3f396fb40ea2e75d1c624f81934ee80ecb870b03f1d7dd75196269"},"recordSha256":"3dd4b5e10d55f6a878181752b39ed0172d04dbaf2da7ec051d73d72c7ce8013d"},"ai-browse":{"query":"In the ai-browse project, what is ai-browse, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"a037ddeeac9ffd0a2880a92ab2e403c1a1549095d0a7869a4d94b149512f404c"},"recordSha256":"d08bb0357d20d79861cd11d114592818d2b1e90df5453dc5f1925ebbc11cbec1"},"ai-code-generator-":{"query":"In the ai-code-generator- project, what is Automated Code Generation and Testing with OpenAI Codex and GitHub Integration, what problem does it solve, and how is it intended to be used?","expected":{"path":"readme.md","passageSha256":"a5acaebf99d9395cc4fb9a5c4212850779843c378dab5924514b90dd9c6c7c7e"},"recordSha256":"d4e90e00df60c8a4773dcbd0f4a535ed505fc43b0233ffb40644fe675ae13816"},"ai-gist":{"query":"In the ai-gist project, what is Ai Gist, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"20c142f9b39ff676b4a08e8c4b4c921b3cba50c6bfdb37569899e07821de3146"},"recordSha256":"98b8d9d6cbe55c01ccdeed16734642d3ff7a05ff4c5411f12a880c858288db8a"},"ai-stream":{"query":"In the ai-stream project, what is AI Stream, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"e9c350909ca2ab1c9cf12e0df99f0b6697140744ed6d5f2528161ad7d10e3407"},"recordSha256":"bf6408e79b74cece564cef9039fd26b3b454589b75e5c8979052d097e6851977"},"ai-text-watermark":{"query":"In the ai-text-watermark project, what is 🔏 AI Text Watermark, what problem does it solve, and how is it intended to be used?","expected":{"path":"packages/ai-text-watermark/README.md","passageSha256":"fd7123b3e2df07df3698d60e9dca5e7777e99b2dc92ee219ccecde5ee165f10d"},"recordSha256":"4c0cd6595a3050ea37c7d206157931e42d6dc85a0a7b851894659ce74530604f"},"ai-video":{"query":"In the ai-video project, what is GPT-4o Media Stream Capture and Analysis, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"2a2bfcfe012fd0b560423496e5b774d9ceed5cbe92c74e292fd39f9fdf0341ec"},"recordSha256":"41574b42f64a89cf00d2784ab839db1e217a9387f9f3c6df39c50e86269b4e6c"},"aicodecalc":{"query":"In the aicodecalc project, what is AiCodeCalc - LLM Development Efficiency Calculator, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/README.md","passageSha256":"4377282e2cc2fda8c16c68d76e9c72e152d9e0e6714f757fc55481c3810c214c"},"recordSha256":"e4b18f4ef32cc92d2b340666477706509995474c41d4a024eb7e4d3b52ea84f5"},"aido":{"query":"In the aido project, what is AI-Driven Decentralized Organization (AIDO), what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/specification.md","passageSha256":"4a538b81121f28eca767002356fd19d985b437ce7ae0126802304d2a83b1ded8"},"recordSha256":"6752ddd26467d851d1ac079156b3ff0eb66c7bae5c48a0434002c67a822c3f26"},"aihcc":{"query":"In the aihcc project, what is AI Hackerspace Consulting Collective (AiHCC), what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"3e3dabe5cc93fae2a1287dd9bbfa36245c8164b42427e8e24ce298ec5b0557c6"},"recordSha256":"f087d3862dd6259e70bd2a89959d23f87d4ba93ff4336f38f0082c2f2c977002"},"aihl":{"query":"In the aihl project, what is AI Hacker League, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/governance/charter.md","passageSha256":"ecbfe5c4ed4ab9af45b08b65441771a806f64da39767316113d1d3f73c049f2f"},"recordSha256":"a67d03b8cafe83631454f303de58621a5518c458b4bf26c5a9f664b4652dd5b9"},"aiscreenplay":{"query":"In the aiscreenplay project, what is Screenplay Generator, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"a49fb3d6cdb153411c54896413813382984e84ad745714d874c6ecc34f4c0c5d"},"recordSha256":"033b586ad7e59f756513c94a295453060b27b32090d3db657470128da6403f14"},"aitoml":{"query":"In the aitoml project, what is AI-TOML Workflow Specification (aiTWS), what problem does it solve, and how is it intended to be used?","expected":{"path":"readme.md","passageSha256":"46299ec3a80ccc5c2f629ae945c31b1f6cb40077d1c33d812699f41f721244e0"},"recordSha256":"aaa6dce3de614dfef79b0e8491fad449cd37dc97b627aa1a71fd3735fdd6a035"},"alienator":{"query":"How does Alienator statistically detect non-human or AI-generated text using analyzers and detector scores?","expected":{"path":"alienator_pkg/internal/analyzers/statistical/detector.go","passageSha256":"d20aaf41aa4d0af82bf4e6d8fbbdc6eb46ec15e5b32a46329fc09f06b48337f0"},"recordSha256":"5220f0f9b0c5eb1c9b16279550a88f956fc431b66dcc6804f4ebcf67ba1cffc2"},"ap-casper":{"query":"In the ap-casper project, what is Casper NFT API, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"f4830418d7e122c1788d0f8e054ff5075a9ec0ccdb7efeebaf0b23ba729e8727"},"recordSha256":"05d76f8a384e6bcfc9196b6f8ba773b4a57a38dc11b2bc5536b5f5ccaeb71565"},"arcadia":{"query":"What package metadata, build, test, documentation, security, and release checks must ARCADIA satisfy before publication to crates.io?","expected":{"path":"docs/publication/PUBLICATION_CHECKLIST.md","passageSha256":"b411f1205366a5b32f99a5b718e618dfb275cc33b470f798b3096c3343fab732"},"recordSha256":"8c81cc1de9d99e3621bec057c259bf72f91bfe895587ee7d8405208c7143e619"},"auto-browser":{"query":"In the auto-browser project, what is Auto-Browser, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"516733496b7d60a507e0c35da6b445950667ac8a8c2ced62300da169848161bd"},"recordSha256":"7a7d26e7490a7c98716533e1c3833947a855d14960dabfc6ff83c692da38a78b"},"autogenous":{"query":"In the autogenous project, what is 🧬 Autogenous, what problem does it solve, and how is it intended to be used?","expected":{"path":"crates/README.md","passageSha256":"d2d3ea77ec659de968536fe90d911654ea99e2c37c147ae78eacdb1dc70880b2"},"recordSha256":"a1852e3f6722f7fd34a545548ed73a9c94c30e18f4b06c0ede796b17fc173cf1"},"aws-dev":{"query":"In the aws-dev project, what is AWS Serverless Ai Dev Environment, what problem does it solve, and how is it intended to be used?","expected":{"path":"deployment/readme.md","passageSha256":"c12956ba141b45810b6d3760afb37b4491346c42b951a002c47168aa6e23e2f3"},"recordSha256":"45f9ac390b2e2d9848993d563910999c1539a5e8970b5315bd8fe8028df54f09"},"bot-generator-bot":{"query":"In the bot-generator-bot project, what is Bot Generator Bot, what problem does it solve, and how is it intended to be used?","expected":{"path":"prompts/primary_bgb.txt","passageSha256":"e2409e7cfb4f031eb10edfaaa169da322ab7ad8c0fd559dc3ba973b2aa18730c"},"recordSha256":"91c2d6565ca3497d56576806319cb93109dbde65a97cec0a04b1b643de2ed2ca"},"chatgpt_plugin_python":{"query":"In the chatgpt_plugin_python project, what is chatgpt_plugin_python, what problem does it solve, and how is it intended to be used?","expected":{"path":"readme.md","passageSha256":"5e7d8d1f9acee72fe380ff2b702db2a7a6660e3acc72abc59d9bd4ea3d78b931"},"recordSha256":"2763794fc054777e923c2bf5a5978bd45f897d70d808beae942de0f8baa75323"},"chatgpt_tatum_plugin":{"query":"In the chatgpt_tatum_plugin project, what is What is Tatum?, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"c93283bbb7492628eec19213318a715be9815c1018787944e21b7add26cecd3d"},"recordSha256":"99b38774075c8081b467eaab402a3cb8f4213c4c25f42ff581abea31d3b2124b"},"chatgpt-aws-price-list-plugin":{"query":"In the chatgpt-aws-price-list-plugin project, what is AWS Price List API Plugin for ChatGPT, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"197613197782469b31c16fe0fe1a7ff484fa082b253af9b7580605562bacf6d1"},"recordSha256":"f7f44be445ab4e45d929551b3e61b5c9cba8d5734b7389f2f0b82bc779fd7080"},"chatgpt-dev-mode":{"query":"In the chatgpt-dev-mode project, what is chatgpt-dev-mode, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"9d3a1c6d948c9e6fcb50c49307dd006ab9c9d010cf436d5b528216ae3cc16665"},"recordSha256":"82cf1e47445e9297246e0f955cbb3c28f32f8e07ecab7200cdd78be822117b0c"},"chatgpt-openai-api-plugin":{"query":"In the chatgpt-openai-api-plugin project, what is ChatGPT Plugin for OpenAI API, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"f9c0dd4487c5a2fd1474c791393f73df5cf972f35a679e8134be54c9902ce063"},"recordSha256":"ec1c7e654697b956fe8daa2e08195b2e890673744de81de8128b48a750ca6575"},"chatgpt-trading-bot-for-kucoin":{"query":"In the chatgpt-trading-bot-for-kucoin project, what is CHATGPT Can Do The Crypto Trading | Script for KuCoin by Cody Krecicki, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"0332e767a5110f938d7933d4ec717ce1decbc738790f6324c56265c0c721c7b2"},"recordSha256":"af2c3eb28ec8895c434508d9265ce86c52209a2cfaf0db984abf159549829e31"},"claude-test":{"query":"In the claude-test project, what is Claude-Flow Installation Guide, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"10878da18d4b3c18bbd39158a88796b0bd405d84a1aa3df2c7f3a21709931775"},"recordSha256":"c77d18bd3728a157ff45d6e7a6b77a1776e80401d36c7c137d075a84aab41de0"},"code-mesh":{"query":"In the code-mesh project, what is Code Mesh 🦀🌐, what problem does it solve, and how is it intended to be used?","expected":{"path":"crates/code-mesh-core/src/permission.rs","passageSha256":"cc90d891f75f477b01427971ee5c41feed6fcea48d9e848d065d0d3b6d906811"},"recordSha256":"2d44c75e8d10cee33080b3f1ada5580dc15722442d9070c09d8394f4ca85b29b"},"codecraft":{"query":"In the codecraft project, what is CodeCraft: Your AI-Powered Coding Companion 🚀, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"a121b59f5a9fb7cb828dcfa48459bb8ecd776725f025608b5040468ca64a62d3"},"recordSha256":"cf89c9d57a37477a14b33e191783853425e128c3f4f05d18696eccd1c99440a1"},"codex-one":{"query":"In the codex-one project, what is OpenAI Codex Machine Learning Setup, what problem does it solve, and how is it intended to be used?","expected":{"path":"plans/codex-readme.md","passageSha256":"0741e71450553ae5755e8f7338a02d05792a48d5a7e1dafde8a9eb7b33a75ffc"},"recordSha256":"c99cf8af773b16b338a9d1e61debaac6a2e5ccaa766d2532d4326d60b57db1f2"},"coding-wingman":{"query":"In the coding-wingman project, what is FastAPI Gateway to GitHub (Ai API Fabric), what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"20bc830f06a0e00fb21a689964668f7c132e3752a21dac061abcaf50d2fd1f30"},"recordSha256":"96a51a9608cf3c9a407741c7b633f7da7f983361625c04dd7db9b7b191e5d5c6"},"cognitum-claude-plugin":{"query":"In the cognitum-claude-plugin project, what is cognitum-mcp, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"a1aad1772a7528839a959c158a94488e847e835a9a6f7b9f2965726d26971246"},"recordSha256":"a58f22128d5378272d6b6acd1ba4f8d3ec071bb5c24132e967f6e132903be1a1"},"cognitum-cogs":{"query":"In the cognitum-cogs project, what is cognitum-one/cogs, what problem does it solve, and how is it intended to be used?","expected":{"path":"src/cogs/cognitive-pipeline/README.md","passageSha256":"45c53a54248fd1e3c1f04d7813d8512cfc0af060521279ca1d429d188ade88d1"},"recordSha256":"f2b3eab1439bace29ce83d1fad5b04463fc384b2fd36a492870b4397ad862d0d"},"cognitum-learn":{"query":"In the cognitum-learn project, what is Cognitum Learn, what problem does it solve, and how is it intended to be used?","expected":{"path":".claude/skills/cognitum-learn/SKILL.md","passageSha256":"9cdae009049f52f5c65f92d82d0bcc1c5525597bb8a66b13394f4fc562bc4dc4"},"recordSha256":"71c3d37a28e8494452cd848631c0628c88e104112c57c6977e083ddab4c78c9e"},"cognitum-learn-site":{"query":"In the cognitum-learn-site project, what is cognitum-learn-site, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"5179d05d56ff4dc31e16a7c2dd653a69fc03bd3c2b574ca12e03d7471b81d660"},"recordSha256":"ad0a03e0f7e4472a2b7b03763df45cace36f8fcc86f88d9e4e5b6f4e44c23ac1"},"cognitum-meta-llm-docs":{"query":"How do the public Cognitum MaaS docs describe its multi-tenant, tiered, metered OpenAI and Anthropic completions platform?","expected":{"path":"README.md","passageSha256":"36fb7ca0289bf66c1cdebd337891e45f615e9cfb734568bf2230878edbe972ce"},"recordSha256":"28a8f790747f372c46410fa994643affcb9e139916d7c6eb492c0fd236ac557b"},"cognitum-meta-proxy-dist":{"query":"In the cognitum-meta-proxy-dist project, what is meta-proxy-dist, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"c27bb1669ca9099115d9a147dafcbf2439cb33bb252c366e20eee4ac16d50100"},"recordSha256":"48aa87e18d4456ff7abf799a2c8f8388fab515e5236539929f1a0925c02be56f"},"cognitum-one-sensor-primer":{"query":"In cognitum-one-sensor-primer, which BGE 768-dimensional big Mac store and MiniLM 384-dimensional small Cognitum One Seed store variants are recorded in the last-built knowledge-bundle manifest?","expected":{"path":"kb/.last-built.json","passageSha256":"e5ad605a8951e67e5a6c00b20c12bf4bf0fcda43392dad35642ee1f29976992c"},"recordSha256":"48c82dab744f6bc4e0d9f7f50deb6f7ab9a4a4aa29e495e97fe6d846c43f397a"},"cognitum-ruos":{"query":"In the cognitum-ruos repository, which Rust binary package is the ruOS agentic daemon for observing, reasoning, acting, self-monitoring, automatic profiles, AIDefence, and OTA?","expected":{"path":"crates/ruos-agent/Cargo.toml","passageSha256":"2daa2641e211141348c08f1b886ace4f6128b799a1a09060a134e0d44fd826a9"},"recordSha256":"c6ab85c1ddd359166519f8b43079bdbda67d4e1adae13aee3d9d423ec4c50ffd"},"cognitum-support":{"query":"How does a new Cognitum Seed owner plug in the device, open its local guide, and complete initial setup?","expected":{"path":"docs/getting-started.md","passageSha256":"5456d774f57a8f895ba24a97b7aa72d546cd3ca17d95ec39984d74b1f0ca313f"},"recordSha256":"795a0e74ba37024d5a1b618b326dc41c14b554c04cbd2b204b6cb9f15bddd236"},"connectome-os":{"query":"In the connectome-os project, what is Connectome OS, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"f9b8ac8dc02e051d9e20b2aa8f14d2a7fd085f75bbabf724520121085a49851f"},"recordSha256":"8d1ff27222446f37c7e500c2d09d7473b390ffd831991d481d52bf27f7f9f0fc"},"console-streamer":{"query":"In the console-streamer project, what is Live Console YouTube Streamer, what problem does it solve, and how is it intended to be used?","expected":{"path":"readme.md","passageSha256":"20ae82ff62e735bdad001ba93b805356f9f8e532ad4f28229410e88bf6ca021c"},"recordSha256":"be18224e47fdc5029893867772d6c1656019491cfb2ec7dbd2b175369d846091"},"contextual-retrevial":{"query":"In the contextual-retrevial project, what is Contextual Retrieval System with Supabase Storage, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"a473a0bded67b8e2d8285360fe584a5375a92effc0b79ff220439ac6ccf5e713"},"recordSha256":"3a1042f115b51848b740a03f9d81685ff6bfe78d180a6c1b24a28916188ce7be"},"cve-bench":{"query":"In the cve-bench project, what is CVE-bench: A SWE-bench-Style Security Benchmark, what problem does it solve, and how is it intended to be used?","expected":{"path":"package.json","passageSha256":"be469aa7ab65fe81709413d4fdcdab569676e4e04f0f0300bc32419babc29af5"},"recordSha256":"f17358d6949d0a161a7ce7b6eebf207f328583fa9624c6e32c3f88bf4422d654"},"daa":{"query":"In the daa project, what is 🤖 DAA SDK - Decentralized Autonomous Agents & Distributed ML, what problem does it solve, and how is it intended to be used?","expected":{"path":"packages/daa-sdk/src/index.ts","passageSha256":"0a80676863d86029516e1179103fd1980342022b207b8307194ca14c30b6ba57"},"recordSha256":"5f9abe39a0d92c4ced03d6f65fa378589d85c9a93391b6fc9a869bea86b72718"},"demo-proxy-app":{"query":"In the demo-proxy-app project, what is DEMO PROXY API Proxy, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"6e067513693219417506e217acb3027c016452ee0dbe6af3a0b9e7dcf80c6c54"},"recordSha256":"a20d67f08228d298469dde4b91d44743ce72096d559e4058d1c6cc65099df549"},"dream-machine":{"query":"In the dream-machine project, what is ☾ Dream Machine, what problem does it solve, and how is it intended to be used?","expected":{"path":"packages/cli/README.md","passageSha256":"25553f33ba5bc23fc7036f9ed676e8d2af9dec7a0dfaa11251276801e94f490b"},"recordSha256":"cfd69829ca32c683995535620dc668e12a96165611778eeb8ecfb01503e9af09"},"drupaljs":{"query":"In the drupaljs repository, which Vite npm package defines dev, build, lint, and preview scripts and depends on React, React Router, TanStack Query, and Tailwind CSS?","expected":{"path":"Drupal.js/package.json","passageSha256":"776d76ee4738ed69362cc67fd29e884701d3399b09bd918473d1afbf411da2fc"},"recordSha256":"f18f9b674c85145c3d645c7921bb22a20d8ece5e793e6b2f73a916a1541998c3"},"dspy.ts":{"query":"In the dspy.ts project, what is DSPy.ts, what problem does it solve, and how is it intended to be used?","expected":{"path":"plans/Phase7_Documentation_and_Examples.md","passageSha256":"36dceaea33f6b04dfbf5d5404f12369da6e175373174778f4537addfb206fff1"},"recordSha256":"58e97b325eebe3e53dc413488abe1379323b035d3ae4b5ed64db8f7954f2ea65"},"dynamo-mcp":{"query":"In the dynamo-mcp project, what is Dynamo MCP, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"9986cedbf7c693a51cdaeb9257f19aafb49190d7c90d43908d0560a1d39370bb"},"recordSha256":"82b680b2af0b5158f2d82ea97f300e8008356e25ed2fca8dd3b6a12177f2b304"},"electo1":{"query":"In the electo1 project, what is Agentic Election Prediction System, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"53ea4bab2f18295fed68af0daa5023d003a7a1d47ae4351d505cf1cdb3e71be5"},"recordSha256":"acb9ff20f29e543657b962944d580c346b08e2848491aa397077f0109a6c4d6b"},"electo1-js":{"query":"In the electo1-js project, what is Agentic Election Prediction System, what problem does it solve, and how is it intended to be used?","expected":{"path":"documentation/frontend_overview.md","passageSha256":"10096aa607673a338ded46f67ba962b0b3233ab5249e225077854a4781652819"},"recordSha256":"bd73165f4b7e0c0c230c8a881734c90c89cdaaabf530bfdf366784ce6a6037b0"},"event-horizon":{"query":"In the event-horizon project, what is Event Horizon Laboratory, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"ee53b85a2be6c5a618f5d76cd6f851771c9598ae03cafb2d5db5d2bf35b7ad79"},"recordSha256":"5215fb6e95e1a9fe493e16a721839494acced4240a2bd701381526cdb0d0ed8e"},"fact":{"query":"In the fact project, what is FACT: Fast Augmented Context Tools, what problem does it solve, and how is it intended to be used?","expected":{"path":"fact-memory/examples/README.md","passageSha256":"627ffe285c4b7e45945e2b911df0131ef70ac876181e937414f83f8e15f6d89d"},"recordSha256":"ed23d70f6de2fe48c5302363b52c66aa2cb0ae9487f7b475a7a7bed0cf309430"},"federated-mcp":{"query":"In the federated-mcp project, what is AI Federation Network, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/intro.md","passageSha256":"3a024cc723b450fb4d30e548dc13df3a6ee0c01d6b259135ac12487565cf5b43"},"recordSha256":"e215bc25c8b62ff792464e492c631a5746e590061cd810bc4b63c8b562bb610c"},"fireflies-webook":{"query":"In the fireflies-webook project, what is Cline Integration Guide: RUV Bounce Method with Site-Mocking Unit Testing, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"165e35d289d705a88cbb6e1365da4b2ca074844821e19c5d2103e231a84e0b03"},"recordSha256":"4daebe4b191a4473e36bffffc385ce8eec91c7ce455cd7ff281db12a720e5600"},"flow-nexus":{"query":"In the flow-nexus project, what is 🚀 Flow Nexus: Your Path to Digital Immortality, what problem does it solve, and how is it intended to be used?","expected":{"path":"tutorials/agentic-marketing/TUTORIAL.md","passageSha256":"5ab9bba042c9672ae75f7c1ae33518d8fd4493d536ed62354a3e00dc479fe88a"},"recordSha256":"5ca85f092f52b139af2b919b99346fff10eb823b41af5e12f8a448faa8022d83"},"genai-superstream":{"query":"In the genai-superstream project, what is GenAI-Superstream, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/overview.md","passageSha256":"009ae288fba41dfee7972e0eee12b4d9ec94b7bfd413fa4f24b1148ec443ee2e"},"recordSha256":"6f659d470bc0df1347d1c6b53f5f4a10b6ee77ee0ea678dfea6304931c2910c3"},"genesis":{"query":"In the genesis project, what is Genesis - Advanced Physics Platform with AI-Powered Environmental Awareness, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/performance_optimization_report.md","passageSha256":"bc6049a33125dbe37d798a00ac3c7fbd02b707b70711b2c4f36e6f7e86bd480d"},"recordSha256":"12570718ca64d076bb658cfe2eceff542b205428634e545fd4d41eac95dccf78"},"gpts":{"query":"In the gpts project, what is The rUv ChatGPT GPT Repository, what problem does it solve, and how is it intended to be used?","expected":{"path":"instructions/GPT API Advisor.txt","passageSha256":"130f5fd713b45eceb5450aecfebf1277f5435052b8998944cc5c998c81fcfd16"},"recordSha256":"b384d8824261e74cd6b58f48bf53b8b7663ea414c4e2e3930de289d450e8858e"},"group-field-theory":{"query":"What research question and working hypothesis does the Group Field Theory project use to study spacetime emerging without primitive coordinates or universal time?","expected":{"path":"docs/01_research_overview.md","passageSha256":"f313a77db9a855f0a2a8f6e480f21dae64c2e78b1fe8fe7bcce126911bc74be8"},"recordSha256":"8d1ea3257135e864c99644c9f70bab103f15d2ce0403b8fc5faa955ecd919e8b"},"guardrail":{"query":"In the guardrail project, what is GuardRail OSS - Open Source Ai Guidance & Analysis API, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"4b1acabbf73332178ccf89fbf24387732f8b15d40ac980cc9fb6bbd24a91fb6d"},"recordSha256":"57ce1ede71f15dbf0dbf4a38717cb2874c36f53d1e8cc629e02ec116228193c5"},"hacker-league":{"query":"In the hacker-league project, what is Insider Trading Mirror System, what problem does it solve, and how is it intended to be used?","expected":{"path":"stock-mirror-spec/readme.md","passageSha256":"96c2fe4769f7d757f5ca81279602d10eb0c24558f3ba934bae42efb0d6ac2698"},"recordSha256":"e248037cd5cd32e690ee71720d8bd477eef4098c6fffae058119e6d231e27c21"},"hackerone":{"query":"In the hackerone project, what is @metaharness/hackerone, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"e28797564392edae51c91dd8cdf3b3121afcf997a82b42f6403ad82d0b40edd4"},"recordSha256":"1c93a582f6fab232d6edb5c78c94f2151db4cc8d42e18ce60dcb55d84f2c9d44"},"helix":{"query":"How does Helix assemble private health records, signals, and results into a continual visual dossier without inventing facts?","expected":{"path":"index.html","passageSha256":"4f372befe7f667ed44de4b8f2a989e64255806e8867ccd2b28085ef3e27c5a6b"},"recordSha256":"3b48cf38f648ebe197e401f1504db03ff6dcf217a396b91368a5d60913877e5d"},"hello_world_agent":{"query":"In the hello_world_agent project, what is Hello World Agent 🌟, what problem does it solve, and how is it intended to be used?","expected":{"path":"agent/docs/readme.md","passageSha256":"98e5b25a57e473493606f290d0f2448fae618f10fd2685c39cc1657efbf26381"},"recordSha256":"097036f69ccf339bb18ef562f93a2a04522c5fec9fc2cd0f8fb36c10495af6d5"},"hft":{"query":"In the hft project, what is init.sh - Script to initialize the HFT project structure and files, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"7436b679a6d63c485f6b17f0df28cba6c8fc880f479058dcdd79cdf6b933aefb"},"recordSha256":"bd1e35102745f9334e68da99dd32ab340b23e4ef45da2bd5da58fd3801f568fd"},"image-agent":{"query":"In the image-agent project, what is image-agent, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"03b72abecfa6e96fcc6062ebd0b45f5b88f152a29a3c8b4ed584ca38d1a50e8e"},"recordSha256":"6a9ad0521f962b04d49c99bfc22c7801512993b045a58eaa7e8a3752b778ddd9"},"infinity-ui":{"query":"In the infinity-ui project, what is Infinity UI: A Sci-Fi Odyssey 🚀, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"c5987318b8f479073cbf1c307a7d1d8353988e512fe446275ea85f98833c130a"},"recordSha256":"5d781bf05ac3069dd114e3e70336f718e3a9bb3bc9b1af510143f848dd157480"},"inflight":{"query":"Which Python package defines Inflight Agentics as a paradigm beyond traditional transactional events and depends on Kafka, OpenAI, dotenv, and Python 3.9?","expected":{"path":"pyproject.toml","passageSha256":"3f424d5670cb27674708b0faa280c300641e3fb8f83a9dbf9e601d44b53e2c3c"},"recordSha256":"9b7338ef04b38a075cccc5897ed16b66d56cebddc0f999517b68e40831e88114"},"latentmesh":{"query":"In the latentmesh project, what is LatentMesh, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/adr/001-latentmesh-architecture-and-prior-art.md","passageSha256":"de64fba0a4f8a9bd7ce8dd52db78e61410cc8cfc61142cb1894b808740a700a0"},"recordSha256":"dd506d5188e051a110c3566f3646386fb0415ac96419499109c60080771479fe"},"llamastack":{"query":"In the llamastack frontend, which central module defines navigation items used by routing and navigation components?","expected":{"path":"llamastack/src/nav-items.jsx","passageSha256":"336b9b0b66c6c809101658bb0d3014a1d6bc8a618156e49949f8975ee7bb2b2c"},"recordSha256":"6bdcd8f65acfc9d350b57eab7be6b5d551bf7be998add3c3472306a6bb40ce0b"},"llm-stream-reformat":{"query":"In the llm-stream-reformat project, what is 📡 llm-stream-reformat, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"c00d260f48bed47afa0bb2d471f2c39ce440a3f0caf1e54ff6b86923f26ffa24"},"recordSha256":"d6b4834983cb5cee39d3075400bd41b3f8019f10b865aa3c3629e6bd0f7bfeab"},"local-logic":{"query":"In the local-logic project, what is Local Logic AI Training System, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/applications/reasoning.md","passageSha256":"1769d25d299bb8084dde2fad54a7ceecd7cecb9004531f39c2901a41effa7d94"},"recordSha256":"e48e1deea072f9d54591dbc2345c9d105371c05b6ffc23230bd8764f9123d913"},"marketing":{"query":"In the marketing project, what is AI Marketing Swarms, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/architecture/README.md","passageSha256":"7baa11b32a7dd311b298eaf8dc957c05b87f6b1e8d2f8556b7ef6fc17f100dff"},"recordSha256":"914385c6e0e38962e91579bd5d2b4e47917056d0bdb340c3ba9a45044bf2434c"},"markov-chains":{"query":"In the markov-chains project, what is markov-chains, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"32fc3629bab7c0f6d4af6e1cd6a4559e7678a1c66a65194e1d0bb71db98d8163"},"recordSha256":"3faa0c73905ca112df64d24a5d55caeff7c687e95660e849e32581796d375478"},"metaharness":{"query":"In the metaharness project, what is MetaHarness, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/adrs/ADR-145-metaharness-router-swebench-integration.md","passageSha256":"15d323af06c1cbb231945b99406859a9879977b2fda20c57db6a631ed5fd13c5"},"recordSha256":"1f650a2c0b3ef9957d82afec5c06d067f844bb3aa60c60298a3325ae813899ce"},"midstream":{"query":"Which MidStream integration provides real-time video-stream introspection and analysis for RTMP, WebRTC, and HLS?","expected":{"path":"npm/src/restream-integration.ts","passageSha256":"2874ffa1c1fe999c763398b9b095e66cf91bf6ebfd547628627636cce26557dc"},"recordSha256":"f2ef9173a69eaef1dbbf7de9f252f4af2f194ce8abc0ec75da4aeba8ef33d5d2"},"musica":{"query":"In the musica project, what is Musica VJ — Your AI DJ + VJ Rig, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/adr/ADR-160-musica-vj-tauri-subproject-boundary.md","passageSha256":"807562ccbc67f02eb008a0b9ff32baf6e1035d569b1b67d6bb02175c95c9c63c"},"recordSha256":"b705d05534937d3cc653e4b8b38cdb1d69944de3d30ee704f2453aa8e871171a"},"musicai":{"query":"In the musicai project, what is Magic AI Music Box 🎵🤖, what problem does it solve, and how is it intended to be used?","expected":{"path":"src/index.ts","passageSha256":"d36dff010a542d36240397a18a810e470c05ef5b6a5e7aa866889aca785f2049"},"recordSha256":"9cff805c6fc6bd55791d70930acca63c263c4a6d17db6ffece75a838717b78e9"},"nova":{"query":"In the nova project, what is NOVA (Neuro-symbolic Optimized Versatile Agent), what problem does it solve, and how is it intended to be used?","expected":{"path":"conjecture/docs/integration.md","passageSha256":"2ceb335fddbe1d40a1471fdcf03432aac2174e14bb0a415dc3e635631c48b0e1"},"recordSha256":"951ff9cbe4285b2d1e3c0790d17904a04690299fd6b7cd76090526a6938cefed"},"obsidian-brain":{"query":"In the obsidian-brain project, what is obsidian-brain, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"fb414b95987cf274f588f3fa4532c9d01df0e03de59c2f6ae0dd41f15481f211"},"recordSha256":"e1c8a2468758a1225c16a8fdd67cdc91371f3e0a50f0e6f9250ea3d76707fc39"},"omnipotent":{"query":"In the omnipotent project, what is Quantum Consciousness Voice Interface, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"4d063db6b1019b13755e3515d484971634b7fc2b47766499e7dea6e1f6848c22"},"recordSha256":"209f267330f95e4210fced03bf8aff3ced936f180704d2cba2cebcd012241f67"},"onnx-agent":{"query":"How can ONNX Runtime models be trained and optimized with DSPy using quantization, hardware execution providers, test-time augmentation, and profiling?","expected":{"path":"research/readme.md","passageSha256":"3a5434af7916b53aadc4c9d51e5eabee853d3b6d630507c1c2c2bcfc26151930"},"recordSha256":"1e7aaacf984a4c489b47a7ea31ea9a181bb72ae041deb70b467c888c6ff2b3e2"},"open-claude-code":{"query":"What architecture does open-claude-code v2 use for its CLI runtime, tools, permissions, and provider integration?","expected":{"path":"docs/adr/ADR-001-v2-architecture.md","passageSha256":"ef8a2362bebb6ced7901d54ea9e12818d4ef4ed31fac0ced308462dc8a360bff"},"recordSha256":"4ca7a3d3c39924670c192812addd0f32535afbaf1b11c7fc78ee49552d4df0be"},"open-space":{"query":"In the open-space project, what is open-space, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"1a2f8259e8d1eed85cbc17c1248bf295de2eceae374d66dd2fd6b5112a0b3d80"},"recordSha256":"304aa76e14159b5c15cda172f651aefc5f2ddfd3d468fcaa76b8672bc9ea10fe"},"openai_devops":{"query":"In the openai_devops project, what is ruvbot - Devops using OpenAi ChatGPT Model, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"19a848c44dfaaa7398db8c80dbfb70e0a16d6137d2e1129820af7e2251adcbc5"},"recordSha256":"dffcc3bf0915afedd70c3eeeb2a7f04174ff2d32eb58b84e531949f976e023f2"},"openai-cost-estimator":{"query":"In the openai-cost-estimator project, what is GPT API Cost Estimation for Enterprises, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"d8959d6151b3c1a63e2b9a03f947da8e98c2126de43cfb193b74e07a3b49049c"},"recordSha256":"cfc3e9f0261787fd7ad50ef2a4d20c7c6143ab61f64b0a875b716d09e83b661a"},"p2pgpt":{"query":"In the p2pgpt project, what is P2P GPT for Slack and Web Sockets Add-on, what problem does it solve, and how is it intended to be used?","expected":{"path":"readme.md","passageSha256":"48114ea1cc3d658ff8f9d84995ee57a19a9d56a868d65ca863e04b9f6c49dc54"},"recordSha256":"184e250b82c74d5f6c478f14527f7a826b70a6d16f8643fff98e31b7b0694609"},"paris":{"query":"In the paris project, what is PARIS: Perpetual Adaptive Regenerative Intelligence Systems, what problem does it solve, and how is it intended to be used?","expected":{"path":"paris.py","passageSha256":"cf6333b77e17d77635dfea737af1725efb6814dba22808f84eccb774fa6f7169"},"recordSha256":"f12e3821ecb4ca51c671519f65b6ec9a7a72672219501dc9f1f865afa42c05ca"},"phone-agent":{"query":"In the phone-agent project, what is Phone Agent, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/architecture.md","passageSha256":"b598ae2f4df6aa0c03d402d412626ce8fc6d5def4c0ebf9177de0f86d0e7f311"},"recordSha256":"58e59fd3655c7610e75768528fd8bf8d453baacc453848f1467fbdb34ac2972a"},"photonlayer":{"query":"In the photonlayer project, what is PhotonLayer, what problem does it solve, and how is it intended to be used?","expected":{"path":"crates/photonlayer-core/README.md","passageSha256":"e863713628ef479beb4414f741c2a85be4cc51e3a23ecdf72255faabcce2a2e8"},"recordSha256":"c2a778bb7f0e58757e3d29952d1ace6b5bc2e49e1e2de47659db7d54f062658b"},"pipackager":{"query":"In the pipackager project, what is pipackager, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"2b56f134957f84418ede98dbea354d6aba714ed63af963e8d1471b5eb304c499"},"recordSha256":"0d4a84c2356b7055a8338d27bf6257b25d6af99fc5021522c885fe9940cea954"},"powerprompt":{"query":"In the powerprompt project, what is Power Prompt, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"b7d501ca9750a6cecdfdeb4de0855bcdc680ab32bd299a6819e958689d828ff4"},"recordSha256":"54ac7c5a15d0073fe4c6434c5a5e507d11964f2a13d3e5c09bf0165658e98af9"},"prompt-engine":{"query":"In the prompt-engine project, what is Prompt Engine, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"8188b047ac310ec7cfc9c35d2df5cb0eafa17efb7e9ed18b6074c3ad6d71b197"},"recordSha256":"eec735ffd2f3f3e604eb22fb24b633ad0f7c1167dd66a2a1aa22018473a143a6"},"promptlang":{"query":"In the promptlang project, what is PromptLang, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"507ea25a74878bb5ba203d80b13217b85aaa27383187daa4fb507b22a4debd9e"},"recordSha256":"15b71b7c04b1863a209c8f4c4f0ce29600fc86922365fd064fac9888c209601f"},"pygentic":{"query":"In the pygentic project, what is pygentic, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"6fe1269e547988a215820d23ca945f960810cfe0a8623afe3b644dd7f068b976"},"recordSha256":"366808c31fce394f8f7250da69694a68980d5874f003597931e443f1d2db853c"},"q-space":{"query":"In the q-space project, what is Quantum Deployment Wizard, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"09c03ffbc85203543daf25ba9c5c4e0af2eed3b47c47a544bad28ef0fcf4e7e3"},"recordSha256":"890b8665e913fb58e80604127b29602b69598622fef517231d291c925e968e7a"},"q-star":{"query":"In the q-star project, what is Q-Star Agent: Reinforcement Learning with Microsoft AutoGen, what problem does it solve, and how is it intended to be used?","expected":{"path":"q.py","passageSha256":"f176233cf4ce9f49c22eeda2cec1e258c2a411a7d09029baad3e24771c12c87f"},"recordSha256":"d7cff82e021168f9de6650b4b3d3a6856cb4650c044869e5e6a21d894ebeda82"},"quantum_cryptocurrency":{"query":"In the quantum_cryptocurrency project, what is Quantum Cryptocurrency, what problem does it solve, and how is it intended to be used?","expected":{"path":"quantum_crypto/README.md","passageSha256":"9d6274ebf6766153d6b3fdc90412f7ccef0742c37c058f934938a99588a05e5d"},"recordSha256":"a42e6174311a13eec078cdadd9b92e32c4e0bce6f6556b004cfc780a76a8d074"},"quantum-magnetic-navigation":{"query":"In the quantum-magnetic-navigation project, what is Quantum Magnetic Navigation, what problem does it solve, and how is it intended to be used?","expected":{"path":"plans/00_overview.md","passageSha256":"813791b1c90a5e7deedd3f740ffa996af7e6d1e2f7e45998acb04715a63be755"},"recordSha256":"9804944149bbdededdc14678dd48654fd3b1941511dff43b9d77a9857264a572"},"quantum-virtual-machine":{"query":"In the quantum-virtual-machine project, what is 🚀 Quantum Virtual Machine (QVM), what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"ec285724d855c538088654ee4969330172aeef7d94e6d5e3df25fd01987afa53"},"recordSha256":"4ed6bf2f12371af1215c1c4700b2920e29e8babc48363dabb6208676afef2c68"},"qudag":{"query":"In the qudag project, what is QuDAG: The Future of Autonomous, Quantum-Resistant, Zero-Person Businesses 🌐, what problem does it solve, and how is it intended to be used?","expected":{"path":"qudag-admin/plans/admin.md","passageSha256":"32eb44681d9542f601a2252294f22ff6662752cce33061ae7b6e6c11c9ce0474"},"recordSha256":"917ba0ac099c2e2de713e8ba45e0297a3bc3926213db160027822a038ff97cdf"},"r-flow":{"query":"In the r-flow project, what is React Flow JavaScript starter, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"0d72bd2dfa8b59922a28b09daf72148119d2bade7cd1fb98a33a534c65db86b5"},"recordSha256":"55c202c894e152f40d3d3b8584b448041aa44bdd487bf5938c8854ed5f4dff59"},"reflective-engineer":{"query":"Which conversational-agent approaches and best practices does Reflective Engineer prescribe for LangChain.js, context preservation, memory, tool integration, and response validation?","expected":{"path":"public/templates/conversational-agents.md","passageSha256":"eb80e4f5d1be7955bae310aa8004d072a8c6323e4940895db8100c8e56dd0ea0"},"recordSha256":"0529ea5d897362f80a83099bda05ee9e044e86e8005925e4ea8e629b73fce156"},"retro-ai-ui":{"query":"In the retro-ai-ui project, what is Retro Console & GPT Prompt Creator, what problem does it solve, and how is it intended to be used?","expected":{"path":"readme.md","passageSha256":"66a36405f9c1a50bd223226c7be951c5525e120ce7893e78f03909ab5beddc46"},"recordSha256":"c9d1923ff2d48b03ab473ceb0a3fbd97b6be6d88223eb5ceb9ceaf083f557eba"},"roomodes":{"query":"In the roomodes project, what is roomodes, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"503b93f2ab9f557bc5d6c471169a8678b95162252760bfc0362f1db55d929d95"},"recordSha256":"00f9c3004305fa75a1ee095d80a30ee8b5e348b7b9321271fed6f432ee8c5b77"},"rucelium":{"query":"How does RuCelium parse and validate the packed 48-byte little-endian environment sample without unsafe transmutation?","expected":{"path":"crates/rucelium-abi/src/wire.rs","passageSha256":"ff80dd11ca85de4ac7e646daea2ae438b8f6b394d4313844b13db8b89d18e4b1"},"recordSha256":"671ef80c89ff9cbcae7b5a2095780b55415cd2c8a5c5ae9011cf142637ffe9df"},"rudevolution":{"query":"In the rudevolution project, what is npm (CLI + MCP tools), what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/adr/ADR-137-npm-decompiler-cli-and-mcp.md","passageSha256":"e4edfd56273fcc787067bd1f9d2a2cf5b2254f6c18d3b9cf164e3614f940ed82"},"recordSha256":"a86ffb32d40670aafc6f82c36b928b7a3b6151492a355690e0338100bfd248e0"},"rufield":{"query":"In the rufield project, what is RuField MFS, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/ADR-260-rufield-mfs.md","passageSha256":"efa1363b9e068b4c07eaad4613fc7d2672f707ac3996c1cbadaf47a8e11edaf2"},"recordSha256":"aaf52f4d6b1a88b7e99e607d8c321d743ff42f2c450b27f91ffe5b108b98ecfa"},"ruflo":{"query":"How did Ruflo v3.32.38 prevent read-only commands in unrelated Claude projects from starting leaked background daemons?","expected":{"path":"v3/docs/releases/v3.32.38.md","passageSha256":"02e054bd209d445788bd5ea94c8ae0cbbdafcfe283d0053dcfad8f6c3d6230a4"},"recordSha256":"a0733b963d810e281fe10761702afb3a8e0a87080f456bdaa55ec664591e09aa"},"rulake":{"query":"What minimum backend adapter trait does ruLake require for listing collections, pulling vectors, generation coherence, and optional ANN pushdown?","expected":{"path":"crates/core/src/backend.rs","passageSha256":"b0e52ea17cc2e03520ba241a8673cf57ab4b18cd6bf87183724e93ffeb4ddc72"},"recordSha256":"ae6c9c2077b874ec61a056e3719af818c93df302434952e0cbb15b9c44e9bd14"},"ruos-macair":{"query":"In the ruos-macair project, what is ruOS MacBook Air 2012, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/adr/ADR-001-ruos-macbook-air-2012.md","passageSha256":"a4cabf7d403f373c5e63da9bb9f646dc2392df39f19b7132239f4f0dd5fd52b8"},"recordSha256":"6666ee5f5871abe07c211840f84e6df1631394d443f879c4f8bbd5fa7ab99ecb"},"rupixel":{"query":"In the rupixel project, what is rupixel — search documents by *meaning*, including pictures of pages, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"5539b54a9c5e4eb5a67819c0efb2e1114d2a8c2660e48d3075cae6aba669f36c"},"recordSha256":"7eba37279e9f19f1cfd46a768f8303b1e4783aa6b3ac5ca478abe91ccd164cb9"},"ruqu":{"query":"In the ruqu project, what is ruqu — Quantum Computing in Pure Rust + WebAssembly, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"99c898bef5e537d750f05bf962d3e4bada6c84e7b9174083d554c3df8577f511"},"recordSha256":"9e941ef0fd3018f19d16d16769ed18c421d4df348e6790a73101451c4efe34bb"},"ruv-dev":{"query":"In the ruv-dev project, what is create-sparc, what problem does it solve, and how is it intended to be used?","expected":{"path":"plans/README.md","passageSha256":"f495c5d0bedb7d9203ab38a70d450390aaa9586d452a743327d0eb49e2bd8b7d"},"recordSha256":"789f366a80ef0da22e1c2652e58121b6eedb452930d6076b0404cccb78b4b042"},"ruv-drone":{"query":"How does ruv-drone combine hierarchical mesh topology, Raft consensus, MAPPO learning, CSI sensing, and failsafe fleet control?","expected":{"path":"src/lib.rs","passageSha256":"a0d80b177f6da27f9aed69a3c49f148812f4b4f70b673d144e722525df90623d"},"recordSha256":"43e9035f3bf08f49d65ea232d9a407e2b784e13ac9acb13a5148730b50bdec9a"},"ruv-enterprise-ai-guide":{"query":"In the ruv-enterprise-ai-guide project, what is The rUv Enterprise AI Guide, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"9c293fbea72d7d77d65be3592db5b3f4424027f27cd2bc3ce678eaf1464b0301"},"recordSha256":"5317a3ebe0de6ce16947b80003cdacf5533519dbfa77bfe3c28933691c84ba7e"},"ruv-fann":{"query":"In the ruv-fann project, what is ruv-FANN: The Neural Intelligence Framework 🧠, what problem does it solve, and how is it intended to be used?","expected":{"path":"ruv-swarm/docs/NEURAL_INTEGRATION.md","passageSha256":"48dceca5c02c778c47262cdbd853c4211d58973fa5bd6de8396e4add839ebfb0"},"recordSha256":"ec9804674ed8805b63502fdd32638581c4ce7fa5c86e4a1199c990ac3543b37b"},"ruv-neural":{"query":"How does rUv Neural define its accepted closed-loop architecture for detecting personal state and conservatively adapting sensory stimulation?","expected":{"path":"docs/adr/0003-closed-loop-architecture.md","passageSha256":"4f87aa600cbd806860cd556676f225bcc27eb73a0acc6c06af7c4595af05f032"},"recordSha256":"804fce6b97ef99b221af5c3d09238fce511327df212acee3be6769b7988852b9"},"ruv.io":{"query":"In the ruv.io project, what is @ruv.io/* - Comprehensive Rust-to-NPM Wrapper Ecosystem, what problem does it solve, and how is it intended to be used?","expected":{"path":"plans/011-code-mesh-cli.md","passageSha256":"ea44960fb891c806227450fb39306765353b5ae34525a4b7ec00f0b14acf0e72"},"recordSha256":"e12d88e23ba1446af4095fd8e01b2b3dedd99c4c7bfa1ed0542f264616142f95"},"ruvbot":{"query":"In the ruvbot repository, which llama2_app npm package depends on LlamaIndex, Next.js, React, and provides dev, build, start, lint, and generate scripts?","expected":{"path":"llama2_app/package.json","passageSha256":"772bdddaa98ed6c6353bf6566f2b4b54296fb65c7d8cd999f6c32d745bc400f6"},"recordSha256":"b03c5bda23787923ca10e676b04e52d63a56a1c52145142945dd4750c402469c"},"ruvector":{"query":"Which modules make up the RuVector solver crate, including its push algorithms, BMSSP, conjugate gradient, random walk, router, SIMD, audit, budget, and validation components?","expected":{"path":"crates/ruvector-solver/src","passageSha256":"24baa42ca19d72c922bb1662a5b1b564a6e21265cd339dccd95f740d68805f32"},"recordSha256":"bcff6354a2d68c5fbb3981780e3e0b2ff588e2c4ab16f9b83d15c72967fae4e2"},"ruview":{"query":"In the ruview project, what is π RuView, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/adr/ADR-031-ruview-sensing-first-rf-mode.md","passageSha256":"d0656448c2111b03bf470272436c1051249a16cb5b432839918a7a8382564d57"},"recordSha256":"0f1651ec39a5d07459bdeaa0134eee141f2370ad2467720822e3248d068d1e7a"},"ruvn":{"query":"In the ruvn project, what is ruvn, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"f06f49e79cacd1ef66d4335c1fbc8137bb52a6011903a367cbddc53b79591377"},"recordSha256":"3f893a33f51ad62b8855ca837695c323c084701e02395d21e8c1377082d34c1f"},"ruvnet":{"query":"In the ruvnet project, what is rUv · Open source AI systems, what problem does it solve, and how is it intended to be used?","expected":{"path":"llms.txt","passageSha256":"17d2820e3dadc3ca22118f796b94bcf5888960baf3c9a44c61f6f3edce5e9c8a"},"recordSha256":"cff2779111498a1979cdbd516a9dc192f03098fa86d80ff86ac16c118e915491"},"ruvnet-brain":{"query":"In the ruvnet-brain project, what is 🧠 RuvNet Brain, what problem does it solve, and how is it intended to be used?","expected":{"path":"explainer/llms-full.txt","passageSha256":"b1d0ac1d9b9807bcead7bc96621f39c563cf236f54b99c719e9b822f3505061a"},"recordSha256":"fd089480029dcdf631b7cb05d34aaed43a86f49233e82b09e9d4eeb0d9201e39"},"rvcsi":{"query":"In the rvcsi project, what is 📡 rvCSI — edge RF sensing runtime, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/prd/rvcsi-platform-prd.md","passageSha256":"0712978ca14671bd59c65415d7a88f66042d056166783c8e36fe7dba6d634fd9"},"recordSha256":"2a07a96ac128386f34dcf25781a2f635d44b9505ef1e845f33b3325c3dd5cc8f"},"rvdna":{"query":"In the rvdna project, what is rvDNA — AI-Native Genomic Analysis in Pure Rust + WebAssembly, what problem does it solve, and how is it intended to be used?","expected":{"path":"npm/packages/rvdna/index.d.ts","passageSha256":"0aec4bf62db71ceb19ee1a0bcf2996f5c6b18720d4e492b41ef47b350ac5f0ee"},"recordSha256":"5e671363b885fd38f22138d7bebed753c49453170b672be5dbc3ff2f27efe743"},"rvface":{"query":"In the rvface project, what is rvFACE, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/adrs/0001-project-scope-and-layout.md","passageSha256":"d027a4792388b1207bf873b31af855aeb3a29a5e6bcd065e0ba4ede34e4822f2"},"recordSha256":"577dd9a63fc15c4778584739129ef0bdb4ed0f621fff23021ca7455198aede3a"},"rvm":{"query":"In the rvm project, what is RVM — The Virtual Machine Built for the Agentic Age, what problem does it solve, and how is it intended to be used?","expected":{"path":"userguide/03-architecture.md","passageSha256":"4e0ae0b2881ef1d7666d9a0ccd758765a2f47ad877e9088822ca58ae0523b9e9"},"recordSha256":"d4d33ccb67b9dd24a7d4d5e79414ecff4b97f91cf4b97c1489b9b67cefd5a4df"},"rvqr":{"query":"In the rvqr project, what is rvQR, what problem does it solve, and how is it intended to be used?","expected":{"path":"bench/lib/transports.mjs","passageSha256":"e49a39ac0cb94fd98a2d0972b7e6096b2591093a6d4c22b15662b3bf87b34538"},"recordSha256":"fbb61ca30d4ab8d73583fa993538758a4508d648b9de8e01bc847de18c382468"},"safla":{"query":"In the safla project, what is SAFLA - Self-Aware Feedback Loop Algorithm, what problem does it solve, and how is it intended to be used?","expected":{"path":"research/01_initial_queries/01_scope_definition.md","passageSha256":"d8f9970546aa724d64830060fb605c4930269d6cc4f05707e6f20931c6cb01ca"},"recordSha256":"110368bde53daf59cbe3d0eefa48c00f88e499c59f767fba81fe71efc68c476d"},"skygraph":{"query":"In the skygraph project, what is SkyGraph, what problem does it solve, and how is it intended to be used?","expected":{"path":"core/src/lib.rs","passageSha256":"1a5997846308d123d812a4afd52a0ebc515d38e826544880593a64eff44374f2"},"recordSha256":"163188b89640140ad043046f81ff8f6da916fd0f6df866a9a730dd1f93a57d1e"},"sonicchamber":{"query":"How does Sonic Chamber acoustic memory use reconstructed-scan embeddings and a navigable small-world graph for longitudinal tracking, FWI warm starts, and anomaly detection?","expected":{"path":"crates/sonic-ct/src/memory.rs","passageSha256":"6699d0e8c5f04ff56c6fefab2bb8bbda30f3eff3edde6ca7c1ffa475b7aad342"},"recordSha256":"8cf4c214e1bc5714586ea2b2dd245524348db44e26609352875042848126eeb3"},"sparc":{"query":"In the sparc project, what is SPARC Framework, what problem does it solve, and how is it intended to be used?","expected":{"path":"configuration/CONVENTIONS.md","passageSha256":"8eedb285a45c573cba30d44824de5557fe6af1823b5c6f464090379590f9ed72"},"recordSha256":"f03ff1b7652931865da1e1d961cb2b1adabba813d8d08815c244421deec1e3fe"},"sparc-ide":{"query":"In the sparc-ide project, what is SPARC IDE, what problem does it solve, and how is it intended to be used?","expected":{"path":"docs/developer-guide.md","passageSha256":"af0644c667c4b73ac58fd9dd78eb7c6a27a642c2d09b023f8b89695eaced636e"},"recordSha256":"3476bceb2572d8b830eee6251fe0efe15fde1b7c51a31e6ba32b73a54b9207b2"},"strawberry-phi":{"query":"In the strawberry-phi project, what is strawberry-phi, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"77d75c1f7cba93080bea19ae685ffb925a0ab44a91ac06b6c6579cc806a04d88"},"recordSha256":"33ed15fd4e1d350f17fcff7766679103e999b23955f6920de53a36bdf0c1fe04"},"sublinear-time-solver":{"query":"In the sublinear-time-solver project, what is 🚀 The Ultimate Mathematical & AI Toolkit v1.6.0, what problem does it solve, and how is it intended to be used?","expected":{"path":"plans/01-system-architecture.md","passageSha256":"e34a58232b13ca29cc9fb2c6dd988a2957b39ac037a488bccbccc460bd498b69"},"recordSha256":"1a557b7fa6fea65cd685d83e598dcc3ab7cebee1697896ff011f2f5274adb105"},"supa-ruv":{"query":"In the supa-ruv project, what is Supabase CLI Management Script, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"c0c5a166c746d4cb38686d2f2e656f969cc10f798fb14661b9380a7656ca42a5"},"recordSha256":"cfcf4d220b2d6782f4f905489252c4a21ef9113c506dea06334311b7805b2daf"},"supabase-authentication":{"query":"In the supabase-authentication project, what is Streamlit and FastAPI Authentication with Supabase, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"7fbcc28f747554a30c88122b63e2f76cb15419bf740421f611d58bf96a132ad1"},"recordSha256":"640ca163761f120216e67f32b43cd0267f174ef3f7afcf2a478d57b8ba6439e9"},"surfer":{"query":"How does the AI Web Surfer fetch page HTML, extract article text, and generate summaries through its FastAPI plugin?","expected":{"path":"main.py","passageSha256":"ed1b1a6b1e48076c7b2c710ce00c544f1a2a2fbcd4d3bee012d000467199247b"},"recordSha256":"7b76e40386fade5954df90e18191ece4699ab4363f276336f11193b31ad6b3b8"},"svgart":{"query":"In the svgart project, what is SVGart, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"f1309285eacd4cf015534b7aa32e3cc238a2ab4ab9bc06f970faebaf0812c672"},"recordSha256":"c46d578faa9c30050acebe099a1f196044744df0ef02dc8e011bb82114b71eaf"},"swagger-chatgpt-plugin-creator":{"query":"In the swagger-chatgpt-plugin-creator project, what is ChatGPT Plugin Creator - From Swagger, what problem does it solve, and how is it intended to be used?","expected":{"path":"readme.md","passageSha256":"86985e00c8fb4b6801141bdddd598211d418c983bdc5a8a0ad85203a45b286b3"},"recordSha256":"c25821cd38466374acc83dd98d2e5f791229fd184d3f4fc20de45782062ed791"},"swarm-world":{"query":"In the swarm-world project, what is Unity Swarm AI Plugin, what problem does it solve, and how is it intended to be used?","expected":{"path":"plans/unity-swarm-ai-research.md","passageSha256":"de5f66fd204a8d6940c7f1a77900f25c32571e49e6686ed8473e231abf4524e6"},"recordSha256":"8c580ad8d13d165d77f742e32c77bf4dd2abf5875b2872b81a7e8b69a3bf668f"},"symbolic-scribe":{"query":"In the symbolic-scribe project, what is Symbolic Scribe, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"631b58177be6f963a43ac1a3f7b356a76aac26056dc79ab836f674e29a09eebc"},"recordSha256":"5c5195d30953c1b157db6fa09238b4c202e11f44978b88bc3f44c1ff7347b44c"},"synaptic-mesh":{"query":"In the synaptic-mesh project, what is Synaptic Neural Mesh, what problem does it solve, and how is it intended to be used?","expected":{"path":"plans/reports/RUST_IMPLEMENTATION_SUMMARY.md","passageSha256":"dfbda1ce0c1374fe4093ac26b623f9cda9b9b001fdbbd08273620db5dd259384"},"recordSha256":"721045909bb602a6aad7d7c3d2dc47986ac52b8c539de6905469dcb6e815777e"},"synthlang":{"query":"How does the SynthLang evolution system combine genetic algorithms with self-play tournaments to improve symbolic prompts?","expected":{"path":"cli/docs/evolution.md","passageSha256":"b6fd6d530fc7072ef872141c959486bf0c949a6862db12b3a62b82a51ac2ad5a"},"recordSha256":"c3f696240c31ec83188392f3643e8347a258e9230a666830948fbee5bead3c4e"},"tariffic":{"query":"In the tariffic project, what is Welcome to Tariffic, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"5ece9a22a782231bf8a93150148b5474c1a3ce04a4bd77eb930d4c22f5452974"},"recordSha256":"242094dd894abc662b2fa966ffb3bd7ae74336b4d6473b893164b3060e0fa8a9"},"textclassifier":{"query":"In the textclassifier project, what is Text Classification Prompt Model for ChatGPT and OpenAi, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"320b8be311c2cda3b701d46bc809539cd4c1c05fa14fcf3bc4e8423569b381c4"},"recordSha256":"4edf92efa802f35407d9837c2141a47838532725202b576ccd95b0027eaedbbf"},"ultrasonic":{"query":"In the ultrasonic project, what is 🔊 Ultrasonic Agentics, what problem does it solve, and how is it intended to be used?","expected":{"path":"src/docs/index.md","passageSha256":"c05610850636f0acedead2da47cb11f5d9996424dc06c8fa39fddb92b040a218"},"recordSha256":"bb3685b8d80dab875ede36a6e38db1b0f894c215af62494b57bf1189c0a2b2d9"},"vcbot":{"query":"In the vcbot project, what is GPT Venture Capitalist Bot (v0.0.1), what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"e175f9527090b9ff1d30530039a63799e619a38730dcbd60029cfcc4922cf654"},"recordSha256":"efc5a8b7cabe0ba270f4eb80a9f30753d44ee58d4b1b7cdd58662be54dc4438f"},"vibecast":{"query":"In the vibecast project, what is vibecast, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"e6f91ea87f0faa4b07f6399d0edda332ce7c9b6d4ae315c66ea6754b7f34ad4f"},"recordSha256":"63a9ab11448bebf096a32c77d5dbd78df1488ad543d51005f954807b00f6c8bf"},"vibing":{"query":"In the vibing project, what is rUvix: AGENTIC ENGINEER TERMINAL, what problem does it solve, and how is it intended to be used?","expected":{"path":"README.md","passageSha256":"19400d983c0cc744229d6315697648fc215dfc504cf7c373ff7e33d36060ed65"},"recordSha256":"c73853ddf5d3817b6539313abd2e5ce4706373add3465d395cad93655a738742"},"vivian":{"query":"In the vivian project, what is VIVIAN: Vector Index Virtual Infrastructure for Autonomous Networks, what problem does it solve, and how is it intended to be used?","expected":{"path":"src/vivian.rs","passageSha256":"19733cf8e43bf79396dddb3061eedb8a8a71df735911dbbcaf05fa4ec6056b62"},"recordSha256":"b0fa6d4d73fe8544f29cfa5037bd84985d17dcd8c38b2580451828003087dbd0"},"voicebot":{"query":"In the voicebot project, what is voicebot, what problem does it solve, and how is it intended to be used?","expected":{"path":"voic-tsx/src/data/prompts/default.txt","passageSha256":"9bd944d7d73ac26d4fbdd489015b966cf5be9aea7ed407b9ca86034c45796767"},"recordSha256":"6d9a099e102da20b56b4593048d5a51769d776ec9fa40b6dd9542464069f87af"},"vsc-remote-mcp":{"query":"In the vsc-remote-mcp project, what is CodeSwarm: VSCode Remote MCP Server, what problem does it solve, and how is it intended to be used?","expected":{"path":"vscode-remote-mcp/src/mcp-sdk-server.js","passageSha256":"1d8549be59b591abcf4b266ee2188c2a4f6f50ae7d67ac74799c95b0e5b51d51"},"recordSha256":"5563cb1a165d77d17dbf187ae92701eeab335bf037637246309ec15c9b840edf"},"wifi-veil":{"query":"In the wifi-veil project, what is WiFi Veil, what problem does it solve, and how is it intended to be used?","expected":{"path":"firmware/README.md","passageSha256":"35e2a52e02ace5df68d7dd34bc7859763fe481978b598faf6217e9fd80a12d42"},"recordSha256":"8253db9c426260e6c28043e1b7ccd36d21b9b49d5e6bf3240d3673d9f8765370"},"worldgraph":{"query":"In the worldgraph repository, which Rust crate is the ADR-139 environmental digital twin using typed petgraph for RuView?","expected":{"path":"wifi-densepose-worldgraph/Cargo.toml","passageSha256":"9ae57e34b974e2daf0a1605acdb4b8a300186406277324e69a69304aacc4e04c"},"recordSha256":"f3de9d19ff3d12999c4c747898f05016aed5a7c025bb4f5fef3f428c4e27efbc"},"yyz-agentics-june":{"query":"In the yyz-agentics-june project, what is AI-Powered Neural Network Libraries, what problem does it solve, and how is it intended to be used?","expected":{"path":"neural_network/COMPONENTS_SUMMARY.md","passageSha256":"eaefd71df494f96821b19a3c2b58d9fb1dc9c79130b83833321154ac4d3f20a1"},"recordSha256":"4dea68176043d7fe2665a45ac0fdf700504352b2a9b2dfbf6bd53d6ff67f8cae"}}}
+{
+  "schemaVersion": 2,
+  "kind": "ruvnet-brain-retrieval-query-evidence",
+  "queryStoreSetSha256": "15c9b34624d9689ce8f95bafae3d4769840af7c1047900ba05a0ff02df05313e",
+  "queries": {
+    "2bottalk": {
+      "query": "In the 2bottalk project, what is 2 BoT Talk AI-powered Bot Duo, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "readme.md",
+        "passageSha256": "ce2fecea1d688f8c540fe9c01e70e0ef23ce2f3bd42cde10b322502938f0c93e"
+      },
+      "recordSha256": "81acfbbaab3954f65932e94da604f3ad371e665d48a4ffcc101e2d3703052bb6"
+    },
+    "agent-name-service": {
+      "query": "In the agent-name-service project, what is Agent Name Service (ANS), what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/architecture/ans_architecture_overview.md",
+        "passageSha256": "c2070a6a87c8949a4958569703951f5dc3f3dc4481fde0b4ae5785f729c1f9b2"
+      },
+      "recordSha256": "29d486e4cc251e783253b92e346d122f53ee0cedb4e5cceed1047172635cd756"
+    },
+    "agentdb": {
+      "query": "In the agentdb project, what is AgentDB, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "src/cli/agentdb-cli.ts",
+        "passageSha256": "7fb656685ee4a80bfb7f642fbf8c693b0c0f9090b65e89ae98b7001558bb1a9e"
+      },
+      "recordSha256": "9c65b34067f115f2ca80ab86058dfa6491e1e20a0db276ed205ac5fc31d5c98b"
+    },
+    "agentic-artifacts": {
+      "query": "How does Agentic Artifacts turn an AI user prompt into generated React code files and a CodeSandbox artifact URL?",
+      "expected": {
+        "path": "agentic_artifacts/services/code_generator.py",
+        "passageSha256": "72b2ad8c287c00a1a682d7fa6860feea0724ad0538003fe492ae0a683c67f5a1"
+      },
+      "recordSha256": "af420aba9229251a05759d26d06fcb437a68ac9cd66505d4dd6011eb25abc8af"
+    },
+    "agentic-capacity-exchange": {
+      "query": "In the agentic-capacity-exchange project, what is agentic-capacity-exchange, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "b69526a8984ac4758e9a5e367e3af9898d6c8b4a03bff12904b43d7291ca64a8"
+      },
+      "recordSha256": "1019020319450e1ac0927737552e8aee07759db867ebc03bdf814b6f7628d4a3"
+    },
+    "agentic-dashboard": {
+      "query": "In the agentic-dashboard project, what is Agentic Dashboard, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "e1ff42a8af39056982bd5017632ac8c766fe2972d49a648bd5d3bf9df19bb7df"
+      },
+      "recordSha256": "efc11900c908642e0f3242ba361c8abef9e77451728873486c299190beaf2a0b"
+    },
+    "agentic-devops": {
+      "query": "How does the Agentic DevOps CLI coder menu dispatch coding actions and let users return to its main menu?",
+      "expected": {
+        "path": "devops-cli/coder.py",
+        "passageSha256": "4d9afd152273e4b1c3a8641170e286e42af36264469141745f09fa3009a74a3d"
+      },
+      "recordSha256": "7271cc1e4d389006b81c160cd3de68764167f39f07beaf674c6f4eddff4213a5"
+    },
+    "agentic-difusion": {
+      "query": "In the agentic-difusion project, what is Agentic Diffusion, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/system_overview.md",
+        "passageSha256": "8d5495aeda0f473eb5c011d28df0366befb7433662423cdd507ab9b9e975cceb"
+      },
+      "recordSha256": "d120dbc0abc74e1ca160bafacd2447f449e7b6749c1b8e7a2e7b510a8a89bc62"
+    },
+    "agentic-employment": {
+      "query": "In the agentic-employment project, what is 🪰 Agentic Employment Infrastructure, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "6dcc819ac7ecf6522dbb98065456e51feda659a45184f8d0277de1d5f3e53647"
+      },
+      "recordSha256": "59ec565a14f05de2959fc2e660cfb62bfe3c652fe47fd6542e2460abfe9fc776"
+    },
+    "agentic-flow": {
+      "query": "In the agentic-flow project, what is 🚀 Agentic-Flow v2, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/plans/agentic-flow-v2/sparc/03-architecture.md",
+        "passageSha256": "a73115c3015ae764b1f0d0b688d610aaa5983def9fd73e383c1cf04aff6fefa0"
+      },
+      "recordSha256": "6dfee6602887505351748e621eef45aa1a9a170ba6542a8f6dce0a84a3b2f1a6"
+    },
+    "agentic-gradio": {
+      "query": "In the agentic-gradio project, what is Agentic Gradio, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "9d46a720c6e906e1ac988ba23cb7be09d7bd04c6fba1e49bbc0a53e0518a5143"
+      },
+      "recordSha256": "33944cd29d64283756c9f1b478b628ae4decf519875f5a9e8f5f3b79f0e4df9f"
+    },
+    "agentic-preview": {
+      "query": "In the agentic-preview project, what is Agentic Preview, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "doc/agentic_preview.md",
+        "passageSha256": "4318c4f87f9c728276f78c0b3a3413e693b00f605f086e2f3ea2293c152d90b2"
+      },
+      "recordSha256": "76edd03e8eb958b68d3028a3213a658f5cd4d814e036933d71fd58e827c2162a"
+    },
+    "agentic-qe": {
+      "query": "What specialized quality-engineering skills does the Agentic QE Fleet provide, how are they organized, and how does an agent invoke them?",
+      "expected": {
+        "path": ".agentic-qe/docs/skills.md",
+        "passageSha256": "8abfee12ba0dcb00e32a5a9411be82d8da40bcb01de4468dce9eca9c90551926"
+      },
+      "recordSha256": "4f4c42eecec130ec4c303b3aef2614c276f358496c78f24aa8a43ed564b392c4"
+    },
+    "agentic-reports": {
+      "query": "In the agentic-reports project, what is Agentic Reports, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "bd8bbdd37f6077c73d4b92d6fbdf5517a56f780798ae7e4e409d135e051d803c"
+      },
+      "recordSha256": "e0d59cb071d3177f7600d2c7fb20c685a9e86546e694bfbe794bef3190f13150"
+    },
+    "agentic-robotics": {
+      "query": "In the agentic-robotics project, what is Agentic Robotics, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "crates/agentic-robotics-rt/README.md",
+        "passageSha256": "2265f8a2d6e258ad5d68f93745041951f7434c1149ac4e91875afc39b487d07d"
+      },
+      "recordSha256": "ffce0463ca66ae7bb9472ba0fa26a297e0f55cb2aa928e3ca7db6eca2e3c38b3"
+    },
+    "agentic-scraper": {
+      "query": "In the agentic-scraper project, what is Agentic Scraper, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "6ecf41b46fcab7c5c67df28dc8cc84342677cdd66c1ca51ec065228be817a3fd"
+      },
+      "recordSha256": "8df0fb1e6c65cdcbcc08f54333e8389b2fa629fa9d91fa4cd470f6bf49441b3b"
+    },
+    "agentic-search": {
+      "query": "In the agentic-search project, what is Agentic Github Copilot Extension, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "5129aaf17ca429ca9db019b1f7dc56c530851fb8dd4c947b3b5eb01dce5b2287"
+      },
+      "recordSha256": "bf0a1204945fcd855262e80418b569ad7b2718d75a7083aeae301aaf019c5dda"
+    },
+    "agentic-security": {
+      "query": "In the agentic-security project, what is Agentic Security, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/architecture/README.md",
+        "passageSha256": "18ce34b3be11f3992b4b39d4f59f58790fed6deafe4bd3a9353024630955b8b0"
+      },
+      "recordSha256": "c90b99e212c358c8025762540ed02f84b01f643012f8e371c9d7814dd1a48b46"
+    },
+    "agentic-voice": {
+      "query": "Where does Agentic Voice define its base instructions, assistant persona, greeting, common answers, and silent audio constant?",
+      "expected": {
+        "path": "agentic-voice/app/lib/constants.ts",
+        "passageSha256": "a06fbbc409275d96bb3e94371c3d5cd025977f6de3be5084dd5a0dcdd1d42d33"
+      },
+      "recordSha256": "c6a3c7cb886f8dc107e8248cfb20dce8aa7f195b59bf321ffd6d6b159f9799bc"
+    },
+    "agenticow": {
+      "query": "In the agenticow project, what is agenticow — Git for Agent Memory: Copy-On-Write vector branching (83× faster, 3000× smaller snapshots), what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/index.html",
+        "passageSha256": "4da496f993c779b97d138d37a646c5ceb01f3cfac43a157a478083b0fbf86a28"
+      },
+      "recordSha256": "2e3d46fac998d803ee497eb2744f1e9730761a2cfc88a6e2941da77415e2528b"
+    },
+    "agentics-meetup": {
+      "query": "In the agentics-meetup project, what is agentics-meetup, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "672c17f7ac8e9b021242c53210c78e2cae8374b6250a978334c936777f15aaa2"
+      },
+      "recordSha256": "19d6b2c4e5e055eb99836dbebdd4c1f43357205fadde31c1e438b5bbddbdd97b"
+    },
+    "agenticsjs": {
+      "query": "In the agenticsjs project, what is AgenticsJS, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "1cea8022d66ac83ebd1fabd87e3dbc1f4ebde204bb2c49d6fbe6c057f504326c"
+      },
+      "recordSha256": "8ee0f42705c8dc94c53673e6a60af40b80ba08ed36d3c86f0236a341bd1ce951"
+    },
+    "agentx": {
+      "query": "In the agentx project, what shared comment state, data schemas, and DOM update behavior do its web pages depend on?",
+      "expected": {
+        "path": "shared_dependencies.md",
+        "passageSha256": "e3622c450409e911b56ef5b34d5f26d571dc38a45b18fa78346f94f7b1e2347f"
+      },
+      "recordSha256": "9c0308c815929bf92c0c703072f36e56cdb5a323f079a7c2563953c89acca2e3"
+    },
+    "agentxng": {
+      "query": "In the agentxng project, what is agentX, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "fa53f4ac9173cb6e3ef3af997bb1183fb27f29a7410069f5400237da01c5d28f"
+      },
+      "recordSha256": "93de936ccdec8753f74666316d78cc13a8f86cc9524bf7a4625f933a62aa99ad"
+    },
+    "agileagents": {
+      "query": "In the agileagents project, what is Agile Agents (A2), what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "94d908aabd3f396fb40ea2e75d1c624f81934ee80ecb870b03f1d7dd75196269"
+      },
+      "recordSha256": "3dd4b5e10d55f6a878181752b39ed0172d04dbaf2da7ec051d73d72c7ce8013d"
+    },
+    "ai-browse": {
+      "query": "In the ai-browse project, what is ai-browse, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "a037ddeeac9ffd0a2880a92ab2e403c1a1549095d0a7869a4d94b149512f404c"
+      },
+      "recordSha256": "d08bb0357d20d79861cd11d114592818d2b1e90df5453dc5f1925ebbc11cbec1"
+    },
+    "ai-code-generator-": {
+      "query": "In the ai-code-generator- project, what is Automated Code Generation and Testing with OpenAI Codex and GitHub Integration, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "readme.md",
+        "passageSha256": "a5acaebf99d9395cc4fb9a5c4212850779843c378dab5924514b90dd9c6c7c7e"
+      },
+      "recordSha256": "d4e90e00df60c8a4773dcbd0f4a535ed505fc43b0233ffb40644fe675ae13816"
+    },
+    "ai-gist": {
+      "query": "In the ai-gist project, what is Ai Gist, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "20c142f9b39ff676b4a08e8c4b4c921b3cba50c6bfdb37569899e07821de3146"
+      },
+      "recordSha256": "98b8d9d6cbe55c01ccdeed16734642d3ff7a05ff4c5411f12a880c858288db8a"
+    },
+    "ai-stream": {
+      "query": "In the ai-stream project, what is AI Stream, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "e9c350909ca2ab1c9cf12e0df99f0b6697140744ed6d5f2528161ad7d10e3407"
+      },
+      "recordSha256": "bf6408e79b74cece564cef9039fd26b3b454589b75e5c8979052d097e6851977"
+    },
+    "ai-text-watermark": {
+      "query": "In the ai-text-watermark project, what is 🔏 AI Text Watermark, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "packages/ai-text-watermark/README.md",
+        "passageSha256": "fd7123b3e2df07df3698d60e9dca5e7777e99b2dc92ee219ccecde5ee165f10d"
+      },
+      "recordSha256": "4c0cd6595a3050ea37c7d206157931e42d6dc85a0a7b851894659ce74530604f"
+    },
+    "ai-video": {
+      "query": "In the ai-video project, what is GPT-4o Media Stream Capture and Analysis, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "2a2bfcfe012fd0b560423496e5b774d9ceed5cbe92c74e292fd39f9fdf0341ec"
+      },
+      "recordSha256": "41574b42f64a89cf00d2784ab839db1e217a9387f9f3c6df39c50e86269b4e6c"
+    },
+    "aicodecalc": {
+      "query": "In the aicodecalc project, what is AiCodeCalc - LLM Development Efficiency Calculator, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/README.md",
+        "passageSha256": "4377282e2cc2fda8c16c68d76e9c72e152d9e0e6714f757fc55481c3810c214c"
+      },
+      "recordSha256": "e4b18f4ef32cc92d2b340666477706509995474c41d4a024eb7e4d3b52ea84f5"
+    },
+    "aido": {
+      "query": "In the aido project, what is AI-Driven Decentralized Organization (AIDO), what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/specification.md",
+        "passageSha256": "4a538b81121f28eca767002356fd19d985b437ce7ae0126802304d2a83b1ded8"
+      },
+      "recordSha256": "6752ddd26467d851d1ac079156b3ff0eb66c7bae5c48a0434002c67a822c3f26"
+    },
+    "aihcc": {
+      "query": "In the aihcc project, what is AI Hackerspace Consulting Collective (AiHCC), what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "3e3dabe5cc93fae2a1287dd9bbfa36245c8164b42427e8e24ce298ec5b0557c6"
+      },
+      "recordSha256": "f087d3862dd6259e70bd2a89959d23f87d4ba93ff4336f38f0082c2f2c977002"
+    },
+    "aihl": {
+      "query": "In the aihl project, what is AI Hacker League, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/governance/charter.md",
+        "passageSha256": "ecbfe5c4ed4ab9af45b08b65441771a806f64da39767316113d1d3f73c049f2f"
+      },
+      "recordSha256": "a67d03b8cafe83631454f303de58621a5518c458b4bf26c5a9f664b4652dd5b9"
+    },
+    "aiscreenplay": {
+      "query": "In the aiscreenplay project, what is Screenplay Generator, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "a49fb3d6cdb153411c54896413813382984e84ad745714d874c6ecc34f4c0c5d"
+      },
+      "recordSha256": "033b586ad7e59f756513c94a295453060b27b32090d3db657470128da6403f14"
+    },
+    "aitoml": {
+      "query": "In the aitoml project, what is AI-TOML Workflow Specification (aiTWS), what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "readme.md",
+        "passageSha256": "46299ec3a80ccc5c2f629ae945c31b1f6cb40077d1c33d812699f41f721244e0"
+      },
+      "recordSha256": "aaa6dce3de614dfef79b0e8491fad449cd37dc97b627aa1a71fd3735fdd6a035"
+    },
+    "alienator": {
+      "query": "How does Alienator statistically detect non-human or AI-generated text using analyzers and detector scores?",
+      "expected": {
+        "path": "alienator_pkg/internal/analyzers/statistical/detector.go",
+        "passageSha256": "d20aaf41aa4d0af82bf4e6d8fbbdc6eb46ec15e5b32a46329fc09f06b48337f0"
+      },
+      "recordSha256": "5220f0f9b0c5eb1c9b16279550a88f956fc431b66dcc6804f4ebcf67ba1cffc2"
+    },
+    "ap-casper": {
+      "query": "In the ap-casper project, what is Casper NFT API, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "f4830418d7e122c1788d0f8e054ff5075a9ec0ccdb7efeebaf0b23ba729e8727"
+      },
+      "recordSha256": "05d76f8a384e6bcfc9196b6f8ba773b4a57a38dc11b2bc5536b5f5ccaeb71565"
+    },
+    "arcadia": {
+      "query": "What package metadata, build, test, documentation, security, and release checks must ARCADIA satisfy before publication to crates.io?",
+      "expected": {
+        "path": "docs/publication/PUBLICATION_CHECKLIST.md",
+        "passageSha256": "b411f1205366a5b32f99a5b718e618dfb275cc33b470f798b3096c3343fab732"
+      },
+      "recordSha256": "8c81cc1de9d99e3621bec057c259bf72f91bfe895587ee7d8405208c7143e619"
+    },
+    "auto-browser": {
+      "query": "In the auto-browser project, what is Auto-Browser, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "516733496b7d60a507e0c35da6b445950667ac8a8c2ced62300da169848161bd"
+      },
+      "recordSha256": "7a7d26e7490a7c98716533e1c3833947a855d14960dabfc6ff83c692da38a78b"
+    },
+    "autogenous": {
+      "query": "In the autogenous project, what is 🧬 Autogenous, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "crates/README.md",
+        "passageSha256": "d2d3ea77ec659de968536fe90d911654ea99e2c37c147ae78eacdb1dc70880b2"
+      },
+      "recordSha256": "a1852e3f6722f7fd34a545548ed73a9c94c30e18f4b06c0ede796b17fc173cf1"
+    },
+    "aws-dev": {
+      "query": "In the aws-dev project, what is AWS Serverless Ai Dev Environment, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "deployment/readme.md",
+        "passageSha256": "c12956ba141b45810b6d3760afb37b4491346c42b951a002c47168aa6e23e2f3"
+      },
+      "recordSha256": "45f9ac390b2e2d9848993d563910999c1539a5e8970b5315bd8fe8028df54f09"
+    },
+    "bot-generator-bot": {
+      "query": "In the bot-generator-bot project, what is Bot Generator Bot, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "prompts/primary_bgb.txt",
+        "passageSha256": "e2409e7cfb4f031eb10edfaaa169da322ab7ad8c0fd559dc3ba973b2aa18730c"
+      },
+      "recordSha256": "91c2d6565ca3497d56576806319cb93109dbde65a97cec0a04b1b643de2ed2ca"
+    },
+    "chatgpt_plugin_python": {
+      "query": "In the chatgpt_plugin_python project, what is chatgpt_plugin_python, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "readme.md",
+        "passageSha256": "5e7d8d1f9acee72fe380ff2b702db2a7a6660e3acc72abc59d9bd4ea3d78b931"
+      },
+      "recordSha256": "2763794fc054777e923c2bf5a5978bd45f897d70d808beae942de0f8baa75323"
+    },
+    "chatgpt_tatum_plugin": {
+      "query": "In the chatgpt_tatum_plugin project, what is What is Tatum?, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "c93283bbb7492628eec19213318a715be9815c1018787944e21b7add26cecd3d"
+      },
+      "recordSha256": "99b38774075c8081b467eaab402a3cb8f4213c4c25f42ff581abea31d3b2124b"
+    },
+    "chatgpt-aws-price-list-plugin": {
+      "query": "In the chatgpt-aws-price-list-plugin project, what is AWS Price List API Plugin for ChatGPT, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "197613197782469b31c16fe0fe1a7ff484fa082b253af9b7580605562bacf6d1"
+      },
+      "recordSha256": "f7f44be445ab4e45d929551b3e61b5c9cba8d5734b7389f2f0b82bc779fd7080"
+    },
+    "chatgpt-dev-mode": {
+      "query": "In the chatgpt-dev-mode project, what is chatgpt-dev-mode, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "9d3a1c6d948c9e6fcb50c49307dd006ab9c9d010cf436d5b528216ae3cc16665"
+      },
+      "recordSha256": "82cf1e47445e9297246e0f955cbb3c28f32f8e07ecab7200cdd78be822117b0c"
+    },
+    "chatgpt-openai-api-plugin": {
+      "query": "In the chatgpt-openai-api-plugin project, what is ChatGPT Plugin for OpenAI API, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "f9c0dd4487c5a2fd1474c791393f73df5cf972f35a679e8134be54c9902ce063"
+      },
+      "recordSha256": "ec1c7e654697b956fe8daa2e08195b2e890673744de81de8128b48a750ca6575"
+    },
+    "chatgpt-trading-bot-for-kucoin": {
+      "query": "In the chatgpt-trading-bot-for-kucoin project, what is CHATGPT Can Do The Crypto Trading | Script for KuCoin by Cody Krecicki, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "0332e767a5110f938d7933d4ec717ce1decbc738790f6324c56265c0c721c7b2"
+      },
+      "recordSha256": "af2c3eb28ec8895c434508d9265ce86c52209a2cfaf0db984abf159549829e31"
+    },
+    "claude-test": {
+      "query": "In the claude-test project, what is Claude-Flow Installation Guide, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "10878da18d4b3c18bbd39158a88796b0bd405d84a1aa3df2c7f3a21709931775"
+      },
+      "recordSha256": "c77d18bd3728a157ff45d6e7a6b77a1776e80401d36c7c137d075a84aab41de0"
+    },
+    "code-mesh": {
+      "query": "In the code-mesh project, what is Code Mesh 🦀🌐, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "crates/code-mesh-core/src/permission.rs",
+        "passageSha256": "cc90d891f75f477b01427971ee5c41feed6fcea48d9e848d065d0d3b6d906811"
+      },
+      "recordSha256": "2d44c75e8d10cee33080b3f1ada5580dc15722442d9070c09d8394f4ca85b29b"
+    },
+    "codecraft": {
+      "query": "In the codecraft project, what is CodeCraft: Your AI-Powered Coding Companion 🚀, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "a121b59f5a9fb7cb828dcfa48459bb8ecd776725f025608b5040468ca64a62d3"
+      },
+      "recordSha256": "cf89c9d57a37477a14b33e191783853425e128c3f4f05d18696eccd1c99440a1"
+    },
+    "codex-one": {
+      "query": "In the codex-one project, what is OpenAI Codex Machine Learning Setup, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "plans/codex-readme.md",
+        "passageSha256": "0741e71450553ae5755e8f7338a02d05792a48d5a7e1dafde8a9eb7b33a75ffc"
+      },
+      "recordSha256": "c99cf8af773b16b338a9d1e61debaac6a2e5ccaa766d2532d4326d60b57db1f2"
+    },
+    "coding-wingman": {
+      "query": "In the coding-wingman project, what is FastAPI Gateway to GitHub (Ai API Fabric), what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "20bc830f06a0e00fb21a689964668f7c132e3752a21dac061abcaf50d2fd1f30"
+      },
+      "recordSha256": "96a51a9608cf3c9a407741c7b633f7da7f983361625c04dd7db9b7b191e5d5c6"
+    },
+    "cognitum-claude-plugin": {
+      "query": "In the cognitum-claude-plugin project, what is cognitum-mcp, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "f7a6ee76c3c74bd3b7fce73c59034ac852e5c0bea35a8453b964ef84c2e5ba7a"
+      },
+      "recordSha256": "e24df362a94d59c58ba5cc7043e9b9d95ce83c30c1b2e992263b0133b889e8e1"
+    },
+    "cognitum-cogs": {
+      "query": "In the cognitum-cogs project, what is cognitum-one/cogs, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "src/cogs/cognitive-pipeline/README.md",
+        "passageSha256": "45c53a54248fd1e3c1f04d7813d8512cfc0af060521279ca1d429d188ade88d1"
+      },
+      "recordSha256": "f2b3eab1439bace29ce83d1fad5b04463fc384b2fd36a492870b4397ad862d0d"
+    },
+    "cognitum-learn": {
+      "query": "In the cognitum-learn project, what is Cognitum Learn, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": ".claude/skills/cognitum-learn/SKILL.md",
+        "passageSha256": "4eceeb4de435ae3242221ed8dd37af7cd28d0fa5c81aa4b5d207b9a51ebe32da"
+      },
+      "recordSha256": "112992cc89294f3151c996ffe50ed67c94da0f95cc4a1898ab0129134aeb23c2"
+    },
+    "cognitum-learn-site": {
+      "query": "In the cognitum-learn-site project, what is cognitum-learn-site, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "e79162d8345d2cb9a822f09603de05258cb6d4929c88796c76a871c020cb45bd"
+      },
+      "recordSha256": "bb58c83f05fcdc35e16a97974b9c9cac0c90680ce2ca9f5325f14de1d661b27b"
+    },
+    "cognitum-meta-llm-docs": {
+      "query": "How do the public Cognitum MaaS docs describe its multi-tenant, tiered, metered OpenAI and Anthropic completions platform?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "e7efacaf6c574a23fc017c9c8da7f37c7c67b0545a9c009e49b2ae8787454882"
+      },
+      "recordSha256": "136ce56c80a559fd44610861317e04bb73486e42f75967fa7f4bbb4d3c6567d9"
+    },
+    "cognitum-meta-proxy-dist": {
+      "query": "In the cognitum-meta-proxy-dist project, what is meta-proxy-dist, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "1ec2b8a09f60b60203ff3745ea6e7d4638031becfd851e38846f4593e54e18ec"
+      },
+      "recordSha256": "81d60d0bbbc88c648db87e3d28c5989760f0f6c93394ee73fede90ed021bb5e5"
+    },
+    "cognitum-one-sensor-primer": {
+      "query": "In cognitum-one-sensor-primer, which BGE 768-dimensional big Mac store and MiniLM 384-dimensional small Cognitum One Seed store variants are recorded in the last-built knowledge-bundle manifest?",
+      "expected": {
+        "path": "kb/.last-built.json",
+        "passageSha256": "18fd8781202cd3c1f84de15e5f38ffb27dd263e0de26efb7358cbe52a5de490c"
+      },
+      "recordSha256": "df6358fc90b22afbec4d6150aac94244ff37b45e7d2def89d2f00b00a46d69fa"
+    },
+    "cognitum-ruos": {
+      "query": "In the cognitum-ruos repository, which Rust binary package is the ruOS agentic daemon for observing, reasoning, acting, self-monitoring, automatic profiles, AIDefence, and OTA?",
+      "expected": {
+        "path": "crates/ruos-agent/Cargo.toml",
+        "passageSha256": "e3359c3bddfcb8ca72fa3717b5386d9cdd8ee24ac373e1af6afd72d771a5f8cb"
+      },
+      "recordSha256": "868aea78976a0fd6be0ed9bbb9d189f539573d628d36c395395c31b5ffeacb50"
+    },
+    "cognitum-support": {
+      "query": "How does a new Cognitum Seed owner plug in the device, open its local guide, and complete initial setup?",
+      "expected": {
+        "path": "docs/getting-started.md",
+        "passageSha256": "5456d774f57a8f895ba24a97b7aa72d546cd3ca17d95ec39984d74b1f0ca313f"
+      },
+      "recordSha256": "795a0e74ba37024d5a1b618b326dc41c14b554c04cbd2b204b6cb9f15bddd236"
+    },
+    "connectome-os": {
+      "query": "In the connectome-os project, what is Connectome OS, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "f9b8ac8dc02e051d9e20b2aa8f14d2a7fd085f75bbabf724520121085a49851f"
+      },
+      "recordSha256": "8d1ff27222446f37c7e500c2d09d7473b390ffd831991d481d52bf27f7f9f0fc"
+    },
+    "console-streamer": {
+      "query": "In the console-streamer project, what is Live Console YouTube Streamer, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "readme.md",
+        "passageSha256": "20ae82ff62e735bdad001ba93b805356f9f8e532ad4f28229410e88bf6ca021c"
+      },
+      "recordSha256": "be18224e47fdc5029893867772d6c1656019491cfb2ec7dbd2b175369d846091"
+    },
+    "contextual-retrevial": {
+      "query": "In the contextual-retrevial project, what is Contextual Retrieval System with Supabase Storage, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "a473a0bded67b8e2d8285360fe584a5375a92effc0b79ff220439ac6ccf5e713"
+      },
+      "recordSha256": "3a1042f115b51848b740a03f9d81685ff6bfe78d180a6c1b24a28916188ce7be"
+    },
+    "cve-bench": {
+      "query": "In the cve-bench project, what is CVE-bench: A SWE-bench-Style Security Benchmark, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "package.json",
+        "passageSha256": "8956631b131904d742fd5f3aa4897c7c123296e03909b8dd2449f2fdf66b2dc8"
+      },
+      "recordSha256": "87d629b2576dab22821805c887aeb90df106829bfff55b2d79b79f04367c4a42"
+    },
+    "daa": {
+      "query": "In the daa project, what is 🤖 DAA SDK - Decentralized Autonomous Agents & Distributed ML, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "packages/daa-sdk/src/index.ts",
+        "passageSha256": "55889c6bcb174dcdee8ab721c357c6feb9cbcd2c70ba85d88d1af0ce03e48ca0"
+      },
+      "recordSha256": "6b2b94e30f1a8299dbc86f79b75a2f669b3b204a37892cac55b6b3987ecea72e"
+    },
+    "demo-proxy-app": {
+      "query": "In the demo-proxy-app project, what is DEMO PROXY API Proxy, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "6e067513693219417506e217acb3027c016452ee0dbe6af3a0b9e7dcf80c6c54"
+      },
+      "recordSha256": "a20d67f08228d298469dde4b91d44743ce72096d559e4058d1c6cc65099df549"
+    },
+    "dream-machine": {
+      "query": "In the dream-machine project, what is ☾ Dream Machine, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "packages/cli/README.md",
+        "passageSha256": "25553f33ba5bc23fc7036f9ed676e8d2af9dec7a0dfaa11251276801e94f490b"
+      },
+      "recordSha256": "cfd69829ca32c683995535620dc668e12a96165611778eeb8ecfb01503e9af09"
+    },
+    "drupaljs": {
+      "query": "In the drupaljs repository, which Vite npm package defines dev, build, lint, and preview scripts and depends on React, React Router, TanStack Query, and Tailwind CSS?",
+      "expected": {
+        "path": "Drupal.js/package.json",
+        "passageSha256": "95652bcbaac2fec9d15e6225f5b8b0672dd641aa3f6ff480474cc7dd9f901de0"
+      },
+      "recordSha256": "7479b3065b4ab96262af649f708fed26c40ab788392c1da598db43f3da09826c"
+    },
+    "dspy.ts": {
+      "query": "In the dspy.ts project, what is DSPy.ts, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "plans/Phase7_Documentation_and_Examples.md",
+        "passageSha256": "c004fabfb4a2a63d16e70505cb2e4597e04f8e4df702d6cc3fd963aadcae44a3"
+      },
+      "recordSha256": "4eb43e5b6b6d5fe5e2838eb9fddbda136229f97e00043873fc5ba72d56d8d8e4"
+    },
+    "dynamo-mcp": {
+      "query": "In the dynamo-mcp project, what is Dynamo MCP, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "9986cedbf7c693a51cdaeb9257f19aafb49190d7c90d43908d0560a1d39370bb"
+      },
+      "recordSha256": "82b680b2af0b5158f2d82ea97f300e8008356e25ed2fca8dd3b6a12177f2b304"
+    },
+    "electo1": {
+      "query": "In the electo1 project, what is Agentic Election Prediction System, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "53ea4bab2f18295fed68af0daa5023d003a7a1d47ae4351d505cf1cdb3e71be5"
+      },
+      "recordSha256": "acb9ff20f29e543657b962944d580c346b08e2848491aa397077f0109a6c4d6b"
+    },
+    "electo1-js": {
+      "query": "In the electo1-js project, what is Agentic Election Prediction System, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "documentation/frontend_overview.md",
+        "passageSha256": "10096aa607673a338ded46f67ba962b0b3233ab5249e225077854a4781652819"
+      },
+      "recordSha256": "bd73165f4b7e0c0c230c8a881734c90c89cdaaabf530bfdf366784ce6a6037b0"
+    },
+    "fact": {
+      "query": "In the fact project, what is FACT: Fast Augmented Context Tools, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "fact-memory/examples/README.md",
+        "passageSha256": "397ec36fb663080cf131a9195abd247893cb10c0464d690939ddc4e2f54858fd"
+      },
+      "recordSha256": "e869e25874bbfebe66e976edd0c1a800927a9edbdb8dff721923bb7d65fa6921"
+    },
+    "federated-mcp": {
+      "query": "In the federated-mcp project, what is AI Federation Network, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/intro.md",
+        "passageSha256": "3a024cc723b450fb4d30e548dc13df3a6ee0c01d6b259135ac12487565cf5b43"
+      },
+      "recordSha256": "e215bc25c8b62ff792464e492c631a5746e590061cd810bc4b63c8b562bb610c"
+    },
+    "fireflies-webook": {
+      "query": "In the fireflies-webook project, what is Cline Integration Guide: RUV Bounce Method with Site-Mocking Unit Testing, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "165e35d289d705a88cbb6e1365da4b2ca074844821e19c5d2103e231a84e0b03"
+      },
+      "recordSha256": "4daebe4b191a4473e36bffffc385ce8eec91c7ce455cd7ff281db12a720e5600"
+    },
+    "flow-nexus": {
+      "query": "In the flow-nexus project, what is 🚀 Flow Nexus: Your Path to Digital Immortality, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "tutorials/agentic-marketing/TUTORIAL.md",
+        "passageSha256": "ee84f0520df27c26dfcd74d48e78840e89d1f70d05aca2b6a2073f6f84fe4708"
+      },
+      "recordSha256": "10645e99209dc350319a16a2961b7a03a30bcd961e5a444acd6ea60f3296a376"
+    },
+    "genai-superstream": {
+      "query": "In the genai-superstream project, what is GenAI-Superstream, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/overview.md",
+        "passageSha256": "009ae288fba41dfee7972e0eee12b4d9ec94b7bfd413fa4f24b1148ec443ee2e"
+      },
+      "recordSha256": "6f659d470bc0df1347d1c6b53f5f4a10b6ee77ee0ea678dfea6304931c2910c3"
+    },
+    "genesis": {
+      "query": "In the genesis project, what is Genesis - Advanced Physics Platform with AI-Powered Environmental Awareness, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/performance_optimization_report.md",
+        "passageSha256": "bc6049a33125dbe37d798a00ac3c7fbd02b707b70711b2c4f36e6f7e86bd480d"
+      },
+      "recordSha256": "12570718ca64d076bb658cfe2eceff542b205428634e545fd4d41eac95dccf78"
+    },
+    "gpts": {
+      "query": "In the gpts project, what is The rUv ChatGPT GPT Repository, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "instructions/GPT API Advisor.txt",
+        "passageSha256": "130f5fd713b45eceb5450aecfebf1277f5435052b8998944cc5c998c81fcfd16"
+      },
+      "recordSha256": "b384d8824261e74cd6b58f48bf53b8b7663ea414c4e2e3930de289d450e8858e"
+    },
+    "guardrail": {
+      "query": "In the guardrail project, what is GuardRail OSS - Open Source Ai Guidance & Analysis API, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "4b1acabbf73332178ccf89fbf24387732f8b15d40ac980cc9fb6bbd24a91fb6d"
+      },
+      "recordSha256": "57ce1ede71f15dbf0dbf4a38717cb2874c36f53d1e8cc629e02ec116228193c5"
+    },
+    "hacker-league": {
+      "query": "In the hacker-league project, what is Insider Trading Mirror System, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "stock-mirror-spec/readme.md",
+        "passageSha256": "96c2fe4769f7d757f5ca81279602d10eb0c24558f3ba934bae42efb0d6ac2698"
+      },
+      "recordSha256": "e248037cd5cd32e690ee71720d8bd477eef4098c6fffae058119e6d231e27c21"
+    },
+    "hackerone": {
+      "query": "In the hackerone project, what is @metaharness/hackerone, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "0dd8b061c1f4b460d0bddacd310ffa88753ed2987d650fcf20f1963d3f641450"
+      },
+      "recordSha256": "a92ca6becb555b9c460c8d96c2ab4fd191b2e20dd1dcb836a2c87af9c4730691"
+    },
+    "helix": {
+      "query": "How does Helix assemble private health records, signals, and results into a continual visual dossier without inventing facts?",
+      "expected": {
+        "path": "index.html",
+        "passageSha256": "4f372befe7f667ed44de4b8f2a989e64255806e8867ccd2b28085ef3e27c5a6b"
+      },
+      "recordSha256": "3b48cf38f648ebe197e401f1504db03ff6dcf217a396b91368a5d60913877e5d"
+    },
+    "hello_world_agent": {
+      "query": "In the hello_world_agent project, what is Hello World Agent 🌟, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "agent/docs/readme.md",
+        "passageSha256": "98e5b25a57e473493606f290d0f2448fae618f10fd2685c39cc1657efbf26381"
+      },
+      "recordSha256": "097036f69ccf339bb18ef562f93a2a04522c5fec9fc2cd0f8fb36c10495af6d5"
+    },
+    "hft": {
+      "query": "In the hft project, what is init.sh - Script to initialize the HFT project structure and files, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "7436b679a6d63c485f6b17f0df28cba6c8fc880f479058dcdd79cdf6b933aefb"
+      },
+      "recordSha256": "bd1e35102745f9334e68da99dd32ab340b23e4ef45da2bd5da58fd3801f568fd"
+    },
+    "image-agent": {
+      "query": "In the image-agent project, what is image-agent, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "03b72abecfa6e96fcc6062ebd0b45f5b88f152a29a3c8b4ed584ca38d1a50e8e"
+      },
+      "recordSha256": "6a9ad0521f962b04d49c99bfc22c7801512993b045a58eaa7e8a3752b778ddd9"
+    },
+    "infinity-ui": {
+      "query": "In the infinity-ui project, what is Infinity UI: A Sci-Fi Odyssey 🚀, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "c5987318b8f479073cbf1c307a7d1d8353988e512fe446275ea85f98833c130a"
+      },
+      "recordSha256": "5d781bf05ac3069dd114e3e70336f718e3a9bb3bc9b1af510143f848dd157480"
+    },
+    "inflight": {
+      "query": "Which Python package defines Inflight Agentics as a paradigm beyond traditional transactional events and depends on Kafka, OpenAI, dotenv, and Python 3.9?",
+      "expected": {
+        "path": "pyproject.toml",
+        "passageSha256": "3f424d5670cb27674708b0faa280c300641e3fb8f83a9dbf9e601d44b53e2c3c"
+      },
+      "recordSha256": "9b7338ef04b38a075cccc5897ed16b66d56cebddc0f999517b68e40831e88114"
+    },
+    "latentmesh": {
+      "query": "In the latentmesh project, what is LatentMesh, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/adr/001-latentmesh-architecture-and-prior-art.md",
+        "passageSha256": "de64fba0a4f8a9bd7ce8dd52db78e61410cc8cfc61142cb1894b808740a700a0"
+      },
+      "recordSha256": "dd506d5188e051a110c3566f3646386fb0415ac96419499109c60080771479fe"
+    },
+    "llamastack": {
+      "query": "In the llamastack frontend, which central module defines navigation items used by routing and navigation components?",
+      "expected": {
+        "path": "llamastack/src/nav-items.jsx",
+        "passageSha256": "336b9b0b66c6c809101658bb0d3014a1d6bc8a618156e49949f8975ee7bb2b2c"
+      },
+      "recordSha256": "6bdcd8f65acfc9d350b57eab7be6b5d551bf7be998add3c3472306a6bb40ce0b"
+    },
+    "llm-stream-reformat": {
+      "query": "In the llm-stream-reformat project, what is 📡 llm-stream-reformat, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "c00d260f48bed47afa0bb2d471f2c39ce440a3f0caf1e54ff6b86923f26ffa24"
+      },
+      "recordSha256": "d6b4834983cb5cee39d3075400bd41b3f8019f10b865aa3c3629e6bd0f7bfeab"
+    },
+    "local-logic": {
+      "query": "In the local-logic project, what is Local Logic AI Training System, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/applications/reasoning.md",
+        "passageSha256": "1769d25d299bb8084dde2fad54a7ceecd7cecb9004531f39c2901a41effa7d94"
+      },
+      "recordSha256": "e48e1deea072f9d54591dbc2345c9d105371c05b6ffc23230bd8764f9123d913"
+    },
+    "marketing": {
+      "query": "In the marketing project, what is AI Marketing Swarms, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/architecture/README.md",
+        "passageSha256": "87e62a2331002280fff02685a280284166daa4fbfae840bbdd6bc6227ed1bd81"
+      },
+      "recordSha256": "959df7cabc13740079741f7f56cefe868b58726f167da0d7ba60135c81683909"
+    },
+    "markov-chains": {
+      "query": "In the markov-chains project, what is markov-chains, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "32fc3629bab7c0f6d4af6e1cd6a4559e7678a1c66a65194e1d0bb71db98d8163"
+      },
+      "recordSha256": "3faa0c73905ca112df64d24a5d55caeff7c687e95660e849e32581796d375478"
+    },
+    "metaharness": {
+      "query": "In the metaharness project, what is MetaHarness, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/adrs/ADR-145-metaharness-router-swebench-integration.md",
+        "passageSha256": "15d323af06c1cbb231945b99406859a9879977b2fda20c57db6a631ed5fd13c5"
+      },
+      "recordSha256": "1f650a2c0b3ef9957d82afec5c06d067f844bb3aa60c60298a3325ae813899ce"
+    },
+    "midstream": {
+      "query": "Which MidStream integration provides real-time video-stream introspection and analysis for RTMP, WebRTC, and HLS?",
+      "expected": {
+        "path": "npm/src/restream-integration.ts",
+        "passageSha256": "214a9290c215862e283fb668be75ac7b1949245feabb4df50e9a1b71fe4eaf8d"
+      },
+      "recordSha256": "ad41c9299d5b4609a6e5a915f354db77ac44164ca0a23a5c0b91d784e223937d"
+    },
+    "musica": {
+      "query": "In the musica project, what is Musica VJ — Your AI DJ + VJ Rig, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/adr/ADR-160-musica-vj-tauri-subproject-boundary.md",
+        "passageSha256": "e0f55e99f20a8a60f39e330c3dda5e7020a8de130dde4c0d6329604a4a45e505"
+      },
+      "recordSha256": "777e0be69d3953a4ae3aa008693f7a34c0762c86c641f54c2921d8c330f77e68"
+    },
+    "musicai": {
+      "query": "In the musicai project, what is Magic AI Music Box 🎵🤖, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "src/index.ts",
+        "passageSha256": "9bf86747b87db565b6ed8bfa8184fda3e02e6b527ee2df2bf5ea6547308e2b34"
+      },
+      "recordSha256": "de301f98c7b3f856ac4efb1704a6519b42732364a9381a702b5f6fb841bf4ef5"
+    },
+    "nova": {
+      "query": "In the nova project, what is NOVA (Neuro-symbolic Optimized Versatile Agent), what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "conjecture/docs/integration.md",
+        "passageSha256": "2ceb335fddbe1d40a1471fdcf03432aac2174e14bb0a415dc3e635631c48b0e1"
+      },
+      "recordSha256": "951ff9cbe4285b2d1e3c0790d17904a04690299fd6b7cd76090526a6938cefed"
+    },
+    "obsidian-brain": {
+      "query": "In the obsidian-brain project, what is obsidian-brain, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "fe03dd3b1854740ea9f2e9480301585c089e69797c337c9a9293148a1634fd36"
+      },
+      "recordSha256": "61e12b70af4bdf73e1fe531d7de5e2364d962343538c87ff3ecdf22443e9b936"
+    },
+    "omnipotent": {
+      "query": "In the omnipotent project, what is Quantum Consciousness Voice Interface, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "4d063db6b1019b13755e3515d484971634b7fc2b47766499e7dea6e1f6848c22"
+      },
+      "recordSha256": "209f267330f95e4210fced03bf8aff3ced936f180704d2cba2cebcd012241f67"
+    },
+    "onnx-agent": {
+      "query": "How can ONNX Runtime models be trained and optimized with DSPy using quantization, hardware execution providers, test-time augmentation, and profiling?",
+      "expected": {
+        "path": "research/readme.md",
+        "passageSha256": "3a5434af7916b53aadc4c9d51e5eabee853d3b6d630507c1c2c2bcfc26151930"
+      },
+      "recordSha256": "1e7aaacf984a4c489b47a7ea31ea9a181bb72ae041deb70b467c888c6ff2b3e2"
+    },
+    "open-claude-code": {
+      "query": "What architecture does open-claude-code v2 use for its CLI runtime, tools, permissions, and provider integration?",
+      "expected": {
+        "path": "docs/adr/ADR-001-v2-architecture.md",
+        "passageSha256": "ef8a2362bebb6ced7901d54ea9e12818d4ef4ed31fac0ced308462dc8a360bff"
+      },
+      "recordSha256": "4ca7a3d3c39924670c192812addd0f32535afbaf1b11c7fc78ee49552d4df0be"
+    },
+    "open-space": {
+      "query": "In the open-space project, what is open-space, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "1a2f8259e8d1eed85cbc17c1248bf295de2eceae374d66dd2fd6b5112a0b3d80"
+      },
+      "recordSha256": "304aa76e14159b5c15cda172f651aefc5f2ddfd3d468fcaa76b8672bc9ea10fe"
+    },
+    "openai_devops": {
+      "query": "In the openai_devops project, what is ruvbot - Devops using OpenAi ChatGPT Model, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "19a848c44dfaaa7398db8c80dbfb70e0a16d6137d2e1129820af7e2251adcbc5"
+      },
+      "recordSha256": "dffcc3bf0915afedd70c3eeeb2a7f04174ff2d32eb58b84e531949f976e023f2"
+    },
+    "openai-cost-estimator": {
+      "query": "In the openai-cost-estimator project, what is GPT API Cost Estimation for Enterprises, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "d8959d6151b3c1a63e2b9a03f947da8e98c2126de43cfb193b74e07a3b49049c"
+      },
+      "recordSha256": "cfc3e9f0261787fd7ad50ef2a4d20c7c6143ab61f64b0a875b716d09e83b661a"
+    },
+    "p2pgpt": {
+      "query": "In the p2pgpt project, what is P2P GPT for Slack and Web Sockets Add-on, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "readme.md",
+        "passageSha256": "48114ea1cc3d658ff8f9d84995ee57a19a9d56a868d65ca863e04b9f6c49dc54"
+      },
+      "recordSha256": "184e250b82c74d5f6c478f14527f7a826b70a6d16f8643fff98e31b7b0694609"
+    },
+    "paris": {
+      "query": "In the paris project, what is PARIS: Perpetual Adaptive Regenerative Intelligence Systems, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "paris.py",
+        "passageSha256": "cf6333b77e17d77635dfea737af1725efb6814dba22808f84eccb774fa6f7169"
+      },
+      "recordSha256": "f12e3821ecb4ca51c671519f65b6ec9a7a72672219501dc9f1f865afa42c05ca"
+    },
+    "phone-agent": {
+      "query": "In the phone-agent project, what is Phone Agent, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/architecture.md",
+        "passageSha256": "b598ae2f4df6aa0c03d402d412626ce8fc6d5def4c0ebf9177de0f86d0e7f311"
+      },
+      "recordSha256": "58e59fd3655c7610e75768528fd8bf8d453baacc453848f1467fbdb34ac2972a"
+    },
+    "photonlayer": {
+      "query": "In the photonlayer project, what is PhotonLayer, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "crates/photonlayer-core/README.md",
+        "passageSha256": "5255a8892d2df65ca1156096275e3f4780d40a4f3c2298f8c2d88f4c651d9e9e"
+      },
+      "recordSha256": "2df373f47b48ddb735eb4dbab4dee22008db1f9178a1d12698e1a5b2db916132"
+    },
+    "pipackager": {
+      "query": "In the pipackager project, what is pipackager, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "2b56f134957f84418ede98dbea354d6aba714ed63af963e8d1471b5eb304c499"
+      },
+      "recordSha256": "0d4a84c2356b7055a8338d27bf6257b25d6af99fc5021522c885fe9940cea954"
+    },
+    "powerprompt": {
+      "query": "In the powerprompt project, what is Power Prompt, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "b7d501ca9750a6cecdfdeb4de0855bcdc680ab32bd299a6819e958689d828ff4"
+      },
+      "recordSha256": "54ac7c5a15d0073fe4c6434c5a5e507d11964f2a13d3e5c09bf0165658e98af9"
+    },
+    "prompt-engine": {
+      "query": "In the prompt-engine project, what is Prompt Engine, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "8188b047ac310ec7cfc9c35d2df5cb0eafa17efb7e9ed18b6074c3ad6d71b197"
+      },
+      "recordSha256": "eec735ffd2f3f3e604eb22fb24b633ad0f7c1167dd66a2a1aa22018473a143a6"
+    },
+    "promptlang": {
+      "query": "In the promptlang project, what is PromptLang, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "507ea25a74878bb5ba203d80b13217b85aaa27383187daa4fb507b22a4debd9e"
+      },
+      "recordSha256": "15b71b7c04b1863a209c8f4c4f0ce29600fc86922365fd064fac9888c209601f"
+    },
+    "pygentic": {
+      "query": "In the pygentic project, what is pygentic, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "6fe1269e547988a215820d23ca945f960810cfe0a8623afe3b644dd7f068b976"
+      },
+      "recordSha256": "366808c31fce394f8f7250da69694a68980d5874f003597931e443f1d2db853c"
+    },
+    "q-space": {
+      "query": "In the q-space project, what is Quantum Deployment Wizard, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "09c03ffbc85203543daf25ba9c5c4e0af2eed3b47c47a544bad28ef0fcf4e7e3"
+      },
+      "recordSha256": "890b8665e913fb58e80604127b29602b69598622fef517231d291c925e968e7a"
+    },
+    "q-star": {
+      "query": "In the q-star project, what is Q-Star Agent: Reinforcement Learning with Microsoft AutoGen, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "q.py",
+        "passageSha256": "f176233cf4ce9f49c22eeda2cec1e258c2a411a7d09029baad3e24771c12c87f"
+      },
+      "recordSha256": "d7cff82e021168f9de6650b4b3d3a6856cb4650c044869e5e6a21d894ebeda82"
+    },
+    "quantum_cryptocurrency": {
+      "query": "In the quantum_cryptocurrency project, what is Quantum Cryptocurrency, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "quantum_crypto/README.md",
+        "passageSha256": "9d6274ebf6766153d6b3fdc90412f7ccef0742c37c058f934938a99588a05e5d"
+      },
+      "recordSha256": "a42e6174311a13eec078cdadd9b92e32c4e0bce6f6556b004cfc780a76a8d074"
+    },
+    "quantum-magnetic-navigation": {
+      "query": "In the quantum-magnetic-navigation project, what is Quantum Magnetic Navigation, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "plans/00_overview.md",
+        "passageSha256": "813791b1c90a5e7deedd3f740ffa996af7e6d1e2f7e45998acb04715a63be755"
+      },
+      "recordSha256": "9804944149bbdededdc14678dd48654fd3b1941511dff43b9d77a9857264a572"
+    },
+    "quantum-virtual-machine": {
+      "query": "In the quantum-virtual-machine project, what is 🚀 Quantum Virtual Machine (QVM), what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "ec285724d855c538088654ee4969330172aeef7d94e6d5e3df25fd01987afa53"
+      },
+      "recordSha256": "4ed6bf2f12371af1215c1c4700b2920e29e8babc48363dabb6208676afef2c68"
+    },
+    "qudag": {
+      "query": "In the qudag project, what is QuDAG: The Future of Autonomous, Quantum-Resistant, Zero-Person Businesses 🌐, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "qudag-admin/plans/admin.md",
+        "passageSha256": "d76f27839576c965651bf3e527fcb6e43a7b42d64539c5c8575b038a829ec573"
+      },
+      "recordSha256": "8e903fad18b23dee68de62941c6206ef5dea136a80de9a5fa680b7c5edcdc93d"
+    },
+    "r-flow": {
+      "query": "In the r-flow project, what is React Flow JavaScript starter, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "0d72bd2dfa8b59922a28b09daf72148119d2bade7cd1fb98a33a534c65db86b5"
+      },
+      "recordSha256": "55c202c894e152f40d3d3b8584b448041aa44bdd487bf5938c8854ed5f4dff59"
+    },
+    "reflective-engineer": {
+      "query": "Which conversational-agent approaches and best practices does Reflective Engineer prescribe for LangChain.js, context preservation, memory, tool integration, and response validation?",
+      "expected": {
+        "path": "public/templates/conversational-agents.md",
+        "passageSha256": "eb80e4f5d1be7955bae310aa8004d072a8c6323e4940895db8100c8e56dd0ea0"
+      },
+      "recordSha256": "0529ea5d897362f80a83099bda05ee9e044e86e8005925e4ea8e629b73fce156"
+    },
+    "retro-ai-ui": {
+      "query": "In the retro-ai-ui project, what is Retro Console & GPT Prompt Creator, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "readme.md",
+        "passageSha256": "66a36405f9c1a50bd223226c7be951c5525e120ce7893e78f03909ab5beddc46"
+      },
+      "recordSha256": "c9d1923ff2d48b03ab473ceb0a3fbd97b6be6d88223eb5ceb9ceaf083f557eba"
+    },
+    "roomodes": {
+      "query": "In the roomodes project, what is roomodes, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "503b93f2ab9f557bc5d6c471169a8678b95162252760bfc0362f1db55d929d95"
+      },
+      "recordSha256": "00f9c3004305fa75a1ee095d80a30ee8b5e348b7b9321271fed6f432ee8c5b77"
+    },
+    "rucelium": {
+      "query": "How does RuCelium parse and validate the packed 48-byte little-endian environment sample without unsafe transmutation?",
+      "expected": {
+        "path": "crates/rucelium-abi/src/wire.rs",
+        "passageSha256": "ff80dd11ca85de4ac7e646daea2ae438b8f6b394d4313844b13db8b89d18e4b1"
+      },
+      "recordSha256": "671ef80c89ff9cbcae7b5a2095780b55415cd2c8a5c5ae9011cf142637ffe9df"
+    },
+    "rudevolution": {
+      "query": "In the rudevolution project, what is npm (CLI + MCP tools), what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/adr/ADR-137-npm-decompiler-cli-and-mcp.md",
+        "passageSha256": "b2275a652e32b0a642a534df52a34d9df675d0b60b4d3ab6ff209ed0529623fa"
+      },
+      "recordSha256": "5305466515f7089ed6a6f028a5a7eadc08edcef6253cc0e689f68672b15ce7a1"
+    },
+    "rufield": {
+      "query": "In the rufield project, what is RuField MFS, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/ADR-260-rufield-mfs.md",
+        "passageSha256": "efa1363b9e068b4c07eaad4613fc7d2672f707ac3996c1cbadaf47a8e11edaf2"
+      },
+      "recordSha256": "aaf52f4d6b1a88b7e99e607d8c321d743ff42f2c450b27f91ffe5b108b98ecfa"
+    },
+    "ruflo": {
+      "query": "How did Ruflo v3.32.38 prevent read-only commands in unrelated Claude projects from starting leaked background daemons?",
+      "expected": {
+        "path": "v3/docs/releases/v3.32.38.md",
+        "passageSha256": "02e054bd209d445788bd5ea94c8ae0cbbdafcfe283d0053dcfad8f6c3d6230a4"
+      },
+      "recordSha256": "a0733b963d810e281fe10761702afb3a8e0a87080f456bdaa55ec664591e09aa"
+    },
+    "rulake": {
+      "query": "What minimum backend adapter trait does ruLake require for listing collections, pulling vectors, generation coherence, and optional ANN pushdown?",
+      "expected": {
+        "path": "crates/core/src/backend.rs",
+        "passageSha256": "1b086f385a81754428b69073a1ca94e8d709f18c6ad4409a202e6c14355ccc51"
+      },
+      "recordSha256": "4f274b130cd87b14fd72027aba4373823e185390024dbfcba01112605186d706"
+    },
+    "ruos-macair": {
+      "query": "In the ruos-macair project, what is ruOS MacBook Air 2012, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/adr/ADR-001-ruos-macbook-air-2012.md",
+        "passageSha256": "a4cabf7d403f373c5e63da9bb9f646dc2392df39f19b7132239f4f0dd5fd52b8"
+      },
+      "recordSha256": "6666ee5f5871abe07c211840f84e6df1631394d443f879c4f8bbd5fa7ab99ecb"
+    },
+    "rupixel": {
+      "query": "In the rupixel project, what is rupixel — search documents by *meaning*, including pictures of pages, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "0a87578330ac3510e567eec04fcbc919f355b6e2c4de604470ba3ba6aaaab7b3"
+      },
+      "recordSha256": "3ae28267ce6b6ebcdd076ac77ca0842228634ac0b763808742789cf54961de06"
+    },
+    "ruqu": {
+      "query": "In the ruqu project, what is ruqu — Quantum Computing in Pure Rust + WebAssembly, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "bb53bc801eedb3c7f13123516707064c533d0a37d7440ef11bb240ef312919a8"
+      },
+      "recordSha256": "cc6f6168c4b7ddab493304f993a1de77ad12e54f96efafe9a407e105b07494a3"
+    },
+    "ruv-dev": {
+      "query": "In the ruv-dev project, what is create-sparc, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "plans/README.md",
+        "passageSha256": "b7137ef9e8ab70d98ef71fe858b2abd9f01afb1557aa0720ddfbb14c282dcd13"
+      },
+      "recordSha256": "5c3b0991d2ce39d69787533fa7d9b7e29b38472830b313fe81cd556b53b4e995"
+    },
+    "ruv-drone": {
+      "query": "How does ruv-drone combine hierarchical mesh topology, Raft consensus, MAPPO learning, CSI sensing, and failsafe fleet control?",
+      "expected": {
+        "path": "src/lib.rs",
+        "passageSha256": "175211491cb7f3b4bf402966afe3df0f91f4212d51cfed9348e84633beef26c1"
+      },
+      "recordSha256": "be1b01fc75fab96b818aa37d7471bb91677beea5f4aeb8c5a1357864a4b5001b"
+    },
+    "ruv-enterprise-ai-guide": {
+      "query": "In the ruv-enterprise-ai-guide project, what is The rUv Enterprise AI Guide, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "9c293fbea72d7d77d65be3592db5b3f4424027f27cd2bc3ce678eaf1464b0301"
+      },
+      "recordSha256": "5317a3ebe0de6ce16947b80003cdacf5533519dbfa77bfe3c28933691c84ba7e"
+    },
+    "ruv-fann": {
+      "query": "In the ruv-fann project, what is ruv-FANN: The Neural Intelligence Framework 🧠, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "ruv-swarm/docs/NEURAL_INTEGRATION.md",
+        "passageSha256": "0d0777d02487861c96b4e8121b8153d4ecfe77267c341f6fb42a04318c21db4d"
+      },
+      "recordSha256": "e7d0f2de94a75a89adb92c62eb983dfdd5a1ccae0a20e7d00492a40fbfaeebbc"
+    },
+    "ruv-neural": {
+      "query": "How does rUv Neural define its accepted closed-loop architecture for detecting personal state and conservatively adapting sensory stimulation?",
+      "expected": {
+        "path": "docs/adr/0003-closed-loop-architecture.md",
+        "passageSha256": "f178cb40ebca07d792fd98d617617e1fc08a51ad27716b4ae120b596d6a5080f"
+      },
+      "recordSha256": "09dd5836b1e6ce9d5b2d38c010511e0b3244e83fd7c0052eee3f0e74f293c2f0"
+    },
+    "ruv.io": {
+      "query": "In the ruv.io project, what is @ruv.io/* - Comprehensive Rust-to-NPM Wrapper Ecosystem, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "plans/011-code-mesh-cli.md",
+        "passageSha256": "ea44960fb891c806227450fb39306765353b5ae34525a4b7ec00f0b14acf0e72"
+      },
+      "recordSha256": "e12d88e23ba1446af4095fd8e01b2b3dedd99c4c7bfa1ed0542f264616142f95"
+    },
+    "ruvbot": {
+      "query": "In the ruvbot repository, which llama2_app npm package depends on LlamaIndex, Next.js, React, and provides dev, build, start, lint, and generate scripts?",
+      "expected": {
+        "path": "llama2_app/package.json",
+        "passageSha256": "edf6cd19c24f893e10131dc298b07f88ed106763e0b0e666b9ee753406c8ebcc"
+      },
+      "recordSha256": "d03e01ac53790570137f2eb5ae1ac7b16b6a6edbda43f94681c9deaadaecdd95"
+    },
+    "ruvector": {
+      "query": "Which modules make up the RuVector solver crate, including its push algorithms, BMSSP, conjugate gradient, random walk, router, SIMD, audit, budget, and validation components?",
+      "expected": {
+        "path": "crates/ruvector-solver/src",
+        "passageSha256": "24baa42ca19d72c922bb1662a5b1b564a6e21265cd339dccd95f740d68805f32"
+      },
+      "recordSha256": "bcff6354a2d68c5fbb3981780e3e0b2ff588e2c4ab16f9b83d15c72967fae4e2"
+    },
+    "ruview": {
+      "query": "In the ruview project, what is π RuView, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/adr/ADR-031-ruview-sensing-first-rf-mode.md",
+        "passageSha256": "d0656448c2111b03bf470272436c1051249a16cb5b432839918a7a8382564d57"
+      },
+      "recordSha256": "0f1651ec39a5d07459bdeaa0134eee141f2370ad2467720822e3248d068d1e7a"
+    },
+    "ruvn": {
+      "query": "In the ruvn project, what is ruvn, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "f06f49e79cacd1ef66d4335c1fbc8137bb52a6011903a367cbddc53b79591377"
+      },
+      "recordSha256": "3f893a33f51ad62b8855ca837695c323c084701e02395d21e8c1377082d34c1f"
+    },
+    "ruvnet": {
+      "query": "In the ruvnet project, what is rUv · Open source AI systems, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "llms.txt",
+        "passageSha256": "17d2820e3dadc3ca22118f796b94bcf5888960baf3c9a44c61f6f3edce5e9c8a"
+      },
+      "recordSha256": "cff2779111498a1979cdbd516a9dc192f03098fa86d80ff86ac16c118e915491"
+    },
+    "ruvnet-brain": {
+      "query": "In the ruvnet-brain project, what is 🧠 RuvNet Brain, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "explainer/llms-full.txt",
+        "passageSha256": "65869ef9b83293ca65d62c8e1603a358454d46b567983a5569df1ef322016d42"
+      },
+      "recordSha256": "71d0ece3038da00899ae0bb866a6c5ab8a1db3e6d560de23c32ea0191427c520"
+    },
+    "rvcsi": {
+      "query": "In the rvcsi project, what is 📡 rvCSI — edge RF sensing runtime, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/prd/rvcsi-platform-prd.md",
+        "passageSha256": "4371f547be631961b02c59a99640b75291d072321fe4dd2757fca82e6ebfee74"
+      },
+      "recordSha256": "2c7cca8242dd0b00d46f6d87c438c46ebd7bedcaec012e000b62fcf92ca4a748"
+    },
+    "rvdna": {
+      "query": "In the rvdna project, what is rvDNA — AI-Native Genomic Analysis in Pure Rust + WebAssembly, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "npm/packages/rvdna/index.d.ts",
+        "passageSha256": "b0fa69bc296809c5d90ca29f2533b946208f3ed5ac9fdc898e3ba3a208857628"
+      },
+      "recordSha256": "fd8ed9aaf2dbeadfef735a71ee5500c5205fe2de3df3047e39db907a55285a10"
+    },
+    "rvface": {
+      "query": "In the rvface project, what is rvFACE, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/adrs/0001-project-scope-and-layout.md",
+        "passageSha256": "660a215dd3e5f076e5f1ee2061efe9eec1b45d892e814fb43cfef8ec1bf55e2d"
+      },
+      "recordSha256": "6696ccf3bac6b859dd1499ace82e94483ae50d8815e691f2c3c66b7aa8635611"
+    },
+    "rvm": {
+      "query": "In the rvm project, what is RVM — The Virtual Machine Built for the Agentic Age, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "userguide/03-architecture.md",
+        "passageSha256": "36077470cfa5bce1ec8dd263a6ed10db3587ecab28bbe1ca32aa258a8722af81"
+      },
+      "recordSha256": "275556e6b7852f132fb432228f9171ee6e191729458806b3d1578e8fc9cfa95f"
+    },
+    "rvqr": {
+      "query": "In the rvqr project, what is rvQR, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "bench/lib/transports.mjs",
+        "passageSha256": "e49a39ac0cb94fd98a2d0972b7e6096b2591093a6d4c22b15662b3bf87b34538"
+      },
+      "recordSha256": "fbb61ca30d4ab8d73583fa993538758a4508d648b9de8e01bc847de18c382468"
+    },
+    "safla": {
+      "query": "In the safla project, what is SAFLA - Self-Aware Feedback Loop Algorithm, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "research/01_initial_queries/01_scope_definition.md",
+        "passageSha256": "8dafe3689fe73b12b97328d759cb77b10cfdd79ecfd90296afbbc2691e54ff59"
+      },
+      "recordSha256": "ad3d19f8b1a09369a662418cb855d1c50da03c420de1fa5b90b3c021e3fe5646"
+    },
+    "skygraph": {
+      "query": "In the skygraph project, what is SkyGraph, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "core/src/lib.rs",
+        "passageSha256": "ba5db83bea9ec3e4630653d15ee5993505cd6e1d9923408047f51b1cc1ffdeed"
+      },
+      "recordSha256": "75aa35401e2a72171f088d8a84ce7d696eff15589c87e929c479df05982d2669"
+    },
+    "sonicchamber": {
+      "query": "How does Sonic Chamber acoustic memory use reconstructed-scan embeddings and a navigable small-world graph for longitudinal tracking, FWI warm starts, and anomaly detection?",
+      "expected": {
+        "path": "crates/sonic-ct/src/memory.rs",
+        "passageSha256": "2d7bcb9461a43769be414f6175dc7a5c737d820f9e1baf24df6fda2561335e8b"
+      },
+      "recordSha256": "899a27d503d787b1366b7e021c39fd6ee9e6918822ee9034f2f58ad5eab24081"
+    },
+    "sparc": {
+      "query": "In the sparc project, what is SPARC Framework, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "configuration/CONVENTIONS.md",
+        "passageSha256": "6f5ee0893059ac410d540df10629e9239f26fa96cedb78d04a72976bfb1e5bc6"
+      },
+      "recordSha256": "25ac6bfbfe1ca6394e4b9ab4d026931356b2a112ec204b17ef2c92ee7493dd09"
+    },
+    "sparc-ide": {
+      "query": "In the sparc-ide project, what is SPARC IDE, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "docs/developer-guide.md",
+        "passageSha256": "af0644c667c4b73ac58fd9dd78eb7c6a27a642c2d09b023f8b89695eaced636e"
+      },
+      "recordSha256": "3476bceb2572d8b830eee6251fe0efe15fde1b7c51a31e6ba32b73a54b9207b2"
+    },
+    "strawberry-phi": {
+      "query": "In the strawberry-phi project, what is strawberry-phi, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "77d75c1f7cba93080bea19ae685ffb925a0ab44a91ac06b6c6579cc806a04d88"
+      },
+      "recordSha256": "33ed15fd4e1d350f17fcff7766679103e999b23955f6920de53a36bdf0c1fe04"
+    },
+    "sublinear-time-solver": {
+      "query": "In the sublinear-time-solver project, what is 🚀 The Ultimate Mathematical & AI Toolkit v1.6.0, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "plans/01-system-architecture.md",
+        "passageSha256": "3d7996f44a9e688075842f06af268cf4f6e745883f52168cecdfdb8fa6d56c2e"
+      },
+      "recordSha256": "192d747fc324b8ffecc9facb34332dca99f7421adca4a20caf089f8766d59118"
+    },
+    "supa-ruv": {
+      "query": "In the supa-ruv project, what is Supabase CLI Management Script, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "c0c5a166c746d4cb38686d2f2e656f969cc10f798fb14661b9380a7656ca42a5"
+      },
+      "recordSha256": "cfcf4d220b2d6782f4f905489252c4a21ef9113c506dea06334311b7805b2daf"
+    },
+    "supabase-authentication": {
+      "query": "In the supabase-authentication project, what is Streamlit and FastAPI Authentication with Supabase, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "7fbcc28f747554a30c88122b63e2f76cb15419bf740421f611d58bf96a132ad1"
+      },
+      "recordSha256": "640ca163761f120216e67f32b43cd0267f174ef3f7afcf2a478d57b8ba6439e9"
+    },
+    "surfer": {
+      "query": "How does the AI Web Surfer fetch page HTML, extract article text, and generate summaries through its FastAPI plugin?",
+      "expected": {
+        "path": "main.py",
+        "passageSha256": "ed1b1a6b1e48076c7b2c710ce00c544f1a2a2fbcd4d3bee012d000467199247b"
+      },
+      "recordSha256": "7b76e40386fade5954df90e18191ece4699ab4363f276336f11193b31ad6b3b8"
+    },
+    "svgart": {
+      "query": "In the svgart project, what is SVGart, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "f1309285eacd4cf015534b7aa32e3cc238a2ab4ab9bc06f970faebaf0812c672"
+      },
+      "recordSha256": "c46d578faa9c30050acebe099a1f196044744df0ef02dc8e011bb82114b71eaf"
+    },
+    "swagger-chatgpt-plugin-creator": {
+      "query": "In the swagger-chatgpt-plugin-creator project, what is ChatGPT Plugin Creator - From Swagger, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "readme.md",
+        "passageSha256": "86985e00c8fb4b6801141bdddd598211d418c983bdc5a8a0ad85203a45b286b3"
+      },
+      "recordSha256": "c25821cd38466374acc83dd98d2e5f791229fd184d3f4fc20de45782062ed791"
+    },
+    "swarm-world": {
+      "query": "In the swarm-world project, what is Unity Swarm AI Plugin, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "plans/unity-swarm-ai-research.md",
+        "passageSha256": "de5f66fd204a8d6940c7f1a77900f25c32571e49e6686ed8473e231abf4524e6"
+      },
+      "recordSha256": "8c580ad8d13d165d77f742e32c77bf4dd2abf5875b2872b81a7e8b69a3bf668f"
+    },
+    "symbolic-scribe": {
+      "query": "In the symbolic-scribe project, what is Symbolic Scribe, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "047760041f5c7781188ff91e6ed54b464f8447f521e111ba3cc6ec494aa09e3f"
+      },
+      "recordSha256": "3211ccb0a31396b820ecb93116449a6d2cd935eeaca0f6e59c8754599a734834"
+    },
+    "synaptic-mesh": {
+      "query": "In the synaptic-mesh project, what is Synaptic Neural Mesh, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "plans/reports/RUST_IMPLEMENTATION_SUMMARY.md",
+        "passageSha256": "2fc6169267b89f09f93c97792b86b32c64e5a8b6584ab67eb0ef54262fe44bb2"
+      },
+      "recordSha256": "f61cbbb15b0b3598104e98d7585c7d28ae00a12d1411e90f69c11593050bb3a0"
+    },
+    "synthlang": {
+      "query": "How does the SynthLang evolution system combine genetic algorithms with self-play tournaments to improve symbolic prompts?",
+      "expected": {
+        "path": "cli/docs/evolution.md",
+        "passageSha256": "b6fd6d530fc7072ef872141c959486bf0c949a6862db12b3a62b82a51ac2ad5a"
+      },
+      "recordSha256": "c3f696240c31ec83188392f3643e8347a258e9230a666830948fbee5bead3c4e"
+    },
+    "tariffic": {
+      "query": "In the tariffic project, what is Welcome to Tariffic, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "5ece9a22a782231bf8a93150148b5474c1a3ce04a4bd77eb930d4c22f5452974"
+      },
+      "recordSha256": "242094dd894abc662b2fa966ffb3bd7ae74336b4d6473b893164b3060e0fa8a9"
+    },
+    "textclassifier": {
+      "query": "In the textclassifier project, what is Text Classification Prompt Model for ChatGPT and OpenAi, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "320b8be311c2cda3b701d46bc809539cd4c1c05fa14fcf3bc4e8423569b381c4"
+      },
+      "recordSha256": "4edf92efa802f35407d9837c2141a47838532725202b576ccd95b0027eaedbbf"
+    },
+    "ultrasonic": {
+      "query": "In the ultrasonic project, what is 🔊 Ultrasonic Agentics, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "src/docs/index.md",
+        "passageSha256": "c05610850636f0acedead2da47cb11f5d9996424dc06c8fa39fddb92b040a218"
+      },
+      "recordSha256": "bb3685b8d80dab875ede36a6e38db1b0f894c215af62494b57bf1189c0a2b2d9"
+    },
+    "vcbot": {
+      "query": "In the vcbot project, what is GPT Venture Capitalist Bot (v0.0.1), what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "e175f9527090b9ff1d30530039a63799e619a38730dcbd60029cfcc4922cf654"
+      },
+      "recordSha256": "efc5a8b7cabe0ba270f4eb80a9f30753d44ee58d4b1b7cdd58662be54dc4438f"
+    },
+    "vibecast": {
+      "query": "In the vibecast project, what is vibecast, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "e6f91ea87f0faa4b07f6399d0edda332ce7c9b6d4ae315c66ea6754b7f34ad4f"
+      },
+      "recordSha256": "63a9ab11448bebf096a32c77d5dbd78df1488ad543d51005f954807b00f6c8bf"
+    },
+    "vibing": {
+      "query": "In the vibing project, what is rUvix: AGENTIC ENGINEER TERMINAL, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "19400d983c0cc744229d6315697648fc215dfc504cf7c373ff7e33d36060ed65"
+      },
+      "recordSha256": "c73853ddf5d3817b6539313abd2e5ce4706373add3465d395cad93655a738742"
+    },
+    "vivian": {
+      "query": "In the vivian project, what is VIVIAN: Vector Index Virtual Infrastructure for Autonomous Networks, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "src/vivian.rs",
+        "passageSha256": "19733cf8e43bf79396dddb3061eedb8a8a71df735911dbbcaf05fa4ec6056b62"
+      },
+      "recordSha256": "b0fa6d4d73fe8544f29cfa5037bd84985d17dcd8c38b2580451828003087dbd0"
+    },
+    "voicebot": {
+      "query": "In the voicebot project, what is voicebot, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "voic-tsx/src/data/prompts/default.txt",
+        "passageSha256": "9bd944d7d73ac26d4fbdd489015b966cf5be9aea7ed407b9ca86034c45796767"
+      },
+      "recordSha256": "6d9a099e102da20b56b4593048d5a51769d776ec9fa40b6dd9542464069f87af"
+    },
+    "vsc-remote-mcp": {
+      "query": "In the vsc-remote-mcp project, what is CodeSwarm: VSCode Remote MCP Server, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "vscode-remote-mcp/src/mcp-sdk-server.js",
+        "passageSha256": "1d8549be59b591abcf4b266ee2188c2a4f6f50ae7d67ac74799c95b0e5b51d51"
+      },
+      "recordSha256": "5563cb1a165d77d17dbf187ae92701eeab335bf037637246309ec15c9b840edf"
+    },
+    "wifi-veil": {
+      "query": "In the wifi-veil project, what is WiFi Veil, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "firmware/README.md",
+        "passageSha256": "35e2a52e02ace5df68d7dd34bc7859763fe481978b598faf6217e9fd80a12d42"
+      },
+      "recordSha256": "8253db9c426260e6c28043e1b7ccd36d21b9b49d5e6bf3240d3673d9f8765370"
+    },
+    "worldgraph": {
+      "query": "In the worldgraph repository, which Rust crate is the ADR-139 environmental digital twin using typed petgraph for RuView?",
+      "expected": {
+        "path": "wifi-densepose-worldgraph/Cargo.toml",
+        "passageSha256": "fc95d95c6afad248bc2411dee1c97bb0e190394859f0c246ef9c2509fab87cea"
+      },
+      "recordSha256": "58b284659511feeee4467b16e9bd64330b1f9bc8ac06f9fa2b64dfe27f3ed293"
+    },
+    "yyz-agentics-june": {
+      "query": "In the yyz-agentics-june project, what is AI-Powered Neural Network Libraries, what problem does it solve, and how is it intended to be used?",
+      "expected": {
+        "path": "neural_network/COMPONENTS_SUMMARY.md",
+        "passageSha256": "eaefd71df494f96821b19a3c2b58d9fb1dc9c79130b83833321154ac4d3f20a1"
+      },
+      "recordSha256": "4dea68176043d7fe2665a45ac0fdf700504352b2a9b2dfbf6bd53d6ff67f8cae"
+    }
+  },
+  "sourceCommit": "b45a372d4e1d85d86e2e9c4e806dec0948d0fd3e",
+  "sourcePath": "data/retrieval-query-evidence.json",
+  "sourceBlobSha256": "a1b480683ff6c31b63c1d2875d882bbe819378d22ab949b420ff6428c023eb11",
+  "receiptSha256": "515289b0f895e2c575e1569caafe2cbc36ae90a6c56270b6314b19f79fe2e003"
+}

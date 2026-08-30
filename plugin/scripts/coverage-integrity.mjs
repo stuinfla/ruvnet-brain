@@ -53,7 +53,7 @@ function validateLegacyGistAggregateReceipt({ receipt, passagesFile, expectedIds
 
 export function validateGistAggregateReceipt({ receipt, passagesFile, expectedIds = null,
   sourceObservationSha256 = null }) {
-  if (receipt?.schemaVersion === 2 && sourceObservationSha256 === null) {
+  if (receipt?.schemaVersion === 2) {
     return validateLegacyGistAggregateReceipt({ receipt, passagesFile, expectedIds });
   }
   if (receipt?.schemaVersion !== 3 || receipt?.kind !== 'ruvnet-brain-gist-source-receipts'

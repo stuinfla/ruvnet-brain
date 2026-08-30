@@ -159,7 +159,9 @@ export function buildPublicVerificationAggregate(leaves, reviews) {
     deltaCases: delta.length,
     deltaHits: delta.filter(({ retrievalHit }) => retrievalHit === true).length,
     recallAt10: retrievalCases.filter(({ retrievalHit }) => retrievalHit === true).length / retrievalCases.length,
-    deltaCitationRate: delta.filter(({ retrievalHit, citationResolved }) => retrievalHit === true && citationResolved === true).length / delta.length,
+    // A release with no corpus delta has no delta citations to score; the sealed
+    // retrieval plan carries noDelta=true and still requires the legacy cohort.
+    deltaCitationRate: delta.length === 0 ? 1 : delta.filter(({ retrievalHit, citationResolved }) => retrievalHit === true && citationResolved === true).length / delta.length,
     skipped: leaves.reduce((sum, leaf) => sum + leaf.skipped + leaf.retrieval.metrics.skipped, 0),
     unknown: leaves.reduce((sum, leaf) => sum + leaf.unknown + leaf.retrieval.metrics.unknown, 0),
   };

@@ -4,7 +4,7 @@
 
 # 🧠 RuvNet Brain
 
-### 🧠 RuvNet Brain — [![RuvNet Brain version 4.3.2 — updated 2026-07-30 03:24 EDT](https://img.shields.io/badge/version_4.3.2-updated_2026--07--30_03:24_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
+### 🧠 RuvNet Brain — [![RuvNet Brain version 4.3.3 — updated 2026-07-30 03:24 EDT](https://img.shields.io/badge/version_4.3.3-updated_2026--07--30_03:24_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
 
 **A portable, source-grounded brain over Reuven Cohen's (rUv's) RuvNet stack — delivered as a Claude Code plugin that makes Claude _use_ the stack instead of fighting it.**
 
@@ -30,7 +30,7 @@
 [![explainer](https://img.shields.io/badge/▶%20see%20it%20live-isovision.ai%2Fruvnet--brain-e8a13a?style=flat-square)](https://isovision.ai/ruvnet-brain/)
 [![license](https://img.shields.io/badge/license-MIT-8ecae6?style=flat-square)](LICENSE)
 [![grounded](https://img.shields.io/badge/answers-cited%20rUv%20source-333?style=flat-square)](#testing--proof)
-[![coverage](https://img.shields.io/badge/coverage-36%25%20of%20ALL%20source%20·%20honest-b58900?style=flat-square)](#testing--proof)
+[![coverage](https://img.shields.io/badge/coverage-41%25%20of%20ALL%20source%20·%20honest-b58900?style=flat-square)](#testing--proof)
 
 > **One Brain generation everywhere.** npm, the GitHub tag/release, bundle manifests, source metadata, and checksum-bound RVF generations must share the same product version. Headline claims are regenerated and checked by the claims ledger (`scripts/claims-verify.mjs`); other numbers below are hand-stamped and dated:
 > - **`plugin`** (badge above) — the Claude Code plugin itself: SKILL.md, the grounding hooks, the MCP server. Read live from [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json). Updates often — this is where behavior fixes land.
@@ -508,7 +508,7 @@ node plugin/test/run-tests.mjs                    # full plugin QA over real JSO
 | **L4 "orchestrate"** | **downgraded — measures speech, not obedience** | L4 asserts the hook's own injected prose contains required words (`must: ['take the wheel','SPARC','swarm',…]`). That proves **the brain spoke**. It cannot fail when the advice is read and ignored — which is the failure this product exists to prevent. Counterfactual replay against a brain-off control (ADR-058 §D4) is what will earn this row back |
 | **Plugin QA** | **60 / 60** | manifests, hook firing, MCP `initialize`/`tools/list`, capability battery |
 | **Clean-room install** | **3 / 3** | download the published bundle fresh → unzip → query → grounded, cited answers |
-| **Unit tests** | **3,035 passing, 161 todo** · 36% of ALL source covered | `npm run test:cov` regenerates both — the coverage floor fails CI if it slips (`claims:verify` re-derives the %, it is not a hand-typed badge). 36% is the honest number over every shipped file; the previous "75%" measured a hand-picked 8-file subset |
+| **Unit tests** | **3,035 passing, 161 todo** · 41% of ALL source covered | `npm run test:cov` regenerates both — the coverage floor fails CI if it slips (`claims:verify` re-derives the %, it is not a hand-typed badge). 41% is the honest number over every shipped file; the previous "75%" measured a hand-picked 8-file subset |
 | **Grounding proof** | `npx ruvnet-brain --doctor` | asks a real question, then checks the cited path really exists in the on-disk store; a citation that doesn't resolve is reported as **NOT grounded** |
 | **Held-out eval** | **grounded 100/100** · routed 63/80 | `npm run eval` — 120 frozen, hash-pinned questions across 5 strata, never used for tuning, graded on ground truth, never by a model |
 

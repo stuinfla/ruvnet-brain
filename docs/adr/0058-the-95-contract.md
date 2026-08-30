@@ -374,7 +374,14 @@ correct: **the strong claim was the defect.**
 
 ## Currency log
 
+| 2026-08-30 | Re-read the governed release builder and CI after the 4.3.3 candidate exposed projection evidence arriving after validation and PRs bypassing release gates. | `scripts/build-bundle.mjs`, `scripts/release-projection.mjs`, `plugin/scripts/coverage-integrity.mjs`, `.github/workflows/ci.yml`; local `npm run qa:pr` passed 10/10 lanes and hosted exact-SHA release proof remains required. |
+
 | 2026-08-30 | Rechecked bundle assembly after exact-SHA release-QE showed that source-controlled store policy was incorrectly expected inside the corpus seed; the builder now takes it from the canonical checkout. | `scripts/build-bundle.mjs`; `kb/public-store-classes.json`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked the projected validator boundary: the builder now imports `kb/PRIVATE-STORES.json` into the temporary seed input when projection evidence is supplied, preserving fail-closed policy validation without mutating the seed archive. | `scripts/build-bundle.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked the release projection contract after hosted verification rejected stale source-plane totals; projected rows, status totals, enumeration counts, and observation identity are now validated as one read model. | `scripts/release-projection.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked the two-stage inventory boundary after the candidate archive omitted the projected receipt during validation; the receipt is now staged before the validator runs. | `scripts/build-bundle.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked the final archive boundary locally after the hosted partition mismatch; the post-projection and post-assembly inventory hashes are identical. | `scripts/build-bundle.mjs`; local proof `566fe4f5bb435f11c8a924a8cef9b8c251c508051653121f39e7533536455daf`. |
+| 2026-08-30 | The pre-push gate now checks `data/convergence-manifest.json` after all source edits, preventing hosted QA from receiving a stale generated identity. | `scripts/git-hooks/pre-push`; `scripts/convergence-manifest.mjs`; exact-SHA CI. |
 
 | 2026-08-30 | Rechecked the release projection and bundle assembly after the exact-SHA release-QE failure; seed-bound gist evidence is now explicit and the current source observation remains separate. | Commit `f526bab`; `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; `plugin/scripts/coverage-integrity.mjs`. |
 

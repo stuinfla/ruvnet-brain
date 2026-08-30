@@ -51,36 +51,57 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   const seededRows = corpusCoverage.rows.filter((row) => row.disposition === 'eligible'
     && availableStores.has(String(row.artifact?.store || '').toLowerCase()));
   if (!seededRows.length) throw new Error('immutable seed contains no eligible corpus stores');
-  const rows = seededRows.map((row) => {
+  const seededExcludedRows = corpusCoverage.rows.filter((row) => row.disposition !== 'eligible'
+    && availableStores.has(String(row.artifact?.store || '').toLowerCase()));
+  const rows = [...seededRows, ...seededExcludedRows].map((row) => {
+    if (row.disposition !== 'eligible') return { ...row };
     const store = String(row.artifact.store);
     const generation = sourceLedger.stores[store];
     if (!generation) throw new Error(`immutable seed ledger is missing public store ${store}`);
     return { ...row, status: 'CURRENT', artifact: { ...row.artifact,
       sourceCommit: generation.sourceCommit, rvfSha256: generation.sha256 } };
   });
-  const publicStores = [...new Set(rows.map((row) => String(row.artifact.store).toLowerCase()))];
+  // The release ledger is the shipped public set, not a catalog of policy-excluded rows.
+  // Excluded rows remain in COVERAGE.json as auditable policy evidence, but must not be
+  // inserted into PUBLIC-RVF-GENERATIONS.json or counted as installed public stores.
+  const publicStores = [...new Set(rows.filter((row) => row.disposition === 'eligible')
+    .map((row) => String(row.artifact.store).toLowerCase()))];
+  const classesFile = path.join(assets, 'public-store-classes.json');
+  const derivedStores = fs.existsSync(classesFile)
+    ? readJson(classesFile).derived.map((entry) => String(entry.store).toLowerCase()) : [];
+  const ledgerStores = [...new Set([...publicStores, ...derivedStores])];
   const projectedCoverage = { ...corpusCoverage, rows,
     totals: { ...corpusCoverage.totals, rows: rows.length,
       repositories: rows.filter((row) => row.kind === 'repository').length,
-      gists: rows.filter((row) => row.kind === 'gist').length } };
-  const ledger = projectPublicGenerationLedger({ ledger: sourceLedger, publicStores, version, sourceSnapshot });
+      gists: rows.filter((row) => row.kind === 'gist').length,
+      byStatus: Object.fromEntries([...new Set(rows.map((row) => row.status))].sort()
+        .map((status) => [status, rows.filter((row) => row.status === status).length])) } };
+  const projectedEnumerationReceipt = { ...corpusCoverage.enumerationReceipt,
+    repositories: { ...corpusCoverage.enumerationReceipt.repositories,
+      expected: projectedCoverage.totals.repositories },
+    gists: { ...corpusCoverage.enumerationReceipt.gists,
+      expected: projectedCoverage.totals.gists } };
+  const ledger = projectPublicGenerationLedger({ ledger: sourceLedger, publicStores: ledgerStores, version, sourceSnapshot });
   const ledgerBytes = generationLedgerBytes(ledger);
   const corpusBytes = Buffer.from(`${JSON.stringify(corpusCoverage, null, 2)}\n`);
   const releaseBase = {
     schemaVersion: 1, kind: 'ruvnet-brain-release-coverage', owner: corpusCoverage.owner,
     observedAt: corpusCoverage.observedAt, generatorSourceSha: corpusCoverage.generatorSourceSha,
-    sourceObservationSha256: null, snapshotRoot: corpusCoverage.snapshotRoot,
+    sourceObservationSha256: corpusCoverage.sourceObservationSha256, snapshotRoot: corpusCoverage.snapshotRoot,
     releaseIdentity: { version, tag: `v${version}`, sourceSnapshot },
     corpusSeed: { tag: corpusSeed.tag, archiveSha256: corpusSeed.archiveSha256,
       archiveBytes: corpusSeed.archiveBytes, receiptSha256: baselineReceiptSha256 },
     corpusCoverage: { sha256: sha256(corpusBytes), coverageGeneration: corpusCoverage.coverageGeneration },
     generationLedger: { file: 'PUBLIC-RVF-GENERATIONS.json', sha256: sha256(ledgerBytes),
       bytes: ledgerBytes.length, storeCount: Object.keys(ledger.stores).length },
-    installedProjectionSchema: 2, policy: corpusCoverage.policy, enumerationReceipt: corpusCoverage.enumerationReceipt,
+    installedProjectionSchema: 2, policy: corpusCoverage.policy, enumerationReceipt: projectedEnumerationReceipt,
     rows: projectedCoverage.rows, totals: projectedCoverage.totals,
   };
   const gistReceipt = seedCompatibleGistReceipt();
-  const inventory = validatePublicInventory({ assetsDir: assets, coverage: releaseBase, ledger, gistReceipt });
+  // Keep the projected receipt in the same asset root that the final archive
+  // validator reads, so both partition hashes include identical evidence.
+  fs.writeFileSync(path.join(assets, 'ruv-gists.sources.json'), `${JSON.stringify(gistReceipt, null, 2)}\n`);
+  const inventory = validatePublicInventory({ assetsDir: assets, coverage: releaseBase, ledger });
   releaseBase.publicInventoryPartitionSha256 = inventory.partitionSha256;
   releaseBase.releaseCoverageGeneration = releaseCoverageGenerationFor(releaseBase);
   const out = path.resolve(outDir);
@@ -89,6 +110,10 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   fs.writeFileSync(path.join(out, 'COVERAGE.json'), `${JSON.stringify(releaseBase, null, 2)}\n`);
   fs.writeFileSync(path.join(out, 'PUBLIC-RVF-GENERATIONS.json'), ledgerBytes);
   fs.writeFileSync(path.join(out, 'ruv-gists.sources.json'), `${JSON.stringify(gistReceipt, null, 2)}\n`);
+  for (const file of ['public-store-classes.json', 'concepts.sources.json']) {
+    const source = path.join(assets, file);
+    if (fs.existsSync(source)) fs.copyFileSync(source, path.join(out, file));
+  }
   return releaseBase;
 }
 

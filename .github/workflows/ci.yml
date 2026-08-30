@@ -3,6 +3,8 @@ name: ci
 # Runs the brain-independent checks on every push/PR: version single-source-of-truth, structure,
 # grounding-hook behavior, and the injection-guard unit test. None of these need the 512 MB bundle.
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch: {}

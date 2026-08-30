@@ -3,7 +3,7 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-30
+updated: 2026-08-30 15:52:52 EDT
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -207,7 +207,13 @@ conformance.
 
 ## Currency log
 
+| 2026-08-30 | Re-read whole-product release conformance after the candidate build found that seed exclusions, derived stores, and projection receipts were not entering one validation boundary, and after confirming PRs did not run `ci.yml`. | `scripts/build-bundle.mjs`, `scripts/release-projection.mjs`, `plugin/scripts/coverage-integrity.mjs`, `.github/workflows/ci.yml`; local canonical QA passed, while hosted exact-SHA publication proof remains the release boundary. |
+
 | 2026-08-30 | Rechecked whole-product integrity after release-QE isolated a missing policy registry in the baseline seed; the final bundle now carries the canonical source-controlled registry explicitly. | `scripts/build-bundle.mjs`; `kb/public-store-classes.json`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked whole-product integrity after the projected validator exposed the same boundary for the private-store fence; policy now enters validation from the canonical checkout while corpus bytes remain seed-bound. | `scripts/build-bundle.mjs`; `kb/PRIVATE-STORES.json`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked whole-product integrity after hosted verification exposed stale projected totals; the release read model now binds its seeded rows, derived counts, enumeration receipt, and source-observation identity together. | `scripts/release-projection.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked whole-product integrity after partition evidence differed across the two bundle stages; projected receipts now enter the seed validation root before the final public partition is computed. | `scripts/build-bundle.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked whole-product integrity with an exact local two-stage replay; the public evidence partition remains unchanged through final archive assembly. | `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; local proof `566fe4f5bb435f11c8a924a8cef9b8c251c508051653121f39e7533536455daf`. |
 
 | 2026-08-30 | Rechecked whole-product integrity after release-QE found the seed/source gist-byte mismatch; the projection now preserves the full observation while validating the actual seeded asset plane with an explicit baseline receipt. | Commit `f526bab`; `scripts/release-projection.mjs`; `plugin/scripts/coverage-integrity.mjs`; Issue #201. |
 
