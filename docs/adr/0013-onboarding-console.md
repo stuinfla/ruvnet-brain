@@ -3,7 +3,7 @@ id: ADR-013
 title: The Onboarding Console — RuvNet Brain becomes a mirror, an advisor, and only then a configurator
 status: Accepted
 date: 2026-07-14
-updated: 2026-08-21
+updated: 2026-08-30
 updated_source: authored-current
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, config, stack, memory-health, savings, safety, coverage]
@@ -276,6 +276,8 @@ their computer; they just want it to work."* This becomes **principle 6**:
   `COVERAGE.json` and `COVERAGE.md`.
 
 ## Currency log
+
+| 2026-08-30 | The configurator documentation now reflects the live settings form: ordinary user preferences have runtime consumers and are served through the shared save path. | `console/app.js`, `scripts/onboarding-console.mjs`, and `plugin/scripts/runtime-preferences.mjs` are the current implementation boundary. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
