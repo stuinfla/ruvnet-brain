@@ -24,6 +24,8 @@ governs:
 
 ## Currency log
 
+| 2026-08-30 | Re-read the remote release transaction boundary after exact-SHA CI exposed the forbidden user-gists call; release-QE now prepares and seals coverage from the immutable seed before the protected transaction. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`. |
+
 | 2026-08-30 | Automatic PR execution now has one canonical bounded path; the legacy matrix remains available only by manual dispatch. | `.github/workflows/ci.yml` and `.github/workflows/qe-4-3.yml` remove competing automatic release-quality paths without changing the protected publication transaction. |
 | 2026-08-30 | Protected publication now consumes the canonical bounded QA receipt before release dispatch. | `scripts/qa-runner.mjs` binds the candidate SHA and artifact lanes; `docs/QA-RELEASE-PROCESS.md` records recovery and promotion. |
 | 2026-08-30 | Candidate sealing now has an executable coverage-projection producer; an archive without `COVERAGE.json` and `CORPUS-COVERAGE.json` cannot reach public verification. | `scripts/release-projection.mjs` and `.github/workflows/ci.yml` generate and embed the linked ledgers before `public-verification-inputs.mjs` consumes the exact archive. |
