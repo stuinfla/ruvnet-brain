@@ -15,6 +15,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (name, fallback = null) => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : fallback; };
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+const storeName = (value) => String(value || '').toLowerCase().replace(/\.big\.rvf$|\.rvf$/i, '');
 
 export function createReleaseProjection({ corpusCoverage, assetsDir, version, sourceSnapshot,
   corpusSeed, baselineReceiptSha256, outDir }) {
@@ -32,9 +33,14 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   // The coverage ledger describes the full upstream universe. A release candidate contains
   // only the immutable seed's asset set, so absent-but-eligible upstream rows are not release
   // blockers; shipped stores must still all be CURRENT.
-  const availableStores = new Set(Object.keys(sourceLedger.stores || {}).map((store) => store.toLowerCase()));
+  const assetStores = fs.readdirSync(assets)
+    .filter((name) => /\.rvf$/i.test(name)).map(storeName);
+  const availableStores = new Set([
+    ...Object.keys(sourceLedger.stores || {}).map(storeName),
+    ...assetStores,
+  ]);
   const eligible = corpusCoverage.rows.filter((row) => row.disposition === 'eligible'
-    && availableStores.has(String(row.artifact?.store || '').toLowerCase()));
+    && availableStores.has(storeName(row.artifact?.store)));
   if (!eligible.length || eligible.some((row) => row.status !== 'CURRENT')) throw new Error('eligible corpus rows are not all CURRENT');
   const publicStores = [...new Set(eligible.map((row) => String(row.artifact.store).toLowerCase()))];
   // Derived public stores are not corpus rows, but they are still part of the

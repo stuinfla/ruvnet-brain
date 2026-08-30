@@ -354,7 +354,13 @@ export async function runSessionStart({
   restoreContinuity = restoreProgressionForSession,
 } = {}) {
   const lines = [];
-  const emit = (line = '') => lines.push(String(line));
+  // SessionStart is context plumbing, not an instruction channel. The old implementation
+  // injected response scripts, setup questions and maintainer workflow into every host session;
+  // Claude correctly treated that unsolicited prose as noise. Keep the diagnostic work and
+  // durable state updates, but make user-facing output opt-in for troubleshooting only.
+  const emit = (line = '') => {
+    if (env.RUVNET_VERBOSE_HOOKS === '1') lines.push(String(line));
+  };
   const home = env.HOME || env.USERPROFILE || os.homedir();
   const stateDir = env.RUVNET_BRAIN_HOME || path.join(home, '.cache', 'ruvnet-brain');
   const hookDir = path.dirname(fileURLToPath(import.meta.url));
@@ -515,6 +521,9 @@ export async function runSessionStart({
     if (env.RUVNET_SESSION_TRACE === '1') stderr.write(`SESSION_TRACE native-fail-open ${error?.message || error}\n`);
   }
 
+  if (env.RUVNET_VERBOSE_HOOKS !== '1') {
+    lines.push(`[RuvNet Brain v${running || 'unknown'} — active this session]`);
+  }
   const output = lines.length ? `${lines.join('\n')}\n` : '';
   meter({ env, cwd, stateDir, output });
   stdout.write(output);
