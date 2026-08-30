@@ -25,7 +25,18 @@ const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.ur
 const CAPTURE = path.join(ROOT, 'plugin', 'scripts', 'learn-capture.sh');
 
 const temps = [];
-const mktemp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-root-')); temps.push(d); return d; };
+// realpathSync.native, not the raw mkdtemp result: GitHub Actions Windows runners hand out the 8.3
+// short form (C:\Users\RUNNER~1\...) from os.tmpdir(), while a subprocess's own $PWD resolves the
+// long form — the exact mismatch tests/unit/memory-doctor-discovery.test.mjs and
+// tests/unit/project-identity.test.mjs already canonicalize around for this same reason (#85/#107).
+// Left uncanonicalized, `project` (passed as CLAUDE_PROJECT_DIR) and the bash subprocess's own $PWD
+// name the same directory with two different strings, and a string-prefix containment check between
+// them never matches — not a production defect, a CI-temp-dir artifact this test must not launder in.
+const mktemp = () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-root-'));
+  temps.push(d);
+  return fs.realpathSync.native(d);
+};
 const cleanup = () => temps.splice(0).forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
 
 /** Fire the hook exactly as PostToolUse does: JSON on stdin, from some working directory. */
