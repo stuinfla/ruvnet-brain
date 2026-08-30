@@ -38,6 +38,7 @@ const OUT = path.resolve(ROOT, arg('--out', 'dist/ruvnet-brain'));
 const COVERAGE = arg('--coverage', null);
 const PROJECTION = arg('--projection', null);
 const BRAIN_VERSION = arg('--version', getVersionTag()); // inherits the single source of truth
+const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
 // ---- registry: tier + the full 169-repo pending list -------------------------------------------
 const registry = JSON.parse(fs.readFileSync(path.join(DATA, 'registry.tiers.json'), 'utf8'));
@@ -182,7 +183,17 @@ if (COVERAGE) {
   }
   let inventory;
   try {
-    inventory = validatePublicInventory({ assetsDir: ASSETS, coverage, ledger: readRvfGenerations(ASSETS) });
+    let gistReceipt = null;
+    if (PROJECTION) {
+      const projectionDir = path.resolve(PROJECTION);
+      const receiptFile = path.join(projectionDir, 'ruv-gists.sources.json');
+      if (fs.existsSync(receiptFile)) gistReceipt = JSON.parse(fs.readFileSync(receiptFile, 'utf8'));
+      const classesFile = path.join(projectionDir, 'public-store-classes.json');
+      if (fs.existsSync(classesFile)) fs.copyFileSync(classesFile, path.join(ASSETS, 'public-store-classes.json'));
+      const conceptsReceipt = path.join(projectionDir, 'concepts.sources.json');
+      if (fs.existsSync(conceptsReceipt)) fs.copyFileSync(conceptsReceipt, path.join(ASSETS, 'concepts.sources.json'));
+    }
+    inventory = validatePublicInventory({ assetsDir: ASSETS, coverage, ledger: readRvfGenerations(ASSETS), gistReceipt });
   } catch (error) {
     console.error(`[build-bundle] FATAL: public inventory is not exhaustive (${error.message})`);
     process.exit(1);
@@ -298,10 +309,22 @@ if (hasGists) {
   for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json', 'ruv-gists.big.passages.jsonl', 'ruv-gists.big.meta.json', 'ruv-gists.passages.jsonl', 'ruv-gists.meta.json']) cp(suf, OUT, { asset: true });
   cp('ruv-gists.sources.json', OUT, { required: !PROJECTION });
 }
-// The inventory projection consumes this registry from the assembled bundle, not the checkout.
-// Store-class policy is source-controlled release metadata, not a corpus asset. The baseline
-// seed predates this registry, so sourcing it from ASSETS makes a valid seed fail projection.
-cp('public-store-classes.json', OUT, { required: true });
+// The inventory projection consumes this registry from the assembled bundle. Older corpus seeds
+// do not carry it, so derive the only valid legacy class (concepts) from the exact bytes already
+// assembled instead of failing before projection can create its release-bound evidence set.
+if (!cp('public-store-classes.json', OUT, { asset: true })) {
+  const derived = [];
+  const conceptsPassages = path.join(OUT, 'concepts.passages.jsonl');
+  if (fs.existsSync(conceptsPassages)) {
+    const bytes = fs.readFileSync(conceptsPassages);
+    const receipt = { schemaVersion: 1, kind: 'ruvnet-brain-derived-store-receipt', store: 'concepts',
+      inputs: [{ path: 'concepts.passages.jsonl', sha256: sha256(bytes) }], passagesSha256: sha256(bytes) };
+    fs.writeFileSync(path.join(OUT, 'concepts.sources.json'), `${JSON.stringify(receipt, null, 2)}\n`);
+    derived.push({ store: 'concepts', receipt: 'concepts.sources.json' });
+  }
+  fs.writeFileSync(path.join(OUT, 'public-store-classes.json'), `${JSON.stringify({ schemaVersion: 1, derived }, null, 2)}\n`);
+  copied++;
+}
 
 // capability-cards.md — the FAST LANE's zero-ML answer source (kb/card-lane.mjs, the first
 // responder search_ruvnet consults before the heavy cross-repo search). Ships as its own small
@@ -478,7 +501,7 @@ cp(path.join(ROOT, 'keys', 'ruvnet-brain-signing.pub.pem'), path.join(OUT, 'keys
 // ReleaseProjection is generated from the exact candidate asset tree immediately before this
 // assembly. Copy all three linked ledgers together; a partial projection is never publishable.
 if (PROJECTION) {
-  for (const file of ['COVERAGE.json', 'CORPUS-COVERAGE.json', 'PUBLIC-RVF-GENERATIONS.json', 'ruv-gists.sources.json']) {
+  for (const file of ['COVERAGE.json', 'CORPUS-COVERAGE.json', 'PUBLIC-RVF-GENERATIONS.json', 'ruv-gists.sources.json', 'public-store-classes.json', 'concepts.sources.json']) {
     cp(path.join(path.resolve(PROJECTION), file), OUT, { required: true });
   }
 }

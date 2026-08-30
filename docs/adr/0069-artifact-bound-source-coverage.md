@@ -215,6 +215,8 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
 
 ## Currency log
 
+| 2026-08-30 | Release projection now retains seed-present excluded repository rows, includes derived stores in the public ledger, and supplies projection receipts before inventory validation. This closes the exact-SHA release-QE mismatch observed in the candidate build. | `scripts/release-projection.mjs`, `scripts/build-bundle.mjs`, `plugin/scripts/coverage-integrity.mjs` |
+
 | 2026-08-30 | Rechecked artifact-bound source coverage after release-QE separated current observation from the immutable seed; projection and bundle assembly now bind the correct evidence plane and source policy registry. | `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; `data/source-coverage.json`; exact-SHA release-QE. |
 
 | 2026-08-30 | Clarified the two coverage planes: the complete source observation remains immutable evidence, while release `COVERAGE.json` is projected from actual seed RVFs and byte-bound generation records. | Issue #201; `scripts/source-coverage.mjs`; `scripts/release-projection.mjs`; `.github/workflows/ci.yml`. |

@@ -51,7 +51,10 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   const seededRows = corpusCoverage.rows.filter((row) => row.disposition === 'eligible'
     && availableStores.has(String(row.artifact?.store || '').toLowerCase()));
   if (!seededRows.length) throw new Error('immutable seed contains no eligible corpus stores');
-  const rows = seededRows.map((row) => {
+  const seededExcludedRows = corpusCoverage.rows.filter((row) => row.disposition !== 'eligible'
+    && availableStores.has(String(row.artifact?.store || '').toLowerCase()));
+  const rows = [...seededRows, ...seededExcludedRows].map((row) => {
+    if (row.disposition !== 'eligible') return { ...row };
     const store = String(row.artifact.store);
     const generation = sourceLedger.stores[store];
     if (!generation) throw new Error(`immutable seed ledger is missing public store ${store}`);
@@ -59,11 +62,15 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
       sourceCommit: generation.sourceCommit, rvfSha256: generation.sha256 } };
   });
   const publicStores = [...new Set(rows.map((row) => String(row.artifact.store).toLowerCase()))];
+  const classesFile = path.join(assets, 'public-store-classes.json');
+  const derivedStores = fs.existsSync(classesFile)
+    ? readJson(classesFile).derived.map((entry) => String(entry.store).toLowerCase()) : [];
+  const ledgerStores = [...new Set([...publicStores, ...derivedStores])];
   const projectedCoverage = { ...corpusCoverage, rows,
     totals: { ...corpusCoverage.totals, rows: rows.length,
       repositories: rows.filter((row) => row.kind === 'repository').length,
       gists: rows.filter((row) => row.kind === 'gist').length } };
-  const ledger = projectPublicGenerationLedger({ ledger: sourceLedger, publicStores, version, sourceSnapshot });
+  const ledger = projectPublicGenerationLedger({ ledger: sourceLedger, publicStores: ledgerStores, version, sourceSnapshot });
   const ledgerBytes = generationLedgerBytes(ledger);
   const corpusBytes = Buffer.from(`${JSON.stringify(corpusCoverage, null, 2)}\n`);
   const releaseBase = {
@@ -89,6 +96,10 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   fs.writeFileSync(path.join(out, 'COVERAGE.json'), `${JSON.stringify(releaseBase, null, 2)}\n`);
   fs.writeFileSync(path.join(out, 'PUBLIC-RVF-GENERATIONS.json'), ledgerBytes);
   fs.writeFileSync(path.join(out, 'ruv-gists.sources.json'), `${JSON.stringify(gistReceipt, null, 2)}\n`);
+  for (const file of ['public-store-classes.json', 'concepts.sources.json']) {
+    const source = path.join(assets, file);
+    if (fs.existsSync(source)) fs.copyFileSync(source, path.join(out, file));
+  }
   return releaseBase;
 }
 

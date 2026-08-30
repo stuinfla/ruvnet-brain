@@ -186,6 +186,8 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 
 ## Currency log
 
+| 2026-08-30 | The two-stage candidate build now validates against the same projection evidence it later packages: seed-compatible gist receipts, class registry, derived receipts, excluded stores, and the projected generation ledger are all present at validation time. | `scripts/release-projection.mjs`, `scripts/build-bundle.mjs`, `plugin/scripts/coverage-integrity.mjs` |
+
 | 2026-08-30 | Rechecked generation convergence after the seed lacked the source-controlled public-store class registry; bundle assembly now keeps policy metadata on the source plane and corpus bytes on the seed plane. | `scripts/build-bundle.mjs`; `kb/public-store-classes.json`; exact-SHA release-QE. |
 
 | 2026-08-30 | Rechecked generation convergence after the exact-SHA release-QE failure; the immutable seed's legacy gist evidence is carried explicitly into the projected bundle and is not labeled current-source evidence. | Commit `f526bab`; `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; `data/corpus-seed.json`. |
