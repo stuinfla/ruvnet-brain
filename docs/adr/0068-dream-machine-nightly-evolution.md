@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-08-24
+updated: 2026-08-30
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -130,6 +130,8 @@ bootstrap prompt (recommended over a frozen prompt, so the schedule can never dr
 committed config).
 
 ## Currency log
+
+| 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|

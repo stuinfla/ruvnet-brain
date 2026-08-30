@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-23
+updated: 2026-08-30
 impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -373,6 +373,8 @@ correct: **the strong claim was the defect.**
    land ≥95. No self-score counts; the 83-vs-38 category error is not repeated.
 
 ## Currency log
+
+| 2026-08-30 | QA publication is fail-closed through one bounded runner: failed lanes stop, timeouts fail the receipt, and every lane binds to the current SHA. | `scripts/qa-runner.mjs`, `scripts/release-authority.mjs`, and `.github/workflows/ci.yml` provide the executable contract. |
 
 | 2026-08-23 | Receipt evidence now names skipped tests and suite errors, preventing a count-only quality claim. | Commit `cc25c24` strengthens the 95 contract's evidence requirement without treating skipped or unavailable checks as green. |
 | 2026-08-23 | Hosted parser diagnostics now retain bounded stdout/stderr tails in the receipt. | Commit `1310fb6` makes a Windows process failure actionable from the artifact itself; skipped and unavailable checks remain non-PASS. |

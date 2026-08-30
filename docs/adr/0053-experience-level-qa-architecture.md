@@ -3,7 +3,7 @@ id: ADR-053
 title: Experience-level QA — test the journey a user actually has, on every host, OS, and install path
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-23
+updated: 2026-08-30
 authors: [Stuart Kerr, Claude Code]
 tags: [qa, testing, experience, cross-platform, codex, agentic-qe, ci]
 supersedes: []
@@ -201,6 +201,8 @@ budgets (500ms vs 1s prompt-path), the stricter number won. v1's matrix section 
 §1 above; everything else in v1 stands.
 
 ## Currency log
+
+| 2026-08-30 | Release QA is now one bounded canonical runner with explicit contract lanes and exact-SHA receipts. | `scripts/qa-runner.mjs` and `.github/workflows/ci.yml` define the deterministic PR gate; `npm run qa:release` retains publication checks. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|

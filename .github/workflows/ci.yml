@@ -3,6 +3,9 @@ name: ci
 # Runs the brain-independent checks on every push/PR: version single-source-of-truth, structure,
 # grounding-hook behavior, and the injection-guard unit test. None of these need the 512 MB bundle.
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch: {}
 
 concurrency:
@@ -10,6 +13,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  canonical-qa:
+    name: canonical-qa
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Run the same bounded QA contract used locally
+        run: npm run qa:pr
+
   candidate-preflight:
     name: candidate-preflight
     timeout-minutes: 10

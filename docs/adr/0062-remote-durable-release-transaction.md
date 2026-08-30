@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-23
+updated: 2026-08-30
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -23,6 +23,7 @@ governs:
 # ADR-062 — Remote-durable staged release transaction
 
 ## Currency log
+| 2026-08-30 | Protected publication now consumes the canonical bounded QA receipt before release dispatch. | `scripts/qa-runner.mjs` binds the candidate SHA and artifact lanes; `docs/QA-RELEASE-PROCESS.md` records recovery and promotion. |
 
 | 2026-08-23 | Failed candidate evidence now preserves suite-level diagnostics and skipped-test identities for remote recovery. | Commit `cc25c24` improves diagnosis only; publication authority and mutation boundaries remain unchanged. |
 | 2026-08-23 | Hosted process failures now preserve bounded stdout/stderr tails in candidate receipts. | Commit `1310fb6` improves remote diagnosis only; publication authority and mutation boundaries remain unchanged. |

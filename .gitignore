@@ -39,6 +39,7 @@ node_modules
 # including, on 2026-07-21, live API keys echoed by a buggy diagnostic. It was only fenced by a
 # GLOBAL gitignore, which does not travel to a clone or another machine. Fenced here now.
 .swarm/
+.qa/
 .env
 .env.*
 !.env.example

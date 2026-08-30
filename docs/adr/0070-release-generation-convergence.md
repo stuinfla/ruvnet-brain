@@ -3,7 +3,7 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-23
+updated: 2026-08-30
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -185,6 +185,8 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 7. Coverage documentation is generated from the sealed manifest, source ledger, and gist inventory.
 
 ## Currency log
+
+| 2026-08-30 | Version propagation is now a single source edit followed by consistency verification, and release QA binds the candidate to one SHA. | `scripts/set-version.mjs`, `scripts/sync-version.mjs`, and `scripts/qa-runner.mjs` remove the emergency publish path that let public and source versions diverge. |
 
 | 2026-08-23 | Candidate receipts now bind not only pass/fail counts but the skipped and failed suite identities used to decide convergence. | Commit `cc25c24` prevents a partial cross-platform observation from masquerading as a converged generation. |
 | 2026-08-23 | Windows candidate qualification probes the shared installer import before running its suites. | Hosted exact-SHA evidence isolated the failure to installer-import suites; convergence still requires every assertion and every receipt to PASS. |
