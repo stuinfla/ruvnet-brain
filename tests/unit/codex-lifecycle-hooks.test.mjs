@@ -45,6 +45,7 @@ function installGroundingGeneration(brain, version) {
   fs.mkdirSync(scripts, { recursive: true });
   for (const file of [
     'codex-hook-adapter.mjs',
+    'codex-hook-events.mjs',
     'hook-shim.mjs',
     'hook-shim-bash.mjs',
     'ground-before-write.sh',
@@ -65,6 +66,7 @@ function installInterfaceGeneration(brain, version) {
   fs.mkdirSync(scripts, { recursive: true });
   for (const file of [
     'codex-hook-adapter.mjs',
+    'codex-hook-events.mjs',
     'hook-shim.mjs',
     'hook-shim-bash.mjs',
     'verify-interface.sh',

@@ -31,6 +31,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { CONTEXT_EVENTS } from './codex-hook-events.mjs';
 
 const raw = fs.readFileSync(0, 'utf8');
 let input = {};
@@ -41,13 +42,10 @@ const event = String(input.hook_event_name || '');
 let adapted = false;
 const codexToolName = String(input.tool_name).toLowerCase();
 
-/**
- * Events whose output schema defines a *HookSpecificOutputWire with `additionalContext`. Only these
- * may carry a hook's prose back to the model.
- */
-const CONTEXT_EVENTS = new Set([
-  'PreToolUse', 'PostToolUse', 'PermissionRequest', 'SessionStart', 'SubagentStart', 'UserPromptSubmit',
-]);
+// CONTEXT_EVENTS (events whose output schema defines a *HookSpecificOutputWire with
+// `additionalContext`) now lives in the pure sibling ./codex-hook-events.mjs — see that file's
+// header for why: this module's top level reads stdin synchronously, which makes it unsafe to
+// import for its constants alone (Dream Cycle 2026-08-30).
 
 /** Every file an apply_patch touches, in patch order. Codex patches are routinely multi-file. */
 export function patchFiles(patch) {
