@@ -1,6 +1,6 @@
 {
   "name": "ruvnet-brain",
-  "version": "4.3.1-dev",
+  "version": "4.3.2",
   "description": "One-command installer for RuvNet Brain — a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
   "type": "module",
   "bin": {
@@ -12,16 +12,23 @@
     "benchmark:brain50": "node scripts/brain-latency-50.mjs",
     "benchmark:novice50": "node scripts/brain-novice-50.mjs",
     "version:check": "node scripts/sync-version.mjs --check",
+    "version:set": "node scripts/set-version.mjs",
+    "qa:pr": "node scripts/qa-runner.mjs",
+    "qa:release": "node scripts/qa-runner.mjs --release",
+    "release:authority": "node scripts/release-authority.mjs",
+    "card-from-source": "node scripts/card-from-source.mjs",
+    "release-abort-stale": "node scripts/release-abort-stale.mjs",
     "claims:verify": "node scripts/claims-verify.mjs",
     "claims:fix": "node scripts/claims-verify.mjs --fix",
     "version:sync": "node scripts/sync-version.mjs",
+    "convergence:write": "node scripts/convergence-manifest.mjs --write",
+    "convergence:check": "node scripts/convergence-manifest.mjs",
     "test:unit": "vitest run tests/unit",
     "test:mesh": "vitest run tests/mesh",
     "test:mutation": "vitest run tests/mutation",
     "test:regression": "vitest run tests/regression",
     "qe:ux": "node scripts/qe/ux-suite.mjs",
     "test:cov": "vitest run tests/unit --coverage",
-    "test:release:preflight": "vitest run tests/unit/public-verification-inputs.test.mjs",
     "test:all": "npm run test:unit && npm run test:mesh && npm run test:mutation && npm run test:regression && npm run test:integration && npm test",
     "metaharness:receipts": "node scripts/metaharness-receipts.mjs",
     "route:cheap": "node scripts/route-cheap.mjs",
@@ -35,9 +42,6 @@
     "eval:top100": "node scripts/top100-benchmark.mjs",
     "gists:index": "node scripts/ingest-gists.mjs --index-only",
     "gists:sync": "node scripts/ingest-gists.mjs && node kb/forge-big.mjs both --dir kb --name ruv-gists",
-    "gists:rebuild-receipts": "node scripts/rebuild-gists-from-receipts.mjs",
-    "cards:from-source": "node scripts/card-from-source.mjs",
-    "release:abort-stale": "node scripts/release-abort-stale.mjs",
     "test:integration": "vitest run tests/integration",
     "substitution:check": "node scripts/no-silent-substitution.mjs",
     "catalog:verify": "node scripts/verify-model-catalog.mjs",
@@ -51,8 +55,6 @@
     "learning:replay:dry": "node scripts/learning-replay.mjs --dry-run",
     "wired:check": "node scripts/wired-check.mjs --check",
     "doc:currency": "node scripts/doc-currency.mjs --check",
-    "integrity:trace:check": "node scripts/product-integrity-contract.mjs --check-markdown docs/reviews/adr-072-traceability.md",
-    "integrity:trace:json": "node scripts/product-integrity-contract.mjs",
     "status:check": "node scripts/status-honesty.mjs",
     "cap:collect": "node scripts/rerank-cap-eval.mjs --collect",
     "cap:report": "node scripts/rerank-cap-eval.mjs --report",
@@ -108,7 +110,7 @@
   "bugs": "https://github.com/stuinfla/ruvnet-brain/issues",
   "author": "Stuart Kerr",
   "devDependencies": {
-    "@metaharness/darwin": "~0.8.0",
+    "@metaharness/darwin": "~0.9.2",
     "@ruvector/rvf": "^0.3.4",
     "@vitest/coverage-v8": "^4.1.10",
     "playwright": "^1.62.0",
@@ -116,6 +118,6 @@
   },
   "dependencies": {
     "@metaharness/flywheel": "^0.1.7",
-    "@metaharness/router": "^0.3.2"
+    "@metaharness/router": "^0.4.0"
   }
 }

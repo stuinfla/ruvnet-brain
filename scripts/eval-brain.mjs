@@ -70,10 +70,20 @@ export function wilson(k, n, z = 1.96) {
 /**
  * Grade one answered question by its stratum's rule. Pure — takes the verifier verdict, the top
  * citation (with its ce score), and whether the raw output carried the gist provenance banner.
+ *
+ * `receipt` (verifyGrounding's `receipt.repo`, from kb/verify-citation.mjs) names the citation that
+ * ACTUALLY resolved on disk — not necessarily citations[0]. citationResolves walks citations in rank
+ * order and accepts the first that resolves, so when the top-ranked citation is unverified/fabricated
+ * but a lower-ranked one grounds the answer, `citations[0].repo` is the WRONG repo to credit or debit
+ * "routed" against: it can under-count a correctly-routed answer (top fabricated, real hit lower) or
+ * over-count a wrong one (top coincidentally names the expected repo but never resolved). `routed`
+ * answers "does the query reach the store that actually holds the answer" (brain-score.mjs's own
+ * wording for this metric) — that store is the one named in `receipt`, when one was verified.
  */
-export function gradeQuestion(q, { grounded, citations, bannerPresent }) {
+export function gradeQuestion(q, { grounded, citations, bannerPresent, receipt }) {
   const top = citations?.[0] ?? null;
-  const routed = !!(grounded && q.expectRepo?.length && top && q.expectRepo.includes(top.repo));
+  const routedRepo = receipt?.repo ?? top?.repo ?? null;
+  const routed = !!(grounded && q.expectRepo?.length && routedRepo && q.expectRepo.includes(routedRepo));
   const abstained = !top || (typeof top.ce === 'number' && top.ce < ABSTAIN_CE);
   switch (q.stratum) {
     case 'adversarial':
@@ -180,7 +190,7 @@ async function main() {
         continue;
       }
       const v = await verifyGrounding(out, KB);
-      const graded = gradeQuestion(q, { grounded: v.grounded, citations: v.citations, bannerPresent: /GIST STATUS/.test(out) });
+      const graded = gradeQuestion(q, { grounded: v.grounded, citations: v.citations, receipt: v.receipt, bannerPresent: /GIST STATUS/.test(out) });
       const top = v.citations?.[0] ?? null;
       rows[i] = {
         id: q.id, stratum: q.stratum, query: q.query,

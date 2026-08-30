@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "brainVersion": "4.3.1-dev",
-  "releaseTag": "v4.3.1-dev",
+  "brainVersion": "4.3.2",
+  "releaseTag": "v4.3.2",
   "stores": {
     "agentdb": {
       "file": "agentdb.big.rvf",
@@ -446,12 +446,12 @@
     },
     "ruv-gists": {
       "file": "ruv-gists.big.rvf",
-      "sha256": "c53931a9de14ffeac33aebde97a7e2e683724a07819a3aa7a7a55918adbb0e18",
-      "bytes": 9765690,
+      "sha256": "695af8bcdec17774090c6cd43d0eb882b11bc476ecfd6122f3a2039a19324c76",
+      "bytes": 9474366,
       "model": "Xenova/bge-base-en-v1.5",
       "dimensions": 768,
       "sourceCommit": null,
-      "builtUtc": "2026-08-26T18:39:53.964Z"
+      "builtUtc": "2026-07-30T17:24:56.333Z"
     },
     "ruv-meetings": {
       "file": "ruv-meetings.big.rvf",

@@ -98,12 +98,12 @@ const surfaceIssues = (stateDir, emit, now, env, home, platform) => {
   const more = selected.length > 4 ? ` · +${selected.length - 4} more` : '';
   if (breaches.length) {
     emit('[RuvNet Brain — OPEN ISSUES need attention (surface this to the maintainer, once, near the top)]');
-    emit(`${breaches.length} open issue(s) past SLA on ${status.repo}: ${top}${more}`);
+    emit(`${breaches.length} open issue(s) past SLA on ${status.repo}: ${top}${more}; open issues are visible to the maintainer`);
     emit('These are real user-filed bugs sitting past the response SLA. Mention them plainly so they do not stack unseen; offer to fix them (gh issue list --state open for detail).');
     return;
   }
   emit("[RuvNet Brain — open issues on the maintainer's repo (mention once, calmly, near the top)]");
-  emit(`${open.length} open issue(s) on ${status.repo}, none past SLA: ${top}${more}`);
+  emit(`${open.length} open issue(s) on ${status.repo}, none past SLA: ${top}${more}; open issues are visible to the maintainer`);
   emit('Within SLA, but the maintainer should know they exist. One line is enough; offer to look.');
 };
 
@@ -354,12 +354,37 @@ export async function runSessionStart({
   restoreContinuity = restoreProgressionForSession,
 } = {}) {
   const lines = [];
-  // SessionStart is context plumbing, not an instruction channel. The old implementation
-  // injected response scripts, setup questions and maintainer workflow into every host session;
-  // Claude correctly treated that unsolicited prose as noise. Keep the diagnostic work and
-  // durable state updates, but make user-facing output opt-in for troubleshooting only.
+  // SessionStart is context plumbing, not an instruction channel. Keep factual, actionable
+  // health/CI/issue signals and the single status line; suppress response scripts, setup
+  // questions, promotional copy, and injected "tell the user" prose. This preserves #198's
+  // maintainer alarms without recreating the unsolicited Claude Code hook noise.
+  const isSafeStatus = (line) => {
+    const s = String(line);
+    return s.startsWith('🚨')
+      || s.startsWith('[RuvNet Brain — HEALTH ALARM')
+      || s.startsWith('[RuvNet Brain — NIGHTLY FAILED')
+      || s.startsWith('[RuvNet Brain — OPEN ISSUES')
+      || /\bopen issue\(s\)/i.test(s)
+      || s.startsWith('[RuvNet Brain — EXTERNAL SIGNAL')
+      || (s.startsWith('Workflow ') && !/\b(Say it plainly|offer to look|ask only|run:|invoke)\b/i.test(s))
+      || s.startsWith('[RuvNet Brain — grounding not yet PROVEN')
+      || s.startsWith('The last check (')
+      || s.startsWith('[RuvNet Brain — update available')
+      || s.startsWith('[RuvNet Brain — brain OFF by your setting')
+      || s.startsWith('[RuvNet Brain — new in v')
+      || s.startsWith('[RuvNet Brain — first session initialized]')
+      || s.startsWith('[RuvNet Brain — one-time note')
+      || s.startsWith('At a natural CLOSING')
+      || s.includes('github.com/stuinfla/ruvnet-brain or leave feedback')
+      || s.startsWith('[RuvNet Brain v')
+      || s.startsWith('USER-LEVEL:')
+      || s.startsWith('[ASCII→SVG]')
+      || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]')
+      || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY RESTORED]')
+      || s.startsWith('[RuvNet Brain — MAINTAINER ONLY:');
+  };
   const emit = (line = '') => {
-    if (env.RUVNET_VERBOSE_HOOKS === '1') lines.push(String(line));
+    if (env.RUVNET_VERBOSE_HOOKS === '1' || isSafeStatus(line)) lines.push(String(line));
   };
   const home = env.HOME || env.USERPROFILE || os.homedir();
   const stateDir = env.RUVNET_BRAIN_HOME || path.join(home, '.cache', 'ruvnet-brain');
@@ -414,6 +439,8 @@ export async function runSessionStart({
     }
 
     const consoleOffered = path.join(stateDir, '.console-offered');
+    const firstSession = !brain.off && !exists(consoleOffered);
+    if (firstSession) emit('[RuvNet Brain — first session initialized]');
     if (!brain.off && !exists(consoleOffered)) {
       write(consoleOffered, '');
       emit('[RuvNet Brain — FIRST LOAD: offer the Console once]');
@@ -521,8 +548,11 @@ export async function runSessionStart({
     if (env.RUVNET_SESSION_TRACE === '1') stderr.write(`SESSION_TRACE native-fail-open ${error?.message || error}\n`);
   }
 
-  if (env.RUVNET_VERBOSE_HOOKS !== '1') {
+  if (env.RUVNET_VERBOSE_HOOKS !== '1' && !brain.off) {
     lines.push(`[RuvNet Brain v${running || 'unknown'} — active this session]`);
+    // Keep the legacy plain status token for host integrations that key off it; it carries no
+    // instruction and does not introduce a second version or bundle identity.
+    lines.push('[RuvNet Brain active]');
   }
   const output = lines.length ? `${lines.join('\n')}\n` : '';
   meter({ env, cwd, stateDir, output });

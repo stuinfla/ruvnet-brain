@@ -18,8 +18,11 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch: {}
+
+concurrency:
+  group: ruvnet-brain-integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   integration:
@@ -50,9 +53,8 @@ jobs:
           echo "gh:     $(gh --version 2>/dev/null | head -1 || echo MISSING)"
           echo "rvf stores present: $(ls kb/*.rvf 2>/dev/null | wc -l)"
 
-      - name: Integration suite (continue on failure so we see EVERY error, not just the first)
+      - name: Integration suite (bounded and fail-closed)
         id: run
-        continue-on-error: true
         shell: bash
         run: |
           # pipefail, or the pipeline reports tee's status (always 0) and vitest's verdict is lost.

@@ -3,7 +3,7 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-26
+updated: 2026-08-30
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -206,6 +206,10 @@ is now the documentation authority; implementation must still change before the 
 conformance.
 
 ## Currency log
+
+| 2026-08-30 | Whole-product PR evidence now has one bounded canonical entrypoint; the full legacy QE matrix is manual-only and cannot create competing release claims. | `scripts/qa-runner.mjs`, `.github/workflows/ci.yml`, and `.github/workflows/qe-4-3.yml` preserve protected publication checks while simplifying automatic evidence collection. |
+
+| 2026-08-30 | Product integrity now has a bounded exact-SHA canonical gate and a separate release-authority assertion. | `scripts/qa-runner.mjs`, `scripts/release-authority.mjs`, and `docs/QA-RELEASE-PROCESS.md` make the boundary executable and auditable. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|

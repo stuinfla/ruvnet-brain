@@ -3,7 +3,7 @@ id: ADR-074
 title: RuvNet capability claims require live evidence
 status: Accepted
 date: 2026-08-22
-updated: 2026-08-26
+updated: 2026-08-30
 authors: [Stuart Kerr, Codex]
 tags: [architecture, truthfulness, capabilities, hosts, evidence, receipts]
 supersedes: []
@@ -128,6 +128,8 @@ packed leaves, a real candidate/public registry receipt, Grok adapter proof, fal
 measurement, and the signed public S-12 aggregate remain unproven.
 
 ## Currency log
+
+| 2026-08-30 | Capability and host changes now run through the canonical contract lane, and session-start output is filtered to factual signals. | `plugin/scripts/session-start-core.mjs`, `scripts/qa-runner.mjs`, and `tests/unit/session-start-core-parity.test.mjs` bind the user-visible claim to executable evidence. |
 
 | Date | What changed | Why |
 |---|---|---|

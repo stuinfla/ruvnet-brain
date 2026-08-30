@@ -3,7 +3,7 @@ id: ADR-053
 title: Experience-level QA — test the journey a user actually has, on every host, OS, and install path
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-26
+updated: 2026-08-30
 authors: [Stuart Kerr, Claude Code]
 tags: [qa, testing, experience, cross-platform, codex, agentic-qe, ci]
 supersedes: []
@@ -12,6 +12,7 @@ governs:
   - tests/experience/*.json
   - tests/experience/*.mjs
   - .github/workflows/ci.yml
+  - .github/workflows/qe-4-3.yml
   - scripts/qe/*.mjs
   - tests/ux/*.mjs
 ---
@@ -201,9 +202,21 @@ budgets (500ms vs 1s prompt-path), the stricter number won. v1's matrix section 
 
 ## Currency log
 
+| 2026-08-30 | The PR quality path now uses one bounded canonical runner; the legacy QE matrix is manual-only diagnostic coverage. | `scripts/qa-runner.mjs`, `.github/workflows/ci.yml`, and `.github/workflows/qe-4-3.yml` preserve the governed experience checks while removing duplicate automatic gates. |
+
+| 2026-08-30 | Release QA is now one bounded canonical runner with explicit contract lanes and exact-SHA receipts. | `scripts/qa-runner.mjs` and `.github/workflows/ci.yml` define the deterministic PR gate; `npm run qa:release` retains publication checks. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
-| 2026-08-23 | Re-read the CI workflow after adding the seed-coverage preflight. | Commit `efcecad` adds a fail-closed release-QE assertion only; the experience scenarios, thresholds, and host journey remain unchanged. |
+| 2026-08-23 | The aggregate now downloads merged receipts into its canonical `.qe/receipts` directory, and Vitest steps retain verbose diagnostics alongside JSON. | The workflow fix prevents successful uploads from being misclassified as missing, while commit `4b2b340`'s bounded tails make a hosted parser or timeout actionable without rerunning unrelated lanes. |
+| 2026-08-23 | The Windows candidate lane adds a fast direct import probe for the shared installer boundary before Vitest. | Hosted run `32654608558` showed the two installer-import suites failing to parse while five suites passed 33 tests; the next receipt will identify the exact module boundary without rerunning unrelated lanes. |
+| 2026-08-23 | QE lane steps now stop at the first failed step and retain the partial receipt. | A failed focused step cannot trigger later unrelated suites; this enforces the fail-fast contract while preserving the evidence needed to resume. |
+| 2026-08-23 | Windows installer-import suites run as separate bounded processes, and the hosted conformance step has a 240-second evidence bound. | The exact receipts isolated the Windows failures to two suites and measured hosted conformance at 133 seconds; the split preserves every assertion while preventing cross-suite contamination. |
+| 2026-08-23 | Receipt diagnostics now retain bounded stdout/stderr tails for hosted parser failures. | Commit `1310fb6` makes the exact failing-process evidence available in the uploaded receipt without rerunning unrelated lanes; the zero-spend and exact-SHA boundaries remain unchanged. |
+| 2026-08-23 | QE receipts now retain skipped-test identities and suite-level errors, not just aggregate counts. | Commit `cc25c24` makes the cross-platform failure contract diagnosable from the uploaded artifact before any rerun. |
+| 2026-08-23 | Candidate resources no longer treats live-precondition skips as release evidence, and Windows invokes Vitest through Node rather than `npm.cmd`. | Commit `0e30d68` keeps unavailable live checks out of the deterministic candidate denominator and removes the hosted PowerShell launcher failure; live qualification remains a separate required regime when explicitly run. |
+| 2026-08-23 | Failure receipts now preserve failed test identities and upload on failed lanes; release-QE waits for every required behavior/resource lane. | Commit `b570e25` closes the first hosted-run observability gap in the new workflow: a red lane remains diagnosable, and downstream artifact work cannot begin after Windows/resources failure. |
+| 2026-08-23 | Replaced the legacy auto-triggered CI/integration/UX matrix with `.github/workflows/qe-4-3.yml`: fail-fast preflight, isolated behavior/artifact/resource lanes, zero-spend enforcement, and exact-SHA machine receipts. The legacy workflows remain manual-only for recovery. | The prior monolithic integration gate spent ~16 minutes before failing a detached-fixture cleanup race after seven other lanes had passed. The new workflow implements this ADR's required separation and refuses missing, skipped, stale, or non-PASS evidence through `scripts/qe/aggregate-4.3.mjs`; Agentic-QE remains on-demand and off the release critical path. |
 | 2026-08-21 | Re-read the exact release-QE and integration changes after the emergency seed repair; the user-journey contract is unchanged. | `.github/workflows/ci.yml` now runs `rvf-index-audit.mjs --repair` before strict bundle assembly, and the integration fixture now supplies the generation receipt production requires. The real Linux integration lane passed on `c2b9fb0`; no experience scenario, threshold, or host path was removed. |
 | 2026-08-21 | Removed the #145 quarantine after replacing the Linux procfs fixture that blocked Node 20 collection. | `.github/workflows/ci.yml` again runs the complete unit suite. `tests/unit/decision-outcomes.test.mjs` now produces the same write failure with a regular-file parent, while `.github/workflows/diag-145-hang.yml` retains a bounded Ubuntu diagnostic. No experience scenario or threshold was weakened. |
 | 2026-08-19 | **ci.yml quarantines one unit test; no scenario or grader threshold is affected.** | `check`'s nine-day hang now has a NAME: `tests/unit/decision-outcomes.test.mjs`, identified by construction rather than guessed. `--no-file-parallelism` makes completion order equal execution order, and vitest sequences by file size DESCENDING — verified, not assumed: the 129 files that completed are EXACTLY the largest 129 by size, zero mismatches, so the file that started and never finished is the 130th. It converges with the independently-derived regression window (main last green 2026-08-10T11:06, first red 16:23), which contains the two ADR-067 decision-gate commits — and this is a decision-gate test. The file is QUARANTINED via `--exclude`, not fixed: it passes locally in 1.8s WITH coverage, so the cause is ubuntu-specific and unknown. #145 stays open; the exclusion comes out when the mechanism is understood, because a quarantine that quietly becomes permanent is deleted coverage. Nothing in `tests/experience/*` changed. |

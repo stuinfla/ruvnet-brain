@@ -25,11 +25,15 @@ import os from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { findStores, diagnose } from './memory-doctor.mjs';
 import { learnerCwd, loadRuntimePreferences } from '../plugin/scripts/runtime-preferences.mjs';
+import { projectDirectory } from '../plugin/scripts/project-identity.mjs';
 
 const HOME = os.homedir();
 // The SAME project root learn-flush.mjs computes, by the same rule — the two halves of the flush
 // have to agree about which project they mean or they address different queues (issue #104).
-const PROJECT = process.env.RUVNET_BRAIN_PROJECT_DIR || process.cwd();
+// RESIDUAL of #134: RUVNET_BRAIN_PROJECT_DIR is never set by real hook dispatch on either host, so
+// consult `projectDirectory()` (project-identity.mjs) — the CLAUDE_PROJECT_DIR-with-containment
+// rule #85/#107 already established, reused rather than trusting the variable unconditionally.
+const PROJECT = process.env.RUVNET_BRAIN_PROJECT_DIR || projectDirectory();
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
 

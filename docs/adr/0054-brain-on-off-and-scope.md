@@ -200,6 +200,7 @@ RUVNET_SETTINGS_FILE env splits; telemetry must never count disabled soft-answer
 failure. v1 draft's Decision + risks register superseded above; Context stands.
 
 ## Currency log
+| 2026-08-30 | The SessionStart active footer is suppressed when the brain is off, while factual health and continuity state remains available. | `plugin/scripts/session-start-core.mjs` and `tests/unit/session-start-core-parity.test.mjs` bind the visible status to the off/on state. |
 
 | date | why |
 |---|---|
