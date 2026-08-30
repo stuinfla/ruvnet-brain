@@ -147,7 +147,36 @@ else
   # they mean; the component that actually creates the queue was not brought along, so the invariant
   # held for two of three participants and was violated by the one doing the writing. Same shape as
   # ADR-066: a writer and a reader that disagree about the store make the recording theatre.
-  DIR="${RUVNET_BRAIN_PROJECT_DIR:-$PWD}/.swarm/ruvnet-brain-learn"
+  # RESIDUAL of #134/#104: RUVNET_BRAIN_PROJECT_DIR is never set by real hook dispatch on either
+  # host (neither hook-shim.mjs nor codex-hook-adapter.mjs seeds it), so it degraded back to bare
+  # $PWD in production. CLAUDE_PROJECT_DIR is the one project-root signal both hosts DO provide on
+  # every invocation. Trusted only when $PWD actually lies inside it — the SAME containment rule
+  # project-identity.mjs's projectDirectory() applies for the identical reason (#85/#107: an
+  # unrelated declared root must never overrule a cwd it does not contain). A plain string-prefix
+  # check, not a realpath/inode compare, to honour this hook's own no-process-spawn contract.
+  #
+  # NORMALIZED first: under Windows Git-Bash/MSYS, $PWD reports POSIX-style (`/c/Users/...`) while
+  # a host-provided CLAUDE_PROJECT_DIR may arrive native Windows-style (`C:\Users\...`) — a bare
+  # string-prefix compare between the two never matches, silently losing the fix on that host.
+  # Pure bash (no process spawn): backslashes to forward slashes, `X:` drive prefix to `/x`.
+  _norm() {
+    local p="${1//\\//}"
+    if [[ "$p" =~ ^([A-Za-z]):(/.*)$ ]]; then
+      local drive; drive="$(printf '%s' "${BASH_REMATCH[1]}" | tr 'A-Z' 'a-z')"
+      p="/$drive${BASH_REMATCH[2]}"
+    fi
+    printf '%s' "$p"
+  }
+  ROOT_DIR="$PWD"
+  if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+    NPWD="$(_norm "$PWD")"
+    CPD="$(_norm "${CLAUDE_PROJECT_DIR%/}")"
+    # Use the NORMALIZED form for ROOT_DIR too, not the raw CLAUDE_PROJECT_DIR: $PWD and every other
+    # path this script already builds successfully are in the shell's own (here, normalized-POSIX)
+    # form, and mixing a raw `C:\...` string into a path bash/MSYS builds and `mkdir`s is unproven.
+    case "$NPWD/" in "$CPD"/*) ROOT_DIR="$CPD" ;; esac
+  fi
+  DIR="${RUVNET_BRAIN_PROJECT_DIR:-$ROOT_DIR}/.swarm/ruvnet-brain-learn"
 fi
 # PROJECT SCOPE MEANS THE PROJECT MUST HAVE OPTED IN. In project scope $DIR sits under `.swarm`,
 # which is Ruflo's own convention and is created by `ruflo init` — so its PRESENCE is the project's
