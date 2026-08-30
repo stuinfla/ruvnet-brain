@@ -16,6 +16,8 @@
     "qa:pr": "node scripts/qa-runner.mjs",
     "qa:release": "node scripts/qa-runner.mjs --release",
     "release:authority": "node scripts/release-authority.mjs",
+    "card-from-source": "node scripts/card-from-source.mjs",
+    "release-abort-stale": "node scripts/release-abort-stale.mjs",
     "claims:verify": "node scripts/claims-verify.mjs",
     "claims:fix": "node scripts/claims-verify.mjs --fix",
     "version:sync": "node scripts/sync-version.mjs",
