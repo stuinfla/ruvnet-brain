@@ -215,6 +215,8 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
 
 ## Currency log
 
+| 2026-08-30 | Clarified the two coverage planes: the complete source observation remains immutable evidence, while release `COVERAGE.json` is projected from actual seed RVFs and byte-bound generation records. | Issue #201; `scripts/source-coverage.mjs`; `scripts/release-projection.mjs`; `.github/workflows/ci.yml`. |
+
 | 2026-08-30 | Re-read the governed source-coverage and release-boundary files after the convergence-manifest and public-verification wiring changes. The broader signed coverage projection remains explicitly unbuilt; the manifest records that status instead of implying completion. | `9f3cb36`, `scripts/convergence-manifest.mjs`, `.github/workflows/ci.yml`; no absent coverage command or projection was reintroduced. |
 
 | 2026-08-30 | The CI process now uses a bounded canonical QA runner while preserving source-coverage work as an explicit release/nightly concern. | `.github/workflows/ci.yml`, `scripts/qa-runner.mjs`, and `docs/QA-RELEASE-PROCESS.md` keep coverage evidence tied to the candidate rather than silently treating unrelated PR checks as release proof. |

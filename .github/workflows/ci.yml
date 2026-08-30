@@ -480,7 +480,8 @@ jobs:
             --baseline-receipt-sha256 "$baseline_receipt_sha256" --seed-tag "$SEED_TAG" \
             --seed-sha256 "$SEED_SHA256" --seed-bytes "$SEED_BYTES"
           node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" \
-            --assets "${asset_dirs[0]}" --projection "$RUNNER_TEMP/release-projection"
+            --assets "${asset_dirs[0]}" --coverage "$RUNNER_TEMP/release-projection/COVERAGE.json" \
+            --projection "$RUNNER_TEMP/release-projection"
           cp dist/ruvnet-brain.zip "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip"
           cp data/corpus-seed.json "$RUNNER_TEMP/release-evidence/corpus-seed.json"
           cp dist/ruvnet-brain/RVF-GENERATIONS.json "$RUNNER_TEMP/release-evidence/RVF-GENERATIONS.json"
