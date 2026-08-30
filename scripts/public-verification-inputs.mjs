@@ -148,7 +148,7 @@ function validateCandidate({ root, bundleFile, packageFile }) {
   const inventory = validatePublicInventory({ assetsDir: root, coverage, ledger });
   if (inventory.publicStores.length !== storeCount
     || inventory.partitionSha256 !== coverage.publicInventoryPartitionSha256) {
-    fail('candidate public inventory partition differs from release coverage');
+    fail(`candidate public inventory partition differs from release coverage (inventory=${inventory.partitionSha256}, coverage=${coverage.publicInventoryPartitionSha256}, stores=${inventory.publicStores.length}/${storeCount})`);
   }
   const coverageIdentity = { sha256: crypto.createHash('sha256').update(coverageBytes).digest('hex'), bytes: coverageBytes.length };
   const candidate = {
