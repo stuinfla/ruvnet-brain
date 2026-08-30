@@ -374,6 +374,7 @@ correct: **the strong claim was the defect.**
 
 ## Currency log
 
+| 2026-08-30 | The restart-free Stable Spine identity handoff is now covered by a real hook-shim test; quiet SessionStart CI signals retain factual details while excluding response instructions. | `plugin/scripts/hook-shim.mjs`, `plugin/scripts/session-start-core.mjs`, `tests/unit/hook-shim.test.mjs`, `tests/unit/signal-lifecycle.test.mjs`; focused 28/28 and canonical QA 322/322 pass. |
 | 2026-08-30 | Re-read the complete governed release and hook surface after the convergence-manifest and hook-conformance cleanup. The contract remains unchanged; its ownership is now checked by `scripts/convergence-manifest.mjs`, and detached-job fixture teardown now uses the product receipt rather than a livelocking delete retry. | `9f3cb36`, `scripts/convergence-manifest.mjs`, `tests/integration/hook-conformance-both-hosts.test.mjs`; focused conformance evidence is 8/8, and the full integration lane is 41 passed / 1 skipped / 0 failed with KB dependencies installed. |
 | 2026-08-30 | The final host adapter and SessionStart changes were rechecked against the exact bounded contract before hosted publication. | `tests/integration/project-progression-session-start.test.mjs` passes 13/13; `scripts/qa-runner.mjs` remains the canonical exact-SHA release gate. |
 

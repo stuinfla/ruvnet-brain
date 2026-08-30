@@ -14,6 +14,7 @@ governs:
   - scripts/ingest-gists.mjs
   - scripts/nightly-wrapper.sh
   - scripts/source-coverage.mjs
+  - scripts/release-projection.mjs
   - scripts/build-bundle.mjs
   - scripts/onboarding-console.mjs
   - scripts/console-runtime-identity.mjs

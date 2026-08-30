@@ -205,6 +205,7 @@ budgets (500ms vs 1s prompt-path), the stricter number won. v1's matrix section 
 | 2026-08-30 | The PR quality path now uses one bounded canonical runner; the legacy QE matrix is manual-only diagnostic coverage. | `scripts/qa-runner.mjs`, `.github/workflows/ci.yml`, and `.github/workflows/qe-4-3.yml` preserve the governed experience checks while removing duplicate automatic gates. |
 
 | 2026-08-30 | Release QA is now one bounded canonical runner with explicit contract lanes and exact-SHA receipts. | `scripts/qa-runner.mjs` and `.github/workflows/ci.yml` define the deterministic PR gate; `npm run qa:release` retains publication checks. |
+| 2026-08-30 | The release candidate workflow now restores the source-bound coverage projection before archive sealing. | `.github/workflows/ci.yml` runs `scripts/release-projection.mjs` and rebuilds the archive with the projection, so release-QE validates the same coverage files that ship. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|

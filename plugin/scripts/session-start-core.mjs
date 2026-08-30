@@ -133,7 +133,7 @@ const surfaceSignals = ({ env, cwd, stateDir, hookDir, emit, now }) => {
     if (debt?.state === 'resolved' && debt.conclusion !== 'success') {
       if (surfaced.debts[key] === 'red') continue;
       emit(`[RuvNet Brain — EXTERNAL SIGNAL: CI is RED for ${debt.repo}@${shortSha} — surface this to the user now, near the top, with ZERO prompting]`);
-      emit(`Workflow ${debt.workflowName || 'ci'} concluded ${debt.conclusion} on ${debt.repo}@${shortSha}. Say it plainly and offer to look (gh run list --repo ${debt.repo} --commit ${debt.ref}).`);
+      emit(`Workflow ${debt.workflowName || 'ci'} concluded ${debt.conclusion} on ${debt.repo}@${shortSha}; inspect with gh run list --repo ${debt.repo} --commit ${debt.ref}.`);
       surfaced.debts[key] = 'red';
       surfaced.redRepo[debt.repo] = key;
       changed = true;
@@ -365,7 +365,7 @@ export async function runSessionStart({
       || s.startsWith('[RuvNet Brain — NIGHTLY FAILED')
       || s.startsWith('[RuvNet Brain — OPEN ISSUES')
       || /\bopen issue\(s\)/i.test(s)
-      || s.startsWith('[RuvNet Brain — EXTERNAL SIGNAL')
+      || /^\[RuvNet Brain — external signal/i.test(s)
       || (s.startsWith('Workflow ') && !/\b(Say it plainly|offer to look|ask only|run:|invoke)\b/i.test(s))
       || s.startsWith('[RuvNet Brain — grounding not yet PROVEN')
       || s.startsWith('The last check (')
@@ -395,6 +395,11 @@ export async function runSessionStart({
   const pluginRoot = env.CLAUDE_PLUGIN_ROOT || path.resolve(hookDir, '..');
   const manifest = json(path.join(pluginRoot, '.claude-plugin', 'plugin.json'), {});
   const running = typeof manifest?.version === 'string' ? manifest.version : '';
+  // The Stable Spine supplies the immutable generation actually executing this invocation. This
+  // avoids showing a boot-frozen plugin version after a restart-free update.
+  const activeVersion = typeof env.RUVNET_BRAIN_ACTIVE_VERSION === 'string'
+    ? env.RUVNET_BRAIN_ACTIVE_VERSION : '';
+  const effectiveVersion = activeVersion || running;
   const updated = typeof manifest?.updated === 'string' ? manifest.updated : '';
   const trace = (stage) => {
     if (env.RUVNET_SESSION_TRACE === '1') {
@@ -483,7 +488,7 @@ export async function runSessionStart({
       emit('  "Finding this useful? Star github.com/stuinfla/ruvnet-brain or leave feedback — it keeps the nightly updates coming."');
     }
 
-    const bannerVersion = running || 'unknown';
+    const bannerVersion = effectiveVersion || 'unknown';
     if (pluginRoot.startsWith(path.join(home, '.claude', 'plugins') + path.sep)) {
       if (running) write(path.join(stateDir, '.running-version'), `${running}\n`);
     } else if (running) {
