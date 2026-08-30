@@ -28,8 +28,17 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   }
   const assets = path.resolve(assetsDir);
   const sourceLedger = readRvfGenerations(assets);
-  const eligible = corpusCoverage.rows.filter((row) => row.disposition === 'eligible');
-  if (!eligible.length || eligible.some((row) => row.status !== 'CURRENT')) throw new Error('eligible corpus rows are not all CURRENT');
+  // The sealed seed is the release input.  Coverage may contain eligible sources that are
+  // intentionally absent from that seed (for example a source observed after the last seed
+  // build); those rows must not make an otherwise sealed candidate impossible to publish.
+  // Only rows with a store actually present in the seed can enter the release projection, and
+  // every one of those rows must still be CURRENT.
+  const availableStores = new Set(Object.keys(sourceLedger.stores || {}).map((store) => store.toLowerCase()));
+  const eligible = corpusCoverage.rows.filter((row) => row.disposition === 'eligible'
+    && availableStores.has(String(row.artifact?.store || '').toLowerCase()));
+  if (!eligible.length || eligible.some((row) => row.status !== 'CURRENT')) {
+    throw new Error('eligible seeded corpus rows are not all CURRENT');
+  }
   const publicStores = eligible.map((row) => String(row.artifact.store).toLowerCase());
   const ledger = projectPublicGenerationLedger({ ledger: sourceLedger, publicStores, version, sourceSnapshot });
   const ledgerBytes = generationLedgerBytes(ledger);

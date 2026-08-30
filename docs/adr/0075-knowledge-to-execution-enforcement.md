@@ -29,6 +29,8 @@ governs:
 
 # ADR-075 — Knowledge-to-execution enforcement is a mandatory policy boundary
 
+**Status**: Accepted (2026-08-30)
+
 ## Context
 
 RuvNet Brain exists to turn current RuvNet knowledge, project decisions, and user constraints
