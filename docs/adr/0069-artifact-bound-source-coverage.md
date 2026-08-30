@@ -3,7 +3,7 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
-updated: 2026-08-26
+updated: 2026-08-30
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -213,6 +213,8 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
   are mutation-tested. These scenarios remain unimplemented until a failing-then-passing test exists.
 
 ## Currency log
+
+| 2026-08-30 | The CI process now uses a bounded canonical QA runner while preserving source-coverage work as an explicit release/nightly concern. | `.github/workflows/ci.yml`, `scripts/qa-runner.mjs`, and `docs/QA-RELEASE-PROCESS.md` keep coverage evidence tied to the candidate rather than silently treating unrelated PR checks as release proof. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
