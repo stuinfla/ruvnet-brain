@@ -200,6 +200,10 @@ RUVNET_SETTINGS_FILE env splits; telemetry must never count disabled soft-answer
 failure. v1 draft's Decision + risks register superseded above; Context stands.
 
 ## Currency log
+
+| date | why |
+|---|---|
+| 2026-08-30 | Rechecked plugin/scripts/session-start-core.mjs in 05cabf0: the host-facing session banner is limited to one status line by default; diagnostics remain internal. |
 | Date | What changed | Why (with referents) |
 |---|---|---|
 | 2026-08-22 | **A read-only public-registry probe joined the existing explicit MCP interface tools; Brain OFF and scope semantics are unchanged.** | `plugin/mcp/server.mjs` now dispatches `ruvnet_registry_latest` in the parent alongside `ruvnet_cli_help`/`ruvnet_cli_run`. It runs only after an explicit tool call, starts no search worker, performs no install or update, writes no setting or OFF sentinel, and cannot change retrieval scope. This is maintenance/interface evidence, not background Brain activity; `tests/unit/brain-off.test.mjs` remains the focused OFF boundary. |

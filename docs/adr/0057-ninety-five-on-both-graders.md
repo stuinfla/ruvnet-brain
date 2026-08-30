@@ -250,6 +250,10 @@ to the five governed paths; it does not adjudicate the product or substitute for
 
 ## Currency log
 
+| date | why |
+|---|---|
+| 2026-08-30 | Rechecked scripts/behavioral-l1-l4.mjs in 05cabf0: L4 now proves quiet build behavior and still exercises all four real scenarios. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
 | 2026-08-22 | Re-read the moved installer surface; this plan remains Proposed, verification remains expired, and no score is promoted. | `4e68453` changes stale plugin generation cleanup to retain live/ambiguous PID-incarnation leases; `6336c52` adds non-pinned launchd paths for the supported host executables. Both changes are bounded installer correctness work in `bin/install.mjs`; neither changes `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `tests/mesh/coexistence.test.mjs`, the grader rubric, or the two-independent-95 acceptance condition. |

@@ -188,6 +188,10 @@ The four parallel agents working tonight support this distinction. They show tha
 
 ## Currency log
 
+| date | why |
+|---|---|
+| 2026-08-30 | Rechecked plugin/scripts/session-start-core.mjs in 05cabf0: SessionStart output is now opt-in diagnostics, so unsolicited issue/workflow prose cannot enter a host session. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
 | 2026-08-22 | Re-read every governed issue-pipeline and host-start surface at convergence tip `ddae606`; the issue watcher still derives awareness from external issue state, and the fixer still cannot manufacture acknowledgment or bypass its stop conditions. | `adeba05` extends `plugin/scripts/session-start-core.mjs` with fail-closed project-progression restoration; it does not write issue acknowledgments or change `scripts/issue-watch.mjs` / `scripts/issue-fix.mjs`. The two governed skills continue to require evidence-backed issue handling. This currency review records compatibility only; it does not claim the intentionally held paid auto-fixer is scheduled. |
