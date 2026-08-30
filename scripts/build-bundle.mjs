@@ -183,11 +183,10 @@ if (COVERAGE) {
   }
   let inventory;
   try {
-    let gistReceipt = null;
     if (PROJECTION) {
       const projectionDir = path.resolve(PROJECTION);
       const receiptFile = path.join(projectionDir, 'ruv-gists.sources.json');
-      if (fs.existsSync(receiptFile)) gistReceipt = JSON.parse(fs.readFileSync(receiptFile, 'utf8'));
+      if (fs.existsSync(receiptFile)) fs.copyFileSync(receiptFile, path.join(ASSETS, 'ruv-gists.sources.json'));
       const classesFile = path.join(projectionDir, 'public-store-classes.json');
       if (fs.existsSync(classesFile)) fs.copyFileSync(classesFile, path.join(ASSETS, 'public-store-classes.json'));
       const conceptsReceipt = path.join(projectionDir, 'concepts.sources.json');
@@ -200,7 +199,7 @@ if (COVERAGE) {
         fs.copyFileSync(privateStores, path.join(ASSETS, 'PRIVATE-STORES.json'));
       }
     }
-    inventory = validatePublicInventory({ assetsDir: ASSETS, coverage, ledger: readRvfGenerations(ASSETS), gistReceipt });
+    inventory = validatePublicInventory({ assetsDir: ASSETS, coverage, ledger: readRvfGenerations(ASSETS) });
   } catch (error) {
     console.error(`[build-bundle] FATAL: public inventory is not exhaustive (${error.message})`);
     process.exit(1);

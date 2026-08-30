@@ -94,7 +94,10 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
     rows: projectedCoverage.rows, totals: projectedCoverage.totals,
   };
   const gistReceipt = seedCompatibleGistReceipt();
-  const inventory = validatePublicInventory({ assetsDir: assets, coverage: releaseBase, ledger, gistReceipt });
+  // Keep the projected receipt in the same asset root that the final archive
+  // validator reads, so both partition hashes include identical evidence.
+  fs.writeFileSync(path.join(assets, 'ruv-gists.sources.json'), `${JSON.stringify(gistReceipt, null, 2)}\n`);
+  const inventory = validatePublicInventory({ assetsDir: assets, coverage: releaseBase, ledger });
   releaseBase.publicInventoryPartitionSha256 = inventory.partitionSha256;
   releaseBase.releaseCoverageGeneration = releaseCoverageGenerationFor(releaseBase);
   const out = path.resolve(outDir);

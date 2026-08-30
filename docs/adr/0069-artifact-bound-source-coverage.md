@@ -219,6 +219,7 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
 | 2026-08-30 | Canonical CI now runs on pull requests targeting `main`, so release-QE and the other exact-SHA gates run before merge instead of only after the merge push. | `.github/workflows/ci.yml` |
 | 2026-08-30 | Projected seed validation now imports the canonical private-store fence into its temporary validation root; the public seed remains immutable and cannot be mistaken for the policy source. | `scripts/build-bundle.mjs`; `kb/PRIVATE-STORES.json`; exact-SHA release-QE. |
 | 2026-08-30 | Release projection now recomputes projected status totals and enumeration counts while preserving the full source-observation digest in `CORPUS-COVERAGE.json`. | `scripts/release-projection.mjs`; `plugin/scripts/coverage-integrity.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | The projected gist receipt is staged into the second-stage validation root before inventory validation, so projection and archive partition hashes include the same in-tree evidence. | `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; exact-SHA release-QE. |
 
 | 2026-08-30 | Rechecked artifact-bound source coverage after release-QE separated current observation from the immutable seed; projection and bundle assembly now bind the correct evidence plane and source policy registry. | `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; `data/source-coverage.json`; exact-SHA release-QE. |
 
