@@ -38,6 +38,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { readStdinBounded } from './hook-input.mjs';
+import {
+  auditCapabilityClaims,
+  buildCapabilityInventoryReceipt,
+} from './capability-inventory-receipt.mjs';
+import { auditCurrentCapabilityEvidence } from './capability-claim-evidence.mjs';
 
 const HOME = os.homedir();
 
@@ -252,6 +257,59 @@ const nowMs = Date.now();
 if (!hookInput.session_id) process.exit(EXIT_ALLOW);
 
 /**
+ * FINAL-ANSWER CAPABILITY TRUTH — the Stop boundary is the only place that can inspect the answer
+ * the user is about to receive. The concrete failure this closes was an assistant saying
+ * "Ruflo ADR Verify is not installed" while `ruflo-adr:adr-verify` was present in that host's own
+ * installed skill inventory. A rule in the prompt did not prevent it; a byte-bound inventory does.
+ *
+ * This first receipt class is intentionally narrow: installed/registered/present claims about
+ * RuvNet skills. It does not pretend to prove arbitrary natural-language capability claims. A
+ * present source byte disproves an absence claim. A COMPLETE enumeration can disprove a presence
+ * claim. An incomplete enumeration can prove neither, so the only allowed verdict is UNKNOWN.
+ */
+function capabilityClaimWork() {
+  const message = String(hookInput.last_assistant_message || '');
+  if (!message) return [];
+  try {
+    const receipt = buildCapabilityInventoryReceipt();
+    const audit = auditCapabilityClaims(message, receipt);
+    const evidenceAudit = auditCurrentCapabilityEvidence(message, { now: new Date(nowMs).toISOString() });
+    const evidenceWork = [...evidenceAudit.contradictions, ...evidenceAudit.unresolved].map((finding) => ({
+      text: evidenceAudit.contradictions.includes(finding)
+        ? `RuvNet ${finding.class} claim "${finding.text}" contradicts fresh typed evidence: ${finding.reason || 'claim mismatch'}`
+        : `RuvNet ${finding.class} claim "${finding.text}" is UNKNOWN: ${finding.reason}; verify the exact live/source surface before asserting it`,
+      done: false,
+      at: new Date(nowMs).toISOString(),
+      derived: true,
+      kind: 'capability-claim-integrity',
+    }));
+    if (audit.verdict === 'PASS') return evidenceWork;
+    if (audit.verdict === 'FAIL') {
+      return [...audit.contradictions.map((finding) => ({
+        text: finding.matchedRef
+          ? `RuvNet capability claim "${finding.text}" contradicts the sealed ${audit.host} inventory: ${finding.matchedRef} is present at ${finding.sourcePath}`
+          : `RuvNet capability claim "${finding.text}" contradicts the complete sealed ${audit.host} inventory: no matching installed capability exists`,
+        done: false,
+        at: new Date(nowMs).toISOString(),
+        derived: true,
+        kind: 'capability-claim-integrity',
+      })), ...evidenceWork];
+    }
+    return [...audit.unresolved.map((finding) => ({
+      text: `RuvNet capability claim "${finding.text}" is UNKNOWN because the ${audit.host} inventory is incomplete; verify the live host before asserting absence`,
+      done: false,
+      at: new Date(nowMs).toISOString(),
+      derived: true,
+      kind: 'capability-claim-integrity',
+    })), ...evidenceWork];
+  } catch {
+    // The Stop hook remains fail-open on machinery failure. The receipt builder represents
+    // ordinary incomplete enumeration as UNKNOWN; reaching this catch means the gate itself broke.
+    return [];
+  }
+}
+
+/**
  * ARTIFACT-DERIVED OPEN WORK — the half that cannot be forgotten.
  *
  * WHY THIS EXISTS, measured rather than supposed. On 2026-08-04 the owner asked why the model had
@@ -423,6 +481,7 @@ function securityAlertWork() {
 }
 
 const open = [
+  ...capabilityClaimWork(),
   ...led.items.filter((i) => !i.done),
   ...artifactOpenWork(), ...redCiOpenWork(), ...openPrWork(), ...securityAlertWork(),
 ];
@@ -511,11 +570,15 @@ if (!claimCooldown(nowMs, COOLDOWN_MS)) process.exit(EXIT_ALLOW);
  */
 const committed = forceable.filter((i) => !i.derived);
 const observed = forceable.filter((i) => i.derived);
+const capabilityClaims = forceable.filter((i) => i.kind === 'capability-claim-integrity');
 // Every derived item names its own repo in its text; this is for the header, where the ONE repo
 // this tree points at is the honest thing to say.
 const repoLabel = [...OWNED_REPOS][0] || 'this repository';
 
-const header = committed.length && observed.length
+const header = capabilityClaims.length
+  ? ['Your proposed final answer contains a RuvNet capability claim that is contradicted or not provable.',
+     'Do NOT deliver it unchanged — continue now and correct the claim from the sealed live-host inventory.']
+  : committed.length && observed.length
   ? [`You have unfinished work you committed to, and ${repoLabel} has open work of its own.`,
      'Do NOT end the turn — continue now.']
   : committed.length
@@ -539,7 +602,10 @@ const lines = [
   // build, answer the issue, patch the advisory) and the next watcher run stops reporting it —
   // which is the point of deriving it rather than remembering it. Offering --done for one would be
   // offering a way to mark a red build finished without fixing it.
-  ...(committed.length
+  ...(capabilityClaims.length
+    ? ['Replace every contradicted claim with the observed capability and source path. Replace every',
+       'unresolved absence claim with UNKNOWN until a complete live inventory proves it.']
+    : committed.length
     ? ['Mark each item done as you complete it:  node plugin/scripts/continuation-gate.mjs --done "<exact item text>"']
     : ['These clear by being done, not by being marked: merge or fix the PR, get the build green,',
        'answer the issue, patch the advisory. The next observation stops listing them.']),

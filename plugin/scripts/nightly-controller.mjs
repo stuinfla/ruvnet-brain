@@ -46,8 +46,25 @@ const INSTALLER = path.join(ROOT, 'bin', 'install.mjs');
  */
 export const NIGHTLY_LABEL = 'com.ruvnet.brain-update';
 
+function schedulerEnvironment(env) {
+  const fixtureRoot = env.RUVNET_CONSOLE_ROOT;
+  if (!fixtureRoot) return env;
+  if (env.RUVNET_BRAIN_TEST !== '1') {
+    throw new Error('RUVNET_CONSOLE_ROOT scheduler isolation requires RUVNET_BRAIN_TEST=1');
+  }
+  if (!path.isAbsolute(fixtureRoot)) {
+    throw new Error('RUVNET_CONSOLE_ROOT must be an absolute path');
+  }
+  const isolatedHome = path.resolve(fixtureRoot);
+  if (isolatedHome === path.resolve(os.homedir())) {
+    throw new Error('RUVNET_CONSOLE_ROOT must not be the real user home in test mode');
+  }
+  return { ...env, HOME: isolatedHome, USERPROFILE: isolatedHome };
+}
+
 export function nightlyArtifact({ env = process.env, platform = process.platform } = {}) {
-  const home = env.HOME || os.homedir();
+  const schedulerEnv = schedulerEnvironment(env);
+  const home = schedulerEnv.HOME || os.homedir();
   return {
     supported: platform === 'darwin',
     platform,
@@ -71,7 +88,7 @@ export function nightlyStatus(options = {}) {
 
 export function applyNightlyChoice(enabled, options = {}) {
   if (typeof enabled !== 'boolean') return { ok: false, log: 'nightly must be true or false' };
-  const env = options.env || process.env;
+  const env = schedulerEnvironment(options.env || process.env);
   const before = nightlyStatus({ ...options, env });
   if (!before.artifact.supported) return { ok: false, state: before, log: before.evidence };
   const run = spawnSync(process.execPath, [

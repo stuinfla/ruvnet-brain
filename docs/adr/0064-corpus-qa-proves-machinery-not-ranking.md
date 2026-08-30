@@ -3,7 +3,7 @@ id: ADR-064
 title: The corpus-QA round trip proves the machinery, not the ranking
 status: Accepted
 date: 2026-08-06
-updated: 2026-08-20
+updated: 2026-08-22
 authors: [Stuart Kerr, Claude Code]
 tags: [corpus-qa, nightly, retrieval, near-duplicates, diagnosability, escalation]
 supersedes: []
@@ -180,4 +180,5 @@ label. Noted, not load-bearing for anything published.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-22 | **Retired the primary-checkout nightly and moved corpus mutation behind a structural worktree boundary.** | The 2026-08-20 actuator was real but was wired to `com.ruvnet.brain-nightly`, whose working directory was the primary developer checkout. That job accumulated generated source alongside active work. The plist is retired and removed. Both `self-update.mjs --apply` and `ingest-new-repos.mjs --apply` now refuse primary, nested, non-linked, and dirty worktrees. The manual wrapper seals the primary HEAD, staged diff, tracked working diff, and non-ignored untracked set around a run. The prior row remains history, not current scheduling guidance. |
 | 2026-08-20 | **Corpus coverage now closes on its own instead of being measured and left.** | `nightly-wrapper.sh` gained daily ingestion via the new `scripts/ingest-new-repos.mjs`. Nothing had ever loaded new rUv repos — measured 181 live, 69 ingested, 125 missing — while `brain-stamp.mjs` computed that gap every night and nothing consumed it. The QA machinery this ADR governs was never wrong about the number; it had no actuator. The new script ingests newest-first, bounded per night, and refuses to invent capability cards for what it ingests, because a card written from a repo NAME would route real questions to a corpus nobody grounded in the source. It also exits 1 on a failed org listing rather than reporting "0 new repos" — a list you could not fetch is not an empty list. |

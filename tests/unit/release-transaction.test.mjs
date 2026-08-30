@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   abortReleaseTransaction,
   canonicalJson,
+  CURRENT_RECEIPT_SCHEMA_VERSION,
   digestReceipt,
+  receiptDisposition,
   signReceipt,
+  transactionIdFor,
   validateReceiptChain,
+  verifyReceipt,
 } from '../../scripts/release-transaction.mjs';
 import {
   execute, FakeReleaseProvider, identity, keys, transactionId,
@@ -21,6 +25,34 @@ describe('remote durable release transaction', () => {
     expect(provider.calls.indexOf('promoteNpm')).toBeLessThan(provider.calls.indexOf('makeGithubLatest'));
     expect(validateReceiptChain(provider.receipts, identity, keys.publicKey).at(-1).state)
       .toBe('channels-converged');
+    expect(final.schemaVersion).toBe(CURRENT_RECEIPT_SCHEMA_VERSION);
+    expect(receiptDisposition(final)).toBe('pending-public-verification');
+    expect(provider.calls).not.toContain('finalize');
+  });
+
+  it('keeps transaction identity stable across the receipt schema cutover', () => {
+    expect(transactionIdFor(identity)).toBe(transactionId);
+  });
+
+  it('classifies only schema-3 install verification as successful closure', () => {
+    expect(receiptDisposition({ schemaVersion: 3, state: 'channels-converged' }))
+      .toBe('pending-public-verification');
+    expect(receiptDisposition({ schemaVersion: 3, state: 'install-verified' })).toBe('verified');
+    expect(receiptDisposition({ schemaVersion: 2, state: 'channels-converged' })).toBe('legacy-closed');
+    expect(receiptDisposition({ schemaVersion: 3, state: 'aborted' })).toBe('closed-unsuccessful');
+  });
+
+  it('accepts a mixed signed schema-2 to schema-3 chain without rewriting history', () => {
+    const first = signReceipt({
+      schemaVersion: 2, transactionId, sequence: 0, previousReceiptDigest: null,
+      state: 'remote-prepared', identity, observation: {}, createdAt: 'then',
+    }, keys.privateKey);
+    const second = signReceipt({
+      schemaVersion: 3, transactionId, sequence: 1, previousReceiptDigest: first.receiptDigest,
+      state: 'asset-upload-intent', identity, observation: {}, createdAt: 'now',
+    }, keys.privateKey);
+    expect(validateReceiptChain([first, second], identity, keys.publicKey)).toHaveLength(2);
+    expect(verifyReceipt(second, keys.publicKey).schemaVersion).toBe(3);
   });
 
   it('rejects a competing pending candidate before creating a draft', async () => {

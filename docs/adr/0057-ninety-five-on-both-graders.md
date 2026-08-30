@@ -3,7 +3,7 @@ id: ADR-057
 title: 95 on both graders — closing a 38/53 against a self-reported 83, dimension by dimension
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-19
+updated: 2026-08-30
 impl: verification-expired
 verified: 2026-07-30
 verified_digest: 1c276a7dfbc5
@@ -250,8 +250,13 @@ to the five governed paths; it does not adjudicate the product or substitute for
 
 ## Currency log
 
+| date | why |
+|---|---|
+| 2026-08-30 | Rechecked scripts/behavioral-l1-l4.mjs in 05cabf0: L4 now proves quiet build behavior and still exercises all four real scenarios. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-22 | Re-read the moved installer surface; this plan remains Proposed, verification remains expired, and no score is promoted. | `4e68453` changes stale plugin generation cleanup to retain live/ambiguous PID-incarnation leases; `6336c52` adds non-pinned launchd paths for the supported host executables. Both changes are bounded installer correctness work in `bin/install.mjs`; neither changes `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `tests/mesh/coexistence.test.mjs`, the grader rubric, or the two-independent-95 acceptance condition. |
 | 2026-08-19 | **Re-read after the hooks.json timeout change; neither grader's contract is touched.** | `plugin/hooks/hooks.json` is the only governed path that moved: the two decision-gate PreToolUse entries returned from 10s to 5s (ADR-067, 2026-08-19). No hook was added, removed, or re-matched, so the behavioural L1-L4 surface both graders score is identical apart from that ceiling. `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `bin/install.mjs` and `tests/mesh/coexistence.test.mjs` are unchanged. |
 | 2026-08-10 | Re-read after ADR-067; this plan stays Proposed and no score is promoted. | The governed installer change is the derived Codex dependency walk. It adds no grader, dimension or observable, and is not offered as evidence toward 95. `impl: verification-expired` unchanged — two independent graders at or above 95 remain outstanding. |
 | 2026-08-02 | Re-read the governed 4.0.8 installer and hook changes; this plan remains Proposed and no score is promoted. | ADR-062 adds three-mode packed/public host proof and makes `--doctor --hooks` fail closed when selfcheck is unavailable. GPT-5.6 Sol Medium signed the release design and `claude-fable-5` Medium signed with applied changes, but neither result is represented as a new 95 product score. |

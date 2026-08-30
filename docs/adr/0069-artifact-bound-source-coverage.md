@@ -3,7 +3,7 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-26
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -30,7 +30,7 @@ governs:
   - docs/ddd/0016-source-coverage-context.md
 created_at: 2026-08-21T05:32:00-04:00
 created_at_source: authored-current
-updated_at: 2026-08-21T08:10:43-04:00
+updated_at: 2026-08-23T10:35:00-04:00
 updated_at_source: authored-current
 ---
 
@@ -216,8 +216,14 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-23 | Reconciled candidate assembly with the artifact-bound coverage boundary. | `scripts/build-bundle.mjs` now ships `PRIVATE-STORES.json` alongside the assembled candidate so `release-projection.mjs` validates the same fence that governs the artifact. |
+| 2026-08-23 | Bound the checked-in corpus ledger to the v4.2.1 baseline seed scope and added a release preflight that rejects non-current eligible rows. | Commit `efcecad` updates `data/source-coverage.json`, `kb/no-corpus-repos.json`, and `.github/workflows/ci.yml`; the release projection now receives a corpus-kind ledger with the stale self-store explicitly excluded. The ADR remains Proposed because the baseline seed still needs the complete derived receipt set for final artifact proof. |
+| 2026-08-22 | Required the protected publisher to validate both independent reviews against the exact coverage-derived retrieval plan before mutation. | Commit `f06624a` passes the sealed `release-evidence/retrieval-canary-plan.json` into the pair verifier and adds an ordering assertion before `release.mjs --publish`. The verifier's S-10 per-row relevance implementation and real source-bound oracle remain absent, so artifact-bound coverage acceptance is still Proposed and release-blocking. |
+| 2026-08-22 | Re-read the implemented coverage receipts, corpus-input reconciliation, and protected-release handoff at convergence tip `ddae606`; they strengthen source binding without completing this ADR's missing human projection or live enumeration proof. | `578fbab`, `510e3bf`, `91cfbb9`, `efcaedc`, `41b2c12`, and `17fe54b` add content-bound coverage/retrieval evidence and stable source/gist reconciliation. `4a901d6` carries `COVERAGE.json` and the retrieval-canary plan through the sealed publisher artifact. The named Console/command surfaces and real upstream pagination/public-byte acceptance remain absent, so this ADR stays Proposed and partially unbuilt. |
+| 2026-08-22 | Isolated every implemented source-coverage mutation from the primary checkout; broader coverage acceptance remains Proposed. | `ingest-new-repos.mjs --apply` and `self-update.mjs --apply` share `scripts/worktree-integrity.mjs`, which accepts only a clean linked worktree outside the primary. The retired `com.ruvnet.brain-nightly` scheduler and plist are gone; a manual author wrapper additionally verifies that primary HEAD/index/tracked/untracked state is unchanged. This closes the dirty-checkout transport defect, not this ADR's still-unbuilt signed enumeration, exemption, UI, or public-artifact coherence requirements. |
 | 2026-08-21 | Re-read the emergency release rail and kept the broader source-coverage system explicitly unbuilt. | `.github/workflows/ci.yml` does not call the absent `scripts/source-coverage.mjs` or claim its absent projections. It uses the committed immutable seed identity plus strict repaired generation receipts to restore service; this ADR's complete coverage generator remains deferred. |
 | 2026-08-21 | Corrected the earlier implementation claim: the coverage command and Console projection remain planned, not shipped. | The named `plugin/commands/coverage.md`, `plugin/scripts/coverage.mjs`, and Console coverage files do not exist in this candidate. The emergency release implements corpus-seed and ledger identity only; the broader coverage read model remains Proposed and is explicitly deferred until after service is restored. |
 | 2026-08-21 | Re-read the governed release paths after emergency corpus convergence. | `scripts/build-bundle.mjs` now fails closed on seed/ledger byte and metadata disagreement and `.github/workflows/ci.yml` consumes an exact sealed seed. This advances the artifact boundary but does not satisfy this ADR's unbuilt UI, exemptions, or full coverage-report contract. |
 | 2026-08-21 | Added signed enumeration, canonical generation input, closed-snapshot, and first-generation exemption contracts; implementation remains pending. | Fable 5 and GPT-5.6-Sol adversarial review found pagination proof, exact digest inputs, exemption lifecycle, and a non-deadlocking bootstrap were not observable in the initial proposal. |
 | 2026-08-21 | Initial artifact-bound coverage decision. | The live audit of `scripts/brain-stamp.mjs`, `kb/RVF-GENERATIONS.json`, `scripts/ingest-gists.mjs`, and the installed cache proved false-current repository rows, missing source receipts, a stale installed gist corpus, and no human-readable coverage ledger. |
+Implementation note (2026-08-23): the release projection producer now binds corpus coverage, public inventory, and generation ledgers to the candidate artifact.

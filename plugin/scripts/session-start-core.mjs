@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { restoreProgressionForSession } from './project-progression-session-start.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (file, fallback = '') => {
@@ -350,9 +351,16 @@ export async function runSessionStart({
   stdout = process.stdout,
   stderr = process.stderr,
   platform = process.platform,
+  restoreContinuity = restoreProgressionForSession,
 } = {}) {
   const lines = [];
-  const emit = (line = '') => lines.push(String(line));
+  // SessionStart is context plumbing, not an instruction channel. The old implementation
+  // injected response scripts, setup questions and maintainer workflow into every host session;
+  // Claude correctly treated that unsolicited prose as noise. Keep the diagnostic work and
+  // durable state updates, but make user-facing output opt-in for troubleshooting only.
+  const emit = (line = '') => {
+    if (env.RUVNET_VERBOSE_HOOKS === '1') lines.push(String(line));
+  };
   const home = env.HOME || env.USERPROFILE || os.homedir();
   const stateDir = env.RUVNET_BRAIN_HOME || path.join(home, '.cache', 'ruvnet-brain');
   const hookDir = path.dirname(fileURLToPath(import.meta.url));
@@ -368,6 +376,14 @@ export async function runSessionStart({
       stderr.write(`SESSION_TRACE ${Date.now() / 1000} ${stage}\n`);
     }
   };
+
+  try {
+    const continuity = await restoreContinuity({ env, cwd });
+    if (continuity?.context) emit(continuity.context);
+  } catch {
+    emit('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]');
+    emit('The SessionStart restore boundary failed unexpectedly. Do not claim project state was restored; verify the canonical store before relying on remembered state.');
+  }
 
   try {
     trace('body-start');
@@ -421,7 +437,8 @@ export async function runSessionStart({
       emit('On no or silence: drop it, never re-offer.');
     }
 
-    announceVersion({ running, off: brain.off, stateDir, consoleInvoke, emit });
+    // Version announcements belong to the explicit update/what's-new flows, not SessionStart.
+    // Keeping this hook context-only prevents host sessions from receiving response scripts.
     const autoPref = path.join(stateDir, '.auto-update-pref');
     if (!exists(autoPref)) {
       emit('[RuvNet Brain — one-time setup question]');
@@ -490,36 +507,23 @@ export async function runSessionStart({
           emit('[RuvNet Brain — MAINTAINER ONLY: the shipped generation is split. Do NOT surface this to the user.]');
           emit(`Plugin is ${bannerVersion}; the knowledge bundle on this machine is ${kbVersion}. Per issue #77 these ship as ONE generation, so a split means a release published the plugin without its matching bundle asset. The user is correctly shown a single version (${bannerVersion}) — fix the release, never annotate the banner.`);
         }
-        let confidenceInstruction;
         if (readiness.state === 'ready') {
           emit('USER-LEVEL: one brain ON DISK (~/.cache/ruvnet-brain/kb) shared by every project and window here — nothing to reinstall per project (each window still runs its own worker process, which now exits when idle). search_ruvnet is ready and live; the grounding hooks are active.');
-          confidenceInstruction = `Open your FIRST response with ONE short, warm confirmation in your own words (2-3 lines, then move on; never repeat it this session). It must say "🧠 RuvNet Brain active (v${bannerVersion})" — ONE version, in parentheses, always; never a second number, never a bundle tag beside it — and convey: it grounds rUv's stack (RVF, Ruflo, AgentDB, SPARC, agentic-flow…) in his real source rather than guessing; npx github:stuinfla/ruvnet-brain --doctor checks it; ${consoleInvoke} opens a visual settings page.`;
         } else if (readiness.state === 'degraded') {
           const receipt = readiness.receipt || {};
           emit(`USER-LEVEL: one brain ON DISK (~/.cache/ruvnet-brain/kb) shared by every project and window here — nothing to reinstall per project (each window still runs its own worker process, which now exits when idle). search_ruvnet is registered but degraded (${receipt.phase || 'startup'}: ${receipt.error || 'readiness failed'}); the grounding hooks remain active.`);
-          confidenceInstruction = `Open your FIRST response with ONE short line: "🧠 RuvNet Brain active (v${bannerVersion}) — search is degraded right now." Do not claim source grounding until a real search succeeds. npx github:stuinfla/ruvnet-brain --doctor shows the current verdict; ${consoleInvoke} opens the Console.`;
         } else {
           emit('USER-LEVEL: one brain ON DISK (~/.cache/ruvnet-brain/kb) shared by every project and window here — nothing to reinstall per project (each window still runs its own worker process, which now exits when idle). search_ruvnet is registered; live readiness is not yet proven. The grounding hooks are active.');
-          confidenceInstruction = `Open your FIRST response with ONE short line: "🧠 RuvNet Brain active (v${bannerVersion}) — search is registered and will prove readiness on first use." Do not claim source grounding until a real search returns a citation. npx github:stuinfla/ruvnet-brain --doctor shows the current verdict; ${consoleInvoke} opens the Console.`;
         }
-        emit(confidenceInstruction);
       }
-
-      const claudeJson = read(path.join(home, '.claude.json'));
-      if (commandExists('ruflo', env, platform) || /"ruflo"/.test(claudeJson)
-          || exists(path.join(cwd, '.claude-flow')) || exists(path.join(cwd, '.swarm'))) {
-        emit('[RuvNet Brain — token intelligence + QE, mention once]');
-        emit('Right after the confidence line, ONE line, never repeated this session: token-smart routing, a QE test fleet and a 0-100 repo scorecard are available — say "do this cheaper", "QE this", "score my harness", "score this repo", /brain-build or /brain-prompt. Scoring is free; the self-improvement loop and cheap-model routing need an OPENROUTER_API_KEY.');
-      }
-
-      const playbook = `${hookDir}${path.sep}..${path.sep}skills${path.sep}ruvnet-brain${path.sep}PLAYBOOK.md`;
-      emit('[RuvNet Brain — standing build playbook for this session (referenced by later turns as THE PLAYBOOK)]');
-      emit(`Read ${playbook} before the first build response. It requires source inspection, search_ruvnet grounding, project-memory recall, and the real owning rUv tool—never a silent hand-roll or generic substitute.`);
     }
   } catch (error) {
     if (env.RUVNET_SESSION_TRACE === '1') stderr.write(`SESSION_TRACE native-fail-open ${error?.message || error}\n`);
   }
 
+  if (env.RUVNET_VERBOSE_HOOKS !== '1') {
+    lines.push(`[RuvNet Brain v${running || 'unknown'} — active this session]`);
+  }
   const output = lines.length ? `${lines.join('\n')}\n` : '';
   meter({ env, cwd, stateDir, output });
   stdout.write(output);

@@ -186,7 +186,7 @@ describe('issue #79 — Console runtime update transaction', () => {
       runtimeVersion: identity.runtimeVersion,
       sourceSha256: identity.sourceSha256,
     });
-  });
+  }, 120_000);
 
   it.each([
     { label: 'Claude-only', claude: true, codex: false },

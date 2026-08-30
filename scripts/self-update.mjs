@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// self-update.mjs — nightly evergreen driver.
+// self-update.mjs — author-side incremental candidate builder.
 // Compares each in-scope repo's live HEAD against the stamped manifest, then (re)builds the segments
 // that changed and re-stamps. Dry-run by default; pass --apply to actually (re)build.
 //
@@ -12,14 +12,16 @@
 // candidate bytes, but only the protected release workflow may publish them after release-proof
 // seals the exact clean SHA and packed-artifact digest.
 //
-// Designed to be invoked by deploy/com.ruvnet.brain-nightly.plist (LaunchAgent — NOT auto-installed).
+// Author-side candidate builder. It is never scheduled against a developer checkout. The retired
+// com.ruvnet.brain-nightly LaunchAgent did exactly that and accumulated generated changes beside
+// live work. Run --apply only from a clean linked worktree outside the primary checkout.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
 import { withSubmoduleSymlinksDetached } from './git-clone-refresh.mjs';
+import { assertIsolatedMutationWorktree } from './worktree-integrity.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -57,45 +59,18 @@ if (has('--publish')) {
   console.error('[release-authority] Use the protected release workflow after release-proof seals the exact clean SHA and packed-artifact digest.');
   process.exit(2);
 }
-// --publish's whole job is to end this run with `git commit` + `git push origin main` (see the
-// PUBLISH block far below) — and those two commands operate on whatever branch is CURRENTLY
-// CHECKED OUT in this working tree, not necessarily main. Real failure (2026-07-19): the nightly
-// fired at 03:15 while a developer had feat/meta-proxy-passthrough checked out, and commit 4a10833
-// "Nightly brain refresh v3.4.21-dev" landed silently on THAT branch — a version-bump commit no
-// release will ever be cut from, stranded on top of someone's unrelated in-progress work.
-// Guard here, before ANY of the (hours-long, CPU-bound) rebuild work below even starts, and before
-// the GitHub Release / npm publish steps run — checking branch only at commit-time would still
-// burn a full night's rebuild, or worse, leave a Release cut with no matching version-bump commit
-// to go with it. We deliberately do NOT `git checkout main` to self-correct: this machine is
-// routinely mid-task on a feature branch at 03:15 (that is exactly how this bug was found), and
-// switching branches out from under someone's uncommitted work is precisely the "clever and
-// destructive" move this repo has already been burned by once (see the -readonly/timeout lesson in
-// CLAUDE.md Rule 19). An aborted nightly that logs clearly and reruns tomorrow costs nothing; a
-// checkout that clobbers a developer's working tree cannot be undone.
-// ── THE BRANCH GUARD IS GONE, AND THAT IS THE FIX (2026-07-24) ──────────────────────────────────
-//
-// It used to FATAL here when ROOT was not on main. That guard was CORRECT for what it knew: these
-// git commands act on whatever branch is checked out, and on 2026-07-19 that stranded commit 4a10833
-// on feat/meta-proxy-passthrough. Refusing beat clobbering a developer's working tree.
-//
-// But refusing had a cost nobody was watching. This file is the ONLY thing that cuts GitHub Releases
-// (`release.mjs --publish` does npm and contains zero `gh release` calls). So on 2026-07-23 the
-// nightly hit this guard — the repo was on branch 4.0 — aborted correctly, and the release channel
-// froze at v3.9.18-dev while npm advanced to 3.9.50. Thirty-two versions of drift produced by a guard
-// working exactly as designed, invisible because the channel verifier only checked the bundle was
-// REACHABLE, never that it was CURRENT.
-//
-// The dilemma was false. It only existed because the version commit ran in ROOT. It now runs in a
-// worktree pinned to origin/main (see the PUBLISH block), so the developer's tree is never touched
-// AND the release is never blocked by what they have checked out. Neither horn, rather than a better
-// choice between them.
-//
-// Nothing replaces this check because nothing needs to: ROOT's branch is now irrelevant to publishing.
-// If the worktree cannot be prepared, THAT fails loudly and refuses to fall back to committing in
-// ROOT — the guarantee this guard existed to provide, kept, without the outage it caused.
+if (APPLY) {
+  try { assertIsolatedMutationWorktree(ROOT, 'self-update --apply'); }
+  catch (error) { console.error(error?.message || String(error)); process.exit(2); }
+}
+// Historical note: this script once published and committed from whichever branch happened to be
+// checked out. Publication authority has since moved to protected-release.yml and --publish is
+// refused above. The remaining rebuild still writes generated candidate source, so the stronger
+// boundary is now structural: assertIsolatedMutationWorktree refuses primary, nested, non-linked,
+// and dirty worktrees before any expensive or mutating step begins.
 // --fresh-window <days>: LIVE-scan the org(s) and take every non-fork/non-archived repo pushed within
-// N days, bypassing the static registry.tiers.json AND the nightly T3 skip. This is THE fix for
-// "new repos rUv shipped never got ingested" — a brand-new repo is discovered and built the same night
+// N days, bypassing the static registry.tiers.json AND the default T3 skip. This is THE fix for
+// "new repos rUv shipped never got ingested" — a brand-new repo is discovered and built in the same run
 // it appears, but only within the rolling window, so the old "days of compute for all 173" risk that the
 // tier gate guarded against still cannot happen. Absent this flag, scoping is byte-for-byte unchanged.
 const FRESH_WINDOW = arg('--fresh-window', null);
@@ -158,7 +133,7 @@ if (FRESH_WINDOW) {
     if (TIER && t !== TIER) continue;
     for (const r of tiers.tiers[t].repos) {
       if (ONLY && r.name !== ONLY) continue;
-      if (t === 'T3' && !ONLY) continue;            // T3 is deep-walked on demand, not nightly
+      if (t === 'T3' && !ONLY) continue;            // T3 is deep-walked only when named explicitly
       inScope.push({ ...r, tier: t });
     }
   }
@@ -205,9 +180,9 @@ if (typeof orgFailures !== 'undefined' && orgFailures > 0 && inScope.length === 
 
 console.log(`self-update ${APPLY ? '(APPLY)' : '(dry-run)'} — ${plan.length} repos in scope\n`);
 for (const p of plan) console.log(`  ${p.action.padEnd(20)} ${p.tier} ${p.name.padEnd(24)} built:${p.built}  live:${p.live}`);
-// SAFE NIGHTLY SCOPE: by default only REBUILD already-built repos whose upstream changed (keeps the
+// SAFE DEFAULT SCOPE: only REBUILD already-built repos whose upstream changed (keeps the
 // shipped bundle current). Building brand-new repos is a supervised, multi-hour scaling effort, NOT an
-// unattended nightly job — gate it behind --include-new so the cron can't silently try to deep-walk 40+
+// implicit default — gate it behind --include-new so an ordinary author run cannot silently deep-walk 40+
 // repos (days of compute) on its first run.
 // Fresh-window mode exists precisely to discover + build brand-new repos, so default INCLUDE_NEW on
 // there (still bounded to the N-day set). Static-tier mode keeps the original opt-in gate untouched.
