@@ -1,3 +1,18 @@
+## Operating policy (effective 2026-08-30)
+
+The ledger is the system of record for every Dream Cycle observation. A finding is
+written here before any GitHub side effect. The cycle must reconcile its stable
+fingerprint (`deep`, `scan`, source path, and finding signature) against this ledger,
+open issues, closed issues, and existing branches/PRs before creating work.
+
+Only a new, reproduced, actionable defect may open an issue. Observations that are
+already fixed, duplicates, environment-only conditions, or hypotheses remain ledger
+entries and do not create GitHub issues. A draft PR is created only after a failing
+test and a bounded fix exist. Integrated work is closed during reconciliation.
+
+This prevents a routine evaluation from manufacturing a permanent issue and draft-PR
+backlog. `autoMerge: false` remains intentional: evaluation may not publish code.
+
 | Date | Deep | Finding | Issue | PR | Evaluated? | Verdict | Effect | Witness | Prior-night fates |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-08-19 | memory-durability | `restore-local-ingests.mjs` could not distinguish "store root never materialized on this host" from "wiped" — a fresh checkout, CI runner, or this nightly agent's own container all logged an identical false-wipe alarm | #142 | #143 | yes | ACCEPT | 7 new unit tests, red→green; `test:integration` 37 files reproduced identically vs unmodified `main`; both-hosts conformance green. Baseline exit 1 / wipe-wording → candidate exit 2 / honest "NOT evidence of a wipe" wording, on this container's real state | 275223bea7234cd4ebef5182083ea627d9aba459828248bc9f1398f62787d019 | night one — ledger was empty, nothing to re-check |
