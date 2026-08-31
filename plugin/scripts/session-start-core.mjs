@@ -352,6 +352,7 @@ export async function runSessionStart({
   stderr = process.stderr,
   platform = process.platform,
   restoreContinuity = restoreProgressionForSession,
+  runHeartbeat = true,
 } = {}) {
   const lines = [];
   // SessionStart is context plumbing, not an instruction channel. Keep factual, actionable
@@ -479,7 +480,7 @@ export async function runSessionStart({
       emit('No answer: ask next session, never twice.');
     }
     const spine = stableSpine({ env, hookDir, stateDir, home, pluginVersion: running, emit, now });
-    heartbeat({ env, hookDir, stateDir, home, running, ...spine, emit, now });
+    if (runHeartbeat) heartbeat({ env, hookDir, stateDir, home, running, ...spine, emit, now });
 
     const star = path.join(stateDir, '.star-ask-shown');
     if (!brain.off && exists(path.join(stateDir, '.grounded-once')) && !exists(star) && write(star, '')) {

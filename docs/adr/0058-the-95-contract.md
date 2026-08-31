@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-30
+updated: 2026-08-31
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -373,6 +373,10 @@ correct: **the strong claim was the defect.**
    land ≥95. No self-score counts; the 83-vs-38 category error is not repeated.
 
 ## Currency log
+| 2026-08-31 | Reconciled after the release candidate's QA runner and workflow topology were simplified. | `scripts/qa-runner.mjs` now collects independent lanes concurrently, while `.github/workflows/ci.yml` no longer duplicates the authoritative canonical QA workflow; the ≥95 contract and release evidence requirements are unchanged. |
+
+
+| 2026-08-30 | Re-read after `abc1731` added explicit squash-merge oracle provenance handling; the 95 contract remains unchanged and the new path has a failing-then-passing regression test. | `scripts/retrieval-canary.mjs`, `.github/workflows/ci.yml`, `tests/unit/retrieval-canary.test.mjs`; focused suite passed 11/11. |
 
 | 2026-08-30 | Re-read the governed release builder and CI after the 4.3.3 candidate exposed projection evidence arriving after validation and PRs bypassing release gates. | `scripts/build-bundle.mjs`, `scripts/release-projection.mjs`, `plugin/scripts/coverage-integrity.mjs`, `.github/workflows/ci.yml`; local `npm run qa:pr` passed 10/10 lanes and hosted exact-SHA release proof remains required. |
 

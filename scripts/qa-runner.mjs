@@ -32,6 +32,7 @@ const lanes = [
     'tests/unit/learn-capture-project-root.test.mjs',
     'tests/unit/codex-claude-hook-parity.test.mjs',
     'tests/unit/brain-stamp-resolve-built-from-sha.test.mjs',
+    'tests/unit/qa-runner-concurrency.test.mjs',
     '--reporter=dot']],
   ['mesh', 'npm', ['run', 'test:mesh']],
   ['plugin', 'npm', ['test']],
@@ -56,13 +57,14 @@ const run = ([name, command, args]) => new Promise((resolve) => {
     resolve({ name, command: [command, ...args].join(' '), status: timedOut ? 'TIMEOUT' : code === 0 ? 'PASS' : 'FAIL', exitCode: code, signal, elapsedMs: Date.now() - begin, stdoutTail: stdout.slice(-4000), stderrTail: stderr.slice(-4000) });
   });
 });
-const results = [];
-for (const lane of lanes) {
+// Every lane is independent. Run the complete set concurrently so one failure does not hide
+// later failures and force a serial fix-rerun cycle. The aggregate receipt remains the single
+// verdict, while each lane keeps its own evidence for targeted repair.
+const results = await Promise.all(lanes.map(async (lane) => {
   const result = await run(lane);
-  results.push(result);
   fs.writeFileSync(path.join(receiptDir, `${result.name}.json`), `${JSON.stringify({ schema: 'ruvnet-brain.qa.lane', sha, ...result }, null, 2)}\n`);
-  if (result.status !== 'PASS') break;
-}
+  return result;
+}));
 const receipt = { schema: 'ruvnet-brain.qa.aggregate', contract: release ? 'release' : 'pr', sha, started, ended: new Date().toISOString(), status: results.every((r) => r.status === 'PASS') && results.length === lanes.length ? 'PASS' : 'FAIL', requiredLanes: lanes.map(([name]) => name), results };
 fs.writeFileSync(path.join(receiptDir, 'aggregate.json'), `${JSON.stringify(receipt, null, 2)}\n`);
 console.log(JSON.stringify({ status: receipt.status, sha, lanes: results.map(({ name, status, elapsedMs }) => ({ name, status, elapsedMs })) }));

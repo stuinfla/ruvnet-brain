@@ -3,7 +3,7 @@ id: ADR-075
 title: Knowledge-to-execution enforcement is a mandatory policy boundary
 status: Accepted
 date: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
 impl: unbuilt
 authors: [Stuart Kerr, Codex]
 tags: [architecture, enforcement, routing, swarms, adr, ddd, qa, release]
@@ -175,5 +175,7 @@ architecture-to-test graph remain unbuilt until their acceptance criteria pass o
 host paths.
 
 ## Currency log
+| 2026-08-31 | Reconciled after the canonical QA runner changed from serial fail-fast execution to concurrent independent-lane collection. | `scripts/qa-runner.mjs` now preserves this ADR's enforcement boundary while ensuring one failed lane cannot hide later policy failures; `tests/unit/qa-runner-concurrency.test.mjs` locks that behavior. |
+
 
 | 2026-08-30 | Created after a live audit showed that correct Brain guidance could still be bypassed by selecting Ruflo's API-backed executor instead of the native subscription executor. | `plugin/skills/ruvnet-brain/SKILL.md`, `docs/adr/0061-subscription-only-dual-host-deliberation.md`, `plugin/scripts/route-dispatch.sh`, and the failed Ruflo execution receipt in the session record. |

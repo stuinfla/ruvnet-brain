@@ -215,6 +215,8 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
 
 ## Currency log
 
+| 2026-08-30 | Re-read after `abc1731` changed oracle source binding for squash-merged candidates; source coverage remains artifact-bound and the fetched source commit must still match its content digest. | `scripts/retrieval-canary.mjs`, `scripts/public-verification-inputs.mjs`, `.github/workflows/ci.yml`. |
+
 | 2026-08-30 | Release projection now retains seed-present excluded repository rows, includes derived stores in the public ledger, and supplies projection receipts before inventory validation. This closes the exact-SHA release-QE mismatch observed in the candidate build. | `scripts/release-projection.mjs`, `scripts/build-bundle.mjs`, `plugin/scripts/coverage-integrity.mjs` |
 | 2026-08-30 | Canonical CI now runs on pull requests targeting `main`, so release-QE and the other exact-SHA gates run before merge instead of only after the merge push. | `.github/workflows/ci.yml` |
 | 2026-08-30 | Projected seed validation now imports the canonical private-store fence into its temporary validation root; the public seed remains immutable and cannot be mistaken for the policy source. | `scripts/build-bundle.mjs`; `kb/PRIVATE-STORES.json`; exact-SHA release-QE. |

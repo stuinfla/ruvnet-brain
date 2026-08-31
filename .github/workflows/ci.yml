@@ -14,22 +14,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  canonical-qa:
-    name: canonical-qa
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - run: npm ci --no-audit --no-fund --ignore-scripts
-      - name: Run the same bounded QA contract used locally
-        run: npm run qa:pr
-
   candidate-preflight:
     name: candidate-preflight
     timeout-minutes: 10
@@ -508,6 +492,8 @@ jobs:
         run: |
           set -euo pipefail
           test -s data/retrieval-query-evidence.json
+          ORACLE_SOURCE_COMMIT="$(node -p "require('./data/retrieval-query-evidence.json').sourceCommit")"
+          git fetch --no-tags origin "$ORACLE_SOURCE_COMMIT"
           node scripts/public-verification-inputs.mjs \
             --baseline-bundle "$RUVNET_SEED_BUNDLE" \
             --candidate-bundle "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \

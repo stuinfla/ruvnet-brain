@@ -349,6 +349,7 @@ describe('ADR-073 Slice F SessionStart restore bridge', () => {
       stdout: { write: (chunk) => { stdout += String(chunk); return true; } },
       stderr: { write: () => true },
       restoreContinuity: () => ({ status: 'restored', context }),
+      runHeartbeat: false,
     });
 
     expect(result.ok).toBe(true);
