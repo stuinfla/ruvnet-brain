@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildCoverage, canonicalGistRows, canonicalJson, canonicalRepositoryRows, classifyGist, classifyRepository,
-  digest, gistVersion, observeExternalRepositories, observeSourceUniverse, sealCoverage,
+import { artifactEvidence, buildCoverage, canonicalGistRows, canonicalJson, canonicalRepositoryRows, classifyGist,
+  classifyRepository, digest, gistVersion, observeExternalRepositories, observeSourceUniverse, sealCoverage,
   sourceObservationDigest } from '../../scripts/source-coverage.mjs';
 
 const repo = {
@@ -42,6 +42,22 @@ describe('artifact-bound source coverage', () => {
     expect(classifyRepository(repo, { ...evidence, rvfPresent: false }, { reason: 'unbound' })).toMatchObject({
       disposition: 'eligible', status: 'MISSING',
     });
+  });
+
+  it('cardPresent resolves through repo-aliases.json the same way the router does (metaharness via agent-harness-generator)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'source-coverage-alias-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'capability-cards.md'), '## agent-harness-generator\ncard body\n');
+      fs.writeFileSync(path.join(dir, 'repo-aliases.json'),
+        JSON.stringify({ 'agent-harness-generator': ['metaharness'] }));
+      const cardStores = new Set(['agent-harness-generator']);
+      expect(artifactEvidence(dir, { stores: {} }, cardStores, 'metaharness').cardPresent).toBe(true);
+      // The canonical name itself, and an unrelated store with no alias and no card, are unaffected.
+      expect(artifactEvidence(dir, { stores: {} }, cardStores, 'agent-harness-generator').cardPresent).toBe(true);
+      expect(artifactEvidence(dir, { stores: {} }, cardStores, 'ruflo').cardPresent).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('enumerates configured public sources outside the primary owner with their explicit store names', () => {
