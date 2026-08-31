@@ -25,7 +25,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 /** The three host shapes a release must survive. ONE name each, for every consumer. */
 export const HOST_MODES = Object.freeze(['claude', 'codex', 'dual']);
@@ -131,46 +131,118 @@ export function runHostMatrix({ packageRoot, version, variant = 'staged', locate
   let error;
 
   for (const mode of HOST_MODES) {
-    try {
-      const home = path.join(workspace, `home-${mode}`);
-      const codexHome = path.join(home, '.codex');
-      const brainHome = path.join(home, '.cache', 'ruvnet-brain');
-      fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
-      if (mode !== 'claude') fs.mkdirSync(codexHome, { recursive: true });
-      const env = {
-        ...process.env,
-        HOME: home,
-        CODEX_HOME: codexHome,
-        RUVNET_BRAIN_HOME: brainHome,
-        RUVNET_BRAIN_KB: path.join(brainHome, 'kb'),
-        CI: 'true',
-        PATH: fixturePath(mode, workspace, locate),
-        ...spec.env({ packageRoot }),
-      };
-      const install = run(process.execPath, [installer, ...spec.installerArgs(version)], {
-        cwd: packageRoot, env, encoding: 'utf8', timeout: 1_200_000, maxBuffer: 32 * 1024 * 1024,
-      });
-      if (install.error || install.status !== 0) {
-        throw new Error(`install failed for ${mode}: ${(install.stderr || install.error?.message || '').slice(-4000)}`);
-      }
-      const doctor = run(process.execPath, [installer, '--doctor', '--hooks'], {
-        cwd: packageRoot, env, encoding: 'utf8', timeout: 300_000, maxBuffer: 32 * 1024 * 1024,
-      });
-      const classified = classifyDoctor(doctor);
-      fixtures[mode] = { status: classified.status, doctorExit: doctor.status, version };
-      if (!classified.accepted) {
-        verdict = 'FAIL';
-        fixtures[mode].output = classified.output.slice(-5000);
-        // The output belongs IN the error. The previous harness put it there and I dropped it in
-        // the consolidation, so CI reported a bare "doctor failed for claude" and the one thing
-        // needed to act on it — what the doctor actually said — was thrown away.
-        error = error || `doctor failed for ${mode} (exit ${doctor.status}): ${classified.output.slice(-4000)}`;
-      }
-    } catch (e) {
+    const result = runHostMode({ mode, packageRoot, version, spec, workspace, locate, run });
+    if (result.error) {
       verdict = 'FAIL';
-      fixtures[mode] = { status: 'FAIL', error: e.message };
-      error = error || e.message;
+      fixtures[mode] = result.fixture;
+      error = error || result.error;
+    } else {
+      fixtures[mode] = result.fixture;
     }
   }
   return error ? { verdict, fixtures, error } : { verdict, fixtures };
+}
+
+function runHostMode({ mode, packageRoot, version, spec, workspace, locate, run }) {
+  try {
+    const home = path.join(workspace, `home-${mode}`);
+    const codexHome = path.join(home, '.codex');
+    const brainHome = path.join(home, '.cache', 'ruvnet-brain');
+    fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+    if (mode !== 'claude') fs.mkdirSync(codexHome, { recursive: true });
+    const env = {
+      ...process.env,
+      HOME: home,
+      CODEX_HOME: codexHome,
+      RUVNET_BRAIN_HOME: brainHome,
+      RUVNET_BRAIN_KB: path.join(brainHome, 'kb'),
+      CI: 'true',
+      PATH: fixturePath(mode, workspace, locate),
+      ...spec.env({ packageRoot }),
+    };
+    const installer = path.join(packageRoot, 'bin', 'install.mjs');
+    const install = run(process.execPath, [installer, ...spec.installerArgs(version)], {
+      cwd: packageRoot, env, encoding: 'utf8', timeout: 1_200_000, maxBuffer: 32 * 1024 * 1024,
+    });
+    if (install.error || install.status !== 0) {
+      throw new Error(`install failed for ${mode}: ${(install.stderr || install.error?.message || '').slice(-4000)}`);
+    }
+    const doctor = run(process.execPath, [installer, '--doctor', '--hooks'], {
+      cwd: packageRoot, env, encoding: 'utf8', timeout: 300_000, maxBuffer: 32 * 1024 * 1024,
+    });
+    const classified = classifyDoctor(doctor);
+    const fixture = { status: classified.status, doctorExit: doctor.status, version };
+    if (!classified.accepted) {
+      fixture.output = classified.output.slice(-5000);
+      return {
+        fixture,
+        error: `doctor failed for ${mode} (exit ${doctor.status}): ${classified.output.slice(-4000)}`,
+      };
+    }
+    return { fixture };
+  } catch (e) {
+    return { fixture: { status: 'FAIL', error: e.message }, error: e.message };
+  }
+}
+
+/**
+ * Async equivalent used by hosted release qualification. Each mode owns its HOME and PATH, so
+ * the expensive installer/doctor pairs can run concurrently without sharing mutable state.
+ * Results are reassembled in HOST_MODES order before the single caller writes its receipt.
+ */
+export async function runHostMatrixAsync({ packageRoot, version, variant = 'staged', locate, temp }) {
+  const spec = VARIANTS[variant];
+  if (!spec) throw new Error(`unknown host-matrix variant: ${variant}`);
+  const workspace = temp || fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-host-matrix-'));
+  const runMode = async (mode) => {
+    const home = path.join(workspace, `home-${mode}`);
+    const codexHome = path.join(home, '.codex');
+    const brainHome = path.join(home, '.cache', 'ruvnet-brain');
+    fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+    if (mode !== 'claude') fs.mkdirSync(codexHome, { recursive: true });
+    const env = {
+      ...process.env,
+      HOME: home,
+      CODEX_HOME: codexHome,
+      RUVNET_BRAIN_HOME: brainHome,
+      RUVNET_BRAIN_KB: path.join(brainHome, 'kb'),
+      CI: 'true',
+      PATH: fixturePath(mode, workspace, locate),
+      ...spec.env({ packageRoot }),
+    };
+    const installer = path.join(packageRoot, 'bin', 'install.mjs');
+    try {
+      const child = (args, timeout) => spawnCommand(process.execPath, [installer, ...args], {
+        cwd: packageRoot, env, timeout,
+      });
+      const install = await child(spec.installerArgs(version), 1_200_000);
+      if (install.error || install.status !== 0) throw new Error(`install failed for ${mode}: ${(install.stderr || install.error?.message || '').slice(-4000)}`);
+      const doctor = await child(['--doctor', '--hooks'], 300_000);
+      const classified = classifyDoctor(doctor);
+      const fixture = { status: classified.status, doctorExit: doctor.status, version };
+      if (!classified.accepted) {
+        fixture.output = classified.output.slice(-5000);
+        throw new Error(`doctor failed for ${mode} (exit ${doctor.status}): ${classified.output.slice(-4000)}`);
+      }
+      return { fixture };
+    } catch (error) {
+      return { fixture: { status: 'FAIL', error: error.message }, error: error.message };
+    }
+  };
+  const results = await Promise.all(HOST_MODES.map(runMode));
+  const fixtures = Object.fromEntries(HOST_MODES.map((mode, index) => [mode, results[index].fixture]));
+  const error = results.find((result) => result.error)?.error;
+  return error ? { verdict: 'FAIL', fixtures, error } : { verdict: 'PASS', fixtures };
+}
+
+function spawnCommand(command, args, options) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, options);
+    const stdout = [];
+    const stderr = [];
+    child.stdout?.on('data', (chunk) => stdout.push(chunk));
+    child.stderr?.on('data', (chunk) => stderr.push(chunk));
+    child.on('close', (status, signal) => resolve({ status, signal, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }));
+    child.on('error', (error) => resolve({ status: null, error, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }));
+  });
 }
