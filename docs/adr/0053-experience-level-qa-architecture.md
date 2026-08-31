@@ -202,6 +202,7 @@ budgets (500ms vs 1s prompt-path), the stricter number won. v1's matrix section 
 
 ## Currency log
 | 2026-08-31 | The canonical QA runner now executes independent lanes concurrently and collects every lane receipt before producing the aggregate verdict. | `scripts/qa-runner.mjs` removes fail-fast serial execution so independent failures are visible in one run; the experience dimensions and release-gate requirements remain unchanged. |
+| 2026-08-31 | Removed the duplicate `canonical-qa` job from `ci.yml`; `.github/workflows/canonical-qa.yml` is now the single PR entrypoint for the bounded QA contract. | Two workflows were running the same named check against different GitHub checkout refs, allowing a merge-ref convergence false failure to block a head-commit candidate. |
 
 
 | 2026-08-30 | Re-read after `abc1731` changed the release-QE provenance path; experience scenarios and thresholds are unchanged. | `scripts/retrieval-canary.mjs`, `tests/unit/retrieval-canary.test.mjs`; focused retrieval suite passed 11/11. |

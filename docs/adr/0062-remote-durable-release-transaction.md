@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-30
+updated: 2026-08-31
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -23,6 +23,8 @@ governs:
 # ADR-062 — Remote-durable staged release transaction
 
 ## Currency log
+| 2026-08-31 | Reconciled after removing the duplicate canonical QA workflow job from the release candidate path. | `.github/workflows/ci.yml` now leaves the bounded QA contract to its single authoritative workflow; protected release transaction, exact-SHA, and durable receipt rules remain unchanged. |
+
 
 | 2026-08-30 | Reviewed against release candidate 4.3.3: hosted exact-SHA failures were corrected in the release workflow, reconciliation fixtures, and canonical release wording; the protected transaction remains the only publication path. | 1beedaa |
 

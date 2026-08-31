@@ -32,6 +32,7 @@ const lanes = [
     'tests/unit/learn-capture-project-root.test.mjs',
     'tests/unit/codex-claude-hook-parity.test.mjs',
     'tests/unit/brain-stamp-resolve-built-from-sha.test.mjs',
+    'tests/unit/qa-runner-concurrency.test.mjs',
     '--reporter=dot']],
   ['mesh', 'npm', ['run', 'test:mesh']],
   ['plugin', 'npm', ['test']],
