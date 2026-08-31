@@ -29,7 +29,7 @@ const HOME = os.homedir();
 // SAME CLAUDE_PROJECT_DIR-with-containment rule #85/#107 already fixed for the receipt/Console
 // agreement — reused here rather than trusting the variable unconditionally, which would reopen the
 // class of bug #107 was: an unrelated declared root overruling a cwd it does not actually contain.
-const PROJECT = process.env.RUVNET_BRAIN_PROJECT_DIR || projectDirectory();
+const PROJECT = process.env.RUVNET_BRAIN_PROJECT_DIR || projectDirectory({ env: process.env });
 // ISSUE #139 — this WRITER resolved scope correctly while two READERS hardcoded it, so they agreed
 // only by coincidence. The resolution moved into runtime-preferences.mjs and all three now call it;
 // a future scope is one edit, not three. Behaviour here is unchanged by design.
