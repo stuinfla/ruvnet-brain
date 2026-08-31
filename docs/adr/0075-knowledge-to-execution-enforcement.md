@@ -4,7 +4,7 @@ title: Knowledge-to-execution enforcement is a mandatory policy boundary
 status: Accepted
 date: 2026-08-30
 updated: 2026-08-31
-impl: unbuilt
+impl: partially implemented
 authors: [Stuart Kerr, Codex]
 tags: [architecture, enforcement, routing, swarms, adr, ddd, qa, release]
 supersedes: []
@@ -167,14 +167,15 @@ red until all required assets exist.
 
 ## Current implementation status
 
-`Accepted, partially implemented.` The deterministic execution classifier is implemented and in the
-canonical PR gate, and host-only update now has a defined degraded-KB path that can still converge
+`Accepted, partially implemented.` The deterministic execution classifier and the enforced live-evidence
+preflight are implemented and in the canonical contract lane, and host-only update now has a defined degraded-KB path that can still converge
 the executable plugin/spine. Existing grounding, currency, wiring, convergence, and release gates
 remain active. The cross-host dispatch, ADR/DDD reconciliation receipt, dual-seat receipt, and
 architecture-to-test graph remain unbuilt until their acceptance criteria pass on both supported
 host paths.
 
 ## Currency log
+| 2026-08-31 | Added the executable preflight: consequential delegation now requires fresh successful Brain grounding plus an exact append-only project AgentDB checkpoint receipt before routing, and API-backed execution remains refused when a native host is available. | `scripts/execution-preflight.mjs`; `scripts/execution-policy.mjs`; `tests/unit/execution-preflight.test.mjs`; canonical contract lane. |
 | 2026-08-31 | Reconciled after the canonical QA runner changed from serial fail-fast execution to concurrent independent-lane collection. | `scripts/qa-runner.mjs` now preserves this ADR's enforcement boundary while ensuring one failed lane cannot hide later policy failures; `tests/unit/qa-runner-concurrency.test.mjs` locks that behavior. |
 
 
