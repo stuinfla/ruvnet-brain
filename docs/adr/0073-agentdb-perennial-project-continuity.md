@@ -3,7 +3,7 @@ id: ADR-073
 title: AgentDB is the complete perennial project continuity record
 status: Accepted
 date: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-31
 authors: [Stuart Kerr, Codex]
 tags: [architecture, agentdb, continuity, hosts, recovery, durability]
 supersedes: []
@@ -177,6 +177,7 @@ recovery evidence, not proof of continuous capture or cross-host automatic resto
 
 | Date | What changed | Why |
 |---|---|---|
+| 2026-08-31 | Added an explicit `runHeartbeat` seam to the shared SessionStart caller and disabled detached update checks in the deterministic continuity integration test. | Background updater children were racing fixture cleanup and causing `ENOTEMPTY`; continuity behavior and background-worker behavior now have separate, deterministic test boundaries. |
 | 2026-08-22 | The shared host bridge now records bounded structured tool outcomes (action, result status, exit code, and substantive output) into each full snapshot, including failure evidence, without persisting the host prompt. | Lifecycle payloads previously depended entirely on a model-authored state extension and therefore could omit the observable result of a completed tool boundary. The bridge now captures that boundary evidence before exact AgentDB readback; cross-host crash acceptance remains unproven. |
 | 2026-08-22 | Upstream Ruflo pagination commit `a0262e84` plus isolated export-path fix `55fe5603` were built and proven: structural pages traverse correctly and a fresh two-database export/import round trip restores both rows when the explicit path is honored. | S11 remains blocked for release acceptance because the fix is not installed in global Ruflo `3.38.19`; the strict cross-host contract is unchanged. Evidence: `docs/reviews/adr-072-s11-upstream-pagination.md` and `docs/reviews/adr-072-s11-upstream-export-path.md`. |
 | 2026-08-22 | Re-read the complete source-side continuity path from capture through managed AgentDB store/outbox replay to both-host SessionStart restoration. | `916db4a`, `34d5aba`, `f364eef`, `1b30bab`, `b63c763`, and `adeba05` supply the validated snapshot, project-store resolver, durable outbox, bridge, restore core, and host lifecycle wiring. The focused SessionStart/version gate passes, and the production CLI now uses the canonical `.swarm` cwd. The named killed-process cross-host acceptance file remains absent and global Ruflo pagination fix `a0262e84` is not installed/released, so the ADR remains source-built but not acceptance-proven. |
