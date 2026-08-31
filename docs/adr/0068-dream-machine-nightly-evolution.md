@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-08-30
+updated: 2026-08-31
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -131,6 +131,7 @@ committed config).
 
 ## Currency log
 
+| 2026-08-31 | Re-read after merging 4 days of `main` into the 2026-08-27 `enforcement-integrity` candidate branch (PR #184): `docs/dream-cycle/LEDGER.md` gained one row (the 2026-08-27 `isHome()` project-scope-leak finding) and `dream.config.json`/`tests/unit/dream-config.test.mjs` moved under the new "Operating policy (effective 2026-08-30)" ledger-first reconciliation section. No decision here changed — `autoMerge: false` still holds and the ledger is still the system of record; this row only clears the `presumed-stale` drift the merge introduced. | `docs/dream-cycle/LEDGER.md`, PR #184 |
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
 | 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |
