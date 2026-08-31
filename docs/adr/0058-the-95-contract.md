@@ -51,6 +51,9 @@ governs:
 
 # ADR-058: The 95 contract
 
+## Currency log
+| 2026-08-31 | Reconciled the hosted process boundary after PR #211 added named per-step watchdog receipts and corrected Windows executable resolution; the 95-contract observations and release gates remain unchanged. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; `tests/unit/step-watchdog.test.mjs`. |
+
 **Status**: Proposed
 **Date**: 2026-07-27 · **Last updated**: 2026-08-02 · **Why**: the public 4.0.1 artifact exposed
 that QE-BRN-001 existed in the written master plan but was absent from the executable critical-risk

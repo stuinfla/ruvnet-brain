@@ -19,6 +19,9 @@ governs:
 
 # ADR-053: Experience-level QA
 
+## Currency log
+| 2026-08-31 | Reconciled the Windows unit lane after the hosted process fix added a cross-platform external watchdog; the complete unit surface remains unchanged and now invokes Vitest through Node for shell-independent execution. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
+
 **Status**: Accepted (adversarially duel-verified 2026-07-26 — record below)
 **Date**: 2026-07-26
 **Related**: ADR-028 (test classes), ADR-050 (issue pipeline), ADR-051 (Codex wiring)

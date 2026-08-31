@@ -3,7 +3,7 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-30 15:52:52 EDT
+updated: 2026-08-31 01:18:00 EDT
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -206,6 +206,8 @@ is now the documentation authority; implementation must still change before the 
 conformance.
 
 ## Currency log
+| 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence localized the failure to executable resolution, not the test suite; the product contract is unchanged and the boundary is now portable. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
+| 2026-08-31 | Reconciled after the 4.3.3 main-branch merge and CI watchdog change; whole-product conformance still requires every exact-SHA lane, and long hosted stages now expose named timeout receipts instead of opaque job progress. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; exact-SHA CI run `33358984585`. |
 
 | 2026-08-30 | Re-read after `abc1731` repaired the squash-merge provenance boundary; whole-product conformance is unchanged except that release-QE now fetches and validates the pre-candidate oracle source explicitly. | `scripts/retrieval-canary.mjs`, `.github/workflows/ci.yml`; focused suite passed 11/11. |
 

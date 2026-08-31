@@ -3,7 +3,7 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
-updated: 2026-08-30
+updated: 2026-08-31
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -214,6 +214,8 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
   are mutation-tested. These scenarios remain unimplemented until a failing-then-passing test exists.
 
 ## Currency log
+| 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence showed shell:false cannot assume an `npx` shim; the unit lane now invokes Vitest through Node while retaining the same full suite. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
+| 2026-08-31 | Reconciled after the main-branch merge and CI watchdog change; source coverage remains bound to the exact candidate artifact, while hosted long stages now emit bounded receipts. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; exact-SHA CI run `33358984585`. |
 
 | 2026-08-30 | Re-read after `abc1731` changed oracle source binding for squash-merged candidates; source coverage remains artifact-bound and the fetched source commit must still match its content digest. | `scripts/retrieval-canary.mjs`, `scripts/public-verification-inputs.mjs`, `.github/workflows/ci.yml`. |
 

@@ -3,7 +3,7 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-30
+updated: 2026-08-31
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -185,6 +185,9 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 7. Coverage documentation is generated from the sealed manifest, source ledger, and gist inventory.
 
 ## Currency log
+| 2026-08-31 | Regenerated the convergence manifest after the portable watchdog correction; the manifest now binds the actual PR tip rather than an earlier rebased commit. | `data/convergence-manifest.json`; PR #211. |
+| 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence showed shell:false cannot assume an `npx` shim; the unit lane now invokes Vitest through Node while retaining the same exact candidate test surface. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
+| 2026-08-31 | Reconciled after the 4.3.3 main-branch merge and CI watchdog change; generation identity remains exact-SHA bound and long release stages now fail at named boundaries with receipts. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; exact-SHA CI run `33358984585`. |
 
 | 2026-08-30 | The two-stage candidate build now validates against the same projection evidence it later packages: seed-compatible gist receipts, class registry, derived receipts, excluded stores, and the projected generation ledger are all present at validation time. | `scripts/release-projection.mjs`, `scripts/build-bundle.mjs`, `plugin/scripts/coverage-integrity.mjs` |
 | 2026-08-30 | The projected validation input now receives the canonical private-store fence from the checkout before inventory validation, closing the remaining seed-versus-policy input mismatch. | `scripts/build-bundle.mjs`; `kb/PRIVATE-STORES.json`; exact-SHA release-QE. |
