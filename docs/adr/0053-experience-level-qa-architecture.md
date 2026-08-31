@@ -3,7 +3,7 @@ id: ADR-053
 title: Experience-level QA — test the journey a user actually has, on every host, OS, and install path
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-30
+updated: 2026-08-31
 authors: [Stuart Kerr, Claude Code]
 tags: [qa, testing, experience, cross-platform, codex, agentic-qe, ci]
 supersedes: []
@@ -201,6 +201,8 @@ budgets (500ms vs 1s prompt-path), the stricter number won. v1's matrix section 
 §1 above; everything else in v1 stands.
 
 ## Currency log
+| 2026-08-31 | The canonical QA runner now executes independent lanes concurrently and collects every lane receipt before producing the aggregate verdict. | `scripts/qa-runner.mjs` removes fail-fast serial execution so independent failures are visible in one run; the experience dimensions and release-gate requirements remain unchanged. |
+
 
 | 2026-08-30 | Re-read after `abc1731` changed the release-QE provenance path; experience scenarios and thresholds are unchanged. | `scripts/retrieval-canary.mjs`, `tests/unit/retrieval-canary.test.mjs`; focused retrieval suite passed 11/11. |
 
