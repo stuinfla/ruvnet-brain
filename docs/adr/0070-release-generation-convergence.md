@@ -185,6 +185,7 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 7. Coverage documentation is generated from the sealed manifest, source ledger, and gist inventory.
 
 ## Currency log
+| 2026-08-31 | Closed the PR merge-ref freshness gap: canonical QA now regenerates the convergence manifest inside the exact checked-out candidate before running the gate, preventing a branch-generated snapshot from becoming stale on GitHub's synthetic merge ref. | `.github/workflows/canonical-qa.yml`; `scripts/convergence-manifest.mjs`; issue #193 release follow-up. |
 | 2026-08-31 | Regenerated the convergence manifest after the portable watchdog correction; the manifest now binds the actual PR tip rather than an earlier rebased commit. | `data/convergence-manifest.json`; PR #211. |
 | 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence showed shell:false cannot assume an `npx` shim; the unit lane now invokes Vitest through Node while retaining the same exact candidate test surface. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
 | 2026-08-31 | Reconciled after the 4.3.3 main-branch merge and CI watchdog change; generation identity remains exact-SHA bound and long release stages now fail at named boundaries with receipts. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; exact-SHA CI run `33358984585`. |

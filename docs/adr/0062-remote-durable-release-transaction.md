@@ -13,6 +13,7 @@ governs:
   - .github/workflows/stranger-matrix.yml
   - .github/workflows/protected-release.yml
   - .github/workflows/release-aggregate.yml
+  - .github/workflows/release-cycle.yml
   - scripts/release.mjs
   - scripts/release-transaction.mjs
   - scripts/release-transaction-provider.mjs
@@ -23,6 +24,8 @@ governs:
 # ADR-062 — Remote-durable staged release transaction
 
 ## Currency log
+| 2026-08-31 | Release qualification now runs the three isolated host fixtures concurrently and reassembles their results in canonical order before the single receipt write, reducing the critical host-matrix wall time without changing evidence, verdict, or publication authority. | `scripts/host-install-matrix.mjs`; `scripts/staged-host-verifier.mjs`; the published-side verification remains receipt-bound. |
+| 2026-08-31 | Replaced the manual cross-workflow handoff with one release-cycle controller. It derives the exact successful CI and aggregate runs for one candidate SHA, dispatches the mandatory signed independent review, waits for its exact-SHA result, and dispatches the protected publisher with all IDs. The protected publisher remains the only code allowed to publish. | `.github/workflows/release-cycle.yml`; manual run-ID copying is removed from the normal path while exact-SHA and signed-review requirements remain. |
 | 2026-08-31 | Added an external per-step watchdog and machine-readable receipt to the long hosted release and cross-platform stages. Job-level timeouts remain the outer fence; named stage budgets now fail a wedged operation at its actual boundary instead of leaving an opaque compound step in progress. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; `tests/unit/step-watchdog.test.mjs` |
 | 2026-08-31 | Reconciled after removing the duplicate canonical QA workflow job from the release candidate path. | `.github/workflows/ci.yml` now leaves the bounded QA contract to its single authoritative workflow; protected release transaction, exact-SHA, and durable receipt rules remain unchanged. |
 
