@@ -207,7 +207,9 @@ jobs:
       - name: Install root deps
         run: npm ci --no-audit --no-fund
       - name: Unit tests (full tests/unit — zero files excluded, per the audit note above)
-        run: npx vitest run tests/unit --reporter=dot
+        # Invoke Vitest through Node so the watchdog is independent of npm's Windows shim
+        # resolution (`npx` is not a portable executable name when spawn uses shell:false).
+        run: node scripts/ci/step-watchdog.mjs --name windows-unit --timeout-ms 1200000 -- node node_modules/vitest/vitest.mjs run tests/unit --reporter=dot
       - name: Installer smoke on Windows (REAL bin/install.mjs — --help / --doctor / --update / syntax+signing wiring)
         # First cross-platform run of the stranger's-first-contact path. The --enable-nightly
         # LaunchAgent test self-skips off-macOS via its node:test skip option (launchd is
@@ -399,7 +401,7 @@ jobs:
       - name: Core capability battery — REQUIRE_BRAIN=1 (a skipped battery is now a hard failure)
         env:
           REQUIRE_BRAIN: '1'
-        run: npm test
+        run: node scripts/ci/step-watchdog.mjs --name warm-brain-capability --timeout-ms 900000 -- npm test
 
   release-qe:
     needs: candidate-preflight
@@ -528,14 +530,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/candidate-host-evidence.mjs \
+          node scripts/ci/step-watchdog.mjs --name candidate-host-evidence --timeout-ms 900000 -- \
+            node scripts/candidate-host-evidence.mjs \
             --manifest "$RUNNER_TEMP/release-evidence/payload-manifest.json" \
             --package "$RUVNET_SEALED_PACKAGE" \
             --bundle "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \
             --out "$RUNNER_TEMP/release-evidence/candidate-host-evidence.json"
       - name: Exact-artifact release QE
         run: |
-          npm exec -- vitest run \
+          node scripts/ci/step-watchdog.mjs --name exact-artifact-release-qe --timeout-ms 900000 -- \
+            npm exec -- vitest run \
             --config tests/qe/release/vitest.config.mjs \
             --reporter=json \
             --outputFile="$RUNNER_TEMP/release-evidence/release-qe.json" \
