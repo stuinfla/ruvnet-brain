@@ -43,7 +43,20 @@ function run(args, { rufloBody = null } = {}) {
   let ruflo = '/nonexistent/ruflo';
   if (rufloBody) {
     ruflo = path.join(dir, 'fake-ruflo');
-    fs.writeFileSync(ruflo, rufloBody, { mode: 0o755 });
+    if (process.platform === 'win32') {
+      const mode = rufloBody.includes('Key not found') ? 'missing'
+        : rufloBody.includes('no such table') ? 'corrupt' : 'healthy';
+      fs.writeFileSync(path.join(dir, 'fake-ruflo.mjs'), `
+const mode = ${JSON.stringify(mode)};
+const op = process.argv[3];
+if (op === 'store') console.log('[OK] Data stored successfully');
+else if (op === 'retrieve') console.log(mode === 'healthy' ? 'TASK: probe task OUTCOME: success' : mode === 'missing' ? '[WARN] Key not found: lesson-probe' : '[ERROR] no such table: memory_entries');
+else if (op === 'distill') console.log(mode === 'healthy' ? 'Episodes | 1' : 'Episodes | 0');
+else if (op === 'search') console.log(mode === 'healthy' ? 'lesson-probe' : '[WARN] No results found');
+`);
+      fs.writeFileSync(`${ruflo}.cmd`, '@echo off\r\nnode "%~dp0fake-ruflo.mjs" %*\r\n');
+      ruflo = `${ruflo}.cmd`;
+    } else fs.writeFileSync(ruflo, rufloBody, { mode: 0o755 });
   }
   return spawnSync(process.execPath, [SCRIPT, '--dir', dir, ...args], {
     encoding: 'utf8',

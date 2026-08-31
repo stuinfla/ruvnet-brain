@@ -114,6 +114,22 @@ if [ "$commands_status" -ne 0 ]; then
   exit 1
 fi
 
+# The convergence manifest is the exact source/version/ADR identity consumed by hosted QA.
+# Check it here so a push cannot publish a commit whose generated identity was produced before
+# the final source edit (the failure mode that repeatedly escaped local pre-push validation).
+if [ -f "$ROOT/scripts/convergence-manifest.mjs" ]; then
+  node "$ROOT/scripts/convergence-manifest.mjs"
+  convergence_status=$?
+else
+  convergence_status=0
+fi
+if [ "$convergence_status" -ne 0 ]; then
+  echo ""
+  echo "  ⛔ pre-push gate refused this push — convergence identity is stale."
+  echo "     Run: npm run convergence:write"
+  exit 1
+fi
+
 # ── DOCUMENT CURRENCY (ADR-056 §5) ─────────────────────────────────────────────────────────────────
 # The tool was written and tested on 2026-07-22 and then invoked by NOTHING for five days — absent
 # from this hook, gate.sh, gates.mjs and every workflow, while `wired-check` reported it "wired"

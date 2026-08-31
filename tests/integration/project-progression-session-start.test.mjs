@@ -364,7 +364,7 @@ describe('ADR-073 Slice F SessionStart restore bridge', () => {
       path.join(ROOT, 'plugin/scripts/codex-hook-adapter.mjs'),
       path.join(dir, 'codex-hook-adapter.mjs'),
     );
-    fs.copyFileSync(
+    fs.cpSync(
       path.join(ROOT, 'plugin/scripts/codex-hook-events.mjs'),
       path.join(dir, 'codex-hook-events.mjs'),
     );

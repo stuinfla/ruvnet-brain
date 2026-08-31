@@ -184,7 +184,8 @@ export function validateRetrievalCanaryPlan(plan) {
     throw new Error('oracle denominator differs from eligible coverage');
   }
   if (new Set(ids).size !== ids.length) throw new Error('retrieval canary plan has duplicate case ids');
-  if (!plan.cases.some(({ cohort }) => cohort === 'delta') || !plan.cases.some(({ cohort }) => cohort === 'legacy')) {
+  if ((!plan.cases.some(({ cohort }) => cohort === 'delta') && plan.noDelta !== true)
+    || !plan.cases.some(({ cohort }) => cohort === 'legacy')) {
     throw new Error('retrieval canary plan requires delta and legacy cohorts');
   }
   for (const row of plan.cases) {
@@ -236,7 +237,7 @@ export function validatePlanAgainstCoverage(plan, coverage, { allowObservedBasel
   return plan;
 }
 export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, coverageIdentity = null, queryEvidence, assetsDir = '.',
-  readPassages = defaultReadPassages, legacySampleSize } = {}) {
+  readPassages = defaultReadPassages, legacySampleSize, allowNoDelta = false } = {}) {
   const checked = validateCoverageLedger(coverage);
   if (!checked.valid) throw new Error(`coverage ledger is invalid: ${checked.failures.join('; ')}`);
   const coverageGeneration = coverage.kind === 'ruvnet-brain-release-coverage'
@@ -294,12 +295,15 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
   const eligibleStores = ordered(eligible.map(storeOf));
   if (queryEvidence.queryStoreSetSha256 !== setDigest(eligibleStores)
     || canonicalJson(ordered(Object.keys(queryEvidence.queries))) !== canonicalJson(eligibleStores)) {
-    throw new Error('independent query oracle does not cover the exact eligible store set');
+    const oracleStores = new Set(Object.keys(queryEvidence.queries));
+    const missing = eligibleStores.filter((store) => !oracleStores.has(store));
+    const extra = [...oracleStores].filter((store) => !eligibleStores.includes(store)).sort();
+    throw new Error(`independent query oracle does not cover the exact eligible store set (eligible=${eligibleStores.length}, oracle=${oracleStores.size}, missing=${missing.join(',') || 'none'}, extra=${extra.join(',') || 'none'})`);
   }
   const baselineStores = new Set(baseline.stores.map((name) => String(name).toLowerCase()));
   const delta = eligible.filter((row) => !baselineStores.has(storeOf(row)));
   const legacyPool = eligible.filter((row) => baselineStores.has(storeOf(row)));
-  if (!delta.length || !legacyPool.length) throw new Error('coverage does not establish both failed-seed delta and legacy cohorts');
+  if ((!delta.length && !allowNoDelta) || !legacyPool.length) throw new Error('coverage does not establish both failed-seed delta and legacy cohorts');
   const passages = new Map(eligible.map((row) => [storeOf(row), readPassages(assetsDir, storeOf(row))]));
   const rankedLegacy = legacyPool.map((row) => ({ row, count: passages.get(storeOf(row)).length }))
     .sort((a, b) => a.count - b.count || storeOf(a.row).localeCompare(storeOf(b.row)));
@@ -376,6 +380,7 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
       queryStoreSetSha256: queryEvidence.queryStoreSetSha256,
       sourceCommit: queryEvidence.sourceCommit, sourceBlobSha256: queryEvidence.sourceBlobSha256,
       evidence: structuredClone(queryEvidence) },
+    noDelta: delta.length === 0,
     cohorts: { delta: delta.length, legacy: legacy.length,
       legacyStrata: [...strata.keys()].sort().map((stratum) => ({ stratum,
         population: rankedLegacy.filter((_entry, index) => Math.min(3, Math.floor(index * 4 / rankedLegacy.length)) === stratum).length,

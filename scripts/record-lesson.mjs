@@ -63,7 +63,8 @@ const value = [
 ].filter(Boolean).join(' ');
 
 const ruflo = (args) =>
-  execFileSync(RUFLO, args, { cwd: dir, encoding: 'utf8', timeout: 60000 });
+  execFileSync(RUFLO, args, { cwd: dir, encoding: 'utf8', timeout: 60000,
+    shell: process.platform === 'win32' });
 
 console.log(`\nRecording lesson into ${path.basename(dir)}/.swarm/memory.db  (namespace: ${ns})`);
 console.log(`  key: ${key}`);
