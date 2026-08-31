@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-30
+updated: 2026-08-31
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -23,6 +23,9 @@ governs:
 # ADR-062 — Remote-durable staged release transaction
 
 ## Currency log
+| 2026-08-31 | Added an external per-step watchdog and machine-readable receipt to the long hosted release and cross-platform stages. Job-level timeouts remain the outer fence; named stage budgets now fail a wedged operation at its actual boundary instead of leaving an opaque compound step in progress. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; `tests/unit/step-watchdog.test.mjs` |
+| 2026-08-31 | Reconciled after removing the duplicate canonical QA workflow job from the release candidate path. | `.github/workflows/ci.yml` now leaves the bounded QA contract to its single authoritative workflow; protected release transaction, exact-SHA, and durable receipt rules remain unchanged. |
+
 
 | 2026-08-30 | Reviewed against release candidate 4.3.3: hosted exact-SHA failures were corrected in the release workflow, reconciliation fixtures, and canonical release wording; the protected transaction remains the only publication path. | 1beedaa |
 

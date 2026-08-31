@@ -3,7 +3,7 @@ id: ADR-053
 title: Experience-level QA — test the journey a user actually has, on every host, OS, and install path
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-30
+updated: 2026-08-31
 authors: [Stuart Kerr, Claude Code]
 tags: [qa, testing, experience, cross-platform, codex, agentic-qe, ci]
 supersedes: []
@@ -18,6 +18,9 @@ governs:
 ---
 
 # ADR-053: Experience-level QA
+
+## Currency log
+| 2026-08-31 | Reconciled the Windows unit lane after the hosted process fix added a cross-platform external watchdog; the complete unit surface remains unchanged and now invokes Vitest through Node for shell-independent execution. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
 
 **Status**: Accepted (adversarially duel-verified 2026-07-26 — record below)
 **Date**: 2026-07-26
@@ -201,6 +204,11 @@ budgets (500ms vs 1s prompt-path), the stricter number won. v1's matrix section 
 §1 above; everything else in v1 stands.
 
 ## Currency log
+| 2026-08-31 | The canonical QA runner now executes independent lanes concurrently and collects every lane receipt before producing the aggregate verdict. | `scripts/qa-runner.mjs` removes fail-fast serial execution so independent failures are visible in one run; the experience dimensions and release-gate requirements remain unchanged. |
+| 2026-08-31 | Removed the duplicate `canonical-qa` job from `ci.yml`; `.github/workflows/canonical-qa.yml` is now the single PR entrypoint for the bounded QA contract. | Two workflows were running the same named check against different GitHub checkout refs, allowing a merge-ref convergence false failure to block a head-commit candidate. |
+
+
+| 2026-08-30 | Re-read after `abc1731` changed the release-QE provenance path; experience scenarios and thresholds are unchanged. | `scripts/retrieval-canary.mjs`, `tests/unit/retrieval-canary.test.mjs`; focused retrieval suite passed 11/11. |
 
 | 2026-08-30 | Re-read the canonical QA workflow after the release-QE coverage-plane correction; the release candidate now consumes a sealed-seed projection and no longer performs an Actions-token gists query. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`. |
 

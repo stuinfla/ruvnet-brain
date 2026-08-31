@@ -3,7 +3,7 @@ id: ADR-050
 title: The issue pipeline may never manufacture its own acknowledgment — awareness, escalation, and a fixer that knows when to stop
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-30
+updated: 2026-08-31
 # PINNED: this records the incident cutoff, not the last edit. Asserted by
 # tests/unit/fix-workstream-guidance.test.mjs. Do not let a currency stamp move it.
 updated_pinned: true
@@ -187,6 +187,8 @@ The four parallel agents working tonight support this distinction. They show tha
   regressions (8 of 12 assertions fail on the pre-fix code, proven by stash-mutation).
 
 ## Currency log
+| 2026-08-31 | Reconciled after the SessionStart production caller gained an explicit heartbeat opt-out used only by the deterministic progression integration fixture. | `plugin/scripts/session-start-core.mjs` still preserves the issue-pipeline visibility and acknowledgment/escalation semantics governed here; the seam prevents detached heartbeat work from racing fixture teardown and does not silence or alter issue handling. |
+
 | 2026-08-30 | SessionStart issue surfacing remains enabled while response-script prose is filtered from host context. | `plugin/scripts/session-start-core.mjs` preserves the issue count and maintainer alarm required by this ADR while removing non-factual instructions. |
 
 | date | why |
