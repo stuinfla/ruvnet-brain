@@ -22,9 +22,7 @@ governs:
   - bin/install.mjs
   - scripts/doc-currency.mjs
   - scripts/convergence-manifest.mjs
-  - docs/ddd/0017-release-convergence-context.md
   - tests/unit/execution-policy.test.mjs
-  - tests/integration/execution-policy.test.mjs
 ---
 
 # ADR-075 — Knowledge-to-execution enforcement is a mandatory policy boundary
