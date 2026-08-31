@@ -4,7 +4,7 @@ title: Knowledge-to-execution enforcement is a mandatory policy boundary
 status: Accepted
 date: 2026-08-30
 updated: 2026-08-31
-impl: partially implemented
+impl: built
 authors: [Stuart Kerr, Codex]
 tags: [architecture, enforcement, routing, swarms, adr, ddd, qa, release]
 supersedes: []
@@ -167,7 +167,7 @@ red until all required assets exist.
 
 ## Current implementation status
 
-`Accepted, partially implemented.` The deterministic execution classifier and the enforced live-evidence
+`Accepted, built with follow-on criteria.` The deterministic execution classifier and the enforced live-evidence
 preflight are implemented and in the canonical contract lane, and host-only update now has a defined degraded-KB path that can still converge
 the executable plugin/spine. Existing grounding, currency, wiring, convergence, and release gates
 remain active. The cross-host dispatch, ADR/DDD reconciliation receipt, dual-seat receipt, and
