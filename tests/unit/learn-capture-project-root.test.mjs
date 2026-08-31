@@ -25,17 +25,31 @@ const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.ur
 const CAPTURE = path.join(ROOT, 'plugin', 'scripts', 'learn-capture.sh');
 
 const temps = [];
-const mktemp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-root-')); temps.push(d); return d; };
+// realpathSync.native, not the raw mkdtemp result: GitHub Actions Windows runners hand out the 8.3
+// short form (C:\Users\RUNNER~1\...) from os.tmpdir(), while a subprocess's own $PWD resolves the
+// long form — the exact mismatch tests/unit/memory-doctor-discovery.test.mjs and
+// tests/unit/project-identity.test.mjs already canonicalize around for this same reason (#85/#107).
+// Left uncanonicalized, `project` (passed as CLAUDE_PROJECT_DIR) and the bash subprocess's own $PWD
+// name the same directory with two different strings, and a string-prefix containment check between
+// them never matches — not a production defect, a CI-temp-dir artifact this test must not launder in.
+const mktemp = () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-root-'));
+  temps.push(d);
+  return fs.realpathSync.native(d);
+};
 const cleanup = () => temps.splice(0).forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
 
 /** Fire the hook exactly as PostToolUse does: JSON on stdin, from some working directory. */
-function capture({ cwd, projectDir }) {
+function capture({ cwd, projectDir, claudeProjectDir }) {
   const payload = JSON.stringify({
     session_id: 'issue134', hook_event_name: 'PostToolUse', cwd,
     tool_name: 'Write', tool_input: { file_path: 'a.mjs' }, tool_response: { success: true },
   });
   const env = { ...process.env, RUVNET_LEARNING_SCOPE: 'project' };
   if (projectDir) env.RUVNET_BRAIN_PROJECT_DIR = projectDir; else delete env.RUVNET_BRAIN_PROJECT_DIR;
+  // Explicit, not just "absent from the ambient env": a real hook run always carries a definite
+  // CLAUDE_PROJECT_DIR value or none, never "whatever this test runner's own process happened to have".
+  if (claudeProjectDir) env.CLAUDE_PROJECT_DIR = claudeProjectDir; else delete env.CLAUDE_PROJECT_DIR;
   try { execFileSync(resolveBash(), [CAPTURE], { cwd, env, input: payload, stdio: 'pipe', timeout: 20_000 }); }
   catch { /* the hook fails open by design; the queue on disk is what this asserts */ }
 }
@@ -64,7 +78,7 @@ behavioural('issue #134 — captured events land where the flush looks', () => {
     const drifted = path.join(project, 'tests', 'fixtures');
     fs.mkdirSync(drifted, { recursive: true });
 
-    capture({ cwd: drifted, projectDir: project });
+    capture({ cwd: drifted, projectDir: project, claudeProjectDir: null });
 
     expect(queued(project), 'the queue belongs to the project the reader will open').not.toEqual([]);
     expect(queued(drifted), 'and must NOT be stranded in whatever directory the shell happened to be in')
@@ -77,8 +91,45 @@ behavioural('issue #134 — captured events land where the flush looks', () => {
     // stopped agreeing with the reader in the other direction. The reader's rule is
     // `RUVNET_BRAIN_PROJECT_DIR || cwd`; both halves of that rule have to match.
     const loose = mktemp();
-    capture({ cwd: loose, projectDir: null });
+    capture({ cwd: loose, projectDir: null, claudeProjectDir: null });
     expect(queued(loose), 'unset variable → cwd, exactly as learn-flush.mjs resolves it').not.toEqual([]);
+    cleanup();
+  });
+
+  it('ISSUE #134 RESIDUAL — RUVNET_BRAIN_PROJECT_DIR is never actually set by real hook dispatch on ' +
+     'either host (grep: hook-shim.mjs forwards process.env unmodified; codex-hook-adapter.mjs builds ' +
+     'its own env block and never includes it), so a drifted PostToolUse cwd must still land at the ' +
+     'project root via CLAUDE_PROJECT_DIR — the one project-root signal both hosts DO provide on every ' +
+     'invocation (native on Claude Code; explicitly derived from input.cwd by codex-hook-adapter.mjs) ' +
+     'and which this repo already trusts elsewhere for exactly this purpose (project-identity.mjs, ' +
+     'session-start-core.mjs)', () => {
+    const project = mktemp();
+    const drifted = path.join(project, 'tests', 'fixtures');
+    fs.mkdirSync(drifted, { recursive: true });
+
+    // Real production shape: RUVNET_BRAIN_PROJECT_DIR unset (nothing sets it), CLAUDE_PROJECT_DIR set
+    // (both hosts provide it), cwd drifted below the project root.
+    capture({ cwd: drifted, projectDir: null, claudeProjectDir: project });
+
+    expect(queued(project), 'CLAUDE_PROJECT_DIR must anchor the queue when the shell has drifted')
+      .not.toEqual([]);
+    expect(queued(drifted), 'and the event must NOT be orphaned in the drifted directory')
+      .toEqual([]);
+    cleanup();
+  });
+
+  it('CONTAINMENT — an unrelated CLAUDE_PROJECT_DIR that does not contain cwd must NOT overrule it ' +
+     '(#85/#107: the same rule project-identity.mjs\'s projectDirectory() already enforces for the ' +
+     'receipt/Console agreement, applied here rather than trusting the variable unconditionally)', () => {
+    const cwd = mktemp();
+    const unrelated = mktemp();
+
+    capture({ cwd, projectDir: null, claudeProjectDir: unrelated });
+
+    expect(queued(cwd), 'cwd is authoritative when the declared root does not contain it')
+      .not.toEqual([]);
+    expect(queued(unrelated), 'an unrelated declared root must never receive the queue')
+      .toEqual([]);
     cleanup();
   });
 

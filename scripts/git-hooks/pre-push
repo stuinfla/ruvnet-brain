@@ -93,6 +93,43 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 
+# Generated public census and command aliases have one source of truth each. Both writers have a
+# `--check` mode specifically for CI/pre-push; until 2026-08-22 nothing invoked either check, so the
+# writers were built and tested but their promised gate did not exist.
+node "$ROOT/scripts/sync-census.mjs" --check
+census_status=$?
+if [ "$census_status" -ne 0 ]; then
+  echo ""
+  echo "  ⛔ pre-push gate refused this push — public census claims have drifted."
+  echo "     Run: node scripts/sync-census.mjs"
+  exit 1
+fi
+
+node "$ROOT/scripts/sync-commands.mjs" --check
+commands_status=$?
+if [ "$commands_status" -ne 0 ]; then
+  echo ""
+  echo "  ⛔ pre-push gate refused this push — command aliases no longer share one body."
+  echo "     Run: node scripts/sync-commands.mjs"
+  exit 1
+fi
+
+# The convergence manifest is the exact source/version/ADR identity consumed by hosted QA.
+# Check it here so a push cannot publish a commit whose generated identity was produced before
+# the final source edit (the failure mode that repeatedly escaped local pre-push validation).
+if [ -f "$ROOT/scripts/convergence-manifest.mjs" ]; then
+  node "$ROOT/scripts/convergence-manifest.mjs"
+  convergence_status=$?
+else
+  convergence_status=0
+fi
+if [ "$convergence_status" -ne 0 ]; then
+  echo ""
+  echo "  ⛔ pre-push gate refused this push — convergence identity is stale."
+  echo "     Run: npm run convergence:write"
+  exit 1
+fi
+
 # ── DOCUMENT CURRENCY (ADR-056 §5) ─────────────────────────────────────────────────────────────────
 # The tool was written and tested on 2026-07-22 and then invoked by NOTHING for five days — absent
 # from this hook, gate.sh, gates.mjs and every workflow, while `wired-check` reported it "wired"

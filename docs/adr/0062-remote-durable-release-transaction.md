@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-21
+updated: 2026-08-30
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -23,6 +23,26 @@ governs:
 # ADR-062 — Remote-durable staged release transaction
 
 ## Currency log
+
+| 2026-08-30 | Reviewed against release candidate 4.3.3: hosted exact-SHA failures were corrected in the release workflow, reconciliation fixtures, and canonical release wording; the protected transaction remains the only publication path. | 1beedaa |
+
+| 2026-08-30 | Re-read the remote release transaction boundary after exact-SHA CI exposed the forbidden user-gists call; release-QE now prepares and seals coverage from the immutable seed before the protected transaction. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`. |
+
+| 2026-08-30 | Automatic PR execution now has one canonical bounded path; the legacy matrix remains available only by manual dispatch. | `.github/workflows/ci.yml` and `.github/workflows/qe-4-3.yml` remove competing automatic release-quality paths without changing the protected publication transaction. |
+| 2026-08-30 | Protected publication now consumes the canonical bounded QA receipt before release dispatch. | `scripts/qa-runner.mjs` binds the candidate SHA and artifact lanes; `docs/QA-RELEASE-PROCESS.md` records recovery and promotion. |
+| 2026-08-30 | Candidate sealing now has an executable coverage-projection producer; an archive without `COVERAGE.json` and `CORPUS-COVERAGE.json` cannot reach public verification. | `scripts/release-projection.mjs` and `.github/workflows/ci.yml` generate and embed the linked ledgers before `public-verification-inputs.mjs` consumes the exact archive. |
+
+| 2026-08-23 | Failed candidate evidence now preserves suite-level diagnostics and skipped-test identities for remote recovery. | Commit `cc25c24` improves diagnosis only; publication authority and mutation boundaries remain unchanged. |
+| 2026-08-23 | Hosted process failures now preserve bounded stdout/stderr tails in candidate receipts. | Commit `1310fb6` improves remote diagnosis only; publication authority and mutation boundaries remain unchanged. |
+| 2026-08-23 | The aggregate consumes receipts from the workflow's merged-artifact destination and preserves verbose test diagnostics. | This repairs evidence transport only; the durable transaction remains downstream of exact-SHA PASS receipts and publication authority is unchanged. |
+| 2026-08-23 | The Windows candidate adds a direct import probe for the shared installer before artifact qualification. | The exact-SHA failed receipt isolated a platform execution boundary; no release authority, artifact, or publication mutation changed. |
+| 2026-08-23 | Candidate lanes stop after the first failed step and preserve the partial receipt for recovery. | This reduces wasted remote work without weakening the downstream exact-SHA evidence requirement or publication fence. |
+| 2026-08-23 | Windows installer-import evidence is process-isolated and hosted conformance has a measured 240-second bound. | This changes only test execution boundaries; durable release authority and publication mutation fences remain unchanged. |
+| 2026-08-23 | Candidate publication evidence now excludes unavailable live-only checks and uses a platform-neutral Node test entrypoint. | Commit `0e30d68` keeps the transaction downstream of deterministic exact-SHA evidence without laundering live skips into green or relying on `npm.cmd`. |
+| 2026-08-23 | Release qualification now waits on every required QE receipt and preserves failed-lane artifacts for diagnosis. | Commit `b570e25` keeps the durable publication transaction downstream of complete exact-SHA quality evidence; no publication mutation was added. |
+| 2026-08-23 | The transaction now receives its pre-publication quality evidence from the new exact-SHA QE aggregate, while publication authority and mutation fences remain unchanged. | Commit `b3ddb0d` makes `.github/workflows/qe-4-3.yml` the auto-triggered candidate lane; legacy CI is manual-only, and `scripts/qe/aggregate-4.3.mjs` rejects any missing, skipped, stale, or non-PASS receipt before release work can proceed. |
+| 2026-08-23 | Replaced the incomplete Windows shell-string repair after exact-SHA job `97218861232` still split the `--title` argument; the protected mutation fence remains unchanged. | `scripts/windows-command.mjs` now uses the measured `cmd.exe /d /s /c` boundary from `scripts/selfcheck.mjs`, and `tests/unit/corpus-seed-release-authority.test.mjs` asserts the complete argv shape before hosted verification. |
+| 2026-08-23 | Re-read the protected corpus-seed publisher after issue #163 exposed Windows shell argument splitting; the staged transaction and mutation fence remain unchanged. | `scripts/release.mjs` quotes complete Windows `gh release create` arguments before the protected mutation, and `tests/unit/corpus-seed-release-authority.test.mjs` proves the exact bundle and receipt payload. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|

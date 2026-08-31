@@ -398,6 +398,7 @@ if (!PUBLISH) {
 }
 
 if (PUBLISH) {
+  console.log(`\n${c.y(c.b('PUBLISHED, NOT VERIFIED'))}`);
   console.log(`\n${c.g(c.b('✓✓✓ SHIPPED'))} — every gate passed and every live channel is current. ${c.dim('A user on any path (npm, npx, explainer, --update) gets the working, current build.')}\n`);
 } else {
   console.log(`\n${c.g(c.b('✓✓✓ PREFLIGHT PASS — NOT PUBLISHED'))} — the committed candidate passed every check-only gate.\n`);

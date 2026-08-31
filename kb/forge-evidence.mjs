@@ -66,7 +66,8 @@ const KEEP_LINES = 400;
 const MAX_PER_KIND = 24;
 const MAX_QUOTE = 180;
 
-const sha12 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex').slice(0, 12);
+const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+const sha12 = (s) => sha256(s).slice(0, 12);
 
 // ── Regexes. Each one is a FACT extractor; none of them guesses. ────────────────────────────────
 
@@ -257,7 +258,9 @@ export function extractFacts(doc) {
   try {
     const text = String(doc?.fullText || doc?.text || '');
     rec.chars = text.length;
-    rec.sha = sha12(text);
+    // Full SHA-256 is required for answer-time capability claims. The receipt id below remains a
+    // compact lookup handle, but the source identity used as evidence must not be truncated.
+    rec.sha = sha256(text);
     if (!text) return rec;
     if (/^capability-cards\.md#/i.test(rec.path) && rec.repo) rec.capability = rec.repo;
     if (/\.(?:c|cc|cpp|cxx|go|java|js|jsx|mjs|cjs|py|rs|ts|tsx)$/i.test(rec.path)) {

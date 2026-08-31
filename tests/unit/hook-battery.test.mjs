@@ -42,7 +42,7 @@ const PLAYBOOK = 'APPLY THE PLAYBOOK'; // Gate 3 (build)
 const GROUND = 'ground before you assert'; // Gate 1 (ruvnet topic)
 const DRIFT = 'reaching for a classical default'; // Gate 2 (guidance/substitution)
 const HARNESS = 'offer MetaHarness + QE'; // Gate 4 (quality intent)
-const FOOTER = 'RuvNet Brain — engaged on this prompt'; // conditional status footer
+const FOOTER = 'RuvNet Brain — engaged on this prompt'; // retired response-format footer
 
 let tmp; // fake project cwd for every hook fire
 let tmpHome; // isolated HOME — machine-global caches/stamps/prefs never leak in or out
@@ -131,8 +131,8 @@ describe('ground-ruvnet.sh — gate behavior battery', () => {
   it('2. "build a REST api service for user auth" → playbook fires (verb + scale object)', () => {
     const out = runGround('build a REST api service for user auth');
     expectClean(out);
-    expect(out.stdout).toContain(PLAYBOOK);
-    expect(out.stdout).toContain(FOOTER);
+    expect(out.stdout).not.toContain(PLAYBOOK);
+    expect(out.stdout).not.toContain(FOOTER);
     expect(out.stdout).not.toContain(GROUND); // no rUv topic mentioned
     expect(out.stdout).not.toContain(DRIFT);
   });
@@ -143,7 +143,7 @@ describe('ground-ruvnet.sh — gate behavior battery', () => {
     expectClean(out);
     expect(out.stdout).toContain(GROUND);
     expect(out.stdout).toContain('search_ruvnet');
-    expect(out.stdout).toContain(FOOTER);
+    expect(out.stdout).not.toContain(FOOTER);
     expect(out.stdout).not.toContain(PLAYBOOK); // question, not a build request
   });
 
@@ -152,8 +152,8 @@ describe('ground-ruvnet.sh — gate behavior battery', () => {
     const out = runGround('implement the retry workflow for ruflo swarms');
     expectClean(out);
     expect(out.stdout).toContain(GROUND);
-    expect(out.stdout).toContain(PLAYBOOK);
-    expect(out.stdout).toContain(FOOTER);
+    expect(out.stdout).not.toContain(PLAYBOOK);
+    expect(out.stdout).not.toContain(FOOTER);
   });
 
   // ── Case 5: classical-default drift — the guidance/substitution gate ──────────────────────────
@@ -165,7 +165,7 @@ describe('ground-ruvnet.sh — gate behavior battery', () => {
     expectClean(out);
     expect(out.stdout).toContain(DRIFT);
     expect(out.stdout).toContain('RuVector'); // the named rUv replacement
-    expect(out.stdout).toContain(FOOTER);
+    expect(out.stdout).not.toContain(FOOTER);
     expect(out.stdout).not.toContain(GROUND); // no explicit rUv mention in the prompt
   });
 
@@ -182,7 +182,7 @@ describe('ground-ruvnet.sh — gate behavior battery', () => {
     const out = runGround('check coverage on this repo');
     expectClean(out);
     expect(out.stdout).toContain(HARNESS);
-    expect(out.stdout).toContain(FOOTER);
+    expect(out.stdout).not.toContain(FOOTER);
     expect(out.stdout).not.toContain(PLAYBOOK); // no project-scale build object
   });
 
@@ -222,7 +222,7 @@ describe('ground-ruvnet.sh — gate behavior battery', () => {
   it('12. unicode/emoji prompt → exit 0, gates still classify, no replacement chars', () => {
     const out = runGround('build the résumé-parser API service — émojis 🚀🧠✨ and 中文字符 must survive');
     expectClean(out);
-    expect(out.stdout).toContain(PLAYBOOK); // build + api/service still classified correctly
+    expect(out.stdout).not.toContain(PLAYBOOK); // build classification no longer scripts a response
     expect(out.stdout).not.toContain('�'); // no mojibake anywhere in the output
   });
 
@@ -246,7 +246,7 @@ describe('ground-ruvnet.sh — gate behavior battery', () => {
         'also $(id) and `id` and ; touch /tmp/nope && echo $HOME',
     );
     expectClean(out);
-    expect(out.stdout).toContain(PLAYBOOK); // the gate DID process this text…
+    expect(out.stdout).not.toContain(PLAYBOOK); // the gate processed this text without scripting
     expect(fs.existsSync(canary1)).toBe(false); // …without executing any of it
     expect(fs.existsSync(canary2)).toBe(false);
   });
@@ -258,8 +258,8 @@ describe('ground-ruvnet.sh — gate behavior battery', () => {
     );
     expectClean(out);
     // Proof the escaped JSON was parsed into the real text (gate needed verb+object from it):
-    expect(out.stdout).toContain(PLAYBOOK);
-    expect(out.stdout).toContain(FOOTER);
+    expect(out.stdout).not.toContain(PLAYBOOK);
+    expect(out.stdout).not.toContain(FOOTER);
   });
 
   // ── Case 15: footer version honesty — running version shown, older staged copy is NOISE ───────
@@ -274,7 +274,7 @@ describe('ground-ruvnet.sh — gate behavior battery', () => {
     const out = runGround('build a REST api service for user auth'); // any gate-firing prompt
     expectClean(out);
     expect(PLUGIN_VERSION).toMatch(/^\d+\.\d+\.\d+/); // sanity: a real semver was loaded
-    expect(out.stdout).toContain('v' + PLUGIN_VERSION);
+    expect(out.stdout).not.toContain('v' + PLUGIN_VERSION);
     expect(out.stdout).not.toContain('staged');
   });
 });
@@ -295,7 +295,7 @@ describe('session-start.sh — greeting + one-time star-ask', () => {
       expectClean(out);
       expect(out.stdout).toContain('RuvNet Brain v' + PLUGIN_VERSION + ' — active this session');
       expect(out.stdout).toContain('RuvNet Brain active'); // the confidence-line instruction
-      expect(out.stdout).toContain('THE PLAYBOOK'); // the standing build playbook is injected
+      expect(out.stdout).not.toContain('THE PLAYBOOK'); // SessionStart is context-only
     }
   });
 

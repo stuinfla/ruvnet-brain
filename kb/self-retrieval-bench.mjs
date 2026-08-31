@@ -18,6 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
+import { fileURLToPath } from 'node:url';
 import { searchKb } from './forge-ask.mjs';
 import { discoverRepos } from './forge-ask-all.mjs';
 
@@ -58,14 +59,44 @@ async function benchStore(name) {
   return { store: name, n: sample.length, mrr: rrSum / sample.length, hitAt1Rate: hitAt1 / sample.length };
 }
 
-const stores = process.argv.includes('--all') ? discoverRepos(DIR) : [arg('--store', 'ruv-meetings')];
-const mode = process.env.KB_HYBRID === '1' ? 'HYBRID' : 'dense-only';
-console.log(`self-retrieval benchmark — mode=${mode}, samples/store=${SAMPLES}, k=${K}`);
-let mrrSum = 0, cnt = 0;
-for (const s of stores) {
-  const r = await benchStore(s);
-  if (!r) { console.log(`  ${s}: (too few passages)`); continue; }
-  console.log(`  ${s.padEnd(28)} MRR=${r.mrr.toFixed(3)}  hit@1=${(r.hitAt1Rate * 100).toFixed(0)}%  (n=${r.n})`);
-  mrrSum += r.mrr; cnt++;
+// `searchKb()` (imported above from forge-ask.mjs) has no KB_HYBRID gate — the global-hybrid path
+// that env var once selected was reverted (docs/adr/0025-hybrid-retrieval-and-self-retrieval-gate.md,
+// "Outcome"). Every call below is dense-only regardless of KB_HYBRID. Printing `mode=HYBRID` here
+// would be a witness that cannot fail: it would report a comparison this script cannot actually run.
+// Refuse rather than mislabel — a guard/witness that cannot fail is not a guard (this repo's own
+// discipline). Exported so a test can check the refusal without running the full benchmark.
+export function resolveHybridMode(env = process.env) {
+  if (env.KB_HYBRID === '1') {
+    throw new Error(
+      "KB_HYBRID=1 requested, but forge-ask.mjs's searchKb() does not read KB_HYBRID — there is no "
+      + 'live hybrid path for this benchmark to measure right now. See '
+      + 'docs/adr/0025-hybrid-retrieval-and-self-retrieval-gate.md ("Outcome").'
+    );
+  }
+  return 'dense-only';
 }
-if (cnt > 1) console.log(`\nOVERALL MRR (${cnt} stores): ${(mrrSum / cnt).toFixed(3)}`);
+
+const isMain = (() => {
+  try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
+  catch { return false; }
+})();
+
+if (isMain) {
+  let mode;
+  try {
+    mode = resolveHybridMode();
+  } catch (err) {
+    console.error(`[self-retrieval-bench] ${err.message}`);
+    process.exit(1);
+  }
+  const stores = process.argv.includes('--all') ? discoverRepos(DIR) : [arg('--store', 'ruv-meetings')];
+  console.log(`self-retrieval benchmark — mode=${mode}, samples/store=${SAMPLES}, k=${K}`);
+  let mrrSum = 0, cnt = 0;
+  for (const s of stores) {
+    const r = await benchStore(s);
+    if (!r) { console.log(`  ${s}: (too few passages)`); continue; }
+    console.log(`  ${s.padEnd(28)} MRR=${r.mrr.toFixed(3)}  hit@1=${(r.hitAt1Rate * 100).toFixed(0)}%  (n=${r.n})`);
+    mrrSum += r.mrr; cnt++;
+  }
+  if (cnt > 1) console.log(`\nOVERALL MRR (${cnt} stores): ${(mrrSum / cnt).toFixed(3)}`);
+}

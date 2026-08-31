@@ -3,7 +3,7 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-30
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -186,7 +186,39 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 
 ## Currency log
 
+| 2026-08-30 | The two-stage candidate build now validates against the same projection evidence it later packages: seed-compatible gist receipts, class registry, derived receipts, excluded stores, and the projected generation ledger are all present at validation time. | `scripts/release-projection.mjs`, `scripts/build-bundle.mjs`, `plugin/scripts/coverage-integrity.mjs` |
+| 2026-08-30 | The projected validation input now receives the canonical private-store fence from the checkout before inventory validation, closing the remaining seed-versus-policy input mismatch. | `scripts/build-bundle.mjs`; `kb/PRIVATE-STORES.json`; exact-SHA release-QE. |
+| 2026-08-30 | The release projection now derives its totals and enumeration receipt from the seeded row set and carries the source-observation digest as a separate bound evidence identity. | `scripts/release-projection.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | The second-stage builder now stages the projected gist receipt before validation, making the public evidence partition identical before and after archive assembly. | `scripts/build-bundle.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | Replayed the complete two-stage release locally and confirmed identical public inventory partition hashes before and after archive assembly. | `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; local proof `566fe4f5bb435f11c8a924a8cef9b8c251c508051653121f39e7533536455daf`. |
+| 2026-08-30 | The repository pre-push gate now verifies the generated convergence manifest, making stale source identity a local push failure instead of a hosted QA failure. | `scripts/git-hooks/pre-push`; `scripts/convergence-manifest.mjs`; exact-SHA CI. |
+| 2026-08-30 | The candidate’s full CI contract is now pull-request gated as well as main-push gated, preventing an untested merge from becoming the first place release failures appear. | `.github/workflows/ci.yml` |
+
+| 2026-08-30 | Rechecked generation convergence after the seed lacked the source-controlled public-store class registry; bundle assembly now keeps policy metadata on the source plane and corpus bytes on the seed plane. | `scripts/build-bundle.mjs`; `kb/public-store-classes.json`; exact-SHA release-QE. |
+
+| 2026-08-30 | Rechecked generation convergence after the exact-SHA release-QE failure; the immutable seed's legacy gist evidence is carried explicitly into the projected bundle and is not labeled current-source evidence. | Commit `f526bab`; `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; `data/corpus-seed.json`. |
+
+| 2026-08-30 | Removed the forbidden live gists observation from the release-QE bundle step and made the coverage projection explicitly derive its public generation set from the sealed seed ledger. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`. |
+
+| 2026-08-30 | Reconciled the host-only updater after live v4.3.1 had no GitHub assets and the updater stranded the Stable Spine on 4.2.2-dev. | `bin/install.mjs` now keeps executable host synchronization moving when the optional KB refresh is unavailable; the release asset gate remains authoritative. |
+
+| 2026-08-30 | Automatic PR checks now converge through one bounded canonical runner; the older matrix is manual diagnostic coverage. | `.github/workflows/ci.yml`, `.github/workflows/qe-4-3.yml`, and `scripts/qa-runner.mjs` reduce duplicate observations while leaving protected publication authority unchanged. |
+
+| 2026-08-30 | Version propagation is now a single source edit followed by consistency verification, and release QA binds the candidate to one SHA. | `scripts/set-version.mjs`, `scripts/sync-version.mjs`, and `scripts/qa-runner.mjs` remove the emergency publish path that let public and source versions diverge. |
+
+| 2026-08-23 | Candidate receipts now bind not only pass/fail counts but the skipped and failed suite identities used to decide convergence. | Commit `cc25c24` prevents a partial cross-platform observation from masquerading as a converged generation. |
+| 2026-08-23 | Windows candidate qualification probes the shared installer import before running its suites. | Hosted exact-SHA evidence isolated the failure to installer-import suites; convergence still requires every assertion and every receipt to PASS. |
+| 2026-08-23 | Candidate lane steps fail fast and preserve the exact partial receipt. | A failed step no longer launches later unrelated checks; convergence still requires every required receipt to PASS. |
+| 2026-08-23 | Windows installer-import evidence is process-isolated and the hosted conformance bound reflects measured execution. | Convergence still requires every separate receipt to PASS; no assertion is removed or weakened. |
+| 2026-08-23 | Candidate generation now uses only deterministic resource evidence; live-only preconditions remain an explicit separate regime, and Windows test invocation is shell-independent. | Commit `0e30d68` preserves one-generation artifact binding while removing two false blockers from the candidate path. |
+| 2026-08-23 | The candidate cannot enter artifact qualification unless all required QE lanes have completed, and failed receipts remain available for diagnosis. | Commit `b570e25` strengthens the one-generation release boundary without changing payload identity or publication authority. |
+| 2026-08-23 | Candidate convergence now consumes the new six-lane exact-SHA QE aggregate before artifact publication; the one-generation payload and public-channel rules are unchanged. | Commit `b3ddb0d` replaces the auto-triggered legacy matrix with fail-fast preflight, isolated receipts, and a zero-spend local deterministic contract in `.github/workflows/qe-4-3.yml`; no publication mutation was added. |
+| 2026-08-23 | Corrected the Windows argv boundary after exact-SHA job `97218861232` split the immutable release title; generation identity and artifact binding remain unchanged. | `scripts/windows-command.mjs` shares the measured cmd invocation contract with the release authority, and the focused authority suite asserts title, notes, bundle, and receipt remain distinct arguments. |
+| 2026-08-23 | Re-read the release-generation boundary after issue #163 exposed Windows shell argument splitting; one-generation and immutable-artifact requirements remain unchanged. | `scripts/release.mjs` preserves the exact title, notes, bundle, and receipt arguments on Windows; focused corpus-seed tests prove the release payload. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-23 | QE artifact download now targets the canonical receipt directory, and Vitest retains bounded verbose diagnostics. | This prevents a converged candidate from being rejected because evidence landed one directory away, while preserving exact-SHA convergence rules. |
+| 2026-08-23 | Candidate receipts now retain bounded stdout/stderr tails for process-level failures. | Commit `1310fb6` makes convergence failures diagnosable from exact-SHA evidence without changing the one-generation or publication rules. |
 | 2026-08-21 | Re-read the shipped-code path after the release-QE failure exposed three index-persistence hash mismatches. | `.github/workflows/ci.yml` now invokes the existing `rvf-index-audit.mjs --repair` restamp before `scripts/build-bundle.mjs` enforces exact ledger closure. A local reproduction on the configured v4.2.1 seed reported `stamped=3`, then assembled 186 audited RVFs with zero index failures; no recursive latest lookup or unbuilt coverage generator is used. |
 | 2026-08-21 | Implemented the emergency correctness slice after Fable 5 and GPT-5.6-Sol convergence. | `.github/workflows/ci.yml` pins the immutable corpus seed; `scripts/build-bundle.mjs` validates strict ledger closure; `bin/install.mjs` retains live plugin roots by exact process-incarnation leases; and the protected publisher rechecks `origin/main` immediately before mutation. Focused integrated tests cover these paths. Rollback-storage receipts, fresh interactive-window proof, and generated coverage remain explicit post-restoration work and are not claimed shipped by this row. |

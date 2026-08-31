@@ -20,12 +20,18 @@ export function consoleFixtureEnvironment(fixtureRoot, { baseEnv = process.env, 
   }
   const root = path.resolve(fixtureRoot);
   const config = path.join(root, '.config', 'ruvnet-brain');
-  const protectedKeys = [...CONSOLE_FIXTURE_PATH_KEYS, 'HOME', 'USERPROFILE', 'CODEX_HOME'];
+  const protectedKeys = [
+    ...CONSOLE_FIXTURE_PATH_KEYS,
+    'HOME', 'USERPROFILE', 'CODEX_HOME', 'RUVNET_BRAIN_TEST',
+  ];
   const forbidden = protectedKeys.find((key) => Object.hasOwn(extras, key));
   if (forbidden) throw new Error(`console fixture extras may not override ${forbidden}`);
   return {
     ...baseEnv,
     ...extras,
+    // The console root is a test-only filesystem boundary. Carry the installer's independent
+    // side-effect guard too, so a fixture preference can never reach the real launchd domain.
+    RUVNET_BRAIN_TEST: '1',
     RUVNET_CONSOLE_ROOT: root,
     RUVNET_BRAIN_CONFIG_FILE: path.join(root, '.claude', 'ruvnet-brain', 'config.json'),
     RUVNET_SETTINGS_FILE: path.join(config, 'settings.json'),

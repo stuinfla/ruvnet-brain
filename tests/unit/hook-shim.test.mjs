@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 const SHIM = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'plugin', 'scripts', 'hook-shim.mjs');
 const HOOKS = path.join(path.dirname(SHIM), '..', 'hooks', 'hooks.json');
 const SOURCE_PLUGIN_ROOT = path.dirname(path.dirname(SHIM));
+const VERSION = JSON.parse(fs.readFileSync(path.join(SOURCE_PLUGIN_ROOT, '..', 'package.json'), 'utf8')).version;
 
 let HOME_DIR, PLUGIN_ROOT;
 const run = (hookId) => spawnSync(process.execPath, [SHIM, hookId], {
@@ -56,6 +57,13 @@ describe.skipIf(process.platform === 'win32')('hook-shim.mjs — restart-free ho
     // "update": new generation lands, active.json flips — exactly what update-apply does
     seedSpine('2.0.0', { 'ground-ruvnet.sh': '#!/bin/bash\necho FROM-GEN-2\n' });
     expect(run('ground-ruvnet').stdout).toMatch(/FROM-GEN-2/); // next fire = new code. No restart.
+  });
+
+  it('hands the active generation version to SessionStart so the banner names the code executing', () => {
+    seedSpine(VERSION, { 'session-start-core.mjs': 'process.stdout.write(process.env.RUVNET_BRAIN_ACTIVE_VERSION || "missing");\n' });
+    const result = run('session-start');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe(VERSION);
   });
 
   it('route-dispatch is advisory even when a stale body tries to return exit 2', () => {

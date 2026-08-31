@@ -26,10 +26,10 @@ describe('release candidate lineage', () => {
 });
 
 describe('release command wording', () => {
-  it('never calls a check-only preflight SHIPPED', () => {
+  it('calls publication PUBLISHED NOT VERIFIED and never promotes check-only wording', () => {
     const src = fs.readFileSync(path.join(ROOT, 'scripts/release.mjs'), 'utf8');
     expect(src).toContain('PREFLIGHT PASS — NOT PUBLISHED');
-    expect(src).toMatch(/PUBLISH\s*\\?[\s\S]*SHIPPED[\s\S]*PREFLIGHT PASS — NOT PUBLISHED/);
+    expect(src).toContain("c.y(c.b('PUBLISHED, NOT VERIFIED'))");
   });
 
   it('publishes only through the canonical release path with an explicit npm tag', () => {

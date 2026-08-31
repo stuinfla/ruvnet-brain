@@ -810,6 +810,17 @@ describe('the two ship definitions agree', () => {
       ['git commit -m "ready to git push"', false],
       ['ls -la', false],
       ['git status', false],
+      // 2026-08-27: irregular whitespace — templated/wrapped commands a real agent can emit.
+      // The JS side already tolerates it (`\s+`); the bash side required a literal single space,
+      // so this whole matrix passed 6/8 while missing the exact shape that would actually drift.
+      ['npm  publish', true],
+      ['npm\tpublish', true],
+      ['yarn\npublish', true],
+      ['gh  release   create v1.0.0', true],
+      // TEETH (adversarial-critic-caught regression in this same diff's first cut): a quoted
+      // string that legitimately SPANS a real newline — a multi-line commit message — must still
+      // be stripped before matching, not leak "npm"/"publish" into CMD_EXEC as unquoted text.
+      ['git commit -m "release notes\nnpm\npublish is unaffected by this change"', false],
     ];
     for (const [cmd, wantShip] of cases) {
       expect(dependentEvent(cmd) === 'ship', `degradation-watch: ${cmd}`).toBe(wantShip);

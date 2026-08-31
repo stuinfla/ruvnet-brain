@@ -275,7 +275,7 @@ function resolveCodeRoot() {
   try {
     const dev = JSON.parse(fs.readFileSync(DEV, 'utf8'));
     if (dev && dev.codeRoot && fs.existsSync(path.join(dev.codeRoot, 'scripts'))) {
-      return { root: dev.codeRoot, source: 'dev' };
+      return { root: dev.codeRoot, source: 'dev', version: dev.version || '' };
     }
   } catch { /* no dev mode */ }
   try {
@@ -285,13 +285,13 @@ function resolveCodeRoot() {
     const real = fs.realpathSync(root);
     // Containment: only ever execute from the immutable version store.
     if (!real.startsWith(fs.realpathSync(VERSIONS) + path.sep)) return null;
-    return { root: real, source: `gen ${active.generation ?? '?'}` };
+    return { root: real, source: `gen ${active.generation ?? '?'}`, version: active.version || '' };
   } catch { return null; }
 }
 
 // Run one hook body. No shell is ever involved: spawnSync with an argument array, interpreter
 // chosen from the typed table — never from input.
-function runHook(file) {
+function runHook(file, activeVersion = '') {
   if (!fs.existsSync(file)) return 0; // nothing to run — never invent a failure
   let cmd;
   if (entry.interpreter === 'node') {
@@ -312,9 +312,11 @@ function runHook(file) {
   // core also reads the sentinel because the POSIX compatibility launcher and bare installs invoke
   // it outside this shim. Passing the snapshot means the two readings cannot disagree within one
   // invocation if the user flips the switch while the hook is mid-run.
-  const env = (BRAIN_OFF && entry.offBehavior === 'partial')
-    ? { ...process.env, RUVNET_BRAIN_OFF: '1' }
-    : process.env;
+  const env = {
+    ...process.env,
+    ...(activeVersion ? { RUVNET_BRAIN_ACTIVE_VERSION: activeVersion } : {}),
+    ...(BRAIN_OFF && entry.offBehavior === 'partial' ? { RUVNET_BRAIN_OFF: '1' } : {}),
+  };
   const io = hookInput !== null
     ? { stdio: ['pipe', 'inherit', 'inherit'], input: hookInput }
     : { stdio: 'inherit' };
@@ -342,7 +344,7 @@ function dispatchHook() {
     // codeRoot IS a plugin-payload root (versions/<v>/ mirrors the plugin dir: scripts/, hooks/, mcp/).
     const spineFile = path.join(spine.root, 'scripts', entry.file);
     if (fs.existsSync(spineFile)) {
-      return runHook(spineFile);
+      return runHook(spineFile, spine.version);
     }
     // Spine resolved but the body file is missing — fall back LOUDLY (finding 25), once per
     // generation. The key omits entry.file on purpose: one broken generation is ONE piece of news,

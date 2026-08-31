@@ -1,0 +1,135 @@
+name: qe-4.3
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: ruvnet-brain-qe-4-3-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # A QE run is never allowed to inherit metered credentials.
+  ANTHROPIC_API_KEY: ''
+  OPENAI_API_KEY: ''
+  OPENROUTER_API_KEY: ''
+  RUVNET_ALLOW_METERED_SPEND: '0'
+
+jobs:
+  preflight:
+    name: qe-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Fail-fast design and provenance contract
+        run: node scripts/qe/agentic-qe-4.3.mjs --lane preflight
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qe-preflight-${{ github.sha }}
+          path: .qe/receipts/preflight.json
+
+  check:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - run: node scripts/qe/agentic-qe-4.3.mjs --lane check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qe-check-${{ github.sha }}
+          path: .qe/receipts/check.json
+        if: always()
+
+  integration:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - run: node scripts/qe/agentic-qe-4.3.mjs --lane integration
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qe-integration-${{ github.sha }}
+          path: .qe/receipts/integration.json
+        if: always()
+
+  release-qe:
+    needs: [preflight, check, integration, resources, windows-unit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - run: node scripts/qe/agentic-qe-4.3.mjs --lane release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qe-release-${{ github.sha }}
+          path: .qe/receipts/release.json
+        if: always()
+
+  resources:
+    name: warm-brain
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - run: node scripts/qe/agentic-qe-4.3.mjs --lane resources
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qe-resources-${{ github.sha }}
+          path: .qe/receipts/resources.json
+        if: always()
+
+  windows-unit:
+    needs: preflight
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - run: node scripts/qe/agentic-qe-4.3.mjs --lane windows-unit
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qe-windows-unit-${{ github.sha }}
+          path: .qe/receipts/windows-unit.json
+        if: always()
+
+  aggregate:
+    name: qe-aggregate
+    if: always()
+    needs: [preflight, check, integration, release-qe, resources, windows-unit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: qe-*-${{ github.sha }}
+          merge-multiple: true
+          path: .qe/receipts
+      - name: Reject missing, skipped, stale, or non-PASS receipts
+        run: node scripts/qe/aggregate-4.3.mjs

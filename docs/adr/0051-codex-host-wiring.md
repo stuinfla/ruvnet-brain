@@ -3,7 +3,7 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-20
+updated: 2026-08-30
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -19,6 +19,7 @@ governs:
   - plugin/.codex-plugin/plugin.json
   - plugin/hooks/codex-hooks.json
   - plugin/scripts/codex-hook-adapter.mjs
+  - plugin/scripts/codex-hook-events.mjs
   - plugin/scripts/codex-hook-wrapper.mjs
 ---
 
@@ -270,6 +271,7 @@ native Windows.
   `/hooks` review procedure while definitions are pending.
 
 ## Currency log
+| 2026-08-30 | **`codex-hook-adapter.mjs`'s CONTEXT_EVENTS moved to a new pure sibling, `codex-hook-events.mjs`, so its own parity test can finally import it.** | Dream Cycle 2026-08-30 (cross-host-conformance / codex-parity, DEEP+SCAN): `tests/unit/codex-claude-hook-parity.test.mjs`'s "per event" proof carried its own hand-copied `CONTEXT_EVENTS`/`NO_CONTEXT_EVENTS` arrays rather than reading the adapter's real 6-item set, because importing the adapter directly executes its side-effecting top level (`fs.readFileSync(0, 'utf8')`, a synchronous stdin read) — the same import-time hazard the 2026-08-26 `brain-stamp.mjs` finding named. That hand-copy had already drifted: it listed 4 of the 6 real CONTEXT_EVENTS (missing `PermissionRequest`, `SubagentStart`) and 2 of the 4 real no-context, non-Stop events (missing `PostCompact`, `SubagentStop`), so this file's own "per event" claim was never once checked for those four — latent, since `codex-hooks.json` wires none of them today (see the 2026-08-19 row below for Codex's complete event set). `CONTEXT_EVENTS` and a new `ALL_HOST_EVENTS` catalogue now live in `codex-hook-events.mjs` (no imports, no I/O at module load), imported by both the adapter and the test; the test's two event lists are derived from them instead of hand-copied. Registration, wrapper, doctor lines and the adapter's actual behavior are unchanged — this closes a test-coverage gap in the parity proof, it does not change what ships. |
 | 2026-08-10 | **The Codex host's dependency copy is now DERIVED from server.mjs, and this ADR's contract is strengthened.** | The wiring hand-listed `managed-cli-interface.mjs` and `runtime-preferences.mjs` — a second copy of the server's own import graph. ADR-067 added one import and the Codex host shipped a server whose sibling was absent: `tests/unit/npm-tarball-codex.test.mjs` caught it on the packaging boundary as "no reply to initialize in 15s". `serverDependencies()` now walks the real imports transitively and preserves each specifier so `./x` and `../scripts/y` both land where the server looks. Registration, wrapper, adapter and doctor lines unchanged; what changed is that a future import cannot silently break this host. |
 | 2026-08-03 | Re-read Codex wrapper behavior against the packed 4.0.8 host proof; no contract change. | PR #100 exact-SHA release evidence is green; Windows unit remains the sole required red lane. |
 

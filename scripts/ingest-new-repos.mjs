@@ -34,6 +34,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { storeRoot, storesAt, darkStores } from '../kb/store-root.mjs';
+import { assertIsolatedMutationWorktree } from './worktree-integrity.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const OWNER = process.env.RUVNET_ORG_OWNER || 'ruvnet';
@@ -81,6 +82,10 @@ const isMain = (() => {
 })();
 
 if (isMain) {
+  if (APPLY) {
+    try { assertIsolatedMutationWorktree(ROOT, 'ingest-new-repos --apply'); }
+    catch (error) { console.error(error?.message || String(error)); process.exit(2); }
+  }
   const repos = liveOrgRepos();
   if (!Array.isArray(repos)) {
     // A LIST WE COULD NOT FETCH IS NOT AN EMPTY LIST. Reporting "0 new repos" here would read as

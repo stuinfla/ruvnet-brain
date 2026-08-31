@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Deterministically reconstruct gist passages from tracked, exact-version source receipts.
+// Deterministically reconstruct gist passages from durable, exact-version source receipts.
 // This intentionally does not call the GitHub API, build vectors, or publish artifacts.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sealGistReceiptSet, validateGistReceiptSet } from './gist-receipts.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const NAME = 'ruv-gists';
@@ -32,6 +34,19 @@ function validateFilename(filename, label) {
 }
 
 export function validateSourceReceipts(source) {
+  if (source?.schemaVersion === 3) {
+    const observation = {
+      owner: source.owner,
+      observedAt: source.observedAt,
+      observationSha256: source.sourceObservationSha256,
+      gists: { rows: Object.entries(source.gists || {}).map(([id, receipt]) => ({
+        id, updated_at: receipt?.updatedAt,
+      })) },
+    };
+    try { validateGistReceiptSet(source, observation); }
+    catch (error) { fail(`schema-3 source receipt is invalid: ${error.message}`); }
+    return source;
+  }
   if (![1, 2].includes(source?.schemaVersion)) fail('source receipt schemaVersion must be 1 or 2');
   if (!/^[A-Za-z0-9-]{1,39}$/.test(String(source.owner || ''))) fail('source receipt owner is malformed');
   if (!validDate(source.generated)) fail('source receipt generated timestamp is malformed');
@@ -177,11 +192,14 @@ export async function reconstructGists(source, { fetchFn = globalThis.fetch, con
     note: "rUv's public gists — announcements and thinking, PROPOSED unless confirmed in repo source.",
     entries,
   };
+  const passagesSha256 = sha256(passageBody);
   return {
     passages,
     passageBody,
     meta,
-    sources: { ...source, schemaVersion: 2, passagesSha256: sha256(passageBody), gists: source.gists },
+    sources: source.schemaVersion === 3
+      ? sealGistReceiptSet({ ...source, passagesSha256 })
+      : { ...source, schemaVersion: 2, passagesSha256, gists: source.gists },
   };
 }
 
@@ -218,12 +236,39 @@ function option(argv, name, fallback) {
   return index >= 0 && argv[index + 1] && !argv[index + 1].startsWith('--') ? argv[index + 1] : fallback;
 }
 
-export async function main(argv = process.argv.slice(2)) {
+/**
+ * The receipt belongs beside the installed brain, because a published npm package intentionally
+ * does not contain the 300KB generated receipt. Prefer a source-checkout copy when one exists, then
+ * honor the canonical brain-root overrides, then use the standard installed cache. Returning the
+ * checkout candidate on a total miss preserves one precise error path instead of guessing.
+ */
+export function resolveSourcesFile({
+  repoRoot = ROOT,
+  env = process.env,
+  home = os.homedir(),
+  exists = fs.existsSync,
+} = {}) {
+  const local = path.join(repoRoot, 'kb', `${NAME}.sources.json`);
+  const candidates = [
+    local,
+    env.RUVNET_BRAIN_KB && path.join(env.RUVNET_BRAIN_KB, `${NAME}.sources.json`),
+    env.RUVNET_BRAIN_HOME && path.join(env.RUVNET_BRAIN_HOME, 'kb', `${NAME}.sources.json`),
+    path.join(home, '.cache', 'ruvnet-brain', 'kb', `${NAME}.sources.json`),
+  ].filter(Boolean).map((candidate) => path.resolve(candidate));
+  return candidates.find((candidate) => exists(candidate)) || local;
+}
+
+export async function main(argv = process.argv.slice(2), {
+  fetchFn = globalThis.fetch,
+  repoRoot = ROOT,
+  env = process.env,
+  home = os.homedir(),
+} = {}) {
   const allowed = new Set(['--sources', '--out-dir', '--concurrency']);
   for (let index = 0; index < argv.length; index += 2) {
     if (!allowed.has(argv[index]) || !argv[index + 1] || argv[index + 1].startsWith('--')) fail(`unknown or incomplete option ${argv[index] || '(missing)'}`);
   }
-  const sourcesFile = path.resolve(option(argv, '--sources', path.join(ROOT, 'kb', `${NAME}.sources.json`)));
+  const sourcesFile = path.resolve(option(argv, '--sources', resolveSourcesFile({ repoRoot, env, home })));
   const outDir = path.resolve(option(argv, '--out-dir', path.dirname(sourcesFile)));
   const concurrency = Number(option(argv, '--concurrency', '6'));
   let source;
@@ -232,7 +277,7 @@ export async function main(argv = process.argv.slice(2)) {
   } catch (error) {
     fail(`cannot read source receipts ${sourcesFile}: ${error.message}`);
   }
-  const result = await reconstructGists(source, { concurrency });
+  const result = await reconstructGists(source, { concurrency, fetchFn });
   const written = writeReconstruction(result, { outDir });
   process.stdout.write(`${JSON.stringify({ ok: true, passages: result.passages.length, passagesSha256: result.sources.passagesSha256, ...written }, null, 2)}\n`);
   return 0;

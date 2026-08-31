@@ -4,7 +4,7 @@
 
 # 🧠 RuvNet Brain
 
-### 🧠 RuvNet Brain — [![RuvNet Brain version 4.2.2-dev — updated 2026-07-30 03:24 EDT](https://img.shields.io/badge/version_4.2.2--dev-updated_2026--07--30_03:24_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
+### 🧠 RuvNet Brain — [![RuvNet Brain version 4.3.3 — updated 2026-07-30 03:24 EDT](https://img.shields.io/badge/version_4.3.3-updated_2026--07--30_03:24_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
 
 **A portable, source-grounded brain over Reuven Cohen's (rUv's) RuvNet stack — delivered as a Claude Code plugin that makes Claude _use_ the stack instead of fighting it.**
 
@@ -30,7 +30,7 @@
 [![explainer](https://img.shields.io/badge/▶%20see%20it%20live-isovision.ai%2Fruvnet--brain-e8a13a?style=flat-square)](https://isovision.ai/ruvnet-brain/)
 [![license](https://img.shields.io/badge/license-MIT-8ecae6?style=flat-square)](LICENSE)
 [![grounded](https://img.shields.io/badge/answers-cited%20rUv%20source-333?style=flat-square)](#testing--proof)
-[![coverage](https://img.shields.io/badge/coverage-36%25%20of%20ALL%20source%20·%20honest-b58900?style=flat-square)](#testing--proof)
+[![coverage](https://img.shields.io/badge/coverage-41%25%20of%20ALL%20source%20·%20honest-b58900?style=flat-square)](#testing--proof)
 
 > **One Brain generation everywhere.** npm, the GitHub tag/release, bundle manifests, source metadata, and checksum-bound RVF generations must share the same product version. Headline claims are regenerated and checked by the claims ledger (`scripts/claims-verify.mjs`); other numbers below are hand-stamped and dated:
 > - **`plugin`** (badge above) — the Claude Code plugin itself: SKILL.md, the grounding hooks, the MCP server. Read live from [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json). Updates often — this is where behavior fixes land.
@@ -56,7 +56,7 @@
 
 ---
 
-## What's new in 4.2 — it loads what rUv ships, without being asked
+## Earlier — 4.2 loaded what rUv ships, without being asked
 
 **The corpus stopped drifting behind the org.** Until 4.2 nothing ever ingested a new repo: the
 nightly refreshed lessons, health and proofs and contained *zero* ingestion, so a repo entered the
@@ -79,7 +79,7 @@ night, but nothing consumed it until the ingestion loop shipped.
   agentdb's binding, so `lesson-bridge --apply` and `learning-replay` wrote into a silent
   non-persistent fallback. It now resolves an ABI-matched interpreter and fails loudly instead.
 
-## What's new in 4.2 — it anticipates, and it learns whether it was right
+## Earlier — 4.2 anticipated, and learned whether it was right
 
 **Building toward L4/L5 (3.9.x, dev).** The mechanisms for the top two rungs of the proactivity
 ladder are built and wired — but they are **not yet verified to 4.0's bar**, which requires all five
@@ -412,7 +412,7 @@ You install once. After that, three mechanisms keep you on the current brain wit
   `🧠 RuvNet Brain jumped in · guidance only, no source read · v3.4.18-dev`
   An unearned citation is worse than no citation, so the line may only name a path the tools genuinely returned — and on a prompt where nothing fires, it stays silent rather than manufacture a receipt. The version shown is the one **actually loaded in memory** for this session; if a newer one is staged awaiting a restart, the line says so plainly (`… vX staged, restart to load`). So you never have to wonder whether the brain is on, which version is acting, or whether an answer was grounded or guessed.
 
-- **Nightly publish → `releases/latest` chain** (`scripts/self-update.mjs --publish`, run by the `deploy/com.ruvnet.brain-nightly.plist` LaunchAgent at 03:15). The nightly rebuilds only the repos whose upstream changed, and **if anything was rebuilt** it bumps the product version, cuts a GitHub Release, and advances [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest). Plugin and knowledge bundle move under **one** version number, so the heartbeat above picks up both automatically. The exact author-vs-end-user schedules, incremental algorithm, failure behavior, and hosting recommendation are documented in [Nightly refresh and publish](docs/NIGHTLY-REFRESH.md). (The LaunchAgent is not auto-installed — enabling a system scheduler needs explicit owner approval.)
+- **Nightly publish → `releases/latest` chain** (the protected release workflow). The nightly rebuilds only the repos whose upstream changed, and **if anything was rebuilt** it bumps the product version, cuts a GitHub Release, and advances [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest). Plugin and knowledge bundle move under **one** version number, so the heartbeat above picks up both automatically. The exact author-vs-end-user schedules, incremental algorithm, failure behavior, and hosting recommendation are documented in [Nightly refresh and publish](docs/NIGHTLY-REFRESH.md). The retired primary-checkout LaunchAgent is not part of the supported path.
 
 ---
 
@@ -508,7 +508,7 @@ node plugin/test/run-tests.mjs                    # full plugin QA over real JSO
 | **L4 "orchestrate"** | **downgraded — measures speech, not obedience** | L4 asserts the hook's own injected prose contains required words (`must: ['take the wheel','SPARC','swarm',…]`). That proves **the brain spoke**. It cannot fail when the advice is read and ignored — which is the failure this product exists to prevent. Counterfactual replay against a brain-off control (ADR-058 §D4) is what will earn this row back |
 | **Plugin QA** | **60 / 60** | manifests, hook firing, MCP `initialize`/`tools/list`, capability battery |
 | **Clean-room install** | **3 / 3** | download the published bundle fresh → unzip → query → grounded, cited answers |
-| **Unit tests** | **3,035 passing, 161 todo** · 36% of ALL source covered | `npm run test:cov` regenerates both — the coverage floor fails CI if it slips (`claims:verify` re-derives the %, it is not a hand-typed badge). 36% is the honest number over every shipped file; the previous "75%" measured a hand-picked 8-file subset |
+| **Unit tests** | **3,035 passing, 161 todo** · 41% of ALL source covered | `npm run test:cov` regenerates both — the coverage floor fails CI if it slips (`claims:verify` re-derives the %, it is not a hand-typed badge). 41% is the honest number over every shipped file; the previous "75%" measured a hand-picked 8-file subset |
 | **Grounding proof** | `npx ruvnet-brain --doctor` | asks a real question, then checks the cited path really exists in the on-disk store; a citation that doesn't resolve is reported as **NOT grounded** |
 | **Held-out eval** | **grounded 100/100** · routed 63/80 | `npm run eval` — 120 frozen, hash-pinned questions across 5 strata, never used for tuning, graded on ground truth, never by a model |
 

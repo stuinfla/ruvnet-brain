@@ -2594,9 +2594,18 @@ export function installCronEntry(line, { run = spawnSync } = {}) {
   return { ok: true, already: false };
 }
 
-/** launchd's own minimal PATH, plus the directory node/npx actually live in on this machine. */
+/**
+ * launchd's minimal PATH plus the user-level executable homes used by the supported hosts.
+ *
+ * The updater does more than run npx: --host-sync-only executes the installed Claude and Codex
+ * doors. A real 2026-08-22 launchd run found npx but then failed with `claude unavailable` and
+ * `spawnSync codex ENOENT`; interactive shells had supplied ~/.npm-global/bin and ~/.local/bin,
+ * launchd had not. Derive these from HOME so the fix is portable rather than pinned to one user.
+ */
 const launchdPath = () => [...new Set([
   path.dirname(process.execPath), path.dirname(npxPath()),
+  path.join(os.homedir(), '.npm-global', 'bin'), path.join(os.homedir(), '.local', 'bin'),
+  ...(process.platform === 'darwin' ? ['/Applications/Codex.app/Contents/Resources'] : []),
   '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin',
 ])].filter(Boolean).join(':');
 const cronExample = (kbDir) =>
@@ -2802,7 +2811,16 @@ function runUpdate() {
     console.error(`      If you believe a newer build exists, check:  ${c.bold('node forge-update.mjs --check')}  in ${kbDir}`);
     process.exit(outcome.exitCode);
   }
-  if (outcome.fallback) {
+  if (outcome.fallback && FLAG_HOST_SYNC_ONLY) {
+    // Host synchronization has a narrower contract than a full update: it must converge the
+    // executable plugin/spine to the published package even when an optional large KB asset is
+    // missing. The old path fell through to a fresh install here, which required the same missing
+    // zip and stranded every host on its previous generation. Keep the KB failure visible, but
+    // continue to the host-sync transaction; the published-surface/release gates still fail the
+    // release until the signed KB asset exists.
+    warn("the knowledge bundle could not refresh; continuing with executable host synchronization only");
+    updateStatus = 0;
+  } else if (outcome.fallback) {
     warn("\nthe bundle's own updater couldn't complete — falling back to a fresh install of the latest Release (this always works)…\n");
     const self = fileURLToPath(import.meta.url);
     const fr = spawnSync(process.execPath, [self, '--force'], { stdio: 'inherit',
@@ -2897,7 +2915,7 @@ function enableNightly() {
   <key>Label</key>
   <string>${NIGHTLY_LABEL}</string>
   <!-- Issue #129: the SAME host-convergent entrypoint the session updater runs, not the KB-only
-       forge-update.mjs it used to schedule. See NIGHTLY_ARGV. Still no `/bin/sh -c` (ADR-038) —
+       forge-update.mjs it used to schedule. See NIGHTLY_ARGV. Still no shell wrapper (ADR-038) —
        this execs npx directly. -->
   <key>ProgramArguments</key>
   <array>
