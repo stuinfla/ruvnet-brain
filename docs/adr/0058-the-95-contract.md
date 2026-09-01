@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-31
+updated: 2026-09-01
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -52,6 +52,7 @@ governs:
 # ADR-058: The 95 contract
 
 ## Currency log
+| 2026-09-01 | Dream Cycle 2026-09-01 (brain-currency): `scripts/claims-verify.mjs`'s brain-census functions (`computePublicChunkTotal`, `countBuiltStores`, `brainCensus`, `verifyChunkCountSurfaces`, `verifyCheaperFactor`, `applyFix`) defaulted their brain-artifact directory to `<repo>/kb`, the exact anti-pattern `kb/forge-currency.mjs`'s `brainKnownSet()` carried until PR #222 — a host with a real installed brain at the canonical store root (`kb/store-root.mjs`'s `storeRoot()`) but nothing under `<repo>/kb` reported a false "brain not installed" SKIP instead of re-deriving the claim. Now defaults through `storeRoot()`; the private-stores fence (a repo-committed policy file `scripts/build-bundle.mjs` also reads at a fixed path) is decoupled into its own `privateStoresFile` parameter so it is never silently ignored by the same change. | `scripts/claims-verify.mjs`; `tests/unit/claims-verify.test.mjs`; `tests/unit/claims-artifact-freshness.test.mjs`. |
 | 2026-08-31 | Reconciled the hosted process boundary after PR #211 added named per-step watchdog receipts and corrected Windows executable resolution; the 95-contract observations and release gates remain unchanged. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; `tests/unit/step-watchdog.test.mjs`. |
 
 **Status**: Proposed

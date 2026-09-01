@@ -236,9 +236,13 @@ describe('(d) the writer regenerates every surface in ONE pass, from the real ar
   };
 
   const SURFACES = ['README.md', 'explainer/index.html', 'explainer/llms.txt', 'explainer/llms-full.txt'];
+  // The private-stores fence is a repo-committed policy file, decoupled from kbDir (which now
+  // defaults to the canonical store root, not <repo>/kb — see scripts/claims-verify.mjs). This
+  // fixture colocates a synthetic fence with its synthetic idmaps, so it must say so explicitly.
   const opts = (f) => ({
     root: f.root,
     kbDir: f.kb,
+    privateStoresFile: path.join(f.kb, 'PRIVATE-STORES.json'),
     surfaces: SURFACES,
     readmeFile: path.join(f.root, 'README.md'),
     summaryFile: f.summaryFile,
@@ -255,7 +259,7 @@ describe('(d) the writer regenerates every surface in ONE pass, from the real ar
       expect(s, rel).toContain('1,234');
       expect(s, rel).not.toMatch(/111,111|222,222|333,333|444,444/);
     }
-    expect(verifyChunkCountSurfaces(f.kb, SURFACES, f.root).status).toBe('PASS');
+    expect(verifyChunkCountSurfaces(f.kb, SURFACES, f.root, path.join(f.kb, 'PRIVATE-STORES.json')).status).toBe('PASS');
 
     // the badge and BOTH prose copies moved together, to floor(min) = 41
     const readme = fs.readFileSync(path.join(f.root, 'README.md'), 'utf8');
