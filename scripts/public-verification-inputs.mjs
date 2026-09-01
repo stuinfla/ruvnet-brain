@@ -412,7 +412,9 @@ export async function createPublicVerificationInputs({ baselineBundle, candidate
       stores: baselineStores, storeCount: baselineStores.length };
     const { value: queryEvidence } = readJson(oraclePath, 'independent strict-ancestor query oracle');
     validateRetrievalQueryEvidence(queryEvidence);
-    verifyQueryOracleSource(queryEvidence, candidateResult.candidate.sourceSha, { cwd: path.resolve(repo) });
+  verifyQueryOracleSource(queryEvidence, candidateResult.candidate.sourceSha, {
+    cwd: path.resolve(repo), allowSquashedSource: true,
+  });
     const plan = buildRetrievalCanaryPlan({ coverage: candidateResult.coverage, baseline,
       candidate: candidateResult.candidate, coverageIdentity: candidateResult.coverageIdentity,
       queryEvidence, assetsDir: candidateTree.root, allowNoDelta: true });

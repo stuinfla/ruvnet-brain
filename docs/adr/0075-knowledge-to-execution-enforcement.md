@@ -3,8 +3,8 @@ id: ADR-075
 title: Knowledge-to-execution enforcement is a mandatory policy boundary
 status: Accepted
 date: 2026-08-30
-updated: 2026-08-30
-impl: unbuilt
+updated: 2026-08-31
+impl: built
 authors: [Stuart Kerr, Codex]
 tags: [architecture, enforcement, routing, swarms, adr, ddd, qa, release]
 supersedes: []
@@ -22,9 +22,7 @@ governs:
   - bin/install.mjs
   - scripts/doc-currency.mjs
   - scripts/convergence-manifest.mjs
-  - docs/ddd/0017-release-convergence-context.md
   - tests/unit/execution-policy.test.mjs
-  - tests/integration/execution-policy.test.mjs
 ---
 
 # ADR-075 — Knowledge-to-execution enforcement is a mandatory policy boundary
@@ -167,13 +165,16 @@ red until all required assets exist.
 
 ## Current implementation status
 
-`Accepted, partially implemented.` The deterministic execution classifier is implemented and in the
-canonical PR gate, and host-only update now has a defined degraded-KB path that can still converge
+`Accepted, built with follow-on criteria.` The deterministic execution classifier and the enforced live-evidence
+preflight are implemented and in the canonical contract lane, and host-only update now has a defined degraded-KB path that can still converge
 the executable plugin/spine. Existing grounding, currency, wiring, convergence, and release gates
 remain active. The cross-host dispatch, ADR/DDD reconciliation receipt, dual-seat receipt, and
 architecture-to-test graph remain unbuilt until their acceptance criteria pass on both supported
 host paths.
 
 ## Currency log
+| 2026-08-31 | Added the executable preflight: consequential delegation now requires fresh successful Brain grounding plus an exact append-only project AgentDB checkpoint receipt before routing, and API-backed execution remains refused when a native host is available. | `scripts/execution-preflight.mjs`; `scripts/execution-policy.mjs`; `tests/unit/execution-preflight.test.mjs`; canonical contract lane. |
+| 2026-08-31 | Reconciled after the canonical QA runner changed from serial fail-fast execution to concurrent independent-lane collection. | `scripts/qa-runner.mjs` now preserves this ADR's enforcement boundary while ensuring one failed lane cannot hide later policy failures; `tests/unit/qa-runner-concurrency.test.mjs` locks that behavior. |
+
 
 | 2026-08-30 | Created after a live audit showed that correct Brain guidance could still be bypassed by selecting Ruflo's API-backed executor instead of the native subscription executor. | `plugin/skills/ruvnet-brain/SKILL.md`, `docs/adr/0061-subscription-only-dual-host-deliberation.md`, `plugin/scripts/route-dispatch.sh`, and the failed Ruflo execution receipt in the session record. |

@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readRvfGenerations, sha256File } from './rvf-generation.mjs';
 import { canonicalJson, coverageGenerationFor, digest, validateGistAggregateReceipt } from './coverage-integrity.mjs';
+import { repositoryNames } from '../kb/card-lane.mjs';
 
 export { canonicalJson, digest } from './coverage-integrity.mjs';
 
@@ -272,7 +273,15 @@ export function classifyGist(gist, evidence) {
   };
 }
 
-function artifactEvidence(kbDir, ledger, cardStores, name) {
+// ALIAS-AWARE, BECAUSE THE ROUTER IS. `cardStores` holds card HEADINGS; a store reachable only
+// under an alias (e.g. `metaharness` via its `## agent-harness-generator` card) has no heading of
+// its own, so a direct `cardStores.has(store)` reports it card-absent even though the router finds
+// it. `kb/store-root.mjs`'s `darkStores()` and `scripts/brain-score.mjs`'s `readCoverage()` were
+// already fixed for this exact conflation (ADR-058; metaharness is the standing example in both);
+// this sibling computation, which feeds the committed `data/source-coverage.json` and
+// `docs/RUVNET-COVERAGE.md` (ADR-069), never received it. `repositoryNames` is the router's own
+// resolver (kb/card-lane.mjs), imported rather than reimplemented.
+export function artifactEvidence(kbDir, ledger, cardStores, name) {
   const store = storeName(name);
   const receipt = Object.entries(ledger.stores).find(([key]) => key.toLowerCase() === store)?.[1] || null;
   const rvfFile = receipt?.file || `${store}.big.rvf`;
@@ -284,7 +293,7 @@ function artifactEvidence(kbDir, ledger, cardStores, name) {
     bytesVerified: Boolean(rvfPresent && receipt?.sha256 && sha256File(rvfPath) === receipt.sha256),
     passagesPresent: fs.existsSync(path.join(kbDir, `${store}.passages.jsonl`))
       && fs.statSync(path.join(kbDir, `${store}.passages.jsonl`)).size > 0,
-    cardPresent: cardStores.has(store),
+    cardPresent: repositoryNames(store, kbDir).some((alias) => cardStores.has(storeName(alias))),
   };
 }
 

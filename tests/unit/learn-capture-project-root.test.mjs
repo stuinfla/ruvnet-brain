@@ -144,6 +144,7 @@ describe('issue #134 — the invariant is pinned in source, on every platform', 
     expect(writer, 'learn-capture.sh must consult the variable the flush honours')
       .toMatch(/RUVNET_BRAIN_PROJECT_DIR/);
     expect(reader).toMatch(/RUVNET_BRAIN_PROJECT_DIR/);
+    expect(reader).toMatch(/projectDirectory\(\{ env: process\.env \}\)/);
     expect(writer, 'and must not fall back to a bare $PWD queue path')
       .not.toMatch(/DIR="\$PWD\/\.swarm/);
   });

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runHostMatrix } from './host-install-matrix.mjs';
+import { runHostMatrixAsync } from './host-install-matrix.mjs';
 
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const locate = (name) => {
@@ -50,7 +50,7 @@ export function stagedHostVerifier({ assets, identity }) {
         // install shape than the one that runs after publication — so the two halves of a release
         // were judging different things and could not be compared. Only the STAGED-vs-PUBLISHED
         // difference is real, and it is now a named variant rather than a second implementation.
-        const matrix = runHostMatrix({
+        const matrix = await runHostMatrixAsync({
           packageRoot: prepared.packageRoot,
           version: identity.version,
           variant: 'staged',

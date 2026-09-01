@@ -23,5 +23,10 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Generate convergence manifest for the exact checked-out candidate
+        # Pull requests run on a synthetic merge ref, whose content identity differs from the
+        # branch tip. Generate the manifest inside that exact checkout so the freshness gate never
+        # consumes a branch-stale Hubble/convergence snapshot.
+        run: npm run convergence:write
       - name: Run the bounded exact-SHA QA contract
         run: npm run qa:pr

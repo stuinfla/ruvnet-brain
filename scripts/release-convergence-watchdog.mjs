@@ -11,18 +11,16 @@
  * for a month.
  *
  * WHAT IT WILL NOT DO. It does not publish. `scripts/self-update.mjs:56` refuses `--publish` and
- * only `protected-release.yml` may create a release, publish npm, or move a dist-tag. This script
- * DISPATCHES that workflow — the sanctioned path — and never substitutes for it. Every safety gate
- * (exact-SHA evidence, clean worktree, release-proof, host verification, post-publication seal)
- * still runs inside the workflow exactly as designed. Bypassing them to "get it done while nobody
- * is looking" would be the worst possible reading of an instruction to finish the job.
+ * `release-cycle.yml` is the sole release-control entrypoint. This watchdog is report-only: it
+ * never dispatches `protected-release.yml` directly and cannot manufacture the signed independent
+ * review bundle required by the coordinator.
  *
  * IT IS A NO-OP UNLESS EVERY PRECONDITION HOLDS. It runs from the nightly, unattended, for weeks.
  * A watchdog that acts on a partial picture is worse than no watchdog, so it refuses on anything
  * unexpected and says why. The default outcome is "nothing happened, here is the reason".
  *
  *   node scripts/release-convergence-watchdog.mjs           # report only, never acts
- *   node scripts/release-convergence-watchdog.mjs --dispatch # act, but only if ALL gates pass
+ *   node scripts/release-convergence-watchdog.mjs --dispatch # compatibility flag; still reports only
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -104,16 +102,9 @@ if (!ci) stand_down(`no successful exact-SHA \`ci\` run at ${originMain.slice(0,
 if (!aggregate) stand_down(`no successful exact-SHA \`release-aggregate\` run at ${originMain.slice(0, 7)} yet`);
 
 log(`ALL GATES PASS — candidate=${originMain.slice(0, 7)} version=${version} ci=${ci.databaseId} aggregate=${aggregate.databaseId}`);
-if (!DISPATCH) {
-  log('report-only mode; pass --dispatch to actually invoke the protected release workflow.');
-  process.exit(0);
-}
-
-// ── 6. Dispatch THE SANCTIONED PUBLISHER. Nothing here publishes; the workflow does. ─────────────
-sh('gh', ['workflow', 'run', 'protected-release.yml', '--repo', REPO,
-  '-f', `candidate_sha=${originMain}`,
-  '-f', `version=${version}`,
-  '-f', `release_qe_run_id=${ci.databaseId}`,
-  '-f', `aggregate_run_id=${aggregate.databaseId}`]);
-log(`DISPATCHED protected-release for ${version}. The workflow owns every safety gate from here.`);
-log('Verify afterwards with: node scripts/published-surface-probe.mjs (D-version-coherence must PASS).');
+// ── 6. Never dispatch a publisher from the watchdog. ───────────────────────────────────────────
+// A signed Fable/GPT review bundle is an explicit input to release-cycle.yml. This unattended
+// process cannot author or safely discover that authorization, so even --dispatch must stand down.
+log(`READY FOR release-cycle, but no action taken for ${version} at ${originMain}`);
+log('Dispatch only .github/workflows/release-cycle.yml with candidate_sha and the signed review bundle.');
+log('The coordinator is the only workflow allowed to dispatch protected-release.');

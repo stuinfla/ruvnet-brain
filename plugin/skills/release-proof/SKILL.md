@@ -30,11 +30,12 @@ green.
 ## Candidate seal
 
 Generate the receipt from commands in the protected candidate workflow. Do not hand-author it.
-Dispatch `.github/workflows/protected-release.yml` only with the full candidate SHA, the exact
-current version, and the successful exact-SHA CI run ID whose named `release-qe` job produced
-`release-evidence-<sha>`. The workflow derives the artifact digest from those sealed bytes and checks
-every binding before creating its handoff and again at the Production boundary. Missing artifacts,
-pending/red jobs, malformed inputs, version splits, and byte mismatches stop before the publisher.
+Dispatch `.github/workflows/release-cycle.yml` only with the full candidate SHA and the signed
+Fable 5/GPT-5.6-Sol review bundle. The coordinator derives the successful exact-SHA CI and
+aggregate IDs, runs the independent review, and dispatches `protected-release.yml` only after
+that review succeeds. Do not dispatch `protected-release.yml` directly. The protected workflow
+derives the artifact digest from sealed bytes and checks every binding before creating its handoff
+and again at the Production boundary.
 Validate it from the repository with:
 
 ```bash
