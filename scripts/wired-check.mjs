@@ -120,6 +120,23 @@ const STANDALONE = [
     + 'ADR-059 (--cascade); never scheduled. Both policies share it on purpose: a number is only comparable '
     + 'to another number taken the same way'],
 
+  // SURFACED 2026-09-01 (this night's own candidate — bounding callerPattern to a real filename
+  // boundary, closing the corpus-aggregates.mjs/gates.mjs and aggregate.sha/gate.sh substring
+  // collisions, correctly flips this from a phantom "wired" to a genuinely empty caller list).
+  // Verified by direct repo-wide grep for a real, word-bounded `gate.sh` reference: every hit is
+  // prose (this file's own comments, ci.yml's header, lesson-lifecycle.mjs's example) or gate.sh's
+  // own header — never an invocation. Its own header + body confirm the shape: rebuilds the
+  // concepts/capability layer (node scripts/build-concepts.mjs, kb/forge-big.mjs) and runs three
+  // full prove.mjs question batteries — the same expensive, human-triggered benchmark-harness class
+  // as rerank-cap-eval/rerank-cap-warm-ab above, not a CI/pre-push step (neither references it by
+  // invocation; scripts/git-hooks/pre-push:135 only names it in a comment about this exact gate).
+  ['gate', 'human-run benchmark harness — rebuilds the concepts/capability layer and runs the three '
+    + 'prove.mjs pass/fail batteries (DESCRIBED-PROOF/PROOF/HELIX-DEMO-NOHELIX); expensive (a full KB '
+    + 'rebuild plus 3 question-battery runs) and never scheduled or wired into CI/pre-push — same class '
+    + 'as rerank-cap-eval.mjs/rerank-cap-warm-ab.mjs above. Its only prior "wired" status was phantom, '
+    + 'via callerPattern\'s pre-fix substring blindness (aggregate.sha/version-bump-gate.sh); this is '
+    + 'the honest classification for the real, always-standalone tool underneath that false positive'],
+
   // ADDED 2026-07-23 (P7 sweep, ADR-037 honesty bar — each reason verified against reality below,
   // not written blind. See PROGRESS.md / the wiring report for the per-item evidence.)
   //
@@ -372,11 +389,30 @@ function callerFiles(repo = REPO) {
  * A caller references the file either inside a quoted string — covering `import ... from '...'`,
  * `require('...')`, npm scripts, and a workflow's `run:` — or directly after node/bash/sh. A bare
  * mention in prose does not match, which is what let a comment wire a module in v1.
+ *
+ * BOUNDED, both sides (2026-09-01, enforcement-integrity night). Without a boundary, this matched
+ * `fileName` as a bare SUBSTRING anywhere in the surrounding text — including inside an unrelated,
+ * longer filename that merely happens to end (or continue) with the same characters. `gates.mjs` is
+ * a trailing substring of `corpus-aggregates.mjs` ("aggre-GATES.mjs"); `version.mjs` is a trailing
+ * substring of both `set-version.mjs` and `sync-version.mjs`. Reproduced live in this repo:
+ * `scripts/gates.mjs` was reported "wired" partly via two PHANTOM callers — `corpus-reconcile.mjs`
+ * and this very file — whose only real reference is to the unrelated `corpus-aggregates.mjs`; delete
+ * that string anywhere and the false caller vanishes with it. This is the same defect class this
+ * file has fixed three times already (prose mention / comment usage-example / npm-script definition
+ * all "name a module without calling it") in a fourth shape: one real module's name swallowing
+ * another's. The lookaround requires a real filename boundary (start of match / `/` / a quote / other
+ * delimiter) on both sides, so a name embedded inside a longer, unrelated, hyphen-joined or
+ * concatenated filename no longer counts — while `./gates.mjs`, `scripts/gates.mjs`, and a bare
+ * `'gates.mjs'` still do. The trailing side deliberately excludes `.` from the disallowed set: a
+ * real reference is very often followed by ordinary prose punctuation (a sentence-ending period, as
+ * in this repo's own `corpus-seed.yml`, "...call scripts/corpus-seed-publish.mjs."), and rejecting
+ * that would trade one false-caller class for a false-negative one.
  */
 export function callerPattern(fileName) {
   const q = fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const bounded = `(?<![\\w.-])${q}(?![\\w-])`;
     // eslint-disable-next-line no-useless-escape
-  return new RegExp(`["'\`][^"'\`\\n]*${q}|(?:node|bash|sh|exec|spawn\\w*)\\s+[^\\n]*${q}`);
+  return new RegExp(`["'\`][^"'\`\\n]*${bounded}|(?:node|bash|sh|exec|spawn\\w*)\\s+[^\\n]*${bounded}`);
 }
 
 /**
