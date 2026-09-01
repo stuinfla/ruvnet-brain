@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-08-30
+updated: 2026-09-01
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -131,6 +131,7 @@ committed config).
 
 ## Currency log
 
+| 2026-09-01 | Sixth+ night ran, rotated to SLOT 2 — deep `enforcement-integrity`, scans `lesson-delivery` + `gate-teeth` — after the STEP 1.1 learning signal fired (`brain-currency` had produced 5 related findings across 4 prior nights). Filed #228 with draft candidate PR #229: `scripts/wired-check.mjs`'s `callerPattern()` had no filename-boundary check, letting an unrelated module's name that is a trailing substring of another's (or of a bare code expression) register as a phantom caller — live in this repo, hiding `scripts/gate.sh` as falsely "wired". No decision in this ADR changed; reviewed only to re-anchor `docs/dream-cycle/LEDGER.md`'s drift clock after tonight's row. `autoMerge: false` remains disabled. | #228 / #229 |
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
 | 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |
