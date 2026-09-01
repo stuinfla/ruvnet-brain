@@ -407,6 +407,17 @@ function callerFiles(repo = REPO) {
  * real reference is very often followed by ordinary prose punctuation (a sentence-ending period, as
  * in this repo's own `corpus-seed.yml`, "...call scripts/corpus-seed-publish.mjs."), and rejecting
  * that would trade one false-caller class for a false-negative one.
+ *
+ * KNOWN RESIDUAL ASYMMETRY (independent critic pass, 2026-09-01): because `.` is excluded only from
+ * the trailing side, a string like `"scripts/version.mjs.map"` would still register as a phantom
+ * caller of `version.mjs` — the mirror-image of the collision this fix closes, one character
+ * narrower. Grepped every caller-shaped file in this repo for that exact shape (a shippable
+ * basename immediately followed by a literal dot then a word/hyphen character): zero hits today.
+ * Left open rather than closed with a second exclusion, because the fix
+ * that closes it is the SAME one already rejected above for the leading side (dot-exclusion breaks
+ * real sentence punctuation) applied in reverse — it would need to distinguish "punctuation dot" from
+ * "next path segment dot" structurally, not by a bare character-class tweak, and that is a second
+ * conceptual change, not this one.
  */
 export function callerPattern(fileName) {
   const q = fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
