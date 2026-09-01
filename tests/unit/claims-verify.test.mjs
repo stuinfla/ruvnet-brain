@@ -21,10 +21,14 @@ import {
   verifyVersionSurfaces,
   verifyChunkCountSurfaces,
   computePublicChunkTotal,
+  countBuiltStores,
+  brainCensus,
   CHUNK_SURFACES,
+  PRIVATE_STORES_FILE,
   EXPECTED_STRATA,
   readBadgePct,
 } from '../../scripts/claims-verify.mjs';
+import { storeRoot } from '../../kb/store-root.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'claims-verify-'));
@@ -154,6 +158,14 @@ describe('verifyCheaperFactor — ~56× regenerates from the corpus, or skips LO
     expect(res.status).toBe('PASS');
     expect(res.evidence).toContain('56.2');
   });
+
+  it('defaults to the canonical store root (kb/store-root.mjs), not <repo>/kb', async () => {
+    const res = await verifyCheaperFactor();
+    expect(['PASS', 'SKIP']).toContain(res.status);
+    // storeRoot() honors KB_DIR/RUVNET_BRAIN_KB, so this can legitimately equal <repo>/kb under an
+    // explicit override — the invariant is that the default TRACKS storeRoot(), not a hardcoded path.
+    if (res.status === 'SKIP') expect(res.evidence).toContain(storeRoot());
+  });
 });
 
 describe('verifyCoverageBadge — the badge % is RE-DERIVED from the real coverage run, never string-matched', () => {
@@ -265,9 +277,14 @@ describe('verifyChunkCountSurfaces — the advertised chunk count regenerates, o
     expect(res.evidence).toContain('brain not installed');
   });
 
+  // mkBrain colocates the fence file with the idmap sidecars for fixture convenience; production
+  // does not (see the canonical-root tests below), so every call here passes the fence path
+  // explicitly rather than relying on the (now real-repo-pointing) default.
+  const fence = (kb) => path.join(kb, 'PRIVATE-STORES.json');
+
   it('computePublicChunkTotal sums public stores only — the private fence holds', () => {
     const kb = mkBrain('kb-fence');
-    expect(computePublicChunkTotal(kb)).toEqual({ total: 1234, stores: 2 });
+    expect(computePublicChunkTotal(kb, fence(kb))).toEqual({ total: 1234, stores: 2 });
   });
 
   it('passes when every surface quotes the regenerated count', () => {
@@ -275,7 +292,7 @@ describe('verifyChunkCountSurfaces — the advertised chunk count regenerates, o
     const root = path.join(TMP, 'root-good');
     fs.mkdirSync(root, { recursive: true });
     fs.writeFileSync(path.join(root, 'S.md'), 'That is **1,234 source chunks** in the brain.\n');
-    const res = verifyChunkCountSurfaces(kb, ['S.md'], root);
+    const res = verifyChunkCountSurfaces(kb, ['S.md'], root, fence(kb));
     expect(res.status).toBe('PASS');
     expect(res.evidence).toContain('1,234');
   });
@@ -285,7 +302,7 @@ describe('verifyChunkCountSurfaces — the advertised chunk count regenerates, o
     const root = path.join(TMP, 'root-stale');
     fs.mkdirSync(root, { recursive: true });
     fs.writeFileSync(path.join(root, 'S.md'), '1,234 chunks here, but elsewhere 128,994 source chunks.\n');
-    const res = verifyChunkCountSurfaces(kb, ['S.md'], root);
+    const res = verifyChunkCountSurfaces(kb, ['S.md'], root, fence(kb));
     expect(res.status).toBe('FAIL');
     expect(res.evidence).toContain('128,994');
   });
@@ -295,7 +312,7 @@ describe('verifyChunkCountSurfaces — the advertised chunk count regenerates, o
     const root = path.join(TMP, 'root-missing');
     fs.mkdirSync(root, { recursive: true });
     fs.writeFileSync(path.join(root, 'S.md'), 'A brain of unspecified size.\n');
-    const res = verifyChunkCountSurfaces(kb, ['S.md'], root);
+    const res = verifyChunkCountSurfaces(kb, ['S.md'], root, fence(kb));
     expect(res.status).toBe('FAIL');
     expect(res.evidence).toContain('does not contain');
   });
@@ -308,7 +325,7 @@ describe('verifyChunkCountSurfaces — the advertised chunk count regenerates, o
       path.join(root, 'S.html'),
       '1,234 source chunks. <span data-count="9999">1,234</span> chunks\n',
     );
-    const res = verifyChunkCountSurfaces(kb, ['S.html'], root);
+    const res = verifyChunkCountSurfaces(kb, ['S.html'], root, fence(kb));
     expect(res.status).toBe('FAIL');
     expect(res.evidence).toContain('data-count="9999"');
   });
@@ -317,6 +334,54 @@ describe('verifyChunkCountSurfaces — the advertised chunk count regenerates, o
     const res = verifyChunkCountSurfaces();
     expect(['PASS', 'SKIP']).toContain(res.status);
     if (res.status === 'PASS') expect(res.evidence).toContain(`${CHUNK_SURFACES.length} surfaces`);
+  });
+
+  // Before this fix, computePublicChunkTotal/countBuiltStores/brainCensus/verifyChunkCountSurfaces
+  // all defaulted kbDir to `<repo>/kb`, the same anti-pattern kb/forge-currency.mjs's brainKnownSet()
+  // carried until PR #222 (kb/store-root.mjs's own header: "<repo>/kb — a gitignored BUILD
+  // WORKSPACE, never a second brain"). A host with a real installed brain at the canonical root but
+  // nothing under `<repo>/kb` reported a false "brain not installed" SKIP. Proven here via
+  // storeRoot()'s own documented RUVNET_BRAIN_KB override — passing `undefined` explicitly (as
+  // opposed to omitting the arg) still triggers the default, so this exercises the exact same
+  // default-parameter expression a real zero-arg call does.
+  describe('kbDir sources from storeRoot(), not a hardcoded <repo>/kb', () => {
+    let prevRoot;
+    const withRoot = (dir, fn) => {
+      prevRoot = process.env.RUVNET_BRAIN_KB;
+      process.env.RUVNET_BRAIN_KB = dir;
+      try { return fn(); } finally {
+        if (prevRoot === undefined) delete process.env.RUVNET_BRAIN_KB; else process.env.RUVNET_BRAIN_KB = prevRoot;
+      }
+    };
+
+    it('computePublicChunkTotal / countBuiltStores / brainCensus follow RUVNET_BRAIN_KB', () => {
+      const kb = mkBrain('kb-env-root');
+      withRoot(kb, () => {
+        expect(computePublicChunkTotal(undefined, fence(kb))).toEqual({ total: 1234, stores: 2 });
+        expect(countBuiltStores()).toBe(3); // private fence not applied here — all 3 idmaps count
+        expect(brainCensus(undefined, fence(kb))).toEqual({ chunks: 1234, publicStores: 2, builtStores: 3 });
+      });
+    });
+
+    it('verifyChunkCountSurfaces follows RUVNET_BRAIN_KB for the zero-arg (real CLI) call shape', () => {
+      const kb = mkBrain('kb-env-root-verify');
+      const root = path.join(TMP, 'root-env-root-verify');
+      fs.mkdirSync(root, { recursive: true });
+      fs.writeFileSync(path.join(root, 'S.md'), 'That is **1,234 source chunks** in the brain.\n');
+      withRoot(kb, () => {
+        const res = verifyChunkCountSurfaces(undefined, ['S.md'], root, fence(kb));
+        expect(res.status).toBe('PASS');
+        expect(res.evidence).toContain('1,234');
+      });
+    });
+  });
+
+  it('keeps the private-stores fence pinned to the repo-committed file regardless of kbDir', () => {
+    // The fence is a policy file this repo commits at a fixed path (scripts/build-bundle.mjs reads
+    // the identical path); it must not silently empty out just because kbDir now points at the
+    // canonical store root instead of <repo>/kb.
+    expect(PRIVATE_STORES_FILE).toBe(path.join(ROOT, 'kb', 'PRIVATE-STORES.json'));
+    expect(fs.existsSync(PRIVATE_STORES_FILE)).toBe(true);
   });
 });
 

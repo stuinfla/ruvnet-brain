@@ -20,6 +20,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { storeRoot } from '../kb/store-root.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -110,10 +111,12 @@ export function verifyHeldOutStrata(file = path.join(ROOT, 'evals', 'held-out.js
 // (with the 51.33 figure alongside it). ~56× = $15 / $0.267 ≈ 56.2. We re-find both corpus
 // strings with a plain streaming grep (first match wins) and re-do the arithmetic. The passages
 // file ships with the 512MB brain, which CI does not have — absent file is a LOUD SKIP, never
-// a silent pass.
-export async function verifyCheaperFactor(file = path.join(ROOT, 'kb', 'metaharness.passages.jsonl')) {
+// a silent pass. Default reads the canonical store root (kb/store-root.mjs), not <repo>/kb — that
+// directory is a gitignored build workspace the installed brain never lands in (see kbDir on the
+// census functions below for the same fix).
+export async function verifyCheaperFactor(file = path.join(storeRoot(), 'metaharness.passages.jsonl')) {
   if (!fs.existsSync(file)) {
-    return skip(`brain not installed — ${path.relative(ROOT, file)} absent, cannot re-derive ~56× from corpus (runs on machines with the brain)`);
+    return skip(`brain not installed — ${file} absent, cannot re-derive ~56× from corpus (runs on machines with the brain)`);
   }
 
   const needles = ['$0.267', '51.33'];
@@ -368,11 +371,21 @@ export async function verifyCoverageBadge(
 // the fence). Every user-facing surface that quotes the number must quote THIS number — the count
 // sat at a stale 128,994 across 10+ surfaces after a rebuild moved it (2026-07-10 gremlin hunt).
 // The sidecars ship with the brain, which bare CI does not have — absent kb dir is a LOUD SKIP.
+//
+// kbDir (where the idmap sidecars live) and the private-stores fence are two DIFFERENT facts, same
+// conflation kb/store-root.mjs's header names: the fence is a small policy file this repo commits at
+// a fixed path (scripts/build-bundle.mjs reads the identical path), while the sidecars ship with the
+// installed brain at the canonical store root (kb/store-root.mjs's storeRoot(), not <repo>/kb — that
+// directory is a gitignored build workspace the installed brain never lands in outside the release
+// build's own KB_DIR override, which storeRoot() already honors). Defaulting kbDir to
+// `path.join(ROOT, 'kb')` — the exact anti-pattern kb/forge-currency.mjs's brainKnownSet() carried
+// until PR #222 — made this check silently SKIP on any machine with a real installed brain outside
+// the repo checkout, never re-deriving the count it exists to police.
 export const CHUNK_SURFACES = ['README.md', 'explainer/index.html', 'explainer/llms.txt', 'explainer/llms-full.txt'];
+export const PRIVATE_STORES_FILE = path.join(ROOT, 'kb', 'PRIVATE-STORES.json');
 
-export function computePublicChunkTotal(kbDir = path.join(ROOT, 'kb')) {
-  const privFile = path.join(kbDir, 'PRIVATE-STORES.json');
-  const priv = new Set(fs.existsSync(privFile) ? JSON.parse(fs.readFileSync(privFile, 'utf8')).privateStores : []);
+export function computePublicChunkTotal(kbDir = storeRoot(), privateStoresFile = PRIVATE_STORES_FILE) {
+  const priv = new Set(fs.existsSync(privateStoresFile) ? JSON.parse(fs.readFileSync(privateStoresFile, 'utf8')).privateStores : []);
   let total = 0, stores = 0;
   for (const f of fs.readdirSync(kbDir)) {
     const m = f.match(/^(.+)\.big\.rvf\.idmap\.json$/);
@@ -384,13 +397,13 @@ export function computePublicChunkTotal(kbDir = path.join(ROOT, 'kb')) {
 }
 
 /** Every built store on disk, private ones included — what "N built stores incl. private" advertises. */
-export function countBuiltStores(kbDir = path.join(ROOT, 'kb')) {
+export function countBuiltStores(kbDir = storeRoot()) {
   return fs.readdirSync(kbDir).filter((f) => /\.big\.rvf\.idmap\.json$/.test(f)).length;
 }
 
 /** The three brain census numbers every public surface quotes, all from the same artifacts. */
-export function brainCensus(kbDir = path.join(ROOT, 'kb')) {
-  const { total, stores } = computePublicChunkTotal(kbDir);
+export function brainCensus(kbDir = storeRoot(), privateStoresFile = PRIVATE_STORES_FILE) {
+  const { total, stores } = computePublicChunkTotal(kbDir, privateStoresFile);
   return { chunks: total, publicStores: stores, builtStores: countBuiltStores(kbDir) };
 }
 
@@ -409,11 +422,11 @@ export const SURFACE_CLAIM_RULES = [
 
 const fmtNum = (n, fmt) => (fmt === 'comma' ? n.toLocaleString('en-US') : String(n));
 
-export function verifyChunkCountSurfaces(kbDir = path.join(ROOT, 'kb'), surfaces = CHUNK_SURFACES, root = ROOT) {
+export function verifyChunkCountSurfaces(kbDir = storeRoot(), surfaces = CHUNK_SURFACES, root = ROOT, privateStoresFile = PRIVATE_STORES_FILE) {
   if (!fs.existsSync(kbDir) || !fs.readdirSync(kbDir).some((f) => f.endsWith('.big.rvf.idmap.json'))) {
-    return skip('brain not installed — kb/*.big.rvf.idmap.json absent, cannot re-derive the chunk count (runs on machines with the brain)');
+    return skip(`brain not installed — ${path.join(kbDir, '*.big.rvf.idmap.json')} absent, cannot re-derive the chunk count (runs on machines with the brain)`);
   }
-  const census = brainCensus(kbDir);
+  const census = brainCensus(kbDir, privateStoresFile);
   const want = census.chunks.toLocaleString('en-US');
 
   const problems = [];
@@ -490,7 +503,8 @@ function restampRule(s, rule, value) {
 
 export async function applyFix({
   root = ROOT,
-  kbDir = path.join(root, 'kb'),
+  kbDir = storeRoot(),
+  privateStoresFile = PRIVATE_STORES_FILE,
   surfaces = CHUNK_SURFACES,
   readmeFile = path.join(root, 'README.md'),
   summaryFile = path.join(root, 'coverage', 'coverage-summary.json'),
@@ -512,7 +526,7 @@ export async function applyFix({
   if (!haveBrain) {
     report.notes.push('brain not installed — chunk/store counts left untouched (nothing to re-derive them from)');
   } else {
-    const census = brainCensus(kbDir);
+    const census = brainCensus(kbDir, privateStoresFile);
     report.census = census;
     for (const rel of surfaces) {
       const { p, s } = readSurface(rel);
