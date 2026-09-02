@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-08-30
+updated: 2026-09-02
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -130,6 +130,8 @@ bootstrap prompt (recommended over a frozen prompt, so the schedule can never dr
 committed config).
 
 ## Currency log
+
+| 2026-09-02 | Fifth+ night ran, SLOT 2 — deep `enforcement-integrity`, scans `lesson-delivery` + `gate-teeth`. Filed #232 with draft candidate PR #233: `plugin/scripts/version-bump-gate.sh`'s `field()` truncated a JSON-escaped quote, letting a compound `command` (e.g. `git commit -m "wip" && git push origin main`) silently bypass the version-bump push gate. No decision in this ADR changed; reviewed only to re-anchor `docs/dream-cycle/LEDGER.md`'s drift clock after tonight's row. `autoMerge: false` remains disabled. | #232 / #233 |
 
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 

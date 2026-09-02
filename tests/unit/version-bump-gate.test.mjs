@@ -56,6 +56,21 @@ describe.skipIf(!hasBash || !hasGit || process.platform === 'win32')('version-bu
     expect(r.stderr).toMatch(/sync-version/); // teaches the remedy
   });
 
+  // field()'s regex extracted a quoted JSON value with `"([^"]*)"` — no concept of a JSON-escaped
+  // `\"`, which is still a literal `"` byte in the raw payload text. A real compound command whose
+  // command string embeds a quote BEFORE "git push" (routine: `-m "…"`, `echo "…"`) truncated CMD at
+  // that first quote, so the later `[[ $CMD == *"git push"* ]]` substring check silently missed a
+  // push it should have caught — the same class of bug issue #13/design-wall.sh already fixed once
+  // (see hook-input.mjs's header), reintroduced here because this file kept its own inline field().
+  it('BLOCKS a git push even when the command string has an embedded quote before it', () => {
+    const { work } = fixtureRepo();
+    fs.writeFileSync(path.join(work, 'feature.mjs'), 'export const shipped = true;\n');
+    git(work, 'add', '-A'); git(work, 'commit', '-m', 'new feature, no bump');
+    const r = runGate(work, 'git commit -m "wip" && git push origin main');
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/NO version increment/);
+  });
+
   it('OPENS when the outgoing commits include a bump', () => {
     const { work } = fixtureRepo();
     fs.writeFileSync(path.join(work, 'feature.mjs'), 'export const shipped = true;\n');

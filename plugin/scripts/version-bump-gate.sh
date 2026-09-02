@@ -42,7 +42,18 @@ PROFILE="${MODEL_ROUTER_PROFILE:-$HOME/.claude/model-router/profile.json}"
 [ -f "$PROFILE" ] || exit 0
 [ "${RUVNET_SKIP_VERSION_GATE:-0}" = "1" ] && exit 0
 
-field() { local re="\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\""; [[ $INPUT =~ $re ]] && printf '%s' "${BASH_REMATCH[1]}"; }
+# BOUNDED, escape-aware (2026-09-02, enforcement-integrity night). `[^"]*` cannot cross a `"`, and a
+# JSON-escaped `\"` inside the value is still a literal `"` byte in this raw text — so a `command`
+# containing ANY quote before the part being searched for got silently TRUNCATED there. `command` is
+# the one field this gate reads that routinely carries quotes (`-m "…"`, `echo "…"`), so a compound
+# command like `git commit -m "wip" && git push origin main` truncated CMD at `\"wip` and the later
+# `*"git push"*` check never saw the push — the gate opened a push it exists to block. This is the
+# exact class issue #13 and design-wall.sh's rewrite already fixed once (see hook-input.mjs's header);
+# this file kept its own inline field() rather than adopting that shared parser because it is
+# deliberately dependency-free (see the file header: "bash builtins + git only"), so the fix stays
+# in-pattern: the capture now walks `(\\.[^"\\]*)*`, one escaped-pair-or-plain-run at a time, so an
+# embedded `\"` is consumed as part of the value instead of ending the match early.
+field() { local re="\"$1\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]*(\\\\.[^\"\\\\]*)*)\""; [[ $INPUT =~ $re ]] && printf '%s' "${BASH_REMATCH[1]}"; }
 [ "$(field tool_name)" = "Bash" ] || exit 0
 CMD=$(field command)
 [[ $CMD == *"git push"* ]] || exit 0
