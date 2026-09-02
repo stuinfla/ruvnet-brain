@@ -671,6 +671,42 @@ describe('PER-SESSION FREQUENCY CAP: a reminder stops repeating; a refusal never
       expect(r.stdout).toContain('ADVMARKD');
     }
   });
+
+  test('an advisory trimmed into the COMPACT overflow list is still capped by MAX_SHOWS', () => {
+    // Two concurrent decision points (a real event carries several) mean lesson-presentation.mjs
+    // seeds one lesson per trigger, then the nudge-budget loop admits the first into `inForce`
+    // unconditionally and pushes the rest into `compactExtras` ("Also live at this moment") once the
+    // budget is spent. lesson-gate.mjs's frequency-cap persist loop only walks `inForce` — a lesson
+    // that always lands in `compactExtras` (e.g. because an opted-in BLOCK lesson — cap-exempt by
+    // design, so it never stops out-competing it for budget — always wins the tiny budget) is shown,
+    // in compact form, on EVERY qualifying event and never once counted, so it nags forever regardless
+    // of RUVNET_LESSON_MAX_SHOWS. That is exactly the unbounded-nag failure mode the cap exists to
+    // prevent (see the file's own "PER-SESSION FREQUENCY CAP" comment above). The winner is an
+    // opted-in BLOCK (not just a high-repeatCount advisory) so it stays undefeated across many calls —
+    // an advisory winner would itself hit the cap and stop competing, letting `overflow` win the
+    // freed-up budget and masking the bug behind an unrelated one.
+    const winner = blockLesson();                              // enforcement:block, cap-exempt once opted in
+    writeOptIn([winner.id]);
+    const overflow = blockLesson({
+      id: 'OVF-always-trimmed-to-compact', trigger: 'report-status', enforcement: 'checklist', check: null,
+      statement: 'State progress only from a channel capable of observing it, COMPACTMARK.',
+      repeatCount: 1,
+    });
+    writeStore([winner, overflow]);
+    // A budget that fits `winner` alone but nothing more — the first candidate is admitted
+    // unconditionally, so `overflow` is guaranteed to be trimmed into compactExtras every time.
+    // `winner` blocks (exit 2, reason on stderr), and the block's own rendered body carries the same
+    // compact section — so stderr is where to look, same content, different stream.
+    const env = { RUVNET_LESSON_MAX_SHOWS: '2', RUVNET_NUDGE_BUDGET: '1' };
+    const fire = (sid) => runGate(
+      ['--event', 'PreToolUse', '--trigger', 'claim-done', '--trigger', 'report-status', '--session', sid],
+      env,
+    );
+    const r1 = fire('ovf'); expect(r1.code).toBe(2); expect(r1.stderr).toContain('COMPACTMARK'); // 1 of 2
+    const r2 = fire('ovf'); expect(r2.code).toBe(2); expect(r2.stderr).toContain('COMPACTMARK'); // 2 of 2
+    const r3 = fire('ovf'); expect(r3.code).toBe(2);
+    expect(r3.stderr).not.toContain('COMPACTMARK'); // capped — the nag stops, same as any advisory
+  });
 });
 
 /**
