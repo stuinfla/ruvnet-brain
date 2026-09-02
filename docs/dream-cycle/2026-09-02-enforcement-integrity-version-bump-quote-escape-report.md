@@ -34,13 +34,18 @@ The fix therefore stays a minimal, in-pattern bash-only regex correction rather 
 migration — the smallest change that closes the hole without abandoning the file's own stated
 design constraint.
 
-Two sibling files still carry the identical unfixed `field()` — `plugin/scripts/protect-brain-state.sh`
-(matches `file_path`, rarely quote-bearing) and `plugin/scripts/route-dispatch.sh` (matches
+Three sibling files still carry the identical unfixed `field()` — `plugin/scripts/protect-brain-state.sh`
+(matches `file_path`, rarely quote-bearing), `plugin/scripts/route-dispatch.sh` (matches
 `tool_name`/`subagent_type`/`model`/`description`, structured API fields, not free text, and its own
-header explicitly reasons about staying dependency-free). Left open rather than folded into this
-PR — `command` is the only field among all of these genuinely and routinely quote-bearing in normal
-use, and bundling three files under one PR would widen a bounded fix into a sweep. Disclosed here,
-not silently left.
+header explicitly reasons about staying dependency-free), and `plugin/scripts/ground-before-write.sh`
+(matches only `tool_name` and `file_path`; its own header already carries a reasoned exception —
+"the #13 quote-truncation that justified hook-input.mjs for design-wall does NOT bite here... a
+truncated path merely fails the extension check → exit 0, harmless" — independently confirmed
+correct by re-reading its call sites, not merely trusting the comment). Left open rather than folded
+into this PR — `command` is the only field among all of these genuinely and routinely quote-bearing
+in normal use with a substring-containment check, the exact shape that makes truncation dangerous;
+bundling four files under one PR would widen a bounded fix into a sweep. Disclosed here, not
+silently left.
 
 ## Hypothesis (frozen before implementation)
 
@@ -113,8 +118,29 @@ prior night's non-numeric candidates (PR #155, #159, #182, #229).
 ## Reward-Hack Check
 
 Independent adversarial critic (fresh agent, no shared context, given only the diff and repository,
-instructed to reproduce every claim itself rather than trust the diff's commentary) — see PR body
-for the full verdict recorded after this report was drafted.
+instructed to reproduce every claim itself rather than trust the diff's commentary) verdict:
+**CLEAR** on all six checks it ran.
+
+1. Repro RED→GREEN: independently reproduced via the same `git stash` isolation, byte-for-byte the
+   predicted `expected 0 to be 2`.
+2. Non-vacuity: extracted `field()`'s live definition and ran it directly against the real JSON
+   payload — confirmed `BASH_REMATCH[1]` captures the full command through the escaped segment. Its
+   own first hand-typed reproduction attempt (using one backslash instead of the file's actual two)
+   silently produced an empty match — cited as evidence of how easily this class reintroduces itself.
+3. ReDoS: fed the live script a 400KB pure-backslash payload and a 250KB payload of `\"` pairs,
+   both under 50ms, confirming the pattern is structurally linear (disjoint-class alternation, no
+   nested ambiguous quantifiers).
+4. Blast radius: `field()` is not shared — each file defines its own copy — so the fix cannot alter
+   behavior anywhere else; `tool_name` extraction is unaffected since it never contains quotes.
+5. Sibling files: independently traced `protect-brain-state.sh` and `route-dispatch.sh`'s actual
+   call sites and confirmed the lower-risk assessment (exact-match/presence checks, not
+   substring-containment on free text) — but flagged that a third sibling, `ground-before-write.sh`,
+   carries the identical unfixed `field()` and wasn't mentioned in the original draft of this
+   report. Added above (What's new) after independently confirming its own pre-existing header
+   comment's exception ("a truncated path merely fails the extension check → exit 0, harmless") is
+   accurate.
+6. Overclaiming: none found — the added comments are scoped strictly to this file and correctly
+   cite precedent.
 
 ## Security Review
 
@@ -163,7 +189,7 @@ on the candidate branch.
 
 ## Witness
 
-(computed after this report's final form — see PR body and ledger row)
+(computed below, see PR body — `WITNESS = sha256(sha256(this file) + SESSION_COMMIT)`)
 
 ## Recommendation
 
