@@ -329,7 +329,7 @@ const presentation = buildLessonPresentation({
   maxShows: MAX_SHOWS,
   nudgeBudget: NUDGE_CHAR_BUDGET,
 });
-const { inForce, blocking, blockCapable, body: renderedBody, advisoryContext } = presentation;
+const { inForce, blocking, blockCapable, shown: shownThisCall, body: renderedBody, advisoryContext } = presentation;
 const renderBody = () => renderedBody;
 
 // ── Emit ─────────────────────────────────────────────────────────────────────────────────────────
@@ -356,7 +356,10 @@ if (event) {
     st.sessions = st.sessions && typeof st.sessions === 'object' ? st.sessions : {};
     const prev = st.sessions[SID] && typeof st.sessions[SID] === 'object' ? st.sessions[SID] : {};
     const shown = prev.shown && typeof prev.shown === 'object' ? { ...prev.shown } : {};
-    for (const l of inForce) {
+    // Charge every lesson actually rendered — full (inForce) or compact (compactExtras, folded into
+    // `shownThisCall` by buildLessonPresentation) — or a lesson permanently trimmed to the compact
+    // line by budget competition nags every qualifying event forever, uncounted.
+    for (const l of shownThisCall) {
       if (capExempt(l)) continue;
       shown[l.id] = (Number.isInteger(shown[l.id]) && shown[l.id] > 0 ? shown[l.id] : 0) + 1;
     }
