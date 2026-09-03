@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.3.8-dev",
-  "sourceIdentity": "1323353d19bdd05ac63540af3a8bf83aa60dea3ac9b614b40d4de10f2c34ebeb",
+  "sourceIdentity": "abd96c1913429a96d240ad18f538e443fe87b41c5b48bfa321bca2f93352c831",
   "versionSurfaces": {
     "package.json": "4.3.8-dev",
     "plugin/.claude-plugin/plugin.json": "4.3.8-dev",
@@ -88,10 +88,11 @@
     "0073-agentdb-perennial-project-continuity.md",
     "0074-ruvnet-capability-claim-integrity.md",
     "0075-knowledge-to-execution-enforcement.md",
+    "0076-citation-header-spoofing-needs-a-structural-fix.md",
     "README.md"
   ],
-  "trackedFileCount": 1172,
-  "trackedFilesSha256": "e44671fef3f0245468223da0862d3e7317775fa62ee628c6b1fdb355c2c54789",
+  "trackedFileCount": 1173,
+  "trackedFilesSha256": "f1b4d6d4261ab9ca24a83c33a4a19ac4dcdf0d91025bd43e233cb64854c0597c",
   "ownershipChecks": [
     "version:check",
     "doc:currency",
