@@ -90,8 +90,11 @@ export function gradeQuestion(q, { grounded, citations, bannerPresent, receipt }
       return { grounded, routed: null, abstained, pass: abstained };
     case 'provenance':
       // The mechanism under test: IF a gist chunk wins, it must carry its own status banner.
-      // A better hit from the real repo is not a failure — it is better grounding.
-      return { grounded, routed: null, abstained, pass: !!grounded && (top?.repo !== 'ruv-gists' || bannerPresent) };
+      // A better hit from the real repo is not a failure — it is better grounding. "Wins" means
+      // the citation verify-citation.mjs actually resolved (`routedRepo`, same signal `routed`
+      // uses below) — not merely the raw top-ranked citation, which citationResolves() can walk
+      // past when it is unverified/fabricated (the sibling gap PR #187 closed for `routed`).
+      return { grounded, routed: null, abstained, pass: !!grounded && (routedRepo !== 'ruv-gists' || bannerPresent) };
     default:
       return { grounded, routed, abstained, pass: !!grounded && routed };
   }
