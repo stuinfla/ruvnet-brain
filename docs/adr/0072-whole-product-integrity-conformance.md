@@ -45,6 +45,12 @@ governs:
 
 **Status**: Accepted
 
+> **Reviewed 2026-09-04 (4.3.9 candidate).** The candidate strengthens two existing conformance
+> edges: publication handoff cannot appear before signed channel convergence, and every public-host
+> failure is retained in a digest-bound receipt before the lane exits. It does not complete this
+> ADR's remaining source-coverage work, and it does not claim 4.3.9 is public before terminal
+> `install-verified` evidence exists.
+
 Accepted by Stuart's 2026-08-21 direction; implementation is in progress and publication remains
 locked. Nothing in this document is a shipped-capability claim.
 
