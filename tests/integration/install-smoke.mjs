@@ -155,7 +155,11 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
     fs.writeFileSync(path.join(xen, 'package.json'), '{"name":"@xenova/transformers","version":"0.0.0-fixture"}\n');
     fs.mkdirSync(path.join(brainDir, 'node_modules', '@ruvector'), { recursive: true });
 
-    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, XDG_CACHE_HOME: cacheDir });
+    const r = runInstaller(['--doctor'], {
+      RUVNET_BRAIN_KB: brainDir,
+      RUVNET_BRAIN_HOME: path.join(cacheDir, 'brain-home'),
+      XDG_CACHE_HOME: cacheDir,
+    });
     assertVerdict(r, 0, '--doctor (complete brain dir = healthy)');
     const out = r.stdout || '';
     assert.match(out, /1 RuvNet repos? indexed/, `doctor must report the store it found; got:\n${out}`);
@@ -181,16 +185,16 @@ function completeBrainFixture() {
   fs.mkdirSync(xen, { recursive: true });
   fs.writeFileSync(path.join(xen, 'package.json'), '{"name":"@xenova/transformers","version":"0.0.0-fixture"}\n');
   fs.mkdirSync(path.join(brainDir, 'node_modules', '@ruvector'), { recursive: true });
-  return { brainDir, cacheDir };
+  return { brainDir, cacheDir, brainHome: path.join(cacheDir, 'brain-home') };
 }
 
 test('`--doctor` FAILS (exit 1) on an otherwise-COMPLETE brain dir when the persisted verdict says grounding is unproven', () => {
-  const { brainDir, cacheDir } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
   try {
     const stateDir = path.join(cacheDir, 'ruvnet-brain');
     fs.mkdirSync(stateDir, { recursive: true });
     fs.writeFileSync(path.join(stateDir, 'install-state.json'), JSON.stringify({ grounding: 'unproven', reason: 'no-answer' }));
-    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, XDG_CACHE_HOME: cacheDir });
+    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir });
     assertVerdict(r, 1, '--doctor (complete brain dir, but grounding persisted as unproven)');
     assert.match(r.stdout || '', /Grounding UNPROVEN/, 'doctor must name the persisted verdict as the reason it failed');
   } finally {
@@ -200,12 +204,12 @@ test('`--doctor` FAILS (exit 1) on an otherwise-COMPLETE brain dir when the pers
 });
 
 test('`--doctor` PASSES (exit 0) on the same complete brain dir when the persisted verdict says grounding is proven', () => {
-  const { brainDir, cacheDir } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
   try {
     const stateDir = path.join(cacheDir, 'ruvnet-brain');
     fs.mkdirSync(stateDir, { recursive: true });
     fs.writeFileSync(path.join(stateDir, 'install-state.json'), JSON.stringify({ grounding: 'proven', clearedBy: 'search_ruvnet' }));
-    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, XDG_CACHE_HOME: cacheDir });
+    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir });
     assertVerdict(r, 0, '--doctor (complete brain dir, grounding persisted as proven)');
     assert.doesNotMatch(r.stdout || '', /Grounding UNPROVEN/, 'a proven verdict must never print the unproven line');
   } finally {
@@ -215,7 +219,7 @@ test('`--doctor` PASSES (exit 0) on the same complete brain dir when the persist
 });
 
 test('`--doctor` replaces a stale unproven verdict when its live citation proof succeeds', () => {
-  const { brainDir, cacheDir } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
   try {
     const stateDir = path.join(cacheDir, 'ruvnet-brain');
     fs.mkdirSync(stateDir, { recursive: true });
@@ -233,7 +237,7 @@ test('`--doctor` replaces a stale unproven verdict when its live citation proof 
 
     const r = runInstaller(['--doctor'], {
       RUVNET_BRAIN_KB: brainDir,
-      RUVNET_BRAIN_HOME: path.join(cacheDir, 'brain-home'),
+      RUVNET_BRAIN_HOME: brainHome,
       XDG_CACHE_HOME: cacheDir,
     });
 
@@ -254,9 +258,9 @@ test('`--doctor` replaces a stale unproven verdict when its live citation proof 
 test('`--doctor` PASSES (exit 0) on the same complete brain dir when NO verdict was ever recorded (unknown ≠ fail)', () => {
   // No install-state.json written at all under this cacheDir — the pre-ADR-058 state of the world,
   // and the common case for any machine that installed before this feature shipped.
-  const { brainDir, cacheDir } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
   try {
-    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, XDG_CACHE_HOME: cacheDir });
+    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir });
     assertVerdict(r, 0, '--doctor (complete brain dir, no persisted verdict at all)');
     assert.doesNotMatch(r.stdout || '', /Grounding UNPROVEN/, 'absence of a verdict must never read as a failure');
   } finally {
@@ -332,8 +336,8 @@ test('`--doctor` reports the real token-meter summary line, computed from a real
     const out = r.stdout || '';
     assert.match(out, /meter: 2 injections measured here yesterday\+today — 3000 bytes/, `doctor must report the real ledger totals; got:\n${out}`);
   } finally {
-    fs.rmSync(projectDir, { recursive: true, force: true });
-    fs.rmSync(brainDir, { recursive: true, force: true });
+    fs.rmSync(projectDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    fs.rmSync(brainDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 });
 
@@ -353,8 +357,8 @@ test('`--doctor`\'s meter line degrades honestly when no ledger exists yet in cw
     assertVerdict(r, 1, '--doctor (no ledger; stub-only brain dir = incomplete install)');
     assert.match(r.stdout || '', /meter: no data yet/, 'must say plainly that nothing has been measured, not error or stay silent');
   } finally {
-    fs.rmSync(projectDir, { recursive: true, force: true });
-    fs.rmSync(brainDir, { recursive: true, force: true });
+    fs.rmSync(projectDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    fs.rmSync(brainDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 });
 
@@ -388,7 +392,11 @@ test(
       assert.match(xml, /<key>RunAtLoad<\/key>\s*<false\/>/, 'must not run at load');
       // ProgramArguments is a proper argv ARRAY (one <string> per arg — the correct launchd form),
       // so the two tokens are adjacent elements, never one space-joined line.
-      assert.match(xml, /<string>forge-update\.mjs<\/string>\s*<string>--apply<\/string>/, 'must run the bundled self-updater with --apply');
+      assert.match(
+        xml,
+        /<string>--yes<\/string>\s*<string>ruvnet-brain@latest<\/string>\s*<string>--update<\/string>\s*<string>--host-sync-only<\/string>/,
+        'must run the current host-convergent updater rather than the retired KB-only command',
+      );
       // plutil is macOS's own plist validator — structural proof launchd could load this file.
       const lint = spawnSync('plutil', ['-lint', plist], { encoding: 'utf8', timeout: 15000 });
       assert.equal(lint.status, 0, `plutil -lint rejected the plist:\n${lint.stdout || ''}${lint.stderr || ''}`);

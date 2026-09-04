@@ -42,7 +42,8 @@ function fixture() {
   const integrationFile = write('integration.json', {
     schemaVersion: 1, kind: 'ruvnet-brain-integration-evidence', sourceSha: sha,
     workflow: 'integration-linux', runId, runAttempt: 1, total: 12, passed: 12,
-    failed: 0, skipped: 0, todo: 0, verdict: 'PASS',
+    failed: 0, skipped: 0, skippedTests: [], todo: 0, todoTests: [],
+    exclusionPolicy: 'release-linux-v1', exclusionsSha256: 'a'.repeat(64), verdict: 'PASS',
   });
   const uxFiles = ['darwin', 'linux', 'win32'].map((platform) => write(`ux-${platform}.json`, {
     schemaVersion: 1, suite: 'ruvnet-brain-ux-qe', gitSha: sha, platform,
@@ -73,12 +74,20 @@ describe('prepublication evidence', () => {
     expect(() => buildPrepublicationEvidence(f)).toThrow(/candidate CI receipt identity/);
   });
 
-  it('rejects a green integration wrapper that skipped tests', () => {
+  it('rejects a green integration wrapper with unaccounted tests', () => {
     const f = fixture();
     const receipt = JSON.parse(fs.readFileSync(f.integrationFile));
     receipt.passed -= 1;
     receipt.skipped = 1;
     fs.writeFileSync(f.integrationFile, JSON.stringify(receipt));
-    expect(() => buildPrepublicationEvidence(f)).toThrow(/non-skipped PASS/);
+    expect(() => buildPrepublicationEvidence(f)).toThrow(/fully accounted PASS/);
+  });
+
+  it('rejects integration exclusions without the governed policy receipt', () => {
+    const f = fixture();
+    const receipt = JSON.parse(fs.readFileSync(f.integrationFile));
+    delete receipt.exclusionPolicy;
+    fs.writeFileSync(f.integrationFile, JSON.stringify(receipt));
+    expect(() => buildPrepublicationEvidence(f)).toThrow(/exclusions are not governed/);
   });
 });

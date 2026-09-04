@@ -200,6 +200,7 @@ export async function runHostMatrixAsync({
   runCommand = spawnCommand,
   runMcpSearch = runInstalledMcpSearch,
   verifyGrounding = verifyInstalledGrounding,
+  resolveMcpServer = resolveInstalledMcpServer,
 }) {
   const spec = VARIANTS[variant];
   if (!spec) throw new Error(`unknown host-matrix variant: ${variant}`);
@@ -260,7 +261,7 @@ export async function runHostMatrixAsync({
   }
 
   const searches = await Promise.all(contexts.map(async (context) => {
-    const serverPath = path.join(context.home, '.claude', 'ruvnet-brain', 'mcp', 'server.mjs');
+    const serverPath = resolveMcpServer(context);
     const processResult = await runMcpSearch({ mode: context.mode, serverPath, env: context.env });
     const output = `${processResult.stdout || ''}${processResult.stderr || ''}`;
     if (processResult.error || processResult.status !== 0) {
@@ -279,6 +280,22 @@ export async function runHostMatrixAsync({
   }]));
   const error = searches.find((result) => result.error)?.error;
   return error ? { verdict: 'FAIL', fixtures, error } : { verdict: 'PASS', fixtures };
+}
+
+export function resolveInstalledMcpServer({ mode, home }) {
+  if (mode !== 'claude') return path.join(home, '.claude', 'ruvnet-brain', 'mcp', 'server.mjs');
+  const registry = path.join(home, '.claude', 'plugins', 'installed_plugins.json');
+  const rows = JSON.parse(fs.readFileSync(registry, 'utf8'))?.plugins?.['ruvnet-brain@ruvnet-brain'];
+  const installPath = Array.isArray(rows) ? rows.find(({ scope }) => scope === 'user')?.installPath : null;
+  if (!installPath) throw new Error('Claude fixture has no user-scoped ruvnet-brain plugin install');
+  const managedRoot = path.resolve(home, '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain');
+  const resolved = path.resolve(installPath);
+  if (resolved !== managedRoot && !resolved.startsWith(`${managedRoot}${path.sep}`)) {
+    throw new Error('Claude fixture plugin install path escapes its managed cache');
+  }
+  const server = path.join(resolved, 'mcp', 'server.mjs');
+  if (!fs.existsSync(server)) throw new Error(`Claude fixture MCP server missing from installed plugin: ${server}`);
+  return server;
 }
 
 function processIdentity(result) {

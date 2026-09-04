@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runHostMatrixAsync } from '../../scripts/host-install-matrix.mjs';
+import { resolveInstalledMcpServer, runHostMatrixAsync } from '../../scripts/host-install-matrix.mjs';
 import { getVersion } from '../../scripts/version.mjs';
 
 const ok = (stdout = '') => ({ status: 0, signal: null, error: null, stdout, stderr: '' });
@@ -17,7 +17,7 @@ describe('host install matrix cold-model orchestration', () => {
     let prewarmCompleted = false;
 
     const runCommand = async (_command, args, options) => {
-      const isInstall = args.some((arg) => arg.endsWith('/bin/install.mjs'));
+      const isInstall = args.some((arg) => /[\\/]bin[\\/]install\.mjs$/.test(arg));
       if (isInstall) {
         calls.push({ phase: 'install', args, env: options.env });
         installsCompleted += 1;
@@ -45,6 +45,7 @@ describe('host install matrix cold-model orchestration', () => {
         temp,
         runCommand,
         runMcpSearch,
+        resolveMcpServer: ({ home }) => path.join(home, 'installed-mcp', 'server.mjs'),
         verifyGrounding: async () => ({ grounded: true, receipt: { path: 'README.md' } }),
       });
 
@@ -68,8 +69,28 @@ describe('host install matrix cold-model orchestration', () => {
       expect(phases.slice(4).sort()).toEqual(['search', 'search', 'search']);
 
       for (const call of calls.filter((entry) => entry.phase === 'search')) {
-        expect(call.serverPath).toBe(path.join(call.env.HOME, '.claude', 'ruvnet-brain', 'mcp', 'server.mjs'));
+        expect(call.serverPath).toBe(path.join(call.env.HOME, 'installed-mcp', 'server.mjs'));
       }
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves Claude through its real managed plugin cache and Codex through its durable copy', () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'host-matrix-paths-'));
+    try {
+      const home = path.join(temp, 'home');
+      const installPath = path.join(home, '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain', getVersion());
+      fs.mkdirSync(path.join(installPath, 'mcp'), { recursive: true });
+      fs.writeFileSync(path.join(installPath, 'mcp', 'server.mjs'), '');
+      const registry = path.join(home, '.claude', 'plugins', 'installed_plugins.json');
+      fs.mkdirSync(path.dirname(registry), { recursive: true });
+      fs.writeFileSync(registry, JSON.stringify({ plugins: {
+        'ruvnet-brain@ruvnet-brain': [{ scope: 'user', installPath }],
+      } }));
+      expect(resolveInstalledMcpServer({ mode: 'claude', home })).toBe(path.join(installPath, 'mcp', 'server.mjs'));
+      expect(resolveInstalledMcpServer({ mode: 'codex', home }))
+        .toBe(path.join(home, '.claude', 'ruvnet-brain', 'mcp', 'server.mjs'));
     } finally {
       fs.rmSync(temp, { recursive: true, force: true });
     }
@@ -89,6 +110,7 @@ describe('host install matrix cold-model orchestration', () => {
           ? { status: null, signal: 'SIGKILL', error: Object.assign(new Error('worker terminated'), { code: 'ETIMEDOUT' }), stdout: '', stderr: 'cold start exceeded budget' }
           : ok(`repo=ruvnet-brain path=${mode}.md`),
         verifyGrounding: async () => ({ grounded: true, receipt: { path: 'README.md' } }),
+        resolveMcpServer: ({ home }) => path.join(home, 'installed-mcp', 'server.mjs'),
       });
 
       expect(result.verdict).toBe('FAIL');

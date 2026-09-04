@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { aggregateEvidence } from './release-evidence-aggregate.mjs';
 import { canonicalJson } from './release-transaction.mjs';
+import { EXCLUSION_POLICY } from './integration-evidence.mjs';
 
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
@@ -90,9 +91,18 @@ export function buildPrepublicationEvidence({
     || integration.value.sourceSha !== sha || integration.value.workflow !== 'integration-linux'
     || integration.value.runId !== runId || integration.value.verdict !== 'PASS'
     || integration.value.total <= 0
-    || integration.value.passed + Number(integration.value.todo || 0) !== integration.value.total
-    || integration.value.failed !== 0 || integration.value.skipped !== 0) {
-    throw new Error('integration receipt is not an exact, non-skipped PASS');
+    || integration.value.passed + Number(integration.value.todo || 0) + Number(integration.value.skipped || 0) !== integration.value.total
+    || integration.value.failed !== 0
+    || !Array.isArray(integration.value.skippedTests)
+    || integration.value.skippedTests.length !== integration.value.skipped
+    || integration.value.skippedTests.some((name) => typeof name !== 'string' || !name.trim())) {
+    throw new Error('integration receipt is not an exact, fully accounted PASS');
+  }
+  if (integration.value.exclusionPolicy !== EXCLUSION_POLICY
+    || !Array.isArray(integration.value.todoTests)
+    || integration.value.todoTests.length !== Number(integration.value.todo || 0)
+    || !/^[a-f0-9]{64}$/.test(integration.value.exclusionsSha256 || '')) {
+    throw new Error('integration receipt exclusions are not governed and fully enumerated');
   }
 
   if (!Array.isArray(uxFiles) || uxFiles.length !== 3) throw new Error('exactly three UX receipts are required');
@@ -122,7 +132,8 @@ export function buildPrepublicationEvidence({
     passLeaf({ ...common, name: 'source-quality', source: 'candidate-ci-receipt:check', receiptSha256: ci.digest }),
     passLeaf({ ...common, name: 'ux-qe', source: 'ux-qe-receipts:darwin,linux,win32', receiptSha256: uxDigest }),
     passLeaf({ ...common, name: 'release-qe', source: 'candidate-ci-receipt:release-qe', receiptSha256: ci.digest }),
-    passLeaf({ ...common, name: 'integration-linux', source: 'integration-receipt', receiptSha256: integration.digest }),
+    passLeaf({ ...common, name: 'integration-linux', source: 'integration-receipt', receiptSha256: integration.digest,
+      skipped: integration.value.skipped, todo: integration.value.todo }),
     passLeaf({ ...common, name: 'stranger-linux', source: 'stranger-receipt:ubuntu', receiptSha256: stranger.digest }),
     passLeaf({ ...common, name: 'stranger-macos', source: 'stranger-receipt:macos', receiptSha256: stranger.digest }),
     passLeaf({ ...common, name: 'stranger-windows', source: 'stranger-receipt:windows', receiptSha256: stranger.digest }),
