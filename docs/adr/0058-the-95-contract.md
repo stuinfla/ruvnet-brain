@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-31
+updated: 2026-09-04
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -52,6 +52,9 @@ governs:
 # ADR-058: The 95 contract
 
 ## Currency log
+| 2026-09-04 | The 4.3.9 candidate installs the one signature/digest-verified GitHub bundle across all public host lanes, preserves a digest-bound failure receipt before exiting, performs a real installed-MCP query, and propagates the requested retrieval depth unchanged. Publication validates both handoff destinations before remote mutation and materializes identity/convergence files only after the signed channel receipt validates. | `scripts/publication-receipt.mjs`; `scripts/public-verification-lane.mjs`; `scripts/release-publication-handoff.mjs`; `scripts/release.mjs`; `.github/workflows/protected-release.yml`; `.github/workflows/recover-public-verification.yml`. These strengthen existing observables; Proposed status and public proof remain unchanged. |
+| 2026-09-04 | Repaired release-test boundaries found by the complete 4.3.8 preflight: Windows host-install detection now accepts native separators; Dream Machine network verification is opt-in rather than a unit-test dependency; installer doctor fixtures isolate `RUVNET_BRAIN_HOME`; and the LaunchAgent assertion follows the current host-convergent updater. | `tests/unit/host-install-matrix-concurrency.test.mjs`; `tests/unit/dream-config.test.mjs`; `tests/integration/install-smoke.mjs`; ADR-068. |
+| 2026-09-04 | Reconciled the grounding verdict authority exposed by issues #240/#242: a successful live `--doctor` citation proof now clears an older persisted `unproven` install result before the same invocation's final gate reads it. Failed or unverifiable live checks still cannot clear the gate. | `bin/install.mjs`; `tests/integration/install-smoke.mjs`. |
 | 2026-08-31 | Reconciled the hosted process boundary after PR #211 added named per-step watchdog receipts and corrected Windows executable resolution; the 95-contract observations and release gates remain unchanged. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; `tests/unit/step-watchdog.test.mjs`. |
 
 **Status**: Proposed

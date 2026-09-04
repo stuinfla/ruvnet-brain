@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 
 /** The three host shapes a release must survive. ONE name each, for every consumer. */
 export const HOST_MODES = Object.freeze(['claude', 'codex', 'dual']);
@@ -58,7 +59,7 @@ export const MODE_FROM_RECEIPT_NAME = Object.freeze({ claudeOnly: 'claude', code
 export const VARIANTS = Object.freeze({
   staged: Object.freeze({
     installerArgs: (_v) => ['--local', '--yes', '--force', '--no-nightly-prompt',
-      '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline', '--no-selfcheck'],
+      '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline', '--no-selfcheck', '--no-verify'],
     env: ({ packageRoot }) => ({
       RUVNET_CLAUDE_MARKETPLACE_SOURCE: packageRoot,
       RUVNET_CODEX_HOOK_TRUST_MODE: 'bypass',
@@ -190,11 +191,23 @@ function runHostMode({ mode, packageRoot, version, spec, workspace, locate, run 
  * the expensive installer/doctor pairs can run concurrently without sharing mutable state.
  * Results are reassembled in HOST_MODES order before the single caller writes its receipt.
  */
-export async function runHostMatrixAsync({ packageRoot, version, variant = 'staged', locate, temp }) {
+export async function runHostMatrixAsync({
+  packageRoot,
+  version,
+  variant = 'staged',
+  locate,
+  temp,
+  runCommand = spawnCommand,
+  runMcpSearch = runInstalledMcpSearch,
+  verifyGrounding = verifyInstalledGrounding,
+  resolveMcpServer = resolveInstalledMcpServer,
+}) {
   const spec = VARIANTS[variant];
   if (!spec) throw new Error(`unknown host-matrix variant: ${variant}`);
   const workspace = temp || fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-host-matrix-'));
-  const runMode = async (mode) => {
+  const sharedModelCache = path.join(workspace, 'models-cache');
+  fs.mkdirSync(sharedModelCache, { recursive: true });
+  const contexts = HOST_MODES.map((mode) => {
     const home = path.join(workspace, `home-${mode}`);
     const codexHome = path.join(home, '.codex');
     const brainHome = path.join(home, '.cache', 'ruvnet-brain');
@@ -206,33 +219,155 @@ export async function runHostMatrixAsync({ packageRoot, version, variant = 'stag
       CODEX_HOME: codexHome,
       RUVNET_BRAIN_HOME: brainHome,
       RUVNET_BRAIN_KB: path.join(brainHome, 'kb'),
+      KB_MODEL_CACHE: sharedModelCache,
       CI: 'true',
       PATH: fixturePath(mode, workspace, locate),
       ...spec.env({ packageRoot }),
     };
-    const installer = path.join(packageRoot, 'bin', 'install.mjs');
-    try {
-      const child = (args, timeout) => spawnCommand(process.execPath, [installer, ...args], {
-        cwd: packageRoot, env, timeout,
-      });
-      const install = await child(spec.installerArgs(version), 1_200_000);
-      if (install.error || install.status !== 0) throw new Error(`install failed for ${mode}: ${(install.stderr || install.error?.message || '').slice(-4000)}`);
-      const doctor = await child(['--doctor', '--hooks'], 300_000);
-      const classified = classifyDoctor(doctor);
-      const fixture = { status: classified.status, doctorExit: doctor.status, version };
-      if (!classified.accepted) {
-        fixture.output = classified.output.slice(-5000);
-        throw new Error(`doctor failed for ${mode} (exit ${doctor.status}): ${classified.output.slice(-4000)}`);
-      }
-      return { fixture };
-    } catch (error) {
-      return { fixture: { status: 'FAIL', error: error.message }, error: error.message };
+    return { mode, home, env };
+  });
+  const installer = path.join(packageRoot, 'bin', 'install.mjs');
+  const installs = await Promise.all(contexts.map(async (context) => {
+    const processResult = await runCommand(process.execPath, [installer, ...spec.installerArgs(version)], {
+      cwd: packageRoot, env: context.env, timeout: 1_200_000,
+    });
+    return { context, processResult };
+  }));
+  const failedInstall = installs.find(({ processResult }) => processResult.error || processResult.status !== 0);
+  if (failedInstall) {
+    const detail = processDiagnostic(failedInstall.processResult);
+    return {
+      verdict: 'FAIL',
+      fixtures: Object.fromEntries(contexts.map(({ mode }) => [mode, {
+        status: mode === failedInstall.context.mode ? 'FAIL' : 'NOT_PROBED',
+        ...(mode === failedInstall.context.mode ? { process: processIdentity(failedInstall.processResult) } : {}),
+      }])),
+      error: `install failed for ${failedInstall.context.mode} (${detail})`,
+    };
+  }
+
+  const prewarmContext = contexts[0];
+  const prewarmReader = path.join(prewarmContext.env.RUVNET_BRAIN_KB, 'forge-ask-all.mjs');
+  const prewarm = await runCommand(process.execPath, [prewarmReader, '--dir', prewarmContext.env.RUVNET_BRAIN_KB,
+    '--q', 'How does RuvNet Brain prove a public release artifact?', '--k', '1'], {
+    cwd: prewarmContext.env.RUVNET_BRAIN_KB, env: prewarmContext.env, timeout: 300_000,
+  });
+  if (prewarm.error || prewarm.status !== 0) {
+    return { verdict: 'FAIL', fixtures: {}, error: `shared model prewarm failed (${processDiagnostic(prewarm)})` };
+  }
+  const prewarmGrounding = await verifyGrounding(String(prewarm.stdout || ''), prewarmContext.env.RUVNET_BRAIN_KB);
+  if (!prewarmGrounding?.grounded) {
+    return { verdict: 'FAIL', fixtures: {}, error: 'shared model prewarm returned no grounded source receipt' };
+  }
+
+  const searches = await Promise.all(contexts.map(async (context) => {
+    const serverPath = resolveMcpServer(context);
+    const processResult = await runMcpSearch({ mode: context.mode, serverPath, env: context.env });
+    const output = `${processResult.stdout || ''}${processResult.stderr || ''}`;
+    if (processResult.error || processResult.status !== 0) {
+      return { context, processResult, error: `MCP search failed for ${context.mode} (${processDiagnostic(processResult)}): ${output.slice(-2000)}` };
     }
-  };
-  const results = await Promise.all(HOST_MODES.map(runMode));
-  const fixtures = Object.fromEntries(HOST_MODES.map((mode, index) => [mode, results[index].fixture]));
-  const error = results.find((result) => result.error)?.error;
+    const grounding = await verifyGrounding(output, context.env.RUVNET_BRAIN_KB);
+    if (!grounding?.grounded) return { context, processResult, error: `MCP search grounding unproven for ${context.mode}` };
+    return { context, processResult, grounding };
+  }));
+  const fixtures = Object.fromEntries(searches.map(({ context, processResult, grounding, error }) => [context.mode, {
+    status: error ? 'FAIL' : 'PASS',
+    version,
+    process: processIdentity(processResult),
+    ...(grounding?.receipt ? { grounding: grounding.receipt } : {}),
+    ...(error ? { error } : {}),
+  }]));
+  const error = searches.find((result) => result.error)?.error;
   return error ? { verdict: 'FAIL', fixtures, error } : { verdict: 'PASS', fixtures };
+}
+
+export function resolveInstalledMcpServer({ mode, home }) {
+  if (mode !== 'claude') return path.join(home, '.claude', 'ruvnet-brain', 'mcp', 'server.mjs');
+  const registry = path.join(home, '.claude', 'plugins', 'installed_plugins.json');
+  const rows = JSON.parse(fs.readFileSync(registry, 'utf8'))?.plugins?.['ruvnet-brain@ruvnet-brain'];
+  const installPath = Array.isArray(rows) ? rows.find(({ scope }) => scope === 'user')?.installPath : null;
+  if (!installPath) throw new Error('Claude fixture has no user-scoped ruvnet-brain plugin install');
+  const managedRoot = path.resolve(home, '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain');
+  const resolved = path.resolve(installPath);
+  if (resolved !== managedRoot && !resolved.startsWith(`${managedRoot}${path.sep}`)) {
+    throw new Error('Claude fixture plugin install path escapes its managed cache');
+  }
+  const server = path.join(resolved, 'mcp', 'server.mjs');
+  if (!fs.existsSync(server)) throw new Error(`Claude fixture MCP server missing from installed plugin: ${server}`);
+  return server;
+}
+
+function processIdentity(result) {
+  return {
+    status: result.status ?? null,
+    signal: result.signal ?? null,
+    errorCode: result.error?.code ?? null,
+    errorMessage: result.error?.message ?? null,
+  };
+}
+
+function processDiagnostic(result) {
+  const process = processIdentity(result);
+  return `status=${process.status} signal=${process.signal || 'none'} error=${process.errorCode ? `${process.errorCode}: ${process.errorMessage}` : 'none'}`;
+}
+
+async function verifyInstalledGrounding(output, kbDir) {
+  const verifier = path.join(kbDir, 'verify-citation.mjs');
+  const { verifyGrounding } = await import(pathToFileURL(verifier).href);
+  return verifyGrounding(output, kbDir);
+}
+
+function runInstalledMcpSearch({ serverPath, env, query = 'How does RuvNet Brain prove a public release artifact?', timeout = 300_000 }) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [serverPath], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    const pending = new Map();
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill('SIGTERM');
+      resolve({ status: result.status ?? null, signal: result.signal ?? null, error: result.error ?? null, stdout, stderr });
+    };
+    const timer = setTimeout(() => finish({ status: null, signal: 'SIGKILL', error: Object.assign(new Error('MCP search timed out'), { code: 'ETIMEDOUT' }) }), timeout);
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+      for (;;) {
+        const newline = stdout.indexOf('\n');
+        if (newline < 0) break;
+        const line = stdout.slice(0, newline).trim();
+        stdout = stdout.slice(newline + 1);
+        if (!line) continue;
+        let message;
+        try { message = JSON.parse(line); } catch { continue; }
+        const handler = pending.get(message.id);
+        if (handler) { pending.delete(message.id); handler(message); }
+      }
+    });
+    child.on('error', (error) => finish({ status: null, error }));
+    child.on('exit', (status, signal) => {
+      if (!settled) finish({ status, signal, ...(status === 0 ? {} : { error: new Error(`MCP server exited ${status}`) }) });
+    });
+    const call = (id, method, params = {}) => new Promise((done) => {
+      pending.set(id, done);
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+    });
+    (async () => {
+      const initialized = await call(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'release-host-matrix', version: '1' } });
+      if (initialized.error) throw new Error(`MCP initialize failed: ${JSON.stringify(initialized.error)}`);
+      const listed = await call(2, 'tools/list');
+      if (!listed.result?.tools?.some((tool) => tool.name === 'search_ruvnet')) throw new Error('installed MCP does not advertise search_ruvnet');
+      const searched = await call(3, 'tools/call', { name: 'search_ruvnet', arguments: { query, k: 5 } });
+      const text = (searched.result?.content || []).map((item) => item.text || '').join('\n');
+      if (searched.error || searched.result?.isError) throw new Error(`installed Brain search failed: ${text.slice(0, 400)}`);
+      stdout = text;
+      finish({ status: 0 });
+    })().catch((error) => finish({ status: null, error }));
+  });
 }
 
 function spawnCommand(command, args, options) {

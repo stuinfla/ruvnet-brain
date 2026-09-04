@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // scripts/refresh-model-catalog.mjs — pulls the LIVE OpenRouter model catalog and writes the committed
-// snapshot data/openrouter-catalog-snapshot.json (with a pulledAt stamp). verify-model-catalog.mjs then
+// snapshot data/openrouter-catalog-snapshot.json (with a pulledAt stamp) and synchronizes the catalog's
+// factual prices. verify-model-catalog.mjs then
 // enforces, offline in CI, that every model in data/model-catalog.json exists and is priced correctly
-// against this snapshot — and that the snapshot is fresh. Run nightly (the anti-rot mechanism) + on demand.
+// against this snapshot — and that the snapshot is fresh. Run weekly (the anti-rot mechanism) + on demand.
 // ADR-0016.
 //
 // It ALSO flags drift so a new flagship (e.g. a GPT-5.6-class release) surfaces instead of rotting:
@@ -45,6 +46,30 @@ export function detectDrift(catalog, models) {
   return missing;
 }
 
+/** Synchronize factual catalog prices from the same live map that backs the snapshot. */
+export function syncCatalogPrices(catalog, models, pulledAt) {
+  const changes = [];
+  for (const [provider, entry] of Object.entries(catalog.providers || {})) {
+    if (entry.aliasOf) continue;
+    for (const tier of ['frontier', 'mid', 'cheap']) {
+      const candidate = entry[tier];
+      if (!candidate?.model) continue;
+      const live = models[candidate.model]
+        || (!candidate.model.includes('/') ? models[`anthropic/${candidate.model}`] : null);
+      if (!live) continue;
+      if (candidate.in !== live.in || candidate.out !== live.out) {
+        changes.push({ provider, tier, model: candidate.model, from: { in: candidate.in, out: candidate.out }, to: live });
+        candidate.in = live.in;
+        candidate.out = live.out;
+      }
+    }
+  }
+  if (catalog._meta?.sources) {
+    catalog._meta.sources.prices = `OpenRouter /api/v1/models live catalog, pulled ${pulledAt.slice(0, 10)} (in/out USD per Mtok).`;
+  }
+  return changes;
+}
+
 export function shapeSnapshot(models, pulledAt) {
   return { _meta: { source: 'OpenRouter /api/v1/models (live metadata)', pulledAt, modelCount: Object.keys(models).length }, models };
 }
@@ -73,7 +98,8 @@ async function main() {
 
   const catalog = JSON.parse(fs.readFileSync(CATALOG, 'utf8'));
   const missing = detectDrift(catalog, models);
-  const snapshot = shapeSnapshot(models, new Date().toISOString());
+  const pulledAt = new Date().toISOString();
+  const snapshot = shapeSnapshot(models, pulledAt);
   const next = JSON.stringify(snapshot, null, 2) + '\n';
 
   if (check) {
@@ -86,8 +112,11 @@ async function main() {
     return;
   }
 
+  const priceChanges = syncCatalogPrices(catalog, models, pulledAt);
   fs.writeFileSync(SNAPSHOT, next);
+  fs.writeFileSync(CATALOG, JSON.stringify(catalog, null, 2) + '\n');
   console.log(`✓ wrote ${SNAPSHOT.replace(ROOT + '/', '')} — ${Object.keys(models).length} live models, pulledAt ${snapshot._meta.pulledAt}`);
+  console.log(`✓ synchronized ${priceChanges.length} catalog price field(s) from the same live response`);
   if (missing.length) {
     console.log(`\n⚠ DRIFT: ${missing.length} catalog model(s) no longer in the live catalog — update data/model-catalog.json:`);
     for (const m of missing) console.log('  - ' + m);

@@ -2,36 +2,24 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const source = fs.readFileSync(path.resolve(import.meta.dirname,
-  '../../.github/workflows/product-integrity-review.yml'), 'utf8');
+const ROOT = path.resolve(process.env.RUVNET_RELEASE_CONTRACT_ROOT || path.resolve(import.meta.dirname, '../..'));
+const workflowDir = path.join(ROOT, '.github/workflows');
+const read = (file) => fs.readFileSync(path.join(workflowDir, file), 'utf8');
 
-describe('product integrity review ingress', () => {
-  it('accepts only owner-dispatched public signed evidence bound to an exact candidate', () => {
-    expect(source).toContain('if: github.actor == github.repository_owner');
-    expect(source).toContain('ref: ${{ inputs.candidate_sha }}');
-    expect(source).toContain('test "$(git rev-parse HEAD)" = "${{ inputs.candidate_sha }}"');
-    expect(source).toContain('name: release-evidence-${{ inputs.candidate_sha }}');
-    expect(source).toContain('name: release-aggregate-${{ inputs.candidate_sha }}');
+describe('release review authority', () => {
+  it('does not accept a caller-supplied review bundle in any workflow', () => {
+    const offenders = fs.readdirSync(workflowDir)
+      .filter((file) => file.endsWith('.yml'))
+      .filter((file) => /signed_review_bundle_b64|REVIEW_BUNDLE:\s*\$\{\{\s*inputs\./.test(read(file)));
+    expect(offenders).toEqual([]);
   });
 
-  it('never extracts an uploaded archive and verifies both signatures through fixed paths', () => {
-    expect(source).not.toMatch(/\btar\b|\bunzip\b/);
-    expect(source).toContain('node scripts/independent-review-receipt.mjs verify-pair');
-    expect(source).toContain('--fable review-evidence/receipts/claude-fable-5.json');
-    expect(source).toContain('--sol review-evidence/receipts/gpt-5.6-sol.json');
-    expect(source).toContain('signed review bundle must contain exactly fable and sol');
-  });
-
-  it('binds source tree, payload bytes, contract, rubric, and release identity before upload', () => {
-    expect(source).toContain("execFileSync('git', ['rev-parse', 'HEAD^{tree}']");
-    expect(source).toContain("sha256(fs.readFileSync('release-evidence/payload-manifest.json'))");
-    expect(source).toContain("sha256(fs.readFileSync('scripts/product-integrity-contract.mjs'))");
-    expect(source).toContain("sha256(fs.readFileSync('docs/qe/GRADING-RUBRIC.md'))");
-    expect(source).toContain('--retrieval-plan release-evidence/retrieval-canary-plan.json');
-    expect(source).toContain('receipt.retrievalOracleReview.oracleReceiptSha256');
-    expect(source).toContain('receipt.retrievalOracleReview.queryStoreSetSha256');
-    expect(source).toContain('receipt.retrievalOracleReview.recordCount');
-    expect(source.indexOf('validateIndependentReviewPair'))
-      .toBeLessThan(source.indexOf('name: product-integrity-reviews-${{ inputs.candidate_sha }}'));
+  it('has no separately dispatched or cross-run-polled review authority', () => {
+    const reviewPath = path.join(workflowDir, 'product-integrity-review.yml');
+    if (!fs.existsSync(reviewPath)) return;
+    const source = fs.readFileSync(reviewPath, 'utf8');
+    expect(source).not.toMatch(/\n\s{2}workflow_dispatch:/);
+    expect(source).not.toMatch(/\n\s{2}workflow_run:/);
+    expect(source).not.toMatch(/\bgh run (?:list|view|watch)\b|^\s+run-id:/m);
   });
 });

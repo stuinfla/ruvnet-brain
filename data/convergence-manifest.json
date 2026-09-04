@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.3.8-dev",
-  "sourceIdentity": "0907b3af5c549b71f22bb8b2802728702373fce4f1c9670188a074cadbc78bf5",
+  "version": "4.3.9",
+  "sourceIdentity": "c0df029db486d0a30d6a3b83e1538b80c74cbfa19c7074c20a16b8240b39e0df",
   "versionSurfaces": {
-    "package.json": "4.3.8-dev",
-    "plugin/.claude-plugin/plugin.json": "4.3.8-dev",
-    "plugin/.codex-plugin/plugin.json": "4.3.8-dev",
-    "data/manifest.json": "4.3.8-dev",
-    "kb/RVF-GENERATIONS.json": "4.3.8-dev",
-    "explainer/index.html": "4.3.8-dev",
-    "primer/ruvnet-primer.md": "4.3.8-dev"
+    "package.json": "4.3.9",
+    "plugin/.claude-plugin/plugin.json": "4.3.9",
+    "plugin/.codex-plugin/plugin.json": "4.3.9",
+    "data/manifest.json": "4.3.9",
+    "kb/RVF-GENERATIONS.json": "4.3.9",
+    "explainer/index.html": "4.3.9",
+    "primer/ruvnet-primer.md": "4.3.9"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -91,8 +91,8 @@
     "0076-citation-header-spoofing-needs-a-structural-fix.md",
     "README.md"
   ],
-  "trackedFileCount": 1173,
-  "trackedFilesSha256": "9e42ebe7d65e4193066931c5c0a9cae78ac628ef7d955f230084a6e1d6ef0254",
+  "trackedFileCount": 1184,
+  "trackedFilesSha256": "5e4be4a9343032549e7b6bf1c24f2ec59e8f10ea555d15b4711389519a3af59e",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

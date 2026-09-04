@@ -29,30 +29,62 @@ const DEADLINE_MS = 30_000;
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const receiptDigest = (candidate) => String(candidate?.artifact?.sha256 || '').replace(/^sha256:/, '');
-
+export function commandInvocation(name, args, { platform = process.platform, env = process.env } = {}) {
+  if (platform === 'win32' && /^(?:npm|npx)$/i.test(name)) return {
+    executable: env.ComSpec || 'cmd.exe', args: ['/d', '/c', `${name}.cmd`, ...args],
+  };
+  return { executable: name, args };
+}
 function command(name, args, options = {}) {
-  const result = spawnSync(name, args, { encoding: 'utf8', ...options });
+  const { platform = process.platform, ...spawnOptions } = options;
+  const invocation = commandInvocation(name, args, { platform, env: spawnOptions.env || process.env });
+  const result = spawnSync(invocation.executable, invocation.args, { encoding: 'utf8', ...spawnOptions });
   if (result.error || result.status !== 0) {
     const detail = String(result.stderr || result.stdout || result.error?.message || '').trim();
     throw new Error(`${name} ${args.join(' ')} failed: ${detail || `exit ${result.status}`}`);
   }
   return String(result.stdout || '').trim();
 }
-
-function locate(name) {
-  try { return command('which', [name]); } catch { return null; }
+function locate(name, { platform = process.platform } = {}) {
+  const query = platform === 'win32' ? (name === 'node' ? 'node.exe' : `${name}.cmd`) : name;
+  try {
+    return command(platform === 'win32' ? 'where.exe' : 'which', [query], { platform })
+      .split(/\r?\n/).find(Boolean) || null;
+  } catch { return null; }
 }
-
-function isolatedPath(mode, temp) {
+export function createIsolatedPath(mode, temp, { platform = process.platform, env = process.env,
+  resolve = (name) => locate(name, { platform }) } = {}) {
   const bin = path.join(temp, `bin-${mode}`);
   fs.mkdirSync(bin);
   const hosts = mode === 'claudeOnly' ? ['claude'] : mode === 'codexOnly' ? ['codex'] : ['claude', 'codex'];
-  for (const name of ['node', 'npm', ...hosts]) {
-    const target = locate(name);
+  const names = platform === 'win32' ? ['npm', ...hosts] : ['node', 'npm', ...hosts];
+  for (const name of names) {
+    const target = resolve(name);
     if (!target) throw new Error(`${name} CLI unavailable for ${mode} public host fixture`);
-    fs.symlinkSync(target, path.join(bin, name));
+    if (platform === 'win32') {
+      fs.writeFileSync(path.join(bin, `${name}.cmd`), `@call "${target}" %*\r\n`, { flag: 'wx' });
+    } else {
+      fs.symlinkSync(target, path.join(bin, name));
+    }
   }
-  return `${bin}:/usr/bin:/bin`;
+  if (platform !== 'win32') return `${bin}:/usr/bin:/bin`;
+  const node = resolve('node');
+  if (!node) throw new Error(`node CLI unavailable for ${mode} public host fixture`);
+  return [bin, path.dirname(node), path.join(env.SystemRoot || 'C:\\Windows', 'System32'),
+    path.join(env.ProgramFiles || 'C:\\Program Files', 'Git', 'usr', 'bin')].join(path.win32.delimiter);
+}
+export function stageVerifiedBundle({ bundlePath, bundleSha256, packageRoot }) {
+  const source = path.resolve(bundlePath || '');
+  let stat;
+  try { stat = fs.lstatSync(source); } catch { throw new Error('verified public bundle is missing'); }
+  if (!stat.isFile() || stat.isSymbolicLink() || sha256(source) !== bundleSha256) {
+    throw new Error('verified bundle digest mismatch before installation');
+  }
+  const destination = path.join(packageRoot, 'dist', 'ruvnet-brain.zip');
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(source, destination, fs.constants.COPYFILE_EXCL);
+  if (sha256(destination) !== bundleSha256) throw new Error('staged verified bundle digest mismatch');
+  return destination;
 }
 
 async function download(url, destination, headers = {}) {
@@ -134,7 +166,8 @@ export function assertInstalledPayload(sourceRoot, installedRoot) {
   return checked;
 }
 
-function rpcSearch(server, env, query, timeoutMs = DEADLINE_MS) {
+export function rpcSearch(server, env, query, k = 5, timeoutMs = DEADLINE_MS) {
+  if (!Number.isSafeInteger(k) || k < 1 || k > 50) throw new Error(`invalid search result count: ${k}`);
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [server], { env, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
@@ -175,7 +208,7 @@ function rpcSearch(server, env, query, timeoutMs = DEADLINE_MS) {
       const listed = await call(2, 'tools/list');
       if (!listed.result?.tools?.some((tool) => tool.name === 'search_ruvnet')) throw new Error('installed MCP does not advertise search_ruvnet');
       const started = performance.now();
-      const searched = await call(3, 'tools/call', { name: 'search_ruvnet', arguments: { query, k: 5 } });
+      const searched = await call(3, 'tools/call', { name: 'search_ruvnet', arguments: { query, k } });
       const broadMs = Math.round(performance.now() - started);
       const text = (searched.result?.content || []).map((item) => item.text || '').join('\n');
       if (searched.error || searched.result?.isError || /search_ruvnet error:/i.test(text)) throw new Error(`installed Brain search failed: ${text.slice(0, 400)}`);
@@ -213,14 +246,17 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
       return { path: destination, tag: release.tag_name, sha: tagCommit(root, tag) };
     },
 
-    async installHosts({ artifactPath, artifactSha256, version }) {
+    async installHosts({ artifactPath, artifactSha256, bundlePath, bundleSha256, version }) {
       const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-public-install-'));
       installTemp = temp;
       const packageRoot = path.join(temp, 'package');
       command('tar', ['-xzf', artifactPath, '-C', temp]);
+      stageVerifiedBundle({ bundlePath, bundleSha256, packageRoot });
       const sealedPlugin = path.join(packageRoot, 'plugin');
       const results = {};
       let bundle = null;
+      const sharedModelCache = path.join(temp, 'models-cache');
+      fs.mkdirSync(sharedModelCache, { recursive: true });
       // Derived from HOST_MODES, so a fourth host shape is added in ONE place and this loop
       // cannot fall behind the staged-side check the way it did.
       for (const mode of HOST_MODES.map((m) => RECEIPT_MODE_NAMES[m])) {
@@ -233,26 +269,27 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
         const env = {
           ...process.env,
           HOME: home,
+          ...(process.platform === 'win32' ? { USERPROFILE: home } : {}),
           CODEX_HOME: codexHome,
           RUVNET_BRAIN_HOME: brainHome,
           RUVNET_BRAIN_KB: kb,
+          KB_MODEL_CACHE: sharedModelCache,
           // Env comes from the ONE variant table (host-install-matrix VARIANTS.published), not a
           // second hand-written copy — this file's own header promises "ONE doctor rule and ONE mode
           // vocabulary, shared with the staged-side check", and the copy had already drifted: it
           // omitted the Codex hook-trust bypass the staged side carries, which failed the seal on
           // every release.
           ...VARIANTS.published.env({ packageRoot }),
+          RUVNET_STRICT_INSTALL: '0',
           CI: 'true',
-          PATH: isolatedPath(mode, temp),
+          PATH: createIsolatedPath(mode, temp),
         };
         const installer = path.join(packageRoot, 'bin', 'install.mjs');
         command(process.execPath, [
           installer, '--yes', '--force', '--version', `v${version}`,
           '--no-nightly-prompt', '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline',
+          '--no-selfcheck', '--no-verify',
         ], { env, cwd: packageRoot, timeout: 1_200_000, maxBuffer: 32 * 1024 * 1024 });
-        command(process.execPath, [installer, '--doctor', '--hooks'], {
-          env, cwd: packageRoot, timeout: 300_000, maxBuffer: 32 * 1024 * 1024,
-        });
 
         const verified = {};
         if (mode !== 'codexOnly') {
@@ -270,7 +307,11 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
           throw new Error(`${mode} installed public Brain bundle version mismatch`);
         }
         bundle ||= { brainVersion: source.brainVersion, releaseTag: source.releaseTag };
-        const searched = await rpcSearch(findMcpServer(home), env, 'How does RuvNet Brain prove a public release artifact?', DEADLINE_MS);
+        const searched = await rpcSearch(findMcpServer(home), env,
+          'How does RuvNet Brain prove a public release artifact?', 5, DEADLINE_MS);
+        command(process.execPath, [installer, '--doctor', '--hooks'], {
+          env, cwd: packageRoot, timeout: 300_000, maxBuffer: 32 * 1024 * 1024,
+        });
         results[mode] = {
           status: 'PASS', doctorExit: 0, version, artifactSha256,
           functionalSearch: true, searchMs: searched.broadMs, hostsOnPath: mode,
@@ -291,16 +332,17 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
       if (rvfs.length === 0) throw new Error('installed public Brain has no ruvnet-brain self RVF');
       const server = path.join(installContext.home, '.claude', 'ruvnet-brain', 'mcp', 'server.mjs');
       if (!fs.existsSync(server)) throw new Error('installed persistent MCP server is missing');
-      const result = await rpcSearch(server, installContext.env, 'How does RuvNet Brain prove a public release artifact?', DEADLINE_MS);
+      const result = await rpcSearch(server, installContext.env,
+        'How does RuvNet Brain prove a public release artifact?', 5, DEADLINE_MS);
       const readiness = readJson(path.join(installContext.brainHome, 'mcp-readiness.json'));
       if (readiness.state !== 'ready') throw new Error(`installed Brain readiness is ${readiness.state || 'missing'}`);
       return { status: 'PASS', selfStore: true, broadMs: result.broadMs, deadlineMs: DEADLINE_MS };
     },
 
-    async searchInstalled({ mode, query }) {
+    async searchInstalled({ mode, query, k }) {
       const context = installContexts.get(mode);
       if (!context) throw new Error(`${mode} public host is not installed`);
-      const result = await rpcSearch(findMcpServer(context.home), context.env, query, DEADLINE_MS);
+      const result = await rpcSearch(findMcpServer(context.home), context.env, query, k, DEADLINE_MS);
       return parseCitations(result.text).map((citation) => ({
         repo: citation.repo.toLowerCase(),
         path: citation.docPath,
@@ -400,7 +442,8 @@ export async function generatePublicationReceipt({
     if (npm.version !== candidate.version || (npm.sha && npm.sha !== candidate.sha)) throw new Error('npm public identity mismatch');
     if (github.tag !== candidate.tag || github.sha !== candidate.sha) throw new Error('GitHub public identity mismatch');
 
-    const installed = await adapter.installHosts({ artifactPath: npm.path, artifactSha256: digest, version: candidate.version });
+    const installed = await adapter.installHosts({ artifactPath: npm.path, artifactSha256: digest,
+      bundlePath: githubBundle.path, bundleSha256: githubBundleDigest, version: candidate.version });
     const brain = await adapter.probeBrain({ sha: candidate.sha, artifactSha256: digest, version: candidate.version });
     const surface = await adapter.probePublishedSurface({ sha: candidate.sha, artifactSha256: digest, version: candidate.version });
     const publication = {
