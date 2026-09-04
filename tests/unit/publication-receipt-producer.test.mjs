@@ -4,7 +4,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { REQUIRED_CHECKS } from '../../scripts/release-proof.mjs';
-import { assertInstalledPayload, generatePublicationReceipt } from '../../scripts/publication-receipt.mjs';
+import {
+  assertInstalledPayload,
+  commandInvocation,
+  createIsolatedPath,
+  generatePublicationReceipt,
+  rpcSearch,
+  stageVerifiedBundle,
+} from '../../scripts/publication-receipt.mjs';
 import { createPayloadManifest, signPayloadManifest } from '../../scripts/release-payload.mjs';
 import { getVersion } from '../../scripts/version.mjs';
 
@@ -98,6 +105,63 @@ async function run(overrides = {}) {
 }
 
 describe('publication receipt producer', () => {
+  it('uses native Windows command shims and an isolated USERPROFILE-safe PATH', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-windows-'));
+    const tools = path.join(root, 'tools');
+    fs.mkdirSync(tools);
+    for (const name of ['node.exe', 'npm.cmd', 'claude.cmd', 'codex.cmd']) {
+      fs.writeFileSync(path.join(tools, name), name);
+    }
+    const resolve = (name) => path.join(tools, name === 'node' ? 'node.exe' : `${name}.cmd`);
+    const isolated = createIsolatedPath('dual', root, {
+      platform: 'win32', resolve,
+      env: { SystemRoot: 'C:\\Windows', ProgramFiles: 'C:\\Program Files' },
+    });
+    expect(isolated.split(';')[0]).toBe(path.join(root, 'bin-dual'));
+    expect(isolated).toContain(tools);
+    for (const name of ['npm.cmd', 'claude.cmd', 'codex.cmd']) {
+      expect(fs.readFileSync(path.join(root, 'bin-dual', name), 'utf8'))
+        .toBe(`@call "${path.join(tools, name)}" %*\r\n`);
+    }
+    expect(commandInvocation('npm', ['view', 'ruvnet-brain'], {
+      platform: 'win32', env: { ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+    })).toEqual({ executable: 'C:\\Windows\\System32\\cmd.exe',
+      args: ['/d', '/c', 'npm.cmd', 'view', 'ruvnet-brain'] });
+  });
+
+  it('stages only the exact already-verified public bundle for installation', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-bundle-'));
+    const source = path.join(root, 'public.zip');
+    const packageRoot = path.join(root, 'package');
+    fs.writeFileSync(source, 'signed public bundle');
+    const expected = crypto.createHash('sha256').update(fs.readFileSync(source)).digest('hex');
+    const staged = stageVerifiedBundle({ bundlePath: source, bundleSha256: expected, packageRoot });
+    expect(staged).toBe(path.join(packageRoot, 'dist', 'ruvnet-brain.zip'));
+    expect(fs.readFileSync(staged, 'utf8')).toBe('signed public bundle');
+    expect(() => stageVerifiedBundle({ bundlePath: source, bundleSha256: '0'.repeat(64),
+      packageRoot: path.join(root, 'other') })).toThrow(/verified bundle digest mismatch/i);
+  });
+
+  it('forwards the requested result count through the real MCP JSON-RPC boundary', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-mcp-'));
+    const server = path.join(root, 'server.mjs');
+    fs.writeFileSync(server, `
+      import readline from 'node:readline';
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on('line', (line) => {
+        const request = JSON.parse(line);
+        const result = request.method === 'tools/list'
+          ? { tools: [{ name: 'search_ruvnet' }] }
+          : request.method === 'tools/call'
+            ? { content: [{ type: 'text', text: 'repo=ruvnet-brain path: result-k-' + request.params.arguments.k }] }
+            : {};
+        process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\\n');
+      });
+    `);
+    const result = await rpcSearch(server, process.env, 'query', 10, 2_000);
+    expect(result.text).toContain('path: result-k-10');
+  });
+
   it('requires installed host payload bytes to match every sealed plugin file', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-payload-'));
     const sealed = path.join(root, 'sealed');
@@ -125,6 +189,17 @@ describe('publication receipt producer', () => {
         dual: { status: 'PASS', doctorExit: 0, version: VERSION, artifactSha256: DIGEST },
       },
     });
+  });
+
+  it('hands the exact verified GitHub bundle bytes to the installer adapter', async () => {
+    let installInput;
+    await run({ installHosts: async (input) => {
+      installInput = { ...input,
+        observedSha256: crypto.createHash('sha256').update(fs.readFileSync(input.bundlePath)).digest('hex') };
+      return adapter().installHosts();
+    } });
+    expect(installInput.bundleSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(installInput.observedSha256).toBe(installInput.bundleSha256);
   });
 
   it('binds npm identity through exact sealed bytes when the registry omits gitHead', async () => {

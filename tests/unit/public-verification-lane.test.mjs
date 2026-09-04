@@ -113,12 +113,43 @@ function fixture() {
 describe('public verification OS lane', () => {
   it('produces exactly three source-bound host leaves from public bytes and canaries', async () => {
     const f = fixture();
+    const requested = [];
+    const searchInstalled = f.adapter.searchInstalled;
+    f.adapter.searchInstalled = async (input) => {
+      requested.push(input.k);
+      return searchInstalled(input);
+    };
     const leaves = await createPublicVerificationLane({ os: 'linux', ...f,
       coverageIdentity: { sha256: digest(f.releaseCoverage), bytes: 100 } });
     expect(leaves.map(({ os, mode }) => `${os}/${mode}`)).toEqual(['linux/claude', 'linux/codex', 'linux/dual']);
     expect(leaves.every(({ releaseTransactionId }) => releaseTransactionId === transactionIdFor(f.identity))).toBe(true);
     expect(leaves.every(({ retrieval }) => retrieval.metrics.recallAt10 === 1
       && retrieval.metrics.deltaCitationRate === 1)).toBe(true);
+    expect(requested).toEqual(Array(6).fill(10));
+  });
+
+  it('preserves every mode failure and its full canary metrics in one receipt', async () => {
+    const f = fixture();
+    f.adapter.searchInstalled = async ({ mode, query }) => {
+      if (mode === 'dual') throw new Error('dual offline');
+      const expected = f.retrievalPlan.cases.find((row) => row.query === query).expected;
+      return mode === 'claude' ? [] : [{ repo: expected.repo, path: expected.path }];
+    };
+    let failure;
+    try {
+      await createPublicVerificationLane({ os: 'linux', ...f,
+        coverageIdentity: { sha256: digest(f.releaseCoverage), bytes: 100 } });
+    } catch (error) { failure = error; }
+    expect(failure?.publicVerificationFailure).toMatchObject({
+      schemaVersion: 1,
+      kind: 'ruvnet-brain-public-verification-failure',
+      os: 'linux',
+      failures: [
+        { mode: 'claude', metrics: { hits: 0 }, failedCaseIds: ['delta:new', 'legacy:old'] },
+        { mode: 'dual', metrics: { unknown: 2 }, failedCaseIds: ['delta:new', 'legacy:old'] },
+      ],
+    });
+    expect(failure.publicVerificationFailure.failureSha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('measures against an observed failed-public baseline without accepting it as candidate identity', async () => {
