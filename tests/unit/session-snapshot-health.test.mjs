@@ -93,4 +93,30 @@ describe('issue #85 — versioned compaction snapshot contract', () => {
     fs.writeFileSync(path.join(stale, '.swarm', 'agentdb-sessions.jsonl'), `${JSON.stringify(receipt)}\n`);
     expect(inspectSessionSnapshots(stale, { now: NOW })).toMatchObject({ kind: 'canonical', fresh: false });
   });
+
+  it('TEETH: a malformed .claude/sessions root must not shadow a genuinely fresh .claude-flow/sessions one', () => {
+    // legacy() iterates ['.claude', '.claude-flow'] and, before this fix, RETURNED immediately on the
+    // first root whose `sessions/` entry was not a plain directory (a stray file, or a symlink) —
+    // discarding every OTHER root's evidence, including a genuinely fresh, structurally valid legacy
+    // session sitting right next to it. `probeMemory().compactionSurvival`
+    // (scripts/onboarding-console.mjs) is the one real caller: this reproduces the false negative that
+    // reaches its onboarding-console health probe.
+    const project = temporary();
+    // `.claude/sessions` is a STRAY FILE where a directory is expected — not absent (fs.existsSync is
+    // still true), so legacy() proceeds to lstatSync it and, pre-fix, returns early for the WHOLE scan.
+    fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.claude', 'sessions'), 'not a directory');
+    // `.claude-flow/sessions` — checked AFTER `.claude` in the fixed root order — holds a real, fresh,
+    // structurally valid legacy session that a working scan must still find.
+    const dir = path.join(project, '.claude-flow', 'sessions');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'session-ok.json'), JSON.stringify({
+      id: 'session-ok',
+      startedAt: new Date(NOW - 1000).toISOString(),
+      endedAt: new Date(NOW).toISOString(),
+      context: { project: 'fixture' },
+      metrics: { tasks: 1 },
+    }));
+    expect(inspectSessionSnapshots(project, { now: NOW })).toMatchObject({ kind: 'legacy', fresh: true });
+  });
 });
