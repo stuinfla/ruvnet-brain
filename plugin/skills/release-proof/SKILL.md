@@ -14,7 +14,9 @@ green.
 
 1. Use the exact source SHA and one packed-artifact SHA-256 everywhere.
 2. Require zero open GitHub issues labeled `release-blocker`. Unlabeled backlog is not release authority; a local fix does not clear a labeled blocker.
-3. Require every named GitHub workflow to complete successfully on the exact candidate SHA.
+3. Run CI, integration, UX, and stranger qualification once in
+   `.github/workflows/release-candidate-preflight.yml` on `release/**`. Require its exact-SHA,
+   source-bound package and aggregate before that unchanged SHA reaches `main`.
 4. Reject any test/QE result with zero tests, skips, todos, unknowns, pending jobs, or failures.
 5. When the candidate changes architecture or the retrieval oracle, require the accepted Fable 5 and GPT-5.6-Sol design-review receipts for that change. Routine releases do not manufacture caller-supplied reviewer keys; bundled public keys are integrity material, not an independent trust anchor.
 6. Install the sealed artifact into virgin Claude Code and Codex homes; test their real entrypoints.
@@ -30,13 +32,18 @@ green.
 
 ## Candidate seal
 
-Generate the receipt from commands in the protected candidate workflow. Do not hand-author it.
-Dispatch `.github/workflows/protected-release.yml` only. That workflow is the sole controller: one
-run binds current `origin/main`, consumes the exact-main CI artifact, produces typed prepublication
-receipts, invokes the publisher, downloads the public bytes, executes the three-OS by three-host-mode
-matrix, and appends `install-verified`. Do not hand-copy run IDs between competing controller
-workflows. Conditional architecture/retrieval-oracle reviews are candidate inputs only when the
-governed surfaces changed; they do not authorize publication.
+Generate the candidate receipt in `.github/workflows/release-candidate-preflight.yml`; do not
+hand-author it. The preflight runs the long CI, integration, UX, and stranger lanes once on
+`release/**`, then emits the source-bound package and aggregate as
+`release-candidate-<exact SHA>`. Fast-forward that unchanged SHA to `main`.
+
+Dispatch `.github/workflows/protected-release.yml` only after the fast-forward. It is the sole
+publication controller: it proves current `origin/main` is the preflight SHA, selects the artifact
+by its deterministic name rather than a caller-supplied run ID, revalidates every receipt,
+payload/source binding, and digest, then signs and publishes once. The same protected run downloads
+the public bytes, executes the three-OS by three-host-mode matrix, and appends `install-verified`.
+It does not rerun the long preflight lanes. Conditional architecture/retrieval-oracle reviews are
+candidate inputs only when the governed surfaces changed; they do not authorize publication.
 Validate it from the repository with:
 
 ```bash

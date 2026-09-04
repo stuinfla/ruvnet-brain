@@ -199,9 +199,10 @@ sh scripts/memdb-health.sh "$RUVNET_PROJECT_MEMORY_DB" >> "$LOG" 2>&1 \
 # maintainer away for a month. So the last step is handed to the nightly, which is already the thing
 # that runs unattended.
 #
-# It does NOT publish or dispatch a publisher. The watchdog is report-only because only one
-# protected-release run may derive the typed exact-SHA evidence, publish, execute public 3x3, and
-# append install-verified. Change-triggered architecture/oracle review is evidence, not publication authority. It stands down on any
+# It does NOT publish or dispatch a publisher. The watchdog is report-only: release-candidate-
+# preflight runs long qualification once on release/**, then protected-release imports the artifact
+# by exact-SHA name, revalidates it, publishes, executes public 3x3, and appends install-verified.
+# Change-triggered architecture/oracle review is evidence, not publication authority. It stands down on any
 # unexpected state — dirty tree, open PRs, no green exact-SHA evidence, a -dev version, a stalled
 # Actions plane — because a watchdog acting on a partial picture is worse than no watchdog.
 # ── GITHUB HEALTH (2026-08-08). Stuart: "You should never ever let it be in a situation where

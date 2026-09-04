@@ -11,8 +11,9 @@
  * for a month.
  *
  * WHAT IT WILL NOT DO. It does not publish. `scripts/self-update.mjs:56` refuses `--publish` and
- * `protected-release.yml` is the sole release-control entrypoint. This watchdog is report-only: it
- * never dispatches publication and cannot manufacture typed prepublication evidence.
+ * `release-candidate-preflight.yml` owns the one-time long lanes and `protected-release.yml` is the
+ * sole publication controller. This watchdog is report-only: it never dispatches either phase and
+ * cannot manufacture typed candidate evidence.
  *
  * IT IS A NO-OP UNLESS EVERY PRECONDITION HOLDS. It runs from the nightly, unattended, for weeks.
  * A watchdog that acts on a partial picture is worse than no watchdog, so it refuses on anything
@@ -102,5 +103,5 @@ log(`PRECONDITIONS VISIBLE — candidate=${originMain.slice(0, 7)} version=${ver
 // ── 6. Never dispatch a publisher from the watchdog. ───────────────────────────────────────────
 // Only protected-release may derive the complete typed evidence chain and cross Production.
 // This unattended observer cannot turn visible preconditions into release authority.
-log(`READY FOR protected-release assessment, but no action taken for ${version} at ${originMain}`);
-log('Dispatch only .github/workflows/protected-release.yml; it is the sole release controller and publisher owner.');
+log(`PRECONDITIONS ONLY — no candidate artifact inferred and no action taken for ${version} at ${originMain}`);
+log('Run release-candidate-preflight on release/** once; fast-forward that exact SHA to main; then protected-release imports release-candidate-<SHA> without a run ID.');

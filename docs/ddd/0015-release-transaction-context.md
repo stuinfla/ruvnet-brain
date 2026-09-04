@@ -1,4 +1,4 @@
-Updated: 2026-09-04 07:20:00 EDT | Version 2.1.0
+Updated: 2026-09-04 07:33:00 EDT | Version 2.1.1
 Created: 2026-08-02 20:10:00 EDT
 
 # DDD-0015 — The Release Transaction bounded context
@@ -12,9 +12,11 @@ Governs: ADR-062 · Issue #77 · `scripts/release.mjs`
 The Release Transaction context converts one sealed candidate into one supported product
 generation across GitHub, npm, Claude, Codex, Stable Spine, and Console. It owns provider staging,
 promotion, compensation, and receipts. It does not build the corpus, choose a version, modify source,
-or authorize publication. `.github/workflows/protected-release.yml` is the sole application
-controller: one run owns exact-main evidence intake, typed prepublication receipts, provider
-publication, public 3x3 verification, and the terminal receipt.
+or authorize publication. `.github/workflows/release-candidate-preflight.yml` qualifies the
+candidate once on `release/**` and emits `release-candidate-<exact SHA>`. After that SHA is
+fast-forwarded unchanged to main, `.github/workflows/protected-release.yml` is the sole publication
+controller: it imports and revalidates those bytes, publishes once, then owns public 3x3 verification
+and the terminal receipt.
 
 ## Ubiquitous language
 
@@ -263,4 +265,4 @@ identify one safe supported generation; otherwise it enters `manual-intervention
 
 | Date | Change |
 |---|---|
-| 2026-09-04 | Reconciled the context with ADR-062 and `.github/workflows/protected-release.yml`: the sole controller owns exact-main evidence through `install-verified`; review is change-triggered and only labeled `release-blocker` issues stop dispatch. |
+| 2026-09-04 | Reconciled the expedited two-phase context with ADR-062: `.github/workflows/release-candidate-preflight.yml` runs long qualification once and names `release-candidate-<exact SHA>`; after an unchanged fast-forward, `.github/workflows/protected-release.yml` revalidates that artifact, publishes once, and owns public proof through `install-verified`. Review is change-triggered and only labeled `release-blocker` issues stop dispatch. |

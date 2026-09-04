@@ -3,7 +3,7 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-04 07:20:00 EDT
+updated: 2026-09-04 07:33:00 EDT
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -121,11 +121,13 @@ rendered `PUBLISHED, NOT VERIFIED`. `install-verified` is the only successful te
 for receipt schema 3+. Historical schema 1/2 `channels-converged` receipts remain readable as
 `legacy-closed/unverified`; they are neither rewritten nor silently promoted.
 
-`protected-release.yml` is the sole dispatch and control plane for a release. One run owns the
-current-main identity check, exact-SHA CI artifact, typed prepublication receipts, publisher,
-public three-OS by three-host-mode verification, and terminal `install-verified` append. Auxiliary
-workflows may produce evidence, but cannot become a second controller or require manual run-ID
-handoffs between release stages.
+The release rail has two phases without duplicated qualification. On `release/**`,
+`release-candidate-preflight.yml` runs CI, integration, UX, and stranger lanes once and emits the
+source-bound package plus aggregate as `release-candidate-<exact SHA>`. That unchanged SHA is then
+fast-forwarded to `main`. `protected-release.yml` is the sole publication controller: it selects
+the artifact by deterministic name, not human run ID, revalidates its receipts, payload/source
+binding, and digest against current main, then signs/publishes once and owns public three-OS by
+three-host-mode verification through terminal `install-verified`.
 
 Refresh success likewise requires an atomic terminal receipt after all nine required phases. The
 state sequence is `RUNNING -> SETTLING -> SUCCEEDED|FAILED|ABANDONED`. A dead exact owner is
@@ -200,14 +202,15 @@ readback stop the run. Unlabeled backlog does not silently acquire release autho
 ## Current implementation status
 
 `Accepted; implementation remains proof-gated.` The executable S-1 through S-12 ownership and
-evidence contract lives in `scripts/product-integrity-contract.mjs`. This reconciliation defines one
-protected-release controller and removes per-release self-supplied reviewer identity and all-open-issue
-policy from the architecture. No release is conformant until one actual run produces its exact-main
-artifact, typed prepublication receipts, publication receipt, nine public leaves, and independently
-reverified `install-verified` terminal receipt.
+evidence contract lives in `scripts/product-integrity-contract.mjs`. This reconciliation defines a
+source-bound preflight followed by one protected publication controller, without rerunning the long
+lanes. It removes per-release self-supplied reviewer identity and all-open-issue policy from the
+architecture. No release is conformant until preflight produces `release-candidate-<exact SHA>`,
+that SHA reaches main unchanged, and protected release revalidates it before producing the
+publication receipt, nine public leaves, and `install-verified` terminal receipt.
 
 ## Currency log
-| 2026-09-04 | Reconciled the release authority around one protected-release run. Fable/Sol review is required when architecture or the retrieval oracle changes, not as caller-supplied per-release authority; only issues explicitly labeled `release-blocker` stop publication. | `.github/workflows/protected-release.yml` is the sole controller; `scripts/independent-review-receipt.mjs` supplies change-bound evidence without turning bundled reviewer keys into a trust anchor. |
+| 2026-09-04 | Reconciled the expedited two-phase rail: long qualification runs once in preflight on `release/**`; protected release imports `release-candidate-<exact SHA>` after the unchanged SHA reaches main, revalidates it, publishes once, and completes public install proof. | `.github/workflows/release-candidate-preflight.yml` and `.github/workflows/protected-release.yml` divide qualification from publication without human run IDs or duplicated long lanes. Fable/Sol review remains change-triggered and only `release-blocker` issues stop publication. |
 | 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence localized the failure to executable resolution, not the test suite; the product contract is unchanged and the boundary is now portable. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
 | 2026-08-31 | Reconciled after the 4.3.3 main-branch merge and CI watchdog change; whole-product conformance still requires every exact-SHA lane, and long hosted stages now expose named timeout receipts instead of opaque job progress. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; exact-SHA CI run `33358984585`. |
 

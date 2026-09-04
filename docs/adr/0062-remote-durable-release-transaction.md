@@ -23,7 +23,7 @@ governs:
 # ADR-062 — Remote-durable staged release transaction
 
 ## Currency log
-| 2026-09-04 | Consolidated release control into `protected-release.yml`: one run owns exact-main evidence intake, typed prepublication receipts, provider mutation, public 3x3, and `install-verified`. Fable/Sol review remains required for architecture or retrieval-oracle changes, but bundled caller-supplied keys are not publication authority. | Removes the split `release-cycle` controller and manual run-ID authority; only labeled `release-blocker` issues stop the transaction. |
+| 2026-09-04 | Split qualification from publication without duplicating work: `release-candidate-preflight.yml` runs CI/integration/UX/stranger once on `release/**` and emits `release-candidate-<exact SHA>`; after that SHA fast-forwards to main, `protected-release.yml` imports and revalidates the sealed payload before publishing once and completing public 3x3/`install-verified`. | Deterministic artifact discovery removes human run-ID authority while source, receipt, payload, and digest revalidation preserve the fail-closed boundary. Fable/Sol remains change-triggered and only labeled `release-blocker` issues stop the transaction. |
 | 2026-08-31 | Release qualification now runs the three isolated host fixtures concurrently and reassembles their results in canonical order before the single receipt write, reducing the critical host-matrix wall time without changing evidence, verdict, or publication authority. | `scripts/host-install-matrix.mjs`; `scripts/staged-host-verifier.mjs`; the published-side verification remains receipt-bound. |
 | 2026-08-31 | Replaced the manual cross-workflow handoff with one release-cycle controller. It derives the exact successful CI and aggregate runs for one candidate SHA, dispatches the mandatory signed independent review, waits for its exact-SHA result, and dispatches the protected publisher with all IDs. The protected publisher remains the only code allowed to publish. | `.github/workflows/release-cycle.yml`; manual run-ID copying is removed from the normal path while exact-SHA and signed-review requirements remain. |
 | 2026-08-31 | Added an external per-step watchdog and machine-readable receipt to the long hosted release and cross-platform stages. Job-level timeouts remain the outer fence; named stage budgets now fail a wedged operation at its actual boundary instead of leaving an opaque compound step in progress. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; `tests/unit/step-watchdog.test.mjs` |
@@ -69,7 +69,7 @@ governs:
 
 **Date**: 2026-08-02
 
-**Updated**: 2026-09-04 07:20 EDT · **Revision**: 2.1.0
+**Updated**: 2026-09-04 07:33 EDT · **Revision**: 2.1.1
 
 > 4.0.8 correction: the 4.0.7 implementation proved that publisher-side bundle rebuilding makes
 > retry identity unstable and receipt-history skipping can report false convergence after
@@ -121,11 +121,16 @@ idempotent state machine rather than call ordering alone.
 
 ## Canonical release-control boundary
 
-`protected-release.yml` is the sole controller and publisher boundary. One invocation binds the
-current `origin/main` SHA, consumes that SHA's CI artifact, materializes typed prepublication
-receipts, runs the provider transaction, downloads public bytes, executes the public three-OS by
-three-host-mode matrix, and appends `install-verified`. Other workflows may prepare evidence but
-cannot dispatch, advance, or complete a release transaction.
+Release authority has two explicit phases. `release-candidate-preflight.yml` runs the long CI,
+integration, UX, and stranger lanes once on `release/**`, then emits the source-bound package and
+aggregate named `release-candidate-<exact SHA>`. That identical SHA is fast-forwarded to `main`.
+
+`protected-release.yml` is the sole publication controller and publisher boundary. It proves
+current `origin/main` equals the preflight source SHA, discovers the artifact by deterministic name
+rather than human-supplied run ID, and revalidates its typed receipts, payload/source binding, and
+digest. It does not rerun the long lanes. One invocation signs and publishes the already-qualified
+bytes once, downloads the public copies, executes the public three-OS by three-host-mode matrix,
+and appends `install-verified`.
 
 Independent Fable 5 and GPT-5.6-Sol review applies when architecture or the sealed retrieval oracle
 changes. Those accepted change-bound reviews are evidence inputs, not per-release authorization.
