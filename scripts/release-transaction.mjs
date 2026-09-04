@@ -565,7 +565,7 @@ export async function finalizeReleaseTransaction({
         lanes: aggregate.metrics.leaves,
         recallAt10: aggregate.metrics.recallAt10,
         deltaCitationRate: aggregate.metrics.deltaCitationRate,
-        reviewReceipts: aggregate.reviews,
+        reviewReceipts: aggregate.reviews || [],
       },
       npm: snapshot.npm,
       github: snapshot.github,

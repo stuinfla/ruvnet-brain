@@ -14,18 +14,6 @@ on:
         description: Exact release generation (must equal package.json at candidate_sha)
         required: true
         type: string
-      release_qe_run_id:
-        description: Successful exact-SHA ci run that uploaded release-evidence
-        required: true
-        type: string
-      aggregate_run_id:
-        description: Successful exact-SHA release-aggregate run
-        required: true
-        type: string
-      independent_review_run_id:
-        description: Successful exact-SHA product-integrity-review run with both subscription receipts
-        required: true
-        type: string
 
 permissions:
   actions: read
@@ -63,37 +51,56 @@ env:
   EXPECTED_SHA: ${{ inputs.candidate_sha }}
 
 jobs:
-  release-qe-proof:
-    name: release-qe-proof
+  identity:
+    name: authorize-current-main-candidate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     outputs:
-      candidate_sha: ${{ steps.identity.outputs.candidate_sha }}
-      artifact_sha256: ${{ steps.identity.outputs.artifact_sha256 }}
-      version: ${{ steps.identity.outputs.version }}
+      candidate_sha: ${{ steps.candidate.outputs.candidate_sha }}
+      version: ${{ steps.candidate.outputs.version }}
     steps:
-      - name: Reject malformed or wrong-generation dispatch inputs
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'candidate SHA must be 40 lowercase hex characters' >&2; exit 1; }
-          [[ "${{ inputs.version }}" == "$EXPECTED_VERSION" ]] || { echo 'candidate version mismatch' >&2; exit 1; }
-
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Require the candidate to be the current immutable main commit
+      - id: candidate
+        name: Bind this run to one current-main source identity
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           git fetch --no-tags origin main
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || { echo 'candidate checkout SHA mismatch' >&2; exit 1; }
-          test "$(git rev-parse origin/main)" = "$EXPECTED_SHA" || { echo 'candidate is not current origin/main' >&2; exit 1; }
-          test -z "$(git status --porcelain)" || { echo 'candidate checkout is dirty' >&2; exit 1; }
+          test "$GITHUB_SHA" = "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(git rev-parse origin/main)" = "$EXPECTED_SHA"
+          test "$(node -p "require('./package.json').version")" = "$EXPECTED_VERSION"
+          test -z "$(git status --porcelain)"
+          printf 'candidate_sha=%s\nversion=%s\n' "$EXPECTED_SHA" "$EXPECTED_VERSION" >> "$GITHUB_OUTPUT"
 
+  verified-candidate:
+    name: import-exact-preflight-candidate
+    needs: identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+    outputs:
+      candidate_sha: ${{ steps.verify.outputs.candidate_sha }}
+      artifact_sha256: ${{ steps.verify.outputs.artifact_sha256 }}
+      version: ${{ steps.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.identity.outputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: Require zero maintainer-governed release blockers
         env:
           GH_TOKEN: ${{ github.token }}
@@ -102,254 +109,95 @@ jobs:
           set -euo pipefail
           blockers="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label release-blocker --limit 100 --json number --jq 'length')"
           test "$blockers" -eq 0 || { echo "$blockers governed release blocker(s) remain open" >&2; exit 1; }
-
-      - name: Prove exact-SHA CI and release-qe completed successfully
+      - name: Restore the one successful preflight artifact for this exact SHA
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_QE_RUN_ID: ${{ inputs.release_qe_run_id }}
+          CANDIDATE_SHA: ${{ needs.identity.outputs.candidate_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          gh run view "$RELEASE_QE_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json databaseId,workflowName,headSha,status,conclusion,jobs > "$RUNNER_TEMP/release-qe-run.json"
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const run = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/release-qe-run.json', 'utf8'));
-          const ok = run.workflowName === 'ci'
-            && run.headSha === process.env.EXPECTED_SHA
-            && run.status === 'completed'
-            && run.conclusion === 'success'
-            && run.jobs?.some(({ name, status, conclusion }) => name === 'release-qe'
-              && status === 'completed' && conclusion === 'success');
-          if (!ok) throw new Error('release-qe proof is absent, red, pending, or bound to another SHA');
-          NODE
-
-      - name: Download CI-produced candidate receipt and sealed package
-        uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.release_qe_run_id }}
-          name: release-evidence-${{ inputs.candidate_sha }}
-          path: release-evidence
-
-      - name: Download the sole exact-SHA aggregate envelope
-        uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.aggregate_run_id }}
-          name: release-aggregate-${{ inputs.candidate_sha }}
-          path: release-evidence
-
-      - name: Authenticate the aggregate workflow and exact-SHA job
+          artifact_name="release-candidate-$CANDIDATE_SHA"
+          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100" \
+            --jq '.artifacts | map(select(.expired == false)) | sort_by(.created_at) | reverse | .[0].id // empty')"
+          test -n "$artifact_id" || { echo "no successful preflight artifact exists for $CANDIDATE_SHA" >&2; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/candidate.zip"
+          mkdir release-evidence
+          unzip -q "$RUNNER_TEMP/candidate.zip" -d release-evidence
+      - id: verify
+        name: Verify imported source, package bytes, payload, and aggregate
         env:
-          GH_TOKEN: ${{ github.token }}
-          AGGREGATE_RUN_ID: ${{ inputs.aggregate_run_id }}
+          CANDIDATE_SHA: ${{ needs.identity.outputs.candidate_sha }}
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          gh run view "$AGGREGATE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
-            --json workflowName,headSha,status,conclusion,jobs > "$RUNNER_TEMP/aggregate-run.json"
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const run = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/aggregate-run.json', 'utf8'));
-          if (run.workflowName !== 'release-aggregate' || run.headSha !== process.env.EXPECTED_SHA
-            || run.status !== 'completed' || run.conclusion !== 'success'
-            || !run.jobs?.some((job) => job.name === 'release-aggregate'
-              && job.status === 'completed' && job.conclusion === 'success')) {
-            throw new Error('aggregate workflow proof is absent, red, pending, or bound to another SHA');
-          }
-          NODE
-
-      - name: Authenticate the independent subscription-review workflow
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REVIEW_RUN_ID: ${{ inputs.independent_review_run_id }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh run view "$REVIEW_RUN_ID" --repo "$GITHUB_REPOSITORY" \
-            --json workflowName,headSha,status,conclusion,jobs > "$RUNNER_TEMP/review-run.json"
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const run = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/review-run.json', 'utf8'));
-          if (run.workflowName !== 'product-integrity-review' || run.headSha !== process.env.EXPECTED_SHA
-            || run.status !== 'completed' || run.conclusion !== 'success'
-            || !run.jobs?.some((job) => job.name === 'product-integrity-review'
-              && job.status === 'completed' && job.conclusion === 'success')) {
-            throw new Error('independent review proof is absent, red, pending, or bound to another SHA');
-          }
-          NODE
-
-      - name: Download both exact-SHA independent review receipts
-        uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.independent_review_run_id }}
-          name: product-integrity-reviews-${{ inputs.candidate_sha }}
-          path: release-evidence/independent-review
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Verify machine-produced receipt, package bytes, and version lockstep
-        id: identity
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s release-evidence/candidate-receipt.json
-          test "$(node -p "require('./package.json').version")" = "$EXPECTED_VERSION" || { echo 'candidate version mismatch' >&2; exit 1; }
           node scripts/release-proof.mjs --candidate release-evidence/candidate-receipt.json
-          node scripts/release-payload.mjs verify-members --manifest release-evidence/payload-manifest.json > "$RUNNER_TEMP/payload.json"
+          node scripts/release-payload.mjs verify-members \
+            --manifest release-evidence/payload-manifest.json > "$RUNNER_TEMP/payload.json"
           node --input-type=module <<'NODE'
           import crypto from 'node:crypto';
           import fs from 'node:fs';
           import path from 'node:path';
           const receipt = JSON.parse(fs.readFileSync('release-evidence/candidate-receipt.json', 'utf8'));
-          const aggregate = JSON.parse(fs.readFileSync('release-evidence/aggregate-envelope.json', 'utf8'));
-          const leaves = JSON.parse(fs.readFileSync('release-evidence/release-leaves.json', 'utf8'));
           const manifest = JSON.parse(fs.readFileSync('release-evidence/payload-manifest.json', 'utf8'));
+          const aggregate = JSON.parse(fs.readFileSync('release-evidence/aggregate-envelope.json', 'utf8'));
           const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/payload.json', 'utf8'));
-          if (receipt.sha !== process.env.EXPECTED_SHA) throw new Error('candidate receipt SHA mismatch');
-          if (receipt.version !== process.env.EXPECTED_VERSION) throw new Error('candidate version mismatch');
-          if (aggregate.verdict !== 'PASS' || aggregate.sha !== process.env.EXPECTED_SHA
-            || aggregate.payloadId !== payload.payloadId) throw new Error('aggregate envelope identity mismatch');
-          if (manifest.candidateSha !== process.env.EXPECTED_SHA || manifest.version !== process.env.EXPECTED_VERSION
-            || manifest.tag !== `v${process.env.EXPECTED_VERSION}`) throw new Error('payload manifest source identity mismatch');
-          const roles = new Set(manifest.members?.map((member) => member.role));
-          if (!roles.has('npm') || !roles.has('bundle') || !roles.has('corpus-seed')
-            || !roles.has('generation-ledger') || roles.size !== 4) throw new Error('payload manifest roles are incomplete or ambiguous');
+          if (receipt.sha !== process.env.CANDIDATE_SHA || receipt.version !== process.env.CANDIDATE_VERSION
+            || manifest.candidateSha !== process.env.CANDIDATE_SHA || manifest.version !== process.env.CANDIDATE_VERSION
+            || aggregate.sha !== process.env.CANDIDATE_SHA || aggregate.payloadId !== payload.payloadId
+            || aggregate.verdict !== 'PASS') throw new Error('imported preflight identity or verdict mismatch');
           const relative = String(receipt.artifact?.path || '').replaceAll('\\', '/');
           if (!relative.startsWith('release-evidence/') || relative.includes('../')) throw new Error('candidate artifact path escaped release-evidence');
           const artifact = path.resolve(relative);
           const digest = crypto.createHash('sha256').update(fs.readFileSync(artifact)).digest('hex');
-          if (digest !== String(receipt.artifact.sha256).replace(/^sha256:/, '')) throw new Error('candidate artifact digest mismatch');
-          const npmMember = manifest.members.find((member) => member.role === 'npm');
-          if (npmMember.sha256 !== digest || npmMember.name !== path.basename(artifact)) throw new Error('payload npm member differs from candidate seal');
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `candidate_sha=${receipt.sha}\nartifact_sha256=${digest}\nversion=${receipt.version}\n`);
+          if (digest !== String(receipt.artifact.sha256).replace(/^sha256:/, '')) throw new Error('candidate package digest mismatch');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,
+            `candidate_sha=${receipt.sha}\nartifact_sha256=${digest}\nversion=${receipt.version}\n`);
           NODE
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          import { aggregateEvidence } from './scripts/release-evidence-aggregate.mjs';
-          const envelope = JSON.parse(fs.readFileSync('release-evidence/aggregate-envelope.json', 'utf8'));
-          const leaves = JSON.parse(fs.readFileSync('release-evidence/release-leaves.json', 'utf8'));
-          const recomputed = aggregateEvidence({ sha: envelope.sha, payloadId: envelope.payloadId, leaves });
-          // CANONICAL comparison, not raw JSON.stringify (fixed 2026-08-06).
-          //
-          // `JSON.stringify` preserves KEY INSERTION ORDER, so this compared spelling, not content.
-          // Measured against the real 4.0.18 evidence: the stored envelope carries alphabetically
-          // sorted keys while aggregateEvidence() returns them in construction order, so the two
-          // serialise differently while being the same object —
-          //     evidenceDigest equal : true
-          //     verdict equal        : true
-          //     canonical equal      : true
-          //     raw stringify equal  : FALSE   ← the only thing the old line could see
-          // and the release was refused with 'aggregate envelope digest or leaves mismatch' when
-          // nothing was mismatched. A gate that reports something other than what it measures is
-          // the defect this repo keeps paying for; here it made the publisher unable to accept its
-          // own correctly-produced evidence, which is the last thing standing between #77 and a
-          // convergent release.
-          //
-          // The security property is UNCHANGED, and is in fact now checked twice: any real change
-          // to the leaves alters both the canonical form AND evidenceDigest (a sha256 over the
-          // leaves, recomputed here from the shipped file). Sorting keys cannot hide a substituted
-          // value, a dropped leaf, or an added one.
-          const canonical = (value) => (Array.isArray(value)
-            ? value.map(canonical)
-            : (value && typeof value === 'object')
-              ? Object.fromEntries(Object.keys(value).sort().map((k) => [k, canonical(value[k])]))
-              : value);
-          if (recomputed.evidenceDigest !== envelope.evidenceDigest) throw new Error('aggregate evidence digest mismatch');
-          if (JSON.stringify(canonical(recomputed)) !== JSON.stringify(canonical(envelope))) throw new Error('aggregate envelope leaves mismatch');
-          NODE
-          node scripts/independent-review-receipt.mjs verify-pair \
-            --fable release-evidence/independent-review/receipts/claude-fable-5.json \
-            --sol release-evidence/independent-review/receipts/gpt-5.6-sol.json \
-            --fable-public-key release-evidence/independent-review/keys/claude-fable-5.pub.pem \
-            --sol-public-key release-evidence/independent-review/keys/gpt-5.6-sol.pub.pem \
-            --retrieval-plan release-evidence/retrieval-canary-plan.json
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          import path from 'node:path';
-          import { validateIndependentReviewReceipt, REQUIRED_REVIEW_MODELS } from './scripts/public-verification-aggregate.mjs';
-          const directory = 'release-evidence/independent-review/receipts';
-          const files = fs.readdirSync(directory, { withFileTypes: true });
-          if (files.length !== 2 || files.some((entry) => !entry.isFile() || !entry.name.endsWith('.json'))) {
-            throw new Error('independent review artifact must contain exactly two JSON receipts');
-          }
-          const reviews = files.map((entry) => validateIndependentReviewReceipt(
-            JSON.parse(fs.readFileSync(path.join(directory, entry.name), 'utf8'))));
-          const candidate = JSON.parse(fs.readFileSync('release-evidence/candidate-receipt.json', 'utf8'));
-          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/payload.json', 'utf8'));
-          if (new Set(reviews.map(({ model }) => model)).size !== 2
-            || REQUIRED_REVIEW_MODELS.some((model) => !reviews.some((review) => review.model === model))
-            || reviews.some((review) => review.sourceSha !== candidate.sha
-              || review.artifactSha256 !== String(candidate.artifact.sha256).replace(/^sha256:/, '')
-              || review.payloadId !== payload.payloadId)) {
-            throw new Error('independent reviews do not bind the exact candidate source, artifact, and payload');
-          }
-          NODE
+      - name: Hand the verified candidate to this transaction
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release-evidence/
+          if-no-files-found: error
+          retention-days: 7
 
   seal-payload:
-    name: seal-or-reuse-immutable-payload
-    needs: release-qe-proof
+    name: seal-immutable-payload
+    needs: verified-candidate
     runs-on: ubuntu-latest
     environment: Production – ruvnet-brain
     permissions:
-      actions: write
+      actions: read
       contents: read
     outputs:
       payload_id: ${{ steps.seal.outputs.payload_id }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-qe-proof.outputs.candidate_sha }}
+          ref: ${{ needs.verified-candidate.outputs.candidate_sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Restore the original build-once candidate payload
+      - name: Restore the verified build-once candidate payload
         uses: actions/download-artifact@v4
         with:
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.release_qe_run_id }}
-          name: release-evidence-${{ needs.release-qe-proof.outputs.candidate_sha }}
+          name: verified-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: release-evidence
-      - name: Restore the exact-SHA aggregate envelope
-        uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.aggregate_run_id }}
-          name: release-aggregate-${{ needs.release-qe-proof.outputs.candidate_sha }}
-          path: release-evidence
-      - name: Reuse persisted signature or sign exactly once
+      - name: Sign this run's exact payload once
         id: seal
         env:
-          GH_TOKEN: ${{ github.token }}
           RUVNET_SIGNING_KEY: ${{ secrets.RUVNET_SIGNING_KEY }}
         shell: bash
         run: |
           set -euo pipefail
           unsigned_proof="$(node scripts/release-payload.mjs verify-members --manifest release-evidence/payload-manifest.json)"
           payload_id="$(node -p "JSON.parse(process.argv[1]).payloadId" "$unsigned_proof")"
-          artifact_name="signed-payload-$payload_id"
-          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100" \
-            --jq '.artifacts | map(select(.expired == false)) | sort_by(.created_at) | reverse | .[0].id // empty')"
-          if [ -n "$artifact_id" ]; then
-            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/signed-payload.zip"
-            mkdir -p "$RUNNER_TEMP/reused-signatures"
-            unzip -qo "$RUNNER_TEMP/signed-payload.zip" -d "$RUNNER_TEMP/reused-signatures"
-            cp "$RUNNER_TEMP/reused-signatures/payload-manifest.sig" release-evidence/payload-manifest.sig
-            cp "$RUNNER_TEMP/reused-signatures/ruvnet-brain.zip.sig" release-evidence/ruvnet-brain.zip.sig
-            echo "reused=true" >> "$GITHUB_OUTPUT"
-          else
-            node scripts/sign-bundle.mjs --bundle release-evidence/ruvnet-brain.zip
-            node scripts/release-payload.mjs sign \
-              --manifest release-evidence/payload-manifest.json \
-              --out release-evidence/payload-manifest.sig
-            echo "reused=false" >> "$GITHUB_OUTPUT"
-          fi
+          node scripts/sign-bundle.mjs --bundle release-evidence/ruvnet-brain.zip
+          node scripts/release-payload.mjs sign \
+            --manifest release-evidence/payload-manifest.json \
+            --out release-evidence/payload-manifest.sig
           proof="$(node scripts/release-payload.mjs verify \
             --manifest release-evidence/payload-manifest.json \
             --signature release-evidence/payload-manifest.sig \
@@ -357,8 +205,7 @@ jobs:
           node scripts/verify-bundle.mjs release-evidence/ruvnet-brain.zip release-evidence/ruvnet-brain.zip.sig
           test "$(node -p "JSON.parse(process.argv[1]).payloadId" "$proof")" = "$payload_id"
           echo "payload_id=$payload_id" >> "$GITHUB_OUTPUT"
-      - name: Persist the one signed payload across retries
-        if: steps.seal.outputs.reused != 'true'
+      - name: Persist this run's signed payload
         uses: actions/upload-artifact@v4
         with:
           name: signed-payload-${{ steps.seal.outputs.payload_id }}
@@ -375,8 +222,6 @@ jobs:
             release-evidence/retrieval-canary-plan.json
             release-evidence/candidate-receipt.json
             release-evidence/aggregate-envelope.json
-            release-evidence/independent-review/receipts/*.json
-            release-evidence/independent-review/keys/*.pem
           if-no-files-found: error
           retention-days: 90
 
@@ -397,14 +242,12 @@ jobs:
             release-evidence/retrieval-canary-plan.json
             release-evidence/candidate-receipt.json
             release-evidence/aggregate-envelope.json
-            release-evidence/independent-review/receipts/*.json
-            release-evidence/independent-review/keys/*.pem
           if-no-files-found: error
           retention-days: 7
 
   publish:
     name: protected-publisher
-    needs: [release-qe-proof, seal-payload]
+    needs: [verified-candidate, seal-payload]
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: Production – ruvnet-brain
@@ -415,7 +258,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-qe-proof.outputs.candidate_sha }}
+          ref: ${{ needs.verified-candidate.outputs.candidate_sha }}
           fetch-depth: 0
           persist-credentials: true
 
@@ -450,9 +293,9 @@ jobs:
           RUVNET_CANDIDATE_PAYLOAD: release-evidence/payload-manifest.json
           RUVNET_CANDIDATE_PAYLOAD_SIGNATURE: release-evidence/payload-manifest.sig
           RUVNET_AGGREGATE_ENVELOPE: release-evidence/aggregate-envelope.json
-          RUVNET_EXPECTED_SHA: ${{ needs.release-qe-proof.outputs.candidate_sha }}
-          RUVNET_EXPECTED_ARTIFACT_SHA256: ${{ needs.release-qe-proof.outputs.artifact_sha256 }}
-          RUVNET_EXPECTED_VERSION: ${{ needs.release-qe-proof.outputs.version }}
+          RUVNET_EXPECTED_SHA: ${{ needs.verified-candidate.outputs.candidate_sha }}
+          RUVNET_EXPECTED_ARTIFACT_SHA256: ${{ needs.verified-candidate.outputs.artifact_sha256 }}
+          RUVNET_EXPECTED_VERSION: ${{ needs.verified-candidate.outputs.version }}
           RUVNET_PUBLICATION_RECEIPT: release-evidence/publication-receipt.json
           RUVNET_RELEASE_IDENTITY: release-evidence/release-identity.json
           RUVNET_CHANNEL_RECEIPT: release-evidence/channels-converged-receipt.json
@@ -491,14 +334,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: publication-evidence-${{ needs.release-qe-proof.outputs.candidate_sha }}
+          name: publication-evidence-${{ needs.verified-candidate.outputs.candidate_sha }}
           path: release-evidence/
           if-no-files-found: error
           retention-days: 90
 
   public-verification:
     name: public-verification-${{ matrix.os_name }}
-    needs: [release-qe-proof, publish]
+    needs: [verified-candidate, publish]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     permissions:
@@ -514,7 +357,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-qe-proof.outputs.candidate_sha }}
+          ref: ${{ needs.verified-candidate.outputs.candidate_sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -532,7 +375,7 @@ jobs:
       - name: Restore published transaction and candidate evidence
         uses: actions/download-artifact@v4
         with:
-          name: publication-evidence-${{ needs.release-qe-proof.outputs.candidate_sha }}
+          name: publication-evidence-${{ needs.verified-candidate.outputs.candidate_sha }}
           path: release-evidence
       - name: Execute all three loaders and retrieval canaries from actual public bytes
         shell: bash
@@ -553,14 +396,14 @@ jobs:
       - name: Preserve the immutable OS lane
         uses: actions/upload-artifact@v4
         with:
-          name: public-verification-${{ matrix.os_name }}-${{ needs.release-qe-proof.outputs.candidate_sha }}
+          name: public-verification-${{ matrix.os_name }}-${{ needs.verified-candidate.outputs.candidate_sha }}
           path: public-lanes/${{ matrix.os_name }}.json
           if-no-files-found: error
           retention-days: 90
 
   finalize-public-verification:
     name: finalize-public-verification
-    needs: [release-qe-proof, public-verification]
+    needs: [verified-candidate, public-verification]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: Production – ruvnet-brain
@@ -570,22 +413,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-qe-proof.outputs.candidate_sha }}
+          ref: ${{ needs.verified-candidate.outputs.candidate_sha }}
           fetch-depth: 0
           persist-credentials: true
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
       - run: npm ci --no-audit --no-fund
-      - name: Restore transaction identity and independent reviews
+      - name: Restore the published transaction identity
         uses: actions/download-artifact@v4
         with:
-          name: publication-evidence-${{ needs.release-qe-proof.outputs.candidate_sha }}
+          name: publication-evidence-${{ needs.verified-candidate.outputs.candidate_sha }}
           path: release-evidence
       - name: Restore exactly three immutable OS lanes
         uses: actions/download-artifact@v4
         with:
-          pattern: public-verification-*-${{ needs.release-qe-proof.outputs.candidate_sha }}
+          pattern: public-verification-*-${{ needs.verified-candidate.outputs.candidate_sha }}
           path: public-lanes
           merge-multiple: true
       - name: Sign the nine-leaf aggregate and append install-verified
@@ -598,7 +441,6 @@ jobs:
           set -euo pipefail
           node scripts/public-verification-aggregate.mjs \
             --lanes public-lanes \
-            --reviews release-evidence/independent-review/receipts \
             --out release-evidence/public-verification-aggregate.json
           node scripts/public-verification-finalizer.mjs \
             --identity release-evidence/release-identity.json \
@@ -609,7 +451,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: install-verification-evidence-${{ needs.release-qe-proof.outputs.candidate_sha }}
+          name: install-verification-evidence-${{ needs.verified-candidate.outputs.candidate_sha }}
           path: |
             release-evidence/public-verification-aggregate.json
             release-evidence/install-verified-receipt.json

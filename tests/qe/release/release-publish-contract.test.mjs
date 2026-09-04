@@ -68,7 +68,7 @@ describe('release publication is one remote durable staged transaction', () => {
     expect(bundle).toContain("await import('../kb/zip-extract.mjs')");
     expect(bundle).toContain('const packagedAudit = await auditRvfIndexes(packagedRvfs)');
     expect(ci).toContain('node scripts/build-bundle.mjs');
-    expect(protectedWorkflow).toContain('Reuse persisted signature or sign exactly once');
+    expect(protectedWorkflow).toContain("name: Sign this run's exact payload once");
     expect(protectedWorkflow).toContain('node scripts/sign-bundle.mjs');
     expect(release).not.toContain("runOrDie('build release bundle'");
     expect(release).not.toContain("runOrDie('sign release bundle'");
@@ -93,7 +93,7 @@ describe('release publication is one remote durable staged transaction', () => {
     expect(provider).not.toContain("'scripts/published-surface-probe.mjs', '--json'");
     expect(provider).not.toContain('publication.postPublicationChecks');
     expect(publicLane).toContain('generatePublicationReceipt');
-    expect(protectedWorkflow).toContain('needs: [release-qe-proof, publish]');
+    expect(protectedWorkflow).toContain('needs: [verified-candidate, publish]');
     expect(position(protectedWorkflow, 'node scripts/release.mjs --publish'))
       .toBeLessThan(position(protectedWorkflow, 'node scripts/public-verification-lane.mjs'));
     expect(position(protectedWorkflow, 'node scripts/public-verification-lane.mjs'))

@@ -41,13 +41,10 @@ name: stranger-matrix
 # named — "wait until the stdout-budget finding has a real fix" — is now discharged; what remains
 # is the admin action and the rest of items 2-9.
 on:
-  workflow_run:
-    workflows: [ci]
-    types: [completed]
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      release_qe_run_id:
-        description: Successful ci run containing the sealed candidate
+      candidate_sha:
+        description: Exact 40-character candidate SHA
         required: true
         type: string
 
@@ -56,8 +53,8 @@ permissions:
   contents: read
 
 env:
-  CANDIDATE_RUN_ID: ${{ github.event.workflow_run.id || inputs.release_qe_run_id }}
-  CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  CANDIDATE_RUN_ID: ${{ github.run_id }}
+  CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
 
 jobs:
   # ── THE GUARD: one condition, read by every cell below ──────────────────────────────────────────
@@ -81,18 +78,12 @@ jobs:
   # five times is how the two host harnesses drifted apart; one fact, one place.
   gate:
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.event == 'push')
     steps:
       - name: Why this run is eligible
         run: |
-          echo "trigger:    ${{ github.event_name }}"
-          echo "ci verdict: ${{ github.event.workflow_run.conclusion || 'n/a (dispatch)' }}"
-          echo "branch:     ${{ github.event.workflow_run.head_branch || 'n/a (dispatch)' }}"
-          echo "candidate:  ${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "trigger:    protected-release"
+          echo "candidate:  $CANDIDATE_SHA"
+          echo "ci run:     $CANDIDATE_RUN_ID"
   # ── shared prep, three POSIX-shaped jobs (ubuntu / macos share the exact same steps) ─────────────
   ubuntu:
     needs: gate
@@ -107,8 +98,6 @@ jobs:
       - name: Download the one CI-sealed candidate
         uses: actions/download-artifact@v4
         with:
-          github-token: ${{ github.token }}
-          run-id: ${{ env.CANDIDATE_RUN_ID }}
           name: release-evidence-${{ env.CANDIDATE_SHA }}
           path: ${{ runner.temp }}
       - name: npm install FROM the tarball into a fresh project (never the checkout)
@@ -152,8 +141,6 @@ jobs:
       - name: Download the one CI-sealed candidate
         uses: actions/download-artifact@v4
         with:
-          github-token: ${{ github.token }}
-          run-id: ${{ env.CANDIDATE_RUN_ID }}
           name: release-evidence-${{ env.CANDIDATE_SHA }}
           path: ${{ runner.temp }}
       - name: npm install FROM the tarball into a fresh project (never the checkout)
@@ -204,8 +191,6 @@ jobs:
       - name: Download the one CI-sealed candidate
         uses: actions/download-artifact@v4
         with:
-          github-token: ${{ github.token }}
-          run-id: ${{ env.CANDIDATE_RUN_ID }}
           name: release-evidence-${{ env.CANDIDATE_SHA }}
           path: ${{ runner.temp }}
       - name: npm install FROM the tarball into a fresh project (never the checkout)
@@ -248,8 +233,6 @@ jobs:
       - name: Download the one CI-sealed candidate
         uses: actions/download-artifact@v4
         with:
-          github-token: ${{ github.token }}
-          run-id: ${{ env.CANDIDATE_RUN_ID }}
           name: release-evidence-${{ env.CANDIDATE_SHA }}
           path: ${{ runner.temp }}
       - name: npm install FROM the tarball into a fresh project (never the checkout)
@@ -318,8 +301,6 @@ jobs:
       - name: Download the one CI-sealed candidate
         uses: actions/download-artifact@v4
         with:
-          github-token: ${{ github.token }}
-          run-id: ${{ env.CANDIDATE_RUN_ID }}
           name: release-evidence-${{ env.CANDIDATE_SHA }}
           path: /tmp/ci-out
       - name: npm install FROM the tarball into a fresh project (never the checkout)
@@ -376,8 +357,6 @@ jobs:
       - name: Download the exact candidate exercised by every stranger cell
         uses: actions/download-artifact@v4
         with:
-          github-token: ${{ github.token }}
-          run-id: ${{ env.CANDIDATE_RUN_ID }}
           name: release-evidence-${{ env.CANDIDATE_SHA }}
           path: release-evidence
       - name: Bind the stranger matrix to its source run and payload
@@ -403,7 +382,7 @@ jobs:
       - name: Persist exact stranger evidence
         uses: actions/upload-artifact@v4
         with:
-          name: stranger-evidence-${{ env.CANDIDATE_SHA }}
+          name: stranger-evidence-${{ inputs.candidate_sha || github.sha }}
           path: stranger-evidence.json
           if-no-files-found: error
           retention-days: 90

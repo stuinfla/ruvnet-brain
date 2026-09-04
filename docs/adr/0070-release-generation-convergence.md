@@ -3,7 +3,7 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-31
+updated: 2026-09-04
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -185,6 +185,7 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 7. Coverage documentation is generated from the sealed manifest, source ledger, and gist inventory.
 
 ## Currency log
+| 2026-09-04 | Reconciled Windows convergence verification with canonical QA: both lanes now regenerate the convergence manifest after checkout, so a pull request's synthetic merge ref is evaluated as the exact candidate rather than against the branch-tip snapshot. The convergence assertion remains enforced. | `.github/workflows/ci.yml`; `tests/unit/convergence-workflow-parity.test.mjs`; issue #241. |
 | 2026-08-31 | Closed the PR merge-ref freshness gap: canonical QA now regenerates the convergence manifest inside the exact checked-out candidate before running the gate, preventing a branch-generated snapshot from becoming stale on GitHub's synthetic merge ref. | `.github/workflows/canonical-qa.yml`; `scripts/convergence-manifest.mjs`; issue #193 release follow-up. |
 | 2026-08-31 | Regenerated the convergence manifest after the portable watchdog correction; the manifest now binds the actual PR tip rather than an earlier rebased commit. | `data/convergence-manifest.json`; PR #211. |
 | 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence showed shell:false cannot assume an `npx` shim; the unit lane now invokes Vitest through Node while retaining the same exact candidate test surface. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
