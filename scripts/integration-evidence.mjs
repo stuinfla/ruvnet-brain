@@ -35,7 +35,9 @@ export function buildIntegrationEvidence(report, { sourceSha, runId, runAttempt 
   const todo = Number(report.numTodoTests || 0);
   const passed = Number(report.numPassedTests || 0);
   const assertions = (report.testResults || []).flatMap((suite) => suite.assertionResults || []);
-  const skippedTests = assertions.filter(({ status }) => status === 'pending')
+  // Vitest 4 calls skipped assertions `skipped` while older JSON reporters called them
+  // `pending`; numPendingTests remains the aggregate count in both schemas.
+  const skippedTests = assertions.filter(({ status }) => status === 'skipped' || status === 'pending')
     .map(({ fullName, title }) => ({ fullName: fullName || title, title }))
     .filter(({ fullName, title }) => Boolean(fullName && title));
   const todoTests = assertions.filter(({ status }) => status === 'todo')

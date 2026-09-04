@@ -68,8 +68,12 @@ export function buildPrepublicationEvidence({
   }
   requireExactSet(host.value.leaves.map(({ name }) => name), ['claude-only', 'codex-only', 'dual-host'], 'candidate host leaves');
   for (const leaf of host.value.leaves) {
+    const grounding = leaf.grounding;
+    const grounded = grounding && ['repo', 'path', 'file', 'storedPath']
+      .every((field) => typeof grounding[field] === 'string' && grounding[field].trim());
     if (leaf.sha !== sha || leaf.payloadId !== payload.payloadId || leaf.status !== 'completed'
-      || leaf.conclusion !== 'success' || leaf.verdict !== 'PASS' || leaf.doctorExit !== 0
+      || leaf.conclusion !== 'success' || leaf.verdict !== 'PASS'
+      || leaf.functionalSearch !== true || leaf.searchExit !== 0 || !grounded
       || leaf.artifactSha256 !== host.value.artifactSha256) {
       throw new Error(`candidate host leaf is not an exact PASS: ${leaf.name || '(missing)'}`);
     }

@@ -25,11 +25,12 @@ function fixture() {
   const payloadProofFile = write('payload.json', { payloadId });
   const artifactSha256 = 'c'.repeat(64);
   const hostNames = ['claude-only', 'codex-only', 'dual-host'];
+  const grounding = { repo: 'ruvnet-brain', path: 'README.md', file: 'concepts.passages.jsonl', storedPath: 'README.md' };
   const hostFile = write('hosts.json', {
     schemaVersion: 1, sha, payloadId, artifactSha256,
     leaves: hostNames.map((name) => ({
       name, sha, payloadId, status: 'completed', conclusion: 'success', verdict: 'PASS',
-      source: 'candidate-host-evidence', doctorExit: 0, artifactSha256,
+      source: 'candidate-host-evidence', functionalSearch: true, searchExit: 0, grounding, artifactSha256,
     })),
   });
   const ciFile = write('ci.json', {
@@ -89,5 +90,13 @@ describe('prepublication evidence', () => {
     delete receipt.exclusionPolicy;
     fs.writeFileSync(f.integrationFile, JSON.stringify(receipt));
     expect(() => buildPrepublicationEvidence(f)).toThrow(/exclusions are not governed/);
+  });
+
+  it('rejects candidate host evidence that claims success without source-bound grounding', () => {
+    const f = fixture();
+    const receipt = JSON.parse(fs.readFileSync(f.hostFile));
+    delete receipt.leaves[0].grounding;
+    fs.writeFileSync(f.hostFile, JSON.stringify(receipt));
+    expect(() => buildPrepublicationEvidence(f)).toThrow(/candidate host leaf is not an exact PASS/);
   });
 });

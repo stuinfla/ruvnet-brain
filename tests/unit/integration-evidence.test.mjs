@@ -6,7 +6,7 @@ const report = (assertionResults) => ({
   numPassedTests: assertionResults.filter(({ status }) => status === 'passed').length,
   numFailedTests: 0,
   numFailedTestSuites: 0,
-  numPendingTests: assertionResults.filter(({ status }) => status === 'pending').length,
+  numPendingTests: assertionResults.filter(({ status }) => status === 'skipped' || status === 'pending').length,
   numTodoTests: assertionResults.filter(({ status }) => status === 'todo').length,
   testResults: [{ assertionResults }],
 });
@@ -15,7 +15,7 @@ describe('integration evidence exclusions', () => {
   it('records exact governed exclusions without counting them as passed', () => {
     const receipt = buildIntegrationEvidence(report([
       { status: 'passed', title: 'executed', fullName: 'suite executed' },
-      { status: 'pending', title: '`-y` alone does NOT install the nightly LaunchAgent', fullName: 'suite mac-only' },
+      { status: 'skipped', title: '`-y` alone does NOT install the nightly LaunchAgent', fullName: 'suite mac-only' },
       { status: 'todo', title: 'future proof', fullName: 'suite future proof' },
     ]), { sourceSha: 'a'.repeat(40), runId: 1, runAttempt: 1 });
     expect(receipt).toMatchObject({ passed: 1, skipped: 1, todo: 1, exclusionPolicy: 'release-linux-v1' });
@@ -25,7 +25,14 @@ describe('integration evidence exclusions', () => {
 
   it('rejects any new or renamed skip', () => {
     expect(() => buildIntegrationEvidence(report([
-      { status: 'pending', title: 'unexpected skip', fullName: 'suite unexpected skip' },
+      { status: 'skipped', title: 'unexpected skip', fullName: 'suite unexpected skip' },
     ]), { sourceSha: 'a'.repeat(40), runId: 1, runAttempt: 1 })).toThrow(/unknown skips: suite unexpected skip/);
+  });
+
+  it('accepts the legacy pending spelling for older Vitest JSON receipts', () => {
+    const receipt = buildIntegrationEvidence(report([
+      { status: 'pending', title: '`--yes` alone does NOT install the spend-watchdog LaunchAgent', fullName: 'suite legacy skip' },
+    ]), { sourceSha: 'a'.repeat(40), runId: 1, runAttempt: 1 });
+    expect(receipt.skippedTests).toEqual(['suite legacy skip']);
   });
 });
