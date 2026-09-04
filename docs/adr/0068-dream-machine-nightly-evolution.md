@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-08-30
+updated: 2026-09-04
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -130,6 +130,8 @@ bootstrap prompt (recommended over a frozen prompt, so the schedule can never dr
 committed config).
 
 ## Currency log
+
+| 2026-09-04 | `docs/dream-cycle/LEDGER.md` (a governed path) gained tonight's row — Dream Cycle 2026-09-04, `health-repair.mjs`'s `--distill-fleet` fix, PR #246 — re-read against this ADR's own decisions before appending: `autoMerge: false` held, the row records ACCEPT with a full evaluation receipt, and a CONCURRENT-NIGHT collision (#243/#244, same slot) was named rather than hidden, per Decision 5 and the 2026-08-20 precedent this same log already records. `dream.config.json` and `tests/unit/dream-config.test.mjs` were not touched tonight. | PR #246 |
 
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 

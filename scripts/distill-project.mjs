@@ -38,6 +38,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { resolveRuflo, RUFLO_MISSING } from '../plugin/scripts/ruflo-bin.mjs';
+import { newestSnapshot } from './snapshot-freshness.mjs';
 
 const HOME = os.homedir();
 // Issue #99: this was `process.env.RUFLO_BIN || path.join(HOME, '.npm-global/bin/ruflo')`, so every
@@ -96,33 +97,9 @@ function writeReceipt(rec) {
   } catch { return false; }
 }
 
-// Some filesystems truncate mtime to whole seconds (FAT32, some overlay/network mounts), so a file
-// written a moment after `sinceMs` was captured can still report an mtime slightly before it. This
-// grace window is tolerance for that truncation, not a loophole — it stays far smaller than the gap
-// between one run and the next.
-const MTIME_GRACE_MS = 1500;
-
-/**
- * The newest snapshot this project has, or null. With `sinceMs`, only a file whose mtime is no
- * older than that moment (minus the grace window) counts — so a stale snapshot left over from a
- * PRIOR run can never be mistaken for proof that THIS run's backup actually landed. `--restore`
- * calls this with no floor: it legitimately wants the newest snapshot ever, not the newest since a
- * particular run.
- */
-function newestSnapshot(sinceMs = 0) {
-  try {
-    const files = fs.readdirSync(BACKUP_DIR)
-      .filter((f) => /\.(db|sqlite|bak)$/i.test(f) || /memory.*\d/.test(f))
-      .map((f) => ({ f, p: path.join(BACKUP_DIR, f), t: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
-      .filter((x) => x.t >= sinceMs - MTIME_GRACE_MS)
-      .sort((a, b) => b.t - a.t);
-    return files.length ? files[0].p : null;
-  } catch { return null; }
-}
-
 // ── RESTORE — the inverse. Deliberately first, because an undo you cannot reach is not an undo. ────
 if (has('--restore')) {
-  const snap = arg('--restore', null) || newestSnapshot();
+  const snap = arg('--restore', null) || newestSnapshot(BACKUP_DIR);
   if (!snap) die(`no snapshot to restore from — looked in ${BACKUP_DIR.replace(HOME, '~')}`);
   if (!fs.existsSync(snap)) die(`snapshot not found: ${snap}`);
   if (DRY) { say(`[dry-run] would restore ${snap.replace(HOME, '~')} → ${DB.replace(HOME, '~')}`); process.exit(0); }
@@ -181,7 +158,7 @@ if (!bk.ok) {
 // mistaken for proof that THIS backup call actually wrote something (issue: `ruflo memory backup`
 // exiting 0 without landing a new file — process killed post-commit, a --dir misconfiguration, a
 // ruflo regression — would otherwise be indistinguishable from a genuine fresh backup).
-const snapshot = newestSnapshot(backupStartedAt);
+const snapshot = newestSnapshot(BACKUP_DIR, backupStartedAt);
 if (!snapshot) die('REFUSING TO DISTILL — `memory backup` reported success but no snapshot from this run is present, so the undo cannot be located.');
 say(`snapshot: ${snapshot.replace(HOME, '~')}`);
 
