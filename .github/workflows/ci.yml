@@ -78,7 +78,7 @@ jobs:
         # check I'd said I would run. Rule 0 (verify the live source) kept getting skipped for model facts
         # because the fact lived in prose/memory where laziness is invisible. Now every model in
         # data/model-catalog.json must exist + be priced correctly in the committed OpenRouter snapshot
-        # (refreshed nightly by catalog:refresh), and a stale snapshot fails too. A missing/mispriced/stale
+        # (refreshed weekly by model-catalog-refresh.yml), and a stale snapshot fails too. A missing/mispriced/stale
         # model is a RED BUILD — the shortcut is structurally impossible. Verified: it caught two real
         # errors in the first catalog + rejects a fabricated model id.
         run: npm run catalog:verify
