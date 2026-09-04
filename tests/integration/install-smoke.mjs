@@ -168,11 +168,10 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
 });
 
 // ── ADR-058 §D8: the PERSISTED grounding verdict gates `--doctor` even when everything else is
-// healthy. bin/install.mjs is the only writer (right after its own real install run) — a plain
-// `--doctor` invocation never re-writes this file, it only reads it back. Same complete-brain-dir
-// fixture as the healthy test above (repos/reader/mcp all present); the ONLY variable across these
-// three cases is what install-state.json says, proving the gate is real and not a side effect of
-// some other signal.
+// healthy. The installer writes the initial verdict; a later successful live doctor proof clears an
+// older failure before the final gate reads it. Same complete-brain-dir fixture as the healthy test
+// above (repos/reader/mcp all present); absent forge-ask-all.mjs, the ONLY variable across the first
+// three cases is what install-state.json says, proving the gate is real and not another signal.
 function completeBrainFixture() {
   const brainDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-grounding-'));
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-grounding-cache-'));
@@ -209,6 +208,43 @@ test('`--doctor` PASSES (exit 0) on the same complete brain dir when the persist
     const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, XDG_CACHE_HOME: cacheDir });
     assertVerdict(r, 0, '--doctor (complete brain dir, grounding persisted as proven)');
     assert.doesNotMatch(r.stdout || '', /Grounding UNPROVEN/, 'a proven verdict must never print the unproven line');
+  } finally {
+    fs.rmSync(brainDir, { recursive: true, force: true });
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+  }
+});
+
+test('`--doctor` replaces a stale unproven verdict when its live citation proof succeeds', () => {
+  const { brainDir, cacheDir } = completeBrainFixture();
+  try {
+    const stateDir = path.join(cacheDir, 'ruvnet-brain');
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, 'install-state.json'), JSON.stringify({
+      grounding: 'unproven',
+      reason: 'no-answer',
+    }));
+    fs.writeFileSync(path.join(brainDir, 'forge-ask-all.mjs'), "console.log('fixture cited answer');\n");
+    fs.writeFileSync(path.join(brainDir, 'verify-citation.mjs'), [
+      'export async function verifyGrounding() {',
+      "  return { grounded: true, receipt: { path: 'source/path.rs', file: 'passages.jsonl' } };",
+      '}',
+      '',
+    ].join('\n'));
+
+    const r = runInstaller(['--doctor'], {
+      RUVNET_BRAIN_KB: brainDir,
+      RUVNET_BRAIN_HOME: path.join(cacheDir, 'brain-home'),
+      XDG_CACHE_HOME: cacheDir,
+    });
+
+    assertVerdict(r, 0, '--doctor (live proof supersedes stale unproven state)');
+    assert.match(r.stdout || '', /Grounding PROVEN/, 'doctor must report the live citation proof');
+    assert.doesNotMatch(r.stdout || '', /Grounding UNPROVEN/, 'the stale verdict must not contradict the live proof');
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(stateDir, 'install-state.json'), 'utf8')).grounding,
+      'proven',
+      'the successful live proof must become the persisted verdict for later readers',
+    );
   } finally {
     fs.rmSync(brainDir, { recursive: true, force: true });
     fs.rmSync(cacheDir, { recursive: true, force: true });
