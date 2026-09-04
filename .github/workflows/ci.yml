@@ -204,6 +204,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Generate convergence manifest for the exact checked-out candidate
+        # PR jobs run on GitHub's synthetic merge ref, not the branch tip whose manifest is
+        # committed. Match canonical-qa so Windows validates the same exact candidate identity.
+        run: npm run convergence:write
       - name: Install root deps
         run: npm ci --no-audit --no-fund
       - name: Unit tests (full tests/unit — zero files excluded, per the audit note above)
