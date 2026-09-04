@@ -71,11 +71,27 @@ function seedDistillableStore(home, relative) {
   return fs.realpathSync(db);
 }
 
-function fakeRuflo(home, marker) {
+/**
+ * `writeBackupFile` defaults to true — a real `ruflo memory backup` actually lands a snapshot file
+ * in `--dir`, and the fixture must model that or it never exercises the real production shape.
+ * Passing false reproduces the exact hazard `distillFleet()`'s freshness check (this file's own
+ * "refuses to distill" test below) exists to catch: the backup subcommand exits 0 without writing
+ * anything — a killed process, a --dir misconfiguration, or a ruflo regression could all look like
+ * this from the caller's side.
+ */
+function fakeRuflo(home, marker, { writeBackupFile = true } = {}) {
   const executable = path.join(home, '.npm-global', 'bin', 'ruflo');
   fs.mkdirSync(path.dirname(executable), { recursive: true });
   fs.writeFileSync(executable, `#!/bin/sh
-if [ "$1" = "memory" ] && [ "$2" = "backup" ]; then exit 0; fi
+if [ "$1" = "memory" ] && [ "$2" = "backup" ]; then
+  ${writeBackupFile ? `shift 2
+  dir=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
+  done
+  if [ -n "$dir" ]; then mkdir -p "$dir"; : > "$dir/memory-$$-$(date +%s).db"; fi` : '# deliberately writes nothing — simulates a backup call that reports success but lands no file'}
+  exit 0
+fi
 if [ "$1" = "memory" ] && [ "$2" = "distill" ] && [ "$3" = "run" ]; then
   shift 3
   while [ "$#" -gt 0 ]; do
@@ -166,5 +182,55 @@ describe('health-repair --distill-fleet discovery', () => {
 
     expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
     expect(fs.readFileSync(marker, 'utf8').trim().split('\n')).toEqual([source]);
+  });
+});
+
+describe('health-repair --distill-fleet snapshot freshness', () => {
+  // The gap this candidate closes: `ruflo memory backup` reporting success (exit 0) is not proof a
+  // NEW snapshot landed. Reused `distill-project.mjs`'s own discipline (PR #192) rather than
+  // re-deriving it — see scripts/snapshot-freshness.mjs.
+  it('refuses to distill a store whose backup reported success but landed no file', () => {
+    const home = path.join(dir, 'home');
+    fs.mkdirSync(home, { recursive: true });
+    const source = seedDistillableStore(home, 'source/hm/a');
+    const marker = path.join(dir, 'distilled.txt');
+    const run = spawnSync(process.execPath, [SCRIPT, '--distill-fleet'], {
+      env: fakeRuflo(home, marker, { writeBackupFile: false }),
+      encoding: 'utf8',
+      timeout: 120_000,
+    });
+
+    expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(1);
+    expect(`${run.stdout}${run.stderr}`).toMatch(/no fresh file landed/i);
+    expect(fs.existsSync(marker), 'distill run must never fire on an unverified snapshot').toBe(false);
+    // The store itself must be untouched — no reasoning_patterns row from a distill that should
+    // never have run.
+    expect(Number(sqlite(source, 'SELECT COUNT(*) FROM reasoning_patterns;'))).toBe(0);
+  });
+
+  it('a stale snapshot left over from a PRIOR fleet run must not be mistaken for proof this run landed one', () => {
+    const home = path.join(dir, 'home');
+    fs.mkdirSync(home, { recursive: true });
+    const source = seedDistillableStore(home, 'source/hm/a');
+    // Seed a backups dir with an old file BEFORE this run, exactly as a real repeated fleet run
+    // would leave behind — the whole point of this executor is that it runs against the same
+    // stores repeatedly.
+    const backupsDir = path.join(path.dirname(source), 'backups');
+    fs.mkdirSync(backupsDir, { recursive: true });
+    const stale = path.join(backupsDir, 'memory-old.db');
+    fs.writeFileSync(stale, 'x');
+    fs.utimesSync(stale, (Date.now() - 60_000) / 1000, (Date.now() - 60_000) / 1000);
+
+    const marker = path.join(dir, 'distilled.txt');
+    const run = spawnSync(process.execPath, [SCRIPT, '--distill-fleet'], {
+      // writeBackupFile:false — this run's own `memory backup` call lands nothing new; only the
+      // stale file from before this run exists in the directory.
+      env: fakeRuflo(home, marker, { writeBackupFile: false }),
+      encoding: 'utf8',
+      timeout: 120_000,
+    });
+
+    expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(1);
+    expect(fs.existsSync(marker)).toBe(false);
   });
 });
