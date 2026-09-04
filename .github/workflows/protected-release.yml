@@ -384,6 +384,8 @@ jobs:
           path: release-evidence
       - name: Execute all three loaders and retrieval canaries from actual public bytes
         shell: bash
+        env:
+          RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}
         run: |
           set -euo pipefail
           test -s release-evidence/COVERAGE.json

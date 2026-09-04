@@ -39,6 +39,10 @@ updated_at_source: authored-current
 
 **Status**: Proposed
 
+> **Reviewed 2026-09-04 (4.3.9 recovery).** Pinning the Claude marketplace to the exact candidate
+> checkout preserves the already-sealed source identity during public host verification. It does
+> not close this ADR's remaining enumeration and source-snapshot gaps; `Proposed` remains accurate.
+
 > **Reviewed 2026-09-04 (4.3.9 candidate).** The protected publication workflow changed only its
 > artifact-bound public host-verification transport and failure-receipt retention. It neither adds
 > signed source enumeration nor closes the immutable source-snapshot gaps below. `Proposed` remains

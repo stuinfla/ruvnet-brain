@@ -3,7 +3,7 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-04 07:33:00 EDT
+updated: 2026-09-04 13:09:00 EDT
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -44,6 +44,10 @@ governs:
 # ADR-072 — Whole-product integrity is one executable contract
 
 **Status**: Accepted
+
+> **Reviewed 2026-09-04 (4.3.9 recovery).** Public host verification now pins Claude's marketplace
+> source to the exact candidate checkout, so default-branch advancement cannot substitute a later
+> plugin generation. The signed npm, bundle, coverage, and terminal acceptance boundaries remain unchanged.
 
 > **Reviewed 2026-09-04 (4.3.9 candidate).** The candidate strengthens two existing conformance
 > edges: publication handoff cannot appear before signed channel convergence, and every public-host
