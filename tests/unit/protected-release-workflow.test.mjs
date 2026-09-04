@@ -95,7 +95,10 @@ describe('protected release rail', () => {
     expect(lane).toBeGreaterThan(-1);
     expect(source.indexOf('if: always()', lane)).toBeGreaterThan(lane);
     expect(source.indexOf('if-no-files-found: warn', lane)).toBeGreaterThan(lane);
-    expect(source).toContain('cygpath -w "$PWD/node_modules/.bin"');
+    expect(source).toContain('host_cli_prefix="$RUNNER_TEMP/ruvnet-host-clis"');
+    expect(source).toContain('npm install --prefix "$host_cli_prefix"');
+    expect(source).toContain('cygpath -w "$host_cli_prefix/node_modules/.bin"');
+    expect(source).not.toContain('cygpath -w "$PWD/node_modules/.bin"');
     expect(aggregate).toBeGreaterThan(lane);
     expect(finalize).toBeGreaterThan(aggregate);
     expect(terminal).toBeGreaterThan(finalize);

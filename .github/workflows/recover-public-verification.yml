@@ -162,13 +162,14 @@ jobs:
         run: |
           set -euo pipefail
           npm ci --no-audit --no-fund
-          npm install --no-save --package-lock=false \
+          host_cli_prefix="$RUNNER_TEMP/ruvnet-host-clis"
+          npm install --prefix "$host_cli_prefix" --no-save --package-lock=false --no-audit --no-fund \
             @anthropic-ai/claude-code@latest \
             @openai/codex@latest
           if [[ "${{ matrix.os_name }}" == windows ]]; then
-            cygpath -w "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+            cygpath -w "$host_cli_prefix/node_modules/.bin" >> "$GITHUB_PATH"
           else
-            echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+            echo "$host_cli_prefix/node_modules/.bin" >> "$GITHUB_PATH"
           fi
       - uses: actions/download-artifact@v4
         with:
