@@ -131,6 +131,8 @@ committed config).
 
 ## Currency log
 
+| 2026-09-04 | `docs/dream-cycle/LEDGER.md` (a governed path) gained tonight's row — Dream Cycle 2026-09-04, `health-repair.mjs`'s `--distill-fleet` fix, PR #246 — re-read against this ADR's own decisions before appending: `autoMerge: false` held, the row records ACCEPT with a full evaluation receipt, and a CONCURRENT-NIGHT collision (#243/#244, same slot) was named rather than hidden, per Decision 5 and the 2026-08-20 precedent this same log already records. `dream.config.json` and `tests/unit/dream-config.test.mjs` were not touched tonight. | PR #246 |
+
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
 | 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |
