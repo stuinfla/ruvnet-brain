@@ -50,6 +50,24 @@ jobs:
       - name: Install kb deps (@ruvector/rvf lives here, not the root)
         run: cd kb && npm ci --no-audit --no-fund
 
+      # tests/integration/codex-skill-discovery.test.mjs gates its 5 real assertions on
+      # `codex --version` succeeding (line 28) and `it.skip`s the whole file otherwise — silently,
+      # since vitest reports skipped tests as "skipped", not "failed". No job that runs
+      # `tests/integration/**` has ever installed the codex CLI: the only CI job that does
+      # (ci.yml's release-qe, `@openai/codex@latest`) runs its OWN disjoint vitest config
+      # (tests/qe/release/**) that never includes this file. So these 5 tests — real skill
+      # discovery, marketplace-snapshot repair, and disabled-plugin-preservation checks against the
+      # real `codex` CLI and the real wireCodexPlugin() — have never executed in CI. Installing the
+      # CLI here, the same two-line pattern release-qe already uses, lets them actually run on every
+      # push/PR. `continue-on-error: true` on this step alone (not the job): an npm-registry hiccup
+      # installing an unrelated CLI must never fail the required integration gate — worst case on a
+      # failed install, these 5 tests just skip exactly as they do today, no regression either way.
+      - name: Install Codex CLI (codex-skill-discovery.test.mjs needs the real binary, or it silently skips)
+        continue-on-error: true
+        run: |
+          npm install --global --prefix "$RUNNER_TEMP/host-clis" @openai/codex@latest
+          echo "$RUNNER_TEMP/host-clis/bin" >> "$GITHUB_PATH"
+
       - name: Environment facts (so a failure is diagnosable from the log alone)
         run: |
           echo "shell:  $(readlink -f /bin/sh)"
@@ -58,6 +76,7 @@ jobs:
           echo "sed:    $(sed --version | head -1)"
           echo "jq:     $(jq --version 2>/dev/null || echo MISSING)"
           echo "gh:     $(gh --version 2>/dev/null | head -1 || echo MISSING)"
+          echo "codex:  $(codex --version 2>/dev/null || echo MISSING)"
           echo "rvf stores present: $(ls kb/*.rvf 2>/dev/null | wc -l)"
 
       - name: Integration suite (bounded and fail-closed)
