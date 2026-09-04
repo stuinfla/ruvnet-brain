@@ -1,9 +1,9 @@
-Updated: 2026-08-02 22:20:00 EDT | Version 2.0.0
+Updated: 2026-09-04 07:20:00 EDT | Version 2.1.0
 Created: 2026-08-02 20:10:00 EDT
 
 # DDD-0015 — The Release Transaction bounded context
 
-Status: Accepted
+Status: Accepted; reconciled to the single protected-release controller
 
 Governs: ADR-062 · Issue #77 · `scripts/release.mjs`
 
@@ -12,7 +12,9 @@ Governs: ADR-062 · Issue #77 · `scripts/release.mjs`
 The Release Transaction context converts one sealed candidate into one supported product
 generation across GitHub, npm, Claude, Codex, Stable Spine, and Console. It owns provider staging,
 promotion, compensation, and receipts. It does not build the corpus, choose a version, modify source,
-or authorize publication.
+or authorize publication. `.github/workflows/protected-release.yml` is the sole application
+controller: one run owns exact-main evidence intake, typed prepublication receipts, provider
+publication, public 3x3 verification, and the terminal receipt.
 
 ## Ubiquitous language
 
@@ -32,7 +34,8 @@ or authorize publication.
 | **Prepared** | Draft assets and npm candidate bytes agree with the already-proven payload identity. Defaults remain A. |
 | **Promoted** | A provider default has moved to B; this is partial until the final manifest and all surfaces converge. |
 | **Compensated** | A default channel was restored to captured A after unsafe promotion order/failure. |
-| **Committed** | Signed current-release receipt names B and every live/host check agrees; state is `channels-converged`. |
+| **Channels converged** | npm and GitHub expose B; report `PUBLISHED, NOT VERIFIED`. |
+| **Install verified** | Public bytes pass the signed three-OS by three-host-mode aggregate and retrieval checks; the only successful terminal state. |
 
 ## Aggregate
 
@@ -97,7 +100,9 @@ artifacts are append-only audit evidence.
 | `github-latest-intent` | GitHub latest transition A→B is write-ahead recorded. | `defaults-promoted` |
 | `defaults-promoted` | Both provider defaults observe B. | `finalize-intent` |
 | `finalize-intent` | Signed manifest/surface/host convergence is pending. | `channels-converged` |
-| `channels-converged` | Only terminal success. | none |
+| `channels-converged` | Both channels expose B; public verification still pending. | `public-verification-intent` |
+| `public-verification-intent` | The same protected run owns public 3x3 and retrieval verification. | `install-verified`, `manual-intervention-required` |
+| `install-verified` | Public artifacts and all nine installed-host leaves are independently reverified. | none |
 | `compensation-intent` | Unsafe npm-first partial promotion must return to A. | `compensated`, `manual-intervention-required` |
 | `compensated` | Defaults again expose A; B remains resumable. | `github-promote-intent`, `npm-promote-intent` |
 | `manual-intervention-required` | Compensation/reconciliation cannot prove a safe supported state. | explicit same-B repair only |
@@ -161,9 +166,9 @@ observations, UTC timestamp, previous receipt digest, signer identity, and signa
 - RT-9: npm-first partial promotion is compensated to captured A before retry.
 - RT-9a: `github-latest-intent` may be recorded only when the same reducer invocation freshly
   observes npm latest B; historical `npm-promoted` membership is insufficient.
-- RT-10: `channels-converged` requires the signed public manifest, live surface probe, and one
-  isolated public-artifact Claude-only, Codex-only, and dual-host matrix; only then may the
-  create-only `current-release.json` receipt be uploaded and reverified.
+- RT-10: `channels-converged` is nonterminal and reports `PUBLISHED, NOT VERIFIED`.
+- RT-10a: only the same protected-release run may append `install-verified`, after the signed public
+  manifest, live surface probe, and three-OS by three-host-mode matrix are reverified.
 - RT-11: Disabled remains disabled; changed hooks require explicit host review.
 - RT-12: Receipt conflicts or compensation failure are visible hard failures.
 - RT-13: After losing a create-only sequence-receipt CAS, the writer performs no subsequent provider
@@ -203,17 +208,25 @@ before continuing. A failed rollback becomes `manual-intervention-required`.
 
 ### Doctor policy
 
-Doctor reports healthy only for `channels-converged`. All other states name B, the last proven
+Doctor reports healthy only for `install-verified`. All other states name B, the last proven
 state, observed splits, and the exact same-B resume/repair action. `pending-console-restart` and
 pending hook review remain non-converged.
 
 ### Finalization policy
 
-After one reducer invocation freshly observes both provider defaults at B, run the public
-downloaded-artifact host matrix and surface probe once. Upload create-only signed
-`current-release.json` only after they pass, download and verify that receipt, then freshly observe
-both defaults again before appending `channels-converged`. Existing user-host restart, disabled,
-approval, and Console conditions remain local doctor findings and do not rewrite the global receipt.
+After one reducer invocation freshly observes both provider defaults at B, append
+`channels-converged` and report `PUBLISHED, NOT VERIFIED`. Without leaving the protected-release
+run, download the public artifacts, run the three-OS by three-host-mode matrix and retrieval probes,
+sign the nine-leaf aggregate, and append create-only `install-verified`. Existing user-host restart,
+disabled, approval, and Console conditions remain local doctor findings and do not rewrite the
+global receipt.
+
+### Review and issue policy
+
+Fable 5 and GPT-5.6-Sol independently review changes to architecture or the sealed retrieval oracle.
+Their accepted, change-bound findings inform the candidate, but caller-supplied per-release keys are
+not a trust anchor and do not authorize provider mutation. Only open issues carrying the explicit
+`release-blocker` label enter prepublication policy; unrelated open issues do not become domain state.
 
 ### Candidate-tag and abort policy
 
@@ -245,3 +258,9 @@ identify one safe supported generation; otherwise it enters `manual-intervention
   draft recovery; concurrent receipt-CAS runners; orphan candidates; missing final public receipt.
 - polling removal is mutation-tested; existing correct/wrong npm bytes and missing/wrong candidate
   tags are integrity-first; anomalies record `manual-intervention-required`.
+
+## Currency log
+
+| Date | Change |
+|---|---|
+| 2026-09-04 | Reconciled the context with ADR-062 and `.github/workflows/protected-release.yml`: the sole controller owns exact-main evidence through `install-verified`; review is change-triggered and only labeled `release-blocker` issues stop dispatch. |

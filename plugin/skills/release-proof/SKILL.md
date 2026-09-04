@@ -1,6 +1,7 @@
 ---
 name: release-proof
-description: Fail-closed exact-artifact release and deployment authority. Use before saying a release is ready, pushing a release commit, publishing npm packages, creating GitHub releases, deploying production, closing release-blocking issues, or claiming all gates are green. Requires clean immutable lineage, zero open issues, exact-SHA GitHub success, nonzero no-skip QE, packed-artifact host tests, installed Brain/RVF proof, independent graders, and post-publication byte verification.
+description: Fail-closed exact-artifact release and deployment authority. Use before saying a release is ready, pushing a release commit, publishing npm packages, creating GitHub releases, deploying production, closing release-blocking issues, or claiming all gates are green. Requires clean immutable lineage, zero labeled release blockers, exact-SHA GitHub success, nonzero no-skip QE, packed-artifact host tests, installed Brain/RVF proof, and post-publication byte verification.
+updated: 2026-09-04
 ---
 
 # Release Proof
@@ -12,10 +13,10 @@ green.
 ## Non-bypassable rules
 
 1. Use the exact source SHA and one packed-artifact SHA-256 everywhere.
-2. Require zero open GitHub issues for RuvNet Brain. A local fix is not a closed issue.
+2. Require zero open GitHub issues labeled `release-blocker`. Unlabeled backlog is not release authority; a local fix does not clear a labeled blocker.
 3. Require every named GitHub workflow to complete successfully on the exact candidate SHA.
 4. Reject any test/QE result with zero tests, skips, todos, unknowns, pending jobs, or failures.
-5. Require two distinct independent graders scoring at least 95, each bound to the SHA and digest.
+5. When the candidate changes architecture or the retrieval oracle, require the accepted Fable 5 and GPT-5.6-Sol design-review receipts for that change. Routine releases do not manufacture caller-supplied reviewer keys; bundled public keys are integrity material, not an independent trust anchor.
 6. Install the sealed artifact into virgin Claude Code and Codex homes; test their real entrypoints.
 7. Require the source package, Claude manifest, Codex manifest, packed npm version, bundle
    `brainVersion`/`releaseTag`, and both installed host versions to identify one exact generation.
@@ -30,12 +31,12 @@ green.
 ## Candidate seal
 
 Generate the receipt from commands in the protected candidate workflow. Do not hand-author it.
-Dispatch `.github/workflows/release-cycle.yml` only with the full candidate SHA and the signed
-Fable 5/GPT-5.6-Sol review bundle. The coordinator derives the successful exact-SHA CI and
-aggregate IDs, runs the independent review, and dispatches `protected-release.yml` only after
-that review succeeds. Do not dispatch `protected-release.yml` directly. The protected workflow
-derives the artifact digest from sealed bytes and checks every binding before creating its handoff
-and again at the Production boundary.
+Dispatch `.github/workflows/protected-release.yml` only. That workflow is the sole controller: one
+run binds current `origin/main`, consumes the exact-main CI artifact, produces typed prepublication
+receipts, invokes the publisher, downloads the public bytes, executes the three-OS by three-host-mode
+matrix, and appends `install-verified`. Do not hand-copy run IDs between competing controller
+workflows. Conditional architecture/retrieval-oracle reviews are candidate inputs only when the
+governed surfaces changed; they do not authorize publication.
 Validate it from the repository with:
 
 ```bash

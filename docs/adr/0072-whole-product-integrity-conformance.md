@@ -3,7 +3,7 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-08-31 01:18:00 EDT
+updated: 2026-09-04 07:20:00 EDT
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -121,6 +121,12 @@ rendered `PUBLISHED, NOT VERIFIED`. `install-verified` is the only successful te
 for receipt schema 3+. Historical schema 1/2 `channels-converged` receipts remain readable as
 `legacy-closed/unverified`; they are neither rewritten nor silently promoted.
 
+`protected-release.yml` is the sole dispatch and control plane for a release. One run owns the
+current-main identity check, exact-SHA CI artifact, typed prepublication receipts, publisher,
+public three-OS by three-host-mode verification, and terminal `install-verified` append. Auxiliary
+workflows may produce evidence, but cannot become a second controller or require manual run-ID
+handoffs between release stages.
+
 Refresh success likewise requires an atomic terminal receipt after all nine required phases. The
 state sequence is `RUNNING -> SETTLING -> SUCCEEDED|FAILED|ABANDONED`. A dead exact owner is
 atomically abandoned; an unknown or remote owner is never guessed dead.
@@ -143,10 +149,10 @@ snapshot, and public success must finish within that same transaction.
 | S-4 | Nightly is deterministic and bounded | Two consecutive runs through the real native scheduler complete the exact nine-phase order. Run two is `noop`, creates zero additional full-corpus copies, and total managed evidence remains within the declared retention budget. Latest verified nightly age must remain <=30 hours. |
 | S-5 | Updates preserve one active generation | Concurrent writers serialize; interruption at every rename/receipt boundary recovers; retired public stores disappear; every declared private/local store survives; success leaves one active corpus, zero retained redundant rollback copies, and a valid `storageDelta`. |
 | S-6 | Hosts converge from real artifacts | Linux, macOS, and Windows each pass Claude-only, Codex-only, and dual modes through the sealed loader registry: exactly nine green leaves, zero missing/extra/skip/todo leaves. |
-| S-7 | Publication cannot overclaim | Channel publication emits only `PUBLISHED, NOT VERIFIED`. A later protected finalizer reaches `install-verified` only after downloading actual npm/GitHub bytes and validating the signed nine-leaf aggregate and retrieval canaries. |
+| S-7 | Publication cannot overclaim | Channel publication emits only `PUBLISHED, NOT VERIFIED`. The same protected-release run reaches `install-verified` only after downloading actual npm/GitHub bytes and validating the signed nine-leaf aggregate and retrieval canaries. |
 | S-8 | Architecture and proof agree | Every Accepted/Implemented ADR and DDD claim governing changed code maps to its implementation owner and executable evidence. Zero unresolved contradictions, dangling supersessions, or unlinked release-critical code at the candidate seal. |
 | S-9 | Essential behavior is completely tested | 100% of essential invariants, state transitions, failure boundaries, and public commands in the traceability matrix have at least one positive and one adversarial proof. Security/release/lifecycle state-machine branches are 100% covered. Repository line coverage remains a diagnostic, never a substitute for this requirement. |
-| S-10 | Independent review is real | Fable 5 and GPT-5.6-Sol independently review the same immutable source/payload/rubric. Each receipt lists deductions and untested scope and scores >=95; combined mechanical product evidence must score >=98 before publication. |
+| S-10 | Independent review is real when judgment changes | Architecture or retrieval-oracle changes require Fable 5 and GPT-5.6-Sol to independently review the same immutable design/change/rubric. Routine releases consume the accepted change-bound review and mechanical evidence; caller-supplied per-release keys are not an independent trust anchor and cannot authorize publication. |
 | S-11 | Project continuity is complete and host-neutral | Every observable project transition is append-only, exact-key verified in the canonical project AgentDB, and automatically restored by every supported coding host. Crash, compaction, semantic-search miss, concurrent writers, and loss of a host-private transcript lose zero resumable project state. |
 | S-12 | RuvNet capability claims are evidence-bound | Every final-answer claim about an installed, supported, current, healthy, reachable, present, or absent RuvNet capability carries evidence typed to that claim. Contradictions are corrected before delivery; incomplete evidence yields `UNKNOWN`. Claude Code and Codex pass the same adversarial host matrix, and Grok remains unsupported until a native lifecycle adapter proves the same boundary. |
 
@@ -161,7 +167,7 @@ snapshot, and public success must finish within that same transaction.
 - **Refinement:** implement context by context with one writer; after each context, run its focused
   acceptance, mutation, and integration proofs.
 - **Completion:** execute full QE, coverage, security, performance/storage, exact-SHA candidate,
-  independent graders, public 3x3 installs, canaries, and two-run nightly proof. Only the protected
+  any change-triggered architecture/oracle review, public 3x3 installs, canaries, and two-run nightly proof. Only the protected
   finalizer may publish the success receipt.
 
 ### 6. Tests are derived from the contract
@@ -177,11 +183,11 @@ Tests are classified as `essential`, `supporting`, or `obsolete` in the traceabi
 Passing test count, coverage percentage, job conclusion, and a synthetic fixture are never by
 themselves proof of the intended user path.
 
-### 7. Publication remains fail-closed during migration
+### 7. Publication remains fail-closed
 
-The existing protected workflow must not temporarily green an incomplete architecture. Until the
-channel/public-finalizer split, issue lifecycle, 3x3 public matrix, retrieval canaries, storage
-evidence, and dual review receipts are wired, publication ends before provider mutation.
+The protected workflow must not green an incomplete transaction. Labeled `release-blocker` issues,
+missing typed evidence, failed required checks, a missing public 3x3 matrix, or absent terminal
+readback stop the run. Unlabeled backlog does not silently acquire release authority.
 
 ## Consequences
 
@@ -193,19 +199,15 @@ evidence, and dual review receipts are wired, publication ends before provider m
 
 ## Current implementation status
 
-`Accepted, partially implemented.` The executable S-1 through S-12 ownership and evidence contract
-now lives in `scripts/product-integrity-contract.mjs`; individual obligations remain proof-gated.
-The baseline measured 2026-08-21 is MetaHarness 75/100, task coverage
-65, and publish readiness 0.7. Security audit was clean, but S-1 through S-10 are not yet jointly
-proven. S-11 is not yet implemented or proven. S-12 installation, full-SHA behavior,
-installed-current-version, and health enforcement now run through locally packed Claude/Codex
-paths; latest-version is locally receipt-bound, the non-local OS/public matrix is absent, and no signed
-candidate aggregate exists. `scripts/adr-072-completion.mjs` rejects an unsigned, partial, stale, or
-non-3x2 capability aggregate. ADR-070 and DDD-0017 provide the release-convergence model. The partial-supersession map above
-is now the documentation authority; implementation must still change before the code may claim
-conformance.
+`Accepted; implementation remains proof-gated.` The executable S-1 through S-12 ownership and
+evidence contract lives in `scripts/product-integrity-contract.mjs`. This reconciliation defines one
+protected-release controller and removes per-release self-supplied reviewer identity and all-open-issue
+policy from the architecture. No release is conformant until one actual run produces its exact-main
+artifact, typed prepublication receipts, publication receipt, nine public leaves, and independently
+reverified `install-verified` terminal receipt.
 
 ## Currency log
+| 2026-09-04 | Reconciled the release authority around one protected-release run. Fable/Sol review is required when architecture or the retrieval oracle changes, not as caller-supplied per-release authority; only issues explicitly labeled `release-blocker` stop publication. | `.github/workflows/protected-release.yml` is the sole controller; `scripts/independent-review-receipt.mjs` supplies change-bound evidence without turning bundled reviewer keys into a trust anchor. |
 | 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence localized the failure to executable resolution, not the test suite; the product contract is unchanged and the boundary is now portable. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
 | 2026-08-31 | Reconciled after the 4.3.3 main-branch merge and CI watchdog change; whole-product conformance still requires every exact-SHA lane, and long hosted stages now expose named timeout receipts instead of opaque job progress. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; exact-SHA CI run `33358984585`. |
 

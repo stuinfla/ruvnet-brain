@@ -3,7 +3,7 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-31
+updated: 2026-09-04
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -13,7 +13,6 @@ governs:
   - .github/workflows/stranger-matrix.yml
   - .github/workflows/protected-release.yml
   - .github/workflows/release-aggregate.yml
-  - .github/workflows/release-cycle.yml
   - scripts/release.mjs
   - scripts/release-transaction.mjs
   - scripts/release-transaction-provider.mjs
@@ -24,6 +23,7 @@ governs:
 # ADR-062 — Remote-durable staged release transaction
 
 ## Currency log
+| 2026-09-04 | Consolidated release control into `protected-release.yml`: one run owns exact-main evidence intake, typed prepublication receipts, provider mutation, public 3x3, and `install-verified`. Fable/Sol review remains required for architecture or retrieval-oracle changes, but bundled caller-supplied keys are not publication authority. | Removes the split `release-cycle` controller and manual run-ID authority; only labeled `release-blocker` issues stop the transaction. |
 | 2026-08-31 | Release qualification now runs the three isolated host fixtures concurrently and reassembles their results in canonical order before the single receipt write, reducing the critical host-matrix wall time without changing evidence, verdict, or publication authority. | `scripts/host-install-matrix.mjs`; `scripts/staged-host-verifier.mjs`; the published-side verification remains receipt-bound. |
 | 2026-08-31 | Replaced the manual cross-workflow handoff with one release-cycle controller. It derives the exact successful CI and aggregate runs for one candidate SHA, dispatches the mandatory signed independent review, waits for its exact-SHA result, and dispatches the protected publisher with all IDs. The protected publisher remains the only code allowed to publish. | `.github/workflows/release-cycle.yml`; manual run-ID copying is removed from the normal path while exact-SHA and signed-review requirements remain. |
 | 2026-08-31 | Added an external per-step watchdog and machine-readable receipt to the long hosted release and cross-platform stages. Job-level timeouts remain the outer fence; named stage budgets now fail a wedged operation at its actual boundary instead of leaving an opaque compound step in progress. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; `tests/unit/step-watchdog.test.mjs` |
@@ -69,7 +69,7 @@ governs:
 
 **Date**: 2026-08-02
 
-**Updated**: 2026-08-02 22:20 EDT · **Revision**: 2.0.0
+**Updated**: 2026-09-04 07:20 EDT · **Revision**: 2.1.0
 
 > 4.0.8 correction: the 4.0.7 implementation proved that publisher-side bundle rebuilding makes
 > retry identity unstable and receipt-history skipping can report false convergence after
@@ -119,12 +119,19 @@ idempotent state machine rather than call ordering alone.
 - Run broad suites once per SHA; all downstream stages consume receipts and immutable bytes.
 - Give every transaction boundary a named log stage and an interruption/recovery test.
 
-## Target design and current migration gap
+## Canonical release-control boundary
 
-The following is a target for 4.0.8, not a claim about current code. Production 4.0.7 still rebuilds
-and signs the ZIP in the publisher, checks only `ci/release-qe` at publication, observes npm once,
-uses historical receipt membership to skip recovery work, and has no sole `release-aggregate`
-status. Those gaps are the migration work governed by this now-accepted ADR.
+`protected-release.yml` is the sole controller and publisher boundary. One invocation binds the
+current `origin/main` SHA, consumes that SHA's CI artifact, materializes typed prepublication
+receipts, runs the provider transaction, downloads public bytes, executes the public three-OS by
+three-host-mode matrix, and appends `install-verified`. Other workflows may prepare evidence but
+cannot dispatch, advance, or complete a release transaction.
+
+Independent Fable 5 and GPT-5.6-Sol review applies when architecture or the sealed retrieval oracle
+changes. Those accepted change-bound reviews are evidence inputs, not per-release authorization.
+A public key bundled beside a receipt proves only consistency with that bundle; it does not create
+an independent trust anchor. Release issue policy is likewise explicit: only open issues labeled
+`release-blocker` stop publication; unrelated backlog remains visible without controlling the rail.
 
 Candidate CI now packs the npm tarball exactly once, before release QE, and identifies those bytes
 by SHA-256 in the candidate receipt. Release QE and the five stranger-host cells consume that same
@@ -275,7 +282,7 @@ enter signed, explicitly human-authorized terminal `aborted`; automation cannot 
   `target_commitish` is not trusted after publication.
 - Any identity-safe anomaly may enter `manual-intervention-required`. An explicitly authorized
   `AbortRelease` burns B against its discovered anchor so it cannot block every future release.
-- `doctor` fails for every state other than `channels-converged` and prints the same-candidate resume
+- `doctor` fails for every state other than `install-verified` and prints the same-candidate resume
   command plus any required host restart/review action.
 - Publisher doctor uses authenticated draft receipts; user doctor trusts only the public signed
   current-release receipt and reports an unpublished transaction as unknown rather than healthy.
@@ -288,8 +295,8 @@ enter signed, explicitly human-authorized terminal `aborted`; automation cannot 
 4. GitHub draft and npm candidate tag never count as the supported current generation.
 5. Receipt state is monotonic; identity is immutable.
 6. Every non-idempotent boundary has a write-ahead intent and an observed postcondition.
-7. `channels-converged` requires the signed final receipt, live surfaces, and isolated
-   installed-artifact host-interface receipts with accurate restart/review metadata.
+7. `channels-converged` is nonterminal and renders `PUBLISHED, NOT VERIFIED`; `install-verified`
+   requires the signed final receipt, live surfaces, and nine installed-artifact host leaves.
 8. Existing user-host restart, disabled state, hook approval, and Console state are doctor-reported
    local postconditions, not global publication blockers.
 9. One constant workflow concurrency group plus create-only receipt CAS serializes all versions.

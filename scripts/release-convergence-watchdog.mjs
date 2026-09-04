@@ -11,9 +11,8 @@
  * for a month.
  *
  * WHAT IT WILL NOT DO. It does not publish. `scripts/self-update.mjs:56` refuses `--publish` and
- * `release-cycle.yml` is the sole release-control entrypoint. This watchdog is report-only: it
- * never dispatches `protected-release.yml` directly and cannot manufacture the signed independent
- * review bundle required by the coordinator.
+ * `protected-release.yml` is the sole release-control entrypoint. This watchdog is report-only: it
+ * never dispatches publication and cannot manufacture typed prepublication evidence.
  *
  * IT IS A NO-OP UNLESS EVERY PRECONDITION HOLDS. It runs from the nightly, unattended, for weeks.
  * A watchdog that acts on a partial picture is worse than no watchdog, so it refuses on anything
@@ -97,14 +96,11 @@ const runsFor = (wf) => JSON.parse(tryShy(() => sh('gh', ['run', 'list', '--repo
 const greenAt = (wf) => runsFor(wf).find((r) => r.headSha === originMain && r.conclusion === 'success');
 
 const ci = greenAt('ci');
-const aggregate = greenAt('release-aggregate');
 if (!ci) stand_down(`no successful exact-SHA \`ci\` run at ${originMain.slice(0, 7)} yet`);
-if (!aggregate) stand_down(`no successful exact-SHA \`release-aggregate\` run at ${originMain.slice(0, 7)} yet`);
 
-log(`ALL GATES PASS — candidate=${originMain.slice(0, 7)} version=${version} ci=${ci.databaseId} aggregate=${aggregate.databaseId}`);
+log(`PRECONDITIONS VISIBLE — candidate=${originMain.slice(0, 7)} version=${version} ci=${ci.databaseId}`);
 // ── 6. Never dispatch a publisher from the watchdog. ───────────────────────────────────────────
-// A signed Fable/GPT review bundle is an explicit input to release-cycle.yml. This unattended
-// process cannot author or safely discover that authorization, so even --dispatch must stand down.
-log(`READY FOR release-cycle, but no action taken for ${version} at ${originMain}`);
-log('Dispatch only .github/workflows/release-cycle.yml with candidate_sha and the signed review bundle.');
-log('The coordinator is the only workflow allowed to dispatch protected-release.');
+// Only protected-release may derive the complete typed evidence chain and cross Production.
+// This unattended observer cannot turn visible preconditions into release authority.
+log(`READY FOR protected-release assessment, but no action taken for ${version} at ${originMain}`);
+log('Dispatch only .github/workflows/protected-release.yml; it is the sole release controller and publisher owner.');
