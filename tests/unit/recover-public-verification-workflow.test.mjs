@@ -29,6 +29,8 @@ describe('post-publication recovery rail', () => {
   });
 
   it('runs exactly three OS lanes against the released source and then finalizes', () => {
+    expect(source).toContain('path: release-evidence/');
+    expect(source).toContain('payload-manifest.json');
     for (const lane of [
       'ubuntu-latest, os_name: linux',
       'macos-latest, os_name: macos',

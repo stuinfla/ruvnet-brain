@@ -88,6 +88,8 @@ jobs:
           test -s release-evidence/candidate-receipt.json
           test -s release-evidence/COVERAGE.json
           test -s release-evidence/retrieval-canary-plan.json
+          test -s release-evidence/payload-manifest.json
+          test -s release-evidence/payload-manifest.sig
           mkdir transaction-receipts
           gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" \
             --pattern 'release-transaction-*.json' --dir transaction-receipts
@@ -126,16 +128,11 @@ jobs:
           fs.writeFileSync('release-evidence/channels-converged-receipt.json', fs.readFileSync(
             path.join('transaction-receipts', files.at(-1))), { flag: 'wx', mode: 0o600 });
           NODE
-      - name: Preserve only the small verified lane inputs
+      - name: Preserve the complete verified payload for public-byte comparison
         uses: actions/upload-artifact@v4
         with:
           name: recovered-publication-inputs-${{ needs.authorize.outputs.candidate_sha }}-${{ github.run_id }}
-          path: |
-            release-evidence/candidate-receipt.json
-            release-evidence/COVERAGE.json
-            release-evidence/retrieval-canary-plan.json
-            release-evidence/release-identity.json
-            release-evidence/channels-converged-receipt.json
+          path: release-evidence/
           if-no-files-found: error
           retention-days: 90
 
