@@ -8,7 +8,6 @@ import { canonicalJson, digest } from '../../scripts/coverage-integrity.mjs';
 import { runRetrievalCanaries, sealRetrievalQueryEvidence } from '../../scripts/retrieval-canary.mjs';
 import {
   createPublicVerificationLeaf,
-  createIndependentReviewReceipt,
   PUBLIC_VERIFICATION_MODES,
   PUBLIC_VERIFICATION_OS,
   signPublicVerificationAggregate,
@@ -58,20 +57,6 @@ plan.oracle = { receiptSha256: planEvidence.receiptSha256, queryStoreSetSha256: 
 plan.planSha256 = digest(Object.fromEntries(Object.entries(plan).filter(([key]) => key !== 'planSha256')));
 identity.canaryPlanSha256 = plan.planSha256;
 
-const semanticRecords = plan.denominator.eligibleStores.map((store) => {
-  const selected = plan.cases.find(({ expected }) => expected.repo === store);
-  return { store, oracleRecordSha256: selected?.oracleRecordSha256 || plan.oracle.evidence.queries[store].recordSha256,
-    relevant: true, verdict: 'PASS',
-    evidence: [`data/retrieval-query-evidence.json#${store}`], untested: [] };
-});
-const retrievalOracleReview = {
-  schemaVersion: 1, kind: 'ruvnet-brain-retrieval-oracle-semantic-review',
-  oracleReceiptSha256: plan.oracle.receiptSha256, queryStoreSetSha256: plan.oracle.queryStoreSetSha256,
-  recordCount: semanticRecords.length,
-  recordSetSha256: digest(semanticRecords.map(({ store, oracleRecordSha256 }) => ({ store, oracleRecordSha256 }))),
-  records: semanticRecords, verdict: 'PASS', untested: [],
-};
-
 async function leaves() {
   const result = [];
   for (const os of PUBLIC_VERIFICATION_OS) for (const mode of PUBLIC_VERIFICATION_MODES) {
@@ -91,22 +76,10 @@ async function leaves() {
   return result;
 }
 
-function reviews() {
-  const shared = { sourceSha: identity.sourceSha, artifactSha256: identity.artifactSha256, payloadId: identity.payloadId,
-    productContractSha256: '4'.repeat(64), rubricSha256: '5'.repeat(64), independent: true, verdict: 'PASS',
-    score: 96, deductions: [], untested: [], retrievalOracleReview };
-  return [
-    createIndependentReviewReceipt({ ...shared, id: 'claude-fable-5', model: 'claude-fable-5', provider: 'firstParty',
-      execution: { subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64) } }),
-    createIndependentReviewReceipt({ ...shared, id: 'gpt-5.6-sol', model: 'gpt-5.6-sol', provider: 'openai',
-      execution: { subscriptionAuthenticated: true, invocationDigest: '7'.repeat(64), threadId: 'thread-1', catalogRowSha256: '8'.repeat(64) } }),
-  ];
-}
-
 describe('signed public 3x3 verification aggregate', () => {
   it('accepts exactly nine bound leaves and verifies the signature and identity', async () => {
     const keys = crypto.generateKeyPairSync('ed25519');
-    const aggregate = signPublicVerificationAggregate({ leaves: await leaves(), reviews: reviews() }, keys.privateKey);
+    const aggregate = signPublicVerificationAggregate({ leaves: await leaves() }, keys.privateKey);
     expect(aggregate.metrics).toMatchObject({ leaves: 9, recallAt10: 1, deltaCitationRate: 1 });
     expect(verifyPublicVerificationAggregate(aggregate, keys.publicKey, identity)).toBe(aggregate);
   });
@@ -119,22 +92,22 @@ describe('signed public 3x3 verification aggregate', () => {
   ])('rejects %s', async (_label, mutate, expected) => {
     const rows = await leaves();
     mutate(rows);
-    expect(() => signPublicVerificationAggregate({ leaves: rows, reviews: reviews() }, crypto.generateKeyPairSync('ed25519').privateKey)).toThrow(expected);
+    expect(() => signPublicVerificationAggregate({ leaves: rows }, crypto.generateKeyPairSync('ed25519').privateKey)).toThrow(expected);
   });
 
   it('rejects aggregate tampering, signature substitution, and expected-identity drift', async () => {
     const keys = crypto.generateKeyPairSync('ed25519');
-    const aggregate = signPublicVerificationAggregate({ leaves: await leaves(), reviews: reviews() }, keys.privateKey);
+    const aggregate = signPublicVerificationAggregate({ leaves: await leaves() }, keys.privateKey);
     aggregate.metrics.recallAt10 = 0.5;
     expect(() => verifyPublicVerificationAggregate(aggregate, keys.publicKey)).toThrow(/digest mismatch/);
-    const fresh = signPublicVerificationAggregate({ leaves: await leaves(), reviews: reviews() }, keys.privateKey);
+    const fresh = signPublicVerificationAggregate({ leaves: await leaves() }, keys.privateKey);
     expect(() => verifyPublicVerificationAggregate(fresh, crypto.generateKeyPairSync('ed25519').publicKey)).toThrow(/signature mismatch/);
     expect(() => verifyPublicVerificationAggregate(fresh, keys.publicKey, { ...identity, version: 'other' })).toThrow(/identity differs/);
   });
 
-  it('rejects a resigned summary that omits every raw leaf and review receipt', async () => {
+  it('rejects a resigned summary that omits every raw public leaf', async () => {
     const keys = crypto.generateKeyPairSync('ed25519');
-    const aggregate = signPublicVerificationAggregate({ leaves: await leaves(), reviews: reviews() }, keys.privateKey);
+    const aggregate = signPublicVerificationAggregate({ leaves: await leaves() }, keys.privateKey);
     delete aggregate.evidence;
     const payload = Object.fromEntries(Object.entries(aggregate)
       .filter(([key]) => !['aggregateSha256', 'signature'].includes(key)));
@@ -144,65 +117,20 @@ describe('signed public 3x3 verification aggregate', () => {
     expect(() => verifyPublicVerificationAggregate(aggregate, keys.publicKey)).toThrow(/lacks raw/);
   });
 
-  it('rejects missing, stale, low, forged, or non-subscription review evidence', async () => {
-    const rows = await leaves();
-    expect(() => signPublicVerificationAggregate({ leaves: rows, reviews: reviews().slice(0, 1) }, crypto.generateKeyPairSync('ed25519').privateKey))
-      .toThrow(/exactly two/);
-    const stale = reviews();
-    stale[1].sourceSha = '9'.repeat(40);
-    stale[1].receiptSha256 = digest(Object.fromEntries(Object.entries(stale[1]).filter(([key]) => key !== 'receiptSha256')));
-    expect(() => signPublicVerificationAggregate({ leaves: rows, reviews: stale }, crypto.generateKeyPairSync('ed25519').privateKey))
-      .toThrow(/identity, rubric, or oracle identity differs/);
-    expect(() => createIndependentReviewReceipt({ ...reviews()[0], receiptSha256: undefined, score: 94 })).toThrow(/below 95/);
-
-    const staleOracle = reviews();
-    staleOracle[1].retrievalOracleReview.oracleReceiptSha256 = 'f'.repeat(64);
-    staleOracle[1].receiptSha256 = digest(Object.fromEntries(Object.entries(staleOracle[1])
-      .filter(([key]) => key !== 'receiptSha256')));
-    expect(() => signPublicVerificationAggregate({ leaves: rows, reviews: staleOracle }, crypto.generateKeyPairSync('ed25519').privateKey))
-      .toThrow(/oracle identity|semantic review/i);
-
-    const partial = structuredClone(retrievalOracleReview);
-    partial.records.pop();
-    partial.recordCount = partial.records.length;
-    partial.queryStoreSetSha256 = digest(partial.records.map(({ store }) => store));
-    partial.recordSetSha256 = digest(partial.records.map(({ store, oracleRecordSha256 }) => ({ store, oracleRecordSha256 })));
-    expect(() => signPublicVerificationAggregate({ leaves: rows, reviews: reviews().map((review) =>
-      createIndependentReviewReceipt({ ...review, receiptSha256: undefined, retrievalOracleReview: partial })) },
-    crypto.generateKeyPairSync('ed25519').privateKey)).toThrow(/complete oracle store set/i);
-
-    const failed = structuredClone(retrievalOracleReview);
-    failed.records[0].relevant = false;
-    failed.records[0].verdict = 'FAIL';
-    failed.verdict = 'FAIL';
-    expect(() => createIndependentReviewReceipt({ ...reviews()[0], receiptSha256: undefined,
-      retrievalOracleReview: failed })).toThrow(/oracle semantic review/i);
-
-    const unselected = structuredClone(retrievalOracleReview);
-    const unselectedRow = unselected.records.find(({ store }) => store === 'old-unselected');
-    unselectedRow.oracleRecordSha256 = 'f'.repeat(64);
-    unselected.recordSetSha256 = digest(unselected.records
-      .map(({ store, oracleRecordSha256 }) => ({ store, oracleRecordSha256 })));
-    expect(() => signPublicVerificationAggregate({ leaves: rows, reviews: reviews().map((review) =>
-      createIndependentReviewReceipt({ ...review, receiptSha256: undefined, retrievalOracleReview: unselected })) },
-    crypto.generateKeyPairSync('ed25519').privateKey)).toThrow(/record differs from the retrieval plan/i);
-  });
-
-  it('signs exactly three immutable OS lane receipts plus two review receipts through the CLI', async () => {
+  it('signs exactly three immutable OS lane receipts through the CLI', async () => {
     const signingKeys = crypto.generateKeyPairSync('ed25519');
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'public-aggregate-'));
-    const lanesDir = path.join(temp, 'lanes'); const reviewsDir = path.join(temp, 'reviews');
-    fs.mkdirSync(lanesDir); fs.mkdirSync(reviewsDir);
+    const lanesDir = path.join(temp, 'lanes');
+    fs.mkdirSync(lanesDir);
     const allLeaves = await leaves();
     for (const osName of PUBLIC_VERIFICATION_OS) {
       const payload = { schemaVersion: 1, kind: 'ruvnet-brain-public-verification-os-lane', os: osName,
         leaves: allLeaves.filter(({ os: leafOs }) => leafOs === osName) };
       fs.writeFileSync(path.join(lanesDir, `${osName}.json`), JSON.stringify({ ...payload, laneSha256: digest(payload) }));
     }
-    for (const receipt of reviews()) fs.writeFileSync(path.join(reviewsDir, `${receipt.model}.json`), JSON.stringify(receipt));
     const out = path.join(temp, 'aggregate.json');
     const env = { ...process.env, RUVNET_SIGNING_KEY: signingKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }) };
-    const args = ['scripts/public-verification-aggregate.mjs', '--lanes', lanesDir, '--reviews', reviewsDir, '--out', out];
+    const args = ['scripts/public-verification-aggregate.mjs', '--lanes', lanesDir, '--out', out];
     const first = spawnSync(process.execPath, args, { cwd: path.resolve(import.meta.dirname, '../..'), env, encoding: 'utf8' });
     expect(first.status, first.stderr).toBe(0);
     expect(verifyPublicVerificationAggregate(JSON.parse(fs.readFileSync(out, 'utf8')), signingKeys.publicKey, identity)).toBeTruthy();

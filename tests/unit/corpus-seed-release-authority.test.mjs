@@ -78,6 +78,8 @@ process.exit(0);
     GH_VIEW_MODE: 'missing',
     GITHUB_ACTIONS: 'true',
     GITHUB_WORKFLOW: 'protected-release',
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
+    GITHUB_REF_PROTECTED: 'true',
     GITHUB_SHA: HEAD,
     GITHUB_REPOSITORY: 'stuinfla/ruvnet-brain',
     GH_TOKEN: 'fixture-token',
@@ -111,6 +113,8 @@ describe('protected corpus-seed release authority', () => {
     ['outside GitHub Actions', (f) => { delete f.env.GITHUB_ACTIONS; }],
     ['wrong workflow', (f) => { f.env.GITHUB_WORKFLOW = 'ci'; }],
     ['wrong repository', (f) => { f.env.GITHUB_REPOSITORY = 'attacker/fork'; }],
+    ['non-dispatch event', (f) => { f.env.GITHUB_EVENT_NAME = 'push'; }],
+    ['unprotected ref', (f) => { f.env.GITHUB_REF_PROTECTED = 'false'; }],
   ])('refuses %s before invoking gh', (_name, mutate) => {
     const f = fixture();
     mutate(f);

@@ -1,0 +1,98 @@
+name: release-candidate-preflight
+
+# Expensive product discovery happens once, before promotion. A successful run emits the exact
+# package, payload, and typed evidence envelope that protected-release later verifies and publishes.
+on:
+  push:
+    branches: ['release/**']
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ruvnet-brain-candidate-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+
+  integration:
+    uses: ./.github/workflows/integration-linux.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+
+  ux:
+    uses: ./.github/workflows/ux-qe.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+
+  stranger:
+    needs: ci
+    uses: ./.github/workflows/stranger-matrix.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+
+  aggregate:
+    needs: [ci, integration, ux, stranger]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-evidence-${{ github.sha }}
+          path: release-evidence
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate-ci-evidence-${{ github.sha }}
+          path: lane-evidence/ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: integration-evidence-${{ github.sha }}
+          path: lane-evidence/integration
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ux-evidence-${{ github.sha }}-*
+          path: lane-evidence/ux
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: stranger-evidence-${{ github.sha }}
+          path: lane-evidence/stranger
+      - name: Validate typed receipts and bind the candidate envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release-proof.mjs --candidate release-evidence/candidate-receipt.json
+          node scripts/release-payload.mjs verify-members \
+            --manifest release-evidence/payload-manifest.json > "$RUNNER_TEMP/payload.json"
+          node scripts/prepublication-evidence.mjs \
+            --sha "$GITHUB_SHA" \
+            --version "$(node -p "require('./package.json').version")" \
+            --run-id "$GITHUB_RUN_ID" \
+            --manifest release-evidence/payload-manifest.json \
+            --payload-proof "$RUNNER_TEMP/payload.json" \
+            --hosts release-evidence/candidate-host-evidence.json \
+            --ci lane-evidence/ci/candidate-ci-evidence.json \
+            --integration lane-evidence/integration/integration-evidence.json \
+            --ux-dir lane-evidence/ux \
+            --stranger lane-evidence/stranger/stranger-evidence.json \
+            --leaves-out release-evidence/release-leaves.json \
+            --envelope-out release-evidence/aggregate-envelope.json
+      - name: Persist the only promotable candidate for this SHA
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-${{ github.sha }}
+          path: release-evidence/
+          if-no-files-found: error
+          retention-days: 30

@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { validateProtectedPublishInvocation } from './protected-release-invocation.mjs';
+import { validateProtectedPublishEnvironment, validateProtectedPublishInvocation } from './protected-release-invocation.mjs';
 import { runReleaseTransaction } from './release-transaction.mjs';
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
@@ -87,9 +87,9 @@ export function runProtectedCorpusSeed({
   root = ROOT,
   run = (command, args, options) => spawnSync(command, args, { encoding: 'utf8', ...options }),
 } = {}) {
-  if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_WORKFLOW !== 'protected-release'
-    || env.GITHUB_REPOSITORY !== 'stuinfla/ruvnet-brain') {
-    corpusFailure('publication is allowed only inside the protected-release GitHub workflow for stuinfla/ruvnet-brain');
+  const environmentFailures = validateProtectedPublishEnvironment(env);
+  if (environmentFailures.length) {
+    corpusFailure(environmentFailures.join('; '));
   }
 
   const tag = cliArg(argv, '--corpus-tag');
@@ -399,7 +399,6 @@ if (!PUBLISH) {
 
 if (PUBLISH) {
   console.log(`\n${c.y(c.b('PUBLISHED, NOT VERIFIED'))}`);
-  console.log(`\n${c.g(c.b('✓✓✓ SHIPPED'))} — every gate passed and every live channel is current. ${c.dim('A user on any path (npm, npx, explainer, --update) gets the working, current build.')}\n`);
 } else {
   console.log(`\n${c.g(c.b('✓✓✓ PREFLIGHT PASS — NOT PUBLISHED'))} — the committed candidate passed every check-only gate.\n`);
 }

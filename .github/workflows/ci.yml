@@ -7,10 +7,15 @@ on:
     branches: [main]
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      candidate_sha:
+        description: Exact current-main SHA owned by the protected release run
+        required: true
+        type: string
 
 concurrency:
-  group: ruvnet-brain-ci-${{ github.event.pull_request.number || github.ref }}
+  group: ruvnet-brain-ci-${{ github.event_name == 'workflow_call' && github.run_id || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,6 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -49,6 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
           # Currency and mutation tests inspect historical commits. In a depth-1 clone, HEAD is
           # treated as every file's root commit and ADR-0013 falsely appears newer than its stamp.
           fetch-depth: 0
@@ -199,6 +206,7 @@ jobs:
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
           # The full unit suite includes the same git-history-backed currency/fixture assertions.
           fetch-depth: 0
       - uses: actions/setup-node@v4
@@ -287,6 +295,8 @@ jobs:
       KB_MODEL_CACHE: ${{ github.workspace }}/.brain-cache/models
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -415,6 +425,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -559,7 +570,77 @@ jobs:
       - name: Upload the exact candidate for the protected publisher
         uses: actions/upload-artifact@v4
         with:
-          name: release-evidence-${{ github.sha }}
+          name: release-evidence-${{ inputs.candidate_sha || github.sha }}
           path: ${{ runner.temp }}/release-evidence/
           if-no-files-found: error
           retention-days: 30
+
+  candidate-ci-evidence:
+    name: candidate-ci-evidence
+    needs: [candidate-preflight, check, windows-unit, warm-brain, release-qe]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Restore the exact candidate payload
+        uses: actions/download-artifact@v4
+        with:
+          name: release-evidence-${{ github.sha }}
+          path: release-evidence
+      - name: Bind every required CI job to the candidate payload
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
+          NEEDS_JSON: ${{ toJson(needs) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release-payload.mjs verify-members \
+            --manifest release-evidence/payload-manifest.json > "$RUNNER_TEMP/payload.json"
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          const needs = JSON.parse(process.env.NEEDS_JSON);
+          const required = ['candidate-preflight', 'check', 'windows-unit', 'warm-brain', 'release-qe'];
+          if (required.some((name) => needs[name]?.result !== 'success')) {
+            throw new Error('candidate CI contains a non-success dependency');
+          }
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/payload.json', 'utf8'));
+          const manifestBytes = fs.readFileSync('release-evidence/payload-manifest.json');
+          const manifest = JSON.parse(manifestBytes);
+          const candidate = JSON.parse(fs.readFileSync('release-evidence/candidate-receipt.json', 'utf8'));
+          if (manifest.candidateSha !== process.env.CANDIDATE_SHA || candidate.sha !== process.env.CANDIDATE_SHA) {
+            throw new Error('candidate CI receipt identity differs from checked-out source');
+          }
+          const receipt = {
+            schemaVersion: 1,
+            kind: 'ruvnet-brain-candidate-ci-evidence',
+            sourceSha: process.env.CANDIDATE_SHA,
+            version: manifest.version,
+            payloadId: payload.payloadId,
+            payloadManifestSha256: crypto.createHash('sha256').update(manifestBytes).digest('hex'),
+            workflow: 'ci',
+            runId: Number(process.env.GITHUB_RUN_ID),
+            runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+            jobs: required.map((name) => ({ name, conclusion: needs[name].result })),
+            verdict: 'PASS',
+            skipped: 0,
+            unknown: 0,
+          };
+          fs.writeFileSync('candidate-ci-evidence.json', `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx' });
+          NODE
+      - name: Persist the typed candidate CI receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-ci-evidence-${{ inputs.candidate_sha || github.sha }}
+          path: candidate-ci-evidence.json
+          if-no-files-found: error
+          retention-days: 90

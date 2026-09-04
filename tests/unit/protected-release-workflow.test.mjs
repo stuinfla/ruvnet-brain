@@ -18,7 +18,6 @@ describe('protected release rail', () => {
       'release-cycle.yml',
       'release-aggregate.yml',
       'product-integrity-review.yml',
-      'corpus-seed.yml',
       'ci.yml',
       'integration-linux.yml',
       'ux-qe.yml',
@@ -31,11 +30,12 @@ describe('protected release rail', () => {
     expect(dispatchInputNames(workflow())).toEqual(['candidate_sha', 'version']);
   });
 
-  it('runs every prepublication lane as a reusable workflow in this run', () => {
-    const source = workflow();
+  it('runs every expensive lane once in the exact-SHA preflight before publication', () => {
+    const source = read('.github/workflows/release-candidate-preflight.yml');
     for (const file of ['ci.yml', 'integration-linux.yml', 'ux-qe.yml', 'stranger-matrix.yml']) {
       expect(read(`.github/workflows/${file}`), `${file} must be reusable`).toMatch(/\n\s{2}workflow_call:/);
-      expect(source, `${file} must be called by protected-release`).toContain(`uses: ./.github/workflows/${file}`);
+      expect(source, `${file} must be called by release-candidate-preflight`).toContain(`uses: ./.github/workflows/${file}`);
+      expect(workflow(), `${file} must not rerun during publication`).not.toContain(`uses: ./.github/workflows/${file}`);
     }
   });
 
@@ -62,11 +62,11 @@ describe('protected release rail', () => {
     expect(source).not.toMatch(/(?:release_qe|aggregate|review)_run_id/);
   });
 
-  it('crosses Production once and invokes the sole publisher exactly once', () => {
+  it('invokes the sole publisher once while keeping environment-scoped signing secrets', () => {
     const source = workflow();
     expect(source).toContain('group: ruvnet-brain-release');
     expect(source).toContain('cancel-in-progress: false');
-    expect(source.match(/environment: Production – ruvnet-brain/g)).toHaveLength(1);
+    expect(source.match(/environment: Production – ruvnet-brain/g)).toHaveLength(3);
     expect(source.match(/node scripts\/release\.mjs --publish/g)).toHaveLength(1);
     expect(source).toContain('RUVNET_RELEASE_MODE: stabilization');
     expect(source).not.toContain('continue-on-error: true');

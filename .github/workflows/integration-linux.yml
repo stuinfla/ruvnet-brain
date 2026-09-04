@@ -18,7 +18,12 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      candidate_sha:
+        description: Exact candidate SHA when called by the release transaction
+        required: true
+        type: string
 
 concurrency:
   group: ruvnet-brain-integration-${{ github.event.pull_request.number || github.ref }}
@@ -33,6 +38,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -137,3 +144,43 @@ jobs:
           }
           console.log(`integration suite ran to completion: ${report.numPassedTests ?? 0}/${total} passed, 0 failed`);
           NODE
+      - name: Bind integration evidence to the exact source
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const report = JSON.parse(fs.readFileSync('/tmp/integration.json', 'utf8'));
+          const total = Number(report.numTotalTests || 0);
+          const failed = Number(report.numFailedTests || 0) + Number(report.numFailedTestSuites || 0);
+          const skipped = Number(report.numPendingTests || 0);
+          const todo = Number(report.numTodoTests || 0);
+          const passed = Number(report.numPassedTests || 0);
+          if (total <= 0 || failed !== 0 || skipped !== 0 || passed + todo !== total) {
+            throw new Error(`integration report is not an exact non-skipped pass (${passed} passed, ${todo} todo, ${total} total, ${skipped} skipped)`);
+          }
+          const receipt = {
+            schemaVersion: 1,
+            kind: 'ruvnet-brain-integration-evidence',
+            sourceSha: process.env.CANDIDATE_SHA,
+            workflow: 'integration-linux',
+            runId: Number(process.env.GITHUB_RUN_ID),
+            runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+            total,
+            passed,
+            failed: 0,
+            skipped,
+            todo,
+            verdict: 'PASS',
+          };
+          fs.writeFileSync('integration-evidence.json', `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx' });
+          NODE
+      - name: Persist typed integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-evidence-${{ inputs.candidate_sha || github.sha }}
+          path: integration-evidence.json
+          if-no-files-found: error
+          retention-days: 90

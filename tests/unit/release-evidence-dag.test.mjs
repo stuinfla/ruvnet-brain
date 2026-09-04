@@ -19,10 +19,10 @@ describe('same-run release evidence DAG', () => {
 
   it('persists a source-bound artifact receipt from every reusable lane', () => {
     const producers = [
-      ['ci.yml', 'release-evidence-${{ inputs.candidate_sha }}'],
-      ['integration-linux.yml', 'integration-evidence-${{ inputs.candidate_sha }}'],
-      ['ux-qe.yml', 'ux-evidence-${{ inputs.candidate_sha }}'],
-      ['stranger-matrix.yml', 'stranger-evidence-${{ inputs.candidate_sha }}'],
+      ['ci.yml', 'release-evidence-${{ inputs.candidate_sha || github.sha }}'],
+      ['integration-linux.yml', 'integration-evidence-${{ inputs.candidate_sha || github.sha }}'],
+      ['ux-qe.yml', 'ux-evidence-${{ inputs.candidate_sha || github.sha }}-${{ runner.os }}'],
+      ['stranger-matrix.yml', 'stranger-evidence-${{ inputs.candidate_sha || github.sha }}'],
     ];
     for (const [file, artifact] of producers) {
       const source = read(`.github/workflows/${file}`);
@@ -32,16 +32,26 @@ describe('same-run release evidence DAG', () => {
   });
 
   it('downloads and validates every same-run lane receipt before aggregation', () => {
-    const source = read('.github/workflows/protected-release.yml');
-    const aggregate = source.indexOf('node scripts/release-evidence-aggregate.mjs');
+    const source = read('.github/workflows/release-candidate-preflight.yml');
+    const aggregate = source.indexOf('node scripts/prepublication-evidence.mjs');
     expect(aggregate).toBeGreaterThan(-1);
-    for (const artifact of ['release-evidence-', 'integration-evidence-', 'ux-evidence-', 'stranger-evidence-']) {
-      const download = source.indexOf(`name: ${artifact}`);
+    for (const artifact of ['release-evidence-', 'candidate-ci-evidence-', 'integration-evidence-', 'ux-evidence-', 'stranger-evidence-']) {
+      const download = Math.max(source.indexOf(`name: ${artifact}`), source.indexOf(`pattern: ${artifact}`));
       expect(download, `${artifact} receipt must be restored`).toBeGreaterThan(-1);
       expect(download, `${artifact} receipt must be restored before aggregation`).toBeLessThan(aggregate);
     }
     expect(source.slice(0, aggregate)).toContain('node scripts/release-proof.mjs --candidate');
     expect(source).not.toContain('NEEDS_JSON: ${{ toJson(needs) }}');
+  });
+
+  it('imports the exact-SHA preflight artifact without rerunning expensive lanes', () => {
+    const source = read('.github/workflows/protected-release.yml');
+    expect(source).toContain('artifact_name="release-candidate-$CANDIDATE_SHA"');
+    expect(source).toContain('node scripts/release-proof.mjs --candidate release-evidence/candidate-receipt.json');
+    expect(source).toContain("aggregate.sha !== process.env.CANDIDATE_SHA");
+    for (const file of ['ci.yml', 'integration-linux.yml', 'ux-qe.yml', 'stranger-matrix.yml']) {
+      expect(source).not.toContain(`uses: ./.github/workflows/${file}`);
+    }
   });
 
   it('keeps source gates out of the protected provider-mutation branch', () => {
