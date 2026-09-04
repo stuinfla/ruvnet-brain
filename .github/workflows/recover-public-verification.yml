@@ -1,0 +1,251 @@
+name: recover-public-verification
+
+# This rail never publishes package or bundle bytes. It recovers a signed channels-converged
+# transaction whose public verification jobs were skipped, then runs the existing 3-OS proof.
+on:
+  repository_dispatch:
+    types: [recover-public-verification]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ruvnet-brain-release
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    name: authorize-published-transaction
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      candidate_sha: ${{ steps.bind.outputs.candidate_sha }}
+      version: ${{ steps.bind.outputs.version }}
+      publication_run_id: ${{ steps.bind.outputs.publication_run_id }}
+      artifact_id: ${{ steps.bind.outputs.artifact_id }}
+    steps:
+      - id: bind
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.client_payload.candidate_sha }}
+          VERSION: ${{ github.event.client_payload.version }}
+          PUBLICATION_RUN_ID: ${{ github.event.client_payload.publication_run_id }}
+          ARTIFACT_ID: ${{ github.event.client_payload.artifact_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$PUBLICATION_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          expected_name="publication-evidence-$CANDIDATE_SHA"
+          metadata="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID")"
+          jq -e --arg name "$expected_name" --argjson run "$PUBLICATION_RUN_ID" \
+            '.name == $name and .expired == false and .workflow_run.id == $run' <<<"$metadata" >/dev/null
+          release="$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease,targetCommitish)"
+          jq -e --arg sha "$CANDIDATE_SHA" \
+            '.isDraft == false and .isPrerelease == false and .targetCommitish == $sha' <<<"$release" >/dev/null
+          test "$(npm view ruvnet-brain@latest version)" = "$VERSION"
+          test "$(npm view "ruvnet-brain@$VERSION" version)" = "$VERSION"
+          printf 'candidate_sha=%s\nversion=%s\npublication_run_id=%s\nartifact_id=%s\n' \
+            "$CANDIDATE_SHA" "$VERSION" "$PUBLICATION_RUN_ID" "$ARTIFACT_ID" >> "$GITHUB_OUTPUT"
+
+  recover:
+    name: recover-signed-publication-handoff
+    needs: authorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.authorize.outputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Restore the exact failed-run publication artifact once
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.authorize.outputs.artifact_id }}
+          run-id: ${{ needs.authorize.outputs.publication_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: release-evidence
+          merge-multiple: true
+      - name: Recover and verify the signed public transaction chain
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.authorize.outputs.candidate_sha }}
+          VERSION: ${{ needs.authorize.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(node -p "require('./package.json').version")" = "$VERSION"
+          test -s release-evidence/candidate-receipt.json
+          test -s release-evidence/COVERAGE.json
+          test -s release-evidence/retrieval-canary-plan.json
+          mkdir transaction-receipts
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'release-transaction-*.json' --dir transaction-receipts
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { canonicalJson } from './scripts/coverage-integrity.mjs';
+          import { validateReceiptChain } from './scripts/release-transaction.mjs';
+          const read = (file) => {
+            const stat = fs.lstatSync(file);
+            if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`untrusted receipt file: ${file}`);
+            return JSON.parse(fs.readFileSync(file, 'utf8'));
+          };
+          const files = fs.readdirSync('transaction-receipts')
+            .filter((name) => /^release-transaction-[0-9]{4}\.json$/.test(name)).sort();
+          if (files.length !== 14) throw new Error(`expected 14 pre-verification receipts, found ${files.length}`);
+          const receipts = files.map((name) => read(path.join('transaction-receipts', name)));
+          const identity = receipts[0]?.identity;
+          const publicKey = crypto.createPublicKey(fs.readFileSync('keys/ruvnet-brain-signing.pub.pem', 'utf8'));
+          const chain = validateReceiptChain(receipts, identity, publicKey);
+          const terminal = chain.at(-1);
+          const candidate = read('release-evidence/candidate-receipt.json');
+          const artifactSha = String(candidate?.artifact?.sha256 || '').replace(/^sha256:/, '');
+          if (terminal.sequence !== 13 || terminal.schemaVersion !== 3 || terminal.state !== 'channels-converged'
+            || terminal.observation?.verdict !== 'PUBLISHED_NOT_VERIFIED'
+            || identity.repository !== 'stuinfla/ruvnet-brain' || identity.package !== 'ruvnet-brain'
+            || identity.candidateSha !== process.env.CANDIDATE_SHA || identity.version !== process.env.VERSION
+            || identity.tag !== `v${process.env.VERSION}` || candidate.sha !== identity.candidateSha
+            || candidate.version !== identity.version || candidate.tag !== identity.tag
+            || artifactSha !== identity.packageSha256 || canonicalJson(terminal.identity) !== canonicalJson(identity)) {
+            throw new Error('public transaction differs from the exact failed-run candidate');
+          }
+          fs.writeFileSync('release-evidence/release-identity.json', `${JSON.stringify(identity, null, 2)}\n`,
+            { flag: 'wx', mode: 0o600 });
+          fs.writeFileSync('release-evidence/channels-converged-receipt.json', fs.readFileSync(
+            path.join('transaction-receipts', files.at(-1))), { flag: 'wx', mode: 0o600 });
+          NODE
+      - name: Preserve only the small verified lane inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovered-publication-inputs-${{ needs.authorize.outputs.candidate_sha }}-${{ github.run_id }}
+          path: |
+            release-evidence/candidate-receipt.json
+            release-evidence/COVERAGE.json
+            release-evidence/retrieval-canary-plan.json
+            release-evidence/release-identity.json
+            release-evidence/channels-converged-receipt.json
+          if-no-files-found: error
+          retention-days: 90
+
+  public-verification:
+    name: recover-public-verification-${{ matrix.os_name }}
+    needs: [authorize, recover]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest, os_name: linux }
+          - { runner: macos-latest, os_name: macos }
+          - { runner: windows-latest, os_name: windows }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.authorize.outputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install exact-source verifier and current host CLIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm install --no-save --package-lock=false \
+            @anthropic-ai/claude-code@latest \
+            @openai/codex@latest
+          echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@v4
+        with:
+          name: recovered-publication-inputs-${{ needs.authorize.outputs.candidate_sha }}-${{ github.run_id }}
+          path: release-evidence
+      - name: Execute three loaders and retrieval canaries from public bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/host-registry.mjs --out release-evidence/host-registry.json
+          mkdir public-lanes
+          node scripts/public-verification-lane.mjs \
+            --os "${{ matrix.os_name }}" \
+            --candidate release-evidence/candidate-receipt.json \
+            --identity release-evidence/release-identity.json \
+            --coverage release-evidence/COVERAGE.json \
+            --plan release-evidence/retrieval-canary-plan.json \
+            --registry release-evidence/host-registry.json \
+            --out "public-lanes/${{ matrix.os_name }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recovered-public-verification-${{ matrix.os_name }}-${{ needs.authorize.outputs.candidate_sha }}-${{ github.run_id }}
+          path: public-lanes/${{ matrix.os_name }}.json
+          if-no-files-found: error
+          retention-days: 90
+
+  finalize:
+    name: finalize-recovered-public-verification
+    needs: [authorize, recover, public-verification]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: Production – ruvnet-brain
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.authorize.outputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          name: recovered-publication-inputs-${{ needs.authorize.outputs.candidate_sha }}-${{ github.run_id }}
+          path: release-evidence
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: recovered-public-verification-*-${{ needs.authorize.outputs.candidate_sha }}-${{ github.run_id }}
+          path: public-lanes
+          merge-multiple: true
+      - name: Sign the nine-leaf aggregate and append install-verified
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RUVNET_SIGNING_KEY: ${{ secrets.RUVNET_SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find public-lanes -type f -name '*.json' | wc -l | tr -d ' ')" = 3
+          node scripts/public-verification-aggregate.mjs \
+            --lanes public-lanes \
+            --out release-evidence/public-verification-aggregate.json
+          node scripts/public-verification-finalizer.mjs \
+            --identity release-evidence/release-identity.json \
+            --aggregate release-evidence/public-verification-aggregate.json \
+            --out release-evidence/install-verified-receipt.json
+          test "$(node -p "require('./release-evidence/install-verified-receipt.json').state")" = install-verified
+      - name: Preserve terminal public verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovered-install-verification-${{ needs.authorize.outputs.candidate_sha }}-${{ github.run_id }}
+          path: |
+            release-evidence/public-verification-aggregate.json
+            release-evidence/install-verified-receipt.json
+          if-no-files-found: error
+          retention-days: 90
