@@ -7,7 +7,7 @@ authors: [Stuart Kerr, Claude Code]
 tags: [routing, models, enforcement, ci, rule-0]
 supersedes: []
 relates: [ADR-015, ADR-0012]
-updated: 2026-08-01
+updated: 2026-09-04
 updated_source: derived-from-git
 ---
 
@@ -15,9 +15,9 @@ updated_source: derived-from-git
 
 ## Status
 
-**Implemented — v3.0.3 (2026-07-15).** `data/model-catalog.json` (per-provider tier ladders),
+**Implemented — v3.0.3 (2026-07-15); scheduled ownership repaired 2026-09-04.** `data/model-catalog.json` (per-provider tier ladders),
 `data/openrouter-catalog-snapshot.json` (committed live snapshot), `scripts/verify-model-catalog.mjs`
-(the gate), `scripts/refresh-model-catalog.mjs` (nightly re-pull), `tests/unit/model-catalog.test.mjs`,
+(the gate), `scripts/refresh-model-catalog.mjs` (live re-pull + factual price sync), `tests/unit/model-catalog.test.mjs`,
 and the CI step `catalog:verify` all shipped. The router-optimizer/console *consumption* of the catalog
 (per-user personalized frontier + corrected effort defaults) is tracked separately under ADR-015.
 
@@ -42,8 +42,11 @@ a wall that fails the build, not a promise to try harder.** Model facts had no s
    `openrouter-alts.json` `_meta`/provenance conventions; extended with a provider-house axis rUv's
    registry does not carry.
 2. **`scripts/refresh-model-catalog.mjs`** — pulls the live OpenRouter `/models` catalog (a free
-   metadata endpoint, no spend) into a committed snapshot with a `pulledAt` stamp, and flags drift (any
-   catalog model that vanished). Runs nightly (the anti-rot mechanism) + on demand.
+   metadata endpoint, no spend) into a committed snapshot with a `pulledAt` stamp, synchronizes factual
+   catalog prices from that same response, and flags drift (any catalog model that vanished). Runs weekly
+   through `.github/workflows/model-catalog-refresh.yml` (the anti-rot mechanism) + on demand. The workflow
+   owns one maintenance PR, dispatches the required protected-branch checks explicitly, and enables
+   auto-merge only after those checks pass.
 3. **`scripts/verify-model-catalog.mjs`** — the wall. Every catalog model MUST exist in the snapshot and
    be priced within 5%; a missing model, a wrong price, or a snapshot older than 14 days is a **hard
    failure (exit 1)**. CI runs it offline against the snapshot (`catalog:verify`), so a bad or stale
@@ -55,6 +58,13 @@ a wall that fails the build, not a promise to try harder.** Model facts had no s
    harness, LiveCodeBench, Aider polyglot) are noted, not used, until they carry current models.
 
 ## Verification (so it is real, not theater)
+
+- **2026-09-04 issue #238 repair:** the accepted plan said the snapshot refreshed nightly, but no
+  GitHub workflow invoked `catalog:refresh`; the snapshot aged past 14 days and made every PR's `check`
+  lane red. The new weekly owner refreshes seven days inside the hard deadline, synchronizes live price
+  changes deterministically, verifies the result, and routes it through a single auto-merged maintenance
+  PR plus the repository's required `integration` and `canonical-qa` checks. A live repair pull also
+  detected and corrected GPT-5.6 Sol pricing from $2.50/$15 to $2/$10 per million tokens.
 
 - **2026-08-01 refresh:** CI correctly rejected the 14.3-day-old OpenRouter snapshot. A live
   `scripts/refresh-model-catalog.mjs` pull then found real price drift: GPT-5.6 Terra moved to
@@ -72,7 +82,7 @@ a wall that fails the build, not a promise to try harder.** Model facts had no s
 
 - A model/version claim can no longer be asserted from memory anywhere the catalog feeds — the assertion
   is the verified catalog's, not the model's recollection.
-- The catalog stays current automatically (nightly re-pull) and can't silently rot (14-day CI freshness
+- The catalog stays current automatically (weekly protected refresh) and can't silently rot (14-day CI freshness
   fail) — a new flagship like GPT-5.6 surfaces as drift instead of a stale omission.
 - The automated always-current path (predicting tier placement for a brand-new model from a few probes)
   is rUv's ADR-206 (BenchPress) — the next step beyond this snapshot-verification floor.

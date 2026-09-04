@@ -2384,15 +2384,33 @@ function inventoryReposFromQuery(query, dir, availableRepos) {
     };
   }
   const named = [];
+  const naturalProjectScope = [];
   for (const repo of available) {
     const names = repositoryNames(repo, dir);
-    if (names.some((name) => {
-      const phrase = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-      return phrase.length >= 3
-        && new RegExp(`(?:^|\\s)${escapeRegExp(phrase)}(?:$|\\s)`).test(qIdentityPhrase);
+    const phrases = names.map((name) => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim())
+      .filter((phrase) => phrase.length >= 3);
+    if (phrases.some((phrase) =>
+      new RegExp(`(?:^|\\s)in\\s+(?:the\\s+)?${escapeRegExp(phrase)}\\s+(?:project|repo|repository)(?:$|\\s)`)
+        .test(qIdentityPhrase))) {
+      naturalProjectScope.push(repo);
+    }
+    if (phrases.some((phrase) => {
+      return new RegExp(`(?:^|\\s)${escapeRegExp(phrase)}(?:$|\\s)`).test(qIdentityPhrase);
     })) {
       named.push(repo);
     }
+  }
+  if (naturalProjectScope.length) {
+    const repos = [...new Set(naturalProjectScope)];
+    return {
+      repos,
+      namedRepos: repos,
+      cardRepos: {},
+      inventoryScope: true,
+      naturalProjectScope: true,
+      confidence: 'named',
+      reason: `query explicitly selects deployed project repo(s): ${repos.join(', ')}`,
+    };
   }
   if (!named.length) return null;
   const repos = [...new Set(named)];
@@ -2749,6 +2767,7 @@ export async function searchAll({
     const inventoryDirective = inventoryReposFromQuery(query, dir, discovered);
     const planned = inventoryDirective && (
       inventoryDirective.familyScope
+      || inventoryDirective.naturalProjectScope
       || /\brepo:[a-z0-9._-]+\b/i.test(String(query || ''))
     )
       ? inventoryDirective
