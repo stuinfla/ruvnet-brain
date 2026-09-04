@@ -100,6 +100,7 @@ describe('protected release rail', () => {
     expect(source).toContain('cygpath -w "$host_cli_prefix/node_modules/.bin"');
     expect(source).not.toContain('cygpath -w "$PWD/node_modules/.bin"');
     expect(source).toContain('RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}');
+    expect(source).toContain('GITHUB_TOKEN: ${{ github.token }}');
     expect(aggregate).toBeGreaterThan(lane);
     expect(finalize).toBeGreaterThan(aggregate);
     expect(terminal).toBeGreaterThan(finalize);
