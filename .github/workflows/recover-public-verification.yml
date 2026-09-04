@@ -123,10 +123,17 @@ jobs:
             || artifactSha !== identity.packageSha256 || canonicalJson(terminal.identity) !== canonicalJson(identity)) {
             throw new Error('public transaction differs from the exact failed-run candidate');
           }
-          fs.writeFileSync('release-evidence/release-identity.json', `${JSON.stringify(identity, null, 2)}\n`,
-            { flag: 'wx', mode: 0o600 });
-          fs.writeFileSync('release-evidence/channels-converged-receipt.json', fs.readFileSync(
-            path.join('transaction-receipts', files.at(-1))), { flag: 'wx', mode: 0o600 });
+          const materializeExactJson = (file, value) => {
+            if (fs.existsSync(file)) {
+              if (canonicalJson(read(file)) !== canonicalJson(value)) {
+                throw new Error(`existing ${file} differs from the signed transaction`);
+              }
+              return;
+            }
+            fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+          };
+          materializeExactJson('release-evidence/release-identity.json', identity);
+          materializeExactJson('release-evidence/channels-converged-receipt.json', terminal);
           NODE
       - name: Preserve the complete verified payload for public-byte comparison
         uses: actions/upload-artifact@v4

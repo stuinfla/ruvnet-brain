@@ -22,10 +22,13 @@ describe('post-publication recovery rail', () => {
 
   it('validates the complete signed chain before exposing recovered evidence', () => {
     expect(position('validateReceiptChain(receipts, identity, publicKey)'))
-      .toBeLessThan(position("fs.writeFileSync('release-evidence/release-identity.json'"));
+      .toBeLessThan(position("materializeExactJson('release-evidence/release-identity.json'"));
     expect(source).toContain("terminal.state !== 'channels-converged'");
     expect(source).toContain("terminal.observation?.verdict !== 'PUBLISHED_NOT_VERIFIED'");
     expect(source).toContain('terminal.sequence !== 13');
+    expect(source).toContain('const materializeExactJson = (file, value) =>');
+    expect(source).toContain('canonicalJson(read(file)) !== canonicalJson(value)');
+    expect(source).not.toContain("fs.writeFileSync('release-evidence/release-identity.json'");
   });
 
   it('runs exactly three OS lanes against the released source and then finalizes', () => {
