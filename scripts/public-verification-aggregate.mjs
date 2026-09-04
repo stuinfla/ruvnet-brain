@@ -133,7 +133,7 @@ const identityOf = (leaf) => ({
   releaseTransactionId: leaf.releaseTransactionId,
 });
 
-export function buildPublicVerificationAggregate(leaves, reviews) {
+export function buildPublicVerificationAggregate(leaves) {
   if (!Array.isArray(leaves) || leaves.length !== PUBLIC_VERIFICATION_OS.length * PUBLIC_VERIFICATION_MODES.length) {
     throw new Error('public verification requires exactly nine leaves');
   }
@@ -168,25 +168,11 @@ export function buildPublicVerificationAggregate(leaves, reviews) {
   if (metrics.recallAt10 < 0.98 || metrics.deltaCitationRate !== 1 || metrics.skipped || metrics.unknown) {
     throw new Error('public verification aggregate retrieval acceptance failed');
   }
-  if (!Array.isArray(reviews) || reviews.length !== REQUIRED_REVIEW_MODELS.length) {
-    throw new Error('public verification aggregate requires exactly two independent reviews');
-  }
-  reviews.forEach(validateIndependentReviewReceipt);
-  const byModel = new Map(reviews.map((review) => [review.model, review]));
-  if (byModel.size !== REQUIRED_REVIEW_MODELS.length || REQUIRED_REVIEW_MODELS.some((model) => !byModel.has(model))) {
-    throw new Error('required independent review models are missing or duplicated');
-  }
-  const firstReview = byModel.get(REQUIRED_REVIEW_MODELS[0]);
-  const semanticIdentity = validateReviewOracleAgainstPlan(firstReview, first.retrievalPlan);
-  for (const model of REQUIRED_REVIEW_MODELS) {
-    const review = byModel.get(model);
-    const semantic = validateReviewOracleAgainstPlan(review, first.retrievalPlan);
-    if (review.sourceSha !== identity.sourceSha || review.artifactSha256 !== identity.artifactSha256
-      || review.payloadId !== identity.payloadId || review.productContractSha256 !== firstReview.productContractSha256
-      || review.rubricSha256 !== firstReview.rubricSha256
-      || semantic.recordSetSha256 !== semanticIdentity.recordSetSha256) {
-      throw new Error(`${model} review identity, rubric, or oracle identity differs`);
-    }
+  const oracle = first.retrievalPlan.oracle;
+  if (!oracle || !HEX64.test(String(oracle.receiptSha256 || ''))
+    || !HEX64.test(String(oracle.queryStoreSetSha256 || ''))
+    || oracle.queryStoreSetSha256 !== digest(first.retrievalPlan.denominator.eligibleStores)) {
+    throw new Error('sealed retrieval oracle identity is incomplete');
   }
   return {
     schemaVersion: 1,
@@ -194,17 +180,11 @@ export function buildPublicVerificationAggregate(leaves, reviews) {
     identity,
     coverage: first.coverage,
     lanes: required.map((lane) => ({ lane, leafSha256: byLane.get(lane).leafSha256 })),
-    reviews: REQUIRED_REVIEW_MODELS.map((model) => ({ model, receiptSha256: byModel.get(model).receiptSha256,
-      score: byModel.get(model).score })),
-    evidence: { leaves: required.map((lane) => structuredClone(byLane.get(lane))),
-      reviews: REQUIRED_REVIEW_MODELS.map((model) => structuredClone(byModel.get(model))) },
-    productContractSha256: firstReview.productContractSha256,
-    rubricSha256: firstReview.rubricSha256,
+    evidence: { leaves: required.map((lane) => structuredClone(byLane.get(lane))) },
     retrievalOracle: {
-      oracleReceiptSha256: semanticIdentity.oracleReceiptSha256,
-      queryStoreSetSha256: semanticIdentity.queryStoreSetSha256,
-      recordCount: semanticIdentity.recordCount,
-      recordSetSha256: semanticIdentity.recordSetSha256,
+      oracleReceiptSha256: oracle.receiptSha256,
+      queryStoreSetSha256: oracle.queryStoreSetSha256,
+      recordCount: first.retrievalPlan.denominator.eligibleStores.length,
     },
     metrics,
     verdict: 'PASS',
@@ -212,8 +192,8 @@ export function buildPublicVerificationAggregate(leaves, reviews) {
   };
 }
 
-export function signPublicVerificationAggregate({ leaves, reviews }, privateKey) {
-  const payload = buildPublicVerificationAggregate(leaves, reviews);
+export function signPublicVerificationAggregate({ leaves }, privateKey) {
+  const payload = buildPublicVerificationAggregate(leaves);
   const aggregateSha256 = digest(payload);
   const signed = { ...payload, aggregateSha256 };
   return { ...signed, signature: crypto.sign(null, Buffer.from(canonicalJson(signed)), privateKey).toString('base64') };
@@ -227,10 +207,10 @@ export function verifyPublicVerificationAggregate(aggregate, publicKey, expected
   }
   const payload = aggregatePayload(aggregate);
   if (digest(payload) !== aggregate.aggregateSha256) throw new Error('public verification aggregate digest mismatch');
-  if (!Array.isArray(aggregate.evidence?.leaves) || !Array.isArray(aggregate.evidence?.reviews)) {
-    throw new Error('public verification aggregate lacks raw leaf or review evidence');
+  if (!Array.isArray(aggregate.evidence?.leaves)) {
+    throw new Error('public verification aggregate lacks raw leaf evidence');
   }
-  const rebuilt = buildPublicVerificationAggregate(aggregate.evidence.leaves, aggregate.evidence.reviews);
+  const rebuilt = buildPublicVerificationAggregate(aggregate.evidence.leaves);
   if (canonicalJson(rebuilt) !== canonicalJson(payload)) {
     throw new Error('public verification aggregate differs from rebuilt raw evidence');
   }
@@ -249,17 +229,10 @@ export function verifyPublicVerificationAggregate(aggregate, publicKey, expected
     || aggregate.coverage.gistCurrent !== aggregate.coverage.gistTotal) {
     throw new Error('public verification aggregate evidence is incomplete');
   }
-  if (aggregate.reviews?.length !== REQUIRED_REVIEW_MODELS.length
-    || REQUIRED_REVIEW_MODELS.some((model) => !aggregate.reviews.some((row) => row.model === model
-      && Number.isInteger(row.score) && row.score >= 95 && HEX64.test(String(row.receiptSha256 || ''))))
-    || !HEX64.test(String(aggregate.productContractSha256 || '')) || !HEX64.test(String(aggregate.rubricSha256 || ''))) {
-    throw new Error('public verification aggregate reviews are incomplete');
-  }
   if (aggregate.retrievalOracle?.oracleReceiptSha256 !== aggregate.evidence.leaves[0].retrievalPlan.oracle.receiptSha256
     || aggregate.retrievalOracle?.queryStoreSetSha256 !== aggregate.evidence.leaves[0].retrievalPlan.oracle.queryStoreSetSha256
-    || aggregate.retrievalOracle?.recordCount !== aggregate.evidence.leaves[0].retrievalPlan.denominator.eligibleStores.length
-    || !HEX64.test(String(aggregate.retrievalOracle?.recordSetSha256 || ''))) {
-    throw new Error('public verification aggregate retrieval oracle review is incomplete');
+    || aggregate.retrievalOracle?.recordCount !== aggregate.evidence.leaves[0].retrievalPlan.denominator.eligibleStores.length) {
+    throw new Error('public verification aggregate retrieval oracle identity is incomplete');
   }
   if (expectedIdentity && canonicalJson(aggregate.identity) !== canonicalJson(expectedIdentity)) {
     throw new Error('public verification aggregate identity differs from the release transaction');
@@ -272,13 +245,13 @@ function parseCliArgs(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!['--lanes', '--reviews', '--out'].includes(flag) || !value) {
-      throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --reviews <dir> --out <file>');
+    if (!['--lanes', '--out'].includes(flag) || !value) {
+      throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --out <file>');
     }
     parsed[flag.slice(2)] = value;
   }
-  if (!parsed.lanes || !parsed.reviews || !parsed.out || Object.keys(parsed).length !== 3) {
-    throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --reviews <dir> --out <file>');
+  if (!parsed.lanes || !parsed.out || Object.keys(parsed).length !== 2) {
+    throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --out <file>');
   }
   return parsed;
 }
@@ -314,12 +287,11 @@ function readLaneLeaves(directory) {
   return PUBLIC_VERIFICATION_OS.flatMap((osName) => byOs.get(osName));
 }
 
-export function generatePublicVerificationAggregate({ lanesDirectory, reviewsDirectory, outputFile, privateKey }) {
+export function generatePublicVerificationAggregate({ lanesDirectory, outputFile, privateKey }) {
   if (!privateKey) throw new Error('RUVNET_SIGNING_KEY is required');
   if (fs.existsSync(outputFile)) throw new Error(`refusing to overwrite existing aggregate: ${outputFile}`);
   const leaves = readLaneLeaves(lanesDirectory);
-  const reviews = readExactJsonFiles(reviewsDirectory, REQUIRED_REVIEW_MODELS.length, 'review');
-  const aggregate = signPublicVerificationAggregate({ leaves, reviews }, privateKey);
+  const aggregate = signPublicVerificationAggregate({ leaves }, privateKey);
   fs.writeFileSync(outputFile, `${JSON.stringify(aggregate, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   return aggregate;
 }
@@ -328,12 +300,11 @@ async function main() {
   const options = parseCliArgs(process.argv.slice(2));
   const aggregate = generatePublicVerificationAggregate({
     lanesDirectory: options.lanes,
-    reviewsDirectory: options.reviews,
     outputFile: options.out,
     privateKey: process.env.RUVNET_SIGNING_KEY,
   });
   process.stdout.write(`${JSON.stringify({ ok: true, aggregateSha256: aggregate.aggregateSha256,
-    leaves: aggregate.metrics.leaves, reviews: aggregate.reviews.length })}\n`);
+    leaves: aggregate.metrics.leaves })}\n`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

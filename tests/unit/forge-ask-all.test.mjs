@@ -149,6 +149,36 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(vi.mocked(searchKb).mock.calls.every(([a]) => a.name === 'daa')).toBe(true);
   });
 
+  it.each([
+    ['agentx', 'In the agentx project, what shared comment state, data schemas, and DOM update behavior do its web pages depend on?'],
+    ['cognitum-meta-proxy-dist', 'In the cognitum-meta-proxy-dist repository, what is meta-proxy-dist, what problem does it solve, and how is it intended to be used?'],
+  ])('keeps an explicit natural project scope bounded to %s without requiring a capability card', async (repo, query) => {
+    const d = mkdirWith([`${repo}.rvf`, 'unrelated.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name, path: `${name}/README.md` })]);
+    vi.mocked(rerankPairs).mockImplementation(async (_q, candidates) =>
+      candidates.map((candidate) => ({ ...candidate, ceScore: 1 })));
+
+    const out = await searchAll({ dir: d, query, allowFullCorpus: false });
+
+    expect(out.repos).toEqual([repo]);
+    expect(vi.mocked(searchKb).mock.calls.map(([args]) => args.name)).toEqual([repo]);
+    expect(out.routing).toMatchObject({ attempted: true, accepted: true, confidence: 'named' });
+  });
+
+  it.each([
+    ['fact', 'What fact supports this vector-search claim?'],
+    ['app', 'How does this app work in the current project?'],
+  ])('does not treat the generic short name %s as a natural project scope', async (repo, query) => {
+    const d = mkdirWith([`${repo}.rvf`, 'unrelated.rvf']);
+    vi.mocked(searchKb).mockResolvedValue([hit()]);
+
+    const out = await searchAll({ dir: d, query, allowFullCorpus: false });
+
+    expect(out.repos).toEqual([]);
+    expect(vi.mocked(searchKb)).not.toHaveBeenCalled();
+    expect(out.routing).toMatchObject({ attempted: true, accepted: false, fallback: 'ask-to-narrow' });
+  });
+
   it('is resilient: a repo whose retrieval THROWS is recorded as an error, not a crash', async () => {
     const d = mkdirWith(['safla.rvf', 'daa.rvf']);
     vi.mocked(searchKb).mockImplementation(async ({ name }) => {

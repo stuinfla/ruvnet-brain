@@ -30,6 +30,7 @@ describe('release command wording', () => {
     const src = fs.readFileSync(path.join(ROOT, 'scripts/release.mjs'), 'utf8');
     expect(src).toContain('PREFLIGHT PASS — NOT PUBLISHED');
     expect(src).toContain("c.y(c.b('PUBLISHED, NOT VERIFIED'))");
+    expect(src).not.toContain("c.g(c.b('✓✓✓ SHIPPED'))");
   });
 
   it('publishes only through the canonical release path with an explicit npm tag', () => {

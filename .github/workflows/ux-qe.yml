@@ -1,7 +1,12 @@
 name: ux-qe
 
 on:
-  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      candidate_sha:
+        description: Exact 40-character candidate SHA
+        required: true
+        type: string
 
 concurrency:
   group: ruvnet-brain-ux-qe-${{ github.event.pull_request.number || github.ref }}
@@ -18,6 +23,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -38,6 +45,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ux-qe-${{ runner.os }}
+          name: ux-evidence-${{ inputs.candidate_sha || github.sha }}-${{ runner.os }}
           path: artifacts/ux-qe-${{ runner.os }}.json
           if-no-files-found: error

@@ -11,7 +11,7 @@ const CANONICAL_PUBLISHERS = new Set([
   'scripts/release.mjs',
   'scripts/release-transaction-provider.mjs',
 ]);
-const SOURCE_EXTENSIONS = new Set(['.mjs', '.js', '.cjs', '.sh']);
+const SOURCE_EXTENSIONS = new Set(['.mjs', '.js', '.cjs', '.sh', '.yml', '.yaml']);
 
 function executableSource(source) {
   const withoutBlocks = source.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -28,7 +28,7 @@ const ACTIONS = [
     jsPatterns: [
       /\[\s*['"]release['"]\s*,\s*['"]create['"]/,
     ],
-    shellPatterns: [/^\s*gh\s+release\s+create\b/m],
+    shellPatterns: [/^\s*(?:-\s*run:\s*)?gh\s+release\s+create\b/m],
   },
   {
     action: 'github-release-update',
@@ -36,7 +36,7 @@ const ACTIONS = [
       /['"]PATCH['"][\s\S]{0,120}releases\//,
       /\[\s*['"]release['"]\s*,\s*['"]edit['"]/,
     ],
-    shellPatterns: [/^\s*gh\s+(?:release\s+edit|api\s+.*releases\/.*PATCH)\b/m],
+    shellPatterns: [/^\s*(?:-\s*run:\s*)?gh\s+(?:release\s+edit|api\s+.*releases\/.*PATCH)\b/m],
   },
   {
     action: 'npm-publish',
@@ -44,7 +44,7 @@ const ACTIONS = [
       /(?:execFileSync|spawnSync)\(\s*['"]npm['"]\s*,\s*\[\s*['"]publish['"]/,
       /runOrDie\(\s*['"]npm publish['"]/,
     ],
-    shellPatterns: [/^\s*npm\s+publish\b/m],
+    shellPatterns: [/^\s*(?:-\s*run:\s*)?npm\s+publish\b/m],
   },
   {
     action: 'npm-dist-tag',
@@ -52,7 +52,7 @@ const ACTIONS = [
       /(?:execFileSync|spawnSync)\(\s*['"]npm['"]\s*,\s*\[\s*['"]dist-tag['"]\s*,\s*['"]add['"]/,
       /runOrDie\(\s*['"]npm dist-tag[^'"]*['"]/,
     ],
-    shellPatterns: [/^\s*npm\s+dist-tag\s+add\b/m],
+    shellPatterns: [/^\s*(?:-\s*run:\s*)?npm\s+dist-tag\s+add\b/m],
   },
 ];
 
@@ -60,7 +60,10 @@ export function detectPublisherActions(file, source) {
   const relative = file.split(path.sep).join('/');
   if (CANONICAL_PUBLISHERS.has(relative)) return [];
   const executable = executableSource(source);
-  const kind = path.extname(relative) === '.sh' ? 'shellPatterns' : 'jsPatterns';
+  const extension = path.extname(relative);
+  const kind = ['.sh', '.yml', '.yaml'].includes(extension) || relative.startsWith('package.json#scripts.')
+    ? 'shellPatterns'
+    : 'jsPatterns';
   return ACTIONS
     .filter((action) => action[kind].some((pattern) => pattern.test(executable)))
     .map(({ action }) => ({ file: relative, action }));
@@ -79,14 +82,23 @@ function sourceFiles(root) {
   visit(path.join(root, 'scripts'));
   visit(path.join(root, 'deploy'));
   visit(path.join(root, 'bin'));
+  visit(path.join(root, '.github', 'workflows'));
   return files;
 }
 
 export function findUnauthorizedPublishers(root = ROOT) {
-  return sourceFiles(root).flatMap((absolute) => {
+  const findings = sourceFiles(root).flatMap((absolute) => {
     const relative = path.relative(root, absolute).split(path.sep).join('/');
     return detectPublisherActions(relative, fs.readFileSync(absolute, 'utf8'));
   });
+  const packageFile = path.join(root, 'package.json');
+  if (fs.existsSync(packageFile)) {
+    const pkg = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
+    for (const [name, command] of Object.entries(pkg.scripts || {})) {
+      findings.push(...detectPublisherActions(`package.json#scripts.${name}`, String(command)));
+    }
+  }
+  return findings;
 }
 
 export function main(root = ROOT) {

@@ -34,6 +34,7 @@ describe('issue #85 — versioned compaction snapshot contract', () => {
     fs.mkdirSync(path.join(project, '.swarm'), { recursive: true });
     expect(writeSessionSnapshot(project, 'PreCompact')).toBe(true);
     expect(inspectSessionSnapshots(project)).toMatchObject({ kind: 'canonical', fresh: true });
+    expect(probeMemory(project).compactionSurvival).toMatchObject({ status: 'ok', artifact: 'canonical' });
 
     const hooks = JSON.parse(fs.readFileSync(path.resolve('plugin/hooks/hooks.json'), 'utf8')).hooks;
     const command = hooks.PreCompact.flatMap((group) => group.hooks)
@@ -75,7 +76,7 @@ describe('issue #85 — versioned compaction snapshot contract', () => {
       metrics: { tasks: 1 },
     }));
     expect(inspectSessionSnapshots(project, { now: NOW })).toMatchObject({ kind: 'legacy', fresh: true });
-    expect(probeMemory(project).compactionSurvival).toMatchObject({ status: 'ok', artifact: 'legacy' });
+    expect(probeMemory(project, { now: NOW }).compactionSurvival).toMatchObject({ status: 'ok', artifact: 'legacy' });
   });
 
   it('reports absent, malformed, and stale artifacts without false ok', () => {

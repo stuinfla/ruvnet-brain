@@ -64,6 +64,9 @@ describe('publication receipt wiring', () => {
     }
     expect(producer, 'the mode list must be derived, not restated').toContain('HOST_MODES');
     expect(producer).toContain("[installer, '--doctor', '--hooks']");
+    expect(producer).toContain('stageVerifiedBundle({ bundlePath, bundleSha256, packageRoot })');
+    expect(position(producer, 'const searched = await rpcSearch(findMcpServer(home)'))
+      .toBeLessThan(position(producer, "command(process.execPath, [installer, '--doctor', '--hooks']"));
   });
 
   it('MUTANT: checkout publication cannot replace the sealed artifact command', () => {

@@ -24,6 +24,32 @@ const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
 const normalizedDigest = (value) => String(value || '').replace(/^sha256:/, '');
 
+function failedCanaryCases(retrieval) {
+  return retrieval.cases.filter(({ cohort, status, retrievalHit, citationResolved }) =>
+    status !== 'COMPLETED' || retrievalHit !== true || (cohort === 'delta' && citationResolved !== true));
+}
+
+function publicVerificationFailure({ os, identity, failures, completedLeaves }) {
+  const payload = {
+    schemaVersion: 1,
+    kind: 'ruvnet-brain-public-verification-failure',
+    os,
+    sourceSha: identity.candidateSha,
+    artifactSha256: identity.packageSha256,
+    bundleSha256: identity.bundleSha256,
+    failures: failures.map(({ mode, reason, retrieval }) => ({
+      mode,
+      reason,
+      metrics: retrieval.metrics,
+      failedCaseIds: failedCanaryCases(retrieval).map(({ id }) => id),
+      failedCases: failedCanaryCases(retrieval),
+      retrievalReceiptSha256: retrieval.receiptSha256,
+    })),
+    completedLeaves: completedLeaves.map(({ mode, leafSha256 }) => ({ mode, leafSha256 })),
+  };
+  return { ...payload, failureSha256: digest(payload) };
+}
+
 function validateReleaseIdentity(identity) {
   if (identity?.repository !== 'stuinfla/ruvnet-brain' || identity?.package !== 'ruvnet-brain'
     || !HEX40.test(String(identity.candidateSha || '')) || !HEX64.test(String(identity.payloadId || ''))
@@ -118,6 +144,7 @@ export async function createPublicVerificationLane({
     releaseTransactionId: transactionIdFor(identity),
   };
   const leaves = [];
+  const failures = [];
   for (const mode of PUBLIC_VERIFICATION_MODES) {
     const installed = publication.installed?.[RECEIPT_MODE_NAMES[mode]];
     if (installed?.status !== 'PASS' || installed.doctorExit !== 0 || installed.version !== identity.version
@@ -132,10 +159,16 @@ export async function createPublicVerificationLane({
       search: ({ query, k }) => adapter.searchInstalled({ mode, query, k }),
       citationResolver: (matched, expected) => adapter.resolveInstalledCitation({ mode, matched, expected }),
     });
-    const verifiedRetrieval = validateRetrievalCanaryReceipt(
-      retrieval,
-      { plan: retrievalPlan, requireAcceptance: true },
-    );
+    let verifiedRetrieval;
+    try {
+      verifiedRetrieval = validateRetrievalCanaryReceipt(
+        retrieval,
+        { plan: retrievalPlan, requireAcceptance: true },
+      );
+    } catch (error) {
+      failures.push({ mode, reason: error.message, retrieval });
+      continue;
+    }
     leaves.push(createPublicVerificationLeaf({
       ...common,
       os,
@@ -151,6 +184,11 @@ export async function createPublicVerificationLane({
       skipped: 0,
       unknown: 0,
     }));
+  }
+  if (failures.length) {
+    const error = new Error(`retrieval canary acceptance failed for ${failures.map(({ mode }) => mode).join(', ')}`);
+    error.publicVerificationFailure = publicVerificationFailure({ os, identity, failures, completedLeaves: leaves });
+    throw error;
   }
   if (canonicalJson(leaves.map(({ mode }) => mode)) !== canonicalJson(PUBLIC_VERIFICATION_MODES)) {
     throw new Error('public verification lane modes are incomplete');
@@ -211,6 +249,13 @@ export async function generatePublicVerificationLane({
     fs.mkdirSync(path.dirname(output), { recursive: true });
     fs.writeFileSync(output, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
     return receipt;
+  } catch (error) {
+    if (error.publicVerificationFailure && !fs.existsSync(output)) {
+      fs.mkdirSync(path.dirname(output), { recursive: true });
+      fs.writeFileSync(output, `${JSON.stringify(error.publicVerificationFailure, null, 2)}\n`,
+        { flag: 'wx', mode: 0o600 });
+    }
+    throw error;
   } finally {
     await adapter.dispose?.();
     fs.rmSync(temp, { recursive: true, force: true });
