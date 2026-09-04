@@ -39,6 +39,10 @@ updated_at_source: authored-current
 
 **Status**: Proposed
 
+> **Reviewed 2026-09-04 (authenticated recovery observation).** Supplying the workflow's read-scoped
+> GitHub token changes only release-asset observation reliability. Source enumeration and immutable
+> snapshot gaps remain open, so `Proposed` remains accurate.
+
 > **Reviewed 2026-09-04 (4.3.9 recovery).** Pinning the Claude marketplace to the exact candidate
 > checkout preserves the already-sealed source identity during public host verification. It does
 > not close this ADR's remaining enumeration and source-snapshot gaps; `Proposed` remains accurate.

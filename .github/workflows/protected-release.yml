@@ -386,6 +386,7 @@ jobs:
         shell: bash
         env:
           RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test -s release-evidence/COVERAGE.json
