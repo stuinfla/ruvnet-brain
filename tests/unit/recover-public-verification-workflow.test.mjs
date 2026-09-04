@@ -42,5 +42,7 @@ describe('post-publication recovery rail', () => {
       .toBeLessThan(position('node scripts/public-verification-finalizer.mjs'));
     expect(source.match(/environment: Production – ruvnet-brain/g)).toHaveLength(1);
     expect(source.match(/RUVNET_SIGNING_KEY:/g)).toHaveLength(1);
+    expect(source).toContain('cygpath -w "$PWD/node_modules/.bin"');
+    expect(source).toContain('if-no-files-found: warn');
   });
 });

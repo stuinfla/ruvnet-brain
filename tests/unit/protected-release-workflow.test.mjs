@@ -93,6 +93,9 @@ describe('protected release rail', () => {
     const finalize = source.indexOf('node scripts/public-verification-finalizer.mjs', aggregate);
     const terminal = source.indexOf('--out release-evidence/install-verified-receipt.json', finalize);
     expect(lane).toBeGreaterThan(-1);
+    expect(source.indexOf('if: always()', lane)).toBeGreaterThan(lane);
+    expect(source.indexOf('if-no-files-found: warn', lane)).toBeGreaterThan(lane);
+    expect(source).toContain('cygpath -w "$PWD/node_modules/.bin"');
     expect(aggregate).toBeGreaterThan(lane);
     expect(finalize).toBeGreaterThan(aggregate);
     expect(terminal).toBeGreaterThan(finalize);

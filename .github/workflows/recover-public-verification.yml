@@ -156,7 +156,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Install exact-source verifier and current host CLIs
         shell: bash
         run: |
@@ -165,7 +165,11 @@ jobs:
           npm install --no-save --package-lock=false \
             @anthropic-ai/claude-code@latest \
             @openai/codex@latest
-          echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+          if [[ "${{ matrix.os_name }}" == windows ]]; then
+            cygpath -w "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+          else
+            echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+          fi
       - uses: actions/download-artifact@v4
         with:
           name: recovered-publication-inputs-${{ needs.authorize.outputs.candidate_sha }}-${{ github.run_id }}
@@ -184,11 +188,12 @@ jobs:
             --plan release-evidence/retrieval-canary-plan.json \
             --registry release-evidence/host-registry.json \
             --out "public-lanes/${{ matrix.os_name }}.json"
-      - uses: actions/upload-artifact@v4
+      - if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: recovered-public-verification-${{ matrix.os_name }}-${{ needs.authorize.outputs.candidate_sha }}-${{ github.run_id }}
           path: public-lanes/${{ matrix.os_name }}.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
 
   finalize:
