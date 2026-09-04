@@ -15,7 +15,7 @@ import { wilson, gradeQuestion, aggregate, gateAgainst, heldOutHash, ABSTAIN_CE 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SET = JSON.parse(fs.readFileSync(path.join(ROOT, 'evals/held-out.json'), 'utf8'));
 
-// ── the pinned frozen hash (v2, 120 questions, 2026-07-09) ──────────────────────────────────────
+// ── the pinned frozen hash (v2, 120 questions, 2026-07-09) ─────────────────────────────────────────────────────
 const FROZEN_HELD_OUT_HASH = '1c48ec9e9ec7325d9c56ef9566ee7d37b8beda8607556a941329abe431bd8332';
 
 describe('frozen held-out set', () => {
@@ -76,6 +76,33 @@ describe('gradeQuestion — one rule per stratum', () => {
     expect(gradeQuestion(q, { grounded: true, citations: cite('ruv-gists', 4), bannerPresent: true }).pass).toBe(true);
     expect(gradeQuestion(q, { grounded: true, citations: cite('ruv-gists', 4), bannerPresent: false }).pass).toBe(false);
     expect(gradeQuestion(q, { grounded: true, citations: cite('ruflo', 4), bannerPresent: false }).pass).toBe(true);
+  });
+  it('provenance credits the citation verify-citation.mjs actually resolved (`receipt`), not merely ' +
+     'citations[0] — the exact sibling gap PR #187 closed for `routed`, never migrated to this ' +
+     'stratum\'s own banner-requirement check', () => {
+    const q = { stratum: 'provenance', expectRepo: ['ruv-gists', 'ruflo'] };
+
+    // Top-ranked citation names ruv-gists but never resolved (fabricated); the citation that
+    // actually grounded the answer is a DIFFERENT, real repo. This is exactly "a better hit from
+    // the real repo" — the comment's own stated non-failure case — and must pass WITHOUT a banner.
+    const citationsBetterHit = [
+      { repo: 'ruv-gists', fullPath: 'ruv-gists/fake/path', ce: 5 },
+      { repo: 'ruflo', fullPath: 'ruflo/real/path', ce: 3 },
+    ];
+    const receiptBetterHit = { repo: 'ruflo', path: 'ruflo/real/path' };
+    expect(gradeQuestion(q, { grounded: true, citations: citationsBetterHit, receipt: receiptBetterHit, bannerPresent: false }).pass).toBe(true);
+
+    // Mirror: top-ranked citation coincidentally names a non-gist repo but never resolved; the
+    // citation that ACTUALLY grounded the answer is a ruv-gists chunk carrying no banner. Crediting
+    // the pass off the fabricated top hit's repo would silently bypass the one mechanism this
+    // stratum exists to test.
+    const citationsGistMiss = [
+      { repo: 'ruflo', fullPath: 'ruflo/fake/path', ce: 5 },
+      { repo: 'ruv-gists', fullPath: 'ruv-gists/real/path', ce: 3 },
+    ];
+    const receiptGistMiss = { repo: 'ruv-gists', path: 'ruv-gists/real/path' };
+    expect(gradeQuestion(q, { grounded: true, citations: citationsGistMiss, receipt: receiptGistMiss, bannerPresent: false }).pass).toBe(false);
+    expect(gradeQuestion(q, { grounded: true, citations: citationsGistMiss, receipt: receiptGistMiss, bannerPresent: true }).pass).toBe(true);
   });
   it('routed credits the citation verify-citation.mjs actually resolved (`receipt`), not merely ' +
      'citations[0] — citationResolves() accepts the first RESOLVING hit, which can rank below an ' +
