@@ -25,7 +25,12 @@ if (result.verdict !== 'PASS') throw new Error(`candidate host matrix failed: ${
 const modeNames = { claude: 'claude-only', codex: 'codex-only', dual: 'dual-host' };
 const leaves = Object.entries(modeNames).map(([mode, name]) => {
   const fixture = result.fixtures?.[mode];
-  if (fixture?.status !== 'PASS' || fixture?.doctorExit !== 0) throw new Error(`${name} did not produce a clean doctor receipt`);
+  const grounding = fixture?.grounding;
+  const grounded = grounding && ['repo', 'path', 'file', 'storedPath']
+    .every((field) => typeof grounding[field] === 'string' && grounding[field].trim());
+  if (fixture?.status !== 'PASS' || fixture?.process?.status !== 0 || !grounded) {
+    throw new Error(`${name} did not produce a clean installed-search grounding receipt`);
+  }
   return {
     name,
     sha: manifest.candidateSha,
@@ -35,7 +40,9 @@ const leaves = Object.entries(modeNames).map(([mode, name]) => {
     verdict: 'PASS',
     source: 'candidate-host-evidence',
     mode,
-    doctorExit: fixture.doctorExit,
+    functionalSearch: true,
+    searchExit: fixture.process.status,
+    grounding,
     artifactSha256: sha256(packagePath),
   };
 });

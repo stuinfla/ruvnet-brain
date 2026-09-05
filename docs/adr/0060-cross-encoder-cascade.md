@@ -3,7 +3,7 @@ id: ADR-060
 title: The two-stage cross-encoder cascade — reading every passage, cheaply, before reading a few properly
 status: Accepted
 date: 2026-07-27
-updated: 2026-08-22
+updated: 2026-09-04
 authors: [Stuart Kerr, Claude Code]
 tags: [retrieval, latency, cross-encoder, cascade, measurement]
 supersedes: [ADR-059]
@@ -17,12 +17,17 @@ governs:
   - plugin/mcp/server.mjs
 ---
 
-Updated: 2026-08-22 | Version 1.0.4
+Updated: 2026-09-04 | Version 1.0.5
 Created: 2026-07-27
 
 # ADR-060 — The two-stage cross-encoder cascade
 
 **Status**: Accepted
+
+> **Reviewed 2026-09-04 (4.3.9 candidate).** The `forge-ask-all` change is confined to exact
+> repository-scope parsing before retrieval. It does not alter cascade enablement, model choice,
+> pool size, reranking order, or the accepted measurement boundary. The cascade default remains
+> off and the interrupted benchmark below remains unclaimed.
 
 ADR-059 built a pool cap, measured it, and shipped it **OFF** because at the budget that bought the
 time it dropped one answer in 24. This ADR keeps the time and keeps the answer, by changing *what

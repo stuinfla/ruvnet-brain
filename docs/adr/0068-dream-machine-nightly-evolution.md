@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-08-31
+updated: 2026-09-04
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -19,6 +19,11 @@ governs:
 ## Status
 
 **Status**: Accepted
+
+**Updated 2026-09-04:** The two checks that invoke the external `dream-machine` package now run
+only when `DREAM_ENGINE_VERIFY=1`. The ordinary cross-platform unit lane continues to validate the
+committed config and paths without turning npm package acquisition into a 180-second Windows unit
+test. The running Dream Machine remains the authoritative engine/compiler validation path.
 
 Accepted 2026-08-19; **RUNNING since 2026-08-20** (routine `trig_01VuFmQFG3YdaPeswTPMVaT6`, cron `30 8 * * *`
 UTC). The config is committed and validated, and the nightly cloud schedule now exists — it was created on the

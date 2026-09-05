@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { REQUIRED_CHECKS } from '../../scripts/release-proof.mjs';
-import { validateProtectedPublishInvocation } from '../../scripts/protected-release-invocation.mjs';
+import * as guard from '../../scripts/protected-release-invocation.mjs';
 import { getVersion } from '../../scripts/version.mjs';
 
 const SHA = 'a'.repeat(40);
@@ -61,6 +61,9 @@ function fixture() {
   const env = {
     GITHUB_ACTIONS: 'true',
     GITHUB_WORKFLOW: 'protected-release',
+    GITHUB_REPOSITORY: 'stuinfla/ruvnet-brain',
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
+    GITHUB_REF_PROTECTED: 'true',
     RUVNET_CANDIDATE_RECEIPT: 'release-evidence/candidate-receipt.json',
     RUVNET_EXPECTED_SHA: SHA,
     RUVNET_EXPECTED_ARTIFACT_SHA256: digest,
@@ -71,9 +74,28 @@ function fixture() {
 }
 
 describe('protected publish invocation guard', () => {
+  it('rejects development generations from every publication path', () => {
+    expect(guard.validatePublishableVersion).toBeTypeOf('function');
+    expect(guard.validatePublishableVersion(VERSION)).toEqual([]);
+    expect(guard.validatePublishableVersion(`${VERSION}-dev`)).toContain('development versions cannot be published');
+  });
+
+  it('requires the repository protected workflow-dispatch environment', () => {
+    const f = fixture();
+    expect(guard.validateProtectedPublishEnvironment).toBeTypeOf('function');
+    expect(guard.validateProtectedPublishEnvironment(f.env)).toEqual([]);
+    for (const [key, value] of [
+      ['GITHUB_REPOSITORY', 'attacker/fork'],
+      ['GITHUB_EVENT_NAME', 'push'],
+      ['GITHUB_REF_PROTECTED', 'false'],
+    ]) {
+      expect(guard.validateProtectedPublishEnvironment({ ...f.env, [key]: value })).not.toEqual([]);
+    }
+  });
+
   it('accepts only the protected workflow carrying a valid exact artifact seal', () => {
     const f = fixture();
-    expect(validateProtectedPublishInvocation({ root: f.root, env: f.env })).toMatchObject({
+    expect(guard.validateProtectedPublishInvocation({ root: f.root, env: f.env })).toMatchObject({
       verdict: 'PASS', sha: SHA, artifactSha256: f.digest, version: VERSION, mode: 'strict',
     });
   });
@@ -85,7 +107,7 @@ describe('protected publish invocation guard', () => {
     });
     fs.writeFileSync(path.join(f.root, 'release-evidence/candidate-receipt.json'), JSON.stringify(f.receipt));
     f.env.RUVNET_RELEASE_MODE = 'stabilization';
-    expect(validateProtectedPublishInvocation({ root: f.root, env: f.env })).toMatchObject({
+    expect(guard.validateProtectedPublishInvocation({ root: f.root, env: f.env })).toMatchObject({
       verdict: 'PASS', mode: 'stabilization',
     });
   });
@@ -93,6 +115,9 @@ describe('protected publish invocation guard', () => {
   it.each([
     ['local invocation', (f) => { delete f.env.GITHUB_ACTIONS; }],
     ['wrong workflow', (f) => { f.env.GITHUB_WORKFLOW = 'ci'; }],
+    ['wrong repository', (f) => { f.env.GITHUB_REPOSITORY = 'attacker/fork'; }],
+    ['non-dispatch event', (f) => { f.env.GITHUB_EVENT_NAME = 'push'; }],
+    ['unprotected ref', (f) => { f.env.GITHUB_REF_PROTECTED = 'false'; }],
     ['missing receipt', (f) => { f.env.RUVNET_CANDIDATE_RECEIPT = ''; }],
     ['split SHA', (f) => { f.env.RUVNET_EXPECTED_SHA = 'c'.repeat(40); }],
     ['split digest', (f) => { f.env.RUVNET_EXPECTED_ARTIFACT_SHA256 = 'd'.repeat(64); }],
@@ -102,7 +127,7 @@ describe('protected publish invocation guard', () => {
   ])('fails closed on %s', (_name, mutate) => {
     const f = fixture();
     mutate(f);
-    expect(validateProtectedPublishInvocation({ root: f.root, env: f.env }).verdict).toBe('FAIL');
+    expect(guard.validateProtectedPublishInvocation({ root: f.root, env: f.env }).verdict).toBe('FAIL');
   });
 
   it('is load-bearing before any remote mutation in the canonical publisher', () => {

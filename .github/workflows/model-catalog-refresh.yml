@@ -1,0 +1,73 @@
+name: model-catalog-refresh
+
+# ADR-016 / issue #238: the 14-day truth wall needs an owner that can land fresh facts.
+# A weekly cadence leaves a full week to recover from a failed run before the wall expires.
+on:
+  schedule:
+    - cron: '13 9 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: model-catalog-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REFRESH_BRANCH: automation/model-catalog-refresh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Refresh and verify the same live facts
+        run: |
+          set -euo pipefail
+          npm run catalog:refresh
+          npm run catalog:verify
+
+      - name: Open or update the one protected refresh transaction
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- data/model-catalog.json data/openrouter-catalog-snapshot.json; then
+            echo "OpenRouter facts are unchanged; nothing to land."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$REFRESH_BRANCH:refs/remotes/origin/$REFRESH_BRANCH" || true
+          git checkout -B "$REFRESH_BRANCH"
+          git add data/model-catalog.json data/openrouter-catalog-snapshot.json
+          git commit -m "chore(catalog): refresh live OpenRouter facts"
+          git push --force-with-lease origin "HEAD:$REFRESH_BRANCH"
+
+          pr_number=$(gh pr list --head "$REFRESH_BRANCH" --base main --state open --json number --jq '.[0].number // empty')
+          if [ -z "$pr_number" ]; then
+            pr_url=$(gh pr create \
+              --base main \
+              --head "$REFRESH_BRANCH" \
+              --title "chore(catalog): refresh live OpenRouter facts" \
+              --body "Automated weekly refresh owned by ADR-016. The snapshot and catalog prices came from one live OpenRouter response and passed catalog:verify.")
+            pr_number=${pr_url##*/}
+          fi
+
+          # Events emitted by GITHUB_TOKEN do not trigger ordinary push/PR workflows. Explicit
+          # workflow_dispatch is the supported exception, so run the exact required checks on this SHA.
+          gh workflow run integration-linux.yml --ref "$REFRESH_BRANCH"
+          gh workflow run canonical-qa.yml --ref "$REFRESH_BRANCH"
+          gh workflow run ci.yml --ref "$REFRESH_BRANCH"
+          if [ "$(gh pr view "$pr_number" --json autoMergeRequest --jq '.autoMergeRequest != null')" != "true" ]; then
+            gh pr merge "$pr_number" --auto --squash
+          fi

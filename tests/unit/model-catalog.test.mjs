@@ -4,7 +4,7 @@
 // missing frontier) plus the drift/price helpers. Pure functions, no I/O.
 import { describe, it, expect } from 'vitest';
 import { verifyCatalog, findModel } from '../../scripts/verify-model-catalog.mjs';
-import { priceMap, detectDrift, shapeSnapshot } from '../../scripts/refresh-model-catalog.mjs';
+import { priceMap, detectDrift, shapeSnapshot, syncCatalogPrices } from '../../scripts/refresh-model-catalog.mjs';
 import { loadCatalog, detectProvider, frontierFor, ladderFor, providerChoices, providerLabel } from '../../scripts/model-catalog.mjs';
 
 const CATALOG = {
@@ -94,6 +94,30 @@ describe('refresh-model-catalog helpers', () => {
     expect(s._meta.modelCount).toBe(6);
     expect(s._meta.pulledAt).toBe('2026-07-15T00:00:00Z');
     expect(s.models).toBe(MODELS);
+  });
+
+  it('synchronizes catalog prices and provenance from the live snapshot response', () => {
+    const catalog = {
+      _meta: { sources: { prices: 'stale' } },
+      providers: {
+        openai: { frontier: { model: 'openai/gpt-test', in: 2.5, out: 15 } },
+        codex: { aliasOf: 'openai' },
+        anthropic: { cheap: { model: 'claude-test', in: 1, out: 5 } },
+      },
+    };
+    const models = {
+      'openai/gpt-test': { in: 2, out: 10 },
+      'anthropic/claude-test': { in: 1, out: 5 },
+    };
+
+    expect(syncCatalogPrices(catalog, models, '2026-09-04T11:01:15.396Z')).toEqual([
+      {
+        provider: 'openai', tier: 'frontier', model: 'openai/gpt-test',
+        from: { in: 2.5, out: 15 }, to: { in: 2, out: 10 },
+      },
+    ]);
+    expect(catalog.providers.openai.frontier).toMatchObject({ in: 2, out: 10 });
+    expect(catalog._meta.sources.prices).toContain('pulled 2026-09-04');
   });
 });
 
