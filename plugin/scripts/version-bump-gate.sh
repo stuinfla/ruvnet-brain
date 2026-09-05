@@ -23,6 +23,16 @@
 
 set -uo pipefail
 
+# Reversible, repository-scoped development maintenance; no profile, ledger, or Git work first.
+MAINTENANCE_HELPER="${BASH_SOURCE[0]%/*}/development-maintenance.mjs"
+if [ -f "$MAINTENANCE_HELPER" ] && node --input-type=module -e '
+  import { pathToFileURL } from "node:url";
+  const { developmentHooksSuspended } = await import(pathToFileURL(process.argv[1]));
+  process.exit(developmentHooksSuspended() ? 0 : 1);
+' "$MAINTENANCE_HELPER" >/dev/null 2>&1; then
+  exit 0
+fi
+
 INPUT=""
 # BOUNDED READ (2026-07-27, ADR-055 F20): an unqualified `read` never returns on a stdin that is
 # opened and never closed — measured across the mesh, 18 of 37 registered commands sat until the

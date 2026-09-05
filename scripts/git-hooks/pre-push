@@ -80,6 +80,12 @@ fi
 # current one (measured 2026-07-28: announced 3.9.128, pushed 3.9.129). Git already knows the
 # worktree whose refs are being pushed, so derive the shipping root from that live repository.
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$ROOT" ] && [ -f "$ROOT/scripts/development-maintenance.mjs" ] &&
+  node "$ROOT/scripts/development-maintenance.mjs" check --project "$ROOT" >/dev/null 2>&1; then
+  # The secret scan above remains active. This bypass affects development push interception,
+  # never the explicit release controller or its publication checks.
+  exit 0
+fi
 if [ -z "$ROOT" ] || [ ! -f "$ROOT/scripts/verify-channels.mjs" ]; then
   echo "  ⛔ pre-push gate cannot resolve the worktree being pushed."
   exit 1

@@ -33,6 +33,9 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolveBash, skipNoBash } from './hook-shim-bash.mjs';
+import { developmentHooksSuspended } from './development-maintenance.mjs';
+
+if (developmentHooksSuspended()) process.exit(0);
 
 const BRAIN_HOME = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
 const ACTIVE = path.join(BRAIN_HOME, 'active.json');

@@ -63,7 +63,7 @@ function claude(project, extra = {}) {
 function seedCodexGeneration() {
   const root = path.join(home, '.cache', 'ruvnet-brain', 'versions', 'test');
   fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
-  for (const source of [GROUND, SHIM, SHIM_BASH, ADAPTER, ADAPTER_EVENTS]) {
+  for (const source of [GROUND, SHIM, SHIM_BASH, ADAPTER, ADAPTER_EVENTS, path.join(ROOT, 'plugin/scripts/development-maintenance.mjs')]) {
     fs.copyFileSync(source, path.join(root, 'scripts', path.basename(source)));
   }
   fs.writeFileSync(path.join(home, '.cache', 'ruvnet-brain', 'active.json'), JSON.stringify({

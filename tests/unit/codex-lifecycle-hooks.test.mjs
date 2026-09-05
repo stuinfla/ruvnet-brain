@@ -46,6 +46,7 @@ function installGroundingGeneration(brain, version) {
   for (const file of [
     'codex-hook-adapter.mjs',
     'codex-hook-events.mjs',
+    'development-maintenance.mjs',
     'hook-shim.mjs',
     'hook-shim-bash.mjs',
     'ground-before-write.sh',
@@ -67,6 +68,7 @@ function installInterfaceGeneration(brain, version) {
   for (const file of [
     'codex-hook-adapter.mjs',
     'codex-hook-events.mjs',
+    'development-maintenance.mjs',
     'hook-shim.mjs',
     'hook-shim-bash.mjs',
     'verify-interface.sh',

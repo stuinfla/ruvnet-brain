@@ -46,6 +46,19 @@ function runGate(cwd, command, { optedIn = true } = {}) {
 }
 
 describe.skipIf(!hasBash || !hasGit || process.platform === 'win32')('version-bump-gate.sh — every push carries a bump', () => {
+  it('maintenance suspends an otherwise blocking version hook and resume restores it', () => {
+    const { base, work } = fixtureRepo();
+    try {
+      fs.writeFileSync(path.join(work, 'feature.mjs'), 'export const added = true;\n');
+      git(work, 'add', '-A'); git(work, 'commit', '-m', 'fixture without version bump');
+      expect(runGate(work, 'git push origin main').status).toBe(2);
+      const control = path.resolve(import.meta.dirname, '../../scripts/development-maintenance.mjs');
+      execFileSync(process.execPath, [control, 'suspend', '--project', work]);
+      expect(runGate(work, 'git push origin main').status).toBe(0);
+      execFileSync(process.execPath, [control, 'resume', '--project', work]);
+      expect(runGate(work, 'git push origin main').status).toBe(2);
+    } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  });
   it('BLOCKS the exact 2026-07-13 miss: outgoing commits, version unchanged', () => {
     const { work } = fixtureRepo();
     fs.writeFileSync(path.join(work, 'feature.mjs'), 'export const shipped = true;\n');
