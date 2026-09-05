@@ -3,7 +3,7 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-04
+updated: 2026-09-05
 impl: wired
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
@@ -52,6 +52,7 @@ governs:
 # ADR-058: The 95 contract
 
 ## Currency log
+| 2026-09-05 | `codex-hook-wrapper.mjs`'s `blockingHooks` Set no longer names `route-dispatch`: `hook-shim.mjs`'s own dispatch TABLE has called it `mode: 'advisory'` since issue #84, and the wrapper's stale membership could never actually forward its exit code (hook-shim.mjs coerces advisory hooks to exit 0 unconditionally) — inert today, but the same undetected-drift shape as three prior findings on this file family. New `tests/unit/codex-blocking-hooks-parity.test.mjs` proves the two lists agree in both directions going forward. Registration, wrapper timeout/detach behavior, and the 95-contract's observables are otherwise unchanged. | Dream Cycle 2026-09-05 (cross-host-conformance); PR #257. |
 | 2026-09-04 | The GitHub release observation in public host proof now uses the workflow's read-scoped token, so a shared unauthenticated rate limit cannot produce a false product verdict. | `.github/workflows/protected-release.yml`; run `33899100361`; the underlying artifact and 95-contract thresholds are unchanged. |
 | 2026-09-04 | Public host verification now supplies Claude with the exact candidate checkout as its marketplace source, preventing a later default-branch version from contaminating an immutable older release proof. | `.github/workflows/protected-release.yml`; run `33898518397`; this repairs evidence identity without changing the Proposed status or scoring contract. |
 | 2026-09-04 | The 4.3.9 candidate installs the one signature/digest-verified GitHub bundle across all public host lanes, preserves a digest-bound failure receipt before exiting, performs a real installed-MCP query, and propagates the requested retrieval depth unchanged. Publication validates both handoff destinations before remote mutation and materializes identity/convergence files only after the signed channel receipt validates. | `scripts/publication-receipt.mjs`; `scripts/public-verification-lane.mjs`; `scripts/release-publication-handoff.mjs`; `scripts/release.mjs`; `.github/workflows/protected-release.yml`; `.github/workflows/recover-public-verification.yml`. These strengthen existing observables; Proposed status and public proof remain unchanged. |
