@@ -362,16 +362,21 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Install exact-source verifier and current host CLIs
         shell: bash
         run: |
           set -euo pipefail
           npm ci --no-audit --no-fund
-          npm install --no-save --package-lock=false \
+          host_cli_prefix="$RUNNER_TEMP/ruvnet-host-clis"
+          npm install --prefix "$host_cli_prefix" --no-save --package-lock=false --no-audit --no-fund \
             @anthropic-ai/claude-code@latest \
             @openai/codex@latest
-          echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+          if [[ "${{ matrix.os_name }}" == windows ]]; then
+            cygpath -w "$host_cli_prefix/node_modules/.bin" >> "$GITHUB_PATH"
+          else
+            echo "$host_cli_prefix/node_modules/.bin" >> "$GITHUB_PATH"
+          fi
       - name: Restore published transaction and candidate evidence
         uses: actions/download-artifact@v4
         with:
@@ -379,6 +384,9 @@ jobs:
           path: release-evidence
       - name: Execute all three loaders and retrieval canaries from actual public bytes
         shell: bash
+        env:
+          RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test -s release-evidence/COVERAGE.json
@@ -394,11 +402,12 @@ jobs:
             --registry release-evidence/host-registry.json \
             --out "public-lanes/${{ matrix.os_name }}.json"
       - name: Preserve the immutable OS lane
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: public-verification-${{ matrix.os_name }}-${{ needs.verified-candidate.outputs.candidate_sha }}
           path: public-lanes/${{ matrix.os_name }}.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
 
   finalize-public-verification:

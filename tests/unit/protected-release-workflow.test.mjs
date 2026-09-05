@@ -93,6 +93,14 @@ describe('protected release rail', () => {
     const finalize = source.indexOf('node scripts/public-verification-finalizer.mjs', aggregate);
     const terminal = source.indexOf('--out release-evidence/install-verified-receipt.json', finalize);
     expect(lane).toBeGreaterThan(-1);
+    expect(source.indexOf('if: always()', lane)).toBeGreaterThan(lane);
+    expect(source.indexOf('if-no-files-found: warn', lane)).toBeGreaterThan(lane);
+    expect(source).toContain('host_cli_prefix="$RUNNER_TEMP/ruvnet-host-clis"');
+    expect(source).toContain('npm install --prefix "$host_cli_prefix"');
+    expect(source).toContain('cygpath -w "$host_cli_prefix/node_modules/.bin"');
+    expect(source).not.toContain('cygpath -w "$PWD/node_modules/.bin"');
+    expect(source).toContain('RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}');
+    expect(source).toContain('GITHUB_TOKEN: ${{ github.token }}');
     expect(aggregate).toBeGreaterThan(lane);
     expect(finalize).toBeGreaterThan(aggregate);
     expect(terminal).toBeGreaterThan(finalize);

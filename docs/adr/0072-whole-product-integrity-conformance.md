@@ -3,7 +3,7 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-04 07:33:00 EDT
+updated: 2026-09-04 13:13:00 EDT
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -44,6 +44,20 @@ governs:
 # ADR-072 — Whole-product integrity is one executable contract
 
 **Status**: Accepted
+
+> **Reviewed 2026-09-04 (authenticated recovery observation).** Public lanes now authenticate their
+> read-only GitHub release lookup with the workflow token; immutable byte identity and terminal
+> conformance rules are unchanged.
+
+> **Reviewed 2026-09-04 (4.3.9 recovery).** Public host verification now pins Claude's marketplace
+> source to the exact candidate checkout, so default-branch advancement cannot substitute a later
+> plugin generation. The signed npm, bundle, coverage, and terminal acceptance boundaries remain unchanged.
+
+> **Reviewed 2026-09-04 (4.3.9 candidate).** The candidate strengthens two existing conformance
+> edges: publication handoff cannot appear before signed channel convergence, and every public-host
+> failure is retained in a digest-bound receipt before the lane exits. It does not complete this
+> ADR's remaining source-coverage work, and it does not claim 4.3.9 is public before terminal
+> `install-verified` evidence exists.
 
 Accepted by Stuart's 2026-08-21 direction; implementation is in progress and publication remains
 locked. Nothing in this document is a shipped-capability claim.

@@ -31,6 +31,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { validateProtectedPublishEnvironment, validateProtectedPublishInvocation } from './protected-release-invocation.mjs';
 import { runReleaseTransaction } from './release-transaction.mjs';
+import { materializePublicationHandoff, resolvePublicationHandoffPaths } from './release-publication-handoff.mjs';
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
@@ -44,6 +45,7 @@ let publicationReceiptPath = null;
 let protectedReleaseMode = 'strict';
 let verifiedPayload = null;
 let aggregateEnvelope = null;
+let publicationHandoffPaths = null;
 const c = { g: (s) => `\x1b[32m${s}\x1b[0m`, r: (s) => `\x1b[31m${s}\x1b[0m`, y: (s) => `\x1b[33m${s}\x1b[0m`, b: (s) => `\x1b[1m${s}\x1b[0m`, dim: (s) => `\x1b[2m${s}\x1b[0m` };
 const V = () => JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/.claude-plugin/plugin.json'), 'utf8')).version;
 
@@ -222,6 +224,11 @@ if (PUBLISH) {
     console.error(`\n${c.r('✗ PROTECTED RELEASE GATE FAILED')}\n  publication receipt output must be a new file inside release-evidence\n`);
     process.exit(1);
   }
+  publicationHandoffPaths = resolvePublicationHandoffPaths({
+    root: ROOT,
+    identityPath: process.env.RUVNET_RELEASE_IDENTITY,
+    receiptPath: process.env.RUVNET_CHANNEL_RECEIPT,
+  });
   const payloadManifestPath = path.resolve(ROOT, process.env.RUVNET_CANDIDATE_PAYLOAD || '');
   const payloadSignaturePath = path.resolve(ROOT, process.env.RUVNET_CANDIDATE_PAYLOAD_SIGNATURE || '');
   const aggregatePath = path.resolve(ROOT, process.env.RUVNET_AGGREGATE_ENVELOPE || '');
@@ -375,6 +382,7 @@ if (PUBLISH) {
   };
   const privatePem = process.env.RUVNET_SIGNING_KEY;
   if (!privatePem) throw new Error('RUVNET_SIGNING_KEY is required for signed transaction receipts');
+  const publicKey = crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'keys/ruvnet-brain-signing.pub.pem'), 'utf8'));
   const finalReceipt = await runReleaseTransaction({
     identity, assets, adapter: liveReleaseProvider({
       root: ROOT,
@@ -382,10 +390,11 @@ if (PUBLISH) {
       publicationReceipt: process.env.RUVNET_PUBLICATION_RECEIPT,
     }),
     privateKey: crypto.createPrivateKey(privatePem),
-    publicKey: crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'keys/ruvnet-brain-signing.pub.pem'), 'utf8')),
+    publicKey,
     hostVerifier: stagedHostVerifier({ assets, identity }),
   });
   if (finalReceipt.state !== 'channels-converged') throw new Error(`release transaction stopped at ${finalReceipt.state}`);
+  materializePublicationHandoff({ paths: publicationHandoffPaths, identity, receipt: finalReceipt, publicKey });
 } else {
   step('D', 'remote staged release transaction — SKIPPED (check-only; pass --publish to publish)');
 }

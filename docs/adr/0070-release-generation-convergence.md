@@ -24,6 +24,12 @@ governs:
 
 **Status**: Accepted
 
+> **Reviewed 2026-09-04 (4.3.9 candidate).** The publisher now validates both handoff paths before
+> beginning the remote transaction and materializes the exact identity plus signed channels receipt
+> only after convergence validates, using no-overwrite hard links and synchronous-error rollback.
+> Pairwise crash atomicity is not claimed. npm, GitHub, hosts, and the canonical site remain
+> unproven for 4.3.9 until their live exact-version checks complete.
+
 Fable 5 and GPT-5.6-Sol converged on the corrected design before implementation.
 
 ## Context

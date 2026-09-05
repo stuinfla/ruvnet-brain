@@ -123,10 +123,17 @@ jobs:
             || artifactSha !== identity.packageSha256 || canonicalJson(terminal.identity) !== canonicalJson(identity)) {
             throw new Error('public transaction differs from the exact failed-run candidate');
           }
-          fs.writeFileSync('release-evidence/release-identity.json', `${JSON.stringify(identity, null, 2)}\n`,
-            { flag: 'wx', mode: 0o600 });
-          fs.writeFileSync('release-evidence/channels-converged-receipt.json', fs.readFileSync(
-            path.join('transaction-receipts', files.at(-1))), { flag: 'wx', mode: 0o600 });
+          const materializeExactJson = (file, value) => {
+            if (fs.existsSync(file)) {
+              if (canonicalJson(read(file)) !== canonicalJson(value)) {
+                throw new Error(`existing ${file} differs from the signed transaction`);
+              }
+              return;
+            }
+            fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+          };
+          materializeExactJson('release-evidence/release-identity.json', identity);
+          materializeExactJson('release-evidence/channels-converged-receipt.json', terminal);
           NODE
       - name: Preserve the complete verified payload for public-byte comparison
         uses: actions/upload-artifact@v4
@@ -156,22 +163,30 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Install exact-source verifier and current host CLIs
         shell: bash
         run: |
           set -euo pipefail
           npm ci --no-audit --no-fund
-          npm install --no-save --package-lock=false \
+          host_cli_prefix="$RUNNER_TEMP/ruvnet-host-clis"
+          npm install --prefix "$host_cli_prefix" --no-save --package-lock=false --no-audit --no-fund \
             @anthropic-ai/claude-code@latest \
             @openai/codex@latest
-          echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+          if [[ "${{ matrix.os_name }}" == windows ]]; then
+            cygpath -w "$host_cli_prefix/node_modules/.bin" >> "$GITHUB_PATH"
+          else
+            echo "$host_cli_prefix/node_modules/.bin" >> "$GITHUB_PATH"
+          fi
       - uses: actions/download-artifact@v4
         with:
           name: recovered-publication-inputs-${{ needs.authorize.outputs.candidate_sha }}-${{ github.run_id }}
           path: release-evidence
       - name: Execute three loaders and retrieval canaries from public bytes
         shell: bash
+        env:
+          RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           node scripts/host-registry.mjs --out release-evidence/host-registry.json
@@ -184,11 +199,12 @@ jobs:
             --plan release-evidence/retrieval-canary-plan.json \
             --registry release-evidence/host-registry.json \
             --out "public-lanes/${{ matrix.os_name }}.json"
-      - uses: actions/upload-artifact@v4
+      - if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: recovered-public-verification-${{ matrix.os_name }}-${{ needs.authorize.outputs.candidate_sha }}-${{ github.run_id }}
           path: public-lanes/${{ matrix.os_name }}.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
 
   finalize:

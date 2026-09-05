@@ -22,10 +22,13 @@ describe('post-publication recovery rail', () => {
 
   it('validates the complete signed chain before exposing recovered evidence', () => {
     expect(position('validateReceiptChain(receipts, identity, publicKey)'))
-      .toBeLessThan(position("fs.writeFileSync('release-evidence/release-identity.json'"));
+      .toBeLessThan(position("materializeExactJson('release-evidence/release-identity.json'"));
     expect(source).toContain("terminal.state !== 'channels-converged'");
     expect(source).toContain("terminal.observation?.verdict !== 'PUBLISHED_NOT_VERIFIED'");
     expect(source).toContain('terminal.sequence !== 13');
+    expect(source).toContain('const materializeExactJson = (file, value) =>');
+    expect(source).toContain('canonicalJson(read(file)) !== canonicalJson(value)');
+    expect(source).not.toContain("fs.writeFileSync('release-evidence/release-identity.json'");
   });
 
   it('runs exactly three OS lanes against the released source and then finalizes', () => {
@@ -42,5 +45,12 @@ describe('post-publication recovery rail', () => {
       .toBeLessThan(position('node scripts/public-verification-finalizer.mjs'));
     expect(source.match(/environment: Production – ruvnet-brain/g)).toHaveLength(1);
     expect(source.match(/RUVNET_SIGNING_KEY:/g)).toHaveLength(1);
+    expect(source).toContain('host_cli_prefix="$RUNNER_TEMP/ruvnet-host-clis"');
+    expect(source).toContain('npm install --prefix "$host_cli_prefix"');
+    expect(source).toContain('cygpath -w "$host_cli_prefix/node_modules/.bin"');
+    expect(source).not.toContain('cygpath -w "$PWD/node_modules/.bin"');
+    expect(source).toContain('RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}');
+    expect(source).toContain('GITHUB_TOKEN: ${{ github.token }}');
+    expect(source).toContain('if-no-files-found: warn');
   });
 });
