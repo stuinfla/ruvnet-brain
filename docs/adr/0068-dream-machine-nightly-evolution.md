@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-09-05
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -136,6 +136,7 @@ committed config).
 
 ## Currency log
 
+| 2026-09-05 | Re-merged `main` into PR #184 after 3+ days of `main` drift (6+ commits, including a real conflict in this ADR's own frontmatter — `main`'s 2026-09-04 edit added the `DREAM_ENGINE_VERIFY=1` status note and bumped `updated:` to match; kept `main`'s newer stamp since it carries the substantive change). The merge commit itself (`59d5a3a7`) then postdated that stamp, re-tripping `stamp-lags-doc` same-day; this row and the `updated:` bump clear it. No decision here changed. | `docs/adr/0068-dream-machine-nightly-evolution.md`, PR #184 |
 | 2026-08-31 | `main` kept moving under PR #184 while this branch was open for review — two more merges (`e7c31c9`, `5645efc`) each touched `docs/dream-cycle/LEDGER.md` (rebasing onto `main`'s own concurrent ledger rows) and re-tripped `presumed-stale` on commit-count alone, same day as the row below. No decision here changed on either merge; recorded once rather than re-litigated per merge. | `docs/dream-cycle/LEDGER.md`, PR #184 |
 | 2026-08-31 | Re-read after merging 4 days of `main` into the 2026-08-27 `enforcement-integrity` candidate branch (PR #184): `docs/dream-cycle/LEDGER.md` gained one row (the 2026-08-27 `isHome()` project-scope-leak finding) and `dream.config.json`/`tests/unit/dream-config.test.mjs` moved under the new "Operating policy (effective 2026-08-30)" ledger-first reconciliation section. No decision here changed — `autoMerge: false` still holds and the ledger is still the system of record; this row only clears the `presumed-stale` drift the merge introduced. | `docs/dream-cycle/LEDGER.md`, PR #184 |
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
