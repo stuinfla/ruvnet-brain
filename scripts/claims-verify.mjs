@@ -9,7 +9,7 @@
 //
 // Usage:  node scripts/claims-verify.mjs        (or: npm run claims:verify)  — READ-ONLY gate
 //         node scripts/claims-verify.mjs --fix  (or: npm run claims:fix)     — regenerate the surfaces
-// Exit:   0 = every claim regenerated (skips allowed, printed); 1 = any claim failed.
+// Exit: 0 = completed diagnostic; 1 = failed claim; --strict additionally exits 4 on UNKNOWN.
 //
 // Verify functions take artifact paths as parameters (repo paths as defaults) so tests can
 // point them at tampered copies. Main-guarded like scripts/eval-brain.mjs so tests can import
@@ -667,6 +667,11 @@ export async function runLedger(entries = ledger) {
   return rows;
 }
 
+export function claimsVerdict(rows) {
+  if (rows.some(({ status }) => status === FAIL)) return FAIL;
+  return rows.length && rows.every(({ status }) => status === PASS) ? PASS : 'UNKNOWN';
+}
+
 async function main() {
   // --fix is the ONLY writing path; the gate itself never mutates a surface.
   if (process.argv.includes('--fix')) {
@@ -702,7 +707,9 @@ async function main() {
     console.error(`\nclaims:verify FAILED — ${failed.length} claim(s) no longer regenerate from their artifacts.`);
     process.exit(1);
   }
-  console.log(`\nclaims:verify OK — ${rows.length - skipped.length} verified, ${skipped.length} skipped (loudly).`);
+  const verdict = claimsVerdict(rows);
+  console.log(`\nclaims:verify ${verdict} — ${rows.length - skipped.length} verified, ${skipped.length} unmeasured.`);
+  if (verdict === 'UNKNOWN' && process.argv.includes('--strict')) process.exitCode = 4;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

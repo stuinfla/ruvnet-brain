@@ -290,7 +290,7 @@ export function deriveImpl(root, governed, { checkWiring = true } = {}) {
 export const DRIFT_COMMITS_STALE = 2;
 export const DRIFT_DAYS_STALE = 7;
 
-export function deriveDrift(root, docRel, governed) {
+export function deriveDrift(root, docRel, governed, { floorSha = null } = {}) {
   const paths = governed.filter((g) => g.resolved).map((g) => g.path);
   if (!paths.length) return { state: 'not-applicable', commits: 0, days: 0, reason: 'no resolvable governed paths' };
   const doc = lastCommit(root, docRel);
@@ -310,8 +310,16 @@ export function deriveDrift(root, docRel, governed) {
   // paths is version-identifier lines cannot have changed any decision, so it does not count. Any
   // commit touching one substantive line still counts in full — this narrows the trigger, never the
   // verdict.
+  const floor = floorSha && git(root, ['rev-parse', '--verify', `${floorSha}^{commit}`]);
+  const resolvedFloor = floor?.ok ? floor.out : null;
   const shas = (() => {
-    const r = git(root, ['rev-list', `${doc.sha}..HEAD`, '--', ...paths]);
+    // With --changed, only movement introduced after the candidate merge-base can consume the
+    // candidate's drift budget. Historical debt remains visible in an unscoped report, but cannot
+    // turn one new governed edit into a threshold breach merely because the ADR was already stale.
+    const range = resolvedFloor
+      ? ['HEAD', `^${doc.sha}`, `^${resolvedFloor}`]
+      : [`${doc.sha}..HEAD`];
+    const r = git(root, ['rev-list', ...range, '--', ...paths]);
     return r.ok && r.out ? r.out.split('\n').filter(Boolean) : [];
   })();
   const VERSION_FIELD = /^[+-]\s*"?(version|releaseTag|brainVersion|softwareVersion|tag)"?\s*[:=]/i;
@@ -327,12 +335,20 @@ export function deriveDrift(root, docRel, governed) {
   const substantive = shas.filter((s) => !isVersionOnly(s));
   const commits = substantive.length;
 
-  const codeR = git(root, ['log', '-1', '--format=%ad', '--date=short', `${doc.sha}..HEAD`, '--', ...paths]);
-  const codeDate = codeR.ok && codeR.out ? codeR.out.split('\n')[0] : null;
+  const codeR = substantive.length
+    ? git(root, ['show', '-s', '--format=%ad', '--date=short', substantive[0]])
+    : null;
+  const codeDate = codeR?.ok && codeR.out ? codeR.out.split('\n')[0] : null;
+
+  let anchorDate = doc.date;
+  if (resolvedFloor && git(root, ['merge-base', '--is-ancestor', doc.sha, resolvedFloor]).ok) {
+    const floorR = git(root, ['show', '-s', '--format=%ad', '--date=short', resolvedFloor]);
+    if (floorR.ok && floorR.out) anchorDate = floorR.out.split('\n')[0];
+  }
 
   let days = 0;
   if (codeDate) {
-    const d0 = Date.parse(`${doc.date}T00:00:00Z`);
+    const d0 = Date.parse(`${anchorDate}T00:00:00Z`);
     const d1 = Date.parse(`${codeDate}T00:00:00Z`);
     if (Number.isFinite(d0) && Number.isFinite(d1)) days = Math.max(0, Math.round((d1 - d0) / 86400000));
   }
@@ -586,7 +602,7 @@ export function evaluateDoc(root, rel, opts = {}) {
   }
 
   // ── drift ─────────────────────────────────────────────────────────────────────────────────────
-  const drift = deriveDrift(root, rel, governed);
+  const drift = deriveDrift(root, rel, governed, { floorSha: opts.driftFloor });
   doc.drift = drift;
   // A DECISION THAT IS NOT IN FORCE CANNOT DRIFT (ADR-056, 2026-07-27). Rejected / Superseded /
   // Deprecated documents describe a path NOT taken, or one another document has since taken over.
@@ -784,12 +800,23 @@ export function main(argv = process.argv.slice(2)) {
   }
 
   const dirs = a.dirs ?? DEFAULT_DIRS;
-  const result = evaluate(a.root, { dirs, checkWiring: !a.noWiring });
+  let touched = null;
+  let driftFloor = null;
+  if (a.changed) {
+    const diff = git(a.root, ['diff', '--name-only', `${a.changed}...HEAD`]);
+    if (!diff.ok) {
+      process.stderr.write('[doc-currency] candidate base cannot be resolved.\n');
+      return 1;
+    }
+    touched = new Set(diff.ok ? diff.out.split('\n').filter(Boolean) : []);
+    const base = git(a.root, ['merge-base', a.changed, 'HEAD']);
+    if (!base.ok || !base.out) return 1;
+    if (base.ok && base.out) driftFloor = base.out.split('\n')[0];
+  }
+  const result = evaluate(a.root, { dirs, checkWiring: !a.noWiring, driftFloor });
 
   let scope = null;
-  if (a.changed) {
-    const r = git(a.root, ['diff', '--name-only', `${a.changed}...HEAD`]);
-    const touched = new Set(r.ok ? r.out.split('\n').filter(Boolean) : []);
+  if (touched) {
     scope = changedDocumentScope(result.docs, touched);
   }
 
