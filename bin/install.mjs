@@ -2245,16 +2245,17 @@ async function doctor() {
     hookResult = await runSelfCheck({ installState: { repos: v.repos, reader: v.reader, mcp: v.mcp } });
   }
 
-  // ── THE PERSISTED GROUNDING VERDICT (ADR-058 §D8) — read-only, never re-derived here ────────────
-  // bin/install.mjs's own install run is the ONLY writer (right after its real smoke query), so a
-  // failed smoke stays non-fatal there. `--doctor` is different: it is the command someone runs
-  // SPECIFICALLY TO ASK whether the install is healthy, so this is the one place an unresolved
-  // "unproven" verdict DOES gate the exit code — without doctor() re-running a second live query
-  // (the live smoke result printed above already updates the SAME file the next real install or
-  // search_ruvnet touches; this just reads back whatever the most recent real attempt recorded).
+  // ── THE PERSISTED GROUNDING VERDICT (ADR-058 §D8) — synchronize stronger live proof first ───────
+  // A failed install smoke stays non-fatal there. `--doctor` is different: it is the command someone
+  // runs SPECIFICALLY TO ASK whether the install is healthy, so this is the one place an unresolved
+  // "unproven" verdict DOES gate the exit code. Its successful live citation proof above must clear
+  // an older failure before this read; otherwise one invocation can print both PROVEN and UNPROVEN.
   let groundingUnprovenPersisted = false;
   try {
     const mod = await import(new URL('../scripts/selfcheck.mjs', import.meta.url).href);
+    if (smoke.grounded === true) {
+      mod.writeInstallState({ grounding: 'proven', reason: null, clearedBy: 'doctor-live-proof' });
+    }
     groundingUnprovenPersisted = mod.groundingUnproven(mod.readInstallState());
     if (groundingUnprovenPersisted) {
       console.log(`  ${c.yellow('! Grounding UNPROVEN')} (recorded at ${c.bold(mod.installStatePath())}).`);

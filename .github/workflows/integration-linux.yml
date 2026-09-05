@@ -18,7 +18,12 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      candidate_sha:
+        description: Exact candidate SHA when called by the release transaction
+        required: true
+        type: string
 
 concurrency:
   group: ruvnet-brain-integration-${{ github.event.pull_request.number || github.ref }}
@@ -33,6 +38,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -137,3 +144,20 @@ jobs:
           }
           console.log(`integration suite ran to completion: ${report.numPassedTests ?? 0}/${total} passed, 0 failed`);
           NODE
+      - name: Bind integration evidence to the exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/integration-evidence.mjs \
+            --report /tmp/integration.json \
+            --out integration-evidence.json \
+            --sha "${{ inputs.candidate_sha || github.sha }}" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "${{ github.run_attempt }}"
+      - name: Persist typed integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-evidence-${{ inputs.candidate_sha || github.sha }}
+          path: integration-evidence.json
+          if-no-files-found: error
+          retention-days: 90

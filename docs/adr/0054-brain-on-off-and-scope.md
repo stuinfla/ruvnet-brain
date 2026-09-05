@@ -3,7 +3,7 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-30
+updated: 2026-09-04
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -32,6 +32,13 @@ updated_at_source: authored-current
 **Status**: Implemented (master switch plus Complete Brain / RuVector Only storage profiles)
 **Date**: 2026-07-26
 **Related**: ADR-052 (proactivity-you-control), ADR-053 (experience QA), ADR-023 (stable spine)
+
+> **Reviewed 2026-09-04 (4.3.9 candidate).** `forge-ask-all` now treats the explicit query-local
+> grammar `in [the] <deployed repo> project|repo|repository` as a hard constraint over every
+> matching deployed repository. Generic short nouns remain non-scoping. This named-repository
+> query constraint is distinct from the persistent per-family scope rejected in section 1; it does
+> not change the master-switch or profile decision. Exact sealed replay passed 19/19; public-host
+> verification is still pending.
 
 > **Current verification status (2026-08-01): expired.** The stored digest below predates the
 > candidate's Console runtime-identity, MCP readiness, installed What's New, and hook-stdin

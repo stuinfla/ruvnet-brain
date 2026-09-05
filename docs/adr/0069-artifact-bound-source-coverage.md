@@ -3,7 +3,7 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
-updated: 2026-08-31
+updated: 2026-09-04
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -38,6 +38,19 @@ updated_at_source: authored-current
 # ADR-069 — Source coverage is artifact-bound, complete, and release-blocking
 
 **Status**: Proposed
+
+> **Reviewed 2026-09-04 (authenticated recovery observation).** Supplying the workflow's read-scoped
+> GitHub token changes only release-asset observation reliability. Source enumeration and immutable
+> snapshot gaps remain open, so `Proposed` remains accurate.
+
+> **Reviewed 2026-09-04 (4.3.9 recovery).** Pinning the Claude marketplace to the exact candidate
+> checkout preserves the already-sealed source identity during public host verification. It does
+> not close this ADR's remaining enumeration and source-snapshot gaps; `Proposed` remains accurate.
+
+> **Reviewed 2026-09-04 (4.3.9 candidate).** The protected publication workflow changed only its
+> artifact-bound public host-verification transport and failure-receipt retention. It neither adds
+> signed source enumeration nor closes the immutable source-snapshot gaps below. `Proposed` remains
+> the honest status, and this review is not a source-coverage or publication verdict.
 
 A useful vertical slice is implemented, but the decision's release-proof
 contract is not. The generator, JSON/Markdown repository projections, strict candidate-CI call,
