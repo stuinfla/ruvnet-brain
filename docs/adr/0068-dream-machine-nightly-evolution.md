@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-09-05
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -136,8 +136,9 @@ committed config).
 
 ## Currency log
 
+| 2026-09-01 | Reviewed, on merge into PR #174: `f0e9abd`'s `docs/dream-cycle/LEDGER.md` row (2026-08-31, brain-currency — `source-coverage.mjs`'s `cardPresent` alias resolution). Append-only ledger row only; `dream.config.json` and `tests/unit/dream-config.test.mjs` untouched by that commit. No contradiction with this ADR's decision. | Governed-code diff read directly (`git show f0e9abd -- dream.config.json tests/unit/dream-config.test.mjs docs/dream-cycle/LEDGER.md`). |
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
-
+| 2026-08-30 | Reviewed, on merge into PR #174: `dream.config.json`'s `evaluatorEntrypoints.tests` moved from `npm run test:all` to `npm run qa:pr`, and a new `findingPolicy` block (`ledgerFirst`, dedupe-by-signature, `openIssueOnlyWhen`/`skipIf`, draft-PR-only-after-red-then-green) was added. Consistent with Decision 3/4 and the same-day `qa-runner.mjs` row below: `npm run test:all` is still what a full run exercises, `qa:pr` is the bounded per-PR contract lane the previous row split out — the config just names which lane an evaluated candidate is checked against, it does not relax `autoMerge:false` or the evidence-before-promotion rule. `findingPolicy` is process guidance for future nights (avoid re-filing an already-fixed or duplicate finding), not a change to the 26-step pipeline or the promotion gate. Commit `9e0498e`. | Governed-code diff read directly (`git show 9e0498e -- dream.config.json`); no contradiction with the Decision section found. |
 | 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |
 
 | Date | What changed | Why (with referents) |
