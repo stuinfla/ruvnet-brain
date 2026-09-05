@@ -89,16 +89,30 @@ if (['exec_command', 'functions.exec_command', 'functions__exec_command'].includ
 
 const hookInput = adapted ? JSON.stringify(input) : raw;
 const shim = path.join(path.dirname(fileURLToPath(import.meta.url)), 'hook-shim.mjs');
+const projectDir = String(input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd());
 const env = {
   ...process.env,
   CLAUDE_SESSION_ID: String(input.session_id || process.env.CLAUDE_SESSION_ID || ''),
   CLAUDE_PLUGIN_ROOT: String(process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || ''),
-  CLAUDE_PROJECT_DIR: String(input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd()),
+  CLAUDE_PROJECT_DIR: projectDir,
   RUVNET_HOOK_HOST: 'codex',
 };
 
+// Dream Cycle 2026-09-05. Codex's own dispatch trampoline (codex-hooks.json) never passes `cwd:`
+// when it spawns codex-hook.mjs, and codex-hook-wrapper.mjs never passes it when it spawns THIS
+// process either — so the real OS $PWD this process (and every child below it) inherits is wherever
+// Codex happened to launch the trampoline from, architecturally independent of the payload's own
+// `cwd` field used for CLAUDE_PROJECT_DIR above. project-identity.mjs's projectDirectory() and
+// learn-capture.sh's containment check both trust CLAUDE_PROJECT_DIR only when $PWD actually lies
+// inside it (#85/#107) — so whenever the dispatcher's real cwd and the payload's declared cwd
+// diverge, that check silently REJECTS the correct root and falls back to the dispatcher's own
+// directory, which this plugin does not own (ADR-058 D5). Fall back to the current cwd if the
+// declared one no longer exists, rather than handing spawnSync a cwd it will ENOENT on.
+let shimCwd = process.cwd();
+try { if (fs.statSync(projectDir).isDirectory()) shimCwd = projectDir; } catch { /* keep the default */ }
+
 const runShim = (payload) => spawnSync(process.execPath, [shim, hookId, ...process.argv.slice(3)], {
-  input: payload, encoding: 'utf8', env,
+  input: payload, encoding: 'utf8', env, cwd: shimCwd,
 });
 
 /**
