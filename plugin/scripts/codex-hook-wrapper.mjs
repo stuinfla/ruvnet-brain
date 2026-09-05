@@ -14,7 +14,15 @@ const blockingHooks = new Set([
   // blocking reason to stderr"). Absent from this set it would be wired and toothless: the exit 2
   // would be swallowed here and every refusal would silently become an allow.
   'decision-gate',
-  'route-dispatch',
+  // NOT 'route-dispatch' (removed Dream Cycle 2026-09-05, MEASURED drift): hook-shim.mjs's own
+  // TABLE has declared it `mode: 'advisory'` since issue #84 — Claude Code consumes its
+  // PreToolUse:Agent/Task result ~140ms after tool_dispatch_end, so a refusal there would arrive
+  // too late to be enforcement (hook-shim.mjs's own comment, in the past tense, about this exact
+  // membership: "This comment used to cite 'route-dispatch's exit-2 wall' as the example. That was
+  // FALSE and had to go"). hook-shim.mjs's own dispatch already coerces its exit code to 0
+  // unconditionally, so this membership could never fire — harmless today, but exactly the
+  // false-confidence gap tests/unit/codex-blocking-hooks-parity.test.mjs now holds closed: this
+  // Set must name only ids hook-shim.mjs's TABLE actually calls 'blocking'.
   'hijack-ruvnet',   // ADR-063: opt-in managed-memory refusal; exits 0 at the default
   'ground-before-write',
   'protect-state',
