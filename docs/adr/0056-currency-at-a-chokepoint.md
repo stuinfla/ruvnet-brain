@@ -3,7 +3,7 @@ id: ADR-056
 title: Pay the debt, then wire the gate — document currency without a ratchet
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-30
+updated: 2026-09-01
 impl: wired
 governs:
   - scripts/wired-check.mjs
@@ -306,6 +306,7 @@ fix** — which is the one section that was already built.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-09-01 | Re-read after `scripts/wired-check.mjs` moved (the only governed path touched). `callerPattern()` gained a filename-boundary lookbehind/lookahead, closing a false-positive class where an unrelated module's name that is a trailing substring of another's (e.g. `gates.mjs` inside `corpus-aggregates.mjs`) registered as a phantom caller — live in this repo, hiding `scripts/gate.sh` as falsely "wired" via exactly such a collision. The §7 mechanism (real invocation-shaped callers, not mentions) is strengthened, not changed: this is a precision fix to the existing predicate, and `scripts/doc-currency.mjs`, `scripts/git-hooks/pre-push`, `plugin/scripts/md-stamp.mjs` did not move. | PR #229 (dream-cycle 2026-09-01, issue #228); `node scripts/wired-check.mjs --check` exit 0 on the finished candidate, 43/43 tests in `tests/unit/wired-check.test.mjs`. |
 | 2026-08-22 | Re-read the expanded reachability and pre-push chokepoint at convergence tip `ddae606`; the gate now distinguishes real operational callers from exports, self-reference, manual tools, and isolated maintenance entrypoints without weakening fail-closed behavior. | `b1172a7` wires the maintenance entrypoints, `c05f535` audits release-critical operational exports, and `17fe54b` / `bd446d9` make corpus ownership reachable through the production reconcile path. Exact-tip `npm run wired:check` reports 272 modules, zero UNWIRED modules, zero UNWIRED critical exports, and zero UNWIRED hooks. This row reviews currency only; the six manual tools and four held modules remain disclosed rather than rounded up. |
 | 2026-08-30 | Re-read the chokepoint after adding the convergence-manifest check to pre-push; the release identity is now validated before remote publication. | `scripts/git-hooks/pre-push`; `scripts/convergence-manifest.mjs`; exact hosted QA failure on stale generated identity. |
 | 2026-08-22 | Re-read the only moved governed path, `scripts/wired-check.mjs`; the chokepoint remains fail-closed and its reachability model is more exact. | `6336c52` reclassifies the retired nightly/source writers as explicit author-run isolated-worktree commands instead of claiming a deleted LaunchAgent reaches them. `26b0095` makes Check C enumerate both static lesson trigger labels and dynamically appended `ARGS+=(--trigger ...)` paths, with `tests/unit/wired-check.test.mjs` proving the dynamic-only case. `scripts/doc-currency.mjs`, `scripts/git-hooks/pre-push`, and `plugin/scripts/md-stamp.mjs` did not move; this ADR remains Proposed with its wired slice unchanged. |

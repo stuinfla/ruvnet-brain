@@ -137,6 +137,28 @@ describe('the predicate — a mention is not a caller', () => {
     expect(stateOf(audit({ repo, standalone: [], held: {} }), 'scripts/prove.mjs')).toBe('unwired');
   });
 
+  // Live in this repo (2026-09-01): `scripts/gates.mjs` was reported "wired" partly via two PHANTOM
+  // callers whose only real reference was to the unrelated `scripts/corpus-aggregates.mjs` — which
+  // simply happens to END with the characters "gates.mjs" ("aggre-GATES.mjs"). Same shape for
+  // `version.mjs` inside `set-version.mjs`/`sync-version.mjs`. The prior "prove/proven" test above
+  // only proves prose (no quotes) is excluded; it says nothing about one REAL, quoted filename
+  // swallowing another's inside the invocation-shaped branches themselves.
+  it('a quoted reference to a DIFFERENT, longer filename does not wire a module whose name is its trailing substring', () => {
+    w('scripts/gates.mjs', 'export const g = 1;\n');
+    w('scripts/corpus-aggregates.mjs', 'export const rebuildCorpusAggregates = () => {};\n');
+    w('scripts/consumer.mjs', "import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';\n");
+    const res = audit({ repo, standalone: [], held: {} });
+    expect(stateOf(res, 'scripts/gates.mjs')).toBe('unwired');
+    // The unrelated module must still be correctly wired — this is a precision fix, not a new hole.
+    expect(stateOf(res, 'scripts/corpus-aggregates.mjs')).toBe('wired');
+  });
+
+  it('still wires a module reached through a real path-prefixed reference sharing the same tail', () => {
+    w('scripts/gates.mjs', 'export const g = 1;\n');
+    w('scripts/consumer.mjs', "import { g } from './gates.mjs';\n");
+    expect(stateOf(audit({ repo, standalone: [], held: {} }), 'scripts/gates.mjs')).toBe('wired');
+  });
+
   // The regrade (2026-07-23) found correction-detect-measure.mjs "wired" by a `node scripts/…measure.mjs`
   // usage example living in a header comment — the invocation branch of callerPattern matched prose.
   it('an INVOCATION-shaped usage example in a whole-line // comment is NOT a caller', () => {
