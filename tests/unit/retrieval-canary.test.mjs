@@ -170,6 +170,44 @@ describe('coverage-derived retrieval canaries', () => {
     expect(() => buildRetrievalCanaryPlan(noDelta)).toThrow(/both failed-seed delta and legacy cohorts/);
   });
 
+  it('treats an explicitly sealed no-delta cohort as not applicable while still requiring legacy recall', async () => {
+    const input = fixture();
+    input.baseline.stores.push('new-e', 'new-f');
+    input.baseline.storeCount = 6;
+    const plan = buildRetrievalCanaryPlan({ ...input, legacySampleSize: 6, allowNoDelta: true });
+    expect(plan.noDelta).toBe(true);
+    expect(plan.cohorts).toMatchObject({ delta: 0, legacy: 6 });
+    const receipt = await runRetrievalCanaries({
+      plan,
+      sourceSha,
+      artifactSha256,
+      candidateArchiveSha256: plan.candidate.archiveSha256,
+      search: async ({ query }) => {
+        const expected = plan.cases.find((row) => row.query === query).expected;
+        return [{ repo: expected.repo, path: expected.path }];
+      },
+      citationResolver: async (_matched, expected) => ({ resolved: true,
+        evidence: { passageSha256: expected.passageSha256, passageFileSha256: 'e'.repeat(64) } }),
+    });
+    expect(receipt.metrics).toMatchObject({ recallAt10: 1, deltaTotal: 0, deltaCitationRate: 1,
+      unknown: 0, skipped: 0 });
+    expect(validateRetrievalCanaryReceipt(receipt, { plan })).toBe(receipt);
+    const unknown = await runRetrievalCanaries({
+      plan, sourceSha, artifactSha256, candidateArchiveSha256: plan.candidate.archiveSha256,
+      search: async () => { throw new Error('transport unavailable'); },
+      citationResolver: async () => ({ resolved: false }),
+    });
+    expect(unknown.metrics.unknown).toBe(6);
+    expect(() => validateRetrievalCanaryReceipt(unknown, { plan })).toThrow(/acceptance/);
+  });
+
+  it('rejects a contradictory no-delta declaration even when its digest is resealed', () => {
+    const plan = buildRetrievalCanaryPlan(fixture());
+    const { planSha256: _old, ...payload } = { ...plan, noDelta: true };
+    expect(() => validateRetrievalCanaryPlan({ ...payload, planSha256: digest(payload) }))
+      .toThrow(/requires delta and legacy/);
+  });
+
   it('detects plan tampering and malformed source passages', () => {
     const input = fixture();
     const plan = buildRetrievalCanaryPlan({ ...input, legacySampleSize: 4 });

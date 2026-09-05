@@ -187,7 +187,8 @@ export function validateRetrievalCanaryPlan(plan) {
     throw new Error('oracle denominator differs from eligible coverage');
   }
   if (new Set(ids).size !== ids.length) throw new Error('retrieval canary plan has duplicate case ids');
-  if ((!plan.cases.some(({ cohort }) => cohort === 'delta') && plan.noDelta !== true)
+  const hasDelta = plan.cases.some(({ cohort }) => cohort === 'delta');
+  if ((!hasDelta && plan.noDelta !== true) || (hasDelta && plan.noDelta === true)
     || !plan.cases.some(({ cohort }) => cohort === 'legacy')) {
     throw new Error('retrieval canary plan requires delta and legacy cohorts');
   }
@@ -448,7 +449,9 @@ export function validateRetrievalCanaryReceipt(receipt, { plan, requireAcceptanc
     deltaHits: delta.filter(({ retrievalHit }) => retrievalHit === true).length,
     deltaCitations: delta.filter(({ retrievalHit, citationResolved }) => retrievalHit === true && citationResolved === true).length,
     recallAt10: hits / receipt.cases.length,
-    deltaCitationRate: delta.length ? delta.filter(({ retrievalHit, citationResolved }) => retrievalHit === true && citationResolved === true).length / delta.length : 0,
+    deltaCitationRate: delta.length
+      ? delta.filter(({ retrievalHit, citationResolved }) => retrievalHit === true && citationResolved === true).length / delta.length
+      : plan.noDelta === true ? 1 : 0,
     unknown,
     skipped,
   };
@@ -494,7 +497,10 @@ export async function runRetrievalCanaries({ plan, sourceSha, artifactSha256, ca
   const hits = cases.filter(({ retrievalHit }) => retrievalHit).length;
   const metrics = { total: cases.length, hits, deltaTotal: delta.length, deltaHits: delta.filter(({ retrievalHit }) => retrievalHit).length,
     deltaCitations: delta.filter(({ retrievalHit, citationResolved }) => retrievalHit && citationResolved).length,
-    recallAt10: hits / cases.length, deltaCitationRate: delta.length ? delta.filter(({ retrievalHit, citationResolved }) => retrievalHit && citationResolved).length / delta.length : 0,
+    recallAt10: hits / cases.length,
+    deltaCitationRate: delta.length
+      ? delta.filter(({ retrievalHit, citationResolved }) => retrievalHit && citationResolved).length / delta.length
+      : plan.noDelta === true ? 1 : 0,
     unknown: cases.filter(({ status }) => status === 'UNKNOWN').length,
     skipped: cases.filter(({ status }) => status === 'SKIPPED').length };
   const payload = { schemaVersion: 1, kind: 'ruvnet-brain-retrieval-canary-receipt', sourceSha, artifactSha256,

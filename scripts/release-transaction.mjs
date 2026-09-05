@@ -68,7 +68,7 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
   compensated: ['github-promote-intent', 'npm-promote-intent', 'manual-intervention-required', ...ABORTABLE],
   'defaults-promoted': ['finalize-intent', 'manual-intervention-required', ...ABORTABLE],
   'finalize-intent': ['channels-converged', 'manual-intervention-required', ...ABORTABLE],
-  'manual-intervention-required': [],
+  'manual-intervention-required': [...ABORTABLE],
   'channels-converged': ['install-verified', 'abandoned', 'superseded'],
   'install-verified': [],
   abandoned: [],
