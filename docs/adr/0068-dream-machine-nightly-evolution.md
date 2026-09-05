@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-09-05
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -136,6 +136,7 @@ committed config).
 
 ## Currency log
 
+| 2026-09-05 | Night ran, SLOT 0 — deep `cross-host-conformance`, scans `codex-parity` + `stranger-project-behaviour` — and filed #256 with candidate PR #257 (`docs/dream-cycle/LEDGER.md` row appended, governed here). Finding: `codex-hook-wrapper.mjs`'s `blockingHooks` Set had drifted from `hook-shim.mjs`'s own dispatch TABLE (a stale `route-dispatch` entry, inert today, the 4th instance of the same undetected-drift shape on that file family). CONCURRENT NIGHT, same SLOT/DEEP: a separate firing landed first as #254/#255 (`codex-hook-adapter.mjs`'s `runShim` missing a `cwd:` spawn option) — different file, non-overlapping. This row itself is the fix for the `canonical-qa` CI failure this PR's own first push caused: `LEDGER.md` is governed here, and adding a row without also touching this Currency log left the document `presumed-stale` on the PR's merge-commit comparison, exactly the false-positive-by-construction shape this ADR's own 2026-08-06 rows already named for version bumps. `autoMerge: false` held; draft PR awaiting human review. | Ledger row and this row confirmed against the real `git log`/CI output, not assumed. |
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
 | 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |
