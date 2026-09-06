@@ -108,18 +108,36 @@ function readJson(rel) {
   try { return JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8')); } catch { return null; }
 }
 
-/** Aggregate the multi-vendor panel across whatever stores have actually been graded. */
-function readPanel() {
-  const dir = path.join(ROOT, 'data');
+/**
+ * Aggregate the multi-vendor panel across whatever stores have actually been graded.
+ *
+ * `at` comes from each file's OWN `summary.recordedAt` (written by the producer,
+ * `scripts/brain-grade-groundtruth.mjs`) — never from `fs.statSync(...).mtime`. A `git clone` or
+ * `git checkout` resets every file's mtime to the checkout instant, so a panel graded weeks ago
+ * read as "0d old" on any fresh checkout, a CI runner, or this very nightly agent's own ephemeral
+ * container — the exact "quoted a 34-day-old reading as current" defect this file's own header
+ * names as the reason `maxAgeDays`/`staleness()` exist, alive in the one dimension that never used
+ * them. Measured 2026-09-06: this container's `data/grade-*.json` mtimes are today's checkout time
+ * regardless of when the panel actually ran (last touched, per `git log`, 2026-08-21).
+ *
+ * A file with no `recordedAt` (every grade file committed before this fix) has no trustworthy
+ * timestamp at all — `at: null` here, same as `staleness()` already does for any other artifact
+ * with nothing recorded, so it reads STALE / "no timestamp recorded" rather than borrowing a
+ * fabricated freshness from disk. That is the safe direction: this repo's own rule elsewhere in
+ * this file is that a wrong number is worse than an honestly unmeasured one.
+ */
+export function readPanel(dir = path.join(ROOT, 'data')) {
   let files = [];
   try { files = fs.readdirSync(dir).filter((f) => /^grade-.*\.json$/.test(f)); } catch { /* none */ }
-  const rows = files.map((f) => ({ f, j: readJson(path.join('data', f)) })).filter((r) => r.j?.summary);
+  const readGrade = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { return null; } };
+  const rows = files.map((f) => ({ f, j: readGrade(f) })).filter((r) => r.j?.summary);
   if (!rows.length) return { value: null, detail: null, at: null };
   const strict = rows.map((r) => r.j.summary.avgStrict).filter(Number.isFinite);
   if (!strict.length) return { value: null, detail: null, at: null };
   const at = rows
-    .map((r) => { try { return fs.statSync(path.join(dir, r.f)).mtime.toISOString(); } catch { return null; } })
-    .filter(Boolean).sort().pop();
+    .map((r) => r.j.summary.recordedAt)
+    .filter((v) => typeof v === 'string' && v.trim())
+    .sort().pop() ?? null;
   return {
     value: Math.round((strict.reduce((a, b) => a + b, 0) / strict.length) * 10) / 10,
     detail: `${strict.length} store(s) graded`,

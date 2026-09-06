@@ -92,6 +92,10 @@ const summary = {
   minStrict: minK('avgStrict'), minRealUse: minK('avgRealUse'),
   poisonStrict: valid.filter(r => r.avgStrict < 50).length, poisonRealUse: valid.filter(r => r.avgRealUse < 50).length,
   groundTruthCitationFailures: gtFail,
+  // scripts/brain-score.mjs's `readPanel()` reads this to compute the `panelStrict` dimension's
+  // staleness — never the file's own on-disk mtime, which `git clone`/`checkout` resets to the
+  // checkout instant regardless of when this panel actually ran.
+  recordedAt: new Date().toISOString(),
 };
 fs.writeFileSync(path.join(ROOT, `data/grade-${NAME}-${VARIANT}.json`), JSON.stringify({ summary, report }, null, 2));
 console.log('=== SUMMARY (real numbers) ===');
