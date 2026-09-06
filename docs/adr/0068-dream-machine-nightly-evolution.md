@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-09-06
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -136,6 +136,7 @@ committed config).
 
 ## Currency log
 
+| 2026-09-06 | Night ran, SLOT 1 — deep `brain-currency`, scans `dark-stores` + `corpus-freshness` — and filed #260 with candidate PR #261 (`docs/dream-cycle/LEDGER.md` row appended, governed here). Finding: `kb/forge-currency.mjs`'s `brainKnownSet()` still read its `SOURCE.json` name-alias half from this script's own checkout directory instead of the caller's `root`, the sibling gap PR #222 (2026-08-31) left when it fixed only the `.rvf`-listing half of the same function. Independent adversarial critic (separate subagent) verdict CLEAR. `autoMerge: false` held; draft PR awaiting human review. | Ledger row and this row confirmed against the real `git log`/PR diff, not assumed. |
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
 | 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |
