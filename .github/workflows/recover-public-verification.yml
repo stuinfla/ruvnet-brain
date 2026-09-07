@@ -123,10 +123,17 @@ jobs:
             || artifactSha !== identity.packageSha256 || canonicalJson(terminal.identity) !== canonicalJson(identity)) {
             throw new Error('public transaction differs from the exact failed-run candidate');
           }
-          fs.writeFileSync('release-evidence/release-identity.json', `${JSON.stringify(identity, null, 2)}\n`,
-            { flag: 'wx', mode: 0o600 });
-          fs.writeFileSync('release-evidence/channels-converged-receipt.json', fs.readFileSync(
-            path.join('transaction-receipts', files.at(-1))), { flag: 'wx', mode: 0o600 });
+          const materializeExactJson = (file, value) => {
+            if (fs.existsSync(file)) {
+              if (canonicalJson(read(file)) !== canonicalJson(value)) {
+                throw new Error(`existing ${file} differs from the signed transaction`);
+              }
+              return;
+            }
+            fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+          };
+          materializeExactJson('release-evidence/release-identity.json', identity);
+          materializeExactJson('release-evidence/channels-converged-receipt.json', terminal);
           NODE
       - name: Preserve the complete verified payload for public-byte comparison
         uses: actions/upload-artifact@v4
@@ -151,24 +158,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Restore original candidate source for marketplace verification
+        uses: actions/checkout@v4
+        with:
           ref: ${{ needs.authorize.outputs.candidate_sha }}
+          path: candidate-source
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Enable cron on disposable hosted Linux verifier
+        if: runner.os == 'Linux'
+        env:
+          NIGHTLY_RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$NIGHTLY_RUNNER_ENVIRONMENT" = github-hosted
+          sudo apt-get update -qq
+          sudo apt-get install -y cron
+          sudo systemctl start cron
+          sudo systemctl is-active --quiet cron
       - name: Install exact-source verifier and current host CLIs
         shell: bash
         run: |
           set -euo pipefail
           npm ci --no-audit --no-fund
-          npm install --no-save --package-lock=false \
+          host_cli_prefix="$RUNNER_TEMP/ruvnet-host-clis"
+          npm install --prefix "$host_cli_prefix" --no-save --package-lock=false --no-audit --no-fund \
             @anthropic-ai/claude-code@latest \
             @openai/codex@latest
           if [[ "${{ matrix.os_name }}" == windows ]]; then
-            cygpath -w "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+            cygpath -w "$host_cli_prefix/node_modules/.bin" >> "$GITHUB_PATH"
           else
-            echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+            echo "$host_cli_prefix/node_modules/.bin" >> "$GITHUB_PATH"
           fi
       - uses: actions/download-artifact@v4
         with:
@@ -176,11 +203,17 @@ jobs:
           path: release-evidence
       - name: Execute three loaders and retrieval canaries from public bytes
         shell: bash
+        env:
+          RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}/candidate-source
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           node scripts/host-registry.mjs --out release-evidence/host-registry.json
           mkdir public-lanes
           node scripts/public-verification-lane.mjs \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --verifier-sha "${{ github.sha }}" \
+            --candidate-root candidate-source \
             --os "${{ matrix.os_name }}" \
             --candidate release-evidence/candidate-receipt.json \
             --identity release-evidence/release-identity.json \
@@ -208,9 +241,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.authorize.outputs.candidate_sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -232,15 +265,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain --untracked-files=no)"
           test "$(find public-lanes -type f -name '*.json' | wc -l | tr -d ' ')" = 3
           node scripts/public-verification-aggregate.mjs \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --verifier-sha "${{ github.sha }}" \
             --lanes public-lanes \
             --out release-evidence/public-verification-aggregate.json
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain --untracked-files=no)"
           node scripts/public-verification-finalizer.mjs \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --verifier-sha "${{ github.sha }}" \
             --identity release-evidence/release-identity.json \
             --aggregate release-evidence/public-verification-aggregate.json \
             --out release-evidence/install-verified-receipt.json
           test "$(node -p "require('./release-evidence/install-verified-receipt.json').state")" = install-verified
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain --untracked-files=no)"
       - name: Preserve terminal public verification evidence
         if: always()
         uses: actions/upload-artifact@v4

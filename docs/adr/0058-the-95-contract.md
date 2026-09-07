@@ -3,8 +3,10 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-04
+updated: 2026-09-07
+version: 1.1.3
 impl: wired
+reviewed_digest: 34b808da6634
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -51,14 +53,56 @@ governs:
 
 # ADR-058: The 95 contract
 
+## Current implementation boundary — reviewed 2026-09-05 19:08:40 EDT
+
+This source review does not award a 95 score, change Proposed status, or establish release
+qualification. Historical measurements and incident descriptions below retain their original
+scope; they are not current candidate receipts.
+
+- `scripts/qe/ux-suite.mjs` now hard-fails its configured render, explanation, and dead-air
+  timing limits. The earlier D6 statement that environment-sensitive timings remain advisory
+  does not describe this implementation.
+- `.github/workflows/ci.yml` sets `REQUIRE_BRAIN` in its warm-brain lane and executes a mutant.
+  The earlier scoreboard's absent-`REQUIRE_BRAIN` finding is historical, not a current source fact.
+- The static `INSTALL-FAILS-LOUD` check in `scripts/claims-verify.mjs` inspects source patterns;
+  it does not prove the installer's behavior under every failed live smoke test. The inspected
+  `bin/install.mjs` doctor verdict still omits a direct `smoke.grounded === false` predicate
+  when persisted grounding state is absent or unreadable. This remains a known gap, not a PASS.
+- `.github/workflows/protected-release.yml` now authenticates candidate artifacts against the
+  producing workflow, successful exact-SHA push run, and repository before downloading them.
+  A name match alone is not provenance. Public-byte and host acceptance remain separate proofs.
+- Source examination of `kb/forge-big.mjs` is not corpus-generation qualification: its smoke
+  similarities and emitted counts alone do not prove provenance or retrieval correctness.
+
+## Artifact and replay qualification correction — 2026-09-07
+
+The hosted candidate census rejected the final bundle because its runtime ledger omitted the release
+source identity. The final projected assembly now derives runtime records from the immutable public
+ledger and validates the assembled directory before ZIP creation. Focused producer, tampering, and
+existing bundle-fence tests passed (37 tests). This does not establish public release proof. Native
+Codex replay now registers isolated fixture hooks explicitly; the prior uninstrumented runs remain
+UNKNOWN, and no new behavioral learning result is claimed.
+
 ## Currency log
+
+| 2026-09-07 | Reviewed public native scheduled update receipts bind exact signed artifacts and workflow run, while macOS full unit execution joins required candidate CI evidence; source digest 34b808da6634. | `scripts/publication-receipt.mjs`; source review only, hosted and public acceptance remain pending. |
+
+| 2026-09-07 | Reviewed the failed hosted census and corrected producer; source digest effb46bea00f. | `scripts/build-bundle.mjs`; tests in `/tmp/ruvnet-assembled-projection-tests-20260907.log`, no public PASS claimed. |
+| 2026-09-05 | Reviewed current source and normative boundaries at digest c8762909a897; examination is not behavioral verification. | The assigned full-file reviewers examined the governed scripts, workflows, plugin, and KB files; the integration owner read this ADR and `tests/qe/gpt56/live-brain-search.test.mjs`, inspected the reported implementation discrepancies, and reconciled them above. Canonical AgentDB examination receipts include `audit-partition-b-20260905-adr58-scripts` and `audit-adr058-kb-fullread-1788649103190`; no personal whole-codebase read, 95 score, or complete conformance is claimed. |
+| 2026-09-05 | Reconciled current implementation boundaries after full-file source examination; no status promotion, correctness certification, or new release exemption. | `bin/install.mjs`, `scripts/claims-verify.mjs`, `scripts/qe/ux-suite.mjs`, `.github/workflows/ci.yml`, `.github/workflows/protected-release.yml`, and `kb/forge-big.mjs`; known doctor and producer limitations remain explicit above. |
+| 2026-09-05 | Recovery separates the immutable candidate from the trusted verifier, closes structured retrieval/citation trust boundaries, and reuses one bounded MCP session per staged host. None of these repairs awards a score or changes Proposed status. | `scripts/publication-receipt.mjs` checks candidate root/SHA/version/tracked cleanliness before and after the patched absolute surface probe runs with candidate cwd; `.github/workflows/recover-public-verification.yml` checks out candidate-source separately and passes explicit verifier SHA to lanes/aggregation/finalization. `kb/retrieval-result.mjs`, `scripts/retrieval-canary.mjs`, and `scripts/host-install-matrix.mjs` consume actual ordered hit records, bind query/k/content, reject body-spoofed citations and symlinked installed evidence, and retain UNKNOWN for incompatible old artifacts. Session reuse reduces repeated process/model startup without changing canary selection or thresholds. Local protocol fixtures are not real-model/public-host evidence; sealed old bytes are not rebuilt or republished to manufacture compatibility. Version 1.0.0 starts explicit document revision tracking. |
+| 2026-09-05 | Packed adapter continuity now has an interrupted durable-outbox acceptance path; ambient runtime counts remain diagnostics rather than advertising authority. | `tests/acceptance/cross-host-project-resume.test.mjs` packs/extracts the candidate, uses disposable canonical project AgentDB through global Ruflo, interrupts at the durable outbox seam, replays through packaged Claude/Codex adapters exactly once, and rejects foreign project identity. This is neither native model-session proof nor filesystem-relocation proof. `scripts/claims-verify.mjs` requires candidate artifact bindings for strict census qualification; ambient extras are disclosed, not copied into public claims. Signed/public and staged exact-byte qualification are distinct; incomplete evidence remains UNKNOWN. Exact-SHA integrated QA, native scheduler execution, public installation/convergence, and independent ≥95 reviews remain separate unproven obligations. |
+| 2026-09-04 | The GitHub release observation in public host proof now uses the workflow's read-scoped token, so a shared unauthenticated rate limit cannot produce a false product verdict. | `.github/workflows/protected-release.yml`; run `33899100361`; the underlying artifact and 95-contract thresholds are unchanged. |
+| 2026-09-04 | Public host verification now supplies Claude with the exact candidate checkout as its marketplace source, preventing a later default-branch version from contaminating an immutable older release proof. | `.github/workflows/protected-release.yml`; run `33898518397`; this repairs evidence identity without changing the Proposed status or scoring contract. |
 | 2026-09-04 | The 4.3.9 candidate installs the one signature/digest-verified GitHub bundle across all public host lanes, preserves a digest-bound failure receipt before exiting, performs a real installed-MCP query, and propagates the requested retrieval depth unchanged. Publication validates both handoff destinations before remote mutation and materializes identity/convergence files only after the signed channel receipt validates. | `scripts/publication-receipt.mjs`; `scripts/public-verification-lane.mjs`; `scripts/release-publication-handoff.mjs`; `scripts/release.mjs`; `.github/workflows/protected-release.yml`; `.github/workflows/recover-public-verification.yml`. These strengthen existing observables; Proposed status and public proof remain unchanged. |
 | 2026-09-04 | Repaired release-test boundaries found by the complete 4.3.8 preflight: Windows host-install detection now accepts native separators; Dream Machine network verification is opt-in rather than a unit-test dependency; installer doctor fixtures isolate `RUVNET_BRAIN_HOME`; and the LaunchAgent assertion follows the current host-convergent updater. | `tests/unit/host-install-matrix-concurrency.test.mjs`; `tests/unit/dream-config.test.mjs`; `tests/integration/install-smoke.mjs`; ADR-068. |
 | 2026-09-04 | Reconciled the grounding verdict authority exposed by issues #240/#242: a successful live `--doctor` citation proof now clears an older persisted `unproven` install result before the same invocation's final gate reads it. Failed or unverifiable live checks still cannot clear the gate. | `bin/install.mjs`; `tests/integration/install-smoke.mjs`. |
 | 2026-08-31 | Reconciled the hosted process boundary after PR #211 added named per-step watchdog receipts and corrected Windows executable resolution; the 95-contract observations and release gates remain unchanged. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; `tests/unit/step-watchdog.test.mjs`. |
 
 **Status**: Proposed
-**Date**: 2026-07-27 · **Last updated**: 2026-08-02 · **Why**: the public 4.0.1 artifact exposed
+**Date**: 2026-07-27 · **Last updated**: 2026-09-05 · **Why**: recovery source identity, retrieval
+trust, and packed continuity were reconciled above without promoting a release verdict. Historically,
+the public 4.0.1 artifact exposed
 that QE-BRN-001 existed in the written master plan but was absent from the executable critical-risk
 map and release vector; the live `search_ruvnet` worker consequently timed out without blocking
 publication.

@@ -3,7 +3,9 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
-updated: 2026-09-04
+updated: 2026-09-07
+version: 1.1.0
+reviewed_digest: REVIEW_DIGEST_PENDING
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -39,6 +41,21 @@ updated_at_source: authored-current
 
 **Status**: Proposed
 
+> **Reviewed 2026-09-07 (4.3.10 recovery).** `scripts/release-projection.mjs` now binds the
+> assembled runtime ledger to the exact public release ledger and validates coverage before archive
+> creation. Public verification requires the exact downloaded artifacts, and native scheduled-update
+> proofs retain raw installed coverage after each run. These implemented boundaries still require
+> hosted and public execution evidence. They do not establish fresh upstream ingestion; imported
+> corpus evidence retains its original provenance and upstream freshness remains UNKNOWN.
+
+> **Reviewed 2026-09-04 (authenticated recovery observation).** Supplying the workflow's read-scoped
+> GitHub token changes only release-asset observation reliability. Source enumeration and immutable
+> snapshot gaps remain open, so `Proposed` remains accurate.
+
+> **Reviewed 2026-09-04 (4.3.9 recovery).** Pinning the Claude marketplace to the exact candidate
+> checkout preserves the already-sealed source identity during public host verification. It does
+> not close this ADR's remaining enumeration and source-snapshot gaps; `Proposed` remains accurate.
+
 > **Reviewed 2026-09-04 (4.3.9 candidate).** The protected publication workflow changed only its
 > artifact-bound public host-verification transport and failure-receipt retention. It neither adds
 > signed source enumeration nor closes the immutable source-snapshot gaps below. `Proposed` remains
@@ -48,8 +65,8 @@ A useful vertical slice is implemented, but the decision's release-proof
 contract is not. The generator, JSON/Markdown repository projections, strict candidate-CI call,
 bundle projections, installed command, and third Console page exist and have focused tests. Signed
 enumeration, a closed immutable candidate snapshot, routing/focused-QA receipts, signed expiring
-exemptions, and candidate → public artifact → clean install → managed-host generation coherence are
-still unimplemented. `Proposed` remains the only honest decision status until those release-blocking
+exemptions, and complete candidate → public artifact → clean install → managed-host generation coherence remain
+unproven; implemented transport and validators are not substitutes for completed execution evidence. `Proposed` remains the only honest decision status until those release-blocking
 acceptance paths pass against the actual artifact.
 
 **Date**: 2026-08-21
@@ -219,6 +236,7 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
   are mutation-tested. These scenarios remain unimplemented until a failing-then-passing test exists.
 
 ## Currency log
+| 2026-09-07 | Reviewed assembled runtime ledger identity and public installed coverage boundaries; source digest REVIEW_DIGEST_PENDING. | `scripts/release-projection.mjs`; source review does not claim full upstream freshness or public acceptance. |
 | 2026-08-31 | Re-read after the release-control cutover; the nightly wrapper still runs convergence checks, but the watchdog is now report-only and cannot dispatch a publisher or bypass the signed release coordinator. | `scripts/nightly-wrapper.sh`; `scripts/release-convergence-watchdog.mjs`; `.github/workflows/release-cycle.yml`; commit `e2e83c0`. |
 | 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence showed shell:false cannot assume an `npx` shim; the unit lane now invokes Vitest through Node while retaining the same full suite. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
 | 2026-08-31 | Reconciled after the main-branch merge and CI watchdog change; source coverage remains bound to the exact candidate artifact, while hosted long stages now emit bounded receipts. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; exact-SHA CI run `33358984585`. |

@@ -3,7 +3,8 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-04 07:33:00 EDT
+updated: 2026-09-07
+version: 1.1.1
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -45,14 +46,23 @@ governs:
 
 **Status**: Accepted
 
+> **Reviewed 2026-09-04 (authenticated recovery observation).** Public lanes now authenticate their
+> read-only GitHub release lookup with the workflow token; immutable byte identity and terminal
+> conformance rules are unchanged.
+
+> **Reviewed 2026-09-04 (4.3.9 recovery).** Public host verification now pins Claude's marketplace
+> source to the exact candidate checkout, so default-branch advancement cannot substitute a later
+> plugin generation. The signed npm, bundle, coverage, and terminal acceptance boundaries remain unchanged.
+
 > **Reviewed 2026-09-04 (4.3.9 candidate).** The candidate strengthens two existing conformance
 > edges: publication handoff cannot appear before signed channel convergence, and every public-host
 > failure is retained in a digest-bound receipt before the lane exits. It does not complete this
 > ADR's remaining source-coverage work, and it does not claim 4.3.9 is public before terminal
 > `install-verified` evidence exists.
 
-Accepted by Stuart's 2026-08-21 direction; implementation is in progress and publication remains
-locked. Nothing in this document is a shipped-capability claim.
+Accepted by Stuart's 2026-08-21 direction; implementation is in progress. Whole-product conformance
+remains unproven. The owner-authorized stabilization milestone below distinguishes an incremental
+verified release from that stronger claim. Nothing in this document is a shipped-capability claim.
 
 ## Reconciliation map
 
@@ -129,9 +139,13 @@ for receipt schema 3+. Historical schema 1/2 `channels-converged` receipts remai
 
 The release rail has two phases without duplicated qualification. On `release/**`,
 `release-candidate-preflight.yml` runs CI, integration, UX, and stranger lanes once and emits the
-source-bound package plus aggregate as `release-candidate-<exact SHA>`. That unchanged SHA is then
-fast-forwarded to `main`. `protected-release.yml` is the sole publication controller: it selects
-the artifact by deterministic name, not human run ID, revalidates its receipts, payload/source
+source-bound package plus aggregate as `release-candidate-<exact SHA>`. The published candidate must
+equal current `main`: merge required-check-qualified source first, then qualify that exact merge SHA
+on `release/**`; alternatively an unchanged prequalified SHA may reach main without rewriting it.
+A squash or other source-identity change requires qualification of the resulting SHA.
+`protected-release.yml` is the sole publication controller: it selects
+the artifact by deterministic name within the authenticated successful producer run, not a
+caller-supplied run ID or a global name-only match, revalidates its receipts, payload/source
 binding, and digest against current main, then signs/publishes once and owns public three-OS by
 three-host-mode verification through terminal `install-verified`.
 
@@ -146,8 +160,12 @@ could not yet be deleted. `RECOVERY_REQUIRED` is reserved for identity ambiguity
 
 The release objective is specific, measurable, achievable within the existing Node/RVF/AgentDB and
 GitHub Actions architecture, relevant to the observed failures, and time-bound to the next public
-version: no protected publication job may begin until every row below is PASS on one exact source
-snapshot, and public success must finish within that same transaction.
+version. Evidence is due at its actual event boundary on one exact source snapshot: candidate
+safety, identity, artifact and staged-runtime requirements precede publication; S-6/S-7 public
+download and installation evidence necessarily follows channel publication and precedes
+`install-verified` in that same transaction. Staged evidence never substitutes for public evidence.
+All twelve rows must be PASS before claiming whole-product conformance. The blanket earlier
+requirement for public-download PASS before publication is superseded by this sequencing correction.
 
 | ID | Specific outcome | Measure and deadline |
 |---|---|---|
@@ -197,6 +215,42 @@ The protected workflow must not green an incomplete transaction. Labeled `releas
 missing typed evidence, failed required checks, a missing public 3x3 matrix, or absent terminal
 readback stop the run. Unlabeled backlog does not silently acquire release authority.
 
+### 8. Owner-authorized 4.3.10 stabilization milestone
+
+Stuart's 2026-09-05 direction explicitly requires materially improved incremental production
+releases while the complete recovery continues. For 4.3.10, use the existing sealed
+stabilization-candidate path and its `scoreClaimed: false` receipt, not a new bypass flag,
+publisher, unsigned exception, or manufactured ProductIntegrityCase PASS.
+
+This milestone retains required QA, exact source and artifact identity, private-data safety,
+authenticated producer provenance, signatures, staged retrieval, and the same protected
+public three-OS by three-host-mode matrix, canaries, and terminal readback. Its `install-verified`
+receipt certifies that release transaction only. It does not certify all S-1 through S-12,
+complete codebase review, universal recall, or fresh end-to-end corpus production.
+
+The stronger `scripts/adr-072-completion.mjs` contract and all twelve obligation owners remain
+unchanged. Unproved obligations remain OPEN/UNKNOWN, particularly S-4 producer freshness and complete producer-to-consumer proof; safe interruption recovery and full essential-branch coverage also need
+their own complete evidence. Release notes and status must disclose unresolved scope rather than
+presenting this stabilization as completed North Star conformance. A known safety failure in the
+candidate's release/update path is not exempted by calling the release incremental.
+
+### Installed-update public proof
+
+Before `install-verified`, each public dual-host leaf on Linux, macOS, and Windows must
+include two sequential terminal runs triggered by that platform's native scheduler. The
+proof consumes the exact public npm package and signed bundle, binds their hashes to the
+candidate source, version, and workflow run, and validates the live installed ReleaseCoverage
+projection after each run. Run two must be `noop`, with measured storage deltas, no redundant
+full-corpus copies, bounded retained evidence, and verified removal of the owned proof job.
+Missing raw evidence or failed cleanup blocks acceptance; claimed validation flags do not
+replace raw receipt, signature, executable-identity, and projection validation.
+
+This is explicitly `scope: installed-update`. Update, host convergence, and cleanup carry
+current-run execution evidence. Corpus phases imported from the signed release remain
+`imported-release`, bound to the installed projection and candidate source. Upstream freshness
+remains `UNKNOWN`; these consumer runs do not prove a new corpus build or complete S-4.
+The strict current-run corpus-production validator remains a separate requirement.
+
 ## Consequences
 
 - Current patch volume may decrease because contradictory and fact-restating paths are removed.
@@ -208,14 +262,121 @@ readback stop the run. Unlabeled backlog does not silently acquire release autho
 ## Current implementation status
 
 `Accepted; implementation remains proof-gated.` The executable S-1 through S-12 ownership and
-evidence contract lives in `scripts/product-integrity-contract.mjs`. This reconciliation defines a
+evidence contract lives in `scripts/product-integrity-contract.mjs`. Its source-presence check is
+not behavioral completion. This reconciliation defines a
 source-bound preflight followed by one protected publication controller, without rerunning the long
 lanes. It removes per-release self-supplied reviewer identity and all-open-issue policy from the
-architecture. No release is conformant until preflight produces `release-candidate-<exact SHA>`,
-that SHA reaches main unchanged, and protected release revalidates it before producing the
-publication receipt, nine public leaves, and `install-verified` terminal receipt.
+architecture. The stabilization release is not complete until preflight produces
+`release-candidate-<exact SHA>`, that SHA equals main, and protected release revalidates it before
+producing the publication receipt, nine public leaves, and `install-verified` terminal receipt.
+Whole-product conformance additionally requires all twelve complete obligation proofs.
+
+## Proposed amendment A — producer, consumer, and composed freshness proof
+
+**Status: Proposed (2026-09-05), pending implementation validation.** This is a decision draft,
+not an Accepted supersession, an implemented capability, or verified S-4 evidence. The original
+Accepted decision, S-4 row, and historical receipts above remain unchanged. Until this amendment
+is explicitly accepted and its implementation/acceptance mapping is validated, the existing
+strict whole-product completion gate remains controlling; imported phase evidence must not be relabelled to
+obtain a PASS. Drafting authority does not authorize a scheduler, publication, or production run.
+
+### A.1. Problem and proposed boundary
+
+The current consumer `--update` validates a released corpus; it does not execute upstream source
+enumeration, ingestion, or public bundle assembly. Importing their coverage statuses cannot prove
+that those operations ran in the consumer invocation. Moreover, the original nine-phase order
+places private/local-overlay restoration before public ledger/coverage/bundle production. Joining
+old producer receipts to a new consumer receipt cannot make that a truthful chronological order.
+
+Propose one centralized immutable public producer, verified local consumers, and a composed
+product proof. Preserve all nine obligations, but explicitly replace their single-host execution
+assumption with actor-bound execution and dependency order **only after acceptance**:
+
+| Responsibility | Executing owner | Required evidence |
+|---|---|---|
+| Source enumeration, ingestion/reconciliation, immutable public generation ledger, coverage generation, public bundle assembly | Public producer | Actual phase outcomes, exact source observation and builder identity, invocation/time bounds, immutable output digests |
+| Signature/provenance and freshness verification, private/local-overlay restoration, atomic update, host convergence, cleanup | Each consumer | Actual native invocation, exact consumed producer outputs, local runtime projection, preserved private bytes, fenced activation and storage evidence |
+| End-to-end S-4 disposition | Read-only proof composition over producer and consumer receipts | Authenticated links, dependency order, both freshness bounds, native two-run/no-op proof, and storage/retention compliance |
+
+Public production precedes consumption; local overlays remain local and are restored into the
+consumer candidate before activation. Runtime ledger projection/validation must not rewrite the
+immutable public ledger or be represented as public production. A composed proof records each
+actor's own run ID and actual timestamps, not one invented execution ID or nine synthetic PASSes.
+Reusing a still-fresh authenticated producer receipt in two consumer runs is not two producer runs.
+
+### A.2. Alternatives and reusable owners
+
+1. **Build on every consumer:** permits local production but distributes upstream credentials,
+   embedding/build dependencies, resource cost, and reproducibility obligations to every host.
+   This is not the smallest repair of the existing immutable distribution design.
+2. **Centralized producer plus verified consumers (proposed):** reuse `source-coverage.mjs`,
+   `corpus-reconcile.mjs`, `corpus-candidate.mjs`, and `build-bundle.mjs`; keep
+   `corpus-seed.yml` a preparation workflow and `protected-release.yml` the sole publisher.
+   Consumers retain signature verification, private overlays, and atomic local activation.
+3. **A composed producer-consumer run:** appropriate as the end-to-end proof over option 2,
+   not a substitute for missing producer execution or a second controller/publisher. Its
+   acceptance rules must name the allowed producer reuse and actor/dependency boundaries.
+
+RVF remains the vector/artifact format. Canonical AgentDB remains the structured operational
+authority. Signed immutable receipt exports and bounded consumer read models are evidence, not
+new competing project-state stores. No additional daemon or independent release publisher is
+proposed. The existing protected signing, source binding, private-data fence, retrieval, and
+public verification requirements remain mandatory.
+
+### A.3. Authenticated upstream freshness is not download recency
+
+Require separate consumer-execution age and upstream-observation age, **each <=30 hours** for
+the composed healthy verdict. Upstream age is measured from the oldest required observation in
+the complete authenticated observation window (or its conservative start), not download time,
+consumer `finishedAt`, publication time, source commit age, or a newly copied metadata timestamp.
+Absent, incomplete, untrusted, or unverifiable timing/identity evidence yields `UNKNOWN`, never
+fresh. Expired evidence is stale; unsupported future timestamps/clock skew cannot yield PASS.
+
+Producer evidence must authenticate the complete observation, trusted producer/build identity,
+invocation and time window, phase outcomes, artifact/coverage/ledger digests, expiry, and replay/
+rollback controls. Consumer verification must bind that evidence to the exact bytes installed.
+A signature without those checks is not freshness proof; a valid consumer update can succeed
+while composed product freshness remains `UNKNOWN` or stale.
+
+Keep content identity separate from observation freshness. `sourceObservationDigest()` excludes
+`observedAt`, whereas coverage generation includes the timestamp-bearing enumeration receipt.
+Therefore blindly refreshing coverage timestamps can churn an otherwise unchanged artifact.
+The implementation must support a newly authenticated observation of unchanged source content
+without rewriting the immutable installed corpus merely to freshen its label. A phase that
+executes reconciliation and proves no change must report that no-op, not claim fresh embedding
+or rebuilding of every store. This evidence separation is proposed, not already validated.
+
+### A.4. Acceptance invariants and validation required before adoption
+
+- Two consecutive real native consumer-scheduler invocations must be proven, each bound to valid
+  producer evidence and the exact consumed artifact. The second is `noop` and creates zero
+  additional full-corpus copies. Subprocess envelopes, fixture receipts, and scheduler
+  registration alone do not prove native execution.
+- Fenced single-writer activation, crash/rollback recovery, declared private/local overlays,
+  exact immutable bytes, and complete public-source coverage remain mandatory. Unknown or
+  unlisted private/custom data must never be deleted to satisfy storage acceptance.
+- Count preserved installer generations, unresolved prior/stage trees, managed backups, and
+  evidence in the relevant storage inventories. Non-cleanup-eligible preserved data remains
+  visible. Its presence cannot be hidden behind an evidence-only retention budget or promoted
+  into bounded-storage PASS; retention is not authorization to delete it.
+- Producer and consumer evidence must reject stale-but-recently-downloaded artifacts, altered
+  observation timestamps, wrong signer/builder/source/artifact, partial enumeration, replay,
+  future timestamps, out-of-order dependencies, and imported evidence presented as execution.
+- Before adoption, map every obligation to producer/consumer validators and positive/adversarial
+  tests, reconcile DDD/traceability/completion wording, and collect genuine producer plus native
+  consumer proof. Do not weaken the current same-run validator to make an incompatible consumer
+  receipt pass. Full-conformance promotion remains blocked until this work is explicitly accepted
+  and validated; section 8's stabilization milestone neither accepts this proposal nor proves S-4.
+
+Design references: [SLSA build provenance](https://slsa.dev/spec/v1.2/build-provenance) separates
+builder execution identity, inputs, outputs, and timing; [SLSA consumer verification](https://slsa.dev/spec/v1.2/verifying-artifacts)
+requires trust and artifact/expectation checks; [in-toto layouts](https://in-toto.readthedocs.io/en/latest/layout-creation-example.html)
+link actor-specific products/materials and distinguish inspections; [TUF](https://theupdateframework.github.io/specification/latest/)
+defines expiry and rollback defenses. These are design references, not claims of conformance.
 
 ## Currency log
+| 2026-09-07 | Reviewed the installed-update public proof boundary; producer freshness remains UNKNOWN. | `kb/forge-update.mjs` imports signed corpus evidence; `scripts/public-verification-aggregate.mjs` and `scripts/nightly-two-run-proof.mjs` validate raw native consumer evidence. |
+| 2026-09-05 | Corrected the impossible pre-publication public-download deadline and documented the owner's incremental 4.3.10 stabilization milestone without a full-conformance claim. | `scripts/adr-072-completion.mjs` remains unchanged; `scripts/product-integrity-contract.mjs` retains every obligation; `.github/workflows/protected-release.yml` and `scripts/stabilization-receipt.mjs` retain exact candidate, protected publication, and same-transaction public acceptance. `docs/ddd/0018-product-integrity-context.md` distinguishes release disposition from obligation completion. |
 | 2026-09-04 | Reconciled the expedited two-phase rail: long qualification runs once in preflight on `release/**`; protected release imports `release-candidate-<exact SHA>` after the unchanged SHA reaches main, revalidates it, publishes once, and completes public install proof. | `.github/workflows/release-candidate-preflight.yml` and `.github/workflows/protected-release.yml` divide qualification from publication without human run IDs or duplicated long lanes. Fable/Sol review remains change-triggered and only `release-blocker` issues stop publication. |
 | 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence localized the failure to executable resolution, not the test suite; the product contract is unchanged and the boundary is now portable. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
 | 2026-08-31 | Reconciled after the 4.3.3 main-branch merge and CI watchdog change; whole-product conformance still requires every exact-SHA lane, and long hosted stages now expose named timeout receipts instead of opaque job progress. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; exact-SHA CI run `33358984585`. |

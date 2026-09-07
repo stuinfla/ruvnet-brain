@@ -35,10 +35,12 @@ function layout({ withNpmSymlink = true, symlinkedRvf = false } = {}) {
 
   const backup = path.join(parent, 'kb.bak-2026-01-01T00-00-00-000Z');
   fs.mkdirSync(backup, { recursive: true });
-  fs.writeFileSync(path.join(backup, 'ruflo.big.rvf'), 'old');
+  fs.writeFileSync(path.join(backup, 'ruflo.big.rvf'), 'live');
   if (withNpmSymlink) {
-    fs.mkdirSync(path.join(backup, 'node_modules', '.bin'), { recursive: true });
-    fs.symlinkSync('/usr/bin/true', path.join(backup, 'node_modules', '.bin', 'semver'));
+    for (const dir of [kb, backup]) {
+      fs.mkdirSync(path.join(dir, 'node_modules', '.bin'), { recursive: true });
+      fs.symlinkSync('/usr/bin/true', path.join(dir, 'node_modules', '.bin', 'semver'));
+    }
   }
   if (symlinkedRvf) {
     fs.symlinkSync('/usr/bin/true', path.join(backup, 'evil.rvf'));

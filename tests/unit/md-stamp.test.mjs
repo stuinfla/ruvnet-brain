@@ -26,10 +26,11 @@ afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 /** Fire the hook exactly as hook-shim.mjs / Claude Code do: subprocess, JSON payload on stdin. */
 function fireHook(payload, env) {
   const r = spawnSync('node', [HOOK], {
+    cwd: tmp,
     input: JSON.stringify(payload),
     encoding: 'utf8',
     timeout: 15000,
-    ...(env ? { env: { ...process.env, ...env } } : {}),
+    env: { ...process.env, CLAUDE_PROJECT_DIR: tmp, ...env },
   });
   return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 }

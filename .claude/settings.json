@@ -1,20 +1,7 @@
 {
-  "_note": "Project-scoped config for ruvnet-brain ONLY. version-bump-gate enforces THIS repo's every-commit-bumps rule (Stuart, 2026-07-13); it lived in the GLOBAL settings until 2026-07-14, taxing every Bash command in all 34+ projects with a rule that is only true here. A hook belongs in the narrowest scope where it is true. STOP OVERRIDE REMOVED 2026-07-27 (ADR-055 F6, build item 1): a second Stop hook lived here, running THIS checkout's continuation-gate.mjs directly while the plugin ran its own copy — two blocking-plane registrations of one handler from two code roots, kept apart only by a shared cooldown-lock path, which is an accident of implementation and not a contract. Its own _note set the removal condition — 'REMOVE once the spine ships >=3.9.34' — and the spine was at 3.9.85 when the merged-registry census finally made the pair visible: satisfied fifty versions earlier and never acted on, because nothing was looking. The plugin's Stop hook now routes through the spine (hook-shim.mjs continuation-gate), so this checkout's fixed gate is the one that runs anyway. Enforced by tests/unit/hook-registry-lint.test.mjs (M1).",
+  "_note": "Project hooks intentionally empty after the 2026-09-04 stabilization. Repository policy is enforced by explicit CI and release commands, never by an automatic shell-command interceptor.",
   "env": {
     "RUFLO_HARNESS_LOOP": "1"
   },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/bin/bash \"/Users/stuartkerr/Code/ruvnet-brain/plugin/scripts/version-bump-gate.sh\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
-  }
+  "hooks": {}
 }

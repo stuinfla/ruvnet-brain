@@ -36,7 +36,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
 
-/** States that mean "the code moved and nobody has reconciled the document since". */
+/** Finding codes within this edit gate's narrow stale-debt policy. */
 const STALE = new Set(['presumed-stale']);
 
 /**
@@ -66,7 +66,7 @@ async function loadDocCurrency(root) {
 export async function staleGovernorsOf(relPath, { root = REPO, docCurrency = null, readFile = null } = {}) {
   const mod = docCurrency ?? await loadDocCurrency(root);
   if (!mod) return [];
-  const { listDocs, evaluateDoc, parseFrontmatter, DEFAULT_DIRS, isGitRepo } = mod;
+  const { listDocs, evaluateDoc, parseFrontmatter, resolveGoverned, blockingFindings, DEFAULT_DIRS, isGitRepo } = mod;
   // `readFile` is injectable for one reason, and it is not tidiness: with `fs.readFileSync` hardcoded
   // here, a test that injects `listDocs`/`parseFrontmatter` never reaches them — the read throws on a
   // fixture path that does not exist, the loop `continue`s, and NO CANDIDATE IS EVER FOUND. The first
@@ -74,38 +74,48 @@ export async function staleGovernorsOf(relPath, { root = REPO, docCurrency = nul
   // passed. A suite of only allow-cases would have shipped this green and unfireable, which is the
   // exact defect class this repo has now hit four times in one day.
   const read = readFile ?? ((p) => fs.readFileSync(p, 'utf8'));
-  if (!isGitRepo(root)) return [];
+  let docs;
+  try {
+    if (!isGitRepo(root)) return [];
+    docs = listDocs(root, DEFAULT_DIRS);
+  } catch { return []; }
 
-  // TWO PASSES, AND THE ORDER IS THE WHOLE DESIGN. Measured before writing it, not after:
-  // `evaluateDoc` costs ~190-240ms because it shells out to git, and there are 83 documents — a
-  // naive loop is ~19 SECONDS on the Write path, which would make this the gate everybody disables.
-  // Reading frontmatter for all 83 costs 40ms total. So: cheap pass to find WHICH documents govern
-  // this file (usually one), expensive pass on only those. ~250ms typical, and exactly 40ms for the
-  // overwhelmingly common case of a file no ADR governs.
+  // Resolve declarations together, then evaluate only the documents governing this exact file.
+  // The shared resolver owns scalar/list/glob semantics; directories are not recursive governors.
   const candidates = [];
-  for (const docRel of listDocs(root, DEFAULT_DIRS)) {
+  const entries = new Set();
+  for (const docRel of docs) {
     let fm;
     try { fm = parseFrontmatter(read(path.join(root, docRel))); } catch { continue; }
     const governs = fm?.keys?.governs;
-    if (!Array.isArray(governs)) continue;
-    // Entries are exact paths or directory prefixes, read the way the pre-push gate reads them.
-    const governsThis = governs.some((p) => typeof p === 'string'
-      && (relPath === p || relPath.startsWith(p.endsWith('/') ? p : `${p}/`)));
-    if (governsThis) candidates.push({ docRel, id: fm?.keys?.id ?? path.basename(docRel) });
+    const declared = (Array.isArray(governs) ? governs : (governs ? [String(governs)] : []))
+      .map((entry) => String(entry).trim()).filter(Boolean);
+    if (!declared.length) continue;
+    declared.forEach((entry) => entries.add(entry));
+    candidates.push({ docRel, id: fm?.keys?.id ?? path.basename(docRel), declared });
   }
   if (!candidates.length) return [];
+  let matching;
+  try {
+    const target = relPath.split(path.sep).join('/');
+    matching = new Set(resolveGoverned(root, [...entries])
+      .filter((g) => g.resolved && g.path === target).map((g) => g.from));
+  } catch { return []; }
 
   const out = [];
   for (const c of candidates) {
-    let doc;
-    try { doc = evaluateDoc(root, c.docRel); } catch { continue; }
-    if (STALE.has(doc?.drift?.state)) out.push({ doc: c.docRel, id: c.id, why: doc?.drift?.why ?? '' });
+    if (!c.declared.some((entry) => matching.has(entry))) continue;
+    try {
+      const doc = evaluateDoc(root, c.docRel);
+      const finding = blockingFindings([doc]).find((f) => STALE.has(f.code));
+      if (finding) out.push({ doc: c.docRel, id: c.id, why: finding.message });
+    } catch { continue; }
   }
   return out;
 }
 
 export function refusalText(relPath, stale) {
-  const names = stale.map((s) => `${s.id} (${s.doc})`).join('\n           ');
+  const names = stale.map((s) => `${s.id} (${s.doc})${s.why ? ` — ${s.why}` : ''}`).join('\n           ');
   return `⛔ BLOCKED — ${relPath} is governed by a document that is ALREADY stale.
 
   stale:   ${names}

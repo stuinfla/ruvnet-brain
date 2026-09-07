@@ -67,7 +67,12 @@ function legacy(projectDir, now) {
     let names;
     try {
       const stat = fs.lstatSync(directory);
-      if (!stat.isDirectory() || stat.isSymbolicLink()) return { values: [], malformed: true };
+      // A malformed ROOT (a stray file or symlink where `sessions/` should be a directory) must not
+      // discard every OTHER root's evidence. This used to `return` here, so a bad `.claude/sessions`
+      // entry made a genuinely fresh `.claude-flow/sessions` legacy session invisible to the whole
+      // scan — `continue` so the loop still inspects the remaining roots, same as the readdirSync
+      // catch below already does for an unreadable directory.
+      if (!stat.isDirectory() || stat.isSymbolicLink()) { malformed = true; continue; }
       names = fs.readdirSync(directory).filter((name) => /^session-.*\.json$/.test(name)).slice(-64);
     } catch { malformed = true; continue; }
     for (const name of names) {

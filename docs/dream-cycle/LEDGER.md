@@ -1,17 +1,32 @@
-## Operating policy (effective 2026-08-30)
+Updated: 2026-09-05 14:15:00 EDT; Version 1.1.0
+Created: 2026-08-19
+
+## Operating policy (effective 2026-09-05)
 
 The ledger is the system of record for every Dream Cycle observation. A finding is
 written here before any GitHub side effect. The cycle must reconcile its stable
 fingerprint (`deep`, `scan`, source path, and finding signature) against this ledger,
 open issues, closed issues, and existing branches/PRs before creating work.
 
-Only a new, reproduced, actionable defect may open an issue. Observations that are
-already fixed, duplicates, environment-only conditions, or hypotheses remain ledger
-entries and do not create GitHub issues. A draft PR is created only after a failing
-test and a bounded fix exist. Integrated work is closed during reconciliation.
+Only a new, reproduced, actionable defect that remains unresolved after a bounded
+repair may open an issue. Include the reproduction, failed repair, and exact blocker;
+if the repair exceeds authority, record that boundary without expanding it. A verified
+local or integrated fix is a work record, never a tracking issue. Keep its diff, test
+evidence, witness, and integration reference here or in the linked report. A verified
+local fix may have one review PR without a paired issue. Duplicates, environment-only
+conditions, hypotheses, and blocked experiments stay work records. Use `NONE` for the
+Issue field when no issue is warranted. Integrated work is reconciled against current
+source; its historical finding is not a reason to reopen it.
 
 This prevents a routine evaluation from manufacturing a permanent issue and draft-PR
 backlog. `autoMerge: false` remains intentional: evaluation may not publish code.
+
+Compiler boundary: `dream-machine` 0.1.1 ignores the custom `findingPolicy` object.
+The supported `extraDisciplines` configuration carries the explicit override of its
+generic issue-creation steps; the compiler test verifies the emitted prompt. This
+is a compiled instruction policy, not a technical restriction on GitHub tools.
+Confirm the cloud routine loads this committed configuration before claiming its
+running behavior changed. See [deployment verification](OPERATING-POLICY.md).
 
 | Date | Deep | Finding | Issue | PR | Evaluated? | Verdict | Effect | Witness | Prior-night fates |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

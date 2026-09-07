@@ -5,7 +5,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { aggregateEvidence } from './release-evidence-aggregate.mjs';
 import { canonicalJson } from './release-transaction.mjs';
-import { EXCLUSION_POLICY } from './integration-evidence.mjs';
+import { RELEASE_QUALIFICATION_POLICY } from './integration-evidence.mjs';
+import { readCandidateRetrieval } from './staged-host-verifier.mjs';
+import { validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
+import { payloadIdFor } from './release-payload.mjs';
 
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
@@ -44,10 +47,13 @@ export function buildPrepublicationEvidence({
   manifestFile,
   payloadProofFile,
   hostFile,
+  runtimeCensusFile,
   ciFile,
   integrationFile,
   uxFiles,
   strangerFile,
+  planFile,
+  coverageFile,
 }) {
   if (!/^[a-f0-9]{40}$/.test(sha || '') || !/^\d+\.\d+\.\d+$/.test(version || '') || !Number.isSafeInteger(runId) || runId <= 0) {
     throw new Error('prepublication identity is malformed');
@@ -60,10 +66,30 @@ export function buildPrepublicationEvidence({
     throw new Error('candidate manifest identity mismatch');
   }
   if (!/^[a-f0-9]{64}$/.test(payload.payloadId || '')) throw new Error('payload identity is malformed');
+  if (payload.payloadId !== payloadIdFor(manifest)) throw new Error('candidate manifest payload identity mismatch');
+  const retrieval = readCandidateRetrieval({ manifest, planFile, coverageFile });
+
+  const runtimeCensus = readJson(runtimeCensusFile);
+  const census = runtimeCensus.value;
+  const result = census.result;
+  const artifacts = result?.provenance?.artifacts;
+  const candidate = result?.provenance?.candidate;
+  const memberHash = (role) => manifest.members.find((member) => member.role === role)?.sha256;
+  if (census.schemaVersion !== 1 || census.kind !== 'ruvnet-brain-runtime-census-evidence'
+    || census.sourceSha !== sha || census.version !== version || census.runId !== runId
+    || census.payloadId !== payload.payloadId || census.payloadManifestSha256 !== sha256(manifestBytes)
+    || result?.status !== 'PASS' || result.diagnostic !== false || result.qualification !== 'staged-candidate'
+    || result.provenance?.projectionVerified !== true || candidate?.sourceSha !== sha || candidate?.version !== version
+    || candidate?.coverageSha256 !== sha256(fs.readFileSync(coverageFile))
+    || artifacts?.payloadId !== payload.payloadId || artifacts.claimSourceSha !== sha
+    || artifacts.packageSha256 !== memberHash('npm') || artifacts.bundleSha256 !== memberHash('bundle')
+    || !(artifacts.sidecarsVerified > 0) || !(artifacts.surfacesVerified > 0)) {
+    throw new Error('runtime census receipt is not an exact candidate-bound PASS');
+  }
 
   const host = readJson(hostFile);
   if (host.value.schemaVersion !== 1 || host.value.sha !== sha || host.value.payloadId !== payload.payloadId
-    || !/^[a-f0-9]{64}$/.test(host.value.artifactSha256 || '') || host.value.leaves?.length !== 3) {
+    || host.value.artifactSha256 !== retrieval.artifactSha256 || host.value.leaves?.length !== 3) {
     throw new Error('candidate host evidence identity or shape mismatch');
   }
   requireExactSet(host.value.leaves.map(({ name }) => name), ['claude-only', 'codex-only', 'dual-host'], 'candidate host leaves');
@@ -77,10 +103,11 @@ export function buildPrepublicationEvidence({
       || leaf.artifactSha256 !== host.value.artifactSha256) {
       throw new Error(`candidate host leaf is not an exact PASS: ${leaf.name || '(missing)'}`);
     }
+    validateRetrievalCanaryReceipt(leaf.retrieval, { plan: retrieval.plan });
   }
 
   const ci = readJson(ciFile);
-  const requiredCiJobs = ['candidate-preflight', 'check', 'windows-unit', 'warm-brain', 'release-qe'];
+  const requiredCiJobs = ['candidate-preflight', 'release-acceptance-linux', 'release-acceptance-windows', 'release-acceptance-macos', 'release-qe'];
   if (ci.value.schemaVersion !== 1 || ci.value.kind !== 'ruvnet-brain-candidate-ci-evidence'
     || ci.value.sourceSha !== sha || ci.value.version !== version || ci.value.payloadId !== payload.payloadId
     || ci.value.payloadManifestSha256 !== sha256(manifestBytes) || ci.value.workflow !== 'ci'
@@ -89,6 +116,10 @@ export function buildPrepublicationEvidence({
   }
   requireExactSet(ci.value.jobs?.map(({ name }) => name) || [], requiredCiJobs, 'candidate CI jobs');
   if (ci.value.jobs.some(({ conclusion }) => conclusion !== 'success')) throw new Error('candidate CI receipt contains a non-success job');
+  requireExactSet(ci.value.acceptanceReceipts?.map(({ platform }) => platform) || [], ['linux', 'macos', 'windows'], 'release acceptance platforms');
+  if (ci.value.acceptanceReceipts.some(row => row.sourceSha !== sha || !(row.passed > 0)
+    || !/^[a-f0-9]{64}$/.test(row.receiptSha256 || ''))) throw new Error('release acceptance receipt identity mismatch');
+
 
   const integration = readJson(integrationFile);
   if (integration.value.schemaVersion !== 1 || integration.value.kind !== 'ruvnet-brain-integration-evidence'
@@ -102,7 +133,9 @@ export function buildPrepublicationEvidence({
     || integration.value.skippedTests.some((name) => typeof name !== 'string' || !name.trim())) {
     throw new Error('integration receipt is not an exact, fully accounted PASS');
   }
-  if (integration.value.exclusionPolicy !== EXCLUSION_POLICY
+  if (integration.value.exclusionPolicy !== RELEASE_QUALIFICATION_POLICY
+    || integration.value.skipped !== 0 || integration.value.todo !== 0
+    || !/^[a-f0-9]{64}$/.test(integration.value.qualificationReceiptSha256 || '')
     || !Array.isArray(integration.value.todoTests)
     || integration.value.todoTests.length !== Number(integration.value.todo || 0)
     || !/^[a-f0-9]{64}$/.test(integration.value.exclusionsSha256 || '')) {
@@ -133,9 +166,9 @@ export function buildPrepublicationEvidence({
 
   const common = { sha, payloadId: payload.payloadId, runId };
   const leaves = [
-    passLeaf({ ...common, name: 'source-quality', source: 'candidate-ci-receipt:check', receiptSha256: ci.digest }),
+    passLeaf({ ...common, name: 'source-quality', source: 'candidate-ci-receipt:release-acceptance-linux', receiptSha256: ci.digest }),
     passLeaf({ ...common, name: 'ux-qe', source: 'ux-qe-receipts:darwin,linux,win32', receiptSha256: uxDigest }),
-    passLeaf({ ...common, name: 'release-qe', source: 'candidate-ci-receipt:release-qe', receiptSha256: ci.digest }),
+    passLeaf({ ...common, name: 'release-qe', source: 'candidate-ci-receipt:release-qe', receiptSha256: ci.digest, runtimeCensusSha256: runtimeCensus.digest }),
     passLeaf({ ...common, name: 'integration-linux', source: 'integration-receipt', receiptSha256: integration.digest,
       skipped: integration.value.skipped, todo: integration.value.todo }),
     passLeaf({ ...common, name: 'stranger-linux', source: 'stranger-receipt:ubuntu', receiptSha256: stranger.digest }),
@@ -161,6 +194,9 @@ if (isCli) {
     manifestFile: path.resolve(arg('--manifest')),
     payloadProofFile: path.resolve(arg('--payload-proof')),
     hostFile: path.resolve(arg('--hosts')),
+    runtimeCensusFile: path.resolve(arg('--runtime-census')),
+    planFile: arg('--plan'),
+    coverageFile: arg('--coverage'),
     ciFile: path.resolve(arg('--ci')),
     integrationFile: path.resolve(arg('--integration')),
     uxFiles,

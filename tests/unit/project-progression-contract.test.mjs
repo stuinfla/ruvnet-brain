@@ -112,6 +112,8 @@ describe('secret redaction', () => {
       { path: '$.completeProjectState.failures[0]', kind: 'password' },
     ]));
     expect(JSON.stringify(snapshot.redactions)).not.toContain(apiKey);
+    expect(validateProgressionSnapshot(snapshot, { expectedProjectIdentity: PROJECT }))
+      .toEqual({ ok: true, errors: [] });
   });
 
   it('redacts deterministically without mutating the supplied value', () => {
@@ -123,6 +125,18 @@ describe('secret redaction', () => {
     expect(original.z.clientSecret).toBe('secret-value-123456');
     expect(first.value).toEqual({ a: 'safe outcome', z: { clientSecret: '[REDACTED:secret]' } });
     expect(first.redactions).toEqual([{ path: '$.z.clientSecret', kind: 'secret' }]);
+  });
+
+  it('is idempotent for both keyed and inline markers without hiding appended secrets', () => {
+    const first = redactProgression({ apiKey: 'fictional-value', lines: [
+      'password=fictional-password; token=fictional-token',
+      'Bearer fictional-bearer-token',
+    ] });
+    expect(redactProgression(first.value)).toEqual({ value: first.value, redactions: [] });
+    expect(redactProgression({ apiKey: '[REDACTED:api-key]still-secret' }).redactions)
+      .toEqual([{ path: '$.apiKey', kind: 'api-key' }]);
+    expect(redactProgression('password=[REDACTED:password]still-secret').redactions)
+      .toEqual([{ path: '$', kind: 'password' }]);
   });
 });
 

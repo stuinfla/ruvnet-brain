@@ -186,13 +186,15 @@ export function listInstalledPlugins(pluginsDir = PLUGINS_DIR) {
     // not equality" discipline as the rest of this file. Fall back to the manifest's own version field
     // if the on-disk plugin.json is unreadable, so a present plugin is NEVER reported "not installed".
     let installed = null;
+    const instances = [];
     for (const rec of Array.isArray(records) ? records : []) {
       const v = (rec && rec.installPath ? pluginVersion(rec.installPath) : null)
         || (rec && rec.version && rec.version !== 'unknown' ? rec.version : null);
+      instances.push({ scope: rec?.scope || 'unknown', installPath: rec?.installPath || null, version: v, readable: Boolean(rec?.installPath && pluginVersion(rec.installPath)) });
       if (!v) continue;
       if (installed === null || cmpVersion(v, installed) > 0) installed = v;
     }
-    out.push({ name, installed, source: 'plugin', marketplace });
+    out.push({ name, installed, source: 'plugin', marketplace, instances });
   }
   return out;
 }
@@ -209,15 +211,8 @@ function listInstalled({ lib = GLOBAL_LIB, pluginsDir = PLUGINS_DIR } = {}) {
     }
   };
   scan(lib);
-  // Merge in plugin-sourced tools (ISSUE #22). Dedup by name: a tool present BOTH globally and as a
-  // plugin appears once, and the global-npm copy wins — it is the one classify() can compare against
-  // npm dist-tags. A plugin-only tool is added, so it can never be reported "not installed".
-  const seen = new Set(out.map((r) => r.name));
-  for (const p of listInstalledPlugins(pluginsDir)) {
-    if (seen.has(p.name)) continue;
-    seen.add(p.name);
-    out.push(p);
-  }
+  // Preserve both distribution sources; one must not hide the other.
+  out.push(...listInstalledPlugins(pluginsDir));
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -258,14 +253,9 @@ export function findShadows(npxCache = NPX_CACHE, lib = GLOBAL_LIB) {
 // exits) share ONE classification, never two that can drift.
 export function classify(pkgs) {
   return pkgs.map((p) => {
-    // ISSUE #22 — a Claude Code plugin tracks ITS MARKETPLACE's update cadence, not npm semver. There
-    // is no npm dist-tag oracle for it (querying `npm view <plugin>` would compare against an unrelated
-    // package or 404), so we do not manufacture a drift signal. It is present and installed ⇒ CURRENT;
-    // a plugin is only BROKEN if we could not read any version at all. Either way it is COUNTED and is
-    // never reported "not installed". This also keeps the npm-registry "blind tool" guard scoped to
-    // real npm rows (see audit()/auditModel()).
+    // Installed records prove presence, not marketplace currency.
     if (p.source === 'plugin') {
-      return { ...p, tag: 'plugin', target: p.installed, state: p.installed ? 'CURRENT' : 'BROKEN' };
+      return { ...p, tag: 'plugin', target: null, state: p.installed ? 'INSTALLED_UNVERIFIED' : 'BROKEN', evidence: 'local install record only; marketplace revision not checked' };
     }
     const want = TAG_POLICY[p.name] || DEFAULT_TAG;
     const tags = registryTags(p.name);
@@ -293,9 +283,7 @@ function audit() {
   // inside the fix for it. Silence is not health.
   const rows = classify(pkgs);
   const unresolved = rows.filter((r) => r.state === 'UNRESOLVED');
-  // Guard scoped to npm rows (ISSUE #22): plugin rows are CURRENT by construction, so counting them
-  // here would let a fully-unreachable registry hide behind a couple of installed plugins — the exact
-  // "blind tool reports health" bug this guard exists to kill, reintroduced. Denominator = npm rows.
+  // Registry reachability is measured only against npm rows; plugins remain unverified.
   const npmRows = rows.filter((r) => r.source !== 'plugin');
   if (npmRows.length && unresolved.length === npmRows.length) {
     die(`could not reach the npm registry for ANY of ${npmRows.length} npm packages.\n` +
@@ -303,7 +291,7 @@ function audit() {
   }
 
   const shadows = findShadows();
-  return { rows, unresolved, shadows, stale: shadows.filter((s) => s.global && s.version !== s.global) };
+  return { rows, unresolved, shadows, stale: shadows.filter((s) => s.global && isBehind(s.version, s.global)) };
 }
 
 // Non-exiting audit for embedders (the Onboarding Console). Same measurement as audit(), but returns
@@ -316,32 +304,44 @@ export function auditModel() {
   const rows = classify(pkgs);
   const unresolved = rows.filter((r) => r.state === 'UNRESOLVED');
   const shadows = findShadows();
-  const stale = shadows.filter((s) => s.global && s.version !== s.global);
+  const stale = shadows.filter((s) => s.global && isBehind(s.version, s.global));
   // Same npm-scoped guard as audit() (ISSUE #22): plugin rows never count toward "registry unreachable".
   const npmRows = rows.filter((r) => r.source !== 'plugin');
   const error = npmRows.length && unresolved.length === npmRows.length
     ? `could not reach the npm registry for any of ${npmRows.length} npm packages` : null;
-  return { rows, unresolved, shadows, stale, error };
+  return { rows, unresolved, shadows, stale, error, summary: summarizeAudit({ rows, shadows }) };
+}
+
+export function summarizeAudit({ rows, shadows }) {
+  const count = (state) => rows.filter((row) => row.state === state).length;
+  const summary = { behind: count('BEHIND'), broken: count('BROKEN'),
+    unverified: count('INSTALLED_UNVERIFIED') + count('UNRESOLVED'), shadows: shadows.length,
+    stale: shadows.filter((s) => s.global && isBehind(s.version, s.global)).length };
+  summary.verdict = summary.behind || summary.broken || summary.shadows ? 'DRIFT'
+    : summary.unverified || !rows.length ? 'UNKNOWN' : 'PASS';
+  summary.exitCode = summary.verdict === 'PASS' ? 0 : summary.verdict === 'UNKNOWN' ? 4 : 1;
+  return summary;
 }
 
 function report({ rows, shadows, stale }) {
-  const w = Math.max(...rows.map((r) => r.name.length));
+  const w = Math.max(1, ...rows.map((r) => r.name.length));
   const nPlugin = rows.filter((r) => r.source === 'plugin').length;
   const nNpm = rows.length - nPlugin;
-  log(`\n  RuvNet stack — ${rows.length} packages (${nNpm} npm-global, ${nPlugin} Claude Code plugin)\n`);
+  log(`\n  RuvNet stack — ${rows.length} distribution records (${nNpm} npm-global, ${nPlugin} Claude Code plugin)\n`);
   for (const r of rows) {
-    const mark = { CURRENT: '  ok  ', BEHIND: 'BEHIND', AHEAD: ' ahead', BROKEN: 'BROKEN', UNRESOLVED: '  ??  ' }[r.state];
+    const mark = { CURRENT: '  ok  ', BEHIND: 'BEHIND', AHEAD: ' ahead', BROKEN: 'BROKEN', UNRESOLVED: '  ??  ', INSTALLED_UNVERIFIED: 'UNVERIFIED' }[r.state];
     const detail = r.state === 'BEHIND' ? `${r.installed} -> ${r.target}  (@${r.tag})`
       : r.state === 'AHEAD' ? `${r.installed}  (ahead of @${r.tag} ${r.target} — alpha track; left alone)`
       : r.state === 'BROKEN' ? `no readable version on disk; registry has ${r.target ?? '?'}`
-      : r.source === 'plugin' ? `${r.installed}  (plugin · ${r.marketplace} marketplace)`
+      : r.source === 'plugin' ? `${r.installed}  (plugin · ${r.marketplace}; marketplace currency NOT CHECKED; ${r.instances?.length || 1} scope record(s))`
       : r.installed;
     log(`  [${mark}] ${r.name.padEnd(w)}  ${detail}`);
+    if (r.instances?.length > 1) for (const instance of r.instances) log(`      ${instance.scope}: ${instance.version || 'UNREADABLE'} (${instance.readable ? 'disk' : 'record only'})`);
   }
   if (shadows.length) {
     log(`\n  npx shadow copies:`);
     for (const s of shadows) {
-      log(`    ${s.name}@${s.version}${s.global && s.version !== s.global ? `   STALE — global is ${s.global}` : ''}`);
+      log(`    ${s.name}@${s.version}${s.global && isBehind(s.version, s.global) ? `   STALE — global is ${s.global}` : ''}`);
     }
   }
   log('');
@@ -391,8 +391,9 @@ function sync({ dryRun = false } = {}) {
   const toInstall = [...behind, ...broken.filter((r) => r.target)].map((r) => `${r.name}@${r.target}`);
 
   if (!toInstall.length && !stale.length) {
-    log('  one copy of everything, all current, no shadows. Nothing to do.');
-    writeReceipt(a, [], []);
+    log(`  No npm repair selected. Audit: ${JSON.stringify(summarizeAudit(a))}`);
+    if (!dryRun) writeReceipt(a, [], []);
+    process.exitCode = summarizeAudit(a).exitCode;
     return;
   }
   if (dryRun) {
@@ -431,7 +432,10 @@ function sync({ dryRun = false } = {}) {
   }
   if (wrong.length) die(`npm reported success but THE DISK DISAGREES:\n   - ${wrong.join('\n   - ')}`);
 
-  writeReceipt(audit(), toInstall, purged);
+  const after = audit();
+  writeReceipt(after, toInstall, purged);
+  process.exitCode = summarizeAudit(after).exitCode;
+  log(`  Remaining audit: ${JSON.stringify(summarizeAudit(after))}`);
   log(`\n  synced ${toInstall.length} package(s); purged ${purged.length} shadow(s); verified against disk.`);
 }
 
@@ -440,18 +444,12 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('stack-sync.mjs'))
   const args = process.argv.slice(2);
   if (args.includes('--audit')) {
     const a = audit();
-    const { behind, broken, stale } = report(a);
-    // UNRESOLVED counts as drift, not as health: a package we could not measure is a package we
-    // cannot vouch for. Reporting "current" for something we never checked is the lie this tool exists to stop.
-    const unres = a.unresolved.length;
-    const bad = behind.length + broken.length + stale.length + unres;
-    if (bad) {
-      log(`  DRIFT: ${behind.length} behind, ${broken.length} broken, ${stale.length} stale shadow(s)` +
-          (unres ? `, ${unres} UNMEASURED (registry unreachable)` : '') + '.');
-      log(`  Fix:   node scripts/stack-sync.mjs --sync\n`);
-      process.exit(1); // non-zero: a watchdog must never call a drifted stack "green"
-    }
-    log('  one copy of everything, all current, no shadows.\n');
+    report(a);
+    const summary = summarizeAudit(a);
+    log(`  Audit: ${JSON.stringify(summary)}`);
+    if (summary.unverified) log('  Required: verify each plugin against its marketplace revision and each unresolved npm target against registry tags.');
+    if (summary.shadows) log('  Cached copies are present; inspect invocation paths before removing any cache. No copies removed by audit.');
+    process.exitCode = summary.exitCode;
   } else if (args.includes('--sync')) {
     sync({ dryRun: args.includes('--dry-run') });
   } else {

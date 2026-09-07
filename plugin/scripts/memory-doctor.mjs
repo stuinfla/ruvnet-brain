@@ -111,14 +111,10 @@ const q = (db, sql) => {
 
   try {
     const value = run(uri);
-    // Belt and suspenders for a third SQLite build we have not measured: a read that started with
-    // no sidecars must end with no sidecars. If one appeared anyway — a fresh concurrent writer, or
-    // another version-specific quirk — the bytes just read cannot be trusted, and this read's own
-    // litter is removed rather than left in the caller's directory.
+    // A concurrent writer invalidates the immutable-read assumption. Reject this result, but
+    // never remove sidecars: they may contain that writer's committed data and we do not own them.
+    // A later diagnosis will select ordinary read-only mode while the sidecars remain present.
     if (restingWal && walSidecarsPresent(db)) {
-      for (const suffix of ['-wal', '-shm']) {
-        try { fs.unlinkSync(`${db}${suffix}`); } catch { /* best-effort cleanup only */ }
-      }
       return { ok: false, err: 'a writer opened the store mid-read' };
     }
     return { ok: true, value, viaImmutable: restingWal || undefined };

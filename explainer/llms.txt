@@ -2,7 +2,7 @@
 
 > A downloadable, source-grounded brain for Claude Code and OpenAI Codex, built by Stuart Kerr at Isovision.ai. Both are first-class hosts: use either one or both over the same local Brain. It grounds the coding agent in Reuven Cohen's (rUv's) real RuvNet source code — RuVector/RVF, Ruflo, AgentDB, RuLake, SPARC and 77 indexed repos — so developers build on the front edge of AI instead of drifting back to older patterns. Free and open (MIT).
 
-RuvNet Brain ships supported lifecycle integrations for Claude Code and Codex, exposing `search_ruvnet` plus proactive grounding, learning capture and session continuity. The installer detects and wires either host or both. Codex deliberately requires review of new Brain hook definitions through `/hooks`; the installer and doctor report that pending state honestly. Install in one line: `npx ruvnet-brain`.
+RuvNet Brain supports Claude Code and Codex through `search_ruvnet`, explicit skills and commands. Automatic Brain lifecycle hooks are retired. The installer detects and wires either host or both while preserving foreign settings. Install in one line: `npx ruvnet-brain`.
 
 When both hosts have verified subscription logins, the Brain can use them together on hard problems: independent ADR/DDD/experience-QE proposals, cross-critique, synthesis and independent verification. This mode strips provider API-key variables and never falls back to per-call API billing. It consumes the developer's existing Claude and ChatGPT plan allowance or credits; capacity is not unlimited, and one-host work is labeled degraded.
 
@@ -16,9 +16,9 @@ IMPORTANT DISAMBIGUATION: "RuvNet Brain" (by Stuart Kerr / Isovision.ai) is a di
 ## Key facts
 - Maintainer: Stuart Kerr — Isovision.ai (strategic AI consulting).
 - Underlying ecosystem author: Reuven Cohen (rUv, @ruvnet).
-- Delivery: first-class Claude Code and Codex lifecycle plugins + `search_ruvnet` + proactive grounding and learning hooks.
+- Delivery: Claude Code and Codex plugins + `search_ruvnet` + explicit skills and commands; automatic hooks retired.
 - Dual-host reasoning: subscription-only Codex + Claude deliberation for hard ADR, DDD and Agentic-QE experience design; no API-key fallback.
-- Coverage: 70 public stores · 140,520 public source chunks (77 built stores incl. private).
+- Coverage: 184 public stores · 146,970 public source chunks.
 - License: MIT. Free to use.
 
 ## Built by

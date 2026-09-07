@@ -591,7 +591,7 @@ function loadSymbols(dir, name) {
   return s;
 }
 const SYM_STOP = new Set(['does','data','code','what','where','which','this','that','with','from','into','your','their','how','the','and','for','project','package','implement','implemented','implementation','source','file','files','work','works','used','uses','using','support','system','store','stores','recall','persist']);
-function symbolRoute(query, sym) {
+export function symbolRoute(query, sym) {
   const out = new Set();
   if (!sym) return out;
   const q = query.toLowerCase();
@@ -599,10 +599,13 @@ function symbolRoute(query, sym) {
   const snake = ids.filter((t) => t.includes('_') && t.length >= 5);
   const words = ids.filter((t) => !t.includes('_') && t.length >= 4 && !SYM_STOP.has(t));
   const pkgs = (q.match(/@[\w-]+\/([\w-]+)/g) || []).map((s) => s.split('/')[1].toLowerCase());
-  const push = (m) => { if (m) for (const p of m) out.add(p); };
-  for (const t of snake) push(sym.bySymbol[t]);
-  for (const t of pkgs) { push(sym.byPackage[t]); push(sym.bySymbol[t]); }
-  for (const t of words) { push(sym.bySymbol[t]); push(sym.byStem[t]); }
+  const push = (table, key) => {
+    if (!table || !Object.hasOwn(table, key) || !Array.isArray(table[key])) return;
+    for (const sourcePath of table[key]) if (typeof sourcePath === 'string') out.add(sourcePath);
+  };
+  for (const t of snake) push(sym.bySymbol, t);
+  for (const t of pkgs) { push(sym.byPackage, t); push(sym.bySymbol, t); }
+  for (const t of words) { push(sym.bySymbol, t); push(sym.byStem, t); }
   return out;
 }
 const VENDORED_DEP_RE = /(^|\/)(patches)\/|(^|\/)hnsw_rs\//i;

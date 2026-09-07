@@ -33,6 +33,12 @@ import { fileURLToPath } from 'node:url';
 const NPX = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const NPX_OPTS = { encoding: 'utf8', shell: process.platform === 'win32' };
 const externalEngineIt = process.env.DREAM_ENGINE_VERIFY === '1' ? it : it.skip;
+const engineCli = process.env.DREAM_ENGINE_CLI;
+function runEngine(args, options) {
+  return engineCli
+    ? execFileSync(process.execPath, [engineCli, ...args], options)
+    : execFileSync(NPX, ['-y', 'dream-machine@latest', ...args], { ...options, ...NPX_OPTS });
+}
 const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'dream.config.json'), 'utf8'));
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
@@ -54,7 +60,7 @@ describe('the nightly config points at things that exist', () => {
   externalEngineIt('the ledger lives where the config says, and verifies structurally', () => {
     const ledger = path.join(ROOT, cfg.ledgerPath);
     expect(fs.existsSync(ledger), `${cfg.ledgerPath} is missing — the durable memory has no file`).toBe(true);
-    const out = execFileSync(NPX, ['-y', 'dream-machine@0.1.1', 'ledger', 'verify', '--path', cfg.ledgerPath],
+    const out = runEngine(['ledger', 'verify', '--path', cfg.ledgerPath],
       { cwd: ROOT, ...NPX_OPTS, timeout: 180_000 });
     expect(out, 'rUv\'s own verifier must accept the ledger shape').toMatch(/ledger OK/);
   }, 200_000);
@@ -65,6 +71,14 @@ describe('the nightly config points at things that exist', () => {
     // gate and a both-hosts conformance gate. A machine that merges past them makes all four a
     // formality. ADR-068 §Decision 3.
     expect(cfg.autoMerge).toBe(false);
+  });
+
+  it('requires an unsuccessful bounded repair before an unresolved finding becomes an issue', () => {
+    expect(cfg.findingPolicy.openIssueOnlyWhen).toEqual([
+      'new', 'reproduced', 'actionable', 'unresolved', 'bounded-fix-unsuccessful',
+    ]);
+    expect(cfg.findingPolicy.resolvedFindingDestination).toBe('work-record');
+    expect(cfg.findingPolicy.skipIf).toContain('verified-local-fix');
   });
 
   it('the rotation surfaces are THIS repo\'s, not the scaffold\'s placeholders', () => {
@@ -84,7 +98,7 @@ describe('the nightly config points at things that exist', () => {
     // compiler rejects is a nightly that dies at STEP B every night, forever.
     const out = path.join(ROOT, 'node_modules', '.cache', 'dream-tonight.md');
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    execFileSync(NPX, ['-y', 'dream-machine@0.1.1', 'compile', 'dream.config.json', '--out', out],
+    runEngine(['compile', 'dream.config.json', '--out', out],
       { cwd: ROOT, ...NPX_OPTS, timeout: 180_000 });
     const prompt = fs.readFileSync(out, 'utf8');
     expect(prompt.length, 'a compiled routine must be substantial').toBeGreaterThan(5000);
@@ -92,6 +106,16 @@ describe('the nightly config points at things that exist', () => {
       expect(prompt, `${s} must survive compilation into the routine`).toContain(s);
     }
     expect(prompt, 'the promotion gate must reach the runner').toMatch(/[Nn]ever merge/);
+    // dream-machine 0.1.1 withDefaults drops findingPolicy. The supported extraDisciplines
+    // channel must carry an explicit override of the compiler's generic issue-creation steps.
+    expect(prompt).toContain('ISSUE DISPOSITION OVERRIDE');
+    expect(prompt).toContain('STEP 5');
+    expect(prompt).toContain('STEP 17');
+    expect(prompt).toContain('bounded repair');
+    expect(prompt).toContain('verified local fix');
+    expect(prompt).toContain('work record, never a GitHub issue');
+    expect(prompt).toContain('fingerprint');
+    expect(prompt).toContain('existing fix PR');
     fs.rmSync(out, { force: true });
   }, 200_000);
 });

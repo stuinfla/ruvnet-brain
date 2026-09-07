@@ -10,8 +10,8 @@
 //
 // Method (per store): sample N passages; for each, build a query from a MIDDLE span of its own text
 // (not the start — that would be identity retrieval); run the reader; find the rank of the SOURCE
-// document; reciprocal rank = 1/rank (0 if not in top-K). MRR = mean over samples. Run HYBRID on vs off
-// to measure the lift. $0, no LLM, no network.
+// document; reciprocal rank = 1/rank (0 if not in top-K). MRR = mean over samples.
+// This measures dense-only retrieval; unsupported HYBRID requests fail explicitly. No LLM calls.
 //
 // Usage: node self-retrieval-bench.mjs --store ruv-meetings --samples 100 [--k 10] [--seed 42]
 //        node self-retrieval-bench.mjs --all --samples 40

@@ -19,7 +19,9 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
 
-function run(lastAssistantMessage, { malformed = false } = {}) {
+function run(lastAssistantMessage, { malformed = false, hookInput = {}, preferenceState } = {}) {
+  if (preferenceState) fs.writeFileSync(path.join(home, 'ledger.json'), JSON.stringify({ items: [],
+    objective: { kind: 'continuation-preferences', authoritative: false, state: preferenceState } }));
   if (malformed) {
     const skill = path.join(home, 'capabilities/ruflo/ruflo-adr/0.4.1/skills/adr-verify/SKILL.md');
     fs.writeFileSync(skill, '# no front matter\n');
@@ -28,9 +30,11 @@ function run(lastAssistantMessage, { malformed = false } = {}) {
     cwd: ROOT,
     input: JSON.stringify({
       hook_event_name: 'Stop',
+      cwd: ROOT,
       session_id: 'capability-truth-test',
       stop_hook_active: false,
       last_assistant_message: lastAssistantMessage,
+      ...hookInput,
     }),
     env: {
       ...process.env,
@@ -57,6 +61,12 @@ describe('continuation gate capability truth', () => {
     expect(output).toContain('additionalContext');
     expect(output).toContain('ruflo-adr:adr-verify');
     expect(output).toContain('contradicts the sealed');
+    expect(output).not.toContain('within this authorized objective');
+  });
+
+  it('never restarts user interruption or cancelled preferences for answer correction', () => {
+    expect(run('Ruflo ADR Verify is not installed.', { hookInput: { interrupted: true } })).toBe('');
+    expect(run('Ruflo ADR Verify is not installed.', { preferenceState: 'cancelled' })).toBe('');
   });
 
   it('stays silent when the installed capability statement matches the receipt', () => {

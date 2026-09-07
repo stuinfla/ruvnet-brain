@@ -12,7 +12,6 @@ describe('console autoApply safety boundary', () => {
       { id: 'unknown', scope: 'project' },
     ])).toEqual([
       'repair:memory-index',
-      'enable:memory-distillation',
       'reconcile:project',
     ]);
   });

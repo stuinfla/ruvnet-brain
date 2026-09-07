@@ -43,7 +43,7 @@ const make = (id, statement, owner, contributors, implementation, tests, receipt
 export const PRODUCT_INTEGRITY_OBLIGATIONS = Object.freeze([
   make('S-1', 'One complete public corpus', 'CorpusGeneration', ['SourceCoverage'], ['scripts/source-coverage.mjs', 'scripts/corpus-reconcile.mjs', 'scripts/corpus-candidate.mjs'], ['tests/unit/source-coverage.test.mjs', 'tests/unit/corpus-reconcile.test.mjs'], ['ruvnet-brain-source-observation', 'ruvnet-brain-corpus-candidate']),
   make('S-2', 'One immutable public release projection', 'ReleaseProjection', ['CorpusGeneration'], ['scripts/build-bundle.mjs', 'scripts/coverage-integrity.mjs', 'scripts/public-inventory.mjs'], ['tests/integration/build-bundle-fence.test.mjs', 'tests/unit/public-inventory.test.mjs'], ['ruvnet-brain-release-coverage']),
-  make('S-3', 'Recall at 10 is at least 98 percent and delta citations are complete', 'PublicVerification', ['SourceCoverage', 'CorpusGeneration'], ['scripts/retrieval-canary.mjs', 'scripts/packed-retrieval-canary.mjs'], ['tests/unit/retrieval-canary.test.mjs', 'tests/unit/packed-retrieval-canary.test.mjs'], ['ruvnet-brain-retrieval-canary-plan', 'ruvnet-brain-retrieval-canary-receipt']),
+  make('S-3', 'Recall at 10 is at least 98 percent and delta citations are complete', 'PublicVerification', ['SourceCoverage', 'CorpusGeneration'], ['scripts/retrieval-canary.mjs', 'scripts/candidate-host-evidence.mjs', 'scripts/prepublication-evidence.mjs', 'scripts/host-install-matrix.mjs', 'kb/retrieval-result.mjs'], ['tests/unit/retrieval-canary.test.mjs', 'tests/unit/candidate-host-evidence.test.mjs', 'tests/unit/candidate-retrieval-matrix.test.mjs', 'tests/unit/retrieval-result-boundary.test.mjs'], ['ruvnet-brain-retrieval-canary-plan', 'ruvnet-brain-retrieval-canary-receipt']),
   make('S-4', 'Native nightly runs are ordered, idempotent, and retained within budget', 'RefreshLifecycle', [], ['bin/nightly-refresh.mjs', 'plugin/scripts/nightly-scheduler.mjs', 'scripts/nightly-two-run-proof.mjs', 'kb/refresh-run.mjs'], ['tests/unit/nightly-scheduler.test.mjs', 'tests/unit/nightly-two-run-proof.test.mjs'], ['ruvnet-brain-refresh-run', 'ruvnet-brain-native-two-run-nightly-proof']),
   make('S-5', 'One active corpus preserves private stores and bounded recovery', 'RefreshLifecycle', ['CorpusGeneration'], ['kb/update-storage-transaction.mjs', 'kb/forge-update.mjs', 'kb/brain-profile.mjs', 'bin/install.mjs'], ['tests/unit/update-storage-transaction.test.mjs', 'tests/unit/brain-profile.test.mjs'], ['ruvnet-brain-update-storage-transaction', 'ruvnet-brain-installed-profile']),
   make('S-6', 'Every supported OS and host loader converges on exact public bytes', 'HostConvergence', ['PublicVerification'], ['scripts/host-registry.mjs', 'scripts/host-install-matrix.mjs', 'scripts/public-verification-aggregate.mjs'], ['tests/unit/host-registry.test.mjs', 'tests/integration/dual-host-install.test.mjs'], ['ruvnet-brain-host-registry', 'ruvnet-brain-public-verification-leaf']),
@@ -141,9 +141,29 @@ export function renderProductIntegrityTraceMarkdown(contract = validateProductIn
 }
 const valueAfter = (argv, flag) => { const index = argv.indexOf(flag); return index >= 0 ? argv[index + 1] : null; };
 export function runProductIntegrityCli(argv = process.argv.slice(2), io = { stdout: process.stdout }) {
-  const known = new Set(['--markdown', '--check-markdown', '--trace', '--source-sha', '--out', '--verify-trace']);
+  const known = new Set(['--markdown', '--check-markdown', '--check-source', '--trace', '--source-sha', '--out', '--verify-trace']);
   if (argv.some((arg) => arg.startsWith('--') && !known.has(arg))) throw new Error('unknown product integrity argument');
   if (!argv.length) { io.stdout.write(`${canonicalJson(validateProductIntegrityContract())}\n`); return 0; }
+  if (argv.length === 1 && argv[0] === '--check-source') {
+    const root = fs.realpathSync(io.root || fileURLToPath(new URL('..', import.meta.url)));
+    const missing = [], invalid = [];
+    const files = productIntegrityGovernedPaths();
+    for (const file of files) {
+      const absolute = path.join(root, file);
+      try {
+        const stat = fs.lstatSync(absolute);
+        const relative = path.relative(root, fs.realpathSync(absolute));
+        if (!stat.isFile() || stat.isSymbolicLink() || relative.startsWith(`..${path.sep}`)
+          || relative === '..' || path.isAbsolute(relative)) invalid.push(file);
+      } catch (error) {
+        (error.code === 'ENOENT' ? missing : invalid).push(file);
+      }
+    }
+    const verdict = missing.length || invalid.length ? 'FAIL' : 'PASS';
+    io.stdout.write(`${canonicalJson({ verdict, scope: 'source-presence', behaviorVerified: false,
+      checked: files.length, missing, invalid })}\n`);
+    return verdict === 'PASS' ? 0 : 1;
+  }
   if (argv.length === 1 && argv[0] === '--markdown') { io.stdout.write(renderProductIntegrityTraceMarkdown()); return 0; }
   const check = valueAfter(argv, '--check-markdown');
   if (check) { if (fs.readFileSync(path.resolve(check), 'utf8') !== renderProductIntegrityTraceMarkdown()) throw new Error('generated traceability Markdown differs'); io.stdout.write('product integrity Markdown: PASS\n'); return 0; }

@@ -26,6 +26,9 @@ function run(home, args) {
 
 describe('installed Codex skill discovery', () => {
   const available = spawnSync(CODEX, ['--version'], { encoding: 'utf8' }).status === 0;
+  if (!available && process.env.RUVNET_REQUIRE_CODEX_DISCOVERY === '1') {
+    throw new Error(`required Codex CLI is unavailable: ${CODEX}`);
+  }
   const test = available ? it : it.skip;
 
   test('exposes self-contained native Console and What is New skills through the real plugin loader', () => {

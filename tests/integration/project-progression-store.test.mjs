@@ -91,6 +91,34 @@ afterEach(() => {
 });
 
 describe('managed ProjectProgression append and readback', () => {
+  it('accepts redacted state through capture, exact readback, and durable outbox commit', () => {
+    const projectRoot = temporaryProject();
+    const fake = memoryRunner();
+    const bridge = new ProjectProgressionStore({
+      projectDir: projectRoot,
+      rufloBinary: '/managed/global/ruflo',
+      runner: fake.runner,
+    });
+    const snapshot = progression(projectRoot, {
+      completeProjectState: {
+        ...progression(projectRoot).completeProjectState,
+        decisions: [{ apiKey: 'fictional-key-material', outcome: 'authentication failed' }],
+        failures: ['password=fictional-password; token=fictional-token'],
+      },
+    });
+
+    const receipt = bridge.capture(snapshot);
+
+    expect(receipt.readbackDigest).toBe(snapshot.payloadDigest);
+    expect(JSON.parse(fake.rows.get(`${NAMESPACE}/${snapshot.eventKey}`))).toEqual(snapshot);
+    expect(bridge.outbox.pendingSnapshots()).toEqual([]);
+    const persisted = fs.readFileSync(bridge.outbox.path, 'utf8');
+    expect(persisted).toContain('[REDACTED:api-key]');
+    expect(persisted).not.toContain('fictional-key-material');
+    expect(persisted).not.toContain('fictional-password');
+    expect(persisted).not.toContain('fictional-token');
+  });
+
   it('fsyncs the outbox, invokes literal managed Ruflo argv, exact-retrieves, then commits', () => {
     const projectRoot = temporaryProject();
     const outboxPath = path.join(projectRoot, '.swarm', 'project-progression-outbox.jsonl');
@@ -237,9 +265,23 @@ describe('managed ProjectProgression append and readback', () => {
       'memory', 'init', '--backend', 'agentdb', '--path', resolution.canonicalAgentDbPath,
     ], { cwd: projectRoot, env, encoding: 'utf8', timeout: 120_000 });
     expect(initialized.status, initialized.stderr || initialized.stdout).toBe(0);
+    const observed = [];
     const bridge = new ProjectProgressionStore({
       projectDir: projectRoot,
       rufloBinary: ruflo,
+      runner(binary, args, options) {
+        const started = Date.now();
+        const result = spawnSync(binary, args, options);
+        if (['list', 'retrieve'].includes(args[1])) {
+          let parsed;
+          try { parsed = JSON.parse(result.stdout); } catch { /* reported below, never stripped */ }
+          observed.push({ command: args[1], ...(args.includes('--limit') ? { limit: flag(args, '--limit') } : {}), status: result.status,
+            elapsedMs: Date.now() - started,
+            stdoutShape: Array.isArray(parsed) ? 'array' : parsed && typeof parsed === 'object' ? 'object' : 'not-json',
+            stderrFirstLine: String(result.stderr || '').split('\n')[0].slice(0, 160) });
+        }
+        return result;
+      },
       clock: () => '2026-08-22T17:30:01.000Z',
     });
     const snapshot = progression(projectRoot);
@@ -258,5 +300,33 @@ describe('managed ProjectProgression append and readback', () => {
       alreadyStored: true,
     });
     expect(bridge.replay()).toEqual([]);
+    const successor = progression(projectRoot, { sequence: 2, dedupId: 'turn-b:tool-b:post',
+      parentEventKeys: [snapshot.eventKey] });
+    bridge.capture(successor);
+    const restored = bridge.restoreLatest({ pageSize: 1 });
+    expect(restored.payload.heads).toEqual([successor.eventKey]);
+    expect(restored.payload.evidence).toMatchObject({ structurallyEnumerated: 2, exactRetrieved: 2 });
+    expect(observed.every((row) => row.stdoutShape !== 'not-json')).toBe(true);
+    console.info(JSON.stringify({ proof: 'global-ruflo-disposable-store', binary: ruflo, observations: observed }));
+    // Capability probe only: runtime restoration still uses exact-key readback. Export has no
+    // --path option, so bind both native resolver environment inputs to this disposable store.
+    // The default bridge selects sibling agentdb-memory.db when export omits dbPath; explicitly
+    // selecting Ruflo's supported fallback is required to read the canonical memory.db here.
+    const output = path.join(projectRoot, 'progression-export.json');
+    const started = Date.now();
+    const exported = spawnSync(ruflo, ['memory', 'export', '--output', output,
+      '--namespace', NAMESPACE, '--format', 'json'], {
+      cwd: projectRoot, encoding: 'utf8', timeout: 120_000,
+      env: { ...env, CLAUDE_FLOW_DISABLE_BRIDGE: '1', CLAUDE_FLOW_DB_PATH: resolution.canonicalAgentDbPath,
+        CLAUDE_FLOW_MEMORY_PATH: path.dirname(resolution.canonicalAgentDbPath) },
+    });
+    expect(exported.status, exported.stderr || exported.stdout).toBe(0);
+    const data = JSON.parse(fs.readFileSync(output, 'utf8'));
+    expect(data).toMatchObject({ schema: 'ruflo-memory-export/v1', count: 2, namespace: NAMESPACE });
+    const values = new Map(data.entries.map((entry) => [entry.key, JSON.parse(entry.value)]));
+    expect(digestCanonical(values.get(snapshot.eventKey))).toBe(digestCanonical(snapshot));
+    expect(digestCanonical(values.get(successor.eventKey))).toBe(digestCanonical(successor));
+    console.info(JSON.stringify({ proof: 'global-ruflo-export-capability-only', bridge: 'disabled', elapsedMs: Date.now() - started,
+      exactValues: values.size, schema: data.schema, hasTotal: Object.hasOwn(data, 'total') }));
   }, 180_000);
 });

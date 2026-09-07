@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { NIGHTLY_LABEL, launchdPlist, nightlyArtifact } from '../../plugin/scripts/nightly-scheduler.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const read = (file) => fs.readFileSync(path.join(ROOT, file), 'utf8');
@@ -17,10 +18,22 @@ describe('retired primary-checkout source writer', () => {
   });
 
   it('keeps the installed-cache updater as the one supported LaunchAgent', () => {
-    const installer = read('bin/install.mjs');
-    expect(installer).toContain("const NIGHTLY_LABEL = 'com.ruvnet.brain-update'");
-    expect(installer).toContain("path.join(os.homedir(), '.npm-global', 'bin')");
-    expect(installer).toContain("path.join(os.homedir(), '.local', 'bin')");
+    const home = path.resolve('fixture-scheduler-home');
+    const kbDir = path.join(home, '.cache', 'ruvnet-brain', 'kb');
+    const record = { identity: NIGHTLY_LABEL, nodePath: process.execPath,
+      runnerPath: path.join(home, '.cache', 'ruvnet-brain', 'scheduler', `nightly-refresh-${'a'.repeat(64)}.mjs`),
+      recordPath: path.join(home, '.cache', 'ruvnet-brain', 'scheduler', 'registration.json') };
+    expect(NIGHTLY_LABEL).toBe('com.ruvnet.brain-update');
+    expect(nightlyArtifact({ platform: 'darwin', env: { HOME: home }, kbDir })).toMatchObject({
+      kind: 'launchd', label: NIGHTLY_LABEL, path: path.join(home, 'Library', 'LaunchAgents', `${NIGHTLY_LABEL}.plist`),
+    });
+    const plist = launchdPlist(record, { env: { HOME: home }, kbDir, logPath: path.join(kbDir, 'update.log') });
+    const argv = [...plist.match(/<key>ProgramArguments<\/key><array>([\s\S]*?)<\/array>/)[1]
+      .matchAll(/<string>(.*?)<\/string>/g)].map((match) => match[1]);
+    expect(argv).toEqual([record.nodePath, record.runnerPath]);
+    expect(plist).toContain(path.join(home, '.npm-global', 'bin'));
+    expect(plist).toContain(path.join(home, '.local', 'bin'));
+    expect(argv.some((arg) => /nightly-wrapper|self-update|npx/.test(arg))).toBe(false);
   });
 
   it('guards the wrapper before every executable source mutation', () => {

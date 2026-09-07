@@ -1,10 +1,16 @@
+import crypto from 'node:crypto';
+import { nativeNightlyProofFixture } from '../helpers/native-nightly-proof-fixture.mjs';
 import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { digest, releaseCoverageGenerationFor } from '../../scripts/coverage-integrity.mjs';
 import { sealRetrievalQueryEvidence } from '../../scripts/retrieval-canary.mjs';
 import { buildHostRegistry } from '../../scripts/host-registry.mjs';
 import { transactionIdFor } from '../../scripts/release-transaction.mjs';
-import { createPublicVerificationLane } from '../../scripts/public-verification-lane.mjs';
+import { createPublicVerificationLane, resolveVerifierSha } from '../../scripts/public-verification-lane.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const artifactSha256 = 'a'.repeat(64);
@@ -79,6 +85,7 @@ function plan(releaseCoverage) {
 }
 
 function fixture() {
+  const keys = crypto.generateKeyPairSync('ed25519');
   const releaseCoverage = coverage();
   const retrievalPlan = plan(releaseCoverage);
   const identity = {
@@ -98,6 +105,10 @@ function fixture() {
     installed, brain: { status: 'PASS', selfStore: true },
     postPublicationChecks: [{ name: 'published-surface-probe', status: 'completed', conclusion: 'success', sha: sourceSha }] };
   const adapter = {
+    async runNativeNightly({ workflowRunId }) {
+      return nativeNightlyProofFixture({ platform: 'linux', version: identity.version, sourceSha,
+        packageSha256: artifactSha256, bundleSha256, workflowRunId, privateKey: keys.privateKey });
+    },
     async searchInstalled({ query }) {
       const expected = retrievalPlan.cases.find((row) => row.query === query).expected;
       return [{ repo: expected.repo, path: expected.path }];
@@ -106,11 +117,37 @@ function fixture() {
       return { resolved: true, evidence: { passageSha256: expected.passageSha256, passageFileSha256: '6'.repeat(64) } };
     },
   };
-  return { releaseCoverage, retrievalPlan, identity, candidate, publication, adapter,
+  return { workflowRunId: '12345', publicKey: keys.publicKey, releaseCoverage, retrievalPlan, identity, candidate, publication, adapter,
     hostRegistry: buildHostRegistry({ root: ROOT }) };
 }
 
 describe('public verification OS lane', () => {
+  it('verifies the actual Git checkout and rejects claimed SHA or tracked-byte drift', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'verifier-sha-'));
+    const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+    try {
+      git('init', '-q');
+      fs.writeFileSync(path.join(root, 'source.mjs'), 'export const value = 1;');
+      git('add', 'source.mjs');
+      git('-c', 'user.name=Verifier Test', '-c', 'user.email=verifier@example.invalid',
+        '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'fixture');
+      const sha = git('rev-parse', 'HEAD');
+      expect(resolveVerifierSha(root, sha)).toBe(sha);
+      expect(() => resolveVerifierSha(root, '0'.repeat(40))).toThrow(/differs/);
+      fs.writeFileSync(path.join(root, 'source.mjs'), 'export const value = 2;');
+      expect(() => resolveVerifierSha(root, sha)).toThrow(/tracked changes/);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+  it('binds a recovery verifier independently of immutable candidate and retrieval identities', async () => {
+    const f = fixture();
+    const verifierSha = '9'.repeat(40);
+    const rows = await createPublicVerificationLane({ os: 'linux', ...f, verifierSha,
+      coverageIdentity: { sha256: digest(f.releaseCoverage), bytes: 100 } });
+    expect(rows.every((row) => row.verifierSha === verifierSha && row.sourceSha === sourceSha
+      && row.retrieval.sourceSha === sourceSha)).toBe(true);
+    await expect(createPublicVerificationLane({ os: 'linux', ...f, verifierSha: 'main',
+      coverageIdentity: { sha256: digest(f.releaseCoverage), bytes: 100 } })).rejects.toThrow(/verifier/);
+  });
   it('produces exactly three source-bound host leaves from public bytes and canaries', async () => {
     const f = fixture();
     const requested = [];
@@ -126,6 +163,20 @@ describe('public verification OS lane', () => {
     expect(leaves.every(({ retrieval }) => retrieval.metrics.recallAt10 === 1
       && retrieval.metrics.deltaCitationRate === 1)).toBe(true);
     expect(requested).toEqual(Array(6).fill(10));
+  });
+
+  it('requires native evidence and invokes its producer once for dual mode only', async () => {
+    const f = fixture();
+    const calls = [];
+    const run = f.adapter.runNativeNightly;
+    f.adapter.runNativeNightly = async (input) => { calls.push(input); return run(input); };
+    const options = { os: 'linux', ...f, coverageIdentity: { sha256: digest(f.releaseCoverage), bytes: 100 } };
+    const rows = await createPublicVerificationLane(options);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].workflowRunId).toBe(String(f.workflowRunId));
+    expect(rows.filter((row) => row.nativeNightly)).toHaveLength(1);
+    f.adapter.runNativeNightly = async () => null;
+    await expect(createPublicVerificationLane(options)).rejects.toThrow(/native nightly/);
   });
 
   it('preserves every mode failure and its full canary metrics in one receipt', async () => {

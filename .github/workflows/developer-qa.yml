@@ -1,0 +1,24 @@
+name: developer-qa
+# Broad historical units remain available as diagnostics, outside release qualification.
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  full-unit-diagnostics:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run convergence:write
+      - run: node node_modules/vitest/vitest.mjs run tests/unit

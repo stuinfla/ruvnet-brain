@@ -3,7 +3,9 @@ id: ADR-056
 title: Pay the debt, then wire the gate — document currency without a ratchet
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-30
+updated: 2026-09-07
+version: 1.1.1
+reviewed_digest: a6a774d6cea3
 impl: wired
 governs:
   - scripts/wired-check.mjs
@@ -19,12 +21,40 @@ relates: [ADR-034, ADR-024, ADR-037, ADR-009, ADR-020]
 # ADR-056: Pay the debt, then wire the gate
 
 **Status**: Proposed
-**Date**: 2026-07-27 · **Last updated**: 2026-08-01 · **Why**: v3 closes a changed-scope escape that
-let governed code move without bringing its ADR into the blocking set; v2 followed an adversarial
-duel in which v1 scored
-scored 33/100 and 52/100 by two independent models and largely rewritten; record in §Duel
+**Date**: 2026-07-27 · **Last updated**: 2026-09-05 · **Why**: shared currency findings and opt-in
+managed stamps now have explicit source-bound behavior; historical design review remains in §Duel.
 **Implementation**: wired (DERIVED, not claimed — §§1, 2, 5, 7 are built, wired and tested; §8's
-session-start notice and §3's opt-in hook widening are NOT) · **Verified in sync**: never
+session-start notice is not established by this review) · **Verified in sync**: never
+
+### Recovery implementation review — 2026-09-05
+
+The same-commit rule below now has a pre-commit counterpart: an explicit `reviewed_digest` and
+source-linked currency-log review row bind the current document and governed working bytes through
+the existing currency digest. This records examination and findings, not normative agreement or
+verification. It clears only missing-review inference; dirty state or a changed date alone clears
+nothing, and subsequent source/body edits expire the binding. Other violations remain blocking.
+There is no automatic review writer and no additional hook. ADR-034's current-boundary section
+names the proposal/implementation differences that this review does not conceal.
+
+For §4, distinguish the sweep's Git-derived dates from the ongoing stamper: normal refresh stamps
+the current edit date, and explicit managed mode can use observed modification time. Neither is a
+claim that Git recorded that edit or that a semantic review occurred.
+
+The existing edit gate now imports `resolveGoverned()` and `blockingFindings()` from the same
+`scripts/doc-currency.mjs` used at push time. Scalar and list declarations, explicit globs, and exact
+paths share one meaning; a directory declaration does not acquire recursive ownership. It refuses
+only already-stale debt in its existing narrow policy, emits the authoritative finding message,
+allows Superseded warnings, and fails open when the currency tooling cannot be read or evaluated.
+This does not turn every warning into a block or install another host hook.
+
+`plugin/scripts/md-stamp.mjs` keeps default refresh-only behavior. Explicit
+`RUVNET_MD_STAMP=ensure` uses `computeManagedStamp()` to maintain creation/update metadata and a
+content digest: repeated unchanged input is idempotent, unknown creation provenance stays unknown,
+existing creation history is preserved, and `updated_pinned: true` prevents changes. YAML metadata
+stays inside the leading frontmatter block; unknown document shapes and generated/excluded trees
+are not stamped. An edit timestamp/content hash is not a semantic `verified_digest`. The canonical
+currency digest separately includes actual governed working bytes and the normative document body.
+No global configuration or automatic host activation is inferred from these functions existing.
 
 ## Context
 
@@ -303,6 +333,12 @@ Both models credited exactly one section of v1 as correct and correctly-sized: *
 fix** — which is the one section that was already built.
 
 ## Currency log
+
+| 2026-09-05 | Reviewed source a6a774d6cea3; findings recorded, not semantic verification. | `scripts/wired-check.mjs`, `scripts/doc-currency.mjs`, `scripts/git-hooks/pre-push`, and `plugin/scripts/md-stamp.mjs` were fully examined by the assigned audit reviewer. Root checked the source-bound review integration and focused tests. This records examination only; the Proposed decision, unproven session-start notice, and distinct edit-date versus review-date meanings remain explicit. |
+
+| 2026-09-05 | Added a pre-commit exact-byte review boundary without a second gate or automatic semantic approval. | `scripts/doc-currency.mjs` reuses its canonical digest; `tests/unit/doc-currency-review.test.mjs` exercises real Git history, staged/unstaged changes, missing evidence, and independent overclaim refusal. `plugin/scripts/md-stamp.mjs` remains an edit-metadata producer, never the review authority. |
+
+| 2026-09-05 | Re-read the canonical edit/push boundary and managed-stamp implementation without widening stale-debt policy or claiming this Proposed decision Accepted. | `plugin/scripts/adr-currency-gate.mjs` reuses `scripts/doc-currency.mjs` resolution and blocking findings; real-Git parity covers scalar/list/glob ownership and Superseded warnings. `plugin/scripts/md-stamp.mjs` explicitly opts into managed metadata, preserves pins/creation history and frontmatter, and distinguishes unchanged content from an edit. The recovery review establishes source behavior, not universal host activation or the unproven session-start notice. Version 1.0.0 starts explicit revision tracking without rewriting prior history. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|

@@ -14,15 +14,24 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { continuationProjectIdentity } from '../../plugin/scripts/continuation-objective.mjs';
 
 const GATE = path.resolve(import.meta.dirname, '../../plugin/scripts/continuation-gate.mjs');
+function preferences(items, cwd, sessionId = 's-test') {
+  const item = items.find((row) => !row.done);
+  const identity = continuationProjectIdentity(cwd);
+  return item ? { schemaVersion: 1, kind: 'continuation-preferences', authoritative: false,
+    id: 'fixture-objective', text: item.text, at: item.at, state: 'active',
+    projectId: identity.projectId, worktreeIds: [identity.worktreeId], sessionIds: [sessionId],
+    authorization: { kind: 'user', reference: 'fixture-explicit-user-request' } } : null;
+}
 
 /** Run the gate with an isolated ledger, returning {out, forced, items}. Never touches the real one. */
 function runGate(items, hookInput = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cont-gate-'));
   const ledger = path.join(dir, 'ledger.json');
-  fs.writeFileSync(ledger, JSON.stringify({ items }));
-  const payload = JSON.stringify({ session_id: 's-test', stop_hook_active: false, cwd: dir, ...hookInput });
+  fs.writeFileSync(ledger, JSON.stringify({ items, objective: preferences(items, dir) }));
+  const payload = JSON.stringify({ hook_event_name: 'Stop', session_id: 's-test', stop_hook_active: false, cwd: dir, ...hookInput });
   let out = '';
   try {
     out = execFileSync(process.execPath, [GATE], {
@@ -101,11 +110,12 @@ describe('continuation-gate — forces the turn to continue while work is open',
   it('names the event so the envelope is not discarded', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cont-gate-ev-'));
     const ledger = path.join(dir, 'l.json');
-    fs.writeFileSync(ledger, JSON.stringify({ items: [{ text: 'x', at: hoursAgo(1), done: false }] }));
+    const items = [{ text: 'x', at: hoursAgo(1), done: false }];
+    fs.writeFileSync(ledger, JSON.stringify({ items, objective: preferences(items, dir, 's') }));
     let out = '';
     try {
       out = execFileSync(process.execPath, [GATE], {
-        input: JSON.stringify({ session_id: 's', stop_hook_active: false, cwd: dir }),
+        input: JSON.stringify({ hook_event_name: 'Stop', session_id: 's', stop_hook_active: false, cwd: dir }),
         encoding: 'utf8',
         env: {
         ...process.env,

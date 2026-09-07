@@ -2,9 +2,73 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import readline from 'node:readline';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest, validateCoverageLedger } from './coverage-integrity.mjs';
+
+// Both release phases resolve against an explicit installed context, never the checkout.
+export async function resolveInstalledCanaryCitation({ kbDir, matched, expected, passageFileDigests = new Map() }) {
+  if (!path.isAbsolute(kbDir || '')) throw new Error('installed canary KB path must be absolute');
+  if (String(matched?.repo || '').toLowerCase() !== expected.repo || matched?.path !== expected.path) return { resolved: false };
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(expected.repo)) throw new Error('installed citation repository violates containment');
+  const rootStat = fs.lstatSync(kbDir);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || fs.realpathSync(kbDir) !== path.resolve(kbDir)) {
+    throw new Error('installed canary KB root or parent is a symlink; canonical containment required');
+  }
+  const files = [path.join(kbDir, `${expected.repo}.passages.jsonl`), path.join(kbDir, `${expected.repo}.big.passages.jsonl`)]
+    .filter((file) => { try { fs.lstatSync(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } });
+  for (const file of files) {
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink() || path.dirname(fs.realpathSync(file)) !== kbDir) {
+      throw new Error('installed citation file is a symlink or violates containment');
+    }
+    const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+    const stream = fs.createReadStream(file, { fd, autoClose: false });
+    const hash = crypto.createHash('sha256');
+    stream.on('data', (bytes) => hash.update(bytes));
+    const rows = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    let passageSha256 = null;
+    try {
+      for await (const line of rows) {
+        let record;
+        try { record = JSON.parse(line); } catch { continue; }
+        if (record?.path !== expected.path) continue;
+        if (digest(record) !== expected.passageSha256) continue;
+        const text = record.fullText || record.text;
+        if (typeof text !== 'string' || !text || typeof matched.text !== 'string' || !matched.text.includes(text)) continue;
+        passageSha256 = expected.passageSha256;
+      }
+      const after = fs.lstatSync(file);
+      const opened = fs.fstatSync(fd);
+      if (after.isSymbolicLink() || after.dev !== stat.dev || after.ino !== stat.ino
+        || opened.ino !== stat.ino || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs
+        || after.ctimeMs !== stat.ctimeMs) throw new Error('installed citation changed during verification');
+      const passageFileSha256 = hash.digest('hex');
+      passageFileDigests.set(file, passageFileSha256);
+      if (passageSha256) return { resolved: true, evidence: { passageSha256, passageFileSha256,
+        hitContentSha256: crypto.createHash('sha256').update(matched.text).digest('hex') } };
+    } finally {
+      rows.close();
+      await new Promise((resolve, reject) => stream.close((error) => error ? reject(error) : resolve()));
+    }
+  }
+  return { resolved: false };
+}
+
+function expectedSources(expected) {
+  return [{ path: expected.path, passageSha256: expected.passageSha256 }, ...(expected.alternatives || [])];
+}
+function validExpectedSources(expected) {
+  if (!expected || !['passageSha256,path', 'alternatives,passageSha256,path'].includes(Object.keys(expected).sort().join(','))) return false;
+  if (expected.alternatives !== undefined && (!Array.isArray(expected.alternatives)
+    || expected.alternatives.length < 1 || expected.alternatives.length > 8)) return false;
+  const sources = expectedSources(expected);
+  return new Set(sources.map((source) => source?.path)).size === sources.length && sources.every((source) =>
+    source && Object.keys(source).sort().join(',') === 'passageSha256,path'
+    && typeof source.path === 'string' && source.path && !path.isAbsolute(source.path)
+    && !source.path.split(/[\\/]/).includes('..') && HEX64.test(String(source.passageSha256 || '')));
+}
 
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -96,10 +160,7 @@ export function validateRetrievalQueryEvidence(evidence) {
     if (Object.keys(row || {}).sort().join(',') !== 'expected,query,recordSha256'
       || typeof row.query !== 'string' || row.query !== row.query.trim().replace(/\s+/g, ' ')
       || normalized.length < 24 || seenQueries.has(normalized)
-      || !expected || Object.keys(expected).sort().join(',') !== 'passageSha256,path'
-      || typeof expected.path !== 'string' || !expected.path || path.isAbsolute(expected.path)
-      || expected.path.split(/[\\/]/).includes('..')
-      || !HEX64.test(String(expected.passageSha256 || ''))
+      || !validExpectedSources(expected)
       || row.recordSha256 !== digest({ store, query: row.query, expected })) {
       throw new Error(`independent retrieval query evidence for ${store} is malformed`);
     }
@@ -187,7 +248,8 @@ export function validateRetrievalCanaryPlan(plan) {
     throw new Error('oracle denominator differs from eligible coverage');
   }
   if (new Set(ids).size !== ids.length) throw new Error('retrieval canary plan has duplicate case ids');
-  if ((!plan.cases.some(({ cohort }) => cohort === 'delta') && plan.noDelta !== true)
+  const hasDelta = plan.cases.some(({ cohort }) => cohort === 'delta');
+  if ((!hasDelta && plan.noDelta !== true) || (hasDelta && plan.noDelta === true)
     || !plan.cases.some(({ cohort }) => cohort === 'legacy')) {
     throw new Error('retrieval canary plan requires delta and legacy cohorts');
   }
@@ -316,12 +378,15 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
     if (!strata.has(stratum)) strata.set(stratum, []);
     strata.get(stratum).push(entry);
   });
+  // Source-only releases retain the same corpus sample; the plan still seals exact release bytes.
+  const samplingGeneration = coverage.kind === 'ruvnet-brain-release-coverage'
+    ? coverage.corpusCoverage.coverageGeneration : coverageGeneration;
   const sampleCount = Math.min(legacyPool.length, legacySampleSize ?? Math.max(10, Math.ceil(eligible.length * 0.1)));
   if (sampleCount < strata.size) throw new Error(`legacy sample must cover all ${strata.size} passage-count strata`);
   const selected = [];
   for (const [stratum, entries] of strata) {
-    entries.sort((a, b) => digest(`${coverageGeneration}:${stratum}:${storeOf(a.row)}`)
-      .localeCompare(digest(`${coverageGeneration}:${stratum}:${storeOf(b.row)}`)));
+    entries.sort((a, b) => digest(`${samplingGeneration}:${stratum}:${storeOf(a.row)}`)
+      .localeCompare(digest(`${samplingGeneration}:${stratum}:${storeOf(b.row)}`)));
     selected.push({ ...entries.shift(), stratum });
   }
   while (selected.length < sampleCount) {
@@ -338,9 +403,8 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
       const store = storeOf(row);
       const observedPassageCount = passageCount ?? passages.get(store).length;
       const evidence = queryEvidence.queries[store];
-      const matches = passages.get(store).filter((row) => row.path === evidence?.expected?.path
-        && digest(row) === evidence.expected.passageSha256);
-      if (!evidence || matches.length !== 1) {
+      if (!evidence || expectedSources(evidence.expected).some((source) =>
+        passages.get(store).filter((row) => row.path === source.path && digest(row) === source.passageSha256).length !== 1)) {
         throw new Error(`${store} has no sealed independent query evidence`);
       }
       return {
@@ -430,10 +494,12 @@ export function validateRetrievalCanaryReceipt(receipt, { plan, requireAcceptanc
   for (const row of receipt.cases) {
     const expected = plan.cases.find(({ id }) => id === row.id)?.expected;
     const ranked = row.retrievalHit ? row.citations?.[row.rank - 1] : null;
+    const accepted = expectedSources(expected).find((source) => source.path === ranked?.path);
     if (row.retrievalHit && (String(ranked?.repo || '').toLowerCase() !== expected.repo
-      || ranked?.path !== expected.path
-      || (row.citationResolved === true && (row.citationEvidence?.passageSha256 !== expected.passageSha256
-        || !HEX64.test(String(row.citationEvidence?.passageFileSha256 || '')))))) {
+      || !accepted
+      || (row.citationResolved === true && (row.citationEvidence?.passageSha256 !== accepted.passageSha256
+        || !HEX64.test(String(row.citationEvidence?.passageFileSha256 || ''))
+        || (ranked.contentSha256 !== undefined && row.citationEvidence?.hitContentSha256 !== ranked.contentSha256))))) {
       throw new Error(`retrieval canary ${row.id} hit or citation evidence differs from the sealed plan`);
     }
   }
@@ -448,7 +514,9 @@ export function validateRetrievalCanaryReceipt(receipt, { plan, requireAcceptanc
     deltaHits: delta.filter(({ retrievalHit }) => retrievalHit === true).length,
     deltaCitations: delta.filter(({ retrievalHit, citationResolved }) => retrievalHit === true && citationResolved === true).length,
     recallAt10: hits / receipt.cases.length,
-    deltaCitationRate: delta.length ? delta.filter(({ retrievalHit, citationResolved }) => retrievalHit === true && citationResolved === true).length / delta.length : 0,
+    deltaCitationRate: delta.length
+      ? delta.filter(({ retrievalHit, citationResolved }) => retrievalHit === true && citationResolved === true).length / delta.length
+      : plan.noDelta === true ? 1 : 0,
     unknown,
     skipped,
   };
@@ -478,12 +546,14 @@ export async function runRetrievalCanaries({ plan, sourceSha, artifactSha256, ca
         const rows = resultRows(await search({ query: canary.query, k: 10 }));
         const top = rows.slice(0, 10);
         const rank = top.findIndex((row) => String(row?.repo || '').toLowerCase() === canary.expected.repo
-          && row?.path === canary.expected.path);
+          && expectedSources(canary.expected).some((source) => row?.path === source.path));
         const matched = rank >= 0 ? top[rank] : null;
-        const resolved = matched ? await citationResolver(matched, canary.expected) : { resolved: false };
+        const accepted = matched ? expectedSources(canary.expected).find((source) => source.path === matched.path) : null;
+        const resolved = matched ? await citationResolver(matched, { repo: canary.expected.repo, ...accepted }) : { resolved: false };
         cases[index] = { id: canary.id, cohort: canary.cohort, status: 'COMPLETED', retrievalHit: rank >= 0,
           citationResolved: resolved?.resolved === true, citationEvidence: resolved?.evidence || null,
-          rank: rank >= 0 ? rank + 1 : null, citations: top.map(({ repo, path: hitPath }) => ({ repo, path: hitPath })) };
+          rank: rank >= 0 ? rank + 1 : null, citations: top.map(({ repo, path: hitPath, contentSha256 }) => ({ repo, path: hitPath,
+            ...(contentSha256 ? { contentSha256 } : {}) })) };
       } catch (error) {
         cases[index] = { id: canary.id, cohort: canary.cohort, status: 'UNKNOWN', retrievalHit: false,
           citationResolved: false, citationEvidence: null, rank: null, citations: [], error: error.message };
@@ -494,7 +564,10 @@ export async function runRetrievalCanaries({ plan, sourceSha, artifactSha256, ca
   const hits = cases.filter(({ retrievalHit }) => retrievalHit).length;
   const metrics = { total: cases.length, hits, deltaTotal: delta.length, deltaHits: delta.filter(({ retrievalHit }) => retrievalHit).length,
     deltaCitations: delta.filter(({ retrievalHit, citationResolved }) => retrievalHit && citationResolved).length,
-    recallAt10: hits / cases.length, deltaCitationRate: delta.length ? delta.filter(({ retrievalHit, citationResolved }) => retrievalHit && citationResolved).length / delta.length : 0,
+    recallAt10: hits / cases.length,
+    deltaCitationRate: delta.length
+      ? delta.filter(({ retrievalHit, citationResolved }) => retrievalHit && citationResolved).length / delta.length
+      : plan.noDelta === true ? 1 : 0,
     unknown: cases.filter(({ status }) => status === 'UNKNOWN').length,
     skipped: cases.filter(({ status }) => status === 'SKIPPED').length };
   const payload = { schemaVersion: 1, kind: 'ruvnet-brain-retrieval-canary-receipt', sourceSha, artifactSha256,

@@ -7,7 +7,7 @@ name: stranger-matrix
 #
 # Five images, each asserting the SAME three things (scripts/ci/stranger-scenario.mjs is the one
 # shared driver — reused across all five, not reimplemented per OS):
-#   (a) healthy        -> exit 0 AND at least one hook FIRED through the INSTALLED registration
+#   (a) healthy        -> exit 0 AND automatic-hook retirement through the INSTALLED registries
 #                          (fires the REAL plugin/ tree at this SHA, via the REAL external
 #                          process-group watchdog scripts/selfcheck.mjs already ships)
 #   (b) seeded-broken   -> forge-mcp-all.mjs deleted from the fixture bundle -> exit NON-ZERO (M-D8a)
@@ -17,7 +17,7 @@ name: stranger-matrix
 #
 # The hostile cell ALSO runs a `strict-ungrounded` scenario proving RUVNET_STRICT_INSTALL=1 (the one
 # place a normally non-fatal grounding-smoke failure becomes fatal) is real, and the ubuntu cell
-# ADDITIONALLY proves M-D8c (a hook that sleeps past its declared timeout makes the battery go red)
+# ADDITIONALLY proves M-D8c (a forbidden automatic registration is rejected without execution)
 # against the real installed surface.
 #
 # THE FINDING THIS GATE CAUGHT FIRST, AND ITS CLOSURE (kept as the record, not deleted — the point
@@ -106,14 +106,14 @@ jobs:
           cd "$RUNNER_TEMP/proj"
           echo '{}' > package.json
           npm install --no-audit --no-fund "$RUNNER_TEMP"/ruvnet-brain-*.tgz
-      - name: (a)+(c) healthy image — exit 0, >=1 real hook fire, no author-local settings.json
+      - name: (a)+(c) healthy image — exit 0, verified zero automatic registrations, no author-local settings.json
         run: |
           node scripts/ci/stranger-scenario.mjs \
             --scenario healthy \
             --installed "$RUNNER_TEMP/proj/node_modules/ruvnet-brain" \
             --home "$RUNNER_TEMP/home-healthy" \
             --plugin-src "$RUNNER_TEMP/proj/node_modules/ruvnet-brain/plugin"
-      - name: M-D8c — a hook that sleeps past its declared timeout makes the battery go RED
+      - name: M-D8c — a forbidden installed hook is rejected without executing its body
         if: always()
         run: |
           node scripts/ci/mutate-hook-timeout.mjs \
@@ -149,7 +149,7 @@ jobs:
           cd "$RUNNER_TEMP/proj"
           echo '{}' > package.json
           npm install --no-audit --no-fund "$RUNNER_TEMP"/ruvnet-brain-*.tgz
-      - name: (a)+(c) healthy image — exit 0, >=1 real hook fire, no author-local settings.json
+      - name: (a)+(c) healthy image — exit 0, verified zero automatic registrations, no author-local settings.json
         run: |
           node scripts/ci/stranger-scenario.mjs \
             --scenario healthy \
@@ -199,7 +199,7 @@ jobs:
           cd "$RUNNER_TEMP/proj"
           echo '{}' > package.json
           npm install --no-audit --no-fund "$RUNNER_TEMP"/ruvnet-brain-*.tgz
-      - name: (a)+(c) healthy image — exit 0, >=1 real hook fire, no author-local settings.json
+      - name: (a)+(c) healthy image — exit 0, verified zero automatic registrations, no author-local settings.json
         run: |
           node scripts/ci/stranger-scenario.mjs \
             --scenario healthy \
@@ -242,7 +242,7 @@ jobs:
           '{}' | Set-Content -Path package.json
           $tgz = Get-ChildItem "$env:RUNNER_TEMP" -Filter 'ruvnet-brain-*.tgz' | Select-Object -First 1
           npm install --no-audit --no-fund $tgz.FullName
-      - name: (a)+(c) healthy image — exit 0, >=1 real hook fire, no author-local settings.json
+      - name: (a)+(c) healthy image — exit 0, verified zero automatic registrations, no author-local settings.json
         run: |
           node scripts/ci/stranger-scenario.mjs `
             --scenario healthy `
@@ -309,7 +309,7 @@ jobs:
           cd /tmp/ci-out/proj
           echo '{}' > package.json
           npm install --no-audit --no-fund /tmp/ci-out/ruvnet-brain-*.tgz
-      - name: (a)+(c) healthy image — HOME contains a space, exit 0, >=1 real hook fire, no author settings.json
+      - name: (a)+(c) healthy image — HOME contains a space, exit 0, verified zero automatic registrations, no author settings.json
         env:
           HTTPS_PROXY: http://127.0.0.1:9
           HTTP_PROXY: http://127.0.0.1:9

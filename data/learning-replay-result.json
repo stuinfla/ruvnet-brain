@@ -2,8 +2,8 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "PASS",
   "why": "3/3 runs passed (bar 2/3)",
-  "sha": "7785fa70011d223bcbc7cd3b409768d2f9de504f",
-  "at": "2026-08-19T13:05:30.332Z",
+  "sha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
+  "at": "2026-09-07T14:00:31.558Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -25,7 +25,7 @@
   "rate": 1,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 81,
+  "wallSeconds": 95.6,
   "premise": {
     "verified": true,
     "evidence": "-q, --query               Search query (required)"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1787144646939",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-7MsId1/brain-home/versions/d4-refresh-1787144646939",
+    "generation": "d4-refresh-1788789533488",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-nrVxLD/brain-home/versions/d4-refresh-1788789533488",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -83,7 +83,7 @@
           "exitOk": true,
           "retrieved": true,
           "why": "exit 0; output carries the seeded memory (matched \"note-caching\")",
-          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 3ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
+          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 4ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
         },
         "model": "gpt-5.6-sol",
         "forcedCommand": false,
@@ -91,16 +91,16 @@
         "firstToolIndex": 1,
         "lessonBeforeFirstToolCall": true,
         "transcript": {
-          "path": "data/learning-replay-transcripts/7785fa70011d223bcbc7cd3b409768d2f9de504f/7c49640b6d1f8ab4d89503c4b6f83668472f84454ae46295f5f414d5d93f9b95.json",
-          "sha256": "7c49640b6d1f8ab4d89503c4b6f83668472f84454ae46295f5f414d5d93f9b95",
-          "sourceSha": "7785fa70011d223bcbc7cd3b409768d2f9de504f",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/365f77af4432faaf4d8f954f2f5337459428c5073ab6d493103708aa7ad4e560.json",
+          "sha256": "365f77af4432faaf4d8f954f2f5337459428c5073ab6d493103708aa7ad4e560",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       },
       "control": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
+        "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
         "exec": {
           "ran": true,
           "argv": [
@@ -108,7 +108,8 @@
             "memory",
             "search",
             "caching strategy",
-            "--path"
+            "--path",
+            ".swarm/memory.db"
           ],
           "exit": 1,
           "exitOk": false,
@@ -119,9 +120,9 @@
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/7785fa70011d223bcbc7cd3b409768d2f9de504f/9597ccbe1942793d0abcc0b98ec4801d052c4bc8da344164216b08b7426af52f.json",
-          "sha256": "9597ccbe1942793d0abcc0b98ec4801d052c4bc8da344164216b08b7426af52f",
-          "sourceSha": "7785fa70011d223bcbc7cd3b409768d2f9de504f",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/c7f9fe395caebffd3ffa50b7c296548e44a0284e78341e4f7036ec9546a1cfaa.json",
+          "sha256": "c7f9fe395caebffd3ffa50b7c296548e44a0284e78341e4f7036ec9546a1cfaa",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       }
@@ -158,9 +159,9 @@
         "firstToolIndex": 1,
         "lessonBeforeFirstToolCall": true,
         "transcript": {
-          "path": "data/learning-replay-transcripts/7785fa70011d223bcbc7cd3b409768d2f9de504f/943baebb12fc48db444360214259eb5c5a0a5a8534c828e4a28e6ccd69372700.json",
-          "sha256": "943baebb12fc48db444360214259eb5c5a0a5a8534c828e4a28e6ccd69372700",
-          "sourceSha": "7785fa70011d223bcbc7cd3b409768d2f9de504f",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/632c02ed33859375fabbba839e669e3a5211c32954f08c5ca1fedd868d9cd22c.json",
+          "sha256": "632c02ed33859375fabbba839e669e3a5211c32954f08c5ca1fedd868d9cd22c",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       },
@@ -187,9 +188,9 @@
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/7785fa70011d223bcbc7cd3b409768d2f9de504f/efd514087b20d49ef514c4545d6c3b0136aa6fcc9350eb7aa67a1bdec40bb8b2.json",
-          "sha256": "efd514087b20d49ef514c4545d6c3b0136aa6fcc9350eb7aa67a1bdec40bb8b2",
-          "sourceSha": "7785fa70011d223bcbc7cd3b409768d2f9de504f",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/dbff71e2e11dbb5b023d31f5e9f1a8272d333e5d58814485874a2da0d3a5d5a7.json",
+          "sha256": "dbff71e2e11dbb5b023d31f5e9f1a8272d333e5d58814485874a2da0d3a5d5a7",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       }
@@ -218,7 +219,7 @@
           "exitOk": true,
           "retrieved": true,
           "why": "exit 0; output carries the seeded memory (matched \"note-caching\")",
-          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 4ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
+          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 5ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
         },
         "model": "gpt-5.6-sol",
         "forcedCommand": false,
@@ -226,16 +227,16 @@
         "firstToolIndex": 1,
         "lessonBeforeFirstToolCall": true,
         "transcript": {
-          "path": "data/learning-replay-transcripts/7785fa70011d223bcbc7cd3b409768d2f9de504f/39b372e2219aa787a0c15aee9f9f5c193b12b8112ae7a707cb8dc4d31cae4768.json",
-          "sha256": "39b372e2219aa787a0c15aee9f9f5c193b12b8112ae7a707cb8dc4d31cae4768",
-          "sourceSha": "7785fa70011d223bcbc7cd3b409768d2f9de504f",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/446edb563b792a02b9842fbe35a7eba3d7d4cc96b14178f7008f2358a6b32543.json",
+          "sha256": "446edb563b792a02b9842fbe35a7eba3d7d4cc96b14178f7008f2358a6b32543",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       },
       "control": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
+        "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
         "exec": {
           "ran": true,
           "argv": [
@@ -243,7 +244,8 @@
             "memory",
             "search",
             "caching strategy",
-            "--path"
+            "--path",
+            ".swarm/memory.db"
           ],
           "exit": 1,
           "exitOk": false,
@@ -254,9 +256,9 @@
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/7785fa70011d223bcbc7cd3b409768d2f9de504f/6cdb7ce5be08381d53f950d0fdd054bed0462bb73ad21826b7af75962ff505b1.json",
-          "sha256": "6cdb7ce5be08381d53f950d0fdd054bed0462bb73ad21826b7af75962ff505b1",
-          "sourceSha": "7785fa70011d223bcbc7cd3b409768d2f9de504f",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/793ddccd96b090ad7ba2cdae63b72413c0ed2c759c4b9f9af0ef14811582b302.json",
+          "sha256": "793ddccd96b090ad7ba2cdae63b72413c0ed2c759c4b9f9af0ef14811582b302",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       }

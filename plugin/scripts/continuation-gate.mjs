@@ -25,11 +25,14 @@
  * committed-to items with a done state — and if authorized work remains unfinished, it says so, in
  * the last place the model looks before going quiet.
  *
- * WHAT IT DOES, verified against code.claude.com/docs/en/hooks.md (2026-07-23, not recalled, ADR-043):
- * a Stop hook's `additionalContext` at exit 0 DOES force a continuation — under the same loop
- * protections as decision:block (the `stop_hook_active` input + the 8-consecutive-continuation cap). An
- * earlier version of this header claimed "a Stop hook cannot force another turn"; that was wrong. The
- * gate still exits 0 always — continuation is driven by the envelope, never by a non-zero exit code.
+ * CURRENT AUTHORITY: only explicitly scoped nonauthoritative continuation preferences request
+ * objective work. Historical incident notes below describe the former backlog-forcing behavior;
+ * repository observations are now stderr advisories, never permission to act. Answer-integrity
+ * correction remains independent, but cancellation/interruption and the host loop guard win.
+ *
+ * This file emits a Stop request envelope. Unit/subprocess tests prove that output, NOT native host
+ * continuation. No daemon, automatic preference writer, completion authority, or re-engagement
+ * bridge exists here. The existing stop_hook_active guard remains unchanged.
  *
  * FAILS OPEN ALWAYS. Exit 0 unconditionally. A gate that breaks a turn's completion because it
  * could not read a JSON file would be disabled within a day, and a disabled gate protects nothing.
@@ -43,11 +46,11 @@ import {
   buildCapabilityInventoryReceipt,
 } from './capability-inventory-receipt.mjs';
 import { auditCurrentCapabilityEvidence } from './capability-claim-evidence.mjs';
+import { continuationProjectIdentity, authorizedContinuationObjective } from './continuation-objective.mjs';
 
 const HOME = os.homedir();
 
-// The only exit code this file may ever use. A Stop hook that exits non-zero refuses to let the turn
-// end; this gate informs and never refuses, so every path below returns exactly this.
+// Always exit zero. Any host continuation request is expressed in the envelope, not exit status.
 const EXIT_ALLOW = 0;
 /**
  * PROJECT-SCOPED, because this runs machine-wide.
@@ -59,20 +62,10 @@ const EXIT_ALLOW = 0;
  * project so the three never see each other's work.
  */
 function projectKey() {
-  let dir = process.cwd();
-  // Walk up to the git root — the stable identity of a project, regardless of which subdirectory
-  // a hook happens to fire from. (A CWD-derived key was exactly the bug that scattered ledgers
-  // through users' project trees in issue #36.)
-  for (let i = 0; i < 12; i++) {
-    if (fs.existsSync(path.join(dir, '.git'))) break;
-    const up = path.dirname(dir);
-    if (up === dir) { dir = process.cwd(); break; }
-    dir = up;
-  }
-  return path.basename(dir).replace(/[^a-zA-Z0-9._-]/g, '_');
+  return continuationProjectIdentity(process.cwd())?.projectId.replace(':', '-') || 'unknown-project';
 }
 
-const LEDGER = process.env.RUVNET_WORK_LEDGER
+let LEDGER = process.env.RUVNET_WORK_LEDGER
   || path.join(HOME, '.config', 'ruvnet-brain', 'work-ledgers', `${projectKey()}.json`);
 
 /**
@@ -248,8 +241,16 @@ if (hookInput.__source !== 'stdin') process.exit(EXIT_ALLOW);
  */
 if (hookInput.stop_hook_active) process.exit(EXIT_ALLOW);
 
+if (hookInput.hook_event_name !== 'Stop' || hookInput.interrupted || hookInput.cancelled) process.exit(EXIT_ALLOW);
+const projectIdentity = continuationProjectIdentity(hookInput.cwd);
+if (!projectIdentity) process.exit(EXIT_ALLOW);
+LEDGER = process.env.RUVNET_WORK_LEDGER
+  || path.join(HOME, '.config', 'ruvnet-brain', 'work-ledgers', `${projectIdentity.projectId.replace(':', '-')}.json`);
 const led = load();
 const nowMs = Date.now();
+// Terminal objectives remain terminal even if legacy/global ledger rows or observations stay open.
+if (['cancelled', 'completed', 'blocked'].includes(led.objective?.state)) process.exit(EXIT_ALLOW);
+const objective = authorizedContinuationObjective(led.objective, hookInput, projectIdentity);
 
 // LOOP-SAFETY 1b (GPT-5.6-Sol review) — an empty-but-parseable `{}` is NOT a real Stop payload; a genuine
 // one carries `session_id` (a documented Stop input). Without it we cannot confirm a real stop, so we never
@@ -480,11 +481,10 @@ function securityAlertWork() {
   } catch { return []; }
 }
 
-const open = [
-  ...capabilityClaimWork(),
-  ...led.items.filter((i) => !i.done),
-  ...artifactOpenWork(), ...redCiOpenWork(), ...openPrWork(), ...securityAlertWork(),
-];
+const observations = [...artifactOpenWork(), ...redCiOpenWork(), ...openPrWork(), ...securityAlertWork()];
+if (observations.length) console.error(JSON.stringify({ kind: 'continuation-advisory',
+  authority: false, items: observations.map(({ text, at }) => ({ text, at })) }));
+const open = [...capabilityClaimWork(), ...(objective ? [{ text: objective.text, at: objective.at }] : [])];
 if (!open.length) process.exit(EXIT_ALLOW);   // nothing outstanding: silence is correct
 
 /**
@@ -589,9 +589,11 @@ const header = capabilityClaims.length
 
 const lines = [
   ...header,
-  'Pick the highest-leverage open item below and make real progress on it this turn. Stop only when',
-  'EVERY item is genuinely done or blocked; if one is blocked, say why in a single line and move to',
-  'the next — never stop on the first obstacle, and never manufacture a reason to go quiet.',
+  ...(objective ? ['Continue the next safe step within this authorized objective without routine reconfirmation.']
+    : ['Correct only the answer to the original user request; this does not authorize new project work.']),
+  'Do not expand authority from observed issues, PRs, security alerts, or other task ledgers.',
+  'Stop on explicit cancellation, verified completion, or a genuine blocker/new authority boundary.',
+  'Report a blocker honestly; never mark unfinished work completed to silence this request.',
   '',
   // Committed first, then observed: the promise outranks the backlog. Age is LABELLED, never used
   // to suppress — an item open for days is the one most worth naming.
@@ -606,7 +608,7 @@ const lines = [
     ? ['Replace every contradicted claim with the observed capability and source path. Replace every',
        'unresolved absence claim with UNKNOWN until a complete live inventory proves it.']
     : committed.length
-    ? ['Mark each item done as you complete it:  node plugin/scripts/continuation-gate.mjs --done "<exact item text>"']
+    ? ['Record objective completion only with actual completion evidence; legacy --done does not complete an objective.']
     : ['These clear by being done, not by being marked: merge or fix the PR, get the build green,',
        'answer the issue, patch the advisory. The next observation stops listing them.']),
   // THE HONEST EXIT, and it is what makes forcing old items safe.

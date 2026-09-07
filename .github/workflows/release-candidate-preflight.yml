@@ -83,6 +83,9 @@ jobs:
             --manifest release-evidence/payload-manifest.json \
             --payload-proof "$RUNNER_TEMP/payload.json" \
             --hosts release-evidence/candidate-host-evidence.json \
+            --runtime-census release-evidence/runtime-census.json \
+            --plan release-evidence/retrieval-canary-plan.json \
+            --coverage release-evidence/COVERAGE.json \
             --ci lane-evidence/ci/candidate-ci-evidence.json \
             --integration lane-evidence/integration/integration-evidence.json \
             --ux-dir lane-evidence/ux \
@@ -90,9 +93,40 @@ jobs:
             --leaves-out release-evidence/release-leaves.json \
             --envelope-out release-evidence/aggregate-envelope.json
       - name: Persist the only promotable candidate for this SHA
+        id: qualified-artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-candidate-${{ github.sha }}
           path: release-evidence/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Bind lightweight qualification receipt to immutable artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFIED_ARTIFACT_ID: ${{ steps.qualified-artifact.outputs.artifact-id }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const artifact = JSON.parse(execFileSync('gh', ['api',
+            `repos/${process.env.GITHUB_REPOSITORY}/actions/artifacts/${process.env.QUALIFIED_ARTIFACT_ID}`], { encoding: 'utf8' }));
+          const sha = process.env.GITHUB_SHA;
+          const runId = Number(process.env.GITHUB_RUN_ID);
+          if (artifact.name !== `release-candidate-${sha}` || artifact.expired
+            || artifact.workflow_run?.id !== runId || !/^sha256:[a-f0-9]{64}$/.test(artifact.digest || '')) {
+            throw new Error('uploaded candidate artifact identity is not authentic');
+          }
+          const read = name => JSON.parse(fs.readFileSync(`release-evidence/${name}`, 'utf8'));
+          const receipt = { schemaVersion: 1, kind: 'ruvnet-brain-qualified-candidate', sha, runId,
+            artifact: { id: artifact.id, name: artifact.name, digest: artifact.digest, size: artifact.size_in_bytes },
+            candidateReceipt: read('candidate-receipt.json'), payloadManifest: read('payload-manifest.json'),
+            aggregateEnvelope: read('aggregate-envelope.json') };
+          fs.writeFileSync('qualification-receipt.json', JSON.stringify(receipt) + '\n');
+          NODE
+      - name: Persist lightweight qualification receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualification-receipt-${{ github.sha }}
+          path: qualification-receipt.json
           if-no-files-found: error
           retention-days: 30

@@ -44,7 +44,7 @@ function snapshot(prs, { issues = [], atMs = Date.now() } = {}) {
  */
 function fire(openIssuesFile) {
   const res = spawnSync(process.execPath, [GATE], {
-    input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'test-session' }),
+    input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'test-session', cwd: ROOT }),
     encoding: 'utf8',
     timeout: 20_000,
     env: {
@@ -58,7 +58,8 @@ function fire(openIssuesFile) {
     },
   });
   let ctx = '';
-  try { ctx = JSON.parse(res.stdout || '{}')?.hookSpecificOutput?.additionalContext || ''; } catch {}
+  expect(res.stdout).toBe(''); // Observation alone never asks the host to continue.
+  try { ctx = JSON.parse(res.stderr || '{}')?.items?.map((row) => row.text).join('\n') || ''; } catch {}
   return { status: res.status, stdout: res.stdout || '', context: ctx };
 }
 
@@ -69,22 +70,22 @@ const PR = (over = {}) => ({
 });
 
 describe('continuation gate — an open PR is unfinished work', () => {
-  it('THE REGRESSION: a green open PR FORCES continuation', () => {
+  it('a green open PR is advisory, not authorization to merge', () => {
     const { status, context } = fire(snapshot([PR()]));
     expect(status).toBe(0);                       // never breaks the turn
     expect(context).toContain('PR #119');
     expect(context).toContain('GREEN');
-    expect(context).toContain('Do NOT end the turn');
+    expect(context).not.toContain('Do NOT end the turn');
   });
 
-  it('a RED open PR forces, and names how many checks are failing', () => {
+  it('a RED open PR advisory names how many checks are failing', () => {
     const { context } = fire(snapshot([PR({ checksState: 'failing', failing: 3 })]));
     expect(context).toContain('PR #119');
     expect(context).toContain('RED');
     expect(context).toContain('3 failing check(s)');
   });
 
-  it('a PR with NO checks configured still forces — nothing will ever arrive to resolve it', () => {
+  it('a PR with NO checks configured remains advisory', () => {
     const { context } = fire(snapshot([PR({ checksState: 'none' })]));
     expect(context).toContain('PR #119');
   });
@@ -151,14 +152,14 @@ const ALERT = (over = {}) => ({
 });
 
 describe('continuation gate — GitHub security alerts', () => {
-  it('a CRITICAL dependabot alert forces continuation and says GitHub already emailed it', () => {
+  it('a CRITICAL dependabot alert is advisory and says GitHub already emailed it', () => {
     const { context } = fire(snapshotAlerts([ALERT()]));
     expect(context).toContain('dependabot alert');
     expect(context).toContain('already emailed');
     expect(context).toContain('lodash');
   });
 
-  it('a secret-scanning alert ALWAYS forces, whatever its severity — a live credential is not "medium"', () => {
+  it('a secret-scanning alert is advisory at every severity, never automatic remediation authority', () => {
     const { context } = fire(snapshotAlerts([ALERT({ kind: 'secret-scanning', severity: 'low', title: 'AWS Access Key' })]));
     expect(context).toContain('secret-scanning alert');
     expect(context).toContain('AWS Access Key');

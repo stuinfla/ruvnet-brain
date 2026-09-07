@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
- * distill-project.mjs — the ONE genuinely offerable capability, made genuinely reversible.
+ * distill-project.mjs — snapshot-backed project distillation.
+ * Automatic restore is temporarily unavailable: the native CLI has no exact-snapshot restore,
+ * and the former raw-copy implementation was unsafe with live WAL writers. Backups are retained
+ * for supervised offline recovery; this wrapper no longer claims a verified automatic inverse.
  *
  * WHY THIS FILE EXISTS. ADR-047 proposed a system for offering dormant capabilities to the user
  * unprompted. Both duelists rejected it, and GPT-5.6-Sol's arithmetic is the reason: the registry has
@@ -31,13 +34,14 @@
  *   5. status AFTER + delta — verified, and reported as a measurement rather than a verdict.
  *   6. receipt completed — the same file, updated with the outcome and the exact restore command.
  *
- * `--restore <snapshot>` is the inverse, and it is tested. An undo nobody has run is a promise.
+ * `--restore <snapshot>` now refuses before mutation; its WAL bytes-preservation test enforces that.
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { resolveRuflo, RUFLO_MISSING } from '../plugin/scripts/ruflo-bin.mjs';
+import { newestSnapshot, snapshotInventory, MTIME_GRACE_MS } from './snapshot-freshness.mjs';
 
 const HOME = os.homedir();
 // Issue #99: this was `process.env.RUFLO_BIN || path.join(HOME, '.npm-global/bin/ruflo')`, so every
@@ -96,50 +100,19 @@ function writeReceipt(rec) {
   } catch { return false; }
 }
 
-// Some filesystems truncate mtime to whole seconds (FAT32, some overlay/network mounts), so a file
-// written a moment after `sinceMs` was captured can still report an mtime slightly before it. This
-// grace window is tolerance for that truncation, not a loophole — it stays far smaller than the gap
-// between one run and the next.
-const MTIME_GRACE_MS = 1500;
-
-/**
- * The newest snapshot this project has, or null. With `sinceMs`, only a file whose mtime is no
- * older than that moment (minus the grace window) counts — so a stale snapshot left over from a
- * PRIOR run can never be mistaken for proof that THIS run's backup actually landed. `--restore`
- * calls this with no floor: it legitimately wants the newest snapshot ever, not the newest since a
- * particular run.
- */
-function newestSnapshot(sinceMs = 0) {
-  try {
-    const files = fs.readdirSync(BACKUP_DIR)
-      .filter((f) => /\.(db|sqlite|bak)$/i.test(f) || /memory.*\d/.test(f))
-      .map((f) => ({ f, p: path.join(BACKUP_DIR, f), t: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
-      .filter((x) => x.t >= sinceMs - MTIME_GRACE_MS)
-      .sort((a, b) => b.t - a.t);
-    return files.length ? files[0].p : null;
-  } catch { return null; }
-}
-
 // ── RESTORE — the inverse. Deliberately first, because an undo you cannot reach is not an undo. ────
 if (has('--restore')) {
-  const snap = arg('--restore', null) || newestSnapshot();
+  const snap = arg('--restore', null) || newestSnapshot(BACKUP_DIR);
   if (!snap) die(`no snapshot to restore from — looked in ${BACKUP_DIR.replace(HOME, '~')}`);
   if (!fs.existsSync(snap)) die(`snapshot not found: ${snap}`);
-  if (DRY) { say(`[dry-run] would restore ${snap.replace(HOME, '~')} → ${DB.replace(HOME, '~')}`); process.exit(0); }
+  if (DRY) { say(`[dry-run] restore preview only; automatic WAL-safe restore is unavailable. Snapshot ${snap.replace(HOME, '~')}, destination ${DB.replace(HOME, '~')}.`); process.exit(0); }
 
-  // Snapshot the CURRENT state before overwriting it. Restoring is itself a mutation, and an undo
-  // that destroys the thing it replaces leaves the user with no way back if they restored by mistake.
-  const pre = path.join(BACKUP_DIR, `pre-restore-${Date.now()}.db`);
-  try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); fs.copyFileSync(DB, pre); }
-  catch (e) { die(`refusing to restore — could not snapshot the current DB first (${e.message})`); }
-
-  try { fs.copyFileSync(snap, DB); }
-  catch (e) { die(`restore FAILED (${e.message}). Your pre-restore copy is at ${pre.replace(HOME, '~')}`); }
-
-  writeReceipt({ at: new Date().toISOString(), action: 'restore', db: DB, from: snap, preRestore: pre });
-  say(`restored ${snap.replace(HOME, '~')} → ${DB.replace(HOME, '~')}`);
-  say(`the state you replaced is at ${pre.replace(HOME, '~')} if you need it back`);
-  process.exit(0);
+  // Ruflo exposes backup but no exact-snapshot restore CLI. Copying a live DB while WAL/SHM
+  // remain active can lose committed transactions. Keep every byte intact until a supported
+  // restore mechanism is available; a preview or backup file is not a verified recovery path.
+  die('WAL-safe restore is temporarily unavailable: no verified exact-snapshot Ruflo restore command exists. '
+    + 'No DB, WAL, SHM or backup bytes were changed. Retain the snapshot and coordinate an offline '
+    + 'SQLite recovery with all database users stopped; do not copy over a live store.');
 }
 
 // ── PRE-FLIGHT ─────────────────────────────────────────────────────────────────────────────────────
@@ -172,6 +145,9 @@ if (DRY) {
 // ── 1. SNAPSHOT FIRST. This is the undo; without it the operation is not offerable. ────────────────
 say('snapshot: taking a WAL-safe copy via `ruflo memory backup` before touching anything…');
 const backupStartedAt = Date.now();
+let priorSnapshots;
+try { priorSnapshots = snapshotInventory(BACKUP_DIR); }
+catch (error) { die(`REFUSING TO DISTILL — backup destination cannot be verified: ${error.message}`); }
 const bk = ruflo(['memory', 'backup', '--db', DB, '--dir', BACKUP_DIR]);
 if (!bk.ok) {
   die(`REFUSING TO DISTILL — the snapshot failed (${bk.err.trim().split('\n')[0] || 'unknown error'}).\n`
@@ -181,7 +157,7 @@ if (!bk.ok) {
 // mistaken for proof that THIS backup call actually wrote something (issue: `ruflo memory backup`
 // exiting 0 without landing a new file — process killed post-commit, a --dir misconfiguration, a
 // ruflo regression — would otherwise be indistinguishable from a genuine fresh backup).
-const snapshot = newestSnapshot(backupStartedAt);
+const snapshot = newestSnapshot(BACKUP_DIR, backupStartedAt, MTIME_GRACE_MS, priorSnapshots);
 if (!snapshot) die('REFUSING TO DISTILL — `memory backup` reported success but no snapshot from this run is present, so the undo cannot be located.');
 say(`snapshot: ${snapshot.replace(HOME, '~')}`);
 
@@ -210,17 +186,18 @@ const outcome = {
   before: { patterns: before.patterns, episodes: before.episodes },
   after: after.readable ? { patterns: after.patterns, episodes: after.episodes } : { unreadable: after.why },
   deltaPatterns: delta,
-  restore: `node ${path.join(path.dirname(new URL(import.meta.url).pathname))}/distill-project.mjs --restore ${snapshot}`,
+  restore: null,
+  restoreStatus: 'unavailable: retain snapshot for supervised offline recovery',
 };
 writeReceipt(outcome);
 
 say('');
 if (!run.ok) {
   say(`distill did NOT complete cleanly: ${run.err.trim().split('\n')[0] || 'unknown error'}`);
-  say(`your store is unchanged or partially changed; restore with:\n  ${outcome.restore}`);
+  say(`your store is unchanged or partially changed; retain ${snapshot} for supervised offline recovery. Automatic restore is unavailable.`);
   process.exit(1);
 }
-if (delta === null) say('after   : counts could not be re-read, so the change is UNVERIFIED — the snapshot above is still your undo.');
+if (delta === null) say('after   : counts could not be re-read, so the change is UNVERIFIED — retain the snapshot for offline recovery.');
 else if (delta > 0) say(`after   : ${after.patterns} patterns (+${delta}) — measured, not asserted.`);
 else say(`after   : ${after.patterns} patterns (no change). Distillation ran and found nothing new to mine; that is a real answer, not a failure.`);
-say(`undo    : ${outcome.restore}`);
+say(`restore : ${outcome.restoreStatus}`);
