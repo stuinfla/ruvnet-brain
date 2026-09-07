@@ -108,7 +108,7 @@ function adapter(overrides = {}) {
         bundle: { brainVersion: VERSION, releaseTag: `v${VERSION}` },
       };
     },
-    async probeBrain() { return { status: 'PASS', selfStore: true, broadMs: 40, deadlineMs: 100 }; },
+    async probeBrain() { return { status: 'PASS', selfStore: true, broadMs: 40, deadlineMs: 30_000 }; },
     async probePublishedSurface() {
       return { name: 'published-surface-probe', status: 'completed', conclusion: 'success', sha: SHA };
     },
@@ -288,8 +288,8 @@ describe('publication receipt producer', () => {
     ['split npm SHA', { downloadNpm: async ({ destination }) => ({ path: (fs.writeFileSync(destination, BYTES), destination), version: VERSION, sha: 'c'.repeat(40) }) }],
     ['split GitHub SHA', { downloadGithub: async ({ destination }) => ({ path: (fs.writeFileSync(destination, BYTES), destination), tag: `v${VERSION}`, sha: 'c'.repeat(40) }) }],
     ['failed Claude-only install', { installHosts: async () => ({ claudeOnly: { status: 'FAIL', doctorExit: 1, version: VERSION, artifactSha256: DIGEST }, codexOnly: { status: 'PASS', doctorExit: 0, version: VERSION, artifactSha256: DIGEST }, dual: { status: 'PASS', doctorExit: 0, version: VERSION, artifactSha256: DIGEST }, bundle: { brainVersion: VERSION, releaseTag: `v${VERSION}` } }) }],
-    ['missing self store', { probeBrain: async () => ({ status: 'PASS', selfStore: false, broadMs: 40, deadlineMs: 100 }) }],
-    ['slow Brain', { probeBrain: async () => ({ status: 'PASS', selfStore: true, broadMs: 81, deadlineMs: 100 }) }],
+    ['missing self store', { probeBrain: async () => ({ status: 'PASS', selfStore: false, broadMs: 40, deadlineMs: 30_000 }) }],
+    ['slow Brain', { probeBrain: async () => ({ status: 'PASS', selfStore: true, broadMs: 30_001, deadlineMs: 30_000 }) }],
     ['red surface probe', { probePublishedSurface: async () => ({ name: 'published-surface-probe', status: 'completed', conclusion: 'failure', sha: SHA }) }],
     ['probe SHA split', { probePublishedSurface: async () => ({ name: 'published-surface-probe', status: 'completed', conclusion: 'success', sha: 'd'.repeat(40) }) }],
   ])('fails closed and writes no receipt on %s', async (_name, overrides) => {

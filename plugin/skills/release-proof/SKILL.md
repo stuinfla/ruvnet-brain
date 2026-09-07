@@ -1,7 +1,7 @@
 ---
 name: release-proof
 description: Fail-closed exact-artifact release and deployment authority. Use before saying a release is ready, pushing a release commit, publishing npm packages, creating GitHub releases, deploying production, closing release-blocking issues, or claiming all gates are green. Requires clean immutable lineage, zero labeled release blockers, exact-SHA GitHub success, nonzero no-skip QE, packed-artifact host tests, installed Brain/RVF proof, and post-publication byte verification.
-updated: 2026-09-04
+updated: 2026-09-07
 ---
 
 # Release Proof
@@ -23,7 +23,11 @@ green.
 7. Require the source package, Claude manifest, Codex manifest, packed npm version, bundle
    `brainVersion`/`releaseTag`, and both installed host versions to identify one exact generation.
 8. Require the active Brain registry to contain the `ruvnet-brain` RVF store and require narrow,
-   broad, and concurrent cited searches to complete within 80% of their deadline.
+   broad, and concurrent cited candidate searches to complete within 80% of their deadline.
+   For fresh public stabilization verification, `stabilization-public-deadline-v1` requires the
+   first cited search in every host mode and the Brain probe within the enforced 30-second
+   deadline. The 24-second headroom target remains a performance follow-up, not promotion authority.
+   Receipts without this named policy retain the legacy 80% rule; failed runs are not relabeled.
 9. Publish only through the protected release workflow. Never run `npm publish` or `gh release
    create` locally.
 10. After publication, download npm and GitHub artifacts, compare their bytes with the seal, install

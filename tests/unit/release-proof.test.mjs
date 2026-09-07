@@ -190,6 +190,26 @@ describe('release-proof publication authority', () => {
     };
     expect(evaluatePublicationReceipt(candidate, publication).verdict).toBe('PASS');
 
+    const slower = structuredClone(publication);
+    slower.installed.claudeOnly.searchMs = 25_000;
+    slower.brain.broadMs = 25_000;
+    expect(evaluatePublicationReceipt(candidate, slower).verdict).toBe('FAIL');
+    slower.acceptancePolicy = 'stabilization-public-deadline-v1';
+    expect(evaluatePublicationReceipt(candidate, slower).verdict).toBe('PASS');
+    for (const bad of [30_001, NaN, Infinity, -1, undefined, '25000']) {
+      const invalid = structuredClone(slower);
+      invalid.installed.claudeOnly.searchMs = bad;
+      expect(evaluatePublicationReceipt(candidate, invalid).verdict).toBe('FAIL');
+      invalid.installed.claudeOnly.searchMs = 25_000;
+      invalid.brain.broadMs = bad;
+      expect(evaluatePublicationReceipt(candidate, invalid).verdict).toBe('FAIL');
+    }
+    slower.brain.deadlineMs = 40_000;
+    expect(evaluatePublicationReceipt(candidate, slower).verdict).toBe('FAIL');
+    slower.brain.deadlineMs = 30_000;
+    slower.acceptancePolicy = 'invented-policy';
+    expect(evaluatePublicationReceipt(candidate, slower).verdict).toBe('FAIL');
+
     publication.npm.artifactSha256 = 'f'.repeat(64);
     expect(evaluatePublicationReceipt(candidate, publication).failures.map((f) => f.code))
       .toContain('PUBLIC_ARTIFACT_MISMATCH');

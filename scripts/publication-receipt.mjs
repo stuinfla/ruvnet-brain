@@ -545,6 +545,7 @@ export async function generatePublicationReceipt({
     const publication = {
       schemaVersion: 2,
       phase: 'publication',
+      acceptancePolicy: 'stabilization-public-deadline-v1',
       sha: candidate.sha,
       artifactSha256: digest,
       version: candidate.version,
@@ -564,7 +565,7 @@ export async function generatePublicationReceipt({
       postPublicationChecks: [surface],
     };
     const result = evaluatePublicationReceipt(candidate, publication);
-    if (result.verdict !== 'PASS') throw new Error(`publication seal failed: ${result.failures.map(({ code }) => code).join(',')}`);
+    if (result.verdict !== 'PASS') throw new Error(`publication seal failed: ${JSON.stringify({ failures: result.failures, installed: publication.installed, brain: publication.brain })}`);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, `${JSON.stringify(publication, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
     return result;

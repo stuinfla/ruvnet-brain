@@ -169,15 +169,24 @@ export function evaluatePublicationReceipt(candidate, publication) {
     const item = publication?.[surface];
     if (item?.sha !== sha || item?.artifactSha256 !== digest) failures.push(fail('PUBLIC_ARTIFACT_MISMATCH', `${surface} differs from candidate seal`));
   }
+  const stabilization = publication?.acceptancePolicy === 'stabilization-public-deadline-v1';
+  const deadline = Number(publication?.brain?.deadlineMs);
+  if (publication?.acceptancePolicy !== undefined && !stabilization) {
+    failures.push(fail('PUBLIC_ACCEPTANCE_POLICY', 'unknown public acceptance policy'));
+  }
+  const withinDeadline = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0
+    && Number.isFinite(deadline) && deadline > 0
+    && (!stabilization || deadline === 30_000)
+    && value <= deadline * (stabilization ? 1 : 0.8);
   for (const hostName of ['claudeOnly', 'codexOnly', 'dual']) {
     const host = publication?.installed?.[hostName];
     if (host?.status !== 'PASS' || host?.doctorExit !== 0 || host?.artifactSha256 !== digest
-      || host?.functionalSearch !== true || !(host?.searchMs <= Number(publication?.brain?.deadlineMs) * 0.8)) {
+      || host?.functionalSearch !== true || !withinDeadline(host?.searchMs)) {
       failures.push(fail('PUBLIC_HOST_NOT_PASS', `${hostName} is not running a doctor-clean functional sealed public artifact`));
     }
   }
   const brain = publication?.brain || {};
-  if (brain.status !== 'PASS' || brain.selfStore !== true || !(brain.broadMs <= Number(brain.deadlineMs) * 0.8)) failures.push(fail('PUBLIC_BRAIN_NOT_PASS', 'public installed Brain acceptance failed'));
+  if (brain.status !== 'PASS' || brain.selfStore !== true || !withinDeadline(brain.broadMs)) failures.push(fail('PUBLIC_BRAIN_NOT_PASS', 'public installed Brain acceptance failed'));
   const probes = Array.isArray(publication?.postPublicationChecks) ? publication.postPublicationChecks : [];
   const probe = probes.find((check) => check?.name === 'published-surface-probe' && check?.sha === sha);
   if (probe?.status !== 'completed' || probe?.conclusion !== 'success') failures.push(fail('POST_PUBLICATION_CHECK_NOT_GREEN', 'published-surface-probe is not green'));

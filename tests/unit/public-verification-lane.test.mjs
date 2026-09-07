@@ -165,6 +165,21 @@ describe('public verification OS lane', () => {
     expect(requested).toEqual(Array(6).fill(10));
   });
 
+  it('binds the named stabilization policy and measured search times into each leaf', async () => {
+    const f = fixture();
+    f.publication.acceptancePolicy = 'stabilization-public-deadline-v1';
+    f.publication.brain = { status: 'PASS', selfStore: true, broadMs: 25_000, deadlineMs: 30_000 };
+    Object.values(f.publication.installed).forEach((host) => { host.searchMs = 26_000; });
+    const rows = await createPublicVerificationLane({ os: 'linux', ...f,
+      coverageIdentity: { sha256: digest(f.releaseCoverage), bytes: 100 } });
+    for (const row of rows) {
+      expect(row.acceptancePolicy).toBe(f.publication.acceptancePolicy);
+      expect(row.searchTiming).toEqual({ firstSearchMs: 26_000, broadMs: 25_000, deadlineMs: 30_000 });
+      const { leafSha256, ...payload } = row;
+      expect(digest(payload)).toBe(leafSha256);
+    }
+  });
+
   it('requires native evidence and invokes its producer once for dual mode only', async () => {
     const f = fixture();
     const calls = [];

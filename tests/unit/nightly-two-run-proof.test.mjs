@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process';
+import { npmInvocation } from '../../scripts/npm-invocation.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -341,4 +343,30 @@ describe('native two-run nightly proof', () => {
       validateEnvelope: envelope, identity: 'proof', ...override };
     expect(validateTwoRunEvidence(input).ok).toBe(false);
   });
+});
+
+
+describe('native proof npm configuration across fresh processes', () => {
+  it('keeps optional shims disabled across installations without relaxing symlink rejection', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'native-npm-config-')); roots.push(root);
+    const home = path.join(root, 'home'); fs.mkdirSync(home);
+    fs.writeFileSync(path.join(home, '.npmrc'), 'bin-links=false\n');
+    const fixture = path.join(root, 'fixture'); fs.mkdirSync(fixture);
+    fs.writeFileSync(path.join(fixture, 'package.json'), JSON.stringify({ name: 'proof-bin', version: '1.0.0', bin: { 'proof-bin': 'cli.js' } }));
+    fs.writeFileSync(path.join(fixture, 'cli.js'), '#!/usr/bin/env node\n');
+    const env = { ...process.env, HOME: home, USERPROFILE: home };
+    for (const key of Object.keys(env)) if (/^npm_config_/i.test(key)) delete env[key];
+    for (const name of ['first', 'second']) {
+      const prefix = path.join(root, name);
+      const command = npmInvocation(['install', '--prefix', prefix, '--install-links', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', fixture]);
+      const result = spawnSync(command.executable, command.args, { env, encoding: 'utf8', timeout: 30_000 });
+      expect(result.status, result.stderr).toBe(0);
+      expect(fs.existsSync(path.join(prefix, 'node_modules', 'proof-bin', 'cli.js'))).toBe(true);
+      expect(fs.existsSync(path.join(prefix, 'node_modules', '.bin', process.platform === 'win32' ? 'proof-bin.cmd' : 'proof-bin'))).toBe(false);
+      expect(() => managedStorageInventory(prefix)).not.toThrow();
+    }
+    const outside = path.join(root, 'outside'); fs.mkdirSync(outside);
+    fs.symlinkSync(outside, path.join(root, 'second', 'unsafe'), process.platform === 'win32' ? 'junction' : 'dir');
+    expect(() => managedStorageInventory(path.join(root, 'second'))).toThrow(/symbolic link/);
+  }, 65_000);
 });

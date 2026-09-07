@@ -80,6 +80,22 @@ async function leaves(keys) {
 }
 
 describe('signed public 3x3 verification aggregate', () => {
+  it('rejects malformed named timing evidence even when the leaf is rehashed', async () => {
+    const keys = crypto.generateKeyPairSync('ed25519');
+    const { leafSha256: _old, ...base } = (await leaves(keys))[0];
+    const input = { ...base, acceptancePolicy: 'stabilization-public-deadline-v1',
+      searchTiming: { firstSearchMs: 30_000, broadMs: 25_000, deadlineMs: 30_000 } };
+    expect(createPublicVerificationLeaf(input, { publicKey: keys.publicKey }).verdict).toBe('PASS');
+    for (const override of [
+      { acceptancePolicy: 'unknown' },
+      { searchTiming: { ...input.searchTiming, firstSearchMs: 30_001 } },
+      { searchTiming: { ...input.searchTiming, broadMs: -1 } },
+      { searchTiming: { ...input.searchTiming, deadlineMs: 40_000 } },
+      { searchTiming: undefined },
+    ]) expect(() => createPublicVerificationLeaf({ ...input, ...override }, { publicKey: keys.publicKey }))
+      .toThrow(/policy or timing/);
+  });
+
   it('binds the distinct verifier, rejects mixed verifier leaves and detects verifier tampering', async () => {
     const keys = crypto.generateKeyPairSync('ed25519');
     const verifierSha = '9'.repeat(40);

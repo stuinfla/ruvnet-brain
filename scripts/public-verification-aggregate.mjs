@@ -37,6 +37,14 @@ export function validatePublicVerificationLeaf(leaf, { publicKey } = {}) {
   if (leaf.publicBytes?.npmExact !== true || leaf.publicBytes?.githubExact !== true
     || leaf.publicBytes?.bundleExact !== true || leaf.installed?.version !== leaf.version
     || leaf.installed?.loaderVerified !== true) throw new Error(`${leaf.os}/${leaf.mode} public bytes or loader are unverified`);
+  if (leaf.acceptancePolicy !== undefined || leaf.searchTiming !== undefined) {
+    const timing = leaf.searchTiming;
+    if (leaf.acceptancePolicy !== 'stabilization-public-deadline-v1' || timing?.deadlineMs !== 30_000
+      || ![timing.firstSearchMs, timing.broadMs].every((value) => typeof value === 'number'
+        && Number.isFinite(value) && value >= 0 && value <= timing.deadlineMs)) {
+      throw new Error(`${leaf.os}/${leaf.mode} public search acceptance policy or timing is invalid`);
+    }
+  }
   if (leaf.coverage?.verified !== true || leaf.coverage.eligibleCurrent !== leaf.coverage.eligibleTotal
     || leaf.coverage.gistCurrent !== leaf.coverage.gistTotal) throw new Error(`${leaf.os}/${leaf.mode} coverage is incomplete`);
   if (!Array.isArray(leaf.untested) || leaf.untested.length || leaf.skipped !== 0 || leaf.unknown !== 0) {

@@ -185,6 +185,7 @@ export async function createPublicVerificationLane({
     }
     leaves.push(createPublicVerificationLeaf({
       ...common,
+      ...(publication.acceptancePolicy ? { acceptancePolicy: publication.acceptancePolicy, searchTiming: { firstSearchMs: installed.searchMs, broadMs: publication.brain.broadMs, deadlineMs: publication.brain.deadlineMs } } : {}),
       ...(nativeNightly === undefined ? {} : { nativeNightly }),
       os,
       mode,

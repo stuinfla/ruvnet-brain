@@ -1,6 +1,6 @@
 # Receipt contract
 
-Updated: 2026-09-04
+Updated: 2026-09-07
 
 The authority accepts only typed receipt schemas. The candidate receipts are emitted by
 `release-candidate-preflight` and imported by `protected-release`; publication receipts are emitted
@@ -38,8 +38,26 @@ Required bindings:
   and installed Claude/Codex versions
 - npm and GitHub release bytes matching the candidate digest
 - clean installed Claude and Codex results from the public package
-- installed Brain self-RVF and broad search within 80 percent of deadline
+- installed Brain self-RVF and measured first cited searches within the declared acceptance policy
+- `acceptancePolicy: stabilization-public-deadline-v1` requires a fixed 30,000ms deadline and
+  finite, nonnegative host and Brain timings at or below it; larger budgets are rejected
+- receipts without that policy retain the legacy 80-percent margin; unknown policies fail
 - successful exact-SHA `published-surface-probe`
+
+Stuart authorized a materially improved stabilization release on September 7, rather than
+requiring every historical performance goal for promotion. The public runtime already enforces
+a 30-second deadline. The new policy removes only the additional 24-second promotion margin.
+It does not replace first-search timings with warm timings or reduce retrieval, citation,
+artifact-integrity, native-update, or host-installation requirements. Fresh signed evidence is
+required; prior failed workflows remain failed.
+
+Native update verification uses `bin-links=false` in the isolated home's `.npmrc`, which
+persists across scheduled processes. The receipt records this installation configuration.
+This disables optional npm command shims; the reader runs through Node directly. The default
+npm installation creates a `semver` symlink that 4.3.10's updater rejects. Consequently this
+proof covers the explicitly configured installation, not default installations with command
+shims. Repairing default-install updater compatibility remains a follow-up; symlink rejection
+is not bypassed in the updater or inventory verifier.
 
 Before provider mutation, `protected-release` revalidates the imported candidate receipt, package
 payload, source binding, and digest against current `origin/main`. It consumes the long-lane proof;

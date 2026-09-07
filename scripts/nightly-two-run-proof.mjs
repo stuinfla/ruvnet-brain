@@ -321,6 +321,9 @@ export async function runNightlyTwoRunProof({ packagePath, bundlePath, out, time
     NO_COLOR: '1',
   };
   fs.mkdirSync(home, { recursive: true });
+  // Persist across native scheduler processes through their existing HOME contract.
+  // The installed reader invokes Node directly and needs no npm command shims.
+  fs.writeFileSync(path.join(home, '.npmrc'), 'bin-links=false\n');
   fs.mkdirSync(tempDir);
   let scheduler;
   let registration;
@@ -362,6 +365,7 @@ export async function runNightlyTwoRunProof({ packagePath, bundlePath, out, time
       schemaVersion: 1,
       kind: 'ruvnet-brain-native-two-run-nightly-proof',
       scope: 'installed-update',
+      installationConfiguration: { npmBinLinks: false, source: 'isolated-home-npmrc' },
       upstreamFreshness: 'UNKNOWN',
       observedAt: new Date().toISOString(),
       platform: process.platform,
