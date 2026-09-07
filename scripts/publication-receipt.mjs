@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
+import { createRequire } from 'node:module';
 import { spawn, spawnSync } from 'node:child_process';
 // ONE doctor rule and ONE mode vocabulary, shared with the staged-side check in
 // scripts/staged-host-verifier.mjs. This file kept its own copies, spelled claudeOnly/
@@ -84,11 +85,23 @@ export function validateCandidateSource(root, { sha, version }) {
   return candidateRoot;
 }
 function locate(name, { platform = process.platform } = {}) {
-  const query = platform === 'win32' ? (name === 'node' ? 'node.exe' : `${name}.cmd`) : name;
+  const query = platform === 'win32' ? (['node', 'git'].includes(name) ? `${name}.exe` : `${name}.cmd`) : name;
   try {
     return command(platform === 'win32' ? 'where.exe' : 'which', [query], { platform })
       .split(/\r?\n/).find(Boolean) || null;
   } catch { return null; }
+}
+export function nativeCodexExecutable({ platform = process.platform, arch = process.arch,
+  wrapper = platform === 'win32' ? locate('codex') : null } = {}) {
+  if (platform !== 'win32') return null;
+  if (!wrapper || !['x64', 'arm64'].includes(arch)) throw new Error('native Windows Codex CLI unavailable');
+  const require = createRequire(import.meta.url);
+  const packageFile = require.resolve('@openai/codex/package.json', { paths: [path.dirname(wrapper)] });
+  const platformFile = require.resolve(`@openai/codex-win32-${arch}/package.json`, { paths: [path.dirname(packageFile)] });
+  const target = arch === 'x64' ? 'x86_64' : 'aarch64';
+  const executable = path.join(path.dirname(platformFile), 'vendor', `${target}-pc-windows-msvc`, 'bin', 'codex.exe');
+  if (!fs.statSync(executable).isFile()) throw new Error('native Windows Codex executable missing');
+  return executable;
 }
 export function createIsolatedPath(mode, temp, { platform = process.platform, env = process.env,
   resolve = (name) => locate(name, { platform }) } = {}) {
@@ -108,7 +121,10 @@ export function createIsolatedPath(mode, temp, { platform = process.platform, en
   if (platform !== 'win32') return `${bin}:/usr/bin:/bin`;
   const node = resolve('node');
   if (!node) throw new Error(`node CLI unavailable for ${mode} public host fixture`);
+  const git = resolve('git');
+  if (!git) throw new Error(`git CLI unavailable for ${mode} public host fixture`);
   return [bin, path.dirname(node), path.join(env.SystemRoot || 'C:\\Windows', 'System32'),
+    path.dirname(git),
     path.join(env.ProgramFiles || 'C:\\Program Files', 'Git', 'usr', 'bin')].join(path.win32.delimiter);
 }
 export function stageVerifiedBundle({ bundlePath, bundleSha256, packageRoot }) {
@@ -349,6 +365,7 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       // Derived from HOST_MODES, so a fourth host shape is added in ONE place and this loop
       // cannot fall behind the staged-side check the way it did.
       for (const mode of HOST_MODES.map((m) => RECEIPT_MODE_NAMES[m])) {
+        console.log(`Public verification: installing ${mode} on ${process.platform}`);
         const home = path.join(temp, `home-${mode}`);
         const codexHome = path.join(home, '.codex');
         const brainHome = path.join(home, '.cache', 'ruvnet-brain');
@@ -372,13 +389,20 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
           RUVNET_STRICT_INSTALL: '0',
           CI: 'true',
           PATH: createIsolatedPath(mode, temp),
+          ...(process.platform === 'win32' && mode !== 'claudeOnly'
+            ? { CODEX_BIN: nativeCodexExecutable() } : {}),
         };
+        if (mode !== 'claudeOnly') {
+          command(env.CODEX_BIN || 'codex', ['--version'], { env, timeout: 30_000, stdio: 'inherit' });
+          command(env.CODEX_BIN || 'codex', ['plugin', 'list', '--json'], { env, timeout: 30_000, stdio: 'inherit' });
+        }
+        if (process.platform === 'win32') command('git', ['--version'], { env, timeout: 30_000, stdio: 'inherit' });
         const installer = path.join(packageRoot, 'bin', 'install.mjs');
         command(process.execPath, [
           installer, '--yes', '--force', '--version', `v${version}`,
           '--no-nightly-prompt', '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline',
           '--no-selfcheck', '--no-verify',
-        ], { env, cwd: packageRoot, timeout: 1_200_000, maxBuffer: 32 * 1024 * 1024 });
+        ], { env, cwd: packageRoot, timeout: 1_200_000, stdio: 'inherit' });
 
         const verified = {};
         if (mode !== 'codexOnly') {
@@ -399,7 +423,7 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         const searched = await rpcSearch(findMcpServer(home), env,
           'How does RuvNet Brain prove a public release artifact?', 5, DEADLINE_MS);
         command(process.execPath, [installer, '--doctor', '--hooks'], {
-          env, cwd: packageRoot, timeout: 300_000, maxBuffer: 32 * 1024 * 1024,
+          env, cwd: packageRoot, timeout: 300_000, stdio: 'inherit',
         });
         results[mode] = {
           status: 'PASS', doctorExit: 0, version, artifactSha256,

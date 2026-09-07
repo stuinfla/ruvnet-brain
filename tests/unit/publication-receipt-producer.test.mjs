@@ -9,6 +9,7 @@ import {
   assertInstalledPayload,
   commandInvocation,
   createIsolatedPath,
+  nativeCodexExecutable,
   generatePublicationReceipt,
   rpcSearch,
   stageVerifiedBundle,
@@ -126,6 +127,26 @@ async function run(overrides = {}) {
 }
 
 describe('publication receipt producer', () => {
+  it('resolves the actual optional-package Windows Codex executable, not its cmd wrapper', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'public-codex-native-'));
+    try {
+      const modules = path.join(root, 'node_modules');
+      const bin = path.join(modules, '.bin');
+      const core = path.join(modules, '@openai', 'codex');
+      const native = path.join(core, 'node_modules', '@openai', 'codex-win32-x64');
+      const executable = path.join(native, 'vendor', 'x86_64-pc-windows-msvc', 'bin', 'codex.exe');
+      fs.mkdirSync(bin, { recursive: true });
+      fs.mkdirSync(path.dirname(executable), { recursive: true });
+      fs.writeFileSync(path.join(core, 'package.json'), '{"name":"@openai/codex"}');
+      fs.writeFileSync(path.join(native, 'package.json'), '{"name":"@openai/codex-win32-x64"}');
+      fs.writeFileSync(executable, 'native executable fixture');
+      const options = { platform: 'win32', arch: 'x64', wrapper: path.join(bin, 'codex.cmd') };
+      expect(nativeCodexExecutable(options)).toBe(fs.realpathSync(executable));
+      fs.rmSync(executable);
+      expect(() => nativeCodexExecutable(options)).toThrow();
+      expect(nativeCodexExecutable({ platform: 'darwin' })).toBeNull();
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
   it('uses native Windows command shims and an isolated USERPROFILE-safe PATH', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-windows-'));
     const tools = path.join(root, 'tools');
