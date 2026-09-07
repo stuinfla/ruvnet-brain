@@ -330,6 +330,9 @@ export async function runNightlyTwoRunProof({ packagePath, bundlePath, out, time
     run(npm.executable, npm.args, { env });
     const packageRoot = path.join(prefix, 'node_modules', 'ruvnet-brain');
     const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
+    // Register the exact public package's plugin in this fresh home. GitHub shorthand can
+    // select SSH on Windows and leave no staged plugin for the first scheduled activation.
+    env.RUVNET_CLAUDE_MARKETPLACE_SOURCE = packageRoot;
     const stagedBundle = stageExactBundle({ bundlePath: bundle, packageRoot });
     run(process.execPath, [path.join(packageRoot, 'bin', 'install.mjs'), '--yes', '--no-nightly-prompt'], {
       env, stdio: 'inherit', encoding: undefined,
