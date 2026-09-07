@@ -87,6 +87,30 @@ describe('recovery candidate source is independent of verifier source', () => {
     expect(() => validateCandidateSource(f.candidateRoot, f)).toThrow(/tracked changes/);
   });
 
+  it('accepts filesystem aliases of the same root without accepting a different directory', () => {
+    const f = fixture();
+    const alias = path.join(path.dirname(f.candidateRoot), 'candidate-alias');
+    fs.symlinkSync(f.candidateRoot, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    expect(validateCandidateSource(alias, f)).toBe(fs.realpathSync(f.candidateRoot));
+    const upperCaseRoot = f.candidateRoot.toUpperCase();
+    if (fs.existsSync(upperCaseRoot)) {
+      expect(validateCandidateSource(upperCaseRoot, f)).toBe(fs.realpathSync(upperCaseRoot));
+    }
+    expect(() => validateCandidateSource(path.join(f.candidateRoot, 'scripts'), f)).toThrow(/candidate checkout/);
+  });
+
+  it('rejects unavailable directory identity rather than guessing paths match', () => {
+    const f = fixture();
+    const original = fs.statSync;
+    const spy = vi.spyOn(fs, 'statSync').mockImplementation((file, options) => {
+      const value = original(file, options);
+      if (options?.bigint) return { ...value, ino: 0n, isDirectory: () => true };
+      return value;
+    });
+    try { expect(() => validateCandidateSource(f.candidateRoot, f)).toThrow(/candidate checkout/); }
+    finally { spy.mockRestore(); }
+  });
+
   it('runs the new authenticated probe as a real child in the original candidate checkout', async () => {
     const f = fixture();
     const observed = offlineProbe(f);

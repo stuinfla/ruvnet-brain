@@ -4,8 +4,8 @@ title: Knowledge-to-execution enforcement is a mandatory policy boundary
 status: Accepted
 date: 2026-08-30
 updated: 2026-09-07
-reviewed_digest: 8cca58828c62
-version: 1.1.1
+reviewed_digest: 5f5c219fe670
+version: 1.1.2
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [architecture, enforcement, routing, swarms, adr, ddd, qa, release]
@@ -178,6 +178,8 @@ complete reconciliation and dual-seat receipt enforcement, exhaustive architectu
 and public release proof remain outstanding.
 
 ## Currency log
+
+| 2026-09-07 | Reviewed cross-platform scheduler lifecycle preserves owned paths and blocks uninstall when scheduler removal cannot be verified; registration alone is not execution proof; source digest 5f5c219fe670. | `bin/install.mjs`; source review only, hosted and public acceptance remain pending. |
 
 | 2026-09-07 | Reviewed recovery source and corrected implementation boundaries; source digest 8cca58828c62. | `scripts/qa-runner.mjs`; source examination only, no renewed runtime or publication verification. |
 | 2026-08-31 | Added the executable preflight: consequential delegation now requires fresh successful Brain grounding plus an exact append-only project AgentDB checkpoint receipt before routing, and API-backed execution remains refused when a native host is available. | `scripts/execution-preflight.mjs`; `scripts/execution-policy.mjs`; `tests/unit/execution-preflight.test.mjs`; canonical contract lane. |

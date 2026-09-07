@@ -1,0 +1,61 @@
+name: abandon-public-verification
+
+# An explicit unsuccessful closure only. Public package, bundle, tags, and channels remain intact.
+on:
+  repository_dispatch:
+    types: [abandon-public-verification]
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: ruvnet-brain-release
+  cancel-in-progress: false
+jobs:
+  abandon:
+    name: close-published-unverified-transaction
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: Production – ruvnet-brain
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Restore the failed recovery identity
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ github.event.client_payload.recovery_inputs_artifact_id }}
+          run-id: ${{ github.event.client_payload.recovery_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: release-evidence
+          merge-multiple: true
+      - name: Append signed unsuccessful closure after exact public-byte checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RUVNET_SIGNING_KEY: ${{ secrets.RUVNET_SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          node scripts/public-verification-abandon.mjs \
+            --identity release-evidence/release-identity.json \
+            --out "$RUNNER_TEMP/abandoned-receipt.json"
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - name: Preserve the exact signed unsuccessful closure
+        uses: actions/upload-artifact@v4
+        with:
+          name: abandoned-public-verification-${{ github.run_id }}
+          path: ${{ runner.temp }}/abandoned-receipt.json
+          if-no-files-found: error
+          retention-days: 90

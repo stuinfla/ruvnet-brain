@@ -4,8 +4,8 @@ title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
 updated: 2026-09-07
-reviewed_digest: 3e4b5167e33f
-version: 1.1.2
+reviewed_digest: 899e9e2380e9
+version: 1.1.3
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -174,6 +174,23 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 - **Trust the local version stamp.** A stamp proves neither publication nor installability.
 - **Keep every rollback forever.** Safe failure handling still needs bounded, evidence-driven cleanup.
 
+### Installed-update public proof
+
+Before `install-verified`, each public dual-host leaf on Linux, macOS, and Windows must
+include two sequential terminal runs triggered by that platform's native scheduler. The
+proof consumes the exact public npm package and signed bundle, binds their hashes to the
+candidate source, version, and workflow run, and validates the live installed ReleaseCoverage
+projection after each run. Run two must be `noop`, with measured storage deltas, no redundant
+full-corpus copies, bounded retained evidence, and verified removal of the owned proof job.
+Missing raw evidence or failed cleanup blocks acceptance; claimed validation flags do not
+replace raw receipt, signature, executable-identity, and projection validation.
+
+This is explicitly `scope: installed-update`. Update, host convergence, and cleanup carry
+current-run execution evidence. Corpus phases imported from the signed release remain
+`imported-release`, bound to the installed projection and candidate source. Upstream freshness
+remains `UNKNOWN`; these consumer runs do not prove a new corpus build or complete S-4.
+The strict current-run corpus-production validator remains a separate requirement.
+
 ## Consequences
 
 - Corpus promotion becomes an explicit, reviewable input rather than an accidental side effect.
@@ -211,6 +228,7 @@ still supplies seed bytes to the projection producer. Focused producer and mutat
 new hosted and public verification remain required.
 
 ## Currency log
+| 2026-09-07 | Reviewed source digest 899e9e2380e9: installed-update public proof boundary; producer freshness remains UNKNOWN. | `kb/forge-update.mjs` imports signed corpus evidence; `scripts/public-verification-aggregate.mjs` and `scripts/nightly-two-run-proof.mjs` validate raw native consumer evidence. |
 
 | 2026-09-07 | Reviewed the failed hosted census and corrected producer; source digest 3e4b5167e33f. | `scripts/build-bundle.mjs`; tests in `/tmp/ruvnet-assembled-projection-tests-20260907.log`, no public PASS claimed. |
 

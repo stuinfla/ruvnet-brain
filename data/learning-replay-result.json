@@ -1,9 +1,9 @@
 {
   "invariant": "LEARNING-REPLAY",
-  "verdict": "UNKNOWN",
-  "why": "3/3 run(s) could not be measured; 0/3 passed",
-  "sha": "d6e1daa94dd7b885eb3ca9996623e79c1c52eb02",
-  "at": "2026-09-07T13:32:19.994Z",
+  "verdict": "PASS",
+  "why": "3/3 runs passed (bar 2/3)",
+  "sha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
+  "at": "2026-09-07T14:00:31.558Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -11,21 +11,21 @@
   "trap": "memory-search-query",
   "taskHash": "0308cccebda651705b12b6494468fc06be96fee9d85d05bf9d72b328b174f4ca",
   "n": 3,
-  "passes": 0,
+  "passes": 3,
   "fails": 0,
-  "unknowns": 3,
+  "unknowns": 0,
   "controlTokenRuns": 0,
   "controlWorkedRuns": 0,
-  "treatedTokenRuns": 0,
+  "treatedTokenRuns": 3,
   "executionGate": {
-    "treatedSubcommandRuns": 0,
-    "treatedExecutedRuns": 0,
-    "treatedRetrievedRuns": 0
+    "treatedSubcommandRuns": 3,
+    "treatedExecutedRuns": 3,
+    "treatedRetrievedRuns": 3
   },
-  "rate": 0,
+  "rate": 1,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 294.6,
+  "wallSeconds": 95.6,
   "premise": {
     "verified": true,
     "evidence": "-q, --query               Search query (required)"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1788787644799",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-x1Jwfc/brain-home/versions/d4-refresh-1788787644799",
+    "generation": "d4-refresh-1788789533488",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-nrVxLD/brain-home/versions/d4-refresh-1788789533488",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -61,159 +61,204 @@
   "runs": [
     {
       "i": 1,
-      "verdict": "UNKNOWN",
-      "why": "the control arm produced no ruflo invocation at all — there is no comparable artifact to difference against",
+      "verdict": "PASS",
+      "why": "treated \"flagged\" vs control \"positional\"; the produced command executed and returned the required outcome",
       "error": null,
       "treated": {
-        "class": "none",
-        "subcommandCorrect": false,
-        "command": "",
+        "class": "flagged",
+        "subcommandCorrect": true,
+        "command": "ruflo memory search -q \"caching strategy\" --path .swarm/memory.db",
         "exec": {
-          "ran": false,
-          "argv": null,
-          "exit": null,
-          "exitOk": false,
-          "retrieved": false,
-          "why": "no Ruflo invocation to execute",
-          "output": ""
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "memory",
+            "search",
+            "-q",
+            "caching strategy",
+            "--path",
+            ".swarm/memory.db"
+          ],
+          "exit": 0,
+          "exitOk": true,
+          "retrieved": true,
+          "why": "exit 0; output carries the seeded memory (matched \"note-caching\")",
+          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 4ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
         },
         "model": "gpt-5.6-sol",
         "forcedCommand": false,
-        "lessonIndex": -1,
-        "firstToolIndex": -1,
-        "lessonBeforeFirstToolCall": false,
+        "lessonIndex": 0,
+        "firstToolIndex": 1,
+        "lessonBeforeFirstToolCall": true,
         "transcript": {
-          "path": "data/learning-replay-transcripts/d6e1daa94dd7b885eb3ca9996623e79c1c52eb02/689b7fcf4c48c020e18812d032c6026cea887b01f230a621e6889a01277e82e2.json",
-          "sha256": "689b7fcf4c48c020e18812d032c6026cea887b01f230a621e6889a01277e82e2",
-          "sourceSha": "d6e1daa94dd7b885eb3ca9996623e79c1c52eb02",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/365f77af4432faaf4d8f954f2f5337459428c5073ab6d493103708aa7ad4e560.json",
+          "sha256": "365f77af4432faaf4d8f954f2f5337459428c5073ab6d493103708aa7ad4e560",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       },
       "control": {
-        "class": "none",
-        "subcommandCorrect": false,
-        "command": "",
+        "class": "positional",
+        "subcommandCorrect": true,
+        "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
         "exec": {
-          "ran": false,
-          "argv": null,
-          "exit": null,
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "memory",
+            "search",
+            "caching strategy",
+            "--path",
+            ".swarm/memory.db"
+          ],
+          "exit": 1,
           "exitOk": false,
           "retrieved": false,
-          "why": "no Ruflo invocation to execute",
-          "output": ""
+          "why": "exit 1; output matched failure shape /Required option missing/i",
+          "output": "[ERROR] Required option missing: --query\n"
         },
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/d6e1daa94dd7b885eb3ca9996623e79c1c52eb02/56621835abcc2c0e0de41f7968274a5903ab552423dda2211d99fc4a02a0cb5f.json",
-          "sha256": "56621835abcc2c0e0de41f7968274a5903ab552423dda2211d99fc4a02a0cb5f",
-          "sourceSha": "d6e1daa94dd7b885eb3ca9996623e79c1c52eb02",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/c7f9fe395caebffd3ffa50b7c296548e44a0284e78341e4f7036ec9546a1cfaa.json",
+          "sha256": "c7f9fe395caebffd3ffa50b7c296548e44a0284e78341e4f7036ec9546a1cfaa",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       }
     },
     {
       "i": 2,
-      "verdict": "UNKNOWN",
-      "why": "the control arm produced no ruflo invocation at all — there is no comparable artifact to difference against",
+      "verdict": "PASS",
+      "why": "treated \"flagged\" vs control \"positional\"; the produced command executed and returned the required outcome",
       "error": null,
       "treated": {
-        "class": "none",
-        "subcommandCorrect": false,
-        "command": "",
+        "class": "flagged",
+        "subcommandCorrect": true,
+        "command": "ruflo memory search -q \"caching strategy\" --path .swarm/memory.db",
         "exec": {
-          "ran": false,
-          "argv": null,
-          "exit": null,
-          "exitOk": false,
-          "retrieved": false,
-          "why": "no Ruflo invocation to execute",
-          "output": ""
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "memory",
+            "search",
+            "-q",
+            "caching strategy",
+            "--path",
+            ".swarm/memory.db"
+          ],
+          "exit": 0,
+          "exitOk": true,
+          "retrieved": true,
+          "why": "exit 0; output carries the seeded memory (matched \"note-caching\")",
+          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 4ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
         },
         "model": "gpt-5.6-sol",
         "forcedCommand": false,
-        "lessonIndex": -1,
-        "firstToolIndex": -1,
-        "lessonBeforeFirstToolCall": false,
+        "lessonIndex": 0,
+        "firstToolIndex": 1,
+        "lessonBeforeFirstToolCall": true,
         "transcript": {
-          "path": "data/learning-replay-transcripts/d6e1daa94dd7b885eb3ca9996623e79c1c52eb02/67c6646142a7759529db37c25a0f5d01f8e479d8ba1e595cb185657b5ebfd2c2.json",
-          "sha256": "67c6646142a7759529db37c25a0f5d01f8e479d8ba1e595cb185657b5ebfd2c2",
-          "sourceSha": "d6e1daa94dd7b885eb3ca9996623e79c1c52eb02",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/632c02ed33859375fabbba839e669e3a5211c32954f08c5ca1fedd868d9cd22c.json",
+          "sha256": "632c02ed33859375fabbba839e669e3a5211c32954f08c5ca1fedd868d9cd22c",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       },
       "control": {
-        "class": "none",
-        "subcommandCorrect": false,
-        "command": "",
+        "class": "positional",
+        "subcommandCorrect": true,
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
         "exec": {
-          "ran": false,
-          "argv": null,
-          "exit": null,
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "memory",
+            "search",
+            "caching strategy",
+            "--path",
+            ".swarm/memory.db"
+          ],
+          "exit": 1,
           "exitOk": false,
           "retrieved": false,
-          "why": "no Ruflo invocation to execute",
-          "output": ""
+          "why": "exit 1; output matched failure shape /Required option missing/i",
+          "output": "[ERROR] Required option missing: --query\n"
         },
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/d6e1daa94dd7b885eb3ca9996623e79c1c52eb02/5067538cfe4ed6f4b4823fdc50c18e8aa5710d78026f8df286b597deeab3d48f.json",
-          "sha256": "5067538cfe4ed6f4b4823fdc50c18e8aa5710d78026f8df286b597deeab3d48f",
-          "sourceSha": "d6e1daa94dd7b885eb3ca9996623e79c1c52eb02",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/dbff71e2e11dbb5b023d31f5e9f1a8272d333e5d58814485874a2da0d3a5d5a7.json",
+          "sha256": "dbff71e2e11dbb5b023d31f5e9f1a8272d333e5d58814485874a2da0d3a5d5a7",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       }
     },
     {
       "i": 3,
-      "verdict": "UNKNOWN",
-      "why": "the control arm produced no ruflo invocation at all — there is no comparable artifact to difference against",
+      "verdict": "PASS",
+      "why": "treated \"flagged\" vs control \"positional\"; the produced command executed and returned the required outcome",
       "error": null,
       "treated": {
-        "class": "none",
-        "subcommandCorrect": false,
-        "command": "",
+        "class": "flagged",
+        "subcommandCorrect": true,
+        "command": "ruflo memory search -q \"caching strategy\" --path .swarm/memory.db",
         "exec": {
-          "ran": false,
-          "argv": null,
-          "exit": null,
-          "exitOk": false,
-          "retrieved": false,
-          "why": "no Ruflo invocation to execute",
-          "output": ""
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "memory",
+            "search",
+            "-q",
+            "caching strategy",
+            "--path",
+            ".swarm/memory.db"
+          ],
+          "exit": 0,
+          "exitOk": true,
+          "retrieved": true,
+          "why": "exit 0; output carries the seeded memory (matched \"note-caching\")",
+          "output": "[INFO] Searching: \"caching strategy\" (semantic)\n\n  Search time: 5ms\n\n+----------------------+-------+-----------+-------------------------------------+\n| Key                  | Score | Namespace | Preview                             |\n+----------------------+-------+-----------+-------------------------------------+\n| note-caching-stra... |  0.79 | default   | The caching strategy for this pr... |"
         },
         "model": "gpt-5.6-sol",
         "forcedCommand": false,
-        "lessonIndex": -1,
-        "firstToolIndex": -1,
-        "lessonBeforeFirstToolCall": false,
+        "lessonIndex": 0,
+        "firstToolIndex": 1,
+        "lessonBeforeFirstToolCall": true,
         "transcript": {
-          "path": "data/learning-replay-transcripts/d6e1daa94dd7b885eb3ca9996623e79c1c52eb02/041029fe50bb4ddd1422c14de81d5456c9514d18361a3b8054a4ade80b0e1932.json",
-          "sha256": "041029fe50bb4ddd1422c14de81d5456c9514d18361a3b8054a4ade80b0e1932",
-          "sourceSha": "d6e1daa94dd7b885eb3ca9996623e79c1c52eb02",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/446edb563b792a02b9842fbe35a7eba3d7d4cc96b14178f7008f2358a6b32543.json",
+          "sha256": "446edb563b792a02b9842fbe35a7eba3d7d4cc96b14178f7008f2358a6b32543",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       },
       "control": {
-        "class": "none",
-        "subcommandCorrect": false,
-        "command": "",
+        "class": "positional",
+        "subcommandCorrect": true,
+        "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
         "exec": {
-          "ran": false,
-          "argv": null,
-          "exit": null,
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "memory",
+            "search",
+            "caching strategy",
+            "--path",
+            ".swarm/memory.db"
+          ],
+          "exit": 1,
           "exitOk": false,
           "retrieved": false,
-          "why": "no Ruflo invocation to execute",
-          "output": ""
+          "why": "exit 1; output matched failure shape /Required option missing/i",
+          "output": "[ERROR] Required option missing: --query\n"
         },
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/d6e1daa94dd7b885eb3ca9996623e79c1c52eb02/f8fbd01c503fe53db1184b30e31338b47fcbf10c21d5ab7c878037fcb129a186.json",
-          "sha256": "f8fbd01c503fe53db1184b30e31338b47fcbf10c21d5ab7c878037fcb129a186",
-          "sourceSha": "d6e1daa94dd7b885eb3ca9996623e79c1c52eb02",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/793ddccd96b090ad7ba2cdae63b72413c0ed2c759c4b9f9af0ef14811582b302.json",
+          "sha256": "793ddccd96b090ad7ba2cdae63b72413c0ed2c759c4b9f9af0ef14811582b302",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": null
         }
       }

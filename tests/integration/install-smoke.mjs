@@ -394,7 +394,7 @@ test(
       // so the two tokens are adjacent elements, never one space-joined line.
       assert.match(
         xml,
-        /<string>--yes<\/string>\s*<string>ruvnet-brain@latest<\/string>\s*<string>--update<\/string>\s*<string>--host-sync-only<\/string>/,
+        /<string>[^<]*nightly-refresh-[a-f0-9]{64}\.mjs<\/string>/,
         'must run the current host-convergent updater rather than the retired KB-only command',
       );
       // plutil is macOS's own plist validator — structural proof launchd could load this file.
@@ -523,7 +523,7 @@ test(
 );
 
 test(
-  'already enabled on macOS: says nightly is already on and never prompts',
+  'unregistered macOS plist does not falsely claim nightly is already on',
   { skip: process.platform !== 'darwin' ? 'macOS-only: exercises the LaunchAgent branch' : false },
   () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-nightly-home-on-'));
@@ -535,8 +535,8 @@ test(
       fs.writeFileSync(path.join(plistDir, 'com.ruvnet.brain-update.plist'), '<!-- pre-existing -->\n');
       const r = runOfferNightly({ HOME: home, RUVNET_BRAIN_KB: kbDir });
       assert.equal(r.status, 0, `driver failed:\n${r.stderr || ''}`);
-      assert.match(r.stdout || '', /OFFER_RESULT=already-on/, 'an existing LaunchAgent must short-circuit the offer');
-      assert.match(r.stdout || '', /already on/, 'must say plainly that nightly is already on');
+      assert.match(r.stdout || '', /OFFER_RESULT=recommended/, 'an unregistered LaunchAgent does not prove a valid nightly job');
+      assert.doesNotMatch(r.stdout || '', /already on/, 'must not claim unverified scheduling is enabled');
       assert.doesNotMatch(r.stdout || '', /Enable nightly auto-updates\?/, 'must not prompt when already enabled');
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
@@ -575,21 +575,35 @@ test.todo(
 );
 
 test(
-  'non-macOS: honest "macOS-only" line plus the --update manual alternative, no prompt',
+  'non-macOS: supported schedulers are recommended without a non-TTY prompt',
   { skip: process.platform === 'darwin' ? 'covers the non-darwin branch (runs on Linux/Windows CI)' : false },
   () => {
-    const kbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-nightly-kb-lin-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-nightly-home-nonmac-'));
+    const brainHome = path.join(home, 'brain');
+    const kbDir = path.join(brainHome, 'kb');
     try {
+      fs.mkdirSync(kbDir, { recursive: true });
       fs.writeFileSync(path.join(kbDir, 'forge-update.mjs'), '// stub for install-smoke — never executed\n');
-      const r = runOfferNightly({ RUVNET_BRAIN_KB: kbDir });
+      const r = runOfferNightly({ HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: brainHome,
+        RUVNET_BRAIN_KB: kbDir });
       assert.equal(r.status, 0, `driver failed:\n${r.stderr || ''}`);
       const out = r.stdout || '';
-      assert.match(out, /OFFER_RESULT=unsupported/, 'non-darwin must take the unsupported path');
-      assert.match(out, /macOS-only/, 'must say honestly that the scheduler is macOS-only');
-      assert.match(out, /npx ruvnet-brain --update/, 'must offer the manual --update alternative');
-      assert.doesNotMatch(out, /Enable nightly auto-updates\?/, 'must not prompt on non-macOS');
+      const kind = { linux: 'cron', win32: 'task-scheduler' }[process.platform];
+      if (kind) {
+        assert.match(out, /OFFER_RESULT=recommended/, 'supported scheduler must be recommended');
+        assert.ok(out.includes(`background job (${kind})`), 'must describe this platform scheduler');
+        assert.match(out, /npx ruvnet-brain --enable-nightly/, 'must offer explicit manual enablement');
+        assert.match(out, /npx ruvnet-brain --update/, 'must retain the manual update alternative');
+        assert.match(out, /No interactive terminal here/, 'must explain why it did not prompt');
+      } else {
+        assert.match(out, /OFFER_RESULT=unsupported/, 'other platforms must remain unsupported');
+        assert.ok(out.includes(`No reversible scheduler adapter is available for ${process.platform}`));
+      }
+      assert.doesNotMatch(out, /Enable nightly auto-updates\?/, 'must not prompt without a TTY');
+      assert.deepEqual(fs.readdirSync(brainHome), ['kb'], 'an offer must not register a scheduler');
+      assert.deepEqual(fs.readdirSync(kbDir), ['forge-update.mjs'], 'an offer must not mutate the KB');
     } finally {
-      fs.rmSync(kbDir, { recursive: true, force: true });
+      fs.rmSync(home, { recursive: true, force: true });
     }
   },
 );

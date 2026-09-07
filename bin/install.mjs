@@ -37,6 +37,7 @@ import {
   installScheduler,
   nightlyArtifact,
   removeScheduler,
+  readNightlyRegistration,
   resolveNightlyProofBundle,
   schedulerStatus,
   verifyNightlyExecutionIdentity,
@@ -3046,7 +3047,7 @@ function enableNightly() {
   }
   try {
     const brainHome = process.env.RUVNET_BRAIN_HOME || path.dirname(kbDir);
-    const registration = installNightlyRunner({ brainHome,
+    const registration = installNightlyRunner({ brainHome, env: { ...process.env, RUVNET_BRAIN_HOME: brainHome, RUVNET_BRAIN_KB: kbDir },
       source: path.join(REPO_ROOT, 'bin', 'nightly-refresh.mjs') });
     const installed = installScheduler(registration, {
       platform: process.platform, env: process.env, kbDir, testMode: TEST_MODE,
@@ -3071,21 +3072,33 @@ function disableNightly() {
   printBanner('disable nightly updates');
   const kbDir = resolvedKbDir();
   const brainHome = process.env.RUVNET_BRAIN_HOME || path.dirname(kbDir);
+  const registration = readNightlyRegistration({ brainHome });
   const removed = removeScheduler({ platform: process.platform, env: process.env, testMode: TEST_MODE });
   if (!removed.ok) {
     console.error(`\n${c.red('✗ nightly updates were NOT disabled:')} ${removed.why}`);
     process.exitCode = 1;
-    return;
+    return false;
   }
   const status = schedulerStatus({ platform: process.platform, env: process.env, brainHome, kbDir,
     testMode: TEST_MODE });
   if (!['off', 'unsupported'].includes(status.state)) {
     console.error(`\n${c.red('✗ nightly disable could not be verified:')} ${status.evidence}`);
     process.exitCode = 1;
-    return;
+    return false;
+  }
+  if (registration.ok) {
+    fs.rmSync(registration.record.recordPath, { force: true });
+    const dir = path.dirname(registration.record.recordPath);
+    const otherRegistrations = fs.readdirSync(dir).filter(name => /^registration.*\.json$/.test(name));
+    // A proof registration may share the immutable runner; retain it if any registration remains.
+    if (!otherRegistrations.length && path.dirname(registration.record.runnerPath) === dir
+      && path.basename(registration.record.runnerPath) === `nightly-refresh-${registration.record.runnerSha256}.mjs`) {
+      fs.rmSync(registration.record.runnerPath, { force: true });
+    }
   }
   ok(removed.already ? 'nightly updates were already off — nothing to remove' : 'nightly updates disabled and absence verified');
   info(`re-enable any time:  ${c.bold('npx ruvnet-brain --enable-nightly')}`);
+  return true;
 }
 
 // ── spend guard: the alarm that catches a runaway agentic fleet BEFORE it drains a card ───────────
@@ -3395,7 +3408,7 @@ function uninstallAll() {
   // Ours-by-construction directories and files are removed; things that live INSIDE a file the user
   // owns (settings.json entries, the MCP registration) and the Claude Code plugin itself are not
   // ours to delete, so they are handed over as commands.
-  const AUTO = new Set(['Brain bundle (knowledge base)', 'Nightly updater (LaunchAgent)',
+  const AUTO = new Set(['Brain bundle (knowledge base)', 'Nightly updater (LaunchAgent)', 'Nightly scheduler registration',
     'Spend watchdog (LaunchAgent)', 'Spend watchdog script', 'CLAUDE.md block (6 lines, between markers)',
     'Model-router files', 'Status-bar version script', 'Status-bar preference', 'Usage-counts preference',
     // Two gaps closed here: the statusLine KEY is now removable in place (we know exactly what we
@@ -3416,7 +3429,10 @@ function uninstallAll() {
   console.log(`\n  ${c.dim('Your own CLAUDE.md content is preserved — only our marked block is taken out,')}`);
   console.log(`  ${c.dim('and the file is backed up first.')}\n`);
 
-  if (process.platform === 'darwin') { disableNightly(); disableSpendGuard(); }
+  if (nightlyArtifact({ platform: process.platform, env: process.env }).supported) {
+    if (disableNightly() === false) return;
+  }
+  if (process.platform === 'darwin') disableSpendGuard();
 
   const claudeMd = removeClaudeMdBlock();
   if (claudeMd === 'removed') ok('removed our block from ~/.claude/CLAUDE.md (your content untouched, backup saved)');
@@ -4585,7 +4601,7 @@ Usage:
   npx ruvnet-brain --update   One-shot: pull the latest Release bundle into your installed brain
                               (runs the bundle's own forge-update.mjs --apply: backup + re-verify)
   npx ruvnet-brain --enable-nightly    Schedule that update nightly at 03:47 — macOS LaunchAgent;
-                              other platforms get the documented cron line. OFF by default.
+                              Linux uses cron; Windows uses Task Scheduler. OFF by default.
   npx ruvnet-brain --disable-nightly   Remove the nightly schedule (safe to run any time)
   npx ruvnet-brain --what-changed     Show exactly what RuvNet Brain has put on this machine,
                               with the undo command for each piece

@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { afterEach, expect, it } from 'vitest';
 
 const roots = [];
@@ -24,19 +25,20 @@ function run(platform, mutant) {
   const spec = path.join(root, 'candidate & %PATH% !literal!.tgz'); fs.writeFileSync(spec, 'sealed fixture');
   const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
   const registration = path.join(root, 'registration.json');
-  fs.writeFileSync(registration, JSON.stringify({ schemaVersion: 2, kind: 'ruvnet-brain-nightly-scheduler', identity: 'com.ruvnet.brain-update', runnerPath: runner, runnerSha256: hash(runner), nodePath: process.execPath, argv: [], packageTarget: { spec, sha256: hash(spec) }, bundleTarget: null }));
+  fs.writeFileSync(registration, JSON.stringify({ schemaVersion: 2, kind: 'ruvnet-brain-nightly-scheduler', identity: 'com.ruvnet.brain-update', environment: { RUVNET_BRAIN_HOME: root, RUVNET_BRAIN_KB: path.join(root, 'custom-kb') }, runnerPath: runner, runnerSha256: hash(runner), nodePath: process.execPath, argv: [], packageTarget: { spec, sha256: hash(spec) }, bundleTarget: null }));
   const preload = path.join(root, 'preload.mjs');
   fs.writeFileSync(preload, `import cp from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module';
     Object.defineProperty(process,'platform',{value:${JSON.stringify(platform)}});
     const original=cp.spawnSync;
     cp.spawnSync=(command,args,opts)=>{
       if(opts.shell!==false) throw Error('shell forbidden');
+      if(opts.env.RUVNET_BRAIN_HOME!==${JSON.stringify(root)} || opts.env.RUVNET_BRAIN_KB!==${JSON.stringify(path.join(root, 'custom-kb'))}) throw Error('registered custom paths were lost');
       ${platform === 'win32' ? `if(command!==process.execPath) return {error:Error('Windows cannot directly execute cmd shim')};` : `if(!command.endsWith('npx')) throw Error('POSIX invocation changed'); command=process.execPath; args=[${JSON.stringify(entry)},...args];`}
       return original(command,args,opts);
     }; syncBuiltinESMExports();`);
-  return { spec, result: spawnSync(process.execPath, ['--import', preload, runner], { encoding: 'utf8', env: { PATH: root, RUVNET_NIGHTLY_REGISTRATION: registration } }) };
+  return { spec, result: spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, runner, '--registration', registration], { encoding: 'utf8', env: { PATH: root } }) };
 }
-it.each(['win32', 'darwin'])('launches the registered target without shell argument rewriting on %s', platform => {
+it.each(['win32', 'darwin', 'linux'])('launches the registered target without shell argument rewriting on %s', platform => {
   const { spec, result } = run(platform);
   expect(result.status, result.stderr).toBe(7);
   expect(JSON.parse(result.stdout)).toEqual(['--yes', spec, '--update', '--no-nightly-prompt']);

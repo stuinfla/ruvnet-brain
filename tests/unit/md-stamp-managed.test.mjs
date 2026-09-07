@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { computeManagedStamp, writeStampIfUnchanged } from '../../plugin/scripts/md-stamp.mjs';
 
 const HOOK = path.resolve(import.meta.dirname, '../../plugin/scripts/md-stamp.mjs');
@@ -122,7 +123,7 @@ describe('managed Markdown stamping through the actual hook body', () => {
     expect(fire(file, { created: true, env: { RUVNET_MD_STAMP: 'off' } })).toBe('# Off\n');
   });
   it('honors the shared maintenance helper when the installed generation provides it', () => {
-    const loader = path.join(root, 'maintenance-loader.mjs');
+    const loader = path.join(root, 'maintenance # loader.mjs');
     fs.writeFileSync(loader, `export function resolve(specifier, context, next) {
       if (specifier.endsWith('/development-maintenance.mjs')) return {
         url: 'data:text/javascript,export function developmentHooksSuspended() { return true; }', shortCircuit: true,
@@ -130,7 +131,7 @@ describe('managed Markdown stamping through the actual hook body', () => {
       return next(specifier, context);
     }`);
     const file = write('maintenance.md', '# Suspended\n');
-    expect(fire(file, { created: true, nodeArgs: ['--no-warnings', '--experimental-loader', loader] })).toBe('# Suspended\n');
+    expect(fire(file, { created: true, nodeArgs: ['--no-warnings', '--experimental-loader', pathToFileURL(loader).href] })).toBe('# Suspended\n');
   });
   it('remains idempotent when an existing stamp sits at the edge of the header window', () => {
     const file = write('long-head.md', '# Title\n' + '\n'.repeat(8) + 'Updated: 2020-01-01\nCreated: 2019-01-01\nBody\n');

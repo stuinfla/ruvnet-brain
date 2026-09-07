@@ -19,6 +19,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt, evaluatePublicationReceipt } from './release-proof.mjs';
 import { verifyPayload } from './release-payload.mjs';
 import { resolveInstalledCanaryCitation } from './retrieval-canary.mjs';
+import { runNightlyTwoRunProof, validateNightlyProofReceipt } from './nightly-two-run-proof.mjs';
 import { parseRetrievalResult } from '../kb/retrieval-result.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
@@ -57,7 +58,14 @@ export function validateCandidateSource(root, { sha, version }) {
   const options = { cwd: candidateRoot };
   const top = command('git', ['rev-parse', '--show-toplevel'], options);
   const head = command('git', ['rev-parse', 'HEAD'], options);
-  if (fs.realpathSync(top) !== candidateRoot || !/^[a-f0-9]{40}$/.test(String(sha)) || head !== sha) {
+  // Git and Node can spell the same Windows directory with different casing/separators.
+  // Compare actual directory identity, never case-fold distinct source paths.
+  const candidateDirectory = fs.statSync(candidateRoot, { bigint: true });
+  const topDirectory = fs.statSync(top, { bigint: true });
+  if (!candidateDirectory.isDirectory() || !topDirectory.isDirectory()
+    || candidateDirectory.ino <= 0n || topDirectory.ino <= 0n
+    || candidateDirectory.dev !== topDirectory.dev || candidateDirectory.ino !== topDirectory.ino
+    || !/^[a-f0-9]{40}$/.test(String(sha)) || head !== sha) {
     throw new Error(`candidate checkout ${head} does not match candidate ${sha}`);
   }
   if (command('git', ['status', '--porcelain', '--untracked-files=no'], options)) {
@@ -291,6 +299,34 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       if (!asset?.browser_download_url) throw new Error(`GitHub release ${tag} is missing sealed artifact ${assetName}`);
       await download(asset.browser_download_url, destination, headers);
       return { path: destination, tag: release.tag_name, sha: tagCommit(root, tag) };
+    },
+
+    async runNativeNightly({ identity, workflowRunId }) {
+      const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-public-nightly-'));
+      let completed = false;
+      try {
+        const npm = await this.downloadNpm({ version: identity.version,
+          destination: path.join(temp, 'package.tgz') });
+        const bundle = await this.downloadGithub({ tag: identity.tag, assetName: 'ruvnet-brain.zip',
+          destination: path.join(temp, 'ruvnet-brain.zip') });
+        const signature = await this.downloadGithub({ tag: identity.tag, assetName: 'ruvnet-brain.zip.sig',
+          destination: path.join(temp, 'ruvnet-brain.zip.sig') });
+        if (sha256(npm.path) !== identity.packageSha256 || sha256(bundle.path) !== identity.bundleSha256
+          || npm.version !== identity.version || bundle.sha !== identity.candidateSha
+          || signature.sha !== identity.candidateSha) throw new Error('nightly public artifact identity mismatch');
+        const proof = await runNightlyTwoRunProof({ packagePath: npm.path, bundlePath: bundle.path,
+          signaturePath: signature.path, sourceSha: identity.candidateSha, workflowRunId,
+          out: path.join(temp, 'nightly-proof.json') });
+        const validation = validateNightlyProofReceipt(proof, { platform: process.platform, version: identity.version,
+          packageSha256: identity.packageSha256, bundleSha256: identity.bundleSha256,
+          sourceSha: identity.candidateSha, workflowRunId });
+        if (!validation.ok) throw new Error(`public nightly proof failed: ${validation.failures.join('; ')}`);
+        completed = true;
+        return proof;
+      } finally {
+        if (completed) fs.rmSync(temp, { recursive: true, force: true });
+        else console.error(`Native public artifact diagnostics retained at ${temp}`);
+      }
     },
 
     async installHosts({ artifactPath, artifactSha256, bundlePath, bundleSha256, version }) {

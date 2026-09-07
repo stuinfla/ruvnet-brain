@@ -78,7 +78,7 @@ describe('reclaimBackups (issue #35)', () => {
     expect(removed).toEqual([]);
     expect(kept).toHaveLength(2);
     expect(kept.map(([, reason]) => reason).join('\n')).toContain('opaque-store.bin');
-    expect(kept.map(([, reason]) => reason).join('\n')).toContain('nested/private.rvf');
+    expect(kept.map(([, reason]) => reason).join('\n')).toContain(path.join('nested', 'private.rvf'));
     expect(fs.existsSync(opaque)).toBe(true);
     expect(fs.existsSync(nested)).toBe(true);
   });

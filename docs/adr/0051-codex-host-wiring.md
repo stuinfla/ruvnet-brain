@@ -4,8 +4,8 @@ title: Codex host wiring — register MCP and adapt the full lifecycle without v
 status: Accepted
 date: 2026-07-24
 updated: 2026-09-07
-reviewed_digest: b981224bbfc7
-version: 1.1.1
+reviewed_digest: 41114c475529
+version: 1.1.2
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -289,6 +289,8 @@ result. `route-dispatch` remains advisory; the wrapper must not represent it as 
 These source observations do not establish native Windows or public installed-host proof.
 
 ## Currency log
+
+| 2026-09-07 | Reviewed scheduler registration preserves custom Brain and KB paths; uninstall confirms scheduler absence before removing owned installation files; source digest 41114c475529. | `bin/install.mjs`; source review only, hosted and public acceptance remain pending. |
 
 | 2026-09-07 | Reviewed recovery source and corrected the implementation boundaries described above; source digest b981224bbfc7. | `plugin/scripts/codex-hook-adapter.mjs`; local source examination only, no renewed runtime or publication verification. |
 | 2026-08-31 | Re-read after the release-control cutover; the release-proof skill now routes operators through `release-cycle.yml`, while `protected-release.yml` remains an internal publisher boundary. Codex host wiring is unchanged. | `plugin/skills/release-proof/SKILL.md`; `.github/workflows/release-cycle.yml`; `scripts/release-convergence-watchdog.mjs`. |

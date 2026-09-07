@@ -24,6 +24,7 @@ export async function finalizePublicVerification({
   aggregateFile,
   outputFile,
   verifierSha,
+  workflowRunId,
   privatePem = process.env.RUVNET_SIGNING_KEY,
   publicKeyFile = 'keys/ruvnet-brain-signing.pub.pem',
   adapter = liveReleaseProvider({ root: process.cwd() }),
@@ -35,7 +36,7 @@ export async function finalizePublicVerification({
   const identity = regularJson(identityFile, 'release identity');
   const aggregate = regularJson(aggregateFile, 'public verification aggregate');
   const publicKey = crypto.createPublicKey(fs.readFileSync(path.resolve(publicKeyFile), 'utf8'));
-  const receipt = await finalizeReleaseTransaction({ identity, aggregate, adapter, verifierSha,
+  const receipt = await finalizeReleaseTransaction({ identity, aggregate, adapter, verifierSha, workflowRunId,
     privateKey: crypto.createPrivateKey(privatePem), publicKey, aggregatePublicKey: publicKey });
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.writeFileSync(output, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
@@ -49,6 +50,7 @@ export async function main(args = process.argv.slice(2)) {
       aggregateFile: argument(args, '--aggregate'),
       outputFile: argument(args, '--out'),
       verifierSha: argument(args, '--verifier-sha') ?? undefined,
+      workflowRunId: argument(args, '--workflow-run-id'),
     });
     process.stdout.write(`${JSON.stringify({ state: receipt.state, transactionId: receipt.transactionId,
       receiptDigest: receipt.receiptDigest }, null, 2)}\n`);

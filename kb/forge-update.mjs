@@ -28,7 +28,7 @@ import { createHash, createPublicKey, verify as verifySignature } from 'node:cry
 import { extractZip } from './zip-extract.mjs';
 import { applyBrainProfile, discoverStoreFamilies, readBrainProfile } from './brain-profile.mjs';
 import { acquireRefreshLock, releaseRefreshLock } from './refresh-run.mjs';
-import { runStorageTransaction, treeIdentity } from './update-storage-transaction.mjs';
+import { runStorageTransaction, treeIdentity, managedStorageInventory, storageDelta } from './update-storage-transaction.mjs';
 import { pruneLifecycleEvidence } from './lifecycle-evidence-retention.mjs';
 
 const KB_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -1127,6 +1127,7 @@ async function main() {
   }
 
   if (!anyBehind) {
+    const inventoryBefore = managedStorageInventory(KB_DIR);
     let validateCoverageDirectory;
     try { validateCoverageDirectory = await loadTrustedCoverageValidator(); }
     catch (error) { die(`${error.message}. The live KB is untouched.`); }
@@ -1134,8 +1135,11 @@ async function main() {
       ? validateReleaseCoverageTree(KB_DIR, validateCoverageDirectory)
       : validateProfiledReleaseTree(KB_DIR, activeProfile, capturePrivateOverlayState({ kbDir: KB_DIR, allStores: stores }));
     if (!installed.valid) die(`already-current KB failed integrity: ${installed.failures.join('; ')}`);
+    // No transaction paths are created: the inventory still counts every retained managed copy.
+    const measuredDelta = storageDelta({ live: KB_DIR }, { prior: inventoryBefore.active, inventoryBefore });
     const noopOutcome = writeUpdateOutcome({ terminalVerdict: 'noop', reason: 'already-current', storeCount: targets.length,
-      phaseEvidence: phaseEvidenceFor({ root: KB_DIR, terminalVerdict: 'noop' }) });
+      storageDelta: measuredDelta,
+      phaseEvidence: phaseEvidenceFor({ root: KB_DIR, terminalVerdict: 'noop', storageDelta: measuredDelta }) });
     if (noopOutcome?.terminalVerdict === 'recovery-required') die(noopOutcome.reason);
     console.log(`\nNothing to apply — already current.`); process.exit(0);
   }

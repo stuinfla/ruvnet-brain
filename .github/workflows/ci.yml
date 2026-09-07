@@ -262,6 +262,27 @@ jobs:
             echo "  detection is missing. POSIX coverage comes from the ubuntu + macos jobs."
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+  macos-unit:
+    needs: candidate-preflight
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run convergence:write
+      - name: Full macOS unit suite
+        run: node scripts/ci/step-watchdog.mjs --name macos-unit --timeout-ms 1200000 -- node node_modules/vitest/vitest.mjs run tests/unit --reporter=dot
+      - name: Real installer smoke on macOS
+        run: node --test tests/integration/install-smoke.mjs
+      - run: node kb/test-guard-injection.mjs
+      - run: node tests/integration/redteam-guard.mjs
+
   warm-brain:
     needs: candidate-preflight
     timeout-minutes: 30
@@ -611,7 +632,8 @@ jobs:
             --qe "$RUNNER_TEMP/release-evidence/release-qe.json" \
             --audit "$RUNNER_TEMP/release-evidence/npm-audit.json" \
             --out "$RUNNER_TEMP/release-evidence/candidate-receipt.json"
-      - name: Upload the exact candidate for the protected publisher
+      - name: Preserve candidate payload and diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: release-evidence-${{ inputs.candidate_sha || github.sha }}
@@ -621,7 +643,7 @@ jobs:
 
   candidate-ci-evidence:
     name: candidate-ci-evidence
-    needs: [candidate-preflight, check, windows-unit, warm-brain, release-qe]
+    needs: [candidate-preflight, check, windows-unit, macos-unit, warm-brain, release-qe]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -638,7 +660,7 @@ jobs:
       - name: Restore the exact candidate payload
         uses: actions/download-artifact@v4
         with:
-          name: release-evidence-${{ github.sha }}
+          name: release-evidence-${{ inputs.candidate_sha || github.sha }}
           path: release-evidence
       - name: Bind every required CI job to the candidate payload
         env:
@@ -653,7 +675,7 @@ jobs:
           import crypto from 'node:crypto';
           import fs from 'node:fs';
           const needs = JSON.parse(process.env.NEEDS_JSON);
-          const required = ['candidate-preflight', 'check', 'windows-unit', 'warm-brain', 'release-qe'];
+          const required = ['candidate-preflight', 'check', 'windows-unit', 'macos-unit', 'warm-brain', 'release-qe'];
           if (required.some((name) => needs[name]?.result !== 'success')) {
             throw new Error('candidate CI contains a non-success dependency');
           }

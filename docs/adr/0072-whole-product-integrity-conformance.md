@@ -3,8 +3,8 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-05 19:08:40 EDT
-version: 1.1.0
+updated: 2026-09-07
+version: 1.1.1
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -226,14 +226,30 @@ This milestone retains required QA, exact source and artifact identity, private-
 authenticated producer provenance, signatures, staged retrieval, and the same protected
 public three-OS by three-host-mode matrix, canaries, and terminal readback. Its `install-verified`
 receipt certifies that release transaction only. It does not certify all S-1 through S-12,
-complete codebase review, universal recall, or deterministic native nightly operation.
+complete codebase review, universal recall, or fresh end-to-end corpus production.
 
 The stronger `scripts/adr-072-completion.mjs` contract and all twelve obligation owners remain
-unchanged. Unproved obligations remain OPEN/UNKNOWN, particularly S-4 native two-run execution
-and producer freshness; safe interruption recovery and full essential-branch coverage also need
+unchanged. Unproved obligations remain OPEN/UNKNOWN, particularly S-4 producer freshness and complete producer-to-consumer proof; safe interruption recovery and full essential-branch coverage also need
 their own complete evidence. Release notes and status must disclose unresolved scope rather than
 presenting this stabilization as completed North Star conformance. A known safety failure in the
 candidate's release/update path is not exempted by calling the release incremental.
+
+### Installed-update public proof
+
+Before `install-verified`, each public dual-host leaf on Linux, macOS, and Windows must
+include two sequential terminal runs triggered by that platform's native scheduler. The
+proof consumes the exact public npm package and signed bundle, binds their hashes to the
+candidate source, version, and workflow run, and validates the live installed ReleaseCoverage
+projection after each run. Run two must be `noop`, with measured storage deltas, no redundant
+full-corpus copies, bounded retained evidence, and verified removal of the owned proof job.
+Missing raw evidence or failed cleanup blocks acceptance; claimed validation flags do not
+replace raw receipt, signature, executable-identity, and projection validation.
+
+This is explicitly `scope: installed-update`. Update, host convergence, and cleanup carry
+current-run execution evidence. Corpus phases imported from the signed release remain
+`imported-release`, bound to the installed projection and candidate source. Upstream freshness
+remains `UNKNOWN`; these consumer runs do not prove a new corpus build or complete S-4.
+The strict current-run corpus-production validator remains a separate requirement.
 
 ## Consequences
 
@@ -359,6 +375,7 @@ link actor-specific products/materials and distinguish inspections; [TUF](https:
 defines expiry and rollback defenses. These are design references, not claims of conformance.
 
 ## Currency log
+| 2026-09-07 | Reviewed the installed-update public proof boundary; producer freshness remains UNKNOWN. | `kb/forge-update.mjs` imports signed corpus evidence; `scripts/public-verification-aggregate.mjs` and `scripts/nightly-two-run-proof.mjs` validate raw native consumer evidence. |
 | 2026-09-05 | Corrected the impossible pre-publication public-download deadline and documented the owner's incremental 4.3.10 stabilization milestone without a full-conformance claim. | `scripts/adr-072-completion.mjs` remains unchanged; `scripts/product-integrity-contract.mjs` retains every obligation; `.github/workflows/protected-release.yml` and `scripts/stabilization-receipt.mjs` retain exact candidate, protected publication, and same-transaction public acceptance. `docs/ddd/0018-product-integrity-context.md` distinguishes release disposition from obligation completion. |
 | 2026-09-04 | Reconciled the expedited two-phase rail: long qualification runs once in preflight on `release/**`; protected release imports `release-candidate-<exact SHA>` after the unchanged SHA reaches main, revalidates it, publishes once, and completes public install proof. | `.github/workflows/release-candidate-preflight.yml` and `.github/workflows/protected-release.yml` divide qualification from publication without human run IDs or duplicated long lanes. Fable/Sol review remains change-triggered and only `release-blocker` issues stop publication. |
 | 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence localized the failure to executable resolution, not the test suite; the product contract is unchanged and the boundary is now portable. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |

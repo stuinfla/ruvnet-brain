@@ -105,6 +105,8 @@ function coverageProjection(coverage) {
 export async function createPublicVerificationLane({
   os,
   verifierSha,
+  workflowRunId,
+  publicKey,
   candidate,
   publication,
   identity,
@@ -116,6 +118,7 @@ export async function createPublicVerificationLane({
 } = {}) {
   if (!PUBLIC_VERIFICATION_OS.includes(os)) throw new Error(`unsupported public verification OS: ${os || '(missing)'}`);
   if (verifierSha !== undefined && !HEX40.test(String(verifierSha))) throw new Error('verifier SHA must be a full commit identity');
+  if (!/^[1-9][0-9]*$/.test(String(workflowRunId || ''))) throw new Error('workflow run ID is required');
   validateReleaseIdentity(identity);
   validatePublicEvidence({ candidate, publication, identity });
   const registry = validateHostRegistry(hostRegistry);
@@ -136,6 +139,7 @@ export async function createPublicVerificationLane({
     throw new Error('public verification lane adapter is incomplete');
   }
   const common = {
+    workflowRunId: String(workflowRunId),
     sourceSha: identity.candidateSha,
     ...(verifierSha === undefined ? {} : { verifierSha }),
     version: identity.version,
@@ -174,8 +178,14 @@ export async function createPublicVerificationLane({
       failures.push({ mode, reason: error.message, retrieval });
       continue;
     }
+    let nativeNightly;
+    if (mode === 'dual') {
+      if (typeof adapter.runNativeNightly !== 'function') throw new Error('native nightly proof adapter is required');
+      nativeNightly = await adapter.runNativeNightly({ identity, workflowRunId: String(workflowRunId) });
+    }
     leaves.push(createPublicVerificationLeaf({
       ...common,
+      ...(nativeNightly === undefined ? {} : { nativeNightly }),
       os,
       mode,
       status: verifiedRetrieval.receiptSha256 === retrieval.receiptSha256 ? 'completed' : 'failed',
@@ -188,7 +198,7 @@ export async function createPublicVerificationLane({
       untested: [],
       skipped: 0,
       unknown: 0,
-    }));
+    }, { publicKey }));
   }
   if (failures.length) {
     const error = new Error(`retrieval canary acceptance failed for ${failures.map(({ mode }) => mode).join(', ')}`);
@@ -226,6 +236,7 @@ export function resolveVerifierSha(root, expected) {
 export async function generatePublicVerificationLane({
   os,
   verifierSha: expectedVerifierSha,
+  workflowRunId,
   candidatePath,
   identityPath,
   coveragePath,
@@ -237,7 +248,10 @@ export async function generatePublicVerificationLane({
   adapter = livePublicationAdapter({ root, candidateRoot }),
 } = {}) {
   if (os !== hostOperatingSystem()) throw new Error(`runner OS ${hostOperatingSystem() || process.platform} cannot produce ${os || '(missing)'}`);
-  if (fs.realpathSync(root) !== fs.realpathSync(fileURLToPath(new URL('..', import.meta.url)))) {
+  const rootDirectory = fs.statSync(root, { bigint: true });
+  const scriptDirectory = fs.statSync(fileURLToPath(new URL('..', import.meta.url)), { bigint: true });
+  if (!rootDirectory.isDirectory() || rootDirectory.ino <= 0n
+    || rootDirectory.dev !== scriptDirectory.dev || rootDirectory.ino !== scriptDirectory.ino) {
     throw new Error('verifier root differs from the executing script checkout');
   }
   const verifierSha = resolveVerifierSha(root, expectedVerifierSha);
@@ -259,6 +273,7 @@ export async function generatePublicVerificationLane({
     const leaves = await createPublicVerificationLane({
       os,
       verifierSha,
+      workflowRunId,
       candidate: candidate.value,
       publication,
       identity: identity.value,
@@ -278,9 +293,18 @@ export async function generatePublicVerificationLane({
     fs.writeFileSync(output, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
     return receipt;
   } catch (error) {
-    if (error.publicVerificationFailure && !fs.existsSync(output)) {
+    if (!fs.existsSync(output)) {
+      const failure = error.publicVerificationFailure || (() => {
+        const payload = { schemaVersion: 1, kind: 'ruvnet-brain-public-verification-failure',
+          os, verifierSha, sourceSha: identity.value.candidateSha,
+          artifactSha256: identity.value.packageSha256, bundleSha256: identity.value.bundleSha256,
+          workflowRunId: String(workflowRunId || ''),
+          failures: [{ stage: 'public-install-and-native-update', reason: String(error.message).slice(0, 2000) }],
+          completedLeaves: [] };
+        return { ...payload, failureSha256: digest(payload) };
+      })();
       fs.mkdirSync(path.dirname(output), { recursive: true });
-      fs.writeFileSync(output, `${JSON.stringify(error.publicVerificationFailure, null, 2)}\n`,
+      fs.writeFileSync(output, `${JSON.stringify(failure, null, 2)}\n`,
         { flag: 'wx', mode: 0o600 });
     }
     throw error;
@@ -300,6 +324,7 @@ export async function main(args = process.argv.slice(2)) {
     const receipt = await generatePublicVerificationLane({
       os: argument(args, '--os'),
       verifierSha: argument(args, '--verifier-sha') ?? undefined,
+      workflowRunId: argument(args, '--workflow-run-id'),
       candidateRoot: argument(args, '--candidate-root') ?? undefined,
       candidatePath: argument(args, '--candidate'),
       identityPath: argument(args, '--identity'),

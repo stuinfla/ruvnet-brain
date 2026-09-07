@@ -398,7 +398,14 @@ describe.skipIf(!CAN_ZIP)('forge-update --apply (issues #106 + #108)', () => {
     const result = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
     expect(result.legacyBackupRetention.retained).toEqual([expect.objectContaining({ path: recovery, bytes: expect.any(Number) })]);
     expect(result.legacyBackupRetention.freed).toBe(0);
-    if (!noop) expect(result.storageDelta.redundantCopyCount).toBe(1);
+    expect(result.storageDelta.redundantCopyCount).toBe(1);
+    if (noop) {
+      expect(result.storageDelta).toMatchObject({ activeBytesDelta: 0, managedBytesDelta: 0,
+        additionalFullCorpusCopyDelta: 0 });
+      expect(result.storageDelta.managedBefore.additionalFullCorpusCopyCount).toBe(1);
+      expect(result.storageDelta.managedAfter.additionalFullCorpusCopyCount).toBe(1);
+      expect(result.phaseEvidence.update.storageDelta).toEqual(result.storageDelta);
+    }
   });
   it('unsafe backup symlinks still block real apply despite ample retention budget', async () => {
     const current = sourceJson({ releaseTag: 'v4.0.7', brainVersion: '4.0.7',

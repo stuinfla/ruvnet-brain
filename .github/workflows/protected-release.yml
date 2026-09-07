@@ -400,6 +400,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Enable cron on disposable hosted Linux verifier
+        if: runner.os == 'Linux'
+        env:
+          NIGHTLY_RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$NIGHTLY_RUNNER_ENVIRONMENT" = github-hosted
+          sudo apt-get update -qq
+          sudo apt-get install -y cron
+          sudo systemctl start cron
+          sudo systemctl is-active --quiet cron
       - name: Install exact-source verifier and current host CLIs
         shell: bash
         run: |
@@ -431,6 +443,7 @@ jobs:
           node scripts/host-registry.mjs --out release-evidence/host-registry.json
           mkdir -p public-lanes
           node scripts/public-verification-lane.mjs \
+            --workflow-run-id "$GITHUB_RUN_ID" \
             --os "${{ matrix.os_name }}" \
             --candidate release-evidence/candidate-receipt.json \
             --identity release-evidence/release-identity.json \
@@ -486,9 +499,11 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/public-verification-aggregate.mjs \
+            --workflow-run-id "$GITHUB_RUN_ID" \
             --lanes public-lanes \
             --out release-evidence/public-verification-aggregate.json
           node scripts/public-verification-finalizer.mjs \
+            --workflow-run-id "$GITHUB_RUN_ID" \
             --identity release-evidence/release-identity.json \
             --aggregate release-evidence/public-verification-aggregate.json \
             --out release-evidence/install-verified-receipt.json

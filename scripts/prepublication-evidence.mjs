@@ -107,7 +107,7 @@ export function buildPrepublicationEvidence({
   }
 
   const ci = readJson(ciFile);
-  const requiredCiJobs = ['candidate-preflight', 'check', 'windows-unit', 'warm-brain', 'release-qe'];
+  const requiredCiJobs = ['candidate-preflight', 'check', 'windows-unit', 'macos-unit', 'warm-brain', 'release-qe'];
   if (ci.value.schemaVersion !== 1 || ci.value.kind !== 'ruvnet-brain-candidate-ci-evidence'
     || ci.value.sourceSha !== sha || ci.value.version !== version || ci.value.payloadId !== payload.payloadId
     || ci.value.payloadManifestSha256 !== sha256(manifestBytes) || ci.value.workflow !== 'ci'

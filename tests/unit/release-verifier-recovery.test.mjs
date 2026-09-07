@@ -15,9 +15,11 @@ function server({ text = 'repo=other-repo path: src/answer.mjs', delay = 0, erro
   roots.push(root);
   const file = path.join(root, 'server.mjs');
   const stopped = path.join(root, 'stopped');
+  const pidFile = path.join(root, 'pid');
   fs.writeFileSync(file, `
     import fs from 'node:fs';
     import readline from 'node:readline';
+    fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
     process.on('SIGTERM', () => setTimeout(() => {
       fs.writeFileSync(${JSON.stringify(stopped)}, 'stopped'); process.exit(0);
     }, ${delay}));
@@ -28,7 +30,7 @@ function server({ text = 'repo=other-repo path: src/answer.mjs', delay = 0, erro
       process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\\n');
     });
   `);
-  return { file, stopped };
+  return { file, stopped, pidFile };
 }
 
 describe('public release recovery regressions', () => {
@@ -44,7 +46,11 @@ describe('public release recovery regressions', () => {
       const result = rpcSearch(fixture.file, process.env, 'query', 10, 2000);
       if (error) await expect(result).rejects.toThrow(/search failed/);
       else await result;
-      expect(fs.existsSync(fixture.stopped)).toBe(true);
+      const pid = Number(fs.readFileSync(fixture.pidFile, 'utf8'));
+      expect(() => process.kill(pid, 0)).toThrow(/ESRCH/);
+      // Windows terminates directly; it does not deliver JS SIGTERM handlers.
+      // POSIX additionally proves the delayed handler finished before resolution.
+      if (process.platform !== 'win32') expect(fs.existsSync(fixture.stopped)).toBe(true);
     }
   });
   it('passes a local archive name to either GNU or BSD tar on Windows', () => {

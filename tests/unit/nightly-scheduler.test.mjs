@@ -136,7 +136,7 @@ describe('one immutable nightly executable across every scheduler', () => {
   it('content-addresses the runner and rejects changed bytes at the registered path', () => {
     const f = fixture();
     expect(path.basename(f.record.runnerPath)).toMatch(/^nightly-refresh-[a-f0-9]{64}\.mjs$/);
-    expect(nightlyCommand(f.record)).toBe(`'/absolute/node' '${f.record.runnerPath}'`);
+    expect(nightlyCommand(f.record)).toBe(`'${f.record.nodePath}' '${f.record.runnerPath}' --registration '${f.record.recordPath}'`);
     fs.appendFileSync(f.record.runnerPath, '// tampered\n');
     expect(schedulerStatus({ platform: 'darwin', env: f.env, brainHome: f.brainHome,
       kbDir: f.kbDir, testMode: true }).evidence).toMatch(/runner digest mismatch/);
@@ -224,7 +224,7 @@ describe('scheduler adapters are symmetric and verify exact state', () => {
     const calls = [];
     const run = (cmd, args) => {
       calls.push({ cmd, args });
-      if (args[0] === '/Query') return { status: 0, stdout: `<Task><Command>${f.record.nodePath}</Command><Arguments>${f.record.runnerPath}</Arguments></Task>` };
+      if (args[0] === '/Query') return { status: 0, stdout: `<Task><Actions><Exec><Command>${f.record.nodePath}</Command><Arguments>"${f.record.runnerPath}" --registration "${f.record.recordPath}"</Arguments></Exec></Actions></Task>` };
       return { status: 0, stdout: '' };
     };
     expect(installScheduler(f.record, { platform: 'win32', env: f.env, kbDir: f.kbDir, run }).ok).toBe(true);
@@ -241,4 +241,72 @@ describe('scheduler adapters are symmetric and verify exact state', () => {
     expect(schedulerStatus({ platform: 'aix', env: f.env, brainHome: f.brainHome,
       kbDir: f.kbDir }).state).toBe('unsupported');
   });
+});
+
+
+describe('scheduler fixture isolation and failure honesty', () => {
+  it.each(['darwin', 'linux', 'win32'])('never invokes machine scheduler in %s test mode', platform => {
+    const f = fixture();
+    const run = () => { throw new Error('real scheduler must not be invoked'); };
+    const options = { platform, env: f.env, brainHome: f.brainHome, kbDir: f.kbDir, run, testMode: true };
+    expect(installScheduler(f.record, options).ok).toBe(true);
+    expect(schedulerStatus(options).state).toBe('on');
+    expect(removeScheduler(options).ok).toBe(true);
+    expect(schedulerStatus(options).state).toBe('off');
+  });
+  it('does not treat cron permission errors as an empty table or overwrite it', () => {
+    const f = fixture(); const calls = [];
+    const run = (...args) => { calls.push(args); return { status: 1, stdout: '', stderr: 'permission denied' }; };
+    const options = { platform: 'linux', env: f.env, brainHome: f.brainHome, kbDir: f.kbDir, run };
+    expect(installScheduler(f.record, options).ok).toBe(false);
+    expect(removeScheduler(options).ok).toBe(false);
+    expect(schedulerStatus(options).state).toBe('degraded');
+    expect(calls.every(([, args]) => args[0] === '-l')).toBe(true);
+  });
+  it('preserves proof and similarly prefixed cron rows during production removal', () => {
+    const f = fixture();
+    const foreign = '0 1 * * * foreign # com.ruvnet.brain-update.proof-fixture';
+    let table = foreign + '\n' + cronLine(f.record, '/log') + '\n';
+    const run = (_cmd, args, opts) => args[0] === '-l' ? { status: 0, stdout: table }
+      : (table = opts.input, { status: 0 });
+    expect(removeScheduler({ platform: 'linux', env: f.env, run }).ok).toBe(true);
+    expect(table).toBe(foreign + '\n');
+  });
+  it('persists only allowlisted environment and prevents production proof cadence', () => {
+    const f = fixture();
+    const record = installNightlyRunner({ brainHome: f.brainHome, source: f.source,
+      env: { RUVNET_BRAIN_HOME: f.brainHome, RUVNET_BRAIN_KB: f.kbDir, SystemRoot: 'C:\\Windows', TEMP: f.root, SECRET_TOKEN: 'excluded' } });
+    expect(record.environment).toEqual({ RUVNET_BRAIN_HOME: f.brainHome, RUVNET_BRAIN_KB: f.kbDir, SystemRoot: 'C:\\Windows', TEMP: f.root });
+    expect(() => cronLine(record, '/log', { proofTick: true })).toThrow(/proof identity/);
+  });
+});
+
+it('retains launchd file if bootout did not establish absence', () => {
+  const f = fixture();
+  const options = { platform: 'darwin', env: f.env, kbDir: f.kbDir };
+  const installed = installScheduler(f.record, { ...options, testMode: true });
+  const run = () => ({ status: 0, stdout: 'still loaded' });
+  expect(removeScheduler({ ...options, run }).ok).toBe(false);
+  expect(fs.existsSync(installed.artifact.path)).toBe(true);
+});
+it('uses explicit dated cron cadence only for isolated proof identities', () => {
+  const f = fixture(); const at = new Date(2030, 1, 3, 4, 5);
+  const record = { ...f.record, identity: NIGHTLY_LABEL + '.proof-fixture' };
+  expect(cronLine(record, '/log', { proofTick: true, proofAt: at.getTime() })).toMatch(/^5 4 3 2 \* /);
+  expect(() => cronLine(record, '/log', { proofTick: true })).toThrow(/proofAt/);
+});
+
+it.each(['darwin', 'win32'])('rejects wrong registration and extra arguments on %s', platform => {
+  const f = fixture();
+  const options = { platform, env: f.env, brainHome: f.brainHome, kbDir: f.kbDir, testMode: true };
+  const installed = installScheduler(f.record, options);
+  const file = platform === 'darwin' ? installed.artifact.path
+    : path.join(f.home, '.ruvnet-scheduler-test', `${platform}-${NIGHTLY_LABEL}.json`);
+  const original = fs.readFileSync(file, 'utf8');
+  fs.writeFileSync(file, original.replace(f.record.recordPath, '/wrong/registration.json'));
+  expect(schedulerStatus(options).state).toBe('degraded');
+  const extra = platform === 'darwin' ? original.replace('</array>', '<string>--unexpected</string></array>')
+    : original.replace('</Arguments>', ' --unexpected</Arguments>');
+  fs.writeFileSync(file, extra);
+  expect(schedulerStatus(options).state).toBe('degraded');
 });

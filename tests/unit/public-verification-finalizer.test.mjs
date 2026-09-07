@@ -1,3 +1,4 @@
+import { nativeNightlyProofFixture } from '../helpers/native-nightly-proof-fixture.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -63,11 +64,13 @@ async function aggregate(reviewKeys = keys, verifierSha) {
         return [{ repo: expected.repo, path: expected.path }];
       }, citationResolver: async (_matched, expected) => ({ resolved: true, evidence: {
         passageSha256: expected.passageSha256, passageFileSha256: '9'.repeat(64) } }) });
-    leaves.push(createPublicVerificationLeaf({ ...common, os, mode, status: 'completed', verdict: 'PASS',
+    leaves.push(createPublicVerificationLeaf({ ...common, os, mode, ...(mode === 'dual' ? { workflowRunId: '12345', nativeNightly: nativeNightlyProofFixture({
+      platform: { linux: 'linux', macos: 'darwin', windows: 'win32' }[os], version: common.version,
+      sourceSha: common.sourceSha, packageSha256: common.artifactSha256, bundleSha256: common.bundleSha256, privateKey: reviewKeys.privateKey }) } : {}), status: 'completed', verdict: 'PASS',
       publicBytes: { npmExact: true, githubExact: true, bundleExact: true },
       installed: { version: identity.version, loaderVerified: true },
       coverage: { verified: true, eligibleCurrent: 2, eligibleTotal: 2, gistCurrent: 1, gistTotal: 1 },
-      retrievalPlan: plan, retrieval, untested: [], skipped: 0, unknown: 0 }));
+      retrievalPlan: plan, retrieval, untested: [], skipped: 0, unknown: 0 }, { publicKey: reviewKeys.publicKey }));
   }
   const reviewCommon = { sourceSha: identity.candidateSha, artifactSha256: identity.packageSha256,
     payloadId: identity.payloadId, productContractSha256: '3'.repeat(64), rubricSha256: '4'.repeat(64),
@@ -107,9 +110,11 @@ describe('schema-3 install-verified finalizer', () => {
     const provider = await convergedProvider();
     const verifierSha = '9'.repeat(40);
     const evidence = await aggregate(keys, verifierSha);
-    const args = { identity, aggregate: evidence, adapter: provider,
+    const args = { workflowRunId: '12345', identity, aggregate: evidence, adapter: provider,
       privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey };
     const before = provider.receipts.length;
+    await expect(finalizeReleaseTransaction({ ...args, workflowRunId: undefined })).rejects.toThrow(/workflow run ID/);
+    await expect(finalizeReleaseTransaction({ ...args, workflowRunId: '99999' })).rejects.toThrow(/workflow run|identity/i);
     await expect(finalizeReleaseTransaction({ ...args, verifierSha: '8'.repeat(40) })).rejects.toThrow(/verifier/);
     await expect(finalizeReleaseTransaction({ ...args, aggregate: await aggregate(), verifierSha })).rejects.toThrow(/verifier/);
     expect(provider.receipts).toHaveLength(before);
@@ -125,11 +130,11 @@ describe('schema-3 install-verified finalizer', () => {
       provider[name] = async () => { throw new Error(`recovery must not republish: ${name}`); };
     }
     const evidence = await aggregate();
-    const final = await finalizeReleaseTransaction({ identity, aggregate: evidence, adapter: provider,
+    const final = await finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: provider,
       privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey });
     expect(final.state).toBe('install-verified');
     expect(final.observation.publicVerification.aggregateSha256).toBe(evidence.aggregateSha256);
-    expect((await finalizeReleaseTransaction({ identity, aggregate: evidence, adapter: provider,
+    expect((await finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: provider,
       privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey })).receiptDigest)
       .toBe(final.receiptDigest);
   });
@@ -138,18 +143,18 @@ describe('schema-3 install-verified finalizer', () => {
     const evidence = await aggregate();
     const fresh = new FakeReleaseProvider();
     fresh.materializePublicVerificationAggregate = async () => ({});
-    await expect(finalizeReleaseTransaction({ identity, aggregate: evidence, adapter: fresh,
+    await expect(finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: fresh,
       privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey })).rejects.toThrow(/no receipt chain/);
     const drifted = await convergedProvider();
     drifted.npmLatest = drifted.prior;
-    await expect(finalizeReleaseTransaction({ identity, aggregate: evidence, adapter: drifted,
+    await expect(finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: drifted,
       privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey })).rejects.toThrow(/channels drifted/);
-    await expect(finalizeReleaseTransaction({ identity, aggregate: evidence, adapter: await convergedProvider(),
+    await expect(finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: await convergedProvider(),
       privateKey: keys.privateKey, publicKey: keys.publicKey,
       aggregatePublicKey: crypto.generateKeyPairSync('ed25519').publicKey })).rejects.toThrow(/signature mismatch/);
     const badMaterialization = await convergedProvider();
     badMaterialization.materializePublicVerificationAggregate = async () => ({ aggregateSha256: '0'.repeat(64), signatureSha256: '0'.repeat(64) });
-    await expect(finalizeReleaseTransaction({ identity, aggregate: evidence, adapter: badMaterialization,
+    await expect(finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: badMaterialization,
       privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey })).rejects.toThrow(/differs/);
   });
 
@@ -162,7 +167,7 @@ describe('schema-3 install-verified finalizer', () => {
     fs.writeFileSync(identityFile, JSON.stringify(identity));
     fs.writeFileSync(aggregateFile, JSON.stringify(await aggregate()));
     fs.writeFileSync(publicKeyFile, keys.publicKey.export({ type: 'spki', format: 'pem' }));
-    const options = { identityFile, aggregateFile, outputFile, publicKeyFile,
+    const options = { workflowRunId: '12345', identityFile, aggregateFile, outputFile, publicKeyFile,
       privatePem: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }), adapter: await convergedProvider() };
     const receipt = await finalizePublicVerification(options);
     expect(receipt.state).toBe('install-verified');

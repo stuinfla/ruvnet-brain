@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const runnerPath = path.resolve(fileURLToPath(import.meta.url));
-const registrationPath = String(process.env.RUVNET_NIGHTLY_REGISTRATION
+const registrationPath = String((process.argv[2] === '--registration' ? process.argv[3] : null) || process.env.RUVNET_NIGHTLY_REGISTRATION
   || path.join(path.dirname(runnerPath), 'registration.json'));
 let registration;
 try {
@@ -51,6 +51,13 @@ try {
   process.exit(1);
 }
 
+const allowedEnvironment = ['PATH', 'HOME', 'USERPROFILE', 'RUVNET_BRAIN_HOME', 'RUVNET_BRAIN_KB', 'npm_config_cache', 'NO_COLOR', 'SystemRoot', 'SYSTEMROOT', 'ComSpec', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP'];
+if (registration.environment !== undefined && (!registration.environment || Array.isArray(registration.environment)
+  || Object.entries(registration.environment).some(([key, value]) => !allowedEnvironment.includes(key) || typeof value !== 'string'))) {
+  console.error('Invalid registered nightly environment'); process.exit(1);
+}
+Object.assign(process.env, registration.environment || {});
+
 const npxName = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const adjacent = path.join(path.dirname(process.execPath), npxName);
 const npx = fs.existsSync(adjacent) ? adjacent : npxName;
@@ -85,7 +92,7 @@ if (process.platform === 'win32') {
   }
 }
 const allowed = ['PATH', 'HOME', 'USERPROFILE', 'RUVNET_BRAIN_HOME', 'RUVNET_BRAIN_KB',
-  'npm_config_cache', 'NO_COLOR'];
+  'npm_config_cache', 'NO_COLOR', 'SystemRoot', 'SYSTEMROOT', 'ComSpec', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP'];
 const childEnv = Object.fromEntries(allowed.filter((key) => process.env[key] !== undefined)
   .map((key) => [key, process.env[key]]));
 const result = spawnSync(executable, launchArgs, {

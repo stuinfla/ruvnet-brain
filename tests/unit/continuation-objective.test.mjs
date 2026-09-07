@@ -1,23 +1,23 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
+import { continuationProjectIdentity } from '../../plugin/scripts/continuation-objective.mjs';
 
 const GATE = path.resolve(import.meta.dirname, '../../plugin/scripts/continuation-gate.mjs');
 const roots = [];
 afterEach(() => roots.splice(0).forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })));
-const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
 function fixture() {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'continuation-objective-')));
   roots.push(root);
   const repo = path.join(root, 'repo');
   execFileSync('git', ['init', '--quiet', repo]);
+  const identity = continuationProjectIdentity(repo);
   const ledger = path.join(root, 'ledger.json');
   const objective = { schemaVersion: 1, kind: 'continuation-preferences', authoritative: false,
     id: 'objective-1', text: 'finish the authorized fixture task', state: 'active',
-    projectId: `git-sha256:${hash(path.join(repo, '.git'))}`, worktreeIds: [hash(repo)], sessionIds: ['session-1'],
+    projectId: identity.projectId, worktreeIds: [identity.worktreeId], sessionIds: ['session-1'],
     authorization: { kind: 'user', reference: 'user-turn-fixture-1' }, at: new Date().toISOString() };
   return { root, repo, ledger, objective };
 }
@@ -87,7 +87,10 @@ describe('explicit continuation objective authority', () => {
     fs.writeFileSync(path.join(gitdir, 'commondir'), '../..\n');
     fs.copyFileSync(path.join(f.repo, '.git', 'HEAD'), path.join(gitdir, 'HEAD'));
     expect(run(f, { cwd: worktree }).stdout).toBe('');
-    f.objective.worktreeIds.push(hash(worktree));
+    const linkedIdentity = continuationProjectIdentity(worktree);
+    expect(linkedIdentity.projectId).toBe(f.objective.projectId);
+    expect(f.objective.worktreeIds).not.toContain(linkedIdentity.worktreeId);
+    f.objective.worktreeIds.push(linkedIdentity.worktreeId);
     expect(run(f, { cwd: worktree }).stdout).toContain(f.objective.text);
   });
 });

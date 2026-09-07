@@ -1,0 +1,31 @@
+{
+  "schema": 2,
+  "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
+  "trap": "memory-search-query",
+  "mutant": null,
+  "run": 1,
+  "arm": "control",
+  "record": {
+    "class": "positional",
+    "subcommandCorrect": true,
+    "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path $HOME/Code/.worktrees/ruvnet-brain-recovery-20260905/.ruvnet-brain/learning-replay/run-fEwjMs/fixture-project-b/.swarm/memory.db",
+    "exec": {
+      "ran": true,
+      "argv": [
+        "ruflo",
+        "memory",
+        "search",
+        "caching strategy",
+        "--path",
+        "$HOME/Code/.worktrees/ruvnet-brain-recovery-20260905/.ruvnet-brain/learning-replay/run-fEwjMs/fixture-project-b/.swarm/memory.db"
+      ],
+      "exit": 1,
+      "exitOk": false,
+      "retrieved": false,
+      "why": "exit 1; output matched failure shape /Required option missing/i",
+      "output": "[ERROR] Required option missing: --query\n"
+    },
+    "model": "gpt-5.6-sol",
+    "lessonDelivered": false
+  }
+}

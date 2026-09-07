@@ -4,8 +4,8 @@ title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
 updated: 2026-09-07
-reviewed_digest: 35b815434ac4
-version: 1.1.1
+reviewed_digest: 7deada1c383f
+version: 1.1.2
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -34,6 +34,8 @@ transaction remains `PUBLISHED_NOT_VERIFIED`; no unsuccessful closure or 4.3.10 
 established by this source review.
 
 ## Currency log
+
+| 2026-09-07 | Reviewed unsuccessful closure verifies the prior signed chain and unchanged public bytes, retains PUBLISHED_NOT_VERIFIED, and finalization requires the actual verification workflow run; source digest 7deada1c383f. | `scripts/release-transaction.mjs`; source review only, hosted and public acceptance remain pending. |
 
 | 2026-09-07 | Reviewed recovery source and corrected implementation boundaries; source digest 35b815434ac4. | `scripts/staged-host-verifier.mjs`; source examination only, no renewed runtime or publication verification. |
 | 2026-09-04 | Public verification passes its read-scoped workflow token to the GitHub release observer, preventing shared unauthenticated API rate limits from being misreported as product failure. | `.github/workflows/protected-release.yml`; `.github/workflows/recover-public-verification.yml`; run `33899100361` returned HTTP 403 before downloading the exact release asset. |

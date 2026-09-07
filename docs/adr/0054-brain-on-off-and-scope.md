@@ -4,8 +4,8 @@ title: Brain on/off and per-part scope — a user-controlled brain that can neve
 status: Accepted
 date: 2026-07-26
 updated: 2026-09-07
-reviewed_digest: 8c12af14dfc2
-version: 1.1.1
+reviewed_digest: 6412e6027a0a
+version: 1.1.2
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -225,6 +225,8 @@ overlays and preserves the prior generation as unclassified data instead of dele
 source review does not renew the expired verification or prove the native-host acceptance criteria.
 
 ## Currency log
+
+| 2026-09-07 | Reviewed nightly registration and removal retain explicit user scope and fail closed on removal errors; existing OFF and maintenance profile boundaries remain separate; source digest 6412e6027a0a. | `bin/install.mjs`; source review only, hosted and public acceptance remain pending. |
 
 | 2026-09-07 | Reviewed recovery source and corrected the implementation boundaries described above; source digest 8c12af14dfc2. | `kb/brain-profile.mjs`; local source examination only, no renewed runtime or publication verification. |
 | 2026-08-30 | The Stable Spine now passes the active generation version into the SessionStart body, so restart-free updates report the generation actually executing without changing Brain OFF semantics. | `plugin/scripts/hook-shim.mjs`, `plugin/scripts/session-start-core.mjs`, `tests/unit/hook-shim.test.mjs`; OFF remains per-hook and fail-closed. |

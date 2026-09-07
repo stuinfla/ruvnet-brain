@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const fixtures = [];
@@ -17,7 +17,7 @@ function runConsumer(consumer, message) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'search-outage-'));
   fixtures.push(dir);
   for (const repo of ['alpha', 'beta']) fs.writeFileSync(path.join(dir, `${repo}.rvf`), 'fixture');
-  const loader = path.join(dir, 'loader.mjs');
+  const loader = path.join(dir, 'loader # outage.mjs');
   fs.writeFileSync(loader, `
     export async function load(url, context, nextLoad) {
       let source;
@@ -34,7 +34,7 @@ function runConsumer(consumer, message) {
       return nextLoad(url, context);
     }
   `);
-  const args = ['--no-warnings', '--experimental-loader', loader, path.join(ROOT, 'kb', consumer)];
+  const args = ['--no-warnings', '--experimental-loader', pathToFileURL(loader).href, path.join(ROOT, 'kb', consumer)];
   if (consumer === 'forge-ask-all.mjs') args.push('--dir', dir, '--repos', 'alpha,beta', '--q', 'fixture query');
   const result = spawnSync(process.execPath, args, {
     cwd: dir, encoding: 'utf8', timeout: 15_000,

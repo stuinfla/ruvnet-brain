@@ -4,9 +4,9 @@ title: The 95 contract — one observable per dimension, one mutant per observab
 status: Proposed
 date: 2026-07-27
 updated: 2026-09-07
-version: 1.1.2
+version: 1.1.3
 impl: wired
-reviewed_digest: effb46bea00f
+reviewed_digest: 34b808da6634
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -84,6 +84,8 @@ Codex replay now registers isolated fixture hooks explicitly; the prior uninstru
 UNKNOWN, and no new behavioral learning result is claimed.
 
 ## Currency log
+
+| 2026-09-07 | Reviewed public native scheduled update receipts bind exact signed artifacts and workflow run, while macOS full unit execution joins required candidate CI evidence; source digest 34b808da6634. | `scripts/publication-receipt.mjs`; source review only, hosted and public acceptance remain pending. |
 
 | 2026-09-07 | Reviewed the failed hosted census and corrected producer; source digest effb46bea00f. | `scripts/build-bundle.mjs`; tests in `/tmp/ruvnet-assembled-projection-tests-20260907.log`, no public PASS claimed. |
 | 2026-09-05 | Reviewed current source and normative boundaries at digest c8762909a897; examination is not behavioral verification. | The assigned full-file reviewers examined the governed scripts, workflows, plugin, and KB files; the integration owner read this ADR and `tests/qe/gpt56/live-brain-search.test.mjs`, inspected the reported implementation discrepancies, and reconciled them above. Canonical AgentDB examination receipts include `audit-partition-b-20260905-adr58-scripts` and `audit-adr058-kb-fullread-1788649103190`; no personal whole-codebase read, 95 score, or complete conformance is claimed. |

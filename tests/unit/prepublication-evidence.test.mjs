@@ -49,7 +49,7 @@ function fixture() {
   const ciFile = write('ci.json', {
     schemaVersion: 1, kind: 'ruvnet-brain-candidate-ci-evidence', sourceSha: sha, version, payloadId,
     payloadManifestSha256: digest(manifestFile), workflow: 'ci', runId, runAttempt: 1,
-    jobs: ['candidate-preflight', 'check', 'windows-unit', 'warm-brain', 'release-qe']
+    jobs: ['candidate-preflight', 'check', 'windows-unit', 'macos-unit', 'warm-brain', 'release-qe']
       .map((name) => ({ name, conclusion: 'success' })),
     verdict: 'PASS', skipped: 0, unknown: 0,
   });

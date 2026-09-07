@@ -507,11 +507,13 @@ export async function finalizeReleaseTransaction({
   identity,
   aggregate,
   verifierSha,
+  workflowRunId,
   adapter,
   privateKey,
   publicKey,
   aggregatePublicKey,
 } = {}) {
+  if (!/^[1-9][0-9]*$/.test(String(workflowRunId || ''))) throw new Error('expected workflow run ID is required');
   if (verifierSha !== undefined && (!/^[a-f0-9]{40}$/.test(String(verifierSha))
     || aggregate?.identity?.verifierSha !== verifierSha)) {
     throw new Error('public verification verifier SHA differs from the expected verifier');
@@ -523,6 +525,7 @@ export async function finalizeReleaseTransaction({
   }
   const expectedAggregateIdentity = {
     ...aggregate?.identity,
+    workflowRunId: String(workflowRunId),
     sourceSha: identity?.candidateSha,
     version: identity?.version,
     tag: identity?.tag,
@@ -583,6 +586,77 @@ export async function finalizeReleaseTransaction({
   const persisted = await adapter.readReceipt(discovered.matchingDrafts?.[0] || null, receipt.sequence);
   verifyReceipt(persisted, publicKey);
   if (canonicalJson(persisted) !== canonicalJson(receipt)) throw new Error('install-verified receipt readback differs');
+  validateReceiptChain([...chain, persisted], identity, publicKey);
+  return persisted;
+}
+
+// Close an unsuccessful public verification attempt without changing public bytes or truth.
+export async function abandonPublicVerificationTransaction({ identity, expected, reason, authorization,
+  recovery, failure, adapter, privateKey, publicKey } = {}) {
+  const hex = (value, length) => new RegExp(`^[a-f0-9]{${length}}$`).test(value || '');
+  const bounded = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+  if (!expected || expected.transactionId !== transactionIdFor(identity)
+    || !Number.isSafeInteger(expected.sequence) || expected.sequence < 0 || !hex(expected.receiptDigest, 64)) {
+    throw new Error('abandonment requires exact expected transaction, sequence, and digest');
+  }
+  if (!bounded(reason, 1024) || !bounded(authorization?.actor, 100) || !bounded(authorization?.reference, 1024)
+    || authorization.event !== 'repository_dispatch' || authorization.action !== 'abandon-public-verification'
+    || !Number.isSafeInteger(authorization.dispatchRunId) || authorization.dispatchRunId <= 0
+    || !hex(authorization.verifierSha, 40)) throw new Error('explicit abandonment authorization provenance is required');
+  if (recovery?.event !== 'repository_dispatch' || !Number.isSafeInteger(recovery.workflowId) || recovery.workflowId <= 0
+    || !Number.isSafeInteger(recovery.repositoryId) || recovery.repositoryId <= 0
+    || recovery.repository !== identity.repository || recovery.workflow !== '.github/workflows/recover-public-verification.yml'
+    || recovery.conclusion !== 'failure' || !Number.isSafeInteger(recovery.runId) || recovery.runId <= 0
+    || !Number.isSafeInteger(recovery.artifactId) || recovery.artifactId <= 0 || !hex(recovery.verifierSha, 40)
+    || recovery.artifactName !== `recovered-public-verification-${failure?.os}-${identity.candidateSha}-${recovery.runId}`) {
+    throw new Error('failed recovery provenance differs from the candidate');
+  }
+  const { failureSha256, ...failurePayload } = failure || {};
+  if (Buffer.byteLength(canonicalJson(failure || {})) > 131072 || failure?.schemaVersion !== 1
+    || failure.kind !== 'ruvnet-brain-public-verification-failure' || !['linux', 'macos', 'windows'].includes(failure.os)
+    || failure.sourceSha !== identity.candidateSha || failure.artifactSha256 !== identity.packageSha256
+    || failure.bundleSha256 !== identity.bundleSha256 || !Array.isArray(failure.failures)
+    || failure.failures.length < 1 || failure.failures.length > 3
+    || failure.failures.some((entry) => !bounded(entry.reason, 4096))
+    || (failure.verifierSha !== undefined && failure.verifierSha !== recovery.verifierSha)
+    || !hex(failureSha256, 64)
+    || crypto.createHash('sha256').update(canonicalJson(failurePayload)).digest('hex') !== failureSha256) {
+    throw new Error('bounded failed recovery evidence is invalid or belongs to another candidate');
+  }
+  const intent = { expected, reason, authorization: { actor: authorization.actor, reference: authorization.reference }, recovery, failureSha256 };
+  const intentSha256 = crypto.createHash('sha256').update(canonicalJson(intent)).digest('hex');
+  if (!adapter || ['discover', 'observeSnapshot', 'appendReceipt', 'readReceipt'].some((key) => typeof adapter[key] !== 'function')) {
+    throw new Error('abandonment adapter is incomplete');
+  }
+  const discovered = await adapter.discover(identity);
+  const chain = validateReceiptChain(discovered.receipts || [], identity, publicKey);
+  const current = chain.at(-1);
+  if (current?.state === 'abandoned') {
+    if (current.observation?.abandonment?.intentSha256 !== intentSha256) throw new Error('conflicting abandonment intent');
+    return current;
+  }
+  if (current?.schemaVersion !== 3 || current.state !== 'channels-converged'
+    || current.observation?.verdict !== 'PUBLISHED_NOT_VERIFIED'
+    || current.sequence !== expected.sequence || current.receiptDigest !== expected.receiptDigest) {
+    throw new Error('abandonment expected receipt is not the current published-unverified transaction');
+  }
+  const snapshot = await adapter.observeSnapshot(identity, discovered.matchingDrafts?.[0], { forceAssets: true });
+  if (snapshot.readError || !npmLatestIsB(snapshot, identity) || !npmCandidateExact(snapshot, identity)
+    || !githubIsB(snapshot, identity) || snapshot.github?.published !== true || snapshot.github?.latest !== true
+    || snapshot.github?.assetsExact !== true
+    || canonicalJson(snapshot.npm) !== canonicalJson(current.observation.npm)
+    || canonicalJson(snapshot.github) !== canonicalJson(current.observation.github)) {
+    throw new Error('public artifacts or channels changed before abandonment');
+  }
+  const receipt = stateReceipt({ identity, prior: current, state: 'abandoned', privateKey,
+    observation: { verdict: 'PUBLISHED_NOT_VERIFIED', abandonment: { intentSha256, ...intent, authorization, failure },
+      npm: snapshot.npm, github: snapshot.github } });
+  verifyReceipt(receipt, publicKey);
+  const name = `${RECEIPT_PREFIX}${String(receipt.sequence).padStart(4, '0')}.json`;
+  await adapter.appendReceipt(discovered.matchingDrafts?.[0] || null, receipt, name);
+  const persisted = await adapter.readReceipt(discovered.matchingDrafts?.[0] || null, receipt.sequence);
+  verifyReceipt(persisted, publicKey);
+  if (canonicalJson(persisted) !== canonicalJson(receipt)) throw new Error('abandoned receipt readback differs');
   validateReceiptChain([...chain, persisted], identity, publicKey);
   return persisted;
 }
