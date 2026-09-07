@@ -1460,8 +1460,8 @@
       "recordSha256": "4dea68176043d7fe2665a45ac0fdf700504352b2a9b2dfbf6bd53d6ff67f8cae"
     }
   },
-  "sourceCommit": "b45a372d4e1d85d86e2e9c4e806dec0948d0fd3e",
+  "sourceCommit": "4df9f3e0b66219df64253ddebd1f5623265ea446",
   "sourcePath": "data/retrieval-query-evidence.json",
   "sourceBlobSha256": "b3e3a7919cad1465c053bee544646324061b7b91e7630bfe0e1e9a39a1861061",
-  "receiptSha256": "d541dfabded1d0742befe675b61606dd2136945c4446350467e519b9c24f1f5d"
+  "receiptSha256": "989bd332afa70603779f0c643852d7ed9c1025926d6303cb2d5496120199f04b"
 }

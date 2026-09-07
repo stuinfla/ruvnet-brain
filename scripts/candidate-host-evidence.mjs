@@ -11,7 +11,7 @@ const arg = (name) => {
   return index >= 0 ? process.argv[index + 1] : null;
 };
 
-export async function buildCandidateHostEvidence({ manifestFile, packagePath, bundlePath, planFile, coverageFile },
+export async function buildCandidateHostEvidence({ manifestFile, packagePath, bundlePath, planFile, coverageFile, failureFile },
   { createVerifier = stagedHostVerifier } = {}) {
   const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
   const payloadId = payloadIdFor(manifest);
@@ -20,8 +20,16 @@ export async function buildCandidateHostEvidence({ manifestFile, packagePath, bu
   verifyCandidateRetrievalAssets({ retrieval, assets: { packagePath, bundlePath } });
   const result = await createVerifier({ assets: { packagePath, bundlePath }, identity, retrieval })
     .verify({ source: 'candidate', assets: { packagePath, bundlePath } });
-  if (result.verdict !== 'PASS') throw new Error(`candidate host matrix failed: ${result.error || 'unknown'}`);
   verifyCandidateRetrievalAssets({ retrieval, assets: { packagePath, bundlePath } });
+  if (result.verdict !== 'PASS') {
+    if (failureFile) fs.writeFileSync(path.resolve(failureFile), JSON.stringify({
+      schemaVersion: 1, kind: 'ruvnet-brain-candidate-host-failure', verdict: 'FAIL',
+      sha: manifest.candidateSha, payloadId, artifactSha256: retrieval.artifactSha256,
+      candidateArchiveSha256: retrieval.candidateArchiveSha256, planSha256: retrieval.plan.planSha256,
+      result,
+    }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+    throw new Error(`candidate host matrix failed: ${result.error || 'unknown'}`);
+  }
 
   const modeNames = { claude: 'claude-only', codex: 'codex-only', dual: 'dual-host' };
   const leaves = Object.entries(modeNames).map(([mode, name]) => {
@@ -60,7 +68,7 @@ export async function buildCandidateHostEvidence({ manifestFile, packagePath, bu
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const evidence = await buildCandidateHostEvidence({ manifestFile: arg('--manifest'),
-    packagePath: arg('--package'), bundlePath: arg('--bundle'), planFile: arg('--plan'), coverageFile: arg('--coverage') });
+    packagePath: arg('--package'), bundlePath: arg('--bundle'), planFile: arg('--plan'), coverageFile: arg('--coverage'), failureFile: arg('--out') ? `${arg('--out')}.failure.json` : null });
   fs.writeFileSync(path.resolve(arg('--out')), `${JSON.stringify(evidence, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   console.log(JSON.stringify({ verdict: 'PASS', payloadId: evidence.payloadId, leaves: evidence.leaves.map(({ name }) => name) }));
 }

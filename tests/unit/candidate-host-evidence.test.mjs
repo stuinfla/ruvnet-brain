@@ -30,6 +30,7 @@ function fixture() {
 }
 it.each(['valid', 'body-spoof', 'legacy-text'])('executes %s through staged extraction, real RPC, and cleanup', async (mode) => {
   const f = fixture(); let prepared, observed;
+  f.args.failureFile = path.join(f.root, 'host.failure.json');
   const produced = buildCandidateHostEvidence(f.args, { createVerifier: (options) => stagedHostVerifier(options, {
     runMatrix: async (matrix) => {
       prepared = matrix.temp;
@@ -53,10 +54,16 @@ it.each(['valid', 'body-spoof', 'legacy-text'])('executes %s through staged extr
   if (mode === 'valid') {
     const result = await produced;
     expect(result.leaves).toHaveLength(3);
+    expect(fs.existsSync(f.args.failureFile)).toBe(false);
     expect(result.leaves.every(({ retrieval }) => retrieval.metrics.deltaCitationRate === 1 && retrieval.metrics.recallAt10 === 1)).toBe(true);
   } else {
     await expect(produced).rejects.toThrow(/canary rejected/);
     expect(observed.fixtures.claude.retrieval.metrics.recallAt10).toBe(0);
+    const failure = JSON.parse(fs.readFileSync(f.args.failureFile, 'utf8'));
+    expect(failure).toMatchObject({ verdict: 'FAIL', kind: 'ruvnet-brain-candidate-host-failure',
+      sha: f.candidate.sourceSha, planSha256: f.candidate.plan.planSha256 });
+    expect(failure.result.fixtures).toEqual(observed.fixtures);
+    expect(failure.leaves).toBeUndefined();
     if (mode === 'legacy-text') {
       expect(observed.fixtures.claude.retrieval.cases.every((row) => row.status === 'UNKNOWN'
         && /UNKNOWN.*structured retrieval/.test(row.error))).toBe(true);

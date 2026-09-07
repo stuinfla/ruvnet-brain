@@ -293,7 +293,7 @@ async function handle(msg) {
         const namedFamilyRepos = deployedFamilyReposFromQuery(query, KB_DIR, repoList);
         const cardHit = namedFamilyRepos.length
           ? { hit: false, reason: 'named deployed RVF family requires multi-store search' }
-          : answerFromCards(query, KB_DIR, { allowGuideAnswers: true });
+          : answerFromCards(query, KB_DIR, { allowGuideAnswers: true, k });
         if (cardHit.hit) {
           const cardBody = renderCardHit(cardHit);
           // MINT THE RECEIPT ON THIS LANE TOO (ADR-055 §3.1). When the fast lane became the FIRST
