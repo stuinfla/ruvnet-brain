@@ -33,6 +33,10 @@ function fixture() {
 
 // Execute the actual verifier subprocess with local network/npm substitutes installed before
 // its imports. Unknown requests fail locally; this fixture cannot download or publish anything.
+function nodePreloadOption(preload) {
+  return `--require=${JSON.stringify(preload)}`;
+}
+
 function offlineProbe(f, { mutate = false } = {}) {
   const preload = path.join(f.root, 'offline-probe.cjs');
   const observed = path.join(f.root, 'observed.json');
@@ -69,12 +73,23 @@ function offlineProbe(f, { mutate = false } = {}) {
       throw new Error('unexpected external request: ' + url);
     };
   `);
-  vi.stubEnv('NODE_OPTIONS', `--require="${preload}"`);
+  vi.stubEnv('NODE_OPTIONS', nodePreloadOption(preload));
   vi.stubEnv('GITHUB_TOKEN', 'offline-fixture-token');
   return observed;
 }
 
 describe('recovery candidate source is independent of verifier source', () => {
+  it('preserves Windows path separators through the real NODE_OPTIONS parser', () => {
+    const preload = 'C:\\recovery verifier\\offline-probe.cjs';
+    const result = spawnSync(process.execPath, ['-e', ''], {
+      encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: nodePreloadOption(preload) },
+    });
+    // This nonexistent preload must fail with its exact path, before executing any code.
+    // Unescaped backslashes inside NODE_OPTIONS quotes are consumed by Node's parser.
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(`Cannot find module '${preload}'`);
+  });
+
   it('requires the exact candidate SHA, checkout root, version, and unchanged tracked files', () => {
     const f = fixture();
     expect(validateCandidateSource(f.candidateRoot, f)).toBe(fs.realpathSync(f.candidateRoot));

@@ -102,13 +102,26 @@ function proofFixture() {
 describe('native two-run nightly proof', () => {
   it.each(['darwin', 'linux', 'win32'])('uses the native %s trigger and verifies cleanup (fake adapters only)', async (platform) => {
     const f = nativeFixture(platform);
-    expect((await triggerNativeRun(f.options)).receipt.status).toBe('SUCCEEDED');
+    // The Darwin adapter is fake: supply its UID even when this test runs on Windows.
+    const uid = Object.getOwnPropertyDescriptor(process, 'getuid');
+    Object.defineProperty(process, 'getuid', { configurable: true, value: () => 501 });
+    try {
+      expect((await triggerNativeRun(f.options)).receipt.status).toBe('SUCCEEDED');
+    } finally {
+      if (uid) Object.defineProperty(process, 'getuid', uid);
+      else delete process.getuid;
+    }
     expect(f.calls.filter(([kind]) => kind === 'remove')).toHaveLength(1);
     const commands = f.calls.filter(([kind]) => kind === 'command');
     if (platform === 'linux') {
       expect(commands).toEqual([]);
       expect(f.calls[0][2]).toMatchObject({ proofTick: true, proofAt: 1_060_000 });
-    } else expect(commands[0][1]).toBe(platform === 'darwin' ? 'launchctl' : 'schtasks');
+    } else {
+      expect(commands[0][1]).toBe(platform === 'darwin' ? 'launchctl' : 'schtasks');
+      if (platform === 'darwin') expect(commands[0][2]).toEqual([
+        'kickstart', '-k', `gui/501/${f.options.registration.identity}`,
+      ]);
+    }
   });
 
   it('removes cron as soon as a RUNNING receipt appears, before waiting for completion', async () => {

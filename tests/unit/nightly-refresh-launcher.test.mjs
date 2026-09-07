@@ -9,7 +9,14 @@ import { afterEach, expect, it } from 'vitest';
 const roots = [];
 afterEach(() => roots.splice(0).forEach(root => fs.rmSync(root, { recursive: true, force: true })));
 function run(platform, mutant) {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'nightly & literal-'))); roots.push(root);
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'nightly & literal-'))); roots.push(root);
+  // Windows Node includes adjacent npm, which outranks the fixture PATH. Run its real
+  // executable in the fixture directory. POSIX Node may require install-relative dylibs.
+  const node = process.platform === 'win32' ? path.join(root, 'node.exe') : process.execPath;
+  if (process.platform === 'win32') {
+    try { fs.linkSync(process.execPath, node); }
+    catch { fs.copyFileSync(process.execPath, node); }
+  }
   const runner = path.join(root, 'runner.mjs');
   fs.copyFileSync(new URL('../../bin/nightly-refresh.mjs', import.meta.url), runner);
   const pkg = path.join(root, 'node_modules/npm'); fs.mkdirSync(path.join(pkg, 'bin'), { recursive: true });
@@ -25,7 +32,7 @@ function run(platform, mutant) {
   const spec = path.join(root, 'candidate & %PATH% !literal!.tgz'); fs.writeFileSync(spec, 'sealed fixture');
   const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
   const registration = path.join(root, 'registration.json');
-  fs.writeFileSync(registration, JSON.stringify({ schemaVersion: 2, kind: 'ruvnet-brain-nightly-scheduler', identity: 'com.ruvnet.brain-update', environment: { RUVNET_BRAIN_HOME: root, RUVNET_BRAIN_KB: path.join(root, 'custom-kb') }, runnerPath: runner, runnerSha256: hash(runner), nodePath: process.execPath, argv: [], packageTarget: { spec, sha256: hash(spec) }, bundleTarget: null }));
+  fs.writeFileSync(registration, JSON.stringify({ schemaVersion: 2, kind: 'ruvnet-brain-nightly-scheduler', identity: 'com.ruvnet.brain-update', environment: { RUVNET_BRAIN_HOME: root, RUVNET_BRAIN_KB: path.join(root, 'custom-kb') }, runnerPath: runner, runnerSha256: hash(runner), nodePath: node, argv: [], packageTarget: { spec, sha256: hash(spec) }, bundleTarget: null }));
   const preload = path.join(root, 'preload.mjs');
   fs.writeFileSync(preload, `import cp from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module';
     Object.defineProperty(process,'platform',{value:${JSON.stringify(platform)}});
@@ -33,10 +40,10 @@ function run(platform, mutant) {
     cp.spawnSync=(command,args,opts)=>{
       if(opts.shell!==false) throw Error('shell forbidden');
       if(opts.env.RUVNET_BRAIN_HOME!==${JSON.stringify(root)} || opts.env.RUVNET_BRAIN_KB!==${JSON.stringify(path.join(root, 'custom-kb'))}) throw Error('registered custom paths were lost');
-      ${platform === 'win32' ? `if(command!==process.execPath) return {error:Error('Windows cannot directly execute cmd shim')};` : `if(!command.endsWith('npx')) throw Error('POSIX invocation changed'); command=process.execPath; args=[${JSON.stringify(entry)},...args];`}
+      ${platform === 'win32' ? `if(command!==process.execPath) throw Error('Windows cannot directly execute cmd shim'); if(args[0]!==${JSON.stringify(entry)}) throw Error('launcher escaped fixture npm');` : `if(!command.endsWith('npx')) throw Error('POSIX invocation changed'); command=process.execPath; args=[${JSON.stringify(entry)},...args];`}
       return original(command,args,opts);
     }; syncBuiltinESMExports();`);
-  return { spec, result: spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, runner, '--registration', registration], { encoding: 'utf8', env: { PATH: root } }) };
+  return { spec, result: spawnSync(node, ['--import', pathToFileURL(preload).href, runner, '--registration', registration], { encoding: 'utf8', env: { PATH: root } }) };
 }
 it.each(['win32', 'darwin', 'linux'])('launches the registered target without shell argument rewriting on %s', platform => {
   const { spec, result } = run(platform);

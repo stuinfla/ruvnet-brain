@@ -285,9 +285,21 @@ it('retains launchd file if bootout did not establish absence', () => {
   const f = fixture();
   const options = { platform: 'darwin', env: f.env, kbDir: f.kbDir };
   const installed = installScheduler(f.record, { ...options, testMode: true });
-  const run = () => ({ status: 0, stdout: 'still loaded' });
-  expect(removeScheduler({ ...options, run }).ok).toBe(false);
-  expect(fs.existsSync(installed.artifact.path)).toBe(true);
+  const uid = Object.getOwnPropertyDescriptor(process, 'getuid');
+  Object.defineProperty(process, 'getuid', { configurable: true, value: () => 501 });
+  const calls = [];
+  const run = (command, args) => { calls.push([command, args]); return { status: 0, stdout: 'still loaded' }; };
+  try {
+    expect(removeScheduler({ ...options, run }).ok).toBe(false);
+    expect(fs.existsSync(installed.artifact.path)).toBe(true);
+    expect(calls).toEqual([
+      ['launchctl', ['bootout', `gui/501/${NIGHTLY_LABEL}`]],
+      ['launchctl', ['print', `gui/501/${NIGHTLY_LABEL}`]],
+    ]);
+  } finally {
+    if (uid) Object.defineProperty(process, 'getuid', uid);
+    else delete process.getuid;
+  }
 });
 it('uses explicit dated cron cadence only for isolated proof identities', () => {
   const f = fixture(); const at = new Date(2030, 1, 3, 4, 5);

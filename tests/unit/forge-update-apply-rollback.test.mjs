@@ -26,8 +26,17 @@ import { coverageGenerationFor, releaseCoverageGenerationFor } from '../../plugi
 import { validatePublicInventory } from '../../scripts/public-inventory.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const hasZip = () => { try { execFileSync('zip', ['-v'], { stdio: 'ignore' }); return true; } catch { return false; } };
-const CAN_ZIP = hasZip();
+// Use each host's real archive writer; Windows does not ship the POSIX zip command.
+function archiveDirectory(stage, zipPath) {
+  if (process.platform === 'win32') {
+    const script = 'Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::CreateFromDirectory($env:RUVNET_TEST_ZIP_SOURCE, $env:RUVNET_TEST_ZIP_OUTPUT)';
+    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand',
+      Buffer.from(script, 'utf16le').toString('base64')], { env: { ...process.env,
+      RUVNET_TEST_ZIP_SOURCE: stage, RUVNET_TEST_ZIP_OUTPUT: zipPath }, timeout: 30000 });
+  } else {
+    execFileSync('zip', ['-q', '-r', zipPath, ...fs.readdirSync(stage)], { cwd: stage, timeout: 30000 });
+  }
+}
 
 const STORE_A = { kbName: 'alpha', sourceCommit: 'aaa111aaa111', sourceDescribe: 'v2.0.0', builtUtc: '2026-07-28T15:04:51.856Z' };
 const STORE_B = { kbName: 'beta', sourceCommit: 'bbb222bbb222', sourceDescribe: 'v1.4.0', builtUtc: '2026-07-28T14:59:34.177Z' };
@@ -168,7 +177,7 @@ function publish(source, tag, mutateStage = () => {}) {
   layDown(stage, source);
   mutateStage(stage);
   const zipPath = path.join(root, `bundle-${tag}.zip`);
-  execFileSync('zip', ['-q', '-r', zipPath, ...fs.readdirSync(stage)], { cwd: stage });
+  archiveDirectory(stage, zipPath);
   served.zip = fs.readFileSync(zipPath);
   const digest = crypto.createHash('sha256').update(served.zip).digest();
   served.sig = crypto.sign(null, digest, TEST_SIGNING_KEYS.privateKey);
@@ -203,7 +212,7 @@ const run = (...args) => runWithEnv({}, ...args);
 
 const rollbackCopies = () => fs.readdirSync(root).filter((n) => n.startsWith('kb.bak-'));
 
-describe.skipIf(!CAN_ZIP)('forge-update --apply (issues #106 + #108)', () => {
+describe('forge-update --apply (issues #106 + #108)', () => {
   it.each([
     ['missing', null, 3, /signature download returned/],
     ['tampered', Buffer.from('not a signature'), 4, /SIGNATURE VERIFICATION FAILED/],
@@ -425,7 +434,7 @@ describe.skipIf(!CAN_ZIP)('forge-update --apply (issues #106 + #108)', () => {
   });
 });
 
-describe.skipIf(!CAN_ZIP)('forge-update --check (issue #108 bug 2)', () => {
+describe('forge-update --check (issue #108 bug 2)', () => {
   it('exits 0 for a copy already at the canonical release tag, instead of reporting BEHIND forever', async () => {
     // The release tag is a property of the BUNDLE and is written only at the top level of
     // SOURCE.json, so the per-store `local.releaseTag` isBehind() short-circuits on was always

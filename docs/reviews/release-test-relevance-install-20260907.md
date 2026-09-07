@@ -1,4 +1,4 @@
-Updated: 2026-09-07 11:07:28 EDT | Version 1.0.0
+Updated: 2026-09-07 11:21:34 EDT | Version 1.0.1
 Created: 2026-09-07 11:07:28 EDT
 
 # Install/update release-test relevance audit
@@ -55,3 +55,7 @@ Create `tests/unit/automatic-hook-retirement.test.mjs` using scratch ordinary fi
 6. Malformed settings JSON throws instead of silently discarding unrelated user settings.
 
 The existing integration hook-conformance-both-hosts.test.mjs already covers most of 1-4 with no skip clauses, including real offline wireCodexHost. Selfcheck-battery contains the no-firings assertion but also one unrelated skip; extract the retirement cases for a clean zero-skip qualifier rather than miscounting the whole legacy battery.
+
+## Native Windows follow-up
+
+Hosted candidate run 34137273235 exposed fixture portability failures in the retained cases. The rollback tests now use the Windows .NET archive writer instead of skipping when POSIX zip is absent. The launcher fixture isolates the real Windows Node executable so adjacent host npm cannot replace its fixture package. Fake Darwin adapters explicitly supply and restore their fixture UID. These changes preserve the behavioral assertions; the next exact-source Windows run must execute every case without skips.
