@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rerankKb } from '../kb/forge-rerank.mjs';
+import { writeGroundedPrimer } from './primer-grounding.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
@@ -57,10 +58,8 @@ for (const a of ARCHES) {
 }
 
 const primer = `# ${NAME} — Primer\n\n<!-- Generated primer · grounded in real source via rerankKb (${VARIANT}) · archetypes: ${ARCHES.map(a => a.key).join(', ')} -->\n\n${sections.join('\n')}`;
-const countRefs = (txt) => [...new Set([...allPaths].filter((p) => txt.includes(p) || txt.includes(p.split('/').pop())))];
-const refs = countRefs(primer);
 const outFile = path.join(KB, `${NAME}-primer.md`);
-fs.writeFileSync(outFile, primer);
+const refs = writeGroundedPrimer({ primer, sourcePaths: allPaths, output: outFile });
 
 // 3-vendor "is this a complete, correct primer?" score (informational; the hard gate is citation count)
 const jsys = 'Grade 1-100 whether this repo primer is COMPLETE, CORRECT and CONFIDENT for an engineer new to the repo (98=excellent/actionable; vague-or-hedgy=POISON<50). Return ONLY {"score":N,"reason":"<=15 words"}.';

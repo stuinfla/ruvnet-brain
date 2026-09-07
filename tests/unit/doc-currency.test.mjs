@@ -751,6 +751,22 @@ describe('CLI contract', () => {
     expect(base).toMatch(/^[0-9a-f]{40}$/);
   });
 
+  it('candidate drift excludes old debt even when the same governed file changes once', () => {
+    const r = newRepo();
+    write(r, 'scripts/thing.mjs', 'export const t = 1;\n');
+    write(r, 'docs/adr/0001-x.md', adr({ governs: ['scripts/thing.mjs'] }));
+    commit(r, 'baseline', '2026-07-01T12:00:00');
+    for (let i = 2; i <= 4; i++) {
+      write(r, 'scripts/thing.mjs', `export const t = ${i};\n`);
+      commit(r, 'old debt', `2026-07-0${i}T12:00:00`);
+    }
+    const base = sh(r, 'git', ['rev-parse', 'HEAD']);
+    write(r, 'scripts/thing.mjs', 'export const t = 5;\n');
+    commit(r, 'candidate', '2026-07-05T12:00:00');
+    expect(quiet(() => main(['--check', '--root', r, '--changed', base, '--json']))).toBe(0);
+    expect(quiet(() => main(['--check', '--root', r, '--changed', 'absent-ref', '--json']))).toBe(1);
+  });
+
   it('--report renders every document and distinguishes absent stamps from inferred ones', () => {
     const r = newRepo();
     write(r, 'docs/adr/0001-x.md', '---\nid: ADR-001\nstatus: Accepted\ndate: 2026-07-01\n---\n\n# body\n');

@@ -129,6 +129,14 @@ describe('answerFromCards — capability claims require implementation evidence'
     expect(hit.reason).toMatch(/implementation evidence/i);
   });
 
+  it('keeps single-document guide answers but routes multi-document requests to source retrieval', () => {
+    const query = 'How do I open the settings screen?';
+    expect(answerFromCards(query, KB, { allowGuideAnswers: true, k: 1 }).hit).toBe(true);
+    expect(answerFromCards(query, KB, { allowGuideAnswers: true, k: 10 })).toEqual({
+      hit: false, reason: 'multiple documents require source retrieval',
+    });
+  });
+
   it('allows bounded guide answers only when the caller explicitly enables the guide lane', () => {
     const cases = [
       ['Is this a chatbot, a database, or something else?', 'ruvnet-brain'],

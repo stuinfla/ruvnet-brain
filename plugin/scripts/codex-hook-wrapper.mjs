@@ -4,6 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 
+// New installs colocate the helper. Older standalone fixtures/installations can omit it;
+// they retain their prior behavior until the installer upgrades both files.
+let developmentHooksSuspended = () => false;
+try { ({ developmentHooksSuspended } = await import('./development-maintenance.mjs')); }
+catch (error) { if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error; }
+if (developmentHooksSuspended()) process.exit(0);
+
 const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 const brainHome = process.env.RUVNET_BRAIN_HOME
   || path.join(path.dirname(codexHome), '.cache', 'ruvnet-brain');
@@ -155,6 +162,9 @@ function readHookInput(limit = 1024 * 1024) {
 }
 
 const input = await readHookInput();
+let projectCwd;
+try { projectCwd = JSON.parse(input.toString('utf8')).cwd; } catch { /* malformed host payload */ }
+if (typeof projectCwd === 'string' && developmentHooksSuspended(projectCwd)) process.exit(0);
 const root = activeRoot();
 const adapter = root && path.join(root, 'scripts', 'codex-hook-adapter.mjs');
 if (!adapter || !fs.existsSync(adapter)) process.exit(0);

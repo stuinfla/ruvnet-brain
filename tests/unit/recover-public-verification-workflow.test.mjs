@@ -49,8 +49,26 @@ describe('post-publication recovery rail', () => {
     expect(source).toContain('npm install --prefix "$host_cli_prefix"');
     expect(source).toContain('cygpath -w "$host_cli_prefix/node_modules/.bin"');
     expect(source).not.toContain('cygpath -w "$PWD/node_modules/.bin"');
-    expect(source).toContain('RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}');
+    expect(source).toContain('RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}/candidate-source');
     expect(source).toContain('GITHUB_TOKEN: ${{ github.token }}');
     expect(source).toContain('if-no-files-found: warn');
+  });
+
+  it('pins the verifier separately while preserving the original signed candidate and marketplace', () => {
+    const recover = source.slice(source.indexOf('\n  recover:'), source.indexOf('\n  public-verification:'));
+    const lanes = source.slice(source.indexOf('\n  public-verification:'), source.indexOf('\n  finalize:'));
+    const finalizer = source.slice(source.indexOf('\n  finalize:'));
+    expect(recover).toContain('ref: ${{ needs.authorize.outputs.candidate_sha }}');
+    expect(lanes).toContain('ref: ${{ github.sha }}');
+    expect(lanes).toContain('ref: ${{ needs.authorize.outputs.candidate_sha }}\n          path: candidate-source');
+    expect(lanes).toContain('--candidate-root candidate-source');
+    expect(finalizer).toContain('ref: ${{ github.sha }}');
+    expect(finalizer).not.toContain('persist-credentials: true');
+    expect(source.match(/--verifier-sha "\$\{\{ github.sha \}\}"/g)).toHaveLength(3);
+    for (const command of ['node scripts/public-verification-aggregate.mjs', 'node scripts/public-verification-finalizer.mjs']) {
+      const prefix = finalizer.slice(0, finalizer.indexOf(command));
+      expect(prefix).toContain('test "$(git rev-parse HEAD)" = "${{ github.sha }}"');
+      expect(prefix).toContain('test -z "$(git status --porcelain --untracked-files=no)"');
+    }
   });
 });

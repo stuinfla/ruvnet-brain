@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest } from './coverage-integrity.mjs';
 import { retrievalOracleExpectationFromPlan, validateRetrievalOracleReview } from './independent-review-receipt.mjs';
 import { validateRetrievalCanaryPlan, validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
+import { validateNightlyProofReceipt } from './nightly-two-run-proof.mjs';
 
 export const PUBLIC_VERIFICATION_OS = Object.freeze(['linux', 'macos', 'windows']);
 export const PUBLIC_VERIFICATION_MODES = Object.freeze(['claude', 'codex', 'dual']);
@@ -19,7 +20,10 @@ function unsignedLeaf(leaf) {
   return payload;
 }
 
-export function validatePublicVerificationLeaf(leaf) {
+export function validatePublicVerificationLeaf(leaf, { publicKey } = {}) {
+  if (Object.hasOwn(leaf || {}, 'verifierSha') && !HEX40.test(String(leaf.verifierSha))) {
+    throw new Error('public verification leaf verifier SHA is invalid');
+  }
   if (leaf?.schemaVersion !== 1 || leaf?.kind !== 'ruvnet-brain-public-verification-leaf'
     || !PUBLIC_VERIFICATION_OS.includes(leaf.os) || !PUBLIC_VERIFICATION_MODES.includes(leaf.mode)
     || !HEX40.test(String(leaf.sourceSha || '')) || !HEX64.test(String(leaf.artifactSha256 || ''))
@@ -49,12 +53,23 @@ export function validatePublicVerificationLeaf(leaf) {
     || retrieval.coverageGeneration !== leaf.coverageGeneration || retrieval.planSha256 !== leaf.canaryPlanSha256) {
     throw new Error(`${leaf.os}/${leaf.mode} retrieval identity differs`);
   }
+  if (leaf.mode === 'dual') {
+    if (!/^[1-9][0-9]*$/.test(String(leaf.workflowRunId || ''))) throw new Error('native nightly workflow run identity is missing');
+    const native = validateNightlyProofReceipt(leaf.nativeNightly, {
+      platform: { linux: 'linux', macos: 'darwin', windows: 'win32' }[leaf.os],
+      version: leaf.version, sourceSha: leaf.sourceSha, workflowRunId: leaf.workflowRunId,
+      packageSha256: leaf.artifactSha256, bundleSha256: leaf.bundleSha256, publicKey,
+    });
+    if (!native.ok) throw new Error(`${leaf.os}/dual native nightly proof failed: ${native.failures.join('; ')}`);
+  } else if (leaf.nativeNightly !== undefined) {
+    throw new Error('native nightly proof belongs only to the dual-host leaf');
+  }
   return leaf;
 }
 
-export function createPublicVerificationLeaf(input) {
+export function createPublicVerificationLeaf(input, options = {}) {
   const payload = { schemaVersion: 1, kind: 'ruvnet-brain-public-verification-leaf', ...input };
-  return validatePublicVerificationLeaf({ ...payload, leafSha256: digest(payload) });
+  return validatePublicVerificationLeaf({ ...payload, leafSha256: digest(payload) }, options);
 }
 
 function aggregatePayload(aggregate) {
@@ -122,6 +137,7 @@ function validateReviewOracleAgainstPlan(review, retrievalPlan) {
 
 const identityOf = (leaf) => ({
   sourceSha: leaf.sourceSha,
+  ...(Object.hasOwn(leaf, 'verifierSha') ? { verifierSha: leaf.verifierSha } : {}),
   version: leaf.version,
   tag: leaf.tag,
   artifactSha256: leaf.artifactSha256,
@@ -133,11 +149,13 @@ const identityOf = (leaf) => ({
   releaseTransactionId: leaf.releaseTransactionId,
 });
 
-export function buildPublicVerificationAggregate(leaves) {
+export function buildPublicVerificationAggregate(leaves, options = {}) {
   if (!Array.isArray(leaves) || leaves.length !== PUBLIC_VERIFICATION_OS.length * PUBLIC_VERIFICATION_MODES.length) {
     throw new Error('public verification requires exactly nine leaves');
   }
-  leaves.forEach(validatePublicVerificationLeaf);
+  leaves.forEach((leaf) => validatePublicVerificationLeaf(leaf, options));
+  const nativeRunIds = new Set(leaves.filter((leaf) => leaf.mode === 'dual').map((leaf) => String(leaf.workflowRunId)));
+  if (nativeRunIds.size !== 1) throw new Error('native nightly proofs span different workflow runs');
   const byLane = new Map(leaves.map((leaf) => [`${leaf.os}/${leaf.mode}`, leaf]));
   const required = PUBLIC_VERIFICATION_OS.flatMap((os) => PUBLIC_VERIFICATION_MODES.map((mode) => `${os}/${mode}`));
   if (byLane.size !== required.length || required.some((lane) => !byLane.has(lane))) {
@@ -178,6 +196,7 @@ export function buildPublicVerificationAggregate(leaves) {
     schemaVersion: 1,
     kind: 'ruvnet-brain-public-verification-aggregate',
     identity,
+    workflowRunId: [...nativeRunIds][0],
     coverage: first.coverage,
     lanes: required.map((lane) => ({ lane, leafSha256: byLane.get(lane).leafSha256 })),
     evidence: { leaves: required.map((lane) => structuredClone(byLane.get(lane))) },
@@ -193,7 +212,7 @@ export function buildPublicVerificationAggregate(leaves) {
 }
 
 export function signPublicVerificationAggregate({ leaves }, privateKey) {
-  const payload = buildPublicVerificationAggregate(leaves);
+  const payload = buildPublicVerificationAggregate(leaves, { publicKey: crypto.createPublicKey(privateKey) });
   const aggregateSha256 = digest(payload);
   const signed = { ...payload, aggregateSha256 };
   return { ...signed, signature: crypto.sign(null, Buffer.from(canonicalJson(signed)), privateKey).toString('base64') };
@@ -210,13 +229,13 @@ export function verifyPublicVerificationAggregate(aggregate, publicKey, expected
   if (!Array.isArray(aggregate.evidence?.leaves)) {
     throw new Error('public verification aggregate lacks raw leaf evidence');
   }
-  const rebuilt = buildPublicVerificationAggregate(aggregate.evidence.leaves);
-  if (canonicalJson(rebuilt) !== canonicalJson(payload)) {
-    throw new Error('public verification aggregate differs from rebuilt raw evidence');
-  }
   const signed = { ...payload, aggregateSha256: aggregate.aggregateSha256 };
   if (!crypto.verify(null, Buffer.from(canonicalJson(signed)), publicKey, Buffer.from(aggregate.signature, 'base64'))) {
     throw new Error('public verification aggregate signature mismatch');
+  }
+  const rebuilt = buildPublicVerificationAggregate(aggregate.evidence.leaves, { publicKey });
+  if (canonicalJson(rebuilt) !== canonicalJson(payload)) {
+    throw new Error('public verification aggregate differs from rebuilt raw evidence');
   }
   const required = PUBLIC_VERIFICATION_OS.flatMap((os) => PUBLIC_VERIFICATION_MODES.map((mode) => `${os}/${mode}`));
   if (aggregate.lanes?.length !== required.length || new Set(aggregate.lanes.map(({ lane }) => lane)).size !== required.length
@@ -234,7 +253,11 @@ export function verifyPublicVerificationAggregate(aggregate, publicKey, expected
     || aggregate.retrievalOracle?.recordCount !== aggregate.evidence.leaves[0].retrievalPlan.denominator.eligibleStores.length) {
     throw new Error('public verification aggregate retrieval oracle identity is incomplete');
   }
-  if (expectedIdentity && canonicalJson(aggregate.identity) !== canonicalJson(expectedIdentity)) {
+  if (expectedIdentity?.workflowRunId !== undefined && String(expectedIdentity.workflowRunId) !== aggregate.workflowRunId) {
+    throw new Error('public verification aggregate workflow run differs from the expected run');
+  }
+  const { workflowRunId: _expectedRun, ...expectedReleaseIdentity } = expectedIdentity || {};
+  if (expectedIdentity && canonicalJson(aggregate.identity) !== canonicalJson(expectedReleaseIdentity)) {
     throw new Error('public verification aggregate identity differs from the release transaction');
   }
   return aggregate;
@@ -245,13 +268,13 @@ function parseCliArgs(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!['--lanes', '--out'].includes(flag) || !value) {
-      throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --out <file>');
+    if (!['--lanes', '--out', '--verifier-sha', '--workflow-run-id'].includes(flag) || !value) {
+      throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --out <file> --workflow-run-id <id>');
     }
     parsed[flag.slice(2)] = value;
   }
-  if (!parsed.lanes || !parsed.out || Object.keys(parsed).length !== 2) {
-    throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --out <file>');
+  if (!parsed.lanes || !parsed.out || !/^[1-9][0-9]*$/.test(parsed['workflow-run-id'] || '')) {
+    throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --out <file> --workflow-run-id <id>');
   }
   return parsed;
 }
@@ -265,20 +288,24 @@ function readExactJsonFiles(directory, count, label) {
     .map((entry) => JSON.parse(fs.readFileSync(path.join(directory, entry.name), 'utf8')));
 }
 
-function readLaneLeaves(directory) {
+function readLaneLeaves(directory, options = {}) {
   const wrappers = readExactJsonFiles(directory, PUBLIC_VERIFICATION_OS.length, 'lane');
   const byOs = new Map();
   for (const wrapper of wrappers) {
     const payload = { schemaVersion: wrapper?.schemaVersion, kind: wrapper?.kind, os: wrapper?.os,
+      ...(Object.hasOwn(wrapper || {}, 'verifierSha') ? { verifierSha: wrapper.verifierSha, sourceSha: wrapper.sourceSha } : {}),
       leaves: wrapper?.leaves };
     if (payload.schemaVersion !== 1 || payload.kind !== 'ruvnet-brain-public-verification-os-lane'
       || !PUBLIC_VERIFICATION_OS.includes(payload.os) || byOs.has(payload.os)
       || !Array.isArray(payload.leaves) || payload.leaves.length !== PUBLIC_VERIFICATION_MODES.length
       || payload.leaves.some((leaf) => leaf?.os !== payload.os)
+      || (Object.hasOwn(payload, 'verifierSha') && (!HEX40.test(String(payload.verifierSha))
+        || !HEX40.test(String(payload.sourceSha))
+        || payload.leaves.some((leaf) => leaf.verifierSha !== payload.verifierSha || leaf.sourceSha !== payload.sourceSha)))
       || digest(payload) !== wrapper.laneSha256) {
       throw new Error('public verification OS lane wrapper is malformed, duplicated, or tampered');
     }
-    payload.leaves.forEach(validatePublicVerificationLeaf);
+    payload.leaves.forEach((leaf) => validatePublicVerificationLeaf(leaf, options));
     byOs.set(payload.os, payload.leaves);
   }
   if (PUBLIC_VERIFICATION_OS.some((osName) => !byOs.has(osName))) {
@@ -287,11 +314,16 @@ function readLaneLeaves(directory) {
   return PUBLIC_VERIFICATION_OS.flatMap((osName) => byOs.get(osName));
 }
 
-export function generatePublicVerificationAggregate({ lanesDirectory, outputFile, privateKey }) {
+export function generatePublicVerificationAggregate({ lanesDirectory, outputFile, privateKey, verifierSha, workflowRunId }) {
+  if (!/^[1-9][0-9]*$/.test(String(workflowRunId || ''))) throw new Error('expected workflow run ID is required');
   if (!privateKey) throw new Error('RUVNET_SIGNING_KEY is required');
   if (fs.existsSync(outputFile)) throw new Error(`refusing to overwrite existing aggregate: ${outputFile}`);
-  const leaves = readLaneLeaves(lanesDirectory);
+  const leaves = readLaneLeaves(lanesDirectory, { publicKey: crypto.createPublicKey(privateKey) });
   const aggregate = signPublicVerificationAggregate({ leaves }, privateKey);
+  if (aggregate.workflowRunId !== String(workflowRunId)) throw new Error('public verification aggregate workflow run differs from the expected run');
+  if (verifierSha !== undefined && (!HEX40.test(String(verifierSha)) || aggregate.identity.verifierSha !== verifierSha)) {
+    throw new Error('public verification aggregate verifier SHA differs from the expected verifier');
+  }
   fs.writeFileSync(outputFile, `${JSON.stringify(aggregate, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   return aggregate;
 }
@@ -301,6 +333,8 @@ async function main() {
   const aggregate = generatePublicVerificationAggregate({
     lanesDirectory: options.lanes,
     outputFile: options.out,
+    verifierSha: options['verifier-sha'],
+    workflowRunId: options['workflow-run-id'],
     privateKey: process.env.RUVNET_SIGNING_KEY,
   });
   process.stdout.write(`${JSON.stringify({ ok: true, aggregateSha256: aggregate.aggregateSha256,

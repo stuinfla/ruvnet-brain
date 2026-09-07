@@ -3,7 +3,9 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-04
+updated: 2026-09-07
+reviewed_digest: 899e9e2380e9
+version: 1.1.3
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -71,8 +73,9 @@ Define `ReleaseGeneration` as one immutable aggregate containing:
 
 Every member carries the same normalized version. GitHub `latest`, npm `latest`, the plugin manifests,
 the installed Stable Spine, and the installed KB manifest are projections of that aggregate. The
-publisher may stage members independently, but it may not mark the release latest or report success
-until all projections converge.
+publisher stages members and promotes public channels before post-publication installed verification,
+as corrected by ADR-072. Channel convergence records `PUBLISHED_NOT_VERIFIED`; only completed
+public verification permits `install-verified`. Moving `latest` is not proof of release completion.
 
 ### 2. Replace recursive latest-release seeding with an explicit immutable corpus seed
 
@@ -125,7 +128,8 @@ It may collect only unleased generations according to ADR-023.
 
 One update transaction creates at most one KB rollback snapshot. Every terminal outcome classifies it:
 
-- verified success or verified no-op: reclaim immediately;
+- verified success or verified no-op: reclaim when receipt-backed cleanup proves it safe;
+  failed cleanup remains explicit `cleanup-pending`;
 - damaged/uncertain live KB: retain with a receipt naming the exact reason and recovery command;
 - abandoned but provably redundant historical snapshot: reclaim during the next preflight, before a
   new snapshot is created.
@@ -170,6 +174,23 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 - **Trust the local version stamp.** A stamp proves neither publication nor installability.
 - **Keep every rollback forever.** Safe failure handling still needs bounded, evidence-driven cleanup.
 
+### Installed-update public proof
+
+Before `install-verified`, each public dual-host leaf on Linux, macOS, and Windows must
+include two sequential terminal runs triggered by that platform's native scheduler. The
+proof consumes the exact public npm package and signed bundle, binds their hashes to the
+candidate source, version, and workflow run, and validates the live installed ReleaseCoverage
+projection after each run. Run two must be `noop`, with measured storage deltas, no redundant
+full-corpus copies, bounded retained evidence, and verified removal of the owned proof job.
+Missing raw evidence or failed cleanup blocks acceptance; claimed validation flags do not
+replace raw receipt, signature, executable-identity, and projection validation.
+
+This is explicitly `scope: installed-update`. Update, host convergence, and cleanup carry
+current-run execution evidence. Corpus phases imported from the signed release remain
+`imported-release`, bound to the installed projection and candidate source. Upstream freshness
+remains `UNKNOWN`; these consumer runs do not prove a new corpus build or complete S-4.
+The strict current-run corpus-production validator remains a separate requirement.
+
 ## Consequences
 
 - Corpus promotion becomes an explicit, reviewable input rather than an accidental side effect.
@@ -190,7 +211,28 @@ Only after those checks may the nightly failure marker be deleted and issues #15
 6. A fresh public install and a fresh host window report the same release generation.
 7. Coverage documentation is generated from the sealed manifest, source ledger, and gist inventory.
 
+## Recovery source review — 2026-09-07
+
+`kb/forge-update.mjs` delegates storage to `runStorageTransaction()`: candidate/live verification,
+receipt-backed rollback, and explicit cleanup-pending state bound storage recovery. Immediate
+reclamation is an intended result, not an unconditional guarantee. Installer activation stages and
+rolls back runtime changes; this is not crash-atomic recovery proof. The Windows public probe uses
+`npx.cmd` through its platform command boundary. Native public verification remains required.
+
+## Artifact and replay qualification correction — 2026-09-07
+
+The final projected assembly now derives its runtime generation ledger from the immutable public
+ledger, binds the current source commit, and validates complete assembled coverage before ZIP creation.
+This fixes the missing runtime source identity caught by hosted census on 1609d077. The first assembly
+still supplies seed bytes to the projection producer. Focused producer and mutation tests pass;
+new hosted and public verification remain required.
+
 ## Currency log
+| 2026-09-07 | Reviewed source digest 899e9e2380e9: installed-update public proof boundary; producer freshness remains UNKNOWN. | `kb/forge-update.mjs` imports signed corpus evidence; `scripts/public-verification-aggregate.mjs` and `scripts/nightly-two-run-proof.mjs` validate raw native consumer evidence. |
+
+| 2026-09-07 | Reviewed the failed hosted census and corrected producer; source digest 3e4b5167e33f. | `scripts/build-bundle.mjs`; tests in `/tmp/ruvnet-assembled-projection-tests-20260907.log`, no public PASS claimed. |
+
+| 2026-09-07 | Reviewed recovery source and corrected implementation boundaries; source digest d08c8b76c84c. | `kb/forge-update.mjs`; source examination only, no renewed runtime or publication verification. |
 | 2026-09-04 | Reconciled Windows convergence verification with canonical QA: both lanes now regenerate the convergence manifest after checkout, so a pull request's synthetic merge ref is evaluated as the exact candidate rather than against the branch-tip snapshot. The convergence assertion remains enforced. | `.github/workflows/ci.yml`; `tests/unit/convergence-workflow-parity.test.mjs`; issue #241. |
 | 2026-08-31 | Closed the PR merge-ref freshness gap: canonical QA now regenerates the convergence manifest inside the exact checked-out candidate before running the gate, preventing a branch-generated snapshot from becoming stale on GitHub's synthetic merge ref. | `.github/workflows/canonical-qa.yml`; `scripts/convergence-manifest.mjs`; issue #193 release follow-up. |
 | 2026-08-31 | Regenerated the convergence manifest after the portable watchdog correction; the manifest now binds the actual PR tip rather than an earlier rebased commit. | `data/convergence-manifest.json`; PR #211. |

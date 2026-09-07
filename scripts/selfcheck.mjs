@@ -477,7 +477,7 @@ export function assertContract({ rec, measurement, mode, timeoutSec }) {
 }
 
 // ── §4 THE BATTERY: every installed registration × every stdin regime ───────────────────────────
-export async function runBattery({ home = os.homedir(), repo = null, cwd = os.tmpdir(), regimes = STDIN_REGIMES, surface = null, env = {} } = {}) {
+export async function runBattery({ home = os.homedir(), repo = null, cwd = os.tmpdir(), regimes = STDIN_REGIMES, surface = null, env = {}, inspectOnly = false } = {}) {
   const reg = await loadRegistry();
   const s = surface ?? resolveInstalledSurface({ home, repo });
   if (!s.ok) return { ok: false, reason: s.reason, violations: [], results: [] };
@@ -487,6 +487,7 @@ export async function runBattery({ home = os.homedir(), repo = null, cwd = os.tm
   const { contracts } = reg.loadContracts(s.root);
 
   const registrations = readInstalledRegistrations(s.hooksFile);
+  if (inspectOnly) return { ok: true, surface: s, registrations, violations: [], results: [] };
   const violations = [];
   const results = [];
 
@@ -614,13 +615,20 @@ export async function selfCheck({ home = os.homedir(), repo = null, cwd = os.tmp
   }
 
   // (b) THE BATTERY
-  const battery = await runBattery({ home, repo, cwd, regimes });
+  const battery = await runBattery({ home, repo, cwd, regimes, inspectOnly: true });
   if (!battery.ok) {
     lines.push(`hooks: ${battery.reason}`);
     violations.push({ kind: 'no-plugin', where: 'hooks', detail: battery.reason });
   } else {
     violations.push(...battery.violations);
-    lines.push(`hooks: ${battery.registrations.length} registrations from ${battery.surface.source}, ${regimes.length} stdin regimes each (${battery.results.length} firings)`);
+    if (battery.registrations.length !== 0) {
+      violations.push({
+        kind: 'automatic-registration',
+        where: battery.surface.source,
+        detail: `${battery.registrations.length} retired Brain lifecycle registration(s) remain installed`,
+      });
+    }
+    lines.push(`hooks: ${battery.registrations.length} automatic registrations from ${battery.surface.source}; zero is the required retired state`);
   }
 
   // (c) COEXISTENCE — reported, never charged to the user
@@ -656,7 +664,7 @@ export function formatVerdict(result, { color = null } = {}) {
   const out = [];
   for (const l of result.lines) out.push(`  ${c.dim(l)}`);
   if (!result.violations.length) {
-    out.push(`  ${c.green('✓ Self-check passed.')} Every shipped hook answered inside its contract on this machine.`);
+    out.push(`  ${c.green('✓ Self-check passed.')} The installed Brain surface has zero automatic lifecycle registrations.`);
     return out.join('\n');
   }
   out.push(`  ${c.red(`✗ Self-check FAILED — ${result.violations.length} contract violation(s):`)}`);

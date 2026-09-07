@@ -15,6 +15,7 @@
     "version:check": "node scripts/sync-version.mjs --check",
     "version:set": "node scripts/set-version.mjs",
     "qa:pr": "node scripts/qa-runner.mjs",
+    "maintenance": "node scripts/development-maintenance.mjs",
     "qa:release": "node scripts/qa-runner.mjs --release",
     "release:authority": "node scripts/release-authority.mjs",
     "card-from-source": "node scripts/card-from-source.mjs",
@@ -60,11 +61,14 @@
     "status:check": "node scripts/status-honesty.mjs",
     "cap:collect": "node scripts/rerank-cap-eval.mjs --collect",
     "cap:report": "node scripts/rerank-cap-eval.mjs --report",
-    "cap:ab": "node scripts/rerank-cap-warm-ab.mjs"
+    "cap:ab": "node scripts/rerank-cap-warm-ab.mjs",
+    "hooks:check": "node scripts/hook-retirement-check.mjs",
+    "release:qualify": "node scripts/release-qualification.mjs"
   },
   "files": [
     ".claude-plugin/marketplace.json",
     "bin/install.mjs",
+    "bin/nightly-refresh.mjs",
     "plugin/",
     "plugin/mcp/managed-cli-interface.mjs",
     "plugin/mcp/server.mjs",
@@ -82,8 +86,12 @@
     "data/model-catalog.json",
     "scripts/",
     "kb/verify-citation.mjs",
+    "kb/retrieval-result.mjs",
     "kb/zip-extract.mjs",
     "kb/brain-profile.mjs",
+    "kb/lifecycle-evidence-retention.mjs",
+    "kb/refresh-run.mjs",
+    "kb/update-storage-transaction.mjs",
     "kb/model-requirements.mjs",
     "keys/ruvnet-brain-signing.pub.pem"
   ],
@@ -112,6 +120,7 @@
   "bugs": "https://github.com/stuinfla/ruvnet-brain/issues",
   "author": "Stuart Kerr",
   "devDependencies": {
+    "@babel/parser": "^7.29.7",
     "@metaharness/darwin": "~0.9.2",
     "@ruvector/rvf": "^0.3.4",
     "@vitest/coverage-v8": "^4.1.10",

@@ -1,4 +1,4 @@
 {
-  "description": "Project-local Codex hooks are intentionally empty. The installed ruvnet-brain plugin owns lifecycle integration globally; this file must remain schema-valid and must not duplicate those handlers.",
+  "description": "Project-local Codex hooks are intentionally empty. RuvNet Brain installs no automatic lifecycle handlers; policy and proof run through explicit commands and CI.",
   "hooks": {}
 }

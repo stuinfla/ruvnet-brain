@@ -246,10 +246,30 @@ function writeSettings(file, { dirs, stateDir, attemptsFile }) {
   return file;
 }
 
+// The product plugin may intentionally be disabled. Register only this replay's two hooks
+// in the invocation layer; never edit user config or depend on an ambient installed manifest.
+export function codexReplayHookArgs(brainHome) {
+  if (!brainHome || !path.isAbsolute(brainHome)) throw new Error('explicit absolute replay Brain home is required');
+  const quote = (value) => "'" + String(value).replaceAll("'", "'\"'\"'") + "'";
+  const wrapper = `${quote(process.execPath)} ${quote(path.join(brainHome, 'codex-hook.mjs'))}`;
+  const hook = (event, suffix, matcher = '') => `hooks.${event}=[{${matcher}hooks=[{type="command",command=${JSON.stringify(`${wrapper} unprompted-speech ${suffix}`)},timeout=20}]}]`;
+  return ['-c', hook('UserPromptSubmit', 'UserPromptSubmit'),
+    '-c', hook('PreToolUse', 'PreToolUse-bash', 'matcher=".*",')];
+}
+
+export function codexReplayInstrumentationError(events, sequence, attempts) {
+  if (attempts.length && sequence.some((event) => event.kind === 'tool')) return null;
+  const executed = events.filter((event) => event.type === 'item.completed'
+    && event.item?.type === 'command_execution').length;
+  return `Codex replay recorder did not observe a tool invocation (${executed} command execution event(s) in the native stream); `
+    + 'fixture hook instrumentation is missing, so command absence and learning cannot be graded';
+}
+
 export function buildCodexArgv({
   model = 'gpt-5.6-sol',
   prompt = REPLAY_PROMPT,
   appendSystemPrompt = null,
+  brainHome,
 } = {}) {
   const fullPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${prompt}` : prompt;
   return [
@@ -257,6 +277,7 @@ export function buildCodexArgv({
     '--ignore-rules', '--dangerously-bypass-hook-trust', '-m', model,
     '-c', 'model_reasoning_effort="low"',
     '-c', 'shell_environment_policy.inherit="all"',
+    ...codexReplayHookArgs(brainHome),
     fullPrompt,
   ];
 }
@@ -312,7 +333,7 @@ export function runArm({
   let argv;
   if (host === 'codex') {
     binary = CODEX_BIN;
-    argv = buildCodexArgv({ model, prompt: spec.prompt, appendSystemPrompt });
+    argv = buildCodexArgv({ model, prompt: spec.prompt, appendSystemPrompt, brainHome: dirs.brainHome });
   } else {
     const settings = writeSettings(path.join(dirs.base, `settings-${tag}.json`), {
       dirs,
@@ -410,7 +431,7 @@ export function runArm({
     transcript: path.relative(ROOT, streamFile),
     exit: result.status,
     spawnError: host === 'codex'
-      ? parseCodexRunError(events, result)
+      ? parseCodexRunError(events, result) || codexReplayInstrumentationError(events, sequence, attemptLines)
       : replayRunError(events, result),
   };
 }

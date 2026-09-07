@@ -3,7 +3,9 @@ id: ADR-074
 title: RuvNet capability claims require live evidence
 status: Accepted
 date: 2026-08-22
-updated: 2026-08-30
+updated: 2026-09-07
+reviewed_digest: a8fa5faa4014
+version: 1.1.1
 authors: [Stuart Kerr, Codex]
 tags: [architecture, truthfulness, capabilities, hosts, evidence, receipts]
 supersedes: []
@@ -81,8 +83,8 @@ never prove absence.
 
 No second final-answer gate is added. The existing continuation gate receives
 `last_assistant_message` from both Claude Code and Codex. Before normal open-work handling it audits
-RuvNet installation claims. A contradiction or unprovable absence forces one correction turn under
-the existing loop/cooldown protections. The correction names the found capability and source path,
+RuvNet installation claims on eligible Stop events. A contradiction or unprovable absence emits a
+correction request under the existing loop/cooldown protections. The correction names the found capability and source path,
 or requires the answer to say `UNKNOWN`.
 
 ### 5. Host membership is evidence-bound
@@ -94,10 +96,10 @@ adapter.
 
 ## Failure semantics
 
-- Found installed bytes plus an absence claim: `FAIL`, force correction.
-- Complete inventory plus an unsupported presence claim: `FAIL`, force correction.
-- Incomplete inventory plus a claim that depends on absence: `UNKNOWN`, force re-verification or
-  explicitly uncertain language.
+- Found installed bytes plus an absence claim: `FAIL`, request correction on eligible Stop events.
+- Complete inventory plus an unsupported presence claim: `FAIL`, request correction on eligible Stop events.
+- Incomplete inventory plus a claim that depends on absence: `UNKNOWN`, request re-verification or
+  explicitly uncertain language on eligible Stop events.
 - No recognized installation claim: this receipt class has no verdict about the rest of the prose.
 - Inventory code failure: Stop remains fail-open operationally, but S-12 remains unproven and the
   product cannot receive an integrity PASS.
@@ -127,7 +129,18 @@ and cryptography are unit-proven, and no release candidate aggregate has been mi
 packed leaves, a real candidate/public registry receipt, Grok adapter proof, false-positive
 measurement, and the signed public S-12 aggregate remain unproven.
 
+## Recovery source review — 2026-09-07
+
+The shared Stop body requests correction only within an eligible active session. Cancellation,
+interruption, terminal continuation preferences, loop guards, and explicit development maintenance
+suppress output. Repository observations do not authorize new work; correction is limited to the
+original answer. Codex delegates from the declared existing project directory. Current subprocess
+tests establish request-envelope behavior, not native-host continuation or a signed public S-12
+result. Cross-platform, public-byte, false-positive, and aggregate obligations remain unproven.
+
 ## Currency log
+
+| 2026-09-07 | Reviewed recovery source and corrected implementation boundaries; source digest a8fa5faa4014. | `plugin/scripts/continuation-gate.mjs`; source examination only, no renewed runtime or publication verification. |
 
 | 2026-08-30 | Capability and host changes now run through the canonical contract lane, and session-start output is filtered to factual signals. | `plugin/scripts/session-start-core.mjs`, `scripts/qa-runner.mjs`, and `tests/unit/session-start-core-parity.test.mjs` bind the user-visible claim to executable evidence. |
 

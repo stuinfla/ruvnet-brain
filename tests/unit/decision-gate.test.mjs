@@ -147,9 +147,7 @@ describe('ADR-067 — the structural invariant, read from hooks.json', () => {
     expect(blockingIds.size, 'a parse failure here would make the invariant vacuous').toBeGreaterThan(0);
   });
 
-  it('no PreToolUse tool can be refused by more than ONE registered hook', () => {
-    // The whole ADR in one assertion. If someone adds a second blocking PreToolUse entry, this fails
-    // and points them at the policy registry instead.
+  it('no PreToolUse tool can be refused by an automatic Brain hook', () => {
     const refusers = (HOOKS.hooks.PreToolUse || [])
       .flatMap((entry) => entry.hooks.map((h) => ({ matcher: entry.matcher, id: idOf(h.command) })))
       .filter((h) => blockingIds.has(h.id));
@@ -157,8 +155,7 @@ describe('ADR-067 — the structural invariant, read from hooks.json', () => {
     for (const r of refusers) perMatcher.set(r.matcher, [...(perMatcher.get(r.matcher) || []), r.id]);
     const doubled = [...perMatcher].filter(([, ids]) => ids.length > 1);
     expect(doubled, 'two hooks that can refuse the same call is the defect ADR-067 removed').toEqual([]);
-    // …and the one that remains is the gate.
-    expect([...new Set(refusers.map((r) => r.id))]).toEqual(['decision-gate']);
+    expect(refusers).toEqual([]);
   });
 
   it('the policies the gate consults are no longer registered as hooks of their own', () => {

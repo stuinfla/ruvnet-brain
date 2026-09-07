@@ -25,12 +25,9 @@ import { stripComments } from '../../scripts/wired-check.mjs';
  * hand-copy; the "declared absent" event-parity test in hook-conformance-both-hosts.test.mjs) — a
  * check that exists and points one surface away from where the drift actually happens.
  *
- * codex-hook-wrapper.mjs is deployed as a SINGLE, standalone file (bin/install.mjs's
- * `fs.copyFileSync(hookWrapperSource, tmp)` — no sibling files travel with it), so its own top level
- * cannot import a pure-data sibling the way hook-shim.mjs's TABLE-adjacent modules do (that was
- * tried and reproduces `tests/unit/codex-lifecycle-hooks.test.mjs`'s own real, spawned-wrapper
- * tests going red — a genuinely different constraint from hook-shim.mjs's, not the same one). Its
- * `blockingHooks` is read here by regex instead, the same authority-by-parsing idiom this file's own
+ * The wrapper now supports a colocated maintenance helper. Its blockingHooks table remains local
+ * to the executable wrapper, which consumes stdin at top level. Read that table without executing
+ * the wrapper, using the same authority-by-parsing idiom this file's own
  * DETACHED_HOOKS assertion (tests/unit/codex-lifecycle-hooks.test.mjs) and hook-shim.mjs's TABLE
  * (shimTable(), imported below) already use for exactly this reason.
  */
@@ -85,7 +82,7 @@ describe('Codex blocking-hook contract: hook-shim TABLE and codex-hook-wrapper b
     // The route-dispatch-shaped drift, measured tonight: harmless in practice (hook-shim.mjs's own
     // gate already coerces an advisory hook's exit code to 0, so membership here can never fire for
     // it), but exactly the false-confidence gap a reader of this file would not otherwise catch.
-    const bogus = [...blockingHooks].filter((id) => table[id] !== undefined && table[id].mode !== 'blocking');
+    const bogus = [...blockingHooks].filter((id) => table[id]?.mode !== 'blocking');
     expect(bogus, 'these are declared in blockingHooks as if an exit-2 from them means something, but '
       + "hook-shim.mjs's own TABLE says their mode is not \"blocking\" — hook-shim.mjs will never let "
       + 'their real exit code reach here, so this membership is misleading, not merely redundant').toEqual([]);

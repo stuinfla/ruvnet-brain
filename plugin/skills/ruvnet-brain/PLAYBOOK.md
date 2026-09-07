@@ -1,23 +1,19 @@
 # THE PLAYBOOK — the standing build playbook, in full
 
-Updated: 2026-08-19 | Version 1.1.0
+Updated: 2026-09-07 11:07:28 EDT | Version 1.2.0
 Created: 2026-07-27
 
-**Read this before your first build response in a session.** `plugin/scripts/session-start.sh`
-injects a condensed form of it into every session's context and points here for the full text; the
-UserPromptSubmit gate (`plugin/scripts/ground-ruvnet.sh` Gate 3) refers back to it on each build turn
-as *THE PLAYBOOK*.
+**Read this when explicitly using the Brain build skill.** Automatic Brain lifecycle hooks are
+retired: no SessionStart or UserPromptSubmit registration injects this playbook. MCP, skills and
+explicit commands remain available; the user or lead agent invokes them when appropriate.
 
-## Why this file exists rather than nine kilobytes of context
-
-The full text below used to be printed verbatim by the SessionStart hook, on every session, in every
-project on the machine. Measured 2026-07-27: 6,282 bytes of it, inside a 9,127-byte hook output
-against `scripts/selfcheck.mjs`'s 4,096-byte cap — a cap that exists because, in that file's own
-words, *"it lands in the user's context window."* Static instructional prose does not need to be
-re-injected verbatim every session to be obeyed; a directive plus a pointer does the same job for
-about a fifth of the bytes, and the full text stays one `Read` away for the turn that actually needs
-it. The condensed form the hook injects keeps every operative instruction — what is here and not
-there is elaboration, worked examples, and phrasing guidance.
+Release work uses `scripts/release-qualification.mjs` and its reviewed requirement inventory.
+The retained tests were individually reviewed; the historical approximately 4,332 unit cases were
+not all individually audited and remain diagnostics. A diagnostic pass is not production proof.
+Promote only the clean exact candidate SHA and its sealed artifacts after qualification. Public
+acceptance still requires all nine OS/host-mode leaves plus real native installed-update proof on
+each platform, ending at `install-verified`. Imported upstream corpus freshness remains UNKNOWN
+until separately proven. See `docs/QA-RELEASE-PROCESS.md` and the audit records in `docs/reviews/`.
 
 ---
 
@@ -110,14 +106,10 @@ rule-compliance, cite a source the tools didn't return, or claim a check that di
   A completion moves that task to completed, unblocks its dependents, and the freed slot claims the
   first unassigned, unblocked pending task immediately. Only allow a slot to idle when no such task
   exists. Keep dependent integration with the designated integration owner.
-  - **Claude Code:** its shared task ledger and `TeammateIdle` hook make recycling enforceable: the
-    shipped recycler refuses idle while a ready unassigned task exists, then Claude's locked
-    `TaskUpdate` claim performs the transition.
-  - **Codex:** Codex 0.146.0 exposes no `TeammateIdle` or `TaskCompleted` hook and no equivalent
-    shared-task hook ledger. Initial fan-out and completion-notification recycling are guidance,
-    not hook enforcement: the lead must immediately dispatch the next ready ledger item when a
-    collaboration slot completes. State this degraded boundary if it affects the run; never call it
-    enforced.
+  - **Claude Code and Codex:** the lead explicitly dispatches the next ready task when a slot
+    completes. No automatic `TeammateIdle` or `TaskCompleted` Brain handler enforces recycling.
+    `plugin/scripts/swarm-slot-recycler.mjs` remains available for explicit invocation with an
+    appropriate task ledger; do not describe its mere presence as active host enforcement.
   If Ruflo / RuVector MCP tools aren't available in this environment, DON'T block or stall — degrade
   gracefully to the native host's agents and local .rvf, and briefly note the tool that would make
   it better + how to add it. Never demand a tool the user doesn't have.

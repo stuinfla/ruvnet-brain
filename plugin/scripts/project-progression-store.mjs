@@ -7,14 +7,15 @@ import {
   validateProgressionSnapshot,
 } from './project-progression-contract.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
-import { resolveRuflo, RUFLO_MISSING } from './ruflo-bin.mjs';
+import { resolveRuflo, rufloInvocation, RUFLO_MISSING } from './ruflo-bin.mjs';
 
 const PROGRESSION_NAMESPACE = 'project-progression';
 const RESUME_SCHEMA = 'ruvnet-brain.project-resume';
 const RESUME_VERSION = 1;
 
 function defaultRunner(binary, args, options) {
-  return spawnSync(binary, args, options);
+  const invocation = rufloInvocation(binary, args);
+  return spawnSync(invocation.executable, invocation.args, { ...options, shell: false });
 }
 
 function resultStatus(result) {
@@ -153,23 +154,51 @@ export class ProjectProgressionStore {
     return receipts;
   }
 
-  listSnapshotKeys({ pageSize = 100 } = {}) {
+  listSnapshotKeys({ pageSize = 100, maxEntries = 10_000 } = {}) {
     requirePositiveInteger(pageSize, 'pageSize');
+    requirePositiveInteger(maxEntries, 'maxEntries');
+    if (pageSize > maxEntries) throw new Error('pageSize exceeds the enumeration bound');
     const keys = [];
     const seen = new Set();
     let offset = 0;
     let total = null;
+    let protocol = null;
+    let limit = pageSize;
     do {
       const listed = this.run([
         'memory', 'list', '--namespace', PROGRESSION_NAMESPACE,
-        '--limit', String(pageSize), '--offset', String(offset), '--page-info', '--format', 'json',
+        '--limit', String(limit), '--offset', String(offset), '--page-info', '--format', 'json',
         '--path', this.resolution.canonicalAgentDbPath,
       ]);
       if (resultStatus(listed) !== 0) {
         throw new Error(`progression structural pagination failed: ${resultText(listed, 'stderr').trim() || 'unknown error'}`);
       }
       const page = parseJson(resultText(listed, 'stdout'), 'progression pagination page');
+      const nextProtocol = Array.isArray(page) ? 'array' : 'page';
+      if (protocol && protocol !== nextProtocol) throw new Error('enumeration protocol changed during restoration');
+      protocol = nextProtocol;
+      if (protocol === 'array') {
+        // Global Ruflo's CLI returns the first `limit` entries and ignores offset/page-info.
+        // Grow from zero until its result is shorter than the requested limit. The current
+        // CLI honors limit (memory.js -> listEntries); a full response at our cap is ambiguous
+        // and must never become a partial successful restore.
+        if (page.length > limit) throw new Error('malformed pagination array');
+        const current = new Set();
+        for (const entry of page) {
+          if (!plainRecord(entry) || typeof entry.key !== 'string' || !entry.key
+            || entry.namespace !== PROGRESSION_NAMESPACE) throw new Error('malformed pagination entry');
+          if (current.has(entry.key)) throw new Error(`duplicate progression key in array: ${entry.key}`);
+          current.add(entry.key);
+        }
+        if ([...seen].some((key) => !current.has(key))) throw new Error('enumeration keys changed during restoration');
+        if (page.length < limit) return [...current].sort();
+        if (limit === maxEntries) throw new Error('progression enumeration reached its bound without proving completeness');
+        for (const key of current) seen.add(key);
+        limit = Math.min(maxEntries, limit * 2);
+        continue;
+      }
       total = validatePage(page, { offset, pageSize, total });
+      if (total > maxEntries) throw new Error('progression enumeration exceeds its bound');
       for (const entry of page.entries) {
         if (!plainRecord(entry) || typeof entry.key !== 'string' || !entry.key
           || entry.namespace !== PROGRESSION_NAMESPACE) throw new Error('malformed pagination entry');
@@ -209,10 +238,10 @@ export class ProjectProgressionStore {
     return { snapshots, rejected: sortRejected(rejected) };
   }
 
-  restoreLatest({ pageSize = 100, maxOutputBytes = 64 * 1024 } = {}) {
+  restoreLatest({ pageSize = 100, maxEntries = 10_000, maxOutputBytes = 64 * 1024 } = {}) {
     requirePositiveInteger(maxOutputBytes, 'maxOutputBytes');
     this.replay();
-    const keys = this.listSnapshotKeys({ pageSize });
+    const keys = this.listSnapshotKeys({ pageSize, maxEntries });
     const exact = this.retrieveSnapshots(keys);
     const restored = restoreProjectProgression(exact.snapshots, {
       expectedProjectIdentity: this.resolution.projectIdentity,

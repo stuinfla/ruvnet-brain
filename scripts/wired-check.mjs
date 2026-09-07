@@ -69,6 +69,8 @@ const argv = process.argv.slice(2);
  * every entry on every run, below, so they cannot rot unseen.
  */
 const STANDALONE = [
+  ['gate', 'retired automatic-hook helper retained for explicit use and tests'],
+  ['version-bump-gate', 'retired automatic interceptor; explicit version checks own release validation'],
   ['lesson-seed', 'one-shot seeding, run deliberately by a human'],
   ['lesson-ratify', 'the human control surface — a CLI is its entire purpose'],
   ['stamp-sweep', 'ADR-056 §2 — the ONE-TIME backfill half of the stamp rule. A human runs it once '
@@ -95,6 +97,12 @@ const STANDALONE = [
     + 'RVFs to RVF-GENERATIONS.json and optionally prunes legacy sidecars; build-bundle.mjs consumes '
     + 'and validates the resulting manifest, so scheduling this destructive migration would be wrong'],
   ['release', 'the ship path, run by a human'],
+  ['corpus-seed-publish', 'privileged manual corpus publication wrapper; corpus-seed.yml explicitly '
+    + 'stops at sealed preparation with contents:read. This entry validates receipt/archive inputs '
+    + 'and delegates mutation to release.mjs protected authority. No operational caller is registered; '
+    + 'classification does not claim publication works or has occurred'],
+  ['gate', 'manual benchmark harness: rebuilds concepts and runs three routing proof batteries; '
+    + 'no workflow or scheduler invokes this expensive command'],
   ['execution-preflight', 'external orchestration boundary — invoked by the host before consequential Ruflo/Codex execution; no in-repo caller exists because the host supplies the live Brain and AgentDB receipts'],
   ['fix-workstream', 'session-supervised coordination CLI run explicitly by the integration owner or an '
     + 'isolated writing agent to start and hand off a fix lane. Scheduling it would violate its safety '
@@ -375,8 +383,11 @@ function callerFiles(repo = REPO) {
  */
 export function callerPattern(fileName) {
   const q = fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Filenames must be complete tokens: gates.mjs is not corpus-aggregates.mjs,
+  // and version.mjs.map is not a caller of version.mjs.
+  const bounded = `(?<![\\w.-])${q}(?![\\w.-])`;
     // eslint-disable-next-line no-useless-escape
-  return new RegExp(`["'\`][^"'\`\\n]*${q}|(?:node|bash|sh|exec|spawn\\w*)\\s+[^\\n]*${q}`);
+  return new RegExp(`["'\`][^"'\`\\n]*${bounded}|(?:node|bash|sh|exec|spawn\\w*)\\s+[^\\n]*${bounded}`);
 }
 
 /**
@@ -765,6 +776,16 @@ export function hookWiringAudit({
   homeSettingsFile = path.join(os.homedir(), '.claude', 'settings.json'),
   held = HOOK_HELD,
 } = {}) {
+  const retirementFiles = [
+    path.join(repo, 'plugin/hooks/hooks.json'),
+    path.join(repo, 'plugin/hooks/codex-hooks.json'),
+    path.join(repo, '.claude/settings.json'),
+    path.join(repo, '.codex/hooks.json'),
+  ];
+  const automaticHooksRetired = retirementFiles.every((file) => {
+    const doc = readJsonSafe(file);
+    return doc && doc.hooks && commandStrings(doc.hooks).length === 0;
+  });
   const table = hookShimTable(repo);
   const codexWrapper = installedCodexHookWrapper(repo);
   const reached = new Map(); // basename -> Set(reason)
@@ -818,6 +839,11 @@ export function hookWiringAudit({
     const isReached = reached.has(f);
     if (!declared && !isReached) continue; // not hook-intended at all — outside the census
     if (isReached) rows.push({ file: f, state: 'wired', sources: [...reached.get(f)] });
+    else if (automaticHooksRetired && declared) rows.push({
+      file: f,
+      state: 'retired',
+      why: 'automatic Brain hook registries are intentionally empty; body retained for audit or explicit-command reuse',
+    });
     else if (held[f]) rows.push({ file: f, state: 'held', why: held[f] });
     else rows.push({ file: f, state: 'unwired' });
   }
@@ -872,6 +898,7 @@ if (invokedDirectly) {
   const hookAudit = hookWiringAudit();
   const hookBy = (s) => hookAudit.rows.filter((r) => r.state === s);
   const hookUnwired = hookBy('unwired');
+  const hookRetired = hookBy('retired');
 
   const lessonAudit = lessonTriggerAudit();
 
@@ -915,7 +942,7 @@ if (invokedDirectly) {
     console.log(`\n  ── HOOK WIRING — plugin/scripts/*.sh|*.mjs vs plugin/hooks/{hooks,codex-hooks}.json, `
       + `.claude/settings.json, ~/.claude/settings.json ──\n`);
     console.log(`  ${hookAudit.rows.length} hook-intended script(s) in the census`);
-    console.log(`    ${hookBy('wired').length} wired · ${hookBy('held').length} held · `
+    console.log(`    ${hookBy('wired').length} wired · ${hookRetired.length} retired · ${hookBy('held').length} held · `
       + `${hookUnwired.length} UNWIRED\n`);
 
     for (const u of hookUnwired) {
@@ -927,6 +954,8 @@ if (invokedDirectly) {
     }
 
     for (const h of hookBy('held')) console.log(`    ⏸ plugin/scripts/${h.file}\n       ${h.why}\n`);
+
+    for (const r of hookRetired) console.log(`    ○ plugin/scripts/${r.file}\n       ${r.why}\n`);
 
     for (const w of hookBy('wired')) {
       console.log(`    ✓ plugin/scripts/${w.file}\n       via ${w.sources.join('; ')}`);

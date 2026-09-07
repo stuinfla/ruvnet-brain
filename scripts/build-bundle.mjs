@@ -22,6 +22,7 @@ import { getVersion, getVersionTag, stripTag } from './version.mjs';
 import { auditRvfIndexes } from './rvf-index-audit.mjs';
 import { readRvfGenerations, validateSelectedRvfGenerations } from './rvf-generation.mjs';
 import { validatePublicInventory } from './public-inventory.mjs';
+import { bindAssembledReleaseProjection } from './release-projection.mjs';
 // The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
 // sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
 import { orgRepoCount } from './org-repo-count.mjs';
@@ -588,6 +589,13 @@ if (missing.length) {
   const requiredMissing = [...new Set(missing)];
   console.error(`[build-bundle] FATAL: missing required bundle files:\n  ${requiredMissing.join('\n  ')}`);
   process.exit(1);
+}
+
+if (PROJECTION) {
+  const source = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
+  if (source.status !== 0) throw new Error('cannot identify the projected bundle source');
+  bindAssembledReleaseProjection({ assetsDir: OUT, version: stripTag(BRAIN_VERSION),
+    sourceSnapshot: source.stdout.trim() });
 }
 
 // ---- exact release artifact -------------------------------------------------------------------

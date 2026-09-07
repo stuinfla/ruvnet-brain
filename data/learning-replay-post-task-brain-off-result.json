@@ -2,8 +2,8 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "FAIL",
   "why": "0/1 runs passed — below the 1/1 bar",
-  "sha": "3e1ac080582ae2d0efbb4b746aec3329a5b10e2d",
-  "at": "2026-08-03T03:30:57.913Z",
+  "sha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
+  "at": "2026-09-07T14:17:27.621Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -25,7 +25,7 @@
   "rate": 0,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 37.3,
+  "wallSeconds": 44.8,
   "premise": {
     "verified": true,
     "evidence": "live help names all flags; success/task-id-only persisted nothing"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1785727819293",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-09zrF6/brain-home/versions/d4-refresh-1785727819293",
+    "generation": "d4-refresh-1788790601370",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-gA3UnL/brain-home/versions/d4-refresh-1788790601370",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -67,7 +67,7 @@
       "treated": {
         "class": "partial",
         "subcommandCorrect": true,
-        "command": "ruflo hooks post-task --task-id release-retry-budget-investigation --success true --agent tester --result 'Release retry-budget investigation completed successfully; route future matching release retry-budget investigations to the tester agent.'",
+        "command": "ruflo hooks post-task --task-id \"release-retry-budget-investigation\" --success true --agent \"tester\" --store-routing true",
         "exec": {
           "ran": true,
           "argv": [
@@ -80,14 +80,14 @@
             "true",
             "--agent",
             "tester",
-            "--result",
-            "Release retry-budget investigation completed successfully; route future matching release retry-budget investigations to the tester agent."
+            "--store-routing",
+            "true"
           ],
           "exit": 0,
           "exitOk": true,
           "retrieved": false,
           "why": "exit 0; command lacked --task, --agent, --store-results, or a task id",
-          "output": "[INFO] Recording outcome for task: release-retry-budget-investigation\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  2 |\n| New Patterns     |                  1 |\n| Duration         |               0.2s |\n| Trajectory ID    | tr"
+          "output": "[INFO] Started Ruflo background daemon for $HOME/Code/.worktrees/ruvnet-brain-recovery-20260905/.ruvnet-brain/learning-replay/run-gA3UnL/fixture-project-b (stop: ruflo daemon stop)\n[INFO] Recording outcome for task: release-retry-budget-investigation\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+---------"
         },
         "model": "gpt-5.6-sol",
         "forcedCommand": false,
@@ -95,9 +95,9 @@
         "firstToolIndex": 0,
         "lessonBeforeFirstToolCall": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/3e1ac080582ae2d0efbb4b746aec3329a5b10e2d/0fb15798939930c12ced5ed4a940bbf2bdd93e65b9f694399af355afde26676d.json",
-          "sha256": "0fb15798939930c12ced5ed4a940bbf2bdd93e65b9f694399af355afde26676d",
-          "sourceSha": "3e1ac080582ae2d0efbb4b746aec3329a5b10e2d",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/238c4f53a45c744867daf56a0d213e6277012ab93861ca604bb4747c0657c459.json",
+          "sha256": "238c4f53a45c744867daf56a0d213e6277012ab93861ca604bb4747c0657c459",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": "brain-off-treated"
         }
       },
@@ -129,9 +129,9 @@
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/3e1ac080582ae2d0efbb4b746aec3329a5b10e2d/a50580061f80bc298a3b57113950e6f9541b7fd15dbb5a39230d9670362d98f7.json",
-          "sha256": "a50580061f80bc298a3b57113950e6f9541b7fd15dbb5a39230d9670362d98f7",
-          "sourceSha": "3e1ac080582ae2d0efbb4b746aec3329a5b10e2d",
+          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/8e3dc15258f4a73264067cddef3250cdb2174c8d8327212faea26aca1701aef9.json",
+          "sha256": "8e3dc15258f4a73264067cddef3250cdb2174c8d8327212faea26aca1701aef9",
+          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
           "mutant": "brain-off-treated"
         }
       }

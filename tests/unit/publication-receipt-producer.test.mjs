@@ -160,6 +160,7 @@ describe('publication receipt producer', () => {
     `);
     const result = await rpcSearch(server, process.env, 'query', 10, 2_000);
     expect(result.text).toContain('path: result-k-10');
+    expect(result.mcpResult).toEqual({ content: [{ type: 'text', text: 'repo=ruvnet-brain path: result-k-10' }] });
   });
 
   it('requires installed host payload bytes to match every sealed plugin file', () => {

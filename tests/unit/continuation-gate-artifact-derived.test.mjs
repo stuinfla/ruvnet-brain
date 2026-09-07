@@ -9,7 +9,7 @@ const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.ur
 const GATE = path.join(ROOT, 'plugin', 'scripts', 'continuation-gate.mjs');
 
 /**
- * The continuation gate must be armable BY EVIDENCE, not only by the model remembering to arm it.
+ * Observation evidence remains advisory; it must never manufacture permission to act.
  *
  * On 2026-08-04 the owner asked why the model had gone back to stopping early. The ledger answered:
  * 25 items, ZERO open, last written 2026-07-25 — the gate had been structurally silent for ten days.
@@ -24,7 +24,7 @@ const GATE = path.join(ROOT, 'plugin', 'scripts', 'continuation-gate.mjs');
 let home; let ledger; let issues; let ciStatus;
 const run = (payload) => {
   const r = spawnSync(process.execPath, [GATE], {
-    input: JSON.stringify(payload),
+    input: JSON.stringify({ cwd: ROOT, ...payload }),
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -35,7 +35,9 @@ const run = (payload) => {
       RUVNET_CONTINUATION_COOLDOWN_MS: '0',
     },
   });
-  return `${r.stdout || ''}`;
+  // Observations remain visible as diagnostics, never as a host continuation request.
+  expect(r.stdout).toBe('');
+  return `${r.stderr || ''}`;
 };
 const writeIssues = (list, atMs = Date.now()) => fs.writeFileSync(issues, JSON.stringify({
   repo: 'stuinfla/ruvnet-brain', at: new Date(atMs).toISOString(), issues: list,
@@ -51,11 +53,11 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
 
-describe('continuation gate — armed by evidence, not only by memory', () => {
-  it('forces on an SLA-breached issue even when the ledger is completely empty', () => {
+describe('continuation gate — observation evidence is advisory, not authority', () => {
+  it('reports an SLA-breached issue as advisory even when the ledger is completely empty', () => {
     writeIssues([{ number: 111, ageHours: 5, breach: true, title: 'loadLessons clobbers ratified lessons' }]);
     const out = run({ hook_event_name: 'Stop', session_id: 's1' });
-    expect(out, 'an empty ledger must no longer mean silence').toContain('additionalContext');
+    expect(out).toContain('"authority":false');
     expect(out).toContain('#111');
     expect(out).toContain('past its response SLA');
   });
@@ -99,10 +101,10 @@ const redEntry = (over = {}) => ({
 describe('continuation gate — red CI is outstanding work', () => {
   const writeCi = (obj) => fs.writeFileSync(ciStatus, JSON.stringify(obj));
 
-  it('forces when CI is RED, even with an empty ledger and no breached issues', () => {
+  it('reports RED CI without authorizing work from an empty ledger', () => {
     writeCi({ a: redEntry() });
     const out = run({ hook_event_name: 'Stop', session_id: 'ci1' });
-    expect(out).toContain('additionalContext');
+    expect(out).toContain('"authority":false');
     expect(out).toContain('CI is RED');
     expect(out).toContain('ci concluded failure');
   });

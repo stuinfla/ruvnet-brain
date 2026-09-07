@@ -1,12 +1,29 @@
 # DDD-0008 — The Currency bounded context
 
-Updated: 2026-07-30 | Version 1.1.1
+Updated: 2026-09-05 18:48:31 EDT | Version 1.2.0
 Created: 2026-07-22
 
 Governs **ADR-034** (document currency and the status lifecycle) and **ADR-056** (currency at a
 chokepoint — the scope widening to Authored Documents and Diagrams).
 
 **Status**: Proposed (2026-07-22) · scope extended 2026-07-27 (ADR-056)
+
+## Implemented boundary — 2026-09-05 recovery
+
+The historical model below is a proposal, not a complete implementation claim. Current source
+authority is `scripts/doc-currency.mjs`, shared by edit and push consumers. Its digest binds the
+normative document body and actual regular-file working bytes; it is not the HEAD-only recipe in
+the original vocabulary table. Implementation is the weakest governed member, not any one member.
+
+`reviewed_digest` plus a dated source-linked review row is a separate review-freshness record.
+It records examined bytes and findings, not correspondence, correctness, acceptance, or verification.
+Matching current bytes removes only the missing-review presumption while retaining historical drift;
+changed/unavailable bytes expire it. No automatic stamping path may invent this judgment.
+
+Default presumed drift blocks except for retired decision statuses; the warning-only event table
+below describes the original proposal. The proposed per-claim verification-ledger enforcement is
+not implemented. Other proposed rules also have narrower actual enforcement, enumerated in ADR-034's
+current-boundary section. This review does not promote Proposed to Accepted or claim those gaps closed.
 
 ---
 
@@ -322,6 +339,8 @@ freshness can be proven.
 ---
 
 ## Currency log
+
+| 2026-09-05 | Distinguished source-bound examination from semantic verification and documented actual enforcement limits. | `scripts/doc-currency.mjs` and `tests/unit/doc-currency-review.test.mjs` bind review to exact current bytes without changing the verification recipe or promoting implementation status. ADR-034 records the still-unimplemented claim-ledger and historical proposal differences. |
 
 | Date | What changed | Why |
 |---|---|---|

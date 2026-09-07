@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { coverageGenerationFor, digest } from '../../scripts/coverage-integrity.mjs';
+import { coverageGenerationFor, releaseCoverageGenerationFor, digest } from '../../scripts/coverage-integrity.mjs';
 import { getVersionTag } from '../../scripts/version.mjs';
 import {
   buildRetrievalCanaryPlan,
@@ -130,6 +130,31 @@ describe('coverage-derived retrieval canaries', () => {
       .toBe(squashedEvidence);
   });
 
+  it('keeps corpus sampling stable across source-only releases while sealing each release identity', () => {
+    const input = fixture();
+    input.baseline.stores = input.coverage.rows.map((row) => row.artifact.store);
+    input.baseline.storeCount = input.baseline.stores.length;
+    const plans = Array.from({ length: 8 }, (_, index) => {
+      const sha = String(index + 1).repeat(40);
+      const coverage = { ...input.coverage, kind: 'ruvnet-brain-release-coverage',
+        releaseIdentity: { version: '9.9.9', tag: 'v9.9.9', sourceSnapshot: sha },
+        corpusSeed: { tag: input.baseline.tag, archiveSha256: input.baseline.archiveSha256,
+          archiveBytes: input.baseline.archiveBytes, receiptSha256: input.baseline.verificationReceiptSha256 },
+        corpusCoverage: { sha256: digest(input.coverage), coverageGeneration: input.coverage.coverageGeneration },
+        generationLedger: { file: 'PUBLIC-RVF-GENERATIONS.json', sha256: input.candidate.publicLedgerSha256,
+          bytes: input.candidate.publicLedgerBytes, storeCount: input.candidate.publicStoreCount },
+        publicInventoryPartitionSha256: input.candidate.publicInventoryPartitionSha256, installedProjectionSchema: 2 };
+      coverage.releaseCoverageGeneration = releaseCoverageGenerationFor(coverage);
+      const coverageIdentity = { sha256: digest(coverage), bytes: Buffer.byteLength(JSON.stringify(coverage)) };
+      return buildRetrievalCanaryPlan({ ...input, coverage, coverageIdentity,
+        candidate: { ...input.candidate, sourceSha: sha, coverageSha256: coverageIdentity.sha256 },
+        legacySampleSize: 4, allowNoDelta: true });
+    });
+    expect(new Set(plans.map((plan) => JSON.stringify(plan.denominator.legacySelectedStores))).size).toBe(1);
+    expect(new Set(plans.map((plan) => plan.coverage.releaseCoverageGeneration)).size).toBe(8);
+    expect(new Set(plans.map((plan) => plan.planSha256)).size).toBe(8);
+  });
+
   it('includes every delta store and a deterministic legacy sample', () => {
     const input = fixture();
     const a = buildRetrievalCanaryPlan({ ...input, legacySampleSize: 4 });
@@ -168,6 +193,44 @@ describe('coverage-derived retrieval canaries', () => {
     noDelta.baseline.stores.push('new-e', 'new-f');
     noDelta.baseline.storeCount = 6;
     expect(() => buildRetrievalCanaryPlan(noDelta)).toThrow(/both failed-seed delta and legacy cohorts/);
+  });
+
+  it('treats an explicitly sealed no-delta cohort as not applicable while still requiring legacy recall', async () => {
+    const input = fixture();
+    input.baseline.stores.push('new-e', 'new-f');
+    input.baseline.storeCount = 6;
+    const plan = buildRetrievalCanaryPlan({ ...input, legacySampleSize: 6, allowNoDelta: true });
+    expect(plan.noDelta).toBe(true);
+    expect(plan.cohorts).toMatchObject({ delta: 0, legacy: 6 });
+    const receipt = await runRetrievalCanaries({
+      plan,
+      sourceSha,
+      artifactSha256,
+      candidateArchiveSha256: plan.candidate.archiveSha256,
+      search: async ({ query }) => {
+        const expected = plan.cases.find((row) => row.query === query).expected;
+        return [{ repo: expected.repo, path: expected.path }];
+      },
+      citationResolver: async (_matched, expected) => ({ resolved: true,
+        evidence: { passageSha256: expected.passageSha256, passageFileSha256: 'e'.repeat(64) } }),
+    });
+    expect(receipt.metrics).toMatchObject({ recallAt10: 1, deltaTotal: 0, deltaCitationRate: 1,
+      unknown: 0, skipped: 0 });
+    expect(validateRetrievalCanaryReceipt(receipt, { plan })).toBe(receipt);
+    const unknown = await runRetrievalCanaries({
+      plan, sourceSha, artifactSha256, candidateArchiveSha256: plan.candidate.archiveSha256,
+      search: async () => { throw new Error('transport unavailable'); },
+      citationResolver: async () => ({ resolved: false }),
+    });
+    expect(unknown.metrics.unknown).toBe(6);
+    expect(() => validateRetrievalCanaryReceipt(unknown, { plan })).toThrow(/acceptance/);
+  });
+
+  it('rejects a contradictory no-delta declaration even when its digest is resealed', () => {
+    const plan = buildRetrievalCanaryPlan(fixture());
+    const { planSha256: _old, ...payload } = { ...plan, noDelta: true };
+    expect(() => validateRetrievalCanaryPlan({ ...payload, planSha256: digest(payload) }))
+      .toThrow(/requires delta and legacy/);
   });
 
   it('detects plan tampering and malformed source passages', () => {
@@ -239,6 +302,47 @@ describe('coverage-derived retrieval canaries', () => {
         evidence: { passageSha256: expected.passageSha256, passageFileSha256: 'e'.repeat(64) } }) });
     expect(receipt.metrics).toMatchObject({ recallAt10: 1, deltaCitationRate: 1, unknown: 0, skipped: 0 });
     expect(validateRetrievalCanaryReceipt(receipt, { plan })).toBe(receipt);
+  });
+
+  it('accepts only presealed alternate sources and binds their own citation evidence', async () => {
+    const input = fixture(), store = 'new-e';
+    const passage = input.readPassages('.', store)[1];
+    const row = input.queryEvidence.queries[store];
+    row.expected.alternatives = [{ path: passage.path, passageSha256: digest(passage) }];
+    row.recordSha256 = digest({ store, query: row.query, expected: row.expected });
+    input.queryEvidence = sealRetrievalQueryEvidence(input.queryEvidence);
+    const plan = buildRetrievalCanaryPlan(input);
+    const receipt = await runRetrievalCanaries({ plan, sourceSha, artifactSha256,
+      candidateArchiveSha256: plan.candidate.archiveSha256,
+      search: async ({ query }) => {
+        const expected = plan.cases.find((item) => item.query === query).expected;
+        return { results: [{ repo: expected.repo, path: expected.alternatives?.[0].path || expected.path }] };
+      }, citationResolver: async (_matched, expected) => ({ resolved: true,
+        evidence: { passageSha256: expected.passageSha256, passageFileSha256: 'e'.repeat(64) } }) });
+    expect(validateRetrievalCanaryReceipt(receipt, { plan })).toBe(receipt);
+    expect(receipt.cases.find((item) => item.id === 'delta:new-e').citationEvidence.passageSha256).toBe(digest(passage));
+    for (const mutation of ['unapproved-path', 'wrong-passage']) {
+      const forged = structuredClone(receipt), hit = forged.cases.find((item) => item.id === 'delta:new-e');
+      if (mutation === 'unapproved-path') hit.citations[0].path = 'unreviewed.md';
+      else hit.citationEvidence.passageSha256 = row.expected.passageSha256;
+      const { receiptSha256: _old, ...payload } = forged;
+      expect(() => validateRetrievalCanaryReceipt({ ...payload, receiptSha256: digest(payload) }, { plan }))
+        .toThrow(/differs from the sealed plan/);
+    }
+  });
+
+  it.each(['missing', 'duplicate', 'traversal', 'wrong-hash'])('rejects %s alternate source even after resealing', (mutation) => {
+    const input = fixture(), store = 'new-e', row = input.queryEvidence.queries[store];
+    const passage = input.readPassages('.', store)[1];
+    const alternative = { path: passage.path, passageSha256: digest(passage) };
+    if (mutation === 'missing') alternative.path = 'absent.md';
+    if (mutation === 'duplicate') Object.assign(alternative, row.expected);
+    if (mutation === 'traversal') alternative.path = '../outside.md';
+    if (mutation === 'wrong-hash') alternative.passageSha256 = 'f'.repeat(64);
+    row.expected.alternatives = [alternative];
+    row.recordSha256 = digest({ store, query: row.query, expected: row.expected });
+    expect(() => { input.queryEvidence = sealRetrievalQueryEvidence(input.queryEvidence); buildRetrievalCanaryPlan(input); })
+      .toThrow(/malformed|no sealed independent query evidence/);
   });
 
   it('keeps misses and search errors red and refuses forged metrics', async () => {

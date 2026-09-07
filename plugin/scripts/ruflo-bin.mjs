@@ -40,6 +40,26 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+// npm's Windows .cmd shim cannot be spawned without a shell. Resolve the declared entry
+// inside that same managed installation and pass argv directly to Node instead.
+export function rufloInvocation(binary, args, { platform = process.platform } = {}) {
+  if (platform !== 'win32' || !/\.cmd$/i.test(binary)) return { executable: binary, args };
+  if (path.basename(binary).toLowerCase() !== 'ruflo.cmd') throw new Error('unsupported managed Ruflo shim');
+  const packageRoot = fs.realpathSync(path.join(path.dirname(fs.realpathSync(binary)), 'node_modules', 'ruflo'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
+  const declared = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.ruflo;
+  if (manifest.name !== 'ruflo' || typeof declared !== 'string' || !declared
+    || path.isAbsolute(declared) || path.win32.isAbsolute(declared) || declared.split(/[\\/]/).includes('..')) {
+    throw new Error('managed Ruflo package has no safe declared CLI entry');
+  }
+  const entry = fs.realpathSync(path.resolve(packageRoot, declared));
+  const relative = path.relative(packageRoot, entry);
+  if (!relative || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) || !fs.statSync(entry).isFile()) {
+    throw new Error('managed Ruflo CLI entry escapes its package');
+  }
+  return { executable: process.execPath, args: [entry, ...args] };
+}
+
 /**
  * Locate the global ruflo. LOCATES, NEVER EXECUTES — no shell, no daemon, no side effects.
  *

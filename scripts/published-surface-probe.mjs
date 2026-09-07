@@ -52,6 +52,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 export const EXIT = Object.freeze({ PASS: 0, FAIL: 1, UNKNOWN: 4 });
 
@@ -127,6 +128,12 @@ async function probeRegistry() {
 }
 
 // ── B. EXECUTE the published package, from the registry ────────────────────────────────────────
+export function npxInvocation(args, { platform = process.platform, env = process.env } = {}) {
+  if (platform === 'win32') return {
+    executable: env.ComSpec || 'cmd.exe', args: ['/d', '/c', 'npx.cmd', ...args],
+  };
+  return { executable: 'npx', args };
+}
 function probeExec() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-brain-probe-'));
   try {
@@ -134,7 +141,8 @@ function probeExec() {
     // (npm resolve → download → unpack → bin mapping → node parses every module it imports) while
     // touching NOTHING on the machine. `--doctor`/`--plan` reach the network and the brain dir; this
     // probe must never be the reason a surface changes.
-    const r = spawnSync('npx', ['-y', `${PKG}@latest`, '--help'], {
+    const invocation = npxInvocation(['-y', `${PKG}@latest`, '--help']);
+    const r = spawnSync(invocation.executable, invocation.args, {
       encoding: 'utf8',
       timeout: 300_000,
       cwd: home,
@@ -237,5 +245,5 @@ export async function main() {
   return EXIT[verdict];
 }
 
-const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
+const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) process.exit(await main());

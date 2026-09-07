@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { refusalText, staleGovernorsOf } from '../../plugin/scripts/adr-currency-gate.mjs';
+import { blockingFindings } from '../../scripts/doc-currency.mjs';
 
 /**
  * THE GATE MOVED FROM THE LAST MOMENT TO THE FIRST.
@@ -29,7 +30,11 @@ const mod = (drift, governs = ['plugin/scripts/foo.mjs']) => ({
   isGitRepo: () => true,
   listDocs: () => [DOC],
   parseFrontmatter: () => ({ keys: { id: 'ADR-099', governs } }),
-  evaluateDoc: () => ({ drift: { state: drift, why: 'code moved 3 commits after the doc' } }),
+  resolveGoverned: (_root, entries) => entries.map((entry) => ({ from: entry, path: entry,
+    resolved: entry === 'plugin/scripts/foo.mjs' })),
+  blockingFindings,
+  evaluateDoc: () => ({ file: DOC, drift: { state: drift }, findings: drift === 'presumed-stale'
+    ? [{ code: 'presumed-stale', level: 'block', message: 'code moved 3 commits after the doc' }] : [] }),
 });
 const run = (file, m) => staleGovernorsOf(file, { readFile: read, docCurrency: m });
 
@@ -38,6 +43,7 @@ describe('it refuses debt, at the moment the debt would grow', () => {
     const stale = await run('plugin/scripts/foo.mjs', mod('presumed-stale'));
     expect(stale, 'the guard must fire on the broken shape').toHaveLength(1);
     expect(stale[0].id).toBe('ADR-099');
+    expect(stale[0].why).toBe('code moved 3 commits after the doc');
   });
 
   it('a CURRENT governing document allows freely', async () => {
@@ -56,11 +62,19 @@ describe('it refuses debt, at the moment the debt would grow', () => {
     expect(await run('plugin/scripts/foo.mjs', mod('lagging'))).toEqual([]);
   });
 
-  it('a directory prefix in `governs` covers files beneath it', async () => {
+  it('does not invent recursive governance for unresolved directory declarations', async () => {
     const m = mod('presumed-stale', ['plugin/scripts']);
-    expect(await run('plugin/scripts/deep/thing.mjs', m)).toHaveLength(1);
-    // …and does NOT swallow a sibling directory that merely shares a prefix string.
+    expect(await run('plugin/scripts/deep/thing.mjs', m)).toEqual([]);
     expect(await run('plugin/scripts-other/thing.mjs', m)).toEqual([]);
+  });
+
+  it('does not promote other blocking findings into stale debt', async () => {
+    const m = { ...mod('presumed-stale'), evaluateDoc: () => ({ file: DOC,
+      drift: { state: 'presumed-stale' }, findings: [
+        { code: 'presumed-stale', level: 'warn', message: 'not in force' },
+        { code: 'impl-overclaimed', level: 'block', message: 'different gate obligation' },
+      ] }) };
+    expect(await run('plugin/scripts/foo.mjs', m)).toEqual([]);
   });
 });
 
@@ -80,14 +94,23 @@ describe('it fails OPEN, because a gate that invents a reason is worse than none
     const m = { ...mod('presumed-stale'), evaluateDoc: () => { throw new Error('git unavailable'); } };
     expect(await run('plugin/scripts/foo.mjs', m)).toEqual([]);
   });
+
+  it('unavailable shared resolution or blocking policy allows without inventing a fallback', async () => {
+    for (const method of ['resolveGoverned', 'blockingFindings']) {
+      const m = { ...mod('presumed-stale'), [method]: () => { throw new Error('unavailable'); } };
+      expect(await run('plugin/scripts/foo.mjs', m)).toEqual([]);
+    }
+  });
 });
 
 describe('the refusal is actionable', () => {
   it('names the document, the fix, and what no script may write', async () => {
     // A wall that reports a problem without the remedy is one people route around — the console
     // learner card (#136) shipped exactly that failure and the owner called it unconscionable.
-    const t = refusalText('plugin/scripts/foo.mjs', [{ id: 'ADR-099', doc: DOC }]);
+    const t = refusalText('plugin/scripts/foo.mjs', [{ id: 'ADR-099', doc: DOC,
+      why: 'governed code moved 3 commits after the document' }]);
     expect(t).toContain('ADR-099');
+    expect(t).toContain('governed code moved 3 commits after the document');
     expect(t).toContain('Currency-log row');
     expect(t).toMatch(/doc-currency\.mjs --fix/);
     expect(t, 'the human keeps the claims a script must never make').toMatch(/no script may write it/);

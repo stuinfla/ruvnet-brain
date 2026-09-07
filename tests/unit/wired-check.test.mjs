@@ -30,6 +30,12 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(repo, { recursive: true, force: true }));
 
 describe('the predicate — a mention is not a caller', () => {
+  it('does not confuse sourcemaps and filename suffixes with executable references', () => {
+    expect(callerPattern('version.mjs').test("import './version.mjs.map'")).toBe(false);
+    expect(callerPattern('version.mjs').test('node scripts/version.mjs.backup')).toBe(false);
+    expect(callerPattern('version.mjs').test("import './set-version.mjs'")).toBe(false);
+    expect(callerPattern('version.mjs').test("import './version.mjs'")).toBe(true);
+  });
   it('FAILS a module referenced only by a comment (the v1 bug that wired 6 of 7 founding failures)', () => {
     w('scripts/widget.mjs', 'export const x = 1;\n');
     w('scripts/other.mjs', '// widget.mjs was written last week and is great\nexport const y = 2;\n');
@@ -135,6 +141,28 @@ describe('the predicate — a mention is not a caller', () => {
     w('scripts/prove.mjs', 'export const x = 1;\n');
     w('scripts/other.mjs', '// this is proven behaviour, approved and improved\n');
     expect(stateOf(audit({ repo, standalone: [], held: {} }), 'scripts/prove.mjs')).toBe('unwired');
+  });
+
+  // Live in this repo (2026-09-01): `scripts/gates.mjs` was reported "wired" partly via two PHANTOM
+  // callers whose only real reference was to the unrelated `scripts/corpus-aggregates.mjs` — which
+  // simply happens to END with the characters "gates.mjs" ("aggre-GATES.mjs"). Same shape for
+  // `version.mjs` inside `set-version.mjs`/`sync-version.mjs`. The prior "prove/proven" test above
+  // only proves prose (no quotes) is excluded; it says nothing about one REAL, quoted filename
+  // swallowing another's inside the invocation-shaped branches themselves.
+  it('a quoted reference to a DIFFERENT, longer filename does not wire a module whose name is its trailing substring', () => {
+    w('scripts/gates.mjs', 'export const g = 1;\n');
+    w('scripts/corpus-aggregates.mjs', 'export const rebuildCorpusAggregates = () => {};\n');
+    w('scripts/consumer.mjs', "import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';\n");
+    const res = audit({ repo, standalone: [], held: {} });
+    expect(stateOf(res, 'scripts/gates.mjs')).toBe('unwired');
+    // The unrelated module must still be correctly wired — this is a precision fix, not a new hole.
+    expect(stateOf(res, 'scripts/corpus-aggregates.mjs')).toBe('wired');
+  });
+
+  it('still wires a module reached through a real path-prefixed reference sharing the same tail', () => {
+    w('scripts/gates.mjs', 'export const g = 1;\n');
+    w('scripts/consumer.mjs', "import { g } from './gates.mjs';\n");
+    expect(stateOf(audit({ repo, standalone: [], held: {} }), 'scripts/gates.mjs')).toBe('wired');
   });
 
   // The regrade (2026-07-23) found correction-detect-measure.mjs "wired" by a `node scripts/…measure.mjs`

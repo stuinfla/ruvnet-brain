@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { digest, generationLedgerBytes, projectPublicGenerationLedger,
-  releaseCoverageGenerationFor } from '../plugin/scripts/coverage-integrity.mjs';
+  releaseCoverageGenerationFor, validateCoverageDirectory } from '../plugin/scripts/coverage-integrity.mjs';
 import { validatePublicInventory } from './public-inventory.mjs';
 import { readRvfGenerations } from './rvf-generation.mjs';
 
@@ -14,6 +14,25 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (name, fallback = null) => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : fallback; };
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+
+// The first assembly supplies seed bytes to the projection producer. Only the final, projected
+// assembly has a release-bound public ledger; its runtime ledger must describe that same set.
+export function bindAssembledReleaseProjection({ assetsDir, version, sourceSnapshot }) {
+  const ledger = readJson(path.join(assetsDir, 'PUBLIC-RVF-GENERATIONS.json'));
+  if (!/^[a-f0-9]{40}$/.test(sourceSnapshot || '') || ledger.schemaVersion !== 2
+    || ledger.kind !== 'ruvnet-brain-public-generation-ledger'
+    || ledger.brainVersion !== version || ledger.releaseTag !== `v${version}`
+    || ledger.sourceSnapshot !== sourceSnapshot) {
+    throw new Error('assembled public ledger does not bind this release source');
+  }
+  fs.writeFileSync(path.join(assetsDir, 'RVF-GENERATIONS.json'), `${JSON.stringify({
+    ...ledger, kind: 'ruvnet-brain-runtime-generation-ledger',
+  }, null, 2)}\n`);
+  const result = validateCoverageDirectory(assetsDir, { expectedVersion: version,
+    expectedSourceSnapshot: sourceSnapshot, requireCompleteProfile: true });
+  if (!result.valid) throw new Error(`assembled release projection rejected: ${result.failures.join('; ')}`);
+  return result;
+}
 
 function seedCompatibleGistReceipt() {
   const source = readJson(path.join(ROOT, 'kb', 'ruv-gists.sources.json'));

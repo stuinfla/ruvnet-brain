@@ -28,8 +28,8 @@ beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'reclaim-test-')
 afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
 describe('reclaimBackups (issue #35)', () => {
-  it('deletes a rollback copy whose stores all exist in the new KB', () => {
-    const kb = mk(path.join(root, 'kb'), { 'a.rvf': 64, 'b.rvf': 64 });
+  it('deletes a rollback copy whose full bytes survive in the new KB', () => {
+    const kb = mk(path.join(root, 'kb'), { 'a.rvf': 2048, 'b.rvf': 2048 });
     const bak = mk(path.join(root, 'kb.bak-2026-07-01'), { 'a.rvf': 2048, 'b.rvf': 2048 });
 
     const { removed, kept, freed } = reclaimBackups({ kbDir: kb, backupsMade: [bak], env: {} });
@@ -78,12 +78,12 @@ describe('reclaimBackups (issue #35)', () => {
     expect(removed).toEqual([]);
     expect(kept).toHaveLength(2);
     expect(kept.map(([, reason]) => reason).join('\n')).toContain('opaque-store.bin');
-    expect(kept.map(([, reason]) => reason).join('\n')).toContain('nested/private.rvf');
+    expect(kept.map(([, reason]) => reason).join('\n')).toContain(path.join('nested', 'private.rvf'));
     expect(fs.existsSync(opaque)).toBe(true);
     expect(fs.existsSync(nested)).toBe(true);
   });
 
-  it('reclaims an opaque generation only when its logical store is explicitly removed', () => {
+  it('a removed logical name alone cannot authorize deleting unique opaque bytes', () => {
     const kb = mk(path.join(root, 'kb'), { 'public.rvf': 64 });
     writeGenerations(kb, { public: { file: 'public.rvf' } });
     const backup = mk(path.join(root, 'kb.bak-2026-07-01'), {
@@ -102,11 +102,12 @@ describe('reclaimBackups (issue #35)', () => {
       intentionallyRemovedStores: ['privateOpaque'],
     });
 
-    expect(removed).toEqual([backup]);
-    expect(kept).toEqual([]);
+    expect(removed).toEqual([]);
+    expect(kept[0][1]).toMatch(/PRESERVED_UNCLASSIFIED/);
+    expect(fs.existsSync(path.join(backup, 'opaque-store.bin'))).toBe(true);
   });
 
-  it('reclaims public stores intentionally removed by a selected profile but still keeps private stores', () => {
+  it('preserves unique retired artifacts and private stores without complete disposal evidence', () => {
     const kb = mk(path.join(root, 'kb'), { 'ruvector.rvf': 64 });
     const publicOnly = mk(path.join(root, 'kb.bak-2026-07-01'), {
       'ruvector.rvf': 64,
@@ -125,13 +126,14 @@ describe('reclaimBackups (issue #35)', () => {
       intentionallyRemovedStores: ['ruflo'],
     });
 
-    expect(removed).toEqual([publicOnly]);
+    expect(removed).toEqual([]);
+    expect(fs.existsSync(publicOnly)).toBe(true);
     expect(fs.existsSync(withPrivate)).toBe(true);
-    expect(kept[0][1]).toMatch(/private-research\.rvf/);
+    expect(kept.find(([dir]) => dir === withPrivate)[1]).toMatch(/private-research\.rvf/);
   });
 
   it('sweeps copies stranded by EARLIER runs, not just this one (Mark had seven)', () => {
-    const kb = mk(path.join(root, 'kb'), { 'a.rvf': 64 });
+    const kb = mk(path.join(root, 'kb'), { 'a.rvf': 1024 });
     const old1 = mk(path.join(root, 'kb.bak-2026-06-29'), { 'a.rvf': 1024 });
     const old2 = mk(path.join(root, 'kb.bak-2026-07-02'), { 'a.rvf': 1024 });
     const fresh = mk(path.join(root, 'kb.bak-2026-07-20'), { 'a.rvf': 1024 });
