@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-09-07
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -136,6 +136,7 @@ committed config).
 
 ## Currency log
 
+| 2026-09-07 | Night 2026-09-07 (SLOT 2, deep `enforcement-integrity`) ran and appended `docs/dream-cycle/LEDGER.md`'s next row (#262/#263, ACCEPT: `lesson-promote.mjs`'s theme-demotion control was unreachable dead code, fixed by following `lesson-gate.mjs`'s `OPTIN_PATH` precedent). Also the direct cause this row exists: `doc-currency.mjs`'s own `canonical-qa` CI check flagged this exact PR's edit to a `governs:`-listed path (`docs/dream-cycle/LEDGER.md`) as `presumed-stale` against this ADR's own then-stale `updated:` stamp — the same drift-detection class this ADR's other 54 sibling violations already represent repo-wide, caught fresh on this session's own change rather than left to accumulate as a 55th. `autoMerge: false` held; draft PR, human review required. | b3e975f, 063e290 |
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
 | 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |
