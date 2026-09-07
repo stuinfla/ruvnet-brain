@@ -4,9 +4,9 @@ title: The 95 contract — one observable per dimension, one mutant per observab
 status: Proposed
 date: 2026-07-27
 updated: 2026-09-07
-version: 1.1.1
+version: 1.1.2
 impl: wired
-reviewed_digest: c8762909a897
+reviewed_digest: effb46bea00f
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -74,7 +74,18 @@ scope; they are not current candidate receipts.
 - Source examination of `kb/forge-big.mjs` is not corpus-generation qualification: its smoke
   similarities and emitted counts alone do not prove provenance or retrieval correctness.
 
+## Artifact and replay qualification correction — 2026-09-07
+
+The hosted candidate census rejected the final bundle because its runtime ledger omitted the release
+source identity. The final projected assembly now derives runtime records from the immutable public
+ledger and validates the assembled directory before ZIP creation. Focused producer, tampering, and
+existing bundle-fence tests passed (37 tests). This does not establish public release proof. Native
+Codex replay now registers isolated fixture hooks explicitly; the prior uninstrumented runs remain
+UNKNOWN, and no new behavioral learning result is claimed.
+
 ## Currency log
+
+| 2026-09-07 | Reviewed the failed hosted census and corrected producer; source digest effb46bea00f. | `scripts/build-bundle.mjs`; tests in `/tmp/ruvnet-assembled-projection-tests-20260907.log`, no public PASS claimed. |
 | 2026-09-05 | Reviewed current source and normative boundaries at digest c8762909a897; examination is not behavioral verification. | The assigned full-file reviewers examined the governed scripts, workflows, plugin, and KB files; the integration owner read this ADR and `tests/qe/gpt56/live-brain-search.test.mjs`, inspected the reported implementation discrepancies, and reconciled them above. Canonical AgentDB examination receipts include `audit-partition-b-20260905-adr58-scripts` and `audit-adr058-kb-fullread-1788649103190`; no personal whole-codebase read, 95 score, or complete conformance is claimed. |
 | 2026-09-05 | Reconciled current implementation boundaries after full-file source examination; no status promotion, correctness certification, or new release exemption. | `bin/install.mjs`, `scripts/claims-verify.mjs`, `scripts/qe/ux-suite.mjs`, `.github/workflows/ci.yml`, `.github/workflows/protected-release.yml`, and `kb/forge-big.mjs`; known doctor and producer limitations remain explicit above. |
 | 2026-09-05 | Recovery separates the immutable candidate from the trusted verifier, closes structured retrieval/citation trust boundaries, and reuses one bounded MCP session per staged host. None of these repairs awards a score or changes Proposed status. | `scripts/publication-receipt.mjs` checks candidate root/SHA/version/tracked cleanliness before and after the patched absolute surface probe runs with candidate cwd; `.github/workflows/recover-public-verification.yml` checks out candidate-source separately and passes explicit verifier SHA to lanes/aggregation/finalization. `kb/retrieval-result.mjs`, `scripts/retrieval-canary.mjs`, and `scripts/host-install-matrix.mjs` consume actual ordered hit records, bind query/k/content, reject body-spoofed citations and symlinked installed evidence, and retain UNKNOWN for incompatible old artifacts. Session reuse reduces repeated process/model startup without changing canary selection or thresholds. Local protocol fixtures are not real-model/public-host evidence; sealed old bytes are not rebuilt or republished to manufacture compatibility. Version 1.0.0 starts explicit document revision tracking. |

@@ -256,7 +256,8 @@ export async function runRenderProbe() {
       'field-qeFleet',
       'field-routing',
     ];
-    if (process.platform === 'darwin') expectedFields.push('field-nightly');
+    const nightlySupported = ['darwin', 'linux', 'win32'].includes(process.platform);
+    if (nightlySupported) expectedFields.push('field-nightly');
     expectedFields.sort();
     acceptance.push({
       label: 'only consumer-backed settings are actionable',
@@ -266,7 +267,7 @@ export async function runRenderProbe() {
     acceptance.push({
       label: 'all unsupported settings are visibly disclosed',
       pass: JSON.stringify(surface.unavailable)
-        === JSON.stringify(process.platform === 'darwin' ? [] : ['Nightly brain refresh']),
+        === JSON.stringify(nightlySupported ? [] : ['Nightly brain refresh']),
       detail: `${surface.unavailable.length}: ${surface.unavailable.join(', ')}`,
     });
     acceptance.push({

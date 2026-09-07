@@ -21,6 +21,7 @@ import {
   assertRetrieved, executeProducedCommand, RETRIEVAL_EVIDENCE,
   PROJECT_B_MEMORY_KEY, PROJECT_B_MEMORY_VALUE, RUFLO_BIN, MUTANTS, WRONG_SUBCOMMAND_COMMAND,
   replayRunError, buildCodexArgv, parseCodexRunError, codexLessonBeforeTool,
+  codexReplayHookArgs, codexReplayInstrumentationError,
   checkMutantArtifacts, MUTANT_RESULT_FILES, allocateRunBase,
   TRAP, classifyPostTaskCommand, postTaskSubcommandCorrect, verifyPostTaskContract,
   assertPostTaskPersisted,
@@ -130,8 +131,8 @@ describe('Codex subscription replay host', () => {
     }
   });
 
-  it('runs Codex read-only with the installed Brain plugin hooks trusted', () => {
-    const args = buildCodexArgv({ model: 'gpt-5.6-sol', prompt: 'fixture prompt' });
+  it('runs Codex read-only with explicit fixture hooks and no global plugin activation', () => {
+    const args = buildCodexArgv({ model: 'gpt-5.6-sol', prompt: 'fixture prompt', brainHome: '/fixture/brain-home' });
     expect(args.slice(0, 2)).toEqual(['exec', '--ephemeral']);
     expect(args).toContain('--sandbox');
     expect(args).toContain('read-only');
@@ -141,7 +142,28 @@ describe('Codex subscription replay host', () => {
     expect(args).toContain('shell_environment_policy.inherit="all"');
     expect(args).toContain('gpt-5.6-sol');
     expect(args.at(-1)).toBe('fixture prompt');
+    expect(args).toEqual(expect.arrayContaining(codexReplayHookArgs('/fixture/brain-home')));
+    expect(args.join(' ')).not.toContain('plugins.');
     expect(args.join(' ')).not.toMatch(/max-budget-usd|permission-mode|include-hook-events/);
+  });
+
+  it('requires a fixture home and registers both the lesson and blocking recorder explicitly', () => {
+    expect(() => codexReplayHookArgs()).toThrow(/explicit absolute/);
+    const args = codexReplayHookArgs('/fixture/brain home');
+    expect(args[1]).toContain('hooks.UserPromptSubmit=');
+    expect(args[1]).toContain('unprompted-speech UserPromptSubmit');
+    expect(args[3]).toContain('hooks.PreToolUse=');
+    expect(args[3]).toContain('matcher=".*"');
+    expect(args[3]).toContain('unprompted-speech PreToolUse-bash');
+    expect(args.join(' ')).not.toContain('-q');
+  });
+
+  it('distinguishes missing recorder evidence from absent native commands', () => {
+    const events = [{ type: 'item.completed', item: { type: 'command_execution', command: 'ruflo memory search test' } }];
+    expect(codexReplayInstrumentationError(events, [], [])).toMatch(/1 command execution event/);
+    expect(codexReplayInstrumentationError(events, [{ kind: 'tool' }], [{ command: 'ruflo memory search test' }])).toBeNull();
+    expect(codexReplayInstrumentationError(events, [{ kind: 'lesson' }], [{ command: 'ruflo memory search test' }]))
+      .toMatch(/instrumentation is missing/);
   });
 
   it('proves lesson delivery happened before the first recorded tool attempt', () => {

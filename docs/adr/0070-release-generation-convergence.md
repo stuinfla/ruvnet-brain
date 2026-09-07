@@ -4,8 +4,8 @@ title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
 updated: 2026-09-07
-reviewed_digest: d08c8b76c84c
-version: 1.1.1
+reviewed_digest: 3e4b5167e33f
+version: 1.1.2
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
 supersedes: []
@@ -202,7 +202,17 @@ reclamation is an intended result, not an unconditional guarantee. Installer act
 rolls back runtime changes; this is not crash-atomic recovery proof. The Windows public probe uses
 `npx.cmd` through its platform command boundary. Native public verification remains required.
 
+## Artifact and replay qualification correction — 2026-09-07
+
+The final projected assembly now derives its runtime generation ledger from the immutable public
+ledger, binds the current source commit, and validates complete assembled coverage before ZIP creation.
+This fixes the missing runtime source identity caught by hosted census on 1609d077. The first assembly
+still supplies seed bytes to the projection producer. Focused producer and mutation tests pass;
+new hosted and public verification remain required.
+
 ## Currency log
+
+| 2026-09-07 | Reviewed the failed hosted census and corrected producer; source digest 3e4b5167e33f. | `scripts/build-bundle.mjs`; tests in `/tmp/ruvnet-assembled-projection-tests-20260907.log`, no public PASS claimed. |
 
 | 2026-09-07 | Reviewed recovery source and corrected implementation boundaries; source digest d08c8b76c84c. | `kb/forge-update.mjs`; source examination only, no renewed runtime or publication verification. |
 | 2026-09-04 | Reconciled Windows convergence verification with canonical QA: both lanes now regenerate the convergence manifest after checkout, so a pull request's synthetic merge ref is evaluated as the exact candidate rather than against the branch-tip snapshot. The convergence assertion remains enforced. | `.github/workflows/ci.yml`; `tests/unit/convergence-workflow-parity.test.mjs`; issue #241. |
