@@ -251,20 +251,9 @@ describe('the shell invocation — how a hook command reaches a shell on each pl
     expect(cmdSlashS(inv.args[3])).toBe(quotedInterp);
   });
 
-  it('win32: every command the REAL shipped hooks.json registers is invoked the fixed way', () => {
-    // Not a fixture string — the actual registrations, so a future hook whose command form breaks
-    // Windows is caught here rather than by a stranger. The plugin root is substituted with a
-    // Windows path containing a space, because that is the case that failed.
+  it('win32: the REAL shipped hooks.json has no commands left to invoke', () => {
     const regs = readInstalledRegistrations(path.join(REPO_ROOT, 'plugin', 'hooks', 'hooks.json'));
-    expect(regs.length).toBeGreaterThan(0);
-    for (const r of regs) {
-      const command = r.command.replaceAll('${CLAUDE_PLUGIN_ROOT}', 'C:\\Users\\Jane Smith\\.claude\\plugins\\cache\\rb');
-      const inv = shellInvocation(command, 'win32', WIN_COMSPEC);
-      expect(inv.windowsVerbatimArguments, `libuv would escape: ${command}`).toBe(true);
-      expect(inv.args[3], `not quote-wrapped: ${command}`).toBe(`"${command}"`);
-      // And what cmd actually executes is the registration, unchanged.
-      expect(cmdSlashS(inv.args[3]), `mangled on win32: ${command}`).toBe(command);
-    }
+    expect(regs).toEqual([]);
   });
 
   it('a COMSPEC that is not cmd takes the POSIX-shaped branch, never cmd syntax', () => {
@@ -381,20 +370,10 @@ describe('contract source — shim TABLE + hook-contracts.json, parsed from the 
 
 // ── §4 THE REAL SHIPPED SURFACE — the real shim, the real hooks.json ────────────────────────────
 describe('the real shipped plugin surface', () => {
-  it('every registration in the real hooks.json resolves to a declared mode + explicit timeout', async () => {
-    const { shimTable, shimIdIn, loadContracts, contractMatches } = await import('../../scripts/hook-registry.mjs');
+  it('the real hooks.json contains zero automatic registrations', async () => {
     const root = path.join(REPO_ROOT, 'plugin');
     const regs = readInstalledRegistrations(path.join(root, 'hooks', 'hooks.json'));
-    const table = shimTable(root);
-    const { contracts } = loadContracts(root);
-    expect(regs.length).toBeGreaterThan(0);
-    for (const r of regs) {
-      const id = shimIdIn(r.command);
-      const mode = (id && table[id]?.mode) ?? contracts.find((c) => contractMatches(c, { layer: 'plugin', event: r.event, matcher: r.matcher, command: r.command }))?.mode ?? null;
-      expect(mode, `no declared mode for ${r.event} ${r.matcher} :: ${r.command}`).not.toBeNull();
-      expect(typeof r.timeout, `no explicit timeout for ${r.event} ${r.matcher}`).toBe('number');
-      expect(r.timeout, `timeout ${r.timeout} > 60 is a milliseconds value in a seconds field`).toBeLessThanOrEqual(60);
-    }
+    expect(regs).toEqual([]);
   });
 
   it('resolveInstalledSurface prefers the packed install and names which copy it chose', () => {
@@ -548,21 +527,40 @@ describe('verdict — exit codes are the point', () => {
     }
   });
 
-  it('a healthy install + healthy hooks = exit 0 and ONE calm confirming line, no nagging', async () => {
-    const s = surface([{ id: 'healthy', file: 'healthy.mjs', event: 'SessionStart', mode: 'advisory' }]);
+  it('a healthy install + zero automatic hooks = exit 0 and ONE calm confirming line', async () => {
+    const s = surface([]);
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'selfcheck-retired-home-'));
+    const installed = path.join(home, '.claude/plugins/cache/ruvnet-brain/ruvnet-brain/9.9.9');
+    fs.mkdirSync(path.dirname(installed), { recursive: true });
+    fs.cpSync(s.root, installed, { recursive: true });
     const r = await selfCheck({
-      home: os.tmpdir(), regimes: STDIN_REGIMES, security: false,
+      home, regimes: STDIN_REGIMES, security: false,
       installState: { repos: 12, reader: true, mcp: true },
     });
-    // The fixture surface is not discoverable from os.tmpdir() as a HOME, so the battery reports no
-    // plugin — assert on the install-state half here and on the battery half in §2's healthy case.
-    const installViolations = r.violations.filter((v) => ['no-stores', 'no-reader', 'no-mcp'].includes(v.kind));
-    expect(installViolations).toHaveLength(0);
-    const clean = { ...r, violations: [] };
-    const out = formatVerdict(clean);
+    expect(r.exitCode).toBe(0);
+    expect(r.violations).toEqual([]);
+    const out = formatVerdict(r);
     expect(out).toMatch(/Self-check passed/);
     expect(out.split('\n').filter((l) => /✓|✗|•/.test(l))).toHaveLength(1); // exactly one verdict line
-    expect(s.ok).toBe(true);
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it('an otherwise healthy install fails when one retired automatic registration remains', async () => {
+    const s = surface([{ id: 'healthy', file: 'healthy.mjs', event: 'SessionStart', mode: 'advisory' }]);
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'selfcheck-stale-hook-home-'));
+    const installed = path.join(home, '.claude/plugins/cache/ruvnet-brain/ruvnet-brain/9.9.9');
+    fs.mkdirSync(path.dirname(installed), { recursive: true });
+    fs.cpSync(s.root, installed, { recursive: true });
+
+    const r = await selfCheck({
+      home, regimes: ['valid'], security: false,
+      installState: { repos: 12, reader: true, mcp: true },
+    });
+
+    expect(r.exitCode).toBe(1);
+    expect(r.violations.map((item) => item.kind)).toContain('automatic-registration');
+    expect(r.battery.results).toEqual([]);
+    fs.rmSync(home, { recursive: true, force: true });
   });
 
   it('the battery result feeds the verdict: a hanging hook alone makes exit non-zero', { timeout: 60_000 }, async () => {

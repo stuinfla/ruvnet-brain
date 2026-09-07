@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { aggregateEvidence } from './release-evidence-aggregate.mjs';
 import { canonicalJson } from './release-transaction.mjs';
-import { EXCLUSION_POLICY } from './integration-evidence.mjs';
+import { RELEASE_QUALIFICATION_POLICY } from './integration-evidence.mjs';
 import { readCandidateRetrieval } from './staged-host-verifier.mjs';
 import { validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
 import { payloadIdFor } from './release-payload.mjs';
@@ -107,7 +107,7 @@ export function buildPrepublicationEvidence({
   }
 
   const ci = readJson(ciFile);
-  const requiredCiJobs = ['candidate-preflight', 'check', 'windows-unit', 'macos-unit', 'warm-brain', 'release-qe'];
+  const requiredCiJobs = ['candidate-preflight', 'release-acceptance-linux', 'release-acceptance-windows', 'release-acceptance-macos', 'release-qe'];
   if (ci.value.schemaVersion !== 1 || ci.value.kind !== 'ruvnet-brain-candidate-ci-evidence'
     || ci.value.sourceSha !== sha || ci.value.version !== version || ci.value.payloadId !== payload.payloadId
     || ci.value.payloadManifestSha256 !== sha256(manifestBytes) || ci.value.workflow !== 'ci'
@@ -116,6 +116,10 @@ export function buildPrepublicationEvidence({
   }
   requireExactSet(ci.value.jobs?.map(({ name }) => name) || [], requiredCiJobs, 'candidate CI jobs');
   if (ci.value.jobs.some(({ conclusion }) => conclusion !== 'success')) throw new Error('candidate CI receipt contains a non-success job');
+  requireExactSet(ci.value.acceptanceReceipts?.map(({ platform }) => platform) || [], ['linux', 'macos', 'windows'], 'release acceptance platforms');
+  if (ci.value.acceptanceReceipts.some(row => row.sourceSha !== sha || !(row.passed > 0)
+    || !/^[a-f0-9]{64}$/.test(row.receiptSha256 || ''))) throw new Error('release acceptance receipt identity mismatch');
+
 
   const integration = readJson(integrationFile);
   if (integration.value.schemaVersion !== 1 || integration.value.kind !== 'ruvnet-brain-integration-evidence'
@@ -129,7 +133,9 @@ export function buildPrepublicationEvidence({
     || integration.value.skippedTests.some((name) => typeof name !== 'string' || !name.trim())) {
     throw new Error('integration receipt is not an exact, fully accounted PASS');
   }
-  if (integration.value.exclusionPolicy !== EXCLUSION_POLICY
+  if (integration.value.exclusionPolicy !== RELEASE_QUALIFICATION_POLICY
+    || integration.value.skipped !== 0 || integration.value.todo !== 0
+    || !/^[a-f0-9]{64}$/.test(integration.value.qualificationReceiptSha256 || '')
     || !Array.isArray(integration.value.todoTests)
     || integration.value.todoTests.length !== Number(integration.value.todo || 0)
     || !/^[a-f0-9]{64}$/.test(integration.value.exclusionsSha256 || '')) {
@@ -160,7 +166,7 @@ export function buildPrepublicationEvidence({
 
   const common = { sha, payloadId: payload.payloadId, runId };
   const leaves = [
-    passLeaf({ ...common, name: 'source-quality', source: 'candidate-ci-receipt:check', receiptSha256: ci.digest }),
+    passLeaf({ ...common, name: 'source-quality', source: 'candidate-ci-receipt:release-acceptance-linux', receiptSha256: ci.digest }),
     passLeaf({ ...common, name: 'ux-qe', source: 'ux-qe-receipts:darwin,linux,win32', receiptSha256: uxDigest }),
     passLeaf({ ...common, name: 'release-qe', source: 'candidate-ci-receipt:release-qe', receiptSha256: ci.digest, runtimeCensusSha256: runtimeCensus.digest }),
     passLeaf({ ...common, name: 'integration-linux', source: 'integration-receipt', receiptSha256: integration.digest,

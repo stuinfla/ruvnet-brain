@@ -187,9 +187,9 @@ describe('the merged census — six registries, not one', () => {
     }
   });
 
-  it('enumerates every registry this repo owns and normalizes each registration to the ADR-055 §6 record', () => {
+  it('enumerates every registry this repo owns and proves the registration set is empty', () => {
     const REQUIRED = ['layer', 'file', 'locator', 'event', 'matcher', 'command', 'timeout', 'mode', 'offBehavior', 'reachesStrangers'];
-    expect(repoReg.records.length).toBeGreaterThan(0);
+    expect(repoReg.records).toEqual([]);
     for (const r of repoReg.records) {
       for (const k of REQUIRED) expect(Object.keys(r), `${r.layer} ${r.locator} missing ${k}`).toContain(k);
       expect(r.locator, 'a locator with no line number cannot point anybody at anything').toMatch(/:\d+$/);
@@ -199,7 +199,7 @@ describe('the merged census — six registries, not one', () => {
     // package.json's "files" tree exactly like plugin/), and an invariant that treats a local hook
     // and a shipped hook as equally consequential is not reading the same product the users are.
     expect(repoReg.records.filter((r) => r.reachesStrangers).every((r) => r.layer === 'plugin' || r.layer === 'codex')).toBe(true);
-    expect(repoReg.records.some((r) => r.layer === 'project' && !r.reachesStrangers)).toBe(true);
+    expect(repoReg.records.some((r) => r.layer === 'project')).toBe(false);
   });
 
   it('routes EVERY plugin registration through the shim — the F5 regression fixture', () => {
@@ -298,7 +298,7 @@ describe('the merged census — six registries, not one', () => {
 
     const codexRecs = mesh(repoReg.records).filter((r) => r.layer === 'codex');
     const declared = declaredRegistrationCount(codex.file);
-    expect(declared, 'codex-hooks.json unexpectedly declares zero registrations').toBeGreaterThan(0);
+    expect(declared).toBe(0);
     expect(codexRecs).toHaveLength(declared);
     // Non-vacuous resolution: every codex record's dispatch id hits hook-shim.mjs's table, so
     // handler/mode/offBehavior come from the SAME declared contract Claude Code uses — not nulls
@@ -319,11 +319,9 @@ describe('the merged census — six registries, not one', () => {
     expect(codexDispatchIdIn(null)).toBeNull();
   });
 
-  it('the shipped dispatch audit covers Task and Agent exactly, without catching TaskStop', () => {
+  it('the shipped dispatch audit is retired with every other automatic route', () => {
     const dispatch = mesh(repoReg.records).filter((r) => r.layer === 'plugin' && r.handler === 'route-dispatch.sh');
-    expect(dispatch).toHaveLength(1);
-    expect(dispatch[0].matcher).toBe('^(Task|Agent)$');
-    expect(matchedTools(dispatch[0].matcher, 'PreToolUse')).toEqual(['Task', 'Agent']);
+    expect(dispatch).toEqual([]);
   });
 });
 
@@ -347,7 +345,7 @@ describe('mesh invariants over the layers this repo OWNS (must stay clean — th
     // An amnesty list that outlives the thing it excused is how a ratchet turns into permission.
     const f = lintAllowlistStale(repoReg.records, repoReg.matcherAllowlist);
     expect(f, `stale allowlist entr(ies):\n  ${show(f)}`).toEqual([]);
-    expect(repoReg.matcherAllowlist.length, 'an allowlist with no reasons recorded is not an allowlist').toBeGreaterThan(0);
+    expect(repoReg.matcherAllowlist).toEqual([]);
     for (const a of repoReg.matcherAllowlist) {
       expect(a.reason, `allowlist entry ${a.layer}/${a.event}/${a.matcher} has no reason`).toBeTruthy();
       expect(a.retiredBy, `allowlist entry ${a.layer}/${a.event}/${a.matcher} names no exit condition`).toBeTruthy();
@@ -360,33 +358,18 @@ describe('mesh invariants over the layers this repo OWNS (must stay clean — th
     for (const r of mesh(repoReg.records)) expect(OFF_BEHAVIORS).toContain(r.offBehavior);
   });
 
-  it('M6 — the out-of-shim contracts are real contracts, not a checkbox file', () => {
-    // ADR-055 §6 lists what a per-hook contract must carry. A file that declared only `offBehavior`
-    // would satisfy the lint above and tell an operator nothing.
+  it('M6 — the out-of-shim contract inventory is empty with the registries', () => {
     const doc = JSON.parse(fs.readFileSync(path.join(REPO, 'plugin/hooks/hook-contracts.json'), 'utf8'));
-    expect(doc.contracts.length).toBeGreaterThan(0);
-    for (const c of doc.contracts) {
-      for (const k of ['mode', 'offBehavior', 'offReason', 'failureBehavior', 'timeoutSeconds', 'reachesStrangers', 'owner']) {
-        expect(c[k], `contract ${c.id} is missing ${k}`).not.toBe(undefined);
-      }
-      expect(['advisory', 'blocking']).toContain(c.mode);
-      expect(OFF_BEHAVIORS).toContain(c.offBehavior);
-    }
+    expect(doc.contracts).toEqual([]);
+    expect(doc.matcherAllowlist).toEqual([]);
   });
 
-  it('exactly ONE Stop-plane registration per shipped host manifest (ADR-055 §3.4, extended to Codex 2026-08-20)', () => {
-    // ADR-055 §3.4 said "no second Stop hook" back when 'plugin' was the only shipped manifest.
-    // 'codex' joining the mesh legitimately adds a SECOND Stop registration overall — but it lives
-    // in an independent host manifest Claude Code never loads, so it cannot collide with plugin's.
-    // The invariant that still matters is per-manifest: each shipped host gets exactly one Stop
-    // hook, and 'project' (F6) gets none.
+  it('has zero Stop-plane registrations in every repo-owned layer', () => {
     const stops = mesh(repoReg.records).filter((r) => r.event === 'Stop');
     const byLayer = new Map();
     for (const s of stops) byLayer.set(s.layer, [...(byLayer.get(s.layer) ?? []), `${s.locator} ${s.handler}`]);
-    expect(byLayer.get('plugin'), `plugin Stop-plane: ${JSON.stringify(byLayer.get('plugin'))}`).toHaveLength(1);
-    expect(byLayer.get('codex'), `codex Stop-plane: ${JSON.stringify(byLayer.get('codex'))}`).toHaveLength(1);
-    expect(byLayer.has('project'), 'F6: project must not reintroduce a Stop override').toBe(false);
-    expect(stops).toHaveLength(2);
+    expect([...byLayer]).toEqual([]);
+    expect(stops).toEqual([]);
   });
 });
 

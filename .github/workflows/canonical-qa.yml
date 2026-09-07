@@ -3,39 +3,57 @@ name: canonical-qa
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch: {}
-  workflow_call:
-    inputs:
-      candidate_sha:
-        description: Exact candidate SHA owned by the calling QA workflow
-        required: true
-        type: string
+
+permissions:
+  actions: read
+  contents: read
 
 concurrency:
   group: ruvnet-brain-canonical-qa-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  canonical-qa:
-    name: canonical-qa
+  qualify-development:
+    if: github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.candidate_sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-      - run: npm ci --no-audit --no-fund --ignore-scripts
-      - name: Generate convergence manifest for the exact checked-out candidate
-        # Pull requests run on a synthetic merge ref, whose content identity differs from the
-        # branch tip. Generate the manifest inside that exact checkout so the freshness gate never
-        # consumes a branch-stale Hubble/convergence snapshot.
-        run: npm run convergence:write
-      - name: Run the bounded exact-SHA QA contract
+      - run: npm ci --no-audit --no-fund
+      - run: npm run convergence:write
+      - run: npm run qa:pr
+
+  canonical-qa:
+    name: canonical-qa
+    if: always()
+    needs: qualify-development
+    runs-on: ubuntu-latest
+    timeout-minutes: 125
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require development qualification
+        if: github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)
         env:
-          QA_TIMEOUT_MS: 900000
-        run: npm run qa:pr
+          QUALIFICATION_RESULT: ${{ needs.qualify-development.result }}
+        run: test "$QUALIFICATION_RESULT" = success
+      - name: Verify already-qualified release source
+        if: github.event_name != 'pull_request' || (startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/qualified-candidate-check.mjs --sha "$CANDIDATE_SHA" --required-check canonical-qa --timeout-ms 7200000 --poll-ms 30000

@@ -125,14 +125,9 @@ describe('routing outcome capture uses the verified Task PostToolUse shape', () 
     }
   });
 
-  it('the registered observer exits when the host leaves stdin open', async () => {
+  it('the explicit observer exits when its caller leaves stdin open', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-routing-held-'));
-    const registry = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'hooks/hooks.json'), 'utf8'));
-    const registration = registry.hooks.PostToolUse
-      .flatMap((group) => group.hooks || [])
-      .find((hook) => String(hook.command).includes('routing-outcome'));
-    expect(registration).toBeTruthy();
-    const command = registration.command.replaceAll('${CLAUDE_PLUGIN_ROOT}', PLUGIN);
+    const command = `node ${JSON.stringify(path.join(PLUGIN, 'scripts/routing-outcome-capture.mjs'))}`;
 
     try {
       const measurement = await fireHook({

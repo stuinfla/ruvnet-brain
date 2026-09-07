@@ -24,12 +24,5 @@ describe('release identity — one number, and it means one thing', () => {
     expect(evaluatePublicationReceipt({ version }, null).verdict).toBe('FAIL');
   });
 
-  it('the customer-facing banner emits exactly ONE version', () => {
-    const core = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', 'session-start-core.mjs'), 'utf8');
-    // Issue #77: the banner printed the plugin version AND the bundle tag, making every user
-    // adjudicate whether their own install was out of sync.
-    expect(core).not.toMatch(/RuvNet Brain active \(v\$\{bannerVersion\}\$\{kbVersion/);
-    expect(core, 'divergence belongs on the maintainer channel, not in the user banner')
-      .toMatch(/MAINTAINER ONLY: the shipped generation is split/);
-  });
+
 });

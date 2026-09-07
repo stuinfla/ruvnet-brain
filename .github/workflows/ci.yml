@@ -3,10 +3,6 @@ name: ci
 # Runs the brain-independent checks on every push/PR: version single-source-of-truth, structure,
 # grounding-hook behavior, and the injection-guard unit test. None of these need the 512 MB bundle.
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
   workflow_call:
     inputs:
       candidate_sha:
@@ -40,229 +36,60 @@ jobs:
           npm run version:check
           npm run release:authority
 
-  check:
+  release-acceptance-linux:
     needs: candidate-preflight
-    # A HUNG JOB MUST FAIL, NOT JAM THE QUEUE. No job in this file declared a timeout, so a step
-    # that never returns ran to GitHub's 6-hour default. Measured 2026-08-19: EIGHT consecutive `ci`
-    # runs on main sat in_progress for up to three hours, all stuck on "Unit tests + coverage",
-    # and because logs are only readable once a run completes, the hang also hid the OTHER jobs'
-    # failures behind it. Silence read as "still working" when it meant "wedged" — the same
-    # can't-tell-two-states-apart defect this repo keeps finding. These ceilings are generous
-    # against measured wall time (check ~8m, windows ~12m, warm-brain ~10m, release-qe ~15m); they
-    # exist to convert a hang into a red X in minutes instead of a jammed queue for six hours.
-    timeout-minutes: 30
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.candidate_sha || github.sha }}
-          # Currency and mutation tests inspect historical commits. In a depth-1 clone, HEAD is
-          # treated as every file's root commit and ADR-0013 falsely appears newer than its stamp.
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: No-fossil guard (history slimmed 2026-07-12 — repo must stay lean)
-        # kb/*.rvf & sidecars are gitignored, but one force-add or new large artifact would re-bloat
-        # every clone for every user. Fails on any tracked blob >5MB at HEAD (largest legit file
-        # today: 2.45MB explainer PNG). The brain ships via Release assets, never via git.
-        run: |
-          big=$(git ls-tree -r -l HEAD | awk '$4 > 5242880 {print $4/1048576 "MB", $5}')
-          if [ -n "$big" ]; then echo "Tracked file(s) exceed 5MB — ship via Release assets instead:"; echo "$big"; exit 1; fi
-      - name: Version single-source-of-truth (fails on any drift / stray literal)
-        run: node scripts/qa-runner.mjs --lane version
-      - name: No silent substitution (never hand-roll a tool rUv already ships, and NEVER wear his name)
-        # Added 2026-07-13 after the worst failure of this project: I hand-rolled a 216-line model
-        # router with a "placeholder policy", called it "the MetaHarness router engine" in SKILL.md,
-        # and shipped it — while @metaharness/router@0.3.2 (rUv's real learned cost-optimal router,
-        # ADR-040/043, Accepted/implemented) sat on npm. Every test passed. Every gate was green.
-        # NOTHING CHECKED WHETHER THE CODE SHOULD EXIST AT ALL. Tests ask "does my code work"; this
-        # asks "does rUv already ship this, and am I passing my code off as his?" — the question that
-        # actually mattered. Verified to fire on the pre-fix commit (8e98cf7) and pass on the fix.
-        run: node scripts/qa-runner.mjs --lane substitution
-      - name: Model catalog live-verified (no model/version fact ships from memory — ADR-0016)
-        # Added 2026-07-15 after I claimed "no GPT-5.6 exists" from a lazy price-sort instead of the live
-        # check I'd said I would run. Rule 0 (verify the live source) kept getting skipped for model facts
-        # because the fact lived in prose/memory where laziness is invisible. Now every model in
-        # data/model-catalog.json must exist + be priced correctly in the committed OpenRouter snapshot
-        # (refreshed weekly by model-catalog-refresh.yml), and a stale snapshot fails too. A missing/mispriced/stale
-        # model is a RED BUILD — the shortcut is structurally impossible. Verified: it caught two real
-        # errors in the first catalog + rejects a fabricated model id.
-        run: node scripts/qa-runner.mjs --lane catalog
-      - name: Structure + grounding-hook behavior (brain-independent)
-        # QE-0011 tests#1: on a fresh runner the 512MB brain is absent, so the capability battery
-        # SKIPS — now LOUDLY (run-tests prints "CORE CAPABILITY BATTERY SKIPPED" so green never
-        # masquerades as "the brain works"). This fast job covers structure/hook/guard only.
-        run: node scripts/qa-runner.mjs --lane plugin
-      # ONE STEP MUST NOT COVER TWO OPERATIONS. This was a single step named "Unit tests + coverage
-      # (vitest)" that ALSO performed the job's only dependency install. When it wedged for three
-      # hours (2026-08-19, eight consecutive main runs), the step name asserted "the tests are
-      # running" while the truth might equally have been "npm i never returned" — and there is no way
-      # to tell them apart from the outside, because a step reports one status for everything inside
-      # it. Same shape as INVALID_LINEAGE covering both a bad lineage and a dirty tree, and as the
-      # replay guard covering both could-not-measure and partially-measured. Split, so the job's own
-      # step list names which half is stuck.
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund --loglevel=error
-      - name: Generate convergence for the exact candidate before measurement
-        run: npm run convergence:write
-      - name: Unit tests + coverage (vitest)
-        # #145 was a Linux procfs fixture, not a product process leak. The focused suite now uses a
-        # deterministic regular-file parent and is part of this unquarantined coverage run again.
-        # Claims consumes this invocation's fresh coverage via the shared dependency graph.
-        run: node scripts/qa-runner.mjs --lane coverage --lane claims-source
-      - name: Mutation tests (the guards must FALL on broken code)
-        # tests/mutation/*.test.mjs was listed in vitest.config.mjs's include from the day it was
-        # written, but NO npm script and NO CI step ever ran that directory — so the falsifiability
-        # proofs for the proactivity detector and (2026-07-26) the coverage-freshness precondition
-        # were never once executed by CI. A test that never runs cannot fail, which makes it exactly
-        # the ceremony it was written to replace. Brain-independent, ~11s.
-        run: node scripts/qa-runner.mjs --release --lane mutation
-      - name: Mesh coexistence tests (ADR-058 D5 — never touch what we do not own)
-        # tests/mesh/coexistence.test.mjs: sentinel foreign hooks fire exactly once regardless of
-        # registration order, ~/.claude/settings.json and ~/.codex/config.toml stay byte-equivalent
-        # across a simulated install -> update -> uninstall cycle, and a broken foreign hook never
-        # moves scripts/selfcheck.mjs's own exit code. This ubuntu runner has 2 vCPU (this file's own
-        # header comment sizes every timeout for that, never for the 16-vCPU dev machine) — every
-        # subprocess here runs sequentially and every assertion is on an exit code or a file's bytes,
-        # never on timing or "stdout looked non-empty". Brain-independent, no network.
-        run: node scripts/qa-runner.mjs --lane mesh
-      - name: Installer smoke test
-        # drive-to-98 #6: bin/install.mjs is the highest-risk untested path (a stranger's first
-        # contact). Runs the REAL installer in its safe, offline, non-mutating modes (--help,
-        # --doctor read-only, node --check + signing-wiring guard). Brain-independent — no 512MB bundle.
-        run: node --test tests/integration/install-smoke.mjs
-      - name: REQUIRE_BRAIN lane wiring (ADR-058 D1 mutant — an empty brain dir must convert to a hard failure)
-        # This IS the ADR's named mutant, made permanent: points RUVNET_BRAIN_KB at a fresh EMPTY
-        # directory and proves BOTH halves — unset, the skip stays loud but non-fatal (exit 0, the
-        # fast lane above); with REQUIRE_BRAIN=1, the same empty dir goes red. Brain-independent —
-        # no download, no bundle. Proves the conversion in run-tests.mjs (~193-229) is load-bearing,
-        # separately from the "warm-brain" job below actually setting REQUIRE_BRAIN=1 against a real
-        # bundle.
-        run: node --test tests/integration/require-brain-lane.mjs
-      - name: Experience-level scenario coverage (ADR-053 §1 / ADR-058 D2)
-        # tests/experience/scenarios.json is the hand-written ~20-scenario list (never a Cartesian
-        # matrix). The report fails on any scenario left unclassified, on `manual` exceeding 20% of
-        # the list, and — the load-bearing part — on any `ci`/`scheduled-live-probe` scenario whose
-        # named workflow job does not actually exist in .github/workflows/ (a machine-checkable join,
-        # so a scenario can never point at a fictional runner). Brain-independent, no network.
-        run: node tests/experience/report.mjs
-      - name: Experience-report mutant proof (both ADR-058 D2 mutants must go red)
-        # Runs the report against MUTATED COPIES of scenarios.json in fresh subprocesses: deleting a
-        # classification, and pointing a scenario at a non-existent workflow job/file, must each make
-        # the report exit non-zero — otherwise the gate above is decorative, not load-bearing.
-        run: node --test tests/experience/report.test.mjs
-      - name: Interface-gate incident corpus (ADR-058 D7 — #12/#13/#41/#44 + the 07-27 heredoc bite)
-        # tests/mutation/*.test.mjs sat in vitest.config.mjs's include with no npm script and no CI
-        # step ever running it (see the "Mutation tests" step above) — a test nobody runs cannot fail,
-        # which is the exact ceremony D7 exists to replace for verify-interface.sh. This step is that
-        # lesson applied here: the corpus is listed in vitest's include (necessary) AND has its own
-        # script (test:regression) AND its own CI step (sufficient) from the day it lands. Fires the
-        # LITERAL REGISTERED COMMAND (`node hook-shim.mjs verify-interface`), never the .sh body
-        # directly (ADR-055 F16) — brain-independent, no network, ~2s.
-        run: node scripts/qa-runner.mjs --release --lane regression
-      - name: Injection-guard unit test
-        run: node kb/test-guard-injection.mjs
-      - name: Injection-guard adversarial red-team (5 attack families)
-        run: node tests/integration/redteam-guard.mjs
-      - name: Dependency audit (high+ severity fails)
-        # QE-0011 deps#5: catch a re-introduced CVE in the reader deps (protobufjs etc.).
-        # --ignore-scripts: this step AUDITS the dependency tree, it does not run the brain. Without
-        # it, `npm ci` also COMPILES every native module — including sharp, a transitive dep of
-        # @xenova/transformers (vision models the text-only brain never uses). sharp has no prebuilt
-        # for this runner, so it falls back to node-gyp and dies on `fatal error: vips/vips8` because
-        # the runner has no libvips. That is a BUILD failure mislabelled as an audit failure. The
-        # audit reads package-lock.json; it needs the tree resolved, not the binaries built. Skipping
-        # install scripts fixes the build AND is the more correct way to audit — you should not run
-        # arbitrary postinstall just to read the dep graph. (2026-07-17)
-        run: cd kb && npm ci --no-audit --no-fund --ignore-scripts && npm audit --audit-level=high
-
-  windows-unit:
-    needs: candidate-preflight
-    timeout-minutes: 40
-    # ADR-0011 engineering_reliability: "Windows is completely untested" while the installer
-    # claims cross-platform prebuilds. This job is the first real evidence, not a claim.
-    # Scope: the full vitest unit suite + the REAL installer's safe offline modes + the
-    # injection-guard checks (all brain-independent, none need kb/node_modules).
-    #
-    # Exclusion audit (grep tests/unit for /bin/sh, bash, launchctl, /Users/, process.platform,
-    # exec/spawn): NO unit-test file is POSIX-bound — every child process spawned is `node`
-    # itself, all fs work goes through node:path + os.tmpdir(), the one /Users/ literal is an
-    # existsSync fallback probe that self-skips, and the one process.platform hit is inside a
-    # string fixture. So nothing is excluded from tests/unit here. What Windows still does NOT
-    # cover is printed loudly by the last step instead of being hidden.
-    runs-on: windows-latest
-    # BLOCKING as of 2026-07-13: first-ever green run (29219328821) after fixing all six Windows
-    # failure clusters at root cause (URL.pathname vs fileURLToPath, /bin/bash vs PATH bash,
-    # backslash paths vs a forward-slash EXEMPT set in sync-version.mjs, HOME vs USERPROFILE in
-    # os.homedir(), no sqlite3 CLI on the runner, chmod-read-only being a no-op on win32).
-    # History: non-blocking 2026-07-12→13 because it had never been green (25/25 failures) and a
-    # permanently red required job trains everyone to ignore CI. That era is over — keep it a gate.
-    # 2026-07-26: three MORE clusters fixed at root cause after 5 red days (last green 18373d3):
-    # (7) dynamic import() of a raw absolute path in spawned children — always pathToFileURL();
-    # (8) drive-root paths ARE writable on this runner, so "unwritable" fixtures must block with a
-    # file, not a privileged dir; (9) sleep.exe/sh are not on PATH (bash.exe is) — spawn node only.
-    steps:
-      - name: Keep checkout byte-exact (tests read repo files and compare contents; CRLF would lie)
-        run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.candidate_sha || github.sha }}
-          # The full unit suite includes the same git-history-backed currency/fixture assertions.
-          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Generate convergence manifest for the exact checked-out candidate
-        # PR jobs run on GitHub's synthetic merge ref, not the branch tip whose manifest is
-        # committed. Match canonical-qa so Windows validates the same exact candidate identity.
-        run: npm run convergence:write
-      - name: Install root deps
-        run: npm ci --no-audit --no-fund
-      - name: Unit tests (full tests/unit — zero files excluded, per the audit note above)
-        # Invoke Vitest through Node so the watchdog is independent of npm's Windows shim
-        # resolution (`npx` is not a portable executable name when spawn uses shell:false).
-        run: node scripts/ci/step-watchdog.mjs --name windows-unit --timeout-ms 1200000 -- node node_modules/vitest/vitest.mjs run tests/unit --reporter=dot
-      - name: Installer smoke on Windows (REAL bin/install.mjs — --help / --doctor / --update / syntax+signing wiring)
-        # First cross-platform run of the stranger's-first-contact path. The --enable-nightly
-        # LaunchAgent test self-skips off-macOS via its node:test skip option (launchd is
-        # macOS-only by design); RUVNET_BRAIN_TEST=1 guards it where it does run.
-        run: node --test tests/integration/install-smoke.mjs
-      - name: Injection-guard unit test (pure node — proven brain-independent on ubuntu too)
-        run: node kb/test-guard-injection.mjs
-      - name: Injection-guard adversarial red-team (5 attack families)
-        run: node tests/integration/redteam-guard.mjs
-      - name: What Windows does NOT cover (honest gap summary)
+      - run: npm ci --no-audit --no-fund
+      - name: Reviewed release acceptance (linux)
+        run: node scripts/release-qualification.mjs --platform linux --report release-acceptance-linux.json
+      - uses: actions/upload-artifact@v4
         if: always()
+        with:
+          name: release-acceptance-linux-${{ inputs.candidate_sha || github.sha }}
+          path: release-acceptance-linux.json
+          if-no-files-found: error
+
+  release-acceptance-windows:
+    needs: candidate-preflight
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Preserve exact Git bytes before Windows checkout
         shell: bash
         run: |
-          {
-            echo "### windows-unit — what ran, what did not, and why"
-            echo
-            echo "**RAN on windows-latest:** full \`tests/unit\` (no exclusions), installer smoke"
-            echo "(\`--help\`/\`--doctor\`/\`--update\`, \`node --check\`, signing wiring), injection guard + red-team."
-            echo
-            echo "**NOT run on Windows (excluded here, with reasons):**"
-            echo "- \`npm test\` (plugin/test/run-tests.mjs): executes the grounding hook via"
-            echo "  \`spawnSync('/bin/bash', ...)\` — the plugin hooks are POSIX shell. Covered by the ubuntu job."
-            echo "- \`tests/integration/*.test.mjs\` (vitest): need \`kb/node_modules\` (@ruvector/rvf native"
-            echo "  prebuilds) and some the 512MB brain bundle. Covered by integration-linux.yml on ubuntu;"
-            echo "  a Windows run of these remains an OPEN gap."
-            echo "- coverage thresholds: enforced once, on the ubuntu job (same tests, one denominator)."
-            echo
-            echo "**Self-skips inside this run (loud by design, same on every fresh runner):**"
-            echo "- tests/unit/forge-rerank-workers.test.mjs real-model suite: cross-encoder model cache absent."
-            echo "- install-smoke \`--enable-nightly\` LaunchAgent test: macOS-only (launchd), node:test skip."
-            echo "- selfcheck-battery \`FIXTURE orphan\`: descendant survival after a kill is NOT MEASURABLE on"
-            echo "  win32 — there are no POSIX process groups, so \`kill(-pid, 0)\` (the survivor probe) does not"
-            echo "  exist. \`taskkill /T /F\` still kills the tree, but gives no did-anything-survive readout, so"
-            echo "  \`survivors\` is reported as \`null\` and the \`orphan\` violation can never fire on Windows."
-            echo "  A hook that leaks a descendant is therefore UNDETECTED for Windows users — a real product"
-            echo "  gap, not a test artifact. The honest-null itself IS asserted on Windows; only the leak"
-            echo "  detection is missing. POSIX coverage comes from the ubuntu + macos jobs."
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          git config --global core.autocrlf false
+          test "$(git config --global --get core.autocrlf)" = false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Reviewed release acceptance (windows)
+        run: node scripts/release-qualification.mjs --platform windows --report release-acceptance-windows.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-acceptance-windows-${{ inputs.candidate_sha || github.sha }}
+          path: release-acceptance-windows.json
+          if-no-files-found: error
 
-  macos-unit:
+  release-acceptance-macos:
     needs: candidate-preflight
     runs-on: macos-latest
     timeout-minutes: 30
@@ -271,173 +98,19 @@ jobs:
         with:
           ref: ${{ inputs.candidate_sha || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
-      - run: npm run convergence:write
-      - name: Full macOS unit suite
-        run: node scripts/ci/step-watchdog.mjs --name macos-unit --timeout-ms 1200000 -- node node_modules/vitest/vitest.mjs run tests/unit --reporter=dot
-      - name: Real installer smoke on macOS
-        run: node --test tests/integration/install-smoke.mjs
-      - run: node kb/test-guard-injection.mjs
-      - run: node tests/integration/redteam-guard.mjs
-
-  warm-brain:
-    needs: candidate-preflight
-    timeout-minutes: 30
-    # ADR-058 D1: the REQUIRE_BRAIN lane (50 -> 95). plugin/test/run-tests.mjs (~193-229) ALREADY
-    # converts a SKIPPED core-capability battery into a FAILURE when REQUIRE_BRAIN=1 (both when the
-    # brain bundle is absent and when the embedder model cache is cold) — but until this job, `grep
-    # -r REQUIRE_BRAIN .github/workflows/` returned ZERO matches, so that conversion was dead code no
-    # CI run had ever exercised. This job is the lane: warm a REAL brain (the same ~736MB Release
-    # download + npm-installed reader a stranger's machine uses — bin/install.mjs, --pin so this
-    # lane targets a fixed, reproducible bundle version rather than a moving "latest"), cache it
-    # keyed by commit SHA, then run the battery with REQUIRE_BRAIN=1 so a skip here is a hard,
-    # visible failure instead of the fast `check` job's loud-but-non-fatal skip.
-    #
-    # Not yet wired as a required branch-protection check — that is ADR-058's ranked build order
-    # item 10 ("Release-gate flip"), explicitly LAST, after D2/D7/D6/D5/D4/D3/D8 exist. This job
-    # exists and can go red starting now; making it BLOCK merges is a separate repo-settings step.
-    #
-    # ubuntu only for now (cost judgment call, said out loud): GitHub bills macOS runners at a
-    # documented ~10x multiplier, and this job would duplicate the ~736MB download plus a native
-    # module (npm ci) install on every push/PR for no coverage this repo does not already get
-    # elsewhere. Add macos-latest here if/when that cost is worth paying.
-    runs-on: ubuntu-latest
-    env:
-      # Explicit, FIXED paths — not the HOME-relative defaults — so the warm step, the battery step,
-      # and forge-mcp-all.mjs's own child process (spawned by plugin/mcp/server.mjs:99) all resolve
-      # the SAME embedder cache. Verified by reading the source: bin/install.mjs's own smokeQuery()
-      # defaults KB_MODEL_CACHE to `<RUVNET_BRAIN_KB>/models-cache` (bin/install.mjs:1048) while
-      # plugin/test/model-cache.mjs — what run-tests.mjs's battery actually reads — defaults to
-      # `<RUVNET_BRAIN_HOME>/models` (model-cache.mjs:35-38). Two DIFFERENT paths. Setting
-      # KB_MODEL_CACHE here explicitly is what makes every reader of it agree.
-      RUVNET_BRAIN_KB: ${{ github.workspace }}/.brain-cache/kb
-      KB_MODEL_CACHE: ${{ github.workspace }}/.brain-cache/models
-    steps:
-      - uses: actions/checkout@v4
+      - name: Reviewed release acceptance (macos)
+        run: node scripts/release-qualification.mjs --platform macos --report release-acceptance-macos.json
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          ref: ${{ inputs.candidate_sha || github.sha }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: libvips (sharp's native dep — @xenova/transformers pulls sharp in as a hard dependency)
-        # Same finding as the "Dependency audit" step's comment above, for the identical dependency
-        # tree: a bare `npm ci` compiling sharp from source on this exact runner dies on `fatal
-        # error: vips/vips8` without this. Cheap, idempotent insurance (a few seconds).
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libvips-dev
-      - name: Cache the knowledge bundle + embedder model (keyed by commit SHA)
-        id: brain-cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.brain-cache
-          key: brain-kb-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            brain-kb-${{ runner.os }}-
-      - name: Warm the brain (real installer download path — --pin for a reproducible CI bundle)
-        # Non-interactive; --pin fetches the fixed known-good Release rather than whatever is
-        # currently "latest", so this lane's pass/fail is never at the mercy of an unrelated Release
-        # cut landing mid-PR. Declines every optional onboarding offer (toolkit / CLAUDE.md /
-        # statusline / nightly / telemetry) — this job exists to populate RUVNET_BRAIN_KB, not to
-        # configure a Claude/Codex host that does not exist on this runner (wirePlugin/wireCodexHost
-        # both no-op safely when `claude`/`~/.codex` are absent, non-fatal by design either way).
-        # installReader()'s npm ci + verifyInstall()/smokeQuery() (bin/install.mjs:3140-3159) run
-        # every time, but skip the ~736MB download itself once the cache already holds a current,
-        # pinned bundle (bin/install.mjs:3040-3097 — the "already CURRENT" check) — so a cache hit
-        # here costs seconds, not minutes. smokeQuery's real query is also what warms KB_MODEL_CACHE
-        # for the battery step below.
-        run: node bin/install.mjs --yes --pin --no-stack --no-enhance --no-statusline --no-nightly-prompt --no-telemetry --no-selfcheck
-      - name: Warm the EMBEDDER explicitly (smokeQuery is best-effort by design and cannot be relied on)
-        # WHY A SEPARATE STEP: the install step's comment says smokeQuery "warms KB_MODEL_CACHE for
-        # the battery below". It does — WHEN IT SUCCEEDS. smokeQuery is deliberately "best-effort,
-        # never fatal" (that non-fatality IS the D8 -20 deduction), so a failed warm prints a
-        # reassuring warning, install exits 0 with a COLD cache, and the battery one step later
-        # reports a PRODUCT failure that is really an INFRASTRUCTURE one. A hard gate may not depend
-        # on a best-effort side effect.
-        #
-        # RUN THE INSTALLED READER, NOT THE REPO'S (2026-07-27, second attempt): the first version of
-        # this step ran the repo's kb/forge-ask-all.mjs, so node resolved @ruvector/rvf from the
-        # REPO's kb/node_modules — which is empty. installReader() (bin/install.mjs:441) runs npm ci
-        # with cwd=cacheDir, so the reader's deps live in $RUVNET_BRAIN_KB/node_modules, and the
-        # bundle ships its own reader there (install.mjs:421-431). It failed with exactly the error
-        # the product prints for this: "Cannot resolve '@ruvector/rvf' ... or set RVF_MODULE_PATH".
-        # Warming through the installed copy is also the more honest test — it is the artifact a
-        # stranger actually runs.
-        run: |
-          set -e
-          # The installed RVF sidecars are the source of truth. Canonical `*.big.rvf` stores use
-          # BGE, while the old gate hard-coded MiniLM and therefore declared itself warm even when
-          # the real reader could not answer one general query. Warm every model required by a
-          # matching installed RVF, then assert those exact model leaves below.
-          node --input-type=module <<'NODE' > /tmp/embedder-warm.log 2>&1
-          import path from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          import { requiredEmbedderModels } from './kb/model-requirements.mjs';
-          const resolver = pathToFileURL(path.join(process.env.RUVNET_BRAIN_KB, 'resolve-deps.mjs')).href;
-          const { loadTransformers } = await import(resolver);
-          const { T, modelCache, via } = await loadTransformers();
-          // The pinned installed resolver can predate the source fix: localModelPath controls reads,
-          // while cacheDir controls remote downloads. Force both at the actual CI door.
-          T.env.localModelPath = modelCache;
-          T.env.cacheDir = modelCache;
-          for (const model of requiredEmbedderModels(process.env.RUVNET_BRAIN_KB)) {
-            const embed = await T.pipeline('feature-extraction', model, { quantized: true });
-            await embed('warm the exact query embedder', { pooling: 'mean', normalize: true });
-            if (typeof embed.dispose === 'function') await embed.dispose();
-            console.log(`embedder ${model} instantiated via ${via}; cache=${modelCache}`);
-          }
-          NODE
-          READER="$RUVNET_BRAIN_KB/forge-ask-all.mjs"
-          if [ -f "$READER" ]; then
-            echo "warming via the INSTALLED reader: $READER"
-            ( cd "$RUVNET_BRAIN_KB" && node "$READER" --dir "$RUVNET_BRAIN_KB" --q "does ruvector use hnsw" --k 1 ) > /tmp/warm.log 2>&1 || {
-              echo "::error::embedder warm FAILED via installed reader"; tail -25 /tmp/warm.log; exit 1; }
-          else
-            echo "installed reader absent; falling back to the repo copy with RVF_MODULE_PATH pointed at the installed deps"
-            RVF_MODULE_PATH="$RUVNET_BRAIN_KB/node_modules" node kb/forge-ask-all.mjs --dir "$RUVNET_BRAIN_KB" --q "does ruvector use hnsw" --k 1 > /tmp/warm.log 2>&1 || {
-              echo "::error::embedder warm FAILED via repo copy + RVF_MODULE_PATH"; tail -25 /tmp/warm.log; exit 1; }
-          fi
-          # ASSERT THE EXACT PATH THE BATTERY READS, NOT ITS PARENT. This check was
-          # `test -d "$KB_MODEL_CACHE"` — the directory, which the bundle creates whether or not a
-          # model was ever downloaded into it. So it passed on a COLD cache, the warm step went
-          # green, and the battery one step later reported the product broken over an infrastructure
-          # miss. model-requirements.mjs now reads the required models from the installed RVF
-          # sidecars; this assertion consumes that same list, so the reader and gate cannot disagree.
-          #
-          # A path assertion that names only the parent is the same defect class as bin/install.mjs's
-          # models-cache-vs-models divergence: both "verified" a location adjacent to the one that
-          # matters. This lane warms through a --pin'ned bundle whose reader may predate that fix, so
-          # on failure it PRINTS WHERE THE MODEL ACTUALLY LANDED rather than only saying it is absent
-          # — a diagnostic that discards the diagnosis costs the next person a whole CI cycle.
-          MISSING_MODELS="$(node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          import path from 'node:path';
-          import { requiredEmbedderModels } from './kb/model-requirements.mjs';
-          const missing = requiredEmbedderModels(process.env.RUVNET_BRAIN_KB)
-            .filter((model) => !fs.existsSync(path.join(process.env.KB_MODEL_CACHE, ...model.split('/'))));
-          process.stdout.write(missing.join('\n'));
-          NODE
-          )"
-          if [ -n "$MISSING_MODELS" ]; then
-            echo "::error::required embedder(s) are ABSENT after a SUCCESSFUL warm query:"
-            echo "$MISSING_MODELS"
-            echo "--- what the warm query actually wrote (searching .brain-cache for any downloaded model) ---"
-            find "$GITHUB_WORKSPACE/.brain-cache" -maxdepth 5 -type d \( -name 'all-MiniLM*' -o -name 'Xenova' -o -name '*models*' \) 2>/dev/null | head -20
-            echo "--- onnx weights anywhere under .brain-cache ---"
-            find "$GITHUB_WORKSPACE/.brain-cache" -name '*.onnx' 2>/dev/null | head -10
-            echo "--- warm query log ---"; tail -25 /tmp/warm.log
-            exit 1
-          fi
-          echo "warmed every query model required by the installed RVF sidecars:"
-          node --input-type=module <<'NODE'
-          import { requiredEmbedderModels } from './kb/model-requirements.mjs';
-          for (const model of requiredEmbedderModels(process.env.RUVNET_BRAIN_KB)) console.log(`  ${model}`);
-          NODE
-      - name: Core capability battery — REQUIRE_BRAIN=1 (a skipped battery is now a hard failure)
-        env:
-          REQUIRE_BRAIN: '1'
-        run: node scripts/ci/step-watchdog.mjs --name warm-brain-capability --timeout-ms 900000 -- npm test
+          name: release-acceptance-macos-${{ inputs.candidate_sha || github.sha }}
+          path: release-acceptance-macos.json
+          if-no-files-found: error
 
   release-qe:
     needs: candidate-preflight
@@ -643,7 +316,7 @@ jobs:
 
   candidate-ci-evidence:
     name: candidate-ci-evidence
-    needs: [candidate-preflight, check, windows-unit, macos-unit, warm-brain, release-qe]
+    needs: [candidate-preflight, release-acceptance-linux, release-acceptance-windows, release-acceptance-macos, release-qe]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -662,6 +335,12 @@ jobs:
         with:
           name: release-evidence-${{ inputs.candidate_sha || github.sha }}
           path: release-evidence
+      - name: Restore reviewed platform acceptance reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-acceptance-*-${{ inputs.candidate_sha || github.sha }}
+          path: acceptance-reports
+          merge-multiple: true
       - name: Bind every required CI job to the candidate payload
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
@@ -675,7 +354,7 @@ jobs:
           import crypto from 'node:crypto';
           import fs from 'node:fs';
           const needs = JSON.parse(process.env.NEEDS_JSON);
-          const required = ['candidate-preflight', 'check', 'windows-unit', 'macos-unit', 'warm-brain', 'release-qe'];
+          const required = ['candidate-preflight', 'release-acceptance-linux', 'release-acceptance-windows', 'release-acceptance-macos', 'release-qe'];
           if (required.some((name) => needs[name]?.result !== 'success')) {
             throw new Error('candidate CI contains a non-success dependency');
           }
@@ -686,7 +365,16 @@ jobs:
           if (manifest.candidateSha !== process.env.CANDIDATE_SHA || candidate.sha !== process.env.CANDIDATE_SHA) {
             throw new Error('candidate CI receipt identity differs from checked-out source');
           }
+          const { validateQualificationReceipt } = await import('./scripts/release-qualification.mjs');
+          const acceptanceReceipts = ['linux', 'macos', 'windows'].map(platform => {
+            const bytes = fs.readFileSync(`acceptance-reports/release-acceptance-${platform}.json`);
+            const report = JSON.parse(bytes);
+            const tests = validateQualificationReceipt(report, { suite: 'source', platform, sourceSha: process.env.CANDIDATE_SHA });
+            return { platform, sourceSha: report.source.sha, passed: tests.passed,
+              receiptSha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+          });
           const receipt = {
+            acceptanceReceipts,
             schemaVersion: 1,
             kind: 'ruvnet-brain-candidate-ci-evidence',
             sourceSha: process.env.CANDIDATE_SHA,

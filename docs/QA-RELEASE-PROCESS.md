@@ -1,32 +1,42 @@
-Updated: 2026-09-05 19:00:00 EDT | Version 1.1.0
+Updated: 2026-09-07 11:07:28 EDT | Version 1.2.0
 Created: 2026-09-05 19:00:00 EDT
 
 # QA and release process
 
-The [QA execution contract](qa-execution-contract.md) defines producer selection, dependency
-handling, source identity, receipt locations, and the distinction between diagnostics and release
-qualification. The executable inventory is [qa-lanes.mjs](../scripts/qa-lanes.mjs); this overview
-does not maintain a second lane list.
+The release source and integration producer is [release-qualification.mjs](../scripts/release-qualification.mjs).
+Its reviewed requirements and test selection come from
+[release-qualification-contract.mjs](../scripts/release-qualification-contract.mjs).
+`npm run release:qualify -- --suite source --report <new-path>` runs that source contract;
+the integration suite uses the same producer. Do not copy the test inventory into another gate.
+The [execution contract](qa-execution-contract.md) explains receipts and acceptance.
 
-`npm run qa:pr -- --list` prints the default diagnostic inventory.
-`npm run qa:release -- --list` includes release diagnostics. Passing either command's diagnostics
-alone is not proof of a packaged install, North Star conformance, or a published release.
+The historical suite of approximately 4,332 unit cases was **not individually audited in full**.
+It remains developer diagnostics, not mandatory release qualification. The retained release tests
+were individually reviewed, including fixtures and assertions. The [proof](reviews/release-test-relevance-proof-20260907.md),
+[install/update](reviews/release-test-relevance-install-20260907.md), and
+[release QE](reviews/release-test-relevance-qe-20260907.md) reviews record relevant cases,
+limitations, and exclusions. A passing historical suite does not establish every test's relevance.
 
-`npm run convergence:check` validates `data/convergence-manifest.json`, the deterministic identity
-boundary for implementation files, version surfaces, ADR inventory, and ownership checks.
-Regenerate it with `npm run convergence:write` when its governed inputs change; a stale manifest
-fails QA. Regeneration records identity, not behavioral verification.
+Automatic Brain host hooks and the project command interceptor are retired. Shipped registries
+are empty; installation removes exact owned legacy registrations while preserving foreign settings.
+MCP, skills, explicit commands, and explicit qualification remain available. `npm run hooks:check`
+checks retirement without executing hooks. Tests for dormant handlers use explicit fixtures.
 
-The plugin manifest (`plugin/.claude-plugin/plugin.json`) is the only hand-edited version field.
-Use `npm run version:set -- X.Y.Z` to propagate and immediately verify all package, bundle, README,
-and plugin surfaces. Do not use `npm version` or hand-edit a generated surface.
+Qualification runs on the actual platform, binds the reviewed contract and source bytes, and rejects
+missing cases, failures, skips, TODOs, and source changes. A local dirty-tree result is diagnostic;
+promotion requires a clean exact SHA and its matching trusted candidate workflow/artifact evidence.
+Qualify the candidate once and consume its evidence; do not rebuild the payload during publication.
 
-Publication remains a protected-workflow operation. Local checks may prepare and verify bytes, but
-they never publish npm packages, move dist-tags, or create GitHub Releases. The protected release
-workflow receives the exact candidate SHA and version, downloads the sealed artifact, publishes it,
-and runs the post-publication receipt against npm, GitHub, and a clean install.
+Protected publication consumes the exact sealed npm package and signed bundle. Channel convergence
+is not completion. All nine public combinations of three operating systems and three host modes
+must verify the public candidate. Each dual-host platform leaf must also contain real native
+scheduled installed-update evidence: two sequential runs, exact installed coverage, second-run noop,
+measured storage, and owned-job cleanup. Imported corpus evidence remains imported; upstream freshness
+is UNKNOWN unless a separate producer proves it. Only terminal `install-verified` closes the release.
 
-Corpus rebuilds and nightly learning are separate evidence producers, not actions performed by the
-local QA runner. Their release obligations remain defined by the accepted architecture, including
-[ADR-072](adr/0072-whole-product-integrity-conformance.md); a diagnostic omission is not an exemption.
-A timeout retains an explicit non-passing receipt, never a successful result.
+`qa:pr`, `qa:release`, and the historical test aliases remain explicit diagnostics. Their inventory
+is [qa-lanes.mjs](../scripts/qa-lanes.mjs); their PASS cannot replace reviewed qualification,
+packaged runtime checks, public verification, or complete North Star conformance.
+
+The plugin manifest remains the version source. `npm run version:set -- X.Y.Z` propagates generated
+surfaces, and `npm run convergence:write` refreshes source identity. Neither command proves behavior.

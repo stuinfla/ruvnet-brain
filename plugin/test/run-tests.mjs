@@ -6,7 +6,7 @@
 //
 // Sections:
 //   1. manifests & structure   — every config file is valid + has required fields
-//   2. grounding hook          — fires on RuvNet prompts, silent otherwise, never errors
+//   2. explicit grounding      — evaluator fires when directly invoked, never automatically
 //   3. MCP launcher            — resolves the brain and proxies JSON-RPC (initialize, tools/list)
 //   4. capability battery      — each "can RuvNet do X?" returns a grounded hit from the right repo
 //
@@ -82,13 +82,13 @@ check('marketplace.json lists the ruvnet-brain plugin', Array.isArray(market?.pl
 const mcp = readJson('.mcp.json');
 check('.mcp.json registers the ruvnet-brain MCP server', !!mcp?.mcpServers?.['ruvnet-brain']);
 const hooks = readJson('hooks/hooks.json');
-check('hooks.json declares a UserPromptSubmit hook', Array.isArray(hooks?.hooks?.UserPromptSubmit));
+check('hooks.json declares zero automatic lifecycle hooks', hooks?.hooks && Object.keys(hooks.hooks).length === 0);
 for (const f of ['skills/ruvnet-brain/SKILL.md', 'skills/brain-score/SKILL.md', 'skills/brain-build/SKILL.md', 'skills/brain-prompt/SKILL.md', 'mcp/server.mjs', 'scripts/ground-ruvnet.sh', 'README.md', 'test/capability-questions.json']) {
   check(`exists: ${f}`, fs.existsSync(path.join(ROOT, f)));
 }
 
 // 2. grounding hook
-section('2. grounding hook (enforcement)');
+section('2. explicit grounding evaluator (not host-registered)');
 const hookPath = path.join(ROOT, 'scripts/ground-ruvnet.sh');
 const runHook = (input) => spawnSync(resolveBash(), [hookPath], {
   input, encoding: 'utf8', timeout: 15000, cwd: hookProject, env: testEnv(hookHome, hookProject),

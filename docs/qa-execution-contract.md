@@ -1,11 +1,39 @@
-Updated: 2026-09-05 18:48:31 EDT | Version 1.5.0
+Updated: 2026-09-07 11:07:28 EDT | Version 1.6.0
 Created: 2026-09-05 14:11:00 EDT
 
 # QA execution contract
 
-The producer inventory is `scripts/qa-lanes.mjs`. Local and CI consumers must select
-producers from it instead of copying command lists. `qa-runner.mjs --list` prints
-the diagnostic inventory; `--release --list` includes release diagnostics.
+## Reviewed release qualification
+
+`scripts/release-qualification.mjs` is the single source/integration qualification producer;
+`scripts/release-qualification-contract.mjs` owns its reviewed requirement-to-test inventory.
+The producer verifies the actual platform, exact reported file set, execution of every case,
+zero skipped/pending/TODO cases, and unchanged source identity. It records the requirement IDs,
+contract digest, raw test report, result counts and source-before/source-after identities in a
+new receipt. Missing tools are failed prerequisites, never reasons to count skipped tests as proof.
+
+Retained release tests were individually read for relevance; the approximately 4,332-case historical
+unit suite was not comprehensively reviewed. It is diagnostic only. Reviews under `docs/reviews/`
+disclose copied-verifier tests, obsolete automatic-hook assertions, and source-text checks excluded
+from authority. They also distinguish fake-provider tests from actual artifact/native execution.
+
+Automatic host hooks are retired. Source qualification checks empty manifests, canonical pointers,
+actual isolated installation cleanup, foreign-state preservation, and inspection without execution.
+Explicit MCP/skills and commands remain supported. A dormant handler fixture is not registration.
+
+A successful local source receipt does not authorize promotion of a dirty tree. The candidate
+consumer requires a clean exact SHA and trusted same-candidate workflow evidence. Its sealed package
+and payload are reused through protected publication. Separate packaged-runtime and public evidence
+remain mandatory: nine OS/host-mode public leaves and native installed-update proof in all three
+dual-host leaves. `channels-converged` remains incomplete until the public finalizer records
+`install-verified`. Imported signed corpus phases are not current-run production; their upstream
+freshness remains UNKNOWN without the separate producer evidence.
+
+## Historical developer diagnostics
+
+The following describes `scripts/qa-runner.mjs`, whose diagnostic inventory is
+`scripts/qa-lanes.mjs`. `qa:pr` and `qa:release` retain these reports for explicit maintenance;
+neither is the reviewed release qualification producer. `--list` prints the selected inventory.
 
 Use `--base <base-sha>` to scope document debt to the candidate merge base. Historical
 drift remains in unscoped reports. Invalid base references fail explicitly. Without a
@@ -57,15 +85,14 @@ tests or replace the real embedder with a fake to make qualification green.
 
 These diagnostics do not replace packaged installation, cross-host runtime, public byte
 verification, or real learning evidence. Do not describe a passing diagnostic subset as
-North Star acceptance. The integration owner connects the shared producers to workflows
-and retains each distinct runtime/artifact lane exactly once.
+North Star acceptance. The integration owner connects the reviewed qualification producer and the distinct runtime/artifact
+producers to workflows, consuming each candidate result without duplicate production.
 
 The release `continuity` lane consumes `RUVNET_SEALED_PACKAGE` without rebuilding it; local
 diagnostics without that input pack once. It exercises interrupted
 Claude-to-Codex and Codex-to-Claude restoration against disposable projects and real global
 Ruflo. It proves packed-adapter durability, not native model-session continuation or relocation.
-CI invokes this same lane in the existing candidate job and retains its source-bound receipt
-alongside candidate evidence. Native Codex discovery is required in Linux integration;
+Its diagnostic result alone is not a native-session receipt. Native Codex discovery is required in reviewed integration;
 a missing CLI or skipped discovery cannot qualify the release.
 
 Candidate retrieval uses the same sealed canary plan and validator as public verification.

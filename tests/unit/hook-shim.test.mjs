@@ -21,12 +21,7 @@ const run = (hookId) => spawnSync(process.execPath, [SHIM, hookId], {
 });
 
 function runRegistered(hookId, input) {
-  const registry = JSON.parse(fs.readFileSync(HOOKS, 'utf8'));
-  const hook = Object.values(registry.hooks).flat()
-    .flatMap((group) => group.hooks || [])
-    .find((candidate) => candidate.command.includes(`hook-shim.mjs\" ${hookId}`));
-  if (!hook) throw new Error(`registered hook ${hookId} not found`);
-  return spawnSync('/bin/sh', ['-c', hook.command], {
+  return spawnSync(process.execPath, [SHIM, hookId], {
     input,
     encoding: 'utf8',
     env: { ...process.env, RUVNET_BRAIN_HOME: HOME_DIR, CLAUDE_PLUGIN_ROOT: SOURCE_PLUGIN_ROOT },
@@ -73,7 +68,7 @@ describe.skipIf(process.platform === 'win32')('hook-shim.mjs — restart-free ho
     expect(r.stderr).toMatch(/BLOCKED/);
   });
 
-  it('the registered blocking shim sends one bounded payload to its consuming hook body', () => {
+  it('the explicit blocking shim sends one bounded payload to its consuming hook body', () => {
     seedSpine('1.0.0', {
       // ADR-067: the registered blocking hook on the write path is now decision-gate. The BOUND is
       // the property under test and it is unchanged — declared as `stdinBytes: 65536` on the shim
@@ -85,18 +80,14 @@ describe.skipIf(process.platform === 'win32')('hook-shim.mjs — restart-free ho
     expect(result.stdout, 'a 70KB payload must arrive truncated to the declared bound').toBe('65536');
   });
 
-  it('every registered blocking payload consumer receives the exact closed-pipe payload', () => {
+  it('every preserved explicit payload consumer receives the exact closed-pipe payload', () => {
     // ADR-067 collapsed four PreToolUse walls into one gate, so `ground-before-write`, `design-wall`
     // and `protect-state` are no longer registered hooks — they are policies the gate spawns. This
     // list is therefore DERIVED from hooks.json rather than restated, which is also why it went stale
     // the moment the registry changed: a hand-listed set of registrations is a second copy of the
     // registry. The gate's own forwarding to its policies is covered by decision-gate.test.mjs.
-    const registeredIds = [...new Set(
-      Object.values(JSON.parse(fs.readFileSync(HOOKS, "utf8")).hooks)
-        .flatMap((groups) => groups.flatMap((g) => (g.hooks || []).map((h) => h.command)))
-        .map((c) => (/hook-shim\.mjs"\s+([a-z-]+)/.exec(c) || [])[1])
-        .filter(Boolean),
-    )];
+    const shimSource = fs.readFileSync(SHIM, 'utf8');
+    const registeredIds = [...new Set([...shimSource.matchAll(/'([a-z][a-z0-9-]+)':\s*\{/g)].map((match) => match[1]))];
     const FILES = {
       'route-dispatch': 'route-dispatch.sh',
       'unprompted-speech': 'unprompted-runtime.mjs',

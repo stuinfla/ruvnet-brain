@@ -49,7 +49,8 @@ function fixture() {
   const ciFile = write('ci.json', {
     schemaVersion: 1, kind: 'ruvnet-brain-candidate-ci-evidence', sourceSha: sha, version, payloadId,
     payloadManifestSha256: digest(manifestFile), workflow: 'ci', runId, runAttempt: 1,
-    jobs: ['candidate-preflight', 'check', 'windows-unit', 'macos-unit', 'warm-brain', 'release-qe']
+    acceptanceReceipts: ['linux', 'macos', 'windows'].map(platform => ({ platform, sourceSha: sha, passed: 12, receiptSha256: 'c'.repeat(64) })),
+    jobs: ['candidate-preflight', 'release-acceptance-linux', 'release-acceptance-windows', 'release-acceptance-macos', 'release-qe']
       .map((name) => ({ name, conclusion: 'success' })),
     verdict: 'PASS', skipped: 0, unknown: 0,
   });
@@ -57,7 +58,7 @@ function fixture() {
     schemaVersion: 1, kind: 'ruvnet-brain-integration-evidence', sourceSha: sha,
     workflow: 'integration-linux', runId, runAttempt: 1, total: 12, passed: 12,
     failed: 0, skipped: 0, skippedTests: [], todo: 0, todoTests: [],
-    exclusionPolicy: 'release-linux-v1', exclusionsSha256: 'a'.repeat(64), verdict: 'PASS',
+    exclusionPolicy: 'reviewed-release-integration-v1', qualificationReceiptSha256: 'b'.repeat(64), exclusionsSha256: 'a'.repeat(64), verdict: 'PASS',
   });
   const uxFiles = ['darwin', 'linux', 'win32'].map((platform) => write(`ux-${platform}.json`, {
     schemaVersion: 1, suite: 'ruvnet-brain-ux-qe', gitSha: sha, platform,

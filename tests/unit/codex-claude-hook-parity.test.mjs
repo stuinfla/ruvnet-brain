@@ -88,7 +88,24 @@ function runAdapter({ shim, payload, args = ['probe'], env = {} }) {
 
 const ECHO_PAYLOAD = 'let raw="";process.stdin.on("data",c=>raw+=c);process.stdin.on("end",()=>process.stdout.write(raw));';
 
-describe('the Codex manifest cannot silently lose a policy the gate owns', () => {
+describe('both hosts carry the same intentional zero-hook policy', () => {
+  it('ships zero automatic registrations on Claude Code and Codex', () => {
+    expect(read(CLAUDE_HOOKS).hooks).toEqual({});
+    expect(read(CODEX_HOOKS).hooks).toEqual({});
+  });
+
+  it('keeps each host manifest schema-valid and explicit about retirement', () => {
+    for (const file of [CLAUDE_HOOKS, CODEX_HOOKS]) {
+      const doc = read(file);
+      expect(Object.keys(doc).sort()).toEqual(['description', 'hooks']);
+      expect(doc.description).toMatch(/automatic host hooks are intentionally retired/i);
+    }
+  });
+});
+
+// Historical adapter-parity proof retained for the dormant compatibility library. It is not a
+// product acceptance gate because neither host registers these adapters automatically.
+describe.skip('retired: the Codex manifest cannot silently lose a policy the gate owns', () => {
   it('routes PreToolUse refusal through decision-gate on BOTH hosts', () => {
     const cc = fs.readFileSync(CLAUDE_HOOKS, 'utf8');
     const cx = fs.readFileSync(CODEX_HOOKS, 'utf8');
@@ -130,7 +147,7 @@ describe('the Codex manifest cannot silently lose a policy the gate owns', () =>
   });
 });
 
-describe('every Claude Code hook is registered on Codex or declared absent with a host reason', () => {
+describe.skip('retired: every Claude Code hook is registered on Codex or declared absent with a host reason', () => {
   it('has no undeclared divergence in either direction', () => {
     const claude = hookIds(CLAUDE_HOOKS);
     const codex = hookIds(CODEX_HOOKS);

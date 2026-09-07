@@ -226,18 +226,49 @@ describe('wireCodexHost — the filesystem round trip', () => {
     expect(written).toContain('RUFLO_HARNESS_LOOP = "1"'); // theirs, untouched
   });
 
-  it('keeps every default write under the supplied Codex home instead of the real user home', () => {
+  it('retires the legacy durable hook wrapper without writing outside the supplied Codex home', () => {
     const home = tmpdir();
     const codexDir = path.join(home, '.codex');
     const serverDir = path.join(home, '.claude', 'ruvnet-brain', 'mcp');
     fs.mkdirSync(codexDir, { recursive: true });
 
+    const wrapper = path.join(home, '.cache', 'ruvnet-brain', 'codex-hook.mjs');
+    fs.mkdirSync(path.dirname(wrapper), { recursive: true });
+    fs.writeFileSync(wrapper, 'legacy hook bridge');
     const r = wireCodexHost({ codexDir, serverDir, announce: false });
 
-    expect(r.hookWrapperPath).toBe(path.join(home, '.cache', 'ruvnet-brain', 'codex-hook.mjs'));
-    expect(fs.existsSync(r.hookWrapperPath)).toBe(true);
-    const helper = path.join(path.dirname(r.hookWrapperPath), 'development-maintenance.mjs');
-    expect(fs.readFileSync(helper, 'utf8')).toBe(fs.readFileSync(path.join(ROOT, 'plugin/scripts/development-maintenance.mjs'), 'utf8'));
+    expect(r.retiredHookWrapper).toBe(true);
+    expect(fs.existsSync(wrapper)).toBe(false);
+  });
+
+  it('retires a legacy wrapper symlink without touching its target', (ctx) => {
+    const home = tmpdir();
+    const codexDir = path.join(home, '.codex');
+    const wrapper = path.join(home, '.cache', 'ruvnet-brain', 'codex-hook.mjs');
+    const target = path.join(home, 'user-owned-target.mjs');
+    fs.mkdirSync(path.dirname(wrapper), { recursive: true });
+    fs.mkdirSync(codexDir, { recursive: true });
+    fs.writeFileSync(target, 'preserve me');
+    try { fs.symlinkSync(target, wrapper); } catch { return ctx.skip(); }
+
+    const result = wireCodexHost({ codexDir, hookWrapperPath: wrapper, serverDir: path.join(home, 'srv'), announce: false });
+
+    expect(result.retiredHookWrapper).toBe(true);
+    expect(fs.existsSync(wrapper)).toBe(false);
+    expect(fs.readFileSync(target, 'utf8')).toBe('preserve me');
+  });
+
+  it('fails convergence when the legacy wrapper path is an unexpected directory', () => {
+    const home = tmpdir();
+    const codexDir = path.join(home, '.codex');
+    const wrapper = path.join(home, '.cache', 'ruvnet-brain', 'codex-hook.mjs');
+    fs.mkdirSync(wrapper, { recursive: true });
+    fs.mkdirSync(codexDir, { recursive: true });
+
+    const result = wireCodexHost({ codexDir, hookWrapperPath: wrapper, serverDir: path.join(home, 'srv'), announce: false });
+
+    expect(result.action).toBe('legacy-hook-retirement-failed');
+    expect(fs.statSync(wrapper).isDirectory()).toBe(true);
   });
 
   it('creates config.toml when the host exists but has none yet', () => {
@@ -407,7 +438,7 @@ describe('Codex plugin/lifecycle state — live CLI shapes become one actionable
     expect(codexMarketplaceRows(null)).toEqual([]);
   });
 
-  it('reports active only when every discovered Brain hook is enabled and trusted', () => {
+  it('rejects trusted Brain hooks because any runtime registration is stale', () => {
     const plugin = { available: true, installed: true, enabled: true };
     const listed = {
       ok: true,
@@ -422,10 +453,10 @@ describe('Codex plugin/lifecycle state — live CLI shapes become one actionable
         }],
       },
     };
-    expect(classifyCodexLifecycle(plugin, listed)).toMatchObject({ state: 'active' });
+    expect(classifyCodexLifecycle(plugin, listed)).toMatchObject({ state: 'unexpected-runtime-hooks' });
   });
 
-  it('makes pending trust explicit instead of printing generic install-success instructions', () => {
+  it('rejects untrusted Brain hooks too instead of asking the user to trust them', () => {
     const plugin = { available: true, installed: true, enabled: true };
     const listed = {
       ok: true,
@@ -437,12 +468,12 @@ describe('Codex plugin/lifecycle state — live CLI shapes become one actionable
       },
     };
     expect(classifyCodexLifecycle(plugin, listed)).toMatchObject({
-      state: 'pending-trust',
+      state: 'unexpected-runtime-hooks',
       hooks: [{ trustStatus: 'untrusted' }],
     });
   });
 
-  it('distinguishes a user-disabled plugin from missing runtime hooks and probe failure', () => {
+  it('distinguishes intentional zero hooks from a malformed registry and probe failure', () => {
     expect(classifyCodexLifecycle(
       { available: true, installed: true, enabled: false },
       { ok: true, value: { data: [] } },
@@ -450,6 +481,10 @@ describe('Codex plugin/lifecycle state — live CLI shapes become one actionable
     expect(classifyCodexLifecycle(
       { available: true, installed: true, enabled: true },
       { ok: true, value: { data: [{ hooks: [], errors: [] }] } },
+    ).state).toBe('inactive-by-design');
+    expect(classifyCodexLifecycle(
+      { available: true, installed: true, enabled: true },
+      { ok: true, value: { data: [{ hooks: [], errors: ['manifest parse failed'] }] } },
     ).state).toBe('missing-runtime-hooks');
     expect(classifyCodexLifecycle(
       { available: true, installed: true, enabled: true },
@@ -457,14 +492,15 @@ describe('Codex plugin/lifecycle state — live CLI shapes become one actionable
     )).toMatchObject({ state: 'probe-failed', error: 'app-server unavailable' });
   });
 
-  it('turns each lifecycle state into one concise user action and no false action when active', () => {
-    expect(codexLifecycleGuidance({ state: 'active', hooks: [{}, {}] })).toMatchObject({
-      healthy: true,
-      action: null,
-    });
-    expect(codexLifecycleGuidance({ state: 'pending-trust', hooks: [{}] })).toMatchObject({
+  it('turns each lifecycle state into one concise user action', () => {
+    expect(codexLifecycleGuidance({ state: 'unexpected-runtime-hooks', hooks: [{}, {}] })).toMatchObject({
       healthy: false,
-      action: expect.stringContaining('/hooks'),
+      action: expect.stringContaining('Upgrade'),
+    });
+    expect(codexLifecycleGuidance({ state: 'inactive-by-design', hooks: [] })).toMatchObject({
+      healthy: true,
+      intentional: true,
+      action: null,
     });
     expect(codexLifecycleGuidance({ state: 'not-installed', hooks: [] })).toMatchObject({
       healthy: false,
@@ -730,6 +766,6 @@ describe('no shipped file leaks a developer path', () => {
     expect(Object.keys(parsed.hooks)).toHaveLength(0);
     // Assert on the STRUCTURE, not the prose. What must be absent is a duplicate runnable command.
     expect(JSON.stringify(parsed.hooks)).not.toMatch(/command|\/bin\//);
-    expect(parsed.description).toMatch(/plugin owns lifecycle integration/i);
+    expect(parsed.description).toMatch(/no automatic lifecycle handlers/i);
   });
 });

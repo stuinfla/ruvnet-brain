@@ -109,10 +109,8 @@ const FLAG_LOCAL = argv.includes('--local');
 const FLAG_FORCE = argv.includes('--force');
 const FLAG_HELP = argv.includes('--help') || argv.includes('-h');
 const FLAG_DOCTOR = argv.includes('--doctor');
-// `--doctor --hooks`: the post-install hook battery (ADR-053 §2 / ADR-055 build item 2). Fires every
-// registration in the INSTALLED hooks.json through the real shim under four stdin regimes with an
-// external process-group watchdog. Separate flag because it spawns real hooks — the plain --doctor
-// stays a pure read.
+// Backward-compatible spelling for the retirement check. It never executes a hook: the only healthy
+// state is zero Brain-owned registrations in both shipped host manifests.
 const FLAG_HOOKS = argv.includes('--hooks');
 const FLAG_NO_VERIFY = argv.includes('--no-verify');
 // Escape hatch for the installer's closing self-check ONLY (it never disables --doctor's verdict).
@@ -1126,7 +1124,7 @@ export function consoleRestartState(identity, {
 //
 // The brain ships as TWO independent artifacts and this is the one people lose:
 //   • KB + search_ruvnet  — installed by this script into ~/.cache/ruvnet-brain
-//   • the Claude Code plugin — slash commands, the Console, the grounding hook
+//   • the Claude Code plugin — slash commands, the Console, skills, and MCP declaration
 // Checking the commands directory on disk is what distinguishes them; a `claude plugin install`
 // exit code does not.
 /** @returns {string|null} the commands dir if the plugin is really installed, else null */
@@ -1178,7 +1176,7 @@ export function claudePluginStatus({ home = os.homedir() } = {}) {
 function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false } = {}) {
   step(
     'Wiring the Claude Code plugin',
-    'this registers search_ruvnet + the grounding hook so Claude uses the brain automatically',
+    'this registers search_ruvnet, native skills, and slash commands without automatic lifecycle hooks',
   );
   const marketplaceSource = process.env.RUVNET_CLAUDE_MARKETPLACE_SOURCE || 'stuinfla/ruvnet-brain';
   const manualMarketplace = `claude plugin marketplace add ${marketplaceSource}`;
@@ -1214,7 +1212,8 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
   // code says the command ran, not that the plugin is usable; the commands either exist on disk or
   // they do not. This is the difference between `/rvbc` working and "Unknown command: /rvbc".
   const installed = claudePluginStatus();
-  if (installed.installed && versionSatisfies(installed.version, expectedVersion)) {
+  const installedHookRetirement = claudeInstalledHookRetirementStatus({ plugin: installed });
+  if (installed.installed && versionSatisfies(installed.version, expectedVersion) && installedHookRetirement.ok) {
     ok(`plugin installed at user scope (global, alongside Ruflo / RuVector) — exact version ${installed.version}`);
     info(`  commands available after a restart: ${c.bold('/rvbc')}, ${c.bold('/ruvnet-brain:configure')}`);
     return { host: true, wired: true, version: installed.version, manualMarketplace, manualInstall };
@@ -1223,18 +1222,21 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
   // The honest failure. The brain still WORKS — this is the difference between a broken install and
   // a partial one, and the user is told exactly which they have instead of being congratulated.
   const mismatch = installed.installed && !versionSatisfies(installed.version, expectedVersion);
-  warn(mismatch
-    ? `Claude installed ${installed.version || 'an unknown version'}, not required ${expectedVersion}; refusing to call this host converged.`
-    : `the plugin did NOT land — so slash commands like ${c.bold('/rvbc')} will not exist yet.`);
+  const staleHooks = installed.installed && !installedHookRetirement.ok;
+  warn(staleHooks
+    ? `Claude installed the plugin with ${installedHookRetirement.registrations.length} retired lifecycle registration(s); refusing to call this host converged.`
+    : mismatch
+      ? `Claude installed ${installed.version || 'an unknown version'}, not required ${expectedVersion}; refusing to call this host converged.`
+      : `the plugin did NOT land — so slash commands like ${c.bold('/rvbc')} will not exist yet.`);
   info(`${c.green('Your brain still works')}: search_ruvnet is wired and Claude will ground answers with it.`);
-  info(`Only the plugin extras (slash commands, the Console, the grounding hook) are missing.`);
+  info(`Only the plugin extras (slash commands, the Console, skills, and MCP declaration) are missing.`);
   info(`Run these two yourself to finish:`);
   info(`  ${c.bold(manualMarketplace)}`);
   info(`  ${c.bold(manualInstall)}`);
   return {
     host: true,
     wired: false,
-    action: mismatch ? 'verification-failed' : 'install-failed',
+    action: staleHooks ? 'unexpected-runtime-hooks' : mismatch ? 'verification-failed' : 'install-failed',
     expectedVersion,
     version: installed.version,
     manualMarketplace,
@@ -1454,8 +1456,6 @@ export function wireCodexHost({
   configPath = path.join(codexDir, 'config.toml'),
   serverDir = codexServerDir(),
   source = path.join(__dirname, '..', 'plugin', 'mcp', 'server.mjs'),
-  hookWrapperSource = path.join(__dirname, '..', 'plugin', 'scripts', 'codex-hook-wrapper.mjs'),
-  runtimePreferencesSource = path.join(__dirname, '..', 'plugin', 'scripts', 'runtime-preferences.mjs'),
   hookWrapperPath = codexHookWrapperPath(codexDir),
   announce = true,
 } = {}) {
@@ -1512,14 +1512,26 @@ export function wireCodexHost({
     atomicReplace(target, (tmp) => fs.copyFileSync(dep.from, tmp));
   }
   atomicReplace(serverPath, (tmp) => fs.copyFileSync(source, tmp));
-  if (fs.existsSync(hookWrapperSource)) {
-    fs.mkdirSync(path.dirname(hookWrapperPath), { recursive: true });
-    const maintenanceSource = path.join(path.dirname(hookWrapperSource), 'development-maintenance.mjs');
-    if (fs.existsSync(maintenanceSource)) {
-      const maintenancePath = path.join(path.dirname(hookWrapperPath), 'development-maintenance.mjs');
-      atomicReplace(maintenancePath, (tmp) => fs.copyFileSync(maintenanceSource, tmp));
+  retireManagedHookRegistrations({ home: path.dirname(codexDir), codexDir, wrapperPath: hookWrapperPath });
+  // Versions through 4.3.10 copied a durable hook bridge outside the versioned plugin cache. An
+  // already-running Codex session may still hold old registrations, so removing this exact
+  // installer-owned file makes those frozen callbacks fail open immediately. The source adapter is
+  // retained in the package for audit and possible explicit tooling; it is never installed here.
+  let retiredHookWrapper = false;
+  try {
+    let wrapperStat = null;
+    try { wrapperStat = fs.lstatSync(hookWrapperPath); }
+    catch (error) { if (error?.code !== 'ENOENT') throw error; }
+    if (wrapperStat) {
+      if (!wrapperStat.isFile() && !wrapperStat.isSymbolicLink()) {
+        throw new Error('installer-owned wrapper path is not a regular file or symlink');
+      }
+      fs.unlinkSync(hookWrapperPath);
+      retiredHookWrapper = true;
     }
-    atomicReplace(hookWrapperPath, (tmp) => fs.copyFileSync(hookWrapperSource, tmp));
+  } catch (error) {
+    if (announce) warn(`could not retire the legacy Codex hook wrapper at ${hookWrapperPath}: ${error.message}`);
+    return { host: true, action: 'legacy-hook-retirement-failed', error: error.message };
   }
 
   let before = '';
@@ -1530,7 +1542,7 @@ export function wireCodexHost({
       ok('Codex already declares ruvnet-brain in your own config — left exactly as you wrote it');
       info(`  to hand it to us instead, delete that ${c.bold('[mcp_servers.ruvnet-brain]')} block and re-run this installer`);
     }
-    return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath, hookWrapperPath };
+    return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath, retiredHookWrapper };
   }
   if (text !== before) {
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
@@ -1541,7 +1553,7 @@ export function wireCodexHost({
     info(`  server: ${serverPath} ${c.dim('(persistent copy — the npx dir vanishes)')}`);
     info(`  ${c.dim('only our marked block is written; every other section is byte-preserved')}`);
   }
-  return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath, hookWrapperPath, changed: text !== before };
+  return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath, retiredHookWrapper, changed: text !== before };
 }
 
 const CODEX_PLUGIN_ID = 'ruvnet-brain@ruvnet-brain';
@@ -1777,12 +1789,11 @@ export function classifyCodexLifecycle(plugin, listed = null) {
   const hooks = groups.flatMap((group) => Array.isArray(group?.hooks) ? group.hooks : [])
     .filter((hook) => hook?.pluginId === CODEX_PLUGIN_ID);
   const errors = groups.flatMap((group) => Array.isArray(group?.errors) ? group.errors : []);
-  if (errors.length || hooks.length === 0) {
+  if (errors.length) {
     return { state: 'missing-runtime-hooks', plugin, hooks, errors };
   }
-  if (hooks.some((hook) => hook.enabled === false)) return { state: 'disabled', plugin, hooks, errors };
-  if (hooks.every((hook) => hook.trustStatus === 'trusted')) return { state: 'active', plugin, hooks, errors };
-  return { state: 'pending-trust', plugin, hooks, errors };
+  if (hooks.length === 0) return { state: 'inactive-by-design', plugin, hooks, errors };
+  return { state: 'unexpected-runtime-hooks', plugin, hooks, errors };
 }
 
 export async function codexLifecycleStatus(options = {}) {
@@ -1796,37 +1807,37 @@ export async function codexLifecycleStatus(options = {}) {
 export function codexLifecycleGuidance(status) {
   const hookCount = Array.isArray(status?.hooks) ? status.hooks.length : 0;
   switch (status?.state) {
-    case 'active':
-      return {
-        healthy: true,
-        intentional: false,
-        summary: `Codex lifecycle active (${hookCount} Brain hook${hookCount === 1 ? '' : 's'} enabled and trusted).`,
-        detail: 'Proactive grounding, routing, learning capture, and session continuity are on.',
-        action: null,
-      };
-    case 'pending-trust':
+    case 'unexpected-runtime-hooks':
       return {
         healthy: false,
         intentional: false,
-        summary: `Codex installed the Brain, but ${hookCount || 'its'} lifecycle hook${hookCount === 1 ? '' : 's'} await review.`,
-        detail: 'Search works now; proactive interventions start after Codex records hook trust.',
-        action: `Start a fresh Codex session, run /hooks, and trust only ${CODEX_PLUGIN_ID}.`,
+        summary: `Codex still exposes ${hookCount} retired Brain lifecycle hook${hookCount === 1 ? '' : 's'}.`,
+        detail: 'Any Brain-owned runtime registration is stale and must not be trusted or executed.',
+        action: `Upgrade ${CODEX_PLUGIN_ID}, then start a fresh Codex session and re-run --doctor.`,
+      };
+    case 'inactive-by-design':
+      return {
+        healthy: true,
+        intentional: true,
+        summary: 'Codex Brain automatic lifecycle hooks are inactive by design.',
+        detail: 'MCP search, skills, slash commands, and explicit proof workflows remain available.',
+        action: null,
       };
     case 'disabled':
       return {
         healthy: false,
         intentional: true,
-        summary: 'Codex Brain lifecycle is disabled.',
-        detail: 'The installer preserved your explicit disabled state instead of silently overriding it.',
+        summary: 'Codex Brain plugin is disabled.',
+        detail: 'The installer preserved your explicit disabled state instead of silently overriding it; no Brain lifecycle hook can run.',
         action: null,
       };
     case 'not-installed':
       return {
         healthy: false,
         intentional: false,
-        summary: 'Codex can reach the Brain MCP, but the proactive lifecycle plugin is not installed.',
-        detail: 'Questions can still be grounded; automatic routing, learning, and session guidance are inactive.',
-        action: 'Run npx ruvnet-brain to install and verify the Codex lifecycle plugin.',
+        summary: 'Codex can reach the Brain MCP, but the Brain plugin is not installed.',
+        detail: 'MCP search remains available; skills and explicit plugin workflows are not installed.',
+        action: 'Run npx ruvnet-brain to install and verify the Codex plugin.',
       };
     case 'missing-runtime-hooks':
       return {
@@ -1847,6 +1858,168 @@ export function codexLifecycleGuidance(status) {
         action: 'Run npx ruvnet-brain --doctor after confirming codex is on PATH.',
       };
   }
+}
+
+// Remove only explicit Brain ownership or the exact installer-owned durable bridge.
+// Foreign commands, mixed command strings, unknown shapes, and their surrounding settings survive.
+export function retireManagedHookRegistrations({ home = os.homedir(), codexDir = codexHomeDir(),
+  files = [path.join(home, '.claude', 'settings.json'), path.join(home, '.claude', 'settings.local.json'),
+    path.join(codexDir, 'hooks.json')], wrapperPath = codexHookWrapperPath(codexDir) } = {}) {
+  let removed = 0;
+  const changedFiles = [];
+  const owns = (hook) => {
+    if (hook?.pluginId === 'ruvnet-brain@ruvnet-brain') return true;
+    const command = hook?.command;
+    if (typeof command !== 'string' || /[;&|`\n\r]/.test(command)) return false;
+    const tokens = command.match(/"[^"]*"|'[^']*'|[^\s]+/g) || [];
+    const values = tokens.map((token) => token.replace(/^["']|["']$/g, ''));
+    return values.length >= 2 && /(?:^|[/\\])node(?:\.exe)?$/.test(values[0])
+      && values[1] === wrapperPath;
+  };
+  for (const file of files) {
+    let before;
+    try { before = fs.readFileSync(file, 'utf8'); } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    const document = JSON.parse(before);
+    if (!document.hooks || typeof document.hooks !== 'object' || Array.isArray(document.hooks)) continue;
+    let count = 0;
+    for (const [event, groups] of Object.entries(document.hooks)) {
+      if (!Array.isArray(groups)) continue;
+      document.hooks[event] = groups.flatMap((group) => {
+        if (!Array.isArray(group?.hooks)) return [group];
+        const hooks = group.hooks.filter((hook) => { if (!owns(hook)) return true; count++; return false; });
+        return hooks.length || group.hooks.length === 0 ? [{ ...group, hooks }] : [];
+      });
+      if (groups.length && document.hooks[event].length === 0) delete document.hooks[event];
+    }
+    if (!count) continue;
+    atomicReplace(file, (temp) => fs.writeFileSync(temp, JSON.stringify(document, null, 2) + '\n'));
+    removed += count;
+    changedFiles.push(file);
+  }
+  return { removed, changedFiles };
+}
+
+export function automaticHookRetirementStatus(root = REPO_ROOT, { scope = 'source' } = {}) {
+  if (!['source', 'installed'].includes(scope)) throw new Error('invalid hook retirement scope');
+  const files = [
+    'plugin/hooks/hooks.json',
+    'plugin/hooks/codex-hooks.json',
+    ...(scope === 'source' ? ['.claude/settings.json', '.codex/hooks.json'] : []),
+  ];
+  const pointerContracts = [
+    ['plugin/.codex-plugin/plugin.json', 'hooks', './hooks/codex-hooks.json'],
+    ['plugin/host-adapters/codex.json', 'hooks', 'plugin/hooks/codex-hooks.json'],
+    ['plugin/host-adapters/claude.json', 'hooks', 'plugin/hooks/hooks.json'],
+  ];
+  const registrations = [];
+  const errors = [];
+  const checkedFiles = [...files];
+  for (const relative of files) {
+    try {
+      const doc = JSON.parse(fs.readFileSync(path.join(root, relative), 'utf8'));
+      if (!doc?.hooks || typeof doc.hooks !== 'object' || Array.isArray(doc.hooks)) {
+        errors.push(`${relative}: hooks must be an object`);
+        continue;
+      }
+      for (const [event, groups] of Object.entries(doc.hooks)) {
+        if (!Array.isArray(groups)) {
+          errors.push(`${relative}: ${event} must be an array`);
+          continue;
+        }
+        errors.push(`${relative}: retired registry must not declare event ${event}`);
+        for (const [groupIndex, group] of groups.entries()) {
+          if (!group || typeof group !== 'object' || Array.isArray(group) || !Array.isArray(group.hooks)) {
+            errors.push(`${relative}: ${event}[${groupIndex}].hooks must be an array`);
+            continue;
+          }
+          for (const hook of group.hooks) {
+            registrations.push({ file: relative, event, command: String(hook?.command || '') });
+          }
+        }
+      }
+    } catch (error) {
+      errors.push(`${relative}: ${error.message}`);
+    }
+  }
+  try {
+    const contractsFile = 'plugin/hooks/hook-contracts.json';
+    const contracts = JSON.parse(fs.readFileSync(path.join(root, contractsFile), 'utf8'));
+    checkedFiles.push(contractsFile);
+    if (!Array.isArray(contracts.contracts) || contracts.contracts.length !== 0) {
+      errors.push(`${contractsFile}: contracts must be an empty array`);
+    }
+    if (!Array.isArray(contracts.matcherAllowlist) || contracts.matcherAllowlist.length !== 0) {
+      errors.push(`${contractsFile}: matcherAllowlist must be an empty array`);
+    }
+  } catch (error) {
+    errors.push(`plugin/hooks/hook-contracts.json: ${error.message}`);
+  }
+  for (const [relative, field, expected] of pointerContracts) {
+    try {
+      const doc = JSON.parse(fs.readFileSync(path.join(root, relative), 'utf8'));
+      checkedFiles.push(relative);
+      if (doc?.[field] !== expected) errors.push(`${relative}: ${field} must equal ${expected}`);
+    } catch (error) {
+      errors.push(`${relative}: ${error.message}`);
+    }
+  }
+  return { ok: errors.length === 0 && registrations.length === 0, files: checkedFiles, registrations, errors };
+}
+
+export function claudeInstalledHookRetirementStatus({ home = os.homedir(), plugin: suppliedPlugin = null } = {}) {
+  const plugin = suppliedPlugin ?? claudePluginStatus({ home });
+  if (!plugin.managed && !plugin.installed) {
+    return { ok: true, state: 'not-installed', plugin, file: null, registrations: [], errors: [] };
+  }
+  if (!plugin.installed || !plugin.installPath) {
+    return {
+      ok: false,
+      state: 'installed-state-invalid',
+      plugin,
+      file: null,
+      registrations: [],
+      errors: [plugin.error || 'Claude Brain plugin registry record does not resolve to a managed install'],
+    };
+  }
+  const file = path.join(plugin.installPath, 'hooks', 'hooks.json');
+  const registrations = [];
+  const errors = [];
+  try {
+    const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!doc?.hooks || typeof doc.hooks !== 'object' || Array.isArray(doc.hooks)) {
+      errors.push('installed Claude hooks must be an object');
+    } else {
+      for (const [event, groups] of Object.entries(doc.hooks)) {
+        errors.push(`installed Claude registry must not declare event ${event}`);
+        if (!Array.isArray(groups)) {
+          errors.push(`installed Claude ${event} must be an array`);
+          continue;
+        }
+        for (const [groupIndex, group] of groups.entries()) {
+          if (!group || typeof group !== 'object' || Array.isArray(group) || !Array.isArray(group.hooks)) {
+            errors.push(`installed Claude ${event}[${groupIndex}].hooks must be an array`);
+            continue;
+          }
+          for (const hook of group.hooks) {
+            registrations.push({ file, event, command: String(hook?.command || '') });
+          }
+        }
+      }
+    }
+  } catch (error) {
+    errors.push(`installed Claude hooks: ${error.message}`);
+  }
+  return {
+    ok: errors.length === 0 && registrations.length === 0,
+    state: errors.length === 0 && registrations.length === 0 ? 'inactive-by-design' : 'unexpected-runtime-hooks',
+    plugin,
+    file,
+    registrations,
+    errors,
+  };
 }
 
 function printCodexLifecycle(status) {
@@ -2133,7 +2306,7 @@ async function runDemo() {
   } catch { /* informational only */ }
 
   console.log(`\n  Now try it for real: open Claude Code in any project and ask it something about`);
-  console.log(`  RuVector, Ruflo, AgentDB, or SPARC — it'll ground the same way, automatically.`);
+  console.log(`  RuVector, Ruflo, AgentDB, or SPARC — use ${c.bold('search_ruvnet')} when you need source grounding.`);
   console.log(`  Run this demo again any time:  ${c.bold('npx ruvnet-brain --demo')}`);
   console.log(`  Full health check:              ${c.bold('npx ruvnet-brain --doctor')}\n`);
 }
@@ -2347,23 +2520,33 @@ async function doctor() {
       console.log(`      window and it's there. ${c.bold('No reinstall per project. No second download.')} One brain, shared.`);
     }
     console.log(`    • ${c.bold('Nothing to git-ignore')} in your projects — it drops zero files into your working repos.`);
-    console.log(`    • ${c.bold('To use it:')} just ask Claude about rUv's stack (RuVector, Ruflo, AgentDB, SPARC…) — it`);
-    console.log(`      grounds the answer automatically and takes the lead on builds. You don't invoke anything.`);
-    console.log(`    • ${c.bold("To know it's on:")} a fresh session greets you with "🧠 RuvNet Brain active". Or run this`);
-    console.log(`      ${c.bold('--doctor')} command any time.`);
+    console.log(`    • ${c.bold('To use it:')} invoke ${c.bold('search_ruvnet')} or a Brain skill when source-grounded`);
+    console.log('      RuvNet context is needed. Nothing is injected into an ordinary turn automatically.');
+    console.log(`    • ${c.bold("To know it's available:")} run this ${c.bold('--doctor')} command any time; no Brain lifecycle`);
+    console.log(`      hook should fire automatically.`);
   }
   console.log(
     c.dim('\n  Heads-up: a window that was ALREADY open when you installed needs a restart to pick it up;\n  newly-opened windows are fine.\n'),
   );
 
   // ── THE MECHANICAL VERDICT ────────────────────────────────────────────────────────────────────
-  // `--hooks` additionally fires every registration in the INSTALLED hooks.json through the real
-  // shim under the four stdin regimes. Opt-in because it spawns real hooks; plain --doctor stays a
-  // pure read that anyone can run without side effects.
+  // `--hooks` is retained as a compatibility alias for a read-only zero-registration proof. It must
+  // never execute dormant hook bodies.
   let hookResult = null;
   if (FLAG_HOOKS) {
-    console.log(`  ${c.dim('── hook battery (installed hooks.json, four stdin regimes, external watchdog) ──')}`);
-    hookResult = await runSelfCheck({ installState: { repos: v.repos, reader: v.reader, mcp: v.mcp } });
+    const retirement = automaticHookRetirementStatus(REPO_ROOT, { scope: 'installed' });
+    const installedClaude = claudeInstalledHookRetirementStatus();
+    const hookOk = retirement.ok && installedClaude.ok;
+    hookResult = { exitCode: hookOk ? 0 : 1 };
+    console.log(`  ${hookOk ? c.green('✓') : c.red('✗')} automatic Brain hook retirement: ${retirement.registrations.length + installedClaude.registrations.length} registration(s), ${retirement.errors.length + installedClaude.errors.length} manifest error(s)`);
+    for (const error of retirement.errors) console.log(`    ${error}`);
+    for (const error of installedClaude.errors) console.log(`    ${error}`);
+    for (const registration of retirement.registrations) {
+      console.log(`    ${registration.file} ${registration.event}: ${registration.command || '(empty command)'}`);
+    }
+    for (const registration of installedClaude.registrations) {
+      console.log(`    ${registration.file} ${registration.event}: ${registration.command || '(empty command)'}`);
+    }
   }
 
   // ── THE PERSISTED GROUNDING VERDICT (ADR-058 §D8) — synchronize stronger live proof first ───────
@@ -2436,7 +2619,7 @@ async function runSelfCheck({ installState = null, quiet = false } = {}) {
     mod = await import(new URL('../scripts/selfcheck.mjs', import.meta.url).href);
   } catch (e) {
     warn(`self-check could not run (${e && e.message}) — this install has NOT been verified end to end`);
-    return { exitCode: FLAG_DOCTOR_HOOKS ? 1 : 0, violations: [], lines: [], unavailable: true };
+    return { exitCode: FLAG_HOOKS ? 1 : 0, violations: [], lines: [], unavailable: true };
   }
   const result = await mod.selfCheck({ installState, security: true });
   if (!quiet || result.violations.length) console.log(mod.formatVerdict(result, { color: c }));
@@ -2700,12 +2883,16 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   };
 
   try {
+    if (wireClaude === wirePlugin) results.hookRetirement = retireManagedHookRegistrations();
     results.claude = wireClaude === wirePlugin
       ? wirePlugin({ expectedVersion: PACKAGE_VERSION, requireManaged: true })
       : wireClaude({ expectedVersion: PACKAGE_VERSION, requireManaged: true });
     if (results.claude.host && !results.claude.wired) return fail();
     results.codexHost = detectCodexHost();
     if (results.codexHost.host) {
+      if (!['added', 'rewritten', 'unchanged', 'user-owned'].includes(results.codexHost.action)) {
+        return fail({ error: `Codex host convergence failed: ${results.codexHost.action || 'unknown action'}` });
+      }
       results.codex = installCodexPlugin({ expectedVersion: PACKAGE_VERSION });
       if (!['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
         return fail();
@@ -3299,8 +3486,8 @@ export function machineFootprint() {
         undo: 'npx ruvnet-brain --uninstall (removes only the managed block)',
       });
     }
-    add('Codex lifecycle hook wrapper', codexHookWrapperPath(),
-      'npx ruvnet-brain --uninstall');
+    add('Legacy Codex lifecycle hook wrapper', codexHookWrapperPath(),
+      're-run npx ruvnet-brain to retire it, or use --uninstall');
     add('Codex MCP server files', codexServerDir(), 'npx ruvnet-brain --uninstall');
     const codexPlugin = codexPluginStatus();
     if (codexPlugin.installed) {
@@ -3414,7 +3601,7 @@ function uninstallAll() {
     // Two gaps closed here: the statusLine KEY is now removable in place (we know exactly what we
     // wrote — see removeSettingsStatusLine()), and the upgrade-notice tracker is a file we fully own.
     'The statusLine entry in settings.json', 'Upgrade-notice state (release-notice tracking)',
-    'The Codex search_ruvnet MCP registration', 'Codex lifecycle hook wrapper',
+    'The Codex search_ruvnet MCP registration', 'Legacy Codex lifecycle hook wrapper',
     'Codex MCP server files']);
   const willRemove = before.filter((it) => AUTO.has(it.label));
   const manual = before.filter((it) => !AUTO.has(it.label));
@@ -3484,7 +3671,7 @@ function uninstallAll() {
     ['upgrade-notice state', upgradeNoticeStatePath()],
     // ADR-054 §5: a reinstall must never inherit an invisible OFF. See brainOffSentinelPath().
     ['brain on/off switch', brainOffSentinelPath()],
-    ['Codex lifecycle hook wrapper', codexHookWrapperPath()],
+    ['legacy Codex lifecycle hook wrapper', codexHookWrapperPath()],
     ['Codex MCP server files', codexServerDir()],
   ]) {
     if (!fs.existsSync(target)) continue;
@@ -4497,7 +4684,7 @@ function success({ cacheDir, isCustom, plugin, codexHost, codexPlugin, env, nigh
   console.log(`    • the brain (embedded source of ${installedRepoCount(cacheDir)} RuvNet repos) at:`);
   console.log(`        ${c.bold(cacheDir)}`);
   console.log(
-    `    • the Claude Code plugin ${plugin.wired ? c.green('wired at user scope') : c.yellow('(finish the 2 commands above)')} — search_ruvnet + grounding hook`,
+    `    • the Claude Code plugin ${plugin.wired ? c.green('wired at user scope') : c.yellow('(finish the 2 commands above)')} — search_ruvnet + skills + commands`,
   );
   if (codexHost?.host) {
     const hostReady = ['added', 'rewritten', 'user-owned'].includes(codexHost.action);
@@ -4520,14 +4707,15 @@ function success({ cacheDir, isCustom, plugin, codexHost, codexPlugin, env, nigh
   console.log(`\n  ${c.bold('Where it runs:')} ${c.bold(`everywhere you use ${hostLabel}`)} — CLI and supported editor/desktop surfaces.`);
   console.log(`    It's ${c.bold('user-level (global)')}: open ANY repo or folder and it's already there. Nothing per project,`);
   console.log(`    nothing to copy in, nothing to git-ignore. ${c.dim('(Runs locally — it is not active in the claude.ai web app.)')}`);
-  console.log(`\n  ${c.bold('How it runs:')} ${c.bold('automatically')} — you never call or configure anything. Ask normally; on rUv-stack work it`);
-  console.log(`    grounds in real source and cites it, and if you drift to a classical default it steps in with the rUv option.`);
+  console.log(`\n  ${c.bold('How it runs:')} ${c.bold('explicitly')} — use search_ruvnet, a Brain skill, or a proof command when you want`);
+  console.log(`    source-grounded RuvNet context. Brain code does not run on host lifecycle events.`);
   console.log(`\n  ${c.bold('Keep it fresh:')} re-run ${c.bold('npx ruvnet-brain')} any time — the brain itself always pulls the latest`);
   console.log(`  Release regardless (that part isn't cached). For the bleeding-edge installer too, use ${c.bold('npx github:stuinfla/ruvnet-brain')}.`);
 
-  // ── one important expectation: the hook activates on the NEXT session ──
-  console.log(`\n  ${c.yellow(c.bold('One thing to know:'))} lifecycle hooks turn on in your ${c.bold('next')} host session.`);
-  console.log(`  ${c.dim(`If ${hostLabel} is open right now, quit and reopen it so the new plugin snapshot loads.`)}`);
+  // Hosts cache plugin registries for the lifetime of a session. A restart is therefore required to
+  // unload callbacks from an older hook-bearing generation even though this version registers none.
+  console.log(`\n  ${c.yellow(c.bold('One required cleanup step:'))} restart any ${hostLabel} window that was open before this update.`);
+  console.log(`  ${c.dim('That unloads the old in-memory hook registry; new sessions load the intentional empty registry.')}`);
 
   // ── what to do now ──
   console.log(`\n  ${c.bold('What to do now:')}`);
@@ -4537,19 +4725,19 @@ function success({ cacheDir, isCustom, plugin, codexHost, codexPlugin, env, nigh
 
   // ── how you'll KNOW it's working ──
   console.log(`\n  ${c.bold('How you\'ll know it\'s working:')}`);
-  console.log(`    ${c.green('✓')} Claude reaches for ${c.bold('RuVector / RVF, Ruflo, AgentDB')} instead of Pinecone / pgvector / LangChain.`);
-  console.log(`    ${c.green('✓')} It ${c.bold('cites real source paths')} (it calls ${c.bold('search_ruvnet')}) instead of guessing.`);
-  console.log(`    ${c.green('✓')} If you start to drift to a generic default, the brain ${c.bold('steps in')} and points you back.`);
+  console.log(`    ${c.green('✓')} ${c.bold('search_ruvnet')} returns cited source paths when invoked.`);
+  console.log(`    ${c.green('✓')} Brain skills and slash commands remain available.`);
+  console.log(`    ${c.green('✓')} ${c.bold('No Brain hook message or tool-call refusal appears by itself.')}`);
 
   // ── honest expectations ──
   console.log(`\n  ${c.bold('What to expect (honestly):')}`);
-  console.log(`    • On rUv-stack work (vectors, swarms, agent memory, SPARC) it grounds ${c.bold('every time')}.`);
-  console.log(`    • On unrelated work, it stays quiet — Claude behaves normally. It only speaks up when it should.`);
+  console.log(`    • Grounding is available on demand; it is no longer injected into every turn.`);
+  console.log(`    • Host work proceeds normally unless you explicitly invoke a Brain command or skill.`);
   console.log(`    • Not sure it's on?  Run  ${c.bold('npx ruvnet-brain --doctor')}  any time for a health check.
     • Want to see it answer, live, right now?  ${c.bold('npx ruvnet-brain --demo')}  — 2 real questions, real cited answers.`);
 
-  console.log(`\n  ${c.bold('Set it up your way:')} this default is ${c.bold('global')} — live in every VS Code project automatically,`);
-  console.log(`    which is what most people want. Want it different (project-only, moved, with the build stack`);
+  console.log(`\n  ${c.bold('Set it up your way:')} this default is ${c.bold('global')} — MCP, skills, and commands are available in every project,`);
+  console.log(`    but they run only when invoked. Want it different (project-only, moved, with the build stack`);
   console.log(`    added)? ${c.bold('Just tell Claude')} once it's on. You never have to learn its internals.`);
 
   if (nightly === 'enabled' || nightly === 'already-on') {
@@ -4570,7 +4758,7 @@ function success({ cacheDir, isCustom, plugin, codexHost, codexPlugin, env, nigh
   console.log(`\n  ${c.bold('If it earns it:')} a GitHub star helps other people find the brain —`);
   console.log(`    ${c.bold('https://github.com/stuinfla/ruvnet-brain')}   ${c.dim('· feedback in one command: npx ruvnet-brain --feedback')}`);
 
-  console.log(`\n  ${c.dim('You can\'t break anything — the plugin is disable-able and only acts on RuvNet-shaped work.')}`);
+  console.log(`\n  ${c.dim('The plugin is disable-able and installs no automatic lifecycle handlers.')}`);
   console.log('');
 }
 
@@ -4588,12 +4776,8 @@ Usage:
                               EXITS NON-ZERO when the install is genuinely broken, so it can gate a
                               script:  npx ruvnet-brain --doctor && ./deploy.sh
   npx ruvnet-brain --doctor --hooks
-                              …and additionally fire every hook this plugin registered on THIS
-                              machine through the real shim under four stdin regimes (valid event
-                              JSON, empty EOF, 1MB garbage, and stdin held open past budget), with an
-                              external process-group watchdog. Asserts each hook's declared exit
-                              codes, a 4KB stdout cap, its declared timeout with margin, and zero
-                              surviving descendants. Your own hooks are listed, never executed.
+                              Backward-compatible, read-only proof that both shipped Brain hook
+                              manifests contain zero automatic registrations. Executes no hook body.
   npx ruvnet-brain --demo     Guided walkthrough — 2 real questions, real cited answers
   npx ruvnet-brain --feedback Tell us how it went — prefills a GitHub Discussion with your brain
                               version, platform, and a 3-line health summary (you see exactly
@@ -4639,7 +4823,8 @@ Env:
                         download or an air-gapped machine is not a broken install). Only ever set
                         this for a locked-down environment where you want to know immediately.
 
-It is safe to re-run at any time. After installing, restart Claude Code so the grounding hook loads.
+It is safe to re-run at any time. After updating from a hook-bearing version, restart open hosts so
+their old in-memory hook registries unload.
 `);
 }
 
@@ -4829,6 +5014,7 @@ It is safe to re-run at any time. After installing, restart Claude Code so the g
       `The knowledge base is present, but /rvbc would be broken. Re-run the installer from a complete package.`,
     );
   }
+  retireManagedHookRegistrations();
   const plugin = wirePlugin();
   // Codex hosts got nothing before this (issue #42): shipped, never registered. Non-fatal like every
   // other wiring step — a second host we cannot reach must never break the one we can.
@@ -4935,16 +5121,14 @@ It is safe to re-run at any time. After installing, restart Claude Code so the g
   //
   //    "Never block a healthy install" is honoured literally: a healthy install still exits 0 and
   //    nothing above this point is undone. What changes is that a genuinely broken install can no
-  //    longer masquerade as a successful one to a script. The user's OWN hooks and third-party
-  //    plugins are enumerated and reported but NEVER charged against them — only registrations this
-  //    package ships can make this fail.
+  //    longer masquerade as a successful one to a script. No Brain automatic hook is executed.
   if (!FLAG_NO_SELFCHECK) {
     const selfcheck = await runSelfCheck({
       installState: verified ? { repos: verified.repos, reader: verified.reader, mcp: verified.mcp } : null,
       quiet: true,
     });
     if (selfcheck.exitCode !== 0) {
-      console.log(`\n  ${c.dim(`Re-run  ${c.bold('npx ruvnet-brain --doctor --hooks')}  after fixing, to re-check.`)}`);
+      console.log(`\n  ${c.dim(`Re-run  ${c.bold('npx ruvnet-brain --doctor')}  after fixing, to re-check.`)}`);
       process.exitCode = selfcheck.exitCode;
     }
   }

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto';
+import { validateQualificationReceipt } from './release-qualification.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,10 +59,19 @@ export function buildIntegrationEvidence(report, { sourceSha, runId, runAttempt 
   };
 }
 
+export const RELEASE_QUALIFICATION_POLICY = 'reviewed-release-integration-v1';
+export function buildQualifiedIntegrationEvidence(report, identity) {
+  validateQualificationReceipt(report, { suite: 'integration', platform: 'linux', sourceSha: identity.sourceSha });
+  const evidence = buildIntegrationEvidence(report.testReport, identity);
+  return { ...evidence, exclusionPolicy: RELEASE_QUALIFICATION_POLICY,
+    qualificationReceiptSha256: report.receiptSha256, requirements: report.requirements };
+}
+
 const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isCli) {
   const value = (name) => process.argv[process.argv.indexOf(name) + 1];
-  const receipt = buildIntegrationEvidence(JSON.parse(fs.readFileSync(value('--report'), 'utf8')), {
+  const build = process.argv.includes('--qualified') ? buildQualifiedIntegrationEvidence : buildIntegrationEvidence;
+  const receipt = build(JSON.parse(fs.readFileSync(value('--report'), 'utf8')), {
     sourceSha: value('--sha'), runId: value('--run-id'), runAttempt: value('--run-attempt'),
   });
   fs.writeFileSync(value('--out'), `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx' });

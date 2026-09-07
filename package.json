@@ -61,7 +61,9 @@
     "status:check": "node scripts/status-honesty.mjs",
     "cap:collect": "node scripts/rerank-cap-eval.mjs --collect",
     "cap:report": "node scripts/rerank-cap-eval.mjs --report",
-    "cap:ab": "node scripts/rerank-cap-warm-ab.mjs"
+    "cap:ab": "node scripts/rerank-cap-warm-ab.mjs",
+    "hooks:check": "node scripts/hook-retirement-check.mjs",
+    "release:qualify": "node scripts/release-qualification.mjs"
   },
   "files": [
     ".claude-plugin/marketplace.json",

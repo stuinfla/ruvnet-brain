@@ -166,7 +166,7 @@ function fireRegisteredHeldOpen(command, home, payload, limitMs = 6_000) {
   });
 }
 
-describe('Codex lifecycle hook packaging', () => {
+describe.skip('HISTORICAL: Codex automatic lifecycle packaging before ADR-076 retirement', () => {
   it('ships a Codex manifest and schema-valid hook source without Claude-only metadata', () => {
     const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
     const hooks = JSON.parse(fs.readFileSync(HOOKS, 'utf8'));
@@ -422,6 +422,27 @@ describe('Codex lifecycle hook packaging', () => {
     expect(result.hookWrapperPath).toBe(wrapperPath);
     expect(fs.readFileSync(wrapperPath, 'utf8')).toBe(fs.readFileSync(WRAPPER, 'utf8'));
     expect(wrapperPath).not.toMatch(/plugins[\\/]cache|versions[\\/]/);
+  });
+});
+
+describe('retired Codex lifecycle packaging', () => {
+  it('keeps canonical host pointers while both shipped registries remain empty', () => {
+    const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+    const codex = JSON.parse(fs.readFileSync(HOOKS, 'utf8'));
+    const claude = JSON.parse(fs.readFileSync(CLAUDE_HOOKS, 'utf8'));
+    const project = JSON.parse(fs.readFileSync(path.join(ROOT, '.codex', 'hooks.json'), 'utf8'));
+
+    expect(manifest.hooks).toBe('./hooks/codex-hooks.json');
+    expect(manifest.mcpServers).toBe('./.mcp.json');
+    expect(codex.hooks).toEqual({});
+    expect(claude.hooks).toEqual({});
+    expect(project.hooks).toEqual({});
+  });
+
+  it('retains the adapter implementation as dormant source for deliberate rewiring', () => {
+    expect(fs.existsSync(WRAPPER)).toBe(true);
+    expect(fs.existsSync(ADAPTER)).toBe(true);
+    expect(manifestHandlers()).toEqual([]);
   });
 });
 

@@ -671,14 +671,10 @@ test('installer parses and still inlines the Ed25519 signing pubkey + verifyBund
   assert.match(src, /function\s+verifyBundle\s*\(/, 'the verifyBundle definition must remain');
 });
 
-// ── M-D8c (ADR-058 §D8): a hook that sleeps past its declared timeout, registered in a PACKED
-// hooks.json, makes the `--doctor --hooks` battery cell go RED end-to-end. tests/unit/selfcheck-
-// battery.test.mjs already proves fireHook()'s watchdog catches this at the unit level (a synthetic
-// "surface"); this proves the SAME thing through the real CLI entry point a stranger actually runs,
-// against a marketplace-clone-shaped surface laid out the way resolveInstalledSurface() expects —
-// the stranger-matrix workflow mutates the INSTALLED hooks.json the same way, so this is the fast,
-// local rehearsal of that exact CI cell.
-test('`--doctor --hooks` goes RED when a registered hook sleeps past its declared timeout', () => {
+// A stale installed registration must make `--doctor --hooks` red WITHOUT executing its body.
+// The registry-selected installPath is the exact payload Claude loads, so this test binds the
+// verdict to that path instead of a checkout or an arbitrary newest cache directory.
+test('`--doctor --hooks` goes RED when the selected installed plugin retains a hook', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-hook-timeout-'));
   const brainDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-hook-timeout-kb-'));
   try {
@@ -691,12 +687,18 @@ test('`--doctor --hooks` goes RED when a registered hook sleeps past its declare
     fs.writeFileSync(path.join(xen, 'package.json'), '{"name":"@xenova/transformers","version":"0.0.0-fixture"}\n');
     fs.mkdirSync(path.join(brainDir, 'node_modules', '@ruvector'), { recursive: true });
 
-    // The marketplace-clone-shaped plugin surface resolveInstalledSurface() looks for, seeded with
-    // ONE registration: the REAL hang.mjs fixture (synchronous stdin read — freezes the event loop,
-    // so only an EXTERNAL watchdog can catch it), timeout set short so the battery finishes fast.
-    const pluginRoot = path.join(home, '.claude', 'plugins', 'marketplaces', 'ruvnet-brain', 'plugin');
+    const pluginRoot = path.join(home, '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain', '9.9.9');
     fs.mkdirSync(path.join(pluginRoot, 'hooks'), { recursive: true });
+    fs.mkdirSync(path.join(pluginRoot, '.claude-plugin'), { recursive: true });
+    fs.mkdirSync(path.join(pluginRoot, 'commands'), { recursive: true });
     fs.mkdirSync(path.join(pluginRoot, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(pluginRoot, '.claude-plugin', 'plugin.json'), '{"name":"ruvnet-brain","version":"9.9.9"}\n');
+    fs.writeFileSync(path.join(pluginRoot, 'commands', 'rvbc.md'), '# fixture\n');
+    const registry = path.join(home, '.claude', 'plugins', 'installed_plugins.json');
+    fs.mkdirSync(path.dirname(registry), { recursive: true });
+    fs.writeFileSync(registry, JSON.stringify({
+      plugins: { 'ruvnet-brain@ruvnet-brain': [{ scope: 'user', version: '9.9.9', installPath: pluginRoot }] },
+    }));
     const hangFixture = path.join(ROOT, 'tests', 'fixtures', 'selfcheck-hooks', 'hang.mjs');
     fs.copyFileSync(hangFixture, path.join(pluginRoot, 'scripts', 'hang.mjs'));
     fs.writeFileSync(path.join(pluginRoot, 'scripts', 'hook-shim.mjs'), [
@@ -721,10 +723,10 @@ test('`--doctor --hooks` goes RED when a registered hook sleeps past its declare
     }, null, 2));
 
     const r = runInstaller(['--doctor', '--hooks'], { RUVNET_BRAIN_KB: brainDir, XDG_CACHE_HOME: path.join(home, '.cache'), HOME: home, USERPROFILE: home });
-    assertVerdict(r, 1, '--doctor --hooks (a sleeping hook must fail the battery)');
+    assertVerdict(r, 1, '--doctor --hooks (an installed hook must fail retirement)');
     const out = r.stdout || '';
-    assert.match(out, /hang/, `battery must report a hang violation; got:\n${out}`);
-    assert.match(out, /Self-check FAILED/, 'the mechanical verdict must say FAILED, not just print a warning');
+    assert.match(out, /UserPromptSubmit/, `retirement check must name the installed event; got:\n${out}`);
+    assert.doesNotMatch(out, /hang/, 'doctor must enumerate stale hooks without executing their bodies');
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(brainDir, { recursive: true, force: true });

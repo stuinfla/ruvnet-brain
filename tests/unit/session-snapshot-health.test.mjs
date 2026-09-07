@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('issue #85 — versioned compaction snapshot contract', () => {
-  it('ships a PreCompact producer that writes the same canonical receipt the Console validates', () => {
+  it('ships an explicit snapshot producer that writes the same canonical receipt the Console validates', () => {
     const project = temporary();
     // `.swarm/` IS THE OPT-IN, so the test must opt in like a real project does. This line used to
     // be absent and the assertion still passed, because the hook created `.swarm/` itself — which
@@ -37,9 +37,7 @@ describe('issue #85 — versioned compaction snapshot contract', () => {
     expect(probeMemory(project).compactionSurvival).toMatchObject({ status: 'ok', artifact: 'canonical' });
 
     const hooks = JSON.parse(fs.readFileSync(path.resolve('plugin/hooks/hooks.json'), 'utf8')).hooks;
-    const command = hooks.PreCompact.flatMap((group) => group.hooks)
-      .find((hook) => hook.command.includes('session-snapshot PreCompact'));
-    expect(command?.command).toMatch(/\|\| true$/);
+    expect(hooks).toEqual({});
   });
 
   it('TEETH: writes NOTHING into a project that never opted in — no .swarm, no receipt', () => {

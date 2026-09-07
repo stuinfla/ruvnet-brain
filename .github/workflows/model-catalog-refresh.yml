@@ -6,16 +6,6 @@ on:
   schedule:
     - cron: '13 9 * * 1'
   workflow_dispatch:
-    inputs:
-      mode:
-        description: Refresh facts, or verify the already-created immutable refresh commit
-        type: choice
-        options: [refresh, verify]
-        default: refresh
-      candidate_sha:
-        description: Required exact event SHA for verify mode
-        type: string
-        default: ''
 
 permissions:
   actions: write
@@ -28,7 +18,7 @@ concurrency:
 
 jobs:
   refresh:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.mode == 'refresh')
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -78,94 +68,7 @@ jobs:
           echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
 
-      - name: Request candidate verification and protected merge
-        if: steps.transaction.outputs.candidate_sha != ''
+      - name: Leave the maintenance PR for deliberate qualification
         env:
-          CANDIDATE_SHA: ${{ steps.transaction.outputs.candidate_sha }}
           PR_NUMBER: ${{ steps.transaction.outputs.pr_number }}
-        run: |
-          set -euo pipefail
-          # Token-created pushes do not start ordinary push QA; token-created PR runs can
-          # require approval. Self-dispatch gives reusable QA the candidate's event identity,
-          # not the scheduled main SHA. The verification guard rejects a moved branch.
-          gh workflow run model-catalog-refresh.yml --ref "$REFRESH_BRANCH" \
-            -f mode=verify -f candidate_sha="$CANDIDATE_SHA"
-          pr_number=$PR_NUMBER
-          if [ "$(gh pr view "$pr_number" --json autoMergeRequest --jq '.autoMergeRequest != null')" != "true" ]; then
-            gh pr merge "$pr_number" --auto --squash
-          fi
-
-  verify-identity:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'verify'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions:
-      contents: read
-    steps:
-      - name: Verify immutable caller identity
-        env:
-          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-          EVENT_SHA: ${{ github.sha }}
-          EVENT_REF: ${{ github.ref }}
-          EVENT_NAME: ${{ github.event_name }}
-          MODE: ${{ inputs.mode }}
-        run: |
-          set -euo pipefail
-          [[ "$MODE" == verify && "$EVENT_NAME" == workflow_dispatch ]]
-          [[ "$EVENT_REF" == refs/heads/automation/model-catalog-refresh ]]
-          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ && "$CANDIDATE_SHA" == "$EVENT_SHA" ]]
-
-  verify-ci:
-    needs: verify-identity
-    uses: ./.github/workflows/ci.yml
-    with:
-      candidate_sha: ${{ inputs.candidate_sha }}
-
-  verify-integration:
-    needs: verify-identity
-    uses: ./.github/workflows/integration-linux.yml
-    with:
-      candidate_sha: ${{ inputs.candidate_sha }}
-
-  verify-canonical:
-    needs: verify-identity
-    uses: ./.github/workflows/canonical-qa.yml
-    with:
-      candidate_sha: ${{ inputs.candidate_sha }}
-
-  # Reusable jobs have caller/callee display names. Preserve the exact required
-  # GitHub Actions contexts with native gates, not synthetic check-run API writes.
-  # Non-main manual runs must fail closed, not create skipped/successful required checks.
-  integration:
-    name: integration
-    if: always() && (inputs.mode == 'verify' || github.ref != 'refs/heads/main')
-    needs: [verify-identity, verify-ci, verify-integration]
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions: {}
-    steps:
-      - name: Require integration candidate QA
-        env:
-          IDENTITY_RESULT: ${{ needs.verify-identity.result }}
-          CI_RESULT: ${{ needs.verify-ci.result }}
-          QA_RESULT: ${{ needs.verify-integration.result }}
-        run: |
-          set -euo pipefail
-          [[ "$IDENTITY_RESULT" == success && "$CI_RESULT" == success && "$QA_RESULT" == success ]]
-
-  canonical-qa:
-    name: canonical-qa
-    if: always() && (inputs.mode == 'verify' || github.ref != 'refs/heads/main')
-    needs: [verify-identity, verify-ci, verify-canonical]
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions: {}
-    steps:
-      - name: Require canonical-qa candidate QA
-        env:
-          IDENTITY_RESULT: ${{ needs.verify-identity.result }}
-          CI_RESULT: ${{ needs.verify-ci.result }}
-          QA_RESULT: ${{ needs.verify-canonical.result }}
-        run: |
-          set -euo pipefail
-          [[ "$IDENTITY_RESULT" == success && "$CI_RESULT" == success && "$QA_RESULT" == success ]]
+        run: echo "Maintenance PR $PR_NUMBER is ready for review; release qualification is a separate deliberate action."

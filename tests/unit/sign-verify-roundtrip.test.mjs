@@ -1,27 +1,19 @@
-// tests/unit/sign-verify-roundtrip.test.mjs — the sign→verify chain has never been tested end to
-// end together (memory `test-coverage-gaps-2026-07-07`). scripts/sign-bundle.mjs's signBundle() and
-// scripts/verify-bundle.mjs's verifyBundle() are each only ever exercised (or not) in isolation, so a
-// format drift between them (e.g. one starts pre-hashing before crypto.sign, the other doesn't) would
-// pass both sides' own tests while breaking every real install.
-//
-// scripts/sign-bundle.mjs is NOT importable in-process (it unconditionally calls genKey()/
-// signBundle() at module top level, and resolves paths off its own ROOT via import.meta.url — the
-// same self-executing-CLI pattern as build-bundle.mjs/forge-guard.mjs). Rather than subprocess it,
-// this test replicates its exact signing algorithm inline (Ed25519, sign the hex SHA-256 digest
-// directly — see sign-bundle.mjs lines 58-62) against a throwaway keypair, and verifies the result
-// with the REAL, already-exported scripts/verify-bundle.mjs#verifyBundle — which IS safely
-// importable because it already guards its CLI block with
-// `if (import.meta.url === \`file://${process.argv[1]}\`)` (line 39). That guard is the exact
-// pattern check-indexation.mjs and self-update.mjs are missing (see their own gap skeletons).
+// Actual sign-bundle CLI producer and verifyBundle consumer with ephemeral keys and disposable bytes.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
-function sign(buf, privateKey) {
-  return crypto.sign(null, Buffer.from(sha256(buf), 'hex'), privateKey);
+function sign(bundle, privateKey) {
+  execFileSync(process.execPath, [fileURLToPath(new URL('../../scripts/sign-bundle.mjs', import.meta.url)),
+    '--bundle', bundle], { encoding: 'utf8', timeout: 10000, env: {
+      ...process.env, RUVNET_SIGNING_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }),
+    } });
+  expect(fs.readFileSync(`${bundle}.sha256`, 'utf8')).toBe(`${sha256(fs.readFileSync(bundle))}  ${path.basename(bundle)}\n`);
 }
 
 let tmp, pubPath, prevPubEnv, verifyBundle;
@@ -49,7 +41,7 @@ describe('sign-bundle.mjs + verify-bundle.mjs — Ed25519 roundtrip', () => {
     const bundle = path.join(tmp, 'bundle.zip');
     fs.writeFileSync(bundle, 'not-a-real-zip-just-bytes-to-hash');
     const sig = path.join(tmp, 'bundle.zip.sig');
-    fs.writeFileSync(sig, sign(fs.readFileSync(bundle), privateKey));
+    sign(bundle, privateKey);
 
     const r = verifyBundle(bundle, sig);
     expect(r.ok).toBe(true);
@@ -63,7 +55,7 @@ describe('sign-bundle.mjs + verify-bundle.mjs — Ed25519 roundtrip', () => {
     const bundle = path.join(tmp, 'bundle2.zip');
     fs.writeFileSync(bundle, 'original bytes');
     const sig = path.join(tmp, 'bundle2.zip.sig');
-    fs.writeFileSync(sig, sign(fs.readFileSync(bundle), privateKey));
+    sign(bundle, privateKey);
     fs.writeFileSync(bundle, 'TAMPERED bytes'); // same length-ish, different content, post-signature
 
     const r = verifyBundle(bundle, sig);
@@ -80,7 +72,7 @@ describe('sign-bundle.mjs + verify-bundle.mjs — Ed25519 roundtrip', () => {
     const bundle = path.join(tmp, 'bundle3.zip');
     fs.writeFileSync(bundle, 'bundle bytes');
     const sig = path.join(tmp, 'bundle3.zip.sig');
-    fs.writeFileSync(sig, sign(fs.readFileSync(bundle), attacker.privateKey)); // wrong key
+    sign(bundle, attacker.privateKey); // real producer, wrong trust root
 
     const r = verifyBundle(bundle, sig);
     expect(r.ok).toBe(false);

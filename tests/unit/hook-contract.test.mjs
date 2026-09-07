@@ -373,9 +373,9 @@ describe('registry hygiene', () => {
     }
   });
 
-  it('has exactly one hook registered on Stop', () => {
+  it('has no hook registered on Stop', () => {
     const stopCmds = (reg.hooks.Stop ?? []).flatMap((m) => (m.hooks ?? []).map((h) => h.command));
-    expect(stopCmds.length).toBe(1);
+    expect(stopCmds).toEqual([]);
   });
 
   /**
