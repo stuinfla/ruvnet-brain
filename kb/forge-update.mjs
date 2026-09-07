@@ -1218,6 +1218,14 @@ async function main() {
   };
   let transaction;
   try {
+    // The installer starts this child inside KB_DIR. Windows holds that directory open
+    // until cwd leaves it, preventing the atomic swap. Inputs (including RESULT_FILE)
+    // are already resolved; all transaction and recovery paths remain absolute.
+    const cwdWithinKb = path.relative(KB_DIR, process.cwd());
+    if (cwdWithinKb === '' || (!path.isAbsolute(cwdWithinKb)
+      && cwdWithinKb !== '..' && !cwdWithinKb.startsWith(`..${path.sep}`))) {
+      process.chdir(path.dirname(KB_DIR));
+    }
     transaction = runStorageTransaction({ liveDir: KB_DIR, sourceDir: extractDir,
       transactionId: `${Date.now()}-${process.pid}`,
       prepareCandidate: ({ candidateDir, liveDir }) => {

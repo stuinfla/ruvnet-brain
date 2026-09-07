@@ -1,4 +1,4 @@
-Updated: 2026-09-07 11:07:28 EDT | Version 1.0.0
+Updated: 2026-09-07 11:30:00 EDT | Version 1.0.1
 Created: 2026-09-07 11:07:28 EDT
 
 # Release test relevance audit — 2026-09-07
@@ -56,3 +56,7 @@ The following SHA256 values identify the full test-file bytes read. Literal expe
 ## Authorized follow-up validation
 
 Changed only protected-release-invocation.test.mjs, release-identity-invariants.test.mjs, sign-verify-roundtrip.test.mjs and new tests/diagnostics/release-source-shape.test.mjs in isolated worktree. Standard Vitest config excludes diagnostics; explicit temporary config ran its two cases. Unit21/21 and diagnostics2/2 PASS. Other nine reviewed files unchanged. Original hashes above preserve exact initial read snapshot; patch is /tmp/release-test-relevance-adjustments-20260907.patch.
+
+## Retired continuity caller review
+
+Run 34138004097 reported UNKNOWN from the two packed cross-host SessionStart replay cases. Caller inspection found restoration only through project-progression-session-start and session-start-core, with capture through session-snapshot-hook; both host registries are empty. No current explicit command invokes this path. These tests manually revive retired automatic lifecycle behavior and remain diagnostics rather than mandatory release checks. Their local pass does not establish native automatic restoration, which this release does not claim.

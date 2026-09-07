@@ -1,4 +1,4 @@
-Updated: 2026-09-07 11:07:28 EDT | Version 1.6.0
+Updated: 2026-09-07 11:30:00 EDT | Version 1.6.1
 Created: 2026-09-05 14:11:00 EDT
 
 # QA execution contract
@@ -116,3 +116,9 @@ Diagnostic source diffs are limited to 40 lines per input. This bounds output on
 assertions or verdicts; failures retain their test name, source location, and truncation marker.
 Console staging has one shared copy/digest surface and a real isolated import regression,
 including its dynamically loaded archive helper. Syntax-only staging is not import proof.
+
+The historical `continuity` lane manually invokes retired SessionStart and snapshot callbacks.
+Its only production callers are dormant lifecycle adapters; no current explicit command invokes
+that path. It remains available as an explicit diagnostic, but is not release qualification.
+This stabilization release does not claim automatic cross-host restoration. Ordinary explicit
+AgentDB store and retrieval remain separate capabilities.

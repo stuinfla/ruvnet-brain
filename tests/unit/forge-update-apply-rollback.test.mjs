@@ -197,8 +197,19 @@ function publish(source, tag, mutateStage = () => {}) {
 function runWithEnv(extraEnv, ...args) {
   const home = path.join(root, 'home');
   fs.mkdirSync(home, { recursive: true });
+  // Model Windows' real cwd lock on every host, while retaining real filesystem swaps.
+  const preload = path.join(root, 'cwd-lock.cjs');
+  fs.writeFileSync(preload, `const fs = require('node:fs'); const path = require('node:path');
+const rename = fs.renameSync;
+fs.renameSync = function(from, to) {
+  const relative = path.relative(path.resolve(from), process.cwd());
+  if (relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep))) {
+    const error = new Error('EBUSY: cannot rename the process working directory'); error.code = 'EBUSY'; throw error;
+  }
+  return rename.call(this, from, to);
+};`);
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [path.join(kbDir, 'forge-update.mjs'), ...args], {
+    const child = spawn(process.execPath, ['--require', preload, path.join(kbDir, 'forge-update.mjs'), ...args], {
       cwd: kbDir,
       env: { ...process.env, ...extraEnv, HOME: home, RUVNET_SETTINGS_FILE: path.join(home, 'nope.json') },
     });
@@ -289,7 +300,8 @@ describe('forge-update --apply (issues #106 + #108)', () => {
     }), 'v4.0.8');
 
     const resultFile = path.join(root, 'applied-result.json');
-    const { code, out } = await run('--apply', '--result-file', resultFile);
+    // Resolve this against the caller's KB cwd before the updater releases that directory.
+    const { code, out } = await run('--apply', '--result-file', path.join('..', 'applied-result.json'));
 
     expect(code, `the bundle genuinely advanced — this run succeeded\n${out}`).toBe(0);
     expect(out).toMatch(/DONE — 2 store\(s\) updated/);

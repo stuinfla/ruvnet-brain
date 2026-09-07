@@ -258,25 +258,14 @@ jobs:
             throw new Error('Exact staged candidate census did not pass');
           }
           NODE
-      - name: Install current hosts and global Ruflo for candidate qualification
+      - name: Install current hosts for candidate qualification
         shell: bash
         run: |
           set -euo pipefail
           npm install --global --prefix "$RUNNER_TEMP/host-clis" \
             @anthropic-ai/claude-code@latest \
             @openai/codex@latest
-          npm install --global --prefix "$HOME/.npm-global" ruflo@latest
-          "$HOME/.npm-global/bin/ruflo" --version
           echo "$RUNNER_TEMP/host-clis/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
-      - name: Qualify interrupted cross-host continuity using the sealed package
-        env:
-          RUFLO_DAEMON_AUTOSTART: '0'
-          TMPDIR: ${{ runner.temp }}/release-evidence
-        run: |
-          set -euo pipefail
-          test -s "$RUVNET_SEALED_PACKAGE"
-          node scripts/qa-runner.mjs --release --lane continuity
       - name: Claude-only, Codex-only, and dual-host candidate evidence (run once)
         shell: bash
         run: |
