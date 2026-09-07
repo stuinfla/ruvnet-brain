@@ -1,5 +1,5 @@
 name: integration-linux
-# Qualify in the producer; required release/main checks consume its receipt.
+# Release PRs consume producer evidence; ordinary main changes execute reviewed acceptance.
 on:
   push:
     branches: [main]
@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 125
     env:
       RUVNET_REQUIRE_CODEX_DISCOVERY: '1'
-      QUALIFICATION_CONSUMER: ${{ !inputs.candidate_sha && (github.event_name == 'push' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)) }}
+      QUALIFICATION_CONSUMER: ${{ !inputs.candidate_sha && github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,11 +68,8 @@ jobs:
           node --input-type=module -e 'import fs from "node:fs"; console.log("rvf stores present:", fs.readdirSync("kb").filter(name => name.endsWith(".rvf") && fs.statSync("kb/" + name).isFile()).length)'
 
       - name: Reviewed release integration acceptance
-        if: env.QUALIFICATION_CONSUMER != 'true' && inputs.candidate_sha != ''
+        if: env.QUALIFICATION_CONSUMER != 'true'
         run: node scripts/release-qualification.mjs --suite integration --platform linux --report /tmp/integration.json
-      - name: Developer integration diagnostics
-        if: env.QUALIFICATION_CONSUMER != 'true' && inputs.candidate_sha == ''
-        run: node node_modules/vitest/vitest.mjs run tests/integration
       - name: Bind integration evidence to the exact source
         if: env.QUALIFICATION_CONSUMER != 'true' && inputs.candidate_sha != ''
         shell: bash

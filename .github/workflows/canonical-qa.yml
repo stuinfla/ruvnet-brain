@@ -17,20 +17,19 @@ concurrency:
 
 jobs:
   qualify-development:
-    if: github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)
+    if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
-      - run: npm run convergence:write
-      - run: npm run qa:pr
+      - run: node scripts/release-qualification.mjs --suite source --report /tmp/source-qualification.json
 
   canonical-qa:
     name: canonical-qa
@@ -47,12 +46,12 @@ jobs:
         with:
           node-version: '22'
       - name: Require development qualification
-        if: github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)
+        if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) }}
         env:
           QUALIFICATION_RESULT: ${{ needs.qualify-development.result }}
         run: test "$QUALIFICATION_RESULT" = success
       - name: Verify already-qualified release source
-        if: github.event_name != 'pull_request' || (startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}

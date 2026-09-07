@@ -7,20 +7,32 @@ const context = (event_name, head_ref = '') => ({ event_name, head_ref, reposito
 const developmentCondition = canonical.match(/qualify-development:\n    if: (.*)/)[1];
 const consumerCondition = integration.match(/QUALIFICATION_CONSUMER: (.*)/)[1];
 describe('one qualification producer and receipt-only promotion DAG', () => {
-  it('executes three reviewed platform acceptances once across release push, PR sync, and main push', () => {
+  it('executes three reviewed platform acceptances once for release candidate qualification', () => {
     expect(ci).not.toMatch(/^  (push|pull_request):/m);
     expect(ci).toMatch(/^  workflow_call:/m);
     expect(preflight).toContain("branches: ['release/**']");
     expect(preflight.match(/uses: \.\/\.github\/workflows\/ci.yml/g)).toHaveLength(1);
     const suites = [...ci.matchAll(/run: node scripts\/release-qualification.mjs --platform (linux|macos|windows) /g)].map(match => match[1]);
     expect(suites.sort()).toEqual(['linux', 'macos', 'windows']);
-    for (const event of [context('pull_request', 'release/candidate'), context('push')]) {
+    for (const event of [context('pull_request', 'release/candidate')]) {
       expect(evaluate(developmentCondition, event)).toBe(false);
       expect(evaluate(consumerCondition, event)).toBe(true);
     }
     expect(evaluate(consumerCondition, context('push'), { candidate_sha: 'a'.repeat(40) })).toBe(false);
     expect(ci).not.toMatch(/vitest.*tests\/unit|qa:pr|--lane coverage|--lane mutation|--lane regression/);
     expect(preflight).not.toContain('qualified-candidate-check'); // producer never waits for its consumer
+  });
+  it('runs reviewed checks on ordinary main pushes without waiting for an absent release artifact', () => {
+    for (const event of [context('push'), context('workflow_dispatch')]) {
+      expect(evaluate(developmentCondition, event)).toBe(true);
+      expect(evaluate(consumerCondition, event)).toBe(false);
+    }
+    expect(canonical).toContain('release-qualification.mjs --suite source');
+    expect(canonical).not.toContain('npm run qa:pr');
+    expect(integration).not.toContain('run tests/integration');
+    const releaseOnly = canonical.match(/name: Verify already-qualified release source\n        if: (.*)/)[1];
+    expect(evaluate(releaseOnly, context('push'))).toBe(false);
+    expect(evaluate(releaseOnly, context('pull_request', 'release/candidate'))).toBe(true);
   });
   it('keeps ordinary and fork PRs on deliberate development diagnostics', () => {
     for (const event of [context('pull_request', 'feature/change'), { ...context('pull_request', 'release/fork'), event: { pull_request: { head: { repo: { full_name: 'other/fork' } } } } }]) {
