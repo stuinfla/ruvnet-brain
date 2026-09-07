@@ -314,7 +314,9 @@ describe('theme demotion — the real read/write round trip (no injected Set)', 
       fs.writeFileSync(path.join(md, 'feedback_1.md'),
         `---\nname: feedback_1\ndescription: "${desc}"\nmetadata:\n  type: feedback\n---\n\nbody text\n`);
     }
-    const env = { ...process.env, RUVNET_DEMOTED_THEMES: themesFile, HOME: homeDir };
+    // os.homedir() reads USERPROFILE on Windows, HOME on POSIX — set both so the subprocess's
+    // collectLessons() finds this fixture on every CI platform, not only ubuntu/macos.
+    const env = { ...process.env, RUVNET_DEMOTED_THEMES: themesFile, HOME: homeDir, USERPROFILE: homeDir };
     const before = JSON.parse(execFileSync('node', ['scripts/lesson-promote.mjs', '--json'], {
       cwd: REPO_ROOT, env, encoding: 'utf8',
     }));
@@ -337,7 +339,7 @@ describe('theme demotion — the real read/write round trip (no injected Set)', 
     const homeDir = path.join(tmp, 'fake-home-2');
     fs.mkdirSync(homeDir, { recursive: true });
     expect(() => execFileSync('node', ['scripts/lesson-promote.mjs', '--demote-theme', 'not-a-real-theme'], {
-      cwd: REPO_ROOT, env: { ...process.env, RUVNET_DEMOTED_THEMES: themesFile, HOME: homeDir }, encoding: 'utf8',
+      cwd: REPO_ROOT, env: { ...process.env, RUVNET_DEMOTED_THEMES: themesFile, HOME: homeDir, USERPROFILE: homeDir }, encoding: 'utf8',
     })).toThrow();
     expect(fs.existsSync(themesFile), 'a rejected key must not create the file').toBe(false);
   });
