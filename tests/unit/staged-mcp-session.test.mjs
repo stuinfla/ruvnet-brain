@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { parseRetrievalResult } from '../../kb/retrieval-result.mjs';
 import { createInstalledMcpSession } from '../../scripts/host-install-matrix.mjs';
 const roots = [], sessions = [];
 afterEach(async () => {
@@ -52,4 +53,13 @@ it('explicit close cancels in-flight and queued work without waiting for the sea
   await f.session.close();
   expect((await active).error).toBeTruthy(); expect((await queued).error).toBeTruthy();
   expect(f.trace().some(({ query }) => query === 'queued')).toBe(false);
+});
+
+it('preserves split UTF-8 bytes and their retrieval content digest across stdout chunks', async () => {
+  const f = fixture();
+  const result = await f.session.search({ query: 'split-utf8', k: 10 });
+  expect(result.status).toBe(0);
+  const rows = parseRetrievalResult(result.mcpResult, { query: 'split-utf8', k: 10 });
+  expect(rows[0].text).toBe('source ─ 🧠 exact');
+  expect(result.stdout).toBe('source ─ 🧠 exact');
 });

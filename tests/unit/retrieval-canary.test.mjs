@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { coverageGenerationFor, digest } from '../../scripts/coverage-integrity.mjs';
+import { coverageGenerationFor, releaseCoverageGenerationFor, digest } from '../../scripts/coverage-integrity.mjs';
 import { getVersionTag } from '../../scripts/version.mjs';
 import {
   buildRetrievalCanaryPlan,
@@ -128,6 +128,31 @@ describe('coverage-derived retrieval canaries', () => {
     const squashedCandidate = git(root, 'rev-parse', 'HEAD');
     expect(verifyQueryOracleSource(squashedEvidence, squashedCandidate, { cwd: root, allowSquashedSource: true }))
       .toBe(squashedEvidence);
+  });
+
+  it('keeps corpus sampling stable across source-only releases while sealing each release identity', () => {
+    const input = fixture();
+    input.baseline.stores = input.coverage.rows.map((row) => row.artifact.store);
+    input.baseline.storeCount = input.baseline.stores.length;
+    const plans = Array.from({ length: 8 }, (_, index) => {
+      const sha = String(index + 1).repeat(40);
+      const coverage = { ...input.coverage, kind: 'ruvnet-brain-release-coverage',
+        releaseIdentity: { version: '9.9.9', tag: 'v9.9.9', sourceSnapshot: sha },
+        corpusSeed: { tag: input.baseline.tag, archiveSha256: input.baseline.archiveSha256,
+          archiveBytes: input.baseline.archiveBytes, receiptSha256: input.baseline.verificationReceiptSha256 },
+        corpusCoverage: { sha256: digest(input.coverage), coverageGeneration: input.coverage.coverageGeneration },
+        generationLedger: { file: 'PUBLIC-RVF-GENERATIONS.json', sha256: input.candidate.publicLedgerSha256,
+          bytes: input.candidate.publicLedgerBytes, storeCount: input.candidate.publicStoreCount },
+        publicInventoryPartitionSha256: input.candidate.publicInventoryPartitionSha256, installedProjectionSchema: 2 };
+      coverage.releaseCoverageGeneration = releaseCoverageGenerationFor(coverage);
+      const coverageIdentity = { sha256: digest(coverage), bytes: Buffer.byteLength(JSON.stringify(coverage)) };
+      return buildRetrievalCanaryPlan({ ...input, coverage, coverageIdentity,
+        candidate: { ...input.candidate, sourceSha: sha, coverageSha256: coverageIdentity.sha256 },
+        legacySampleSize: 4, allowNoDelta: true });
+    });
+    expect(new Set(plans.map((plan) => JSON.stringify(plan.denominator.legacySelectedStores))).size).toBe(1);
+    expect(new Set(plans.map((plan) => plan.coverage.releaseCoverageGeneration)).size).toBe(8);
+    expect(new Set(plans.map((plan) => plan.planSha256)).size).toBe(8);
   });
 
   it('includes every delta store and a deterministic legacy sample', () => {

@@ -367,12 +367,15 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
     if (!strata.has(stratum)) strata.set(stratum, []);
     strata.get(stratum).push(entry);
   });
+  // Source-only releases retain the same corpus sample; the plan still seals exact release bytes.
+  const samplingGeneration = coverage.kind === 'ruvnet-brain-release-coverage'
+    ? coverage.corpusCoverage.coverageGeneration : coverageGeneration;
   const sampleCount = Math.min(legacyPool.length, legacySampleSize ?? Math.max(10, Math.ceil(eligible.length * 0.1)));
   if (sampleCount < strata.size) throw new Error(`legacy sample must cover all ${strata.size} passage-count strata`);
   const selected = [];
   for (const [stratum, entries] of strata) {
-    entries.sort((a, b) => digest(`${coverageGeneration}:${stratum}:${storeOf(a.row)}`)
-      .localeCompare(digest(`${coverageGeneration}:${stratum}:${storeOf(b.row)}`)));
+    entries.sort((a, b) => digest(`${samplingGeneration}:${stratum}:${storeOf(a.row)}`)
+      .localeCompare(digest(`${samplingGeneration}:${stratum}:${storeOf(b.row)}`)));
     selected.push({ ...entries.shift(), stratum });
   }
   while (selected.length < sampleCount) {

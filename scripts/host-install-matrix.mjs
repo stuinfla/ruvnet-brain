@@ -345,6 +345,9 @@ async function verifyInstalledGrounding(output, kbDir) {
 
 export function createInstalledMcpSession({ serverPath, env, timeout = 300_000, shutdownTimeout = 5000 }) {
   const child = spawn(process.execPath, [serverPath], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+  // Decode across chunk boundaries so split UTF-8 cannot corrupt content-bound citations.
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
   const pending = new Map();
   let buffer = '', stderr = '', nextId = 0, initialized = false;
   let terminalError = null, closePromise, exited = false, exitSignal = null;
