@@ -226,6 +226,9 @@ export function rpcSearch(server, env, query, k = 5, timeoutMs = DEADLINE_MS, {
   if (!Number.isSafeInteger(k) || k < 1 || k > 50) throw new Error(`invalid search result count: ${k}`);
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [server], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    // Preserve multibyte characters across pipe chunks before checking source-content hashes.
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     let stdout = '';
     let stderr = '';
     let timer;

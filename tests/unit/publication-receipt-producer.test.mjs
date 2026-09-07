@@ -17,6 +17,7 @@ import {
 } from '../../scripts/publication-receipt.mjs';
 import { createPayloadManifest, signPayloadManifest } from '../../scripts/release-payload.mjs';
 import { getVersion } from '../../scripts/version.mjs';
+import { parseRetrievalResult } from '../../kb/retrieval-result.mjs';
 
 const SHA = 'a'.repeat(40);
 const VERSION = getVersion();
@@ -203,6 +204,35 @@ describe('publication receipt producer', () => {
     const result = await rpcSearch(server, process.env, 'query', 10, 2_000);
     expect(result.text).toContain('path: result-k-10');
     expect(result.mcpResult).toEqual({ content: [{ type: 'text', text: 'repo=ruvnet-brain path: result-k-10' }] });
+  });
+
+  it('preserves content hashes when MCP output splits a UTF-8 character between chunks', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-utf8-'));
+    const server = path.join(root, 'server.mjs');
+    try {
+      fs.writeFileSync(server, `
+        import readline from 'node:readline';
+        import {buildRetrievalResult} from ${JSON.stringify(new URL('../../kb/retrieval-result.mjs', import.meta.url).href)};
+        readline.createInterface({input: process.stdin}).on('line', line => {
+          const request = JSON.parse(line);
+          const result = request.method === 'tools/list' ? {tools: [{name: 'search_ruvnet'}]}
+            : request.method === 'tools/call' ? {
+              content: [{type: 'text', text: 'repo=ruvnet-brain path: README.md'}],
+              structuredContent: {retrieval: buildRetrievalResult({query: 'probe', k: 1,
+                results: [{repo: 'ruvnet-brain', path: 'README.md', text: 'measured π Unicode'}]})}
+            } : {};
+          const bytes = Buffer.from(JSON.stringify({jsonrpc: '2.0', id: request.id, result}) + '\\n');
+          const at = bytes.indexOf(Buffer.from('π'));
+          if (at < 0) process.stdout.write(bytes);
+          else {
+            process.stdout.write(bytes.subarray(0, at + 1));
+            setTimeout(() => process.stdout.write(bytes.subarray(at + 1)), 100);
+          }
+        });
+      `);
+      const response = await rpcSearch(server, process.env, 'probe', 1, 3000);
+      expect(parseRetrievalResult(response.mcpResult, {query: 'probe', k: 1})[0].text).toBe('measured π Unicode');
+    } finally { fs.rmSync(root, {recursive: true, force: true}); }
   });
 
   it('requires installed host payload bytes to match every sealed plugin file', () => {
