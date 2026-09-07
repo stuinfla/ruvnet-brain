@@ -175,7 +175,8 @@ const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 // ── the governed set ────────────────────────────────────────────────────────────────────────────
 
-// Resolve every declared entry to a concrete blob at HEAD. Globs expand through the index; a
+// Resolve tracked declarations against actual working bytes. HEAD establishes membership,
+// not the content currently being verified. Globs expand through the index; a
 // literal entry is looked up with `git cat-file --batch-check`, which distinguishes blob / tree /
 // missing in ONE process and — unlike `git rev-parse HEAD:<p>` — never prints the requested path
 // back as if it were an answer.
@@ -220,8 +221,30 @@ export function resolveGoverned(root, entries) {
       continue;
     }
     const hit = byPath.get(e.path) || { sha: null, type: onDisk ? 'untracked' : 'missing' };
-    const type = hit.type === 'missing' && onDisk ? 'untracked' : hit.type;
-    results.push({ ...e, type, sha: hit.sha, onDisk, resolved: type === 'blob' });
+    let type = hit.type === 'missing' && onDisk ? 'untracked' : hit.type;
+    let sha = hit.sha;
+    if (type === 'blob') {
+      try {
+        const relative = path.relative(path.resolve(root), path.resolve(abs));
+        if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+          throw new Error('governed path escapes project');
+        }
+        let current = path.resolve(root);
+        for (const part of relative.split(path.sep)) {
+          current = path.join(current, part);
+          if (fs.lstatSync(current).isSymbolicLink()) throw new Error('governed path contains a symlink');
+        }
+        if (!fs.lstatSync(abs).isFile()) throw new Error('governed blob is not a regular file');
+        const bytes = fs.readFileSync(abs);
+        // Git blob identity without writing objects or invoking one process per file.
+        // Unchanged bytes retain the existing recipe; staged and unstaged edits both expire it.
+        sha = crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+      } catch {
+        type = onDisk ? 'unsafe-working-source' : 'missing';
+        sha = null;
+      }
+    }
+    results.push({ ...e, type, sha, onDisk, resolved: type === 'blob' });
   }
   return results;
 }
@@ -290,7 +313,7 @@ export function deriveImpl(root, governed, { checkWiring = true } = {}) {
 export const DRIFT_COMMITS_STALE = 2;
 export const DRIFT_DAYS_STALE = 7;
 
-export function deriveDrift(root, docRel, governed) {
+export function deriveDrift(root, docRel, governed, { floorSha = null } = {}) {
   const paths = governed.filter((g) => g.resolved).map((g) => g.path);
   if (!paths.length) return { state: 'not-applicable', commits: 0, days: 0, reason: 'no resolvable governed paths' };
   const doc = lastCommit(root, docRel);
@@ -310,8 +333,16 @@ export function deriveDrift(root, docRel, governed) {
   // paths is version-identifier lines cannot have changed any decision, so it does not count. Any
   // commit touching one substantive line still counts in full — this narrows the trigger, never the
   // verdict.
+  const floor = floorSha && git(root, ['rev-parse', '--verify', `${floorSha}^{commit}`]);
+  const resolvedFloor = floor?.ok ? floor.out : null;
   const shas = (() => {
-    const r = git(root, ['rev-list', `${doc.sha}..HEAD`, '--', ...paths]);
+    // With --changed, only movement introduced after the candidate merge-base can consume the
+    // candidate's drift budget. Historical debt remains visible in an unscoped report, but cannot
+    // turn one new governed edit into a threshold breach merely because the ADR was already stale.
+    const range = resolvedFloor
+      ? ['HEAD', `^${doc.sha}`, `^${resolvedFloor}`]
+      : [`${doc.sha}..HEAD`];
+    const r = git(root, ['rev-list', ...range, '--', ...paths]);
     return r.ok && r.out ? r.out.split('\n').filter(Boolean) : [];
   })();
   const VERSION_FIELD = /^[+-]\s*"?(version|releaseTag|brainVersion|softwareVersion|tag)"?\s*[:=]/i;
@@ -327,12 +358,20 @@ export function deriveDrift(root, docRel, governed) {
   const substantive = shas.filter((s) => !isVersionOnly(s));
   const commits = substantive.length;
 
-  const codeR = git(root, ['log', '-1', '--format=%ad', '--date=short', `${doc.sha}..HEAD`, '--', ...paths]);
-  const codeDate = codeR.ok && codeR.out ? codeR.out.split('\n')[0] : null;
+  const codeR = substantive.length
+    ? git(root, ['show', '-s', '--format=%ad', '--date=short', substantive[0]])
+    : null;
+  const codeDate = codeR?.ok && codeR.out ? codeR.out.split('\n')[0] : null;
+
+  let anchorDate = doc.date;
+  if (resolvedFloor && git(root, ['merge-base', '--is-ancestor', doc.sha, resolvedFloor]).ok) {
+    const floorR = git(root, ['show', '-s', '--format=%ad', '--date=short', resolvedFloor]);
+    if (floorR.ok && floorR.out) anchorDate = floorR.out.split('\n')[0];
+  }
 
   let days = 0;
   if (codeDate) {
-    const d0 = Date.parse(`${doc.date}T00:00:00Z`);
+    const d0 = Date.parse(`${anchorDate}T00:00:00Z`);
     const d1 = Date.parse(`${codeDate}T00:00:00Z`);
     if (Number.isFinite(d0) && Number.isFinite(d1)) days = Math.max(0, Math.round((d1 - d0) / 86400000));
   }
@@ -412,7 +451,7 @@ export function evaluateDoc(root, rel, opts = {}) {
   const fm = parseFrontmatter(text);
   const k = fm.keys;
 
-  const CONVENTION_KEYS = ['status', 'date', 'updated', 'impl', 'governs', 'verified', 'verified_digest'];
+  const CONVENTION_KEYS = ['status', 'date', 'updated', 'impl', 'governs', 'verified', 'verified_digest', 'reviewed_digest'];
   const declared = CONVENTION_KEYS.filter((key) => k[key] !== undefined);
   // A document predating the convention carries NONE of its keys. That is a derived property of the
   // file, not a hardcoded list of filenames — a new doc written to the convention can never be
@@ -586,7 +625,28 @@ export function evaluateDoc(root, rel, opts = {}) {
   }
 
   // ── drift ─────────────────────────────────────────────────────────────────────────────────────
-  const drift = deriveDrift(root, rel, governed);
+  // A review records examination and findings, NOT normative agreement, acceptance, or verified
+  // implementation. Use the existing digest: frontmatter and the Currency log already exclude
+  // their own metadata, while every governed byte and normative claim remains covered unchanged.
+  // Require an explicit review row naming this digest and a governed-source referent. This checks
+  // evidence structure, never sincerity; changing a date or merely dirtying a doc proves no review.
+  const log = parseCurrencyLog(root, text);
+  const reviewedDigest = k.reviewed_digest || null;
+  const reviewMatch = Boolean(reviewedDigest && digest.digest && reviewedDigest === digest.digest);
+  const reviewRow = reviewedDigest && log.rows.find((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date)
+    && /\breview(?:ed)?\b/i.test(row.what)
+    && `${row.what} ${row.why}`.split(/[^a-f0-9]+/i).includes(reviewedDigest)
+    && row.referents.some((ref) => ref.kind === 'path'
+      && governed.some((g) => g.resolved && g.path === ref.value)));
+  const reviewed = reviewMatch && Boolean(reviewRow);
+  doc.review = { stored: reviewedDigest, computed: digest.digest, match: reviewMatch,
+    recorded: Boolean(reviewRow), current: reviewed };
+  if (reviewedDigest && !reviewed) {
+    add(WARN, 'review-unsubstantiated', !reviewMatch
+      ? 'reviewed_digest does not bind the current document and governed bytes — no current review is established'
+      : 'reviewed_digest requires a dated Currency log review row naming this digest and a governed-source path — no current review is established');
+  }
+  const drift = deriveDrift(root, rel, governed, { floorSha: opts.driftFloor });
   doc.drift = drift;
   // A DECISION THAT IS NOT IN FORCE CANNOT DRIFT (ADR-056, 2026-07-27). Rejected / Superseded /
   // Deprecated documents describe a path NOT taken, or one another document has since taken over.
@@ -600,15 +660,16 @@ export function evaluateDoc(root, rel, opts = {}) {
   // day someone un-rejects it the finding returns to BLOCK on its own.
   const notInForce = /^(rejected|superseded|deprecated)$/i.test(statusWord || '');
   if (drift.state === 'presumed-stale') {
-    add(notInForce ? WARN : BLOCK, 'presumed-stale',
-      `governed code moved ${drift.commits} commit(s) (${drift.days}d) after the document's own last commit (${drift.docDate}) — nobody has checked since it moved. Paths: ${drift.paths.join(', ')}`
-      + (notInForce ? ` — reported, NOT blocked: status "${statusWord}" means this decision is not in force, so it cannot drift from code it never governed` : ''));
+    add(notInForce || reviewed ? WARN : BLOCK, 'presumed-stale',
+      `governed code moved ${drift.commits} commit(s) (${drift.days}d) after the document's own last commit (${drift.docDate}). Paths: ${drift.paths.join(', ')}`
+      + (reviewed ? ' — exact current bytes have a recorded review; historical drift remains visible, but does not establish missing review. This is NOT normative agreement or verification.'
+        : notInForce ? ` — reported, NOT blocked: status "${statusWord}" means this decision is not in force, so it cannot drift from code it never governed`
+          : ' — no source-bound review is recorded since it moved.'));
   } else if (drift.state === 'lagging') {
     add(WARN, 'lagging', `governed code moved ${drift.commits} commit(s) after the document — normal within a session; reported, not blocked`);
   }
 
   // ── currency log ──────────────────────────────────────────────────────────────────────────────
-  const log = parseCurrencyLog(root, text);
   doc.currencyLog = log;
   if (!doc.legacy && !log.present) {
     add(WARN, 'no-currency-log', 'no `## Currency log` section — the *why* of each change is unrecorded');
@@ -784,12 +845,23 @@ export function main(argv = process.argv.slice(2)) {
   }
 
   const dirs = a.dirs ?? DEFAULT_DIRS;
-  const result = evaluate(a.root, { dirs, checkWiring: !a.noWiring });
+  let touched = null;
+  let driftFloor = null;
+  if (a.changed) {
+    const diff = git(a.root, ['diff', '--name-only', `${a.changed}...HEAD`]);
+    if (!diff.ok) {
+      process.stderr.write('[doc-currency] candidate base cannot be resolved.\n');
+      return 1;
+    }
+    touched = new Set(diff.ok ? diff.out.split('\n').filter(Boolean) : []);
+    const base = git(a.root, ['merge-base', a.changed, 'HEAD']);
+    if (!base.ok || !base.out) return 1;
+    if (base.ok && base.out) driftFloor = base.out.split('\n')[0];
+  }
+  const result = evaluate(a.root, { dirs, checkWiring: !a.noWiring, driftFloor });
 
   let scope = null;
-  if (a.changed) {
-    const r = git(a.root, ['diff', '--name-only', `${a.changed}...HEAD`]);
-    const touched = new Set(r.ok ? r.out.split('\n').filter(Boolean) : []);
+  if (touched) {
     scope = changedDocumentScope(result.docs, touched);
   }
 
@@ -816,7 +888,7 @@ export function main(argv = process.argv.slice(2)) {
       recipe: DIGEST_RECIPE,
       docs: result.docs.map((d) => ({
         file: d.file, id: d.id, legacy: d.legacy, status: d.status, date: d.date, updated: d.updated,
-        implStored: d.implStored, impl: d.impl, digest: d.digest, drift: d.drift,
+        implStored: d.implStored, impl: d.impl, digest: d.digest, review: d.review, drift: d.drift,
         governs: d.governsDeclared, findings: d.findings,
       })),
     }, null, 2) + '\n');

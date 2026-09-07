@@ -26,6 +26,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { findStores, diagnose } from './memory-doctor.mjs';
 import { learnerCwd, loadRuntimePreferences } from '../plugin/scripts/runtime-preferences.mjs';
 import { projectDirectory } from '../plugin/scripts/project-identity.mjs';
+import { newestSnapshot, snapshotInventory, MTIME_GRACE_MS } from './snapshot-freshness.mjs';
 
 const HOME = os.homedir();
 // The SAME project root learn-flush.mjs computes, by the same rule — the two halves of the flush
@@ -263,22 +264,39 @@ function distillFleet() {
   const receiptPath = argv.includes('--receipt') ? argv[argv.indexOf('--receipt') + 1] : null;
   const receipt = [];
   const writeReceipt = () => {
-    if (!receiptPath) return;
+    if (!receiptPath) return true;
     try {
       fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
       fs.writeFileSync(receiptPath, JSON.stringify({ at: new Date().toISOString(), stores: receipt }, null, 2));
-    } catch { /* the receipt is for undo; failing to write it must not fail the repair itself */ }
+      return true;
+    } catch { return false; }
   };
 
   for (const t of targets) {
     const dir = path.join(path.dirname(t.db), 'backups');
+    const backupStartedAt = Date.now();
+    let priorSnapshots;
+    try { priorSnapshots = snapshotInventory(dir); }
+    catch (error) { failed.push(`${t.name}: refused to distill — ${error.message}`); continue; }
     try { execFileSync(RUFLO, ['memory', 'backup', '--db', t.db, '--dir', dir], { env: RUFLO_ENV, stdio: 'ignore', timeout: 300_000 }); }
     catch (e) { failed.push(`${t.name}: refused to distill — snapshot failed (${String(e.message).slice(0, 80)})`); continue; }
+    // `memory backup` exiting 0 is not proof a NEW file landed in `dir` — a stale snapshot from a
+    // prior fleet run sitting there already would otherwise be silently accepted as this run's undo
+    // (the exact gap `distill-project.mjs` was fixed for in PR #192, applied here to fleet's own,
+    // separate call site — see the 2026-08-29 Dream Cycle report, "Next steps #1").
+    const snapshot = newestSnapshot(dir, backupStartedAt, MTIME_GRACE_MS, priorSnapshots);
+    if (!snapshot) {
+      failed.push(`${t.name}: refused to distill — snapshot reported success but no fresh file landed in ${dir}`);
+      continue;
+    }
     // Record the snapshot BEFORE distilling, and flush after every store. If the process is killed
     // mid-fleet, the receipt still names every store already modified — a partial receipt is
     // recoverable, a missing one is not.
-    receipt.push({ db: t.db, name: t.name, backupDir: dir });
-    writeReceipt();
+    receipt.push({ db: t.db, name: t.name, backupDir: dir, snapshot });
+    if (!writeReceipt()) {
+      failed.push(`${t.name}: refused to distill — requested undo receipt could not be written`);
+      continue;
+    }
 
     try {
       execFileSync(RUFLO, ['memory', 'distill', 'run', '--db', t.db, '--judge', 'structural', '--budget-usd', '0'],

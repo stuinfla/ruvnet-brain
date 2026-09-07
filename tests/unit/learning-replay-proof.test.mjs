@@ -1,14 +1,20 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import * as replay from '../../scripts/learning-replay.mjs';
+import { pathToFileURL } from 'node:url';
+import { createReplaySource } from '../helpers/learning-replay-source.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const HEAD = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
+let ROOT, HEAD, replay, source;
+beforeAll(async () => {
+  source = createReplaySource();
+  ROOT = source.repo;
+  HEAD = source.sha;
+  replay = await import(pathToFileURL(path.join(ROOT, 'scripts/learning-replay.mjs')).href);
+});
+afterAll(() => source?.cleanup());
 
 let dir;
 beforeEach(() => {
@@ -370,6 +376,30 @@ describe('archive retention is chronological and receipt-aware', () => {
 });
 
 describe('learning replay source boundaries', () => {
+  it('rejects a dirty default lesson source in both receipt verification and CLI dry-run', () => {
+    const lesson = path.join(ROOT, 'plugin/scripts/lesson-gate.mjs');
+    const original = fs.readFileSync(lesson);
+    const file = writeArtifact(artifact());
+    expect(replay.checkSourceIdentity({ repo: ROOT }).clean).toBe(true);
+    try {
+      fs.appendFileSync(lesson, '\n// Deliberately dirty load-bearing fixture.\n');
+      const checked = replay.checkArtifact({ file, repo: ROOT });
+      expect(checked.status).toBe(replay.VERDICT.UNKNOWN);
+      expect(checked.why).toMatch(/uncommitted.*lesson-gate/);
+      const out = path.join(dir, 'dirty-dry-run.json');
+      const result = spawnSync(process.execPath, [
+        'scripts/learning-replay.mjs', '--dry-run', '--out', out,
+      ], { cwd: ROOT, encoding: 'utf8', timeout: 10_000 });
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(replay.EXIT.UNKNOWN);
+      expect(`${result.stdout}\n${result.stderr}`).toMatch(/uncommitted.*lesson-gate/);
+      expect(fs.existsSync(out)).toBe(false);
+      expect(fs.existsSync(path.join(ROOT, '.ruvnet-brain/learning-replay'))).toBe(false);
+    } finally {
+      fs.writeFileSync(lesson, original);
+    }
+    expect(replay.checkSourceIdentity({ repo: ROOT }).clean).toBe(true);
+  });
+
   it('refuses a dirty load-bearing source identity before an expensive replay', () => {
     const repo = path.join(dir, 'identity-repo');
     fs.mkdirSync(repo);

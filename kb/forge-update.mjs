@@ -24,9 +24,12 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createHash } from 'node:crypto';
+import { createHash, createPublicKey, verify as verifySignature } from 'node:crypto';
 import { extractZip } from './zip-extract.mjs';
-import { applyBrainProfile, readBrainProfile } from './brain-profile.mjs';
+import { applyBrainProfile, discoverStoreFamilies, readBrainProfile } from './brain-profile.mjs';
+import { acquireRefreshLock, releaseRefreshLock } from './refresh-run.mjs';
+import { runStorageTransaction, treeIdentity, managedStorageInventory, storageDelta } from './update-storage-transaction.mjs';
+import { pruneLifecycleEvidence } from './lifecycle-evidence-retention.mjs';
 
 const KB_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE_PATH = path.join(KB_DIR, 'SOURCE.json');
@@ -34,25 +37,42 @@ const SOURCE_PATH = path.join(KB_DIR, 'SOURCE.json');
 const argv = process.argv.slice(2);
 const APPLY = argv.includes('--apply');
 const RESTORE_COMPLETE = argv.includes('--restore-complete');
-const ONLY = argv.find((a) => !a.startsWith('--'));
+const resultFileIndex = argv.indexOf('--result-file');
+const RESULT_FILE = resultFileIndex >= 0 && argv[resultFileIndex + 1]
+  ? path.resolve(argv[resultFileIndex + 1]) : (process.env.RUVNET_UPDATE_RESULT ? path.resolve(process.env.RUVNET_UPDATE_RESULT) : null);
+const optionValueIndexes = new Set(resultFileIndex >= 0 ? [resultFileIndex + 1] : []);
+const ONLY = argv.find((a, index) => !a.startsWith('--') && !optionValueIndexes.has(index));
 
 /**
  * EXIT CODES — anything scripting this (a cron line, a LaunchAgent, `npx ruvnet-brain --update`)
  * reads only this number, so each one means exactly one thing:
  *
- *    0  --check: current  ·  --apply: the bundle on disk genuinely moved
+ *    0  --check: current  ·  --apply: explicit applied or byte-exact noop result receipt
  *    1  configuration/verification error; local copy may need the rollback beside it
  *    2  network / canonical manifest unreachable — nothing was touched
  *    3  the signature could not be fetched — refused to apply
  *    4  signature verification FAILED — refused to apply
  *   10  --check: a newer build exists
- *   11  --apply: the download completed but the bundle on disk did NOT change (issue #106)
- *
- * 11 is deliberately NOT 1: it is a truthful verdict about an intact KB, not a broken updater, so
- * a caller can tell "nothing landed" apart from "something went wrong" — and must not retry it as
- * if a fresh install would help.
  */
-export const EXIT_NOT_LANDED = 11;
+
+// The updater's trust root is part of the executable, not part of either the currently installed KB
+// or the downloaded candidate. A missing auxiliary verifier/key must therefore never create a
+// bootstrap bypass. Keep this byte-identical to keys/ruvnet-brain-signing.pub.pem; the release gate
+// checks that identity.
+const SIGNING_PUBKEY_PEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAgse9TAtehXUvUfTrJFY2CCHiCbmelR8yCgS//sen5/w=
+-----END PUBLIC KEY-----`;
+
+export function verifyDownloadedBundle(bundlePath, signaturePath) {
+  try {
+    if (!fs.existsSync(bundlePath)) return { ok: false, reason: `bundle not found: ${bundlePath}` };
+    if (!fs.existsSync(signaturePath)) return { ok: false, reason: 'signature missing (fail-closed)' };
+    const digest = createHash('sha256').update(fs.readFileSync(bundlePath)).digest('hex');
+    const ok = verifySignature(null, Buffer.from(digest, 'hex'), createPublicKey(SIGNING_PUBKEY_PEM), fs.readFileSync(signaturePath));
+    return ok ? { ok: true, reason: `signature valid (sha256 ${digest.slice(0, 12)}…)` }
+      : { ok: false, reason: 'signature does NOT match — bundle may be tampered' };
+  } catch (error) { return { ok: false, reason: `verify error: ${error.message}` }; }
+}
 
 // ── ROLLBACK COPIES — ONE settlement point, on EVERY exit path ────────────────────────────────
 // `process.exit()` does NOT run `finally` blocks, so a die() anywhere below the directory swap used
@@ -62,6 +82,49 @@ export const EXIT_NOT_LANDED = 11;
 // the copy is either RELEASED or deliberately KEPT and named. Never silently stranded.
 const backupsMade = [];
 let rollbackSettled = false;
+let updateLock = null;
+let updateOutcomeWritten = false;
+let lifecycleRetention = null;
+let legacyBackupRetention = null;
+
+function writeUpdateOutcome(outcome) {
+  if (updateOutcomeWritten) return outcome;
+  if (legacyBackupRetention) outcome = { ...outcome, legacyBackupRetention };
+  if (!lifecycleRetention) {
+    try {
+      lifecycleRetention = pruneLifecycleEvidence({ brainHome: path.dirname(KB_DIR), kbDir: KB_DIR,
+        preserveRefreshRunIds: updateLock?.runId ? [updateLock.runId] : [],
+        preserveTransactionPaths: outcome.transactionReceipts ? [outcome.transactionReceipts] : [] });
+    } catch (error) {
+      lifecycleRetention = { schemaVersion: 1, kind: 'ruvnet-brain-lifecycle-evidence-retention',
+        withinBudget: false, unsafe: [{ path: path.dirname(KB_DIR), reason: error.message }] };
+    }
+  }
+  const finalOutcome = lifecycleRetention.withinBudget === true ? { ...outcome, lifecycleRetention }
+    : { ...outcome, terminalVerdict: 'recovery-required', exitCode: 1,
+      reason: `lifecycle evidence retention failed: ${lifecycleRetention.unsafe?.map(({ reason }) => reason).join('; ') || 'budget exceeded'}`,
+      lifecycleRetention };
+  if (!RESULT_FILE) return finalOutcome;
+  fs.mkdirSync(path.dirname(RESULT_FILE), { recursive: true });
+  atomicJson(RESULT_FILE, { schemaVersion: 1, kind: 'ruvnet-brain-update-result',
+    recordedAt: new Date().toISOString(), ...finalOutcome });
+  updateOutcomeWritten = true;
+  return finalOutcome;
+}
+
+export function acquireUpdateLock({ kbDir = KB_DIR, pid = process.pid, isAlive } = {}) {
+  return acquireRefreshLock({ kbDir, brainHome: path.dirname(path.resolve(kbDir)), action: 'update', pid,
+    ...(isAlive === undefined ? {} : { isAlive }) });
+}
+
+export function releaseUpdateLock(lock = updateLock) {
+  if (!lock) return false;
+  const released = releaseRefreshLock(lock);
+  if (released && lock === updateLock) updateLock = null;
+  return released;
+}
+
+process.on('exit', () => { releaseUpdateLock(); });
 function settleRollback({ reclaimable, keepReason = null, intentionallyRemovedStores = [] }) {
   if (rollbackSettled) return;
   rollbackSettled = true;
@@ -70,6 +133,8 @@ function settleRollback({ reclaimable, keepReason = null, intentionallyRemovedSt
     // this directory is the user's recovery — deleting it to "not strand resources" would be the
     // far worse bug. Keep it, and say where it is and why.
     for (const b of backupsMade) {
+      try { writeSnapshotReceipt(b, { state: 'RETAINED', reason: keepReason || 'live KB could not be verified' }); }
+      catch { /* the original update failure remains authoritative */ }
       console.error(`\n  ROLLBACK COPY KEPT: ${b}`);
       console.error(`    ${keepReason || 'the copy now in place could not be verified — restore this directory if the KB is broken,'}`);
       console.error(`    then remove it once you are satisfied (or re-run this updater after fixing the cause).`);
@@ -86,6 +151,7 @@ function settleRollback({ reclaimable, keepReason = null, intentionallyRemovedSt
 
 function die(msg, code = 1) {
   console.error(`\n[forge-update] ERROR: ${msg}`);
+  try { writeUpdateOutcome({ terminalVerdict: 'failed', exitCode: code, reason: msg }); } catch { /* primary error wins */ }
   // Cleanup must never mask the error that caused it.
   try { settleRollback({ reclaimable: false }); } catch { /* ignore */ }
   process.exit(code);
@@ -165,6 +231,89 @@ function mergePrivateEntries(publicEntries, privateEntries, label) {
 
 function sha256File(file) {
   return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+async function loadTrustedCoverageValidator() {
+  const validatorPath = path.join(KB_DIR, 'coverage-integrity.mjs');
+  if (!fs.existsSync(validatorPath)) {
+    throw new Error('installed coverage validator is missing; re-run the current installer before self-update');
+  }
+  const validator = await import(pathToFileURL(validatorPath).href);
+  if (typeof validator.validateCoverageDirectory !== 'function') {
+    throw new Error('installed coverage validator has no validateCoverageDirectory export');
+  }
+  return validator.validateCoverageDirectory;
+}
+
+function validateReleaseCoverageTree(root, validateCoverageDirectory) {
+  let expectedVersion = null;
+  try { expectedVersion = JSON.parse(fs.readFileSync(path.join(root, 'SOURCE.json'), 'utf8')).brainVersion || null; }
+  catch (error) { return { valid: false, failures: [`SOURCE.json is unreadable: ${error.message}`] }; }
+  return validateCoverageDirectory(root, { expectedVersion });
+}
+
+function validateProfiledReleaseTree(root, profile, overlay) {
+  const failures = [];
+  try {
+    const coverage = JSON.parse(fs.readFileSync(path.join(root, 'COVERAGE.json'), 'utf8'));
+    const publicFile = path.join(root, 'PUBLIC-RVF-GENERATIONS.json');
+    const publicBytes = fs.readFileSync(publicFile);
+    const publicLedger = JSON.parse(publicBytes);
+    const runtimeLedger = JSON.parse(fs.readFileSync(path.join(root, 'RVF-GENERATIONS.json'), 'utf8'));
+    if (coverage.generationLedger?.file !== 'PUBLIC-RVF-GENERATIONS.json'
+      || coverage.generationLedger.sha256 !== createHash('sha256').update(publicBytes).digest('hex')
+      || coverage.generationLedger.bytes !== publicBytes.length) failures.push('immutable public ledger differs from ReleaseCoverage');
+    const privateNames = new Set(Object.keys(overlay?.sourceStores || {}));
+    const expectedPublic = profile === 'ruvector' ? new Set(['ruvector']) : new Set(Object.keys(publicLedger.stores || {}));
+    const actualFamilies = new Set(discoverStoreFamilies(root));
+    const runtimeNames = Object.keys(runtimeLedger.stores || {}).sort();
+    const expectedRuntime = [...expectedPublic, ...privateNames].sort();
+    if (JSON.stringify(runtimeNames) !== JSON.stringify(expectedRuntime)) failures.push('profiled runtime ledger store set differs');
+    for (const name of expectedPublic) {
+      if (JSON.stringify(runtimeLedger.stores?.[name]) !== JSON.stringify(publicLedger.stores?.[name])) {
+        failures.push(`profiled runtime public generation differs for ${name}`);
+        continue;
+      }
+      const generation = publicLedger.stores[name];
+      const file = path.join(root, String(generation?.file || ''));
+      if (!fs.existsSync(file) || fs.statSync(file).size !== generation.bytes || sha256File(file) !== generation.sha256) {
+        failures.push(`profiled public RVF differs for ${name}`);
+      }
+    }
+    for (const name of expectedRuntime) if (!actualFamilies.has(name)) failures.push(`profiled store family is missing: ${name}`);
+    for (const name of actualFamilies) if (!expectedRuntime.includes(name)) failures.push(`profiled tree has an unselected store family: ${name}`);
+  } catch (error) { failures.push(error.message); }
+  return { valid: failures.length === 0, failures };
+}
+
+function phaseEvidenceFor({ root, terminalVerdict, bundleSha256 = null, transactionReceipts = null,
+  overlay = null, storageDelta = null }) {
+  const coverage = JSON.parse(fs.readFileSync(path.join(root, 'COVERAGE.json'), 'utf8'));
+  const ledgerBytes = fs.readFileSync(path.join(root, 'PUBLIC-RVF-GENERATIONS.json'));
+  const currentRows = (coverage.rows || []).filter((row) => row.disposition === 'eligible' && row.status === 'CURRENT');
+  const evidence = {
+    'source-enumeration': { sourceObservationSha256: coverage.sourceObservationSha256,
+      rows: coverage.totals?.rows, terminal: coverage.enumerationReceipt?.terminal === true },
+    ingestion: { eligibleCurrent: currentRows.length, storeCount: coverage.generationLedger?.storeCount },
+    'local-overlay-restoration': { restoredStores: Object.keys(overlay?.sourceStores || {}).length },
+    'generation-ledger-reconciliation': { file: 'PUBLIC-RVF-GENERATIONS.json',
+      sha256: createHash('sha256').update(ledgerBytes).digest('hex'), bytes: ledgerBytes.length },
+    'coverage-generation': { releaseCoverageGeneration: coverage.releaseCoverageGeneration,
+      coverageSha256: sha256File(path.join(root, 'COVERAGE.json')) },
+    'bundle-assembly': { bundleSha256, version: coverage.releaseIdentity?.version,
+      sourceSnapshot: coverage.releaseIdentity?.sourceSnapshot },
+    update: { terminalVerdict, transactionReceipts, storageDelta },
+  };
+  // A consumer validates a published release; it does not rerun its upstream
+  // enumeration, ingestion, or assembly. A recent update cannot freshen that evidence.
+  return Object.fromEntries(Object.entries(evidence).map(([phase, detail]) => [phase, { ...detail,
+    execution: phase === 'update' || (phase === 'local-overlay-restoration' && overlay !== null)
+      ? { kind: 'executed', runId: updateLock?.runId || null }
+      : phase === 'local-overlay-restoration'
+        ? { kind: 'not-executed' }
+        : { kind: 'imported-release', sourceSnapshot: coverage.releaseIdentity?.sourceSnapshot || null,
+          upstreamFreshness: 'UNKNOWN' },
+  }]));
 }
 
 // SYMLINK POLICY IS PER-CALLER (issues #130/#131, fixed 2026-08-10).
@@ -337,11 +486,11 @@ async function fetchJson(url) {
   if (!res.ok) die(`canonical manifest returned HTTP ${res.status} for ${url} — nothing changed.`, 2);
   try { return await res.json(); } catch (e) { die(`canonical manifest was not valid JSON: ${e.message}`, 2); }
 }
-async function fetchBuffer(url) {
+async function fetchBuffer(url, { failureCode = 2, kind = 'bundle' } = {}) {
   let res;
   try { res = await fetch(url, { redirect: 'follow' }); }
-  catch (e) { die(`network failure downloading ${url}\n  ${e.message} — nothing changed locally.`, 2); }
-  if (!res.ok) die(`bundle download returned HTTP ${res.status} for ${url} — nothing changed.`, 2);
+  catch (e) { die(`network failure downloading ${kind} ${url}\n  ${e.message} — nothing changed locally.`, failureCode); }
+  if (!res.ok) die(`${kind} download returned HTTP ${res.status} for ${url} — nothing changed.`, failureCode);
   return Buffer.from(await res.arrayBuffer());
 }
 
@@ -447,7 +596,19 @@ export function applyPublicBundlePreservingPrivate({ extractDir, kbDir, backupPa
   const collision = relativeFiles(extractDir).find((relative) => privateFiles.has(relative));
   if (collision) throw new Error(`public bundle collides with private file ${collision}; refusing to copy`);
   try {
-    copyTree(extractDir, kbDir);
+    // The public bundle is an exact tree, not an overlay. Overlay copies kept retired scripts,
+    // stale policies, and removed RVFs alive indefinitely. Replace the governed tree exactly,
+    // then restore only the explicitly captured private overlay from the pre-update snapshot.
+    restoreTreeExact(extractDir, kbDir);
+    for (const relative of privateFiles) {
+      const source = assertNoFollowPath(backupPath, path.join(backupPath, relative));
+      const target = assertNoFollowPath(kbDir, path.join(kbDir, relative));
+      if (!fs.existsSync(source) || !fs.lstatSync(source).isFile()) {
+        throw new Error(`private backup file is missing or not regular: ${relative}`);
+      }
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(source, target);
+    }
     return restorePrivateOverlayState({ kbDir, overlay });
   } catch (error) {
     try {
@@ -462,6 +623,7 @@ export function applyPublicBundlePreservingPrivate({ extractDir, kbDir, backupPa
 /** Authoritative store identities in a directory, with recursive `.rvf` fallback for old backups. */
 function storeInventory(dir) {
   const stores = new Map();
+  const logical = new Map();
   const declaredFiles = new Set();
   let complete = true;
   let reason = null;
@@ -487,7 +649,13 @@ function storeInventory(dir) {
       if (!realFile.startsWith(`${realRoot}${path.sep}`)) {
         complete = false; reason = `generation file escapes root for ${name}`; continue;
       }
-      stores.set(`store:${name}`, generation.file);
+      // Key by the governed artifact path, not by whether this particular generation metadata
+      // happened to declare it. Older backups can contain a valid local RVF as an undeclared
+      // fallback while the live KB declares the same bytes under a logical store name. Treating
+      // those as `file:<path>` versus `store:<name>` made one physical artifact look missing and
+      // permanently retained every full-KB rollback copy.
+      stores.set(path.normalize(generation.file), generation.file);
+      logical.set(name, path.normalize(generation.file));
       declaredFiles.add(generation.file);
     }
   } catch (error) {
@@ -498,12 +666,15 @@ function storeInventory(dir) {
     const files = relativeFiles(dir, '', { strict: false });
     for (const relative of files.filter((name) => name.endsWith('.rvf'))) {
       if (!declaredFiles.has(relative)) {
-        stores.set(`file:${relative}`, relative);
+        stores.set(path.normalize(relative), relative);
       }
     }
     const legacyMetadata = new Set([
       'SOURCE.json', 'repo-aliases.json', 'capability-cards.md', 'package.json', 'package-lock.json',
-      'forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'manifest.json',
+      'forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs',
+      'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'manifest.json',
+      'coverage-integrity.mjs', 'COVERAGE.json', 'CORPUS-COVERAGE.json', 'COVERAGE.md',
+      '.refresh-snapshot.json',
     ]);
     if (!hasGenerationFile && files.some((name) => !name.endsWith('.rvf') && !legacyMetadata.has(path.basename(name)))) {
       complete = false; reason = 'legacy inventory contains unclassified non-RVF files';
@@ -511,21 +682,85 @@ function storeInventory(dir) {
   } catch (error) {
     complete = false; reason = `unreadable inventory tree: ${error.message}`;
   }
-  return { stores, complete, reason };
+  return { stores, logical, complete, reason };
 }
 
 /** Recursive byte size, for honestly reporting how much was actually reclaimed. */
 function dirSize(dir) {
+  try { if (fs.lstatSync(dir).isSymbolicLink()) return fs.lstatSync(dir).size; }
+  catch { return 0; }
   let total = 0;
   const walk = (d) => {
     let entries; try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       const p = path.join(d, e.name);
-      if (e.isDirectory()) walk(p); else { try { total += fs.statSync(p).size; } catch { /* vanished mid-walk */ } }
+      if (e.isDirectory()) walk(p); else { try { total += fs.lstatSync(p).size; } catch { /* vanished mid-walk */ } }
     }
   };
   walk(dir);
   return total;
+}
+
+// A backup-looking name and matching RVF paths are not evidence that its other
+// bytes are disposable. Legacy backups have no authenticated complete ownership
+// receipt: reclaim only a tree whose every entry survives identically in live.
+function assertRedundantBackup(backup, live) {
+  const compare = (prior, current) => {
+    const a = fs.lstatSync(prior);
+    const b = fs.lstatSync(current);
+    if (a.isSymbolicLink() || b.isSymbolicLink()) {
+      // Compare links themselves, never dereference them. Store symlinks are
+      // already rejected by storeInventory; identical tooling links are safe.
+      if (!a.isSymbolicLink() || !b.isSymbolicLink() || fs.readlinkSync(prior) !== fs.readlinkSync(current)) {
+        throw new Error(`unclassified or different symbolic link: ${prior}`);
+      }
+    } else if (a.isDirectory() && b.isDirectory()) {
+      for (const name of fs.readdirSync(prior)) compare(path.join(prior, name), path.join(current, name));
+    } else if (a.isFile() && b.isFile()) {
+      if (a.size !== b.size || sha256File(prior) !== sha256File(current)) {
+        throw new Error(`different bytes: ${prior}`);
+      }
+    } else throw new Error(`unclassified or different entry type: ${prior}`);
+  };
+  compare(backup, live);
+}
+
+function rollbackRetentionPolicy(kbDir, env = process.env) {
+  const liveBytes = dirSize(kbDir);
+  const configuredSnapshots = Number(env.RUVNET_MAX_ROLLBACK_SNAPSHOTS || 1);
+  const configuredBytes = Number(env.RUVNET_MAX_ROLLBACK_BYTES || liveBytes);
+  if (!Number.isSafeInteger(configuredSnapshots) || configuredSnapshots < 0
+      || !Number.isSafeInteger(configuredBytes) || configuredBytes < 0) {
+    throw new Error('rollback retention limits must be non-negative safe integers');
+  }
+  return { maxSnapshots: configuredSnapshots, maxBytes: configuredBytes, requiredSnapshotBytes: liveBytes };
+}
+
+function snapshotInventoryDigest(dir) {
+  const inventory = storeInventory(dir);
+  if (!inventory.complete) throw new Error(`snapshot inventory is incomplete (${inventory.reason || 'unknown'})`);
+  const rows = [...inventory.stores].sort(([left], [right]) => left.localeCompare(right)).map(([identity, file]) => {
+    const absolute = path.join(dir, file);
+    return { identity, file, bytes: fs.statSync(absolute).size, sha256: sha256File(absolute) };
+  });
+  return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+}
+
+function writeSnapshotReceipt(backupPath, { state, reason = null, recoveryCommand = null }) {
+  const file = path.join(backupPath, '.refresh-snapshot.json');
+  const receipt = {
+    schemaVersion: 1,
+    kind: 'ruvnet-brain-rollback-snapshot',
+    snapshot: path.basename(backupPath),
+    bytes: dirSize(backupPath),
+    inventorySha256: snapshotInventoryDigest(backupPath),
+    state,
+    reason,
+    recoveryCommand: recoveryCommand || `restore ${backupPath} to ${KB_DIR}`,
+    updatedAt: new Date().toISOString(),
+  };
+  atomicJson(file, receipt);
+  return receipt;
 }
 
 /**
@@ -555,20 +790,35 @@ export function reclaimBackups({
 
   const all = [...new Set([...backupsMade, ...stranded])];
   const removed = []; const kept = []; let freed = 0;
+  const safePreserved = new Map();
+  const retentionPolicy = rollbackRetentionPolicy(kbDir, env);
   const liveInventory = storeInventory(kbDir);
-  const allowedMissing = new Set(intentionallyRemovedStores.flatMap((store) => [
-    `store:${store}`,
-    `file:${store}.rvf`,
-    `file:${store}.big.rvf`,
-  ]));
+  const conventionalAllowedMissing = new Set(intentionallyRemovedStores.flatMap((store) => [
+    `${store}.rvf`,
+    `${store}.big.rvf`,
+  ]).map((file) => path.normalize(file)));
 
   for (const b of all) {
     if (!fs.existsSync(b)) continue;
     if (env.RUVNET_KEEP_BACKUP === '1') { kept.push([b, 'RUVNET_KEEP_BACKUP=1 is set']); continue; }
+    try {
+      if (path.dirname(path.resolve(b)) !== path.resolve(parent) || !path.basename(b).startsWith(prefix)) {
+        throw new Error('target is not an exact backup sibling');
+      }
+      for (const dir of [parent, kbDir, b]) {
+        const stat = fs.lstatSync(dir);
+        if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`not a real directory: ${dir}`);
+      }
+    } catch (error) { kept.push([b, `unsafe reclaim target: ${error.message}`]); continue; }
     const backupInventory = storeInventory(b);
     if (!liveInventory.complete || !backupInventory.complete) {
       kept.push([b, `inventory is incomplete; refusing destructive reclaim (${backupInventory.reason || liveInventory.reason || 'unknown'})`]);
       continue;
+    }
+    const allowedMissing = new Set(conventionalAllowedMissing);
+    for (const store of intentionallyRemovedStores) {
+      const governedPath = backupInventory.logical.get(store);
+      if (governedPath) allowedMissing.add(governedPath);
     }
     const lost = [...backupInventory.stores].filter(([identity]) => !liveInventory.stores.has(identity) && !allowedMissing.has(identity));
     if (lost.length) {
@@ -576,11 +826,38 @@ export function reclaimBackups({
       kept.push([b, `it holds ${lost.length} store(s) the new copy does NOT have: ${labels.slice(0, 3).join(', ')}${lost.length > 3 ? '…' : ''}`]);
       continue;
     }
+    try { assertRedundantBackup(b, kbDir); }
+    catch (error) {
+      kept.push([b, `PRESERVED_UNCLASSIFIED: complete byte redundancy is not proven; ${error.message}`]);
+      // Preservation does not itself require blocking an isolated transaction.
+      // Only a complete regular-file inventory can establish measured retention;
+      // missing stores, unsafe roots, unreadable bytes and symlinks remain blockers.
+      try {
+        const identity = treeIdentity(b);
+        if (identity.entries.every((entry) => entry.type === 'file')) safePreserved.set(b, identity.bytes);
+      } catch { /* retained, but not safe to proceed past recovery preflight */ }
+      continue;
+    }
     const size = dirSize(b);
     try { fs.rmSync(b, { recursive: true, force: true }); removed.push(b); freed += size; }
     catch (e) { kept.push([b, `could not remove: ${e.message}`]); }
   }
-  return { removed, kept, freed };
+  const retained = all.filter((backup) => fs.existsSync(backup)).map((backup) => {
+    let inventorySha256 = null;
+    let inventoryError = null;
+    try {
+      if (fs.lstatSync(backup).isSymbolicLink()) throw new Error('backup root is a symbolic link');
+      inventorySha256 = snapshotInventoryDigest(backup);
+    }
+    catch (error) { inventoryError = error.message; }
+    return { path: backup, bytes: safePreserved.get(backup) ?? dirSize(backup), inventorySha256, inventoryError,
+      safeToRetainDuringUpdate: safePreserved.has(backup), automaticCleanupEligible: false };
+  });
+  const retainedBytes = retained.reduce((sum, snapshot) => sum + snapshot.bytes, 0);
+  const retention = { ...retentionPolicy, observedSnapshots: retained.length, observedBytes: retainedBytes,
+    withinBudget: retained.length <= retentionPolicy.maxSnapshots && retainedBytes <= retentionPolicy.maxBytes };
+  return { removed, kept, freed, retained, retentionPolicy: retention, withinBudget: retention.withinBudget,
+    updateMayProceed: retention.withinBudget && retained.every((entry) => entry.safeToRetainDuringUpdate) };
 }
 
 /**
@@ -793,6 +1070,26 @@ export function verifyLanded({ kbDir, kbName, before, beforeBundle = null, expec
 }
 
 async function main() {
+  if (APPLY) {
+    try { updateLock = acquireUpdateLock(); }
+    catch (error) { die(`update lock refused this run: ${error.message}`); }
+
+    // Cleanup is part of every apply, including an already-current run. Otherwise a redundant
+    // multi-GB rollback can survive forever simply because there is no newer release to trigger
+    // the old behind-only preflight.
+    const preflightRollbacks = reclaimBackups({ kbDir: KB_DIR });
+    legacyBackupRetention = preflightRollbacks;
+    if (preflightRollbacks.removed.length) {
+      console.log(`\nreleased ${preflightRollbacks.removed.length} redundant rollback ${preflightRollbacks.removed.length === 1 ? 'copy' : 'copies'} before update check`);
+    }
+    if (preflightRollbacks.kept.length && !preflightRollbacks.updateMayProceed) {
+      const detail = preflightRollbacks.kept.map(([backup, reason]) => `  ${backup}: ${reason}`).join('\n');
+      die(`unresolved rollback state exists; refusing to create another full-KB copy.\n${detail}\n  Restore or reconcile that copy first, then re-run.`);
+    }
+    for (const retained of preflightRollbacks.retained) {
+      console.log(`\nPRESERVED_UNCLASSIFIED: ${retained.path} (${retained.bytes} bytes); retained within configured budget, not reclaimed.`);
+    }
+  }
   const canon = await fetchJson(manifestUrl);
   const activeProfile = RESTORE_COMPLETE ? 'complete' : readBrainProfile();
   const profileStores = selectUpdateManagedStores(stores, activeProfile);
@@ -829,7 +1126,27 @@ async function main() {
     console.log(`\nAll stores current. Nothing to do.`); process.exit(0);
   }
 
-  if (!anyBehind) { console.log(`\nNothing to apply — already current.`); process.exit(0); }
+  if (!anyBehind) {
+    const inventoryBefore = managedStorageInventory(KB_DIR);
+    let validateCoverageDirectory;
+    try { validateCoverageDirectory = await loadTrustedCoverageValidator(); }
+    catch (error) { die(`${error.message}. The live KB is untouched.`); }
+    const installed = activeProfile === 'complete'
+      ? validateReleaseCoverageTree(KB_DIR, validateCoverageDirectory)
+      : validateProfiledReleaseTree(KB_DIR, activeProfile, capturePrivateOverlayState({ kbDir: KB_DIR, allStores: stores }));
+    if (!installed.valid) die(`already-current KB failed integrity: ${installed.failures.join('; ')}`);
+    // No transaction paths are created: the inventory still counts every retained managed copy.
+    const measuredDelta = storageDelta({ live: KB_DIR }, { prior: inventoryBefore.active, inventoryBefore });
+    const noopOutcome = writeUpdateOutcome({ terminalVerdict: 'noop', reason: 'already-current', storeCount: targets.length,
+      storageDelta: measuredDelta,
+      phaseEvidence: phaseEvidenceFor({ root: KB_DIR, terminalVerdict: 'noop', storageDelta: measuredDelta }) });
+    if (noopOutcome?.terminalVerdict === 'recovery-required') die(noopOutcome.reason);
+    console.log(`\nNothing to apply — already current.`); process.exit(0);
+  }
+
+  let validateCoverageDirectory;
+  try { validateCoverageDirectory = await loadTrustedCoverageValidator(); }
+  catch (error) { die(`${error.message}. The live KB is untouched.`); }
 
   // What actually landed for each store, so the final message (below RECLAIM) can be built from
   // the real on-disk artifact instead of the `canon` lookup made at the top of this run — issue
@@ -841,165 +1158,120 @@ async function main() {
   const unchangedStores = [];
   // Stores whose bundle demonstrably did not move at all. Non-zero exit, counted in the summary
   // rather than only in the mid-log line a cron job never reads (issue #106).
-  const mismatches = [];
-  let attempted = 0;
   let privateOverlay;
   try { privateOverlay = capturePrivateOverlayState({ kbDir: KB_DIR, allStores: stores }); }
   catch (e) { die(`private overlay preflight failed: ${e.message} — refusing to update.`); }
-
-  let runBackupPath = null;   // one snapshot for the whole run (#130)
-  for (const { local } of behindStores) {
-    attempted++;
-    // ── RESOLVE THE BUNDLE URL FROM THE LIVE MANIFEST, NOT THE PINNED LOCAL COPY (issue #35 item 1) ─
-    const resolved = resolveBundleUrl({ canon, local, source });
-    if (!resolved.url) die(`[${local.kbName}] no canonicalBundleUrl in SOURCE.json and no resolvable asset in the live manifest — cannot self-update this store.`);
-    if (resolved.warning) console.warn(`\n  ⚠ ${resolved.warning}`); // issue #35 item 3: never fall back silently
-    const bundleUrl = resolved.url;
-    const originLabel = resolved.origin === 'latest-release-asset' ? `live release asset "${resolved.assetName}"`
-      : resolved.origin === 'live-manifest' ? `live manifest entry for ${local.kbName}`
-      : 'PINNED FALLBACK (see warning above)';
-    console.log(`\n[${local.kbName}] downloading ${bundleUrl}\n  (source: ${originLabel}) ...`);
-    const buf = await fetchBuffer(bundleUrl);
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `forge-update-${local.kbName}-`));
-    const zipPath = path.join(tmp, 'bundle.zip'), extractDir = path.join(tmp, 'extracted');
-    fs.writeFileSync(zipPath, buf); fs.mkdirSync(extractDir, { recursive: true });
-    console.log(`  downloaded ${(buf.length / 1e6).toFixed(1)} MB.`);
-
-    // ── SIGNED AUTO-APPLY (SEC-0010 #6) — verify BEFORE extracting executable code ────────────────
-    // Trust root = the Ed25519 public key ALREADY on disk from the last good install (KB_DIR/keys/…),
-    // NOT a key riding inside this download. So a tampered bundle cannot supply its own key: we check
-    // the new zip against the key we already trusted. Fail-closed — any doubt, refuse, local untouched.
-    const verifierPath = path.join(KB_DIR, 'verify-bundle.mjs');
-    const keyPath = path.join(KB_DIR, 'keys', 'ruvnet-brain-signing.pub.pem');
-    if (fs.existsSync(verifierPath) && fs.existsSync(keyPath)) {
-      let sigBuf;
-      try { sigBuf = await fetchBuffer(`${bundleUrl}.sig`); }
-      catch (e) { fs.rmSync(tmp, { recursive: true, force: true }); die(`[${local.kbName}] cannot fetch the signature (${bundleUrl}.sig): ${e.message}\n  REFUSING to apply an unverifiable bundle — your current brain is untouched.`, 3); }
-      const sigPath = path.join(tmp, 'bundle.zip.sig');
-      fs.writeFileSync(sigPath, sigBuf);
-      const { verifyBundle } = await import(pathToFileURL(verifierPath).href);
-      const v = verifyBundle(zipPath, sigPath, keyPath);
-      if (!v.ok) { fs.rmSync(tmp, { recursive: true, force: true }); die(`[${local.kbName}] ✗ SIGNATURE VERIFICATION FAILED: ${v.reason}\n  REFUSING to apply — the download may be tampered. Your current brain is untouched.`, 4); }
-      console.log(`  ✓ signature verified — ${v.reason}`);
-    } else {
-      // Bootstrap: a bundle from before signed auto-apply has no verifier/key on disk yet. It can't
-      // check a signature it never shipped the means to check. Apply this once (the new bundle INSTALLS
-      // the verifier + key), so every auto-update AFTER this one is signature-checked. Installer-driven
-      // updates (`npx ruvnet-brain@latest --update`) verify via the npm package's own key regardless.
-      console.log(`  ⚠ this brain predates signed auto-apply — applying UNVERIFIED once to install the verifier; every auto-update after this is signature-checked.`);
-    }
-    console.log(`  extracting...`);
-    // In-process extraction (node:zlib) — never a shelled-out `unzip`. This self-updater runs on
-    // whatever machine installed the brain, and on Windows `unzip` is either absent entirely
-    // (PowerShell) or present-but-broken by backslash paths reaching an MSYS2 build via cmd.exe.
-    // Both were measured on the stranger-machine matrix. Same module the installer uses, so there
-    // is exactly one extraction implementation in the product. Failures still name the archive and
-    // the offending entry, and NOTHING local is touched before this succeeds.
-    try { await extractZip(zipPath, extractDir); }
-    catch (e) { fs.rmSync(tmp, { recursive: true, force: true }); die(`[${local.kbName}] extraction failed: ${e.message} — local files untouched.`); }
-    // ONE ROLLBACK SNAPSHOT PER RUN, NOT PER STORE (issue #130, fixed 2026-08-10).
-    //
-    // Every behind store took this branch, and each one copied the ENTIRE KB — so a run with 23
-    // stores behind produced 23 full-KB snapshots of ~1.2 GB each from a SINGLE combined release
-    // bundle. The reporter measured 23 backups (~43 GiB) created in one run, 27 total on disk
-    // (~50 GiB); the maintainer's machine reached 63 backups and ~72 GB before it was noticed,
-    // because #131 also made the reclaimer unable to release any of them.
-    //
-    // The rollback semantics are unchanged: the snapshot is still taken BEFORE anything local is
-    // touched, and it is still the exact pre-update KB. It simply does not need to be re-copied for
-    // each store, because every store in this loop is applied from the same downloaded bundle
-    // against the same KB directory — the second copy onward is a byte-identical duplicate of a
-    // state that has already been captured.
-    if (!runBackupPath) {
-      runBackupPath = path.join(path.dirname(KB_DIR), `${path.basename(KB_DIR)}.bak-${stamp()}`);
-      console.log(`  backing up current copy -> ${runBackupPath}`);
-      console.log(`  (temporary — released automatically once the new copy verifies)`);
-      fs.cpSync(KB_DIR, runBackupPath, { recursive: true });
-      backupsMade.push(runBackupPath);
-    } else {
-      console.log(`  reusing this run's rollback snapshot -> ${runBackupPath}`);
-    }
-    const backupPath = runBackupPath;
-    try {
-      const restored = applyPublicBundlePreservingPrivate({ extractDir, kbDir: KB_DIR, backupPath, overlay: privateOverlay });
-      if (restored.restored) console.log(`  restored ${restored.restored} private overlay registration(s).`);
-    } catch (e) {
-      fs.rmSync(tmp, { recursive: true, force: true });
-      die(`[${local.kbName}] PRIVATE OVERLAY RESTORE FAILED: ${e.message}\n  Previous copy remains at ${backupPath}. REFUSING to reclaim it or report success.`);
-    }
+  const resolvedTargets = behindStores.map(({ local }) => ({ local, resolved: resolveBundleUrl({ canon, local, source }) }));
+  for (const { local, resolved } of resolvedTargets) {
+    if (!resolved.url) die(`[${local.kbName}] no canonical bundle URL is resolvable from the live manifest.`);
+    if (resolved.warning) console.warn(`\n  ⚠ ${resolved.warning}`);
+  }
+  const bundleIdentities = new Set(resolvedTargets.map(({ resolved }) => JSON.stringify({ url: resolved.url, digest: resolved.digest || null })));
+  if (bundleIdentities.size !== 1) {
+    die(`selected stores resolve to divergent combined bundle identities; refusing a mixed-generation update.`);
+  }
+  const resolved = resolvedTargets[0].resolved;
+  const originLabel = resolved.origin === 'latest-release-asset' ? `live release asset "${resolved.assetName}"`
+    : resolved.origin === 'live-manifest' ? 'live manifest' : 'PINNED FALLBACK (see warning above)';
+  console.log(`\n[${behindStores.length} store(s)] downloading ${resolved.url}\n  (source: ${originLabel}) ...`);
+  const buf = await fetchBuffer(resolved.url);
+  const sigBuf = await fetchBuffer(`${resolved.url}.sig`, { failureCode: 3, kind: 'signature' });
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-release-'));
+  const zipPath = path.join(tmp, 'bundle.zip');
+  const sigPath = path.join(tmp, 'bundle.zip.sig');
+  const extractDir = path.join(tmp, 'extracted');
+  fs.writeFileSync(zipPath, buf);
+  fs.writeFileSync(sigPath, sigBuf);
+  fs.mkdirSync(extractDir);
+  console.log(`  downloaded ${(buf.length / 1e6).toFixed(1)} MB.`);
+  const signature = verifyDownloadedBundle(zipPath, sigPath);
+  if (!signature.ok) { fs.rmSync(tmp, { recursive: true, force: true }); die(`✗ SIGNATURE VERIFICATION FAILED: ${signature.reason}`, 4); }
+  console.log(`  ✓ signature verified — ${signature.reason}`);
+  try { await extractZip(zipPath, extractDir); }
+  catch (error) { fs.rmSync(tmp, { recursive: true, force: true }); die(`extraction failed: ${error.message} — local files untouched.`); }
+  const stagedCoverage = validateReleaseCoverageTree(extractDir, validateCoverageDirectory);
+  if (!stagedCoverage.valid) {
     fs.rmSync(tmp, { recursive: true, force: true });
-    console.log(`  files replaced.`);
+    die(`staged ReleaseCoverage failed integrity: ${stagedCoverage.failures.join('; ')} — local files untouched.`);
+  }
 
-    // ── VERIFY WHAT ACTUALLY LANDED (issue #35 item 2) ────────────────────────────────────────────
-    // Re-read the SOURCE.json this extraction just wrote to KB_DIR and confirm it genuinely differs
-    // from the copy we started with (and, when GitHub gave us a digest, that the bytes match it).
-    // Do NOT trust `canon` here — that lookup happened before any download and says nothing about
-    // what is now actually on disk. See verifyLanded()'s doc comment for why this can't reuse
-    // isBehind() safely.
-    const verified = verifyLanded({
-      kbDir: KB_DIR, kbName: local.kbName, before: local, beforeBundle: source,
-      expectedDigest: resolved.digest, downloadedBuffer: buf,
+  const privateNames = Object.keys(privateOverlay?.sourceStores || {});
+  let profileResult = null;
+  const finalVerificationByStore = new Map();
+  const validateFinalTree = ({ dir, phase }) => {
+    const coverageResult = activeProfile === 'complete'
+      ? validateReleaseCoverageTree(dir, validateCoverageDirectory)
+      : validateProfiledReleaseTree(dir, activeProfile, privateOverlay);
+    if (!coverageResult.valid) return coverageResult;
+    const guard = path.join(dir, 'forge-guard.mjs');
+    if (!fs.existsSync(guard)) return { valid: false, failures: ['forge-guard.mjs is missing'] };
+    try {
+      for (const { local, resolved: storeResolution } of resolvedTargets) {
+        execFileSync(process.execPath, [guard, '--dir', dir, '--name', local.kbName], { cwd: dir, stdio: 'pipe' });
+        const verified = verifyLanded({ kbDir: dir, kbName: local.kbName, before: local, beforeBundle: source,
+          expectedDigest: storeResolution.digest, downloadedBuffer: buf });
+        if (!verified.ok && verified.kind !== 'noop') return { valid: false, failures: [verified.reason] };
+        if (phase === 'live') finalVerificationByStore.set(local.kbName, verified);
+      }
+      return { valid: true, failures: [] };
+    } catch (error) { return { valid: false, failures: [`forge-guard failed: ${error.message}`] }; }
+  };
+  let transaction;
+  try {
+    // The installer starts this child inside KB_DIR. Windows holds that directory open
+    // until cwd leaves it, preventing the atomic swap. Inputs (including RESULT_FILE)
+    // are already resolved; all transaction and recovery paths remain absolute.
+    const cwdWithinKb = path.relative(KB_DIR, process.cwd());
+    if (cwdWithinKb === '' || (!path.isAbsolute(cwdWithinKb)
+      && cwdWithinKb !== '..' && !cwdWithinKb.startsWith(`..${path.sep}`))) {
+      process.chdir(path.dirname(KB_DIR));
+    }
+    transaction = runStorageTransaction({ liveDir: KB_DIR, sourceDir: extractDir,
+      transactionId: `${Date.now()}-${process.pid}`,
+      prepareCandidate: ({ candidateDir, liveDir }) => {
+        for (const relative of Object.keys(privateOverlay?.files || {})) {
+          const sourceFile = assertNoFollowPath(liveDir, path.join(liveDir, relative));
+          const targetFile = assertNoFollowPath(candidateDir, path.join(candidateDir, relative));
+          fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+          fs.copyFileSync(sourceFile, targetFile);
+        }
+        restorePrivateOverlayState({ kbDir: candidateDir, overlay: privateOverlay });
+        const fullCoverage = validateReleaseCoverageTree(candidateDir, validateCoverageDirectory);
+        if (!fullCoverage.valid) throw new Error(`candidate public/private convergence failed: ${fullCoverage.failures.join('; ')}`);
+        if (activeProfile !== 'complete') profileResult = applyBrainProfile(candidateDir, activeProfile, { preserveStores: privateNames });
+      },
+      validateCandidate: validateFinalTree,
+      validateLive: validateFinalTree,
     });
-    if (!verified.ok) {
-      // 'damaged' — the copy in place is suspect. die() KEEPS the rollback and names it.
-      if (verified.kind !== 'noop') {
-        die(`[${local.kbName}] UPDATE MISMATCH: ${verified.reason}\n  REFUSING to report success.`);
-      }
-      // --restore-complete deliberately re-lands the SAME bundle, to bring back artifacts a profile
-      // removed. An unchanged identity is the EXPECTED outcome of that request, not a failed
-      // update: what it restores is FILES, which SOURCE.json's identity has nothing to say about.
-      if (RESTORE_COMPLETE) {
-        unchangedStores.push(local.kbName);
-        landedByStore.set(local.kbName, { landed: verified.landed, origin: resolved.origin, assetName: resolved.assetName });
-        continue;
-      }
-      // 'noop' — the bundle did not move. The KB in place is intact (it is what the rollback copy
-      // already holds), so there is nothing to roll back TO that differs, and the run is settled
-      // once below rather than aborting here. Every store in this bundle shares its identity, so
-      // re-downloading the rest to prove the same thing would cost gigabytes for no new fact.
-      mismatches.push({ kbName: local.kbName, reason: verified.reason });
-      break;
-    }
-    if (verified.storeUnchanged) unchangedStores.push(local.kbName);
-    landedByStore.set(local.kbName, { landed: verified.landed, origin: resolved.origin, assetName: resolved.assetName });
+  } catch (error) {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    die(`storage transaction failed: ${error.message}`);
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
+  console.log(`  storage transaction: ${transaction.terminalVerdict}`);
+  if (transaction.terminalVerdict === 'cleanup-pending') {
+    const bundleSha256 = createHash('sha256').update(buf).digest('hex');
+    const cleanupOutcome = writeUpdateOutcome({ terminalVerdict: 'cleanup-pending', storageDelta: transaction.storageDelta,
+      transactionReceipts: transaction.paths.receipts, bundleSha256,
+      phaseEvidence: phaseEvidenceFor({ root: KB_DIR, terminalVerdict: 'cleanup-pending', bundleSha256,
+        transactionReceipts: transaction.paths.receipts, overlay: privateOverlay,
+        storageDelta: transaction.storageDelta }) });
+    if (cleanupOutcome?.terminalVerdict === 'recovery-required') die(cleanupOutcome.reason);
+    console.error('\nVerified live generation is active, but redundant rollback cleanup is pending.');
+    process.exitCode = 12;
+    return;
+  }
+  for (const { local, resolved: storeResolution } of resolvedTargets) {
+    const verified = finalVerificationByStore.get(local.kbName)
+      || verifyLanded({ kbDir: KB_DIR, kbName: local.kbName, before: local, beforeBundle: source,
+        expectedDigest: storeResolution.digest, downloadedBuffer: buf });
+    if (verified.storeUnchanged || verified.kind === 'noop') unchangedStores.push(local.kbName);
+    landedByStore.set(local.kbName, { landed: verified.landed, origin: storeResolution.origin, assetName: storeResolution.assetName });
   }
 
-  if (mismatches.length) {
-    // ── THE BUNDLE DID NOT MOVE — SAY SO IN THE EXIT CODE (issue #106) ───────────────────────────
-    // The mid-log error was already correct and named the issue; what a script or a scheduled job
-    // reads is the exit code, and that used to be swallowed. Release the rollback copy FIRST
-    // (issue #108): nothing changed, so it duplicates the copy in place byte for byte and is pure
-    // waste — ~1.6 GB of it per run, which is how the two issues turned out to be one run.
-    settleRollback({ reclaimable: true });
-    console.error(`\n[forge-update] ERROR: [${mismatches[0].kbName}] UPDATE MISMATCH: ${mismatches[0].reason}`);
-    console.error(`\n=== NOT DONE — 0 of ${behindStores.length} store(s) moved ===`);
-    console.error(`  ${mismatches.length} store(s) reported UPDATE MISMATCH: ${mismatches.map((m) => m.kbName).join(', ')}`);
-    if (attempted < behindStores.length) {
-      console.error(`  stopped at the first mismatch; ${behindStores.length - attempted} store(s) not attempted (same bundle, same verdict).`);
-    }
-    console.error(`  exiting ${EXIT_NOT_LANDED}: the download completed but the corpus on disk did not change, so no`);
-    console.error(`  script or scheduled job may read this run as success.`);
-    process.exit(EXIT_NOT_LANDED);
-  }
-
-  // Re-verify only the updated store(s) with the bundled guard. forge-guard.mjs takes the KB
-  // name + dir; pass them so a single-store copy doesn't fail on absent sibling stores.
-  const guard = path.join(KB_DIR, 'forge-guard.mjs');
-  if (fs.existsSync(guard)) {
-    for (const { local } of behindStores) {
-      console.log(`\nre-verifying [${local.kbName}] with forge-guard.mjs ...`);
-      try { execFileSync(process.execPath, [guard, '--dir', KB_DIR, '--name', local.kbName], { cwd: KB_DIR, stdio: 'inherit' }); }
-      catch { die(`forge-guard FAILED for [${local.kbName}] after update. Previous copy backed up beside the KB dir (*.bak-*). Restore it if needed.`); }
-    }
-  } else {
-    console.log(`\n(no forge-guard.mjs found to re-verify — skipped)`);
-  }
-
-  let intentionallyRemovedStores = [];
-  if (activeProfile !== 'complete') {
-    const scoped = applyBrainProfile(KB_DIR, activeProfile);
-    intentionallyRemovedStores = scoped.removedStores;
-    console.log(`\nprofile ${activeProfile}: kept ${scoped.stores.join(', ')}; removed ${scoped.removed.length} unselected artifact(s).`);
+  const intentionallyRemovedStores = profileResult?.removedStores || [];
+  if (profileResult) {
+    console.log(`\nprofile ${activeProfile}: kept ${profileResult.stores.join(', ')}; removed ${profileResult.removed.length} unselected artifact(s).`);
   }
 
   // ── RECLAIM THE ROLLBACK COPY (issue #35, Dr. Mark Allen) ──────────────────────────────────────
@@ -1026,7 +1298,9 @@ async function main() {
   // SOURCE.json still said v0.5.0-dev afterward." Every store reaching this line already passed
   // verifyLanded() above (main() dies before this point otherwise), so what follows is read back
   // from the real file on disk, not asserted.
-  console.log(`\n=== DONE — ${behindStores.length} store(s) updated ===`);
+  console.log(transaction.terminalVerdict === 'noop'
+    ? `\n=== DONE — exact no-op; installed bytes already equal the validated candidate ===`
+    : `\n=== DONE — ${behindStores.length} store(s) updated ===`);
   console.log(`resolved target (live manifest, checked BEFORE downloading): ${canonLabel}`);
   for (const { local } of behindStores) {
     const r = landedByStore.get(local.kbName);
@@ -1041,6 +1315,16 @@ async function main() {
     console.log(`\n${unchangedStores.length} of ${behindStores.length} store(s) were already at the canonical build and did not change: ${unchangedStores.join(', ')}`);
     console.log(`  (stores are forged independently — an unchanged store means its upstream repo did not move, not a failed update.)`);
   }
+  const finalOutcome = writeUpdateOutcome({ terminalVerdict: transaction.terminalVerdict, storeCount: behindStores.length,
+    storageDelta: transaction.storageDelta,
+    transactionReceipts: transaction.paths.receipts,
+    bundleSha256: createHash('sha256').update(buf).digest('hex'),
+    coverageSha256: sha256File(path.join(KB_DIR, 'COVERAGE.json')),
+    phaseEvidence: phaseEvidenceFor({ root: KB_DIR, terminalVerdict: transaction.terminalVerdict,
+      bundleSha256: createHash('sha256').update(buf).digest('hex'),
+      transactionReceipts: transaction.paths.receipts, overlay: privateOverlay,
+      storageDelta: transaction.storageDelta }) });
+  if (finalOutcome?.terminalVerdict === 'recovery-required') die(finalOutcome.reason);
   console.log(`\n(the above is read back from disk, verified — not a tag lookup)`);
   process.exit(0);
 }

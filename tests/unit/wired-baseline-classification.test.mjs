@@ -29,15 +29,10 @@ describe('the seven formerly-unclassified first-party entrypoints', () => {
     }
   });
 
-  it('derives the Codex hook chain from the shipped manifest and installer copy', () => {
+  it('classifies the preserved Codex hook chain as retired', () => {
     const rows = new Map(hookWiringAudit({ repo: ROOT }).rows.map((row) => [row.file, row]));
-    expect(rows.get('codex-hook-wrapper.mjs')).toMatchObject({ state: 'wired' });
-    expect(rows.get('codex-hook-wrapper.mjs').sources.join(' '))
-      .toMatch(/plugin\/hooks\/codex-hooks\.json.*bin\/install\.mjs Stable Spine copy/i);
-    expect(rows.get('codex-hook-adapter.mjs')).toMatchObject({
-      state: 'wired',
-      sources: ['spawned by plugin/scripts/codex-hook-wrapper.mjs'],
-    });
+    expect(rows.get('codex-hook-wrapper.mjs')).toMatchObject({ state: 'retired' });
+    expect(rows.get('codex-hook-adapter.mjs')).toMatchObject({ state: 'retired' });
   });
 
   it('labels a clean-checkout census as partial instead of claiming full agreement', () => {

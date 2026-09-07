@@ -38,6 +38,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { NIGHTLY_LABEL, schedulerStatus } from '../plugin/scripts/nightly-scheduler.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REGISTRY = process.env.WATCHDOG_REGISTRY || path.join(ROOT, 'config', 'scheduled-jobs.json');
@@ -158,6 +159,17 @@ export function checkAll(now, { registry = REGISTRY, loaded = loadedLabels(), hb
   });
 }
 
+export function productSchedulerVerdict(status) {
+  const base = { label: NIGHTLY_LABEL, what: 'Refreshes the installed Brain corpus and converges every detected host',
+    schedule: 'daily 03:47', maxAgeHours: 30, required: true };
+  if (status?.state !== 'on') return { ...base, state: MISSING, detail: status?.evidence || 'scheduler is not registered' };
+  const run = status.runHealth || { state: 'never-ran', evidence: 'No nightly refresh receipt exists yet.' };
+  const mapped = run.state === 'ok' || run.state === 'running' ? OK
+    : run.state === 'stale' ? STALE
+      : run.state === 'never-ran' ? NEVER_RAN : FAILING;
+  return { ...base, state: mapped, detail: run.evidence };
+}
+
 const loadState = () => { try { return JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch { return {}; } };
 const saveState = (s) => { fs.mkdirSync(path.dirname(STATE), { recursive: true }); fs.writeFileSync(STATE, JSON.stringify(s, null, 2)); };
 
@@ -183,7 +195,10 @@ async function push(title, body, priority) {
 async function main() {
   const json = process.argv.includes('--json');
   const quiet = process.argv.includes('--quiet');
-  const results = checkAll(new Date());
+  const brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
+  const results = [...checkAll(new Date()), productSchedulerVerdict(schedulerStatus({
+    brainHome, kbDir: process.env.RUVNET_BRAIN_KB || path.join(brainHome, 'kb'),
+  }))];
   const bad = results.filter((r) => r.state !== OK);
 
   const prev = loadState();
@@ -219,7 +234,7 @@ async function main() {
       ? `${bad.length} of ${results.length} job(s) are NOT confirmed working. NEVER-RAN means the schedule has never fired — it does not mean "probably fine".`
       : `All ${results.length} jobs produced a fresh, successful receipt.`);
   }
-  process.exit(bad.length ? 1 : 0);
+  process.exit(bad.length || undelivered.size ? 1 : 0);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) await main();

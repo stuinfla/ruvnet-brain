@@ -1,6 +1,6 @@
-// tests/unit/forge-rerank-workers.test.mjs — ADR-0011 Phase 3: worker_threads CE parallelization
-// in kb/forge-rerank.mjs (single-file pattern: the module is its own worker entry via workerData
-// sentinel). Sibling file tests/unit/forge-rerank.test.mjs covers the inline path's semantics and
+// tests/unit/forge-rerank-workers.test.mjs — ADR-0011 Phase 3: process-isolated CE parallelization
+// in kb/forge-rerank.mjs (single-file entry, explicit argument plus live IPC channel).
+// Sibling file tests/unit/forge-rerank.test.mjs covers the inline path's semantics and
 // stays untouched; THIS file covers the parallel dispatch:
 //   (a) determinism — CE_WORKERS=0 and CE_WORKERS=4 produce IDENTICAL ceScore arrays (real model;
 //       skips loudly if the cross-encoder is not in any local cache, since the test env is offline)
@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fork } from 'node:child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '../..');
@@ -139,11 +140,55 @@ describe('parallel dispatch — hermetic (mocked CE, no model, no real workers)'
 describe('parallel vs inline determinism — real cross-encoder (skips loudly when the model cannot load offline)', () => {
   const QUERY = 'how does the cross-encoder rerank pooled candidates?';
   const byPath = (r) => Object.fromEntries(r.map((d) => [d.path, d.ceScore]));
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  async function waitGone(pids) {
+    const deadline = Date.now() + 5000;
+    while (pids.some(alive) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(pids.filter(alive)).toEqual([]);
+  }
+
+  itReal('a killed child cannot kill its caller or masquerade as successful parallel work', async () => {
+    process.env.KB_MODEL_CACHE = MODEL_CACHE; process.env.CE_PARALLEL_MIN = '1'; process.env.CE_WORKERS = '4';
+    const mod = await importReal();
+    let pids = [];
+    try {
+      const docs = Array.from({ length: 24 }, (_, i) => ({ path: `d${i}`, fullText: `Retrieval passage ${i}.` }));
+      const first = await mod.rerankPairs(QUERY, docs);
+      pids = mod.ceWorkerStats().childPids;
+      process.kill(pids[0], 'SIGKILL');
+      await waitGone([pids[0]]);
+      const next = await mod.rerankPairs(QUERY, docs);
+      expect(byPath(next)).toEqual(byPath(first));
+      expect(mod.ceWorkerStats()).toMatchObject({ parallelCalls: 1, inlineCalls: 1, poolBroken: true });
+    } finally { await mod.ceWorkerShutdown(); await waitGone(pids); }
+  }, REAL_TIMEOUT);
+
+  itReal('parent death disconnects and reaps the real warm child pool', async () => {
+    const parent = fork(path.join(REPO, 'tests/fixtures/ce-pool-parent.mjs'), [], {
+      execPath: process.execPath, execArgv: [], stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
+      env: { ...process.env, KB_MODEL_CACHE: MODEL_CACHE, CE_WORKERS: '4', CE_PARALLEL_MIN: '1' },
+    });
+    let pids = [];
+    try {
+      const stats = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('parent fixture readiness timeout')), 10000);
+        parent.once('message', (m) => { clearTimeout(timer); resolve(m); });
+        parent.once('error', (e) => { clearTimeout(timer); reject(e); });
+        parent.once('exit', () => { clearTimeout(timer); reject(new Error('parent exited before readiness')); });
+      });
+      expect(stats).toMatchObject({ parallelCalls: 1, childResponses: 2, poolBroken: false });
+      pids = stats.childPids; expect(pids).toHaveLength(4); expect(pids.every(alive)).toBe(true);
+      const exited = new Promise((resolve) => parent.once('exit', resolve));
+      parent.kill('SIGKILL'); await exited;
+      await waitGone(pids);
+    } finally { if (parent.exitCode === null && parent.signalCode === null) parent.kill('SIGKILL'); }
+  }, REAL_TIMEOUT);
 
   itReal('(a) CE_WORKERS=0 and CE_WORKERS=4 produce identical ceScore arrays on a 24-doc fixture', async () => {
     process.env.KB_MODEL_CACHE = MODEL_CACHE;
     process.env.CE_PARALLEL_MIN = '1'; // the 24-doc fixture is below the production default of 33
     const { rerankPairs, ceWorkerStats, ceWorkerShutdown } = await importReal();
+    let children = [];
     try {
       // 24 docs = 2 CE_BATCH_SIZE chunks -> 2 contiguous shards; short synthetic passages.
       const docs = Array.from({ length: 24 }, (_, i) => ({
@@ -157,12 +202,25 @@ describe('parallel vs inline determinism — real cross-encoder (skips loudly wh
       const parallel = await rerankPairs(QUERY, docs);
       // Prove the worker path REALLY ran (a silent inline fallback would make this test a no-op).
       expect(ceWorkerStats()).toMatchObject({ parallelCalls: 1, inlineCalls: 1, poolBroken: false });
+      children = ceWorkerStats().childPids;
+      expect(children).toHaveLength(4);
+      expect(children.every((pid) => Number.isInteger(pid) && pid !== process.pid)).toBe(true);
+      expect(ceWorkerStats().childResponses).toBe(2);
       // Chunk-aligned contiguous sharding => identical ONNX batches => identical scores.
       expect(byPath(parallel)).toEqual(byPath(inline));
       expect(parallel.map((d) => d.path)).toEqual(inline.map((d) => d.path));
       expect(inline.every((d) => Number.isFinite(d.ceScore))).toBe(true);
+      const again = await rerankPairs(QUERY, docs);
+      expect(byPath(again)).toEqual(byPath(inline));
+      expect(ceWorkerStats().childPids).toEqual(children);
+      expect(ceWorkerStats().childResponses).toBe(4);
+      const concurrent = await Promise.all([rerankPairs(QUERY, docs), rerankPairs(QUERY, docs)]);
+      for (const result of concurrent) expect(byPath(result)).toEqual(byPath(inline));
+      expect(ceWorkerStats().childResponses).toBe(8);
+      expect(ceWorkerStats().childPids).toEqual(children);
     } finally {
       await ceWorkerShutdown();
+      for (const pid of children) expect(() => process.kill(pid, 0)).toThrow();
     }
   }, REAL_TIMEOUT);
 

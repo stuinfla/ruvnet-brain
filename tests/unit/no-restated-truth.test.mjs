@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse } from '@babel/parser';
 
 /**
  * THE ONE RULE: A GATE MAY NEVER CONTAIN A COPY OF THE TRUTH IT CHECKS.
@@ -61,12 +62,15 @@ const RESTATED = [
  * line — the same reason `no-restated-truth`'s own TEETH fixtures below are excluded by filename, not
  * by hoping their content never collides with an unrelated check.
  */
-const SYNC_VERSION_IGNORE = /\/\/\s*sync-version-ignore\b/;
-const stripSyncVersionIgnoredLines = (source) =>
-  source
-    .split('\n')
-    .filter((line) => !SYNC_VERSION_IGNORE.test(line))
-    .join('\n');
+const SYNC_VERSION_IGNORE = /(?:^|\/\/)\s*sync-version-ignore\b/;
+const stripSyncVersionIgnoredLines = (source) => {
+  // Use actual JavaScript comment tokens: // inside strings, regexes, templates, or block
+  // comments is data, not an exemption. Syntax errors fail the gate instead of exempting it.
+  const comments = parse(source, { sourceType: 'module', attachComment: false }).comments;
+  const ignored = new Set(comments.filter((comment) => comment.type === 'CommentLine'
+    && SYNC_VERSION_IGNORE.test(comment.value)).map((comment) => comment.loc.start.line));
+  return source.split('\n').filter((_line, index) => !ignored.has(index + 1)).join('\n');
+};
 
 const isDebt = (source) => RESTATED.some((re) => re.test(stripSyncVersionIgnoredLines(source)));
 
@@ -141,5 +145,10 @@ describe('no restated truth — a gate may not spell a fact it could derive', ()
     // have let this through.
     const smuggled = "expect(v).toBe('4.0.28'); expect(x).toBe('sync-version-ignore');";
     expect(isDebt(smuggled), 'the marker text inside a string literal is not a comment and must not suppress the line').toBe(true);
+    for (const literal of ["'// sync-version-ignore: quoted'", '"// sync-version-ignore: quoted"', '`// sync-version-ignore: template`']) {
+      expect(isDebt(`${unmarked} const marker = ${literal};`), literal).toBe(true);
+    }
+    expect(isDebt('const marker = `\n// sync-version-ignore: template\n' + unmarked + '\n`;')).toBe(true);
+    expect(isDebt(unmarked + ' /* // sync-version-ignore: block, not a line annotation */')).toBe(true);
   });
 });

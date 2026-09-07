@@ -10,17 +10,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
+import { fork } from 'node:child_process';
 import { loadTransformers } from './resolve-deps.mjs';
 import { materializeModelRevision, modelCacheReady } from './model-requirements.mjs';
 
-// ADR-0011 Phase 3: this file doubles as its OWN worker_threads entry (single-file pattern —
-// scripts/build-bundle.mjs ships a fixed tools list, so no new file may be added to the bundle).
-// A CE worker is identified by the workerData sentinel below, NOT by !isMainThread alone, so being
-// imported inside someone else's worker (e.g. a vitest thread pool) never trips worker mode.
-const IS_CE_WORKER = !isMainThread && workerData && workerData.__ceWorker === true;
+// Same packaged entry, separate process: a native ONNX/V8 fault cannot kill the parent host.
+// Both the literal fork argument and a live IPC channel are required; ambient env cannot opt in.
+const IS_CE_WORKER = process.argv[2] === '--ce-worker' && typeof process.send === 'function';
 
-// searchKb is only needed by rerankKb on the main thread. forge-ask.mjs calls loadRvf() at import
+// searchKb is only needed by rerankKb in the parent. forge-ask.mjs calls loadRvf() at import
 // time, so a static import would drag the whole @ruvector/rvf native module into every CE worker
 // for nothing — conditional top-level await keeps the worker's module graph down to transformers.
 let searchKb = null;
@@ -69,6 +67,8 @@ async function loadCE() {
     if (ceDir && fs.existsSync(ceDir)) {
       console.error(`[forge-rerank] cross-encoder failed to load (${String(e.message).slice(0, 120)}) — treating the local copy as corrupted: wiping ${ceDir} and re-fetching once (issue #29)`);
       fs.rmSync(ceDir, { recursive: true, force: true });
+      // The ready-cache probe disabled downloads above; that copy no longer exists.
+      T.env.allowRemoteModels = true;
       _ce = await attempt();
     } else throw e;
   }
@@ -135,10 +135,10 @@ async function ceScoreBatch(ce, query, passages, maxLength) {
   return scores;
 }
 
-// ---------- ADR-0011 Phase 3: worker_threads parallel scoring ----------
+// ---------- ADR-0011 Phase 3: process-isolated parallel scoring ----------
 // ONNX inference is CPU-bound and serializes on the JS thread (Promise.all concurrency buys
 // nothing). The cross-repo rerank (~248 pairs at ~61ms/pair ≈ 12-15s) is ~97% of query time, so
-// big pools are sharded across worker threads, each running THIS file as its worker entry with its
+// big pools are sharded across child processes, each running THIS file as its worker entry with its
 // own copy of the CE model (~30MB per worker; loaded lazily on the worker's first task).
 //
 // DETERMINISM: shards are CONTIGUOUS and aligned to CE_BATCH_SIZE chunk boundaries, so every ONNX
@@ -154,10 +154,10 @@ async function ceScoreBatch(ce, query, passages, maxLength) {
 //   CE_PARALLEL_MIN       min pairs before workers engage (default 2*CE_BATCH_SIZE+1 = 33 — below
 //                         that, pool spawn + per-worker model load costs more than inline scoring).
 //   CE_FORCE_WORKER_FAIL  test hook: makes worker spawn throw, proving the inline fallback.
-let _pool = null;         // Worker[] — spawned lazily on the first big-enough call, reused after
+let _pool = null;         // ChildProcess[] — spawned lazily and reused while warm
 let _poolBroken = false;  // any spawn/runtime worker failure pins this process to the inline path
 let _msgId = 0;
-const _stats = { parallelCalls: 0, inlineCalls: 0 };
+const _stats = { parallelCalls: 0, inlineCalls: 0, childResponses: 0 };
 
 function ceWorkerCount() {
   const raw = process.env.CE_WORKERS;
@@ -173,6 +173,51 @@ function ceParallelMin() {
   return Number.isFinite(n) && n > 0 ? n : CE_BATCH_SIZE * 2 + 1;
 }
 
+// Keep child cleanup single-flight, including partial-spawn and fallback paths.
+let _shutdown = Promise.resolve();
+function forceStop(worker) {
+  if (worker.__ceDead) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const done = () => { clearTimeout(hard); clearTimeout(deadline); worker.off('exit', done); resolve(); };
+    worker.once('exit', done);
+    const hard = setTimeout(() => { try { worker.kill('SIGKILL'); } catch { /* exit races */ } }, 1000);
+    const deadline = setTimeout(() => {
+      worker.off('exit', done); reject(new Error('CE child could not be reaped'));
+    }, 2000);
+    try { worker.kill('SIGTERM'); } catch { /* escalation remains armed */ }
+  });
+}
+async function stopWorker(worker) {
+  if (worker.__ceDead) return;
+  try {
+    await new Promise((resolve, reject) => {
+      const done = (error) => {
+        clearTimeout(timer);
+        worker.off('exit', onExit); worker.off('error', onError);
+        if (error) reject(error); else resolve();
+      };
+      const onExit = () => done();
+      const onError = (error) => done(error);
+      const timer = setTimeout(() => done(new Error('CE shutdown timed out')), 5000);
+      worker.once('exit', onExit); worker.once('error', onError);
+      try { worker.ref(); worker.channel?.ref(); worker.send({ shutdown: true }, (error) => { if (error) done(error); }); } catch (error) { done(error); }
+    });
+  } catch {
+    // Broken/unresponsive workers still have a bounded forced-exit path.
+    await forceStop(worker);
+  }
+}
+function terminateWorkers(workers) {
+  if (workers.length) _shutdown = _shutdown.catch(() => {}).then(async () => {
+    const failures = [];
+    for (const worker of workers) {
+      try { await stopWorker(worker); } catch (error) { failures.push(error); }
+    }
+    if (failures.length) throw new AggregateError(failures, 'CE children could not all be reaped');
+  });
+  return _shutdown;
+}
+
 function spawnPool(n) {
   if (process.env.CE_FORCE_WORKER_FAIL) throw new Error('CE_FORCE_WORKER_FAIL is set (test hook)');
   const workers = [];
@@ -185,18 +230,22 @@ function spawnPool(n) {
     const cores = typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
     const intraOpThreads = Math.max(1, Math.floor(cores / n));
     for (let i = 0; i < n; i++) {
-      const w = new Worker(fileURLToPath(import.meta.url), { workerData: { __ceWorker: true, intraOpThreads } });
+      const w = fork(fileURLToPath(import.meta.url), ['--ce-worker', String(intraOpThreads)], {
+        execPath: process.execPath, execArgv: [], serialization: 'advanced',
+        stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
+      });
       w.unref(); // idle workers must never keep a one-shot CLI process alive
+      w.channel?.unref();
       // A worker that dies while IDLE would otherwise emit an unhandled 'error' (process crash —
       // a failure mode the inline path never had) or silently hang the next call. Permanent `on`
       // (not `once`): every error must stay handled, or a second one would crash after all.
-      w.on('error', (e) => { w.__ceDead = true; _poolBroken = true; if (process.env.CE_DEBUG) console.error('CE worker error:', e.message); });
-      w.once('exit', () => { w.__ceDead = true; });
+      w.on('error', (e) => { _poolBroken = true; if (process.env.CE_DEBUG) console.error('CE worker error:', e.message); });
+      w.once('exit', () => { w.__ceDead = true; if (!w.__ceStopping) _poolBroken = true; });
       workers.push(w);
     }
     return workers;
   } catch (e) {
-    for (const w of workers) w.terminate().catch(() => {});
+    void terminateWorkers(workers).catch(() => {}); // fallback awaits and surfaces the same cleanup result
     throw e;
   }
 }
@@ -217,15 +266,36 @@ function shardRanges(total, maxShards) {
 }
 
 function callWorker(w, query, passages, maxLength) {
-  return new Promise((resolve, reject) => {
+  // Bound queued work and include queue time in the existing MCP call budget, not a
+  // shorter new search deadline (plugin/mcp/server.mjs owns the external watchdog).
+  if ((w.__cePending || 0) >= 32) return Promise.reject(new Error('CE child queue full'));
+  const configured = Number(process.env.RUVNET_BRAIN_CALL_TIMEOUT_MS);
+  const deadline = Date.now() + (Number.isFinite(configured) && configured > 0 ? configured : 240_000);
+  w.__cePending = (w.__cePending || 0) + 1;
+  const task = (w.__ceQueue || Promise.resolve()).then(() => new Promise((resolve, reject) => {
+    if (w.__ceDead || w.__ceStopping) return reject(new Error('CE child is unavailable'));
     const id = ++_msgId;
-    const done = (fn, v) => { w.off('message', onMsg); w.off('error', onErr); w.off('exit', onExit); fn(v); };
-    const onMsg = (m) => { if (m && m.id === id) (m.error ? done(reject, new Error(m.error)) : done(resolve, m.scores)); };
+    let settled = false;
+    const done = (fn, v) => { if (settled) return; settled = true; clearTimeout(timer); w.off('message', onMsg); w.off('error', onErr); w.off('exit', onExit); fn(v); };
+    const onMsg = (m) => { if (m && m.id === id) {
+      if (m.error) done(reject, new Error(m.error));
+      else if (!Array.isArray(m.scores) || m.scores.length !== passages.length
+        || m.scores.some((score) => !Number.isFinite(score) && score !== -Infinity)) done(reject, new Error('invalid CE child scores'));
+      else { _stats.childResponses++; done(resolve, m.scores); }
+    } };
     const onErr = (e) => done(reject, e);
     const onExit = (code) => done(reject, new Error(`CE worker exited (${code}) mid-task`));
+    const timer = setTimeout(() => {
+      _poolBroken = true; w.__ceStopping = true;
+      void forceStop(w).catch(() => {});
+      done(reject, new Error('CE child task timed out'));
+    }, Math.max(1, deadline - Date.now()));
     w.on('message', onMsg); w.on('error', onErr); w.on('exit', onExit);
-    w.postMessage({ id, query, passages, maxLength });
-  });
+    try { w.send({ id, query, passages, maxLength }, (error) => { if (error) done(reject, error); }); }
+    catch (error) { done(reject, error); }
+  }));
+  w.__ceQueue = task.catch(() => {});
+  return task.finally(() => { w.__cePending--; });
 }
 
 async function ceScoreParallel(query, passages, maxLength) {
@@ -233,7 +303,7 @@ async function ceScoreParallel(query, passages, maxLength) {
   const ranges = shardRanges(passages.length, _pool.length);
   const used = _pool.slice(0, ranges.length);
   if (used.some((w) => w.__ceDead)) throw new Error('CE worker pool degraded (a worker exited)');
-  for (const w of used) w.ref();
+  for (const w of used) { w.ref(); w.channel?.ref(); }
   try {
     const parts = await Promise.all(ranges.map((r, i) => callWorker(used[i], query, passages.slice(r.start, r.end), maxLength)));
     const scores = new Array(passages.length);
@@ -242,7 +312,7 @@ async function ceScoreParallel(query, passages, maxLength) {
     }
     return scores;
   } finally {
-    for (const w of used) { try { w.unref(); } catch { /* already terminated */ } }
+    for (const w of used) { try { if (!w.__cePending) { w.unref(); w.channel?.unref(); } } catch { /* already terminated */ } }
   }
 }
 
@@ -250,6 +320,7 @@ async function ceScoreParallel(query, passages, maxLength) {
 // inline ceScoreBatch otherwise. NEVER crashes where the inline path worked — any worker failure
 // (construction throw, worker death, worker-side error) tears the pool down and falls back inline.
 async function ceScoreAuto(ce, query, passages, maxLength) {
+  if (_poolBroken && _pool) await ceWorkerShutdown();
   const eligible = !_poolBroken
     && ceWorkerCount() >= 2
     && passages.length >= ceParallelMin()
@@ -261,7 +332,7 @@ async function ceScoreAuto(ce, query, passages, maxLength) {
       return scores;
     } catch (e) {
       _poolBroken = true;
-      if (_pool) { for (const w of _pool) { try { w.terminate(); } catch { /* best effort */ } } _pool = null; }
+      await ceWorkerShutdown();
       if (process.env.CE_DEBUG) console.error('CE worker path failed, falling back to inline:', e.message);
     }
   }
@@ -273,11 +344,13 @@ async function ceScoreAuto(ce, query, passages, maxLength) {
 // tests prove which path actually scored; ceWorkerShutdown lets long-running hosts / test files
 // release the pool deterministically (workers are unref()ed, so exit never blocks on them anyway).
 export function ceWorkerStats() {
-  return { ..._stats, poolSize: _pool ? _pool.length : 0, poolBroken: _poolBroken };
+  return { ..._stats, poolSize: _pool ? _pool.length : 0, poolBroken: _poolBroken,
+    childPids: (_pool || []).map((worker) => worker.pid) };
 }
 export async function ceWorkerShutdown() {
   const pool = _pool; _pool = null;
-  if (pool) await Promise.allSettled(pool.map((w) => w.terminate()));
+  for (const worker of pool || []) worker.__ceStopping = true;
+  await terminateWorkers(pool || []);
 }
 
 export async function rerankKb({ dir, name, query, k = 6, variant, pool = 20 }) {
@@ -363,23 +436,34 @@ if (IS_CE_WORKER) {
   try {
     const { createRequire } = await import('node:module');
     const ort = createRequire(import.meta.url)('onnxruntime-node');
-    const cap = Math.max(1, Math.floor(Number(workerData.intraOpThreads) || 0));
+    const cap = Math.max(1, Math.floor(Number(process.argv[3]) || 0));
     if (cap && ort?.InferenceSession?.create) {
       const orig = ort.InferenceSession.create.bind(ort.InferenceSession);
       ort.InferenceSession.create = (buf, opts = {}) => orig(buf, { ...opts, intraOpNumThreads: cap, interOpNumThreads: 1 });
     }
   } catch { /* onnxruntime-node not present — transformers' fallback backend keeps its defaults */ }
-  parentPort.on('message', async ({ id, query, passages, maxLength }) => {
+  let tasks = Promise.resolve();
+  // IPC disconnect is also delivered when the parent is killed: do not orphan a warm model.
+  process.on('disconnect', () => { process.exit(0); });
+  process.on('message', (message) => { tasks = tasks.then(async () => {
+    const { id, query, passages, maxLength } = message;
+    if (message.shutdown === true) {
+      // Drain scoring, call the supported disposal API, then allow normal isolate exit.
+      // Older onnxruntime-node handlers implement dispose() as a no-op: this does not claim
+      // native release on those versions, and must still be exercised with the real backend.
+      try { await _ce?.model?.dispose(); } finally { _ce = null; process.disconnect(); }
+      return;
+    }
     try {
       const hadCE = !!_ce;
       const t0 = Date.now();
       const ce = await loadCE();
       if (!hadCE && process.env.CE_DEBUG) console.error(`[ce-worker] model loaded in ${Date.now() - t0}ms`);
-      parentPort.postMessage({ id, scores: await ceScoreBatch(ce, query, passages, maxLength) });
+      process.send?.({ id, scores: await ceScoreBatch(ce, query, passages, maxLength) });
     } catch (e) {
-      parentPort.postMessage({ id, error: String((e && e.message) || e) });
+      process.send?.({ id, error: String((e && e.message) || e) });
     }
-  });
+  }).catch((error) => { if (process.connected) process.send?.({ error: String(error?.message || error) }); }); });
 }
 
 // CLI smoke. The IS_CE_WORKER guard is load-bearing: inside a worker, process.argv[1] IS this

@@ -495,7 +495,9 @@ function isGuideQuestion(query) {
   return /\b(?:what\s+is|what\s+does|what\s+happens|how\s+do\s+i|which\s+store|difference\s+between|fit\s+together|good\s+enough|chatbot|database|settings\s+screen|install\s+is\s+healthy|work\s+in\s+codex|turn\s+the\s+brain\s+off|green\s+test\s+run\s+prove|every\s+capability\s+described\s+in\s+an?\s+adr|what\s+exact\s+evidence)\b/i.test(q);
 }
 
-export function answerFromCards(query, dir, { allowGuideAnswers = false } = {}) {
+export function answerFromCards(query, dir, { allowGuideAnswers = false, k = 1 } = {}) {
+  // A single overview card cannot satisfy a request for multiple source documents.
+  if (k > 1) return { hit: false, reason: 'multiple documents require source retrieval' };
   const q = String(query || '').trim();
   if (!q) return { hit: false, reason: 'empty query' };
   if (requiresImplementationProof(q) && !(allowGuideAnswers && isGuideQuestion(q))) {

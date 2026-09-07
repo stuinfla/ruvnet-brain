@@ -6,7 +6,7 @@
 //
 // Sections:
 //   1. manifests & structure   — every config file is valid + has required fields
-//   2. grounding hook          — fires on RuvNet prompts, silent otherwise, never errors
+//   2. explicit grounding      — evaluator fires when directly invoked, never automatically
 //   3. MCP launcher            — resolves the brain and proxies JSON-RPC (initialize, tools/list)
 //   4. capability battery      — each "can RuvNet do X?" returns a grounded hit from the right repo
 //
@@ -31,6 +31,36 @@ import {
 } from './model-cache.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'); // plugin/
+// Corpus/model inputs retain their explicit identity; writable host state belongs to this test.
+const SELECTED_KB = process.env.RUVNET_BRAIN_KB || path.join(os.homedir(), '.cache', 'ruvnet-brain', 'kb');
+const SELECTED_MODEL_CACHE = resolveModelCache();
+const tmpDirs = [];
+const mkTmp = (prefix) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix)); tmpDirs.push(d); return d; };
+const mkHome = () => {
+  const home = mkTmp('rb-plugin-test-home-');
+  const cache = path.join(home, '.cache', 'ruvnet-brain');
+  fs.mkdirSync(cache, { recursive: true });
+  // Quiet-hook assertions do not test maintenance. Seed its real throttle stamps so no detached
+  // update/seed/registry probe outlives the fixture or touches the network during these checks.
+  for (const stamp of ['.last-update-check', '.stack-versions-checked', '.seed-attempted']) {
+    fs.writeFileSync(path.join(cache, stamp), String(Math.floor(Date.now() / 1000)));
+  }
+  fs.writeFileSync(path.join(cache, '.auto-update-pref'), 'no\n');
+  return home;
+};
+const testEnv = (home, cwd) => ({ ...process.env, HOME: home, USERPROFILE: home,
+  XDG_CACHE_HOME: path.join(home, '.cache'), XDG_CONFIG_HOME: path.join(home, '.config'),
+  XDG_DATA_HOME: path.join(home, '.local/share'), XDG_STATE_HOME: path.join(home, '.local/state'),
+  RUVNET_BRAIN_HOME: path.join(home, '.cache/ruvnet-brain'),
+  RUVNET_BRAIN_STATE_DIR: path.join(home, '.config/ruvnet-brain'),
+  RUVNET_SETTINGS_FILE: path.join(home, '.config/ruvnet-brain/settings.json'),
+  RUVNET_SIGNAL_DIR: path.join(home, '.cache/ruvnet-brain/external-signals'),
+  RUVNET_BRAIN_PROJECT_DIR: cwd, CLAUDE_PROJECT_DIR: cwd,
+  RUVNET_BRAIN_PROJECT_SETTINGS_FILE: path.join(cwd, '.ruvnet-brain/settings.json'),
+  CLAUDE_PLUGIN_ROOT: ROOT, RUVNET_BRAIN_METER: '0' });
+const hookProject = mkTmp('rb-plugin-test-project-');
+const hookHome = mkHome();
+process.on('exit', () => { for (const dir of tmpDirs) fs.rmSync(dir, { recursive: true, force: true }); });
 let pass = 0;
 const failures = [];
 
@@ -52,15 +82,17 @@ check('marketplace.json lists the ruvnet-brain plugin', Array.isArray(market?.pl
 const mcp = readJson('.mcp.json');
 check('.mcp.json registers the ruvnet-brain MCP server', !!mcp?.mcpServers?.['ruvnet-brain']);
 const hooks = readJson('hooks/hooks.json');
-check('hooks.json declares a UserPromptSubmit hook', Array.isArray(hooks?.hooks?.UserPromptSubmit));
+check('hooks.json declares zero automatic lifecycle hooks', hooks?.hooks && Object.keys(hooks.hooks).length === 0);
 for (const f of ['skills/ruvnet-brain/SKILL.md', 'skills/brain-score/SKILL.md', 'skills/brain-build/SKILL.md', 'skills/brain-prompt/SKILL.md', 'mcp/server.mjs', 'scripts/ground-ruvnet.sh', 'README.md', 'test/capability-questions.json']) {
   check(`exists: ${f}`, fs.existsSync(path.join(ROOT, f)));
 }
 
 // 2. grounding hook
-section('2. grounding hook (enforcement)');
+section('2. explicit grounding evaluator (not host-registered)');
 const hookPath = path.join(ROOT, 'scripts/ground-ruvnet.sh');
-const runHook = (input) => spawnSync(resolveBash(), [hookPath], { input, encoding: 'utf8' });
+const runHook = (input) => spawnSync(resolveBash(), [hookPath], {
+  input, encoding: 'utf8', timeout: 15000, cwd: hookProject, env: testEnv(hookHome, hookProject),
+});
 const onTopic = runHook(JSON.stringify({ prompt: 'does ruflo support agent swarms?' }));
 check('fires on a RuvNet prompt', /search_ruvnet/.test(onTopic.stdout) && /ground before you assert/i.test(onTopic.stdout));
 check('exits 0 on a RuvNet prompt', onTopic.status === 0);
@@ -125,23 +157,13 @@ check('session-start does not inject promotional or response-format instructions
 check('the old "OpenRouter key, already set" overclaim is gone', !ssRaw.includes('OpenRouter key, already set'));
 
 // Behavior: fires when ruflo is detectable; degrades SILENTLY when it is not.
-const tmpDirs = [];
-const mkTmp = (prefix) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix)); tmpDirs.push(d); return d; };
-const mkHome = () => {
-  const h = mkTmp('rb-ss-home-');
-  const c = path.join(h, '.cache', 'ruvnet-brain');
-  fs.mkdirSync(c, { recursive: true });
-  fs.writeFileSync(path.join(c, '.last-update-check'), String(Math.floor(Date.now() / 1000))); // skip network
-  fs.writeFileSync(path.join(c, '.auto-update-pref'), 'no\n'); // skip one-time question + KB check
-  return h;
-};
 // Exercise the registered authority, not the legacy shell compatibility launcher. In particular,
 // the no-Ruflo fixture deliberately strips `node` from PATH; the real hook is already inside the
 // Node shim and invokes this core with process.execPath, so routing that fixture through the shell
 // would test an adjacent, obsolete door.
 const runSS = (cwd, env) => spawnSync(process.execPath, [ssCorePath], {
   cwd, encoding: 'utf8', timeout: 15000,
-  env: { ...process.env, RUVNET_BRAIN_METER: '0', CLAUDE_PLUGIN_ROOT: ROOT, ...env },
+  env: { ...testEnv(env.HOME, cwd), ...env },
 });
 
 const withDir = mkTmp('rb-ss-ruflo-');
@@ -158,13 +180,22 @@ check('degrades silently when ruflo is absent (no announcement, exit 0, banner i
 // Gate 4 routes the new trigger phrase to the brain-score skill.
 const scoreRepo = runHook(JSON.stringify({ prompt: 'score this repo' }));
 check('"score this repo" fires Gate 4 and names the brain-score skill', scoreRepo.status === 0 && /brain-score/.test(scoreRepo.stdout));
-for (const d of tmpDirs) { try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* */ } }
 
 // A minimal sequential JSON-RPC client over the launcher's stdio (one request in flight at a time).
 function withServer(KB, fn) {
   return new Promise((resolve, reject) => {
-    const child = spawn('node', [path.join(ROOT, 'mcp/server.mjs')], {
-      env: { ...process.env, RUVNET_BRAIN_KB: KB }, stdio: ['pipe', 'pipe', 'inherit'],
+    // Transformers may materialize revision aliases even for a warm model. Copy-on-write when
+    // supported, ordinary copying otherwise: selected model inputs remain untouched.
+    const modelCache = path.join(hookHome, 'test-model-cache');
+    if (fs.existsSync(SELECTED_MODEL_CACHE)) {
+      fs.cpSync(SELECTED_MODEL_CACHE, modelCache, {
+        recursive: true, dereference: true, mode: fs.constants.COPYFILE_FICLONE,
+      });
+    }
+    const child = spawn(process.execPath, [path.join(ROOT, 'mcp/server.mjs')], {
+      cwd: hookProject,
+      env: { ...testEnv(hookHome, hookProject), RUVNET_BRAIN_KB: KB, KB_MODEL_CACHE: modelCache },
+      stdio: ['pipe', 'pipe', 'inherit'],
     });
     let buf = '';
     const waiters = new Map();
@@ -182,12 +213,20 @@ function withServer(KB, fn) {
     });
     child.on('error', reject);
     const rpc = (req) => new Promise((res) => { waiters.set(req.id, res); child.stdin.write(JSON.stringify(req) + '\n'); });
-    Promise.resolve(fn(rpc)).then(resolve, reject).finally(() => { try { child.stdin.end(); child.kill(); } catch { /* */ } });
+    const stop = () => new Promise((done) => {
+      if (child.exitCode !== null || child.signalCode !== null) return done();
+      const kill = setTimeout(() => child.kill('SIGKILL'), 10000);
+      child.once('close', () => { clearTimeout(kill); done(); });
+      child.stdin.end();
+      child.kill();
+    });
+    Promise.resolve(fn(rpc)).then(async (value) => { await stop(); resolve(value); },
+      async (error) => { await stop(); reject(error); });
   });
 }
 
 // 3 & 4. launcher + capability battery
-const KB = process.env.RUVNET_BRAIN_KB || path.join(os.homedir(), '.cache', 'ruvnet-brain', 'kb');
+const KB = SELECTED_KB;
 let brainSkipped = false; // QE-0011 tests#1: track so "skipped" can never masquerade as "passed"
 let coldSkipped = false;  // cold model cache (embedder not downloaded) — distinct from a retrieval outage
 section('3. MCP launcher + 4. capability battery');
@@ -216,7 +255,7 @@ if (!fs.existsSync(path.join(KB, 'forge-mcp-all.mjs'))) {
   // broken. Resolve the SAME cache path the child will use (mirrors plugin/mcp/server.mjs) and read
   // the one honest signal: is the embedder on disk? A cold cache is reported distinctly and is NOT a
   // failure; an outage (model present, retrieval still dead) stays red. See plugin/test/model-cache.mjs.
-  const modelCache = resolveModelCache();
+  const modelCache = SELECTED_MODEL_CACHE;
   const requiredModels = requiredEmbedderModels(KB);
   const haveModel = modelPresent(modelCache, requiredModels);
   await withServer(KB, async (rpc) => {

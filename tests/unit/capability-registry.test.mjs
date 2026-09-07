@@ -199,17 +199,14 @@ describe('unknown outranks off when a probe cannot run', () => {
     }
   });
 
-  it('reports unknown — not off — for launchd jobs on a platform without launchd', () => {
-    // This is the Linux CI runner's real situation, and this repo has already shipped a macOS-only
-    // assumption that went red the moment it met that runner. Telling a Linux user "your nightly
-    // refresh is OFF" would be the same bug wearing a worse costume: an actionable-looking fault
-    // about a subsystem that cannot exist there.
+  it('reports unknown — not off — on a platform without a scheduler adapter', () => {
+    // Linux has a cron adapter. An actually unsupported platform cannot establish an off state.
     saved.platform = process.platform;
-    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    Object.defineProperty(process, 'platform', { value: 'freebsd', configurable: true });
     const r = CAPABILITIES.find((c) => c.key === 'nightly-refresh').detect();
     expect(r.state).toBe(STATE.UNKNOWN);
     expect(r.state).not.toBe(STATE.OFF);
-    expect(r.evidence).toMatch(/linux/);
+    expect(r.evidence).toMatch(/freebsd/);
   });
 
   it('never concludes learning is off from ruflo\'s hook table', () => {

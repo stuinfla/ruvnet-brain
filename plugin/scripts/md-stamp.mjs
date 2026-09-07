@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // plugin/scripts/md-stamp.mjs — PostToolUse (Write|Edit|MultiEdit). Refreshes an EXISTING doc
 // stamp's date to today, in-place, whenever a touched .md file's stamp has gone stale.
+// RUVNET_MD_STAMP=ensure explicitly enables managed creation/update timestamps and content-digest
+// idempotence. That mode uses observed file edit times in UTC; unknown creation remains unknown.
 //
 // WHY. The owner: "I told you to update all .md docs with time/date stamps when touched. I don't
 // want to have to remind you again in any repo." Today that convention lives only in the model's
@@ -31,7 +33,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { parseHookEvent, toolName, field, readStdinBounded } from './hook-input.mjs';
+import { contains, projectDirectory } from './project-identity.mjs';
 
 // ── date, from the system clock, formatted in the repo's standard timezone ─────────────────────────
 // Same idiom as scripts/self-update.mjs's README badge stamp: Intl.DateTimeFormat is a Node builtin
@@ -173,7 +177,88 @@ export function ensureStamp(content, { updated, created } = {}) {
 
 /** Pure: given a .md file's current bytes, return the bytes it should have. Identical in ⇒ identical out. */
 export function computeStampedContent(content, today = todayNY()) {
+  if (isPinned(content)) return content;
   return refreshPlainStamp(refreshFrontmatterStamp(content, today), today);
+}
+
+function isPinned(content) {
+  return /^updated_pinned:[ \t]*(?:true|'true'|"true")[ \t]*(?:#.*)?$/m.test(content.match(FRONTMATTER_BLOCK_RE)?.[0] || '');
+}
+
+// Explicit RUVNET_MD_STAMP=ensure opts this project into managed metadata. Defaults remain
+// refresh-only: installing the plugin is not consent to impose stamps on a stranger's documents.
+// The digest covers authored bytes, excluding only metadata we maintain. Unlike restoring mtime
+// after writing, it remains idempotent when filesystem timestamp operations fail or hooks repeat.
+const MANAGED_EXCLUDED = new Set(['node_modules', '.git', 'kb', 'dist', 'clones', 'archive',
+  '.agentic-qe', 'coverage', '.next', 'build', 'tmp', '.swarm', 'vendor']);
+const DIGEST_LINE = /^<!-- ruvnet-md-stamp: ([a-f0-9]{64}) -->\r?\n?/m;
+const STAMP_VALUE = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}\.\d{3}Z)?$/;
+const MANAGED_HEAD_LINES = PLAIN_STAMP_MAX_LINES + 6;
+
+function stampBody(content) {
+  const fm = content.match(FRONTMATTER_BLOCK_RE)?.[0];
+  if (fm) return fm.replace(/^(?:updated|updated_at|created_at|date|stamp_content_sha256):[^\n]*\n/gm, '') + content.slice(fm.length);
+  const head = headSlice(content, MANAGED_HEAD_LINES);
+  return head.replace(/^([ \t]*`?(?:Updated|Created):)[^\n]*\n?/gm, '')
+    .replace(DIGEST_LINE, '') + content.slice(head.length);
+}
+
+/** Managed mode: edit time is observed by the caller; creation requires positive provenance. */
+export function computeManagedStamp(content, { updated, created = null } = {}) {
+  if (!STAMP_VALUE.test(updated || '') || isPinned(content)) return content;
+  const at = stampInsertionPoint(content);
+  if (!at) return content;
+  const fm = content.match(FRONTMATTER_BLOCK_RE)?.[0];
+  const oldDigest = fm?.match(/^stamp_content_sha256: ([a-f0-9]{64})$/m)?.[1]
+    || headSlice(content, MANAGED_HEAD_LINES).match(DIGEST_LINE)?.[1];
+  const digest = (text) => createHash('sha256').update(stampBody(text)).digest('hex');
+  const complete = fm
+    ? ['date', 'updated', 'created_at', 'updated_at'].every((key) => new RegExp(`^${key}: .+`, 'm').test(fm))
+    : ['Created', 'Updated'].every((key) => new RegExp(`^[ \\t]*\u0060?${key}: .+`, 'm').test(headSlice(content, MANAGED_HEAD_LINES)));
+  if (complete && oldDigest && oldDigest === digest(content)) return content;
+  const creation = STAMP_VALUE.test(created || '') ? created : null;
+  let out;
+  if (fm) {
+    let block = fm;
+    const put = (key, value, preserve = false) => {
+      const re = new RegExp(`^${key}:[^\\n]*`, 'm');
+      if (re.test(block)) { if (!preserve) block = block.replace(re, `${key}: ${value}`); }
+      else { const closing = block.lastIndexOf('---'); block = block.slice(0, closing) + `${key}: ${value}\n` + block.slice(closing); }
+    };
+    put('date', creation?.slice(0, 10) || 'unknown', true);
+    put('created_at', creation || 'unknown', true);
+    put('updated', updated.slice(0, 10));
+    put('updated_at', updated);
+    put('stamp_content_sha256', 'pending');
+    out = block + content.slice(fm.length);
+    // Hash after insertion so placement whitespace cannot make the next delivery appear edited.
+    out = out.replace(/^stamp_content_sha256: pending$/m, `stamp_content_sha256: ${digest(out)}`);
+  } else {
+    let head = headSlice(content, MANAGED_HEAD_LINES);
+    const rest = content.slice(head.length);
+    if (!head.endsWith('\n')) head += '\n';
+    const updatedRe = /^([ \t]*`?Updated:[ \t]*)[^\n|`]*(.*)$/m;
+    if (updatedRe.test(head)) head = head.replace(updatedRe, (_match, prefix, suffix) => `${prefix}${updated}${suffix ? ` ${suffix.trimStart()}` : ''}`);
+    else head = head.slice(0, at.index) + `\nUpdated: ${updated}\n` + head.slice(at.index);
+    if (!/^[ \t]*`?Created:/m.test(head)) head = head.replace(/^(.*Updated:[^\n]*\n)/m, `$1Created: ${creation || 'unknown (not recorded)'}\n`);
+    if (DIGEST_LINE.test(head)) head = head.replace(DIGEST_LINE, '<!-- ruvnet-md-stamp: pending -->\n');
+    else head = head.replace(/^(.*Created:[^\n]*\n)/m, '$1<!-- ruvnet-md-stamp: pending -->\n');
+    out = head + rest;
+    const withoutPending = out.replace(/^<!-- ruvnet-md-stamp: pending -->\n/m, '');
+    out = out.replace('<!-- ruvnet-md-stamp: pending -->', `<!-- ruvnet-md-stamp: ${digest(withoutPending)} -->`);
+  }
+  return out;
+}
+
+/** Avoid overwriting a file changed since the hook's read. Session leases still govern writers. */
+export function writeStampIfUnchanged(file, original, stamped, observed) {
+  if (stamped === original) return false;
+  const current = fs.statSync(file);
+  if (current.dev !== observed.dev || current.ino !== observed.ino
+    || current.mtimeMs !== observed.mtimeMs || current.ctimeMs !== observed.ctimeMs
+    || fs.readFileSync(file, 'utf8') !== original) return false;
+  fs.writeFileSync(file, stamped);
+  return true;
 }
 
 // ── the hook body ────────────────────────────────────────────────────────────────────────────────
@@ -193,19 +278,37 @@ async function main() {
 
   const ev = await readHookInput();
   if (!['Write', 'Edit', 'MultiEdit'].includes(toolName(ev))) return; // wrong tool: do nothing
+  if (ev?.hook_event_name && ev.hook_event_name !== 'PostToolUse') return;
+  if (ev?.tool_response?.isError || ev?.tool_response?.error || ev?.tool_response?.success === false) return;
 
-  const filePath = field(ev, 'tool_input.file_path');
-  if (!filePath || path.extname(filePath).toLowerCase() !== '.md') return; // wrong file: do nothing
+  const supplied = field(ev, 'tool_input.file_path');
+  if (!supplied || path.extname(supplied).toLowerCase() !== '.md') return;
+  const root = projectDirectory();
+  const filePath = path.resolve(root, supplied);
+  if (!contains(root, filePath)) return;
+  if (path.relative(root, fs.realpathSync(filePath)).split(path.sep).some((part) => MANAGED_EXCLUDED.has(part))) return;
+  // The shared helper is present in current generations. Older standalone payloads can omit it.
+  try {
+    const { developmentHooksSuspended } = await import('./development-maintenance.mjs');
+    if (developmentHooksSuspended(root)) return;
+  } catch (error) { if (error.code !== 'ERR_MODULE_NOT_FOUND') return; }
 
-  let original;
-  try { original = fs.readFileSync(filePath, 'utf8'); } catch { return; } // unreadable/gone: exit 0
+  let original, observed;
+  try { observed = fs.statSync(filePath); original = fs.readFileSync(filePath, 'utf8'); } catch { return; }
 
   let stamped;
-  try { stamped = computeStampedContent(original); } catch { return; } // malformed content: exit 0
+  try {
+    stamped = sw === 'ensure'
+      ? computeManagedStamp(original, {
+        updated: observed.mtime.toISOString(),
+        created: ev?.tool_response?.type === 'create' ? observed.mtime.toISOString() : null,
+      })
+      : computeStampedContent(original);
+  } catch { return; }
 
   if (stamped === original) return; // already current (or no stamp at all) — NEVER write; loop guard
 
-  try { fs.writeFileSync(filePath, stamped); } catch { /* advisory — a failed write is not our problem */ }
+  try { writeStampIfUnchanged(filePath, original, stamped, observed); } catch { /* advisory */ }
 }
 
 function isMain() {

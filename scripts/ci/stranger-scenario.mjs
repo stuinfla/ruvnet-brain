@@ -13,7 +13,7 @@
 //
 // SCENARIOS:
 //   healthy           — a complete fixture bundle. Asserts exit 0, then runs --doctor --hooks and
-//                        asserts AT LEAST ONE hook fired through the INSTALLED registration, and
+//                        asserts automatic hooks are absent from the INSTALLED registries, and
 //                        that no author-local ~/.claude/settings.json exists in this virgin image.
 //   seeded-broken     — forge-mcp-all.mjs deleted from the fixture (M-D8a). Asserts exit NON-ZERO.
 //   strict-ungrounded — a healthy-shaped fixture (already never ships forge-ask-all.mjs — see
@@ -29,7 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync, execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { selfCheckOuterTimeoutMs } from './stranger-timeout.mjs';
 import { stageLocalBundle } from './stranger-fixture-stage.mjs';
 
@@ -83,7 +83,7 @@ function buildKbFixture({ dropMcp, noRvf }) {
 
 /**
  * Marketplace-clone-shaped plugin surface, the REAL plugin/ tree at the candidate SHA — never a
- * synthetic fixture — so "at least one hook fired" is a real, meaningful registration.
+ * synthetic fixture — so retirement is checked against the real installed registry.
  */
 function seedPluginSurface() {
   const dest = path.join(HOME_DIR, '.claude', 'plugins', 'marketplaces', 'ruvnet-brain', 'plugin');
@@ -181,33 +181,18 @@ if (SCENARIO === 'healthy') {
   console.log(doctor.stdout);
   if (doctor.stderr) console.error(doctor.stderr);
 
-  // TWO REQUIREMENTS OF D8 CONTRADICTED EACH OTHER HERE, and the contradiction is worth stating
-  // rather than papering over.
-  //
-  //   · The hook battery must pass on a healthy image — that is this cell's whole purpose.
-  //   · `--doctor` DELIBERATELY exits non-zero when grounding is unproven. That is the D8 decision:
-  //     the install-time smoke stays non-fatal (an air-gapped machine is not a broken install), but
-  //     the verdict must stop EVAPORATING — it persists to install-state.json and --doctor gates on
-  //     it until a real cited answer clears it.
-  //
-  // Every CI image is offline with no model weights, so grounding is ALWAYS unproven here and
-  // `--doctor` will ALWAYS exit 1. Asserting exit 0 asserted that D8's own design does not work.
-  //
-  // So the assertion binds to the SUBSTANCE: the battery must report zero contract violations, and
-  // any non-zero exit must be attributable ONLY to the grounding verdict. A doctor that fails for a
-  // hook violation still fails this cell — which is the property that was actually wanted.
+  const installedApi = await import(pathToFileURL(path.join(INSTALLED, 'bin', 'install.mjs')).href);
+  const retirement = installedApi.automaticHookRetirementStatus(INSTALLED, { scope: 'installed' });
+  const installedClaude = installedApi.claudeInstalledHookRetirementStatus({ home: HOME_DIR,
+    plugin: { managed: true, installed: true, installPath: path.join(HOME_DIR, '.claude', 'plugins', 'marketplaces', 'ruvnet-brain', 'plugin') } });
+  if (!retirement.ok || !installedClaude.ok) fail(`automatic hook retirement failed: ${JSON.stringify({ retirement, installedClaude })}`);
   const out = `${doctor.stdout || ''}${doctor.stderr || ''}`;
-  const batteryClean = /Self-check passed/.test(out);
-  const onlyGrounding = /Grounding UNPROVEN/.test(out) && !/contract violation/.test(out);
-  if (doctor.status !== 0 && !(batteryClean && onlyGrounding)) {
-    fail(`--doctor --hooks ended with ${describeExit(doctor)} for a reason other than unproven grounding on a healthy install`);
+  if (!/automatic Brain hook retirement: 0 registration\(s\), 0 manifest error\(s\)/.test(out)) fail('doctor did not verify automatic hook retirement');
+  const onlyGrounding = /Grounding UNPROVEN/.test(out) && !/automatic hook retirement failed/i.test(out);
+  if (doctor.status !== 0 && !(doctor.status === 1 && onlyGrounding)) {
+    fail(`doctor failed beyond unproven grounding: ${describeExit(doctor)}`);
   }
-  if (!batteryClean) fail('--doctor --hooks did not report a clean hook battery on a healthy install');
-  const firingsMatch = /registrations from marketplace-clone,\s*\d+\s*stdin regimes each\s*\((\d+)\s*firings\)/.exec(doctor.stdout || '');
-  if (!firingsMatch) fail('--doctor --hooks output did not name the marketplace-clone registration/firing count at all');
-  const firings = Number(firingsMatch[1]);
-  if (!(firings > 0)) fail(`expected at least one hook FIRING through the installed registration, got ${firings}`);
-  log(`OK — ${firings} real hook firing(s) through the installed marketplace-clone registration`);
+  log(`OK — installed automatic hooks retired across ${retirement.files.length} package surfaces and the actual Claude registry`);
 
   if (fs.existsSync(authorSettings)) fail('installer must never create an author-local settings.json in a virgin image');
   log('OK — no author-local ~/.claude/settings.json in this virgin image');

@@ -1,26 +1,42 @@
+Updated: 2026-09-07 11:07:28 EDT | Version 1.2.0
+Created: 2026-09-05 19:00:00 EDT
+
 # QA and release process
 
-The repository has two intentionally small gates:
+The release source and integration producer is [release-qualification.mjs](../scripts/release-qualification.mjs).
+Its reviewed requirements and test selection come from
+[release-qualification-contract.mjs](../scripts/release-qualification-contract.mjs).
+`npm run release:qualify -- --suite source --report <new-path>` runs that source contract;
+the integration suite uses the same producer. Do not copy the test inventory into another gate.
+The [execution contract](qa-execution-contract.md) explains receipts and acceptance.
 
-* `npm run qa:pr` is the required pull-request gate. It runs version, substitution, catalog, unit,
-  mesh, regression, plugin, and integration lanes in a fixed order. Each lane has a timeout and
-  writes `.qa/<lane>.json`; `.qa/aggregate.json` is the only verdict consumed by CI.
-* `npm run qa:release` adds mutation and claims checks. It is the release-candidate gate and must
-  run against one clean commit. The receipt records the exact SHA, version, lane status, and timing.
-* `npm run convergence:check` validates `data/convergence-manifest.json`, the deterministic identity
-  boundary for tracked implementation files, version surfaces, ADR inventory, and ownership checks.
-  Any source, ADR, version, or inventory change requires `npm run convergence:write` in the same
-  change; a stale manifest fails QA.
+The historical suite of approximately 4,332 unit cases was **not individually audited in full**.
+It remains developer diagnostics, not mandatory release qualification. The retained release tests
+were individually reviewed, including fixtures and assertions. The [proof](reviews/release-test-relevance-proof-20260907.md),
+[install/update](reviews/release-test-relevance-install-20260907.md), and
+[release QE](reviews/release-test-relevance-qe-20260907.md) reviews record relevant cases,
+limitations, and exclusions. A passing historical suite does not establish every test's relevance.
 
-The plugin manifest (`plugin/.claude-plugin/plugin.json`) is the only hand-edited version field.
-Use `npm run version:set -- X.Y.Z` to propagate and immediately verify all package, bundle, README,
-and plugin surfaces. Do not use `npm version` or hand-edit a generated surface.
+Automatic Brain host hooks and the project command interceptor are retired. Shipped registries
+are empty; installation removes exact owned legacy registrations while preserving foreign settings.
+MCP, skills, explicit commands, and explicit qualification remain available. `npm run hooks:check`
+checks retirement without executing hooks. Tests for dormant handlers use explicit fixtures.
 
-Publication remains a protected-workflow operation. Local checks may prepare and verify bytes, but
-they never publish npm packages, move dist-tags, or create GitHub Releases. The protected release
-workflow receives the exact candidate SHA and version, downloads the sealed artifact, publishes it,
-and runs the post-publication receipt against npm, GitHub, and a clean install.
+Qualification runs on the actual platform, binds the reviewed contract and source bytes, and rejects
+missing cases, failures, skips, TODOs, and source changes. A local dirty-tree result is diagnostic;
+promotion requires a clean exact SHA and its matching trusted candidate workflow/artifact evidence.
+Qualify the candidate once and consume its evidence; do not rebuild the payload during publication.
 
-Corpus rebuilds and nightly learning are separate evidence producers. They are not prerequisites for
-the fast PR gate unless the changed paths alter the corpus or release bundle. A timeout is a failed
-lane with a receipt, never a pending or successful result.
+Protected publication consumes the exact sealed npm package and signed bundle. Channel convergence
+is not completion. All nine public combinations of three operating systems and three host modes
+must verify the public candidate. Each dual-host platform leaf must also contain real native
+scheduled installed-update evidence: two sequential runs, exact installed coverage, second-run noop,
+measured storage, and owned-job cleanup. Imported corpus evidence remains imported; upstream freshness
+is UNKNOWN unless a separate producer proves it. Only terminal `install-verified` closes the release.
+
+`qa:pr`, `qa:release`, and the historical test aliases remain explicit diagnostics. Their inventory
+is [qa-lanes.mjs](../scripts/qa-lanes.mjs); their PASS cannot replace reviewed qualification,
+packaged runtime checks, public verification, or complete North Star conformance.
+
+The plugin manifest remains the version source. `npm run version:set -- X.Y.Z` propagates generated
+surfaces, and `npm run convergence:write` refreshes source identity. Neither command proves behavior.

@@ -384,6 +384,7 @@ describe('hook-shim SessionStart authority selection', () => {
         const skipNoBash = () => { throw new Error('BASH_SKIP_REACHED'); };
       `);
     write(path.join(scripts, 'hook-shim.mjs'), instrumented);
+    fs.copyFileSync(path.join(SOURCE_SCRIPTS, 'development-maintenance.mjs'), path.join(scripts, 'development-maintenance.mjs'));
     write(path.join(scripts, 'session-start-core.mjs'),
       "process.stdout.write('NATIVE_SESSION_CORE\\n');\n");
 

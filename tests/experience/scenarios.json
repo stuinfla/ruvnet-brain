@@ -263,7 +263,7 @@
       "stage": "install — the full install + Codex/Claude-Code wiring journey on macOS",
       "user-state": "fresh-home",
       "classification": "ci",
-      "evidence": "stranger-matrix.yml#macos — scripts/ci/stranger-scenario.mjs installs the packed candidate into a virgin HOME, runs the assembled `--local` bundle path, verifies the installed registration fires a real hook, and proves a seeded-broken bundle exits non-zero on macos-latest.",
+      "evidence": "stranger-matrix.yml#macos — scripts/ci/stranger-scenario.mjs installs the packed candidate into a virgin HOME, runs the assembled `--local` bundle path, verifies the installed package and Claude registries contain no automatic Brain hooks, and proves a seeded-broken bundle exits non-zero on macos-latest.",
       "proofs": [{ "workflow": "stranger-matrix.yml", "job": "macos", "path": "scripts/ci/stranger-scenario.mjs" }],
       "owner": null
     },
@@ -275,7 +275,7 @@
       "stage": "install — the from-a-repo-clone path a contributor building the bundle locally takes",
       "user-state": "fresh-home",
       "classification": "ci",
-      "evidence": "stranger-matrix.yml#ubuntu/#macos/#windows-gitbash/#windows-powershell/#hostile — scripts/ci/stranger-scenario.mjs drives the real installer with `--local` against a freshly assembled directory on every matrix surface; healthy must fire, seeded-broken must fail.",
+      "evidence": "stranger-matrix.yml#ubuntu/#macos/#windows-gitbash/#windows-powershell/#hostile — scripts/ci/stranger-scenario.mjs drives the real installer with `--local` against a freshly assembled directory on every matrix surface; healthy must prove automatic-hook retirement, seeded-broken must fail.",
       "proofs": [
         { "workflow": "stranger-matrix.yml", "job": "ubuntu", "path": "scripts/ci/stranger-scenario.mjs" },
         { "workflow": "stranger-matrix.yml", "job": "macos", "path": "scripts/ci/stranger-scenario.mjs" },

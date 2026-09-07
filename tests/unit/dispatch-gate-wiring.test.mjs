@@ -96,12 +96,12 @@ function detectInHome(key, home) {
   return JSON.parse(out);
 }
 
-describe('issue #112 — the routing gate is found wherever it is actually wired', () => {
-  it('does not tell a plugin-marketplace user their wired gate is missing', () => {
+describe('retired automatic routing gate', () => {
+  it('tells a plugin-marketplace user the explicit router is not automatically invoked', () => {
     const r = detectInHome('cheap-model-routing', marketplaceHome());
-    expect(r.evidence).not.toMatch(/no PreToolUse gate on Task\|Agent is wired/);
-    expect(r.evidence).not.toMatch(/nothing can invoke it/);
-    expect(r.state).toBe('on');
+    expect(r.evidence).toMatch(/no PreToolUse gate on Task\|Agent is wired/);
+    expect(r.evidence).toMatch(/running the router by hand/);
+    expect(r.state).toBe('idle');
   });
 
   it('still reports the gate missing when nothing anywhere declares it', () => {
@@ -115,9 +115,9 @@ describe('issue #112 — the routing gate is found wherever it is actually wired
 });
 
 describe('dispatchGateWiring reads every registry a session loads', () => {
-  it('sees the gate in the plugin copy Claude Code booted, with no checkout present', () => {
+  it('sees no gate in the zero-hook plugin copy Claude Code booted', () => {
     const gate = dispatchGateWiring({ repo: runtimeShapedRepo(), home: marketplaceHome() });
-    expect(gate).toEqual({ wired: true, layer: 'plugin-installed', unreadable: false });
+    expect(gate).toEqual({ wired: false, layer: null, unreadable: false });
   });
 
   it('sees the gate in settings.json, the way a legacy standalone install wires it', () => {

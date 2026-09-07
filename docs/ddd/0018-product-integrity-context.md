@@ -1,4 +1,4 @@
-Updated: 2026-08-22 16:30:00 EDT | Version 0.3.0
+Updated: 2026-09-05 19:08:40 EDT | Version 0.4.0
 Created: 2026-08-21 13:34:00 EDT
 
 # DDD-0018 — Whole-product integrity context
@@ -14,7 +14,7 @@ Whole-product integrity does not add a second orchestrator or release service. I
 context that makes the existing contexts agree on identity, ownership, state, and evidence. It owns
 the acceptance contract and traceability model. Corpus ingestion owns bytes; refresh owns local
 activation; release transaction owns provider mutation; public verification owns the final success
-verdict.
+verdict for the release transaction, not automatic completion of every whole-product obligation.
 
 ## Aggregate root: ProductIntegrityCase
 
@@ -40,6 +40,11 @@ Invariants:
    `INSTALL_VERIFIED`.
 5. `UNKNOWN`, skipped, todo, zero-test, synthetic-only, stale, or contradictory evidence is red.
 6. Historical receipt schemas remain readable but never acquire new semantics retroactively.
+
+The disposition above projects release-transaction progress. It is not a replacement for the
+individual acceptance obligations. An owner-authorized stabilization release can reach
+`INSTALL_VERIFIED` while whole-product obligations remain explicitly OPEN/UNKNOWN. It cannot mint
+a complete ProductIntegrityCase or reinterpret unknown scheduler/continuity evidence as PASS.
 
 ## Entities and value objects
 
@@ -123,7 +128,11 @@ host, scheduler, registry, filesystem, or retrieval observation.
 
 Acceptance is the S-1 through S-12 contract in ADR-072. The machine-readable traceability projection
 must contain every obligation, no duplicate owners, no missing proof links, and no unresolved active
-architecture contradiction. Only then may the protected release rail consume it.
+architecture contradiction. This is whole-product acceptance, distinct from the owner-authorized
+4.3.10 stabilization milestone in ADR-072 section 8. The protected rail's existing sealed candidate
+and signed public verification remain mandatory for that milestone; there is no alternate publisher.
+Public-download evidence is due after publication and before the terminal release receipt, not
+before the artifact exists publicly. Whole-product completion still requires all twelve proofs.
 
 `scripts/product-integrity-contract.mjs` is the executable ownership and evidence-contract
 projection. A context that contributes evidence is not a second owner: S-1 is owned by

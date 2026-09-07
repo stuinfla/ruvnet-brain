@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { finalizeReleaseTransaction } from './release-transaction.mjs';
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
 
@@ -22,6 +23,8 @@ export async function finalizePublicVerification({
   identityFile,
   aggregateFile,
   outputFile,
+  verifierSha,
+  workflowRunId,
   privatePem = process.env.RUVNET_SIGNING_KEY,
   publicKeyFile = 'keys/ruvnet-brain-signing.pub.pem',
   adapter = liveReleaseProvider({ root: process.cwd() }),
@@ -33,7 +36,7 @@ export async function finalizePublicVerification({
   const identity = regularJson(identityFile, 'release identity');
   const aggregate = regularJson(aggregateFile, 'public verification aggregate');
   const publicKey = crypto.createPublicKey(fs.readFileSync(path.resolve(publicKeyFile), 'utf8'));
-  const receipt = await finalizeReleaseTransaction({ identity, aggregate, adapter,
+  const receipt = await finalizeReleaseTransaction({ identity, aggregate, adapter, verifierSha, workflowRunId,
     privateKey: crypto.createPrivateKey(privatePem), publicKey, aggregatePublicKey: publicKey });
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.writeFileSync(output, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
@@ -46,6 +49,8 @@ export async function main(args = process.argv.slice(2)) {
       identityFile: argument(args, '--identity'),
       aggregateFile: argument(args, '--aggregate'),
       outputFile: argument(args, '--out'),
+      verifierSha: argument(args, '--verifier-sha') ?? undefined,
+      workflowRunId: argument(args, '--workflow-run-id'),
     });
     process.stdout.write(`${JSON.stringify({ state: receipt.state, transactionId: receipt.transactionId,
       receiptDigest: receipt.receiptDigest }, null, 2)}\n`);
@@ -56,4 +61,5 @@ export async function main(args = process.argv.slice(2)) {
   }
 }
 
-if (path.resolve(process.argv[1] || '') === path.resolve(new URL(import.meta.url).pathname)) process.exitCode = await main();
+const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedDirectly) process.exitCode = await main();

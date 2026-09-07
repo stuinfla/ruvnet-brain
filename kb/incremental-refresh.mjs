@@ -254,6 +254,7 @@ export function promoteArtifactSet({
   fs.mkdirSync(backupDir);
   const backedUp = [];
   const promoted = [];
+  let recoveryRequired = false;
 
   try {
     for (const file of relativeFiles) {
@@ -270,16 +271,30 @@ export function promoteArtifactSet({
       promoted.push(file);
     }
   } catch (error) {
-    for (const file of promoted.reverse()) fs.rmSync(path.join(liveDir, file), { recursive: true, force: true });
-    for (const file of backedUp.reverse()) {
-      const live = path.join(liveDir, file);
-      fs.mkdirSync(path.dirname(live), { recursive: true });
-      fs.renameSync(path.join(backupDir, file), live);
+    try {
+      for (const file of promoted.reverse()) fs.rmSync(path.join(liveDir, file), { recursive: true, force: true });
+      for (const file of backedUp.reverse()) {
+        const live = path.join(liveDir, file);
+        fs.mkdirSync(path.dirname(live), { recursive: true });
+        fs.renameSync(path.join(backupDir, file), live);
+      }
+    } catch (rollbackError) {
+      recoveryRequired = true;
+      // Originals not yet restored remain ONLY here. Keep the reader-visible lock
+      // too: an incomplete generation must not be served or automatically promoted.
+      const failure = new Error(`promotion failed: ${error.message}; rollback failed: ${rollbackError.message}; `
+        + `recovery required, backup and lock retained at ${backupDir} and ${lockDir}`, { cause: rollbackError });
+      failure.code = 'ERECOVERYREQUIRED';
+      failure.backupDir = backupDir;
+      failure.lockDir = lockDir;
+      throw failure;
     }
     throw new Error(`promotion failed and was rolled back: ${error.message}`, { cause: error });
   } finally {
-    fs.rmSync(backupDir, { recursive: true, force: true });
-    fs.rmSync(lockDir, { recursive: true, force: true });
+    if (!recoveryRequired) {
+      fs.rmSync(backupDir, { recursive: true, force: true });
+      fs.rmSync(lockDir, { recursive: true, force: true });
+    }
   }
 }
 

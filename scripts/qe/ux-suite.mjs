@@ -11,16 +11,8 @@
 //     scheduler jitter — it can only be a correctness regression. THIS is a genuine hard gate: a
 //     breach here fails the suite, not warns it. See scripts/qe/card-lane-gate.mjs for the full
 //     reasoning and the in-process (no subprocess per firing) measurement method.
-//  3. SESSION-START WALL TIME (added 2026-07-28) is the SAME tier as 2, and is here because tier 2
-//     alone was not enough. An independent grader's words: the card-lane gate "measures a
-//     0.03–0.22ms in-process function against a 250ms budget (~1000x headroom — it can only catch
-//     catastrophic regression classes)", while "everything the user actually FEELS — heavy-lane
-//     query seconds, session-start WALL TIME, install minutes, dead air, refusal clarity — is
-//     advisory or unmeasured". Session-start wall time is the first of those promoted out of tier 1:
-//     it is the hook a stranger's Claude Code fires before their first prompt is answered, it is
-//     already measured by scripts/selfcheck.mjs's external process-group watchdog (no second timer
-//     was written), and its budget is set from a measured distribution — p95 1000ms is ~3.1x the
-//     worst measured p95 (323ms over n=110), NOT 1000x. See scripts/qe/session-start-gate.mjs.
+//  3. Automatic hook retirement is checked across declared source registries and pointers.
+//     The old SessionStart latency probe remains separately callable for diagnostics.
 //
 // HONESTY (same rules as the product):
 //  • Every number is measured on THIS run. Nothing is asserted from memory.
@@ -39,7 +31,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { runCommandProbe } from '../../tests/ux/command-probe.mjs';
 import { runCardLaneGate } from './card-lane-gate.mjs';
-import { runSessionStartGate } from './session-start-gate.mjs';
+import { automaticHookRetirementStatus } from '../../bin/install.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const RENDER_PROBE = path.resolve(HERE, '../../tests/ux/render-probe.mjs');
@@ -322,28 +314,11 @@ export async function runUxSuite() {
     hardFailures.push(`card-lane latency gate: could not run — ${e.message}`);
   }
 
-  // ── Probe 5: session-start wall time — HARD GATE, the first USER-FELT number (ADR-058 D6) ───
-  // Wired exactly like probe 4 above and for the same reason: same tier, same "could not measure is
-  // never success" handling, same refusal to reuse line()'s "(proposed)" phrasing, which is correct
-  // for an advisory row and would misreport a HARD breach.
-  console.log('\n  ── session-start wall time (plugin/hooks/hooks.json SessionStart) — HARD GATE, user-felt ──');
-  try {
-    const ss = await runSessionStartGate();
-    const b = ss.budget;
-    const tag = (ok) => (ok ? '✓' : '✗ HARD FAIL');
-    console.log(`  ${'session-start cold first fire'.padEnd(30)} ${ss.warmupMs.toFixed(0).padStart(10)}ms  ${ss.warmupTimedOut ? '✗ HARD FAIL (declared timeout exceeded)' : '✓ inside declared timeout'}`);
-    console.log(`  ${'session-start p50'.padEnd(30)} ${ss.p50.toFixed(0).padStart(10)}ms  (reported, not gated)`);
-    console.log(`  ${'session-start p95'.padEnd(30)} ${ss.p95.toFixed(0).padStart(10)}ms  budget ${b.p95BudgetMs}ms  ${tag(ss.p95 <= b.p95BudgetMs)}`);
-    console.log(`  ${'session-start max'.padEnd(30)} ${ss.max.toFixed(0).padStart(10)}ms  absolute-fail ${b.absoluteFailMs}ms  ${tag(ss.max <= b.absoluteFailMs)}`);
-    console.log(`  firings: ${ss.n} sequential fires of the REAL registered command via selfcheck.mjs's watchdog, from ${ss.surface.source}`);
-    if (ss.warmupStderr) {
-      console.log(`  cold trace: ${ss.warmupStderr.trim().split('\n').join(' | ')}`);
-    }
-    if (!ss.pass) for (const r of ss.reasons) hardFailures.push(`session-start wall time: ${r}`);
-  } catch (e) {
-    console.log(`  ! could not run the session-start wall-time gate: ${e.message}`);
-    hardFailures.push(`session-start wall-time gate: could not run — ${e.message}`);
-  }
+  // Automatic lifecycle hooks are retired; measure registry state, not a fictitious latency.
+  const hookRetirement = automaticHookRetirementStatus(path.resolve(HERE, '../..'));
+  console.log(`\n  Automatic hooks: ${hookRetirement.ok ? 'RETIRED' : 'FAIL'} — ${hookRetirement.files.length} surfaces inspected`);
+  if (!hookRetirement.ok) hardFailures.push(...hookRetirement.errors,
+    ...hookRetirement.registrations.map(row => `automatic registration remains: ${row.file} ${row.event}`));
 
   // ── Not run on this host (stated, never faked) ──────────────────────────────────────────────
   console.log('\n  ── execution scope ──');
@@ -363,6 +338,7 @@ export async function runUxSuite() {
     budgetsMs: budgets,
     render,
     command: cmd,
+    hookRetirement,
     hardFailures,
     pass: hardFailures.length === 0,
     scope: {
@@ -375,7 +351,7 @@ export async function runUxSuite() {
 
   console.log('\n  ── verdict ──');
   if (hardFailures.length === 0) {
-    console.log('  PASS — every probe ran and every render, explanation, dead-air, decision-lane, and session-start HARD budget passed.\n');
+    console.log('  PASS — every probe ran and every render, explanation, dead-air, decision-lane HARD budget passed; automatic-hook retirement verified.\n');
     return receipt;
   }
   console.log('  FAIL (hard):');

@@ -12,6 +12,15 @@ function dispatchInputNames(source) {
 }
 
 describe('protected release rail', () => {
+  it('passes sealed retrieval inputs to both prepublication producer and consumer', () => {
+    for (const [file, script] of [['ci.yml', 'candidate-host-evidence'], ['release-candidate-preflight.yml', 'prepublication-evidence']]) {
+      const source = read(`.github/workflows/${file}`);
+      const command = source.split(`node scripts/${script}.mjs`)[1]?.split(/\n\s{0,6}- /)[0];
+      expect(command, `${script} must execute`).toBeTruthy();
+      expect(command).toMatch(/--plan\s+[^\n]*release-evidence\/retrieval-canary-plan\.json/);
+      expect(command).toMatch(/--coverage\s+[^\n]*release-evidence\/COVERAGE\.json/);
+    }
+  });
   it('is the sole human release dispatch and accepts source identity only', () => {
     const releaseWorkflows = [
       'protected-release.yml',

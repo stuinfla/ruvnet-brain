@@ -3,7 +3,9 @@ id: ADR-053
 title: Experience-level QA — test the journey a user actually has, on every host, OS, and install path
 status: Accepted
 date: 2026-07-26
-updated: 2026-08-31
+updated: 2026-09-07
+version: 1.1.0
+reviewed_digest: 951b7750a27a
 authors: [Stuart Kerr, Claude Code]
 tags: [qa, testing, experience, cross-platform, codex, agentic-qe, ci]
 supersedes: []
@@ -20,6 +22,7 @@ governs:
 # ADR-053: Experience-level QA
 
 ## Currency log
+| 2026-09-07 | Reviewed full macOS unit qualification and reconciled public verification ordering with ADR-072; source digest 951b7750a27a. | `.github/workflows/ci.yml`; exact-SHA hosted and public results remain pending. |
 | 2026-08-31 | Reconciled the Windows unit lane after the hosted process fix added a cross-platform external watchdog; the complete unit surface remains unchanged and now invokes Vitest through Node for shell-independent execution. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
 
 **Status**: Accepted (adversarially duel-verified 2026-07-26 — record below)
@@ -136,21 +139,23 @@ The single highest user-pain surface. A required CI job (ubuntu + windows) and a
 
 ### 3. Artifact-first, extended to PUBLISHED bytes
 
-`npm pack` on the checkout proved unable to represent registry reality (prepack/publish-env/
-dist-tag/propagation). The ship flow becomes: publish to a **candidate dist-tag** → clean-container
-install of that exact integrity on all three OSes → doctor + Codex wire + MCP round trip + one
-grounded answer → only then promote the SAME integrity to `latest`. A scheduled live probe re-runs
-the install nightly and files an issue on failure, so "walk every channel" has a machine, not a
-memory.
+`npm pack` on the checkout cannot establish registry reality (publish environment, dist-tags,
+or propagation). ADR-072 defines the current ordering: qualify the sealed candidate, publish its
+exact signed artifacts through the protected workflow, then verify downloaded public bytes and
+clean installations on all three operating systems. Channel convergence remains
+`PUBLISHED_NOT_VERIFIED` until public verification permits `install-verified`. The dual-host public
+leaf on each OS also requires two native scheduled installed updates, exact installed coverage,
+and measured second-run no-op storage. Imported corpus evidence does not prove a new upstream build.
+A local source pass or a published dist-tag alone is never the completed release verdict.
 
 ### 4. Gate C++ v2 — exact SHA, every required workflow
 
 v1's gate read the LATEST completed run of ci.yml only: it verified the parent commit, not the one
 shipping, and was blind to integration-linux — re-opening the 5-day hole one release at a time.
 v2: push the release commit, capture its SHA, WAIT for every required workflow on that exact SHA,
-refuse on missing/skipped/cancelled/stale; authenticated API (rate-limit 403s otherwise train the
-override into muscle memory); `--ci-override` reasons go into the release LOG and a required line
-in the next release's notes — a printed-once diagnostic nobody reads is the ADR-050 failure shape.
+refuse on missing/skipped/cancelled/stale evidence. The protected publisher authenticates the exact
+preflight producer and consumes its sealed artifacts. There is no CI override on this publication
+path. Required macOS, Windows, and Linux evidence must pass before promotion.
 
 ### 5. agentic-qe: on-demand generator only — off the critical path
 

@@ -5,7 +5,7 @@ name: model-catalog-refresh
 on:
   schedule:
     - cron: '13 9 * * 1'
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 permissions:
   actions: write
@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   refresh:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -38,6 +39,7 @@ jobs:
           npm run catalog:verify
 
       - name: Open or update the one protected refresh transaction
+        id: transaction
         run: |
           set -euo pipefail
           if git diff --quiet -- data/model-catalog.json data/openrouter-catalog-snapshot.json; then
@@ -63,11 +65,10 @@ jobs:
             pr_number=${pr_url##*/}
           fi
 
-          # Events emitted by GITHUB_TOKEN do not trigger ordinary push/PR workflows. Explicit
-          # workflow_dispatch is the supported exception, so run the exact required checks on this SHA.
-          gh workflow run integration-linux.yml --ref "$REFRESH_BRANCH"
-          gh workflow run canonical-qa.yml --ref "$REFRESH_BRANCH"
-          gh workflow run ci.yml --ref "$REFRESH_BRANCH"
-          if [ "$(gh pr view "$pr_number" --json autoMergeRequest --jq '.autoMergeRequest != null')" != "true" ]; then
-            gh pr merge "$pr_number" --auto --squash
-          fi
+          echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+
+      - name: Leave the maintenance PR for deliberate qualification
+        env:
+          PR_NUMBER: ${{ steps.transaction.outputs.pr_number }}
+        run: echo "Maintenance PR $PR_NUMBER is ready for review; release qualification is a separate deliberate action."

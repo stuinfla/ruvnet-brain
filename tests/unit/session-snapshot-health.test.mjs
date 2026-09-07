@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('issue #85 — versioned compaction snapshot contract', () => {
-  it('ships a PreCompact producer that writes the same canonical receipt the Console validates', () => {
+  it('ships an explicit snapshot producer that writes the same canonical receipt the Console validates', () => {
     const project = temporary();
     // `.swarm/` IS THE OPT-IN, so the test must opt in like a real project does. This line used to
     // be absent and the assertion still passed, because the hook created `.swarm/` itself — which
@@ -37,9 +37,7 @@ describe('issue #85 — versioned compaction snapshot contract', () => {
     expect(probeMemory(project).compactionSurvival).toMatchObject({ status: 'ok', artifact: 'canonical' });
 
     const hooks = JSON.parse(fs.readFileSync(path.resolve('plugin/hooks/hooks.json'), 'utf8')).hooks;
-    const command = hooks.PreCompact.flatMap((group) => group.hooks)
-      .find((hook) => hook.command.includes('session-snapshot PreCompact'));
-    expect(command?.command).toMatch(/\|\| true$/);
+    expect(hooks).toEqual({});
   });
 
   it('TEETH: writes NOTHING into a project that never opted in — no .swarm, no receipt', () => {
@@ -93,5 +91,31 @@ describe('issue #85 — versioned compaction snapshot contract', () => {
     const receipt = createSessionSnapshot({ event: 'PreCompact', capturedAt: '2026-06-01T00:00:00.000Z' });
     fs.writeFileSync(path.join(stale, '.swarm', 'agentdb-sessions.jsonl'), `${JSON.stringify(receipt)}\n`);
     expect(inspectSessionSnapshots(stale, { now: NOW })).toMatchObject({ kind: 'canonical', fresh: false });
+  });
+
+  it('TEETH: a malformed .claude/sessions root must not shadow a genuinely fresh .claude-flow/sessions one', () => {
+    // legacy() iterates ['.claude', '.claude-flow'] and, before this fix, RETURNED immediately on the
+    // first root whose `sessions/` entry was not a plain directory (a stray file, or a symlink) —
+    // discarding every OTHER root's evidence, including a genuinely fresh, structurally valid legacy
+    // session sitting right next to it. `probeMemory().compactionSurvival`
+    // (scripts/onboarding-console.mjs) is the one real caller: this reproduces the false negative that
+    // reaches its onboarding-console health probe.
+    const project = temporary();
+    // `.claude/sessions` is a STRAY FILE where a directory is expected — not absent (fs.existsSync is
+    // still true), so legacy() proceeds to lstatSync it and, pre-fix, returns early for the WHOLE scan.
+    fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.claude', 'sessions'), 'not a directory');
+    // `.claude-flow/sessions` — checked AFTER `.claude` in the fixed root order — holds a real, fresh,
+    // structurally valid legacy session that a working scan must still find.
+    const dir = path.join(project, '.claude-flow', 'sessions');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'session-ok.json'), JSON.stringify({
+      id: 'session-ok',
+      startedAt: new Date(NOW - 1000).toISOString(),
+      endedAt: new Date(NOW).toISOString(),
+      context: { project: 'fixture' },
+      metrics: { tasks: 1 },
+    }));
+    expect(inspectSessionSnapshots(project, { now: NOW })).toMatchObject({ kind: 'legacy', fresh: true });
   });
 });

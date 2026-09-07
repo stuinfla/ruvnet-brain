@@ -108,10 +108,10 @@ export function redactProgression(value) {
       let output = current;
       for (const rule of INLINE_SECRETS) {
         rule.pattern.lastIndex = 0;
-        if (rule.pattern.test(output)) {
+        const replaced = output.replace(rule.pattern, rule.replace);
+        if (replaced !== output) {
           mark(currentPath, rule.kind);
-          rule.pattern.lastIndex = 0;
-          output = output.replace(rule.pattern, rule.replace);
+          output = replaced;
         }
       }
       return output;
@@ -122,7 +122,7 @@ export function redactProgression(value) {
         const path = `${currentPath}.${key}`;
         const kind = secretKind(key);
         if (kind && current[key] !== null && current[key] !== undefined) {
-          mark(path, kind);
+          if (current[key] !== `[REDACTED:${kind}]`) mark(path, kind);
           return [key, `[REDACTED:${kind}]`];
         }
         return [key, walk(current[key], path)];

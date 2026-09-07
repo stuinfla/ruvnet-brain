@@ -110,6 +110,41 @@ afterEach(() => {
 });
 
 describe('ADR-073 structural SessionStart restoration', () => {
+  it('enumerates the global CLI bare-array protocol by growing limits from offset zero', () => {
+    const project = temporaryProject();
+    const rows = [];
+    for (let sequence = 1; sequence <= 5; sequence += 1) rows.push(snapshot(project, {
+      sequence, parents: rows.length ? [rows.at(-1).eventKey] : [],
+    }));
+    const cli = fakeCli(rows.map((row) => [row.eventKey, row]), { pageMutator: (page) => page.entries });
+    const restored = store(project, cli).restoreLatest({ pageSize: 2 });
+    const listed = cli.calls.filter((args) => args[1] === 'list');
+    expect(listed.map((args) => Number(flag(args, '--limit')))).toEqual([2, 4, 8]);
+    expect(listed.every((args) => flag(args, '--offset') === '0')).toBe(true);
+    expect(restored.payload.evidence).toMatchObject({ structurallyEnumerated: 5, exactRetrieved: 5 });
+    expect(restored.payload.heads).toEqual([rows.at(-1).eventKey]);
+  });
+
+  it('refuses a full bare-array enumeration at its bound instead of restoring truncated state', () => {
+    const project = temporaryProject();
+    const rows = Array.from({ length: 5 }, (_, index) => snapshot(project, { sequence: index + 1 }));
+    const cli = fakeCli(rows.map((row) => [row.eventKey, row]), { pageMutator: (page) => page.entries });
+    expect(() => store(project, cli).restoreLatest({ pageSize: 2, maxEntries: 4 })).toThrow(/enumeration.*bound/);
+    expect(cli.calls.some((args) => args[1] === 'retrieve')).toBe(false);
+  });
+
+  it('refuses disappearing keys or a protocol switch during bare-array expansion', () => {
+    const project = temporaryProject();
+    const rows = Array.from({ length: 5 }, (_, index) => snapshot(project, { sequence: index + 1 }));
+    for (const switchProtocol of [false, true]) {
+      const cli = fakeCli(rows.map((row) => [row.eventKey, row]), {
+        pageMutator: (page, { limit }) => limit === 2 ? page.entries
+          : switchProtocol ? page : page.entries.slice(1),
+      });
+      expect(() => store(project, cli).restoreLatest({ pageSize: 2 })).toThrow(/changed during restoration/);
+    }
+  });
+
   it('pages beyond the default limit and exact-retrieves every candidate without semantic search', () => {
     const project = temporaryProject();
     const chain = [];

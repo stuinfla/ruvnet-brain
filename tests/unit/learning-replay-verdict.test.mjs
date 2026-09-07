@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import {
   EXIT,
   INVARIANT,
@@ -17,6 +17,7 @@ import {
   cleanupFixtureDaemons,
   verdictForRun,
 } from '../../scripts/learning-replay.mjs';
+import { createReplaySource } from '../helpers/learning-replay-source.mjs';
 
 const run = (overrides = {}) => ({
   treatedClass: 'flagged',
@@ -141,14 +142,17 @@ describe('--check gates on a STATED SHA, and UNKNOWN is never PASS', () => {
 });
 
 describe('the two ADR-058 D4 mutants have executable, current evidence', () => {
-  let dir;
-  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'd4-mutants-')); });
-  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+  let dir, source;
+  beforeEach(() => {
+    source = createReplaySource();
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'd4-mutants-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    source?.cleanup();
+  });
 
-  const head = () => spawnSync('git', ['rev-parse', 'HEAD'], {
-    cwd: path.resolve(import.meta.dirname, '../..'),
-    encoding: 'utf8',
-  }).stdout.trim();
+  const head = () => source.sha;
   const write = (trap, name, body) => {
     const file = path.join(dir, `${trap}-${name}.json`);
     fs.writeFileSync(file, JSON.stringify({
@@ -200,7 +204,7 @@ describe('the two ADR-058 D4 mutants have executable, current evidence', () => {
         }],
       },
     });
-    const result = checkMutantArtifacts({ files });
+    const result = checkMutantArtifacts({ files, repo: source.repo });
     expect(result.status).toBe(VERDICT.UNKNOWN);
     expect(result.why).toMatch(/transcript/i);
   });
@@ -215,7 +219,7 @@ describe('the two ADR-058 D4 mutants have executable, current evidence', () => {
         }],
       },
     });
-    const result = checkMutantArtifacts({ files });
+    const result = checkMutantArtifacts({ files, repo: source.repo });
     expect(result.status).toBe(VERDICT.UNKNOWN);
     expect(result.why).toMatch(/delete-lesson.*transcript/i);
   });
@@ -230,7 +234,7 @@ describe('the two ADR-058 D4 mutants have executable, current evidence', () => {
         }],
       },
     });
-    const result = checkMutantArtifacts({ files });
+    const result = checkMutantArtifacts({ files, repo: source.repo });
     expect(result.status).toBe(VERDICT.UNKNOWN);
     expect(result.why).toMatch(/transcript/i);
   });

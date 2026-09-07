@@ -216,24 +216,10 @@ export function buildHealthRecommendations({ memory = null, learning = null } = 
 // "here is the gap" to "here is the one-click fix" — the exact gap ADR-027 closed for health/stack/
 // wiring findings, left open for capabilities.
 //
-// THE BAR IS HIGHER THAN "has a turnOn command". capability-registry.mjs's own header states turnOn
-// is null unless the exact command was verified with --help — that proves the command EXISTS, not
-// that its INVERSE has ever been run. Of the registry's rows, only `memory-distillation` clears both:
-// distill-project.mjs's header records a live, round-tripped proof (644 → 648 patterns, restore →
-// 644, re-run → 648, 2026-07-24) — an undo that has actually executed, not merely been promised in a
-// comment (see that file's header for why "promised, never run" was this project's origin sin).
-//
-// So this is a small, explicit map, not "every row with a non-null turnOn". A second and third
-// capability (most likely cross-project-lessons, then workflow-pattern-learning) join this map only
-// once THEIR undo is independently proven the same way — never before (Rule 0: verify, don't assume).
-const CAPABILITY_ELIGIBLE = {
-  'memory-distillation': {
-    title: 'Turn on memory distillation',
-    scope: 'project',
-    cost: { time: '~10s', usd: 0, risk: 'low' },
-    undo: { human: 'restores the pre-distill snapshot exactly (proven 2026-07-24: 644→648 patterns, restore→644, re-run→648)' },
-  },
-};
+// A historical restore demonstration is not proof of a currently available inverse.
+// distill-project --restore now refuses unsafe database replacement, so memory-distillation
+// is not offerable. Keep the allowlist empty until an inverse is available and verified.
+const CAPABILITY_ELIGIBLE = {};
 
 /**
  * @param {{ capabilities?: Array<{key,label,state,scope,turnOn,evidence,whatItBuysYou}> }} input — the
