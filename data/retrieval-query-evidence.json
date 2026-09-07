@@ -1164,12 +1164,12 @@
       "recordSha256": "bcff6354a2d68c5fbb3981780e3e0b2ff588e2c4ab16f9b83d15c72967fae4e2"
     },
     "ruview": {
-      "query": "In the ruview project, what is π RuView, what problem does it solve, and how is it intended to be used?",
+      "query": "What does RuView's proposed sensing-first multistatic RF mode change about cross-viewpoint CSI fusion, and which limitations of single-viewpoint sensing is it intended to address?",
       "expected": {
         "path": "docs/adr/ADR-031-ruview-sensing-first-rf-mode.md",
         "passageSha256": "d0656448c2111b03bf470272436c1051249a16cb5b432839918a7a8382564d57"
       },
-      "recordSha256": "0f1651ec39a5d07459bdeaa0134eee141f2370ad2467720822e3248d068d1e7a"
+      "recordSha256": "aa17001822d31b4726730fb61c7f59f9dd64af3f9e80c04c92e5c656d0bb4926"
     },
     "ruvn": {
       "query": "In the ruvn project, what is ruvn, what problem does it solve, and how is it intended to be used?",
@@ -1462,6 +1462,6 @@
   },
   "sourceCommit": "b45a372d4e1d85d86e2e9c4e806dec0948d0fd3e",
   "sourcePath": "data/retrieval-query-evidence.json",
-  "sourceBlobSha256": "a1b480683ff6c31b63c1d2875d882bbe819378d22ab949b420ff6428c023eb11",
-  "receiptSha256": "515289b0f895e2c575e1569caafe2cbc36ae90a6c56270b6314b19f79fe2e003"
+  "sourceBlobSha256": "b3e3a7919cad1465c053bee544646324061b7b91e7630bfe0e1e9a39a1861061",
+  "receiptSha256": "d541dfabded1d0742befe675b61606dd2136945c4446350467e519b9c24f1f5d"
 }
