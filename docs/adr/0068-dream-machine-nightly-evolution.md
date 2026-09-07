@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-09-07
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -137,6 +137,7 @@ committed config).
 ## Currency log
 
 | 2026-09-03 | Two nights' LEDGER.md rows appended (governed path), presumed-stale drift closed. Concurrent SLOT=3/grounding-quality firings: #236/#237 (citation-header rank-hijack, `ADR-0076` Proposed, INCONCLUSIVE, docs-only) and this session's disjoint `scripts/eval-brain.mjs` `provenance`-stratum receipt-crediting fix (ACCEPT). `autoMerge: false` held both times; both are draft PRs awaiting human review. | `docs/dream-cycle/LEDGER.md` two 2026-09-03 rows; PR #237 and this PR (`dream/2026-09-03-grounding-quality-provenance-receipt`) |
+| 2026-09-07 | Owner (`6a6ba72`, `fix(recovery): qualify 4.3.10 rebuild and bind runtime release evidence`) tightened both governed paths in the same commit: `dream.config.json`'s `findingPolicy` now requires an `unresolved`/`bounded-fix-unsuccessful` defect before opening an issue (`skipIf` gained `verified-local-fix`; added `resolvedFindingDestination: "work-record"`), and `LEDGER.md`'s operating policy (bumped to v1.1.0, effective 2026-09-05) codifies the same rule in prose plus an `extraDisciplines` override directing the nightly runner to reproduce-then-attempt-a-bounded-repair before ever filing a GitHub issue, and to record a verified fix as a ledger work record (`Issue=NONE`) rather than always pairing it with a tracking issue. Directly answers this session's own prior ledger observation that 17+ open dream-cycle PRs had accumulated with zero merges since #215 — a policy-level response, not a code defect, so `dream-config.test.mjs` needed no change. Re-verified during this PR's (#239) merge-forward from `main` (`2e6f7d0` → `c5eb2ab`, release 4.3.10) that surfaced this ADR's own presumed-stale drift. | `dream.config.json` (`findingPolicy`, `extraDisciplines`), `docs/dream-cycle/LEDGER.md` (header, v1.1.0), commit `6a6ba72` |
 
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
