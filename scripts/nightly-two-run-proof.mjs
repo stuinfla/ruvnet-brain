@@ -142,7 +142,13 @@ export async function triggerNativeRun({ scheduler, registration, platform, env,
     if (!installed.ok) throw new Error(`native scheduler unavailable: ${installed.why}`);
     const status = scheduler.schedulerStatus(options);
     if (status.state !== 'on') throw new Error(`proof scheduler is not on: ${status.evidence}`);
-    if (platform === 'darwin') command('launchctl', ['kickstart', '-k', `gui/${process.getuid()}/${identity}`]);
+    if (platform === 'darwin') {
+      // Darwin has getuid, but the qualification suite also exercises the Darwin
+      // branch from Windows. Keep that simulation portable without changing the
+      // real launchctl identity on macOS.
+      const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
+      command('launchctl', ['kickstart', '-k', `gui/${uid}/${identity}`]);
+    }
     if (platform === 'win32') command('schtasks', ['/Run', '/TN', identity]);
     // Cron itself must deliver the Linux trigger. Never execute its command directly as proof.
     const startedAt = now();
