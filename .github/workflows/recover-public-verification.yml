@@ -156,6 +156,14 @@ jobs:
           - { runner: macos-latest, os_name: macos }
           - { runner: windows-latest, os_name: windows }
     steps:
+      - name: Preserve exact Git bytes before Windows checkout
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          git config --global core.autocrlf false
+          test "$(git config --global --get core.autocrlf)" = false
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
