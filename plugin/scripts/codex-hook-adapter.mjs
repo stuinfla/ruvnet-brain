@@ -53,10 +53,18 @@ const codexToolName = String(input.tool_name).toLowerCase();
 
 /** Every file an apply_patch touches, in patch order. Codex patches are routinely multi-file. */
 export function patchFiles(patch) {
+  return [...new Set(patchOperations(patch).flatMap((op) => op.move ? [op.file, op.move] : [op.file]))];
+}
+
+function patchOperations(patch) {
   const out = [];
-  for (const m of String(patch || '').matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)) {
-    const f = m[1].trim();
-    if (f && !out.includes(f)) out.push(f);
+  for (const line of String(patch || '').split(/\r?\n/)) {
+    const header = /^\*\*\* (Add|Update|Delete) File: (.+)$/.exec(line);
+    if (header) out.push({ operation: header[1], file: header[2].trim() });
+    else {
+      const move = /^\*\*\* Move to: (.+)$/.exec(line);
+      if (move && out.at(-1)?.operation === 'Update') out.at(-1).move = move[1].trim();
+    }
   }
   return out;
 }
@@ -64,6 +72,8 @@ export function patchFiles(patch) {
 // Codex names these tools differently from the shared Claude hook contracts. Normalize at the
 // host boundary once so every existing safety/learning body sees the same typed event.
 let files = [];
+let operations = [];
+const patchTool = ['apply_patch', 'functions.apply_patch', 'functions__apply_patch'].includes(codexToolName);
 if (['exec_command', 'functions.exec_command', 'functions__exec_command'].includes(codexToolName)) {
   input.tool_name = 'Bash';
   input.tool_input = {
@@ -71,12 +81,17 @@ if (['exec_command', 'functions.exec_command', 'functions__exec_command'].includ
     command: input.tool_input?.command || input.tool_input?.cmd || '',
   };
   adapted = true;
-} else if (codexToolName === 'apply_patch') {
-  const patch = typeof input.tool_input?.command === 'string' ? input.tool_input.command : '';
+} else if (patchTool) {
+  // Codex 0.153.4's installed hook schema declares tool_input as arbitrary JSON. Its installed
+  // apply_patch grammar is FREEFORM (raw string); object.command is the existing compatibility
+  // contract. Do not spread a raw string into numbered object properties or guess other fields.
+  const patch = typeof input.tool_input === 'string' ? input.tool_input
+    : typeof input.tool_input?.command === 'string' ? input.tool_input.command : '';
+  operations = patchOperations(patch);
   files = patchFiles(patch);
   input.tool_name = 'Edit';
   input.tool_input = {
-    ...(input.tool_input || {}),
+    ...(input.tool_input && typeof input.tool_input === 'object' ? input.tool_input : {}),
     ...(files[0] ? { file_path: files[0] } : {}),
     new_string: patch,
   };
@@ -93,16 +108,30 @@ if (['exec_command', 'functions.exec_command', 'functions__exec_command'].includ
 
 const hookInput = adapted ? JSON.stringify(input) : raw;
 const shim = path.join(path.dirname(fileURLToPath(import.meta.url)), 'hook-shim.mjs');
+const projectDir = String(input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd());
 const env = {
   ...process.env,
   CLAUDE_SESSION_ID: String(input.session_id || process.env.CLAUDE_SESSION_ID || ''),
   CLAUDE_PLUGIN_ROOT: String(process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || ''),
-  CLAUDE_PROJECT_DIR: String(input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd()),
+  CLAUDE_PROJECT_DIR: projectDir,
   RUVNET_HOOK_HOST: 'codex',
 };
 
+// Dream Cycle 2026-09-05. Codex's own dispatch trampoline (codex-hooks.json) never passes `cwd:`
+// when it spawns codex-hook.mjs, and codex-hook-wrapper.mjs never passes it when it spawns THIS
+// process either — so the real OS $PWD this process (and every child below it) inherits is wherever
+// Codex happened to launch the trampoline from, architecturally independent of the payload's own
+// `cwd` field used for CLAUDE_PROJECT_DIR above. project-identity.mjs's projectDirectory() and
+// learn-capture.sh's containment check both trust CLAUDE_PROJECT_DIR only when $PWD actually lies
+// inside it (#85/#107) — so whenever the dispatcher's real cwd and the payload's declared cwd
+// diverge, that check silently REJECTS the correct root and falls back to the dispatcher's own
+// directory, which this plugin does not own (ADR-058 D5). Fall back to the current cwd if the
+// declared one no longer exists, rather than handing spawnSync a cwd it will ENOENT on.
+let shimCwd = process.cwd();
+try { if (fs.statSync(projectDir).isDirectory()) shimCwd = projectDir; } catch { /* keep the default */ }
+
 const runShim = (payload) => spawnSync(process.execPath, [shim, hookId, ...process.argv.slice(3)], {
-  input: payload, encoding: 'utf8', env,
+  input: payload, encoding: 'utf8', env, cwd: shimCwd,
 });
 
 /**
@@ -123,12 +152,32 @@ const BUDGET_MS = Number(process.env.RUVNET_CODEX_BUDGET_MS) || 0;
 const started = Date.now();
 const spent = () => Date.now() - started;
 
-const payloads = files.length > 1
+let payloads = files.length > 1
   ? files.map((file) => JSON.stringify({
     ...input,
     tool_input: { ...input.tool_input, file_path: file },
   }))
   : [hookInput];
+
+if (patchTool && hookId === 'md-stamp') {
+  // Installed apply_patch reports this exact success banner plus A/M/D path records. A raw patch
+  // describes intent; only the successful result authorizes stamping or supplies Add provenance.
+  const response = input.tool_response;
+  if (event !== 'PostToolUse' || typeof response !== 'string'
+    || !/^Success\. Updated the following files:\r?\n/.test(response)) process.exit(0);
+  const succeeded = new Map([...response.matchAll(/^([AMD]) (.+)$/gm)]
+    .map((m) => [path.resolve(projectDir, m[2].trim()), m[1]]));
+  payloads = operations.filter((op) => op.operation !== 'Delete').flatMap((op) => {
+    const file = op.move || op.file;
+    const status = succeeded.get(path.resolve(projectDir, file));
+    if (status !== 'A' && status !== 'M') return [];
+    return [JSON.stringify({
+      ...input,
+      tool_input: { ...input.tool_input, file_path: file },
+      tool_response: op.operation === 'Add' && status === 'A' ? { type: 'create' } : response,
+    })];
+  });
+}
 
 const stdouts = [];
 for (const payload of payloads) {

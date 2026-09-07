@@ -49,8 +49,8 @@ plan.oracle = { receiptSha256: planEvidence.receiptSha256, queryStoreSetSha256: 
   sourceCommit: planEvidence.sourceCommit, sourceBlobSha256: planEvidence.sourceBlobSha256, evidence: planEvidence };
 plan.planSha256 = digest(Object.fromEntries(Object.entries(plan).filter(([key]) => key !== 'planSha256')));
 
-async function aggregate(reviewKeys = keys) {
-  const common = { sourceSha: identity.candidateSha, version: identity.version, tag: identity.tag,
+async function aggregate(reviewKeys = keys, verifierSha) {
+  const common = { ...(verifierSha === undefined ? {} : { verifierSha }), sourceSha: identity.candidateSha, version: identity.version, tag: identity.tag,
     artifactSha256: identity.packageSha256, bundleSha256: identity.bundleSha256, payloadId: identity.payloadId,
     hostRegistryDigest: '2'.repeat(64), coverageGeneration: plan.coverage.releaseCoverageGeneration,
     canaryPlanSha256: plan.planSha256, releaseTransactionId: transactionIdFor(identity) };
@@ -103,8 +103,27 @@ async function convergedProvider() {
 }
 
 describe('schema-3 install-verified finalizer', () => {
+  it('requires the expected recovery verifier before side effects and records it in the terminal receipt', async () => {
+    const provider = await convergedProvider();
+    const verifierSha = '9'.repeat(40);
+    const evidence = await aggregate(keys, verifierSha);
+    const args = { identity, aggregate: evidence, adapter: provider,
+      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey };
+    const before = provider.receipts.length;
+    await expect(finalizeReleaseTransaction({ ...args, verifierSha: '8'.repeat(40) })).rejects.toThrow(/verifier/);
+    await expect(finalizeReleaseTransaction({ ...args, aggregate: await aggregate(), verifierSha })).rejects.toThrow(/verifier/);
+    expect(provider.receipts).toHaveLength(before);
+    const receipt = await finalizeReleaseTransaction({ ...args, verifierSha });
+    expect(receipt.identity.candidateSha).toBe(identity.candidateSha);
+    expect(receipt.observation.publicVerification.verifierSha).toBe(verifierSha);
+  });
   it('materializes, reobserves, appends, reads back, and validates install-verified', async () => {
     const provider = await convergedProvider();
+    provider.calls = [];
+    for (const name of ['createDraft', 'uploadAssets', 'stageNpm', 'publishDraftNonLatest',
+      'promoteNpm', 'makeGithubLatest', 'restoreNpmLatest']) {
+      provider[name] = async () => { throw new Error(`recovery must not republish: ${name}`); };
+    }
     const evidence = await aggregate();
     const final = await finalizeReleaseTransaction({ identity, aggregate: evidence, adapter: provider,
       privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey });

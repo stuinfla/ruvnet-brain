@@ -7,10 +7,25 @@ import { execFileSync } from 'node:child_process';
 import { qaLanes, selectLanes } from '../../scripts/qa-lanes.mjs';
 
 describe('QA dependency and evidence contract', () => {
+  it('CI workflows request only registered shared QA lanes', () => {
+    const names = new Set(qaLanes({ release: true }).map(({ name }) => name));
+    for (const file of ['ci.yml', 'canonical-qa.yml']) {
+      const workflow = fs.readFileSync(new URL(`../../.github/workflows/${file}`, import.meta.url), 'utf8');
+      for (const match of workflow.matchAll(/--lane\s+([\w-]+)/g)) {
+        expect(names.has(match[1]), `${file}: unregistered lane ${match[1]}`).toBe(true);
+      }
+    }
+  });
   it('selecting claims includes its real coverage prerequisite and rejects unknown lanes', () => {
     const lanes = qaLanes({ release: true });
-    expect(selectLanes(lanes, ['claims']).map(({ name }) => name)).toEqual(['coverage', 'claims']);
+    expect(selectLanes(lanes, ['claims-source']).map(({ name }) => name)).toEqual(['coverage', 'claims-source']);
+    expect(selectLanes(lanes, ['architecture'])[0].args).toEqual(['scripts/product-integrity-contract.mjs', '--check-source']);
     expect(() => selectLanes(lanes, ['absent'])).toThrow();
+  });
+  it('release acceptance runs the packed cross-host continuity test', () => {
+    const lane = selectLanes(qaLanes({ release: true }), ['continuity'])[0];
+    expect(lane.args).toEqual(['node_modules/vitest/vitest.mjs', 'run', 'tests/acceptance/cross-host-project-resume.test.mjs']);
+    expect(lane.resource).toBe('tests');
   });
   it('runs independent resources concurrently, serializes shared resources, and blocks dependents', async () => {
     let active = 0, maximum = 0;

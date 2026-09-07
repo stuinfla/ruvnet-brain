@@ -52,6 +52,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 export const EXIT = Object.freeze({ PASS: 0, FAIL: 1, UNKNOWN: 4 });
 
@@ -244,5 +245,5 @@ export async function main() {
   return EXIT[verdict];
 }
 
-const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
+const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) process.exit(await main());

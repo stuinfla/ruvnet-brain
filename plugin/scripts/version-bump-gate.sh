@@ -18,7 +18,7 @@
 # is the product. This is that discipline applied at the push boundary.
 #
 # CONTRACT: exit 0 = allow · exit 2 + stderr = BLOCK. FAILS OPEN on anything unparseable.
-# Opt-in (router profile.json), bash builtins + git only — same hardening as its four siblings.
+# Opt-in (router profile.json); local Git checks and a Node maintenance-state check.
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 
 set -uo pipefail
@@ -52,7 +52,9 @@ PROFILE="${MODEL_ROUTER_PROFILE:-$HOME/.claude/model-router/profile.json}"
 [ -f "$PROFILE" ] || exit 0
 [ "${RUVNET_SKIP_VERSION_GATE:-0}" = "1" ] && exit 0
 
-field() { local re="\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\""; [[ $INPUT =~ $re ]] && printf '%s' "${BASH_REMATCH[1]}"; }
+# Consume JSON escape pairs so quoted commit messages do not truncate the command before a
+# following git push. This retains the existing bounded Bash parser's matching behavior.
+field() { local re="\"$1\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]*(\\\\.[^\"\\\\]*)*)\""; [[ $INPUT =~ $re ]] && printf '%s' "${BASH_REMATCH[1]}"; }
 [ "$(field tool_name)" = "Bash" ] || exit 0
 CMD=$(field command)
 [[ $CMD == *"git push"* ]] || exit 0

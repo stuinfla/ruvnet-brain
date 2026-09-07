@@ -271,6 +271,19 @@ describe('a multi-file Codex patch is shown to the walls file by file', () => {
     cwd: os.tmpdir(),
   });
 
+  it('shows both move source and destination to pre-tool policies for a raw namespaced patch', () => {
+    const r = runAdapter({
+      shim: 'let raw="";process.stdin.on("data",c=>raw+=c);process.stdin.on("end",()=>process.stdout.write(JSON.parse(raw).tool_input.file_path));',
+      payload: {
+        ...payloadFor(), tool_name: 'functions.apply_patch',
+        tool_input: '*** Begin Patch\n*** Update File: /tmp/before.md\n*** Move to: /tmp/after.md\n@@\n-old\n+new\n*** End Patch',
+      },
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout).hookSpecificOutput.additionalContext.split('\n'))
+      .toEqual(['/tmp/before.md', '/tmp/after.md']);
+  });
+
   it('exposes EVERY file, not just the first', () => {
     // Every write policy reads a single tool_input.file_path (protect-brain-state.sh, ground-before-
     // write.sh, adr-currency-gate.mjs). The adapter used to parse one file out of the patch, so on a

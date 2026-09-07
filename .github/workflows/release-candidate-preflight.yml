@@ -83,6 +83,9 @@ jobs:
             --manifest release-evidence/payload-manifest.json \
             --payload-proof "$RUNNER_TEMP/payload.json" \
             --hosts release-evidence/candidate-host-evidence.json \
+            --runtime-census release-evidence/runtime-census.json \
+            --plan release-evidence/retrieval-canary-plan.json \
+            --coverage release-evidence/COVERAGE.json \
             --ci lane-evidence/ci/candidate-ci-evidence.json \
             --integration lane-evidence/integration/integration-evidence.json \
             --ux-dir lane-evidence/ux \

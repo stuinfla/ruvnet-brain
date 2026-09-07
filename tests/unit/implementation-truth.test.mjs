@@ -3,6 +3,7 @@ import { selectResults } from '../../kb/forge-ask-all.mjs';
 import { answerFromCards } from '../../kb/card-lane.mjs';
 import { groundedToolResult } from '../../kb/grounded-response.mjs';
 import {
+  assessImplementation,
   implementationNotice,
   requiresImplementationProof,
 } from '../../kb/implementation-evidence.mjs';
@@ -26,6 +27,57 @@ function ranked(kind, path_, text, score = 8) {
 }
 
 describe('implementation truth gate — design intent is never built-state proof', () => {
+  it.each([2.757, null])('acknowledges retrieved source without proof at relevance %s', (score) => {
+    const out = assessImplementation(
+      'In Ruflo source which functions implement autopilot progress persistence task completion detection and re-engagement after a blocked or interrupted coding session?',
+      [{
+        ...ranked('source', 'v3/@claude-flow/cli/src/commands/autopilot.ts',
+          '// Classification fixture, not a capability claim.', score)[0],
+        repo: 'ruflo',
+      }],
+    );
+    expect(out.results[0].evidenceClass).toBe('implementation');
+    expect(out.implementation).toMatchObject({
+      required: true,
+      verdict: 'unproven',
+      implementationSources: [],
+      retrievedImplementationSources: ['ruflo/v3/@claude-flow/cli/src/commands/autopilot.ts'],
+      unprovenReason: 'insufficient-relevance',
+    });
+    const notice = implementationNotice(out.implementation);
+    expect(notice).toMatch(/source or manifest was retrieved/i);
+    expect(notice).toMatch(/relevance.*proof threshold/i);
+    expect(notice).not.toMatch(/contains no implementation-bearing/);
+    expect(notice).toMatch(/Do not tell the user.*built, shipped, implemented/s);
+  });
+
+  it('preserves the implementation proof threshold at exactly 4', () => {
+    const out = selectResults({
+      query: 'Does this project implement orbital deployment?',
+      ranked: ranked('source', 'src/orbital_deployment.rs', 'pub struct OrbitalDeployment;', 4),
+    });
+    expect(out.implementation).toMatchObject({
+      verdict: 'proven',
+      implementationSources: ['fictional-ruv-project/src/orbital_deployment.rs'],
+      unprovenReason: null,
+    });
+    expect(implementationNotice(out.implementation)).toMatch(/IMPLEMENTATION EVIDENCE: PROVEN/);
+  });
+
+  it('distinguishes documentation-only retrieval from low-relevance source', () => {
+    const out = selectResults({
+      query: 'Does this project implement orbital deployment?',
+      ranked: ranked('doc', 'README.md', 'Orbital deployment design documentation.', 8),
+    });
+    expect(out.implementation).toMatchObject({
+      verdict: 'unproven',
+      implementationSources: [],
+      retrievedImplementationSources: [],
+      unprovenReason: 'no-implementation-source',
+    });
+    expect(implementationNotice(out.implementation)).toMatch(/contains no implementation-bearing source or manifest/);
+  });
+
   it('marks a strong Proposed ADR hit unproven for a built-state question', () => {
     const out = selectResults({
       query: 'Did Reuven build and ship autonomous orbital deployment in this project?',

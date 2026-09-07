@@ -3,11 +3,12 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import osModule from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest, validateCoverageLedger } from './coverage-integrity.mjs';
 import { validateHostRegistry } from './host-registry.mjs';
 import { RECEIPT_MODE_NAMES } from './host-install-matrix.mjs';
-import { generatePublicationReceipt, livePublicationAdapter } from './publication-receipt.mjs';
+import { generatePublicationReceipt, livePublicationAdapter, validateCandidateSource } from './publication-receipt.mjs';
 import {
   createPublicVerificationLeaf,
   PUBLIC_VERIFICATION_MODES,
@@ -29,12 +30,13 @@ function failedCanaryCases(retrieval) {
     status !== 'COMPLETED' || retrievalHit !== true || (cohort === 'delta' && citationResolved !== true));
 }
 
-function publicVerificationFailure({ os, identity, failures, completedLeaves }) {
+function publicVerificationFailure({ os, identity, verifierSha, failures, completedLeaves }) {
   const payload = {
     schemaVersion: 1,
     kind: 'ruvnet-brain-public-verification-failure',
     os,
     sourceSha: identity.candidateSha,
+    ...(verifierSha === undefined ? {} : { verifierSha }),
     artifactSha256: identity.packageSha256,
     bundleSha256: identity.bundleSha256,
     failures: failures.map(({ mode, reason, retrieval }) => ({
@@ -102,6 +104,7 @@ function coverageProjection(coverage) {
 
 export async function createPublicVerificationLane({
   os,
+  verifierSha,
   candidate,
   publication,
   identity,
@@ -112,6 +115,7 @@ export async function createPublicVerificationLane({
   adapter,
 } = {}) {
   if (!PUBLIC_VERIFICATION_OS.includes(os)) throw new Error(`unsupported public verification OS: ${os || '(missing)'}`);
+  if (verifierSha !== undefined && !HEX40.test(String(verifierSha))) throw new Error('verifier SHA must be a full commit identity');
   validateReleaseIdentity(identity);
   validatePublicEvidence({ candidate, publication, identity });
   const registry = validateHostRegistry(hostRegistry);
@@ -133,6 +137,7 @@ export async function createPublicVerificationLane({
   }
   const common = {
     sourceSha: identity.candidateSha,
+    ...(verifierSha === undefined ? {} : { verifierSha }),
     version: identity.version,
     tag: identity.tag,
     artifactSha256: identity.packageSha256,
@@ -187,7 +192,7 @@ export async function createPublicVerificationLane({
   }
   if (failures.length) {
     const error = new Error(`retrieval canary acceptance failed for ${failures.map(({ mode }) => mode).join(', ')}`);
-    error.publicVerificationFailure = publicVerificationFailure({ os, identity, failures, completedLeaves: leaves });
+    error.publicVerificationFailure = publicVerificationFailure({ os, identity, verifierSha, failures, completedLeaves: leaves });
     throw error;
   }
   if (canonicalJson(leaves.map(({ mode }) => mode)) !== canonicalJson(PUBLIC_VERIFICATION_MODES)) {
@@ -206,8 +211,21 @@ function regularJson(file, label) {
   return { absolute, bytes: fs.readFileSync(absolute), value: JSON.parse(fs.readFileSync(absolute, 'utf8')) };
 }
 
+export function resolveVerifierSha(root, expected) {
+  const options = { cwd: root, encoding: 'utf8' };
+  const actual = execFileSync('git', ['rev-parse', 'HEAD'], options).trim();
+  if (!HEX40.test(actual) || (expected !== undefined && expected !== actual)) {
+    throw new Error('verifier SHA differs from the executing checkout');
+  }
+  if (execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], options).trim()) {
+    throw new Error('verifier checkout has tracked changes');
+  }
+  return actual;
+}
+
 export async function generatePublicVerificationLane({
   os,
+  verifierSha: expectedVerifierSha,
   candidatePath,
   identityPath,
   coveragePath,
@@ -215,10 +233,16 @@ export async function generatePublicVerificationLane({
   registryPath,
   outPath,
   root = process.cwd(),
-  adapter = livePublicationAdapter({ root }),
+  candidateRoot = root,
+  adapter = livePublicationAdapter({ root, candidateRoot }),
 } = {}) {
   if (os !== hostOperatingSystem()) throw new Error(`runner OS ${hostOperatingSystem() || process.platform} cannot produce ${os || '(missing)'}`);
+  if (fs.realpathSync(root) !== fs.realpathSync(fileURLToPath(new URL('..', import.meta.url)))) {
+    throw new Error('verifier root differs from the executing script checkout');
+  }
+  const verifierSha = resolveVerifierSha(root, expectedVerifierSha);
   const candidate = regularJson(candidatePath, 'candidate receipt');
+  validateCandidateSource(candidateRoot, candidate.value);
   const identity = regularJson(identityPath, 'release identity');
   const releaseCoverage = regularJson(coveragePath, 'release coverage');
   const retrievalPlan = regularJson(planPath, 'retrieval plan');
@@ -234,6 +258,7 @@ export async function generatePublicVerificationLane({
     const publication = JSON.parse(fs.readFileSync(publicationPath, 'utf8'));
     const leaves = await createPublicVerificationLane({
       os,
+      verifierSha,
       candidate: candidate.value,
       publication,
       identity: identity.value,
@@ -244,7 +269,10 @@ export async function generatePublicVerificationLane({
       hostRegistry: hostRegistry.value,
       adapter,
     });
-    const payload = { schemaVersion: 1, kind: 'ruvnet-brain-public-verification-os-lane', os, leaves };
+    resolveVerifierSha(root, verifierSha);
+    validateCandidateSource(candidateRoot, candidate.value);
+    const payload = { schemaVersion: 1, kind: 'ruvnet-brain-public-verification-os-lane', os,
+      verifierSha, sourceSha: identity.value.candidateSha, leaves };
     const receipt = { ...payload, laneSha256: digest(payload) };
     fs.mkdirSync(path.dirname(output), { recursive: true });
     fs.writeFileSync(output, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
@@ -271,6 +299,8 @@ export async function main(args = process.argv.slice(2)) {
   try {
     const receipt = await generatePublicVerificationLane({
       os: argument(args, '--os'),
+      verifierSha: argument(args, '--verifier-sha') ?? undefined,
+      candidateRoot: argument(args, '--candidate-root') ?? undefined,
       candidatePath: argument(args, '--candidate'),
       identityPath: argument(args, '--identity'),
       coveragePath: argument(args, '--coverage'),

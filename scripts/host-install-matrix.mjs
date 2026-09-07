@@ -27,6 +27,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { parseRetrievalResult } from '../kb/retrieval-result.mjs';
+import { runRetrievalCanaries, validateRetrievalCanaryReceipt, resolveInstalledCanaryCitation } from './retrieval-canary.mjs';
 
 /** The three host shapes a release must survive. ONE name each, for every consumer. */
 export const HOST_MODES = Object.freeze(['claude', 'codex', 'dual']);
@@ -125,7 +127,7 @@ export function fixturePath(mode, temp, locate) {
 export function runHostMatrix({ packageRoot, version, variant = 'staged', locate, temp, run = spawnSync }) {
   const spec = VARIANTS[variant];
   if (!spec) throw new Error(`unknown host-matrix variant: ${variant}`);
-  const workspace = temp || fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-host-matrix-'));
+  const workspace = fs.realpathSync(temp || fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-host-matrix-')));
   const installer = path.join(packageRoot, 'bin', 'install.mjs');
   const fixtures = {};
   let verdict = 'PASS';
@@ -201,10 +203,11 @@ export async function runHostMatrixAsync({
   runMcpSearch = runInstalledMcpSearch,
   verifyGrounding = verifyInstalledGrounding,
   resolveMcpServer = resolveInstalledMcpServer,
+  retrieval,
 }) {
   const spec = VARIANTS[variant];
   if (!spec) throw new Error(`unknown host-matrix variant: ${variant}`);
-  const workspace = temp || fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-host-matrix-'));
+  const workspace = fs.realpathSync(temp || fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-host-matrix-')));
   const sharedModelCache = path.join(workspace, 'models-cache');
   fs.mkdirSync(sharedModelCache, { recursive: true });
   const contexts = HOST_MODES.map((mode) => {
@@ -261,21 +264,43 @@ export async function runHostMatrixAsync({
   }
 
   const searches = await Promise.all(contexts.map(async (context) => {
-    const serverPath = resolveMcpServer(context);
-    const processResult = await runMcpSearch({ mode: context.mode, serverPath, env: context.env });
-    const output = `${processResult.stdout || ''}${processResult.stderr || ''}`;
-    if (processResult.error || processResult.status !== 0) {
-      return { context, processResult, error: `MCP search failed for ${context.mode} (${processDiagnostic(processResult)}): ${output.slice(-2000)}` };
-    }
-    const grounding = await verifyGrounding(output, context.env.RUVNET_BRAIN_KB);
-    if (!grounding?.grounded) return { context, processResult, error: `MCP search grounding unproven for ${context.mode}` };
-    return { context, processResult, grounding };
+    let session;
+    try {
+      const serverPath = resolveMcpServer(context);
+      // One installed worker per host: model/store state survives smoke and every sealed case.
+      session = runMcpSearch === runInstalledMcpSearch ? createInstalledMcpSession({ serverPath, env: context.env }) : null;
+      const searchMcp = session ? (args) => session.search(args) : runMcpSearch;
+      const processResult = await searchMcp({ mode: context.mode, serverPath, env: context.env });
+      const output = `${processResult.stdout || ''}${processResult.stderr || ''}`;
+      if (processResult.error || processResult.status !== 0) {
+        return { context, processResult, error: `MCP search failed for ${context.mode} (${processDiagnostic(processResult)}): ${output.slice(-2000)}` };
+      }
+      const grounding = await verifyGrounding(output, context.env.RUVNET_BRAIN_KB);
+      if (!grounding?.grounded) return { context, processResult, error: `MCP search grounding unproven for ${context.mode}` };
+      let receipt;
+      if (retrieval) {
+        receipt = await runRetrievalCanaries({ ...retrieval,
+          search: async ({ query, k }) => {
+            const result = await searchMcp({ mode: context.mode, serverPath, env: context.env, query, k });
+            if (result.error || result.status !== 0) throw new Error(`canary MCP search failed: ${processDiagnostic(result)}`);
+            return parseRetrievalResult(result.mcpResult, { query, k });
+          },
+          citationResolver: (matched, expected) => resolveInstalledCanaryCitation({ kbDir: context.env.RUVNET_BRAIN_KB, matched, expected }),
+        });
+        try { validateRetrievalCanaryReceipt(receipt, { plan: retrieval.plan }); }
+        catch (error) { return { context, processResult, grounding, retrieval: receipt, error: `${context.mode} canary rejected: ${error.message}` }; }
+      }
+      return { context, processResult, grounding, ...(receipt ? { retrieval: receipt } : {}) };
+    } catch (error) {
+      return { context, processResult: { status: null, error }, error: `${context.mode} host search failed: ${error.message}` };
+    } finally { await session?.close(); }
   }));
-  const fixtures = Object.fromEntries(searches.map(({ context, processResult, grounding, error }) => [context.mode, {
+  const fixtures = Object.fromEntries(searches.map(({ context, processResult, grounding, retrieval, error }) => [context.mode, {
     status: error ? 'FAIL' : 'PASS',
     version,
     process: processIdentity(processResult),
     ...(grounding?.receipt ? { grounding: grounding.receipt } : {}),
+    ...(retrieval ? { retrieval } : {}),
     ...(error ? { error } : {}),
   }]));
   const error = searches.find((result) => result.error)?.error;
@@ -318,56 +343,92 @@ async function verifyInstalledGrounding(output, kbDir) {
   return verifyGrounding(output, kbDir);
 }
 
-function runInstalledMcpSearch({ serverPath, env, query = 'How does RuvNet Brain prove a public release artifact?', timeout = 300_000 }) {
-  return new Promise((resolve) => {
-    const child = spawn(process.execPath, [serverPath], { env, stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    const pending = new Map();
-    let settled = false;
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      child.kill('SIGTERM');
-      resolve({ status: result.status ?? null, signal: result.signal ?? null, error: result.error ?? null, stdout, stderr });
-    };
-    const timer = setTimeout(() => finish({ status: null, signal: 'SIGKILL', error: Object.assign(new Error('MCP search timed out'), { code: 'ETIMEDOUT' }) }), timeout);
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk;
-      for (;;) {
-        const newline = stdout.indexOf('\n');
-        if (newline < 0) break;
-        const line = stdout.slice(0, newline).trim();
-        stdout = stdout.slice(newline + 1);
-        if (!line) continue;
-        let message;
-        try { message = JSON.parse(line); } catch { continue; }
-        const handler = pending.get(message.id);
-        if (handler) { pending.delete(message.id); handler(message); }
-      }
-    });
-    child.on('error', (error) => finish({ status: null, error }));
-    child.on('exit', (status, signal) => {
-      if (!settled) finish({ status, signal, ...(status === 0 ? {} : { error: new Error(`MCP server exited ${status}`) }) });
-    });
-    const call = (id, method, params = {}) => new Promise((done) => {
-      pending.set(id, done);
-      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
-    });
-    (async () => {
-      const initialized = await call(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'release-host-matrix', version: '1' } });
-      if (initialized.error) throw new Error(`MCP initialize failed: ${JSON.stringify(initialized.error)}`);
-      const listed = await call(2, 'tools/list');
-      if (!listed.result?.tools?.some((tool) => tool.name === 'search_ruvnet')) throw new Error('installed MCP does not advertise search_ruvnet');
-      const searched = await call(3, 'tools/call', { name: 'search_ruvnet', arguments: { query, k: 5 } });
-      const text = (searched.result?.content || []).map((item) => item.text || '').join('\n');
-      if (searched.error || searched.result?.isError) throw new Error(`installed Brain search failed: ${text.slice(0, 400)}`);
-      stdout = text;
-      finish({ status: 0 });
-    })().catch((error) => finish({ status: null, error }));
+export function createInstalledMcpSession({ serverPath, env, timeout = 300_000, shutdownTimeout = 5000 }) {
+  const child = spawn(process.execPath, [serverPath], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+  const pending = new Map();
+  let buffer = '', stderr = '', nextId = 0, initialized = false;
+  let terminalError = null, closePromise, exited = false, exitSignal = null;
+  let queue = Promise.resolve();
+  let resolveExit;
+  const exit = new Promise((resolve) => { resolveExit = resolve; });
+  const close = (error = new Error('MCP session closed')) => {
+    if (closePromise) return closePromise;
+    terminalError ||= error;
+    for (const { reject } of pending.values()) reject(terminalError);
+    pending.clear();
+    closePromise = (async () => {
+      if (exited) return;
+      // EOF lets the installed proxy await its worker shutdown on Windows as well as POSIX.
+      child.stdin.end();
+      const escalation = setTimeout(() => { if (!exited) child.kill('SIGKILL'); }, shutdownTimeout);
+      try { await exit; } finally { clearTimeout(escalation); }
+    })();
+    return closePromise;
+  };
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+  child.stdout.on('data', (chunk) => {
+    buffer += chunk;
+    for (;;) {
+      const newline = buffer.indexOf('\n');
+      if (newline < 0) break;
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (!line) continue;
+      let message;
+      try { message = JSON.parse(line); } catch { continue; }
+      const handler = pending.get(message.id);
+      if (handler) { pending.delete(message.id); handler.resolve(message); }
+    }
   });
+  child.on('error', (error) => { void close(error); });
+  child.stdin.on('error', (error) => { void close(error); });
+  child.on('close', (status, signal) => {
+    exited = true; exitSignal = signal; resolveExit();
+    void close(new Error(`MCP server exited ${status}`));
+  });
+  const call = (method, params = {}) => new Promise((resolve, reject) => {
+    if (terminalError) { reject(terminalError); return; }
+    const id = ++nextId;
+    pending.set(id, { resolve, reject });
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+  });
+  const execute = async ({ query = 'How does RuvNet Brain prove a public release artifact?', k = 5 } = {}) => {
+    if (terminalError) return { status: null, error: terminalError, signal: exitSignal, stdout: '', stderr };
+    stderr = '';
+    const timer = setTimeout(() => {
+      void close(Object.assign(new Error('MCP search timed out'), { code: 'ETIMEDOUT' }));
+    }, timeout);
+    try {
+      if (!initialized) {
+        const ready = await call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'release-host-matrix', version: '1' } });
+        if (ready.error) throw new Error(`MCP initialize failed: ${JSON.stringify(ready.error)}`);
+        const listed = await call('tools/list');
+        if (!listed.result?.tools?.some((tool) => tool.name === 'search_ruvnet')) throw new Error('installed MCP does not advertise search_ruvnet');
+        initialized = true;
+      }
+      const searched = await call('tools/call', { name: 'search_ruvnet', arguments: { query, k } });
+      const stdout = (searched.result?.content || []).map((item) => item.text || '').join('\n');
+      if (searched.error || searched.result?.isError) throw new Error(`installed Brain search failed: ${stdout.slice(0, 400)}`);
+      return { status: 0, signal: null, error: null, stdout, stderr, mcpResult: searched.result };
+    } catch (error) {
+      await close(error);
+      return { status: null, signal: exitSignal, error: terminalError, stdout: '', stderr };
+    } finally { clearTimeout(timer); }
+  };
+  return {
+    // The scorer may schedule concurrent cases; only one reaches this model worker at a time.
+    search(args) {
+      const result = queue.then(() => execute(args));
+      queue = result.then(() => undefined, () => undefined);
+      return result;
+    },
+    close,
+  };
+}
+
+async function runInstalledMcpSearch(options) {
+  const session = createInstalledMcpSession(options);
+  try { return await session.search(options); } finally { await session.close(); }
 }
 
 function spawnCommand(command, args, options) {

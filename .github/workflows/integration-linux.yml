@@ -36,6 +36,8 @@ jobs:
     # The full suite normally completes in under two minutes; fifteen minutes leaves room for cold
     # dependency/model setup while keeping a runner wedge observable.
     timeout-minutes: 15
+    env:
+      RUVNET_REQUIRE_CODEX_DISCOVERY: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +52,14 @@ jobs:
       - name: Install kb deps (@ruvector/rvf lives here, not the root)
         run: cd kb && npm ci --no-audit --no-fund
 
+      - name: Install and verify the required native Codex CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global --prefix "$HOME/.npm-global" @openai/codex@latest
+          "$HOME/.npm-global/bin/codex" --version
+          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
+
       - name: Environment facts (so a failure is diagnosable from the log alone)
         run: |
           echo "shell:  $(readlink -f /bin/sh)"
@@ -58,7 +68,7 @@ jobs:
           echo "sed:    $(sed --version | head -1)"
           echo "jq:     $(jq --version 2>/dev/null || echo MISSING)"
           echo "gh:     $(gh --version 2>/dev/null | head -1 || echo MISSING)"
-          echo "rvf stores present: $(ls kb/*.rvf 2>/dev/null | wc -l)"
+          node --input-type=module -e 'import fs from "node:fs"; console.log("rvf stores present:", fs.readdirSync("kb").filter(name => name.endsWith(".rvf") && fs.statSync("kb/" + name).isFile()).length)'
 
       - name: Integration suite (bounded and fail-closed)
         id: run

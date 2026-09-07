@@ -28,6 +28,7 @@ import {
   buildFixtures, nightlyRefresh, seedProjectBMemory,
 } from '../../scripts/learning-replay.mjs';
 import { spawn, spawnSync } from 'node:child_process';
+import { createReplaySource } from '../helpers/learning-replay-source.mjs';
 
 describe('CLI help is side-effect free', () => {
   it('--help prints usage, exits zero, and does not overwrite the replay artifact', () => {
@@ -313,7 +314,8 @@ describe('the independent hooks post-task persistence trap', () => {
   });
 
   it('the post-task CLI dry-run enters Codex with project-B AgentDB already materialized', () => {
-    const repo = path.resolve(import.meta.dirname, '../..');
+    const source = createReplaySource();
+    const repo = source.repo;
     const archive = path.join(repo, '.ruvnet-brain', 'learning-replay');
     fs.mkdirSync(archive, { recursive: true });
     const before = new Set(fs.readdirSync(archive));
@@ -344,6 +346,7 @@ describe('the independent hooks post-task persistence trap', () => {
         fs.rmSync(path.join(archive, entry), { recursive: true, force: true });
       }
       fs.rmSync(base, { recursive: true, force: true });
+      source.cleanup();
     }
   });
 

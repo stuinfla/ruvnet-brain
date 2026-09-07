@@ -11,7 +11,14 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const release = process.argv.includes('--release');
 const argument = (name) => { const i = process.argv.indexOf(name); return i < 0 ? null : process.argv[i + 1]; };
 const requested = process.argv.flatMap((value, index) => value === '--lane' ? [process.argv[index + 1]] : []);
-const lanes = selectLanes(qaLanes({ release, base: argument('--base') || process.env.QA_BASE_SHA }), requested);
+const runtimeCensusArgs = ['--candidate-kb', '--candidate-sha', '--candidate-version', '--candidate-root',
+  '--payload-manifest', '--payload-signature', '--payload-id', '--qualification-mode'].flatMap((name) => {
+  if (!process.argv.includes(name)) return [];
+  const value = argument(name);
+  if (!value || value.startsWith('--')) throw new Error(`${name} requires a value`);
+  return [name, value];
+});
+const lanes = selectLanes(qaLanes({ release, runtimeCensusArgs, base: argument('--base') || process.env.QA_BASE_SHA }), requested);
 if (process.argv.includes('--list')) {
   console.log(JSON.stringify(lanes, null, 2));
 } else {
@@ -22,7 +29,9 @@ if (process.argv.includes('--list')) {
   const source = sourceIdentity(root);
   const run = (lane) => new Promise((resolve) => {
     const begin = Date.now();
-    const child = spawn(lane.command, lane.args, { cwd: root, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], shell: false, detached: process.platform !== 'win32' });
+    const evidenceFile = lane.report ? path.join(receiptDir, lane.name + '-evidence.json') : null;
+    const args = evidenceFile ? [...lane.args, '--report', evidenceFile] : lane.args;
+    const child = spawn(lane.command, args, { cwd: root, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], shell: false, detached: process.platform !== 'win32' });
     let stdout = '', stderr = '', timedOut = false, spawnError = null, escalation = null;
     child.stdout.on('data', (chunk) => { stdout = (stdout + chunk).slice(-4000); process.stdout.write(chunk); });
     child.stderr.on('data', (chunk) => { stderr = (stderr + chunk).slice(-4000); process.stderr.write(chunk); });
@@ -38,7 +47,7 @@ if (process.argv.includes('--list')) {
     child.on('close', (code, signal) => {
       clearTimeout(timer);
       clearTimeout(escalation);
-      resolve({ name: lane.name, command: [lane.command, ...lane.args], status: timedOut ? 'TIMEOUT' : spawnError ? 'FAIL' : code === 0 ? 'PASS' : code === 4 ? 'UNKNOWN' : 'FAIL', exitCode: code, signal, spawnError, elapsedMs: Date.now() - begin, stdoutTail: stdout, stderrTail: stderr });
+      resolve({ name: lane.name, command: [lane.command, ...args], evidenceFile, status: timedOut ? 'TIMEOUT' : spawnError ? 'FAIL' : code === 0 ? 'PASS' : code === 4 ? 'UNKNOWN' : 'FAIL', exitCode: code, signal, spawnError, elapsedMs: Date.now() - begin, stdoutTail: stdout, stderrTail: stderr });
     });
   });
   const results = await runLanes(lanes, run, 2);

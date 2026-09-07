@@ -506,11 +506,16 @@ export async function abortReleaseTransaction({ identity, receipts, reason, auth
 export async function finalizeReleaseTransaction({
   identity,
   aggregate,
+  verifierSha,
   adapter,
   privateKey,
   publicKey,
   aggregatePublicKey,
 } = {}) {
+  if (verifierSha !== undefined && (!/^[a-f0-9]{40}$/.test(String(verifierSha))
+    || aggregate?.identity?.verifierSha !== verifierSha)) {
+    throw new Error('public verification verifier SHA differs from the expected verifier');
+  }
   if (!adapter || typeof adapter.discover !== 'function' || typeof adapter.observeSnapshot !== 'function'
     || typeof adapter.materializePublicVerificationAggregate !== 'function'
     || typeof adapter.appendReceipt !== 'function' || typeof adapter.readReceipt !== 'function') {
@@ -560,6 +565,7 @@ export async function finalizeReleaseTransaction({
       verdict: 'INSTALL_VERIFIED',
       publicVerification: {
         aggregateSha256: aggregate.aggregateSha256,
+        ...(aggregate.identity.verifierSha === undefined ? {} : { verifierSha: aggregate.identity.verifierSha }),
         aggregateAssetSha256,
         signatureAssetSha256,
         lanes: aggregate.metrics.leaves,

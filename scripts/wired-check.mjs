@@ -95,6 +95,12 @@ const STANDALONE = [
     + 'RVFs to RVF-GENERATIONS.json and optionally prunes legacy sidecars; build-bundle.mjs consumes '
     + 'and validates the resulting manifest, so scheduling this destructive migration would be wrong'],
   ['release', 'the ship path, run by a human'],
+  ['corpus-seed-publish', 'privileged manual corpus publication wrapper; corpus-seed.yml explicitly '
+    + 'stops at sealed preparation with contents:read. This entry validates receipt/archive inputs '
+    + 'and delegates mutation to release.mjs protected authority. No operational caller is registered; '
+    + 'classification does not claim publication works or has occurred'],
+  ['gate', 'manual benchmark harness: rebuilds concepts and runs three routing proof batteries; '
+    + 'no workflow or scheduler invokes this expensive command'],
   ['execution-preflight', 'external orchestration boundary — invoked by the host before consequential Ruflo/Codex execution; no in-repo caller exists because the host supplies the live Brain and AgentDB receipts'],
   ['fix-workstream', 'session-supervised coordination CLI run explicitly by the integration owner or an '
     + 'isolated writing agent to start and hand off a fix lane. Scheduling it would violate its safety '
@@ -375,8 +381,11 @@ function callerFiles(repo = REPO) {
  */
 export function callerPattern(fileName) {
   const q = fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Filenames must be complete tokens: gates.mjs is not corpus-aggregates.mjs,
+  // and version.mjs.map is not a caller of version.mjs.
+  const bounded = `(?<![\\w.-])${q}(?![\\w.-])`;
     // eslint-disable-next-line no-useless-escape
-  return new RegExp(`["'\`][^"'\`\\n]*${q}|(?:node|bash|sh|exec|spawn\\w*)\\s+[^\\n]*${q}`);
+  return new RegExp(`["'\`][^"'\`\\n]*${bounded}|(?:node|bash|sh|exec|spawn\\w*)\\s+[^\\n]*${bounded}`);
 }
 
 /**

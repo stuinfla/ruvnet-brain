@@ -158,7 +158,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Restore original candidate source for marketplace verification
+        uses: actions/checkout@v4
+        with:
           ref: ${{ needs.authorize.outputs.candidate_sha }}
+          path: candidate-source
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -185,13 +192,15 @@ jobs:
       - name: Execute three loaders and retrieval canaries from public bytes
         shell: bash
         env:
-          RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}
+          RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}/candidate-source
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           node scripts/host-registry.mjs --out release-evidence/host-registry.json
           mkdir public-lanes
           node scripts/public-verification-lane.mjs \
+            --verifier-sha "${{ github.sha }}" \
+            --candidate-root candidate-source \
             --os "${{ matrix.os_name }}" \
             --candidate release-evidence/candidate-receipt.json \
             --identity release-evidence/release-identity.json \
@@ -219,9 +228,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.authorize.outputs.candidate_sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -243,15 +252,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain --untracked-files=no)"
           test "$(find public-lanes -type f -name '*.json' | wc -l | tr -d ' ')" = 3
           node scripts/public-verification-aggregate.mjs \
+            --verifier-sha "${{ github.sha }}" \
             --lanes public-lanes \
             --out release-evidence/public-verification-aggregate.json
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain --untracked-files=no)"
           node scripts/public-verification-finalizer.mjs \
+            --verifier-sha "${{ github.sha }}" \
             --identity release-evidence/release-identity.json \
             --aggregate release-evidence/public-verification-aggregate.json \
             --out release-evidence/install-verified-receipt.json
           test "$(node -p "require('./release-evidence/install-verified-receipt.json').state")" = install-verified
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain --untracked-files=no)"
       - name: Preserve terminal public verification evidence
         if: always()
         uses: actions/upload-artifact@v4

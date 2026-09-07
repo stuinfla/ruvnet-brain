@@ -161,7 +161,12 @@ if (failures.length) {
   const distinct = [...new Set(failures)];
   warn(`${failures.length}/${actions.length} feed call(s) FAILED via ${RUFLO}`
     + ` — ${distinct.slice(0, 2).join(' | ')}${distinct.length > 2 ? ` (+${distinct.length - 2} more kind(s))` : ''}`
-    + (fed === 0 ? '. Nothing was learned; the queue is KEPT for retry.' : `. ${fed} succeeded.`));
+    + (fed === 0 ? '. Nothing was learned; the queue is KEPT for retry.'
+      : `. ${fed} succeeded; the entire queue is KEPT for retry (successful actions may replay).`));
+  // Preserve the original bytes on ANY failed attempt. Rewriting only the deferred tail would
+  // discard failed actions whenever a sibling succeeded. This is at-least-once retry, not an
+  // exactly-once or concurrent-capture protocol; successful actions may be fed again.
+  process.exit(0);
 }
 // Whatever the deadline cut off is WORK, not waste: it goes back on the front of the queue so the
 // next flush continues from there. Dropping it would turn a time limit into the same silent data

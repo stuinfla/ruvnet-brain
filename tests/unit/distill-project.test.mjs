@@ -13,7 +13,7 @@
 // restore -> 644, re-run -> 648, five durable receipts. That needs a live ruflo and a real DB, so it
 // is not reproduced here; what IS reproduced is every way the wrapper is supposed to say no.
 import { describe, it, expect, afterEach } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -148,7 +148,7 @@ describe('distill-project — it must refuse rather than mutate without an undo'
     expect(r.stderr).toMatch(/no snapshot to restore from/i);
   });
 
-  it('--restore snapshots the CURRENT state first — an undo that destroys what it replaces is not reversible', () => {
+  it('--restore refuses without changing the current state while native safe restore is unavailable', () => {
     const dir = sandbox();
     const db = path.join(dir, '.swarm/memory.db');
     const backups = path.join(dir, '.swarm/backups');
@@ -158,10 +158,35 @@ describe('distill-project — it must refuse rather than mutate without an undo'
     fs.writeFileSync(snap, 'OLDER');
 
     const r = run(['--restore', snap], { rufloBody: '#!/bin/sh\nexit 0\n' });
-    expect(r.status).toBe(0);
-    expect(fs.readFileSync(db, 'utf8'), 'the snapshot must actually land').toBe('OLDER');
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/WAL-safe restore.*unavailable/i);
+    expect(fs.readFileSync(db, 'utf8')).toBe('CURRENT');
     const pre = fs.readdirSync(backups).filter((f) => f.startsWith('pre-restore-'));
-    expect(pre.length, 'restoring must leave a way back to what was replaced').toBe(1);
-    expect(fs.readFileSync(path.join(backups, pre[0]), 'utf8')).toBe('CURRENT');
+    expect(pre).toEqual([]);
+  });
+
+  it.skipIf(spawnSync('sqlite3', ['--version']).status !== 0)('--restore preserves DB, WAL and SHM bytes while a real SQLite writer remains open', async () => {
+    const project = sandbox(), db = path.join(project, '.swarm/memory.db');
+    const snapshot = path.join(project, 'old.db'); fs.writeFileSync(snapshot, 'OLDER');
+    const writer = spawn('sqlite3', [db], { stdio: ['pipe', 'pipe', 'pipe'] });
+    try {
+      await new Promise((resolve, reject) => {
+        let output = '';
+        writer.once('error', reject);
+        writer.stdout.on('data', chunk => { output += chunk; if (output.includes('READY')) resolve(); });
+        writer.stdin.write('PRAGMA journal_mode=WAL;\nCREATE TABLE proof(value);\nINSERT INTO proof VALUES (42);\n.print READY\n');
+      });
+      const files = [db, `${db}-wal`, `${db}-shm`];
+      const before = files.map(file => fs.readFileSync(file));
+      expect(before[1].length).toBeGreaterThan(0);
+      const result = run(['--restore', snapshot]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/WAL-safe restore.*unavailable/i);
+      files.forEach((file, index) => expect(fs.readFileSync(file)).toEqual(before[index]));
+    } finally {
+      const exited = new Promise(resolve => writer.once('exit', resolve));
+      writer.stdin.end('.quit\n');
+      await exited;
+    }
   });
 });

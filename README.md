@@ -1,3 +1,6 @@
+Updated: 2026-09-05 19:08:40 EDT | Version 4.3.10
+Created: 2026-06-29 22:36:38 EDT
+
 <div align="center">
 
 ![RuvNet Brain — the answer key for Ruv's code](assets/hero.png)
@@ -9,6 +12,20 @@
 **A portable, source-grounded brain over Reuven Cohen's (rUv's) RuvNet stack — delivered as a Claude Code plugin that makes Claude _use_ the stack instead of fighting it.**
 
 </div>
+
+## Recovery milestone and proof boundaries
+
+The 4.3.10 candidate is an incremental reliability repair, not a completed North Star or a new
+95-point certification. Publication is established by the protected release transaction and
+public installation receipt, not this source version. Historical release narratives and dated
+scores below are not measurements of the current candidate.
+
+The recovery covers shared QA producers, explicit continuation objectives, safer private-data
+handling, and exact-artifact release verification. Full native nightly two-run proof, complete
+codebase review, and all twelve whole-product obligations remain separate work. An unavailable
+safe inverse must not be advertised as a one-click undo. See the
+[QA execution contract](docs/qa-execution-contract.md) and
+[ADR-072 stabilization boundary](docs/adr/0072-whole-product-integrity-conformance.md).
 
 > ## 🧭 North Star
 >
@@ -34,15 +51,15 @@
 
 > **One Brain generation everywhere.** npm, the GitHub tag/release, bundle manifests, source metadata, and checksum-bound RVF generations must share the same product version. Headline claims are regenerated and checked by the claims ledger (`scripts/claims-verify.mjs`); other numbers below are hand-stamped and dated:
 > - **`plugin`** (badge above) — the Claude Code plugin itself: SKILL.md, the grounding hooks, the MCP server. Read live from [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json). Updates often — this is where behavior fixes land.
-> - **`installer (npm)`** (badge above) — the `npx ruvnet-brain` setup script. Read live from the [npm registry](https://www.npmjs.com/package/ruvnet-brain). Only moves when the installer script itself changes — rare.
-> - **Brain Release** (the downloadable knowledge bundle, linked from the "download" badge above) — always resolves to [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest) (the nightly publishes fresh bundles as the corpus grows). Only moves when the underlying knowledge base is rebuilt — separate again from the two above.
-> - **On an old version? One line makes you current — and, with `--auto`, keeps you current forever:**
+> - **`installer (npm)`** (badge above) — the setup script's published version, read live from the [npm registry](https://www.npmjs.com/package/ruvnet-brain). It is a release surface of the same product, not an independent version track.
+> - **Brain Release** — [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest) exposes the published knowledge bundle. It must agree with that release's npm, plugin, and signed artifact identities. A moving source badge does not establish publication.
+> - **Request a verified update, with optional scheduled updates:**
 >   ```
 >   npx ruvnet-brain@latest --update --auto
 >   ```
->   `--update` pulls the latest plugin + knowledge (backs up first, re-verifies, fails loud instead of half-applying). Adding `--auto` enrolls you in **Evergreen** — the brain keeps itself up to date from then on, so you never run this again. Drop `--auto` for a one-time update: `npx ruvnet-brain@latest --update`.
-> - **Turn Evergreen off any time:** `npx ruvnet-brain --disable-nightly` (Linux/Windows get the cron line documented in the bundle's `forge-update.mjs`).
-> - **Your copy only advances when a new Release is published** — the updater pulls `releases/latest`, so running it between releases is a safe no-op.
+>   `--update` requests the published plugin and knowledge. Adding `--auto` requests **Evergreen** scheduling; successful registration alone is not proof a scheduled run completed. Drop `--auto` for a one-time update: `npx ruvnet-brain@latest --update`.
+> - **Disable scheduled updates:** `npx ruvnet-brain --disable-nightly`. Platform behavior is owned by the native scheduler adapter, not a hand-maintained cron recipe.
+> - **Publication, local activation, and loaded session version are distinct observations.** An unchanged release does not by itself prove local health, freshness, or a successful update.
 
 <sub>Built by **[Stuart Kerr](https://isovision.ai)** at [Isovision.ai](https://isovision.ai) · free & fair use, to help everyone leverage the high end of agentic coding.</sub>
 
@@ -412,7 +429,7 @@ You install once. After that, three mechanisms keep you on the current brain wit
   `🧠 RuvNet Brain jumped in · guidance only, no source read · v3.4.18-dev`
   An unearned citation is worse than no citation, so the line may only name a path the tools genuinely returned — and on a prompt where nothing fires, it stays silent rather than manufacture a receipt. The version shown is the one **actually loaded in memory** for this session; if a newer one is staged awaiting a restart, the line says so plainly (`… vX staged, restart to load`). So you never have to wonder whether the brain is on, which version is acting, or whether an answer was grounded or guessed.
 
-- **Nightly publish → `releases/latest` chain** (the protected release workflow). The nightly rebuilds only the repos whose upstream changed, and **if anything was rebuilt** it bumps the product version, cuts a GitHub Release, and advances [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest). Plugin and knowledge bundle move under **one** version number, so the heartbeat above picks up both automatically. The exact author-vs-end-user schedules, incremental algorithm, failure behavior, and hosting recommendation are documented in [Nightly refresh and publish](docs/NIGHTLY-REFRESH.md). The retired primary-checkout LaunchAgent is not part of the supported path.
+- **Public production and consumer scheduling are separate.** Only the protected release workflow may publish the immutable product generation. A consumer nightly update does not rebuild upstream sources, bump the product version, or publish a release. The retired primary-checkout LaunchAgent is not a supported producer. The complete native producer/consumer freshness proof remains open under [ADR-072](docs/adr/0072-whole-product-integrity-conformance.md); registration and downloaded timestamps are not substitutes for that evidence.
 
 ---
 

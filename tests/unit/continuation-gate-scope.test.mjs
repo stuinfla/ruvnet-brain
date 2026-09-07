@@ -80,7 +80,7 @@ function fire(cwd, { issues, ci, ledger } = {}) {
   const ledgerPath = ledger ?? path.join(dir, `ledger-${Math.random().toString(16).slice(2)}.json`);
   const r = spawnSync(process.execPath, [GATE], {
     cwd,
-    input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'scope-test' }),
+    input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'scope-test', cwd }),
     encoding: 'utf8',
     timeout: 20_000,
     env: {
@@ -95,6 +95,10 @@ function fire(cwd, { issues, ci, ledger } = {}) {
   });
   let context = '';
   try { context = JSON.parse(r.stdout || '{}')?.hookSpecificOutput?.additionalContext || ''; } catch { /* no envelope */ }
+  // An advisory is observable but does not occupy the host continuation envelope.
+  if (!context) {
+    try { context = JSON.parse(r.stderr || '{}').items?.map((row) => row.text).join('\n') || ''; } catch {}
+  }
   return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '', context, ledgerPath };
 }
 
@@ -124,7 +128,8 @@ describe('continuation gate — derived work never leaves the repository it belo
     expect(r.context).toContain('PR #137');
     expect(r.context).toContain('CI is RED');
     expect(r.context).toContain('dependabot alert');
-    expect(r.context).toContain('Do NOT end the turn');
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toContain('"authority":false');
   });
 
   it('a mixed-repo CI artifact yields ONLY the rows for this repository', () => {
@@ -193,8 +198,8 @@ describe('continuation gate — when ownership cannot be proved, it says nothing
   });
 });
 
-describe('continuation gate — the work ledger is NOT weakened by any of this', () => {
-  it('a REAL commitment still forces in a stranger repo — that ledger is that project\'s own', () => {
+describe('continuation gate — legacy ledger promises are not explicit objective authority', () => {
+  it('a legacy promise does not force even in the repository that owns its ledger', () => {
     // The standing rule is "do not stop until it is done", and a previous fix already broke it once
     // by silently disabling the gate on a timer. Scoping the DERIVED sources must not cost the
     // explicit ones a single case: a commitment recorded here belongs here, whatever the remote is.
@@ -204,8 +209,8 @@ describe('continuation gate — the work ledger is NOT weakened by any of this',
       items: [{ text: 'finish their migration', done: false, at: new Date(Date.now() - 3 * 3600_000).toISOString() }],
     }));
     const r = fire(stranger, { issues: openIssues(), ci: ciStatus([{ repo: OURS }]), ledger });
-    expect(r.context).toContain('finish their migration');
-    expect(r.context).toContain('You have unfinished work you committed to');
+    expect(r.context).toBe('');
+    expect(r.stdout).toBe('');
     // …and STILL nothing of ours leaks in alongside it.
     expect(r.context).not.toContain('ruvnet-brain');
     expect(r.context).not.toContain('#139');
@@ -222,27 +227,26 @@ describe('continuation gate — a derived item is never called a commitment', ()
     const r = fire(ours, { issues: openIssues({ atMs: Date.now() - 3 * 3600_000 }) });
     expect(r.context).not.toMatch(/You have unfinished work you committed to/);
     expect(r.context, 'a watcher OBSERVED this; it was not committed to').not.toMatch(/\(committed \d+[hd] ago/);
-    expect(r.context).toMatch(/observed 3h ago/);
-    expect(r.context).toContain('NOT something you');
-    expect(r.context).toContain('Do NOT end the turn');       // the force itself is unchanged
+    expect(r.stderr).toContain('"authority":false');
+    expect(r.stdout).toBe('');
+    expect(r.context).not.toContain('Do NOT end the turn');
     // --done is a ledger verb. Offering it here would offer a way to mark a red build finished.
     expect(r.context).not.toContain('--done');
   });
 
-  it('a ledger item keeps the committed wording, and a mixed envelope names both halves', () => {
+  it('legacy promises and observations cannot combine into new objective authority', () => {
     const ours = repoWithRemote('ours', `https://github.com/${OURS}.git`);
     const ledger = path.join(dir, 'mixed.json');
     fs.writeFileSync(ledger, JSON.stringify({
       items: [{ text: 'ship the thing', done: false, at: new Date(Date.now() - 2 * 3600_000).toISOString() }],
     }));
     const only = fire(ours, { ledger });
-    expect(only.context).toMatch(/You have unfinished work you committed to/);
-    expect(only.context).toMatch(/\(committed 2h ago\)/);
-    expect(only.context).toContain('--done');
+    expect(only.stdout).toBe('');
+    expect(only.context).toBe('');
 
     const mixed = fire(ours, { ledger, issues: openIssues() });
-    expect(mixed.context).toMatch(/you committed to, and stuinfla\/ruvnet-brain has open work of its own/);
-    expect(mixed.context).toContain('ship the thing');
+    expect(mixed.stdout).toBe('');
+    expect(mixed.context).not.toContain('ship the thing');
     expect(mixed.context).toContain('issue #139');
   });
 });

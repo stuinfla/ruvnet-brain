@@ -30,18 +30,20 @@
  *   - `stop_hook_active` is true once Claude Code is already continuing because of a stop hook.
  *     Returning success while it is true is the documented way to avoid trapping the turn.
  */
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { continuationProjectIdentity } from '../../plugin/scripts/continuation-objective.mjs';
 
-// The continuation gate has TWO sources of open work: the ledger, and open-issues.json —
-// an artifact the issue-watch pipeline writes, added so the guard is not armed solely by the
-// model remembering to arm it. A sandbox that pins only the ledger reads the DEVELOPER's real
-// SLA breaches, and every "must stay silent" case fails for a true reason. Pin both.
+// Current contract: only explicitly scoped continuation preferences authorize objective requests;
+// legacy ledger items and observed backlog are not authority. These subprocess tests prove the
+// request envelope, not native host re-engagement. Pin observations away from the developer's state.
 const NO_ISSUES = path.join(os.tmpdir(), 'ruvnet-hook-contract-no-such-open-issues.json');
+const fixtureRoots = [];
+afterEach(() => { for (const dir of fixtureRoots.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CONTINUATION_GATE = path.join(ROOT, 'plugin/scripts/continuation-gate.mjs');
@@ -51,7 +53,8 @@ const PLUGIN_HOOKS_JSON = path.join(ROOT, 'plugin/hooks/hooks.json');
 /** Invoke a hook exactly as the harness does: subprocess, JSON on stdin, streams kept apart. */
 function fireHook(cmd, args, payload, env = {}) {
   const r = spawnSync(cmd, args, {
-    input: JSON.stringify(payload),
+    input: JSON.stringify(args[0] === CONTINUATION_GATE
+      ? { hook_event_name: 'Stop', cwd: path.dirname(env.RUVNET_WORK_LEDGER), ...payload } : payload),
     encoding: 'utf8',
     // A FRESH lesson gate-state per call: lesson-hooks runs the frequency cap (3.9.28-29), and without
     // isolation these invocations wrote the user's REAL ~/.config gate-state and accumulated a fixture
@@ -67,19 +70,27 @@ function fireHook(cmd, args, payload, env = {}) {
   return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 }
 
-function tempLedger(items) {
-  const p = path.join(os.tmpdir(), `hook-contract-${process.pid}-${Math.random().toString(36).slice(2)}.json`);
+function tempLedger(items, sessionId) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hook-contract-'));
+  fixtureRoots.push(dir);
+  const p = path.join(dir, 'ledger.json');
   // Default a FRESH `at` on every item unless the test sets one — mirrors reality (--commit-to always
   // stamps `at`), so the freshness TTL (which now treats a missing/invalid `at` as stale) doesn't
   // silently make an unstamped fixture non-forceable.
   const stamped = items.map((i) => ({ at: new Date().toISOString(), ...i }));
-  fs.writeFileSync(p, JSON.stringify({ items: stamped }));
+  const item = stamped.find((row) => !row.done);
+  const identity = continuationProjectIdentity(dir);
+  const objective = item ? { schemaVersion: 1, kind: 'continuation-preferences', authoritative: false,
+    id: 'hook-contract-objective', text: item.text, at: item.at, state: 'active',
+    projectId: identity.projectId, worktreeIds: [identity.worktreeId], sessionIds: [sessionId],
+    authorization: { kind: 'user', reference: 'fixture-explicit-user-request' } } : null;
+  fs.writeFileSync(p, JSON.stringify({ items: stamped, objective }));
   return p;
 }
 
 describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
   it('goes SILENT when stop_hook_active is true — the documented loop guard', () => {
-    const ledger = tempLedger([{ text: 'unfinished work', done: false }]);
+    const ledger = tempLedger([{ text: 'unfinished work', done: false }], 'sess-guard');
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: true, session_id: 'sess-guard' },
       { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES });
@@ -90,7 +101,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
   });
 
   it('emits a valid additionalContext envelope when work is genuinely outstanding', () => {
-    const ledger = tempLedger([{ text: 'ship the fix', done: false }]);
+    const ledger = tempLedger([{ text: 'ship the fix', done: false }], 'sess-fresh');
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: false, session_id: 'sess-fresh' },
       { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES });
@@ -102,7 +113,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
   });
 
   it('delivers on STDOUT, never stderr — exit-0 stderr reaches nobody', () => {
-    const ledger = tempLedger([{ text: 'visible item', done: false }]);
+    const ledger = tempLedger([{ text: 'visible item', done: false }], 'sess-stream');
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: false, session_id: 'sess-stream' },
       { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES });
@@ -122,7 +133,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     // not by re-engaging — so re-engagement is safe while that guard is live.
     // Cooldown disabled here so the two rapid fires test PURE re-engagement; the cooldown is proven
     // separately below. In production the two stops are minutes apart and the cooldown never bites.
-    const ledger = tempLedger([{ text: 'repeat me', done: false }]);
+    const ledger = tempLedger([{ text: 'repeat me', done: false }], 'sess-reengage');
     const env = { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES, RUVNET_CONTINUATION_COOLDOWN_MS: '0' };
     const first = fireHook('node', [CONTINUATION_GATE], { stop_hook_active: false, session_id: 'sess-reengage' }, env);
     const second = fireHook('node', [CONTINUATION_GATE], { stop_hook_active: false, session_id: 'sess-reengage' }, env);
@@ -134,7 +145,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
   it('does NOT force when the stdin payload is unreadable — an EAGAIN must not launder into a loop (ADR-043)', () => {
     // Fable red-team #1: the old readHookInput returned {} on a parse failure, which under a forcing
     // gate reads as "fresh stop" → a machine-wide loop. Garbage on stdin must yield silence, not force.
-    const ledger = tempLedger([{ text: 'real open work', done: false }]);
+    const ledger = tempLedger([{ text: 'real open work', done: false }], 'sess-unreadable');
     const r = spawnSync('node', [CONTINUATION_GATE], {
       input: '}{ not json at all',
       encoding: 'utf8',
@@ -147,7 +158,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
 
   it('suppresses a second force within the cooldown window — the self-owned loop cap (ADR-043)', () => {
     // Belt-and-braces beyond stop_hook_active: two forces cannot land inside COOLDOWN_MS (default 20s).
-    const ledger = tempLedger([{ text: 'cooldown me', done: false }]);
+    const ledger = tempLedger([{ text: 'cooldown me', done: false }], 'sess-cd');
     const env = { RUVNET_WORK_LEDGER: ledger };   // default cooldown, no override
     const first = fireHook('node', [CONTINUATION_GATE], { stop_hook_active: false, session_id: 'sess-cd' }, env);
     const second = fireHook('node', [CONTINUATION_GATE], { stop_hook_active: false, session_id: 'sess-cd' }, env);
@@ -171,7 +182,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     // answer. Unknown age (missing/unparseable `at`) is still refused — that was always the real
     // guard, and it is covered by tests/unit/continuation-gate.test.mjs.
     const old = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
-    const ledger = tempLedger([{ text: 'ancient abandoned item', done: false, at: old }]);
+    const ledger = tempLedger([{ text: 'ancient abandoned item', done: false, at: old }], 'sess-stale');
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: false, session_id: 'sess-stale' },
       { RUVNET_WORK_LEDGER: ledger, RUVNET_CONTINUATION_COOLDOWN_MS: '0' });
@@ -182,7 +193,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
 
   it('does NOT force on an empty {} payload — not a real Stop payload (GPT-5.6-Sol review)', () => {
     // An empty-but-parseable {} passes the __source check; a real Stop payload carries session_id.
-    const ledger = tempLedger([{ text: 'real open work', done: false }]);
+    const ledger = tempLedger([{ text: 'real open work', done: false }], 'sess-empty-payload');
     const r = spawnSync('node', [CONTINUATION_GATE], {
       input: '{}',
       encoding: 'utf8',
@@ -195,8 +206,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
 
   it('does NOT force on an item with a MISSING timestamp — unknown age must not force forever (GPT-5.6-Sol)', () => {
     // A row without a valid `at` is now treated as STALE, not fresh — closes the TTL-bypass GPT-5.6-Sol found.
-    const p = path.join(os.tmpdir(), `hc-noat-${process.pid}-${Math.random().toString(36).slice(2)}.json`);
-    fs.writeFileSync(p, JSON.stringify({ items: [{ text: 'no timestamp', done: false }] }));  // NO `at`
+    const p = tempLedger([{ text: 'no timestamp', done: false, at: undefined }], 'sess-noat');
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: false, session_id: 'sess-noat' },
       { RUVNET_WORK_LEDGER: p, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES, RUVNET_CONTINUATION_COOLDOWN_MS: '0' });
@@ -204,10 +214,32 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
   });
 
   it('stays silent when nothing is outstanding — a guard that always fires carries no information', () => {
-    const ledger = tempLedger([{ text: 'all done', done: true }]);
+    const ledger = tempLedger([{ text: 'all done', done: true }], 'sess-empty');
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: false, session_id: 'sess-empty' },
       { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES });
+    expect(r.stdout).toBe('');
+  });
+
+  it.each([{ cancelled: true }, { interrupted: true }, { session_id: 'different-session' },
+    { hook_event_name: 'UnknownEvent' }])('never restarts cancellation or accepts an out-of-scope payload: %j', (override) => {
+    const ledger = tempLedger([{ text: 'authorized work', done: false }], 'sess-authorized');
+    const r = fireHook('node', [CONTINUATION_GATE],
+      { stop_hook_active: false, session_id: 'sess-authorized', ...override },
+      { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe('');
+  });
+
+  it('does not turn legacy open items into objective authorization', () => {
+    const ledger = tempLedger([{ text: 'observed unfinished item', done: false }], 'sess-advisory');
+    const value = JSON.parse(fs.readFileSync(ledger, 'utf8'));
+    delete value.objective;
+    fs.writeFileSync(ledger, JSON.stringify(value));
+    const r = fireHook('node', [CONTINUATION_GATE],
+      { stop_hook_active: false, session_id: 'sess-advisory' },
+      { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES });
+    expect(r.code).toBe(0);
     expect(r.stdout).toBe('');
   });
 });

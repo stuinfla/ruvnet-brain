@@ -21,6 +21,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { NIGHTLY_LABEL, nightlyArtifact } from '../../scripts/nightly-controller.mjs';
+import { installNightlyRunner, launchdPlist } from '../../plugin/scripts/nightly-scheduler.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const REGISTRY = path.join(REPO, 'scripts', 'capability-registry.mjs');
@@ -33,16 +34,33 @@ const REGISTRY = path.join(REPO, 'scripts', 'capability-registry.mjs');
 function detectWithJobs(rows) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-nightly-launchctl-'));
   try {
+    const home = path.join(dir, 'home');
+    const brainHome = path.join(home, '.cache', 'ruvnet-brain');
+    const kbDir = path.join(brainHome, 'kb');
+    fs.mkdirSync(kbDir, { recursive: true });
+    const source = path.join(dir, 'runner.mjs');
+    fs.writeFileSync(source, 'process.exitCode = 0;\n');
+    const registration = installNightlyRunner({ brainHome, source, nodePath: process.execPath });
+    const scheduled = rows.find((row) => row[2] === NIGHTLY_LABEL);
+    if (scheduled) {
+      const plist = nightlyArtifact({ env: { HOME: home }, platform: 'darwin' }).path;
+      fs.mkdirSync(path.dirname(plist), { recursive: true });
+      fs.writeFileSync(plist, launchdPlist(registration, {
+        kbDir, logPath: path.join(kbDir, 'update.log'), pathValue: dir,
+      }));
+    }
     const fake = path.join(dir, 'launchctl');
-    const table = rows.map(([pid, exit, label]) => `${pid}\\t${exit}\\t${label}`).join('\\n');
-    fs.writeFileSync(fake, `#!/bin/sh\nprintf -- "${table}\\n"\n`, { mode: 0o755 });
+    fs.writeFileSync(fake, scheduled
+      ? `#!/bin/sh\nprintf -- "last exit code = ${scheduled[1]}\\n"\n`
+      : '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     const out = execFileSync(process.execPath, [
       '-e',
       `import(${JSON.stringify(REGISTRY)}).then((m) => {
          const c = m.CAPABILITIES.find((x) => x.key === 'nightly-refresh');
          process.stdout.write(JSON.stringify(c.detect({ project: process.cwd() })));
        });`,
-    ], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}` } });
+    ], { encoding: 'utf8', env: { ...process.env, HOME: home, RUVNET_BRAIN_HOME: brainHome,
+      RUVNET_BRAIN_KB: kbDir, PATH: `${dir}${path.delimiter}${process.env.PATH}` } });
     return JSON.parse(out);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -55,14 +73,14 @@ describe.skipIf(process.platform !== 'darwin')('issue #113 — the detector can 
   it('reports the installer\'s own nightly job as installed and running', () => {
     const r = detectWithJobs([['-', '0', NIGHTLY_LABEL]]);
     expect(r.state).toBe('on');
-    expect(r.evidence).toMatch(/1 nightly refresh job loaded/);
+    expect(r.evidence).toMatch(/runner digest verified/);
     expect(r.evidence).not.toMatch(/no nightly refresh job is loaded/);
   });
 
   it('carries its exit status through instead of calling a failing job absent', () => {
     const r = detectWithJobs([['-', '1', NIGHTLY_LABEL]]);
     expect(r.state).toBe('on');
-    expect(r.evidence).toMatch(/last exited non-zero/);
+    expect(r.evidence).toMatch(/last exited 1/);
   });
 
   // The opposite failure, which this detector has already shipped once: counting every job whose
@@ -75,18 +93,15 @@ describe.skipIf(process.platform !== 'darwin')('issue #113 — the detector can 
       ['-', '0', 'com.ruvnet.nightly-watchdog'],
     ]);
     expect(r.state).toBe('absent');
-    expect(r.evidence).toMatch(/none of them is the knowledge-base refresh/);
+    expect(r.evidence).toMatch(/No LaunchAgent plist/);
   });
 });
 
 describe('issue #113 — one name for the nightly job, and an alarm on the copy', () => {
-  it('is the label bin/install.mjs actually writes', () => {
+  it('has one owner and the installer imports that owner', () => {
     const installer = fs.readFileSync(path.join(REPO, 'bin', 'install.mjs'), 'utf8');
-    const declared = installer.match(/NIGHTLY_LABEL\s*=\s*'([^']+)'/);
-    expect(declared, 'bin/install.mjs no longer declares NIGHTLY_LABEL — find where the label moved').not.toBeNull();
-    // The installer still owns its own literal. Until it imports this constant, this line IS the
-    // thing that notices them drifting apart, which is what #113 had none of.
-    expect(declared[1]).toBe(NIGHTLY_LABEL);
+    expect(installer).toMatch(/import\s*\{[\s\S]*NIGHTLY_LABEL[\s\S]*\}\s*from '\.\.\/plugin\/scripts\/nightly-scheduler\.mjs'/);
+    expect(installer).not.toMatch(/NIGHTLY_LABEL\s*=\s*['"]/);
   });
 
   it('is the label the console turns the job on and off by', () => {

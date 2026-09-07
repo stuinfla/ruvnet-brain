@@ -38,6 +38,12 @@ export const CONSOLE_RUNTIME_SURFACE = Object.freeze([
   'plugin/.claude-plugin',
   'data/model-catalog.json',
   'kb/brain-profile.mjs',
+  // The staged installer imports these helpers, including ZIP extraction on its update path.
+  // Keep their bytes in the same copy/digest authority as the installer itself.
+  'kb/refresh-run.mjs',
+  'kb/lifecycle-evidence-retention.mjs',
+  'kb/model-requirements.mjs',
+  'kb/zip-extract.mjs',
   'bin/install.mjs',
   'package.json',
 ]);

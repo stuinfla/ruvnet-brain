@@ -116,10 +116,47 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          artifact_name="release-candidate-$CANDIDATE_SHA"
-          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100" \
-            --jq '.artifacts | map(select(.expired == false)) | sort_by(.created_at) | reverse | .[0].id // empty')"
-          test -n "$artifact_id" || { echo "no successful preflight artifact exists for $CANDIDATE_SHA" >&2; exit 1; }
+          # Artifact names and receipt fields are not producer authentication.
+          # Resolve GitHub-owned run metadata before downloading bytes for signing.
+          artifact_id="$(node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          const repo = process.env.GITHUB_REPOSITORY;
+          const sha = process.env.CANDIDATE_SHA;
+          const workflowPath = '.github/workflows/release-candidate-preflight.yml';
+          const api = (endpoint) => JSON.parse(execFileSync('gh', ['api', `repos/${repo}/${endpoint}`], {
+            encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024,
+          }));
+          const workflow = api('actions/workflows/release-candidate-preflight.yml');
+          if (!Number.isSafeInteger(workflow.id) || workflow.id <= 0 || workflow.path !== workflowPath) {
+            throw new Error('untrusted preflight workflow identity');
+          }
+          const trustedRun = (run) => Number.isSafeInteger(run.id) && run.id > 0
+            && run.workflow_id === workflow.id && run.path === workflowPath
+            && run.status === 'completed' && run.conclusion === 'success' && run.event === 'push'
+            && run.head_sha === sha && /^release\/.+/.test(run.head_branch || '')
+            && Number.isSafeInteger(run.repository?.id) && run.repository.id > 0
+            && run.repository.full_name === repo && run.head_repository?.full_name === repo
+            && run.head_repository.id === run.repository.id;
+          const runs = api(`actions/workflows/${workflow.id}/runs?event=push&status=success&head_sha=${sha}&per_page=100`);
+          const selected = (runs.workflow_runs || []).filter(trustedRun).sort((a, b) => b.id - a.id)[0];
+          if (!selected) throw new Error('no trusted successful exact-SHA release preflight run');
+          const run = api(`actions/runs/${selected.id}`);
+          if (run.id !== selected.id || !trustedRun(run)) throw new Error('preflight run provenance changed');
+          const artifactName = `release-candidate-${sha}`;
+          const trustedArtifact = (artifact) => Number.isSafeInteger(artifact.id) && artifact.id > 0
+            && artifact.name === artifactName && artifact.expired === false
+            && artifact.workflow_run?.id === run.id && artifact.workflow_run.head_sha === sha
+            && artifact.workflow_run.head_branch === run.head_branch
+            && artifact.workflow_run.repository_id === run.repository.id
+            && artifact.workflow_run.head_repository_id === run.repository.id;
+          const listed = api(`actions/runs/${run.id}/artifacts?per_page=100`);
+          const artifacts = (listed.artifacts || []).filter(trustedArtifact);
+          if (artifacts.length !== 1) throw new Error('expected one authentic preflight artifact');
+          const artifact = api(`actions/artifacts/${artifacts[0].id}`);
+          if (artifact.id !== artifacts[0].id || !trustedArtifact(artifact)) throw new Error('artifact provenance changed');
+          process.stdout.write(String(artifact.id));
+          NODE
+          )"
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/candidate.zip"
           mkdir release-evidence
           unzip -q "$RUNNER_TEMP/candidate.zip" -d release-evidence

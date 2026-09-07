@@ -236,6 +236,8 @@ describe('wireCodexHost — the filesystem round trip', () => {
 
     expect(r.hookWrapperPath).toBe(path.join(home, '.cache', 'ruvnet-brain', 'codex-hook.mjs'));
     expect(fs.existsSync(r.hookWrapperPath)).toBe(true);
+    const helper = path.join(path.dirname(r.hookWrapperPath), 'development-maintenance.mjs');
+    expect(fs.readFileSync(helper, 'utf8')).toBe(fs.readFileSync(path.join(ROOT, 'plugin/scripts/development-maintenance.mjs'), 'utf8'));
   });
 
   it('creates config.toml when the host exists but has none yet', () => {

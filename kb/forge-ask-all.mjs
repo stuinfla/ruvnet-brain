@@ -17,6 +17,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { searchKb } from './forge-ask.mjs';
+import { describeSearchFailure } from './search-outcome.mjs';
 import { rerankPairs, cePrefilterScores } from './forge-rerank.mjs';
 import {
   contentTokens,
@@ -3170,8 +3171,7 @@ async function main() {
     console.error('\n🚨🚨🚨  RUVNET BRAIN IS DOWN — ALL ' + used.length + ' repos failed to search.  🚨🚨🚨');
     console.error('This is NOT an empty result; retrieval itself is broken.');
     console.error('First error: ' + failed[0][1]);
-    console.error('Fix:    cd ~/.cache/ruvnet-brain/kb && npm i');
-    console.error('Verify: npx github:stuinfla/ruvnet-brain --doctor\n');
+    console.error(describeSearchFailure({ dir: path.resolve(dir) }));
     try {
       const alarm = await import(new URL('./brain-alarm.mjs', import.meta.url).href);
       await alarm.reportBrainDown({ error: failed[0][1], source: 'cli:forge-ask-all' });

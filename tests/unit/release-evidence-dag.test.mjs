@@ -46,7 +46,7 @@ describe('same-run release evidence DAG', () => {
 
   it('imports the exact-SHA preflight artifact without rerunning expensive lanes', () => {
     const source = read('.github/workflows/protected-release.yml');
-    expect(source).toContain('artifact_name="release-candidate-$CANDIDATE_SHA"');
+    expect(source).toContain('const artifactName = `release-candidate-${sha}`;');
     expect(source).toContain('node scripts/release-proof.mjs --candidate release-evidence/candidate-receipt.json');
     expect(source).toContain("aggregate.sha !== process.env.CANDIDATE_SHA");
     for (const file of ['ci.yml', 'integration-linux.yml', 'ux-qe.yml', 'stranger-matrix.yml']) {

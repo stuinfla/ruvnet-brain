@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { acquireRefreshLock, beginRefreshSettlement, openRefreshReceipt, recordRefreshPhase,
   recordRefreshAdvisory, releaseRefreshLock, REFRESH_PHASE_CONTRACT, REQUIRED_REFRESH_PHASES,
-  settleRefreshRun, UPDATE_REFRESH_PHASES } from '../../kb/refresh-run.mjs';
+  settleRefreshRun, UPDATE_REFRESH_PHASES, validateCurrentRunPhaseExecution } from '../../kb/refresh-run.mjs';
 import { getVersion } from '../../scripts/version.mjs';
 
 const roots = [];
@@ -113,6 +113,23 @@ describe('whole refresh transaction', () => {
       detail: { terminalVerdict: 'recovery-required' } });
     expect(failed).toMatchObject({ status: 'FAILED', terminalVerdict: 'recovery-required' });
     expect(fs.existsSync(lock.path)).toBe(false);
+  });
+
+  it('preserves imported evidence while consumer settlement succeeds without claiming nine-phase execution', () => {
+    const { root, kbDir } = fixture();
+    const lock = acquireRefreshLock({ kbDir, pid: 101, isAlive: () => true });
+    const handle = openRefreshReceipt({ brainHome: root, lock, action: 'nightly' });
+    for (const phase of REQUIRED_REFRESH_PHASES) {
+      recordRefreshPhase(handle, phase, 'PASS', {
+        execution: { kind: 'validated-legacy', upstreamFreshness: 'UNKNOWN' },
+        sourceObservationAt: '2020-01-01T00:00:00Z',
+      });
+    }
+    const { receipt: done } = settleRefreshRun({ handle, lock, status: 'SUCCEEDED',
+      detail: { terminalVerdict: 'noop' } });
+    expect(done.terminalVerdict).toBe('noop');
+    expect(done.phases[0].evidence.execution).toEqual({ kind: 'validated-legacy', upstreamFreshness: 'UNKNOWN' });
+    expect(validateCurrentRunPhaseExecution(done).ok).toBe(false);
   });
 
   it('rejects missing, duplicate, and out-of-order required phases', () => {

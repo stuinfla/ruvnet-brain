@@ -77,6 +77,21 @@ async function leaves() {
 }
 
 describe('signed public 3x3 verification aggregate', () => {
+  it('binds the distinct verifier, rejects mixed verifier leaves and detects verifier tampering', async () => {
+    const keys = crypto.generateKeyPairSync('ed25519');
+    const verifierSha = '9'.repeat(40);
+    const rows = (await leaves()).map(({ leafSha256: _old, ...leaf }) => createPublicVerificationLeaf({ ...leaf, verifierSha }));
+    const aggregate = signPublicVerificationAggregate({ leaves: rows }, keys.privateKey);
+    expect(aggregate.identity.verifierSha).toBe(verifierSha);
+    expect(verifyPublicVerificationAggregate(aggregate, keys.publicKey, { ...identity, verifierSha })).toBe(aggregate);
+    expect(() => verifyPublicVerificationAggregate(aggregate, keys.publicKey,
+      { ...identity, verifierSha: '8'.repeat(40) })).toThrow(/identity differs/);
+    const { leafSha256: _old, ...first } = rows[0];
+    rows[0] = createPublicVerificationLeaf({ ...first, verifierSha: '8'.repeat(40) });
+    expect(() => signPublicVerificationAggregate({ leaves: rows }, keys.privateKey)).toThrow(/identity differs/);
+    aggregate.identity.verifierSha = '8'.repeat(40);
+    expect(() => verifyPublicVerificationAggregate(aggregate, keys.publicKey)).toThrow(/digest mismatch/);
+  });
   it('accepts exactly nine bound leaves and verifies the signature and identity', async () => {
     const keys = crypto.generateKeyPairSync('ed25519');
     const aggregate = signPublicVerificationAggregate({ leaves: await leaves() }, keys.privateKey);
@@ -137,5 +152,37 @@ describe('signed public 3x3 verification aggregate', () => {
     const second = spawnSync(process.execPath, args, { cwd: path.resolve(import.meta.dirname, '../..'), env, encoding: 'utf8' });
     expect(second.status).not.toBe(0);
     expect(second.stderr).toMatch(/refusing to overwrite/);
+  });
+
+  it('requires the expected verifier across recovery wrappers before writing a signed aggregate', async () => {
+    const keys = crypto.generateKeyPairSync('ed25519');
+    const verifierSha = '9'.repeat(40);
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'recovery-aggregate-'));
+    const laneDir = path.join(root, 'lanes');
+    fs.mkdirSync(laneDir);
+    try {
+      const rows = (await leaves()).map(({ leafSha256: _old, ...leaf }) =>
+        createPublicVerificationLeaf({ ...leaf, verifierSha }));
+      for (const osName of PUBLIC_VERIFICATION_OS) {
+        const payload = { schemaVersion: 1, kind: 'ruvnet-brain-public-verification-os-lane',
+          os: osName, verifierSha, sourceSha: identity.sourceSha,
+          leaves: rows.filter((row) => row.os === osName) };
+        fs.writeFileSync(path.join(laneDir, `${osName}.json`), JSON.stringify({ ...payload, laneSha256: digest(payload) }));
+      }
+      const outputFile = path.join(root, 'aggregate.json');
+      const run = (sha) => spawnSync(process.execPath, ['scripts/public-verification-aggregate.mjs',
+        '--lanes', laneDir, '--out', outputFile, '--verifier-sha', sha], {
+        cwd: path.resolve(import.meta.dirname, '../..'), encoding: 'utf8',
+        env: { ...process.env, RUVNET_SIGNING_KEY: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }) },
+      });
+      const mismatch = run('8'.repeat(40));
+      expect(mismatch.status).toBe(1);
+      expect(mismatch.stderr).toMatch(/verifier SHA differs/);
+      expect(fs.existsSync(outputFile)).toBe(false);
+      const success = run(verifierSha);
+      expect(success.status, success.stderr).toBe(0);
+      expect(verifyPublicVerificationAggregate(JSON.parse(fs.readFileSync(outputFile, 'utf8')),
+        keys.publicKey, { ...identity, verifierSha })).toBeTruthy();
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 });

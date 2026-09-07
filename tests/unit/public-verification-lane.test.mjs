@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { digest, releaseCoverageGenerationFor } from '../../scripts/coverage-integrity.mjs';
 import { sealRetrievalQueryEvidence } from '../../scripts/retrieval-canary.mjs';
 import { buildHostRegistry } from '../../scripts/host-registry.mjs';
 import { transactionIdFor } from '../../scripts/release-transaction.mjs';
-import { createPublicVerificationLane } from '../../scripts/public-verification-lane.mjs';
+import { createPublicVerificationLane, resolveVerifierSha } from '../../scripts/public-verification-lane.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const artifactSha256 = 'a'.repeat(64);
@@ -111,6 +115,32 @@ function fixture() {
 }
 
 describe('public verification OS lane', () => {
+  it('verifies the actual Git checkout and rejects claimed SHA or tracked-byte drift', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'verifier-sha-'));
+    const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+    try {
+      git('init', '-q');
+      fs.writeFileSync(path.join(root, 'source.mjs'), 'export const value = 1;');
+      git('add', 'source.mjs');
+      git('-c', 'user.name=Verifier Test', '-c', 'user.email=verifier@example.invalid',
+        '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'fixture');
+      const sha = git('rev-parse', 'HEAD');
+      expect(resolveVerifierSha(root, sha)).toBe(sha);
+      expect(() => resolveVerifierSha(root, '0'.repeat(40))).toThrow(/differs/);
+      fs.writeFileSync(path.join(root, 'source.mjs'), 'export const value = 2;');
+      expect(() => resolveVerifierSha(root, sha)).toThrow(/tracked changes/);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+  it('binds a recovery verifier independently of immutable candidate and retrieval identities', async () => {
+    const f = fixture();
+    const verifierSha = '9'.repeat(40);
+    const rows = await createPublicVerificationLane({ os: 'linux', ...f, verifierSha,
+      coverageIdentity: { sha256: digest(f.releaseCoverage), bytes: 100 } });
+    expect(rows.every((row) => row.verifierSha === verifierSha && row.sourceSha === sourceSha
+      && row.retrieval.sourceSha === sourceSha)).toBe(true);
+    await expect(createPublicVerificationLane({ os: 'linux', ...f, verifierSha: 'main',
+      coverageIdentity: { sha256: digest(f.releaseCoverage), bytes: 100 } })).rejects.toThrow(/verifier/);
+  });
   it('produces exactly three source-bound host leaves from public bytes and canaries', async () => {
     const f = fixture();
     const requested = [];

@@ -2,9 +2,59 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import readline from 'node:readline';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest, validateCoverageLedger } from './coverage-integrity.mjs';
+
+// Both release phases resolve against an explicit installed context, never the checkout.
+export async function resolveInstalledCanaryCitation({ kbDir, matched, expected, passageFileDigests = new Map() }) {
+  if (!path.isAbsolute(kbDir || '')) throw new Error('installed canary KB path must be absolute');
+  if (String(matched?.repo || '').toLowerCase() !== expected.repo || matched?.path !== expected.path) return { resolved: false };
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(expected.repo)) throw new Error('installed citation repository violates containment');
+  const rootStat = fs.lstatSync(kbDir);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || fs.realpathSync(kbDir) !== path.resolve(kbDir)) {
+    throw new Error('installed canary KB root or parent is a symlink; canonical containment required');
+  }
+  const files = [path.join(kbDir, `${expected.repo}.passages.jsonl`), path.join(kbDir, `${expected.repo}.big.passages.jsonl`)]
+    .filter((file) => { try { fs.lstatSync(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } });
+  for (const file of files) {
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink() || path.dirname(fs.realpathSync(file)) !== kbDir) {
+      throw new Error('installed citation file is a symlink or violates containment');
+    }
+    const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+    const stream = fs.createReadStream(file, { fd, autoClose: false });
+    const hash = crypto.createHash('sha256');
+    stream.on('data', (bytes) => hash.update(bytes));
+    const rows = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    let passageSha256 = null;
+    try {
+      for await (const line of rows) {
+        let record;
+        try { record = JSON.parse(line); } catch { continue; }
+        if (record?.path !== expected.path) continue;
+        if (digest(record) !== expected.passageSha256) continue;
+        const text = record.fullText || record.text;
+        if (typeof text !== 'string' || !text || typeof matched.text !== 'string' || !matched.text.includes(text)) continue;
+        passageSha256 = expected.passageSha256;
+      }
+      const after = fs.lstatSync(file);
+      const opened = fs.fstatSync(fd);
+      if (after.isSymbolicLink() || after.dev !== stat.dev || after.ino !== stat.ino
+        || opened.ino !== stat.ino || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs
+        || after.ctimeMs !== stat.ctimeMs) throw new Error('installed citation changed during verification');
+      const passageFileSha256 = hash.digest('hex');
+      passageFileDigests.set(file, passageFileSha256);
+      if (passageSha256) return { resolved: true, evidence: { passageSha256, passageFileSha256,
+        hitContentSha256: crypto.createHash('sha256').update(matched.text).digest('hex') } };
+    } finally {
+      rows.close();
+      await new Promise((resolve, reject) => stream.close((error) => error ? reject(error) : resolve()));
+    }
+  }
+  return { resolved: false };
+}
 
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -434,7 +484,8 @@ export function validateRetrievalCanaryReceipt(receipt, { plan, requireAcceptanc
     if (row.retrievalHit && (String(ranked?.repo || '').toLowerCase() !== expected.repo
       || ranked?.path !== expected.path
       || (row.citationResolved === true && (row.citationEvidence?.passageSha256 !== expected.passageSha256
-        || !HEX64.test(String(row.citationEvidence?.passageFileSha256 || '')))))) {
+        || !HEX64.test(String(row.citationEvidence?.passageFileSha256 || ''))
+        || (ranked.contentSha256 !== undefined && row.citationEvidence?.hitContentSha256 !== ranked.contentSha256))))) {
       throw new Error(`retrieval canary ${row.id} hit or citation evidence differs from the sealed plan`);
     }
   }
@@ -486,7 +537,8 @@ export async function runRetrievalCanaries({ plan, sourceSha, artifactSha256, ca
         const resolved = matched ? await citationResolver(matched, canary.expected) : { resolved: false };
         cases[index] = { id: canary.id, cohort: canary.cohort, status: 'COMPLETED', retrievalHit: rank >= 0,
           citationResolved: resolved?.resolved === true, citationEvidence: resolved?.evidence || null,
-          rank: rank >= 0 ? rank + 1 : null, citations: top.map(({ repo, path: hitPath }) => ({ repo, path: hitPath })) };
+          rank: rank >= 0 ? rank + 1 : null, citations: top.map(({ repo, path: hitPath, contentSha256 }) => ({ repo, path: hitPath,
+            ...(contentSha256 ? { contentSha256 } : {}) })) };
       } catch (error) {
         cases[index] = { id: canary.id, cohort: canary.cohort, status: 'UNKNOWN', retrievalHit: false,
           citationResolved: false, citationEvidence: null, rank: null, citations: [], error: error.message };

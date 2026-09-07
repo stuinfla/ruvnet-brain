@@ -18,8 +18,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
+import os from 'node:os';
+import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { storeRoot } from '../kb/store-root.mjs';
+import { validateCoverageDirectory, sha256File } from './coverage-integrity.mjs';
+import { verifyPayload, verifyPayloadMembers, payloadIdFor } from './release-payload.mjs';
+import { extractZip } from '../kb/zip-extract.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -110,10 +116,12 @@ export function verifyHeldOutStrata(file = path.join(ROOT, 'evals', 'held-out.js
 // (with the 51.33 figure alongside it). ~56× = $15 / $0.267 ≈ 56.2. We re-find both corpus
 // strings with a plain streaming grep (first match wins) and re-do the arithmetic. The passages
 // file ships with the 512MB brain, which CI does not have — absent file is a LOUD SKIP, never
-// a silent pass.
-export async function verifyCheaperFactor(file = path.join(ROOT, 'kb', 'metaharness.passages.jsonl')) {
+// a silent pass. Default reads the canonical store root (kb/store-root.mjs), not <repo>/kb — that
+// directory is a gitignored build workspace the installed brain never lands in (see kbDir on the
+// census functions below for the same fix).
+export async function verifyCheaperFactor(file = path.join(storeRoot(), 'metaharness.passages.jsonl')) {
   if (!fs.existsSync(file)) {
-    return skip(`brain not installed — ${path.relative(ROOT, file)} absent, cannot re-derive ~56× from corpus (runs on machines with the brain)`);
+    return skip(`brain not installed — ${file} absent, cannot re-derive ~56× from corpus (runs on machines with the brain)`);
   }
 
   const needles = ['$0.267', '51.33'];
@@ -368,11 +376,21 @@ export async function verifyCoverageBadge(
 // the fence). Every user-facing surface that quotes the number must quote THIS number — the count
 // sat at a stale 128,994 across 10+ surfaces after a rebuild moved it (2026-07-10 gremlin hunt).
 // The sidecars ship with the brain, which bare CI does not have — absent kb dir is a LOUD SKIP.
+//
+// kbDir (where the idmap sidecars live) and the private-stores fence are two DIFFERENT facts, same
+// conflation kb/store-root.mjs's header names: the fence is a small policy file this repo commits at
+// a fixed path (scripts/build-bundle.mjs reads the identical path), while the sidecars ship with the
+// installed brain at the canonical store root (kb/store-root.mjs's storeRoot(), not <repo>/kb — that
+// directory is a gitignored build workspace the installed brain never lands in outside the release
+// build's own KB_DIR override, which storeRoot() already honors). Defaulting kbDir to
+// `path.join(ROOT, 'kb')` — the exact anti-pattern kb/forge-currency.mjs's brainKnownSet() carried
+// until PR #222 — made this check silently SKIP on any machine with a real installed brain outside
+// the repo checkout, never re-deriving the count it exists to police.
 export const CHUNK_SURFACES = ['README.md', 'explainer/index.html', 'explainer/llms.txt', 'explainer/llms-full.txt'];
+export const PRIVATE_STORES_FILE = path.join(ROOT, 'kb', 'PRIVATE-STORES.json');
 
-export function computePublicChunkTotal(kbDir = path.join(ROOT, 'kb')) {
-  const privFile = path.join(kbDir, 'PRIVATE-STORES.json');
-  const priv = new Set(fs.existsSync(privFile) ? JSON.parse(fs.readFileSync(privFile, 'utf8')).privateStores : []);
+export function computePublicChunkTotal(kbDir = storeRoot(), privateStoresFile = PRIVATE_STORES_FILE) {
+  const priv = new Set(fs.existsSync(privateStoresFile) ? JSON.parse(fs.readFileSync(privateStoresFile, 'utf8')).privateStores : []);
   let total = 0, stores = 0;
   for (const f of fs.readdirSync(kbDir)) {
     const m = f.match(/^(.+)\.big\.rvf\.idmap\.json$/);
@@ -384,13 +402,13 @@ export function computePublicChunkTotal(kbDir = path.join(ROOT, 'kb')) {
 }
 
 /** Every built store on disk, private ones included — what "N built stores incl. private" advertises. */
-export function countBuiltStores(kbDir = path.join(ROOT, 'kb')) {
+export function countBuiltStores(kbDir = storeRoot()) {
   return fs.readdirSync(kbDir).filter((f) => /\.big\.rvf\.idmap\.json$/.test(f)).length;
 }
 
 /** The three brain census numbers every public surface quotes, all from the same artifacts. */
-export function brainCensus(kbDir = path.join(ROOT, 'kb')) {
-  const { total, stores } = computePublicChunkTotal(kbDir);
+export function brainCensus(kbDir = storeRoot(), privateStoresFile = PRIVATE_STORES_FILE) {
+  const { total, stores } = computePublicChunkTotal(kbDir, privateStoresFile);
   return { chunks: total, publicStores: stores, builtStores: countBuiltStores(kbDir) };
 }
 
@@ -409,11 +427,11 @@ export const SURFACE_CLAIM_RULES = [
 
 const fmtNum = (n, fmt) => (fmt === 'comma' ? n.toLocaleString('en-US') : String(n));
 
-export function verifyChunkCountSurfaces(kbDir = path.join(ROOT, 'kb'), surfaces = CHUNK_SURFACES, root = ROOT) {
+export function verifyChunkCountSurfaces(kbDir = storeRoot(), surfaces = CHUNK_SURFACES, root = ROOT, privateStoresFile = PRIVATE_STORES_FILE) {
   if (!fs.existsSync(kbDir) || !fs.readdirSync(kbDir).some((f) => f.endsWith('.big.rvf.idmap.json'))) {
-    return skip('brain not installed — kb/*.big.rvf.idmap.json absent, cannot re-derive the chunk count (runs on machines with the brain)');
+    return skip(`brain not installed — ${path.join(kbDir, '*.big.rvf.idmap.json')} absent, cannot re-derive the chunk count (runs on machines with the brain)`);
   }
-  const census = brainCensus(kbDir);
+  const census = brainCensus(kbDir, privateStoresFile);
   const want = census.chunks.toLocaleString('en-US');
 
   const problems = [];
@@ -490,7 +508,8 @@ function restampRule(s, rule, value) {
 
 export async function applyFix({
   root = ROOT,
-  kbDir = path.join(root, 'kb'),
+  kbDir = storeRoot(),
+  privateStoresFile = PRIVATE_STORES_FILE,
   surfaces = CHUNK_SURFACES,
   readmeFile = path.join(root, 'README.md'),
   summaryFile = path.join(root, 'coverage', 'coverage-summary.json'),
@@ -512,7 +531,7 @@ export async function applyFix({
   if (!haveBrain) {
     report.notes.push('brain not installed — chunk/store counts left untouched (nothing to re-derive them from)');
   } else {
-    const census = brainCensus(kbDir);
+    const census = brainCensus(kbDir, privateStoresFile);
     report.census = census;
     for (const rel of surfaces) {
       const { p, s } = readSurface(rel);
@@ -615,54 +634,202 @@ export async function verifyLearningReplay() {
 // ── the ledger ──────────────────────────────────────────────────────────────────────────────────
 export const ledger = [
   {
+    id: 'baseline', scope: 'source',
     claim: 'grounded 12/12 → n=120 baseline',
     source: 'evals/baseline.json',
     verify: verifyBaseline,
   },
   {
     claim: 'held-out set is frozen at 120 questions across 5 strata',
+    id: 'held-out', scope: 'source',
     source: 'evals/held-out.json',
     verify: verifyHeldOutStrata,
   },
   {
     claim: '~56× cheaper (explainer + hook)',
+    id: 'cost-factor', scope: 'runtime',
     source: 'kb/metaharness.passages.jsonl',
     verify: verifyCheaperFactor,
   },
   {
     claim: 'coverage badge % re-derives from the real coverage run (ALL source)',
+    id: 'coverage', scope: 'source',
     source: 'README.md + coverage/coverage-summary.json + vitest.config.mjs',
     verify: verifyCoverageBadge,
   },
   {
     claim: 'version surfaces agree',
+    id: 'version', scope: 'source',
     source: 'scripts/sync-version.mjs --check',
     verify: verifyVersionSurfaces,
   },
   {
     claim: 'advertised source-chunk count regenerates from the brain (all surfaces agree)',
+    id: 'chunk-count', scope: 'runtime',
     source: 'kb/*.big.rvf.idmap.json + kb/PRIVATE-STORES.json',
     verify: verifyChunkCountSurfaces,
   },
   // The invariant vector rides the same runner so it is printed in the same table and obeys the same
   // "a skip is never a silent pass" rule. The vector is ALSO exported separately (`invariants`) so a
   // future release gate can consume the named states without reading prose out of a markdown row.
-  ...invariants.map((iv) => ({ claim: `invariant ${iv.name}: ${iv.what}`, source: iv.source, verify: iv.verify })),
+  ...invariants.map((iv) => ({ id: iv.name, scope: 'runtime', claim: `invariant ${iv.name}: ${iv.what}`, source: iv.source, verify: iv.verify })),
 ];
+
+export function claimsScope(scope = 'all') {
+  if (!['all', 'source', 'runtime'].includes(scope)) throw new Error(`unknown claims scope: ${scope}`);
+  const entries = ledger.filter((entry) => scope === 'all' || entry.scope === scope);
+  return { scope, complete: scope === 'all', entries, omitted: ledger.filter((entry) => !entries.includes(entry)).map(({ id }) => id) };
+}
 
 // ── runner ──────────────────────────────────────────────────────────────────────────────────────
 const cell = (s) => String(s).replaceAll('|', '\\|');
 
-export async function runLedger(entries = ledger) {
+async function qualifyCensusArtifacts({ candidateKb, candidateSha, candidateVersion, candidateRoot,
+  payloadManifest, payloadSignature, payloadId, qualificationMode, publicKey }, checked, members, census) {
+  if (!['signed', 'staged'].includes(qualificationMode)) throw new Error('runtime qualification mode must be signed or staged');
+  const required = [payloadManifest, payloadId, candidateRoot, ...(qualificationMode === 'signed' ? [payloadSignature] : [])];
+  if (required.some((value) => !value) || !fs.existsSync(payloadManifest)
+    || (qualificationMode === 'signed' && !fs.existsSync(payloadSignature))) return null;
+  const regularFile = (file) => {
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('runtime artifact must be a regular non-symlink file');
+    return file;
+  };
+  const manifest = JSON.parse(fs.readFileSync(regularFile(payloadManifest), 'utf8'));
+  if (manifest.candidateSha !== candidateSha || manifest.version !== candidateVersion || manifest.tag !== `v${candidateVersion}`
+    || payloadIdFor(manifest) !== payloadId) throw new Error('runtime payload identity differs from the explicit candidate');
+  const root = path.dirname(fs.realpathSync(payloadManifest));
+  const byRole = (role) => {
+    const matches = manifest.members?.filter((member) => member.role === role) || [];
+    if (matches.length !== 1) throw new Error(`runtime payload requires exactly one ${role} member`);
+    return matches[0];
+  };
+  const npm = byRole('npm'), bundle = byRole('bundle');
+  for (const member of manifest.members) {
+    if (!member.name || path.basename(member.name) !== member.name) throw new Error('unsafe runtime payload member name');
+    regularFile(path.join(root, member.name));
+  }
+  const verify = () => qualificationMode === 'signed'
+    ? verifyPayload({ manifest, root, signature: fs.readFileSync(regularFile(payloadSignature), 'utf8'),
+      publicKey: publicKey || crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'keys/ruvnet-brain-signing.pub.pem'))) })
+    : verifyPayloadMembers({ manifest, root });
+  verify();
+  // The source validator is shared with release recovery. Read committed surface bytes below:
+  // untracked lookalikes must never supply the advertising proof.
+  const { validateCandidateSource } = await import('./publication-receipt.mjs');
+  validateCandidateSource(candidateRoot, { sha: candidateSha, version: candidateVersion });
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'claims-bound-artifacts-'));
+  try {
+    const extracted = await extractZip(path.join(root, bundle.name), temp);
+    const coverageFiles = extracted.entryNames.filter((name) => path.posix.basename(name) === 'COVERAGE.json');
+    if (coverageFiles.length !== 1) throw new Error('runtime bundle must contain exactly one release coverage projection');
+    const archiveRoot = path.dirname(path.join(temp, coverageFiles[0]));
+    const bound = validateCoverageDirectory(archiveRoot, { expectedVersion: candidateVersion,
+      expectedSourceSnapshot: candidateSha, requireCompleteProfile: true });
+    if (!bound.valid) throw new Error(`runtime archive projection rejected: ${bound.failures.join('; ')}`);
+    if (bound.coverageSha256 !== checked.coverageSha256) throw new Error('runtime projection differs from the bound bundle');
+    const sidecars = [];
+    let boundChunks = 0;
+    for (const name of members) {
+      const installed = regularFile(path.join(candidateKb, name));
+      const archived = regularFile(path.join(archiveRoot, name));
+      const bytes = fs.readFileSync(archived);
+      const hash = crypto.createHash('sha256').update(bytes).digest('hex');
+      const { idToLabel } = JSON.parse(bytes);
+      if (!idToLabel || typeof idToLabel !== 'object' || Array.isArray(idToLabel)) throw new Error('bound public sidecar has invalid idToLabel');
+      boundChunks += Object.keys(idToLabel).length;
+      if (sha256File(installed) !== hash) throw new Error(`runtime public sidecar differs from the bound bundle: ${name}`);
+      sidecars.push({ file: name, sha256: hash, bytes: bytes.length });
+    }
+    if (boundChunks !== census.chunks) throw new Error('runtime public count changed before artifact binding');
+    const expected = { ...census, builtStores: census.publicStores };
+    const problems = [];
+    for (const file of CHUNK_SURFACES) {
+      const result = spawnSync('git', ['show', `${candidateSha}:${file}`], { cwd: candidateRoot, encoding: 'utf8' });
+      if (result.status !== 0) throw new Error(`candidate source lacks tracked claim surface: ${file}`);
+      const text = result.stdout;
+      if (!text.includes(census.chunks.toLocaleString('en-US'))) problems.push(`${file}: candidate chunk count absent`);
+      for (const rule of SURFACE_CLAIM_RULES) for (const match of text.matchAll(rule.re)) for (const group of rule.groups) {
+        if (Number(match[group.i].replace(/,/g, '')) !== expected[rule.key]) problems.push(`${file}: candidate ${rule.name} differs`);
+      }
+    }
+    if (problems.length) throw new Error(problems.join('; '));
+    validateCandidateSource(candidateRoot, { sha: candidateSha, version: candidateVersion });
+    for (const sidecar of sidecars) {
+      if (sha256File(regularFile(path.join(candidateKb, sidecar.file))) !== sidecar.sha256) {
+        throw new Error('runtime public sidecar changed during qualification');
+      }
+    }
+    verify();
+    return { payloadId, signatureVerified: qualificationMode === 'signed', packageSha256: npm.sha256,
+      bundleSha256: bundle.sha256, sidecarsVerified: sidecars.length, sidecars,
+      claimSourceSha: candidateSha, surfacesVerified: CHUNK_SURFACES.length, publicChunks: boundChunks };
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+}
+
+// Ambient counts are diagnostic. Qualification requires explicit candidate artifacts and source.
+export async function verifyRuntimeCensus({ candidateKb = null, candidateSha = null,
+  candidateVersion = null, diagnosticKb = storeRoot(), privateStoresFile = PRIVATE_STORES_FILE,
+  candidateRoot = null, payloadManifest = null, payloadSignature = null, payloadId = null,
+  qualificationMode = 'signed', publicKey = null } = {}) {
+  const diagnostics = { ambient: { root: path.resolve(diagnosticKb), diagnostic: true } };
+  try { diagnostics.ambient.census = brainCensus(diagnosticKb, privateStoresFile); }
+  catch (error) { diagnostics.ambient.error = error.message; }
+  const provenance = { projectionVerified: false, candidate: {
+    root: candidateKb ? path.resolve(candidateKb) : null, sourceSha: candidateSha, version: candidateVersion,
+  } };
+  const details = { diagnostic: true, qualification: 'UNKNOWN', diagnostics, provenance,
+    untested: ['signed package/bundle-to-sidecar binding'] };
+  if (!candidateKb || !candidateSha || !candidateVersion) {
+    return { ...skip('Runtime qualification requires explicit candidate KB, source SHA, and version; ambient census is diagnostic only.'), ...details };
+  }
+  try {
+    const checked = validateCoverageDirectory(candidateKb, { expectedVersion: candidateVersion,
+      expectedSourceSnapshot: candidateSha, requireCompleteProfile: true });
+    if (!checked.valid) return { ...fail(`Candidate projection rejected: ${checked.failures.join('; ')}`), ...details };
+    provenance.projectionVerified = true;
+    provenance.candidate.coverageSha256 = checked.coverageSha256;
+    provenance.candidate.publicGenerationLedgerSha256 = sha256File(path.join(candidateKb, 'PUBLIC-RVF-GENERATIONS.json'));
+    const members = new Set(checked.publicInventory.publicStores.map((store) => `${store}.big.rvf.idmap.json`));
+    let chunks = 0;
+    for (const name of members) {
+      const file = path.join(candidateKb, name);
+      const stat = fs.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`${name} is not a regular census sidecar`);
+      const { idToLabel } = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (!idToLabel || typeof idToLabel !== 'object' || Array.isArray(idToLabel)) throw new Error(`${name} has invalid idToLabel`);
+      chunks += Object.keys(idToLabel).length;
+    }
+    const extraSidecars = fs.readdirSync(candidateKb)
+      .filter((name) => name.endsWith('.big.rvf.idmap.json') && !members.has(name)).length;
+    diagnostics.candidate = { chunks, publicStores: members.size, extraSidecars };
+    const artifacts = await qualifyCensusArtifacts({ candidateKb, candidateSha, candidateVersion, candidateRoot,
+      payloadManifest, payloadSignature, payloadId, qualificationMode, publicKey }, checked, members, diagnostics.candidate);
+    if (artifacts) {
+      provenance.artifacts = artifacts;
+      return { ...pass(`Exact ${qualificationMode} candidate public census and ${CHUNK_SURFACES.length} committed claim surfaces agree.`),
+        ...details, diagnostic: false, qualification: `${qualificationMode}-candidate`,
+        untested: [qualificationMode === 'staged' ? 'signed public publication proof' : 'public installation and channel convergence'] };
+    }
+    return { ...skip('Public projection verified; census remains diagnostic: signed package/bundle-to-sidecar binding is untested.'), ...details };
+  } catch (error) {
+    return { ...fail(`Candidate census rejected: ${error.message}`), ...details };
+  }
+}
+
+export async function runLedger(entries = ledger, { strict = false, runtimeCensus = {} } = {}) {
   const rows = [];
   for (const entry of entries) {
     let result;
     try {
-      result = await entry.verify();
+      result = entry.id === 'chunk-count' && strict
+        ? await verifyRuntimeCensus(runtimeCensus) : await entry.verify();
+      if (entry.id === 'chunk-count' && !strict) result = { ...result, diagnostic: true,
+        qualification: 'UNKNOWN', provenance: { mode: 'ambient-diagnostic', root: storeRoot() } };
     } catch (e) {
       result = fail(`verify() threw: ${e.message}`);
     }
-    rows.push({ claim: entry.claim, source: entry.source, ...result });
+    rows.push({ id: entry.id, claim: entry.claim, source: entry.source, ...result });
   }
   return rows;
 }
@@ -673,6 +840,8 @@ export function claimsVerdict(rows) {
 }
 
 async function main() {
+  const strict = process.argv.includes('--strict');
+  if (strict && process.argv.includes('--fix')) throw new Error('--strict qualification cannot rewrite advertising from an ambient census');
   // --fix is the ONLY writing path; the gate itself never mutates a surface.
   if (process.argv.includes('--fix')) {
     const report = await applyFix({ write: true });
@@ -691,7 +860,29 @@ async function main() {
     console.log('');
   }
 
-  const rows = await runLedger();
+  const scopeIndex = process.argv.indexOf('--scope');
+  if (scopeIndex >= 0 && !process.argv[scopeIndex + 1]) throw new Error('--scope requires all, source, or runtime');
+  const selected = claimsScope(scopeIndex < 0 ? 'all' : process.argv[scopeIndex + 1]);
+  const option = (name) => {
+    const index = process.argv.indexOf(name);
+    if (index < 0) return null;
+    const value = process.argv[index + 1];
+    if (!value || value.startsWith('--')) throw new Error(`${name} requires a value`);
+    return value;
+  };
+  const rows = await runLedger(selected.entries, { strict, runtimeCensus: {
+    candidateKb: option('--candidate-kb'), candidateSha: option('--candidate-sha'),
+    candidateVersion: option('--candidate-version'),
+    candidateRoot: option('--candidate-root'), payloadManifest: option('--payload-manifest'),
+    payloadSignature: option('--payload-signature'), payloadId: option('--payload-id'),
+    qualificationMode: option('--qualification-mode') || 'signed',
+  } });
+  const scopeVerdict = claimsVerdict(rows);
+  const receipt = { schema: 'ruvnet-brain.claims', scope: selected.scope, complete: selected.complete,
+    verdict: scopeVerdict === FAIL || selected.complete ? scopeVerdict : 'UNKNOWN', scopeVerdict, omitted: selected.omitted, rows };
+  console.log(JSON.stringify(receipt));
+  const reportIndex = process.argv.indexOf('--report');
+  if (reportIndex >= 0) fs.writeFileSync(process.argv[reportIndex + 1], JSON.stringify(receipt, null, 2), { flag: 'wx' });
 
   console.log('## Claims ledger — every advertised number must regenerate from an artifact\n');
   console.log('| claim | status | evidence |');
@@ -708,7 +899,7 @@ async function main() {
     process.exit(1);
   }
   const verdict = claimsVerdict(rows);
-  console.log(`\nclaims:verify ${verdict} — ${rows.length - skipped.length} verified, ${skipped.length} unmeasured.`);
+  console.log(`\nclaims:verify scope=${selected.scope} ${verdict} — ${rows.length - skipped.length} verified, ${skipped.length} unmeasured; omitted=${selected.omitted.join(',') || 'none'}.`);
   if (verdict === 'UNKNOWN' && process.argv.includes('--strict')) process.exitCode = 4;
 }
 

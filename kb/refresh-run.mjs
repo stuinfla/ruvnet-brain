@@ -264,6 +264,30 @@ export function openRefreshReceipt({ brainHome, lock, action, desiredVersion = n
   return { file, runId: lock.runId };
 }
 
+// Consumer convergence permits validated upstream artifacts. The stronger native
+// nine-phase proof must establish that every operation belongs to this run.
+export function validateCurrentRunPhaseExecution(receipt) {
+  const failures = [];
+  const phases = Array.isArray(receipt?.phases) ? receipt.phases : [];
+  const start = Date.parse(receipt?.startedAt || '');
+  const end = Date.parse(receipt?.finishedAt || '');
+  if (!receipt?.runId || !Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    failures.push('current-run execution identity or time window is missing');
+  }
+  if (JSON.stringify(phases.map((phase) => phase?.phase)) !== JSON.stringify(REQUIRED_REFRESH_PHASES)) {
+    failures.push('current-run execution phase ledger is incomplete or out of order');
+  }
+  for (const phase of phases) {
+    const execution = phase?.evidence?.execution;
+    const at = Date.parse(phase?.at || '');
+    if (phase?.status !== 'PASS' || execution?.kind !== 'executed'
+      || execution.runId !== receipt.runId || !Number.isFinite(at) || at < start || at > end) {
+      failures.push(`${phase?.phase || 'unknown phase'} does not establish current-run execution`);
+    }
+  }
+  return { ok: failures.length === 0, failures };
+}
+
 export function recordRefreshPhase(handle, phase, status, detail = null, now = () => new Date().toISOString()) {
   if (!handle?.file || !SAFE_ID.test(String(phase)) || !['PASS', 'FAIL', 'SKIP'].includes(status)) {
     throw new Error('invalid refresh phase receipt update');

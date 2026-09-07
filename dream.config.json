@@ -61,8 +61,9 @@
   "findingPolicy": {
     "ledgerFirst": true,
     "dedupeBy": ["deep", "scan", "path", "signature"],
-    "openIssueOnlyWhen": ["new", "reproduced", "actionable"],
-    "skipIf": ["already-fixed", "duplicate-open-issue", "existing-fix-pr", "environment-only"],
+    "openIssueOnlyWhen": ["new", "reproduced", "actionable", "unresolved", "bounded-fix-unsuccessful"],
+    "skipIf": ["already-fixed", "verified-local-fix", "duplicate-open-issue", "existing-fix-pr", "environment-only"],
+    "resolvedFindingDestination": "work-record",
     "createDraftPr": "only-after-failing-test-and-bounded-fix",
     "closeIntegratedWork": true
   },
@@ -75,6 +76,7 @@
     "Cursor background agents"
   ],
   "extraDisciplines": [
+    "ISSUE DISPOSITION OVERRIDE: this repository-specific rule overrides STEP 5-9's 'document and file the issue', STEP 17-18's unconditional issue creation, and any later instruction that assumes an issue exists. First reproduce the defect on current source, record command/output and source identity in the ledger, and attempt a bounded repair within the existing authority. Reconcile the stable fingerprint (deep, scan, path, signature) against current source, open and closed issues, and every existing fix PR. Only a NEW, REPRODUCED, ACTIONABLE defect that REMAINS UNRESOLVED after the bounded repair may create a GitHub issue; include the failed attempt and exact blocker. If a repair would exceed authority, record why it cannot safely be attempted instead of expanding authority. A verified local fix or integrated fix is a work record, never a GitHub issue; retain its diff, passing verification, witness, and integration reference in the ledger/report. An unintegrated verified fix may have one review PR but no tracking issue. Unreproduced hypotheses, duplicate findings, environmental probe failures, and blocked experiments remain work records. Do not manufacture an issue to satisfy a template or pair one with every PR; use Issue=NONE in the ledger and final report. A run without an issue is a valid completed run. Never reopen resolved work solely because its historical ledger row names a finding.",
     "evaluation-is-not-promotion",
     "witness-every-quantitative-claim",
     "a-guard-that-cannot-fail-is-not-a-guard",

@@ -62,3 +62,13 @@ export function describeSearchOutcome({ repos = [], routing = null, staleness = 
       + 'Try a narrower query or name a specific repo or artifact before concluding it must be built.',
   };
 }
+
+// A total outage proves retrieval failed, not why. Keep remediation shared by the CLI and MCP
+// consumers; ERR strings alone cannot establish that installing dependencies will repair it.
+export function describeSearchFailure({ dir }) {
+  return `Diagnose first: preserve the error above and inspect the active KB directory: ${dir}\n`
+    + 'Check the failing reader, runtime/package versions, and the file or module named in the error. '
+    + 'A reader/API mismatch, damaged data, and a missing dependency require different repairs.\n'
+    + 'Reinstall dependencies only after confirming a missing or incompatible dependency; '
+    + 'do not modify the installation based on this outage alone. After repairing the diagnosed cause, rerun the same query.\n';
+}

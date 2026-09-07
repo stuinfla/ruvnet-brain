@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const cli = path.join(root, 'scripts/development-maintenance.mjs');
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { serverDependencies } = await import('../../bin/install.mjs');
 let temp, project, foreign;
 function run(file, args = [], cwd = project, env = {}) {
   return spawnSync(process.execPath, [file, ...args], {
@@ -95,7 +97,11 @@ describe('reversible development maintenance', () => {
     fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
     fs.mkdirSync(path.join(project, 'plugin/scripts'), { recursive: true });
     fs.copyFileSync(cli, path.join(project, 'scripts/development-maintenance.mjs'));
-    fs.copyFileSync(path.join(root, 'plugin/scripts/development-maintenance.mjs'), path.join(project, 'plugin/scripts/development-maintenance.mjs'));
+    for (const dependency of serverDependencies(cli)) {
+      const target = path.resolve(project, 'scripts', dependency.spec);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(dependency.from, target);
+    }
     fs.writeFileSync(path.join(project, 'scripts/verify-channels.mjs'), "process.stdout.write('CHANNEL CHECK RAN'); process.exit(1);");
     spawnSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'fixture'], { cwd: project });
     const hook = () => spawnSync('sh', [path.join(root, 'scripts/git-hooks/pre-push')], { cwd: project, input: '', encoding: 'utf8', timeout: 5000 });

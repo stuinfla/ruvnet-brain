@@ -20,6 +20,9 @@ function unsignedLeaf(leaf) {
 }
 
 export function validatePublicVerificationLeaf(leaf) {
+  if (Object.hasOwn(leaf || {}, 'verifierSha') && !HEX40.test(String(leaf.verifierSha))) {
+    throw new Error('public verification leaf verifier SHA is invalid');
+  }
   if (leaf?.schemaVersion !== 1 || leaf?.kind !== 'ruvnet-brain-public-verification-leaf'
     || !PUBLIC_VERIFICATION_OS.includes(leaf.os) || !PUBLIC_VERIFICATION_MODES.includes(leaf.mode)
     || !HEX40.test(String(leaf.sourceSha || '')) || !HEX64.test(String(leaf.artifactSha256 || ''))
@@ -122,6 +125,7 @@ function validateReviewOracleAgainstPlan(review, retrievalPlan) {
 
 const identityOf = (leaf) => ({
   sourceSha: leaf.sourceSha,
+  ...(Object.hasOwn(leaf, 'verifierSha') ? { verifierSha: leaf.verifierSha } : {}),
   version: leaf.version,
   tag: leaf.tag,
   artifactSha256: leaf.artifactSha256,
@@ -245,12 +249,12 @@ function parseCliArgs(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!['--lanes', '--out'].includes(flag) || !value) {
+    if (!['--lanes', '--out', '--verifier-sha'].includes(flag) || !value) {
       throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --out <file>');
     }
     parsed[flag.slice(2)] = value;
   }
-  if (!parsed.lanes || !parsed.out || Object.keys(parsed).length !== 2) {
+  if (!parsed.lanes || !parsed.out) {
     throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --out <file>');
   }
   return parsed;
@@ -270,11 +274,15 @@ function readLaneLeaves(directory) {
   const byOs = new Map();
   for (const wrapper of wrappers) {
     const payload = { schemaVersion: wrapper?.schemaVersion, kind: wrapper?.kind, os: wrapper?.os,
+      ...(Object.hasOwn(wrapper || {}, 'verifierSha') ? { verifierSha: wrapper.verifierSha, sourceSha: wrapper.sourceSha } : {}),
       leaves: wrapper?.leaves };
     if (payload.schemaVersion !== 1 || payload.kind !== 'ruvnet-brain-public-verification-os-lane'
       || !PUBLIC_VERIFICATION_OS.includes(payload.os) || byOs.has(payload.os)
       || !Array.isArray(payload.leaves) || payload.leaves.length !== PUBLIC_VERIFICATION_MODES.length
       || payload.leaves.some((leaf) => leaf?.os !== payload.os)
+      || (Object.hasOwn(payload, 'verifierSha') && (!HEX40.test(String(payload.verifierSha))
+        || !HEX40.test(String(payload.sourceSha))
+        || payload.leaves.some((leaf) => leaf.verifierSha !== payload.verifierSha || leaf.sourceSha !== payload.sourceSha)))
       || digest(payload) !== wrapper.laneSha256) {
       throw new Error('public verification OS lane wrapper is malformed, duplicated, or tampered');
     }
@@ -287,11 +295,14 @@ function readLaneLeaves(directory) {
   return PUBLIC_VERIFICATION_OS.flatMap((osName) => byOs.get(osName));
 }
 
-export function generatePublicVerificationAggregate({ lanesDirectory, outputFile, privateKey }) {
+export function generatePublicVerificationAggregate({ lanesDirectory, outputFile, privateKey, verifierSha }) {
   if (!privateKey) throw new Error('RUVNET_SIGNING_KEY is required');
   if (fs.existsSync(outputFile)) throw new Error(`refusing to overwrite existing aggregate: ${outputFile}`);
   const leaves = readLaneLeaves(lanesDirectory);
   const aggregate = signPublicVerificationAggregate({ leaves }, privateKey);
+  if (verifierSha !== undefined && (!HEX40.test(String(verifierSha)) || aggregate.identity.verifierSha !== verifierSha)) {
+    throw new Error('public verification aggregate verifier SHA differs from the expected verifier');
+  }
   fs.writeFileSync(outputFile, `${JSON.stringify(aggregate, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   return aggregate;
 }
@@ -301,6 +312,7 @@ async function main() {
   const aggregate = generatePublicVerificationAggregate({
     lanesDirectory: options.lanes,
     outputFile: options.out,
+    verifierSha: options['verifier-sha'],
     privateKey: process.env.RUVNET_SIGNING_KEY,
   });
   process.stdout.write(`${JSON.stringify({ ok: true, aggregateSha256: aggregate.aggregateSha256,

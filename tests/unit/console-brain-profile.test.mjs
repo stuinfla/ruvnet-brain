@@ -16,6 +16,10 @@ let settings;
 
 function bundle(dir) {
   fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'SOURCE.json'), JSON.stringify({ stores: {
+    ruvector: { kbName: 'ruvector' }, ruflo: { kbName: 'ruflo' },
+  } }));
+  fs.writeFileSync(path.join(dir, 'PRIVATE-STORES.json'), JSON.stringify({ privateStores: [] }));
   for (const name of ['ruvector.rvf', 'ruvector.big.rvf', 'ruflo.rvf', 'ruflo.big.rvf']) {
     fs.writeFileSync(path.join(dir, name), Buffer.alloc(name.startsWith('ruvector') ? 32 : 64, 1));
   }
@@ -57,6 +61,14 @@ function runJSON(sourceCode) {
 const IMPORT = `const m = await import(${JSON.stringify(pathToFileURL(CONSOLE).href)});`;
 
 describe('Complete Brain / RuVector Only console control', () => {
+  it('refuses missing ownership without deleting files or persisting a false profile', () => {
+    fs.unlinkSync(path.join(installed, 'SOURCE.json'));
+    const before = fs.readFileSync(path.join(installed, 'ruflo.rvf'));
+    const saved = runJSON(`${IMPORT} process.stdout.write(JSON.stringify(m.saveBrainProfile({ brainProfile: 'ruvector' })));`);
+    expect(saved.ok).toBe(false);
+    expect(fs.readFileSync(path.join(installed, 'ruflo.rvf'))).toEqual(before);
+    expect(fs.existsSync(settings)).toBe(false);
+  });
   it('derives the visible state and measured sizes from the installed RVFs', () => {
     const profile = runJSON(`${IMPORT} process.stdout.write(JSON.stringify(m.gatherBrainProfile()));`);
     expect(profile.values.brainProfile).toBe('complete');

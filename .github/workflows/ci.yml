@@ -70,7 +70,7 @@ jobs:
           big=$(git ls-tree -r -l HEAD | awk '$4 > 5242880 {print $4/1048576 "MB", $5}')
           if [ -n "$big" ]; then echo "Tracked file(s) exceed 5MB — ship via Release assets instead:"; echo "$big"; exit 1; fi
       - name: Version single-source-of-truth (fails on any drift / stray literal)
-        run: npm run version:check
+        run: node scripts/qa-runner.mjs --lane version
       - name: No silent substitution (never hand-roll a tool rUv already ships, and NEVER wear his name)
         # Added 2026-07-13 after the worst failure of this project: I hand-rolled a 216-line model
         # router with a "placeholder policy", called it "the MetaHarness router engine" in SKILL.md,
@@ -79,7 +79,7 @@ jobs:
         # NOTHING CHECKED WHETHER THE CODE SHOULD EXIST AT ALL. Tests ask "does my code work"; this
         # asks "does rUv already ship this, and am I passing my code off as his?" — the question that
         # actually mattered. Verified to fire on the pre-fix commit (8e98cf7) and pass on the fix.
-        run: npm run substitution:check
+        run: node scripts/qa-runner.mjs --lane substitution
       - name: Model catalog live-verified (no model/version fact ships from memory — ADR-0016)
         # Added 2026-07-15 after I claimed "no GPT-5.6 exists" from a lazy price-sort instead of the live
         # check I'd said I would run. Rule 0 (verify the live source) kept getting skipped for model facts
@@ -88,12 +88,12 @@ jobs:
         # (refreshed weekly by model-catalog-refresh.yml), and a stale snapshot fails too. A missing/mispriced/stale
         # model is a RED BUILD — the shortcut is structurally impossible. Verified: it caught two real
         # errors in the first catalog + rejects a fabricated model id.
-        run: npm run catalog:verify
+        run: node scripts/qa-runner.mjs --lane catalog
       - name: Structure + grounding-hook behavior (brain-independent)
         # QE-0011 tests#1: on a fresh runner the 512MB brain is absent, so the capability battery
         # SKIPS — now LOUDLY (run-tests prints "CORE CAPABILITY BATTERY SKIPPED" so green never
         # masquerades as "the brain works"). This fast job covers structure/hook/guard only.
-        run: npm test
+        run: node scripts/qa-runner.mjs --lane plugin
       # ONE STEP MUST NOT COVER TWO OPERATIONS. This was a single step named "Unit tests + coverage
       # (vitest)" that ALSO performed the job's only dependency install. When it wedged for three
       # hours (2026-08-19, eight consecutive main runs), the step name asserted "the tests are
@@ -103,18 +103,21 @@ jobs:
       # replay guard covering both could-not-measure and partially-measured. Split, so the job's own
       # step list names which half is stuck.
       - name: Install dependencies
-        run: npm i --no-audit --no-fund --loglevel=error
+        run: npm ci --no-audit --no-fund --loglevel=error
+      - name: Generate convergence for the exact candidate before measurement
+        run: npm run convergence:write
       - name: Unit tests + coverage (vitest)
         # #145 was a Linux procfs fixture, not a product process leak. The focused suite now uses a
         # deterministic regular-file parent and is part of this unquarantined coverage run again.
-        run: npm run test:cov
+        # Claims consumes this invocation's fresh coverage via the shared dependency graph.
+        run: node scripts/qa-runner.mjs --lane coverage --lane claims-source
       - name: Mutation tests (the guards must FALL on broken code)
         # tests/mutation/*.test.mjs was listed in vitest.config.mjs's include from the day it was
         # written, but NO npm script and NO CI step ever ran that directory — so the falsifiability
         # proofs for the proactivity detector and (2026-07-26) the coverage-freshness precondition
         # were never once executed by CI. A test that never runs cannot fail, which makes it exactly
         # the ceremony it was written to replace. Brain-independent, ~11s.
-        run: npm run test:mutation
+        run: node scripts/qa-runner.mjs --release --lane mutation
       - name: Mesh coexistence tests (ADR-058 D5 — never touch what we do not own)
         # tests/mesh/coexistence.test.mjs: sentinel foreign hooks fire exactly once regardless of
         # registration order, ~/.claude/settings.json and ~/.codex/config.toml stay byte-equivalent
@@ -123,9 +126,7 @@ jobs:
         # header comment sizes every timeout for that, never for the 16-vCPU dev machine) — every
         # subprocess here runs sequentially and every assertion is on an exit code or a file's bytes,
         # never on timing or "stdout looked non-empty". Brain-independent, no network.
-        run: npm run test:mesh
-      - name: Claims ledger (every advertised number regenerates — coverage badge re-derived from the fresh coverage-summary.json above, not string-matched)
-        run: npm run claims:verify
+        run: node scripts/qa-runner.mjs --lane mesh
       - name: Installer smoke test
         # drive-to-98 #6: bin/install.mjs is the highest-risk untested path (a stranger's first
         # contact). Runs the REAL installer in its safe, offline, non-mutating modes (--help,
@@ -159,7 +160,7 @@ jobs:
         # script (test:regression) AND its own CI step (sufficient) from the day it lands. Fires the
         # LITERAL REGISTERED COMMAND (`node hook-shim.mjs verify-interface`), never the .sh body
         # directly (ADR-055 F16) — brain-independent, no network, ~2s.
-        run: npm run test:regression
+        run: node scripts/qa-runner.mjs --release --lane regression
       - name: Injection-guard unit test
         run: node kb/test-guard-injection.mjs
       - name: Injection-guard adversarial red-team (5 attack families)
@@ -533,14 +534,55 @@ jobs:
             --member "generation-ledger=$RUNNER_TEMP/release-evidence/RVF-GENERATIONS.json" \
             --out "$RUNNER_TEMP/release-evidence/payload-manifest.json" \
             | tee "$RUNNER_TEMP/release-evidence/payload-id.json"
-      - name: Install current Claude and Codex hosts for the one candidate matrix
+      - name: Qualify the census against the exact staged candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import crypto from 'node:crypto';
+          import { verifyRuntimeCensus } from './scripts/claims-verify.mjs';
+          const evidence = path.join(process.env.RUNNER_TEMP, 'release-evidence');
+          const payloadManifest = path.join(evidence, 'payload-manifest.json');
+          const bytes = fs.readFileSync(payloadManifest);
+          const manifest = JSON.parse(bytes);
+          const { payloadId } = JSON.parse(fs.readFileSync(path.join(evidence, 'payload-id.json')));
+          const result = await verifyRuntimeCensus({
+            candidateKb: path.join(process.env.GITHUB_WORKSPACE, 'dist/ruvnet-brain'),
+            candidateSha: manifest.candidateSha, candidateVersion: manifest.version,
+            candidateRoot: process.env.GITHUB_WORKSPACE, payloadManifest, payloadId,
+            qualificationMode: 'staged',
+          });
+          const receipt = { schemaVersion: 1, kind: 'ruvnet-brain-runtime-census-evidence',
+            sourceSha: manifest.candidateSha, version: manifest.version, payloadId,
+            runId: Number(process.env.GITHUB_RUN_ID),
+            payloadManifestSha256: crypto.createHash('sha256').update(bytes).digest('hex'), result };
+          fs.writeFileSync(path.join(evidence, 'runtime-census.json'), JSON.stringify(receipt, null, 2), { flag: 'wx' });
+          console.log(JSON.stringify(receipt));
+          if (result.status !== 'PASS' || result.diagnostic !== false || result.qualification !== 'staged-candidate') {
+            throw new Error('Exact staged candidate census did not pass');
+          }
+          NODE
+      - name: Install current hosts and global Ruflo for candidate qualification
         shell: bash
         run: |
           set -euo pipefail
           npm install --global --prefix "$RUNNER_TEMP/host-clis" \
             @anthropic-ai/claude-code@latest \
             @openai/codex@latest
+          npm install --global --prefix "$HOME/.npm-global" ruflo@latest
+          "$HOME/.npm-global/bin/ruflo" --version
           echo "$RUNNER_TEMP/host-clis/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
+      - name: Qualify interrupted cross-host continuity using the sealed package
+        env:
+          RUFLO_DAEMON_AUTOSTART: '0'
+          TMPDIR: ${{ runner.temp }}/release-evidence
+        run: |
+          set -euo pipefail
+          test -s "$RUVNET_SEALED_PACKAGE"
+          node scripts/qa-runner.mjs --release --lane continuity
       - name: Claude-only, Codex-only, and dual-host candidate evidence (run once)
         shell: bash
         run: |
@@ -550,6 +592,8 @@ jobs:
             --manifest "$RUNNER_TEMP/release-evidence/payload-manifest.json" \
             --package "$RUVNET_SEALED_PACKAGE" \
             --bundle "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \
+            --plan "$RUNNER_TEMP/release-evidence/retrieval-canary-plan.json" \
+            --coverage "$RUNNER_TEMP/release-evidence/COVERAGE.json" \
             --out "$RUNNER_TEMP/release-evidence/candidate-host-evidence.json"
       - name: Exact-artifact release QE
         run: |

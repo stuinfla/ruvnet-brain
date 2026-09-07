@@ -62,6 +62,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { CONSOLE_RUNTIME_SURFACE } from '../../scripts/console-runtime-identity.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SENTINELS = path.join(REPO_ROOT, 'tests/fixtures/mesh-sentinels');
@@ -478,8 +479,10 @@ describe('§2b byte-equivalence — ~/.claude/settings.json', () => {
     // occurrence — verified below to be the one inside writeSettingsStatusLine, not the removal path.
     // Preserve the installer's real module shape. The mutant changes only install.mjs; its runtime
     // dependencies must remain byte-identical so the test exercises the mutation, not packaging.
-    for (const sibling of ['brain-profile.mjs', 'model-requirements.mjs']) {
-      fs.copyFileSync(path.join(REPO_ROOT, 'kb', sibling), path.join(kbDir, sibling));
+    for (const relative of CONSOLE_RUNTIME_SURFACE.filter((entry) => entry.startsWith('kb/'))) {
+      const target = path.join(dir, relative);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.cpSync(path.join(REPO_ROOT, relative), target, { recursive: true });
     }
     // The installer also imports from `plugin/scripts/` (ADR-067 added mcp-readiness there). The
     // whole POINT of this fixture is that only install.mjs is mutated and its dependencies stay

@@ -7,7 +7,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
-import readline from 'node:readline';
 import { spawn, spawnSync } from 'node:child_process';
 // ONE doctor rule and ONE mode vocabulary, shared with the staged-side check in
 // scripts/staged-host-verifier.mjs. This file kept its own copies, spelled claudeOnly/
@@ -16,11 +15,11 @@ import { spawn, spawnSync } from 'node:child_process';
 // post-publication proofs below (payload assertions, MCP wiring, SOURCE.json, rpcSearch)
 // stay here — they are this side's job, not duplication.
 import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor, VARIANTS } from './host-install-matrix.mjs';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt, evaluatePublicationReceipt } from './release-proof.mjs';
 import { verifyPayload } from './release-payload.mjs';
-import { digest, sha256File } from './coverage-integrity.mjs';
-import { parseCitations } from '../kb/verify-citation.mjs';
+import { resolveInstalledCanaryCitation } from './retrieval-canary.mjs';
+import { parseRetrievalResult } from '../kb/retrieval-result.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
 const PACKAGE = 'ruvnet-brain';
@@ -52,6 +51,24 @@ function command(name, args, options = {}) {
     throw new Error(`${name} ${args.join(' ')} failed: ${detail || `exit ${result.status}`}`);
   }
   return String(result.stdout || '').trim();
+}
+export function validateCandidateSource(root, { sha, version }) {
+  const candidateRoot = fs.realpathSync(root);
+  const options = { cwd: candidateRoot };
+  const top = command('git', ['rev-parse', '--show-toplevel'], options);
+  const head = command('git', ['rev-parse', 'HEAD'], options);
+  if (fs.realpathSync(top) !== candidateRoot || !/^[a-f0-9]{40}$/.test(String(sha)) || head !== sha) {
+    throw new Error(`candidate checkout ${head} does not match candidate ${sha}`);
+  }
+  if (command('git', ['status', '--porcelain', '--untracked-files=no'], options)) {
+    throw new Error('candidate checkout has tracked changes');
+  }
+  const manifest = path.join(candidateRoot, 'package.json');
+  const stat = fs.lstatSync(manifest);
+  if (!stat.isFile() || stat.isSymbolicLink() || !version || readJson(manifest).version !== version) {
+    throw new Error('candidate checkout package version differs from the released candidate');
+  }
+  return candidateRoot;
 }
 function locate(name, { platform = process.platform } = {}) {
   const query = platform === 'win32' ? (name === 'node' ? 'node.exe' : `${name}.cmd`) : name;
@@ -243,12 +260,12 @@ export function rpcSearch(server, env, query, k = 5, timeoutMs = DEADLINE_MS, {
       if (requiredRepo && !repos.includes(String(requiredRepo).toLowerCase())) {
         throw new Error(`installed Brain search returned no ${requiredRepo} source citation`);
       }
-      finish(null, { broadMs, text });
+      finish(null, { broadMs, text, mcpResult: searched.result });
     })().catch((error) => finish(error));
   });
 }
 
-export function livePublicationAdapter({ root = process.cwd() } = {}) {
+export function livePublicationAdapter({ root = process.cwd(), candidateRoot = root } = {}) {
   const installContexts = new Map();
   const passageFileDigests = new Map();
   let installTemp = null;
@@ -277,7 +294,7 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
     },
 
     async installHosts({ artifactPath, artifactSha256, bundlePath, bundleSha256, version }) {
-      const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-public-install-'));
+      const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-public-install-')));
       installTemp = temp;
       const packageRoot = path.join(temp, 'package');
       const extraction = tarExtractionInvocation(artifactPath, temp);
@@ -376,45 +393,23 @@ export function livePublicationAdapter({ root = process.cwd() } = {}) {
       // Each canary's exact expected repository/path/passage is checked by the canary validator.
       const result = await rpcSearch(findMcpServer(context.home), context.env, query, k, DEADLINE_MS,
         { requiredRepo: null });
-      return parseCitations(result.text).map((citation) => ({
-        repo: citation.repo.toLowerCase(),
-        path: citation.docPath,
-      }));
+      return parseRetrievalResult(result.mcpResult, { query, k });
     },
 
     async resolveInstalledCitation({ mode, matched, expected }) {
       const context = installContexts.get(mode);
       if (!context) throw new Error(`${mode} public host is not installed`);
-      if (String(matched?.repo || '').toLowerCase() !== expected.repo || matched?.path !== expected.path) {
-        return { resolved: false };
-      }
-      const files = [
-        path.join(context.kb, `${expected.repo}.passages.jsonl`),
-        path.join(context.kb, `${expected.repo}.big.passages.jsonl`),
-      ].filter((file) => fs.existsSync(file));
-      for (const file of files) {
-        const rows = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
-        try {
-          for await (const line of rows) {
-            let record;
-            try { record = JSON.parse(line); } catch { continue; }
-            if (record?.path !== expected.path) continue;
-            const passageSha256 = digest(record);
-            if (passageSha256 !== expected.passageSha256) return { resolved: false };
-            if (!passageFileDigests.has(file)) passageFileDigests.set(file, sha256File(file));
-            return { resolved: true, evidence: { passageSha256, passageFileSha256: passageFileDigests.get(file) } };
-          }
-        } finally { rows.close(); }
-      }
-      return { resolved: false };
+      return resolveInstalledCanaryCitation({ kbDir: context.kb, matched, expected, passageFileDigests });
     },
 
-    async probePublishedSurface({ sha }) {
-      const head = command('git', ['rev-parse', 'HEAD'], { cwd: root });
-      if (head !== sha) throw new Error(`published-surface probe checkout ${head} does not match candidate ${sha}`);
-      const result = spawnSync(process.execPath, ['scripts/published-surface-probe.mjs', '--json'], {
-        cwd: root, env: process.env, encoding: 'utf8', timeout: 600_000,
+    async probePublishedSurface({ sha, version }) {
+      const source = validateCandidateSource(candidateRoot, { sha, version });
+      // The verifier supplies executable checks; the candidate supplies only the released source.
+      const script = fileURLToPath(new URL('./published-surface-probe.mjs', import.meta.url));
+      const result = spawnSync(process.execPath, [script, '--json'], {
+        cwd: source, env: process.env, encoding: 'utf8', timeout: 600_000,
       });
+      validateCandidateSource(candidateRoot, { sha, version });
       let parsed;
       try { parsed = JSON.parse(String(result.stdout || '')); } catch { throw new Error(`published-surface-probe emitted invalid JSON: ${String(result.stderr || '').slice(0, 300)}`); }
       if (result.status !== 0 || parsed.verdict !== 'PASS') throw new Error(`published-surface-probe is ${parsed.verdict || `exit ${result.status}`}`);

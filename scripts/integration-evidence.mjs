@@ -8,11 +8,6 @@ export const EXCLUSION_POLICY = 'release-linux-v1';
 
 const ALLOWED_LINUX_SKIP_TITLES = new Set([
   'stores, exact-retrieves, and strictly deduplicates through a temp real AgentDB',
-  'exposes self-contained native Console and What is New skills through the real plugin loader',
-  'repairs a missing Brain-owned marketplace snapshot before Codex reads plugin state',
-  'repairs a malformed Brain-owned marketplace snapshot before Codex reads plugin state',
-  'repairs the snapshot without re-enabling an explicitly disabled Codex plugin',
-  'reports a marketplace preparation failure without changing Codex configuration',
   'bridges, ranks, and is delivered as additionalContext at the write-code decision point',
   'TEETH: an UNTAGGED row travels no further than the store — the chain is genuinely load-bearing',
   'TEETH: a lesson tagged for a DIFFERENT moment does not fire at this one',
