@@ -310,6 +310,17 @@ const xmlDecode = value => value.replace(/&#(?:x([a-f0-9]+)|([0-9]+));|&(amp|lt|
     : ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" })[named.toLowerCase()]);
 const onlyXmlMatch = (xml, pattern) => { const hits = [...xml.matchAll(pattern)]; return hits.length === 1 ? hits[0][1] : null; };
 const windowsArguments = record => `"${record.runnerPath}" --registration "${record.recordPath}"`;
+function windowsTaskXml(record) {
+  const boundary = new Date(Date.now() + 60_000).toISOString();
+  return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Author>RuvNet Brain</Author></RegistrationInfo>
+  <Triggers><CalendarTrigger><StartBoundary>${boundary}</StartBoundary><Enabled>true</Enabled><ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay></CalendarTrigger></Triggers>
+  <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><StartWhenAvailable>true</StartWhenAvailable><ExecutionTimeLimit>PT1H</ExecutionTimeLimit></Settings>
+  <Actions Context="Author"><Exec><Command>${xmlEscape(record.nodePath)}</Command><Arguments>${xmlEscape(windowsArguments(record))}</Arguments></Exec></Actions>
+</Task>`;
+}
 function exactWindowsCommand(xml, record) {
   const actions = onlyXmlMatch(xml, /<Actions(?:\s[^>]*)?>([\s\S]*?)<\/Actions>/g);
   if (actions === null || actions.replace(/<Exec(?:\s[^>]*)?>[\s\S]*?<\/Exec>/g, '').trim()) return false;
@@ -393,8 +404,19 @@ export function installScheduler(record, { platform = process.platform, env = pr
     return { ok: true, artifact, already: false };
   }
   const taskCommand = `"${record.nodePath}" ${windowsArguments(record)}`;
-  const created = run('schtasks', ['/Create', '/SC', 'DAILY', '/TN', record.identity, '/TR', taskCommand,
-    '/ST', `${String(NIGHTLY_HOUR).padStart(2, '0')}:${String(NIGHTLY_MINUTE).padStart(2, '0')}`, '/F'], { encoding: 'utf8' });
+  let created;
+  if (testMode) {
+    // The fixture adapter models the legacy /TR call; keep it isolated from the machine path.
+    created = run('schtasks', ['/Create', '/SC', 'DAILY', '/TN', record.identity, '/TR', taskCommand,
+      '/ST', `${String(NIGHTLY_HOUR).padStart(2, '0')}:${String(NIGHTLY_MINUTE).padStart(2, '0')}`, '/F'], { encoding: 'utf8' });
+  } else {
+    // schtasks /TR rejects commands longer than 261 characters. Importing equivalent XML keeps the
+    // exact Node executable and argument identity while allowing long temporary/user paths.
+    const xmlPath = path.join(path.dirname(record.recordPath), `${record.identity}.task.xml`);
+    fs.writeFileSync(xmlPath, windowsTaskXml(record), { flag: 'wx', encoding: 'utf16le' });
+    try { created = run('schtasks', ['/Create', '/XML', xmlPath, '/TN', record.identity, '/F'], { encoding: 'utf8' }); }
+    finally { fs.rmSync(xmlPath, { force: true }); }
+  }
   if (created.error || created.status !== 0) return { ok: false, artifact, why: created.error?.message || String(created.stderr || `exit ${created.status}`).trim() };
   return { ok: true, artifact, already: false };
 }

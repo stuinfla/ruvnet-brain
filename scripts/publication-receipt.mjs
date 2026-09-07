@@ -15,7 +15,7 @@ import { spawn, spawnSync } from 'node:child_process';
 // `fixtures.claude` described the same fixture and nothing could tell. The richer
 // post-publication proofs below (payload assertions, MCP wiring, SOURCE.json, rpcSearch)
 // stay here — they are this side's job, not duplication.
-import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor, VARIANTS } from './host-install-matrix.mjs';
+import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor, VARIANTS, createInstalledMcpSession } from './host-install-matrix.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt, evaluatePublicationReceipt } from './release-proof.mjs';
 import { verifyPayload } from './release-payload.mjs';
@@ -299,6 +299,7 @@ export function rpcSearch(server, env, query, k = 5, timeoutMs = DEADLINE_MS, {
 
 export function livePublicationAdapter({ root = process.cwd(), candidateRoot = root } = {}) {
   const installContexts = new Map();
+  const mcpSessions = new Map();
   const passageFileDigests = new Map();
   let installTemp = null;
   return {
@@ -458,9 +459,15 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
     async searchInstalled({ mode, query, k }) {
       const context = installContexts.get(mode);
       if (!context) throw new Error(`${mode} public host is not installed`);
-      // Each canary's exact expected repository/path/passage is checked by the canary validator.
-      const result = await rpcSearch(findMcpServer(context.home), context.env, query, k, DEADLINE_MS,
-        { requiredRepo: null });
+      // Keep one MCP worker per installed host. Starting a fresh worker for every canary reloads
+      // the local embedding model repeatedly and can exceed the fixed 30-second public deadline
+      // on macOS, even when the installed Brain itself is healthy.
+      let session = mcpSessions.get(mode);
+      if (!session) {
+        session = createInstalledMcpSession({ serverPath: findMcpServer(context.home), env: context.env, timeout: DEADLINE_MS });
+        mcpSessions.set(mode, session);
+      }
+      const result = await session.search({ query, k });
       return parseRetrievalResult(result.mcpResult, { query, k });
     },
 
@@ -485,6 +492,8 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
     },
 
     async dispose() {
+      await Promise.all([...mcpSessions.values()].map((session) => session.close()));
+      mcpSessions.clear();
       if (installTemp) fs.rmSync(installTemp, { recursive: true, force: true });
       installTemp = null;
       installContexts.clear();

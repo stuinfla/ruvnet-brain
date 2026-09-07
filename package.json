@@ -1,6 +1,6 @@
 {
   "name": "ruvnet-brain",
-  "version": "4.3.10",
+  "version": "4.3.11",
   "description": "One-command installer for RuvNet Brain — a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
   "type": "module",
   "bin": {
@@ -16,7 +16,7 @@
     "version:set": "node scripts/set-version.mjs",
     "qa:pr": "node scripts/qa-runner.mjs",
     "maintenance": "node scripts/development-maintenance.mjs",
-    "qa:release": "node scripts/qa-runner.mjs --release",
+    "qa:release": "npm run version:check && npm run release:authority && npm exec -- vitest run --config tests/qe/release/vitest.config.mjs --maxWorkers=1",
     "release:authority": "node scripts/release-authority.mjs",
     "card-from-source": "node scripts/card-from-source.mjs",
     "release-abort-stale": "node scripts/release-abort-stale.mjs",
