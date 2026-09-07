@@ -1455,9 +1455,15 @@
       "query": "In the yyz-agentics-june repository, Which layer families and weight initializers does the NumPy neural-network component report describe, and how do the dropout variants differ?",
       "expected": {
         "path": "neural_network/COMPONENTS_SUMMARY.md",
-        "passageSha256": "eaefd71df494f96821b19a3c2b58d9fb1dc9c79130b83833321154ac4d3f20a1"
+        "passageSha256": "eaefd71df494f96821b19a3c2b58d9fb1dc9c79130b83833321154ac4d3f20a1",
+        "alternatives": [
+          {
+            "path": "neural_network/README.md",
+            "passageSha256": "b65ea621a7c3ea474a0e6c680541b1a51e2064d9b5ea8b5558a5c4c13a830700"
+          }
+        ]
       },
-      "recordSha256": "9d19b7d2afd8d2b1e7cdf278d939c0c8ea5320654b387a865968413be5be7891"
+      "recordSha256": "61ea87ff7a3b7276e8f443fdea91ce0dbf0cfe54c44b0dea2a69c17809ee107c"
     }
   }
 }

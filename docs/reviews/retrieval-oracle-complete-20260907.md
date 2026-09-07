@@ -1,4 +1,4 @@
-Updated: 2026-09-07 12:10:00 EDT | Version 1.0.1
+Updated: 2026-09-07 12:10:00 EDT | Version 1.0.2
 Created: 2026-09-07 12:10:00 EDT
 
 # Complete retrieval oracle relevance review
@@ -195,3 +195,7 @@ Every executed question now uniformly discloses its canonical repository scope b
 | wifi-veil | Correct question | firmware/README.md; 35e2a52e02ace5df68d7dd34bc7859763fe481978b598faf6217e9fd80a12d42 | Firmware README is scaffold-specific and expressly lacks real silicon evidence. | What is actually validated in the WiFi Veil firmware tree, and how do protector adapters differ from ESP32 supporting roles? |
 | worldgraph | Retain | wifi-densepose-worldgraph/Cargo.toml; fc95d95c6afad248bc2411dee1c97bb0e190394859f0c246ef9c2509fab87cea | Cargo manifest explicitly gives digital-twin description, crate identity and petgraph dependency. | In the worldgraph repository, which Rust crate is the ADR-139 environmental digital twin using typed petgraph for RuView? |
 | yyz-agentics-june | Correct question | neural_network/COMPONENTS_SUMMARY.md; eaefd71df494f96821b19a3c2b58d9fb1dc9c79130b83833321154ac4d3f20a1 | Component implementation summary does not define full advertised library set/product usage. | Which layer families and weight initializers does the NumPy neural-network component report describe, and how do the dropout variants differ? |
+
+## Independently reviewed equivalent source
+
+The YYZ question also accepts `neural_network/README.md`, exact canonical passage `b65ea621a7c3ea474a0e6c680541b1a51e2064d9b5ea8b5558a5c4c13a830700`. The complete archived passage explicitly contains the requested layer families, initializer families and all three dropout distinctions. The original COMPONENTS_SUMMARY source remains accepted. The additional source was reviewed from archived bytes and committed before alternate-aware execution. No query or source ranking was changed to select it. Other files remain unacceptable unless separately reviewed and sealed.
