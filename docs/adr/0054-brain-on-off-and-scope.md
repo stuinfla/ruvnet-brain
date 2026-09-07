@@ -3,7 +3,9 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-09-04
+updated: 2026-09-07
+reviewed_digest: 8c12af14dfc2
+version: 1.1.1
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -110,7 +112,11 @@ shows the disagreement.
 ### 3. OFF is a CONTRACT PER PLANE, never one early-exit
 
 A single boolean kill-switch either lies about "off" or removes protections unrelated to the
-brain. The contract, per plane:
+brain. These rules describe Brain OFF while development maintenance is inactive. A valid repository
+maintenance suspension separately stops shared hook bodies before their per-plane OFF rules,
+including protection, update, capture, and continuation. It does not change the sentinel or authorize
+publication; explicit QA and publication retain their own gates. See
+`docs/DEVELOPMENT-MAINTENANCE.md`. The contract, per plane:
 - **Retrieval**: `search_ruvnet` soft-answers "disabled by the user's setting — tell the USER to
   use /rvbc" (never instructions the model could follow to re-enable it; agent-initiated flips
   are a consent violation, and a PreToolUse guard blocks agent writes to the sentinel/settings
@@ -158,8 +164,12 @@ The 2026-07-28 profile selector is a disk-footprint control, not the hard query-
 rejected in §1 and not a claim that hiding cross-repository evidence improves answer quality.
 `kb/brain-profile.mjs` derives the real state from installed RVF families. **Complete Brain** keeps
 every public per-repository RVF in the signed release. **RuVector Only** keeps the shared reader plus
-the RuVector RVF family, removes the other public families, and filters the capability-card and
-generation-ledger indexes so they do not advertise stores that are absent.
+the RuVector RVF family. Removal of other public families requires ownership in `SOURCE.json` and
+exclusion from `PRIVATE-STORES.json`. Discovery and filename prefixes are not deletion authority.
+Removal is limited to recognized regular artifacts; private and unknown artifacts, capability cards,
+and ledger entries remain. Complete restoration requires public ownership in both source and
+destination and preserves destination private and unknown metadata. Invalid ownership metadata or
+affected symlink/directory artifacts fail before profile mutation.
 
 The console changes the files first and saves the preference second; if the mirror write fails, it
 reports the half-failure and the on-disk RVFs remain authoritative. Complete restore copies from the
@@ -178,7 +188,8 @@ over scope plumbing, safety walls exempt from off.
 
 1. Skew round-trip: previous release's `saveSettings` cannot flip OFF back on (sentinel survives).
 2. Real-wiring gate disarm: brain off ⇒ a rUv-domain Write through the USER-wired
-   ground-before-write does not block; verify-interface is silent; route-dispatch/design-wall still do.
+   ground-before-write does not block; verify-interface is silent; route-dispatch emits its advisory
+   cost audit and design-wall retains its blocking behavior, with development maintenance inactive.
 3. Stamp-from-refusal: a disabled/out-of-scope soft-answer mints NO grounding stamp.
 4. session-start split: off ⇒ zero advertising bytes, one state line; updater + GONG demonstrably still run.
 5. Fail-polarity matrix: corrupt/absent/EACCES/future settings never silently re-enable; sentinel decides.
@@ -206,7 +217,16 @@ reinstall. GPT-5.6: cross-session authority leakage and per-operation state snap
 RUVNET_SETTINGS_FILE env splits; telemetry must never count disabled soft-answers as success or
 failure. v1 draft's Decision + risks register superseded above; Context stands.
 
+## Recovery source review — 2026-09-07
+
+Update applies the selected profile to a staged candidate after restoring the private overlay, then
+validates before and after activation. Fresh-install activation separately rejects declared private
+overlays and preserves the prior generation as unclassified data instead of deleting it. This
+source review does not renew the expired verification or prove the native-host acceptance criteria.
+
 ## Currency log
+
+| 2026-09-07 | Reviewed recovery source and corrected the implementation boundaries described above; source digest 8c12af14dfc2. | `kb/brain-profile.mjs`; local source examination only, no renewed runtime or publication verification. |
 | 2026-08-30 | The Stable Spine now passes the active generation version into the SessionStart body, so restart-free updates report the generation actually executing without changing Brain OFF semantics. | `plugin/scripts/hook-shim.mjs`, `plugin/scripts/session-start-core.mjs`, `tests/unit/hook-shim.test.mjs`; OFF remains per-hook and fail-closed. |
 | 2026-08-30 | The SessionStart active footer is suppressed when the brain is off, while factual health and continuity state remains available. | `plugin/scripts/session-start-core.mjs` and `tests/unit/session-start-core-parity.test.mjs` bind the visible status to the off/on state. |
 

@@ -3,7 +3,9 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-09-04
+updated: 2026-09-07
+reviewed_digest: 35b815434ac4
+version: 1.1.1
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -12,7 +14,7 @@ governs:
   - .github/workflows/ci.yml
   - .github/workflows/stranger-matrix.yml
   - .github/workflows/protected-release.yml
-  - .github/workflows/release-aggregate.yml
+  - .github/workflows/release-candidate-preflight.yml
   - scripts/release.mjs
   - scripts/release-transaction.mjs
   - scripts/release-transaction-provider.mjs
@@ -22,7 +24,18 @@ governs:
 
 # ADR-062 — Remote-durable staged release transaction
 
+## Recovery source review — 2026-09-07
+
+`scripts/staged-host-verifier.mjs` validates the retrieval plan, coverage, package/bundle hashes and
+sizes before installed-host canaries. Candidate CI produces a separately bound staged runtime census;
+that qualification is not complete runtime or public proof. `scripts/release-transaction.mjs` binds
+recovery `verifierSha` independently while preserving the original candidate identity. The 4.3.9
+transaction remains `PUBLISHED_NOT_VERIFIED`; no unsuccessful closure or 4.3.10 publication is
+established by this source review.
+
 ## Currency log
+
+| 2026-09-07 | Reviewed recovery source and corrected implementation boundaries; source digest 35b815434ac4. | `scripts/staged-host-verifier.mjs`; source examination only, no renewed runtime or publication verification. |
 | 2026-09-04 | Public verification passes its read-scoped workflow token to the GitHub release observer, preventing shared unauthenticated API rate limits from being misreported as product failure. | `.github/workflows/protected-release.yml`; `.github/workflows/recover-public-verification.yml`; run `33899100361` returned HTTP 403 before downloading the exact release asset. |
 | 2026-09-04 | Public host proof pins Claude's marketplace source to the workflow's exact candidate checkout while continuing to compare the installed payload with the downloaded npm artifact. | `.github/workflows/protected-release.yml`; `.github/workflows/recover-public-verification.yml`; run `33898518397` showed that the default remote marketplace advanced to 4.3.10 after the immutable 4.3.9 publication. |
 | 2026-09-04 | Post-publication recovery now treats identity and channel receipts restored from the immutable publication artifact as idempotent inputs: matching signed JSON is retained, while any mismatch fails closed. | `.github/workflows/recover-public-verification.yml`; run `33898237635` exposed the prior create-only rematerialization collision before public host execution. |
@@ -129,12 +142,13 @@ idempotent state machine rather than call ordering alone.
 
 Release authority has two explicit phases. `release-candidate-preflight.yml` runs the long CI,
 integration, UX, and stranger lanes once on `release/**`, then emits the source-bound package and
-aggregate named `release-candidate-<exact SHA>`. That identical SHA is fast-forwarded to `main`.
+aggregate named `release-candidate-<exact SHA>`. Publication requires that exact SHA on current
+`main`. A merge-created SHA requires its own preflight; a fast-forward preserves the qualified SHA.
 
 `protected-release.yml` is the sole publication controller and publisher boundary. It proves
-current `origin/main` equals the preflight source SHA, discovers the artifact by deterministic name
-rather than human-supplied run ID, and revalidates its typed receipts, payload/source binding, and
-digest. It does not rerun the long lanes. One invocation signs and publishes the already-qualified
+current `origin/main` equals the preflight source SHA and authenticates the GitHub producer: expected
+workflow, successful push on `release/**`, exact SHA, and artifact/run identity. Deterministic artifact
+naming alone is insufficient. It revalidates typed receipts, payload/source binding, and digest. It does not rerun the long lanes. One invocation signs and publishes the already-qualified
 bytes once, downloads the public copies, executes the public three-OS by three-host-mode matrix,
 and appends `install-verified`.
 
@@ -162,8 +176,9 @@ verification, and writes the final receipt. Any source change creates a new SHA 
 
 The evidence DAG has content-bound leaves for source quality, release QE, stranger/platform cells,
 and Claude-only, Codex-only, and dual-host acceptance. One `release-aggregate` job rejects any
-missing, skipped, neutral, degraded, or identity-mismatched leaf. It emits the sole branch-required
-release status. Publication and retry consume its signed receipt and never rerun broad suites.
+missing, skipped, neutral, degraded, or identity-mismatched leaf. Candidate aggregation is separate
+from the currently required branch checks, `integration` and `canonical-qa`. Publication and retry
+consume the source-bound receipt without rerunning broad suites.
 
 ## Considered approaches
 

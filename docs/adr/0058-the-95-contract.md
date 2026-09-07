@@ -3,8 +3,8 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-05
-version: 1.1.0
+updated: 2026-09-07
+version: 1.1.1
 impl: wired
 reviewed_digest: c8762909a897
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]

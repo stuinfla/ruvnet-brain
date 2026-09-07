@@ -3,7 +3,9 @@ id: ADR-075
 title: Knowledge-to-execution enforcement is a mandatory policy boundary
 status: Accepted
 date: 2026-08-30
-updated: 2026-08-31
+updated: 2026-09-07
+reviewed_digest: 8cca58828c62
+version: 1.1.1
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [architecture, enforcement, routing, swarms, adr, ddd, qa, release]
@@ -165,14 +167,19 @@ red until all required assets exist.
 
 ## Current implementation status
 
-`Accepted, built with follow-on criteria.` The deterministic execution classifier and the enforced live-evidence
-preflight are implemented and in the canonical contract lane, and host-only update now has a defined degraded-KB path that can still converge
-the executable plugin/spine. Existing grounding, currency, wiring, convergence, and release gates
-remain active. The cross-host dispatch, ADR/DDD reconciliation receipt, dual-seat receipt, and
-architecture-to-test graph remain unbuilt until their acceptance criteria pass on both supported
-host paths.
+`Accepted, built with follow-on criteria.` The execution classifier and callable evidence preflight
+exist, with unit coverage in the shared QA lane inventory. QA preserves dependency failures, partial
+selections, source-byte identity, and explicit UNKNOWN runtime results; those receipts do not
+establish complete cross-host enforcement or exhaustive workflow coverage. Source-bound document
+review records examination without asserting normative agreement. Explicit host-only repair
+synchronizes executable hosts without changing KB bytes, but returns before producing the degraded-KB
+refresh receipt required by acceptance criterion 8. That criterion remains unmet. Cross-host dispatch,
+complete reconciliation and dual-seat receipt enforcement, exhaustive architecture-to-test coverage,
+and public release proof remain outstanding.
 
 ## Currency log
+
+| 2026-09-07 | Reviewed recovery source and corrected implementation boundaries; source digest 8cca58828c62. | `scripts/qa-runner.mjs`; source examination only, no renewed runtime or publication verification. |
 | 2026-08-31 | Added the executable preflight: consequential delegation now requires fresh successful Brain grounding plus an exact append-only project AgentDB checkpoint receipt before routing, and API-backed execution remains refused when a native host is available. | `scripts/execution-preflight.mjs`; `scripts/execution-policy.mjs`; `tests/unit/execution-preflight.test.mjs`; canonical contract lane. |
 | 2026-08-31 | Reconciled after the canonical QA runner changed from serial fail-fast execution to concurrent independent-lane collection. | `scripts/qa-runner.mjs` now preserves this ADR's enforcement boundary while ensuring one failed lane cannot hide later policy failures; `tests/unit/qa-runner-concurrency.test.mjs` locks that behavior. |
 
