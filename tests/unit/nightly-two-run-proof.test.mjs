@@ -1,3 +1,4 @@
+import { packageTreeObservation, observeNpxPackage, validateNpxObservations } from '../../scripts/nightly-package-observation.mjs';
 import { spawnSync } from 'node:child_process';
 import { npmInvocation } from '../../scripts/npm-invocation.mjs';
 import fs from 'node:fs';
@@ -5,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
-import { stageExactBundle, triggerNativeRun, validateNightlyProofReceipt, validateTwoRunEvidence } from '../../scripts/nightly-two-run-proof.mjs';
+import { removeEmptyInstallerScaffolds, stageExactBundle, triggerNativeRun, validateNightlyProofReceipt, validateTwoRunEvidence } from '../../scripts/nightly-two-run-proof.mjs';
 import { REQUIRED_REFRESH_PHASES } from '../../kb/refresh-run.mjs';
 import { validateRefreshReceiptEnvelope } from '../../plugin/scripts/nightly-scheduler.mjs';
 import { managedStorageInventory } from '../../kb/update-storage-transaction.mjs';
@@ -42,7 +43,7 @@ function nativeFixture(platform = 'linux') {
   };
   return { calls, scheduler, options: { scheduler, registration: { identity }, platform,
     env: { PATH: '/fixture' }, brainHome: '/fixture/brain', kbDir: '/fixture/brain/kb', timeoutMs: 180_000,
-    command: (...args) => calls.push(['command', ...args]), now: () => time,
+    command: (...args) => calls.push(['command', ...args]), now: () => time, stopped: () => true,
     pause: async (ms) => { time += ms; },
     receipts: () => ++reads === 1 ? [] : [{ receipt: { runId: 'one', status: reads === 2 ? 'RUNNING' : 'SUCCEEDED' } }],
   } };
@@ -347,26 +348,113 @@ describe('native two-run nightly proof', () => {
 
 
 describe('native proof npm configuration across fresh processes', () => {
-  it('keeps optional shims disabled across installations without relaxing symlink rejection', () => {
+  it('suppresses initial reader shims while retaining npx execution and symlink rejection', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'native-npm-config-')); roots.push(root);
     const home = path.join(root, 'home'); fs.mkdirSync(home);
-    fs.writeFileSync(path.join(home, '.npmrc'), 'bin-links=false\n');
     const fixture = path.join(root, 'fixture'); fs.mkdirSync(fixture);
     fs.writeFileSync(path.join(fixture, 'package.json'), JSON.stringify({ name: 'proof-bin', version: '1.0.0', bin: { 'proof-bin': 'cli.js' } }));
-    fs.writeFileSync(path.join(fixture, 'cli.js'), '#!/usr/bin/env node\n');
+    fs.writeFileSync(path.join(fixture, 'cli.js'), '#!/usr/bin/env node\nconsole.log("EXECUTED");\n');
     const env = { ...process.env, HOME: home, USERPROFILE: home };
     for (const key of Object.keys(env)) if (/^npm_config_/i.test(key)) delete env[key];
     for (const name of ['first', 'second']) {
       const prefix = path.join(root, name);
       const command = npmInvocation(['install', '--prefix', prefix, '--install-links', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', fixture]);
-      const result = spawnSync(command.executable, command.args, { env, encoding: 'utf8', timeout: 30_000 });
+      const result = spawnSync(command.executable, command.args, { env: { ...env, npm_config_bin_links: 'false' }, encoding: 'utf8', timeout: 30_000 });
       expect(result.status, result.stderr).toBe(0);
       expect(fs.existsSync(path.join(prefix, 'node_modules', 'proof-bin', 'cli.js'))).toBe(true);
       expect(fs.existsSync(path.join(prefix, 'node_modules', '.bin', process.platform === 'win32' ? 'proof-bin.cmd' : 'proof-bin'))).toBe(false);
       expect(() => managedStorageInventory(prefix)).not.toThrow();
     }
+    const pack = npmInvocation(['pack', '--ignore-scripts', '--pack-destination', root]);
+    const packed = spawnSync(pack.executable, pack.args, { env, cwd: fixture, encoding: 'utf8', timeout: 30_000 });
+    expect(packed.status, packed.stderr).toBe(0);
+    const archive = path.join(root, 'proof-bin-1.0.0.tgz');
+    const execute = npmInvocation(['exec', '--offline', '--yes', `--package=${archive}`, '--', 'proof-bin']);
+    for (let i = 0; i < 2; i++) {
+      const executed = spawnSync(execute.executable, execute.args, {
+        env: { ...env, npm_config_cache: path.join(root, 'cache') }, cwd: home, encoding: 'utf8', timeout: 30_000 });
+      expect(executed.status, executed.stderr).toBe(0);
+      expect(executed.stdout).toContain('EXECUTED');
+    }
     const outside = path.join(root, 'outside'); fs.mkdirSync(outside);
     fs.symlinkSync(outside, path.join(root, 'second', 'unsafe'), process.platform === 'win32' ? 'junction' : 'dir');
     expect(() => managedStorageInventory(path.join(root, 'second'))).toThrow(/symbolic link/);
   }, 65_000);
+});
+
+
+describe('production npm target identity', () => {
+  it('rejects absent, duplicated, or changed cached package bytes', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'npx-identity-')); roots.push(root);
+    const expectedRoot = path.join(root, 'expected'); fs.mkdirSync(expectedRoot);
+    fs.writeFileSync(path.join(expectedRoot, 'package.json'), JSON.stringify({ name: 'ruvnet-brain', version: '9.9.9' }));
+    fs.writeFileSync(path.join(expectedRoot, 'code.mjs'), 'public bytes');
+    const expected = packageTreeObservation(expectedRoot);
+    const cache = path.join(root, 'cache');
+    expect(() => observeNpxPackage(cache, expected)).toThrow(/exactly one/);
+    const target = path.join(cache, '_npx', 'one', 'node_modules', 'ruvnet-brain');
+    fs.cpSync(expectedRoot, target, { recursive: true });
+    expect(observeNpxPackage(cache, expected).treeSha256).toBe(expected.treeSha256);
+    fs.writeFileSync(path.join(target, 'code.mjs'), 'changed');
+    expect(() => observeNpxPackage(cache, expected)).toThrow(/differ/);
+    fs.cpSync(expectedRoot, path.join(cache, '_npx', 'two', 'node_modules', 'ruvnet-brain'), { recursive: true });
+    expect(() => observeNpxPackage(cache, expected)).toThrow(/exactly one/);
+  });
+  it('requires exact bytes and version observations bracketing both production runs', () => {
+    const expected = { name: 'ruvnet-brain', version: '9.9.9', packageSha256: 'a'.repeat(64), treeSha256: 'b'.repeat(64), fileCount: 2 };
+    const at = (second) => `2026-09-07T10:00:0${second}.000Z`;
+    const proof = { candidate: { sha256: expected.packageSha256, version: expected.version },
+      registration: { packageTarget: { spec: 'ruvnet-brain@latest', sha256: null } },
+      observedAt: at(7),
+      packageExecution: { policy: 'production-latest-exact-cache-v1', expected,
+        observations: [0, 3, 6].map((second) => ({ ...expected, path: '/isolated/cache/package', observedAt: at(second) })) },
+      runs: [1, 4].map((second) => ({ receipt: { desiredVersion: expected.version, startedAt: at(second), finishedAt: at(second + 1) } })) };
+    expect(validateNpxObservations(proof)).toEqual([]);
+    for (const mutate of [
+      p => { p.packageExecution.observations[1].treeSha256 = 'c'.repeat(64); },
+      p => { p.packageExecution.observations[1].observedAt = at(1); },
+      p => { p.runs[1].receipt.desiredVersion = '9.9.10'; },
+      p => { delete p.packageExecution; },
+    ]) { const bad = structuredClone(proof); mutate(bad); expect(validateNpxObservations(bad).length).toBeGreaterThan(0); }
+  });
+});
+
+
+describe('native installed storage accounting', () => {
+  it('removes only empty owned installer scaffolds and preserves populated or linked directories', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'native-empty-scaffold-')); roots.push(root);
+    const kb = path.join(root, 'kb'); fs.mkdirSync(kb);
+    const empty = `${kb}.install-preserved-empty`; fs.mkdirSync(empty);
+    const populated = `${kb}.install-preserved-data`; fs.mkdirSync(populated);
+    fs.writeFileSync(path.join(populated, 'private.txt'), 'keep');
+    const outside = path.join(root, 'outside'); fs.mkdirSync(outside);
+    const linked = `${kb}.install-preserved-link`;
+    fs.symlinkSync(outside, linked, process.platform === 'win32' ? 'junction' : 'dir');
+    expect(removeEmptyInstallerScaffolds(kb)).toEqual([empty]);
+    expect(fs.readFileSync(path.join(populated, 'private.txt'), 'utf8')).toBe('keep');
+    expect(fs.lstatSync(linked).isSymbolicLink()).toBe(true);
+  });
+  it('allows only measured bounded receipt and log growth on the second no-op', () => {
+    const input = { first: receipt('one', 'applied'), second: receipt('two', 'noop'),
+      inventoryBefore: inventory(0, 100), inventoryAfterFirst: inventory(0, 100), inventoryAfterSecond: inventory(0, 160),
+      retention: { withinBudget: true, unsafe: [], before: { bytes: 20 }, after: { bytes: 40 },
+        policy: { maxEvidenceBytes: 1000 },
+        updateLog: { before: { bytes: 10, sha256: 'a'.repeat(64) }, after: { bytes: 50, sha256: 'b'.repeat(64) } } },
+      validateEnvelope: envelope, identity: 'proof' };
+    expect(validateTwoRunEvidence(input)).toEqual({ ok: true, failures: [] });
+    input.inventoryAfterSecond.totalManagedBytes++;
+    expect(validateTwoRunEvidence(input).ok).toBe(false);
+    input.inventoryAfterSecond.totalManagedBytes--;
+    input.retention.updateLog.after.bytes = 1001;
+    expect(validateTwoRunEvidence(input).ok).toBe(false);
+  });
+});
+
+
+it('does not treat a terminal receipt as process completion', async () => {
+  const f = nativeFixture('darwin'); let polls = 0;
+  f.options.stopped = () => ++polls > 1;
+  const result = await triggerNativeRun(f.options);
+  expect(result.receipt.status).toBe('SUCCEEDED');
+  expect(polls).toBe(2);
 });

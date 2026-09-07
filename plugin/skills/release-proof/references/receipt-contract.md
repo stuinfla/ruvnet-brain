@@ -51,13 +51,24 @@ It does not replace first-search timings with warm timings or reduce retrieval, 
 artifact-integrity, native-update, or host-installation requirements. Fresh signed evidence is
 required; prior failed workflows remain failed.
 
-Native update verification uses `bin-links=false` in the isolated home's `.npmrc`, which
-persists across scheduled processes. The receipt records this installation configuration.
-This disables optional npm command shims; the reader runs through Node directly. The default
-npm installation creates a `semver` symlink that 4.3.10's updater rejects. Consequently this
-proof covers the explicitly configured installation, not default installations with command
-shims. Repairing default-install updater compatibility remains a follow-up; symlink rejection
-is not bypassed in the updater or inventory verifier.
+Native update verification suppresses optional npm command shims only during the initial
+reader installation (`npm_config_bin_links=false`). The scheduler retains npm's default
+command-shim behavior, which `npx` requires. The receipt records this installation configuration.
+The default reader install creates a `semver` symlink that 4.3.10's updater rejects; fixing that
+default-install compatibility remains a follow-up. Symlink rejection is not bypassed.
+
+The native scheduler executes its actual production target, `ruvnet-brain@latest`. A fresh isolated
+npm cache is prepared and its package files must match the verified public tarball installation.
+Exactly one cached Brain package is allowed. Full package tree observations before and after each
+of two scheduled runs, plus each run's actual desired version, bind the execution evidence to the
+published package. The consumer validates these observations and their time bounds. A changed
+latest version or changed package bytes fails the proof. Dependencies are outside the package-tree
+comparison. The two runs verify the already-current update path; they do not establish fallback
+reinstallation or new upstream corpus generation. Only empty installer-created preserved
+directories are removed in the disposable fixture; populated or linked entries are retained and
+still fail duplicate-copy acceptance. Storage observations wait for the refresh owner to exit
+and its lock to be removed. The second run may add only measured receipt and bounded log bytes;
+any other managed-storage growth remains a failure.
 
 Before provider mutation, `protected-release` revalidates the imported candidate receipt, package
 payload, source binding, and digest against current `origin/main`. It consumes the long-lane proof;

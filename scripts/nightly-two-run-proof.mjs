@@ -8,8 +8,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assessLifecycleEvidence } from '../kb/lifecycle-evidence-retention.mjs';
 import { managedStorageInventory } from '../kb/update-storage-transaction.mjs';
-import { REQUIRED_REFRESH_PHASES, validateCurrentRunPhaseExecution } from '../kb/refresh-run.mjs';
+import { REQUIRED_REFRESH_PHASES, validateCurrentRunPhaseExecution, inspectRefreshOwner, refreshLockPath } from '../kb/refresh-run.mjs';
 import { npmInvocation } from './npm-invocation.mjs';
+import { packageTreeObservation, observeNpxPackage, validateNpxObservations } from './nightly-package-observation.mjs';
 import { validateRefreshReceiptEnvelope } from '../plugin/scripts/nightly-scheduler.mjs';
 import { validateCoverageDirectory, validateCoverageLedger } from '../plugin/scripts/coverage-integrity.mjs';
 
@@ -67,6 +68,29 @@ export function stageExactBundle({ bundlePath, packageRoot } = {}) {
   return { sourcePath, stagedPath, bytes: bytes.length, sha256: sha256(bytes) };
 }
 
+export function removeEmptyInstallerScaffolds(kbDir) {
+  const parent = path.dirname(kbDir);
+  const prefix = `${path.basename(kbDir)}.install-preserved-`;
+  const removed = [];
+  for (const name of fs.readdirSync(parent)) {
+    if (!name.startsWith(prefix)) continue;
+    const file = path.join(parent, name);
+    const stat = fs.lstatSync(file);
+    if (stat.isDirectory() && !stat.isSymbolicLink() && fs.readdirSync(file).length === 0) {
+      fs.rmdirSync(file); removed.push(file);
+    }
+  }
+  return removed;
+}
+
+function observeUpdateLog(file) {
+  if (!fs.existsSync(file)) return { bytes: 0, sha256: sha256(Buffer.alloc(0)) };
+  const stat = fs.lstatSync(file);
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('native update log is not a regular file');
+  const bytes = fs.readFileSync(file);
+  return { bytes: bytes.length, sha256: sha256(bytes) };
+}
+
 function nightlyReceipts(brainHome, identity) {
   const dir = path.join(brainHome, 'refresh-runs');
   if (!fs.existsSync(dir)) return [];
@@ -80,10 +104,18 @@ function nightlyReceipts(brainHome, identity) {
     && receipt.action === 'nightly' && receipt.schedulerIdentity === identity);
 }
 
+function refreshExecutionStopped(receipt, kbDir) {
+  if (inspectRefreshOwner(receipt.ownerToken) !== 'dead') return false;
+  const lock = refreshLockPath(kbDir);
+  const parent = path.dirname(lock);
+  return !fs.existsSync(lock) && (!fs.existsSync(parent) || !fs.readdirSync(parent)
+    .some((name) => name.startsWith(`${path.basename(lock)}.release-`)));
+}
+
 // Dependency seams here exercise orchestration without touching a developer's native scheduler.
 // Only runNightlyTwoRunProof writes proof, and it supplies the real installed adapter and commands.
 export async function triggerNativeRun({ scheduler, registration, platform, env, brainHome, kbDir,
-  timeoutMs, command = run, receipts = nightlyReceipts, pause = sleep, now = Date.now }) {
+  timeoutMs, command = run, receipts = nightlyReceipts, pause = sleep, now = Date.now, stopped = refreshExecutionStopped }) {
   const identity = registration.identity;
   if (!/^com\.ruvnet\.brain-update\.proof-[A-Za-z0-9._-]+$/.test(identity || '')) {
     throw new Error('native proof requires a unique proof scheduler identity');
@@ -124,8 +156,12 @@ export async function triggerNativeRun({ scheduler, registration, platform, env,
         // Stop the minute cadence at the first receipt, including RUNNING, so long updates do
         // not launch again. Removing a cron row does not kill its already running child.
         if (platform === 'linux' && !removed) remove();
-        if (['SUCCEEDED', 'FAILED', 'ABANDONED'].includes(created[0].receipt.status)) return { ...created[0],
+        if (['SUCCEEDED', 'FAILED', 'ABANDONED'].includes(created[0].receipt.status)
+          && stopped(created[0].receipt, kbDir)) {
+          await pause(250); // Let the exited child's npm parent finish flushing its log.
+          return { ...created[0],
           trigger: { kind: { darwin: 'launchctl-kickstart', linux: 'cron-tick', win32: 'schtasks-run' }[platform], identity } };
+        }
       }
       if (platform === 'linux' && !observedStart && now() - startedAt >= 120_000) {
         throw new Error('cron did not start the owned proof job within two minutes; check that the cron service is running');
@@ -170,8 +206,17 @@ function validateStorageEvidence({ first, second, inventoryBefore, inventoryAfte
     if (inventory.additionalFullCorpusCopyCount !== 0) failures.push(`${label} inventory has redundant corpus copies`);
     if (!Number.isSafeInteger(inventory.totalManagedBytes) || inventory.totalManagedBytes < 0) failures.push(`${label} inventory has no measured byte count`);
   }
+  let logGrowth = 0;
+  if (retention.updateLog !== undefined) {
+    const { before, after } = retention.updateLog;
+    if (![before, after].every((row) => Number.isSafeInteger(row?.bytes) && row.bytes >= 0
+      && /^[a-f0-9]{64}$/.test(row.sha256 || '')) || !Number.isSafeInteger(retention.policy?.maxEvidenceBytes)
+      || retention.policy.maxEvidenceBytes <= 0 || after.bytes > retention.policy.maxEvidenceBytes) {
+      failures.push('native log byte measurements are invalid or exceed the evidence budget');
+    } else logGrowth = Math.max(0, after.bytes - before.bytes);
+  }
   if (inventoryAfterSecond.totalManagedBytes > inventoryAfterFirst.totalManagedBytes
-    + Math.max(0, retention.after?.bytes - retention.before?.bytes)) {
+    + Math.max(0, retention.after?.bytes - retention.before?.bytes) + logGrowth) {
     failures.push('second no-op increased managed storage outside retained lifecycle evidence');
   }
   if (retention.withinBudget !== true || retention.unsafe?.length) failures.push('lifecycle evidence is not within policy');
@@ -253,6 +298,9 @@ export function validateNightlyProofReceipt(receipt, { platform, version, packag
   if (!/^[a-f0-9]{40}$/.test(sourceSha || '') || receipt.sourceSha !== sourceSha) failures.push('native proof source SHA differs');
   if (!/^\d+$/.test(String(workflowRunId || '')) || String(receipt.workflowRunId || '') !== String(workflowRunId)) failures.push('native proof workflow run differs');
   if (!/^com\.ruvnet\.brain-update\.proof-[A-Za-z0-9._-]+$/.test(receipt.identity || '')) failures.push('native proof identity is not isolated');
+  if (receipt.packageExecution !== undefined || receipt.registration?.packageTarget?.spec === 'ruvnet-brain@latest') {
+    failures.push(...validateNpxObservations(receipt));
+  }
   const observedAt = Date.parse(receipt.observedAt);
   if (!Number.isFinite(observedAt) || observedAt > Date.now() + 60_000) failures.push('native proof observation time is invalid');
   if (!Array.isArray(receipt.runs) || receipt.runs.length !== 2) failures.push('native proof requires exactly two runs');
@@ -321,9 +369,6 @@ export async function runNightlyTwoRunProof({ packagePath, bundlePath, out, time
     NO_COLOR: '1',
   };
   fs.mkdirSync(home, { recursive: true });
-  // Persist across native scheduler processes through their existing HOME contract.
-  // The installed reader invokes Node directly and needs no npm command shims.
-  fs.writeFileSync(path.join(home, '.npmrc'), 'bin-links=false\n');
   fs.mkdirSync(tempDir);
   let scheduler;
   let registration;
@@ -333,17 +378,23 @@ export async function runNightlyTwoRunProof({ packagePath, bundlePath, out, time
     run(npm.executable, npm.args, { env });
     const packageRoot = path.join(prefix, 'node_modules', 'ruvnet-brain');
     const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
+    const expectedPackage = packageTreeObservation(packageRoot);
+    // Exercise the production target, not npx's ambiguous positional local-tarball path.
+    const prepare = npmInvocation(['exec', '--yes', '--package=ruvnet-brain@latest', '--', 'ruvnet-brain', '--help']);
+    run(prepare.executable, prepare.args, { env, cwd: home });
+    const packageObservations = [observeNpxPackage(npmCache, expectedPackage)];
     // Register the exact public package's plugin in this fresh home. GitHub shorthand can
     // select SSH on Windows and leave no staged plugin for the first scheduled activation.
     env.RUVNET_CLAUDE_MARKETPLACE_SOURCE = packageRoot;
     const stagedBundle = stageExactBundle({ bundlePath: bundle, packageRoot });
     run(process.execPath, [path.join(packageRoot, 'bin', 'install.mjs'), '--yes', '--no-nightly-prompt'], {
-      env, stdio: 'inherit', encoding: undefined,
+      env: { ...env, npm_config_bin_links: 'false' }, stdio: 'inherit', encoding: undefined,
     });
+    const removedEmptyScaffolds = removeEmptyInstallerScaffolds(kbDir);
     scheduler = await import(`${pathToFileURL(path.join(packageRoot, 'plugin', 'scripts', 'nightly-scheduler.mjs')).href}?proof=${Date.now()}`);
     registration = scheduler.installNightlyRunner({ brainHome,
       source: path.join(packageRoot, 'bin', 'nightly-refresh.mjs'), nodePath: process.execPath, identity, env,
-      packageTarget: { spec: candidate, sha256: packageSha256 },
+      packageTarget: { spec: 'ruvnet-brain@latest', sha256: null },
       bundleTarget: { spec: stagedBundle.sourcePath, sha256: stagedBundle.sha256 } });
     const inventoryBefore = managedStorageInventory(kbDir);
     const kick = () => triggerNativeRun({ scheduler, registration, platform: process.platform,
@@ -357,15 +408,25 @@ export async function runNightlyTwoRunProof({ packagePath, bundlePath, out, time
     const firstEntry = await kick();
     firstEntry.installedCoverage = observeCoverage();
     const inventoryAfterFirst = managedStorageInventory(kbDir);
+    packageObservations.push(observeNpxPackage(npmCache, expectedPackage));
+    const retentionAfterFirst = assessLifecycleEvidence({ brainHome, kbDir });
+    const logAfterFirst = observeUpdateLog(logPath);
     const secondEntry = await kick();
     secondEntry.installedCoverage = observeCoverage();
     const inventoryAfterSecond = managedStorageInventory(kbDir);
-    const retention = assessLifecycleEvidence({ brainHome, kbDir });
+    packageObservations.push(observeNpxPackage(npmCache, expectedPackage));
+    const retentionAfterSecond = assessLifecycleEvidence({ brainHome, kbDir });
+    const retention = { ...retentionAfterSecond, before: retentionAfterFirst.after,
+      withinBudget: retentionAfterFirst.withinBudget && retentionAfterSecond.withinBudget,
+      unsafe: [...retentionAfterFirst.unsafe, ...retentionAfterSecond.unsafe],
+      updateLog: { before: logAfterFirst, after: observeUpdateLog(logPath) } };
     const receipt = {
       schemaVersion: 1,
       kind: 'ruvnet-brain-native-two-run-nightly-proof',
       scope: 'installed-update',
-      installationConfiguration: { npmBinLinks: false, source: 'isolated-home-npmrc' },
+      installationConfiguration: { npmBinLinks: false, source: 'initial-reader-install-only', removedEmptyScaffolds },
+      packageExecution: { policy: 'production-latest-exact-cache-v1',
+        expected: { ...expectedPackage, packageSha256 }, observations: packageObservations },
       upstreamFreshness: 'UNKNOWN',
       observedAt: new Date().toISOString(),
       platform: process.platform,
