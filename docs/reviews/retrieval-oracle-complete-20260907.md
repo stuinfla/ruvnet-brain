@@ -1,4 +1,4 @@
-Updated: 2026-09-07 12:10:00 EDT | Version 1.0.0
+Updated: 2026-09-07 12:10:00 EDT | Version 1.0.1
 Created: 2026-09-07 12:10:00 EDT
 
 # Complete retrieval oracle relevance review
@@ -8,6 +8,8 @@ All 182 eligible repository queries were reviewed against the complete archived 
 116 supported questions remain unchanged. 66 overbroad or unsupported questions are corrected below before any revised-query execution. Expected repository paths and passage hashes remain unchanged. Seven sparse sources support only identification or a limited source-comment lookup; their checks do not establish product capabilities. Planned, fictional, unfinished and archived behavior is described as such.
 
 The previous full diagnostic found 175 expected-document hits after fixing UTF-8 transport, with seven misses and zero parser errors. Valid questions that missed remain unchanged and require runtime diagnosis. No passing result is claimed here.
+
+Every executed question now uniformly discloses its canonical repository scope before the reviewed question body. The oracle requires that repository, so hiding its identity created artificial global-discovery ambiguity. This measures within-repository source retrieval, not global discovery recall. The unscoped 157/182 diagnostic remains a separate failure record. Scope was committed before executing scoped queries; no paths or expected bytes changed.
 
 | Repository | Decision | Exact expected passage | Reason | Question after review |
 |---|---|---|---|---|
