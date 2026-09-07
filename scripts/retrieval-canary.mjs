@@ -56,6 +56,20 @@ export async function resolveInstalledCanaryCitation({ kbDir, matched, expected,
   return { resolved: false };
 }
 
+function expectedSources(expected) {
+  return [{ path: expected.path, passageSha256: expected.passageSha256 }, ...(expected.alternatives || [])];
+}
+function validExpectedSources(expected) {
+  if (!expected || !['passageSha256,path', 'alternatives,passageSha256,path'].includes(Object.keys(expected).sort().join(','))) return false;
+  if (expected.alternatives !== undefined && (!Array.isArray(expected.alternatives)
+    || expected.alternatives.length < 1 || expected.alternatives.length > 8)) return false;
+  const sources = expectedSources(expected);
+  return new Set(sources.map((source) => source?.path)).size === sources.length && sources.every((source) =>
+    source && Object.keys(source).sort().join(',') === 'passageSha256,path'
+    && typeof source.path === 'string' && source.path && !path.isAbsolute(source.path)
+    && !source.path.split(/[\\/]/).includes('..') && HEX64.test(String(source.passageSha256 || '')));
+}
+
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
 
@@ -146,10 +160,7 @@ export function validateRetrievalQueryEvidence(evidence) {
     if (Object.keys(row || {}).sort().join(',') !== 'expected,query,recordSha256'
       || typeof row.query !== 'string' || row.query !== row.query.trim().replace(/\s+/g, ' ')
       || normalized.length < 24 || seenQueries.has(normalized)
-      || !expected || Object.keys(expected).sort().join(',') !== 'passageSha256,path'
-      || typeof expected.path !== 'string' || !expected.path || path.isAbsolute(expected.path)
-      || expected.path.split(/[\\/]/).includes('..')
-      || !HEX64.test(String(expected.passageSha256 || ''))
+      || !validExpectedSources(expected)
       || row.recordSha256 !== digest({ store, query: row.query, expected })) {
       throw new Error(`independent retrieval query evidence for ${store} is malformed`);
     }
@@ -392,9 +403,8 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
       const store = storeOf(row);
       const observedPassageCount = passageCount ?? passages.get(store).length;
       const evidence = queryEvidence.queries[store];
-      const matches = passages.get(store).filter((row) => row.path === evidence?.expected?.path
-        && digest(row) === evidence.expected.passageSha256);
-      if (!evidence || matches.length !== 1) {
+      if (!evidence || expectedSources(evidence.expected).some((source) =>
+        passages.get(store).filter((row) => row.path === source.path && digest(row) === source.passageSha256).length !== 1)) {
         throw new Error(`${store} has no sealed independent query evidence`);
       }
       return {
@@ -484,9 +494,10 @@ export function validateRetrievalCanaryReceipt(receipt, { plan, requireAcceptanc
   for (const row of receipt.cases) {
     const expected = plan.cases.find(({ id }) => id === row.id)?.expected;
     const ranked = row.retrievalHit ? row.citations?.[row.rank - 1] : null;
+    const accepted = expectedSources(expected).find((source) => source.path === ranked?.path);
     if (row.retrievalHit && (String(ranked?.repo || '').toLowerCase() !== expected.repo
-      || ranked?.path !== expected.path
-      || (row.citationResolved === true && (row.citationEvidence?.passageSha256 !== expected.passageSha256
+      || !accepted
+      || (row.citationResolved === true && (row.citationEvidence?.passageSha256 !== accepted.passageSha256
         || !HEX64.test(String(row.citationEvidence?.passageFileSha256 || ''))
         || (ranked.contentSha256 !== undefined && row.citationEvidence?.hitContentSha256 !== ranked.contentSha256))))) {
       throw new Error(`retrieval canary ${row.id} hit or citation evidence differs from the sealed plan`);
@@ -535,9 +546,10 @@ export async function runRetrievalCanaries({ plan, sourceSha, artifactSha256, ca
         const rows = resultRows(await search({ query: canary.query, k: 10 }));
         const top = rows.slice(0, 10);
         const rank = top.findIndex((row) => String(row?.repo || '').toLowerCase() === canary.expected.repo
-          && row?.path === canary.expected.path);
+          && expectedSources(canary.expected).some((source) => row?.path === source.path));
         const matched = rank >= 0 ? top[rank] : null;
-        const resolved = matched ? await citationResolver(matched, canary.expected) : { resolved: false };
+        const accepted = matched ? expectedSources(canary.expected).find((source) => source.path === matched.path) : null;
+        const resolved = matched ? await citationResolver(matched, { repo: canary.expected.repo, ...accepted }) : { resolved: false };
         cases[index] = { id: canary.id, cohort: canary.cohort, status: 'COMPLETED', retrievalHit: rank >= 0,
           citationResolved: resolved?.resolved === true, citationEvidence: resolved?.evidence || null,
           rank: rank >= 0 ? rank + 1 : null, citations: top.map(({ repo, path: hitPath, contentSha256 }) => ({ repo, path: hitPath,

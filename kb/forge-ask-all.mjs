@@ -2351,6 +2351,35 @@ export function deployedFamilyReposFromQuery(query, dir, availableRepos) {
   return [];
 }
 
+// Metadata proposes at most three source stores; only normal retrieval can answer.
+function metadataSourceRoute(query, dir, availableRepos) {
+  const terms = new Set(contentTokens(query));
+  if (terms.size < 3) return null;
+  const candidates = [];
+  for (const repo of availableRepos) {
+    let metadata;
+    try { metadata = parseMetadataFile(path.join(dir, `${repo}.meta.json`)); } catch { continue; }
+    let overlap = 0;
+    for (const row of Object.values(metadata.entries || {})) {
+      const tokens = new Set(contentTokens(`${row.title || ''} ${row.preview || ''}`));
+      const matches = [...terms].filter((term) => tokens.has(term)).length;
+      overlap = Math.max(overlap, matches);
+    }
+    if (overlap >= 3) candidates.push({ repo, overlap });
+  }
+  candidates.sort((a, b) => b.overlap - a.overlap || a.repo.localeCompare(b.repo));
+  const available = new Set(availableRepos);
+  const cardCandidates = (loadCards(dir) || []).filter((card) => available.has(card.repo))
+    .map((card) => ({ repo: card.repo, overlap: [...terms].filter((term) => card.tokenSet.has(term)).length }))
+    .filter(({ overlap }) => overlap >= 3)
+    .sort((a, b) => b.overlap - a.overlap || a.repo.localeCompare(b.repo));
+  // Keep both independent routing hints: compact cards and source metadata have different gaps.
+  const repos = [...new Set([...candidates.slice(0, 1), ...cardCandidates.slice(0, 2)]
+    .map(({ repo }) => repo))];
+  return repos.length ? { repos, namedRepos: [], cardRepos: {}, confidence: 'candidate',
+    reason: 'bounded source metadata and card shortlist; retrieval must independently establish relevance' } : null;
+}
+
 function inventoryReposFromQuery(query, dir, availableRepos) {
   const available = Array.isArray(availableRepos) ? availableRepos : [];
   if (!available.length) return null;
@@ -2385,8 +2414,12 @@ function inventoryReposFromQuery(query, dir, availableRepos) {
     };
   }
   const named = [];
+  const exactInventory = [];
   const naturalProjectScope = [];
   for (const repo of available) {
+    if (repo.length > 4 && new RegExp(`(?:^|[^a-z0-9._-])${escapeRegExp(repo)}(?=$|[^a-z0-9._-])`, 'i').test(query)) {
+      exactInventory.push(repo);
+    }
     const names = repositoryNames(repo, dir);
     const phrases = names.map((name) => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim())
       .filter((phrase) => phrase.length >= 3);
@@ -2413,6 +2446,10 @@ function inventoryReposFromQuery(query, dir, availableRepos) {
       reason: `query explicitly selects deployed project repo(s): ${repos.join(', ')}`,
     };
   }
+  if (exactInventory.length) return {
+    repos: exactInventory, namedRepos: exactInventory, cardRepos: {}, confidence: 'named',
+    exactInventoryScope: true, reason: `query names deployed source store(s): ${exactInventory.join(', ')}`,
+  };
   if (!named.length) return null;
   const repos = [...new Set(named)];
   return {
@@ -2760,19 +2797,23 @@ export function selectResults({ query, ranked, k = 6 }) {
 
 // Query every repo, pool, rerank on a common scale, return global top-k labeled by repo.
 export async function searchAll({
-  dir, query, k = 6, pool = 8, repos, _routeStage = false, allowFullCorpus = true,
+  dir, query, k = 6, pool = 64, repos, _routeStage = false, allowFullCorpus = true,
 }) {
+  // The reranker needs a bounded candidate pool larger than the requested output list.
+  pool = Math.max(pool, k);
   const discovered = (repos && repos.length) ? repos : discoverRepos(dir);
   let routing = null;
   if ((!repos || !repos.length) && !_routeStage) {
     const inventoryDirective = inventoryReposFromQuery(query, dir, discovered);
-    const planned = inventoryDirective && (
+    let planned = inventoryDirective && (
       inventoryDirective.familyScope
       || inventoryDirective.naturalProjectScope
       || /\brepo:[a-z0-9._-]+\b/i.test(String(query || ''))
     )
       ? inventoryDirective
       : routeReposFromCards(query, dir, discovered);
+    if (!planned.repos.length && inventoryDirective?.exactInventoryScope) planned = inventoryDirective;
+    if (!planned.repos.length) planned = metadataSourceRoute(query, dir, discovered) || planned;
     const escalationRepo = ['meta', 'harness'].join('');
     if (cheapFirstFailureEscalationQuestion(query) && discovered.includes(escalationRepo)) {
       planned.repos = [
@@ -3154,7 +3195,7 @@ function parseArgs() {
     dir: get('--dir') || '.',
     query: get('--q') || get('--query'),
     k: parseInt(get('--k') || '6', 10),
-    pool: parseInt(get('--pool') || '8', 10),
+    pool: parseInt(get('--pool') || '64', 10),
     repos: (get('--repos') || '').split(',').map((s) => s.trim()).filter(Boolean),
   };
 }

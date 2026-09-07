@@ -304,6 +304,47 @@ describe('coverage-derived retrieval canaries', () => {
     expect(validateRetrievalCanaryReceipt(receipt, { plan })).toBe(receipt);
   });
 
+  it('accepts only presealed alternate sources and binds their own citation evidence', async () => {
+    const input = fixture(), store = 'new-e';
+    const passage = input.readPassages('.', store)[1];
+    const row = input.queryEvidence.queries[store];
+    row.expected.alternatives = [{ path: passage.path, passageSha256: digest(passage) }];
+    row.recordSha256 = digest({ store, query: row.query, expected: row.expected });
+    input.queryEvidence = sealRetrievalQueryEvidence(input.queryEvidence);
+    const plan = buildRetrievalCanaryPlan(input);
+    const receipt = await runRetrievalCanaries({ plan, sourceSha, artifactSha256,
+      candidateArchiveSha256: plan.candidate.archiveSha256,
+      search: async ({ query }) => {
+        const expected = plan.cases.find((item) => item.query === query).expected;
+        return { results: [{ repo: expected.repo, path: expected.alternatives?.[0].path || expected.path }] };
+      }, citationResolver: async (_matched, expected) => ({ resolved: true,
+        evidence: { passageSha256: expected.passageSha256, passageFileSha256: 'e'.repeat(64) } }) });
+    expect(validateRetrievalCanaryReceipt(receipt, { plan })).toBe(receipt);
+    expect(receipt.cases.find((item) => item.id === 'delta:new-e').citationEvidence.passageSha256).toBe(digest(passage));
+    for (const mutation of ['unapproved-path', 'wrong-passage']) {
+      const forged = structuredClone(receipt), hit = forged.cases.find((item) => item.id === 'delta:new-e');
+      if (mutation === 'unapproved-path') hit.citations[0].path = 'unreviewed.md';
+      else hit.citationEvidence.passageSha256 = row.expected.passageSha256;
+      const { receiptSha256: _old, ...payload } = forged;
+      expect(() => validateRetrievalCanaryReceipt({ ...payload, receiptSha256: digest(payload) }, { plan }))
+        .toThrow(/differs from the sealed plan/);
+    }
+  });
+
+  it.each(['missing', 'duplicate', 'traversal', 'wrong-hash'])('rejects %s alternate source even after resealing', (mutation) => {
+    const input = fixture(), store = 'new-e', row = input.queryEvidence.queries[store];
+    const passage = input.readPassages('.', store)[1];
+    const alternative = { path: passage.path, passageSha256: digest(passage) };
+    if (mutation === 'missing') alternative.path = 'absent.md';
+    if (mutation === 'duplicate') Object.assign(alternative, row.expected);
+    if (mutation === 'traversal') alternative.path = '../outside.md';
+    if (mutation === 'wrong-hash') alternative.passageSha256 = 'f'.repeat(64);
+    row.expected.alternatives = [alternative];
+    row.recordSha256 = digest({ store, query: row.query, expected: row.expected });
+    expect(() => { input.queryEvidence = sealRetrievalQueryEvidence(input.queryEvidence); buildRetrievalCanaryPlan(input); })
+      .toThrow(/malformed|no sealed independent query evidence/);
+  });
+
   it('keeps misses and search errors red and refuses forged metrics', async () => {
     const plan = buildRetrievalCanaryPlan({ ...fixture(), legacySampleSize: 4 });
     let call = 0;
