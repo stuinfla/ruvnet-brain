@@ -30,6 +30,11 @@ const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const receiptDigest = (candidate) => String(candidate?.artifact?.sha256 || '').replace(/^sha256:/, '');
 export function commandInvocation(name, args, { platform = process.platform, env = process.env } = {}) {
+  // Git Bash's GNU tar cannot consume native drive-letter extraction destinations.
+  // Select the Windows system tar explicitly so PATH order cannot change path semantics.
+  if (platform === 'win32' && name === 'tar') return {
+    executable: path.win32.join(env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe'), args,
+  };
   if (platform === 'win32' && /^(?:npm|npx)$/i.test(name)) return {
     executable: env.ComSpec || 'cmd.exe', args: ['/d', '/c', `${name}.cmd`, ...args],
   };

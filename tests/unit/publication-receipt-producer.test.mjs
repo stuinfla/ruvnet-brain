@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { REQUIRED_CHECKS } from '../../scripts/release-proof.mjs';
 import {
   assertInstalledPayload,
@@ -11,6 +12,7 @@ import {
   generatePublicationReceipt,
   rpcSearch,
   stageVerifiedBundle,
+  tarExtractionInvocation,
 } from '../../scripts/publication-receipt.mjs';
 import { createPayloadManifest, signPayloadManifest } from '../../scripts/release-payload.mjs';
 import { getVersion } from '../../scripts/version.mjs';
@@ -19,6 +21,25 @@ const SHA = 'a'.repeat(40);
 const VERSION = getVersion();
 const BYTES = Buffer.from('one immutable public artifact');
 const DIGEST = crypto.createHash('sha256').update(BYTES).digest('hex');
+
+it('extracts actual archive bytes into a native path containing spaces', () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'public tar ')));
+  try {
+    const source = path.join(root, 'source');
+    const destination = path.join(root, 'native destination');
+    fs.mkdirSync(source); fs.mkdirSync(destination);
+    fs.writeFileSync(path.join(source, 'receipt.txt'), 'exact public bytes');
+    const archive = path.join(root, 'package.tgz');
+    const create = commandInvocation('tar', ['-czf', archive, '-C', source, 'receipt.txt']);
+    execFileSync(create.executable, create.args, { timeout: 10000 });
+    const extraction = tarExtractionInvocation(archive, destination);
+    const extract = commandInvocation('tar', extraction.args);
+    execFileSync(extract.executable, extract.args, { cwd: extraction.cwd, timeout: 10000 });
+    expect(fs.readFileSync(path.join(destination, 'receipt.txt'), 'utf8')).toBe('exact public bytes');
+    expect(commandInvocation('tar', [], { platform: 'win32', env: { SystemRoot: 'D:\\Windows' } }).executable)
+      .toBe('D:\\Windows\\System32\\tar.exe');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 
 function candidate(root) {
   const evidence = path.join(root, 'release-evidence');
