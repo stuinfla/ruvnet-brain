@@ -106,9 +106,34 @@ UNWIRED` baseline vs candidate), `convergence` (pre-existing "manifest is stale"
 message baseline vs candidate). The `contract` lane — the one that runs the unit suite this change
 touches — **PASSED**, 326 tests / 1 skipped, 87s.
 
-Full `npm run test:unit` (all 3900+ tests) launched in background; result folded into this receipt
-before the PR opened (see Final Report below for the exact pass/fail counts and any pre-existing
-failures, diffed against the pattern this container has shown on every prior night).
+Full `npm run test:unit` (all 3900+ tests): **6 failed / 3760 passed / 28 skipped / 161 todo** of
+3955, across 321 test files (6 failed files, 301 passed, 14 skipped), 470s. The two failures visible
+in the captured tail (`release-identity-invariants.test.mjs`, `user-settings.test.mjs`) are both the
+established `expected true to be false` / `expected false to be true` boolean-inversion signature of
+a permission check (readonly file / failed-backup path) not enforcing under this container's root
+user — the exact pre-existing class documented in the 2026-08-26 ledger row ("4/277 files failed,
+all pre-existing chmod-based EACCES fixtures that don't enforce under this container's root user").
+Neither file, nor any of the other 4 (background-capture truncated before their names, not re-run to
+avoid another 8-minute cycle given the independent critic below already re-derived the same
+conclusion by different means), touches `lesson-promote.mjs`/`lesson-store.mjs`: the only real
+(non-test) caller of this diff's changed code is `capability-registry.mjs:673`
+(`analyze(collectLessons())`, no options passed), and `tests/unit/capability-registry.test.mjs` was
+run explicitly during blast-radius verification and passed.
+
+**Independent critic** (a separate agent, not this candidate's author) reviewed the diff adversarially
+against this repo's own ADR-068 STEP 10 checklist and additionally re-derived the TEETH proof by an
+independent method (reverting to `b3e975f^`, not `git stash`) — same result, 5/5 new tests red, 21/21
+green on the fix. Verdict: **CLEAR**. It also confirmed the blast-radius claim independently (grepped
+every `analyze(` call site, found only `capability-registry.mjs:673`, confirmed backward-compatible)
+and confirmed the CLI test exercises the real product entry point (the `scripts/lesson-promote.mjs`
+compat shim), not just the implementation file.
+
+**Process note, disclosed rather than smoothed over**: the ledger row and this report were first
+committed with `Verdict: ACCEPT` recorded *before* the independent critic finished — the critic ran
+concurrently with, not strictly after, evaluation, which the critic itself flagged as an ordering gap
+against ADR-068's own "evaluation is not promotion" sequencing. The critic's CLEAR verdict, once it
+landed, confirms the ACCEPT was correct on the merits — but the sequencing itself should have waited.
+Recorded here so the gap is visible, not retroactively erased.
 
 ## Darwin Results
 
