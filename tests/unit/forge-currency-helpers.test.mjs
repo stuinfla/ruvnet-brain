@@ -2,17 +2,34 @@
 // that the brain doesn't index yet" radar) has zero tests of any kind. isRuvnetOrigin/pad/sh are
 // pure string logic with no I/O — the cheapest possible tests in this file, once exported.
 //
-// PREREQUISITE: isRuvnetOrigin (line 139), pad (line 162), and sh (line 161, currently a `const sh =
-// (s) => ...` arrow, not a `function`) are all module-private. The file runs its report/subcommand
-// dispatch unconditionally at module top level (no IIFE guard), so importing it today would fire
-// real `gh`/`git`/`fetch` calls as an import side effect — same pattern as check-indexation.mjs and
-// self-update.mjs's own gap skeletons. Two additive, no-behavior-change edits unblock this file:
-//   1. `export function isRuvnetOrigin(url) {...}`, `export const sh = (s) => ...`,
-//      `export function pad(s, n) {...}` (currently unexported).
-//   2. Guard the dispatch with `if (import.meta.url === \`file://${process.argv[1]}\`) { ... }`
-//      (the same in-repo pattern verify-bundle.mjs already uses, line 39 there).
-// Flag both to Stuart before applying, per this repo's established pattern for these gap skeletons.
-import { describe, it, expect } from 'vitest';
+// The CLI dispatch is guarded and brainKnownSet is exported for the canonical-root regression.
+import { describe, it, expect, afterEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { brainKnownSet } from '../../kb/forge-currency.mjs';
+
+let dir;
+afterEach(() => { if (dir) { fs.rmSync(dir, { recursive: true, force: true }); dir = null; } });
+const sandbox = () => (dir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-currency-')));
+
+describe('forge-currency.mjs — brainKnownSet() sources from the canonical store root', () => {
+  it('includes a store present at the given root', () => {
+    const root = sandbox();
+    fs.writeFileSync(path.join(root, 'totally-live-store.rvf'), '');
+    expect(brainKnownSet(root).has('totally-live-store')).toBe(true);
+  });
+
+  it('strips the .big.rvf suffix and lowercases', () => {
+    const root = sandbox();
+    fs.writeFileSync(path.join(root, 'Some-Repo.big.rvf'), '');
+    expect(brainKnownSet(root).has('some-repo')).toBe(true);
+  });
+
+  it('does not throw for a root that has not materialized', () => {
+    expect(() => brainKnownSet(path.join(os.tmpdir(), `never-${Date.now()}`))).not.toThrow();
+  });
+});
 
 describe.todo('forge-currency.mjs — isRuvnetOrigin() (requires export, see file header)', () => {
   it.todo('true for git@github.com:ruvnet/agentic-flow.git (SSH form)');

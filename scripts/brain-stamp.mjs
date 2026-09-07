@@ -8,7 +8,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { canonicalRvfStores, hasCanonicalRvfStore } from './rvf-generation.mjs';
+import { canonicalRvfStores, hasCanonicalRvfStore, readRvfGenerations } from './rvf-generation.mjs';
+import { resolveBuiltFromSha } from './brain-stamp-resolve.mjs';
 import { getVersionTag, stripTag } from './version.mjs';
 // The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
 // sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
@@ -27,6 +28,7 @@ const shaOf = (dir) => { try { return execFileSync('git', ['rev-parse', 'HEAD'],
 // no shell: slug is placed in a URL arg, never interpreted by a shell
 const remoteSha = (slug) => { try { return execFileSync('git', ['ls-remote', `https://github.com/ruvnet/${slug}`, 'HEAD']).toString().split(/\s/)[0] || null; } catch { return null; } };
 
+const generations = readRvfGenerations(KB_DIR).stores || {};
 const tiers = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/registry.tiers.json'), 'utf8'));
 const repos = [];
 for (const t of ['T0', 'T1', 'T2', 'T3']) {
@@ -38,7 +40,7 @@ for (const t of ['T0', 'T1', 'T2', 'T3']) {
     const localSha = fs.existsSync(path.join(cloneDir, '.git')) ? shaOf(cloneDir) : null;
     repos.push({
       name: r.name, tier: t, stars: r.stars,
-      builtFromSha: builtName(r.name) ? (localSha || 'unknown') : null,
+      builtFromSha: builtName(r.name) ? resolveBuiltFromSha(r.name, { generations, localSha }) : null,
       latestRemoteSha: null,           // filled by --check-remote (network) in self-update
       status: builtName(r.name) ? 'built' : 'pending',
     });
@@ -67,7 +69,7 @@ for (const store of canonicalRvfStores(KB_DIR)) {
   const cloneDir = findClone(store);
   repos.push({
     name: store, tier: 'fresh', stars: undefined,
-    builtFromSha: cloneDir ? (shaOf(cloneDir) || 'unknown') : 'unknown',
+    builtFromSha: resolveBuiltFromSha(store, { generations, localSha: cloneDir ? shaOf(cloneDir) : null }),
     latestRemoteSha: null,
     status: 'built',
   });

@@ -34,7 +34,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  RECEIPT_PREFIX, TERMINAL_STATES, ALLOWED_TRANSITIONS, canonicalJson, digestReceipt, signReceipt,
+  RECEIPT_PREFIX, isClosedReceipt, ALLOWED_TRANSITIONS, canonicalJson, digestReceipt, signReceipt,
 } from './release-transaction.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
@@ -65,7 +65,7 @@ const receipts = receiptAssets.map(fetchAsset).sort((a, b) => a.sequence - b.seq
 const last = receipts.at(-1);
 log(`${TAG}: ${receipts.length} receipt(s), latest seq=${last.sequence} state=${last.state} txn=${String(last.transactionId).slice(0, 16)}…`);
 
-if (TERMINAL_STATES.has(last.state)) {
+if (isClosedReceipt(last)) {
   log(`already terminal (${last.state}) — nothing to do.`);
   process.exit(0);
 }

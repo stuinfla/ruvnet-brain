@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "kind": "ruvnet-brain-host-adapter",
+  "id": "codex",
+  "displayName": "Codex",
+  "os": ["linux", "macos", "windows"],
+  "modes": ["codex", "dual"],
+  "manifest": "plugin/.codex-plugin/plugin.json",
+  "hooks": "plugin/hooks/codex-hooks.json",
+  "loader": "bin/install.mjs"
+}

@@ -76,13 +76,31 @@ export function buildCard(repo, { description, readme }) {
   return `## ${repo.toLowerCase()}\n${body}\n(${MARKER}; a hand-written card saying when to reach for it, and when not to, would be better.)\n`;
 }
 
-function insertSorted(file, card, name) {
+// Repository names may contain RegExp metacharacters (`ruv.io` is already in this corpus). The
+// heading lookup is literal identity, so escape the name before compiling it.
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export function insertSorted(file, card, name) {
   const s = fs.readFileSync(file, 'utf8');
-  if (new RegExp(`^## ${name}$`, 'mi').test(s)) return false;
+  if (new RegExp(`^## ${escapeRegExp(name)}$`, 'mi').test(s)) return false;
   const heads = [...s.matchAll(/^## (.+)$/gm)].map((m) => [m.index, m[1].trim().toLowerCase()]);
   const pos = heads.find(([, n]) => n > name)?.[0];
   fs.writeFileSync(file, pos === undefined ? `${s.replace(/\n+$/, '')}\n\n${card}` : s.slice(0, pos) + card + '\n' + s.slice(pos));
   return true;
+}
+
+/** Apply one grounded card to every required surface without turning a failed write into success. */
+export function applyCardToFiles(files, card, name, insert = insertSorted) {
+  let changed = 0;
+  const failures = [];
+  for (const file of files) {
+    try {
+      if (insert(file, card, name)) changed += 1;
+    } catch (error) {
+      failures.push({ file, error: String(error?.message || error) });
+    }
+  }
+  return { changed, failures };
 }
 
 const isMain = (() => {
@@ -102,13 +120,21 @@ if (isMain) {
   }
   const repoCards = path.join(ROOT, 'kb', 'capability-cards.md');
   const liveCards = path.join(root, 'capability-cards.md');
-  let wrote = 0; let skipped = 0;
+  let wrote = 0; let skipped = 0; let failed = 0;
   for (const name of dark.slice(0, MAX)) {
     const card = buildCard(name, sourceFacts(name));
     if (!card) { skipped += 1; console.log(`[card] ${name}: no description and no README prose — left dark rather than invented`); continue; }
-    for (const f of [repoCards, liveCards]) { try { insertSorted(f, card, name.toLowerCase()); } catch { /* keep going */ } }
-    wrote += 1;
+    const outcome = applyCardToFiles([repoCards, liveCards], card, name.toLowerCase());
+    if (outcome.failures.length) {
+      failed += 1;
+      console.error(`[card] ${name}: FAILED/PARTIAL (${outcome.changed}/2 surfaces changed) — `
+        + outcome.failures.map(({ file, error }) => `${file}: ${error}`).join('; '));
+      continue;
+    }
+    if (outcome.changed > 0) wrote += 1;
+    else skipped += 1;
   }
   const remaining = darkStores(root).length;
-  console.log(`\n[card] wrote ${wrote}, left ${skipped} dark for lack of grounded source text, ${remaining} still dark.`);
+  console.log(`\n[card] wrote ${wrote}, skipped ${skipped}, failed ${failed}, ${remaining} still dark.`);
+  if (failed) process.exitCode = 1;
 }

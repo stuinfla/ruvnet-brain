@@ -15,6 +15,7 @@ import { execFileSync } from 'node:child_process';
 import { readStdinBounded } from './hook-input.mjs';
 import { learningScope, loadRuntimePreferences } from './runtime-preferences.mjs';
 import { resolveRuflo, RUFLO_MISSING } from './ruflo-bin.mjs';
+import { projectDirectory } from './project-identity.mjs';
 
 // ONE BOUNDED LINE ON STDERR. stderr because a SessionEnd hook's stdout is not surfaced, and bounded
 // because a hook that prints a stack trace on every `/clear` gets muted — and a muted diagnostic is
@@ -23,7 +24,12 @@ import { resolveRuflo, RUFLO_MISSING } from './ruflo-bin.mjs';
 const warn = (msg) => { try { process.stderr.write(`learn-flush: ${msg}\n`); } catch { /* stderr gone */ } };
 
 const HOME = os.homedir();
-const PROJECT = process.env.RUVNET_BRAIN_PROJECT_DIR || process.cwd();
+// RESIDUAL of #134/#104: RUVNET_BRAIN_PROJECT_DIR is never set by real hook dispatch on either host,
+// so it degraded back to raw cwd() in production. `projectDirectory()` (project-identity.mjs) is the
+// SAME CLAUDE_PROJECT_DIR-with-containment rule #85/#107 already fixed for the receipt/Console
+// agreement — reused here rather than trusting the variable unconditionally, which would reopen the
+// class of bug #107 was: an unrelated declared root overruling a cwd it does not actually contain.
+const PROJECT = process.env.RUVNET_BRAIN_PROJECT_DIR || projectDirectory({ env: process.env });
 // ISSUE #139 — this WRITER resolved scope correctly while two READERS hardcoded it, so they agreed
 // only by coincidence. The resolution moved into runtime-preferences.mjs and all three now call it;
 // a future scope is one edit, not three. Behaviour here is unchanged by design.
@@ -155,7 +161,12 @@ if (failures.length) {
   const distinct = [...new Set(failures)];
   warn(`${failures.length}/${actions.length} feed call(s) FAILED via ${RUFLO}`
     + ` — ${distinct.slice(0, 2).join(' | ')}${distinct.length > 2 ? ` (+${distinct.length - 2} more kind(s))` : ''}`
-    + (fed === 0 ? '. Nothing was learned; the queue is KEPT for retry.' : `. ${fed} succeeded.`));
+    + (fed === 0 ? '. Nothing was learned; the queue is KEPT for retry.'
+      : `. ${fed} succeeded; the entire queue is KEPT for retry (successful actions may replay).`));
+  // Preserve the original bytes on ANY failed attempt. Rewriting only the deferred tail would
+  // discard failed actions whenever a sibling succeeded. This is at-least-once retry, not an
+  // exactly-once or concurrent-capture protocol; successful actions may be fed again.
+  process.exit(0);
 }
 // Whatever the deadline cut off is WORK, not waste: it goes back on the front of the queue so the
 // next flush continues from there. Dropping it would turn a time limit into the same silent data

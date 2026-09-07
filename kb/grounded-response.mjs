@@ -4,7 +4,9 @@
  * The first version mirrors the existing wire contract. The implementation-truth
  * regression tightens it before this helper is wired into the server.
  */
-export function groundedToolResult({ body, grounding = null, implementation = null, extra = {} }) {
+import { buildRetrievalResult } from './retrieval-result.mjs';
+
+export function groundedToolResult({ body, grounding = null, implementation = null, extra = {}, query, k, results }) {
   const answer = String(body || '').trim();
   if (!answer) throw new Error('A grounded tool result requires an inspectable answer');
   return {
@@ -15,6 +17,7 @@ export function groundedToolResult({ body, grounding = null, implementation = nu
       ...(grounding ? { grounding } : {}),
       ...(implementation ? { implementation } : {}),
       ...extra,
+      ...(results ? { retrieval: buildRetrievalResult({ query, k, results }) } : {}),
     },
   };
 }

@@ -460,11 +460,11 @@ export function resolveMemoryDb(projectDir) {
   })[0];
 }
 
-function probeMemory(projectDir) {
+function probeMemory(projectDir, { now = Date.now() } = {}) {
   const db = resolveMemoryDb(projectDir);
   const probes = {};
   // compaction survival + session surfacing are filesystem facts, always checkable
-  const snapshot = inspectSessionSnapshots(projectDir);
+  const snapshot = inspectSessionSnapshots(projectDir, { now });
   const snapshotDetail = snapshot.kind === 'canonical'
     ? 'a fresh versioned PreCompact snapshot is present in .swarm/agentdb-sessions.jsonl'
     : snapshot.kind === 'legacy'
@@ -508,7 +508,7 @@ function probeMemory(projectDir) {
 
   const cp = robustRead(db, "SELECT max(updated_at) FROM memory_entries WHERE key LIKE 'project-state-current%';");
   if (cp.ok && cp.value) {
-    const ageH = (Date.now() - Number(cp.value) * (String(cp.value).length <= 10 ? 1000 : 1)) / 3.6e6;
+    const ageH = (now - Number(cp.value) * (String(cp.value).length <= 10 ? 1000 : 1)) / 3.6e6;
     probes.coverage = Number.isFinite(ageH) && ageH < 48
       ? { status: 'ok', detail: `project checkpoint present, ~${Math.max(0, ageH).toFixed(0)}h old` }
       : { status: 'warn', detail: 'project checkpoint present but stale (>2 days)' };

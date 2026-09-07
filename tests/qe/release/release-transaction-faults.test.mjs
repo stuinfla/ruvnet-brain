@@ -11,7 +11,7 @@ const BEFORE_BOUNDARIES = [
   'append:github-promote-intent', 'publishDraftNonLatest', 'append:github-promoted-nonlatest',
   'append:npm-promote-intent', 'promoteNpm', 'append:npm-promoted',
   'append:github-latest-intent', 'makeGithubLatest', 'append:defaults-promoted',
-  'append:finalize-intent', 'finalize', 'append:channels-converged',
+  'append:finalize-intent', 'append:channels-converged',
 ];
 
 const AFTER_SIDE_EFFECTS = [
@@ -20,16 +20,15 @@ const AFTER_SIDE_EFFECTS = [
   ['publishDraftNonLatest', 'githubPublished'],
   ['promoteNpm', 'npmLatest'],
   ['makeGithubLatest', 'githubLatest'],
-  ['finalize', 'publicReceiptExact'],
 ];
 
 describe('ADR-062 recovery transaction', () => {
-  it('runs the public host matrix once and never rebuilds candidate bytes', async () => {
+  it('converges channels without claiming or running public-host verification', async () => {
     const provider = new FakeReleaseProvider();
     const hosts = { calls: [], async verify({ source }) { this.calls.push(source); return { verdict: 'PASS' }; } };
     const final = await execute(provider, hosts);
     expect(final.state).toBe('channels-converged');
-    expect(hosts.calls).toEqual(['final']);
+    expect(hosts.calls).toEqual([]);
     expect(provider.calls.filter((call) => call === 'stageNpm')).toHaveLength(1);
   });
 
@@ -113,11 +112,11 @@ describe('ADR-062 recovery transaction', () => {
     expect(provider.npmLatest).toBe('10.0.0');
   });
 
-  it('revalidates terminal receipts and rejects public drift', async () => {
+  it('revalidates channel receipts and rejects provider drift', async () => {
     const provider = new FakeReleaseProvider();
     await execute(provider);
-    provider.publicHostsExact = false;
-    await expect(execute(provider)).rejects.toThrow('terminal release drift');
+    provider.githubLatest = provider.prior;
+    await expect(execute(provider)).rejects.toThrow('release state drift');
   });
 
   it.each([

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
+import { MANAGED_CLI_TOOLS } from '../../plugin/mcp/managed-cli-interface.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const SERVER = path.join(REPO, 'plugin/mcp/server.mjs');
@@ -214,7 +215,7 @@ rl.on('line', (line) => {
 
     expect(elapsedMs).toBeLessThan(500);
     expect(listed.result.tools.map((tool) => tool.name)).toEqual([
-      'search_ruvnet', 'ruvnet_cli_help', 'ruvnet_cli_run',
+      'search_ruvnet', ...MANAGED_CLI_TOOLS.map((tool) => tool.name),
     ]);
 
     const searched = await mcp.request('tools/call', {

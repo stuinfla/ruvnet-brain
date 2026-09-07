@@ -169,23 +169,15 @@ describe('automatic swarm slot recycling', () => {
     expect(result.stderr).toMatch(/Ready despite held-open stdin/);
   });
 
-  it('registers exactly one synchronous TeammateIdle hook through the stable spine', () => {
-    const { groups, hook } = recyclerRegistration();
-    expect(groups).toHaveLength(1);
-    expect(groups[0].matcher).toBeUndefined();
-    expect(hook).toEqual({
-      type: 'command',
-      command: 'node "${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs" swarm-slot-recycler',
-      timeout: 5,
-    });
-
+  it('retains the recycler in the explicit shim but registers no TeammateIdle hook', () => {
+    const registry = JSON.parse(fs.readFileSync(HOOKS, 'utf8'));
+    expect(registry.hooks).toEqual({});
     const shim = fs.readFileSync(SHIM, 'utf8');
     expect(shim).toMatch(/'swarm-slot-recycler':\s*\{[^}]*file:\s*'swarm-slot-recycler\.mjs'[^}]*mode:\s*'blocking'/s);
   });
 
-  it('preserves the recycler refusal through its registered stable-spine command', () => {
+  it('preserves the recycler refusal through direct explicit shim invocation', () => {
     task('team-a', 1, { subject: 'Registered path task' });
-    const { hook } = recyclerRegistration();
     const result = spawnSync(process.execPath, [SHIM, 'swarm-slot-recycler'], {
       cwd: REPO,
       input: payload(),
@@ -203,7 +195,7 @@ describe('automatic swarm slot recycling', () => {
     expect(result.stderr).toMatch(/Registered path task/);
   });
 
-  it('adds TeammateIdle WITHOUT reaching into any other event', () => {
+  it('leaves swarm-slot-recycler absent from every automatic event', () => {
     // THIS WAS A FROZEN SHA256 of the whole file minus TeammateIdle, and it is the restated-truth
     // failure ADR-065 is about: a digest cannot tell "someone broke an adjacent group" from "someone
     // legitimately edited one". Its only signal in practice was a FALSE RED on ADR-067 — the commit
@@ -213,14 +205,11 @@ describe('automatic swarm slot recycling', () => {
     // nowhere else. That fails on the mistake the digest was reaching for (a stray registration in
     // another event) and stays quiet for edits that are none of its business.
     const reg = JSON.parse(fs.readFileSync(HOOKS, 'utf8')).hooks;
-    expect(Object.keys(reg), 'the event this feature owns').toContain('TeammateIdle');
-    expect(reg.TeammateIdle.flatMap((g) => g.hooks.map((h) => h.command)))
-      .toEqual([`node "\${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs" swarm-slot-recycler`]);
-    const elsewhere = Object.entries(reg)
-      .filter(([event]) => event !== 'TeammateIdle')
+    expect(Object.keys(reg)).toEqual([]);
+    const anywhere = Object.entries(reg)
       .flatMap(([event, gs]) => gs.flatMap((g) => g.hooks.map((h) => ({ event, cmd: h.command }))))
       .filter((h) => h.cmd.includes('swarm-slot-recycler'));
-    expect(elsewhere, 'swarm-slot-recycler must be registered on TeammateIdle and nowhere else').toEqual([]);
+    expect(anywhere).toEqual([]);
   });
 
   it('teaches deterministic initial saturation and the completion-to-next-task transition', () => {
@@ -232,12 +221,10 @@ describe('automatic swarm slot recycling', () => {
     expect(playbook).toMatch(/Ruflo.*coordinat.*native host.*execut/is);
   });
 
-  it('reports the host boundary honestly: Claude enforces recycling; Codex is guidance-only', () => {
-    const playbook = fs.readFileSync(PLAYBOOK, 'utf8');
+  it('keeps explicit recycling available without automatic host registration', () => {
     const codex = JSON.parse(fs.readFileSync(CODEX_HOOKS, 'utf8'));
 
-    expect(playbook).toMatch(/Claude Code.*TeammateIdle.*enforc/is);
-    expect(playbook).toMatch(/Codex.*no.*TeammateIdle.*TaskCompleted.*hook.*guidance/is);
+    expect(fs.existsSync(SCRIPT)).toBe(true);
     expect(codex.hooks.TeammateIdle).toBeUndefined();
     expect(codex.hooks.TaskCompleted).toBeUndefined();
   });

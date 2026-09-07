@@ -1,0 +1,74 @@
+name: model-catalog-refresh
+
+# ADR-016 / issue #238: the 14-day truth wall needs an owner that can land fresh facts.
+# A weekly cadence leaves a full week to recover from a failed run before the wall expires.
+on:
+  schedule:
+    - cron: '13 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: model-catalog-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REFRESH_BRANCH: automation/model-catalog-refresh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Refresh and verify the same live facts
+        run: |
+          set -euo pipefail
+          npm run catalog:refresh
+          npm run catalog:verify
+
+      - name: Open or update the one protected refresh transaction
+        id: transaction
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- data/model-catalog.json data/openrouter-catalog-snapshot.json; then
+            echo "OpenRouter facts are unchanged; nothing to land."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$REFRESH_BRANCH:refs/remotes/origin/$REFRESH_BRANCH" || true
+          git checkout -B "$REFRESH_BRANCH"
+          git add data/model-catalog.json data/openrouter-catalog-snapshot.json
+          git commit -m "chore(catalog): refresh live OpenRouter facts"
+          git push --force-with-lease origin "HEAD:$REFRESH_BRANCH"
+
+          pr_number=$(gh pr list --head "$REFRESH_BRANCH" --base main --state open --json number --jq '.[0].number // empty')
+          if [ -z "$pr_number" ]; then
+            pr_url=$(gh pr create \
+              --base main \
+              --head "$REFRESH_BRANCH" \
+              --title "chore(catalog): refresh live OpenRouter facts" \
+              --body "Automated weekly refresh owned by ADR-016. The snapshot and catalog prices came from one live OpenRouter response and passed catalog:verify.")
+            pr_number=${pr_url##*/}
+          fi
+
+          echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+
+      - name: Leave the maintenance PR for deliberate qualification
+        env:
+          PR_NUMBER: ${{ steps.transaction.outputs.pr_number }}
+        run: echo "Maintenance PR $PR_NUMBER is ready for review; release qualification is a separate deliberate action."

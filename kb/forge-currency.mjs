@@ -26,6 +26,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { storeRoot, storesAt } from './store-root.mjs';
 
 const KB_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE_PATH = path.join(KB_DIR, 'SOURCE.json');
@@ -53,12 +54,9 @@ function run(bin, args, { timeout = 25000, cwd } = {}) {
 const git = (dir, args, opts) => run('git', ['-C', dir, ...args], opts);
 
 // ---------- the brain's KNOWN set (authoritative: the .rvf files it actually loads) ----------
-function brainKnownSet() {
+export function brainKnownSet(root = storeRoot()) {
   const known = new Set();
-  for (const f of fs.readdirSync(KB_DIR)) {
-    if (!f.endsWith('.rvf')) continue;
-    known.add(f.replace(/\.big\.rvf$/, '').replace(/\.rvf$/, '').toLowerCase());
-  }
+  for (const s of storesAt(root)) known.add(s.toLowerCase());
   if (fs.existsSync(SOURCE_PATH)) {
     try {
       const src = JSON.parse(fs.readFileSync(SOURCE_PATH, 'utf8'));
@@ -244,4 +242,6 @@ async function main() {
   }
 }
 
-main().catch((e) => die(`unexpected: ${e.message}`));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => die(`unexpected: ${e.message}`));
+}

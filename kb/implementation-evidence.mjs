@@ -82,6 +82,12 @@ export function assessImplementation(query, results) {
     // Require the same weakest-known-good relevance floor used by forge-ask-all's evidence grade.
     .filter((result) => result.evidenceClass === 'implementation' && Number(result.ceScore) >= 4)
     .map((result) => `${result.repo}/${result.path}`);
+  const retrievedImplementationSources = enriched
+    .filter((result) => result.evidenceClass === 'implementation')
+    .map((result) => `${result.repo}/${result.path}`);
+  const unprovenReason = required && !implementationSources.length
+    ? (retrievedImplementationSources.length ? 'insufficient-relevance' : 'no-implementation-source')
+    : null;
 
   return {
     results: enriched,
@@ -89,6 +95,8 @@ export function assessImplementation(query, results) {
       required,
       verdict: required ? (implementationSources.length ? 'proven' : 'unproven') : 'not-required',
       implementationSources,
+      retrievedImplementationSources,
+      unprovenReason,
     },
   };
 }
@@ -98,7 +106,11 @@ export function implementationNotice(implementation) {
   if (implementation.verdict === 'proven') {
     return `✅ IMPLEMENTATION EVIDENCE: PROVEN by ${implementation.implementationSources.join(', ')}.\n\n`;
   }
-  return '⛔ BUILT/SHIPPED CLAIM: NOT PROVEN. The retrieved material contains no implementation-bearing '
-    + 'source or manifest. ADRs and documentation below may describe design intent. Do not tell the '
+  const reason = implementation.unprovenReason === 'insufficient-relevance'
+    ? 'Implementation-bearing source or manifest was retrieved, but its relevance does not meet the proof threshold. '
+    : implementation.unprovenReason === 'no-implementation-source'
+      ? 'The retrieved material contains no implementation-bearing source or manifest. ADRs and documentation below may describe design intent. '
+      : 'The retrieved evidence does not establish the requested capability. ';
+  return '⛔ BUILT/SHIPPED CLAIM: NOT PROVEN. ' + reason + 'Do not tell the '
     + 'user this capability was built, shipped, implemented, deployed, or is available.\n\n';
 }

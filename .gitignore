@@ -39,6 +39,7 @@ node_modules
 # including, on 2026-07-21, live API keys echoed by a buggy diagnostic. It was only fenced by a
 # GLOBAL gitignore, which does not travel to a clone or another machine. Fenced here now.
 .swarm/
+.qa/
 .env
 .env.*
 !.env.example
@@ -65,6 +66,9 @@ data/described-baseline-results.json
 
 # vitest coverage output (build artifact)
 coverage/
+
+# Agentic-QE receipts and reports are run-local evidence, uploaded per CI job.
+.qe/
 
 # metaharness evolve artifacts (variants/runs/archive) — machine-local, regenerated
 .metaharness/

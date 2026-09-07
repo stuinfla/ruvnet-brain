@@ -93,6 +93,11 @@ export function buildLessonPresentation({
     inForce,
     blocking,
     blockCapable,
+    // Every lesson actually rendered to the user/model this call, full or compact — the frequency
+    // cap must charge both, or a lesson permanently trimmed to the compact line (e.g. it never wins
+    // the nudge budget against a higher-priority or cap-exempt lesson) nags on every qualifying event
+    // forever, uncounted, defeating RUVNET_LESSON_MAX_SHOWS the same way an uncapped full render would.
+    shown: [...inForce, ...compactExtras],
     body,
     advisoryContext: [...ADVISORY_APPLICATION_CONTRACT, body].join('\n'),
   };

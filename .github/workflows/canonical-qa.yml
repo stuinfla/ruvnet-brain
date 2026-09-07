@@ -1,0 +1,59 @@
+name: canonical-qa
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ruvnet-brain-canonical-qa-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-development:
+    if: github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run convergence:write
+      - run: npm run qa:pr
+
+  canonical-qa:
+    name: canonical-qa
+    if: always()
+    needs: qualify-development
+    runs-on: ubuntu-latest
+    timeout-minutes: 125
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require development qualification
+        if: github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          QUALIFICATION_RESULT: ${{ needs.qualify-development.result }}
+        run: test "$QUALIFICATION_RESULT" = success
+      - name: Verify already-qualified release source
+        if: github.event_name != 'pull_request' || (startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/qualified-candidate-check.mjs --sha "$CANDIDATE_SHA" --required-check canonical-qa --timeout-ms 7200000 --poll-ms 30000

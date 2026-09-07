@@ -24,23 +24,50 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 
-/** Parse the reader's stdout into structured citations. Never throws; unparseable input → []. */
+/**
+ * Parse the reader's stdout into structured citations. Never throws; unparseable input → [].
+ *
+ * The reader dumps each hit's full document body inline (`forge-ask-all.mjs`'s "----- full
+ * document -----" section), unescaped. A retrieved document can itself legitimately CONTAIN text
+ * shaped exactly like this format — this very file's own header comment is an example, and so is
+ * any doc, ADR, or transcript that quotes or discusses the reader's output. Two guards keep such
+ * look-alike text from being parsed as a real citation: (1) a block's `path`/`title` are read only
+ * from the span between its own header and the NEXT header, never past it, so a citation missing
+ * one is not silently filled in from something appearing later in the dump; (2) real hits are
+ * numbered `#1, #2, …` strictly in order with no repeats — embedded example text does not continue
+ * that sequence, so any header whose rank isn't exactly the next expected one is skipped. This is
+ * not airtight against a document engineered to predict and spoof the exact next rank (tracked as
+ * an open item, not solved here); it closes the realistic case this repo's own docs demonstrate.
+ */
 export function parseCitations(stdout) {
   const out = [];
   const text = String(stdout ?? '');
   const blockRe = /^#(\d+)\s+repo=(\S+)(?:\s+ce=(-?[\d.]+))?(?:\s+vec=(-?[\d.]+))?(?:\s+kind=(\S+))?/gm;
+  const nextHeaderRe = /^#\d+\s+repo=\S+/gm;
   let m;
+  let expectedRank = 1;
   while ((m = blockRe.exec(text)) !== null) {
-    const rest = text.slice(m.index);
-    const pathM = /^path\s*:\s*(.+)$/m.exec(rest);
-    const titleM = /^title\s*:\s*(.+)$/m.exec(rest);
+    const rank = Number(m[1]);
+    if (rank !== expectedRank) continue; // out-of-sequence header: a look-alike, not a real hit
+    const blockStart = m.index + m[0].length;
+    nextHeaderRe.lastIndex = blockStart;
+    const next = nextHeaderRe.exec(text);
+    const block = text.slice(blockStart, next ? next.index : text.length);
+    const pathM = /^path\s*:\s*(.+)$/m.exec(block);
+    const titleM = /^title\s*:\s*(.+)$/m.exec(block);
+    // Only a block that actually resolves to a path fills this rank slot. Advancing on rank match
+    // alone (before this check) let a headerless-of-path look-alike fragment (e.g. an incidental
+    // "#N repo=..." mention with no path/title following) consume the slot, permanently rejecting
+    // the REAL citation at that rank when it appeared later in the stream — a false negative on a
+    // genuinely grounded answer, worse than the fabrication this rank check exists to prevent.
     if (!pathM) continue;
+    expectedRank = rank + 1;
     const repo = m[2];
     const fullPath = pathM[1].trim();
     // Strip the repo prefix the reader adds, so the remainder can be matched against the store.
     const docPath = fullPath.startsWith(`${repo}/`) ? fullPath.slice(repo.length + 1) : fullPath;
     out.push({
-      rank: Number(m[1]),
+      rank,
       repo,
       ce: m[3] !== undefined ? Number(m[3]) : null,
       vec: m[4] !== undefined ? Number(m[4]) : null,

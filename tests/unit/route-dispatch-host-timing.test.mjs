@@ -45,19 +45,17 @@ function hookEnv(home) {
 }
 
 function runRegistered(input, home) {
-  const { hook } = registeredRouteHook();
-  return spawnSync('/bin/sh', ['-c', hook.command], {
+  return spawnSync('bash', [ROUTE_DISPATCH], {
     cwd: REPO,
     input,
     encoding: 'utf8',
-    timeout: hook.timeout * 1_000,
+    timeout: 5_000,
     env: hookEnv(home),
   });
 }
 
 function spawnRegistered(input, home, { closeInput = true } = {}) {
-  const { hook } = registeredRouteHook();
-  const child = spawn('/bin/sh', ['-c', hook.command], {
+  const child = spawn('bash', [ROUTE_DISPATCH], {
     cwd: REPO,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: hookEnv(home),
@@ -78,28 +76,11 @@ function waitFor(child) {
   });
 }
 
-describe.skipIf(process.platform === 'win32')('issue #84 — Agent/Task host timing contract', () => {
-  it('registers route-dispatch as advisory without changing adjacent hook registrations', () => {
-    const hooks = JSON.parse(fs.readFileSync(HOOKS_PATH, 'utf8')).hooks.PreToolUse;
-    const { group, hook, groupIndex } = registeredRouteHook();
-
-    expect(group.matcher).toBe('^(Task|Agent)$');
-    expect(hook.command).toMatch(/route-dispatch \|\| true$/);
-    expect(hook.timeout).toBe(5);
-    // ADJACENCY BY INDEX WAS THE WRONG ASSERTION. It pinned the POSITION of two unrelated
-    // registrations, so it broke the moment ADR-067 consolidated them — reporting a neighbour change
-    // as if this hook had regressed. The property it meant to protect is that registering
-    // route-dispatch did not disturb the OTHER PreToolUse entries, which is about their continued
-    // existence and shape, not their array index.
-    const others = hooks.filter((_, i) => i !== groupIndex);
-    expect(others.length, 'route-dispatch must not be the only PreToolUse registration').toBeGreaterThan(0);
-    for (const g of others) {
-      expect(g.matcher, 'every sibling matcher must still be anchored or explicitly allowlisted').toBeTruthy();
-      for (const h of g.hooks) {
-        expect(h.command, 'a sibling must still dispatch through the shim').toMatch(/hook-shim\.mjs/);
-        expect(h.timeout, 'and keep a bounded prompt-path timeout').toBeLessThanOrEqual(5);
-      }
-    }
+describe.skipIf(process.platform === 'win32')('issue #84 — explicit Agent/Task routing timing contract', () => {
+  it('retains route-dispatch as a dormant explicit evaluator with no host registration', () => {
+    const hooks = JSON.parse(fs.readFileSync(HOOKS_PATH, 'utf8')).hooks;
+    expect(hooks).toEqual({});
+    expect(fs.existsSync(ROUTE_DISPATCH)).toBe(true);
   });
 
   it('returns before its declared timeout and never claims a late block', () => {
@@ -146,22 +127,6 @@ describe.skipIf(process.platform === 'win32')('issue #84 — Agent/Task host tim
     expect(ourResult).toMatchObject({ status: 0, stdout: '', stderr: '' });
     expect(foreignResult).toMatchObject({ status: 0, stdout: 'foreign-ok', stderr: '' });
     expect(toolEndedAt).toBeLessThan(hooksCheckedAt);
-  });
-
-  it('finishes with a held-open stdin stream instead of reaching the host timeout', async () => {
-    const home = optedInHome();
-    const child = spawnRegistered(missingModelPayload(), home, { closeInput: false });
-
-    const watchdog = new Promise((_, reject) => {
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL');
-        reject(new Error('registered route-dispatch reached the 1s compatibility watchdog'));
-      }, 1_000);
-      timer.unref();
-    });
-    const result = await Promise.race([waitFor(child), watchdog]);
-
-    expect(result).toMatchObject({ status: 0, stdout: '', stderr: '' });
   });
 
   it('the script itself is advisory when invoked without the shim', () => {

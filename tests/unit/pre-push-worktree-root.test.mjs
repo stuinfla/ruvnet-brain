@@ -29,6 +29,10 @@ describe('pre-push gate worktree routing', () => {
       'process.stdout.write(`verified:${process.cwd()}`);',
     );
     fs.writeFileSync(path.join(repo, 'scripts', 'doc-currency.mjs'), 'process.exit(0);');
+    fs.writeFileSync(path.join(repo, 'scripts', 'sync-census.mjs'),
+      'process.stdout.write(`census:${process.cwd()}`); process.exit(Number(process.env.CENSUS_EXIT || 0));');
+    fs.writeFileSync(path.join(repo, 'scripts', 'sync-commands.mjs'),
+      'process.stdout.write(`commands:${process.cwd()}`); process.exit(Number(process.env.COMMANDS_EXIT || 0));');
 
     expect(spawnSync('git', ['init', '-q'], { cwd: repo }).status).toBe(0);
     fs.writeFileSync(path.join(repo, 'tracked.txt'), 'fixture\n');
@@ -50,6 +54,33 @@ describe('pre-push gate worktree routing', () => {
     });
 
     expect(result.status, result.error?.message || result.stderr).toBe(0);
-    expect(`${result.stdout}${result.stderr}`).toContain(`verified:${fs.realpathSync(repo)}`);
+    const output = `${result.stdout}${result.stderr}`;
+    expect(output).toContain(`verified:${fs.realpathSync(repo)}`);
+    expect(output).toContain(`census:${fs.realpathSync(repo)}`);
+    expect(output).toContain(`commands:${fs.realpathSync(repo)}`);
+
+    fs.writeFileSync(path.join(repo, 'tracked.txt'), 'second fixture\n');
+    expect(spawnSync('git', ['add', 'tracked.txt'], { cwd: repo }).status).toBe(0);
+    expect(spawnSync('git', [
+      '-c', 'core.hooksPath=/dev/null',
+      '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+      'commit', '-qm', 'test(git): exercise generated-surface failures',
+    ], { cwd: repo }).status).toBe(0);
+
+    const censusFailure = spawnSync('git', ['push', 'origin', 'HEAD:refs/heads/main'], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: { ...process.env, CENSUS_EXIT: '1' },
+    });
+    expect(censusFailure.status).not.toBe(0);
+    expect(`${censusFailure.stdout}${censusFailure.stderr}`).toMatch(/public census claims have drifted/i);
+
+    const commandsFailure = spawnSync('git', ['push', 'origin', 'HEAD:refs/heads/main'], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: { ...process.env, COMMANDS_EXIT: '1' },
+    });
+    expect(commandsFailure.status).not.toBe(0);
+    expect(`${commandsFailure.stdout}${commandsFailure.stderr}`).toMatch(/command aliases no longer share one body/i);
   });
 });

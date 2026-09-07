@@ -3,7 +3,9 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-20
+updated: 2026-09-07
+reviewed_digest: 41114c475529
+version: 1.1.2
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -19,6 +21,7 @@ governs:
   - plugin/.codex-plugin/plugin.json
   - plugin/hooks/codex-hooks.json
   - plugin/scripts/codex-hook-adapter.mjs
+  - plugin/scripts/codex-hook-events.mjs
   - plugin/scripts/codex-hook-wrapper.mjs
 ---
 
@@ -27,6 +30,11 @@ governs:
 **Status**: Implemented
 **Date**: 2026-07-24
 **Related**: ADR-023
+
+> **Reviewed 2026-09-04 (4.3.9 candidate).** The Codex plugin manifest moved only as a derived
+> release-version projection. Host registration, lifecycle wiring, stable entrypoints, and doctor
+> semantics are unchanged. Public availability remains unproven until the protected exact-SHA
+> publication and clean-host verification complete.
 
 
 > **Reviewed 2026-08-04 (4.0.9).** Governed code moved: `bin/install.mjs` now exits non-zero when `--update` lands nothing (issue #106), `kb/forge-update.mjs` releases its rollback on the no-op path and keeps it on the damaged path (#108), and `scripts/health-repair.mjs` no longer reports a hollow "fed 0" (#104). Checked against this decision: these changes implement its honesty requirement — no clause here is contradicted or superseded.
@@ -197,7 +205,8 @@ host-specific registration file. Every Codex command enters through the same ins
 <parent of active Codex home>/.cache/ruvnet-brain/codex-hook.mjs
 ```
 
-`wireCodexHost()` copies that self-contained wrapper atomically beside the Brain's stable cache.
+`wireCodexHost()` atomically copies the stable wrapper and colocates `development-maintenance.mjs`
+before it. Older installations without the helper cannot enforce development suspension until upgraded.
 With the default Codex home this remains `~/.cache/ruvnet-brain/codex-hook.mjs`; an isolated
 `CODEX_HOME` keeps the wrapper beside that isolated home rather than leaking state into the login
 home.
@@ -269,7 +278,23 @@ native Windows.
 - Make installer/doctor output distinguish active hooks from pending trust and print the exact
   `/hooks` review procedure while definitions are pending.
 
+## Recovery source review — 2026-09-07
+
+Development maintenance is a separate repository-local control that precedes lifecycle dispatch,
+including protections and capture; it is not Brain OFF. Both wrapper and adapter check maintenance,
+including the event's declared project directory. The adapter runs shared hook bodies from that
+directory when it exists. It normalizes raw-string and compatibility-object `apply_patch` inputs,
+includes move destinations, and permits Markdown stamping only for paths in the successful tool
+result. `route-dispatch` remains advisory; the wrapper must not represent it as a blocking wall.
+These source observations do not establish native Windows or public installed-host proof.
+
 ## Currency log
+
+| 2026-09-07 | Reviewed scheduler registration preserves custom Brain and KB paths; uninstall confirms scheduler absence before removing owned installation files; source digest 41114c475529. | `bin/install.mjs`; source review only, hosted and public acceptance remain pending. |
+
+| 2026-09-07 | Reviewed recovery source and corrected the implementation boundaries described above; source digest b981224bbfc7. | `plugin/scripts/codex-hook-adapter.mjs`; local source examination only, no renewed runtime or publication verification. |
+| 2026-08-31 | Re-read after the release-control cutover; the release-proof skill now routes operators through `release-cycle.yml`, while `protected-release.yml` remains an internal publisher boundary. Codex host wiring is unchanged. | `plugin/skills/release-proof/SKILL.md`; `.github/workflows/release-cycle.yml`; `scripts/release-convergence-watchdog.mjs`. |
+| 2026-08-30 | **`codex-hook-adapter.mjs`'s CONTEXT_EVENTS moved to a new pure sibling, `codex-hook-events.mjs`, so its own parity test can finally import it.** | Dream Cycle 2026-08-30 (cross-host-conformance / codex-parity, DEEP+SCAN): `tests/unit/codex-claude-hook-parity.test.mjs`'s "per event" proof carried its own hand-copied `CONTEXT_EVENTS`/`NO_CONTEXT_EVENTS` arrays rather than reading the adapter's real 6-item set, because importing the adapter directly executes its side-effecting top level (`fs.readFileSync(0, 'utf8')`, a synchronous stdin read) — the same import-time hazard the 2026-08-26 `brain-stamp.mjs` finding named. That hand-copy had already drifted: it listed 4 of the 6 real CONTEXT_EVENTS (missing `PermissionRequest`, `SubagentStart`) and 2 of the 4 real no-context, non-Stop events (missing `PostCompact`, `SubagentStop`), so this file's own "per event" claim was never once checked for those four — latent, since `codex-hooks.json` wires none of them today (see the 2026-08-19 row below for Codex's complete event set). `CONTEXT_EVENTS` and a new `ALL_HOST_EVENTS` catalogue now live in `codex-hook-events.mjs` (no imports, no I/O at module load), imported by both the adapter and the test; the test's two event lists are derived from them instead of hand-copied. Registration, wrapper, doctor lines and the adapter's actual behavior are unchanged — this closes a test-coverage gap in the parity proof, it does not change what ships. |
 | 2026-08-10 | **The Codex host's dependency copy is now DERIVED from server.mjs, and this ADR's contract is strengthened.** | The wiring hand-listed `managed-cli-interface.mjs` and `runtime-preferences.mjs` — a second copy of the server's own import graph. ADR-067 added one import and the Codex host shipped a server whose sibling was absent: `tests/unit/npm-tarball-codex.test.mjs` caught it on the packaging boundary as "no reply to initialize in 15s". `serverDependencies()` now walks the real imports transitively and preserves each specifier so `./x` and `../scripts/y` both land where the server looks. Registration, wrapper, adapter and doctor lines unchanged; what changed is that a future import cannot silently break this host. |
 | 2026-08-03 | Re-read Codex wrapper behavior against the packed 4.0.8 host proof; no contract change. | PR #100 exact-SHA release evidence is green; Windows unit remains the sole required red lane. |
 

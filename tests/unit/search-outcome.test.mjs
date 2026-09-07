@@ -79,7 +79,7 @@ describe('issue #132 — a routing decline is not an empty corpus', () => {
     // forge-mcp-all.mjs starts a server on import, so it cannot be imported here. This is the one
     // thing that must be checked in source: that the seam is actually wired.
     const server = fs.readFileSync(path.join(ROOT, 'kb', 'forge-mcp-all.mjs'), 'utf8');
-    expect(server).toMatch(/import \{ describeSearchOutcome \} from '\.\/search-outcome\.mjs'/);
+    expect(server).toMatch(/import \{[^}]*\bdescribeSearchOutcome\b[^}]*\} from '\.\/search-outcome\.mjs'/);
     expect(server).toMatch(/describeSearchOutcome\(\{/);
     expect(server, 'a leftover inline banner would drift from the tested one')
       .not.toMatch(/`Searched \$\{repos\.length\} RuvNet repos/);

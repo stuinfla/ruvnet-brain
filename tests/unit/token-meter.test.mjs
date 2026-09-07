@@ -103,7 +103,7 @@ describe('ground-ruvnet.sh — every fire appends one honest ledger line', () =>
   it('metering changes NOTHING about what the hook emits — the directives still reach stdout, exit 0', () => {
     const out = runGroundHook('implement the retry workflow for ruflo swarms');
     expect(out.status).toBe(0);
-    expect(out.stdout).toMatch(/APPLY THE PLAYBOOK/);
+    expect(out.stdout).not.toMatch(/APPLY THE PLAYBOOK/);
     expect(out.stdout).toMatch(/ground before you assert/);
   });
 
@@ -132,7 +132,7 @@ describe('ground-ruvnet.sh — every fire appends one honest ledger line', () =>
   it('RUVNET_BRAIN_METER=0 suppresses the write entirely, while the directives still emit', () => {
     const out = runGroundHook('implement the retry workflow', { env: { RUVNET_BRAIN_METER: '0' } });
     expect(out.status).toBe(0);
-    expect(out.stdout).toMatch(/APPLY THE PLAYBOOK/);
+    expect(out.stdout).not.toMatch(/APPLY THE PLAYBOOK/);
     expect(fs.existsSync(path.join(tmp, '.ruvnet-brain'))).toBe(false);
   });
 
@@ -147,7 +147,7 @@ describe('ground-ruvnet.sh — every fire appends one honest ledger line', () =>
     const out = runGroundHook('implement the retry workflow');
     fs.chmodSync(tmp, 0o755);
     expect(out.status).toBe(0);
-    expect(out.stdout).toMatch(/APPLY THE PLAYBOOK/);
+    expect(out.stdout).not.toMatch(/APPLY THE PLAYBOOK/);
     expect(noStrayDirs()).toBe(true);          // nothing written into the project, read-only or not
     expect(fs.existsSync(ledgerPath())).toBe(true); // and metering survives, because it lives elsewhere
   });

@@ -34,7 +34,7 @@ function defaultRun(command, args, options) {
   return spawnSync(command, args, { encoding: 'utf8', ...options });
 }
 
-export function publishCorpusSeed({
+export async function publishCorpusSeed({
   receiptFile,
   bundleFile,
   assetsDir,
@@ -45,7 +45,7 @@ export function publishCorpusSeed({
   const receiptPath = path.resolve(receiptFile || '');
   const bundlePath = path.resolve(bundleFile || '');
   if (!assetsDir || !policyFile) fail('publishing requires --assets and --policy for full receipt verification');
-  const receipt = verifyCorpusReceipt({
+  const receipt = await verifyCorpusReceipt({
     receiptFile: receiptPath,
     bundleFile: bundlePath,
     assetsDir,
@@ -95,7 +95,7 @@ function arg(name, fallback) {
 }
 
 async function main() {
-  const result = publishCorpusSeed({
+  const result = await publishCorpusSeed({
     receiptFile: arg('--receipt', 'dist/corpus-receipt.json'),
     bundleFile: arg('--bundle', 'dist/ruvnet-brain.zip'),
     assetsDir: arg('--assets'),

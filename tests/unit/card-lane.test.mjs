@@ -129,6 +129,14 @@ describe('answerFromCards — capability claims require implementation evidence'
     expect(hit.reason).toMatch(/implementation evidence/i);
   });
 
+  it('keeps single-document guide answers but routes multi-document requests to source retrieval', () => {
+    const query = 'How do I open the settings screen?';
+    expect(answerFromCards(query, KB, { allowGuideAnswers: true, k: 1 }).hit).toBe(true);
+    expect(answerFromCards(query, KB, { allowGuideAnswers: true, k: 10 })).toEqual({
+      hit: false, reason: 'multiple documents require source retrieval',
+    });
+  });
+
   it('allows bounded guide answers only when the caller explicitly enables the guide lane', () => {
     const cases = [
       ['Is this a chatbot, a database, or something else?', 'ruvnet-brain'],
@@ -372,6 +380,16 @@ describe('answerFromCards — NEGATIVE: silence-or-fallthrough, NEVER a fabricat
       expect(hit.hit, query).toBe(false);
       expect(hit.reason, query).toMatch(/source|implementation/i);
     }
+  });
+
+  it('never lets a named source path terminate in the generic repository card', () => {
+    const hit = answerFromCards(
+      'ruvnet-brain scripts/nightly-wrapper.sh run_once ingest-new-repos self-update primary checkout worktree',
+      KB,
+      { allowGuideAnswers: true },
+    );
+    expect(hit.hit).toBe(false);
+    expect(hit.reason).toMatch(/exact path|file query|source retrieval/i);
   });
 
   it('no card in this bundle ever cites a privately-fenced repo, even under adversarial phrasing', () => {

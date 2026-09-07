@@ -4,11 +4,12 @@
 // console reach the same `bin/install.mjs --enable-nightly/--disable-nightly` door; this adapter only
 // supplies structured status and captures its exit result for the console.
 
-import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { NIGHTLY_LABEL, nightlyArtifact, schedulerStatus } from './nightly-scheduler.mjs';
+export { NIGHTLY_LABEL, nightlyArtifact } from './nightly-scheduler.mjs';
 
 // ROOT is the tree that holds `bin/install.mjs`, and it is resolved by an EXACT layout test rather
 // than by `..` — because `..` means two different things since this file moved into the payload
@@ -44,34 +45,32 @@ const INSTALLER = path.join(ROOT, 'bin', 'install.mjs');
  * tests/unit/nightly-job-identity.test.mjs asserts the two are the same string, so a drift is a red
  * test rather than a capability that quietly disappears from the console.
  */
-export const NIGHTLY_LABEL = 'com.ruvnet.brain-update';
-
-export function nightlyArtifact({ env = process.env, platform = process.platform } = {}) {
-  const home = env.HOME || os.homedir();
-  return {
-    supported: platform === 'darwin',
-    platform,
-    path: path.join(home, 'Library', 'LaunchAgents', `${NIGHTLY_LABEL}.plist`),
-    label: NIGHTLY_LABEL,
-  };
-}
-
-export function nightlyStatus(options = {}) {
-  const artifact = nightlyArtifact(options);
-  if (!artifact.supported) {
-    return { state: 'unsupported', evidence: `No reversible scheduler adapter is implemented for ${artifact.platform}.`, artifact };
+function schedulerEnvironment(env) {
+  const fixtureRoot = env.RUVNET_CONSOLE_ROOT;
+  if (!fixtureRoot) return env;
+  if (env.RUVNET_BRAIN_TEST !== '1') {
+    throw new Error('RUVNET_CONSOLE_ROOT scheduler isolation requires RUVNET_BRAIN_TEST=1');
   }
-  const present = fs.existsSync(artifact.path);
-  return {
-    state: present ? 'on' : 'off',
-    evidence: present ? `LaunchAgent plist exists at ${artifact.path}` : `No LaunchAgent plist at ${artifact.path}`,
-    artifact,
-  };
+  if (!path.isAbsolute(fixtureRoot)) {
+    throw new Error('RUVNET_CONSOLE_ROOT must be an absolute path');
+  }
+  const isolatedHome = path.resolve(fixtureRoot);
+  if (isolatedHome === path.resolve(os.homedir())) {
+    throw new Error('RUVNET_CONSOLE_ROOT must not be the real user home in test mode');
+  }
+  return { ...env, HOME: isolatedHome, USERPROFILE: isolatedHome };
+}
+export function nightlyStatus(options = {}) {
+  const env = schedulerEnvironment(options.env || process.env);
+  const brainHome = options.brainHome || env.RUVNET_BRAIN_HOME
+    || path.join(env.HOME || env.USERPROFILE || '', '.cache', 'ruvnet-brain');
+  return schedulerStatus({ ...options, env, brainHome, kbDir: options.kbDir || env.RUVNET_BRAIN_KB,
+    testMode: options.testMode ?? env.RUVNET_BRAIN_SCHEDULER_TEST === '1' });
 }
 
 export function applyNightlyChoice(enabled, options = {}) {
   if (typeof enabled !== 'boolean') return { ok: false, log: 'nightly must be true or false' };
-  const env = options.env || process.env;
+  const env = schedulerEnvironment(options.env || process.env);
   const before = nightlyStatus({ ...options, env });
   if (!before.artifact.supported) return { ok: false, state: before, log: before.evidence };
   const run = spawnSync(process.execPath, [
@@ -92,7 +91,7 @@ export function applyNightlyChoice(enabled, options = {}) {
     before,
     after,
     log: ok
-      ? `Nightly refresh is ${desired}; verified from ${after.artifact.path}.`
+      ? `Nightly refresh is ${desired}; ${after.evidence}.`
       : `Nightly refresh did not reach ${desired}: ${run.error?.message || run.stderr?.trim() || run.stdout?.trim() || `exit ${run.status}`}`,
   };
 }

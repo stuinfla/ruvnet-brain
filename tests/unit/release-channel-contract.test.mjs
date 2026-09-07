@@ -8,14 +8,15 @@ const ROOT = path.resolve(import.meta.dirname, '../..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 describe('protected release channel contract', () => {
-  it('consumes a signed persisted payload before promoting GitHub, npm, then verifying', () => {
+  it('consumes a signed payload, promotes GitHub and npm, then stops at channel convergence', () => {
     const release = read('scripts/release.mjs');
     const transaction = read('scripts/release-transaction.mjs');
     const verifyPayload = release.indexOf('verifiedPayload = verifyPayload');
     const transactionStart = release.indexOf('const finalReceipt = await runReleaseTransaction');
     const github = transaction.indexOf('adapter.publishDraftNonLatest');
     const npm = transaction.indexOf('adapter.promoteNpm');
-    const verify = transaction.indexOf('adapter.finalize');
+    const channelsConverged = transaction.indexOf("append('channels-converged'", npm);
+    const publicFinalizer = read('scripts/public-verification-finalizer.mjs');
 
     expect(verifyPayload).toBeGreaterThanOrEqual(0);
     expect(transactionStart).toBeGreaterThan(verifyPayload);
@@ -23,7 +24,9 @@ describe('protected release channel contract', () => {
     expect(release).not.toContain("runOrDie('sign release bundle'");
     expect(github).toBeGreaterThanOrEqual(0);
     expect(npm).toBeGreaterThan(github);
-    expect(verify).toBeGreaterThan(npm);
+    expect(channelsConverged).toBeGreaterThan(npm);
+    expect(transaction).not.toContain('adapter.finalize');
+    expect(publicFinalizer).toContain('finalizeReleaseTransaction');
   });
 
   it('fails closed on tag/SHA mismatch and requires all signed assets', () => {

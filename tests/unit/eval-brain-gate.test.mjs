@@ -77,6 +77,32 @@ describe('gradeQuestion — one rule per stratum', () => {
     expect(gradeQuestion(q, { grounded: true, citations: cite('ruv-gists', 4), bannerPresent: false }).pass).toBe(false);
     expect(gradeQuestion(q, { grounded: true, citations: cite('ruflo', 4), bannerPresent: false }).pass).toBe(true);
   });
+  it('routed credits the citation verify-citation.mjs actually resolved (`receipt`), not merely ' +
+     'citations[0] — citationResolves() accepts the first RESOLVING hit, which can rank below an ' +
+     'unresolved (fabricated) top citation', () => {
+    // Top-ranked citation is unverified/fabricated (wrong repo); the SECOND citation is the one
+    // verify-citation.mjs actually resolved on disk, and it names the expected repo. This answer
+    // genuinely reached the right store — `routed` must credit that, not the fabricated top hit.
+    const qHit = { stratum: 'named', expectRepo: ['ruvector'] };
+    const citationsHit = [
+      { repo: 'concepts', fullPath: 'concepts/fake/path', ce: 5 },
+      { repo: 'ruvector', fullPath: 'ruvector/real/path', ce: 3 },
+    ];
+    const receiptHit = { repo: 'ruvector', path: 'ruvector/real/path' };
+    expect(gradeQuestion(qHit, { grounded: true, citations: citationsHit, receipt: receiptHit }).pass).toBe(true);
+
+    // Mirror case: the top-ranked citation coincidentally NAMES the expected repo but never
+    // resolved; the citation that actually grounded the answer is a DIFFERENT, unexpected repo.
+    // Crediting `routed` off the fabricated top hit would be a false pass with zero real evidence
+    // the expected repo answered anything.
+    const qMiss = { stratum: 'named', expectRepo: ['ruvector'] };
+    const citationsMiss = [
+      { repo: 'ruvector', fullPath: 'ruvector/fake/path', ce: 5 },
+      { repo: 'concepts', fullPath: 'concepts/real/path', ce: 3 },
+    ];
+    const receiptMiss = { repo: 'concepts', path: 'concepts/real/path' };
+    expect(gradeQuestion(qMiss, { grounded: true, citations: citationsMiss, receipt: receiptMiss }).pass).toBe(false);
+  });
 });
 
 describe('aggregate + gateAgainst — fail-closed promotion on Wilson lower bounds', () => {

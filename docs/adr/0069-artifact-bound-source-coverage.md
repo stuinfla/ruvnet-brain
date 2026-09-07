@@ -3,7 +3,9 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
-updated: 2026-08-21
+updated: 2026-09-07
+version: 1.1.0
+reviewed_digest: REVIEW_DIGEST_PENDING
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -14,6 +16,7 @@ governs:
   - scripts/ingest-gists.mjs
   - scripts/nightly-wrapper.sh
   - scripts/source-coverage.mjs
+  - scripts/release-projection.mjs
   - scripts/build-bundle.mjs
   - scripts/onboarding-console.mjs
   - scripts/console-runtime-identity.mjs
@@ -38,12 +41,32 @@ updated_at_source: authored-current
 
 **Status**: Proposed
 
+> **Reviewed 2026-09-07 (4.3.10 recovery).** `scripts/release-projection.mjs` now binds the
+> assembled runtime ledger to the exact public release ledger and validates coverage before archive
+> creation. Public verification requires the exact downloaded artifacts, and native scheduled-update
+> proofs retain raw installed coverage after each run. These implemented boundaries still require
+> hosted and public execution evidence. They do not establish fresh upstream ingestion; imported
+> corpus evidence retains its original provenance and upstream freshness remains UNKNOWN.
+
+> **Reviewed 2026-09-04 (authenticated recovery observation).** Supplying the workflow's read-scoped
+> GitHub token changes only release-asset observation reliability. Source enumeration and immutable
+> snapshot gaps remain open, so `Proposed` remains accurate.
+
+> **Reviewed 2026-09-04 (4.3.9 recovery).** Pinning the Claude marketplace to the exact candidate
+> checkout preserves the already-sealed source identity during public host verification. It does
+> not close this ADR's remaining enumeration and source-snapshot gaps; `Proposed` remains accurate.
+
+> **Reviewed 2026-09-04 (4.3.9 candidate).** The protected publication workflow changed only its
+> artifact-bound public host-verification transport and failure-receipt retention. It neither adds
+> signed source enumeration nor closes the immutable source-snapshot gaps below. `Proposed` remains
+> the honest status, and this review is not a source-coverage or publication verdict.
+
 A useful vertical slice is implemented, but the decision's release-proof
 contract is not. The generator, JSON/Markdown repository projections, strict candidate-CI call,
 bundle projections, installed command, and third Console page exist and have focused tests. Signed
 enumeration, a closed immutable candidate snapshot, routing/focused-QA receipts, signed expiring
-exemptions, and candidate → public artifact → clean install → managed-host generation coherence are
-still unimplemented. `Proposed` remains the only honest decision status until those release-blocking
+exemptions, and complete candidate → public artifact → clean install → managed-host generation coherence remain
+unproven; implemented transport and validators are not substitutes for completed execution evidence. `Proposed` remains the only honest decision status until those release-blocking
 acceptance paths pass against the actual artifact.
 
 **Date**: 2026-08-21
@@ -213,9 +236,31 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
   are mutation-tested. These scenarios remain unimplemented until a failing-then-passing test exists.
 
 ## Currency log
+| 2026-09-07 | Reviewed assembled runtime ledger identity and public installed coverage boundaries; source digest REVIEW_DIGEST_PENDING. | `scripts/release-projection.mjs`; source review does not claim full upstream freshness or public acceptance. |
+| 2026-08-31 | Re-read after the release-control cutover; the nightly wrapper still runs convergence checks, but the watchdog is now report-only and cannot dispatch a publisher or bypass the signed release coordinator. | `scripts/nightly-wrapper.sh`; `scripts/release-convergence-watchdog.mjs`; `.github/workflows/release-cycle.yml`; commit `e2e83c0`. |
+| 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence showed shell:false cannot assume an `npx` shim; the unit lane now invokes Vitest through Node while retaining the same full suite. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
+| 2026-08-31 | Reconciled after the main-branch merge and CI watchdog change; source coverage remains bound to the exact candidate artifact, while hosted long stages now emit bounded receipts. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; exact-SHA CI run `33358984585`. |
+
+| 2026-08-30 | Re-read after `abc1731` changed oracle source binding for squash-merged candidates; source coverage remains artifact-bound and the fetched source commit must still match its content digest. | `scripts/retrieval-canary.mjs`, `scripts/public-verification-inputs.mjs`, `.github/workflows/ci.yml`. |
+
+| 2026-08-30 | Release projection now retains seed-present excluded repository rows, includes derived stores in the public ledger, and supplies projection receipts before inventory validation. This closes the exact-SHA release-QE mismatch observed in the candidate build. | `scripts/release-projection.mjs`, `scripts/build-bundle.mjs`, `plugin/scripts/coverage-integrity.mjs` |
+| 2026-08-30 | Canonical CI now runs on pull requests targeting `main`, so release-QE and the other exact-SHA gates run before merge instead of only after the merge push. | `.github/workflows/ci.yml` |
+| 2026-08-30 | Projected seed validation now imports the canonical private-store fence into its temporary validation root; the public seed remains immutable and cannot be mistaken for the policy source. | `scripts/build-bundle.mjs`; `kb/PRIVATE-STORES.json`; exact-SHA release-QE. |
+| 2026-08-30 | Release projection now recomputes projected status totals and enumeration counts while preserving the full source-observation digest in `CORPUS-COVERAGE.json`. | `scripts/release-projection.mjs`; `plugin/scripts/coverage-integrity.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | The projected gist receipt is staged into the second-stage validation root before inventory validation, so projection and archive partition hashes include the same in-tree evidence. | `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | Replayed the complete projection-to-archive boundary locally; both roots now produce the identical public inventory partition hash. | `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; local two-stage proof `566fe4f5bb435f11c8a924a8cef9b8c251c508051653121f39e7533536455daf`. |
+
+| 2026-08-30 | Rechecked artifact-bound source coverage after release-QE separated current observation from the immutable seed; projection and bundle assembly now bind the correct evidence plane and source policy registry. | `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; `data/source-coverage.json`; exact-SHA release-QE. |
+
+| 2026-08-30 | Clarified the two coverage planes: the complete source observation remains immutable evidence, while release `COVERAGE.json` is projected from actual seed RVFs and byte-bound generation records. | Issue #201; `scripts/source-coverage.mjs`; `scripts/release-projection.mjs`; `.github/workflows/ci.yml`. |
+
+| 2026-08-30 | Re-read the governed source-coverage and release-boundary files after the convergence-manifest and public-verification wiring changes. The broader signed coverage projection remains explicitly unbuilt; the manifest records that status instead of implying completion. | `9f3cb36`, `scripts/convergence-manifest.mjs`, `.github/workflows/ci.yml`; no absent coverage command or projection was reintroduced. |
+
+| 2026-08-30 | The CI process now uses a bounded canonical QA runner while preserving source-coverage work as an explicit release/nightly concern. | `.github/workflows/ci.yml`, `scripts/qa-runner.mjs`, and `docs/QA-RELEASE-PROCESS.md` keep coverage evidence tied to the candidate rather than silently treating unrelated PR checks as release proof. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-26 | `scripts/brain-stamp.mjs`'s `builtFromSha` now prefers `kb/RVF-GENERATIONS.json`'s recorded `sourceCommit` over the local clone's live HEAD, via a new pure `scripts/brain-stamp-resolve.mjs` helper; falls back to live HEAD only when no generation record exists. Does not itself satisfy this ADR's still-unbuilt signed enumeration, closed snapshot, or `data/source-coverage.json` generator. | Dream Cycle 2026-08-26 (issue #175) confirmed live the exact "clone freshness is not artifact freshness" gap this ADR's 2026-08-21 audit named against `scripts/brain-stamp.mjs`: the repo's own committed `kb/RVF-GENERATIONS.json` already disagreed with a live-HEAD read for `synthlang` (`sourceCommit` `69599563...`) and `autogenous` (`sourceCommit` `b5c6e838...`), the same two repos this ADR's Context section cites. |
 | 2026-08-21 | Re-read the emergency release rail and kept the broader source-coverage system explicitly unbuilt. | `.github/workflows/ci.yml` does not call the absent `scripts/source-coverage.mjs` or claim its absent projections. It uses the committed immutable seed identity plus strict repaired generation receipts to restore service; this ADR's complete coverage generator remains deferred. |
 | 2026-08-21 | Corrected the earlier implementation claim: the coverage command and Console projection remain planned, not shipped. | The named `plugin/commands/coverage.md`, `plugin/scripts/coverage.mjs`, and Console coverage files do not exist in this candidate. The emergency release implements corpus-seed and ledger identity only; the broader coverage read model remains Proposed and is explicitly deferred until after service is restored. |
 | 2026-08-21 | Re-read the governed release paths after emergency corpus convergence. | `scripts/build-bundle.mjs` now fails closed on seed/ledger byte and metadata disagreement and `.github/workflows/ci.yml` consumes an exact sealed seed. This advances the artifact boundary but does not satisfy this ADR's unbuilt UI, exemptions, or full coverage-report contract. |

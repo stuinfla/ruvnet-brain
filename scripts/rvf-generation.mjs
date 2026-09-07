@@ -125,6 +125,7 @@ export function verifyRvfGenerations(dir, {
 export function validateSelectedRvfGenerations(dir, {
   selectedStores = canonicalRvfStores(dir),
   privateStores = [],
+  excludedStores = [],
   version,
   releaseTag,
 } = {}) {
@@ -133,13 +134,17 @@ export function validateSelectedRvfGenerations(dir, {
   const selected = [...new Set(selectedStores)].sort();
   const selectedLower = new Map(selected.map((name) => [name.toLowerCase(), name]));
   const privateLower = new Set(privateStores.map((name) => String(name).toLowerCase()));
+  const excludedLower = new Set(excludedStores.map((name) => String(name).toLowerCase()));
   if (version !== undefined && manifest.brainVersion !== version) failures.push(`brainVersion=${manifest.brainVersion}, expected ${version}`);
   if (releaseTag !== undefined && manifest.releaseTag !== releaseTag) failures.push(`releaseTag=${manifest.releaseTag}, expected ${releaseTag}`);
   for (const name of selected) if (privateLower.has(name.toLowerCase())) failures.push(`${name}: private store selected`);
+  for (const name of selected) if (excludedLower.has(name.toLowerCase())) failures.push(`${name}: excluded store selected`);
   for (const [store, row] of Object.entries(manifest.stores || {})) {
     const canonical = selectedLower.get(store.toLowerCase());
     if (!canonical) {
-      if (!privateLower.has(store.toLowerCase())) failures.push(`${store}: extra generation record`);
+      if (!privateLower.has(store.toLowerCase()) && !excludedLower.has(store.toLowerCase())) {
+        failures.push(`${store}: extra generation record`);
+      }
       continue;
     }
     if (canonical !== store) failures.push(`${store}: alias differs from selected store ${canonical}`);
@@ -159,7 +164,8 @@ export function validateSelectedRvfGenerations(dir, {
     if (typeof row?.builtUtc !== 'string' || !Number.isFinite(Date.parse(row.builtUtc))) failures.push(`${store}: invalid builtUtc`);
   }
   for (const name of selected) if (!manifest.stores?.[name]) failures.push(`${name}: no exact generation record`);
-  const publicRows = Object.keys(manifest.stores || {}).filter((name) => !privateLower.has(name.toLowerCase()));
+  const publicRows = Object.keys(manifest.stores || {}).filter((name) => !privateLower.has(name.toLowerCase())
+    && !excludedLower.has(name.toLowerCase()));
   if (publicRows.length !== selected.length) failures.push(`store count=${publicRows.length}, selected ${selected.length}`);
-  return { manifest, selectedStores: selected, failures };
+  return { manifest, selectedStores: selected, excludedStores: [...excludedLower].sort(), failures };
 }

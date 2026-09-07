@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    { "store": "agentic-qe", "repository": "proffesor-for-testing/agentic-qe" },
+    { "store": "cognitum-cogs", "repository": "cognitum-one/cogs" },
+    { "store": "cognitum-learn", "repository": "stuinfla/cognitum-learn" },
+    { "store": "cognitum-learn-site", "repository": "stuinfla/cognitum-learn-site" },
+    { "store": "cognitum-meta-llm-docs", "repository": "cognitum-one/meta-llm-docs" },
+    { "store": "cognitum-meta-proxy-dist", "repository": "cognitum-one/meta-proxy-dist" },
+    { "store": "cognitum-one-sensor-primer", "repository": "stuinfla/cognitum-one-sensor-primer" },
+    { "store": "cognitum-ruos", "repository": "cognitum-one/ruOS" },
+    { "store": "cognitum-support", "repository": "cognitum-one/support" },
+    { "store": "ruvnet-brain", "repository": "stuinfla/ruvnet-brain" }
+  ]
+}

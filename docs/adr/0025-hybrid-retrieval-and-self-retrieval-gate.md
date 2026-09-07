@@ -3,7 +3,7 @@ id: ADR-025
 title: Meeting-recall fix — unique-path chunking + transcript-scoped BM25 candidates (global hybrid reverted; scoped hybrid shipped)
 status: Accepted
 date: 2026-07-18
-updated: 2026-07-19
+updated: 2026-08-23
 authors: [Stuart Kerr, Claude Code]
 tags: [retrieval, hybrid, bm25, self-retrieval, flywheel, forge-ask]
 supersedes: []
@@ -150,11 +150,18 @@ adds real discriminating power on top of cosine rather than only rescuing pathol
 
 ## Open items (deliberately not done tonight)
 
-1. **MMR wiring.** `hybridScores`/`bm25Score`/`multiFieldBM25` are ported and live; `mmrRerank`
-   (diversity re-ranking, `mmrLambda = 0.7` per ADR-082) is **not yet called** anywhere in
-   `forge-ask.mjs`. Candidate pools can currently still be dominated by near-duplicate chunks from the
-   same document region. This is the direct continuation of §5 Fix A's "guarantee per-store fair
-   representation" idea from `BRAIN-WRITE-READ-ARCHITECTURE.md`.
+1. **MMR wiring — corrected 2026-08-23.** This item previously said `hybridScores`/`bm25Score`/
+   `multiFieldBM25` "are ported and live" and that `mmrRerank` was "not yet called" — implying all four
+   existed as code, just unwired. Checked against `kb/forge-hybrid.mjs`'s real exports tonight: only
+   `bm25Score` (via `tokenize`/`buildCorpusStats`) is actually live, through `forge-ask-all.mjs`'s
+   `KB_TRANSCRIPT_STORES`-scoped candidate pool. `hybridScores` and `multiFieldBM25` ARE ported (they
+   exist, exported) but have **zero callers anywhere in this repo** — dead code, not "live". `mmrRerank`
+   was **never ported at all**; it was named only in this file's own header comment (now fixed) as
+   something the port covers. Candidate pools can currently still be dominated by near-duplicate chunks
+   from the same document region — MMR diversity re-ranking remains genuinely unimplemented future work,
+   the direct continuation of §5 Fix A's "guarantee per-store fair representation" idea from
+   `BRAIN-WRITE-READ-ARCHITECTURE.md`. A new test, `tests/unit/forge-hybrid-port-claims.test.mjs`, binds
+   this file's own "what the port covers" comment to its real exports going forward.
 2. **Cross-encoder rerank interaction untested.** `forge-ask-all.mjs`'s Level-2 cross-encoder rerank
    runs on top of whatever Level-1 `searchKb` returns; hybrid changes what surfaces into that pool, but
    the cross-store rerank behavior with hybrid on has not been separately measured (Mechanism A from
@@ -169,10 +176,15 @@ adds real discriminating power on top of cosine rather than only rescuing pathol
    grid search against this KB's own stores. The measured lift above confirms they help; it does not
    confirm they're optimal here. `KB_ALPHA`/`KB_SUBJECT_W` are exposed as env vars specifically so a
    future grid search can sweep them without a code change.
-5. **`KB_HYBRID` defaults off.** Nothing in the shipped nightly build or the public bundle turns hybrid
-   on by default yet — it must be explicitly set. Turning it on by default is a follow-up decision, not
-   taken here, pending the nightly gate (item 3) existing to catch a regression if it's wrong for some
-   store shape not yet exercised.
+5. **`KB_HYBRID` defaults off — corrected 2026-08-23.** This previously implied `forge-ask.mjs` reads
+   `KB_HYBRID` and defaults it off. It does not read that variable at all — the global-hybrid path it
+   once gated was reverted (see "Outcome" above). The only remaining `KB_HYBRID` reference in this repo
+   is `kb/self-retrieval-bench.mjs`'s console label, which (until tonight) silently printed `mode=HYBRID`
+   when the flag was set even though the benchmark's underlying `searchKb()` call is dense-only either
+   way — an unfalsifiable witness. That script now refuses (`resolveHybridMode()`, tested) instead of
+   mislabeling. "Turn hybrid on by default" therefore has no live switch to flip yet; it is blocked on
+   items 1–4 above (wiring, cross-encoder interaction, the nightly gate, a grid search), not merely a
+   flag flip.
 
 ## Consequences
 

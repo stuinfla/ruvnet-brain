@@ -3,7 +3,7 @@ id: ADR-049
 title: The console rebuild — explain every section, scope every suggestion, and make the safe ones checkable
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-21
+updated: 2026-08-30
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, console, advocacy, capability, cache, honesty]
 supersedes: []
@@ -119,6 +119,8 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
   precisely the failure ADR-055 was written to end, found by the drift check rather than by a reader.
 
 ## Currency log
+
+| 2026-08-30 | The configurator’s ordinary settings are rendered and saved through one validated user-settings endpoint; stale explanatory text was corrected. | `console/app.js` and `scripts/onboarding-console.mjs` now agree with `plugin/scripts/runtime-preferences.mjs` consumers. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|

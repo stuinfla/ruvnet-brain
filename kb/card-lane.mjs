@@ -495,7 +495,9 @@ function isGuideQuestion(query) {
   return /\b(?:what\s+is|what\s+does|what\s+happens|how\s+do\s+i|which\s+store|difference\s+between|fit\s+together|good\s+enough|chatbot|database|settings\s+screen|install\s+is\s+healthy|work\s+in\s+codex|turn\s+the\s+brain\s+off|green\s+test\s+run\s+prove|every\s+capability\s+described\s+in\s+an?\s+adr|what\s+exact\s+evidence)\b/i.test(q);
 }
 
-export function answerFromCards(query, dir, { allowGuideAnswers = false } = {}) {
+export function answerFromCards(query, dir, { allowGuideAnswers = false, k = 1 } = {}) {
+  // A single overview card cannot satisfy a request for multiple source documents.
+  if (k > 1) return { hit: false, reason: 'multiple documents require source retrieval' };
   const q = String(query || '').trim();
   if (!q) return { hit: false, reason: 'empty query' };
   if (requiresImplementationProof(q) && !(allowGuideAnswers && isGuideQuestion(q))) {
@@ -507,6 +509,11 @@ export function answerFromCards(query, dir, { allowGuideAnswers = false } = {}) 
   const scopedPackage = q.match(/@[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+/i)?.[0];
   if (scopedPackage) {
     return { hit: false, reason: `scoped package detail requires source retrieval (${scopedPackage})` };
+  }
+  const exactArtifact = /(?:^|[\s'"`])(?:\.{0,2}[\\/])?(?:[A-Za-z0-9_.-]+[\\/])+[A-Za-z0-9_.-]+(?:$|[\s'"`,:;?)])/u.test(q)
+    || /\b[A-Za-z0-9_.-]+\.(?:c|cc|cpp|go|h|hpp|java|js|jsx|mjs|cjs|md|py|rs|sh|sql|toml|ts|tsx|yaml|yml)\b/i.test(q);
+  if (exactArtifact) {
+    return { hit: false, reason: 'exact path or file query requires source retrieval' };
   }
   const sourceDetail =
     /\b(?:adr[-\s_]?\d+|api|sdk|backends?|exports?|registered|source code|code path|(?:code|working)\s+example|(?:three|\d+)\s+lines?\s+of\s+code|snippet|actually\s+mutate|supported?\s+topolog(?:y|ies)|topolog(?:y|ies)\s+does\s+it\s+support|package names?|crate names?|workspace|supersedes?|deployment\s+process|exact[-\s]+artifact|github\s+checks?|independent\s+graders?)\b/i;

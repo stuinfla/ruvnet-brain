@@ -3,7 +3,7 @@ id: ADR-063
 title: The managed-memory boundary is enforceable, opt-in, and default-off
 status: Accepted
 date: 2026-08-06
-updated: 2026-08-19
+updated: 2026-08-30
 authors: [Stuart Kerr, Claude Code]
 tags: [enforcement, memory, agentdb, hooks, consent, issue-103]
 supersedes: []
@@ -155,6 +155,8 @@ line-scan miss as a standing regression so nobody "simplifies" it back.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-08-30 | The Stable Spine passes the active generation identity into SessionStart without changing the managed-memory refusal boundary. | `plugin/scripts/hook-shim.mjs` and `tests/unit/hook-shim.test.mjs` cover the version handoff; `plugin/scripts/hijack-ruvnet.sh` remains the sole opt-in enforcement body. |
+| 2026-08-22 | Re-read the managed-memory enforcement boundary after the spend guard learned to distinguish a `.swarm/memory.db` path from a Ruflo swarm command. | `9d06cb5` fixes the false classification without authorizing raw memory mutation or widening the guarded store scope; focused policy tests and both-host hook conformance pass. The project checkpoint still uses explicit-path `ruflo memory store` / exact-key retrieval, and this ADR's opt-in/default-off consent boundary is unchanged. |
 | 2026-08-19 | The boundary gained its INSTRUCTION-LEVEL half, and `plugin/scripts/hijack-ruvnet.sh`'s refusal now names the store the caller actually targeted plus `ruflo memory retrieve`. Enforcement semantics are UNCHANGED: `advise` still refuses nothing, and an unrelated application DB is still never in scope. | Issue #140 (@sparkling) measured the contradiction this ADR left open: the shipped guidance still taught the bypass — `PLAYBOOK.md` "confirm the exact row through SQLite", `SKILL.md` `.swarm/memory.db` mtime, and (unreported) `plugin/scripts/ground-ruvnet.sh` "→ exact SQL row" on every engaged turn. The refusal previously hardcoded `<project>/.swarm/memory.db` while the reporter was at `~/.claude-flow/user-memory.db`, so the "sanctioned path" named the wrong file. The conflicting 2026-08-13 raw-SQL rule was retired on evidence, not preference: ruflo v3.32.34 — "No manual SQL is required" — plus a live 3.38.12 re-measure showing VALUE / `[WARN] Key not found` / `[ERROR] file is not a database`, with the caveat that exit status is 0 even on `[ERROR]`. |
 | 2026-08-14 | hijack-ruvnet still enforces the boundary unchanged; it now runs inside a gate whose budget provably fits the host timeout, so it can no longer be silently killed mid-decision. |
 | 2026-08-06 | Governed hook surface moved into the payload (`plugin/scripts/`) under ADR-065; the boundary itself is UNCHANGED and still ships default-off. | The move touches `hook-shim.mjs` and `session-start-core.mjs`, which this ADR governs, so the boundary was re-verified live against the shipped `hijack-ruvnet.sh` rather than assumed: `advise` (the shipped default) → exit 0 on a managed-store `sqlite3` call; `read-only` → exit 2 on a write, exit 0 on a read; `block` → exit 2; and `sqlite3 -json <managed store>` — the exact invocation the #102 matcher used to miss — now blocks. Prose mentioning sqlite and an unrelated `/tmp/myapp.db` both stay exit 0. Reporter's open criterion is unchanged and still unmet: `tests/unit/managed-memory-boundary.test.mjs` asserts `code === 2`, a deny-shaped response, not proof the command did not execute. |

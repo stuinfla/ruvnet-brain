@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
+    // Bound diagnostic rendering only: a failed whole-source assertion previously emitted
+    // over 70k tokens. Assertions and their exit status remain unchanged.
+    diff: { truncateThreshold: 40, truncateAnnotation: '... diff truncated; inspect the named source and assertion' },
     // This suite launches many real Git, shell, Codex, and Ruflo subprocesses. Unbounded file
     // parallelism starves the very watchdogs and latency probes the tests are measuring: the same
     // files pass alone, while the default full run produced ten timeout/latency failures. Five
@@ -60,7 +63,7 @@ export default defineConfig({
       // code, not source — excluded from the denominator like tests/.
       // The visual console is shipped product code too. Omitting it let source-string assertions
       // look green while the browser behavior itself contributed nothing to the release denominator.
-      include: ['scripts/**/*.mjs', 'kb/*.mjs', 'bin/*.mjs', 'plugin/mcp/*.mjs', 'console/**/*.js'],
+      include: ['scripts/**/*.mjs', 'kb/*.mjs', 'bin/*.mjs', 'plugin/mcp/*.mjs', 'plugin/scripts/**/*.mjs', 'console/**/*.js'],
       exclude: ['kb/node_modules/**', 'kb/clones/**', 'kb/test-guard-injection.mjs'],
       // json-summary writes coverage/coverage-summary.json, which scripts/claims-verify.mjs's
       // verifyCoverageBadge RE-DERIVES the README badge % from (it no longer string-matches a

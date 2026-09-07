@@ -69,6 +69,8 @@ const argv = process.argv.slice(2);
  * every entry on every run, below, so they cannot rot unseen.
  */
 const STANDALONE = [
+  ['gate', 'retired automatic-hook helper retained for explicit use and tests'],
+  ['version-bump-gate', 'retired automatic interceptor; explicit version checks own release validation'],
   ['lesson-seed', 'one-shot seeding, run deliberately by a human'],
   ['lesson-ratify', 'the human control surface — a CLI is its entire purpose'],
   ['stamp-sweep', 'ADR-056 §2 — the ONE-TIME backfill half of the stamp rule. A human runs it once '
@@ -95,14 +97,20 @@ const STANDALONE = [
     + 'RVFs to RVF-GENERATIONS.json and optionally prunes legacy sidecars; build-bundle.mjs consumes '
     + 'and validates the resulting manifest, so scheduling this destructive migration would be wrong'],
   ['release', 'the ship path, run by a human'],
+  ['corpus-seed-publish', 'privileged manual corpus publication wrapper; corpus-seed.yml explicitly '
+    + 'stops at sealed preparation with contents:read. This entry validates receipt/archive inputs '
+    + 'and delegates mutation to release.mjs protected authority. No operational caller is registered; '
+    + 'classification does not claim publication works or has occurred'],
+  ['gate', 'manual benchmark harness: rebuilds concepts and runs three routing proof batteries; '
+    + 'no workflow or scheduler invokes this expensive command'],
+  ['execution-preflight', 'external orchestration boundary — invoked by the host before consequential Ruflo/Codex execution; no in-repo caller exists because the host supplies the live Brain and AgentDB receipts'],
   ['fix-workstream', 'session-supervised coordination CLI run explicitly by the integration owner or an '
     + 'isolated writing agent to start and hand off a fix lane. Scheduling it would violate its safety '
     + 'boundary: it prepares evidence but never merges, pushes, publishes, deletes, or cleans worktrees'],
-  // Run by the launchd nightly, which lives OUTSIDE this repo — so no in-repo caller can exist.
-  // This is the one category the scanner genuinely cannot reach, and saying so is the honest form.
-  ['self-update', 'launchd nightly (out-of-repo scheduler)'],
+  ['self-update', 'author-run candidate rebuild; --apply is guarded by worktree-integrity.mjs and is not scheduled'],
+  ['ingest-new-repos', 'author-run corpus expansion; --apply is guarded by worktree-integrity.mjs and is not scheduled'],
   ['count-chunks', 'human-run CLI — recount + restamp chunk surfaces (--check for drift); no scheduler'],
-  ['brain-stamp', 'invoked by self-update.mjs:249, the nightly launchd driver (com.ruvnet.brain-nightly)'],
+  ['brain-stamp', 'invoked by the author-run self-update.mjs candidate builder'],
   ['lesson-promote', 'human-run CLI — promotion is manual (--apply); no scheduler yet (automation is ADR-029 #4, open)'],
   ['behavioral-l1-l4', 'behavioural harness invoked by its own test file — not a product path'],
   // A measurement harness, not a product path: it answers "would bounding the cross-encoder pool
@@ -129,8 +137,7 @@ const STANDALONE = [
     + 'com.stuartkerr.clear-claude-tmp.plist is loaded and its ProgramArguments invoke this exact file'],
   ['nightly-gists', 'launchd nightly 21:47 (out-of-repo scheduler) — confirmed live: '
     + 'com.ruvnet.brain-gists.plist is loaded and its ProgramArguments invoke this exact file'],
-  ['nightly-wrapper', 'launchd nightly 03:15 (out-of-repo scheduler) — confirmed live: '
-    + 'com.ruvnet.brain-nightly.plist is loaded and its ProgramArguments invoke this exact file'],
+  ['nightly-wrapper', 'author-run maintenance harness, deliberately unscheduled; refuses primary, nested, and dirty worktrees'],
   ['routing-flywheel', 'launchd nightly 04:45 --dry-run (out-of-repo scheduler) — confirmed live: '
     + 'com.ruvnet.routing-flywheel.plist is loaded and its ProgramArguments invoke this exact file'],
   ['install-npx-witness', 'one-shot idempotent installer for the com.ruvnet.npx-witness launchd job, '
@@ -298,8 +305,21 @@ const INVENTORY_ROOTS = [
  * invoker outside the roots proves the ROOTS are incomplete — the fix is to add the root, never to
  * write an exemption. That rule caught its own author within a minute of the gate first running.
  */
-const CALLER_ROOTS = ['scripts', 'plugin', 'console', 'bin', '.github', '.claude', 'package.json'];
+// `dream.config.json` is executable configuration, not documentation: the Dream compiler runs its
+// controlPlaneProbes and evaluatorEntrypoints. Excluding it made two real scheduled callers look
+// dead while the same scanner already trusted workflow YAML and package.json command manifests.
+const CALLER_ROOTS = [
+  'scripts', 'plugin', 'console', 'bin', '.github', '.claude', 'package.json', 'dream.config.json',
+];
 const CALLER_EXTS = new Set(['.mjs', '.js', '.sh', '.json', '.html', '.yml', '.yaml']);
+export const REQUIRED_OPERATIONAL_EXPORTS = [
+  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'syncCorpusInputs' },
+  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'materializeGistReceipts' },
+  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'observeAndMaterializeGistReceipts' },
+  { rel: 'scripts/corpus-aggregates.mjs', symbol: 'rebuildCorpusAggregates' },
+  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'reconcileCorpusUntilStable' },
+  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'reconcileAndPrepareCorpusCandidate' },
+];
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))
   || f.includes(`${path.sep}tests${path.sep}`) || f.startsWith(`tests${path.sep}`);
@@ -363,8 +383,11 @@ function callerFiles(repo = REPO) {
  */
 export function callerPattern(fileName) {
   const q = fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Filenames must be complete tokens: gates.mjs is not corpus-aggregates.mjs,
+  // and version.mjs.map is not a caller of version.mjs.
+  const bounded = `(?<![\\w.-])${q}(?![\\w.-])`;
     // eslint-disable-next-line no-useless-escape
-  return new RegExp(`["'\`][^"'\`\\n]*${q}|(?:node|bash|sh|exec|spawn\\w*)\\s+[^\\n]*${q}`);
+  return new RegExp(`["'\`][^"'\`\\n]*${bounded}|(?:node|bash|sh|exec|spawn\\w*)\\s+[^\\n]*${bounded}`);
 }
 
 /**
@@ -505,7 +528,33 @@ export function callersOf(mod, files, repo = REPO) {
   return hits;
 }
 
-export function audit({ repo = REPO, standalone = STANDALONE, held = HELD } = {}) {
+export function operationalExportAudit({ repo = REPO, required = REQUIRED_OPERATIONAL_EXPORTS } = {}) {
+  const files = callerFiles(repo);
+  const rows = required.map(({ rel, symbol }) => {
+    const sourceFile = path.join(repo, rel);
+    let source = '';
+    try { source = fs.readFileSync(sourceFile, 'utf8'); } catch { /* reported as missing below */ }
+    const quoted = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const exported = new RegExp(`\\bexport\\s+(?:async\\s+)?function\\s+${quoted}\\s*\\(`).test(source);
+    if (!exported) return { rel, symbol, state: 'missing', callers: [] };
+    const declaration = new RegExp(`\\bexport\\s+(?:async\\s+)?function\\s+${quoted}\\s*\\(`, 'g');
+    const invocation = new RegExp(`\\b${quoted}\\s*\\(`);
+    const callers = [];
+    for (const file of files) {
+      const callerRel = path.relative(repo, file).split(path.sep).join('/');
+      if (isTestFile(callerRel)) continue;
+      let body = '';
+      try { body = stripComments(fs.readFileSync(file, 'utf8'), path.extname(file)); } catch { continue; }
+      body = body.replace(declaration, 'export function __operational_definition__(');
+      if (invocation.test(body)) callers.push(callerRel);
+    }
+    return { rel, symbol, state: callers.length ? 'wired' : 'unwired', callers };
+  });
+  return { rows };
+}
+
+export function audit({ repo = REPO, standalone = STANDALONE, held = HELD,
+  operationalExports = REQUIRED_OPERATIONAL_EXPORTS } = {}) {
   const dupes = [];
   const seen = new Map();
   for (const [name, why] of standalone) {
@@ -532,13 +581,15 @@ export function audit({ repo = REPO, standalone = STANDALONE, held = HELD } = {}
           state = 'manual';
           const list = names.map((n) => `\`${n}\``).join(', ');
           why = `defined as npm script ${list} and invoked by NOTHING automated — reachable only by a `
-            + `human typing \`npm run ${names[0]}\`. Built and correct; not in any ship path.`;
+            + `human typing \`npm run ${names[0]}\`. This wiring audit does not establish operational `
+            + `correctness.`;
         }
       }
     }
     rows.push({ ...m, state, callers, ...(why ? { why } : {}) });
   }
-  return { rows, dupes, inventory: all.length };
+  const operationalRows = operationalExportAudit({ repo, required: operationalExports }).rows;
+  return { rows, operationalRows, dupes, inventory: all.length };
 }
 
 /**
@@ -567,9 +618,12 @@ export function audit({ repo = REPO, standalone = STANDALONE, held = HELD } = {}
  * exists to prevent), different surface. Two new, narrow predicates, each modelling the REAL
  * mechanism Claude Code / the lesson dispatcher actually uses, not a generic text search:
  *
- *   CHECK B — HOOK WIRING. Walks the real reachability chain: plugin/hooks/hooks.json (what we
- *   ship) → hook-shim.mjs's own TABLE (resolving its id-based indirection explicitly, since a hook
- *   id like "route-dispatch" is not the string "route-dispatch.sh") → this repo's own
+ *   CHECK B — HOOK WIRING. Walks the real reachability chain for both supported hosts:
+ *   plugin/hooks/hooks.json (Claude Code) → hook-shim.mjs's own TABLE (resolving its id-based
+ *   indirection explicitly, since a hook id like "route-dispatch" is not the string
+ *   "route-dispatch.sh"); and plugin/hooks/codex-hooks.json → bin/install.mjs's Stable Spine copy
+ *   (codex-hook-wrapper.mjs installed as codex-hook.mjs) → codex-hook-adapter.mjs. It also reads
+ *   this repo's own
  *   .claude/settings.json → the user's REAL ~/.claude/settings.json (what is actually installed on
  *   THIS machine — never checked before). One further hop is closed by a small fixed-point pass
  *   (the unprompted-speech runtime spawns anticipate.sh/lesson-hooks.sh as candidate producers),
@@ -671,6 +725,28 @@ function hookShimIdIn(cmd) {
   return m ? m[1] : null;
 }
 
+/** The dispatch id after Codex's inline bootstrap and numeric timeout. Same grammar as hook-registry. */
+function codexHookIdIn(cmd) {
+  const m = cmd.match(/"\s+\d+\s+([a-zA-Z][\w-]*)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Derive the Stable Spine wrapper copy from the installer source. The Codex manifest names the
+ * durable installed target (`codex-hook.mjs`), while the repository inventory contains its source
+ * (`codex-hook-wrapper.mjs`). Both names plus the actual copy operation must be present; otherwise
+ * there is no proven bridge and the hook stays unwired.
+ */
+function installedCodexHookWrapper(repo) {
+  let src = '';
+  try { src = fs.readFileSync(path.join(repo, 'bin/install.mjs'), 'utf8'); } catch { return null; }
+  const stripped = stripComments(src, '.mjs');
+  const source = stripped.match(/hookWrapperSource\s*=\s*path\.join\([^\n]*['"]([\w.-]+\.mjs)['"]\)/)?.[1];
+  const target = stripped.match(/const codexHookWrapperPath[\s\S]{0,260}?['"]([\w.-]+\.mjs)['"]\)/)?.[1];
+  const copiesSource = /fs\.copyFileSync\(hookWrapperSource,\s*tmp\)/.test(stripped);
+  return source && target && copiesSource ? { source, target } : null;
+}
+
 /** hook-shim.mjs's own dispatch TABLE: id -> file. Parsed, not re-implemented — it IS the authority. */
 function hookShimTable(repo) {
   let src = '';
@@ -691,16 +767,27 @@ function hookHeaderDeclares(src) { return HOOK_EVENT_RE.test(src.slice(0, 1600))
 
 /**
  * CHECK B — HOOK WIRING. See the file-level comment above for the full reasoning. Walks the real
- * chain from the real entry points (plugin/hooks/hooks.json, this repo's .claude/settings.json, the
- * user's actual ~/.claude/settings.json) through hook-shim.mjs's id-based indirection, then closes
- * one further hop with a small fixed-point pass restricted to files already proven reachable.
+ * chain from the real entry points (both plugin hook manifests, this repo's .claude/settings.json,
+ * the user's actual ~/.claude/settings.json) through each host's real indirection, then closes one
+ * further hop with a small fixed-point pass restricted to files already proven reachable.
  */
 export function hookWiringAudit({
   repo = REPO,
   homeSettingsFile = path.join(os.homedir(), '.claude', 'settings.json'),
   held = HOOK_HELD,
 } = {}) {
+  const retirementFiles = [
+    path.join(repo, 'plugin/hooks/hooks.json'),
+    path.join(repo, 'plugin/hooks/codex-hooks.json'),
+    path.join(repo, '.claude/settings.json'),
+    path.join(repo, '.codex/hooks.json'),
+  ];
+  const automaticHooksRetired = retirementFiles.every((file) => {
+    const doc = readJsonSafe(file);
+    return doc && doc.hooks && commandStrings(doc.hooks).length === 0;
+  });
   const table = hookShimTable(repo);
+  const codexWrapper = installedCodexHookWrapper(repo);
   const reached = new Map(); // basename -> Set(reason)
   const add = (name, reason) => {
     if (!name) return;
@@ -708,16 +795,21 @@ export function hookWiringAudit({
     reached.get(name).add(reason);
   };
 
-  const scanConfig = (file, label) => {
+  const scanConfig = (file, label, { codex = false } = {}) => {
     const doc = readJsonSafe(file);
     if (!doc || !doc.hooks) return;
     for (const cmd of commandStrings(doc.hooks)) {
-      for (const b of basenamesIn(cmd)) add(b, label);
-      const id = hookShimIdIn(cmd);
-      if (id && table[id]) add(table[id], `${label} (hook-shim id "${id}")`);
+      const basenames = basenamesIn(cmd);
+      for (const b of basenames) add(b, label);
+      const id = codex ? codexHookIdIn(cmd) : hookShimIdIn(cmd);
+      if (id && table[id]) add(table[id], `${label} (${codex ? 'Codex dispatch' : 'hook-shim'} id "${id}")`);
+      if (codex && codexWrapper && basenames.includes(codexWrapper.target)) {
+        add(codexWrapper.source, `${label} via bin/install.mjs Stable Spine copy (${codexWrapper.target})`);
+      }
     }
   };
   scanConfig(path.join(repo, 'plugin/hooks/hooks.json'), 'plugin/hooks/hooks.json');
+  scanConfig(path.join(repo, 'plugin/hooks/codex-hooks.json'), 'plugin/hooks/codex-hooks.json', { codex: true });
   scanConfig(path.join(repo, '.claude/settings.json'), '.claude/settings.json (this repo)');
   scanConfig(homeSettingsFile, '~/.claude/settings.json (this machine)');
 
@@ -747,6 +839,11 @@ export function hookWiringAudit({
     const isReached = reached.has(f);
     if (!declared && !isReached) continue; // not hook-intended at all — outside the census
     if (isReached) rows.push({ file: f, state: 'wired', sources: [...reached.get(f)] });
+    else if (automaticHooksRetired && declared) rows.push({
+      file: f,
+      state: 'retired',
+      why: 'automatic Brain hook registries are intentionally empty; body retained for audit or explicit-command reuse',
+    });
     else if (held[f]) rows.push({ file: f, state: 'held', why: held[f] });
     else rows.push({ file: f, state: 'unwired' });
   }
@@ -793,13 +890,15 @@ const invokedDirectly = process.argv[1]
   && path.resolve(process.argv[1]).endsWith(`wired-check${path.extname(process.argv[1])}`);
 
 if (invokedDirectly) {
-  const { rows, dupes, inventory } = audit();
+  const { rows, operationalRows, dupes, inventory } = audit();
   const by = (s) => rows.filter((r) => r.state === s);
   const unwired = by('unwired');
+  const operationalUnwired = operationalRows.filter((row) => row.state !== 'wired');
 
   const hookAudit = hookWiringAudit();
   const hookBy = (s) => hookAudit.rows.filter((r) => r.state === s);
   const hookUnwired = hookBy('unwired');
+  const hookRetired = hookBy('retired');
 
   const lessonAudit = lessonTriggerAudit();
 
@@ -812,6 +911,16 @@ if (invokedDirectly) {
     if (unwired.length) {
       console.log(`\n  A module with no caller is not a feature. Either wire it to a real user path,`);
       console.log(`  or add it to STANDALONE in this file WITH A TRUE REASON.\n`);
+    }
+
+    console.log(`  ${operationalRows.length} release-critical operational export(s) checked · `
+      + `${operationalUnwired.length} UNWIRED\n`);
+    for (const row of operationalUnwired) {
+      console.log(`    ✗ ${row.rel}#${row.symbol} — exported, but no production invocation reaches it`);
+    }
+    if (operationalUnwired.length) {
+      console.log('\n  Importing or re-exporting a function is not operation. A release-critical export must');
+      console.log('  be invoked through a production path whose module is itself wired.\n');
     }
 
     // Every exemption, every run. v1 never printed these, so 3 false reasons rotted unseen for a
@@ -830,10 +939,10 @@ if (invokedDirectly) {
     if (dupes.length) console.log(`  ✗ DUPLICATE exemption(s): ${dupes.join(', ')}\n`);
 
     // ── CHECK B: HOOK WIRING ──────────────────────────────────────────────────────────────────
-    console.log(`\n  ── HOOK WIRING — plugin/scripts/*.sh|*.mjs vs plugin/hooks/hooks.json, `
+    console.log(`\n  ── HOOK WIRING — plugin/scripts/*.sh|*.mjs vs plugin/hooks/{hooks,codex-hooks}.json, `
       + `.claude/settings.json, ~/.claude/settings.json ──\n`);
     console.log(`  ${hookAudit.rows.length} hook-intended script(s) in the census`);
-    console.log(`    ${hookBy('wired').length} wired · ${hookBy('held').length} held · `
+    console.log(`    ${hookBy('wired').length} wired · ${hookRetired.length} retired · ${hookBy('held').length} held · `
       + `${hookUnwired.length} UNWIRED\n`);
 
     for (const u of hookUnwired) {
@@ -845,6 +954,8 @@ if (invokedDirectly) {
     }
 
     for (const h of hookBy('held')) console.log(`    ⏸ plugin/scripts/${h.file}\n       ${h.why}\n`);
+
+    for (const r of hookRetired) console.log(`    ○ plugin/scripts/${r.file}\n       ${r.why}\n`);
 
     for (const w of hookBy('wired')) {
       console.log(`    ✓ plugin/scripts/${w.file}\n       via ${w.sources.join('; ')}`);
@@ -871,6 +982,6 @@ if (invokedDirectly) {
     }
   }
 
-  const bad = unwired.length || dupes.length || hookUnwired.length;
+  const bad = unwired.length || operationalUnwired.length || dupes.length || hookUnwired.length;
   process.exit(argv.includes('--check') && bad ? 1 : 0);
 }

@@ -103,9 +103,9 @@ test('the North Star recommendation is runnable — it was not, and that was the
   expect(plan.exec.needsReceipt, 'a fleet-wide change must record WHICH stores it touched, or its undo is a guess').toBeTruthy();
 });
 
-test('the capability checkbox is runnable — enable:memory-distillation resolves to distill-project.mjs, scoped to the server\'s own project, with a real undo', () => {
+test('project distillation stays explicitly runnable but is not offered without an available undo', () => {
   const ids = allOfferableIds();
-  expect(ids.includes('enable:memory-distillation'), 'the capability recommendation was not constructed at all').toBeTruthy();
+  expect(ids.includes('enable:memory-distillation'), 'an unavailable inverse must not be offered as reversible').toBe(false);
   const plan = planFor('enable:memory-distillation');
   expect(plan, 'enable:memory-distillation has no remedy — a checkbox with no executor behind it').toBeTruthy();
   expect(plan.exec.script).toBe('scripts/distill-project.mjs');
@@ -114,6 +114,8 @@ test('the capability checkbox is runnable — enable:memory-distillation resolve
   // See remedy-registry.mjs's own comment on this remedy for why that distinction matters.
   expect(plan.exec.usesServerProject, 'must be scoped to the server\'s project, never left to default to REPO').toBeTruthy();
   expect(plan.undo.kind).toBe(UNDO_KINDS.RESTORE_PROJECT_DISTILL);
+  expect(plan.undo.available).toBe(false);
+  expect(plan.autoEligible).toBe(false);
 });
 
 test('repair:memory-index routes to the database repair, never to a package sync', () => {

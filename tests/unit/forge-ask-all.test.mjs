@@ -96,6 +96,15 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     for (const r of out.results) expect(['safla', 'daa']).toContain(r.repo);
   });
 
+  it.each([[undefined, 64], [12, 12], [2, 10]])('uses bounded candidate depth %s while preserving requested result count', async (pool, depth) => {
+    const d = mkdirWith(['sample.rvf']);
+    vi.mocked(searchKb).mockImplementation(async () => Array.from({ length: 20 }, (_, i) => hit({ path: `doc-${i}.md` })));
+    const out = await searchAll({ dir: d, query: 'general question', k: 10, repos: ['sample'],
+      ...(pool === undefined ? {} : { pool }) });
+    expect(searchKb.mock.calls[0][0]).toMatchObject({ k: depth, n: depth });
+    expect(out.results.length).toBeLessThanOrEqual(10);
+  });
+
   it('honors k — never returns more than k results', async () => {
     const d = mkdirWith(['a.rvf', 'b.rvf', 'c.rvf']);
     vi.mocked(searchKb).mockResolvedValue([hit(), hit()]);
@@ -147,6 +156,96 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     const out = await searchAll({ dir: d, query: 'q', repos: ['daa'] });
     expect(out.repos).toEqual(['daa']);
     expect(vi.mocked(searchKb).mock.calls.every(([a]) => a.name === 'daa')).toBe(true);
+  });
+
+  it.each([
+    ['agentx', 'In the agentx project, what shared comment state, data schemas, and DOM update behavior do its web pages depend on?'],
+    ['cognitum-meta-proxy-dist', 'In the cognitum-meta-proxy-dist repository, what is meta-proxy-dist, what problem does it solve, and how is it intended to be used?'],
+  ])('keeps an explicit natural project scope bounded to %s without requiring a capability card', async (repo, query) => {
+    const d = mkdirWith([`${repo}.rvf`, 'unrelated.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name, path: `${name}/README.md` })]);
+    vi.mocked(rerankPairs).mockImplementation(async (_q, candidates) =>
+      candidates.map((candidate) => ({ ...candidate, ceScore: 1 })));
+
+    const out = await searchAll({ dir: d, query, allowFullCorpus: false });
+
+    expect(out.repos).toEqual([repo]);
+    expect(vi.mocked(searchKb).mock.calls.map(([args]) => args.name)).toEqual([repo]);
+    expect(out.routing).toMatchObject({ attempted: true, accepted: true, confidence: 'named' });
+  });
+
+  it.each([
+    ['fact', 'What fact supports this vector-search claim?'],
+    ['app', 'How does this app work in the current project?'],
+  ])('does not treat the generic short name %s as a natural project scope', async (repo, query) => {
+    const d = mkdirWith([`${repo}.rvf`, 'unrelated.rvf']);
+    vi.mocked(searchKb).mockResolvedValue([hit()]);
+
+    const out = await searchAll({ dir: d, query, allowFullCorpus: false });
+
+    expect(out.repos).toEqual([]);
+    expect(vi.mocked(searchKb)).not.toHaveBeenCalled();
+    expect(out.routing).toMatchObject({ attempted: true, accepted: false, fallback: 'ask-to-narrow' });
+  });
+
+  it.each(['project', 'repo', 'repository'])('explicit short-store %s context takes precedence over an overlapping card', async (noun) => {
+    const d = mkdirWith(['tiny.rvf', 'other.rvf']);
+    fs.writeFileSync(path.join(d, 'capability-cards.md'), '## other\nAcoustic tomography calibration sensor reconstruction.\n');
+    vi.mocked(searchKb).mockResolvedValue([hit()]);
+    const out = await searchAll({ dir: d,
+      query: `In the tiny ${noun}, how does other handle acoustic tomography calibration sensor reconstruction?`,
+      allowFullCorpus: false });
+    expect(out.repos).toEqual(['tiny']);
+    expect(searchKb.mock.calls.map(([args]) => args.name)).toEqual(['tiny']);
+    expect(out.routing.confidence).toBe('named');
+  });
+
+  it('routes an exact deployed store without a card or a project keyword', async () => {
+    const d = mkdirWith(['sensor-manual.rvf', 'unrelated.rvf']);
+    vi.mocked(searchKb).mockResolvedValue([hit()]);
+    const out = await searchAll({ dir: d, query: 'In sensor-manual, which store dimensions are recorded?', allowFullCorpus: false });
+    expect(out.repos).toEqual(['sensor-manual']);
+    expect(searchKb.mock.calls.map(([args]) => args.name)).toEqual(['sensor-manual']);
+  });
+
+  it.each(['relevant', 'irrelevant', 'outage'])('bounds ambiguous metadata routing and independently verifies %s source evidence', async (mode) => {
+    const d = mkdirWith(['manual.rvf', 'card-one.rvf', 'card-two.rvf', 'other.rvf']);
+    fs.writeFileSync(path.join(d, 'manual.meta.json'), JSON.stringify({ entries: {
+      one: { title: 'Acoustic tomography calibration', preview: 'How acoustic tomography calibration reconstructs scans.' },
+    } }));
+    fs.writeFileSync(path.join(d, 'capability-cards.md'), [
+      '## card-one', 'Acoustic tomography calibration source tools.',
+      '## card-two', 'Acoustic tomography calibration source tools.',
+    ].join('\n'));
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => {
+      if (mode === 'outage') throw new Error('store unavailable');
+      return [hit({ repo: name })];
+    });
+    vi.mocked(rerankPairs).mockImplementation(async (_query, rows) => rows.map((row) => ({
+      ...row, ceScore: mode === 'relevant' ? 5 : -10,
+    })));
+    const out = await searchAll({ dir: d,
+      query: 'Explain acoustic tomography calibration with reconstructed scans and longitudinal patient measurement protocols.',
+      allowFullCorpus: false });
+    expect(searchKb.mock.calls.length).toBeGreaterThan(0);
+    expect(searchKb.mock.calls.length).toBeLessThanOrEqual(3);
+    expect(searchKb.mock.calls.map(([args]) => args.name)).not.toContain('other');
+    if (mode === 'relevant') expect(out.results.length).toBeGreaterThan(0);
+    else if (mode === 'irrelevant') {
+      expect(out.evidence.grade).toBe('insufficient_evidence');
+      expect(out.results.every((row) => row.ceScore === -10)).toBe(true);
+    } else expect(out.results).toEqual([]);
+    if (mode === 'outage') expect(Object.values(out.perRepo).every((value) => value.startsWith('ERR:'))).toBe(true);
+  });
+
+  it('never widens an explicit source scope using matching metadata elsewhere', async () => {
+    const d = mkdirWith(['chosen.rvf', 'tempting.rvf']);
+    fs.writeFileSync(path.join(d, 'tempting.meta.json'), JSON.stringify({ entries: {
+      one: { title: 'Acoustic tomography calibration', preview: 'Acoustic tomography calibration' },
+    } }));
+    vi.mocked(searchKb).mockResolvedValue([hit()]);
+    await searchAll({ dir: d, query: 'Acoustic tomography calibration', repos: ['chosen'], allowFullCorpus: false });
+    expect(searchKb.mock.calls.map(([args]) => args.name)).toEqual(['chosen']);
   });
 
   it('is resilient: a repo whose retrieval THROWS is recorded as an error, not a crash', async () => {

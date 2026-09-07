@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { judge, transitions, OK, MISSING, NEVER_RAN, STALE, FAILING } from '../../scripts/nightly-watchdog.mjs';
+import { judge, productSchedulerVerdict, transitions, OK, MISSING, NEVER_RAN, STALE, FAILING } from '../../scripts/nightly-watchdog.mjs';
 
 const NOW = new Date('2026-07-13T12:00:00Z');
 const JOB = { label: 'com.test.job', maxAgeHours: 26, what: 'x', schedule: 'daily' };
@@ -70,6 +70,19 @@ describe('transitions — page on CHANGE, because a nightly alarm is an ignored 
     ];
     const fired = transitions(results, { a: OK, b: FAILING, c: FAILING, d: OK }).map((r) => r.label);
     expect(fired).toEqual(['a', 'c']);
+  });
+});
+
+describe('installed product scheduler projection', () => {
+  it.each([
+    [{ state: 'off', evidence: 'absent' }, MISSING],
+    [{ state: 'on', runHealth: { state: 'never-ran', evidence: 'none' } }, NEVER_RAN],
+    [{ state: 'on', runHealth: { state: 'failed', evidence: 'red' } }, FAILING],
+    [{ state: 'on', runHealth: { state: 'stale', evidence: 'old' } }, STALE],
+    [{ state: 'on', runHealth: { state: 'ok', evidence: 'fresh' } }, OK],
+    [{ state: 'on', runHealth: { state: 'running', evidence: 'active' } }, OK],
+  ])('maps scheduler and atomic refresh receipt state without a second identity', (status, expected) => {
+    expect(productSchedulerVerdict(status)).toMatchObject({ label: 'com.ruvnet.brain-update', state: expected });
   });
 });
 

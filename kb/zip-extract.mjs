@@ -186,7 +186,7 @@ function safeJoin(destDir, name) {
 
 /**
  * Extract `zipPath` into `destDir`, overwriting existing files (idempotent — the `-o` of
- * `unzip -q -o`). Returns { entries, files, bytes, crcChecked }.
+ * `unzip -q -o`). Returns { entries, entryNames, files, bytes, crcChecked }.
  * Throws an Error naming the archive and the offending entry on ANY problem.
  */
 export async function extractZip(zipPath, destDir) {
@@ -322,7 +322,13 @@ export async function extractZip(zipPath, destDir) {
       files++;
       bytes += tally.bytes;
     }
-    return { entries: entries.length, files, bytes, crcChecked: Boolean(crc32) };
+    return {
+      entries: entries.length,
+      entryNames: entries.map((entry) => entry.name),
+      files,
+      bytes,
+      crcChecked: Boolean(crc32),
+    };
   } catch (err) {
     // Always name the archive: "extraction failed" without the file is the message this whole
     // change exists to stop shipping.

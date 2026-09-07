@@ -70,6 +70,7 @@
  * Everything here is READ-ONLY. It observes; it never installs, enables, or writes.
  */
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -78,7 +79,7 @@ import { fileURLToPath } from 'node:url';
 // (issues #112, #113): the name of the nightly job the installer loads, and which hooks a session
 // really has wired. Both are imported from the modules that own them, statically — a missing sibling
 // here is a broken build caught by tests, not a runtime degradation to paper over.
-import { NIGHTLY_LABEL } from './nightly-controller.mjs';
+import { nightlyStatus } from './nightly-controller.mjs';
 import { buildRegistry, REPO } from './hook-registry.mjs';
 
 const HOME = os.homedir();
@@ -418,29 +419,11 @@ export const CAPABILITIES = [
   {
     key: 'memory-distillation',
     label: 'Memory distillation',
-    whatItBuysYou: 'Loose notes from past sessions get mined into reusable patterns, so your AI recalls the lesson instead of re-reading every old note to find it.',
+    whatItBuysYou: 'Loose notes from past sessions can be mined into reusable patterns. Automatic undo is unavailable, so the Console does not offer a one-click change.',
     scope: SCOPE.PROJECT,
-    // The offer points at scripts/distill-project.mjs, NOT at bare `ruflo memory distill run`, and the
-    // difference is the whole reason ADR-047 was rejected. Both duelists found the same hole: the
-    // registry offers `turnOn` commands whose promised undo lives on a DIFFERENT execution path than
-    // the action actually handed to the user. Here that was literal — the inverse advertised for
-    // distillation restores snapshots that `health-repair.mjs --distill-fleet` takes, while this line
-    // used to hand over the raw command, which (verified against `--help`) takes no snapshot at all.
-    // Run it, dislike the result, and there was nothing to go back to.
-    //
-    // The wrapper sequences rUv's own commands so the operation is reversible: WAL-safe
-    // `ruflo memory backup` FIRST (cp on a live WAL DB silently amputates the newest transactions —
-    // this project has lost data that way), a durable fsync'd receipt fail-closed BEFORE any mutation,
-    // `distill run --db` scoped to THIS project rather than whatever the cwd implies, and a verified
-    // pattern delta reported as a measurement. `--restore` is the tested inverse.
-    //
-    // PROVEN end to end against the real store, 2026-07-24: 644 → 648 patterns (+4), restore → 644,
-    // re-run → 648, five durable receipts, $0.0000. This is the ONE capability whose undo has actually
-    // been run rather than merely promised — which is precisely what makes it the only one offerable.
-    turnOn: selfTurnOn(
-      'Mine this project\'s stored memories into reusable patterns (snapshots first; reversible)',
-      'distill-project.mjs',
-    ),
+    // The explicit distill-project command snapshots first, but --restore refuses unsafe
+    // database replacement. Keep diagnosis visible without promising an available inverse.
+    turnOn: null,
     detect({ project = process.cwd() } = {}) {
       const db = path.join(project, '.swarm/memory.db');
       if (!fs.existsSync(db)) return row(STATE.ABSENT, `no memory store exists for this project yet (${path.join(path.basename(project), '.swarm/memory.db')} is not present)`);
@@ -892,66 +875,11 @@ export const CAPABILITIES = [
     // Loading a launchd job is machine mutation with no single verified command; global Rule 10.
     turnOn: null,
     detect() {
-      // launchd is macOS-only. On any other platform this is UNCHECKABLE, not off — this repo has
-      // already shipped a macOS-only assumption that went red the moment it met the Linux CI runner,
-      // and reporting "your nightly job is off" to a Linux user would be that same bug with worse
-      // consequences, because it reads as an actionable fault rather than a test failure.
-      if (process.platform !== 'darwin') return row(STATE.UNKNOWN, `scheduled jobs are managed by launchd, which does not exist on ${process.platform} — this cannot be checked here`);
-      let out;
-      try { out = execFileSync('launchctl', ['list'], { encoding: 'utf8', timeout: 15_000 }); }
-      catch (e) { return row(STATE.UNKNOWN, `could not list scheduled jobs (${String(e?.message || e).split('\n')[0].slice(0, 60)}) — nightly state not checked`); }
-
-      // THIS ROW IS ABOUT THE NIGHTLY KNOWLEDGE-BASE REFRESH, so it counts the nightly refresh — not
-      // every launchd job whose label happens to start com.ruvnet. MEASURED on this machine: that
-      // prefix match reported "11 refresh jobs are loaded and every one last exited cleanly" while
-      // sweeping in goldie-weekly, npx-witness, issue-fix, npm-token-renew, issue-watch,
-      // routing-flywheel, brain-gists, npx-72h-verdict and nightly-watchdog. Exactly ONE of the
-      // eleven (brain-nightly) was the thing the sentence claimed to describe. Ten unrelated jobs
-      // were being offered as evidence for a capability none of them implements.
-      //
-      // AND THE UNDER-COUNTING TWIN, which cost more (issue #113). The pattern below is a guess at
-      // what a refresh job is CALLED, and the one job this row is actually about is not called that:
-      // the installer loads `com.ruvnet.brain-update`, which contains neither "nightly" nor
-      // "refresh". So the console reported "no nightly refresh job is loaded" about a job that was
-      // loaded, scheduled for 03:47 and running nightly — a detector blind to its own installer.
-      // The label is now taken from nightly-controller.mjs, the module the console already uses to
-      // turn this job on and off, instead of being described a second time as a pattern here.
-      const NIGHTLY = /^com\.ruvnet\.[\w.-]*(nightly|refresh)/i;
-      const all = out.split('\n')
-        .map((l) => l.split('\t'))
-        .filter((c) => c.length >= 3 && /^com\.ruvnet\./.test(c[2] || ''))
-        .map((c) => ({ label: c[2].trim(), exit: c[1] }));
-      // The watchdog watches the refresh; it is not the refresh, and counting it inflates the answer.
-      const jobs = all.filter((j) => j.label === NIGHTLY_LABEL
-        || (NIGHTLY.test(j.label) && !/watchdog/i.test(j.label)));
-      if (!jobs.length) {
-        return row(STATE.ABSENT, all.length
-          ? `no nightly refresh job is loaded on this machine (${all.length} other RuvNet job${all.length === 1 ? '' : 's'} are scheduled, but none of them is the knowledge-base refresh)`
-          : 'no scheduled refresh jobs are loaded on this machine');
-      }
-
-      const name = (j) => j.label.replace('com.ruvnet.', '');
-      // FAILING IS NOT DORMANT. REJECTED by both duelists 2026-07-24: a job that is loaded, scheduled and
-      // has RUN is installed and IN USE — a non-zero exit is a HEALTH problem belonging to the alarm
-      // channel, never a "you should switch this on" offer. Reporting it OFF is a category error, and it
-      // fired here for the worst possible reason: brain-nightly exited non-zero because the publish guard
-      // CORRECTLY refused to release from a non-main branch. A working safety guard was being reported as
-      // a dormant capability the user should go turn on.
-      const failing = jobs.filter((j) => j.exit !== '0' && j.exit !== '-');
-      if (failing.length) return row(STATE.ON, `${jobs.length} nightly refresh job${jobs.length === 1 ? '' : 's'} loaded and running, but ${failing.length} last exited non-zero (${failing.slice(0, 3).map((j) => `${name(j)}=${j.exit}`).join(', ')}) — installed and in use, so this is a health problem to look into, not a capability to switch on`);
-
-      // "-" IS NOT "0". launchd prints "-" for a job that has never run in this boot, and the old
-      // check lumped it in with success — so "every one last exited cleanly" could describe a job
-      // that has never executed once. That is the silence-reads-as-health failure the positive-
-      // confirmation standing order exists to kill, stated on the surface that is supposed to enforce it.
-      const neverRan = jobs.filter((j) => j.exit === '-');
-      if (neverRan.length === jobs.length) {
-        return row(STATE.UNKNOWN, `${jobs.length} nightly refresh job${jobs.length === 1 ? ' is' : 's are'} loaded (${jobs.map(name).slice(0, 3).join(', ')}) but ${jobs.length === 1 ? 'it has' : 'none has'} run since this machine last booted, so whether the refresh actually works here has not been demonstrated`);
-      }
-      if (neverRan.length) {
-        return row(STATE.ON, `${jobs.length} nightly refresh jobs are loaded; ${jobs.length - neverRan.length} last exited cleanly and ${neverRan.length} (${neverRan.map(name).slice(0, 3).join(', ')}) have not run since boot`);
-      }
-      return row(STATE.ON, `${jobs.length} nightly refresh job${jobs.length === 1 ? '' : 's'} loaded (${jobs.map(name).slice(0, 3).join(', ')}), and every one last exited cleanly`);
+      const status = nightlyStatus();
+      if (status.state === 'on') return row(STATE.ON, status.evidence);
+      if (status.state === 'degraded') return row(STATE.ON, `${status.evidence} — installed, but operationally degraded`);
+      if (status.state === 'off') return row(STATE.ABSENT, status.evidence);
+      return row(STATE.UNKNOWN, status.evidence);
     },
   },
 ];
@@ -967,6 +895,7 @@ export function auditAll({ project = process.cwd() } = {}) {
   // The default is the CALLER'S directory, not this package's. See the note on REPO: taking no
   // argument at all is what made every project-scoped row describe the wrong folder.
   const ctx = { project: path.resolve(project), home: HOME };
+  const observedAt = new Date().toISOString();
   return CAPABILITIES.map((c) => {
     let r;
     try { r = c.detect(ctx); }
@@ -984,6 +913,10 @@ export function auditAll({ project = process.cwd() } = {}) {
       turnOn: c.turnOn,
       state,
       evidence,
+      // A digest binds proactive routing to this audit invocation's observed bytes. Synthetic test
+      // registries do not carry it and remain compatible with the delivery seam.
+      evidenceDigest: crypto.createHash('sha256').update(evidence).digest('hex'),
+      evidenceObservedAt: observedAt,
       // WHICH project a project-scoped row is about, named rather than assumed. "no memory store
       // exists for this project" is only checkable by a reader who can see which folder was read.
       ...(c.scope === SCOPE.PROJECT ? { project: ctx.project } : {}),

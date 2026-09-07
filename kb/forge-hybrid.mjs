@@ -1,13 +1,19 @@
-// forge-hybrid.mjs — hybrid (sparse BM25 + dense cosine) retrieval, fused per rUv's SHIPPED method.
-//
-// This is a direct port of rUv's tested implementation + his grid-searched tuned defaults, NOT a
-// hand-roll:
+// forge-hybrid.mjs — hybrid (sparse BM25 + dense cosine) retrieval primitives, ported from rUv's
+// tested implementation + his grid-searched tuned defaults, NOT a hand-roll:
 //   ruflo/v3/@claude-flow/cli/src/memory/hybrid-retrieval.ts  — bm25Score (Okapi k1=1.5,b=0.75),
-//     normalise (min-max), hybridScores (α·cosineNorm + (1-α)·bm25Norm), multiFieldBM25, mmrRerank.
+//     normalise (min-max), hybridScores (α·cosineNorm + (1-α)·bm25Norm), multiFieldBM25. `mmrRerank`
+//     (diversity re-ranking, mmrLambda=0.7) was NEVER ported — no such function is defined below;
+//     it remains future work (docs/adr/0025-hybrid-retrieval-and-self-retrieval-gate.md, Open Items).
 //   ruflo ADR-082 (ACCEPTED, ruflo 3.10.22) — grid-searched defaults: α=0.5, subjectWeight=2.0,
 //     mmrLambda=0.7. Measured nDCG@3 0.900→0.963. "BM25 carries more discriminating power than the
 //     cosine on small corpora" — exactly our regime.
-// The forge reader was dense-only; this adds the sparse half + normalized linear fusion he proved.
+// Only `tokenize`/`buildCorpusStats`/`bm25Score` are wired into production today (forge-ask-all.mjs's
+// KB_TRANSCRIPT_STORES-scoped candidate pool). `hybridScores`/`multiFieldBM25`/`normalise` are defined
+// and exported but have no caller anywhere in this repo — the global fusion path they belonged to was
+// reverted (see ADR-025's "Outcome"); they are dead code kept for the future work ADR-025 names, not
+// live behavior. This file's exports were the subject of a citation-binding bug tonight: this comment
+// itself used to list `mmrRerank` as part of the port when it was never implemented — see the new
+// tests/unit/forge-hybrid-port-claims.test.mjs guard.
 
 const STOPWORDS = new Set([
   'the','a','an','and','or','but','if','then','else','of','in','to','for','on','at','by','with','from',

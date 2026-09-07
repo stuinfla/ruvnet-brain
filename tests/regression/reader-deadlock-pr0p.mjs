@@ -22,9 +22,8 @@
 // test proves nothing — this script is split into `prime` and `test` subcommands specifically to
 // avoid that trap.
 //
-// USAGE:
-//   node regression-pr0p.mjs prime --dir <kb-dir>   # run once first, populates the model cache
-//   node regression-pr0p.mjs test  --dir <kb-dir>   # corrupts it fresh, then the real check
+// Invoked by the Vitest wrapper with --fixture-root, a copied --dir and disposable KB_MODEL_CACHE.
+// Unscoped direct invocation is refused before importing the reader or touching model bytes.
 //
 // Exit 0 = passes. Exit 1 = FAILS — the deadlock reproduced.
 //
@@ -54,6 +53,25 @@ function arg(flag, dflt) {
 }
 const MODE = process.argv[2];
 const KB_DIR = path.resolve(arg('--dir', '.'));
+const FIXTURE_ROOT = arg('--fixture-root', null);
+
+function fixturePath(candidate) {
+  if (!FIXTURE_ROOT || !candidate) throw new Error('a disposable --fixture-root and KB_MODEL_CACHE are required');
+  const root = fs.realpathSync(FIXTURE_ROOT);
+  if (fs.readFileSync(path.join(root, '.reader-deadlock-fixture'), 'utf8') !== 'disposable\n') {
+    throw new Error('not a disposable reader fixture');
+  }
+  const relative = path.relative(root, fs.realpathSync(candidate));
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error('reader corruption target must stay inside the disposable fixture');
+  }
+}
+
+function requireScores(rows) {
+  if (!Array.isArray(rows) || !rows.length || rows.some(row => !Number.isFinite(row.ceScore))) {
+    throw new Error('expected finite cross-encoder scores; fallback is not a successful model load');
+  }
+}
 
 async function withTimeout(promise, ms, label) {
   let timer;
@@ -77,6 +95,8 @@ function findOnnx(dir) {
 }
 
 async function loadModules() {
+  fixturePath(KB_DIR);
+  fixturePath(process.env.KB_MODEL_CACHE);
   const rerankPath = path.join(KB_DIR, 'forge-rerank.mjs');
   if (!fs.existsSync(rerankPath)) {
     console.error(`Cannot find forge-rerank.mjs under ${KB_DIR} — pass --dir <kb-dir>.`);
@@ -90,19 +110,22 @@ async function loadModules() {
 async function prime() {
   const { rerankPairs } = await loadModules();
   console.log('--- priming: ensure a CE model is cached locally (real network call if cold) ---');
-  await rerankPairs('priming query', [{ fullText: 'priming passage', path: 'prime.md' }]);
-  console.log('primed OK.');
+  const rows = await rerankPairs('priming query', [{ fullText: 'priming passage', path: 'prime.md' }]);
+  requireScores(rows);
+  console.log(`primed OK. ceScore=${rows[0].ceScore}`);
 }
 
 async function test() {
   const { rerankPairs, loadTransformers } = await loadModules();
   const { modelCache } = await loadTransformers();
+  fixturePath(modelCache);
   const ceRoot = path.join(modelCache, CE_MODEL);
   const onnxFile = fs.existsSync(ceRoot) ? findOnnx(ceRoot) : null;
   if (!onnxFile) {
     console.error(`No cached model found under ${ceRoot} — run 'prime' first.`);
     process.exit(2);
   }
+  fixturePath(onnxFile);
 
   console.log(`--- corrupting ${onnxFile} on purpose (truncating to 20%, same damage a cut-off download leaves) ---`);
   const original = fs.readFileSync(onnxFile);
@@ -113,10 +136,12 @@ async function test() {
   try {
     console.log('--- call #1 (fresh process — never loaded successfully before now) ---');
     const r1 = await withTimeout(rerankPairs('regression query one', docs), HANG_BUDGET_MS, 'call #1');
+    requireScores(r1);
     console.log(`call #1 OK, ceScore=${r1[0]?.ceScore}`);
 
     console.log('--- call #2 (THE REGRESSION CHECK: pre-fix, this deadlocks in futex_wait_queue) ---');
     const r2 = await withTimeout(rerankPairs('regression query two', docs), HANG_BUDGET_MS, 'call #2');
+    requireScores(r2);
     console.log(`call #2 OK, ceScore=${r2[0]?.ceScore}`);
 
     console.log('\nPASS — both calls completed within budget. No deadlock.');
@@ -130,4 +155,4 @@ async function test() {
 
 if (MODE === 'prime') await prime();
 else if (MODE === 'test') await test();
-else { console.error('Usage: node regression-pr0p.mjs <prime|test> --dir <kb-dir>'); process.exit(2); }
+else { console.error('Usage: node regression-pr0p.mjs <prime|test> --fixture-root <disposable-root> --dir <copied-kb-dir>'); process.exit(2); }

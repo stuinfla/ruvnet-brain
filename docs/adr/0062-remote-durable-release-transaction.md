@@ -3,7 +3,9 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-08-21
+updated: 2026-09-07
+reviewed_digest: 7deada1c383f
+version: 1.1.2
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -12,7 +14,7 @@ governs:
   - .github/workflows/ci.yml
   - .github/workflows/stranger-matrix.yml
   - .github/workflows/protected-release.yml
-  - .github/workflows/release-aggregate.yml
+  - .github/workflows/release-candidate-preflight.yml
   - scripts/release.mjs
   - scripts/release-transaction.mjs
   - scripts/release-transaction-provider.mjs
@@ -22,7 +24,52 @@ governs:
 
 # ADR-062 — Remote-durable staged release transaction
 
+## Recovery source review — 2026-09-07
+
+`scripts/staged-host-verifier.mjs` validates the retrieval plan, coverage, package/bundle hashes and
+sizes before installed-host canaries. Candidate CI produces a separately bound staged runtime census;
+that qualification is not complete runtime or public proof. `scripts/release-transaction.mjs` binds
+recovery `verifierSha` independently while preserving the original candidate identity. The 4.3.9
+transaction remains `PUBLISHED_NOT_VERIFIED`; no unsuccessful closure or 4.3.10 publication is
+established by this source review.
+
 ## Currency log
+
+| 2026-09-07 | Reviewed unsuccessful closure verifies the prior signed chain and unchanged public bytes, retains PUBLISHED_NOT_VERIFIED, and finalization requires the actual verification workflow run; source digest 7deada1c383f. | `scripts/release-transaction.mjs`; source review only, hosted and public acceptance remain pending. |
+
+| 2026-09-07 | Reviewed recovery source and corrected implementation boundaries; source digest 35b815434ac4. | `scripts/staged-host-verifier.mjs`; source examination only, no renewed runtime or publication verification. |
+| 2026-09-04 | Public verification passes its read-scoped workflow token to the GitHub release observer, preventing shared unauthenticated API rate limits from being misreported as product failure. | `.github/workflows/protected-release.yml`; `.github/workflows/recover-public-verification.yml`; run `33899100361` returned HTTP 403 before downloading the exact release asset. |
+| 2026-09-04 | Public host proof pins Claude's marketplace source to the workflow's exact candidate checkout while continuing to compare the installed payload with the downloaded npm artifact. | `.github/workflows/protected-release.yml`; `.github/workflows/recover-public-verification.yml`; run `33898518397` showed that the default remote marketplace advanced to 4.3.10 after the immutable 4.3.9 publication. |
+| 2026-09-04 | Post-publication recovery now treats identity and channel receipts restored from the immutable publication artifact as idempotent inputs: matching signed JSON is retained, while any mismatch fails closed. | `.github/workflows/recover-public-verification.yml`; run `33898237635` exposed the prior create-only rematerialization collision before public host execution. |
+| 2026-09-04 | The 4.3.9 candidate validates both publication handoff destinations before remote mutation, then materializes release identity and signed channel convergence with no-overwrite hard links only after the receipt proves the exact release identity; a synchronous second-link failure rolls back the first owned link. Public verification uses the already signature/digest-verified GitHub bundle across all OS lanes and preserves failing evidence before exit. | `scripts/release-publication-handoff.mjs`; `scripts/release.mjs`; `scripts/publication-receipt.mjs`; `scripts/public-verification-lane.mjs`; `.github/workflows/protected-release.yml`; `.github/workflows/recover-public-verification.yml`. Pairwise crash atomicity and publication remain unproven. |
+| 2026-09-04 | Candidate host qualification records the staged boundary it actually measures: isolated install plus a real installed-MCP search whose citation resolves in the packaged KB. It no longer asks that receipt for a `doctorExit` the concurrent staged matrix does not run. The post-publication boundary still requires the downloaded artifact's clean doctor result. | `scripts/host-install-matrix.mjs`; `scripts/candidate-host-evidence.mjs`; `scripts/prepublication-evidence.mjs`; issue #242. |
+| 2026-09-04 | Integration evidence now distinguishes executed PASS from governed environment exclusions: every Linux skip must match the exact checked-in allowlist, all skipped and todo names are enumerated and digested, and any new or renamed skip fails before aggregation. | This replaces the impossible `skipped === 0` wrapper over a suite with known host-dependent cases without counting excluded work as passed or allowing an arbitrary accounted skip to turn green. |
+| 2026-09-04 | Split qualification from publication without duplicating work: `release-candidate-preflight.yml` runs CI/integration/UX/stranger once on `release/**` and emits `release-candidate-<exact SHA>`; after that SHA fast-forwards to main, `protected-release.yml` imports and revalidates the sealed payload before publishing once and completing public 3x3/`install-verified`. | Deterministic artifact discovery removes human run-ID authority while source, receipt, payload, and digest revalidation preserve the fail-closed boundary. Fable/Sol remains change-triggered and only labeled `release-blocker` issues stop the transaction. |
+| 2026-08-31 | Release qualification now runs the three isolated host fixtures concurrently and reassembles their results in canonical order before the single receipt write, reducing the critical host-matrix wall time without changing evidence, verdict, or publication authority. | `scripts/host-install-matrix.mjs`; `scripts/staged-host-verifier.mjs`; the published-side verification remains receipt-bound. |
+| 2026-08-31 | Replaced the manual cross-workflow handoff with one release-cycle controller. It derives the exact successful CI and aggregate runs for one candidate SHA, dispatches the mandatory signed independent review, waits for its exact-SHA result, and dispatches the protected publisher with all IDs. The protected publisher remains the only code allowed to publish. | `.github/workflows/release-cycle.yml`; manual run-ID copying is removed from the normal path while exact-SHA and signed-review requirements remain. |
+| 2026-08-31 | Added an external per-step watchdog and machine-readable receipt to the long hosted release and cross-platform stages. Job-level timeouts remain the outer fence; named stage budgets now fail a wedged operation at its actual boundary instead of leaving an opaque compound step in progress. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; `tests/unit/step-watchdog.test.mjs` |
+| 2026-08-31 | Reconciled after removing the duplicate canonical QA workflow job from the release candidate path. | `.github/workflows/ci.yml` now leaves the bounded QA contract to its single authoritative workflow; protected release transaction, exact-SHA, and durable receipt rules remain unchanged. |
+
+
+| 2026-08-30 | Reviewed against release candidate 4.3.3: hosted exact-SHA failures were corrected in the release workflow, reconciliation fixtures, and canonical release wording; the protected transaction remains the only publication path. | 1beedaa |
+
+| 2026-08-30 | Re-read the remote release transaction boundary after exact-SHA CI exposed the forbidden user-gists call; release-QE now prepares and seals coverage from the immutable seed before the protected transaction. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`. |
+
+| 2026-08-30 | Automatic PR execution now has one canonical bounded path; the legacy matrix remains available only by manual dispatch. | `.github/workflows/ci.yml` and `.github/workflows/qe-4-3.yml` remove competing automatic release-quality paths without changing the protected publication transaction. |
+| 2026-08-30 | Protected publication now consumes the canonical bounded QA receipt before release dispatch. | `scripts/qa-runner.mjs` binds the candidate SHA and artifact lanes; `docs/QA-RELEASE-PROCESS.md` records recovery and promotion. |
+| 2026-08-30 | Candidate sealing now has an executable coverage-projection producer; an archive without `COVERAGE.json` and `CORPUS-COVERAGE.json` cannot reach public verification. | `scripts/release-projection.mjs` and `.github/workflows/ci.yml` generate and embed the linked ledgers before `public-verification-inputs.mjs` consumes the exact archive. |
+
+| 2026-08-23 | Failed candidate evidence now preserves suite-level diagnostics and skipped-test identities for remote recovery. | Commit `cc25c24` improves diagnosis only; publication authority and mutation boundaries remain unchanged. |
+| 2026-08-23 | Hosted process failures now preserve bounded stdout/stderr tails in candidate receipts. | Commit `1310fb6` improves remote diagnosis only; publication authority and mutation boundaries remain unchanged. |
+| 2026-08-23 | The aggregate consumes receipts from the workflow's merged-artifact destination and preserves verbose test diagnostics. | This repairs evidence transport only; the durable transaction remains downstream of exact-SHA PASS receipts and publication authority is unchanged. |
+| 2026-08-23 | The Windows candidate adds a direct import probe for the shared installer before artifact qualification. | The exact-SHA failed receipt isolated a platform execution boundary; no release authority, artifact, or publication mutation changed. |
+| 2026-08-23 | Candidate lanes stop after the first failed step and preserve the partial receipt for recovery. | This reduces wasted remote work without weakening the downstream exact-SHA evidence requirement or publication fence. |
+| 2026-08-23 | Windows installer-import evidence is process-isolated and hosted conformance has a measured 240-second bound. | This changes only test execution boundaries; durable release authority and publication mutation fences remain unchanged. |
+| 2026-08-23 | Candidate publication evidence now excludes unavailable live-only checks and uses a platform-neutral Node test entrypoint. | Commit `0e30d68` keeps the transaction downstream of deterministic exact-SHA evidence without laundering live skips into green or relying on `npm.cmd`. |
+| 2026-08-23 | Release qualification now waits on every required QE receipt and preserves failed-lane artifacts for diagnosis. | Commit `b570e25` keeps the durable publication transaction downstream of complete exact-SHA quality evidence; no publication mutation was added. |
+| 2026-08-23 | The transaction now receives its pre-publication quality evidence from the new exact-SHA QE aggregate, while publication authority and mutation fences remain unchanged. | Commit `b3ddb0d` makes `.github/workflows/qe-4-3.yml` the auto-triggered candidate lane; legacy CI is manual-only, and `scripts/qe/aggregate-4.3.mjs` rejects any missing, skipped, stale, or non-PASS receipt before release work can proceed. |
+| 2026-08-23 | Replaced the incomplete Windows shell-string repair after exact-SHA job `97218861232` still split the `--title` argument; the protected mutation fence remains unchanged. | `scripts/windows-command.mjs` now uses the measured `cmd.exe /d /s /c` boundary from `scripts/selfcheck.mjs`, and `tests/unit/corpus-seed-release-authority.test.mjs` asserts the complete argv shape before hosted verification. |
+| 2026-08-23 | Re-read the protected corpus-seed publisher after issue #163 exposed Windows shell argument splitting; the staged transaction and mutation fence remain unchanged. | `scripts/release.mjs` quotes complete Windows `gh release create` arguments before the protected mutation, and `tests/unit/corpus-seed-release-authority.test.mjs` proves the exact bundle and receipt payload. |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
@@ -43,7 +90,7 @@ governs:
 
 **Date**: 2026-08-02
 
-**Updated**: 2026-08-02 22:20 EDT · **Revision**: 2.0.0
+**Updated**: 2026-09-04 07:33 EDT · **Revision**: 2.1.1
 
 > 4.0.8 correction: the 4.0.7 implementation proved that publisher-side bundle rebuilding makes
 > retry identity unstable and receipt-history skipping can report false convergence after
@@ -93,12 +140,25 @@ idempotent state machine rather than call ordering alone.
 - Run broad suites once per SHA; all downstream stages consume receipts and immutable bytes.
 - Give every transaction boundary a named log stage and an interruption/recovery test.
 
-## Target design and current migration gap
+## Canonical release-control boundary
 
-The following is a target for 4.0.8, not a claim about current code. Production 4.0.7 still rebuilds
-and signs the ZIP in the publisher, checks only `ci/release-qe` at publication, observes npm once,
-uses historical receipt membership to skip recovery work, and has no sole `release-aggregate`
-status. Those gaps are the migration work governed by this now-accepted ADR.
+Release authority has two explicit phases. `release-candidate-preflight.yml` runs the long CI,
+integration, UX, and stranger lanes once on `release/**`, then emits the source-bound package and
+aggregate named `release-candidate-<exact SHA>`. Publication requires that exact SHA on current
+`main`. A merge-created SHA requires its own preflight; a fast-forward preserves the qualified SHA.
+
+`protected-release.yml` is the sole publication controller and publisher boundary. It proves
+current `origin/main` equals the preflight source SHA and authenticates the GitHub producer: expected
+workflow, successful push on `release/**`, exact SHA, and artifact/run identity. Deterministic artifact
+naming alone is insufficient. It revalidates typed receipts, payload/source binding, and digest. It does not rerun the long lanes. One invocation signs and publishes the already-qualified
+bytes once, downloads the public copies, executes the public three-OS by three-host-mode matrix,
+and appends `install-verified`.
+
+Independent Fable 5 and GPT-5.6-Sol review applies when architecture or the sealed retrieval oracle
+changes. Those accepted change-bound reviews are evidence inputs, not per-release authorization.
+A public key bundled beside a receipt proves only consistency with that bundle; it does not create
+an independent trust anchor. Release issue policy is likewise explicit: only open issues labeled
+`release-blocker` stop publication; unrelated backlog remains visible without controlling the rail.
 
 Candidate CI now packs the npm tarball exactly once, before release QE, and identifies those bytes
 by SHA-256 in the candidate receipt. Release QE and the five stranger-host cells consume that same
@@ -118,8 +178,9 @@ verification, and writes the final receipt. Any source change creates a new SHA 
 
 The evidence DAG has content-bound leaves for source quality, release QE, stranger/platform cells,
 and Claude-only, Codex-only, and dual-host acceptance. One `release-aggregate` job rejects any
-missing, skipped, neutral, degraded, or identity-mismatched leaf. It emits the sole branch-required
-release status. Publication and retry consume its signed receipt and never rerun broad suites.
+missing, skipped, neutral, degraded, or identity-mismatched leaf. Candidate aggregation is separate
+from the currently required branch checks, `integration` and `canonical-qa`. Publication and retry
+consume the source-bound receipt without rerunning broad suites.
 
 ## Considered approaches
 
@@ -249,7 +310,7 @@ enter signed, explicitly human-authorized terminal `aborted`; automation cannot 
   `target_commitish` is not trusted after publication.
 - Any identity-safe anomaly may enter `manual-intervention-required`. An explicitly authorized
   `AbortRelease` burns B against its discovered anchor so it cannot block every future release.
-- `doctor` fails for every state other than `channels-converged` and prints the same-candidate resume
+- `doctor` fails for every state other than `install-verified` and prints the same-candidate resume
   command plus any required host restart/review action.
 - Publisher doctor uses authenticated draft receipts; user doctor trusts only the public signed
   current-release receipt and reports an unpublished transaction as unknown rather than healthy.
@@ -262,8 +323,8 @@ enter signed, explicitly human-authorized terminal `aborted`; automation cannot 
 4. GitHub draft and npm candidate tag never count as the supported current generation.
 5. Receipt state is monotonic; identity is immutable.
 6. Every non-idempotent boundary has a write-ahead intent and an observed postcondition.
-7. `channels-converged` requires the signed final receipt, live surfaces, and isolated
-   installed-artifact host-interface receipts with accurate restart/review metadata.
+7. `channels-converged` is nonterminal and renders `PUBLISHED, NOT VERIFIED`; `install-verified`
+   requires the signed final receipt, live surfaces, and nine installed-artifact host leaves.
 8. Existing user-host restart, disabled state, hook approval, and Console state are doctor-reported
    local postconditions, not global publication blockers.
 9. One constant workflow concurrency group plus create-only receipt CAS serializes all versions.

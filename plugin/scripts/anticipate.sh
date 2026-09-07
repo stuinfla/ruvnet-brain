@@ -195,6 +195,7 @@ import { pathToFileURL } from 'node:url';
 const MODE = process.env.RUVNET_ANTICIPATE_MODE || 'suggest';
 const ARG = process.env.RUVNET_ANTICIPATE_ARG || '';
 const SELF = process.env.RUVNET_ANTICIPATE_SELF || 'anticipate.sh';
+const SELF_DIR = path.dirname(SELF);
 
 // CANDIDATE MODE (ADR-040 / DDD-0004 "the enforcement chokepoint"). Set by unprompted-runtime.mjs on
 // every producer child. When on, this hook writes ZERO user-facing prose: it emits ONE advocacy
@@ -414,13 +415,18 @@ const sessions = st.sessions && typeof st.sessions === 'object' ? st.sessions : 
 const said = new Set(strings(sessions[sid]?.said));
 if (said.size >= MAX_PER_SESSION) quit();
 
-let auditAll, matchGoal, floor;
+let auditAll, matchGoal, floor, buildCapabilityRoutingReceipt, hasToolPreference;
 try { ({ auditAll } = await import(pathToFileURL(process.env.RUVNET_CAPABILITY_REGISTRY).href)); } catch { quit(); }
 try {
   const gm = await import(pathToFileURL(process.env.RUVNET_GOAL_MATCH).href);
   matchGoal = gm.matchGoal;
   floor = gm.CONFIDENCE_FLOOR;
 } catch { quit(); }
+try {
+  const routingPath = process.env.RUVNET_CAPABILITY_ROUTING_MODULE
+    || path.join(SELF_DIR, 'capability-routing.mjs');
+  ({ buildCapabilityRoutingReceipt, hasToolPreference } = await import(pathToFileURL(routingPath).href));
+} catch { /* older packed hosts predate the optional routing receipt */ }
 if (typeof auditAll !== 'function' || typeof matchGoal !== 'function') quit();
 const MIN_CONFIDENCE = typeof floor === 'number' && Number.isFinite(floor) ? floor : FALLBACK_CONFIDENCE_FLOOR;
 
@@ -458,6 +464,28 @@ if (!dormant.length) quit();
 let matches = [];
 try { matches = matchGoal(prompt, dormant) || []; } catch { quit(); }
 if (!Array.isArray(matches) || !matches.length) quit();
+
+// Only an evidence-bound route to an existing RuvNet building block may leave this hook.
+let routingReceipt;
+try {
+  routingReceipt = typeof buildCapabilityRoutingReceipt === 'function'
+    ? buildCapabilityRoutingReceipt({ prompt, matches, capabilities: rows }) : null;
+  // Test/host adapters may provide synthetic capabilities outside the shipped registry. Preserve
+  // their existing protocol; real RuvNet capabilities are fail-closed when no route receipt exists.
+  const knownRoute = typeof hasToolPreference === 'function' && matches.some((match) => {
+    const key = match?.capability?.key || match?.capability;
+    const liveRow = rows.find((row) => row?.key === key);
+    return hasToolPreference(key) && typeof liveRow?.evidence === 'string' && liveRow.evidence.trim()
+      && typeof liveRow?.evidenceDigest === 'string' && liveRow.evidenceDigest.length === 64;
+  });
+  if (!routingReceipt && knownRoute) quit();
+  if (!routingReceipt) routingReceipt = { receiptSha256: 'synthetic-adapter' };
+  const receiptFile = process.env.RUVNET_CAPABILITY_ROUTING_RECEIPTS;
+  if (receiptFile) {
+    fs.mkdirSync(path.dirname(receiptFile), { recursive: true });
+    fs.appendFileSync(receiptFile, `${JSON.stringify(routingReceipt)}\n`, { mode: 0o600 });
+  }
+} catch { quit(); }
 
 // The matcher is trusted to rank, never to assert existence: every match is re-resolved against the
 // dormant rows THIS audit produced. A capability the matcher names that is not dormant right now is
@@ -534,6 +562,7 @@ if (EMIT_CANDIDATES) {
     findingId: best.row.key,
     severity: best.row.severity || 'normal',
     observationHash: stateHashOf(best.row.evidence),
+    routingReceiptSha256: routingReceipt.receiptSha256,
   }));
   quit();
 }

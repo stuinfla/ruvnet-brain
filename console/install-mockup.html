@@ -431,14 +431,14 @@ main { padding: 1.4rem 0 3rem; }
           <h3 class="row-title">Keep it auto-updated (Evergreen)</h3>
           <span class="badge badge-rec">Recommended · default on</span>
         </div>
-        <p class="row-desc">Installs a macOS LaunchAgent (<code>com.ruvnet.brain-nightly</code>) that updates the brain at 03:47 every night.</p>
+        <p class="row-desc">Installs a macOS LaunchAgent (<code>com.ruvnet.brain-update</code>) that updates the installed brain at 03:47 every night.</p>
         <p class="row-impl"><b>Uncheck this and:</b> updates become manual forever (<code>npx ruvnet-brain --update</code>) — rUv ships fast, and a stale brain is the single biggest way this stops being useful.</p>
         <p class="row-ev">bin/install.mjs:1802&ndash;1868 (offerNightly), plist :1202&ndash;1291 · default-on parsing :1703&ndash;1706</p>
         <p class="row-undo">Undo anytime: <code>npx ruvnet-brain --disable-nightly</code> / <code>--enable-nightly</code></p>
 
         <div class="proof" id="proof-4">
           <span class="proof-pill" id="proof-4-pill">&#10003; verified running</span>
-          <span class="proof-detail" id="proof-4-detail">launchctl confirms <code style="background:none;border:0;padding:0;color:inherit;">com.ruvnet.brain-nightly</code> is scheduled &middot; last run: not yet &mdash; first run tonight at 03:47.</span>
+          <span class="proof-detail" id="proof-4-detail">launchctl confirms <code style="background:none;border:0;padding:0;color:inherit;">com.ruvnet.brain-update</code> is scheduled &middot; last run: not yet &mdash; first run tonight at 03:47.</span>
           <span class="proof-caption">Shown here as it will appear once installed. The checkbox alone never earns this pill — only a live <code style="background:none;border:0;padding:0;color:inherit;">launchctl</code> check does, reusing the same detector <code style="background:none;border:0;padding:0;color:inherit;">capability-registry.mjs</code>'s nightly-refresh row already runs (:754&ndash;800), so the installer and the Console can never disagree about whether it's really on.</span>
         </div>
       </div>
@@ -528,7 +528,7 @@ main { padding: 1.4rem 0 3rem; }
           if (input.checked) {
             proof.classList.remove('is-off');
             pill.innerHTML = '&#10003; verified running';
-            detail.innerHTML = 'launchctl confirms <code style="background:none;border:0;padding:0;color:inherit;">com.ruvnet.brain-nightly</code> is scheduled &middot; last run: not yet &mdash; first run tonight at 03:47.';
+            detail.innerHTML = 'launchctl confirms <code style="background:none;border:0;padding:0;color:inherit;">com.ruvnet.brain-update</code> is scheduled &middot; last run: not yet &mdash; first run tonight at 03:47.';
           } else {
             proof.classList.add('is-off');
             pill.textContent = 'off';

@@ -3,17 +3,13 @@
 > A downloadable, source-grounded brain for Claude Code and OpenAI Codex, built by Stuart Kerr at Isovision.ai. Both are first-class hosts: developers can use either one or both over the same local Brain and build on the front edge of Reuven Cohen's real RuvNet source instead of drifting to older patterns. Free and open source (MIT).
 
 ## What it is
-RuvNet Brain supplies supported lifecycle plugins for Claude Code and Codex. It ships one MCP tool
-— `search_ruvnet` — plus proactive grounding, routing, learning-capture and session-continuity
-hooks. Before the coding agent answers a question about rUv's stack, the brain retrieves the
-relevant passages from rUv's actual source code (140,520 public source chunks across 70 public
-stores; 77 built stores incl. private) and grounds the answer in cited source paths instead of
-the model's stale priors.
+RuvNet Brain supports Claude Code and Codex with the MCP tool `search_ruvnet`, explicit skills
+and commands. When invoked, search retrieves relevant passages from rUv's actual source code:
+146,970 public source chunks across 184 public stores, with cited source paths. Automatic Brain
+lifecycle hooks are retired; installation does not enable automatic grounding or learning callbacks.
 
-Install in one line: `npx ruvnet-brain`. The installer detects Claude Code and Codex and wires
-either host or both without creating project files or replacing user security policy. Codex
-requires the user to review newly installed Brain hook definitions through `/hooks`; installer
-and doctor output distinguish pending review, active, intentionally disabled and broken states.
+Install in one line: `npx ruvnet-brain`. The installer detects either host or both and removes
+exact owned legacy callbacks while preserving foreign registrations and user security policy.
 The knowledge base downloads to
 `~/.cache/ruvnet-brain/kb` and is user-level — one brain, shared across every project and every
 Claude Code or Codex session on the machine.
@@ -50,7 +46,7 @@ agentic-flow, SPARC, agent-harness-generator. Safety: AIDefence (AIMDS). Plus sp
 ## Facts
 - Maintainer: Stuart Kerr — Isovision.ai (https://isovision.ai), strategic AI consultant.
 - Ecosystem author: Reuven Cohen (rUv, @ruvnet).
-- Delivery: first-class Claude Code and Codex lifecycle plugins + MCP tool `search_ruvnet` + proactive grounding and learning hooks.
+- Delivery: Claude Code and Codex plugins + MCP tool `search_ruvnet` + explicit skills and commands; automatic hooks retired.
 - Dual-host reasoning: subscription-only Claude Code + Codex deliberation for hard ADR, DDD and Agentic-QE experience design; no API-key fallback.
 - Install: `npx github:stuinfla/ruvnet-brain` (or `npx ruvnet-brain`).
 - License: MIT. Free.

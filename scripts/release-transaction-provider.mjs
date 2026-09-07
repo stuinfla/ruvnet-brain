@@ -3,8 +3,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { canonicalJson } from './coverage-integrity.mjs';
 import {
-  pollObservation, RECEIPT_PREFIX, TERMINAL_STATES, transactionIdFor,
+  pollObservation, RECEIPT_PREFIX, receiptDisposition, transactionIdFor,
 } from './release-transaction.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
@@ -94,9 +95,7 @@ export function selectCurrentReleaseBytes({ remoteBytes, localBytes, generatedBy
   return Buffer.from(bytes);
 }
 
-export function liveReleaseProvider({
-  root = process.cwd(), candidateReceipt = null, publicationReceipt = null,
-} = {}) {
+export function liveReleaseProvider({ root = process.cwd() } = {}) {
   let releases = [];
   let activeDraft = null;
   const assetDigestCache = new Map();
@@ -215,7 +214,8 @@ export function liveReleaseProvider({
       const legacySettled = [];
       const pending = [];
       for (const { receipt, release } of latestByTransaction.values()) {
-        if (TERMINAL_STATES.has(receipt.state)) continue;
+        const disposition = receiptDisposition(receipt);
+        if (['verified', 'closed-unsuccessful', 'legacy-closed'].includes(disposition)) continue;
         // CONVERGENCE IS A FACT ABOUT THE CHANNELS, NOT ABOUT THE RECEIPT FORMAT (fixed 2026-08-07).
         //
         // This required `receipt.schemaVersion === 1`. Receipts are written as schemaVersion 2
@@ -230,7 +230,7 @@ export function liveReleaseProvider({
         // all three hold, the transaction reached its goal whatever schema its receipts use. The
         // check is not weakened — the schema clause was never load-bearing for that question, it
         // just silently expired when the schema moved on.
-        const settled = release.draft === false
+        const settled = receipt.schemaVersion <= 2 && release.draft === false
           && receipt.identity?.version === npmLatest && receipt.identity?.tag === githubLatest;
         if (settled) legacySettled.push(receipt.transactionId);
         else pending.push(receipt);
@@ -318,6 +318,43 @@ export function liveReleaseProvider({
       }
     },
 
+    async materializePublicVerificationAggregate({ aggregate }) {
+      const anchor = activeDraft;
+      if (!anchor) throw new Error('no release anchor for public verification aggregate');
+      const release = hydratedRelease(releaseById(anchor.id));
+      const aggregateAsset = Buffer.from(canonicalJson(aggregate));
+      const signatureAsset = Buffer.from(aggregate.signature, 'base64');
+      const expected = {
+        'public-verification-aggregate.json': aggregateAsset,
+        'public-verification-aggregate.sig': signatureAsset,
+      };
+      const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-public-aggregate-'));
+      try {
+        for (const [name, bytes] of Object.entries(expected)) {
+          const existing = release.assets?.find((asset) => asset.name === name);
+          if (existing) {
+            if (!assetBytes(existing).equals(bytes)) throw new Error(`public verification asset conflict: ${name}`);
+            continue;
+          }
+          const file = path.join(temp, name);
+          fs.writeFileSync(file, bytes, { flag: 'wx', mode: 0o600 });
+          command('gh', ['release', 'upload', anchor.tag, file, '--repo', REPO]);
+        }
+        const observed = hydratedRelease(releaseById(anchor.id));
+        for (const [name, bytes] of Object.entries(expected)) {
+          const asset = observed.assets?.find((item) => item.name === name);
+          if (!asset || !assetBytes(asset).equals(bytes)) throw new Error(`public verification asset readback differs: ${name}`);
+        }
+        return {
+          aggregateSha256: aggregate.aggregateSha256,
+          aggregateAssetSha256: sha256(aggregateAsset),
+          signatureAssetSha256: sha256(signatureAsset),
+        };
+      } finally {
+        fs.rmSync(temp, { recursive: true, force: true });
+      }
+    },
+
     async readReceipt(draft, sequence) {
       const name = `${RECEIPT_PREFIX}${String(sequence).padStart(4, '0')}.json`;
       const release = hydratedRelease(releaseById((draft || activeDraft).id));
@@ -394,102 +431,6 @@ export function liveReleaseProvider({
       const current = command('npm', ['view', `${PACKAGE}@latest`, 'version']);
       if (current !== expected) throw new Error(`refusing compensation: npm latest is ${current}, expected ${expected}`);
       command('npm', ['dist-tag', 'add', `${PACKAGE}@${prior}`, 'latest']);
-    },
-    async finalize(identity, receipt, hostVerifier) {
-      if (!candidateReceipt || !publicationReceipt) {
-        throw new Error('final convergence requires candidate and publication receipt paths');
-      }
-      // THE HOST VERDICT IS MEASURED, NOT DECLARED — and it is measured FIRST.
-      //
-      // finalize() used to accept the verifier as `_hostVerifier` and ignore it, then build
-      // `hosts = { verdict: 'PASS', … }` as a literal. Every release therefore asserted host
-      // convergence with no host verified, while tests/helpers/release-transaction-fixture.mjs:153
-      // called the seam faithfully — a fault-injection suite certifying wiring the real publisher
-      // never ran. Fable 5 and GPT-5.6-Sol independently made this their #1 finding.
-      //
-      // It runs BEFORE publication and sealing because the order encodes the meaning: you seal a
-      // release you have verified, not the reverse. It is also the cheapest way to fail — an
-      // unusable artifact stops here instead of after a 20-minute publish.
-      if (!hostVerifier || typeof hostVerifier.verify !== 'function') {
-        return { verdict: 'FAIL', hostVerifierError: 'no host verifier was supplied to finalize' };
-      }
-      // No `assets` override: stagedHostVerifier is constructed in release.mjs:238 with the exact
-      // staged bytes for this candidate and defaults to them (staged-host-verifier.mjs:57), so
-      // passing nothing is what keeps production verifying the artifact actually being shipped.
-      const verified = await hostVerifier.verify({ source: 'final', identity });
-      if (verified.verdict !== 'PASS') {
-        return {
-          verdict: 'FAIL',
-          hosts: { verdict: verified.verdict, verifier: { error: verified.error, fixtures: verified.fixtures } },
-          previousReceiptDigest: receipt.receiptDigest,
-        };
-      }
-      if (!fs.existsSync(path.resolve(root, publicationReceipt))) {
-        const publication = spawnSync(process.execPath, [
-          'scripts/publication-receipt.mjs', '--candidate', candidateReceipt, '--out', publicationReceipt,
-        ], { cwd: root, encoding: 'utf8', timeout: 1_200_000 });
-        if (publication.error || publication.status !== 0) {
-          return { verdict: 'FAIL', publicationError: String(publication.stderr || publication.error?.message) };
-        }
-      }
-      const seal = spawnSync(process.execPath, [
-        'scripts/release-proof.mjs', '--candidate', candidateReceipt, '--publication', publicationReceipt,
-      ], { cwd: root, encoding: 'utf8', timeout: 300_000 });
-      if (seal.error || seal.status !== 0) {
-        return { verdict: 'FAIL', sealError: String(seal.stderr || seal.error?.message) };
-      }
-      const publication = JSON.parse(fs.readFileSync(path.resolve(root, publicationReceipt), 'utf8'));
-
-      // `verified` was measured at the top of finalize, before publication and sealing.
-      const hosts = {
-        verdict: verified.verdict,
-        claudeOnly: publication.installed?.claudeOnly,
-        codexOnly: publication.installed?.codexOnly,
-        dual: publication.installed?.dual,
-        verifier: { artifactSha256: verified.artifactSha256, fixtures: verified.fixtures, error: verified.error },
-      };
-      const observed = publication.postPublicationChecks?.find(({ name }) => name === 'published-surface-probe');
-      const result = {
-        verdict: observed?.status === 'completed' && observed?.conclusion === 'success' ? 'PASS' : 'FAIL',
-        hosts, surface: observed, publicationReceipt, previousReceiptDigest: receipt.receiptDigest,
-      };
-      if (result.verdict === 'PASS') {
-        const currentRelease = path.join(path.dirname(path.resolve(root, publicationReceipt)), 'current-release.json');
-        const generatedCurrentRelease = Buffer.from(`${JSON.stringify({
-          schemaVersion: 1,
-          transactionId: receipt.transactionId,
-          version: identity.version,
-          tag: identity.tag,
-          candidateSha: identity.candidateSha,
-          verdict: 'PASS',
-          publicationReceiptSha256: sha256(fs.readFileSync(path.resolve(root, publicationReceipt))),
-          hosts,
-          surface: observed,
-        }, null, 2)}\n`);
-        let remote = hydratedRelease(releaseById(activeDraft.id)).assets
-          ?.find((asset) => asset.name === 'current-release.json');
-        let currentReleaseBytes;
-        try {
-          currentReleaseBytes = selectCurrentReleaseBytes({
-            remoteBytes: remote ? assetBytes(remote) : null,
-            localBytes: !remote && fs.existsSync(currentRelease) ? fs.readFileSync(currentRelease) : null,
-            generatedBytes: generatedCurrentRelease,
-            identity: { transactionId: receipt.transactionId, version: identity.version, candidateSha: identity.candidateSha },
-          });
-        } catch (error) {
-          return { ...result, verdict: 'FAIL', currentReleaseError: error.message };
-        }
-        if (!fs.existsSync(currentRelease)) fs.writeFileSync(currentRelease, currentReleaseBytes, { flag: 'wx', mode: 0o600 });
-        if (!remote) {
-          command('gh', ['release', 'upload', activeDraft.tag, currentRelease, '--repo', REPO]);
-          remote = hydratedRelease(releaseById(activeDraft.id)).assets
-            ?.find((asset) => asset.name === 'current-release.json');
-        }
-        if (!remote || sha256(assetBytes(remote)) !== sha256(currentReleaseBytes)) {
-          return { ...result, verdict: 'FAIL', currentReleaseError: 'public receipt verification failed' };
-        }
-      }
-      return result;
     },
   };
 }

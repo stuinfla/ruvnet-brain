@@ -3119,10 +3119,10 @@ async function bpFlip(next) {
    has to wonder again whether a piece is missing or merely elsewhere.
 
    THE RULE THAT KEEPS IT HONEST is user-settings.mjs's own: a switch is not shipped until something
-   reads it. The remaining schema keys (learningScope, autoApply, newProjectDefaults) exist in the
-   settings store and are deliberately NOT rendered as controls, because nothing enforces them yet —
-   a row of checkboxes that govern nothing is the single fastest way to make every other switch on
-   this page untrustworthy. */
+   reads it. The ordinary schema keys (learningScope, advocacy, autoApply, newProjectDefaults) are
+   rendered by the shared Settings form below and saved through the user-settings writer. Only
+   controls with a real runtime consumer are included; a row that governs nothing would make every
+   other switch on this page untrustworthy. */
 function bpParts(bp) {
   const off = !!bp.off;
   const part = (title, chipText, tone, ...text) => el('div', { class: 'bp-part' },

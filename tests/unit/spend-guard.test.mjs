@@ -38,7 +38,13 @@ describe('a fleet on metered keys is refused', () => {
   });
 
   it('covers every fleet runner, not just the one that burned', () => {
-    for (const cmd of ['npx agentic-flow --agent coder', 'ruflo swarm init --max-agents 15', 'flow-nexus swarm']) {
+    for (const cmd of [
+      'npx agentic-flow --agent coder',
+      'ruflo swarm init --max-agents 15',
+      '/Users/operator/.npm-global/bin/ruflo --verbose swarm init --max-agents 15',
+      'ruflo --config /tmp/ruflo.json task orchestrate --task build',
+      'flow-nexus swarm',
+    ]) {
       expect(check(cmd, metered).verdict, cmd).toBe('metered');
     }
     expect(FLEET_RUNNERS.length, 'the runner list must not silently shrink').toBeGreaterThanOrEqual(4);
@@ -70,7 +76,16 @@ describe('it never blocks the seats, or ordinary work', () => {
   });
 
   it('ordinary commands are untouched', () => {
-    for (const cmd of ['ls -la', 'npm test', 'git push origin main']) {
+    for (const cmd of [
+      'ls -la',
+      'npm test',
+      'git push origin main',
+      // `.swarm/memory.db` is a storage path, not the `ruflo swarm` subcommand. The old regex
+      // searched every later token and turned the mandatory project-memory checkpoint into a
+      // metered-fleet refusal whenever an API key happened to be present in the hook environment.
+      'ruflo memory store --key checkpoint --value state --path /project/.swarm/memory.db',
+      'env -u ANTHROPIC_API_KEY ruflo memory search --query state --path .swarm/memory.db',
+    ]) {
       expect(check(cmd, metered).verdict, cmd).toBe('not-applicable');
     }
   });

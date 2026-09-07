@@ -7,6 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { extractZip } from '../kb/zip-extract.mjs';
+import { validatePublicInventory } from './public-inventory.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REQUIRED_SUFFIXES = [
@@ -68,55 +70,62 @@ function policyRows(policy) {
 
 function assertPolicyCurrent(policy) {
   const rows = policyRows(policy);
-  const stale = rows.filter((row) => row?.eligible !== false && row?.status !== 'CURRENT');
+  const eligible = (row) => row?.eligible !== false && (!row?.disposition || row.disposition === 'eligible');
+  const stale = rows.filter((row) => eligible(row) && row?.status !== 'CURRENT');
   if (stale.length) fail(`eligibility policy has ${stale.length} eligible row(s) that are not CURRENT`);
   return {
-    eligibleRepoCount: rows.filter((row) => row?.eligible !== false && row?.status === 'CURRENT').length,
-    gistCount: rows.filter((row) => /gist/i.test(String(row?.kind || row?.type || ''))).length,
+    eligibleRepoCount: rows.filter((row) => eligible(row) && row?.kind === 'repository' && row?.status === 'CURRENT').length,
+    gistCount: rows.filter((row) => eligible(row) && /gist/i.test(String(row?.kind || row?.type || ''))).length,
   };
 }
 
-function archiveEntries(bundleFile) {
-  const result = spawnSync('unzip', ['-Z1', bundleFile], { encoding: 'utf8' });
-  if (result.status !== 0) fail(`cannot list archive (${result.stderr.trim() || `exit ${result.status}`})`);
-  const entries = result.stdout.split(/\r?\n/).filter(Boolean);
-  for (const entry of entries) {
-    const normalized = entry.replaceAll('\\', '/');
-    if (normalized.startsWith('/') || normalized.split('/').includes('..')) {
-      fail(`archive contains unsafe path ${JSON.stringify(entry)}`);
-    }
-  }
-  return entries;
-}
-
-function verifyArchive({ bundleFile, stores, privateStores }) {
+async function verifyArchive({ bundleFile, stores, privateStores }) {
   if (!bundleFile || !fs.existsSync(bundleFile)) fail(`bundle missing (${bundleFile || 'no path supplied'})`);
-  const entries = archiveEntries(bundleFile);
-  for (const privateStore of privateStores) {
-    const escaped = privateStore.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const privateFile = new RegExp(`(?:^|/)${escaped}(?:\\.|$)`, 'i');
-    if (entries.some((entry) => privateFile.test(entry))) fail(`private store ${privateStore} is present in archive`);
-  }
-
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-candidate-'));
   try {
-    const extraction = spawnSync('unzip', ['-qq', bundleFile, '-d', tmp], { encoding: 'utf8' });
-    if (extraction.status !== 0) fail(`cannot extract archive (${extraction.stderr.trim() || `exit ${extraction.status}`})`);
+    let extraction;
+    try {
+      extraction = await extractZip(bundleFile, tmp);
+    } catch (error) {
+      fail(`cannot extract archive (${error.message})`);
+    }
+    const entries = extraction.entryNames;
+    for (const privateStore of privateStores) {
+      const escaped = privateStore.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const privateFile = new RegExp(`(?:^|/)${escaped}(?:\\.|$)`, 'i');
+      if (entries.some((entry) => privateFile.test(entry.replaceAll('\\', '/')))) {
+        fail(`private store ${privateStore} is present in archive`);
+      }
+    }
     for (const store of stores) {
       for (const expected of store.files) {
-        const matches = entries.filter((entry) => path.posix.basename(entry) === expected.file);
+        const matches = entries.filter((entry) => path.posix.basename(entry.replaceAll('\\', '/')) === expected.file);
         if (matches.length !== 1) fail(`archive must contain exactly one ${expected.file}; found ${matches.length}`);
         const extracted = path.join(tmp, ...matches[0].replaceAll('\\', '/').split('/'));
         if (sha256File(extracted) !== expected.sha256) fail(`archive ${expected.file} differs from canonical assets`);
       }
     }
+    const selectedStores = new Map(stores.map(({ name }) => [name.toLowerCase(), name]));
+    const storeSuffixes = [...REQUIRED_SUFFIXES, ...OPTIONAL_SHIPPED_SUFFIXES]
+      .sort((left, right) => right.length - left.length);
+    const archiveFamilies = entries.map((entry) => path.posix.basename(entry.replaceAll('\\', '/')))
+      .map((name) => {
+        const suffix = storeSuffixes.find((candidate) => name.toLowerCase().endsWith(candidate));
+        return suffix ? { name, store: name.slice(0, -suffix.length) } : null;
+      }).filter(Boolean);
+    const unclassified = [...new Set(archiveFamilies.filter(({ store }) => !selectedStores.has(store.toLowerCase()))
+      .map(({ store }) => store))].sort();
+    if (unclassified.length) fail(`unclassified archive store(s): ${unclassified.join(', ')}`);
+    const aliases = archiveFamilies.filter(({ store }) => selectedStores.get(store.toLowerCase()) !== store)
+      .map(({ name }) => name).sort();
+    if (aliases.length) fail(`archive store-family alias differs by case: ${aliases.join(', ')}`);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
   return fileIdentity(bundleFile);
 }
 
-function buildReceipt({
+async function buildReceipt({
   assetsDir,
   bundleFile,
   policyFile,
@@ -138,7 +147,6 @@ function buildReceipt({
     fail('RVF generation ledger has no stores object');
   }
   const policy = readJson(path.resolve(policyFile || ''), 'eligibility policy');
-  const counts = assertPolicyCurrent(policy);
 
   const rvfFiles = fs.readdirSync(assets).filter((name) => /^.+\.big\.rvf$/.test(name)).sort();
   const rvfByStore = new Map(rvfFiles.map((file) => [file.slice(0, -'.big.rvf'.length), file]));
@@ -160,6 +168,9 @@ function buildReceipt({
     .filter(([, owners]) => owners.length > 1)
     .map(([sha256, owners]) => ({ sha256, stores: owners.sort() }));
   if (duplicateRvfDigests.length) fail(`duplicate RVF bytes: ${duplicateRvfDigests.map((row) => row.stores.join('/')).join(', ')}`);
+  const publicInventory = validatePublicInventory({ assetsDir: assets, coverage: policy, ledger });
+  const publicSet = new Set(publicInventory.publicStores);
+  const counts = assertPolicyCurrent(policy);
 
   const missingSidecars = [];
   const stores = [];
@@ -172,7 +183,7 @@ function buildReceipt({
     if (!generation.sourceCommit || !generation.builtUtc || !generation.model || !Number.isInteger(generation.dimensions)) {
       fail(`${store}: generation receipt lacks sourceCommit, builtUtc, model, or dimensions provenance`);
     }
-    if (privateSet.has(store.toLowerCase())) continue;
+    if (privateSet.has(store.toLowerCase()) || !publicSet.has(store.toLowerCase())) continue;
     const files = [];
     for (const suffix of REQUIRED_SUFFIXES) {
       const file = path.join(assets, `${store}${suffix}`);
@@ -194,7 +205,14 @@ function buildReceipt({
   }
   if (missingSidecars.length) fail(`missing sidecars: ${missingSidecars.join(', ')}`);
   if (!stores.length) fail('zero public corpus stores remain after the private fence');
-  const archive = verifyArchive({ bundleFile: path.resolve(bundleFile || ''), stores, privateStores });
+  const finalByteFiles = stores.flatMap((store) => store.files.map((file) => ({ store: store.name, ...file })))
+    .sort((a, b) => a.file.localeCompare(b.file) || a.store.localeCompare(b.store));
+  const finalBytePartitionSha256 = crypto.createHash('sha256').update(canonicalJson({
+    publicInventoryPartitionSha256: publicInventory.partitionSha256,
+    publicStores: publicInventory.publicStores,
+    files: finalByteFiles,
+  })).digest('hex');
+  const archive = await verifyArchive({ bundleFile: path.resolve(bundleFile || ''), stores, privateStores });
   const policyIdentity = fileIdentity(path.resolve(policyFile));
   const fenceIdentity = fileIdentity(fenceFile);
   const ledgerIdentity = fileIdentity(ledgerFile);
@@ -213,6 +231,8 @@ function buildReceipt({
     privateFence: fenceIdentity,
     eligibilityPolicy: policyIdentity,
     generationLedger: ledgerIdentity,
+    publicInventory,
+    finalBytePartitionSha256,
     excludedPrivateStores: privateStores.filter((privateStore) =>
       [...rvfByStore.keys()].some((store) => store.toLowerCase() === privateStore)),
     duplicateRvfDigests,
@@ -229,9 +249,9 @@ function currentGitSha() {
   return result.stdout.trim();
 }
 
-export function createCorpusReceipt(options) {
+export async function createCorpusReceipt(options) {
   const receiptFile = path.resolve(options.receiptFile || 'dist/corpus-receipt.json');
-  const receipt = buildReceipt({
+  const receipt = await buildReceipt({
     ...options,
     builderSourceSha: options.builderSourceSha || currentGitSha(),
     createdAt: options.createdAt || new Date().toISOString(),
@@ -241,7 +261,7 @@ export function createCorpusReceipt(options) {
   return receipt;
 }
 
-export function verifyCorpusReceipt(options) {
+export async function verifyCorpusReceipt(options) {
   const receipt = readJson(path.resolve(options.receiptFile || ''), 'corpus receipt');
   if (receipt.kind !== 'ruvnet-brain-corpus-candidate' || receipt.schemaVersion !== 1) fail('unsupported corpus receipt');
   const exactFiles = [
@@ -262,7 +282,7 @@ export function verifyCorpusReceipt(options) {
     if (sha256File(file) !== expected?.sha256) fail(`${label} sha256 differs from receipt`);
     if (fs.statSync(file).size !== expected?.bytes) fail(`${label} byte length differs from receipt`);
   }
-  const actual = buildReceipt({
+  const actual = await buildReceipt({
     ...options,
     builderSourceSha: receipt.builderSourceSha,
     createdAt: receipt.createdAt,
@@ -285,7 +305,7 @@ async function main() {
     receiptFile: arg('--receipt', arg('--out', 'dist/corpus-receipt.json')),
     builderSourceSha: arg('--builder-source-sha'),
   };
-  const receipt = mode === 'verify' ? verifyCorpusReceipt(options) : createCorpusReceipt(options);
+  const receipt = mode === 'verify' ? await verifyCorpusReceipt(options) : await createCorpusReceipt(options);
   console.log(JSON.stringify({ ok: true, mode, archive: receipt.archive, stores: receipt.storeCount }, null, 2));
 }
 

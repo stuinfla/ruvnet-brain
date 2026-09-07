@@ -11,18 +11,16 @@
  * for a month.
  *
  * WHAT IT WILL NOT DO. It does not publish. `scripts/self-update.mjs:56` refuses `--publish` and
- * only `protected-release.yml` may create a release, publish npm, or move a dist-tag. This script
- * DISPATCHES that workflow — the sanctioned path — and never substitutes for it. Every safety gate
- * (exact-SHA evidence, clean worktree, release-proof, host verification, post-publication seal)
- * still runs inside the workflow exactly as designed. Bypassing them to "get it done while nobody
- * is looking" would be the worst possible reading of an instruction to finish the job.
+ * `release-candidate-preflight.yml` owns the one-time long lanes and `protected-release.yml` is the
+ * sole publication controller. This watchdog is report-only: it never dispatches either phase and
+ * cannot manufacture typed candidate evidence.
  *
  * IT IS A NO-OP UNLESS EVERY PRECONDITION HOLDS. It runs from the nightly, unattended, for weeks.
  * A watchdog that acts on a partial picture is worse than no watchdog, so it refuses on anything
  * unexpected and says why. The default outcome is "nothing happened, here is the reason".
  *
  *   node scripts/release-convergence-watchdog.mjs           # report only, never acts
- *   node scripts/release-convergence-watchdog.mjs --dispatch # act, but only if ALL gates pass
+ *   node scripts/release-convergence-watchdog.mjs --dispatch # compatibility flag; still reports only
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -99,21 +97,11 @@ const runsFor = (wf) => JSON.parse(tryShy(() => sh('gh', ['run', 'list', '--repo
 const greenAt = (wf) => runsFor(wf).find((r) => r.headSha === originMain && r.conclusion === 'success');
 
 const ci = greenAt('ci');
-const aggregate = greenAt('release-aggregate');
 if (!ci) stand_down(`no successful exact-SHA \`ci\` run at ${originMain.slice(0, 7)} yet`);
-if (!aggregate) stand_down(`no successful exact-SHA \`release-aggregate\` run at ${originMain.slice(0, 7)} yet`);
 
-log(`ALL GATES PASS — candidate=${originMain.slice(0, 7)} version=${version} ci=${ci.databaseId} aggregate=${aggregate.databaseId}`);
-if (!DISPATCH) {
-  log('report-only mode; pass --dispatch to actually invoke the protected release workflow.');
-  process.exit(0);
-}
-
-// ── 6. Dispatch THE SANCTIONED PUBLISHER. Nothing here publishes; the workflow does. ─────────────
-sh('gh', ['workflow', 'run', 'protected-release.yml', '--repo', REPO,
-  '-f', `candidate_sha=${originMain}`,
-  '-f', `version=${version}`,
-  '-f', `release_qe_run_id=${ci.databaseId}`,
-  '-f', `aggregate_run_id=${aggregate.databaseId}`]);
-log(`DISPATCHED protected-release for ${version}. The workflow owns every safety gate from here.`);
-log('Verify afterwards with: node scripts/published-surface-probe.mjs (D-version-coherence must PASS).');
+log(`PRECONDITIONS VISIBLE — candidate=${originMain.slice(0, 7)} version=${version} ci=${ci.databaseId}`);
+// ── 6. Never dispatch a publisher from the watchdog. ───────────────────────────────────────────
+// Only protected-release may derive the complete typed evidence chain and cross Production.
+// This unattended observer cannot turn visible preconditions into release authority.
+log(`PRECONDITIONS ONLY — no candidate artifact inferred and no action taken for ${version} at ${originMain}`);
+log('Run release-candidate-preflight on release/** once; fast-forward that exact SHA to main; then protected-release imports release-candidate-<SHA> without a run ID.');

@@ -1,42 +1,63 @@
 name: integration-linux
-# The brain-DEPENDENT suite, run on a real Linux runner on demand.
-#
-# WHY IT EXISTS. tests/integration/* passed on macOS and failed on ubuntu, and we could not
-# reproduce the divergence locally even with a sanitized HOME and PATH. Guessing at a platform bug
-# is how you "fix" the wrong thing. This job gives the actual Linux output.
-#
-# It is NOT part of the required `ci` workflow: several of these tests want the 512MB brain, which a
-# runner does not have. They are expected to SKIP when their prerequisite is absent — and a test that
-# skips must say so loudly, never pass silently. This job surfaces exactly which do which.
-#
-#   gh workflow run integration-linux.yml
-
-# Runs on every push now (ADR-0011 Phase 0): a broken integration test reached main on 2026-07-09
-# and nothing stopped it, because this suite was dispatch-only. The tests skip LOUDLY when the brain
-# is absent; what remains is brain-independent and must hold on Linux.
+# Qualify in the producer; required release/main checks consume its receipt.
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
-  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      candidate_sha:
+        description: Exact candidate SHA when called by the release transaction
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ruvnet-brain-integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   integration:
     runs-on: ubuntu-latest
+    # A blocked child process must fail the workflow instead of consuming GitHub's six-hour default.
+    # The full suite normally completes in under two minutes; fifteen minutes leaves room for cold
+    # dependency/model setup while keeping a runner wedge observable.
+    timeout-minutes: 125
+    env:
+      RUVNET_REQUIRE_CODEX_DISCOVERY: '1'
+      QUALIFICATION_CONSUMER: ${{ !inputs.candidate_sha && (github.event_name == 'push' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Install root deps
-        run: npm i --no-audit --no-fund --loglevel=error
+        if: env.QUALIFICATION_CONSUMER != 'true'
+        run: npm ci --no-audit --no-fund --loglevel=error
 
       - name: Install kb deps (@ruvector/rvf lives here, not the root)
+        if: env.QUALIFICATION_CONSUMER != 'true'
         run: cd kb && npm ci --no-audit --no-fund
 
+      - name: Install and verify the required native Codex CLI
+        if: env.QUALIFICATION_CONSUMER != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global --prefix "$HOME/.npm-global" @openai/codex@latest
+          "$HOME/.npm-global/bin/codex" --version
+          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
+
       - name: Environment facts (so a failure is diagnosable from the log alone)
+        if: env.QUALIFICATION_CONSUMER != 'true'
         run: |
           echo "shell:  $(readlink -f /bin/sh)"
           echo "bash:   $(bash --version | head -1)"
@@ -44,90 +65,36 @@ jobs:
           echo "sed:    $(sed --version | head -1)"
           echo "jq:     $(jq --version 2>/dev/null || echo MISSING)"
           echo "gh:     $(gh --version 2>/dev/null | head -1 || echo MISSING)"
-          echo "rvf stores present: $(ls kb/*.rvf 2>/dev/null | wc -l)"
+          node --input-type=module -e 'import fs from "node:fs"; console.log("rvf stores present:", fs.readdirSync("kb").filter(name => name.endsWith(".rvf") && fs.statSync("kb/" + name).isFile()).length)'
 
-      - name: Integration suite (continue on failure so we see EVERY error, not just the first)
-        id: run
-        continue-on-error: true
+      - name: Reviewed release integration acceptance
+        if: env.QUALIFICATION_CONSUMER != 'true' && inputs.candidate_sha != ''
+        run: node scripts/release-qualification.mjs --suite integration --platform linux --report /tmp/integration.json
+      - name: Developer integration diagnostics
+        if: env.QUALIFICATION_CONSUMER != 'true' && inputs.candidate_sha == ''
+        run: node node_modules/vitest/vitest.mjs run tests/integration
+      - name: Bind integration evidence to the exact source
+        if: env.QUALIFICATION_CONSUMER != 'true' && inputs.candidate_sha != ''
         shell: bash
-        run: |
-          # pipefail, or the pipeline reports tee's status (always 0) and vitest's verdict is lost.
-          set -o pipefail
-          # `if` rather than a bare pipeline + $?: GitHub runs `shell: bash` with -e, so a non-zero
-          # pipeline aborts the script BEFORE the exit code can be recorded, leaving the output
-          # unset — which the verdict step then reads as failure. That fails a green run, which is
-          # exactly what it did on 75f9310 (31 files / 234 tests passed, job red). A condition is
-          # exempt from -e, so the code is captured on both paths.
-          # --reporter=json writes a MACHINE ARTIFACT. The human-readable reporter stays for the log,
-          # but no verdict is ever derived from it — see the note in Summarize.
-          if npx vitest run tests/integration \
-               --reporter=verbose --reporter=json --outputFile.json=/tmp/integration.json \
-               2>&1 | tee /tmp/integration.log; then
-            echo "vitest_exit=0" >> "$GITHUB_OUTPUT"
-          else
-            echo "vitest_exit=$?" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Summarize
-        shell: bash
-        env:
-          # Passed through env rather than interpolated into the script body — this one is a number
-          # we produced ourselves, but inlining step outputs into shell is the habit that turns an
-          # untrusted field into command injection, so the safe form is the only form used here.
-          VITEST_EXIT: ${{ steps.run.outputs.vitest_exit }}
         run: |
           set -euo pipefail
-          echo "### Linux integration results" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          grep -E "✓|×|↓|Test Files|Tests " /tmp/integration.log | tail -40 >> "$GITHUB_STEP_SUMMARY" || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-
-          # THE VERDICT COMES FROM A MACHINE ARTIFACT. NEVER FROM GREPPING A DECORATED LOG.
-          #
-          # History, because this line has now been wrong twice in opposite directions:
-          #
-          #  1. It was `! grep -qE "^\s*×|Failed Tests"` — success meaning the ABSENCE of a failure
-          #     token. Under `continue-on-error` + a pipe without pipefail, a vitest CRASH produced a
-          #     log with neither token, so grep found nothing, `!` made it true, and the job went
-          #     GREEN. release-aggregate reads conclusions only, so a suite that never ran was
-          #     laundered into a PASS leaf of the release evidence.
-          #
-          #  2. The fix replaced it with `grep -qE "^ *Test Files +[0-9]"` as positive proof of
-          #     completion. That regex CANNOT MATCH: vitest colorizes, so the real bytes are
-          #     `\e[2m Test Files \e[22m \e[1m\e[32m31 passed` — ANSI before "Test Files" and between
-          #     it and the digit. Measured on run 31054877336: exit 0, 31 files / 234 tests passed,
-          #     job RED. An unsatisfiable gate, which is the third instance of that exact class here
-          #     (after the RVF byte-compare and EXPECTED_VERSION) and was created while fixing the
-          #     second one.
-          #
-          # Both failures share one cause: a verdict derived from human-facing text. Text is styled,
-          # localized and reformatted at will, so it is evidence of nothing. vitest's JSON reporter
-          # is a contract. Read that instead — and note it is written even when tests fail, so its
-          # ABSENCE genuinely means "the runner never got far enough to report", which is the crash
-          # case (1) was trying to catch.
-          if [ "${VITEST_EXIT:-1}" != "0" ]; then
-            echo "::error::integration suite exited ${VITEST_EXIT:-<none>} — the run itself failed" >&2
-            exit 1
-          fi
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          let report;
-          try {
-            report = JSON.parse(fs.readFileSync('/tmp/integration.json', 'utf8'));
-          } catch (error) {
-            console.log(`::error::no parseable vitest JSON report — the suite did not run to completion, so there is no verdict to report (${error.message})`);
-            process.exit(1);
-          }
-          const failed = report.numFailedTests ?? 0;
-          const suitesFailed = report.numFailedTestSuites ?? 0;
-          const total = report.numTotalTests ?? 0;
-          if (total === 0) {
-            console.log('::error::vitest reported ZERO tests — a suite that ran nothing is not a pass');
-            process.exit(1);
-          }
-          if (failed > 0 || suitesFailed > 0) {
-            console.log(`::error::integration tests failed: ${failed} test(s), ${suitesFailed} suite(s) — see the summary above`);
-            process.exit(1);
-          }
-          console.log(`integration suite ran to completion: ${report.numPassedTests ?? 0}/${total} passed, 0 failed`);
-          NODE
+          node scripts/integration-evidence.mjs --qualified \
+            --report /tmp/integration.json \
+            --out integration-evidence.json \
+            --sha "${{ inputs.candidate_sha || github.event.pull_request.head.sha || github.sha }}" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "${{ github.run_attempt }}"
+      - name: Persist typed integration evidence
+        if: env.QUALIFICATION_CONSUMER != 'true' && inputs.candidate_sha != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-evidence-${{ inputs.candidate_sha || github.event.pull_request.head.sha || github.sha }}
+          path: integration-evidence.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Verify already-qualified release source
+        if: env.QUALIFICATION_CONSUMER == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/qualified-candidate-check.mjs --sha "$CANDIDATE_SHA" --required-check integration --timeout-ms 7200000 --poll-ms 30000

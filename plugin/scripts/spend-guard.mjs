@@ -65,7 +65,12 @@ export const METERED_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY'];
 export const FLEET_RUNNERS = [
   { name: 'the QE fleet', match: /(^|[|;&\s])(aqe|agentic-qe)\b/ },
   { name: 'the agent-flow orchestrator', match: /(^|[|;&\s])agentic-flow\b/ },
-  { name: 'a ruflo swarm', match: /(^|[|;&\s])ruflo\b[^|;&]*\b(swarm|hive-mind|agent\s+spawn|task\s+orchestrate)\b/ },
+  // Match Ruflo's COMMAND position, not an arbitrary later token. The former `[^|;&]*swarm`
+  // search classified every mandatory `ruflo memory ... --path .swarm/memory.db` checkpoint as a
+  // fleet and blocked it whenever the hook process had a metered key. Ruflo's live help permits
+  // global flags before the command, so consume only those known flags and then require a genuine
+  // fleet command. An absolute global-binary path is invocation-equivalent to bare `ruflo`.
+  { name: 'a ruflo swarm', match: /(^|[|;&\s])(?:[^\s|;&]*\/)?ruflo\b(?:\s+(?:(?:-v|--verbose|-Q|--quiet|--no-color|-i|--interactive)|(?:-c|--config|--format)(?:=[^\s|;&]+|\s+[^\s|;&]+)))*\s+(?:swarm|hive-mind|agent\s+spawn|task\s+orchestrate)\b/ },
   { name: 'flow-nexus', match: /(^|[|;&\s])flow-nexus\b/ },
 ];
 

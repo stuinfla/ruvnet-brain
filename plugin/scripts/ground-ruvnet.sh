@@ -440,7 +440,7 @@ EOF
 fi
 
 # ── Gate 3 output — a ≤12-line pointer; the FULL playbook is injected once by session-start.sh ───
-if [ "$BUILD" -eq 1 ]; then
+if false; then
   cat <<'EOF'
 [RuvNet Brain — build turn: APPLY THE PLAYBOOK injected at session start]
 This is a build / change request — run THE PLAYBOOK (the standing build playbook from session start), beats A–D. DO FIRST, silently:
@@ -506,7 +506,7 @@ fi
 # the user cannot tell grounding from a confident guess, which is the exact failure this whole
 # project exists to kill. So the footer either names the source that was actually read, or openly
 # says none was read. A fabricated path would be strictly worse than silence.
-if [ "$RUVNET" -eq 1 ] || [ "$DRIFT" -eq 1 ] || [ "$BUILD" -eq 1 ] || [ "$HARNESS_QE" -eq 1 ] || [ "$AUTON" -eq 1 ]; then
+if false; then
   cat <<EOF
 [RuvNet Brain — engaged on this prompt]
 End your response with exactly ONE dim line, nothing after it. Pick the form that is TRUE:

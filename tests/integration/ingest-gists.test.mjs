@@ -14,13 +14,8 @@
 // this suite has hit (prove.mjs, brain-grade-groundtruth.mjs, eval-brain.mjs all need a live ONNX+built
 // .rvf; this one does not).
 //
-// LIVE-REPRODUCED FINDING (not fixed here, same norm as every other gap file in this suite — flagged,
-// not silently patched): a gist file with `truncated: true` and a `raw_url` is NEVER actually fetched
-// from that raw_url. `body = f.truncated && f.raw_url ? '' : (f.content || '')` unconditionally sets
-// body to the EMPTY STRING for any truncated file, so it falls into `if (!body.trim()) { skipped++;
-// continue; }` and is silently dropped — the exact case the `raw_url` field exists to handle. A large
-// gist (>1MB, the GitHub truncation threshold) contributes ZERO of its real content to the KB, with no
-// error and no signal beyond the aggregate "N skipped" count in stdout. Reproduced for real below.
+// The ingest must fail closed: a truncated or failed gist cannot produce a receipt-only or partial
+// corpus that looks searchable. The command is bounded per gist so the nightly cannot wedge forever.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -159,6 +154,19 @@ onPosix('ingest-gists.mjs — real ingest, banner + chunking', () => {
     expect(fs.existsSync(path.join(tmp, 'docs/RUV-GISTS.md'))).toBe(true);
   });
 
+  it('normalizes Unicode line separators so JSONL remains one physical line per passage', () => {
+    writeFixture('list.json', ONE_GIST);
+    writeFixture('gists/abc12345.json', {
+      ...ONE_GIST_FULL,
+      files: { 'flywheel.md': { content: 'before\u2028after\u2029end', truncated: false } },
+    });
+    const r = runGists([]);
+    expect(r.code).toBe(0);
+    const raw = fs.readFileSync(path.join(tmp, 'kb/ruv-gists.passages.jsonl'), 'utf8');
+    expect(raw.split('\n').filter(Boolean)).toHaveLength(1);
+    expect(JSON.parse(raw).text).toMatch(/before\nafter\nend/);
+  });
+
   it('forwards --owner into the list call instead of the "ruvnet" default', () => {
     writeFixture('list.json', ONE_GIST);
     const r = runGists(['--owner', 'someorg', '--dry-run']);
@@ -185,23 +193,19 @@ onPosix('ingest-gists.mjs — code files are silently excluded by design (TEXT_E
   });
 });
 
-onPosix('ingest-gists.mjs — LIVE BUG: truncated content is silently dropped, never fetched from raw_url', () => {
-  it('a truncated file with a raw_url present still produces ZERO passages for that file', () => {
+onPosix('ingest-gists.mjs — partial content fails closed', () => {
+  it('a truncated file with a raw_url fails the run and writes no partial corpus', () => {
     writeFixture('list.json', [{ id: 'trunc001', updated_at: '2026-07-03T00:00:00Z', description: 'Huge gist', files: { 'big-log.md': {} } }]);
     writeFixture('gists/trunc001.json', {
       id: 'trunc001', updated_at: '2026-07-03T00:00:00Z', description: 'Huge gist',
       files: { 'big-log.md': { truncated: true, raw_url: 'https://gist.githubusercontent.com/ruvnet/trunc001/raw/big-log.md', content: '' } },
     });
     const r = runGists([]);
-    expect(r.code).toBe(0);
-    expect(r.stdout).toMatch(/1 skipped/); // the ONLY signal this ever happened is an aggregate count
-    // passages.jsonl is still written (main() has no early-return here) but with ZERO real content —
-    // the truncated file's text never made it in, despite raw_url being available on the fixture.
-    const passages = fs.readFileSync(path.join(tmp, 'kb/ruv-gists.passages.jsonl'), 'utf8').trim();
-    expect(passages).toBe('');
-    // Proves the bug: `gh()` (and therefore the stub) was NEVER called a second time for the raw_url,
-    // even though one exists on the fixture — only the original per-gist fetch call is logged.
-    expect(r.calls.filter((c) => c.includes('trunc001'))).toHaveLength(1);
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toMatch(/empty or truncated text file/);
+    expect(r.stderr).toMatch(/refusing to write partial corpus/);
+    expect(fs.existsSync(path.join(tmp, 'kb/ruv-gists.passages.jsonl'))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, 'kb/ruv-gists.meta.json'))).toBe(false);
   });
 });
 

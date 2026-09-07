@@ -2,12 +2,15 @@
 id: ADR-009
 status: Accepted
 date: 2026-07-06
-updated: 2026-07-27
+updated: 2026-08-30
 updated_source: derived-from-git
 ---
 # ADR-0009: The Mirror Discipline — RuvNet Brain must pass its own bar (self-audit + ADR/DDD/doc QA)
 
 **Status**: Accepted (2026-07-06)
+**Updated**: 2026-08-30 — the convergence manifest is now the deterministic identity boundary for
+source files, version surfaces, ADR inventory, and ownership checks; canonical QA rejects a stale
+manifest before merge. This does not auto-author ADR prose, so unresolved ADR targets remain explicit.
 **Date**: 2026-07-06
 
 **Origin:** Stuart's directive — "have RuvNet Brain review the

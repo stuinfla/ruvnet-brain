@@ -182,6 +182,8 @@ describe('build-bundle.mjs — publishable artifact gate (fail-closed)', () => {
     expect(r.stdout).toMatch(/EXCLUDED 1 PRIVATE store\(s\): private-repo/);
     const manifest = JSON.parse(fs.readFileSync(path.join(tmp, 'dist/ruvnet-brain/manifest.json'), 'utf8'));
     expect(manifest.builtRepos.map(({ name }) => name)).toEqual(['public-repo']);
+    expect(JSON.parse(fs.readFileSync(path.join(tmp, 'dist/ruvnet-brain/PRIVATE-STORES.json'), 'utf8')))
+      .toEqual({ privateStores: ['private-repo'] });
   });
 
   it('FATALs when discovery yields zero public RVFs, including a private-only KB', () => {

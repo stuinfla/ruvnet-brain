@@ -40,6 +40,17 @@ describe('release-selected RVF ledger closure', () => {
     expect(validateSelectedRvfGenerations(dir, { selectedStores: ['demo'], privateStores: ['demo'] }).failures)
       .toContainEqual(expect.stringContaining('private'));
   });
+
+  it('permits an explicitly excluded receipted store outside the selected release roots', () => {
+    const dir = fixtureDir();
+    fs.writeFileSync(path.join(dir, 'demo.big.rvf'), 'demo');
+    writeRvfGeneration({ dir, store: 'demo', model: 'bge', dimensions: 768, sourceCommit: 'abc1234' });
+    fs.writeFileSync(path.join(dir, 'excluded.big.rvf'), 'excluded');
+    writeRvfGeneration({ dir, store: 'excluded', model: 'bge', dimensions: 768, sourceCommit: 'def5678' });
+    expect(validateSelectedRvfGenerations(dir, {
+      selectedStores: ['demo'], excludedStores: ['excluded'],
+    }).failures).toEqual([]);
+  });
 });
 
 function fixtureDir() {

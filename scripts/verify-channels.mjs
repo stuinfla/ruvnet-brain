@@ -97,7 +97,7 @@ async function run() {
     }
     check('npm latest matches shipping version', ok,
       ok ? `npm latest=${latest} · shipping=${V}`
-        : `npm latest=${latest || '(view failed: ' + lastErr + ')'} · shipping=${V}${latest && latest !== V ? '  ← STILL STALE after ~' + (ATTEMPTS * 5) + 's: run `npm publish` + `npm dist-tag add ' + NPM_PKG + '@' + V + ' latest`' : ''}`);
+        : `npm latest=${latest || '(view failed: ' + lastErr + ')'} · shipping=${V}${latest && latest !== V ? '  ← STILL STALE after ~' + (ATTEMPTS * 5) + 's: dispatch the protected-release workflow for the exact candidate SHA' : ''}`);
   }
 
   // 2) the self-update manifest URL actually resolves (the 404 that stranded users)

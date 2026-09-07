@@ -219,7 +219,7 @@ describe('the writer itself still writes — the guard above is about wiring, no
       enforceable: false,
       sourceReference: {
         path: 'src/generators/test-generator.ts',
-        sha: expect.stringMatching(/^[a-f0-9]{12}$/),
+        sha: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
     });
     const receipt = buildReceipt({
@@ -252,7 +252,7 @@ describe('the writer itself still writes — the guard above is about wiring, no
     expect(receipt.sources[0]).toMatchObject({
       sourceReference: {
         path: 'src/metrics.ts',
-        sha: expect.stringMatching(/^[a-f0-9]{12}$/),
+        sha: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
       enforceable: false,
     });
@@ -272,7 +272,7 @@ describe('the writer itself still writes — the guard above is about wiring, no
     expect(facts).toMatchObject({
       sourceReference: {
         path: 'adaptive/core/learning.py',
-        sha: expect.stringMatching(/^[a-f0-9]{12}$/),
+        sha: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
       enforceable: true,
     });
@@ -291,7 +291,7 @@ describe('the writer itself still writes — the guard above is about wiring, no
       enforceable: true,
       sourceReference: {
         path: 'scripts/evaluate.mjs',
-        sha: expect.stringMatching(/^[a-f0-9]{12}$/),
+        sha: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
     });
     expect(facts.posture.join(' ')).toMatch(/gold .*never applied.*grading/i);
@@ -311,7 +311,7 @@ describe('the writer itself still writes — the guard above is about wiring, no
       enforceable: true,
       sourceReference: {
         path: 'docs/live.js',
-        sha: expect.stringMatching(/^[a-f0-9]{12}$/),
+        sha: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
     });
     expect(facts.posture.join(' ')).toMatch(/fully in the browser|no upload/i);

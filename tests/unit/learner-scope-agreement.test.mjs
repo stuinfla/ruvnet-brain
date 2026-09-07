@@ -58,8 +58,12 @@ describe('issue #136 — reader, remedy and label all mean the SERVED project', 
     expect(block, 'sanity: the training remedy must still exist').toBeTruthy();
     expect(block, 'cwd: HOME cannot clear a project-scoped finding').not.toMatch(/cwd:\s*HOME\b/);
     expect(block).toMatch(/cwd:\s*PROJECT\b/);
-    // …and PROJECT must be the same rule learn-flush and learn-capture resolve (#134).
-    expect(src).toMatch(/const PROJECT = process\.env\.RUVNET_BRAIN_PROJECT_DIR \|\| process\.cwd\(\)/);
+    // …and PROJECT must be the same rule learn-flush and learn-capture resolve (#134, and its
+    // residual: projectDirectory()'s CLAUDE_PROJECT_DIR-with-containment rule as the intermediate
+    // fallback both hosts actually provide, reused rather than hand-rolled).
+    expect(src).toMatch(
+      /const PROJECT = process\.env\.RUVNET_BRAIN_PROJECT_DIR \|\| projectDirectory\(\)/,
+    );
   });
 
   it('the label does not claim account scope for a project-scoped reading', () => {

@@ -27,6 +27,24 @@ describe('brain-score catalogue distinguishes never-materialized from a real emp
     expect(cov.routable.detail).toMatch(/never materialized|does not exist/i);
   });
 
+  it('TEETH: a stray FILE where the root directory belongs is reported unmeasured, not a false current 0', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-score-stray-file-'));
+    const strayRoot = path.join(dir, 'root-as-file');
+    fs.writeFileSync(strayRoot, 'x');
+    try {
+      expect(fs.existsSync(strayRoot), 'fixture precondition: existsSync must see it as present').toBe(true);
+
+      const cov = await readCoverage(strayRoot);
+
+      expect(cov.catalogue.value, 'a stray-file root must not produce a numeric catalogue value').toBeNull();
+      expect(cov.catalogue.detail).toMatch(/never materialized|does not exist/i);
+      expect(cov.routable.value).toBeNull();
+      expect(cov.routable.detail).toMatch(/never materialized|does not exist/i);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('a root that DOES exist but is genuinely empty still reports a real 0, not unmeasured', async () => {
     const realEmptyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-score-real-empty-'));
     try {

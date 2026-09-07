@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(import.meta.dirname, '../../..');
@@ -10,6 +10,7 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-release-qe-'));
 let packed;
 let artifact;
 let install;
+const previousImportOnly = process.env.RUVNET_BRAIN_IMPORT_ONLY;
 
 beforeAll(async () => {
   const sealed = process.env.RUVNET_SEALED_PACKAGE;
@@ -38,7 +39,11 @@ beforeAll(async () => {
   install = await import(pathToFileURL(path.join(artifact, 'bin/install.mjs')).href);
 }, 180_000);
 
-afterAll(() => fs.rmSync(temp, { recursive: true, force: true }));
+afterAll(() => {
+  fs.rmSync(temp, { recursive: true, force: true });
+  if (previousImportOnly === undefined) delete process.env.RUVNET_BRAIN_IMPORT_ONLY;
+  else process.env.RUVNET_BRAIN_IMPORT_ONLY = previousImportOnly;
+});
 
 describe('npm artifact boundary', () => {
   it('packs one exact product version for npm, Claude Code, and Codex', () => {
@@ -76,7 +81,6 @@ describe('npm artifact boundary', () => {
       'console/app.js',
       'scripts/onboarding-console.mjs',
       'scripts/nightly-controller.mjs',
-      'docs/RELEASE-NOTES-4.0.md',
     ]) expect(files).toContain(required);
   });
 
@@ -104,7 +108,7 @@ describe('clean host installation from only the packed artifact', () => {
     expect(marketplace.plugins.some((entry) => entry.name === plugin.name)).toBe(true);
     expect(plugin).not.toHaveProperty('updated');
     expect(hooks.hooks).toBeTypeOf('object');
-    expect(Object.keys(hooks).sort()).toEqual(['description', 'hooks']);
+    expect(hooks.hooks).toEqual({});
     expect(fs.existsSync(path.join(artifact, 'plugin/.mcp.json'))).toBe(true);
   });
 
@@ -127,29 +131,10 @@ describe('clean host installation from only the packed artifact', () => {
     expect(install.codexStatus({ codexDir, configPath: config }).wired).toBe(true);
   });
 
-  it('keeps every packed Codex hook silent when a plugin-only host has no stable wrapper', () => {
-    const home = fs.mkdtempSync(path.join(temp, 'codex-plugin-only-'));
-    const codexHome = path.join(home, '.codex');
-    const brainHome = path.join(home, '.cache', 'ruvnet-brain');
-    fs.mkdirSync(codexHome, { recursive: true });
-    const hooks = JSON.parse(fs.readFileSync(path.join(artifact, 'plugin/hooks/codex-hooks.json'), 'utf8')).hooks;
-    const handlers = Object.entries(hooks).flatMap(([event, groups]) => groups.flatMap((group) =>
-      group.hooks.map((hook) => ({ event, ...hook }))));
-
-    for (const handler of handlers) {
-      const result = spawnSync(handler.command, {
-        cwd: artifact,
-        shell: true,
-        env: { ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: codexHome, RUVNET_BRAIN_HOME: brainHome },
-        input: JSON.stringify({ hook_event_name: handler.event, cwd: artifact }),
-        encoding: 'utf8',
-        timeout: 2_000,
-      });
-      expect(result.error, `${handler.event}: ${result.error?.message}`).toBeUndefined();
-      expect(result.signal, `${handler.event}: signal`).toBeNull();
-      expect(result.status, `${handler.event}: ${result.stderr}`).toBe(0);
-      expect(result.stdout, `${handler.event}: stdout`).toBe('');
-      expect(result.stderr, `${handler.event}: stderr`).toBe('');
+  it('ships zero automatic registrations in both packed host manifests', () => {
+    for (const name of ['hooks.json', 'codex-hooks.json']) {
+      const document = JSON.parse(fs.readFileSync(path.join(artifact, 'plugin/hooks', name), 'utf8'));
+      expect(document.hooks).toEqual({});
     }
   });
 

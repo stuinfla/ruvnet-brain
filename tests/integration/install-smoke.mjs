@@ -155,7 +155,11 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
     fs.writeFileSync(path.join(xen, 'package.json'), '{"name":"@xenova/transformers","version":"0.0.0-fixture"}\n');
     fs.mkdirSync(path.join(brainDir, 'node_modules', '@ruvector'), { recursive: true });
 
-    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, XDG_CACHE_HOME: cacheDir });
+    const r = runInstaller(['--doctor'], {
+      RUVNET_BRAIN_KB: brainDir,
+      RUVNET_BRAIN_HOME: path.join(cacheDir, 'brain-home'),
+      XDG_CACHE_HOME: cacheDir,
+    });
     assertVerdict(r, 0, '--doctor (complete brain dir = healthy)');
     const out = r.stdout || '';
     assert.match(out, /1 RuvNet repos? indexed/, `doctor must report the store it found; got:\n${out}`);
@@ -168,11 +172,10 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
 });
 
 // ── ADR-058 §D8: the PERSISTED grounding verdict gates `--doctor` even when everything else is
-// healthy. bin/install.mjs is the only writer (right after its own real install run) — a plain
-// `--doctor` invocation never re-writes this file, it only reads it back. Same complete-brain-dir
-// fixture as the healthy test above (repos/reader/mcp all present); the ONLY variable across these
-// three cases is what install-state.json says, proving the gate is real and not a side effect of
-// some other signal.
+// healthy. The installer writes the initial verdict; a later successful live doctor proof clears an
+// older failure before the final gate reads it. Same complete-brain-dir fixture as the healthy test
+// above (repos/reader/mcp all present); absent forge-ask-all.mjs, the ONLY variable across the first
+// three cases is what install-state.json says, proving the gate is real and not another signal.
 function completeBrainFixture() {
   const brainDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-grounding-'));
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-grounding-cache-'));
@@ -182,16 +185,16 @@ function completeBrainFixture() {
   fs.mkdirSync(xen, { recursive: true });
   fs.writeFileSync(path.join(xen, 'package.json'), '{"name":"@xenova/transformers","version":"0.0.0-fixture"}\n');
   fs.mkdirSync(path.join(brainDir, 'node_modules', '@ruvector'), { recursive: true });
-  return { brainDir, cacheDir };
+  return { brainDir, cacheDir, brainHome: path.join(cacheDir, 'brain-home') };
 }
 
 test('`--doctor` FAILS (exit 1) on an otherwise-COMPLETE brain dir when the persisted verdict says grounding is unproven', () => {
-  const { brainDir, cacheDir } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
   try {
     const stateDir = path.join(cacheDir, 'ruvnet-brain');
     fs.mkdirSync(stateDir, { recursive: true });
     fs.writeFileSync(path.join(stateDir, 'install-state.json'), JSON.stringify({ grounding: 'unproven', reason: 'no-answer' }));
-    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, XDG_CACHE_HOME: cacheDir });
+    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir });
     assertVerdict(r, 1, '--doctor (complete brain dir, but grounding persisted as unproven)');
     assert.match(r.stdout || '', /Grounding UNPROVEN/, 'doctor must name the persisted verdict as the reason it failed');
   } finally {
@@ -201,14 +204,51 @@ test('`--doctor` FAILS (exit 1) on an otherwise-COMPLETE brain dir when the pers
 });
 
 test('`--doctor` PASSES (exit 0) on the same complete brain dir when the persisted verdict says grounding is proven', () => {
-  const { brainDir, cacheDir } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
   try {
     const stateDir = path.join(cacheDir, 'ruvnet-brain');
     fs.mkdirSync(stateDir, { recursive: true });
     fs.writeFileSync(path.join(stateDir, 'install-state.json'), JSON.stringify({ grounding: 'proven', clearedBy: 'search_ruvnet' }));
-    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, XDG_CACHE_HOME: cacheDir });
+    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir });
     assertVerdict(r, 0, '--doctor (complete brain dir, grounding persisted as proven)');
     assert.doesNotMatch(r.stdout || '', /Grounding UNPROVEN/, 'a proven verdict must never print the unproven line');
+  } finally {
+    fs.rmSync(brainDir, { recursive: true, force: true });
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+  }
+});
+
+test('`--doctor` replaces a stale unproven verdict when its live citation proof succeeds', () => {
+  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
+  try {
+    const stateDir = path.join(cacheDir, 'ruvnet-brain');
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, 'install-state.json'), JSON.stringify({
+      grounding: 'unproven',
+      reason: 'no-answer',
+    }));
+    fs.writeFileSync(path.join(brainDir, 'forge-ask-all.mjs'), "console.log('fixture cited answer');\n");
+    fs.writeFileSync(path.join(brainDir, 'verify-citation.mjs'), [
+      'export async function verifyGrounding() {',
+      "  return { grounded: true, receipt: { path: 'source/path.rs', file: 'passages.jsonl' } };",
+      '}',
+      '',
+    ].join('\n'));
+
+    const r = runInstaller(['--doctor'], {
+      RUVNET_BRAIN_KB: brainDir,
+      RUVNET_BRAIN_HOME: brainHome,
+      XDG_CACHE_HOME: cacheDir,
+    });
+
+    assertVerdict(r, 0, '--doctor (live proof supersedes stale unproven state)');
+    assert.match(r.stdout || '', /Grounding PROVEN/, 'doctor must report the live citation proof');
+    assert.doesNotMatch(r.stdout || '', /Grounding UNPROVEN/, 'the stale verdict must not contradict the live proof');
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(stateDir, 'install-state.json'), 'utf8')).grounding,
+      'proven',
+      'the successful live proof must become the persisted verdict for later readers',
+    );
   } finally {
     fs.rmSync(brainDir, { recursive: true, force: true });
     fs.rmSync(cacheDir, { recursive: true, force: true });
@@ -218,9 +258,9 @@ test('`--doctor` PASSES (exit 0) on the same complete brain dir when the persist
 test('`--doctor` PASSES (exit 0) on the same complete brain dir when NO verdict was ever recorded (unknown ≠ fail)', () => {
   // No install-state.json written at all under this cacheDir — the pre-ADR-058 state of the world,
   // and the common case for any machine that installed before this feature shipped.
-  const { brainDir, cacheDir } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
   try {
-    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, XDG_CACHE_HOME: cacheDir });
+    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir });
     assertVerdict(r, 0, '--doctor (complete brain dir, no persisted verdict at all)');
     assert.doesNotMatch(r.stdout || '', /Grounding UNPROVEN/, 'absence of a verdict must never read as a failure');
   } finally {
@@ -296,8 +336,8 @@ test('`--doctor` reports the real token-meter summary line, computed from a real
     const out = r.stdout || '';
     assert.match(out, /meter: 2 injections measured here yesterday\+today — 3000 bytes/, `doctor must report the real ledger totals; got:\n${out}`);
   } finally {
-    fs.rmSync(projectDir, { recursive: true, force: true });
-    fs.rmSync(brainDir, { recursive: true, force: true });
+    fs.rmSync(projectDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    fs.rmSync(brainDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 });
 
@@ -317,8 +357,8 @@ test('`--doctor`\'s meter line degrades honestly when no ledger exists yet in cw
     assertVerdict(r, 1, '--doctor (no ledger; stub-only brain dir = incomplete install)');
     assert.match(r.stdout || '', /meter: no data yet/, 'must say plainly that nothing has been measured, not error or stay silent');
   } finally {
-    fs.rmSync(projectDir, { recursive: true, force: true });
-    fs.rmSync(brainDir, { recursive: true, force: true });
+    fs.rmSync(projectDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    fs.rmSync(brainDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 });
 
@@ -352,7 +392,11 @@ test(
       assert.match(xml, /<key>RunAtLoad<\/key>\s*<false\/>/, 'must not run at load');
       // ProgramArguments is a proper argv ARRAY (one <string> per arg — the correct launchd form),
       // so the two tokens are adjacent elements, never one space-joined line.
-      assert.match(xml, /<string>forge-update\.mjs<\/string>\s*<string>--apply<\/string>/, 'must run the bundled self-updater with --apply');
+      assert.match(
+        xml,
+        /<string>[^<]*nightly-refresh-[a-f0-9]{64}\.mjs<\/string>/,
+        'must run the current host-convergent updater rather than the retired KB-only command',
+      );
       // plutil is macOS's own plist validator — structural proof launchd could load this file.
       const lint = spawnSync('plutil', ['-lint', plist], { encoding: 'utf8', timeout: 15000 });
       assert.equal(lint.status, 0, `plutil -lint rejected the plist:\n${lint.stdout || ''}${lint.stderr || ''}`);
@@ -479,7 +523,7 @@ test(
 );
 
 test(
-  'already enabled on macOS: says nightly is already on and never prompts',
+  'unregistered macOS plist does not falsely claim nightly is already on',
   { skip: process.platform !== 'darwin' ? 'macOS-only: exercises the LaunchAgent branch' : false },
   () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-nightly-home-on-'));
@@ -491,8 +535,8 @@ test(
       fs.writeFileSync(path.join(plistDir, 'com.ruvnet.brain-update.plist'), '<!-- pre-existing -->\n');
       const r = runOfferNightly({ HOME: home, RUVNET_BRAIN_KB: kbDir });
       assert.equal(r.status, 0, `driver failed:\n${r.stderr || ''}`);
-      assert.match(r.stdout || '', /OFFER_RESULT=already-on/, 'an existing LaunchAgent must short-circuit the offer');
-      assert.match(r.stdout || '', /already on/, 'must say plainly that nightly is already on');
+      assert.match(r.stdout || '', /OFFER_RESULT=recommended/, 'an unregistered LaunchAgent does not prove a valid nightly job');
+      assert.doesNotMatch(r.stdout || '', /already on/, 'must not claim unverified scheduling is enabled');
       assert.doesNotMatch(r.stdout || '', /Enable nightly auto-updates\?/, 'must not prompt when already enabled');
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
@@ -531,21 +575,35 @@ test.todo(
 );
 
 test(
-  'non-macOS: honest "macOS-only" line plus the --update manual alternative, no prompt',
+  'non-macOS: supported schedulers are recommended without a non-TTY prompt',
   { skip: process.platform === 'darwin' ? 'covers the non-darwin branch (runs on Linux/Windows CI)' : false },
   () => {
-    const kbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-nightly-kb-lin-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-nightly-home-nonmac-'));
+    const brainHome = path.join(home, 'brain');
+    const kbDir = path.join(brainHome, 'kb');
     try {
+      fs.mkdirSync(kbDir, { recursive: true });
       fs.writeFileSync(path.join(kbDir, 'forge-update.mjs'), '// stub for install-smoke — never executed\n');
-      const r = runOfferNightly({ RUVNET_BRAIN_KB: kbDir });
+      const r = runOfferNightly({ HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: brainHome,
+        RUVNET_BRAIN_KB: kbDir });
       assert.equal(r.status, 0, `driver failed:\n${r.stderr || ''}`);
       const out = r.stdout || '';
-      assert.match(out, /OFFER_RESULT=unsupported/, 'non-darwin must take the unsupported path');
-      assert.match(out, /macOS-only/, 'must say honestly that the scheduler is macOS-only');
-      assert.match(out, /npx ruvnet-brain --update/, 'must offer the manual --update alternative');
-      assert.doesNotMatch(out, /Enable nightly auto-updates\?/, 'must not prompt on non-macOS');
+      const kind = { linux: 'cron', win32: 'task-scheduler' }[process.platform];
+      if (kind) {
+        assert.match(out, /OFFER_RESULT=recommended/, 'supported scheduler must be recommended');
+        assert.ok(out.includes(`background job (${kind})`), 'must describe this platform scheduler');
+        assert.match(out, /npx ruvnet-brain --enable-nightly/, 'must offer explicit manual enablement');
+        assert.match(out, /npx ruvnet-brain --update/, 'must retain the manual update alternative');
+        assert.match(out, /No interactive terminal here/, 'must explain why it did not prompt');
+      } else {
+        assert.match(out, /OFFER_RESULT=unsupported/, 'other platforms must remain unsupported');
+        assert.ok(out.includes(`No reversible scheduler adapter is available for ${process.platform}`));
+      }
+      assert.doesNotMatch(out, /Enable nightly auto-updates\?/, 'must not prompt without a TTY');
+      assert.deepEqual(fs.readdirSync(brainHome), ['kb'], 'an offer must not register a scheduler');
+      assert.deepEqual(fs.readdirSync(kbDir), ['forge-update.mjs'], 'an offer must not mutate the KB');
     } finally {
-      fs.rmSync(kbDir, { recursive: true, force: true });
+      fs.rmSync(home, { recursive: true, force: true });
     }
   },
 );
@@ -613,14 +671,10 @@ test('installer parses and still inlines the Ed25519 signing pubkey + verifyBund
   assert.match(src, /function\s+verifyBundle\s*\(/, 'the verifyBundle definition must remain');
 });
 
-// ── M-D8c (ADR-058 §D8): a hook that sleeps past its declared timeout, registered in a PACKED
-// hooks.json, makes the `--doctor --hooks` battery cell go RED end-to-end. tests/unit/selfcheck-
-// battery.test.mjs already proves fireHook()'s watchdog catches this at the unit level (a synthetic
-// "surface"); this proves the SAME thing through the real CLI entry point a stranger actually runs,
-// against a marketplace-clone-shaped surface laid out the way resolveInstalledSurface() expects —
-// the stranger-matrix workflow mutates the INSTALLED hooks.json the same way, so this is the fast,
-// local rehearsal of that exact CI cell.
-test('`--doctor --hooks` goes RED when a registered hook sleeps past its declared timeout', () => {
+// A stale installed registration must make `--doctor --hooks` red WITHOUT executing its body.
+// The registry-selected installPath is the exact payload Claude loads, so this test binds the
+// verdict to that path instead of a checkout or an arbitrary newest cache directory.
+test('`--doctor --hooks` goes RED when the selected installed plugin retains a hook', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-hook-timeout-'));
   const brainDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-hook-timeout-kb-'));
   try {
@@ -633,12 +687,18 @@ test('`--doctor --hooks` goes RED when a registered hook sleeps past its declare
     fs.writeFileSync(path.join(xen, 'package.json'), '{"name":"@xenova/transformers","version":"0.0.0-fixture"}\n');
     fs.mkdirSync(path.join(brainDir, 'node_modules', '@ruvector'), { recursive: true });
 
-    // The marketplace-clone-shaped plugin surface resolveInstalledSurface() looks for, seeded with
-    // ONE registration: the REAL hang.mjs fixture (synchronous stdin read — freezes the event loop,
-    // so only an EXTERNAL watchdog can catch it), timeout set short so the battery finishes fast.
-    const pluginRoot = path.join(home, '.claude', 'plugins', 'marketplaces', 'ruvnet-brain', 'plugin');
+    const pluginRoot = path.join(home, '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain', '9.9.9');
     fs.mkdirSync(path.join(pluginRoot, 'hooks'), { recursive: true });
+    fs.mkdirSync(path.join(pluginRoot, '.claude-plugin'), { recursive: true });
+    fs.mkdirSync(path.join(pluginRoot, 'commands'), { recursive: true });
     fs.mkdirSync(path.join(pluginRoot, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(pluginRoot, '.claude-plugin', 'plugin.json'), '{"name":"ruvnet-brain","version":"9.9.9"}\n');
+    fs.writeFileSync(path.join(pluginRoot, 'commands', 'rvbc.md'), '# fixture\n');
+    const registry = path.join(home, '.claude', 'plugins', 'installed_plugins.json');
+    fs.mkdirSync(path.dirname(registry), { recursive: true });
+    fs.writeFileSync(registry, JSON.stringify({
+      plugins: { 'ruvnet-brain@ruvnet-brain': [{ scope: 'user', version: '9.9.9', installPath: pluginRoot }] },
+    }));
     const hangFixture = path.join(ROOT, 'tests', 'fixtures', 'selfcheck-hooks', 'hang.mjs');
     fs.copyFileSync(hangFixture, path.join(pluginRoot, 'scripts', 'hang.mjs'));
     fs.writeFileSync(path.join(pluginRoot, 'scripts', 'hook-shim.mjs'), [
@@ -663,10 +723,10 @@ test('`--doctor --hooks` goes RED when a registered hook sleeps past its declare
     }, null, 2));
 
     const r = runInstaller(['--doctor', '--hooks'], { RUVNET_BRAIN_KB: brainDir, XDG_CACHE_HOME: path.join(home, '.cache'), HOME: home, USERPROFILE: home });
-    assertVerdict(r, 1, '--doctor --hooks (a sleeping hook must fail the battery)');
+    assertVerdict(r, 1, '--doctor --hooks (an installed hook must fail retirement)');
     const out = r.stdout || '';
-    assert.match(out, /hang/, `battery must report a hang violation; got:\n${out}`);
-    assert.match(out, /Self-check FAILED/, 'the mechanical verdict must say FAILED, not just print a warning');
+    assert.match(out, /UserPromptSubmit/, `retirement check must name the installed event; got:\n${out}`);
+    assert.doesNotMatch(out, /hang/, 'doctor must enumerate stale hooks without executing their bodies');
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(brainDir, { recursive: true, force: true });

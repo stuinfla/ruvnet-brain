@@ -5,14 +5,6 @@
   "heartbeatDir": "~/.cache/ruvnet-brain/heartbeats",
   "jobs": [
     {
-      "label": "com.ruvnet.brain-nightly",
-      "what": "Refreshes every RuvNet repo, rebuilds the brain, publishes the GitHub Release",
-      "schedule": "daily 03:15",
-      "maxAgeHours": 26,
-      "required": true,
-      "legacyLog": "logs/nightly.log"
-    },
-    {
       "label": "com.ruvnet.brain-gists",
       "what": "Pulls rUv's new gists into the brain and re-embeds when they change",
       "schedule": "daily 21:47",
@@ -110,6 +102,11 @@
     }
   ],
   "_retired": [
+    {
+      "label": "com.ruvnet.brain-nightly",
+      "retired": "2026-08-22",
+      "why": "It ran author-side source mutators in the primary developer checkout and accumulated generated changes beside live work. The plist was unloaded and archived; deploy/com.ruvnet.brain-nightly.plist was removed. Author rebuilds are now explicit clean linked-worktree operations. End-user cache freshness remains com.ruvnet.brain-update; Dream Machine remains the non-promoting evaluation schedule."
+    },
     {
       "label": "io.ruv.auto-subscribe",
       "retired": "2026-07-14",

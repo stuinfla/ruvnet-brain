@@ -12,6 +12,8 @@ const INSTALLER = path.join(ROOT, 'bin', 'install.mjs');
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 const temps = [];
 let install;
+let isolatedHome;
+const priorEnv = {};
 
 function temporary(prefix) {
   const value = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -62,11 +64,21 @@ function stagedPayload(home, version) {
 }
 
 beforeAll(async () => {
+  isolatedHome = fs.mkdtempSync(path.join(os.tmpdir(), 'console-runtime-host-home-'));
+  const isolated = { HOME: isolatedHome, USERPROFILE: isolatedHome,
+    CODEX_HOME: path.join(isolatedHome, '.codex'), RUVNET_BRAIN_HOME: path.join(isolatedHome, '.cache/ruvnet-brain'),
+    RUVNET_BRAIN_IMPORT_ONLY: '1' };
+  for (const [key, value] of Object.entries(isolated)) { priorEnv[key] = process.env[key]; process.env[key] = value; }
   process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
   install = await import(`${pathToFileURL(INSTALLER).href}?transaction=${Date.now()}`);
 });
 
-afterAll(() => { delete process.env.RUVNET_BRAIN_IMPORT_ONLY; });
+afterAll(() => {
+  for (const [key, value] of Object.entries(priorEnv)) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  }
+  if (isolatedHome) fs.rmSync(isolatedHome, { recursive: true, force: true });
+});
 afterEach(() => {
   for (const value of temps.splice(0)) fs.rmSync(value, { recursive: true, force: true });
 });
@@ -186,14 +198,14 @@ describe('issue #79 — Console runtime update transaction', () => {
       runtimeVersion: identity.runtimeVersion,
       sourceSha256: identity.sourceSha256,
     });
-  });
+  }, 120_000);
 
   it.each([
     { label: 'Claude-only', claude: true, codex: false },
     { label: 'Codex-only', claude: false, codex: true },
     { label: 'both', claude: true, codex: true },
     { label: 'neither', claude: false, codex: false },
-  ])('$label host state converges only detected hosts and persists the exact restart receipt', ({ claude, codex }) => {
+  ])('$label host state requires the stale Console to restart before healthy convergence', ({ claude, codex }) => {
     const cache = temporary('brain-console-cache-');
     const brainHome = temporary('brain-console-home-');
     const receiptDir = temporary('brain-console-receipts-');
@@ -210,7 +222,7 @@ describe('issue #79 — Console runtime update transaction', () => {
     }));
     const calls = { claude: 0, codexHost: 0, codexPlugin: 0, stableSpine: 0 };
 
-    const result = install.syncHostsAfterUpdate(cache, {
+    const options = {
       sourceRoot: generationB,
       brainHome,
       consoleReceiptDir: receiptDir,
@@ -232,9 +244,11 @@ describe('issue #79 — Console runtime update transaction', () => {
         calls.stableSpine += 1;
         return { status: 0 };
       },
-    });
+    };
+    const result = install.syncHostsAfterUpdate(cache, options);
 
-    expect(result.ok).toBe(true);
+    expect(result.ok, JSON.stringify(result)).toBe(false);
+    expect(result.convergence).toEqual({ healthy: false, state: 'pending-console-restart', action: 'restart Console, then re-run --doctor' });
     expect(calls).toEqual({ claude: 1, codexHost: 1, codexPlugin: codex ? 1 : 0, stableSpine: 1 });
     expect(scriptBytes(cache)).toContain('GENERATION-B');
     const receipt = JSON.parse(fs.readFileSync(path.join(brainHome, 'host-convergence.json'), 'utf8'));
@@ -249,6 +263,16 @@ describe('issue #79 — Console runtime update transaction', () => {
       instanceReceipts: 2,
       staleInstances: 1,
     });
+    // The stale fixture process has now exited; its old-generation receipt is removed.
+    fs.unlinkSync(path.join(receiptDir, 'stale.json'));
+    const restarted = install.syncHostsAfterUpdate(cache, options);
+    expect(restarted.ok, JSON.stringify(restarted)).toBe(true);
+    expect(restarted.convergence.healthy).toBe(true);
+    const healthyReceipt = JSON.parse(fs.readFileSync(path.join(brainHome, 'host-convergence.json'), 'utf8'));
+    expect(healthyReceipt.hosts).toEqual(receipt.hosts);
+    expect(healthyReceipt.consoleRuntime).toMatchObject({ runtimeVersion: VERSION, sourceSha256,
+      state: 'ready', instanceReceipts: 1, staleInstances: 0 });
+    expect(scriptBytes(cache)).toContain('GENERATION-B');
   });
 
   it('preserves an explicitly disabled Codex host and records it as disabled', () => {

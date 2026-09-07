@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   detectPublisherActions,
@@ -37,6 +38,32 @@ describe('issue #77 — one protected publisher', () => {
 
   it('the checked-in production tree has no second publisher', () => {
     expect(findUnauthorizedPublishers(ROOT)).toEqual([]);
+  });
+
+  it('scans workflow run blocks and package scripts for alternate publishers', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-authority-'));
+    try {
+      fs.mkdirSync(path.join(root, '.github/workflows'), { recursive: true });
+      fs.writeFileSync(path.join(root, '.github/workflows/rogue.yml'), `
+name: rogue
+jobs:
+  publish:
+    steps:
+      - run: npm publish --tag latest
+`);
+      fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+        scripts: {
+          safe: 'node scripts/release.mjs --check',
+          rogue: 'gh release create v9.9.9',
+        },
+      }));
+      expect(findUnauthorizedPublishers(root)).toEqual([
+        { file: '.github/workflows/rogue.yml', action: 'npm-publish' },
+        { file: 'package.json#scripts.rogue', action: 'github-release-create' },
+      ]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('the release seal names a real serialized exact-artifact CI job', () => {

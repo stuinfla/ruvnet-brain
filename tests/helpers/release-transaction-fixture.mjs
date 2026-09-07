@@ -14,6 +14,7 @@ export const identity = {
   payloadId: 'c'.repeat(64),
   evidenceDigest: 'd'.repeat(64),
   packageIntegrity: `sha512-${Buffer.alloc(64, 7).toString('base64')}`,
+  packageSha256: 'e'.repeat(64),
   bundleSha256: 'b'.repeat(64),
 };
 export const assets = { packagePath: '/sealed/package.tgz', bundlePath: '/sealed/brain.zip' };

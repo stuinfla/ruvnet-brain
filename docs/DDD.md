@@ -1,6 +1,6 @@
 # RuvNet Brain — Domain Model (DDD)
 
-`Updated: 2026-07-06 14:30 EDT | v0.2`
+`Updated: 2026-08-22 12:15 EDT | v0.3`
 
 RuvNet Brain is two coupled products: a **build-and-serve pipeline** (make the knowledge bundle) and a
 **live partner** (behave like rUv on the user's shoulder, and keep itself honest and current). DDD here
@@ -8,7 +8,9 @@ keeps each concern at its own level of sophistication and prevents cross-context
 must not creep into ingestion; enforcement must not assume knowledge it doesn't have; a *nudge* must not
 claim to be a *gate*). v0.2 adds the serve-side contexts that shipped in the 2026-07-05/06 work (presence,
 proposal-contract, currency, self-improvement) and the **self-QA** discipline of ADR-0009, and reconciles
-the Enforcement invariant to what actually ships.
+the Enforcement invariant to what actually ships. v0.3 separates installed-cache currency, explicit
+author candidate builds, Dream evaluation, and protected publication so no unattended source writer
+owns a developer checkout.
 
 ## Ubiquitous language
 - **Repo** — a RuvNet GitHub repository at a pinned commit SHA.
@@ -41,10 +43,11 @@ the Enforcement invariant to what actually ships.
 5. **Distribution** — assembles the zip bundle (segments + passages + symbols + graph + primers + gate +
    signed manifest). *Invariant:* self-contained; one `.mcp.json` line wires it. **Smoke-gated** (ADR-0009
    decision 3): a bundle that cannot answer 3 canonical questions with a cited hit does not publish.
-6. **Evergreen / Currency** — the single owner of "is anything stale?" (ADR-0009 decision 6): registry +
-   SHA-pinned rebuild + the nightly publisher + the user-side plugin/KB/stack-package checks. *Invariant:*
-   one version-compare implementation, one stamp discipline; a stale brain pages; a **failed** rebuild never
-   ships (publisher aborts the Release on any per-repo failure).
+6. **Evergreen / Currency** — the single owner of "is anything stale?" (ADR-0009 decision 6): registry,
+   explicit clean-worktree candidate rebuilds, the installed-cache updater, and user-side
+   plugin/KB/stack-package checks. *Invariant:* one version-compare implementation, one stamp
+   discipline; a stale brain pages; an author builder never publishes; only the protected exact-SHA
+   workflow may ship a passing artifact.
 
 ### Live partner (behave like rUv, stay honest)
 7. **Presence / Watchdog** — the always-on signal that the brain is here and what the project's stack looks

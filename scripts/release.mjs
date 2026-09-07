@@ -29,8 +29,9 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { validateProtectedPublishInvocation } from './protected-release-invocation.mjs';
+import { validateProtectedPublishEnvironment, validateProtectedPublishInvocation } from './protected-release-invocation.mjs';
 import { runReleaseTransaction } from './release-transaction.mjs';
+import { materializePublicationHandoff, resolvePublicationHandoffPaths } from './release-publication-handoff.mjs';
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
@@ -44,6 +45,7 @@ let publicationReceiptPath = null;
 let protectedReleaseMode = 'strict';
 let verifiedPayload = null;
 let aggregateEnvelope = null;
+let publicationHandoffPaths = null;
 const c = { g: (s) => `\x1b[32m${s}\x1b[0m`, r: (s) => `\x1b[31m${s}\x1b[0m`, y: (s) => `\x1b[33m${s}\x1b[0m`, b: (s) => `\x1b[1m${s}\x1b[0m`, dim: (s) => `\x1b[2m${s}\x1b[0m` };
 const V = () => JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/.claude-plugin/plugin.json'), 'utf8')).version;
 
@@ -87,9 +89,9 @@ export function runProtectedCorpusSeed({
   root = ROOT,
   run = (command, args, options) => spawnSync(command, args, { encoding: 'utf8', ...options }),
 } = {}) {
-  if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_WORKFLOW !== 'protected-release'
-    || env.GITHUB_REPOSITORY !== 'stuinfla/ruvnet-brain') {
-    corpusFailure('publication is allowed only inside the protected-release GitHub workflow for stuinfla/ruvnet-brain');
+  const environmentFailures = validateProtectedPublishEnvironment(env);
+  if (environmentFailures.length) {
+    corpusFailure(environmentFailures.join('; '));
   }
 
   const tag = cliArg(argv, '--corpus-tag');
@@ -159,7 +161,9 @@ export function runProtectedCorpusSeed({
   if (digestMatch[1] !== archiveSha256) corpusFailure('corpus tag digest does not match the receipt and archive');
 
   const viewArgs = ['release', 'view', tag, '--json', 'tagName', '--repo', repo];
-  const view = run('gh', viewArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const ghCommand = env.RUVNET_GH_COMMAND || 'gh';
+  const ghPrefix = env.RUVNET_GH_SCRIPT ? [env.RUVNET_GH_SCRIPT] : [];
+  const view = run(ghCommand, [...ghPrefix, ...viewArgs], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (!view.error && view.status === 0) corpusFailure(`release ${tag} already exists; refusing to overwrite immutable corpus seed`);
   const viewError = String(view.error?.message || view.stderr || view.stdout || '');
   if (!/(release not found|no release found)/i.test(viewError)) corpusFailure(`cannot prove ${tag} is absent (${viewError.trim() || `gh exited ${view.status}`})`);
@@ -181,7 +185,7 @@ export function runProtectedCorpusSeed({
     '--notes', notes,
     bundleFile, receiptFile,
   ];
-  const create = run('gh', createArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const create = run(ghCommand, [...ghPrefix, ...createArgs], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (create.error || create.status !== 0) {
     corpusFailure(`protected corpus publication failed (${String(create.error?.message || create.stderr || create.stdout || '').trim()})`);
   }
@@ -220,6 +224,11 @@ if (PUBLISH) {
     console.error(`\n${c.r('✗ PROTECTED RELEASE GATE FAILED')}\n  publication receipt output must be a new file inside release-evidence\n`);
     process.exit(1);
   }
+  publicationHandoffPaths = resolvePublicationHandoffPaths({
+    root: ROOT,
+    identityPath: process.env.RUVNET_RELEASE_IDENTITY,
+    receiptPath: process.env.RUVNET_CHANNEL_RECEIPT,
+  });
   const payloadManifestPath = path.resolve(ROOT, process.env.RUVNET_CANDIDATE_PAYLOAD || '');
   const payloadSignaturePath = path.resolve(ROOT, process.env.RUVNET_CANDIDATE_PAYLOAD_SIGNATURE || '');
   const aggregatePath = path.resolve(ROOT, process.env.RUVNET_AGGREGATE_ENVELOPE || '');
@@ -373,6 +382,7 @@ if (PUBLISH) {
   };
   const privatePem = process.env.RUVNET_SIGNING_KEY;
   if (!privatePem) throw new Error('RUVNET_SIGNING_KEY is required for signed transaction receipts');
+  const publicKey = crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'keys/ruvnet-brain-signing.pub.pem'), 'utf8'));
   const finalReceipt = await runReleaseTransaction({
     identity, assets, adapter: liveReleaseProvider({
       root: ROOT,
@@ -380,10 +390,11 @@ if (PUBLISH) {
       publicationReceipt: process.env.RUVNET_PUBLICATION_RECEIPT,
     }),
     privateKey: crypto.createPrivateKey(privatePem),
-    publicKey: crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'keys/ruvnet-brain-signing.pub.pem'), 'utf8')),
+    publicKey,
     hostVerifier: stagedHostVerifier({ assets, identity }),
   });
   if (finalReceipt.state !== 'channels-converged') throw new Error(`release transaction stopped at ${finalReceipt.state}`);
+  materializePublicationHandoff({ paths: publicationHandoffPaths, identity, receipt: finalReceipt, publicKey });
 } else {
   step('D', 'remote staged release transaction — SKIPPED (check-only; pass --publish to publish)');
 }
@@ -396,7 +407,7 @@ if (!PUBLISH) {
 }
 
 if (PUBLISH) {
-  console.log(`\n${c.g(c.b('✓✓✓ SHIPPED'))} — every gate passed and every live channel is current. ${c.dim('A user on any path (npm, npx, explainer, --update) gets the working, current build.')}\n`);
+  console.log(`\n${c.y(c.b('PUBLISHED, NOT VERIFIED'))}`);
 } else {
   console.log(`\n${c.g(c.b('✓✓✓ PREFLIGHT PASS — NOT PUBLISHED'))} — the committed candidate passed every check-only gate.\n`);
 }

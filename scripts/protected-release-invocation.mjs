@@ -4,6 +4,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt } from './release-proof.mjs';
 import { getVersion } from './version.mjs';
 
@@ -13,12 +14,27 @@ export const PROTECTED_VERSION = getVersion();
 const hex = (value, length) => new RegExp(`^[0-9a-f]{${length}}$`).test(String(value || ''));
 const digestOf = (receipt) => String(receipt?.artifact?.sha256 || '').replace(/^sha256:/, '');
 
-export function validateProtectedPublishInvocation({ root = process.cwd(), env = process.env } = {}) {
+export function validatePublishableVersion(version) {
+  return /^\d+\.\d+\.\d+$/.test(String(version || ''))
+    ? []
+    : ['development versions cannot be published'];
+}
+
+export function validateProtectedPublishEnvironment(env = process.env) {
   const failures = [];
-  let releaseMode = 'unknown';
-  if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_WORKFLOW !== PROTECTED_WORKFLOW) {
-    failures.push('publication is allowed only inside the protected-release GitHub workflow');
+  if (env.GITHUB_ACTIONS !== 'true'
+    || env.GITHUB_WORKFLOW !== PROTECTED_WORKFLOW
+    || env.GITHUB_REPOSITORY !== 'stuinfla/ruvnet-brain'
+    || env.GITHUB_EVENT_NAME !== 'workflow_dispatch'
+    || env.GITHUB_REF_PROTECTED !== 'true') {
+    failures.push('publication is allowed only inside the protected-release GitHub workflow on a protected workflow_dispatch ref');
   }
+  return failures;
+}
+
+export function validateProtectedPublishInvocation({ root = process.cwd(), env = process.env } = {}) {
+  const failures = [...validateProtectedPublishEnvironment(env)];
+  let releaseMode = 'unknown';
 
   const expectedSha = String(env.RUVNET_EXPECTED_SHA || '');
   const expectedDigest = String(env.RUVNET_EXPECTED_ARTIFACT_SHA256 || '').replace(/^sha256:/, '');
@@ -26,6 +42,7 @@ export function validateProtectedPublishInvocation({ root = process.cwd(), env =
   if (!hex(expectedSha, 40)) failures.push('expected candidate SHA is missing or malformed');
   if (!hex(expectedDigest, 64)) failures.push('expected artifact digest is missing or malformed');
   if (expectedVersion !== PROTECTED_VERSION) failures.push(`release generation must be ${PROTECTED_VERSION}`);
+  failures.push(...validatePublishableVersion(expectedVersion));
 
   const receiptRelative = String(env.RUVNET_CANDIDATE_RECEIPT || '');
   const evidenceRoot = path.resolve(root, 'release-evidence');
@@ -73,4 +90,15 @@ export function validateProtectedPublishInvocation({ root = process.cwd(), env =
     mode: releaseMode,
     failures,
   };
+}
+
+if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+  const result = validateProtectedPublishInvocation();
+  if (result.verdict !== 'PASS') {
+    console.error('[protected-release] publication refused:');
+    for (const failure of result.failures) console.error(`  - ${failure}`);
+    process.exitCode = 1;
+  } else {
+    console.log('[protected-release] exact candidate publication authority verified');
+  }
 }

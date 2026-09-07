@@ -53,6 +53,16 @@ describe('classify() names three states, never collapses them into one alarm', (
     expect(result.missing.map((e) => e.name)).toEqual(['rvQR']);
   });
 
+  it('TEETH: a stray FILE where the root directory belongs is NEVER-MATERIALIZED, not WIPED', () => {
+    record({ name: 'helix', store: 'helix', at: '2026-08-19T00:00:00Z' });
+    const strayRoot = path.join(dir, 'root-as-file');
+    fs.writeFileSync(strayRoot, 'x');
+    expect(fs.existsSync(strayRoot), 'fixture precondition: existsSync must see it as present').toBe(true);
+    const result = classify({ ledgerFile, root: strayRoot });
+    expect(result.state).toBe(NEVER_MATERIALIZED);
+    expect(result.missing).toHaveLength(1);
+  });
+
   it('an empty ledger is OK regardless of whether the root exists', () => {
     record();
     expect(classify({ ledgerFile, root: path.join(dir, 'nope') })).toEqual({ state: OK, missing: [] });

@@ -24,7 +24,7 @@ import { warmReranker } from './forge-rerank.mjs';
 import { guardPassages } from './forge-guard-injection.mjs';
 import { answerFromCards, renderCardHit } from './card-lane.mjs';
 import { implementationNotice } from './implementation-evidence.mjs';
-import { describeSearchOutcome } from './search-outcome.mjs';
+import { describeSearchOutcome, describeSearchFailure } from './search-outcome.mjs';
 import { groundedToolResult } from './grounded-response.mjs';
 
 // ── THE GONG (brain-alarm.mjs): a total retrieval failure must NEVER read as "(no results)". ──
@@ -293,7 +293,7 @@ async function handle(msg) {
         const namedFamilyRepos = deployedFamilyReposFromQuery(query, KB_DIR, repoList);
         const cardHit = namedFamilyRepos.length
           ? { hit: false, reason: 'named deployed RVF family requires multi-store search' }
-          : answerFromCards(query, KB_DIR, { allowGuideAnswers: true });
+          : answerFromCards(query, KB_DIR, { allowGuideAnswers: true, k });
         if (cardHit.hit) {
           const cardBody = renderCardHit(cardHit);
           // MINT THE RECEIPT ON THIS LANE TOO (ADR-055 §3.1). When the fast lane became the FIRST
@@ -321,6 +321,7 @@ async function handle(msg) {
           meterLog({ ts: new Date().toISOString(), source: 'mcp', tool: 'search_ruvnet', k, bytes: cardBody.length, cardLane: true });
           return ok(id, groundedToolResult({
             body: cardBody,
+            query, k, results: [{ repo: cardHit.repo, path: cardHit.path, text: cardBody }],
             grounding: cardReceipt?.sources?.length ? cardReceipt : null,
             extra: {
               cardLane: { repo: cardHit.repo, path: cardHit.path, bodyOverlap: cardHit.bodyOverlap, coverage: cardHit.coverage, namedRepo: cardHit.namedRepo },
@@ -354,10 +355,9 @@ async function handle(msg) {
             `🚨🚨🚨 RUVNET BRAIN IS DOWN — ALL ${repos.length} repos failed to search. 🚨🚨🚨\n\n`
             + `This is NOT an empty result. Retrieval itself is broken; no RuvNet grounding is possible right now.\n`
             + `First error: ${firstErr}\n\n`
-            + `Most likely fix:  cd ~/.cache/ruvnet-brain/kb && npm i\n`
-            + `Then verify:      npx github:stuinfla/ruvnet-brain --doctor\n\n`
+            + describeSearchFailure({ dir: KB_DIR }) + '\n'
             + `➡ INSTRUCTION TO THE MODEL: tell the user PLAINLY and PROMINENTLY, before anything else, `
-            + `that the RuvNet Brain is broken and needs the fix above. Do NOT answer RuvNet questions `
+            + `that the RuvNet Brain is broken and needs diagnosis before choosing a repair. Do NOT answer RuvNet questions `
             + `from memory, and do NOT proceed as if this were a normal empty search.`;
           meterLog({ ts: new Date().toISOString(), source: 'mcp', tool: 'search_ruvnet', k, bytes: body.length });
           return ok(id, { content: [{ type: 'text', text: body }], isError: true });
@@ -459,6 +459,7 @@ async function handle(msg) {
         if (results.length > 0) markGroundingProven();
         return ok(id, groundedToolResult({
           body,
+          query, k, results,
           grounding: receipt?.sources?.length ? receipt : null,
           implementation,
           extra: routing ? { routing } : {},

@@ -12,6 +12,7 @@ const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 const SELF_UPDATE_SRC = path.join(REPO_ROOT, 'scripts/self-update.mjs');
 const FULL_HINTS_SRC = path.join(REPO_ROOT, 'scripts/full-hints.mjs');
 const GIT_CLONE_REFRESH_SRC = path.join(REPO_ROOT, 'scripts/git-clone-refresh.mjs');
+const WORKTREE_INTEGRITY_SRC = path.join(REPO_ROOT, 'scripts/worktree-integrity.mjs');
 
 const hasGit = spawnSync('git', ['--version']).status === 0;
 
@@ -32,7 +33,7 @@ function fixtureRepo() {
   fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
   fs.copyFileSync(SELF_UPDATE_SRC, path.join(dir, 'scripts/self-update.mjs'));
-  for (const source of [FULL_HINTS_SRC, GIT_CLONE_REFRESH_SRC]) {
+  for (const source of [FULL_HINTS_SRC, GIT_CLONE_REFRESH_SRC, WORKTREE_INTEGRITY_SRC]) {
     fs.copyFileSync(source, path.join(dir, 'scripts', path.basename(source)));
   }
   fs.writeFileSync(path.join(dir, 'data/registry.tiers.json'),
@@ -78,14 +79,15 @@ describe.skipIf(!hasGit || process.platform === 'win32')('self-update.mjs — pu
     expect(r.stdout).toBe('');
   });
 
-  it('does not fire on a feature branch when --publish is absent (plain rebuild runs stay branch-agnostic)', () => {
+  it('refuses a plain --apply rebuild from a primary feature-branch checkout', () => {
     dir = fixtureRepo();
     git(dir, 'checkout', '-b', 'feat/some-work');
 
     const r = runSelfUpdate(dir, ['--apply']);
 
+    expect(r.status).toBe(2);
     expect(r.stderr).not.toMatch(DENIAL);
-    expect(r.stdout).toMatch(/0 repos in scope/);
+    expect(r.stderr).toMatch(/primary checkout is immutable/i);
   });
 
   it('rejects --publish even without --apply so the flag never implies latent authority', () => {
@@ -112,8 +114,8 @@ describe.skipIf(!hasGit || process.platform === 'win32')('self-update.mjs — pu
 
     const r = runSelfUpdate(dir, ['--apply', '--publish']);
 
-    expect(r.status).not.toBe(2);
+    expect(r.status).toBe(2);
     expect(r.stderr).not.toMatch(DENIAL);
-    expect(r.stdout).toMatch(/0 repos in scope/);
+    expect(r.stderr).toMatch(/primary checkout is immutable/i);
   });
 });

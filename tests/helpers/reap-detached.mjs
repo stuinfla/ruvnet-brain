@@ -54,6 +54,30 @@ export function reapDetached(home) {
   }
 }
 
+/**
+ * Reap jobs that race receipt creation, then remove the disposable home.
+ * A detached SessionStart can create its receipt after the first reap observes
+ * the directory, so one-shot teardown is inherently racy. Keep the retry
+ * bounded and tied to the product's own receipt rather than sleeping blindly.
+ */
+export function rmAfterReap(home, ...others) {
+  const deadline = Date.now() + 5_000;
+  let lastError;
+  while (Date.now() < deadline) {
+    reapDetached(home);
+    try {
+      for (const p of [home, ...others]) {
+        fs.rmSync(p, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+  }
+  if (lastError) throw lastError;
+}
+
 /** reapDetached + a retrying rmSync. The whole teardown, in one call. */
 export function rmHome(home, ...others) {
   reapDetached(home);

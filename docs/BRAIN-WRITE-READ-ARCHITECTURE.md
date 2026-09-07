@@ -132,21 +132,30 @@ re-encoding of content**:
   query is conversational/person/event-shaped (no crate/ADR/code signal) OR a store is a transcript
   kind, boost that store — symmetric to how code intent already boosts source files. The
   per-store-fair-representation half of this (MMR/diversity, so one store's dense docs can't monopolize
-  the reranked pool) is *closer* than it was: `mmrRerank` was ported into `kb/forge-hybrid.mjs` as part
-  of shipping Fix C below, but it is **not yet called anywhere in `forge-ask.mjs`** — the port exists,
-  the wiring doesn't. Still fully open otherwise.
+  the reranked pool) is **corrected 2026-08-23**: this used to say `mmrRerank` "was ported... but not
+  yet called" — implying it existed as code, just unwired. Checked against `kb/forge-hybrid.mjs`'s real
+  exports: `mmrRerank` was **never ported at all**; it was named only in that file's own header comment
+  (now fixed, see `tests/unit/forge-hybrid-port-claims.test.mjs`). MMR/diversity re-ranking remains
+  fully open, same as the rest of Fix A.
 - **Fix B — finer transcript granularity (write-side). PENDING.** Give transcript turns (or small
   groups) their **own paths** so multiple turns surface as separate candidates and needles aren't cut by
   the single 12k window. This is a passage-shaping change in the meeting ingest, not a content change.
   Untouched by tonight's work — Fix C operates on the passages as they already exist, and doesn't help a
   needle fact that's outside the assembled window in the first place.
-- **Fix C — hybrid retrieval. SHIPPED (2026-07-18, see ADR-0025).** A **BM25/lexical pass over passage
-  bodies**, fused with the dense vector hits by rUv's shipped normalized linear fusion (α·cosine +
-  (1-α)·BM25, not Reciprocal Rank Fusion as originally sketched here — RRF was the placeholder idea;
-  the port of `ruflo/@claude-flow/cli/src/memory/hybrid-retrieval.ts` + ADR-082's grid-searched defaults
-  is what actually shipped). Lives in `kb/forge-hybrid.mjs`, wired into `getKb()`/`searchKb()` in
-  `kb/forge-ask.mjs`, env-gated off-by-default on `KB_HYBRID=1` (see ADR-0025 for `KB_ALPHA`/
-  `KB_SUBJECT_W`). Self-retrieval MRR lift measured: `ruv-meetings` 0.79→0.90, `ruv-gists` 0.05→0.32,
+- **Fix C — hybrid retrieval. SHIPPED, but narrower than first written — corrected 2026-08-23 (see
+  ADR-0025's "Outcome").** This item used to describe a *global* hybrid fusion — wired into `getKb()`/
+  `searchKb()` in `forge-ask.mjs`, env-gated on `KB_HYBRID=1` — as SHIPPED. That global attempt was
+  **reverted** (ADR-0025: no repo-safe gain; `forge-ask.mjs` does not read `KB_HYBRID` and never fuses
+  BM25 into its ranking). What actually shipped instead, and remains live today, is **narrower**:
+  transcript-scoped BM25 candidate injection in `kb/forge-ask-all.mjs` (only for stores in
+  `KB_TRANSCRIPT_STORES`, default `ruv-meetings`), using `tokenize`/`buildCorpusStats`/`bm25Score` from
+  `kb/forge-hybrid.mjs`. `hybridScores`/`multiFieldBM25` (the general α-fusion primitives, ADR-082's
+  grid-searched defaults) are ported into `kb/forge-hybrid.mjs` and exported but have **zero callers
+  anywhere in this repo** — dead code, not live. The self-retrieval MRR lift below was measured before
+  the revert and reflects that now-reverted global-hybrid code path, not the scoped fix that actually
+  shipped; treat it as historical, not reproducible by re-running today's code with `KB_HYBRID=1` (that
+  now refuses — see `kb/self-retrieval-bench.mjs`'s `resolveHybridMode()`). Self-retrieval MRR lift
+  measured (2026-07-19, pre-revert): `ruv-meetings` 0.79→0.90, `ruv-gists` 0.05→0.32,
   `ruvector` 0.09→0.33 — confirming IDs/hashes/flags are now findable by exact token, not just luck of
   surrounding prose.
 
@@ -158,8 +167,12 @@ before it's kept — nothing ships on belief** (tonight's proof was the self-ret
 corpus-wide proxy; the full human-graded 50-question re-exam against hybrid-on is itself still an open
 item — see ADR-0025 §Open Items). Because forge-ask.mjs is the reader for all 68 stores and a live
 product, every change is additive and regression-tested against the existing repo battery so we don't
-fix meetings and break repos — `KB_HYBRID` defaulting off means the shipped repo-capability battery
-(26/28 described, 47/48 named, 7/8 scenario) runs unchanged unless hybrid is explicitly enabled.
+fix meetings and break repos — **corrected 2026-08-23:** this used to credit `KB_HYBRID` defaulting off
+for keeping the repo battery unchanged, implying a live switch a reader could flip. There is no such
+switch in `forge-ask.mjs` to flip; the shipped repo-capability battery (26/28 described, 47/48 named,
+7/8 scenario) is unchanged simply because the scoped Fix C that actually shipped (transcript-scoped BM25
+in `forge-ask-all.mjs`, gated on store membership in `KB_TRANSCRIPT_STORES`) never touches non-transcript
+stores at all — not because of an env flag defaulting off.
 
 ---
 

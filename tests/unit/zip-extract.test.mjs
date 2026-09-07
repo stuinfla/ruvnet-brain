@@ -221,10 +221,14 @@ describe('Windows archive directory metadata', () => {
     const dest = path.join(tmp, 'out-powershell-directory');
     fs.writeFileSync(archive, windowsDirectoryZip());
 
-    await extractZip(archive, dest);
+    const result = await extractZip(archive, dest);
 
     expect(fs.statSync(path.join(dest, 'ruvnet-brain', 'vendor')).isDirectory()).toBe(true);
     expect(fs.readFileSync(path.join(dest, 'ruvnet-brain', 'vendor', 'package.json'), 'utf8')).toBe('ok\n');
+    expect(result.entryNames).toEqual([
+      'ruvnet-brain/vendor',
+      'ruvnet-brain/vendor/package.json',
+    ]);
   });
 
   it('infers an attribute-less zero-byte ancestor as a directory from its nested entry', async () => {

@@ -2,7 +2,7 @@
 id: ADR-005
 status: Accepted
 date: 2026-06-27
-updated: 2026-07-29
+updated: 2026-08-29
 updated_source: derived-from-git
 ---
 # ADR-0005: Behavioral grounding via retrieve-and-inject + hard-deny + drift SLO (not a "lock")
@@ -16,6 +16,10 @@ updated_source: derived-from-git
 **Terminology reconciliation (2026-07-29):** The advisory PreToolUse surface now calls itself
 “guidance,” never “hijack.” The internal `hijack-ruvnet` hook ID remains temporarily for installed-config
 compatibility; behavior is unchanged: `permissionDecision:"defer"` and never blocks the user’s action.
+
+**Noise correction (2026-08-29):** Grounding remains retrieve-and-inject, but hook output is context,
+not a script for the assistant's reply. SessionStart and UserPromptSubmit no longer inject promotional
+offers, build-process instructions, or required response-format/status lines.
 
 > **⚠ SHIPPED-VS-DECIDED RECONCILIATION (2026-07-06, ADR-0009 self-audit).** Of the four teeth decided
 > below, only **#1 (retrieve-and-inject) is implemented** — `plugin/scripts/ground-ruvnet.sh` +

@@ -3,8 +3,10 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-21
-impl: built
+updated: 2026-09-07
+version: 1.1.3
+impl: wired
+reviewed_digest: 34b808da6634
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -51,8 +53,56 @@ governs:
 
 # ADR-058: The 95 contract
 
+## Current implementation boundary — reviewed 2026-09-05 19:08:40 EDT
+
+This source review does not award a 95 score, change Proposed status, or establish release
+qualification. Historical measurements and incident descriptions below retain their original
+scope; they are not current candidate receipts.
+
+- `scripts/qe/ux-suite.mjs` now hard-fails its configured render, explanation, and dead-air
+  timing limits. The earlier D6 statement that environment-sensitive timings remain advisory
+  does not describe this implementation.
+- `.github/workflows/ci.yml` sets `REQUIRE_BRAIN` in its warm-brain lane and executes a mutant.
+  The earlier scoreboard's absent-`REQUIRE_BRAIN` finding is historical, not a current source fact.
+- The static `INSTALL-FAILS-LOUD` check in `scripts/claims-verify.mjs` inspects source patterns;
+  it does not prove the installer's behavior under every failed live smoke test. The inspected
+  `bin/install.mjs` doctor verdict still omits a direct `smoke.grounded === false` predicate
+  when persisted grounding state is absent or unreadable. This remains a known gap, not a PASS.
+- `.github/workflows/protected-release.yml` now authenticates candidate artifacts against the
+  producing workflow, successful exact-SHA push run, and repository before downloading them.
+  A name match alone is not provenance. Public-byte and host acceptance remain separate proofs.
+- Source examination of `kb/forge-big.mjs` is not corpus-generation qualification: its smoke
+  similarities and emitted counts alone do not prove provenance or retrieval correctness.
+
+## Artifact and replay qualification correction — 2026-09-07
+
+The hosted candidate census rejected the final bundle because its runtime ledger omitted the release
+source identity. The final projected assembly now derives runtime records from the immutable public
+ledger and validates the assembled directory before ZIP creation. Focused producer, tampering, and
+existing bundle-fence tests passed (37 tests). This does not establish public release proof. Native
+Codex replay now registers isolated fixture hooks explicitly; the prior uninstrumented runs remain
+UNKNOWN, and no new behavioral learning result is claimed.
+
+## Currency log
+
+| 2026-09-07 | Reviewed public native scheduled update receipts bind exact signed artifacts and workflow run, while macOS full unit execution joins required candidate CI evidence; source digest 34b808da6634. | `scripts/publication-receipt.mjs`; source review only, hosted and public acceptance remain pending. |
+
+| 2026-09-07 | Reviewed the failed hosted census and corrected producer; source digest effb46bea00f. | `scripts/build-bundle.mjs`; tests in `/tmp/ruvnet-assembled-projection-tests-20260907.log`, no public PASS claimed. |
+| 2026-09-05 | Reviewed current source and normative boundaries at digest c8762909a897; examination is not behavioral verification. | The assigned full-file reviewers examined the governed scripts, workflows, plugin, and KB files; the integration owner read this ADR and `tests/qe/gpt56/live-brain-search.test.mjs`, inspected the reported implementation discrepancies, and reconciled them above. Canonical AgentDB examination receipts include `audit-partition-b-20260905-adr58-scripts` and `audit-adr058-kb-fullread-1788649103190`; no personal whole-codebase read, 95 score, or complete conformance is claimed. |
+| 2026-09-05 | Reconciled current implementation boundaries after full-file source examination; no status promotion, correctness certification, or new release exemption. | `bin/install.mjs`, `scripts/claims-verify.mjs`, `scripts/qe/ux-suite.mjs`, `.github/workflows/ci.yml`, `.github/workflows/protected-release.yml`, and `kb/forge-big.mjs`; known doctor and producer limitations remain explicit above. |
+| 2026-09-05 | Recovery separates the immutable candidate from the trusted verifier, closes structured retrieval/citation trust boundaries, and reuses one bounded MCP session per staged host. None of these repairs awards a score or changes Proposed status. | `scripts/publication-receipt.mjs` checks candidate root/SHA/version/tracked cleanliness before and after the patched absolute surface probe runs with candidate cwd; `.github/workflows/recover-public-verification.yml` checks out candidate-source separately and passes explicit verifier SHA to lanes/aggregation/finalization. `kb/retrieval-result.mjs`, `scripts/retrieval-canary.mjs`, and `scripts/host-install-matrix.mjs` consume actual ordered hit records, bind query/k/content, reject body-spoofed citations and symlinked installed evidence, and retain UNKNOWN for incompatible old artifacts. Session reuse reduces repeated process/model startup without changing canary selection or thresholds. Local protocol fixtures are not real-model/public-host evidence; sealed old bytes are not rebuilt or republished to manufacture compatibility. Version 1.0.0 starts explicit document revision tracking. |
+| 2026-09-05 | Packed adapter continuity now has an interrupted durable-outbox acceptance path; ambient runtime counts remain diagnostics rather than advertising authority. | `tests/acceptance/cross-host-project-resume.test.mjs` packs/extracts the candidate, uses disposable canonical project AgentDB through global Ruflo, interrupts at the durable outbox seam, replays through packaged Claude/Codex adapters exactly once, and rejects foreign project identity. This is neither native model-session proof nor filesystem-relocation proof. `scripts/claims-verify.mjs` requires candidate artifact bindings for strict census qualification; ambient extras are disclosed, not copied into public claims. Signed/public and staged exact-byte qualification are distinct; incomplete evidence remains UNKNOWN. Exact-SHA integrated QA, native scheduler execution, public installation/convergence, and independent ≥95 reviews remain separate unproven obligations. |
+| 2026-09-04 | The GitHub release observation in public host proof now uses the workflow's read-scoped token, so a shared unauthenticated rate limit cannot produce a false product verdict. | `.github/workflows/protected-release.yml`; run `33899100361`; the underlying artifact and 95-contract thresholds are unchanged. |
+| 2026-09-04 | Public host verification now supplies Claude with the exact candidate checkout as its marketplace source, preventing a later default-branch version from contaminating an immutable older release proof. | `.github/workflows/protected-release.yml`; run `33898518397`; this repairs evidence identity without changing the Proposed status or scoring contract. |
+| 2026-09-04 | The 4.3.9 candidate installs the one signature/digest-verified GitHub bundle across all public host lanes, preserves a digest-bound failure receipt before exiting, performs a real installed-MCP query, and propagates the requested retrieval depth unchanged. Publication validates both handoff destinations before remote mutation and materializes identity/convergence files only after the signed channel receipt validates. | `scripts/publication-receipt.mjs`; `scripts/public-verification-lane.mjs`; `scripts/release-publication-handoff.mjs`; `scripts/release.mjs`; `.github/workflows/protected-release.yml`; `.github/workflows/recover-public-verification.yml`. These strengthen existing observables; Proposed status and public proof remain unchanged. |
+| 2026-09-04 | Repaired release-test boundaries found by the complete 4.3.8 preflight: Windows host-install detection now accepts native separators; Dream Machine network verification is opt-in rather than a unit-test dependency; installer doctor fixtures isolate `RUVNET_BRAIN_HOME`; and the LaunchAgent assertion follows the current host-convergent updater. | `tests/unit/host-install-matrix-concurrency.test.mjs`; `tests/unit/dream-config.test.mjs`; `tests/integration/install-smoke.mjs`; ADR-068. |
+| 2026-09-04 | Reconciled the grounding verdict authority exposed by issues #240/#242: a successful live `--doctor` citation proof now clears an older persisted `unproven` install result before the same invocation's final gate reads it. Failed or unverifiable live checks still cannot clear the gate. | `bin/install.mjs`; `tests/integration/install-smoke.mjs`. |
+| 2026-08-31 | Reconciled the hosted process boundary after PR #211 added named per-step watchdog receipts and corrected Windows executable resolution; the 95-contract observations and release gates remain unchanged. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; `tests/unit/step-watchdog.test.mjs`. |
+
 **Status**: Proposed
-**Date**: 2026-07-27 · **Last updated**: 2026-08-02 · **Why**: the public 4.0.1 artifact exposed
+**Date**: 2026-07-27 · **Last updated**: 2026-09-05 · **Why**: recovery source identity, retrieval
+trust, and packed continuity were reconciled above without promoting a release verdict. Historically,
+the public 4.0.1 artifact exposed
 that QE-BRN-001 existed in the written master plan but was absent from the executable critical-risk
 map and release vector; the live `search_ruvnet` worker consequently timed out without blocking
 publication.
@@ -373,6 +423,41 @@ correct: **the strong claim was the defect.**
    land ≥95. No self-score counts; the 83-vs-38 category error is not repeated.
 
 ## Currency log
+| 2026-08-31 | Reconciled after the release candidate's QA runner and workflow topology were simplified. | `scripts/qa-runner.mjs` now collects independent lanes concurrently, while `.github/workflows/ci.yml` no longer duplicates the authoritative canonical QA workflow; the ≥95 contract and release evidence requirements are unchanged. |
+
+
+| 2026-08-30 | Re-read after `abc1731` added explicit squash-merge oracle provenance handling; the 95 contract remains unchanged and the new path has a failing-then-passing regression test. | `scripts/retrieval-canary.mjs`, `.github/workflows/ci.yml`, `tests/unit/retrieval-canary.test.mjs`; focused suite passed 11/11. |
+
+| 2026-08-30 | Re-read the governed release builder and CI after the 4.3.3 candidate exposed projection evidence arriving after validation and PRs bypassing release gates. | `scripts/build-bundle.mjs`, `scripts/release-projection.mjs`, `plugin/scripts/coverage-integrity.mjs`, `.github/workflows/ci.yml`; local `npm run qa:pr` passed 10/10 lanes and hosted exact-SHA release proof remains required. |
+
+| 2026-08-30 | Rechecked bundle assembly after exact-SHA release-QE showed that source-controlled store policy was incorrectly expected inside the corpus seed; the builder now takes it from the canonical checkout. | `scripts/build-bundle.mjs`; `kb/public-store-classes.json`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked the projected validator boundary: the builder now imports `kb/PRIVATE-STORES.json` into the temporary seed input when projection evidence is supplied, preserving fail-closed policy validation without mutating the seed archive. | `scripts/build-bundle.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked the release projection contract after hosted verification rejected stale source-plane totals; projected rows, status totals, enumeration counts, and observation identity are now validated as one read model. | `scripts/release-projection.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked the two-stage inventory boundary after the candidate archive omitted the projected receipt during validation; the receipt is now staged before the validator runs. | `scripts/build-bundle.mjs`; exact-SHA release-QE. |
+| 2026-08-30 | Rechecked the final archive boundary locally after the hosted partition mismatch; the post-projection and post-assembly inventory hashes are identical. | `scripts/build-bundle.mjs`; local proof `566fe4f5bb435f11c8a924a8cef9b8c251c508051653121f39e7533536455daf`. |
+| 2026-08-30 | The pre-push gate now checks `data/convergence-manifest.json` after all source edits, preventing hosted QA from receiving a stale generated identity. | `scripts/git-hooks/pre-push`; `scripts/convergence-manifest.mjs`; exact-SHA CI. |
+
+| 2026-08-30 | Rechecked the release projection and bundle assembly after the exact-SHA release-QE failure; seed-bound gist evidence is now explicit and the current source observation remains separate. | Commit `f526bab`; `scripts/release-projection.mjs`; `scripts/build-bundle.mjs`; `plugin/scripts/coverage-integrity.mjs`. |
+
+| 2026-08-30 | Release-QE now consumes the committed source-bound coverage snapshot instead of calling the user-gists API with GitHub's restricted Actions token; release projection selects only eligible stores present in the immutable seed and still requires those seeded rows to be CURRENT. | Issue #201; `.github/workflows/ci.yml`; `scripts/release-projection.mjs`. |
+
+| 2026-08-30 | The restart-free Stable Spine identity handoff is now covered by a real hook-shim test; quiet SessionStart CI signals retain factual details while excluding response instructions. | `plugin/scripts/hook-shim.mjs`, `plugin/scripts/session-start-core.mjs`, `tests/unit/hook-shim.test.mjs`, `tests/unit/signal-lifecycle.test.mjs`; focused 28/28 and canonical QA 322/322 pass. |
+| 2026-08-30 | Re-read the complete governed release and hook surface after the convergence-manifest and hook-conformance cleanup. The contract remains unchanged; its ownership is now checked by `scripts/convergence-manifest.mjs`, and detached-job fixture teardown now uses the product receipt rather than a livelocking delete retry. | `9f3cb36`, `scripts/convergence-manifest.mjs`, `tests/integration/hook-conformance-both-hosts.test.mjs`; focused conformance evidence is 8/8, and the full integration lane is 41 passed / 1 skipped / 0 failed with KB dependencies installed. |
+| 2026-08-30 | The final host adapter and SessionStart changes were rechecked against the exact bounded contract before hosted publication. | `tests/integration/project-progression-session-start.test.mjs` passes 13/13; `scripts/qa-runner.mjs` remains the canonical exact-SHA release gate. |
+
+| 2026-08-30 | QA publication is fail-closed through one bounded runner: failed lanes stop, timeouts fail the receipt, and every lane binds to the current SHA. | `scripts/qa-runner.mjs`, `scripts/release-authority.mjs`, and `.github/workflows/ci.yml` provide the executable contract. |
+
+| 2026-08-23 | Receipt evidence now names skipped tests and suite errors, preventing a count-only quality claim. | Commit `cc25c24` strengthens the 95 contract's evidence requirement without treating skipped or unavailable checks as green. |
+| 2026-08-23 | Hosted parser diagnostics now retain bounded stdout/stderr tails in the receipt. | Commit `1310fb6` makes a Windows process failure actionable from the artifact itself; skipped and unavailable checks remain non-PASS. |
+| 2026-08-23 | The receipt aggregate now reads the directory populated by merged workflow artifacts, and Vitest preserves verbose failure context. | The workflow correction prevents a transport-path false red; the receipt remains exact-SHA and unknown/skipped evidence remains non-PASS. |
+| 2026-08-23 | The Windows candidate adds a direct installer import probe before the artifact/lifecycle suites. | Run `32654608558` isolated the failure to two installer-import suites with no failed assertions; the probe preserves the unknown-on-failure contract and does not remove tests. |
+| 2026-08-23 | Candidate lane execution now stops after the first non-PASS step and records the partial receipt. | This prevents a red focused step from launching unrelated work; aggregate still rejects the incomplete receipt. |
+| 2026-08-23 | Windows installer-import suites are separately bounded, and hosted conformance uses a measured 240-second ceiling. | The split is based on exact failure isolation; the longer ceiling accommodates observed host execution without changing any test assertion or acceptance bar. |
+| 2026-08-23 | The candidate contract separates live-precondition evidence from hermetic resources and removes the Windows shell launcher from the test path. | Commit `0e30d68` preserves the rule that unknown/skipped is not PASS while making the deterministic candidate lane runnable on hosted Windows. |
+| 2026-08-23 | The receipt contract now retains failed-test identities and uploads red-lane evidence; downstream release work is blocked by every required lane. | Commit `b570e25` makes a failing quality observation actionable without rerunning unrelated lanes or reading decorated logs. |
+| 2026-08-23 | Replaced the release test marathon with the fail-fast Agentic-QE receipt contract; the 95 rubric remains the quality standard, but partial lane green is no longer a release verdict. | Commit `b3ddb0d` adds preflight, isolated behavior/resource/artifact lanes, exact-SHA receipts, zero-spend enforcement, and an aggregate that rejects missing, skipped, stale, or failed evidence. |
+| 2026-08-23 | Repaired the Windows release-argument oracle after exact-SHA job `97218861232` failed the protected corpus authority suite; acceptance thresholds are unchanged. | `scripts/windows-command.mjs` uses the measured shell boundary and `tests/unit/corpus-seed-release-authority.test.mjs` covers the spaced-argument invariant without importing the executable release entrypoint. |
+| 2026-08-23 | Re-read the release authority after issue #163 exposed a Windows argument-boundary failure; the 95 contract and release thresholds remain unchanged. | `scripts/release.mjs` now preserves complete Windows `gh` arguments, with focused corpus-seed authority tests covering the corrected boundary. |
 | 2026-08-10 | Re-read after ADR-067; no observable, mutant or budget changed. | Two new mutation-proved suites landed (`decision-gate`, `decision-outcomes`) and two existing guards were converted from restated truth to derived properties (`hook-contract`'s blocking list, `swarm-slot-recycler`'s frozen digest). No PLATFORM_BUDGET, dimension observable, or watch-plane definition moved. |
 
 | 2026-08-06 | `scripts/qe/ux-suite.mjs` now judges the BEST of up to 3 render samples instead of one. The 95 contract and every PLATFORM_BUDGET value are UNCHANGED — this fixes the SAMPLING, not the bar. | Measured on hosted windows-latest, same gate, unchanged product: job `92610172864` 877ms PASS, job `92625527103` 4523ms FAIL, and 5535ms FAIL — a 6x spread against a hard 4000ms budget, so roughly a third of Windows runs went red on contention alone. PRs #109 and #117 were each held red by it and each went green on a bare re-run with no code change. Raising win32 to 6000ms was rejected: it buys quiet by blinding the gate to the regression it exists for, and this file already states the budgets are "release budgets, not performance claims about GitHub's hardware" with "CI receipts make future recalibration evidence-based rather than guessed" — the receipts say the budget is right. Best-of-N strictly cannot pass anything a single attempt would have passed; a real regression is slow every attempt and still fails. Guarded by `tests/unit/ux-render-best-of-n.test.mjs`, whose load-bearing case is the negative one ("uniformly slow stays RED after every attempt"), 8/8. |

@@ -170,23 +170,28 @@ describe('forge-update private overlay boundary', () => {
     expect(fs.readFileSync(outsideFile, 'utf8')).toBe('do-not-touch');
   });
 
-  it('restores exact pre-update state when the filesystem copy itself fails partway through', () => {
+  it('replaces the public tree exactly while restoring only captured private files', () => {
     const { kbDir, privateStore } = registryFixture();
     const overlay = capturePrivateOverlayState({ kbDir, allStores: [privateStore] });
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-copy-failure-'));
     const backupPath = path.join(workspace, 'backup');
     const extractDir = path.join(workspace, 'extract');
     fs.cpSync(kbDir, backupPath, { recursive: true });
+    fs.mkdirSync(extractDir, { recursive: true });
+    writeJson(path.join(extractDir, 'SOURCE.json'), { stores: { public: { kbName: 'public', sourceCommit: 'new' } } });
+    writeJson(path.join(extractDir, 'RVF-GENERATIONS.json'), { stores: { public: { file: 'public-v2.rvf' } } });
+    writeJson(path.join(extractDir, 'repo-aliases.json'), { public: ['public-v2'] });
+    fs.writeFileSync(path.join(extractDir, 'capability-cards.md'), '# Cards\n\n## public\nnew public\n');
+    fs.writeFileSync(path.join(extractDir, 'public-v2.rvf'), 'public-v2');
+    fs.writeFileSync(path.join(kbDir, 'retired-public-script.mjs'), 'must disappear');
+    fs.writeFileSync(path.join(kbDir, 'z-block'), 'old file shape');
     fs.mkdirSync(path.join(extractDir, 'z-block'), { recursive: true });
-    fs.writeFileSync(path.join(extractDir, 'a-introduced.txt'), 'partial copy');
-    fs.writeFileSync(path.join(extractDir, 'z-block', 'nested.txt'), 'forces type collision');
-    fs.writeFileSync(path.join(kbDir, 'z-block'), 'existing file');
-    fs.writeFileSync(path.join(backupPath, 'z-block'), 'existing file');
+    fs.writeFileSync(path.join(extractDir, 'z-block', 'nested.txt'), 'new directory shape');
 
-    expect(() => applyPublicBundlePreservingPrivate({ extractDir, kbDir, backupPath, overlay }))
-      .toThrow(/restored pre-update bytes/);
-    expect(fs.existsSync(path.join(kbDir, 'a-introduced.txt'))).toBe(false);
-    expect(fs.readFileSync(path.join(kbDir, 'z-block'), 'utf8')).toBe('existing file');
+    expect(applyPublicBundlePreservingPrivate({ extractDir, kbDir, backupPath, overlay })).toEqual({ restored: 1 });
+    expect(fs.existsSync(path.join(kbDir, 'retired-public-script.mjs'))).toBe(false);
+    expect(fs.readFileSync(path.join(kbDir, 'z-block', 'nested.txt'), 'utf8')).toBe('new directory shape');
+    expect(fs.readFileSync(path.join(kbDir, 'makerkit-source.rvf'), 'utf8')).toBe('private-rvf-bytes');
   });
 
   it.skipIf(process.platform === 'win32')('rejects destination ancestor symlinks before copy or rollback can leave the KB root', () => {
