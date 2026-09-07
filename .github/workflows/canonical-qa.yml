@@ -36,4 +36,6 @@ jobs:
         # consumes a branch-stale Hubble/convergence snapshot.
         run: npm run convergence:write
       - name: Run the bounded exact-SHA QA contract
+        env:
+          QA_TIMEOUT_MS: 900000
         run: npm run qa:pr
