@@ -20,7 +20,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { collectLessons, analyze, renderBlock, applyPromotion } from '../../scripts/lesson-promote.mjs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { collectLessons, analyze, renderBlock, applyPromotion, setThemeDemoted } from '../../scripts/lesson-promote.mjs';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 let tmp;
 beforeEach(() => { tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'lesson-promote-'))); });
@@ -232,5 +236,109 @@ describe('demotion is sticky — a rejected theme is never re-proposed', () => {
     const lessons = collectLessons(tmp);
     expect(analyze(lessons, { rejected: new Set() }).promotable.length)
       .toBe(analyze(lessons).promotable.length);
+  });
+});
+
+// ── the real round trip, not the injectable seam (2026-09-07) ────────────────────────────────────
+// The two tests above prove `analyze()`'s guard is correct GIVEN a `rejected` Set — but every real
+// invocation (the CLI, with no test wiring) computes that Set itself via `demotedThemeKeys()`, which
+// neither test ever exercises. That gap is exactly how the original `themeKey`-on-a-lesson-row design
+// shipped and stayed silently broken for six weeks: the store field it read was never written by
+// anything, so `demotedThemeKeys()` always returned an empty Set in production, and the sticky guard
+// above could never fire. These tests go through the real file the fix introduced, and the real CLI,
+// with no `rejected` override — so they would have caught that failure, and would fail again if a
+// future change breaks the read/write round trip.
+describe('theme demotion — the real read/write round trip (no injected Set)', () => {
+  let themesFile;
+  beforeEach(() => { themesFile = path.join(tmp, 'demoted-themes.json'); });
+
+  it('a theme demoted via the real writer is excluded by the real reader on the very next analyze()', () => {
+    seed({
+      'proj-a': { 'feedback_v1': { desc: 'always bump the version on release' } },
+      'proj-b': { 'feedback_v2': { desc: 'always bump the version on release' } },
+      'proj-c': { 'feedback_t1': { desc: 'verify before claiming done' } },
+      'proj-d': { 'feedback_t2': { desc: 'prove it works, never assert' } },
+    });
+    const lessons = collectLessons(tmp);
+    // `demotedThemesFile` redirects the REAL disk reader to the fixture — no `rejected` Set involved.
+    const before = analyze(lessons, { minProjects: 2, demotedThemesFile: themesFile });
+    expect(before.promotable.length).toBeGreaterThanOrEqual(2);
+    expect(fs.existsSync(themesFile), 'no file yet — nothing demoted').toBe(false);
+
+    const key = before.promotable[0].key;
+    setThemeDemoted(key, true, themesFile);
+    expect(fs.existsSync(themesFile), 'the writer must actually create the file').toBe(true);
+
+    const after = analyze(lessons, { demotedThemesFile: themesFile });
+    expect(after.promotable.some((t) => t.key === key), 'demoted theme must vanish through the real reader').toBe(false);
+    expect(after.promotable.length).toBe(before.promotable.length - 1);
+  });
+
+  it('restore is also real — the file round-trips back to eligible', () => {
+    seed({
+      'proj-a': { 'feedback_v1': { desc: 'always bump the version on release' } },
+      'proj-b': { 'feedback_v2': { desc: 'always bump the version on release' } },
+    });
+    const lessons = collectLessons(tmp);
+    const key = analyze(lessons, { demotedThemesFile: themesFile }).promotable[0].key;
+    setThemeDemoted(key, true, themesFile);
+    expect(analyze(lessons, { demotedThemesFile: themesFile }).promotable.some((t) => t.key === key)).toBe(false);
+
+    setThemeDemoted(key, false, themesFile);
+    expect(analyze(lessons, { demotedThemesFile: themesFile }).promotable.some((t) => t.key === key), 'restore must undo the demotion').toBe(true);
+  });
+
+  it('a hand-edited bare array (not the documented {demoted:[...]} shape) is still honoured — same tolerance as OPTIN_PATH', () => {
+    seed({
+      'proj-a': { 'feedback_v1': { desc: 'always bump the version on release' } },
+      'proj-b': { 'feedback_v2': { desc: 'always bump the version on release' } },
+    });
+    const lessons = collectLessons(tmp);
+    const key = analyze(lessons, { demotedThemesFile: themesFile }).promotable[0].key;
+    fs.writeFileSync(themesFile, JSON.stringify([key]));
+    expect(analyze(lessons, { demotedThemesFile: themesFile }).promotable.some((t) => t.key === key)).toBe(false);
+  });
+
+  it('the real CLI: `--demote-theme` writes the file and the very next scan honours it', () => {
+    // The CLI's default scan root is $HOME/.claude/projects, not `tmp` directly — build a real
+    // fixture $HOME so the subprocess's own `collectLessons()` (no override available from here) finds it.
+    const homeDir = path.join(tmp, 'fake-home');
+    for (const [proj, desc] of [
+      ['proj-a', 'always bump the version on release'],
+      ['proj-b', 'always bump the version on release'],
+      ['proj-c', 'verify before claiming done'],
+      ['proj-d', 'prove it works, never assert'],
+    ]) {
+      const md = path.join(homeDir, '.claude', 'projects', proj, 'memory');
+      fs.mkdirSync(md, { recursive: true });
+      fs.writeFileSync(path.join(md, 'feedback_1.md'),
+        `---\nname: feedback_1\ndescription: "${desc}"\nmetadata:\n  type: feedback\n---\n\nbody text\n`);
+    }
+    const env = { ...process.env, RUVNET_DEMOTED_THEMES: themesFile, HOME: homeDir };
+    const before = JSON.parse(execFileSync('node', ['scripts/lesson-promote.mjs', '--json'], {
+      cwd: REPO_ROOT, env, encoding: 'utf8',
+    }));
+    expect(before.promotable.length).toBeGreaterThanOrEqual(2);
+    const key = before.promotable[0].key;
+
+    const out = execFileSync('node', ['scripts/lesson-promote.mjs', '--demote-theme', key], {
+      cwd: REPO_ROOT, env, encoding: 'utf8',
+    });
+    expect(out).toMatch(/demoted theme/);
+    expect(fs.existsSync(themesFile)).toBe(true);
+
+    const after = JSON.parse(execFileSync('node', ['scripts/lesson-promote.mjs', '--json'], {
+      cwd: REPO_ROOT, env, encoding: 'utf8',
+    }));
+    expect(after.promotable.some((t) => t.key === key), 'the CLI demotion must survive to the next real invocation').toBe(false);
+  });
+
+  it('`--demote-theme` with an unknown key refuses loudly instead of writing garbage', () => {
+    const homeDir = path.join(tmp, 'fake-home-2');
+    fs.mkdirSync(homeDir, { recursive: true });
+    expect(() => execFileSync('node', ['scripts/lesson-promote.mjs', '--demote-theme', 'not-a-real-theme'], {
+      cwd: REPO_ROOT, env: { ...process.env, RUVNET_DEMOTED_THEMES: themesFile, HOME: homeDir }, encoding: 'utf8',
+    })).toThrow();
+    expect(fs.existsSync(themesFile), 'a rejected key must not create the file').toBe(false);
   });
 });
