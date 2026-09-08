@@ -287,7 +287,9 @@ jobs:
     name: protected-publisher
     needs: [verified-candidate, seal-payload]
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Channel publication must be bounded. Public host proof runs in the parallel matrix below;
+    # it must never turn the publisher into a 90-minute release gate.
+    timeout-minutes: 20
     environment: Production – ruvnet-brain
     permissions:
       actions: read
@@ -381,7 +383,10 @@ jobs:
     name: public-verification-${{ matrix.os_name }}
     needs: [verified-candidate, publish]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    # All three OS lanes start together. The native scheduler smoke inside each lane is bounded
+    # to ten minutes and uses the sealed candidate bytes, so a release cannot wait on an unbounded
+    # registry/latest resolution.
+    timeout-minutes: 20
     permissions:
       actions: read
       contents: read
@@ -445,6 +450,7 @@ jobs:
         env:
           RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}
           GITHUB_TOKEN: ${{ github.token }}
+          RUVNET_PUBLIC_NATIVE_TIMEOUT_MS: 600000
         run: |
           set -euo pipefail
           test -s release-evidence/COVERAGE.json

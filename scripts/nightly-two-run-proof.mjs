@@ -385,8 +385,15 @@ export async function runNightlyTwoRunProof({ packagePath, bundlePath, out, time
     const packageRoot = path.join(prefix, 'node_modules', 'ruvnet-brain');
     const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
     const expectedPackage = packageTreeObservation(packageRoot);
-    // Exercise the production target, not npx's ambiguous positional local-tarball path.
-    const prepare = npmInvocation(['exec', '--yes', '--package=ruvnet-brain@latest', '--', 'ruvnet-brain', '--help']);
+    // Release verification already downloaded and hashed the exact npm bytes above. Reusing
+    // those bytes keeps the per-release scheduler smoke deterministic and avoids a second
+    // registry/latest resolution. The unattended production nightly still uses @latest.
+    const packageTarget = {
+      spec: candidate,
+      sha256: packageSha256,
+      policy: 'sealed-candidate-exact-cache-v1',
+    };
+    const prepare = npmInvocation(['exec', '--yes', `--package=${packageTarget.spec}`, '--', 'ruvnet-brain', '--help']);
     run(prepare.executable, prepare.args, { env, cwd: home });
     const packageObservations = [observeNpxPackage(npmCache, expectedPackage)];
     // Register the exact public package's plugin in this fresh home. GitHub shorthand can
@@ -400,7 +407,7 @@ export async function runNightlyTwoRunProof({ packagePath, bundlePath, out, time
     scheduler = await import(`${pathToFileURL(path.join(packageRoot, 'plugin', 'scripts', 'nightly-scheduler.mjs')).href}?proof=${Date.now()}`);
     registration = scheduler.installNightlyRunner({ brainHome,
       source: path.join(packageRoot, 'bin', 'nightly-refresh.mjs'), nodePath: process.execPath, identity, env,
-      packageTarget: { spec: 'ruvnet-brain@latest', sha256: null },
+      packageTarget: { spec: packageTarget.spec, sha256: packageTarget.sha256 },
       bundleTarget: { spec: stagedBundle.sourcePath, sha256: stagedBundle.sha256 } });
     const inventoryBefore = managedStorageInventory(kbDir);
     const kick = () => triggerNativeRun({ scheduler, registration, platform: process.platform,
@@ -431,7 +438,7 @@ export async function runNightlyTwoRunProof({ packagePath, bundlePath, out, time
       kind: 'ruvnet-brain-native-two-run-nightly-proof',
       scope: 'installed-update',
       installationConfiguration: { npmBinLinks: false, source: 'initial-reader-install-only', removedEmptyScaffolds },
-      packageExecution: { policy: 'production-latest-exact-cache-v1',
+      packageExecution: { policy: packageTarget.policy,
         expected: { ...expectedPackage, packageSha256 }, observations: packageObservations },
       upstreamFreshness: 'UNKNOWN',
       observedAt: new Date().toISOString(),

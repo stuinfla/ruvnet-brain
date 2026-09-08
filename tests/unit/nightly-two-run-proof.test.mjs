@@ -344,6 +344,20 @@ describe('native two-run nightly proof', () => {
       validateEnvelope: envelope, identity: 'proof', ...override };
     expect(validateTwoRunEvidence(input).ok).toBe(false);
   });
+  it('accepts a sealed candidate target for the bounded release smoke', () => {
+    const expected = { name: 'ruvnet-brain', version: '9.9.9', packageSha256: 'a'.repeat(64), treeSha256: 'b'.repeat(64), fileCount: 2 };
+    const at = (second) => `2026-09-07T10:00:0${second}.000Z`;
+    const proof = { candidate: { sha256: expected.packageSha256, version: expected.version },
+      registration: { packageTarget: { spec: '/runner/sealed-candidate.tgz', sha256: expected.packageSha256 } },
+      observedAt: at(7),
+      packageExecution: { policy: 'sealed-candidate-exact-cache-v1', expected,
+        observations: [0, 3, 6].map((second) => ({ ...expected, path: '/isolated/cache/package', observedAt: at(second) })) },
+      runs: [1, 4].map((second) => ({ receipt: { desiredVersion: expected.version, startedAt: at(second), finishedAt: at(second + 1) } })) };
+    expect(validateNpxObservations(proof)).toEqual([]);
+    const changed = structuredClone(proof);
+    changed.registration.packageTarget.sha256 = 'c'.repeat(64);
+    expect(validateNpxObservations(changed).length).toBeGreaterThan(0);
+  });
 });
 
 

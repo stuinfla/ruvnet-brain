@@ -339,8 +339,12 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         if (sha256(npm.path) !== identity.packageSha256 || sha256(bundle.path) !== identity.bundleSha256
           || npm.version !== identity.version || bundle.sha !== identity.candidateSha
           || signature.sha !== identity.candidateSha) throw new Error('nightly public artifact identity mismatch');
+        const timeoutMs = Number(process.env.RUVNET_PUBLIC_NATIVE_TIMEOUT_MS || 10 * 60 * 1000);
+        if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 60_000) {
+          throw new Error('RUVNET_PUBLIC_NATIVE_TIMEOUT_MS must be an integer of at least 60000ms');
+        }
         const proof = await runNightlyTwoRunProof({ packagePath: npm.path, bundlePath: bundle.path,
-          signaturePath: signature.path, sourceSha: identity.candidateSha, workflowRunId,
+          signaturePath: signature.path, sourceSha: identity.candidateSha, workflowRunId, timeoutMs,
           out: path.join(temp, 'nightly-proof.json') });
         const validation = validateNightlyProofReceipt(proof, { platform: process.platform, version: identity.version,
           packageSha256: identity.packageSha256, bundleSha256: identity.bundleSha256,

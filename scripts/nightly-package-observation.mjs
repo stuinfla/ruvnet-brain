@@ -37,9 +37,15 @@ export function observeNpxPackage(npmCache, expected) {
 export function validateNpxObservations(proof) {
   const expected = proof.packageExecution?.expected;
   const observations = proof.packageExecution?.observations;
-  if (proof.packageExecution?.policy !== 'production-latest-exact-cache-v1'
-    || proof.registration?.packageTarget?.spec !== 'ruvnet-brain@latest'
-    || proof.registration.packageTarget.sha256 !== null
+  const policy = proof.packageExecution?.policy;
+  const target = proof.registration?.packageTarget;
+  const productionLatest = policy === 'production-latest-exact-cache-v1'
+    && target?.spec === 'ruvnet-brain@latest' && target.sha256 === null;
+  const sealedCandidate = policy === 'sealed-candidate-exact-cache-v1'
+    && typeof target?.spec === 'string' && target.spec.endsWith('.tgz')
+    && /^[a-f0-9]{64}$/.test(String(target.sha256 || ''))
+    && target.sha256 === proof.candidate?.sha256;
+  if ((!productionLatest && !sealedCandidate)
     || expected?.packageSha256 !== proof.candidate?.sha256
     || expected?.name !== 'ruvnet-brain' || expected.version !== proof.candidate?.version
     || !/^[a-f0-9]{64}$/.test(expected.treeSha256 || '') || !Number.isSafeInteger(expected.fileCount)
