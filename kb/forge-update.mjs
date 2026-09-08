@@ -783,9 +783,20 @@ export function reclaimBackups({
   intentionallyRemovedStores = [],
 }) {
   const parent = path.dirname(kbDir);
-  const prefix = `${path.basename(kbDir)}.bak-`;
+  // Older updater and recovery paths used three different names for the same full-KB rollback
+  // copy. Sweeping only `kb.bak-*` left those copies outside retention, which is how issue #235
+  // accumulated 74 directories / 129 GiB. Keep the allowlist narrow: these are exact historical
+  // names owned by this updater, and unrelated siblings must remain untouched.
+  const base = path.basename(kbDir);
+  const prefixes = [
+    `${base}.bak-`,
+    `${base}.pre-reset-backup-`,
+    `${base}.agent-harness-generator-backup-`,
+    `${base}-pre-gap-rebuild-backup-`,
+  ];
+  const prefixFor = (entry) => prefixes.find((prefix) => entry.startsWith(prefix)) || null;
   let stranded = [];
-  try { stranded = fs.readdirSync(parent).filter((n) => n.startsWith(prefix)).map((n) => path.join(parent, n)); }
+  try { stranded = fs.readdirSync(parent).filter((n) => prefixFor(n)).map((n) => path.join(parent, n)); }
   catch { /* unreadable parent — nothing to sweep */ }
 
   const all = [...new Set([...backupsMade, ...stranded])];
@@ -802,7 +813,7 @@ export function reclaimBackups({
     if (!fs.existsSync(b)) continue;
     if (env.RUVNET_KEEP_BACKUP === '1') { kept.push([b, 'RUVNET_KEEP_BACKUP=1 is set']); continue; }
     try {
-      if (path.dirname(path.resolve(b)) !== path.resolve(parent) || !path.basename(b).startsWith(prefix)) {
+      if (path.dirname(path.resolve(b)) !== path.resolve(parent) || !prefixFor(path.basename(b))) {
         throw new Error('target is not an exact backup sibling');
       }
       for (const dir of [parent, kbDir, b]) {

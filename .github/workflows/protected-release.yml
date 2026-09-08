@@ -61,7 +61,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.candidate_sha }}
+          # Bind to main; identity below proves it equals EXPECTED_SHA.
+          ref: main
           fetch-depth: 0
           persist-credentials: false
       - id: candidate
@@ -95,7 +96,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.identity.outputs.candidate_sha }}
+          ref: main
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -212,7 +213,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.verified-candidate.outputs.candidate_sha }}
+          ref: main
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -295,7 +296,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.verified-candidate.outputs.candidate_sha }}
+          ref: main
           fetch-depth: 0
           persist-credentials: true
 
@@ -402,7 +403,7 @@ jobs:
           test "$(git config --global --get core.autocrlf)" = false
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.verified-candidate.outputs.candidate_sha }}
+          ref: main
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -480,7 +481,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.verified-candidate.outputs.candidate_sha }}
+          ref: main
           fetch-depth: 0
           persist-credentials: true
       - uses: actions/setup-node@v4

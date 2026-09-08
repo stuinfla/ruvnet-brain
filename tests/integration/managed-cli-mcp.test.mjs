@@ -256,7 +256,8 @@ rl.on('line', (line) => {
       name: 'search_ruvnet', arguments: { query: 'missing bundle' },
     });
     expect(searched.result.isError).toBe(true);
-    expect(searched.result.content[0].text).toMatch(/bundle is not installed/i);
+    expect(searched.result.content[0].text).toMatch(/bundle is unavailable/i);
+    expect(searched.result.content[0].text).not.toMatch(/\b(?:npm|npx)\b/i);
   });
 
   it('makes concurrent first searches share one initialize-and-warmup attempt', async () => {

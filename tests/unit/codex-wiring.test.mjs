@@ -38,7 +38,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const CODEX_DIR = path.join(ROOT, '.codex');
 
 let mergeCodexConfig, removeCodexManagedBlock, wireCodexHost, codexStatus, codexMcpGuidance, codexMarketplaceRows, classifyCodexLifecycle;
-let wireCodexPlugin, codexPluginStatus, codexLifecycleGuidance;
+let wireCodexPlugin, codexPluginStatus, codexLifecycleGuidance, codexSessionSafety;
 beforeAll(async () => {
   // Same import-only contract the other installer tests use, so main() never runs on import.
   process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
@@ -53,6 +53,7 @@ beforeAll(async () => {
     wireCodexPlugin,
     codexPluginStatus,
     codexLifecycleGuidance,
+    codexSessionSafety,
   } = await import('../../bin/install.mjs'));
 });
 
@@ -562,7 +563,10 @@ describe('wireCodexPlugin — install is idempotent, state-driven, and disable-p
       expectedVersion: '1.2.3',
       runJson,
       announce: false,
-    })).toMatchObject({ action: 'installed', installed: true, enabled: true });
+    })).toMatchObject({
+      action: 'installed', installed: true, enabled: true,
+      sessionSafety: 'restart-required', restartRequired: true,
+    });
     expect(calls.map((args) => args.join(' '))).toEqual([
       'plugin list --json',
       'plugin marketplace list --json',
@@ -636,6 +640,18 @@ describe('wireCodexPlugin — install is idempotent, state-driven, and disable-p
       installed: false,
       enabled: false,
       error: 'codex not found',
+    });
+  });
+
+  it('makes the host API boundary explicit after a native update', () => {
+    const status = { action: 'updated', restartRequired: true, sessionSafety: 'restart-required' };
+    expect(codexSessionSafety(status)).toMatchObject({
+      sessionSafety: 'restart-required',
+      restartRequired: true,
+    });
+    expect(codexSessionSafety({ action: 'unchanged' })).toMatchObject({
+      sessionSafety: 'unknown',
+      restartRequired: false,
     });
   });
 

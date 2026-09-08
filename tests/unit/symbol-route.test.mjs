@@ -5,6 +5,10 @@ describe('symbol routing ignores inherited and malformed table entries (#224)', 
   it('does not interpret Object.prototype properties as source paths', () => {
     expect([...symbolRoute('constructor', { bySymbol: {}, byStem: {}, byPackage: {} })]).toEqual([]);
   });
+  it('does not follow an inherited constructor table', () => {
+    const bySymbol = Object.create({ constructor: ['src/foreign.mjs'] });
+    expect([...symbolRoute('constructor', { bySymbol, byStem: {}, byPackage: {} })]).toEqual([]);
+  });
   it('retains own constructor entries without reading inherited sibling entries', () => {
     expect([...symbolRoute('constructor', { bySymbol: { constructor: ['src/ctor.ts'] }, byStem: {}, byPackage: {} })])
       .toEqual(['src/ctor.ts']);

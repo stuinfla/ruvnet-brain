@@ -145,6 +145,22 @@ describe('reclaimBackups (issue #35)', () => {
     for (const d of [old1, old2, fresh]) expect(fs.existsSync(d)).toBe(false);
   });
 
+  it('sweeps every historical full-KB backup naming convention under the same one-copy budget', () => {
+    const kb = mk(path.join(root, 'kb'), { 'a.rvf': 1024 });
+    const backups = [
+      'kb.pre-reset-backup-2026-07-01',
+      'kb.agent-harness-generator-backup-2026-07-02',
+      'kb-pre-gap-rebuild-backup-2026-07-03',
+    ].map((name) => mk(path.join(root, name), { 'a.rvf': 1024 }));
+
+    const { removed, kept, retentionPolicy } = reclaimBackups({ kbDir: kb, backupsMade: [], env: {} });
+
+    expect(removed.sort()).toEqual(backups.sort());
+    expect(kept).toEqual([]);
+    expect(retentionPolicy.observedSnapshots).toBe(0);
+    for (const backup of backups) expect(fs.existsSync(backup)).toBe(false);
+  });
+
   it('RUVNET_KEEP_BACKUP=1 keeps everything, for anyone who wants the old behaviour', () => {
     const kb = mk(path.join(root, 'kb'), { 'a.rvf': 64 });
     const bak = mk(path.join(root, 'kb.bak-2026-07-01'), { 'a.rvf': 1024 });
