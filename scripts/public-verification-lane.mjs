@@ -178,11 +178,11 @@ export async function createPublicVerificationLane({
       failures.push({ mode, reason: error.message, retrieval });
       continue;
     }
-    // Native scheduler lifecycle is qualified in the reviewed cross-platform
-    // release suite. The live public adapter opts out because that proof relies
-    // on maintainer-only host tooling; test adapters still exercise the seam.
+    // Native scheduler lifecycle is part of the accepted release contract. Keep
+    // the public lane bound to the same proof required by the leaf/aggregate
+    // validators; an adapter cannot silently downgrade a dual-host leaf.
     let nativeNightly;
-    if (mode === 'dual' && adapter.publicNativeNightly !== false) {
+    if (mode === 'dual') {
       if (typeof adapter.runNativeNightly !== 'function') throw new Error('native nightly proof adapter is required');
       nativeNightly = await adapter.runNativeNightly({ identity, workflowRunId: String(workflowRunId) });
     }
