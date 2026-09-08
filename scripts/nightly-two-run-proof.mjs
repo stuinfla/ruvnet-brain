@@ -216,7 +216,13 @@ export async function runNativeSchedulerSmoke({ packageRoot, packagePath, bundle
     source: path.join(packageRoot, 'bin', 'nightly-refresh.mjs'), nodePath: process.execPath, identity, env,
     packageTarget: { spec: packageArchive, sha256: packageSha256 },
     bundleTarget: { spec: bundle, sha256: bundleSha256 } });
-  const options = { platform: process.platform, env, brainHome, kbDir, identity,
+  // A hosted runner can expose a native scheduler binary whose IPC endpoint is unavailable.
+  // Every scheduler operation is therefore bounded independently; a stuck launchd/schtasks
+  // call must become a typed failure, never consume the entire release job timeout.
+  const schedulerRun = (name, args, options = {}) => spawnSync(name, args, {
+    encoding: 'utf8', timeout: 30_000, ...options,
+  });
+  const options = { platform: process.platform, env, brainHome, kbDir, identity, run: schedulerRun,
     proofTick: process.platform === 'linux', proofAt: process.platform === 'linux' ? now() + 60_000 : undefined,
     pathValue: env.PATH };
   const before = scheduler.schedulerStatus(options);
@@ -231,11 +237,11 @@ export async function runNativeSchedulerSmoke({ packageRoot, packagePath, bundle
     if (loaded.state !== 'on') throw new Error(`native scheduler smoke was not loaded: ${loaded.evidence}`);
     if (process.platform === 'darwin') {
       const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
-      command('launchctl', ['kickstart', '-k', `gui/${uid}/${identity}`]);
+      command('launchctl', ['kickstart', '-k', `gui/${uid}/${identity}`], { timeout: 30_000 });
     } else if (process.platform === 'win32') {
-      command('schtasks', ['/Run', '/TN', identity]);
+      command('schtasks', ['/Run', '/TN', identity], { timeout: 30_000 });
     }
-    const removed = scheduler.removeScheduler({ platform: process.platform, env, identity });
+    const removed = scheduler.removeScheduler({ ...options, platform: process.platform, env, identity });
     if (!removed.ok) throw new Error(`native scheduler smoke cleanup failed: ${removed.why}`);
     cleaned = true;
     const absent = scheduler.schedulerStatus(options);
@@ -260,7 +266,7 @@ export async function runNativeSchedulerSmoke({ packageRoot, packagePath, bundle
     };
   } finally {
     if (installed && !cleaned) {
-      try { scheduler.removeScheduler({ platform: process.platform, env, identity }); } catch { /* preserve original failure */ }
+      try { scheduler.removeScheduler({ ...options, platform: process.platform, env, identity }); } catch { /* preserve original failure */ }
     }
   }
 }
