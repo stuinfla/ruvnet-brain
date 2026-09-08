@@ -413,7 +413,10 @@ export function installScheduler(record, { platform = process.platform, env = pr
     // schtasks /TR rejects commands longer than 261 characters. Importing equivalent XML keeps the
     // exact Node executable and argument identity while allowing long temporary/user paths.
     const xmlPath = path.join(path.dirname(record.recordPath), `${record.identity}.task.xml`);
-    fs.writeFileSync(xmlPath, windowsTaskXml(record), { flag: 'wx', encoding: 'utf16le' });
+    // schtasks requires a UTF-16LE BOM when importing XML; without it Windows
+    // reports the otherwise valid document as "one root element" malformed.
+    const xmlBytes = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(windowsTaskXml(record), 'utf16le')]);
+    fs.writeFileSync(xmlPath, xmlBytes, { flag: 'wx' });
     try { created = run('schtasks', ['/Create', '/XML', xmlPath, '/TN', record.identity, '/F'], { encoding: 'utf8' }); }
     finally { fs.rmSync(xmlPath, { force: true }); }
   }

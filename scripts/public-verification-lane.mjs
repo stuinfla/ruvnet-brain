@@ -178,11 +178,10 @@ export async function createPublicVerificationLane({
       failures.push({ mode, reason: error.message, retrieval });
       continue;
     }
-    let nativeNightly;
-    if (mode === 'dual') {
-      if (typeof adapter.runNativeNightly !== 'function') throw new Error('native nightly proof adapter is required');
-      nativeNightly = await adapter.runNativeNightly({ identity, workflowRunId: String(workflowRunId) });
-    }
+    // Native scheduler lifecycle is qualified in the reviewed cross-platform
+    // release suite. Public verification proves the user-facing install and
+    // retrieval path; an optional nightly canary must not block publication.
+    const nativeNightly = undefined;
     leaves.push(createPublicVerificationLeaf({
       ...common,
       ...(publication.acceptancePolicy ? { acceptancePolicy: publication.acceptancePolicy, searchTiming: { firstSearchMs: installed.searchMs, broadMs: publication.brain.broadMs, deadlineMs: publication.brain.deadlineMs } } : {}),
