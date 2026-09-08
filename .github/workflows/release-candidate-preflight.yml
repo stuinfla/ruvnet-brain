@@ -36,8 +36,31 @@ jobs:
     with:
       candidate_sha: ${{ github.sha }}
 
+  # Explicit reusable jobs keep each OS receipt visible in GitHub and required by aggregate.
+  early-public-linux:
+    needs: ci
+    uses: ./.github/workflows/early-public.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+      os_name: linux
+      runner: ubuntu-latest
+  early-public-macos:
+    needs: ci
+    uses: ./.github/workflows/early-public.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+      os_name: macos
+      runner: macos-latest
+  early-public-windows:
+    needs: ci
+    uses: ./.github/workflows/early-public.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+      os_name: windows
+      runner: windows-latest
+
   aggregate:
-    needs: [ci, integration, ux, stranger]
+    needs: [ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -69,6 +92,45 @@ jobs:
         with:
           name: stranger-evidence-${{ github.sha }}
           path: lane-evidence/stranger
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: early-public-${{ github.sha }}-*
+          path: lane-evidence/early-public
+      - name: Validate all three early public-artifact receipts
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const root = 'lane-evidence/early-public';
+          const files = [];
+          const walk = dir => {
+            for (const name of fs.readdirSync(dir)) {
+              const file = path.join(dir, name);
+              const stat = fs.statSync(file);
+              if (stat.isDirectory()) walk(file);
+              else if (name === 'early-public.json') files.push(file);
+            }
+          };
+          walk(root);
+          if (files.length !== 3) throw new Error(`expected three early-public receipts, found ${files.length}`);
+          for (const file of files) {
+            const receipt = JSON.parse(fs.readFileSync(file, 'utf8'));
+            if (receipt.schema !== 'ruvnet-brain.agentic-qe.receipt'
+              || receipt.contract !== 'agentic-qe-4.3'
+              || receipt.lane !== 'early-public'
+              || receipt.status !== 'PASS'
+              || receipt.sha !== process.env.CANDIDATE_SHA
+              || receipt.steps.some(step => step.status !== 'PASS'
+                || (step.tests && (step.tests.total === 0 || step.tests.skipped > 0)))) {
+              throw new Error(`invalid early-public receipt: ${file}`);
+            }
+          }
+          console.log(JSON.stringify({ status: 'PASS', receipts: files.length, sha: process.env.CANDIDATE_SHA }));
+          NODE
       - name: Validate typed receipts and bind the candidate envelope
         shell: bash
         run: |

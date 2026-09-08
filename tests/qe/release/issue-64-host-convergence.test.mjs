@@ -22,6 +22,8 @@ const temporary = (prefix) => {
   cleanup.push(dir);
   return dir;
 };
+const isolatedEnv = (home, brain) => ({ ...process.env, HOME: home, USERPROFILE: home,
+  CODEX_HOME: path.join(home, '.codex'), RUVNET_BRAIN_HOME: brain });
 afterAll(() => cleanup.forEach((item) => fs.rmSync(item, { recursive: true, force: true })));
 
 function stagedPayload(home, host, version) {
@@ -100,7 +102,7 @@ describe('issue #64 — exact dual-host convergence', () => {
     stagedPayload(home, 'codex', OTHER);
     const result = spawnSync(process.execPath, [ENGINE, '--auto', '--expected-version', EXPECTED], {
       encoding: 'utf8',
-      env: { ...process.env, HOME: home, CODEX_HOME: path.join(home, '.codex'), RUVNET_BRAIN_HOME: brain },
+      env: isolatedEnv(home, brain),
     });
     expect(result.status).toBe(0);
     expect(JSON.parse(fs.readFileSync(path.join(brain, 'active.json'), 'utf8')).version).toBe(EXPECTED);
@@ -112,7 +114,7 @@ describe('issue #64 — exact dual-host convergence', () => {
     stagedPayload(home, 'codex', OTHER);
     const result = spawnSync(process.execPath, [ENGINE, '--auto', '--expected-version', EXPECTED], {
       encoding: 'utf8',
-      env: { ...process.env, HOME: home, CODEX_HOME: path.join(home, '.codex'), RUVNET_BRAIN_HOME: brain },
+      env: isolatedEnv(home, brain),
     });
     expect(result.status).not.toBe(0);
     expect(result.stderr + result.stdout).toContain(`exactly matches expected version ${EXPECTED}`);

@@ -1,6 +1,6 @@
 {
   "name": "ruvnet-brain",
-  "version": "4.3.14",
+  "version": "4.3.15",
   "description": "One-command installer for RuvNet Brain — a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
   "type": "module",
   "bin": {
@@ -32,6 +32,7 @@
     "test:regression": "vitest run tests/regression",
     "qe:ux": "node scripts/qe/ux-suite.mjs",
     "test:cov": "vitest run tests/unit --coverage",
+    "coverage:source": "node scripts/source-coverage.mjs --check",
     "test:all": "npm run test:unit && npm run test:mesh && npm run test:mutation && npm run test:regression && npm run test:integration && npm test",
     "metaharness:receipts": "node scripts/metaharness-receipts.mjs",
     "route:cheap": "node scripts/route-cheap.mjs",

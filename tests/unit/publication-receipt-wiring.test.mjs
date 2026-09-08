@@ -69,6 +69,11 @@ describe('publication receipt wiring', () => {
       .toBeLessThan(position(producer, "command(process.execPath, [installer, '--doctor', '--hooks']"));
   });
 
+  it('does not downgrade the accepted dual-host native nightly proof', () => {
+    expect(producer).not.toContain('publicNativeNightly: false');
+    expect(publicLane).toContain("if (mode === 'dual')");
+  });
+
   it('MUTANT: checkout publication cannot replace the sealed artifact command', () => {
     expect(provider).not.toContain("command('npm', ['publish', '--tag', 'latest'])");
   });
