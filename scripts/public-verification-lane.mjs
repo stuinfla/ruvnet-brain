@@ -182,14 +182,22 @@ export async function createPublicVerificationLane({
     // the public lane bound to the same proof required by the leaf/aggregate
     // validators; an adapter cannot silently downgrade a dual-host leaf.
     let nativeNightly;
+    let nativeSchedulerSmoke;
     if (mode === 'dual') {
-      if (typeof adapter.runNativeNightly !== 'function') throw new Error('native nightly proof adapter is required');
-      nativeNightly = await adapter.runNativeNightly({ identity, workflowRunId: String(workflowRunId) });
+      const schedulerMode = process.env.RUVNET_PUBLIC_SCHEDULER_MODE || 'full';
+      if (schedulerMode === 'smoke') {
+        if (typeof adapter.runNativeNightlySmoke !== 'function') throw new Error('native scheduler smoke adapter is required');
+        nativeSchedulerSmoke = await adapter.runNativeNightlySmoke({ identity, workflowRunId: String(workflowRunId) });
+      } else {
+        if (typeof adapter.runNativeNightly !== 'function') throw new Error('native nightly proof adapter is required');
+        nativeNightly = await adapter.runNativeNightly({ identity, workflowRunId: String(workflowRunId) });
+      }
     }
     leaves.push(createPublicVerificationLeaf({
       ...common,
       ...(publication.acceptancePolicy ? { acceptancePolicy: publication.acceptancePolicy, searchTiming: { firstSearchMs: installed.searchMs, broadMs: publication.brain.broadMs, deadlineMs: publication.brain.deadlineMs } } : {}),
       ...(nativeNightly === undefined ? {} : { nativeNightly }),
+      ...(nativeSchedulerSmoke === undefined ? {} : { nativeSchedulerSmoke }),
       os,
       mode,
       status: verifiedRetrieval.receiptSha256 === retrieval.receiptSha256 ? 'completed' : 'failed',

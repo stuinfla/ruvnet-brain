@@ -20,7 +20,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt, evaluatePublicationReceipt } from './release-proof.mjs';
 import { verifyPayload } from './release-payload.mjs';
 import { resolveInstalledCanaryCitation } from './retrieval-canary.mjs';
-import { runNightlyTwoRunProof, validateNightlyProofReceipt } from './nightly-two-run-proof.mjs';
+import {
+  runNativeSchedulerSmoke,
+  runNightlyTwoRunProof,
+  validateNativeSchedulerSmoke,
+  validateNightlyProofReceipt,
+} from './nightly-two-run-proof.mjs';
 import { parseRetrievalResult } from '../kb/retrieval-result.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
@@ -302,6 +307,8 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
   const mcpSessions = new Map();
   const passageFileDigests = new Map();
   let installTemp = null;
+  let installedPackageRoot = null;
+  let installedBundlePath = null;
   return {
     async downloadNpm({ version, destination }) {
       const metadata = JSON.parse(command('npm', ['view', `${PACKAGE}@${version}`, '--json']));
@@ -339,8 +346,12 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         if (sha256(npm.path) !== identity.packageSha256 || sha256(bundle.path) !== identity.bundleSha256
           || npm.version !== identity.version || bundle.sha !== identity.candidateSha
           || signature.sha !== identity.candidateSha) throw new Error('nightly public artifact identity mismatch');
+        const timeoutMs = Number(process.env.RUVNET_PUBLIC_NATIVE_TIMEOUT_MS || 10 * 60 * 1000);
+        if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 60_000) {
+          throw new Error('RUVNET_PUBLIC_NATIVE_TIMEOUT_MS must be an integer of at least 60000ms');
+        }
         const proof = await runNightlyTwoRunProof({ packagePath: npm.path, bundlePath: bundle.path,
-          signaturePath: signature.path, sourceSha: identity.candidateSha, workflowRunId,
+          signaturePath: signature.path, sourceSha: identity.candidateSha, workflowRunId, timeoutMs,
           out: path.join(temp, 'nightly-proof.json') });
         const validation = validateNightlyProofReceipt(proof, { platform: process.platform, version: identity.version,
           packageSha256: identity.packageSha256, bundleSha256: identity.bundleSha256,
@@ -354,6 +365,44 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       }
     },
 
+    async runNativeNightlySmoke({ identity, workflowRunId }) {
+      const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-public-scheduler-smoke-'));
+      try {
+        const npm = await this.downloadNpm({ version: identity.version,
+          destination: path.join(temp, 'package.tgz') });
+        const bundle = await this.downloadGithub({ tag: identity.tag, assetName: 'ruvnet-brain.zip',
+          destination: path.join(temp, 'ruvnet-brain.zip') });
+        if (sha256(npm.path) !== identity.packageSha256 || sha256(bundle.path) !== identity.bundleSha256
+          || npm.version !== identity.version || bundle.sha !== identity.candidateSha) {
+          throw new Error('scheduler smoke public artifact identity mismatch');
+        }
+        const packageRoot = installedPackageRoot || path.join(temp, 'package');
+        if (!installedPackageRoot) {
+          const extraction = tarExtractionInvocation(npm.path, temp);
+          command('tar', extraction.args, { cwd: extraction.cwd });
+          if (!fs.existsSync(packageRoot)) throw new Error('scheduler smoke package extraction failed');
+        }
+        const brainHome = path.join(temp, 'brain');
+        const smokeHome = path.join(temp, 'home');
+        fs.mkdirSync(smokeHome, { recursive: true });
+        const smokeEnv = { ...process.env, HOME: smokeHome, USERPROFILE: smokeHome,
+          RUVNET_BRAIN_HOME: brainHome, RUVNET_BRAIN_KB: path.join(brainHome, 'kb'),
+          PATH: process.env.PATH || '' };
+        const smoke = await runNativeSchedulerSmoke({ packageRoot, packagePath: npm.path,
+          bundlePath: installedBundlePath || bundle.path, sourceSha: identity.candidateSha,
+          workflowRunId, env: smokeEnv, brainHome, kbDir: path.join(brainHome, 'kb'),
+          scheduler: await import(`${pathToFileURL(path.join(packageRoot, 'plugin', 'scripts', 'nightly-scheduler.mjs')).href}?smoke=${Date.now()}`) });
+        const validation = validateNativeSchedulerSmoke(smoke, {
+          platform: process.platform, sourceSha: identity.candidateSha,
+          workflowRunId, bundleSha256: identity.bundleSha256, packageSha256: identity.packageSha256,
+        });
+        if (!validation.ok) throw new Error(`scheduler smoke failed: ${validation.failures.join('; ')}`);
+        return smoke;
+      } finally {
+        fs.rmSync(temp, { recursive: true, force: true });
+      }
+    },
+
     async installHosts({ artifactPath, artifactSha256, bundlePath, bundleSha256, version }) {
       const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-public-install-')));
       installTemp = temp;
@@ -361,6 +410,8 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       const extraction = tarExtractionInvocation(artifactPath, temp);
       command('tar', extraction.args, { cwd: extraction.cwd });
       stageVerifiedBundle({ bundlePath, bundleSha256, packageRoot });
+      installedPackageRoot = packageRoot;
+      installedBundlePath = path.join(packageRoot, 'dist', 'ruvnet-brain.zip');
       const sealedPlugin = path.join(packageRoot, 'plugin');
       const results = {};
       let bundle = null;

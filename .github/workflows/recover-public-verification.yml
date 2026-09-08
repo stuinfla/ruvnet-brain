@@ -147,7 +147,9 @@ jobs:
     name: recover-public-verification-${{ matrix.os_name }}
     needs: [authorize, recover]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    # Recovery uses the same bounded public scheduler smoke as a normal release. A stale
+    # transaction must not trap every subsequent release behind a 90-minute lane.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -214,6 +216,7 @@ jobs:
         env:
           RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}/candidate-source
           GITHUB_TOKEN: ${{ github.token }}
+          RUVNET_PUBLIC_SCHEDULER_MODE: smoke
         run: |
           set -euo pipefail
           node scripts/host-registry.mjs --out release-evidence/host-registry.json
