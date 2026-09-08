@@ -26,6 +26,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { extractTarball } from '../helpers/extract-tarball.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const madeTmp = [];
@@ -45,7 +46,7 @@ beforeAll(() => {
   });
   packed = JSON.parse(out.slice(out.indexOf('[')))[0];
   // tar ships in System32 on the Windows runners, so this one spawns directly everywhere.
-  execFileSync('tar', ['-xzf', path.join(dest, packed.filename), '-C', dest]);
+  extractTarball(path.join(dest, packed.filename), dest);
   unpackedRoot = path.join(dest, 'package');
 }, 180_000);
 

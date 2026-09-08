@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { extractTarball } from '../../helpers/extract-tarball.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../../..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-release-qe-'));
@@ -22,7 +23,7 @@ beforeAll(async () => {
       files: execFileSync('tar', ['-tzf', sealed], { encoding: 'utf8' })
         .trim().split('\n').map((entry) => ({ path: entry.replace(/^package\//, '').replace(/\/$/, '') })),
     };
-    execFileSync('tar', ['-xzf', sealed, '-C', temp]);
+    extractTarball(sealed, temp);
   } else {
     // Local focused runs remain self-contained. CI always supplies RUVNET_SEALED_PACKAGE,
     // making the release-QE fleet consume the single artifact later published byte-for-byte.
@@ -32,7 +33,7 @@ beforeAll(async () => {
       shell: process.platform === 'win32',
     });
     packed = JSON.parse(raw.slice(raw.indexOf('[')))[0];
-    execFileSync('tar', ['-xzf', path.join(temp, packed.filename), '-C', temp]);
+    extractTarball(path.join(temp, packed.filename), temp);
   }
   artifact = path.join(temp, 'package');
   process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
