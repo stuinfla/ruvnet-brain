@@ -343,7 +343,7 @@ async function handleClient(msg) {
         });
       }
       if (!c) {
-        return clientOk(id, { content: [{ type: 'text', text: `search_ruvnet error: the brain bundle is not installed at ${KB}. Install it with: npx github:stuinfla/ruvnet-brain  (or set RUVNET_BRAIN_KB to your brain's kb dir).` }], isError: true });
+        return clientOk(id, { content: [{ type: 'text', text: `search_ruvnet error: the brain bundle is unavailable at ${KB}. Diagnose the active installation and KB path before choosing a repair.` }], isError: true });
       }
       pendingCount++;
       try {
