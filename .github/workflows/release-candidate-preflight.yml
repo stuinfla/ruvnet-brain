@@ -36,59 +36,31 @@ jobs:
     with:
       candidate_sha: ${{ github.sha }}
 
-  # Run the smallest useful public-artifact check before any protected publication. This catches
-  # OS-specific packed-install and host-convergence failures while they are still cheap to repair;
-  # protected-release.yml remains the only authority for public bytes and terminal native proof.
-  early-public:
-    name: early-public-${{ matrix.os_name }}
+  # Explicit reusable jobs keep each OS receipt visible in GitHub and required by aggregate.
+  early-public-linux:
     needs: ci
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { runner: ubuntu-latest, os_name: linux }
-          - { runner: macos-latest, os_name: macos }
-          - { runner: windows-latest, os_name: windows }
-    steps:
-      - name: Preserve exact Git bytes before Windows checkout
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$RUNNER_ENVIRONMENT" = github-hosted
-          git config --global core.autocrlf false
-          test "$(git config --global --get core.autocrlf)" = false
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install exact candidate dependencies
-        run: npm ci --no-audit --no-fund --ignore-scripts
-      - name: Run early public-artifact Agentic-QE lane
-        shell: bash
-        env:
-          ANTHROPIC_API_KEY: ''
-          OPENAI_API_KEY: ''
-          OPENROUTER_API_KEY: ''
-          RUVNET_ALLOW_METERED_SPEND: '0'
-        run: node scripts/qe/agentic-qe-4.3.mjs --lane early-public
-      - name: Preserve the source-bound early receipt
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: early-public-${{ github.sha }}-${{ matrix.os_name }}
-          path: .qe/receipts/early-public.json
-          if-no-files-found: error
-          retention-days: 30
+    uses: ./.github/workflows/early-public.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+      os_name: linux
+      runner: ubuntu-latest
+  early-public-macos:
+    needs: ci
+    uses: ./.github/workflows/early-public.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+      os_name: macos
+      runner: macos-latest
+  early-public-windows:
+    needs: ci
+    uses: ./.github/workflows/early-public.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+      os_name: windows
+      runner: windows-latest
 
   aggregate:
-    needs: [ci, integration, ux, stranger, early-public]
+    needs: [ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

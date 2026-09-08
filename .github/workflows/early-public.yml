@@ -1,0 +1,56 @@
+name: early-public
+on:
+  workflow_call:
+    inputs:
+      candidate_sha:
+        required: true
+        type: string
+      os_name:
+        required: true
+        type: string
+      runner:
+        required: true
+        type: string
+permissions:
+  actions: read
+  contents: read
+jobs:
+  verify:
+    name: early-public-${{ inputs.os_name }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
+    steps:
+      - name: Preserve exact Git bytes before Windows checkout
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          git config --global core.autocrlf false
+          test "$(git config --global --get core.autocrlf)" = false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact candidate dependencies
+        run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Run early public-artifact Agentic-QE lane
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ''
+          OPENAI_API_KEY: ''
+          OPENROUTER_API_KEY: ''
+          RUVNET_ALLOW_METERED_SPEND: '0'
+        run: node scripts/qe/agentic-qe-4.3.mjs --lane early-public
+      - name: Preserve the source-bound early receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: early-public-${{ inputs.candidate_sha }}-${{ inputs.os_name }}
+          path: .qe/receipts/early-public.json
+          if-no-files-found: error
+          retention-days: 30
