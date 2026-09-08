@@ -103,6 +103,36 @@ describe('gradeQuestion — one rule per stratum', () => {
     const receiptMiss = { repo: 'concepts', path: 'concepts/real/path' };
     expect(gradeQuestion(qMiss, { grounded: true, citations: citationsMiss, receipt: receiptMiss }).pass).toBe(false);
   });
+
+  it('optional expectPath catches a citation in the RIGHT repo but the WRONG file — repo-only ' +
+     'matching cannot detect this (deferred from 2026-08-23, issue #163\'s citation-binding scan)', () => {
+    // Right repo, right file: expectPath present and matches → routed credits it.
+    const qMatch = { stratum: 'named', expectRepo: ['ruvector'], expectPath: ['ruvector/CARD/ruvector-card'] };
+    const citeMatch = [{ repo: 'ruvector', fullPath: 'ruvector/CARD/ruvector-card', ce: 3 }];
+    expect(gradeQuestion(qMatch, { grounded: true, citations: citeMatch }).pass).toBe(true);
+
+    // Right repo, WRONG file: expectPath present but does not match → routed must NOT credit it,
+    // even though the repo-only check (the pre-candidate rule) would have passed this.
+    const qWrongFile = { stratum: 'named', expectRepo: ['ruvector'], expectPath: ['ruvector/CARD/ruvector-card'] };
+    const citeWrongFile = [{ repo: 'ruvector', fullPath: 'ruvector/unrelated/other-doc', ce: 3 }];
+    expect(gradeQuestion(qWrongFile, { grounded: true, citations: citeWrongFile }).pass).toBe(false);
+
+    // expectPath also honors `receipt.path` over a fabricated top citation's fullPath, same as the
+    // existing repo-level receipt threading above.
+    const qReceipt = { stratum: 'named', expectRepo: ['ruvector'], expectPath: ['ruvector/real/path'] };
+    const citeReceipt = [
+      { repo: 'ruvector', fullPath: 'ruvector/fake/path', ce: 5 },
+      { repo: 'ruvector', fullPath: 'ruvector/real/path', ce: 3 },
+    ];
+    const receipt = { repo: 'ruvector', path: 'ruvector/real/path' };
+    expect(gradeQuestion(qReceipt, { grounded: true, citations: citeReceipt, receipt }).pass).toBe(true);
+
+    // Backward compatibility: no `expectPath` on the question → identical to pre-candidate behavior,
+    // repo membership alone is sufficient. Every real question in evals/held-out.json is this case.
+    const qNoPath = { stratum: 'named', expectRepo: ['ruvector'] };
+    const citeAnyFile = [{ repo: 'ruvector', fullPath: 'ruvector/whatever/file', ce: 3 }];
+    expect(gradeQuestion(qNoPath, { grounded: true, citations: citeAnyFile }).pass).toBe(true);
+  });
 });
 
 describe('aggregate + gateAgainst — fail-closed promotion on Wilson lower bounds', () => {
