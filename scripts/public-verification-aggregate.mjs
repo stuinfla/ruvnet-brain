@@ -74,6 +74,7 @@ export function validatePublicVerificationLeaf(leaf, { publicKey } = {}) {
       const smoke = validateNativeSchedulerSmoke(leaf.nativeSchedulerSmoke, {
         platform: { linux: 'linux', macos: 'darwin', windows: 'win32' }[leaf.os],
         sourceSha: leaf.sourceSha, workflowRunId: leaf.workflowRunId, bundleSha256: leaf.bundleSha256,
+        packageSha256: leaf.artifactSha256,
       });
       if (!smoke.ok) throw new Error(`${leaf.os}/dual native scheduler smoke failed: ${smoke.failures.join('; ')}`);
     }

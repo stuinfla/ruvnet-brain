@@ -394,7 +394,7 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
           scheduler: await import(`${pathToFileURL(path.join(packageRoot, 'plugin', 'scripts', 'nightly-scheduler.mjs')).href}?smoke=${Date.now()}`) });
         const validation = validateNativeSchedulerSmoke(smoke, {
           platform: process.platform, sourceSha: identity.candidateSha,
-          workflowRunId, bundleSha256: identity.bundleSha256,
+          workflowRunId, bundleSha256: identity.bundleSha256, packageSha256: identity.packageSha256,
         });
         if (!validation.ok) throw new Error(`scheduler smoke failed: ${validation.failures.join('; ')}`);
         return smoke;

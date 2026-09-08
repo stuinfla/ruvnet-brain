@@ -190,7 +190,11 @@ export async function runNativeSchedulerSmoke({ packageRoot, packagePath, bundle
   if (!['darwin', 'linux', 'win32'].includes(process.platform)) {
     throw new Error(`unsupported native scheduler platform: ${process.platform}`);
   }
-  if (!packageRoot || !fs.lstatSync(packageRoot).isDirectory()) throw new Error('scheduler smoke package root is missing');
+  if (!packageRoot) throw new Error('scheduler smoke package root is missing');
+  const packageRootStat = fs.lstatSync(packageRoot);
+  if (!packageRootStat.isDirectory() || packageRootStat.isSymbolicLink()) {
+    throw new Error('scheduler smoke package root is not a regular directory');
+  }
   const packageArchive = path.resolve(packagePath || '');
   const packageStat = fs.lstatSync(packageArchive);
   if (!packageStat.isFile() || packageStat.isSymbolicLink() || !packageArchive.endsWith('.tgz')) {
@@ -262,7 +266,10 @@ export async function runNativeSchedulerSmoke({ packageRoot, packagePath, bundle
 }
 
 export function validateNativeSchedulerSmoke(smoke, { platform, sourceSha, workflowRunId,
-  bundleSha256 } = {}) {
+  bundleSha256, packageSha256 } = {}) {
+  if (!smoke || typeof smoke !== 'object') {
+    return { ok: false, failures: ['invalid native nightly proof: scheduler smoke receipt is missing'] };
+  }
   const failures = [];
   if (smoke?.schemaVersion !== 1 || smoke?.kind !== 'ruvnet-brain-native-scheduler-smoke'
     || smoke.scope !== 'public-release-scheduler-boundary') failures.push('scheduler smoke envelope is invalid');
@@ -277,6 +284,7 @@ export function validateNativeSchedulerSmoke(smoke, { platform, sourceSha, workf
     || !/^[a-f0-9]{64}$/.test(registration.bundleTarget?.sha256 || '')
     || registration.bundleTarget.sha256 !== bundleSha256
     || !/^[a-f0-9]{64}$/.test(registration.packageTarget?.sha256 || '')
+    || (packageSha256 !== undefined && registration.packageTarget.sha256 !== packageSha256)
     || !path.isAbsolute(registration.packageTarget?.spec || '') || !registration.packageTarget.spec.endsWith('.tgz')
     || !path.isAbsolute(registration.recordPath || '') || !path.isAbsolute(registration.nodePath || '')
     || !path.isAbsolute(registration.runnerPath || '')) failures.push('scheduler smoke registration identity is incomplete');
