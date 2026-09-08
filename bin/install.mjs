@@ -1722,8 +1722,27 @@ export function wireCodexPlugin({
   }
   if (announce) {
     ok(`Codex Brain plugin installed and enabled (${after.version || 'version unknown'}).`);
+    warn('Existing Codex app-server sessions may retain the previous plugin path; restart Codex before using the updated plugin.');
   }
-  return { host: true, action: before.installed ? 'updated' : 'installed', ...after };
+  return {
+    host: true,
+    action: before.installed ? 'updated' : 'installed',
+    ...after,
+    // Codex currently exposes no generation/session lease API. This explicit guard prevents the
+    // installer from implying that a native cache update is safe for an already-running session.
+    sessionSafety: 'restart-required',
+    restartRequired: true,
+    sessionSafetyReason: 'Codex host cache generations are owned by Codex and have no lease API',
+  };
+}
+
+export function codexSessionSafety(status) {
+  if (status?.restartRequired === true) return status;
+  return {
+    sessionSafety: 'unknown',
+    restartRequired: false,
+    sessionSafetyReason: 'No Codex plugin update occurred',
+  };
 }
 
 function codexHooksList({
@@ -2857,6 +2876,31 @@ function missingUpdaterHelp(kbDir) {
   console.error(`  — the current bundle ships forge-update.mjs; then this command will work.`);
 }
 
+function acquireHostConvergenceLock(lockPath) {
+  try {
+    fs.mkdirSync(lockPath);
+    fs.writeFileSync(path.join(lockPath, 'owner.json'), JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
+    return { acquired: true, release: () => fs.rmSync(lockPath, { recursive: true, force: true }) };
+  } catch (error) {
+    if (error?.code !== 'EEXIST') return { acquired: false, error: error.message };
+    try {
+      const owner = JSON.parse(fs.readFileSync(path.join(lockPath, 'owner.json'), 'utf8'));
+      if (Number.isInteger(owner.pid) && owner.pid !== process.pid) {
+        try { process.kill(owner.pid, 0); return { acquired: false, error: `another host synchronization is running (pid ${owner.pid})` }; }
+        catch (probeError) { if (probeError?.code !== 'ESRCH') return { acquired: false, error: 'another host synchronization owns the lock' }; }
+      }
+    } catch { /* an incomplete lock is safe to reclaim */ }
+    fs.rmSync(lockPath, { recursive: true, force: true });
+    try {
+      fs.mkdirSync(lockPath);
+      fs.writeFileSync(path.join(lockPath, 'owner.json'), JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
+      return { acquired: true, release: () => fs.rmSync(lockPath, { recursive: true, force: true }) };
+    } catch (retryError) {
+      return { acquired: false, error: retryError.message };
+    }
+  }
+}
+
 export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   sourceRoot = REPO_ROOT,
   brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain'),
@@ -2864,6 +2908,7 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   wireClaude = wirePlugin,
   wireCodexHost: detectCodexHost = wireCodexHost,
   wireCodexPlugin: installCodexPlugin = wireCodexPlugin,
+  hostLockPath = path.join(brainHome, 'host-convergence.lock'),
   runStableSpine = (apply) => spawnSync(
     process.execPath,
     [apply, '--auto', '--expected-version', PACKAGE_VERSION],
@@ -2871,14 +2916,18 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   ),
 } = {}) {
   const results = {};
+  const hostLock = acquireHostConvergenceLock(hostLockPath);
+  if (!hostLock.acquired) return { ok: false, results, error: `host synchronization lock unavailable: ${hostLock.error}` };
   let runtimeTransaction;
   try {
     runtimeTransaction = beginConsoleRuntimeTransaction(cacheDir, sourceRoot);
   } catch (error) {
+    hostLock.release();
     return { ok: false, results, error: `Console runtime staging failed: ${error.message}` };
   }
   const fail = (detail = {}) => {
     runtimeTransaction.rollback();
+    hostLock.release();
     return { ok: false, results, ...detail };
   };
 
@@ -2959,6 +3008,7 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
     },
     consoleRuntime: results.consoleRuntime,
   });
+  hostLock.release();
   return { ok: convergence.healthy === true, convergence, results, applyStatus: applied.status,
     error: convergence.healthy === true ? null : `host convergence is ${convergence.state}: ${convergence.action}` };
 }
