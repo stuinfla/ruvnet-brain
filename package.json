@@ -32,6 +32,7 @@
     "test:regression": "vitest run tests/regression",
     "qe:ux": "node scripts/qe/ux-suite.mjs",
     "test:cov": "vitest run tests/unit --coverage",
+    "coverage:source": "node scripts/source-coverage.mjs --check",
     "test:all": "npm run test:unit && npm run test:mesh && npm run test:mutation && npm run test:regression && npm run test:integration && npm test",
     "metaharness:receipts": "node scripts/metaharness-receipts.mjs",
     "route:cheap": "node scripts/route-cheap.mjs",
