@@ -36,8 +36,59 @@ jobs:
     with:
       candidate_sha: ${{ github.sha }}
 
+  # Run the smallest useful public-artifact check before any protected publication. This catches
+  # OS-specific packed-install and host-convergence failures while they are still cheap to repair;
+  # protected-release.yml remains the only authority for public bytes and terminal native proof.
+  early-public:
+    name: early-public-${{ matrix.os_name }}
+    needs: ci
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest, os_name: linux }
+          - { runner: macos-latest, os_name: macos }
+          - { runner: windows-latest, os_name: windows }
+    steps:
+      - name: Preserve exact Git bytes before Windows checkout
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          git config --global core.autocrlf false
+          test "$(git config --global --get core.autocrlf)" = false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact candidate dependencies
+        run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Run early public-artifact Agentic-QE lane
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ''
+          OPENAI_API_KEY: ''
+          OPENROUTER_API_KEY: ''
+          RUVNET_ALLOW_METERED_SPEND: '0'
+        run: node scripts/qe/agentic-qe-4.3.mjs --lane early-public
+      - name: Preserve the source-bound early receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: early-public-${{ github.sha }}-${{ matrix.os_name }}
+          path: .qe/receipts/early-public.json
+          if-no-files-found: error
+          retention-days: 30
+
   aggregate:
-    needs: [ci, integration, ux, stranger]
+    needs: [ci, integration, ux, stranger, early-public]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -69,6 +120,45 @@ jobs:
         with:
           name: stranger-evidence-${{ github.sha }}
           path: lane-evidence/stranger
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: early-public-${{ github.sha }}-*
+          path: lane-evidence/early-public
+      - name: Validate all three early public-artifact receipts
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const root = 'lane-evidence/early-public';
+          const files = [];
+          const walk = dir => {
+            for (const name of fs.readdirSync(dir)) {
+              const file = path.join(dir, name);
+              const stat = fs.statSync(file);
+              if (stat.isDirectory()) walk(file);
+              else if (name === 'early-public.json') files.push(file);
+            }
+          };
+          walk(root);
+          if (files.length !== 3) throw new Error(`expected three early-public receipts, found ${files.length}`);
+          for (const file of files) {
+            const receipt = JSON.parse(fs.readFileSync(file, 'utf8'));
+            if (receipt.schema !== 'ruvnet-brain.agentic-qe.receipt'
+              || receipt.contract !== 'agentic-qe-4.3'
+              || receipt.lane !== 'early-public'
+              || receipt.status !== 'PASS'
+              || receipt.sha !== process.env.CANDIDATE_SHA
+              || receipt.steps.some(step => step.status !== 'PASS'
+                || (step.tests && (step.tests.total === 0 || step.tests.skipped > 0)))) {
+              throw new Error(`invalid early-public receipt: ${file}`);
+            }
+          }
+          console.log(JSON.stringify({ status: 'PASS', receipts: files.length, sha: process.env.CANDIDATE_SHA }));
+          NODE
       - name: Validate typed receipts and bind the candidate envelope
         shell: bash
         run: |

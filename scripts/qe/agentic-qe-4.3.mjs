@@ -30,6 +30,17 @@ const LANES = Object.freeze({
     { kind: 'command', command: npm, args: ['run', 'version:check'], timeoutMs: 60_000 },
     vitest(['tests/qe/gpt56/critical-risk-map.test.mjs'], 60_000),
   ],
+  // Early public-artifact smoke: exercise the exact packed installer and host convergence on
+  // every OS before publication. This is deliberately smaller than terminal public verification:
+  // it proves the candidate package boundary early, while the protected post-publication matrix
+  // still owns public bytes, retrieval canaries, and native scheduled-update proof.
+  'early-public': [
+    vitest([
+      'tests/qe/release/packed-clean-install.test.mjs',
+      'tests/qe/release/issue-64-host-convergence.test.mjs',
+      'tests/unit/npm-tarball-codex.test.mjs',
+    ], 180_000),
+  ],
   check: [
     vitest([
       'tests/qe/gpt56/critical-risk-map.test.mjs',
