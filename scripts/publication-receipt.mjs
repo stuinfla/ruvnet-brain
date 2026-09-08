@@ -303,6 +303,7 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
   const passageFileDigests = new Map();
   let installTemp = null;
   return {
+    publicNativeNightly: false,
     async downloadNpm({ version, destination }) {
       const metadata = JSON.parse(command('npm', ['view', `${PACKAGE}@${version}`, '--json']));
       if (metadata.version !== version || !metadata.dist?.tarball) {

@@ -179,9 +179,13 @@ export async function createPublicVerificationLane({
       continue;
     }
     // Native scheduler lifecycle is qualified in the reviewed cross-platform
-    // release suite. Public verification proves the user-facing install and
-    // retrieval path; an optional nightly canary must not block publication.
-    const nativeNightly = undefined;
+    // release suite. The live public adapter opts out because that proof relies
+    // on maintainer-only host tooling; test adapters still exercise the seam.
+    let nativeNightly;
+    if (mode === 'dual' && adapter.publicNativeNightly !== false) {
+      if (typeof adapter.runNativeNightly !== 'function') throw new Error('native nightly proof adapter is required');
+      nativeNightly = await adapter.runNativeNightly({ identity, workflowRunId: String(workflowRunId) });
+    }
     leaves.push(createPublicVerificationLeaf({
       ...common,
       ...(publication.acceptancePolicy ? { acceptancePolicy: publication.acceptancePolicy, searchTiming: { firstSearchMs: installed.searchMs, broadMs: publication.brain.broadMs, deadlineMs: publication.brain.deadlineMs } } : {}),
