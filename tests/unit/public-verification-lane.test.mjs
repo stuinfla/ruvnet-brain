@@ -194,6 +194,30 @@ describe('public verification OS lane', () => {
     await expect(createPublicVerificationLane(options)).rejects.toThrow(/native nightly/);
   });
 
+  it('supports the bounded scheduler smoke mode without invoking the long updater soak', async () => {
+    const f = fixture();
+    f.adapter.runNativeNightlySmoke = async ({ workflowRunId }) => ({
+      schemaVersion: 1, kind: 'ruvnet-brain-native-scheduler-smoke', scope: 'public-release-scheduler-boundary',
+      platform: 'linux', sourceSha, workflowRunId, identity: 'com.ruvnet.brain-update.proof-smoke-fixture',
+      registration: { recordPath: '/fixture/registration.json', nodePath: '/fixture/node', runnerPath: '/fixture/runner.mjs',
+        runnerSha256: '1'.repeat(64), packageTarget: { spec: '/fixture/package.tgz', sha256: artifactSha256 },
+        bundleTarget: { spec: '/fixture/bundle.zip', sha256: bundleSha256 } },
+      trigger: { kind: 'cron-registration', identity: 'com.ruvnet.brain-update.proof-smoke-fixture' },
+      loaded: true, cleaned: true, observedAt: new Date().toISOString(),
+    });
+    const prior = process.env.RUVNET_PUBLIC_SCHEDULER_MODE;
+    process.env.RUVNET_PUBLIC_SCHEDULER_MODE = 'smoke';
+    try {
+      const rows = await createPublicVerificationLane({ os: 'linux', ...f, verifierSha: '9'.repeat(40),
+        coverageIdentity: { sha256: digest(f.releaseCoverage), bytes: 100 } });
+      expect(rows.filter((row) => row.nativeSchedulerSmoke)).toHaveLength(1);
+      expect(rows.filter((row) => row.nativeNightly)).toHaveLength(0);
+    } finally {
+      if (prior === undefined) delete process.env.RUVNET_PUBLIC_SCHEDULER_MODE;
+      else process.env.RUVNET_PUBLIC_SCHEDULER_MODE = prior;
+    }
+  });
+
   it('preserves every mode failure and its full canary metrics in one receipt', async () => {
     const f = fixture();
     f.adapter.searchInstalled = async ({ mode, query }) => {

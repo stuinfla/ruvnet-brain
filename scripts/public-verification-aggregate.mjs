@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest } from './coverage-integrity.mjs';
 import { retrievalOracleExpectationFromPlan, validateRetrievalOracleReview } from './independent-review-receipt.mjs';
 import { validateRetrievalCanaryPlan, validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
-import { validateNightlyProofReceipt } from './nightly-two-run-proof.mjs';
+import { validateNightlyProofReceipt, validateNativeSchedulerSmoke } from './nightly-two-run-proof.mjs';
 
 export const PUBLIC_VERIFICATION_OS = Object.freeze(['linux', 'macos', 'windows']);
 export const PUBLIC_VERIFICATION_MODES = Object.freeze(['claude', 'codex', 'dual']);
@@ -63,12 +63,20 @@ export function validatePublicVerificationLeaf(leaf, { publicKey } = {}) {
   }
   if (leaf.mode === 'dual') {
     if (!/^[1-9][0-9]*$/.test(String(leaf.workflowRunId || ''))) throw new Error('native nightly workflow run identity is missing');
-    const native = validateNightlyProofReceipt(leaf.nativeNightly, {
-      platform: { linux: 'linux', macos: 'darwin', windows: 'win32' }[leaf.os],
-      version: leaf.version, sourceSha: leaf.sourceSha, workflowRunId: leaf.workflowRunId,
-      packageSha256: leaf.artifactSha256, bundleSha256: leaf.bundleSha256, publicKey,
-    });
-    if (!native.ok) throw new Error(`${leaf.os}/dual native nightly proof failed: ${native.failures.join('; ')}`);
+    if (leaf.nativeNightly !== undefined) {
+      const native = validateNightlyProofReceipt(leaf.nativeNightly, {
+        platform: { linux: 'linux', macos: 'darwin', windows: 'win32' }[leaf.os],
+        version: leaf.version, sourceSha: leaf.sourceSha, workflowRunId: leaf.workflowRunId,
+        packageSha256: leaf.artifactSha256, bundleSha256: leaf.bundleSha256, publicKey,
+      });
+      if (!native.ok) throw new Error(`${leaf.os}/dual native nightly proof failed: ${native.failures.join('; ')}`);
+    } else {
+      const smoke = validateNativeSchedulerSmoke(leaf.nativeSchedulerSmoke, {
+        platform: { linux: 'linux', macos: 'darwin', windows: 'win32' }[leaf.os],
+        sourceSha: leaf.sourceSha, workflowRunId: leaf.workflowRunId, bundleSha256: leaf.bundleSha256,
+      });
+      if (!smoke.ok) throw new Error(`${leaf.os}/dual native scheduler smoke failed: ${smoke.failures.join('; ')}`);
+    }
   } else if (leaf.nativeNightly !== undefined) {
     throw new Error('native nightly proof belongs only to the dual-host leaf');
   }

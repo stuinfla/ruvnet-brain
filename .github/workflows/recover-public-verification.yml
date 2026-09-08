@@ -216,7 +216,7 @@ jobs:
         env:
           RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}/candidate-source
           GITHUB_TOKEN: ${{ github.token }}
-          RUVNET_PUBLIC_NATIVE_TIMEOUT_MS: 600000
+          RUVNET_PUBLIC_SCHEDULER_MODE: smoke
         run: |
           set -euo pipefail
           node scripts/host-registry.mjs --out release-evidence/host-registry.json

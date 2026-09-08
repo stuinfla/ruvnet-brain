@@ -450,7 +450,7 @@ jobs:
         env:
           RUVNET_CLAUDE_MARKETPLACE_SOURCE: ${{ github.workspace }}
           GITHUB_TOKEN: ${{ github.token }}
-          RUVNET_PUBLIC_NATIVE_TIMEOUT_MS: 600000
+          RUVNET_PUBLIC_SCHEDULER_MODE: smoke
         run: |
           set -euo pipefail
           test -s release-evidence/COVERAGE.json

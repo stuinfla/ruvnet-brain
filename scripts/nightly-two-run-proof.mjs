@@ -180,6 +180,110 @@ export async function triggerNativeRun({ scheduler, registration, platform, env,
   }
 }
 
+/**
+ * Fast release proof for the native scheduler boundary. This deliberately checks only the
+ * scheduler's real registration, load, trigger dispatch, and cleanup. The expensive two-run
+ * updater lifecycle remains a scheduled/post-publication soak and must not block every release.
+ */
+export async function runNativeSchedulerSmoke({ packageRoot, packagePath, bundlePath, sourceSha, workflowRunId,
+  scheduler, env, brainHome, kbDir, now = Date.now, command = run } = {}) {
+  if (!['darwin', 'linux', 'win32'].includes(process.platform)) {
+    throw new Error(`unsupported native scheduler platform: ${process.platform}`);
+  }
+  if (!packageRoot || !fs.lstatSync(packageRoot).isDirectory()) throw new Error('scheduler smoke package root is missing');
+  const packageArchive = path.resolve(packagePath || '');
+  const packageStat = fs.lstatSync(packageArchive);
+  if (!packageStat.isFile() || packageStat.isSymbolicLink() || !packageArchive.endsWith('.tgz')) {
+    throw new Error('scheduler smoke package archive is not a regular file');
+  }
+  const bundle = path.resolve(bundlePath || '');
+  const stat = fs.lstatSync(bundle);
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('scheduler smoke bundle is not a regular file');
+  if (!/^[a-f0-9]{40}$/.test(String(sourceSha || ''))) throw new Error('scheduler smoke source SHA is invalid');
+  if (!/^\d+$/.test(String(workflowRunId || ''))) throw new Error('scheduler smoke workflow run ID is invalid');
+  if (!scheduler || typeof scheduler.installNightlyRunner !== 'function'
+    || typeof scheduler.installScheduler !== 'function' || typeof scheduler.schedulerStatus !== 'function'
+    || typeof scheduler.removeScheduler !== 'function') throw new Error('scheduler smoke adapter is incomplete');
+
+  const identity = `com.ruvnet.brain-update.proof-smoke-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+  const packageSha256 = sha256(fs.readFileSync(packageArchive));
+  const bundleSha256 = sha256(fs.readFileSync(bundle));
+  const registration = scheduler.installNightlyRunner({ brainHome,
+    source: path.join(packageRoot, 'bin', 'nightly-refresh.mjs'), nodePath: process.execPath, identity, env,
+    packageTarget: { spec: packageArchive, sha256: packageSha256 },
+    bundleTarget: { spec: bundle, sha256: bundleSha256 } });
+  const options = { platform: process.platform, env, brainHome, kbDir, identity,
+    proofTick: process.platform === 'linux', proofAt: process.platform === 'linux' ? now() + 60_000 : undefined,
+    pathValue: env.PATH };
+  const before = scheduler.schedulerStatus(options);
+  if (before.state !== 'off') throw new Error(`scheduler smoke identity is not absent: ${before.evidence}`);
+  let installed = false;
+  let cleaned = false;
+  try {
+    const result = scheduler.installScheduler(registration, options);
+    if (!result.ok) throw new Error(`native scheduler smoke install failed: ${result.why}`);
+    installed = true;
+    const loaded = scheduler.schedulerStatus(options);
+    if (loaded.state !== 'on') throw new Error(`native scheduler smoke was not loaded: ${loaded.evidence}`);
+    if (process.platform === 'darwin') {
+      const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
+      command('launchctl', ['kickstart', '-k', `gui/${uid}/${identity}`]);
+    } else if (process.platform === 'win32') {
+      command('schtasks', ['/Run', '/TN', identity]);
+    }
+    const removed = scheduler.removeScheduler({ platform: process.platform, env, identity });
+    if (!removed.ok) throw new Error(`native scheduler smoke cleanup failed: ${removed.why}`);
+    cleaned = true;
+    const absent = scheduler.schedulerStatus(options);
+    if (absent.state !== 'off') throw new Error(`native scheduler smoke absence was not verified: ${absent.evidence}`);
+    return {
+      schemaVersion: 1,
+      kind: 'ruvnet-brain-native-scheduler-smoke',
+      scope: 'public-release-scheduler-boundary',
+      platform: process.platform,
+      sourceSha: String(sourceSha),
+      workflowRunId: String(workflowRunId),
+      identity,
+      registration: {
+        recordPath: registration.recordPath, nodePath: registration.nodePath,
+        runnerPath: registration.runnerPath, runnerSha256: registration.runnerSha256,
+        packageTarget: registration.packageTarget, bundleTarget: registration.bundleTarget,
+      },
+      trigger: { kind: { darwin: 'launchctl-kickstart', linux: 'cron-registration', win32: 'schtasks-run' }[process.platform], identity },
+      loaded: true,
+      cleaned: true,
+      observedAt: new Date().toISOString(),
+    };
+  } finally {
+    if (installed && !cleaned) {
+      try { scheduler.removeScheduler({ platform: process.platform, env, identity }); } catch { /* preserve original failure */ }
+    }
+  }
+}
+
+export function validateNativeSchedulerSmoke(smoke, { platform, sourceSha, workflowRunId,
+  bundleSha256 } = {}) {
+  const failures = [];
+  if (smoke?.schemaVersion !== 1 || smoke?.kind !== 'ruvnet-brain-native-scheduler-smoke'
+    || smoke.scope !== 'public-release-scheduler-boundary') failures.push('scheduler smoke envelope is invalid');
+  if (smoke.platform !== platform || smoke.sourceSha !== sourceSha
+    || String(smoke.workflowRunId || '') !== String(workflowRunId || '')) failures.push('scheduler smoke identity differs');
+  if (!/^com\.ruvnet\.brain-update\.proof-smoke-[A-Za-z0-9._-]+$/.test(smoke.identity || '')) failures.push('scheduler smoke identity is not isolated');
+  if (smoke.loaded !== true || smoke.cleaned !== true || smoke.trigger?.identity !== smoke.identity) failures.push('scheduler smoke did not prove load, trigger, and cleanup');
+  const expectedTrigger = { darwin: 'launchctl-kickstart', linux: 'cron-registration', win32: 'schtasks-run' }[platform];
+  if (smoke.trigger?.kind !== expectedTrigger) failures.push('scheduler smoke trigger differs');
+  const registration = smoke.registration;
+  if (!registration || !/^[a-f0-9]{64}$/.test(registration.runnerSha256 || '')
+    || !/^[a-f0-9]{64}$/.test(registration.bundleTarget?.sha256 || '')
+    || registration.bundleTarget.sha256 !== bundleSha256
+    || !/^[a-f0-9]{64}$/.test(registration.packageTarget?.sha256 || '')
+    || !path.isAbsolute(registration.packageTarget?.spec || '') || !registration.packageTarget.spec.endsWith('.tgz')
+    || !path.isAbsolute(registration.recordPath || '') || !path.isAbsolute(registration.nodePath || '')
+    || !path.isAbsolute(registration.runnerPath || '')) failures.push('scheduler smoke registration identity is incomplete');
+  if (!Number.isFinite(Date.parse(smoke.observedAt)) || Date.parse(smoke.observedAt) > Date.now() + 60_000) failures.push('scheduler smoke observation time is invalid');
+  return { ok: failures.length === 0, failures };
+}
+
 export function validateTwoRunEvidence({ first, second, inventoryBefore, inventoryAfterFirst,
   inventoryAfterSecond, retention, validateEnvelope, identity }) {
   const failures = [];
