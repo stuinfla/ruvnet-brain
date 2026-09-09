@@ -452,8 +452,9 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       fs.mkdirSync(sharedModelCache, { recursive: true });
       // Derived from HOST_MODES, so a fourth host shape is added in ONE place and this matrix
       // cannot fall behind the staged-side check the way it did. Each host owns its HOME and
-      // mutable state, so install/doctor/search work runs concurrently rather than adding the
-      // three cold-start durations together on slower runners.
+      // mutable state, so installation runs concurrently rather than adding three cold-start
+      // durations together on slower runners. Search is deliberately a second phase: one real
+      // query warms the shared model cache before the other two hosts start their MCP workers.
       const hostResults = await Promise.all(HOST_MODES.map(async (hostMode) => {
         const mode = RECEIPT_MODE_NAMES[hostMode];
         console.log(`Public verification: installing ${mode} on ${process.platform}`);
@@ -511,24 +512,39 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
           throw new Error(`${mode} installed public Brain bundle version mismatch`);
         }
         bundle ||= { brainVersion: source.brainVersion, releaseTag: source.releaseTag };
-        const searched = await rpcSearch(findMcpServer(home), env,
-          'How does RuvNet Brain prove a public release artifact?', 5, DEADLINE_MS);
-        await commandAsync(process.execPath, [installer, '--doctor', '--hooks'], {
-          env, cwd: packageRoot, timeout: 300_000, stdio: 'inherit',
-        });
         return {
           mode,
-          result: {
-          status: 'PASS', doctorExit: 0, version, artifactSha256,
-          functionalSearch: true, searchMs: searched.broadMs, hostsOnPath: mode,
-          ...verified,
-          },
+          verified,
           context: { temp, home, codexHome, brainHome, kb, env, packageRoot },
+          installer,
           bundle: { brainVersion: source.brainVersion, releaseTag: source.releaseTag },
         };
       }));
-      for (const { mode, result, context } of hostResults) {
-        results[mode] = result;
+
+      // Warm one installed worker before opening the other two. Concurrent first-run model loads
+      // contend for the same cache and can exceed the public 30-second search acceptance window;
+      // this keeps the window strict while making the expensive work bounded and parallel.
+      const searched = new Map();
+      const first = hostResults[0];
+      searched.set(first.mode, await rpcSearch(findMcpServer(first.context.home), first.context.env,
+        'How does RuvNet Brain prove a public release artifact?', 5, DEADLINE_MS));
+      await Promise.all(hostResults.slice(1).map(async ({ mode, context }) => {
+        searched.set(mode, await rpcSearch(findMcpServer(context.home), context.env,
+          'How does RuvNet Brain prove a public release artifact?', 5, DEADLINE_MS));
+      }));
+      await Promise.all(hostResults.map(async ({ context, installer }) => {
+        await commandAsync(process.execPath, [installer, '--doctor', '--hooks'], {
+          env: context.env, cwd: packageRoot, timeout: 300_000, stdio: 'inherit',
+        });
+      }));
+
+      for (const { mode, verified, context } of hostResults) {
+        const search = searched.get(mode);
+        results[mode] = {
+          status: 'PASS', doctorExit: 0, version, artifactSha256,
+          functionalSearch: true, searchMs: search.broadMs, hostsOnPath: mode,
+          ...verified,
+        };
         installContexts.set(MODE_FROM_RECEIPT_NAME[mode], context);
       }
       return {

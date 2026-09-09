@@ -65,7 +65,7 @@ describe('publication receipt wiring', () => {
     expect(producer, 'the mode list must be derived, not restated').toContain('HOST_MODES');
     expect(producer).toContain("[installer, '--doctor', '--hooks']");
     expect(producer).toContain('stageVerifiedBundle({ bundlePath, bundleSha256, packageRoot })');
-    expect(position(producer, 'const searched = await rpcSearch(findMcpServer(home)'))
+    expect(position(producer, 'searched.set(first.mode, await rpcSearch(findMcpServer(first.context.home)'))
       .toBeLessThan(position(producer, "await commandAsync(process.execPath, [installer, '--doctor', '--hooks']"));
   });
 
