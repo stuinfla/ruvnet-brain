@@ -80,10 +80,11 @@ export function wilson(k, n, z = 1.96) {
  * answers "does the query reach the store that actually holds the answer" (brain-score.mjs's own
  * wording for this metric) — that store is the one named in `receipt`, when one was verified.
  */
-export function gradeQuestion(q, { grounded, citations, bannerPresent, receipt }) {
+export function gradeQuestion(q, { grounded, citations, bannerPresent, receipt, repoAliases = {} }) {
   const top = citations?.[0] ?? null;
   const routedRepo = receipt?.repo ?? top?.repo ?? null;
-  const routed = !!(grounded && q.expectRepo?.length && routedRepo && q.expectRepo.includes(routedRepo));
+  const routed = !!(grounded && q.expectRepo?.length && routedRepo
+    && repoMatchesExpected(routedRepo, q.expectRepo, repoAliases));
   const abstained = !top || (typeof top.ce === 'number' && top.ce < ABSTAIN_CE);
   switch (q.stratum) {
     case 'adversarial':
@@ -95,6 +96,16 @@ export function gradeQuestion(q, { grounded, citations, bannerPresent, receipt }
     default:
       return { grounded, routed, abstained, pass: !!grounded && routed };
   }
+}
+
+// Ground truth names the logical repository, while the deployed corpus may use a documented
+// store alias (for example agent-harness-generator -> metaharness).  Credit only aliases present
+// in the shipped registry; never turn an arbitrary similarly named store into a pass.
+export function repoMatchesExpected(actual, expected, aliases = {}) {
+  if (!actual || !Array.isArray(expected)) return false;
+  if (expected.includes(actual)) return true;
+  return expected.some((canonical) => Array.isArray(aliases?.[canonical])
+    && aliases[canonical].includes(actual));
 }
 
 /** Aggregate graded rows into the four gated metrics, each with its Wilson interval. */
@@ -145,6 +156,11 @@ async function main() {
   const die = (msg) => { console.error(`eval-brain: ${msg}`); process.exit(2); };
 
   if (!fs.existsSync(path.join(KB, 'forge-ask-all.mjs'))) die(`no brain at ${KB} — run: npx ruvnet-brain`);
+  let repoAliases = {};
+  try {
+    const aliasesFile = path.join(KB, 'repo-aliases.json');
+    if (fs.existsSync(aliasesFile)) repoAliases = JSON.parse(fs.readFileSync(aliasesFile, 'utf8'));
+  } catch { /* a legacy bundle simply has no alias normalization to apply */ }
   const verifierPath = path.join(KB, 'verify-citation.mjs');
   if (!fs.existsSync(verifierPath)) die('this bundle predates verify-citation.mjs — refusing to score grounding without a way to check it');
   const { verifyGrounding } = await import(pathToFileURL(verifierPath).href);
@@ -161,7 +177,13 @@ async function main() {
   // serial cost was ~13.5s/question ≈ 27 min for 120; at concurrency 6 the wall drops ~6×.
   const { execFile } = await import('node:child_process');
   const ask = (query) => new Promise((resolve) => {
-    execFile('node', ['forge-ask-all.mjs', '--dir', KB, '--q', query, '--k', '3'],
+    // The evaluator must exercise the same bounded source-routing path used by the production
+    // MCP host.  The old CLI default widened every routed miss to the entire corpus, which turned
+    // a 120-question quality check into a multi-hour cross-encoder run and measured a path no user
+    // actually takes.  Set EVAL_FULL_CORPUS=1 only for an explicit historical fan-out experiment.
+    const args = ['forge-ask-all.mjs', '--dir', KB, '--q', query, '--k', '3'];
+    if (process.env.EVAL_FULL_CORPUS !== '1') args.push('--bounded');
+    execFile('node', args,
       { cwd: KB, timeout: 240000, env: process.env, maxBuffer: 64 * 1024 * 1024 },
       (err, stdout) => resolve(err ? '' : String(stdout || '')));
   });
@@ -190,7 +212,13 @@ async function main() {
         continue;
       }
       const v = await verifyGrounding(out, KB);
-      const graded = gradeQuestion(q, { grounded: v.grounded, citations: v.citations, receipt: v.receipt, bannerPresent: /GIST STATUS/.test(out) });
+      const graded = gradeQuestion(q, {
+        grounded: v.grounded,
+        citations: v.citations,
+        receipt: v.receipt,
+        bannerPresent: /GIST STATUS/.test(out),
+        repoAliases,
+      });
       const top = v.citations?.[0] ?? null;
       rows[i] = {
         id: q.id, stratum: q.stratum, query: q.query,
