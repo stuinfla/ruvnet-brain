@@ -570,6 +570,19 @@ describe('routeReposFromCards — routing never masquerades as a card answer', (
     expect(routeReposFromCards('How do I center a div?', KB, available).repos).toEqual([]);
   });
 
+  it('refuses arbitrary product routing when multiple proper nouns are outside the catalogue', () => {
+    expect(routeReposFromCards(
+      'How do I verify Stripe webhook signatures in Django?',
+      KB,
+      available,
+    )).toMatchObject({ confidence: 'none', repos: [] });
+    expect(routeReposFromCards(
+      "How does Unity's DOTS ECS differ from classic GameObjects?",
+      KB,
+      available,
+    )).toMatchObject({ confidence: 'none', repos: [] });
+  });
+
   it('does not add the aggregate concepts store to an explicitly named repository', () => {
     const route = routeReposFromCards(
       'How does Ruflo initialize and coordinate a hierarchical agent swarm?',

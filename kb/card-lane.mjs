@@ -310,6 +310,35 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
 
   const qTokens = contentTokens(q);
   const qIdentity = wholeTokens(q);
+
+  // A card route is a safety boundary, not a license to turn any lexical overlap into an
+  // answer.  Queries that contain multiple concrete terms absent from the entire card catalogue
+  // are usually outside this corpus (for example, a Django/Stripe or Unity/DOTS question).  The
+  // old router let two generic overlaps pick an arbitrary repo, which made the abstention suite
+  // answer an unrelated document.  Refuse that route early; the caller can still widen only when
+  // an explicit repo or a stronger source directive is present.
+  const cardVocabulary = new Set(cards.flatMap((card) => card.tokenSet));
+  // Languages, runtimes, and protocol terms are common in legitimate cross-domain questions;
+  // they are not enough on their own to declare a query outside this corpus.
+  const neutralProperTerms = new Set([
+    'rust', 'python', 'typescript', 'javascript', 'java', 'swift', 'kotlin', 'go',
+    'c', 'cpp', 'csharp', 'llm', 'api', 'sdk', 'rsa', 'sql', 'wasm', 'webassembly',
+  ]);
+  const unknownProperTerms = [...q.matchAll(/\b(?:[A-Z][a-z]{3,}|[A-Z]{2,})\b/g)]
+    .map((match) => match[0].toLowerCase())
+    .filter((token) => !STOPWORDS.has(token)
+      && !cardVocabulary.has(token)
+      && !neutralProperTerms.has(token));
+  const hasKnownProductIdentity = [...qIdentity].some((identity) =>
+    cards.some((card) => repositoryNames(card.repo, dir)
+      .some((name) => String(name).toLowerCase() === identity)));
+  if (!hasKnownProductIdentity && unknownProperTerms.length >= 2) {
+    return {
+      repos: [],
+      confidence: 'none',
+      reason: `query contains ${unknownProperTerms.slice(0, 3).join(', ')} outside the card catalogue`,
+    };
+  }
   const aliases = loadRepoAliases(dir);
   const scopedPackage = /@[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+/i.test(q);
   const namesRepo = (repo) => {
