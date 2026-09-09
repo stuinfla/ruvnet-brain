@@ -132,6 +132,7 @@ describe('persistDeliberationReceipt', () => {
     });
 
     expect(request.name).toBe('memory_store');
+    expect(request.tool).toBe('memory_store');
     expect(request.arguments.key).toBe('dual-deliberation-1785240000000-abc123');
     const value = JSON.parse(request.arguments.value);
     expect(value).toEqual({
@@ -165,6 +166,44 @@ describe('persistDeliberationReceipt', () => {
     await expect(persistDeliberationReceipt({ protocol: 'p', taskHash: 'abc123', hosts: [], roles: {}, accepted: true }, {
       memoryStore: async () => ({ stored: true, verified: true, key: 'wrong-key' }),
     })).resolves.toBe(false);
+  });
+});
+
+describe('deliberate persistence boundary', () => {
+  it('returns a pending MCP request when no structured persistence callback is provided', async () => {
+    const out = await deliberate('Design the security architecture ADR', {
+      probes: eligible,
+      now: () => 1_785_240_000_000,
+      runHost: async (host, stage) => {
+        if (stage === 'verify') return { ok: true, value: { verdict: 'accept' } };
+        return { ok: true, value: { host, stage } };
+      },
+    });
+    expect(out.status).toBe('accepted');
+    expect(out.learningPersisted).toBe(false);
+    expect(out.learningPersistenceRequest).toMatchObject({
+      tool: 'memory_store',
+      name: 'memory_store',
+      arguments: { namespace: 'ruvnet-brain', key: expect.stringMatching(/^dual-deliberation-1785240000000-[0-9a-f]{12}$/) },
+    });
+  });
+
+  it('passes the exact request to a structured callback and requires its proof', async () => {
+    let request;
+    const out = await deliberate('Design the security architecture ADR', {
+      probes: eligible,
+      now: () => 1_785_240_000_000,
+      runHost: async (host, stage) => {
+        if (stage === 'verify') return { ok: true, value: { verdict: 'accept' } };
+        return { ok: true, value: { host, stage } };
+      },
+      persist: async (value) => {
+        request = value;
+        return { stored: true, verified: true, key: value.arguments.key };
+      },
+    });
+    expect(out.learningPersisted).toBe(true);
+    expect(request).toEqual(out.learningPersistenceRequest);
   });
 });
 

@@ -106,6 +106,11 @@ verification → at most one revision. Both hosts design the ADR, DDD and intend
 Agentic-QE then generates and executes the measurable test artifacts. A host merely completing is
 not an accepted outcome.
 
+When the duel returns `learningPersistenceRequest`, pass that request to Ruflo's structured
+`memory_store` tool and verify the exact returned key. The coordinator never starts a second Ruflo
+memory driver itself; without an MCP-aware caller it leaves `learningPersisted: false` and prints
+the pending request so the completed duel is not mistaken for a persisted learning event.
+
 Subscription-only is a billing boundary: verify with `claude auth status --json` and
 `codex login status`, strip provider API-key variables from both child processes, and never fall back
 to an API when a subscription is absent or capacity-limited. Subscription use consumes plan

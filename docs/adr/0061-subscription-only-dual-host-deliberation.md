@@ -3,7 +3,7 @@ id: ADR-061
 title: Subscription-only dual-host deliberation for hard problems
 status: Proposed
 date: 2026-07-28
-updated: 2026-08-19
+updated: 2026-09-08
 authors: [Stuart Kerr, GPT-5.6-Sol]
 tags: [claude-code, codex, subscriptions, adr, ddd, agentic-qe, deliberation]
 supersedes: []
@@ -43,8 +43,10 @@ capacity: runs consume each plan's allowance or credits. A valid login can still
 
 ### 1. One thin Node coordinator over the two installed CLIs
 
-`dual-host-deliberation.mjs` invokes `claude` and `codex` directly with argv arrays. It reuses the
-existing per-user subscription profile and does not route through OpenRouter, an SDK or an API.
+`dual-host-deliberation.mjs` invokes `claude` and `codex` directly with fixed argv arrays and sends
+the complete stage prompt over stdin. It reuses the existing per-user subscription profile and does
+not route through OpenRouter, an SDK or an API. The prompt is never placed in argv, so large
+cross-critiques cannot hit per-argument limits or leak into process listings.
 
 ### 2. Public auth probes, then a real capacity result
 
@@ -111,8 +113,11 @@ allowance, strips API keys and cannot edit the repository. Dismissal is durable.
 The project `.swarm/memory.db` is the only structured store. Append-only AgentDB rows record task
 hash, evidence hash, host/model categories, accepted decision identifiers, unresolved findings, QE
 plan identifiers and later independently verified outcomes. Raw prompts, source, host account
-identity and full transcripts are not stored by default. Host completion remains
-`verified: false`; only later adjudication may train routing.
+identity and full transcripts are not stored by default. Host completion remains `verified: false`;
+only later adjudication may train routing. The coordinator returns a transport-neutral
+`memory_store` request. An MCP-aware caller owns the write and exact-key read-back; when no
+structured callback is available, the duel remains complete but reports `learningPersisted: false`
+with the pending request instead of opening a second Ruflo memory driver.
 
 ### 8. Ruflo coordinates; native subscription agents execute
 
