@@ -5,7 +5,11 @@ import {
   hardProblem,
   main,
   persistDeliberationReceipt,
+  runSubscriptionHost,
 } from '../../scripts/dual-host-deliberation.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const eligible = {
   claude: { host: 'claude-code', eligible: true, auth: 'claude.ai-subscription' },
@@ -113,14 +117,8 @@ describe('deliberate', () => {
 });
 
 describe('persistDeliberationReceipt', () => {
-  it('stores only a sanitized append-only outcome receipt in project AgentDB', async () => {
-    let invocation;
-    const run = (binary, args, options) => {
-      invocation = { binary, args, options };
-      return { status: 0, stdout: 'stored', stderr: '' };
-    };
-
-    const stored = await persistDeliberationReceipt({
+  it('returns the exact MCP memory_store request without invoking a local Ruflo process', async () => {
+    const request = await persistDeliberationReceipt({
       protocol: 'dual-host-deliberation-v1',
       taskHash: 'abc123',
       hosts: ['claude-code', 'codex'],
@@ -130,19 +128,13 @@ describe('persistDeliberationReceipt', () => {
       transcript: 'must not persist',
       email: 'must-not-leak@example.com',
     }, {
-      cwd: '/tmp/project',
       now: () => 1_785_240_000_000,
-      run,
     });
 
-    expect(stored).toBe(true);
-    expect(invocation.binary).toBe('ruflo');
-    expect(invocation.options.cwd).toBe('/tmp/project');
-    expect(invocation.args.slice(0, 3)).toEqual(['memory', 'store', '-k']);
-    expect(invocation.args[3]).toBe('dual-deliberation-1785240000000-abc123');
-    expect(invocation.args).toContain('--no-upsert');
-    expect(invocation.args).toContain('--scan-content');
-    const value = JSON.parse(invocation.args[5]);
+    expect(request.name).toBe('memory_store');
+    expect(request.tool).toBe('memory_store');
+    expect(request.arguments.key).toBe('dual-deliberation-1785240000000-abc123');
+    const value = JSON.parse(request.arguments.value);
     expect(value).toEqual({
       protocol: 'dual-host-deliberation-v1',
       taskHash: 'abc123',
@@ -152,8 +144,87 @@ describe('persistDeliberationReceipt', () => {
       verifiedOutcome: true,
       recordedAt: '2026-07-28T12:00:00.000Z',
     });
-    expect(invocation.args.join(' ')).not.toContain('must not persist');
-    expect(invocation.args.join(' ')).not.toContain('must-not-leak');
+    expect(request.arguments.value).not.toContain('must not persist');
+    expect(request.arguments.value).not.toContain('must-not-leak');
+  });
+
+  it('accepts persistence only when the transport callback proves storage, verification, and exact key', async () => {
+    const calls = [];
+    const result = await persistDeliberationReceipt({ protocol: 'p', taskHash: 'abc123', hosts: [], roles: {}, accepted: true }, {
+      now: () => 1_785_240_000_000,
+      memoryStore: async (request) => {
+        calls.push(request);
+        return { stored: true, verified: true, key: request.arguments.key };
+      },
+    });
+    expect(result).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].name).toBe('memory_store');
+  });
+
+  it('rejects a transport result that does not prove the exact key', async () => {
+    await expect(persistDeliberationReceipt({ protocol: 'p', taskHash: 'abc123', hosts: [], roles: {}, accepted: true }, {
+      memoryStore: async () => ({ stored: true, verified: true, key: 'wrong-key' }),
+    })).resolves.toBe(false);
+  });
+});
+
+describe('deliberate persistence boundary', () => {
+  it('returns a pending MCP request when no structured persistence callback is provided', async () => {
+    const out = await deliberate('Design the security architecture ADR', {
+      probes: eligible,
+      now: () => 1_785_240_000_000,
+      runHost: async (host, stage) => {
+        if (stage === 'verify') return { ok: true, value: { verdict: 'accept' } };
+        return { ok: true, value: { host, stage } };
+      },
+    });
+    expect(out.status).toBe('accepted');
+    expect(out.learningPersisted).toBe(false);
+    expect(out.learningPersistenceRequest).toMatchObject({
+      tool: 'memory_store',
+      name: 'memory_store',
+      arguments: { namespace: 'ruvnet-brain', key: expect.stringMatching(/^dual-deliberation-1785240000000-[0-9a-f]{12}$/) },
+    });
+  });
+
+  it('passes the exact request to a structured callback and requires its proof', async () => {
+    let request;
+    const out = await deliberate('Design the security architecture ADR', {
+      probes: eligible,
+      now: () => 1_785_240_000_000,
+      runHost: async (host, stage) => {
+        if (stage === 'verify') return { ok: true, value: { verdict: 'accept' } };
+        return { ok: true, value: { host, stage } };
+      },
+      persist: async (value) => {
+        request = value;
+        return { stored: true, verified: true, key: value.arguments.key };
+      },
+    });
+    expect(out.learningPersisted).toBe(true);
+    expect(request).toEqual(out.learningPersistenceRequest);
+  });
+});
+
+describe('runSubscriptionHost prompt transport', () => {
+  it('sends prompts over stdin, including prompts larger than 256 KiB, while retaining host flags', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dual-host-stdin-'));
+    const bin = path.join(root, 'codex');
+    fs.writeFileSync(bin, '#!/usr/bin/env node\nlet data=""; process.stdin.on("data", c => data += c); process.stdin.on("end", () => process.stdout.write(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:JSON.stringify({length:data.length, argv:process.argv.slice(2)})}})));\n');
+    fs.chmodSync(bin, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${root}${path.delimiter}${previousPath}`;
+    try {
+      const result = await runSubscriptionHost('codex', 'proposal', { task: 'x'.repeat(300 * 1024) });
+      expect(result.ok).toBe(true);
+      expect(result.value.length).toBeGreaterThan(256 * 1024);
+      expect(result.value.argv).toContain('--json');
+      expect(result.value.argv).not.toContain('x'.repeat(300 * 1024));
+    } finally {
+      process.env.PATH = previousPath;
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { probeSubscriptionHosts, subscriptionOnlyEnv } from './subscription-hosts.mjs';
 
@@ -67,15 +67,34 @@ function parseHostValue(host, stdout) {
   }
 }
 
-function spawnHost(binary, args, options) {
+function spawnHost(binary, args, options, input = '') {
   return new Promise((resolve) => {
     const child = spawn(binary, args, options);
     let stdout = '';
     let stderr = '';
+    let inputError = null;
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', (error) => resolve({ status: null, stdout, stderr: error.message }));
-    child.on('close', (status) => resolve({ status, stdout, stderr }));
+    child.stdin.on('error', (error) => {
+      inputError = error;
+      stderr += `${stderr ? '\n' : ''}${error.message}`;
+      try { child.kill(); } catch { /* child may already be gone */ }
+    });
+    child.on('error', (error) => finish({ status: null, stdout, stderr: error.message, error }));
+    try {
+      child.stdin.end(input);
+    } catch (error) {
+      inputError = error;
+      stderr += `${stderr ? '\n' : ''}${error.message}`;
+      try { child.kill(); } catch { /* child may already be gone */ }
+    }
+    child.on('close', (status) => finish({ status, stdout, stderr, error: inputError }));
   });
 }
 
@@ -87,20 +106,21 @@ export async function runSubscriptionHost(host, stage, payload, { cwd = process.
         binary: 'claude',
         args: [
           '-p', '--output-format', 'json', '--permission-mode', 'plan',
-          '--tools', 'Read,Grep,Glob', '--no-session-persistence', '--effort', 'high', prompt,
+          '--tools', 'Read,Grep,Glob', '--no-session-persistence', '--effort', 'high',
         ],
       }
     : {
         binary: 'codex',
         args: [
           'exec', '--ephemeral', '--sandbox', 'read-only', '--color', 'never', '--json',
-          '-m', 'gpt-5.6-sol', '-c', 'model_reasoning_effort="high"', prompt,
+          '-m', 'gpt-5.6-sol', '-c', 'model_reasoning_effort="high"',
         ],
       };
-  const result = await spawnHost(command.binary, command.args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const result = await spawnHost(command.binary, command.args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }, prompt);
   if (result.status !== 0) {
     return {
       ok: false,
+      error: result.stderr || `host exited without a status (${result.status})`,
       reason: /limit|quota|capacity|usage/i.test(result.stderr)
         ? 'capacity-limited'
         : 'host-failed',
@@ -109,11 +129,7 @@ export async function runSubscriptionHost(host, stage, payload, { cwd = process.
   return { ok: true, value: parseHostValue(host, result.stdout) };
 }
 
-export async function persistDeliberationReceipt(receipt, {
-  cwd = process.cwd(),
-  now = Date.now,
-  run = spawnSync,
-} = {}) {
+export function deliberationMemoryStoreRequest(receipt, { now = Date.now } = {}) {
   const recordedAt = now();
   const value = {
     protocol: receipt.protocol,
@@ -125,21 +141,28 @@ export async function persistDeliberationReceipt(receipt, {
     recordedAt: new Date(recordedAt).toISOString(),
   };
   const key = `dual-deliberation-${recordedAt}-${receipt.taskHash.slice(0, 12)}`;
-  const result = run('ruflo', [
-    'memory', 'store',
-    '-k', key,
-    '--value', JSON.stringify(value),
-    '--namespace', 'ruvnet-brain',
-    '--path', '.swarm/memory.db',
-    '--no-upsert',
-    '--scan-content',
-  ], {
-    cwd,
-    encoding: 'utf8',
-    env: subscriptionOnlyEnv(),
-    timeout: 15_000,
-  });
-  return result?.status === 0;
+  return {
+    tool: 'memory_store',
+    name: 'memory_store',
+    arguments: { key, value: JSON.stringify(value), namespace: 'ruvnet-brain' },
+  };
+}
+
+function persistenceProof(proof, key) {
+  return proof === true || (proof?.stored === true && proof?.verified === true && proof?.key === key);
+}
+
+export async function persistDeliberationReceipt(receipt, {
+  now = Date.now,
+  memoryStore,
+} = {}) {
+  const request = deliberationMemoryStoreRequest(receipt, { now });
+  if (typeof memoryStore !== 'function') return request;
+  try {
+    return persistenceProof(await memoryStore(request), request.arguments.key);
+  } catch {
+    return false;
+  }
 }
 
 function missingHosts(probes) {
@@ -164,7 +187,6 @@ export async function deliberate(task, options = {}) {
     runSubscriptionHost(host, stage, payload, { cwd: options.cwd })
   ));
   const cwd = options.cwd ?? process.cwd();
-  const persist = options.persist ?? ((receipt) => persistDeliberationReceipt(receipt, { cwd }));
   const eligibleHosts = HOSTS.filter((host) => probes[hostKey(host)]?.eligible);
 
   if (eligibleHosts.length === 0) {
@@ -247,7 +269,18 @@ export async function deliberate(task, options = {}) {
     roles,
     accepted,
   };
-  const learningPersisted = accepted ? Boolean(await persist(receipt)) : false;
+  const learningPersistenceRequest = accepted
+    ? deliberationMemoryStoreRequest(receipt, { now: options.now ?? Date.now })
+    : undefined;
+  let learningPersisted = false;
+  if (accepted && typeof options.persist === 'function') {
+    try {
+      const persisted = await options.persist(learningPersistenceRequest, receipt);
+      learningPersisted = persistenceProof(persisted, learningPersistenceRequest.arguments.key);
+    } catch {
+      learningPersisted = false;
+    }
+  }
   return {
     status: accepted ? 'accepted' : 'unresolved',
     dual: true,
@@ -256,6 +289,7 @@ export async function deliberate(task, options = {}) {
     verification: verification.ok ? verification.value : undefined,
     verifiedOutcome: accepted,
     learningPersisted,
+    ...(learningPersistenceRequest ? { learningPersistenceRequest } : {}),
   };
 }
 
