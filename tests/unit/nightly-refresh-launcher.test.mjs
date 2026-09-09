@@ -7,7 +7,12 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, expect, it } from 'vitest';
 
 const roots = [];
-afterEach(() => roots.splice(0).forEach(root => fs.rmSync(root, { recursive: true, force: true })));
+// Windows can retain a just-exited node.exe handle for a short interval.  Retry the cleanup so a
+// release-lane test cannot fail after its assertions solely because the fixture executable is still
+// being unlocked; the test itself already proved the child exit status before this runs.
+afterEach(() => roots.splice(0).forEach(root => fs.rmSync(root, {
+  recursive: true, force: true, maxRetries: 5, retryDelay: 100,
+})));
 function run(platform, mutant) {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'nightly & literal-'))); roots.push(root);
   // Windows Node includes adjacent npm, which outranks the fixture PATH. Run its real
