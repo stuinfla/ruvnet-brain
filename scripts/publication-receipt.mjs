@@ -417,9 +417,12 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       let bundle = null;
       const sharedModelCache = path.join(temp, 'models-cache');
       fs.mkdirSync(sharedModelCache, { recursive: true });
-      // Derived from HOST_MODES, so a fourth host shape is added in ONE place and this loop
-      // cannot fall behind the staged-side check the way it did.
-      for (const mode of HOST_MODES.map((m) => RECEIPT_MODE_NAMES[m])) {
+      // Derived from HOST_MODES, so a fourth host shape is added in ONE place and this matrix
+      // cannot fall behind the staged-side check the way it did. Each host owns its HOME and
+      // mutable state, so install/doctor/search work runs concurrently rather than adding the
+      // three cold-start durations together on slower runners.
+      const hostResults = await Promise.all(HOST_MODES.map(async (hostMode) => {
+        const mode = RECEIPT_MODE_NAMES[hostMode];
         console.log(`Public verification: installing ${mode} on ${process.platform}`);
         const home = path.join(temp, `home-${mode}`);
         const codexHome = path.join(home, '.codex');
@@ -480,16 +483,24 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         command(process.execPath, [installer, '--doctor', '--hooks'], {
           env, cwd: packageRoot, timeout: 300_000, stdio: 'inherit',
         });
-        results[mode] = {
+        return {
+          mode,
+          result: {
           status: 'PASS', doctorExit: 0, version, artifactSha256,
           functionalSearch: true, searchMs: searched.broadMs, hostsOnPath: mode,
           ...verified,
+          },
+          context: { temp, home, codexHome, brainHome, kb, env, packageRoot },
+          bundle: { brainVersion: source.brainVersion, releaseTag: source.releaseTag },
         };
-        installContexts.set(MODE_FROM_RECEIPT_NAME[mode], { temp, home, codexHome, brainHome, kb, env, packageRoot });
+      }));
+      for (const { mode, result, context } of hostResults) {
+        results[mode] = result;
+        installContexts.set(MODE_FROM_RECEIPT_NAME[mode], context);
       }
       return {
         ...results,
-        bundle,
+        bundle: hostResults[0]?.bundle || bundle,
       };
     },
 
