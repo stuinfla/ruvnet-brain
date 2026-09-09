@@ -409,10 +409,12 @@ export function createInstalledMcpSession({ serverPath, env, timeout = 300_000, 
         if (!listed.result?.tools?.some((tool) => tool.name === 'search_ruvnet')) throw new Error('installed MCP does not advertise search_ruvnet');
         initialized = true;
       }
+      const started = performance.now();
       const searched = await call('tools/call', { name: 'search_ruvnet', arguments: { query, k } });
+      const broadMs = Math.round(performance.now() - started);
       const stdout = (searched.result?.content || []).map((item) => item.text || '').join('\n');
       if (searched.error || searched.result?.isError) throw new Error(`installed Brain search failed: ${stdout.slice(0, 400)}`);
-      return { status: 0, signal: null, error: null, stdout, stderr, mcpResult: searched.result };
+      return { status: 0, signal: null, error: null, stdout, stderr, broadMs, mcpResult: searched.result };
     } catch (error) {
       await close(error);
       return { status: null, signal: exitSignal, error: terminalError, stdout: '', stderr };
