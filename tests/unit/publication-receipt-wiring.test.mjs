@@ -66,7 +66,7 @@ describe('publication receipt wiring', () => {
     expect(producer).toContain("[installer, '--doctor', '--hooks']");
     expect(producer).toContain('stageVerifiedBundle({ bundlePath, bundleSha256, packageRoot })');
     expect(position(producer, 'const searched = await rpcSearch(findMcpServer(home)'))
-      .toBeLessThan(position(producer, "command(process.execPath, [installer, '--doctor', '--hooks']"));
+      .toBeLessThan(position(producer, "await commandAsync(process.execPath, [installer, '--doctor', '--hooks']"));
   });
 
   it('does not downgrade the accepted dual-host native nightly proof', () => {

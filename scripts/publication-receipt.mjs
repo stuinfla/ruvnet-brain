@@ -64,6 +64,39 @@ function command(name, args, options = {}) {
   }
   return String(result.stdout || '').trim();
 }
+
+// The public host matrix owns three independent install fixtures.  Keep their long-running
+// installer/doctor processes asynchronous: a synchronous child here would block Node's event loop,
+// freezing an already-started MCP deadline while the next host is being installed.  That was the
+// concrete reason the macOS recovery lane reported a false 30-second Brain timeout after all three
+// installs had succeeded.  Short metadata probes still use command() above; only the host work uses
+// this bounded async boundary.
+function commandAsync(name, args, options = {}) {
+  const { platform = process.platform, timeout, ...spawnOptions } = options;
+  const invocation = commandInvocation(name, args, { platform, env: spawnOptions.env || process.env });
+  return new Promise((resolve, reject) => {
+    const child = spawn(invocation.executable, invocation.args, spawnOptions);
+    let settled = false;
+    let timer;
+    const finish = (error, value = '') => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      error ? reject(error) : resolve(value);
+    };
+    if (timeout !== undefined) {
+      timer = setTimeout(() => {
+        child.kill('SIGTERM');
+        finish(new Error(`${name} ${args.join(' ')} exceeded ${timeout}ms deadline`));
+      }, timeout);
+    }
+    child.once('error', (error) => finish(error));
+    child.once('close', (code, signal) => {
+      if (code === 0) finish(null);
+      else finish(new Error(`${name} ${args.join(' ')} failed: ${signal || `exit ${code}`}`));
+    });
+  });
+}
 export function validateCandidateSource(root, { sha, version }) {
   const candidateRoot = fs.realpathSync(root);
   const options = { cwd: candidateRoot };
@@ -451,12 +484,12 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
             ? { CODEX_BIN: nativeCodexExecutable() } : {}),
         };
         if (mode !== 'claudeOnly') {
-          command(env.CODEX_BIN || 'codex', ['--version'], { env, timeout: 30_000, stdio: 'inherit' });
-          command(env.CODEX_BIN || 'codex', ['plugin', 'list', '--json'], { env, timeout: 30_000, stdio: 'inherit' });
+          await commandAsync(env.CODEX_BIN || 'codex', ['--version'], { env, timeout: 30_000, stdio: 'inherit' });
+          await commandAsync(env.CODEX_BIN || 'codex', ['plugin', 'list', '--json'], { env, timeout: 30_000, stdio: 'inherit' });
         }
-        if (process.platform === 'win32') command('git', ['--version'], { env, timeout: 30_000, stdio: 'inherit' });
+        if (process.platform === 'win32') await commandAsync('git', ['--version'], { env, timeout: 30_000, stdio: 'inherit' });
         const installer = path.join(packageRoot, 'bin', 'install.mjs');
-        command(process.execPath, [
+        await commandAsync(process.execPath, [
           installer, '--yes', '--force', '--version', `v${version}`,
           '--no-nightly-prompt', '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline',
           '--no-selfcheck', '--no-verify',
@@ -480,7 +513,7 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         bundle ||= { brainVersion: source.brainVersion, releaseTag: source.releaseTag };
         const searched = await rpcSearch(findMcpServer(home), env,
           'How does RuvNet Brain prove a public release artifact?', 5, DEADLINE_MS);
-        command(process.execPath, [installer, '--doctor', '--hooks'], {
+        await commandAsync(process.execPath, [installer, '--doctor', '--hooks'], {
           env, cwd: packageRoot, timeout: 300_000, stdio: 'inherit',
         });
         return {
