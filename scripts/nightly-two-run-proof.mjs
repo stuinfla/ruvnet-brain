@@ -286,14 +286,17 @@ export function validateNativeSchedulerSmoke(smoke, { platform, sourceSha, workf
   const expectedTrigger = { darwin: 'launchctl-kickstart', linux: 'cron-registration', win32: 'schtasks-run' }[platform];
   if (smoke.trigger?.kind !== expectedTrigger) failures.push('scheduler smoke trigger differs');
   const registration = smoke.registration;
+  // Receipts from a Windows runner are finalized on Ubuntu.  Validate the path syntax emitted by
+  // the producing OS instead of applying the verifier host's POSIX rules to drive-letter paths.
+  const nativePath = platform === 'win32' ? path.win32 : path;
   if (!registration || !/^[a-f0-9]{64}$/.test(registration.runnerSha256 || '')
     || !/^[a-f0-9]{64}$/.test(registration.bundleTarget?.sha256 || '')
     || registration.bundleTarget.sha256 !== bundleSha256
     || !/^[a-f0-9]{64}$/.test(registration.packageTarget?.sha256 || '')
     || (packageSha256 !== undefined && registration.packageTarget.sha256 !== packageSha256)
-    || !path.isAbsolute(registration.packageTarget?.spec || '') || !registration.packageTarget.spec.endsWith('.tgz')
-    || !path.isAbsolute(registration.recordPath || '') || !path.isAbsolute(registration.nodePath || '')
-    || !path.isAbsolute(registration.runnerPath || '')) failures.push('scheduler smoke registration identity is incomplete');
+    || !nativePath.isAbsolute(registration.packageTarget?.spec || '') || !registration.packageTarget.spec.endsWith('.tgz')
+    || !nativePath.isAbsolute(registration.recordPath || '') || !nativePath.isAbsolute(registration.nodePath || '')
+    || !nativePath.isAbsolute(registration.runnerPath || '')) failures.push('scheduler smoke registration identity is incomplete');
   if (!Number.isFinite(Date.parse(smoke.observedAt)) || Date.parse(smoke.observedAt) > Date.now() + 60_000) failures.push('scheduler smoke observation time is invalid');
   return { ok: failures.length === 0, failures };
 }

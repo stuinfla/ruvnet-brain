@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
-import { removeEmptyInstallerScaffolds, stageExactBundle, triggerNativeRun, validateNightlyProofReceipt, validateTwoRunEvidence } from '../../scripts/nightly-two-run-proof.mjs';
+import { removeEmptyInstallerScaffolds, stageExactBundle, triggerNativeRun, validateNativeSchedulerSmoke, validateNightlyProofReceipt, validateTwoRunEvidence } from '../../scripts/nightly-two-run-proof.mjs';
 import { REQUIRED_REFRESH_PHASES } from '../../kb/refresh-run.mjs';
 import { validateRefreshReceiptEnvelope } from '../../plugin/scripts/nightly-scheduler.mjs';
 import { managedStorageInventory } from '../../kb/update-storage-transaction.mjs';
@@ -215,6 +215,29 @@ describe('native two-run nightly proof', () => {
     proof.registration.nodePath = '/fixture/node';
     reseal();
     expect(validateNightlyProofReceipt(proof, expected).failures.join(' ')).toMatch(/executable identity/);
+  });
+
+  it('validates native scheduler smoke Windows paths on a POSIX finalizer', () => {
+    const smoke = {
+      schemaVersion: 1, kind: 'ruvnet-brain-native-scheduler-smoke',
+      scope: 'public-release-scheduler-boundary', platform: 'win32',
+      sourceSha: 'a'.repeat(40), workflowRunId: '12345',
+      identity: 'com.ruvnet.brain-update.proof-smoke-fixture', loaded: true, cleaned: true,
+      trigger: { kind: 'schtasks-run', identity: 'com.ruvnet.brain-update.proof-smoke-fixture' },
+      registration: {
+        recordPath: 'C:\\fixture\\registration.json', nodePath: 'C:\\node\\node.exe',
+        runnerPath: 'D:\\fixture\\runner.mjs', runnerSha256: 'd'.repeat(64),
+        packageTarget: { spec: 'C:\\fixture\\package.tgz', sha256: 'c'.repeat(64) },
+        bundleTarget: { spec: 'D:\\fixture\\bundle.zip', sha256: 'b'.repeat(64) },
+      },
+      observedAt: '2026-09-05T10:02:00Z',
+    };
+    expect(validateNativeSchedulerSmoke(smoke, { platform: 'win32', sourceSha: 'a'.repeat(40),
+      workflowRunId: '12345', bundleSha256: 'b'.repeat(64), packageSha256: 'c'.repeat(64) }).ok).toBe(true);
+    smoke.registration.nodePath = 'fixture/node';
+    expect(validateNativeSchedulerSmoke(smoke, { platform: 'win32', sourceSha: 'a'.repeat(40),
+      workflowRunId: '12345', bundleSha256: 'b'.repeat(64), packageSha256: 'c'.repeat(64) }).failures.join(' '))
+      .toMatch(/registration identity/);
   });
 
   it.each(['platform', 'version', 'packageSha256', 'bundleSha256', 'sourceSha', 'workflowRunId'])('rejects wrong expected %s', (field) => {
