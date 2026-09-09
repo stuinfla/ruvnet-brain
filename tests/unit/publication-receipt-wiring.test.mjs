@@ -43,6 +43,12 @@ describe('publication receipt wiring', () => {
     expect(release).toContain('if (PUBLISH)');
   });
 
+  it('does not let unrelated private draft assets break the public transaction scan', () => {
+    expect(provider).toContain('if (release.draft && release.tag_name !== identity.tag) continue;');
+    expect(provider).toContain('Published');
+    expect(provider).toContain('releases remain fully receipt-gated');
+  });
+
   it('provisions virgin host CLIs before the protected publisher and gives the producer read-only GitHub access', () => {
     const hostTools = position(workflow, 'npm install --global --prefix "$RUNNER_TEMP/host-clis"');
     const publisher = position(workflow, 'node scripts/release.mjs --publish');

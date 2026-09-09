@@ -202,6 +202,12 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
         ? receiptsFor(hydratedRelease(releaseById(matchingDrafts[0].id))) : [];
       const latestByTransaction = new Map();
       for (const release of all) {
+        // Draft-release assets are not readable through the public GitHub API (they return 404
+        // even though the release metadata is visible).  The matching candidate above is read
+        // explicitly because the publisher owns it; unrelated drafts are not public channel
+        // state and must not make every subsequent release fail while scanning history. Published
+        // releases remain fully receipt-gated and continue to block competing transactions.
+        if (release.draft && release.tag_name !== identity.tag) continue;
         for (const receipt of receiptsFor(hydratedRelease(release))) {
           const prior = latestByTransaction.get(receipt.transactionId);
           if (!prior || receipt.sequence > prior.receipt.sequence) {
