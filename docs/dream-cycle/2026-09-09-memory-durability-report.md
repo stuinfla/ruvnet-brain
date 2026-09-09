@@ -194,8 +194,8 @@ Cycle night since 2026-08-19). Full report is this file, committed in the candid
 
 ```
 SESSION_COMMIT = 7cfd9e1770a8583bda9cdc26c614b2de3a77f129
-REPORT_HASH    = <computed after this section, see PR body>
-WITNESS        = <computed after this section, see PR body>
+REPORT_HASH    = 6064b3c4f7b3628dfe8be5521d175bfebe70bbc2b59e7b14d9b61ceb6263e7c7
+WITNESS        = ff47ca1a665b2fa6be3f7c174627a776ba13cf1369f31ff6434384d1c1db1ee3
 ```
 
 5-step verifier: (1) `git log --follow -p -- docs/dream-cycle/2026-09-09-memory-durability-report.md`,
