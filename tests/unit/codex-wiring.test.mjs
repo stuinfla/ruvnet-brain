@@ -227,7 +227,7 @@ describe('wireCodexHost — the filesystem round trip', () => {
     expect(written).toContain('RUFLO_HARNESS_LOOP = "1"'); // theirs, untouched
   });
 
-  it('retires the legacy durable hook wrapper without writing outside the supplied Codex home', () => {
+  it('installs the durable hook wrapper without writing outside the supplied Codex home', () => {
     const home = tmpdir();
     const codexDir = path.join(home, '.codex');
     const serverDir = path.join(home, '.claude', 'ruvnet-brain', 'mcp');
@@ -238,11 +238,11 @@ describe('wireCodexHost — the filesystem round trip', () => {
     fs.writeFileSync(wrapper, 'legacy hook bridge');
     const r = wireCodexHost({ codexDir, serverDir, announce: false });
 
-    expect(r.retiredHookWrapper).toBe(true);
-    expect(fs.existsSync(wrapper)).toBe(false);
+    expect(r.hookWrapperInstalled).toBe(true);
+    expect(fs.readFileSync(wrapper, 'utf8')).toContain('codex-hook-adapter');
   });
 
-  it('retires a legacy wrapper symlink without touching its target', (ctx) => {
+  it('refuses to overwrite a user-owned wrapper symlink', (ctx) => {
     const home = tmpdir();
     const codexDir = path.join(home, '.codex');
     const wrapper = path.join(home, '.cache', 'ruvnet-brain', 'codex-hook.mjs');
@@ -254,8 +254,8 @@ describe('wireCodexHost — the filesystem round trip', () => {
 
     const result = wireCodexHost({ codexDir, hookWrapperPath: wrapper, serverDir: path.join(home, 'srv'), announce: false });
 
-    expect(result.retiredHookWrapper).toBe(true);
-    expect(fs.existsSync(wrapper)).toBe(false);
+    expect(result.action).toBe('hook-wrapper-install-failed');
+    expect(fs.readFileSync(wrapper, 'utf8')).toBe('preserve me');
     expect(fs.readFileSync(target, 'utf8')).toBe('preserve me');
   });
 
@@ -268,7 +268,7 @@ describe('wireCodexHost — the filesystem round trip', () => {
 
     const result = wireCodexHost({ codexDir, hookWrapperPath: wrapper, serverDir: path.join(home, 'srv'), announce: false });
 
-    expect(result.action).toBe('legacy-hook-retirement-failed');
+    expect(result.action).toBe('hook-wrapper-install-failed');
     expect(fs.statSync(wrapper).isDirectory()).toBe(true);
   });
 

@@ -126,7 +126,7 @@ describe('release-vector runners cross the Windows command-shim boundary', () =>
       Object.defineProperty(process, 'platform', { ...platformDescriptor, value: 'win32' });
       process.env.PATH = dir;
 
-      const d3 = RV.INVARIANTS.find((i) => i.name === 'SIGNAL-WATCH-FIRES');
+      const d3 = RV.INVARIANTS.find((i) => i.name === 'CONTINUITY-PLANE-FIRES');
       expect(await d3.detect()).toMatchObject({ state: 'PASS' });
     } finally {
       Object.defineProperty(process, 'platform', platformDescriptor);
@@ -150,24 +150,24 @@ describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () 
       fs.readFileSync(path.join(REPO, relative)),
     ]));
     const registrationRoot = copiedFixture([
-      'scripts/signal-watch.mjs',
+      'plugin/scripts/session-start-core.mjs',
       ...tracked,
     ]);
     const consumerRoot = copiedFixture([
-      'scripts/signal-watch.mjs',
+      'plugin/scripts/session-start-core.mjs',
       ...tracked,
     ]);
     try {
       const hooks = path.join(registrationRoot, 'plugin/hooks/hooks.json');
       fs.writeFileSync(hooks, fs.readFileSync(hooks, 'utf8')
-        .replaceAll('signal-watch', 'signal-watch-DISABLED-BY-MUTANT'));
+        .replaceAll('session-start', 'session-start-DISABLED-BY-MUTANT'));
       const consumer = path.join(consumerRoot, 'plugin/scripts/session-start-core.mjs');
       fs.writeFileSync(consumer, fs.readFileSync(consumer, 'utf8')
         .replace(
           'surfaceSignals({ env, cwd, stateDir, hookDir, emit, now });',
           'void 0; // MUTANT: signal consumer deleted',
         ));
-      const d3 = RV.INVARIANTS.find((item) => item.name === 'SIGNAL-WATCH-FIRES');
+      const d3 = RV.INVARIANTS.find((item) => item.name === 'CONTINUITY-PLANE-FIRES');
       const [registration, missingConsumer] = await Promise.all([
         d3.detect({ root: registrationRoot, runCommand: d3FixtureRunner(registrationRoot) }),
         d3.detect({ root: consumerRoot, runCommand: d3FixtureRunner(consumerRoot) }),
@@ -185,12 +185,12 @@ describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () 
     }
   });
 
-  it('MUTANT: unregister signal-watch from the shipped hooks.json → D3 goes FAIL', async () => {
+  it('MUTANT: unregister SessionStart from the shipped hooks.json → D3 goes FAIL', async () => {
     // The F5 class: a capability that exists on disk and is never registered will never fire.
     // The detector must read the REGISTRATION, so this mutant edits the registration, not the file.
-    const real = RV.INVARIANTS.find((i) => i.name === 'SIGNAL-WATCH-FIRES');
+    const real = RV.INVARIANTS.find((i) => i.name === 'CONTINUITY-PLANE-FIRES');
     const root = copiedFixture([
-      'scripts/signal-watch.mjs',
+      'plugin/scripts/session-start-core.mjs',
       'plugin/hooks/hooks.json',
       'plugin/scripts/session-start-core.mjs',
     ]);
@@ -199,7 +199,7 @@ describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () 
       expect((await real.detect(options)).state).toBe('PASS');
       const p = path.join(root, 'plugin/hooks/hooks.json');
       const before = fs.readFileSync(p, 'utf8');
-      fs.writeFileSync(p, before.replaceAll('signal-watch', 'signal-watch-DISABLED-BY-MUTANT'));
+      fs.writeFileSync(p, before.replaceAll('session-start', 'session-start-DISABLED-BY-MUTANT'));
       const after = await real.detect(options);
       expect(after.state).toBe('FAIL');
       expect(after.why).toMatch(/not registered/);
@@ -213,9 +213,9 @@ describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () 
     // that a red CI verdict reaches a maintainer or that green stays silent. Delete the actual
     // session-start consumer while leaving the observer, poller, and registration intact: a
     // behavioral gate must catch the resulting silence.
-    const real = RV.INVARIANTS.find((i) => i.name === 'SIGNAL-WATCH-FIRES');
+    const real = RV.INVARIANTS.find((i) => i.name === 'CONTINUITY-PLANE-FIRES');
     const root = copiedFixture([
-      'scripts/signal-watch.mjs',
+      'plugin/scripts/session-start-core.mjs',
       'plugin/hooks/hooks.json',
       'plugin/scripts/session-start-core.mjs',
     ]);

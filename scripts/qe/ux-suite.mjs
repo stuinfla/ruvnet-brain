@@ -31,6 +31,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { runCommandProbe } from '../../tests/ux/command-probe.mjs';
 import { runCardLaneGate } from './card-lane-gate.mjs';
+import { runSessionStartGate } from './session-start-gate.mjs';
 import { automaticHookRetirementStatus } from '../../bin/install.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -314,9 +315,27 @@ export async function runUxSuite() {
     hardFailures.push(`card-lane latency gate: could not run — ${e.message}`);
   }
 
-  // Automatic lifecycle hooks are retired; measure registry state, not a fictitious latency.
+  // SessionStart is the only automatic Brain entry point on a fresh install. Measure the literal
+  // registered command through the same watchdog a stranger uses; this keeps the continuity hook
+  // from quietly becoming another long release wall.
+  console.log('\n  ── SessionStart continuity latency — HARD GATE, registered command ──');
+  let sessionStartGate = null;
+  try {
+    const sessionStart = sessionStartGate = await runSessionStartGate();
+    console.log(`  cold first fire                 ${sessionStart.warmupMs.toFixed(0)}ms`);
+    console.log(`  p95                             ${sessionStart.p95.toFixed(0)}ms  (budget ${sessionStart.budget.p95BudgetMs}ms)`);
+    console.log(`  max                             ${sessionStart.max.toFixed(0)}ms  (absolute fail ${sessionStart.budget.absoluteFailMs}ms)`);
+    console.log(`  ${sessionStart.pass ? 'PASS' : '✗ HARD FAIL'} — ${sessionStart.n} steady-state firings`);
+    if (!sessionStart.pass) for (const reason of sessionStart.reasons) hardFailures.push(`SessionStart latency: ${reason}`);
+  } catch (e) {
+    console.log(`  ✗ could not run SessionStart latency gate: ${e.message}`);
+    hardFailures.push(`SessionStart latency gate: could not run — ${e.message}`);
+  }
+
+  // The legacy gate collection is retired; the two continuity handlers are checked as a constrained
+  // lifecycle plane rather than as a fictitious latency claim.
   const hookRetirement = automaticHookRetirementStatus(path.resolve(HERE, '../..'));
-  console.log(`\n  Automatic hooks: ${hookRetirement.ok ? 'RETIRED' : 'FAIL'} — ${hookRetirement.files.length} surfaces inspected`);
+  console.log(`\n  Lifecycle hooks: ${hookRetirement.ok ? 'CONTINUITY-ONLY' : 'FAIL'} — ${hookRetirement.files.length} surfaces inspected`);
   if (!hookRetirement.ok) hardFailures.push(...hookRetirement.errors,
     ...hookRetirement.registrations.map(row => `automatic registration remains: ${row.file} ${row.event}`));
 
@@ -339,6 +358,7 @@ export async function runUxSuite() {
     render,
     command: cmd,
     hookRetirement,
+    sessionStartGate,
     hardFailures,
     pass: hardFailures.length === 0,
     scope: {
@@ -351,7 +371,7 @@ export async function runUxSuite() {
 
   console.log('\n  ── verdict ──');
   if (hardFailures.length === 0) {
-    console.log('  PASS — every probe ran and every render, explanation, dead-air, decision-lane HARD budget passed; automatic-hook retirement verified.\n');
+    console.log('  PASS — every probe ran and every render, explanation, dead-air, decision-lane HARD budget passed; continuity-only hook policy verified.\n');
     return receipt;
   }
   console.log('  FAIL (hard):');

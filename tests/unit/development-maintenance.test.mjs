@@ -54,7 +54,7 @@ describe('reversible development maintenance', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(root, 'plugin/hooks/hooks.json'), 'utf8'));
     const ids = [...new Set(Object.values(manifest.hooks).flatMap(groups => groups.flatMap(group =>
       group.hooks.map(hook => /hook-shim\.mjs"\s+([\w-]+)/.exec(hook.command)?.[1]).filter(Boolean))))];
-    expect(ids.length).toBeGreaterThan(10);
+    expect(ids).toEqual(['session-start', 'continuation-gate']);
     for (const id of ids) {
       const result = run(path.join(root, 'plugin/scripts/hook-shim.mjs'), [id], project, env);
       expect([result.status, result.stdout, result.stderr]).toEqual([0, '', '']);
@@ -93,27 +93,29 @@ describe('reversible development maintenance', () => {
     expect(control('status').status).not.toBe(0);
   });
 
-  it.skipIf(process.platform === 'win32')('pre-push suspends development checks but still rejects a staged secret', () => {
+  it.skipIf(process.platform === 'win32')('pre-push scans the exact unpublished commit range for secrets', () => {
     fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
     fs.mkdirSync(path.join(project, 'plugin/scripts'), { recursive: true });
     fs.copyFileSync(cli, path.join(project, 'scripts/development-maintenance.mjs'));
+    fs.copyFileSync(path.join(root, 'scripts/development-push-check.mjs'), path.join(project, 'scripts/development-push-check.mjs'));
     for (const dependency of serverDependencies(cli)) {
       const target = path.resolve(project, 'scripts', dependency.spec);
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.copyFileSync(dependency.from, target);
     }
-    fs.writeFileSync(path.join(project, 'scripts/verify-channels.mjs'), "process.stdout.write('CHANNEL CHECK RAN'); process.exit(1);");
     spawnSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'fixture'], { cwd: project });
     const hook = () => spawnSync('sh', [path.join(root, 'scripts/git-hooks/pre-push')], { cwd: project, input: '', encoding: 'utf8', timeout: 5000 });
-    expect(control('suspend').status).toBe(0);
     expect(hook().status).toBe(0);
+    const base = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: project, encoding: 'utf8' }).stdout.trim();
     // Construct a deliberately synthetic match; never use a credential in a fixture.
     fs.writeFileSync(path.join(project, 'synthetic-secret.txt'), 'sk-' + 'proj-' + 'A'.repeat(30));
     spawnSync('git', ['add', 'synthetic-secret.txt'], { cwd: project });
-    expect(hook().status).toBe(1);
-    expect(hook().stdout).toContain('REAL API key');
-    spawnSync('git', ['restore', '--staged', 'synthetic-secret.txt'], { cwd: project });
-    expect(control('resume').status).toBe(0);
-    expect(hook().stdout).toContain('CHANNEL CHECK RAN');
+    spawnSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture secret'], { cwd: project });
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: project, encoding: 'utf8' }).stdout.trim();
+    const result = spawnSync('sh', [path.join(root, 'scripts/git-hooks/pre-push')], {
+      cwd: project, input: `refs/heads/main ${head} refs/heads/main ${base}\n`, encoding: 'utf8', timeout: 5000,
+    });
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}${result.stderr}`).toContain('credential-shaped');
   });
 });

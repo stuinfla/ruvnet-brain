@@ -400,6 +400,8 @@ jobs:
     steps:
       - name: Preserve exact Git bytes before Windows checkout
         if: runner.os == 'Windows'
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
         shell: bash
         run: |
           set -euo pipefail

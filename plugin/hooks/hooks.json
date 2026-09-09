@@ -1,4 +1,29 @@
 {
-  "description": "RuvNet Brain automatic host hooks are intentionally retired. Knowledge access remains available through MCP, skills, explicit CLI commands, CI, and release proof; no lifecycle event runs Brain code implicitly.",
-  "hooks": {}
+  "description": "RuvNet Brain continuity plane. The broad legacy grounding, routing, learning, and release interceptors remain retired. Only SessionStart project restoration and the ledger-scoped Stop continuation handler are automatic; both are advisory, bounded, and fail open.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-start || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" continuation-gate || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
 }

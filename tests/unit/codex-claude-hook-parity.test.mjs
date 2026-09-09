@@ -88,17 +88,19 @@ function runAdapter({ shim, payload, args = ['probe'], env = {} }) {
 
 const ECHO_PAYLOAD = 'let raw="";process.stdin.on("data",c=>raw+=c);process.stdin.on("end",()=>process.stdout.write(raw));';
 
-describe('both hosts carry the same intentional zero-hook policy', () => {
-  it('ships zero automatic registrations on Claude Code and Codex', () => {
-    expect(read(CLAUDE_HOOKS).hooks).toEqual({});
-    expect(read(CODEX_HOOKS).hooks).toEqual({});
+describe('both hosts carry the same constrained continuity policy', () => {
+  it('ships only SessionStart restore and Stop continuation on Claude Code and Codex', () => {
+    for (const file of [CLAUDE_HOOKS, CODEX_HOOKS]) {
+      expect(Object.keys(read(file).hooks).sort()).toEqual(['SessionStart', 'Stop']);
+      expect(hookIds(file)).toEqual(new Set(['session-start', 'continuation-gate']));
+    }
   });
 
-  it('keeps each host manifest schema-valid and explicit about retirement', () => {
+  it('keeps each host manifest schema-valid and explicit about retired legacy gates', () => {
     for (const file of [CLAUDE_HOOKS, CODEX_HOOKS]) {
       const doc = read(file);
       expect(Object.keys(doc).sort()).toEqual(['description', 'hooks']);
-      expect(doc.description).toMatch(/automatic host hooks are intentionally retired/i);
+      expect(doc.description).toMatch(/legacy.*remain retired/i);
     }
   });
 });
