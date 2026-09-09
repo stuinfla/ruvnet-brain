@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { wilson, gradeQuestion, aggregate, gateAgainst, heldOutHash, ABSTAIN_CE } from '../../scripts/eval-brain.mjs';
+import { wilson, gradeQuestion, repoMatchesExpected, aggregate, gateAgainst, heldOutHash, ABSTAIN_CE } from '../../scripts/eval-brain.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SET = JSON.parse(fs.readFileSync(path.join(ROOT, 'evals/held-out.json'), 'utf8'));
@@ -165,5 +165,13 @@ describe('aggregate + gateAgainst — fail-closed promotion on Wilson lower boun
     const base = aggregate(rows([['named', true, 45], ['named', false, 5], ['adversarial', true, 18], ['adversarial', false, 2], ['provenance', true, 20]]));
     const same = aggregate(rows([['named', true, 45], ['named', false, 5], ['adversarial', true, 18], ['adversarial', false, 2], ['provenance', true, 20]]));
     expect(gateAgainst(same, base).pass).toBe(true);
+  });
+});
+
+describe('repo alias grading — logical products map only through the shipped registry', () => {
+  it('credits a documented deployed alias and rejects an arbitrary similarly named store', () => {
+    const aliases = { 'agent-harness-generator': ['metaharness'] };
+    expect(repoMatchesExpected('metaharness', ['agent-harness-generator', 'concepts'], aliases)).toBe(true);
+    expect(repoMatchesExpected('other-harness', ['agent-harness-generator', 'concepts'], aliases)).toBe(false);
   });
 });
