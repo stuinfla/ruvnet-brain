@@ -90,6 +90,11 @@ jobs:
           # only the disposable test checkout and cannot alter the signed seed bytes.
           npm install --prefix "$RUVNET_BRAIN_KB" --no-save --package-lock=false --ignore-scripts \
             @xenova/transformers@2.17.2 @ruvector/rvf@0.3.4
+          # The immutable seed may carry an older resolver. Give every bundled reader the same
+          # absolute module roots so the worker process and the warm-up probe resolve identical
+          # bytes, regardless of where the seed was unpacked.
+          echo "XENOVA_PATH=$RUVNET_BRAIN_KB/node_modules/@xenova/transformers" >> "$GITHUB_ENV"
+          echo "RVF_MODULE_PATH=$RUVNET_BRAIN_KB/node_modules" >> "$GITHUB_ENV"
       - name: Explicitly warm every required embedder
         shell: bash
         run: |

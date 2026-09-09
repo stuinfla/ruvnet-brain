@@ -636,14 +636,15 @@ export async function selfCheck({ home = os.homedir(), repo = null, cwd = os.tmp
   }
 
   // (b) THE BATTERY
-  // Enumerate foreign registrations separately below; the battery must still execute the
-  // installed Brain surface so a healthy fixture proves its own hook and mutants can go red.
-  const battery = await runBattery({ home, repo, cwd, regimes });
+  // Inventory the installed surface before dispatching anything. A stale lifecycle registration
+  // is itself the finding; executing it first defeats the safety check (and can run an arbitrary
+  // sentinel or user command) before we report that it should never have been installed. Healthy
+  // surfaces are then executed by the same full battery, so this preflight does not weaken coverage.
+  let battery = await runBattery({ home, repo, cwd, regimes, inspectOnly: true });
   if (!battery.ok) {
     lines.push(`hooks: ${battery.reason}`);
     violations.push({ kind: 'no-plugin', where: 'hooks', detail: battery.reason });
   } else {
-    violations.push(...battery.violations);
     let contracts = [];
     try {
       contracts = (await loadRegistry()).loadContracts(battery.surface.root).contracts || [];
@@ -664,6 +665,13 @@ export async function selfCheck({ home = os.homedir(), repo = null, cwd = os.tmp
         where: battery.surface.source,
         detail: `${legacyRegistrations.length} legacy Brain lifecycle registration(s) remain installed`,
       });
+      // Keep the result machine-readable, but do not execute any of the stale commands. This is a
+      // hard safety boundary: a release acceptance test must prove detection without side effects.
+    } else {
+      // No stale registrations were found, so run every declared handler through all stdin regimes
+      // and enforce its timeout, exit-code, output, and process-tree contract.
+      battery = await runBattery({ home, repo, cwd, regimes });
+      violations.push(...battery.violations);
     }
     lines.push(`hooks: ${battery.registrations.length - legacyRegistrations.length} continuity + ${legacyRegistrations.length} legacy registrations from ${battery.surface.source}`);
   }
