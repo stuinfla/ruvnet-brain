@@ -73,6 +73,20 @@ export const WATCHDOG_GRACE_MS = 2000; // SIGTERM → this long → hard kill, t
 /** Advisory hooks may only ever exit 0. Blocking hooks may exit 0, 1 or 2 (ADR-023's table). */
 export const ALLOWED_EXITS = Object.freeze({ advisory: [0], blocking: [0, 1, 2] });
 
+// Keep this predicate local: selfcheck is copied into isolated mutation fixtures and must remain
+// runnable when only this one file is present. The shipped registry policy is the authority for
+// manifests; this duplicate is deliberately limited to classifying the two allowed lifecycle rows.
+function isAllowedContinuityRegistration({ event, matcher, command } = {}) {
+  const text = String(command || '');
+  if (!/(?:hook-shim\.mjs|codex-hook\.mjs)/i.test(text)) return false;
+  const id = event === 'SessionStart' && String(matcher ?? '') === 'startup|resume|clear|compact|fork'
+    ? 'session-start'
+    : event === 'Stop' && String(matcher ?? '') === '*'
+      ? 'continuation-gate'
+      : null;
+  return Boolean(id && new RegExp(`(?:^|[\\s"'])${id}(?:$|[\\s"'])`).test(text));
+}
+
 /**
  * Load hook-registry.mjs. It is a sibling in `scripts/`, shipped alongside this file — see the
  * package.json `files` entry added with it. A dynamic import keeps this module importable by tests
@@ -621,14 +635,16 @@ export async function selfCheck({ home = os.homedir(), repo = null, cwd = os.tmp
     violations.push({ kind: 'no-plugin', where: 'hooks', detail: battery.reason });
   } else {
     violations.push(...battery.violations);
-    if (battery.registrations.length !== 0) {
+    const legacyRegistrations = battery.registrations.filter((registration) =>
+      !isAllowedContinuityRegistration(registration));
+    if (legacyRegistrations.length !== 0) {
       violations.push({
         kind: 'automatic-registration',
         where: battery.surface.source,
-        detail: `${battery.registrations.length} retired Brain lifecycle registration(s) remain installed`,
+        detail: `${legacyRegistrations.length} legacy Brain lifecycle registration(s) remain installed`,
       });
     }
-    lines.push(`hooks: ${battery.registrations.length} automatic registrations from ${battery.surface.source}; zero is the required retired state`);
+    lines.push(`hooks: ${battery.registrations.length - legacyRegistrations.length} continuity + ${legacyRegistrations.length} legacy registrations from ${battery.surface.source}`);
   }
 
   // (c) COEXISTENCE — reported, never charged to the user
@@ -664,7 +680,7 @@ export function formatVerdict(result, { color = null } = {}) {
   const out = [];
   for (const l of result.lines) out.push(`  ${c.dim(l)}`);
   if (!result.violations.length) {
-    out.push(`  ${c.green('✓ Self-check passed.')} The installed Brain surface has zero automatic lifecycle registrations.`);
+    out.push(`  ${c.green('✓ Self-check passed.')} The installed Brain surface has only the two guarded continuity lifecycle handlers.`);
     return out.join('\n');
   }
   out.push(`  ${c.red(`✗ Self-check FAILED — ${result.violations.length} contract violation(s):`)}`);

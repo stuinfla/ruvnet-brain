@@ -79,7 +79,8 @@ function waitFor(child) {
 describe.skipIf(process.platform === 'win32')('issue #84 — explicit Agent/Task routing timing contract', () => {
   it('retains route-dispatch as a dormant explicit evaluator with no host registration', () => {
     const hooks = JSON.parse(fs.readFileSync(HOOKS_PATH, 'utf8')).hooks;
-    expect(hooks).toEqual({});
+    expect(Object.keys(hooks).sort()).toEqual(['SessionStart', 'Stop']);
+    expect(JSON.stringify(hooks)).not.toContain('route-dispatch');
     expect(fs.existsSync(ROUTE_DISPATCH)).toBe(true);
   });
 

@@ -173,12 +173,12 @@ export const INVARIANTS = [
     },
   },
   {
-    name: 'SIGNAL-WATCH-FIRES',
+    name: 'CONTINUITY-PLANE-FIRES',
     dimension: 'D3',
     incident: 'the OWNER had to report that CI was red — every local surface stayed calm',
     detect(options) {
       const { exists, read, run } = detectorScope(options);
-      if (!exists('scripts/signal-watch.mjs')) return { state: 'FAIL', why: 'no signal watcher' };
+      if (!exists('plugin/scripts/session-start-core.mjs')) return { state: 'FAIL', why: 'no SessionStart consumer' };
       const raw = read('plugin/hooks/hooks.json');
       if (raw === null) return { state: 'UNKNOWN', why: 'plugin/hooks/hooks.json unreadable' };
       let doc;
@@ -196,30 +196,29 @@ export const INVARIANTS = [
         .flatMap((g) => (Array.isArray(g?.hooks) ? g.hooks : []))
         .map((h) => String(h?.command || ''));
       // the shim dispatches by a bare handler id, so match the id as a WHOLE argument token
-      const fires = commands.some((c) => /(^|[\s"'/])signal-watch($|[\s"'|;])/.test(c));
+      const fires = commands.some((c) => /(^|[\s"'/])session-start($|[\s"'|;])/.test(c));
       if (!fires) {
-        return { state: 'FAIL', why: 'watcher exists but is not registered as a dispatchable handler — it will never fire' };
+        return { state: 'FAIL', why: 'SessionStart consumer exists but is not registered as a dispatchable handler — it will never fire' };
       }
 
       // Registration is necessary but not sufficient. The first release gate stopped here and
       // certified a named handler without proving that a real red verdict reached the maintainer.
-      // Execute the whole shipped path: push debt → poller → red surface → dedupe → green close →
-      // silence. The paired mutation suite deletes the consumer, breaks dedupe, converts UNKNOWN
-      // to green, and blinds the observer; every mutant must remain killed for D3 to pass.
+      // Execute the whole shipped path: session restore plus signal surfacing. The paired mutation
+      // suite deletes the consumer and blinds the observer; every mutant must remain killed.
       const behavior = run('npx', [
         'vitest', 'run',
-        'tests/unit/signal-lifecycle.test.mjs',
-        'tests/mutation/signal-watch-mutation.test.mjs',
+        'tests/unit/session-start-core-parity.test.mjs',
+        'tests/unit/session-start-gate.test.mjs',
         '--reporter=dot',
       ]);
       return behavior.state === 'PASS'
         ? {
             state: 'PASS',
-            why: `registered in ${commands.length} shipped registration(s); executable red→surface→green→silence lifecycle and 4 mutants pass`,
+            why: `SessionStart registered in ${commands.length} shipped registration(s); restore/surfacing lifecycle proof passes`,
           }
         : {
             state: behavior.state,
-            why: `signal-watch behavioral lifecycle or mutant proof failed (${behavior.why})`,
+            why: `SessionStart continuity lifecycle proof failed (${behavior.why})`,
           };
     },
   },

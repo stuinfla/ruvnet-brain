@@ -51,6 +51,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { loadLessons, TRIGGERS, STATUS } from './lesson-store.mjs';
+import { isAllowedContinuityRegistration } from '../plugin/scripts/continuity-hook-policy.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '..');
 const argv = process.argv.slice(2);
@@ -70,6 +71,9 @@ const argv = process.argv.slice(2);
  */
 const STANDALONE = [
   ['gate', 'retired automatic-hook helper retained for explicit use and tests'],
+  ['dream-issue-gate', 'pure Dream Cycle disposition policy; invoked by the external issue adapter, never a GitHub writer'],
+  ['sync-census', 'explicit maintainer census writer; a destructive source-to-surface refresh is never scheduled'],
+  ['sync-commands', 'explicit maintainer alias synchronizer; run deliberately before release, never from a lifecycle hook'],
   ['version-bump-gate', 'retired automatic interceptor; explicit version checks own release validation'],
   ['lesson-seed', 'one-shot seeding, run deliberately by a human'],
   ['lesson-ratify', 'the human control surface — a CLI is its entire purpose'],
@@ -741,7 +745,7 @@ function installedCodexHookWrapper(repo) {
   let src = '';
   try { src = fs.readFileSync(path.join(repo, 'bin/install.mjs'), 'utf8'); } catch { return null; }
   const stripped = stripComments(src, '.mjs');
-  const source = stripped.match(/hookWrapperSource\s*=\s*path\.join\([^\n]*['"]([\w.-]+\.mjs)['"]\)/)?.[1];
+  const source = stripped.match(/hookWrapperSource\s*=\s*path\.join\([\s\S]{0,240}?['"]([\w.-]+\.mjs)['"]\)/)?.[1];
   const target = stripped.match(/const codexHookWrapperPath[\s\S]{0,260}?['"]([\w.-]+\.mjs)['"]\)/)?.[1];
   const copiesSource = /fs\.copyFileSync\(hookWrapperSource,\s*tmp\)/.test(stripped);
   return source && target && copiesSource ? { source, target } : null;
@@ -782,9 +786,15 @@ export function hookWiringAudit({
     path.join(repo, '.claude/settings.json'),
     path.join(repo, '.codex/hooks.json'),
   ];
-  const automaticHooksRetired = retirementFiles.every((file) => {
+  const automaticHooksConstrained = retirementFiles.every((file) => {
     const doc = readJsonSafe(file);
-    return doc && doc.hooks && commandStrings(doc.hooks).length === 0;
+    if (!doc?.hooks) return false;
+    const packageRegistry = file.endsWith('/plugin/hooks/hooks.json') || file.endsWith('/plugin/hooks/codex-hooks.json');
+    const rows = Object.entries(doc.hooks).flatMap(([event, groups]) => (groups ?? []).flatMap((group) =>
+      (group?.hooks ?? []).map((hook) => ({ event, matcher: group.matcher ?? '', command: hook.command }))));
+    return packageRegistry
+      ? rows.length === 2 && rows.every((row) => isAllowedContinuityRegistration(row))
+      : rows.length === 0;
   });
   const table = hookShimTable(repo);
   const codexWrapper = installedCodexHookWrapper(repo);
@@ -839,10 +849,10 @@ export function hookWiringAudit({
     const isReached = reached.has(f);
     if (!declared && !isReached) continue; // not hook-intended at all — outside the census
     if (isReached) rows.push({ file: f, state: 'wired', sources: [...reached.get(f)] });
-    else if (automaticHooksRetired && declared) rows.push({
+    else if (automaticHooksConstrained && declared) rows.push({
       file: f,
       state: 'retired',
-      why: 'automatic Brain hook registries are intentionally empty; body retained for audit or explicit-command reuse',
+      why: 'legacy automatic Brain hooks remain retired; only the two constrained continuity handlers are wired',
     });
     else if (held[f]) rows.push({ file: f, state: 'held', why: held[f] });
     else rows.push({ file: f, state: 'unwired' });

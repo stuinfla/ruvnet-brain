@@ -1,6 +1,38 @@
 {
-  "_note": "No Brain-owned automatic hook contract remains. Dormant hook bodies are retained as historical implementation material and may only be exposed through explicit, separately tested commands.",
-  "_version": 2,
-  "contracts": [],
-  "matcherAllowlist": []
+  "_note": "The legacy automatic gate collection remains retired. Exactly two continuity handlers are permitted: SessionStart restores canonical project progression; Stop may nudge one explicitly authorized, project-scoped objective. No other Brain hook may be registered.",
+  "_version": 3,
+  "contracts": [
+    {
+      "id": "session-start",
+      "event": "SessionStart",
+      "hosts": ["claude", "codex"],
+      "mode": "advisory",
+      "offBehavior": "partial",
+      "matcher": "startup|resume|clear|compact|fork"
+    },
+    {
+      "id": "continuation-gate",
+      "event": "Stop",
+      "hosts": ["claude", "codex"],
+      "mode": "advisory",
+      "offBehavior": "run",
+      "matcher": "*"
+    }
+  ],
+  "matcherAllowlist": [
+    {
+      "layer": "plugin",
+      "event": "SessionStart",
+      "matcher": "startup|resume|clear|compact|fork",
+      "reason": "SessionStart is a lifecycle source matcher, not a tool matcher.",
+      "retiredBy": "continuity-only lifecycle plane"
+    },
+    {
+      "layer": "plugin",
+      "event": "Stop",
+      "matcher": "*",
+      "reason": "Stop is a lifecycle event; wildcard is the host contract.",
+      "retiredBy": "continuity-only lifecycle plane"
+    }
+  ]
 }

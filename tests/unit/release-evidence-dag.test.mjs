@@ -20,7 +20,7 @@ describe('same-run release evidence DAG', () => {
   it('persists a source-bound artifact receipt from every reusable lane', () => {
     const producers = [
       ['ci.yml', 'release-evidence-${{ inputs.candidate_sha || github.sha }}'],
-      ['integration-linux.yml', 'integration-evidence-${{ inputs.candidate_sha || github.sha }}'],
+      ['integration-linux.yml', 'integration-evidence-${{ inputs.candidate_sha || github.event.pull_request.head.sha || github.sha }}'],
       ['ux-qe.yml', 'ux-evidence-${{ inputs.candidate_sha || github.sha }}-${{ runner.os }}'],
       ['stranger-matrix.yml', 'stranger-evidence-${{ inputs.candidate_sha || github.sha }}'],
     ];
