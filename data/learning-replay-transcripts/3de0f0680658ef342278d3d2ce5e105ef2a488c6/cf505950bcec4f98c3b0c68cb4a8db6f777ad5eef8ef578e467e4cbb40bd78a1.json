@@ -1,0 +1,38 @@
+{
+  "schema": 2,
+  "sourceSha": "3de0f0680658ef342278d3d2ce5e105ef2a488c6",
+  "trap": "hooks-post-task-persistence",
+  "mutant": null,
+  "run": 3,
+  "arm": "treated",
+  "record": {
+    "class": "flagged",
+    "subcommandCorrect": true,
+    "command": "$HOME/.npm-global/bin/ruflo hooks post-task --task \"release retry-budget investigation\" --agent tester --success true --store-results",
+    "exec": {
+      "ran": true,
+      "argv": [
+        "ruflo",
+        "hooks",
+        "post-task",
+        "--task",
+        "release retry-budget investigation",
+        "--agent",
+        "tester",
+        "--success",
+        "true",
+        "--store-results"
+      ],
+      "exit": 0,
+      "exitOk": true,
+      "retrieved": true,
+      "why": "exit 0; routing outcome and routing-decision:task_1788974512849_gj9pcu persisted",
+      "output": "[INFO] Recording outcome for task: task_1788974512849_gj9pcu\n\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+------------------+--------------------+\n| Metric           |              Value |\n+------------------+--------------------+\n| Patterns Updated |                  2 |\n| New Patterns     |                  1 |\n| Duration         |               2.0s |\n| Trajectory ID    | traj-178897"
+    },
+    "model": "gpt-5.6-sol",
+    "forcedCommand": false,
+    "lessonIndex": 0,
+    "firstToolIndex": 1,
+    "lessonBeforeFirstToolCall": true
+  }
+}

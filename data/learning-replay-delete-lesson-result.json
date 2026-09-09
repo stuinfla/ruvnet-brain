@@ -2,8 +2,8 @@
   "invariant": "LEARNING-REPLAY",
   "verdict": "FAIL",
   "why": "0/1 runs passed — below the 1/1 bar",
-  "sha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
-  "at": "2026-09-07T14:13:54.216Z",
+  "sha": "2b0221005d7d1b62291a96657722640e05f5e343",
+  "at": "2026-09-09T17:44:14.982Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
@@ -25,7 +25,7 @@
   "rate": 0,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 36.1,
+  "wallSeconds": 38.5,
   "premise": {
     "verified": true,
     "evidence": "-q, --query               Search query (required)"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1788790397223",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-22s7Ge/brain-home/versions/d4-refresh-1788790397223",
+    "generation": "d4-refresh-1788975815688",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-776RC0/brain-home/versions/d4-refresh-1788975815688",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -67,7 +67,7 @@
       "treated": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$HOME/Code/.worktrees/ruvnet-brain-recovery-20260905/.ruvnet-brain/learning-replay/run-22s7Ge/fixture-project-b/.swarm/memory.db\"",
+        "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$HOME/Code/ruvnet-brain/.ruvnet-brain/learning-replay/run-776RC0/fixture-project-b/.swarm/memory.db\"",
         "exec": {
           "ran": true,
           "argv": [
@@ -76,7 +76,7 @@
             "search",
             "caching strategy",
             "--path",
-            "$HOME/Code/.worktrees/ruvnet-brain-recovery-20260905/.ruvnet-brain/learning-replay/run-22s7Ge/fixture-project-b/.swarm/memory.db"
+            "$HOME/Code/ruvnet-brain/.ruvnet-brain/learning-replay/run-776RC0/fixture-project-b/.swarm/memory.db"
           ],
           "exit": 1,
           "exitOk": false,
@@ -90,16 +90,16 @@
         "firstToolIndex": 0,
         "lessonBeforeFirstToolCall": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/f9337f484c085b919b9fd166fe4d532d93cd755c7cb4ea7dac0b69df657b795a.json",
-          "sha256": "f9337f484c085b919b9fd166fe4d532d93cd755c7cb4ea7dac0b69df657b795a",
-          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
+          "path": "data/learning-replay-transcripts/2b0221005d7d1b62291a96657722640e05f5e343/38e86c6ee5554d61f367fdce02523ccafe2da9f5d3c4f5db351d939c537aab2a.json",
+          "sha256": "38e86c6ee5554d61f367fdce02523ccafe2da9f5d3c4f5db351d939c537aab2a",
+          "sourceSha": "2b0221005d7d1b62291a96657722640e05f5e343",
           "mutant": "delete-lesson"
         }
       },
       "control": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
         "exec": {
           "ran": true,
           "argv": [
@@ -107,8 +107,7 @@
             "memory",
             "search",
             "caching strategy",
-            "--path",
-            ".swarm/memory.db"
+            "--path"
           ],
           "exit": 1,
           "exitOk": false,
@@ -119,9 +118,9 @@
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/4260a9705dc4b6432dbeacbe674df4b0886d3050/71ed43b61ef86814cf8e8ed62098d5961281691a6e5a7245e2298c3bf686f28c.json",
-          "sha256": "71ed43b61ef86814cf8e8ed62098d5961281691a6e5a7245e2298c3bf686f28c",
-          "sourceSha": "4260a9705dc4b6432dbeacbe674df4b0886d3050",
+          "path": "data/learning-replay-transcripts/2b0221005d7d1b62291a96657722640e05f5e343/789ec5cfec6db065036ec80aff908611565fac364d19c6df6e5dccf2151546c8.json",
+          "sha256": "789ec5cfec6db065036ec80aff908611565fac364d19c6df6e5dccf2151546c8",
+          "sourceSha": "2b0221005d7d1b62291a96657722640e05f5e343",
           "mutant": "delete-lesson"
         }
       }
