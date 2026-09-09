@@ -395,12 +395,13 @@ export function createInstalledMcpSession({ serverPath, env, timeout = 300_000, 
     pending.set(id, { resolve, reject });
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
   });
-  const execute = async ({ query = 'How does RuvNet Brain prove a public release artifact?', k = 5 } = {}) => {
+  const execute = async ({ query = 'How does RuvNet Brain prove a public release artifact?', k = 5,
+    timeoutMs = timeout } = {}) => {
     if (terminalError) return { status: null, error: terminalError, signal: exitSignal, stdout: '', stderr };
     stderr = '';
     const timer = setTimeout(() => {
       void close(Object.assign(new Error('MCP search timed out'), { code: 'ETIMEDOUT' }));
-    }, timeout);
+    }, timeoutMs);
     try {
       if (!initialized) {
         const ready = await call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'release-host-matrix', version: '1' } });

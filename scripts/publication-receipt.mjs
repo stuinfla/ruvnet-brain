@@ -31,6 +31,7 @@ import { parseRetrievalResult } from '../kb/retrieval-result.mjs';
 const REPO = 'stuinfla/ruvnet-brain';
 const PACKAGE = 'ruvnet-brain';
 const DEADLINE_MS = 30_000;
+const WARMUP_TIMEOUT_MS = 300_000;
 
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -529,16 +530,16 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       for (const { mode, context } of hostResults) {
         const publicMode = MODE_FROM_RECEIPT_NAME[mode];
         mcpSessions.set(publicMode, createInstalledMcpSession({
-          serverPath: findMcpServer(context.home), env: context.env, timeout: DEADLINE_MS,
+          serverPath: findMcpServer(context.home), env: context.env, timeout: WARMUP_TIMEOUT_MS,
         }));
       }
       const searched = new Map();
-      const first = hostResults[0];
-      const searchInstalledHost = async ({ mode }) => {
+      const searchInstalledHost = async ({ mode }, timeoutMs) => {
         const publicMode = MODE_FROM_RECEIPT_NAME[mode];
         const session = mcpSessions.get(publicMode);
         const result = await session.search({
           query: 'How does RuvNet Brain prove a public release artifact?', k: 5,
+          timeoutMs,
         });
         if (result.error || !result.mcpResult || (Object.hasOwn(result, 'status') && result.status !== 0)) {
           throw new Error(`installed Brain search failed for ${mode}: ${result.error?.message || 'no MCP result'}`);
@@ -548,9 +549,14 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         }
         return result;
       };
-      searched.set(first.mode, await searchInstalledHost(first));
-      await Promise.all(hostResults.slice(1).map(async ({ mode, context }) => {
-        searched.set(mode, await searchInstalledHost({ mode, context }));
+      // Warm each worker serially. The model cache is shared, but simultaneous first-loads can
+      // contend on slower runners (the macOS Codex-only timeout that motivated this path). The
+      // warm-up is bounded generously and is never used as the release latency measurement.
+      for (const host of hostResults) await searchInstalledHost(host, WARMUP_TIMEOUT_MS);
+      // Once initialized, the three steady-state checks can run in parallel and are each held to
+      // the strict public deadline that the receipt and aggregate validators enforce.
+      await Promise.all(hostResults.map(async (host) => {
+        searched.set(host.mode, await searchInstalledHost(host, DEADLINE_MS));
       }));
       await Promise.all(hostResults.map(async ({ context, installer }) => {
         await commandAsync(process.execPath, [installer, '--doctor', '--hooks'], {
@@ -584,7 +590,7 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       // installed process that passed the host canary instead of starting a cold verifier child.
       const session = mcpSessions.get(mode);
       const result = session
-        ? await session.search({ query: 'How does RuvNet Brain prove a public release artifact?', k: 5 })
+        ? await session.search({ query: 'How does RuvNet Brain prove a public release artifact?', k: 5, timeoutMs: DEADLINE_MS })
         : await rpcSearch(server, installContext.env,
           'How does RuvNet Brain prove a public release artifact?', 5, DEADLINE_MS);
       if (result.error || !result.mcpResult || (Object.hasOwn(result, 'status') && result.status !== 0)) {
@@ -606,7 +612,7 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         session = createInstalledMcpSession({ serverPath: findMcpServer(context.home), env: context.env, timeout: DEADLINE_MS });
         mcpSessions.set(mode, session);
       }
-      const result = await session.search({ query, k });
+      const result = await session.search({ query, k, timeoutMs: DEADLINE_MS });
       return parseRetrievalResult(result.mcpResult, { query, k });
     },
 
