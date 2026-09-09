@@ -145,6 +145,10 @@ test('`--doctor` runs a read-only health check, prints a diagnostic, and never c
 test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) — the verdict is real, not hardwired', () => {
   const brainDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-healthy-'));
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-healthy-cache-'));
+  // Keep the complete-brain fixture independent of the runner's real Codex installation. Doctor
+  // must inspect the fixture, not inherit a developer/runner host with unrelated retired hooks.
+  const home = path.join(cacheDir, 'home');
+  fs.mkdirSync(home, { recursive: true });
   try {
     fs.writeFileSync(path.join(brainDir, 'forge-mcp-all.mjs'), '// stub for install-smoke — never executed\n');
     // Current release bundles contain canonical *.big.rvf stores only. The older checker excluded
@@ -159,6 +163,9 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
       RUVNET_BRAIN_KB: brainDir,
       RUVNET_BRAIN_HOME: path.join(cacheDir, 'brain-home'),
       XDG_CACHE_HOME: cacheDir,
+      HOME: home,
+      USERPROFILE: home,
+      CODEX_HOME: path.join(home, '.codex'),
     });
     assertVerdict(r, 0, '--doctor (complete brain dir = healthy)');
     const out = r.stdout || '';
@@ -179,22 +186,30 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
 function completeBrainFixture() {
   const brainDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-grounding-'));
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-grounding-cache-'));
+  // Doctor reads host lifecycle state as part of its health verdict. Isolate that state so these
+  // fixture assertions remain about the staged brain and cannot fail because a CI runner happens
+  // to carry a different Codex installation or retired hooks.
+  const home = path.join(cacheDir, 'home');
+  fs.mkdirSync(home, { recursive: true });
   fs.writeFileSync(path.join(brainDir, 'forge-mcp-all.mjs'), '// stub for install-smoke — never executed\n');
   fs.writeFileSync(path.join(brainDir, 'ruvector.rvf'), 'not a real store — presence is what gatherInstallState counts\n');
   const xen = path.join(brainDir, 'node_modules', '@xenova', 'transformers');
   fs.mkdirSync(xen, { recursive: true });
   fs.writeFileSync(path.join(xen, 'package.json'), '{"name":"@xenova/transformers","version":"0.0.0-fixture"}\n');
   fs.mkdirSync(path.join(brainDir, 'node_modules', '@ruvector'), { recursive: true });
-  return { brainDir, cacheDir, brainHome: path.join(cacheDir, 'brain-home') };
+  return { brainDir, cacheDir, brainHome: path.join(cacheDir, 'brain-home'), home };
 }
 
 test('`--doctor` FAILS (exit 1) on an otherwise-COMPLETE brain dir when the persisted verdict says grounding is unproven', () => {
-  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome, home } = completeBrainFixture();
   try {
     const stateDir = path.join(cacheDir, 'ruvnet-brain');
     fs.mkdirSync(stateDir, { recursive: true });
     fs.writeFileSync(path.join(stateDir, 'install-state.json'), JSON.stringify({ grounding: 'unproven', reason: 'no-answer' }));
-    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir });
+    const r = runInstaller(['--doctor'], {
+      RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir,
+      HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'),
+    });
     assertVerdict(r, 1, '--doctor (complete brain dir, but grounding persisted as unproven)');
     assert.match(r.stdout || '', /Grounding UNPROVEN/, 'doctor must name the persisted verdict as the reason it failed');
   } finally {
@@ -204,12 +219,15 @@ test('`--doctor` FAILS (exit 1) on an otherwise-COMPLETE brain dir when the pers
 });
 
 test('`--doctor` PASSES (exit 0) on the same complete brain dir when the persisted verdict says grounding is proven', () => {
-  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome, home } = completeBrainFixture();
   try {
     const stateDir = path.join(cacheDir, 'ruvnet-brain');
     fs.mkdirSync(stateDir, { recursive: true });
     fs.writeFileSync(path.join(stateDir, 'install-state.json'), JSON.stringify({ grounding: 'proven', clearedBy: 'search_ruvnet' }));
-    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir });
+    const r = runInstaller(['--doctor'], {
+      RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir,
+      HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'),
+    });
     assertVerdict(r, 0, '--doctor (complete brain dir, grounding persisted as proven)');
     assert.doesNotMatch(r.stdout || '', /Grounding UNPROVEN/, 'a proven verdict must never print the unproven line');
   } finally {
@@ -219,7 +237,7 @@ test('`--doctor` PASSES (exit 0) on the same complete brain dir when the persist
 });
 
 test('`--doctor` replaces a stale unproven verdict when its live citation proof succeeds', () => {
-  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome, home } = completeBrainFixture();
   try {
     const stateDir = path.join(cacheDir, 'ruvnet-brain');
     fs.mkdirSync(stateDir, { recursive: true });
@@ -239,6 +257,9 @@ test('`--doctor` replaces a stale unproven verdict when its live citation proof 
       RUVNET_BRAIN_KB: brainDir,
       RUVNET_BRAIN_HOME: brainHome,
       XDG_CACHE_HOME: cacheDir,
+      HOME: home,
+      USERPROFILE: home,
+      CODEX_HOME: path.join(home, '.codex'),
     });
 
     assertVerdict(r, 0, '--doctor (live proof supersedes stale unproven state)');
@@ -258,9 +279,12 @@ test('`--doctor` replaces a stale unproven verdict when its live citation proof 
 test('`--doctor` PASSES (exit 0) on the same complete brain dir when NO verdict was ever recorded (unknown ≠ fail)', () => {
   // No install-state.json written at all under this cacheDir — the pre-ADR-058 state of the world,
   // and the common case for any machine that installed before this feature shipped.
-  const { brainDir, cacheDir, brainHome } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome, home } = completeBrainFixture();
   try {
-    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir });
+    const r = runInstaller(['--doctor'], {
+      RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir,
+      HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'),
+    });
     assertVerdict(r, 0, '--doctor (complete brain dir, no persisted verdict at all)');
     assert.doesNotMatch(r.stdout || '', /Grounding UNPROVEN/, 'absence of a verdict must never read as a failure');
   } finally {

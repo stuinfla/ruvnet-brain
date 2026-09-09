@@ -395,12 +395,13 @@ export function createInstalledMcpSession({ serverPath, env, timeout = 300_000, 
     pending.set(id, { resolve, reject });
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
   });
-  const execute = async ({ query = 'How does RuvNet Brain prove a public release artifact?', k = 5 } = {}) => {
+  const execute = async ({ query = 'How does RuvNet Brain prove a public release artifact?', k = 5,
+    timeoutMs = timeout } = {}) => {
     if (terminalError) return { status: null, error: terminalError, signal: exitSignal, stdout: '', stderr };
     stderr = '';
     const timer = setTimeout(() => {
       void close(Object.assign(new Error('MCP search timed out'), { code: 'ETIMEDOUT' }));
-    }, timeout);
+    }, timeoutMs);
     try {
       if (!initialized) {
         const ready = await call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'release-host-matrix', version: '1' } });
@@ -409,10 +410,12 @@ export function createInstalledMcpSession({ serverPath, env, timeout = 300_000, 
         if (!listed.result?.tools?.some((tool) => tool.name === 'search_ruvnet')) throw new Error('installed MCP does not advertise search_ruvnet');
         initialized = true;
       }
+      const started = performance.now();
       const searched = await call('tools/call', { name: 'search_ruvnet', arguments: { query, k } });
+      const broadMs = Math.round(performance.now() - started);
       const stdout = (searched.result?.content || []).map((item) => item.text || '').join('\n');
       if (searched.error || searched.result?.isError) throw new Error(`installed Brain search failed: ${stdout.slice(0, 400)}`);
-      return { status: 0, signal: null, error: null, stdout, stderr, mcpResult: searched.result };
+      return { status: 0, signal: null, error: null, stdout, stderr, broadMs, mcpResult: searched.result };
     } catch (error) {
       await close(error);
       return { status: null, signal: exitSignal, error: terminalError, stdout: '', stderr };
