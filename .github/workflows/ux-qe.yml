@@ -33,7 +33,21 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Install Chromium and Linux system dependencies
         if: runner.os == 'Linux'
-        run: npx playwright install --with-deps chromium
+        run: |
+          set -euo pipefail
+          # GitHub's Ubuntu image occasionally serves a transiently inconsistent apt mirror.
+          # Retry the complete browser+dependency install instead of turning that infrastructure
+          # blip into a release verdict; the UX gate still runs only after Playwright succeeds.
+          for attempt in 1 2 3; do
+            if npx playwright install --with-deps chromium; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Playwright dependency install failed (attempt $attempt/3); retrying..." >&2
+              sleep 5
+            fi
+          done
+          exit 1
       - name: Install Chromium
         if: runner.os != 'Linux'
         run: npx playwright install chromium
