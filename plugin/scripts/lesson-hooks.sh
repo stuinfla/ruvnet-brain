@@ -156,7 +156,7 @@ case "$EVENT" in
   # UserPromptSubmit is the right event: relaying happens while composing a reply, and this is the last
   # observable moment before that. It cannot BLOCK there (surface `text`), which matches its
   # `checklist` enforcement exactly — advisory delivered beats enforcing never.
-  UserPromptSubmit) TRIGGERS="assert-fact recommend-architecture report-status claim-done choose-work relay-number"; CLAUDE_EVENT="UserPromptSubmit" ;;
+  UserPromptSubmit) TRIGGERS="assert-fact recommend-architecture report-status claim-done choose-work relay-number finish"; CLAUDE_EVENT="UserPromptSubmit" ;;
   *) exit 0 ;;
 esac
 

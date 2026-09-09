@@ -425,8 +425,8 @@ describe.skip('HISTORICAL: Codex automatic lifecycle packaging before ADR-076 re
   });
 });
 
-describe('retired Codex lifecycle packaging', () => {
-  it('keeps canonical host pointers while both shipped registries remain empty', () => {
+describe('continuity-only Codex lifecycle packaging', () => {
+  it('keeps canonical host pointers while both shipped registries carry only continuity', () => {
     const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
     const codex = JSON.parse(fs.readFileSync(HOOKS, 'utf8'));
     const claude = JSON.parse(fs.readFileSync(CLAUDE_HOOKS, 'utf8'));
@@ -434,15 +434,19 @@ describe('retired Codex lifecycle packaging', () => {
 
     expect(manifest.hooks).toBe('./hooks/codex-hooks.json');
     expect(manifest.mcpServers).toBe('./.mcp.json');
-    expect(codex.hooks).toEqual({});
-    expect(claude.hooks).toEqual({});
+    expect(Object.keys(codex.hooks).sort()).toEqual(['SessionStart', 'Stop']);
+    expect(Object.keys(claude.hooks).sort()).toEqual(['SessionStart', 'Stop']);
+    expect(JSON.stringify(codex.hooks)).toContain('session-start');
+    expect(JSON.stringify(codex.hooks)).toContain('continuation-gate');
     expect(project.hooks).toEqual({});
   });
 
-  it('retains the adapter implementation as dormant source for deliberate rewiring', () => {
+  it('retains the adapter implementation and exposes exactly two registered handlers', () => {
     expect(fs.existsSync(WRAPPER)).toBe(true);
     expect(fs.existsSync(ADAPTER)).toBe(true);
-    expect(manifestHandlers()).toEqual([]);
+    expect(manifestHandlers().map((h) => h.command).join('\n')).toMatch(/session-start/);
+    expect(manifestHandlers().map((h) => h.command).join('\n')).toMatch(/continuation-gate/);
+    expect(manifestHandlers()).toHaveLength(2);
   });
 });
 

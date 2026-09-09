@@ -187,12 +187,13 @@ if (SCENARIO === 'healthy') {
     plugin: { managed: true, installed: true, installPath: path.join(HOME_DIR, '.claude', 'plugins', 'marketplaces', 'ruvnet-brain', 'plugin') } });
   if (!retirement.ok || !installedClaude.ok) fail(`automatic hook retirement failed: ${JSON.stringify({ retirement, installedClaude })}`);
   const out = `${doctor.stdout || ''}${doctor.stderr || ''}`;
-  if (!/automatic Brain hook retirement: 0 registration\(s\), 0 manifest error\(s\)/.test(out)) fail('doctor did not verify automatic hook retirement');
+  if (!/automatic Brain hook (?:continuity policy|retirement).*0 manifest error\(s\)/i.test(out)
+    && !/continuity-only lifecycle plane/i.test(out)) fail('doctor did not verify continuity-only hook policy');
   const onlyGrounding = /Grounding UNPROVEN/.test(out) && !/automatic hook retirement failed/i.test(out);
   if (doctor.status !== 0 && !(doctor.status === 1 && onlyGrounding)) {
     fail(`doctor failed beyond unproven grounding: ${describeExit(doctor)}`);
   }
-  log(`OK — installed automatic hooks retired across ${retirement.files.length} package surfaces and the actual Claude registry`);
+  log(`OK — installed continuity-only hooks verified across ${retirement.files.length} package surfaces and the actual Claude registry`);
 
   if (fs.existsSync(authorSettings)) fail('installer must never create an author-local settings.json in a virgin image');
   log('OK — no author-local ~/.claude/settings.json in this virgin image');

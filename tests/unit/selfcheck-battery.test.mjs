@@ -251,9 +251,12 @@ describe('the shell invocation — how a hook command reaches a shell on each pl
     expect(cmdSlashS(inv.args[3])).toBe(quotedInterp);
   });
 
-  it('win32: the REAL shipped hooks.json has no commands left to invoke', () => {
+  it('win32: the REAL shipped hooks.json has only bounded continuity commands to invoke', () => {
     const regs = readInstalledRegistrations(path.join(REPO_ROOT, 'plugin', 'hooks', 'hooks.json'));
-    expect(regs).toEqual([]);
+    expect(regs).toHaveLength(2);
+    expect(regs.map((r) => r.command)).toEqual(expect.arrayContaining([
+      expect.stringContaining('session-start'), expect.stringContaining('continuation-gate'),
+    ]));
   });
 
   it('a COMSPEC that is not cmd takes the POSIX-shaped branch, never cmd syntax', () => {
@@ -370,10 +373,11 @@ describe('contract source — shim TABLE + hook-contracts.json, parsed from the 
 
 // ── §4 THE REAL SHIPPED SURFACE — the real shim, the real hooks.json ────────────────────────────
 describe('the real shipped plugin surface', () => {
-  it('the real hooks.json contains zero automatic registrations', async () => {
+  it('the real hooks.json contains only the two continuity registrations', async () => {
     const root = path.join(REPO_ROOT, 'plugin');
     const regs = readInstalledRegistrations(path.join(root, 'hooks', 'hooks.json'));
-    expect(regs).toEqual([]);
+    expect(regs).toHaveLength(2);
+    expect(regs.map((r) => r.event)).toEqual(['SessionStart', 'Stop']);
   });
 
   it('resolveInstalledSurface prefers the packed install and names which copy it chose', () => {
@@ -527,7 +531,7 @@ describe('verdict — exit codes are the point', () => {
     }
   });
 
-  it('a healthy install + zero automatic hooks = exit 0 and ONE calm confirming line', async () => {
+  it('a healthy install + continuity-only hooks = exit 0 and ONE calm confirming line', async () => {
     const s = surface([]);
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'selfcheck-retired-home-'));
     const installed = path.join(home, '.claude/plugins/cache/ruvnet-brain/ruvnet-brain/9.9.9');

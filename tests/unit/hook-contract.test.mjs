@@ -373,9 +373,11 @@ describe('registry hygiene', () => {
     }
   });
 
-  it('has no hook registered on Stop', () => {
+  it('registers only the single guarded continuation hook on Stop', () => {
     const stopCmds = (reg.hooks.Stop ?? []).flatMap((m) => (m.hooks ?? []).map((h) => h.command));
-    expect(stopCmds).toEqual([]);
+    expect(stopCmds).toHaveLength(1);
+    expect(stopCmds[0]).toContain('continuation-gate');
+    expect(stopCmds[0]).toContain('|| true');
   });
 
   /**

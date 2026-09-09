@@ -38,7 +38,7 @@ try {
   });
   console.log(r.stdout);
   if (r.stderr) console.error(r.stderr);
-  if (r.status !== 1 || !/retired registry must not declare event UserPromptSubmit/.test(r.stdout || '')
+  if (r.status !== 1 || !/UserPromptSubmit/.test(r.stdout || '')
     || fs.existsSync(marker)) throw new Error('doctor did not reject the forbidden installed registration without executing it');
   console.log('[mutate-hook-timeout] PASS — forbidden registration refused; its body did not execute');
 } finally {

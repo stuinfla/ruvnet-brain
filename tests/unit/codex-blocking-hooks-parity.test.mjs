@@ -65,8 +65,8 @@ describe('Codex blocking-hook contract: hook-shim TABLE and codex-hook-wrapper b
   const table = shimTable();
 
   it('finds hook ids in both codex-hooks.json and blockingHooks, or this whole file is vacuous', () => {
-    expect(registered.size, 'no hookIds parsed from codex-hooks.json — codexDispatchIdIn or the '
-      + 'manifest path is wrong').toBeGreaterThan(5);
+    expect(registered, 'Codex must expose exactly the two continuity handlers')
+      .toEqual(new Set(['session-start', 'continuation-gate']));
     expect(blockingHooks.size, 'no ids parsed from blockingHooks — the regex or wrapper path is wrong')
       .toBeGreaterThan(0);
   });
@@ -76,6 +76,7 @@ describe('Codex blocking-hook contract: hook-shim TABLE and codex-hook-wrapper b
     expect(missing, 'these hooks are mode:"blocking" in hook-shim.mjs\'s own TABLE and registered on '
       + 'Codex, but codex-hook-wrapper.mjs\'s blockingHooks does not know it — an exit-2 refusal from '
       + 'any of them is coerced to exit 0 (allow) on Codex today').toEqual([]);
+    expect([...registered].some((id) => table[id]?.mode === 'blocking')).toBe(false);
   });
 
   it('blockingHooks names no hookId that TABLE does not also call "blocking" — a name here that is not actually blocking gives false confidence', () => {

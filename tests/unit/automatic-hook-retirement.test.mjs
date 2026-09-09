@@ -28,7 +28,7 @@ function fixture() {
   return { home, codexDir, wrapper, settings, foreign, install };
 }
 
-it('requires schema-valid empty shipped registries/contracts and canonical host pointers', () => {
+it('requires schema-valid continuity-only shipped registries/contracts and canonical host pointers', () => {
   const result = automaticHookRetirementStatus(ROOT);
   expect(result.errors).toEqual([]);
   expect(result.registrations).toEqual([]);
@@ -60,8 +60,8 @@ it('rejects added registrations, malformed declarations and redirected pointers'
 it('actual offline host install removes owned callbacks and preserves foreign settings and MCP', () => {
   const f = fixture(), result = f.install();
   expect(result.action).toBe('added');
-  expect(result.retiredHookWrapper).toBe(true);
-  expect(fs.existsSync(f.wrapper)).toBe(false);
+  expect(result.hookWrapperInstalled).toBe(true);
+  expect(fs.existsSync(f.wrapper)).toBe(true);
   expect(fs.existsSync(result.serverPath)).toBe(true);
   expect(fs.readFileSync(path.join(f.codexDir, 'config.toml'), 'utf8')).toContain('[mcp_servers.ruvnet-brain]');
   expect(JSON.parse(fs.readFileSync(f.settings))).toEqual({ permissions: { allow: ['Read'] }, hooks: { Stop: [{ hooks: [f.foreign] }] } });
@@ -71,9 +71,9 @@ it('repeated host install does not recreate callbacks or rewrite foreign setting
   const f = fixture(); f.install();
   const before = fs.readFileSync(f.settings);
   const result = f.install();
-  expect(result.retiredHookWrapper).toBe(false);
+  expect(result.hookWrapperInstalled).toBe(true);
   expect(result.changed).toBe(false);
-  expect(fs.existsSync(f.wrapper)).toBe(false);
+  expect(fs.existsSync(f.wrapper)).toBe(true);
   expect(fs.readFileSync(f.settings)).toEqual(before);
 });
 

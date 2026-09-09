@@ -8,12 +8,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export function main() {
   const result = automaticHookRetirementStatus(ROOT);
   if (!result.ok) {
-    console.error(`hook-retirement-check: FAIL — ${result.registrations.length} automatic registration(s), ${result.errors.length} manifest error(s)`);
+    console.error(`hook-policy-check: FAIL — ${result.registrations.length} legacy/invalid registration(s), ${result.errors.length} manifest error(s)`);
     for (const error of result.errors) console.error(`  ${error}`);
     for (const item of result.registrations) console.error(`  ${item.file} ${item.event}: ${item.command || '(empty command)'}`);
     return 1;
   }
-  console.log(`hook-retirement-check: PASS — zero automatic Brain registrations across ${result.files.length} source, contract, and host-pointer surfaces`);
+  console.log(`hook-policy-check: PASS — continuity-only lifecycle plane (SessionStart + guarded Stop); all legacy Brain gates retired across ${result.files.length} source, contract, and host-pointer surfaces`);
   return 0;
 }
 
