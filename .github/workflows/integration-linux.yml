@@ -70,6 +70,16 @@ jobs:
       - name: Reviewed release integration acceptance
         if: env.QUALIFICATION_CONSUMER != 'true'
         run: node scripts/release-qualification.mjs --suite integration --platform linux --report /tmp/integration.json
+      - name: Run experience-level integration scenarios explicitly
+        if: env.QUALIFICATION_CONSUMER != 'true'
+        run: |
+          node --test tests/integration/install-smoke.mjs
+          node tests/integration/require-brain-lane.mjs
+          node_modules/vitest/vitest.mjs run \
+            tests/integration/stale-install-trap.test.mjs \
+            tests/integration/codex-skill-discovery.test.mjs \
+            tests/integration/uninstall-footprint.test.mjs \
+            --maxWorkers=1
       - name: Bind integration evidence to the exact source
         if: env.QUALIFICATION_CONSUMER != 'true' && inputs.candidate_sha != ''
         shell: bash
