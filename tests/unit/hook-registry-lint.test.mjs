@@ -187,9 +187,12 @@ describe('the merged census — six registries, not one', () => {
     }
   });
 
-  it('enumerates every registry this repo owns and proves the registration set is empty', () => {
+  it('enumerates every registry this repo owns and proves only continuity is registered', () => {
     const REQUIRED = ['layer', 'file', 'locator', 'event', 'matcher', 'command', 'timeout', 'mode', 'offBehavior', 'reachesStrangers'];
-    expect(repoReg.records).toEqual([]);
+    expect(repoReg.records).toHaveLength(4);
+    expect(repoReg.records.map((r) => r.handler).sort()).toEqual([
+      'continuation-gate.mjs', 'continuation-gate.mjs', 'session-start-core.mjs', 'session-start-core.mjs',
+    ]);
     for (const r of repoReg.records) {
       for (const k of REQUIRED) expect(Object.keys(r), `${r.layer} ${r.locator} missing ${k}`).toContain(k);
       expect(r.locator, 'a locator with no line number cannot point anybody at anything').toMatch(/:\d+$/);
@@ -298,7 +301,7 @@ describe('the merged census — six registries, not one', () => {
 
     const codexRecs = mesh(repoReg.records).filter((r) => r.layer === 'codex');
     const declared = declaredRegistrationCount(codex.file);
-    expect(declared).toBe(0);
+    expect(declared).toBe(2);
     expect(codexRecs).toHaveLength(declared);
     // Non-vacuous resolution: every codex record's dispatch id hits hook-shim.mjs's table, so
     // handler/mode/offBehavior come from the SAME declared contract Claude Code uses — not nulls
@@ -345,7 +348,10 @@ describe('mesh invariants over the layers this repo OWNS (must stay clean — th
     // An amnesty list that outlives the thing it excused is how a ratchet turns into permission.
     const f = lintAllowlistStale(repoReg.records, repoReg.matcherAllowlist);
     expect(f, `stale allowlist entr(ies):\n  ${show(f)}`).toEqual([]);
-    expect(repoReg.matcherAllowlist).toEqual([]);
+    expect(repoReg.matcherAllowlist.map((a) => `${a.layer}:${a.event}:${a.matcher}`).sort()).toEqual([
+      'plugin:SessionStart:startup|resume|clear|compact|fork',
+      'plugin:Stop:*',
+    ]);
     for (const a of repoReg.matcherAllowlist) {
       expect(a.reason, `allowlist entry ${a.layer}/${a.event}/${a.matcher} has no reason`).toBeTruthy();
       expect(a.retiredBy, `allowlist entry ${a.layer}/${a.event}/${a.matcher} names no exit condition`).toBeTruthy();
@@ -358,18 +364,18 @@ describe('mesh invariants over the layers this repo OWNS (must stay clean — th
     for (const r of mesh(repoReg.records)) expect(OFF_BEHAVIORS).toContain(r.offBehavior);
   });
 
-  it('M6 — the out-of-shim contract inventory is empty with the registries', () => {
+  it('M6 — the two continuity contracts are explicit and the matcher allowlist stays empty', () => {
     const doc = JSON.parse(fs.readFileSync(path.join(REPO, 'plugin/hooks/hook-contracts.json'), 'utf8'));
-    expect(doc.contracts).toEqual([]);
-    expect(doc.matcherAllowlist).toEqual([]);
+    expect(doc.contracts.map((c) => c.id).sort()).toEqual(['continuation-gate', 'session-start']);
+    expect(doc.matcherAllowlist).toHaveLength(2);
   });
 
-  it('has zero Stop-plane registrations in every repo-owned layer', () => {
+  it('has exactly one guarded Stop registration per shipped host', () => {
     const stops = mesh(repoReg.records).filter((r) => r.event === 'Stop');
     const byLayer = new Map();
     for (const s of stops) byLayer.set(s.layer, [...(byLayer.get(s.layer) ?? []), `${s.locator} ${s.handler}`]);
-    expect([...byLayer]).toEqual([]);
-    expect(stops).toEqual([]);
+    expect([...byLayer.keys()].sort()).toEqual(['codex', 'plugin']);
+    expect(stops).toHaveLength(2);
   });
 });
 

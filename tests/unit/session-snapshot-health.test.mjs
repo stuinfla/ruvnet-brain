@@ -37,7 +37,8 @@ describe('issue #85 — versioned compaction snapshot contract', () => {
     expect(probeMemory(project).compactionSurvival).toMatchObject({ status: 'ok', artifact: 'canonical' });
 
     const hooks = JSON.parse(fs.readFileSync(path.resolve('plugin/hooks/hooks.json'), 'utf8')).hooks;
-    expect(hooks).toEqual({});
+    expect(Object.keys(hooks).sort()).toEqual(['SessionStart', 'Stop']);
+    expect(JSON.stringify(hooks)).not.toContain('session-snapshot');
   });
 
   it('TEETH: writes NOTHING into a project that never opted in — no .swarm, no receipt', () => {

@@ -32,6 +32,11 @@ import { applyManagedCatalogUpdate } from '../scripts/model-router-catalog.mjs';
 import { cmpVersion } from '../scripts/stack-sync.mjs';
 import { validateCoverageDirectory } from '../plugin/scripts/coverage-integrity.mjs';
 import {
+  CONTINUITY_EVENTS,
+  continuityContractIds,
+  isAllowedContinuityRegistration,
+} from '../plugin/scripts/continuity-hook-policy.mjs';
+import {
   NIGHTLY_LABEL,
   installNightlyRunner,
   installScheduler,
@@ -1512,26 +1517,28 @@ export function wireCodexHost({
     atomicReplace(target, (tmp) => fs.copyFileSync(dep.from, tmp));
   }
   atomicReplace(serverPath, (tmp) => fs.copyFileSync(source, tmp));
+  // The Codex manifest is a real shipped hook surface. Keep its bridge at a stable path outside
+  // the versioned cache so a plugin refresh cannot leave Codex pointing at a missing executable.
+  // The bridge resolves the active immutable generation on every fire and fails open on every
+  // non-contract error; only the two continuity registrations use it.
   retireManagedHookRegistrations({ home: path.dirname(codexDir), codexDir, wrapperPath: hookWrapperPath });
-  // Versions through 4.3.10 copied a durable hook bridge outside the versioned plugin cache. An
-  // already-running Codex session may still hold old registrations, so removing this exact
-  // installer-owned file makes those frozen callbacks fail open immediately. The source adapter is
-  // retained in the package for audit and possible explicit tooling; it is never installed here.
-  let retiredHookWrapper = false;
+  const hookWrapperSource = path.join(REPO_ROOT, 'plugin', 'scripts', 'codex-hook-wrapper.mjs');
+  if (!fs.existsSync(hookWrapperSource)) {
+    if (announce) warn(`Codex hook bridge source missing from this bundle: ${hookWrapperSource}`);
+    return { host: true, action: 'hook-wrapper-source-missing' };
+  }
   try {
-    let wrapperStat = null;
-    try { wrapperStat = fs.lstatSync(hookWrapperPath); }
-    catch (error) { if (error?.code !== 'ENOENT') throw error; }
-    if (wrapperStat) {
-      if (!wrapperStat.isFile() && !wrapperStat.isSymbolicLink()) {
-        throw new Error('installer-owned wrapper path is not a regular file or symlink');
-      }
-      fs.unlinkSync(hookWrapperPath);
-      retiredHookWrapper = true;
+    fs.mkdirSync(path.dirname(hookWrapperPath), { recursive: true });
+    const wrapperStat = (() => { try { return fs.lstatSync(hookWrapperPath); } catch (error) {
+      if (error?.code === 'ENOENT') return null; throw error;
+    }})();
+    if (wrapperStat?.isSymbolicLink()) {
+      throw new Error('installer-owned hook bridge path is a symlink; refusing to overwrite it');
     }
+    atomicReplace(hookWrapperPath, (tmp) => fs.copyFileSync(hookWrapperSource, tmp));
   } catch (error) {
-    if (announce) warn(`could not retire the legacy Codex hook wrapper at ${hookWrapperPath}: ${error.message}`);
-    return { host: true, action: 'legacy-hook-retirement-failed', error: error.message };
+    if (announce) warn(`could not install the Codex hook bridge at ${hookWrapperPath}: ${error.message}`);
+    return { host: true, action: 'hook-wrapper-install-failed', error: error.message };
   }
 
   let before = '';
@@ -1542,7 +1549,8 @@ export function wireCodexHost({
       ok('Codex already declares ruvnet-brain in your own config — left exactly as you wrote it');
       info(`  to hand it to us instead, delete that ${c.bold('[mcp_servers.ruvnet-brain]')} block and re-run this installer`);
     }
-    return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath, retiredHookWrapper };
+    return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath,
+      hookWrapperPath, hookWrapperInstalled: true };
   }
   if (text !== before) {
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
@@ -1553,7 +1561,8 @@ export function wireCodexHost({
     info(`  server: ${serverPath} ${c.dim('(persistent copy — the npx dir vanishes)')}`);
     info(`  ${c.dim('only our marked block is written; every other section is byte-preserved')}`);
   }
-  return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath, retiredHookWrapper, changed: text !== before };
+  return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath,
+    hookWrapperPath, hookWrapperInstalled: true, changed: text !== before };
 }
 
 const CODEX_PLUGIN_ID = 'ruvnet-brain@ruvnet-brain';
@@ -1948,15 +1957,32 @@ export function automaticHookRetirementStatus(root = REPO_ROOT, { scope = 'sourc
           errors.push(`${relative}: ${event} must be an array`);
           continue;
         }
-        errors.push(`${relative}: retired registry must not declare event ${event}`);
         for (const [groupIndex, group] of groups.entries()) {
           if (!group || typeof group !== 'object' || Array.isArray(group) || !Array.isArray(group.hooks)) {
             errors.push(`${relative}: ${event}[${groupIndex}].hooks must be an array`);
             continue;
           }
           for (const hook of group.hooks) {
-            registrations.push({ file: relative, event, command: String(hook?.command || '') });
+            const row = { file: relative, event, matcher: String(group.matcher ?? ''), command: String(hook?.command || '') };
+            // Project-local host settings must remain empty. The package registries may carry only
+            // the two continuity handlers; every former gate is still retired.
+            const packageRegistry = relative === 'plugin/hooks/hooks.json' || relative === 'plugin/hooks/codex-hooks.json';
+            if (!packageRegistry || !isAllowedContinuityRegistration(row)) registrations.push(row);
           }
+        }
+      }
+      if (relative === 'plugin/hooks/hooks.json' || relative === 'plugin/hooks/codex-hooks.json') {
+        for (const [event, spec] of Object.entries(CONTINUITY_EVENTS)) {
+          const count = (doc.hooks[event] ?? []).flatMap((group) => group?.hooks ?? [])
+            .filter((hook, index, hooks) => isAllowedContinuityRegistration({
+              event,
+              matcher: (doc.hooks[event] ?? []).find((group) => (group.hooks ?? []).includes(hook))?.matcher,
+              command: hook?.command,
+            })).length;
+          if (count !== 1) errors.push(`${relative}: continuity ${spec.id} must have exactly one registration (found ${count})`);
+        }
+        for (const event of Object.keys(doc.hooks)) {
+          if (!CONTINUITY_EVENTS[event]) errors.push(`${relative}: legacy automatic event ${event} remains registered`);
         }
       }
     } catch (error) {
@@ -1967,11 +1993,12 @@ export function automaticHookRetirementStatus(root = REPO_ROOT, { scope = 'sourc
     const contractsFile = 'plugin/hooks/hook-contracts.json';
     const contracts = JSON.parse(fs.readFileSync(path.join(root, contractsFile), 'utf8'));
     checkedFiles.push(contractsFile);
-    if (!Array.isArray(contracts.contracts) || contracts.contracts.length !== 0) {
-      errors.push(`${contractsFile}: contracts must be an empty array`);
+    const ids = Array.isArray(contracts.contracts) ? contracts.contracts.map((c) => c?.id) : [];
+    if (ids.length !== continuityContractIds().length || continuityContractIds().some((id) => !ids.includes(id))) {
+      errors.push(`${contractsFile}: contracts must list only the continuity handlers (${continuityContractIds().join(', ')})`);
     }
-    if (!Array.isArray(contracts.matcherAllowlist) || contracts.matcherAllowlist.length !== 0) {
-      errors.push(`${contractsFile}: matcherAllowlist must be an empty array`);
+    if (!Array.isArray(contracts.matcherAllowlist) || contracts.matcherAllowlist.length !== continuityContractIds().length) {
+      errors.push(`${contractsFile}: matcherAllowlist must list the two continuity matchers`);
     }
   } catch (error) {
     errors.push(`plugin/hooks/hook-contracts.json: ${error.message}`);
@@ -2012,7 +2039,6 @@ export function claudeInstalledHookRetirementStatus({ home = os.homedir(), plugi
       errors.push('installed Claude hooks must be an object');
     } else {
       for (const [event, groups] of Object.entries(doc.hooks)) {
-        errors.push(`installed Claude registry must not declare event ${event}`);
         if (!Array.isArray(groups)) {
           errors.push(`installed Claude ${event} must be an array`);
           continue;
@@ -2023,9 +2049,22 @@ export function claudeInstalledHookRetirementStatus({ home = os.homedir(), plugi
             continue;
           }
           for (const hook of group.hooks) {
-            registrations.push({ file, event, command: String(hook?.command || '') });
+            const row = { file, event, matcher: String(group.matcher ?? ''), command: String(hook?.command || '') };
+            if (!isAllowedContinuityRegistration(row)) registrations.push(row);
           }
         }
+      }
+      for (const [event, spec] of Object.entries(CONTINUITY_EVENTS)) {
+        const count = (doc.hooks[event] ?? []).flatMap((group) => group?.hooks ?? [])
+          .filter((hook) => isAllowedContinuityRegistration({
+            event,
+            matcher: (doc.hooks[event] ?? []).find((group) => (group.hooks ?? []).includes(hook))?.matcher,
+            command: hook?.command,
+          })).length;
+        if (count !== 1) errors.push(`installed Claude continuity ${spec.id} must have exactly one registration (found ${count})`);
+      }
+      for (const event of Object.keys(doc.hooks)) {
+        if (!CONTINUITY_EVENTS[event]) errors.push(`installed Claude legacy automatic event ${event} remains registered`);
       }
     }
   } catch (error) {
@@ -2557,7 +2596,7 @@ async function doctor() {
     const installedClaude = claudeInstalledHookRetirementStatus();
     const hookOk = retirement.ok && installedClaude.ok;
     hookResult = { exitCode: hookOk ? 0 : 1 };
-    console.log(`  ${hookOk ? c.green('✓') : c.red('✗')} automatic Brain hook retirement: ${retirement.registrations.length + installedClaude.registrations.length} registration(s), ${retirement.errors.length + installedClaude.errors.length} manifest error(s)`);
+    console.log(`  ${hookOk ? c.green('✓') : c.red('✗')} automatic Brain hook continuity policy: ${retirement.registrations.length + installedClaude.registrations.length} legacy/invalid registration(s), ${retirement.errors.length + installedClaude.errors.length} manifest error(s)`);
     for (const error of retirement.errors) console.log(`    ${error}`);
     for (const error of installedClaude.errors) console.log(`    ${error}`);
     for (const registration of retirement.registrations) {

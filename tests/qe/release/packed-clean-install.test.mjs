@@ -109,7 +109,9 @@ describe('clean host installation from only the packed artifact', () => {
     expect(marketplace.plugins.some((entry) => entry.name === plugin.name)).toBe(true);
     expect(plugin).not.toHaveProperty('updated');
     expect(hooks.hooks).toBeTypeOf('object');
-    expect(hooks.hooks).toEqual({});
+    expect(Object.keys(hooks.hooks).sort()).toEqual(['SessionStart', 'Stop']);
+    expect(JSON.stringify(hooks.hooks)).toContain('session-start');
+    expect(JSON.stringify(hooks.hooks)).toContain('continuation-gate');
     expect(fs.existsSync(path.join(artifact, 'plugin/.mcp.json'))).toBe(true);
   });
 
@@ -132,10 +134,13 @@ describe('clean host installation from only the packed artifact', () => {
     expect(install.codexStatus({ codexDir, configPath: config }).wired).toBe(true);
   });
 
-  it('ships zero automatic registrations in both packed host manifests', () => {
+  it('ships continuity-only automatic registrations in both packed host manifests', () => {
     for (const name of ['hooks.json', 'codex-hooks.json']) {
       const document = JSON.parse(fs.readFileSync(path.join(artifact, 'plugin/hooks', name), 'utf8'));
-      expect(document.hooks).toEqual({});
+      expect(Object.keys(document.hooks).sort()).toEqual(['SessionStart', 'Stop']);
+      const commands = Object.values(document.hooks).flatMap((groups) => groups.flatMap((group) => group.hooks.map((hook) => hook.command)));
+      expect(commands.filter((command) => command.includes('session-start'))).toHaveLength(1);
+      expect(commands.filter((command) => command.includes('continuation-gate'))).toHaveLength(1);
     }
   });
 

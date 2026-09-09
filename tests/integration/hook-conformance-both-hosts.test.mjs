@@ -6,18 +6,18 @@ import { automaticHookRetirementStatus, retireManagedHookRegistrations, wireCode
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 
-describe('automatic Brain hooks are retired on both hosts', () => {
-  it('ships schema-valid empty Claude and Codex registries', () => {
+describe('automatic Brain continuity hooks are constrained on both hosts', () => {
+  it('ships schema-valid continuity-only Claude and Codex registries', () => {
     const result = automaticHookRetirementStatus(ROOT);
     expect(result.errors).toEqual([]);
     expect(result.registrations).toEqual([]);
     expect(result.ok).toBe(true);
   });
 
-  it('keeps the out-of-shim contract inventory empty too', () => {
+  it('keeps the out-of-shim contract inventory limited to continuity', () => {
     const contracts = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/hooks/hook-contracts.json'), 'utf8'));
-    expect(contracts.contracts).toEqual([]);
-    expect(contracts.matcherAllowlist).toEqual([]);
+    expect(contracts.contracts.map((entry) => entry.id).sort()).toEqual(['continuation-gate', 'session-start']);
+    expect(contracts.matcherAllowlist.map((entry) => entry.event).sort()).toEqual(['SessionStart', 'Stop']);
   });
 
   it.each([
@@ -70,7 +70,7 @@ describe('automatic Brain hooks are retired on both hosts', () => {
           { pluginId: 'ruvnet-brain@ruvnet-brain', type: 'command', command: 'old callback' }] }] } }));
       const installed = wireCodexHost({ codexDir, serverDir: path.join(home, 'mcp'), announce: false });
       expect(installed.action).toBe('added');
-      expect(installed.retiredHookWrapper).toBe(true);
+      expect(installed.hookWrapperInstalled).toBe(true);
       const after = fs.readFileSync(file, 'utf8');
       expect(JSON.parse(after)).toEqual({ permissions: { allow: ['Read'] }, hooks: {
         Stop: [{ matcher: '*', hooks: [foreign, mixed] }] } });
@@ -80,7 +80,7 @@ describe('automatic Brain hooks are retired on both hosts', () => {
     } finally { fs.rmSync(home, { recursive: true, force: true }); }
   });
 
-  it('an update removes the exact legacy Codex bridge while preserving foreign config bytes', () => {
+  it('an update refreshes the exact Codex bridge while preserving foreign config bytes', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-hook-retirement-'));
     try {
       const codexDir = path.join(home, '.codex');
@@ -107,9 +107,9 @@ describe('automatic Brain hooks are retired on both hosts', () => {
         announce: false,
       });
 
-      expect(first.retiredHookWrapper).toBe(true);
-      expect(second.retiredHookWrapper).toBe(false);
-      expect(fs.existsSync(wrapper)).toBe(false);
+      expect(first.hookWrapperInstalled).toBe(true);
+      expect(second.hookWrapperInstalled).toBe(true);
+      expect(fs.existsSync(wrapper)).toBe(true);
       expect(afterFirst).toContain('model = "user-choice"');
       expect(fs.readFileSync(configPath, 'utf8')).toBe(afterFirst);
     } finally {

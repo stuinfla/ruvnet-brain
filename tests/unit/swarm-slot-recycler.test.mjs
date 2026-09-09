@@ -171,7 +171,8 @@ describe('automatic swarm slot recycling', () => {
 
   it('retains the recycler in the explicit shim but registers no TeammateIdle hook', () => {
     const registry = JSON.parse(fs.readFileSync(HOOKS, 'utf8'));
-    expect(registry.hooks).toEqual({});
+    expect(Object.keys(registry.hooks).sort()).toEqual(['SessionStart', 'Stop']);
+    expect(JSON.stringify(registry.hooks)).not.toContain('swarm-slot-recycler');
     const shim = fs.readFileSync(SHIM, 'utf8');
     expect(shim).toMatch(/'swarm-slot-recycler':\s*\{[^}]*file:\s*'swarm-slot-recycler\.mjs'[^}]*mode:\s*'blocking'/s);
   });
@@ -205,7 +206,7 @@ describe('automatic swarm slot recycling', () => {
     // nowhere else. That fails on the mistake the digest was reaching for (a stray registration in
     // another event) and stays quiet for edits that are none of its business.
     const reg = JSON.parse(fs.readFileSync(HOOKS, 'utf8')).hooks;
-    expect(Object.keys(reg)).toEqual([]);
+    expect(Object.keys(reg).sort()).toEqual(['SessionStart', 'Stop']);
     const anywhere = Object.entries(reg)
       .flatMap(([event, gs]) => gs.flatMap((g) => g.hooks.map((h) => ({ event, cmd: h.command }))))
       .filter((h) => h.cmd.includes('swarm-slot-recycler'));
