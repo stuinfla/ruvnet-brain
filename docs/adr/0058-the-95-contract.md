@@ -3,10 +3,10 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-07
+updated: 2026-09-09
 version: 1.1.3
 impl: wired
-reviewed_digest: 34b808da6634
+reviewed_digest: 8de600de26cd
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -84,6 +84,7 @@ Codex replay now registers isolated fixture hooks explicitly; the prior uninstru
 UNKNOWN, and no new behavioral learning result is claimed.
 
 ## Currency log
+| 2026-09-09 | Reviewed the release-vector and candidate CI guarantee after the D1/D2/D5/D7 repairs; the eight-invariant vector now measures every lane on the exact candidate source, and changed-scope currency remains fail-closed. | Source digest 8de600de26cd; scripts/release-vector.mjs; .github/workflows/ci.yml; scripts/doc-currency.mjs. |
 
 | 2026-09-07 | Reviewed public native scheduled update receipts bind exact signed artifacts and workflow run, while macOS full unit execution joins required candidate CI evidence; source digest 34b808da6634. | `scripts/publication-receipt.mjs`; source review only, hosted and public acceptance remain pending. |
 

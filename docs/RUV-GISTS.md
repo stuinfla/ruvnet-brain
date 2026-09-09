@@ -5,13 +5,25 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_479 gists · refreshed 2026-08-26_
+_487 gists · refreshed 2026-09-09_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-09-09 | [Super-intelligence.md](https://gist.github.com/ruvnet/6ecd5aaac62ab3c8ae8e542a23b9d264) | Persistent Systems Intelligence: rUv’s manifesto for AI that perceives, coordinates, acts, remembers, verifies, and impr |
+| 2026-09-04 | [cognitum-provenance-probe-2.html](https://gist.github.com/ruvnet/b72800a7999accdd564f6be95b5f7cd8) | cognitum provenance probe 2 — benign-looking companion link (synthetic, no real data) |
+| 2026-09-04 | [cognitum-provenance-probe.html](https://gist.github.com/ruvnet/d5c4134b8b8e2df83e6c3992e81b5da6) | Cognitum One provenance-boundary probe page (no real data; instructs the assistant to fetch attacker.invalid) |
+| 2026-09-04 | [RuView-C6-fleet-reliability-2026-09-04.md](https://gist.github.com/ruvnet/3975527e15bdb7f7e9eea5662d6cc3bf) | RuView C6 fleet reliability & honesty update — 2026-09-04 (8 merged fixes overview) |
+| 2026-09-03 | [*DeepSeek-uncensored.md](https://gist.github.com/ruvnet/a4beba51960f6027edc003e05f3a350e) | Deploying and Fine-Tuning an Uncensored DeepSeek R1 Distill Model on Google Cloud |
+| 2026-09-01 | [.gist-v0.6.5.md](https://gist.github.com/ruvnet/8c099b17eeb589370b36eff74df08890) | RuView v0.6.5-esp32 — open-source WiFi sensing on a $9 ESP32 board (presence, vitals, motion through walls — no camera) |
+| 2026-08-31 | [gist.md](https://gist.github.com/ruvnet/c2b0cb1e533ae1c83c905ccf91ff026d) | RuVector signed retrieval receipts: plain language security model, benchmark, and deployment gate |
+| 2026-08-30 | [jjs.md](https://gist.github.com/ruvnet/60e5749c934077c7040ab32b542539d0) | Jujutsu vs Git Worktrees: Key Differences |
+| 2026-08-30 | [ruvector-pr-948-overview.md](https://gist.github.com/ruvnet/ada2f73fd78c2fe999273eb995e7258a) | RuVector Cypher NOT fix: impact, evidence, and acceptance test |
+| 2026-08-30 | [gist-what-we-learned.md](https://gist.github.com/ruvnet/37856a1aab825db91e7e8daf69b6fd17) | We tried to let AI agents skip talking. It didn't work — and one of our own negative results turned out to be our contro |
+| 2026-08-28 | [1-Readme.md](https://gist.github.com/ruvnet/15c6ef556be49e173ab0ecd6d252a7b9) | Gödel Agent for Recursive Self-Improvement: A Comprehensive Tutorial |
+| 2026-08-27 | [RuV-SOTA0-Scheduler.md](https://gist.github.com/ruvnet/7368405b5882a194df567d466818679b) | RuV Stack Daily SOTA Research and Implementation |
+| 2026-08-26 | [*specification.md](https://gist.github.com/ruvnet/6217ea3bd75cc0c27522965965e7383b) | TikTok-like recommender Algorithm |
 | 2026-08-25 | [ruvllm_sparse_attention_report.md](https://gist.github.com/ruvnet/7736317d1311a83137a39e804d7868ea) | ruvllm_sparse_attention: Subquadratic Sparse Attention for Edge LLM Inference on Hailo-10H Pi 5 Cluster |
 | 2026-08-24 | [Sora-prompts.md](https://gist.github.com/ruvnet/e20537eb50866b2d837d4d13b066bd88) | Crafting Cinematic Sora Video Prompts: A complete guide |
-| 2026-08-23 | [.gist-v0.6.5.md](https://gist.github.com/ruvnet/8c099b17eeb589370b36eff74df08890) | RuView v0.6.5-esp32 — open-source WiFi sensing on a $9 ESP32 board (presence, vitals, motion through walls — no camera) |
 | 2026-08-19 | [ruview-project-integration-map.md](https://gist.github.com/ruvnet/5110d7f546aab61c478afc9b353ae833) | Plain-language map of how RuView and Cognitum Spaces use Autogenous and Midstream today, and why LatentMesh is not yet i |
 | 2026-08-19 | [COGNITUM-SPACES.md](https://gist.github.com/ruvnet/30b32dee30cde9d4e3d135a75e7c254c) | Cognitum Spaces for RuView: production status, OAuth activation, capabilities comparison, APIs, memory, governed actions |
 | 2026-08-19 | [memory.md](https://gist.github.com/ruvnet/4a55971e8971a3c430a009c7f5b49d12) | Claude Memory Template |
@@ -33,7 +45,6 @@ _479 gists · refreshed 2026-08-26_
 | 2026-08-06 | [.roomodes.json](https://gist.github.com/ruvnet/a206de8d484e710499398e4c39fa6299) | This guide introduces Roo Code and the innovative Boomerang task concept, now integrated into SPARC Orchestration. By fo |
 | 2026-08-05 | [rvforge-overview.md](https://gist.github.com/ruvnet/d08d9c00e140f570fb896256dc7cb1f7) | The Sandbox Is Not the Boundary — why RVF, RVM, and RVForge exist, what ships today, and a verified tutorial |
 | 2026-08-04 | [rvqr-overview.md](https://gist.github.com/ruvnet/6d99e837736eaf45b62a9a00cddbe4e5) | rvQR — moving files between devices with a screen and a camera: what it is, and what measuring it actually found |
-| 2026-08-01 | [jjs.md](https://gist.github.com/ruvnet/60e5749c934077c7040ab32b542539d0) | Jujutsu vs Git Worktrees: Key Differences |
 | 2026-08-01 | [MED.md](https://gist.github.com/ruvnet/e27b77949b0b0d5564ea447edcaf95c3) | Various Medical Discoveries |
 | 2026-07-31 | [agntcy-announcement.md](https://gist.github.com/ruvnet/36e0f0658a29e171eabadb86bc27d789) | AGNTCY integration is live in ruflo + metaharness — what you can do with it today |
 | 2026-07-31 | [ruflo-release-notes.md](https://gist.github.com/ruvnet/d6fc9bea2758049fd87424a2718dec1e) | ruflo ADR-378/379/380 — npm Trusted Publishing, statusline segments, AGNTCY/Outshift runtime integration (PR #2879) |
@@ -62,7 +73,6 @@ _479 gists · refreshed 2026-08-26_
 | 2026-07-17 | [gistfile0.txt](https://gist.github.com/ruvnet/2b37060362af57bbffd421aa09e4db50) | Ruflo v3.32.2 stable Codex integration, recovery, and validation guide |
 | 2026-07-17 | [ruflo-v3.32.1-codex-integration.md](https://gist.github.com/ruvnet/532079b6e06e3d87e6bc9a6e30d1bb26) | Ruflo v3.32.1: stable Windows-safe Codex integration, upgrade guide, root causes, and verification |
 | 2026-07-16 | [meta-wrapper.md](https://gist.github.com/ruvnet/e1008e2a4aa13bf2a991e6aca4028d03) | Always-running MetaHarness coding service on GCP |
-| 2026-07-15 | [*specification.md](https://gist.github.com/ruvnet/6217ea3bd75cc0c27522965965e7383b) | TikTok-like recommender Algorithm |
 | 2026-07-14 | [redaction.md](https://gist.github.com/ruvnet/332336ad5e0516daa810d98f8f0ddca9) | Redaction hooks for Claude Code |
 | 2026-07-14 | [daemon-flywheel-fix.md](https://gist.github.com/ruvnet/f4cda824aaf58e1f2dae72368e692220) | The worktree-daemon flywheel: how ruflo accidentally invented a Claude-quota DoS against itself (#2661) |
 | 2026-07-12 | [ruvector-lattice-embeddings-rust-npm-cve-fix.md](https://gist.github.com/ruvnet/cf3877071a2b1ab9252785673340ab95) | RuVector 2.3.0: local Rust & npm embeddings via Lattice, plus a full cargo-audit/cargo-deny CVE cleanup |
@@ -144,7 +154,6 @@ _479 gists · refreshed 2026-08-26_
 | 2026-06-12 | [witness-sota.md](https://gist.github.com/ruvnet/2737be4a2fe48dc2e4f31e9b00e988f0) | Tamper-Evident Witness Logs: SOTA survey and gap analysis for RVM's witness chain (keyed-BLAKE3 + Merkle sealing) vs tra |
 | 2026-06-12 | [wiflow-std-audit-gist.md](https://gist.github.com/ruvnet/47d4369c0bd251ed233bbc450d50f6e6) | We audited a SOTA WiFi pose model: what broke, what reproduced, and the 30x smaller model that nearly matches it (RuView |
 | 2026-06-12 | [ruvector-announcement.md](https://gist.github.com/ruvnet/26e44b35f216aa2f664918b0784a360f) | RuVector June 2026 update: 14x faster vector search, 32x compression, hardened audit logs, and a learning loop that actu |
-| 2026-06-12 | [*DeepSeek-uncensored.md](https://gist.github.com/ruvnet/a4beba51960f6027edc003e05f3a350e) | Deploying and Fine-Tuning an Uncensored DeepSeek R1 Distill Model on Google Cloud |
 | 2026-06-10 | [performance.md](https://gist.github.com/ruvnet/eb28152cb122c9e0336cb8b1b25c01b3) | AI Trading Platform with NeuralForecast Integration |
 | 2026-06-08 | [ruvector-graph-condense.md](https://gist.github.com/ruvnet/b64a0a3773101197d7803e0fe9ed2d91) | ruvector-graph-condense: structure-preserving + differentiable-min-cut graph condensation, with measured GNN accuracy re |
 | 2026-06-03 | [1-research.md](https://gist.github.com/ruvnet/4cc23f3d3a97a0d8acd80693407b9a67) | AI Manipulation Defense System |
@@ -269,7 +278,6 @@ _479 gists · refreshed 2026-08-26_
 | 2026-02-06 | [VS-MCP.md](https://gist.github.com/ruvnet/2a8d3c38e8469287fb2c53f512cf5c62) | This comprehensive guide outlines how to create a Model Context Protocol (MCP) server for VSCode that enables multiple w |
 | 2026-02-01 | [cohen.md](https://gist.github.com/ruvnet/a872ec910082974116584f623a33b068) | Cohen’s Conjecture |
 | 2026-01-25 | [React-flow-Python.md](https://gist.github.com/ruvnet/476a9e7a209c0ac26c8806fd50ab7b67) | This tutorial demonstrates how to create a basic Python Flask implementation with React Flow. |
-| 2026-01-20 | [1-Readme.md](https://gist.github.com/ruvnet/15c6ef556be49e173ab0ecd6d252a7b9) | Gödel Agent for Recursive Self-Improvement: A Comprehensive Tutorial |
 | 2026-01-19 | [npx.md](https://gist.github.com/ruvnet/68cee7ebe970fdf75c26cf0562391638) | By following these steps, you can create powerful, reusable NPX components using Vite.js that others can easily execute  |
 | 2026-01-19 | [*memento.md](https://gist.github.com/ruvnet/7831ac7eb4d2a4fa178c707a041b0aeb) | MEMENTO (Memory Enhanced Models for Entity-based Networked Textual Operations) system integrating OpenAI's memory featur |
 | 2026-01-19 | [Readme.md](https://gist.github.com/ruvnet/f4ac76cb411c8da0b954f91197ca1774) | Deploying LLaMA 3 70B with AirLLM and Gradio on Hugging Face Spaces |

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-07-28",
+  "updated": "2026-09-09",
   "note": "ADR-053 §1 / ADR-058 D2: a hand-written list of coherent scenarios grounded in how this product is ACTUALLY installed and used — never a Cartesian host x os x artifact matrix. Every machine-reachable scenario has structured proofs joining a workflow job to an exact existing test/driver path that the job invokes. Job-name existence alone is not evidence. Manual scenarios require a named owner and sit OUTSIDE the coverage denominator.",
   "scenarios": [
     {
@@ -11,8 +11,14 @@
       "stage": "install — doctor on an absent/empty brain",
       "user-state": "fresh-home",
       "classification": "ci",
-      "evidence": "ci.yml#check — tests/integration/install-smoke.mjs: `--doctor` against an empty RUVNET_BRAIN_KB reports the diagnostic honestly (brain not found) and never crashes; read-only, the pinned dir is untouched afterward.",
-      "proofs": [{ "workflow": "ci.yml", "job": "check", "path": "tests/integration/install-smoke.mjs" }],
+      "evidence": "integration-linux.yml#integration — tests/integration/install-smoke.mjs: `--doctor` against an empty RUVNET_BRAIN_KB reports the diagnostic honestly (brain not found) and never crashes; read-only, the pinned dir is untouched afterward.",
+      "proofs": [
+        {
+          "workflow": "integration-linux.yml",
+          "job": "integration",
+          "path": "tests/integration/install-smoke.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -23,22 +29,31 @@
       "stage": "doctor on a COMPLETE brain — the healthy verdict must be derived, not hardwired",
       "user-state": "populated-home",
       "classification": "ci",
-      "evidence": "ci.yml#check — tests/integration/install-smoke.mjs: `--doctor` on a complete brain dir (real stores + reader deps + mcp entrypoint present) returns exit 0, computed from those real files.",
-      "proofs": [{ "workflow": "ci.yml", "job": "check", "path": "tests/integration/install-smoke.mjs" }],
+      "evidence": "integration-linux.yml#integration — tests/integration/install-smoke.mjs: `--doctor` on a complete brain dir (real stores + reader deps + mcp entrypoint present) returns exit 0, computed from those real files.",
+      "proofs": [
+        {
+          "workflow": "integration-linux.yml",
+          "job": "integration",
+          "path": "tests/integration/install-smoke.mjs"
+        }
+      ],
       "owner": null
     },
     {
       "id": "S03",
       "host": "claude-code",
-      "os": "ubuntu+windows",
+      "os": "ubuntu",
       "artifact": "npm (npx ruvnet-brain)",
       "stage": "update — `--update` against a missing brain must fail LOUD, never silently no-op",
       "user-state": "fresh-home",
       "classification": "ci",
-      "evidence": "ci.yml#check & ci.yml#windows-unit — tests/integration/install-smoke.mjs: `--update` against an empty KB dir exits non-zero with the re-run-installer message.",
+      "evidence": "integration-linux.yml#integration — tests/integration/install-smoke.mjs: `--update` against an empty KB dir exits non-zero with the re-run-installer message (Linux integration coverage).",
       "proofs": [
-        { "workflow": "ci.yml", "job": "check", "path": "tests/integration/install-smoke.mjs" },
-        { "workflow": "ci.yml", "job": "windows-unit", "path": "tests/integration/install-smoke.mjs" }
+        {
+          "workflow": "integration-linux.yml",
+          "job": "integration",
+          "path": "tests/integration/install-smoke.mjs"
+        }
       ],
       "owner": null
     },
@@ -51,7 +66,13 @@
       "user-state": "populated-home",
       "classification": "ci",
       "evidence": "integration-linux.yml#integration — tests/integration/stale-install-trap.test.mjs: an installed OLD tag triggers a real re-download; a rate-limited/offline latest-check (source != 'latest') must not report a fabricated 'out of date' and downgrade an ahead-of-latest install.",
-      "proofs": [{ "workflow": "integration-linux.yml", "job": "integration", "path": "tests/integration/stale-install-trap.test.mjs" }],
+      "proofs": [
+        {
+          "workflow": "integration-linux.yml",
+          "job": "integration",
+          "path": "tests/integration/stale-install-trap.test.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -62,10 +83,18 @@
       "stage": "install — Codex host present, no config.toml yet (issue #42 regression)",
       "user-state": "fresh-home",
       "classification": "ci",
-      "evidence": "ci.yml#check & ci.yml#windows-unit — tests/unit/codex-wiring.test.mjs: wireCodexHost() creates config.toml and registers [mcp_servers.ruvnet-brain] with a resolved absolute server path when ~/.codex exists but has no config yet.",
+      "evidence": "developer-qa.yml#full-unit-diagnostics — tests/unit/codex-wiring.test.mjs: wireCodexHost() creates config.toml and registers [mcp_servers.ruvnet-brain] with a resolved absolute server path when ~/.codex exists but has no config yet.",
       "proofs": [
-        { "workflow": "ci.yml", "job": "check", "path": "tests/unit/codex-wiring.test.mjs" },
-        { "workflow": "ci.yml", "job": "windows-unit", "path": "tests/unit/codex-wiring.test.mjs" }
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/codex-wiring.test.mjs"
+        },
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/codex-wiring.test.mjs"
+        }
       ],
       "owner": null
     },
@@ -77,10 +106,18 @@
       "stage": "install — the user's OWN pre-existing config.toml (other [mcp_servers.*] entries, comments, content after our block) must survive byte-for-byte",
       "user-state": "populated-home",
       "classification": "ci",
-      "evidence": "ci.yml#check & ci.yml#windows-unit — tests/unit/codex-wiring.test.mjs: mergeCodexConfig preserves every pre-existing section byte-for-byte, leaves a user's own ruvnet-brain declaration alone, and preserves content the user added after our block.",
+      "evidence": "developer-qa.yml#full-unit-diagnostics — tests/unit/codex-wiring.test.mjs: mergeCodexConfig preserves every pre-existing section byte-for-byte, leaves a user's own ruvnet-brain declaration alone, and preserves content the user added after our block.",
       "proofs": [
-        { "workflow": "ci.yml", "job": "check", "path": "tests/unit/codex-wiring.test.mjs" },
-        { "workflow": "ci.yml", "job": "windows-unit", "path": "tests/unit/codex-wiring.test.mjs" }
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/codex-wiring.test.mjs"
+        },
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/codex-wiring.test.mjs"
+        }
       ],
       "owner": null
     },
@@ -92,10 +129,18 @@
       "stage": "update — reinstall/update must be idempotent (byte-identical on 2nd/3rd run) and must never widen the config file's permission mode",
       "user-state": "populated-home",
       "classification": "ci",
-      "evidence": "ci.yml#check & ci.yml#windows-unit — tests/unit/codex-wiring.test.mjs: a second/third install run reproduces config.toml byte-for-byte, and a chmod-600 config never comes back world-readable.",
+      "evidence": "developer-qa.yml#full-unit-diagnostics — tests/unit/codex-wiring.test.mjs: a second/third install run reproduces config.toml byte-for-byte, and a chmod-600 config never comes back world-readable.",
       "proofs": [
-        { "workflow": "ci.yml", "job": "check", "path": "tests/unit/codex-wiring.test.mjs" },
-        { "workflow": "ci.yml", "job": "windows-unit", "path": "tests/unit/codex-wiring.test.mjs" }
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/codex-wiring.test.mjs"
+        },
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/codex-wiring.test.mjs"
+        }
       ],
       "owner": null
     },
@@ -107,8 +152,14 @@
       "stage": "install — a dotfiles-managed config.toml that is a SYMLINK must keep its identity",
       "user-state": "hostile-path",
       "classification": "ci",
-      "evidence": "ci.yml#check — tests/unit/codex-wiring.test.mjs: a symlinked config keeps its identity — the write goes THROUGH the link, never replacing it with a plain file.",
-      "proofs": [{ "workflow": "ci.yml", "job": "check", "path": "tests/unit/codex-wiring.test.mjs" }],
+      "evidence": "developer-qa.yml#full-unit-diagnostics — tests/unit/codex-wiring.test.mjs: a symlinked config keeps its identity — the write goes THROUGH the link, never replacing it with a plain file.",
+      "proofs": [
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/codex-wiring.test.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -119,8 +170,14 @@
       "stage": "install — an interrupted config write or server copy must leave the PRIOR bytes intact, never a torn file",
       "user-state": "hostile-path",
       "classification": "ci",
-      "evidence": "ci.yml#check — tests/unit/codex-wiring.test.mjs (failure-injection cases): a config-write or server-copy failure leaves the prior registration byte-intact (write-beside-then-rename), demonstrated to fail against the pre-fix plain copyFileSync/writeFileSync.",
-      "proofs": [{ "workflow": "ci.yml", "job": "check", "path": "tests/unit/codex-wiring.test.mjs" }],
+      "evidence": "developer-qa.yml#full-unit-diagnostics — tests/unit/codex-wiring.test.mjs (failure-injection cases): a config-write or server-copy failure leaves the prior registration byte-intact (write-beside-then-rename), demonstrated to fail against the pre-fix plain copyFileSync/writeFileSync.",
+      "proofs": [
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/codex-wiring.test.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -131,10 +188,18 @@
       "stage": "install — the published npm artifact must actually carry plugin/mcp/server.mjs (issue #43 regression: 20 files shipped, the Codex server was not one of them)",
       "user-state": "fresh-home",
       "classification": "ci",
-      "evidence": "ci.yml#check & ci.yml#windows-unit — tests/unit/npm-tarball-codex.test.mjs: `npm pack` + unpack proves plugin/mcp/server.mjs is IN the tarball, byte-identical to source, and no other plugin/ content leaks in.",
+      "evidence": "developer-qa.yml#full-unit-diagnostics — tests/unit/npm-tarball-codex.test.mjs: `npm pack` + unpack proves plugin/mcp/server.mjs is IN the tarball, byte-identical to source, and no other plugin/ content leaks in.",
       "proofs": [
-        { "workflow": "ci.yml", "job": "check", "path": "tests/unit/npm-tarball-codex.test.mjs" },
-        { "workflow": "ci.yml", "job": "windows-unit", "path": "tests/unit/npm-tarball-codex.test.mjs" }
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/npm-tarball-codex.test.mjs"
+        },
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/npm-tarball-codex.test.mjs"
+        }
       ],
       "owner": null
     },
@@ -146,8 +211,14 @@
       "stage": "first-query — the server installed FROM THE UNPACKED TARBALL (not the source tree) completes an MCP round trip and serves search_ruvnet",
       "user-state": "fresh-home",
       "classification": "ci",
-      "evidence": "ci.yml#check — tests/unit/npm-tarball-codex.test.mjs: initialize + tools/list succeed against the server copied from the real unpacked tarball, with the documented search_ruvnet schema (required string query, optional integer k).",
-      "proofs": [{ "workflow": "ci.yml", "job": "check", "path": "tests/unit/npm-tarball-codex.test.mjs" }],
+      "evidence": "developer-qa.yml#full-unit-diagnostics — tests/unit/npm-tarball-codex.test.mjs: initialize + tools/list succeed against the server copied from the real unpacked tarball, with the documented search_ruvnet schema (required string query, optional integer k).",
+      "proofs": [
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/npm-tarball-codex.test.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -158,8 +229,14 @@
       "stage": "hook-fire — the UserPromptSubmit grounding hook across on-topic/off-topic/malformed/empty/200KB/unicode/JSON-escaped/canary-injection prompts",
       "user-state": "fresh-home",
       "classification": "ci",
-      "evidence": "ci.yml#check — tests/unit/hook-battery.test.mjs: the 15-case ground-ruvnet.sh gate battery (playbook/grounding/hijack triggers, malformed & empty stdin, a 200KB prompt, unicode/emoji, JSON-escaped quotes, canary command substitutions) — every case exits 0.",
-      "proofs": [{ "workflow": "ci.yml", "job": "check", "path": "tests/unit/hook-battery.test.mjs" }],
+      "evidence": "developer-qa.yml#full-unit-diagnostics — tests/unit/hook-battery.test.mjs: the 15-case ground-ruvnet.sh gate battery (playbook/grounding/hijack triggers, malformed & empty stdin, a 200KB prompt, unicode/emoji, JSON-escaped quotes, canary command substitutions) — every case exits 0.",
+      "proofs": [
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/hook-battery.test.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -170,8 +247,14 @@
       "stage": "recurring use — the session-start greeting must fire every session; the one-time star-ask must fire AT MOST once ever, across repeated sessions on the same HOME",
       "user-state": "populated-home",
       "classification": "ci",
-      "evidence": "ci.yml#check — tests/unit/hook-battery.test.mjs: session-start.sh run twice with the same HOME — a sane greeting both times, star-ask appearing on the first eligible run and never again.",
-      "proofs": [{ "workflow": "ci.yml", "job": "check", "path": "tests/unit/hook-battery.test.mjs" }],
+      "evidence": "developer-qa.yml#full-unit-diagnostics — tests/unit/hook-battery.test.mjs: session-start.sh run twice with the same HOME — a sane greeting both times, star-ask appearing on the first eligible run and never again.",
+      "proofs": [
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/hook-battery.test.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -182,10 +265,18 @@
       "stage": "hook-fire under stress — four stdin regimes (valid JSON, empty EOF, 1MB garbage, held-open stdin past the declared timeout) under an external process-group watchdog",
       "user-state": "fresh-home",
       "classification": "ci",
-      "evidence": "ci.yml#check & ci.yml#windows-unit — tests/unit/selfcheck-battery.test.mjs: every hooks.json registration is driven through the real shim under all four stdin regimes; a genuinely hung hook is caught and killed by the process-group watchdog (an in-process timer cannot catch it).",
+      "evidence": "developer-qa.yml#full-unit-diagnostics — tests/unit/selfcheck-battery.test.mjs: every hooks.json registration is driven through the real shim under all four stdin regimes; a genuinely hung hook is caught and killed by the process-group watchdog (an in-process timer cannot catch it).",
       "proofs": [
-        { "workflow": "ci.yml", "job": "check", "path": "tests/unit/selfcheck-battery.test.mjs" },
-        { "workflow": "ci.yml", "job": "windows-unit", "path": "tests/unit/selfcheck-battery.test.mjs" }
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/selfcheck-battery.test.mjs"
+        },
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/selfcheck-battery.test.mjs"
+        }
       ],
       "owner": null
     },
@@ -197,8 +288,14 @@
       "stage": "coexistence — our hooks must run alongside a stranger's own hooks (slow/failing/garbage-printing, before AND after ours) without ever executing theirs or altering their config",
       "user-state": "populated-home",
       "classification": "ci",
-      "evidence": "ci.yml#check — tests/unit/selfcheck-battery.test.mjs coexistence suite: foreign hook registrations are enumerated and never executed.",
-      "proofs": [{ "workflow": "ci.yml", "job": "check", "path": "tests/unit/selfcheck-battery.test.mjs" }],
+      "evidence": "developer-qa.yml#full-unit-diagnostics — tests/unit/selfcheck-battery.test.mjs coexistence suite: foreign hook registrations are enumerated and never executed.",
+      "proofs": [
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/selfcheck-battery.test.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -208,13 +305,9 @@
       "artifact": "kb bundle (a REAL ~736MB downloaded + npm-installed brain, not a stub)",
       "stage": "first-query — the core-capability battery must run for real, and a skip (absent brain, or cold embedder model) must become a HARD FAILURE, never a silent green",
       "user-state": "fresh-home (fresh CI runner)",
-      "classification": "ci",
-      "evidence": "ci.yml#warm-brain — plugin/test/run-tests.mjs's capability battery, run with REQUIRE_BRAIN=1 against a real installed brain (ADR-058 D1); the SAME lane's mutant proof lives at ci.yml#check (tests/integration/require-brain-lane.mjs), which points RUVNET_BRAIN_KB at a deliberately empty dir.",
-      "proofs": [
-        { "workflow": "ci.yml", "job": "warm-brain", "path": "plugin/test/run-tests.mjs" },
-        { "workflow": "ci.yml", "job": "check", "path": "tests/integration/require-brain-lane.mjs" }
-      ],
-      "owner": null
+      "classification": "manual",
+      "evidence": "No committed workflow provisions the real brain bundle and runs plugin/test/run-tests.mjs with REQUIRE_BRAIN=1; the developer diagnostic lane only proves the brain-independent path.",
+      "owner": "Stuart Kerr"
     },
     {
       "id": "S17",
@@ -224,8 +317,14 @@
       "stage": "install — the fast PR lane's non-fatal counterpart to S16: a fresh runner with no brain bundle must SKIP loudly, never silently, and must stay exit 0",
       "user-state": "fresh-home",
       "classification": "ci",
-      "evidence": "ci.yml#check — npm test (plugin/test/run-tests.mjs): the core-capability battery prints \"CORE CAPABILITY BATTERY SKIPPED\" and stays exit 0 when REQUIRE_BRAIN is unset, the honest counterpart to S16's hard failure.",
-      "proofs": [{ "workflow": "ci.yml", "job": "check", "path": "plugin/test/run-tests.mjs" }],
+      "evidence": "developer-qa.yml#full-unit-diagnostics — npm test (plugin/test/run-tests.mjs): the core-capability battery prints \"CORE CAPABILITY BATTERY SKIPPED\" and stays exit 0 when REQUIRE_BRAIN is unset, the honest counterpart to S16's hard failure.",
+      "proofs": [
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "plugin/test/run-tests.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -236,10 +335,18 @@
       "stage": "install — native skills must be self-contained and visible through the real Codex plugin loader, and no shipped file may leak a developer's real home-directory path (the second defect ADR-051 found alongside issue #42)",
       "user-state": "fresh-home",
       "classification": "ci",
-      "evidence": "integration-linux.yml#integration — tests/integration/codex-skill-discovery.test.mjs installs the local marketplace into an isolated Codex home and proves brain-console + whats-new are discovered without broken sibling references; ci.yml#check — tests/unit/codex-wiring.test.mjs proves the retired skill.toml surface is absent and zero shipped files under .codex/ or plugin/ contain a real /Users/<account>/ path.",
+      "evidence": "integration-linux.yml#integration — tests/integration/codex-skill-discovery.test.mjs installs the local marketplace into an isolated Codex home and proves brain-console + whats-new are discovered without broken sibling references; developer-qa.yml#full-unit-diagnostics — tests/unit/codex-wiring.test.mjs proves the retired skill.toml surface is absent and zero shipped files under .codex/ or plugin/ contain a real /Users/<account>/ path.",
       "proofs": [
-        { "workflow": "integration-linux.yml", "job": "integration", "path": "tests/integration/codex-skill-discovery.test.mjs" },
-        { "workflow": "ci.yml", "job": "check", "path": "tests/unit/codex-wiring.test.mjs" }
+        {
+          "workflow": "integration-linux.yml",
+          "job": "integration",
+          "path": "tests/integration/codex-skill-discovery.test.mjs"
+        },
+        {
+          "workflow": "developer-qa.yml",
+          "job": "full-unit-diagnostics",
+          "path": "tests/unit/codex-wiring.test.mjs"
+        }
       ],
       "owner": null
     },
@@ -252,7 +359,13 @@
       "user-state": "populated-home",
       "classification": "ci",
       "evidence": "integration-linux.yml#integration — tests/integration/uninstall-footprint.test.mjs exercises the real --uninstall path and its footprint.",
-      "proofs": [{ "workflow": "integration-linux.yml", "job": "integration", "path": "tests/integration/uninstall-footprint.test.mjs" }],
+      "proofs": [
+        {
+          "workflow": "integration-linux.yml",
+          "job": "integration",
+          "path": "tests/integration/uninstall-footprint.test.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -264,7 +377,13 @@
       "user-state": "fresh-home",
       "classification": "ci",
       "evidence": "stranger-matrix.yml#macos — scripts/ci/stranger-scenario.mjs installs the packed candidate into a virgin HOME, runs the assembled `--local` bundle path, verifies the installed package and Claude registries contain no automatic Brain hooks, and proves a seeded-broken bundle exits non-zero on macos-latest.",
-      "proofs": [{ "workflow": "stranger-matrix.yml", "job": "macos", "path": "scripts/ci/stranger-scenario.mjs" }],
+      "proofs": [
+        {
+          "workflow": "stranger-matrix.yml",
+          "job": "macos",
+          "path": "scripts/ci/stranger-scenario.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -277,11 +396,31 @@
       "classification": "ci",
       "evidence": "stranger-matrix.yml#ubuntu/#macos/#windows-gitbash/#windows-powershell/#hostile — scripts/ci/stranger-scenario.mjs drives the real installer with `--local` against a freshly assembled directory on every matrix surface; healthy must prove automatic-hook retirement, seeded-broken must fail.",
       "proofs": [
-        { "workflow": "stranger-matrix.yml", "job": "ubuntu", "path": "scripts/ci/stranger-scenario.mjs" },
-        { "workflow": "stranger-matrix.yml", "job": "macos", "path": "scripts/ci/stranger-scenario.mjs" },
-        { "workflow": "stranger-matrix.yml", "job": "windows-gitbash", "path": "scripts/ci/stranger-scenario.mjs" },
-        { "workflow": "stranger-matrix.yml", "job": "windows-powershell", "path": "scripts/ci/stranger-scenario.mjs" },
-        { "workflow": "stranger-matrix.yml", "job": "hostile", "path": "scripts/ci/stranger-scenario.mjs" }
+        {
+          "workflow": "stranger-matrix.yml",
+          "job": "ubuntu",
+          "path": "scripts/ci/stranger-scenario.mjs"
+        },
+        {
+          "workflow": "stranger-matrix.yml",
+          "job": "macos",
+          "path": "scripts/ci/stranger-scenario.mjs"
+        },
+        {
+          "workflow": "stranger-matrix.yml",
+          "job": "windows-gitbash",
+          "path": "scripts/ci/stranger-scenario.mjs"
+        },
+        {
+          "workflow": "stranger-matrix.yml",
+          "job": "windows-powershell",
+          "path": "scripts/ci/stranger-scenario.mjs"
+        },
+        {
+          "workflow": "stranger-matrix.yml",
+          "job": "hostile",
+          "path": "scripts/ci/stranger-scenario.mjs"
+        }
       ],
       "owner": null
     },
@@ -294,7 +433,13 @@
       "user-state": "hostile-path",
       "classification": "ci",
       "evidence": "stranger-matrix.yml#hostile — scripts/ci/stranger-scenario.mjs installs into `/tmp/virgin home`, with sh only, jq/gh absent, proxy-blackholed network, and exercises healthy, seeded-broken, and strict-ungrounded outcomes.",
-      "proofs": [{ "workflow": "stranger-matrix.yml", "job": "hostile", "path": "scripts/ci/stranger-scenario.mjs" }],
+      "proofs": [
+        {
+          "workflow": "stranger-matrix.yml",
+          "job": "hostile",
+          "path": "scripts/ci/stranger-scenario.mjs"
+        }
+      ],
       "owner": null
     },
     {
@@ -306,7 +451,13 @@
       "user-state": "fresh-home",
       "classification": "scheduled-live-probe",
       "evidence": "published-surface-probe.yml#probe — nightly (cron '17 7 * * *', never on push) scripts/published-surface-probe.mjs: resolves the npm packument + dist-tags.latest, fetches a real byte range of the published tarball and asserts gzip magic, then INSTALLS AND EXECUTES `npx -y ruvnet-brain@latest --help` from the registry, and finally checks releases/latest carries ruvnet-brain.zip above a truncation floor, that its download URL serves the API-declared byte count, and that the .zip.sha256 sidecar is a well-formed 64-hex digest. RED when the package is unpublished, the tarball is not a gzip, the published CLI exits non-zero or prints someone else's help, the Release asset is missing/truncated/unfetchable, or the sidecar is malformed. A rate-limited or unreachable network is UNKNOWN (exit 4) and still red — never green-because-we-could-not-look. Every OTHER scenario in this list runs against the source checkout, which is a different artifact from the one a user receives; only a schedule can catch a surface that died without a commit.",
-      "proofs": [{ "workflow": "published-surface-probe.yml", "job": "probe", "path": "scripts/published-surface-probe.mjs" }],
+      "proofs": [
+        {
+          "workflow": "published-surface-probe.yml",
+          "job": "probe",
+          "path": "scripts/published-surface-probe.mjs"
+        }
+      ],
       "owner": null
     },
     {

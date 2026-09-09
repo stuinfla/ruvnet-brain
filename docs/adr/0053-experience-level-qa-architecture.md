@@ -3,9 +3,9 @@ id: ADR-053
 title: Experience-level QA — test the journey a user actually has, on every host, OS, and install path
 status: Accepted
 date: 2026-07-26
-updated: 2026-09-07
+updated: 2026-09-09
 version: 1.1.0
-reviewed_digest: 951b7750a27a
+reviewed_digest: a5aa86ebf57b
 authors: [Stuart Kerr, Claude Code]
 tags: [qa, testing, experience, cross-platform, codex, agentic-qe, ci]
 supersedes: []
@@ -22,6 +22,7 @@ governs:
 # ADR-053: Experience-level QA
 
 ## Currency log
+| 2026-09-09 | Reviewed the experience scenario and CI contract after the North Star D2/D1 repairs; the 24-scenario report and the exact REQUIRE_BRAIN lane remain aligned with this decision. | Source digest a5aa86ebf57b; tests/experience/scenarios.json; tests/experience/report.mjs; .github/workflows/ci.yml. |
 | 2026-09-07 | Reviewed full macOS unit qualification and reconciled public verification ordering with ADR-072; source digest 951b7750a27a. | `.github/workflows/ci.yml`; exact-SHA hosted and public results remain pending. |
 | 2026-08-31 | Reconciled the Windows unit lane after the hosted process fix added a cross-platform external watchdog; the complete unit surface remains unchanged and now invokes Vitest through Node for shell-independent execution. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
 

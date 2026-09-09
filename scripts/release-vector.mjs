@@ -111,9 +111,15 @@ export const INVARIANTS = [
       if (!exists('scripts/doc-currency.mjs')) return { state: 'FAIL', why: 'no document-currency gate' };
       const corpus = run('npx', ['vitest', 'run', 'tests/regression/interface-gate-corpus.test.mjs', '--reporter=dot']);
       if (corpus.state !== 'PASS') return { ...corpus, why: `interface corpus: ${corpus.why}` };
-      const currency = run('node', ['scripts/doc-currency.mjs', '--check'], 180_000);
+      // Historical currency debt is reported by the corpus-wide report, but it must not block a
+      // candidate that did not touch those documents. The push/release policy is the existing
+      // source-bound --changed check; use the explicit release base when CI supplies one and fall
+      // back to origin/main for the protected candidate boundary. A missing base is a hard failure
+      // inside doc-currency rather than an implicit full-corpus timeout.
+      const base = process.env.RELEASE_BASE_SHA || process.env.QA_BASE_SHA || 'origin/main';
+      const currency = run('node', ['scripts/doc-currency.mjs', '--check', '--changed', base], 180_000);
       return currency.state === 'PASS'
-        ? { state: 'PASS', why: 'interface incident corpus and document currency both exit 0' }
+        ? { state: 'PASS', why: `interface incident corpus and document currency both exit 0 (changed base ${base})` }
         : { ...currency, why: `document currency: ${currency.why}` };
     },
   },

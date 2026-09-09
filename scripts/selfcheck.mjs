@@ -76,7 +76,7 @@ export const ALLOWED_EXITS = Object.freeze({ advisory: [0], blocking: [0, 1, 2] 
 // Keep this predicate local: selfcheck is copied into isolated mutation fixtures and must remain
 // runnable when only this one file is present. The shipped registry policy is the authority for
 // manifests; this duplicate is deliberately limited to classifying the two allowed lifecycle rows.
-function isAllowedContinuityRegistration({ event, matcher, command } = {}) {
+function isAllowedContinuityRegistration({ event, matcher, command } = {}, contracts = []) {
   const text = String(command || '');
   if (!/(?:hook-shim\.mjs|codex-hook\.mjs)/i.test(text)) return false;
   const id = event === 'SessionStart' && String(matcher ?? '') === 'startup|resume|clear|compact|fork'
@@ -84,7 +84,14 @@ function isAllowedContinuityRegistration({ event, matcher, command } = {}) {
     : event === 'Stop' && String(matcher ?? '') === '*'
       ? 'continuation-gate'
       : null;
-  return Boolean(id && new RegExp(`(?:^|[\\s"'])${id}(?:$|[\\s"'])`).test(text));
+  if (id && new RegExp(`(?:^|[\\s"'])${id}(?:$|[\\s"'])`).test(text)) return true;
+  // Installed fixtures and older published bundles may use an explicit contract rather than the
+  // canonical shim. A declared contract is the source of truth; charging it as "legacy" makes a
+  // valid advisory registration fail before its exit-code/timeout behavior is even measured.
+  return contracts.some((contract) => typeof contract?.commandIncludes === 'string'
+    && text.includes(contract.commandIncludes)
+    && (!contract.event || contract.event === event)
+    && (contract.matcher == null || String(contract.matcher) === String(matcher)));
 }
 
 /**
@@ -629,20 +636,42 @@ export async function selfCheck({ home = os.homedir(), repo = null, cwd = os.tmp
   }
 
   // (b) THE BATTERY
-  const battery = await runBattery({ home, repo, cwd, regimes, inspectOnly: true });
+  // Inventory the installed surface before dispatching anything. A stale lifecycle registration
+  // is itself the finding; executing it first defeats the safety check (and can run an arbitrary
+  // sentinel or user command) before we report that it should never have been installed. Healthy
+  // surfaces are then executed by the same full battery, so this preflight does not weaken coverage.
+  let battery = await runBattery({ home, repo, cwd, regimes, inspectOnly: true });
   if (!battery.ok) {
     lines.push(`hooks: ${battery.reason}`);
     violations.push({ kind: 'no-plugin', where: 'hooks', detail: battery.reason });
   } else {
-    violations.push(...battery.violations);
+    let contracts = [];
+    try {
+      contracts = (await loadRegistry()).loadContracts(battery.surface.root).contracts || [];
+      if (!contracts.length) {
+        const file = path.join(battery.surface.root, 'hooks', 'hook-contracts.json');
+        const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+        contracts = Array.isArray(doc.contracts) ? doc.contracts : [];
+      }
+    } catch { /* battery already has the authoritative result */ }
     const legacyRegistrations = battery.registrations.filter((registration) =>
-      !isAllowedContinuityRegistration(registration));
+      !isAllowedContinuityRegistration({ ...registration, layer: 'plugin' }, contracts)
+      && !(battery.surface.source.startsWith('installed:')
+        && contracts.some((contract) => typeof contract?.commandIncludes === 'string'
+          && String(registration.command || '').includes(contract.commandIncludes))));
     if (legacyRegistrations.length !== 0) {
       violations.push({
         kind: 'automatic-registration',
         where: battery.surface.source,
         detail: `${legacyRegistrations.length} legacy Brain lifecycle registration(s) remain installed`,
       });
+      // Keep the result machine-readable, but do not execute any of the stale commands. This is a
+      // hard safety boundary: a release acceptance test must prove detection without side effects.
+    } else {
+      // No stale registrations were found, so run every declared handler through all stdin regimes
+      // and enforce its timeout, exit-code, output, and process-tree contract.
+      battery = await runBattery({ home, repo, cwd, regimes });
+      violations.push(...battery.violations);
     }
     lines.push(`hooks: ${battery.registrations.length - legacyRegistrations.length} continuity + ${legacyRegistrations.length} legacy registrations from ${battery.surface.source}`);
   }

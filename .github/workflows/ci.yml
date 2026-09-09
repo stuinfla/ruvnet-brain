@@ -36,6 +36,94 @@ jobs:
           npm run version:check
           npm run release:authority
 
+  # ADR-058 D1: the source-grounding guarantee must execute on a runner that has the exact
+  # candidate's Brain and every embedder its RVF sidecars require.  A REQUIRE_BRAIN token in a
+  # comment is not evidence; this job downloads the checked-in corpus seed, warms the same cache
+  # inspected by plugin/test/run-tests.mjs, and runs the live MCP boundary with the hard flag.
+  warm-brain:
+    name: warm-brain
+    needs: candidate-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install candidate test dependencies
+        run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Restore the source-bound Brain seed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          seed_tag="$(node -p "require('./data/corpus-seed.json').tag")"
+          seed_asset="$(node -p "require('./data/corpus-seed.json').asset")"
+          seed_sha="$(node -p "require('./data/corpus-seed.json').sha256")"
+          seed_bytes="$(node -p "require('./data/corpus-seed.json').bytes")"
+          seed_dir="$RUNNER_TEMP/require-brain-seed"
+          mkdir -p "$seed_dir/extracted"
+          gh release download "$seed_tag" --repo "$GITHUB_REPOSITORY" --pattern "$seed_asset" --dir "$seed_dir"
+          seed="$seed_dir/$seed_asset"
+          test -s "$seed"
+          test "$(sha256sum "$seed" | cut -d' ' -f1)" = "$seed_sha"
+          test "$(stat -c %s "$seed")" = "$seed_bytes"
+          unzip -q "$seed" -d "$seed_dir/extracted"
+          mapfile -t kb_dirs < <(find "$seed_dir/extracted" -type f -name '*.big.rvf' ! -path '*/__MACOSX/*' -printf '%h\n' | LC_ALL=C sort -u)
+          test "${#kb_dirs[@]}" -eq 1
+          echo "RUVNET_BRAIN_KB=${kb_dirs[0]}" >> "$GITHUB_ENV"
+          echo "KB_MODEL_CACHE=$RUNNER_TEMP/require-brain-models" >> "$GITHUB_ENV"
+      - name: Install Brain reader dependencies
+        run: npm ci --prefix "$RUVNET_BRAIN_KB" --no-audit --no-fund --ignore-scripts
+      - name: Ensure the seeded reader has the current runtime dependencies
+        run: |
+          set -euo pipefail
+          # The public seed is immutable and can predate the current reader package contract.
+          # Install the runtime modules into the extracted seed before the live proof; this changes
+          # only the disposable test checkout and cannot alter the signed seed bytes.
+          npm install --prefix "$RUVNET_BRAIN_KB" --no-save --package-lock=false --ignore-scripts \
+            @xenova/transformers@2.17.2 @ruvector/rvf@0.3.4
+          # The immutable seed may carry an older resolver. Give every bundled reader the same
+          # absolute module roots so the worker process and the warm-up probe resolve identical
+          # bytes, regardless of where the seed was unpacked.
+          echo "XENOVA_PATH=$RUVNET_BRAIN_KB/node_modules/@xenova/transformers" >> "$GITHUB_ENV"
+          echo "RVF_MODULE_PATH=$RUVNET_BRAIN_KB/node_modules" >> "$GITHUB_ENV"
+      - name: Explicitly warm every required embedder
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$KB_MODEL_CACHE"
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { createRequire } from 'node:module';
+          import { pathToFileURL } from 'node:url';
+          import { requiredEmbedderModels } from './plugin/test/model-cache.mjs';
+          const modelCache = process.env.KB_MODEL_CACHE;
+          const kb = process.env.RUVNET_BRAIN_KB;
+          const requireFromKb = createRequire(path.join(kb, 'package.json'));
+          const T = await import(pathToFileURL(requireFromKb.resolve('@xenova/transformers')).href);
+          T.env.localModelPath = modelCache;
+          T.env.cacheDir = modelCache;
+          T.env.allowRemoteModels = true;
+          for (const model of requiredEmbedderModels(process.env.RUVNET_BRAIN_KB)) {
+            await T.pipeline('feature-extraction', model, { quantized: true });
+          }
+          NODE
+      - name: Live source-grounding guarantee
+        env:
+          REQUIRE_BRAIN: '1'
+          RUVNET_QE_LIVE: '1'
+        run: |
+          npx vitest run --config tests/qe/gpt56/vitest.config.mjs \
+            tests/qe/gpt56/live-brain-search.test.mjs --reporter=dot
+
   release-acceptance-linux:
     needs: candidate-preflight
     runs-on: ubuntu-latest

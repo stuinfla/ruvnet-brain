@@ -444,6 +444,56 @@ export function listDocs(root, dirs = DEFAULT_DIRS) {
   return out;
 }
 
+// A changed-scope check must discover its documents before doing the expensive git-derived
+// evaluation.  The declarations are intentionally read from the document itself here; resolving
+// every governed blob and caller for every historical document defeats the purpose of --changed.
+// This matcher mirrors the supported declaration shapes (literal paths and the simple * / ** /
+// ? globs used in this repository) and is conservative for directory declarations.
+function declarationIntersectsTouched(declaration, touched) {
+  let pattern = String(declaration || '').trim().replace(/^\.\//, '');
+  if (!pattern) return false;
+  const directory = pattern.endsWith('/');
+  pattern = pattern.replace(/\/+$/, '');
+  if (!/[*?\[\]]/.test(pattern)) {
+    return [...touched].some((file) => file === pattern || (directory && file.startsWith(`${pattern}/`)));
+  }
+  let source = '^';
+  for (let i = 0; i < pattern.length; i += 1) {
+    const char = pattern[i];
+    if (char === '*' && pattern[i + 1] === '*') {
+      source += '.*';
+      i += 1;
+    } else if (char === '*') source += '[^/]*';
+    else if (char === '?') source += '[^/]';
+    else if (char === '[') {
+      const end = pattern.indexOf(']', i + 1);
+      if (end > i + 1) {
+        source += pattern.slice(i, end + 1);
+        i = end;
+      } else source += '\\[';
+    } else source += char.replace(/[\\^$+?.()|{}]/g, '\\$&');
+  }
+  const matcher = new RegExp(`${source}$`);
+  return [...touched].some((file) => matcher.test(file));
+}
+
+/**
+ * Return only documents whose own file or governed declaration intersects a candidate diff.
+ * `evaluateDoc` remains the authority for the final derived result; this function only narrows
+ * the set of documents that need that work in a `--changed` check.
+ */
+export function changedDocumentCandidates(root, touched, dirs = DEFAULT_DIRS) {
+  const changed = touched instanceof Set ? touched : new Set(touched || []);
+  return listDocs(root, dirs).filter((rel) => {
+    if (changed.has(rel)) return true;
+    const text = fs.readFileSync(path.join(root, rel), 'utf8');
+    const frontmatter = parseFrontmatter(text);
+    const declared = frontmatter.keys.governs;
+    const governs = Array.isArray(declared) ? declared : declared ? [declared] : [];
+    return governs.some((entry) => declarationIntersectsTouched(entry, changed));
+  });
+}
+
 export function evaluateDoc(root, rel, opts = {}) {
   const { checkWiring = true } = opts;
   const abs = path.join(root, rel);
@@ -858,7 +908,13 @@ export function main(argv = process.argv.slice(2)) {
     if (!base.ok || !base.out) return 1;
     if (base.ok && base.out) driftFloor = base.out.split('\n')[0];
   }
-  const result = evaluate(a.root, { dirs, checkWiring: !a.noWiring, driftFloor });
+  // In check mode, --changed is a candidate gate: narrow the expensive evaluation to documents
+  // that the diff can actually invalidate. Reports remain corpus-wide, while the blocking set
+  // still follows the same Document -> Governed path relationship as changedDocumentScope().
+  const files = touched && a.mode === 'check'
+    ? changedDocumentCandidates(a.root, touched, dirs)
+    : undefined;
+  const result = evaluate(a.root, { dirs, checkWiring: !a.noWiring, driftFloor, files });
 
   let scope = null;
   if (touched) {
