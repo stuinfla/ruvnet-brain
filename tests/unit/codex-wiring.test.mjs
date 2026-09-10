@@ -565,7 +565,7 @@ describe('wireCodexPlugin — install is idempotent, state-driven, and disable-p
       announce: false,
     })).toMatchObject({
       action: 'installed', installed: true, enabled: true,
-      sessionSafety: 'restart-required', restartRequired: true,
+      restartRequired: false,
     });
     expect(calls.map((args) => args.join(' '))).toEqual([
       'plugin list --json',
@@ -574,6 +574,60 @@ describe('wireCodexPlugin — install is idempotent, state-driven, and disable-p
       'plugin add ruvnet-brain@ruvnet-brain --json',
       'plugin list --json',
     ]);
+  });
+
+  it('updates a body-only payload without manufacturing a restart requirement', () => {
+    const home = tmpdir();
+    const codexDir = path.join(home, '.codex');
+    fs.mkdirSync(codexDir, { recursive: true });
+    const installedRoot = path.join(codexDir, 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain', '1.2.2');
+    fs.mkdirSync(path.dirname(installedRoot), { recursive: true });
+    fs.cpSync(path.join(ROOT, 'plugin'), installedRoot, { recursive: true });
+    const manifest = path.join(installedRoot, '.codex-plugin', 'plugin.json');
+    fs.writeFileSync(manifest, fs.readFileSync(manifest, 'utf8').replace(/("version"\s*:\s*)"[^"]+"/, '$1"1.2.2"'));
+    let listedVersion = '1.2.2';
+    const runJson = (args) => {
+      const command = args.join(' ');
+      if (command === 'plugin list --json') return { ok: true, value: { installed: [{
+        pluginId: 'ruvnet-brain@ruvnet-brain', version: listedVersion, installed: true, enabled: true,
+      }] } };
+      if (command === 'plugin marketplace list --json') return { ok: true, value: { marketplaces: [{ name: 'ruvnet-brain' }] } };
+      if (command === 'plugin marketplace upgrade ruvnet-brain --json') return { ok: true, value: {} };
+      if (command === 'plugin add ruvnet-brain@ruvnet-brain --json') { listedVersion = '1.2.3'; return { ok: true, value: {} }; }
+      return { ok: false, error: `unexpected ${command}` };
+    };
+
+    expect(wireCodexPlugin({ codexDir, codexHome: codexDir, expectedVersion: '1.2.3', runJson, announce: false })).toMatchObject({
+      action: 'updated', version: '1.2.3', restartRequired: false, shellChanged: false, shellChangedPaths: [],
+    });
+  });
+
+  it('requests one restart when a boot-level declaration actually changes', () => {
+    const home = tmpdir();
+    const codexDir = path.join(home, '.codex');
+    fs.mkdirSync(codexDir, { recursive: true });
+    const installedRoot = path.join(codexDir, 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain', '1.2.2');
+    fs.mkdirSync(path.dirname(installedRoot), { recursive: true });
+    fs.cpSync(path.join(ROOT, 'plugin'), installedRoot, { recursive: true });
+    const manifest = path.join(installedRoot, '.codex-plugin', 'plugin.json');
+    fs.writeFileSync(manifest, fs.readFileSync(manifest, 'utf8').replace(/("version"\s*:\s*)"[^"]+"/, '$1"1.2.2"'));
+    fs.writeFileSync(path.join(installedRoot, 'hooks', 'hooks.json'), '{"hooks":{"changed":true}}');
+    let listedVersion = '1.2.2';
+    const runJson = (args) => {
+      const command = args.join(' ');
+      if (command === 'plugin list --json') return { ok: true, value: { installed: [{
+        pluginId: 'ruvnet-brain@ruvnet-brain', version: listedVersion, installed: true, enabled: true,
+      }] } };
+      if (command === 'plugin marketplace list --json') return { ok: true, value: { marketplaces: [{ name: 'ruvnet-brain' }] } };
+      if (command === 'plugin marketplace upgrade ruvnet-brain --json') return { ok: true, value: {} };
+      if (command === 'plugin add ruvnet-brain@ruvnet-brain --json') { listedVersion = '1.2.3'; return { ok: true, value: {} }; }
+      return { ok: false, error: `unexpected ${command}` };
+    };
+
+    expect(wireCodexPlugin({ codexDir, codexHome: codexDir, expectedVersion: '1.2.3', runJson, announce: false })).toMatchObject({
+      action: 'updated', version: '1.2.3', restartRequired: true, sessionSafety: 'restart-required',
+      shellChanged: true, shellChangedPaths: ['hooks/hooks.json'],
+    });
   });
 
   it('leaves a user-disabled installation untouched', () => {
