@@ -248,13 +248,19 @@ describe('issue #153 — plugin generations are retained without trustworthy ses
     expect(r.cleanupBlocked.length).toBeGreaterThan(0);
   });
 
-  it('keeps legacy generations for 14 days, then collects them', () => {
+  it('keeps legacy generations after the grace period when no liveness lease exists', () => {
     const { cache, registryPath } = layout({ versions: [GEN_B, GEN_C], activeVersions: [GEN_C] });
     const old = path.join(cache, GEN_B);
     const day = 24 * 60 * 60 * 1000;
     fs.writeFileSync(path.join(old, '.orphaned_at'), '1000');
     expect(prunePluginGenerations({ registryPath, apply: true, now: () => 1000 + 14 * day - 1 }).removed).toEqual([]);
-    expect(prunePluginGenerations({ registryPath, apply: true, now: () => 1000 + 14 * day }).removed).toEqual([GEN_B]);
+    const result = prunePluginGenerations({ registryPath, apply: true, now: () => 1000 + 14 * day });
+    expect(result.removed).toEqual([]);
+    expect(result.cleanupBlocked).toEqual([{
+      version: GEN_B,
+      reason: 'legacy generation has no liveness lease; refusing destructive cleanup',
+    }]);
+    expect(fs.existsSync(old)).toBe(true);
   });
 
   it('retains everything when the registry changes at the destructive boundary', () => {

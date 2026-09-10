@@ -673,8 +673,8 @@ export async function unzipInto(zipPath, cacheDir, sourceDir = null) {
  * Registry reachability identifies candidates; it is not deletion proof. Claude freezes
  * CLAUDE_PLUGIN_ROOT at session start, so an unregistered generation can remain live until that
  * session exits. Modern roots expose `.in_use` PID-incarnation leases. Live or ambiguous leases
- * retain the complete root; dead leases are collected. Legacy roots without the protocol receive
- * a 14-day compatibility grace.
+ * retain the complete root; dead leases are collected. Legacy roots without the protocol are
+ * retained indefinitely because a frozen host session is not observable without a lease.
  *
  * WHAT MAKES DELETION SAFE HERE, since this removes directories from someone's machine:
  *   • The registry is the ONLY authority. Unreadable, missing, or naming no ruvnet-brain install →
@@ -786,7 +786,11 @@ export function prunePluginGenerations({
       continue;
     }
 
-    if (!leaseCapable && now() - orphanedAt < graceMs) continue;
+    if (!leaseCapable) {
+      if (now() - orphanedAt < graceMs) continue;
+      cleanupBlocked.push({ version: candidate.version, reason: 'legacy generation has no liveness lease; refusing destructive cleanup' });
+      continue;
+    }
     let safeToReap = true;
     for (const leaseName of leaseNames) {
       const leasePath = path.join(leaseDir, leaseName);
@@ -2915,29 +2919,82 @@ function missingUpdaterHelp(kbDir) {
   console.error(`  — the current bundle ships forge-update.mjs; then this command will work.`);
 }
 
-function acquireHostConvergenceLock(lockPath) {
-  try {
-    fs.mkdirSync(lockPath);
-    fs.writeFileSync(path.join(lockPath, 'owner.json'), JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
-    return { acquired: true, release: () => fs.rmSync(lockPath, { recursive: true, force: true }) };
-  } catch (error) {
-    if (error?.code !== 'EEXIST') return { acquired: false, error: error.message };
+export function acquireHostConvergenceLock(lockPath, {
+  staleMs = 5 * 60 * 1000,
+  now = () => Date.now(),
+  processAlive = (pid, owner) => {
+    if (owner?.host && owner.host !== os.hostname()) return true;
+    try { process.kill(pid, 0); return true; }
+    catch (error) { return error?.code !== 'ESRCH'; }
+  },
+} = {}) {
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  const token = crypto.randomBytes(16).toString('hex');
+  const owner = {
+    pid: process.pid,
+    host: os.hostname(),
+    token,
+    startedAt: new Date(now()).toISOString(),
+  };
+  const publish = () => {
     try {
-      const owner = JSON.parse(fs.readFileSync(path.join(lockPath, 'owner.json'), 'utf8'));
-      if (Number.isInteger(owner.pid) && owner.pid !== process.pid) {
-        try { process.kill(owner.pid, 0); return { acquired: false, error: `another host synchronization is running (pid ${owner.pid})` }; }
-        catch (probeError) { if (probeError?.code !== 'ESRCH') return { acquired: false, error: 'another host synchronization owns the lock' }; }
+      // mkdir is the exclusive operation. The owner write follows it, but an incomplete
+      // directory is treated as busy until the stale threshold; no contender may reclaim it in
+      // that publication window. This avoids rename-over-empty-directory replacement on macOS.
+      fs.mkdirSync(lockPath, { recursive: false });
+      fs.writeFileSync(path.join(lockPath, 'owner.json'), JSON.stringify(owner), { flag: 'wx', mode: 0o600 });
+      return true;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      return false;
+    }
+  };
+  const release = () => {
+    const quarantine = `${lockPath}.release-${process.pid}-${token}`;
+    try {
+      const current = JSON.parse(fs.readFileSync(path.join(lockPath, 'owner.json'), 'utf8'));
+      if (current?.token !== token) return false;
+      fs.renameSync(lockPath, quarantine);
+      const moved = JSON.parse(fs.readFileSync(path.join(quarantine, 'owner.json'), 'utf8'));
+      if (moved?.token !== token) {
+        try { fs.renameSync(quarantine, lockPath); } catch { /* preserve evidence if another writer won */ }
+        return false;
       }
-    } catch { /* an incomplete lock is safe to reclaim */ }
-    fs.rmSync(lockPath, { recursive: true, force: true });
+      fs.rmSync(quarantine, { recursive: true, force: true });
+      return true;
+    } catch { return false; }
+  };
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      fs.mkdirSync(lockPath);
-      fs.writeFileSync(path.join(lockPath, 'owner.json'), JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
-      return { acquired: true, release: () => fs.rmSync(lockPath, { recursive: true, force: true }) };
-    } catch (retryError) {
-      return { acquired: false, error: retryError.message };
+      if (publish()) return { acquired: true, release };
+    } catch (error) {
+      return { acquired: false, error: error.message };
+    }
+
+    let existing;
+    let lockAge = 0;
+    try {
+      const stat = fs.statSync(lockPath);
+      lockAge = Math.max(0, now() - stat.mtimeMs);
+      existing = JSON.parse(fs.readFileSync(path.join(lockPath, 'owner.json'), 'utf8'));
+    } catch { /* an incomplete lock is handled below, with a grace period */ }
+    if (existing && Number.isInteger(existing.pid) && processAlive(existing.pid, existing)) {
+      return { acquired: false, error: `another host synchronization is running (pid ${existing.pid})` };
+    }
+    if (!existing && lockAge < staleMs) {
+      return { acquired: false, error: 'another host synchronization is publishing its lock' };
+    }
+    const quarantine = `${lockPath}.reclaim-${process.pid}-${token}-${attempt}`;
+    try {
+      fs.renameSync(lockPath, quarantine);
+      fs.rmSync(quarantine, { recursive: true, force: true });
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue;
+      return { acquired: false, error: `host synchronization lock changed concurrently: ${error.message}` };
     }
   }
+  return { acquired: false, error: 'host synchronization lock changed concurrently' };
 }
 
 export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
@@ -2995,9 +3052,18 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   if (!fs.existsSync(apply)) return fail({ error: 'Stable Spine updater missing from package' });
   const applied = runStableSpine(apply);
   const okApplied = !applied.error && applied.status === 0;
+  const codexReceipt = {
+    state: results.codex?.action === 'disabled' ? 'disabled' : (results.codexHost?.host ? 'ready' : 'absent'),
+    version: results.codex?.version || null,
+  };
+  if (results.codex?.restartRequired === true) {
+    codexReceipt.restartRequired = true;
+    codexReceipt.sessionSafety = results.codex.sessionSafety || null;
+    codexReceipt.sessionSafetyReason = results.codex.sessionSafetyReason || null;
+  }
   if (okApplied) {
     // ISSUE #153 — a running host may freeze an old plugin root. Reclaim only generations whose
-    // modern leases prove no live consumer, or legacy generations past the compatibility grace.
+    // modern leases prove no live consumer; legacy roots without that proof stay on disk.
     try {
       const gens = prunePluginGenerations({ apply: true });
       if (gens.retired?.length) {
@@ -3028,7 +3094,7 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
         verifiedAt: new Date().toISOString(),
         hosts: {
           claude: { state: results.claude.host ? 'ready' : 'absent', version: results.claude.version || null },
-          codex: { state: results.codex?.action === 'disabled' ? 'disabled' : (results.codexHost?.host ? 'ready' : 'absent'), version: results.codex?.version || null },
+          codex: codexReceipt,
         },
         consoleRuntime: results.consoleRuntime,
       }, null, 2));
@@ -3043,7 +3109,7 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
     desiredVersion: PACKAGE_VERSION,
     hosts: {
       claude: { state: results.claude.host ? 'ready' : 'absent', version: results.claude.version || null },
-      codex: { state: results.codex?.action === 'disabled' ? 'disabled' : (results.codexHost?.host ? 'ready' : 'absent'), version: results.codex?.version || null },
+      codex: codexReceipt,
     },
     consoleRuntime: results.consoleRuntime,
   });
@@ -3061,7 +3127,11 @@ export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSI
   }
   const hostStates = Object.values(receipt.hosts || {});
   const badHost = hostStates.find((host) => !['ready', 'disabled', 'absent'].includes(host?.state)
-    || (host.state === 'ready' && !versionSatisfies(host.version, expectedVersion)));
+    || (host.state === 'ready' && !versionSatisfies(host.version, expectedVersion))
+    || (host.state === 'ready' && host.restartRequired === true));
+  if (badHost?.restartRequired === true) {
+    return { healthy: false, state: 'host-restart-required', action: badHost.sessionSafetyReason || 'restart the host, then re-run --doctor' };
+  }
   if (badHost) return { healthy: false, state: 'host-pending', action: 're-run host synchronization' };
   if (receipt.consoleRuntime?.state !== 'ready') {
     return { healthy: false, state: receipt.consoleRuntime?.state || 'console-unproven', action: 'restart Console, then re-run --doctor' };
