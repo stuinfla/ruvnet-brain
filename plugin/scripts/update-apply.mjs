@@ -41,6 +41,8 @@ import { fileURLToPath } from 'node:url';
 // check on every .sh it was about to install — the platform most likely to receive a broken hook
 // was the one platform that never checked. Git-for-Windows bash can run `bash -n` perfectly well.
 import { resolveBash } from './hook-shim-bash.mjs';
+import { SHELL_PATHS, shellDiff } from './host-shell-boundary.mjs';
+export { SHELL_PATHS, shellDiff } from './host-shell-boundary.mjs';
 
 const BRAIN_HOME = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
 const ACTIVE = path.join(BRAIN_HOME, 'active.json');
@@ -212,38 +214,6 @@ function promote(staging, version) {
 // the update is fully live with no restart and session-start stays silent; if any did, the ONE
 // honest nag fires (the release classifier computes the same thing publish-side; this is the
 // client-side truth for locally-applied generations). Red-team finding 18's client half.
-export const SHELL_PATHS = [
-  'hooks/hooks.json',
-  'scripts/hook-shim.mjs',
-  'scripts/hook-shim-bash.mjs',
-  'scripts/development-maintenance.mjs',
-  'mcp/server.mjs',
-  '.mcp.json',
-];
-
-function treeDigest(root, relative) {
-  const target = path.join(root, relative);
-  let stat;
-  try { stat = fs.lstatSync(target); } catch { return '<missing>'; }
-  if (stat.isSymbolicLink()) return '<symlink>';
-  if (stat.isFile()) return `file:${crypto.createHash('sha256').update(fs.readFileSync(target)).digest('hex')}`;
-  if (!stat.isDirectory()) return `<special:${stat.mode}>`;
-  const entries = fs.readdirSync(target, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
-  return `dir:${entries.map((entry) => `${entry.name}:${treeDigest(target, entry.name)}`).join('|')}`;
-}
-
-export function shellDiff(prevRootAbs, nextRootAbs) {
-  const changed = [];
-  for (const rel of SHELL_PATHS) {
-    if (treeDigest(prevRootAbs, rel) !== treeDigest(nextRootAbs, rel)) changed.push(rel);
-  }
-  // skills/ and commands/ are boot-loaded markdown: any file-set or content difference counts.
-  for (const dir of ['skills', 'commands']) {
-    if (treeDigest(prevRootAbs, dir) !== treeDigest(nextRootAbs, dir)) changed.push(`${dir}/`);
-  }
-  return changed;
-}
-
 function flip(version, codeRootAbs, why) {
   const prev = readJSON(ACTIVE);
   const prevRootAbs = prev?.codeRoot ? (path.isAbsolute(prev.codeRoot) ? prev.codeRoot : path.join(BRAIN_HOME, prev.codeRoot)) : null;

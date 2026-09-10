@@ -67,6 +67,7 @@ const versionSatisfies = (installed, expected) => {
 import {
   CONSOLE_RUNTIME_SURFACE, CONSOLE_RUNTIME_IDENTITY_FILE, consoleRuntimeDigest,
 } from '../scripts/console-runtime-identity.mjs';
+import { shellDiff as pluginShellDiff } from '../plugin/scripts/host-shell-boundary.mjs';
 
 // SEC-0010 #6 — the Ed25519 PUBLIC key is EMBEDDED here (not a separate file) so the installer's
 // trust root travels with the installer code itself: an attacker who swaps the downloaded bundle
@@ -1182,6 +1183,55 @@ export function claudePluginStatus({ home = os.homedir() } = {}) {
   }
 }
 
+// A plugin version can change without changing anything a running host freezes at boot. Compare
+// the actual installed payload with this candidate before updating it so body-only releases do not
+// manufacture a restart requirement. Unknown paths fail closed: if we cannot prove the boundary,
+// the caller must retain the restart notice rather than silently promise hot loading.
+function inspectPluginShellBoundary(installedRoot, candidateRoot = path.join(REPO_ROOT, 'plugin')) {
+  if (!installedRoot || !candidateRoot) {
+    return { known: false, changed: true, paths: [], restartRequired: true, reason: 'plugin boot surface could not be located' };
+  }
+  try {
+    const paths = pluginShellDiff(installedRoot, candidateRoot);
+    return {
+      known: true,
+      changed: paths.length > 0,
+      paths,
+      restartRequired: paths.length > 0,
+      reason: paths.length ? `boot-level declarations changed: ${paths.join(', ')}` : 'body-only plugin update',
+    };
+  } catch (error) {
+    return { known: false, changed: true, paths: [], restartRequired: true,
+      reason: `plugin boot surface comparison failed: ${error.message}` };
+  }
+}
+
+function codexInstalledPluginRoot({ codexHome = codexHomeDir(), status } = {}) {
+  const row = status?.row || {};
+  for (const value of [status?.installPath, status?.path, row.installPath, row.path]) {
+    if (typeof value === 'string' && value) {
+      try {
+        const real = fs.realpathSync(value);
+        if (fs.statSync(real).isDirectory()) return real;
+      } catch { /* try the cache scan below */ }
+    }
+  }
+  const cacheRoot = path.join(codexHome, 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain');
+  let candidates = [];
+  try {
+    candidates = fs.readdirSync(cacheRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(cacheRoot, entry.name))
+      .filter((dir) => {
+        try {
+          const manifest = JSON.parse(fs.readFileSync(path.join(dir, '.codex-plugin', 'plugin.json'), 'utf8'));
+          return manifest?.name === 'ruvnet-brain' && (!status?.version || manifest.version === status.version);
+        } catch { return false; }
+      });
+  } catch { /* absent cache is handled as unknown below */ }
+  return candidates.sort().at(-1) || null;
+}
+
 function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false } = {}) {
   step(
     'Wiring the Claude Code plugin',
@@ -1204,6 +1254,9 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
 
   const before = claudePluginStatus();
   if (requireManaged && !before.managed) return { host: false, wired: false, action: 'unmanaged' };
+  const shellBoundary = before.installed
+    ? inspectPluginShellBoundary(before.installPath)
+    : { known: true, changed: false, paths: [], restartRequired: false, reason: 'new host installation' };
   const addedMarket = before.managed
     ? tryRun('claude', ['plugin', 'marketplace', 'update', 'ruvnet-brain'])
     : tryRun('claude', ['plugin', 'marketplace', 'add', marketplaceSource]);
@@ -1224,8 +1277,18 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
   const installedHookRetirement = claudeInstalledHookRetirementStatus({ plugin: installed });
   if (installed.installed && versionSatisfies(installed.version, expectedVersion) && installedHookRetirement.ok) {
     ok(`plugin installed at user scope (global, alongside Ruflo / RuVector) — exact version ${installed.version}`);
-    info(`  commands available after a restart: ${c.bold('/rvbc')}, ${c.bold('/ruvnet-brain:configure')}`);
-    return { host: true, wired: true, version: installed.version, manualMarketplace, manualInstall };
+    if (shellBoundary.restartRequired) {
+      warn(`boot-level plugin declarations changed; restart Claude Code once to load them (${shellBoundary.paths.join(', ') || shellBoundary.reason}).`);
+    } else if (before.installed && before.version !== installed.version) {
+      info('  body-only update: the Stable Spine is live on the next hook/MCP call; no restart is required.');
+    }
+    info(`  commands available${shellBoundary.restartRequired ? ' after a restart' : ' immediately'}: ${c.bold('/rvbc')}, ${c.bold('/ruvnet-brain:configure')}`);
+    return {
+      host: true, wired: true, version: installed.version, manualMarketplace, manualInstall,
+      shellChanged: shellBoundary.changed, shellChangedPaths: shellBoundary.paths,
+      restartRequired: shellBoundary.restartRequired,
+      ...(shellBoundary.restartRequired ? { sessionSafety: 'restart-required', sessionSafetyReason: shellBoundary.reason } : {}),
+    };
   }
 
   // The honest failure. The brain still WORKS — this is the difference between a broken install and
@@ -1654,6 +1717,7 @@ export function codexPluginStatus(options = {}) {
     installed: Boolean(row?.installed),
     enabled: Boolean(row?.enabled),
     version: row?.version || null,
+    installPath: row?.installPath || row?.path || null,
     row: row || null,
   };
 }
@@ -1691,9 +1755,22 @@ export function wireCodexPlugin({
     if (announce) warn(`Codex Brain plugin is installed but disabled by user or policy — left disabled (${CODEX_PLUGIN_ID}).`);
     return { host: true, action: 'disabled', ...before };
   }
+  // An existing Codex session can keep the plugin generation it loaded at boot. Compare the
+  // installed bytes with the source candidate before mutating the marketplace so body-only updates
+  // remain live while a changed/unknown boot surface gets one explicit restart request.
+  const shellBoundary = before.installed
+    ? inspectPluginShellBoundary(
+      codexInstalledPluginRoot({ codexHome, status: before }),
+      path.join(REPO_ROOT, 'plugin'),
+    )
+    : { known: true, changed: false, paths: [], restartRequired: false, reason: 'new host installation' };
   if (before.installed && before.enabled && versionSatisfies(before.version, expectedVersion)) {
     if (announce) ok(`Codex Brain plugin already installed and enabled (${before.version || 'version unknown'}) — no changes.`);
-    return { host: true, action: 'unchanged', ...before };
+    return {
+      host: true, action: 'unchanged', ...before,
+      shellChanged: shellBoundary.changed, shellChangedPaths: shellBoundary.paths,
+      restartRequired: false,
+    };
   }
 
   if (runJson === runCodexJson && !localMarketplace) {
@@ -1735,17 +1812,23 @@ export function wireCodexPlugin({
   }
   if (announce) {
     ok(`Codex Brain plugin installed and enabled (${after.version || 'version unknown'}).`);
-    warn('Existing Codex app-server sessions may retain the previous plugin path; restart Codex before using the updated plugin.');
+    if (shellBoundary.restartRequired) {
+      warn(`boot-level plugin declarations changed; restart Codex once to load them (${shellBoundary.paths.join(', ') || shellBoundary.reason}).`);
+    } else if (before.installed && before.version !== after.version) {
+      info('  body-only update: the Stable Spine is live on the next hook/MCP call; no restart is required.');
+    }
   }
   return {
     host: true,
     action: before.installed ? 'updated' : 'installed',
     ...after,
-    // Codex currently exposes no generation/session lease API. This explicit guard prevents the
-    // installer from implying that a native cache update is safe for an already-running session.
-    sessionSafety: 'restart-required',
-    restartRequired: true,
-    sessionSafetyReason: 'Codex host cache generations are owned by Codex and have no lease API',
+    shellChanged: shellBoundary.changed,
+    shellChangedPaths: shellBoundary.paths,
+    restartRequired: shellBoundary.restartRequired,
+    ...(shellBoundary.restartRequired ? {
+      sessionSafety: 'restart-required',
+      sessionSafetyReason: shellBoundary.reason,
+    } : {}),
   };
 }
 
@@ -2802,7 +2885,7 @@ function reportVersionDrift(cacheDir) {
   if (!state.drift) return state;
   warn(`the brain (${c.bold(state.kb)}) and the Claude Code plugin (${c.bold(state.wrapper)}) have drifted apart —`);
   info(`that's normal (they update on separate schedules) and neither one is broken. To bring the`);
-  info(`plugin up to date:  ${c.bold('claude plugin marketplace update ruvnet-brain')}  ${c.dim('(then restart Claude Code)')}`);
+  info(`plugin up to date:  ${c.bold('claude plugin marketplace update ruvnet-brain')}  ${c.dim('(body updates go live without a restart; boot-surface changes are called out)')}`);
   return state;
 }
 
@@ -3061,6 +3144,15 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
     codexReceipt.sessionSafety = results.codex.sessionSafety || null;
     codexReceipt.sessionSafetyReason = results.codex.sessionSafetyReason || null;
   }
+  const claudeReceipt = {
+    state: results.claude.host ? 'ready' : 'absent',
+    version: results.claude.version || null,
+  };
+  if (results.claude?.restartRequired === true) {
+    claudeReceipt.restartRequired = true;
+    claudeReceipt.sessionSafety = results.claude.sessionSafety || null;
+    claudeReceipt.sessionSafetyReason = results.claude.sessionSafetyReason || null;
+  }
   if (okApplied) {
     // ISSUE #153 — a running host may freeze an old plugin root. Reclaim only generations whose
     // modern leases prove no live consumer; legacy roots without that proof stay on disk.
@@ -3093,7 +3185,7 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
         desiredVersion: PACKAGE_VERSION,
         verifiedAt: new Date().toISOString(),
         hosts: {
-          claude: { state: results.claude.host ? 'ready' : 'absent', version: results.claude.version || null },
+          claude: claudeReceipt,
           codex: codexReceipt,
         },
         consoleRuntime: results.consoleRuntime,
@@ -3108,7 +3200,7 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   const convergence = classifyHostConvergence({
     desiredVersion: PACKAGE_VERSION,
     hosts: {
-      claude: { state: results.claude.host ? 'ready' : 'absent', version: results.claude.version || null },
+      claude: claudeReceipt,
       codex: codexReceipt,
     },
     consoleRuntime: results.consoleRuntime,
@@ -4871,10 +4963,8 @@ function success({ cacheDir, isCustom, plugin, codexHost, codexPlugin, env, nigh
   console.log(`\n  ${c.bold('Keep it fresh:')} re-run ${c.bold('npx ruvnet-brain')} any time — the brain itself always pulls the latest`);
   console.log(`  Release regardless (that part isn't cached). For the bleeding-edge installer too, use ${c.bold('npx github:stuinfla/ruvnet-brain')}.`);
 
-  // Hosts cache plugin registries for the lifetime of a session. A restart is therefore required to
-  // unload callbacks from an older hook-bearing generation even though this version registers none.
-  console.log(`\n  ${c.yellow(c.bold('One required cleanup step:'))} restart any ${hostLabel} window that was open before this update.`);
-  console.log(`  ${c.dim('That unloads the old in-memory hook registry; new sessions load the intentional empty registry.')}`);
+  console.log(`\n  ${c.bold('Updates take effect:')} body-only releases go live on the next hook/MCP call without a restart.`);
+  console.log(`  ${c.dim('If boot-level declarations change, the installer names the affected host and requests one restart.')}`);
 
   // ── what to do now ──
   console.log(`\n  ${c.bold('What to do now:')}`);
@@ -4982,8 +5072,8 @@ Env:
                         download or an air-gapped machine is not a broken install). Only ever set
                         this for a locked-down environment where you want to know immediately.
 
-It is safe to re-run at any time. After updating from a hook-bearing version, restart open hosts so
-their old in-memory hook registries unload.
+It is safe to re-run at any time. Body updates go live on the next hook/MCP call. Restart only when
+the installer reports that boot-level declarations changed.
 `);
 }
 

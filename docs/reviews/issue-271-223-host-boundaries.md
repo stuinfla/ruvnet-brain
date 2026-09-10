@@ -1,4 +1,4 @@
-Updated: 2026-09-09 21:40:44 EDT | Version 1.0.1
+Updated: 2026-09-09 22:42:00 EDT | Version 1.0.2
 Created: 2026-09-09 21:40:44 EDT
 
 # Host update boundaries for issues 271 and 223
@@ -21,13 +21,13 @@ session remains required only when boot-level declarations changed.
 ## Issue 223: Codex generation leases
 
 Codex owns its native plugin cache and the current installer API exposes no session
-generation lease or safe deletion callback. Brain therefore does not delete Codex
-cache generations or claim that an in-process update is safe. After a native Codex
-plugin install/update, the result is explicitly marked `sessionSafety:
-restart-required` and `restartRequired: true` in the convergence receipt; the
-classifier keeps the host non-converged until Codex restarts. Restart Codex before
-using the new plugin. This is the concrete guarded behavior until Codex exposes a
-lease API.
+generation lease or safe deletion callback. The installer now compares the exact
+installed payload against the candidate before an update. Body-only changes are
+marked `restartRequired: false` and become available on the next hook/MCP call.
+Only a changed or unlocatable boot surface is marked `sessionSafety:
+restart-required` and `restartRequired: true`; the convergence classifier keeps
+that host pending until one restart. This is the guarded behavior until Codex
+exposes a lease API.
 
 The regression test in `tests/unit/codex-wiring.test.mjs` asserts this boundary and
 the unchanged-install behavior. It does not prove Codex's private cache behavior,
