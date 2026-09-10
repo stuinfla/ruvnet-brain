@@ -29,7 +29,7 @@ describe('issue #77 installed host convergence boundary', () => {
       sourceRoot: ROOT,
       brainHome,
       wireClaude: () => ({ host: true, wired: true, version: VERSION }),
-      wireCodexHost: () => ({ host: true, wired: true }),
+      wireCodexHost: () => ({ host: true, wired: true, action: 'unchanged' }),
       wireCodexPlugin: () => ({ action: 'updated', installed: true, enabled: true, version: VERSION }),
       runStableSpine: () => ({ status: 0, error: undefined }),
     });
@@ -86,6 +86,25 @@ describe('issue #77 installed host convergence boundary', () => {
     expect(install.classifyHostConvergence(receipt)).toMatchObject({
       healthy: false,
       state: 'pending-console-restart',
+    });
+  });
+
+  it('keeps a native Codex update explicitly non-converged until Codex restarts', () => {
+    const receipt = {
+      desiredVersion: VERSION,
+      hosts: {
+        claude: { state: 'absent', version: null },
+        codex: {
+          state: 'ready', version: VERSION, restartRequired: true,
+          sessionSafety: 'restart-required', sessionSafetyReason: 'Codex host cache has no lease API',
+        },
+      },
+      consoleRuntime: { state: 'ready', runtimeVersion: VERSION },
+    };
+    expect(install.classifyHostConvergence(receipt)).toEqual({
+      healthy: false,
+      state: 'host-restart-required',
+      action: 'Codex host cache has no lease API',
     });
   });
 });

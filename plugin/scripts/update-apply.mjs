@@ -41,6 +41,8 @@ import { fileURLToPath } from 'node:url';
 // check on every .sh it was about to install — the platform most likely to receive a broken hook
 // was the one platform that never checked. Git-for-Windows bash can run `bash -n` perfectly well.
 import { resolveBash } from './hook-shim-bash.mjs';
+import { SHELL_PATHS, shellDiff } from './host-shell-boundary.mjs';
+export { SHELL_PATHS, shellDiff } from './host-shell-boundary.mjs';
 
 const BRAIN_HOME = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
 const ACTIVE = path.join(BRAIN_HOME, 'active.json');
@@ -212,22 +214,6 @@ function promote(staging, version) {
 // the update is fully live with no restart and session-start stays silent; if any did, the ONE
 // honest nag fires (the release classifier computes the same thing publish-side; this is the
 // client-side truth for locally-applied generations). Red-team finding 18's client half.
-const SHELL_PATHS = ['hooks/hooks.json', 'scripts/hook-shim.mjs', 'mcp/server.mjs', '.mcp.json'];
-function shellDiff(prevRootAbs, nextRootAbs) {
-  const changed = [];
-  for (const rel of SHELL_PATHS) {
-    const a = (() => { try { return fs.readFileSync(path.join(prevRootAbs, rel), 'utf8'); } catch { return null; } })();
-    const b = (() => { try { return fs.readFileSync(path.join(nextRootAbs, rel), 'utf8'); } catch { return null; } })();
-    if (a !== b) changed.push(rel);
-  }
-  // skills/ and commands/ are boot-loaded markdown: any file-set or content difference counts.
-  for (const dir of ['skills', 'commands']) {
-    const list = (root) => { try { return fs.readdirSync(path.join(root, dir), { recursive: true }).sort().join('|'); } catch { return ''; } };
-    if (list(prevRootAbs) !== list(nextRootAbs)) changed.push(`${dir}/`);
-  }
-  return changed;
-}
-
 function flip(version, codeRootAbs, why) {
   const prev = readJSON(ACTIVE);
   const prevRootAbs = prev?.codeRoot ? (path.isAbsolute(prev.codeRoot) ? prev.codeRoot : path.join(BRAIN_HOME, prev.codeRoot)) : null;
@@ -239,6 +225,15 @@ function flip(version, codeRootAbs, why) {
     previous: prev ? { generation: prev.generation, version: prev.version, codeRoot: prev.codeRoot } : null,
     shellChanged: shellChanged.length > 0,
     shellChangedPaths: shellChanged,
+    // Keep the first boot-level change attached to subsequent body-only generations. A host that
+    // still booted the pre-change generation must not lose the restart signal merely because a
+    // later update changed only implementation code.
+    shellChangedSinceVersion: shellChanged.length > 0
+      ? (prev?.version || version)
+      : (prev?.shellChangedSinceVersion || null),
+    shellChangedAtVersion: shellChanged.length > 0
+      ? version
+      : (prev?.shellChangedAtVersion || null),
     flippedAt: new Date().toISOString(),
   };
   writeAtomic(TXN, JSON.stringify({ state: 'flipping', from: prev?.version ?? null, to: version }));
@@ -446,4 +441,4 @@ function main() {
   }
 }
 
-process.exit(main());
+if (process.env.RUVNET_BRAIN_IMPORT_ONLY !== 'update-shell-test') process.exit(main());

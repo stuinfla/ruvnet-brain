@@ -248,6 +248,19 @@ const announceVersion = ({ running, off, stateDir, consoleInvoke, emit }) => {
   write(announced, `${running}\n`);
 };
 
+const compareVersions = (a, b) => {
+  const left = String(a).split(/[.-]/).map((part) => (/^\d+$/.test(part) ? Number(part) : part));
+  const right = String(b).split(/[.-]/).map((part) => (/^\d+$/.test(part) ? Number(part) : part));
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    const x = left[i] ?? 0;
+    const y = right[i] ?? 0;
+    if (x === y) continue;
+    if (typeof x === 'number' && typeof y === 'number') return x - y;
+    return String(x) < String(y) ? -1 : 1;
+  }
+  return 0;
+};
+
 const stableSpine = ({ env, hookDir, stateDir, home, pluginVersion, emit, now }) => {
   const activeFile = path.join(stateDir, 'active.json');
   const stamp = path.join(stateDir, '.last-update-check');
@@ -270,7 +283,11 @@ const stableSpine = ({ env, hookDir, stateDir, home, pluginVersion, emit, now })
     }
   } else {
     const active = json(activeFile);
-    if (active?.shellChanged && pluginVersion && active.version && active.version !== pluginVersion) {
+    const shellBoundary = active?.shellChangedAtVersion;
+    const shellChangedBeforeHost = shellBoundary && pluginVersion
+      ? compareVersions(pluginVersion, shellBoundary) < 0
+      : false;
+    if ((active?.shellChanged || shellChangedBeforeHost) && pluginVersion && active.version && active.version !== pluginVersion) {
       emit(`[RuvNet Brain — v${active.version} changed boot-level declarations (the rare case); this session booted v${pluginVersion}'s]`);
       const host = env.RUVNET_HOOK_HOST || 'claude';
       const convergence = json(path.join(stateDir, 'host-convergence.json'));
@@ -371,6 +388,8 @@ export async function runSessionStart({
       || s.startsWith('[RuvNet Brain — grounding not yet PROVEN')
       || s.startsWith('The last check (')
       || s.startsWith('[RuvNet Brain — update available')
+      || s.startsWith('[RuvNet Brain — v')
+      || s.startsWith('Tell the user ONE line: "🧠 RuvNet Brain v')
       || s.startsWith('[RuvNet Brain — brain OFF by your setting')
       || s.startsWith('[RuvNet Brain — new in v')
       || s.startsWith('[RuvNet Brain — first session initialized]')

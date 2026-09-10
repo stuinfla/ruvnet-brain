@@ -70,7 +70,7 @@ const argv = process.argv.slice(2);
  * every entry on every run, below, so they cannot rot unseen.
  */
 const STANDALONE = [
-  ['gate', 'retired automatic-hook helper retained for explicit use and tests'],
+  ['gate', 'retired automatic-hook helper and manual benchmark retained for explicit human use; no workflow or scheduler invokes this expensive command'],
   ['dream-issue-gate', 'pure Dream Cycle disposition policy; invoked by the external issue adapter, never a GitHub writer'],
   ['sync-census', 'explicit maintainer census writer; a destructive source-to-surface refresh is never scheduled'],
   ['sync-commands', 'explicit maintainer alias synchronizer; run deliberately before release, never from a lifecycle hook'],
@@ -105,8 +105,6 @@ const STANDALONE = [
     + 'stops at sealed preparation with contents:read. This entry validates receipt/archive inputs '
     + 'and delegates mutation to release.mjs protected authority. No operational caller is registered; '
     + 'classification does not claim publication works or has occurred'],
-  ['gate', 'manual benchmark harness: rebuilds concepts and runs three routing proof batteries; '
-    + 'no workflow or scheduler invokes this expensive command'],
   ['execution-preflight', 'external orchestration boundary — invoked by the host before consequential Ruflo/Codex execution; no in-repo caller exists because the host supplies the live Brain and AgentDB receipts'],
   ['fix-workstream', 'session-supervised coordination CLI run explicitly by the integration owner or an '
     + 'isolated writing agent to start and hand off a fix lane. Scheduling it would violate its safety '
