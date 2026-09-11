@@ -612,6 +612,28 @@ describe('GPT-5.6-Sol REJECT → hardened: channel binding, fail-closed producer
     expect(r.stdout).toBe('');   // nonzero exit → untrustworthy output → discarded, never a fragment
   });
 
+  it('BREAK IT: a producer that HANGS past the deadline is killed, and the turn survives as silence', () => {
+    // The failure this pins is not "slow" — it is a wedged producer taking the TURN with it. The
+    // runtime gives all producers ONE global deadline and fails closed on a signalled child, so a
+    // hang must resolve to exit 0 with byte-empty stdout, not to a timeout the host has to break.
+    // Deliberately a REAL hang (sleep 30) against a short deadline, measured at the process
+    // boundary: a mocked timer would prove the mock, not the kill.
+    const cand = JSON.stringify({ channel: 'alarm', effect: 'advisory', copy: 'FROM A WEDGED PRODUCER', hookEventName: 'UserPromptSubmit' });
+    const p = path.join(dir, 'hang.sh');
+    fs.writeFileSync(p, `#!/bin/bash\nprintf '%s\\n' '${cand}'\nsleep 30\n`);
+    fs.chmodSync(p, 0o755);
+    const started = Date.now();
+    const r = fireRuntime('UserPromptSubmit', {
+      producers: [{ argv: ['/bin/bash', p], feedStdin: true, channels: ['alarm'] }],
+      env: { RUVNET_UNPROMPTED_TIMEOUT_MS: '1500' },   // deliberately BELOW the 45s outer spawn timeout
+    });
+    const elapsed = Date.now() - started;
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe('');     // a signalled child's output is untrustworthy → discarded whole
+    // MAGNITUDE, not direction: the runtime's own deadline fired, not the harness's kill 45s later.
+    expect(elapsed).toBeLessThan(15000);
+  });
+
   it('BREAK IT: a 900KB copy is CAPPED to 8192 and delivered WHOLE (size cap + synchronous write)', () => {
     const cand = JSON.stringify({ channel: 'alarm', effect: 'advisory', copy: 'X'.repeat(900000), hookEventName: 'UserPromptSubmit' });
     const candFile = path.join(dir, 'big.json');

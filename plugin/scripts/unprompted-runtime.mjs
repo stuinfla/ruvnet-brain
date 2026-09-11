@@ -48,6 +48,17 @@
 //               stdout — an opted-in refusal is never swallowed.
 //   alarm     → always delivered. Not gated by anything. Silence here = a broken install looking healthy.
 //
+// WHO ACTUALLY READS THE ADVISORY PATH — a precision this file's own wording keeps blurring, and the
+// blur causes a real authoring mistake. "User-facing bytes" is right about OWNERSHIP (these are the
+// only bytes that leave the hook) and wrong about AUDIENCE on the advisory path: `additionalContext`
+// is injected into the MODEL's context window, not printed to the user's terminal. So an advisory
+// `copy` that reads as finished user-facing prose produces a sentence the user never sees and a model
+// that may or may not paraphrase it. An advisory candidate should be written as ONE INSTRUCTION TO
+// THE MODEL, with any user-facing sentence quoted inside it (see advocacy-route.mjs for the shape).
+// The BLOCK path is different and unchanged: exit 2's stderr becomes the refusal the user is shown.
+// Consequence for measurement: a test at this boundary proves CANDIDATE DELIVERED. Whether the user
+// ever saw a sentence is the model's behaviour and is only observable in a real-host run.
+//
 // DELIVERY (the runtime writes the final envelope to the REAL streams, itself):
 //   advisory → exit 0, stdout = {"hookSpecificOutput":{"hookEventName":…, "additionalContext":…}}.
 //   block    → exit 2, reason on stderr, stdout byte-empty.
