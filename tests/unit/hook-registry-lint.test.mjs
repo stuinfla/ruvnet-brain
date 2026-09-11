@@ -95,8 +95,9 @@ import path from 'node:path';
 import { continuationProjectIdentity } from '../../plugin/scripts/continuation-objective.mjs';
 import {
   buildRegistry, discoverSources, census, lintM1, lintM3, lintM5, lintAllowlistStale, lintM6,
-  matchedTools, isAnchored, hasFailsafe, mesh, OFF_BEHAVIORS, codexDispatchIdIn,
+  matchedTools, isAnchored, hasFailsafe, mesh, OFF_BEHAVIORS, codexDispatchIdIn, shimTable,
 } from '../../scripts/hook-registry.mjs';
+import { continuityContractIds, continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const SHIM = path.join(REPO, 'plugin/scripts/hook-shim.mjs');
@@ -189,10 +190,23 @@ describe('the merged census — six registries, not one', () => {
 
   it('enumerates every registry this repo owns and proves only continuity is registered', () => {
     const REQUIRED = ['layer', 'file', 'locator', 'event', 'matcher', 'command', 'timeout', 'mode', 'offBehavior', 'reachesStrangers'];
-    expect(repoReg.records).toHaveLength(4);
-    expect(repoReg.records.map((r) => r.handler).sort()).toEqual([
-      'continuation-gate.mjs', 'continuation-gate.mjs', 'session-start-core.mjs', 'session-start-core.mjs',
-    ]);
+    // DERIVED FROM THE POLICY, not from a remembered count. This assertion held the number 4 and
+    // the four handler names, so it measured the size of the plane rather than the property worth
+    // holding: every shipped registration is one the policy declares, and every declared one ships.
+    // hook-shim.mjs's own dispatch table is the authority on which FILE an id runs, so the
+    // expectation resolves through it rather than restating four filenames a rename would orphan.
+    const table = shimTable(REPO);
+    const handlerFor = (id) => {
+      const entry = table[id];
+      expect(entry, `hook-shim.mjs declares no route for '${id}'`).toBeTruthy();
+      return entry.file;
+    };
+    const expectedHandlers = [
+      ...continuityRegistrations('claude').map((s) => handlerFor(s.id)),
+      ...continuityRegistrations('codex').map((s) => handlerFor(s.id)),
+    ].sort();
+    expect(repoReg.records).toHaveLength(expectedHandlers.length);
+    expect(repoReg.records.map((r) => r.handler).sort()).toEqual(expectedHandlers);
     for (const r of repoReg.records) {
       for (const k of REQUIRED) expect(Object.keys(r), `${r.layer} ${r.locator} missing ${k}`).toContain(k);
       expect(r.locator, 'a locator with no line number cannot point anybody at anything').toMatch(/:\d+$/);
@@ -301,7 +315,7 @@ describe('the merged census — six registries, not one', () => {
 
     const codexRecs = mesh(repoReg.records).filter((r) => r.layer === 'codex');
     const declared = declaredRegistrationCount(codex.file);
-    expect(declared).toBe(2);
+    expect(declared).toBe(continuityRegistrations('codex').length);
     expect(codexRecs).toHaveLength(declared);
     // Non-vacuous resolution: every codex record's dispatch id hits hook-shim.mjs's table, so
     // handler/mode/offBehavior come from the SAME declared contract Claude Code uses — not nulls
@@ -348,10 +362,8 @@ describe('mesh invariants over the layers this repo OWNS (must stay clean — th
     // An amnesty list that outlives the thing it excused is how a ratchet turns into permission.
     const f = lintAllowlistStale(repoReg.records, repoReg.matcherAllowlist);
     expect(f, `stale allowlist entr(ies):\n  ${show(f)}`).toEqual([]);
-    expect(repoReg.matcherAllowlist.map((a) => `${a.layer}:${a.event}:${a.matcher}`).sort()).toEqual([
-      'plugin:SessionStart:startup|resume|clear|compact|fork',
-      'plugin:Stop:*',
-    ]);
+    expect(repoReg.matcherAllowlist.map((a) => `${a.layer}:${a.event}:${a.matcher}`).sort())
+      .toEqual([...new Set(continuityRegistrations().map((s) => `plugin:${s.event}:${s.matcher}`))].sort());
     for (const a of repoReg.matcherAllowlist) {
       expect(a.reason, `allowlist entry ${a.layer}/${a.event}/${a.matcher} has no reason`).toBeTruthy();
       expect(a.retiredBy, `allowlist entry ${a.layer}/${a.event}/${a.matcher} names no exit condition`).toBeTruthy();
@@ -364,18 +376,27 @@ describe('mesh invariants over the layers this repo OWNS (must stay clean — th
     for (const r of mesh(repoReg.records)) expect(OFF_BEHAVIORS).toContain(r.offBehavior);
   });
 
-  it('M6 — the two continuity contracts are explicit and the matcher allowlist stays empty', () => {
+  it('M6 — every continuity contract is explicit and matches the enforcing policy', () => {
     const doc = JSON.parse(fs.readFileSync(path.join(REPO, 'plugin/hooks/hook-contracts.json'), 'utf8'));
-    expect(doc.contracts.map((c) => c.id).sort()).toEqual(['continuation-gate', 'session-start']);
-    expect(doc.matcherAllowlist).toHaveLength(2);
+    expect(doc.contracts.map((c) => `${c.event}:${c.id}`).sort()).toEqual(continuityContractIds().sort());
+    expect(doc.matcherAllowlist).toHaveLength(
+      new Set(continuityRegistrations().map((s) => `${s.event}:${s.matcher}`)).size);
+    // The file must also still SAY what the plane is, in a form a reader can check against the code.
+    expect(doc._version).toBeGreaterThanOrEqual(4);
+    expect(doc._eventOwners.map((row) => `${row.event}:${row.owner}`).sort()).toEqual(continuityContractIds().sort());
   });
 
-  it('has exactly one guarded Stop registration per shipped host', () => {
+  it('registers the guarded Stop continuation on both hosts, and Stop capture where it is proven', () => {
     const stops = mesh(repoReg.records).filter((r) => r.event === 'Stop');
     const byLayer = new Map();
     for (const s of stops) byLayer.set(s.layer, [...(byLayer.get(s.layer) ?? []), `${s.locator} ${s.handler}`]);
     expect([...byLayer.keys()].sort()).toEqual(['codex', 'plugin']);
-    expect(stops).toHaveLength(2);
+    // The policy is the authority on how many Stop handlers each host carries — Codex Stop DELIVERY
+    // was not observed by the 2026-09-11 probe, so Codex Stop carries the continuation gate only.
+    const expectedStops = continuityRegistrations('claude').filter((s) => s.event === 'Stop').length
+      + continuityRegistrations('codex').filter((s) => s.event === 'Stop').length;
+    expect(stops).toHaveLength(expectedStops);
+    expect(byLayer.get('codex')).toHaveLength(1);
   });
 });
 

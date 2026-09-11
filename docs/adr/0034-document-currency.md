@@ -3,9 +3,9 @@ id: ADR-034
 title: A document's status is a claim about code — derive it, stamp it with something you cannot type from memory
 status: Proposed
 date: 2026-07-22
-updated: 2026-09-07
-version: 1.1.1
-reviewed_digest: aad901b08c28
+updated: 2026-09-11
+version: 1.2.0
+reviewed_digest: bf6225c58ce2
 impl: wired
 governs:
   - scripts/doc-currency.mjs
@@ -18,10 +18,23 @@ relates: [ADR-009, ADR-020, ADR-024, ADR-030]
 
 **Status**: Proposed
 
-## Current implementation boundary — reviewed 2026-09-05 18:48 EDT
+## Current implementation boundary — reviewed 2026-09-11
 
 The decision below retains its historical proposal and incident record. It is not a claim that
 every proposed invariant is implemented. The current authority is `scripts/doc-currency.mjs`:
+
+- **CODE DRIFTED, 2026-09-11.** Commit `00526b12` ("retire automatic hooks") gutted
+  `scripts/git-hooks/pre-push` from 169 lines to a 5-line delegator that runs ONLY
+  `scripts/development-push-check.mjs` (a credential scan) — it no longer calls
+  `scripts/doc-currency.mjs` at all. §6's claim below, *"The push boundary is
+  `scripts/git-hooks/pre-push`,"* and the bullet earlier in this section naming "the actual
+  pre-push hook," describe a mechanism that no longer exists for a local `git push`. The
+  currency decision itself is not abandoned: enforcement moved to the EDIT boundary
+  (`plugin/scripts/adr-currency-gate.mjs`, governed by ADR-067) and to the release-qualification
+  boundary (`scripts/release-vector.mjs --changed`, governed by ADR-058), both of which still call
+  `scripts/doc-currency.mjs` directly (confirmed by reading both files, 2026-09-11). `governs:`
+  keeps `scripts/git-hooks/pre-push` so a future regression there is still tracked by this ADR, but
+  this document no longer claims that file is where the check runs.
 
 - Implementation is derived per governed path and the weakest member wins, not the original
   at-least-one-member formula in §2. A caller reference is reachability evidence, not execution proof.
@@ -339,12 +352,16 @@ what is true, and is why the resolution is a verification pass — not an edit.
 ### 6. The gate: blocks four things, warns about everything else
 
 The original proposal named `plugin/scripts/doc-currency-gate.sh`; that shell gate was never built.
-The push boundary is `scripts/git-hooks/pre-push` under ADR-056. The existing edit boundary is
-`plugin/scripts/adr-currency-gate.mjs`: **exit 0 = allow · exit 2 = BLOCK · FAILS OPEN on unreadable
-or unavailable currency tooling**. It reuses the canonical resolver and blocking findings, selects
-only existing stale debt for the exact edited file, and does not recursively invent directory
-ownership. Superseded-document warnings do not become blocking findings. This describes current
-wiring, not new host activation or acceptance of this Proposed decision.
+The push boundary WAS `scripts/git-hooks/pre-push` under ADR-056, until commit `00526b12`
+(2026-09-07) reduced that file to a 5-line delegator that runs only a credential scan — see the
+"CODE DRIFTED, 2026-09-11" note above. The currency check's boundary today is the release
+qualification pass, `scripts/release-vector.mjs --changed <base>` (governed by ADR-058), not a
+local `git push`. The existing edit boundary is `plugin/scripts/adr-currency-gate.mjs`: **exit 0 =
+allow · exit 2 = BLOCK · FAILS OPEN on unreadable or unavailable currency tooling**. It reuses the
+canonical resolver and blocking findings, selects only existing stale debt for the exact edited
+file, and does not recursively invent directory ownership. Superseded-document warnings do not
+become blocking findings. This describes current wiring, not new host activation or acceptance of
+this Proposed decision.
 
 **BLOCKS** — only where the check is mechanical, the false-positive rate is zero, and the fix takes
 seconds:
@@ -414,6 +431,7 @@ profile check, and it holds here for the same reason.
 
 ## Currency log
 
+| 2026-09-11 | Currency review at commit 2eef2024: code drifted, corrected in the text above (not the status). `scripts/git-hooks/pre-push` no longer calls `scripts/doc-currency.mjs` — commit `00526b12` reduced it to a credential-only scan; the currency decision itself survives, relocated to `plugin/scripts/adr-currency-gate.mjs` (edit-time, ADR-067) and `scripts/release-vector.mjs --changed` (release-time, ADR-058). | Reviewed `scripts/doc-currency.mjs` and `scripts/git-hooks/pre-push`; also read `scripts/development-push-check.mjs`, `plugin/scripts/adr-currency-gate.mjs`, and `scripts/release-vector.mjs` to confirm where enforcement actually runs now. reviewed_digest bf6225c58ce2. |
 | 2026-09-05 | Reviewed source aad901b08c28; findings recorded, not semantic verification. | `scripts/doc-currency.mjs` and `scripts/git-hooks/pre-push` were fully examined by the assigned audit reviewer; root inspected the implementation/review/drift paths and tested the integrated changes. The current-boundary section records unimplemented claim-ledger validation and default-policy differences. This review closes only missing-review inference, not those implementation gaps. |
 
 | 2026-09-05 | Corrected the description of the implemented boundary and added source-bound review semantics. | `scripts/doc-currency.mjs` derives weakest-member implementation and independently evaluates review, drift, and verification. `tests/unit/doc-currency-review.test.mjs` proves dirty edits alone do not clear drift, real byte-bound reviews expire, and implementation overclaims still block. The proposal's unimplemented claim-ledger, CLI, and default-warning claims are disclosed above. |

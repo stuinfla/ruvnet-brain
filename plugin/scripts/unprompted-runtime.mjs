@@ -48,6 +48,17 @@
 //               stdout — an opted-in refusal is never swallowed.
 //   alarm     → always delivered. Not gated by anything. Silence here = a broken install looking healthy.
 //
+// WHO ACTUALLY READS THE ADVISORY PATH — a precision this file's own wording keeps blurring, and the
+// blur causes a real authoring mistake. "User-facing bytes" is right about OWNERSHIP (these are the
+// only bytes that leave the hook) and wrong about AUDIENCE on the advisory path: `additionalContext`
+// is injected into the MODEL's context window, not printed to the user's terminal. So an advisory
+// `copy` that reads as finished user-facing prose produces a sentence the user never sees and a model
+// that may or may not paraphrase it. An advisory candidate should be written as ONE INSTRUCTION TO
+// THE MODEL, with any user-facing sentence quoted inside it (see advocacy-route.mjs for the shape).
+// The BLOCK path is different and unchanged: exit 2's stderr becomes the refusal the user is shown.
+// Consequence for measurement: a test at this boundary proves CANDIDATE DELIVERED. Whether the user
+// ever saw a sentence is the model's behaviour and is only observable in a real-host run.
+//
 // DELIVERY (the runtime writes the final envelope to the REAL streams, itself):
 //   advisory → exit 0, stdout = {"hookSpecificOutput":{"hookEventName":…, "additionalContext":…}}.
 //   block    → exit 2, reason on stderr, stdout byte-empty.
@@ -140,8 +151,18 @@ const BASH = resolveBash();
 const ANTICIPATE = { argv: [BASH, path.join(SCRIPTS_DIR, 'anticipate.sh')], feedStdin: true, channels: ['advocacy', 'promotion'] };
 const lesson = (subEvent) => ({ argv: [BASH, path.join(SCRIPTS_DIR, 'lesson-hooks.sh'), subEvent], feedStdin: true, channels: ['lesson'] });
 
+// THE RECOMMENDATION PRODUCER (advocacy-route.mjs). It answers a DIFFERENT question from anticipate:
+// anticipate asks "what is installed here and switched OFF?", the route asks "what does rUv already
+// ship that would materially help THIS ordinary request?" — the second is unreachable through the
+// first, because anticipate's SILENCE RULE 1 makes an 'absent' capability silent by design and
+// goal-match.mjs's GLOBAL_VETO rejects `customers`/`production`/`deploy` prompts outright.
+// It is bound to the advocacy channel ONLY: it can never emit a lesson block or an alarm.
+// process.execPath, not 'node' — the same reason resolveBash() exists: a PATH lookup that fails on
+// one host is a producer that is dead there and indistinguishable from "nothing to say".
+const ADVOCACY_ROUTE = { argv: [process.execPath, path.join(SCRIPTS_DIR, 'advocacy-route.mjs')], feedStdin: true, channels: ['advocacy'] };
+
 const BUILTIN_REGISTRY = {
-  'UserPromptSubmit': [ANTICIPATE, lesson('UserPromptSubmit')],
+  'UserPromptSubmit': [ANTICIPATE, ADVOCACY_ROUTE, lesson('UserPromptSubmit')],
   'PreToolUse-write': [lesson('PreToolUse-write')],
   'PreToolUse-bash':  [lesson('PreToolUse-bash')],
   'PreToolUse-push':  [lesson('PreToolUse-push')],

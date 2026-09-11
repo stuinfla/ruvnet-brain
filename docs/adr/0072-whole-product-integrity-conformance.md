@@ -3,8 +3,9 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-07
-version: 1.1.1
+updated: 2026-09-11
+version: 1.2.0
+reviewed_digest: 2f94ceb4896a
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -38,8 +39,8 @@ governs:
   - scripts/public-verification-finalizer.mjs
   - .github/workflows/ci.yml
   - .github/workflows/corpus-seed.yml
-  - .github/workflows/release-aggregate.yml
   - .github/workflows/protected-release.yml
+  - .github/workflows/release-candidate-preflight.yml
 ---
 
 # ADR-072 — Whole-product integrity is one executable contract
@@ -375,6 +376,7 @@ link actor-specific products/materials and distinguish inspections; [TUF](https:
 defines expiry and rollback defenses. These are design references, not claims of conformance.
 
 ## Currency log
+| 2026-09-11 | Currency review at commit 2eef2024: code drifted in `governs:` only (corrected above, not the status) — `.github/workflows/release-aggregate.yml` was deleted on 2026-09-04 (commit `e6774a39`, "ship reconciled candidate") along with `release-cycle.yml` and `product-integrity-review.yml`, consolidated into the already-governed `protected-release.yml` plus the newly-added `release-candidate-preflight.yml` (the 2026-09-04 row below already describes this consolidation, but `governs:` was never updated, which is why this digest had been permanently uncomputable). Decision unchanged on the 25 substantive drift commits found once the digest could be computed: the 12 touching a core file (outside `bin/install.mjs`/`ci.yml`/`hooks.json`, reviewed under ADR-013/034/049/051/056/070) are narrow verification-machinery precision fixes — UTF-8 stream-boundary decoding (`779edc8a`), deterministic cross-release corpus sampling (`779edc8a`), MCP warmup latency isolation (`8770c8e2`, `4117d9f0`), and an ADDITIONAL `acceptancePolicy`/`searchTiming` check appended to `validatePublicVerificationLeaf()` (`c0234b69`) that makes S-7 stricter, not looser. None weaken any S-1..S-12 acceptance row. | Read all 4 previously-unreviewed core-file diffs in full; confirmed `release-aggregate.yml`'s deletion commit and successor files via `git log --diff-filter=D` and `git show --stat`; cross-checked the remaining 13 drift commits against reviews already completed for ADR-013/034/049/051/054/056/062/070. reviewed_digest 2f94ceb4896a. |
 | 2026-09-07 | Reviewed the installed-update public proof boundary; producer freshness remains UNKNOWN. | `kb/forge-update.mjs` imports signed corpus evidence; `scripts/public-verification-aggregate.mjs` and `scripts/nightly-two-run-proof.mjs` validate raw native consumer evidence. |
 | 2026-09-05 | Corrected the impossible pre-publication public-download deadline and documented the owner's incremental 4.3.10 stabilization milestone without a full-conformance claim. | `scripts/adr-072-completion.mjs` remains unchanged; `scripts/product-integrity-contract.mjs` retains every obligation; `.github/workflows/protected-release.yml` and `scripts/stabilization-receipt.mjs` retain exact candidate, protected publication, and same-transaction public acceptance. `docs/ddd/0018-product-integrity-context.md` distinguishes release disposition from obligation completion. |
 | 2026-09-04 | Reconciled the expedited two-phase rail: long qualification runs once in preflight on `release/**`; protected release imports `release-candidate-<exact SHA>` after the unchanged SHA reaches main, revalidates it, publishes once, and completes public install proof. | `.github/workflows/release-candidate-preflight.yml` and `.github/workflows/protected-release.yml` divide qualification from publication without human run IDs or duplicated long lanes. Fable/Sol review remains change-triggered and only `release-blocker` issues stop publication. |

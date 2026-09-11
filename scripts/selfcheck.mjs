@@ -602,6 +602,10 @@ export async function checkCoexistence({ home = os.homedir(), repo = null } = {}
  * "not available" line and score nothing — a security check that invents a pass is worse than none.
  */
 export function runSecurityScan({ cwd = process.cwd(), timeoutMs = 20000, env = process.env } = {}) {
+  // Every `ruflo` invocation auto-starts a project background daemon unless this is set (verified
+  // live against the installed CLI: ~/.npm-global/lib/node_modules/ruflo/node_modules/@claude-flow/cli/dist/src/services/daemon-autostart.js:85).
+  // A read-only version probe + two scan subcommands have no business leaving a daemon running.
+  env = { ...env, RUFLO_DAEMON_AUTOSTART: '0' };
   const probe = spawnSync('ruflo', ['--version'], { encoding: 'utf8', timeout: 5000, env });
   if (probe.error || probe.status !== 0) {
     return { available: false, reason: 'ruflo not found on PATH — MCP surface not scanned (install: npm i -g ruflo)' };

@@ -14,6 +14,9 @@ const CAPTURE_TRIGGERS = new Set([
   'SubagentStop',
   'PreCompact',
   'SessionEnd',
+  // The EXPLICIT boundary: /ruvnet-brain:checkpoint. It routes through this same function on
+  // purpose — a second writer for "the model wrote its own state" would be a second writer.
+  'checkpoint',
 ]);
 const PLUGIN_JSON = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.claude-plugin', 'plugin.json');
 
