@@ -18,6 +18,7 @@ import { createProgressionSnapshot } from '../../plugin/scripts/project-progress
 import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
 import { restoreProgressionForSession } from '../../plugin/scripts/project-progression-session-start.mjs';
+import { runSessionSnapshotHook } from '../../plugin/scripts/session-snapshot-hook.mjs';
 import { resolveRuflo } from '../../plugin/scripts/ruflo-bin.mjs';
 
 const ruflo = resolveRuflo();
@@ -136,6 +137,74 @@ describe('SessionStart restore semantics', () => {
       env: { ...process.env, CLAUDE_PROJECT_DIR: empty }, cwd: empty, maxOutputBytes: 1,
     })).toMatchObject({ status: 'unknown', severity: 'warning', reason: 'output-bound' });
   }, 300_000);
+
+  /**
+   * THE STAGE BUDGET, HELD BY TEST RATHER THAN BY MEASUREMENT.
+   *
+   * SessionStart's host timeout is 5s. Restore's declared share is 1000ms. A number in a report
+   * decays the moment someone adds a query; a number in an assertion does not. The bound below is
+   * the DECLARED budget, not the measured figure — measured p95 over 12 cold node invocations was
+   * 73ms at six snapshots and 83ms at thirty, so this has ~12x of headroom and still fails loudly if
+   * restore ever goes back to costing one CLI process per row (which measured 2519-3181ms for six).
+   */
+  it('restores a thirty-snapshot journal inside its declared 1000ms stage budget', () => {
+    expect(ruflo, 'global Ruflo is required; this integration must not vacuously skip').toBeTruthy();
+    const project = temporaryProject();
+    const resolution = resolveProjectStore({ projectDir: project });
+    fs.mkdirSync(path.dirname(resolution.canonicalAgentDbPath), { recursive: true });
+    const store = new ProjectProgressionStore({ projectDir: project });
+    let parents = [];
+    for (let sequence = 1; sequence <= 30; sequence += 1) {
+      const snapshot = snapshotFor(resolution, sequence, parents);
+      store.capture(snapshot);
+      parents = [snapshot.eventKey];
+    }
+
+    const samples = [];
+    for (let run = 0; run < 5; run += 1) {
+      const started = Date.now();
+      const result = restore(project);
+      samples.push(Date.now() - started);
+      expect(result.status).toBe('restored');
+      expect(result.context).toContain('goal 30');
+    }
+    const worst = Math.max(...samples);
+    expect(worst, `restore took ${worst}ms over 30 snapshots; samples ${samples.join('/')}`).toBeLessThan(1_000);
+    // And the fast path is what delivered it — a pass on the CLI fallback would be luck, not budget.
+    const resume = JSON.parse(restore(project).context.split('\n').find((line) => line.startsWith('{"schema"')));
+    expect(resume.evidence.readPath).toBe('node:sqlite');
+    expect(resume.evidence.structurallyEnumerated).toBe(30);
+    console.info(JSON.stringify({ proof: 'restore-stage-budget', snapshots: 30, samplesMs: samples, budgetMs: 1000 }));
+  }, 600_000);
+
+  /**
+   * RETENTION (ADR-073). Three capture boundaries per session, times every session, is unbounded
+   * growth unless a boundary that has nothing new to say writes nothing. Held by test because the
+   * cost of losing it is invisible: the journal simply gets bigger, and nothing fails until a
+   * restore is slow or a store is huge.
+   */
+  it('writes nothing at a boundary where nothing changed, and writes again when something does', () => {
+    expect(ruflo, 'global Ruflo is required; this integration must not vacuously skip').toBeTruthy();
+    const project = temporaryProject();
+    const resolution = resolveProjectStore({ projectDir: project });
+    fs.mkdirSync(path.dirname(resolution.canonicalAgentDbPath), { recursive: true });
+    const payload = (event) => JSON.stringify({ hook_event_name: event, cwd: project, session_id: 'retention' });
+
+    const first = runSessionSnapshotHook(project, 'Stop', { rawInput: payload('Stop'), host: 'claude' });
+    expect(first.progressionCaptured).toBe(true);
+
+    // Same tree, same ledger, same everything — a different trigger is not a different project state.
+    const second = runSessionSnapshotHook(project, 'PreCompact', { rawInput: payload('PreCompact'), host: 'claude' });
+    expect(second.progressionCaptured).toBe(false);
+    expect(second.skipped).toMatch(/^no-op capture/);
+    expect(new ProjectProgressionStore({ projectDir: project }).listSnapshotKeys()).toHaveLength(1);
+
+    // Change the working tree, and the very next boundary captures again.
+    fs.writeFileSync(path.join(project, 'new-file.txt'), 'the tree moved\n');
+    const third = runSessionSnapshotHook(project, 'SessionEnd', { rawInput: payload('SessionEnd'), host: 'claude' });
+    expect(third.progressionCaptured, third.skipped).toBe(true);
+    expect(new ProjectProgressionStore({ projectDir: project }).listSnapshotKeys()).toHaveLength(2);
+  }, 600_000);
 
   it('reports UNAVAILABLE — not UNKNOWN — where there is no continuity question to ask', () => {
     const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'restore-nonproject-')));
