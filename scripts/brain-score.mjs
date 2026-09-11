@@ -108,17 +108,35 @@ function readJson(rel) {
   try { return JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8')); } catch { return null; }
 }
 
-/** Aggregate the multi-vendor panel across whatever stores have actually been graded. */
-function readPanel() {
-  const dir = path.join(ROOT, 'data');
+/**
+ * Aggregate the multi-vendor panel across whatever stores have actually been graded.
+ *
+ * ISSUE #258, measured: staleness was judged from `fs.statSync(file).mtime` — the CHECKOUT's file
+ * modification time, not when the panel was actually graded. A `git clone`/checkout resets every
+ * tracked file's mtime to "now", so a panel graded weeks ago read as freshly current on any new
+ * clone — the exact false-freshness failure this whole gate exists to prevent (see the file header:
+ * "grounded 100/100... recorded 2026-07-10... quoted as current"). Each grader-produced file's own
+ * `summary.generatedAt` (when present) is now preferred; checkout mtime is used only as a fallback
+ * for older panels that predate the stamp, so this cannot regress a panel that never recorded one.
+ * `dir` is overridable so a fixture test can exercise this without touching the real `data/` panel.
+ */
+export function readPanel(dir = path.join(ROOT, 'data')) {
   let files = [];
   try { files = fs.readdirSync(dir).filter((f) => /^grade-.*\.json$/.test(f)); } catch { /* none */ }
-  const rows = files.map((f) => ({ f, j: readJson(path.join('data', f)) })).filter((r) => r.j?.summary);
+  const rows = files.map((f) => {
+    let j = null;
+    try { j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { /* unreadable/absent */ }
+    return { f, j };
+  }).filter((r) => r.j?.summary);
   if (!rows.length) return { value: null, detail: null, at: null };
   const strict = rows.map((r) => r.j.summary.avgStrict).filter(Number.isFinite);
   if (!strict.length) return { value: null, detail: null, at: null };
   const at = rows
-    .map((r) => { try { return fs.statSync(path.join(dir, r.f)).mtime.toISOString(); } catch { return null; } })
+    .map((r) => {
+      const recorded = r.j.summary.generatedAt;
+      if (typeof recorded === 'string' && Number.isFinite(Date.parse(recorded))) return new Date(recorded).toISOString();
+      try { return fs.statSync(path.join(dir, r.f)).mtime.toISOString(); } catch { return null; }
+    })
     .filter(Boolean).sort().pop();
   return {
     value: Math.round((strict.reduce((a, b) => a + b, 0) / strict.length) * 10) / 10,

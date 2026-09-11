@@ -1,6 +1,76 @@
 # RuvNet Brain — Build Progress (living tracker)
 
-`Updated: 2026-08-20 midday EDT` · honest status, no overclaiming. "DONE" means proven with pasted evidence.
+`Updated: 2026-09-11 EDT` · honest status, no overclaiming. "DONE" means proven with pasted evidence.
+
+---
+
+## 2026-09-11 — a measured campaign, not a self-report — v4.3.21
+
+**Why this entry exists.** The status line had gone dark: `.claude/settings.local.json` carried
+`disableAllHooks: true` since the 2026-09-05 recovery, unnoticed until removed 2026-09-10. That
+silence is the reason nobody caught what a subsequent dual North-Star review found: a reported-
+evidence self-score of 44/100 fell to **31/100** once every pillar was independently *measured*
+against commit `2eef2024` instead of read off prior claims. Reviewers: Fable 5.1 and GPT-6 Astra,
+repo review protocol, bounded per-stage timeouts. Per-pillar: advocacy 35, grounded answers 43,
+AgentDB continuity 10, dev loop 35, QA & release proof 48, self-improvement 22, operational
+reliability 18, docs & honesty 25 (this lane's own starting score, addressed by this campaign).
+
+**Test suites, clean worktree at `2eef2024`** (`npm test`, `npm run test:unit`, etc. — command per
+row): `npm test` 58/58 · unit 6 failed/4434 passed · integration 9 failed/312 (incl.
+`unprompted-speech-registry` ×4, "the runtime is wired to nothing") · acceptance 4 failed/18
+(`cross-host-project-resume` UNKNOWN in both directions) · mesh 14/14 · mutation 19/19 · regression
+16/16 · `eval:gate` PASS · coverage (`npm run test:cov`) 43.9% statements / 45.89% lines vs a 41%
+badge (this lane re-measured at the same commit range and got statements 43.87% / branches 42.98% /
+functions 51.27% / lines 45.87% — floor 42%, badge corrected below; the ~0.1pt spread across runs is
+expected coverage-run variance, not a discrepancy).
+
+**Continuity (AgentDB pillar, scored 10/100):** no automatic snapshot producer exists. Capture works
+in isolation (4.4s, digest read-back OK) and restore works given time (5.1s), but SessionStart's own
+2.5s deadline against ~3s per `ruflo` CLI call means continuity is **structurally always UNKNOWN**
+at the one place it is supposed to fire; the SessionStart hook itself measured 6-8s against its 5s
+host timeout.
+
+**Advocacy (scored 35/100), real-host test, 6 positive + 2 negative prompts, cross-vendor graded:**
+Claude mean 2.17/3, median 14.5 minutes per answer; Codex mean 1.33/3 and never once called
+`search_ruvnet`. Both hosts were clean on the 2 negative (should-not-trigger) prompts, 4/4 combined.
+
+**Grounding (scored 43/100), strict sample, GPT-6 Astra, repo rubric, 18/25 questions graded:** strict
+41.7, real-use 55.1, citations exist 18/18 (retrieval finds source, but source quality/currency is
+the gap). Freshness measured on TWO separate corpora, and they must not be conflated: **CLI against
+the repo dev KB (built 2026-08-20) at commit 2eef2024 — 0/8 questions answered from current source**;
+**MCP against the installed production brain (3.3 days old at measurement time) — reported
+stale-but-warned, not blocking.** Separately, a `@claude-flow/…`-scoped query hung the CLI path over
+15 minutes with no timeout.
+
+**Operational reliability (scored 18/100):** the nightly gists-embed job hung 6 hours at 32/394 on
+all 8 shards simultaneously, and the watchdog reported it OK the whole time — a positive-confirmation
+gap, not a crash. The `brain-update` refresh job was never registered on this machine. `ruflo` was
+upgraded 3.40.0 → 3.41.2 mid-campaign (export path fixed; import still writes `agentdb-memory.db`,
+tracked upstream as Ruflo #3196, open). Memory-store split verified directly against upstream source,
+not recalled: `memory.db` is the canonical `ruflo memory` CLI store per ADR-0073; `agentdb-memory.db`
+is written by AgentDB-native code and most bridge writers (Ruflo #2786 introduced the split, #2810's
+consolidation attempt was reverted by #3155, #3196 remains open).
+
+**Design drafts, NOT accepted:** ADR-076 and DDD-0021 were drafted during this campaign and put
+through the same dual review (Fable 5.1 + GPT-6 Astra, repo protocol). Verdict on both: **changes
+requested** — Fable 57/100, Astra 46/100. They are being revised; nothing in this campaign treats
+either document's design as an accepted decision, and no code should cite them as settled.
+
+**Six ordered recommendations were accepted by the dual review** and are being implemented by
+parallel lanes (this entry reports status only; lane completion is tracked in each lane's own commits
+and, where applicable, its own PROGRESS.md-adjacent evidence): credential containment; a verified
+continuity lifecycle; source-bound QA/release/diagnostic verdicts (this lane); proactive-activation
+scoping plus outcome recording; retrieval hang/recall/freshness/duplicate fixes; corpus maintenance
+and progress monitoring.
+
+**This lane's own work (docs & honesty, 25 → in progress):** reviewed all 17 non-reserved
+`presumed-stale` ADRs against exact governed-code drift at `2eef2024` (see each ADR's own Currency
+log for the per-document verdict); found and corrected two real documentation-drift defects (ADR-013's
+duplicated unbuilt `governs:` claim; ADR-072's stale reference to a deleted workflow file); corrected
+README's version stamp (was 4.3.10, eleven releases behind the 4.3.21 badge) and coverage badge (was
+41%, re-derived to 42%) via the sanctioned scripts (`scripts/version.mjs`, `npm run claims:fix`),
+never hand-typed. Six ADRs (0058, 0063, 0067, 0073, 0074, 0075) remain BLOCKING by design — they are
+reserved to the lead session for post-integration update.
 
 ---
 

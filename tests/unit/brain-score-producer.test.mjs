@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, afterEach } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DIMENSIONS, brainScore, composite, isRoutable, staleness } from '../../scripts/brain-score.mjs';
+import { DIMENSIONS, brainScore, composite, isRoutable, readPanel, staleness } from '../../scripts/brain-score.mjs';
 
 /**
  * A SCORE ABOUT THIS PRODUCT IS GENERATED, NEVER TYPED.
@@ -151,6 +152,71 @@ describe('a score presented as CURRENT carries the date it was measured', () => 
       + 'the date from the artifact (evals/baseline.json carries `recorded`), or drop the word '
       + '"current". A month-old reading quoted as today\'s is how 2026-08-13 went wrong.',
     ).toEqual([]);
+  });
+});
+
+describe('the panel reading is dated by when it was GRADED, not when the checkout touched it', () => {
+  /**
+   * ISSUE #258, measured. `readPanel()` dated a panel from `fs.statSync(file).mtime` — the
+   * checkout's file modification time. A `git clone`/checkout resets every tracked file's mtime to
+   * "now", so a panel graded 40 days ago read as freshly current on any fresh clone, exit an
+   * `unmeasured`/`stale` reading being reported `current` — the same false-freshness class the file
+   * header names for `evals/baseline.json`. The fix prefers each panel's own recorded
+   * `summary.generatedAt`; a legacy panel with no such field still falls back to mtime so this
+   * cannot regress a panel that predates the stamp.
+   */
+  const tmpDirs = [];
+  const makeTmpDir = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-score-panel-'));
+    tmpDirs.push(dir);
+    return dir;
+  };
+  afterEach(() => { while (tmpDirs.length) fs.rmSync(tmpDirs.pop(), { recursive: true, force: true }); });
+
+  it('TEETH: an old recorded generatedAt with a FRESH checkout mtime is judged by the recorded time — stale', () => {
+    const dir = makeTmpDir();
+    const oldRecordedAt = '2026-07-01T00:00:00.000Z'; // 40+ days before the `now` used below
+    fs.writeFileSync(path.join(dir, 'grade-fixture-big.json'), JSON.stringify({
+      summary: { name: 'fixture', avgStrict: 80, generatedAt: oldRecordedAt },
+      report: [],
+    }));
+    // Writing the file just now gives it a FRESH mtime — the exact "checkout reset the clock"
+    // scenario. If the bug were still present, `readPanel()` would report `at` as today, not
+    // `oldRecordedAt`, and the panel would read as current instead of 40+ days stale.
+    const fresh = fs.statSync(path.join(dir, 'grade-fixture-big.json')).mtime;
+    expect(fresh.getTime(), 'the fixture file itself must have a fresh mtime for this to be a real test').toBeGreaterThan(Date.parse(oldRecordedAt));
+
+    const panel = readPanel(dir);
+    expect(panel.at, 'readPanel must report the RECORDED time, never the checkout mtime').toBe(new Date(oldRecordedAt).toISOString());
+
+    const now = Date.parse('2026-08-13T00:00:00Z'); // ~43 days after oldRecordedAt
+    const dim = DIMENSIONS.find((d) => d.key === 'panelStrict');
+    const s = staleness(panel.at, dim.maxAgeDays, now);
+    expect(s.stale, `a panel recorded ${oldRecordedAt} must be stale against a ${dim.maxAgeDays}d budget regardless of file mtime`).toBe(true);
+  });
+
+  it('a panel with NO recorded generatedAt still falls back to the checkout mtime (no regression for legacy panels)', () => {
+    const dir = makeTmpDir();
+    fs.writeFileSync(path.join(dir, 'grade-legacy-big.json'), JSON.stringify({
+      summary: { name: 'legacy', avgStrict: 70 }, // no generatedAt — every real data/grade-*.json today
+      report: [],
+    }));
+    const mtimeIso = fs.statSync(path.join(dir, 'grade-legacy-big.json')).mtime.toISOString();
+    const panel = readPanel(dir);
+    expect(panel.at).toBe(mtimeIso);
+  });
+
+  it('the newest reading wins across multiple graded stores, by recorded time not file order', () => {
+    const dir = makeTmpDir();
+    fs.writeFileSync(path.join(dir, 'grade-a-big.json'), JSON.stringify({
+      summary: { name: 'a', avgStrict: 60, generatedAt: '2026-06-01T00:00:00.000Z' }, report: [],
+    }));
+    fs.writeFileSync(path.join(dir, 'grade-b-big.json'), JSON.stringify({
+      summary: { name: 'b', avgStrict: 80, generatedAt: '2026-08-01T00:00:00.000Z' }, report: [],
+    }));
+    const panel = readPanel(dir);
+    expect(panel.at).toBe(new Date('2026-08-01T00:00:00.000Z').toISOString());
+    expect(panel.value).toBe(70); // (60 + 80) / 2
   });
 });
 
