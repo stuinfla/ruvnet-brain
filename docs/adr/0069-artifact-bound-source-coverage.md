@@ -1,15 +1,15 @@
 ---
 id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
-status: Proposed
+status: Accepted
 date: 2026-08-21
 updated: 2026-09-11
-version: 1.1.1
-reviewed_digest: REVIEW_DIGEST_PENDING
+version: 1.2.0
+reviewed_digest: 499a9049e6a1
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
-relates: [ADR-064, ADR-062]
+relates: [ADR-064, ADR-062, ADR-013]
 governs:
   - scripts/brain-stamp.mjs
   - scripts/ingest-new-repos.mjs
@@ -20,11 +20,9 @@ governs:
   - scripts/build-bundle.mjs
   - scripts/onboarding-console.mjs
   - scripts/console-runtime-identity.mjs
-  - plugin/commands/coverage.md
-  - plugin/scripts/coverage.mjs
-  - console/coverage.html
-  - console/coverage.css
-  - console/coverage.js
+  - console/scope.html
+  - console/scope.css
+  - console/scope.js
   - data/source-coverage.json
   - docs/RUVNET-COVERAGE.md
   - .github/workflows/ci.yml
@@ -235,7 +233,47 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
   exemptions, symlink/unexpected-store injection, and fallback to prior release/cache/network inputs
   are mutation-tested. These scenarios remain unimplemented until a failing-then-passing test exists.
 
+## Amendment (2026-09-11) — accepted; the coverage surface is built under the name `scope`; three governed paths never existed
+
+**Status change: Proposed → Accepted (2026-09-11).** The user-facing half of §1 was built and merged today,
+tests first (`447bd8a9` RED 13/14 on a stub that read the shipped `status`; `807fbe30`, `d9b631b5`; merged
+`1f956632`): `console/scope.html` / `scope.js` / `scope.css` at `/scope`, `GET /api/scope`, and
+`gatherScope()` / `computeScope()` in `scripts/onboarding-console.mjs`. It treats the installed
+`COVERAGE.json` as canonical exactly as §1 requires, and decides per-row currency by §3 item 1 alone —
+`artifact.sourceCommit === upstream.sha` — never by the shipped `status` field, which
+`scripts/release-projection.mjs` stamps `CURRENT` on every seeded row regardless of SHA (63 rows measured
+`sourceCommit ≠ upstream.sha` under a `CURRENT` label on 2026-09-11). "rUv's last change" is
+`upstream.committedAt` for repositories (the default-branch HEAD commit §3 binds to; `pushedAt` and
+`updatedAt` were measured to false-flag 2/11 and 11/11 known-current repos) and `updatedAt` for gists;
+"the brain read it" is `artifact.ingestedAt ?? RVF-GENERATIONS.stores[x].builtUtc`; the page states
+`observedAt` first. Rows the receipts cannot place — 57 repositories with no source commit in either
+record — render as a fourth verdict, *in the brain, currency unverified*, never as current.
+
+**Not built:** the terminal command this ADR also named. `plugin/commands/coverage.md` and
+`plugin/scripts/coverage.mjs` have never existed in this repository's history (ADR-0013's 2026-09-11 row
+established this with `git log --all`); `console/coverage.{html,css,js}` likewise never existed. All five
+are removed from `governs:` and replaced by the three real `console/scope.*` files, which is why a
+`reviewed_digest` is computable for the first time (the previous value, `REVIEW_DIGEST_PENDING`, was a
+literal placeholder, not a digest). §3 items 2–6 and every item under *Acceptance* are the generator's,
+the mutation suite's and the release gates' obligations, not the page's; nothing about them changed today
+and this amendment does not claim them.
+
+**Recorded, not decided here — a semantic shift in the committed aggregate.** §1 gives the generator's
+invocation as `--assets kb`, i.e. the release workspace. Commit `1498a8a6` (2026-09-11) changed the
+**bare** default target of `scripts/source-coverage.mjs` from `<repo>/kb` to `storeRoot()` (the installed
+brain, per `kb/store-root.mjs`, which declares `<repo>/kb` "never a second brain"), added a hard refusal
+when that root was never materialized, kept `--assets` behaviour intact, and regenerated the committed
+`data/source-coverage.json` + `docs/RUVNET-COVERAGE.md` against the installed brain (227 repos: 104
+CURRENT · 21 STALE · 11 MISSING · 57 UNVERIFIED · 34 INELIGIBLE · 0 byte mismatches; 492 gists: 369
+FAILED because the installed gist receipt was sealed 2026-08-26 over 479 gists). Three earlier commits the
+same day (`7574a325`, `4bda09b3`, `e2b9e4df`) had committed bare-run observations of a dirty workspace
+(476 FAILED). The committed aggregate therefore now describes the installed store root, while §1's prose
+still calls it "the machine-readable repository aggregate" produced with `--assets kb`. Which of the two
+this ADR means is the owner's decision; this review records the divergence and changes neither the prose
+of §1 nor the code.
+
 ## Currency log
+| 2026-09-11 | Currency review at commit 7296c984 — status Proposed → Accepted; the decision is partially built; see the amendment above. `scripts/source-coverage.mjs` `1498a8a6` (bare default → `storeRoot()`, `--assets` intact, refusal on a never-materialized root); `data/source-coverage.json` and `docs/RUVNET-COVERAGE.md` regenerated against the installed brain in the same commit (earlier bare-run commits `7574a325` / `4bda09b3` / `e2b9e4df` had projected a dirty workspace as 476 FAILED); `scripts/onboarding-console.mjs` gained `gatherScope` / `computeScope` and `GET /api/scope` (`807fbe30`) beside the seven card fixes; `console/scope.html` / `.js` / `.css` created (`d9b631b5`; tests first at `447bd8a9`; merged `1f956632`). `governs:` corrected — five never-existing paths removed, the three real `console/scope.*` files added — which is why this is the first computable digest (`REVIEW_DIGEST_PENDING` was a literal). Not built: the terminal command. Recorded, not resolved: the committed aggregate now observes the installed root while §1 still describes `--assets kb`. `scripts/brain-stamp.mjs`, `ingest-new-repos.mjs`, `ingest-gists.mjs`, `nightly-wrapper.sh`, `release-projection.mjs`, `build-bundle.mjs`, `console-runtime-identity.mjs`, the three workflows and DDD-0016 did not move. | Reviewed `scripts/source-coverage.mjs`, `data/source-coverage.json`, `scripts/onboarding-console.mjs`, `console/scope.html`, `console/scope.js`; cross-referenced ADR-0013. reviewed_digest 499a9049e6a1. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged on every resolvable governed path; a computed `reviewed_digest` remains structurally impossible while this ADR stays Proposed. None of `scripts/{brain-stamp,ingest-new-repos,ingest-gists,source-coverage,release-projection,build-bundle,onboarding-console,console-runtime-identity}.mjs` moved in this range. `data/source-coverage.json` and `docs/RUVNET-COVERAGE.md` changed twice (`e7accccd`, `a52a5ddd`) but both are pure generated-data regenerations with zero script-code changes alongside them — the coverage machinery producing its normal output, not a decision change. The three workflow YAMLs gained only lane/scheduling additions. `governs:` still names 5 paths that have never existed in git history (`plugin/commands/coverage.md`, `plugin/scripts/coverage.mjs`, `console/coverage.{html,css,js}` — see ADR-013's 2026-09-11 row, which had wrongly duplicated the first two); `computeDigest()` refuses to hash a manifest with an unresolvable member, so `reviewed_digest` correctly stays `REVIEW_DIGEST_PENDING` rather than a fabricated value, and this document's `presumed-stale` finding will keep BLOCKING until those 5 paths are built or removed from `governs:` — that is this tool's designed fail-closed behavior for a Proposed ADR governing unbuilt artifacts, not an unreviewed document. | Read the combined `git log --stat` for all 11 drift commits against the 15 resolvable governed paths; confirmed zero script-file changes outside the two generated-data files and three CI workflow files. | `scripts/release-projection.mjs`; source review does not claim full upstream freshness or public acceptance. |
 | 2026-08-31 | Re-read after the release-control cutover; the nightly wrapper still runs convergence checks, but the watchdog is now report-only and cannot dispatch a publisher or bypass the signed release coordinator. | `scripts/nightly-wrapper.sh`; `scripts/release-convergence-watchdog.mjs`; `.github/workflows/release-cycle.yml`; commit `e2e83c0`. |
 | 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence showed shell:false cannot assume an `npx` shim; the unit lane now invokes Vitest through Node while retaining the same full suite. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
