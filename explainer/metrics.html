@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RuvNet Brain — Production Metrics</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1a1a2e 100%);
+      color: #e0e7ff;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 3rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #60a5fa 0%, #818cf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .refresh-info {
+      background: rgba(15, 23, 42, 0.8);
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(100, 116, 139, 0.3);
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .card {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(100, 116, 139, 0.2);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+    }
+
+    .card:hover {
+      border-color: rgba(100, 116, 139, 0.4);
+      background: rgba(30, 41, 59, 0.95);
+    }
+
+    .card-title {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-unit {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin-left: 0.5rem;
+    }
+
+    .card-subtitle {
+      font-size: 0.8rem;
+      color: #64748b;
+    }
+
+    .north-star-card {
+      grid-column: span 1;
+      background: linear-gradient(135deg, rgba(96, 165, 250, 0.1) 0%, rgba(129, 140, 248, 0.1) 100%);
+      border: 2px solid rgba(96, 165, 250, 0.3);
+    }
+
+    .north-star-score {
+      font-size: 3rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #60a5fa 0%, #818cf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .charts-section {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(100, 116, 139, 0.2);
+      border-radius: 1rem;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      backdrop-filter: blur(10px);
+    }
+
+    .charts-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 2rem;
+    }
+
+    .chart-container {
+      height: 300px;
+      position: relative;
+    }
+
+    .simple-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 0.25rem;
+      height: 100%;
+    }
+
+    .chart-bar {
+      flex: 1;
+      background: linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%);
+      border-radius: 0.25rem 0.25rem 0 0;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      min-height: 10px;
+    }
+
+    .chart-bar:hover {
+      background: linear-gradient(180deg, #93c5fd 0%, #60a5fa 100%);
+      filter: brightness(1.1);
+    }
+
+    .error-state {
+      color: #ef4444;
+    }
+
+    .success-state {
+      color: #10b981;
+    }
+
+    .warning-state {
+      color: #f59e0b;
+    }
+
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .footer {
+      text-align: center;
+      padding-top: 2rem;
+      border-top: 1px solid rgba(100, 116, 139, 0.2);
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+
+    .data-source {
+      display: inline-block;
+      background: rgba(15, 23, 42, 0.8);
+      padding: 0.25rem 0.75rem;
+      border-radius: 0.25rem;
+      margin: 0 0.25rem;
+      border: 1px solid rgba(100, 116, 139, 0.2);
+    }
+
+    @media (max-width: 768px) {
+      .dashboard {
+        grid-template-columns: 1fr;
+      }
+
+      .charts-grid {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+      }
+
+      .card-value {
+        font-size: 1.5rem;
+      }
+
+      .north-star-score {
+        font-size: 2.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>RuvNet Brain</h1>
+        <div style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem;">Production Metrics</div>
+      </div>
+      <div class="header-right">
+        <div class="status-indicator"></div>
+        <div class="refresh-info">
+          Last updated: <span id="last-updated">-</span>
+          <br>
+          Next refresh: <span id="next-refresh">in 5m</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="dashboard" id="dashboard">
+      <!-- Cards will be populated by JavaScript -->
+      <div class="card" style="grid-column: span 1;">
+        <div class="card-title">Loading...</div>
+        <div class="card-value" style="color: #64748b;">⏳</div>
+      </div>
+    </div>
+
+    <div class="charts-section">
+      <div class="charts-title">30-Day Trends</div>
+      <div class="charts-grid" id="charts">
+        <div class="chart-container">
+          <div style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem;">npm Downloads (7d avg)</div>
+          <div class="simple-chart" id="downloads-chart"></div>
+        </div>
+        <div class="chart-container">
+          <div style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem;">Latency (p95)</div>
+          <div class="simple-chart" id="latency-chart"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div style="margin-bottom: 1rem;">
+        Data sources:
+        <span class="data-source">GitHub API</span>
+        <span class="data-source">npm Registry</span>
+        <span class="data-source">Upstash Telemetry</span>
+        <span class="data-source">Vercel Analytics</span>
+      </div>
+      <div style="font-size: 0.75rem; color: #475569;">
+        All metrics are real production data. Last 5 minutes cached.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const METRICS_API = '/api/metrics';
+    const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+    let nextRefreshTime = Date.now() + REFRESH_INTERVAL;
+
+    // Format number with commas
+    function formatNumber(num) {
+      return Math.round(num).toLocaleString();
+    }
+
+    // Create a simple bar chart
+    function createBarChart(containerId, data, maxValue = null) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+
+      container.innerHTML = '';
+      const max = maxValue || Math.max(...data);
+      const barWidth = 100 / data.length;
+
+      data.forEach((value, idx) => {
+        const bar = document.createElement('div');
+        const height = max > 0 ? (value / max) * 100 : 0;
+        bar.className = 'chart-bar';
+        bar.style.width = `${barWidth - 0.5}%`;
+        bar.style.height = `${height}%`;
+        bar.title = `${Math.round(value)}`;
+        container.appendChild(bar);
+      });
+    }
+
+    // Update UI with metrics data
+    function updateDashboard(metrics) {
+      const dashboard = document.getElementById('dashboard');
+      const data = metrics.data;
+
+      const cards = [
+        {
+          title: 'North Star Score',
+          value: data.northStarScore,
+          unit: '/100',
+          subtitle: 'Composite health metric',
+          special: 'north-star-card'
+        },
+        {
+          title: 'Uptime',
+          value: data.performance.uptime.toFixed(2),
+          unit: '%',
+          subtitle: 'Last 30 days',
+          className: data.performance.uptime >= 99.5 ? 'success-state' : 'warning-state'
+        },
+        {
+          title: 'Error Rate',
+          value: data.performance.errorRate.toFixed(2),
+          unit: '%',
+          subtitle: 'Last 24 hours',
+          className: data.performance.errorRate < 5 ? 'success-state' : 'warning-state'
+        },
+        {
+          title: 'Latency p95',
+          value: data.performance.latency.p95,
+          unit: 'ms',
+          subtitle: 'API response time',
+          className: 'success-state'
+        },
+        {
+          title: 'Latency p99',
+          value: data.performance.latency.p99,
+          unit: 'ms',
+          subtitle: 'API response time',
+          className: 'success-state'
+        },
+        {
+          title: 'Requests/sec',
+          value: data.performance.requestsPerSecond,
+          unit: 'req/s',
+          subtitle: 'Estimated throughput'
+        },
+        {
+          title: 'GitHub Stars',
+          value: data.repo?.stars || 0,
+          unit: '',
+          subtitle: 'Community interest'
+        },
+        {
+          title: 'npm Downloads',
+          value: data.npm.thisWeek,
+          unit: '/week',
+          subtitle: 'Last 7 days'
+        },
+      ];
+
+      dashboard.innerHTML = cards.map(card => `
+        <div class="card ${card.special || ''}" style="${card.className ? `color: var(--${card.className.replace('state', 'color')}); color: ${card.className === 'success-state' ? '#10b981' : '#f59e0b'};` : ''}">
+          <div class="card-title">${card.title}</div>
+          <div class="card-value" ${card.className ? `style="color: ${card.className === 'success-state' ? '#10b981' : card.className === 'error-state' ? '#ef4444' : '#f59e0b'}"` : ''}>
+            ${formatNumber(card.value)}<span class="card-unit">${card.unit}</span>
+          </div>
+          <div class="card-subtitle">${card.subtitle}</div>
+        </div>
+      `).join('');
+
+      // Update charts
+      if (data.trends && data.trends.length > 0) {
+        const last30Days = data.trends.map(d => d.downloads || 0);
+        createBarChart('downloads-chart', last30Days);
+
+        const latencyData = data.trends.map(d => d.avgLatency || data.performance.latency.p95);
+        createBarChart('latency-chart', latencyData);
+      }
+    }
+
+    // Fetch metrics from API
+    async function fetchMetrics() {
+      try {
+        const response = await fetch(METRICS_API);
+        if (!response.ok) {
+          console.error('Metrics API error:', response.status);
+          return null;
+        }
+        return await response.json();
+      } catch (error) {
+        console.error('Failed to fetch metrics:', error);
+        return null;
+      }
+    }
+
+    // Update the refresh timer
+    function updateRefreshTimer() {
+      const now = Date.now();
+      const remaining = Math.max(0, Math.round((nextRefreshTime - now) / 1000));
+      const minutes = Math.floor(remaining / 60);
+      const seconds = remaining % 60;
+
+      const nextRefreshEl = document.getElementById('next-refresh');
+      if (nextRefreshEl) {
+        nextRefreshEl.textContent = remaining === 0
+          ? 'now...'
+          : `in ${minutes}m ${seconds}s`;
+      }
+    }
+
+    // Main refresh logic
+    async function refresh() {
+      const dashboard = document.getElementById('dashboard');
+      dashboard.classList.add('loading');
+
+      const metrics = await fetchMetrics();
+
+      if (metrics && metrics.ok) {
+        updateDashboard(metrics);
+        const lastUpdatedEl = document.getElementById('last-updated');
+        if (lastUpdatedEl) {
+          const date = new Date(metrics.timestamp);
+          lastUpdatedEl.textContent = date.toLocaleTimeString();
+        }
+        nextRefreshTime = Date.now() + REFRESH_INTERVAL;
+      } else {
+        console.error('Failed to load metrics');
+      }
+
+      dashboard.classList.remove('loading');
+    }
+
+    // Initialize
+    function init() {
+      refresh();
+      setInterval(refresh, REFRESH_INTERVAL);
+      setInterval(updateRefreshTimer, 1000);
+      updateRefreshTimer();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>
