@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-09-11T16:55:56.989Z",
+  "buildInfo": {
+    "cwd": "/Users/stuartkerr/Code/ruvnet-brain",
+    "nodeVersion": "v24.18.0",
+    "platform": "darwin"
+  },
+  "slos": {
+    "SESSION_START_RECALL_P95": 500,
+    "MEMORY_STORE_WRITE_P95": 100,
+    "ADR_ENFORCE_CHECK_P95": 50,
+    "SESSION_START_RECALL_P99": 800,
+    "MEMORY_STORE_WRITE_P99": 200
+  },
+  "measurements": [
+    {
+      "metric": "session_start_recall_cold",
+      "measured": {
+        "mean": 92.69812499999999,
+        "median": 89.57858299999998,
+        "p50": 89.57858299999998,
+        "p90": 100.20662500000003,
+        "p95": 110.97941700000001,
+        "p99": 110.97941700000001,
+        "min": 83.06891599999994,
+        "max": 110.97941700000001,
+        "count": 10
+      },
+      "slo": 500
+    },
+    {
+      "metric": "session_start_recall_warm",
+      "measured": {
+        "mean": 91.29992486666667,
+        "median": 90.19908299999997,
+        "p50": 90.19908299999997,
+        "p90": 100.01254199999994,
+        "p95": 109.35783399999991,
+        "p99": 109.35783399999991,
+        "min": 80.02491599999985,
+        "max": 109.35783399999991,
+        "count": 15
+      },
+      "slo": 300
+    }
+  ],
+  "regression": {
+    "threshold": 1.1,
+    "breaches": []
+  }
+}

@@ -30,6 +30,8 @@ export default defineConfig({
       // a directory absent from `include` is invisible to `vitest run` no matter what any npm
       // script or CI step claims to run.
       'tests/mesh/*.test.mjs',
+      // Performance baseline and regression gates (W5-B). Gates enforce SLO compliance.
+      'tests/performance/**/*.test.mjs',
     ],
     // Windows runners spawn processes MUCH slower than macOS/Linux (Git Bash startup dominates), and
     // a large slice of this suite deliberately exercises real shell hooks as subprocesses rather than
