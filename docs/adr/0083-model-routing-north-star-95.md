@@ -15,8 +15,8 @@ governs:
 
 # ADR-0083: High-Assurance Model Routing for North Star 95/100
 
-**Status:** Proposed (2026-09-11)  
-**Authors:** Claude Haiku 4.5 (system-architecture)  
+**Status**: Proposed (2026-09-11)  
+**Authors**: Claude Haiku 4.5 (system-architecture)  
 **Date:** 2026-09-11  
 **Deadline:** 2026-09-25 (14 days, 6 parallel lanes)  
 **Campaign:** W2–W6 parallel work, $1M token budget  

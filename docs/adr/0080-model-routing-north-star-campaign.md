@@ -16,7 +16,7 @@ governs:
 
 # ADR-0080: Hybrid Model Routing Strategy for 95/100 North Star Campaign (W2–W6)
 
-**Status:** Proposed (2026-09-11)  
+**Status**: Proposed (2026-09-11)  
 **Date:** 2026-09-11  
 **Authors:** System Architect (Claude + Codex dual-grade)  
 **Related:** ADR-0079 (testing gates), ADR-0073 (memory), ADR-0050 (issue automation)

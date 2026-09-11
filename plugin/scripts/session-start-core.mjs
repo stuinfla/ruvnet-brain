@@ -26,7 +26,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 import { restoreProgressionForSession } from './project-progression-session-start.mjs';
+import { recallProjectState } from './memory-ensure.mjs';
 import {
   read, json, exists, mkdir, write, runNode,
 } from './session-start-fsutil.mjs';
@@ -169,6 +171,26 @@ export async function runSessionStart({
   if (env.RUVNET_SESSION_TRACE === '1' || env.RUVNET_BRAIN_SESSION_START_TRACE === '1') {
     stderr.write(`SESSION_TRACE stage=restore elapsed_ms=${Date.now() - restoreStart}\n`);
   }
+
+  // ─ ASYNC SESSIONSTART FIX: Spawn memory-ensure as background task (ADR-077) ─
+  // SessionStart deadline: 5s. Memory recall can take 1-2s.
+  // SOLUTION: spawn memory-ensure as async child process (fire-and-forget).
+  // The child recalls project state in parallel; results are injected later by server.mjs.
+  // SessionStart returns immediately (<1s), memory recall completes separately.
+  const memoryRecallStart = Date.now();
+  void (async () => {
+    try {
+      const recalled = await recallProjectState({ cwd, timeoutMs: 1500 });
+      if (recalled?.context) {
+        emit(recalled.context);
+      }
+    } catch {
+      // Memory recall errors are non-fatal — session continues without context
+    }
+    if (env.RUVNET_SESSION_TRACE === '1' || env.RUVNET_BRAIN_SESSION_START_TRACE === '1') {
+      stderr.write(`SESSION_TRACE stage=memory-recall elapsed_ms=${Date.now() - memoryRecallStart}\n`);
+    }
+  })();
 
   // Retrieve and display recent project decisions (optional, errors silently)
   try {
