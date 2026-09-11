@@ -18,7 +18,7 @@ created_at: 2026-07-14T17:28:48-04:00
 created_at_source: derived-from-git
 updated_at: 2026-09-11T00:00:00-04:00
 updated_at_source: authored-current
-reviewed_digest: 9b358c4efc8f
+reviewed_digest: baad2791666a
 ---
 
 # ADR-013: The Onboarding Console
@@ -266,8 +266,24 @@ their computer; they just want it to work."* This becomes **principle 6**:
   inside that same runtime; the coverage ledger itself travels inside the knowledge bundle as
   `COVERAGE.json` and `COVERAGE.md`.
 
+## Amendment (2026-09-11) — the coverage page exists, as `console/scope.*`
+
+The page the 2026-09-11 currency row below called "ADR-0069's, still unbuilt" was built later the same
+day under the name **scope**: `console/scope.html`, `console/scope.js`, `console/scope.css`, served at
+`/scope` with `GET /api/scope` (`gatherScope()`/`computeScope()` in `scripts/onboarding-console.mjs`;
+`447bd8a9` tests first, `807fbe30`, `d9b631b5`, merged at `1f956632`). Under this ADR's ordering it is a
+**Mirror-only** surface: it reads the installed `COVERAGE.json` and `RVF-GENERATIONS.json`, renders every
+repo and gist with rUv's last change beside the date the brain read it, states its own as-of date first,
+and offers no Apply. Its data rule — covered-and-current ⇔ `artifact.sourceCommit === upstream.sha`;
+dates `upstream.committedAt` (repos) / `updatedAt` (gists) against `artifact.ingestedAt ??
+RVF-GENERATIONS.stores[x].builtUtc`; never the shipped `status` field — is ADR-0069's and is recorded
+there. The `console/*` glob already governs the new files, so `governs:` does not change. The
+2026-07-14 sentence under *Implementation* ("The Coverage page travels inside that same runtime") is true
+again under the new name: `CONSOLE_RUNTIME_SURFACE` lists `console/` whole.
+
 ## Currency log
 
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged and reinforced; one amendment recorded above (the scope page). Motion since a5584de3: seven Mirror-truth fixes to the cards — `c98b64d5` the Complete-Brain card measures the installed root (184 stores / 979 MB) instead of a dev-only restore path that read 0 MB; `95506827` memory health scores the canonical `.swarm/memory.db` and labels the coordination store it does not score; `65762b4f` nightly renders choice, enforcement and last run as three facts instead of one boolean; `d61c05d3` the gates survey reads the hooks the host loads and lists six on-disk blocking gates with no registration; `31cb432f` wiring counts the plugins Claude Code has enabled; `17eb6d48` trust labels KB generation, running brain and installed plugin and says when they differ; `ec85ac68` savings keeps the sign of msSaved and counts unmeasured rows — plus `8747d2f8` (gatherSavings' REPO-relative legacy ledger made injectable so a fixture cannot read the owner's 2026-07-14 rows) and the scope page `447bd8a9` / `807fbe30` / `d9b631b5` merged at `1f956632`. Every change makes Mirror render measured state; none adds an Apply or weakens consent; each landed with a test that failed on the prior code. | Reviewed `scripts/onboarding-console.mjs`, `console/app.js`, `console/index.html`, `console/scope.html`; the page's data rule is ADR-0069's. reviewed_digest baad2791666a. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged for the built console; code drifted only in a duplicated, unbuilt `governs:` claim, corrected in the text above (not the status). The two governed drift commits since 2026-08-30 (`6a6ba72f`, `e7a84b71`) touch `scripts/console-runtime-identity.mjs` and `scripts/onboarding-console.mjs` and are testability/release-qualification only (a snapshot clock injected for tests; more files added to `CONSOLE_RUNTIME_SURFACE`'s digest list) — no architectural change. Separately found: `plugin/commands/coverage.md` and `plugin/scripts/coverage.mjs` never existed in this repo's git history (`git log --all` on both is empty), yet were both claimed built here since 2026-08-21; removed them from `governs:` and corrected the prose — that sub-feature is ADR-0069's (status Proposed, still unbuilt). | Reviewed `scripts/onboarding-console.mjs` and `scripts/console-runtime-identity.mjs`; cross-checked ADR-0069's own `governs:`/`status` for the coverage-page claim. reviewed_digest 9b358c4efc8f. |
 | 2026-08-30 | The configurator documentation now reflects the live settings form: ordinary user preferences have runtime consumers and are served through the shared save path. | `console/app.js`, `scripts/onboarding-console.mjs`, and `plugin/scripts/runtime-preferences.mjs` are the current implementation boundary. |
 
