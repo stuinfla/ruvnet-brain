@@ -33,6 +33,20 @@ import {
   implementationNotice,
   requiresImplementationProof,
 } from './implementation-evidence.mjs';
+import {
+  freshnessAdvisory,
+  probeLiveVersions,
+  stalenessNotice,
+  versionIntent,
+} from './corpus-freshness.mjs';
+import {
+  QueryDeadlineExceeded,
+  armProcessWatchdog,
+  createDeadline,
+  describeDeadline,
+  resolveDeadlineMs,
+  DEADLINE_EXIT_CODE,
+} from './query-deadline.mjs';
 
 // TRANSCRIPT/dialogue stores need LEXICAL (BM25) candidate generation, not dense alone. A fact spoken
 // in passing ("…876 commits…") embeds poorly against a conceptual question, so dense buries it past
@@ -2480,6 +2494,26 @@ export function scopedNamesIn(query) {
 // front of them, which is not the same thing as choosing it for everyone by default.
 export const CE_MAX_PAIRS_DEFAULT = 0;
 
+// ── THE FULL-CORPUS FALLBACK BUDGET ───────────────────────────────────────────────────────────
+//
+// CE_MAX_PAIRS_DEFAULT above is 0 for the lane ADR-0059 measured: a ROUTED query, ~69 stores,
+// ~607 pairs, where no budget bought wall time without costing answers. That premise does not
+// survive the lane below it. When card routing cannot place a query the CLI fans out to EVERY
+// store, and the corpus has since grown to 184: measured 2026-09-11 on the installed store
+// (~/.cache/ruvnet-brain/kb, builtUtc 2026-08-20T07:16:20.675Z) the unscoped fanout for
+// "What is the latest version of @claude-flow/aidefence …" pools **6,691 pairs** — 11x the regime
+// ADR-0059 chose 0 for — and the cross-encoder reads every one of them in full. At the rate
+// measured on that exact pool (26.6 ms/pair on a quiet machine, 482 ms/pair under the load the
+// original report was taken at) that is 178 s to 54 minutes for ONE question, with no output and
+// no timeout. That is the hang.
+//
+// 408 IS NOT A NEW NUMBER. It is the value the repo's own cap study already landed on
+// (evals/runs/2026-07-27-cross-encoder-pool-cap.md, line 128: "B=408 is the value to use"):
+// floor1+dist B=408 keeps 113/120 top-1 identical, 194/220 top-3 retained, with +0/-0 graded
+// flips. Applying it HERE and ONLY here is the whole point — the routed lane, which is every
+// question in the held-out gate, still runs uncapped and byte-for-byte as before.
+export const FULL_CORPUS_MAX_PAIRS_DEFAULT = 408;
+
 // ── THE CROSS-ENCODER POOL CAP ────────────────────────────────────────────────────────────────
 //
 // Measured 2026-07-27 over the frozen 120-question held-out set: 607 (query, passage) pairs
@@ -2797,10 +2831,16 @@ export function selectResults({ query, ranked, k = 6 }) {
 
 // Query every repo, pool, rerank on a common scale, return global top-k labeled by repo.
 export async function searchAll({
-  dir, query, k = 6, pool = 64, repos, _routeStage = false, allowFullCorpus = true,
+  dir, query, k = 6, pool = 64, repos, _routeStage = false, allowFullCorpus = true, deadline = null,
 }) {
   // The reranker needs a bounded candidate pool larger than the requested output list.
   pool = Math.max(pool, k);
+  // THE FULL-CORPUS LANE IS THE ONE THAT CAN RUN AWAY. It is reached only when the caller named no
+  // repos and this is not the scoped sub-call — i.e. exactly the "router could not place it, search
+  // everything" path. Naming it once here is what lets the pair budget below apply to that lane and
+  // to nothing else.
+  const fullCorpusLane = (!repos || !repos.length) && !_routeStage;
+  deadline?.check('route');
   const discovered = (repos && repos.length) ? repos : discoverRepos(dir);
   let routing = null;
   if ((!repos || !repos.length) && !_routeStage) {
@@ -2962,6 +3002,7 @@ export async function searchAll({
         repos: planned.repos,
         _routeStage: true,
         allowFullCorpus,
+        deadline,
       });
       const scopedErrors = Object.values(scoped.perRepo)
         .filter((value) => typeof value === 'string' && value.startsWith('ERR:'));
@@ -3085,6 +3126,9 @@ export async function searchAll({
   const RESCUE_DEPTH = Math.max(64, pool);
 
   const searchOne = async (name) => {
+    // Between-repo checkpoint: the fanout is the phase most likely to be running when a large
+    // corpus eats the budget, and a repo is the smallest unit it can be interrupted between.
+    deadline?.check(`retrieve:${name}`);
     try {
       // The concepts store holds ALL repos' prose primers in one place, so it needs a deeper pool than a
       // single source repo — otherwise the queried repo's own primer is crowded out by the other 18 before
@@ -3193,9 +3237,16 @@ export async function searchAll({
   // otherwise a replay would break ties differently from production and quietly measure a
   // different policy than the one being shipped.
   for (let i = 0; i < pooledAll.length; i++) pooledAll[i]._poolIdx = i;
+  // An explicit KB_CE_MAX_PAIRS is the operator's word and wins on every lane. Absent that, the
+  // full-corpus fallback takes the measured B=408 budget (see FULL_CORPUS_MAX_PAIRS_DEFAULT) and
+  // every other lane keeps CE_MAX_PAIRS_DEFAULT — which is 0, i.e. unchanged.
   const capLimit = process.env.KB_CE_MAX_PAIRS !== undefined
     ? Math.max(0, parseInt(process.env.KB_CE_MAX_PAIRS, 10) || 0)
-    : CE_MAX_PAIRS_DEFAULT;
+    : fullCorpusLane
+      ? (process.env.KB_FULL_CORPUS_MAX_PAIRS !== undefined
+        ? Math.max(0, parseInt(process.env.KB_FULL_CORPUS_MAX_PAIRS, 10) || 0)
+        : FULL_CORPUS_MAX_PAIRS_DEFAULT)
+      : CE_MAX_PAIRS_DEFAULT;
   // THE CASCADE (ADR-058). Stage 1 reads every pooled pair at a truncated length and stage 2 gives
   // the survivors the full read. Both stages are the SAME model on the SAME logit scale, which is
   // what makes stage 1 a real approximation of stage 2 rather than a second opinion — the property
@@ -3210,14 +3261,15 @@ export async function searchAll({
   let s1 = null, prefilterMs = 0;
   if (cascadeK > 0 && pooledAll.length > cascadeK) {
     const t0 = Date.now();
-    s1 = await cePrefilterScores(query, pooledAll, { maxLength: cascadeTokens });
+    s1 = await cePrefilterScores(query, pooledAll, { maxLength: cascadeTokens, deadline });
     prefilterMs = Date.now() - t0;
   }
   const { kept: candidates, dropped: cappedOut } = s1
     ? cascadeRerankPool(pooledAll, { limit: cascadeK, s1 })
     : capRerankPool(pooledAll, { limit: capLimit });
   // ONE cross-encoder pass over the whole cross-repo pool → a single comparable relevance scale.
-  const ranked = await rerankPairs(query, candidates);
+  deadline?.check('rerank');
+  const ranked = await rerankPairs(query, candidates, { deadline });
   // Recording the SCORED pool (not the answer) is what makes a pool-policy change measurable: one
   // 605-pair run, then selectResults replayed against those exact scores for any candidate policy.
   if (process.env.KB_CE_TRACE) {
@@ -3270,9 +3322,41 @@ function parseArgs() {
 async function main() {
   const { dir, query, k, pool, repos, bounded } = parseArgs();
   if (!query) { console.error('Usage: node forge-ask-all.mjs --dir <bundle-dir> --q "question" [--k 6] [--pool 8] [--repos a,b]'); process.exit(2); }
-  const { repos: used, perRepo, results, pooled, pooledAll, cappedOut, prefiltered, prefilterTokens, adrCollision, evidence, implementation } = await searchAll({
-    dir, query, k, pool, repos, allowFullCorpus: !bounded,
+  // EVERY QUESTION ENDS. The cooperative deadline interrupts between repos and between
+  // cross-encoder batches; the watchdog is the backstop for a phase that blocks the event loop
+  // past its own checkpoint. Both name the phase that overran, because "it hung" is not a
+  // diagnosis anyone can act on. See kb/query-deadline.mjs for the measurement that forced this.
+  const deadline = createDeadline({ ms: resolveDeadlineMs() });
+  const disarm = armProcessWatchdog(deadline, {
+    // Reap any forked cross-encoder children before the forced exit, so a timeout can never leave
+    // orphaned work behind (verified with `ps` after a forced timeout).
+    onExpire: async () => {
+      try {
+        const m = await import(new URL('./forge-rerank.mjs', import.meta.url).href);
+        await m.ceWorkerShutdown();
+      } catch { /* nothing to reap */ }
+    },
   });
+  let searched;
+  try {
+    searched = await searchAll({
+      dir, query, k, pool, repos, allowFullCorpus: !bounded, deadline,
+    });
+  } catch (e) {
+    if (e instanceof QueryDeadlineExceeded) {
+      console.error(`\n${describeDeadline(e)}`);
+      try {
+        const m = await import(new URL('./forge-rerank.mjs', import.meta.url).href);
+        await m.ceWorkerShutdown();
+      } catch { /* nothing to reap */ }
+      disarm();
+      process.exit(DEADLINE_EXIT_CODE);
+    }
+    disarm();
+    throw e;
+  }
+  disarm();
+  const { repos: used, perRepo, results, pooled, pooledAll, cappedOut, prefiltered, prefilterTokens, adrCollision, evidence, implementation, corpusAge } = searched;
   // ── GONG LAYER (CLI): all repos erroring is an OUTAGE, not a quiet zero. Banner + exit 1 + alarm.
   // The non-zero exit is load-bearing: scripts/nightly-wrapper.sh's canary and any cron/CI caller
   // rely on it — a total failure that exits 0 is exactly the silent death this exists to kill.
@@ -3297,6 +3381,17 @@ async function main() {
       .catch(() => {});
   }
   console.log(`\n=== RuvNet Brain (cross-repo) — "${query}" ===`);
+  // PARITY WITH THE MCP SURFACE (kb/corpus-freshness.mjs). The CLI has computed corpusAge on every
+  // query since issue #31 and printed NONE of it, so the same brain warned an MCP caller that its
+  // version facts were a snapshot and told a terminal caller nothing. Same sentence, one source.
+  const staleness = stalenessNotice(corpusAge);
+  if (staleness) console.log(staleness);
+  const intent = versionIntent(query);
+  if (intent.intent) {
+    const liveVersions = await probeLiveVersions(intent.packages);
+    const advisory = freshnessAdvisory({ query, dir, corpusAge, liveVersions });
+    if (advisory) console.log(advisory);
+  }
   // Surface the ambiguity BEFORE the results, so it is read as a caveat on everything below rather
   // than a footnote after the reader has already accepted the first hit as "the" answer.
   if (adrCollision) console.log(`⚠ ${adrCollision.note}`);

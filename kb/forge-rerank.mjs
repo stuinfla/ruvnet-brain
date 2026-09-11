@@ -12,6 +12,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { fork } from 'node:child_process';
 import { loadTransformers } from './resolve-deps.mjs';
+import { QueryDeadlineExceeded } from './query-deadline.mjs';
 import { materializeModelRevision, modelCacheReady } from './model-requirements.mjs';
 
 // Same packaged entry, separate process: a native ONNX/V8 fault cannot kill the parent host.
@@ -112,10 +113,15 @@ const CE_BATCH_SIZE = 16;
 // score a whole batch of (query, passage) pairs in ONE forward pass per chunk — the actual perf win
 // vs. one ONNX invocation per candidate (100+ pooled across repos). Falls back to per-pair scoring
 // (isolating a single bad passage to -Infinity) if a chunk's batched call throws.
-async function ceScoreBatch(ce, query, passages, maxLength) {
+async function ceScoreBatch(ce, query, passages, maxLength, deadline = null) {
   if (!passages.length) return [];
   const scores = new Array(passages.length);
   for (let start = 0; start < passages.length; start += CE_BATCH_SIZE) {
+    // THE ONLY PLACE THIS PHASE CAN BE INTERRUPTED. An ONNX forward pass is a native call on the
+    // JS thread: nothing in this process — not a timer, not a promise — runs while the model is
+    // inside a batch. So the deadline's granularity here is exactly one batch, by construction,
+    // and kb/query-deadline.mjs's watchdog exists because of it.
+    deadline?.check('rerank');
     const chunk = passages.slice(start, start + CE_BATCH_SIZE);
     try {
       const inputs = ce.tok(new Array(chunk.length).fill(query), tokOpts(chunk.map((p) => p.slice(0, 3000)), maxLength));
@@ -298,7 +304,8 @@ function callWorker(w, query, passages, maxLength) {
   return task.finally(() => { w.__cePending--; });
 }
 
-async function ceScoreParallel(query, passages, maxLength) {
+async function ceScoreParallel(query, passages, maxLength, deadline = null) {
+  deadline?.check('rerank');
   if (!_pool) _pool = spawnPool(ceWorkerCount());
   const ranges = shardRanges(passages.length, _pool.length);
   const used = _pool.slice(0, ranges.length);
@@ -319,7 +326,7 @@ async function ceScoreParallel(query, passages, maxLength) {
 // Dispatch: parallel path for big pools when workers are enabled and healthy, the pre-existing
 // inline ceScoreBatch otherwise. NEVER crashes where the inline path worked — any worker failure
 // (construction throw, worker death, worker-side error) tears the pool down and falls back inline.
-async function ceScoreAuto(ce, query, passages, maxLength) {
+async function ceScoreAuto(ce, query, passages, maxLength, deadline = null) {
   if (_poolBroken && _pool) await ceWorkerShutdown();
   const eligible = !_poolBroken
     && ceWorkerCount() >= 2
@@ -327,17 +334,21 @@ async function ceScoreAuto(ce, query, passages, maxLength) {
     && passages.length > CE_BATCH_SIZE; // a single chunk has nothing to parallelize
   if (eligible) {
     try {
-      const scores = await ceScoreParallel(query, passages, maxLength);
+      const scores = await ceScoreParallel(query, passages, maxLength, deadline);
       _stats.parallelCalls++;
       return scores;
     } catch (e) {
-      _poolBroken = true;
+      // A deadline is a DECISION, not a worker fault: reap the children (so a timeout can never
+      // orphan forked work) and re-raise instead of silently retrying the same work inline, which
+      // would double the overrun the deadline just caught.
       await ceWorkerShutdown();
+      if (e instanceof QueryDeadlineExceeded) throw e;
+      _poolBroken = true;
       if (process.env.CE_DEBUG) console.error('CE worker path failed, falling back to inline:', e.message);
     }
   }
   _stats.inlineCalls++;
-  return ceScoreBatch(ce, query, passages, maxLength);
+  return ceScoreBatch(ce, query, passages, maxLength, deadline);
 }
 
 // Diagnostics + lifecycle helpers (rerankKb/rerankPairs contracts unchanged). ceWorkerStats lets
@@ -399,12 +410,12 @@ export async function rerankKb({ dir, name, query, k = 6, variant, pool = 20 }) 
 // where the curve stops being free. Cost is superlinear in length (attention is quadratic), which
 // is why cutting the sequence buys more than cutting the pool: half the tokens is well under half
 // the time, while half the pool is exactly half the time.
-export async function cePrefilterScores(query, docs, { maxLength = 192 } = {}) {
+export async function cePrefilterScores(query, docs, { maxLength = 192, deadline = null } = {}) {
   if (!Array.isArray(docs) || docs.length === 0) return [];
   let ce;
   try { ce = await loadCE(); }
   catch (e) { if (process.env.CE_DEBUG) console.error('CE load failed, no prefilter scores:', e.message); return null; }
-  return ceScoreAuto(ce, query, docs.map((d) => (typeof d === 'string' ? d : d.fullText || d.text || '')), maxLength);
+  return ceScoreAuto(ce, query, docs.map((d) => (typeof d === 'string' ? d : d.fullText || d.text || '')), maxLength, deadline);
 }
 
 // rerankPairs — cross-repo common-scale scorer. Given an ALREADY-RETRIEVED candidate list (e.g.
@@ -412,12 +423,12 @@ export async function cePrefilterScores(query, docs, { maxLength = 192 } = {}) {
 // and score every (query, passage) pair on the SAME logit scale, so candidates from different repos
 // (and different embedders/dims) become directly comparable. Returns the list sorted by ceScore desc.
 // Falls back to input order (ceScore=null) if the cross-encoder can't load — never throws.
-export async function rerankPairs(query, docs) {
+export async function rerankPairs(query, docs, { deadline = null } = {}) {
   if (!Array.isArray(docs) || docs.length === 0) return [];
   let ce;
   try { ce = await loadCE(); }
   catch (e) { if (process.env.CE_DEBUG) console.error('CE load failed, using input order:', e.message); return docs.map((d) => ({ ...d, ceScore: null })); }
-  const scores = await ceScoreAuto(ce, query, docs.map((d) => d.fullText || d.text || ''));
+  const scores = await ceScoreAuto(ce, query, docs.map((d) => d.fullText || d.text || ''), undefined, deadline);
   const scored = docs.map((d, i) => ({ ...d, ceScore: scores[i] }));
   scored.sort((a, b) => (b.ceScore ?? -Infinity) - (a.ceScore ?? -Infinity));
   return scored;
