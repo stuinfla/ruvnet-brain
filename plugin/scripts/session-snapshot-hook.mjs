@@ -1,11 +1,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import {
   captureProjectTransition,
   hasProjectProgression,
 } from './project-progression-hook.mjs';
 import { createSessionSnapshot } from './session-snapshot-contract.mjs';
 import { projectDirectory } from './project-identity.mjs';
+import { buildProjectProgression } from './project-progression-producer.mjs';
+import { ProjectProgressionStore } from './project-progression-store.mjs';
+import { resolveProjectStore } from './project-store-resolver.mjs';
+
+/**
+ * The capture boundary's whole budget. hooks.json declares 10s; this keeps the internal work well
+ * inside it so the host never has to kill us, and so a slow store degrades to "no snapshot this
+ * time" rather than to a hung turn. Capture is advisory: it fails open, always.
+ */
+export const CAPTURE_BUDGET_MS = 8_000;
 
 function regularOrAbsent(file) {
   try {
@@ -43,22 +54,109 @@ export function writeSessionSnapshot(projectDir, event) {
   }
 }
 
+/**
+ * A deadline-bounded `ruflo` runner. The store's own 120s per-call timeout is right for a deliberate
+ * CLI invocation and far too generous for a lifecycle hook, so the remaining budget caps every call.
+ */
+function boundedStoreFactory(deadlineAt) {
+  return (options) => new ProjectProgressionStore({
+    ...options,
+    runner: (binary, args, runOptions) => {
+      const remaining = deadlineAt - Date.now();
+      if (remaining < 1) throw new Error('capture budget exceeded');
+      const result = spawnSync(binary, args, {
+        ...runOptions,
+        timeout: Math.min(runOptions.timeout ?? remaining, remaining),
+        shell: false,
+      });
+      if (result.error) throw new Error(`capture budget exceeded: ${result.error.message}`);
+      return result;
+    },
+  });
+}
+
+/**
+ * THE AUTOMATIC CAPTURE BOUNDARY.
+ *
+ * Before this, `captureProjectTransition` could only run when a host payload already carried a
+ * `projectProgression` extension — and no host emits one, so nothing was ever captured. Now the
+ * producer BUILDS that extension from real sources (git, the work ledger, the owner's own
+ * `project-state-current` note, the prior head, and a bounded transcript reference) whenever the
+ * payload does not supply one. An explicitly supplied extension still wins: that is how
+ * /ruvnet-brain:checkpoint hands over a state the model actually wrote.
+ *
+ * Two things are deliberately NOT done here:
+ *   • `.swarm` is never created. Its absence means the project has not adopted the brain, and a
+ *     lifecycle hook that plants a store in every repository the user opens is trespass (see above).
+ *   • No exception escapes. A capture boundary that can fail a turn is worse than a missed snapshot.
+ */
 export function runSessionSnapshotHook(projectDir, event, {
   rawInput = '',
   host = process.env.RUVNET_HOOK_HOST || 'claude',
   captureProgression = captureProjectTransition,
+  produce = buildProjectProgression,
+  budgetMs = CAPTURE_BUDGET_MS,
+  now = Date.now,
 } = {}) {
   const metadataWritten = writeSessionSnapshot(projectDir, event);
   let payload;
   try { payload = rawInput ? JSON.parse(rawInput) : {}; } catch { payload = {}; }
-  if (!hasProjectProgression(payload)) {
-    return { metadataWritten, progressionCaptured: false, receipt: null };
+  const idle = { metadataWritten, progressionCaptured: false, receipt: null };
+
+  if (hasProjectProgression(payload)) {
+    if (payload.hook_event_name !== event) {
+      throw new Error(`progression boundary mismatch: expected ${event}, received ${payload.hook_event_name}`);
+    }
+    const result = captureProgression({ host, payload, projectDir });
+    return { ...idle, progressionCaptured: true, receipt: result.receipt };
   }
-  if (payload.hook_event_name !== event) {
-    throw new Error(`progression boundary mismatch: expected ${event}, received ${payload.hook_event_name}`);
+
+  // A payload with no session identity is not a real lifecycle event (an empty `{}` from a probe,
+  // a malformed host). Capturing against an invented session id would fabricate a journal entry.
+  if (typeof payload.session_id !== 'string' || !payload.session_id) {
+    return { ...idle, skipped: 'no session identity in the host payload' };
   }
-  const result = captureProgression({ host, payload, projectDir });
-  return { metadataWritten, progressionCaptured: true, receipt: result.receipt };
+
+  let resolution;
+  try { resolution = resolveProjectStore({ projectDir }); } catch {
+    return { ...idle, skipped: 'project store could not be resolved' };
+  }
+  if (!fs.existsSync(path.dirname(resolution.canonicalAgentDbPath))) {
+    return { ...idle, skipped: 'project has not adopted the canonical store' };
+  }
+
+  const deadlineAt = now() + budgetMs;
+  const storeFactory = boundedStoreFactory(deadlineAt);
+
+  // Commit anything a previously interrupted session left durable-but-uncommitted. SessionStart is
+  // forbidden from doing this (ADR-073 §5) because replay is a write; a capture boundary already
+  // owns a write budget, so this is where that debt is settled.
+  let replayed = 0;
+  try {
+    replayed = storeFactory({ projectDir, requestedStorePath: resolution.canonicalAgentDbPath }).replay().length;
+  } catch { /* the new capture below is still worth attempting */ }
+
+  let produced;
+  try {
+    produced = produce({ resolution, payload, host, trigger: event });
+  } catch (error) {
+    return { ...idle, replayed, skipped: `producer failed: ${error.message}` };
+  }
+  if (produced.skipped) return { ...idle, replayed, skipped: produced.skipped.reason };
+
+  const result = captureProgression({
+    host,
+    payload: { ...payload, hook_event_name: event, projectProgression: produced.projectProgression },
+    projectDir,
+    storeFactory,
+  });
+  return {
+    metadataWritten,
+    progressionCaptured: true,
+    replayed,
+    receipt: result.receipt,
+    provenance: produced.provenance,
+  };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-hook.mjs')) {
@@ -68,7 +166,8 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-
   try {
     runSessionSnapshotHook(projectDirectory(), process.argv[2] || 'SessionEnd', { rawInput });
   } catch (error) {
+    // ADVISORY, ALWAYS. A capture boundary fires at Stop, PreCompact and SessionEnd; one that can
+    // return a non-zero status can interrupt a turn, a compaction, or a clean exit. Report and exit 0.
     process.stderr.write(`[project-progression] ${error.message}\n`);
-    process.exitCode = 1;
   }
 }
