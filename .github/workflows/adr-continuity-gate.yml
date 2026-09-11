@@ -1,0 +1,125 @@
+name: ADR Continuity Gates
+
+# Trigger on pull requests to validate ADR consistency
+on:
+  pull_request:
+    branches:
+      - main
+      - release/*
+    paths:
+      - 'docs/adr/**'
+      - 'scripts/**'
+      - 'src/**'
+      - 'plugin/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  adr-validate:
+    name: ADR State Consistency (Gate 1)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git operations
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ADR validation gate
+        id: validate
+        run: |
+          node scripts/adr-validate.mjs > adr-validate.log 2>&1 || {
+            exit_code=$?
+            cat adr-validate.log
+            exit $exit_code
+          }
+          cat adr-validate.log
+
+      - name: Post validation results to PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const log = fs.readFileSync('adr-validate.log', 'utf8');
+            const status = '${{ job.status }}' === 'success' ? '✓ PASSED' : '✗ FAILED';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ADR Continuity Gate: State Consistency ${status}\n\n\`\`\`\n${log}\n\`\`\``
+            });
+
+  adr-impl-status:
+    name: ADR Implementation Status (Gate 3)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run implementation status gate
+        id: impl-check
+        run: |
+          node scripts/adr-impl-status.mjs > adr-impl.log 2>&1 || {
+            exit_code=$?
+            cat adr-impl.log
+            exit $exit_code
+          }
+          cat adr-impl.log
+
+      - name: Check for ADR status mismatches
+        if: failure()
+        run: |
+          echo "::error::ADR Implementation Status gate failed - implementation and status field don't match"
+          exit 1
+
+  governance-report:
+    name: Governance Summary
+    runs-on: ubuntu-latest
+    needs: [adr-validate, adr-impl-status]
+    if: always()
+    steps:
+      - name: Check gate results
+        run: |
+          echo "### Continuity Gates Summary"
+          echo "- State Consistency: ${{ needs.adr-validate.result }}"
+          echo "- Implementation Status: ${{ needs.adr-impl-status.result }}"
+
+      - name: Report overall status
+        if: |
+          needs.adr-validate.result == 'failure' ||
+          needs.adr-impl-status.result == 'failure'
+        run: |
+          echo "::error::ADR Continuity Gates BLOCKED - one or more gates failed"
+          exit 1
+
+      - name: Report success
+        if: |
+          needs.adr-validate.result == 'success' &&
+          needs.adr-impl-status.result == 'success'
+        run: |
+          echo "::notice title=ADR Continuity Gates::All gates PASSED - ADRs are consistent with implementation"
