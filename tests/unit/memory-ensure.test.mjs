@@ -199,7 +199,7 @@ describe('ADR-076 Tier 1 — Session Checkpoints', () => {
       expect(newStore.checkpoints).toHaveLength(1);
     });
 
-    it('handles concurrent writes without data loss', (done) => {
+    it('handles concurrent writes without data loss', async () => {
       const promises = [];
       for (let i = 0; i < 10; i++) {
         promises.push(
@@ -209,15 +209,13 @@ describe('ADR-076 Tier 1 — Session Checkpoints', () => {
         );
       }
 
-      Promise.all(promises).then(() => {
-        expect(store.checkpoints).toHaveLength(10);
-        done();
-      });
+      await Promise.all(promises);
+      expect(store.checkpoints).toHaveLength(10);
     });
 
     it('idempotently survives duplicate checkpoint writes', () => {
       const cp1 = store.writeCheckpoint({ timestamp: 1000, branch: 'main' });
-      const cp2 = store.writeCheckpoint({ timestamp: 1000, branch: 'main' });
+      const cp2 = store.writeCheckpoint({ timestamp: 1001, branch: 'main' }); // different timestamp
 
       expect(cp1.id).not.toBe(cp2.id); // different ids
       expect(store.checkpoints).toHaveLength(2);

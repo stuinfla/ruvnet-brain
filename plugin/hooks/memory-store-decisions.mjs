@@ -185,15 +185,34 @@ function buildDecisionObject(filePath, metadata) {
 }
 
 /**
- * storeDecisionViaRuflo — persist decision using `ruflo memory store`
+ * getCurrentSessionId — get session ID for isolation (Phase 2)
+ */
+function getCurrentSessionId() {
+  // Priority: CLAUDE_SESSION env (set by Claude Code) > fallback UUID in .claude/session-context.json
+  if (process.env.CLAUDE_SESSION) {
+    return process.env.CLAUDE_SESSION;
+  }
+  // Fallback: use hostname + pid + timestamp as ephemeral session ID
+  const hostname = os.hostname().replace(/\..+/, '').substring(0, 8);
+  return `${hostname}-${process.pid}-${Math.floor(Date.now() / 1000)}`;
+}
+
+/**
+ * storeDecisionViaRuflo — persist decision using `ruflo memory store` with session isolation
  */
 function storeDecisionViaRuflo(memoryDbPath, decision) {
   try {
+    const sessionId = getCurrentSessionId();
+    const decisionWithSession = {
+      ...decision,
+      sessionId, // Phase 2: tag with session ID for isolation
+    };
+
     const result = spawnSync('ruflo', [
       'memory', 'store',
       '--path', memoryDbPath,
       '-k', decision.key,
-      '--value', JSON.stringify(decision),
+      '--value', JSON.stringify(decisionWithSession),
     ], {
       encoding: 'utf8',
       timeout: 3000,

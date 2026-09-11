@@ -1,6 +1,22 @@
+---
+id: ADR-080
+title: Hybrid Model Routing Strategy for 95/100 North Star Campaign
+status: Proposed
+date: 2026-09-11
+updated: 2026-09-11
+authors: [System Architect, Claude, Codex]
+tags: [architecture, model-routing, optimization, north-star, campaign]
+supersedes: []
+relates: [ADR-079, ADR-073, ADR-050, ADR-077, ADR-078]
+governs:
+  - scripts/model-router.mjs
+  - config/model-routing.json
+  - .github/workflows/campaign-*.yml
+---
+
 # ADR-0080: Hybrid Model Routing Strategy for 95/100 North Star Campaign (W2–W6)
 
-**Status:** Pending (dual-optimizer analysis in progress)  
+**Status:** Proposed (2026-09-11)  
 **Date:** 2026-09-11  
 **Authors:** System Architect (Claude + Codex dual-grade)  
 **Related:** ADR-0079 (testing gates), ADR-0073 (memory), ADR-0050 (issue automation)

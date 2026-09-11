@@ -1,6 +1,21 @@
-# ADR-0077: High-Assurance Model Routing for North Star 95/100
+---
+id: ADR-083
+title: High-Assurance Model Routing for North Star 95/100
+status: Proposed
+date: 2026-09-11
+updated: 2026-09-11
+authors: [Claude Haiku, System Architecture]
+tags: [architecture, model-routing, optimization, north-star, campaign]
+supersedes: []
+relates: [ADR-078, ADR-079, ADR-080, ADR-077]
+governs:
+  - scripts/model-router.mjs
+  - config/model-routing.json
+---
 
-**Status:** PROPOSED (for dual review before implementation)  
+# ADR-0083: High-Assurance Model Routing for North Star 95/100
+
+**Status:** Proposed (2026-09-11)  
 **Authors:** Claude Haiku 4.5 (system-architecture)  
 **Date:** 2026-09-11  
 **Deadline:** 2026-09-25 (14 days, 6 parallel lanes)  

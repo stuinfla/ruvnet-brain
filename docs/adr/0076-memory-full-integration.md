@@ -3,6 +3,7 @@ id: ADR-076
 title: Memory full integration - session recall and decision ledger
 status: Proposed
 date: 2026-09-11
+updated: 2026-09-11
 authors: [Stuart Kerr, Codex]
 tags: [architecture, memory, agentdb, continuity, decisions, recall, ledger]
 supersedes: []

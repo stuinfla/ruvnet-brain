@@ -3,6 +3,7 @@ id: ADR-077
 title: Continuity gates - ADR-as-code automation and decision tracking
 status: Proposed
 date: 2026-09-11
+updated: 2026-09-11
 authors: [Stuart Kerr, Codex]
 tags: [architecture, automation, adr, gates, ci, enforcement, ddd]
 supersedes: []

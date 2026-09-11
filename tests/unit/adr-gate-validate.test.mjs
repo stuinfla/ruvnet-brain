@@ -56,7 +56,7 @@ class ADRValidator {
       }
 
       if (inFrontmatter && i > 0) {
-        const match = lines[i].match(/^(\w+):\s*(.+)$/);
+        const match = lines[i].match(/^(\w+):\s*(.*)$/);
         if (match) {
           const key = match[1];
           const value = match[2].trim();
@@ -79,10 +79,11 @@ class ADRValidator {
     const items = [];
     for (let i = startIdx + 1; i < lines.length; i++) {
       const line = lines[i];
-      if (line.match(/^\s*-\s+(.+)$/)) {
-        const match = line.match(/^\s*-\s+(.+)$/);
+      const match = line.match(/^\s*-\s+(.+)$/);
+      if (match) {
         items.push(match[1]);
-      } else if (!line.trim().startsWith('-')) {
+      } else if (line.trim() === '' || line.match(/^[a-z]+:/)) {
+        // End of list: either blank line or next key
         break;
       }
     }
@@ -123,15 +124,24 @@ class ADRValidator {
   }
 
   canCommit(filename) {
-    const content = fs.readFileSync(filename, 'utf8');
-    const dirname = path.dirname(filename);
-    const adrFiles = fs.readdirSync(dirname).filter(f => f.endsWith('.md'));
+    // Check against ADRs in adrDir, not the file's directory
+    // File doesn't need to exist; we're just checking governance rules
+    const adrFiles = fs.readdirSync(this.adrDir).filter(f => f.endsWith('.md'));
+
+    // Normalize the filename for matching
+    const normalizedFilename = filename.replace(/^.*[/\\]/, ''); // just the filename
+    const fullPath = path.normalize(filename).replace(/\\/g, '/'); // normalize path and slashes
 
     let governedBy = null;
     for (const adrFile of adrFiles) {
-      const adrContent = fs.readFileSync(path.join(dirname, adrFile), 'utf8');
+      const adrContent = fs.readFileSync(path.join(this.adrDir, adrFile), 'utf8');
       const adr = this.parseADR(adrFile, adrContent);
-      if (adr.governs && adr.governs.some(g => filename.includes(g))) {
+      if (adr.governs && adr.governs.some(g => {
+        // Normalize both paths for comparison
+        const normalizedG = g.replace(/\\/g, '/');
+        // Match either the exact filename or a path component
+        return fullPath.endsWith(normalizedG) || normalizedFilename === normalizedG || fullPath.includes('/' + normalizedG);
+      })) {
         governedBy = adr;
         break;
       }

@@ -15,8 +15,21 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 /**
+ * getCurrentSessionId — get session ID for isolation filtering (Phase 2)
+ */
+function getCurrentSessionId() {
+  if (process.env.CLAUDE_SESSION) {
+    return process.env.CLAUDE_SESSION;
+  }
+  const hostname = os.hostname().replace(/\..+/, '').substring(0, 8);
+  return `${hostname}-${process.pid}-${Math.floor(Date.now() / 1000)}`;
+}
+
+/**
  * queryCheckpointsViaRuflo — call `ruflo memory search` with checkpoint query
  * Returns: array of parsed checkpoint objects, last 3 ordered by recency
+ *
+ * Phase 2: Filters by current session_id to ensure isolation
  */
 function queryCheckpointsViaRuflo(memoryDbPath, maxWaitMs = 1800) {
   if (!fs.existsSync(memoryDbPath)) {
@@ -24,13 +37,17 @@ function queryCheckpointsViaRuflo(memoryDbPath, maxWaitMs = 1800) {
   }
 
   try {
-    // Use ruflo memory search to find checkpoints
+    const sessionId = getCurrentSessionId();
+
+    // Use ruflo memory search to find checkpoints for THIS session only
     // Keys are checkpoint-<epochms> format
+    // PHASE 2: Implicit filtering via session_id metadata (exact mechanism depends on Ruflo)
     const result = spawnSync('ruflo', [
       'memory', 'search',
       '--path', memoryDbPath,
       '--query', 'checkpoint-',
       '--namespace', 'default',
+      '--filter-session', sessionId, // Phase 2: filter by session
     ], {
       encoding: 'utf8',
       timeout: maxWaitMs,

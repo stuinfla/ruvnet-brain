@@ -1,60 +1,61 @@
-import { test } from 'node:test';
+import { describe, test } from 'vitest';
 import assert from 'node:assert';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { captureThreadSnapshot } from '../../scripts/memory-snapshot-threads.mjs';
 
-test('memory-thread-snapshot: creates snapshot with valid structure', async (t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
-  const swarmDir = path.join(tmpDir, '.swarm');
-  fs.mkdirSync(swarmDir, { recursive: true });
+describe('memory-thread-snapshot', () => {
+  test('creates snapshot with valid structure', async (t) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
+    const swarmDir = path.join(tmpDir, '.swarm');
+    fs.mkdirSync(swarmDir, { recursive: true });
 
-  // Create a minimal PROGRESS.md
-  const progressPath = path.join(tmpDir, 'PROGRESS.md');
-  fs.writeFileSync(progressPath, `# Project Progress
+    // Create a minimal PROGRESS.md
+    const progressPath = path.join(tmpDir, 'PROGRESS.md');
+    fs.writeFileSync(progressPath, `# Project Progress
 
 - [ ] Task 1: Implement feature X
 - [ ] Task 2: Write tests
 - [x] Task 3: Deploy
 `);
 
-  const output = [];
-  const result = captureThreadSnapshot({
-    cwd: tmpDir,
-    stdout: { write: (s) => output.push(s) },
-    stderr: { write: () => {} },
+    const output = [];
+    const result = captureThreadSnapshot({
+      cwd: tmpDir,
+      stdout: { write: (s) => output.push(s) },
+      stderr: { write: () => {} },
+    });
+
+    assert.strictEqual(result, 0, 'should return exit code 0');
+
+    // Cleanup
+    fs.rmSync(tmpDir, { recursive: true });
   });
 
-  assert.strictEqual(result, 0, 'should return exit code 0');
+  test('handles missing .swarm directory', async (t) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
 
-  // Cleanup
-  fs.rmSync(tmpDir, { recursive: true });
-});
+    const output = [];
+    const result = captureThreadSnapshot({
+      cwd: tmpDir,
+      stdout: { write: (s) => output.push(s) },
+      stderr: { write: () => {} },
+    });
 
-test('memory-thread-snapshot: handles missing .swarm directory', async (t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
+    assert.strictEqual(result, 0, 'should return 0 (fail open) when .swarm missing');
 
-  const output = [];
-  const result = captureThreadSnapshot({
-    cwd: tmpDir,
-    stdout: { write: (s) => output.push(s) },
-    stderr: { write: () => {} },
+    // Cleanup
+    fs.rmSync(tmpDir, { recursive: true });
   });
 
-  assert.strictEqual(result, 0, 'should return 0 (fail open) when .swarm missing');
+  test('extracts unchecked tasks from PROGRESS.md', async (t) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
+    const swarmDir = path.join(tmpDir, '.swarm');
+    fs.mkdirSync(swarmDir, { recursive: true });
 
-  // Cleanup
-  fs.rmSync(tmpDir, { recursive: true });
-});
-
-test('memory-thread-snapshot: extracts unchecked tasks from PROGRESS.md', async (t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
-  const swarmDir = path.join(tmpDir, '.swarm');
-  fs.mkdirSync(swarmDir, { recursive: true });
-
-  const progressPath = path.join(tmpDir, 'PROGRESS.md');
-  fs.writeFileSync(progressPath, `# Progress
+    const progressPath = path.join(tmpDir, 'PROGRESS.md');
+    fs.writeFileSync(progressPath, `# Progress
 
 - [ ] First unchecked task
 - [x] Checked task (should be skipped)
@@ -65,78 +66,79 @@ test('memory-thread-snapshot: extracts unchecked tasks from PROGRESS.md', async 
 - [ ] Sixth unchecked task (should be limited to 5)
 `);
 
-  const result = captureThreadSnapshot({
-    cwd: tmpDir,
-    stdout: { write: () => {} },
-    stderr: { write: () => {} },
+    const result = captureThreadSnapshot({
+      cwd: tmpDir,
+      stdout: { write: () => {} },
+      stderr: { write: () => {} },
+    });
+
+    assert.strictEqual(result, 0, 'should process PROGRESS.md successfully');
+
+    // Cleanup
+    fs.rmSync(tmpDir, { recursive: true });
   });
 
-  assert.strictEqual(result, 0, 'should process PROGRESS.md successfully');
+  test('handles missing PROGRESS.md gracefully', async (t) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
+    const swarmDir = path.join(tmpDir, '.swarm');
+    fs.mkdirSync(swarmDir, { recursive: true });
 
-  // Cleanup
-  fs.rmSync(tmpDir, { recursive: true });
-});
+    const output = [];
+    const result = captureThreadSnapshot({
+      cwd: tmpDir,
+      stdout: { write: (s) => output.push(s) },
+      stderr: { write: () => {} },
+    });
 
-test('memory-thread-snapshot: handles missing PROGRESS.md gracefully', async (t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
-  const swarmDir = path.join(tmpDir, '.swarm');
-  fs.mkdirSync(swarmDir, { recursive: true });
+    assert.strictEqual(result, 0, 'should return 0 even when PROGRESS.md missing');
 
-  const output = [];
-  const result = captureThreadSnapshot({
-    cwd: tmpDir,
-    stdout: { write: (s) => output.push(s) },
-    stderr: { write: () => {} },
+    // Cleanup
+    fs.rmSync(tmpDir, { recursive: true });
   });
 
-  assert.strictEqual(result, 0, 'should return 0 even when PROGRESS.md missing');
+  test('completes within timeout', async (t) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
+    const swarmDir = path.join(tmpDir, '.swarm');
+    fs.mkdirSync(swarmDir, { recursive: true });
 
-  // Cleanup
-  fs.rmSync(tmpDir, { recursive: true });
-});
+    const start = Date.now();
+    const result = captureThreadSnapshot({
+      cwd: tmpDir,
+      stdout: { write: () => {} },
+      stderr: { write: () => {} },
+    });
+    const elapsed = Date.now() - start;
 
-test('memory-thread-snapshot: completes within timeout', async (t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
-  const swarmDir = path.join(tmpDir, '.swarm');
-  fs.mkdirSync(swarmDir, { recursive: true });
+    assert.ok(elapsed < 5000, `should complete in <5s (took ${elapsed}ms)`);
+    assert.strictEqual(result, 0, 'should complete successfully');
 
-  const start = Date.now();
-  const result = captureThreadSnapshot({
-    cwd: tmpDir,
-    stdout: { write: () => {} },
-    stderr: { write: () => {} },
-  });
-  const elapsed = Date.now() - start;
-
-  assert.ok(elapsed < 5000, `should complete in <5s (took ${elapsed}ms)`);
-  assert.strictEqual(result, 0, 'should complete successfully');
-
-  // Cleanup
-  fs.rmSync(tmpDir, { recursive: true });
-});
-
-test('memory-thread-snapshot: fails open on errors', async (t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
-  const swarmDir = path.join(tmpDir, '.swarm');
-  fs.mkdirSync(swarmDir, { recursive: true });
-
-  // Set an unreadable file to trigger an error
-  const progressPath = path.join(tmpDir, 'PROGRESS.md');
-  fs.writeFileSync(progressPath, 'test');
-  fs.chmodSync(progressPath, 0o000);
-
-  const result = captureThreadSnapshot({
-    cwd: tmpDir,
-    stdout: { write: () => {} },
-    stderr: { write: () => {} },
+    // Cleanup
+    fs.rmSync(tmpDir, { recursive: true });
   });
 
-  // Even on error, should return 0 (fail open)
-  assert.strictEqual(result, 0, 'should return 0 (fail open) even on error');
+  test('fails open on errors', async (t) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-test-'));
+    const swarmDir = path.join(tmpDir, '.swarm');
+    fs.mkdirSync(swarmDir, { recursive: true });
 
-  // Restore perms for cleanup
-  fs.chmodSync(progressPath, 0o644);
+    // Set an unreadable file to trigger an error
+    const progressPath = path.join(tmpDir, 'PROGRESS.md');
+    fs.writeFileSync(progressPath, 'test');
+    fs.chmodSync(progressPath, 0o000);
 
-  // Cleanup
-  fs.rmSync(tmpDir, { recursive: true });
+    const result = captureThreadSnapshot({
+      cwd: tmpDir,
+      stdout: { write: () => {} },
+      stderr: { write: () => {} },
+    });
+
+    // Even on error, should return 0 (fail open)
+    assert.strictEqual(result, 0, 'should return 0 (fail open) even on error');
+
+    // Restore perms for cleanup
+    fs.chmodSync(progressPath, 0o644);
+
+    // Cleanup
+    fs.rmSync(tmpDir, { recursive: true });
+  });
 });
