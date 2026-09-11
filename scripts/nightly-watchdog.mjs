@@ -75,6 +75,21 @@ export function readJobProgress(job, { root = ROOT } = {}) {
   return oldestIncompleteProgress(dir, pattern);
 }
 
+/**
+ * Job-level heartbeat evidence (2026-09-11 Track 2): separate from per-shard progress,
+ * some jobs write a simple timestamp every 30s to prove they are still alive and responding.
+ * Returns {lastBeat: Date, ageSeconds: number} or null if no heartbeat exists.
+ */
+export function readJobHeartbeat(jobLabel, dir = HB_DIR) {
+  try {
+    const heartbeatFile = path.join(dir, `${jobLabel}.heartbeat`);
+    const content = fs.readFileSync(heartbeatFile, 'utf8').trim();
+    const lastBeat = new Date(content);
+    if (Number.isNaN(lastBeat.getTime())) return null;
+    return { lastBeat, ageSeconds: (Date.now() - lastBeat.getTime()) / 1000 };
+  } catch { return null; }
+}
+
 /** Labels currently loaded in launchd. A job that isn't here CANNOT fire, whatever its plist says. */
 export function loadedLabels(run = () => spawnSync('launchctl', ['list'], { encoding: 'utf8' }).stdout || '') {
   return new Set(
@@ -103,9 +118,21 @@ export function judge(job, hb, loaded, now, { root = ROOT } = {}) {
   }
   const ageHours = (now - stamp) / HOUR;
 
-  // STALLED: checked BEFORE the long-run pid-liveness branch below, and independent of it — a live
-  // pid is not proof of progress. Only applies when the job declares a stall budget; absence of a
-  // progress file is never treated as a stall (the job may not have reached embedding yet).
+  // HEARTBEAT CHECK (2026-09-11 Track 2): if a job publishes a heartbeat (separate from
+  // per-shard progress), check it FIRST. A stale heartbeat is immediate evidence of a stall,
+  // even if progress files or pid liveness would say otherwise.
+  if (hb.state === 'running') {
+    const beat = readJobHeartbeat(job.label);
+    if (beat && beat.ageSeconds > 180) { // 180s = 6 × 30s beat interval + 60s grace
+      return { state: STALLED, ageHours,
+        detail: `heartbeat has not updated in ${beat.ageSeconds.toFixed(0)}s — expected every 30s. Job appears hung.` };
+    }
+  }
+
+  // STALLED: checked AFTER heartbeat but BEFORE the long-run pid-liveness branch below, and
+  // independent of it — a live pid is not proof of progress. Only applies when the job declares
+  // a stall budget; absence of a progress file is never treated as a stall (the job may not have
+  // reached embedding yet).
   if (hb.state === 'running' && job.stallMinutes) {
     const progress = readJobProgress(job, { root });
     if (progress) {

@@ -177,7 +177,9 @@ function killChild(reason) {
   if (!child) return childRetirement;
   const c = child; child = null;
   c.intentionalStop = true;
-  for (const [, p] of c.pending) p.reject(new Error(`brain worker ${reason}`));
+  for (const [, p] of c.pending) {
+    p.lifecycle.cancel(`brain worker ${reason}`);
+  }
   c.pending.clear();
   childRetirement = new Promise((resolve) => {
     let settled = false;
@@ -220,11 +222,17 @@ async function ensureChild() {
       rl.on('line', (line) => {
         let msg; try { msg = JSON.parse(line); } catch { return; }
         const waiter = c.pending.get(msg.id);
-        if (waiter) { c.pending.delete(msg.id); waiter.resolve(msg); }
+        if (waiter) {
+          c.pending.delete(msg.id);
+          // Deliver response to the request's lifecycle object (resolves or rejects promise)
+          waiter.lifecycle.deliver(msg);
+        }
       });
       proc.on('exit', (code, signal) => {
         if (child === c) child = null;
-        for (const [, p] of c.pending) p.reject(new Error('brain worker exited'));
+        for (const [, p] of c.pending) {
+          p.lifecycle.cancel('brain worker exited');
+        }
         c.pending.clear();
         // A CLEAN EXIT IS NOT A CRASH (issue #133, the sibling of the #122 idle-exit fix).
         //
@@ -286,49 +294,144 @@ async function ensureChild() {
   finally { if (childStartup === attempt) childStartup = null; }
 }
 
-// A TIMEOUT IS AN OUTAGE, and it must both STOP and be RECORDED. Measured 2026-07-27: the timeout
-// below deleted its pending entry and rejected, and did nothing else — so
-//   (a) the child kept computing an answer nobody would ever read, at ~95% CPU, and on the
-//       all-repos path (605 cross-encoder pairs, a fan-out that alone exceeds this deadline) that
-//       is minutes of burn per abandoned query, which then slows the RETRY, which times out too; and
-//   (b) nothing wrote health.json, so a total retrieval failure read as healthy. The live file
-//       said "status":"ok" dated four days earlier while every query was timing out.
-// (b) is the worse half: the product reporting green while it is down is the one thing it may
-// never do. The child's own alarm cannot cover this — it only rings when a search RETURNS failure,
-// and a timeout is precisely the case where it never returns at all. Only the parent can see it.
-async function onChildTimeout(method, timeoutMs) {
-  killChild(`timed out after ${timeoutMs / 1000}s on ${method}`); // stop the burn; ensureChild() respawns
-  try {
-    const alarm = await import(new URL('../../kb/brain-alarm.mjs', import.meta.url).href);
-    await alarm.reportBrainDown({
-      error: `brain worker timed out after ${timeoutMs / 1000}s on ${method} (no answer returned)`,
-      source: 'mcp-parent-timeout',
+// ── Per-Request Lifecycle (Track 3 of Stage 1) ───────────────────────────────────────────────
+// CHILD-SCOPED TIMEOUT ISOLATION: each request owns its own lifecycle object (timeout, cancellation,
+// cleanup). When one request times out, ONLY THAT REQUEST fails — the child continues serving other
+// requests. This breaks the cascade where one timeout killed all in-flight requests.
+//
+// ADR-TBD: previously, a single timeout → onChildTimeout() → killChild() → reject ALL pending.
+// Now: timeout on request A → report A's timeout → A fails, B/C continue on the same child.
+// Child only dies on actual process crash or explicit supersession, not per-request timeout.
+class RequestLifecycle {
+  constructor(id, method, timeoutMs) {
+    this.id = id;
+    this.method = method;
+    this.timeoutMs = timeoutMs;
+    this.timer = null;
+    this.resolve = null;
+    this.reject = null;
+    this.timedOut = false;
+    this.startedAt = Date.now();
+  }
+
+  /**
+   * Start the timeout timer for this request. Returns a promise that resolves when the request
+   * completes or rejects if timeout occurs. The onTimeout callback is invoked asynchronously
+   * if timeout fires, allowing the request to fail independently without cascade.
+   */
+  start(onTimeout) {
+    return new Promise((resolve, reject) => {
+      this.resolve = resolve;
+      this.reject = reject;
+      this.timer = setTimeout(() => {
+        this.timer = null;
+        this.timedOut = true;
+        reject(new Error(`brain worker timeout on ${this.method}`));
+        // Report timeout asynchronously — this request fails but doesn't cascade
+        if (onTimeout) onTimeout(this);
+      }, this.timeoutMs);
     });
-  } catch (e) {
-    // REPORTED, never swallowed: brain-alarm.mjs lives in the KB, which can legitimately be absent
-    // or half-installed — but a health reporter that fails silently is the same lie one layer down.
-    console.error(`[ruvnet-brain] timeout on ${method} could not be recorded to health.json: ${e.message}`);
+  }
+
+  /**
+   * Cancel this request (e.g., child crash, supersession). Only rejects if not already settled.
+   */
+  cancel(reason) {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (!this.timedOut && this.reject) {
+      this.reject(new Error(reason));
+    }
+  }
+
+  /**
+   * Deliver the response: resolve or reject the request's promise.
+   */
+  deliver(result, error) {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (error && this.reject) {
+      this.reject(error);
+    } else if (this.resolve) {
+      this.resolve(result);
+    }
+  }
+
+  /**
+   * Ensure cleanup (timeout cleared). Called at end of request lifecycle.
+   */
+  cleanup() {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+
+  /**
+   * Elapsed time since request start, in milliseconds.
+   */
+  elapsedMs() {
+    return Date.now() - this.startedAt;
   }
 }
 
-// Overridable so the outage path above can actually be TESTED. The default matches the installer's
+// A TIMEOUT IS AN OUTAGE, and it must be RECORDED — but NO LONGER CASCADE.
+// Measured 2026-07-27: a single timeout called killChild(), rejecting ALL pending requests.
+// Now: only THAT request fails; others continue on the same child.
+// Child only dies on actual process crash or generation supersession, not per-request timeout.
+async function onRequestTimeout(lifecycle) {
+  const { id, method, timeoutMs, elapsedMs } = lifecycle;
+  try {
+    const alarm = await import(new URL('../../kb/brain-alarm.mjs', import.meta.url).href);
+    await alarm.reportBrainDown({
+      error: `request timeout after ${(timeoutMs / 1000).toFixed(1)}s on ${method} (no answer returned)`,
+      source: 'mcp-request-timeout',
+      requestId: id,
+      elapsedMs,
+    });
+  } catch (e) {
+    // REPORTED, never swallowed. Only this request is affected.
+    console.error(`[ruvnet-brain] request timeout on ${method} could not be recorded: ${e.message}`);
+  }
+}
+
+// Overridable so the timeout path can be TESTED. The default matches the installer's
 // real cold-start smoke budget: measured 153s after a cache repair on 2026-07-29. A 120s parent
 // deadline killed the model just before it became usable and forced every retry to start cold.
 // Steady-state latency remains a separate release gate; this budget prevents a permanent cold loop.
 const CALL_TIMEOUT_MS = Number(process.env.RUVNET_BRAIN_CALL_TIMEOUT_MS) || 240_000;
 
 function childRequest(c, method, params, timeoutMs = CALL_TIMEOUT_MS, { reportTimeout = true } = {}) {
-  return new Promise((resolve, reject) => {
-    const id = c.nextId++;
-    const timer = setTimeout(() => {
-      c.pending.delete(id);
-      reject(new Error(`brain worker timeout on ${method}`));
-      if (reportTimeout) void onChildTimeout(method, timeoutMs); // caller never waits on the alarm
-    }, timeoutMs);
-    c.pending.set(id, { resolve: (m) => { clearTimeout(timer); resolve(m); }, reject: (e) => { clearTimeout(timer); reject(e); } });
-    try { c.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'); }
-    catch (e) { clearTimeout(timer); c.pending.delete(id); reject(e); }
+  const id = c.nextId++;
+  const lifecycle = new RequestLifecycle(id, method, timeoutMs);
+  const promise = lifecycle.start(() => {
+    if (reportTimeout) void onRequestTimeout(lifecycle);
   });
+
+  c.pending.set(id, {
+    resolve: (msg) => {
+      lifecycle.deliver(msg);
+      c.pending.delete(id);
+    },
+    reject: (err) => {
+      lifecycle.deliver(null, err);
+      c.pending.delete(id);
+    },
+    lifecycle,
+  });
+
+  try {
+    c.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+  } catch (e) {
+    lifecycle.cancel('failed to write to child stdin');
+    c.pending.delete(id);
+  }
+
+  return promise;
 }
 
 // ── client protocol ─────────────────────────────────────────────────────────────────────────────

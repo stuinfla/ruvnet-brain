@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WRAPPER = path.join(ROOT, 'plugin', 'scripts', 'codex-hook-wrapper.mjs');
@@ -434,19 +435,20 @@ describe('continuity-only Codex lifecycle packaging', () => {
 
     expect(manifest.hooks).toBe('./hooks/codex-hooks.json');
     expect(manifest.mcpServers).toBe('./.mcp.json');
-    expect(Object.keys(codex.hooks).sort()).toEqual(['SessionStart', 'Stop']);
-    expect(Object.keys(claude.hooks).sort()).toEqual(['SessionStart', 'Stop']);
+    expect(Object.keys(codex.hooks).sort()).toEqual([...new Set(continuityRegistrations('codex').map((s) => s.event))].sort());
+    expect(Object.keys(claude.hooks).sort()).toEqual([...new Set(continuityRegistrations('claude').map((s) => s.event))].sort());
     expect(JSON.stringify(codex.hooks)).toContain('session-start');
     expect(JSON.stringify(codex.hooks)).toContain('continuation-gate');
     expect(project.hooks).toEqual({});
   });
 
-  it('retains the adapter implementation and exposes exactly two registered handlers', () => {
+  it('retains the adapter implementation and exposes exactly the declared Codex handlers', () => {
     expect(fs.existsSync(WRAPPER)).toBe(true);
     expect(fs.existsSync(ADAPTER)).toBe(true);
     expect(manifestHandlers().map((h) => h.command).join('\n')).toMatch(/session-start/);
     expect(manifestHandlers().map((h) => h.command).join('\n')).toMatch(/continuation-gate/);
-    expect(manifestHandlers()).toHaveLength(2);
+    expect(manifestHandlers().map((h) => h.command).join('\n')).toMatch(/session-snapshot.*SessionEnd/);
+    expect(manifestHandlers()).toHaveLength(continuityRegistrations('codex').length);
   });
 });
 
