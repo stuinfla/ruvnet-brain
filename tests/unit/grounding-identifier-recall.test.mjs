@@ -151,7 +151,21 @@ describe('version intent — newest semver wins, and only for release records', 
   });
   it('calls a changelog a release record and a blog post that mentions one not', () => {
     expect(isReleaseDocument({ path: 'CHANGELOG.md' })).toBe(true);
+    expect(isReleaseDocument({ path: 'agentdb/docs/CHANGELOG-ALPHA-2.7.md' })).toBe(true);
     expect(isReleaseDocument({ path: 'docs/releases/v3.md', title: 'Release notes' })).toBe(true);
+    expect(isReleaseDocument({ path: 'RELEASES.md' })).toBe(true);
     expect(isReleaseDocument({ path: 'docs/blog/why-we-shipped-3.13.2.md', title: 'Why we shipped' })).toBe(false);
+  });
+
+  it('refuses the false positive that took #1 from a package manifest on the CLI', () => {
+    // Measured 2026-09-11: an earlier stem allowed a bare `release` plus any suffix, so this AGENT
+    // DEFINITION read as a release note and outranked @claude-flow/aidefence's own package.json on
+    // that package's own version question. A boost that promotes the wrong document is worse than
+    // no boost at all.
+    expect(isReleaseDocument({
+      path: 'v3/@claude-flow/cli/.claude/agents/github/release-swarm.md',
+      title: 'Release Swarm - Intelligent Release Automation',
+    })).toBe(false);
+    expect(isReleaseDocument({ path: 'v3/@claude-flow/aidefence/package.json' })).toBe(false);
   });
 });

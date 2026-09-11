@@ -160,15 +160,27 @@ export function highestSemver(text) {
   return best;
 }
 
-// A path/title that is a release record rather than prose ABOUT one. Deliberately path-shaped:
-// "CHANGELOG.md", "docs/releases/…", "RELEASE-NOTES", a GitHub release body. A blog post that
-// mentions a version is not a changelog and must not outrank one.
-const RELEASE_DOC = /(^|[\\/])(?:changelog|changes|history|release[-_ ]?notes?|releases?)(?:[-_.][a-z0-9.-]*)?(?:\.(?:md|markdown|txt|rst))?$/i;
+// A path/title that IS a release record, not prose about one.
+//
+// THE FALSE POSITIVE THIS SHAPE EXISTS TO EXCLUDE, caught on the CLI 2026-09-11: an earlier version
+// allowed a bare `release` stem with any suffix, so
+// `ruflo/v3/@claude-flow/cli/.claude/agents/github/release-swarm.md` — an AGENT DEFINITION — read
+// as a release note and took #1 from `@claude-flow/aidefence`'s own package.json on its own
+// version question. A boost that promotes the wrong document is worse than no boost.
+//
+// So: the stems that accept a suffix are the ones that only ever name release records
+// (CHANGELOG-ALPHA-2.7.md must still match), a bare `RELEASES.md` must match EXACTLY, and a
+// `releases/` or `release-notes/` DIRECTORY counts because that is where a repo files them.
+const RELEASE_STEM = /^(?:changelog|changes|history|release[-_ ]?notes?)(?:[-_.][a-z0-9][a-z0-9.-]*)?(?:\.(?:md|markdown|txt|rst))?$/i;
+const RELEASE_EXACT = /^releases?(?:\.(?:md|markdown|txt|rst))?$/i;
+const RELEASE_DIR = /(?:^|[\\/])(?:releases?|release[-_]notes?|changelogs?)[\\/]/i;
 
 export function isReleaseDocument({ path: docPath = '', title = '' } = {}) {
-  const base = String(docPath || '').split(/[\\/]/).pop() || '';
-  return RELEASE_DOC.test(String(docPath || ''))
-    || RELEASE_DOC.test(base)
+  const full = String(docPath || '');
+  const base = full.split(/[\\/]/).pop() || '';
+  return RELEASE_STEM.test(base)
+    || RELEASE_EXACT.test(base)
+    || RELEASE_DIR.test(full)
     || /\bchange\s?log\b|\brelease notes?\b|\bwhat'?s new\b/i.test(String(title || ''));
 }
 
