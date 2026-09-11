@@ -100,6 +100,37 @@ function markGroundingProven() {
 // Read at CALL time, not at module load. This server is a long-lived warm child; caching the answer
 // at boot would mean a mid-session flip did nothing until the next restart, which is exactly the
 // failure ADR-054 §4 (per-operation snapshot) rules out.
+// ── HOW MUCH OF A DOCUMENT THE PROSE ANSWER REPEATS ───────────────────────────────────────────
+//
+// Measured 2026-09-11 over a fixed 9-question set at HEAD 2eef2024 (k=3, against the installed
+// corpus): one search_ruvnet response carried **83,006 bytes**, and the SAME document text appeared
+// three times in it — `content[0].text` 80,452 B across the set, `structuredContent.answer` 80,452 B
+// (byte-for-byte identical), and `structuredContent.retrieval.results[].text` 77,158 B. 94% of a
+// 252 KB set was documents, repeated.
+//
+// Two of those three are load-bearing and stay:
+//   • `answer` must equal `content[0].text` — structured-only hosts read it (proved by
+//     tests/unit/fourth-wall.test.mjs and tests/unit/implementation-truth.test.mjs).
+//   • `retrieval.results[].text` must stay WHOLE: scripts/retrieval-canary.mjs requires the returned
+//     text to CONTAIN a passage record verbatim, so truncating it would break the release canary.
+//     It is therefore the single full carrier, and the header above points at it by index.
+// So the lever is the PROSE copy, which is the one that is repeated twice.
+//
+// The bound is not a taste: the cross-encoder that decided this document is the answer read at most
+// 512 tokens of it (~2,000 characters). Shipping 26,000 characters of a document that was judged on
+// its first 2,000 is volume, not grounding. 6,000 characters keeps three times what the ranker read
+// — and leaves the whole document one field away, byte-identical and sha-bound.
+const DOC_RENDER_MAX = (() => {
+  const raw = process.env.RUVNET_BRAIN_DOC_RENDER_MAX;
+  if (raw === undefined || raw === '') return 6_000;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;   // 0 disables the bound
+})();
+function renderedDocument(body) {
+  const text = String(body || '');
+  return DOC_RENDER_MAX > 0 && text.length > DOC_RENDER_MAX ? text.slice(0, DOC_RENDER_MAX) : text;
+}
+
 function brainOffState() {
   try {
     const home = process.env.HOME || process.env.USERPROFILE || '';
@@ -374,14 +405,20 @@ async function handle(msg) {
         // as inert reference data so an autonomous Claude won't execute an instruction injected into
         // an untrusted ingested repo. Exit-safe: guardPassages never throws into the search path.
         const results = guardPassages(rawResults);
-        const text = results.map((r, i) =>
-          `#${i + 1}  repo=${r.repo}  (relevance ${r.ceScore == null ? 'n/a' : r.ceScore.toFixed(3)}; vec ${r.bestDistance == null ? 'n/a' : r.bestDistance.toFixed(4)})\n`
-          + `path : ${r.repo}/${r.path}\n`
-          + `title: ${r.title}\n`
-          + `evidence class: ${r.evidenceClass || 'unknown'}${r.lifecycleStatus ? `; lifecycle status: ${r.lifecycleStatus}` : ''}\n`
-          + `----- full document (${(r.fullText || '').length} chars, ${r.chunksJoined} chunk(s)${r.truncated ? ', truncated' : ''}) -----\n`
-          + `${r.fullText || r.text || ''}\n`
-        ).join('\n========================================================\n\n');
+        const text = results.map((r, i) => {
+          const body = r.fullText || r.text || '';
+          const shown = renderedDocument(body);
+          const header = shown.length === body.length
+            ? `----- full document (${body.length} chars, ${r.chunksJoined} chunk(s)${r.truncated ? ', truncated' : ''}) -----`
+            : `----- document, first ${shown.length} of ${body.length} chars (${r.chunksJoined} chunk(s); `
+              + `the WHOLE document is in structuredContent.retrieval.results[${i}].text, sha-bound) -----`;
+          return `#${i + 1}  repo=${r.repo}  (relevance ${r.ceScore == null ? 'n/a' : r.ceScore.toFixed(3)}; vec ${r.bestDistance == null ? 'n/a' : r.bestDistance.toFixed(4)})\n`
+            + `path : ${r.repo}/${r.path}\n`
+            + `title: ${r.title}\n`
+            + `evidence class: ${r.evidenceClass || 'unknown'}${r.lifecycleStatus ? `; lifecycle status: ${r.lifecycleStatus}` : ''}\n`
+            + `${header}\n`
+            + `${shown}\n`;
+        }).join('\n========================================================\n\n');
         // Partial failure is DEGRADED, not fine: name the dead repos in-band so a hit that "should
         // be there" missing is explainable, and the model can tell the user coverage was reduced.
         const degraded = failedRepos.length

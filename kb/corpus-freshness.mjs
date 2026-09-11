@@ -186,8 +186,10 @@ export function freshnessAdvisory({ query, dir, corpusAge, liveVersions = [] }) 
   if (liveVersions.length) {
     lines.push(`🔎 LIVE REGISTRY (checked just now): ${liveVersions.map((v) => `${v.pkg}@${v.version}`).join(', ')}`);
   }
+  // The exact fallback sentence, kept literal and greppable so a reader (and a test) can find it:
+  // "corpus snapshot dated <date>; verify on npm".
   lines.push(
-    `⚠ VERSION QUESTION — the corpus is a snapshot${date ? ` dated ${date}` : ''}; verify on npm `
+    `⚠ VERSION QUESTION — corpus snapshot dated ${date || 'unknown'}; verify on npm `
     + `(\`npm view ${intent.packages[0] || '<package>'} version\`) before stating a current version for ${named}. `
     + `Any version quoted from the documents below is the version AS OF THAT SNAPSHOT, not today's.`,
   );
