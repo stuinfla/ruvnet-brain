@@ -6,6 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { probeSubscriptionHosts, subscriptionOnlyEnv } from './subscription-hosts.mjs';
 
 const HOSTS = Object.freeze(['claude-code', 'codex']);
+// Top subscription models verified on the native hosts on 2026-09-10.
+// Keep these explicit: an implicit host default silently weakens the dual review.
+export const TOP_SUBSCRIPTION_MODELS = Object.freeze({
+  'claude-code': 'claude-fable-5-1',
+  codex: 'gpt-6-astra',
+});
 const HARD_PROBLEM = /\b(adr|architecture|architect|ddd|bounded context|aggregate|agentic[- ]?qe|holistic|security|production|migration|irreversible|threat model|experience)\b/i;
 
 export function hardProblem(task) {
@@ -107,13 +113,14 @@ export async function runSubscriptionHost(host, stage, payload, { cwd = process.
         args: [
           '-p', '--output-format', 'json', '--permission-mode', 'plan',
           '--tools', 'Read,Grep,Glob', '--no-session-persistence', '--effort', 'high',
+          '--model', TOP_SUBSCRIPTION_MODELS['claude-code'],
         ],
       }
     : {
         binary: 'codex',
         args: [
           'exec', '--ephemeral', '--sandbox', 'read-only', '--color', 'never', '--json',
-          '-m', 'gpt-5.6-sol', '-c', 'model_reasoning_effort="high"',
+          '-m', TOP_SUBSCRIPTION_MODELS.codex, '-c', 'model_reasoning_effort="high"',
         ],
       };
   const result = await spawnHost(command.binary, command.args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }, prompt);

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 3,
+  "transactionId": "59d347925411108ed02ca591c1e7a8d7232d3dfac1290906f8da465c9289eecd",
+  "sequence": 14,
+  "previousReceiptDigest": "067d8dadd7bd3957ae1a93dae80c5a3de96e0f79685c7be491b7cb4b08c15757",
+  "state": "install-verified",
+  "identity": {
+    "repository": "stuinfla/ruvnet-brain",
+    "package": "ruvnet-brain",
+    "version": "4.3.16",
+    "tag": "v4.3.16",
+    "candidateSha": "7cfd9e1770a8583bda9cdc26c614b2de3a77f129",
+    "payloadId": "666b8114a09229d2ffeb0070de4a9e1715005f5674bf345bdd270c57a44b54e6",
+    "evidenceDigest": "b520b40b71a27082d73e5337c80dc8b60dc09e248fe48120cad0c96a13e4db92",
+    "packageIntegrity": "sha512-OYqfMHeFTq9wkN2OzrcJ5GyDDRmHEKXGJNcvRPgjWivtUbUUVON6uWXmtupR0+nL332kYSK3WmwGx6ImNotwIA==",
+    "packageSha256": "3d6f7f252d11ef55ed8ee496fda84da2219574828e617865a9b76b2b950e88f7",
+    "packageAssetName": "ruvnet-brain-4.3.16.tgz",
+    "bundleSha256": "25dc01df0a069eba63cc671f9c41fa851f92eabf604eb0638e58cb2c2780724c",
+    "bundleSignatureSha256": "0b00b6ecd6442d1e22c7ee5493458904cc9917fae84b17dced7bb751d03b0e00",
+    "bundleDigestSha256": "2044eca2919a671dec08ff0a4f1cd5e589ce05c2cc32cf5646b9b65e375af83c",
+    "corpusSeedSha256": "345aedcccaecfca11781da29131dbd4bac0456b1385aaba8c5b09d1641322acb",
+    "generationLedgerSha256": "55efa8fae734c25d50ce4e21dcafb87bb0492b6206af4b3d1cc4e32321faf4f1"
+  },
+  "observation": {
+    "verdict": "INSTALL_VERIFIED",
+    "publicVerification": {
+      "aggregateSha256": "9a772bf52ee52c60c4082f96c511d5474057460d27f282955e61fd3d84c5be09",
+      "verifierSha": "7cfd9e1770a8583bda9cdc26c614b2de3a77f129",
+      "aggregateAssetSha256": "eb0df9aa823fe6e8f761cd56df8331fb98e8d5853562ae44df5a3cc145f6176f",
+      "signatureAssetSha256": "a751dbaa3ead18ecc5afbd8f35151197ef8485a35eb110d4846467b30c91f8a3",
+      "lanes": 9,
+      "recallAt10": 1,
+      "deltaCitationRate": 1,
+      "reviewReceipts": []
+    },
+    "npm": {
+      "candidateVersion": "4.3.16",
+      "candidateIntegrity": "sha512-OYqfMHeFTq9wkN2OzrcJ5GyDDRmHEKXGJNcvRPgjWivtUbUUVON6uWXmtupR0+nL332kYSK3WmwGx6ImNotwIA==",
+      "candidateTagVersion": "4.3.16",
+      "latestVersion": "4.3.16"
+    },
+    "github": {
+      "tag": "v4.3.16",
+      "sha": "7cfd9e1770a8583bda9cdc26c614b2de3a77f129",
+      "draft": false,
+      "published": true,
+      "latest": true,
+      "latestTag": "v4.3.16",
+      "assetsExact": true
+    }
+  },
+  "createdAt": "2026-09-09T03:57:43.349Z",
+  "receiptDigest": "d1cf04aca900f7d6bc65258414ce6a52a4cd28a567d43dbc0b888ff303c3fecb",
+  "signature": "Qvb8FmOZEUnDcpe2fLwRRKEp2szqUEGqhwoNodXVFxWdf+UC9GR1YDsMOhXMwJKJXNHRmvI7CTPIx6GLZf6VDA=="
+}
