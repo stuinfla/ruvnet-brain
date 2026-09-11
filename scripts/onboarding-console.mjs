@@ -2990,6 +2990,10 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
       if (req.method === 'GET' && url === '/api/lessons') return sendJSON(res, 200, gatherLessons());
       if (req.method === 'GET' && url === '/api/trust') return sendJSON(res, 200, await gatherTrust());
       if (req.method === 'GET' && url === '/tips') { req.url = '/tips.html'; return serveStatic(req, res); }
+      // What's in the brain: derived from the installed root's own receipts on every request (read-only,
+      // no network, ~ms) — a coverage listing served from a stale cache would defeat its one purpose.
+      if (req.method === 'GET' && url === '/api/scope') return sendJSON(res, 200, gatherScope());
+      if (req.method === 'GET' && url === '/scope') { req.url = '/scope.html'; return serveStatic(req, res); }
       if (req.method === 'POST') {
         const body = await readBody(req);
         if (body.token !== TOKEN) return sendJSON(res, 403, { error: 'bad or missing token' });
@@ -3172,7 +3176,28 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('onboarding-consol
   else { console.log(`\n  onboarding-console — the RuvNet Brain configure page\n\n    --serve [--open]   start or safely replace the scoped local server\n    --runtime-status   print candidate, receipt, and live runtime status\n    --print-state      print the read-only state JSON and exit (for tests)\n    --print-stack      print the stack audit JSON and exit\n`); }
 }
 
+// ── "What's in the brain" (the scope page) ─────────────────────────────────────────────────────────
+// RED STUB — reads the shipped `status` word and `pushedAt`. tests/unit/console-scope.test.mjs must
+// fail on this before the real reader replaces it.
+function gatherScope() {
+  let cov;
+  try { cov = JSON.parse(fs.readFileSync(path.join(INSTALLED_KB, 'COVERAGE.json'), 'utf8')); }
+  catch { return { available: false, reason: 'no COVERAGE.json', repos: [], gists: [] }; }
+  const map = { CURRENT: 'current', STALE: 'behind', MISSING: 'not-in-brain' };
+  const rows = (cov.rows || []).map((r) => ({
+    kind: r.kind, name: r.name, status: r.status, bucket: map[r.status] || 'unverified',
+    ruvChangedAt: r.upstream?.pushedAt ?? r.upstream?.updatedAt ?? null,
+    brainReadAt: r.artifact?.ingestedAt ?? null,
+  }));
+  return {
+    available: true, observedAt: cov.observedAt, counts: {},
+    repos: rows.filter((r) => r.kind === 'repository'), gists: rows.filter((r) => r.kind === 'gist'),
+    installedOutsideCoverage: [],
+  };
+}
+
 export {
+  gatherScope,
   gatherState,
   gatherStack,
   gatherTrust,
