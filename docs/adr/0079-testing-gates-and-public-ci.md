@@ -1,7 +1,7 @@
 ---
 id: ADR-079
 title: Testing gates and public CI - pre-commit enforcement and visible discipline
-status: Proposed
+status: Rejected
 date: 2026-09-11
 updated: 2026-09-11
 authors: [Stuart Kerr, Codex]
@@ -18,6 +18,11 @@ governs:
   - vitest.config.js
   - jest.config.js
 ---
+
+**Status**: Rejected (2026-09-11)
+
+**REJECTED on measurement — duplicate CI carrying fabricated numbers; deleted.**
+`test.yml` and `release.yml` duplicated `ci.yml`/`canonical-qa.yml`; `test.yml` printed "✅ validated" unconditionally; `coverage-report.mjs` set 85% thresholds against a measured 26–31% baseline and was called by nothing; `public/ci-status/index.html` rendered "142/142", "18/18", "89.4%", "v4.3.23 READY" regardless of the run it fetched; `.github/performance-baseline.json` carried round, producer-less values; and `performance-baseline.mjs` (`npm run bench`) deleted `.swarm/memory.db` ten times "to force cold-start" — at 14:37 it destroyed 2,155 rows of project memory (restored from the 13:58 backup at 15:41). Record: PROGRESS.md 2026-09-11 15:50 EDT.
 
 # ADR-079 — Testing gates and public CI: pre-commit enforcement and visible discipline
 

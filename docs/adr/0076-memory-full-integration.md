@@ -1,7 +1,7 @@
 ---
 id: ADR-076
 title: Memory full integration - session recall and decision ledger
-status: Accepted
+status: Rejected
 date: 2026-09-11
 updated: 2026-09-11
 authors: [Stuart Kerr, Codex]
@@ -16,6 +16,11 @@ governs:
   - scripts/memory-init.mjs
   - tests/unit/memory-full-integration.test.mjs
 ---
+
+**Status**: Rejected (2026-09-11)
+
+**REJECTED on measurement the same day it was accepted — implementation deleted, continuity plane restored to 85f584b2.**
+Measured (memory/hooks audit, 47 tool calls): `PostEdit` is not a Claude Code lifecycle event (`hook-registry.mjs:107`), so `memory-store-decisions` could never fire; hook-shim resolves `memory-snapshot-threads.mjs` and `memory-store-decisions.mjs` to no file (exit 0, silent); `memory-ensure` required a JSON checkpoint shape (`{branch,nextWork,openIssues,completionStatus}`) that no writer produces; the "fire-and-forget async" recall in `session-start-core.mjs` was a blocking `execSync` (1.5 s); the `decisions` reader queried `decision-%` while its only writer emitted `decision:`; `plugin/test/run-tests.mjs:86` was edited to assert the broken manifest. Registering these removed the four real capture boundaries (`unprompted-speech`; `session-snapshot` on Stop/PreCompact/SessionEnd), turned `npm run hooks:check` red with 25 pre-existing tests, and reached marketplace users through `main`. Session-start recall already existed twice (`~/.claude/hooks/agentdb-ensure.sh`, `project-progression-session-start.mjs`). Record: PROGRESS.md 2026-09-11 15:50 EDT.
 
 # ADR-076 — Memory full integration: session recall and decision ledger
 

@@ -1,5 +1,7 @@
 # North Star 95/100+ Execution Plan
 
+> **SUPERSEDED 2026-09-11 15:50 EDT.** The four unlock levers this plan scheduled (ADR-076–079) were built the same day without reading the code they replaced, then measured and rejected — see each ADR's status block and PROGRESS.md 2026-09-11. The goal, 95/100 across eight pillars, stands; this route to it does not. Kept as the record of what was planned.
+
 **Goal**: Reach 95/100+ on all eight North Star pillars by end of Week 6 (2026-09-25)
 
 **Authority**: Dual analysis (Claude + Codex), verified against current state (31/100 baseline, Stage 1 → 55/100)

@@ -1,10 +1,10 @@
 ---
 id: ADR-077
 title: Continuity gates - ADR-as-code automation and decision tracking
-status: Accepted
+status: Rejected
 date: 2026-09-11
 updated: 2026-09-11
-impl: built
+impl: withdrawn
 authors: [Stuart Kerr, Codex]
 tags: [architecture, automation, adr, gates, ci, enforcement, ddd]
 supersedes: []
@@ -17,6 +17,11 @@ governs:
   - scripts/adr-impl-status.mjs
   - tests/unit/adr-gate-*.test.mjs
 ---
+
+**Status**: Rejected (2026-09-11)
+
+**REJECTED on measurement — the gates never passed as wired; implementation deleted.**
+`adr-validate.mjs` exited 3 on every `adr-continuity-gate.yml` invocation (the workflow passed no arguments); `adr-impl-status.mjs` required `impl:`/`governs:` frontmatter that no ADR carried and reported `missing-impl` for all; `adr-supersede-check.mjs` was a "check" that wrote ADR files and appended two malformed rows (`ADR-015 → []`) to `SUPERSESSIONS.log`. ADR currency was already gated by the pre-existing `doc-currency.mjs` and `release-vector.mjs`. Record: PROGRESS.md 2026-09-11 15:50 EDT.
 
 # ADR-077 — Continuity gates: ADR-as-code automation and decision tracking
 
