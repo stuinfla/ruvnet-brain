@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { captureProjectTransition } from '../../plugin/scripts/project-progression-hook.mjs';
 import { runSessionSnapshotHook } from '../../plugin/scripts/session-snapshot-hook.mjs';
+import { PROVENANCE_SOURCES } from '../../plugin/scripts/project-progression-producer.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
 import { getVersion } from '../../scripts/version.mjs';
 
@@ -320,17 +321,60 @@ describe('the existing dual-host session snapshot hook is the production caller'
       .toContain('"event":"PreCompact"');
   });
 
-  it('does not invent progression when the native host supplied no complete extension', () => {
+  /**
+   * THIS TEST USED TO ASSERT THE DEFECT.
+   *
+   * It read "does not invent progression when the native host supplied no complete extension", and
+   * it passed — because no host supplies one, so captureProjectTransition NEVER RAN and the canonical
+   * store held zero progression rows while the restore side was fully built. "Does not invent" was
+   * the right instinct attached to the wrong mechanism: the fix is not to stay silent, it is to
+   * DERIVE from real sources and label each field with where it came from.
+   */
+  it('produces the extension from real sources, with provenance, when the host supplies none', () => {
     const project = temporaryProject();
-    let called = false;
+    const calls = [];
 
     const result = runSessionSnapshotHook(project, 'SessionEnd', {
       rawInput: JSON.stringify({ session_id: 'native-only', hook_event_name: 'SessionEnd', cwd: project }),
       host: 'codex',
-      captureProgression() { called = true; },
+      captureProgression(input) { calls.push(input); return { receipt: { eventKey: 'produced' } }; },
     });
 
-    expect(result).toEqual({ metadataWritten: true, progressionCaptured: false, receipt: null });
+    expect(result).toMatchObject({ metadataWritten: true, progressionCaptured: true, receipt: { eventKey: 'produced' } });
+    expect(calls).toHaveLength(1);
+    const produced = calls[0].payload.projectProgression;
+    expect(calls[0].host).toBe('codex');
+    expect(calls[0].payload.hook_event_name).toBe('SessionEnd');
+    // Derived, not invented: every field names a source, and nothing is unattributed.
+    for (const marker of Object.values(produced.completeProjectState.provenance)) {
+      expect(PROVENANCE_SOURCES).toContain(marker.source);
+      expect(typeof marker.authoritative).toBe('boolean');
+    }
+    // Codex transcripts are not parsed, and that is recorded rather than guessed at.
+    expect(produced.completeProjectState.evidence.transcript.skipped).toMatch(/no transcript path|unknown for host/);
+    expect(produced.sequence).toBe(1);
+  });
+
+  it('still refuses to capture without a session identity, or in an unadopted project', () => {
+    const project = temporaryProject();
+    let called = false;
+    const capture = () => { called = true; return { receipt: {} }; };
+
+    // An empty `{}` from a probe or a malformed host is not a lifecycle event. Capturing against an
+    // invented session id would fabricate a journal entry, which is the thing that must never happen.
+    expect(runSessionSnapshotHook(project, 'SessionEnd', { rawInput: '{}', host: 'claude', captureProgression: capture }))
+      .toMatchObject({ progressionCaptured: false, skipped: 'no session identity in the host payload' });
+
+    // A project with no `.swarm` has not adopted the brain. Its ABSENCE is the opt-out, and a
+    // lifecycle hook that plants a store in every repository the user opens is trespass.
+    const unadopted = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'unadopted-')));
+    temporaryRoots.push(unadopted);
+    expect(runSessionSnapshotHook(unadopted, 'SessionEnd', {
+      rawInput: JSON.stringify({ session_id: 's', hook_event_name: 'SessionEnd' }),
+      host: 'claude',
+      captureProgression: capture,
+    })).toMatchObject({ progressionCaptured: false, skipped: 'project has not adopted the canonical store' });
+    expect(fs.existsSync(path.join(unadopted, '.swarm'))).toBe(false);
     expect(called).toBe(false);
   });
 });

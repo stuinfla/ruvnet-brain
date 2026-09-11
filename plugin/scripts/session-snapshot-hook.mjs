@@ -144,12 +144,21 @@ export function runSessionSnapshotHook(projectDir, event, {
   }
   if (produced.skipped) return { ...idle, replayed, skipped: produced.skipped.reason };
 
-  const result = captureProgression({
-    host,
-    payload: { ...payload, hook_event_name: event, projectProgression: produced.projectProgression },
-    projectDir,
-    storeFactory,
-  });
+  let result;
+  try {
+    result = captureProgression({
+      host,
+      payload: { ...payload, hook_event_name: event, projectProgression: produced.projectProgression },
+      projectDir,
+      storeFactory,
+    });
+  } catch (error) {
+    // NOT LOST — DEFERRED. capture() fsyncs the snapshot to the durable outbox BEFORE it writes to
+    // the store, so a budget overrun here leaves the evidence on disk and the next capture boundary
+    // (or /checkpoint) commits it. Reporting that plainly is the whole difference between a bounded
+    // hook and a lossy one, so the reason is returned rather than thrown at a lifecycle boundary.
+    return { ...idle, replayed, skipped: `capture deferred: ${error.message}` };
+  }
   return {
     metadataWritten,
     progressionCaptured: true,

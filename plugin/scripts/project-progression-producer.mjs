@@ -37,10 +37,24 @@ import { withProgressionReader } from './project-progression-reader.mjs';
 const PROGRESSION_NAMESPACE = 'project-progression';
 const OWNER_NOTE_NAMESPACES = Object.freeze(['default']);
 
-export const PROVENANCE_SOURCES = Object.freeze(['ledger', 'owner-note', 'prior-head', 'git', 'transcript-derived']);
+/**
+ * `none` is not a filler value, it is the honest answer to "where did this come from?" when the
+ * answer is "nowhere — no source had one". Labelling an empty goal `git` (as the first version did,
+ * simply because git was the last branch in the chain) claims a provenance the field does not have,
+ * and provenance that can be wrong is worse than no provenance at all.
+ */
+export const PROVENANCE_SOURCES = Object.freeze([
+  'ledger', 'owner-note', 'prior-head', 'git', 'transcript-derived', 'model-checkpoint', 'none',
+]);
 
 const AUTHORITATIVE = Object.freeze({
-  ledger: true, 'owner-note': true, 'prior-head': true, git: true, 'transcript-derived': false,
+  ledger: true,
+  'owner-note': true,
+  'prior-head': true,
+  git: true,
+  'transcript-derived': false,
+  'model-checkpoint': false,
+  none: false,
 });
 
 function marker(source) {
@@ -133,7 +147,7 @@ export function buildProjectProgression({
   } else if (note?.excerpt) {
     currentGoal = note.excerpt.split('\n')[0].slice(0, 240);
     record('currentGoal', 'owner-note');
-  } else record('currentGoal', 'git');
+  } else record('currentGoal', 'none');
 
   // NEXT ACTION — the next open ledger item, else the assistant's own last stated step (derived).
   let nextAction = ledger.open[1] ?? ledger.open[0] ?? null;
@@ -144,7 +158,7 @@ export function buildProjectProgression({
   } else if (typeof priorState?.nextAction === 'string' && priorState.nextAction) {
     nextAction = priorState.nextAction;
     record('nextAction', 'prior-head');
-  } else record('nextAction', 'git');
+  } else record('nextAction', 'none');
 
   const decisions = [];
   if (ledger.objective && typeof ledger.objective.text === 'string' && ledger.objective.text) {

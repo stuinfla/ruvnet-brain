@@ -24,6 +24,13 @@ const UNKNOWN_EXPLANATIONS = Object.freeze({
   'output-bound': 'The verified resume payload exceeds the host context bound.',
   'no-coherent-state': 'No coherent progression head survived validation.',
   'restore-failed': 'The exact structural restore did not complete.',
+  // MEASURED, and named rather than hidden. The in-process read path costs ~15ms for six snapshots;
+  // the `ruflo memory` CLI fallback costs 3634ms for the same six and does NOT fit the 2500ms
+  // restore deadline. Both produce an identical result, so this is a SPEED limit, not a correctness
+  // one — but a user whose store is encrypted, or whose Node lacks node:sqlite, will lose continuity
+  // past a handful of snapshots, and they deserve to be told which of the two it was.
+  'fallback-too-slow': 'The in-process read path was unavailable, and the managed Ruflo CLI fallback'
+    + ' could not finish inside the restore deadline.',
 });
 
 /**
@@ -194,6 +201,7 @@ export function restoreProgressionForSession({
   const payloadLimit = maxOutputBytes - Buffer.byteLength(prefix, 'utf8');
   if (!Number.isSafeInteger(payloadLimit) || payloadLimit < 1) return miss('output-bound');
 
+  let store;
   try {
     const deadlineAt = Date.now() + deadlineMs;
     const boundedRunner = (binary, args, options) => {
@@ -207,7 +215,7 @@ export function restoreProgressionForSession({
       ...options,
       runner: boundedRunner,
     }));
-    const store = makeStore({
+    store = makeStore({
       projectDir,
       requestedStorePath: resolution.canonicalAgentDbPath,
     });
@@ -238,6 +246,14 @@ export function restoreProgressionForSession({
           : '[RuvNet Brain — PROJECT CONTINUITY EMPTY]\nThe canonical AgentDB store was structurally enumerated and contains no prior progression snapshot.')
           + pending,
       };
+    }
+    // NAME WHICH PATH RAN OUT OF TIME. "restore-failed" over a store full of rows tells the user
+    // nothing they can act on; "the fast path was unavailable because <reason>, and the CLI fallback
+    // is too slow for this deadline" tells them exactly what to fix.
+    const readPath = typeof store?.lastReadPath === 'string' ? store.lastReadPath : '';
+    if (/deadline exceeded/i.test(String(error?.message ?? '')) && readPath.startsWith('ruflo-cli')) {
+      const missed = miss('fallback-too-slow');
+      return { ...missed, context: `${missed.context} Read path: ${readPath}.` };
     }
     return miss(classify(error));
   }
