@@ -189,6 +189,47 @@ test('3 managed CLI calls run concurrently, not sequentially', async () => {
 });
 ```
 
+### Test 4: AgentDB Namespace Isolation (Critical)
+```javascript
+test('concurrent requests reading same namespace do NOT leak state', async () => {
+  // ISOLATION GAP FOUND: AgentDB uses namespace-scoped isolation only.
+  // Two concurrent MCP requests reading memory_entries WHERE namespace='ruvnet-brain'
+  // see ALL rows in that namespace (owner_id field exists but is NULL + unused).
+  
+  const sessionA = new RequestLifecycle('req-a', 'search_ruvnet', 30000);
+  const sessionB = new RequestLifecycle('req-b', 'search_ruvnet', 30000);
+  
+  // Concurrent store + read
+  await Promise.all([
+    sessionA.store({ key: 'state-a', value: { secret: 'only-for-a' } }),
+    sessionB.read({ keys: ['state-a'] }),  // BEFORE: sees state-a ❌ (isolation leak)
+  ]);
+  
+  // EXPECTED AFTER FIX: sessionB gets empty result or owned-only filter
+  assert(sessionB.result.length === 0, 'session B should not see session A state');
+});
+```
+
+### Test 5: RequestLifecycle Timeout State Isolation
+```javascript
+test('timeout on request A does NOT pollute request B context', async () => {
+  const reqA = new RequestLifecycle('a', 'slow-method', 1000);
+  const reqB = new RequestLifecycle('b', 'normal-method', 30000);
+  
+  // A times out, B succeeds
+  const [resultA, resultB] = await Promise.allSettled([
+    reqA.start((lc) => { /* timeout handler — must not mutate global state */ }),
+    reqB.start(),
+  ]);
+  
+  // CRITICAL: verify A's timeout cleanup doesn't affect B's state
+  assert(resultA.status === 'rejected', 'A timed out');
+  assert(resultB.status === 'fulfilled', 'B succeeded');
+  assert(reqB.timedOut === false, 'B should not inherit A timeout status');
+  assert(reqB.timer === null, 'B cleanup should be independent of A');
+});
+```
+
 ---
 
 ## Implementation Roadmap
@@ -227,6 +268,36 @@ test('3 managed CLI calls run concurrently, not sequentially', async () => {
 
 ---
 
+## Data Isolation Contract
+
+**CRITICAL FINDING (isolation-tester probe)**: AgentDB memory uses **namespace-scoped isolation only** — no user/session/request-level filtering.
+
+### Current AgentDB State
+- `owner_id` field exists but is **NULL for all 2,194 rows** and **never referenced in queries**
+- Namespace-scoped reads: `WHERE namespace='ruvnet-brain'` returns **all rows in that namespace**
+- Risk: Two concurrent MCP requests reading from same namespace see each other's `project-state-current` checkpoints
+
+### Isolation Guarantees for This Refactor
+| Scenario | Current | Proposed |
+|----------|---------|----------|
+| Req A writes state, Req B reads | Both in namespace 'ruvnet-brain' | **Req B sees Req A's writes** (namespace gap) |
+| Req A times out | Lifecycle cleaned (good) | **Lifecycle cleanup does NOT affect Req B** (isolated) |
+| Req A/B session context | RequestLifecycle owns timers/cleanup | **Each lifecycle is independent** (no shared mutation) |
+
+### Remediation (Out of Scope for This PR)
+1. Populate `owner_id` on all new memory writes
+2. Add `AND owner_id = ?` to all memory reads
+3. Test concurrent requests reading with owner-scoped filtering
+4. Until fixed: **document that concurrent requests in same namespace will see each other's state**
+
+### This Refactor's Responsibility
+- ✓ RequestLifecycle timeout isolation: one timeout fails only that request
+- ✓ No shared timer/lifecycle state between concurrent requests
+- ✓ Test that timeout on Req A does NOT pollute Req B's context
+- ⚠️ **Acknowledge** the namespace-level isolation gap; add test (Test 4) to catch if it regresses
+
+---
+
 ## Risks & Mitigations
 
 | Risk | Impact | Mitigation |
@@ -235,6 +306,8 @@ test('3 managed CLI calls run concurrently, not sequentially', async () => {
 | CLI pool exhaustion | Low | Configurable cap; queue drains automatically |
 | Timeout under-reporting | Low | Each request owns its timer; no lost deadlines |
 | Child state corruption | Low | Child only reads from parent; no concurrent writes |
+| **AgentDB namespace isolation gap** | **Medium** | **Test aware (Test 4); document contract; owner_id remediation separate** |
+| RequestLifecycle timeout pollution | Medium | Test 5: verify timeout on A does NOT affect B |
 
 ---
 
