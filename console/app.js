@@ -3247,6 +3247,11 @@ const TRUST_INFO = {
     { k: 'Why does it matter?', t: 'This stack ships fast — latest keeps you current. Pinning holds a known-good release when you need repeatable builds.' },
     { k: 'How does it help me?', t: 'Read from your plugin cache on disk, never assumed. Version pinning is planned — both choices will live on this row.' },
   ],
+  versions: [
+    { k: 'What is this?', t: 'The three version numbers this machine is actually running: the knowledge-base generation (RVF-GENERATIONS.json), the running brain (runtime-identity.json, else the plugin cache), and the installed plugin (installed_plugins.json). Each is read from its own file.' },
+    { k: 'Why does it matter?', t: 'After an update they should all match. While they differ, this page is describing more than one release at once — the header chip, the install-channel row and the knowledge base were once three different numbers with nothing saying so.' },
+    { k: 'How does it help me?', t: 'If they disagree, finish the update (one restart picks up boot-level declarations) and re-check. "Not measured" means the file was not there to read — never a guess.' },
+  ],
   advisor: [
     { k: 'What is this?', t: 'A coming mode switch. Full lets the console apply consent-gated, undoable fixes; Advisor makes every Apply button read-only — it shows the exact command and steps aside.' },
     { k: 'Why does it matter?', t: 'Some machines want eyes-only — work laptops, shared rigs, cautious first weeks. The right choice should be easy in both directions.' },
@@ -3339,6 +3344,29 @@ function renderTrust(t) {
     ] : [
       el('p', {}, 'No plugin-cache install found on this machine — you may be running from a repo checkout. ',
         'This row reads ', el('span', { class: 'cell-mono' }, '~/.claude/plugins'), ', never guesses.'),
+    ],
+  }));
+
+  /* 3b · versions — three files, three numbers; either they agree or the page says they do not.
+     The header chip (running brain), this card's channel row (installed plugin) and the KB's own
+     ledger (generation) were three different numbers on one page with nothing reconciling them. */
+  const v = t.versions || {};
+  const vChip = v.agree === true ? chip('in sync', 'green', 'KB generation, running brain and installed plugin all report the same version')
+    : v.agree === false ? chip('differ', 'warn', 'At least two of the measured versions disagree')
+      : chip('partly measured', 'grey', 'Fewer than two versions could be read on this machine');
+  const vShow = (x) => (x ? `v${x}` : 'not measured');
+  rows.push(trustRow({
+    name: 'Versions', info: TRUST_INFO.versions,
+    status: vChip,
+    value: [
+      el('p', {}, 'KB generation ', el('b', {}, vShow(v.kbGeneration)),
+        ' · running brain ', el('b', {}, vShow(v.runningBrain)),
+        ' · installed plugin ', el('b', {}, v.installedPlugin ? `v${v.installedPlugin}` : 'none'),
+        ...(v.latestRelease ? [' · latest release ', el('b', {}, `v${v.latestRelease}`)] : [])),
+      v.agree === false
+        ? el('p', { class: 'bp-warn' }, 'These should match once an update has fully landed. While they differ, this page is describing more than one release at once.')
+        : null,
+      el('span', { class: 'trust-src' }, 'RVF-GENERATIONS.json · runtime-identity.json / plugin cache · installed_plugins.json'),
     ],
   }));
 

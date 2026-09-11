@@ -2061,6 +2061,25 @@ function readInstallChannel() {
  * practice, because the check that did exist only ever triggered a blocking recompute rather than an
  * honest stale-serve.
  */
+/**
+ * THREE VERSIONS ON ONE PAGE (console audit 2026-09-11): the header chip said v4.3.21 (running
+ * brain), the Install-channel row said v4.3.22 (plugin cache), the installed KB's RVF-GENERATIONS.json
+ * said 4.3.10 — and nothing said they differed. Each is read from its own file and LABELED. `agree`
+ * is true only when every measured one is identical, null when fewer than two could be read. A
+ * version that cannot be read is null, never guessed.
+ */
+export function versionFacts({ release = null } = {}) {
+  const gen = readJSON(path.join(INSTALLED_KB, 'RVF-GENERATIONS.json'));
+  const kbGeneration = typeof gen?.brainVersion === 'string' && gen.brainVersion ? gen.brainVersion.replace(/^v/, '') : null;
+  const runningBrain = brainVersionOnDisk();
+  let installedPlugin = null;
+  try { installedPlugin = readInstallChannel().version || null; } catch { installedPlugin = null; }
+  const latestRelease = typeof release?.tag === 'string' && release.tag ? release.tag.replace(/^v/, '') : null;
+  const known = [kbGeneration, runningBrain, installedPlugin].filter(Boolean);
+  const agree = known.length < 2 ? null : known.every((x) => x === known[0]);
+  return { kbGeneration, runningBrain, installedPlugin, latestRelease, agree, known: known.length };
+}
+
 async function gatherTrust() {
   // COLD ONLY: no successful release read has ever landed, so there is nothing to withhold or serve
   // stale — the one exception serveCached() itself carves out for its own caches.
@@ -2072,7 +2091,7 @@ async function gatherTrust() {
     const generatedAt = new Date().toISOString();
     const data = { generatedAt, release };
     if (release.ok) { TRUST_CACHE = { at: Date.parse(generatedAt), data }; saveConsoleCache(); }
-    return { ...data, channel: readInstallChannel(), sbom: readSbom(), ...freshnessOf(generatedAt) };
+    return { ...data, channel: readInstallChannel(), sbom: readSbom(), versions: versionFacts({ release }), ...freshnessOf(generatedAt) };
   }
 
   // WARM — including over-ceiling. Never await the network here; hand back what we measured, say
@@ -2081,7 +2100,7 @@ async function gatherTrust() {
   if (fresh.stale) kickTrustRefresh();
   // Disk facts stay live even when the release read is served from cache — the SBOM file and install
   // channel can change (a fresh `npm run sbom`, a plugin update) between two calls inside the ceiling.
-  return { ...TRUST_CACHE.data, channel: readInstallChannel(), sbom: readSbom(), ...fresh };
+  return { ...TRUST_CACHE.data, channel: readInstallChannel(), sbom: readSbom(), versions: versionFacts({ release: TRUST_CACHE.data.release }), ...fresh };
 }
 
 // ── Assemble the read-models ─────────────────────────────────────────────────────────────────────
