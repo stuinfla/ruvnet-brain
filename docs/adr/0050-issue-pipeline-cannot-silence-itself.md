@@ -8,6 +8,7 @@ updated: 2026-08-31
 # tests/unit/fix-workstream-guidance.test.mjs. Do not let a currency stamp move it.
 updated_pinned: true
 impl: wired
+reviewed_digest: cc7d85186f27
 authors: [Stuart Kerr, Claude Code]
 tags: [issues, automation, alerting, sla, security, circuit-breaker]
 supersedes: []
@@ -187,6 +188,7 @@ The four parallel agents working tonight support this distinction. They show tha
   regressions (8 of 12 assertions fail on the pre-fix code, proven by stash-mutation).
 
 ## Currency log
+| 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. `plugin/scripts/session-start-core.mjs` (`e917fa25`) added a version-comparison helper for the boot-declaration restart notice; `plugin/skills/ruvnet-brain/SKILL.md` (`7cfd9e17`) added dual-host deliberation memory-persistence guidance; `plugin/skills/release-proof/SKILL.md` (`c0234b69`, `7cf26dea`, `9b3e1d3f`, `af544ec6`) refined release-qualification handoff wording. None touch issue awareness, acknowledgment, escalation, or fixer stop-condition logic; `scripts/issue-watch.mjs` and `scripts/issue-fix.mjs` were not touched at all in this range. | Reviewed all six drift commits against the five governed paths (`git show --name-only` per commit; content diffs on the two touching `session-start-core.mjs` and `ruvnet-brain/SKILL.md`). reviewed_digest cc7d85186f27. |
 | 2026-08-31 | Reconciled after the SessionStart production caller gained an explicit heartbeat opt-out used only by the deterministic progression integration fixture. | `plugin/scripts/session-start-core.mjs` still preserves the issue-pipeline visibility and acknowledgment/escalation semantics governed here; the seam prevents detached heartbeat work from racing fixture teardown and does not silence or alter issue handling. |
 
 | 2026-08-30 | SessionStart issue surfacing remains enabled while response-script prose is filtered from host context. | `plugin/scripts/session-start-core.mjs` preserves the issue count and maintainer alarm required by this ADR while removing non-factual instructions. |

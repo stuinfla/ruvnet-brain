@@ -3,9 +3,9 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-09-07
-reviewed_digest: 7deada1c383f
-version: 1.1.2
+updated: 2026-09-11
+reviewed_digest: 792292744a60
+version: 1.1.3
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -35,6 +35,7 @@ established by this source review.
 
 ## Currency log
 
+| 2026-09-11 | Currency review at commit 2eef2024: decision unchanged; none of the 15 Invariants are touched. Of 13 drift commits, only `53fbe65b` moved a true protocol file (`scripts/release-transaction-provider.mjs`, +6 lines): it skips unrelated DRAFT releases' 404-ing assets when scanning history for the latest-by-transaction receipt, while still fully receipt-gating any PUBLISHED release — this reinforces Invariant 4 (drafts never count as current generation) and 5 (monotonic receipts), it does not weaken them. `scripts/release.mjs` and `scripts/release-transaction.mjs` were not touched at all in this range. The other 12 commits are entirely `.github/workflows/*.yml` lane/matrix/checkout/scheduling mechanics (including `00526b12`'s 426-line `ci.yml` reduction, part of the same hooks-retirement pass reviewed under ADR-034/056) — none add a second publisher, bypass exact-SHA gating, or touch receipt/identity code. | Read `53fbe65b`'s diff in full (the one protocol-file change); confirmed `scripts/release.mjs`/`scripts/release-transaction.mjs` have zero commits in `git log 4823f1aa..HEAD`; reviewed the combined `git log --stat` for all 13 drift commits. reviewed_digest 792292744a60. |
 | 2026-09-07 | Reviewed unsuccessful closure verifies the prior signed chain and unchanged public bytes, retains PUBLISHED_NOT_VERIFIED, and finalization requires the actual verification workflow run; source digest 7deada1c383f. | `scripts/release-transaction.mjs`; source review only, hosted and public acceptance remain pending. |
 
 | 2026-09-07 | Reviewed recovery source and corrected implementation boundaries; source digest 35b815434ac4. | `scripts/staged-host-verifier.mjs`; source examination only, no renewed runtime or publication verification. |

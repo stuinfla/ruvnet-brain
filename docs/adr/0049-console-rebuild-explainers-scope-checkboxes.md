@@ -3,7 +3,8 @@ id: ADR-049
 title: The console rebuild — explain every section, scope every suggestion, and make the safe ones checkable
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-30
+updated: 2026-09-11
+reviewed_digest: 6281f451ff7c
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, console, advocacy, capability, cache, honesty]
 supersedes: []
@@ -80,9 +81,18 @@ with its evidence, cost, and undo, the one audited apply path; `/api/apply` disp
 `remedy-registry`. **A checkbox appears only where state is exactly OFF, scope isn't machine, the
 turnOn command has no blanks, AND the server vouched a recId.** IDLE, UNKNOWN, ABSENT, and
 machine-scope get honest non-interactive indicators — never a checkbox that turns "we could not
-check" into an unchecked box reading as "off". Today exactly one capability qualifies
-(memory-distillation while OFF, the only one with a proven round-tripped undo, ADR-047's executor);
-that is correct, not a gap.
+check" into an unchecked box reading as "off".
+
+**Corrected 2026-09-11 (currency review, commit 2eef2024).** This section originally said exactly
+one capability qualified (`memory-distillation`, the only one with a proven round-tripped undo).
+Commit `6a6ba72f` (2026-09-07) emptied `CAPABILITY_ELIGIBLE` to `{}` in `scripts/console-engine.mjs`:
+`distill-project --restore` was hardened to refuse unsafe database replacement, which invalidated
+the 2026-07-24 round-trip proof this section relied on. **Zero capabilities currently qualify for a
+checkbox** — the mechanism and its bar (state OFF, scope not machine, turnOn has no blanks, server
+vouches a recId, AND a proven inverse) are unchanged and, if anything, enforced more strictly than
+before; there is simply no capability that currently clears it. This is the mechanism working as
+designed, not a regression in it — but the "today exactly one capability qualifies" sentence was no
+longer true and is corrected here rather than left to mislead a reader checking the live Console.
 
 ### 4. The cache must be about the project you are in
 
@@ -120,6 +130,7 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
 
 ## Currency log
 
+| 2026-09-11 | Currency review at commit 2eef2024: code drifted, corrected in the text above (not the status). `scripts/console-engine.mjs` (`6a6ba72f`) emptied `CAPABILITY_ELIGIBLE` to zero entries after `distill-project --restore` was hardened against unsafe replacement, invalidating the one proven round-tripped undo §3 named; the checkbox mechanism and its safety bar are unchanged, but "today exactly one capability qualifies" is no longer true. The other nine drift commits touch only `bin/install.mjs` (installer restart-notice, update-race, and hook-retirement plumbing) and `scripts/onboarding-console.mjs` (a test-only clock injection, `e7a84b71`) — no decision change there. | Reviewed `scripts/console-engine.mjs`, `bin/install.mjs`, `scripts/onboarding-console.mjs` against commits `09079037`, `e917fa25`, `56420430`, `d5c72aba`, `00526b12`, `4823f1aa`, `6a6ba72f`, `e7a84b71`. reviewed_digest 6281f451ff7c. |
 | 2026-08-30 | The configurator’s ordinary settings are rendered and saved through one validated user-settings endpoint; stale explanatory text was corrected. | `console/app.js` and `scripts/onboarding-console.mjs` now agree with `plugin/scripts/runtime-preferences.mjs` consumers. |
 
 | Date | What changed | Why (with referents) |

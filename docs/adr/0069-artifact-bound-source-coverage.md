@@ -3,8 +3,8 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Proposed
 date: 2026-08-21
-updated: 2026-09-07
-version: 1.1.0
+updated: 2026-09-11
+version: 1.1.1
 reviewed_digest: REVIEW_DIGEST_PENDING
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
@@ -236,7 +236,7 @@ prove the still-Proposed signed enumeration and end-to-end release transaction a
   are mutation-tested. These scenarios remain unimplemented until a failing-then-passing test exists.
 
 ## Currency log
-| 2026-09-07 | Reviewed assembled runtime ledger identity and public installed coverage boundaries; source digest REVIEW_DIGEST_PENDING. | `scripts/release-projection.mjs`; source review does not claim full upstream freshness or public acceptance. |
+| 2026-09-11 | Currency review at commit 2eef2024: decision unchanged on every resolvable governed path; a computed `reviewed_digest` remains structurally impossible while this ADR stays Proposed. None of `scripts/{brain-stamp,ingest-new-repos,ingest-gists,source-coverage,release-projection,build-bundle,onboarding-console,console-runtime-identity}.mjs` moved in this range. `data/source-coverage.json` and `docs/RUVNET-COVERAGE.md` changed twice (`e7accccd`, `a52a5ddd`) but both are pure generated-data regenerations with zero script-code changes alongside them — the coverage machinery producing its normal output, not a decision change. The three workflow YAMLs gained only lane/scheduling additions. `governs:` still names 5 paths that have never existed in git history (`plugin/commands/coverage.md`, `plugin/scripts/coverage.mjs`, `console/coverage.{html,css,js}` — see ADR-013's 2026-09-11 row, which had wrongly duplicated the first two); `computeDigest()` refuses to hash a manifest with an unresolvable member, so `reviewed_digest` correctly stays `REVIEW_DIGEST_PENDING` rather than a fabricated value, and this document's `presumed-stale` finding will keep BLOCKING until those 5 paths are built or removed from `governs:` — that is this tool's designed fail-closed behavior for a Proposed ADR governing unbuilt artifacts, not an unreviewed document. | Read the combined `git log --stat` for all 11 drift commits against the 15 resolvable governed paths; confirmed zero script-file changes outside the two generated-data files and three CI workflow files. | `scripts/release-projection.mjs`; source review does not claim full upstream freshness or public acceptance. |
 | 2026-08-31 | Re-read after the release-control cutover; the nightly wrapper still runs convergence checks, but the watchdog is now report-only and cannot dispatch a publisher or bypass the signed release coordinator. | `scripts/nightly-wrapper.sh`; `scripts/release-convergence-watchdog.mjs`; `.github/workflows/release-cycle.yml`; commit `e2e83c0`. |
 | 2026-08-31 | Reconciled the watchdog's Windows command boundary after hosted PR evidence showed shell:false cannot assume an `npx` shim; the unit lane now invokes Vitest through Node while retaining the same full suite. | `.github/workflows/ci.yml`; `scripts/ci/step-watchdog.mjs`; PR #211. |
 | 2026-08-31 | Reconciled after the main-branch merge and CI watchdog change; source coverage remains bound to the exact candidate artifact, while hosted long stages now emit bounded receipts. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; exact-SHA CI run `33358984585`. |
