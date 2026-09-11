@@ -4471,7 +4471,11 @@ export function classifyRufloOperationalHealth({ status = '', memory = '', metri
 
 function probeRufloOperationalHealth() {
   const run = (args) => {
-    const result = spawnSync('ruflo', args, { cwd: process.cwd(), encoding: 'utf8', timeout: 10_000 });
+    // Every `ruflo` invocation auto-starts a project background daemon unless this is set
+    // (verified live: ~/.npm-global/lib/node_modules/ruflo/node_modules/@claude-flow/cli/dist/src/
+    // services/daemon-autostart.js:85) — a read-only health probe must not leave one running.
+    const result = spawnSync('ruflo', args, { cwd: process.cwd(), encoding: 'utf8', timeout: 10_000,
+      env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
     return `${result.stdout || ''}\n${result.stderr || ''}`;
   };
   return classifyRufloOperationalHealth({
