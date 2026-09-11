@@ -10,7 +10,10 @@
       "schedule": "daily 21:47",
       "maxAgeHours": 26,
       "required": true,
-      "legacyLog": "logs/gists-nightly.log"
+      "legacyLog": "logs/gists-nightly.log",
+      "progressGlob": "kb/ruv-gists.big.progress.*.json",
+      "stallMinutes": 15,
+      "_stall_note": "2026-09-11 incident: this job's 8-shard re-embed sat at 0% CPU for six hours with a live wrapper pid and a heartbeat that still said 'running' — OK by every check that existed before this field. kb/forge-big.mjs's shard-all mode writes kb/ruv-gists.big.progress.<shard>-<of>.json after every completed batch; if the OLDEST still-incomplete one goes stallMinutes without advancing, judge() reports STALLED even though the pid is alive."
     },
     {
       "label": "com.ruvnet.goldie-weekly",

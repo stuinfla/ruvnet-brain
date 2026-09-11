@@ -1,5 +1,5 @@
 {
-  "description": "RuvNet Brain continuity plane. The broad legacy grounding, routing, learning, and release interceptors remain retired. Only SessionStart project restoration and the ledger-scoped Stop continuation handler are automatic; both are advisory, bounded, and fail open.",
+  "description": "RuvNet Brain continuity plane. The broad legacy grounding, routing, learning, and release interceptors remain retired. What is automatic is exactly: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint; Stop runs the ledger-scoped continuation handler and captures a project snapshot; PreCompact and SessionEnd capture a project snapshot. Every capture is bounded, fails open, and never blocks.",
   "hooks": {
     "SessionStart": [
       {
@@ -13,6 +13,18 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" unprompted-speech UserPromptSubmit",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "matcher": "*",
@@ -20,6 +32,35 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" continuation-gate || true",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-snapshot Stop || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-snapshot PreCompact || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-snapshot SessionEnd || true",
             "timeout": 10
           }
         ]

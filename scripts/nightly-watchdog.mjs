@@ -39,6 +39,7 @@ import os from 'node:os';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { NIGHTLY_LABEL, schedulerStatus } from '../plugin/scripts/nightly-scheduler.mjs';
+import { oldestIncompleteProgress } from '../kb/shard-progress.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REGISTRY = process.env.WATCHDOG_REGISTRY || path.join(ROOT, 'config', 'scheduled-jobs.json');
@@ -51,6 +52,28 @@ export const MISSING = 'MISSING';
 export const NEVER_RAN = 'NEVER-RAN';
 export const STALE = 'STALE';
 export const FAILING = 'FAILING';
+export const STALLED = 'STALLED';
+
+/**
+ * Per-shard progress evidence for a job that declares `progressGlob` + `stallMinutes` in the
+ * registry (see kb/shard-progress.mjs, written by kb/forge-big.mjs's `embed`/`shard-all` modes).
+ *
+ * WHY THIS EXISTS (2026-09-11): a live wrapper pid proves the WRAPPER survived a run; it proves
+ * NOTHING about whether the work inside it is still moving — an 8-shard gists embed once sat at 0%
+ * CPU for six hours with `judge()`'s existing pid-liveness check reporting it OK the entire time
+ * (the pid genuinely was alive; it just was not doing anything). `job.stallMinutes` is deliberately
+ * independent of `job.maxAgeHours`/the 6h long-run branch below — a job stuck at 0% progress for 20
+ * minutes must be flagged well before its overall schedule budget or the long-run grace period would
+ * ever trip.
+ */
+export function readJobProgress(job, { root = ROOT } = {}) {
+  if (!job.progressGlob) return null;
+  const full = path.join(root, job.progressGlob);
+  const dir = path.dirname(full);
+  const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^${path.basename(full).split('*').map(escapeRegExp).join('.*')}$`);
+  return oldestIncompleteProgress(dir, pattern);
+}
 
 /** Labels currently loaded in launchd. A job that isn't here CANNOT fire, whatever its plist says. */
 export function loadedLabels(run = () => spawnSync('launchctl', ['list'], { encoding: 'utf8' }).stdout || '') {
@@ -67,7 +90,7 @@ export function loadedLabels(run = () => spawnSync('launchctl', ['list'], { enco
  * Judge one job from its receipt. `hb === null` means NO RECEIPT EXISTS — which is NEVER-RAN, never OK.
  * This single line is the whole lesson of 2026-07-13: absence of evidence is not evidence of health.
  */
-export function judge(job, hb, loaded, now) {
+export function judge(job, hb, loaded, now, { root = ROOT } = {}) {
   if (!loaded) {
     return { state: MISSING, detail: 'declared in the registry but NOT LOADED in launchd — it can never fire' };
   }
@@ -79,6 +102,20 @@ export function judge(job, hb, loaded, now) {
     return { state: FAILING, detail: 'receipt exists but its timestamp is unreadable' };
   }
   const ageHours = (now - stamp) / HOUR;
+
+  // STALLED: checked BEFORE the long-run pid-liveness branch below, and independent of it — a live
+  // pid is not proof of progress. Only applies when the job declares a stall budget; absence of a
+  // progress file is never treated as a stall (the job may not have reached embedding yet).
+  if (hb.state === 'running' && job.stallMinutes) {
+    const progress = readJobProgress(job, { root });
+    if (progress) {
+      const staleMinutes = (now - progress.updatedAt) / 60_000;
+      if (staleMinutes > job.stallMinutes) {
+        return { state: STALLED, ageHours,
+          detail: `${progress.detail} has not advanced in ${staleMinutes.toFixed(0)}m — its stall budget is ${job.stallMinutes}m. The wrapper pid may be alive; the work is not.` };
+      }
+    }
+  }
 
   // Started and never finished? DERIVE it from process liveness, not wall-clock alone (2026-07-19):
   // a full corpus rebuild legitimately runs 12h+ (five changed repos = a long day), and the old
@@ -110,8 +147,12 @@ export function judge(job, hb, loaded, now) {
   if (hb.state === 'skipped') {
     return { state: NEVER_RAN, ageHours, detail: 'only a lock-skip receipt exists — no real run has ever recorded a result' };
   }
-  if (hb.state === 'failed' || (typeof hb.exit_code === 'number' && hb.exit_code !== 0)) {
-    return { state: FAILING, ageHours, detail: `last run FAILED with exit ${hb.exit_code} (${ageHours.toFixed(1)}h ago)` };
+  if (hb.state === 'failed' || hb.state === 'killed' || (typeof hb.exit_code === 'number' && hb.exit_code !== 0)) {
+    // job-heartbeat.sh distinguishes "failed" (plain non-zero exit) from "killed" (died to a
+    // signal — the wrapper's own trap, or a direct kill of the child; POSIX 128+signal) — surface
+    // which one it was rather than collapsing both into one undifferentiated exit code.
+    const how = hb.state === 'killed' ? `KILLED by signal ${hb.signal ?? '?'}` : `FAILED with exit ${hb.exit_code}`;
+    return { state: FAILING, ageHours, detail: `last run ${how} (${ageHours.toFixed(1)}h ago)` };
   }
   if (hb.state === 'running') {
     return { state: OK, ageHours, detail: `running right now (started ${ageHours.toFixed(1)}h ago)` };
@@ -153,7 +194,7 @@ export function checkAll(now, { registry = REGISTRY, loaded = loadedLabels(), hb
   const { jobs } = JSON.parse(fs.readFileSync(registry, 'utf8'));
   return jobs.map((job) => {
     const hb = readHeartbeat(job.label, hbDir) || readLegacyLog(job, root);
-    const verdict = judge(job, hb, loaded.has(job.label), now);
+    const verdict = judge(job, hb, loaded.has(job.label), now, { root });
     if (hb?._tier2 && verdict.state === OK) verdict.detail += ' (via its log — no receipt yet; the next run writes one)';
     return { ...job, ...verdict };
   });
