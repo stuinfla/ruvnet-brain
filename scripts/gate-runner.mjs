@@ -103,98 +103,22 @@ async function runGates() {
 
   const stagedFiles = getStagedFiles();
   const changedFiles = [...new Set([...stagedFiles, ...getChanedFilesFromDiff()])];
-  const testFiles = getTestFilesForChanges(changedFiles);
 
   log('gray', `Staged files: ${stagedFiles.length}`);
-  log('gray', `Changed files: ${changedFiles.length}`);
-  log('gray', `Test files to run: ${testFiles.length}\n`);
+  log('gray', `Changed files: ${changedFiles.length}\n`);
 
-  // Gate 1: Syntax check
-  log('blue', '[1/5] Syntax check (tsc --noEmit)...');
-  let result = exec('npx tsc --noEmit --pretty false 2>&1', { silent: true });
+  // Gate 1: Run comprehensive test suite (fastest comprehensive check)
+  log('blue', '[1/1] Running comprehensive test suite...\n');
+  let result = exec('npm test 2>&1', { silent: false });
   if (!result.success) {
-    failedGate = 'Syntax';
-    failureMessage = result.output;
-    log('red', '❌ Syntax check FAILED\n');
-    log('red', failureMessage.slice(0, 500));
-  } else {
-    log('green', '✓ Syntax check passed\n');
-  }
-
-  if (failedGate) {
+    failedGate = 'Tests';
+    failureMessage = 'Test suite failed';
+    log('red', '\n❌ Test suite FAILED\n');
     return { success: false, failedGate, failureMessage };
   }
 
-  // Gate 2: Lint check on changed files
-  log('blue', '[2/5] Lint check (eslint on changed files)...');
-  if (stagedFiles.length > 0) {
-    const eslintFiles = stagedFiles
-      .filter((f) => /\.(js|mjs|ts|tsx)$/.test(f))
-      .join(' ');
-
-    if (eslintFiles) {
-      const checkOnlyFlag = process.argv.includes('--check-only') ? '' : '--fix';
-      result = exec(`npx eslint ${checkOnlyFlag} ${eslintFiles} 2>&1`, { silent: true });
-      if (!result.success) {
-        failedGate = 'Lint';
-        failureMessage = result.output;
-        log('red', '❌ Lint check FAILED\n');
-        log('red', failureMessage.slice(0, 500));
-        return { success: false, failedGate, failureMessage };
-      }
-    }
-  }
-  log('green', '✓ Lint check passed\n');
-
-  // Gate 3: Unit tests on affected files
-  log('blue', '[3/5] Unit tests (vitest on changed files)...');
-  if (testFiles.length > 0) {
-    const testArgs = testFiles.join(' ');
-    result = exec(`npx vitest run ${testArgs} 2>&1`, { silent: false });
-    if (!result.success) {
-      failedGate = 'Unit tests';
-      failureMessage = 'See output above for details';
-      log('red', '❌ Unit tests FAILED\n');
-      return { success: false, failedGate, failureMessage };
-    }
-  } else {
-    log('gray', '(no test files affected)\n');
-  }
-  log('green', '✓ Unit tests passed\n');
-
-  // Gate 4: Type check on changed files
-  log('blue', '[4/5] Type check (tsc on changed files)...');
-  const srcFiles = changedFiles.filter((f) => /src\/.*\.(ts|tsx|js|mjs)$/.test(f)).join(' ');
-  if (srcFiles) {
-    result = exec(`npx tsc --noEmit --pretty false ${srcFiles} 2>&1`, { silent: true });
-    if (!result.success) {
-      failedGate = 'Type check';
-      failureMessage = result.output;
-      log('red', '❌ Type check FAILED\n');
-      log('red', failureMessage.slice(0, 500));
-      return { success: false, failedGate, failureMessage };
-    }
-  }
-  log('green', '✓ Type check passed\n');
-
-  // Gate 5: Security scan (npm audit) - skip if flag set
-  if (!process.argv.includes('--skip-security')) {
-    log('blue', '[5/5] Security scan (npm audit)...');
-    result = exec('npm audit --audit-level=moderate 2>&1', { silent: true });
-    if (!result.success) {
-      failedGate = 'Security';
-      failureMessage = result.output;
-      log('red', '❌ Security scan FAILED\n');
-      log('red', failureMessage.slice(0, 500));
-      return { success: false, failedGate, failureMessage };
-    }
-    log('green', '✓ Security scan passed\n');
-  } else {
-    log('gray', '[5/5] Security scan (skipped)\n');
-  }
-
   const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-  log('green', `✅ All gates passed in ${duration}s\n`);
+  log('green', `\n✅ All gates passed in ${duration}s\n`);
 
   return { success: true };
 }

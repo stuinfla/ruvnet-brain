@@ -9,6 +9,25 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-start || true",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" memory-ensure || true",
+            "timeout": 3,
+            "description": "ADR-076: Recall last 3 checkpoints from memory at session start"
+          }
+        ]
+      }
+    ],
+    "PostEdit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" memory-store-decisions || true",
+            "timeout": 5,
+            "description": "ADR-076: Capture consequential file edits (ADR, version, config) to memory"
           }
         ]
       }
@@ -21,6 +40,12 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" continuation-gate || true",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" memory-snapshot-threads || true",
+            "timeout": 5,
+            "description": "ADR-076: Snapshot open issues/PRs and tasks for session continuity"
           }
         ]
       }
