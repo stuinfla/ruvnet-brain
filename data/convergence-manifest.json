@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.3.21",
-  "sourceIdentity": "7e68496569a0e54b9228cdedfdec0716e666a8bf8daf939514766e3352a706b0",
+  "version": "4.3.22",
+  "sourceIdentity": "1634029528e90012d6d002ef24f6e6b56405f910e204ae5e0b6e8d8558e2ae18",
   "versionSurfaces": {
-    "package.json": "4.3.21",
-    "plugin/.claude-plugin/plugin.json": "4.3.21",
-    "plugin/.codex-plugin/plugin.json": "4.3.21",
-    "data/manifest.json": "4.3.21",
-    "kb/RVF-GENERATIONS.json": "4.3.21",
-    "explainer/index.html": "4.3.21",
-    "primer/ruvnet-primer.md": "4.3.21"
+    "package.json": "4.3.22",
+    "plugin/.claude-plugin/plugin.json": "4.3.22",
+    "plugin/.codex-plugin/plugin.json": "4.3.22",
+    "data/manifest.json": "4.3.22",
+    "kb/RVF-GENERATIONS.json": "4.3.22",
+    "explainer/index.html": "4.3.22",
+    "primer/ruvnet-primer.md": "4.3.22"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -88,10 +88,14 @@
     "0073-agentdb-perennial-project-continuity.md",
     "0074-ruvnet-capability-claim-integrity.md",
     "0075-knowledge-to-execution-enforcement.md",
+    "0076-memory-full-integration.md",
+    "0077-continuity-gates.md",
+    "0078-release-automation.md",
+    "0079-testing-gates-and-public-ci.md",
     "README.md"
   ],
-  "trackedFileCount": 1372,
-  "trackedFilesSha256": "8b4c697c75ed7de1b67e64452d419fbf19696273679790ffef8e4111e7899e39",
+  "trackedFileCount": 1387,
+  "trackedFilesSha256": "5b02f96afcc1522dcc7543ec7425e14e8d2ad67132813620900f5ec54c745e4a",
   "ownershipChecks": [
     "version:check",
     "doc:currency",
