@@ -32,8 +32,9 @@ import { applyManagedCatalogUpdate } from '../scripts/model-router-catalog.mjs';
 import { cmpVersion } from '../scripts/stack-sync.mjs';
 import { validateCoverageDirectory } from '../plugin/scripts/coverage-integrity.mjs';
 import {
-  CONTINUITY_EVENTS,
   continuityContractIds,
+  continuityHookId,
+  continuityRegistrations,
   isAllowedContinuityRegistration,
 } from '../plugin/scripts/continuity-hook-policy.mjs';
 import {
@@ -2054,22 +2055,31 @@ export function automaticHookRetirementStatus(root = REPO_ROOT, { scope = 'sourc
             // Project-local host settings must remain empty. The package registries may carry only
             // the two continuity handlers; every former gate is still retired.
             const packageRegistry = relative === 'plugin/hooks/hooks.json' || relative === 'plugin/hooks/codex-hooks.json';
-            if (!packageRegistry || !isAllowedContinuityRegistration(row)) registrations.push(row);
+            const host = relative === 'plugin/hooks/codex-hooks.json' ? 'codex' : 'claude';
+            if (!packageRegistry || !isAllowedContinuityRegistration({ ...row, host })) registrations.push(row);
           }
         }
       }
       if (relative === 'plugin/hooks/hooks.json' || relative === 'plugin/hooks/codex-hooks.json') {
-        for (const [event, spec] of Object.entries(CONTINUITY_EVENTS)) {
-          const count = (doc.hooks[event] ?? []).flatMap((group) => group?.hooks ?? [])
-            .filter((hook, index, hooks) => isAllowedContinuityRegistration({
-              event,
-              matcher: (doc.hooks[event] ?? []).find((group) => (group.hooks ?? []).includes(hook))?.matcher,
-              command: hook?.command,
-            })).length;
-          if (count !== 1) errors.push(`${relative}: continuity ${spec.id} must have exactly one registration (found ${count})`);
+        // PAIRS, NOT IDS. `session-snapshot` is legitimately registered at Stop, PreCompact and
+        // SessionEnd, so "exactly one registration per id" is the wrong invariant; "exactly one per
+        // (event, id), on the hosts that are proven to deliver that event" is the right one.
+        const host = relative === 'plugin/hooks/codex-hooks.json' ? 'codex' : 'claude';
+        const expected = continuityRegistrations(host);
+        for (const spec of expected) {
+          const groups = doc.hooks[spec.event] ?? [];
+          const count = groups.flatMap((group) => (group?.hooks ?? []).map((hook) => ({ group, hook })))
+            .filter(({ group, hook }) => String(group?.matcher ?? '') === spec.matcher
+              && isAllowedContinuityRegistration({ event: spec.event, matcher: group?.matcher, command: hook?.command, host })
+              && continuityHookId(hook?.command, spec.event)?.id === spec.id).length;
+          if (count !== 1) {
+            errors.push(`${relative}: continuity ${spec.event}:${spec.id} must have exactly one registration (found ${count})`);
+          }
         }
         for (const event of Object.keys(doc.hooks)) {
-          if (!CONTINUITY_EVENTS[event]) errors.push(`${relative}: legacy automatic event ${event} remains registered`);
+          if (!expected.some((spec) => spec.event === event)) {
+            errors.push(`${relative}: legacy automatic event ${event} remains registered`);
+          }
         }
       }
     } catch (error) {
@@ -2080,12 +2090,19 @@ export function automaticHookRetirementStatus(root = REPO_ROOT, { scope = 'sourc
     const contractsFile = 'plugin/hooks/hook-contracts.json';
     const contracts = JSON.parse(fs.readFileSync(path.join(root, contractsFile), 'utf8'));
     checkedFiles.push(contractsFile);
-    const ids = Array.isArray(contracts.contracts) ? contracts.contracts.map((c) => c?.id) : [];
-    if (ids.length !== continuityContractIds().length || continuityContractIds().some((id) => !ids.includes(id))) {
-      errors.push(`${contractsFile}: contracts must list only the continuity handlers (${continuityContractIds().join(', ')})`);
+    const pairs = Array.isArray(contracts.contracts) ? contracts.contracts.map((c) => `${c?.event}:${c?.id}`) : [];
+    const expectedPairs = continuityContractIds();
+    if (pairs.length !== expectedPairs.length || expectedPairs.some((pair) => !pairs.includes(pair))) {
+      errors.push(`${contractsFile}: contracts must list exactly the continuity handlers (${expectedPairs.join(', ')})`);
     }
-    if (!Array.isArray(contracts.matcherAllowlist) || contracts.matcherAllowlist.length !== continuityContractIds().length) {
-      errors.push(`${contractsFile}: matcherAllowlist must list the two continuity matchers`);
+    // One allowlist entry per DISTINCT (event, matcher): the matcher is a property of the event, so
+    // three snapshot registrations on three events need three entries, not three copies of one.
+    const expectedMatchers = [...new Set(continuityRegistrations().map((spec) => `${spec.event}:${spec.matcher}`))];
+    const declaredMatchers = Array.isArray(contracts.matcherAllowlist)
+      ? contracts.matcherAllowlist.map((row) => `${row?.event}:${row?.matcher}`) : [];
+    if (declaredMatchers.length !== expectedMatchers.length
+      || expectedMatchers.some((entry) => !declaredMatchers.includes(entry))) {
+      errors.push(`${contractsFile}: matcherAllowlist must list exactly the continuity matchers (${expectedMatchers.join(', ')})`);
     }
   } catch (error) {
     errors.push(`plugin/hooks/hook-contracts.json: ${error.message}`);
@@ -2141,17 +2158,21 @@ export function claudeInstalledHookRetirementStatus({ home = os.homedir(), plugi
           }
         }
       }
-      for (const [event, spec] of Object.entries(CONTINUITY_EVENTS)) {
-        const count = (doc.hooks[event] ?? []).flatMap((group) => group?.hooks ?? [])
-          .filter((hook) => isAllowedContinuityRegistration({
-            event,
-            matcher: (doc.hooks[event] ?? []).find((group) => (group.hooks ?? []).includes(hook))?.matcher,
-            command: hook?.command,
-          })).length;
-        if (count !== 1) errors.push(`installed Claude continuity ${spec.id} must have exactly one registration (found ${count})`);
+      const expected = continuityRegistrations('claude');
+      for (const spec of expected) {
+        const count = (doc.hooks[spec.event] ?? [])
+          .flatMap((group) => (group?.hooks ?? []).map((hook) => ({ group, hook })))
+          .filter(({ group, hook }) => String(group?.matcher ?? '') === spec.matcher
+            && isAllowedContinuityRegistration({ event: spec.event, matcher: group?.matcher, command: hook?.command, host: 'claude' })
+            && continuityHookId(hook?.command, spec.event)?.id === spec.id).length;
+        if (count !== 1) {
+          errors.push(`installed Claude continuity ${spec.event}:${spec.id} must have exactly one registration (found ${count})`);
+        }
       }
       for (const event of Object.keys(doc.hooks)) {
-        if (!CONTINUITY_EVENTS[event]) errors.push(`installed Claude legacy automatic event ${event} remains registered`);
+        if (!expected.some((spec) => spec.event === event)) {
+          errors.push(`installed Claude legacy automatic event ${event} remains registered`);
+        }
       }
     }
   } catch (error) {
