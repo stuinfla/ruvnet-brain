@@ -140,8 +140,18 @@ const BASH = resolveBash();
 const ANTICIPATE = { argv: [BASH, path.join(SCRIPTS_DIR, 'anticipate.sh')], feedStdin: true, channels: ['advocacy', 'promotion'] };
 const lesson = (subEvent) => ({ argv: [BASH, path.join(SCRIPTS_DIR, 'lesson-hooks.sh'), subEvent], feedStdin: true, channels: ['lesson'] });
 
+// THE RECOMMENDATION PRODUCER (advocacy-route.mjs). It answers a DIFFERENT question from anticipate:
+// anticipate asks "what is installed here and switched OFF?", the route asks "what does rUv already
+// ship that would materially help THIS ordinary request?" — the second is unreachable through the
+// first, because anticipate's SILENCE RULE 1 makes an 'absent' capability silent by design and
+// goal-match.mjs's GLOBAL_VETO rejects `customers`/`production`/`deploy` prompts outright.
+// It is bound to the advocacy channel ONLY: it can never emit a lesson block or an alarm.
+// process.execPath, not 'node' — the same reason resolveBash() exists: a PATH lookup that fails on
+// one host is a producer that is dead there and indistinguishable from "nothing to say".
+const ADVOCACY_ROUTE = { argv: [process.execPath, path.join(SCRIPTS_DIR, 'advocacy-route.mjs')], feedStdin: true, channels: ['advocacy'] };
+
 const BUILTIN_REGISTRY = {
-  'UserPromptSubmit': [ANTICIPATE, lesson('UserPromptSubmit')],
+  'UserPromptSubmit': [ANTICIPATE, ADVOCACY_ROUTE, lesson('UserPromptSubmit')],
   'PreToolUse-write': [lesson('PreToolUse-write')],
   'PreToolUse-bash':  [lesson('PreToolUse-bash')],
   'PreToolUse-push':  [lesson('PreToolUse-push')],
