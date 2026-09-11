@@ -41,7 +41,7 @@ const colors = {
  * Matches pattern: ADR-NNNN or ADR-0NNN
  */
 function extractADRReferences(message) {
-  const adrPattern = /ADR-(\d{4})/gi;
+  const adrPattern = /ADR-(\d{4})(?!\d)/gi;
   const matches = [...message.matchAll(adrPattern)];
   const adrNumbers = matches.map((m) => parseInt(m[1], 10));
   return [...new Set(adrNumbers)]; // unique
