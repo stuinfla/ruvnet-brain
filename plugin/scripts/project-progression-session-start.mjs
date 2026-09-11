@@ -3,6 +3,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ProjectProgressionStore } from './project-progression-store.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
+import { withProgressionReader } from './project-progression-reader.mjs';
+
+const PROGRESSION_NAMESPACE = 'project-progression';
 
 export const SESSION_CONTINUITY_LIMIT_BYTES = 8 * 1024;
 export const SESSION_CONTINUITY_DEADLINE_MS = 2_500;
@@ -23,13 +26,45 @@ const UNKNOWN_EXPLANATIONS = Object.freeze({
   'restore-failed': 'The exact structural restore did not complete.',
 });
 
-function unknown(reason) {
+/**
+ * UNKNOWN IS NOT NEUTRAL WHEN THERE WAS SOMETHING TO FIND.
+ *
+ * "I could not read your store" and "your store is empty" render almost identically to a reader, and
+ * the first is a FAILURE: verified progression exists on disk and the session is about to proceed
+ * without it. So when the canonical store exists and holds progression rows, the banner says so in
+ * as many words and the result carries `severity: 'error'` for any surface that colours its output.
+ * When we cannot even count the rows, the severity stays 'warning' — claiming a failure we cannot
+ * evidence would be the same sin one step over.
+ */
+function unknown(reason, { rowCount = null } = {}) {
   const explanation = UNKNOWN_EXPLANATIONS[reason] ?? UNKNOWN_EXPLANATIONS['restore-failed'];
+  const failing = Number.isInteger(rowCount) && rowCount > 0;
+  const header = failing ? `${UNKNOWN_HEADER} — RESTORE FAILED` : UNKNOWN_HEADER;
+  const evidence = failing
+    ? ` ${rowCount} verified progression row(s) are present in the canonical store and could NOT be restored;`
+      + ' treat this as a failure to recover known state, not as a project without history.'
+    : '';
   return {
     status: 'unknown',
     reason,
-    context: `${UNKNOWN_HEADER}\n${explanation} Do not claim project state was restored; verify the canonical store before relying on remembered state.`,
+    severity: failing ? 'error' : 'warning',
+    rowCount,
+    context: `${header}\n${explanation}${evidence}`
+      + ' Do not claim project state was restored; verify the canonical store before relying on remembered state.',
   };
+}
+
+/**
+ * Count committed progression rows WITHOUT paying for a restore. Used only to decide how loudly an
+ * UNKNOWN should speak, so it never throws and never falls back to a CLI spawn: a count we cannot
+ * take cheaply is reported as null ("cannot tell"), which downgrades the banner rather than the run.
+ */
+function committedRowCount(canonicalAgentDbPath) {
+  try {
+    const result = withProgressionReader(canonicalAgentDbPath,
+      (reader) => reader.listKeys(PROGRESSION_NAMESPACE).length);
+    return result.ok ? result.value : null;
+  } catch { return null; }
 }
 
 function classify(error) {
@@ -95,16 +130,33 @@ function initializeCanonicalStore(store, resolution) {
   }
 }
 
+/**
+ * One line, only when there is something to say. Durable-but-uncommitted snapshots are evidence the
+ * session must know about: they will be committed at the next capture boundary, and until then the
+ * restored head is not the newest thing that happened.
+ */
+function pendingNotice(pendingReplay) {
+  if (!Number.isInteger(pendingReplay) || pendingReplay < 1) return '';
+  return `\n${pendingReplay} uncommitted snapshot(s) pending replay; they commit at the next capture`
+    + ' boundary (Stop / PreCompact / SessionEnd) or when you run /ruvnet-brain:checkpoint.';
+}
+
 function isProject(resolution) {
   if (resolution.kind === 'git') return true;
   return ['.swarm', '.claude-flow', 'package.json', 'pyproject.toml', 'Cargo.toml', 'go.mod']
     .some((name) => fs.existsSync(path.join(resolution.projectRoot, name)));
 }
 
-function availableContext(reason) {
+/**
+ * ADR-073 §6 — continuity-unavailable. A directory that is not a writable adopted project has no
+ * continuity to restore and no store to blame, so this is neither a success nor a failure: it is the
+ * absence of the question. Distinct from `unknown`, which means the question was asked and missed.
+ */
+function unavailable(reason) {
   return {
     status: 'unavailable',
     reason,
+    severity: 'info',
     context: '[RuvNet Brain — PROJECT CONTINUITY UNAVAILABLE]\n'
       + 'This working directory is not a writable adopted project. No AgentDB store was created and no project state was restored.',
   };
@@ -132,13 +184,15 @@ export function restoreProgressionForSession({
     return unknown('canonical-path');
   }
 
-  if (!isProject(resolution)) return availableContext('non-project');
-  if (!writable(resolution.projectRoot)) return availableContext('read-only');
+  if (!isProject(resolution)) return unavailable('non-project');
+  if (!writable(resolution.projectRoot)) return unavailable('read-only');
   const initializing = !fs.existsSync(resolution.canonicalAgentDbPath);
+  const rowCount = initializing ? 0 : committedRowCount(resolution.canonicalAgentDbPath);
+  const miss = (reason) => unknown(reason, { rowCount });
 
   const prefix = `${RESTORED_HEADER}\n`;
   const payloadLimit = maxOutputBytes - Buffer.byteLength(prefix, 'utf8');
-  if (!Number.isSafeInteger(payloadLimit) || payloadLimit < 1) return unknown('output-bound');
+  if (!Number.isSafeInteger(payloadLimit) || payloadLimit < 1) return miss('output-bound');
 
   try {
     const deadlineAt = Date.now() + deadlineMs;
@@ -161,23 +215,30 @@ export function restoreProgressionForSession({
       fs.mkdirSync(path.dirname(resolution.canonicalAgentDbPath), { recursive: true, mode: 0o700 });
       initializeCanonicalStore(store, resolution);
     }
-    const restored = store.restoreLatest({ maxOutputBytes: payloadLimit });
-    if (!validResume(restored)) return unknown('malformed-store');
-    const context = `${prefix}${restored.rendered}`;
-    if (Buffer.byteLength(context, 'utf8') > maxOutputBytes) return unknown('output-bound');
-    return { status: 'restored', context };
+    // COMMITTED ROWS ONLY (ADR-073 §5). Replay is a write, a write is a `ruflo memory store`
+    // process, and one of those costs more than this entire boundary's budget. Pending durable
+    // snapshots are REPORTED below and replayed at the next capture boundary or by /checkpoint.
+    const restored = store.restoreLatest({ maxOutputBytes: payloadLimit, replayPending: false });
+    if (!validResume(restored)) return miss('malformed-store');
+    const context = `${prefix}${restored.rendered}${pendingNotice(restored.pendingReplay)}`;
+    if (Buffer.byteLength(context, 'utf8') > maxOutputBytes) return miss('output-bound');
+    return { status: 'restored', severity: 'info', pendingReplay: restored.pendingReplay, context };
   } catch (error) {
     // A structurally enumerated, genuinely empty namespace is normal for a newly adopted project.
     if (/no coherent progression state/i.test(String(error?.message ?? ''))
       && Array.isArray(error?.rejectedCandidates) && error.rejectedCandidates.length === 0) {
-      if (initializing && !fs.existsSync(resolution.canonicalAgentDbPath)) return unknown('initialization-failed');
+      if (initializing && !fs.existsSync(resolution.canonicalAgentDbPath)) return miss('initialization-failed');
+      const pending = pendingNotice(error?.pendingReplay);
       return {
         status: initializing ? 'initialized' : 'empty',
-        context: initializing
+        severity: 'info',
+        pendingReplay: error?.pendingReplay ?? 0,
+        context: (initializing
           ? '[RuvNet Brain — PROJECT CONTINUITY INITIALIZED]\nThe canonical AgentDB store is ready; no prior progression snapshot exists yet.'
-          : '[RuvNet Brain — PROJECT CONTINUITY EMPTY]\nThe canonical AgentDB store was structurally enumerated and contains no prior progression snapshot.',
+          : '[RuvNet Brain — PROJECT CONTINUITY EMPTY]\nThe canonical AgentDB store was structurally enumerated and contains no prior progression snapshot.')
+          + pending,
       };
     }
-    return unknown(classify(error));
+    return miss(classify(error));
   }
 }

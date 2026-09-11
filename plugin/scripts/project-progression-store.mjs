@@ -293,9 +293,25 @@ export class ProjectProgressionStore {
     return { snapshots, rejected: sortRejected(rejected) };
   }
 
-  restoreLatest({ pageSize = 100, maxEntries = 10_000, maxOutputBytes = 64 * 1024 } = {}) {
+  /** How many durable snapshots are fsynced but not yet committed to the canonical store. */
+  pendingReplayCount() {
+    try { return this.outbox.pendingSnapshots().length; } catch { return null; }
+  }
+
+  /**
+   * @param {{ replayPending?: boolean }} options
+   *   `replayPending: false` restores from COMMITTED rows only. SessionStart uses it because replay
+   *   is a WRITE, a write is a `ruflo memory store` process, and one of those alone costs more than
+   *   the entire SessionStart budget — so a restore that replayed would time out and report UNKNOWN
+   *   precisely when there was durable evidence to show. Pending work is REPORTED here and replayed
+   *   at the next capture boundary (Stop / PreCompact / SessionEnd) or by /checkpoint, which are the
+   *   boundaries that already own a write budget. The outbox's fsync-then-commit ordering and its
+   *   replay-required semantics are untouched: nothing is dropped, only deferred.
+   */
+  restoreLatest({ pageSize = 100, maxEntries = 10_000, maxOutputBytes = 64 * 1024, replayPending = true } = {}) {
     requirePositiveInteger(maxOutputBytes, 'maxOutputBytes');
-    this.replay();
+    if (replayPending) this.replay();
+    const pendingReplay = replayPending ? 0 : this.pendingReplayCount();
     const keys = this.listSnapshotKeys({ pageSize, maxEntries });
     const exact = this.retrieveSnapshots(keys);
     const restored = restoreProjectProgression(exact.snapshots, {
@@ -308,6 +324,8 @@ export class ProjectProgressionStore {
     if (!restored.ok) {
       const error = new Error('no coherent progression state could be restored');
       error.rejectedCandidates = rejectedCandidates;
+      error.structurallyEnumerated = keys.length;
+      error.pendingReplay = pendingReplay;
       throw error;
     }
     const payload = {
@@ -321,12 +339,14 @@ export class ProjectProgressionStore {
         exactRetrieved: keys.length,
         causallyStale: restored.causallyStale.length,
         rejectedCandidates,
+        readPath: this.lastReadPath,
+        pendingReplay,
       },
     };
     const rendered = JSON.stringify(payload);
     if (Buffer.byteLength(rendered, 'utf8') > maxOutputBytes) {
       throw new Error(`resume payload exceeds the ${maxOutputBytes}-byte output bound`);
     }
-    return { payload, rendered };
+    return { payload, rendered, pendingReplay };
   }
 }
