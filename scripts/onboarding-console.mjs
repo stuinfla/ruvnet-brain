@@ -2992,6 +2992,10 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
       if (req.method === 'GET' && url === '/api/lessons') return sendJSON(res, 200, gatherLessons());
       if (req.method === 'GET' && url === '/api/trust') return sendJSON(res, 200, await gatherTrust());
       if (req.method === 'GET' && url === '/tips') { req.url = '/tips.html'; return serveStatic(req, res); }
+      // What's in the brain: derived from the installed root's own receipts on every request (read-only,
+      // no network, ~ms) — a coverage listing served from a stale cache would defeat its one purpose.
+      if (req.method === 'GET' && url === '/api/scope') return sendJSON(res, 200, gatherScope());
+      if (req.method === 'GET' && url === '/scope') { req.url = '/scope.html'; return serveStatic(req, res); }
       if (req.method === 'POST') {
         const body = await readBody(req);
         if (body.token !== TOKEN) return sendJSON(res, 403, { error: 'bad or missing token' });
@@ -3174,7 +3178,112 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('onboarding-consol
   else { console.log(`\n  onboarding-console — the RuvNet Brain configure page\n\n    --serve [--open]   start or safely replace the scoped local server\n    --runtime-status   print candidate, receipt, and live runtime status\n    --print-state      print the read-only state JSON and exit (for tests)\n    --print-stack      print the stack audit JSON and exit\n`); }
 }
 
+// ── "What's in the brain" (the scope page) ─────────────────────────────────────────────────────────
+// Every verdict comes from the installed brain's OWN receipts, never from the shipped `status` word.
+// Measured 2026-09-11 (KB audit): release-projection.mjs:80 stamps every seeded row CURRENT — 63 real
+// rows had sourceCommit ≠ upstream.sha. GitHub `updatedAt` is metadata (222/227 repos moved on it in
+// one week) and `pushedAt` leads the default-branch HEAD on 39/227; only `committedAt` dates the commit
+// the brain ingests. Gists have no branches, so their `updatedAt` IS the content date — and the shipped
+// COVERAGE row carries no sourceCommit for them (479/479 null); the gist receipt set
+// (ruv-gists.sources.json → versionSha) is the brain's record of which revision it holds.
+//
+// The truth per row is `brainSha === upstreamSha`. A store with no recorded source commit is
+// "unverified" — never promoted to current on the strength of a date or a label. A store whose
+// .big.rvf is not at the installed root is "not in the brain", whatever the record says.
+const SCOPE_SENTENCE = "If rUv's last change to a repo is on or before the date the brain read it, everything in that repo is in the brain. If it's after, the brain is behind on that repo by the difference.";
+const SCOPE_DAY_MS = 86_400_000;
+const SCOPE_STALE_DAYS = 7;
+
+function scopeRow(row, { generations, gistSources, installedStores }) {
+  const isGist = row.kind === 'gist';
+  const store = row.artifact?.store ?? null;
+  const ledger = store ? (generations?.stores?.[store] ?? null) : null;
+  const gistId = isGist ? String(row.key ?? '').replace(/^gist:/, '') : null;
+  const upstreamSha = row.upstream?.sha ?? null;
+
+  let brainSha = row.artifact?.sourceCommit ?? null;
+  if (brainSha == null) brainSha = isGist ? (gistSources?.gists?.[gistId]?.versionSha ?? null) : (ledger?.sourceCommit ?? null);
+
+  const ruvChangedAt = (isGist ? row.upstream?.updatedAt : row.upstream?.committedAt) ?? null;
+  const brainReadAt = row.artifact?.ingestedAt ?? ledger?.builtUtc ?? null;
+
+  let installed = Boolean(store) && installedStores.has(store);
+  // With a gist receipt set present, a gist the set does not enumerate is not in the store.
+  if (installed && isGist && gistSources?.gists && !(gistId in gistSources.gists)) installed = false;
+
+  let bucket;
+  if (!installed) bucket = 'not-in-brain';
+  else if (brainSha && upstreamSha) bucket = brainSha === upstreamSha ? 'current' : 'behind';
+  else bucket = 'unverified';
+
+  let behindDays = null;
+  if (bucket === 'behind' && ruvChangedAt && brainReadAt) {
+    const d = (Date.parse(ruvChangedAt) - Date.parse(brainReadAt)) / SCOPE_DAY_MS;
+    behindDays = Number.isFinite(d) ? Math.max(0, Math.round(d)) : null;
+  }
+  return { kind: row.kind, name: row.name, url: row.url ?? null, store, bucket, ruvChangedAt, brainReadAt, behindDays, brainSha, upstreamSha };
+}
+
+const scopeNewestFirst = (a, b) => {
+  if (a.ruvChangedAt == null && b.ruvChangedAt == null) return String(a.name).localeCompare(String(b.name));
+  if (a.ruvChangedAt == null) return 1;
+  if (b.ruvChangedAt == null) return -1;
+  return a.ruvChangedAt < b.ruvChangedAt ? 1 : a.ruvChangedAt > b.ruvChangedAt ? -1 : String(a.name).localeCompare(String(b.name));
+};
+
+/** Pure: coverage + ledger + gist receipts + the set of installed store names → the page's payload. */
+function computeScope({ coverage, generations, gistSources, installedStores, root, now = Date.now() }) {
+  const empty = () => ({ total: 0, current: 0, behind: 0, unverified: 0, notInBrain: 0, ineligible: 0 });
+  const counts = { repos: empty(), gists: empty() };
+  const out = { repos: [], gists: [] };
+  const covered = new Set();
+  for (const row of coverage.rows ?? []) {
+    const kind = row.kind === 'gist' ? 'gists' : 'repos';
+    if (row.artifact?.store) covered.add(row.artifact.store);
+    counts[kind].total += 1;
+    if (row.disposition !== 'eligible') { counts[kind].ineligible += 1; continue; }
+    const r = scopeRow(row, { generations, gistSources, installedStores });
+    counts[kind][r.bucket === 'not-in-brain' ? 'notInBrain' : r.bucket] += 1;
+    out[kind].push(r);
+  }
+  out.repos.sort(scopeNewestFirst);
+  out.gists.sort(scopeNewestFirst);
+  const observedAt = typeof coverage.observedAt === 'string' ? coverage.observedAt : null;
+  const ageMs = observedAt ? now - Date.parse(observedAt) : NaN;
+  const ageDays = Number.isFinite(ageMs) ? Math.round((ageMs / SCOPE_DAY_MS) * 10) / 10 : null;
+  return {
+    available: true,
+    root,
+    observedAt,
+    ageDays,
+    stale: ageDays == null || ageDays > SCOPE_STALE_DAYS,
+    brainVersion: generations?.brainVersion ?? null,
+    releaseTag: generations?.releaseTag ?? null,
+    sentence: SCOPE_SENTENCE,
+    counts,
+    repos: out.repos,
+    gists: out.gists,
+    installedStoreCount: installedStores.size,
+    installedOutsideCoverage: [...installedStores].filter((s) => !covered.has(s)).sort(),
+  };
+}
+
+/** Read the installed root and compute. Read-only; no network; returns `available: false` rather than a guess. */
+function gatherScope() {
+  const readJson = (rel) => { try { return JSON.parse(fs.readFileSync(path.join(INSTALLED_KB, rel), 'utf8')); } catch { return null; } };
+  const coverage = readJson('COVERAGE.json');
+  if (!coverage || !Array.isArray(coverage.rows)) {
+    return { available: false, reason: `no readable COVERAGE.json at ${INSTALLED_KB}`, root: INSTALLED_KB, sentence: SCOPE_SENTENCE, repos: [], gists: [], counts: {}, installedOutsideCoverage: [], installedStoreCount: 0 };
+  }
+  let installedStores = new Set();
+  try { installedStores = new Set(fs.readdirSync(INSTALLED_KB).filter((f) => f.endsWith('.big.rvf')).map((f) => f.slice(0, -'.big.rvf'.length))); }
+  catch { /* unreadable root reads as nothing installed — every row then says "not in the brain" */ }
+  return computeScope({ coverage, generations: readJson('RVF-GENERATIONS.json'), gistSources: readJson('ruv-gists.sources.json'), installedStores, root: INSTALLED_KB });
+}
+
 export {
+  gatherScope,
+  computeScope,
   gatherState,
   gatherStack,
   gatherTrust,
