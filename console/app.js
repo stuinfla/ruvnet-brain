@@ -109,6 +109,8 @@ const fmtMs = (ms) => {
   const m = Math.floor(s / 60);
   return `${m} m ${Math.round(s % 60)} s`;
 };
+// Signed time. A negative saving means routes were SLOWER than baseline — a finding, never a dash.
+const fmtSignedMs = (ms) => (ms == null || Number.isNaN(Number(ms)) ? '—' : (Number(ms) < 0 ? `−${fmtMs(-Number(ms))}` : fmtMs(ms)));
 
 const fmtDate = (iso) => {
   if (!iso) return '—';
@@ -2011,6 +2013,22 @@ function renderMemory(mem) {
       el('p', { class: 'fineprint' },
         'Dimensions we didn’t probe this session are excluded from the score — shown grey below, never assumed. A known-broken dimension caps the score.'))));
 
+  // Two files can sit in .swarm/. The score is about ONE of them, and the reader is told which — the
+  // card once rendered the MCP coordination store's 15,824 rows as if they were the project memory.
+  if (h.stores && h.stores.coordination && h.stores.coordination.exists && h.stores.canonical && h.stores.canonical.exists) {
+    const k = h.stores.canonical; const c = h.stores.coordination;
+    const scoredIsCanonical = h.stores.scored === k.path;
+    const rows = (s) => (s.rows == null ? '' : ` (${fmtInt(s.rows)} rows)`);
+    main.push(el('p', { class: 'fineprint' },
+      'Scored store: ', el('code', {}, scoredIsCanonical ? k.path : c.path), rows(scoredIsCanonical ? k : c), '. ',
+      'Also present: ', el('code', {}, scoredIsCanonical ? c.path : k.path), rows(scoredIsCanonical ? c : k),
+      scoredIsCanonical
+        ? ' — the MCP coordination store, not scored: a different container from the one '
+        : ' — the canonical store, not scored because it holds no rows; ',
+      scoredIsCanonical ? el('code', {}, 'ruflo memory store') : el('code', {}, 'ruflo memory store'),
+      scoredIsCanonical ? ' writes.' : ' writes there once used.'));
+  }
+
   const learn = renderLearnings(mem.learnings);
   if (learn) main.push(learn);
 
@@ -2533,8 +2551,8 @@ function renderSavings(sv) {
         el('div', { class: 'total-num' }, fmtInt(taskCount)),
         el('div', { class: 'total-lab' }, 'tasks routed')),
       el('div', { class: 'total-tile' },
-        el('div', { class: 'total-num' }, util ? fmtUsd(util.frontierUsd) : (totals && totals.msSaved >= 0 ? fmtMs(totals.msSaved) : '—')),
-        el('div', { class: 'total-lab' }, util ? `if all on ${frontierName}` : 'time saved'))));
+        el('div', { class: 'total-num' }, util ? fmtUsd(util.frontierUsd) : (totals && totals.msSaved != null ? fmtSignedMs(totals.msSaved) : '—')),
+        el('div', { class: 'total-lab' }, util ? `if all on ${frontierName}` : (totals && totals.msSaved < 0 ? 'time cost' : 'time saved')))));
   }
 
   // WP2a — provenance, worn openly: these numbers are receipts, not projections.
@@ -2543,7 +2561,21 @@ function renderSavings(sv) {
     el('span', { class: 'prov-dot', 'aria-hidden': 'true' }),
     el('span', {}, 'real numbers — recomputed from your ',
       el('b', {}, `${fmtInt(receiptCount)} receipt${receiptCount === 1 ? '' : 's'}`),
-      ', never projected')));
+      ', never projected',
+      sv && sv.skippedUnmeasured
+        ? el('span', { class: 'muted' }, ` · ${fmtInt(sv.skippedUnmeasured)} row${sv.skippedUnmeasured === 1 ? '' : 's'} carried no $ or time and ${sv.skippedUnmeasured === 1 ? 'is' : 'are'} not counted`)
+        : '')));
+
+  // TIME, WITH ITS SIGN, ALWAYS. When the utilization hero is present the tile above shows frontier $
+  // instead of time, and the only other place the time result appeared turned negatives into a dash.
+  // A net loss is a finding about the router, not an embarrassment to hide.
+  if (totals && totals.msSaved != null) {
+    const neg = totals.msSaved < 0;
+    blocks.push(el('p', { class: `fineprint${neg ? ' bp-warn' : ''}` },
+      neg ? 'Time cost: ' : 'Time saved: ', el('b', {}, fmtSignedMs(totals.msSaved)),
+      totals.timedCount != null ? ` across ${fmtInt(totals.timedCount)} timed route${totals.timedCount === 1 ? '' : 's'}` : '',
+      neg ? ' — routed tasks took longer than their baseline in aggregate.' : '.'));
+  }
 
   // The distribution — how many tasks went to each bucket, and the saved-vs-frontier math.
   // (computed above, so the totals-strip can stand down when this hero is doing the talking)
@@ -2833,6 +2865,25 @@ function buildSettingsForm(cfg, { endpoint }) {
  * now just the advocacy dial (ADR-032 §DDD-0004 "the three channels": this control is the volume knob
  * on the speech channel). Two stores, two forms, one shared widget — see buildSettingsField/Form.
  */
+// THREE FACTS, SIDE BY SIDE: "switch: off · agent: loaded · last completed run: never". The toggle
+// above this line shows a single state only when the saved choice and the scheduler agree (see
+// reconcileNightly on the server); this line shows all three regardless, so "on" can never again be
+// printed over a config file that says off and a job that has never completed a run.
+function nightlyFactsLine(f) {
+  const choice = f.choice === true ? 'on' : f.choice === false ? 'off' : 'never chosen';
+  const agent = f.enforcement === 'on' ? 'loaded'
+    : f.enforcement === 'off' ? 'not scheduled'
+      : f.enforcement === 'degraded' ? 'degraded'
+        : f.enforcement === 'unsupported' ? 'unsupported here' : String(f.enforcement || 'unknown');
+  const run = f.lastRun === 'ok' ? (f.lastRunAt ? fmtDate(f.lastRunAt) : 'completed')
+    : f.lastRun === 'never-ran' ? 'never'
+      : f.lastRun === 'failed' ? 'failed' : String(f.lastRun || 'unknown');
+  return el('p', { class: `fineprint field-facts${f.agree === false ? ' bp-warn' : ''}` },
+    'switch: ', el('b', {}, choice), ' · agent: ', el('b', {}, agent), ' · last completed run: ', el('b', {}, run),
+    f.agree === false ? ' — these disagree, so the toggle above shows no single state until they do.' : '',
+    f.enforcementEvidence ? el('span', { class: 'muted' }, ` (${f.enforcementEvidence})`) : '');
+}
+
 function renderSettings(cfg, us, bp) {
   const body = $('#body-settings');
   // `bp` is NOT counted here any more: its field is rendered by #card-brain at the top of the page,
@@ -2876,7 +2927,13 @@ function renderSettings(cfg, us, bp) {
         onclick: () => { document.getElementById('card-brain')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
       }, 'Take me to it')));
   }
-  if (cfg && Array.isArray(cfg.schema) && cfg.schema.length) main.push(buildSettingsForm(cfg, { endpoint: '/api/save-config' }));
+  if (cfg && Array.isArray(cfg.schema) && cfg.schema.length) {
+    const form = buildSettingsForm(cfg, { endpoint: '/api/save-config' });
+    const facts = cfg.runtime && cfg.runtime.nightly && cfg.runtime.nightly.facts;
+    const slot = facts ? form.querySelector('#field-nightly') : null;
+    if (slot) slot.append(nightlyFactsLine(facts));
+    main.push(form);
+  }
   if (us && Array.isArray(us.schema) && us.schema.length) main.push(buildSettingsForm(us, { endpoint: '/api/save-advocacy' }));
   if (unavailable.length) {
     main.push(el('section', { class: 'settings-unavailable', 'aria-labelledby': 'settings-unavailable-h' },
@@ -2997,6 +3054,22 @@ function bpProfileControl(profile) {
     },
   ];
   const radios = [];
+  // What the number on the card IS, said in words. `installed` is the brain on this disk; the
+  // bundle is what a restore would copy from. A choice with neither measured says so — a dash
+  // for a measured zero was the "— stores · 0 MB" lie this card carried until 2026-09-11.
+  const metaFor = (option, choice) => {
+    if (option.value === 'ruvector') return `1 store · ${bpSize(choice.bytes)}`;
+    if (choice.installed) return `${choice.installed.storeCount} stores · ${bpSize(choice.installed.bytes)} installed`;
+    if (choice.restoreBundle?.present) return `${choice.restoreBundle.storeCount} stores · ${bpSize(choice.restoreBundle.bytes)} in the local bundle`;
+    return 'not installed · size measured after restore';
+  };
+  // The restore mechanism, named — the same branch order saveBrainProfile() takes on Apply.
+  const restoreFor = (choice) => {
+    const where = choice.restoreBundle?.path || 'the release bundle path';
+    if (choice.restoreVia === 'local-bundle') return { warn: false, text: `Apply restores from the signed local bundle at ${where}.` };
+    if (choice.restoreVia === 'signed-download') return { warn: false, text: `No local bundle on this machine (${where}) — Apply downloads the signed complete release with forge-update and verifies it before anything lands. Size is measured after it does.` };
+    return { warn: true, text: `Complete Brain cannot be restored on this machine: no local bundle at ${where} and forge-update.mjs is not installed. Run the Brain update first.` };
+  };
   const cards = options.map((option) => {
     const choice = profile.choices?.[option.value] || {};
     const input = el('input', {
@@ -3013,12 +3086,13 @@ function bpProfileControl(profile) {
       el('span', { class: 'bp-profile-copy' },
         el('span', { class: 'bp-profile-title' }, option.title,
           option.value === current ? chip('active', 'green') : null),
-        el('span', { class: 'bp-profile-meta' },
-          `${choice.storeCount || (option.value === 'ruvector' ? 1 : '—')} ${choice.storeCount === 1 ? 'store' : 'stores'} · ${bpSize(choice.bytes)}`),
+        el('span', { class: 'bp-profile-meta' }, metaFor(option, choice)),
         el('span', { class: 'bp-profile-desc' }, option.copy),
-        choice.available === false
-          ? el('span', { class: 'bp-profile-desc bp-warn' }, 'The complete release bundle is not available on this machine; run the Brain update first.')
-          : null));
+        option.value === 'complete'
+          ? (() => { const r = restoreFor(choice); return el('span', { class: `bp-profile-desc${r.warn ? ' bp-warn' : ''}` }, r.text); })()
+          : (choice.available === false
+            ? el('span', { class: 'bp-profile-desc bp-warn' }, 'No RuVector store exists on this machine or in a local bundle; run the Brain update first.')
+            : null)));
   });
 
   apply.onclick = async () => {
@@ -3189,6 +3263,11 @@ const TRUST_INFO = {
     { k: 'Why does it matter?', t: 'This stack ships fast — latest keeps you current. Pinning holds a known-good release when you need repeatable builds.' },
     { k: 'How does it help me?', t: 'Read from your plugin cache on disk, never assumed. Version pinning is planned — both choices will live on this row.' },
   ],
+  versions: [
+    { k: 'What is this?', t: 'The three version numbers this machine is actually running: the knowledge-base generation (RVF-GENERATIONS.json), the running brain (runtime-identity.json, else the plugin cache), and the installed plugin (installed_plugins.json). Each is read from its own file.' },
+    { k: 'Why does it matter?', t: 'After an update they should all match. While they differ, this page is describing more than one release at once — the header chip, the install-channel row and the knowledge base were once three different numbers with nothing saying so.' },
+    { k: 'How does it help me?', t: 'If they disagree, finish the update (one restart picks up boot-level declarations) and re-check. "Not measured" means the file was not there to read — never a guess.' },
+  ],
   advisor: [
     { k: 'What is this?', t: 'A coming mode switch. Full lets the console apply consent-gated, undoable fixes; Advisor makes every Apply button read-only — it shows the exact command and steps aside.' },
     { k: 'Why does it matter?', t: 'Some machines want eyes-only — work laptops, shared rigs, cautious first weeks. The right choice should be easy in both directions.' },
@@ -3281,6 +3360,29 @@ function renderTrust(t) {
     ] : [
       el('p', {}, 'No plugin-cache install found on this machine — you may be running from a repo checkout. ',
         'This row reads ', el('span', { class: 'cell-mono' }, '~/.claude/plugins'), ', never guesses.'),
+    ],
+  }));
+
+  /* 3b · versions — three files, three numbers; either they agree or the page says they do not.
+     The header chip (running brain), this card's channel row (installed plugin) and the KB's own
+     ledger (generation) were three different numbers on one page with nothing reconciling them. */
+  const v = t.versions || {};
+  const vChip = v.agree === true ? chip('in sync', 'green', 'KB generation, running brain and installed plugin all report the same version')
+    : v.agree === false ? chip('differ', 'warn', 'At least two of the measured versions disagree')
+      : chip('partly measured', 'grey', 'Fewer than two versions could be read on this machine');
+  const vShow = (x) => (x ? `v${x}` : 'not measured');
+  rows.push(trustRow({
+    name: 'Versions', info: TRUST_INFO.versions,
+    status: vChip,
+    value: [
+      el('p', {}, 'KB generation ', el('b', {}, vShow(v.kbGeneration)),
+        ' · running brain ', el('b', {}, vShow(v.runningBrain)),
+        ' · installed plugin ', el('b', {}, v.installedPlugin ? `v${v.installedPlugin}` : 'none'),
+        ...(v.latestRelease ? [' · latest release ', el('b', {}, `v${v.latestRelease}`)] : [])),
+      v.agree === false
+        ? el('p', { class: 'bp-warn' }, 'These should match once an update has fully landed. While they differ, this page is describing more than one release at once.')
+        : null,
+      el('span', { class: 'trust-src' }, 'RVF-GENERATIONS.json · runtime-identity.json / plugin cache · installed_plugins.json'),
     ],
   }));
 
@@ -3611,6 +3713,9 @@ function renderGates(g) {
   setChips('chips-gates', [
     chip(`${s.blocking} can block`, caught ? 'green' : 'cyan'),
     chip(caught ? `${caught} caught` : 'nothing caught yet', caught ? 'green' : 'grey'),
+    ...(s.unregisteredBlocking
+      ? [chip(`${s.unregisteredBlocking} unwired`, 'warn', 'Blocking gates that exist in the plugin but are registered in no hooks.json — they cannot stop anything until wired')]
+      : []),
   ]);
 
   const main = [];
@@ -3631,6 +3736,33 @@ function renderGates(g) {
       ? el('span', { class: 'muted' }, ` Wired twice, so it runs twice: ${dupes.join(', ')}.`)
       : '',
     infoBtn('What caught Claude', GATES_INFO)));
+
+  // WHICH hooks.json the plugin numbers came from. On an installed host the console's own repo path
+  // has no plugin/hooks/, and the card used to silently count zero plugin gates while Claude Code
+  // was loading them from the plugin cache. Named here so a zero can never again pass for absence.
+  main.push(el('p', { class: 'fineprint' },
+    g.pluginPath
+      ? ['Plugin gates read from ', el('code', {}, g.pluginPath),
+        g.pluginSource === 'installed' ? ' — the plugin Claude Code loads on this machine.'
+          : g.pluginSource === 'repo' ? ' — this repository checkout, not an installed plugin.' : '.']
+      : ['No plugin hooks.json was found on this machine — only machine-wide hooks are counted above.']));
+
+  // Blocking gates the launcher knows that NOTHING registers. "0 can block" and "4 enforcers are
+  // unplugged" are different sentences; only the second tells the owner what to do.
+  const unplugged = Array.isArray(g.unregistered) ? g.unregistered : [];
+  if (unplugged.length) {
+    main.push(el('p', { class: 'lead-stat' },
+      el('b', {}, String(unplugged.length)),
+      ` blocking gate${unplugged.length === 1 ? '' : 's'} exist${unplugged.length === 1 ? 's' : ''} in the plugin but ${unplugged.length === 1 ? 'is' : 'are'} registered in no hooks.json — ${unplugged.length === 1 ? 'it' : 'they'} cannot stop anything until wired: `,
+      ...unplugged.flatMap((u, i) => [i ? ', ' : '', el('code', {}, u.name), u.onDisk ? '' : el('span', { class: 'muted' }, ' (file missing)')]),
+      '.'));
+  }
+  if (Array.isArray(g.git) && g.git.length) {
+    main.push(el('p', { class: 'fineprint' },
+      'Git hooks in this checkout — they stop commits, not tool calls, so they are not in the count above: ',
+      ...g.git.flatMap((h, i) => [i ? ', ' : '', el('code', {}, h.name), h.executable ? '' : el('span', { class: 'muted' }, ' (not executable — will not run)')]),
+      '.'));
+  }
 
   if (caught) {
     // Deliberately NOT the .wire-lane grid: its fixed columns are sized for (count, label, meaning)

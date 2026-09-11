@@ -422,6 +422,27 @@ function wiringSurvey() {
       if (mech) sites.push({ scope: 'project', project: projName, file: '.mcp.json', event: 'MCP', matcher: name, spec: full.slice(0, 160), mechanism: mech });
     }
   }
+  // THE MACHINE-WIDE FILE (console audit 2026-09-11). Plugins are switched on in ~/.claude/settings.json
+  // and nowhere else, and this survey never read that file — so the card said `plugin: 0` on a machine
+  // with 14 enabled, ruvnet-brain among them. Each enabled plugin is one global PLUGIN site. The file's
+  // own hooks go through the same classifier the project scan uses, so a machine-wide npx or
+  // global-binary hook is counted in the same words as a project one.
+  const machine = readJSON(path.join(CONSOLE_ROOT, '.claude', 'settings.json'));
+  if (machine) {
+    for (const [event, groups] of Object.entries(machine.hooks || {})) {
+      const list = Array.isArray(groups) ? groups : [groups];
+      for (const g of list) {
+        const hookArr = Array.isArray(g?.hooks) ? g.hooks : (g?.command ? [g] : []);
+        for (const h of hookArr) {
+          const mech = classifyCommand(h?.command);
+          if (mech) sites.push({ scope: 'global', file: '~/.claude/settings.json', event, matcher: g?.matcher ?? '*', spec: String(h.command).slice(0, 160), mechanism: mech });
+        }
+      }
+    }
+    for (const [name, on] of Object.entries(machine.enabledPlugins || {})) {
+      if (on === true) sites.push({ scope: 'global', file: '~/.claude/settings.json', event: 'plugin', matcher: name, spec: name, mechanism: 'PLUGIN' });
+    }
+  }
   return { sites, summary: summarizeWiring(sites) };
 }
 
@@ -444,25 +465,41 @@ function sessionHookExists() {
 //
 // So the probe stops guessing and asks the filesystem: consider both known names, and use whichever
 // actually holds rows. That is correct on their machine and on mine without knowing why they differ.
+//
+// THE SECOND HALF OF THAT LESSON (console audit 2026-09-11). "Whichever holds rows" was implemented
+// as "whichever is LARGER", and on a machine where BOTH hold rows that picked the wrong one: the
+// card scored ruvnet-brain on `.swarm/agentdb-memory.db` — 15,824 rows, the MCP coordination store
+// the global CLAUDE.md warns is a DIFFERENT container — and rendered "15824 entries, 100% embedded"
+// while the canonical `.swarm/memory.db`, the file `ruflo memory store` writes, held 5. The #127
+// reporter's cases (canonical absent, or present but empty) still resolve to the coordination store;
+// a canonical store that holds rows is now always the one scored, and BOTH files are reported so the
+// page can say which it scored and which it did not.
 const MEMORY_DB_NAMES = ['memory.db', 'agentdb-memory.db'];
+// Row count that never throws and never hangs on a live store: null means "unreadable this instant".
+function memoryRows(file) {
+  if (!fs.existsSync(file)) return null;
+  const r = robustRead(file, 'SELECT count(*) FROM memory_entries;');
+  return r.ok ? (r.value === null ? 0 : parseInt(r.value, 10)) : null;
+}
+export function memoryStores(projectDir) {
+  const [canonicalPath, coordinationPath] = MEMORY_DB_NAMES.map((name) => path.join(projectDir, '.swarm', name));
+  const canonical = { path: canonicalPath, exists: fs.existsSync(canonicalPath), rows: memoryRows(canonicalPath) };
+  const coordination = { path: coordinationPath, exists: fs.existsSync(coordinationPath), rows: memoryRows(coordinationPath) };
+  // A canonical store that holds rows — or is busy being written this instant (rows null) — is the
+  // one scored. Only an absent or EMPTY canonical store hands the score to the coordination file.
+  const scored = canonical.exists && (canonical.rows === null || canonical.rows > 0) ? canonical.path
+    : coordination.exists ? coordination.path
+      : canonical.path; // canonical name for the "absent" message
+  return { canonical, coordination, scored };
+}
 export function resolveMemoryDb(projectDir) {
-  const candidates = MEMORY_DB_NAMES
-    .map((name) => path.join(projectDir, '.swarm', name))
-    .filter((file) => fs.existsSync(file));
-  if (!candidates.length) return path.join(projectDir, '.swarm/memory.db'); // canonical name for the "absent" message
-  if (candidates.length === 1) return candidates[0];
-  // Both present: prefer the one with real content. Size is a proxy for rows that costs no query and
-  // cannot throw on a locked or WAL-mode database — this runs inside a UI probe that must never hang.
-  return candidates.sort((a, b) => {
-    const sa = (() => { try { return fs.statSync(a).size; } catch { return 0; } })();
-    const sb = (() => { try { return fs.statSync(b).size; } catch { return 0; } })();
-    return sb - sa;
-  })[0];
+  return memoryStores(projectDir).scored;
 }
 
 function probeMemory(projectDir, { now = Date.now() } = {}) {
-  const db = resolveMemoryDb(projectDir);
-  const probes = {};
+  const stores = memoryStores(projectDir);
+  const db = stores.scored;
+  const probes = { stores };
   // compaction survival + session surfacing are filesystem facts, always checkable
   const snapshot = inspectSessionSnapshots(projectDir, { now });
   const snapshotDetail = snapshot.kind === 'canonical'
@@ -503,8 +540,10 @@ function probeMemory(projectDir, { now = Date.now() } = {}) {
   const liveNote = integ.mode === 'immutable=1' ? ' and in active use' : '';
   if (integrity !== 'ok') probes.liveness = { status: 'fail', detail: `store is corrupt (integrity_check: ${integrity})` };
   else if (total === null) probes.liveness = { status: 'notTested', detail: 'store opened but counts were unavailable this instant' };
-  else if (total > 0) probes.liveness = { status: 'ok', detail: `store is live${liveNote}, integrity ok, ${total} entries${embedded != null && total ? `, ${Math.round((embedded / total) * 100)}% embedded` : ''} (read-only)` };
-  else probes.liveness = { status: 'warn', detail: 'store exists but is empty' };
+  // The file is NAMED in the sentence, so "15824 entries" can never again be read as the canonical
+  // store's count when it was the coordination store's.
+  else if (total > 0) probes.liveness = { status: 'ok', detail: `${path.basename(db)} is live${liveNote}, integrity ok, ${total} entries${embedded != null && total ? `, ${Math.round((embedded / total) * 100)}% embedded` : ''} (read-only)` };
+  else probes.liveness = { status: 'warn', detail: `${path.basename(db)} exists but is empty` };
 
   const cp = robustRead(db, "SELECT max(updated_at) FROM memory_entries WHERE key LIKE 'project-state-current%';");
   if (cp.ok && cp.value) {
@@ -542,7 +581,15 @@ function gatherMemory(cwd, { fleet = true } = {}) {
   const scope = projectDirectory({ cwd });
   const project = fs.existsSync(path.join(scope, '.swarm/memory.db')) ? scope : REPO;
   const projName = project.replace(CONSOLE_ROOT + '/Code/', '').replace(CONSOLE_ROOT + '/', '~/');
-  const health = scoreMemoryHealth({ project: projName, probes: probeMemory(project) });
+  const probes = probeMemory(project);
+  const health = scoreMemoryHealth({ project: projName, probes });
+  // Which file the score is about, and which file it deliberately is not — both with row counts.
+  const short = (p) => String(p).replace(CONSOLE_ROOT, '~');
+  health.stores = probes.stores ? {
+    scored: short(probes.stores.scored),
+    canonical: { ...probes.stores.canonical, path: short(probes.stores.canonical.path) },
+    coordination: { ...probes.stores.coordination, path: short(probes.stores.coordination.path) },
+  } : null;
   return { fleet: fleet ? scanFleet() : null, health };
 }
 
@@ -591,10 +638,16 @@ function gatherSavings() {
     }
   }
   const usdSaved = +receipts.reduce((a, r) => a + (r.measuredUsd || 0), 0).toFixed(4);
+  const timed = receipts.filter((r) => r.measuredMs !== null);
   const totals = receipts.length ? {
     count: receipts.length,
     usdSaved,
+    // SIGNED, and it stays signed. A net-slower ledger sums negative and is REPORTED negative — the
+    // page once turned that into a dash (console audit 2026-09-11: −46,737 ms across 25 timed
+    // routes, 23 of them slower than baseline, rendered as "—"). A loss is a finding about the
+    // router; `timedCount` says how many routes the number is even about.
     msSaved: receipts.reduce((a, r) => a + (r.measuredMs || 0), 0),
+    timedCount: timed.length,
     baselineUsd: +baselineUsd.toFixed(4),
     pctSaved: baselineUsd > 0 ? Math.round((usdSaved / baselineUsd) * 100) : null,
   } : null;
@@ -643,11 +696,42 @@ function unsupportedConfigControls() {
  * off, and the Settings form shows the shipped default beside it as a recommendation rather than as
  * a fact about their machine.
  */
+/**
+ * NIGHTLY REFRESH IS THREE FACTS, NOT ONE BOOLEAN (console audit 2026-09-11). The toggle rendered
+ * `nightly: true` because the LaunchAgent was loaded, while ~/.claude/ruvnet-brain/config.json said
+ * `nightly: false` and the job had never completed a run. Three independently measured things —
+ * the CHOICE the user saved (config.json), the ENFORCEMENT the scheduler adapter reports (loaded,
+ * off, degraded), and the OUTCOME of the last completed run (its receipt) — had been collapsed into
+ * the one the user did not set. A single boolean is emitted only when choice and enforcement agree;
+ * otherwise the field is null (never chosen, or in disagreement) and `facts` carries all three so
+ * the page can print them side by side. Pure, so the rule is testable without a scheduler.
+ */
+export function reconcileNightly({ choice, schedule }) {
+  const enforcement = schedule?.state ?? 'unknown';
+  const run = schedule?.runHealth ?? null;
+  const enforced = enforcement === 'on' ? true : enforcement === 'off' ? false : null;
+  const chosen = choice === true || choice === false ? choice : null;
+  const agree = chosen === null ? null : (enforced !== null && chosen === enforced);
+  return {
+    value: agree === true ? chosen : null,
+    facts: {
+      choice: chosen,
+      enforcement,
+      enforcementEvidence: schedule?.evidence ?? null,
+      lastRun: run?.state ?? 'unknown',
+      lastRunEvidence: run?.evidence ?? null,
+      lastRunAt: run?.receipt?.finishedAt ?? run?.receipt?.startedAt ?? null,
+      agree,
+    },
+  };
+}
+
 function gatherConfig() {
   const cfg = readJSON(CONFIG_PATH) || {};
   const credential = openRouterCredentialStatus({ cwd: process.cwd() });
   const schedule = nightlyStatus();
   const bool = (v) => (v === true ? true : v === false ? false : null);
+  const nightly = reconcileNightly({ choice: bool(cfg.nightly), schedule });
   const unavailable = unsupportedConfigControls();
   if (!schedule.artifact.supported) {
     unavailable.push({
@@ -662,7 +746,7 @@ function gatherConfig() {
     values: {
       openrouterKey: credential.configured,                // boolean only — never the secret itself
       provider: typeof cfg.provider === 'string' && cfg.provider ? cfg.provider : null,
-      nightly: schedule.state === 'on' ? true : schedule.state === 'off' ? false : null,
+      nightly: nightly.value,
       routing: cfg.routing === 'off' ? 'off' : cfg.routing === 'auto' ? 'auto' : null,
       qeFleet: bool(cfg.qeFleet),
     },
@@ -675,7 +759,7 @@ function gatherConfig() {
     unavailable,
     runtime: {
       openrouterKey: credential,
-      nightly: schedule,
+      nightly: { ...schedule, facts: nightly.facts },
     },
   };
 }
@@ -791,8 +875,21 @@ function gatherBrainProfile() {
     : installed.stores.length === 1
       ? PROFILE_RUVECTOR
       : PROFILE_COMPLETE;
+  // THE "— stores · 0 MB" LIE (console audit 2026-09-11). `choices.complete` was rendered from
+  // `source` — the restore BUNDLE at COMPLETE_BRAIN_SOURCE, which on an installed host resolves to
+  // <runtime>/dist/ruvnet-brain and never exists after install — while `installed`, measured three
+  // lines up (184 stores, 979 MB on the owner's machine), went unused. discoverStoreFamilies()
+  // swallows ENOENT into [], so a complete brain rendered as zero and wore an `active` badge over it.
+  // Two different questions are now answered separately: what is INSTALLED here, and by which path
+  // Apply→complete could RESTORE it here. The path order mirrors saveBrainProfile()'s own branches
+  // (local bundle, then the signed forge-update download, then nothing), so the card describes the
+  // exact mechanism Apply would take — never a hopeful one, never a number nobody measured.
   const source = measureBrainProfile(COMPLETE_BRAIN_SOURCE);
+  const bundlePresent = source.stores.includes(PROFILE_RUVECTOR) && source.storeCount > 1;
   const updaterAvailable = fs.existsSync(path.join(INSTALLED_KB, 'forge-update.mjs'));
+  const restoreVia = bundlePresent ? 'local-bundle' : updaterAvailable ? 'signed-download' : null;
+  const completeInstalled = actual === PROFILE_COMPLETE;
+  const restorePath = COMPLETE_BRAIN_SOURCE.replace(CONSOLE_ROOT, '~');
   return {
     path: INSTALLED_KB.replace(CONSOLE_ROOT, '~'),
     values: { brainProfile: actual },
@@ -803,10 +900,20 @@ function gatherBrainProfile() {
     installed,
     choices: {
       complete: {
-        available: (source.stores.includes(PROFILE_RUVECTOR) && source.storeCount > 1)
-          || updaterAvailable,
-        storeCount: source.storeCount,
-        bytes: source.bytes,
+        available: restoreVia !== null,
+        // From the INSTALLED brain when complete is what is installed; from the local bundle when one
+        // exists to restore from; otherwise null — never a 0 that nothing measured.
+        storeCount: completeInstalled ? installed.storeCount : bundlePresent ? source.storeCount : null,
+        bytes: completeInstalled ? installed.bytes : bundlePresent ? source.bytes : null,
+        installed: completeInstalled ? { storeCount: installed.storeCount, bytes: installed.bytes } : null,
+        restoreBundle: {
+          present: bundlePresent,
+          path: restorePath,
+          storeCount: bundlePresent ? source.storeCount : null,
+          bytes: bundlePresent ? source.bytes : null,
+        },
+        updaterAvailable,
+        restoreVia,
       },
       ruvector: {
         available: installed.stores.includes(PROFILE_RUVECTOR)
@@ -1960,6 +2067,25 @@ function readInstallChannel() {
  * practice, because the check that did exist only ever triggered a blocking recompute rather than an
  * honest stale-serve.
  */
+/**
+ * THREE VERSIONS ON ONE PAGE (console audit 2026-09-11): the header chip said v4.3.21 (running
+ * brain), the Install-channel row said v4.3.22 (plugin cache), the installed KB's RVF-GENERATIONS.json
+ * said 4.3.10 — and nothing said they differed. Each is read from its own file and LABELED. `agree`
+ * is true only when every measured one is identical, null when fewer than two could be read. A
+ * version that cannot be read is null, never guessed.
+ */
+export function versionFacts({ release = null } = {}) {
+  const gen = readJSON(path.join(INSTALLED_KB, 'RVF-GENERATIONS.json'));
+  const kbGeneration = typeof gen?.brainVersion === 'string' && gen.brainVersion ? gen.brainVersion.replace(/^v/, '') : null;
+  const runningBrain = brainVersionOnDisk();
+  let installedPlugin = null;
+  try { installedPlugin = readInstallChannel().version || null; } catch { installedPlugin = null; }
+  const latestRelease = typeof release?.tag === 'string' && release.tag ? release.tag.replace(/^v/, '') : null;
+  const known = [kbGeneration, runningBrain, installedPlugin].filter(Boolean);
+  const agree = known.length < 2 ? null : known.every((x) => x === known[0]);
+  return { kbGeneration, runningBrain, installedPlugin, latestRelease, agree, known: known.length };
+}
+
 async function gatherTrust() {
   // COLD ONLY: no successful release read has ever landed, so there is nothing to withhold or serve
   // stale — the one exception serveCached() itself carves out for its own caches.
@@ -1971,7 +2097,7 @@ async function gatherTrust() {
     const generatedAt = new Date().toISOString();
     const data = { generatedAt, release };
     if (release.ok) { TRUST_CACHE = { at: Date.parse(generatedAt), data }; saveConsoleCache(); }
-    return { ...data, channel: readInstallChannel(), sbom: readSbom(), ...freshnessOf(generatedAt) };
+    return { ...data, channel: readInstallChannel(), sbom: readSbom(), versions: versionFacts({ release }), ...freshnessOf(generatedAt) };
   }
 
   // WARM — including over-ceiling. Never await the network here; hand back what we measured, say
@@ -1980,7 +2106,7 @@ async function gatherTrust() {
   if (fresh.stale) kickTrustRefresh();
   // Disk facts stay live even when the release read is served from cache — the SBOM file and install
   // channel can change (a fresh `npm run sbom`, a plugin update) between two calls inside the ceiling.
-  return { ...TRUST_CACHE.data, channel: readInstallChannel(), sbom: readSbom(), ...fresh };
+  return { ...TRUST_CACHE.data, channel: readInstallChannel(), sbom: readSbom(), versions: versionFacts({ release: TRUST_CACHE.data.release }), ...fresh };
 }
 
 // ── Assemble the read-models ─────────────────────────────────────────────────────────────────────
@@ -3063,6 +3189,8 @@ export {
   saveBrainProfile,
   gatherRouterEngine,
   autoEligibleIds,
+  gatherConfig,
+  gatherSavings,
 };
 // Exported for the cross-project cache-isolation test (console-cache-scope.test.mjs). serveCached's
 // scopeKey is the guard that stops one project's cached state being served for another.
