@@ -2849,6 +2849,25 @@ function buildSettingsForm(cfg, { endpoint }) {
  * now just the advocacy dial (ADR-032 §DDD-0004 "the three channels": this control is the volume knob
  * on the speech channel). Two stores, two forms, one shared widget — see buildSettingsField/Form.
  */
+// THREE FACTS, SIDE BY SIDE: "switch: off · agent: loaded · last completed run: never". The toggle
+// above this line shows a single state only when the saved choice and the scheduler agree (see
+// reconcileNightly on the server); this line shows all three regardless, so "on" can never again be
+// printed over a config file that says off and a job that has never completed a run.
+function nightlyFactsLine(f) {
+  const choice = f.choice === true ? 'on' : f.choice === false ? 'off' : 'never chosen';
+  const agent = f.enforcement === 'on' ? 'loaded'
+    : f.enforcement === 'off' ? 'not scheduled'
+      : f.enforcement === 'degraded' ? 'degraded'
+        : f.enforcement === 'unsupported' ? 'unsupported here' : String(f.enforcement || 'unknown');
+  const run = f.lastRun === 'ok' ? (f.lastRunAt ? fmtDate(f.lastRunAt) : 'completed')
+    : f.lastRun === 'never-ran' ? 'never'
+      : f.lastRun === 'failed' ? 'failed' : String(f.lastRun || 'unknown');
+  return el('p', { class: `fineprint field-facts${f.agree === false ? ' bp-warn' : ''}` },
+    'switch: ', el('b', {}, choice), ' · agent: ', el('b', {}, agent), ' · last completed run: ', el('b', {}, run),
+    f.agree === false ? ' — these disagree, so the toggle above shows no single state until they do.' : '',
+    f.enforcementEvidence ? el('span', { class: 'muted' }, ` (${f.enforcementEvidence})`) : '');
+}
+
 function renderSettings(cfg, us, bp) {
   const body = $('#body-settings');
   // `bp` is NOT counted here any more: its field is rendered by #card-brain at the top of the page,
@@ -2892,7 +2911,13 @@ function renderSettings(cfg, us, bp) {
         onclick: () => { document.getElementById('card-brain')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
       }, 'Take me to it')));
   }
-  if (cfg && Array.isArray(cfg.schema) && cfg.schema.length) main.push(buildSettingsForm(cfg, { endpoint: '/api/save-config' }));
+  if (cfg && Array.isArray(cfg.schema) && cfg.schema.length) {
+    const form = buildSettingsForm(cfg, { endpoint: '/api/save-config' });
+    const facts = cfg.runtime && cfg.runtime.nightly && cfg.runtime.nightly.facts;
+    const slot = facts ? form.querySelector('#field-nightly') : null;
+    if (slot) slot.append(nightlyFactsLine(facts));
+    main.push(form);
+  }
   if (us && Array.isArray(us.schema) && us.schema.length) main.push(buildSettingsForm(us, { endpoint: '/api/save-advocacy' }));
   if (unavailable.length) {
     main.push(el('section', { class: 'settings-unavailable', 'aria-labelledby': 'settings-unavailable-h' },

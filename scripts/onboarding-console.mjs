@@ -669,11 +669,42 @@ function unsupportedConfigControls() {
  * off, and the Settings form shows the shipped default beside it as a recommendation rather than as
  * a fact about their machine.
  */
+/**
+ * NIGHTLY REFRESH IS THREE FACTS, NOT ONE BOOLEAN (console audit 2026-09-11). The toggle rendered
+ * `nightly: true` because the LaunchAgent was loaded, while ~/.claude/ruvnet-brain/config.json said
+ * `nightly: false` and the job had never completed a run. Three independently measured things —
+ * the CHOICE the user saved (config.json), the ENFORCEMENT the scheduler adapter reports (loaded,
+ * off, degraded), and the OUTCOME of the last completed run (its receipt) — had been collapsed into
+ * the one the user did not set. A single boolean is emitted only when choice and enforcement agree;
+ * otherwise the field is null (never chosen, or in disagreement) and `facts` carries all three so
+ * the page can print them side by side. Pure, so the rule is testable without a scheduler.
+ */
+export function reconcileNightly({ choice, schedule }) {
+  const enforcement = schedule?.state ?? 'unknown';
+  const run = schedule?.runHealth ?? null;
+  const enforced = enforcement === 'on' ? true : enforcement === 'off' ? false : null;
+  const chosen = choice === true || choice === false ? choice : null;
+  const agree = chosen === null ? null : (enforced !== null && chosen === enforced);
+  return {
+    value: agree === true ? chosen : null,
+    facts: {
+      choice: chosen,
+      enforcement,
+      enforcementEvidence: schedule?.evidence ?? null,
+      lastRun: run?.state ?? 'unknown',
+      lastRunEvidence: run?.evidence ?? null,
+      lastRunAt: run?.receipt?.finishedAt ?? run?.receipt?.startedAt ?? null,
+      agree,
+    },
+  };
+}
+
 function gatherConfig() {
   const cfg = readJSON(CONFIG_PATH) || {};
   const credential = openRouterCredentialStatus({ cwd: process.cwd() });
   const schedule = nightlyStatus();
   const bool = (v) => (v === true ? true : v === false ? false : null);
+  const nightly = reconcileNightly({ choice: bool(cfg.nightly), schedule });
   const unavailable = unsupportedConfigControls();
   if (!schedule.artifact.supported) {
     unavailable.push({
@@ -688,7 +719,7 @@ function gatherConfig() {
     values: {
       openrouterKey: credential.configured,                // boolean only — never the secret itself
       provider: typeof cfg.provider === 'string' && cfg.provider ? cfg.provider : null,
-      nightly: schedule.state === 'on' ? true : schedule.state === 'off' ? false : null,
+      nightly: nightly.value,
       routing: cfg.routing === 'off' ? 'off' : cfg.routing === 'auto' ? 'auto' : null,
       qeFleet: bool(cfg.qeFleet),
     },
@@ -701,7 +732,7 @@ function gatherConfig() {
     unavailable,
     runtime: {
       openrouterKey: credential,
-      nightly: schedule,
+      nightly: { ...schedule, facts: nightly.facts },
     },
   };
 }
@@ -3112,6 +3143,7 @@ export {
   saveBrainProfile,
   gatherRouterEngine,
   autoEligibleIds,
+  gatherConfig,
 };
 // Exported for the cross-project cache-isolation test (console-cache-scope.test.mjs). serveCached's
 // scopeKey is the guard that stops one project's cached state being served for another.

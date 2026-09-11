@@ -21,8 +21,11 @@ export function makeRunner(tmp) {
     const r = spawnSync(process.execPath, ['--input-type=module', '-e', src], {
       env: {
         ...process.env,
+        // HOME alone isolates the console: consoleRootFromEnvironment() falls back to os.homedir(),
+        // and the scheduler reads its LaunchAgent path from HOME too. Setting RUVNET_CONSOLE_ROOT as
+        // well trips nightly-controller's "console root must not be the real home" guard, because
+        // under this env the scratch dir IS os.homedir().
         HOME: tmp, USERPROFILE: tmp,
-        RUVNET_CONSOLE_ROOT: tmp,
         RUVNET_SETTINGS_FILE: path.join(tmp, 'settings.json'),
         RUVNET_BRAIN_KB: path.join(tmp, 'kb'),
         RUVNET_BRAIN_COMPLETE_SOURCE: path.join(tmp, 'no-such-bundle'),
