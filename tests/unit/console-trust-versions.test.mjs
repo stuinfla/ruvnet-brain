@@ -29,7 +29,7 @@ describe('Fix 6 — versionFacts(): KB generation, running brain and installed p
   it('reads each from its own file and flags disagreement (no plugin installed ⇒ that one is null, not guessed)', () => {
     writeKb('1.0.0');
     const v = runJSON(`${IMPORT} process.stdout.write(JSON.stringify(m.versionFacts()));`);
-    expect(v.kbGeneration).toBe('1.0.0');
+    expect(v.kbGeneration).toBe('1.0.0'); // sync-version-ignore: the fixture writeKb('1.0.0') seeded two lines up, not the product's version
     expect(v.runningBrain).toBe(RUNNING_VERSION);       // dev checkout: no runtime-identity.json, no plugin cache ⇒ package.json
     expect(v.installedPlugin).toBe(null);
     expect(v.agree).toBe(false);

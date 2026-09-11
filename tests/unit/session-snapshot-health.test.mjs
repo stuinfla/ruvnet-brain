@@ -10,6 +10,11 @@ import {
 } from '../../scripts/session-snapshot-contract.mjs';
 import { writeSessionSnapshot } from '../../plugin/scripts/session-snapshot-hook.mjs';
 import { probeMemory } from '../../scripts/onboarding-console.mjs';
+import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
+
+// The lifecycle events hooks.json may carry, derived from the policy module — a literal here
+// (`['SessionStart','Stop']`, the Sep-7 two-event plane) kept this file red across a plane change.
+const PLANE_EVENTS = [...new Set(continuityRegistrations('claude').map((s) => s.event))].sort();
 
 const temps = [];
 const temporary = () => {
@@ -37,8 +42,14 @@ describe('issue #85 — versioned compaction snapshot contract', () => {
     expect(probeMemory(project).compactionSurvival).toMatchObject({ status: 'ok', artifact: 'canonical' });
 
     const hooks = JSON.parse(fs.readFileSync(path.resolve('plugin/hooks/hooks.json'), 'utf8')).hooks;
-    expect(Object.keys(hooks).sort()).toEqual(['SessionStart', 'Stop']);
-    expect(JSON.stringify(hooks)).not.toContain('session-snapshot');
+    expect(Object.keys(hooks).sort()).toEqual(PLANE_EVENTS);
+    // `.not.toContain('session-snapshot')` pinned the Sep-7 design (snapshot only via the explicit
+    // producer above, no lifecycle hook). The policy module has since re-declared session-snapshot on
+    // Stop/PreCompact/SessionEnd, and the manifest must agree with the policy either way — so the
+    // check is now "hooks.json registers it iff the plane declares it", not a frozen answer.
+    const planeIds = new Set(continuityRegistrations('claude').map((r) => r.id));
+    expect(JSON.stringify(hooks).includes('session-snapshot'), 'hooks.json must register session-snapshot exactly when the continuity plane declares it')
+      .toBe(planeIds.has('session-snapshot'));
   });
 
   it('TEETH: writes NOTHING into a project that never opted in — no .swarm, no receipt', () => {

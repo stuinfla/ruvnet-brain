@@ -77,7 +77,7 @@ describe('Stable Spine shell-change detection', () => {
     expect(run(payload('1.2.0', true))).toMatchObject({ status: 0 });
     const active = JSON.parse(fs.readFileSync(path.join(home, 'active.json'), 'utf8'));
     expect(active.shellChanged).toBe(false);
-    expect(active.shellChangedSinceVersion).toBe('1.0.0');
-    expect(active.shellChangedAtVersion).toBe('1.1.0');
+    expect(active.shellChangedSinceVersion).toBe('1.0.0'); // sync-version-ignore: fixture generation built by payload('1.0.0') above, not the product's version
+    expect(active.shellChangedAtVersion).toBe('1.1.0');    // sync-version-ignore: fixture generation built by payload('1.1.0') above, not the product's version
   });
 });

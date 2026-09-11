@@ -3,9 +3,13 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const HOOKS_PATH = path.join(REPO, 'plugin/hooks/hooks.json');
+// The lifecycle events hooks.json may carry, derived from the policy module — a literal here
+// (`['SessionStart','Stop']`, the Sep-7 two-event plane) kept this file red across a plane change.
+const PLANE_EVENTS = [...new Set(continuityRegistrations('claude').map((s) => s.event))].sort();
 const ROUTE_DISPATCH = path.join(REPO, 'plugin/scripts/route-dispatch.sh');
 const RECEIPT_DIR = ['meta', 'harness'].join('');
 
@@ -79,7 +83,7 @@ function waitFor(child) {
 describe.skipIf(process.platform === 'win32')('issue #84 — explicit Agent/Task routing timing contract', () => {
   it('retains route-dispatch as a dormant explicit evaluator with no host registration', () => {
     const hooks = JSON.parse(fs.readFileSync(HOOKS_PATH, 'utf8')).hooks;
-    expect(Object.keys(hooks).sort()).toEqual(['SessionStart', 'Stop']);
+    expect(Object.keys(hooks).sort()).toEqual(PLANE_EVENTS);
     expect(JSON.stringify(hooks)).not.toContain('route-dispatch');
     expect(fs.existsSync(ROUTE_DISPATCH)).toBe(true);
   });

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_BUDGET_MS, MIN_HEADROOM_MS, decide, policiesFor, skipReason } from '../../plugin/scripts/decision-gate.mjs';
+import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
 /**
  * ADR-067 — EXACTLY ONE HOOK MAY REFUSE A GIVEN TOOL CALL.
@@ -155,7 +156,16 @@ describe('ADR-067 — the structural invariant, read from hooks.json', () => {
     for (const r of refusers) perMatcher.set(r.matcher, [...(perMatcher.get(r.matcher) || []), r.id]);
     const doubled = [...perMatcher].filter(([, ids]) => ids.length > 1);
     expect(doubled, 'two hooks that can refuse the same call is the defect ADR-067 removed').toEqual([]);
-    expect(refusers).toEqual([]);
+    // ADR-067's rule is EXACTLY ONE refuser per call, not zero. `toEqual([])` encoded the Sep-7
+    // plane in which decision-gate was absent ("not because it was retired" — its own
+    // _notInThisPlane note); on 2026-09-11 the plane re-declared it (continuity-hook-policy
+    // CONTINUITY_EVENTS + hook-contracts v5, ADR-040 amendment) as the one PreToolUse refuser.
+    // Derive the allowed set from the policy module so manifest and policy are checked against
+    // each other — a literal here is what kept this file red across a plane change.
+    const declared = continuityRegistrations('claude')
+      .filter((r) => r.event === 'PreToolUse').map((r) => r.id).sort();
+    expect(refusers.map((r) => r.id).sort(), 'the refusers registered in hooks.json must be exactly the PreToolUse handlers the plane declares')
+      .toEqual(declared);
   });
 
   it('the policies the gate consults are no longer registered as hooks of their own', () => {

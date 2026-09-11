@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const cli = path.join(root, 'scripts/development-maintenance.mjs');
@@ -54,7 +55,9 @@ describe('reversible development maintenance', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(root, 'plugin/hooks/hooks.json'), 'utf8'));
     const ids = [...new Set(Object.values(manifest.hooks).flatMap(groups => groups.flatMap(group =>
       group.hooks.map(hook => /hook-shim\.mjs"\s+([\w-]+)/.exec(hook.command)?.[1]).filter(Boolean))))];
-    expect(ids).toEqual(['session-start', 'continuation-gate']);
+    // Derived from the policy module, not a literal: `['session-start','continuation-gate']` was the
+    // Sep-7 two-handler plane and kept this file red once the continuity plane grew.
+    expect(new Set(ids)).toEqual(new Set(continuityRegistrations('claude').map((r) => r.id)));
     for (const id of ids) {
       const result = run(path.join(root, 'plugin/scripts/hook-shim.mjs'), [id], project, env);
       expect([result.status, result.stdout, result.stderr]).toEqual([0, '', '']);
