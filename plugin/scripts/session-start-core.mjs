@@ -99,6 +99,7 @@ export async function runSessionStart({
       || s.startsWith('[ASCII→SVG]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY RESTORED]')
+      || s.startsWith('[RuvNet Brain — KB staleness warning')
       || s.startsWith('[RuvNet Brain — MAINTAINER ONLY:');
   };
   // An alarm's HEADER line always matches isSafeStatus on its own dedicated prefix (above); its
@@ -115,6 +116,7 @@ export async function runSessionStart({
     { prefix: '[RuvNet Brain — HEALTH ALARM', lines: 3 },
     { prefix: '[RuvNet Brain — INSTALL ALARM', lines: 1 },
     { prefix: '[RuvNet Brain — NIGHTLY FAILED', lines: 5 },
+    { prefix: '[RuvNet Brain — KB staleness warning', lines: 2 },
   ];
   const alarmBodyLines = (s) => {
     if (s.startsWith('[RuvNet Brain v') && s.includes('RETRIEVAL DOWN')) return 1;
@@ -320,6 +322,24 @@ export async function runSessionStart({
         emit('🚨 [RuvNet Brain — INSTALL ALARM: plugin and knowledge bundle are out of sync] 🚨');
         emit(`Your plugin is v${bannerVersion} but the knowledge bundle on this machine is v${bundleTag} — they are meant to ship together, so search results may not match this plugin's behavior yet. Fix: npx ruvnet-brain@latest --update (or reinstall: npx github:stuinfla/ruvnet-brain --force).`);
       }
+
+      // KB freshness check (2026-09-11 Track 2): verify the on-disk KB is reasonably fresh.
+      tracer.stage('kb-freshness', () => {
+        const sourceFile = path.join(stateDir, 'kb', 'SOURCE.json');
+        try {
+          const source = json(sourceFile, {});
+          const builtUtc = source?.builtUtc;
+          if (typeof builtUtc === 'string') {
+            const builtAt = new Date(builtUtc);
+            const ageHours = (now - builtAt.getTime()) / 3600_000;
+            // KB older than 30 hours (nightly schedule is ~26h, so 30h is ~1 cycle overdue)
+            if (ageHours > 30 && readiness.state === 'ready') {
+              emit('[RuvNet Brain — KB staleness warning]');
+              emit(`The knowledge base was last built ${ageHours.toFixed(1)}h ago (${builtUtc}). The nightly rebuild should have run by now. Check if com.ruvnet.brain-gists is healthy: npx ruvnet-brain --nightly-status`);
+            }
+          }
+        } catch { /* source file missing or unreadable — not fatal */ }
+      });
 
       const hookContracts = readHookContracts(path.join(pluginRoot, 'hooks', 'hook-contracts.json'));
       const lifecycleLine = describeLifecycleHooks(hookContracts);
