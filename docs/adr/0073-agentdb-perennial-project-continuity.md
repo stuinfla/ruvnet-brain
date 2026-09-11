@@ -3,7 +3,8 @@ id: ADR-073
 title: AgentDB is the complete perennial project continuity record
 status: Accepted
 date: 2026-08-22
-updated: 2026-08-31
+updated: 2026-09-11
+reviewed_digest: ab0caaff7c62
 authors: [Stuart Kerr, Codex]
 tags: [architecture, agentdb, continuity, hosts, recovery, durability]
 supersedes: []
@@ -177,6 +178,7 @@ recovery evidence, not proof of continuous capture or cross-host automatic resto
 
 | Date | What changed | Why |
 |---|---|---|
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged and reinforced; one incident recorded. §3's capture boundaries were removed from `plugin/hooks/hooks.json` at `76632b15` (`session-snapshot` at Stop, PreCompact and SessionEnd dropped) and restored at `9c45d408` (the 85f584b2 plane); `7b8e6e73` added three grounding gates beside them; `codex-hooks.json` likewise. `plugin/scripts/project-progression-contract.mjs` and `-hook.mjs`: `1a548936` (pre-session — the snapshot §2 requires is now built at the boundaries) and `6a6ba72f` (2026-09-07); `tests/acceptance/cross-host-project-resume.test.mjs` `c54e33a1`. Incident: `.swarm/memory.db`, §1's sole canonical record, was deleted ten times at 14:37 by a session script (`scripts/performance-baseline.mjs` via `npm run bench`, commit `fe3f3458`) and restored at 15:41 from `ruflo memory backup`'s 13:58 snapshot plus the six post-wipe rows (2,155 → 6 → 2,161; `pragma quick_check` ok; store → exact-key retrieve → SQLite probe passed). The script and its tests were deleted (`a26d3c05`), and `tests/unit/no-real-store-path-in-tests.test.mjs` (`72def28e`) now fails any test that names the real store path. §1 clause 4 held: restoration used the product's own backup, not a transcript. | Reviewed `plugin/hooks/hooks.json`, `plugin/hooks/codex-hooks.json`, `plugin/scripts/project-progression-contract.mjs`, `plugin/scripts/project-progression-hook.mjs`. reviewed_digest ab0caaff7c62. |
 | 2026-08-31 | Added an explicit `runHeartbeat` seam to the shared SessionStart caller and disabled detached update checks in the deterministic continuity integration test. | Background updater children were racing fixture cleanup and causing `ENOTEMPTY`; continuity behavior and background-worker behavior now have separate, deterministic test boundaries. |
 | 2026-08-22 | The shared host bridge now records bounded structured tool outcomes (action, result status, exit code, and substantive output) into each full snapshot, including failure evidence, without persisting the host prompt. | Lifecycle payloads previously depended entirely on a model-authored state extension and therefore could omit the observable result of a completed tool boundary. The bridge now captures that boundary evidence before exact AgentDB readback; cross-host crash acceptance remains unproven. |
 | 2026-08-22 | Upstream Ruflo pagination commit `a0262e84` plus isolated export-path fix `55fe5603` were built and proven: structural pages traverse correctly and a fresh two-database export/import round trip restores both rows when the explicit path is honored. | S11 remains blocked for release acceptance because the fix is not installed in global Ruflo `3.38.19`; the strict cross-host contract is unchanged. Evidence: `docs/reviews/adr-072-s11-upstream-pagination.md` and `docs/reviews/adr-072-s11-upstream-export-path.md`. |

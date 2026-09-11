@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { policiesFor } from '../../plugin/scripts/decision-gate.mjs';
 import { CONTEXT_EVENTS as ADAPTER_CONTEXT_EVENTS, ALL_HOST_EVENTS } from '../../plugin/scripts/codex-hook-events.mjs';
+import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
 // DERIVED, not hand-listed (tests/unit/entrypoint-guard-safety.test.mjs's "no fixture hand-lists the
 // imports of a script it isolates" sweep, 2026-08-12): a second literal `copyFileSync` naming the
@@ -89,10 +90,11 @@ function runAdapter({ shim, payload, args = ['probe'], env = {} }) {
 const ECHO_PAYLOAD = 'let raw="";process.stdin.on("data",c=>raw+=c);process.stdin.on("end",()=>process.stdout.write(raw));';
 
 describe('both hosts carry the same constrained continuity policy', () => {
-  it('ships only SessionStart restore and Stop continuation on Claude Code and Codex', () => {
-    for (const file of [CLAUDE_HOOKS, CODEX_HOOKS]) {
-      expect(Object.keys(read(file).hooks).sort()).toEqual(['SessionStart', 'Stop']);
-      expect(hookIds(file)).toEqual(new Set(['session-start', 'continuation-gate']));
+  it('ships exactly the declared continuity plane on each host', () => {
+    for (const [file, host] of [[CLAUDE_HOOKS, 'claude'], [CODEX_HOOKS, 'codex']]) {
+      const expected = continuityRegistrations(host);
+      expect(Object.keys(read(file).hooks).sort()).toEqual([...new Set(expected.map((s) => s.event))].sort());
+      expect(hookIds(file)).toEqual(new Set(expected.map((s) => s.id)));
     }
   });
 

@@ -175,6 +175,8 @@ if (CHECK) {
     'tests/unit/version.test.mjs', 'tests/unit/sync-version-drift.test.mjs', 'tests/unit/self-update-plan.test.mjs',
     // Asserts stripTag('v1.14.1-dev') === '1.14.1-dev' — the literals ARE the fixture.
     'tests/unit/version-tag-vs-field.test.mjs',
+    // MCP reload tests carry version literals in fixture manifests — these are test payloads, not production code.
+    'tests/unit/mcp-graceful-reload.test.mjs', 'tests/integration/mcp-reload-no-restart-required.test.mjs',
   ]);
   const litRe = /['"`](v?\d+\.\d+\.\d+(?:-dev)?)['"`]/g;
 

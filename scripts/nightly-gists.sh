@@ -22,8 +22,26 @@ export KB_MODEL_CACHE="${KB_MODEL_CACHE:-/Users/stuartkerr/Code/PowerPlatePulse/
 
 mkdir -p logs
 LOG="logs/gists-nightly.log"
+# Heartbeat file: written every 30s to prove the job is still running.
+# Must match JOB_HEARTBEAT_DIR convention from job-heartbeat.sh and nightly-watchdog.mjs.
+HEARTBEAT_FILE="${JOB_HEARTBEAT_DIR:-$HOME/.cache/ruvnet-brain/heartbeats}/com.ruvnet.brain-gists.heartbeat"
 ts() { date '+%Y-%m-%dT%H:%M:%S%z'; }
 log() { printf '[%s] %s\n' "$(ts)" "$1" >>"$LOG"; }
+
+# Heartbeat: write a timestamp every 30 seconds to prove the job is still running.
+# Runs in background; killed when the main script exits.
+start_heartbeat() {
+  mkdir -p "$(dirname "$HEARTBEAT_FILE")"
+  (
+    while true; do
+      printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$HEARTBEAT_FILE"
+      sleep 30
+    done
+  ) &
+  HEARTBEAT_PID=$!
+  trap "kill $HEARTBEAT_PID 2>/dev/null || true" EXIT
+}
+start_heartbeat
 
 log "start"
 

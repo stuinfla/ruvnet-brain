@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { maintainerIssueEntitlement } from '../../plugin/scripts/session-start-core.mjs';
+import { describeLifecycleHooks, readHookContracts } from '../../plugin/scripts/session-start-hook-description.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const SOURCE_SCRIPTS = path.join(ROOT, 'plugin/scripts');
@@ -487,7 +488,13 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
     expect(result.output).not.toContain('[RuvNet Brain active]');
     expect(result.output).not.toContain('the grounding hooks are active');
     expect(result.output).not.toContain('the grounding hooks remain active');
-    expect(result.output).toContain('Lifecycle hooks: SessionStart restore, Stop continuation.');
+    // DERIVED from hook-contracts.json by the same function the core uses: this proves the WIRING (the
+    // derived sentence reached the output) while the two negative assertions above prove no hardcoded
+    // "grounding" claim did. Restating the two-hook sentence kept this red for two days after
+    // hook-contracts v4 declared the five-event plane (measured 2026-09-11).
+    const expected = describeLifecycleHooks(readHookContracts(path.join(ROOT, 'plugin', 'hooks', 'hook-contracts.json')));
+    expect(expected).toMatch(/^Lifecycle hooks: SessionStart restore/);
+    expect(result.output).toContain(expected);
   });
 
   it('matches OFF behavior with an absent KB: one state line, no advertising, offers unconsumed', () => {
