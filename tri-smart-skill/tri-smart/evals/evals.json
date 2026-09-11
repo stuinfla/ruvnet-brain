@@ -1,0 +1,25 @@
+{
+  "skill_name": "tri-smart",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Use TriSmart to design an ADR and DDD model for replacing the cache layer. Do not edit code before the three-way review is accepted.",
+      "expected_output": "Verifies native OAuth CLIs, runs three independent proposals and pairwise critiques, synthesizes and verifies an ADR/DDD/QE plan, and reports acceptance or a named block without API keys."
+    },
+    {
+      "id": 2,
+      "prompt": "tri smart: review this production migration plan for security, rollback, and North Star alignment.",
+      "expected_output": "Treats the phrase as the TriSmart trigger, recalls project memory, uses the three top subscription models, and produces an evidence-bound decision receipt."
+    },
+    {
+      "id": 3,
+      "prompt": "Trip smart on this difficult architecture question, but Grok is currently unavailable.",
+      "expected_output": "Labels the result degraded and does not silently substitute a model or call the architecture accepted."
+    },
+    {
+      "id": 4,
+      "prompt": "Use Dual to review this migration. I have Claude Max and ChatGPT Plus, but no xAI account.",
+      "expected_output": "Selects explicit dual mode, uses only Claude Fable 5.1 and GPT-6 Astra, reports xAI unavailable, and requires both selected providers to verify the same synthesis."
+    }
+  ]
+}

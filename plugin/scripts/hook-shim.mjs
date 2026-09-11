@@ -125,6 +125,16 @@ const TABLE = {
   // while its host-owned shared ledger has ready work. The body is read-only and fail-open; exit 2
   // is reserved for one proved, unassigned, dependency-ready task. Codex has no equivalent event.
   'swarm-slot-recycler': { file: 'swarm-slot-recycler.mjs', interpreter: 'node', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
+  // ADR-076 FOUR-TIER MEMORY SYSTEM — SessionStart recall of checkpoints
+  // Surfaces last 3 decision checkpoints to contextualize the session. Off-behavior 'silence'
+  // because memory is purely advisory — the session works fine without it.
+  'memory-ensure': { file: 'memory-ensure.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
+  // ADR-076 PostEdit decision capture — stores consequential edits (ADR files, version changes, config)
+  // to the memory ledger with full context. Fails open; never blocks editing.
+  'memory-store-decisions': { file: 'memory-store-decisions.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'silence', stdinBytes: 4096 },
+  // ADR-076 SessionEnd snapshot — captures open GitHub issues/PRs and active tasks for continuity
+  // Runs silently; network errors are non-fatal and never block session end.
+  'memory-snapshot-threads': { file: 'memory-snapshot-threads.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   // The unprompted-speech chokepoint (ADR-040 / DDD-0004). ONE runtime is the sole writer of
   // user-facing bytes for every unprompted hook: it spawns the real producers (anticipate, lesson)
   // in candidate mode, applies the per-channel policy, and writes the final envelope itself. `channel`

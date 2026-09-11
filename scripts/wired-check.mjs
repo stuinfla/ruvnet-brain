@@ -51,7 +51,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { loadLessons, TRIGGERS, STATUS } from './lesson-store.mjs';
-import { isAllowedContinuityRegistration } from '../plugin/scripts/continuity-hook-policy.mjs';
+import { continuityRegistrations, isAllowedContinuityRegistration } from '../plugin/scripts/continuity-hook-policy.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '..');
 const argv = process.argv.slice(2);
@@ -790,8 +790,10 @@ export function hookWiringAudit({
     const packageRegistry = file.endsWith('/plugin/hooks/hooks.json') || file.endsWith('/plugin/hooks/codex-hooks.json');
     const rows = Object.entries(doc.hooks).flatMap(([event, groups]) => (groups ?? []).flatMap((group) =>
       (group?.hooks ?? []).map((hook) => ({ event, matcher: group.matcher ?? '', command: hook.command }))));
+    const host = file.endsWith('/plugin/hooks/codex-hooks.json') ? 'codex' : 'claude';
     return packageRegistry
-      ? rows.length === 2 && rows.every((row) => isAllowedContinuityRegistration(row))
+      ? rows.length === continuityRegistrations(host).length
+        && rows.every((row) => isAllowedContinuityRegistration({ ...row, host }))
       : rows.length === 0;
   });
   const table = hookShimTable(repo);
@@ -850,7 +852,7 @@ export function hookWiringAudit({
     else if (automaticHooksConstrained && declared) rows.push({
       file: f,
       state: 'retired',
-      why: 'legacy automatic Brain hooks remain retired; only the two constrained continuity handlers are wired',
+      why: 'legacy automatic Brain hooks remain retired; only the declared continuity plane (see plugin/hooks/hook-contracts.json) is wired',
     });
     else if (held[f]) rows.push({ file: f, state: 'held', why: held[f] });
     else rows.push({ file: f, state: 'unwired' });

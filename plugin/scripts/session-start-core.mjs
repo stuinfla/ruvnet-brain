@@ -26,7 +26,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 import { restoreProgressionForSession } from './project-progression-session-start.mjs';
+import { recallProjectState } from './memory-ensure.mjs';
 import {
   read, json, exists, mkdir, write, runNode,
 } from './session-start-fsutil.mjs';
@@ -36,6 +38,7 @@ import { brainState, health, mcpReadiness } from './session-start-health.mjs';
 import { stableSpine, heartbeat } from './session-start-update-plane.mjs';
 import { describeLifecycleHooks, readHookContracts } from './session-start-hook-description.mjs';
 import { createStageTracer } from './session-start-trace.mjs';
+import { getRecentDecisions, formatDecisionsForConsole } from '../mcp/decisions-endpoint.mjs';
 
 // Re-exported for callers/tests that import the entitlement check directly from this file's own
 // long-standing public surface (tests/unit/session-start-core-parity.test.mjs).
@@ -99,6 +102,7 @@ export async function runSessionStart({
       || s.startsWith('[ASCII→SVG]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY RESTORED]')
+      || s.startsWith('[RuvNet Brain — KB staleness warning')
       || s.startsWith('[RuvNet Brain — MAINTAINER ONLY:');
   };
   // An alarm's HEADER line always matches isSafeStatus on its own dedicated prefix (above); its
@@ -115,6 +119,7 @@ export async function runSessionStart({
     { prefix: '[RuvNet Brain — HEALTH ALARM', lines: 3 },
     { prefix: '[RuvNet Brain — INSTALL ALARM', lines: 1 },
     { prefix: '[RuvNet Brain — NIGHTLY FAILED', lines: 5 },
+    { prefix: '[RuvNet Brain — KB staleness warning', lines: 2 },
   ];
   const alarmBodyLines = (s) => {
     if (s.startsWith('[RuvNet Brain v') && s.includes('RETRIEVAL DOWN')) return 1;
@@ -165,6 +170,40 @@ export async function runSessionStart({
   // continuity lane — see session-start-budget.mjs — and is reported here under EITHER trace flag.
   if (env.RUVNET_SESSION_TRACE === '1' || env.RUVNET_BRAIN_SESSION_START_TRACE === '1') {
     stderr.write(`SESSION_TRACE stage=restore elapsed_ms=${Date.now() - restoreStart}\n`);
+  }
+
+  // ─ ASYNC SESSIONSTART FIX: Spawn memory-ensure as background task (ADR-077) ─
+  // SessionStart deadline: 5s. Memory recall can take 1-2s.
+  // SOLUTION: spawn memory-ensure as async child process (fire-and-forget).
+  // The child recalls project state in parallel; results are injected later by server.mjs.
+  // SessionStart returns immediately (<1s), memory recall completes separately.
+  const memoryRecallStart = Date.now();
+  void (async () => {
+    try {
+      const recalled = await recallProjectState({ cwd, timeoutMs: 1500 });
+      if (recalled?.context) {
+        emit(recalled.context);
+      }
+    } catch {
+      // Memory recall errors are non-fatal — session continues without context
+    }
+    if (env.RUVNET_SESSION_TRACE === '1' || env.RUVNET_BRAIN_SESSION_START_TRACE === '1') {
+      stderr.write(`SESSION_TRACE stage=memory-recall elapsed_ms=${Date.now() - memoryRecallStart}\n`);
+    }
+  })();
+
+  // Retrieve and display recent project decisions (optional, errors silently)
+  try {
+    const projectMemDb = path.join(cwd, '.swarm', 'memory.db');
+    if (exists(projectMemDb)) {
+      const decisions = await getRecentDecisions({ dbPath: projectMemDb, limit: 3 });
+      if (decisions && decisions.length > 0) {
+        const formatted = formatDecisionsForConsole(decisions);
+        if (formatted) emit(formatted);
+      }
+    }
+  } catch {
+    // Decisions are optional; errors do not block boot
   }
 
   const tracer = createStageTracer({
@@ -320,6 +359,24 @@ export async function runSessionStart({
         emit('🚨 [RuvNet Brain — INSTALL ALARM: plugin and knowledge bundle are out of sync] 🚨');
         emit(`Your plugin is v${bannerVersion} but the knowledge bundle on this machine is v${bundleTag} — they are meant to ship together, so search results may not match this plugin's behavior yet. Fix: npx ruvnet-brain@latest --update (or reinstall: npx github:stuinfla/ruvnet-brain --force).`);
       }
+
+      // KB freshness check (2026-09-11 Track 2): verify the on-disk KB is reasonably fresh.
+      tracer.stage('kb-freshness', () => {
+        const sourceFile = path.join(stateDir, 'kb', 'SOURCE.json');
+        try {
+          const source = json(sourceFile, {});
+          const builtUtc = source?.builtUtc;
+          if (typeof builtUtc === 'string') {
+            const builtAt = new Date(builtUtc);
+            const ageHours = (now - builtAt.getTime()) / 3600_000;
+            // KB older than 30 hours (nightly schedule is ~26h, so 30h is ~1 cycle overdue)
+            if (ageHours > 30 && readiness.state === 'ready') {
+              emit('[RuvNet Brain — KB staleness warning]');
+              emit(`The knowledge base was last built ${ageHours.toFixed(1)}h ago (${builtUtc}). The nightly rebuild should have run by now. Check if com.ruvnet.brain-gists is healthy: npx ruvnet-brain --nightly-status`);
+            }
+          }
+        } catch { /* source file missing or unreadable — not fatal */ }
+      });
 
       const hookContracts = readHookContracts(path.join(pluginRoot, 'hooks', 'hook-contracts.json'));
       const lifecycleLine = describeLifecycleHooks(hookContracts);

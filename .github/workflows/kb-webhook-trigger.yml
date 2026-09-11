@@ -1,0 +1,114 @@
+name: kb-webhook-trigger
+
+# Triggers on repository push events and ingests updates into the knowledge base
+# This workflow identifies repository changes and streams them into the KB via incremental vector updates
+on:
+  push:
+    branches:
+      - main
+      - release/**
+    paths:
+      - 'kb/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'VISION.md'
+      - 'package.json'
+  workflow_dispatch:
+    inputs:
+      repo_id:
+        description: Repository ID (owner/name) for manual ingest
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: kb-webhook-ingest-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Extract repository identity
+        id: repo
+        run: |
+          set -euo pipefail
+          REPO_ID="${{ github.repository }}"
+          REPO_OWNER=$(echo "$REPO_ID" | cut -d/ -f1)
+          REPO_NAME=$(echo "$REPO_ID" | cut -d/ -f2)
+          echo "owner=$REPO_OWNER" >> "$GITHUB_OUTPUT"
+          echo "name=$REPO_NAME" >> "$GITHUB_OUTPUT"
+          echo "repo_id=$REPO_ID" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: Check KB staleness before ingest
+        id: check
+        continue-on-error: true
+        run: |
+          set +e
+          node scripts/kb-check-staleness.mjs --check-only
+          STALENESS=$?
+          echo "is_stale=$STALENESS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Stream KB ingest (dry-run)
+        id: ingest
+        env:
+          REPO_ID: ${{ steps.repo.outputs.repo_id }}
+          REPO_OWNER: ${{ steps.repo.outputs.owner }}
+          REPO_NAME: ${{ steps.repo.outputs.name }}
+          INGEST_TIMESTAMP: ${{ steps.repo.outputs.timestamp }}
+        run: |
+          set -euo pipefail
+          echo "Starting KB streaming ingest at $INGEST_TIMESTAMP"
+          node scripts/kb-streaming-ingest.mjs \
+            --repo "$REPO_ID" \
+            --owner "$REPO_OWNER" \
+            --name "$REPO_NAME" \
+            --dry-run 2>&1 | tee "$RUNNER_TEMP/ingest.log"
+          echo "status=success" >> "$GITHUB_OUTPUT"
+
+      - name: Update KB metadata
+        if: always()
+        run: |
+          set -euo pipefail
+          node scripts/kb-update-metadata.mjs \
+            --repo "${{ steps.repo.outputs.repo_id }}" \
+            --timestamp "${{ steps.repo.outputs.timestamp }}" \
+            --status "${{ steps.ingest.outcome }}"
+
+      - name: Report KB ingest status
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "### 📚 KB Webhook Ingest — ${{ steps.repo.outputs.timestamp }}"
+            echo ""
+            echo "**Repository:** \`${{ steps.repo.outputs.repo_id }}\`"
+            echo "**Commit:** \`${{ github.sha }}\`"
+            echo "**Branch:** \`${{ github.ref_name }}\`"
+            echo ""
+            echo "**Ingest Status:** \`${{ steps.ingest.outcome }}\`"
+            echo "**KB Staleness Check:** \`${{ steps.check.outputs.is_stale || 'unknown' }}\`"
+            echo ""
+            echo "**Logs:**"
+            echo '```'
+            cat "$RUNNER_TEMP/ingest.log" 2>/dev/null || echo "(no ingest log available)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
