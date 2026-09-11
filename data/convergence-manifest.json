@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.3.22",
-  "sourceIdentity": "1634029528e90012d6d002ef24f6e6b56405f910e204ae5e0b6e8d8558e2ae18",
+  "version": "4.4.0",
+  "sourceIdentity": "54b93cb1f5a576dd665cd39731c2e4eac2ed49b59eb3b1edb79e80ee2aff239e",
   "versionSurfaces": {
-    "package.json": "4.3.22",
+    "package.json": "4.4.0",
     "plugin/.claude-plugin/plugin.json": "4.3.22",
     "plugin/.codex-plugin/plugin.json": "4.3.22",
     "data/manifest.json": "4.3.22",
@@ -92,10 +92,14 @@
     "0077-continuity-gates.md",
     "0078-release-automation.md",
     "0079-testing-gates-and-public-ci.md",
+    "0080-model-routing-north-star-campaign.md",
+    "0081-adr-as-code-automation.md",
+    "0082-north-star-unlock-path.md",
+    "0083-model-routing-north-star-95.md",
     "README.md"
   ],
-  "trackedFileCount": 1387,
-  "trackedFilesSha256": "5b02f96afcc1522dcc7543ec7425e14e8d2ad67132813620900f5ec54c745e4a",
+  "trackedFileCount": 1443,
+  "trackedFilesSha256": "f45aacf39e969140cedabdf1bbab7c0704acf72fd9b84088ebeeb94cedb98089",
   "ownershipChecks": [
     "version:check",
     "doc:currency",
