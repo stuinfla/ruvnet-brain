@@ -29,7 +29,10 @@ describe('Fix 7 — savings totals keep the sign and count the unmeasured', () =
       { note: 'no numbers at all' },
       { foo: 1 },
     ]);
-    const s = runJSON(`${IMPORT} process.stdout.write(JSON.stringify(m.gatherSavings()));`);
+    // `repo` is pointed at the scratch HOME: the fourth ledger gatherSavings reads is REPO-relative
+    // (legacy plugin/scripts/.ruvnet-brain/token-ledger.jsonl), which HOME isolation does not cover
+    // and which holds real rows on a developer checkout (measured 2026-09-11: skippedUnmeasured 4≠2).
+    const s = runJSON(`${IMPORT} process.stdout.write(JSON.stringify(m.gatherSavings({ repo: process.env.HOME })));`);
     expect(s.totals.count).toBe(3);
     expect(s.totals.msSaved).toBe(-1500);
     expect(s.totals.timedCount).toBe(2);

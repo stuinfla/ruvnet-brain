@@ -594,7 +594,7 @@ function gatherMemory(cwd, { fleet = true } = {}) {
 }
 
 // ── Savings ledger (receipts only) ────────────────────────────────────────────────────────────────
-function gatherSavings() {
+function gatherSavings({ repo = REPO } = {}) {
   // Primary source is the real routing-receipts ledger written by scripts/route-cheap.mjs.
   const files = [
     path.join(SYSTEM_HOME, '.claude/metaharness/routing-receipts.jsonl'),
@@ -602,7 +602,9 @@ function gatherSavings() {
     // Canonical user-level ledger (issue #36 — the hooks no longer scatter per-CWD copies).
     path.join(SYSTEM_HOME, '.cache/ruvnet-brain/token-ledger.jsonl'),
     // Legacy location, still read so an existing user's history is not orphaned by the move.
-    path.join(REPO, 'plugin/scripts/.ruvnet-brain/token-ledger.jsonl'),
+    // `repo` is injectable because on a developer checkout this file is REAL history (2 rows from
+    // 2026-07-14 on the owner's machine) and HOME isolation alone cannot keep it out of a fixture.
+    path.join(repo, 'plugin/scripts/.ruvnet-brain/token-ledger.jsonl'),
   ];
   const receipts = [];
   let baselineUsd = 0;
