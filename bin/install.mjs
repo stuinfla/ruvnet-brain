@@ -1902,14 +1902,25 @@ export function classifyCodexLifecycle(plugin, listed = null) {
   if (!plugin.enabled) return { state: 'disabled', plugin, hooks: [] };
   if (!listed.ok) return { state: 'probe-failed', plugin, hooks: [], error: listed.error };
   const groups = Array.isArray(listed.value?.data) ? listed.value.data : [];
-  const hooks = groups.flatMap((group) => Array.isArray(group?.hooks) ? group.hooks : [])
+  const hooks = groups.flatMap((group) => (Array.isArray(group?.hooks) ? group.hooks : [])
+    .map((hook) => ({ ...hook, event: hook?.event ?? group?.event ?? null })))
     .filter((hook) => hook?.pluginId === CODEX_PLUGIN_ID);
   const errors = groups.flatMap((group) => Array.isArray(group?.errors) ? group.errors : []);
   if (errors.length) {
     return { state: 'missing-runtime-hooks', plugin, hooks, errors };
   }
-  if (hooks.length === 0) return { state: 'inactive-by-design', plugin, hooks, errors };
-  return { state: 'unexpected-runtime-hooks', plugin, hooks, errors };
+  // A REGISTERED CONTINUITY HOOK IS NOT A RETIRED ONE.
+  //
+  // This used to treat EVERY Brain-owned runtime registration as stale, because at the time the
+  // policy permitted none on Codex. The doctor therefore reported the SessionStart restore and the
+  // Stop continuation gate — the two handlers the policy itself requires — as "retired Brain
+  // lifecycle hooks", told the user to upgrade, and returned a failing exit code for a correctly
+  // wired machine. The authority on what belongs is the policy, so ask it instead of assuming zero.
+  const conforming = hooks.filter((hook) => continuityHookId(hook?.command, hook?.event));
+  const unexpected = hooks.filter((hook) => !continuityHookId(hook?.command, hook?.event));
+  if (unexpected.length) return { state: 'unexpected-runtime-hooks', plugin, hooks: unexpected, errors };
+  if (conforming.length === 0) return { state: 'inactive-by-design', plugin, hooks, errors };
+  return { state: 'continuity-registered', plugin, hooks: conforming, errors };
 }
 
 export async function codexLifecycleStatus(options = {}) {
@@ -1930,6 +1941,16 @@ export function codexLifecycleGuidance(status) {
         summary: `Codex still exposes ${hookCount} retired Brain lifecycle hook${hookCount === 1 ? '' : 's'}.`,
         detail: 'Any Brain-owned runtime registration is stale and must not be trusted or executed.',
         action: `Upgrade ${CODEX_PLUGIN_ID}, then start a fresh Codex session and re-run --doctor.`,
+      };
+    case 'continuity-registered':
+      return {
+        healthy: true,
+        intentional: true,
+        summary: `Codex carries ${hookCount} declared Brain continuity hook${hookCount === 1 ? '' : 's'}.`,
+        detail: 'Each one is named in plugin/hooks/hook-contracts.json. Codex capture is SessionEnd only:'
+          + ' a 2026-09-11 probe observed SessionStart, UserPromptSubmit and SessionEnd firing, and did not'
+          + ' observe Stop or PreCompact, so no capture handler was registered on those.',
+        action: null,
       };
     case 'inactive-by-design':
       return {
@@ -2316,7 +2337,19 @@ async function smokeQuery(cacheDir) {
   const secs = ((Date.now() - started) / 1000).toFixed(1);
   const out = `${r.stdout || ''}`;
   if (r.status !== 0 || !out.trim()) {
-    warn('no answer came back (first-run model download or offline) — the brain is installed; it\'ll warm on your first real question');
+    // NAME THE ACTUAL CAUSE, DO NOT GUESS A REASSURING ONE.
+    //
+    // This said "first-run model download or offline" unconditionally. It is one plausible cause
+    // among several, asserted as though it had been checked — and it is the reassuring one, so a
+    // crash, a timeout, and a missing module all read as "nothing is wrong, it will warm up".
+    // Observed on this machine: a smoke query that produced no answer in 240s was reported as a
+    // first-run download. spawnSync already tells us which it was; say that instead.
+    const cause = r.error ? `could not launch the reader: ${r.error.message}`
+      : r.signal === 'SIGTERM' ? `timed out after ${secs}s (240s limit) with no answer`
+        : r.signal ? `the reader was killed by ${r.signal} after ${secs}s`
+          : r.status !== 0 ? `the reader exited ${r.status} after ${secs}s`
+            : `the reader exited 0 after ${secs}s but printed nothing`;
+    warn(`no answer came back — ${cause}`);
     // SHOW THE ACTUAL ERROR (issue #37 bug 2, Agentist-Elder, 2026-07-21).
     //
     // This captured stderr and then threw it away, so every hard failure — a crash, a missing
@@ -2336,7 +2369,9 @@ async function smokeQuery(cacheDir) {
       for (const line of lines.slice(0, 12)) info(c.dim(`    ${line.slice(0, 200)}`));
       if (lines.length > 12) info(c.dim(`    … ${lines.length - 12} more line(s)`));
     }
-    return { ran: true, grounded: false, reason: 'no-answer', stderr: err.slice(0, 4000) };
+    // The reason travels with the verdict so the doctor's "Grounding NOT proven (<reason>)" line
+    // names the real cause too, instead of the generic token.
+    return { ran: true, grounded: false, reason: `no-answer: ${cause}`, secs, stderr: err.slice(0, 4000) };
   }
 
   const verifier = await loadCitationVerifier(cacheDir);
@@ -2634,11 +2669,16 @@ async function doctor() {
   const v = verifyInstall(cacheDir);
   const smoke = await smokeQuery(cacheDir);
   const allGreen = v.repos > 0 && v.reader && v.mcp;
-  console.log(
-    `\n  ${allGreen ? c.green('✓ Healthy.') : c.yellow('! Needs attention.')} ${
-      allGreen ? 'The brain is installed and reachable.' : 'Re-run the installer to fix the warnings above.'
-    }`,
-  );
+  // ONE VERDICT, AND IT COMES AFTER ITS EVIDENCE.
+  //
+  // This line used to print "✓ Healthy." here, from `allGreen` — which reads only repos/reader/mcp —
+  // and then a SECOND verdict, "✗ FAILING", printed ~120 lines later from the much wider `failed`.
+  // A --doctor run genuinely emitted both, and exited 0. Two verdicts is not a cosmetic problem: a
+  // reader stops at the first one, so the tool told people they were healthy while its own exit-code
+  // logic had already decided otherwise. The single verdict is now emitted at the end, where every
+  // input to `failed` exists; this position keeps only the installed-and-reachable READING.
+  console.log(`\n  ${allGreen ? c.green('Install: present and reachable.')
+    : c.yellow('Install: incomplete — see the warnings above.')}`);
   // Installed-and-reachable and actually-grounded are different claims. Keep them separate, so a
   // healthy install can never be mistaken for proven grounding.
   if (smoke.grounded === true) {
@@ -2757,8 +2797,11 @@ async function doctor() {
     || codexReadinessFailed
     || !hostConvergence.healthy
     || Boolean(rufloOperational && !rufloOperational.healthy);
-  if (failed && !hookResult && !groundingUnprovenPersisted) {
-    console.log(`  ${c.red('✗ FAILING')} — the warnings above are real. Re-run  ${c.bold('npx ruvnet-brain')}  to repair.`);
+  // THE ONE VERDICT. Always printed, always consistent with the exit code, never alongside another.
+  if (failed) {
+    console.log(`\n  ${c.red('✗ FAILING')} — the warnings above are real. Re-run  ${c.bold('npx ruvnet-brain')}  to repair.`);
+  } else {
+    console.log(`\n  ${c.green('✓ Healthy.')} The brain is installed, reachable, and its checks pass.`);
   }
   return failed ? 1 : 0;
 }
@@ -2930,7 +2973,11 @@ function feedbackHealthLines(cacheDir) {
   return [
     `${s.repos} repo stores on disk · reader ${s.reader ? 'ok' : 'MISSING'} · search_ruvnet ${s.mcp ? 'ok' : 'MISSING'} · plugin ${s.plugin ? 'ok' : 'NOT INSTALLED (no /rvbc)'}`,
     `toolkit: Ruflo ${env.ruflo ? 'present' : 'not found'} · RuVector ${env.ruvector ? 'present' : 'not found'} · claude CLI ${env.claude ? 'present' : 'not found'}`,
-    allGreen ? 'verdict: Healthy — installed and reachable' : 'verdict: Needs attention — re-run npx ruvnet-brain',
+    // NOT called a "verdict": this reads only repos/reader/mcp, while --doctor's verdict also weighs
+    // grounding, Codex wiring, nightly health, host convergence and the hook policy. Two lines both
+    // labelled "verdict" that answer different questions can disagree in public, which is the exact
+    // Healthy-and-FAILING confusion the doctor's single verdict was collapsed to remove.
+    allGreen ? 'install reading: present and reachable' : 'install reading: incomplete — re-run npx ruvnet-brain',
   ];
 }
 
