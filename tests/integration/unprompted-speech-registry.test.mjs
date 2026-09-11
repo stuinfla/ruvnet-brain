@@ -169,18 +169,32 @@ describe('closed world: the real hooks.json routes every unprompted producer thr
       es.flatMap((m) => (m.hooks || []).map((h) => h.command))
         .filter((c) => c.includes('unprompted-speech'))
         .map((c) => `${event}::${c.split('unprompted-speech')[1].trim()}`));
-    // UserPromptSubmit still routes directly. ADR-067 moved the two PreToolUse routes BEHIND
-    // decision-gate, which spawns unprompted-runtime with the same sub-event tokens — so the
-    // invariant this test protects ("every unprompted producer reaches the user only through the
-    // runtime") is unchanged and in fact strengthened: there is now one process that can speak OR
-    // refuse on the write path, instead of two. What must not regress is a BARE producer, which the
-    // validator case below still proves.
+    // UserPromptSubmit is the ONE unprompted route registered in hooks.json, and this assertion is
+    // the whole point of this file: without it the runtime is wired to nothing and every producer
+    // behind it — anticipate, the recommendation route, the lesson gate — is dead code that tests
+    // green through the RUVNET_UNPROMPTED_PRODUCERS seam.
     expect(routes).toContain('UserPromptSubmit::UserPromptSubmit');
+
+    // THE PreToolUse EXPECTATION, AND WHY IT IS NOT A hooks.json ROUTE.
+    //
+    // Two separate things happened to PreToolUse and it is easy to read them as one. ADR-067 moved
+    // the two PreToolUse speech routes BEHIND decision-gate, which spawns unprompted-runtime.mjs
+    // with the same sub-event tokens. Then 4.3.17 retired the whole legacy interceptor collection —
+    // roughly 34 hooks — after they were measured colliding with one another, leaving exactly two
+    // permitted automatic handlers (SessionStart restore, guarded Stop) plus this UserPromptSubmit
+    // route; plugin/scripts/continuity-hook-policy.mjs is that allowlist, and bin/install.mjs fails
+    // the build on anything outside it.
+    //
+    // So there is deliberately NO `PreToolUse::PreToolUse-*` entry to assert here, and adding one
+    // would fail hooks:check. What survives the retirement is the ROUTE INSIDE decision-gate, and
+    // that is what the three assertions below pin: if someone deletes the gate's call into the
+    // runtime, PreToolUse speech would silently escape the chokepoint rather than stop existing.
     const gate = fs.readFileSync(path.join(ROOT, 'plugin/scripts/decision-gate.mjs'), 'utf8');
     expect(gate, 'the gate must still route PreToolUse speech through the runtime')
       .toMatch(/unprompted-runtime\.mjs/);
     expect(gate).toMatch(/PreToolUse-bash/);
     expect(gate).toMatch(/PreToolUse-write/);
+    expect(realHooks().hooks.PreToolUse, 'PreToolUse stays retired from hooks.json (4.3.17)').toBeUndefined();
   });
 
   it('BREAK IT: a bare `bash rogue-emitter.sh || true` unprompted line MUST fail the validator', () => {
@@ -419,6 +433,73 @@ describe('closed world, functionally: the built-in registry reaches the real pro
     expect(r.code).toBe(0);
     expect(r.stdout).not.toBe('');
     expect(JSON.parse(r.stdout).hookSpecificOutput.additionalContext).toContain('built-in registry');
+  });
+
+  // ── THE RECOMMENDATION ROUTE, THROUGH THE REAL REGISTRY ───────────────────────────────────────
+  // advocacy-route.mjs is a producer like any other: it is reached ONLY through BUILTIN_REGISTRY and
+  // it writes ZERO bytes of its own. These two cases are the ones the 2026-09-10 host test measured
+  // and the two negative controls that must stay silent — asserted here at the PROCESS boundary,
+  // because "which bytes reached which stream" cannot be observed by importing a module.
+  //
+  // The candidate's `copy` is an INSTRUCTION TO THE MODEL, not a user-facing sentence: a
+  // UserPromptSubmit hook's stdout becomes `additionalContext` in the model's window. So what this
+  // proves is CANDIDATE EMITTED AND DELIVERED. Whether the user ever sees a sentence is the model's
+  // behaviour and is measured separately, in a real-host run.
+  const routeEnv = (dir) => ({
+    RUVNET_SETTINGS_FILE: null,           // filled by the caller — writeSettings needs `dir`
+    RUVNET_ADVOCACY_ROUTE_STATE: path.join(dir, 'route-state.json'),
+    RUVNET_ADVOCACY_OUTCOMES: path.join(dir, 'route-outcomes.jsonl'),
+    RUVNET_LESSON_STORE: path.join(dir, 'no-lessons.json'),
+    RUVNET_LESSON_OPTIN: path.join(dir, 'no-optin.json'),
+    RUVNET_LESSON_GATE_STATE: path.join(dir, 'route-gate.json'),
+  });
+
+  it('an ordinary quality-gates request → the real registry delivers a fitting recommendation', () => {
+    const env = { ...routeEnv(dir), RUVNET_SETTINGS_FILE: writeSettings('all') };
+    const r = fireRuntime('UserPromptSubmit', {
+      // NO `producers` → BUILTIN_REGISTRY drives it, so this exercises the SHIPPED wiring.
+      env,
+      payload: {
+        prompt: 'tests are flaky and we don\'t know what\'s untested — trustworthy coverage and real quality gates',
+        session_id: 'reco-sess',
+      },
+    });
+    expect(r.code).toBe(0);
+    expect(r.stdout, 'the recommendation route emitted nothing through the real registry').not.toBe('');
+    const ctx = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain('Consider agentic-qe');
+    expect(ctx).toMatch(/aqe coverage --gaps --risk/);          // a verified next action, not a guess
+    expect(ctx).toMatch(/tell the user in ONE sentence/);        // addressed to the model, as designed
+    // Delivered ⇒ the runtime recorded the OFFERED denominator centrally, under the namespaced id.
+    const rows = ledgerRows(path.join(dir, 'route-outcomes.jsonl'), 'recommend:agentic-qe');
+    expect(rows.some((x) => x.action === 'offered')).toBe(true);
+  });
+
+  it('BREAK IT: a negative control (an off-by-one bug fix) → byte-EXACT silence from the same wiring', () => {
+    const env = { ...routeEnv(dir), RUVNET_SETTINGS_FILE: writeSettings('all') };
+    const r = fireRuntime('UserPromptSubmit', {
+      env,
+      payload: { prompt: 'range(1,5) should include 5 — find the bug and the exact fix', session_id: 'neg-sess' },
+    });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe('');   // magnitude: zero bytes. A recommender that pushes here is the nag.
+    expect(r.stderr).toBe('');
+    expect(fs.existsSync(path.join(dir, 'route-outcomes.jsonl'))).toBe(false);
+  });
+
+  it('advocacy=off silences the recommendation route entirely, through the real registry', () => {
+    const env = { ...routeEnv(dir), RUVNET_SETTINGS_FILE: writeSettings('off') };
+    const r = fireRuntime('UserPromptSubmit', {
+      env,
+      payload: {
+        prompt: 'tests are flaky and we don\'t know what\'s untested — trustworthy coverage and real quality gates',
+        session_id: 'off-sess',
+      },
+    });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe('');
+    // And nothing was ledgered — off drops before the denominator is ever touched.
+    expect(ledgerRows(path.join(dir, 'route-outcomes.jsonl'), 'recommend:agentic-qe')).toEqual([]);
   });
 
   it('a standalone copied plugin payload applies an actionable lesson without a marketplace fallback', () => {
