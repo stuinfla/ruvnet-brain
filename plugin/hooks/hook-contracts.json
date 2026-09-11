@@ -1,56 +1,100 @@
 {
-  "_note": "The legacy automatic gate collection remains retired. What is permitted is the continuity plane below and nothing else: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint; Stop may nudge one explicitly authorized project-scoped objective AND capture a project snapshot; PreCompact and SessionEnd capture a project snapshot. Version 3 of this file permitted exactly two handlers, which was not a safety property but a contradiction: it demanded a restore while forbidding any event that could WRITE the journal the restore reads, so the canonical store held zero progression rows. Adding to this list is still a deliberate act that must pass `npm run hooks:check`; what changed is that the shape can now express the plane that actually works.",
-  "_version": 4,
+  "_note": "The legacy automatic gate collection remains retired. What is permitted is the continuity plane below and nothing else: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint; Stop may nudge one explicitly authorized project-scoped objective AND capture a project snapshot; PreCompact and SessionEnd capture a project snapshot. Version 3 of this file permitted exactly two handlers, which was not a safety property but a contradiction: it demanded a restore while forbidding any event that could WRITE the journal the restore reads, so the canonical store held zero progression rows. Adding to this list is still a deliberate act that must pass `npm run hooks:check`; what changed is that the shape can now express the plane that actually works. Amended 2026-09-11 (Stuart): the continuity-only charter had retired the ONLY enforcement of ADR-0012 — never write rUv-product code the brain has not seen — and the failure it exists to prevent recurred the day it was measured absent. The plane now also carries three grounding registrations: ground-ruvnet (UserPromptSubmit, grounding injection — a second owner of that event, scoped by ADR-040 §Amendment 2026-09-11 to directives rather than speech), decision-gate’s write route (PreToolUse, the one refuser, ADR-067), and grounding-stamp (PostToolUse on a successful search_ruvnet, the receipt that opens the write gate). Codex carries ground-ruvnet only: its PreToolUse/PostToolUse delivery has never been observed (_codexCapture).",
+  "_version": 5,
   "_eventOwners": [
     {
       "event": "SessionStart",
       "owner": "session-start",
       "class": "continuity recovery",
-      "hosts": ["claude", "codex"],
+      "hosts": [
+        "claude",
+        "codex"
+      ],
       "responsibility": "Restore the newest coherent committed checkpoint. Reads only; ADR-073 §5 forbids replaying the outbox here because replay is a write and a write costs more than this boundary's whole budget."
     },
     {
       "event": "UserPromptSubmit",
       "owner": "unprompted-speech",
       "class": "advisory delivery",
-      "hosts": ["claude", "codex"],
+      "hosts": [
+        "claude",
+        "codex"
+      ],
       "responsibility": "The sole writer of unprompted user-facing bytes (ADR-040 / DDD-0004). Producers run as candidates behind it; it alone applies policy and writes the envelope."
     },
     {
       "event": "Stop",
       "owner": "continuation-gate",
       "class": "continuation nudge",
-      "hosts": ["claude", "codex"],
+      "hosts": [
+        "claude",
+        "codex"
+      ],
       "responsibility": "May request one continuation for one explicitly authorized, project-scoped objective read from the user's own work ledger (ADR-043). Never a refusal, never a second task store."
     },
     {
       "event": "Stop",
       "owner": "session-snapshot",
       "class": "continuity capture",
-      "hosts": ["claude"],
+      "hosts": [
+        "claude"
+      ],
       "responsibility": "Append one project snapshot to the canonical store and commit any outbox debt a previously interrupted session left behind."
     },
     {
       "event": "PreCompact",
       "owner": "session-snapshot",
       "class": "continuity capture",
-      "hosts": ["claude"],
+      "hosts": [
+        "claude"
+      ],
       "responsibility": "The boundary at which context is about to be lost — capture before it is."
     },
     {
       "event": "SessionEnd",
       "owner": "session-snapshot",
       "class": "continuity capture",
-      "hosts": ["claude", "codex"],
+      "hosts": [
+        "claude",
+        "codex"
+      ],
       "responsibility": "The boundary at which the session is about to be gone — capture before it is."
+    },
+    {
+      "event": "UserPromptSubmit",
+      "owner": "ground-ruvnet",
+      "class": "grounding injection",
+      "hosts": [
+        "claude",
+        "codex"
+      ],
+      "responsibility": "Injects a grounding directive into the model’s context when the prompt names the rUv stack, reaches for a classical default, or asks to build: call search_ruvnet before you assert. Not speech — emits no advocacy, promotion, lesson or alarm and reads no dial; silenced by the brain switch (ADR-054); scoped by ADR-040 §Amendment 2026-09-11."
+    },
+    {
+      "event": "PreToolUse",
+      "owner": "decision-gate",
+      "class": "consequential-action authorization",
+      "hosts": [
+        "claude"
+      ],
+      "responsibility": "The ONE process that may refuse a Write/Edit/MultiEdit/NotebookEdit (ADR-067): composes protect-state, hijack-ruvnet, ground-before-write (ADR-0012) and adr-currency into one decision with one reason. Fails open on its own errors. Claude only — Codex PreToolUse delivery has not been observed."
+    },
+    {
+      "event": "PostToolUse",
+      "owner": "grounding-stamp",
+      "class": "grounding receipt",
+      "hosts": [
+        "claude"
+      ],
+      "responsibility": "After a SUCCESSFUL search_ruvnet, records which rUv products were consulted (a 24h stamp per term named in the query). It is the key that opens ground-before-write; without it the write gate would refuse every rUv-product write forever."
     }
   ],
   "_notInThisPlane": [
     {
-      "id": "decision-gate",
+      "id": "decision-gate (bash route)",
       "class": "consequential-action authorization",
       "adr": "ADR-067",
-      "reachability": "Registered in hook-shim.mjs's dispatch table as a blocking PreToolUse route and reachable by explicit invocation. It composes every policy that could refuse one Write into ONE decision with declared precedence and one reason. It is absent from the continuity plane because refusal authorization is not lifecycle continuity — not because it was retired."
+      "reachability": "The bash sub-event (protect-state, identifier-preflight, spend-guard, degradation-watch, hijack-ruvnet, design-wall) stays reachable through hook-shim.mjs by explicit invocation and is not registered: the 2026-09-11 mandate was the WRITE path (ADR-0012), and no host has proven PreToolUse delivery for Bash under the plane’s measured-not-assumed rule. The write route IS in the plane — see contracts."
     },
     {
       "id": "execution-policy",
@@ -64,7 +108,11 @@
     "measuredOn": "2026-09-11",
     "host": "codex-cli 0.154.0",
     "method": "A probe hook was registered in a temporary CODEX_HOME on all twelve event names the installed binary declares, and a real `codex exec \"reply OK\"` was run against it.",
-    "fired": ["SessionStart", "UserPromptSubmit", "SessionEnd"],
+    "fired": [
+      "SessionStart",
+      "UserPromptSubmit",
+      "SessionEnd"
+    ],
     "notObserved": {
       "Stop": "The probe turn never completed, so run_turn_stop_hooks had no completion to fire on. The binary declares the event and StopCommandOutputWire, so this is not-proven rather than unsupported. Stop keeps only the pre-existing continuation gate; no capture handler was added to an event whose delivery has not been seen.",
       "PreCompact": "A one-line turn never approaches a compaction threshold. The binary declares PreCompact and PreCompactCommandOutputWire. No capture handler registered."
@@ -75,7 +123,10 @@
     {
       "id": "session-start",
       "event": "SessionStart",
-      "hosts": ["claude", "codex"],
+      "hosts": [
+        "claude",
+        "codex"
+      ],
       "mode": "advisory",
       "offBehavior": "partial",
       "matcher": "startup|resume|clear|compact|fork",
@@ -84,7 +135,10 @@
     {
       "id": "unprompted-speech",
       "event": "UserPromptSubmit",
-      "hosts": ["claude", "codex"],
+      "hosts": [
+        "claude",
+        "codex"
+      ],
       "mode": "blocking",
       "offBehavior": "silence",
       "matcher": "*",
@@ -93,7 +147,10 @@
     {
       "id": "continuation-gate",
       "event": "Stop",
-      "hosts": ["claude", "codex"],
+      "hosts": [
+        "claude",
+        "codex"
+      ],
       "mode": "advisory",
       "offBehavior": "run",
       "matcher": "*",
@@ -102,7 +159,9 @@
     {
       "id": "session-snapshot",
       "event": "Stop",
-      "hosts": ["claude"],
+      "hosts": [
+        "claude"
+      ],
       "mode": "advisory",
       "offBehavior": "run",
       "matcher": "*",
@@ -111,7 +170,9 @@
     {
       "id": "session-snapshot",
       "event": "PreCompact",
-      "hosts": ["claude"],
+      "hosts": [
+        "claude"
+      ],
       "mode": "advisory",
       "offBehavior": "run",
       "matcher": "*",
@@ -120,11 +181,48 @@
     {
       "id": "session-snapshot",
       "event": "SessionEnd",
-      "hosts": ["claude", "codex"],
+      "hosts": [
+        "claude",
+        "codex"
+      ],
       "mode": "advisory",
       "offBehavior": "run",
       "matcher": "*",
       "timeout": 10
+    },
+    {
+      "id": "ground-ruvnet",
+      "event": "UserPromptSubmit",
+      "hosts": [
+        "claude",
+        "codex"
+      ],
+      "mode": "advisory",
+      "offBehavior": "silence",
+      "matcher": "*",
+      "timeout": 10
+    },
+    {
+      "id": "decision-gate",
+      "event": "PreToolUse",
+      "hosts": [
+        "claude"
+      ],
+      "mode": "blocking",
+      "offBehavior": "run",
+      "matcher": "^(Write|Edit|MultiEdit|NotebookEdit)$",
+      "timeout": 5
+    },
+    {
+      "id": "grounding-stamp",
+      "event": "PostToolUse",
+      "hosts": [
+        "claude"
+      ],
+      "mode": "advisory",
+      "offBehavior": "silence",
+      "matcher": "^(?:.*__)?search_ruvnet$",
+      "timeout": 5
     }
   ],
   "matcherAllowlist": [
@@ -162,6 +260,20 @@
       "matcher": "*",
       "reason": "SessionEnd is a lifecycle event; wildcard is the host contract.",
       "retiredBy": "continuity-only lifecycle plane"
+    },
+    {
+      "layer": "plugin",
+      "event": "PreToolUse",
+      "matcher": "^(Write|Edit|MultiEdit|NotebookEdit)$",
+      "reason": "The write-class tools, anchored — the exact matcher ADR-067 shipped and hook-registry-lint’s matcher-semantics test models. Claude Code matchers are searches, so the anchors are load-bearing.",
+      "retiredBy": "not retired — registered 2026-09-11 (ADR-0012 / ADR-067, Stuart mandate)"
+    },
+    {
+      "layer": "plugin",
+      "event": "PostToolUse",
+      "matcher": "^(?:.*__)?search_ruvnet$",
+      "reason": "The grounding tool with or without an MCP server prefix (mcp__plugin_ruvnet-brain_ruvnet-brain__search_ruvnet). Only a successful search may mint a stamp; the body checks the result banner.",
+      "retiredBy": "not retired — registered 2026-09-11 (ADR-0012)"
     }
   ]
 }
