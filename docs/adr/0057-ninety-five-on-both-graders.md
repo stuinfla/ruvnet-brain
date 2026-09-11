@@ -3,11 +3,12 @@ id: ADR-057
 title: 95 on both graders — closing a 38/53 against a self-reported 83, dimension by dimension
 status: Proposed
 date: 2026-07-27
-updated: 2026-08-30
+updated: 2026-09-11
 impl: verification-expired
 verified: 2026-07-30
 verified_digest: 1c276a7dfbc5
 verified_by: governed-source claim ledger in this ADR plus node scripts/doc-currency.mjs --json
+reviewed_digest: 28181f9186dd
 governs:
   - scripts/behavioral-l1-l4.mjs
   - scripts/no-silent-substitution.mjs
@@ -256,6 +257,7 @@ to the five governed paths; it does not adjudicate the product or substitute for
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-09-11 | Currency review at commit 2eef2024: code drifted from the 2026-08-19 row above, and a real gap found in item #3 ("clean-machine / org hook integrity"). `plugin/hooks/hooks.json` no longer has ANY decision-gate PreToolUse entries — commit `00526b12` (2026-09-07) cut the file from ~210 lines to a 2-hook "continuity plane" (SessionStart + Stop only), then `56420430` restored those same two; there is no longer a "5s ceiling" to check because the entries themselves are gone. Separately: `plugin/hooks/hooks.json` and `.codex/hooks.json`/`plugin/hooks/codex-hooks.json` currently register no `UserPromptSubmit` hook anywhere in this repo (`grep -rl UserPromptSubmit plugin/hooks/ .codex/` returns nothing), so `plugin/scripts/ground-ruvnet.sh` is not live-wired in a real session — yet `scripts/behavioral-l1-l4.mjs`'s L4 test invokes it by hardcoded path (`--hook` default), not through the actual registration, so L4 currently cannot detect this and would still report PASS. This is exactly the "clean-machine / org hook integrity" failure class this ADR names, now on the OPPOSITE cause (hook silently absent, not present-but-loose). The hooks-retirement architecture itself is governed by ADR-075, not here; this row only records that `hooks.json`'s content and this ADR's own L4-coverage claim have moved. | Read the current `plugin/hooks/hooks.json` and `.codex/hooks.json`/`codex-hooks.json` in full; grepped `scripts/behavioral-l1-l4.mjs` for `UserPromptSubmit`/`hooks.json` (no hits — confirms it never reads the registry); `git show --stat` on `00526b12` and `56420430`. |
 | 2026-08-22 | Re-read the moved installer surface; this plan remains Proposed, verification remains expired, and no score is promoted. | `4e68453` changes stale plugin generation cleanup to retain live/ambiguous PID-incarnation leases; `6336c52` adds non-pinned launchd paths for the supported host executables. Both changes are bounded installer correctness work in `bin/install.mjs`; neither changes `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `tests/mesh/coexistence.test.mjs`, the grader rubric, or the two-independent-95 acceptance condition. |
 | 2026-08-19 | **Re-read after the hooks.json timeout change; neither grader's contract is touched.** | `plugin/hooks/hooks.json` is the only governed path that moved: the two decision-gate PreToolUse entries returned from 10s to 5s (ADR-067, 2026-08-19). No hook was added, removed, or re-matched, so the behavioural L1-L4 surface both graders score is identical apart from that ceiling. `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `bin/install.mjs` and `tests/mesh/coexistence.test.mjs` are unchanged. |
 | 2026-08-10 | Re-read after ADR-067; this plan stays Proposed and no score is promoted. | The governed installer change is the derived Codex dependency walk. It adds no grader, dimension or observable, and is not offered as evidence toward 95. `impl: verification-expired` unchanged — two independent graders at or above 95 remain outstanding. |

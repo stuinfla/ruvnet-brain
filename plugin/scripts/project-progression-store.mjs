@@ -7,6 +7,7 @@ import {
   validateProgressionSnapshot,
 } from './project-progression-contract.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
+import { withProgressionReader } from './project-progression-reader.mjs';
 import { resolveRuflo, rufloInvocation, RUFLO_MISSING } from './ruflo-bin.mjs';
 
 const PROGRESSION_NAMESPACE = 'project-progression';
@@ -75,13 +76,27 @@ export class ProjectProgressionStore {
     runner = defaultRunner,
     clock = () => new Date().toISOString(),
     fsync,
+    // The read-only fast path (project-progression-reader.mjs). READS ONLY: `ruflo memory store`
+    // stays the sole writer of memory.db. Pass `reader: null` to force every read through the CLI.
+    reader = withProgressionReader,
   } = {}) {
     if (!rufloBinary) throw new Error(RUFLO_MISSING);
     this.resolution = resolveProjectStore({ projectDir, requestedStorePath });
     this.rufloBinary = rufloBinary;
     this.runner = runner;
     this.clock = clock;
+    this.reader = typeof reader === 'function' ? reader : null;
+    this.lastReadPath = null;
     this.outbox = new ProgressionOutbox({ projectRoot: this.resolution.projectRoot, fsync });
+  }
+
+  /**
+   * Run one read through the in-process reader, or report that the CLI must serve it.
+   * Structural errors propagate unchanged — only "I cannot answer authoritatively" falls back.
+   */
+  readFast(work) {
+    if (!this.reader) return { ok: false, reason: 'reader disabled' };
+    return this.reader(this.resolution.canonicalAgentDbPath, work);
   }
 
   run(args) {
@@ -110,18 +125,36 @@ export class ProjectProgressionStore {
     const alreadyStored = resultStatus(stored) !== 0;
     if (!alreadyStored) onPhase('stored');
 
-    const retrieved = this.run([
-      'memory', 'retrieve', '--key', snapshot.eventKey, '--namespace', PROGRESSION_NAMESPACE,
-      '--value-only', '--path', this.resolution.canonicalAgentDbPath,
-    ]);
-    if (resultStatus(retrieved) !== 0) {
-      const storeFailure = alreadyStored
-        ? `; store failed: ${resultText(stored, 'stderr').trim() || 'unknown error'}`
-        : '';
-      throw new Error(`progression readback failed: ${resultText(retrieved, 'stderr').trim() || 'unknown error'}${storeFailure}`);
+    // THE READ-BACK, through the fast path when it is available.
+    //
+    // This is not a shortcut past the verification — it IS the verification, taken by an independent
+    // route. Reading the row back with the same CLI process family that just wrote it proves the CLI
+    // agrees with itself; reading the bytes off disk with node:sqlite proves the row is really there.
+    // It also matters for the budget: a capture boundary gets 8s, and a cold `ruflo memory` call
+    // measured ~3s in an isolated HOME (matching the 3.0-3.4s figure from the original report), so
+    // replay + capture at two CLI calls each did not fit and left the new snapshot uncommitted in the
+    // outbox. One CLI write plus a ~1ms read fits with room to spare. The CLI remains the fallback.
+    let readbackText = null;
+    const fast = this.readFast((reader) => reader.readContent(PROGRESSION_NAMESPACE, snapshot.eventKey));
+    if (fast.ok && typeof fast.value === 'string') {
+      this.lastReadPath = 'node:sqlite';
+      readbackText = fast.value;
+    } else {
+      this.lastReadPath = `ruflo-cli (${fast.ok ? 'row absent' : fast.reason})`;
+      const retrieved = this.run([
+        'memory', 'retrieve', '--key', snapshot.eventKey, '--namespace', PROGRESSION_NAMESPACE,
+        '--value-only', '--path', this.resolution.canonicalAgentDbPath,
+      ]);
+      if (resultStatus(retrieved) !== 0) {
+        const storeFailure = alreadyStored
+          ? `; store failed: ${resultText(stored, 'stderr').trim() || 'unknown error'}`
+          : '';
+        throw new Error(`progression readback failed: ${resultText(retrieved, 'stderr').trim() || 'unknown error'}${storeFailure}`);
+      }
+      readbackText = resultText(retrieved, 'stdout');
     }
     let readback;
-    try { readback = JSON.parse(resultText(retrieved, 'stdout')); } catch { throw new Error('progression readback is not JSON'); }
+    try { readback = JSON.parse(readbackText); } catch { throw new Error('progression readback is not JSON'); }
     if (readback.payloadDigest !== snapshot.payloadDigest || digestCanonical(readback) !== digestCanonical(snapshot)) {
       throw new Error('progression readback digest mismatch');
     }
@@ -158,6 +191,16 @@ export class ProjectProgressionStore {
     requirePositiveInteger(pageSize, 'pageSize');
     requirePositiveInteger(maxEntries, 'maxEntries');
     if (pageSize > maxEntries) throw new Error('pageSize exceeds the enumeration bound');
+    const fast = this.readFast((reader) => reader.listKeys(PROGRESSION_NAMESPACE, { maxEntries }));
+    if (fast.ok) {
+      this.lastReadPath = 'node:sqlite';
+      return fast.value;
+    }
+    this.lastReadPath = `ruflo-cli (${fast.reason})`;
+    return this.listSnapshotKeysViaCli({ pageSize, maxEntries });
+  }
+
+  listSnapshotKeysViaCli({ pageSize = 100, maxEntries = 10_000 } = {}) {
     const keys = [];
     const seen = new Set();
     let offset = 0;
@@ -214,6 +257,36 @@ export class ProjectProgressionStore {
   }
 
   retrieveSnapshots(keys) {
+    // The whole batch through ONE read-only handle, or the whole batch through the CLI. Never a
+    // mixture: a half-served batch would make "exactly these rows, read exactly this way" untrue.
+    const fast = this.readFast((reader) => {
+      const snapshots = [];
+      const rejected = [];
+      for (const key of keys) {
+        const content = reader.readContent(PROGRESSION_NAMESPACE, key);
+        if (content === null) throw new Error(`progression exact retrieval failed for ${key}: row not found`);
+        let snapshot;
+        try { snapshot = JSON.parse(content); } catch {
+          rejected.push({ eventKey: key, reasons: ['readback is not JSON'] });
+          continue;
+        }
+        if (!plainRecord(snapshot) || snapshot.eventKey !== key) {
+          rejected.push({ eventKey: key, reasons: ['exact key/payload identity mismatch'] });
+          continue;
+        }
+        snapshots.push(snapshot);
+      }
+      return { snapshots, rejected: sortRejected(rejected) };
+    });
+    if (fast.ok) {
+      this.lastReadPath = 'node:sqlite';
+      return fast.value;
+    }
+    this.lastReadPath = `ruflo-cli (${fast.reason})`;
+    return this.retrieveSnapshotsViaCli(keys);
+  }
+
+  retrieveSnapshotsViaCli(keys) {
     const snapshots = [];
     const rejected = [];
     for (const key of keys) {
@@ -238,9 +311,25 @@ export class ProjectProgressionStore {
     return { snapshots, rejected: sortRejected(rejected) };
   }
 
-  restoreLatest({ pageSize = 100, maxEntries = 10_000, maxOutputBytes = 64 * 1024 } = {}) {
+  /** How many durable snapshots are fsynced but not yet committed to the canonical store. */
+  pendingReplayCount() {
+    try { return this.outbox.pendingSnapshots().length; } catch { return null; }
+  }
+
+  /**
+   * @param {{ replayPending?: boolean }} options
+   *   `replayPending: false` restores from COMMITTED rows only. SessionStart uses it because replay
+   *   is a WRITE, a write is a `ruflo memory store` process, and one of those alone costs more than
+   *   the entire SessionStart budget — so a restore that replayed would time out and report UNKNOWN
+   *   precisely when there was durable evidence to show. Pending work is REPORTED here and replayed
+   *   at the next capture boundary (Stop / PreCompact / SessionEnd) or by /checkpoint, which are the
+   *   boundaries that already own a write budget. The outbox's fsync-then-commit ordering and its
+   *   replay-required semantics are untouched: nothing is dropped, only deferred.
+   */
+  restoreLatest({ pageSize = 100, maxEntries = 10_000, maxOutputBytes = 64 * 1024, replayPending = true } = {}) {
     requirePositiveInteger(maxOutputBytes, 'maxOutputBytes');
-    this.replay();
+    if (replayPending) this.replay();
+    const pendingReplay = replayPending ? 0 : this.pendingReplayCount();
     const keys = this.listSnapshotKeys({ pageSize, maxEntries });
     const exact = this.retrieveSnapshots(keys);
     const restored = restoreProjectProgression(exact.snapshots, {
@@ -253,6 +342,8 @@ export class ProjectProgressionStore {
     if (!restored.ok) {
       const error = new Error('no coherent progression state could be restored');
       error.rejectedCandidates = rejectedCandidates;
+      error.structurallyEnumerated = keys.length;
+      error.pendingReplay = pendingReplay;
       throw error;
     }
     const payload = {
@@ -266,12 +357,14 @@ export class ProjectProgressionStore {
         exactRetrieved: keys.length,
         causallyStale: restored.causallyStale.length,
         rejectedCandidates,
+        readPath: this.lastReadPath,
+        pendingReplay,
       },
     };
     const rendered = JSON.stringify(payload);
     if (Buffer.byteLength(rendered, 'utf8') > maxOutputBytes) {
       throw new Error(`resume payload exceeds the ${maxOutputBytes}-byte output bound`);
     }
-    return { payload, rendered };
+    return { payload, rendered, pendingReplay };
   }
 }

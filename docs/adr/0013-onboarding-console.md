@@ -3,7 +3,7 @@ id: ADR-013
 title: The Onboarding Console — RuvNet Brain becomes a mirror, an advisor, and only then a configurator
 status: Accepted
 date: 2026-07-14
-updated: 2026-08-30
+updated: 2026-09-11
 updated_source: authored-current
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, config, stack, memory-health, savings, safety, coverage]
@@ -14,12 +14,11 @@ governs:
   - scripts/console-runtime-identity.mjs
   - console/*
   - plugin/commands/configure.md
-  - plugin/commands/coverage.md
-  - plugin/scripts/coverage.mjs
 created_at: 2026-07-14T17:28:48-04:00
 created_at_source: derived-from-git
-updated_at: 2026-08-21T08:10:43-04:00
+updated_at: 2026-09-11T00:00:00-04:00
 updated_at_source: authored-current
+reviewed_digest: 9b358c4efc8f
 ---
 
 # ADR-013: The Onboarding Console
@@ -71,27 +70,19 @@ root/store de-duplication, scoped explicit-root behavior, and display naming. Th
 and Console import that same policy, so a machine-wide fleet count can no longer mean `~/Code` on
 one surface while the Console scans `~/source`, `~/work`, or user-configured roots on another.
 
-**Updated 2026-08-21** — Coverage is now the Console's third linked page, alongside the primary
-Console and How to Use It. `console/coverage.html`, `coverage.css`, and `coverage.js` render a
-read-only searchable projection through `GET /api/coverage`; `gatherSourceCoverage()` reads the
-installed knowledge bundle's canonical `COVERAGE.json` first and accepts `source-coverage.json`
-only as a compatibility filename. Missing, malformed, unsupported, or internally incoherent data is
-shown as unavailable, never as zero or complete coverage. The page reads the installed KB on each
-request rather than embedding a checkout snapshot in the persistent Console runtime.
-
-The page and API follow the existing Console lifecycle rather than creating another server. The
-whole `console/` directory is already a member of `CONSOLE_RUNTIME_SURFACE`, so the page participates
-in the staged runtime digest and atomic activation transaction. A running Console with old frontend
-bytes cannot pass as the new runtime merely because its Node entrypoint is unchanged. Coverage data
-has the separate knowledge-bundle lifecycle: refreshing `COVERAGE.json` does not require replacing
-the Console runtime.
-
-The installed plugin also supplies `/ruvnet-brain:coverage`. Its command declaration is boot-frozen
-host metadata and therefore appears only after the host loads the plugin generation that contains
-it. Once loaded, `plugin/scripts/coverage.mjs` resolves the managed KB path per invocation and reads
-that generation's installed `COVERAGE.json`; it never substitutes repository state or remembered
-counts. This is intentionally a compact terminal projection of the same ledger, not a fourth source
-of coverage facts.
+**Updated 2026-08-21, corrected 2026-09-11** — This section originally described a third Console
+Coverage page (`console/coverage.html`/`.css`/`.js`, a `GET /api/coverage` route, and an installed
+`/ruvnet-brain:coverage` terminal command backed by `plugin/scripts/coverage.mjs`) as already
+delivered. A source-bound currency review found none of those five paths exist anywhere in this
+repository's git history — they were designed here but never built. The actual, still-open decision
+for that sub-feature is **ADR-0069 (Source coverage is artifact-bound, complete, and
+release-blocking)**, whose own `status: Proposed` and `governs:` list (which includes the same five
+paths) confirms it is unbuilt as of this review, not this ADR. `governs:` above has been corrected
+to drop the two literal entries (`plugin/commands/coverage.md`, `plugin/scripts/coverage.mjs`) this
+ADR never actually built; the historical Currency-log row below is left as the record of what was
+believed at the time, not restated as current fact. Everything else this ADR governs — the primary
+Console and How to Use It pages, `scripts/onboarding-console.mjs`, `scripts/console-runtime-identity.mjs`
+— remains built and live, unaffected by this correction.
 
 ## Context
 
@@ -277,6 +268,7 @@ their computer; they just want it to work."* This becomes **principle 6**:
 
 ## Currency log
 
+| 2026-09-11 | Currency review at commit 2eef2024: decision unchanged for the built console; code drifted only in a duplicated, unbuilt `governs:` claim, corrected in the text above (not the status). The two governed drift commits since 2026-08-30 (`6a6ba72f`, `e7a84b71`) touch `scripts/console-runtime-identity.mjs` and `scripts/onboarding-console.mjs` and are testability/release-qualification only (a snapshot clock injected for tests; more files added to `CONSOLE_RUNTIME_SURFACE`'s digest list) — no architectural change. Separately found: `plugin/commands/coverage.md` and `plugin/scripts/coverage.mjs` never existed in this repo's git history (`git log --all` on both is empty), yet were both claimed built here since 2026-08-21; removed them from `governs:` and corrected the prose — that sub-feature is ADR-0069's (status Proposed, still unbuilt). | Reviewed `scripts/onboarding-console.mjs` and `scripts/console-runtime-identity.mjs`; cross-checked ADR-0069's own `governs:`/`status` for the coverage-page claim. reviewed_digest 9b358c4efc8f. |
 | 2026-08-30 | The configurator documentation now reflects the live settings form: ordinary user preferences have runtime consumers and are served through the shared save path. | `console/app.js`, `scripts/onboarding-console.mjs`, and `plugin/scripts/runtime-preferences.mjs` are the current implementation boundary. |
 
 | Date | What changed | Why (with referents) |

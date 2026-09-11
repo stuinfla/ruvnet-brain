@@ -55,22 +55,52 @@ export function loadRepoAliases(dir) {
   return {};
 }
 
+// `@scope/name` exactly, or `@scope/*` — a whole npm scope owned by one repo.
+const OWNED_PACKAGE_KEY = /^@[a-z0-9._-]+\/(?:[a-z0-9._-]+|\*)$/i;
+
+/**
+ * Package ownership, MERGED rather than first-file-wins.
+ *
+ * WHY MERGED (changed 2026-09-11). The registry ships inside the knowledge bundle while this module
+ * ships on the code track, and they update on different clocks. First-file-wins meant an installed
+ * bundle's older registry SHADOWED every entry a newer release had learned: measured on
+ * ~/.cache/ruvnet-brain/kb (builtUtc 2026-08-20), the installed copy is 37 bytes holding exactly one
+ * package, so nothing added here could ever reach a real install until the next corpus rebuild.
+ * Merging keeps the bundle authoritative for every key it actually defines — a per-key override,
+ * not a per-file one — and lets the code track ADD knowledge without waiting on a corpus refresh.
+ */
 export function loadPackageOwners(dir) {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const candidates = [dir && path.join(dir, PACKAGE_OWNERS_FILE), path.join(moduleDir, PACKAGE_OWNERS_FILE)]
+  // Lowest precedence first: the module-local defaults, then the bundle's own registry.
+  const candidates = [path.join(moduleDir, PACKAGE_OWNERS_FILE), dir && path.join(dir, PACKAGE_OWNERS_FILE)]
     .filter(Boolean);
+  const merged = {};
   for (const file of candidates) {
     try {
       const value = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-      return Object.fromEntries(Object.entries(value)
-        .filter(([packageName, repo]) =>
-          /^@[a-z0-9._-]+\/[a-z0-9._-]+$/i.test(packageName) && typeof repo === 'string' && repo));
+      for (const [packageName, repo] of Object.entries(value)) {
+        if (OWNED_PACKAGE_KEY.test(packageName) && typeof repo === 'string' && repo) {
+          merged[packageName.toLowerCase()] = repo;
+        }
+      }
     } catch {
       // Older bundles may not carry package ownership metadata.
     }
   }
-  return {};
+  return merged;
+}
+
+/**
+ * Which repo publishes this scoped package. An exact entry always beats a scope wildcard, so one
+ * package that lives somewhere else can be corrected without abandoning the scope rule.
+ */
+export function packageOwnerFor(packageName, owners) {
+  const name = String(packageName || '').toLowerCase();
+  if (!name) return null;
+  if (owners[name]) return owners[name];
+  const scope = name.split('/')[0];
+  return owners[`${scope}/*`] || null;
 }
 
 export function repositoryNames(repo, dir) {
@@ -357,7 +387,7 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
     }
   }
   const namedPackage = q.match(/@[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+/i)?.[0]?.toLowerCase();
-  const packageOwner = namedPackage ? loadPackageOwners(dir)[namedPackage] : null;
+  const packageOwner = namedPackage ? packageOwnerFor(namedPackage, loadPackageOwners(dir)) : null;
   if (packageOwner && available.has(packageOwner)) canonicalNamed.add(packageOwner);
   const rawNamed = new Set([...canonicalNamed, ...aliasNamed]);
   const explicitAliasComparison = rawNamed.size > 1

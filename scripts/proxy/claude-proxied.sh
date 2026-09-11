@@ -21,6 +21,12 @@
 # assumed.
 set -euo pipefail
 
+# Every `ruflo` invocation auto-starts a project background daemon unless this is set (verified
+# live: ~/.npm-global/lib/node_modules/ruflo/node_modules/@claude-flow/cli/dist/src/services/
+# daemon-autostart.js:85). This script only checks/starts the proxy — it has no business leaving a
+# swarm daemon running as a side effect.
+export RUFLO_DAEMON_AUTOSTART=0
+
 TOKEN_FILE="$HOME/.ruflo/proxy-token"
 
 if ! ruflo proxy status --json 2>/dev/null | grep -q '"running":true'; then

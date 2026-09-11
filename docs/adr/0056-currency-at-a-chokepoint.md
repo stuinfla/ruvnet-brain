@@ -3,9 +3,9 @@ id: ADR-056
 title: Pay the debt, then wire the gate — document currency without a ratchet
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-07
-version: 1.1.1
-reviewed_digest: a6a774d6cea3
+updated: 2026-09-11
+version: 1.2.0
+reviewed_digest: 1728f71b48ec
 impl: wired
 governs:
   - scripts/wired-check.mjs
@@ -215,6 +215,16 @@ Scoping only to directly touched ADR filenames is an escape hatch: code can inva
 without the claim ever being evaluated. `--changed` is only safe *because* the debt is zero: a
 touched document, or a document governing touched code, that is red really is your fault.
 
+**CODE DRIFTED, 2026-09-11 (currency review).** `scripts/git-hooks/pre-push` no longer invokes
+`--changed` at all: commit `00526b12` (2026-09-07) reduced the whole file to a 5-line delegator that
+runs only `scripts/development-push-check.mjs` (a credential scan). The `--changed` invocation this
+paragraph describes moved to `scripts/release-vector.mjs --changed <base>` (governed by ADR-058),
+run at release-qualification time rather than at a local `git push`. Commit `2b022100` (2026-09-09)
+extended `scripts/doc-currency.mjs` itself with the actual `--changed` scoping logic §5 describes
+(`changedDocumentCandidates`/`changedDocumentScope`) — that half of the mechanism is real and wired,
+just invoked from a different chokepoint than this section names. The zero-ratchet, no-new-state
+design this section argues for is unaffected; only the calling site moved.
+
 ### 6. `governs:` grows one document at a time — the corpus-wide backfill is CUT
 
 Both models ranked this their #1 cut, independently. Fable measured why the proposed derivation is
@@ -334,6 +344,7 @@ fix** — which is the one section that was already built.
 
 ## Currency log
 
+| 2026-09-11 | Currency review at commit 2eef2024: code drifted, corrected in §5 above (not the status). `scripts/git-hooks/pre-push` (`00526b12`) no longer invokes the currency check — reduced to a 5-line credential-scan delegator. The `--changed` scoping mechanism itself (`2b022100`) is real and now lives in `scripts/doc-currency.mjs`, invoked from `scripts/release-vector.mjs` (ADR-058) instead. `scripts/wired-check.mjs` (`56420430`, `8790160b`) was updated to correctly classify the two new constrained continuity hook registrations and reword one STANDALONE entry — the wired/manual/unwired mechanism §7 describes is unchanged, just kept accurate against `codex-hooks.json`'s new state. | Reviewed `scripts/git-hooks/pre-push`, `scripts/doc-currency.mjs`, `scripts/release-vector.mjs`, and both `scripts/wired-check.mjs` diffs directly. reviewed_digest 1728f71b48ec. |
 | 2026-09-05 | Reviewed source a6a774d6cea3; findings recorded, not semantic verification. | `scripts/wired-check.mjs`, `scripts/doc-currency.mjs`, `scripts/git-hooks/pre-push`, and `plugin/scripts/md-stamp.mjs` were fully examined by the assigned audit reviewer. Root checked the source-bound review integration and focused tests. This records examination only; the Proposed decision, unproven session-start notice, and distinct edit-date versus review-date meanings remain explicit. |
 
 | 2026-09-05 | Added a pre-commit exact-byte review boundary without a second gate or automatic semantic approval. | `scripts/doc-currency.mjs` reuses its canonical digest; `tests/unit/doc-currency-review.test.mjs` exercises real Git history, staged/unstaged changes, missing evidence, and independent overclaim refusal. `plugin/scripts/md-stamp.mjs` remains an edit-metadata producer, never the review authority. |
