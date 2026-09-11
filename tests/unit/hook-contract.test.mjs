@@ -373,11 +373,17 @@ describe('registry hygiene', () => {
     }
   });
 
-  it('registers only the single guarded continuation hook on Stop', () => {
+  it('registers exactly the guarded continuation hook and the capture hook on Stop', () => {
     const stopCmds = (reg.hooks.Stop ?? []).flatMap((m) => (m.hooks ?? []).map((h) => h.command));
-    expect(stopCmds).toHaveLength(1);
-    expect(stopCmds[0]).toContain('continuation-gate');
-    expect(stopCmds[0]).toContain('|| true');
+    // Stop carries TWO handlers now, and the second one is why this lane exists: the continuation
+    // gate reads the ledger and may nudge; the capture hook writes the project snapshot that
+    // SessionStart restores. Before it, SessionStart restored a journal nothing ever wrote.
+    expect(stopCmds).toHaveLength(2);
+    const [gate, capture] = stopCmds;
+    expect(gate).toContain('continuation-gate');
+    expect(capture).toContain('session-snapshot Stop');
+    // Both advisory: a turn-end hook that can fail a turn is worse than a missed snapshot.
+    for (const command of stopCmds) expect(command).toContain('|| true');
   });
 
   /**
