@@ -1,5 +1,5 @@
 {
-  "description": "RuvNet Brain continuity plane. The broad legacy grounding, routing, learning, and release interceptors remain retired. Only SessionStart project restoration and the ledger-scoped Stop continuation handler are automatic; both are advisory, bounded, and fail open.",
+  "description": "RuvNet Brain continuity plane. The broad legacy grounding, routing, learning, and release interceptors remain retired. What is automatic is exactly: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint; Stop runs the ledger-scoped continuation handler and captures a project snapshot; PreCompact and SessionEnd capture a project snapshot. Every capture is bounded, fails open, and never blocks.",
   "hooks": {
     "SessionStart": [
       {
@@ -9,25 +9,18 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-start || true",
             "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" memory-ensure || true",
-            "timeout": 3,
-            "description": "ADR-076: Recall last 3 checkpoints from memory at session start"
           }
         ]
       }
     ],
-    "PostEdit": [
+    "UserPromptSubmit": [
       {
         "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" memory-store-decisions || true",
-            "timeout": 5,
-            "description": "ADR-076: Capture consequential file edits (ADR, version, config) to memory"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" unprompted-speech UserPromptSubmit",
+            "timeout": 3
           }
         ]
       }
@@ -43,9 +36,32 @@
           },
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" memory-snapshot-threads || true",
-            "timeout": 5,
-            "description": "ADR-076: Snapshot open issues/PRs and tasks for session continuity"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-snapshot Stop || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-snapshot PreCompact || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-snapshot SessionEnd || true",
+            "timeout": 10
           }
         ]
       }

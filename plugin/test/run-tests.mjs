@@ -83,12 +83,9 @@ const mcp = readJson('.mcp.json');
 check('.mcp.json registers the ruvnet-brain MCP server', !!mcp?.mcpServers?.['ruvnet-brain']);
 const hooks = readJson('hooks/hooks.json');
 check('hooks.json declares only continuity lifecycle hooks', hooks?.hooks
-  && Object.keys(hooks.hooks).sort().join(',') === 'PostEdit,SessionStart,Stop'
+  && Object.keys(hooks.hooks).sort().join(',') === 'SessionStart,Stop'
   && JSON.stringify(hooks.hooks).includes('session-start')
-  && JSON.stringify(hooks.hooks).includes('continuation-gate')
-  && JSON.stringify(hooks.hooks).includes('memory-ensure')
-  && JSON.stringify(hooks.hooks).includes('memory-store-decisions')
-  && JSON.stringify(hooks.hooks).includes('memory-snapshot-threads'));
+  && JSON.stringify(hooks.hooks).includes('continuation-gate'));
 for (const f of ['skills/ruvnet-brain/SKILL.md', 'skills/brain-score/SKILL.md', 'skills/brain-build/SKILL.md', 'skills/brain-prompt/SKILL.md', 'mcp/server.mjs', 'scripts/ground-ruvnet.sh', 'README.md', 'test/capability-questions.json']) {
   check(`exists: ${f}`, fs.existsSync(path.join(ROOT, f)));
 }
