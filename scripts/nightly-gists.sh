@@ -52,20 +52,16 @@ fi
 # POSIX, so a failed shard was structurally invisible — the script would proceed to ingest and log
 # "done — rebuilt" over a half-embedded corpus. Now every shard PID is waited on individually and a
 # single failure aborts BEFORE ingest, loudly. "done" is only printed over a fully-embedded corpus.
+#
+# 2026-09-11: the manual `&`/`wait` fan-out above (kept in history, replaced below) could not see
+# whether a shard was still doing WORK or just still alive — an 8-shard run once sat at 0% CPU for
+# six hours with every pid alive and no failure ever detected. `forge-big.mjs shard-all` is the
+# supervising "parent embed process": it owns the fan-out itself, reads each shard's per-batch
+# progress file, and SIGTERMs+exits non-zero the moment any shard stops advancing for longer than
+# its stall budget — so a genuine hang aborts in minutes instead of surviving until a human notices.
 log "corpus changed — re-embedding"
-i=0
-pids=""
-while [ "$i" -lt 8 ]; do
-  node kb/forge-big.mjs embed --dir kb --name ruv-gists --shard "$i" --of 8 >>"$LOG" 2>&1 &
-  pids="$pids $!"
-  i=$((i + 1))
-done
-FAILED_SHARDS=0
-for p in $pids; do
-  wait "$p" || FAILED_SHARDS=$((FAILED_SHARDS + 1))
-done
-if [ "$FAILED_SHARDS" -gt 0 ]; then
-  log "EMBED FAILED — $FAILED_SHARDS of 8 shards exited nonzero; refusing to ingest a half-embedded corpus"
+if ! node kb/forge-big.mjs shard-all --dir kb --name ruv-gists --shards 8 --stall-minutes 15 >>"$LOG" 2>&1; then
+  log "EMBED FAILED — shard-all reported a failure or a stall; refusing to ingest a half-embedded corpus"
   exit 1
 fi
 node kb/forge-big.mjs ingest --dir kb --name ruv-gists >>"$LOG" 2>&1 || { log "INGEST FAILED — store NOT rebuilt"; exit 1; }

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { automaticHookRetirementStatus, retireManagedHookRegistrations, wireCodexHost } from '../../bin/install.mjs';
+import { continuityContractIds, continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 
@@ -14,10 +15,24 @@ describe('automatic Brain continuity hooks are constrained on both hosts', () =>
     expect(result.ok).toBe(true);
   });
 
-  it('keeps the out-of-shim contract inventory limited to continuity', () => {
+  /**
+   * The MANIFEST must match the POLICY. This assertion used to hardcode the two-handler plane, so it
+   * measured a number rather than an agreement and went red the moment the plane legitimately grew.
+   * Deriving the expectation from continuity-hook-policy.mjs keeps the real property — the shipped
+   * JSON and the enforcing code agree — while letting the plane change in exactly one place.
+   */
+  it('keeps the out-of-shim contract inventory equal to the declared continuity plane', () => {
     const contracts = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/hooks/hook-contracts.json'), 'utf8'));
-    expect(contracts.contracts.map((entry) => entry.id).sort()).toEqual(['continuation-gate', 'session-start']);
-    expect(contracts.matcherAllowlist.map((entry) => entry.event).sort()).toEqual(['SessionStart', 'Stop']);
+    expect(contracts.contracts.map((entry) => `${entry.event}:${entry.id}`).sort())
+      .toEqual(continuityContractIds().sort());
+    expect([...new Set(contracts.matcherAllowlist.map((entry) => `${entry.event}:${entry.matcher}`))].sort())
+      .toEqual([...new Set(continuityRegistrations().map((spec) => `${spec.event}:${spec.matcher}`))].sort());
+    // Every contract names hosts the policy actually permits for that (event, id).
+    for (const entry of contracts.contracts) {
+      const spec = continuityRegistrations().find((row) => row.event === entry.event && row.id === entry.id);
+      expect(spec, `${entry.event}:${entry.id} is not in the policy`).toBeTruthy();
+      expect(entry.hosts.slice().sort()).toEqual(spec.hosts.slice().sort());
+    }
   });
 
   it.each([
@@ -25,6 +40,15 @@ describe('automatic Brain continuity hooks are constrained on both hosts', () =>
     ['Codex Stop hook', 'plugin/hooks/codex-hooks.json', { hooks: { Stop: [{ hooks: [{ command: 'node stale.mjs' }] }] } }],
     ['malformed group', 'plugin/hooks/hooks.json', { hooks: { SessionStart: [{}] } }],
     ['project hook', '.codex/hooks.json', { hooks: { Stop: [{ hooks: [{ command: 'node stale.mjs' }] }] } }],
+    // THE LEGACY-GATE MUTANT, kept explicit because growing the plane is exactly when a reviewer
+    // will ask "did you just re-open the door?". A retired PreToolUse grounding gate must still fail
+    // the check even though the plane now has five events instead of two.
+    ['retired PreToolUse grounding gate', 'plugin/hooks/hooks.json', {
+      hooks: {
+        SessionStart: [{ matcher: 'startup|resume|clear|compact|fork', hooks: [{ type: 'command', command: 'node "${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs" session-start || true', timeout: 5 }] }],
+        PreToolUse: [{ matcher: 'Write|Edit', hooks: [{ type: 'command', command: 'node "${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs" ground-ruvnet || true', timeout: 10 }] }],
+      },
+    }],
   ])('fails closed on an injected %s', (_label, relative, document) => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-hook-mutant-'));
     try {

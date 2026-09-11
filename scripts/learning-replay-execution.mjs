@@ -27,10 +27,15 @@ const MUTATING_SUBCOMMANDS = new Set([
   'backup', 'init', 'configure',
 ]);
 
-function spawnRuflo(bin, args, options) {
+// Every `ruflo` invocation auto-starts a project background daemon unless RUFLO_DAEMON_AUTOSTART=0
+// is set (verified live against the installed CLI: ~/.npm-global/lib/node_modules/ruflo/
+// node_modules/@claude-flow/cli/dist/src/services/daemon-autostart.js:85). Applied here, once, so
+// every caller of spawnRuflo() gets it regardless of whether it passed its own `env`.
+function spawnRuflo(bin, args, options = {}) {
+  const opts = { ...options, env: { ...(options.env || process.env), RUFLO_DAEMON_AUTOSTART: '0' } };
   return /\.[cm]?js$/i.test(bin)
-    ? spawnSync(process.execPath, [bin, ...args], options)
-    : spawnSync(bin, args, options);
+    ? spawnSync(process.execPath, [bin, ...args], opts)
+    : spawnSync(bin, args, opts);
 }
 
 export function assertRetrieved(out) {
@@ -115,7 +120,7 @@ export function executeProducedCommand(cmd, {
     .find((value) => MUTATING_SUBCOMMANDS.has(value));
   if (mutating) return reject(`refused mutating subcommand "${mutating}"`, { argv: ['ruflo', ...args] });
 
-  const env = { ...process.env };
+  const env = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
   delete env.CLAUDE_FLOW_DB_PATH;
   delete env.CLAUDE_FLOW_MEMORY_PATH;
   const result = spawnRuflo(ruflo, args, {
@@ -146,6 +151,7 @@ export function verifyRufloFlag(bin = RUFLO_BIN) {
   const result = spawnSync(bin, ['memory', 'search', '--help'], {
     encoding: 'utf8',
     timeout: 30_000,
+    env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
   });
   const output = `${result.stdout || ''}${result.stderr || ''}`;
   if (result.status !== 0 && !output) return { ok: false, why: `help exited ${result.status} empty` };

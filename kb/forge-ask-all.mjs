@@ -33,6 +33,30 @@ import {
   implementationNotice,
   requiresImplementationProof,
 } from './implementation-evidence.mjs';
+import {
+  exactIdentifiers,
+  identifierBoost,
+  identifierCandidates,
+  identifierScan,
+  scannableIdentifiers,
+} from './identifier-lane.mjs';
+import {
+  freshnessAdvisory,
+  highestSemver,
+  isReleaseDocument,
+  compareSemver,
+  probeLiveVersions,
+  stalenessNotice,
+  versionIntent,
+} from './corpus-freshness.mjs';
+import {
+  QueryDeadlineExceeded,
+  armProcessWatchdog,
+  createDeadline,
+  describeDeadline,
+  resolveDeadlineMs,
+  DEADLINE_EXIT_CODE,
+} from './query-deadline.mjs';
 
 // TRANSCRIPT/dialogue stores need LEXICAL (BM25) candidate generation, not dense alone. A fact spoken
 // in passing ("…876 commits…") embeds poorly against a conceptual question, so dense buries it past
@@ -1529,6 +1553,19 @@ async function sourceBackedCardLane({ dir, query, k, planned }) {
       )
       || k < 2
       || !planned?.repos?.length) return null;
+  // A SCOPED PACKAGE NAME IS A QUESTION ABOUT AN EXACT ARTIFACT, AND THIS LANE CANNOT TELL TWO
+  // NEAR-NAMED ARTIFACTS APART. Measured 2026-09-11: "What is the latest version of @ruvector/rvf
+  // and what changed in it recently?" was answered by THIS lane (routing.lane = source-backed-card,
+  // ceScore undefined — no retrieval, no reranking) with
+  // `ruvector/crates/rvf/rvf-node/package.json`. That is a DIFFERENT npm package, presented as the
+  // witness for the one the user named. The lane picks its witness by lexical overlap over
+  // <repo>.meta.json previews, which cannot distinguish `@ruvector/rvf` from `@ruvector/rvf-node`.
+  //
+  // Its sibling fast lane already refuses this exact class ("scoped package detail requires source
+  // retrieval (…)", card-lane.mjs answerFromCards) — the source lane simply never inherited the
+  // guard. Declining hands the question to the retrieval lane, which has both the exact-manifest
+  // boost (#31) and the deep exact-name rescue (#33 Part A) built for precisely this distinction.
+  if (scopedNamesIn(query).size) return null;
   const cards = loadCards(dir);
   if (!cards?.length) return null;
 
@@ -1539,8 +1576,20 @@ async function sourceBackedCardLane({ dir, query, k, planned }) {
     : planned.repos;
   for (const repo of proofRepos) {
     if (repo === 'concepts') continue;
-    const cardRepo = planned.cardRepos?.[repo] || repo;
-    const card = cards.find((candidate) => candidate.repo === cardRepo);
+    // ALIAS-AWARE, BECAUSE THE ROUTER IS. A store is routinely reached through a card written under
+    // a different heading — `metaharness` is served by the `agent-harness-generator` card, and
+    // store-root.mjs's darkStores() carries the identical fix with the identical example. Looking
+    // the card up by exact store name made this lane silently return null for every such store, so
+    // a question that the cards fully answer fell through to the cold embedder + cold reranker:
+    // tests/unit/forge-ask-all.test.mjs's colloquial scaffolding and cost-quality cases have been
+    // red on exactly that. `repositoryNames` is the ROUTER'S OWN resolver, imported rather than
+    // reimplemented; the exact-name lookup still wins so an explicit cardRepos mapping is honored.
+    const requestedCardRepo = planned.cardRepos?.[repo] || repo;
+    const aliasNames = new Set(repositoryNames(repo, dir).map((name) => String(name).toLowerCase()));
+    const card = cards.find((candidate) => candidate.repo === requestedCardRepo)
+      || cards.find((candidate) => aliasNames.has(String(candidate.repo).toLowerCase()));
+    // Downstream proof tokens must describe the card we ACTUALLY matched, not the name we asked for.
+    const cardRepo = card ? card.repo : requestedCardRepo;
     const metaFile = path.join(dir, `${repo}.meta.json`);
     if (!card || !fs.existsSync(metaFile)) continue;
 
@@ -2480,6 +2529,26 @@ export function scopedNamesIn(query) {
 // front of them, which is not the same thing as choosing it for everyone by default.
 export const CE_MAX_PAIRS_DEFAULT = 0;
 
+// ── THE FULL-CORPUS FALLBACK BUDGET ───────────────────────────────────────────────────────────
+//
+// CE_MAX_PAIRS_DEFAULT above is 0 for the lane ADR-0059 measured: a ROUTED query, ~69 stores,
+// ~607 pairs, where no budget bought wall time without costing answers. That premise does not
+// survive the lane below it. When card routing cannot place a query the CLI fans out to EVERY
+// store, and the corpus has since grown to 184: measured 2026-09-11 on the installed store
+// (~/.cache/ruvnet-brain/kb, builtUtc 2026-08-20T07:16:20.675Z) the unscoped fanout for
+// "What is the latest version of @claude-flow/aidefence …" pools **6,691 pairs** — 11x the regime
+// ADR-0059 chose 0 for — and the cross-encoder reads every one of them in full. At the rate
+// measured on that exact pool (26.6 ms/pair on a quiet machine, 482 ms/pair under the load the
+// original report was taken at) that is 178 s to 54 minutes for ONE question, with no output and
+// no timeout. That is the hang.
+//
+// 408 IS NOT A NEW NUMBER. It is the value the repo's own cap study already landed on
+// (evals/runs/2026-07-27-cross-encoder-pool-cap.md, line 128: "B=408 is the value to use"):
+// floor1+dist B=408 keeps 113/120 top-1 identical, 194/220 top-3 retained, with +0/-0 graded
+// flips. Applying it HERE and ONLY here is the whole point — the routed lane, which is every
+// question in the held-out gate, still runs uncapped and byte-for-byte as before.
+export const FULL_CORPUS_MAX_PAIRS_DEFAULT = 408;
+
 // ── THE CROSS-ENCODER POOL CAP ────────────────────────────────────────────────────────────────
 //
 // Measured 2026-07-27 over the frozen 120-question held-out set: 607 (query, passage) pairs
@@ -2676,6 +2745,44 @@ export function selectResults({ query, ranked, k = 6 }) {
       }
     }
   }
+  // ── EXACT-IDENTIFIER EVIDENCE (kb/identifier-lane.mjs) ───────────────────────────────────────
+  // An identifier is the one kind of token whose whole value is that it does NOT generalise, which
+  // is exactly what a bi-encoder is built to destroy. Candidates that carry the question's
+  // identifiers are lifted by what they EARNED: a mention is the floor (all an echo of the question
+  // can ever get), and the rank is decided by definition-shaped context and by the document's own
+  // path. Measured case: "Which is canonical: .swarm/memory.db or .swarm/agentdb-memory.db?"
+  for (const r of ranked) {
+    if (r.ceScore == null || !r._exactIdentifier) continue;
+    const boost = identifierBoost(r._exactIdentifier);
+    if (boost > 0) { r.ceScore += boost; r.identifierBoosted = boost; }
+  }
+
+  // ── VERSION INTENT: THE NEWEST RELEASE RECORD WINS (kb/corpus-freshness.mjs) ──────────────────
+  // "What is the latest version of X" is not a similarity question. Measured 0/8 current answers
+  // on 2026-09-11: agentdb returned a "v3.0.0-alpha.6 Publishing Guide" while the live registry was
+  // at 3.0.0-alpha.20, and agentic-qe returned v3.9.11 notes while THE SAME CORPUS holds the
+  // v3.13.2 changelog. The second one is not a coverage gap; it is a ranking gap, and it is the one
+  // this fixes: among the release records in the pool, the one naming the highest semver wins.
+  const intent = versionIntent(query);
+  if (intent.intent) {
+    let best = null;
+    for (const r of ranked) {
+      if (r.ceScore == null) continue;
+      r._releaseDoc = isReleaseDocument(r);
+      r._topSemver = highestSemver(`${r.title || ''}\n${r.fullText || r.text || ''}`);
+      if (r._releaseDoc && compareSemver(r._topSemver, best) > 0) best = r._topSemver;
+    }
+    for (const r of ranked) {
+      if (r.ceScore == null) continue;
+      if (r._releaseDoc) { r.ceScore += 2.0; r.releaseDocBoosted = true; }
+      // Only the release record that actually carries the newest version the pool knows about —
+      // a changelog chunk stuck three minor versions back is precisely the failure being fixed.
+      if (r._releaseDoc && best && r._topSemver && compareSemver(r._topSemver, best) === 0) {
+        r.ceScore += 3.0; r.newestReleaseBoosted = true;
+      }
+    }
+  }
+
   ranked.sort((a, b) => (b.ceScore ?? -Infinity) - (a.ceScore ?? -Infinity));
 
   // ── BARE ADR-NUMBER QUERIES ARE AMBIGUOUS (issue #33 Part B, Jan Lafko / @lafinak) ────────────
@@ -2797,10 +2904,20 @@ export function selectResults({ query, ranked, k = 6 }) {
 
 // Query every repo, pool, rerank on a common scale, return global top-k labeled by repo.
 export async function searchAll({
-  dir, query, k = 6, pool = 64, repos, _routeStage = false, allowFullCorpus = true,
+  dir, query, k = 6, pool = 64, repos, _routeStage = false, allowFullCorpus = true, deadline = null,
 }) {
   // The reranker needs a bounded candidate pool larger than the requested output list.
   pool = Math.max(pool, k);
+  // THE FULL-CORPUS LANE IS THE ONE THAT CAN RUN AWAY. It is reached only when the caller named no
+  // repos and this is not the scoped sub-call — i.e. exactly the "router could not place it, search
+  // everything" path. Naming it once here is what lets the pair budget below apply to that lane and
+  // to nothing else.
+  const fullCorpusLane = (!repos || !repos.length) && !_routeStage;
+  // Rare, exact tokens the question names (a dotted filename, a camelCase symbol, an issue ref).
+  // Ordinary prose yields none, scans nothing, and pays nothing.
+  const identifierTokens = exactIdentifiers(query);
+  const identifierScanTokens = scannableIdentifiers(query);
+  deadline?.check('route');
   const discovered = (repos && repos.length) ? repos : discoverRepos(dir);
   let routing = null;
   if ((!repos || !repos.length) && !_routeStage) {
@@ -2822,10 +2939,18 @@ export async function searchAll({
     // routinely routes these to an unrelated memory store (for example AgentDB), then forces the
     // uncapped 6k+ passage fallback.  Keep the source search bounded to the reviewed owners; the
     // cross-encoder still proves which one answers, and concepts remains the honest card fallback.
+    // AN OWNER LIST THAT MATCHES NOTHING MUST NOT OVERWRITE A ROUTE THAT DID. These intent
+    // overrides name the reviewed owners on the REAL corpus; on any other bundle the filter can
+    // collapse to `concepts` alone (or to nothing), and overwriting the card router's correct
+    // answer with that turned a card-answerable question into a cold embedder + cold reranker
+    // load. `concepts` is an aggregate primer store, never an implementation owner — it cannot
+    // carry the source proof these intents exist to find, so it does not count as a reason to
+    // override. Measured by tests/unit/forge-ask-all.test.mjs's colloquial cost-quality case.
+    const ownsSource = (repos) => repos.some((repo) => repo !== 'concepts');
     if (costQualityTradeoffQuestion(query)) {
       const costRepos = ['agentic-flow', 'metaharness', 'agentic-qe', 'concepts']
         .filter((repo) => discovered.includes(repo));
-      if (costRepos.length) {
+      if (ownsSource(costRepos)) {
         planned = {
           repos: costRepos,
           namedRepos: [],
@@ -2840,7 +2965,7 @@ export async function searchAll({
     // shipped repo-aliases registry instead of treating it as a different product.
     if (fixedModelHarnessEvolutionQuestion(query)) {
       const harnessRepos = ['metaharness', 'concepts'].filter((repo) => discovered.includes(repo));
-      if (harnessRepos.length) {
+      if (ownsSource(harnessRepos)) {
         planned = {
           repos: harnessRepos,
           namedRepos: [],
@@ -2857,7 +2982,7 @@ export async function searchAll({
     if (cheapFirstFailureEscalationQuestion(query)) {
       const escalationRepos = ['agentic-flow', 'metaharness', 'concepts']
         .filter((repo) => discovered.includes(repo));
-      if (escalationRepos.length) {
+      if (ownsSource(escalationRepos)) {
         planned = {
           repos: escalationRepos,
           namedRepos: [],
@@ -2951,6 +3076,25 @@ export async function searchAll({
       };
       planned.reason = 'source intent selects the on-device HNSW index and zero-server deployment';
     }
+    // ── IDENTIFIER ROUTING (kb/identifier-lane.mjs) ───────────────────────────────────────────
+    // A cross-encoder cannot promote a document from a store that was never opened. The card
+    // router read "agentdb" out of the middle of the identifier `agentdb-memory.db` and searched
+    // agentdb; the defining source is ruflo's changelog #2786 and its memory-bridge.ts, and ruflo
+    // was never opened. A literal scan says exactly which stores carry the identifiers (measured
+    // 4.17 s over 466 MB, cached per process), so the route is WIDENED by that evidence. Widened,
+    // never narrowed: whatever the cards chose is still searched.
+    if (identifierScanTokens.length && planned.repos.length) {
+      deadline?.enter('identifier-scan');
+      const scan = identifierScan(dir, identifierScanTokens, { maxRepos: 2 });
+      const added = scan.repos.filter((repo) => discovered.includes(repo) && !planned.repos.includes(repo));
+      if (added.length) {
+        planned = {
+          ...planned,
+          repos: [...planned.repos, ...added],
+          reason: `${planned.reason}; widened to ${added.join(', ')} — ${identifierScanTokens.join(', ')} appear there`,
+        };
+      }
+    }
     if (planned.repos.length && planned.repos.length < discovered.length) {
       const sourceCard = await sourceBackedCardLane({ dir, query, k, planned });
       if (sourceCard) return sourceCard;
@@ -2962,6 +3106,7 @@ export async function searchAll({
         repos: planned.repos,
         _routeStage: true,
         allowFullCorpus,
+        deadline,
       });
       const scopedErrors = Object.values(scoped.perRepo)
         .filter((value) => typeof value === 'string' && value.startsWith('ERR:'));
@@ -3085,6 +3230,9 @@ export async function searchAll({
   const RESCUE_DEPTH = Math.max(64, pool);
 
   const searchOne = async (name) => {
+    // Between-repo checkpoint: the fanout is the phase most likely to be running when a large
+    // corpus eats the budget, and a repo is the smallest unit it can be interrupted between.
+    deadline?.check(`retrieve:${name}`);
     try {
       // The concepts store holds ALL repos' prose primers in one place, so it needs a deeper pool than a
       // single source repo — otherwise the queried repo's own primer is crowded out by the other 18 before
@@ -3157,6 +3305,16 @@ export async function searchAll({
           .filter((candidate) => !seen.has(candidate.path));
         cands = cands.concat(details);
       }
+      // The identifier lane rides the exempt `rescue` lane for the same reason #33 Part A does: a
+      // boost cannot rescue a candidate that never reached the pool, and an identifier's own
+      // document is routinely buried past rank 40 by dense retrieval.
+      if (identifierScanTokens.length) {
+        const seen = new Set(cands.map((candidate) => candidate.path));
+        const scan = identifierScan(dir, identifierScanTokens, { maxRepos: 2 });
+        const byIdentifier = identifierCandidates(scan, name, identifierTokens)
+          .filter((candidate) => !seen.has(candidate.path));
+        cands = cands.concat(byIdentifier);
+      }
       if (isTranscriptStore(name)) {
         const seen = new Set(hits.map((h) => h.path));
         const bm = meetingBm25Candidates(dir, name, query, 40).filter((c) => !seen.has(c.path));
@@ -3193,9 +3351,16 @@ export async function searchAll({
   // otherwise a replay would break ties differently from production and quietly measure a
   // different policy than the one being shipped.
   for (let i = 0; i < pooledAll.length; i++) pooledAll[i]._poolIdx = i;
+  // An explicit KB_CE_MAX_PAIRS is the operator's word and wins on every lane. Absent that, the
+  // full-corpus fallback takes the measured B=408 budget (see FULL_CORPUS_MAX_PAIRS_DEFAULT) and
+  // every other lane keeps CE_MAX_PAIRS_DEFAULT — which is 0, i.e. unchanged.
   const capLimit = process.env.KB_CE_MAX_PAIRS !== undefined
     ? Math.max(0, parseInt(process.env.KB_CE_MAX_PAIRS, 10) || 0)
-    : CE_MAX_PAIRS_DEFAULT;
+    : fullCorpusLane
+      ? (process.env.KB_FULL_CORPUS_MAX_PAIRS !== undefined
+        ? Math.max(0, parseInt(process.env.KB_FULL_CORPUS_MAX_PAIRS, 10) || 0)
+        : FULL_CORPUS_MAX_PAIRS_DEFAULT)
+      : CE_MAX_PAIRS_DEFAULT;
   // THE CASCADE (ADR-058). Stage 1 reads every pooled pair at a truncated length and stage 2 gives
   // the survivors the full read. Both stages are the SAME model on the SAME logit scale, which is
   // what makes stage 1 a real approximation of stage 2 rather than a second opinion — the property
@@ -3210,14 +3375,15 @@ export async function searchAll({
   let s1 = null, prefilterMs = 0;
   if (cascadeK > 0 && pooledAll.length > cascadeK) {
     const t0 = Date.now();
-    s1 = await cePrefilterScores(query, pooledAll, { maxLength: cascadeTokens });
+    s1 = await cePrefilterScores(query, pooledAll, { maxLength: cascadeTokens, deadline });
     prefilterMs = Date.now() - t0;
   }
   const { kept: candidates, dropped: cappedOut } = s1
     ? cascadeRerankPool(pooledAll, { limit: cascadeK, s1 })
     : capRerankPool(pooledAll, { limit: capLimit });
   // ONE cross-encoder pass over the whole cross-repo pool → a single comparable relevance scale.
-  const ranked = await rerankPairs(query, candidates);
+  deadline?.check('rerank');
+  const ranked = await rerankPairs(query, candidates, { deadline });
   // Recording the SCORED pool (not the answer) is what makes a pool-policy change measurable: one
   // 605-pair run, then selectResults replayed against those exact scores for any candidate policy.
   if (process.env.KB_CE_TRACE) {
@@ -3270,9 +3436,41 @@ function parseArgs() {
 async function main() {
   const { dir, query, k, pool, repos, bounded } = parseArgs();
   if (!query) { console.error('Usage: node forge-ask-all.mjs --dir <bundle-dir> --q "question" [--k 6] [--pool 8] [--repos a,b]'); process.exit(2); }
-  const { repos: used, perRepo, results, pooled, pooledAll, cappedOut, prefiltered, prefilterTokens, adrCollision, evidence, implementation } = await searchAll({
-    dir, query, k, pool, repos, allowFullCorpus: !bounded,
+  // EVERY QUESTION ENDS. The cooperative deadline interrupts between repos and between
+  // cross-encoder batches; the watchdog is the backstop for a phase that blocks the event loop
+  // past its own checkpoint. Both name the phase that overran, because "it hung" is not a
+  // diagnosis anyone can act on. See kb/query-deadline.mjs for the measurement that forced this.
+  const deadline = createDeadline({ ms: resolveDeadlineMs() });
+  const disarm = armProcessWatchdog(deadline, {
+    // Reap any forked cross-encoder children before the forced exit, so a timeout can never leave
+    // orphaned work behind (verified with `ps` after a forced timeout).
+    onExpire: async () => {
+      try {
+        const m = await import(new URL('./forge-rerank.mjs', import.meta.url).href);
+        await m.ceWorkerShutdown();
+      } catch { /* nothing to reap */ }
+    },
   });
+  let searched;
+  try {
+    searched = await searchAll({
+      dir, query, k, pool, repos, allowFullCorpus: !bounded, deadline,
+    });
+  } catch (e) {
+    if (e instanceof QueryDeadlineExceeded) {
+      console.error(`\n${describeDeadline(e)}`);
+      try {
+        const m = await import(new URL('./forge-rerank.mjs', import.meta.url).href);
+        await m.ceWorkerShutdown();
+      } catch { /* nothing to reap */ }
+      disarm();
+      process.exit(DEADLINE_EXIT_CODE);
+    }
+    disarm();
+    throw e;
+  }
+  disarm();
+  const { repos: used, perRepo, results, pooled, pooledAll, cappedOut, prefiltered, prefilterTokens, adrCollision, evidence, implementation, corpusAge } = searched;
   // ── GONG LAYER (CLI): all repos erroring is an OUTAGE, not a quiet zero. Banner + exit 1 + alarm.
   // The non-zero exit is load-bearing: scripts/nightly-wrapper.sh's canary and any cron/CI caller
   // rely on it — a total failure that exits 0 is exactly the silent death this exists to kill.
@@ -3297,6 +3495,17 @@ async function main() {
       .catch(() => {});
   }
   console.log(`\n=== RuvNet Brain (cross-repo) — "${query}" ===`);
+  // PARITY WITH THE MCP SURFACE (kb/corpus-freshness.mjs). The CLI has computed corpusAge on every
+  // query since issue #31 and printed NONE of it, so the same brain warned an MCP caller that its
+  // version facts were a snapshot and told a terminal caller nothing. Same sentence, one source.
+  const staleness = stalenessNotice(corpusAge);
+  if (staleness) console.log(staleness);
+  const intent = versionIntent(query);
+  if (intent.intent) {
+    const liveVersions = await probeLiveVersions(intent.packages);
+    const advisory = freshnessAdvisory({ query, dir, corpusAge, liveVersions });
+    if (advisory) console.log(advisory);
+  }
   // Surface the ambiguity BEFORE the results, so it is read as a caveat on everything below rather
   // than a footnote after the reader has already accepted the first hit as "the" answer.
   if (adrCollision) console.log(`⚠ ${adrCollision.note}`);

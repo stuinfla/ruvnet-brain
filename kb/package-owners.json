@@ -1,3 +1,6 @@
 {
-  "@claude-flow/neural": "ruflo"
+  "//": "Which repo PUBLISHES a scoped npm package, so a question naming the package searches the repo that contains it. '@scope/*' owns a whole scope; an exact '@scope/name' entry always wins over the wildcard. Grounded 2026-09-11 by counting distinct '\"name\": \"@scope/...\"' manifests per store in ~/.cache/ruvnet-brain/kb (builtUtc 2026-08-20T07:16:20.675Z): @claude-flow -> ruflo 20, metaharness 1, synaptic-mesh 2; @ruvector -> ruvector 16, six other stores 1 each (vendored copies, not publishers).",
+  "@claude-flow/*": "ruflo",
+  "@claude-flow/neural": "ruflo",
+  "@ruvector/*": "ruvector"
 }

@@ -59,6 +59,29 @@ const SEARCH_TOOL = {
     },
     required: ['query'],
   },
+  // ── WHY THIS TOOL IS DECLARED READ-ONLY ───────────────────────────────────────────────────────
+  // Its three siblings below (MANAGED_CLI_TOOLS) have carried annotations since they shipped; this
+  // one did not, and a host that must assume the worst therefore assumed it. Observed 2026-09-11:
+  // Claude Code's plan mode REFUSED search_ruvnet three times in one session ("Cannot call
+  // search_ruvnet while in plan mode") — so the one tool whose entire purpose is grounding a plan
+  // in rUv's real source was unavailable at exactly the moment a plan is written. An unannotated
+  // tool is not a neutral default; it is a claim of "may mutate", made by omission.
+  //
+  // The claim is checked, not asserted. Every write reachable from a search_ruvnet call was walked
+  // (kb/forge-mcp-all.mjs meterLog + markGroundingProven, kb/brain-alarm.mjs health.json,
+  // kb/telemetry-ping.mjs stamp/queue, and this file's refreshLease): all of them land under
+  // ~/.cache/ruvnet-brain — or $XDG_CACHE_HOME/ruvnet-brain — plus $RUVNET_BRAIN_STATE_DIR for the
+  // off-switch READ. Nothing is written into the user's project tree, nothing is deleted, and
+  // nothing outside this cache is touched; that property is not incidental, it is the fix issue #36
+  // (mamd69) landed after three writers had scattered hidden directories through project trees.
+  // Internal receipt/cache/telemetry writes under the user's cache dir are exactly what
+  // readOnlyHint is meant to tolerate — the hint is about the caller's world, not about whether the
+  // process ever calls write(2).
+  //
+  // idempotentHint: the same question over the same immutable corpus snapshot returns the same
+  // ranked documents — the cross-encoder is byte-for-byte deterministic for a fixed batch
+  // (evals/runs/2026-07-27-cross-encoder-pool-cap.md) and the pool order is stable by construction.
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
 };
 const FALLBACK_TOOLS = [SEARCH_TOOL, ...MANAGED_CLI_TOOLS];
 

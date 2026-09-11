@@ -328,6 +328,22 @@ function mergeHeads(heads) {
     }
   }
 
+  // CARRY THE FIELDS THIS MERGE DOES NOT KNOW ABOUT (provenance, evidence, anything a later producer
+  // adds). The merge used to build `state` from its two hard-coded field lists alone, so every extra
+  // key silently VANISHED the moment a project had two heads — and provenance is exactly the kind of
+  // field whose disappearance turns "we guessed this from a transcript" into an unmarked fact.
+  const knownFields = new Set([...STATE_ARRAY_FIELDS, ...STATE_VALUE_FIELDS, 'journalHeads', 'sourceIdentity']);
+  const extraFields = [...new Set(heads.flatMap((head) => Object.keys(head.completeProjectState)))]
+    .filter((field) => !knownFields.has(field)).sort();
+  for (const field of extraFields) {
+    const values = uniqueSorted(heads.map((head) => head.completeProjectState[field] ?? null));
+    if (values.length === 1) state[field] = values[0];
+    else {
+      state[field] = null;
+      conflicts.push(conflict(field, heads, (head) => head.completeProjectState[field] ?? null));
+    }
+  }
+
   const sources = uniqueSorted(heads.map((head) => head.sourceIdentity));
   if (sources.length === 1) state.sourceIdentity = sources[0];
   else {
