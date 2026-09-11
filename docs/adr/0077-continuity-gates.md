@@ -9,13 +9,7 @@ authors: [Stuart Kerr, Codex]
 tags: [architecture, automation, adr, gates, ci, enforcement, ddd]
 supersedes: []
 relates: [ADR-009, ADR-012, ADR-020, ADR-034, ADR-055, ADR-061, ADR-067, ADR-070, ADR-072, ADR-074, ADR-075, ADR-076]
-governs:
-  - docs/adr/
-  - .github/workflows/adr-continuity-gate.yml
-  - scripts/adr-validate.mjs
-  - scripts/adr-supersede-check.mjs
-  - scripts/adr-impl-status.mjs
-  - tests/unit/adr-gate-*.test.mjs
+governs: []
 ---
 
 **Status**: Rejected (2026-09-11)

@@ -8,13 +8,7 @@ authors: [Stuart Kerr, Codex]
 tags: [architecture, memory, agentdb, continuity, decisions, recall, ledger]
 supersedes: []
 relates: [ADR-019, ADR-023, ADR-073, ADR-075]
-governs:
-  - .swarm/memory.db
-  - .swarm/sessions.jsonl
-  - plugin/hooks/memory-ensure.mjs
-  - plugin/hooks/memory-store-decisions.mjs
-  - scripts/memory-init.mjs
-  - tests/unit/memory-full-integration.test.mjs
+governs: []
 ---
 
 **Status**: Rejected (2026-09-11)

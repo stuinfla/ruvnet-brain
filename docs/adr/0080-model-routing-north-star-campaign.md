@@ -8,10 +8,7 @@ authors: [System Architect, Claude, Codex]
 tags: [architecture, model-routing, optimization, north-star, campaign]
 supersedes: []
 relates: [ADR-079, ADR-073, ADR-050, ADR-077, ADR-078]
-governs:
-  - scripts/model-router.mjs
-  - config/model-routing.json
-  - .github/workflows/campaign-*.yml
+governs: []
 ---
 
 **Status**: Rejected (2026-09-11)

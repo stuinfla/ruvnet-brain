@@ -8,9 +8,7 @@ authors: [Claude Haiku, System Architecture]
 tags: [architecture, model-routing, optimization, north-star, campaign]
 supersedes: []
 relates: [ADR-078, ADR-079, ADR-080, ADR-077]
-governs:
-  - scripts/model-router.mjs
-  - config/model-routing.json
+governs: []
 ---
 
 **Status**: Rejected (2026-09-11)

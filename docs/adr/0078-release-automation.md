@@ -8,13 +8,7 @@ authors: [Stuart Kerr, Codex]
 tags: [architecture, release, ci, automation, versioning, semver, deployment, npm]
 supersedes: []
 relates: [ADR-009, ADR-018, ADR-020, ADR-034, ADR-055, ADR-070, ADR-072, ADR-075, ADR-076, ADR-077]
-governs:
-  - scripts/release.mjs
-  - .github/workflows/release.yml
-  - .github/workflows/publish-npm.yml
-  - package.json (version field)
-  - CHANGELOG.md
-  - .releaserc.json
+governs: []
 ---
 
 **Status**: Rejected (2026-09-11)

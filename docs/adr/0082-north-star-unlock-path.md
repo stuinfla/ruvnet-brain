@@ -8,11 +8,7 @@ authors: [Stuart Kerr, Codex]
 tags: [architecture, north-star, coordination, memory, gates, release, testing]
 supersedes: []
 relates: [ADR-076, ADR-077, ADR-078, ADR-079]
-governs:
-  - docs/adr/0076-*.md
-  - docs/adr/0077-*.md
-  - docs/adr/0078-*.md
-  - docs/adr/0079-*.md
+governs: []
 ---
 
 **Status**: Rejected (2026-09-11)

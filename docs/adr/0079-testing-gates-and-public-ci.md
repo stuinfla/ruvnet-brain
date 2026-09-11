@@ -8,15 +8,7 @@ authors: [Stuart Kerr, Codex]
 tags: [architecture, testing, ci, gates, enforcement, coverage, performance, visibility]
 supersedes: []
 relates: [ADR-009, ADR-012, ADR-020, ADR-034, ADR-055, ADR-061, ADR-069, ADR-070, ADR-072, ADR-075, ADR-076, ADR-077, ADR-078]
-governs:
-  - tests/
-  - .github/workflows/tests.yml
-  - .github/workflows/performance.yml
-  - scripts/gate-runner.mjs
-  - scripts/coverage-report.mjs
-  - scripts/performance-baseline.mjs
-  - vitest.config.js
-  - jest.config.js
+governs: []
 ---
 
 **Status**: Rejected (2026-09-11)
