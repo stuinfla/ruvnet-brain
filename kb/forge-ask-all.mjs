@@ -1553,8 +1553,20 @@ async function sourceBackedCardLane({ dir, query, k, planned }) {
     : planned.repos;
   for (const repo of proofRepos) {
     if (repo === 'concepts') continue;
-    const cardRepo = planned.cardRepos?.[repo] || repo;
-    const card = cards.find((candidate) => candidate.repo === cardRepo);
+    // ALIAS-AWARE, BECAUSE THE ROUTER IS. A store is routinely reached through a card written under
+    // a different heading — `metaharness` is served by the `agent-harness-generator` card, and
+    // store-root.mjs's darkStores() carries the identical fix with the identical example. Looking
+    // the card up by exact store name made this lane silently return null for every such store, so
+    // a question that the cards fully answer fell through to the cold embedder + cold reranker:
+    // tests/unit/forge-ask-all.test.mjs's colloquial scaffolding and cost-quality cases have been
+    // red on exactly that. `repositoryNames` is the ROUTER'S OWN resolver, imported rather than
+    // reimplemented; the exact-name lookup still wins so an explicit cardRepos mapping is honored.
+    const requestedCardRepo = planned.cardRepos?.[repo] || repo;
+    const aliasNames = new Set(repositoryNames(repo, dir).map((name) => String(name).toLowerCase()));
+    const card = cards.find((candidate) => candidate.repo === requestedCardRepo)
+      || cards.find((candidate) => aliasNames.has(String(candidate.repo).toLowerCase()));
+    // Downstream proof tokens must describe the card we ACTUALLY matched, not the name we asked for.
+    const cardRepo = card ? card.repo : requestedCardRepo;
     const metaFile = path.join(dir, `${repo}.meta.json`);
     if (!card || !fs.existsSync(metaFile)) continue;
 
@@ -2862,10 +2874,18 @@ export async function searchAll({
     // routinely routes these to an unrelated memory store (for example AgentDB), then forces the
     // uncapped 6k+ passage fallback.  Keep the source search bounded to the reviewed owners; the
     // cross-encoder still proves which one answers, and concepts remains the honest card fallback.
+    // AN OWNER LIST THAT MATCHES NOTHING MUST NOT OVERWRITE A ROUTE THAT DID. These intent
+    // overrides name the reviewed owners on the REAL corpus; on any other bundle the filter can
+    // collapse to `concepts` alone (or to nothing), and overwriting the card router's correct
+    // answer with that turned a card-answerable question into a cold embedder + cold reranker
+    // load. `concepts` is an aggregate primer store, never an implementation owner — it cannot
+    // carry the source proof these intents exist to find, so it does not count as a reason to
+    // override. Measured by tests/unit/forge-ask-all.test.mjs's colloquial cost-quality case.
+    const ownsSource = (repos) => repos.some((repo) => repo !== 'concepts');
     if (costQualityTradeoffQuestion(query)) {
       const costRepos = ['agentic-flow', 'metaharness', 'agentic-qe', 'concepts']
         .filter((repo) => discovered.includes(repo));
-      if (costRepos.length) {
+      if (ownsSource(costRepos)) {
         planned = {
           repos: costRepos,
           namedRepos: [],
@@ -2880,7 +2900,7 @@ export async function searchAll({
     // shipped repo-aliases registry instead of treating it as a different product.
     if (fixedModelHarnessEvolutionQuestion(query)) {
       const harnessRepos = ['metaharness', 'concepts'].filter((repo) => discovered.includes(repo));
-      if (harnessRepos.length) {
+      if (ownsSource(harnessRepos)) {
         planned = {
           repos: harnessRepos,
           namedRepos: [],
@@ -2897,7 +2917,7 @@ export async function searchAll({
     if (cheapFirstFailureEscalationQuestion(query)) {
       const escalationRepos = ['agentic-flow', 'metaharness', 'concepts']
         .filter((repo) => discovered.includes(repo));
-      if (escalationRepos.length) {
+      if (ownsSource(escalationRepos)) {
         planned = {
           repos: escalationRepos,
           namedRepos: [],
