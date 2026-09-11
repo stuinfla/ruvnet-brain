@@ -638,10 +638,16 @@ function gatherSavings() {
     }
   }
   const usdSaved = +receipts.reduce((a, r) => a + (r.measuredUsd || 0), 0).toFixed(4);
+  const timed = receipts.filter((r) => r.measuredMs !== null);
   const totals = receipts.length ? {
     count: receipts.length,
     usdSaved,
+    // SIGNED, and it stays signed. A net-slower ledger sums negative and is REPORTED negative — the
+    // page once turned that into a dash (console audit 2026-09-11: −46,737 ms across 25 timed
+    // routes, 23 of them slower than baseline, rendered as "—"). A loss is a finding about the
+    // router; `timedCount` says how many routes the number is even about.
     msSaved: receipts.reduce((a, r) => a + (r.measuredMs || 0), 0),
+    timedCount: timed.length,
     baselineUsd: +baselineUsd.toFixed(4),
     pctSaved: baselineUsd > 0 ? Math.round((usdSaved / baselineUsd) * 100) : null,
   } : null;
@@ -3184,6 +3190,7 @@ export {
   gatherRouterEngine,
   autoEligibleIds,
   gatherConfig,
+  gatherSavings,
 };
 // Exported for the cross-project cache-isolation test (console-cache-scope.test.mjs). serveCached's
 // scopeKey is the guard that stops one project's cached state being served for another.

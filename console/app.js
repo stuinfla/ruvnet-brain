@@ -109,6 +109,8 @@ const fmtMs = (ms) => {
   const m = Math.floor(s / 60);
   return `${m} m ${Math.round(s % 60)} s`;
 };
+// Signed time. A negative saving means routes were SLOWER than baseline — a finding, never a dash.
+const fmtSignedMs = (ms) => (ms == null || Number.isNaN(Number(ms)) ? '—' : (Number(ms) < 0 ? `−${fmtMs(-Number(ms))}` : fmtMs(ms)));
 
 const fmtDate = (iso) => {
   if (!iso) return '—';
@@ -2549,8 +2551,8 @@ function renderSavings(sv) {
         el('div', { class: 'total-num' }, fmtInt(taskCount)),
         el('div', { class: 'total-lab' }, 'tasks routed')),
       el('div', { class: 'total-tile' },
-        el('div', { class: 'total-num' }, util ? fmtUsd(util.frontierUsd) : (totals && totals.msSaved >= 0 ? fmtMs(totals.msSaved) : '—')),
-        el('div', { class: 'total-lab' }, util ? `if all on ${frontierName}` : 'time saved'))));
+        el('div', { class: 'total-num' }, util ? fmtUsd(util.frontierUsd) : (totals && totals.msSaved != null ? fmtSignedMs(totals.msSaved) : '—')),
+        el('div', { class: 'total-lab' }, util ? `if all on ${frontierName}` : (totals && totals.msSaved < 0 ? 'time cost' : 'time saved')))));
   }
 
   // WP2a — provenance, worn openly: these numbers are receipts, not projections.
@@ -2559,7 +2561,21 @@ function renderSavings(sv) {
     el('span', { class: 'prov-dot', 'aria-hidden': 'true' }),
     el('span', {}, 'real numbers — recomputed from your ',
       el('b', {}, `${fmtInt(receiptCount)} receipt${receiptCount === 1 ? '' : 's'}`),
-      ', never projected')));
+      ', never projected',
+      sv && sv.skippedUnmeasured
+        ? el('span', { class: 'muted' }, ` · ${fmtInt(sv.skippedUnmeasured)} row${sv.skippedUnmeasured === 1 ? '' : 's'} carried no $ or time and ${sv.skippedUnmeasured === 1 ? 'is' : 'are'} not counted`)
+        : '')));
+
+  // TIME, WITH ITS SIGN, ALWAYS. When the utilization hero is present the tile above shows frontier $
+  // instead of time, and the only other place the time result appeared turned negatives into a dash.
+  // A net loss is a finding about the router, not an embarrassment to hide.
+  if (totals && totals.msSaved != null) {
+    const neg = totals.msSaved < 0;
+    blocks.push(el('p', { class: `fineprint${neg ? ' bp-warn' : ''}` },
+      neg ? 'Time cost: ' : 'Time saved: ', el('b', {}, fmtSignedMs(totals.msSaved)),
+      totals.timedCount != null ? ` across ${fmtInt(totals.timedCount)} timed route${totals.timedCount === 1 ? '' : 's'}` : '',
+      neg ? ' — routed tasks took longer than their baseline in aggregate.' : '.'));
+  }
 
   // The distribution — how many tasks went to each bucket, and the saved-vs-frontier math.
   // (computed above, so the totals-strip can stand down when this hero is doing the talking)
