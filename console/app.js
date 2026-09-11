@@ -2997,6 +2997,22 @@ function bpProfileControl(profile) {
     },
   ];
   const radios = [];
+  // What the number on the card IS, said in words. `installed` is the brain on this disk; the
+  // bundle is what a restore would copy from. A choice with neither measured says so — a dash
+  // for a measured zero was the "— stores · 0 MB" lie this card carried until 2026-09-11.
+  const metaFor = (option, choice) => {
+    if (option.value === 'ruvector') return `1 store · ${bpSize(choice.bytes)}`;
+    if (choice.installed) return `${choice.installed.storeCount} stores · ${bpSize(choice.installed.bytes)} installed`;
+    if (choice.restoreBundle?.present) return `${choice.restoreBundle.storeCount} stores · ${bpSize(choice.restoreBundle.bytes)} in the local bundle`;
+    return 'not installed · size measured after restore';
+  };
+  // The restore mechanism, named — the same branch order saveBrainProfile() takes on Apply.
+  const restoreFor = (choice) => {
+    const where = choice.restoreBundle?.path || 'the release bundle path';
+    if (choice.restoreVia === 'local-bundle') return { warn: false, text: `Apply restores from the signed local bundle at ${where}.` };
+    if (choice.restoreVia === 'signed-download') return { warn: false, text: `No local bundle on this machine (${where}) — Apply downloads the signed complete release with forge-update and verifies it before anything lands. Size is measured after it does.` };
+    return { warn: true, text: `Complete Brain cannot be restored on this machine: no local bundle at ${where} and forge-update.mjs is not installed. Run the Brain update first.` };
+  };
   const cards = options.map((option) => {
     const choice = profile.choices?.[option.value] || {};
     const input = el('input', {
@@ -3013,12 +3029,13 @@ function bpProfileControl(profile) {
       el('span', { class: 'bp-profile-copy' },
         el('span', { class: 'bp-profile-title' }, option.title,
           option.value === current ? chip('active', 'green') : null),
-        el('span', { class: 'bp-profile-meta' },
-          `${choice.storeCount || (option.value === 'ruvector' ? 1 : '—')} ${choice.storeCount === 1 ? 'store' : 'stores'} · ${bpSize(choice.bytes)}`),
+        el('span', { class: 'bp-profile-meta' }, metaFor(option, choice)),
         el('span', { class: 'bp-profile-desc' }, option.copy),
-        choice.available === false
-          ? el('span', { class: 'bp-profile-desc bp-warn' }, 'The complete release bundle is not available on this machine; run the Brain update first.')
-          : null));
+        option.value === 'complete'
+          ? (() => { const r = restoreFor(choice); return el('span', { class: `bp-profile-desc${r.warn ? ' bp-warn' : ''}` }, r.text); })()
+          : (choice.available === false
+            ? el('span', { class: 'bp-profile-desc bp-warn' }, 'No RuVector store exists on this machine or in a local bundle; run the Brain update first.')
+            : null)));
   });
 
   apply.onclick = async () => {

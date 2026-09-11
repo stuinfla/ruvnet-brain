@@ -791,8 +791,21 @@ function gatherBrainProfile() {
     : installed.stores.length === 1
       ? PROFILE_RUVECTOR
       : PROFILE_COMPLETE;
+  // THE "— stores · 0 MB" LIE (console audit 2026-09-11). `choices.complete` was rendered from
+  // `source` — the restore BUNDLE at COMPLETE_BRAIN_SOURCE, which on an installed host resolves to
+  // <runtime>/dist/ruvnet-brain and never exists after install — while `installed`, measured three
+  // lines up (184 stores, 979 MB on the owner's machine), went unused. discoverStoreFamilies()
+  // swallows ENOENT into [], so a complete brain rendered as zero and wore an `active` badge over it.
+  // Two different questions are now answered separately: what is INSTALLED here, and by which path
+  // Apply→complete could RESTORE it here. The path order mirrors saveBrainProfile()'s own branches
+  // (local bundle, then the signed forge-update download, then nothing), so the card describes the
+  // exact mechanism Apply would take — never a hopeful one, never a number nobody measured.
   const source = measureBrainProfile(COMPLETE_BRAIN_SOURCE);
+  const bundlePresent = source.stores.includes(PROFILE_RUVECTOR) && source.storeCount > 1;
   const updaterAvailable = fs.existsSync(path.join(INSTALLED_KB, 'forge-update.mjs'));
+  const restoreVia = bundlePresent ? 'local-bundle' : updaterAvailable ? 'signed-download' : null;
+  const completeInstalled = actual === PROFILE_COMPLETE;
+  const restorePath = COMPLETE_BRAIN_SOURCE.replace(CONSOLE_ROOT, '~');
   return {
     path: INSTALLED_KB.replace(CONSOLE_ROOT, '~'),
     values: { brainProfile: actual },
@@ -803,10 +816,20 @@ function gatherBrainProfile() {
     installed,
     choices: {
       complete: {
-        available: (source.stores.includes(PROFILE_RUVECTOR) && source.storeCount > 1)
-          || updaterAvailable,
-        storeCount: source.storeCount,
-        bytes: source.bytes,
+        available: restoreVia !== null,
+        // From the INSTALLED brain when complete is what is installed; from the local bundle when one
+        // exists to restore from; otherwise null — never a 0 that nothing measured.
+        storeCount: completeInstalled ? installed.storeCount : bundlePresent ? source.storeCount : null,
+        bytes: completeInstalled ? installed.bytes : bundlePresent ? source.bytes : null,
+        installed: completeInstalled ? { storeCount: installed.storeCount, bytes: installed.bytes } : null,
+        restoreBundle: {
+          present: bundlePresent,
+          path: restorePath,
+          storeCount: bundlePresent ? source.storeCount : null,
+          bytes: bundlePresent ? source.bytes : null,
+        },
+        updaterAvailable,
+        restoreVia,
       },
       ruvector: {
         available: installed.stores.includes(PROFILE_RUVECTOR)
