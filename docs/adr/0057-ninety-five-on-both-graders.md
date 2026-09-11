@@ -8,7 +8,7 @@ impl: verification-expired
 verified: 2026-07-30
 verified_digest: 1c276a7dfbc5
 verified_by: governed-source claim ledger in this ADR plus node scripts/doc-currency.mjs --json
-reviewed_digest: 28181f9186dd
+reviewed_digest: 20eddda2af93
 governs:
   - scripts/behavioral-l1-l4.mjs
   - scripts/no-silent-substitution.mjs
@@ -253,6 +253,7 @@ to the five governed paths; it does not adjudicate the product or substitute for
 
 | date | why |
 |---|---|
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged — the observability law is untouched; `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `tests/mesh/coexistence.test.mjs` did not move. `plugin/hooks/hooks.json` net vs 85f584b2 is the three gate registrations of `7b8e6e73` after the `76632b15` break and `9c45d408` restore (see ADR-0055's row); `bin/install.mjs` `dc18fadc` plus pre-session `6971f642` / `642e3e5c` / `41bbd5fb`. No review row had been recorded since 2026-08-30; the stored digest predated today's motion. | Reviewed `plugin/hooks/hooks.json`, `bin/install.mjs`, `scripts/behavioral-l1-l4.mjs`. reviewed_digest 20eddda2af93. |
 | 2026-08-30 | Rechecked scripts/behavioral-l1-l4.mjs in 05cabf0: L4 now proves quiet build behavior and still exercises all four real scenarios. |
 
 | Date | What changed | Why (with referents) |

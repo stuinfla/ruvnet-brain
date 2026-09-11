@@ -4,7 +4,7 @@ title: Codex host wiring — register MCP and adapt the full lifecycle without v
 status: Accepted
 date: 2026-07-24
 updated: 2026-09-11
-reviewed_digest: 863425336a13
+reviewed_digest: eada6371cfb9
 version: 1.1.3
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
@@ -290,6 +290,7 @@ These source observations do not establish native Windows or public installed-ho
 
 ## Currency log
 
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged — install-time registration into `$CODEX_HOME` is untouched. `plugin/hooks/codex-hooks.json`: a session edit (`a90c674b`) was reverted to 85f584b2 (`9c45d408`), then `7b8e6e73` registered `ground-ruvnet` at UserPromptSubmit through the Codex wrapper (ADR-040 amendment); net vs 85f584b2 +6/−1. `bin/install.mjs`: `dc18fadc` (retention wording, ADR-0070/0072) and pre-session `6971f642` / `642e3e5c` / `41bbd5fb`. `plugin/.codex-plugin/plugin.json` `4ff1dd1f` (4.3.22; the single source re-confirmed by `sync-version --check` after the 4.4.0 bump was reverted at `ca2f26fe`). Skills `60f269ad` pre-session. Codex PreToolUse / PostToolUse routes were deliberately not registered (delivery never observed); `plugin/scripts/codex-hook-adapter.mjs` is being re-reviewed separately by the integration owner. | Reviewed `plugin/hooks/codex-hooks.json`, `bin/install.mjs`, `plugin/.codex-plugin/plugin.json`. reviewed_digest eada6371cfb9. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. `plugin/hooks/codex-hooks.json` (`56420430`) moved from the empty `hooks: {}` registry to a bounded, fail-open "continuity plane" — `SessionStart` restores the canonical project checkpoint and `Stop` invokes only the project-scoped continuation gate, both via the same generation-independent wrapper §7 already describes. This is the next entry in this ADR's own already-tracked empty-registry ↔ live-hooks history (see the 2026-08-20/2026-08-19 rows below), not a contradiction of §6 (which governs the separate, still-empty repo-local `.codex/hooks.json`) or §7 (which describes the wrapper/adapter mechanism generically, not a hook count). The other 14 drift commits touch only `bin/install.mjs` (installer restart/race/release plumbing, reviewed under ADR-013/034/049) and skill-content wording; `.codex/config.toml`, `plugin/scripts/codex-hook-adapter.mjs`, `codex-hook-events.mjs`, and `codex-hook-wrapper.mjs` were not touched at all in this range. | Reviewed `plugin/hooks/codex-hooks.json`'s diff directly; confirmed the three core Codex transport files are untouched (`git log` empty for each) since `4823f1aa`. reviewed_digest 863425336a13. |
 | 2026-09-07 | Reviewed scheduler registration preserves custom Brain and KB paths; uninstall confirms scheduler absence before removing owned installation files; source digest 41114c475529. | `bin/install.mjs`; source review only, hosted and public acceptance remain pending. |
 
