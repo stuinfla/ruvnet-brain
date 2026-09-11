@@ -9,6 +9,7 @@
   "scripts": {
     "prepublishOnly": "node scripts/protected-release-invocation.mjs --prepublish-only",
     "test": "node plugin/test/run-tests.mjs",
+    "release": "node scripts/release-cli.mjs",
     "release:proof": "node scripts/release-proof.mjs",
     "benchmark:brain50": "node scripts/brain-latency-50.mjs",
     "benchmark:novice50": "node scripts/brain-novice-50.mjs",
