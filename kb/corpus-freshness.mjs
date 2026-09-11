@@ -89,10 +89,14 @@ const BARE_PACKAGES = Object.freeze([
  */
 export function versionIntent(query) {
   const q = String(query || '');
-  const asksVersion = /\b(?:latest|newest|current|most\s+recent)\s+(?:stable\s+)?(?:version|release|tag)\b/i.test(q)
-    || /\bversion\s+(?:is|of)\b[\s\S]{0,40}\b(?:latest|current|now|shipping)\b/i.test(q)
-    || /\bwhat\s+version\b/i.test(q)
-    || /\bwhich\s+version\b/i.test(q);
+  // "version control", "version history", "versioning" are about PRACTICE, not about which release
+  // is current. Stripping them first keeps "Which version control approach does ruflo use?" out of
+  // a lane that re-ranks every result toward changelogs.
+  const stripped = q.replace(/\bversion(?:s)?\s+(?:control|history|management)\b/gi, ' ');
+  const asksVersion = /\b(?:latest|newest|current|most\s+recent)\s+(?:stable\s+)?(?:version|release|tag)\b/i.test(stripped)
+    || /\bversion\s+(?:is|of)\b[\s\S]{0,40}\b(?:latest|current|now|shipping)\b/i.test(stripped)
+    || /\bwhat\s+version\b/i.test(stripped)
+    || /\bwhich\s+version\b/i.test(stripped);
   const asksChange = /\bwhat(?:'s|\s+is|\s+has)?\s+changed\b/i.test(q)
     || /\b(?:changelog|release\s+notes?|what's\s+new)\b/i.test(q)
     || /\bshipped\s+(?:recently|lately)\b/i.test(q);

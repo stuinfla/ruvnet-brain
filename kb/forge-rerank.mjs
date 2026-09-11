@@ -415,7 +415,7 @@ export async function cePrefilterScores(query, docs, { maxLength = 192, deadline
   let ce;
   try { ce = await loadCE(); }
   catch (e) { if (process.env.CE_DEBUG) console.error('CE load failed, no prefilter scores:', e.message); return null; }
-  return ceScoreAuto(ce, query, docs.map((d) => (typeof d === 'string' ? d : d.fullText || d.text || '')), maxLength, deadline);
+  return ceScoreAuto(ce, query, docs.map((d) => (typeof d === 'string' ? d : d._ceText || d.fullText || d.text || '')), maxLength, deadline);
 }
 
 // rerankPairs — cross-repo common-scale scorer. Given an ALREADY-RETRIEVED candidate list (e.g.
@@ -428,7 +428,11 @@ export async function rerankPairs(query, docs, { deadline = null } = {}) {
   let ce;
   try { ce = await loadCE(); }
   catch (e) { if (process.env.CE_DEBUG) console.error('CE load failed, using input order:', e.message); return docs.map((d) => ({ ...d, ceScore: null })); }
-  const scores = await ceScoreAuto(ce, query, docs.map((d) => d.fullText || d.text || ''), undefined, deadline);
+  // `_ceText` is the window a candidate's OWN lane says the ranker should judge — currently only
+  // the identifier lane sets it, to put the cross-encoder's 512-token read over the identifier
+  // rather than over whatever happened to be at the top of a 4,000-character chunk. It narrows what
+  // the RANKER reads, never what the reader is shown: fullText still carries the whole passage.
+  const scores = await ceScoreAuto(ce, query, docs.map((d) => d._ceText || d.fullText || d.text || ''), undefined, deadline);
   const scored = docs.map((d, i) => ({ ...d, ceScore: scores[i] }));
   scored.sort((a, b) => (b.ceScore ?? -Infinity) - (a.ceScore ?? -Infinity));
   return scored;

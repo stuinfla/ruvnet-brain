@@ -34,7 +34,17 @@ import {
   requiresImplementationProof,
 } from './implementation-evidence.mjs';
 import {
+  exactIdentifiers,
+  identifierBoost,
+  identifierCandidates,
+  identifierScan,
+  scannableIdentifiers,
+} from './identifier-lane.mjs';
+import {
   freshnessAdvisory,
+  highestSemver,
+  isReleaseDocument,
+  compareSemver,
   probeLiveVersions,
   stalenessNotice,
   versionIntent,
@@ -1543,6 +1553,19 @@ async function sourceBackedCardLane({ dir, query, k, planned }) {
       )
       || k < 2
       || !planned?.repos?.length) return null;
+  // A SCOPED PACKAGE NAME IS A QUESTION ABOUT AN EXACT ARTIFACT, AND THIS LANE CANNOT TELL TWO
+  // NEAR-NAMED ARTIFACTS APART. Measured 2026-09-11: "What is the latest version of @ruvector/rvf
+  // and what changed in it recently?" was answered by THIS lane (routing.lane = source-backed-card,
+  // ceScore undefined — no retrieval, no reranking) with
+  // `ruvector/crates/rvf/rvf-node/package.json`. That is a DIFFERENT npm package, presented as the
+  // witness for the one the user named. The lane picks its witness by lexical overlap over
+  // <repo>.meta.json previews, which cannot distinguish `@ruvector/rvf` from `@ruvector/rvf-node`.
+  //
+  // Its sibling fast lane already refuses this exact class ("scoped package detail requires source
+  // retrieval (…)", card-lane.mjs answerFromCards) — the source lane simply never inherited the
+  // guard. Declining hands the question to the retrieval lane, which has both the exact-manifest
+  // boost (#31) and the deep exact-name rescue (#33 Part A) built for precisely this distinction.
+  if (scopedNamesIn(query).size) return null;
   const cards = loadCards(dir);
   if (!cards?.length) return null;
 
@@ -2722,6 +2745,44 @@ export function selectResults({ query, ranked, k = 6 }) {
       }
     }
   }
+  // ── EXACT-IDENTIFIER EVIDENCE (kb/identifier-lane.mjs) ───────────────────────────────────────
+  // An identifier is the one kind of token whose whole value is that it does NOT generalise, which
+  // is exactly what a bi-encoder is built to destroy. Candidates that carry the question's
+  // identifiers are lifted by what they EARNED: a mention is the floor (all an echo of the question
+  // can ever get), and the rank is decided by definition-shaped context and by the document's own
+  // path. Measured case: "Which is canonical: .swarm/memory.db or .swarm/agentdb-memory.db?"
+  for (const r of ranked) {
+    if (r.ceScore == null || !r._exactIdentifier) continue;
+    const boost = identifierBoost(r._exactIdentifier);
+    if (boost > 0) { r.ceScore += boost; r.identifierBoosted = boost; }
+  }
+
+  // ── VERSION INTENT: THE NEWEST RELEASE RECORD WINS (kb/corpus-freshness.mjs) ──────────────────
+  // "What is the latest version of X" is not a similarity question. Measured 0/8 current answers
+  // on 2026-09-11: agentdb returned a "v3.0.0-alpha.6 Publishing Guide" while the live registry was
+  // at 3.0.0-alpha.20, and agentic-qe returned v3.9.11 notes while THE SAME CORPUS holds the
+  // v3.13.2 changelog. The second one is not a coverage gap; it is a ranking gap, and it is the one
+  // this fixes: among the release records in the pool, the one naming the highest semver wins.
+  const intent = versionIntent(query);
+  if (intent.intent) {
+    let best = null;
+    for (const r of ranked) {
+      if (r.ceScore == null) continue;
+      r._releaseDoc = isReleaseDocument(r);
+      r._topSemver = highestSemver(`${r.title || ''}\n${r.fullText || r.text || ''}`);
+      if (r._releaseDoc && compareSemver(r._topSemver, best) > 0) best = r._topSemver;
+    }
+    for (const r of ranked) {
+      if (r.ceScore == null) continue;
+      if (r._releaseDoc) { r.ceScore += 2.0; r.releaseDocBoosted = true; }
+      // Only the release record that actually carries the newest version the pool knows about —
+      // a changelog chunk stuck three minor versions back is precisely the failure being fixed.
+      if (r._releaseDoc && best && r._topSemver && compareSemver(r._topSemver, best) === 0) {
+        r.ceScore += 3.0; r.newestReleaseBoosted = true;
+      }
+    }
+  }
+
   ranked.sort((a, b) => (b.ceScore ?? -Infinity) - (a.ceScore ?? -Infinity));
 
   // ── BARE ADR-NUMBER QUERIES ARE AMBIGUOUS (issue #33 Part B, Jan Lafko / @lafinak) ────────────
@@ -2852,6 +2913,10 @@ export async function searchAll({
   // everything" path. Naming it once here is what lets the pair budget below apply to that lane and
   // to nothing else.
   const fullCorpusLane = (!repos || !repos.length) && !_routeStage;
+  // Rare, exact tokens the question names (a dotted filename, a camelCase symbol, an issue ref).
+  // Ordinary prose yields none, scans nothing, and pays nothing.
+  const identifierTokens = exactIdentifiers(query);
+  const identifierScanTokens = scannableIdentifiers(query);
   deadline?.check('route');
   const discovered = (repos && repos.length) ? repos : discoverRepos(dir);
   let routing = null;
@@ -3010,6 +3075,25 @@ export async function searchAll({
         [vectorRepo]: vectorRepo,
       };
       planned.reason = 'source intent selects the on-device HNSW index and zero-server deployment';
+    }
+    // ── IDENTIFIER ROUTING (kb/identifier-lane.mjs) ───────────────────────────────────────────
+    // A cross-encoder cannot promote a document from a store that was never opened. The card
+    // router read "agentdb" out of the middle of the identifier `agentdb-memory.db` and searched
+    // agentdb; the defining source is ruflo's changelog #2786 and its memory-bridge.ts, and ruflo
+    // was never opened. A literal scan says exactly which stores carry the identifiers (measured
+    // 4.17 s over 466 MB, cached per process), so the route is WIDENED by that evidence. Widened,
+    // never narrowed: whatever the cards chose is still searched.
+    if (identifierScanTokens.length && planned.repos.length) {
+      deadline?.enter('identifier-scan');
+      const scan = identifierScan(dir, identifierScanTokens, { maxRepos: 2 });
+      const added = scan.repos.filter((repo) => discovered.includes(repo) && !planned.repos.includes(repo));
+      if (added.length) {
+        planned = {
+          ...planned,
+          repos: [...planned.repos, ...added],
+          reason: `${planned.reason}; widened to ${added.join(', ')} — ${identifierScanTokens.join(', ')} appear there`,
+        };
+      }
     }
     if (planned.repos.length && planned.repos.length < discovered.length) {
       const sourceCard = await sourceBackedCardLane({ dir, query, k, planned });
@@ -3220,6 +3304,16 @@ export async function searchAll({
         const details = rvfBackendCandidates(dir, name, query)
           .filter((candidate) => !seen.has(candidate.path));
         cands = cands.concat(details);
+      }
+      // The identifier lane rides the exempt `rescue` lane for the same reason #33 Part A does: a
+      // boost cannot rescue a candidate that never reached the pool, and an identifier's own
+      // document is routinely buried past rank 40 by dense retrieval.
+      if (identifierScanTokens.length) {
+        const seen = new Set(cands.map((candidate) => candidate.path));
+        const scan = identifierScan(dir, identifierScanTokens, { maxRepos: 2 });
+        const byIdentifier = identifierCandidates(scan, name, identifierTokens)
+          .filter((candidate) => !seen.has(candidate.path));
+        cands = cands.concat(byIdentifier);
       }
       if (isTranscriptStore(name)) {
         const seen = new Set(hits.map((h) => h.path));
