@@ -7,23 +7,40 @@
 // instruction prefix at query time (forge-ask reads it from <name>.big.rvf.embed.json). Pool = CLS.
 //
 // MODES (embedding is the slow part — SHARD it across processes, then ingest once):
-//   node forge-big.mjs embed  --dir <d> --name <n> --shard <i> --of <n>   # write one vec shard
-//   node forge-big.mjs ingest --dir <d> --name <n>                        # assemble .big.rvf from shards
-//   node forge-big.mjs both   --dir <d> --name <n>                        # single-process (slow)
-//   node forge-big.mjs --smoke --dir <d> --name <n>                       # model sanity check
+//   node forge-big.mjs embed     --dir <d> --name <n> --shard <i> --of <n>   # write one vec shard
+//   node forge-big.mjs shard-all --dir <d> --name <n> --shards <n> [--stall-minutes <m>] [--poll-seconds <s>]
+//                                                                          # spawn+supervise all N shards
+//   node forge-big.mjs ingest    --dir <d> --name <n>                       # assemble .big.rvf from shards
+//   node forge-big.mjs both      --dir <d> --name <n>                       # single-process (slow)
+//   node forge-big.mjs --smoke   --dir <d> --name <n>                       # model sanity check
 //
 // Sharding: run N `embed` processes in parallel (shard 0..N-1), each writes one atomic
 // <name>.big.vecs.<i>-<N>.jsonl; then ONE `ingest` assembles them into <name>.big.rvf and writes
 // the query-side embed.json. Canonical passages/meta keep their unsuffixed names and are not
 // duplicated. Readers retain a fallback for legacy bundles. Shards are cleaned on success.
+//
+// PROGRESS + STALL DETECTION (2026-09-11, incident: an 8-shard gists embed sat at 0% CPU for six
+// hours overnight with a `job-heartbeat.sh` receipt that still said "running" — a live wrapper pid
+// proves the WRAPPER survived, it says nothing about whether the WORK inside it is still moving).
+// `embed` now writes `<name>.big.progress.<shard>-<of>.json` — `{shard, of, completed, total,
+// updatedAt}` — after every completed batch, tied to COMPLETED WORK rather than log/output activity
+// (which can lag behind, or misleadingly survive, a real stall). `shard-all` is the supervising
+// "parent embed process": it spawns all N `embed` children itself and polls their progress files;
+// if any shard's `completed` count has not advanced within `--stall-minutes` (default 15), it logs
+// which shard stalled, SIGTERMs (then SIGKILLs) every shard, and exits non-zero — refusing to let a
+// hung shard silently hold the corpus rebuild open. `scripts/nightly-watchdog.mjs` can also read the
+// same progress files directly (see its `readJobProgress`) to report STALLED for a job whose
+// heartbeat still says "running" but whose declared `progressGlob` has gone stale.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
+import { spawn } from 'node:child_process';
 import { loadRvf, loadTransformers, chooseModelCache } from './resolve-deps.mjs';
 import { materializeModelRevision, modelCacheReady } from './model-requirements.mjs';
 import { persistAndVerifyRvfIndex } from './rvf-index.mjs';
 import { lowerBuildPriority } from './process-priority.mjs';
+import { writeShardProgress, clearShardProgress, createStallWatcher } from './shard-progress.mjs';
 
 // BGE embedding can saturate a core for several minutes. Keep interactive lifecycle hooks
 // responsive while this maintenance job runs; unsupported/denied reprioritization is non-fatal.
@@ -103,11 +120,61 @@ async function embedShard(shardIdx, nShards) {
       fs.writeSync(fd, JSON.stringify({ id: batch[j].id, v }) + '\n');
     }
     done += batch.length;
+    // Tied to COMPLETED WORK, written after every batch — not throttled like the console log below,
+    // and not derived from log/CPU activity, either of which can lag behind (or misleadingly
+    // survive) a real stall. This is what shard-all's stall watcher and nightly-watchdog.mjs read.
+    writeShardProgress(DIR, NAME, shardIdx, nShards, done, mine.length);
     if ((i / BATCH) % 20 === 0) console.log(`[embed ${shardIdx}/${nShards}] ${done}/${mine.length} (${(done / ((Date.now() - t0) / 1000)).toFixed(1)}/s)`);
   }
   fs.closeSync(fd);
   fs.renameSync(outFile + '.tmp', outFile); // atomic: file appears only when complete
   console.log(`[embed ${shardIdx}/${nShards}] DONE ${done} in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  clearShardProgress(DIR, NAME, shardIdx, nShards); // finished — no longer a stall candidate
+}
+
+// ---------- MODE: spawn + supervise all N embed shards (the "parent embed process") ----------
+// Replaces a shell-level `&`/`wait` fan-out (nightly-gists.sh used to do this itself) with a
+// supervisor that can actually SEE per-shard progress and act on a stall, rather than just waiting
+// blindly for N background pids that might never finish.
+async function shardAll(nShards, { stallMinutes, pollSeconds } = {}) {
+  for (let i = 0; i < nShards; i++) clearShardProgress(DIR, NAME, i, nShards); // no stale progress from a prior crashed run
+  const scriptPath = path.resolve(process.argv[1]);
+  const children = [];
+  const exitCodes = new Array(nShards).fill(null);
+  const exits = [];
+  for (let i = 0; i < nShards; i++) {
+    const child = spawn(process.execPath, [scriptPath, 'embed', '--dir', DIR, '--name', NAME, '--shard', String(i), '--of', String(nShards)], { stdio: 'inherit' });
+    children.push(child);
+    exits.push(new Promise((resolve) => child.on('exit', (code, signal) => { exitCodes[i] = code ?? (signal ? 128 : 1); resolve(); })));
+  }
+  let stalledOut = false;
+  const killAll = () => {
+    for (const c of children) { if (exitCodes[children.indexOf(c)] === null) { try { c.kill('SIGTERM'); } catch { /* already gone */ } } }
+    setTimeout(() => {
+      for (const c of children) { if (exitCodes[children.indexOf(c)] === null) { try { c.kill('SIGKILL'); } catch { /* already gone */ } } }
+    }, 5000).unref();
+  };
+  const watcher = createStallWatcher({
+    dir: DIR, name: NAME, of: nShards, stallMs: stallMinutes * 60_000, pollMs: pollSeconds * 1000,
+    onStall: (i, info) => {
+      stalledOut = true;
+      console.error(`[shard-all] STALL: shard ${i}/${nShards} has not advanced past ${info.lastCompleted} passages in ${(info.staleMs / 60_000).toFixed(1)}m (stall budget ${stallMinutes}m) — terminating all shards`);
+      killAll();
+    },
+  });
+  await Promise.all(exits);
+  watcher.stop();
+  for (let i = 0; i < nShards; i++) clearShardProgress(DIR, NAME, i, nShards);
+  if (stalledOut) {
+    console.error('[shard-all] aborted due to a stalled shard — refusing to ingest a half-embedded corpus');
+    process.exit(1);
+  }
+  const failed = exitCodes.filter((c) => c !== 0).length;
+  if (failed > 0) {
+    console.error(`[shard-all] ${failed} of ${nShards} shard(s) exited nonzero (${exitCodes.join(',')})`);
+    process.exit(1);
+  }
+  console.log(`[shard-all] all ${nShards} shards completed`);
 }
 
 // ---------- MODE: ingest all shards into one .big.rvf ----------
@@ -173,6 +240,12 @@ async function smoke() {
 
 if (SMOKE) { await smoke(); }
 else if (MODE === 'embed') { await embedShard(parseInt(arg('--shard', '0'), 10), parseInt(arg('--of', '1'), 10)); }
+else if (MODE === 'shard-all') {
+  await shardAll(parseInt(arg('--shards', '8'), 10), {
+    stallMinutes: parseFloat(arg('--stall-minutes', '15')),
+    pollSeconds: parseFloat(arg('--poll-seconds', '15')),
+  });
+}
 else if (MODE === 'ingest') { await ingestStore(); }
 else if (MODE === 'both') { await embedShard(0, 1); await ingestStore(); }
-else { console.error('usage: forge-big.mjs <embed|ingest|both|--smoke> --dir <d> --name <n> [--shard i --of n]'); process.exit(2); }
+else { console.error('usage: forge-big.mjs <embed|shard-all|ingest|both|--smoke> --dir <d> --name <n> [--shard i --of n] [--shards n --stall-minutes m]'); process.exit(2); }
