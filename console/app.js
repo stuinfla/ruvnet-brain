@@ -3644,6 +3644,9 @@ function renderGates(g) {
   setChips('chips-gates', [
     chip(`${s.blocking} can block`, caught ? 'green' : 'cyan'),
     chip(caught ? `${caught} caught` : 'nothing caught yet', caught ? 'green' : 'grey'),
+    ...(s.unregisteredBlocking
+      ? [chip(`${s.unregisteredBlocking} unwired`, 'warn', 'Blocking gates that exist in the plugin but are registered in no hooks.json — they cannot stop anything until wired')]
+      : []),
   ]);
 
   const main = [];
@@ -3664,6 +3667,33 @@ function renderGates(g) {
       ? el('span', { class: 'muted' }, ` Wired twice, so it runs twice: ${dupes.join(', ')}.`)
       : '',
     infoBtn('What caught Claude', GATES_INFO)));
+
+  // WHICH hooks.json the plugin numbers came from. On an installed host the console's own repo path
+  // has no plugin/hooks/, and the card used to silently count zero plugin gates while Claude Code
+  // was loading them from the plugin cache. Named here so a zero can never again pass for absence.
+  main.push(el('p', { class: 'fineprint' },
+    g.pluginPath
+      ? ['Plugin gates read from ', el('code', {}, g.pluginPath),
+        g.pluginSource === 'installed' ? ' — the plugin Claude Code loads on this machine.'
+          : g.pluginSource === 'repo' ? ' — this repository checkout, not an installed plugin.' : '.']
+      : ['No plugin hooks.json was found on this machine — only machine-wide hooks are counted above.']));
+
+  // Blocking gates the launcher knows that NOTHING registers. "0 can block" and "4 enforcers are
+  // unplugged" are different sentences; only the second tells the owner what to do.
+  const unplugged = Array.isArray(g.unregistered) ? g.unregistered : [];
+  if (unplugged.length) {
+    main.push(el('p', { class: 'lead-stat' },
+      el('b', {}, String(unplugged.length)),
+      ` blocking gate${unplugged.length === 1 ? '' : 's'} exist${unplugged.length === 1 ? 's' : ''} in the plugin but ${unplugged.length === 1 ? 'is' : 'are'} registered in no hooks.json — ${unplugged.length === 1 ? 'it' : 'they'} cannot stop anything until wired: `,
+      ...unplugged.flatMap((u, i) => [i ? ', ' : '', el('code', {}, u.name), u.onDisk ? '' : el('span', { class: 'muted' }, ' (file missing)')]),
+      '.'));
+  }
+  if (Array.isArray(g.git) && g.git.length) {
+    main.push(el('p', { class: 'fineprint' },
+      'Git hooks in this checkout — they stop commits, not tool calls, so they are not in the count above: ',
+      ...g.git.flatMap((h, i) => [i ? ', ' : '', el('code', {}, h.name), h.executable ? '' : el('span', { class: 'muted' }, ' (not executable — will not run)')]),
+      '.'));
+  }
 
   if (caught) {
     // Deliberately NOT the .wire-lane grid: its fixed columns are sized for (count, label, meaning)
