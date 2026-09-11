@@ -146,3 +146,31 @@ categories and collapsing them is itself a modelling error:**
 Neither branch moves the Proactive/Self-impl score to 95 — that is deploy-gated (real ledger data +
 the spine flip), established by two independent regrades. This ADR is about **honesty and modelling**,
 which is worth doing on its own terms. Decision + duel transcript land in this ADR before any build.
+
+## Amendment 2026-09-11 — a second owner at UserPromptSubmit, outside the speech seam
+
+**Change.** `ground-ruvnet` (plugin/scripts/ground-ruvnet.sh) is registered at UserPromptSubmit again, beside
+`unprompted-speech`. It was registered there until 00526b12 (2026-09-07) retired every automatic gate; the
+retirement left the plane with no prompt-level grounding at all, and on 2026-09-11 the failure ADR-0011/0012
+exist to prevent recurred in this repo — a "configuration dashboard" was built without asking the brain whether
+one already existed (it did: `console/`, RVBC). Stuart: *"the fact that you don't have a hook set up to do that
+means you're a toy versus a solution."*
+
+**Why this does not violate the invariant.** The Decision above makes `unprompted-runtime.mjs` the SOLE writer
+of *unprompted user-facing bytes* — advocacy, promotion, lesson and alarm candidates, governed by the dial and
+the DismissalLedger. `ground-ruvnet` is none of those. It emits a grounding DIRECTIVE to the model ("call
+search_ruvnet before you assert / name the rUv replacement / apply the playbook"), triggered by the content of
+the user's own prompt, and it is governed by the brain on/off switch (`offBehavior: 'silence'`, ADR-054) —
+never by the advocacy dial, which it does not read. It is not a candidate producer because it has no channel:
+it is the enforcement primitive of ADR-0011/0012, not speech about capabilities. The invariant is therefore
+restated with its scope explicit: **every unprompted utterance in the four channels passes through ONE runtime;
+grounding directives are not utterances in those channels and have exactly one owner of their own.** The
+DDD-0004 registry test's scope is unchanged (the four channels); `unprompted-runtime.mjs` is untouched.
+
+**What is registered, measured.** hooks.json (Claude): `ground-ruvnet || true`, matcher `*`, timeout 10 —
+the pre-retirement shape at 00526b12^. codex-hooks.json: the same id through the Codex wrapper (UserPromptSubmit
+delivery was observed by the 2026-09-11 probe). `plugin/hooks/hook-contracts.json` v5 names the second owner
+under `_eventOwners` with class *grounding injection*; `continuity-hook-policy.mjs` carries the registration;
+`npm run hooks:check` and the installer's convergence predicate derive from it. Companion registrations in the
+same change: decision-gate's write route (PreToolUse, ADR-067) and grounding-stamp (PostToolUse) — the gate and
+its key — recorded in ADR-067's status log.

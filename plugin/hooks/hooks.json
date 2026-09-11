@@ -1,5 +1,5 @@
 {
-  "description": "RuvNet Brain continuity plane. The broad legacy grounding, routing, learning, and release interceptors remain retired. What is automatic is exactly: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint; Stop runs the ledger-scoped continuation handler and captures a project snapshot; PreCompact and SessionEnd capture a project snapshot. Every capture is bounded, fails open, and never blocks.",
+  "description": "RuvNet Brain lifecycle plane. The broad legacy routing, learning, and release interceptors remain retired. What is automatic is exactly: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint AND the ground-ruvnet grounding injection (a directive to the model, not speech — ADR-040 §Amendment 2026-09-11); PreToolUse runs decision-gate's write route, the ONE process that may refuse a Write/Edit/MultiEdit/NotebookEdit (ADR-067, composing ground-before-write per ADR-0012); PostToolUse on a successful search_ruvnet mints the grounding stamp that opens that gate; Stop runs the ledger-scoped continuation handler and captures a project snapshot; PreCompact and SessionEnd capture a project snapshot. Every capture is bounded and fails open; only decision-gate may block, and it fails open on its own errors.",
   "hooks": {
     "SessionStart": [
       {
@@ -21,6 +21,35 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" unprompted-speech UserPromptSubmit",
             "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" ground-ruvnet || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Write|Edit|MultiEdit|NotebookEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" decision-gate write",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(?:.*__)?search_ruvnet$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" grounding-stamp || true",
+            "timeout": 5
           }
         ]
       }
