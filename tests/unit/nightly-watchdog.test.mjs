@@ -8,15 +8,17 @@
 // The rule these tests exist to defend: ABSENCE OF EVIDENCE IS FAILURE. Every state below must be
 // distinguishable, and "no receipt" must NEVER resolve to OK — that single assertion is the whole point.
 import { describe, it, expect } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { judge, productSchedulerVerdict, transitions, OK, MISSING, NEVER_RAN, STALE, FAILING } from '../../scripts/nightly-watchdog.mjs';
+import { judge, productSchedulerVerdict, transitions, OK, MISSING, NEVER_RAN, STALE, FAILING, STALLED } from '../../scripts/nightly-watchdog.mjs';
+import { writeShardProgress } from '../../kb/shard-progress.mjs';
 
 const NOW = new Date('2026-07-13T12:00:00Z');
 const JOB = { label: 'com.test.job', maxAgeHours: 26, what: 'x', schedule: 'daily' };
 const hoursAgo = (h) => new Date(NOW.getTime() - h * 3600_000).toISOString();
+const minutesAgo = (m) => new Date(NOW.getTime() - m * 60_000).toISOString();
 
 describe('judge — the five states, and why each one exists', () => {
   it('NO RECEIPT is NEVER-RAN, never OK — the failure that caused all of this', () => {
@@ -57,6 +59,55 @@ describe('judge — the five states, and why each one exists', () => {
   it('a job legitimately running right now is OK, not a false alarm', () => {
     // The gists job takes ~78 minutes. Reporting that as "hung" would cry wolf nightly and poison the gong.
     expect(judge(JOB, { started_at: hoursAgo(1), state: 'running' }, true, NOW).state).toBe(OK);
+  });
+
+  it('KILLED is reported distinctly from a plain non-zero exit, with the signal named', () => {
+    const v = judge(JOB, { ended_at: hoursAgo(1), state: 'killed', exit_code: 137, signal: 9 }, true, NOW);
+    expect(v.state).toBe(FAILING);
+    expect(v.detail).toMatch(/KILLED by signal 9/);
+  });
+});
+
+describe('STALLED — a live pid proves the wrapper survived, not that the work is moving (2026-09-11)', () => {
+  // THE INCIDENT THIS ENCODES: an 8-shard gists embed sat at 0% CPU for six hours. Its heartbeat
+  // said "running" the whole time and the wrapper pid genuinely was alive — every check that
+  // existed before this reported OK. `progressGlob` + `stallMinutes` is the fix: the job's own
+  // per-shard progress files (kb/shard-progress.mjs) are read directly, independent of pid liveness.
+  const STALL_JOB = { label: 'com.test.stall', maxAgeHours: 26, what: 'x', schedule: 'daily', progressGlob: 'kb/x.big.progress.*.json', stallMinutes: 15 };
+  const tmpRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'watchdog-stall-'));
+
+  it('reports STALLED when the oldest incomplete shard has not advanced within the stall budget, even with a live/likely-alive pid', () => {
+    const root = tmpRoot();
+    fs.mkdirSync(path.join(root, 'kb'));
+    writeShardProgress(path.join(root, 'kb'), 'x', 0, 2, 32, 382, { now: () => new Date(minutesAgo(20)) }); // stalled 20m ago
+    writeShardProgress(path.join(root, 'kb'), 'x', 1, 2, 380, 382, { now: () => new Date(minutesAgo(1)) }); // fine
+    const v = judge(STALL_JOB, { started_at: hoursAgo(1), state: 'running', pid: process.pid }, true, NOW, { root });
+    expect(v.state).toBe(STALLED);
+    expect(v.detail).toMatch(/shard 0\/2/);
+    expect(v.detail).toMatch(/20m/);
+  });
+
+  it('stays OK when every shard is advancing within budget', () => {
+    const root = tmpRoot();
+    fs.mkdirSync(path.join(root, 'kb'));
+    writeShardProgress(path.join(root, 'kb'), 'x', 0, 1, 300, 382, { now: () => new Date(minutesAgo(2)) });
+    const v = judge(STALL_JOB, { started_at: hoursAgo(1), state: 'running', pid: process.pid }, true, NOW, { root });
+    expect(v.state).toBe(OK);
+  });
+
+  it('does not stall on absence of any progress file — the job may not have reached embedding yet', () => {
+    const root = tmpRoot();
+    fs.mkdirSync(path.join(root, 'kb'));
+    const v = judge(STALL_JOB, { started_at: hoursAgo(1), state: 'running', pid: process.pid }, true, NOW, { root });
+    expect(v.state).toBe(OK);
+  });
+
+  it('a mock-embedder-that-stops-advancing job trips STALLED even though its wall-clock age is well under the long-run 6h grace window', () => {
+    const root = tmpRoot();
+    fs.mkdirSync(path.join(root, 'kb'));
+    writeShardProgress(path.join(root, 'kb'), 'x', 0, 1, 32, 382, { now: () => new Date(minutesAgo(16)) });
+    const v = judge(STALL_JOB, { started_at: minutesAgo(16), state: 'running', pid: process.pid }, true, NOW, { root });
+    expect(v.state).toBe(STALLED); // NOT OK "long run in progress" — that branch requires ageHours > 6
   });
 });
 
@@ -122,5 +173,122 @@ describe.skipIf(!hasSh || process.platform === 'win32')('job-heartbeat.sh — a 
       encoding: 'utf8',
     });
     expect(child.stdout).toMatch(/"state":"running"/); // SIGKILL leaves exactly this — and judge() calls it FAILING
+  });
+
+  it('every receipt (running AND terminal) carries a run_id, and two separate invocations get different ones', () => {
+    const dir = tmpdir();
+    const a = run('t.runid.a', 'exit 0', dir);
+    const b = run('t.runid.b', 'exit 0', dir);
+    expect(a.status).toBe(0);
+    expect(b.status).toBe(0);
+    const ra = receipt(dir, 't.runid.a');
+    const rb = receipt(dir, 't.runid.b');
+    expect(typeof ra.run_id).toBe('string');
+    expect(ra.run_id.length).toBeGreaterThan(0);
+    expect(ra.run_id).not.toBe(rb.run_id);
+  });
+});
+
+// 2026-09-11 review correction: the wrapper (not the child) is the supervisor — it owns a run_id,
+// and must classify a signal-killed job as "killed" (with the signal), never fold it into a bare
+// "failed" exit code or let a stale invocation clobber a newer one's receipt. These need mid-flight
+// signal delivery, so they use async `spawn` + `pgrep -P` to find the wrapper's OWN direct child —
+// deterministic, no marker/regex guessing across process trees.
+describe.skipIf(!hasSh || process.platform === 'win32')('job-heartbeat.sh — killed(signal), stale-writer guard, and the uncatchable SIGKILL case', () => {
+  const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'hb-kill-'));
+  const receipt = (dir, label) => JSON.parse(fs.readFileSync(path.join(dir, `${label}.json`), 'utf8'));
+  async function waitFor(fn, { timeoutMs = 10_000, intervalMs = 20 } = {}) {
+    const start = Date.now();
+    for (;;) {
+      const v = fn();
+      if (v) return v;
+      if (Date.now() - start > timeoutMs) throw new Error('waitFor timed out');
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  }
+  const directChildPid = (parentPid) => {
+    const out = spawnSync('pgrep', ['-P', String(parentPid)], { encoding: 'utf8' }).stdout.trim().split('\n').filter(Boolean);
+    return out[0] || null;
+  };
+
+  it('a child killed DIRECTLY by SIGTERM (not the wrapper) is recorded killed with signal 15', async () => {
+    const dir = tmpdir();
+    const wrapper = spawn('sh', [WRAPPER, 't.childterm', '--', '/bin/sh', '-c', 'sleep 5'], {
+      env: { ...process.env, JOB_HEARTBEAT_DIR: dir, NTFY_TOPIC: '' },
+    });
+    const done = new Promise((resolve) => wrapper.on('exit', resolve));
+    const childPid = await waitFor(() => directChildPid(wrapper.pid));
+    process.kill(Number(childPid), 'SIGTERM');
+    await done;
+    expect(receipt(dir, 't.childterm')).toMatchObject({ state: 'killed', exit_code: 143, signal: 15 });
+  });
+
+  it('a child killed DIRECTLY by SIGKILL is recorded killed with signal 9', async () => {
+    const dir = tmpdir();
+    const wrapper = spawn('sh', [WRAPPER, 't.childkill', '--', '/bin/sh', '-c', 'sleep 5'], {
+      env: { ...process.env, JOB_HEARTBEAT_DIR: dir, NTFY_TOPIC: '' },
+    });
+    const done = new Promise((resolve) => wrapper.on('exit', resolve));
+    const childPid = await waitFor(() => directChildPid(wrapper.pid));
+    process.kill(Number(childPid), 'SIGKILL');
+    await done;
+    expect(receipt(dir, 't.childkill')).toMatchObject({ state: 'killed', exit_code: 137, signal: 9 });
+  });
+
+  it('SIGTERM of the WRAPPER ITSELF is also recorded killed(15), and the grandchild is not left orphaned', async () => {
+    const dir = tmpdir();
+    const wrapper = spawn('sh', [WRAPPER, 't.wrapterm', '--', '/bin/sh', '-c', 'sleep 5'], {
+      env: { ...process.env, JOB_HEARTBEAT_DIR: dir, NTFY_TOPIC: '' },
+    });
+    const done = new Promise((resolve) => wrapper.on('exit', resolve));
+    await waitFor(() => directChildPid(wrapper.pid));
+    wrapper.kill('SIGTERM');
+    await done;
+    expect(receipt(dir, 't.wrapterm')).toMatchObject({ state: 'killed', exit_code: 143, signal: 15 });
+    // no orphan: the wrapper's trap kills its child before exiting.
+    await new Promise((r) => setTimeout(r, 600));
+    expect(spawnSync('pgrep', ['-f', `sh -c sleep 5`], { encoding: 'utf8' }).stdout.trim()).toBe('');
+  });
+
+  it('STALE WRITER GUARD: an older invocation must not clobber a newer run\'s receipt with its own terminal outcome', async () => {
+    const dir = tmpdir();
+    const wrapper = spawn('sh', [WRAPPER, 't.stale', '--', '/bin/sh', '-c', 'sleep 1'], {
+      env: { ...process.env, JOB_HEARTBEAT_DIR: dir, NTFY_TOPIC: '' },
+    });
+    const done = new Promise((resolve) => wrapper.on('exit', resolve));
+    await waitFor(() => fs.existsSync(path.join(dir, 't.stale.json')));
+    // Simulate a NEWER invocation taking the receipt over mid-flight.
+    fs.writeFileSync(path.join(dir, 't.stale.json'), JSON.stringify({
+      label: 't.stale', started_at: '2099-01-01T00:00:00Z', state: 'running', pid: 999999, run_id: 'newer-run',
+    }));
+    await done; // the ORIGINAL (stale) run finishes and must NOT overwrite the newer record
+    expect(receipt(dir, 't.stale')).toMatchObject({ run_id: 'newer-run', state: 'running' });
+  });
+
+  it('SIGKILL of the wrapper (uncatchable): the receipt is stuck at "running" forever, and judge() derives FAILING from the dead pid', async () => {
+    const dir = tmpdir();
+    const wrapper = spawn('sh', [WRAPPER, 'com.test.sigkill', '--', '/bin/sh', '-c', 'sleep 30'], {
+      env: { ...process.env, JOB_HEARTBEAT_DIR: dir, NTFY_TOPIC: '' },
+    });
+    await waitFor(() => fs.existsSync(path.join(dir, 'com.test.sigkill.json')));
+    const before = receipt(dir, 'com.test.sigkill');
+    expect(before.state).toBe('running');
+    expect(typeof before.run_id).toBe('string');
+    process.kill(wrapper.pid, 'SIGKILL'); // no trap can run — this is the one death nothing here catches
+    await new Promise((resolve) => wrapper.on('exit', resolve));
+    await new Promise((r) => setTimeout(r, 500));
+    const after = receipt(dir, 'com.test.sigkill');
+    // The run_id NEVER reaches a terminal state — this receipt is exactly what it was at "running".
+    expect(after).toEqual(before);
+    // scripts/nightly-watchdog.mjs, given this exact receipt 7h "later" (now is a judge() parameter,
+    // not a real sleep), must call it FAILING because the pid is provably gone — never OK.
+    const verdict = judge(
+      { label: 'com.test.sigkill', maxAgeHours: 26, what: 'x', schedule: 'daily' },
+      after,
+      true,
+      new Date(new Date(after.started_at).getTime() + 7 * 3600_000),
+    );
+    expect(verdict.state).toBe(FAILING);
+    expect(verdict.detail).toMatch(/NEVER FINISHED/);
   });
 });

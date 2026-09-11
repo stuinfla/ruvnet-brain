@@ -91,14 +91,31 @@ beforeEach(() => {
     "console.log('3 gists changed'); process.exit(0);", // mode === 'changed'
   ].join('\n'));
 
-  // Stub kb/forge-big.mjs: records every invocation (shard embeds + the final ingest). Exits 0 unless
-  // FAIL_SHARD names an embed shard index to fail — lets one test prove a shard failure is swallowed.
+  // Stub kb/forge-big.mjs: records every invocation (shard embeds + the final ingest). `embed`
+  // exits 0 unless FAIL_SHARD names its shard index. `shard-all` — the real supervisor mode
+  // nightly-gists.sh now calls instead of fanning shards out itself — mimics the real one closely
+  // enough for this suite's contract: it spawns `--shards` copies of ITSELF in `embed` mode and
+  // exits non-zero iff any of them did.
   fs.writeFileSync(path.join(tmp, 'kb/forge-big.mjs'), [
     "import fs from 'node:fs';",
+    "import { spawnSync } from 'node:child_process';",
     "const argv = process.argv.slice(2);",
     "fs.appendFileSync(process.env.CALL_LOG, `forge-big ${argv.join(' ')}\\n`);",
-    "const shardIdx = argv.indexOf('--shard');",
-    "if (shardIdx !== -1 && argv[shardIdx + 1] === process.env.FAIL_SHARD) process.exit(1);",
+    "const mode = argv[0];",
+    "if (mode === 'embed') {",
+    "  const shardIdx = argv.indexOf('--shard');",
+    "  if (shardIdx !== -1 && argv[shardIdx + 1] === process.env.FAIL_SHARD) process.exit(1);",
+    "  process.exit(0);",
+    "}",
+    "if (mode === 'shard-all') {",
+    "  const n = Number(argv[argv.indexOf('--shards') + 1]);",
+    "  let failed = 0;",
+    "  for (let i = 0; i < n; i++) {",
+    "    const r = spawnSync(process.execPath, [process.argv[1], 'embed', '--dir', 'kb', '--name', 'ruv-gists', '--shard', String(i), '--of', String(n)], { stdio: 'inherit' });",
+    "    if (r.status !== 0) failed++;",
+    "  }",
+    "  process.exit(failed > 0 ? 1 : 0);",
+    "}",
   ].join('\n'));
 });
 
@@ -162,10 +179,11 @@ onPosix('nightly-gists.sh — FATAL guards (verified against a patched-PATH copy
     expect(out.calls.some((c) => c.startsWith('forge-big'))).toBe(false);
   });
 
-  it('runs all 8 embed shards + the final ingest when the corpus actually changed', () => {
+  it('runs shard-all (which fans out all 8 embed shards) + the final ingest when the corpus actually changed', () => {
     const out = run({ INGEST_MODE: 'changed' });
     expect(out.status).toBe(0);
     expect(out.log).toMatch(/done — ruv-gists store rebuilt/);
+    expect(out.calls).toContain('forge-big shard-all --dir kb --name ruv-gists --shards 8 --stall-minutes 15');
     const shardCalls = out.calls.filter((c) => c.startsWith('forge-big embed'));
     expect(shardCalls).toHaveLength(8);
     expect(out.calls).toContain('forge-big ingest --dir kb --name ruv-gists');
@@ -175,14 +193,15 @@ onPosix('nightly-gists.sh — FATAL guards (verified against a patched-PATH copy
   // embed shards ran backgrounded (`&`) joined by a bare `wait`, which under POSIX ALWAYS returns 0
   // regardless of what any backgrounded job did — so a genuinely failed shard (OOM, corrupt .rvf,
   // killed ONNX) was silently swallowed and the script logged "done — store rebuilt" over a corpus
-  // that was 1/8 missing. This test documented that live bug red-first (flag-don't-touch norm); the
-  // fix landed exactly as prescribed here (per-PID `wait "$p" || FAILED_SHARDS+=1`, abort BEFORE
-  // ingest). Now the test asserts the FIXED contract: a failing shard fails the run LOUDLY, never
-  // claims "done", and never ingests a half-embedded corpus.
+  // that was 1/8 missing. That fix (per-PID `wait "$p" || FAILED_SHARDS+=1`) has since been
+  // superseded (2026-09-11) by `forge-big.mjs shard-all`, a real supervisor that also detects a
+  // STALLED shard (0% CPU, no failure, no exit) — something a bare `wait` could never see at all.
+  // This test asserts the same externally-visible contract survived the handoff: a failing shard
+  // fails the run LOUDLY, never claims "done", and never ingests a half-embedded corpus.
   it('a failing embed shard fails the run LOUDLY — exit 1, no "done" claim, no ingest', () => {
     const out = run({ INGEST_MODE: 'changed', FAIL_SHARD: '3' });
     expect(out.status).toBe(1); // shard failure is a run failure — the wrapper/watchdog see it
-    expect(out.log).toMatch(/EMBED FAILED — 1 of 8 shards/); // names the damage
+    expect(out.log).toMatch(/EMBED FAILED — shard-all reported a failure or a stall/); // names the damage
     expect(out.log).not.toMatch(/done — ruv-gists store rebuilt/); // success is never claimed
     expect(out.calls.filter((c) => c.startsWith('forge-big embed'))).toHaveLength(8); // all shards ran
     expect(out.calls).not.toContain('forge-big ingest --dir kb --name ruv-gists'); // half-embedded corpus never ingested

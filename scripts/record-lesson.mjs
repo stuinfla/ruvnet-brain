@@ -62,9 +62,12 @@ const value = [
   `OUTCOME: ${outcome}`,
 ].filter(Boolean).join(' ');
 
+// Every `ruflo` invocation auto-starts a project background daemon unless this is set (verified
+// live: ~/.npm-global/lib/node_modules/ruflo/node_modules/@claude-flow/cli/dist/src/services/
+// daemon-autostart.js:85) — recording a lesson has no business leaving one running.
 const ruflo = (args) =>
   execFileSync(RUFLO, args, { cwd: dir, encoding: 'utf8', timeout: 60000,
-    shell: process.platform === 'win32' });
+    shell: process.platform === 'win32', env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
 
 console.log(`\nRecording lesson into ${path.basename(dir)}/.swarm/memory.db  (namespace: ${ns})`);
 console.log(`  key: ${key}`);

@@ -3,9 +3,9 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-09-07
-reviewed_digest: 41114c475529
-version: 1.1.2
+updated: 2026-09-11
+reviewed_digest: 863425336a13
+version: 1.1.3
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -290,6 +290,7 @@ These source observations do not establish native Windows or public installed-ho
 
 ## Currency log
 
+| 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. `plugin/hooks/codex-hooks.json` (`56420430`) moved from the empty `hooks: {}` registry to a bounded, fail-open "continuity plane" — `SessionStart` restores the canonical project checkpoint and `Stop` invokes only the project-scoped continuation gate, both via the same generation-independent wrapper §7 already describes. This is the next entry in this ADR's own already-tracked empty-registry ↔ live-hooks history (see the 2026-08-20/2026-08-19 rows below), not a contradiction of §6 (which governs the separate, still-empty repo-local `.codex/hooks.json`) or §7 (which describes the wrapper/adapter mechanism generically, not a hook count). The other 14 drift commits touch only `bin/install.mjs` (installer restart/race/release plumbing, reviewed under ADR-013/034/049) and skill-content wording; `.codex/config.toml`, `plugin/scripts/codex-hook-adapter.mjs`, `codex-hook-events.mjs`, and `codex-hook-wrapper.mjs` were not touched at all in this range. | Reviewed `plugin/hooks/codex-hooks.json`'s diff directly; confirmed the three core Codex transport files are untouched (`git log` empty for each) since `4823f1aa`. reviewed_digest 863425336a13. |
 | 2026-09-07 | Reviewed scheduler registration preserves custom Brain and KB paths; uninstall confirms scheduler absence before removing owned installation files; source digest 41114c475529. | `bin/install.mjs`; source review only, hosted and public acceptance remain pending. |
 
 | 2026-09-07 | Reviewed recovery source and corrected the implementation boundaries described above; source digest b981224bbfc7. | `plugin/scripts/codex-hook-adapter.mjs`; local source examination only, no renewed runtime or publication verification. |

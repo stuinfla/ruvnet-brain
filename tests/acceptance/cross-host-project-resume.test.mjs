@@ -13,7 +13,7 @@ import { tarExtractionInvocation } from '../../scripts/publication-receipt.mjs';
 // Packed adapters + real managed Ruflo, not native model sessions or filesystem relocation.
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const ruflo = resolveRuflo();
-let temporaryRoot, packageRoot, scripts, contract, Store, resolveProjectStore, artifactSha256;
+let temporaryRoot, packageRoot, scripts, contract, Store, resolveProjectStore, restoreProgressionForSession, artifactSha256;
 const run = (binary, args, options = {}) => {
   const invocation = binary === 'npm' ? npmInvocation(args) : binary === ruflo
     ? rufloInvocation(binary, args) : { executable: binary, args };
@@ -37,6 +37,7 @@ beforeAll(async () => {
   contract = await imported('project-progression-contract.mjs');
   ({ ProjectProgressionStore: Store } = await imported('project-progression-store.mjs'));
   ({ resolveProjectStore } = await imported('project-store-resolver.mjs'));
+  ({ restoreProgressionForSession } = await imported('project-progression-session-start.mjs'));
 }, 120_000);
 
 afterAll(() => { if (temporaryRoot) fs.rmSync(temporaryRoot, { recursive: true, force: true }); });
@@ -76,6 +77,33 @@ function sessionStart(f, host) {
   const envelope = JSON.parse(result.stdout);
   expect(envelope.hookSpecificOutput.hookEventName).toBe('SessionStart');
   return envelope.hookSpecificOutput.additionalContext;
+}
+
+/**
+ * The CAPTURE BOUNDARY, driven through the real registered path: hook-shim -> session-snapshot-hook.
+ *
+ * This is where outbox debt is settled. SessionStart is forbidden from settling it (ADR-073 §5),
+ * because replay is a write and one `ruflo memory store` process costs more than the whole
+ * SessionStart budget — a restore that replayed would time out and report UNKNOWN precisely when
+ * durable evidence existed. So the sequence a real user lives through is: a session dies mid-capture,
+ * the NEXT session's SessionStart reports the pending snapshot without consuming it, and that
+ * session's own capture boundary commits it.
+ *
+ * Claude's capture boundaries are Stop, PreCompact and SessionEnd. Codex's is SessionEnd ONLY — a
+ * 2026-09-11 probe on codex-cli 0.154.0 observed SessionStart, UserPromptSubmit and SessionEnd
+ * firing and did NOT observe Stop or PreCompact, so no capture handler was registered on those.
+ */
+const captureBoundaryEvent = (host) => (host === 'codex' ? 'SessionEnd' : 'Stop');
+
+function captureBoundary(f, host, sessionId) {
+  const event = captureBoundaryEvent(host);
+  const result = run(process.execPath, [path.join(scripts, 'hook-shim.mjs'), 'session-snapshot', event], {
+    cwd: f.project,
+    env: { ...f.env, RUVNET_HOOK_HOST: host },
+    input: JSON.stringify({ hook_event_name: event, cwd: f.project, session_id: sessionId }),
+  });
+  successful(result);
+  return result;
 }
 
 describe('packed interrupted cross-host project resume', () => {
@@ -129,23 +157,64 @@ describe('packed interrupted cross-host project resume', () => {
     expect(contract.validateProgressionSnapshot(snapshot, { expectedProjectIdentity: f.resolution.projectIdentity }).ok).toBe(true);
     expect(f.store.listSnapshotKeys()).toEqual([]);
 
-    const context = sessionStart(f, to);
-    expect(context).toContain('[RuvNet Brain — PROJECT CONTINUITY RESTORED]');
-    const resumed = JSON.parse(context.split('\n').find((line) => line.startsWith('{"schema":"ruvnet-brain.project-resume"')));
-    expect(resumed.projectIdentity).toEqual(snapshot.projectIdentity);
-    expect(resumed.heads).toEqual([snapshot.eventKey]);
-    expect(resumed.state).toEqual({ ...snapshot.completeProjectState,
-      journalHeads: [snapshot.eventKey], sourceIdentity: snapshot.sourceIdentity });
-    expect(resumed.evidence).toMatchObject({ structurallyEnumerated: 1, exactRetrieved: 1, rejectedCandidates: [] });
+    // STEP 1 — the next session opens on the OTHER host. It must REPORT the pending snapshot and
+    // must not consume it: a restore that wrote would be the timeout this lane exists to remove.
+    const beforeReplay = sessionStart(f, to);
+    expect(beforeReplay).not.toContain('[RuvNet Brain — PROJECT CONTINUITY RESTORED]');
+    // The pending-replay LINE is asserted against the restore's own return value, not the hook's
+    // stdout: session-start-core.mjs's isSafeStatus() allowlist passes only the UNKNOWN and RESTORED
+    // continuity headers, so the EMPTY context this line rides on is filtered before it is printed.
+    // The session-start lane has the two-prefix addition; until it lands, asserting the printed form
+    // would be asserting someone else's filter, and dropping the assertion entirely would leave the
+    // no-replay rule — the whole point of this step — unproven.
+    const restoreResult = restoreProgressionForSession({
+      env: { ...f.env, CLAUDE_PROJECT_DIR: f.project }, cwd: f.project,
+    });
+    expect(restoreResult.pendingReplay).toBe(1);
+    expect(restoreResult.context).toContain('1 uncommitted snapshot(s) pending replay');
+    // NOT CONSUMED, NOT COMMITTED — a restore that wrote would be the timeout this lane removed.
+    expect(f.store.outbox.pendingSnapshots().map((row) => row.eventKey)).toEqual([snapshot.eventKey]);
+    expect(f.store.listSnapshotKeys()).toEqual([]);
+
+    // STEP 2 — that session reaches ITS capture boundary. The debt is settled there, by the real
+    // registered hook, and a new snapshot is appended on top of the recovered one.
+    captureBoundary(f, to, `${to}-recovering`);
+    expect(f.store.outbox.pendingSnapshots()).toEqual([]);
+    const keys = f.store.listSnapshotKeys();
+    expect(keys, 'the interrupted snapshot was not committed at the capture boundary').toContain(snapshot.eventKey);
+    expect(keys).toHaveLength(2);
+
+    // The interrupted evidence survived a SIGKILL byte-for-byte.
     const exact = f.store.retrieveSnapshots([snapshot.eventKey]).snapshots[0];
     expect(contract.digestCanonical(exact)).toBe(contract.digestCanonical(snapshot));
     expect(exact.payloadDigest).toBe(snapshot.payloadDigest);
-    expect(f.store.outbox.pendingSnapshots()).toEqual([]);
+    expect(exact.completeProjectState).toMatchObject(state);
+
+    // STEP 3 — the next SessionStart on that host restores, from committed rows only.
+    const context = sessionStart(f, to);
+    expect(context).toContain('[RuvNet Brain — PROJECT CONTINUITY RESTORED]');
+    expect(context).not.toContain('pending replay');
+    const resumed = JSON.parse(context.split('\n').find((line) => line.startsWith('{"schema":"ruvnet-brain.project-resume"')));
+    expect(resumed.projectIdentity).toEqual(snapshot.projectIdentity);
+    // ONE head: the boundary's snapshot, causally descended from the interrupted one.
+    expect(resumed.heads).toHaveLength(1);
+    expect(resumed.heads[0]).not.toBe(snapshot.eventKey);
+    const head = f.store.retrieveSnapshots(resumed.heads).snapshots[0];
+    expect(head.parentEventKeys).toEqual([snapshot.eventKey]);
+    expect(head.sequence).toBe(snapshot.sequence + 1);
+    // AND the interrupted work is what the next session is told it is doing. With no work ledger in
+    // the fixture, the goal can only have been carried from the prior head — which is the point.
+    expect(resumed.state.currentGoal).toBe(state.currentGoal);
+    expect(resumed.state.provenance.currentGoal).toEqual({ source: 'prior-head', authoritative: true });
+    expect(resumed.evidence).toMatchObject({ structurallyEnumerated: 2, exactRetrieved: 2, rejectedCandidates: [] });
+    expect(resumed.evidence.readPath).toBe('node:sqlite');
+
+    // STEP 4 — EXACTLY ONCE. A second SessionStart commits nothing and changes no byte.
     const committed = fs.readFileSync(f.store.outbox.path, 'utf8');
-    expect(f.store.outbox.records().filter((row) => row.type === 'commit')).toHaveLength(1);
-    expect(sessionStart(f, to)).toContain(snapshot.eventKey);
+    expect(f.store.outbox.records().filter((row) => row.type === 'commit')).toHaveLength(2);
+    expect(sessionStart(f, to)).toContain(resumed.heads[0]);
     expect(fs.readFileSync(f.store.outbox.path, 'utf8')).toBe(committed);
-    expect(f.store.listSnapshotKeys()).toEqual([snapshot.eventKey]);
+    expect(f.store.listSnapshotKeys()).toEqual(keys);
 
     const foreign = fixture(`${from}-foreign`);
     expect(foreign.resolution.projectIdentity).not.toEqual(snapshot.projectIdentity);
@@ -159,7 +228,9 @@ describe('packed interrupted cross-host project resume', () => {
     expect(rejected).not.toContain('PROJECT CONTINUITY RESTORED');
     expect(rejected).not.toContain(state.currentGoal);
     console.info(JSON.stringify({ proof: 'packed-adapter-cross-host-interrupted-resume', from, to, artifactSha256,
+      captureBoundary: captureBoundaryEvent(to),
       exactIdentity: true, durableReplayOnce: true, foreignProjectRejected: true,
-      untested: ['native model sessions', 'filesystem relocation'] }));
+      untested: ['native model sessions', 'filesystem relocation',
+        'a real Codex Stop or PreCompact delivery (not observed by the 2026-09-11 probe)'] }));
   }, 120_000);
 });
