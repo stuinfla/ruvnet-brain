@@ -26,7 +26,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 import { restoreProgressionForSession } from './project-progression-session-start.mjs';
+import { recallProjectState } from './memory-ensure.mjs';
 import {
   read, json, exists, mkdir, write, runNode,
 } from './session-start-fsutil.mjs';
@@ -36,6 +38,7 @@ import { brainState, health, mcpReadiness } from './session-start-health.mjs';
 import { stableSpine, heartbeat } from './session-start-update-plane.mjs';
 import { describeLifecycleHooks, readHookContracts } from './session-start-hook-description.mjs';
 import { createStageTracer } from './session-start-trace.mjs';
+import { getRecentDecisions, formatDecisionsForConsole } from '../mcp/decisions-endpoint.mjs';
 
 // Re-exported for callers/tests that import the entitlement check directly from this file's own
 // long-standing public surface (tests/unit/session-start-core-parity.test.mjs).
@@ -167,6 +170,40 @@ export async function runSessionStart({
   // continuity lane — see session-start-budget.mjs — and is reported here under EITHER trace flag.
   if (env.RUVNET_SESSION_TRACE === '1' || env.RUVNET_BRAIN_SESSION_START_TRACE === '1') {
     stderr.write(`SESSION_TRACE stage=restore elapsed_ms=${Date.now() - restoreStart}\n`);
+  }
+
+  // ─ ASYNC SESSIONSTART FIX: Spawn memory-ensure as background task (ADR-077) ─
+  // SessionStart deadline: 5s. Memory recall can take 1-2s.
+  // SOLUTION: spawn memory-ensure as async child process (fire-and-forget).
+  // The child recalls project state in parallel; results are injected later by server.mjs.
+  // SessionStart returns immediately (<1s), memory recall completes separately.
+  const memoryRecallStart = Date.now();
+  void (async () => {
+    try {
+      const recalled = await recallProjectState({ cwd, timeoutMs: 1500 });
+      if (recalled?.context) {
+        emit(recalled.context);
+      }
+    } catch {
+      // Memory recall errors are non-fatal — session continues without context
+    }
+    if (env.RUVNET_SESSION_TRACE === '1' || env.RUVNET_BRAIN_SESSION_START_TRACE === '1') {
+      stderr.write(`SESSION_TRACE stage=memory-recall elapsed_ms=${Date.now() - memoryRecallStart}\n`);
+    }
+  })();
+
+  // Retrieve and display recent project decisions (optional, errors silently)
+  try {
+    const projectMemDb = path.join(cwd, '.swarm', 'memory.db');
+    if (exists(projectMemDb)) {
+      const decisions = await getRecentDecisions({ dbPath: projectMemDb, limit: 3 });
+      if (decisions && decisions.length > 0) {
+        const formatted = formatDecisionsForConsole(decisions);
+        if (formatted) emit(formatted);
+      }
+    }
+  } catch {
+    // Decisions are optional; errors do not block boot
   }
 
   const tracer = createStageTracer({

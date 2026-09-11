@@ -1,0 +1,11 @@
+# ADR Supersessions Log (append-only, immutable)
+# Format: timestamp | from_adr → to_adr | reason | approver
+# This log is the authoritative record of which ADRs have been superseded and by what.
+# Every entry includes enough context to understand the reversal procedure.
+# Entries are added by adr-supersede-check.mjs when an ADR status changes to Superseded.
+
+# Example entry (DO NOT MODIFY):
+# 2026-09-11T14:30:00Z | ADR-062 → ADR-076 | memory architecture consolidation | Stuart Kerr
+2026-09-11T18:37:05.170Z | ADR-015 → [] | Decision superseded by [] | stuartkerr
+2026-09-11T18:37:05.178Z | ADR-042 → [] | Decision superseded by [] | stuartkerr
+2026-09-11T18:37:05.181Z | ADR-059 → [] | Decision superseded by [] | stuartkerr

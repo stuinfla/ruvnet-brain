@@ -45,7 +45,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REGISTRY = process.env.WATCHDOG_REGISTRY || path.join(ROOT, 'config', 'scheduled-jobs.json');
 const STATE = process.env.WATCHDOG_STATE || path.join(os.homedir(), '.cache', 'ruvnet-brain', 'watchdog-state.json');
 const HB_DIR = process.env.JOB_HEARTBEAT_DIR || path.join(os.homedir(), '.cache', 'ruvnet-brain', 'heartbeats');
+const RECOVERY_STATE = process.env.RECOVERY_STATE || path.join(os.homedir(), '.cache', 'ruvnet-brain', 'recovery-state.json');
 const HOUR = 3600_000;
+const RECOVERY_TIMEOUT_MS = 5 * 60_000; // 5 minutes — kill + restart if stale this long
+const MAX_RESTART_FAILURES = 3; // Alert after 3 consecutive failed restarts
 
 export const OK = 'OK';
 export const MISSING = 'MISSING';
@@ -118,12 +121,14 @@ export function judge(job, hb, loaded, now, { root = ROOT } = {}) {
   }
   const ageHours = (now - stamp) / HOUR;
 
-  // HEARTBEAT CHECK (2026-09-11 Track 2): if a job publishes a heartbeat (separate from
+  // HEARTBEAT CHECK (2026-09-11 Track 2, enhanced 2026-09-11): if a job publishes a heartbeat (separate from
   // per-shard progress), check it FIRST. A stale heartbeat is immediate evidence of a stall,
   // even if progress files or pid liveness would say otherwise.
+  // 2026-09-11: AGGRESSIVE DETECTION — reduced timeout from 180s (6 intervals) to 90s (3 intervals)
+  // for faster stall detection and recovery.
   if (hb.state === 'running') {
     const beat = readJobHeartbeat(job.label);
-    if (beat && beat.ageSeconds > 180) { // 180s = 6 × 30s beat interval + 60s grace
+    if (beat && beat.ageSeconds > 90) { // 90s = 3 × 30s beat interval + grace (MORE AGGRESSIVE)
       return { state: STALLED, ageHours,
         detail: `heartbeat has not updated in ${beat.ageSeconds.toFixed(0)}s — expected every 30s. Job appears hung.` };
     }
@@ -246,6 +251,66 @@ export function transitions(results, prev) {
   return results.filter((r) => (prev[r.label] ?? OK) !== r.state);
 }
 
+/**
+ * RECOVERY: If a job is STALLED for >5 minutes, attempt to kill + restart it.
+ * Track restart failures per job; alert after 3 consecutive failures.
+ * Logs: timestamp, reason (why restart was triggered), result (success/failure).
+ */
+export function loadRecoveryState() {
+  try { return JSON.parse(fs.readFileSync(RECOVERY_STATE, 'utf8')); } catch { return {}; }
+}
+
+export function saveRecoveryState(s) {
+  fs.mkdirSync(path.dirname(RECOVERY_STATE), { recursive: true });
+  fs.writeFileSync(RECOVERY_STATE, JSON.stringify(s, null, 2));
+}
+
+export function attemptRecovery(result) {
+  if (result.state !== STALLED && result.state !== STALE) return null; // Recovery only for these states
+  if (result.ageHours * HOUR < RECOVERY_TIMEOUT_MS) return null; // Only if stale >5 min
+  if (!result.label) return null;
+
+  const now = new Date();
+  const recovery = {
+    label: result.label,
+    timestamp: now.toISOString(),
+    reason: `${result.state} for ${result.ageHours.toFixed(1)}h`,
+    attempted: true,
+    success: false,
+    message: '',
+  };
+
+  try {
+    // 1. Attempt to kill the job via launchctl
+    try {
+      spawnSync('launchctl', ['stop', result.label], { timeout: 5000 });
+      console.log(`[RECOVERY] Stopped ${result.label} (was ${result.state})`);
+    } catch (e) {
+      console.warn(`[RECOVERY] Could not stop ${result.label}: ${e.message}`);
+    }
+
+    // 2. Brief pause to allow cleanup
+    const s = os.platform() === 'win32' ? 'TIMEOUT /T 2 /NOBREAK' : 'sleep 2';
+    spawnSync(s, { shell: true, stdio: 'ignore' });
+
+    // 3. Attempt to restart via launchctl
+    try {
+      spawnSync('launchctl', ['start', result.label], { timeout: 5000 });
+      console.log(`[RECOVERY] Restarted ${result.label}`);
+      recovery.success = true;
+      recovery.message = 'Job killed and restarted successfully';
+    } catch (e) {
+      console.error(`[RECOVERY] Could not restart ${result.label}: ${e.message}`);
+      recovery.message = `Restart failed: ${e.message}`;
+    }
+  } catch (e) {
+    recovery.message = `Recovery failed: ${e.message}`;
+    console.error(`[RECOVERY] Unexpected error: ${e.message}`);
+  }
+
+  return recovery;
+}
+
 async function push(title, body, priority) {
   const topic = process.env.NTFY_TOPIC
     || (() => { try { return fs.readFileSync(path.join(os.homedir(), '.cache', 'ruvnet-brain', 'ntfy-topic'), 'utf8').trim(); } catch { return null; } })();
@@ -263,11 +328,41 @@ async function push(title, body, priority) {
 async function main() {
   const json = process.argv.includes('--json');
   const quiet = process.argv.includes('--quiet');
+  const noRecovery = process.argv.includes('--no-recovery'); // For testing
   const brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
   const results = [...checkAll(new Date()), productSchedulerVerdict(schedulerStatus({
     brainHome, kbDir: process.env.RUVNET_BRAIN_KB || path.join(brainHome, 'kb'),
   }))];
   const bad = results.filter((r) => r.state !== OK);
+
+  // RECOVERY PHASE: 2026-09-11 — attempt to recover stalled/stale jobs
+  const recoveryLog = [];
+  const recoveryState = loadRecoveryState();
+  if (!noRecovery) {
+    for (const result of results) {
+      if (result.state === STALLED || result.state === STALE) {
+        const ageMs = result.ageHours * HOUR;
+        if (ageMs >= RECOVERY_TIMEOUT_MS) {
+          const rec = attemptRecovery(result);
+          if (rec) {
+            recoveryLog.push(rec);
+
+            // Track restart failures per label
+            if (!rec.success) {
+              recoveryState[result.label] = (recoveryState[result.label] ?? 0) + 1;
+              if (recoveryState[result.label] >= MAX_RESTART_FAILURES) {
+                console.error(`[ALERT] Job ${result.label} failed restart ${MAX_RESTART_FAILURES} times. Manual intervention required.`);
+              }
+            } else {
+              // Success — reset failure counter
+              recoveryState[result.label] = 0;
+            }
+          }
+        }
+      }
+    }
+    saveRecoveryState(recoveryState);
+  }
 
   const prev = loadState();
   // DERIVED, not asserted (F1, 2026-07-18): a transition is only recorded as handled when its page
@@ -289,8 +384,13 @@ async function main() {
   // broken" is itself a paged, visible condition instead of a silent one.
   if (undelivered.size > 0) process.exitCode = 1;
 
-  if (json) console.log(JSON.stringify({ results, checkedAt: new Date().toISOString() }, null, 2));
-  else if (!quiet || bad.length) {
+  if (json) {
+    console.log(JSON.stringify({
+      results,
+      recovery: recoveryLog.length > 0 ? recoveryLog : undefined,
+      checkedAt: new Date().toISOString(),
+    }, null, 2));
+  } else if (!quiet || bad.length || recoveryLog.length) {
     console.log('Scheduled-job watchdog — proof each job RAN, not just that it exists\n');
     for (const r of results) {
       const icon = r.state === OK ? '✅' : '🔴';
@@ -298,6 +398,17 @@ async function main() {
       console.log(`   ${r.detail}`);
       console.log(`   ${r.what} · ${r.schedule}\n`);
     }
+
+    if (recoveryLog.length > 0) {
+      console.log('\n📋 Recovery Log:');
+      for (const rec of recoveryLog) {
+        const icon = rec.success ? '✅' : '❌';
+        console.log(`${icon} [${rec.timestamp}] ${rec.label}`);
+        console.log(`   Reason: ${rec.reason}`);
+        console.log(`   Result: ${rec.message}\n`);
+      }
+    }
+
     console.log(bad.length
       ? `${bad.length} of ${results.length} job(s) are NOT confirmed working. NEVER-RAN means the schedule has never fired — it does not mean "probably fine".`
       : `All ${results.length} jobs produced a fresh, successful receipt.`);

@@ -3,6 +3,7 @@ id: ADR-079
 title: Testing gates and public CI - pre-commit enforcement and visible discipline
 status: Proposed
 date: 2026-09-11
+updated: 2026-09-11
 authors: [Stuart Kerr, Codex]
 tags: [architecture, testing, ci, gates, enforcement, coverage, performance, visibility]
 supersedes: []

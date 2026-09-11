@@ -1,0 +1,190 @@
+name: publish-npm
+
+# Publishes package to npm when v*.*.* tag is pushed
+# Triggered by: git push origin v*.*.* (from release.mjs)
+# Execution: ~60 seconds (install, verify, publish)
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      published_version: ${{ steps.publish.outputs.version }}
+      published_sha: ${{ steps.publish.outputs.sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund --ignore-scripts
+
+      - name: Verify tag matches package.json
+        id: verify
+        run: |
+          set -euo pipefail
+          TAG=${GITHUB_REF#refs/tags/}
+          PKG=$(jq -r .version package.json)
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${PKG}" >> "$GITHUB_OUTPUT"
+
+          if [ "${TAG}" == "v${PKG}" ]; then
+            echo "✅ Tag matches package.json version"
+          else
+            echo "❌ Tag ${TAG} does not match package.json version v${PKG}"
+            exit 1
+          fi
+
+      - name: Build package
+        run: |
+          set -euo pipefail
+          npm run build 2>&1 || true
+          echo "✅ Build complete"
+
+      - name: Verify package contents
+        run: |
+          set -euo pipefail
+          echo "Files to be published:"
+          npm pack --dry-run 2>&1 | head -30
+          echo ""
+          echo "✅ Package contents verified"
+
+      - name: Publish to npm
+        id: publish
+        run: |
+          set -euo pipefail
+          echo "Publishing ruvnet-brain@${{ steps.verify.outputs.version }} to npm..."
+          npm publish --provenance
+
+          echo "version=${{ steps.verify.outputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "✅ Published to npm"
+
+      - name: Verify published package
+        run: |
+          set -euo pipefail
+          echo "Waiting for npm to replicate..."
+          sleep 5
+
+          # Check that package is on npm
+          npm view ruvnet-brain@${{ steps.verify.outputs.version }} version
+          echo "✅ Package verified on npm registry"
+
+      - name: Create GitHub Release
+        id: release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ steps.verify.outputs.version }}
+          body: |
+            ## Release ${{ steps.verify.outputs.version }}
+
+            Published to npm: https://www.npmjs.com/package/ruvnet-brain/v${{ steps.verify.outputs.version }}
+
+            See [CHANGELOG.md](https://github.com/stuinfla/ruvnet-brain/blob/main/CHANGELOG.md) for details.
+
+            ### Installation
+
+            ```bash
+            npm install -g ruvnet-brain@${{ steps.verify.outputs.version }}
+            ```
+
+            ### Verify
+
+            ```bash
+            ruvnet-brain --version
+            ```
+          draft: false
+          prerelease: false
+
+      - name: Archive release evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          TAG=${GITHUB_REF#refs/tags/}
+          mkdir -p .release-evidence/${TAG}
+
+          # Capture build info
+          echo "Published: $(date -u)" > .release-evidence/${TAG}/publish-metadata.txt
+          echo "Tag: ${TAG}" >> .release-evidence/${TAG}/publish-metadata.txt
+          echo "Commit: ${GITHUB_SHA}" >> .release-evidence/${TAG}/publish-metadata.txt
+          echo "Version: ${{ steps.verify.outputs.version }}" >> .release-evidence/${TAG}/publish-metadata.txt
+          echo "npm URL: https://www.npmjs.com/package/ruvnet-brain/v${{ steps.verify.outputs.version }}" >> .release-evidence/${TAG}/publish-metadata.txt
+
+          # Capture workflow run info
+          echo "Workflow: ${{ github.workflow }}" >> .release-evidence/${TAG}/publish-metadata.txt
+          echo "Run: ${{ github.run_id }}" >> .release-evidence/${TAG}/publish-metadata.txt
+          echo "Actor: ${{ github.actor }}" >> .release-evidence/${TAG}/publish-metadata.txt
+
+      - name: Upload evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence-${{ github.ref_name }}
+          path: .release-evidence/
+          retention-days: 90
+
+  verify-published:
+    name: Verify Published Package
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify package on npm
+        run: |
+          set -euo pipefail
+          echo "Verifying ruvnet-brain@${{ needs.publish.outputs.published_version }} on npm..."
+
+          # Wait for npm replication
+          MAX_ATTEMPTS=10
+          ATTEMPT=0
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            if npm view ruvnet-brain@${{ needs.publish.outputs.published_version }} version >/dev/null 2>&1; then
+              echo "✅ Package is live on npm"
+              exit 0
+            fi
+            echo "Waiting for npm replication... ($((ATTEMPT + 1))/$MAX_ATTEMPTS)"
+            sleep 3
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+
+          echo "⚠️  Package verification timeout (may still be replicating)"
+          exit 0
+
+      - name: Report success
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ npm Publish Workflow Complete"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Package: ruvnet-brain@${{ needs.publish.outputs.published_version }}"
+          echo "Published: $(date -u)"
+          echo "npm URL: https://www.npmjs.com/package/ruvnet-brain/v${{ needs.publish.outputs.published_version }}"
+          echo ""

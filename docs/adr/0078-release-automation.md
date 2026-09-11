@@ -3,6 +3,7 @@ id: ADR-078
 title: Release automation - one-command ship with tag-driven deploys
 status: Proposed
 date: 2026-09-11
+updated: 2026-09-11
 authors: [Stuart Kerr, Codex]
 tags: [architecture, release, ci, automation, versioning, semver, deployment, npm]
 supersedes: []
