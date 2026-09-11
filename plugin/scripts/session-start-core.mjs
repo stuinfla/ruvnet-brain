@@ -36,6 +36,7 @@ import { brainState, health, mcpReadiness } from './session-start-health.mjs';
 import { stableSpine, heartbeat } from './session-start-update-plane.mjs';
 import { describeLifecycleHooks, readHookContracts } from './session-start-hook-description.mjs';
 import { createStageTracer } from './session-start-trace.mjs';
+import { getRecentDecisions, formatDecisionsForConsole } from '../mcp/decisions-endpoint.mjs';
 
 // Re-exported for callers/tests that import the entitlement check directly from this file's own
 // long-standing public surface (tests/unit/session-start-core-parity.test.mjs).
@@ -167,6 +168,20 @@ export async function runSessionStart({
   // continuity lane — see session-start-budget.mjs — and is reported here under EITHER trace flag.
   if (env.RUVNET_SESSION_TRACE === '1' || env.RUVNET_BRAIN_SESSION_START_TRACE === '1') {
     stderr.write(`SESSION_TRACE stage=restore elapsed_ms=${Date.now() - restoreStart}\n`);
+  }
+
+  // Retrieve and display recent project decisions (optional, errors silently)
+  try {
+    const projectMemDb = path.join(cwd, '.swarm', 'memory.db');
+    if (exists(projectMemDb)) {
+      const decisions = await getRecentDecisions({ dbPath: projectMemDb, limit: 3 });
+      if (decisions && decisions.length > 0) {
+        const formatted = formatDecisionsForConsole(decisions);
+        if (formatted) emit(formatted);
+      }
+    }
+  } catch {
+    // Decisions are optional; errors do not block boot
   }
 
   const tracer = createStageTracer({
