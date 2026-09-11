@@ -7,6 +7,7 @@ import {
   validateProgressionSnapshot,
 } from './project-progression-contract.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
+import { withProgressionReader } from './project-progression-reader.mjs';
 import { resolveRuflo, rufloInvocation, RUFLO_MISSING } from './ruflo-bin.mjs';
 
 const PROGRESSION_NAMESPACE = 'project-progression';
@@ -75,13 +76,27 @@ export class ProjectProgressionStore {
     runner = defaultRunner,
     clock = () => new Date().toISOString(),
     fsync,
+    // The read-only fast path (project-progression-reader.mjs). READS ONLY: `ruflo memory store`
+    // stays the sole writer of memory.db. Pass `reader: null` to force every read through the CLI.
+    reader = withProgressionReader,
   } = {}) {
     if (!rufloBinary) throw new Error(RUFLO_MISSING);
     this.resolution = resolveProjectStore({ projectDir, requestedStorePath });
     this.rufloBinary = rufloBinary;
     this.runner = runner;
     this.clock = clock;
+    this.reader = typeof reader === 'function' ? reader : null;
+    this.lastReadPath = null;
     this.outbox = new ProgressionOutbox({ projectRoot: this.resolution.projectRoot, fsync });
+  }
+
+  /**
+   * Run one read through the in-process reader, or report that the CLI must serve it.
+   * Structural errors propagate unchanged — only "I cannot answer authoritatively" falls back.
+   */
+  readFast(work) {
+    if (!this.reader) return { ok: false, reason: 'reader disabled' };
+    return this.reader(this.resolution.canonicalAgentDbPath, work);
   }
 
   run(args) {
@@ -158,6 +173,16 @@ export class ProjectProgressionStore {
     requirePositiveInteger(pageSize, 'pageSize');
     requirePositiveInteger(maxEntries, 'maxEntries');
     if (pageSize > maxEntries) throw new Error('pageSize exceeds the enumeration bound');
+    const fast = this.readFast((reader) => reader.listKeys(PROGRESSION_NAMESPACE, { maxEntries }));
+    if (fast.ok) {
+      this.lastReadPath = 'node:sqlite';
+      return fast.value;
+    }
+    this.lastReadPath = `ruflo-cli (${fast.reason})`;
+    return this.listSnapshotKeysViaCli({ pageSize, maxEntries });
+  }
+
+  listSnapshotKeysViaCli({ pageSize = 100, maxEntries = 10_000 } = {}) {
     const keys = [];
     const seen = new Set();
     let offset = 0;
@@ -214,6 +239,36 @@ export class ProjectProgressionStore {
   }
 
   retrieveSnapshots(keys) {
+    // The whole batch through ONE read-only handle, or the whole batch through the CLI. Never a
+    // mixture: a half-served batch would make "exactly these rows, read exactly this way" untrue.
+    const fast = this.readFast((reader) => {
+      const snapshots = [];
+      const rejected = [];
+      for (const key of keys) {
+        const content = reader.readContent(PROGRESSION_NAMESPACE, key);
+        if (content === null) throw new Error(`progression exact retrieval failed for ${key}: row not found`);
+        let snapshot;
+        try { snapshot = JSON.parse(content); } catch {
+          rejected.push({ eventKey: key, reasons: ['readback is not JSON'] });
+          continue;
+        }
+        if (!plainRecord(snapshot) || snapshot.eventKey !== key) {
+          rejected.push({ eventKey: key, reasons: ['exact key/payload identity mismatch'] });
+          continue;
+        }
+        snapshots.push(snapshot);
+      }
+      return { snapshots, rejected: sortRejected(rejected) };
+    });
+    if (fast.ok) {
+      this.lastReadPath = 'node:sqlite';
+      return fast.value;
+    }
+    this.lastReadPath = `ruflo-cli (${fast.reason})`;
+    return this.retrieveSnapshotsViaCli(keys);
+  }
+
+  retrieveSnapshotsViaCli(keys) {
     const snapshots = [];
     const rejected = [];
     for (const key of keys) {
