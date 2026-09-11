@@ -70,7 +70,7 @@ export class ProgressionReaderUnavailable extends Error {
 
 /**
  * THE PINNED SCHEMA FINGERPRINT — captured from the REAL canonical store on this machine
- * (ruflo 3.41.2, /Users/stuartkerr/Code/ruvnet-brain/.swarm/memory.db), not transcribed from source:
+ * (ruflo 3.41.2, a real project's own <project>/.swarm/memory.db), not transcribed from source:
  *
  *     PRAGMA user_version                -> 0
  *     PRAGMA table_info(memory_entries)  -> the 18 columns below
