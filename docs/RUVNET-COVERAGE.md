@@ -1,7 +1,7 @@
 # RuvNet Brain source coverage
 
-Generated: 2026-09-11T19:09:50.556Z  
-Coverage generation: `d636891427b83a65fc55a5fcc27db8eb4027647a4a4eb8f629e86452a89a62fa`  
+Generated: 2026-09-11T19:11:00.466Z  
+Coverage generation: `a69a2c581e99b4df72a04e4fed81e1ea57bba9365f9d1e67d50ebf50056e4604`  
 Repositories: 227 · Gists: 492 · CURRENT 11 · FAILED 476 · INELIGIBLE 34 · MISSING 9 · STALE 16 · UNVERIFIED 173
 
 > `CURRENT` is artifact-bound. Clone state and timestamps alone never establish freshness.
