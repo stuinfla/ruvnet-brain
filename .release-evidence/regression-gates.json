@@ -1,0 +1,26 @@
+{
+  "generated": "2026-09-11T16:55:20.617Z",
+  "gates": [
+    {
+      "metric": "session_start_recall_cold",
+      "slo": 500,
+      "limit": "550.00",
+      "testName": "Regression gate: session_start_recall_cold must be <550ms",
+      "command": "npm run bench -- memory-baseline"
+    },
+    {
+      "metric": "memory_store_write",
+      "slo": 100,
+      "limit": "110.00",
+      "testName": "Regression gate: memory_store_write must be <110ms",
+      "command": "npm run bench -- memory-baseline"
+    },
+    {
+      "metric": "adr_enforce_check",
+      "slo": 50,
+      "limit": "55.00",
+      "testName": "Regression gate: adr_enforce_check must be <55ms",
+      "command": "npm run bench -- memory-baseline"
+    }
+  ]
+}
