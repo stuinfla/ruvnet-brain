@@ -5,10 +5,16 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_487 gists · refreshed 2026-09-09_
+_492 gists · refreshed 2026-09-11_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-09-11 | [*specification.md](https://gist.github.com/ruvnet/6217ea3bd75cc0c27522965965e7383b) | TikTok-like recommender Algorithm |
+| 2026-09-10 | [gist-3.41.0.md](https://gist.github.com/ruvnet/6d3202cc7030e32169e8d5ac73b4e870) | RuFlo 3.41.0 — open swarm federation, step by step |
+| 2026-09-10 | [vibecast-challenge.md](https://gist.github.com/ruvnet/7274565b913dded4fb6a8232624e56e3) | Vibecast challenge, 11 Sep 2026 — Build an Agent That Learns (ruvnet tools, 90 minutes, local-first) |
+| 2026-09-10 | [release-2026-09-09-late.md](https://gist.github.com/ruvnet/cec28935b1ee33b0efdf9f648f02a841) | RuView: node diagnostics, memory & fusion fixes — 2026-09-09 |
+| 2026-09-09 | [federation-guide.md](https://gist.github.com/ruvnet/2fbad4d0e3bc02cc7d47b4f6fdd2c205) | Ruflo Cross-Host Federation + Claims — Complete Guide (v3.40.0) |
+| 2026-09-09 | [RuView-multistatic-timing-fixes-2026-09-09.md](https://gist.github.com/ruvnet/ac31fb4176ac68f30410c87efa809d8e) | RuView multistatic timing & positioning fixes — 2026-09-09 (9 merged PRs, contributor thanks) |
 | 2026-09-09 | [Super-intelligence.md](https://gist.github.com/ruvnet/6ecd5aaac62ab3c8ae8e542a23b9d264) | Persistent Systems Intelligence: rUv’s manifesto for AI that perceives, coordinates, acts, remembers, verifies, and impr |
 | 2026-09-04 | [cognitum-provenance-probe-2.html](https://gist.github.com/ruvnet/b72800a7999accdd564f6be95b5f7cd8) | cognitum provenance probe 2 — benign-looking companion link (synthetic, no real data) |
 | 2026-09-04 | [cognitum-provenance-probe.html](https://gist.github.com/ruvnet/d5c4134b8b8e2df83e6c3992e81b5da6) | Cognitum One provenance-boundary probe page (no real data; instructs the assistant to fetch attacker.invalid) |
@@ -21,7 +27,6 @@ _487 gists · refreshed 2026-09-09_
 | 2026-08-30 | [gist-what-we-learned.md](https://gist.github.com/ruvnet/37856a1aab825db91e7e8daf69b6fd17) | We tried to let AI agents skip talking. It didn't work — and one of our own negative results turned out to be our contro |
 | 2026-08-28 | [1-Readme.md](https://gist.github.com/ruvnet/15c6ef556be49e173ab0ecd6d252a7b9) | Gödel Agent for Recursive Self-Improvement: A Comprehensive Tutorial |
 | 2026-08-27 | [RuV-SOTA0-Scheduler.md](https://gist.github.com/ruvnet/7368405b5882a194df567d466818679b) | RuV Stack Daily SOTA Research and Implementation |
-| 2026-08-26 | [*specification.md](https://gist.github.com/ruvnet/6217ea3bd75cc0c27522965965e7383b) | TikTok-like recommender Algorithm |
 | 2026-08-25 | [ruvllm_sparse_attention_report.md](https://gist.github.com/ruvnet/7736317d1311a83137a39e804d7868ea) | ruvllm_sparse_attention: Subquadratic Sparse Attention for Edge LLM Inference on Hailo-10H Pi 5 Cluster |
 | 2026-08-24 | [Sora-prompts.md](https://gist.github.com/ruvnet/e20537eb50866b2d837d4d13b066bd88) | Crafting Cinematic Sora Video Prompts: A complete guide |
 | 2026-08-19 | [ruview-project-integration-map.md](https://gist.github.com/ruvnet/5110d7f546aab61c478afc9b353ae833) | Plain-language map of how RuView and Cognitum Spaces use Autogenous and Midstream today, and why LatentMesh is not yet i |

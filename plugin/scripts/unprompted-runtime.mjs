@@ -240,9 +240,18 @@ for (const p of producers) {
   if (remaining <= 0) break;                 // global budget spent → run no more producers
   let out = '';
   try {
+    // Build env for the spawned producer. advocacy-route.mjs needs RUVNET_ADVOCACY_ROUTE_BUDGET_MS
+    // to self-limit under concurrent load; pass it through if set by the test or caller.
+    const producerEnv = {
+      ...process.env,
+      RUVNET_EMIT_CANDIDATES: '1',
+    };
+    if (process.env.RUVNET_ADVOCACY_ROUTE_BUDGET_MS) {
+      producerEnv.RUVNET_ADVOCACY_ROUTE_BUDGET_MS = process.env.RUVNET_ADVOCACY_ROUTE_BUDGET_MS;
+    }
     const r = spawnSync(p.argv[0], p.argv.slice(1), {
       input: p.feedStdin ? payload : Buffer.alloc(0),
-      env: { ...process.env, RUVNET_EMIT_CANDIDATES: '1' },
+      env: producerEnv,
       timeout: remaining,
       maxBuffer: MAX_BUFFER,
     });

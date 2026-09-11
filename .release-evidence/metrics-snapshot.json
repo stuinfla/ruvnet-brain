@@ -1,0 +1,59 @@
+{
+  "timestamp": "2026-09-11T16:55:00.438Z",
+  "northStarScore": 71,
+  "repo": {
+    "stars": 65,
+    "forks": 19,
+    "openIssues": 25
+  },
+  "npm": {
+    "thisWeek": 1984,
+    "thisMonth": 3557
+  },
+  "telemetry": {
+    "totals": {
+      "install": 48,
+      "search": 5630,
+      "session": 15091
+    },
+    "today": {
+      "session": 538,
+      "install": 1,
+      "search": 162
+    }
+  },
+  "performance": {
+    "uptime": 99.85,
+    "errorRate": 2.1,
+    "latency": {
+      "p50": 45,
+      "p95": 180,
+      "p99": 310,
+      "unit": "ms"
+    },
+    "requestsPerSecond": 10
+  },
+  "trendsSample": [
+    {
+      "date": "2026-08-13",
+      "downloads": 300,
+      "stars": 10,
+      "errors": 3,
+      "avgLatency": 165
+    },
+    {
+      "date": "2026-08-14",
+      "downloads": 278,
+      "stars": 13,
+      "errors": 14,
+      "avgLatency": 107
+    },
+    {
+      "date": "2026-08-15",
+      "downloads": 475,
+      "stars": 14,
+      "errors": 17,
+      "avgLatency": 153
+    }
+  ]
+}

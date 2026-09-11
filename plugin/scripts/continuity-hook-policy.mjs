@@ -23,11 +23,27 @@
  *   session-snapshot    continuity capture    at turn end           claude
  *   session-snapshot    continuity capture    at PreCompact         claude
  *   session-snapshot    continuity capture    at SessionEnd         claude, codex
+ *   ground-ruvnet       grounding injection   at UserPromptSubmit   claude, codex
+ *   decision-gate       write authorization   at PreToolUse (write) claude
+ *   grounding-stamp     grounding receipt     at PostToolUse        claude
  *
- * NOT IN THIS PLANE, and deliberately so: ADR-067's PreToolUse refusal chokepoint (decision-gate)
- * and ADR-075's ExecutionPolicy are CONSEQUENTIAL-ACTION AUTHORIZATION, not lifecycle continuity.
- * They remain reachable through hook-shim's dispatch table and through explicit invocation; they are
- * simply not automatic registrations, which is why they are absent here rather than forgotten.
+ * THE GROUNDING ROWS WERE ADDED 2026-09-11 (Stuart), and this header is the record of why. The
+ * 4.3.16 retirement took the ONLY enforcement of ADR-0012 — never write rUv-product code the brain
+ * has not seen — out of the automatic plane, leaving it in hook-shim's table where nothing ran it.
+ * On 2026-09-11 the exact failure that rule exists to prevent recurred in this repo: a console was
+ * built without asking the brain whether one existed (it did: console/, RVBC). Stuart: "the fact
+ * that you don't have a hook set up to do that means you're a toy versus a solution." So the write
+ * gate is automatic again, WITH its key: decision-gate's write route is the one refuser (ADR-067),
+ * grounding-stamp on a successful search_ruvnet is the receipt that opens it, and ground-ruvnet is
+ * the prompt-level directive that tells the model to search first. ground-ruvnet is a second owner
+ * of UserPromptSubmit alongside unprompted-speech — scoped by ADR-040 §Amendment 2026-09-11 to
+ * grounding DIRECTIVES, which are not the advisory speech that seam owns.
+ *
+ * STILL NOT IN THIS PLANE, and deliberately so: decision-gate's BASH route and ADR-075's
+ * ExecutionPolicy. The mandate was the write path; and no host has proven PreToolUse or PostToolUse
+ * delivery for Codex (probe below), so under the measured-not-assumed rule the grounding
+ * registrations on Codex are ground-ruvnet only. Both remain reachable through hook-shim's dispatch
+ * table by explicit invocation.
  */
 
 /**
@@ -63,6 +79,15 @@ export const CONTINUITY_EVENTS = Object.freeze({
   ]),
   UserPromptSubmit: Object.freeze([
     registration('unprompted-speech', '*', ['claude', 'codex']),
+    registration('ground-ruvnet', '*', ['claude', 'codex']),
+  ]),
+  // The write gate and its key (ADR-0012 / ADR-067), re-registered 2026-09-11 — see the header.
+  // Claude only: Codex PreToolUse/PostToolUse delivery has not been observed (probe 2026-09-11).
+  PreToolUse: Object.freeze([
+    registration('decision-gate', '^(Write|Edit|MultiEdit|NotebookEdit)$', ['claude']),
+  ]),
+  PostToolUse: Object.freeze([
+    registration('grounding-stamp', '^(?:.*__)?search_ruvnet$', ['claude']),
   ]),
   Stop: Object.freeze([
     registration('continuation-gate', '*', ['claude', 'codex']),

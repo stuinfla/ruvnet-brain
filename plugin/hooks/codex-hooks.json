@@ -1,5 +1,5 @@
 {
-  "description": "RuvNet Brain continuity plane for Codex. Broad legacy automatic gates remain retired. Registrations here are MEASURED, not assumed: a probe hook was registered on all twelve event names the installed codex-cli 0.154.0 binary declares and a real `codex exec` run was observed (2026-09-11). SessionStart, UserPromptSubmit and SessionEnd FIRED and carry handlers. Stop keeps only the pre-existing, project-scoped continuation gate. PreCompact is DECLARED ABSENT here: the binary declares the event but the probe never observed it, and a capture registered on an unobserved event would look symmetrical while capturing nothing. All handlers are bounded and fail open.",
+  "description": "RuvNet Brain continuity plane for Codex. Broad legacy automatic gates remain retired. Registrations here are MEASURED, not assumed: a probe hook was registered on all twelve event names the installed codex-cli 0.154.0 binary declares and a real `codex exec` run was observed (2026-09-11). SessionStart, UserPromptSubmit and SessionEnd FIRED and carry handlers. Stop keeps only the pre-existing, project-scoped continuation gate. PreCompact is DECLARED ABSENT here: the binary declares the event but the probe never observed it, and a capture registered on an unobserved event would look symmetrical while capturing nothing. All handlers are bounded and fail open. Amended 2026-09-11: UserPromptSubmit also runs ground-ruvnet (grounding injection, ADR-040 §Amendment); PreToolUse/PostToolUse stay unregistered on Codex because their delivery has not been observed.",
   "hooks": {
     "SessionStart": [
       {
@@ -33,6 +33,11 @@
             "type": "command",
             "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 2500 unprompted-speech UserPromptSubmit",
             "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 9000 ground-ruvnet",
+            "timeout": 10
           }
         ]
       }

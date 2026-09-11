@@ -69,19 +69,20 @@ t('memory score: nothing probed → null (never a number we did not measure)', (
   assert.equal(scoreMemoryHealth({ probes: {} }).score, null);
 });
 
-t('buildCapabilityRecommendations: OFF + verified command + evidence -> one rec, bound to enable:<key>', () => {
+t('buildCapabilityRecommendations: memory-distillation OFF + verified command + evidence -> NO rec while its inverse is unavailable', () => {
+  // Until 6a6ba72f (2026-09-07) this asserted ONE rec: distill-project's 2026-07-24 restore round-trip
+  // (644→648→644→648) was taken as a proven inverse. That commit emptied CAPABILITY_ELIGIBLE with the
+  // reason "a historical restore demonstration is not proof of a currently available inverse —
+  // distill-project --restore now refuses unsafe database replacement". A recommendation without a
+  // live undo is exactly what makeRecommendation exists to forbid, so the stronger invariant wins and
+  // this test was the stale side (red from 2026-09-07 until re-measured 2026-09-11).
   const recs = buildCapabilityRecommendations({ capabilities: [{
     key: 'memory-distillation', label: 'Memory distillation', scope: 'project', state: 'off',
     whatItBuysYou: 'Loose notes get mined into reusable patterns.',
     turnOn: { human: "Mine this project's stored memories into reusable patterns", cmd: 'node /x/distill-project.mjs' },
     evidence: '10 memories stored and 80.0% embedded, but 0 have been distilled into patterns',
   }] });
-  assert.equal(recs.length, 1);
-  assert.equal(recs[0].id, 'enable:memory-distillation');
-  assert.equal(recs[0].scope, 'project');
-  assert.equal(recs[0].touchesMachine, false);          // project scope -> never the machine-touch banner
-  assert.ok(recs[0].undo.human.length > 0);              // schema gate: undo always present
-  assert.ok(recs[0].evidence[0].observed.includes('80.0% embedded'));
+  assert.equal(recs.length, 0, 'no proven inverse today => never offered, however complete the row looks');
 });
 t('buildCapabilityRecommendations: ON, IDLE, UNKNOWN, and ABSENT are never offered', () => {
   for (const state of ['on', 'idle', 'unknown', 'absent']) {

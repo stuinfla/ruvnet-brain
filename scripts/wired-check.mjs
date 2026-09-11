@@ -51,7 +51,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { loadLessons, TRIGGERS, STATUS } from './lesson-store.mjs';
-import { isAllowedContinuityRegistration } from '../plugin/scripts/continuity-hook-policy.mjs';
+import { continuityRegistrations, isAllowedContinuityRegistration } from '../plugin/scripts/continuity-hook-policy.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '..');
 const argv = process.argv.slice(2);
@@ -75,6 +75,14 @@ const STANDALONE = [
   ['sync-census', 'explicit maintainer census writer; a destructive source-to-surface refresh is never scheduled'],
   ['sync-commands', 'explicit maintainer alias synchronizer; run deliberately before release, never from a lifecycle hook'],
   ['version-bump-gate', 'retired automatic interceptor; explicit version checks own release validation'],
+  ['project-progression-checkpoint', 'the body of the shipped `/ruvnet-brain:checkpoint` command '
+    + '(plugin/commands/checkpoint.md:39; added a7167b6b 2026-09-11). The command host executes that '
+    + 'instruction, and this check does not scan command markdown — the same shape as '
+    + '`onboarding-console` below. Recorded 2026-09-11 when wired-check first named it.'],
+  ['handoff-asset', 'client explainer handoff to a named host, run by a human per docs/CLIENT-ASSET-HANDOFF.md '
+    + '(added 32b7b7ca 2026-09-11 with the TriSmart sub-product); nothing may schedule a copy to a client '
+    + 'machine. Surfaced 2026-09-11 the first time wired-check ran with no agent worktrees under '
+    + '.claude/worktrees/ — their package.json copies had been counted as callers all day.'],
   ['lesson-seed', 'one-shot seeding, run deliberately by a human'],
   ['lesson-ratify', 'the human control surface — a CLI is its entire purpose'],
   ['stamp-sweep', 'ADR-056 §2 — the ONE-TIME backfill half of the stamp rule. A human runs it once '
@@ -790,8 +798,10 @@ export function hookWiringAudit({
     const packageRegistry = file.endsWith('/plugin/hooks/hooks.json') || file.endsWith('/plugin/hooks/codex-hooks.json');
     const rows = Object.entries(doc.hooks).flatMap(([event, groups]) => (groups ?? []).flatMap((group) =>
       (group?.hooks ?? []).map((hook) => ({ event, matcher: group.matcher ?? '', command: hook.command }))));
+    const host = file.endsWith('/plugin/hooks/codex-hooks.json') ? 'codex' : 'claude';
     return packageRegistry
-      ? rows.length === 2 && rows.every((row) => isAllowedContinuityRegistration(row))
+      ? rows.length === continuityRegistrations(host).length
+        && rows.every((row) => isAllowedContinuityRegistration({ ...row, host }))
       : rows.length === 0;
   });
   const table = hookShimTable(repo);
@@ -850,7 +860,7 @@ export function hookWiringAudit({
     else if (automaticHooksConstrained && declared) rows.push({
       file: f,
       state: 'retired',
-      why: 'legacy automatic Brain hooks remain retired; only the two constrained continuity handlers are wired',
+      why: 'legacy automatic Brain hooks remain retired; only the declared continuity plane (see plugin/hooks/hook-contracts.json) is wired',
     });
     else if (held[f]) rows.push({ file: f, state: 'held', why: held[f] });
     else rows.push({ file: f, state: 'unwired' });

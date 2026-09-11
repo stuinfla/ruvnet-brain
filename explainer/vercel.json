@@ -2,7 +2,7 @@
   "cleanUrls": true,
   "redirects": [
     {
-      "source": "/((?!api/).*)",
+      "source": "^/(?!api/|metrics)(.*)$",
       "has": [
         {
           "type": "host",

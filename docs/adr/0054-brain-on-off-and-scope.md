@@ -4,7 +4,7 @@ title: Brain on/off and per-part scope — a user-controlled brain that can neve
 status: Accepted
 date: 2026-07-26
 updated: 2026-09-11
-reviewed_digest: dd03656c0235
+reviewed_digest: 9847b322a634
 version: 1.1.3
 impl: verification-expired
 verified: 2026-07-31
@@ -226,6 +226,7 @@ source review does not renew the expired verification or prove the native-host a
 
 ## Currency log
 
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged — ON/OFF only, sentinel file, the console as the one flipping surface; brain power measured CORRECT in the 2026-09-11 console audit. `plugin/mcp/server.mjs` restored to 85f584b2 (`0bb13a0f`; kill-on-timeout back). `plugin/scripts/hook-shim.mjs` +3 orphan TABLE entries (`8afdf656`) then −3 (`689ecfd4`) — identical to 85f584b2. `plugin/scripts/session-start-core.mjs` identical to 85f584b2 (`1de708e3`). `kb/forge-update.mjs` / `bin/install.mjs` `dc18fadc` (retention rule; private-fenced stores pinned). `scripts/onboarding-console.mjs`: the card fixes, including `c98b64d5` — the Complete-Brain profile card now measures the installed root instead of a dev-only `dist/` path that read 0 MB, and names the restore mechanism instead of a rescued `available` flag; `saveBrainProfile`'s `--restore-complete` path is unchanged. `scripts/user-settings.mjs`, `kb/forge-ask-all.mjs`, `kb/brain-profile.mjs` did not move today. | Reviewed `plugin/mcp/server.mjs`, `plugin/scripts/hook-shim.mjs`, `scripts/onboarding-console.mjs`. reviewed_digest 9847b322a634. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. `kb/forge-ask-all.mjs` (`ccaea57a`, `c5eb2abc`, 72+44 lines) grepped for `brainEnabled`/sentinel/off-state/`offBehavior`/`disabled`: zero hits in either diff, matching this ADR's own established method (see the 2026-07-27 row). `plugin/mcp/server.mjs` (`76e9a6ab`) only reworded the brain-unavailable runtime error string; it does not touch the boot-frozen tool-description claim in §4. `kb/forge-update.mjs` (`a9d2c65b`) widened the backup-sweep prefix allowlist (issue #235); unrelated to on/off or scope. The remaining five drift commits touch only `bin/install.mjs`/`plugin/scripts/session-start-core.mjs` plumbing already reviewed under ADR-013/034/049/051. | Grepped both `forge-ask-all.mjs` diffs directly; read the `server.mjs` and `forge-update.mjs` diffs in full. reviewed_digest dd03656c0235. |
 | 2026-09-07 | Reviewed nightly registration and removal retain explicit user scope and fail closed on removal errors; existing OFF and maintenance profile boundaries remain separate; source digest 6412e6027a0a. | `bin/install.mjs`; source review only, hosted and public acceptance remain pending. |
 

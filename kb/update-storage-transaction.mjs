@@ -48,12 +48,29 @@ export function treeIdentity(dir) {
     fileCount: entries.filter((entry) => entry.type === 'file').length, entries };
 }
 
+// SYMLINK POLICY (issues #130/#131, applied here 2026-09-11). This threw on ANY symbolic link, and
+// the installed brain always carries one: npm's `node_modules/.bin/semver`. So the already-current
+// path in forge-update.mjs (managedStorageInventory at :1141) died on every machine, and the same
+// link inside a `kb.bak-*` sibling wedged its inventory. A link that cannot be a store file and
+// stays inside the tree is inventory, reported as `symlinkCount`. Two cases still throw, because
+// they are what the hardening exists for: a link standing in for a store file, and a link that
+// escapes the tree (its target is what a receipt would then silently be measuring).
 function trustedTreeSummary(dir, kind) {
   const identity = treeIdentity(dir);
-  if (identity.entries.some((entry) => entry.type === 'symlink')) {
-    throw new Error(`managed ${kind} tree contains a symbolic link: ${dir}`);
+  const root = path.resolve(dir);
+  let symlinkCount = 0;
+  for (const entry of identity.entries) {
+    if (entry.type !== 'symlink') continue;
+    const relative = entry.path.split('/').join(path.sep);
+    const link = path.join(dir, relative);
+    if (/\.rvf$/i.test(relative)) throw new Error(`managed ${kind} tree contains a symbolic link in place of a store file: ${link}`);
+    const resolved = path.resolve(root, path.dirname(relative), entry.target);
+    if (path.isAbsolute(entry.target) || !resolved.startsWith(`${root}${path.sep}`)) {
+      throw new Error(`managed ${kind} tree contains a symbolic link that escapes the tree: ${link} -> ${entry.target}`);
+    }
+    symlinkCount++;
   }
-  return { kind, path: dir, sha256: identity.sha256, bytes: identity.bytes, fileCount: identity.fileCount };
+  return { kind, path: dir, sha256: identity.sha256, bytes: identity.bytes, fileCount: identity.fileCount, symlinkCount };
 }
 
 // Installer-retained paths are observations, not transaction-owned cleanup candidates. Count link
