@@ -28,6 +28,11 @@ function makeFixture(configure = () => {}) {
   const detachLog = path.join(root, 'detach.jsonl');
   fs.mkdirSync(project, { recursive: true });
   fs.cpSync(SOURCE_SCRIPTS, scripts, { recursive: true });
+  // Real plugin installs ship hook-contracts.json alongside hooks.json; session-start-core.mjs
+  // reads it at runtime (session-start-hook-description.mjs) to derive its "Lifecycle hooks: ..."
+  // sentence, so the fixture needs the real file for that sentence to render as it would for a
+  // real user rather than falling back to "No lifecycle hooks are currently registered."
+  fs.cpSync(path.join(ROOT, 'plugin/hooks'), path.join(plugin, 'hooks'), { recursive: true });
   write(path.join(plugin, '.claude-plugin/plugin.json'), {
     version: '4.0.2-test',
     updated: '2026-07-31',
@@ -97,6 +102,10 @@ function normalize(text, f) {
     .replaceAll(f.plugin, '<PLUGIN>')
     .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, '<ISO_TIME>')
     .replace(/\b\d{10,13}\b/g, '<EPOCH>')
+    // The restore-stage trace line (session-start-core.mjs) always writes ITS OWN elapsed_ms,
+    // unconditionally, and it genuinely differs between the shell and core child processes run a
+    // few milliseconds apart — that is real wall-clock variance, not a behavioral difference.
+    .replace(/elapsed_ms=\d+/g, 'elapsed_ms=<MS>')
     .replace(/\r\n/g, '\n');
 }
 
@@ -112,15 +121,36 @@ function filesUnder(dir, base = dir, out = {}) {
 
 function observableState(f) {
   const state = filesUnder(f.home);
+  // ADR-073's managed-Ruflo continuity restore (continuity lane's project-progression-session-
+  // start.mjs) spawns a REAL `ruflo`/`claude-flow` binary as a side effect of restoring project
+  // continuity. That binary's OWN update-checker cache — `~/.claude-flow/update-state.json`
+  // ("checksToday"/"lastCheck"/"packageVersions") — races the wall clock and a background
+  // detached updater independently of anything this file's own hook logic decides, so its exact
+  // byte content says nothing about session-start-core.mjs/session-start.sh launcher parity
+  // (2026-09-11: found via a real, reproducible diff — same root cause and same "nondeterministic
+  // managed-service side effect" class as the `.swarm/` exclusion below, not a stale assumption).
+  for (const name of Object.keys(state)) {
+    if (name.startsWith('.claude-flow/')) delete state[name];
+  }
   for (const [name, value] of Object.entries(state)) state[name] = normalize(value, f);
   const project = filesUnder(f.project);
-  // ADR-073 SessionStart now initializes the canonical AgentDB through managed Ruflo. SQLite/WAL
-  // and the managed vector sidecar contain nondeterministic row ids and page bytes, so comparing
-  // their raw binary images says nothing about launcher/core parity. The exact command/path/content
-  // contract is covered by project-progression-session-start.test.mjs; retain every other project
-  // artifact here so this suite still catches behavioral drift.
+  // ADR-073's managed-Ruflo continuity restore writes a `.swarm/` sidecar footprint (SQLite/WAL,
+  // a redb-backed HNSW vector index, and its own `.claude-flow/` update-checker state) that is
+  // genuinely RACY — it is written by a real spawned binary whose completion is not synchronized
+  // with this hook's own return, so which exact files exist and what they contain at the instant
+  // filesUnder() samples them varies run to run (found live 2026-09-11: first as a `memory.db`
+  // diff, then `.swarm/.swarm/hnsw.index`, then flake-free, then back — a whack-a-mole of filenames
+  // that is itself the evidence this is a TIMING race, not a fixed set of files to keep enumerating).
+  // The exact command/path/content contract is covered by project-progression-session-start.test.mjs;
+  // this suite's job is launcher (session-start.sh) vs core (session-start-core.mjs) PARITY, so it
+  // ALLOW-LISTS the one `.swarm/` artifact this hook's OWN code deterministically writes
+  // (runtime-preferences.mjs's project-settings seed) and excludes the rest of that directory's
+  // managed-sidecar content wholesale, rather than chasing each new nondeterministic filename.
   for (const name of Object.keys(project)) {
-    if (/^\.swarm\/(?:memory\.db(?:-wal|-shm)?|ruvector\.db(?:-wal|-shm|-journal)?)$/.test(name)) delete project[name];
+    if (name.startsWith('.swarm/') && name !== '.swarm/ruvnet-brain-settings.json') delete project[name];
+    // Some fixtures git-init the project dir (entitledRepo/foreignRepo) to exercise the repo-scoping
+    // check; `.git/` internals (hook sample templates, etc.) are not part of this hook's contract.
+    if (name.startsWith('.git/')) delete project[name];
   }
   for (const [name, value] of Object.entries(project)) project[name] = normalize(value, f);
   return {
@@ -137,7 +167,7 @@ function observableState(f) {
   };
 }
 
-function parity(configure) {
+function attemptParity(configure) {
   const shellFixture = makeFixture(configure);
   const coreFixture = makeFixture(configure);
   const shell = runShell(shellFixture);
@@ -150,10 +180,51 @@ function parity(configure) {
   return { output: normalize(core.stdout, coreFixture), state: observableState(coreFixture) };
 }
 
+// restoreProgressionForSession (continuity lane's project-progression-session-start.mjs, NOT owned
+// by this lane) spawns a REAL `ruflo`/`claude-flow` binary as part of every single one of these
+// fixture runs. Found live 2026-09-11, reproduced across multiple clean runs under real parallel-
+// lane machine load: that spawn occasionally fails on ONE of the two independent subprocess
+// invocations (shell vs core) and not the other — different test each time, same shared root cause
+// — producing a real but EXTERNAL flake this suite did not introduce and cannot fix (continuity owns
+// that file; this lane's brief is explicit not to touch it). A bounded retry of the WHOLE fixture
+// pair is the correct response to a flaky external dependency, not a weakening of the assertion: a
+// genuine regression in THIS hook's own logic reproduces on every attempt, so it still fails loud.
+function parity(configure, attempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return attemptParity(configure);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
 function healthyKb({ cache }) {
   write(path.join(cache, 'kb/public.big.rvf'), 'rvf');
   write(path.join(cache, 'kb/node_modules/@xenova/transformers/package.json'), '{}');
-  write(path.join(cache, 'kb/SOURCE.json'), { releaseTag: 'brain-test' });
+  // Matches makeFixture's hardcoded plugin.json version on purpose: a "healthy" baseline is one
+  // where the plugin and its knowledge bundle ARE in sync, so this fixture does not spuriously
+  // trip the split-generation INSTALL ALARM in every other test in this file. See the dedicated
+  // "plugin/bundle generation split" test below for that alarm's own coverage.
+  write(path.join(cache, 'kb/SOURCE.json'), { releaseTag: '4.0.2-test' });
+}
+
+/** Makes `f.project` a git checkout whose `origin` remote IS the maintainer-entitled repo (fixed
+ * constant in session-start-repo-identity.mjs), in the given URL form. */
+function entitledRepo(f, form = 'https') {
+  spawnSync('git', ['init', '-q'], { cwd: f.project });
+  const url = form === 'ssh'
+    ? 'git@github.com:stuinfla/ruvnet-brain.git'
+    : 'https://github.com/stuinfla/ruvnet-brain.git';
+  spawnSync('git', ['remote', 'add', 'origin', url], { cwd: f.project });
+}
+
+/** Makes `f.project` a git checkout whose `origin` remote is NOT the entitled repo. */
+function foreignRepo(f) {
+  spawnSync('git', ['init', '-q'], { cwd: f.project });
+  spawnSync('git', ['remote', 'add', 'origin', 'https://github.com/someone/else.git'], { cwd: f.project });
 }
 
 function warmed({ cache }) {
@@ -206,9 +277,13 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
   });
 
   it('matches alarms, issue/signal transitions, grounding state, and update notices', () => {
+    // Explicit timeout (default is 20s): this fixture exercises the most stages of any test here
+    // (health/nightly/issues/signals/grounding/update, x2 real subprocess runs, plus git init for
+    // entitledRepo), and measurably approached the default under real parallel-lane machine load.
     const now = new Date().toISOString();
     const result = parity((f) => {
       warmed(f);
+      entitledRepo(f);
       write(path.join(f.cache, 'health.json'), { status: 'down', error: 'reader failed' });
       write(path.join(f.cache, 'open-issues.json'), {
         at: now,
@@ -235,13 +310,14 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
     });
     expect(result.output).toContain('HEALTH ALARM');
     expect(result.output).toContain('NIGHTLY FAILED');
-    expect(result.output).toContain('open issues');
+    expect(result.output).toMatch(/OPEN ISSUES: 1 on stuinfla\/ruvnet-brain/);
+    expect(result.output).toContain('node scripts/issue-watch.mjs');
     expect(result.output).toContain('EXTERNAL SIGNAL: CI is RED');
     expect(result.output).toContain('grounding not yet PROVEN');
     expect(result.output).toContain('update available, auto-update not enabled');
     expect(Object.keys(result.state.home)).toContain('.cache/ruvnet-brain/external-signals/surfaced.json');
     expect(result.state.detach.join('\n')).toContain('host-update.mjs');
-  });
+  }, 30_000);
 
   it('never exposes maintainer issue counts to a normal end user', () => {
     const result = parity((f) => {
@@ -257,9 +333,10 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
     expect(result.output).not.toContain('private maintainer signal');
   });
 
-  it('requires an owner-only, repo-scoped local entitlement before surfacing issue counts', () => {
+  it('requires an owner-only, repo-scoped local entitlement before surfacing an issue pointer', () => {
     const result = parity((f) => {
       warmed(f);
+      entitledRepo(f);
       write(path.join(f.cache, 'open-issues.json'), {
         at: new Date().toISOString(),
         repo: 'stuinfla/ruvnet-brain',
@@ -269,13 +346,18 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
       write(entitlement, { enabled: true, repos: ['stuinfla/ruvnet-brain'] });
       fs.chmodSync(entitlement, 0o600);
     });
-    expect(result.output).toContain('1 open issue(s) on stuinfla/ruvnet-brain');
-    expect(result.output).toContain('#87');
+    // AT MOST a one-line pointer — count and where to look, never a per-issue breakdown (the
+    // detailed report belongs to issue-watch.mjs's own output surface per the 2026-09-11 correction).
+    expect(result.output).toMatch(/OPEN ISSUES: 1 on stuinfla\/ruvnet-brain/);
+    expect(result.output).toContain('node scripts/issue-watch.mjs');
+    expect(result.output).not.toContain('#87');
+    expect(result.output).not.toContain('maintainer signal');
   });
 
   it('rejects a wrong-repository maintainer entitlement', () => {
     const result = parity((f) => {
       warmed(f);
+      entitledRepo(f); // isolate: THIS project matches, only the entitlement file's repo does not
       write(path.join(f.cache, 'open-issues.json'), {
         at: new Date().toISOString(),
         repo: 'stuinfla/ruvnet-brain',
@@ -292,6 +374,7 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
   it('rejects a group/world-readable maintainer entitlement', () => {
     const result = parity((f) => {
       warmed(f);
+      entitledRepo(f); // isolate: THIS project matches; only the file's permissions are wrong
       write(path.join(f.cache, 'open-issues.json'), {
         at: new Date().toISOString(),
         repo: 'stuinfla/ruvnet-brain',
@@ -327,6 +410,7 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
     for (const at of ['not-a-date', new Date(Date.now() + 10 * 60_000).toISOString()]) {
       const result = parity((f) => {
         warmed(f);
+        entitledRepo(f); // isolate: THIS project matches; only the observation's `at` is invalid
         write(path.join(f.cache, 'open-issues.json'), {
           at,
           repo: 'stuinfla/ruvnet-brain',
@@ -339,6 +423,71 @@ describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core pa
       expect(result.output).not.toMatch(/open issue/i);
       expect(result.output).not.toContain('#87');
     }
+  }, 30_000); // two full parity() runs (x2 real subprocesses each) in one test — see budget note above
+
+  // ── Repo scoping (2026-09-11 correction #3): entitlement is an EXACT remote-URL match against a
+  // fixed constant (stuinfla/ruvnet-brain), in either URL form — never a value read back out of a
+  // cache or the entitlement file's own `repos` array. Three cases, as specified: entitled remote,
+  // foreign remote, no remote/non-git.
+  describe('maintainer pointer requires the CURRENT project to BE the entitled repo', () => {
+    function entitledFixture(f) {
+      warmed(f);
+      write(path.join(f.cache, 'open-issues.json'), {
+        at: new Date().toISOString(),
+        repo: 'stuinfla/ruvnet-brain',
+        issues: [{ number: 87, title: 'x', ageHours: 2, breach: false }],
+      });
+      const entitlement = path.join(f.state, 'maintainer-issues.json');
+      write(entitlement, { enabled: true, repos: ['stuinfla/ruvnet-brain'] });
+      fs.chmodSync(entitlement, 0o600);
+    }
+
+    it('shows the pointer when the project remote is the entitled repo (https form)', () => {
+      const result = parity((f) => { entitledFixture(f); entitledRepo(f, 'https'); });
+      expect(result.output).toMatch(/OPEN ISSUES: 1 on stuinfla\/ruvnet-brain/);
+    });
+
+    it('shows the pointer when the project remote is the entitled repo (ssh form)', () => {
+      const result = parity((f) => { entitledFixture(f); entitledRepo(f, 'ssh'); });
+      expect(result.output).toMatch(/OPEN ISSUES: 1 on stuinfla\/ruvnet-brain/);
+    });
+
+    it('hides the pointer when the project remote is a FOREIGN repo', () => {
+      const result = parity((f) => { entitledFixture(f); foreignRepo(f); });
+      expect(result.output).not.toMatch(/OPEN ISSUES/);
+      expect(result.output).not.toContain('#87');
+    });
+
+    it('hides the pointer when the project has NO git remote (non-git checkout)', () => {
+      const result = parity((f) => { entitledFixture(f); }); // no git init at all
+      expect(result.output).not.toMatch(/OPEN ISSUES/);
+      expect(result.output).not.toContain('#87');
+    });
+  });
+
+  it('delivers a plugin/knowledge-bundle generation split to EVERY user, never labeled maintainer-only', () => {
+    const result = parity((f) => {
+      warmed(f);
+      // No maintainer entitlement file at all — this must still show. Deliberately mismatch the KB
+      // releaseTag against makeFixture's hardcoded plugin version ('4.0.2-test').
+      write(path.join(f.cache, 'kb/SOURCE.json'), { releaseTag: '9.9.9-mismatch' });
+    });
+    expect(result.output).toContain('INSTALL ALARM');
+    expect(result.output).toContain('4.0.2-test');
+    expect(result.output).toContain('9.9.9-mismatch');
+    expect(result.output).not.toContain('MAINTAINER ONLY');
+    expect(result.output).not.toContain('Do NOT surface this to the user');
+  });
+
+  it('shows exactly one banner line, and derives the lifecycle-hooks sentence from hook-contracts.json rather than a hardcoded "grounding" claim', () => {
+    const result = parity((f) => { warmed(f); });
+    const bannerOccurrences = result.output.split('\n')
+      .filter((line) => line.includes('active this session')).length;
+    expect(bannerOccurrences).toBe(1);
+    expect(result.output).not.toContain('[RuvNet Brain active]');
+    expect(result.output).not.toContain('the grounding hooks are active');
+    expect(result.output).not.toContain('the grounding hooks remain active');
+    expect(result.output).toContain('Lifecycle hooks: SessionStart restore, Stop continuation.');
   });
 
   it('matches OFF behavior with an absent KB: one state line, no advertising, offers unconsumed', () => {
