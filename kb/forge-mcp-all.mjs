@@ -245,6 +245,12 @@ const TOOLS = [
       },
       required: ['query'],
     },
+    // Same declaration the protocol shell publishes (plugin/mcp/server.mjs SEARCH_TOOL), repeated
+    // here so the two lists cannot disagree about what this tool is allowed to do. Every write
+    // reachable from a search lands under ~/.cache/ruvnet-brain (meterLog, markGroundingProven,
+    // brain-alarm health.json, telemetry stamps) — never the user's project tree, which is the
+    // property issue #36 fixed and the reason readOnlyHint is honest here.
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   },
 ];
 
