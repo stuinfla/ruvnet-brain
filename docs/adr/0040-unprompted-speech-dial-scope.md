@@ -3,7 +3,7 @@ id: ADR-040
 title: What the advocacy dial actually governs — chokepoint, or honest per-channel controls
 status: Accepted
 date: 2026-07-23
-updated: 2026-07-23
+updated: 2026-09-11
 authors: [Stuart Kerr, Claude Code]
 tags: [proactive, advocacy, dial, chokepoint, honesty, 4.0]
 supersedes: []
@@ -174,3 +174,7 @@ under `_eventOwners` with class *grounding injection*; `continuity-hook-policy.m
 `npm run hooks:check` and the installer's convergence predicate derive from it. Companion registrations in the
 same change: decision-gate's write route (PreToolUse, ADR-067) and grounding-stamp (PostToolUse) — the gate and
 its key — recorded in ADR-067's status log.
+
+## Currency log
+
+| 2026-09-11 | Amendment recorded (`7b8e6e73`, merged `a610f3f5`): `ground-ruvnet` is a second UserPromptSubmit owner scoped to grounding directives; the four-channel single-writer invariant is restated with its scope explicit; `unprompted-runtime.mjs` is untouched. This row exists because the amendment landed without moving `updated:`. No code review is claimed here — this ADR governs no paths. | Referents: `plugin/scripts/ground-ruvnet.sh`, `plugin/hooks/hooks.json`, `plugin/scripts/unprompted-runtime.mjs`; ADR-067; commit 7b8e6e73. |
