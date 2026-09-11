@@ -220,6 +220,7 @@ describe('runSubscriptionHost prompt transport', () => {
       expect(result.ok).toBe(true);
       expect(result.value.length).toBeGreaterThan(256 * 1024);
       expect(result.value.argv).toContain('--json');
+      expect(result.value.argv).toContain('gpt-6-astra');
       expect(result.value.argv).not.toContain('x'.repeat(300 * 1024));
     } finally {
       process.env.PATH = previousPath;
