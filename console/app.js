@@ -2011,6 +2011,22 @@ function renderMemory(mem) {
       el('p', { class: 'fineprint' },
         'Dimensions we didn’t probe this session are excluded from the score — shown grey below, never assumed. A known-broken dimension caps the score.'))));
 
+  // Two files can sit in .swarm/. The score is about ONE of them, and the reader is told which — the
+  // card once rendered the MCP coordination store's 15,824 rows as if they were the project memory.
+  if (h.stores && h.stores.coordination && h.stores.coordination.exists && h.stores.canonical && h.stores.canonical.exists) {
+    const k = h.stores.canonical; const c = h.stores.coordination;
+    const scoredIsCanonical = h.stores.scored === k.path;
+    const rows = (s) => (s.rows == null ? '' : ` (${fmtInt(s.rows)} rows)`);
+    main.push(el('p', { class: 'fineprint' },
+      'Scored store: ', el('code', {}, scoredIsCanonical ? k.path : c.path), rows(scoredIsCanonical ? k : c), '. ',
+      'Also present: ', el('code', {}, scoredIsCanonical ? c.path : k.path), rows(scoredIsCanonical ? c : k),
+      scoredIsCanonical
+        ? ' — the MCP coordination store, not scored: a different container from the one '
+        : ' — the canonical store, not scored because it holds no rows; ',
+      scoredIsCanonical ? el('code', {}, 'ruflo memory store') : el('code', {}, 'ruflo memory store'),
+      scoredIsCanonical ? ' writes.' : ' writes there once used.'));
+  }
+
   const learn = renderLearnings(mem.learnings);
   if (learn) main.push(learn);
 

@@ -444,25 +444,41 @@ function sessionHookExists() {
 //
 // So the probe stops guessing and asks the filesystem: consider both known names, and use whichever
 // actually holds rows. That is correct on their machine and on mine without knowing why they differ.
+//
+// THE SECOND HALF OF THAT LESSON (console audit 2026-09-11). "Whichever holds rows" was implemented
+// as "whichever is LARGER", and on a machine where BOTH hold rows that picked the wrong one: the
+// card scored ruvnet-brain on `.swarm/agentdb-memory.db` — 15,824 rows, the MCP coordination store
+// the global CLAUDE.md warns is a DIFFERENT container — and rendered "15824 entries, 100% embedded"
+// while the canonical `.swarm/memory.db`, the file `ruflo memory store` writes, held 5. The #127
+// reporter's cases (canonical absent, or present but empty) still resolve to the coordination store;
+// a canonical store that holds rows is now always the one scored, and BOTH files are reported so the
+// page can say which it scored and which it did not.
 const MEMORY_DB_NAMES = ['memory.db', 'agentdb-memory.db'];
+// Row count that never throws and never hangs on a live store: null means "unreadable this instant".
+function memoryRows(file) {
+  if (!fs.existsSync(file)) return null;
+  const r = robustRead(file, 'SELECT count(*) FROM memory_entries;');
+  return r.ok ? (r.value === null ? 0 : parseInt(r.value, 10)) : null;
+}
+export function memoryStores(projectDir) {
+  const [canonicalPath, coordinationPath] = MEMORY_DB_NAMES.map((name) => path.join(projectDir, '.swarm', name));
+  const canonical = { path: canonicalPath, exists: fs.existsSync(canonicalPath), rows: memoryRows(canonicalPath) };
+  const coordination = { path: coordinationPath, exists: fs.existsSync(coordinationPath), rows: memoryRows(coordinationPath) };
+  // A canonical store that holds rows — or is busy being written this instant (rows null) — is the
+  // one scored. Only an absent or EMPTY canonical store hands the score to the coordination file.
+  const scored = canonical.exists && (canonical.rows === null || canonical.rows > 0) ? canonical.path
+    : coordination.exists ? coordination.path
+      : canonical.path; // canonical name for the "absent" message
+  return { canonical, coordination, scored };
+}
 export function resolveMemoryDb(projectDir) {
-  const candidates = MEMORY_DB_NAMES
-    .map((name) => path.join(projectDir, '.swarm', name))
-    .filter((file) => fs.existsSync(file));
-  if (!candidates.length) return path.join(projectDir, '.swarm/memory.db'); // canonical name for the "absent" message
-  if (candidates.length === 1) return candidates[0];
-  // Both present: prefer the one with real content. Size is a proxy for rows that costs no query and
-  // cannot throw on a locked or WAL-mode database — this runs inside a UI probe that must never hang.
-  return candidates.sort((a, b) => {
-    const sa = (() => { try { return fs.statSync(a).size; } catch { return 0; } })();
-    const sb = (() => { try { return fs.statSync(b).size; } catch { return 0; } })();
-    return sb - sa;
-  })[0];
+  return memoryStores(projectDir).scored;
 }
 
 function probeMemory(projectDir, { now = Date.now() } = {}) {
-  const db = resolveMemoryDb(projectDir);
-  const probes = {};
+  const stores = memoryStores(projectDir);
+  const db = stores.scored;
+  const probes = { stores };
   // compaction survival + session surfacing are filesystem facts, always checkable
   const snapshot = inspectSessionSnapshots(projectDir, { now });
   const snapshotDetail = snapshot.kind === 'canonical'
@@ -503,8 +519,10 @@ function probeMemory(projectDir, { now = Date.now() } = {}) {
   const liveNote = integ.mode === 'immutable=1' ? ' and in active use' : '';
   if (integrity !== 'ok') probes.liveness = { status: 'fail', detail: `store is corrupt (integrity_check: ${integrity})` };
   else if (total === null) probes.liveness = { status: 'notTested', detail: 'store opened but counts were unavailable this instant' };
-  else if (total > 0) probes.liveness = { status: 'ok', detail: `store is live${liveNote}, integrity ok, ${total} entries${embedded != null && total ? `, ${Math.round((embedded / total) * 100)}% embedded` : ''} (read-only)` };
-  else probes.liveness = { status: 'warn', detail: 'store exists but is empty' };
+  // The file is NAMED in the sentence, so "15824 entries" can never again be read as the canonical
+  // store's count when it was the coordination store's.
+  else if (total > 0) probes.liveness = { status: 'ok', detail: `${path.basename(db)} is live${liveNote}, integrity ok, ${total} entries${embedded != null && total ? `, ${Math.round((embedded / total) * 100)}% embedded` : ''} (read-only)` };
+  else probes.liveness = { status: 'warn', detail: `${path.basename(db)} exists but is empty` };
 
   const cp = robustRead(db, "SELECT max(updated_at) FROM memory_entries WHERE key LIKE 'project-state-current%';");
   if (cp.ok && cp.value) {
@@ -542,7 +560,15 @@ function gatherMemory(cwd, { fleet = true } = {}) {
   const scope = projectDirectory({ cwd });
   const project = fs.existsSync(path.join(scope, '.swarm/memory.db')) ? scope : REPO;
   const projName = project.replace(CONSOLE_ROOT + '/Code/', '').replace(CONSOLE_ROOT + '/', '~/');
-  const health = scoreMemoryHealth({ project: projName, probes: probeMemory(project) });
+  const probes = probeMemory(project);
+  const health = scoreMemoryHealth({ project: projName, probes });
+  // Which file the score is about, and which file it deliberately is not — both with row counts.
+  const short = (p) => String(p).replace(CONSOLE_ROOT, '~');
+  health.stores = probes.stores ? {
+    scored: short(probes.stores.scored),
+    canonical: { ...probes.stores.canonical, path: short(probes.stores.canonical.path) },
+    coordination: { ...probes.stores.coordination, path: short(probes.stores.coordination.path) },
+  } : null;
   return { fleet: fleet ? scanFleet() : null, health };
 }
 
