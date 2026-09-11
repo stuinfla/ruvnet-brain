@@ -781,18 +781,26 @@ export function reclaimBackups({
   backupsMade = [],
   env = process.env,
   intentionallyRemovedStores = [],
+  dryRun = false,
 }) {
   const parent = path.dirname(kbDir);
   // Older updater and recovery paths used three different names for the same full-KB rollback
   // copy. Sweeping only `kb.bak-*` left those copies outside retention, which is how issue #235
   // accumulated 74 directories / 129 GiB. Keep the allowlist narrow: these are exact historical
   // names owned by this updater, and unrelated siblings must remain untouched.
+  //
+  // `.install-preserved-` (bin/install.mjs) is the installer's copy of the whole prior generation.
+  // It was "not eligible for automatic cleanup" by name alone, so it outlived every proof that could
+  // have released it — measured 2026-09-11: a 1.2 GB brain held three times on one machine. It is a
+  // candidate under EXACTLY the same redundancy proof as every other copy: never deleted unless
+  // every byte survives in the live brain.
   const base = path.basename(kbDir);
   const prefixes = [
     `${base}.bak-`,
     `${base}.pre-reset-backup-`,
     `${base}.agent-harness-generator-backup-`,
     `${base}-pre-gap-rebuild-backup-`,
+    `${base}.install-preserved-`,
   ];
   const prefixFor = (entry) => prefixes.find((prefix) => entry.startsWith(prefix)) || null;
   let stranded = [];
@@ -800,14 +808,48 @@ export function reclaimBackups({
   catch { /* unreadable parent — nothing to sweep */ }
 
   const all = [...new Set([...backupsMade, ...stranded])];
-  const removed = []; const kept = []; let freed = 0;
+  const removed = []; const wouldRemove = []; const kept = []; let freed = 0;
   const safePreserved = new Map();
   const retentionPolicy = rollbackRetentionPolicy(kbDir, env);
   const liveInventory = storeInventory(kbDir);
-  const conventionalAllowedMissing = new Set(intentionallyRemovedStores.flatMap((store) => [
-    `${store}.rvf`,
-    `${store}.big.rvf`,
-  ]).map((file) => path.normalize(file)));
+
+  // A store the live release's own COVERAGE.json marks ineligible is absent from live BY POLICY
+  // (excluded-no-corpus, fork, archived…), not lost by an update; its presence in a backup must not
+  // pin that backup forever. Only rows with a non-eligible disposition qualify — an eligible row that
+  // merely has no artifact (MISSING) is not a decision to drop the store.
+  const readJsonQuietly = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+  const coverageRows = readJsonQuietly(path.join(kbDir, 'COVERAGE.json'))?.rows;
+  const policyExcluded = (Array.isArray(coverageRows) ? coverageRows : [])
+    .filter((row) => row && row.kind === 'repository' && row.disposition && row.disposition !== 'eligible')
+    .map((row) => String(row.artifact?.store || row.name || '').toLowerCase()).filter(Boolean);
+  // PRIVATE-fenced stores (PRIVATE-STORES.json, read from live AND from the backup itself, since a
+  // backup knows what was private when it was made) are never disposable: a backup holding one the
+  // live brain lacks is the only copy outside the fence. It is pinned and reported by name, and no
+  // caller can authorize it away through `intentionallyRemovedStores`.
+  const fencedNames = (dirs) => new Set(dirs.flatMap((dir) => {
+    const list = readJsonQuietly(path.join(dir, 'PRIVATE-STORES.json'))?.privateStores;
+    return Array.isArray(list) ? list.map((name) => String(name).toLowerCase()) : [];
+  }));
+  const storeStem = (file) => path.basename(String(file)).replace(/(?:\.big)?\.rvf$/i, '').toLowerCase();
+  // Retaining a copy is safe for the NEXT update only when every entry is measured: regular files,
+  // plus symlinks that cannot be a store file AND stay inside the copy (npm's `.bin` links — the
+  // installed brain always carries `node_modules/.bin/semver -> ../semver/bin/semver.js`). A link
+  // that escapes the tree is not measured — its target is what a receipt would silently be counting
+  // — and stays a blocker, exactly as before. A symlinked `.rvf` already fails the inventory above.
+  const pinnedPrivate = new Set();
+  const markMeasured = (b) => {
+    try {
+      const identity = treeIdentity(b);
+      const root = path.resolve(b);
+      const measured = identity.entries.every((entry) => {
+        if (entry.type === 'file') return true;
+        if (entry.type !== 'symlink' || /\.rvf$/i.test(entry.path) || path.isAbsolute(entry.target)) return false;
+        const relative = entry.path.split('/').join(path.sep);
+        return path.resolve(root, path.dirname(relative), entry.target).startsWith(`${root}${path.sep}`);
+      });
+      if (measured) safePreserved.set(b, identity.bytes);
+    } catch { /* retained, but not safe to proceed past recovery preflight */ }
+  };
 
   for (const b of all) {
     if (!fs.existsSync(b)) continue;
@@ -826,34 +868,52 @@ export function reclaimBackups({
       kept.push([b, `inventory is incomplete; refusing destructive reclaim (${backupInventory.reason || liveInventory.reason || 'unknown'})`]);
       continue;
     }
-    const allowedMissing = new Set(conventionalAllowedMissing);
-    for (const store of intentionallyRemovedStores) {
+    const privateNames = fencedNames([kbDir, b]);
+    const removedStores = [...new Set([...intentionallyRemovedStores, ...policyExcluded])]
+      .filter((store) => !privateNames.has(String(store).toLowerCase()));
+    const allowedMissing = new Set(removedStores.flatMap((store) => [`${store}.rvf`, `${store}.big.rvf`])
+      .map((file) => path.normalize(file)));
+    for (const store of removedStores) {
       const governedPath = backupInventory.logical.get(store);
       if (governedPath) allowedMissing.add(governedPath);
     }
     const lost = [...backupInventory.stores].filter(([identity]) => !liveInventory.stores.has(identity) && !allowedMissing.has(identity));
-    if (lost.length) {
-      const labels = lost.map(([, file]) => file);
-      kept.push([b, `it holds ${lost.length} store(s) the new copy does NOT have: ${labels.slice(0, 3).join(', ')}${lost.length > 3 ? '…' : ''}`]);
+    const identityNames = new Map();
+    for (const [name, identity] of backupInventory.logical) {
+      identityNames.set(identity, [...(identityNames.get(identity) || []), String(name).toLowerCase()]);
+    }
+    const isFenced = ([identity, file]) => (identityNames.get(identity) || []).some((name) => privateNames.has(name))
+      || privateNames.has(storeStem(file));
+    const lostOther = lost.filter((entry) => !isFenced(entry));
+    const lostPrivate = lost.filter(isFenced);
+    if (lostOther.length) {
+      const labels = lostOther.map(([, file]) => file);
+      const privateNote = lostPrivate.length ? `; also pins PRIVATE: ${lostPrivate.map(([, file]) => file).join(', ')}` : '';
+      kept.push([b, `it holds ${lostOther.length} store(s) the new copy does NOT have: ${labels.slice(0, 3).join(', ')}${lostOther.length > 3 ? '…' : ''}${privateNote}`]);
+      continue;
+    }
+    if (lostPrivate.length) {
+      const labels = lostPrivate.map(([, file]) => file);
+      kept.push([b, `PRIVATE store(s) pinned — the only copy outside the fence: ${labels.join(', ')}; retained, never reclaimed automatically`]);
+      pinnedPrivate.add(b);
+      markMeasured(b);
       continue;
     }
     try { assertRedundantBackup(b, kbDir); }
     catch (error) {
       kept.push([b, `PRESERVED_UNCLASSIFIED: complete byte redundancy is not proven; ${error.message}`]);
-      // Preservation does not itself require blocking an isolated transaction.
-      // Only a complete regular-file inventory can establish measured retention;
-      // missing stores, unsafe roots, unreadable bytes and symlinks remain blockers.
-      try {
-        const identity = treeIdentity(b);
-        if (identity.entries.every((entry) => entry.type === 'file')) safePreserved.set(b, identity.bytes);
-      } catch { /* retained, but not safe to proceed past recovery preflight */ }
+      // Preservation does not itself require blocking an isolated transaction. Only a measured
+      // inventory establishes safe retention; missing stores, unsafe roots and unreadable bytes
+      // remain blockers.
+      markMeasured(b);
       continue;
     }
     const size = dirSize(b);
+    if (dryRun) { wouldRemove.push(b); freed += size; continue; }
     try { fs.rmSync(b, { recursive: true, force: true }); removed.push(b); freed += size; }
     catch (e) { kept.push([b, `could not remove: ${e.message}`]); }
   }
-  const retained = all.filter((backup) => fs.existsSync(backup)).map((backup) => {
+  const retained = all.filter((backup) => fs.existsSync(backup) && !wouldRemove.includes(backup)).map((backup) => {
     let inventorySha256 = null;
     let inventoryError = null;
     try {
@@ -862,12 +922,25 @@ export function reclaimBackups({
     }
     catch (error) { inventoryError = error.message; }
     return { path: backup, bytes: safePreserved.get(backup) ?? dirSize(backup), inventorySha256, inventoryError,
-      safeToRetainDuringUpdate: safePreserved.has(backup), automaticCleanupEligible: false };
+      safeToRetainDuringUpdate: safePreserved.has(backup), automaticCleanupEligible: false,
+      retention: pinnedPrivate.has(backup) ? 'private-pinned' : safePreserved.has(backup) ? 'unclassified' : 'unmeasured' };
   });
   const retainedBytes = retained.reduce((sum, snapshot) => sum + snapshot.bytes, 0);
   const retention = { ...retentionPolicy, observedSnapshots: retained.length, observedBytes: retainedBytes,
     withinBudget: retained.length <= retentionPolicy.maxSnapshots && retainedBytes <= retentionPolicy.maxBytes };
-  return { removed, kept, freed, retained, retentionPolicy: retention, withinBudget: retention.withinBudget,
+  // Two facts, kept apart. `blockingRetained` is what an update must not proceed past: a copy that is
+  // unmeasured or holds a store nothing accounts for — and, over budget, any copy retained for no
+  // stated reason (an unclassified one), which is the existing contract (data-safety tests) and stays.
+  // The ONE exemption is a copy pinned for an accounted reason — a fenced PRIVATE store the live
+  // brain lacks: it is user data, measured, and named; exceeding the budget with it is reported as
+  // `overBudget`, not treated as unresolved rollback state, because this update adds no persistent
+  // copy of its own.
+  const blockingRetained = retained.filter((entry) => !entry.safeToRetainDuringUpdate
+    || (!retention.withinBudget && entry.retention !== 'private-pinned'));
+  const overBudget = retention.withinBudget ? null : { snapshots: retained.length, maxSnapshots: retentionPolicy.maxSnapshots,
+    bytes: retainedBytes, maxBytes: retentionPolicy.maxBytes };
+  return { removed, wouldRemove, dryRun, kept, freed, retained, blockingRetained, overBudget,
+    retentionPolicy: retention, withinBudget: retention.withinBudget,
     updateMayProceed: retention.withinBudget && retained.every((entry) => entry.safeToRetainDuringUpdate) };
 }
 
@@ -1093,12 +1166,21 @@ async function main() {
     if (preflightRollbacks.removed.length) {
       console.log(`\nreleased ${preflightRollbacks.removed.length} redundant rollback ${preflightRollbacks.removed.length === 1 ? 'copy' : 'copies'} before update check`);
     }
-    if (preflightRollbacks.kept.length && !preflightRollbacks.updateMayProceed) {
-      const detail = preflightRollbacks.kept.map(([backup, reason]) => `  ${backup}: ${reason}`).join('\n');
+    // Only an UNMEASURED or genuinely lost copy is recovery state. Being over the retention budget
+    // with copies that are measured and pinned for a stated reason (a fenced private store, bytes
+    // the proof could not match) is reported, not fatal — this update adds no persistent copy of
+    // its own, and a refusal here was what kept --apply from ever running (measured 2026-09-11).
+    const reasonFor = (backup) => preflightRollbacks.kept.find(([b]) => b === backup)?.[1] || 'not measured';
+    if (preflightRollbacks.blockingRetained.length) {
+      const detail = preflightRollbacks.blockingRetained.map(({ path: backup }) => `  ${backup}: ${reasonFor(backup)}`).join('\n');
       die(`unresolved rollback state exists; refusing to create another full-KB copy.\n${detail}\n  Restore or reconcile that copy first, then re-run.`);
     }
+    if (preflightRollbacks.overBudget) {
+      const { snapshots, maxSnapshots, bytes, maxBytes } = preflightRollbacks.overBudget;
+      console.log(`\nOVER_BUDGET: ${snapshots} retained full-KB ${snapshots === 1 ? 'copy' : 'copies'} (${bytes} bytes) exceed the budget of ${maxSnapshots} (${maxBytes} bytes). Each is measured and pinned for the reason below; this update proceeds without adding a persistent copy.`);
+    }
     for (const retained of preflightRollbacks.retained) {
-      console.log(`\nPRESERVED_UNCLASSIFIED: ${retained.path} (${retained.bytes} bytes); retained within configured budget, not reclaimed.`);
+      console.log(`\nRETAINED: ${retained.path} (${retained.bytes} bytes) — ${reasonFor(retained.path)}`);
     }
   }
   const canon = await fetchJson(manifestUrl);

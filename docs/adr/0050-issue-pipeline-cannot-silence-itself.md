@@ -3,12 +3,12 @@ id: ADR-050
 title: The issue pipeline may never manufacture its own acknowledgment — awareness, escalation, and a fixer that knows when to stop
 status: Accepted
 date: 2026-07-24
-updated: 2026-08-31
+updated: 2026-09-11
 # PINNED: this records the incident cutoff, not the last edit. Asserted by
 # tests/unit/fix-workstream-guidance.test.mjs. Do not let a currency stamp move it.
 updated_pinned: true
 impl: wired
-reviewed_digest: cc7d85186f27
+reviewed_digest: 580842da1f9a
 authors: [Stuart Kerr, Claude Code]
 tags: [issues, automation, alerting, sla, security, circuit-breaker]
 supersedes: []
@@ -188,6 +188,7 @@ The four parallel agents working tonight support this distinction. They show tha
   regressions (8 of 12 assertions fail on the pre-fix code, proven by stash-mutation).
 
 ## Currency log
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged — I1–I3 live in `scripts/issue-watch.mjs` / `issue-fix.mjs`, which did not move. `plugin/scripts/session-start-core.mjs` received ADR-076 scaffolding today (`da7f28c0`, `a90c674b`, `11c79110`) and was then restored byte-for-byte to 85f584b2 (`1de708e3`; `git diff 85f584b2 HEAD` is empty), so the file is exactly what the previous row reviewed at 2eef2024 — `e917fa25`'s version-comparison helper is an ancestor of 85f584b2 and is present. `plugin/skills/ruvnet-brain/SKILL.md` `60f269ad` is pre-session worktree work merged at 85f584b2 (recommend-first contract) and does not touch the issue-thread voice rules; `plugin/skills/release-proof/SKILL.md` did not move. | Reviewed `scripts/issue-watch.mjs`, `scripts/issue-fix.mjs`, `plugin/scripts/session-start-core.mjs`. reviewed_digest 580842da1f9a. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. `plugin/scripts/session-start-core.mjs` (`e917fa25`) added a version-comparison helper for the boot-declaration restart notice; `plugin/skills/ruvnet-brain/SKILL.md` (`7cfd9e17`) added dual-host deliberation memory-persistence guidance; `plugin/skills/release-proof/SKILL.md` (`c0234b69`, `7cf26dea`, `9b3e1d3f`, `af544ec6`) refined release-qualification handoff wording. None touch issue awareness, acknowledgment, escalation, or fixer stop-condition logic; `scripts/issue-watch.mjs` and `scripts/issue-fix.mjs` were not touched at all in this range. | Reviewed all six drift commits against the five governed paths (`git show --name-only` per commit; content diffs on the two touching `session-start-core.mjs` and `ruvnet-brain/SKILL.md`). reviewed_digest cc7d85186f27. |
 | 2026-08-31 | Reconciled after the SessionStart production caller gained an explicit heartbeat opt-out used only by the deterministic progression integration fixture. | `plugin/scripts/session-start-core.mjs` still preserves the issue-pipeline visibility and acknowledgment/escalation semantics governed here; the seam prevents detached heartbeat work from racing fixture teardown and does not silence or alter issue handling. |
 

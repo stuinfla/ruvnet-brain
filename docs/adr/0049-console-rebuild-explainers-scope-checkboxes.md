@@ -4,7 +4,7 @@ title: The console rebuild — explain every section, scope every suggestion, an
 status: Accepted
 date: 2026-07-24
 updated: 2026-09-11
-reviewed_digest: 6281f451ff7c
+reviewed_digest: e6ea9e072131
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, console, advocacy, capability, cache, honesty]
 supersedes: []
@@ -130,6 +130,7 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
 
 ## Currency log
 
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged. Motion since a5584de3 on this ADR's paths: the seven console card fixes (`c98b64d5` … `ec85ac68`, itemised in ADR-0013's row) and `8747d2f8` in `scripts/onboarding-console.mjs` / `console/app.js` — every card now renders measured state with its section explainer intact; the scope page (ADR-0069, merged `1f956632`) adds `gatherScope` to `onboarding-console.mjs`. `scripts/console-engine.mjs` did not move today (its plain-node test `scripts/console-engine.test.mjs`, not governed here, was updated at `e03454a0` to the stronger invariant the `6a6ba72f` engine already enforced — no recommendation without a currently available inverse — which this ADR's info-bubble decision does not touch). `bin/install.mjs` `dc18fadc` (retention wording) and the pre-session worktree merge `2c24ecd1` are outside this ADR's concern; `plugin/scripts/runtime-preferences.mjs` and `scripts/nightly-controller.mjs` did not move. | Reviewed `console/app.js`, `scripts/console-engine.mjs`, `scripts/onboarding-console.mjs`; cross-checked ADR-0069. reviewed_digest e6ea9e072131. |
 | 2026-09-11 | Currency review at commit 2eef2024: code drifted, corrected in the text above (not the status). `scripts/console-engine.mjs` (`6a6ba72f`) emptied `CAPABILITY_ELIGIBLE` to zero entries after `distill-project --restore` was hardened against unsafe replacement, invalidating the one proven round-tripped undo §3 named; the checkbox mechanism and its safety bar are unchanged, but "today exactly one capability qualifies" is no longer true. The other nine drift commits touch only `bin/install.mjs` (installer restart-notice, update-race, and hook-retirement plumbing) and `scripts/onboarding-console.mjs` (a test-only clock injection, `e7a84b71`) — no decision change there. | Reviewed `scripts/console-engine.mjs`, `bin/install.mjs`, `scripts/onboarding-console.mjs` against commits `09079037`, `e917fa25`, `56420430`, `d5c72aba`, `00526b12`, `4823f1aa`, `6a6ba72f`, `e7a84b71`. reviewed_digest 6281f451ff7c. |
 | 2026-08-30 | The configurator’s ordinary settings are rendered and saved through one validated user-settings endpoint; stale explanatory text was corrected. | `console/app.js` and `scripts/onboarding-console.mjs` now agree with `plugin/scripts/runtime-preferences.mjs` consumers. |
 

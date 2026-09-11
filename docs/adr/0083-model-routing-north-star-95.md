@@ -1,17 +1,20 @@
 ---
 id: ADR-083
 title: High-Assurance Model Routing for North Star 95/100
-status: Proposed
+status: Rejected
 date: 2026-09-11
 updated: 2026-09-11
 authors: [Claude Haiku, System Architecture]
 tags: [architecture, model-routing, optimization, north-star, campaign]
 supersedes: []
 relates: [ADR-078, ADR-079, ADR-080, ADR-077]
-governs:
-  - scripts/model-router.mjs
-  - config/model-routing.json
+governs: []
 ---
+
+**Status**: Rejected (2026-09-11)
+
+**REJECTED — the second model-routing proposal of the day (see ADR-080), reasoned in API prices against a subscription-only rule, outside the engine ADR-0015 designates.**
+Its rationale is price-per-model ("same price as Astra", "half the cost of Fable") where the owner's constraint was CLI subscriptions with zero marginal spend; it makes one citation to the routing ADRs in force and none to `model-router-engine.mjs` → `@metaharness/router`. Never accepted; no code landed under it.
 
 # ADR-0083: High-Assurance Model Routing for North Star 95/100
 

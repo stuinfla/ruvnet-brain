@@ -3,7 +3,8 @@ id: ADR-063
 title: The managed-memory boundary is enforceable, opt-in, and default-off
 status: Accepted
 date: 2026-08-06
-updated: 2026-08-30
+updated: 2026-09-11
+reviewed_digest: 3d03ffa5ae80
 authors: [Stuart Kerr, Claude Code]
 tags: [enforcement, memory, agentdb, hooks, consent, issue-103]
 supersedes: []
@@ -155,6 +156,7 @@ line-scan miss as a standing regression so nobody "simplifies" it back.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged — `plugin/scripts/hijack-ruvnet.sh` and `scripts/user-settings.mjs` did not move; the managed-memory refusal boundary is as written. `plugin/scripts/hook-shim.mjs`: `d01d23c5` (2026-09-05, reversible suspension), `8afdf656` +3 orphan TABLE entries, `689ecfd4` −3 — identical to 85f584b2. `plugin/hooks/hooks.json`: retired at `00526b12` (2026-09-07), plane restored `56420430` / `9c45d408`, gates `7b8e6e73`. Stated plainly: `hijack-ruvnet` has been unregistered since `00526b12`; the console's gates card (`d61c05d3`) now names it among six on-disk blocking gates with no registration. This review records that; it does not change it. | Reviewed `plugin/scripts/hijack-ruvnet.sh`, `plugin/scripts/hook-shim.mjs`, `plugin/hooks/hooks.json`. reviewed_digest 3d03ffa5ae80. |
 | 2026-08-30 | The Stable Spine passes the active generation identity into SessionStart without changing the managed-memory refusal boundary. | `plugin/scripts/hook-shim.mjs` and `tests/unit/hook-shim.test.mjs` cover the version handoff; `plugin/scripts/hijack-ruvnet.sh` remains the sole opt-in enforcement body. |
 | 2026-08-22 | Re-read the managed-memory enforcement boundary after the spend guard learned to distinguish a `.swarm/memory.db` path from a Ruflo swarm command. | `9d06cb5` fixes the false classification without authorizing raw memory mutation or widening the guarded store scope; focused policy tests and both-host hook conformance pass. The project checkpoint still uses explicit-path `ruflo memory store` / exact-key retrieval, and this ADR's opt-in/default-off consent boundary is unchanged. |
 | 2026-08-19 | The boundary gained its INSTRUCTION-LEVEL half, and `plugin/scripts/hijack-ruvnet.sh`'s refusal now names the store the caller actually targeted plus `ruflo memory retrieve`. Enforcement semantics are UNCHANGED: `advise` still refuses nothing, and an unrelated application DB is still never in scope. | Issue #140 (@sparkling) measured the contradiction this ADR left open: the shipped guidance still taught the bypass — `PLAYBOOK.md` "confirm the exact row through SQLite", `SKILL.md` `.swarm/memory.db` mtime, and (unreported) `plugin/scripts/ground-ruvnet.sh` "→ exact SQL row" on every engaged turn. The refusal previously hardcoded `<project>/.swarm/memory.db` while the reporter was at `~/.claude-flow/user-memory.db`, so the "sanctioned path" named the wrong file. The conflicting 2026-08-13 raw-SQL rule was retired on evidence, not preference: ruflo v3.32.34 — "No manual SQL is required" — plus a live 3.38.12 re-measure showing VALUE / `[WARN] Key not found` / `[ERROR] file is not a database`, with the caveat that exit status is 0 even on `[ERROR]`. |
