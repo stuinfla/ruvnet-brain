@@ -1,7 +1,7 @@
 # RuvNet Brain source coverage
 
-Generated: 2026-09-11T18:59:39.835Z  
-Coverage generation: `e61b1fc5f1ec5e786ff9fd2e278a999597ff8755ed465b2020b523427453cda5`  
+Generated: 2026-09-11T19:09:50.556Z  
+Coverage generation: `d636891427b83a65fc55a5fcc27db8eb4027647a4a4eb8f629e86452a89a62fa`  
 Repositories: 227 · Gists: 492 · CURRENT 11 · FAILED 476 · INELIGIBLE 34 · MISSING 9 · STALE 16 · UNVERIFIED 173
 
 > `CURRENT` is artifact-bound. Clone state and timestamps alone never establish freshness.
@@ -236,7 +236,7 @@ Repositories: 227 · Gists: 492 · CURRENT 11 · FAILED 476 · INELIGIBLE 34 · 
 | [cognitum-learn](https://github.com/stuinfla/cognitum-learn) | 2026-07-18T04:30:37Z | 82805c2481c33e09b215ed8ab7b38ec6dfdf48c2 | 2026-07-29T12:58:09.348Z | — | UNVERIFIED | RVF receipt has no sourceCommit |
 | [cognitum-learn-site](https://github.com/stuinfla/cognitum-learn-site) | 2026-07-18T05:04:52Z | 4a653f83d1ddfbdc0e53a152f268791ae7018e1e | 2026-07-29T12:58:09.348Z | — | UNVERIFIED | RVF receipt has no sourceCommit |
 | [cognitum-one-sensor-primer](https://github.com/stuinfla/cognitum-one-sensor-primer) | 2026-09-10T07:45:41Z | f352b39bf94d8a9fd83d653b2ab85aef993d3f85 | 2026-07-29T12:58:09.350Z | — | UNVERIFIED | RVF receipt has no sourceCommit |
-| [ruvnet-brain](https://github.com/stuinfla/ruvnet-brain) | 2026-09-11T16:55:40Z | e1a3c15615285dc705e95651a6b151e29380e3fb | 2026-07-31T04:39:28.487Z | 0f68737ae8521a5ad56b33b591b8f757c7029d2d | STALE | receipt sourceCommit differs from upstream HEAD |
+| [ruvnet-brain](https://github.com/stuinfla/ruvnet-brain) | 2026-09-11T19:09:02Z | 3576597163979a3b362bfad70e79d483964b0c95 | 2026-07-31T04:39:28.487Z | 0f68737ae8521a5ad56b33b591b8f757c7029d2d | STALE | receipt sourceCommit differs from upstream HEAD |
 
 ## Public gists
 

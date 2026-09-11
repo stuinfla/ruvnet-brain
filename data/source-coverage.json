@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-corpus-coverage",
   "owner": "ruvnet",
-  "observedAt": "2026-09-11T18:59:39.835Z",
+  "observedAt": "2026-09-11T19:09:50.556Z",
   "generatorSourceSha": "6d2e701a21cc90a668d3fe71ca59dbb6ed737f48d7ce03294104956b8bd9ede1",
-  "sourceObservationSha256": "ba9a1ce57cc7b6d2b96753fbc6664b4fc1e9e0cbc3cd6e2093f1cff5148859cc",
+  "sourceObservationSha256": "db8ae74ce28be8ba04c8712a59f033154aa69bb65fcf30fed5c33ac8ea056174",
   "snapshotRoot": "b7778eb8671d6531cbac6b2298e532ac7a403954ec47d71938887f94e2c43c9e",
   "policy": {
     "policyDispositionDigests": [
@@ -14,11 +14,11 @@
       "40af92ecc421dec67d6797032c7036529a2daf799e51fe08f729ed66b92eec9a"
     ]
   },
-  "coverageGeneration": "e61b1fc5f1ec5e786ff9fd2e278a999597ff8755ed465b2020b523427453cda5",
+  "coverageGeneration": "d636891427b83a65fc55a5fcc27db8eb4027647a4a4eb8f629e86452a89a62fa",
   "enumerationReceipt": {
     "schemaVersion": 1,
     "owner": "ruvnet",
-    "observedAt": "2026-09-11T18:59:39.835Z",
+    "observedAt": "2026-09-11T19:09:50.556Z",
     "requestParameters": {
       "repositoryPageSize": 100,
       "gistPageSize": 100
@@ -28,7 +28,7 @@
       "pages": [
         {
           "index": 1,
-          "responseDigest": "69fb50170dad12182fb09af312e7f92935a8d3945bbdf66185cb1cd58ed83070",
+          "responseDigest": "5a7b5e1ae9d2fb91d6356cd0639180727a2e1cfc95573b4a03fd5200346e305a",
           "count": 227,
           "terminal": true
         }
@@ -20670,7 +20670,7 @@
       "upstream": {
         "sha": "005a0ed25e644778f767cd78754fe91d660466af",
         "committedAt": "2026-09-11T08:25:03Z",
-        "pushedAt": "2026-09-11T18:53:30Z",
+        "pushedAt": "2026-09-11T19:02:15Z",
         "updatedAt": "2026-09-11T18:55:44Z"
       },
       "artifact": {
@@ -21040,10 +21040,10 @@
       },
       "disposition": "eligible",
       "upstream": {
-        "sha": "e1a3c15615285dc705e95651a6b151e29380e3fb",
-        "committedAt": "2026-09-11T16:55:40Z",
-        "pushedAt": "2026-09-11T17:34:07Z",
-        "updatedAt": "2026-09-11T16:55:47Z"
+        "sha": "3576597163979a3b362bfad70e79d483964b0c95",
+        "committedAt": "2026-09-11T19:09:02Z",
+        "pushedAt": "2026-09-11T19:09:06Z",
+        "updatedAt": "2026-09-11T19:09:14Z"
       },
       "artifact": {
         "store": "ruvnet-brain",
