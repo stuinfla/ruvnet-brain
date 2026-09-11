@@ -1,3 +1,20 @@
+---
+id: ADR-082
+title: North Star 95/100+ Unlock Path — Four ADRs
+status: Proposed
+date: 2026-09-11
+updated: 2026-09-11
+authors: [Stuart Kerr, Codex]
+tags: [architecture, north-star, coordination, memory, gates, release, testing]
+supersedes: []
+relates: [ADR-076, ADR-077, ADR-078, ADR-079]
+governs:
+  - docs/adr/0076-*.md
+  - docs/adr/0077-*.md
+  - docs/adr/0078-*.md
+  - docs/adr/0079-*.md
+---
+
 # North Star 95/100+ Unlock Path — Four ADRs
 
 **Created**: 2026-09-11  
@@ -136,7 +153,7 @@ docs/adr/0076-memory-full-integration.md      (9.8 KB, 850 words)
 docs/adr/0077-continuity-gates.md             (11 KB, 950 words)
 docs/adr/0078-release-automation.md           (12 KB, 1000 words)
 docs/adr/0079-testing-gates-and-public-ci.md (16 KB, 1200 words)
-docs/adr/0076-0079-NORTH-STAR-PATH.md         (this file, implementation sequence)
+docs/adr/0082-north-star-unlock-path.md      (this file, implementation sequence)
 ```
 
 ### Implementation Files (To Be Created)
@@ -266,7 +283,7 @@ Pre-commit gates, PR status checks, coverage protection, performance baseline"
 
 # Final: Create PR for all four ADRs
 gh pr create --title "North Star 95/100+ path: ADR-076/077/078/079" \
-  --body "See docs/adr/0076-0079-NORTH-STAR-PATH.md for overview
+  --body "See docs/adr/0082-north-star-unlock-path.md for overview
 
 Four complementary ADRs unlock +180 score points:
 - ADR-076: Memory full integration (+45 points)
