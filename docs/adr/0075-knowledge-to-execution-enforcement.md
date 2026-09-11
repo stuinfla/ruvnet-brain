@@ -3,8 +3,8 @@ id: ADR-075
 title: Knowledge-to-execution enforcement is a mandatory policy boundary
 status: Accepted
 date: 2026-08-30
-updated: 2026-09-07
-reviewed_digest: 5f5c219fe670
+updated: 2026-09-11
+reviewed_digest: 685935ca744e
 version: 1.1.2
 impl: built
 authors: [Stuart Kerr, Codex]
@@ -179,6 +179,7 @@ and public release proof remain outstanding.
 
 ## Currency log
 
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged and its primitives now registered. `7b8e6e73` wired `plugin/scripts/ground-ruvnet.sh` (UserPromptSubmit), the `decision-gate.mjs` write route (PreToolUse on Write, Edit, MultiEdit and NotebookEdit, composing `ground-before-write.sh`) and `grounding-stamp` (PostToolUse) into the continuity plane with hook-contracts v5. The integration owner's own probe on main: a rUv-stack prompt → a 1,310-byte directive; an unrelated prompt → silence; an ungrounded `.mjs` naming agentdb → exit 2 BLOCKED; a payload carrying the real `Searched <n> RuvNet repos` banner → a per-term stamp → the same write exits 0; a different ungrounded product → exit 2; `RUVNET_SKIP_GROUNDING_CHECK=1` → 0. `ground-before-write` is opt-in on `~/.claude/model-router/profile.json`. `bin/install.mjs` `dc18fadc` and `09079037` (2026-09-09, no false restart requirement); skills `60f269ad` pre-session. `scripts/doc-currency.mjs`, `scripts/convergence-manifest.mjs`, `plugin/scripts/route-dispatch.sh`, `scripts/qa-runner.mjs`, `tests/unit/execution-policy.test.mjs` did not move. §4's same-change reconciliation is what this row is. | Reviewed `plugin/hooks/hooks.json`, `plugin/scripts/ground-ruvnet.sh`, `plugin/scripts/ground-before-write.sh`, `plugin/scripts/decision-gate.mjs`. reviewed_digest 685935ca744e. |
 | 2026-09-07 | Reviewed cross-platform scheduler lifecycle preserves owned paths and blocks uninstall when scheduler removal cannot be verified; registration alone is not execution proof; source digest 5f5c219fe670. | `bin/install.mjs`; source review only, hosted and public acceptance remain pending. |
 
 | 2026-09-07 | Reviewed recovery source and corrected implementation boundaries; source digest 8cca58828c62. | `scripts/qa-runner.mjs`; source examination only, no renewed runtime or publication verification. |
