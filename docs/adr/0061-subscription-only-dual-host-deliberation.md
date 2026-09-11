@@ -3,7 +3,8 @@ id: ADR-061
 title: Subscription-only dual-host deliberation for hard problems
 status: Proposed
 date: 2026-07-28
-updated: 2026-09-08
+updated: 2026-09-11
+reviewed_digest: 6df53471296d
 authors: [Stuart Kerr, GPT-5.6-Sol]
 tags: [claude-code, codex, subscriptions, adr, ddd, agentic-qe, deliberation]
 supersedes: []
@@ -184,4 +185,5 @@ On 2026-08-10, **Re-read after #130/#131; subscription routing is unchanged.** G
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged and re-pinned — subscription-only, two native CLIs. `scripts/dual-host-deliberation.mjs` +8/−1 since 7cfd9e17 (`32b7b7ca`, the pre-session worktree merge): the host models moved to an explicit `TOP_SUBSCRIPTION_MODELS` map (`claude-code` → `claude-fable-5-1`, `codex` → `gpt-6-astra`, replacing the literal `gpt-5.6-sol`), verified on the native hosts 2026-09-10; no API key, fetch or OpenRouter path was added. `tests/unit/dual-host-deliberation.test.mjs` +1. `plugin/skills/ruvnet-brain/SKILL.md` `60f269ad` (recommend-first contract). The TriSmart skill merged the same day (`tri-smart-skill/`, `scripts/trismart.mjs`) wraps this coordinator (`trismart.mjs:8` imports `dual-host-deliberation.mjs`); it does not replace it. `scripts/subscription-hosts.mjs`, `scripts/dual-host-suggest.mjs` did not move. | Reviewed `scripts/dual-host-deliberation.mjs`, `scripts/subscription-hosts.mjs`, `tests/unit/dual-host-deliberation.test.mjs`. reviewed_digest 6df53471296d. |
 | 2026-08-19 | Codex wiring changed under this decision (gate routing + wrapper budget); the subscription-only posture is UNCHANGED — no host gained a metered path. Reinforced rather than eroded: `spend-guard` now refuses an agent fleet that would inherit ANTHROPIC_API_KEY / OPENAI_API_KEY on either host, after agentic-qe#557 billed $1,600 across ~374 headless agents while the Max subscription sat unused. `claude` and `codex` are the seats and are never blocked. |

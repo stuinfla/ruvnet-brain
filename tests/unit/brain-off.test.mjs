@@ -63,6 +63,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { rmHome } from '../helpers/reap-detached.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const BRAIN_STATE = path.join(REPO, 'scripts/brain-state.mjs');
@@ -670,12 +671,14 @@ describe.skipIf(bashOnly)('ADR-054 — the PreToolUse guard on the consent recor
     expect(fireBash(PROTECT, 'not json at all').status).toBe(0);
   });
 
-  it('remains the first explicit decision policy while the continuity plane stays automatic', () => {
+  it('remains the first explicit decision policy; every automatic registration is in the declared plane', () => {
     const reg = JSON.parse(fs.readFileSync(path.join(REPO, 'plugin/hooks/hooks.json'), 'utf8'));
-    expect(Object.keys(reg.hooks).sort()).toEqual(['SessionStart', 'Stop']);
+    // DERIVED from continuity-hook-policy.mjs, the one file that defines the plane. Restating
+    // ['SessionStart','Stop'] kept this red for two days after the five-event plane landed (2026-09-11).
+    const planeEvents = [...new Set(continuityRegistrations('claude').map((s) => s.event))].sort();
+    expect(Object.keys(reg.hooks).sort()).toEqual(planeEvents);
     expect(JSON.stringify(reg.hooks)).toContain('session-start');
     expect(JSON.stringify(reg.hooks)).toContain('continuation-gate');
-    expect(reg.hooks.PreToolUse).toBeUndefined();
     const gateSrc = fs.readFileSync(path.join(REPO, 'plugin/scripts/decision-gate.mjs'), 'utf8');
     expect(gateSrc, 'protect-state must be a consulted policy').toMatch(/protect-brain-state\.sh/);
     const order = [...gateSrc.matchAll(/POLICY\('([a-z-]+)'/g)].map((m) => m[1]);

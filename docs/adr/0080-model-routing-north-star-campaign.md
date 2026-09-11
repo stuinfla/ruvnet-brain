@@ -1,18 +1,20 @@
 ---
 id: ADR-080
 title: Hybrid Model Routing Strategy for 95/100 North Star Campaign
-status: Proposed
+status: Rejected
 date: 2026-09-11
 updated: 2026-09-11
 authors: [System Architect, Claude, Codex]
 tags: [architecture, model-routing, optimization, north-star, campaign]
 supersedes: []
 relates: [ADR-079, ADR-073, ADR-050, ADR-077, ADR-078]
-governs:
-  - scripts/model-router.mjs
-  - config/model-routing.json
-  - .github/workflows/campaign-*.yml
+governs: []
 ---
+
+**Status**: Rejected (2026-09-11)
+
+**REJECTED — budgets API spend against a standing subscription-only rule, re-derives routing outside the engine already designated, and duplicates ADR-083 written the same day.**
+Phase 1 alone is budgeted at "~$1.2K"; the owner's rule for this campaign was zero out-of-pocket, developer CLI subscriptions only. It cites none of the routing decisions in force (ADR-0013–0016, 0040, 0043) and repeats the error ADR-0015 records: a second routing strategy beside `model-router-engine.mjs` → `@metaharness/router`. Never accepted; no code landed under it.
 
 # ADR-0080: Hybrid Model Routing Strategy for 95/100 North Star Campaign (W2–W6)
 

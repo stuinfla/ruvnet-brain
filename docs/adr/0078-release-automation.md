@@ -1,21 +1,20 @@
 ---
 id: ADR-078
 title: Release automation - one-command ship with tag-driven deploys
-status: Proposed
+status: Rejected
 date: 2026-09-11
 updated: 2026-09-11
 authors: [Stuart Kerr, Codex]
 tags: [architecture, release, ci, automation, versioning, semver, deployment, npm]
 supersedes: []
 relates: [ADR-009, ADR-018, ADR-020, ADR-034, ADR-055, ADR-070, ADR-072, ADR-075, ADR-076, ADR-077]
-governs:
-  - scripts/release.mjs
-  - .github/workflows/release.yml
-  - .github/workflows/publish-npm.yml
-  - package.json (version field)
-  - CHANGELOG.md
-  - .releaserc.json
+governs: []
 ---
+
+**Status**: Rejected (2026-09-11)
+
+**REJECTED on measurement — the rewrite bricked the only authorized publisher; `release.mjs` restored from 85f584b2, every satellite deleted, the v4.4.0 tag withdrawn.**
+The rewritten `release.mjs` (414→500 lines, 362 original lines removed) dropped `--publish`, `--check` and `--corpus-seed`; `protected-release.yml:349` then printed USAGE and exited 2. `publish-npm.yml` created a second publisher (`release-authority.mjs` FAIL) and was refused by the pre-existing `prepublishOnly` guard when the tag fired it — npm stayed at 4.3.21. `package.json` was written directly, bypassing the `plugin.json` single source (`canonical-qa` FAIL, version drift). `release-qe.mjs` returned `pass: null` for every check (it could not fail) and collided with the existing `release-qe` ci.yml job; `release-rollback-monitor` returned the baseline as "production accuracy"; `gate-runner` ran `npm test` under five gate names; `release.yml` hard-coded `accuracy=80.0` against a fabricated staging URL with `continue-on-error`. The pre-existing protected rail (`protected-release.yml` → `release.mjs --publish` → `release-transaction*.mjs`, `release-authority.mjs`, `publication-receipt.mjs`) shipped 4.3.8 on 2026-09-04 and is the one path. Record: PROGRESS.md 2026-09-11 15:50 EDT.
 
 # ADR-078 — Release automation: one-command ship with tag-driven deploys
 

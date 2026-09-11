@@ -648,7 +648,8 @@ export async function unzipInto(zipPath, cacheDir, sourceDir = null) {
     `Candidate retained for inspection at ${stageDir}.`);
   }
   if (hadPrior) warn(`PRESERVED_UNCLASSIFIED: prior generation retained at ${preservedDir}. ` +
-    'Not eligible for automatic cleanup; repeated installs can grow disk usage. Inspect manually before removal.');
+    'The updater (kb/forge-update.mjs) releases it only once every byte is proven to survive in the live brain; ' +
+    'until then it stays, and repeated installs can grow disk usage.');
   ok(`brain unpacked to ${cacheDir}`);
   return { status: 'ACTIVATED', priorGeneration: hadPrior
     ? { status: 'PRESERVED_UNCLASSIFIED', path: preservedDir, automaticCleanupEligible: false }
