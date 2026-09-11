@@ -422,6 +422,27 @@ function wiringSurvey() {
       if (mech) sites.push({ scope: 'project', project: projName, file: '.mcp.json', event: 'MCP', matcher: name, spec: full.slice(0, 160), mechanism: mech });
     }
   }
+  // THE MACHINE-WIDE FILE (console audit 2026-09-11). Plugins are switched on in ~/.claude/settings.json
+  // and nowhere else, and this survey never read that file — so the card said `plugin: 0` on a machine
+  // with 14 enabled, ruvnet-brain among them. Each enabled plugin is one global PLUGIN site. The file's
+  // own hooks go through the same classifier the project scan uses, so a machine-wide npx or
+  // global-binary hook is counted in the same words as a project one.
+  const machine = readJSON(path.join(CONSOLE_ROOT, '.claude', 'settings.json'));
+  if (machine) {
+    for (const [event, groups] of Object.entries(machine.hooks || {})) {
+      const list = Array.isArray(groups) ? groups : [groups];
+      for (const g of list) {
+        const hookArr = Array.isArray(g?.hooks) ? g.hooks : (g?.command ? [g] : []);
+        for (const h of hookArr) {
+          const mech = classifyCommand(h?.command);
+          if (mech) sites.push({ scope: 'global', file: '~/.claude/settings.json', event, matcher: g?.matcher ?? '*', spec: String(h.command).slice(0, 160), mechanism: mech });
+        }
+      }
+    }
+    for (const [name, on] of Object.entries(machine.enabledPlugins || {})) {
+      if (on === true) sites.push({ scope: 'global', file: '~/.claude/settings.json', event: 'plugin', matcher: name, spec: name, mechanism: 'PLUGIN' });
+    }
+  }
   return { sites, summary: summarizeWiring(sites) };
 }
 
