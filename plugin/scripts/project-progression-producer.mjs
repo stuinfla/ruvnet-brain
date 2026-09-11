@@ -30,7 +30,7 @@
  */
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { digestCanonical, restoreProjectProgression } from './project-progression-contract.mjs';
+import { digestCanonical, redactProgression, restoreProjectProgression } from './project-progression-contract.mjs';
 import { readOwnerNote, readSourceIdentity, readTranscriptReference, readWorkLedger } from './project-progression-sources.mjs';
 import { withProgressionReader } from './project-progression-reader.mjs';
 
@@ -189,7 +189,15 @@ export function buildProjectProgression({
     },
   };
 
-  const projectProgression = {
+  // REDACT HERE, NOT ONLY AT THE STORE.
+  //
+  // createProgressionSnapshot already redacts, so the STORED row was always safe. What was not safe
+  // was everything between: this function's return value is passed through a hook payload, appears
+  // in a receipt, and is exactly the kind of object a diagnostic line prints. A secret that is
+  // scrubbed on the way into the database but readable on the way there has not been protected, it
+  // has been moved. Redacting at the point of derivation makes the store's own pass a no-op second
+  // check rather than the only one (redactProgression is idempotent, so running it twice is free).
+  const { value: redactedProgression } = redactProgression({
     canonicalAgentDbPath: resolution.canonicalAgentDbPath,
     sourceIdentity: source.identity,
     sequence: priorSequence + 1,
@@ -197,7 +205,8 @@ export function buildProjectProgression({
     parentEventKeys: heads.map((head) => head.eventKey),
     dedupId: `${host}:${payload.session_id ?? 'unknown-session'}:${trigger ?? 'unknown'}:${priorSequence + 1}`,
     completeProjectState,
-  };
+  });
+  const projectProgression = redactedProgression;
 
   // RETENTION (ADR-073). Three capture boundaries per session times every session is unbounded
   // growth unless a capture that changes nothing writes nothing. Compare what a snapshot MEANS —
@@ -205,8 +214,8 @@ export function buildProjectProgression({
   // differ (sequence, timestamp, dedup id, the trigger that happens to be firing, and the evidence
   // block's own timestamps), because comparing those would make every capture look novel.
   const meaning = digestCanonical({
-    state: { ...completeProjectState, activeStep: null, evidence: null },
-    source: source.identity,
+    state: { ...projectProgression.completeProjectState, activeStep: null, evidence: null },
+    source: projectProgression.sourceIdentity,
   });
   const priorMeaning = heads.length === 1 ? digestCanonical({
     state: { ...priorState, activeStep: null, evidence: null },
