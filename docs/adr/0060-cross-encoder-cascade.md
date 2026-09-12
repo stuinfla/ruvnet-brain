@@ -4,7 +4,7 @@ title: The two-stage cross-encoder cascade — reading every passage, cheaply, b
 status: Accepted
 date: 2026-07-27
 updated: 2026-09-11
-reviewed_digest: 21cc9cc05865
+reviewed_digest: 48b25ab8bf00
 authors: [Stuart Kerr, Claude Code]
 tags: [retrieval, latency, cross-encoder, cascade, measurement]
 supersedes: [ADR-059]
@@ -235,6 +235,7 @@ opt in with `KB_CE_CASCADE_K=64`; this ADR does not accept that value as the def
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged — no changed line names `KB_CE_CASCADE_TOKENS`, stage 1 / stage 2 or the survivor set. `kb/forge-rerank.mjs` +25/−10 since 306432a4 (`a84f1b50` bounds and terminates every query; `b2624e5f` exact-name resolution — pre-session worktree work merged at 85f584b2); `kb/forge-ask-all.mjs` +220/−11 (`b2624e5f`; `0e4dd719` alias-resolved capability cards); `kb/forge-mcp-all.mjs` +51/−8 (`f347909e` stops shipping a document three times; `b860c42f` read-only declaration); `plugin/mcp/server.mjs` +23 vs 306432a4 (`b860c42f`) and identical to 85f584b2 after `0bb13a0f` reverted the RequestLifecycle refactor that had dropped kill-on-timeout. `scripts/rerank-cap-warm-ab.mjs`, `scripts/rerank-cap-eval.mjs` did not move. | Reviewed `kb/forge-rerank.mjs`, `kb/forge-ask-all.mjs`, `kb/forge-mcp-all.mjs`, `plugin/mcp/server.mjs`. reviewed_digest 48b25ab8bf00. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. `kb/forge-rerank.mjs` (`6a6ba72f`, 144 lines) replaced the CE worker pool's transport from `node:worker_threads` to `node:child_process.fork()` — "a native ONNX/V8 fault cannot kill the parent host" — with matching queueing, timeout, and reap logic; the pool-spawn/respawn contract §"the worker still respawns on the next search" describes is preserved, `CE_CASCADE_K_DEFAULT` is untouched, and no cascade stage, threshold, or measurement in this ADR references worker_threads specifically. `kb/forge-ask-all.mjs` (`ccaea57a`, `c5eb2abc`, `6a6ba72f`) and `kb/forge-mcp-all.mjs` (`6a6ba72f`, `cdbca804`) changed in query classification/source-search routing, grepped for cascade/rerank/CE_ terms: no hits. `plugin/mcp/server.mjs` (`76e9a6ab`) only reworded a runtime error string. | Read `kb/forge-rerank.mjs`'s full diff; grepped the other three touched files for cascade-relevant terms; confirmed `CE_CASCADE_K_DEFAULT` and the worker-protocol interface (`ceScoreBatch`/`ceScoreAuto`) are unchanged. reviewed_digest 21cc9cc05865. |
 | 2026-08-22 | Re-read after the public-registry evidence route; retrieval and the cascade are untouched. | `plugin/mcp/server.mjs` dispatches `ruvnet_registry_latest` before the `search_ruvnet` branch and returns the registry result directly. It does not call `ensureChild()`, load a model, generate a candidate pool, or enter `forge-mcp-all.mjs`; `CE_CASCADE_K_DEFAULT` and every reranker path remain unchanged. |
 | 2026-08-10 | Re-read after #133; retrieval is untouched. | `plugin/mcp/server.mjs` changed only in how it PERSISTS readiness — per-process records instead of one shared last-writer-wins file. No cascade stage, threshold or reranker path was read or modified. |

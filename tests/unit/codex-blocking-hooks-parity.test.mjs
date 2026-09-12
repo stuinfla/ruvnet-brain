@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { shimTable, codexDispatchIdIn, REPO } from '../../plugin/scripts/hook-registry.mjs';
+import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 import { stripComments } from '../../scripts/wired-check.mjs';
 
 /**
@@ -65,8 +66,11 @@ describe('Codex blocking-hook contract: hook-shim TABLE and codex-hook-wrapper b
   const table = shimTable();
 
   it('finds hook ids in both codex-hooks.json and blockingHooks, or this whole file is vacuous', () => {
-    expect(registered, 'Codex must expose exactly the two continuity handlers')
-      .toEqual(new Set(['session-start', 'continuation-gate']));
+    // Derived from the policy module, not a literal: `['session-start','continuation-gate']` was the
+    // Sep-7 two-handler plane and kept this file red after unprompted-speech (ADR-040), session-snapshot
+    // and, on 2026-09-11, ground-ruvnet were declared for Codex in CONTINUITY_EVENTS.
+    expect(registered, 'Codex must expose exactly the continuity handlers the plane declares for it')
+      .toEqual(new Set(continuityRegistrations('codex').map((r) => r.id)));
     expect(blockingHooks.size, 'no ids parsed from blockingHooks — the regex or wrapper path is wrong')
       .toBeGreaterThan(0);
   });
@@ -76,7 +80,14 @@ describe('Codex blocking-hook contract: hook-shim TABLE and codex-hook-wrapper b
     expect(missing, 'these hooks are mode:"blocking" in hook-shim.mjs\'s own TABLE and registered on '
       + 'Codex, but codex-hook-wrapper.mjs\'s blockingHooks does not know it — an exit-2 refusal from '
       + 'any of them is coerced to exit 0 (allow) on Codex today').toEqual([]);
-    expect([...registered].some((id) => table[id]?.mode === 'blocking')).toBe(false);
+    // The former `some(blocking) === false` assertion said "Codex may register NO blocking hook" —
+    // the Sep-7 plane. unprompted-speech is mode:'blocking' and declared for Codex by ADR-040; the
+    // property that matters is the one above: every blocking hook Codex registers must be one whose
+    // exit-2 the wrapper forwards. Asserting the plane registers at least one keeps this file from
+    // going vacuous the day blockingHooks and the plane both empty out together.
+    expect([...registered].filter((id) => table[id]?.mode === 'blocking').length,
+      'the plane declares at least one blocking hook for Codex (unprompted-speech, ADR-040); if that ever changes, revisit what this file proves')
+      .toBeGreaterThan(0);
   });
 
   it('blockingHooks names no hookId that TABLE does not also call "blocking" — a name here that is not actually blocking gives false confidence', () => {

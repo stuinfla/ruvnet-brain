@@ -118,3 +118,9 @@ kb/models-cache/
 ruvnet-brain.zip
 ruvnet-brain.zip.sha256
 ruvnet-brain.zip.sig
+
+# Pasted screenshots, netlify-cli local state, session scratch — never repo content.
+# 13 screenshots reached the public repo on 2026-09-11 before this rule existed.
+.docs/
+.netlify/
+.stage1-execution-checkpoint.md

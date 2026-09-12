@@ -1,14 +1,17 @@
 ---
 id: ADR-081
-status: Accepted
+status: Rejected
 date: 2026-09-11
 updated: 2026-09-11
-updated_source: implementation
+updated_source: audit-2026-09-11
 ---
 
 # ADR-0081: ADR-as-Code Automation — Pre-Commit Enforcement of Architecture Decisions
 
-**Status**: Accepted (2026-09-11, Continuity Enforcement phase W2–W6)
+**Status**: Rejected (2026-09-11)
+
+**REJECTED with ADR-077, which this duplicates.** The `adr-validate` / `adr-impl-status` / `adr-supersede-check` tooling never passed as wired, and one of the three wrote ADR files as a side effect of "checking." Implementation deleted. Record: PROGRESS.md 2026-09-11 15:50 EDT.
+
 **Date**: 2026-09-11
 **Authors**: Claude Code (System Architecture), directed by Stuart Kerr
 **Supersedes**: None

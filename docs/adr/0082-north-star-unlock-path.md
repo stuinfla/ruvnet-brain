@@ -1,19 +1,19 @@
 ---
 id: ADR-082
 title: North Star 95/100+ Unlock Path — Four ADRs
-status: Proposed
+status: Rejected
 date: 2026-09-11
 updated: 2026-09-11
 authors: [Stuart Kerr, Codex]
 tags: [architecture, north-star, coordination, memory, gates, release, testing]
 supersedes: []
 relates: [ADR-076, ADR-077, ADR-078, ADR-079]
-governs:
-  - docs/adr/0076-*.md
-  - docs/adr/0077-*.md
-  - docs/adr/0078-*.md
-  - docs/adr/0079-*.md
+governs: []
 ---
+
+**Status**: Rejected (2026-09-11)
+
+**REJECTED — the four ADRs this path bundles (076, 077, 078, 079) were each rejected on measurement the same day; see their status blocks.** The goal itself — 95/100 across the eight pillars — is unchanged. This document's route to it, the four levers as built, is withdrawn. What actually happened is in PROGRESS.md 2026-09-11 15:50 EDT.
 
 # North Star 95/100+ Unlock Path — Four ADRs
 

@@ -4,10 +4,14 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
+import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const SCRIPT = path.join(REPO, 'plugin/scripts/swarm-slot-recycler.mjs');
 const HOOKS = path.join(REPO, 'plugin/hooks/hooks.json');
+// The lifecycle events hooks.json may carry, derived from the policy module — a literal here
+// (`['SessionStart','Stop']`, the Sep-7 two-event plane) kept this file red across a plane change.
+const PLANE_EVENTS = [...new Set(continuityRegistrations('claude').map((s) => s.event))].sort();
 const SHIM = path.join(REPO, 'plugin/scripts/hook-shim.mjs');
 const PLAYBOOK = path.join(REPO, 'plugin/skills/ruvnet-brain/PLAYBOOK.md');
 const CODEX_HOOKS = path.join(REPO, 'plugin/hooks/codex-hooks.json');
@@ -171,7 +175,7 @@ describe('automatic swarm slot recycling', () => {
 
   it('retains the recycler in the explicit shim but registers no TeammateIdle hook', () => {
     const registry = JSON.parse(fs.readFileSync(HOOKS, 'utf8'));
-    expect(Object.keys(registry.hooks).sort()).toEqual(['SessionStart', 'Stop']);
+    expect(Object.keys(registry.hooks).sort()).toEqual(PLANE_EVENTS);
     expect(JSON.stringify(registry.hooks)).not.toContain('swarm-slot-recycler');
     const shim = fs.readFileSync(SHIM, 'utf8');
     expect(shim).toMatch(/'swarm-slot-recycler':\s*\{[^}]*file:\s*'swarm-slot-recycler\.mjs'[^}]*mode:\s*'blocking'/s);
@@ -206,7 +210,7 @@ describe('automatic swarm slot recycling', () => {
     // nowhere else. That fails on the mistake the digest was reaching for (a stray registration in
     // another event) and stays quiet for edits that are none of its business.
     const reg = JSON.parse(fs.readFileSync(HOOKS, 'utf8')).hooks;
-    expect(Object.keys(reg).sort()).toEqual(['SessionStart', 'Stop']);
+    expect(Object.keys(reg).sort()).toEqual(PLANE_EVENTS);
     const anywhere = Object.entries(reg)
       .flatMap(([event, gs]) => gs.flatMap((g) => g.hooks.map((h) => ({ event, cmd: h.command }))))
       .filter((h) => h.cmd.includes('swarm-slot-recycler'));

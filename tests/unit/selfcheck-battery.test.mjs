@@ -48,6 +48,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
 import {
   fireHook, assertContract, runBattery, resolveInstalledSurface, readInstalledRegistrations,
@@ -253,7 +254,9 @@ describe('the shell invocation — how a hook command reaches a shell on each pl
 
   it('win32: the REAL shipped hooks.json has only bounded continuity commands to invoke', () => {
     const regs = readInstalledRegistrations(path.join(REPO_ROOT, 'plugin', 'hooks', 'hooks.json'));
-    expect(regs).toHaveLength(2);
+    // The count is the plane's, DERIVED from continuity-hook-policy.mjs — never restated. Restating "2"
+    // is how this stayed red for two days after 56420430 restored the five-event plane (measured 2026-09-11).
+    expect(regs).toHaveLength(continuityRegistrations('claude').length);
     expect(regs.map((r) => r.command)).toEqual(expect.arrayContaining([
       expect.stringContaining('session-start'), expect.stringContaining('continuation-gate'),
     ]));
@@ -373,11 +376,12 @@ describe('contract source — shim TABLE + hook-contracts.json, parsed from the 
 
 // ── §4 THE REAL SHIPPED SURFACE — the real shim, the real hooks.json ────────────────────────────
 describe('the real shipped plugin surface', () => {
-  it('the real hooks.json contains only the two continuity registrations', async () => {
+  it('the real hooks.json contains exactly the continuity plane\'s registrations — derived from the policy, never restated', async () => {
     const root = path.join(REPO_ROOT, 'plugin');
     const regs = readInstalledRegistrations(path.join(root, 'hooks', 'hooks.json'));
-    expect(regs).toHaveLength(2);
-    expect(regs.map((r) => r.event)).toEqual(['SessionStart', 'Stop']);
+    const plane = continuityRegistrations('claude');
+    expect(regs).toHaveLength(plane.length);
+    expect(regs.map((r) => r.event).sort()).toEqual(plane.map((s) => s.event).sort());
   });
 
   it('resolveInstalledSurface prefers the packed install and names which copy it chose', () => {

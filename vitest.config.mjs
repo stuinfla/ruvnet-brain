@@ -30,8 +30,6 @@ export default defineConfig({
       // a directory absent from `include` is invisible to `vitest run` no matter what any npm
       // script or CI step claims to run.
       'tests/mesh/*.test.mjs',
-      // Performance baseline and regression gates (W5-B). Gates enforce SLO compliance.
-      'tests/performance/**/*.test.mjs',
       // Concurrent session and load tests (ADR-TBD): stress testing and failure injection
       // for RequestLifecycle concurrency refactor (SessionStart timeout isolation).
       'tests/stress/*.test.mjs', 'tests/failure/*.test.mjs',

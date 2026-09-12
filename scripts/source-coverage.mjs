@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readRvfGenerations, sha256File } from './rvf-generation.mjs';
 import { canonicalJson, coverageGenerationFor, digest, validateGistAggregateReceipt } from './coverage-integrity.mjs';
 import { repositoryNames } from '../kb/card-lane.mjs';
+import { rootNeverMaterialized, storeRoot } from '../kb/store-root.mjs';
 
 export { canonicalJson, digest } from './coverage-integrity.mjs';
 
@@ -343,8 +345,20 @@ export function sealCoverage({ owner, repositories, gists, rows, generatorSource
     totals: { repositories: repositories.expected, gists: gists.expected, rows: orderedRows.length, byStatus } };
 }
 
-export function buildCoverage({ owner = 'ruvnet', kbDir = path.join(ROOT, 'kb'), policyDir = kbDir,
+// The measured directory defaults to THE store root (kb/store-root.mjs) — the one every reader,
+// writer and installer resolves — never `<repo>/kb`, which store-root.mjs declares a build workspace
+// and "never a second brain". Measured 2026-09-11: three commits projected a dirty workspace as the
+// brain (476 of 719 rows FAILED) while the canonical root matched every receipt. Policy files stay
+// where they are source-controlled (`<repo>/kb`) unless the caller names both directories, as the
+// release path does with `--assets`.
+export function buildCoverage({ owner = 'ruvnet', env = process.env, home = os.homedir(), kbDir = null, policyDir = null,
   observation = null, gh = runGh, now = () => new Date().toISOString() } = {}) {
+  policyDir ??= kbDir ?? path.join(ROOT, 'kb');
+  kbDir ??= storeRoot(env, home);
+  if (rootNeverMaterialized(kbDir)) {
+    throw new Error(`store root ${kbDir} does not exist — set RUVNET_BRAIN_KB or pass --assets <dir>; ` +
+      'the build workspace <repo>/kb is never measured by default');
+  }
   const externalPath = path.join(policyDir, 'external-sources.json');
   const externalPolicy = fs.existsSync(externalPath) ? JSON.parse(fs.readFileSync(externalPath, 'utf8')) : { sources: [] };
   if (!Array.isArray(externalPolicy.sources)) throw new Error('external-sources.json has no sources array');
@@ -396,12 +410,16 @@ export async function main(argv = process.argv.slice(2)) {
   const ownerIndex = argv.indexOf('--owner');
   const owner = ownerIndex >= 0 ? argv[ownerIndex + 1] : 'ruvnet';
   const assetsIndex = argv.indexOf('--assets');
-  const kbDir = path.resolve(assetsIndex >= 0 ? argv[assetsIndex + 1] : path.join(ROOT, 'kb'));
+  // `--assets <dir>` names a release candidate: measure it and take policy from it, exactly as before.
+  // Otherwise measure the installed brain and take policy from the repository.
+  const kbDir = assetsIndex >= 0 ? path.resolve(argv[assetsIndex + 1]) : storeRoot();
+  const policyDir = assetsIndex >= 0 ? kbDir : path.join(ROOT, 'kb');
   const jsonPath = path.join(ROOT, 'data', 'source-coverage.json');
   const markdownPath = path.join(ROOT, 'docs', 'RUVNET-COVERAGE.md');
   const recorded = argv.includes('--check') && fs.existsSync(jsonPath)
     ? JSON.parse(fs.readFileSync(jsonPath, 'utf8')) : null;
-  const coverage = buildCoverage({ owner, kbDir,
+  console.error(`measuring ${kbDir} (policy from ${policyDir})`);
+  const coverage = buildCoverage({ owner, kbDir, policyDir,
     now: recorded?.observedAt ? () => recorded.observedAt : () => new Date().toISOString() });
   const json = `${JSON.stringify(coverage, null, 2)}\n`;
   const markdown = renderMarkdown(coverage);

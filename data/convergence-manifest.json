@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.4.0",
-  "sourceIdentity": "27aeeb7f2713011a14009ecdce0c86e94a5bc8dc506fde086aa68915e1cb72e0",
+  "version": "4.3.22",
+  "sourceIdentity": "7059fce4a05708151fd0ab2173f88de826cb3eb9ade4d32d40d5b26e5b28e802",
   "versionSurfaces": {
-    "package.json": "4.4.0",
+    "package.json": "4.3.22",
     "plugin/.claude-plugin/plugin.json": "4.3.22",
     "plugin/.codex-plugin/plugin.json": "4.3.22",
     "data/manifest.json": "4.3.22",
@@ -98,8 +98,8 @@
     "0083-model-routing-north-star-95.md",
     "README.md"
   ],
-  "trackedFileCount": 1443,
-  "trackedFilesSha256": "a186e2862ceee5d3f60fbc9b442440bdf0f5587df8abd79e92c81046b35db325",
+  "trackedFileCount": 1398,
+  "trackedFilesSha256": "43ecdf637c2b584b17772b8285ee597f85bef6713e44ef53963b6eb91e46bf1e",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

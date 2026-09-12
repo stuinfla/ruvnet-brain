@@ -4,7 +4,7 @@ title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
 updated: 2026-09-11
-reviewed_digest: 9eb632a889ba
+reviewed_digest: 5b990e855ed0
 version: 1.1.4
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
@@ -228,6 +228,7 @@ still supplies seed bytes to the projection producer. Focused producer and mutat
 new hosted and public verification remain required.
 
 ## Currency log
+| 2026-09-11 | Currency review at commit 7296c984: decision unchanged and reinforced. `scripts/release.mjs` was rewritten (`e3b0f0ba`: `--publish` / `--check` / `--corpus-seed` removed, so `protected-release.yml:349` would have printed USAGE; a parallel `publish-npm.yml` publisher) and restored byte-for-byte to 85f584b2 (`a4b1bf0d`); the tag-fired publish was refused by the pre-existing `prepublishOnly` → `protected-release-invocation.mjs` guard and npm stayed at 4.3.21 — the one-aggregate, one-publisher rule held under attack. `kb/forge-update.mjs` and `bin/install.mjs` `dc18fadc`: §5's reclaim now admits `.install-preserved-*` copies under the same redundancy proof as `.bak-*`, feeds COVERAGE policy exclusions into `intentionallyRemovedStores`, pins any copy holding a PRIVATE-fenced store, and reclaims down to budget instead of dying over budget; the dry run on the owner's machine removes nothing (both copies pin `cognitum-api` plus two eligible stores missing from live). `scripts/release-transaction-provider.mjs`, `scripts/self-update.mjs`, `scripts/published-surface-probe.mjs`, `scripts/build-bundle.mjs`, `scripts/brain-stamp.mjs`, `.github/workflows/ci.yml` did not move. | Reviewed `scripts/release.mjs`, `kb/forge-update.mjs`, `bin/install.mjs`. reviewed_digest 5b990e855ed0. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged; the one notable change reinforces this ADR rather than contradicting it. `bin/install.mjs`'s `acquireHostConvergenceLock()` (`e917fa25`) was rewritten from a simple mkdir-based lock to a token-owned, stale-detection, rename-quarantine one that survives concurrent installer races — this ADR's text names no specific lock implementation, so nothing here is contradicted, and a race-safe lock only strengthens the "one generation" guarantee. The same commit made `classifyHostConvergence()` treat a host with `restartRequired: true` as NOT yet converged, tightening what "ready" means. `09079037`'s restart-notice refinement (reviewed under ADR-013/049/051) and the legacy-generation-pruning grace-period removal (retained indefinitely rather than a 14-day grace, `e917fa25`) are also unclaimed by this document's text. The other 8 drift commits were already reviewed as decision-unchanged plumbing under ADR-051/053/054/056/062. | Read `e917fa25`'s full diff on `bin/install.mjs`; grepped this document for `acquireHostConvergenceLock`/`classifyHostConvergence`/lock/restart/grace — zero hits, confirming no specific claim is contradicted. |
 | 2026-09-07 | Reviewed source digest 899e9e2380e9: installed-update public proof boundary; producer freshness remains UNKNOWN. | `kb/forge-update.mjs` imports signed corpus evidence; `scripts/public-verification-aggregate.mjs` and `scripts/nightly-two-run-proof.mjs` validate raw native consumer evidence. |
 
