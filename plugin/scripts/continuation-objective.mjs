@@ -28,7 +28,13 @@ export function authorizedContinuationObjective(objective, input, identity) {
     || !text(objective.id) || !text(objective.text) || !Number.isFinite(Date.parse(objective.at))
     || objective.authorization?.kind !== 'user' || !text(objective.authorization.reference)
     || objective.projectId !== identity.projectId
-    || !Array.isArray(objective.sessionIds) || !objective.sessionIds.includes(input.session_id)
+    // '*' is the ONLY session wildcard, and it exists for exactly one reason: `--commit-to` (the CLI
+    // a model actually runs to arm this gate) writes the objective from a bare terminal invocation,
+    // which has no access to the session_id a future Stop event will carry — only a live Stop hook
+    // ever sees that. Every OTHER writer must still name real session ids; a wildcard is never
+    // implied by omission, only by this exact literal.
+    || !Array.isArray(objective.sessionIds)
+    || !(objective.sessionIds.includes(input.session_id) || objective.sessionIds.includes('*'))
     || !Array.isArray(objective.worktreeIds) || !objective.worktreeIds.includes(identity.worktreeId)) return null;
   return objective;
 }
