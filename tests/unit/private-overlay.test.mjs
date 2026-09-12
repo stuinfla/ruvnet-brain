@@ -199,10 +199,18 @@ describe('private-overlay writer', () => {
 
   it('derives a card from the store\'s own meta.json facts when there is no primer', () => {
     const root = liveShapedRoot();
-    const from = sidecarDir({ primer: false, meta: { name: STORE, passages: 317, meetings: ['2026-07-16 fixture-meeting'], sources: ['a.txt', 'b.md'] } });
+    // Build the meta fixture once, then derive the expected card text FROM it (mirroring
+    // scripts/private-overlay.mjs's own metaFacts(): meetings joined with '; ', sources with ', ')
+    // rather than re-typing the meeting date and source list a second time as regex literals — the
+    // restated-truth class this repo has been burning down all session.
+    const meta = { name: STORE, passages: 317, meetings: ['2026-07-16 fixture-meeting'], sources: ['a.txt', 'b.md'] };
+    const from = sidecarDir({ primer: false, meta });
     applyPrivateOverlay({ root, from, stores: [STORE] });
     const cards = fs.readFileSync(path.join(root, 'capability-cards.md'), 'utf8');
-    expect(cards).toMatch(/^## fixture-private\n.*2026-07-16 fixture-meeting.*a\.txt, b\.md/m);
+    const escapeForRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const meetingsText = escapeForRegex(meta.meetings.join('; '));
+    const sourcesText = escapeForRegex(meta.sources.join(', '));
+    expect(cards).toMatch(new RegExp(`^## ${STORE}\\n.*${meetingsText}.*${sourcesText}`, 'm'));
     expect(cards).toMatch(/meta\.json/);
   });
 
