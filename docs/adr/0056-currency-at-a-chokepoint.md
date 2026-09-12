@@ -3,7 +3,7 @@ id: ADR-056
 title: Pay the debt, then wire the gate — document currency without a ratchet
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-11
+updated: 2026-09-12
 version: 1.2.0
 reviewed_digest: 04d3acc31aa9
 impl: wired
