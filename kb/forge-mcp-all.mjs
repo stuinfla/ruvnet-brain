@@ -310,6 +310,17 @@ async function handle(msg) {
       try {
         const query = String(args.query || '').trim();
         const k = Math.max(1, parseInt(args.k ?? 6, 10) || 6);
+        // Whether the CALLER actually asked for more than one document, as opposed to `k` merely
+        // holding this tool's own advertised default (6, from inputSchema.properties.k above). Root
+        // cause of the 2026-09-07 card-lane regression (cdbca804): answerFromCards()'s k>1 guard was
+        // meant to defer ONLY a genuine multi-document request to source retrieval (its own test,
+        // tests/unit/card-lane.test.mjs, exercises k:1 vs k:10 explicitly) — but the caller here was
+        // passing the DEFAULTED k straight through, so every ordinary call omitting `k` (i.e. nearly
+        // all real traffic, this test file included) silently carried k=6 and the fast lane could
+        // never fire again. Distinguish "the caller wrote k" from "nothing was written and this
+        // function filled in its own default" so an ordinary single-question call still reaches the
+        // card lane, while an explicit k>1 request still correctly defers to full source retrieval.
+        const explicitK = args.k !== undefined && args.k !== null && args.k !== '';
         if (!query) return err(id, -32602, 'query is required');
         // BEFORE any retrieval work (ADR-054 §3): no model load, no store read, no telemetry event,
         // no grounded-once stamp. A switched-off brain must be indistinguishable from one that never
@@ -330,7 +341,7 @@ async function handle(msg) {
         const namedFamilyRepos = deployedFamilyReposFromQuery(query, KB_DIR, repoList);
         const cardHit = namedFamilyRepos.length
           ? { hit: false, reason: 'named deployed RVF family requires multi-store search' }
-          : answerFromCards(query, KB_DIR, { allowGuideAnswers: true, k });
+          : answerFromCards(query, KB_DIR, { allowGuideAnswers: true, k: explicitK ? k : 1 });
         if (cardHit.hit) {
           const cardBody = renderCardHit(cardHit);
           // MINT THE RECEIPT ON THIS LANE TOO (ADR-055 §3.1). When the fast lane became the FIRST
