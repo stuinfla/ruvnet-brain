@@ -391,12 +391,17 @@ describe('mesh invariants over the layers this repo OWNS (must stay clean — th
     const byLayer = new Map();
     for (const s of stops) byLayer.set(s.layer, [...(byLayer.get(s.layer) ?? []), `${s.locator} ${s.handler}`]);
     expect([...byLayer.keys()].sort()).toEqual(['codex', 'plugin']);
-    // The policy is the authority on how many Stop handlers each host carries — Codex Stop DELIVERY
-    // was not observed by the 2026-09-11 probe, so Codex Stop carries the continuation gate only.
+    // The policy is the authority on how many Stop handlers each host carries, derived (never
+    // hand-listed) so a future registration change is covered the moment it lands. Codex Stop
+    // DELIVERY itself was not observed by the 2026-09-11 probe for the NATURAL-completion case, but
+    // continuation-gate was already registered there before that probe and stays; grounding-turn-gate
+    // joined it 2026-09-12 on the same PreToolUse/PostToolUse-adjacent Stop path continuation-gate
+    // already proved reachable (see continuity-hook-policy.mjs's header for the measurement).
+    const expectedCodexStops = continuityRegistrations('codex').filter((s) => s.event === 'Stop').length;
     const expectedStops = continuityRegistrations('claude').filter((s) => s.event === 'Stop').length
-      + continuityRegistrations('codex').filter((s) => s.event === 'Stop').length;
+      + expectedCodexStops;
     expect(stops).toHaveLength(expectedStops);
-    expect(byLayer.get('codex')).toHaveLength(1);
+    expect(byLayer.get('codex')).toHaveLength(expectedCodexStops);
   });
 });
 
