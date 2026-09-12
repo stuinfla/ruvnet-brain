@@ -306,6 +306,55 @@ describe('an opted-in BLOCK actually refuses', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────
+describe('BUDGET: an opted-in BLOCK survives cross-trigger truncation', () => {
+  // TEETH. One real Stop/PreToolUse-shaped event can carry several decision points at once
+  // (lesson-gate.mjs:99-102 says so explicitly), so lesson-gate merges candidates from every
+  // requested --trigger before ranking and truncating them to `nudgeBudget` characters. The merge
+  // sorts purely by repeatCount with no exemption for a block the user has already opted into — so a
+  // large, high-repeatCount ADVISORY on one trigger can spend the whole budget and silently exclude a
+  // low-repeatCount BLOCK on a different trigger from `inForce`. `blocking` is read back from
+  // `inForce`, so the gate exits 0 (ALLOW) despite the user's own consent file naming the lesson.
+  test('exits 2, not 0, when a co-occurring advisory alone exceeds the nudge budget', () => {
+    const bulky = 'This lesson has a very long statement so its rendered cost alone exceeds the default nudge budget on its own, before any other candidate is even considered for admission into the presentation. '.repeat(8);
+    writeStore([
+      blockLesson({
+        id: 'T07-large-advisory', trigger: 'claim-done', enforcement: 'checklist', check: null,
+        statement: bulky, repeatCount: 999,
+      }),
+      blockLesson({ id: 'T01-verify-with-a-capable-channel', trigger: 'write-code', repeatCount: 1 }),
+    ]);
+    writeOptIn(['T01-verify-with-a-capable-channel']);
+    const { code, stderr } = runGate(['--event', 'Stop', '--trigger', 'claim-done', '--trigger', 'write-code']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('channel capable of observing');
+  });
+
+  test('the block is present even when TWO oversized advisories on other triggers would each alone exhaust the budget', () => {
+    // Not vacuous: each "loud" statement alone exceeds nudgeBudget, so pre-fix the very first admitted
+    // item (highest repeatCount, budget check skipped for an empty inForce) spends the whole budget and
+    // every later item — including the block, ranked last — is `continue`d out, whichever order they
+    // fall in. Confirmed to fail pre-fix by the independent critic before this file was finalized.
+    const bulky = 'This lesson has a very long statement so its rendered cost alone exceeds the default nudge budget on its own, before any other candidate is even considered for admission into the presentation. '.repeat(8);
+    writeStore([
+      blockLesson({
+        id: 'T08-loud', trigger: 'claim-done', enforcement: 'checklist', check: null,
+        statement: bulky, repeatCount: 50,
+      }),
+      blockLesson({
+        id: 'T09-loud', trigger: 'report-status', enforcement: 'checklist', check: null,
+        statement: bulky, repeatCount: 40,
+      }),
+      blockLesson({ id: 'T01-verify-with-a-capable-channel', trigger: 'write-code', repeatCount: 1 }),
+    ]);
+    writeOptIn(['T01-verify-with-a-capable-channel']);
+    const { code } = runGate([
+      '--event', 'Stop', '--trigger', 'claim-done', '--trigger', 'report-status', '--trigger', 'write-code',
+    ]);
+    expect(code).toBe(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
 describe('the dispatcher propagates faithfully in BOTH directions', () => {
   test('propagates a block: exit 2 with the reason on stderr', () => {
     // `|| true` plus `exit 0` used to erase this. The dispatcher printed the word BLOCKED and
