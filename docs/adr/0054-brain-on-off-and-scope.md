@@ -3,9 +3,9 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-09-11
-reviewed_digest: 9847b322a634
-version: 1.1.3
+updated: 2026-09-12
+reviewed_digest: fcbc5d8c4981
+version: 1.1.4
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -227,6 +227,7 @@ source review does not renew the expired verification or prove the native-host a
 ## Currency log
 
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged — ON/OFF only, sentinel file, the console as the one flipping surface; brain power measured CORRECT in the 2026-09-11 console audit. `plugin/mcp/server.mjs` restored to 85f584b2 (`0bb13a0f`; kill-on-timeout back). `plugin/scripts/hook-shim.mjs` +3 orphan TABLE entries (`8afdf656`) then −3 (`689ecfd4`) — identical to 85f584b2. `plugin/scripts/session-start-core.mjs` identical to 85f584b2 (`1de708e3`). `kb/forge-update.mjs` / `bin/install.mjs` `dc18fadc` (retention rule; private-fenced stores pinned). `scripts/onboarding-console.mjs`: the card fixes, including `c98b64d5` — the Complete-Brain profile card now measures the installed root instead of a dev-only `dist/` path that read 0 MB, and names the restore mechanism instead of a rescued `available` flag; `saveBrainProfile`'s `--restore-complete` path is unchanged. `scripts/user-settings.mjs`, `kb/forge-ask-all.mjs`, `kb/brain-profile.mjs` did not move today. | Reviewed `plugin/mcp/server.mjs`, `plugin/scripts/hook-shim.mjs`, `scripts/onboarding-console.mjs`. reviewed_digest 9847b322a634. |
+| 2026-09-12 | Currency review at commit 40d8c16b: decision unchanged — ON/OFF, the sentinel file, and the console as the one flipping surface are untouched. The only governed path this commit moved is `scripts/onboarding-console.mjs`, and only its coverage-page region: rows now carry a bounded `desc` (the installed `capability-cards.md` first line for repos, file names for gists) so the page's search can match what a repo does. No ON/OFF, profile, or scope-sentinel code changed. | Reviewed `scripts/onboarding-console.mjs` (`40d8c16b`: gatherScope / computeScope / scopeDesc / parseCapabilityCards only, diff read in full); `console/index.html` moved `#card-trust` into a closed maintainer `<details>` with its ids unchanged. reviewed_digest fcbc5d8c4981. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. `kb/forge-ask-all.mjs` (`ccaea57a`, `c5eb2abc`, 72+44 lines) grepped for `brainEnabled`/sentinel/off-state/`offBehavior`/`disabled`: zero hits in either diff, matching this ADR's own established method (see the 2026-07-27 row). `plugin/mcp/server.mjs` (`76e9a6ab`) only reworded the brain-unavailable runtime error string; it does not touch the boot-frozen tool-description claim in §4. `kb/forge-update.mjs` (`a9d2c65b`) widened the backup-sweep prefix allowlist (issue #235); unrelated to on/off or scope. The remaining five drift commits touch only `bin/install.mjs`/`plugin/scripts/session-start-core.mjs` plumbing already reviewed under ADR-013/034/049/051. | Grepped both `forge-ask-all.mjs` diffs directly; read the `server.mjs` and `forge-update.mjs` diffs in full. reviewed_digest dd03656c0235. |
 | 2026-09-07 | Reviewed nightly registration and removal retain explicit user scope and fail closed on removal errors; existing OFF and maintenance profile boundaries remain separate; source digest 6412e6027a0a. | `bin/install.mjs`; source review only, hosted and public acceptance remain pending. |
 
