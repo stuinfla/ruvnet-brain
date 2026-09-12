@@ -17,6 +17,7 @@
  *     [--slug short-name] [--dir <projectDir>] [--namespace lessons]
  */
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolveRuflo, RUFLO_MISSING } from '../plugin/scripts/ruflo-bin.mjs';
@@ -62,6 +63,19 @@ const value = [
   `OUTCOME: ${outcome}`,
 ].filter(Boolean).join(' ');
 
+// `key`/`value` are both fully deterministic from the CLI args — an intentional property (re-running
+// the identical `--task`/`--slug`/... call should target the same lesson). But that determinism is
+// exactly what let the round-trip check below be fooled: a SECOND identical invocation whose store
+// call silently no-ops (exits 0, writes nothing — the 2026-08-13 incident shape) would still retrieve
+// the FIRST invocation's still-present value, which is textually IDENTICAL to what this run intended
+// to write, and wrongly report success. A per-invocation nonce, appended to the persisted value and
+// checked for on retrieve, is the only part of the round trip that could not have been produced by
+// any earlier call — mirroring `degradation-watch.mjs`'s `proveMemoryDurable()`, which probes with a
+// fresh key+value pair for the same reason. Flagged as a known fast-follow in PR #167's own
+// Reward-Hack Check (2026-08-24) and not addressed until now.
+const nonce = randomUUID();
+const storedValue = `${value}\nRUN: ${nonce}`;
+
 // Every `ruflo` invocation auto-starts a project background daemon unless this is set (verified
 // live: ~/.npm-global/lib/node_modules/ruflo/node_modules/@claude-flow/cli/dist/src/services/
 // daemon-autostart.js:85) — recording a lesson has no business leaving one running.
@@ -74,7 +88,7 @@ console.log(`  key: ${key}`);
 
 // 1a. STORE (native, signal namespace) — L1 content + L2 embedding
 try {
-  ruflo(['memory', 'store', '-k', key, '-n', ns, '--value', value]);
+  ruflo(['memory', 'store', '-k', key, '-n', ns, '--value', storedValue]);
 } catch (e) {
   console.error('  store FAILED:', String(e.stdout || e.message).split('\n')[0]);
   process.exit(1);
@@ -87,11 +101,12 @@ try {
 // interface and reading the VALUE, the pattern `degradation-watch.mjs`'s `proveMemoryDurable()` and
 // `learning-replay-fixture.mjs`'s `retrieveExact()` already establish — never the store command's
 // own claimed-success wording, and never its exit status (the CLI can exit 0 while printing
-// `[ERROR]`).
+// `[ERROR]`). Checking for `nonce` rather than `value` is what makes this THIS call's proof, not a
+// stale one — see the comment on `nonce` above.
 let stored = false;
 try {
   const back = ruflo(['memory', 'retrieve', '-k', key, '-n', ns, '--value-only', '--path', db]);
-  stored = String(back).includes(value);
+  stored = String(back).includes(nonce);
 } catch (e) {
   console.error('  round-trip FAILED:', String(e.stdout || e.message).split('\n')[0]);
 }
