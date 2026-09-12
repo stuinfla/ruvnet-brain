@@ -37,7 +37,7 @@ updated_at_source: authored-current
 
 # ADR-069 — Source coverage is artifact-bound, complete, and release-blocking
 
-**Status**: Proposed
+**Status**: Accepted
 
 > **Reviewed 2026-09-07 (4.3.10 recovery).** `scripts/release-projection.mjs` now binds the
 > assembled runtime ledger to the exact public release ledger and validates coverage before archive

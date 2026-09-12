@@ -373,16 +373,19 @@ describe('registry hygiene', () => {
     }
   });
 
-  it('registers exactly the guarded continuation hook and the capture hook on Stop', () => {
+  it('registers exactly the guarded continuation hook, the capture hook, and the grounding-turn gate on Stop', () => {
     const stopCmds = (reg.hooks.Stop ?? []).flatMap((m) => (m.hooks ?? []).map((h) => h.command));
-    // Stop carries TWO handlers now, and the second one is why this lane exists: the continuation
-    // gate reads the ledger and may nudge; the capture hook writes the project snapshot that
-    // SessionStart restores. Before it, SessionStart restored a journal nothing ever wrote.
-    expect(stopCmds).toHaveLength(2);
-    const [gate, capture] = stopCmds;
+    // Stop carries THREE handlers now (grounding-turn-gate added 2026-09-12, the "answered without
+    // searching" pair's Stop half): the continuation gate reads the work ledger and may nudge; the
+    // capture hook writes the project snapshot that SessionStart restores; grounding-turn-gate forces
+    // continuation if a RuvNet-relevant turn ended without a recorded search_ruvnet call. Before the
+    // capture hook, SessionStart restored a journal nothing ever wrote.
+    expect(stopCmds).toHaveLength(3);
+    const [gate, capture, groundingGate] = stopCmds;
     expect(gate).toContain('continuation-gate');
     expect(capture).toContain('session-snapshot Stop');
-    // Both advisory: a turn-end hook that can fail a turn is worse than a missed snapshot.
+    expect(groundingGate).toContain('grounding-turn-gate');
+    // All advisory: a turn-end hook that can fail a turn is worse than a missed snapshot.
     for (const command of stopCmds) expect(command).toContain('|| true');
   });
 

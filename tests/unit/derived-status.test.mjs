@@ -90,6 +90,38 @@ process.exit(0);
     for (const src of good) expect(scanSource(src, 'good'), src).toEqual([]);
   });
 
+  // 2026-09-12: the live sweep false-positived on plugin/scripts/nightly-scheduler.mjs:271 —
+  // `state: 'ok'` there is genuinely gated by `if (!envelope.ok) return {...failed...}` many lines
+  // above (one guard per precondition), not adjacent to the literal, so the old ±2-line window
+  // couldn't see it. These two cases prove the fix (a) recognizes that real guard-clause shape and
+  // (b) still flags a literal with no such guard, so the gate did not just get blanket-weakened.
+  it('PASSES a validator-gated guard-clause return (the refreshRunHealth shape) even when the guard is far above the literal', () => {
+    const guardClauseShape = `
+function refreshLikeHealth(receipt) {
+  if (!receipt) return { state: 'failed', evidence: 'missing' };
+  const registration = readRegistration();
+  if (!registration.ok) return { state: 'failed', evidence: 'bad registration' };
+  const envelope = validateEnvelope(receipt);
+  if (!envelope.ok) return { state: 'failed', evidence: 'bad envelope' };
+  // several unrelated lines between the last guard and the terminal return
+  const ageHours = 1;
+  const label = 'nightly';
+  return { state: 'ok', ageHours, evidence: 'derived from envelope.ok' };
+}`;
+    expect(scanSource(guardClauseShape, 'guard-clause.mjs')).toEqual([]);
+  });
+
+  it('STILL FLAGS a naked literal inside a function with no gating .ok guard (the fix did not blanket-whitelist functions)', () => {
+    const nakedInFunction = `
+function alwaysOk(receipt) {
+  const unrelated = receipt.ok; // reads .ok but never gates a return on it
+  return { state: 'ok', evidence: 'unearned' };
+}`;
+    const v = scanSource(nakedInFunction, 'naked-in-function.mjs');
+    expect(v.length, 'a naked literal must still be flagged even inside a function').toBeGreaterThan(0);
+    expect(v[0].text).toContain("state: 'ok'");
+  });
+
   it('THE REPO IS CLEAN: no automation script asserts an underived terminal success (live sweep)', () => {
     const bad = scanRepo(ROOT);
     const detail = bad.flatMap((b) => b.violations.map((v) => `${b.file}:${v.line} ${v.text}`)).join('\n');

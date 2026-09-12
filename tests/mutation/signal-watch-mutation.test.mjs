@@ -26,10 +26,14 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const SESSION_HOOK = path.join(REPO_ROOT, 'plugin/scripts/session-start-core.mjs');
 const POLLER = path.join(REPO_ROOT, 'scripts/signal-watch.mjs');
 const OBSERVER = path.join(REPO_ROOT, 'plugin/scripts/signal-watch.mjs');
+// The transition-dedupe guard (M-W2) was extracted out of session-start-core.mjs into its own module
+// on 2026-09-11 (see that file's header) — it now lives in surfaceSignals() here, not in the hook.
+const SIGNALS = path.join(REPO_ROOT, 'plugin/scripts/session-start-signals.mjs');
 
 const MUTANT_SESSION_HOOK = path.join(REPO_ROOT, 'plugin/scripts/_mutant-session-start-core.mjs');
 const MUTANT_POLLER = path.join(REPO_ROOT, 'scripts', '_mutant-signal-watch.mjs');
 const MUTANT_OBSERVER = path.join(REPO_ROOT, 'plugin/scripts', '_mutant-signal-watch.mjs');
+const MUTANT_SIGNALS = path.join(REPO_ROOT, 'plugin/scripts', '_mutant-session-start-signals.mjs');
 
 function writeMutant(realPath, mutantPath, mutate) {
   const src = fs.readFileSync(realPath, 'utf8');
@@ -41,7 +45,7 @@ function writeMutant(realPath, mutantPath, mutate) {
 }
 
 const cleanupMutants = () => {
-  for (const p of [MUTANT_SESSION_HOOK, MUTANT_POLLER, MUTANT_OBSERVER]) fs.rmSync(p, { force: true });
+  for (const p of [MUTANT_SESSION_HOOK, MUTANT_POLLER, MUTANT_OBSERVER, MUTANT_SIGNALS]) fs.rmSync(p, { force: true });
 };
 afterEach(cleanupMutants);
 
@@ -139,10 +143,19 @@ describe('M-W2 — break transition-dedupe so green speaks', () => {
   });
 
   it('MUTANT: forcing the CLOSE guard to always-true makes an un-surfaced green speak anyway', () => {
-    writeMutant(SESSION_HOOK, MUTANT_SESSION_HOOK, (src) => {
+    // The guard now lives in surfaceSignals() (session-start-signals.mjs), not in the hook file
+    // itself — mutate THAT module, then route a sibling copy of session-start-core.mjs to import the
+    // mutant module instead of the real one. The hook's own entrypoint/CLI plumbing is untouched;
+    // only the transition-dedupe guard it delegates to is broken.
+    writeMutant(SIGNALS, MUTANT_SIGNALS, (src) => {
       const needle = 'if (surfaced.redRepo[debt.repo]) {';
       if (!src.includes(needle)) throw new Error('transition-dedupe guard text moved');
       return src.replace(needle, 'if (true) {');
+    });
+    writeMutant(SESSION_HOOK, MUTANT_SESSION_HOOK, (src) => {
+      const importLine = "import { surfaceSignals } from './session-start-signals.mjs';";
+      if (!src.includes(importLine)) throw new Error('surfaceSignals import moved');
+      return src.replace(importLine, "import { surfaceSignals } from './_mutant-session-start-signals.mjs';");
     });
     seedPushDebt('stuinfla/ruvnet-brain', 'b'.repeat(40));
     const fixturePath = writeGhFixture('gh-success.json', [{ status: 'completed', conclusion: 'success', workflowName: 'ci' }]);

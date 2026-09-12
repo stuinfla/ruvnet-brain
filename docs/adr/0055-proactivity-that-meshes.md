@@ -3,8 +3,8 @@ id: ADR-055
 title: Proactivity that meshes — one decision law, four planes, substance-bound enforcement, learning bound to outcomes
 status: Accepted
 date: 2026-07-27
-updated: 2026-09-11
-reviewed_digest: 9a057f3b2269
+updated: 2026-09-12
+reviewed_digest: d14941d1fb33
 impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6 (codex, read-only)]
 tags: [proactivity, hooks, mesh, fourth-wall, learning, grounding, qa]
@@ -710,6 +710,7 @@ clause as the pre-agreed escalation (§3.5); Task-prompt scanning — Fable's re
 delegation drift goes to the interrupt tier (§3.7.9).
 
 ## Currency log
+| 2026-09-12 | Currency review at commit 55f98705: decision unchanged. Two governed paths moved: `plugin/hooks/hooks.json`/`codex-hooks.json` (`ef2b8e12`, this session's hook-parity work — Codex write-route parity and the new grounding-turn-gate Stop pair; unrelated to proactivity/mesh semantics) and `kb/forge-mcp-all.mjs` (`55f98705`, a card-lane routing fix — an explicit-`k` check so an omitted `k` reaches the fast card lane instead of always deferring to source retrieval; a retrieval-latency bugfix, not a proactivity/mesh change). The other governed paths in the drift window did not move. | Reviewed `plugin/hooks/hooks.json`, `codex-hooks.json`, `kb/forge-mcp-all.mjs` diffs in full against commits `ef2b8e12` and `55f98705`. |
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged; the plane re-converged toward §2 and Appendix A. `plugin/hooks/hooks.json`: `76632b15` dropped four registrations (`unprompted-speech`; `session-snapshot` at Stop, PreCompact and SessionEnd) and added `PostEdit`, which is not a host event; `9c45d408` restored 85f584b2; `7b8e6e73` registered `ground-ruvnet` at UserPromptSubmit — where Appendix A's 2026-07-27 census already had it before `00526b12` retired it — plus `decision-gate write` (PreToolUse, ADR-067) and `grounding-stamp` (PostToolUse); `hooks:check` PASS with nine registrations. `codex-hooks.json` likewise (+6/−1 vs 85f584b2). `plugin/scripts/unprompted-runtime.mjs` +10/−2 vs 85f584b2 (`1380c98b` passes RUVNET_ADVOCACY_ROUTE_BUDGET_MS explicitly, a no-op; 27/27 tests). `session-start-core.mjs` identical to 85f584b2. `ground-ruvnet.sh` itself did not move. §1's block / interrupt / advise law is untouched; the second UserPromptSubmit owner is recorded as ADR-040's amendment. | Reviewed `plugin/hooks/hooks.json`, `plugin/hooks/codex-hooks.json`, `plugin/scripts/unprompted-runtime.mjs`, `plugin/scripts/ground-ruvnet.sh`. reviewed_digest 9a057f3b2269. |
 | 2026-09-09 | Reviewed the governed proactivity surface after the North Star D2/D5 repairs; the weakest governed members are the experience test fixtures, which are built but have no production caller, so the stored implementation claim is now honestly `built`. | Source digest 89b16f14daff; tests/experience/scenarios.json; tests/experience/report.test.mjs; tests/mesh/coexistence.test.mjs. |
 | 2026-08-30 | SessionStart now emits factual health/action state only and suppresses the active footer when the brain is off. CI signal details are phrased as evidence, not response instructions, so quiet mode retains the workflow, conclusion, and inspection command. | `plugin/scripts/session-start-core.mjs` and `tests/unit/session-start-core-parity.test.mjs` close the noisy-hook path reported by the user; `tests/unit/signal-lifecycle.test.mjs` protects the evidence line. |

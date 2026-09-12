@@ -1,10 +1,10 @@
 # DDD-0021 — The Corpus Supply Chain bounded context
 
-Updated: 2026-09-13
+Updated: 2026-09-12
 
 Governs **ADR-084** (the three user invariants) and **ADR-085** (the nightly corpus release channel).
 
-**Status**: Proposed (2026-09-13)
+**Status**: Proposed (2026-09-12)
 
 ---
 
