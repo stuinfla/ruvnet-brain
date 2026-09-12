@@ -3,7 +3,7 @@ id: ADR-074
 title: RuvNet capability claims require live evidence
 status: Accepted
 date: 2026-08-22
-updated: 2026-09-11
+updated: 2026-09-12
 reviewed_digest: 3dc633e7f906
 version: 1.1.1
 authors: [Stuart Kerr, Codex]
