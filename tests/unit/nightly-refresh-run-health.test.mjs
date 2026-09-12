@@ -74,13 +74,16 @@ function abortedReceipt(f, { reason = REASON, phases } = {}) {
 describe('refreshRunHealth — an aborted run reports WHERE it failed and WHY', () => {
   it('today\'s receipt: strict-prefix ledger + FAILED → failed at source-enumeration with the first line of the reason', () => {
     const f = fixture();
-    f.write(abortedReceipt(f));
+    const receipt = abortedReceipt(f);
+    f.write(receipt);
     const health = refreshRunHealth({ brainHome: f.brainHome, now: NOW });
     expect(health.state).toBe('failed');
     expect(health.evidence).toMatch(/failed at source-enumeration: unresolved rollback state exists; refusing to create another full-KB copy\.$/);
     expect(health.evidence).not.toMatch(/invalid/);
     expect(health.evidence).not.toMatch(/Restore or reconcile/); // first line only
-    expect(health.receipt.runId).toBe('1789208177087-d51ad2c7e6b004b2');
+    // Derived from the fixture actually written to disk, not retyped — the assertion is "the reader
+    // returns the receipt it was given," which a re-typed literal can't prove if the fixture changes.
+    expect(health.receipt.runId).toBe(receipt.runId);
   });
 
   it('the reason is bounded to 200 characters', () => {

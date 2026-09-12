@@ -3193,13 +3193,52 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('onboarding-consol
 const SCOPE_SENTENCE = "If rUv's last change to a repo is on or before the date the brain read it, everything in that repo is in the brain. If it's after, the brain is behind on that repo by the difference.";
 const SCOPE_DAY_MS = 86_400_000;
 const SCOPE_STALE_DAYS = 7;
+// A row's `desc` is what the thing DOES, so the page's search answers "is the stuff on Federation in
+// Ruflo?" — a description question — not only name lookups. Bounded so a README pasted into a card
+// cannot bloat 700 rows.
+const SCOPE_DESC_MAX = 200;
+const scopeBounded = (s) => (s.length > SCOPE_DESC_MAX ? `${s.slice(0, SCOPE_DESC_MAX - 1)}…` : s);
 
-function scopeRow(row, { generations, gistSources, installedStores }) {
+/**
+ * Pure: the installed brain's capability-cards.md → Map(lowercased repo/store name → first line of
+ * its card, bounded). The card file is the ONLY per-repo description that ships to a customer
+ * machine (data/ruvnet-registry.json is repo-side and never installs — measured 2026-09-12). Format,
+ * measured on 182 sections: `## <name>`, one line saying what it does, one auto-derivation note.
+ */
+function parseCapabilityCards(text) {
+  const cards = new Map();
+  if (typeof text !== 'string') return cards;
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const h = /^##\s+(\S.*?)\s*$/.exec(lines[i]);
+    if (!h) continue;
+    let j = i + 1;
+    while (j < lines.length && !lines[j].trim()) j += 1;
+    const first = j < lines.length && !lines[j].startsWith('#') ? lines[j].trim() : '';
+    if (first) cards.set(h[1].toLowerCase(), scopeBounded(first));
+  }
+  return cards;
+}
+
+function scopeDesc(row, { isGist, store, gistId, gistSources, cards }) {
+  if (isGist) {
+    // A gist's only words are its file names (COVERAGE upstream.files; the receipt's files as fallback).
+    const files = row.upstream?.files ?? gistSources?.gists?.[gistId]?.files ?? null;
+    const names = Array.isArray(files) ? files.map((f) => (typeof f === 'string' ? f : f?.filename)).filter(Boolean) : [];
+    return names.length ? scopeBounded(names.join(' · ')) : null;
+  }
+  const byName = cards?.get(String(row.name ?? '').toLowerCase());
+  if (byName) return byName;
+  return (store && cards?.get(String(store).toLowerCase())) || null;
+}
+
+function scopeRow(row, { generations, gistSources, installedStores, cards }) {
   const isGist = row.kind === 'gist';
   const store = row.artifact?.store ?? null;
   const ledger = store ? (generations?.stores?.[store] ?? null) : null;
   const gistId = isGist ? String(row.key ?? '').replace(/^gist:/, '') : null;
   const upstreamSha = row.upstream?.sha ?? null;
+  const desc = scopeDesc(row, { isGist, store, gistId, gistSources, cards });
 
   let brainSha = row.artifact?.sourceCommit ?? null;
   if (brainSha == null) brainSha = isGist ? (gistSources?.gists?.[gistId]?.versionSha ?? null) : (ledger?.sourceCommit ?? null);
@@ -3221,7 +3260,7 @@ function scopeRow(row, { generations, gistSources, installedStores }) {
     const d = (Date.parse(ruvChangedAt) - Date.parse(brainReadAt)) / SCOPE_DAY_MS;
     behindDays = Number.isFinite(d) ? Math.max(0, Math.round(d)) : null;
   }
-  return { kind: row.kind, name: row.name, url: row.url ?? null, store, bucket, ruvChangedAt, brainReadAt, behindDays, brainSha, upstreamSha };
+  return { kind: row.kind, name: row.name, url: row.url ?? null, store, desc, bucket, ruvChangedAt, brainReadAt, behindDays, brainSha, upstreamSha };
 }
 
 const scopeNewestFirst = (a, b) => {
@@ -3232,7 +3271,7 @@ const scopeNewestFirst = (a, b) => {
 };
 
 /** Pure: coverage + ledger + gist receipts + the set of installed store names → the page's payload. */
-function computeScope({ coverage, generations, gistSources, installedStores, root, now = Date.now() }) {
+function computeScope({ coverage, generations, gistSources, installedStores, root, cards = new Map(), now = Date.now() }) {
   const empty = () => ({ total: 0, current: 0, behind: 0, unverified: 0, notInBrain: 0, ineligible: 0 });
   const counts = { repos: empty(), gists: empty() };
   const out = { repos: [], gists: [] };
@@ -3242,7 +3281,7 @@ function computeScope({ coverage, generations, gistSources, installedStores, roo
     if (row.artifact?.store) covered.add(row.artifact.store);
     counts[kind].total += 1;
     if (row.disposition !== 'eligible') { counts[kind].ineligible += 1; continue; }
-    const r = scopeRow(row, { generations, gistSources, installedStores });
+    const r = scopeRow(row, { generations, gistSources, installedStores, cards });
     counts[kind][r.bucket === 'not-in-brain' ? 'notInBrain' : r.bucket] += 1;
     out[kind].push(r);
   }
@@ -3278,12 +3317,16 @@ function gatherScope() {
   let installedStores = new Set();
   try { installedStores = new Set(fs.readdirSync(INSTALLED_KB).filter((f) => f.endsWith('.big.rvf')).map((f) => f.slice(0, -'.big.rvf'.length))); }
   catch { /* unreadable root reads as nothing installed — every row then says "not in the brain" */ }
-  return computeScope({ coverage, generations: readJson('RVF-GENERATIONS.json'), gistSources: readJson('ruv-gists.sources.json'), installedStores, root: INSTALLED_KB });
+  let cardsText = null;
+  try { cardsText = fs.readFileSync(path.join(INSTALLED_KB, 'capability-cards.md'), 'utf8'); } catch { /* no cards → every desc is null, never invented */ }
+  return computeScope({ coverage, generations: readJson('RVF-GENERATIONS.json'), gistSources: readJson('ruv-gists.sources.json'),
+    installedStores, root: INSTALLED_KB, cards: parseCapabilityCards(cardsText) });
 }
 
 export {
   gatherScope,
   computeScope,
+  parseCapabilityCards,
   gatherState,
   gatherStack,
   gatherTrust,

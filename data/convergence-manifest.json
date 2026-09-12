@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.3.22",
-  "sourceIdentity": "e8504fe888019ce49a1c442cae226c355982244713c01ecf3ecc93274546469e",
+  "sourceIdentity": "da33725039458089d895139fdddbae2afea3167688bd186b9994bdd4deb158b8",
   "versionSurfaces": {
     "package.json": "4.3.22",
     "plugin/.claude-plugin/plugin.json": "4.3.22",
@@ -96,10 +96,12 @@
     "0081-adr-as-code-automation.md",
     "0082-north-star-unlock-path.md",
     "0083-model-routing-north-star-95.md",
+    "0084-the-three-user-invariants.md",
+    "0085-nightly-corpus-release-channel.md",
     "README.md"
   ],
-  "trackedFileCount": 1439,
-  "trackedFilesSha256": "c1a8cbebfa2383f3c8b9d175cf06797f5e50ae7bb48e1515ec424e6834819444",
+  "trackedFileCount": 1485,
+  "trackedFilesSha256": "4488d57df5a5b8df22cceebabec8c262e5c0f0512c9c07b2923e3bdb7f67aec9",
   "ownershipChecks": [
     "version:check",
     "doc:currency",
