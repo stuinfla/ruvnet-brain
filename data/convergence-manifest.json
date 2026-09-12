@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.3.22",
-  "sourceIdentity": "3c383367c92b7856de76eb8d79d44c47db077b9ccb4e65df934a5bd527cb42b5",
+  "sourceIdentity": "27fa38a01623bc15cba8c8f7ccfe080e268af6120b5b18ebfdf96fad919c0b54",
   "versionSurfaces": {
     "package.json": "4.3.22",
     "plugin/.claude-plugin/plugin.json": "4.3.22",
@@ -100,8 +100,8 @@
     "0085-nightly-corpus-release-channel.md",
     "README.md"
   ],
-  "trackedFileCount": 1485,
-  "trackedFilesSha256": "68773bdd7e0a2d493d82bf6b32c177e4f3f3c14858bf9da546436f36de34ca05",
+  "trackedFileCount": 1486,
+  "trackedFilesSha256": "1c354f74eb8d338c759b5615f48639318bdb19a698b4d902b195b9f4d70e830f",
   "ownershipChecks": [
     "version:check",
     "doc:currency",
