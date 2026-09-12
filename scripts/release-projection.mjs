@@ -67,8 +67,17 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   // files and its byte-bound ledger, while preserving the complete observation in CORPUS-COVERAGE.
   const availableStores = new Set(fs.readdirSync(assets)
     .filter((name) => /^.+\.big\.rvf$/.test(name)).map((name) => name.slice(0, -'.big.rvf'.length).toLowerCase()));
-  const seededRows = corpusCoverage.rows.filter((row) => row.disposition === 'eligible'
-    && availableStores.has(String(row.artifact?.store || '').toLowerCase()));
+  // The seed is the truth for gists too, at GIST granularity. `ruv-gists.big.rvf` being present says
+  // the aggregate shipped — not that every gist rUv has published since the seal is inside it. A gist
+  // the sealed receipt does not carry is unseeded exactly like a repository whose store is absent:
+  // dropped from the release rows, never rewritten CURRENT, still complete in CORPUS-COVERAGE.json.
+  // Measured 2026-09-12: 492 observed gists vs 479 in the sealed v4.2.1 receipt; the 13 published
+  // after 2026-08-26 were being projected CURRENT and coverage-integrity rejected the receipt for it.
+  const gistReceipt = seedCompatibleGistReceipt();
+  const seededGistIds = new Set(Object.keys(gistReceipt.gists));
+  const seeded = (row) => availableStores.has(String(row.artifact?.store || '').toLowerCase())
+    && (row.kind !== 'gist' || seededGistIds.has(String(row.key || '').replace(/^gist:/, '')));
+  const seededRows = corpusCoverage.rows.filter((row) => row.disposition === 'eligible' && seeded(row));
   if (!seededRows.length) throw new Error('immutable seed contains no eligible corpus stores');
   const seededExcludedRows = corpusCoverage.rows.filter((row) => row.disposition !== 'eligible'
     && availableStores.has(String(row.artifact?.store || '').toLowerCase()));
@@ -116,7 +125,6 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
     installedProjectionSchema: 2, policy: corpusCoverage.policy, enumerationReceipt: projectedEnumerationReceipt,
     rows: projectedCoverage.rows, totals: projectedCoverage.totals,
   };
-  const gistReceipt = seedCompatibleGistReceipt();
   // Keep the projected receipt in the same asset root that the final archive
   // validator reads, so both partition hashes include identical evidence.
   fs.writeFileSync(path.join(assets, 'ruv-gists.sources.json'), `${JSON.stringify(gistReceipt, null, 2)}\n`);

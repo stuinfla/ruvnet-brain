@@ -26,6 +26,13 @@ import { coverageGenerationFor, releaseCoverageGenerationFor } from '../../plugi
 import { validatePublicInventory } from '../../scripts/public-inventory.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+// The trusted coverage validator reaches a live KB through the INSTALLER (bin/install.mjs), never
+// through the bundle it validates. This fixture obtains it the way production does. Until
+// 2026-09-12 this file hand-copied plugin/scripts/coverage-integrity.mjs into the fixture and into
+// every fixture BUNDLE — which is exactly why the suite never saw that no production path placed it.
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { placeTrustedCoverageValidator } = await import('../../bin/install.mjs');
+const TRUSTED_VALIDATOR_BYTES = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', 'coverage-integrity.mjs'));
 // Use each host's real archive writer; Windows does not ship the POSIX zip command.
 function archiveDirectory(stage, zipPath) {
   if (process.platform === 'win32') {
@@ -92,7 +99,8 @@ beforeEach(() => {
     `const SIGNING_PUBKEY_PEM = \`${TEST_SIGNING_PUB}\`;`,
   );
   fs.writeFileSync(updater, updaterSource);
-  fs.copyFileSync(path.join(ROOT, 'plugin/scripts/coverage-integrity.mjs'), path.join(kbDir, 'coverage-integrity.mjs'));
+  // The live KB was installed by the installer, which places the trusted validator beside the updater.
+  placeTrustedCoverageValidator(kbDir);
 });
 afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
@@ -164,8 +172,10 @@ if (!doc.stores?.[value('--name')]) { console.error('no entry for store "'+value
   release.releaseCoverageGeneration = releaseCoverageGenerationFor(release);
   fs.writeFileSync(path.join(dir, 'COVERAGE.json'), JSON.stringify(release));
   if (path.resolve(dir) !== path.resolve(kbDir)) {
+    // A published bundle ships the updater's module graph — and NOT coverage-integrity.mjs, which
+    // build-bundle.mjs cannot see behind the updater's dynamic load. The fixture bundle must match.
     for (const file of ['forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs',
-      'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'coverage-integrity.mjs']) {
+      'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs']) {
       fs.copyFileSync(path.join(kbDir, file), path.join(dir, file));
     }
   }
@@ -318,6 +328,34 @@ describe('forge-update --apply (issues #106 + #108)', () => {
     const landed = JSON.parse(fs.readFileSync(path.join(kbDir, 'SOURCE.json'), 'utf8'));
     expect(landed.releaseTag).toBe('v4.0.8');
     expect(landed.stores.beta.sourceCommit).toBe(STORE_B_NEW.sourceCommit);
+    // The promoted generation is the extracted bundle, which never carried the validator. The live,
+    // installer-provided copy must be carried forward — or the NEXT --apply (the console runs the
+    // updater directly) dies on "installed coverage validator is missing".
+    const carried = path.join(kbDir, 'coverage-integrity.mjs');
+    expect(fs.existsSync(carried), 'promoted tree must still hold the trusted validator').toBe(true);
+    expect(fs.readFileSync(carried).equals(TRUSTED_VALIDATOR_BYTES)).toBe(true);
+  });
+
+  it('dies on the exact message when the installer never placed the validator, and proceeds once it has', async () => {
+    // Measured 2026-09-12 on a 4.3.21 brain: the already-current path loads the validator from the
+    // KB root before it does anything else; with no installer placement it can never get past this.
+    const current = sourceJson({
+      releaseTag: 'v4.0.7', brainVersion: '4.0.7', builtUtc: '2026-07-31T04:39:28.414Z', stores: [STORE_A],
+    });
+    layDown(kbDir, current);
+    publish(current, 'v4.0.7'); // same tag as local → the already-current branch
+    fs.rmSync(path.join(kbDir, 'coverage-integrity.mjs'));
+
+    const starved = await run('--apply');
+    expect(starved.code).toBe(1);
+    expect(starved.out).toMatch(/installed coverage validator is missing; re-run the current installer before self-update/);
+    expect(JSON.parse(fs.readFileSync(path.join(kbDir, 'SOURCE.json'), 'utf8')).releaseTag).toBe('v4.0.7');
+
+    expect(placeTrustedCoverageValidator(kbDir).action).toBe('placed');
+    const fed = await run('--apply');
+    expect(fed.code, fed.out).toBe(0);
+    expect(fed.out).toMatch(/Nothing to apply — already current/);
+    expect(fed.out).not.toMatch(/coverage validator is missing/);
   });
 
   it('treats --restore-complete re-landing the SAME bundle as success, not as "nothing landed"', async () => {
