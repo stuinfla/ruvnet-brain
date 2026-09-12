@@ -28,9 +28,44 @@
     unverified:   { cls: 'b-unverified', label: 'in the brain · currency unverified' },
     'not-in-brain': { cls: 'b-notin',    label: 'not in the brain' }
   };
-  var RANK = { current: 0, behind: 1, unverified: 2, 'not-in-brain': 3 };
+  var RANK = { current: 0, behind: 1, unverified: 2, 'not-in-brain': 3 };            // column sort on "verdict"
+  var RANK_BEHIND = { behind: 0, unverified: 1, 'not-in-brain': 2, current: 3 };     // the "Behind first" view
 
-  var state = { data: null, q: '', sort: { repos: ['ruvChangedAt', 'desc'], gists: ['ruvChangedAt', 'desc'] } };
+  /* ── three views + one search, as pure functions (owner, 2026-09-12: "alphabetically, or
+     thematically, or by date"). Published on window.RBScope so the page and its test share them. ── */
+  function byName(a, b) {
+    return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+  }
+  function newestFirst(a, b) {
+    var x = a.ruvChangedAt, y = b.ruvChangedAt;
+    if (x == null && y == null) return byName(a, b);
+    if (x == null) return 1;   // unknown dates sink to the bottom
+    if (y == null) return -1;
+    return x < y ? 1 : x > y ? -1 : byName(a, b);
+  }
+  /** Which comparator a named view uses. An unknown view reads as "newest", never throws. */
+  function sortFor(view) {
+    if (view === 'az') return byName;
+    if (view === 'behind') {
+      return function (a, b) {
+        var ra = RANK_BEHIND[a.bucket], rb = RANK_BEHIND[b.bucket];
+        var d = (ra == null ? 9 : ra) - (rb == null ? 9 : rb);
+        return d !== 0 ? d : newestFirst(a, b);
+      };
+    }
+    return newestFirst;
+  }
+  /** Does a row answer the query — by name, or by what it does (desc)? An empty query matches everything. */
+  function match(row, q) {
+    var needle = String(q == null ? '' : q).trim().toLowerCase();
+    if (!needle) return true;
+    return String(row.name || '').toLowerCase().indexOf(needle) !== -1
+      || String(row.desc || '').toLowerCase().indexOf(needle) !== -1;
+  }
+  window.RBScope = { match: match, sortFor: sortFor };
+
+  var VIEW_SORT = { newest: ['ruvChangedAt', 'desc'], az: ['name', 'asc'], behind: ['bucket', 'asc'] };
+  var state = { data: null, q: '', view: 'newest', sort: { repos: ['ruvChangedAt', 'desc'], gists: ['ruvChangedAt', 'desc'] } };
 
   function cmp(key, dir) {
     var m = dir === 'asc' ? 1 : -1;
@@ -52,7 +87,8 @@
     var gap = r.bucket === 'behind' && r.behindDays != null ? '<span class="gap">behind ' + r.behindDays + ' d</span>' : '';
     var d1 = day(r.ruvChangedAt), d2 = day(r.brainReadAt);
     return '<tr>' +
-      '<td class="name"><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a></td>' +
+      '<td class="name"><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a>' +
+        (r.desc ? '<small class="desc" title="' + esc(r.desc) + '">' + esc(r.desc) + '</small>' : '') + '</td>' +
       '<td class="date' + (d1 ? '' : ' unknown') + '">' + (d1 || 'unknown') + '</td>' +
       '<td class="date' + (d2 ? '' : ' unknown') + '">' + (d2 || (r.bucket === 'not-in-brain' ? '—' : 'unknown')) + '</td>' +
       '<td class="verdict"><span class="badge ' + b.cls + '">' + b.label + '</span>' + gap + '</td>' +
@@ -64,9 +100,10 @@
   function renderTable(kind) {
     var rows = state.data[kind] || [];
     var q = state.q.trim().toLowerCase();
-    if (q) rows = rows.filter(function (r) { return String(r.name).toLowerCase().indexOf(q) !== -1; });
+    if (q) rows = rows.filter(function (r) { return match(r, q); });
     var s = state.sort[kind];
-    rows = rows.slice().sort(cmp(s[0], s[1]));
+    // a named view sorts both tables the same way; a column click switches to a per-table sort
+    rows = rows.slice().sort(state.view === 'custom' ? cmp(s[0], s[1]) : sortFor(state.view));
     var body = $(kind + '-body');
     var t0 = performance.now();
     body.innerHTML = rows.length ? rows.map(rowHtml).join('') : '<tr><td colspan="5" class="empty">no ' + kind + ' match “' + esc(state.q) + '”</td></tr>';
@@ -120,8 +157,22 @@
     $('foot-root').textContent = d.root || '';
   }
 
+  function setView(view) {
+    state.view = view;
+    var buttons = document.querySelectorAll('.scope-views .view');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].setAttribute('aria-pressed', buttons[i].getAttribute('data-view') === view ? 'true' : 'false');
+    }
+    if (VIEW_SORT[view]) { state.sort.repos = VIEW_SORT[view].slice(); state.sort.gists = VIEW_SORT[view].slice(); }
+    renderTable('repos'); renderTable('gists');
+  }
+
   function wire() {
     $('search').addEventListener('input', function (e) { state.q = e.target.value; renderTable('repos'); renderTable('gists'); });
+    var buttons = document.querySelectorAll('.scope-views .view');
+    for (var b = 0; b < buttons.length; b++) {
+      buttons[b].addEventListener('click', function (ev) { setView(ev.currentTarget.getAttribute('data-view')); });
+    }
     ['repos', 'gists'].forEach(function (kind) {
       var ths = $(kind + '-table').querySelectorAll('thead th[data-key]');
       for (var i = 0; i < ths.length; i++) {
@@ -129,6 +180,9 @@
           var k = ev.currentTarget.getAttribute('data-key');
           var s = state.sort[kind];
           state.sort[kind] = [k, s[0] === k && s[1] === 'desc' ? 'asc' : 'desc'];
+          state.view = 'custom'; // a column click is a per-table sort; no view button is pressed
+          var vb = document.querySelectorAll('.scope-views .view');
+          for (var j = 0; j < vb.length; j++) vb[j].setAttribute('aria-pressed', 'false');
           renderTable(kind);
         });
       }

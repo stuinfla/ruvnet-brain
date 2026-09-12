@@ -43,12 +43,24 @@ const gist = (id, name, over = {}) => ({
   ...over,
 });
 
-function seed({ rows, generations, sources, installed }) {
+function seed({ rows, generations, sources, installed, cards }) {
   fs.writeFileSync(path.join(kb, 'COVERAGE.json'), JSON.stringify({ kind: 'ruvnet-brain-release-coverage', owner: 'ruvnet', observedAt: OBSERVED, rows }));
   fs.writeFileSync(path.join(kb, 'RVF-GENERATIONS.json'), JSON.stringify({ brainVersion: '9.9.9', releaseTag: 'v9.9.9', stores: generations }));
   if (sources) fs.writeFileSync(path.join(kb, 'ruv-gists.sources.json'), JSON.stringify({ owner: 'ruvnet', generated: OBSERVED, gists: sources }));
+  if (cards) fs.writeFileSync(path.join(kb, 'capability-cards.md'), cards);
   for (const s of installed) fs.writeFileSync(path.join(kb, `${s}.big.rvf`), 'rvf');
 }
+
+// The installed brain ships capability-cards.md (one `## <repo>` section, first line = what it does,
+// second line = the auto-derivation note). That is the only per-repo description present on a
+// customer machine — data/ruvnet-registry.json is a repo-side file and never installs.
+const CARDS = [
+  '# Capability cards', '',
+  '## alpha', 'Alpha turns commodity WiFi signals into spatial intelligence — federation over the mesh.',
+  '(Auto-derived from the repository\'s own description and README; a hand-written card would be better.)', '',
+  '## gamma', 'G'.repeat(400),
+  '(Auto-derived from the repository\'s own description and README.)', '',
+].join('\n');
 
 const FIXTURE = {
   rows: [
@@ -198,6 +210,43 @@ describe('scope — gists: truth is the gist receipt versionSha, date is updated
     seed({ ...FIXTURE, sources: null });
     const s = gather();
     for (const g of s.gists) expect(g.bucket).toBe('unverified');
+  });
+});
+
+describe('scope — every row says what the thing DOES, from the installed brain, so search can find it by topic', () => {
+  it('a repo\'s desc is the first line of its installed capability card; no card → null, never invented', () => {
+    seed({ ...FIXTURE, cards: CARDS });
+    const s = gather();
+    expect(byName(s.repos, 'alpha').desc).toBe('Alpha turns commodity WiFi signals into spatial intelligence — federation over the mesh.');
+    expect(byName(s.repos, 'beta').desc).toBeNull();
+  });
+
+  it('a desc is bounded, so a README pasted into a card cannot bloat the page', () => {
+    seed({ ...FIXTURE, cards: CARDS });
+    const g = byName(gather().repos, 'gamma');
+    expect(g.desc.length).toBeLessThanOrEqual(200);
+    expect(g.desc.endsWith('…')).toBe(true);
+  });
+
+  it('without a cards file every repo desc is null and the page still renders', () => {
+    seed(FIXTURE);
+    const s = gather();
+    expect(s.available).toBe(true);
+    for (const r of s.repos) expect(r.desc).toBeNull();
+  });
+
+  it('a gist\'s desc is its file names — the only words a gist has', () => {
+    seed(FIXTURE);
+    const s = gather();
+    expect(byName(s.gists, 'notes.md').desc).toBe('notes.md');
+    expect(byName(s.gists, 'old.md').desc).toBe('old.md');
+  });
+
+  it('a gist with several files lists them all, in order', () => {
+    seed({ ...FIXTURE, rows: [...FIXTURE.rows, gist('g3', '1-readme.md', {
+      upstream: { sha: 'g3v1', updatedAt: '2026-08-01T00:00:00Z', fileCount: 3, files: ['1-readme.md', '2-tech.md', 'output.txt'] } })],
+      sources: { ...FIXTURE.sources, g3: { versionSha: 'g3v1' } } });
+    expect(byName(gather().gists, '1-readme.md').desc).toBe('1-readme.md · 2-tech.md · output.txt');
   });
 });
 
