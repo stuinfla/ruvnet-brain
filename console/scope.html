@@ -75,6 +75,7 @@
   <section class="scope-lead">
     <p class="eyebrow">coverage · every repo and gist the installed brain knows</p>
     <h1>What's in the brain</h1>
+    <p class="scope-purpose">Is the latest thing rUv shipped in here? Search a repo or gist below; if rUv's last change is on or before the brain's read date, it's in.</p>
     <p class="scope-rule">If rUv's last change to a repo is on or before the date the brain read it, everything in that repo is in the brain. If it's after, the brain is behind on that repo by the difference.</p>
     <div id="asof" class="asof"><span class="dot"></span>reading the installed brain's coverage record…</div>
     <p id="asof-note" class="muted" style="font-size:12.5px;margin:8px 0 0;"></p>
@@ -87,9 +88,20 @@
     <div id="buckets" class="buckets"></div>
     <p id="bucket-foot" class="bucket-foot"></p>
 
+    <!-- Three ways to look, one search — the owner's ask (2026-09-12): "alphabetically, or thematically,
+         or by date". There is no theme taxonomy in the installed data (measured), so "thematically" is
+         served honestly by searching what each repo DOES (its capability-card line), not by invented
+         categories. The buttons drive BOTH tables; a column-header click still sorts one table. -->
+    <div class="scope-views" role="group" aria-label="How to list them">
+      <span class="views-cap mono">show</span>
+      <button type="button" class="view" data-view="newest" aria-pressed="true">Newest first</button>
+      <button type="button" class="view" data-view="az" aria-pressed="false">A–Z</button>
+      <button type="button" class="view" data-view="behind" aria-pressed="false">Behind first</button>
+      <input id="search" class="search" type="search" placeholder="search repos and gists — by name or what they do…" autocomplete="off" spellcheck="false" />
+    </div>
+
     <div class="scope-tools">
       <h2>Repositories <span id="repos-count" class="count"></span></h2>
-      <input id="search" class="search" type="search" placeholder="search repos and gists by name…" autocomplete="off" spellcheck="false" />
     </div>
     <div class="tbl-wrap">
       <table id="repos-table" class="scope">
