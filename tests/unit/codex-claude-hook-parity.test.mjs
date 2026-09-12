@@ -107,6 +107,81 @@ describe('both hosts carry the same constrained continuity policy', () => {
   });
 });
 
+/**
+ * DECISION-GATE'S WRITE ROUTE AND GROUNDING-STAMP ON CODEX (measured live 2026-09-12).
+ *
+ * The 2026-09-11 "not proven" claim for Codex PreToolUse/PostToolUse was measured with
+ * `codex exec "reply OK"` — a prompt that never invokes a tool, so of course neither event fired.
+ * A real probe (a prompt that actually calls `apply_patch`, and a second that calls this repo's own
+ * `search_ruvnet` MCP server) against codex-cli 0.154.0 fired both events with real payloads — see
+ * continuity-hook-policy.mjs's header for the full transcript shape. This block is the fail-first
+ * proof: before that measurement these hosts arrays were `['claude']` only and every assertion here
+ * was red (continuityRegistrations('codex') carried neither id; codex-hooks.json had no PreToolUse
+ * or PostToolUse key at all).
+ */
+describe('decision-gate write route and grounding-stamp are registered on Codex (2026-09-12)', () => {
+  it('the continuity policy grants Codex both PreToolUse decision-gate and PostToolUse grounding-stamp', () => {
+    const codexRegs = continuityRegistrations('codex');
+    expect(codexRegs.find((r) => r.event === 'PreToolUse' && r.id === 'decision-gate'),
+      'a real apply_patch write was measured live 2026-09-12 (codex-cli 0.154.0) to fire PreToolUse — '
+      + 'decision-gate must be reachable there, matching Claude').toBeTruthy();
+    expect(codexRegs.find((r) => r.event === 'PostToolUse' && r.id === 'grounding-stamp'),
+      'a real MCP search_ruvnet call was measured live 2026-09-12 to fire PostToolUse — grounding-stamp '
+      + 'must be reachable there too').toBeTruthy();
+  });
+
+  it('the shared decision-gate matcher recognizes apply_patch without dropping any Claude write tool', () => {
+    const spec = continuityRegistrations().find((r) => r.event === 'PreToolUse' && r.id === 'decision-gate');
+    expect(spec.hosts.slice().sort()).toEqual(['claude', 'codex']);
+    const re = new RegExp(spec.matcher);
+    for (const claudeTool of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']) {
+      expect(re.test(claudeTool), `matcher stopped matching Claude's ${claudeTool}`).toBe(true);
+    }
+    expect(re.test('apply_patch'), "matcher must recognize Codex's real raw tool_name for a write, "
+      + 'measured live 2026-09-12 (codex-cli 0.154.0)').toBe(true);
+    // Anchored, not a substring net — a tool merely containing the word must not slip through.
+    expect(re.test('not_apply_patch_at_all')).toBe(false);
+    expect(re.test('apply_patched')).toBe(false);
+  });
+
+  it('grounding-stamp keeps byte-identical matchers on both hosts — Codex needed no change', () => {
+    const spec = continuityRegistrations().find((r) => r.event === 'PostToolUse' && r.id === 'grounding-stamp');
+    expect(spec.hosts.slice().sort()).toEqual(['claude', 'codex']);
+    // Real MCP tool_name observed live 2026-09-12 for this repo's own search_ruvnet server.
+    expect(new RegExp(spec.matcher).test('mcp__ruvnet_brain__search_ruvnet')).toBe(true);
+  });
+
+  it('codex-hooks.json actually registers both with the exact policy-declared matcher', () => {
+    const doc = read(CODEX_HOOKS);
+    const preSpec = continuityRegistrations('codex').find((r) => r.event === 'PreToolUse' && r.id === 'decision-gate');
+    const postSpec = continuityRegistrations('codex').find((r) => r.event === 'PostToolUse' && r.id === 'grounding-stamp');
+
+    const preGroup = (doc.hooks.PreToolUse ?? []).find((g) => g.matcher === preSpec.matcher
+      && (g.hooks ?? []).some((h) => /(?:^|[\s"'])decision-gate write(?:$|[\s"'])/.test(String(h.command))));
+    expect(preGroup, 'no PreToolUse group in codex-hooks.json registers "decision-gate write" under '
+      + `the policy matcher ${JSON.stringify(preSpec.matcher)}`).toBeTruthy();
+
+    const postGroup = (doc.hooks.PostToolUse ?? []).find((g) => g.matcher === postSpec.matcher
+      && (g.hooks ?? []).some((h) => /(?:^|[\s"'])grounding-stamp(?:$|[\s"'])/.test(String(h.command))));
+    expect(postGroup, 'no PostToolUse group in codex-hooks.json registers "grounding-stamp" under '
+      + `the policy matcher ${JSON.stringify(postSpec.matcher)}`).toBeTruthy();
+  });
+
+  it('hook-contracts.json states both as dual-host, matching the policy exactly', () => {
+    const contracts = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin', 'hooks', 'hook-contracts.json'), 'utf8'));
+    for (const [event, id] of [['PreToolUse', 'decision-gate'], ['PostToolUse', 'grounding-stamp']]) {
+      const spec = continuityRegistrations().find((r) => r.event === event && r.id === id);
+      const owner = contracts._eventOwners.find((row) => row.event === event && row.owner === id);
+      expect(owner, `${event}:${id} missing from hook-contracts.json _eventOwners`).toBeTruthy();
+      expect(owner.hosts.slice().sort()).toEqual(spec.hosts.slice().sort());
+      const contract = contracts.contracts.find((row) => row.event === event && row.id === id);
+      expect(contract, `${event}:${id} missing from hook-contracts.json contracts`).toBeTruthy();
+      expect(contract.hosts.slice().sort()).toEqual(spec.hosts.slice().sort());
+      expect(contract.matcher).toBe(spec.matcher);
+    }
+  });
+});
+
 // Historical adapter-parity proof retained for the dormant compatibility library. It is not a
 // product acceptance gate because neither host registers these adapters automatically.
 describe.skip('retired: the Codex manifest cannot silently lose a policy the gate owns', () => {

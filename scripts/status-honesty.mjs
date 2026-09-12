@@ -49,6 +49,30 @@ const DERIVATION_MARKERS = [
   'remoteBranchExists', 'installedVersion', 'verifyOutcome', 'delivered', 'succeeded ?', 'sent ===',
 ];
 
+// Guard-clause derivation: `if (!x.ok) return {...failed...}; ... return { state: 'ok', ... };` gates
+// the terminal literal on an earlier validator call's `.ok` result — a real derivation — but the guard
+// can sit many lines above the literal (one guard per precondition, e.g. refreshRunHealth() checking
+// registration, identity, and envelope validity in turn before its one unconditional success return).
+// That is outside the local ±2-line window designed for inline ternaries, so it false-positived on
+// plugin/scripts/nightly-scheduler.mjs:271 (caught by the 2026-09-12 consistency audit; state:'ok' IS
+// gated, just structurally distant). Recognize the guard-clause idiom explicitly instead of widening
+// the generic window — widening would also swallow unrelated markers anywhere in the function and
+// could hide a genuinely naked literal sitting next to unrelated derivation-looking text.
+const OK_GUARD_RE = /\bif\s*\(\s*!\s*[\w$]+(?:\.[\w$]+)*\.ok\b\s*\)\s*return\b/;
+const FUNCTION_START_RE = /^\s*(export\s+)?(default\s+)?(async\s+)?function\b/;
+
+/** True if an earlier `if (!validator(...).ok) return ...;` guard, within the innermost enclosing
+ * top-level function, precedes line `matchIndex` — i.e. the function cannot reach `matchIndex`
+ * without that validator call having already passed. */
+function hasEnclosingOkGuard(lines, matchIndex) {
+  let start = 0;
+  for (let j = matchIndex - 1; j >= 0; j--) {
+    if (FUNCTION_START_RE.test(lines[j])) { start = j; break; }
+  }
+  for (let j = start; j < matchIndex; j++) if (OK_GUARD_RE.test(lines[j])) return true;
+  return false;
+}
+
 /** Scan one source text. Returns violations: [{line, text}] — success literal with no derivation. */
 export function scanSource(src, _name = '(inline)') {
   const violations = [];
@@ -61,6 +85,7 @@ export function scanSource(src, _name = '(inline)') {
     // The statement window: this line ± 2 (multi-line object literals / sh case arms).
     const windowText = lines.slice(Math.max(0, i - 2), i + 3).join('\n');
     if (DERIVATION_MARKERS.some((m) => windowText.includes(m))) continue;
+    if (hasEnclosingOkGuard(lines, i)) continue;
     violations.push({ line: i + 1, text: t.slice(0, 160) });
   }
   return violations;
