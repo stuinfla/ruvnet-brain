@@ -1,31 +1,31 @@
 {
   "invariant": "LEARNING-REPLAY",
   "verdict": "FAIL",
-  "why": "0/1 runs passed — below the 1/1 bar",
-  "sha": "2b0221005d7d1b62291a96657722640e05f5e343",
-  "at": "2026-09-09T17:44:14.982Z",
+  "why": "0/3 runs passed — below the 2/3 bar",
+  "sha": "560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8",
+  "at": "2026-09-12T10:14:59.579Z",
   "host": "codex",
   "model": "gpt-5.6-sol",
   "modelResolved": "gpt-5.6-sol",
   "mutant": "delete-lesson",
   "trap": "memory-search-query",
   "taskHash": "0308cccebda651705b12b6494468fc06be96fee9d85d05bf9d72b328b174f4ca",
-  "n": 1,
+  "n": 3,
   "passes": 0,
-  "fails": 1,
+  "fails": 3,
   "unknowns": 0,
   "controlTokenRuns": 0,
   "controlWorkedRuns": 0,
   "treatedTokenRuns": 0,
   "executionGate": {
-    "treatedSubcommandRuns": 1,
+    "treatedSubcommandRuns": 3,
     "treatedExecutedRuns": 0,
     "treatedRetrievedRuns": 0
   },
   "rate": 0,
   "threshold": ">=2/3",
   "costUsd": 0,
-  "wallSeconds": 38.5,
+  "wallSeconds": 73.8,
   "premise": {
     "verified": true,
     "evidence": "-q, --query               Search query (required)"
@@ -52,8 +52,8 @@
     "ok": true
   },
   "refresh": {
-    "generation": "d4-refresh-1788975815688",
-    "codeRoot": ".ruvnet-brain/learning-replay/run-776RC0/brain-home/versions/d4-refresh-1788975815688",
+    "generation": "d4-refresh-1789208024056",
+    "codeRoot": ".ruvnet-brain/learning-replay/run-f1cTHC/brain-home/versions/d4-refresh-1789208024056",
     "distillExit": 0,
     "backupExit": 0,
     "lessonSurvived": true
@@ -67,7 +67,7 @@
       "treated": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$HOME/Code/ruvnet-brain/.ruvnet-brain/learning-replay/run-776RC0/fixture-project-b/.swarm/memory.db\"",
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
         "exec": {
           "ran": true,
           "argv": [
@@ -76,7 +76,7 @@
             "search",
             "caching strategy",
             "--path",
-            "$HOME/Code/ruvnet-brain/.ruvnet-brain/learning-replay/run-776RC0/fixture-project-b/.swarm/memory.db"
+            ".swarm/memory.db"
           ],
           "exit": 1,
           "exitOk": false,
@@ -90,16 +90,16 @@
         "firstToolIndex": 0,
         "lessonBeforeFirstToolCall": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/2b0221005d7d1b62291a96657722640e05f5e343/38e86c6ee5554d61f367fdce02523ccafe2da9f5d3c4f5db351d939c537aab2a.json",
-          "sha256": "38e86c6ee5554d61f367fdce02523ccafe2da9f5d3c4f5db351d939c537aab2a",
-          "sourceSha": "2b0221005d7d1b62291a96657722640e05f5e343",
+          "path": "data/learning-replay-transcripts/560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8/eba0cbd8d9beb5c730462d833f042423b5136f06ec9c1f0f840dcbef4494df5c.json",
+          "sha256": "eba0cbd8d9beb5c730462d833f042423b5136f06ec9c1f0f840dcbef4494df5c",
+          "sourceSha": "560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8",
           "mutant": "delete-lesson"
         }
       },
       "control": {
         "class": "positional",
         "subcommandCorrect": true,
-        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
+        "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$HOME/Code/ruvnet-brain/.ruvnet-brain/learning-replay/run-f1cTHC/fixture-project-b/.swarm/memory.db\"",
         "exec": {
           "ran": true,
           "argv": [
@@ -107,7 +107,8 @@
             "memory",
             "search",
             "caching strategy",
-            "--path"
+            "--path",
+            "$HOME/Code/ruvnet-brain/.ruvnet-brain/learning-replay/run-f1cTHC/fixture-project-b/.swarm/memory.db"
           ],
           "exit": 1,
           "exitOk": false,
@@ -118,9 +119,143 @@
         "model": "gpt-5.6-sol",
         "lessonDelivered": false,
         "transcript": {
-          "path": "data/learning-replay-transcripts/2b0221005d7d1b62291a96657722640e05f5e343/789ec5cfec6db065036ec80aff908611565fac364d19c6df6e5dccf2151546c8.json",
-          "sha256": "789ec5cfec6db065036ec80aff908611565fac364d19c6df6e5dccf2151546c8",
-          "sourceSha": "2b0221005d7d1b62291a96657722640e05f5e343",
+          "path": "data/learning-replay-transcripts/560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8/8eea382a481739d3b5591aa667bc9694d9b47f5041eed4b64236ddd956b70397.json",
+          "sha256": "8eea382a481739d3b5591aa667bc9694d9b47f5041eed4b64236ddd956b70397",
+          "sourceSha": "560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8",
+          "mutant": "delete-lesson"
+        }
+      }
+    },
+    {
+      "i": 2,
+      "verdict": "FAIL",
+      "why": "treated arm produced \"positional\", not the token",
+      "error": null,
+      "treated": {
+        "class": "positional",
+        "subcommandCorrect": true,
+        "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$HOME/Code/ruvnet-brain/.ruvnet-brain/learning-replay/run-f1cTHC/fixture-project-b/.swarm/memory.db\"",
+        "exec": {
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "memory",
+            "search",
+            "caching strategy",
+            "--path",
+            "$HOME/Code/ruvnet-brain/.ruvnet-brain/learning-replay/run-f1cTHC/fixture-project-b/.swarm/memory.db"
+          ],
+          "exit": 1,
+          "exitOk": false,
+          "retrieved": false,
+          "why": "exit 1; output matched failure shape /Required option missing/i",
+          "output": "[ERROR] Required option missing: --query\n"
+        },
+        "model": "gpt-5.6-sol",
+        "forcedCommand": false,
+        "lessonIndex": -1,
+        "firstToolIndex": 0,
+        "lessonBeforeFirstToolCall": false,
+        "transcript": {
+          "path": "data/learning-replay-transcripts/560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8/99de2fd369f3b9be1178c4c00259d7260fd27df56031d5b7ad154f48c7efbf5e.json",
+          "sha256": "99de2fd369f3b9be1178c4c00259d7260fd27df56031d5b7ad154f48c7efbf5e",
+          "sourceSha": "560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8",
+          "mutant": "delete-lesson"
+        }
+      },
+      "control": {
+        "class": "positional",
+        "subcommandCorrect": true,
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
+        "exec": {
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "memory",
+            "search",
+            "caching strategy",
+            "--path",
+            ".swarm/memory.db"
+          ],
+          "exit": 1,
+          "exitOk": false,
+          "retrieved": false,
+          "why": "exit 1; output matched failure shape /Required option missing/i",
+          "output": "[ERROR] Required option missing: --query\n"
+        },
+        "model": "gpt-5.6-sol",
+        "lessonDelivered": false,
+        "transcript": {
+          "path": "data/learning-replay-transcripts/560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8/145ebe9f058dbf0fece9616e793c959f6065afe1f8039b9a96c6d63c09e4e10a.json",
+          "sha256": "145ebe9f058dbf0fece9616e793c959f6065afe1f8039b9a96c6d63c09e4e10a",
+          "sourceSha": "560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8",
+          "mutant": "delete-lesson"
+        }
+      }
+    },
+    {
+      "i": 3,
+      "verdict": "FAIL",
+      "why": "treated arm produced \"positional\", not the token",
+      "error": null,
+      "treated": {
+        "class": "positional",
+        "subcommandCorrect": true,
+        "command": "~/.npm-global/bin/ruflo memory search \"caching strategy\" --path .swarm/memory.db",
+        "exec": {
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "memory",
+            "search",
+            "caching strategy",
+            "--path",
+            ".swarm/memory.db"
+          ],
+          "exit": 1,
+          "exitOk": false,
+          "retrieved": false,
+          "why": "exit 1; output matched failure shape /Required option missing/i",
+          "output": "[ERROR] Required option missing: --query\n"
+        },
+        "model": "gpt-5.6-sol",
+        "forcedCommand": false,
+        "lessonIndex": -1,
+        "firstToolIndex": 0,
+        "lessonBeforeFirstToolCall": false,
+        "transcript": {
+          "path": "data/learning-replay-transcripts/560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8/b334fe28722985ee4c23db0dd54bca79a1e76554cb11ef8a735853f344d1e51c.json",
+          "sha256": "b334fe28722985ee4c23db0dd54bca79a1e76554cb11ef8a735853f344d1e51c",
+          "sourceSha": "560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8",
+          "mutant": "delete-lesson"
+        }
+      },
+      "control": {
+        "class": "positional",
+        "subcommandCorrect": true,
+        "command": "$HOME/.npm-global/bin/ruflo memory search \"caching strategy\" --path \"$HOME/Code/ruvnet-brain/.ruvnet-brain/learning-replay/run-f1cTHC/fixture-project-b/.swarm/memory.db\"",
+        "exec": {
+          "ran": true,
+          "argv": [
+            "ruflo",
+            "memory",
+            "search",
+            "caching strategy",
+            "--path",
+            "$HOME/Code/ruvnet-brain/.ruvnet-brain/learning-replay/run-f1cTHC/fixture-project-b/.swarm/memory.db"
+          ],
+          "exit": 1,
+          "exitOk": false,
+          "retrieved": false,
+          "why": "exit 1; output matched failure shape /Required option missing/i",
+          "output": "[ERROR] Required option missing: --query\n"
+        },
+        "model": "gpt-5.6-sol",
+        "lessonDelivered": false,
+        "transcript": {
+          "path": "data/learning-replay-transcripts/560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8/a35be44a1d25ed285e6ee4fd9f4d97e3a92c466efaf91836d19cc11392d1963c.json",
+          "sha256": "a35be44a1d25ed285e6ee4fd9f4d97e3a92c466efaf91836d19cc11392d1963c",
+          "sourceSha": "560a4eea7edbf1b8f7ff544b8a28b182c74ad7c8",
           "mutant": "delete-lesson"
         }
       }

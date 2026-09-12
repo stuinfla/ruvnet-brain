@@ -203,6 +203,22 @@ export function checkAll(now, { registry = REGISTRY, loaded = loadedLabels(), hb
 export function productSchedulerVerdict(status) {
   const base = { label: NIGHTLY_LABEL, what: 'Refreshes the installed Brain corpus and converges every detected host',
     schedule: 'daily 03:47', maxAgeHours: 30, required: true };
+  // A 'degraded' adapter whose only defect is a NON-ZERO LAST EXIT is a job that is loaded, verified
+  // and FIRED — the exact opposite of MISSING ("not loaded — it can never fire", top of this file).
+  // Its truth is the receipt. Measured 2026-09-12 against two FAILED receipts: this projected as
+  // MISSING with the detail "LaunchAgent is loaded and runner digest verified, but last exited 1" —
+  // a contradiction in one line, and the receipt's reason never surfaced.
+  if (status?.state === 'degraded' && Number.isInteger(status.lastExitCode) && status.lastExitCode !== 0) {
+    const run = status.runHealth || null;
+    if (run?.state === 'stale') return { ...base, state: STALE, detail: run.evidence };
+    if (!run || run.state === 'never-ran') {
+      return { ...base, state: FAILING, detail: `runner last exited ${status.lastExitCode} and left no receipt — it fired and died before recording a run` };
+    }
+    if (run.state === 'ok' || run.state === 'running') {
+      return { ...base, state: FAILING, detail: `runner last exited ${status.lastExitCode} although its latest receipt reads ${run.state} — the run after that receipt died without recording one (${run.evidence})` };
+    }
+    return { ...base, state: FAILING, detail: run.evidence };
+  }
   if (status?.state !== 'on') return { ...base, state: MISSING, detail: status?.evidence || 'scheduler is not registered' };
   const run = status.runHealth || { state: 'never-ran', evidence: 'No nightly refresh receipt exists yet.' };
   const mapped = run.state === 'ok' || run.state === 'running' ? OK

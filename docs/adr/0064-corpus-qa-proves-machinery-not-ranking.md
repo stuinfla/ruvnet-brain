@@ -3,7 +3,7 @@ id: ADR-064
 title: The corpus-QA round trip proves the machinery, not the ranking
 status: Accepted
 date: 2026-08-06
-updated: 2026-09-11
+updated: 2026-09-12
 reviewed_digest: 7d8b119122a9
 authors: [Stuart Kerr, Claude Code]
 tags: [corpus-qa, nightly, retrieval, near-duplicates, diagnosability, escalation]
@@ -178,7 +178,7 @@ label. Noted, not load-bearing for anything published.
   every one killed by the intended test; sources restored and re-verified byte-identical.
 
 ## Currency log
-| 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. Both drift commits (`7cf26dea`, `9b3e1d3f`) only reworded explanatory comment text in `scripts/nightly-wrapper.sh` describing the release-publication authority boundary ("It does NOT publish or dispatch a publisher..."); zero executable lines changed in either diff, and neither touches `scripts/corpus-qa.mjs`, `scripts/self-update.mjs`, or either test file. | Read both diffs in full; both are comment-only. reviewed_digest 7d8b119122a9. |
+| 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. Both drift commits (`7cf26dea`, `9b3e1d3f`) only reworded explanatory comment text in `scripts/nightly-wrapper.sh` describing the release-publication authority boundary ("It does NOT publish or dispatch a publisher..."); zero executable lines changed in either diff, and neither touches `scripts/corpus-qa.mjs`, `scripts/self-update.mjs`, or either test file. | Reviewed `scripts/nightly-wrapper.sh` (the only governed path that moved: `7cf26dea`, `9b3e1d3f`), `scripts/corpus-qa.mjs`, `scripts/self-update.mjs`; read both diffs in full, both comment-only. reviewed_digest 7d8b119122a9. |
 | 2026-08-31 | Reconciled the remaining #193 reader asymmetry: `learn-flush.mjs` now explicitly uses the same containment-checked `projectDirectory({ env: process.env })` fallback as the capture writer. | `plugin/scripts/learn-flush.mjs`; `plugin/scripts/learn-capture.sh`; issue #193. |
 | 2026-08-31 | Re-read after the release-control cutover; nightly convergence is now report-only and cannot dispatch a publisher, so it cannot bypass the signed review coordinator. Corpus-QA behavior is unchanged. | `scripts/nightly-wrapper.sh`; `scripts/release-convergence-watchdog.mjs`; `.github/workflows/release-cycle.yml`. |
 

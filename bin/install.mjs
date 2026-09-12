@@ -486,6 +486,39 @@ export function copyLocalBundleInto(sourceDir, cacheDir) {
   return copied;
 }
 
+// ── the trusted coverage validator lives beside the updater, and only the INSTALLER puts it there ──
+// kb/forge-update.mjs (`loadTrustedCoverageValidator`) judges every downloaded bundle with
+// `KB_DIR/coverage-integrity.mjs` and dies — "installed coverage validator is missing; re-run the
+// current installer before self-update" — when it is absent. The bundle cannot be the source: the
+// validator vets the bundle, so it must come from the signed npm package. Measured 2026-09-12: no
+// production path had ever placed it (build-bundle's import walk cannot see the updater's dynamic
+// load; this installer imported the module for its own checks and never copied it), so every
+// 4.3.21 `--update` — the nightly included — died in the updater and fell back to a fresh install,
+// which a private-overlay brain refuses. Idempotent, byte-compared, atomic; a symlink is replaced by
+// a real file because a link is not a trusted regular file.
+const TRUSTED_VALIDATOR_SOURCE = path.join(REPO_ROOT, 'plugin', 'scripts', 'coverage-integrity.mjs');
+export function placeTrustedCoverageValidator(kbDir, { source = TRUSTED_VALIDATOR_SOURCE } = {}) {
+  let bytes;
+  try { bytes = fs.readFileSync(source); }
+  catch (error) { throw new Error(`trusted coverage validator is missing from this package (${source}): ${error.message}`); }
+  const target = path.join(kbDir, 'coverage-integrity.mjs');
+  let existing = null;
+  try { existing = fs.lstatSync(target); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (existing && existing.isFile() && !existing.isSymbolicLink() && fs.readFileSync(target).equals(bytes)) {
+    return { action: 'unchanged', path: target };
+  }
+  const staged = `${target}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(staged, bytes, { mode: 0o644 });
+  if (existing && existing.isSymbolicLink()) fs.unlinkSync(target); // never write through a link
+  fs.renameSync(staged, target);
+  return { action: existing ? 'replaced' : 'placed', path: target };
+}
+/** `--update` preflight: place the validator only where an updater exists to consume it. */
+export function ensureUpdaterPrerequisites(kbDir) {
+  if (!fs.existsSync(path.join(kbDir, 'forge-update.mjs'))) return { updater: false, validator: null };
+  return { updater: true, validator: placeTrustedCoverageValidator(kbDir) };
+}
+
 export async function unzipInto(zipPath, cacheDir, sourceDir = null) {
   step(
     'Unpacking the brain into place',
@@ -567,6 +600,9 @@ export async function unzipInto(zipPath, cacheDir, sourceDir = null) {
       `The archive layout may have changed. Re-run, or report this at https://github.com/stuinfla/ruvnet-brain/issues`,
     );
   }
+  // A freshly installed brain must be able to self-update on its first night: the bundle never
+  // carries the trusted validator its own updater demands, so the installer lays it into the stage.
+  placeTrustedCoverageValidator(stageDir);
   const stagedCoverage = validateCoverageDirectory(stageDir, { expectedVersion: PACKAGE_VERSION });
   if (!stagedCoverage.valid) {
     fs.rmSync(stageDir, { recursive: true, force: true });
@@ -3389,6 +3425,17 @@ function runUpdate() {
     recordRefreshPhase(refreshReceipt, 'source-enumeration', 'FAIL', { reason: 'forge-update.mjs is missing' });
     settleRefresh(1, { phase: 'source-enumeration' });
     return;
+  }
+  // The updater exists; make sure the trusted validator it will load exists too (package copy,
+  // byte-compared). A failure here is reported, not fatal — the updater states the same absence
+  // in its own words and the run then takes the documented fallback.
+  try {
+    const prerequisites = ensureUpdaterPrerequisites(kbDir);
+    if (prerequisites.validator?.action !== 'unchanged') {
+      info(c.dim(`trusted coverage validator ${prerequisites.validator.action} beside the updater`));
+    }
+  } catch (error) {
+    warn(`could not place the trusted coverage validator (${error.message}); the updater will report what it finds`);
   }
   info(c.dim("running the bundle's own self-updater (backs up first, re-verifies, never half-applies)…\n"));
   // Relative filename + matching cwd — same launch convention as smokeQuery(); stdio:'inherit'
