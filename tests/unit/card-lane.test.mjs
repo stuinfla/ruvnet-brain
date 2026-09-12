@@ -100,6 +100,29 @@ describe('loadCards — reads capability-cards.md from a bundle dir, honestly ab
   });
 });
 
+describe('routeReposFromCards — cardVocabulary must contain real tokens, not Set objects', () => {
+  // THE BUG THIS CATCHES. `cards.flatMap((card) => card.tokenSet)` does not flatten a Set (only
+  // arrays) -- it silently produces an array of whole Set objects, so `cardVocabulary` never held
+  // a single real token string, for any card, since the line was written. Every query with two or
+  // more capitalized terms outside a tiny neutral list was declined "outside the card catalogue"
+  // REGARDLESS of what any card's own text said -- found live 2026-09-12 when a query using a
+  // real repo's own documented terminology ("Neuro-Divergent") was refused. This test uses a
+  // fixture whose card explicitly documents an unusual two-word capitalized term, so it fails on
+  // the un-spread flatMap and passes only once cardVocabulary actually contains card tokens.
+  let tmp;
+  it('does not decline a query naming vocabulary the card itself documents', () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'card-lane-vocab-'));
+    fs.writeFileSync(path.join(tmp, 'capability-cards.md'),
+      '## widget-forge\nBuilds Quantum-Fizzbuzz pipelines end to end. Reach for widget-forge whenever '
+      + 'you need Quantum-Fizzbuzz processing.\n');
+    const route = routeReposFromCards('What Quantum-Fizzbuzz throughput does widget-forge report?', tmp, ['widget-forge']);
+    expect(route.confidence).not.toBe('none');
+    expect(route.reason || '').not.toMatch(/outside the card catalogue/);
+    expect(route.repos).toContain('widget-forge');
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+});
+
 describe('answerFromCards — capability claims require implementation evidence', () => {
   const results = QUESTION_SETS.map((q) => ({ q, hit: answerFromCards(q.query, KB) }));
 
