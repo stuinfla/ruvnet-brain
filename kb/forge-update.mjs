@@ -1326,6 +1326,17 @@ async function main() {
     transaction = runStorageTransaction({ liveDir: KB_DIR, sourceDir: extractDir,
       transactionId: `${Date.now()}-${process.pid}`,
       prepareCandidate: ({ candidateDir, liveDir }) => {
+        // The trusted coverage validator is installer-provided and never ships inside the bundle it
+        // judges (build-bundle cannot see this file's dynamic load). Carry the LIVE copy into the
+        // candidate — never the bundle's: a promoted generation without it strands the next --apply
+        // on "installed coverage validator is missing", and a byte-identical bundle would stop
+        // reading as a no-op merely because live holds the one file the bundle cannot. Measured
+        // 2026-09-12: every 4.3.21 brain lacked it, so this branch had never once run to completion.
+        const liveValidator = path.join(liveDir, 'coverage-integrity.mjs');
+        if (fs.existsSync(liveValidator)) {
+          fs.copyFileSync(assertNoFollowPath(liveDir, liveValidator),
+            assertNoFollowPath(candidateDir, path.join(candidateDir, 'coverage-integrity.mjs')));
+        }
         for (const relative of Object.keys(privateOverlay?.files || {})) {
           const sourceFile = assertNoFollowPath(liveDir, path.join(liveDir, relative));
           const targetFile = assertNoFollowPath(candidateDir, path.join(candidateDir, relative));
