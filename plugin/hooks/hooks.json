@@ -1,5 +1,5 @@
 {
-  "description": "RuvNet Brain lifecycle plane. The broad legacy routing, learning, and release interceptors remain retired. What is automatic is exactly: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint AND the ground-ruvnet grounding injection (a directive to the model, not speech — ADR-040 §Amendment 2026-09-11); PreToolUse runs decision-gate's write route, the ONE process that may refuse a Write/Edit/MultiEdit/NotebookEdit (ADR-067, composing ground-before-write per ADR-0012); PostToolUse on a successful search_ruvnet mints the grounding stamp that opens that gate; Stop runs the ledger-scoped continuation handler and captures a project snapshot; PreCompact and SessionEnd capture a project snapshot. Every capture is bounded and fails open; only decision-gate may block, and it fails open on its own errors.",
+  "description": "RuvNet Brain lifecycle plane. The broad legacy routing, learning, and release interceptors remain retired. What is automatic is exactly: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint AND the ground-ruvnet grounding injection (a directive to the model, not speech — ADR-040 §Amendment 2026-09-11); PreToolUse runs decision-gate's write route, the ONE process that may refuse a Write/Edit/MultiEdit/NotebookEdit/apply_patch (ADR-067, composing ground-before-write per ADR-0012) — apply_patch is Codex's own write tool name, added 2026-09-12 once a real apply_patch call was measured to fire this event live (codex-hooks.json carries the matching Codex registration; this is a dead branch on Claude, which never names a tool apply_patch); PostToolUse on a successful search_ruvnet mints the grounding stamp that opens that gate; grounding-turn-mark (UserPromptSubmit) records that the grounding directive fired this turn, and grounding-turn-gate (Stop) forces continuation if no search_ruvnet call was recorded since — the \"answered without searching\" gate, added 2026-09-12 (a directive alone is advisory; nothing previously checked whether the model actually complied); Stop also runs the ledger-scoped continuation handler and captures a project snapshot; PreCompact and SessionEnd capture a project snapshot. Every capture is bounded and fails open; only decision-gate may block on exit code, and it fails open on its own errors — grounding-turn-gate and continuation-gate force continuation via the Stop stdout envelope instead, which is advisory in the shim's own mode table but still keeps the agent working.",
   "hooks": {
     "SessionStart": [
       {
@@ -26,13 +26,18 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" ground-ruvnet || true",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" grounding-turn-mark || true",
+            "timeout": 5
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "^(Write|Edit|MultiEdit|NotebookEdit)$",
+        "matcher": "^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$",
         "hooks": [
           {
             "type": "command",
@@ -66,6 +71,11 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" session-snapshot Stop || true",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" grounding-turn-gate || true",
             "timeout": 10
           }
         ]
