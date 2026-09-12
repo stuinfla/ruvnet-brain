@@ -3,10 +3,10 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-11
+updated: 2026-09-13
 version: 1.1.3
 impl: wired
-reviewed_digest: e44ed1e763ac
+reviewed_digest: 351f22130c54
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -84,6 +84,7 @@ Codex replay now registers isolated fixture hooks explicitly; the prior uninstru
 UNKNOWN, and no new behavioral learning result is claimed.
 
 ## Currency log
+| 2026-09-13 | Currency review at commit dae83538: decision unchanged. The hook-parity fork extended Codex's `PreToolUse`/`PostToolUse` registration (matcher now includes `apply_patch`, Codex's own write-tool name — measured live, a real `apply_patch` call fires the event) and added `grounding-turn-mark`/`grounding-turn-gate` (the "answered without searching" Stop pair) to `hooks.json`/`codex-hooks.json`/`hook-shim.mjs`. The eight-invariant release vector, `release-authority`, and `sync-version` are unaffected; `bin/install.mjs` did not move in this fork's diff. | Reviewed `plugin/hooks/hooks.json`, `codex-hooks.json`, `plugin/scripts/hook-shim.mjs` directly against the hook-parity fork's diff (merge-base `13cfc38b`..`ef2b8e12`). |
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged — the eight-invariant release vector and the candidate-CI guarantee are intact; the day's motion across this ADR's 37 paths nets to restores. `scripts/release.mjs`: rewritten at `e3b0f0ba` (lost `--publish` / `--check` / `--corpus-seed`; a second publisher, `release-authority` FAIL; the v4.4.0 tag's publish run was refused by `prepublishOnly`) and restored to 85f584b2 at `a4b1bf0d` (numstat 0/0; `release-authority` PASS; `sync-version --check` PASS at 4.3.22). `plugin/hooks/hooks.json`, `codex-hooks.json`, `plugin/scripts/hook-shim.mjs`, `session-start-core.mjs`: see the ADR-0055 and ADR-0054 rows (net: plane restored plus three gates; shim and session-start identical to 85f584b2). `bin/install.mjs` `dc18fadc`. Pre-session worktree merges account for the remainder. | Reviewed `scripts/release.mjs`, `plugin/hooks/hooks.json`, `plugin/scripts/hook-shim.mjs`, `bin/install.mjs`. reviewed_digest e44ed1e763ac. |
 | 2026-09-09 | Reviewed the release-vector and candidate CI guarantee after the D1/D2/D5/D7 repairs; the eight-invariant vector now measures every lane on the exact candidate source, and changed-scope currency remains fail-closed. | Source digest 8de600de26cd; scripts/release-vector.mjs; .github/workflows/ci.yml; scripts/doc-currency.mjs. |
 
