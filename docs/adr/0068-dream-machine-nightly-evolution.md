@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-09-12
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -136,6 +136,7 @@ committed config).
 
 ## Currency log
 
+| 2026-09-12 | Currency review after tonight's `LEDGER.md`/`dream.config.json`-governed edit (a night-12 enforcement-integrity reconciliation, see LEDGER.md row); decision unchanged. Separately: on 2026-09-07 ~18:48 UTC a bulk close landed on ~20+ open `dream/*` PRs without merging (confirmed via GitHub MCP, not assumed) — `autoMerge: false` was never at risk (closing without merging cannot promote a candidate), but it is the first observed instance of the review backlog being cleared by closure rather than merge or supersession, worth the owner's awareness for future bulk-review passes. | 8888a88 |
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
 | 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |
