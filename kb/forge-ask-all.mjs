@@ -2995,7 +2995,15 @@ export async function searchAll({
     // Gist-shaped questions are provenance lookups.  Route them to the public gist store instead
     // of letting generic card words select an arbitrary product (which made valid gist questions
     // return no evidence under the bounded path).
-    const gistIntent = /\b(?:gist|rUv(?:'s)?|published|write[- ]up|announcement|fable\.md|first\s+to\s+market|agentbbs|jacobian[- ]lens|workspace[- ]lens|interpretability\s+package)\b/i.test(String(query || ''));
+    // (?!-) after rUv/rUv's: a bare word-boundary regex treats the hyphen in every "ruv-<product>"
+    // name (ruv-swarm, ruv-fann, ruv-neural, ...) as a word break, so \brUv\b matched "ruv" inside
+    // EVERY product name in the ecosystem -- any question naming a real repo got redirected to the
+    // public gist store instead of the repo it named. Found live 2026-09-12: 100% of natural-language
+    // questions about ruv-FANN's own sub-projects (ruv-swarm, Neuro-Divergent) returned unrelated
+    // gist content under this exact reason string. rUv (the person) is never itself hyphenated into
+    // a compound name, so excluding that one case removes the false positive without narrowing the
+    // genuine "what did rUv publish" gist-provenance intent this line exists to catch.
+    const gistIntent = /\b(?:gist|rUv(?:'s)?(?!-)|published|write[- ]up|announcement|fable\.md|first\s+to\s+market|agentbbs|jacobian[- ]lens|workspace[- ]lens|interpretability\s+package)\b/i.test(String(query || ''));
     if (gistIntent && discovered.includes('ruv-gists') && !planned.namedRepos?.length) {
       planned = {
         repos: ['ruv-gists'],

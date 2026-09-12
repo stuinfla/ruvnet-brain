@@ -100,6 +100,45 @@ describe('loadCards — reads capability-cards.md from a bundle dir, honestly ab
   });
 });
 
+describe('routeReposFromCards — cardVocabulary must contain real tokens, not Set objects', () => {
+  // THE BUG THIS CATCHES. `cards.flatMap((card) => card.tokenSet)` does not flatten a Set (only
+  // arrays) -- it silently produces an array of whole Set objects, so `cardVocabulary` never held
+  // a single real token string, for any card, since the line was written. Every query with two or
+  // more capitalized terms outside a tiny neutral list was declined "outside the card catalogue"
+  // REGARDLESS of what any card's own text said -- found live 2026-09-12 when a query using a
+  // real repo's own documented terminology ("Neuro-Divergent") was refused.
+  //
+  // CORRECTED 2026-09-12 after Dual (Fable 5.1 + GPT-6-Astra) independently proved the original
+  // version of this test vacuous: naming "widget-forge" in the query makes hasKnownProductIdentity
+  // true (card-lane.mjs:368-370), which skips the vocabulary-decline branch ENTIRELY regardless of
+  // cardVocabulary's contents -- the test passed on both the broken and the fixed flatMap. A real
+  // test must name NO repository, so routing depends only on cardVocabulary actually containing the
+  // card's own tokens. A negative control (unrelated capitalized terms) must still decline.
+  let tmp;
+  it('does not decline a DESCRIBED query (no repo named) whose terms the card itself documents', () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'card-lane-vocab-'));
+    fs.writeFileSync(path.join(tmp, 'capability-cards.md'),
+      '## widget-forge\nBuilds Quantum-Fizzbuzz pipelines end to end. Reach for widget-forge whenever '
+      + 'you need Quantum-Fizzbuzz processing.\n');
+    const route = routeReposFromCards('What Quantum-Fizzbuzz throughput is supported?', tmp, ['widget-forge']);
+    expect(route.confidence).not.toBe('none');
+    expect(route.reason || '').not.toMatch(/outside the card catalogue/);
+    expect(route.repos).toContain('widget-forge');
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('control: an unrelated described query with no matching vocabulary still declines', () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'card-lane-vocab-control-'));
+    fs.writeFileSync(path.join(tmp, 'capability-cards.md'),
+      '## widget-forge\nBuilds Quantum-Fizzbuzz pipelines end to end. Reach for widget-forge whenever '
+      + 'you need Quantum-Fizzbuzz processing.\n');
+    const route = routeReposFromCards('What Django Stripe throughput is supported?', tmp, ['widget-forge']);
+    expect(route.confidence).toBe('none');
+    expect(route.reason || '').toMatch(/outside the card catalogue/);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+});
+
 describe('answerFromCards — capability claims require implementation evidence', () => {
   const results = QUESTION_SETS.map((q) => ({ q, hit: answerFromCards(q.query, KB) }));
 

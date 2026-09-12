@@ -347,7 +347,13 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
   // old router let two generic overlaps pick an arbitrary repo, which made the abstention suite
   // answer an unrelated document.  Refuse that route early; the caller can still widen only when
   // an explicit repo or a stronger source directive is present.
-  const cardVocabulary = new Set(cards.flatMap((card) => card.tokenSet));
+  // flatMap does not know how to flatten a Set (only arrays) -- `card.tokenSet` must be spread
+  // into an array first, or flatMap treats each whole Set object as one opaque element. Found
+  // live 2026-09-12: cardVocabulary held Set object references, never a single token string, so
+  // `cardVocabulary.has(anyRealWord)` was false for every card, every query, since this line was
+  // written -- the "outside the card catalogue" decline below fired off a permanently-empty
+  // vocabulary, for every repo, regardless of how complete or accurate any card's own text was.
+  const cardVocabulary = new Set(cards.flatMap((card) => [...card.tokenSet]));
   // Languages, runtimes, and protocol terms are common in legitimate cross-domain questions;
   // they are not enough on their own to declare a query outside this corpus.
   const neutralProperTerms = new Set([

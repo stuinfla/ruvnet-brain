@@ -9,6 +9,7 @@ dist/
 # external source clones (themselves git repos; regenerable via self-update --include-new)
 clones/
 data/adrs-cache/
+data/memory/
 
 # Helix removed from the brain (it's a separate consumer app); kept locally, not committed
 kb/_excluded-helix/
@@ -124,3 +125,4 @@ ruvnet-brain.zip.sig
 .docs/
 .netlify/
 .stage1-execution-checkpoint.md
+claude-flow.config.json

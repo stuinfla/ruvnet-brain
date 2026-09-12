@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.3.22",
-  "sourceIdentity": "da33725039458089d895139fdddbae2afea3167688bd186b9994bdd4deb158b8",
+  "version": "4.3.23",
+  "sourceIdentity": "e62fa1456f71a8faa21e864541f284602734fd122dfc147aa06c4ca9136c4e94",
   "versionSurfaces": {
-    "package.json": "4.3.22",
-    "plugin/.claude-plugin/plugin.json": "4.3.22",
-    "plugin/.codex-plugin/plugin.json": "4.3.22",
-    "data/manifest.json": "4.3.22",
-    "kb/RVF-GENERATIONS.json": "4.3.22",
-    "explainer/index.html": "4.3.22",
-    "primer/ruvnet-primer.md": "4.3.22"
+    "package.json": "4.3.23",
+    "plugin/.claude-plugin/plugin.json": "4.3.23",
+    "plugin/.codex-plugin/plugin.json": "4.3.23",
+    "data/manifest.json": "4.3.23",
+    "kb/RVF-GENERATIONS.json": "4.3.23",
+    "explainer/index.html": "4.3.23",
+    "primer/ruvnet-primer.md": "4.3.23"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -100,8 +100,8 @@
     "0085-nightly-corpus-release-channel.md",
     "README.md"
   ],
-  "trackedFileCount": 1485,
-  "trackedFilesSha256": "4488d57df5a5b8df22cceebabec8c262e5c0f0512c9c07b2923e3bdb7f67aec9",
+  "trackedFileCount": 1486,
+  "trackedFilesSha256": "0544dd6cce7846368c76e6a1e5b7455feaad1d4ff3936c77df874877bd3bf718",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

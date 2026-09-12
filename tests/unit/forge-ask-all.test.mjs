@@ -142,6 +142,34 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(out.results.every((r) => !r.nameBoosted)).toBe(true);
   });
 
+  it('does NOT route a named ruv-<product> query to ruv-gists via the "rUv" provenance regex', async () => {
+    // THE BUG THIS CATCHES. The gist-provenance regex used a bare word-boundary `\brUv\b`, but a
+    // hyphen is a non-word character, so it matched "ruv" inside EVERY "ruv-<product>" name
+    // (ruv-swarm, ruv-fann, ruv-neural, ...) -- any question naming a real product got silently
+    // redirected to the public gist store instead of the repo it named. Found live 2026-09-12: a
+    // question about ruv-swarm's own SWE-Bench score returned unrelated gist content under the
+    // reason "provenance intent selects the public rUv gist store". `(?!-)` after `rUv` excludes
+    // only the compound-name case; a bare "rUv" mention (no trailing hyphen) still routes to gists.
+    //
+    // CORRECTED 2026-09-12 after Dual (Fable 5.1 + GPT-6-Astra) independently proved the original
+    // fixture vacuous: declaring 'ruv-swarm.rvf' as a deployed store makes inventoryReposFromQuery
+    // populate namedRepos before the gistIntent check ever runs (:2932, :3007's own guard is
+    // `!planned.namedRepos?.length`), so the test passed under both the broken and fixed regex.
+    // Production reality: ruv-swarm is a sub-tree of the ruv-fann store, not its own deployed
+    // store -- mkdirWith must match that, or the fixture never exercises the regex at all.
+    const d = mkdirWith(['ruv-fann.rvf', 'ruv-gists.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+    const out = await searchAll({ dir: d, query: 'What SWE-Bench solve rate does ruv-swarm achieve?' });
+    expect(out.routing?.reason || '').not.toMatch(/provenance intent selects the public rUv gist store/);
+  });
+
+  it('control: a bare rUv mention (no product suffix) still routes to the gist store', async () => {
+    const d = mkdirWith(['ruv-fann.rvf', 'ruv-gists.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+    const out = await searchAll({ dir: d, query: "What did rUv publish about onnx runtimes?" });
+    expect(out.routing?.reason || '').toMatch(/provenance intent selects the public rUv gist store/);
+  });
+
   it('does NOT boost when the query names no repo (sibling ranking preserved)', async () => {
     const d = mkdirWith(['safla.rvf', 'daa.rvf']);
     vi.mocked(searchKb).mockResolvedValue([hit()]);

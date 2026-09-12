@@ -1,7 +1,7 @@
 {
   "name": "ruvnet-brain",
   "description": "RuvNet brain transplant for Claude Code — grounds every RuvNet decision in real source across 77 rUv repositories, prefers Ruflo / RuVector-RVF / AgentDB over training-prior defaults (pgvector, Pinecone, hand-rolled cosine), and can pull in any RuvNet repo on demand. Ships a UserPromptSubmit retrieve-and-inject grounding hook and a PreToolUse write gate that refuses ungrounded rUv-product code until search_ruvnet has been consulted (ADR-0012 / ADR-067).",
-  "version": "4.3.22",
+  "version": "4.3.23",
   "author": {
     "name": "Stuart Kerr"
   },
