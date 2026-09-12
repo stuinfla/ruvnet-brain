@@ -137,6 +137,59 @@ describe('installed product scheduler projection', () => {
   });
 });
 
+// 2026-09-12: computed live against two FAILED refresh-run receipts, the watchdog projected
+// com.ruvnet.brain-update as MISSING with the detail "LaunchAgent is loaded and runner digest
+// verified, but last exited 1" — a contradiction in one line. MISSING is defined at the top of the
+// watchdog as "not loaded in launchd — it can never fire"; a job that is loaded, verified and FIRED
+// (that is what a non-zero LastExitStatus means) is the opposite case, and its truth is the receipt.
+describe('installed product scheduler projection — a job that FIRED and failed is never MISSING', () => {
+  const fired = (runHealth, lastExitCode = 1) => ({ state: 'degraded', lastExitCode,
+    evidence: `LaunchAgent is loaded and runner digest verified, but last exited ${lastExitCode}`, runHealth });
+
+  it('non-zero last exit + latest receipt FAILED → FAILING, and the detail is the receipt\'s reason, not the launchd line', () => {
+    const v = productSchedulerVerdict(fired({ state: 'failed',
+      evidence: 'Nightly refresh 1789208177087-d51ad2c7e6b004b2 failed at source-enumeration: unresolved rollback state exists; refusing to create another full-KB copy.' }));
+    expect(v.state).toBe(FAILING);
+    expect(v.detail).toMatch(/failed at source-enumeration: unresolved rollback state exists/);
+    expect(v.detail).not.toMatch(/last exited/);
+  });
+
+  it('non-zero last exit + latest receipt too old → STALE (the cadence judgement still comes from the receipt)', () => {
+    const v = productSchedulerVerdict(fired({ state: 'stale', evidence: 'Last verified nightly refresh is 40.0h old.' }));
+    expect(v.state).toBe(STALE);
+    expect(v.detail).toMatch(/40\.0h old/);
+  });
+
+  it('non-zero last exit but NO receipt at all → FAILING (it fired and died before recording a run), never NEVER-RAN or MISSING', () => {
+    const v = productSchedulerVerdict(fired({ state: 'never-ran', evidence: 'No nightly refresh receipt exists yet.' }));
+    expect(v.state).toBe(FAILING);
+    expect(v.detail).toMatch(/exited 1/);
+    expect(v.detail).toMatch(/no receipt/i);
+  });
+
+  it('non-zero last exit while the latest receipt still reads ok → FAILING with both facts stated (the run after that receipt died silently)', () => {
+    const v = productSchedulerVerdict(fired({ state: 'ok', evidence: 'Last nightly refresh applied 20.0h ago.' }));
+    expect(v.state).toBe(FAILING);
+    expect(v.detail).toMatch(/exited 1/);
+    expect(v.detail).toMatch(/ok/);
+  });
+
+  it('degraded WITHOUT a last exit (plist not loaded / command drift / invalid registration) stays MISSING — those genuinely cannot fire', () => {
+    for (const evidence of ['LaunchAgent plist exists but job is not loaded',
+      'LaunchAgent command does not match the registered runner', 'Registration invalid: runner digest mismatch']) {
+      const v = productSchedulerVerdict({ state: 'degraded', evidence, runHealth: { state: 'failed', evidence: 'x' } });
+      expect(v.state).toBe(MISSING);
+      expect(v.detail).toBe(evidence);
+    }
+    expect(productSchedulerVerdict({ state: 'off', evidence: 'absent', runHealth: { state: 'failed' } }).state).toBe(MISSING);
+    expect(productSchedulerVerdict({ state: 'unsupported', evidence: 'no adapter' }).state).toBe(MISSING);
+  });
+
+  it('a clean last exit (0) on a degraded adapter is not the fired-and-failed case — unchanged projection', () => {
+    expect(productSchedulerVerdict({ state: 'degraded', lastExitCode: 0, evidence: 'drift', runHealth: { state: 'failed' } }).state).toBe(MISSING);
+  });
+});
+
 // The wrapper is a shell script, so it is exercised as a subprocess — the same pattern memdb-health and
 // token-meter already use. These four cases ARE the contract; case 3 failed on the first break-test
 // (a POSIX shell blocked on a FOREGROUND child does not run its trap when signalled) and the fix — run

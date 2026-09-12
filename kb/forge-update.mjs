@@ -406,7 +406,11 @@ export function capturePrivateOverlayState({ kbDir, allStores }) {
   const cardsFile = path.join(kbDir, 'capability-cards.md');
   const cards = fs.existsSync(cardsFile) ? cardSections(fs.readFileSync(cardsFile, 'utf8')) : new Map();
   const privateCards = Object.fromEntries([...cards].filter(([name]) => privateCardNames.has(name)));
-  const privateFiles = Object.fromEntries(relativeFiles(kbDir)
+  // INVENTORY walk, not a governed-payload walk (policy above, :319-337): the live root carries the
+  // installer's own node_modules/.bin/* symlinks, and the first flagged private store (2026-09-12)
+  // turned that into "private overlay preflight failed" on a symlink no store owns. A symlinked
+  // `.rvf` still throws inside relativeFiles, and :383-386 re-checks every private artifact.
+  const privateFiles = Object.fromEntries(relativeFiles(kbDir, '', { strict: false })
     .filter((relative) => privateArtifactFiles.has(relative)
       || [...privateNames].some((name) => {
       const basename = path.basename(relative);
@@ -1322,6 +1326,17 @@ async function main() {
     transaction = runStorageTransaction({ liveDir: KB_DIR, sourceDir: extractDir,
       transactionId: `${Date.now()}-${process.pid}`,
       prepareCandidate: ({ candidateDir, liveDir }) => {
+        // The trusted coverage validator is installer-provided and never ships inside the bundle it
+        // judges (build-bundle cannot see this file's dynamic load). Carry the LIVE copy into the
+        // candidate — never the bundle's: a promoted generation without it strands the next --apply
+        // on "installed coverage validator is missing", and a byte-identical bundle would stop
+        // reading as a no-op merely because live holds the one file the bundle cannot. Measured
+        // 2026-09-12: every 4.3.21 brain lacked it, so this branch had never once run to completion.
+        const liveValidator = path.join(liveDir, 'coverage-integrity.mjs');
+        if (fs.existsSync(liveValidator)) {
+          fs.copyFileSync(assertNoFollowPath(liveDir, liveValidator),
+            assertNoFollowPath(candidateDir, path.join(candidateDir, 'coverage-integrity.mjs')));
+        }
         for (const relative of Object.keys(privateOverlay?.files || {})) {
           const sourceFile = assertNoFollowPath(liveDir, path.join(liveDir, relative));
           const targetFile = assertNoFollowPath(candidateDir, path.join(candidateDir, relative));
