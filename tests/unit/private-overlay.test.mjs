@@ -206,6 +206,23 @@ describe('private-overlay writer', () => {
     expect(cards).toMatch(/meta\.json/);
   });
 
+  // Measured on the live root 2026-09-12: the installer's "local reader" step leaves npm's
+  // node_modules/.bin/* symlinks in the KB root, and capturePrivateOverlayState walked the tree in
+  // strict mode — so the first flagged private store made the overlay preflight throw on a symlink
+  // that has nothing to do with any store. A `.rvf` symlink must still be refused (covered in
+  // forge-update-private-overlay.test.mjs); a tooling symlink must be ignored, not fatal.
+  it.skipIf(process.platform === 'win32')('is still captured when the root carries an npm .bin tooling symlink, as the installer leaves it', () => {
+    const root = liveShapedRoot(); const from = sidecarDir();
+    applyPrivateOverlay({ root, from, stores: [STORE] });
+    fs.mkdirSync(path.join(root, 'node_modules', '.bin'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'node_modules', 'semver.js'), '// tooling');
+    fs.symlinkSync(path.join('..', 'semver.js'), path.join(root, 'node_modules', '.bin', 'semver'));
+    const overlay = capturePrivateOverlayState({ kbDir: root, allStores: allStores(root) });
+    expect(Object.keys(overlay.sourceStores)).toEqual([STORE]);
+    expect(Object.keys(overlay.files)).not.toContain(path.join('node_modules', '.bin', 'semver'));
+    expect(Object.keys(overlay.files)).toContain(`${STORE}.big.rvf`);
+  });
+
   it('--dry-run reports the plan and writes nothing (CLI entry point)', () => {
     const root = liveShapedRoot(); const from = sidecarDir();
     const before = treeBytes(root);

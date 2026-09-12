@@ -406,7 +406,11 @@ export function capturePrivateOverlayState({ kbDir, allStores }) {
   const cardsFile = path.join(kbDir, 'capability-cards.md');
   const cards = fs.existsSync(cardsFile) ? cardSections(fs.readFileSync(cardsFile, 'utf8')) : new Map();
   const privateCards = Object.fromEntries([...cards].filter(([name]) => privateCardNames.has(name)));
-  const privateFiles = Object.fromEntries(relativeFiles(kbDir)
+  // INVENTORY walk, not a governed-payload walk (policy above, :319-337): the live root carries the
+  // installer's own node_modules/.bin/* symlinks, and the first flagged private store (2026-09-12)
+  // turned that into "private overlay preflight failed" on a symlink no store owns. A symlinked
+  // `.rvf` still throws inside relativeFiles, and :383-386 re-checks every private artifact.
+  const privateFiles = Object.fromEntries(relativeFiles(kbDir, '', { strict: false })
     .filter((relative) => privateArtifactFiles.has(relative)
       || [...privateNames].some((name) => {
       const basename = path.basename(relative);
