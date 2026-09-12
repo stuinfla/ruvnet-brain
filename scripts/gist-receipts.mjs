@@ -57,6 +57,30 @@ export function sealGistReceiptSet(receipt) {
   return { ...payload, receiptSha256: digest(payload) };
 }
 
+const HEX64_RE = /^[a-f0-9]{64}$/;
+
+/**
+ * bindPassagesSha256 — closes the 2026-09-12 gap: `reconcileGistReceipts` always seals
+ * `passagesSha256: null` (it has no access to `kb/ruv-gists.passages.jsonl` — that file is built by
+ * a separate embedding step, after the receipt's per-gist content is fetched and sealed). A receipt
+ * with `passagesSha256: null` is a legitimately SEALED but UNBOUND receipt: internally consistent,
+ * but `coverage-integrity.mjs`'s schema-3 `validateGistAggregateReceipt` requires an exact
+ * `sha256File(passagesFile)` match before treating any gist as CURRENT (`classifyGist`'s
+ * `passagesBound` check). Binding is therefore a required SECOND step, done here by the caller who
+ * knows the real passages file's current bytes — never invented, never guessed.
+ *
+ * Only `passagesSha256` (and the necessarily-dependent top-level `receiptSha256`) may change; every
+ * other field — gists, gistSet, sourceSetSha256, sourceObservationSha256 — is carried through
+ * byte-identical, so binding can never silently alter what was actually fetched and sealed.
+ */
+export function bindPassagesSha256(receiptSet, passagesSha256) {
+  if (!HEX64_RE.test(String(passagesSha256 || ''))) {
+    throw new Error(`bindPassagesSha256: passages sha256 must be 64 lowercase hex chars, got: ${String(passagesSha256)}`);
+  }
+  const { receiptSha256: _drop, ...rest } = receiptSet || {};
+  return sealGistReceiptSet({ ...rest, passagesSha256 });
+}
+
 function defaultFetchGist(id) {
   const result = spawnSync('gh', ['api', `gists/${id}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (result.status !== 0) throw new Error(`gist ${id} fetch failed: ${String(result.stderr || '').trim()}`);

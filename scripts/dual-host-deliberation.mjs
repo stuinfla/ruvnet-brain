@@ -120,7 +120,7 @@ export async function runSubscriptionHost(host, stage, payload, { cwd = process.
         binary: 'codex',
         args: [
           'exec', '--ephemeral', '--sandbox', 'read-only', '--color', 'never', '--json',
-          '-m', TOP_SUBSCRIPTION_MODELS.codex, '-c', 'model_reasoning_effort="high"',
+          '-m', TOP_SUBSCRIPTION_MODELS.codex, '-c', 'model_reasoning_effort="medium"',
         ],
       };
   const result = await spawnHost(command.binary, command.args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }, prompt);
