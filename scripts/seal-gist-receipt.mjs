@@ -9,29 +9,42 @@
 // stamp the 13 unsealed gists CURRENT. Running this and committing the result is the fix --
 // there is no other tool that reseals this file for a full live gist set.
 //
-//   node scripts/seal-gist-receipt.mjs [--assets kb] [--owner ruvnet]
+//   node scripts/seal-gist-receipt.mjs [--assets kb] [--policy kb] [--owner ruvnet]
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { observeSourceUniverse } from './source-coverage.mjs';
 import { materializeGistReceipts } from './corpus-reconcile.mjs';
 import { bindPassagesSha256, validateGistReceiptSet } from './gist-receipts.mjs';
 import { sha256File } from '../plugin/scripts/coverage-integrity.mjs';
 
-function arg(argv, name, fallback) {
+export const REPO_KB = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'kb');
+
+export function arg(argv, name, fallback) {
   const i = argv.indexOf(name);
   return i >= 0 && argv[i + 1] !== undefined ? argv[i + 1] : fallback;
+}
+
+// MUST mirror source-coverage.mjs main()'s OWN policyDir resolution exactly (see there:
+// `policyDir = assetsIndex >= 0 ? kbDir : path.join(ROOT, 'kb')`) -- policy (external-sources.json,
+// no-corpus-repos.json) is NOT the same directory as assets whenever assets points somewhere other
+// than the repo's own kb/ (e.g. the live installed ~/.cache/ruvnet-brain/kb). The sealed receipt's
+// sourceObservationSha256 is compared byte-for-byte against whatever buildCoverage computes later,
+// and a policy-dir mismatch silently changes the REPOSITORY half of that combined hash (gists are
+// fine) so every gist reads FAILED with "observation differs from coverage" even though nothing
+// about the gists themselves is wrong. Found live 2026-09-12: assetsDir was the install cache,
+// which has no external-sources.json of its own, so this file's old default (policy==assets) fell
+// back to an empty external list -- 218 repos instead of buildCoverage's real 228. Default policy
+// to the repo's kb/ (source-coverage.mjs's own default), never to assetsDir.
+export function resolvePolicyDir(argv, repoKb = REPO_KB) {
+  return arg(argv, '--policy', repoKb);
 }
 
 async function main(argv = process.argv.slice(2)) {
   const assetsDir = arg(argv, '--assets', 'kb');
   const owner = arg(argv, '--owner', 'ruvnet');
-  // MUST mirror source-coverage.mjs buildCoverage()'s own observation construction exactly (same
-  // owner, same external-sources.json, same policyDir==assetsDir convention) — the sealed receipt's
-  // sourceObservationSha256 is compared byte-for-byte against whatever buildCoverage computes later,
-  // and any difference (e.g. omitting externalSources here) makes validateGistAggregateReceipt throw
-  // "observation differs from coverage" even though every gist itself is correctly fetched and sealed.
-  // Found 2026-09-12: the receipt this file previously sealed omitted externalSources entirely.
-  const externalPath = path.join(path.resolve(assetsDir), 'external-sources.json');
+  const policyDir = resolvePolicyDir(argv);
+  const externalPath = path.join(path.resolve(policyDir), 'external-sources.json');
   const externalSources = fs.existsSync(externalPath)
     ? JSON.parse(fs.readFileSync(externalPath, 'utf8')).sources : [];
   const observation = observeSourceUniverse({ owner, externalSources });
@@ -58,7 +71,9 @@ async function main(argv = process.argv.slice(2)) {
   return 0;
 }
 
-main().then((code) => { process.exitCode = code; }).catch((error) => {
-  console.error(`[seal-gist-receipt] ${error.message}`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().then((code) => { process.exitCode = code; }).catch((error) => {
+    console.error(`[seal-gist-receipt] ${error.message}`);
+    process.exitCode = 1;
+  });
+}
