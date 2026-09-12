@@ -40,6 +40,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { readStdinBounded } from './hook-input.mjs';
 import {
   auditCapabilityClaims,
@@ -182,10 +183,32 @@ if (has('--commit-to')) {
   // without it, ending a turn is simply finishing, and this gate must stay silent.
   const led = load();
   const text = arg('--commit-to');
+  const at = new Date().toISOString();
   if (text && !led.items.some((i) => i.text === text && !i.done)) {
-    led.items.push({ text, done: false, at: new Date().toISOString() });
-    save(led);
+    led.items.push({ text, done: false, at });
   }
+  /**
+   * THE BUG THIS CLOSES (found live 2026-09-12, in production use, not in a test). Until now
+   * `--commit-to` only ever appended to `led.items` and NEVER wrote `led.objective` — the ONLY field
+   * the Stop hook's forcing logic actually reads (`authorizedContinuationObjective`, above). Every
+   * test that ever proved forcing worked hand-constructed a valid objective directly into a fixture
+   * ledger; no real invocation took that path. Result: real `--commit-to` calls sat in a real ledger
+   * with zero effect for hours. Fixed at the source: `--commit-to` now writes a real, valid objective
+   * matching every field `authorizedContinuationObjective` requires, using the ONE session wildcard
+   * that function accepts (`sessionIds: ['*']`) — because this is a bare terminal invocation with no
+   * access to the session_id a future Stop event will carry; only a live Stop hook ever sees that.
+   * `worktreeIds`/`projectId` ARE knowable here (from cwd), so those are never wildcarded.
+   */
+  const identity = continuationProjectIdentity(process.cwd());
+  if (text && identity) {
+    led.objective = {
+      schemaVersion: 1, kind: 'continuation-preferences', authoritative: false,
+      id: crypto.randomUUID(), text, at, state: 'active',
+      projectId: identity.projectId, worktreeIds: [identity.worktreeId], sessionIds: ['*'],
+      authorization: { kind: 'user', reference: 'commit-to-cli' },
+    };
+  }
+  save(led);
   console.log(`committed: ${text}`);
   process.exit(0);
 }
