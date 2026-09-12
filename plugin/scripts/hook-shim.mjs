@@ -154,6 +154,20 @@ const TABLE = {
   // 'partial' (work-ledger retained, grounding-debt bytes suppressed). Declaring 'partial' today
   // would declare a split that does not exist, which is the ceremony ADR-055 §4 refuses by name.
   'continuation-gate': { file: 'continuation-gate.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run' },
+  // THE "ANSWERED WITHOUT SEARCHING" PAIR (2026-09-12). ground-ruvnet's Gate 1 is a prompt-level
+  // directive ("call search_ruvnet before asserting"), and a directive is advisory — nothing
+  // checked whether the model actually complied before the turn ended. grounding-turn-mark records
+  // Gate 1 firing at UserPromptSubmit (Stop's own payload carries no prompt text); grounding-turn-
+  // gate reads that marker at Stop and forces continuation if no search_ruvnet call was recorded in
+  // between (reusing grounding-stamp.sh's existing stamp evidence — see that file's own header).
+  // Both are mode:'advisory' for the same reason continuation-gate is: a UserPromptSubmit hook's
+  // silence contract has nothing to block, and Stop's own forcing mechanism is the stdout envelope,
+  // not the exit code. offBehavior:'silence' on both — ADR-054's own discriminator names GROUNDING
+  // as one of the three jobs 'silence' exists for, matching ground-ruvnet's classification exactly;
+  // with the brain off there is no search_ruvnet to call, so forcing this would be hostile, not
+  // enforcement (the same reasoning ground-before-write.sh's own BRAIN_OFF check already applies).
+  'grounding-turn-mark': { file: 'grounding-turn-mark.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
+  'grounding-turn-gate': { file: 'grounding-turn-gate.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
 };
 
 const hookId = process.argv[2];
