@@ -377,6 +377,14 @@ function callerFiles(repo = REPO) {
     // the remedy: "an invoker outside the roots proves the ROOTS are incomplete — the fix is to add
     // the root, never to" special-case the module. Same rule, applied to the extension filter.
     for (const f of walk(abs, true)) {
+      // `.claude/` is a caller root because `.claude/settings.json` genuinely invokes hooks. But
+      // `.claude/worktrees/<agent>/` holds FULL COPIES of this repository (Claude Code agent
+      // worktrees), and a copy of the repo is not a caller of the repo. Measured 2026-09-11: with any
+      // worktree present, card-from-source read `wired` via `.claude/worktrees/…/package.json`
+      // (`manual` with none present), handoff-asset read `wired` while invoked by nothing, and the
+      // MANUAL class read 0 all day. Same rule as the `kb/` exclusion in this file's header.
+      const rel = path.relative(repo, f).split(path.sep).join('/');
+      if (rel.startsWith('.claude/worktrees/')) continue;
       if (CALLER_EXTS.has(path.extname(f))) { out.push(f); continue; }
       if (path.extname(f) === '' && path.basename(path.dirname(f)) === 'git-hooks') out.push(f);
     }
