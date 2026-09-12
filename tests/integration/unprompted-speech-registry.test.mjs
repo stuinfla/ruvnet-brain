@@ -194,7 +194,19 @@ describe('closed world: the real hooks.json routes every unprompted producer thr
       .toMatch(/unprompted-runtime\.mjs/);
     expect(gate).toMatch(/PreToolUse-bash/);
     expect(gate).toMatch(/PreToolUse-write/);
-    expect(realHooks().hooks.PreToolUse, 'PreToolUse stays retired from hooks.json (4.3.17)').toBeUndefined();
+    // CORRECTED 2026-09-12: this pinned `PreToolUse` undefined, true only through 4.3.17. Since
+    // ADR-0012/067 (decision-gate's write route, registered on Claude+Codex today), PreToolUse is
+    // legitimately populated — that registration is the ONE process allowed to block a write, and it
+    // is unrelated to unprompted speech. The real intent this line protects — no stray
+    // speech-shaped hook reappears on PreToolUse — survives by pinning the registration to exactly
+    // decision-gate's known-safe write matcher, not to emptiness.
+    const preToolUse = realHooks().hooks.PreToolUse;
+    expect(preToolUse, 'PreToolUse must carry only the known decision-gate write route').toHaveLength(1);
+    expect(preToolUse[0].matcher).toBe('^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$');
+    for (const hook of preToolUse[0].hooks) {
+      expect(hook.command, 'a stray speech-shaped hook must never ride in on PreToolUse')
+        .toMatch(/decision-gate/);
+    }
   });
 
   it('BREAK IT: a bare `bash rogue-emitter.sh || true` unprompted line MUST fail the validator', () => {
