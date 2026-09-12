@@ -1,5 +1,5 @@
 ---
-id: ADR-084
+id: ADR-085
 title: The nightly corpus release channel — wire the already-built publisher, don't build a second one
 status: Proposed
 date: 2026-09-13
@@ -8,7 +8,7 @@ authors: [Stuart Kerr, Claude Sonnet 5]
 tags: [corpus, release, nightly, currency, completeness]
 supersedes: []
 amends: [ADR-064]
-relates: [ADR-058, ADR-070]
+relates: [ADR-058, ADR-070, ADR-084]
 governs:
   - .github/workflows/corpus-seed.yml
   - .github/workflows/protected-release.yml
@@ -19,7 +19,7 @@ governs:
   - data/corpus-seed.json
 ---
 
-# ADR-084 — The nightly corpus release channel
+# ADR-085 — The nightly corpus release channel
 
 **Status**: Proposed
 
