@@ -124,3 +124,4 @@ ruvnet-brain.zip.sig
 .docs/
 .netlify/
 .stage1-execution-checkpoint.md
+claude-flow.config.json
