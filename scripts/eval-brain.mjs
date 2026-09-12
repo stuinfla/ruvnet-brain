@@ -79,12 +79,23 @@ export function wilson(k, n, z = 1.96) {
  * over-count a wrong one (top coincidentally names the expected repo but never resolved). `routed`
  * answers "does the query reach the store that actually holds the answer" (brain-score.mjs's own
  * wording for this metric) — that store is the one named in `receipt`, when one was verified.
+ *
+ * `q.expectPath` (optional) narrows "the store" to "the file": repo-level matching alone cannot
+ * detect a citation that lands in the right repo but the wrong document — deferred from 2026-08-23
+ * (issue #163's citation-binding scan finding) as a real, unclaimed gap. When a question carries
+ * `expectPath`, the resolved citation's path (`receipt?.path ?? top?.fullPath`) must contain one of
+ * the given substrings for `routed` to credit it. No question in the frozen `evals/held-out.json`
+ * carries this field today, so this is strictly additive: behavior for every existing question is
+ * unchanged.
  */
 export function gradeQuestion(q, { grounded, citations, bannerPresent, receipt, repoAliases = {} }) {
   const top = citations?.[0] ?? null;
   const routedRepo = receipt?.repo ?? top?.repo ?? null;
-  const routed = !!(grounded && q.expectRepo?.length && routedRepo
+  const routedPath = receipt?.path ?? top?.fullPath ?? null;
+  const repoMatch = !!(q.expectRepo?.length && routedRepo
     && repoMatchesExpected(routedRepo, q.expectRepo, repoAliases));
+  const pathMatch = !q.expectPath?.length || !!(routedPath && q.expectPath.some((p) => routedPath.includes(p)));
+  const routed = !!(grounded && repoMatch && pathMatch);
   const abstained = !top || (typeof top.ce === 'number' && top.ce < ABSTAIN_CE);
   switch (q.stratum) {
     case 'adversarial':
