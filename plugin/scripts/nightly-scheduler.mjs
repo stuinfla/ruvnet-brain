@@ -85,6 +85,27 @@ export function validateRefreshReceiptEnvelope(receipt) {
   return { ok: true };
 }
 
+/**
+ * An ABORTED run is not a malformed receipt. kb/refresh-run.mjs appends a phase as it completes and
+ * stops at the first required failure, so every aborted run's ledger is a strict prefix of its
+ * declared order — by design. `validateRefreshReceiptEnvelope` rightly rejects that shape (the
+ * two-run PROOF needs a full, successful ledger), but the health READER must not report "invalid:
+ * phase ledger differs from its declared contract" for a run that failed early for a stated reason
+ * and then throw the reason away (measured 2026-09-12: two FAILED receipts, cause "unresolved
+ * rollback state exists…", surfaced to nobody). Returns the failure sentence, or null when the
+ * receipt is not a FAILED prefix-shaped run — then the envelope validator speaks.
+ */
+export function describeFailedRefreshRun(receipt, { reasonLimit = 200 } = {}) {
+  if (receipt?.status !== 'FAILED' || !Array.isArray(receipt.requiredPhaseOrder) || !Array.isArray(receipt.phases)) return null;
+  const declared = receipt.requiredPhaseOrder;
+  const ledger = receipt.phases.map((entry) => entry?.phase);
+  if (ledger.length > declared.length || ledger.some((phase, index) => phase !== declared[index])) return null;
+  if (ledger.length === 0) return `failed before its first phase (${receipt.terminalVerdict || 'unknown'})`;
+  const failing = [...receipt.phases].reverse().find((entry) => entry?.status !== 'PASS') || receipt.phases[receipt.phases.length - 1];
+  const reason = String(failing.evidence?.updateResult?.reason ?? failing.evidence?.reason ?? '').split('\n')[0].trim();
+  return reason ? `failed at ${failing.phase}: ${reason.slice(0, reasonLimit)}` : `failed at ${failing.phase}`;
+}
+
 function sameExecutable(left, right) {
   try { return fs.realpathSync(left) === fs.realpathSync(right); }
   catch { return path.resolve(left || '') === path.resolve(right || ''); }
@@ -233,14 +254,22 @@ export function refreshRunHealth({ brainHome, identity = NIGHTLY_LABEL, now = Da
         ? `Nightly refresh ${receipt.runId} has a dead exact owner.`
         : `Nightly refresh ${receipt.runId} owner cannot be established exactly.`, receipt };
   }
+  // A FAILED run whose ledger is a prefix of its contract failed for a reason the receipt carries.
+  // Say where and why; "invalid" is reserved for receipts that are genuinely out of contract.
+  const failure = describeFailedRefreshRun(receipt);
+  if (failure) {
+    return { state: 'failed', ageHours, receipt,
+      evidence: `Nightly refresh ${receipt.runId} ${failure}${/[.!?]$/.test(failure) ? '' : '.'}` };
+  }
   const envelope = validateRefreshReceiptEnvelope(receipt);
   if (!envelope.ok) return { state: 'failed', ageHours,
     evidence: `Nightly refresh ${receipt.runId} is invalid: ${envelope.why}.`, receipt };
   if (ageHours > maxAgeHours) {
     return { state: 'stale', ageHours, evidence: `Last verified nightly refresh is ${ageHours.toFixed(1)}h old.`, receipt };
   }
-  return { state: receipt.status === 'SUCCEEDED' ? 'ok' : 'failed', ageHours,
-    evidence: `Last nightly refresh ${receipt.terminalVerdict} successfully ${ageHours.toFixed(1)}h ago.`, receipt };
+  // envelope.ok already implies status SUCCEEDED and terminalVerdict applied|noop.
+  return { state: 'ok', ageHours,
+    evidence: `Last nightly refresh ${receipt.terminalVerdict} ${ageHours.toFixed(1)}h ago; envelope verified.`, receipt };
 }
 
 export function nightlyCommand(record) {
@@ -477,10 +506,14 @@ export function schedulerStatus({ platform = process.platform, env = process.env
     const loaded = !listed.error && listed.status === 0;
     if (!loaded) return finish({ state: 'degraded', evidence: 'LaunchAgent plist exists but job is not loaded', artifact, registration });
     const exit = String(listed.stdout || '').match(/last exit code\s*=\s*(-?\d+)/i);
+    // `lastExitCode` lets a projector tell "loaded, verified, FIRED and failed" from the degraded
+    // states that genuinely cannot fire (not loaded, command drift) — the watchdog was collapsing
+    // both into MISSING (2026-09-12).
     if (exit && Number(exit[1]) !== 0) {
-      return finish({ state: 'degraded', evidence: `LaunchAgent is loaded and runner digest verified, but last exited ${exit[1]}`, artifact, registration });
+      return finish({ state: 'degraded', lastExitCode: Number(exit[1]),
+        evidence: `LaunchAgent is loaded and runner digest verified, but last exited ${exit[1]}`, artifact, registration });
     }
-    return finish({ state: 'on', evidence: exit
+    return finish({ state: 'on', lastExitCode: exit ? Number(exit[1]) : null, evidence: exit
       ? 'LaunchAgent is loaded, runner digest verified, and last exited cleanly'
       : 'LaunchAgent is loaded and runner digest verified; no completed run is recorded yet', artifact, registration });
   }
