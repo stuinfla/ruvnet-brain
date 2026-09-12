@@ -89,6 +89,10 @@ LOCAL — no `gh` CLI or gist-creation tool available this session; not fabricat
 
 #264 (pre-existing, reconciled — not reopened, not duplicated)
 
+## PR
+
+#281
+
 ## Witness
 
 ```
