@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { digest } from '../../scripts/coverage-integrity.mjs';
-import { reconcileGistReceipts, sealGistReceipt, sealGistReceiptSet,
+import { bindPassagesSha256, reconcileGistReceipts, sealGistReceipt, sealGistReceiptSet,
   validateGistReceiptSet } from '../../scripts/gist-receipts.mjs';
 import { sourceObservationDigest } from '../../scripts/source-coverage.mjs';
 
@@ -124,5 +124,41 @@ describe('exact live gist receipt reconciliation', () => {
       fetchGist: fetchedGist,
       fetchBody: async (file) => file.filename === 'new.md' ? Buffer.from([0xc3, 0x28]) : Buffer.from('old'),
     })).rejects.toThrow(/not valid UTF-8/);
+  });
+});
+
+describe('bindPassagesSha256 — closing the 2026-09-12 gap (reconcileGistReceipts seals passagesSha256:null)', () => {
+  it('a freshly-reconciled receipt has passagesSha256 null and fails validation against any real passages file', async () => {
+    const receipt = await reconcileGistReceipts({ observation: observation(), fetchGist: fetchedGist,
+      now: () => '2026-08-22T02:00:00Z' });
+    expect(receipt.passagesSha256).toBeNull();
+  });
+
+  it('binds the real passages sha256 and the result still validates as an exact receipt set', async () => {
+    const receipt = await reconcileGistReceipts({ observation: observation(), fetchGist: fetchedGist,
+      now: () => '2026-08-22T02:00:00Z' });
+    const bound = bindPassagesSha256(receipt, '1'.repeat(64));
+    expect(bound.passagesSha256).toBe('1'.repeat(64));
+    // Binding must not disturb any field validateGistReceiptSet checks other than passagesSha256/receiptSha256.
+    expect(bound.gists).toEqual(receipt.gists);
+    expect(bound.sourceSetSha256).toBe(receipt.sourceSetSha256);
+    expect(bound.gistSet).toEqual(receipt.gistSet);
+    expect(() => validateGistReceiptSet(bound, observation())).not.toThrow();
+  });
+
+  it('rejects a non-hex64 hash rather than sealing a malformed binding', () => {
+    const receipt = sealGistReceiptSet({ owner: 'ruvnet', generated: '2026-08-22T02:00:00Z',
+      observedAt: '2026-08-22T01:30:00Z', sourceObservationSha256: observation().observationSha256,
+      passagesSha256: null, gists: {} });
+    expect(() => bindPassagesSha256(receipt, 'not-a-hash')).toThrow(/passages sha256/);
+    expect(() => bindPassagesSha256(receipt, null)).toThrow(/passages sha256/);
+  });
+
+  it('re-binding is idempotent — binding the same hash twice yields byte-identical output', async () => {
+    const receipt = await reconcileGistReceipts({ observation: observation(), fetchGist: fetchedGist,
+      now: () => '2026-08-22T02:00:00Z' });
+    const once = bindPassagesSha256(receipt, '2'.repeat(64));
+    const twice = bindPassagesSha256(once, '2'.repeat(64));
+    expect(twice).toEqual(once);
   });
 });

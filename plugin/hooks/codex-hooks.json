@@ -1,5 +1,5 @@
 {
-  "description": "RuvNet Brain continuity plane for Codex. Broad legacy automatic gates remain retired. Registrations here are MEASURED, not assumed: a probe hook was registered on all twelve event names the installed codex-cli 0.154.0 binary declares and a real `codex exec` run was observed (2026-09-11). SessionStart, UserPromptSubmit and SessionEnd FIRED and carry handlers. Stop keeps only the pre-existing, project-scoped continuation gate. PreCompact is DECLARED ABSENT here: the binary declares the event but the probe never observed it, and a capture registered on an unobserved event would look symmetrical while capturing nothing. All handlers are bounded and fail open. Amended 2026-09-11: UserPromptSubmit also runs ground-ruvnet (grounding injection, ADR-040 §Amendment); PreToolUse/PostToolUse stay unregistered on Codex because their delivery has not been observed.",
+  "description": "RuvNet Brain continuity plane for Codex. Broad legacy automatic gates remain retired. Registrations here are MEASURED, not assumed: a probe hook was registered on all twelve event names the installed codex-cli 0.154.0 binary declares and a real `codex exec` run was observed (2026-09-11). SessionStart, UserPromptSubmit and SessionEnd FIRED and carry handlers. Stop keeps only the pre-existing, project-scoped continuation gate. PreCompact is DECLARED ABSENT here: the binary declares the event but the probe never observed it, and a capture registered on an unobserved event would look symmetrical while capturing nothing. All handlers are bounded and fail open. Amended 2026-09-11: UserPromptSubmit also runs ground-ruvnet (grounding injection, ADR-040 §Amendment). Amended 2026-09-12: the 2026-09-11 PreToolUse/PostToolUse \"not observed\" note was measured with a prompt (`codex exec \"reply OK\"`) that never invoked a tool, so neither event had anything to fire on — that was an untested path, not a failing one. Re-probed with prompts that actually call a tool: a real apply_patch write fired PreToolUse/PostToolUse with tool_name \"apply_patch\", and a real MCP call to this repo's own search_ruvnet server fired both with tool_name \"mcp__ruvnet_brain__search_ruvnet\". Both are now registered below: decision-gate's write route (matcher includes apply_patch, Codex's raw write-tool name) and grounding-stamp (unchanged matcher already recognizes the mcp__..__search_ruvnet shape). The bash route (exec_command) remains unregistered — today's measurement covered a write and an MCP call, not exec_command, and extending on that evidence would be the same unproven leap this note replaces. Also added 2026-09-12: grounding-turn-mark (UserPromptSubmit) and grounding-turn-gate (Stop), the \"answered without searching\" pair — a prompt-level grounding directive is advisory, so this records whether it fired and forces continuation at Stop if no search_ruvnet call was recorded since (reusing grounding-stamp's own stamp evidence). Both are registered on Codex identically to Claude: the Stop-block contract (hookSpecificOutput.additionalContext) already has a proven Codex translation via codex-hook-adapter.mjs's Stop branch (see tests/unit/codex-lifecycle-hooks.test.mjs), the same path continuation-gate already uses.",
   "hooks": {
     "SessionStart": [
       {
@@ -20,9 +20,38 @@
             "type": "command",
             "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 9000 continuation-gate",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 9000 grounding-turn-gate",
+            "timeout": 10
           }
         ],
         "matcher": "*"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 6500 decision-gate write",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(?:.*__)?search_ruvnet$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 grounding-stamp",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -38,6 +67,11 @@
             "type": "command",
             "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 9000 ground-ruvnet",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('node:fs'),o=require('node:os'),p=require('node:path'),c=require('node:child_process'),d=process.env.CODEX_HOME||p.join(o.homedir(),'.codex'),b=process.env.RUVNET_BRAIN_HOME||p.join(p.dirname(d),'.cache','ruvnet-brain'),w=p.join(b,'codex-hook.mjs');let s;try{s=f.statSync(w)}catch{}if(!s?.isFile())process.exit(0);const r=c.spawnSync(process.execPath,[w,...process.argv.slice(2)],{stdio:['inherit','pipe','pipe'],encoding:'utf8',env:process.env,timeout:Number(process.argv[1]),killSignal:'SIGKILL'});if(r.status===0||r.status===2){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}process.exit(r.status===2?2:0)\" 4500 grounding-turn-mark",
+            "timeout": 5
           }
         ]
       }
