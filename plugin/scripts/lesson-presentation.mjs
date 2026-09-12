@@ -54,9 +54,18 @@ export function buildLessonPresentation({
   }
   const order = [...seeded, ...ranked.filter((lesson) => !seeded.includes(lesson))];
 
-  const inForce = [];
-  let spent = 0;
+  // A REFUSAL IS NEVER BUDGET-TRUNCATED. The loop below existed to cap ADVISORY prose, but it ran
+  // over the whole cross-trigger merge with no exemption for an opted-in block — so a high-repeatCount
+  // advisory on one trigger could spend the entire budget and `continue` a lower-repeatCount block on
+  // another trigger straight out of `inForce`. `blocking` (below) is read from `inForce`, so the
+  // caller's `blocking.length ? EXIT_BLOCK : EXIT_ALLOW` silently became ALLOW — a real user consent
+  // to refuse, defeated by an unrelated lesson's text length. Exactly the "guard that cannot fail"
+  // class this store already fixed once, one layer down (lesson-store.mjs's own `lessonsFor` comment).
+  // So every blocking candidate is admitted first, unconditionally; the budget then governs the rest.
+  const inForce = order.filter((lesson) => isBlocking(lesson));
+  let spent = inForce.reduce((sum, lesson) => sum + renderLesson(lesson, '·').length, 0);
   for (const lesson of order) {
+    if (isBlocking(lesson)) continue;   // already admitted above, unconditionally
     const cost = renderLesson(lesson, '·').length;
     if (inForce.length && spent + cost > nudgeBudget) continue;
     inForce.push(lesson);
