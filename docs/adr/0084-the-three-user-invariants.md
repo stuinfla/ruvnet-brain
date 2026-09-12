@@ -14,18 +14,16 @@ relates: [ADR-001, ADR-009, ADR-012, ADR-040, ADR-054, ADR-064, ADR-069, ADR-070
 governs:
   - docs/ddd/0021-corpus-supply-chain-context.md
   - scripts/source-coverage.mjs
-  - scripts/nightly-corpus-release.mjs
-  - .github/workflows/corpus-release.yml
   - console/scope.html
   - console/index.html
   - plugin/hooks/hooks.json
-  - codex-hooks.json
+  - plugin/hooks/codex-hooks.json
   - plugin/scripts/continuity-hook-policy.mjs
 ---
 
 # ADR-084 — The three user invariants
 
-**Status**: Accepted
+**Status**: Proposed (downgraded from Accepted same-day — Dual verification 2026-09-13 found 4 blocking + 10 major/minor defects; see Currency log)
 
 **Date**: 2026-09-13
 
