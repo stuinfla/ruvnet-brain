@@ -42,9 +42,20 @@ describe('--doctor derives its hook judgments from the contracts', () => {
     expect(guidance.healthy).toBe(true);
     expect(guidance.summary).not.toMatch(/retired/i);
     expect(guidance.summary).toContain(String(hooks.length));
-    // The doctor must not claim Codex capture is broader than what was measured.
+    // The doctor must not claim Codex capture is broader than what was measured. "Capture" (the
+    // session-snapshot continuity handler) is unchanged by the 2026-09-12 PreToolUse/PostToolUse
+    // measurement below — it still fires at SessionEnd only.
     expect(guidance.detail).toContain('SessionEnd only');
-    expect(CONTRACTS._codexCapture.fired).toEqual(['SessionStart', 'UserPromptSubmit', 'SessionEnd']);
+    // 2026-09-12: re-measured with prompts that actually invoke a tool (the 2026-09-11 entry used
+    // "reply OK", which never did) — PreToolUse/PostToolUse now fire for a real write and a real
+    // MCP call too, on top of the original three lifecycle events.
+    expect(CONTRACTS._codexCapture.fired).toEqual([
+      'SessionStart', 'UserPromptSubmit', 'SessionEnd',
+      'PreToolUse (apply_patch write; tool_input.command carried the raw patch)',
+      'PostToolUse (apply_patch write; tool_response = "Exit code: 0 … Success. Updated the following files: A <path>")',
+      'PreToolUse (MCP search_ruvnet; tool_name mcp__ruvnet_brain__search_ruvnet, tool_input.query preserved verbatim)',
+      'PostToolUse (MCP search_ruvnet; tool_response.content[0].text carried the "Searched N RuvNet repos" banner)',
+    ]);
     expect(Object.keys(CONTRACTS._codexCapture.notObserved).sort()).toEqual(['PreCompact', 'Stop']);
   });
 

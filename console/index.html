@@ -271,7 +271,7 @@
       <span class="card-head">
         <span class="stage st-mirror">Mirror</span>
         <h2 id="group-inventory-h">What have I got?</h2>
-        <span class="q">Every rUv tool on this machine — what's installed, whether it's really what we published, and where each project launches it from.</span>
+        <span class="q">Every rUv tool on this machine — what's installed, and where each project launches it from.</span>
       </span>
     </div>
     <div class="qgroup-body">
@@ -307,29 +307,8 @@
         </div>
       </details>
 
-      <!-- 1b · TRUST & PROVENANCE (v3.3 preview)
-           PROVE-stage: what you install is what we published. One number is REAL today (the release
-           bundle's published sha256); the empty rows say exactly what will fill them and when —
-           never placeholder data. -->
-      <details class="card sub-card rail-prove" id="card-trust">
-        <summary>
-          <span class="card-ic ic-prove" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M12 3.5 5 6v5.5c0 4.4 2.9 7.5 7 9 4.1-1.5 7-4.6 7-9V6l-7-2.5Z"/><path d="m8.8 12 2.3 2.3 4.1-4.6"/></svg>
-          </span>
-          <span class="card-head">
-            <span class="stage st-prove">Prove</span>
-            <h2>Is this really what we published?</h2>
-            <span class="q">Is the Brain you're running the one we published? Checked against the release, not asserted.</span>
-          </span>
-          <span class="chips" id="chips-trust"><span class="chip tone-wait">checking…</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </summary>
-        <div class="body" id="body-trust">
-          <div class="skeleton" aria-hidden="true"><div class="sk-bar w45"></div><div class="sk-bar w70"></div></div>
-          <p class="loading-note">Reading the published release fingerprint from GitHub (read-only metadata —
-          the one network touch this card makes) and your plugin cache on disk.</p>
-        </div>
-      </details>
+      <!-- 1b · (was TRUST & PROVENANCE — moved to #card-advanced at the bottom of the page on
+           2026-09-12: release provenance is a maintainer's question, not an end user's.) -->
 
       <!-- 1c · HOW IT'S WIRED -->
       <details class="card sub-card rail-mirror" id="card-wiring">
@@ -628,6 +607,53 @@
 
     </div>
   </section>
+
+  <!-- ================================================= MAINTAINER · ADVANCED (closed by default)
+       Release provenance — "is this really what we published?" — is a maintainer's question, not an
+       end user's (owner, 2026-09-12: "that doesn't belong in an end-user configuration screen. That's
+       something for you and I to work through."). The card keeps its ids (#card-trust / #chips-trust /
+       #body-trust), so app.js hydrates it exactly as before; only its parent moved. Nothing is hidden
+       from anyone — it is one click away, below the questions a person actually asks. -->
+  <details class="card rail-prove" id="card-advanced">
+    <summary>
+      <span class="card-ic ic-prove" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 3.5 5 6v5.5c0 4.4 2.9 7.5 7 9 4.1-1.5 7-4.6 7-9V6l-7-2.5Z"/><path d="m8.8 12 2.3 2.3 4.1-4.6"/></svg>
+      </span>
+      <span class="card-head">
+        <span class="stage st-prove">Prove</span>
+        <h2>Advanced — verify this install against the release</h2>
+        <span class="q">For maintainers and the security-minded: the published fingerprint and bill of materials of the Brain you are running. Everything above works without ever opening this.</span>
+      </span>
+      <span class="chev" aria-hidden="true">›</span>
+    </summary>
+    <div class="body">
+
+      <!-- TRUST & PROVENANCE (v3.3 preview)
+           PROVE-stage: what you install is what we published. One number is REAL today (the release
+           bundle's published sha256); the empty rows say exactly what will fill them and when —
+           never placeholder data. -->
+      <details class="card sub-card rail-prove" id="card-trust">
+        <summary>
+          <span class="card-ic ic-prove" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3.5 5 6v5.5c0 4.4 2.9 7.5 7 9 4.1-1.5 7-4.6 7-9V6l-7-2.5Z"/><path d="m8.8 12 2.3 2.3 4.1-4.6"/></svg>
+          </span>
+          <span class="card-head">
+            <span class="stage st-prove">Prove</span>
+            <h2>Is this really what we published?</h2>
+            <span class="q">Is the Brain you're running the one we published? Checked against the release, not asserted.</span>
+          </span>
+          <span class="chips" id="chips-trust"><span class="chip tone-wait">checking…</span></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </summary>
+        <div class="body" id="body-trust">
+          <div class="skeleton" aria-hidden="true"><div class="sk-bar w45"></div><div class="sk-bar w70"></div></div>
+          <p class="loading-note">Reading the published release fingerprint from GitHub (read-only metadata —
+          the one network touch this card makes) and your plugin cache on disk.</p>
+        </div>
+      </details>
+
+    </div>
+  </details>
 
 </main>
 

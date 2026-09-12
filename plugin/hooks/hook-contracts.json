@@ -1,6 +1,6 @@
 {
-  "_note": "The legacy automatic gate collection remains retired. What is permitted is the continuity plane below and nothing else: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint; Stop may nudge one explicitly authorized project-scoped objective AND capture a project snapshot; PreCompact and SessionEnd capture a project snapshot. Version 3 of this file permitted exactly two handlers, which was not a safety property but a contradiction: it demanded a restore while forbidding any event that could WRITE the journal the restore reads, so the canonical store held zero progression rows. Adding to this list is still a deliberate act that must pass `npm run hooks:check`; what changed is that the shape can now express the plane that actually works. Amended 2026-09-11 (Stuart): the continuity-only charter had retired the ONLY enforcement of ADR-0012 — never write rUv-product code the brain has not seen — and the failure it exists to prevent recurred the day it was measured absent. The plane now also carries three grounding registrations: ground-ruvnet (UserPromptSubmit, grounding injection — a second owner of that event, scoped by ADR-040 §Amendment 2026-09-11 to directives rather than speech), decision-gate’s write route (PreToolUse, the one refuser, ADR-067), and grounding-stamp (PostToolUse on a successful search_ruvnet, the receipt that opens the write gate). Codex carries ground-ruvnet only: its PreToolUse/PostToolUse delivery has never been observed (_codexCapture).",
-  "_version": 5,
+  "_note": "The legacy automatic gate collection remains retired. What is permitted is the continuity plane below and nothing else: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint; Stop may nudge one explicitly authorized project-scoped objective AND capture a project snapshot; PreCompact and SessionEnd capture a project snapshot. Version 3 of this file permitted exactly two handlers, which was not a safety property but a contradiction: it demanded a restore while forbidding any event that could WRITE the journal the restore reads, so the canonical store held zero progression rows. Adding to this list is still a deliberate act that must pass `npm run hooks:check`; what changed is that the shape can now express the plane that actually works. Amended 2026-09-11 (Stuart): the continuity-only charter had retired the ONLY enforcement of ADR-0012 — never write rUv-product code the brain has not seen — and the failure it exists to prevent recurred the day it was measured absent. The plane now also carries three grounding registrations: ground-ruvnet (UserPromptSubmit, grounding injection — a second owner of that event, scoped by ADR-040 §Amendment 2026-09-11 to directives rather than speech), decision-gate’s write route (PreToolUse, the one refuser, ADR-067), and grounding-stamp (PostToolUse on a successful search_ruvnet, the receipt that opens the write gate). Amended 2026-09-12: the 2026-09-11 claim that Codex PreToolUse/PostToolUse delivery had never been observed was measured with a prompt that never invoked a tool (`codex exec \"reply OK\"`), so it was an untested path, not a failing one. Re-measured with prompts that actually call a tool (a real apply_patch write, a real MCP search_ruvnet call against this repo's own server): both events FIRED on codex-cli 0.154.0 with real payloads. decision-gate's write route and grounding-stamp are now dual-host (see _codexCapture and contracts below); the bash route (exec_command) remains Claude-only — today's measurement did not exercise it. Also amended 2026-09-12: added grounding-turn-mark (UserPromptSubmit) and grounding-turn-gate (Stop), the \"answered without searching\" pair — ground-ruvnet's Gate 1 directive is advisory, so nothing previously checked whether the model complied before the turn ended. grounding-turn-mark records that Gate 1 fired for a turn; grounding-turn-gate forces continuation at Stop if grounding-stamp's own evidence shows no search_ruvnet call happened since. Both dual-host from the start (the Stop-block contract is already proven on Codex via continuation-gate).",
+  "_version": 7,
   "_eventOwners": [
     {
       "event": "SessionStart",
@@ -75,18 +75,40 @@
       "owner": "decision-gate",
       "class": "consequential-action authorization",
       "hosts": [
-        "claude"
+        "claude",
+        "codex"
       ],
-      "responsibility": "The ONE process that may refuse a Write/Edit/MultiEdit/NotebookEdit (ADR-067): composes protect-state, hijack-ruvnet, ground-before-write (ADR-0012) and adr-currency into one decision with one reason. Fails open on its own errors. Claude only — Codex PreToolUse delivery has not been observed."
+      "responsibility": "The ONE process that may refuse a Write/Edit/MultiEdit/NotebookEdit/apply_patch (ADR-067): composes protect-state, hijack-ruvnet, ground-before-write (ADR-0012) and adr-currency into one decision with one reason. Fails open on its own errors. apply_patch is Codex's raw write-tool name, added to the shared matcher 2026-09-12 after a real apply_patch call was measured to fire PreToolUse live (codex-cli 0.154.0); codex-hook-adapter.mjs normalizes it to the same Edit shape decision-gate.mjs's policies already read on Claude."
     },
     {
       "event": "PostToolUse",
       "owner": "grounding-stamp",
       "class": "grounding receipt",
       "hosts": [
-        "claude"
+        "claude",
+        "codex"
       ],
-      "responsibility": "After a SUCCESSFUL search_ruvnet, records which rUv products were consulted (a 24h stamp per term named in the query). It is the key that opens ground-before-write; without it the write gate would refuse every rUv-product write forever."
+      "responsibility": "After a SUCCESSFUL search_ruvnet, records which rUv products were consulted (a 24h stamp per term named in the query). It is the key that opens ground-before-write; without it the write gate would refuse every rUv-product write forever. Extended to Codex 2026-09-12: a real MCP search_ruvnet call fired PostToolUse with tool_name mcp__ruvnet_brain__search_ruvnet, which the existing matcher already recognized unchanged."
+    },
+    {
+      "event": "UserPromptSubmit",
+      "owner": "grounding-turn-mark",
+      "class": "grounding turn marker",
+      "hosts": [
+        "claude",
+        "codex"
+      ],
+      "responsibility": "Records that ground-ruvnet's Gate 1 (the same regex, proven byte-identical by test) matched this turn's prompt, so grounding-turn-gate has something to check at Stop — Stop's own payload carries no prompt text. Writes only a marker file under ~/.cache/ruvnet-brain/grounding-turn/; never blocks, never speaks to the model."
+    },
+    {
+      "event": "Stop",
+      "owner": "grounding-turn-gate",
+      "class": "answered-without-search enforcement",
+      "hosts": [
+        "claude",
+        "codex"
+      ],
+      "responsibility": "The 'answered without searching' gate (2026-09-12): if grounding-turn-mark's marker shows Gate 1 fired this turn and grounding-stamp's own stamp evidence shows no search_ruvnet call happened since, forces continuation via the same hookSpecificOutput.additionalContext contract continuation-gate already uses on both hosts. A separate registration from continuation-gate — see grounding-turn-gate.mjs's header for why folding it into that file's ledger/cooldown semantics would corrupt them rather than extend them. Consumes its marker unconditionally so a stale one can never pressure an unrelated later turn."
     }
   ],
   "_notInThisPlane": [
@@ -105,19 +127,23 @@
   ],
   "_codexCapture": {
     "state": "partial",
-    "measuredOn": "2026-09-11",
+    "measuredOn": "2026-09-12",
     "host": "codex-cli 0.154.0",
-    "method": "A probe hook was registered in a temporary CODEX_HOME on all twelve event names the installed binary declares, and a real `codex exec \"reply OK\"` was run against it.",
+    "method": "2026-09-11: a probe hook was registered in a temporary CODEX_HOME on all twelve event names the installed binary declares, and a real `codex exec \"reply OK\"` was run against it — a prompt that never invokes a tool. 2026-09-12: re-probed with prompts that DO invoke a tool — a real apply_patch write, and a real MCP call to this repo's own plugin/mcp/server.mjs registered as `search_ruvnet` in the probe's CODEX_HOME config.toml.",
     "fired": [
       "SessionStart",
       "UserPromptSubmit",
-      "SessionEnd"
+      "SessionEnd",
+      "PreToolUse (apply_patch write; tool_input.command carried the raw patch)",
+      "PostToolUse (apply_patch write; tool_response = \"Exit code: 0 … Success. Updated the following files: A <path>\")",
+      "PreToolUse (MCP search_ruvnet; tool_name mcp__ruvnet_brain__search_ruvnet, tool_input.query preserved verbatim)",
+      "PostToolUse (MCP search_ruvnet; tool_response.content[0].text carried the \"Searched N RuvNet repos\" banner)"
     ],
     "notObserved": {
-      "Stop": "The probe turn never completed, so run_turn_stop_hooks had no completion to fire on. The binary declares the event and StopCommandOutputWire, so this is not-proven rather than unsupported. Stop keeps only the pre-existing continuation gate; no capture handler was added to an event whose delivery has not been seen.",
+      "Stop": "The 2026-09-11 probe turn never completed, so run_turn_stop_hooks had no completion to fire on. The binary declares the event and StopCommandOutputWire, so this is not-proven rather than unsupported. Stop keeps only the pre-existing continuation gate; no capture handler was added to an event whose delivery has not been seen.",
       "PreCompact": "A one-line turn never approaches a compaction threshold. The binary declares PreCompact and PreCompactCommandOutputWire. No capture handler registered."
     },
-    "consequence": "Codex captures at SessionEnd only. Cross-host resume is therefore Claude-captured -> Codex-restored and Codex-captured (SessionEnd) -> Claude-restored; it must not be described as symmetrical across every boundary."
+    "consequence": "Codex captures at SessionEnd only; Stop/PreCompact remain unproven and unregistered as above (unchanged by this measurement). PreToolUse/PostToolUse are now proven for a write (apply_patch) and an MCP tool call (search_ruvnet) specifically, and decision-gate's write route plus grounding-stamp are registered on Codex accordingly (see contracts below). Bash-class tool calls (exec_command) were not exercised by this measurement and remain unregistered — extending on unexercised evidence would repeat the exact mistake this record corrects."
   },
   "contracts": [
     {
@@ -206,23 +232,49 @@
       "id": "decision-gate",
       "event": "PreToolUse",
       "hosts": [
-        "claude"
+        "claude",
+        "codex"
       ],
       "mode": "blocking",
       "offBehavior": "run",
-      "matcher": "^(Write|Edit|MultiEdit|NotebookEdit)$",
+      "matcher": "^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$",
       "timeout": 5
     },
     {
       "id": "grounding-stamp",
       "event": "PostToolUse",
       "hosts": [
-        "claude"
+        "claude",
+        "codex"
       ],
       "mode": "advisory",
       "offBehavior": "silence",
       "matcher": "^(?:.*__)?search_ruvnet$",
       "timeout": 5
+    },
+    {
+      "id": "grounding-turn-mark",
+      "event": "UserPromptSubmit",
+      "hosts": [
+        "claude",
+        "codex"
+      ],
+      "mode": "advisory",
+      "offBehavior": "silence",
+      "matcher": "*",
+      "timeout": 5
+    },
+    {
+      "id": "grounding-turn-gate",
+      "event": "Stop",
+      "hosts": [
+        "claude",
+        "codex"
+      ],
+      "mode": "advisory",
+      "offBehavior": "silence",
+      "matcher": "*",
+      "timeout": 10
     }
   ],
   "matcherAllowlist": [
@@ -264,16 +316,16 @@
     {
       "layer": "plugin",
       "event": "PreToolUse",
-      "matcher": "^(Write|Edit|MultiEdit|NotebookEdit)$",
-      "reason": "The write-class tools, anchored — the exact matcher ADR-067 shipped and hook-registry-lint’s matcher-semantics test models. Claude Code matchers are searches, so the anchors are load-bearing.",
-      "retiredBy": "not retired — registered 2026-09-11 (ADR-0012 / ADR-067, Stuart mandate)"
+      "matcher": "^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$",
+      "reason": "The write-class tools, anchored — the exact matcher ADR-067 shipped and hook-registry-lint’s matcher-semantics test models. Claude Code matchers are searches, so the anchors are load-bearing. apply_patch (Codex's raw write-tool name) was added 2026-09-12 after a real apply_patch call was measured to fire this event live on codex-cli 0.154.0 — a dead branch on Claude, which never names a tool apply_patch.",
+      "retiredBy": "not retired — registered 2026-09-11 (ADR-0012 / ADR-067, Stuart mandate); extended to Codex 2026-09-12"
     },
     {
       "layer": "plugin",
       "event": "PostToolUse",
       "matcher": "^(?:.*__)?search_ruvnet$",
-      "reason": "The grounding tool with or without an MCP server prefix (mcp__plugin_ruvnet-brain_ruvnet-brain__search_ruvnet). Only a successful search may mint a stamp; the body checks the result banner.",
-      "retiredBy": "not retired — registered 2026-09-11 (ADR-0012)"
+      "reason": "The grounding tool with or without an MCP server prefix (mcp__plugin_ruvnet-brain_ruvnet-brain__search_ruvnet, or Codex's mcp__ruvnet_brain__search_ruvnet, measured live 2026-09-12). Only a successful search may mint a stamp; the body checks the result banner.",
+      "retiredBy": "not retired — registered 2026-09-11 (ADR-0012); Codex host proven reachable 2026-09-12, matcher unchanged"
     }
   ]
 }

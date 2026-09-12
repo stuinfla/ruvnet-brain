@@ -34,6 +34,7 @@
     "test:cov": "vitest run tests/unit --coverage",
     "coverage:source": "node scripts/source-coverage.mjs --check",
     "private-overlay": "node scripts/private-overlay.mjs",
+    "seal-gist-receipt": "node scripts/seal-gist-receipt.mjs",
     "test:all": "npm run test:unit && npm run test:mesh && npm run test:mutation && npm run test:regression && npm run test:integration && npm test",
     "metaharness:receipts": "node scripts/metaharness-receipts.mjs",
     "route:cheap": "node scripts/route-cheap.mjs",

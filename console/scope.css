@@ -67,6 +67,32 @@ main.wrap { padding-block: 34px 72px; }
 .search::placeholder { color: var(--faint); }
 .search:focus { border-color: var(--cyan); }
 
+/* the one-line purpose under the title — the question a person came here with */
+.scope-purpose { font-size: 1.05rem; color: var(--ink); margin: 10px 0 6px; max-width: 62ch; }
+
+/* three views + the search, one row: newest first · A–Z · behind first */
+.scope-views {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 26px 0 4px;
+}
+.views-cap { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
+.view {
+  font: inherit; font-size: 0.9rem; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--ridge); border-radius: 100px;
+  padding: 7px 14px; cursor: pointer;
+  transition: border-color 0.18s var(--ease), color 0.18s var(--ease), background 0.18s var(--ease);
+}
+.view:hover { border-color: var(--cyan); color: var(--ink); }
+.view[aria-pressed="true"] { border-color: var(--cyan); color: var(--ink); background: color-mix(in srgb, var(--cyan) 14%, var(--surface)); }
+.view:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.scope-views .search { margin-left: auto; }
+
+/* what the repo does, under its name — the words the search box also matches */
+table.scope td.name .desc {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  color: var(--muted); font-size: 12px; line-height: 1.35; margin-top: 2px; max-width: 56ch;
+}
+
 .tbl-wrap { overflow-x: auto; border: 1px solid var(--ridge); border-radius: var(--radius-s); background: var(--surface); }
 table.scope { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 640px; }
 table.scope th, table.scope td { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--hair); }
