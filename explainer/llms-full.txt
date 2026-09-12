@@ -5,7 +5,7 @@
 ## What it is
 RuvNet Brain supports Claude Code and Codex with the MCP tool `search_ruvnet`, explicit skills
 and commands. When invoked, search retrieves relevant passages from rUv's actual source code:
-147,922 public source chunks across 198 public stores, with cited source paths. Automatic Brain
+157,946 public source chunks across 198 public stores, with cited source paths. Automatic Brain
 lifecycle hooks are retired; installation does not enable automatic grounding or learning callbacks.
 
 Install in one line: `npx ruvnet-brain`. The installer detects either host or both and removes

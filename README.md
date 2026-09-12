@@ -562,7 +562,7 @@ node forge-ask-all.mjs --dir . --q "How does RuVector implement HNSW vector sear
 
 This project versions in the open (see the live badge up top for the exact plugin version; the downloadable knowledge bundle is a separate track) — we don't claim “done,” “complete,” or “zero hallucinations.” Where it stands:
 
-- ✅ **The grounding brain is real and proven** — 198 public stores · 147,922 public source chunks, dual embeddings, cross-encoder rerank, plugin (MCP tool + explicit skills; automatic hooks retired), all re-runnable.
+- ✅ **The grounding brain is real and proven** — 198 public stores · 157,946 public source chunks, dual embeddings, cross-encoder rerank, plugin (MCP tool + explicit skills; automatic hooks retired), all re-runnable.
 - ✅ **Code-level depth** — the code-rich repos are indexed to full function bodies; “how is it implemented?” returns the implementation. Verified in the shipped bundle (clean-room 3/3).
 - ✅ **Routing holds** — named 47/48, described 26/28, scenario 7/8; behavioral L1–L3 all pass (**L4 downgraded — it measures that the brain spoke, not that anything listened**); private stores fenced out of the public bundle (zero-leak verified).
 - ⚠️ **Two routing residuals** (above) — surfaced, not hidden.
