@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { digest } from '../../scripts/coverage-integrity.mjs';
-import { bindPassagesSha256, reconcileGistReceipts, sealGistReceipt, sealGistReceiptSet,
-  validateGistReceiptSet } from '../../scripts/gist-receipts.mjs';
+import { GistFetchError, bindPassagesSha256, defaultFetchGist, reconcileGistReceipts, sealGistReceipt,
+  sealGistReceiptSet, validateGistReceiptSet } from '../../scripts/gist-receipts.mjs';
 import { sourceObservationDigest } from '../../scripts/source-coverage.mjs';
 
 const id = (char) => char.repeat(32);
@@ -160,5 +160,100 @@ describe('bindPassagesSha256 — closing the 2026-09-12 gap (reconcileGistReceip
     const once = bindPassagesSha256(receipt, '2'.repeat(64));
     const twice = bindPassagesSha256(once, '2'.repeat(64));
     expect(twice).toEqual(once);
+  });
+});
+
+// defaultFetchGist — the transport `reconcileGistReceipts` falls back to for per-gist detail when the
+// caller supplies no `fetchGist`. Actions' default GITHUB_TOKEN is a GitHub App token with no gist
+// scope (403 "Resource not accessible by integration"); RUVNET_GISTS_TOKEN (corpus-seed.yml) fixes
+// that at the workflow layer — `gh` itself already reads GH_TOKEN/GITHUB_TOKEN from the environment
+// (verified live: `gh help environment`, 2026-09-13), so no code here decides which token is used.
+// This suite covers what IS this module's job: classifying `gh api gists/<id>` failures instead of
+// letting every non-zero exit collapse into one opaque Error, bounding retries for transient/rate-limit
+// failures, never silently returning null for a moved/deleted gist, and honoring an AbortSignal when
+// one is supplied (no caller in this repo threads one through today — see corpus-reconcile.mjs).
+describe('defaultFetchGist — per-gist transport: retry, typed errors, cancellation', () => {
+  const gistId = 'f'.repeat(32);
+  const ok = (stdout) => ({ status: 0, stdout, stderr: '' });
+  const fail = (stderr) => ({ status: 1, stdout: '', stderr });
+  const noSleep = async () => {};
+
+  it('gh-token-present success path: returns the parsed gist on the first attempt', async () => {
+    const spawn = vi.fn().mockReturnValue(ok(JSON.stringify({ id: gistId, files: {} })));
+    const result = await defaultFetchGist(gistId, { spawn, sleep: noSleep });
+    expect(result).toEqual({ id: gistId, files: {} });
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(spawn).toHaveBeenCalledWith('gh', ['api', `gists/${gistId}`], expect.any(Object));
+  });
+
+  it('integration rejection (403, no gist-scoped token) throws a typed, non-retryable error on the first attempt', async () => {
+    const spawn = vi.fn().mockReturnValue(fail('gh: Resource not accessible by integration (HTTP 403)'));
+    await expect(defaultFetchGist(gistId, { spawn, sleep: noSleep }))
+      .rejects.toMatchObject({ name: 'GistFetchError', code: 'GIST_FORBIDDEN', gistId, retryable: false });
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it('an ordinary transient failure retries with backoff, then succeeds', async () => {
+    const spawn = vi.fn()
+      .mockReturnValueOnce(fail('gh: TLS handshake timeout'))
+      .mockReturnValueOnce(fail('gh: TLS handshake timeout'))
+      .mockReturnValueOnce(ok(JSON.stringify({ id: gistId, files: {} })));
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const result = await defaultFetchGist(gistId, { spawn, sleep, retries: 3 });
+    expect(result).toEqual({ id: gistId, files: {} });
+    expect(spawn).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it('a transient failure that never recovers throws the typed error once retries are exhausted', async () => {
+    const spawn = vi.fn().mockReturnValue(fail('gh: TLS handshake timeout'));
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await expect(defaultFetchGist(gistId, { spawn, sleep, retries: 2 }))
+      .rejects.toMatchObject({ code: 'GIST_TRANSIENT_FAILURE', retryable: true });
+    expect(spawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('a rate-limit response is retried and can still succeed within the bound', async () => {
+    const spawn = vi.fn()
+      .mockReturnValueOnce(fail('gh: API rate limit exceeded for installation ID 123. (HTTP 403)'))
+      .mockReturnValueOnce(ok(JSON.stringify({ id: gistId, files: {} })));
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const result = await defaultFetchGist(gistId, { spawn, sleep, retries: 3 });
+    expect(result).toEqual({ id: gistId, files: {} });
+    expect(spawn).toHaveBeenCalledTimes(2);
+    const firstCall = sleep.mock.calls[0];
+    expect(firstCall[0]).toBeGreaterThan(0);
+  });
+
+  it('a moved/deleted gist (404) produces a clear typed error, never a silent null, and is not retried', async () => {
+    const spawn = vi.fn().mockReturnValue(fail('gh: Not Found (HTTP 404)'));
+    let result;
+    try {
+      result = await defaultFetchGist(gistId, { spawn, sleep: noSleep });
+    } catch (error) {
+      expect(error).toMatchObject({ name: 'GistFetchError', code: 'GIST_NOT_FOUND', gistId, retryable: false });
+      expect(error).toBeInstanceOf(GistFetchError);
+      expect(spawn).toHaveBeenCalledTimes(1);
+      return;
+    }
+    throw new Error(`expected defaultFetchGist to reject, got a resolved value instead: ${JSON.stringify(result)}`);
+  });
+
+  it('an already-aborted signal rejects immediately without ever invoking the transport', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('operator cancelled the reconcile run'));
+    const spawn = vi.fn();
+    await expect(defaultFetchGist(gistId, { spawn, sleep: noSleep, signal: controller.signal }))
+      .rejects.toThrow(/cancelled the reconcile run/);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('a signal aborted between retry attempts stops further attempts', async () => {
+    const controller = new AbortController();
+    const spawn = vi.fn().mockReturnValue(fail('gh: TLS handshake timeout'));
+    const sleep = vi.fn().mockImplementation(async () => { controller.abort(new Error('cancelled mid-retry')); });
+    await expect(defaultFetchGist(gistId, { spawn, sleep, retries: 5, signal: controller.signal }))
+      .rejects.toThrow(/cancelled mid-retry/);
+    expect(spawn).toHaveBeenCalledTimes(1);
   });
 });
