@@ -328,6 +328,9 @@ export const REQUIRED_OPERATIONAL_EXPORTS = [
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'reconcileCorpusUntilStable' },
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'reconcileAndPrepareCorpusCandidate' },
   { rel: 'scripts/gist-receipts.mjs', symbol: 'buildGistAggregate' },
+  // Step 3 (2026-09-13): the single canonical public-prose selection entry point, same rigor as
+  // buildGistAggregate above.
+  { rel: 'scripts/public-inputs.mjs', symbol: 'materializePublicInputs' },
 ];
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))
