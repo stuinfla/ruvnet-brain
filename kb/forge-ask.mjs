@@ -557,9 +557,27 @@ function conceptBoost(nouns, p, title) {
   if (strong === 0 && weak === 0) return 0;
   return Math.min(0.62, 0.30 * strong + 0.06 * weak);
 }
-const CODE_INTENT_RE = /\b(in (the )?code|in source|source code|actual code|implementation|implements?|code path|storage backend|\bbackend\b|which algorithms?|which file|\bfunction\b|\bstruct\b|signature|how (is|does|do|are) [\w@/.\- ]*?(implemented|computed|calculated|coded|done|persists?|persisted|stores?|stored|recalls?|recalled|saved?|loaded?|initiali[sz]ed?|registers?|registered|spawns?|spawned|coordinate[sd]?|searche?[sd]?|works?)|where is [\w@/.\- ]*?(coded|implemented|defined|registered)|the mechanism)\b/i;
+// A bare "implementation" naming a DOCUMENT (an "... Implementation Report/Summary/Overview/
+// Write-up") is not a request to see code — it is the literal title shape of many of this corpus's
+// own summary docs (e.g. "Synaptic Neural Mesh - Rust Implementation Summary"). Found live
+// 2026-09-12: this exact false positive fired code-intent + symbol routing on a synthesis question
+// ("...implementation report assign to QuDAG Core, ruv-FANN WASM and Neural Mesh?"), mass-boosting
+// hundreds of unrelated source files (every one defining a symbol matching a query word) past the
+// one document that actually answers the question. Shared between CODE_INTENT_RE and IMPL_INTENT_RE
+// so the two classifiers cannot drift apart. Deliberately narrow: only excludes "implementation"
+// immediately followed by a doc-shaped noun — "implement"/"implemented", and "implementation" on its
+// own or followed by anything else (e.g. "implementation status"), are untouched.
+const IMPLEMENTATION_DOC_NOUN = 'report|summary|overview|write-?up';
+const CODE_INTENT_RE = new RegExp(
+  '\\b(in (the )?code|in source|source code|actual code|'
+    + `implementation(?!\\s+(?:${IMPLEMENTATION_DOC_NOUN})s?\\b)`
+    + '|implements?|code path|storage backend|\\bbackend\\b|which algorithms?|which file|\\bfunction\\b|\\bstruct\\b|signature'
+    + '|how (is|does|do|are) [\\w@/.\\- ]*?(implemented|computed|calculated|coded|done|persists?|persisted|stores?|stored|recalls?|recalled|saved?|loaded?|initiali[sz]ed?|registers?|registered|spawns?|spawned|coordinate[sd]?|searche?[sd]?|works?)'
+    + '|where is [\\w@/.\\- ]*?(coded|implemented|defined|registered)|the mechanism)\\b',
+  'i',
+);
 const DESIGN_INTENT_RE = /\b(why\b|rationale|design decision|design choice|proposed\b|proposal\b|trade[- ]?off|tradeoff|motivation|reasoning behind|the decision to)\b/i;
-function codeDocIntent(query) {
+export function codeDocIntent(query) {
   if (CODE_INTENT_RE.test(query)) return 'code';
   if (DESIGN_INTENT_RE.test(query)) return 'design';
   return null;
@@ -571,12 +589,12 @@ function codeDocIntent(query) {
 // deps, **/main.rs, **/bin/**, Cargo.toml; PROMOTE the named crate's own src/**/*.rs (non-main),
 // extra for a filename token-matching the named operation. Vendored-dep demotion is global.
 const IMPL_INTENT_RE = new RegExp([
-  '\\bimplement(ed|ation)?\\b',
+  `\\bimplement(?:ed|ation(?!\\s+(?:${IMPLEMENTATION_DOC_NOUN})s?\\b))?\\b`,
   '\\bhow\\s+(is|does)\\b.*\\b(work|works|coded|done)\\b.*\\bin\\s+(the\\s+)?(code|source)\\b',
   '\\bhow\\s+\\w+\\s+(is|works?)\\s+coded\\b',
   '\\bwhere\\s+is\\s+\\w+\\s+(coded|implemented)\\b',
 ].join('|'), 'i');
-function isImplIntent(query) { return IMPL_INTENT_RE.test(query); }
+export function isImplIntent(query) { return IMPL_INTENT_RE.test(query); }
 
 // ADR-0003 — point-deeper symbol routing. Resolve query identifiers / package names to the SOURCE
 // paths that DEFINE them (from <name>.symbols.json), so an implementation question hard-routes to the
