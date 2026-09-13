@@ -81,10 +81,87 @@ export function bindPassagesSha256(receiptSet, passagesSha256) {
   return sealGistReceiptSet({ ...rest, passagesSha256 });
 }
 
-function defaultFetchGist(id) {
-  const result = spawnSync('gh', ['api', `gists/${id}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (result.status !== 0) throw new Error(`gist ${id} fetch failed: ${String(result.stderr || '').trim()}`);
-  return JSON.parse(result.stdout);
+// Per-gist detail transport. Actions' default GITHUB_TOKEN is a GitHub App token with no gist
+// scope ("Resource not accessible by integration", HTTP 403) -- corpus-seed.yml now exports
+// GH_TOKEN from a narrowly-scoped RUVNET_GISTS_TOKEN secret (falling back to github.token) for the
+// reconcile step specifically. `gh` itself already reads GH_TOKEN/GITHUB_TOKEN from the process
+// environment in that order of precedence (verified live: `gh help environment`, 2026-09-13), so
+// this function does not choose or read a token itself -- it only classifies what `gh api` returns.
+//
+// Failures observed against the real API fall into four shapes, each handled differently so a
+// caller (or a human reading Actions logs) never has to guess:
+//   - a moved/deleted gist (404)                 -> thrown immediately as a typed, non-retryable
+//                                                    GistFetchError. Never returned as null.
+//   - "resource not accessible by integration"   -> thrown immediately, non-retryable: retrying
+//     (still-missing gist scope, 403)                without a better-scoped token cannot help.
+//   - a rate limit (primary or secondary, 403)    -> retried with backoff, bounded by `retries`.
+//   - any other transient failure (timeouts,      -> retried with backoff, bounded by `retries`.
+//     TLS/connection resets, 5xx, 429)
+// Anything else is thrown as a typed, non-retryable GistFetchError rather than a bare Error, so a
+// caller can branch on `.code` instead of pattern-matching stderr text a second time.
+const RATE_LIMIT_RE = /rate limit/i;
+const NOT_FOUND_RE = /\bnot found\b|HTTP 404/i;
+const FORBIDDEN_INTEGRATION_RE = /resource not accessible by integration/i;
+const TRANSIENT_RE = /timeout|timed out|TLS handshake|ECONNRESET|ECONNREFUSED|EAI_AGAIN|temporary failure|HTTP 5\d\d|HTTP 429|socket hang up/i;
+
+export class GistFetchError extends Error {
+  constructor(message, { code, gistId, status, retryable = false } = {}) {
+    super(message);
+    this.name = 'GistFetchError';
+    this.code = code;
+    this.gistId = gistId;
+    if (status !== undefined) this.status = status;
+    this.retryable = retryable;
+  }
+}
+
+function classifyGistFetchFailure(stderr, gistId) {
+  const message = String(stderr || '').trim();
+  if (NOT_FOUND_RE.test(message)) {
+    return new GistFetchError(`gist ${gistId} was moved or deleted: ${message}`,
+      { code: 'GIST_NOT_FOUND', gistId, retryable: false });
+  }
+  if (FORBIDDEN_INTEGRATION_RE.test(message)) {
+    return new GistFetchError(`gist ${gistId} fetch rejected -- token lacks gist scope: ${message}`,
+      { code: 'GIST_FORBIDDEN', gistId, retryable: false });
+  }
+  if (RATE_LIMIT_RE.test(message)) {
+    return new GistFetchError(`gist ${gistId} fetch rate-limited: ${message}`,
+      { code: 'GIST_RATE_LIMITED', gistId, retryable: true });
+  }
+  if (TRANSIENT_RE.test(message)) {
+    return new GistFetchError(`gist ${gistId} fetch failed transiently: ${message}`,
+      { code: 'GIST_TRANSIENT_FAILURE', gistId, retryable: true });
+  }
+  return new GistFetchError(`gist ${gistId} fetch failed: ${message}`,
+    { code: 'GIST_FETCH_FAILED', gistId, retryable: false });
+}
+
+function defaultSleep(ms) {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
+function abortError(signal) {
+  return signal?.reason instanceof Error ? signal.reason : new DOMException('gist fetch aborted', 'AbortError');
+}
+
+// `signal` is accepted for forward compatibility -- no caller in this repo threads an AbortSignal
+// through reconcileGistReceipts/corpus-reconcile.mjs today (checked live 2026-09-13: no existing
+// cancellation mechanism there), so this is honored here but not yet wired to a caller.
+export async function defaultFetchGist(id, { spawn = spawnSync, retries = 3, retryDelayMs = 300,
+  sleep = defaultSleep, signal } = {}) {
+  if (signal?.aborted) throw abortError(signal);
+  const attempts = Math.max(1, retries);
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const result = spawn('gh', ['api', `gists/${id}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    if (result.status === 0) return JSON.parse(result.stdout);
+    lastError = classifyGistFetchFailure(result.stderr, id);
+    if (!lastError.retryable || attempt === attempts) throw lastError;
+    await sleep(retryDelayMs * attempt);
+    if (signal?.aborted) throw abortError(signal);
+  }
+  throw lastError;
 }
 
 async function defaultFetchBody(file) {
