@@ -1,13 +1,32 @@
 #!/usr/bin/env node
-// Deterministically reconstruct gist passages from durable, exact-version source receipts.
-// This intentionally does not call the GitHub API, build vectors, or publish artifacts.
+// rebuild-gists-from-receipts.mjs — a thin staging/replay wrapper over the canonical gist renderer
+// (renderGistPassages) and the full aggregate builder (buildGistAggregate), both in gist-receipts.mjs.
+//
+// This file owns exactly two things gist-receipts.mjs deliberately does not: (1) accepting a
+// possibly-LEGACY (schema 1/2/3) receipt read from disk and replaying it deterministically from raw
+// gist content alone — no GitHub detail-endpoint auth, no vector build, no publication — and
+// (2) resolving WHICH installed receipt to replay. Rendering itself (the banner/chunk/JSONL
+// assembly) is never reimplemented here; renderGistPassages is the sole implementation.
+//
+//   node scripts/rebuild-gists-from-receipts.mjs [--sources <file>] [--out-dir <dir>] [--concurrency N]
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sealGistReceiptSet, validateGistReceiptSet } from './gist-receipts.mjs';
+import { canonicalJson } from './coverage-integrity.mjs';
+import {
+  buildGistAggregate,
+  paragraphChunks,
+  provenanceBanner,
+  rawUrlFor,
+  renderGistPassages,
+  sealGistReceipt,
+  sealGistReceiptSet,
+} from './gist-receipts.mjs';
+
+export { buildGistAggregate, paragraphChunks, provenanceBanner, rawUrlFor };
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const NAME = 'ruv-gists';
@@ -20,7 +39,6 @@ function fail(message) {
 }
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
-const jsonLine = (value) => JSON.stringify(value).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
 function validDate(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
@@ -33,18 +51,22 @@ function validateFilename(filename, label) {
   }
 }
 
+// Accepts a receipt read from disk, which may be an OLDER schema than anything buildGistAggregate
+// produces today (schema 1/2 predate the source-byte binding this pipeline now requires for every
+// NEW write). This is a raw-input structural sanity check on a file this tool does not control the
+// production of, not the "one shared validator" (validateGistReceipt) — that validator always
+// requires real, already-rendered passage bytes on disk, which do not exist yet at this point in the
+// replay. Schema 3 gets ONE extra guard on top of the shape checks below: the receipt must re-seal
+// to itself byte-for-byte (sealGistReceipt/sealGistReceiptSet round-trip), which is exactly the
+// internal-consistency half of what the shared validator checks — the half that needs no live
+// observation and no passages file to prove.
 export function validateSourceReceipts(source) {
   if (source?.schemaVersion === 3) {
-    const observation = {
-      owner: source.owner,
-      observedAt: source.observedAt,
-      observationSha256: source.sourceObservationSha256,
-      gists: { rows: Object.entries(source.gists || {}).map(([id, receipt]) => ({
-        id, updated_at: receipt?.updatedAt,
-      })) },
-    };
-    try { validateGistReceiptSet(source, observation); }
-    catch (error) { fail(`schema-3 source receipt is invalid: ${error.message}`); }
+    if (source?.kind !== 'ruvnet-brain-gist-source-receipts') fail('schema-3 source receipt has the wrong kind');
+    const resealed = sealGistReceiptSet({ ...source, gists: Object.fromEntries(
+      Object.entries(source.gists || {}).map(([id, row]) => [id, sealGistReceipt(row)]),
+    ) });
+    if (canonicalJson(resealed) !== canonicalJson(source)) fail('schema-3 source receipt does not re-seal to itself');
     return source;
   }
   if (![1, 2].includes(source?.schemaVersion)) fail('source receipt schemaVersion must be 1 or 2');
@@ -85,37 +107,6 @@ export function validateSourceReceipts(source) {
   return source;
 }
 
-export function rawUrlFor({ owner, gistId, versionSha, filename }) {
-  if (!/^[A-Za-z0-9-]{1,39}$/.test(String(owner || '')) || !HEX_GIST.test(String(gistId || ''))
-    || !HEX40.test(String(versionSha || ''))) fail('cannot construct raw URL from malformed source identity');
-  validateFilename(filename, `gist ${gistId}`);
-  const encodedFile = filename.split('/').map(encodeURIComponent).join('/');
-  return `https://gist.githubusercontent.com/${owner}/${gistId}/raw/${versionSha}/${encodedFile}`;
-}
-
-export function paragraphChunks(text, size = 3200) {
-  if (typeof text !== 'string') fail('passage content must be text');
-  if (!Number.isSafeInteger(size) || size < 1) fail('chunk size must be a positive integer');
-  const out = [];
-  let buffer = '';
-  for (const paragraph of text.split(/\n\n+/)) {
-    if (buffer && buffer.length + paragraph.length + 2 > size) {
-      out.push(buffer);
-      buffer = '';
-    }
-    buffer = buffer ? `${buffer}\n\n${paragraph}` : paragraph;
-  }
-  if (buffer.trim()) out.push(buffer);
-  return out;
-}
-
-export function provenanceBanner({ owner, gistId, filename, updatedAt }) {
-  return `SOURCE: GitHub gist by @${owner} — "${filename.replace(/\s+/g, ' ').trim().slice(0, 160)}"\n`
-    + `GIST STATUS: rUv's own notes / release announcement — may describe PROPOSED or UNRELEASED work.\n`
-    + `Treat as intent, not as confirmed shipped behavior: verify against repo source before asserting.\n`
-    + `updated: ${updatedAt.slice(0, 10)} · https://gist.github.com/${owner}/${gistId}\n\n`;
-}
-
 async function mapBounded(items, concurrency, operation) {
   const results = new Array(items.length);
   let next = 0;
@@ -129,6 +120,11 @@ async function mapBounded(items, concurrency, operation) {
   return results;
 }
 
+// Deterministically REPLAY passages from a durable, exact-version source receipt. Intentionally does
+// not call the GitHub detail API, build vectors, or publish artifacts — every included file's raw
+// bytes are fetched once (unauthenticated, versioned raw URL) and verified byte-for-byte and
+// sha256-for-sha256 against the receipt already on disk; rendering itself is renderGistPassages, the
+// same implementation buildGistAggregate uses.
 export async function reconstructGists(source, { fetchFn = globalThis.fetch, concurrency = 6 } = {}) {
   validateSourceReceipts(source);
   if (typeof fetchFn !== 'function') fail('fetch implementation is unavailable');
@@ -152,51 +148,35 @@ export async function reconstructGists(source, { fetchFn = globalThis.fetch, con
     if (bytes.length !== file.bytes) fail(`${gistId}/${file.filename} byte count ${bytes.length} differs from receipt ${file.bytes}`);
     const digest = sha256(bytes);
     if (digest !== file.sha256) fail(`${gistId}/${file.filename} sha256 ${digest} differs from receipt ${file.sha256}`);
-    let body;
     try {
-      body = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     } catch {
       fail(`${gistId}/${file.filename} is not valid UTF-8 text`);
+      return undefined; // unreachable; keeps linters happy about a missing return on every path
     }
-    return body;
   });
 
-  const passages = [];
-  const entries = {};
   let bodyIndex = 0;
-  let id = 0;
+  const capturedGists = {};
   for (const [gistId, receipt] of Object.entries(source.gists)) {
-    for (const file of receipt.files) {
-      if (!file.included) continue;
-      const body = bodies[bodyIndex++];
-      const chunks = paragraphChunks(body);
-      const title = file.filename.replace(/\s+/g, ' ').trim().slice(0, 180) || file.filename;
-      const banner = provenanceBanner({ owner: source.owner, gistId, filename: file.filename, updatedAt: receipt.updatedAt });
-      for (const [chunkIndex, chunk] of chunks.entries()) {
-        const passageId = String(id++);
-        const passagePath = `${gistId.slice(0, 8)}/${file.filename}${chunks.length > 1 ? `#${chunkIndex}` : ''}`;
-        const text = banner + chunk;
-        passages.push({ id: passageId, text, path: passagePath, title });
-        entries[passageId] = { path: passagePath, kind: 'doc', title, chunk: chunkIndex, preview: text.slice(0, 200) };
-      }
-    }
+    capturedGists[gistId] = {
+      gistId,
+      versionSha: receipt.versionSha,
+      updatedAt: receipt.updatedAt,
+      files: receipt.files.map((file) => (file.included ? { ...file, body: bodies[bodyIndex++] } : file)),
+    };
   }
-  const passageBody = passages.map(jsonLine).join('\n') + '\n';
-  const meta = {
-    model: NAME,
-    dimensions: 0,
-    metric: 'cosine',
-    name: NAME,
-    generated: source.generated,
-    repo: `gists/${source.owner}`,
-    note: "rUv's public gists — announcements and thinking, PROPOSED unless confirmed in repo source.",
-    entries,
-  };
+  const { passageBytes, metadata } = renderGistPassages({
+    captured: { owner: source.owner, gists: capturedGists }, generatedAt: source.generated,
+  });
+  const passageBody = passageBytes.toString('utf8');
   const passagesSha256 = sha256(passageBody);
+  const trimmed = passageBody.trim();
+  const passages = trimmed.length ? trimmed.split('\n').map((line) => JSON.parse(line)) : [];
   return {
     passages,
     passageBody,
-    meta,
+    meta: metadata,
     sources: source.schemaVersion === 3
       ? sealGistReceiptSet({ ...source, passagesSha256 })
       : { ...source, schemaVersion: 2, passagesSha256, gists: source.gists },

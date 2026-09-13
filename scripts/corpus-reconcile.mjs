@@ -10,8 +10,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
-import { buildCoverage, observeSourceUniverse, sourceObservationDigest } from './source-coverage.mjs';
-import { reconcileGistReceipts } from './gist-receipts.mjs';
+import { buildCoverage, observeSourceUniverse } from './source-coverage.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';
 import { fileIdentity } from '../plugin/scripts/coverage-integrity.mjs';
@@ -413,34 +412,26 @@ export function syncCorpusInputs({ root = DEFAULT_ROOT, assetsDir }) {
   return { copied: required };
 }
 
-export async function materializeGistReceipts({ observation, assetsDir, fetchGist, fetchBody, now } = {}) {
-  if (observation?.observationSha256 !== sourceObservationDigest(observation)) {
-    fail('gist receipts require an exact sealed source observation');
-  }
-  const sourceFile = path.join(path.resolve(assetsDir || ''), 'ruv-gists.sources.json');
-  const existing = fs.existsSync(sourceFile) ? readJson(sourceFile, 'existing gist receipts') : null;
-  const receipt = await reconcileGistReceipts({ observation, existing, fetchGist, fetchBody, now });
-  if (receipt.sourceObservationSha256 !== observation.observationSha256) {
-    fail('gist receipts differ from the sealed source observation');
-  }
-  writeJsonAtomic(sourceFile, receipt);
-  return { sourceFile, receipt };
-}
-
-export async function observeAndMaterializeGistReceipts({ owner = 'ruvnet', assetsDir,
-  observe = observeSourceUniverse, fetchGist, fetchBody, now } = {}) {
+// A PURE, READ-ONLY observation of the live source universe -- lists repositories and gists but
+// NEVER materializes/binds a gist receipt. This is exactly what structurally prevents the
+// 2026-09-12 "observation resets passage binding" bug: previously `observe()` both listed the live
+// universe AND re-sealed `ruv-gists.sources.json` against whatever it just saw, so calling it a
+// second time within one round (to detect drift after the repository refresh + gist aggregate build
+// below) clobbered the receipt `rebuild()` had just sealed with a bound `passagesSha256` back to an
+// unbound one. Gist capture/render/seal now happens EXACTLY once per round, inside `rebuild` (via
+// rebuildCorpusAggregates -> buildGistAggregate) -- `observe` can be called as many times as
+// stability detection needs without ever touching what `rebuild` already sealed.
+async function observeSourceOnly({ owner, assetsDir }) {
   const assets = path.resolve(assetsDir || '');
   const externalFile = path.join(assets, 'external-sources.json');
   const policy = fs.existsSync(externalFile) ? readJson(externalFile, 'external source policy') : { sources: [] };
   if (!Array.isArray(policy.sources)) fail('external source policy has no sources array');
-  const observation = await observe({ owner, externalSources: policy.sources });
-  const materialized = await materializeGistReceipts({ observation, assetsDir: assets, fetchGist, fetchBody, now });
-  return { observation, ...materialized };
+  return observeSourceUniverse({ owner, externalSources: policy.sources });
 }
 
 export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, workspaceDir,
   root = DEFAULT_ROOT, maxRounds = 3,
-  observeAndMaterialize = null,
+  observe = null,
   build = (observation) => buildCoverage({ owner, kbDir: assetsDir, policyDir: assetsDir, observation }),
   readLedger = () => readJson(path.join(path.resolve(assetsDir || ''), 'RVF-GENERATIONS.json'),
     'RVF generation ledger'),
@@ -453,9 +444,7 @@ export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, 
   return reconcileUntilStable({
     maxRounds,
     assetsDir,
-    observe: async () => (await (observeAndMaterialize
-      ? observeAndMaterialize({ owner, assetsDir })
-      : observeAndMaterializeGistReceipts({ owner, assetsDir }))).observation,
+    observe: () => (observe || observeSourceOnly)({ owner, assetsDir }),
     build,
     readLedger,
     execute: (plan, round) => execute({
