@@ -147,6 +147,54 @@ describe('selectResults — the post-rerank stage, now replayable', () => {
     const { results } = selectResults({ query: 'can qudag do quantum-resistant routing', ranked, k: 2 });
     expect(results[0].repo).toBe('qudag');
   });
+
+  // Found live 2026-09-12 against the real release candidate: every "In the <repo> repository, ..."
+  // query names its repo, but the default pruning (drop everything but the global #1 unless
+  // ceScore >= 0) discarded the repo's own correct, verified passage in exactly the cases where the
+  // cross-encoder's absolute, POST-BOOST score for it was negative — sometimes leaving only a
+  // wrong-path hit from the SAME repo, sometimes only a near-duplicate hit from an unrelated widened
+  // sibling repo (ruvector vendoring a copy of skygraph's own example under the same path shape).
+  //
+  // An earlier version of this fix exempted a whole search LANE (searchAll's fullCorpusLane) instead
+  // of individual candidates. Dual review (Fable 5.1 + Astra GPT-6) caught that the live search_ruvnet
+  // MCP path always calls searchAll with allowFullCorpus:false, where that lane is unreachable — the
+  // lane-based version would have silently disabled this entire filter on EVERY production query, not
+  // just named-repo ones. The shipped fix instead exempts only a candidate whose own effective repo
+  // the repo-name-affinity boost above already matched against the query text (r.nameBoosted) — so it
+  // applies identically in every lane and never touches an unnamed sibling's noise.
+  it('a candidate the repo-name-affinity boost already matched (nameBoosted) survives pruning even below zero', () => {
+    const ranked = [
+      { repo: 'ruvector', path: 'examples/sky-monitor/README.md', title: 'sky-monitor', ceScore: 0.13, fullText: 'body' },
+      { repo: 'skygraph', path: 'core/src/lib.rs', title: 'skygraph lib', ceScore: -3.9, fullText: 'body' },
+    ];
+    const { results } = selectResults({ query: 'In the skygraph repository, what is SkyGraph?', ranked, k: 10 });
+    expect(results.some((r) => r.repo === 'skygraph' && r.path === 'core/src/lib.rs')).toBe(true);
+    // The unrelated, unnamed sibling repo's own noise is untouched — this is a targeted exemption,
+    // not a blanket relaxation of the filter for the whole query.
+    expect(results.some((r) => r.repo === 'ruvector')).toBe(true); // it's the global top-1, always kept
+  });
+
+  it('control: an unnamed sibling with a negative score still gets pruned when nothing named it', () => {
+    const ranked = [
+      { repo: 'ruvector', path: 'examples/sky-monitor/README.md', title: 'sky-monitor', ceScore: 0.13, fullText: 'body' },
+      { repo: 'daa', path: 'unrelated/noise.md', title: 'unrelated noise', ceScore: -3.9, fullText: 'body' },
+    ];
+    const { results } = selectResults({ query: 'In the skygraph repository, what is SkyGraph?', ranked, k: 10 });
+    expect(results.length).toBe(1);
+    expect(results.some((r) => r.repo === 'daa')).toBe(false);
+  });
+
+  it('control: an open-ended query naming no repo still prunes a negative-scoring tail (the 2026-07-20 guard)', () => {
+    const ranked = [
+      { repo: 'ruvector', path: 'a.md', title: 'a', ceScore: 3.71, fullText: 'body' },
+      { repo: 'daa', path: 'b.md', title: 'b', ceScore: 1.04, fullText: 'body' },
+      { repo: 'qudag', path: 'c.md', title: 'c', ceScore: -1.28, fullText: 'body' },
+    ];
+    const { results, evidence } = selectResults({ query: 'audio DSP speech enhancement', ranked, k: 10 });
+    expect(results.map((r) => r.repo)).toEqual(['ruvector', 'daa']); // both non-negative scores kept
+    expect(results.some((r) => r.repo === 'qudag')).toBe(false); // negative, non-top-1, unnamed: dropped
+    expect(evidence.droppedIrrelevant).toBe(1);
+  });
 });
 
 describe('scopedNamesIn — one definition, two call sites', () => {
