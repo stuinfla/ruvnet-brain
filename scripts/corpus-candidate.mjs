@@ -19,6 +19,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { canonicalJson, digest, fileIdentity, sha256File, validateGistAggregateReceipt } from '../plugin/scripts/coverage-integrity.mjs';
+import { auditRvfIndexes } from './rvf-index-audit.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REQUIRED_SUFFIXES = [
@@ -186,6 +187,23 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
       .filter(([, owners]) => owners.length > 1)
       .map(([sha256, owners]) => ({ sha256, stores: owners.sort() }));
     if (duplicateRvfDigests.length) fail(`duplicate RVF bytes: ${duplicateRvfDigests.map((row) => row.stores.join('/')).join(', ')}`);
+
+    // Every shipped RVF's HNSW index must be intact — a corrupted or missing INDEX_SEG on an
+    // eligible store must fail archive verification exactly like build-bundle.mjs's own pre-ship
+    // gate (scripts/rvf-index-audit.mjs), not silently pass because this receipt only checked
+    // sidecar presence/hashes and never opened the vector store itself.
+    let rvfIndexAudit;
+    try {
+      rvfIndexAudit = await auditRvfIndexes([...rvfByStore.values()].map((file) => path.join(root, file)));
+    } catch (error) {
+      fail(`RVF index audit could not run (${error.message})`);
+    }
+    const indexFailures = rvfIndexAudit.filter(({ state }) => state !== 'PASS');
+    if (indexFailures.length) {
+      fail(`RVF index audit failed: ${indexFailures
+        .map((row) => `${path.basename(row.path)} (vectors=${row.totalVectors ?? '?'})`)
+        .join(', ')}`);
+    }
 
     // Derived-store receipts (concepts, etc.) — the "concepts inputs" closure. Optional: a fresh
     // bootstrap round may not have built any derived store yet.

@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import {
   createCorpusReceipt,
@@ -13,6 +14,20 @@ import {
   corpusSeedTag,
   publishCorpusSeed,
 } from '../../scripts/corpus-seed-publish.mjs';
+
+// deriveCorpusCandidate (scripts/corpus-candidate.mjs) now audits every shipped .big.rvf's HNSW
+// index via scripts/rvf-index-audit.mjs's auditRvfIndexes, which opens the file with the real
+// @ruvector/rvf runtime — a placeholder text file no longer stands in for an RVF store. This
+// writes a genuine, minimal RVF (well under the 1,024-vector HNSW threshold, so no persisted
+// index is required and the audit always reports PASS for it).
+const requireFromKb = createRequire(new URL('../../kb/package.json', import.meta.url));
+const { RvfDatabase } = requireFromKb('@ruvector/rvf');
+
+async function writeMinimalRvf(rvfPath) {
+  const db = await RvfDatabase.create(rvfPath, { dimensions: 3, metric: 'cosine' });
+  await db.ingestBatch([{ id: 'v-0', vector: [1, 0, 0] }, { id: 'v-1', vector: [0, 1, 0] }]);
+  await db.close();
+}
 
 const dirs = [];
 afterEach(() => {
@@ -73,12 +88,14 @@ function seal(root, bundleDir) {
 
 const SOURCE_COMMIT = 'a'.repeat(40);
 
-function buildAssets(root) {
+async function buildAssets(root) {
   const bundleDir = path.join(root, 'bundle', 'ruvnet-brain');
   fs.mkdirSync(bundleDir, { recursive: true });
+  // RvfDatabase.create() writes alpha.big.rvf AND its own alpha.big.rvf.idmap.json sidecar, so
+  // that one must not be pre-written here — only the sidecars the real RVF runtime does not
+  // generate itself.
+  await writeMinimalRvf(path.join(bundleDir, 'alpha.big.rvf'));
   const publicFiles = {
-    'alpha.big.rvf': 'rvf-alpha',
-    'alpha.big.rvf.idmap.json': '{"ids":[1]}',
     'alpha.big.rvf.embed.json': '{"model":"local"}',
     'alpha.passages.jsonl': '{"text":"alpha"}\n',
     'alpha.meta.json': '{"dimensions":384}',
@@ -109,10 +126,10 @@ function buildAssets(root) {
   return bundleDir;
 }
 
-function fixture() {
+async function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-seed-'));
   dirs.push(root);
-  const bundleDir = buildAssets(root);
+  const bundleDir = await buildAssets(root);
   const bundle = seal(root, bundleDir);
   return { root, bundleDir, bundle, receiptFile: path.join(root, 'corpus-receipt.json') };
 }
@@ -128,7 +145,7 @@ async function create(f) {
 
 describe('immutable corpus candidate receipt (schema 2)', () => {
   it('creates and verifies a receipt binding every public store, sidecar, fence, and archive byte', async () => {
-    const f = fixture();
+    const f = await fixture();
     const receipt = await create(f);
 
     expect(receipt).toMatchObject({
@@ -179,19 +196,76 @@ describe('immutable corpus candidate receipt (schema 2)', () => {
     ];
     const expected = [/unreceipted/i, /missing sidecars/i, /duplicate RVF/i, /ledger rows without RVFs/i];
     for (const [index, mutate] of mutations.entries()) {
-      const f = fixture();
+      const f = await fixture();
       mutate(f);
       await expect(create(f)).rejects.toThrow(expected[index]);
     }
   });
 
+  it('rejects a shipped RVF whose persisted HNSW index has been truncated/corrupted on disk', async () => {
+    const f = await fixture();
+    const rvfPath = path.join(f.bundleDir, 'alpha.big.rvf');
+    const ledgerFile = path.join(f.bundleDir, 'RVF-GENERATIONS.json');
+
+    // Replace the fixture's minimal 2-vector store (below the 1,024-vector HNSW threshold, so it
+    // never needs an index) with a real store big enough to require — and actually persist — an
+    // HNSW index, then force that index to materialize exactly like build-bundle.mjs's own
+    // pre-ship gate does (kb/rvf-index.mjs's persistAndVerifyRvfIndex).
+    fs.rmSync(rvfPath);
+    fs.rmSync(`${rvfPath}.idmap.json`);
+    const db = await RvfDatabase.create(rvfPath, { dimensions: 3, metric: 'cosine' });
+    await db.ingestBatch(Array.from({ length: 1024 }, (_, index) => ({
+      id: `vector-${index}`,
+      vector: index % 2 ? [1, 0, 0] : [0, 1, 0],
+    })));
+    await db.close();
+    const indexer = await RvfDatabase.open(rvfPath);
+    const probe = new Float32Array(3);
+    probe[0] = 1;
+    await indexer.query(probe, 1);
+    await indexer.close();
+
+    const rebindLedgerToCurrentBytes = () => {
+      const ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
+      ledger.stores.alpha.sha256 = sha256(rvfPath);
+      ledger.stores.alpha.bytes = fs.statSync(rvfPath).size;
+      fs.writeFileSync(ledgerFile, JSON.stringify(ledger));
+    };
+    rebindLedgerToCurrentBytes();
+    f.bundle = seal(f.root, f.bundleDir);
+
+    // Sanity: the intact, correctly indexed archive verifies clean first — otherwise this test
+    // would not be proving anything about corruption detection specifically.
+    await expect(create(f), 'a fresh, correctly indexed RVF must verify clean, or this test guards nothing').resolves.toMatchObject({ storeCount: 1 });
+
+    // Corrupt: truncate the file exactly at its persisted INDEX_SEG's on-disk offset, discarding
+    // the index the way storage corruption or an interrupted write would. The ledger/manifest are
+    // then rebound to these exact (corrupted) bytes, so every plain byte-hash check in this
+    // receipt still matches — only a real open-and-inspect of the RVF's own segment table can
+    // catch this, which is exactly the gap scripts/rvf-index-audit.mjs's auditRvfIndexes closes.
+    const inspect = await RvfDatabase.openReadonly(rvfPath);
+    const segments = await inspect.segments();
+    await inspect.close();
+    const indexSeg = segments.find((segment) => segment.segType === 'index');
+    expect(indexSeg, 'fixture must have actually persisted an index, or this test guards nothing').toBeTruthy();
+    const fd = fs.openSync(rvfPath, 'r+');
+    fs.ftruncateSync(fd, indexSeg.offset);
+    fs.closeSync(fd);
+    expect(fs.statSync(rvfPath).size, 'the file must actually have shrunk').toBeLessThan(indexSeg.offset + indexSeg.payloadLength);
+
+    rebindLedgerToCurrentBytes();
+    f.bundle = seal(f.root, f.bundleDir);
+
+    await expect(create(f)).rejects.toThrow(/RVF index audit failed/i);
+  });
+
   it('rejects private corpus bytes in the archive and post-seal archive byte drift', async () => {
-    const privateFixture = fixture();
+    const privateFixture = await fixture();
     fs.writeFileSync(path.join(privateFixture.bundleDir, 'secret.big.rvf'), 'private-rvf');
     privateFixture.bundle = seal(privateFixture.root, privateFixture.bundleDir);
     await expect(create(privateFixture)).rejects.toThrow(/private store.*archive/i);
 
-    const driftFixture = fixture();
+    const driftFixture = await fixture();
     await create(driftFixture);
     fs.appendFileSync(driftFixture.bundle, 'tampered');
     await expect(verifyCorpusReceipt({
@@ -201,7 +275,7 @@ describe('immutable corpus candidate receipt (schema 2)', () => {
   });
 
   it('rejects a schema-1 (downgraded) receipt outright', async () => {
-    const f = fixture();
+    const f = await fixture();
     fs.writeFileSync(f.receiptFile, JSON.stringify({
       schemaVersion: 1, kind: 'ruvnet-brain-corpus-candidate', archive: { file: 'ruvnet-brain.zip', sha256: sha256(f.bundle), bytes: fs.statSync(f.bundle).size },
     }));
@@ -210,7 +284,7 @@ describe('immutable corpus candidate receipt (schema 2)', () => {
   });
 
   it('rejects a receipt whose claimed store bytes were forged after creation (arbitrary passage binding)', async () => {
-    const f = fixture();
+    const f = await fixture();
     const receipt = await create(f);
     const forged = structuredClone(receipt);
     forged.stores[0].files[0].sha256 = 'f'.repeat(64);
@@ -220,13 +294,13 @@ describe('immutable corpus candidate receipt (schema 2)', () => {
   });
 
   it('rejects inconsistent commits — expected builder SHA and SOURCE-vs-ledger drift', async () => {
-    const f = fixture();
+    const f = await fixture();
     await create(f);
     await expect(verifyCorpusReceipt({
       receiptFile: f.receiptFile, bundleFile: f.bundle, expectedBuilderSha: 'd'.repeat(40),
     })).rejects.toThrow(/expected builder SHA/i);
 
-    const g = fixture();
+    const g = await fixture();
     const sourceFile = path.join(g.bundleDir, 'SOURCE.json');
     const source = JSON.parse(fs.readFileSync(sourceFile));
     source.stores.alpha.sourceCommit = 'b'.repeat(40);
@@ -236,7 +310,7 @@ describe('immutable corpus candidate receipt (schema 2)', () => {
   });
 
   it('rejects an archive that cannot be safely extracted (zip-slip / unsafe paths)', async () => {
-    const f = fixture();
+    const f = await fixture();
     // kb/zip-extract.mjs (the shared safe extractor also proven in tests/unit/zip-extract.test.mjs)
     // refuses any entry that would escape the destination. Prove that createCorpusReceipt inherits
     // and surfaces that rejection rather than silently trusting whatever the extractor produced.
@@ -263,7 +337,7 @@ describe('immutable corpus candidate receipt (schema 2)', () => {
 
 describe('verifySeedBaseline — external content-addressed tag never compared to internal release tag', () => {
   it('verifies a seed whose external tag differs from the archive\'s internal ARCHIVE-MANIFEST release tag', async () => {
-    const f = fixture();
+    const f = await fixture();
     const receipt = await create(f);
     // The fixture's archive was sealed with an internal releaseTag of v9.9.9 (see seal()),
     // deliberately unrelated to the external content-addressed seed tag below — proving these are
@@ -281,7 +355,7 @@ describe('verifySeedBaseline — external content-addressed tag never compared t
   });
 
   it('rejects a seed descriptor whose sha256 does not match the actual downloaded bundle', async () => {
-    const f = fixture();
+    const f = await fixture();
     await create(f);
     const tag = `corpus-sha256-${'0'.repeat(64)}`;
     await expect(verifySeedBaseline({
@@ -292,7 +366,7 @@ describe('verifySeedBaseline — external content-addressed tag never compared t
   });
 
   it('refuses a non-content-addressed tag unless explicitly pinned', async () => {
-    const f = fixture();
+    const f = await fixture();
     const receipt = await create(f);
     const legacyPinnedTag = 'v4.2.1-dev'; // sync-version-ignore: today's real immutable legacy seed tag, not the candidate product version
     await expect(verifySeedBaseline({
@@ -310,7 +384,7 @@ describe('verifySeedBaseline — external content-addressed tag never compared t
 
 describe('immutable corpus seed publishing', () => {
   it('derives the tag from the archive digest and refuses to overwrite an existing release', async () => {
-    const f = fixture();
+    const f = await fixture();
     const receipt = await create(f);
     const tag = corpusSeedTag(receipt);
     expect(tag).toBe(`corpus-sha256-${receipt.archive.sha256}`);
@@ -326,7 +400,7 @@ describe('immutable corpus seed publishing', () => {
   });
 
   it('hands a new digest-tagged prerelease to the repository\'s sole release authority', async () => {
-    const f = fixture();
+    const f = await fixture();
     const receipt = await create(f);
     const calls = [];
     const run = (command, args, options) => {

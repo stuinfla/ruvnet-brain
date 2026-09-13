@@ -158,6 +158,44 @@ describe('captureGistSources — cache reuse, fetch, tamper detection, and obser
     })).rejects.toThrow(/not valid UTF-8/);
   });
 
+  // PROOF (Dual, 2026-09-13): a stale cache whose recorded identity (updatedAt) and body hashes
+  // still verify is NOT automatically reusable when the CURRENT observation's file inventory for
+  // that same gist has genuinely changed (a file added). Before the fix, `reusableCachedGist` never
+  // compared the cached file inventory against `stub.files` at all, so this returned 'reuse' and
+  // silently served a cache that was missing `extra.md` entirely.
+  it('PROOF: matching updatedAt + valid body hashes is still a MISS when the current observation shows a different file set', async () => {
+    const cache = { gists: { [id('a')]: { gistId: id('a'), versionSha: 'c'.repeat(40),
+      updatedAt: '2026-08-22T00:00:00Z', complete: true,
+      files: [{ filename: 'old.md', included: true, sha256: digest('old'), bytes: 3, body: 'old' }] } } };
+    const drifted = observation();
+    drifted.gists.rows[0] = { ...drifted.gists.rows[0], files: {
+      ...listedFiles(id('a')),
+      'extra.md': { filename: 'extra.md', raw_url: `https://gist.example/${id('a')}/raw/${'c'.repeat(40)}/extra.md`,
+        size: 5, type: 'text/plain', language: 'Markdown' },
+    } };
+    const fetched = [];
+    const fetchDetail = async (gistId) => {
+      fetched.push(gistId);
+      if (gistId !== id('a')) return fetchedGist(gistId);
+      return {
+        id: id('a'), updated_at: '2026-08-22T00:00:00Z', history: [{ version: 'c'.repeat(40) }],
+        files: {
+          'old.md': { filename: 'old.md', raw_url: `https://gist.example/${id('a')}/raw/${'c'.repeat(40)}/old.md`,
+            size: 3, type: 'text/plain', language: 'Markdown', content: 'old', truncated: false },
+          'extra.md': { filename: 'extra.md', raw_url: `https://gist.example/${id('a')}/raw/${'c'.repeat(40)}/extra.md`,
+            size: 5, type: 'text/plain', language: 'Markdown', content: 'extra', truncated: false },
+        },
+      };
+    };
+    const captured = await captureGistSources({ observation: drifted, cache, fetchDetail, fetchRaw: fakeFetchRaw });
+    // The stale cache must NOT have been served -- a real fetch must have happened for gist `a`.
+    expect(fetched).toContain(id('a'));
+    expect(captured.reuseEvidence.reused).not.toContain(id('a'));
+    expect(captured.reuseEvidence.fetched).toContain(id('a'));
+    // And the captured result must actually reflect the CURRENT file set, not the stale cached one.
+    expect(captured.gists[id('a')].files.map((file) => file.filename).sort()).toEqual(['extra.md', 'old.md']);
+  });
+
   // PROOF 4: a removed gist (present in a stale cache, absent from a fresh observation) disappears.
   it('PROOF: a gist removed from the observation is absent from a fresh capture, even if the cache still has it', async () => {
     const cacheWithRemoved = { gists: { [id('a')]: { gistId: id('a'), versionSha: 'c'.repeat(40),
