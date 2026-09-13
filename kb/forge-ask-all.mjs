@@ -3264,6 +3264,12 @@ export async function searchAll({
     }
   }
   const list = discovered;
+  // The full set of real, independently-indexed store names, for the identifier-lane's
+  // foreign-repo-name guard (issue #286 RC3, kb/identifier-lane.mjs's identifierEvidence): an
+  // identifier that IS itself one of these names has an authoritative home already, so a
+  // DIFFERENT repo's own subtree merely sharing that name should not earn the same "authoritatively
+  // named after this" credit.
+  const knownRepos = new Set(discovered.map((r) => String(r).toLowerCase()));
   const perRepo = {};
   // CORPUS AGE (issue #31, Jan Lafko): the brain is a periodic snapshot, and a model quoting a
   // version from it had NO signal that the fact might trail live reality. Derive the queried
@@ -3376,7 +3382,7 @@ export async function searchAll({
       if (identifierScanTokens.length) {
         const seen = new Set(cands.map((candidate) => candidate.path));
         const scan = identifierScan(dir, identifierScanTokens, { maxRepos: 2 });
-        const byIdentifier = identifierCandidates(scan, name, identifierTokens)
+        const byIdentifier = identifierCandidates(scan, name, identifierTokens, 8, knownRepos)
           .filter((candidate) => !seen.has(candidate.path));
         cands = cands.concat(byIdentifier);
       }
