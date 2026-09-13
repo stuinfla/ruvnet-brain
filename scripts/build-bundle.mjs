@@ -23,7 +23,7 @@ import { auditRvfIndexes } from './rvf-index-audit.mjs';
 import { readRvfGenerations, validateSelectedRvfGenerations } from './rvf-generation.mjs';
 import { validatePublicInventory } from './public-inventory.mjs';
 import { bindAssembledReleaseProjection } from './release-projection.mjs';
-import { materializePublicInputs } from './public-inputs.mjs';
+import { materializePublicInputs, SELECTION_FILE } from './public-inputs.mjs';
 // The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
 // sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
 import { orgRepoCount } from './org-repo-count.mjs';
@@ -135,28 +135,53 @@ function cp(src, destDir, { required = false, asset = false } = {}) {
   copied++;
   return true;
 }
-// Public-prose selection (primers, L2, capability cards, repo aliases) happens EXACTLY ONCE, in
-// materializePublicInputs (scripts/public-inputs.mjs) — a SEPARATE policy from the per-repo CODE
-// store fence above (PRIVATE_STORES). Calling it here keeps a plain local `--assets kb` invocation
-// safe (checkout kb/l2 holds unfenced private prose at rest) while a real corpus-reconcile-produced
-// ASSETS tree simply re-derives the identical, already-fenced result idempotently. Everything below
-// copies ONLY from this materialized ASSETS tree — it never re-discovers or re-filters anything
-// from checkout KB again (that was the exact divergence found 2026-09-13: a second, independent
-// card filter here, plus wholesale unfenced copies of kb/l2 and kb/repo-aliases.json).
+// Public-prose selection (primers, L2, capability cards, repo aliases) happens EXACTLY ONCE per
+// corpus round, in materializePublicInputs (scripts/public-inputs.mjs) — a SEPARATE policy from the
+// per-repo CODE store fence above (PRIVATE_STORES). PACKAGING MUST NEVER RE-DERIVE IT.
+//
+// Finalized corpus input is immutable: reconciliation (rebuildCorpusAggregates,
+// scripts/corpus-aggregates.mjs) seals the canonical public-prose tree into ASSETS and writes
+// SELECTION_FILE (PUBLIC-INPUT-SELECTION.json) as proof it did. If that file is already present,
+// reconciliation has already run and ASSETS already IS the canonical, sealed result — this script
+// trusts it byte-for-byte and does NOT call materializePublicInputs again. Calling it a second time
+// here used to re-derive from checkout ROOT/kb regardless of whether ASSETS had already been
+// reconciled from a DIFFERENT checkout/ref/commit (a later commit landed, a different checkout, a
+// replay of an older candidate) — happening to match today only because nothing mutates checkout
+// between the two calls within one CI job, not because the guarantee was structurally real. Found
+// by independent Dual verification 2026-09-13.
+//
+// materializePublicInputs is called here ONLY when no sealed selection exists yet -- the genuine
+// standalone/local-dev case this file's own default (`--assets kb`, i.e. builderRoot === outDir)
+// exists for, where there is nothing reconciled to trust and self-materializing fresh is correct
+// and safe (public-inputs.mjs's own stage-before-delete ordering).
+const sealedSelectionFile = path.join(ASSETS, SELECTION_FILE);
 let publicInputs;
-try {
-  publicInputs = materializePublicInputs({
-    builderRoot: ROOT, outDir: ASSETS,
-    policy: { allowNoFence: process.env.ALLOW_NO_PRIVATE_FENCE === '1' },
-  });
-} catch (error) {
-  console.error(`[build-bundle] FATAL: public-prose selection failed (${error.message}). Refusing to build.`);
-  process.exit(1);
+if (fs.existsSync(sealedSelectionFile)) {
+  let selectionReceipt;
+  try {
+    selectionReceipt = JSON.parse(fs.readFileSync(sealedSelectionFile, 'utf8'));
+  } catch (error) {
+    console.error(`[build-bundle] FATAL: sealed public-input selection (${sealedSelectionFile}) is present but unreadable (${error.message}). Refusing to build.`);
+    process.exit(1);
+  }
+  publicInputs = { kind: 'public-input-set', dir: ASSETS, selectionReceipt,
+    excluded: selectionReceipt.excluded || { primers: [], topics: [], l2: [], cards: [] } };
+  console.log(`[build-bundle] trusting already-reconciled public-input selection at ${sealedSelectionFile} (never re-derived)`);
+} else {
+  try {
+    publicInputs = materializePublicInputs({
+      builderRoot: ROOT, outDir: ASSETS,
+      policy: { allowNoFence: process.env.ALLOW_NO_PRIVATE_FENCE === '1' },
+    });
+  } catch (error) {
+    console.error(`[build-bundle] FATAL: public-prose selection failed (${error.message}). Refusing to build.`);
+    process.exit(1);
+  }
 }
 {
   const excludedCount = publicInputs.excluded.primers.length + publicInputs.excluded.topics.length
     + publicInputs.excluded.l2.length + publicInputs.excluded.cards.length;
-  if (excludedCount) console.log(`[build-bundle] materializePublicInputs excluded ${excludedCount} private prose item(s)`);
+  if (excludedCount) console.log(`[build-bundle] public-input selection excluded ${excludedCount} private prose item(s)`);
 }
 
 function cpDir(srcDir, destDir) {

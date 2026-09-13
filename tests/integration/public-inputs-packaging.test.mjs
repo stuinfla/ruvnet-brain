@@ -1,14 +1,27 @@
-// tests/integration/public-inputs-packaging.test.mjs — Step 3 (2026-09-13), property 4:
+// tests/integration/public-inputs-packaging.test.mjs — Step 3 (2026-09-13), property 4 AND the
+// Dual-verification fix that followed it same day:
+//
 // "Every input declared in concepts.sources.json survives packaging with IDENTICAL bytes" --
 // build-bundle.mjs's packaged output matches byte-for-byte what materializePublicInputs /
 // buildConceptAggregate actually produced, not a re-derived or re-filtered copy.
 //
-// Before this, build-bundle.mjs fabricated a circular concepts.sources.json whenever the real one
-// was missing (its only declared "input" was its own already-packaged output), and independently
-// re-discovered/re-filtered L2 + capability cards straight from checkout kb/ rather than trusting
-// the reconciled assets directory. This test proves the fixed pipeline end to end: a real
-// materializePublicInputs + buildConceptAggregate run (exactly what rebuildCorpusAggregates does in
-// production) followed by a REAL build-bundle.mjs subprocess run, with byte-for-byte comparison.
+// THE GAP an independent Dual verification pass found in the first Step 3 commit (52b94c7c):
+// materializePublicInputs was centralized into ONE function, but it was still called from TWO
+// production points -- reconciliation (corpus-aggregates.mjs's rebuildCorpusAggregates) AND
+// packaging (build-bundle.mjs) -- and BOTH read from builderRoot/kb (checkout), not from whatever
+// the FIRST call had already sealed into the assets directory. That violates "finalized corpus
+// input is immutable; packaging reads it and writes only a disjoint output directory." It happened
+// to produce identical bytes in CI only because nothing mutates checkout between the two calls
+// within one job -- not because the guarantee was structurally real. If build-bundle.mjs is ever
+// invoked against a reconciled assets directory that has since diverged from checkout (a later
+// commit landed, a different checkout ref, a replay of an older candidate), packaging would
+// silently ship different content than what concepts/gist construction actually sealed and hashed.
+//
+// THE FIX (build-bundle.mjs): check for materializePublicInputs' own sealed
+// PUBLIC-INPUT-SELECTION.json in ASSETS first. If present, reconciliation already ran and ASSETS
+// already IS the canonical result -- trust it byte-for-byte, never call materializePublicInputs
+// again. Only call it when no sealed selection exists yet (the genuine standalone/local-dev case,
+// builderRoot === outDir).
 //
 // WHY SUBPROCESS for build-bundle.mjs: same reasoning as tests/integration/build-bundle-fence.test.mjs
 // (loadPrivateStores() calls process.exit(1) at module top level; importing in-process would kill the
@@ -23,7 +36,7 @@ import crypto from 'node:crypto';
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
 const { serverDependencies } = await import(path.join(REPO_ROOT, 'bin/install.mjs'));
-const { materializePublicInputs } = await import(path.join(REPO_ROOT, 'scripts/public-inputs.mjs'));
+const { materializePublicInputs, SELECTION_FILE } = await import(path.join(REPO_ROOT, 'scripts/public-inputs.mjs'));
 const { buildConceptAggregate } = await import(path.join(REPO_ROOT, 'scripts/corpus-aggregates.mjs'));
 
 const FAKE_OBSERVATION_SHA256 = crypto.createHash('sha256').update('fixture-observation').digest('hex');
@@ -64,18 +77,34 @@ beforeEach(() => {
   fs.writeFileSync(path.join(tmp, 'kb/package.json'), '{}');
   fs.writeFileSync(path.join(tmp, 'kb/package-lock.json'), '{}');
   fs.writeFileSync(path.join(tmp, 'kb/package-owners.json'), '{}');
-
-  // Public-prose fixture: one public repo, one private repo, so this test also proves private
-  // prose stays excluded end-to-end through the full packaging pipeline.
-  fs.writeFileSync(path.join(tmp, 'kb/PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['private-repo'] }));
-  fs.writeFileSync(path.join(tmp, 'kb/public-repo-primer.md'), '# public-repo primer\n\npublic primer body.');
-  fs.writeFileSync(path.join(tmp, 'kb/private-repo-primer.md'), '# private-repo primer\n\nSECRET primer body.');
-  fs.writeFileSync(path.join(tmp, 'kb/l2/public-topic.md'), '# Public Topic\npublic L2 content.');
-  fs.writeFileSync(path.join(tmp, 'kb/l2/private-topic.md'), '# Private Topic\nSECRET L2 content.');
-  fs.writeFileSync(path.join(tmp, 'kb/l2-topics.public-repo.json'), JSON.stringify([{ slug: 'public-topic' }]));
-  fs.writeFileSync(path.join(tmp, 'kb/l2-topics.private-repo.json'), JSON.stringify([{ slug: 'private-topic' }]));
+  // Every test below writes its own checkout prose fixture (writeCheckoutProse) and, where a
+  // separate reconciled assets directory is needed, its own concepts/RVF placeholders.
 });
 afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
+
+/** The checkout kb/ fixture every test starts from: one public repo, one private repo. */
+function writeCheckoutProse(kbDir, { publicPrimer, privatePrimer, publicL2, privateL2 }) {
+  fs.mkdirSync(path.join(kbDir, 'l2'), { recursive: true });
+  fs.writeFileSync(path.join(kbDir, 'PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['private-repo'] }));
+  fs.writeFileSync(path.join(kbDir, 'public-repo-primer.md'), publicPrimer);
+  fs.writeFileSync(path.join(kbDir, 'private-repo-primer.md'), privatePrimer);
+  fs.writeFileSync(path.join(kbDir, 'l2', 'public-topic.md'), publicL2);
+  fs.writeFileSync(path.join(kbDir, 'l2', 'private-topic.md'), privateL2);
+  fs.writeFileSync(path.join(kbDir, 'l2-topics.public-repo.json'), JSON.stringify([{ slug: 'public-topic' }]));
+  fs.writeFileSync(path.join(kbDir, 'l2-topics.private-repo.json'), JSON.stringify([{ slug: 'private-topic' }]));
+}
+
+function writeRvfPlaceholders(assets, stores) {
+  for (const store of stores) {
+    fs.writeFileSync(path.join(assets, `${store}.big.rvf`), '');
+    fs.writeFileSync(path.join(assets, `${store}.big.rvf.idmap.json`), '{}');
+    fs.writeFileSync(path.join(assets, `${store}.big.rvf.embed.json`), '{}');
+    if (store !== 'concepts') {
+      fs.writeFileSync(path.join(assets, `${store}.passages.jsonl`), '{}\n');
+      fs.writeFileSync(path.join(assets, `${store}.meta.json`), '{}');
+    }
+  }
+}
 
 function stampGenerationLedger(assets, stores) {
   const rows = {};
@@ -102,12 +131,91 @@ function runBuildBundle(env = {}, args = []) {
   });
 }
 
+describe('build-bundle.mjs — never re-derives an already-reconciled public-input selection', () => {
+  it('trusts a sealed selection byte-for-byte and never re-derives from a checkout that has since drifted', () => {
+    const kb = path.join(tmp, 'kb');
+    const assets = path.join(tmp, 'release-assets'); // a SEPARATE reconciled directory, not kb/
+    writeCheckoutProse(kb, {
+      publicPrimer: '# public-repo primer\n\nSEALED public body -- this is what reconciliation saw.',
+      privatePrimer: '# private-repo primer\n\nSEALED SECRET body.',
+      publicL2: '# Public Topic\nSEALED public L2 content.',
+      privateL2: '# Private Topic\nSEALED SECRET L2 content.',
+    });
+
+    // Simulate reconciliation exactly as rebuildCorpusAggregates does: seal the public-input tree
+    // and the concepts aggregate into the SEPARATE assets directory.
+    const publicInputs = materializePublicInputs({ builderRoot: tmp, outDir: assets });
+    buildConceptAggregate({
+      publicInputDir: assets, selectionReceipt: publicInputs.selectionReceipt,
+      observationSha256: FAKE_OBSERVATION_SHA256, outDir: assets,
+    });
+    writeRvfPlaceholders(assets, ['concepts', 'public-repo']);
+    stampGenerationLedger(assets, ['concepts', 'public-repo']);
+    expect(fs.existsSync(path.join(assets, SELECTION_FILE))).toBe(true);
+
+    const sealedPrimer = fs.readFileSync(path.join(assets, 'public-repo-primer.md'));
+    const sealedL2 = fs.readFileSync(path.join(assets, 'l2', 'public-topic.md'));
+    const sealedConceptsReceipt = fs.readFileSync(path.join(assets, 'concepts.sources.json'));
+
+    // Reconciliation is done. Checkout now moves on -- a later commit lands with DIFFERENT prose.
+    // Packaging must NEVER see this: it must ship exactly what was sealed above.
+    fs.writeFileSync(path.join(kb, 'public-repo-primer.md'),
+      '# public-repo primer\n\nDRIFTED body -- reconciliation never saw this, MUST NOT SHIP.');
+    fs.writeFileSync(path.join(kb, 'l2', 'public-topic.md'), '# Public Topic\nDRIFTED L2 content -- MUST NOT SHIP.');
+
+    const result = runBuildBundle({}, ['--assets', assets]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/trusting already-reconciled public-input selection/);
+    expect(result.stdout).not.toMatch(/materializePublicInputs excluded/); // logged only on a fresh materialize
+
+    const outDir = path.join(tmp, 'dist/ruvnet-brain');
+    expect(fs.readFileSync(path.join(outDir, 'public-repo-primer.md'))).toEqual(sealedPrimer);
+    expect(fs.readFileSync(path.join(outDir, 'l2', 'public-topic.md'))).toEqual(sealedL2);
+    expect(fs.readFileSync(path.join(outDir, 'concepts.sources.json'))).toEqual(sealedConceptsReceipt);
+    const shippedPrimer = fs.readFileSync(path.join(outDir, 'public-repo-primer.md'), 'utf8');
+    expect(shippedPrimer).not.toContain('DRIFTED');
+    expect(shippedPrimer).toContain('SEALED');
+  });
+
+  it('materializes fresh when ASSETS has no sealed selection yet (the genuine standalone/local-dev case)', () => {
+    const kb = path.join(tmp, 'kb'); // default ASSETS === builderRoot's own kb -- nothing reconciled yet
+    writeCheckoutProse(kb, {
+      publicPrimer: '# public-repo primer\n\nFRESH public body.',
+      privatePrimer: '# private-repo primer\n\nFRESH SECRET body.',
+      publicL2: '# Public Topic\nFRESH public L2 content.',
+      privateL2: '# Private Topic\nFRESH SECRET L2 content.',
+    });
+    writeRvfPlaceholders(kb, ['public-repo']);
+    stampGenerationLedger(kb, ['public-repo']);
+    expect(fs.existsSync(path.join(kb, SELECTION_FILE))).toBe(false);
+
+    const result = runBuildBundle();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).not.toMatch(/trusting already-reconciled/);
+
+    const outDir = path.join(tmp, 'dist/ruvnet-brain');
+    expect(fs.readFileSync(path.join(outDir, 'public-repo-primer.md'), 'utf8')).toContain('FRESH public body');
+    expect(fs.existsSync(path.join(outDir, 'private-repo-primer.md'))).toBe(false);
+    expect(fs.readdirSync(path.join(outDir, 'l2'))).not.toContain('private-topic.md');
+    // materializePublicInputs DID seal a selection into kb/ as a side effect of self-materializing.
+    expect(fs.existsSync(path.join(kb, SELECTION_FILE))).toBe(true);
+  });
+});
+
 describe('build-bundle.mjs — property 4: concepts packaging is byte-identical, never re-derived', () => {
   it('packages concepts.sources.json + public-store-classes.json byte-for-byte, and never re-discovers private prose', () => {
-    // Exactly what rebuildCorpusAggregates does in production: materialize the public tree, then
-    // build the concepts aggregate from it -- directly into tmp/kb (self-materializing; already
-    // proven safe by tests/unit/public-inputs.test.mjs's own self-materialization test).
+    // Self-materializing case: builderRoot === outDir === tmp/kb, exactly what rebuildCorpusAggregates
+    // does when assetsDir happens to equal the checkout. This seals PUBLIC-INPUT-SELECTION.json into
+    // kb/ as a side effect, so the build-bundle.mjs run below takes the "trust the sealed selection"
+    // path proven directly above -- the strongest form of byte-identical packaging, since nothing is
+    // re-derived at packaging time at all.
     const kb = path.join(tmp, 'kb');
+    writeCheckoutProse(kb, {
+      publicPrimer: '# public-repo primer\n\npublic primer body.',
+      privatePrimer: '# private-repo primer\n\nSECRET primer body.',
+      publicL2: '# Public Topic\npublic L2 content.',
+      privateL2: '# Private Topic\nSECRET L2 content.',
+    });
     const publicInputs = materializePublicInputs({ builderRoot: tmp, outDir: kb });
     const built = buildConceptAggregate({
       publicInputDir: kb,
@@ -117,15 +225,7 @@ describe('build-bundle.mjs — property 4: concepts packaging is byte-identical,
     });
     expect(built.passages).toBeGreaterThan(0);
 
-    // Placeholder RVF families -- discoverBuilt() and the stubbed index audit match by filename
-    // only, never open the file, matching tests/integration/build-bundle-fence.test.mjs's pattern.
-    for (const store of ['concepts', 'public-repo']) {
-      fs.writeFileSync(path.join(kb, `${store}.big.rvf`), '');
-      fs.writeFileSync(path.join(kb, `${store}.big.rvf.idmap.json`), '{}');
-      fs.writeFileSync(path.join(kb, `${store}.big.rvf.embed.json`), '{}');
-    }
-    fs.writeFileSync(path.join(kb, 'public-repo.passages.jsonl'), '{}\n');
-    fs.writeFileSync(path.join(kb, 'public-repo.meta.json'), '{}');
+    writeRvfPlaceholders(kb, ['concepts', 'public-repo']);
     stampGenerationLedger(kb, ['concepts', 'public-repo']);
 
     const beforeConceptsReceipt = fs.readFileSync(path.join(kb, 'concepts.sources.json'));

@@ -40,6 +40,12 @@ import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HEX40 = /^[a-f0-9]{40}$/;
 
+// The sealed selection receipt's filename -- exported so a caller can detect "did reconciliation
+// already seal a public-input tree here?" WITHOUT re-deriving one to find out. This is exactly the
+// signal build-bundle.mjs uses to decide between trusting an already-reconciled ASSETS directory
+// byte-for-byte and materializing fresh in the genuine local/standalone case.
+export const SELECTION_FILE = 'PUBLIC-INPUT-SELECTION.json';
+
 /** Digest+size of an excluded file, WITHOUT its content -- the private-exclusion evidence never
  * carries the bytes it proves were excluded. */
 function excludedIdentity(file) {
@@ -222,7 +228,7 @@ export function materializePublicInputs({ builderRoot = DEFAULT_ROOT, policy = {
     }
 
     const selectionReceipt = sealSelectionReceipt({ builderSha, generatedAt: now(), included, excluded, ownership });
-    fs.writeFileSync(path.join(stage, 'PUBLIC-INPUT-SELECTION.json'), `${JSON.stringify(selectionReceipt, null, 2)}\n`);
+    fs.writeFileSync(path.join(stage, SELECTION_FILE), `${JSON.stringify(selectionReceipt, null, 2)}\n`);
 
     // Positive selection (rule 3): remove every previously-managed entry that this round did NOT
     // reproduce -- a primer/topics file whose source disappeared or went private simply never lands
@@ -231,7 +237,7 @@ export function materializePublicInputs({ builderRoot = DEFAULT_ROOT, policy = {
     const stageEntries = new Set(fs.readdirSync(stage));
     const managedPattern = /^.+-primer\.md$/;
     const topicsPattern = /^l2-topics\..+\.json$/;
-    const staticManaged = ['l2', 'capability-cards.md', 'repo-aliases.json', 'PUBLIC-INPUT-SELECTION.json'];
+    const staticManaged = ['l2', 'capability-cards.md', 'repo-aliases.json', SELECTION_FILE];
     const stale = fs.existsSync(out)
       ? fs.readdirSync(out).filter((name) => (managedPattern.test(name) || topicsPattern.test(name)
         || staticManaged.includes(name)) && !stageEntries.has(name))
@@ -256,6 +262,6 @@ export function materializePublicInputs({ builderRoot = DEFAULT_ROOT, policy = {
     included,
     excluded,
     files,
-    selectionReceipt: JSON.parse(fs.readFileSync(path.join(out, 'PUBLIC-INPUT-SELECTION.json'), 'utf8')),
+    selectionReceipt: JSON.parse(fs.readFileSync(path.join(out, SELECTION_FILE), 'utf8')),
   };
 }
