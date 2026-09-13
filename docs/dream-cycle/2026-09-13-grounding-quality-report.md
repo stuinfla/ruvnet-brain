@@ -87,7 +87,10 @@ Frozen before re-running the repros or touching any file. Not modified since.
 - `npm run version:check`: `4.3.14` agrees on every surface.
 - `npm run convergence:check` (after `npm run convergence:write` to add the new ADR to the
   tracked-file list, required whenever an ADR is added — same requirement PR #237's own diff
-  shows): `{"ok":true,"version":"4.3.14","trackedFileCount":1301,"adrCount":77}`.
+  shows), re-run fresh as the last step before committing, after every file in this candidate
+  existed: `{"ok":true,"version":"4.3.14","trackedFileCount":1302,"adrCount":77}`. (An earlier
+  intermediate check, taken before this report file itself existed, showed `1301` — corrected here
+  after an independent critic agent caught the staleness; see Security Review.)
 - `npm run doc:currency`: exits 1, but with the same pre-existing violation set every night since
   2026-08-26 has documented (dozens of ADRs stamp-lagging/presumed-stale from the unrelated
   2026-09-04 `e6774a3` and 2026-09-07 batch-release commits — none touching this candidate's
@@ -118,6 +121,35 @@ number, `ADR-0086`; repoint issue #236; no new analysis, no code change).
 N/A — no benchmark, threshold, or gold answer touched; no candidate production code shipped. The
 two evidence scripts are unmodified reproductions (diffed byte-for-byte against PR #237's own
 patch text before committing), not new claims.
+
+## Adversarial Critique
+
+An independent critic (fresh `general-purpose` agent, not this candidate's author, given the diff
+and full context, explicitly instructed to find fabrication/reward-hacking/security issues)
+reviewed the staged change before it was pushed. Verdict: **1 blocking finding, rest CLEAR.**
+
+- Recovery fidelity: CLEAR — the recovered ADR and both evidence scripts match PR #237's original
+  diff, no new claims added.
+- Vulnerability reproduction: CLEAR — the critic independently re-ran both evidence scripts and
+  confirmed `VULNERABLE`/exit 1 on both, byte-identical to this report's own claim.
+- Reward-hacking / framing: CLEAR — no overclaiming found in the Recommendation section.
+- Security exposure from committing exploit scripts: non-blocking — PR #237's content (including
+  the same scripts) has been publicly readable via the GitHub API since 2026-09-03; recommitting it
+  adds no new exposure.
+- **Blocking**: the Evaluation Receipt's `convergence:check` output was stale — quoted from an
+  intermediate check taken before this report file existed (`trackedFileCount:1301`), not from a
+  fresh check against the final tree (`1302`). The committed `data/convergence-manifest.json` was
+  never actually wrong (a fresh `convergence:write` at the time of the critique produced a
+  byte-identical file to what was already staged) — only this report's prose cited a stale
+  intermediate number instead of re-verifying as the last step. **Fixed** by rerunning
+  `convergence:write`/`convergence:check` fresh (confirmed `git diff HEAD -- data/convergence-
+  manifest.json` empty, i.e. no actual manifest change was needed) and correcting the number above.
+- `governs: []` precedent: non-blocking — other Proposed ADRs in this repo are inconsistent on this
+  field (some omit it, some leave it empty, some populate it); an honest empty list is a defensible
+  variant.
+- Collision with PR #270: non-blocking — the only file both touch is `data/convergence-manifest.json`
+  (expected for any change to the tracked-file list; whichever PR merges second will need a trivial
+  regeneration, same as always).
 
 ## Security Review
 
@@ -165,17 +197,18 @@ decision it is waiting on is reachable again.
 
 ```
 SESSION_COMMIT = b8d6802039dcfa72118f803e76776548bd2da48a
-REPORT_HASH    = 27b1512ffb91d41a5c4e3a6da48fc9da7acdbe1b4eee6794325dd389fd6e62f4
-WITNESS        = cd21cec07a502edf6e3e98397c6d495dc10a463f44bdbf9183177edaa403eb9b
+REPORT_HASH    = 84becc26fbde39f2f210180b5da565ddeeef83ff86e09a5fe72a64193be80bf7
+WITNESS        = 9f66910ae1d1d0efbec96c015bb1c7bc071a71f8d4ab1a461708b164e05d80bb
 ```
 
-`REPORT_HASH` is the sha256 of the pre-stamp gist (`/tmp/dream-gist-2026-09-13.md`, written before
-this section existed). `WITNESS = sha256(REPORT_HASH + SESSION_COMMIT)`, no separator.
+`REPORT_HASH` is the sha256 of this file's own content, everything above this `## Witness` heading,
+as finalized (after the independent critic's correction was applied — an earlier hash taken before
+that correction is superseded, same as this report's own Adversarial Critique section documents).
+`WITNESS = sha256(REPORT_HASH + SESSION_COMMIT)`, no separator.
 
 **Verifier procedure** (5 steps, reproducible by anyone):
-1. Check out this PR's branch at the commit that adds this report, before this Witness section's
-   content was finalized (the gist text above `## Witness` is byte-identical to the committed
-   report's own text above `## Witness`).
+1. Check out this PR's branch and take this file's own content, everything above this `## Witness`
+   heading, exactly as committed.
 2. `sha256sum` that content → should reproduce `REPORT_HASH`.
 3. `printf '%s%s' "$REPORT_HASH" "b8d6802039dcfa72118f803e76776548bd2da48a" | sha256sum` → should
    reproduce `WITNESS`.
