@@ -34,18 +34,23 @@ export function bindAssembledReleaseProjection({ assetsDir, version, sourceSnaps
   return result;
 }
 
-function seedCompatibleGistReceipt() {
-  const source = readJson(path.join(ROOT, 'kb', 'ruv-gists.sources.json'));
-  const gists = {};
-  for (const [id, row] of Object.entries(source.gists || {})) {
-    const files = row.files;
-    gists[id] = { versionSha: row.versionSha, files,
-      contentDigest: crypto.createHash('sha256').update(JSON.stringify(files)).digest('hex') };
+// Read the ONE canonical schema-3 gist receipt that buildGistAggregate produced during
+// reconciliation, from the RECONCILED assets directory -- never from the maintainer's own checkout
+// kb/ as an alternate or fallback source. That checkout/reconciled-assets divergence was exactly the
+// bug found 2026-09-13 ("packages reconciled content with checkout receipt evidence"): a stale
+// schema-downgraded receipt derived from `ROOT/kb` was silently overwriting whatever the reconciled
+// `assetsDir` already had, so a release could ship gist coverage rows that did not match the gist
+// bytes actually sealed for that release. `null` means the owner currently has zero public gists --
+// the aggregate (and every gist row) is correctly omitted, never fabricated as an empty schema-2 shim.
+function readSeededGistReceipt(assetsDir) {
+  const file = path.join(assetsDir, 'ruv-gists.sources.json');
+  if (!fs.existsSync(file)) return null;
+  const receipt = readJson(file);
+  if (receipt.schemaVersion !== 3 || receipt.kind !== 'ruvnet-brain-gist-source-receipts') {
+    throw new Error('reconciled assets directory does not carry the canonical schema-3 gist receipt '
+      + '(ruv-gists.sources.json) -- refusing to project a release from an unreconciled or downgraded receipt');
   }
-  // The v4.2.1 seed predates the schema-3 source-byte binding. Keep the release proof honest:
-  // schema 2 proves the exact gist identity/file inventory, while CORPUS-COVERAGE retains the
-  // newer source observation separately. Do not relabel the old seed as current-source evidence.
-  return { schemaVersion: 2, owner: source.owner, generated: source.generated, gists };
+  return receipt;
 }
 
 export function createReleaseProjection({ corpusCoverage, assetsDir, version, sourceSnapshot,
@@ -73,8 +78,8 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   // dropped from the release rows, never rewritten CURRENT, still complete in CORPUS-COVERAGE.json.
   // Measured 2026-09-12: 492 observed gists vs 479 in the sealed v4.2.1 receipt; the 13 published
   // after 2026-08-26 were being projected CURRENT and coverage-integrity rejected the receipt for it.
-  const gistReceipt = seedCompatibleGistReceipt();
-  const seededGistIds = new Set(Object.keys(gistReceipt.gists));
+  const gistReceipt = readSeededGistReceipt(assets);
+  const seededGistIds = new Set(gistReceipt ? Object.keys(gistReceipt.gists) : []);
   const seeded = (row) => availableStores.has(String(row.artifact?.store || '').toLowerCase())
     && (row.kind !== 'gist' || seededGistIds.has(String(row.key || '').replace(/^gist:/, '')));
   const seededRows = corpusCoverage.rows.filter((row) => row.disposition === 'eligible' && seeded(row));
@@ -125,9 +130,15 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
     installedProjectionSchema: 2, policy: corpusCoverage.policy, enumerationReceipt: projectedEnumerationReceipt,
     rows: projectedCoverage.rows, totals: projectedCoverage.totals,
   };
-  // Keep the projected receipt in the same asset root that the final archive
-  // validator reads, so both partition hashes include identical evidence.
-  fs.writeFileSync(path.join(assets, 'ruv-gists.sources.json'), `${JSON.stringify(gistReceipt, null, 2)}\n`);
+  // `assets/ruv-gists.sources.json` is ALREADY the receipt just read above -- reconciliation (via
+  // buildGistAggregate) is the only thing that ever writes it, and this function only reads it. No
+  // second write here, so the reconciled assets directory and the archive validator below can never
+  // observe two different sets of gist bytes for the same release.
+  // Deliberately NOT passing `gistReceipt` here: validatePublicInventory's partition digest omits
+  // the receipt file's own evidence identity when a receipt object is handed in directly, so doing
+  // that here would make this partition digest permanently disagree with the independent one
+  // bindAssembledReleaseProjection computes moments later by reading the SAME file fresh from disk.
+  // Re-reading it costs nothing at this scale and keeps both computations identical.
   const inventory = validatePublicInventory({ assetsDir: assets, coverage: releaseBase, ledger });
   releaseBase.publicInventoryPartitionSha256 = inventory.partitionSha256;
   releaseBase.releaseCoverageGeneration = releaseCoverageGenerationFor(releaseBase);
@@ -136,8 +147,7 @@ export function createReleaseProjection({ corpusCoverage, assetsDir, version, so
   fs.writeFileSync(path.join(out, 'CORPUS-COVERAGE.json'), corpusBytes);
   fs.writeFileSync(path.join(out, 'COVERAGE.json'), `${JSON.stringify(releaseBase, null, 2)}\n`);
   fs.writeFileSync(path.join(out, 'PUBLIC-RVF-GENERATIONS.json'), ledgerBytes);
-  fs.writeFileSync(path.join(out, 'ruv-gists.sources.json'), `${JSON.stringify(gistReceipt, null, 2)}\n`);
-  for (const file of ['public-store-classes.json', 'concepts.sources.json']) {
+  for (const file of ['ruv-gists.sources.json', 'public-store-classes.json', 'concepts.sources.json']) {
     const source = path.join(assets, file);
     if (fs.existsSync(source)) fs.copyFileSync(source, path.join(out, file));
   }

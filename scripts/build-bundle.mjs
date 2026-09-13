@@ -310,11 +310,16 @@ if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.
 // shipped. Include it, WITH .big.passages.jsonl (the big variant opens it by name, same as concepts).
 const hasGists = fs.existsSync(path.join(ASSETS, 'ruv-gists.big.rvf'));
 if (hasGists) {
-  // RVF and passage bytes come from the sealed seed; the source receipt is governed source
-  // evidence from this checkout. The seed predates shipping that receipt, so sourcing every file
-  // from ASSETS makes the release projection fail closed even though the exact gist bytes exist.
+  // Every gist file, RVF and passage bytes AND the source receipt now come from the same reconciled
+  // ASSETS root -- buildGistAggregate (gist-receipts.mjs) seals ruv-gists.sources.json in the SAME
+  // atomic step that writes the passages/RVF it ships next to, so there is exactly one place gist
+  // truth can come from. Sourcing the receipt from the maintainer's own checkout kb/ instead (the
+  // OLD behavior here) was the exact "reconciled content packaged with checkout receipt evidence"
+  // divergence found 2026-09-13: ASSETS and KB are the same directory by default, but diverge the
+  // moment a release passes an explicit --assets, and only ASSETS is ever byte-verified against
+  // what actually shipped.
   for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json', 'ruv-gists.big.passages.jsonl', 'ruv-gists.big.meta.json', 'ruv-gists.passages.jsonl', 'ruv-gists.meta.json']) cp(suf, OUT, { asset: true });
-  cp('ruv-gists.sources.json', OUT, { required: !PROJECTION });
+  cp('ruv-gists.sources.json', OUT, { required: !PROJECTION, asset: true });
 }
 // The inventory projection consumes this registry from the assembled bundle. Older corpus seeds
 // do not carry it, so derive the only valid legacy class (concepts) from the exact bytes already

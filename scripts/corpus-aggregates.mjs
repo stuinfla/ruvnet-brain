@@ -6,14 +6,13 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
-import { reconstructGists, writeReconstruction } from './rebuild-gists-from-receipts.mjs';
+import { buildGistAggregate } from './rebuild-gists-from-receipts.mjs';
 import { writeRvfGeneration } from './rvf-generation.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HEX64 = /^[a-f0-9]{64}$/;
 const MODEL = 'Xenova/bge-base-en-v1.5';
 const DIMENSIONS = 768;
-const AGGREGATES = ['ruv-gists', 'concepts'];
 
 function fail(message) {
   throw new Error(`[corpus-aggregates] ${message}`);
@@ -159,35 +158,40 @@ function defaultBuildVector({ root, assetsDir, store }) {
   if (result.error || result.status !== 0) fail(`${store} vector build failed (${result.error?.message || `exit ${result.status}`})`);
 }
 
-export async function rebuildCorpusAggregates({ assetsDir, observation, root = ROOT,
-  fetchFn = globalThis.fetch, buildVector = defaultBuildVector, now = () => new Date().toISOString() } = {}) {
+// Gists and concepts are independent derived stores (concepts never reads gist content), so each is
+// now built and promoted through its OWN atomic step rather than one shared stage+promotion:
+//   1. buildGistAggregate owns the ENTIRE gist lifecycle -- capture, render, embed, seal, validate,
+//      and promote -- as one atomic unit (see gist-receipts.mjs). A failed gist build/embed leaves
+//      `assets` completely untouched and concepts is never attempted.
+//   2. concepts is then rebuilt from the (now gist-updated) `assets` tree, exactly as before.
+// This trades the OLD single joint promotion of both stores for two independently-atomic ones; each
+// store's own artifact set can never be left half-written, which the joint promotion could not
+// promise for gists specifically once gist capture/render/seal became a single multi-step pipeline.
+export async function rebuildCorpusAggregates({ assetsDir, observation, root = ROOT, cache = null,
+  transport = {}, buildVector = defaultBuildVector, now = () => new Date().toISOString() } = {}) {
   const assets = path.resolve(assetsDir || '');
   const observationSha256 = String(observation?.observationSha256 || '');
   if (!HEX64.test(observationSha256)) fail('aggregate rebuild requires an exact source observation');
-  const sourceFile = path.join(assets, 'ruv-gists.sources.json');
-  const source = readJson(sourceFile, 'gist source receipt');
-  if (source.sourceObservationSha256 !== observationSha256) fail('gist source receipt observation differs from the stable observation');
   if (typeof buildVector !== 'function') fail('aggregate vector builder is unavailable');
+
+  const gistAggregate = await buildGistAggregate({
+    observation, cache, outDir: assets, root, transport, buildVector, sourceCommit: observationSha256, now,
+  });
 
   const stage = fs.mkdtempSync(path.join(path.dirname(assets), '.corpus-aggregates-'));
   try {
-    const gists = await reconstructGists(source, { fetchFn });
-    writeReconstruction(gists, { outDir: stage });
     buildConceptAggregate({ inputDir: assets, outDir: stage, sourceObservationSha256: observationSha256, now });
-    for (const store of AGGREGATES) await buildVector({ root, assetsDir: stage, store });
-    writeRvfGeneration({ dir: stage, previousDir: assets, store: 'ruv-gists', model: MODEL,
-      dimensions: DIMENSIONS, sourceCommit: observationSha256, builtUtc: now() });
-    writeRvfGeneration({ dir: stage, previousDir: stage, store: 'concepts', model: MODEL,
+    await buildVector({ root, assetsDir: stage, store: 'concepts' });
+    writeRvfGeneration({ dir: stage, previousDir: assets, store: 'concepts', model: MODEL,
       dimensions: DIMENSIONS, sourceCommit: observationSha256, builtUtc: now() });
     const files = [
-      ...AGGREGATES.flatMap((store) => [
-        `${store}.passages.jsonl`, `${store}.meta.json`, `${store}.big.rvf`,
-        `${store}.big.rvf.idmap.json`, `${store}.big.rvf.embed.json`,
-      ]),
-      'ruv-gists.sources.json', 'concepts.sources.json', 'public-store-classes.json', 'RVF-GENERATIONS.json',
+      'concepts.passages.jsonl', 'concepts.meta.json', 'concepts.big.rvf',
+      'concepts.big.rvf.idmap.json', 'concepts.big.rvf.embed.json',
+      'concepts.sources.json', 'public-store-classes.json', 'RVF-GENERATIONS.json',
     ];
     promoteArtifactSet({ liveDir: assets, candidateDir: stage, files });
-    return { rebuilt: [...AGGREGATES].sort(), sourceObservationSha256: observationSha256 };
+    const rebuilt = gistAggregate.omitted ? ['concepts'] : ['concepts', 'ruv-gists'];
+    return { rebuilt: rebuilt.sort(), sourceObservationSha256: observationSha256, gistAggregate };
   } finally {
     fs.rmSync(stage, { recursive: true, force: true });
   }

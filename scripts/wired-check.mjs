@@ -324,11 +324,10 @@ const CALLER_ROOTS = [
 const CALLER_EXTS = new Set(['.mjs', '.js', '.sh', '.json', '.html', '.yml', '.yaml']);
 export const REQUIRED_OPERATIONAL_EXPORTS = [
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'syncCorpusInputs' },
-  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'materializeGistReceipts' },
-  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'observeAndMaterializeGistReceipts' },
   { rel: 'scripts/corpus-aggregates.mjs', symbol: 'rebuildCorpusAggregates' },
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'reconcileCorpusUntilStable' },
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'reconcileAndPrepareCorpusCandidate' },
+  { rel: 'scripts/gist-receipts.mjs', symbol: 'buildGistAggregate' },
 ];
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))
