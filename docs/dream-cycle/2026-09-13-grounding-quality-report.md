@@ -83,14 +83,18 @@ Frozen before re-running the repros or touching any file. Not modified since.
   Both byte-identical to the original 2026-09-03 report's claims. `kb/verify-citation.mjs`'s
   `parseCitations()` docstring (read directly, unchanged) still says: "not airtight against a
   document engineered to predict and spoof the exact next rank (tracked as an open item, not
-  solved here)".
-- `npm run version:check`: `4.3.14` agrees on every surface.
+  solved here)". Re-run a third time after the Branch-Base Correction (below), on the real
+  `origin/main` tip `f95a1a5`: both still `VULNERABLE`, exit 1, byte-identical.
+- `npm run version:check`: `4.3.25` agrees on every surface (the real `origin/main` tip at the time
+  this branch was rebuilt; an earlier check against the stale local base incorrectly read `4.3.14`
+  — see Branch-Base Correction).
 - `npm run convergence:check` (after `npm run convergence:write` to add the new ADR to the
   tracked-file list, required whenever an ADR is added — same requirement PR #237's own diff
-  shows), re-run fresh as the last step before committing, after every file in this candidate
-  existed: `{"ok":true,"version":"4.3.14","trackedFileCount":1302,"adrCount":77}`. (An earlier
-  intermediate check, taken before this report file itself existed, showed `1301` — corrected here
-  after an independent critic agent caught the staleness; see Security Review.)
+  shows), re-run fresh as the last step before pushing, against the real `origin/main` base:
+  `{"ok":true,"version":"4.3.25","trackedFileCount":1489,"adrCount":87}`. (Two earlier, superseded
+  checks exist in this candidate's own history: `1301` against an incomplete tree, then `1302`
+  against the stale local base — both corrected in turn, first by an independent critic agent
+  catching the first staleness, then by this session catching the stale-branch-base issue itself.)
 - `npm run doc:currency`: exits 1, but with the same pre-existing violation set every night since
   2026-08-26 has documented (dozens of ADRs stamp-lagging/presumed-stale from the unrelated
   2026-09-04 `e6774a3` and 2026-09-07 batch-release commits — none touching this candidate's
@@ -121,6 +125,25 @@ number, `ADR-0086`; repoint issue #236; no new analysis, no code change).
 N/A — no benchmark, threshold, or gold answer touched; no candidate production code shipped. The
 two evidence scripts are unmodified reproductions (diffed byte-for-byte against PR #237's own
 patch text before committing), not new claims.
+
+## Branch-Base Correction
+
+This session's local checkout carried a stale, orphaned local `main` branch ref (`80c5322`, from
+an unrelated, much older snapshot, diverged rather than an ancestor of the actual working
+commit `b8d6802`) left over from container setup — a local artifact, not a repository defect. The
+candidate branch was first built on that stale ref by mistake and, when pushed, collided (HTTP 403
+"fetch first") with the **already-existing** remote branch `dream/2026-09-13-grounding-quality`
+from tonight's genuinely concurrent firing (see Ledger Check). Fetching `origin/main` for real
+revealed the correct current tip, `f95a1a5` (one commit past this session's original `b8d6802`
+starting point — `fix(corpus-seed): missing GH_TOKEN broke org-wide repo discovery`, unrelated).
+Rebuilt this candidate on the real `origin/main` via `git checkout -b
+dream/2026-09-13-grounding-quality-adr-recovery origin/main` + cherry-pick (one trivial conflict,
+in the generated `data/convergence-manifest.json`, resolved by regenerating it fresh — not by hand)
+and renamed the branch with an `-adr-recovery` suffix to avoid colliding with the concurrent
+session's branch, per this repo's established protocol. Re-verified everything below fresh against
+the corrected base before finalizing. `ADR-0086` remained the correct next free number on the real
+`origin/main` too (confirmed: `0085` is the highest pre-existing file, `0076`–`0085` all already
+occupied by unrelated ADRs, `0086` still free).
 
 ## Adversarial Critique
 
@@ -196,21 +219,25 @@ decision it is waiting on is reachable again.
 ## Witness
 
 ```
-SESSION_COMMIT = b8d6802039dcfa72118f803e76776548bd2da48a
-REPORT_HASH    = 84becc26fbde39f2f210180b5da565ddeeef83ff86e09a5fe72a64193be80bf7
-WITNESS        = 9f66910ae1d1d0efbec96c015bb1c7bc071a71f8d4ab1a461708b164e05d80bb
+SESSION_COMMIT = f95a1a56034656ced96d535cad911c5cd72bae2b
+REPORT_HASH    = 40d4998506fe6d11d65c7cede0c12d565ae060dfb9da598c1e3ac5c6cad1d9d5
+WITNESS        = b1f854b601edbfbce019bb7ec1672afad0924da96fb5563f1223eac401aa566a
 ```
 
-`REPORT_HASH` is the sha256 of this file's own content, everything above this `## Witness` heading,
-as finalized (after the independent critic's correction was applied — an earlier hash taken before
-that correction is superseded, same as this report's own Adversarial Critique section documents).
-`WITNESS = sha256(REPORT_HASH + SESSION_COMMIT)`, no separator.
+`SESSION_COMMIT` is `origin/main`'s real tip at the time this branch was rebuilt (see Branch-Base
+Correction) — not this session's original `b8d6802` starting point, which turned out to sit under a
+stale local branch ref rather than the true base this PR merges against. `REPORT_HASH` is the
+sha256 of this file's own content, everything above this `## Witness` heading, as finalized (after
+both the independent critic's correction and the branch-base correction were applied — earlier
+hashes taken before either correction are superseded, documented rather than erased in this
+report's own Adversarial Critique and Branch-Base Correction sections). `WITNESS =
+sha256(REPORT_HASH + SESSION_COMMIT)`, no separator.
 
 **Verifier procedure** (5 steps, reproducible by anyone):
 1. Check out this PR's branch and take this file's own content, everything above this `## Witness`
    heading, exactly as committed.
 2. `sha256sum` that content → should reproduce `REPORT_HASH`.
-3. `printf '%s%s' "$REPORT_HASH" "b8d6802039dcfa72118f803e76776548bd2da48a" | sha256sum` → should
+3. `printf '%s%s' "$REPORT_HASH" "f95a1a56034656ced96d535cad911c5cd72bae2b" | sha256sum` → should
    reproduce `WITNESS`.
 4. A match proves this report's content is bound to `main`'s exact commit at the time this session
    started.
