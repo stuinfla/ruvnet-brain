@@ -14,6 +14,7 @@ import { buildCoverage, observeSourceUniverse, sourceObservationDigest } from '.
 import { reconcileGistReceipts } from './gist-receipts.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';
+import { fileIdentity } from '../plugin/scripts/coverage-integrity.mjs';
 
 export { rebuildCorpusAggregates };
 
@@ -90,12 +91,29 @@ export function normalizeExtractedCorpus({ extractedDir, assetsDir }) {
   const ledgers = filesNamed(extracted, 'RVF-GENERATIONS.json');
   if (ledgers.length !== 1) fail(`seed archive must contain exactly one RVF-GENERATIONS.json; found ${ledgers.length}`);
   const corpusRoot = path.dirname(ledgers[0]);
-  if (fs.existsSync(path.join(corpusRoot, 'PRIVATE-STORES.json'))) {
-    fail('a published seed must not supply a private-store fence; the exact builder checkout owns that policy');
-  }
+  // A published seed's own PRIVATE-STORES.json is AUTHENTICATED HISTORICAL EVIDENCE of what that
+  // prior round excluded — never the current builder's live policy. Keep it under a distinct name
+  // (SEED-PRIVATE-STORES.json) so it can never shadow, or be mistaken for, the canonical fence the
+  // exact builder checkout copies in below (main()), and is never overwritten.
+  const seedFence = path.join(corpusRoot, 'PRIVATE-STORES.json');
+  const hasSeedFence = fs.existsSync(seedFence);
   fs.mkdirSync(assets, { recursive: true });
-  for (const entry of fs.readdirSync(corpusRoot)) fs.renameSync(path.join(corpusRoot, entry), path.join(assets, entry));
+  for (const entry of fs.readdirSync(corpusRoot)) {
+    if (hasSeedFence && entry === 'PRIVATE-STORES.json') continue;
+    fs.renameSync(path.join(corpusRoot, entry), path.join(assets, entry));
+  }
+  if (hasSeedFence) fs.renameSync(seedFence, path.join(assets, 'SEED-PRIVATE-STORES.json'));
   return assets;
+}
+
+// Historical evidence only: the identity of the PRIOR seed's own private-store fence, if the seed
+// archive shipped one. Never used to gate anything against the current builder's live policy.
+export function seedPrivateFenceEvidence(assetsDir) {
+  const file = path.join(path.resolve(assetsDir || ''), 'SEED-PRIVATE-STORES.json');
+  if (!fs.existsSync(file)) return null;
+  const stat = fs.lstatSync(file);
+  if (!stat.isFile() || stat.isSymbolicLink()) fail('seed private-fence evidence is not a trusted regular file');
+  return fileIdentity(file);
 }
 
 function repositorySlug(url) {
@@ -449,10 +467,10 @@ export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, 
 }
 
 export async function reconcileAndPrepareCorpusCandidate({ plan, assetsDir, workspaceDir, root = DEFAULT_ROOT,
-  owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile,
+  owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity = null,
   execute = executeReconciliation, prepare = prepareCorpusCandidate } = {}) {
   const reconciliation = await execute({ plan, assetsDir, workspaceDir, root });
-  const candidate = await prepare({ root, assetsDir, owner, builderSha, candidateDir, receiptFile, coverageFile });
+  const candidate = await prepare({ root, assetsDir, owner, builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity });
   return { reconciliation, candidate };
 }
 
@@ -464,6 +482,7 @@ export function prepareCorpusCandidate({
   candidateDir,
   receiptFile,
   coverageFile,
+  bootstrapIdentity = null,
   run = defaultRun,
 }) {
   const sourceRoot = path.resolve(root);
@@ -487,10 +506,15 @@ export function prepareCorpusCandidate({
   checked(run, process.execPath, [buildScript, '--assets', assets, '--out', candidate,
     '--coverage', policy], { stdio: 'inherit' });
   const bundleFile = path.join(path.dirname(candidate), `${path.basename(candidate)}.zip`);
-  checked(run, process.execPath, [receiptScript, '--assets', assets, '--bundle', bundleFile,
-    '--policy', policy, '--receipt', receipt, '--builder-source-sha', builderSha], { stdio: 'inherit' });
-  checked(run, process.execPath, [receiptScript, '--verify', '--assets', assets, '--bundle', bundleFile,
-    '--policy', policy, '--receipt', receipt], { stdio: 'inherit' });
+  // The candidate receipt is derived ENTIRELY from the sealed bundle's own bytes (schema 2) — the
+  // separate assets/policy directory used to build it is no longer an alternate verification root.
+  const bootstrapArgs = bootstrapIdentity?.tag && bootstrapIdentity?.sha256
+    ? ['--bootstrap-tag', bootstrapIdentity.tag, '--bootstrap-sha256', bootstrapIdentity.sha256]
+    : [];
+  checked(run, process.execPath, [receiptScript, '--bundle', bundleFile,
+    '--receipt', receipt, '--builder-source-sha', builderSha, ...bootstrapArgs], { stdio: 'inherit' });
+  checked(run, process.execPath, [receiptScript, '--verify', '--bundle', bundleFile,
+    '--receipt', receipt], { stdio: 'inherit' });
   return { bundleFile, receiptFile: receipt, coverageFile: policy };
 }
 
@@ -512,7 +536,7 @@ export async function main(argv = process.argv.slice(2)) {
   const builderSha = String(arg(argv, '--builder-sha', '')).toLowerCase();
   const owner = arg(argv, '--owner', 'ruvnet');
 
-  assertBootstrapIdentity({ archiveFile, tag: seedTag, sha256: seedSha256, allowPinnedTag: process.argv.includes('--allow-pinned-seed-tag') });
+  const bootstrap = assertBootstrapIdentity({ archiveFile, tag: seedTag, sha256: seedSha256, allowPinnedTag: process.argv.includes('--allow-pinned-seed-tag') });
   if (fs.existsSync(assetsDir) && fs.readdirSync(assetsDir).length) fail(`bootstrap assets directory is not empty (${assetsDir})`);
   fs.mkdirSync(path.dirname(assetsDir), { recursive: true });
   const extractParent = fs.mkdtempSync(path.join(path.dirname(assetsDir), '.corpus-seed-extract-'));
@@ -523,8 +547,10 @@ export async function main(argv = process.argv.slice(2)) {
   fs.copyFileSync(privateFence, path.join(assetsDir, 'PRIVATE-STORES.json'), fs.constants.COPYFILE_EXCL);
   fs.rmSync(extractParent, { recursive: true, force: true });
   syncCorpusInputs({ root, assetsDir });
+  const bootstrapIdentity = { tag: bootstrap.tag, sha256: bootstrap.sha256, privateFenceEvidence: seedPrivateFenceEvidence(assetsDir) };
   const { reconciliation, candidate } = await reconcileAndPrepareCorpusCandidate({
     plan: [], assetsDir, workspaceDir, root, owner, builderSha, candidateDir, receiptFile, coverageFile,
+    bootstrapIdentity,
     execute: () => reconcileCorpusUntilStable({ owner, assetsDir, workspaceDir, root }),
   });
   const plan = reconciliation.rounds.flatMap((round) => round.plan);
