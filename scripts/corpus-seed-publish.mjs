@@ -37,19 +37,17 @@ function defaultRun(command, args, options) {
 export async function publishCorpusSeed({
   receiptFile,
   bundleFile,
-  assetsDir,
-  policyFile,
   repo,
   run = defaultRun,
 }) {
   const receiptPath = path.resolve(receiptFile || '');
   const bundlePath = path.resolve(bundleFile || '');
-  if (!assetsDir || !policyFile) fail('publishing requires --assets and --policy for full receipt verification');
+  // verifyCorpusReceipt (schema 2) is self-contained: it re-extracts and re-derives the receipt
+  // from the sealed bundle's own bytes, so publishing no longer needs a separate assets/policy
+  // directory to fully verify the candidate.
   const receipt = await verifyCorpusReceipt({
     receiptFile: receiptPath,
     bundleFile: bundlePath,
-    assetsDir,
-    policyFile,
   });
   if (!fs.existsSync(bundlePath)) fail(`bundle missing (${bundlePath})`);
   const archiveSha256 = sha256File(bundlePath);
@@ -98,8 +96,6 @@ async function main() {
   const result = await publishCorpusSeed({
     receiptFile: arg('--receipt', 'dist/corpus-receipt.json'),
     bundleFile: arg('--bundle', 'dist/ruvnet-brain.zip'),
-    assetsDir: arg('--assets'),
-    policyFile: arg('--policy'),
     repo: arg('--repo'),
   });
   console.log(JSON.stringify({ ok: true, ...result }, null, 2));

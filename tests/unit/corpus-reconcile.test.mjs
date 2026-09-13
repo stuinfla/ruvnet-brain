@@ -9,6 +9,7 @@ import {
   normalizeExtractedCorpus,
   planReconciliation,
   prepareCorpusCandidate,
+  seedPrivateFenceEvidence,
 } from '../../scripts/corpus-reconcile.mjs';
 
 const temps = [];
@@ -67,12 +68,24 @@ describe('exact corpus bootstrap identity', () => {
     expect(() => normalizeExtractedCorpus({ extractedDir: ambiguous, assetsDir: path.join(root, 'bad-assets') }))
       .toThrow(/exactly one RVF-GENERATIONS/i);
 
+    // A published seed's own PRIVATE-STORES.json is accepted as AUTHENTICATED HISTORICAL EVIDENCE
+    // (task 4 / ADR bootstrap-fence correction) — never as current policy. It is kept aside under a
+    // distinct name so it can never shadow or be overwritten by the exact builder checkout's own
+    // canonical fence (copied in by main(), after normalizeExtractedCorpus returns).
     const fenced = path.join(root, 'fenced');
     fs.mkdirSync(fenced, { recursive: true });
     fs.writeFileSync(path.join(fenced, 'RVF-GENERATIONS.json'), '{"stores":{}}');
-    fs.writeFileSync(path.join(fenced, 'PRIVATE-STORES.json'), '{"privateStores":[]}');
-    expect(() => normalizeExtractedCorpus({ extractedDir: fenced, assetsDir: path.join(root, 'fenced-assets') }))
-      .toThrow(/must not supply a private-store fence/i);
+    fs.writeFileSync(path.join(fenced, 'alpha.big.rvf'), 'rvf');
+    fs.writeFileSync(path.join(fenced, 'PRIVATE-STORES.json'), '{"privateStores":["secret"]}');
+    const fencedAssets = path.join(root, 'fenced-assets');
+    expect(normalizeExtractedCorpus({ extractedDir: fenced, assetsDir: fencedAssets })).toBe(fencedAssets);
+    expect(fs.existsSync(path.join(fencedAssets, 'PRIVATE-STORES.json'))).toBe(false);
+    expect(fs.existsSync(path.join(fencedAssets, 'SEED-PRIVATE-STORES.json'))).toBe(true);
+    expect(seedPrivateFenceEvidence(fencedAssets)).toMatchObject({
+      file: 'SEED-PRIVATE-STORES.json', sha256: expect.stringMatching(/^[a-f0-9]{64}$/), bytes: expect.any(Number),
+    });
+    // No historical fence at all: evidence is simply absent, never fabricated.
+    expect(seedPrivateFenceEvidence(assets)).toBeNull();
   });
 });
 

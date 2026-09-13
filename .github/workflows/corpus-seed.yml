@@ -157,9 +157,7 @@ jobs:
           archive_sha256="$(sha256sum "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip" | cut -d' ' -f1)"
           receipt_sha256="$(sha256sum release-evidence/corpus-receipt.json | cut -d' ' -f1)"
           node scripts/corpus-candidate.mjs --verify \
-            --assets "$RUNNER_TEMP/corpus-assets" \
             --bundle "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip" \
-            --policy data/source-coverage.json \
             --receipt release-evidence/corpus-receipt.json
           artifact_name="corpus-seed-prepared-$EXPECTED_SHA"
           {
