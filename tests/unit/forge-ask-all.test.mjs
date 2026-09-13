@@ -142,6 +142,55 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(out.results.every((r) => !r.nameBoosted)).toBe(true);
   });
 
+  it('does NOT boost a bare store name merely because the query names its hyphen-prefixed compound sibling (#283)', async () => {
+    // THE BUG THIS CATCHES. isNamed used a bare `\bname\b` boundary; a hyphen is a non-word
+    // character, so `\bruvector\b` also matched inside "ruvector-core" -- the SHORTER sibling of a
+    // hyphen-prefixed compound store falsely read as named and got the +2.0 boost meant only for
+    // the store the question actually names. Found by Dual (Fable 5.1 + GPT-6-Astra) review
+    // 2026-09-12; reproduced live: ruvector scored an additive boost (0.5 -> 2.5) on "What does
+    // ruvector-core implement?" even though the query names the compound store, not the bare one.
+    const d = mkdirWith(['ruvector.rvf', 'ruvector-core.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+    // repos: explicit, so routing (inventoryReposFromQuery already resolves this pair correctly)
+    // does not itself narrow the pool away from the bare store before NAME_BOOST ever runs --
+    // this isolates isNamed rather than accidentally testing routing instead.
+    const out = await searchAll({
+      dir: d,
+      query: 'What does ruvector-core implement?',
+      repos: ['ruvector', 'ruvector-core'],
+    });
+    const bare = out.results.find((r) => r.repo === 'ruvector');
+    const compound = out.results.find((r) => r.repo === 'ruvector-core');
+    expect(compound.nameBoosted).toBe(true);
+    expect(bare?.nameBoosted).not.toBe(true);
+  });
+
+  it('does not rescue a bare store\'s manifest merely because the query names its hyphen-prefixed compound sibling (manifestInventoryCandidates, #283)', async () => {
+    // Same hyphen-boundary bug, second call site (forge-ask-all.mjs:146's namesRepo inside
+    // manifestInventoryCandidates). Both stores carry equally inventory-signal-rich passages, so
+    // the ONLY thing that can differ is whether the bare store's own name is (wrongly) read as
+    // present in the query naming its compound sibling.
+    const d = mkdirWith(['ruvector.rvf', 'ruvector-core.rvf']);
+    const inventoryText = 'This npm package wraps several Rust crates inside one cargo workspace with member directories.';
+    fs.writeFileSync(path.join(d, 'ruvector.passages.jsonl'),
+      JSON.stringify({ path: 'ruvector/manifest.md', text: inventoryText }));
+    fs.writeFileSync(path.join(d, 'ruvector-core.passages.jsonl'),
+      JSON.stringify({ path: 'ruvector-core/manifest.md', text: inventoryText }));
+    vi.mocked(searchKb).mockResolvedValue([]);
+    vi.mocked(rerankPairs).mockImplementation(async (_q, cands) => cands.map((c) => ({ ...c, ceScore: 5 })));
+
+    const out = await searchAll({
+      dir: d,
+      query: 'What npm crates does ruvector-core ship in its cargo workspace?',
+      repos: ['ruvector', 'ruvector-core'],
+    });
+
+    expect(out.perRepo['ruvector-core']).toBeGreaterThan(0);
+    expect(out.perRepo.ruvector).toBe(0);
+    expect(out.results.some((r) => r.repo === 'ruvector-core')).toBe(true);
+    expect(out.results.some((r) => r.repo === 'ruvector')).toBe(false);
+  });
+
   it('does NOT route a named ruv-<product> query to ruv-gists via the "rUv" provenance regex', async () => {
     // THE BUG THIS CATCHES. The gist-provenance regex used a bare word-boundary `\brUv\b`, but a
     // hyphen is a non-word character, so it matched "ruv" inside EVERY "ruv-<product>" name

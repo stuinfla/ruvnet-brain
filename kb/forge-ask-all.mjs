@@ -143,7 +143,7 @@ function manifestInventoryCandidates(dir, name, query, topN = 8) {
   const asksInventory = /\bnpm\b/.test(q)
     && /\b(?:crate|crates|cargo)\b/.test(q)
     && /\bworkspace\b/.test(q);
-  const namesRepo = new RegExp(`\\b${String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(query);
+  const namesRepo = nameAppearsInQuery(name, query);
   if (!asksInventory || !namesRepo) return [];
   const e = bm25Corpus(dir, name);
   if (!e) return [];
@@ -2378,6 +2378,17 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Hyphen-safe word boundary (issue #283). A bare `\b` boundary treats a hyphen as a word break,
+// so `\bruvector\b` also matches inside "ruvector-core" -- the SHORTER sibling of every
+// hyphen-prefixed compound store (ruvnet/ruvnet-brain, sparc/sparc-ide, ruos/ruos-macair,
+// electo1/electo1-js, ruvector/ruvector-core) falsely reads as "named" whenever the query actually
+// names the longer, compound one. This is the exact technique inventoryReposFromQuery already used
+// correctly (immediately below); isNamed/NAME_BOOST and manifestInventoryCandidates now share it
+// rather than each inventing their own bare-`\b` pattern.
+function nameAppearsInQuery(name, query) {
+  return new RegExp(`(?:^|[^a-z0-9._-])${escapeRegExp(name)}(?=$|[^a-z0-9._-])`, 'i').test(query);
+}
+
 export function deployedFamilyReposFromQuery(query, dir, availableRepos) {
   const available = Array.isArray(availableRepos) ? availableRepos : [];
   if (!available.length) return [];
@@ -2466,7 +2477,7 @@ function inventoryReposFromQuery(query, dir, availableRepos) {
   const exactInventory = [];
   const naturalProjectScope = [];
   for (const repo of available) {
-    if (repo.length > 4 && new RegExp(`(?:^|[^a-z0-9._-])${escapeRegExp(repo)}(?=$|[^a-z0-9._-])`, 'i').test(query)) {
+    if (repo.length > 4 && nameAppearsInQuery(repo, query)) {
       exactInventory.push(repo);
     }
     const names = repositoryNames(repo, dir);
@@ -2677,15 +2688,20 @@ export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true }) 
   // Word-boundary match on the repo name (not substring) so `fact` doesn't fire on "facts", while
   // multi-word names like `agent-harness-generator` still match. Boost clears a sibling that merely
   // *contains a file named after* the repo (e.g. dspy.ts/…/safla.ts) when the question names the repo.
-  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // Length floor 3, not 4: the floor exists to keep trivial tokens from matching, but two REAL
   // stores have 3-char names (rvm, daa) and the old >=4 floor silently exempted them from the
   // affinity boost — "Can RVM partition hardware…" lost to ruvector's vendored crates/rvm/ copy
   // because rvm's own userguide never got the boost its name earned. Word-boundary matching
   // already prevents substring hits, so 3-char store names are safe to honor.
+  //
+  // A bare `\b` boundary is NOT hyphen-safe: a hyphen is a non-word character, so `\bruvector\b`
+  // also matches inside "ruvector-core" -- the SHORTER sibling of every hyphen-prefixed compound
+  // store falsely reads as named whenever the query actually names the longer, compound one.
+  // nameAppearsInQuery is the same hyphen-safe boundary inventoryReposFromQuery already uses
+  // correctly (above) -- reused here rather than inventing a second pattern (issue #283).
   const isNamed = (repo) => {
     const names = repositoryNames(repo);
-    return names.some((n) => n.length >= 3 && new RegExp(`\\b${esc(n)}\\b`, 'i').test(query));
+    return names.some((n) => n.length >= 3 && nameAppearsInQuery(n, query));
   };
   const NAME_BOOST = 2.0;
   for (const r of ranked) {
