@@ -20,6 +20,7 @@
 // intent before landing it, since this is the module a wrong routing choice would be hardest to
 // notice in (a wrong search result reads as "plausible", not as a crash).
 import { describe, it, expect } from 'vitest';
+import { codeDocIntent, isImplIntent } from '../../kb/forge-ask.mjs';
 
 describe.todo('forge-ask.mjs — specificEntity() (requires exporting, see file header)', () => {
   it.todo('named:true, crates:["ruvector-coherence"] for "what does ruvector-coherence do" when ' +
@@ -67,4 +68,69 @@ describe.todo('forge-ask.mjs — crateOverviewTarget() (requires exporting)', ()
   it.todo('returns the first entity crate for a metric query ("ruvector-coherence throughput") via CRATE_METRIC_RE');
   it.todo('returns the first entity crate for an overview query ("what does ruvector-coherence do") via CRATE_OVERVIEW_RE');
   it.todo('returns null when entityCrates is empty, regardless of query wording');
+});
+
+// Found live 2026-09-12 against the real release candidate: CODE_INTENT_RE's bare `implementation`
+// alternative (and IMPL_INTENT_RE's independent `\bimplement(ed|ation)?\b`) fired on a document-
+// naming noun phrase ("... implementation report") — not a request to see code — which then gated
+// symbolRoute()'s +1.5 boost and codeDocIntent's own +0.60 source-file promotion for EVERY source
+// file in the store, mass-promoting hundreds of unrelated .rs/.js files past the one document that
+// actually answered the question. Fixed with a shared negative-lookahead exclusion
+// (IMPLEMENTATION_DOC_NOUN) so "implementation" followed by report/summary/overview/write-up does
+// not trigger either classifier, while "implement"/"implemented" and every other trigger in both
+// regexes are untouched.
+describe('forge-ask.mjs — codeDocIntent() / isImplIntent() — document-reference exclusion (#286)', () => {
+  it('RED->GREEN: the sealed synaptic-mesh canary query no longer classifies as code/impl intent', () => {
+    const q = 'In the synaptic-mesh repository, Which roles does the Synaptic Neural Mesh '
+      + 'implementation report assign to QuDAG Core, ruv-FANN WASM and Neural Mesh?';
+    expect(codeDocIntent(q)).toBe(null);
+    expect(isImplIntent(q)).toBe(false);
+  });
+
+  it('excludes "implementation" immediately followed by a document noun, in any of the covered forms', () => {
+    for (const q of [
+      'implementation report', 'implementation reports', 'Implementation Summary',
+      'implementation overview', 'implementation write-up', 'implementation writeup',
+    ]) {
+      expect(codeDocIntent(q)).toBe(null);
+      expect(isImplIntent(q)).toBe(false);
+    }
+  });
+
+  it('preserves genuine implementation requests that name no document noun', () => {
+    expect(codeDocIntent('Explain the mesh implementation')).toBe('code');
+    expect(isImplIntent('Explain the mesh implementation')).toBe(true);
+    expect(isImplIntent('implement mesh')).toBe(true);
+    expect(codeDocIntent('How is mesh implemented?')).toBe('code');
+    expect(isImplIntent('How is mesh implemented?')).toBe(true);
+    expect(codeDocIntent('What is ADR-007 implementation status?')).toBe('code');
+  });
+
+  it('preserves a mixed request whose OTHER code signal keeps firing independent of the document-noun exclusion', () => {
+    // "function" (CODE_INTENT_RE) fires on its own; the "implementation report" phrase is still excluded.
+    expect(codeDocIntent('Which function generates the implementation report?')).toBe('code');
+    expect(isImplIntent('Which function generates the implementation report?')).toBe(false);
+  });
+
+  it('control: a real question-mark usage of the bare word stays code-intent (does not over-exclude)', () => {
+    const q = 'In the metaharness repository, What does MetaHarness ADR-145 propose changing about '
+      + 'the fixed SWE-bench model and Darwin genome, and what real baseline must precede implementation?';
+    expect(codeDocIntent(q)).toBe('code');
+    expect(isImplIntent(q)).toBe(true);
+  });
+
+  it('control: "implementation status" (not a covered document noun) stays code-intent', () => {
+    const q = "What does ADR-007 decide about rvDNA v2 as a ruLake substrate, and what is its implementation status?";
+    expect(codeDocIntent(q)).toBe('code');
+    expect(isImplIntent(q)).toBe(true);
+  });
+
+  it('a genuinely correct collateral flip: a documentation-location query no longer gets code-intent', () => {
+    // Verified against the real candidate bundle (kb/forge-ask-all.mjs searchAll): before this fix,
+    // docs/README.md did not even reach the top 10 for this query and raw .ts/.js source files did;
+    // after the fix, docs/README.md ranks #1 and every top-10 result is documentation-shaped.
+    const q = "Where is AgentDB's documentation organized — guides, implementation reports, and ADRs?";
+    expect(codeDocIntent(q)).toBe(null);
+    expect(isImplIntent(q)).toBe(false);
+  });
 });
