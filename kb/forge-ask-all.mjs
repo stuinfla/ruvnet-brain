@@ -2666,7 +2666,7 @@ export function cascadeRerankPool(candidates, { limit, s1 }) {
 // pool cap's effect on ANSWERS affordable: score the full 605-pair pool once, then replay every
 // candidate policy against those exact scores — exactly, not approximately. Works on shallow
 // copies because the boosts mutate ceScore, and a replay must not poison the next replay's input.
-export function selectResults({ query, ranked, k = 6 }) {
+export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true }) {
   ranked = ranked.map((r) => ({ ...r }));
   const queriedNames = scopedNamesIn(query);
   // Repo-name affinity: when the question explicitly NAMES a repo ("Does QuDAG…", "what can SAFLA do",
@@ -2874,7 +2874,24 @@ export function selectResults({ query, ranked, k = 6 }) {
   // Never hand back what the reranker already rejected. A negative cross-encoder score means "not
   // relevant to this query"; passing it along as a result is how noise becomes a conclusion. The
   // single best hit is always kept, so a caller can still see the strongest thing that exists.
-  const kept = results.filter((r, i) => i === 0 || (r.ceScore ?? -Infinity) >= 0);
+  //
+  // A candidate the repo-name-affinity boost above already fired on (r.nameBoosted) is ALSO exempt
+  // — a deliberate recall-over-precision call, not a lane-based one. Found live 2026-09-12 against
+  // the real release candidate: every "In the <repo> repository, ..." retrieval-canary query names
+  // its repo, and this filter was discarding the oracle's own verified-correct passage in exactly
+  // the repos where it scored negative on the cross-encoder's ABSOLUTE, post-boost scale — even
+  // though the query already told us which repo the answer must come from. A first attempt exempted
+  // whole search LANES (searchAll's fullCorpusLane) instead of individual candidates; Dual review
+  // caught that the live search_ruvnet path calls searchAll with allowFullCorpus:false, where that
+  // lane is unreachable — the lane-based version would have silently disabled this entire filter on
+  // every production query, not just named-repo ones. Gating on r.nameBoosted instead means: pruning
+  // stays ON in every lane, for every candidate, and the exemption applies only to the specific
+  // passages whose own repo the query's text literally names (or aliases) — an unrelated widened
+  // sibling repo's near-duplicate content (e.g. ruvector vendoring a copy of skygraph's own example)
+  // is untouched and still gets pruned like any other irrelevant noise.
+  const kept = pruneIrrelevant
+    ? results.filter((r, i) => i === 0 || r.nameBoosted || (r.ceScore ?? -Infinity) >= 0)
+    : results;
   const droppedIrrelevant = results.length - kept.length;
   results = kept;
 
