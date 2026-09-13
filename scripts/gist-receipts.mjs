@@ -306,6 +306,27 @@ function reusableCachedGist(cached, stub) {
     || cached.complete !== true || !Array.isArray(cached.files) || !cached.files.length) {
     return 'miss';
   }
+  // A matching gistId/updatedAt/complete and verified body hashes for the files the cache HAPPENS TO
+  // CARRY prove nothing about whether the gist's file set itself has changed since capture -- the
+  // cache could be missing a file that was added, or still carrying one that was removed, with
+  // updated_at untouched in between (Dual's 2026-09-13 pass proved this exact gap: a stale cache with
+  // a matching updatedAt and valid, correctly-hashed bodies for its OWN recorded files still returned
+  // 'reuse' even though the stub's current file listing had already diverged). `stub.files` (the
+  // current list-observation) is compared against the cache's own recorded filenames -- the one piece
+  // of per-file identity the cache actually stores for every file, included or excluded alike (the
+  // richer per-file identity `listedFileIdentity` compares -- rawUrl/size/type/language -- is captured
+  // fresh from `full` at fetch time via the GIST_OBSERVATION_MOVED check below and is NEVER persisted
+  // into the cache record itself, so it is not available here without a live fetch; a name-identical
+  // but otherwise-altered file is still caught downstream by that same check once this cache entry is
+  // correctly treated as a miss and refetched). A mismatch here is an ordinary MISS -- the gist
+  // genuinely changed -- never 'tampered', which is reserved for a body-hash failure on content the
+  // cache claims is still current.
+  const cachedFilenames = cached.files.map((file) => file.filename).sort(compareCanonicalText);
+  const stubFilenames = Object.keys(stub?.files || {}).sort(compareCanonicalText);
+  if (cachedFilenames.length !== stubFilenames.length
+    || cachedFilenames.some((name, index) => name !== stubFilenames[index])) {
+    return 'miss';
+  }
   // A body-free cache entry (e.g. a caller naively handing in the PUBLISHED, body-free receipt) can
   // never supply reuse -- "a receipt or timestamp alone can never supply missing body bytes" is the
   // whole reason capture-cache reuse now requires real bytes. That is an ordinary miss, not tampering:
