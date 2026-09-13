@@ -166,14 +166,27 @@ describe('artifact-bound source coverage', () => {
     expect(classifyRepository(repo, input).status).toBe(status);
   });
 
-  it('requires a complete version-bound per-gist receipt before calling a gist current', () => {
+  it('requires a complete version-bound per-gist receipt before calling a gist current, never a timestamp cache', () => {
     const gist = { id: 'g', updated_at: '2026-08-21T00:00:00Z', html_url: 'https://gist.github.com/g',
       files: { a: { filename: 'a.md', raw_url: `https://gist.githubusercontent.com/ruvnet/g/raw/${'d'.repeat(40)}/a.md` } } };
     expect(gistVersion(gist)).toBe('d'.repeat(40));
-    const base = { rvfPresent: true, bytesVerified: true, passagesBound: true, receipt: {}, cache: { g: gist.updated_at } };
+    const base = { rvfPresent: true, bytesVerified: true, passagesBound: true, receipt: {} };
     expect(classifyGist(gist, base).status).toBe('UNVERIFIED');
-    expect(classifyGist(gist, { ...base, sources: { gists: { g: {
+    // 2026-09-13 (Step 4, rule 2): a bare flat-file timestamp cache entry (`.ruv-gists.cache.json`,
+    // modeled here as `cache`) is NOT sufficient evidence of currency on its own -- only the real
+    // per-gist source receipt's own `updatedAt` field may establish CURRENT. Before this fix, the
+    // cache entry alone made this exact row CURRENT even though the receipt row carries no
+    // `updatedAt` at all.
+    expect(classifyGist(gist, { ...base, cache: { g: gist.updated_at }, sources: { gists: { g: {
       versionSha: 'd'.repeat(40), ingestedAt: gist.updated_at, contentDigest: 'x', files: [{}], complete: true,
+    } } } }).status).toBe('STALE');
+    // A source row present but whose OWN updatedAt does not match the live list is still stale.
+    expect(classifyGist(gist, { ...base, sources: { gists: { g: {
+      versionSha: 'd'.repeat(40), updatedAt: '2020-01-01T00:00:00Z', ingestedAt: gist.updated_at, contentDigest: 'x', files: [{}], complete: true,
+    } } } }).status).toBe('STALE');
+    // Only the receipt's own matching updatedAt establishes CURRENT.
+    expect(classifyGist(gist, { ...base, sources: { gists: { g: {
+      versionSha: 'd'.repeat(40), updatedAt: gist.updated_at, ingestedAt: gist.updated_at, contentDigest: 'x', files: [{}], complete: true,
     } } } }).status).toBe('CURRENT');
   });
 

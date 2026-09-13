@@ -281,12 +281,19 @@ export function classifyRepository(repo, evidence, exclusion = null) {
 
 export function classifyGist(gist, evidence) {
   const source = evidence.sources?.gists?.[gist.id] || null;
-  const ingestedAt = source?.ingestedAt || evidence.cache?.[gist.id] || null;
+  const ingestedAt = source?.ingestedAt || null;
   // The list API does not expose gist history.version. A just-fetched individual source receipt is
   // still the authoritative version when the live list's updated_at is unchanged; otherwise the
   // list proves drift and the row is stale until the individual gist is refreshed.
+  //
+  // 2026-09-13 (Step 4, rule 2): a flat timestamp cache (`.ruv-gists.cache.json` -- "we last saw
+  // this updated_at at some point") is NEVER consulted here anymore. It used to OR into
+  // `currentByDate`, so a gist could be classified CURRENT purely because a bare cache file claimed
+  // a date matched -- with no binding whatsoever to the gist's actual captured/rendered content.
+  // Currency is now provable ONLY from the real, already-validated per-gist source receipt (Step 2's
+  // schema-3 `ruv-gists.sources.json`): its own `updatedAt` field must equal the live list's.
   const version = source?.updatedAt === gist.updated_at ? source.versionSha : gistVersion(gist);
-  const currentByDate = source?.updatedAt === gist.updated_at || evidence.cache?.[gist.id] === gist.updated_at;
+  const currentByDate = source?.updatedAt === gist.updated_at;
   let status = 'CURRENT';
   const reasons = [];
   if (!evidence.rvfPresent) { status = 'MISSING'; reasons.push('ruv-gists RVF is absent'); }
@@ -412,8 +419,6 @@ export function buildCoverage({ owner = 'ruvnet', env = process.env, home = os.h
   const ledger = readRvfGenerations(kbDir);
   const cards = fs.readFileSync(path.join(kbDir, 'capability-cards.md'), 'utf8');
   const cardStores = new Set([...cards.matchAll(/^##\s+(.+?)\s*$/gm)].map((match) => storeName(match[1])));
-  const gistCachePath = path.join(kbDir, '.ruv-gists.cache.json');
-  const gistCache = fs.existsSync(gistCachePath) ? JSON.parse(fs.readFileSync(gistCachePath, 'utf8')) : {};
   const gistSourcesPath = path.join(kbDir, 'ruv-gists.sources.json');
   const gistSources = fs.existsSync(gistSourcesPath) ? JSON.parse(fs.readFileSync(gistSourcesPath, 'utf8')) : null;
   const exclusionsPath = path.join(policyDir, 'no-corpus-repos.json');
@@ -422,7 +427,7 @@ export function buildCoverage({ owner = 'ruvnet', env = process.env, home = os.h
     const store = storeName(repo.storeName || repo.name);
     return classifyRepository(repo, artifactEvidence(kbDir, ledger, cardStores, store), exclusions[store] || null);
   });
-  const gistEvidence = { ...artifactEvidence(kbDir, ledger, cardStores, 'ruv-gists'), cache: gistCache, sources: gistSources };
+  const gistEvidence = { ...artifactEvidence(kbDir, ledger, cardStores, 'ruv-gists'), sources: gistSources };
   try {
     validateGistAggregateReceipt({ receipt: gistSources,
       passagesFile: path.join(kbDir, 'ruv-gists.passages.jsonl'),
