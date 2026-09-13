@@ -119,6 +119,8 @@ jobs:
 
       - name: Reconcile exact upstream SHAs and seal a candidate
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/release-evidence"
