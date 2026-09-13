@@ -190,10 +190,46 @@ export function gistVersion(gist) {
   return versions.length && new Set(versions).size === 1 ? versions[0] : null;
 }
 
-export function observeGists(owner, { gh = runGh } = {}) {
-  const raw = gh(['api', `users/${owner}/gists?per_page=100`, '--paginate', '--slurp']);
-  const parsed = JSON.parse(raw);
-  const pages = Array.isArray(parsed[0]) ? parsed : [parsed];
+// Test seam: same injection pattern as `gh = runGh` above, so the fallback's failure path is
+// exercisable with a fake HTTP layer instead of the live API or even real loopback networking.
+// Reads the API base fresh per call (not frozen at module load) for the same reason.
+function runCurl(url) {
+  const result = spawnSync('curl', ['-sS', '--max-time', '30', '-H', 'accept: application/vnd.github+json',
+    '-H', 'user-agent: ruvnet-brain-source-coverage', url],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 35_000 });
+  if (result.status !== 0) throw new Error(`unauthenticated gists list failed: ${(result.stderr || '').trim()}`);
+  return result.stdout;
+}
+
+// Actions' GITHUB_TOKEN is a GitHub App token, and the gists list API is closed to those
+// ("Resource not accessible by integration", HTTP 403 — confirmed live 2026-09-13, corpus-seed.yml's
+// first-ever run). Public gists need no auth, so fall back to curl against the plain API on that
+// specific failure, mirroring ingest-gists.mjs's already-working listGists/listGistsPublic split
+// (kept synchronous here, matching this module's existing gh-injection style, rather than
+// threading async through observeSourceUniverse/buildCoverage's whole synchronous call chain).
+function listGistsUnauthenticated(owner, curl) {
+  const apiBase = process.env.RUVNET_GISTS_API || 'https://api.github.com';
+  const pages = [];
+  for (let page = 1; page <= 10; page++) {
+    const parsed = JSON.parse(curl(`${apiBase}/users/${owner}/gists?per_page=100&page=${page}`));
+    if (parsed?.message) throw new Error(`unauthenticated gists list failed: ${parsed.message}`);
+    if (!Array.isArray(parsed)) throw new Error('unauthenticated gists list returned an unexpected shape');
+    pages.push(parsed);
+    if (parsed.length < 100) break;
+  }
+  return pages;
+}
+
+export function observeGists(owner, { gh = runGh, curl = runCurl } = {}) {
+  let pages;
+  try {
+    const raw = gh(['api', `users/${owner}/gists?per_page=100`, '--paginate', '--slurp']);
+    const parsed = JSON.parse(raw);
+    pages = Array.isArray(parsed[0]) ? parsed : [parsed];
+  } catch (error) {
+    if (!/resource not accessible by integration|HTTP 403/i.test(String(error.message))) throw error;
+    pages = listGistsUnauthenticated(owner, curl);
+  }
   const rows = pages.flat().filter((gist) => gist?.id);
   const expected = Number(JSON.parse(gh(['api', `users/${owner}`])).public_gists);
   if (rows.length !== expected) throw new Error(`gist enumeration incomplete: ${rows.length}/${expected}`);
