@@ -3036,7 +3036,31 @@ export async function searchAll({
     // gist content under this exact reason string. rUv (the person) is never itself hyphenated into
     // a compound name, so excluding that one case removes the false positive without narrowing the
     // genuine "what did rUv publish" gist-provenance intent this line exists to catch.
-    const gistIntent = /\b(?:gist|rUv(?:'s)?(?!-)|published|write[- ]up|announcement|fable\.md|first\s+to\s+market|agentbbs|jacobian[- ]lens|workspace[- ]lens|interpretability\s+package)\b/i.test(String(query || ''));
+    //
+    // "published" alone is a common English word (issue #285, same root shape as the rUv-hyphen
+    // fix above -- a common word/fragment overriding a legitimate product question). A bare
+    // `\bpublished\b` fires on any question that happens to ask about a documented number rather
+    // than an actual gist/announcement: "What is the published SWE-Bench score of ruv-swarm?" has
+    // empty namedRepos (ruv-swarm's content lives inside a different store, and the query never
+    // literally names it), so this alternative alone silently redirected the question away from
+    // the real answer. Fix: exclude the "published <metric> ... of/for/by <something>" measurement-
+    // attribution shape, which is never itself a request for a gist -- narrower than dropping
+    // "published" outright, so "What did rUv publish about X" and "What was published this week?"
+    // still route correctly. Reviewed every other alternative in this regex for the same shape:
+    // gist/write-up/announcement/fable.md/first-to-market/agentbbs/jacobian-lens/workspace-lens/
+    // interpretability-package are all specific tokens or multi-word phrases, not bare common
+    // English words, so "published" was the only one exhibiting this failure mode.
+    const publishedAsMeasurementAttribution = new RegExp(
+      '\\bpublished\\b'
+        + '(?:\\s+\\S+){0,4}?\\s+(?:score|scores|result|results|benchmark|benchmarks|number|numbers'
+        + '|metric|metrics|figure|figures|version|versions|release|releases|rating|ratings|ranking|rankings)\\b'
+        + '(?:\\s+\\S+){0,3}?\\s+(?:of|for|by)\\b',
+      'i',
+    ).test(String(query || ''));
+    const gistIntent = (
+      /\b(?:gist|rUv(?:'s)?(?!-)|write[- ]up|announcement|fable\.md|first\s+to\s+market|agentbbs|jacobian[- ]lens|workspace[- ]lens|interpretability\s+package)\b/i.test(String(query || ''))
+      || (/\bpublished\b/i.test(String(query || '')) && !publishedAsMeasurementAttribution)
+    );
     if (gistIntent && discovered.includes('ruv-gists') && !planned.namedRepos?.length) {
       planned = {
         repos: ['ruv-gists'],

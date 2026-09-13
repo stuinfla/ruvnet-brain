@@ -219,6 +219,36 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(out.routing?.reason || '').toMatch(/provenance intent selects the public rUv gist store/);
   });
 
+  it('does NOT route a "published <metric> of <product>" question to ruv-gists via the bare "published" trigger (#285)', async () => {
+    // THE BUG THIS CATCHES. "published" alone satisfied gistIntent, so a query asking about a
+    // product's own documented benchmark score -- with namedRepos empty, since the store that
+    // actually holds the answer is never spelled out in the query text -- got silently redirected
+    // to the public gist store instead of the real answer. Same root shape as the rUv-hyphen fix
+    // above (and the same shape the issue names as "just shipped"): a common word/fragment
+    // overriding a legitimate product question.
+    const d = mkdirWith(['ruv-fann.rvf', 'ruv-gists.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+    const out = await searchAll({ dir: d, query: 'What is the published SWE-Bench score of ruv-swarm?' });
+    expect(out.routing?.reason || '').not.toMatch(/provenance intent selects the public rUv gist store/);
+  });
+
+  it('control: "published" alone (no measurement-attribution shape) still routes to the gist store', async () => {
+    const d = mkdirWith(['ruv-fann.rvf', 'ruv-gists.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+    const out = await searchAll({ dir: d, query: 'What was published this week?' });
+    expect(out.routing?.reason || '').toMatch(/provenance intent selects the public rUv gist store/);
+  });
+
+  it.each([
+    'What is the published benchmark result for ruv-swarm?',
+    'What was the officially published version number of ruv-swarm?',
+  ])('does NOT route other "published <metric> ... of/for <product>" phrasings to ruv-gists: %s', async (query) => {
+    const d = mkdirWith(['ruv-fann.rvf', 'ruv-gists.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+    const out = await searchAll({ dir: d, query });
+    expect(out.routing?.reason || '').not.toMatch(/provenance intent selects the public rUv gist store/);
+  });
+
   it('does NOT boost when the query names no repo (sibling ranking preserved)', async () => {
     const d = mkdirWith(['safla.rvf', 'daa.rvf']);
     vi.mocked(searchKb).mockResolvedValue([hit()]);
