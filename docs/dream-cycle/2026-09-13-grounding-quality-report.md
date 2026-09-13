@@ -169,7 +169,21 @@ committed at `docs/dream-cycle/2026-09-13-grounding-quality-report.md`.
 
 ## Witness
 
-(computed and inserted below before publication — see STEP 16)
+```
+SESSION_COMMIT = 1efcf53645d218b477394446b657e71b40570b1b
+REPORT_HASH    = a9b7baf32724f88ce072e8bb22586b504c21c43d3f50de785057b2245e349621
+WITNESS        = 26235424532cd48f55c70b107b66fe65c3cba5c3349cfd5b5e3048f78310a7df
+```
+
+5-step verifier anyone can reproduce:
+1. `git log --follow -p -- docs/dream-cycle/2026-09-13-grounding-quality-report.md`, take
+   this file's FIRST commit (the placeholder-Witness version); `sha256sum` that version,
+   compare to `REPORT_HASH`.
+2. `git log -1 --format='%H' <first-commit-parent>` — confirms `SESSION_COMMIT` was
+   `main`'s HEAD (`1efcf53`) when this rotation started.
+3. `printf '%s%s' <REPORT_HASH> <SESSION_COMMIT> | sha256sum` — compare to `WITNESS`.
+4. `curl -s https://raw.githubusercontent.com/ruvnet/PhotonLayer/fe86c9fad9a1572ce46e337f118656961bdf4ebb/crates/photonlayer-core/README.md | wc -c` — reproduces the 4077-byte measurement underlying the rejected truncation hypothesis.
+5. `node -e "const j=require('./data/source-coverage.json'); console.log((j.rows||[]).filter(r=>/[A-Z]/.test(r?.artifact?.store||'')).length)"` — reproduces the "0 of 229 stores are mixed-case" measurement.
 
 ## Recommendation
 
