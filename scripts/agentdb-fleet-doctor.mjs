@@ -63,9 +63,25 @@ async function doctor(proj) {
     let gitlog = '';
     try { gitlog = execFileSync('git', ['-C', proj, 'log', '--oneline', '-8'], { encoding: 'utf8', timeout: 10000 }).trim(); } catch { /* not a repo */ }
     const val = `SEEDED CHECKPOINT ${new Date().toISOString()} (agentdb-fleet-doctor — no canonical checkpoint existed; the session-start hook had nothing to surface). Recent git history:\n${gitlog || '(not a git repo)'}\nMaintain from now on: append a NEW project-state-current-<epochms> row after meaningful work; never overwrite.`;
+    const seedKey = `project-state-current-${Date.now()}`;
     fs.copyFileSync(db, `${db}.bak-fleet-doctor-${Date.now()}`);
-    const r = ruflo(proj, ['memory', 'store', '-k', `project-state-current-${Date.now()}`, '--value', val, '-n', name]);
-    row.seeded = r.status === 0 && /stored successfully/i.test(r.out);
+    const r = ruflo(proj, ['memory', 'store', '-k', seedKey, '--value', val, '-n', name]);
+    // ADR-063 / 2026-08-13 incident: `ruflo memory store`'s own "[OK] ... stored successfully"
+    // wording is not evidence of a write — that exact line was on stdout throughout the incident
+    // that left three days of memory unrecoverable. The only accepted proof is retrieving the SAME
+    // key back through the managed interface and reading the VALUE (degradation-watch.mjs's
+    // proveMemoryDurable() / record-lesson.mjs precedent). The FIX-2 canary below round-trips a
+    // DIFFERENT key later in this function — it proves the namespace is writable in general, not
+    // that THIS seeded checkpoint's write specifically persisted.
+    row.seeded = false;
+    if (r.status === 0) {
+      const back = ruflo(proj, ['memory', 'retrieve', '-k', seedKey, '-n', name, '--value-only']);
+      // A 60-char PREFIX match, not the full multi-line value: `val` embeds `gitlog`, and this file's
+      // own FIX-2 canary check (below) already establishes that this CLI's output can truncate/reflow
+      // multi-line content in ways a full-string match would false-negative on. The prefix carries the
+      // per-write ISO timestamp, so it still identifies THIS write, not a stale or unrelated one.
+      row.seeded = back.status === 0 && back.out.includes(val.slice(0, 60));
+    }
     row.checkpoint = row.seeded;
   }
 
