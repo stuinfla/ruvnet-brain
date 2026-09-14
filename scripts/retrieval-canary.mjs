@@ -169,6 +169,72 @@ export function validateRetrievalQueryEvidence(evidence) {
   return evidence;
 }
 
+// An exemption is a RECORDED, EVIDENCED admission that one eligible store's upstream bytes cannot
+// support a source-grounded question — never a bypass. It satisfies the inventory obligation only;
+// buildRetrievalCanaryPlan still demands a row for every eligible store, so an exempted store must
+// also leave the eligible corpus before a canary plan can be sealed. Recording one is a coverage
+// policy decision that someone has to make in the open, which is the entire point.
+export function validateOracleExemptions(exemptions) {
+  if (exemptions === null || exemptions === undefined) return [];
+  if (canonicalJson(Object.keys(exemptions || {}).sort()) !== canonicalJson(['exemptions', 'kind', 'schemaVersion'])
+    || exemptions.schemaVersion !== 1 || exemptions.kind !== 'ruvnet-brain-retrieval-oracle-exemptions'
+    || !Array.isArray(exemptions.exemptions)) {
+    throw new Error('retrieval oracle exemptions are malformed');
+  }
+  for (const row of exemptions.exemptions) {
+    if (canonicalJson(Object.keys(row || {}).sort()) !== canonicalJson(['evidencePaths', 'reason', 'store', 'upstreamSha'])
+      || typeof row.store !== 'string' || !/^[a-z0-9][a-z0-9._-]*$/.test(row.store)
+      || typeof row.reason !== 'string' || row.reason.trim().length < 24
+      || !HEX40.test(String(row.upstreamSha || ''))
+      || !Array.isArray(row.evidencePaths) || row.evidencePaths.length < 1
+      || row.evidencePaths.some((file) => typeof file !== 'string' || !file || path.isAbsolute(file)
+        || file.split(/[\\/]/).includes('..'))) {
+      throw new Error(`retrieval oracle exemption for ${row?.store || '(missing)'} is malformed`);
+    }
+  }
+  const stores = exemptions.exemptions.map((row) => row.store);
+  if (new Set(stores).size !== stores.length) throw new Error('retrieval oracle exemptions name a store twice');
+  return exemptions.exemptions;
+}
+
+// The cheap, standalone form of the denominator gate buildRetrievalCanaryPlan enforces at release
+// time against a 567MB seed. Missing evidence is a FAILURE here, named store by store, seconds after
+// a new repository lands in coverage — not six minutes into release-qe on a runner.
+export function auditOracleCoverage({ coverage, queryEvidence, exemptions = null } = {}) {
+  const checked = validateCoverageLedger(coverage);
+  if (!checked.valid) throw new Error(`coverage ledger is invalid: ${checked.failures.join('; ')}`);
+  validateRetrievalQueryEvidence(queryEvidence);
+  const eligibleRows = coverage.rows.filter((row) => row.kind === 'repository'
+    && row.disposition === 'eligible' && row.status === 'CURRENT');
+  const eligible = ordered(eligibleRows.map(storeOf));
+  if (!eligible.length || new Set(eligible).size !== eligible.length || eligible.some((store) => !store)) {
+    throw new Error('eligible coverage denominator is invalid');
+  }
+  const oracle = new Set(Object.keys(queryEvidence.queries));
+  const exempted = validateOracleExemptions(exemptions);
+  const exemptStores = new Set(exempted.map((row) => row.store));
+  const uncovered = eligible.filter((store) => !oracle.has(store));
+  const missing = uncovered.filter((store) => !exemptStores.has(store));
+  const exempt = uncovered.filter((store) => exemptStores.has(store));
+  const extra = ordered([...oracle].filter((store) => !eligible.includes(store)));
+  const stale = ordered(exempted.map((row) => row.store).filter((store) => !uncovered.includes(store)));
+  const result = { eligible: eligible.length, covered: eligible.length - uncovered.length,
+    missing, exempt, extra, staleExemptions: stale };
+  if (missing.length) {
+    throw new Error(`independent retrieval oracle has no source-grounded row for ${missing.length} of `
+      + `${eligible.length} eligible stores: ${missing.join(', ')}`);
+  }
+  if (extra.length) {
+    throw new Error(`independent retrieval oracle covers ${extra.length} store(s) outside the eligible `
+      + `denominator: ${extra.join(', ')}`);
+  }
+  if (stale.length) {
+    throw new Error(`retrieval oracle exemption is stale for ${stale.join(', ')}; the store is covered `
+      + 'or no longer eligible, so the recorded admission must be removed');
+  }
+  return result;
+}
+
 export function verifyQueryOracleSource(queryEvidence, candidateSourceSha, {
   cwd = process.cwd(), run = spawnSync, allowSquashedSource = false,
 } = {}) {
@@ -600,13 +666,34 @@ export function buildPlanFromFiles({ coverageFile, baselineFile, candidateFile, 
   return plan;
 }
 
+export function auditOracleCoverageFromFiles({ coverageFile, oracleFile, exemptionsFile = null,
+  candidateSourceSha = null, cwd = process.cwd() }) {
+  const coverage = JSON.parse(fs.readFileSync(regular(coverageFile, 'coverage'), 'utf8'));
+  const queryEvidence = JSON.parse(fs.readFileSync(regular(oracleFile, 'query oracle'), 'utf8'));
+  const exemptions = exemptionsFile
+    ? JSON.parse(fs.readFileSync(regular(exemptionsFile, 'oracle exemptions'), 'utf8')) : null;
+  const inventory = auditOracleCoverage({ coverage, queryEvidence, exemptions });
+  // The second half of step 7's proof: the oracle's own commit must be a strict ancestor of the
+  // candidate that consumes it, and its tracked bytes must be identical at both.
+  const strictAncestor = candidateSourceSha
+    ? Boolean(verifyQueryOracleSource(queryEvidence, candidateSourceSha, { cwd })) : null;
+  return { ...inventory, oracleSourceCommit: queryEvidence.sourceCommit, strictAncestor };
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const argv = process.argv.slice(2);
+    if (argv.includes('--audit')) {
+      const report = auditOracleCoverageFromFiles({ coverageFile: arg(argv, '--coverage'),
+        oracleFile: arg(argv, '--oracle'), exemptionsFile: arg(argv, '--exemptions'),
+        candidateSourceSha: arg(argv, '--candidate-sha'), cwd: arg(argv, '--repo') || process.cwd() });
+      console.log(JSON.stringify({ ok: true, ...report }));
+    } else {
     const plan = buildPlanFromFiles({ coverageFile: arg(argv, '--coverage'), baselineFile: arg(argv, '--baseline'),
       candidateFile: arg(argv, '--candidate'), oracleFile: arg(argv, '--oracle'), assetsDir: arg(argv, '--assets'),
       outFile: arg(argv, '--out'), cwd: arg(argv, '--repo') || process.cwd() });
     console.log(JSON.stringify({ ok: true, planSha256: plan.planSha256, cases: plan.cases.length }));
+    }
   } catch (error) {
     console.error(`[retrieval-canary] ${error.message}`);
     process.exitCode = 1;

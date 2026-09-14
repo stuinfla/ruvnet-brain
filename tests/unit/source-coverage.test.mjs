@@ -26,7 +26,11 @@ describe('artifact-bound source coverage', () => {
   });
 
   it('binds an explicit no-corpus exclusion into an ineligible repository row', () => {
-    const exclusion = { reason: 'heading-only repository has no functional corpus', pushedAt: repo.pushedAt };
+    // ADR-086 Step 12: an active exclusion must carry source-file evidence bound to the observed head
+    // (tests/unit/source-coverage-completeness.test.mjs pins the throw when it is missing).
+    const exclusion = { reason: 'heading-only repository has no functional corpus', pushedAt: repo.pushedAt,
+      evidence: { method: 'gh api repos/ruvnet/ruflo/git/trees/HEAD?recursive=1', headSha: 'a'.repeat(40),
+        inspectedAt: '2026-09-13T00:00:00Z', truncated: false, files: [{ path: 'README.md', size: 15 }] } };
     expect(classifyRepository(repo, { ...evidence, rvfPresent: false }, exclusion)).toMatchObject({
       status: 'INELIGIBLE',
       disposition: 'excluded-no-corpus',
@@ -247,14 +251,21 @@ describe('observeGists — falls back to the unauthenticated API on the Actions 
       }
       return JSON.stringify({ public_gists: gists.length });
     };
+    // ADR-086 Step 12 (A1): a short page is no longer the end — only an EMPTY page terminates the
+    // fallback (a partial page followed by more must not stop early), so the real API's empty page 2
+    // is modelled here and curl is called exactly twice.
+    const requested = [];
     const curl = (url) => {
-      expect(url).toContain('page=1');
-      return JSON.stringify(gists); // fewer than 100 -> fallback stops after page 1, curl called once
+      const page = Number(new URL(url).searchParams.get('page'));
+      requested.push(page);
+      return JSON.stringify(page === 1 ? gists : []);
     };
     const result = observeGists('ruvnet', { gh, curl });
+    expect(requested).toEqual([1, 2]);
     expect(result.rows).toHaveLength(5);
     expect(result.rows.map((g) => g.id)).toEqual(['g0', 'g1', 'g2', 'g3', 'g4']);
     expect(result.expected).toBe(5);
+    expect(result.pages.map((page) => page.count)).toEqual([5, 0]);
   });
 
   it('control: a gh failure for any OTHER reason still throws, not silently falling back', () => {
