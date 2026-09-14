@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "kind": "ruvnet-brain-retrieval-query-evidence",
-  "queryStoreSetSha256": "15c9b34624d9689ce8f95bafae3d4769840af7c1047900ba05a0ff02df05313e",
+  "queryStoreSetSha256": "3ecfc499c418ba9d315856e9682e709235f332a35af578742890cbfa06593a12",
   "queries": {
     "2bottalk": {
       "query": "In the 2bottalk repository, what is 2 BoT Talk AI-powered Bot Duo, what problem does it solve, and how is it intended to be used?",
@@ -315,6 +315,14 @@
       },
       "recordSha256": "8ce96db36e794ab8a9d7bd9111242394dbc4873abd14a24260fdfbd163e3e26c"
     },
+    "apx": {
+      "query": "In the apx repository, how does APx define Agentic Power against a matched human reference, and what does its eight-hour human versus one-hour agent example score in AP?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "070324d3df486a374375e9fdbf5881b1e1f74c89d1b6f5a47c38f36722c209b4"
+      },
+      "recordSha256": "0de0276ec16558d3da310f8c5be47ceb37a432074151a05a5081a14eedbe5327"
+    },
     "arcadia": {
       "query": "In the arcadia repository, What package metadata, build, test, documentation, security, and release checks must ARCADIA satisfy before publication to crates.io?",
       "expected": {
@@ -346,6 +354,14 @@
         "passageSha256": "c12956ba141b45810b6d3760afb37b4491346c42b951a002c47168aa6e23e2f3"
       },
       "recordSha256": "a6094949ee7ec720928598a0a0dfddc5fec0716fc80d1e84a4349b96b1dcdf89"
+    },
+    "batvu": {
+      "query": "In the batvu repository, how does BatVu use an ordinary iPhone to ping a room in ultrasound and draw the returning echoes as a plan position display?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "e70b0d65f9ca8c066ab036e5e6526c1ef11fc386c35519737d3724ec0bbab453"
+      },
+      "recordSha256": "ae6e9c74e952467d8a90d1fb34cbddff5d935c02e22d80a69a95213f0a875534"
     },
     "bot-generator-bot": {
       "query": "In the bot-generator-bot repository, what is Bot Generator Bot, what problem does it solve, and how is it intended to be used?",
@@ -611,6 +627,14 @@
       },
       "recordSha256": "15d50f3c7fb152afbecaef1209ffa9d635b5a9f4b19d646b5503ba0ff03e5c65"
     },
+    "event-horizon": {
+      "query": "In the event-horizon repository, what do Field Mode and Atlas Mode each render in Event Horizon Laboratory, and how does the interface separate catalogued measurements from computed visuals?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "ee53b85a2be6c5a618f5d76cd6f851771c9598ae03cafb2d5db5d2bf35b7ad79"
+      },
+      "recordSha256": "1d7b1a0d0703fa3ebe52286ac578b0b5f5aaf1a8eb26373aa6a4244ed4cb1acc"
+    },
     "fact": {
       "query": "In the fact repository, Which FACT Memory example demonstrates user-scoped memory operations, and which demonstrates Mem0-compatible MCP calls?",
       "expected": {
@@ -666,6 +690,14 @@
         "passageSha256": "130f5fd713b45eceb5450aecfebf1277f5435052b8998944cc5c998c81fcfd16"
       },
       "recordSha256": "963da57bb277c223ccf54489d3966e237a3a7fc42afd2059bc331d0adfdaaa79"
+    },
+    "group-field-theory": {
+      "query": "In the group-field-theory repository, how does Before Space Before Time turn Group Field Theory condensate states into eight interactive thought experiments about emergent spacetime?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "aed4c7b55b5766ca7d154eada06aabbc804bf7442f03f212d430882931ebf337"
+      },
+      "recordSha256": "a479706020b79aeee6d3ec3774070ce49c88a0cacd797b8fbdaa9620f569b768"
     },
     "guardrail": {
       "query": "In the guardrail repository, what is GuardRail OSS - Open Source Ai Guidance & Analysis API, what problem does it solve, and how is it intended to be used?",
@@ -803,6 +835,22 @@
       },
       "recordSha256": "8844987fc21d65c2c5dac4dfb9c41961236dc325d1f9fa8b2a928f06be1a63bc"
     },
+    "minitoo-control": {
+      "query": "In the minitoo-control repository, how do the macOS tools drive a Divoom MiniToo over Bluetooth Classic RFCOMM without modifying MiniToo or ESP32 firmware?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "0bdb8ce6e598b2a65c4967c14ebb5ec04d478dc1b1d675c4b97ba49f2ddd79aa"
+      },
+      "recordSha256": "dc9825f0572c5f09f4eaa12cca2b1582c3ade3ae28f604fb98ea6dea137f5123"
+    },
+    "moe-foundry": {
+      "query": "In the moe-foundry repository, how does MoE Foundry export smaller specialist models from one Mixture of Experts model and use MetaHarness to pick a specialist per request?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "22cbf1291373dc71f6770b04c9b0acdcfff27f7bfa579bb122091d9c94ea6559"
+      },
+      "recordSha256": "36db9f3fea9c39e2d6822efa07ca0fcf6af8ffabad68106b894ede00af3a5ae1"
+    },
     "musica": {
       "query": "In the musica repository, Why does Musica VJ use an isolated Tauri desktop subproject, and which operations must remain unavailable in its browser development build?",
       "expected": {
@@ -882,6 +930,14 @@
         "passageSha256": "d8959d6151b3c1a63e2b9a03f947da8e98c2126de43cfb193b74e07a3b49049c"
       },
       "recordSha256": "4fec6328a9c975c52e20a64a5438d60f88769fa4fe63339012846e38c29a6b59"
+    },
+    "openavo": {
+      "query": "In the openavo repository, which controls does the OpenAVO harness keep while an Autonomous Variation Operator inspects, edits, executes, branches and commits?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "e9e19e01db4ef5e4e3fdf4b0326a7424dc8ed34c3d62addbc0261a49102bbfe7"
+      },
+      "recordSha256": "c362c6448f8a55bd42af59f6a34088540c5adf7f6905d8dc45c99e88a92eac51"
     },
     "p2pgpt": {
       "query": "In the p2pgpt repository, what is P2P GPT for Slack and Web Sockets Add-on, what problem does it solve, and how is it intended to be used?",
@@ -1027,6 +1083,14 @@
       },
       "recordSha256": "c2bcb159084085fb3fe671724e9dbdb30e7a10f08a097e0d7c5ff9d414333e80"
     },
+    "rgi": {
+      "query": "In the rgi repository, how does the rGi perpetual agentic runtime keep an agent working across individual prompts and clean restarts, and what does it do with ambiguous outcomes?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "0f57d837073d20040834977820590b80ac0ea7caa9afaa8d5fb8016501c37a50"
+      },
+      "recordSha256": "491c31c7dc47cec15edf1cd2e01a62a0054a1d459173705d3fd596ddcb0b21b3"
+    },
     "roomodes": {
       "query": "In the roomodes repository, What kind of configurations does the roomodes README say the repository contains?",
       "expected": {
@@ -1042,6 +1106,14 @@
         "passageSha256": "ff80dd11ca85de4ac7e646daea2ae438b8f6b394d4313844b13db8b89d18e4b1"
       },
       "recordSha256": "84b9c43736101fd38ecc8cecf27f58e45ffbc03442b810a24e0bad9675ffcbf1"
+    },
+    "ruclip": {
+      "query": "In the ruclip repository, how does ruClip sit above existing agents as a governance control plane instead of being an agent framework of its own?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "cf19034d1c55a6e8743b2108c7cee1d55f7f61aacc0123e4e4457b86149b172e"
+      },
+      "recordSha256": "429a4c2730128fa8f5ab999d1514206e83900dc4ac78a8a254e1f51bc7f98661"
     },
     "rudevolution": {
       "query": "In the rudevolution repository, How does the ruDevolution npm decompiler design expose package decompilation through CLI and MCP, and what witness output does it produce?",
@@ -1067,6 +1139,14 @@
       },
       "recordSha256": "28001661c195e945128f86b4ca2b235316119f54837ae4264a712d54ec00bb0e"
     },
+    "ruforecast": {
+      "query": "In the ruforecast repository, how does RuForecast predict coupled multivariate signals as a range of plausible outcomes rather than as one confident number?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "3b1aac3f02b2550b3aafa7448e9b138949b5a26853a1e33d8262acce56f1e576"
+      },
+      "recordSha256": "3b45537a691a1342e8f52c7f7eb95c04d849917475c2910dfb4a134cc7f97943"
+    },
     "rulake": {
       "query": "In the rulake repository, What minimum backend adapter trait does ruLake require for listing collections, pulling vectors, generation coherence, and optional ANN pushdown?",
       "expected": {
@@ -1074,6 +1154,22 @@
         "passageSha256": "1b086f385a81754428b69073a1ca94e8d709f18c6ad4409a202e6c14355ccc51"
       },
       "recordSha256": "e190c548de285b39e935089daf48e7c919b41b3e5c0ba1bb7ca0eedf667febf0"
+    },
+    "rultra": {
+      "query": "In the rultra repository, how does the self-optimizing Raspberry Pi 5 sensor box put every onboard sensor behind a single trait and keep an honest record of how well each one works?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "02226e2414a95346108fb08453c4edc45106dd5529da339771e8d6ce1c5d7ed1"
+      },
+      "recordSha256": "9d82bf83e18e42b4415f71843356da13979746cab173d38ad53ed6aeb38c339d"
+    },
+    "ruos": {
+      "query": "In the ruos repository, what does the public ruOS control surface expose through its computer-use MCP server and its ruvnet-stack skills directory?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "eefffa40a5c00f1c158d2869935e348fa2051e581609e155f3566b59d34ec2b2"
+      },
+      "recordSha256": "7f4e5095c2c9811260841c0ebd9de82939886320f4e2449d158c56dbb1b8bc85"
     },
     "ruos-macair": {
       "query": "In the ruos-macair repository, what is ruOS MacBook Air 2012, what problem does it solve, and how is it intended to be used?",
@@ -1465,9 +1561,5 @@
       },
       "recordSha256": "61ea87ff7a3b7276e8f443fdea91ce0dbf0cfe54c44b0dea2a69c17809ee107c"
     }
-  },
-  "sourceCommit": "554985d083479163c03043ee697084d11163f863",
-  "sourcePath": "data/retrieval-query-evidence.json",
-  "sourceBlobSha256": "9fe2259689eb5607e2174e100b1fc404ce0f4e35d268cdcd12c3960e27bdb56e",
-  "receiptSha256": "e8c71f37093c06957add8571b9d2602f789d5b5c21d92975d9c9a56c186f3277"
+  }
 }
