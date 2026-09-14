@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.3.25",
-  "sourceIdentity": "4d75d2f175a0ece9111786c30b8a4f424416c41ed1a2ae4305e789ba64c3948f",
+  "sourceIdentity": "fb8ea3dca6ea5e734ca2c41e7c47126a5e5d8d81f8e002053722ec1c0af4dbab",
   "versionSurfaces": {
     "package.json": "4.3.25",
     "plugin/.claude-plugin/plugin.json": "4.3.25",
@@ -98,10 +98,11 @@
     "0083-model-routing-north-star-95.md",
     "0084-the-three-user-invariants.md",
     "0085-nightly-corpus-release-channel.md",
+    "0086-corpus-seed-pipeline-consolidation.md",
     "README.md"
   ],
-  "trackedFileCount": 1492,
-  "trackedFilesSha256": "e64f30870b09d67871ac578fbbdc28c72b871a8edc9d3aaa794d49646b8f98f4",
+  "trackedFileCount": 1527,
+  "trackedFilesSha256": "3c661b1a34c89ee8958628d4a9082f32b40e65616ad2241c539fe260027c92cc",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

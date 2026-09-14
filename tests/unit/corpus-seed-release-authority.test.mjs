@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createCorpusReceipt } from '../../scripts/corpus-candidate.mjs';
+import { fixtureReleaseRoot, sealedCorpusBundle, writeAccuracyReport } from '../helpers/corpus-seed-fixture.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
-const RELEASE = path.join(ROOT, 'scripts/release.mjs');
 const HEAD = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
 const dirs = [];
 
@@ -14,9 +14,13 @@ afterEach(() => {
   while (dirs.length) fs.rmSync(dirs.pop(), { recursive: true, force: true });
 });
 
-const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-
-function fixture() {
+// Every case starts from a GENUINE sealed bundle and the receipt actually derived from its bytes,
+// then mutates exactly one thing. Until 2026-09-13 this fixture was a text file named
+// ruvnet-brain.zip plus a hand-written receipt whose outer sha256 happened to match; that stopped
+// being possible when runProtectedCorpusSeed took over the deep verifyCorpusReceipt re-derivation
+// from the deleted scripts/corpus-seed-publish.mjs (ADR-085) — the publisher now re-extracts the
+// archive and rebuilds the candidate from it, so only a real bundle can reach `gh`.
+async function fixture() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-authority-'));
   dirs.push(dir);
   const bin = path.join(dir, 'bin');
@@ -36,41 +40,20 @@ process.exit(0);
 `);
   fs.chmodSync(gh, 0o755);
 
-  const bundle = path.join(dir, 'ruvnet-brain.zip');
-  fs.writeFileSync(bundle, 'sealed corpus bundle');
-  const digest = sha256(bundle);
+  // Step 15: the publication gate hashes the retrieval-accuracy oracle committed in release.mjs's
+  // OWN root, so the publisher is spawned from a fixture root that symlinks the real scripts/kb/
+  // plugin/keys/.git and owns only `data/` — a committed oracle without touching the checkout.
+  const releaseRoot = fixtureReleaseRoot(path.join(dir, 'root'));
+  const { bundle } = await sealedCorpusBundle(dir, { accuracy: null }); // <dir>/ruvnet-brain.zip
+  writeAccuracyReport(bundle, { oracleSha256: releaseRoot.oracleSha256, generatorSha256: releaseRoot.generatorSha256 });
   const receiptFile = path.join(dir, 'corpus-receipt.json');
-  const receipt = {
-    schemaVersion: 2,
-    kind: 'ruvnet-brain-corpus-candidate',
+  const receipt = await createCorpusReceipt({
+    bundleFile: bundle,
+    receiptFile,
     builderSourceSha: HEAD,
     createdAt: '2026-08-21T12:34:56.000Z',
-    archiveManifest: { file: 'ARCHIVE-MANIFEST.json', sha256: 'e'.repeat(64), bytes: 5 },
-    archiveManifestVersion: '9.9.9',
-    archiveManifestReleaseTag: 'v9.9.9',
-    fileCount: 6,
-    totalBytes: 42,
-    storeCount: 1,
-    stores: [{
-      name: 'alpha', kind: 'repository', sourceCommit: 'a'.repeat(40), builtUtc: '2026-08-21T12:00:00.000Z',
-      model: 'local', dimensions: 384,
-      files: [{ file: 'alpha.big.rvf', sha256: 'a'.repeat(64), bytes: 1 }],
-    }],
-    privateFence: { file: 'PRIVATE-STORES.json', sha256: 'b'.repeat(64), bytes: 2 },
-    generationLedger: { file: 'RVF-GENERATIONS.json', sha256: 'd'.repeat(64), bytes: 4 },
-    sourceManifest: { file: 'SOURCE.json', sha256: 'f'.repeat(64), bytes: 3 },
-    gistAggregate: null,
-    derivedStores: [],
-    excludedPrivateStores: ['secret'],
-    duplicateRvfDigests: [],
-    unreceiptedRvfFiles: [],
-    missingSidecars: [],
-    bootstrap: null,
-    finalBytePartitionSha256: '1'.repeat(64),
-    archive: { file: path.basename(bundle), sha256: digest, bytes: fs.statSync(bundle).size },
-    generator: { corpusCandidateSha256: sha256(path.join(ROOT, 'scripts/corpus-candidate.mjs')) },
-  };
-  fs.writeFileSync(receiptFile, JSON.stringify(receipt));
+  });
+  const digest = receipt.archive.sha256;
   const tag = `corpus-sha256-${digest}`;
   const args = [
     '--corpus-seed', '--corpus-tag', tag,
@@ -94,15 +77,15 @@ process.exit(0);
     RUVNET_GH_COMMAND: process.execPath,
     RUVNET_GH_SCRIPT: path.join(bin, 'gh-fixture.mjs'),
   };
-  return { dir, bundle, digest, receipt, receiptFile, tag, args, env, log };
+  return { dir, bundle, digest, receipt, receiptFile, tag, args, env, log, releaseRoot };
 }
 
 function run(f, { args = f.args, env = f.env } = {}) {
-  return spawnSync(process.execPath, [RELEASE, ...args], {
+  return spawnSync(process.execPath, [...f.releaseRoot.nodeArgs, f.releaseRoot.release, ...args], {
     cwd: ROOT,
     env,
     encoding: 'utf8',
-    timeout: 15_000,
+    timeout: 30_000,
   });
 }
 
@@ -123,8 +106,8 @@ describe('protected corpus-seed release authority', () => {
     ['wrong repository', (f) => { f.env.GITHUB_REPOSITORY = 'attacker/fork'; }],
     ['non-dispatch event', (f) => { f.env.GITHUB_EVENT_NAME = 'push'; }],
     ['unprotected ref', (f) => { f.env.GITHUB_REF_PROTECTED = 'false'; }],
-  ])('refuses %s before invoking gh', (_name, mutate) => {
-    const f = fixture();
+  ])('refuses %s before invoking gh', async (_name, mutate) => {
+    const f = await fixture();
     mutate(f);
     const result = run(f);
     expect(result.status).toBe(1);
@@ -136,8 +119,8 @@ describe('protected corpus-seed release authority', () => {
     ['target differs from HEAD', (f) => { f.args = replaceArg(f.args, '--target', 'f'.repeat(40)); }],
     ['GITHUB_SHA differs from HEAD', (f) => { f.env.GITHUB_SHA = 'f'.repeat(40); }],
     ['receipt source differs from target', (f) => { f.receipt.builderSourceSha = 'f'.repeat(40); writeReceipt(f); }],
-  ])('refuses when %s', (_name, mutate) => {
-    const f = fixture();
+  ])('refuses when %s', async (_name, mutate) => {
+    const f = await fixture();
     mutate(f);
     const result = run(f);
     expect(result.status).toBe(1);
@@ -145,14 +128,14 @@ describe('protected corpus-seed release authority', () => {
     expect(fs.existsSync(f.log)).toBe(false);
   });
 
-  it('requires a full lowercase digest tag bound to the receipt and bundle bytes', () => {
+  it('requires a full lowercase digest tag bound to the receipt and bundle bytes', async () => {
     for (const tag of ['corpus-sha256-short', `v${'a'.repeat(64)}`, `corpus-sha256-${'A'.repeat(64)}`]) {
-      const f = fixture();
+      const f = await fixture();
       const result = run(f, { args: replaceArg(f.args, '--corpus-tag', tag) });
       expect(result.status).toBe(1);
       expect(result.stderr).toMatch(/corpus tag/i);
     }
-    const f = fixture();
+    const f = await fixture();
     fs.appendFileSync(f.bundle, 'tampered');
     const result = run(f);
     expect(result.status).toBe(1);
@@ -164,8 +147,8 @@ describe('protected corpus-seed release authority', () => {
     ['relative receipt', (f) => { f.args = replaceArg(f.args, '--corpus-receipt', path.basename(f.receiptFile)); }],
     ['bundle directory', (f) => { f.args = replaceArg(f.args, '--corpus-bundle', f.dir); }],
     ['receipt directory', (f) => { f.args = replaceArg(f.args, '--corpus-receipt', f.dir); }],
-  ])('refuses %s', (_name, mutate) => {
-    const f = fixture();
+  ])('refuses %s', async (_name, mutate) => {
+    const f = await fixture();
     mutate(f);
     const result = run(f);
     expect(result.status).toBe(1);
@@ -184,8 +167,8 @@ describe('protected corpus-seed release authority', () => {
     ['store provenance', (f) => { f.receipt.stores[0].sourceCommit = ''; }],
     ['store kind', (f) => { f.receipt.stores[0].kind = 'not-a-kind'; }],
     ['private exclusion list', (f) => { f.receipt.excludedPrivateStores = 'secret'; }],
-  ])('refuses invalid %s binding', (_name, mutate) => {
-    const f = fixture();
+  ])('refuses invalid %s binding', async (_name, mutate) => {
+    const f = await fixture();
     mutate(f);
     writeReceipt(f);
     const result = run(f);
@@ -194,11 +177,27 @@ describe('protected corpus-seed release authority', () => {
     expect(fs.existsSync(f.log)).toBe(false);
   });
 
+  it('refuses a receipt whose per-store digests were forged after sealing — the outer archive digest alone is not proof', async () => {
+    // The check scripts/corpus-seed-publish.mjs used to run before delegating to release.mjs, moved
+    // into runProtectedCorpusSeed on 2026-09-13 (ADR-085). The bundle is untouched, so its sha256
+    // and byte length still match both the receipt and the tag, every field is well-formed, and
+    // the generator/target bindings hold — only one store file's DECLARED digest is forged. No
+    // shape or identity check above can see that; only re-deriving the candidate from the
+    // archive's own bytes can, and it must happen before gh is ever invoked.
+    const f = await fixture();
+    f.receipt.stores[0].files[0].sha256 = 'f'.repeat(64);
+    writeReceipt(f);
+    const result = run(f);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/does not verify against the sealed archive[\s\S]*does not match the exact corpus archive contents/i);
+    expect(fs.existsSync(f.log)).toBe(false);
+  });
+
   it.each([
     ['existing tag', 'exists', /already exists.*refusing to overwrite/i],
     ['ambiguous lookup', 'ambiguous', /cannot prove.*absent/i],
-  ])('fails closed for %s', (_name, mode, message) => {
-    const f = fixture();
+  ])('fails closed for %s', async (_name, mode, message) => {
+    const f = await fixture();
     f.env.GH_VIEW_MODE = mode;
     const result = run(f);
     expect(result.status).toBe(1);
@@ -208,8 +207,8 @@ describe('protected corpus-seed release authority', () => {
     expect(calls[0]).toEqual(['release', 'view', f.tag, '--json', 'tagName', '--repo', 'stuinfla/ruvnet-brain']);
   });
 
-  it('creates one non-latest non-draft prerelease containing exactly the bound bundle and receipt', () => {
-    const f = fixture();
+  it('creates one non-latest non-draft prerelease containing exactly the bound bundle and receipt', async () => {
+    const f = await fixture();
     const result = run(f);
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     const calls = fs.readFileSync(f.log, 'utf8').trim().split('\n').map(JSON.parse);
@@ -222,7 +221,7 @@ describe('protected corpus-seed release authority', () => {
       '--repo', 'stuinfla/ruvnet-brain',
       '--title', `Immutable corpus seed ${f.digest.slice(0, 16)}`,
       '--notes', expect.stringContaining(`Archive SHA-256: ${f.digest}`),
-      f.bundle, f.receiptFile,
+      f.bundle, f.receiptFile, `${f.bundle}.accuracy.json`,
     ]);
     expect(calls[1]).not.toContain('--draft');
     expect(calls[1]).not.toContain('--clobber');

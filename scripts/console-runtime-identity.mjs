@@ -44,6 +44,10 @@ export const CONSOLE_RUNTIME_SURFACE = Object.freeze([
   'kb/lifecycle-evidence-retention.mjs',
   'kb/model-requirements.mjs',
   'kb/zip-extract.mjs',
+  // install.mjs imports this STATICALLY (corpus transport identity + approved-runtime stamping,
+  // ADR-086 step 16). A copied installer whose sibling is missing does not degrade — it throws
+  // ERR_MODULE_NOT_FOUND on import, before a single line runs.
+  'kb/corpus-release-identity.mjs',
   'bin/install.mjs',
   'package.json',
 ]);

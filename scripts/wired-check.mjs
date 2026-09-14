@@ -70,6 +70,10 @@ const argv = process.argv.slice(2);
  * every entry on every run, below, so they cannot rot unseen.
  */
 const STANDALONE = [
+  ['spike-run', 'ADR-086 Step 14 oracle feasibility-spike driver, run by hand against disposable snapshots outside the checkout. '
+    + 'It is deliberately NOT imported by the pipeline: Step 14 only proves or disproves that a trustworthy unattended label '
+    + 'producer exists, and Step 15 owns any prepareCorpusCandidate wiring. The three modules it drives (source-units, '
+    + 'produce-questions, validate-labels) are each wired to a real caller; this driver is the human entry point.'],
   ['gate', 'retired automatic-hook helper and manual benchmark retained for explicit human use; no workflow or scheduler invokes this expensive command'],
   ['dream-issue-gate', 'pure Dream Cycle disposition policy; invoked by the external issue adapter, never a GitHub writer'],
   ['sync-census', 'explicit maintainer census writer; a destructive source-to-surface refresh is never scheduled'],
@@ -109,10 +113,6 @@ const STANDALONE = [
     + 'RVFs to RVF-GENERATIONS.json and optionally prunes legacy sidecars; build-bundle.mjs consumes '
     + 'and validates the resulting manifest, so scheduling this destructive migration would be wrong'],
   ['release', 'the ship path, run by a human'],
-  ['corpus-seed-publish', 'privileged manual corpus publication wrapper; corpus-seed.yml explicitly '
-    + 'stops at sealed preparation with contents:read. This entry validates receipt/archive inputs '
-    + 'and delegates mutation to release.mjs protected authority. No operational caller is registered; '
-    + 'classification does not claim publication works or has occurred'],
   ['execution-preflight', 'external orchestration boundary — invoked by the host before consequential Ruflo/Codex execution; no in-repo caller exists because the host supplies the live Brain and AgentDB receipts'],
   ['fix-workstream', 'session-supervised coordination CLI run explicitly by the integration owner or an '
     + 'isolated writing agent to start and hand off a fix lane. Scheduling it would violate its safety '
@@ -331,6 +331,19 @@ export const REQUIRED_OPERATIONAL_EXPORTS = [
   // Step 3 (2026-09-13): the single canonical public-prose selection entry point, same rigor as
   // buildGistAggregate above.
   { rel: 'scripts/public-inputs.mjs', symbol: 'materializePublicInputs' },
+  // Step 5 (2026-09-13): the single canonical assembly entry point (replaces the old ad hoc
+  // discover/copy/rebind logic previously scattered across build-bundle.mjs's module top level) and
+  // the single canonical release-coverage-projection entry point it calls in-process. Both are wired
+  // from build-bundle.mjs's own CLI wrapper at the bottom of the same file.
+  { rel: 'scripts/build-bundle.mjs', symbol: 'assembleBundle' },
+  { rel: 'scripts/release-projection.mjs', symbol: 'createReleaseProjection' },
+  // Step 13 (2026-09-13): the C2 deep store audit — measured recall, hash-verified segments, id-map /
+  // passage / source-map correspondence — that corpus-candidate.mjs fails closed on.
+  { rel: 'scripts/rvf-index-audit.mjs', symbol: 'auditCorpusStores' },
+  // Step 15 (2026-09-14): the C3 retrieval-accuracy gate. prepareCorpusCandidate shells out to its
+  // CLI after single-pass assembly; corpus-candidate.mjs and release.mjs both import its
+  // readAccuracyReport reader so candidate acceptance and publication can never drift apart.
+  { rel: 'scripts/oracle/retrieval-accuracy.mjs', symbol: 'runRetrievalAccuracy' },
 ];
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))

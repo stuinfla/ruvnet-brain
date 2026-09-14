@@ -257,12 +257,22 @@ describe('candidate preparation', () => {
       status, upstream: {}, artifact: {}, reasons: status === 'CURRENT' ? [] : ['x'] }],
   });
 
-  it('never re-observes live sources; renders coverage JSON+Markdown from one object, then builds and seals', () => {
+  // ADR-086 Step 15 wired the C3 retrieval-accuracy benchmark into this function, so a candidate root
+  // now needs the benchmark script and the committed oracle as well as the two older builders.
+  const candidateRoot = ({ oracle = true } = {}) => {
     const root = temp();
-    fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'scripts', 'oracle'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'data'), { recursive: true });
     for (const file of ['build-bundle.mjs', 'corpus-candidate.mjs']) {
       fs.writeFileSync(path.join(root, 'scripts', file), '// fixture');
     }
+    fs.writeFileSync(path.join(root, 'scripts', 'oracle', 'retrieval-accuracy.mjs'), '// fixture');
+    if (oracle) fs.writeFileSync(path.join(root, 'data', 'retrieval-accuracy-oracle.json'), '{}');
+    return root;
+  };
+
+  it('never re-observes live sources; renders coverage JSON+Markdown from one object, then builds and seals', () => {
+    const root = candidateRoot();
     const coverage = coverageFixture('CURRENT');
     const calls = [];
     const run = (command, args) => { calls.push([command, ...args]); return { status: 0, stdout: '', stderr: '' }; };
@@ -278,22 +288,26 @@ describe('candidate preparation', () => {
     });
     expect(result.bundleFile).toBe(path.join(root, 'candidate', 'ruvnet-brain.zip'));
     const joined = calls.map((call) => call.join(' '));
-    expect(joined).toHaveLength(3);
+    // Step 15: assembly, THEN the accuracy benchmark against the assembled archive, THEN the seal
+    // that binds its report, THEN independent re-verification. Order is the contract: a benchmark run
+    // before assembly would measure nothing, and one after the seal could not be bound by it.
+    expect(joined).toHaveLength(4);
     expect(joined[0]).toMatch(/build-bundle\.mjs/);
-    expect(joined[1]).toMatch(/corpus-candidate\.mjs/);
-    expect(joined[1]).not.toMatch(/--verify/);
-    expect(joined[2]).toMatch(/corpus-candidate\.mjs .*--verify/);
+    expect(joined[1]).toMatch(/oracle\/retrieval-accuracy\.mjs .*--bundle .*ruvnet-brain\.zip/);
+    expect(joined[1]).toMatch(/--out .*ruvnet-brain\.zip\.accuracy\.json/);
+    expect(joined[1]).not.toMatch(/--stores|--sample/);
+    expect(joined[2]).toMatch(/corpus-candidate\.mjs/);
+    expect(joined[2]).not.toMatch(/--verify/);
+    expect(joined[2]).toMatch(/--accuracy-report .*ruvnet-brain\.zip\.accuracy\.json/);
+    expect(joined[3]).toMatch(/corpus-candidate\.mjs .*--verify/);
+    expect(result.accuracyReportFile).toBe(path.join(root, 'candidate', 'ruvnet-brain.zip.accuracy.json'));
     expect(joined.join('\n')).not.toMatch(/corpus-seed-publish|release create|--publish|source-coverage\.mjs/);
     expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'source-coverage.json'), 'utf8'))).toEqual(coverage);
     expect(fs.readFileSync(path.join(root, 'docs', 'RUVNET-COVERAGE.md'), 'utf8')).toContain('alpha');
   });
 
   it('fails closed on any non-CURRENT eligible row, before ever shelling out to build or seal', () => {
-    const root = temp();
-    fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
-    for (const file of ['build-bundle.mjs', 'corpus-candidate.mjs']) {
-      fs.writeFileSync(path.join(root, 'scripts', file), '// fixture');
-    }
+    const root = candidateRoot();
     const calls = [];
     const run = (command, args) => { calls.push([command, ...args]); return { status: 0, stdout: '', stderr: '' }; };
     expect(() => prepareCorpusCandidate({
@@ -304,6 +318,37 @@ describe('candidate preparation', () => {
       coverage: coverageFixture('STALE'), run,
     })).toThrow(/strict coverage/i);
     expect(calls).toHaveLength(0);
+  });
+
+  it('MUST BLOCK: no committed retrieval-accuracy oracle means nothing is assembled at all', () => {
+    const root = candidateRoot({ oracle: false });
+    const calls = [];
+    const run = (command, args) => { calls.push([command, ...args]); return { status: 0, stdout: '', stderr: '' }; };
+    expect(() => prepareCorpusCandidate({
+      root, assetsDir: path.join(root, 'assets'), builderSha: sha('e'),
+      candidateDir: path.join(root, 'candidate', 'ruvnet-brain'),
+      receiptFile: path.join(root, 'evidence', 'corpus-receipt.json'),
+      coverageFile: path.join(root, 'data', 'source-coverage.json'),
+      coverage: coverageFixture('CURRENT'), run,
+    })).toThrow(/retrieval-accuracy oracle missing/i);
+    // Fails BEFORE the expensive single-pass assembly, not after it.
+    expect(calls).toHaveLength(0);
+  });
+
+  it('a bounded measurement is opt-in and passes its bounds straight through to the benchmark', () => {
+    const root = candidateRoot();
+    const calls = [];
+    const run = (command, args) => { calls.push([command, ...args]); return { status: 0, stdout: '', stderr: '' }; };
+    prepareCorpusCandidate({
+      root, assetsDir: path.join(root, 'assets'), builderSha: sha('e'),
+      candidateDir: path.join(root, 'candidate', 'ruvnet-brain'),
+      receiptFile: path.join(root, 'evidence', 'corpus-receipt.json'),
+      coverageFile: path.join(root, 'data', 'source-coverage.json'),
+      coverage: coverageFixture('CURRENT'), accuracyStores: 2, accuracySample: 5, run,
+    });
+    const benchmark = calls.map((call) => call.join(' ')).find((call) => /retrieval-accuracy\.mjs/.test(call));
+    expect(benchmark).toMatch(/--stores 2/);
+    expect(benchmark).toMatch(/--sample 5/);
   });
 
   it('rejects a coverage object that is missing or not the real coverage shape', () => {

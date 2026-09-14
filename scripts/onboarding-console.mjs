@@ -33,6 +33,7 @@ import { planFor } from './remedy-registry.mjs';
 import { auditAll as capabilityAuditAll } from './capability-registry.mjs';
 import { getVersion } from './version.mjs';
 import { consoleRuntimeDigest } from './console-runtime-identity.mjs';
+import { isCorpusReleaseTag } from '../kb/corpus-release-identity.mjs';
 // L5 (ADR-028): the audit is the one place that observes live capability state, so it is where an
 // OFFERED-then-now-`on` transition becomes an APPLIED — the numerator of the precision metric that
 // tells the owner whether advocacy is landing or nagging. Both are pure reads/appends and never throw.
@@ -2082,10 +2083,19 @@ export function versionFacts({ release = null } = {}) {
   const runningBrain = brainVersionOnDisk();
   let installedPlugin = null;
   try { installedPlugin = readInstallChannel().version || null; } catch { installedPlugin = null; }
-  const latestRelease = typeof release?.tag === 'string' && release.tag ? release.tag.replace(/^v/, '') : null;
+  // A CORPUS RELEASE IS NOT A VERSION (ADR-086 step 16). `releases/latest` can now carry a
+  // `corpus-sha256-<64 hex>` content address, and stripping a leading "v" off one yields a 78-char
+  // string that this panel would have printed in the "latest release" slot beside `4.3.22`-shaped
+  // numbers — in the one panel whose whole job is to make version disagreement visible. That is not
+  // a version disagreement; it is a category error, and showing it as one would be the panel lying.
+  // So the two identities are reported in two fields, each labeled for what it actually is.
+  const rawTag = typeof release?.tag === 'string' && release.tag ? release.tag : null;
+  const corpusTag = isCorpusReleaseTag(rawTag) ? rawTag : null;
+  const latestRelease = rawTag && !corpusTag ? rawTag.replace(/^v/, '') : null;
   const known = [kbGeneration, runningBrain, installedPlugin].filter(Boolean);
   const agree = known.length < 2 ? null : known.every((x) => x === known[0]);
-  return { kbGeneration, runningBrain, installedPlugin, latestRelease, agree, known: known.length };
+  return { kbGeneration, runningBrain, installedPlugin, latestRelease, latestCorpusRelease: corpusTag,
+    agree, known: known.length };
 }
 
 async function gatherTrust() {

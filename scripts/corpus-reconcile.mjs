@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Build a corpus candidate from one immutable seed and exact upstream repository SHAs.
 // This module deliberately has no publication capability. The protected-release workflow owns
-// the only legal call to corpus-seed-publish.mjs.
+// the only legal call to the canonical publisher, `scripts/release.mjs --corpus-seed`
+// (release-authority.mjs's CANONICAL_PUBLISHERS) — see ADR-085.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -582,11 +583,13 @@ export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, 
 export async function reconcileAndPrepareCorpusCandidate({ assetsDir, workspaceDir, root = DEFAULT_ROOT,
   owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity = null, maxRounds = 3,
   reconcile = (options) => reconcileCorpusUntilStable(options),
+  accuracyOracleFile = null, accuracyStores = null, accuracySample = null, accuracyTimeoutMs = null,
   prepare = prepareCorpusCandidate } = {}) {
   const finalized = await reconcile({ owner, assetsDir, workspaceDir, root, maxRounds });
   const candidate = await prepare({
     root, assetsDir, builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity,
     coverage: finalized.coverage,
+    accuracyOracleFile, accuracyStores, accuracySample, accuracyTimeoutMs,
   });
   return { reconciliation: finalized, candidate };
 }
@@ -600,6 +603,10 @@ export function prepareCorpusCandidate({
   coverageFile,
   bootstrapIdentity = null,
   coverage,
+  accuracyOracleFile = null,
+  accuracyStores = null,
+  accuracySample = null,
+  accuracyTimeoutMs = null,
   run = defaultRun,
 }) {
   const sourceRoot = path.resolve(root);
@@ -628,8 +635,17 @@ export function prepareCorpusCandidate({
   assertPathNotOverlapping('candidate output directory', candidate, forbiddenOutputRoots(sourceRoot));
   const buildScript = path.join(sourceRoot, 'scripts', 'build-bundle.mjs');
   const receiptScript = path.join(sourceRoot, 'scripts', 'corpus-candidate.mjs');
-  for (const required of [buildScript, receiptScript]) {
+  const accuracyScript = path.join(sourceRoot, 'scripts', 'oracle', 'retrieval-accuracy.mjs');
+  for (const required of [buildScript, receiptScript, accuracyScript]) {
     if (!fs.existsSync(required)) fail(`required candidate builder missing (${required})`);
+  }
+  // ADR-086 Step 15 / C3. The oracle is a hard input, checked BEFORE the expensive single-pass
+  // assembly so a missing one fails in seconds rather than after a full corpus build. Producing it
+  // is Step 14's deliverable; this gate fails closed until it exists, which is the honest state —
+  // a corpus nobody has measured must not be sealable.
+  const accuracyOracle = path.resolve(accuracyOracleFile || path.join(sourceRoot, 'data', 'retrieval-accuracy-oracle.json'));
+  if (!fs.existsSync(accuracyOracle) || !fs.statSync(accuracyOracle).isFile()) {
+    fail(`retrieval-accuracy oracle missing (${accuracyOracle}); ADR-086 Step 15's C3 gate cannot seal an unmeasured corpus`);
   }
   fs.mkdirSync(path.dirname(candidate), { recursive: true });
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
@@ -641,16 +657,30 @@ export function prepareCorpusCandidate({
   checked(run, process.execPath, [buildScript, '--assets', assets, '--out', candidate,
     '--coverage', policy], { stdio: 'inherit' });
   const bundleFile = path.join(path.dirname(candidate), `${path.basename(candidate)}.zip`);
-  // The candidate receipt is derived ENTIRELY from the sealed bundle's own bytes (schema 2) — the
-  // separate assets/policy directory used to build it is no longer an alternate verification root.
+  // ADR-086 Step 15: the benchmark runs HERE — after single-pass assembly and before the seal —
+  // against the EXTRACTED final archive through the customer query path, never against `assets`.
+  // The report is written detached, beside the archive, and the seal below binds its digest. A
+  // bounded run (--stores/--sample) still writes a report, but it marks itself incomplete and the
+  // seal refuses it, so a bounded measurement can never be presented as a corpus-wide pass.
+  const accuracyReportFile = `${bundleFile}.accuracy.json`;
+  checked(run, process.execPath, [accuracyScript, '--bundle', bundleFile,
+    '--oracle', accuracyOracle, '--out', accuracyReportFile,
+    ...(accuracyStores != null ? ['--stores', String(accuracyStores)] : []),
+    ...(accuracySample != null ? ['--sample', String(accuracySample)] : []),
+    ...(accuracyTimeoutMs != null ? ['--timeout-ms', String(accuracyTimeoutMs)] : [])],
+  { stdio: 'inherit' });
+  // The candidate receipt is derived ENTIRELY from the sealed bundle's own bytes plus the detached,
+  // digest-bound accuracy report (schema 3) — the separate assets/policy directory used to build it
+  // is no longer an alternate verification root.
   const bootstrapArgs = bootstrapIdentity?.tag && bootstrapIdentity?.sha256
     ? ['--bootstrap-tag', bootstrapIdentity.tag, '--bootstrap-sha256', bootstrapIdentity.sha256]
     : [];
   checked(run, process.execPath, [receiptScript, '--bundle', bundleFile,
-    '--receipt', receipt, '--builder-source-sha', builderSha, ...bootstrapArgs], { stdio: 'inherit' });
+    '--receipt', receipt, '--builder-source-sha', builderSha,
+    '--accuracy-report', accuracyReportFile, ...bootstrapArgs], { stdio: 'inherit' });
   checked(run, process.execPath, [receiptScript, '--verify', '--bundle', bundleFile,
-    '--receipt', receipt], { stdio: 'inherit' });
-  return { bundleFile, receiptFile: receipt, coverageFile: policy };
+    '--receipt', receipt, '--accuracy-report', accuracyReportFile], { stdio: 'inherit' });
+  return { bundleFile, receiptFile: receipt, coverageFile: policy, accuracyReportFile, accuracyOracleFile: accuracyOracle };
 }
 
 function arg(argv, name, fallback = null) {
@@ -670,6 +700,12 @@ export async function main(argv = process.argv.slice(2)) {
   const receiptFile = path.resolve(arg(argv, '--receipt-out', path.join(root, 'dist', 'corpus-receipt.json')));
   const builderSha = String(arg(argv, '--builder-sha', '')).toLowerCase();
   const owner = arg(argv, '--owner', 'ruvnet');
+  const accuracyOracleFile = path.resolve(arg(argv, '--accuracy-oracle', path.join(root, 'data', 'retrieval-accuracy-oracle.json')));
+  // Bounded measurement is explicit and opt-in. It never yields a sealable candidate — the seal
+  // refuses an incomplete report — so these flags exist for measuring, not for shipping.
+  const accuracyStores = arg(argv, '--accuracy-stores') ? Number(arg(argv, '--accuracy-stores')) : null;
+  const accuracySample = arg(argv, '--accuracy-sample') ? Number(arg(argv, '--accuracy-sample')) : null;
+  const accuracyTimeoutMs = arg(argv, '--accuracy-timeout-ms') ? Number(arg(argv, '--accuracy-timeout-ms')) : null;
 
   const bootstrap = assertBootstrapIdentity({ archiveFile, tag: seedTag, sha256: seedSha256, allowPinnedTag: process.argv.includes('--allow-pinned-seed-tag') });
   if (fs.existsSync(assetsDir) && fs.readdirSync(assetsDir).length) fail(`bootstrap assets directory is not empty (${assetsDir})`);
@@ -685,13 +721,30 @@ export async function main(argv = process.argv.slice(2)) {
   const bootstrapIdentity = { tag: bootstrap.tag, sha256: bootstrap.sha256, privateFenceEvidence: seedPrivateFenceEvidence(assetsDir) };
   const { reconciliation, candidate } = await reconcileAndPrepareCorpusCandidate({
     assetsDir, workspaceDir, root, owner, builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity,
+    accuracyOracleFile, accuracyStores, accuracySample, accuracyTimeoutMs,
   });
   const plan = reconciliation.rounds.flatMap((round) => round.plan);
   process.stdout.write(`${JSON.stringify({ ok: true, seedTag, seedSha256, plan, reconciliation, ...candidate }, null, 2)}\n`);
   return 0;
 }
 
-if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+// REALPATH BOTH SIDES, or this CLI silently no-ops. argv[1] is whatever the caller typed, symlinks
+// and all, while node resolves a module URL THROUGH symlinks before it reaches import.meta.url — so a
+// symlinked invocation compares a link path against a real path, decides it is not the entry point,
+// runs nothing, and EXITS 0. On macOS every os.tmpdir() path is symlinked (/var/folders -> /private/
+// var/folders), so any caller staging work in a temp directory hits this. Measured 2026-09-14:
+// build-bundle.mjs and corpus-candidate.mjs both no-opped and prepareCorpusCandidate reported SUCCESS
+// with no archive and no receipt on disk. Same defect, same fix as plugin/scripts/hook-input.mjs:518.
+function isMain() {
+  try {
+    if (!process.argv[1]) return false;
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) {
   main().then((code) => { process.exitCode = code; }).catch((error) => {
     console.error(error.message);
     process.exitCode = 1;
