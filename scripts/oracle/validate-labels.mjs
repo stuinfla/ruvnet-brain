@@ -149,7 +149,10 @@ export async function validateLabels({ labels, snapshotDir, embed, thresholds = 
     leakyCos.push(cosine(v(emb.leak), v(emb.s)));
     directCos.push(cd.cosine);
     paraCos.push(cp.cosine);
-    perLabel.push({ unitId: label.unitId, path: label.path, kind: label.kind, pass: a.pass && b.pass && c.pass && d.pass, checks: { a, b, c, d }, informational: { e }, codex: label.codex });
+    // Role-neutral judge verdicts: path B (2026-09-14) lets claude judge, so read `judge` and fall back to
+    // the historical codex-shaped record. `codex` is still carried unchanged for existing consumers.
+    const judge = label.judge ?? (label.codex ? { host: 'codex', ...label.codex } : undefined);
+    perLabel.push({ unitId: label.unitId, path: label.path, kind: label.kind, pass: a.pass && b.pass && c.pass && d.pass, checks: { a, b, c, d }, informational: { e }, codex: label.codex, judge });
   }
   const count = (key) => ({ pass: perLabel.filter((r) => r.checks[key].pass).length, fail: perLabel.filter((r) => !r.checks[key].pass).length });
   const codexVerdicts = perLabel.filter((r) => r.codex && !r.codex.error);
@@ -171,6 +174,18 @@ export async function validateLabels({ labels, snapshotDir, embed, thresholds = 
         bothYes: codexVerdicts.filter((r) => r.codex.direct?.answers === 'yes' && r.codex.paraphrase?.answers === 'yes').length,
         bothYesAndAllChecksPass: codexVerdicts.filter((r) => r.pass && r.codex.direct?.answers === 'yes' && r.codex.paraphrase?.answers === 'yes').length,
       },
+      // Whichever host judged. `allThreeYes` also requires the pair-equivalence verdict Dual required:
+      // two supported questions are not proof the paraphrase means the same thing.
+      judge: (() => {
+        const judged = perLabel.filter((r) => r.judge && !r.judge.error && !r.judge.direct?.error);
+        const yesOn = (side) => judged.filter((r) => r.judge[side]?.answers === 'yes').length;
+        const allThree = (r) => ['direct', 'paraphrase', 'equivalent'].every((side) => r.judge[side]?.answers === 'yes');
+        return {
+          hosts: [...new Set(judged.map((r) => r.judge.host))], withVerdicts: judged.length,
+          directYes: yesOn('direct'), paraphraseYes: yesOn('paraphrase'), equivalentYes: yesOn('equivalent'),
+          allThreeYes: judged.filter(allThree).length, allThreeYesAndAllChecksPass: judged.filter((r) => r.pass && allThree(r)).length,
+        };
+      })(),
       cosineCalibration: { directVsSpan: quantiles(directCos), paraphraseVsSpan: quantiles(paraCos), syntheticLeakyVsSpan: quantiles(leakyCos) },
     },
     perLabel,

@@ -5,66 +5,45 @@
  * Two independent passes over the units selected by source-units.mjs, both on subscription-billed
  * native hosts and NEVER on a provider API key:
  *
- *   1. `claude -p` (Claude Max) sees the exact upstream bytes of 15–25 units per call and must emit,
- *      per unit, one direct question, one meaning-preserving paraphrase, and the VERBATIM supporting
- *      span (plus the span's line range inside the unit) as strict structured output (--json-schema).
- *   2. `codex exec` (ChatGPT subscription, different vendor) sees ONLY question + candidate span —
- *      never the unit, path or repo — and answers whether the span alone answers the question.
+ *   1. the GENERATOR sees the exact upstream bytes of the units in a batch and must emit, per unit, one
+ *      direct question, one meaning-preserving paraphrase, and the VERBATIM supporting span (plus its
+ *      line range inside the unit) as strict structured output;
+ *   2. the JUDGE — a DIFFERENT vendor — sees ONLY question + candidate span (never the unit, path or
+ *      repo) and answers whether the span alone answers each question, and separately whether the
+ *      direct question and its paraphrase mean the same thing.
+ *
+ * Roles default to claude generates / codex judges (the configuration the Step 14 spike measured).
+ * Path B — codex generates / claude judges — was approved by an Astra-only Dual deliberation on
+ * 2026-09-14 and must qualify on its own pilot; host details live in ./producer-hosts.mjs.
  *
  * Fence (owner mandate): the child environment is scripts/subscription-hosts.mjs#subscriptionOnlyEnv,
- * which deletes every API_BILLING_ENV name; this module never reads those names itself (the unit
- * test greps this file for them). `--bare` is deliberately NOT used: its help text says auth then
- * becomes "strictly ANTHROPIC_API_KEY ... OAuth and keychain are never read" — the opposite of the
- * fence. Context is minimised instead with --system-prompt, --tools "", --strict-mcp-config,
- * --disable-slash-commands and --setting-sources "" (measured 2026-09-13: 1,009 prompt tokens vs
- * ~100k with the defaults; both shapes authenticated as claude.ai / max).
+ * which deletes every API_BILLING_ENV name; this module never reads those names itself (the unit test
+ * greps this file for them). `--bare` is never used — see producer-hosts.mjs.
  *
  * The producer sees upstream bytes only. Nothing here reads a candidate corpus, RVF, passage sidecar
  * or retrieval output — by construction, not by promise (inputs: inventory JSON + snapshot dir).
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { API_BILLING_ENV, subscriptionOnlyEnv } from '../subscription-hosts.mjs';
 import { gitBlobSha, sha256Hex, unitText } from './source-units.mjs';
+import {
+  DEFAULT_ROLES, LABEL_SCHEMA, PRODUCER_MODELS, VERDICT_SCHEMA, generatorPrompt, hostAdapters, isQuotaRefusal,
+  judgePrompt, spawnHost,
+} from './producer-hosts.mjs';
 
-// Pinned on 2026-09-13 against the native hosts (same ids scripts/dual-host-deliberation.mjs pins).
-export const PRODUCER_MODELS = Object.freeze({ claude: 'claude-fable-5-1', codex: 'gpt-6-astra' });
+export {
+  CLAUDE_SYSTEM_PROMPT, CLAUDE_TIMEOUT_MS, CODEX_TIMEOUT_MS, DEFAULT_ROLES, JUDGE_SYSTEM_PROMPT, LABEL_SCHEMA,
+  PRODUCER_MODELS, VERDICT_SCHEMA, claudeArgs, claudePrompt, codexArgs, codexPrompt, hostAdapters, isQuotaRefusal,
+  parseClaudeEnvelope, parseClaudeVerdicts, parseCodexJsonl, parseCodexLabels, spawnHost,
+} from './producer-hosts.mjs';
+
+export const PRODUCER_VERSION = 'oracle-producer/2';
 export const DEFAULT_BATCH = 20;
 export const MAX_UNIT_CHARS = 6000;
-export const CLAUDE_TIMEOUT_MS = 900_000;
-export const CODEX_TIMEOUT_MS = 600_000;
-
-const labelItem = {
-  type: 'object', additionalProperties: false,
-  properties: {
-    unitId: { type: 'string' }, direct: { type: 'string' }, paraphrase: { type: 'string' }, span: { type: 'string' },
-    spanStartLine: { type: 'integer' }, spanEndLine: { type: 'integer' }, skip: { type: 'boolean' }, reason: { type: 'string' },
-  },
-  required: ['unitId', 'direct', 'paraphrase', 'span', 'spanStartLine', 'spanEndLine', 'skip', 'reason'],
-};
-export const LABEL_SCHEMA = Object.freeze({
-  type: 'object', additionalProperties: false, properties: { labels: { type: 'array', items: labelItem } }, required: ['labels'],
-});
-export const VERDICT_SCHEMA = Object.freeze({
-  type: 'object', additionalProperties: false,
-  properties: {
-    verdicts: {
-      type: 'array',
-      items: {
-        type: 'object', additionalProperties: false,
-        properties: { id: { type: 'string' }, answers: { type: 'string', enum: ['yes', 'no'] }, reason: { type: 'string' } },
-        required: ['id', 'answers', 'reason'],
-      },
-    },
-  },
-  required: ['verdicts'],
-});
-
-export const CLAUDE_SYSTEM_PROMPT = 'You write retrieval-benchmark labels for source text. You see only the units in the message, '
-  + 'you have no tools, and you must not use anything outside them. Return only the structured output.';
 
 export function batchUnits(units, size = DEFAULT_BATCH) {
   const out = [];
@@ -89,188 +68,149 @@ export function loadUnitTexts(snapshotDir, units) {
   });
 }
 
-export function claudePrompt(batch) {
-  const head = [
-    'Write labels for each UNIT below. Return exactly one object per unit, in order:',
-    '- unitId: copy exactly.',
-    '- direct: one specific question (8-30 words) answerable ONLY from this unit\'s text. Do not reuse more than 4 consecutive words of the answer text inside the question.',
-    '- paraphrase: reword the direct question so it keeps the same meaning and the same answer but uses different words and a different sentence structure.',
-    '- span: the EXACT contiguous substring of the unit text that answers the question. Copy it character-for-character: same spelling, casing, punctuation, whitespace and line breaks. 1-4 sentences of prose or 1-12 lines of code. Never the heading line alone; never the whole unit.',
-    '- spanStartLine, spanEndLine: 1-based line numbers of that span INSIDE the unit text (line 1 is the first line after the ===UNIT marker).',
-    '- skip: true only if the unit has no askable factual content; then set direct/paraphrase/span to "" and the line numbers to 0 and explain in reason. Otherwise reason is "".',
-    'Do not invent facts. The text between ===UNIT and ===END is verbatim source.',
-    '',
-  ];
-  const body = batch.map(({ unit, text, truncated }) => [
-    `===UNIT unitId=${unit.unitId} path=${unit.path} kind=${unit.kind} lines=${text.split('\n').length}${truncated ? ' truncated=true' : ''}`,
-    text,
-    '===END',
-  ].join('\n'));
-  return head.concat(body).join('\n');
-}
-
-export function claudeArgs({ model = PRODUCER_MODELS.claude, effort = 'medium', schema = LABEL_SCHEMA } = {}) {
-  return [
-    '-p', '--output-format', 'json', '--model', model, '--effort', effort, '--tools', '', '--no-session-persistence',
-    '--disable-slash-commands', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--setting-sources', '',
-    '--system-prompt', CLAUDE_SYSTEM_PROMPT, '--json-schema', JSON.stringify(schema),
-  ];
-}
-
-export function codexPrompt(pairs) {
-  const head = [
-    'You are an independent verifier. For each item you receive a QUESTION and a SPAN of text.',
-    'Decide whether the SPAN ALONE contains information sufficient to answer the QUESTION correctly and specifically.',
-    'Use no outside knowledge. Do not read files or run commands. Return one verdict per item with the same id.',
-    '',
-  ];
-  const body = pairs.map(({ id, question, span }) => `--- id=${id}\nQUESTION: ${question}\nSPAN:\n${span}\n`);
-  return head.concat(body).join('\n');
-}
-
-export function codexArgs({ model = PRODUCER_MODELS.codex, effort = 'medium', schemaFile } = {}) {
-  return [
-    'exec', '--ephemeral', '--sandbox', 'read-only', '--skip-git-repo-check', '--color', 'never', '--json',
-    '-m', model, '-c', `model_reasoning_effort="${effort}"`, '--output-schema', schemaFile,
-  ];
-}
-
-export function parseClaudeEnvelope(stdout) {
-  let envelope;
-  try { envelope = JSON.parse(stdout); } catch { return { error: 'claude stdout is not a JSON envelope' }; }
-  if (envelope.is_error) return { error: `claude reported is_error (${envelope.subtype})`, envelope };
-  let structured = envelope.structured_output;
-  if (structured === undefined && typeof envelope.result === 'string') {
-    try { structured = JSON.parse(envelope.result); } catch { return { error: 'claude result is not JSON', envelope }; }
-  }
-  if (!structured || !Array.isArray(structured.labels)) return { error: 'claude output lacks labels[]', envelope };
-  return { structured, envelope };
-}
-
-/** Codex emits JSONL; hooks on this machine inject unrelated agent_messages first, so only the LAST one counts. */
-export function parseCodexJsonl(stdout) {
-  const messages = [];
-  const errors = [];
-  for (const line of String(stdout).split('\n')) {
-    let value;
-    try { value = JSON.parse(line); } catch { continue; }
-    if (value.type !== 'item.completed') continue;
-    if (value.item?.type === 'agent_message') messages.push(value.item.text);
-    if (value.item?.type === 'error') errors.push(value.item.message);
-  }
-  const last = messages.at(-1);
-  if (last === undefined) return { error: 'codex emitted no agent_message', errors };
-  try {
-    const structured = JSON.parse(last);
-    if (!Array.isArray(structured.verdicts)) return { error: 'codex output lacks verdicts[]', errors };
-    return { structured, errors };
-  } catch {
-    return { error: 'codex final message is not JSON', errors };
-  }
-}
-
-export function spawnHost(binary, args, { cwd, env, timeoutMs }, input) {
-  return new Promise((resolve) => {
-    const started = Date.now();
-    const child = spawn(binary, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-    let settled = false;
-    const timer = setTimeout(() => { timedOut = true; try { child.kill('SIGKILL'); } catch { /* gone */ } }, timeoutMs);
-    const finish = (status, error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ status, stdout, stderr: error ? `${stderr}\n${error.message}` : stderr, timedOut, durationMs: Date.now() - started });
-    };
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.stdin.on('error', () => { /* host closed stdin early; the close event still settles */ });
-    child.on('error', (error) => finish(null, error));
-    child.on('close', (status) => finish(status));
-    child.stdin.end(input);
-  });
-}
-
 function billingNamesPresent(env) { return API_BILLING_ENV.filter((name) => name in env); }
 
+/**
+ * A checkpoint is reusable only under the SAME producer configuration. blobSha alone is not enough
+ * (Dual): the key binds source, rules, roles, models, effort, batch size and the exact prompt text.
+ */
+export function checkpointKey({ inventory, roles, adapters, effort, batchSize }) {
+  return sha256Hex(Buffer.from(JSON.stringify({
+    producerVersion: PRODUCER_VERSION, repo: inventory.repo, commit: inventory.commit, rulesVersion: inventory.rulesVersion,
+    roles, generatorModel: adapters.generator.model, judgeModel: adapters.judge.model, effort, batchSize,
+    generatorPromptSha256: sha256Hex(Buffer.from(generatorPrompt([]), 'utf8')),
+    judgePromptSha256: sha256Hex(Buffer.from(judgePrompt([{ id: 'x', questionA: 'a', questionB: 'b' }]), 'utf8')),
+  }), 'utf8'));
+}
+
 export async function produceQuestions({
-  inventory, snapshotDir, batchSize = DEFAULT_BATCH, maxClaudeCalls = 8, maxCodexCalls = 8, effort = 'medium',
-  models = PRODUCER_MODELS, spawnImpl = spawnHost, workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-producer-')),
+  inventory, snapshotDir, batchSize = DEFAULT_BATCH, maxClaudeCalls = 8, maxCodexCalls = 8, maxGeneratorCalls, maxJudgeCalls,
+  effort = 'medium', models = PRODUCER_MODELS, roles = DEFAULT_ROLES, allowSameVendor = false, retries = 0,
+  checkpointFile = null, spawnImpl = spawnHost, workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-producer-')),
   log = () => {},
 }) {
   const env = subscriptionOnlyEnv();
   const envAudit = { parentHadBillingKeys: billingNamesPresent(process.env), childHadBillingKeys: billingNamesPresent(env) };
   if (envAudit.childHadBillingKeys.length) throw new Error(`fence violated: child env still carries ${envAudit.childHadBillingKeys.join(',')}`);
   fs.mkdirSync(workDir, { recursive: true }); // an explicitly-supplied workDir may not exist yet
-  const schemaFile = path.join(workDir, 'verdict-schema.json');
-  fs.writeFileSync(schemaFile, JSON.stringify(VERDICT_SCHEMA));
+  const schemaFiles = { labels: path.join(workDir, 'label-schema.json'), verdicts: path.join(workDir, 'verdict-schema.json') };
+  fs.writeFileSync(schemaFiles.labels, JSON.stringify(LABEL_SCHEMA));
+  fs.writeFileSync(schemaFiles.verdicts, JSON.stringify(VERDICT_SCHEMA));
   const codexCwd = path.join(workDir, 'codex-empty-cwd');
   fs.mkdirSync(codexCwd, { recursive: true });
+  const adapters = hostAdapters({ roles, models, effort, schemaFiles, workDir, codexCwd, allowSameVendor });
+  const { generator, judge } = adapters;
+  const budgetFor = (host, explicit) => explicit ?? (host === 'claude' ? maxClaudeCalls : maxCodexCalls);
+  const generatorBudget = budgetFor(generator.host, maxGeneratorCalls);
+  const judgeBudget = budgetFor(judge.host, maxJudgeCalls);
+
+  const key = checkpointKey({ inventory, roles, adapters, effort, batchSize });
+  const reused = new Map();
+  if (checkpointFile && fs.existsSync(checkpointFile)) {
+    const saved = JSON.parse(fs.readFileSync(checkpointFile, 'utf8'));
+    if (saved.key === key) {
+      for (const l of saved.labels || []) if (!l.producerError) reused.set(l.unitId, l);
+    }
+  }
 
   const loaded = loadUnitTexts(snapshotDir, inventory.selected);
-  const batches = batchUnits(loaded, batchSize);
+  const byUnit = new Map();
+  for (const { unit } of loaded) {
+    const prior = reused.get(unit.unitId);
+    if (prior && prior.path === unit.path && prior.blobSha === unit.blobSha && prior.bytesSha256 === unit.bytesSha256) byUnit.set(unit.unitId, prior);
+  }
+  const reusedUnits = byUnit.size;
   const calls = [];
-  const labels = [];
-  const byId = new Map(loaded.map((l) => [l.unit.unitId, l]));
+  let suspended = null;
+  const ordered = () => loaded.map(({ unit }) => byUnit.get(unit.unitId)).filter(Boolean);
+  const saveCheckpoint = () => {
+    if (checkpointFile) fs.writeFileSync(checkpointFile, `${JSON.stringify({ key, producerVersion: PRODUCER_VERSION, labels: ordered(), suspended })}\n`);
+  };
 
-  for (const [index, batch] of batches.entries()) {
-    if (index >= maxClaudeCalls) {
-      for (const { unit } of batch) labels.push(baseLabel(unit, { producerError: 'claude call budget exhausted' }));
-      continue;
+  const runCall = async (adapter, batchIndex, items, input) => {
+    for (let attempt = 0; ; attempt += 1) {
+      const result = await spawnImpl(adapter.binary, adapter.args, { cwd: adapter.cwd, env, timeoutMs: adapter.timeoutMs }, input);
+      const parsed = result.status === 0 && !result.timedOut
+        ? adapter.parse(result.stdout)
+        : { error: result.timedOut ? 'timeout' : `exit ${result.status}: ${String(result.stderr || '').slice(0, 300)}` };
+      const quotaRefusal = Boolean(parsed.error) && isQuotaRefusal(`${result.stderr}\n${parsed.error}`);
+      calls.push(callRecord(adapter, batchIndex, items, result, parsed, attempt, quotaRefusal));
+      if (quotaRefusal) {
+        // Suspend: no further calls to ANY host. Remaining work is recorded as unproduced, never dropped.
+        suspended = { host: adapter.host, stage: adapter.stage, batchIndex, reason: String(result.stderr || parsed.error).slice(-300) };
+        return parsed;
+      }
+      if (!parsed.error || attempt >= retries) return parsed;
+      log(`[producer] ${adapter.host} ${adapter.stage} batch ${batchIndex + 1} retry ${attempt + 1}/${retries} after: ${parsed.error}`);
     }
-    log(`[producer] claude batch ${index + 1}/${batches.length} (${batch.length} units)`);
-    const result = await spawnImpl('claude', claudeArgs({ model: models.claude, effort }), { cwd: workDir, env, timeoutMs: CLAUDE_TIMEOUT_MS }, claudePrompt(batch));
-    const parsed = result.status === 0 && !result.timedOut ? parseClaudeEnvelope(result.stdout) : { error: result.timedOut ? 'timeout' : `exit ${result.status}: ${result.stderr.slice(0, 300)}` };
-    calls.push(callRecord('claude', index, batch.length, result, parsed, models.claude));
+  };
+
+  const pending = loaded.filter(({ unit }) => !byUnit.has(unit.unitId));
+  for (const [index, batch] of batchUnits(pending, batchSize).entries()) {
+    const stop = suspended ? `suspended: ${suspended.host} refused for capacity`
+      : index >= generatorBudget ? `${generator.host} call budget exhausted` : null;
+    if (stop) { for (const { unit } of batch) byUnit.set(unit.unitId, baseLabel(unit, { producerError: stop })); continue; }
+    log(`[producer] ${generator.host} generator batch ${index + 1} (${batch.length} units)`);
+    const parsed = await runCall(generator, index, batch.length, generator.prompt(batch));
     if (parsed.error) {
-      for (const { unit } of batch) labels.push(baseLabel(unit, { producerError: parsed.error }));
-      continue;
+      for (const { unit } of batch) byUnit.set(unit.unitId, baseLabel(unit, { producerError: parsed.error }));
+    } else {
+      const returned = new Map(parsed.structured.labels.map((l) => [l.unitId, l]));
+      for (const { unit, truncated } of batch) {
+        const l = returned.get(unit.unitId);
+        byUnit.set(unit.unitId, l ? baseLabel(unit, {
+          direct: l.direct, paraphrase: l.paraphrase, span: l.span, spanStartLine: l.spanStartLine, spanEndLine: l.spanEndLine,
+          skip: l.skip === true, skipReason: l.skip ? l.reason : '', truncatedForProducer: truncated,
+        }) : baseLabel(unit, { producerError: `unit missing from ${generator.host} output` }));
+      }
     }
-    const returned = new Map(parsed.structured.labels.map((l) => [l.unitId, l]));
-    for (const { unit, truncated } of batch) {
-      const l = returned.get(unit.unitId);
-      if (!l) { labels.push(baseLabel(unit, { producerError: 'unit missing from claude output' })); continue; }
-      labels.push(baseLabel(unit, {
-        direct: l.direct, paraphrase: l.paraphrase, span: l.span, spanStartLine: l.spanStartLine, spanEndLine: l.spanEndLine,
-        skip: l.skip === true, skipReason: l.skip ? l.reason : '', truncatedForProducer: truncated,
-      }));
-    }
+    saveCheckpoint();
   }
 
-  const verifiable = labels.filter((l) => !l.producerError && !l.skip);
-  const codexBatches = batchUnits(verifiable, batchSize);
-  for (const [index, batch] of codexBatches.entries()) {
-    if (index >= maxCodexCalls) { for (const l of batch) l.codex = { error: 'codex call budget exhausted' }; continue; }
-    log(`[producer] codex batch ${index + 1}/${codexBatches.length} (${batch.length * 2} pairs)`);
-    const pairs = batch.flatMap((l) => [
+  const unjudged = ordered().filter((l) => !l.producerError && !l.skip && !l.judge);
+  for (const [index, batch] of batchUnits(unjudged, batchSize).entries()) {
+    const stop = suspended ? 'suspended' : index >= judgeBudget ? `${judge.host} call budget exhausted` : null;
+    if (stop) { for (const l of batch) setVerdicts(l, judge, { error: stop }); continue; }
+    const items = batch.flatMap((l) => [
       { id: `${l.unitId}:d`, question: l.direct, span: l.span },
       { id: `${l.unitId}:p`, question: l.paraphrase, span: l.span },
+      { id: `${l.unitId}:e`, questionA: l.direct, questionB: l.paraphrase },
     ]);
-    const result = await spawnImpl('codex', codexArgs({ model: models.codex, effort, schemaFile }), { cwd: codexCwd, env, timeoutMs: CODEX_TIMEOUT_MS }, codexPrompt(pairs));
-    const parsed = result.status === 0 && !result.timedOut ? parseCodexJsonl(result.stdout) : { error: result.timedOut ? 'timeout' : `exit ${result.status}: ${result.stderr.slice(0, 300)}` };
-    calls.push(callRecord('codex', index, pairs.length, result, parsed, models.codex));
+    log(`[producer] ${judge.host} judge batch ${index + 1} (${items.length} items)`);
+    const parsed = await runCall(judge, index, items.length, judge.prompt(items));
     const verdicts = new Map((parsed.structured?.verdicts || []).map((v) => [v.id, v]));
-    for (const l of batch) {
-      const d = verdicts.get(`${l.unitId}:d`);
-      const p = verdicts.get(`${l.unitId}:p`);
-      l.codex = parsed.error ? { error: parsed.error } : {
-        direct: d ? { answers: d.answers, reason: d.reason } : { error: 'missing verdict' },
-        paraphrase: p ? { answers: p.answers, reason: p.reason } : { error: 'missing verdict' },
-      };
-    }
+    for (const l of batch) setVerdicts(l, judge, parsed.error ? { error: parsed.error } : { verdicts });
+    saveCheckpoint();
   }
-  void byId;
+
+  const shown = (adapter) => ({
+    host: adapter.host, binary: adapter.binary, requestedModel: adapter.model, effort,
+    args: adapter.args.filter((a) => !a.startsWith('{')).map((a) => (a.startsWith(workDir) ? '<schema>' : a)),
+  });
   return {
     schemaVersion: 1, kind: 'oracle-labels', repo: inventory.repo, commit: inventory.commit, rulesVersion: inventory.rulesVersion,
+    producerVersion: PRODUCER_VERSION, roles,
     producer: {
-      claude: { binary: 'claude', requestedModel: models.claude, args: claudeArgs({ model: models.claude, effort }).filter((a) => !a.startsWith('{')), effort },
-      codex: { binary: 'codex', requestedModel: models.codex, args: codexArgs({ model: models.codex, effort, schemaFile: '<schema>' }), effort },
-      batchSize, note: 'total_cost_usd is the host\'s at-list-price estimate; both hosts were verified subscription-authenticated (claude.ai/max, ChatGPT) and no provider key was present in the child env.',
+      generator: shown(generator), judge: shown(judge),
+      claude: { binary: 'claude', requestedModel: models.claude, effort },
+      codex: { binary: 'codex', requestedModel: models.codex, effort },
+      batchSize, retries,
+      note: 'total_cost_usd is the host\'s at-list-price estimate; both hosts were verified subscription-authenticated (claude.ai/max, ChatGPT) and no provider key was present in the child env.',
     },
-    envAudit, calls, labels,
+    checkpoint: checkpointFile ? { file: checkpointFile, key, reusedUnits } : null,
+    suspended, envAudit, calls, labels: ordered(),
   };
+}
+
+/** Role-neutral verdicts on `judge`; the historical `codex` shape is kept exactly when codex judged. */
+function setVerdicts(label, judge, { error, verdicts }) {
+  const pick = (suffix) => {
+    if (error) return { error };
+    const v = verdicts.get(`${label.unitId}:${suffix}`);
+    return v ? { answers: v.answers, reason: v.reason } : { error: 'missing verdict' };
+  };
+  label.judge = { host: judge.host, model: judge.model, direct: pick('d'), paraphrase: pick('p'), equivalent: pick('e') };
+  if (judge.host === 'codex') label.codex = error ? { error } : { direct: label.judge.direct, paraphrase: label.judge.paraphrase };
 }
 
 function baseLabel(unit, extra) {
@@ -280,50 +220,59 @@ function baseLabel(unit, extra) {
   };
 }
 
-function callRecord(host, batchIndex, items, result, parsed, requestedModel) {
+function callRecord(adapter, batchIndex, items, result, parsed, attempt, quotaRefusal) {
   const rec = {
-    host, batchIndex, items, requestedModel, status: result.status, timedOut: result.timedOut, durationMs: result.durationMs,
-    ok: !parsed.error, error: parsed.error,
+    host: adapter.host, stage: adapter.stage, batchIndex, attempt, items, requestedModel: adapter.model,
+    status: result.status, timedOut: result.timedOut, durationMs: result.durationMs, ok: !parsed.error, error: parsed.error, quotaRefusal,
   };
-  if (host === 'claude' && parsed.envelope) {
+  if (adapter.host === 'claude' && parsed.envelope) {
     const e = parsed.envelope;
     rec.modelUsage = Object.keys(e.modelUsage || {});
     rec.numTurns = e.num_turns;
     rec.reportedCostEstimateUsd = e.total_cost_usd;
     rec.usage = e.usage && { input: e.usage.input_tokens, cacheCreate: e.usage.cache_creation_input_tokens, cacheRead: e.usage.cache_read_input_tokens, output: e.usage.output_tokens };
-    rec.returnedLabels = parsed.structured?.labels?.length;
   }
-  if (host === 'codex') {
-    rec.hostErrors = parsed.errors || [];
-    rec.returnedVerdicts = parsed.structured?.verdicts?.length;
-  }
+  if (adapter.host === 'codex') rec.hostErrors = parsed.errors || [];
+  rec.returnedLabels = parsed.structured?.labels?.length;
+  rec.returnedVerdicts = parsed.structured?.verdicts?.length;
   if (parsed.error) rec.stderrTail = String(result.stderr || '').slice(-400);
   return rec;
 }
 
 function arg(argv, flag) { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : undefined; }
+const optionalNumber = (value) => (value == null ? undefined : Number(value));
 
 export async function main(argv = process.argv.slice(2)) {
   const inventoryFile = arg(argv, '--inventory');
   const snapshotDir = arg(argv, '--dir');
   const out = arg(argv, '--out');
   if (!inventoryFile || !snapshotDir || !out) {
-    process.stderr.write('Usage: produce-questions.mjs --inventory <inventory.json> --dir <snapshot> --out <labels.json> [--batch 20] [--max-claude-calls 8] [--max-codex-calls 8] [--effort medium]\n');
+    process.stderr.write('Usage: produce-questions.mjs --inventory <inventory.json> --dir <snapshot> --out <labels.json> '
+      + '[--generator claude|codex] [--judge codex|claude] [--claude-model id] [--codex-model id] [--batch 20] '
+      + '[--max-generator-calls n] [--max-judge-calls n] [--max-claude-calls 8] [--max-codex-calls 8] [--retries 0] '
+      + '[--checkpoint <file>] [--effort medium]\n');
     return 64;
   }
   const inventory = JSON.parse(fs.readFileSync(inventoryFile, 'utf8'));
   const labels = await produceQuestions({
     inventory, snapshotDir: path.resolve(snapshotDir),
+    roles: { generator: arg(argv, '--generator') || DEFAULT_ROLES.generator, judge: arg(argv, '--judge') || DEFAULT_ROLES.judge },
+    models: { claude: arg(argv, '--claude-model') || PRODUCER_MODELS.claude, codex: arg(argv, '--codex-model') || PRODUCER_MODELS.codex },
     batchSize: Number(arg(argv, '--batch') || DEFAULT_BATCH),
     maxClaudeCalls: Number(arg(argv, '--max-claude-calls') || 8),
     maxCodexCalls: Number(arg(argv, '--max-codex-calls') || 8),
+    maxGeneratorCalls: optionalNumber(arg(argv, '--max-generator-calls')),
+    maxJudgeCalls: optionalNumber(arg(argv, '--max-judge-calls')),
+    retries: Number(arg(argv, '--retries') || 0),
+    checkpointFile: arg(argv, '--checkpoint') || null,
     effort: arg(argv, '--effort') || 'medium',
     log: (line) => process.stderr.write(`${line}\n`),
   });
   fs.writeFileSync(out, `${JSON.stringify(labels, null, 2)}\n`);
   const okCalls = labels.calls.filter((c) => c.ok).length;
-  process.stderr.write(`[producer] ${labels.repo}: ${labels.labels.length} labels, ${labels.calls.length} calls (${okCalls} ok)\n`);
-  return 0;
+  process.stderr.write(`[producer] ${labels.repo}: ${labels.labels.length} labels, ${labels.calls.length} calls (${okCalls} ok)`
+    + `${labels.suspended ? ` — SUSPENDED on ${labels.suspended.host} capacity refusal` : ''}\n`);
+  return labels.suspended ? 75 : 0;
 }
 
 // Entry-point guard. Compares REALPATHS on both sides: path.resolve() normalizes a path but does
