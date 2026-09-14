@@ -53,6 +53,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { describeLatestPointer, isCodeReleaseTag, latestCodeReleaseTag } from './release-channel-kind.mjs';
 
 export const EXIT = Object.freeze({ PASS: 0, FAIL: 1, UNKNOWN: 4 });
 
@@ -61,6 +62,8 @@ const REPO = 'stuinfla/ruvnet-brain';
 const ASSET = 'ruvnet-brain.zip';
 const REGISTRY = `https://registry.npmjs.org/${PKG}`;
 const RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
+// ADR-086 S1: latest may be a corpus generation; npm-vs-GitHub coherence is about the CODE release.
+const RELEASES_API = `https://api.github.com/repos/${REPO}/releases?per_page=30`;
 
 /**
  * The bundle is ~736MB-845MB today. The floor is set FAR below that — this is a truncation
@@ -209,6 +212,27 @@ async function probeRelease() {
   return { tag, s: 'PASS' };
 }
 
+/**
+ * The newest CODE release. Separate request from releases/latest on purpose: latest answers "what
+ * does a customer download", this answers "which product generation is published", and since
+ * ADR-086 S1 those are two different releases on most nights.
+ */
+async function latestCodeReleaseTag_(rel) {
+  const headers = process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {};
+  const r = await get(RELEASES_API, { headers });
+  if (r.ok && r.status === 200) {
+    try {
+      const tag = latestCodeReleaseTag(await r.res.json());
+      if (tag) return tag;
+    } catch { /* fall through to the pointer below */ }
+  }
+  // Degrade to the latest POINTER, but only when the pointer is itself a code release. That is
+  // byte-for-byte the answer this probe gave before corpus promotion existed, so adding a request
+  // never turns a previously-answerable check into UNKNOWN — and it still refuses to compare an npm
+  // semver against a corpus digest, which is the whole point.
+  return isCodeReleaseTag(rel?.tag) ? rel.tag : null;
+}
+
 export async function main() {
   say('PUBLISHED-SURFACE probe — the artifact a stranger receives, not the one in this checkout\n');
 
@@ -217,12 +241,18 @@ export async function main() {
   else record('B-npx-exec', 'SKIPPED', '--no-exec');
   const rel = await probeRelease();
 
-  if (reg.latest && rel.tag) {
-    const githubVersion = String(rel.tag).replace(/^v/, '');
+  // C1-C4 above deliberately stay on `releases/latest`: that IS the stranger's download, and a
+  // corpus generation carries the identical asset names (ruvnet-brain.zip + .sha256 + .sig), so
+  // those checks remain exactly as meaningful. Version COHERENCE is a different question — npm only
+  // ever carries code generations, so it must be compared against the latest CODE release.
+  const codeTag = await latestCodeReleaseTag_(rel);
+  if (reg.latest && codeTag) {
+    const githubVersion = String(codeTag).replace(/^v/, '');
     if (reg.latest === githubVersion) {
-      record('D-version-coherence', 'PASS', `npm ${reg.latest} == GitHub ${rel.tag}`);
+      record('D-version-coherence', 'PASS', `npm ${reg.latest} == GitHub code release ${codeTag}`
+        + (rel.tag && rel.tag !== codeTag ? ` · ${describeLatestPointer(rel.tag)}` : ''));
     } else {
-      record('D-version-coherence', 'FAIL', `npm ${reg.latest} != GitHub ${rel.tag} — published surfaces identify different Brain generations`);
+      record('D-version-coherence', 'FAIL', `npm ${reg.latest} != GitHub code release ${codeTag} — published surfaces identify different Brain generations`);
     }
   } else {
     record('D-version-coherence', 'UNKNOWN', 'npm or GitHub version unavailable; equality cannot be proven');

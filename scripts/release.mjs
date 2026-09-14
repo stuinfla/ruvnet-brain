@@ -36,6 +36,8 @@ import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
 import { verifyCorpusReceipt } from './corpus-candidate.mjs';
+import { verifyBundle } from './verify-bundle.mjs';
+import { CORPUS_GENERATION_FIELD, evaluateCorpusPromotion } from './corpus-promotion.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
@@ -94,6 +96,13 @@ export async function runProtectedCorpusSeed({
   if (environmentFailures.length) {
     corpusFailure(environmentFailures.join('; '));
   }
+
+  // The corpus route may never enter product publication. This is belt to the workflow's braces: the
+  // corpus job binds an environment that holds no NPM_TOKEN at all, so npm is unreachable from it by
+  // construction; this refuses the combined invocation outright so the two modes can never share one
+  // process even if a future workflow edit put them in the same job.
+  if (argv.includes('--publish')) corpusFailure('--corpus-seed cannot be combined with --publish; corpus routing must never enter product publication');
+  const promoteLatest = argv.includes('--promote-latest');
 
   const tag = cliArg(argv, '--corpus-tag');
   const bundleFile = cliArg(argv, '--corpus-bundle');
@@ -180,6 +189,27 @@ export async function runProtectedCorpusSeed({
     corpusFailure(`corpus receipt does not verify against the sealed archive (${error.message})`);
   }
 
+  // EVERY local proof happens before the first network call. `gh` must never be reached by a
+  // candidate that is already known to be unpublishable — that is the same discipline the deep
+  // verifyCorpusReceipt above follows, and a customer release with an unusable signature is exactly
+  // as unpublishable as an untrue receipt.
+  const signatureFile = `${bundleFile}.sig`;
+  const digestFile = `${bundleFile}.sha256`;
+  const generation = String(receipt.createdAt || '');
+  if (promoteLatest) {
+    for (const [label, file] of [['detached signature', signatureFile], ['sha256 sidecar', digestFile]]) {
+      if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        corpusFailure(`customer corpus promotion requires a ${label} beside the archive (${path.basename(file)} missing) — the updater fails closed without it`);
+      }
+    }
+    // The real verifier, against the trust root that ships inside the npm package. Signing happens in
+    // the workflow with the environment-scoped key; this proves the bytes about to be published
+    // verify with the key kb/forge-update.mjs actually carries.
+    const signature = verifyBundle(bundleFile, signatureFile);
+    if (!signature.ok) corpusFailure(`detached signature does not verify against the shipped trust root (${signature.reason})`);
+    if (!Number.isFinite(Date.parse(generation))) corpusFailure('corpus receipt createdAt is not a readable generation timestamp');
+  }
+
   const viewArgs = ['release', 'view', tag, '--json', 'tagName', '--repo', repo];
   const ghCommand = env.RUVNET_GH_COMMAND || 'gh';
   const ghPrefix = env.RUVNET_GH_SCRIPT ? [env.RUVNET_GH_SCRIPT] : [];
@@ -188,28 +218,120 @@ export async function runProtectedCorpusSeed({
   const viewError = String(view.error?.message || view.stderr || view.stdout || '');
   if (!/(release not found|no release found)/i.test(viewError)) corpusFailure(`cannot prove ${tag} is absent (${viewError.trim() || `gh exited ${view.status}`})`);
 
+  const receiptSha256 = sha256File(receiptFile);
+  const gh = (args) => run(ghCommand, [...ghPrefix, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
+  if (!promoteLatest) {
+    // BOOTSTRAP/RECOVERY seeds stay exactly as ADR-086's original contract left them: an immutable
+    // prerelease that never touches releases/latest. Dual's C4 resolution (S1) narrows the change to
+    // CUSTOMER releases — "Bootstrap-only releases may remain prereleases."
+    const notes = [
+      'Content-addressed RuvNet Brain corpus seed.',
+      `Archive SHA-256: ${archiveSha256}`,
+      `Receipt SHA-256: ${receiptSha256}`,
+      `Stores: ${receipt.storeCount}`,
+      `Builder source SHA: ${receipt.builderSourceSha}`,
+      'This published prerelease is immutable and must never be replaced.',
+    ].join('\n');
+    const createArgs = [
+      'release', 'create', tag,
+      '--prerelease', '--latest=false',
+      '--target', target,
+      '--repo', repo,
+      '--title', `Immutable corpus seed ${archiveSha256.slice(0, 16)}`,
+      '--notes', notes,
+      bundleFile, receiptFile,
+    ];
+    const create = gh(createArgs);
+    if (create.error || create.status !== 0) {
+      corpusFailure(`protected corpus publication failed (${String(create.error?.message || create.stderr || create.stdout || '').trim()})`);
+    }
+    return { tag, target, repository: repo, archiveSha256, receiptSha256, promoted: false };
+  }
+
+  // ── CUSTOMER CORPUS RELEASE (ADR-086 step 17 / C4 resolution S1) ───────────────────────────────
+  // The old path was invisible AND unusable to a customer, for two independent reasons, and fixing
+  // only one leaves the channel dead. `--prerelease --latest=false` means kb/forge-update.mjs's
+  // releases/latest poll never sees it; and with no detached .sig the updater fails closed anyway
+  // (kb/forge-update.mjs:1275 fetches `${url}.sig`, :1284-1285 exits 4 when verification fails).
+  // scripts/verify-channels.mjs checks exactly these two things (checks 3 and 4) against the live
+  // endpoints, and is the owner's post-publish acceptance gate.
+  const latestView = gh(['release', 'view', '--json', 'tagName,body', '--repo', repo]);
+  let currentLatest = null;
+  if (!latestView.error && latestView.status === 0) {
+    try { currentLatest = JSON.parse(String(latestView.stdout || 'null')); }
+    catch (error) { corpusFailure(`cannot read the current latest release (${error.message})`); }
+    if (!currentLatest || typeof currentLatest.tagName !== 'string') corpusFailure('current latest release carries no tag name');
+  } else {
+    const latestError = String(latestView.error?.message || latestView.stderr || latestView.stdout || '');
+    if (!/(release not found|no release found)/i.test(latestError)) {
+      corpusFailure(`cannot determine the current latest release (${latestError.trim() || `gh exited ${latestView.status}`})`);
+    }
+  }
+  const promotion = evaluateCorpusPromotion({ tag, generation, currentLatest });
+  if (!promotion.allowed) corpusFailure(promotion.reason);
+
   const notes = [
-    'Content-addressed RuvNet Brain corpus seed.',
+    'RuvNet Brain corpus generation — signed, content-addressed, and promoted to latest.',
+    `${CORPUS_GENERATION_FIELD} ${generation}`,
     `Archive SHA-256: ${archiveSha256}`,
-    `Receipt SHA-256: ${sha256File(receiptFile)}`,
+    `Receipt SHA-256: ${receiptSha256}`,
     `Stores: ${receipt.storeCount}`,
     `Builder source SHA: ${receipt.builderSourceSha}`,
-    'This published prerelease is immutable and must never be replaced.',
+    `Shipped runtime: ${receipt.archiveManifestReleaseTag}`,
+    'Immutable: this tag is the archive digest and must never be replaced.',
   ].join('\n');
-  const createArgs = [
+
+  // ASSETS COMPLETE BEFORE PROMOTION. `gh release create` uploads assets AFTER the release exists, so
+  // creating a non-draft release directly opens a window in which releases/latest resolves to a
+  // release with no archive — every polling client in that window fails or, worse, half-downloads.
+  // Create as a draft (invisible to releases/latest), prove all four assets landed, and only then
+  // flip draft off and claim latest in one edit.
+  const assetFiles = [bundleFile, signatureFile, digestFile, receiptFile];
+  const create = gh([
     'release', 'create', tag,
-    '--prerelease', '--latest=false',
+    '--draft',
     '--target', target,
     '--repo', repo,
-    '--title', `Immutable corpus seed ${archiveSha256.slice(0, 16)}`,
+    '--title', `RuvNet Brain corpus ${archiveSha256.slice(0, 16)}`,
     '--notes', notes,
-    bundleFile, receiptFile,
-  ];
-  const create = run(ghCommand, [...ghPrefix, ...createArgs], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ...assetFiles,
+  ]);
   if (create.error || create.status !== 0) {
     corpusFailure(`protected corpus publication failed (${String(create.error?.message || create.stderr || create.stdout || '').trim()})`);
   }
-  return { tag, target, repository: repo, archiveSha256, receiptSha256: sha256File(receiptFile) };
+
+  const expectedAssets = assetFiles.map((file) => path.basename(file)).sort();
+  const draftView = gh(['release', 'view', tag, '--json', 'isDraft,assets', '--repo', repo]);
+  if (draftView.error || draftView.status !== 0) corpusFailure('cannot confirm the draft corpus release before promotion');
+  let draft;
+  try { draft = JSON.parse(String(draftView.stdout || 'null')); }
+  catch (error) { corpusFailure(`cannot read the draft corpus release (${error.message})`); }
+  const uploaded = (draft?.assets || []).filter((asset) => asset?.state === 'uploaded' && Number.isSafeInteger(asset.size) && asset.size > 0);
+  if (draft?.isDraft !== true || JSON.stringify(uploaded.map((asset) => asset.name).sort()) !== JSON.stringify(expectedAssets)) {
+    corpusFailure(`refusing to promote an incomplete corpus release; expected ${expectedAssets.join(', ')} fully uploaded on a draft`);
+  }
+
+  const promote = gh(['release', 'edit', tag, '--repo', repo, '--draft=false', '--latest', '--prerelease=false']);
+  if (promote.error || promote.status !== 0) {
+    corpusFailure(`corpus promotion to latest failed (${String(promote.error?.message || promote.stderr || promote.stdout || '').trim()})`);
+  }
+
+  const finalView = gh(['release', 'view', tag, '--json', 'tagName,isDraft,isLatest,isPrerelease,assets', '--repo', repo]);
+  if (finalView.error || finalView.status !== 0) corpusFailure('cannot confirm the promoted corpus release');
+  let promoted;
+  try { promoted = JSON.parse(String(finalView.stdout || 'null')); }
+  catch (error) { corpusFailure(`cannot read the promoted corpus release (${error.message})`); }
+  const promotedAssets = (promoted?.assets || []).map((asset) => asset?.name).sort();
+  if (promoted?.tagName !== tag || promoted.isDraft !== false || promoted.isLatest !== true
+    || promoted.isPrerelease !== false || JSON.stringify(promotedAssets) !== JSON.stringify(expectedAssets)) {
+    corpusFailure('corpus release did not reach a complete, non-draft, non-prerelease latest state');
+  }
+
+  return {
+    tag, target, repository: repo, archiveSha256, receiptSha256, promoted: true,
+    generation, supersededLatest: currentLatest?.tagName || null,
+  };
 }
 
 if (CORPUS_SEED) {
