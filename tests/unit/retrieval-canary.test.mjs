@@ -454,4 +454,33 @@ describe('independent oracle coverage inventory', () => {
       expect(queryEvidence.queries[store].expected.path).toBe('README.md');
     }
   });
+
+  // THE FAILURE THIS EXISTS TO END. The oracle is sealed in two commits: one writes the payload,
+  // the next names that commit. Re-creating the payload commit — a rebase, a cherry-pick, a squash
+  // onto another branch — leaves the seal pointing at a commit that is no longer an ancestor, and
+  // often no longer exists anywhere but one machine. That happened on 2026-09-14: the shipping
+  // oracle named a commit that lived only in an agent worktree, so verifyQueryOracleSource would
+  // have failed every release-qe run, and ci.yml's `git fetch --no-tags origin
+  // $ORACLE_SOURCE_COMMIT` would have failed before that. Nothing detected it, because the two
+  // things that break are ANCESTRY and OBJECT EXISTENCE — neither of which any digest can see.
+  it('keeps the shipping oracle bound to a real ancestor of this checkout', () => {
+    const root = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
+    const evidence = JSON.parse(fs.readFileSync(path.join(root, 'data/retrieval-query-evidence.json'), 'utf8'));
+    const run = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+    const present = (() => {
+      try { run('cat-file', '-e', `${evidence.sourceCommit}^{commit}`); return true; } catch { return false; }
+    })();
+    if (!present) {
+      // A shallow or partial checkout legitimately lacks the object; ci.yml fetches it explicitly
+      // before the plan build. Anything else means the seal names a commit that does not exist.
+      expect(run('rev-parse', '--is-shallow-repository')).toBe('true');
+      return;
+    }
+    expect(() => run('merge-base', '--is-ancestor', evidence.sourceCommit, 'HEAD')).not.toThrow();
+    expect(evidence.sourceCommit).not.toBe(run('rev-parse', 'HEAD'));
+    const sealedPayload = JSON.parse(run('show', `${evidence.sourceCommit}:${evidence.sourcePath}`));
+    expect(digest({ schemaVersion: sealedPayload.schemaVersion, kind: sealedPayload.kind,
+      queryStoreSetSha256: sealedPayload.queryStoreSetSha256, queries: sealedPayload.queries }))
+      .toBe(evidence.sourceBlobSha256);
+  });
 });
