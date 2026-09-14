@@ -115,4 +115,4 @@ export function main(args = process.argv.slice(2)) {
   }
 }
 
-if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) process.exitCode = main();
+if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) process.exitCode = main();

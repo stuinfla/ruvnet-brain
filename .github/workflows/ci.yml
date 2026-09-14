@@ -259,7 +259,16 @@ jobs:
           node scripts/public-verification-inputs.mjs observe-baseline \
             --baseline-bundle "$seed" --expected-tag "$SEED_TAG" --expected-sha256 "$SEED_SHA256" \
             --expected-bytes "$SEED_BYTES" --out "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json"
-          node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" --assets "${asset_dirs[0]}"
+          # --legacy-seed-projection declares, EXPLICITLY, that this rail consumes the pinned
+          # PRE-Step-3/4 corpus seed through the two-pass release-projection path. Without it
+          # build-bundle.mjs applies the step-5 single-pass contract, which this seed cannot satisfy:
+          # measured against v4.2.1-dev on 2026-09-14 it carries 186 stores, no sealed public-input
+          # selection, no public-store-classes.json and no ruv-gists.sources.json, while
+          # data/source-coverage.json observes 195 eligible stores and 492 eligible gists. The flag,
+          # release-projection.mjs's CLI, and assembleBundle's legacySeedProjection branch RETIRE
+          # TOGETHER at plan step 11, when a Step-4-produced seed is published and re-pinned.
+          node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" \
+            --assets "${asset_dirs[0]}" --legacy-seed-projection
           baseline_receipt_sha256="$(sha256sum "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json" | cut -d' ' -f1)"
           node scripts/release-projection.mjs \
             --corpus data/source-coverage.json --assets dist/ruvnet-brain \
@@ -268,7 +277,8 @@ jobs:
             --baseline-receipt-sha256 "$baseline_receipt_sha256" --seed-tag "$SEED_TAG" \
             --seed-sha256 "$SEED_SHA256" --seed-bytes "$SEED_BYTES"
           node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" \
-            --assets "${asset_dirs[0]}" --coverage "$RUNNER_TEMP/release-projection/COVERAGE.json" \
+            --assets "${asset_dirs[0]}" --legacy-seed-projection \
+            --coverage "$RUNNER_TEMP/release-projection/COVERAGE.json" \
             --projection "$RUNNER_TEMP/release-projection"
           cp dist/ruvnet-brain.zip "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip"
           cp data/corpus-seed.json "$RUNNER_TEMP/release-evidence/corpus-seed.json"

@@ -138,8 +138,18 @@ export function validateSelectionReceipt({ receipt, dir } = {}) {
     fail('included/files sections are malformed');
   }
   const sealed = new Map();
+  // FILESYSTEM CONTAINMENT (P2, Dual 2026-09-14): the previous check "validates slash-separated
+  // traversal and the final file only. It does not reject backslash traversal on Windows or symlink
+  // ancestors." Both are closed here: `\` is rejected outright as a path separator on any host, and
+  // every row's resolved PARENT must still be inside the real root, so a symlinked directory
+  // component cannot carry the read outside the sealed tree even though the final entry is a
+  // regular, non-symlink file.
+  let rootReal;
+  try { rootReal = fs.realpathSync(root); } catch { fail(`sealed directory ${root} does not exist`); }
+  const containedIn = (target) => target === rootReal || target.startsWith(rootReal + path.sep);
   for (const row of receipt.files) {
-    if (typeof row?.path !== 'string' || !row.path || path.isAbsolute(row.path) || row.path.split('/').includes('..')
+    if (typeof row?.path !== 'string' || !row.path || path.isAbsolute(row.path) || row.path.includes('\\')
+      || row.path.split('/').some((segment) => segment === '..' || segment === '' || segment === '.')
       || !/^[a-f0-9]{64}$/.test(String(row.sha256 || '')) || !Number.isSafeInteger(row.bytes) || row.bytes < 0) {
       fail(`sealed file row is malformed (${JSON.stringify(row?.path)})`);
     }
@@ -147,6 +157,9 @@ export function validateSelectionReceipt({ receipt, dir } = {}) {
     sealed.set(row.path, row);
     const abs = path.join(root, row.path);
     if (!fs.existsSync(abs)) fail(`sealed file ${row.path} is missing from ${root}`);
+    let parentReal;
+    try { parentReal = fs.realpathSync(path.dirname(abs)); } catch { fail(`sealed file ${row.path} has no resolvable parent directory`); }
+    if (!containedIn(parentReal)) fail(`sealed file ${row.path} resolves outside the sealed directory (${parentReal})`);
     const stat = fs.lstatSync(abs);
     if (!stat.isFile() || stat.isSymbolicLink()) fail(`sealed file ${row.path} is not a regular file`);
     const { sha256, bytes } = fileIdentity(abs);
@@ -374,6 +387,15 @@ export function materializePublicInputs({ builderRoot = DEFAULT_ROOT, policy = {
   if (fs.existsSync(path.join(out, 'capability-cards.md'))) files.push({ name: 'capability-cards.md', ...fileIdentity(path.join(out, 'capability-cards.md')) });
   if (included.aliases) files.push({ name: 'repo-aliases.json', ...fileIdentity(path.join(out, 'repo-aliases.json')) });
 
+  // The producer READS BACK its own output through the same fail-closed validator every consumer
+  // uses (P2, Dual 2026-09-14: "scripts/public-inputs.mjs:385 reads its output without calling
+  // validateSelectionReceipt"). The stage is built, promoted, and only then proven — so a promotion
+  // that landed different bytes, dropped a file, or left an unsealed managed file behind is caught
+  // HERE, by the producer, instead of becoming a consumer's problem one call later.
+  const promotedReceipt = validateSelectionReceipt({
+    receipt: JSON.parse(fs.readFileSync(path.join(out, SELECTION_FILE), 'utf8')), dir: out,
+  });
+
   return {
     kind: 'public-input-set',
     dir: out,
@@ -382,6 +404,6 @@ export function materializePublicInputs({ builderRoot = DEFAULT_ROOT, policy = {
     included,
     excluded,
     files,
-    selectionReceipt: JSON.parse(fs.readFileSync(path.join(out, SELECTION_FILE), 'utf8')),
+    selectionReceipt: promotedReceipt,
   };
 }

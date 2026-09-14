@@ -263,7 +263,7 @@ export async function main(argv = process.argv.slice(2), {
   return 0;
 }
 
-if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
   main().then((code) => { process.exitCode = code; }).catch((error) => {
     console.error(error.message);
     process.exitCode = 1;

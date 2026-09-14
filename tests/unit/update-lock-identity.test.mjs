@@ -10,7 +10,7 @@ beforeEach(async () => {
   kbDir = path.join(root, 'kb');
   fs.mkdirSync(kbDir);
   for (const file of ['forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs',
-    'refresh-run.mjs', 'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs']) {
+    'refresh-run.mjs', 'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs']) {
     fs.copyFileSync(path.resolve(import.meta.dirname, '../../kb', file), path.join(kbDir, file));
   }
   fs.writeFileSync(path.join(kbDir, 'SOURCE.json'), JSON.stringify({

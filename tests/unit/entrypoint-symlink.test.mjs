@@ -29,10 +29,37 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const KB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'kb');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const KB = path.join(ROOT, 'kb');
 
 // Both files that carry the guard. If a third entry point grows one, add it here.
 const ENTRY_POINTS = ['forge-ask.mjs', 'forge-ask-all.mjs'];
+
+// The corpus-seed pipeline carries the SAME guard, and the same defect was measured there on
+// 2026-09-14 by the step-8 rehearsal harness: run through a symlinked working directory,
+// build-bundle.mjs and corpus-candidate.mjs no-opped, and prepareCorpusCandidate reported SUCCESS
+// with no archive and no receipt on disk — because corpus-reconcile.mjs's checked() inspects only
+// the exit status. On macOS EVERY os.tmpdir() path is symlinked (/var/folders/... ->
+// /private/var/folders/...), so any tool staging work in a temp dir hits this.
+//
+// These run with no arguments on purpose: the assertion is the same one above — it must SAY
+// something. Several will exit non-zero complaining about missing required flags, which is fine
+// and is exactly the point. Silence is the failure.
+// DELIBERATELY EXCLUDED: build-concepts.mjs and rebuild-gists-from-receipts.mjs. Both carry the same
+// guard and were fixed in the same commit, but invoked with NO ARGUMENTS they do real work and REWRITE
+// tracked files in the live checkout — build-concepts.mjs spends ~40s rewriting kb/concepts.sources.json
+// and kb/ruv-gists.sources.json; rebuild-gists-from-receipts.mjs rewrites kb/ruv-gists.sources.json.
+// Measured the hard way: each one dirtied the working tree on every run of this suite. A test that
+// mutates tracked source is the very defect P1-a exists to prevent, so their guards are covered by the
+// mechanism test below rather than by execution. Verified individually: the four kept here leave
+// `git status --porcelain -- kb/` empty.
+const PIPELINE_ENTRY_POINTS = [
+  'build-bundle.mjs',
+  'release-projection.mjs',
+  'host-registry.mjs',
+  'adr-072-completion.mjs',
+  'product-integrity-contract.mjs',
+];
 
 describe('KB entry points run when invoked through a symlink', () => {
   for (const entry of ENTRY_POINTS) {
@@ -59,6 +86,31 @@ describe('KB entry points run when invoked through a symlink', () => {
           out.trim().length,
           `${entry} produced NOTHING through a symlink (exit ${r.status}) — main() did not run, ` +
             'and a silent exit 0 is indistinguishable from "searched, found nothing"',
+        ).toBeGreaterThan(0);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
+  for (const entry of PIPELINE_ENTRY_POINTS) {
+    it(`scripts/${entry}: a symlinked invocation runs main() instead of silently exiting 0`, () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-symlink-pipeline-'));
+      const link = path.join(dir, entry);
+      try {
+        fs.symlinkSync(path.join(ROOT, 'scripts', entry), link);
+        const r = spawnSync(process.execPath, [link], {
+          encoding: 'utf8',
+          timeout: 120000,
+          env: { ...process.env, RUVNET_BRAIN_TEST: '1' },
+        });
+        expect(r.error, `spawn failed: ${r.error && r.error.message}`).toBeUndefined();
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        expect(
+          out.trim().length,
+          `scripts/${entry} produced NOTHING through a symlink (exit ${r.status}) — main() did not ` +
+            'run. A silent exit 0 is the failure mode that let prepareCorpusCandidate report ' +
+            'SUCCESS with no archive on disk.',
         ).toBeGreaterThan(0);
       } finally {
         fs.rmSync(dir, { recursive: true, force: true });

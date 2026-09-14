@@ -90,7 +90,7 @@ beforeEach(() => {
   kbDir = path.join(root, 'kb');
   fs.mkdirSync(kbDir, { recursive: true });
   for (const f of ['forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs',
-    'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs']) {
+    'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs']) {
     fs.copyFileSync(path.join(ROOT, 'kb', f), path.join(kbDir, f));
   }
   const updater = path.join(kbDir, 'forge-update.mjs');
@@ -175,7 +175,7 @@ if (!doc.stores?.[value('--name')]) { console.error('no entry for store "'+value
     // A published bundle ships the updater's module graph — and NOT coverage-integrity.mjs, which
     // build-bundle.mjs cannot see behind the updater's dynamic load. The fixture bundle must match.
     for (const file of ['forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs',
-      'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs']) {
+      'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs']) {
       fs.copyFileSync(path.join(kbDir, file), path.join(dir, file));
     }
   }

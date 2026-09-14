@@ -29,6 +29,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { describeLatestPointer, latestCodeReleaseTag } from './release-channel-kind.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const JSON_OUT = process.argv.includes('--json');
@@ -133,20 +134,31 @@ async function run() {
   // place of the thing (receipt-count for "is routing running", backlog-remaining for "is promotion in
   // force", cache-exists for "is this measurement current"). Reachability is the proxy; version is the
   // thing. Users updating via the release bundle get whatever THIS says, not whatever npm says.
+  // ADR-086 S1: `releases/latest` is the CUSTOMER download pointer and may legitimately be a corpus
+  // generation (`corpus-sha256-<digest>`), which can never equal a semver. Asking that pointer "are
+  // you the shipping version?" therefore stopped being the right question the moment corpus
+  // promotion existed — and because release.mjs runs this script as `runOrDie` in step E, the wrong
+  // question would have failed the OWNER'S OWN preflight every time a corpus night succeeded. The
+  // code generation is a separate fact, so it gets asked separately.
   {
-    let tag = null, err = null;
+    let releases = null, tag = null, latestPointer = null, err = null;
     try {
-      const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+      const r = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=30`, {
         headers: { 'User-Agent': 'ruvnet-brain-verify-channels' },
       });
-      if (r.ok) tag = (await r.json()).tag_name || null; else err = `HTTP ${r.status}`;
+      if (r.ok) {
+        releases = await r.json();
+        tag = latestCodeReleaseTag(releases);
+        latestPointer = (Array.isArray(releases) ? releases.find((row) => row && !row.draft) : null)?.tag_name || null;
+      } else err = `HTTP ${r.status}`;
     } catch (e) { err = String(e && e.message || e); }
     // Tags carry a leading `v`; the version does not. Compare the bare versions.
     const bare = (s) => String(s || '').replace(/^v/, '');
+    const pointerNote = latestPointer ? ` · ${describeLatestPointer(latestPointer)}` : '';
     check('GitHub Release IS the shipping version', tag != null && bare(tag) === bare(V),
       tag == null
-        ? `could not read releases/latest (${err}) — release currency NOT verified`
-        : `release=${tag} · shipping=${V}${bare(tag) === bare(V) ? '' : `  ← ${bare(tag) !== bare(V) ? 'STALE: the release channel is behind npm. Cut the release, or users on --update stay on ' + tag : ''}`}`);
+        ? `could not read the latest code release (${err || 'no semver-tagged release found'}) — release currency NOT verified`
+        : `code release=${tag} · shipping=${V}${pointerNote}${bare(tag) === bare(V) ? '' : '  ← STALE: the release channel is behind npm. Cut the release, or users on --update stay on ' + tag}`);
   }
 
   // 4) release signature present (auto-apply verifies against it)

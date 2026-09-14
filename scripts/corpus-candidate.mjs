@@ -1,6 +1,18 @@
 #!/usr/bin/env node
 // Seal and independently verify the exact public corpus bytes used by a release.
 //
+// Schema 3 (2026-09-14, ADR-086 Step 15 / correction A6): the receipt additionally binds the
+// DETACHED retrieval-accuracy report — `accuracyReport {file, sha256, bytes}` — that measured this
+// exact archive through the customer query path. The report stays OUTSIDE the ZIP on purpose:
+// inserting it into an already-measured archive would either change the archive's digest after it
+// was measured or force a second assembly, and ADR-086 permits exactly one. Detached plus
+// digest-bound preserves single assembly and exact-artifact identity at the same time.
+//
+// SCHEMA-2 CONSEQUENCE, stated plainly: a schema-2 seed carries no accuracy binding and is
+// therefore UNPUBLISHABLE from this commit forward — verifyCorpusReceipt, runProtectedCorpusSeed
+// and corpus-seed.yml's committed-seed loader all refuse it. data/corpus-seed.json must be
+// re-pointed at a schema-3 seed in the same change that publishes one (ADR-086 Step 11's job).
+//
 // Schema 2 (2026-09-13): the receipt binds the FULL provenance/input closure that ships inside the
 // sealed archive — ARCHIVE-MANIFEST.json, PRIVATE-STORES.json, RVF-GENERATIONS.json, SOURCE.json,
 // the ruv-gists aggregate receipt, and every derived-store receipt (concepts, etc.) — instead of
@@ -20,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { canonicalJson, digest, fileIdentity, sha256File, validateGistAggregateReceipt } from '../plugin/scripts/coverage-integrity.mjs';
 import { auditCorpusStores, isPassingState } from './rvf-index-audit.mjs';
+import { readAccuracyReport } from './oracle/retrieval-accuracy.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REQUIRED_SUFFIXES = [
@@ -110,12 +123,24 @@ function normalizeBootstrapIdentity(bootstrapIdentity) {
 // from bundleFile, or is one of the three inputs that are not archive-derived (builderSourceSha,
 // bootstrapIdentity, createdAt) — verification supplies those from the receipt being checked, so a
 // receipt can never claim archive contents that were not really shipped.
-async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapIdentity, createdAt }) {
+async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapIdentity, createdAt, accuracyReportFile }) {
   const bundle = path.resolve(bundleFile || '');
   if (!fs.existsSync(bundle) || !fs.statSync(bundle).isFile()) fail(`bundle missing (${bundle || 'no path supplied'})`);
   if (!HEX_SOURCE.test(builderSourceSha || '')) fail('builderSourceSha must be a 40-64 hex source identity');
   const bootstrap = normalizeBootstrapIdentity(bootstrapIdentity);
   const archive = fileIdentity(bundle);
+
+  // C3 (ADR-086 Step 15): the detached retrieval-accuracy report travels BESIDE the archive under a
+  // fixed derived name, so the writer and the reader — including a reader holding nothing but a
+  // downloaded release asset — resolve the same file without the receipt having to carry a path.
+  // Validation re-derives every count, re-checks the 20x>=19x threshold per partition per mode, and
+  // refuses a bounded measurement outright, so "missing accuracy report", "altered archive",
+  // "below-threshold repository", "missing partition" and "timeout" each fail here, before a
+  // receipt exists at all.
+  const accuracy = readAccuracyReport({
+    reportFile: accuracyReportFile || `${bundle}.accuracy.json`,
+    archive,
+  });
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-candidate-'));
   try {
@@ -319,7 +344,7 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
     });
 
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       kind: 'ruvnet-brain-corpus-candidate',
       builderSourceSha: builderSourceSha.toLowerCase(),
       createdAt,
@@ -342,6 +367,10 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
       missingSidecars: [],
       bootstrap,
       finalBytePartitionSha256,
+      // A6, verbatim: "bump the corpus receipt to schemaVersion 3 with accuracyReport
+      // {file, sha256, bytes}". Exactly those three fields — the oracle and generator identities
+      // the publication gate needs are reached THROUGH this digest, by re-reading the bound report.
+      accuracyReport: accuracy.identity,
       generator: { corpusCandidateSha256: sha256File(fileURLToPath(import.meta.url)) },
     };
   } finally {
@@ -355,13 +384,16 @@ function currentGitSha() {
   return result.stdout.trim();
 }
 
-export async function createCorpusReceipt({ bundleFile, builderSourceSha, bootstrapIdentity = null, receiptFile, createdAt } = {}) {
+export async function createCorpusReceipt({
+  bundleFile, builderSourceSha, bootstrapIdentity = null, receiptFile, createdAt, accuracyReportFile = null,
+} = {}) {
   const resolvedReceiptFile = path.resolve(receiptFile || 'dist/corpus-receipt.json');
   const receipt = await deriveCorpusCandidate({
     bundleFile,
     builderSourceSha: builderSourceSha || currentGitSha(),
     bootstrapIdentity,
     createdAt: createdAt || new Date().toISOString(),
+    accuracyReportFile,
   });
   fs.mkdirSync(path.dirname(resolvedReceiptFile), { recursive: true });
   fs.writeFileSync(resolvedReceiptFile, `${JSON.stringify(receipt, null, 2)}\n`);
@@ -369,12 +401,14 @@ export async function createCorpusReceipt({ bundleFile, builderSourceSha, bootst
 }
 
 export async function verifyCorpusReceipt({
-  bundleFile, receiptFile, expectedBuilderSha, expectedArchiveSha256, expectedReceiptSha256,
+  bundleFile, receiptFile, expectedBuilderSha, expectedArchiveSha256, expectedReceiptSha256, accuracyReportFile = null,
 } = {}) {
   const resolvedReceiptFile = path.resolve(receiptFile || '');
   const resolvedBundleFile = path.resolve(bundleFile || '');
   const receipt = readJson(resolvedReceiptFile, 'corpus receipt');
-  if (receipt.schemaVersion !== 2 || receipt.kind !== 'ruvnet-brain-corpus-candidate') {
+  // Schema 3 only. A schema-2 receipt has no accuracyReport binding, so accepting one here would
+  // silently publish a corpus that was never measured — the exact hole A6 closes.
+  if (receipt.schemaVersion !== 3 || receipt.kind !== 'ruvnet-brain-corpus-candidate') {
     fail('unsupported corpus receipt (schema downgrade or wrong kind)');
   }
   if (expectedReceiptSha256 != null && sha256File(resolvedReceiptFile) !== expectedReceiptSha256) {
@@ -396,6 +430,7 @@ export async function verifyCorpusReceipt({
     builderSourceSha: receipt.builderSourceSha,
     bootstrapIdentity: receipt.bootstrap,
     createdAt: receipt.createdAt,
+    accuracyReportFile,
   });
   if (canonicalJson(derived) !== canonicalJson(receipt)) fail('receipt does not match the exact corpus archive contents');
   return receipt;
@@ -405,7 +440,7 @@ export async function verifyCorpusReceipt({
 // (corpus-sha256-<digest>) and its accompanying schema-2 candidate receipt. This never compares
 // the external tag against the archive's own internal ARCHIVE-MANIFEST releaseTag/version — those
 // are two independent identity domains and conflating them was the historical bug this fixes.
-export async function verifySeedBaseline({ seedDescriptor, bundleFile, receiptFile } = {}) {
+export async function verifySeedBaseline({ seedDescriptor, bundleFile, receiptFile, accuracyReportFile = null } = {}) {
   if (!seedDescriptor || typeof seedDescriptor !== 'object') fail('seed descriptor is required');
   const { tag, sha256, bytes, sourceCommit = null, allowPinnedTag = false } = seedDescriptor;
   const expectedSha256 = String(sha256 || '').toLowerCase();
@@ -422,9 +457,12 @@ export async function verifySeedBaseline({ seedDescriptor, bundleFile, receiptFi
   if (Number.isSafeInteger(bytes) && fs.statSync(resolvedBundleFile).size !== bytes) {
     fail('seed bundle byte length differs from the configured seed descriptor');
   }
+  // "Reverify the downloaded final artifact against the measured identity" — a downloaded seed is
+  // re-measured against its own detached accuracy report, which must have travelled with it.
   const receipt = await verifyCorpusReceipt({
     bundleFile: resolvedBundleFile,
     receiptFile,
+    accuracyReportFile,
     expectedArchiveSha256: expectedSha256,
     ...(sourceCommit ? { expectedBuilderSha: sourceCommit } : {}),
   });
@@ -440,6 +478,7 @@ async function main() {
   const mode = process.argv.includes('--verify') ? 'verify' : 'create';
   const bundleFile = arg('--bundle', 'dist/ruvnet-brain.zip');
   const receiptFile = arg('--receipt', arg('--out', 'dist/corpus-receipt.json'));
+  const accuracyReportFile = arg('--accuracy-report');
   if (mode === 'create') {
     const bootstrapTag = arg('--bootstrap-tag');
     const bootstrapSha256 = arg('--bootstrap-sha256');
@@ -449,20 +488,42 @@ async function main() {
       builderSourceSha: arg('--builder-source-sha'),
       bootstrapIdentity,
       receiptFile,
+      accuracyReportFile,
     });
-    console.log(JSON.stringify({ ok: true, mode, archive: receipt.archive, stores: receipt.storeCount }, null, 2));
+    console.log(JSON.stringify({
+      ok: true, mode, archive: receipt.archive, stores: receipt.storeCount, accuracyReport: receipt.accuracyReport,
+    }, null, 2));
   } else {
     const receipt = await verifyCorpusReceipt({
       bundleFile,
       receiptFile,
+      accuracyReportFile,
       expectedBuilderSha: arg('--expected-builder-sha'),
       expectedArchiveSha256: arg('--expected-archive-sha256'),
       expectedReceiptSha256: arg('--expected-receipt-sha256'),
     });
-    console.log(JSON.stringify({ ok: true, mode, archive: receipt.archive, stores: receipt.storeCount }, null, 2));
+    console.log(JSON.stringify({
+      ok: true, mode, archive: receipt.archive, stores: receipt.storeCount, accuracyReport: receipt.accuracyReport,
+    }, null, 2));
   }
 }
 
-if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+// REALPATH BOTH SIDES, or this CLI silently no-ops. argv[1] is whatever the caller typed, symlinks
+// and all, while node resolves a module URL THROUGH symlinks before it reaches import.meta.url — so a
+// symlinked invocation compares a link path against a real path, decides it is not the entry point,
+// runs nothing, and EXITS 0. On macOS every os.tmpdir() path is symlinked (/var/folders -> /private/
+// var/folders), so any caller staging work in a temp directory hits this. Measured 2026-09-14:
+// build-bundle.mjs and corpus-candidate.mjs both no-opped and prepareCorpusCandidate reported SUCCESS
+// with no archive and no receipt on disk. Same defect, same fix as plugin/scripts/hook-input.mjs:518.
+function isMain() {
+  try {
+    if (!process.argv[1]) return false;
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) {
   main().catch((error) => { console.error(error.message); process.exitCode = 1; });
 }

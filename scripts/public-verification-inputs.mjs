@@ -308,9 +308,9 @@ function observedBaselineFromTree({ extractedRoot, bundleFile, expectedTag, expe
 
 // The external, content-addressed seed tag (corpus-sha256-<digest>) and the archive's own internal
 // ARCHIVE-MANIFEST release tag/version are two independent identity domains. Unlike the legacy
-// retrospective/observed baseline readers above — which predate the schema-2 candidate receipt and
+// retrospective/observed baseline readers above — which predate the schema-3 candidate receipt and
 // compare a seed's tag directly against its internal releaseTag — this reader never makes that
-// comparison: it verifies the seed purely through its schema-2 candidate receipt.
+// comparison: it verifies the seed purely through its schema-3 candidate receipt.
 async function receiptedBaselineFromSeed({ seedDescriptor, bundleFile, receiptFile }) {
   const verified = await verifySeedBaseline({ seedDescriptor, bundleFile, receiptFile });
   const payload = {

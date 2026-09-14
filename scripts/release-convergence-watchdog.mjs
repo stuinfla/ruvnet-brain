@@ -25,6 +25,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { latestCodeReleaseTag } from './release-channel-kind.mjs';
 
 const ROOT = path.dirname(path.dirname(new URL(import.meta.url).pathname));
 const DISPATCH = process.argv.includes('--dispatch');
@@ -44,11 +45,15 @@ function stand_down(reason) {
 
 // ── 1. Is there anything to converge? ────────────────────────────────────────────────────────────
 const npmLatest = tryShy(() => sh('npm', ['view', 'ruvnet-brain', 'dist-tags.latest']));
-const ghLatest = tryShy(() => sh('gh', ['release', 'view', '--repo', REPO, '--json', 'tagName', '-q', '.tagName']));
+// ADR-086 S1: `gh release view` with no tag resolves `releases/latest`, which is a corpus
+// generation on any night a corpus round shipped. Comparing npm against a corpus digest would read
+// "never converged" forever and keep dispatching the publisher — a guard that silently disarms into
+// a loop is worse than one that breaks loudly.
+const ghLatest = tryShy(() => latestCodeReleaseTag(JSON.parse(sh('gh', ['api', `repos/${REPO}/releases?per_page=30`]))));
 if (!npmLatest || !ghLatest) stand_down(`could not read published surfaces (npm=${npmLatest} github=${ghLatest})`);
 
 const ghVersion = ghLatest.replace(/^v/, '');
-log(`npm dist-tags.latest = ${npmLatest} · GitHub releases/latest = ${ghLatest}`);
+log(`npm dist-tags.latest = ${npmLatest} · GitHub latest code release = ${ghLatest}`);
 if (npmLatest === ghVersion) {
   log(`CONVERGED — both surfaces name ${npmLatest}. Issue #77's invariant holds; nothing to do.`);
   process.exit(0);
