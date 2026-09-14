@@ -331,6 +331,12 @@ export const REQUIRED_OPERATIONAL_EXPORTS = [
   // Step 3 (2026-09-13): the single canonical public-prose selection entry point, same rigor as
   // buildGistAggregate above.
   { rel: 'scripts/public-inputs.mjs', symbol: 'materializePublicInputs' },
+  // Step 5 (2026-09-13): the single canonical assembly entry point (replaces the old ad hoc
+  // discover/copy/rebind logic previously scattered across build-bundle.mjs's module top level) and
+  // the single canonical release-coverage-projection entry point it calls in-process. Both are wired
+  // from build-bundle.mjs's own CLI wrapper at the bottom of the same file.
+  { rel: 'scripts/build-bundle.mjs', symbol: 'assembleBundle' },
+  { rel: 'scripts/release-projection.mjs', symbol: 'createReleaseProjection' },
 ];
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))
