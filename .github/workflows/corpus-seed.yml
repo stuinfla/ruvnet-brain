@@ -162,6 +162,46 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/corpus-seed-download"
+          # BOOTSTRAP DEADLOCK, measured 2026-09-14. Step 15 made the detached retrieval-accuracy
+          # report a required seed asset unconditionally. But the ONLY producer of such a report is
+          # this same workflow, and the configured bootstrap seed predates the contract: tag
+          # v4.2.1-dev ships exactly two assets, ruvnet-brain.zip and ruvnet-brain.zip.sha256. So the
+          # gate could never be satisfied by any seed that exists — the workflow failed HERE, before
+          # it ever reached the gist fetch, and no rebuild could route around it.
+          #
+          # The seal's own vocabulary already distinguishes the two cases, so use it rather than
+          # inventing a new flag: a seed MEASURED by this pipeline is published under the
+          # digest-derived tag corpus-sha256-<sha256> (assertBootstrapIdentity, corpus-reconcile.mjs),
+          # while the one hand-pinned bootstrap seed travels with --allow-pinned-seed-tag precisely
+          # because it is the pre-contract origin. Require the report for the former, exempt the
+          # latter. This is fail-closed for every seed this pipeline will ever produce: the moment
+          # step 10 publishes a real corpus-sha256-<sha> seed, the report becomes mandatory again and
+          # can never silently regress, because the exemption cannot name a digest-derived tag.
+          # The exemption is keyed on the tag NOT claiming the digest-derived form at all. Testing
+          # only `tag = corpus-sha256-$SEED_SHA256` would be fail-OPEN: a seed mis-tagged
+          # corpus-sha256-<wrong> would fall into the exempt branch and skip the accuracy gate it is
+          # supposed to be bound by. Measured 2026-09-14 — the first draft of this fix had exactly
+          # that hole. So a tag that CLAIMS the digest form must match its own digest or the run dies
+          # here; only a tag making no such claim is treated as the pre-contract bootstrap seed.
+          case "$SEED_TAG" in
+            corpus-sha256-*)
+              if [ "$SEED_TAG" != "corpus-sha256-$SEED_SHA256" ]; then
+                echo "FATAL: seed tag '$SEED_TAG' claims the digest-derived form but does not match" >&2
+                echo "       its configured sha256 ($SEED_SHA256). A mis-tagged seed must never be" >&2
+                echo "       treated as an exempt bootstrap seed." >&2
+                exit 1
+              fi
+              SEED_IS_DIGEST_DERIVED=1
+              ;;
+            *)
+              SEED_IS_DIGEST_DERIVED=0
+              echo "NOTE: seed '$SEED_TAG' is the pre-contract pinned bootstrap seed; it carries no"
+              echo "      retrieval-accuracy report and is exempt from that requirement. Every seed"
+              echo "      published by this pipeline is tagged corpus-sha256-<sha256> and IS required"
+              echo "      to carry one."
+              ;;
+          esac
+          export SEED_IS_DIGEST_DERIVED
           gh release view "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
             --json tagName,isDraft,isPrerelease,assets > "$RUNNER_TEMP/corpus-seed-release.json"
           node --input-type=module <<'NODE'
@@ -170,21 +210,27 @@ jobs:
           if (release.tagName !== process.env.SEED_TAG || release.isDraft) {
             throw new Error('configured corpus seed is absent, draft, or names another tag');
           }
-          for (const asset of ['ruvnet-brain.zip', 'ruvnet-brain.zip.accuracy.json']) {
+          const required = process.env.SEED_IS_DIGEST_DERIVED === '1'
+            ? ['ruvnet-brain.zip', 'ruvnet-brain.zip.accuracy.json']
+            : ['ruvnet-brain.zip'];
+          for (const asset of required) {
             const matches = (release.assets || []).filter(({ name }) => name === asset);
             if (matches.length !== 1) throw new Error(`configured corpus seed must carry exactly one ${asset}; found ${matches.length}`);
           }
           NODE
           gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern 'ruvnet-brain.zip' --dir "$RUNNER_TEMP/corpus-seed-download"
-          gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern 'ruvnet-brain.zip.accuracy.json' --dir "$RUNNER_TEMP/corpus-seed-download"
+          if [ "$SEED_IS_DIGEST_DERIVED" = 1 ]; then
+            gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern 'ruvnet-brain.zip.accuracy.json' --dir "$RUNNER_TEMP/corpus-seed-download"
+          fi
           test "$(find "$RUNNER_TEMP/corpus-seed-download" -maxdepth 1 -type f -name 'ruvnet-brain.zip' | wc -l | tr -d ' ')" = 1
           printf '%s  %s\n' "$SEED_SHA256" "$RUNNER_TEMP/corpus-seed-download/ruvnet-brain.zip" | sha256sum --check --strict
           test "$(stat -c %s "$RUNNER_TEMP/corpus-seed-download/ruvnet-brain.zip")" = "$SEED_BYTES"
           # "Reverify the downloaded final artifact against the measured identity." The seed's detached
           # accuracy report must bind the bytes just downloaded, and must be a complete, all-PASS
           # measurement — a bounded one is refused by the same reader the candidate seal uses.
+          if [ "$SEED_IS_DIGEST_DERIVED" = 1 ]; then
           node --input-type=module <<'NODE'
           import { readAccuracyReport } from './scripts/oracle/retrieval-accuracy.mjs';
           import fs from 'node:fs';
@@ -195,6 +241,7 @@ jobs:
           });
           console.log('seed retrieval-accuracy report verified against the downloaded seed bytes');
           NODE
+          fi
 
       - name: Reconcile exact upstream SHAs and seal a candidate
         shell: bash
