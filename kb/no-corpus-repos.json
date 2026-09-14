@@ -2,26 +2,61 @@
   "agentic-flows": {
     "reason": "repository contains only a heading-only README, license, and git metadata — no functional corpus",
     "pushedAt": "2024-08-27T15:41:11Z",
-    "at": "2026-08-21T10:58:00.000Z"
+    "at": "2026-08-21T10:58:00.000Z",
+    "evidence": {
+      "method": "gh api repos/ruvnet/agentic-flows/git/trees/HEAD?recursive=1",
+      "headSha": "3ec27c798b50a355f70e8afa8a780b262b5beb8a",
+      "inspectedAt": "2026-09-14T01:49:40Z",
+      "truncated": false,
+      "files": [
+        { "path": ".gitignore", "size": 3139 },
+        { "path": "LICENSE", "size": 1060 },
+        { "path": "README.md", "size": 15 }
+      ]
+    }
   },
   "agentic-music": {
     "reason": "repository contains only a heading-only README, license, and git metadata — no functional corpus",
     "pushedAt": "2024-08-14T18:17:36Z",
-    "at": "2026-08-21T10:58:00.000Z"
+    "at": "2026-08-21T10:58:00.000Z",
+    "evidence": {
+      "method": "gh api repos/ruvnet/agentic-music/git/trees/HEAD?recursive=1",
+      "headSha": "75b5146e57f346d3bd0fb8e63f5d9ed4492769aa",
+      "inspectedAt": "2026-09-14T01:49:40Z",
+      "truncated": false,
+      "files": [
+        { "path": ".gitignore", "size": 3139 },
+        { "path": "LICENSE", "size": 1060 },
+        { "path": "README.md", "size": 15 }
+      ]
+    }
   },
   "santa-ai-workshop": {
-    "reason": "0 chunks produced — nothing embeddable (forge exit 3)",
+    "reason": "repository tree at HEAD contains exactly one blob, LICENSE (11357 bytes) — no functional corpus. The earlier record's '0 chunks produced (forge exit 3)' was an extraction outcome, not source evidence; the tree inventory below is.",
     "pushedAt": "2023-12-22T21:14:33Z",
-    "at": "2026-08-21T07:15:12.466Z"
+    "at": "2026-08-21T07:15:12.466Z",
+    "evidence": {
+      "method": "gh api repos/ruvnet/santa-ai-workshop/git/trees/HEAD?recursive=1",
+      "headSha": "f9daec0baf89a46c6d07b99f245396ae9b47ed3a",
+      "inspectedAt": "2026-09-14T01:49:40Z",
+      "truncated": false,
+      "files": [
+        { "path": "LICENSE", "size": 11357 }
+      ]
+    }
   },
   "codegpt": {
     "reason": "repository contains one empty readme.md and git metadata — no functional corpus",
     "pushedAt": "2023-04-17T16:49:26Z",
-    "at": "2026-08-21T12:31:00.000Z"
-  },
-  "ruvnet-brain": {
-    "reason": "baseline release seed contains an older self-store; excluded until the next corpus seed refresh",
-    "pushedAt": "2026-08-21T09:06:47Z",
-    "at": "2026-08-23T10:21:00.000Z"
+    "at": "2026-08-21T12:31:00.000Z",
+    "evidence": {
+      "method": "gh api repos/ruvnet/codegpt/git/trees/HEAD?recursive=1",
+      "headSha": "3e79f75b4465fc4fdc12f42d6c97c579771aab27",
+      "inspectedAt": "2026-09-14T01:49:40Z",
+      "truncated": false,
+      "files": [
+        { "path": "readme.md", "size": 1 }
+      ]
+    }
   }
 }

@@ -188,4 +188,6 @@ jobs:
           echo 'Candidate prepared and sealed; NOT published.'
           echo 'The existing protected-release.yml must download this exact artifact, re-verify both digests,'
           echo 'extract the candidate, restore the uploaded exact private-store fence, cross its protected'
-          echo 'environment, and only then call scripts/corpus-seed-publish.mjs.'
+          echo 'environment, and only then call node scripts/release.mjs --corpus-seed (the'
+          echo 'canonical publisher; see ADR-085). That nightly job path is not yet built —'
+          echo 'this workflow only prepares and seals a candidate.'

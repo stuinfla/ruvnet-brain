@@ -81,8 +81,11 @@ describe('bundle import graph (issue #32)', () => {
     const src = fs.readFileSync(path.join(ROOT, 'scripts', 'build-bundle.mjs'), 'utf8');
     // The bug was a literal array of every module name. Derivation is the fix; assert the
     // mechanism is present rather than trusting that the array happens to be complete today.
+    // Step 5 (2026-09-13) parameterized resolveModuleGraph(kbDir) so assembleBundle can walk any
+    // finalized corpus's runtime checkout rather than a single closed-over module constant — the
+    // arity is deliberately unconstrained here, only that `derivedTools` is DERIVED, never hardcoded.
     expect(src).toMatch(/resolveModuleGraph\s*\(/);
-    expect(src).toMatch(/const\s+derivedTools\s*=\s*resolveModuleGraph\(\)/);
+    expect(src).toMatch(/const\s+derivedTools\s*=\s*resolveModuleGraph\([^)]*\)/);
   });
 
   it('includes forge-hybrid.mjs — the exact module #32 shipped without', () => {

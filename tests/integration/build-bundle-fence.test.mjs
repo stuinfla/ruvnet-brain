@@ -3,12 +3,13 @@
 // (SEC-0010 #4). scripts/build-bundle.mjs has never had this fence tested — see
 // docs adr history + memory `test-coverage-gaps-2026-07-07`.
 //
-// WHY SUBPROCESS, NOT IMPORT: loadPrivateStores() runs at MODULE TOP LEVEL (build-bundle.mjs line
-// 73) and calls process.exit(1) on every fail-closed path. Importing the module in-process would
-// kill the test runner itself. This is a repo-wide pattern (forge-guard.mjs's `main().catch()`,
-// sign-bundle.mjs's unconditional `signBundle()` call, check-indexation.mjs's top-level IIFE all do
-// the same thing) — none of these CLI scripts are in-process-importable; subprocess is the only
-// correct harness, mirroring how tests/integration/install-smoke.mjs already tests bin/install.mjs.
+// WHY SUBPROCESS, NOT IMPORT: this suite tests the CLI contract — exit codes and the exact stderr/
+// stdout a release operator sees. Since Step 5 (2026-09-13) build-bundle.mjs's assembly logic is an
+// importable `assembleBundle` function that only THROWS (tests/unit/assemble-bundle.test.mjs calls it
+// in-process); the process.exit(1) lives solely in the CLI wrapper at the bottom of the file, guarded
+// by the entry-point check. The subprocess harness here is therefore a choice about WHAT is under
+// test (the wrapper's fail-closed behaviour), no longer a necessity, mirroring how
+// tests/integration/install-smoke.mjs tests bin/install.mjs.
 //
 // WHY A CLONED ROOT, NOT node_modules/tmp COPY OF THE WHOLE REPO: build-bundle.mjs computes
 // ROOT = path.dirname(script's own location).."/..", so copying just
@@ -32,6 +33,21 @@ const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 // Imported under RUVNET_BRAIN_IMPORT_ONLY=1 so the installer main never runs on import.
 process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
 const { serverDependencies } = await import(path.join(REPO_ROOT, 'bin/install.mjs'));
+const { materializePublicInputs } = await import(path.join(REPO_ROOT, 'scripts/public-inputs.mjs'));
+
+// Step 5 remediation (2026-09-13): an EXTERNAL assets directory must be a SEALED corpus. It carries
+// the public-input selection receipt reconciliation wrote — sealed here with the REAL producer,
+// against tmp/kb (the checkout fixture) — plus the installed updater's configuration (SOURCE.json,
+// one entry per repository store) and the derived-store registry. build-bundle.mjs no longer
+// self-materializes into, or silently defaults, a directory it does not own; an unsealed external
+// directory is rejected (proven in tests/unit/assemble-bundle.test.mjs).
+function sealExternalAssets(assets, stores) {
+  fs.writeFileSync(path.join(assets, 'SOURCE.json'), JSON.stringify({
+    builder: 'rvf-kb-forge', stores: Object.fromEntries(stores.map((store) => [store, { kbName: store }])),
+  }));
+  fs.writeFileSync(path.join(assets, 'public-store-classes.json'), JSON.stringify({ schemaVersion: 1, derived: [] }));
+  materializePublicInputs({ builderRoot: tmp, outDir: assets });
+}
 
 let tmp;
 beforeEach(() => {
@@ -161,6 +177,7 @@ describe('build-bundle.mjs — publishable artifact gate (fail-closed)', () => {
     fs.writeFileSync(path.join(assets, 'public-repo.big.rvf'), '');
     fs.writeFileSync(path.join(assets, '._public-repo.big.rvf'), '');
     stampGenerationLedger(assets, ['public-repo']);
+    sealExternalAssets(assets, ['public-repo']);
 
     const r = runBuildBundle({}, ['--assets', assets]);
 
@@ -176,6 +193,7 @@ describe('build-bundle.mjs — publishable artifact gate (fail-closed)', () => {
     fs.writeFileSync(path.join(assets, 'private-repo.big.rvf'), '');
     fs.writeFileSync(path.join(assets, 'public-repo.big.rvf'), '');
     stampGenerationLedger(assets, ['private-repo', 'public-repo']);
+    sealExternalAssets(assets, ['private-repo', 'public-repo']);
 
     const r = runBuildBundle({}, ['--assets', assets]);
 

@@ -32,10 +32,26 @@ const sha = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 // index is required and the audit always reports PASS for it).
 const requireFromKb = createRequire(new URL('../../kb/package.json', import.meta.url));
 const { RvfDatabase } = requireFromKb('@ruvector/rvf');
+// Step 13: the candidate's C2 audit reopens each store and proves id-map <-> vector <-> passage <->
+// source-mapping correspondence, so the store's sidecars must really describe the vectors ingested.
+const MINIMAL_PASSAGES = [
+  { id: 'v-0', text: 'alpha passage zero', path: 'docs/zero.md', title: 'zero' },
+  { id: 'v-1', text: 'alpha passage one', path: 'docs/one.md', title: 'one' },
+];
+
 async function writeMinimalRvf(rvfPath) {
   const db = await RvfDatabase.create(rvfPath, { dimensions: 3, metric: 'cosine' });
   await db.ingestBatch([{ id: 'v-0', vector: [1, 0, 0] }, { id: 'v-1', vector: [0, 1, 0] }]);
   await db.close();
+}
+
+function writeMinimalStoreSidecars(dir, store = 'alpha') {
+  fs.writeFileSync(path.join(dir, `${store}.big.rvf.embed.json`), '{"model":"local","dimensions":3,"metric":"cosine"}');
+  fs.writeFileSync(path.join(dir, `${store}.passages.jsonl`), `${MINIMAL_PASSAGES.map((row) => JSON.stringify(row)).join('\n')}\n`);
+  fs.writeFileSync(path.join(dir, `${store}.meta.json`), JSON.stringify({
+    dimensions: 3,
+    incremental: { schemaVersion: 2, files: Object.fromEntries(MINIMAL_PASSAGES.map((row) => [row.path, { chunkIds: [row.id] }])) },
+  }));
 }
 const fileId = (file) => ({ file: path.basename(file), sha256: sha(fs.readFileSync(file)), bytes: fs.statSync(file).size });
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
@@ -438,9 +454,7 @@ describe('createReceiptedBaselineVerification — the new seed-type path (task 3
     // RvfDatabase.create() writes alpha.big.rvf AND its own alpha.big.rvf.idmap.json sidecar, so
     // that one must not be pre-written here.
     await writeMinimalRvf(path.join(bundleDir, 'alpha.big.rvf'));
-    fs.writeFileSync(path.join(bundleDir, 'alpha.big.rvf.embed.json'), '{}');
-    fs.writeFileSync(path.join(bundleDir, 'alpha.passages.jsonl'), '{}\n');
-    fs.writeFileSync(path.join(bundleDir, 'alpha.meta.json'), '{"dimensions":384}');
+    writeMinimalStoreSidecars(bundleDir);
     const sourceCommit = 'a'.repeat(40);
     writeJson(path.join(bundleDir, 'PRIVATE-STORES.json'), { privateStores: [] });
     writeJson(path.join(bundleDir, 'RVF-GENERATIONS.json'), {

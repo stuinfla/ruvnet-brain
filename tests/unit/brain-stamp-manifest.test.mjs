@@ -11,9 +11,13 @@
 // brain-stamp.mjs's OWN logic for deciding *when* to stamp 'unknown' (cloneDir resolution, the
 // shaOf() try/catch) is wrong, it can still silently mis-stamp a manifest that self-update.mjs will
 // now — correctly — treat as needing a rebuild that never actually happens, or vice versa. A THIRD
-// site duplicates the identical `foo || 'unknown'` sentinel pattern: scripts/build-bundle.mjs:171
-// (`priorSha[name.toLowerCase()] || 'unknown'`) — noted here, not skeletoned, since it inherits
-// brain-stamp.mjs's manifest as its input rather than deciding freshness itself.
+// site once duplicated the identical `foo || 'unknown'` sentinel pattern: scripts/build-bundle.mjs's
+// `priorSha[name.toLowerCase()] || 'unknown'`, sourced from data/manifest.json (this file's own
+// output) rather than deciding freshness itself. Step 5 of the corpus-seed/release pipeline
+// consolidation (2026-09-13) removed that indirection entirely: build-bundle.mjs's `builtFromSha` is
+// now `generation.sourceCommit || 'unknown'`, read directly from the finalized corpus's OWN validated
+// RVF-GENERATIONS.json ledger — a strictly better-verified source than a second-hand copy of this
+// file's manifest, and no longer a second, independent place this exact sentinel pattern can drift.
 //
 // PREREQUISITE (why this is a skeleton): every function below is inline top-level script logic in
 // brain-stamp.mjs — nothing is exported, and running the file for real shells out to git and writes

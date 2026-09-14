@@ -15,7 +15,7 @@ describe('corpus and release convergence wiring', () => {
     expect(seed.tag.length).toBeGreaterThan(0);
     expect(seed.tag).not.toBe('latest');
     // The committed seed tag is either the real content-addressed identity (corpus-sha256-<digest>
-    // of the exact seed bytes — see scripts/corpus-candidate.mjs's corpusSeedTag/verifySeedBaseline)
+    // of the exact seed bytes — see scripts/corpus-candidate.mjs's verifySeedBaseline)
     // or, for a seed minted before content-addressing existed, a pinned exception — sync-version-
     // ignore: an immutable external seed tag, never the candidate product version. A pinned tag is
     // legitimate ONLY when the bootstrap pipeline that consumes it explicitly acknowledges the pin:
