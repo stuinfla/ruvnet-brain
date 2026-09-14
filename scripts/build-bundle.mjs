@@ -36,13 +36,19 @@
 // the committed record (data/org-repo-count.json, `source: 'recorded'`) or is honestly `unknown`.
 // Assembling sealed bytes must not depend on network availability, and must not vary with it.
 //
-// CONSUMER STATUS (Step 5 remediation, 2026-09-13): .github/workflows/ci.yml's release-qe job still
-// runs the PRE-consolidation build/project/build sequence against the pinned data/corpus-seed.json
-// (v4.2.1-dev, a pre-Step-3/4 seed with no sealed public-input selection and a gist receipt sealed
-// against an older observation). That path cannot pass this file's sealed-input checks, by design —
-// the corpus it consumes predates the seal. The consumer switch is the plan's step 11, after a
-// Step-4-produced seed is published and re-pinned. Until then this file ships as the library + CLI
-// the new consumer will call; nothing in production calls the seedIdentity path yet.
+// CONSUMER STATUS (P1-c, 2026-09-14): the previous note here said ci.yml's release-qe job ran a
+// sequence that "cannot pass this file's sealed-input checks, by design" — it invoked a
+// release-projection.mjs CLI that could only `exit 1`, then passed --coverage/--projection flags this
+// CLI rejected outright. Documenting an expected failure is not a release gate. The consumer and the
+// scripts now AGREE: ci.yml declares the legacy rail with --legacy-seed-projection, and this file
+// honours it as ONE explicitly-named, temporary mode (assembleBundle's `legacySeedProjection`) that
+// runs the pre-consolidation two-pass semantics against the pinned pre-Step-3/4 seed — with the
+// public-prose selection materialized fresh and FENCED (never the pre-Step-3 wholesale checkout copy)
+// and WITHOUT the packaging-time receipt fabrication Step 3 deleted. Measured against the live
+// v4.2.1-dev seed on 2026-09-14: 186 stores, no PUBLIC-INPUT-SELECTION.json, no
+// public-store-classes.json, no ruv-gists.sources.json. Its unprovable aggregate stores are scoped
+// out rather than shipped unproven. THE WHOLE MODE RETIRES AT PLAN STEP 11, when a Step-4-produced
+// seed is published and data/corpus-seed.json is re-pinned to it.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -55,6 +61,7 @@ import { readRvfGenerations, validateSelectedRvfGenerations } from './rvf-genera
 import { validatePublicInventory } from './public-inventory.mjs';
 import { bindAssembledReleaseProjection, createReleaseProjection } from './release-projection.mjs';
 import { materializePublicInputs, SELECTION_FILE, validateSelectionReceipt } from './public-inputs.mjs';
+import { isPrivate, loadPrivateSlugs, shouldFenceL2 } from './private-fence.mjs';
 import { validateCoverageLedger } from './coverage-integrity.mjs';
 // The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
 // sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
@@ -129,6 +136,51 @@ function loadPrivateStores(runtimeKbDir) {
     fail('private-store fence has no valid "privateStores" array. Refusing to build.');
   }
   return new Set(j.privateStores.map((s) => String(s).toLowerCase()));
+}
+
+/**
+ * assertSelectionMatchesCurrentFence — P1-b (Dual's step-5 review, 2026-09-14).
+ *
+ * A public-input selection receipt proves what its PRODUCER decided, against the fence that existed
+ * when it ran. This build ships a DIFFERENT artifact: `runtimeRoot/kb/PRIVATE-STORES.json`, the
+ * CURRENT fence. When the two disagree, the archive ships prose for a store its own shipped fence
+ * declares private. The four surfaces the producer filters (public-inputs.mjs:287-341) are checked
+ * here, ALL FOUR — primers, per-repo topics files, L2 slugs, and capability-card sections. The card
+ * sections were the surface a narrower check would have missed: a store with no selected RVF keeps
+ * its card (and its primer and topics) because the store-inventory checks never look at prose.
+ *
+ * Fails LOUD — never silently filters. Derived concepts already embed this text
+ * (scripts/corpus-aggregates.mjs:59-65 reads the same prose into concepts.passages.jsonl), so a
+ * file-drop here would ship the private text anyway, inside the aggregate. Rejection forces the
+ * corpus back to preparation, where the aggregates are rebuilt under the current fence.
+ */
+function assertSelectionMatchesCurrentFence({ selectionReceipt, privateStores, kbDir, corpusLabel }) {
+  const slugFence = loadPrivateSlugs(kbDir, privateStores);
+  if (!slugFence.ok) fail(`current private fence cannot be read (${slugFence.reason})`);
+  const included = selectionReceipt.included || {};
+  const ownership = selectionReceipt.ownership || {};
+  const violations = [];
+  for (const repo of included.primers || []) {
+    if (isPrivate(privateStores, repo)) violations.push(`primer ${repo}-primer.md (repo "${repo}" is private now)`);
+  }
+  for (const repo of included.topics || []) {
+    if (isPrivate(privateStores, repo)) violations.push(`topics l2-topics.${repo}.json (repo "${repo}" is private now)`);
+  }
+  for (const slug of included.l2 || []) {
+    const repo = ownership[slug] || 'ruvnet';
+    if (shouldFenceL2({ repo, slug }, privateStores, slugFence.slugs)) {
+      violations.push(`l2/${slug}.md (owned by "${repo}", fenced now)`);
+    }
+  }
+  for (const repo of included.cards || []) {
+    if (isPrivate(privateStores, repo)) violations.push(`capability-cards.md section "## ${repo}" (repo "${repo}" is private now)`);
+  }
+  if (!violations.length) return;
+  fail(`the sealed public-input selection is incompatible with the CURRENT private fence ` +
+    `(${path.join(kbDir, 'PRIVATE-STORES.json')}) — it was sealed before ${violations.length} item(s) were fenced, ` +
+    `and this build ships that fence alongside them:\n${violations.map((v) => `  ${v}`).join('\n')}\n` +
+    `Selection: ${corpusLabel}. Rejected, not filtered: derived concepts already embed this prose, so the ` +
+    `corpus returns to preparation and its aggregates are rebuilt under the current fence.`);
 }
 
 // ---- discover BUILT stores (those with <name>.big.rvf in the finalized corpus) ------------------
@@ -358,7 +410,19 @@ const EXTRA_SIDECARS_BY_KIND = {
  * (COVERAGE.json / CORPUS-COVERAGE.json / PUBLIC-RVF-GENERATIONS.json) is additionally produced and
  * validated; when absent, assembleBundle still produces a complete, correctly-selected candidate.
  */
-export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity = {}, seedIdentity = null }) {
+export async function assembleBundle(options = {}) {
+  // Every temporary staging directory this pass creates is removed here, on success AND on failure.
+  // P1-a: the public-prose staging directory lives in os.tmpdir(); the corpus checkout is never one.
+  const scratchDirs = [];
+  try {
+    return await assembleBundleImpl(options, scratchDirs);
+  } finally {
+    for (const dir of scratchDirs) fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function assembleBundleImpl({ corpusDir, runtimeRoot, outDir, identity = {}, seedIdentity = null,
+  legacySeedProjection = null }, scratchDirs) {
   const runtime = path.resolve(runtimeRoot || ROOT);
   const corpus = path.resolve(corpusDir || '');
   const out = path.resolve(outDir || '');
@@ -380,32 +444,84 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
     }
   }
 
+  // ---- LEGACY SEED PROJECTION (temporary; retires at plan step 11) --------------------------------
+  // The ONE explicitly-declared compatibility mode for the pinned PRE-Step-3/4 corpus seed. See this
+  // file's header. It is never inferred: a caller must pass it, and it is mutually exclusive with the
+  // new in-process release path, so no run can accidentally be half of each.
+  if (legacySeedProjection !== null && legacySeedProjection !== undefined) {
+    if (seedIdentity !== null && seedIdentity !== undefined) {
+      fail('legacySeedProjection and seedIdentity are mutually exclusive: the legacy two-pass seed path and the '
+        + 'in-process single-pass release projection are two different release rails, never half of each');
+    }
+    // Pass 1 (no projection yet) produces the candidate the projection producer measures; pass 2
+    // carries the produced projection back in. A HALF-supplied pass 2 is rejected, never silently
+    // treated as pass 1 — that would publish an archive with no COVERAGE.json at all.
+    const { coverageFile: legacyCoverage = null, projectionDir = null } = legacySeedProjection;
+    if ((projectionDir === null) !== (legacyCoverage === null)) {
+      fail('legacy seed projection needs BOTH --coverage and --projection together (pass 2), or NEITHER (pass 1)');
+    }
+    if (projectionDir !== null) {
+      if (!fs.existsSync(path.resolve(projectionDir))) {
+        fail(`legacy seed projection directory is missing (${projectionDir}) — run scripts/release-projection.mjs first`);
+      }
+      if (!fs.existsSync(path.resolve(legacyCoverage))) fail(`legacy seed projection coverage is missing (${legacyCoverage})`);
+    }
+  }
+
   // ---- algorithm step 1: validate the finalized corpus and derive one explicit corpus file allowlist
   const privateStores = loadPrivateStores(kbDir);
 
   // Public-prose selection (primers, L2, capability cards, repo aliases) happens EXACTLY ONCE per
   // corpus round, in materializePublicInputs (scripts/public-inputs.mjs) — a SEPARATE policy from the
   // per-repo CODE store fence above. PACKAGING MUST NEVER RE-DERIVE IT — and must never TRUST a seal
-  // it has not verified, either. Two cases, chosen by an EXPLICIT condition, never by whether a file
+  // it has not verified, either. THREE cases, chosen by an EXPLICIT condition, never by whether a file
   // happens to exist:
   //
-  //   STANDALONE — corpus === runtimeRoot/kb (this CLI's own `--assets kb` default; self-update.mjs).
-  //     Nothing reconciled can live here, so the selection is ALWAYS materialized fresh. A receipt
-  //     already sitting in kb/ (a previous local run's scratch; gitignored) is never read, so a stale
-  //     checkout receipt can never flip this toggle and ship prose the current fence would exclude.
+  //   STANDALONE — corpus IS runtimeRoot/kb (this CLI's own `--assets kb` default; self-update.mjs).
+  //     Nothing reconciled can live here, so the selection is ALWAYS materialized fresh — into a
+  //     PRIVATE TEMPORARY STAGING DIRECTORY, never into the tracked checkout (see below). A receipt
+  //     already sitting in kb/ is never read, so a stale checkout receipt can never flip this toggle.
   //   EXTERNAL — any other corpus directory. It MUST carry the receipt reconciliation sealed there,
   //     and that receipt must VALIDATE (validateSelectionReceipt: kind, schemaVersion, recomputed
   //     receiptSha256, every sealed file present with exact bytes, every included name backed, and
   //     no unsealed managed prose on disk). No receipt, or a failing one, is a defect in the corpus:
   //     assembly stops and the seed returns to preparation. It is never self-materialized into (and
   //     thereby mutated) a directory this build does not own.
-  const standalone = corpus === kbDir;
+  //   LEGACY SEED — the operator explicitly declared `--legacy-seed-projection` (see this file's
+  //     header). The corpus is the pinned PRE-Step-3/4 release seed, which carries stores but no
+  //     sealed public-input selection at all. Prose is selected fresh from the checkout into the same
+  //     private staging directory STANDALONE uses; the seed directory is read-only throughout.
+  //     RETIRES AT PLAN STEP 11.
+  //
+  // P1-a (Dual, 2026-09-14): STANDALONE used to pass `corpus` (= the tracked kb/) as
+  // materializePublicInputs' `outDir`, so a plain `node scripts/build-bundle.mjs` DELETED tracked
+  // source files — public-inputs.mjs:363-366 removes every managed entry the round did not reproduce
+  // and promotes `l2/` wholesale. That silently destroyed kb/cognitum-api-primer.md (fenced) and both
+  // kb/l2/rejected/*.md during a test run on 2026-09-13. Materialization now always targets a private
+  // staging directory under os.tmpdir(); the corpus checkout is never an output.
+  const sameDirectory = (left, right) => {
+    // FILESYSTEM IDENTITY, not a lexical string compare (P2, Dual 2026-09-14): `corpus === kbDir`
+    // was bypassable in both directions — a runtimeRoot/kb symlinked to an external directory
+    // satisfied it and got materialized into, while a symlink ALIAS of the same kb directory
+    // compared unequal and took the external branch. dev+ino classifies both spellings correctly.
+    try {
+      const a = fs.statSync(left), b = fs.statSync(right);
+      return a.dev === b.dev && a.ino === b.ino;
+    } catch { return path.resolve(left) === path.resolve(right); }
+  };
+  const legacySeed = legacySeedProjection !== null && legacySeedProjection !== undefined;
+  const standalone = !legacySeed && sameDirectory(corpus, kbDir);
   const sealedSelectionFile = path.join(corpus, SELECTION_FILE);
   let selectionReceipt;
-  if (standalone) {
+  // Where the SEALED PROSE is read from. For a sealed external corpus that is the corpus itself; for
+  // a freshly-materialized selection it is the staging directory, never the corpus.
+  let proseDir = corpus;
+  if (standalone || legacySeed) {
+    proseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-brain-public-inputs-'));
+    scratchDirs.push(proseDir);
     try {
       ({ selectionReceipt } = materializePublicInputs({
-        builderRoot: runtime, outDir: corpus,
+        builderRoot: runtime, outDir: proseDir,
         policy: { allowNoFence: process.env.ALLOW_NO_PRIVATE_FENCE === '1' },
       }));
     } catch (error) {
@@ -419,14 +535,23 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
     try { selectionReceipt = JSON.parse(fs.readFileSync(sealedSelectionFile, 'utf8')); }
     catch (error) { fail(`sealed public-input selection (${sealedSelectionFile}) is present but unreadable (${error.message})`); }
   }
-  // Verified on read in BOTH cases (a fresh materialization is checked against its own output too):
+  // Verified on read in ALL cases (a fresh materialization is checked against its own output too):
   // the seal is a proof, not a toggle.
   try {
-    validateSelectionReceipt({ receipt: selectionReceipt, dir: corpus });
+    validateSelectionReceipt({ receipt: selectionReceipt, dir: proseDir });
   } catch (error) {
-    fail(`${error.message} (${sealedSelectionFile})`);
+    fail(`${error.message} (${proseDir === corpus ? sealedSelectionFile : 'freshly materialized selection'})`);
   }
-  if (!standalone) {
+  // P1-b (Dual, 2026-09-14): a VALID seal is not the same as a seal this build is allowed to ship.
+  // The producer filtered with its THEN-current fence; assembly loads the CURRENT checkout fence at
+  // the top of this function and SHIPS it (PRIVATE-STORES.json, below) — so a selection sealed while
+  // a store was public, then fenced afterwards, used to ship that store's prose alongside a fence
+  // declaring it private. Reject the selection outright rather than filter it: derived concepts
+  // (scripts/corpus-aggregates.mjs:59-65) have ALREADY embedded this text into their passages, so
+  // dropping files here would leave the private prose inside concepts.passages.jsonl. The corpus
+  // returns to preparation and its aggregates are rebuilt under the current fence.
+  assertSelectionMatchesCurrentFence({ selectionReceipt, privateStores, kbDir, corpusLabel: proseDir });
+  if (!standalone && !legacySeed) {
     console.log(`[build-bundle] trusting already-reconciled public-input selection at ${sealedSelectionFile} (verified, never re-derived)`);
   }
   {
@@ -435,7 +560,58 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
     if (excludedCount) console.log(`[build-bundle] public-input selection excluded ${excludedCount} private prose item(s)`);
   }
 
-  const { built: discovered, excludedPrivate } = discoverBuilt(corpus, privateStores);
+  let { built: discovered, excludedPrivate } = discoverBuilt(corpus, privateStores);
+  // Stores the LEGACY SEED mode scopes out. The seed's own generation ledger is immutable evidence
+  // and is never rewritten here, so they are declared to validateSelectedRvfGenerations as explicitly
+  // EXCLUDED rather than left looking like unexplained extra generation records.
+  const legacyExcluded = [];
+  // LEGACY SEED pass 2 (retires at plan step 11): the externally-produced release projection is the
+  // selection authority for this mode, exactly as it was before the step-5 consolidation. Scope the
+  // discovered set to the stores that projection actually bound, so the assembled tree and
+  // PUBLIC-RVF-GENERATIONS.json describe the same set (validateCoverageDirectory requires it).
+  if (legacySeed) {
+    // A store whose REQUIRED provenance sidecar the seed never carried is not publishable, and is
+    // scoped out loudly rather than shipped unproven. Measured against v4.2.1-dev on 2026-09-14: the
+    // seed carries ruv-gists.big.rvf with no ruv-gists.sources.json, and concepts.big.rvf with no
+    // public-store-classes.json to classify it. The PRE-Step-3 build-bundle papered over exactly this
+    // by SYNTHESIZING both files at packaging time — a receipt whose only declared input was its own
+    // packaged output. Step 3 deleted that fabrication on purpose; this mode does not bring it back.
+    const unprovable = discovered.filter((name) => {
+      const folded = name.toLowerCase();
+      if (folded === 'ruv-gists') return !fs.existsSync(path.join(corpus, 'ruv-gists.sources.json'));
+      if (folded === 'concepts') return !fs.existsSync(path.join(corpus, 'public-store-classes.json'));
+      return false;
+    });
+    if (unprovable.length) {
+      discovered = discovered.filter((name) => !unprovable.includes(name));
+      legacyExcluded.push(...unprovable);
+      console.log(`[build-bundle] legacy seed carries no provenance receipt for ${unprovable.sort().join(', ')} — `
+        + 'scoped out of this assembly rather than shipped unproven (fixed by the step-8..11 re-seed)');
+    }
+  }
+  if (legacySeed && legacySeedProjection.projectionDir) {
+    let legacyCoverage;
+    try { legacyCoverage = JSON.parse(fs.readFileSync(path.resolve(legacySeedProjection.coverageFile), 'utf8')); }
+    catch (error) { fail(`legacy release projection coverage is unreadable (${error.message})`); }
+    if (legacyCoverage?.kind !== 'ruvnet-brain-release-coverage' || !Array.isArray(legacyCoverage.rows)) {
+      fail('legacy release projection coverage is not a ruvnet-brain-release-coverage ledger');
+    }
+    const projectedClasses = path.join(path.resolve(legacySeedProjection.projectionDir), 'public-store-classes.json');
+    const projectedDerived = fs.existsSync(projectedClasses)
+      ? (JSON.parse(fs.readFileSync(projectedClasses, 'utf8')).derived || []).map((e) => String(e?.store || '').toLowerCase())
+      : [];
+    const projected = new Set([
+      ...legacyCoverage.rows.filter((row) => row.disposition === 'eligible')
+        .map((row) => String(row?.artifact?.store || '').toLowerCase()),
+      ...projectedDerived,
+    ].filter(Boolean));
+    const absent = [...projected].filter((store) => !discovered.some((name) => name.toLowerCase() === store));
+    if (absent.length) fail(`legacy release projection names store(s) the seed does not carry: ${absent.sort().join(', ')}`);
+    const dropped = discovered.filter((name) => !projected.has(name.toLowerCase()));
+    discovered = discovered.filter((name) => projected.has(name.toLowerCase()));
+    legacyExcluded.push(...dropped);
+    if (dropped.length) console.log(`[build-bundle] legacy projection scoped out ${dropped.length} store(s): ${dropped.sort().join(', ')}`);
+  }
   if (excludedPrivate.length) {
     console.log(`[build-bundle] EXCLUDED ${excludedPrivate.length} PRIVATE store(s): ${[...new Set(excludedPrivate)].sort().join(', ')}`);
   }
@@ -444,7 +620,7 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
   }
   const ledgerIn = readRvfGenerations(corpus);
   const generationValidation = validateSelectedRvfGenerations(corpus, {
-    selectedStores: discovered, privateStores: [...privateStores],
+    selectedStores: discovered, privateStores: [...privateStores], excludedStores: legacyExcluded,
   });
   if (generationValidation.failures.length) {
     fail(`RVF generation ledger does not exactly bind selected roots:\n${generationValidation.failures.map((f) => `  ${f}`).join('\n')}`);
@@ -463,7 +639,18 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
   const coverageFile = path.join(dataDir, 'source-coverage.json');
   let corpusCoverage = null;
   let inventory = null;
-  if (fs.existsSync(coverageFile)) {
+  if (legacySeed) {
+    // LEGACY SEED (retires at plan step 11): the pinned seed is an OLDER, immutable corpus and
+    // data/source-coverage.json is the CURRENT observation of the source universe — two different
+    // evidence planes, by design. Measured against the live v4.2.1-dev seed on 2026-09-14: the seed
+    // carries 186 stores and no gist receipt, while the current coverage carries 195 eligible stores
+    // and 492 eligible gists, so the equality cross-check above cannot hold and is not asserted here.
+    // The projection producer (scripts/release-projection.mjs) does the scoping instead: it keeps
+    // only rows the seed actually carries and preserves the complete observation in
+    // CORPUS-COVERAGE.json. Step 11 re-pins a Step-4-produced seed and this branch is deleted.
+    console.log('[build-bundle] LEGACY SEED MODE (retires at plan step 11): the sealed-coverage equality '
+      + 'cross-check is not asserted against this pre-Step-3/4 seed; scoping comes from the release projection');
+  } else if (fs.existsSync(coverageFile)) {
     try { corpusCoverage = JSON.parse(fs.readFileSync(coverageFile, 'utf8')); }
     catch (error) { fail(`sealed corpus coverage is present but unreadable (${error.message})`); }
     // The coverage is itself a sealed ledger: its own digests (coverageGeneration, enumeration
@@ -521,6 +708,11 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
       fail('public-store-classes.json is malformed (expected schemaVersion 1 with a derived array)');
     }
     for (const entry of classes.derived) derivedNames.add(String(entry?.store || '').toLowerCase());
+  } else if (legacySeed) {
+    // The pinned pre-Step-3/4 seed predates the derived-store registry (measured 2026-09-14: absent
+    // from v4.2.1-dev). The legacy projection producer already treated its absence as "no derived
+    // stores", exactly as here. Retires at plan step 11 with the rest of this mode.
+    console.log('[build-bundle] legacy seed carries no public-store-classes.json — no derived stores are classified');
   } else if (!standalone) {
     fail(`sealed corpus ${corpus} carries no public-store-classes.json — reconciliation always writes one; this corpus returns to preparation`);
   } else if (discovered.some((name) => name.toLowerCase() === 'concepts')) {
@@ -560,7 +752,9 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
       chunks = m.entries ? Object.keys(m.entries).length : null; model = m.model; dims = m.dimensions;
     } catch { /* meta.json missing is reported later, as a missing required bundle file */ }
     const hasSymbols = fs.existsSync(path.join(corpus, `${name}.symbols.json`));
-    const hasPrimer = fs.existsSync(path.join(corpus, `${name}-primer.md`));
+    // The primer that actually SHIPS is the one the verified selection sealed, so this reports the
+    // staging directory when the selection was materialized fresh — never the unfenced checkout.
+    const hasPrimer = fs.existsSync(path.join(proseDir, `${name}-primer.md`));
     const kind = folded === 'ruv-gists' ? 'gist-aggregate' : derivedNames.has(folded) ? 'derived' : 'repository';
     // A sealed corpus's SOURCE.json carries an updater entry for every repository store it holds
     // (corpus-reconcile.mjs's validateWorkerOutput requires it before a worker result is merged).
@@ -568,8 +762,9 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
     // — refuse, rather than ship a half-configured self-update. A standalone kb/ may legitimately
     // predate that convention for some store, so it is noted there rather than fatal.
     if (kind === 'repository' && !(updaterConfig.stores && typeof updaterConfig.stores[name] === 'object' && updaterConfig.stores[name] !== null)) {
-      if (!standalone) fail(`${name}: sealed corpus SOURCE.json carries no updater entry for this repository store`);
-      console.log(`[build-bundle] note: standalone kb/SOURCE.json has no updater entry for ${name} — its per-store self-update fields ship null`);
+      if (!standalone && !legacySeed) fail(`${name}: sealed corpus SOURCE.json carries no updater entry for this repository store`);
+      console.log(`[build-bundle] note: ${legacySeed ? 'legacy seed' : 'standalone kb'} SOURCE.json has no updater entry for `
+        + `${name} — its per-store self-update fields ship null`);
     }
     const reg = regByLower.get(folded) || {};
     return {
@@ -624,9 +819,9 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
     const dest = path.join(out, row.path);
     if (fs.existsSync(dest)) fail(`destination collision while copying sealed public prose: ${row.path}`);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(path.join(corpus, row.path), dest);
+    fs.copyFileSync(path.join(proseDir, row.path), dest);
   }
-  cp(SELECTION_FILE, out, { required: true, from: corpus });
+  cp(SELECTION_FILE, out, { required: true, from: proseDir });
   if (!selectionReceipt.files.some((row) => row.path === 'capability-cards.md')) {
     console.log('[build-bundle] note: no capability-cards.md in the sealed selection -- the fast lane ships with no card source and will honestly fall through on every query');
   }
@@ -645,6 +840,31 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
   cp(path.join(runtime, 'scripts', 'verify-bundle.mjs'), out, { required: true, from: runtime });
   fs.mkdirSync(path.join(out, 'keys'), { recursive: true });
   cp(path.join(runtime, 'keys', 'ruvnet-brain-signing.pub.pem'), path.join(out, 'keys'), { required: true, from: runtime });
+
+  // ---- LEGACY SEED pass 2: ship the externally-produced projection (retires at plan step 11) ------
+  // scripts/release-projection.mjs's CLI produced these from the exact candidate this pass is
+  // re-assembling. All three ledgers travel together — a partial projection is never publishable —
+  // and any derived-store evidence the projection carried travels with them. NOTHING is fabricated
+  // here when a file is absent: the pre-Step-3 build-bundle synthesized a concepts.sources.json whose
+  // only declared input was its own packaged output, and Step 3 deleted that on purpose.
+  if (legacySeed && legacySeedProjection.projectionDir) {
+    const projectionDir = path.resolve(legacySeedProjection.projectionDir);
+    for (const file of ['COVERAGE.json', 'CORPUS-COVERAGE.json', 'PUBLIC-RVF-GENERATIONS.json']) {
+      cp(file, out, { required: true, from: projectionDir });
+    }
+    for (const file of ['ruv-gists.sources.json', 'public-store-classes.json', 'concepts.sources.json']) {
+      cp(file, out, { from: projectionDir });
+    }
+  }
+  // LEGACY SEED, either pass: the derived-store registry is a REQUIRED activation-boundary input
+  // (plugin/scripts/coverage-integrity.mjs reads it unconditionally), and the pre-Step-3/4 seed has
+  // none. What ships is the only statement that is true of this assembly — an EMPTY registry, because
+  // every derived/aggregate store was scoped out above for want of a receipt. No digest, receipt, or
+  // input list is invented. Retires at plan step 11 with the rest of this mode.
+  if (legacySeed && !fs.existsSync(path.join(out, 'public-store-classes.json'))) {
+    fs.writeFileSync(path.join(out, 'public-store-classes.json'),
+      `${JSON.stringify({ schemaVersion: 1, derived: [] }, null, 2)}\n`);
+  }
 
   // ---- algorithm steps 5-7: SOURCE, manifest, and generation ledger — generated ONCE ---------------
   const { source, ledger, manifestEntries } = projectStoreViews({
@@ -748,8 +968,29 @@ node forge-ask.mjs --dir . --name ruvector --variant big --q "what is the RVF co
     fs.writeFileSync(path.join(out, 'COVERAGE.json'), `${JSON.stringify(result.releaseCoverage, null, 2)}\n`);
     fs.writeFileSync(path.join(out, 'CORPUS-COVERAGE.json'), result.corpusCoverageBytes);
     fs.writeFileSync(path.join(out, 'PUBLIC-RVF-GENERATIONS.json'), result.publicGenerationLedgerBytes);
-    projection = result;
-    bindAssembledReleaseProjection({ assetsDir: out, version, sourceSnapshot });
+    // The binding is CARRIED IN THE RESULT, not merely performed: a caller (and
+    // tests/unit/assemble-bundle.test.mjs) can then prove the assembled tree was re-validated by the
+    // independent activation-boundary reader, rather than assuming it because the line is in the
+    // source. Deleting the call makes `projection.binding` undefined, and the proof fails.
+    projection = { ...result, binding: bindAssembledReleaseProjection({ assetsDir: out, version, sourceSnapshot }) };
+  }
+  // LEGACY SEED pass 2 (retires at plan step 11): the projection was produced OUT of process by
+  // scripts/release-projection.mjs against this same candidate; the runtime ledger must describe the
+  // set that projection bound, and the assembled tree is then proven by the same validator the
+  // in-process path uses. Same proof, different producer — never a weaker one.
+  if (legacySeed && legacySeedProjection.projectionDir) {
+    const publicLedgerFile = path.join(out, 'PUBLIC-RVF-GENERATIONS.json');
+    const publicLedger = JSON.parse(fs.readFileSync(publicLedgerFile, 'utf8'));
+    if (publicLedger.schemaVersion !== 2 || publicLedger.kind !== 'ruvnet-brain-public-generation-ledger'
+      || publicLedger.brainVersion !== version || publicLedger.releaseTag !== versionTag
+      || publicLedger.sourceSnapshot !== sourceSnapshot) {
+      fail('the legacy release projection\'s public ledger does not bind this release identity');
+    }
+    fs.writeFileSync(path.join(out, 'RVF-GENERATIONS.json'), `${JSON.stringify({
+      ...publicLedger, kind: 'ruvnet-brain-runtime-generation-ledger',
+    }, null, 2)}\n`);
+    projection = { releaseCoverage: JSON.parse(fs.readFileSync(path.join(out, 'COVERAGE.json'), 'utf8')),
+      binding: bindAssembledReleaseProjection({ assetsDir: out, version, sourceSnapshot }) };
   }
 
   // ---- algorithm step 10: validate the assembled tree, write ARCHIVE-MANIFEST.json, ONE zip --------
@@ -845,6 +1086,16 @@ if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
   const coverageValue = coverageFlag >= 0 ? process.argv[coverageFlag + 1] : undefined;
   const coverageIsCanonical = coverageFlag < 0
     || (typeof coverageValue === 'string' && path.resolve(ROOT, coverageValue) === canonicalCoverage);
+  // --legacy-seed-projection: the ONE explicit declaration that this run consumes the pinned
+  // PRE-Step-3/4 corpus seed through the two-pass release-projection rail (P1-c, 2026-09-14). Without
+  // it, --coverage/--projection keep the step-5 meanings below (canonical-coverage-only / retired).
+  // RETIRES AT PLAN STEP 11, together with assembleBundle's legacySeedProjection branch.
+  const legacyFlag = process.argv.includes('--legacy-seed-projection');
+  const projectionValue = arg('--projection');
+  const legacySeedProjection = legacyFlag
+    ? { coverageFile: coverageValue === undefined ? null : path.resolve(ROOT, coverageValue),
+      projectionDir: projectionValue === undefined ? null : path.resolve(ROOT, projectionValue) }
+    : null;
   // Seed flags are an all-or-nothing SET: any present flag builds the object as given (possibly
   // partial), and assembleBundle rejects a partial one before doing any work.
   const seedTag = arg('--seed-tag');
@@ -855,18 +1106,19 @@ if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
     ? { tag: seedTag, archiveSha256: seedSha256, archiveBytes: seedBytesArg === undefined ? undefined : Number(seedBytesArg), baselineReceiptSha256 }
     : null;
   try {
-    if (!coverageIsCanonical) {
+    if (!legacyFlag && !coverageIsCanonical) {
       fail(`--coverage must name the canonical sealed coverage (${canonicalCoverage}); got ` +
         `${coverageValue === undefined ? '(no value)' : path.resolve(ROOT, coverageValue)}. Coverage is a sealed input, not a per-run argument`);
     }
-    if (process.argv.includes('--projection')) {
+    if (!legacyFlag && process.argv.includes('--projection')) {
       fail('--projection was retired by the step-5 consolidation: the release coverage projection is produced ' +
-        'in-process by assembleBundle (pass --seed-tag/--seed-sha256/--seed-bytes/--baseline-receipt-sha256 instead)');
+        'in-process by assembleBundle (pass --seed-tag/--seed-sha256/--seed-bytes/--baseline-receipt-sha256 instead). ' +
+        'The pinned pre-Step-3/4 seed still needs the two-pass rail: declare it with --legacy-seed-projection');
     }
     await assembleBundle({
       corpusDir, runtimeRoot: ROOT, outDir,
       identity: { version: arg('--version', getVersionTag()), sourceSnapshot: arg('--source-snapshot') },
-      seedIdentity,
+      seedIdentity, legacySeedProjection,
     });
   } catch (error) {
     console.error(`[build-bundle] FATAL: ${error.message}`);

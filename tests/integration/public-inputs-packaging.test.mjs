@@ -206,8 +206,16 @@ describe('build-bundle.mjs — never re-derives an already-reconciled public-inp
     expect(fs.readFileSync(path.join(outDir, 'public-repo-primer.md'), 'utf8')).toContain('FRESH public body');
     expect(fs.existsSync(path.join(outDir, 'private-repo-primer.md'))).toBe(false);
     expect(fs.readdirSync(path.join(outDir, 'l2'))).not.toContain('private-topic.md');
-    // materializePublicInputs DID seal a selection into kb/ as a side effect of self-materializing.
-    expect(fs.existsSync(path.join(kb, SELECTION_FILE))).toBe(true);
+    // P1-a (Dual, 2026-09-14): this used to assert the opposite — that materializing "DID seal a
+    // selection into kb/ as a side effect". That side effect is the defect: materializePublicInputs
+    // prunes every managed entry the round did not reproduce and replaces l2/ wholesale, so writing
+    // it into the source checkout DELETED tracked files. Standalone selection is now materialized
+    // into a private staging directory; kb/ is an input only, and the seal ships in the archive.
+    expect(fs.existsSync(path.join(kb, SELECTION_FILE))).toBe(false);
+    expect(fs.existsSync(path.join(outDir, SELECTION_FILE))).toBe(true);
+    // And the checkout's own private prose is still THERE, unfenced-but-unpruned, exactly as written.
+    expect(fs.readFileSync(path.join(kb, 'private-repo-primer.md'), 'utf8')).toContain('FRESH SECRET body');
+    expect(fs.existsSync(path.join(kb, 'l2', 'private-topic.md'))).toBe(true);
   });
 });
 

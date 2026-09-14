@@ -18,13 +18,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { assembleBundle } from '../../scripts/build-bundle.mjs';
 import { SELECTION_FILE, validateSelectionReceipt } from '../../scripts/public-inputs.mjs';
 import { validateCoverageDirectory } from '../../plugin/scripts/coverage-integrity.mjs';
 import { extractZip } from '../../kb/zip-extract.mjs';
 import {
-  SEED_IDENTITY, buildCorpus, buildRuntimeRoot, commitFor, readJson, sha256File, tempDir, writeCoverage,
-  writeProse, writeStore,
+  SEED_IDENTITY, buildCorpus, buildRuntimeRoot, commitFor, readJson, sha256File, tempDir, treeIdentity,
+  writeCoverage, writeProse, writeStore,
 } from '../helpers/assemble-bundle-fixture.mjs';
 
 const dirs = [];
@@ -171,25 +172,173 @@ describe('assembleBundle — required proof 4: consistent explicit version, no s
 });
 
 describe('assembleBundle — required proof 5: one ZIP invocation', () => {
-  it('scripts/build-bundle.mjs contains exactly one zip-creation call site', () => {
-    const src = fs.readFileSync(path.resolve(import.meta.dirname, '../../scripts/build-bundle.mjs'), 'utf8');
-    expect(src.match(/spawnSync\(\s*'zip'/g) || []).toHaveLength(1);
-  });
-
-  it('one call to assembleBundle produces the release archive exactly once, at the expected path, offline', async () => {
+  it('EXECUTES `zip` exactly once, and attempts no network call, across a whole assembly', async () => {
+    // Dual, 2026-09-14, on the assertions this replaces: the old regex at :174-176 "proves one ZIP
+    // call site, not one execution", and the old offline assertion at :192 "permits a failed network
+    // attempt; it does not detect one". Both are now DETECTORS. A shim directory is prepended to
+    // PATH: its `zip` appends a line per invocation and then delegates to the real binary, and its
+    // `gh`/`curl` write a marker and fail. A global fetch spy covers the in-process path. So a second
+    // zip execution, or ANY outbound attempt through these four doors, fails this test.
+    const shim = tempDir(dirs, 'shim');
+    const counter = path.join(shim, 'zip-invocations');
+    const netMarker = path.join(shim, 'network-attempt');
+    const realZip = spawnSync('sh', ['-c', 'command -v zip'], { encoding: 'utf8' }).stdout.trim();
+    expect(realZip, 'the real zip binary must be on PATH for this proof to mean anything').toBeTruthy();
+    fs.writeFileSync(path.join(shim, 'zip'), `#!/bin/sh\necho invoked >> '${counter}'\nexec '${realZip}' "$@"\n`, { mode: 0o755 });
+    for (const tool of ['gh', 'curl', 'wget']) {
+      fs.writeFileSync(path.join(shim, tool), `#!/bin/sh\necho "${tool} $*" >> '${netMarker}'\nexit 1\n`, { mode: 0o755 });
+    }
     const runtimeRoot = buildRuntimeRoot(dirs);
     const corpusDir = await buildCorpus(dirs, { runtimeRoot, stores: ['alpha'] });
     const outDir = outDirFor();
     const zipFile = `${outDir}.zip`;
     expect(fs.existsSync(zipFile)).toBe(false);
+    const originalPath = process.env.PATH;
+    const originalFetch = globalThis.fetch;
+    const fetchCalls = [];
+    globalThis.fetch = (...args) => { fetchCalls.push(String(args[0])); throw new Error('network is not available during assembly'); };
+    process.env.PATH = `${shim}${path.delimiter}${originalPath}`;
+    let result;
+    try {
+      result = await assembleBundle({ corpusDir, runtimeRoot, outDir, identity: IDENTITY });
+    } finally {
+      process.env.PATH = originalPath;
+      globalThis.fetch = originalFetch;
+    }
 
-    const result = await assembleBundle({ corpusDir, runtimeRoot, outDir, identity: IDENTITY });
-
+    expect(fs.existsSync(counter), 'the shimmed zip must actually have been used').toBe(true);
+    expect(fs.readFileSync(counter, 'utf8').trim().split('\n')).toHaveLength(1);
+    expect(fs.existsSync(netMarker) ? fs.readFileSync(netMarker, 'utf8') : '').toBe('');
+    expect(fetchCalls).toEqual([]);
     expect(result.zipFile).toBe(zipFile);
     expect(fs.existsSync(zipFile)).toBe(true);
     expect(readJson(path.join(outDir, 'ARCHIVE-MANIFEST.json')).fileCount).toBe(result.archiveManifest.fileCount);
-    // Fix 9: never a live GitHub probe — the org total is the committed record or honestly unknown.
+    // The org total is the committed record or honestly unknown — never a value a live probe produced.
     expect(['recorded', 'unknown']).toContain(readJson(path.join(outDir, 'manifest.json')).coverage.orgTotalSource);
+  });
+});
+
+describe('assembleBundle — P1-a: a standalone assembly never writes to, or prunes, its source checkout', () => {
+  /** A real git checkout whose kb/ mirrors the exact shape Dual named in the repo: a primer for a
+   * FENCED repo, and an l2/ subdirectory the selection does not own. Both are tracked. */
+  async function trackedCheckout() {
+    const runtimeRoot = buildRuntimeRoot(dirs, {
+      privateStores: ['cognitum-api'],
+      prose: { ...PROSE, primers: { ...PROSE.primers, 'cognitum-api': '# cognitum-api primer\n\nFENCED, and TRACKED.\n' } },
+    });
+    const kb = await writeStandaloneKb(runtimeRoot, ['alpha']);
+    fs.mkdirSync(path.join(kb, 'l2', 'rejected'), { recursive: true });
+    fs.writeFileSync(path.join(kb, 'l2', 'rejected', 'adr-029-decide-about.md'), '# rejected: adr-029\nTracked, not shipped.\n');
+    fs.writeFileSync(path.join(kb, 'l2', 'rejected', 'adr-coverage.md'), '# rejected: adr-coverage\nTracked, not shipped.\n');
+    const git = (...args) => {
+      const run = spawnSync('git', args, { cwd: runtimeRoot, encoding: 'utf8' });
+      expect(run.status, `git ${args.join(' ')}: ${run.stderr}`).toBe(0);
+      return run.stdout;
+    };
+    git('init', '-q');
+    git('config', 'user.email', 'fixture@example.invalid');
+    git('config', 'user.name', 'fixture');
+    // EVERYTHING under kb/ is tracked, so an empty `git status --porcelain -- kb/` afterwards means
+    // exactly one thing: nothing was added, modified, or deleted anywhere in the source tree.
+    git('add', 'kb');
+    git('commit', '-q', '-m', 'fixture: tracked kb');
+    return { runtimeRoot, kb, git };
+  }
+
+  it('leaves `git status --porcelain -- kb/` EMPTY, and the fenced primer and both l2/rejected files byte-unchanged', async () => {
+    const { runtimeRoot, kb, git } = await trackedCheckout();
+    const tracked = ['cognitum-api-primer.md', 'l2/rejected/adr-029-decide-about.md', 'l2/rejected/adr-coverage.md'];
+    const before = Object.fromEntries(tracked.map((file) => [file, sha256File(path.join(kb, file))]));
+    expect(git('status', '--porcelain', '--', 'kb/')).toBe('');
+
+    const result = await assembleBundle({ corpusDir: kb, runtimeRoot, outDir: outDirFor(), identity: IDENTITY });
+
+    expect(result.selectedStores).toEqual(['alpha']);
+    // THE INVARIANT. `<repo>/kb` is a gitignored BUILD WORKSPACE by design (kb/store-root.mjs's own
+    // header: the canonical root is ~/.cache/ruvnet-brain/kb), so writing build artifacts there is
+    // legitimate and this test does NOT forbid it. What a standalone assembly must never do is
+    // DELETE or OVERWRITE a git-TRACKED file — which is precisely what the fence-driven prune and
+    // the wholesale l2/ promotion did. `-uno` scopes the check to tracked paths, so it states that
+    // invariant exactly.
+    expect(git('status', '--porcelain', '-uno', '--', 'kb/')).toBe('');
+    // This implementation happens to be stricter — it materializes into a private staging directory
+    // and writes nothing into kb/ at all — so the untracked set is unchanged too. Asserted second
+    // and separately, so a future change that legitimately adds a build artifact fails HERE, with an
+    // obvious diagnosis, instead of looking like a tracked-file regression.
+    expect(git('status', '--porcelain', '--', 'kb/')).toBe('');
+    for (const file of tracked) {
+      expect(fs.existsSync(path.join(kb, file)), `${file} must still exist`).toBe(true);
+      expect(sha256File(path.join(kb, file)), `${file} must be byte-unchanged`).toBe(before[file]);
+    }
+  });
+
+  it('still ships the correctly-fenced selection: the fenced primer and the unowned l2 subtree never reach the archive', async () => {
+    const { runtimeRoot, kb } = await trackedCheckout();
+    const outDir = outDirFor();
+
+    await assembleBundle({ corpusDir: kb, runtimeRoot, outDir, identity: IDENTITY });
+
+    expect(fs.existsSync(path.join(outDir, 'cognitum-api-primer.md'))).toBe(false);
+    expect(fs.existsSync(path.join(outDir, 'l2', 'rejected'))).toBe(false);
+    expect(fs.readFileSync(path.join(outDir, 'alpha-primer.md'), 'utf8')).toBe(PROSE.primers.alpha);
+    const receipt = readJson(path.join(outDir, SELECTION_FILE));
+    expect(receipt.excluded.primers.map((row) => row.repo)).toContain('cognitum-api');
+  });
+});
+
+describe('assembleBundle — P1-b: a selection sealed under an OLDER fence is rejected, not shipped', () => {
+  /** Seal prose while `repo` is public, then fence it in runtimeRoot/kb/PRIVATE-STORES.json — the
+   * exact drift Dual described. `prose` decides WHICH of the four surfaces carries the stale item. */
+  async function driftedCorpus(prose, repo) {
+    const runtimeRoot = buildRuntimeRoot(dirs, { prose });
+    const corpusDir = await buildCorpus(dirs, { runtimeRoot, stores: ['alpha'] });
+    // The fence moves AFTER the seal. The corpus keeps its (now stale) sealed selection.
+    fs.writeFileSync(path.join(runtimeRoot, 'kb', 'PRIVATE-STORES.json'), JSON.stringify({ privateStores: [repo] }));
+    return { runtimeRoot, corpusDir };
+  }
+  const attempt = ({ runtimeRoot, corpusDir }) =>
+    assembleBundle({ corpusDir, runtimeRoot, outDir: outDirFor(), identity: IDENTITY });
+
+  it('rejects a stale PRIMER', async () => {
+    await expect(attempt(await driftedCorpus({ primers: { alpha: '# alpha\nbody\n', beta: '# beta\nsecret later\n' } }, 'beta')))
+      .rejects.toThrow(/incompatible with the CURRENT private fence[\s\S]*primer beta-primer\.md/);
+  });
+
+  it('rejects a stale TOPICS file', async () => {
+    await expect(attempt(await driftedCorpus({
+      primers: { alpha: '# alpha\nbody\n', beta: '# beta\nbody\n' }, topics: { beta: [{ slug: 'beta-topic' }] },
+    }, 'beta'))).rejects.toThrow(/incompatible with the CURRENT private fence[\s\S]*topics l2-topics\.beta\.json/);
+  });
+
+  it('rejects a stale L2 ARTICLE, by the slug its owner claims', async () => {
+    await expect(attempt(await driftedCorpus({
+      primers: { alpha: '# alpha\nbody\n', beta: '# beta\nbody\n' },
+      topics: { beta: [{ slug: 'beta-topic' }] }, l2: { 'beta-topic': '# Beta Topic\nnow-private prose\n' },
+    }, 'beta'))).rejects.toThrow(/incompatible with the CURRENT private fence[\s\S]*l2\/beta-topic\.md \(owned by "beta"/);
+  });
+
+  it('rejects a stale CAPABILITY-CARD SECTION — the surface a store-inventory check can never reach', async () => {
+    // `beta` has NO selected RVF store at all here, so nothing in the store/ledger/coverage rails
+    // looks at it. Its card text ships anyway unless the prose policy itself is re-checked.
+    const drift = await driftedCorpus({
+      primers: { alpha: '# alpha\nbody\n' }, cards: '## alpha\npublic\n## beta\nbeta capability text\n',
+    }, 'beta');
+    await expect(attempt(drift))
+      .rejects.toThrow(/incompatible with the CURRENT private fence[\s\S]*capability-cards\.md section "## beta"/);
+  });
+
+  it('rejects, never filters: no output directory is produced, so the derived aggregates must be rebuilt', async () => {
+    const drift = await driftedCorpus({ primers: { alpha: '# alpha\nbody\n', beta: '# beta\nbody\n' } }, 'beta');
+    const outDir = outDirFor();
+    await expect(assembleBundle({ corpusDir: drift.corpusDir, runtimeRoot: drift.runtimeRoot, outDir, identity: IDENTITY }))
+      .rejects.toThrow(/Rejected, not filtered/);
+    expect(fs.existsSync(outDir)).toBe(false);
+  });
+
+  it('a selection sealed under the SAME fence still assembles (the check is drift-sensitive, not fence-hostile)', async () => {
+    const runtimeRoot = buildRuntimeRoot(dirs, { privateStores: ['beta'], prose: PROSE });
+    const corpusDir = await buildCorpus(dirs, { runtimeRoot, stores: ['alpha'] });
+    await expect(assembleBundle({ corpusDir, runtimeRoot, outDir: outDirFor(), identity: IDENTITY })).resolves.toBeTruthy();
   });
 });
 
@@ -205,19 +354,24 @@ describe('assembleBundle — the sealed-input boundary is a verified seal, not a
     expect(fs.existsSync(path.join(corpusDir, 'alpha-primer.md'))).toBe(false);
   });
 
-  it('(8a) a STANDALONE kb (corpus === runtimeRoot/kb) with no receipt succeeds via fresh materialization', async () => {
+  it('(8a) a STANDALONE kb (corpus IS runtimeRoot/kb) with no receipt succeeds via fresh materialization — into STAGING, not kb', async () => {
     const runtimeRoot = buildRuntimeRoot(dirs, { prose: PROSE });
     const kb = await writeStandaloneKb(runtimeRoot, ['alpha']);
     expect(fs.existsSync(path.join(kb, SELECTION_FILE))).toBe(false);
+    const before = treeIdentity(kb);
     const outDir = outDirFor();
 
     const result = await assembleBundle({ corpusDir: kb, runtimeRoot, outDir, identity: IDENTITY });
 
     expect(result.selectedStores).toEqual(['alpha']);
-    expect(fs.existsSync(path.join(kb, SELECTION_FILE))).toBe(true);
-    expect(() => validateSelectionReceipt({ receipt: readJson(path.join(kb, SELECTION_FILE)), dir: kb })).not.toThrow();
+    // P1-a (Dual 2026-09-14). This used to assert `fs.existsSync(kb/SELECTION_FILE) === true` —
+    // i.e. it REQUIRED the very write that pruned the tracked checkout. The real property is the
+    // opposite one: the source tree is an INPUT and comes out byte-identical, receipt included
+    // (it is never created there at all). The archive still carries a genuine, verifiable seal.
+    expect(treeIdentity(kb)).toEqual(before);
+    expect(fs.existsSync(path.join(kb, SELECTION_FILE))).toBe(false);
+    expect(() => validateSelectionReceipt({ receipt: readJson(path.join(outDir, SELECTION_FILE)), dir: outDir })).not.toThrow();
     expect(fs.readFileSync(path.join(outDir, 'alpha-primer.md'), 'utf8')).toBe(PROSE.primers.alpha);
-    expect(sha256File(path.join(outDir, SELECTION_FILE))).toBe(sha256File(path.join(kb, SELECTION_FILE)));
   });
 
   it('(fix 4) a STANDALONE kb never trusts a receipt already sitting in it: the stale receipt cannot flip the toggle', async () => {
@@ -231,9 +385,11 @@ describe('assembleBundle — the sealed-input boundary is a verified seal, not a
 
     await assembleBundle({ corpusDir: kb, runtimeRoot, outDir, identity: IDENTITY });
 
-    // Re-materialized from the CURRENT checkout prose; the stale receipt was replaced, not trusted.
+    // Re-materialized from the CURRENT checkout prose: what SHIPS is current, and the stale file in
+    // the source tree is left exactly as it was (P1-a: kb is an input, never an output).
     expect(fs.readFileSync(path.join(outDir, 'alpha-primer.md'), 'utf8')).toBe(PROSE.primers.alpha);
-    expect(readJson(path.join(kb, SELECTION_FILE)).receiptSha256).not.toBe(staleReceipt.receiptSha256);
+    expect(readJson(path.join(outDir, SELECTION_FILE)).receiptSha256).not.toBe(staleReceipt.receiptSha256);
+    expect(readJson(path.join(kb, SELECTION_FILE)).receiptSha256).toBe(staleReceipt.receiptSha256);
   });
 
   it('(8b) a tampered receipt is rejected on read: wrong digest, empty object, missing sealed file, changed bytes, unsealed managed file', async () => {
@@ -270,6 +426,14 @@ describe('assembleBundle — coverage is a sealed input bound to THIS corpus', (
     const result = await assembleBundle({ corpusDir, runtimeRoot, outDir, identity: IDENTITY, seedIdentity: SEED_IDENTITY });
 
     expect(result.projection).not.toBeNull();
+    // Dual, 2026-09-14: this test "can pass after removing the in-process bind call at
+    // build-bundle.mjs:752". It cannot now — the bind's OWN RETURN VALUE is carried in the result,
+    // so deleting the call leaves `binding` undefined and these three assertions fail. (The
+    // independent re-validation at the bottom of this test would still pass; it is a second reader,
+    // not evidence that assembly ran one.)
+    expect(result.projection.binding, 'bindAssembledReleaseProjection must have run inside assembleBundle').toBeDefined();
+    expect(result.projection.binding.valid).toBe(true);
+    expect(result.projection.binding.failures).toEqual([]);
     for (const file of ['COVERAGE.json', 'CORPUS-COVERAGE.json', 'PUBLIC-RVF-GENERATIONS.json', 'RVF-GENERATIONS.json']) {
       expect(fs.existsSync(path.join(outDir, file)), file).toBe(true);
     }
