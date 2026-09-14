@@ -34,6 +34,28 @@ export async function writeMinimalRvf(rvfPath) {
   await db.close();
 }
 
+// Step 13 (2026-09-13): deriveCorpusCandidate now runs the deep C2 audit (auditCorpusStores), which
+// reopens the store and proves id-map <-> vector <-> passage <-> source-mapping correspondence. A
+// placeholder passages/meta pair no longer stands in for a store, so these sidecars describe the
+// exact two vectors writeMinimalRvf ingests above, at the store's real dimension (3, not 384).
+export const MINIMAL_PASSAGES = [
+  { id: 'v-0', text: 'alpha passage zero', path: 'docs/zero.md', title: 'zero' },
+  { id: 'v-1', text: 'alpha passage one', path: 'docs/one.md', title: 'one' },
+];
+
+export function minimalStoreSidecars() {
+  return {
+    passages: `${MINIMAL_PASSAGES.map((row) => JSON.stringify(row)).join('\n')}\n`,
+    meta: JSON.stringify({
+      dimensions: 3,
+      incremental: {
+        schemaVersion: 2,
+        files: Object.fromEntries(MINIMAL_PASSAGES.map((row) => [row.path, { chunkIds: [row.id] }])),
+      },
+    }),
+  };
+}
+
 export function createArchive(bundle, bundleRoot) {
   if (fs.existsSync(bundle)) fs.rmSync(bundle);
   if (process.platform === 'win32') {
@@ -91,10 +113,11 @@ export async function buildAssets(root) {
   // that one must not be pre-written here — only the sidecars the real RVF runtime does not
   // generate itself.
   await writeMinimalRvf(path.join(bundleDir, 'alpha.big.rvf'));
+  const sidecars = minimalStoreSidecars();
   const publicFiles = {
     'alpha.big.rvf.embed.json': '{"model":"local"}',
-    'alpha.passages.jsonl': '{"text":"alpha"}\n',
-    'alpha.meta.json': '{"dimensions":384}',
+    'alpha.passages.jsonl': sidecars.passages,
+    'alpha.meta.json': sidecars.meta,
   };
   for (const [name, body] of Object.entries(publicFiles)) fs.writeFileSync(path.join(bundleDir, name), body);
   fs.writeFileSync(path.join(bundleDir, 'PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['secret'] }));

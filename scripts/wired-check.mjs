@@ -333,6 +333,9 @@ export const REQUIRED_OPERATIONAL_EXPORTS = [
   // from build-bundle.mjs's own CLI wrapper at the bottom of the same file.
   { rel: 'scripts/build-bundle.mjs', symbol: 'assembleBundle' },
   { rel: 'scripts/release-projection.mjs', symbol: 'createReleaseProjection' },
+  // Step 13 (2026-09-13): the C2 deep store audit — measured recall, hash-verified segments, id-map /
+  // passage / source-map correspondence — that corpus-candidate.mjs fails closed on.
+  { rel: 'scripts/rvf-index-audit.mjs', symbol: 'auditCorpusStores' },
 ];
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))

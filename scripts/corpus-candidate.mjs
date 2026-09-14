@@ -19,7 +19,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { canonicalJson, digest, fileIdentity, sha256File, validateGistAggregateReceipt } from '../plugin/scripts/coverage-integrity.mjs';
-import { auditRvfIndexes } from './rvf-index-audit.mjs';
+import { auditCorpusStores, isPassingState } from './rvf-index-audit.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REQUIRED_SUFFIXES = [
@@ -188,23 +188,6 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
       .map(([sha256, owners]) => ({ sha256, stores: owners.sort() }));
     if (duplicateRvfDigests.length) fail(`duplicate RVF bytes: ${duplicateRvfDigests.map((row) => row.stores.join('/')).join(', ')}`);
 
-    // Every shipped RVF's HNSW index must be intact — a corrupted or missing INDEX_SEG on an
-    // eligible store must fail archive verification exactly like build-bundle.mjs's own pre-ship
-    // gate (scripts/rvf-index-audit.mjs), not silently pass because this receipt only checked
-    // sidecar presence/hashes and never opened the vector store itself.
-    let rvfIndexAudit;
-    try {
-      rvfIndexAudit = await auditRvfIndexes([...rvfByStore.values()].map((file) => path.join(root, file)));
-    } catch (error) {
-      fail(`RVF index audit could not run (${error.message})`);
-    }
-    const indexFailures = rvfIndexAudit.filter(({ state }) => state !== 'PASS');
-    if (indexFailures.length) {
-      fail(`RVF index audit failed: ${indexFailures
-        .map((row) => `${path.basename(row.path)} (vectors=${row.totalVectors ?? '?'})`)
-        .join(', ')}`);
-    }
-
     // Derived-store receipts (concepts, etc.) — the "concepts inputs" closure. Optional: a fresh
     // bootstrap round may not have built any derived store yet.
     const derivedStores = [];
@@ -296,6 +279,33 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
     }
     if (missingSidecars.length) fail(`missing sidecars: ${missingSidecars.join(', ')}`);
     if (!stores.length) fail('zero public corpus stores in the archive');
+
+    // C2 gate (scripts/rvf-index-audit.mjs auditCorpusStores): every shipped RVF is reopened read-only
+    // and must (1) carry a hash-verified persisted INDEX_SEG when it is large enough to need one,
+    // (2) answer persisted k-NN queries with measured recall@10 >= 0.95 against exact neighbours
+    // brute-forced from its own stored vectors, and (3) have an id map, passage rows and source
+    // mapping that correspond one-to-one. Segment presence alone is not accepted; stores under the
+    // engine's 1,024-vector HNSW threshold are reported as PASS-SMALL-STORE, never as PASS. The full
+    // measured result is written next to the archive as <bundle>.rvf-audit.json — NOT into this
+    // receipt: the receipt is schemaVersion 2 and any field addition is Step 15's coordinated bump.
+    let rvfAudit;
+    try {
+      rvfAudit = await auditCorpusStores({
+        dir: root,
+        rvfPaths: [...rvfByStore.values()].map((file) => path.join(root, file)),
+        privateStores: privateSet,
+      });
+    } catch (error) {
+      fail(`RVF index audit could not run (${error.message})`);
+    }
+    fs.writeFileSync(`${bundle}.rvf-audit.json`, `${JSON.stringify(rvfAudit, null, 2)}\n`);
+    const indexFailures = rvfAudit.stores.filter(({ state }) => !isPassingState(state));
+    if (indexFailures.length || rvfAudit.privateExclusion.leaks.length) {
+      fail(`RVF index audit failed: ${indexFailures
+        .map((row) => `${path.basename(row.path)} (vectors=${row.totalVectors ?? '?'}, recall@${row.recall?.kEffective ?? '?'}=${row.recall?.recallAtK ?? '?'}: ${[...new Set(row.failures.map((failure) => failure.kind))].join('+')})`)
+        .concat(rvfAudit.privateExclusion.leaks.map((name) => `${name} (private store present)`))
+        .join(', ')}`);
+    }
 
     const finalByteFiles = stores.flatMap((store) => store.files.map((file) => ({ store: store.name, ...file })))
       .sort((a, b) => a.file.localeCompare(b.file) || a.store.localeCompare(b.store));
