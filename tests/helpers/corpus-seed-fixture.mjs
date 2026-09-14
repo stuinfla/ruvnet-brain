@@ -81,20 +81,45 @@ export function createArchive(bundle, bundleRoot) {
 // deriveCorpusCandidate needs both, so seal() writes a complete, all-PASS report by default and the
 // mutation tests break exactly one thing about it.
 export const FIXTURE_ORACLE_PARTITION = 'alpha';
+export const FIXTURE_UNITS = 10;
 
-export function accuracyOracle({ labels = 20 } = {}) {
-  const partitions = [{ partition: 'alpha', kind: 'repository', store: 'alpha', sourceCommit: SOURCE_COMMIT }];
+/**
+ * An ADR-086:248-compliant (schema 2) oracle: U meaningful units, min(100, U) selected, and exactly one
+ * direct plus one paraphrase question per selected unit, so N = 2 x min(100, U). `unproduced` marks
+ * that many selected units as having no accepted pair — they keep their slots in N and must score as
+ * misses, which is the whole point of deriving N from the inventory rather than from surviving labels.
+ */
+export function accuracyOracle({ units = FIXTURE_UNITS, unproduced = 0 } = {}) {
+  const selectedUnits = Math.min(100, units);
+  const unitId = (index) => `unit-${String(index).padStart(3, '0')}`;
+  const produced = selectedUnits - unproduced;
+  const partitions = [{
+    partition: 'alpha', kind: 'repository', store: 'alpha', sourceCommit: SOURCE_COMMIT,
+    U: units, selectedUnits, N: 2 * selectedUnits,
+    inventorySha256: crypto.createHash('sha256').update(`inventory-${units}`).digest('hex'),
+    rulesVersion: 'oracle-source-units/1',
+    unproduced: Array.from({ length: unproduced }, (_, i) => ({
+      unitId: unitId(produced + i), reason: 'fixture: no accepted pair',
+    })),
+  }];
   const rows = [];
-  for (let index = 0; index < labels; index += 1) {
-    rows.push({
-      id: `alpha-${String(index).padStart(3, '0')}`,
-      partition: 'alpha',
-      question: `What does alpha passage ${index} say?`,
-      span: index % 2 === 0 ? 'alpha passage zero' : 'alpha passage one',
-      sourcePath: index % 2 === 0 ? 'docs/zero.md' : 'docs/one.md',
-      blobSha: crypto.createHash('sha1').update(`blob-${index}`).digest('hex'),
-      unitSha256: crypto.createHash('sha256').update(`unit-${index}`).digest('hex'),
-    });
+  for (let index = 0; index < produced; index += 1) {
+    const span = index % 2 === 0 ? 'alpha passage zero' : 'alpha passage one';
+    const sourcePath = index % 2 === 0 ? 'docs/zero.md' : 'docs/one.md';
+    const blobSha = crypto.createHash('sha1').update(`blob-${index}`).digest('hex');
+    const unitSha256 = crypto.createHash('sha256').update(`unit-${index}`).digest('hex');
+    for (const form of ['direct', 'paraphrase']) {
+      rows.push({
+        id: `alpha-${unitId(index)}-${form}`,
+        partition: 'alpha',
+        unit: unitId(index),
+        form,
+        question: form === 'direct'
+          ? `What does alpha passage ${index} say?`
+          : `Which statement is made by alpha unit number ${index}?`,
+        span, sourcePath, blobSha, unitSha256,
+      });
+    }
   }
   return { partitions, labels: rows };
 }
@@ -107,20 +132,26 @@ export function accuracyOracle({ labels = 20 } = {}) {
 export function accuracyReportFor(bundle, {
   oracleSha256 = 'b'.repeat(64), generatorSha256 = 'e'.repeat(64), overrides = {}, n = 20, successes = 20, timeouts = 0,
 } = {}) {
+  // Schema 2: each row carries its ADR-086:248 denominator, N = 2 x min(100, U), and n must equal it.
+  const U = Math.max(1, Math.ceil(n / 2));
   const partition = (mode) => ({
     partition: 'alpha', partitionKind: 'repository', store: 'alpha', sourceCommit: SOURCE_COMMIT,
-    mode, n, successes, failures: n - successes, errors: 0, timeouts, sampled: false, oracleRows: n,
+    U, N: 2 * Math.min(100, U),
+    mode, n, unproducedQuestions: 0, successes, failures: n - successes, errors: 0, timeouts, sampled: false, oracleRows: n,
     failedLabels: [], state: (20 * successes >= 19 * n && timeouts === 0) ? 'PASS' : 'FAIL',
   });
   const partitions = [partition('explicit-repository'), partition('full-corpus')];
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'ruvnet-brain-retrieval-accuracy',
+    classification: 'c3-acceptance',
+    c3Eligible: true,
     createdAt: '2026-09-14T00:00:00.000Z',
     archive: { file: path.basename(bundle), sha256: sha256(bundle), bytes: fs.statSync(bundle).size },
     oracle: {
+      schemaVersion: 2,
       file: 'data/retrieval-accuracy-oracle.json', sha256: oracleSha256, bytes: 1234,
-      oracleVersion: 'fixture/1', labelsSha256: 'c'.repeat(64), partitionsSha256: 'd'.repeat(64),
+      oracleVersion: 'fixture/2', labelsSha256: 'c'.repeat(64), partitionsSha256: 'd'.repeat(64),
     },
     generator: { retrievalAccuracySha256: generatorSha256 },
     metric: 'evidence-supporting-hit@5',
