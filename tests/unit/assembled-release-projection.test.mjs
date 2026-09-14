@@ -10,7 +10,7 @@
 // impossible now, so there is nothing left to scope or rewrite). bindAssembledReleaseProjection is
 // now validation-only: it proves an already-fully-written assembled directory is internally
 // consistent, and never repairs or rewrites anything itself.
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -139,4 +139,64 @@ it('carries rows, statuses, reasons, and enumeration through UNCHANGED from the 
   expect(result.releaseCoverage.rows.find((r) => r.key === 'repo:beta').status).toBe('INELIGIBLE');
   expect(result.releaseCoverage.rows.find((r) => r.key === 'gist:abc').status).toBe('CURRENT');
   expect(JSON.parse(result.corpusCoverageBytes.toString())).toEqual(corpusCoverage);
+});
+
+// Restored (Step 5 remediation): a projection whose COVERAGE.json is edited after it was written is
+// rejected by the activation-boundary reader — ledger rebinding is never a substitute for
+// qualification. This case had been dropped from the first Step 5 commit.
+it('rejects modified coverage instead of treating ledger rebinding as qualification', () => {
+  const { corpusCoverage, selectedLedger, inventory } = deriveInputsFromFixture();
+  const result = createReleaseProjection({ corpusCoverage, selectedLedger,
+    identity: { version, sourceSnapshot }, seedIdentity, inventory });
+  writeProjection(result);
+  const file = path.join(assetsDir, 'COVERAGE.json');
+  const coverage = JSON.parse(fs.readFileSync(file));
+  coverage.releaseIdentity.version = '0.0.0-invalid';
+  fs.writeFileSync(file, JSON.stringify(coverage));
+  expect(() => bindAssembledReleaseProjection({ assetsDir, version, sourceSnapshot }))
+    .toThrow('assembled release projection rejected');
+});
+
+// THE LIVE PRODUCTION CONDITION, kept as an explicit REJECTION (Step 5 remediation, 2026-09-13).
+// Measured 2026-09-12: the observation moved 479 -> 492 gists while the sealed v4.2.1 seed still
+// carried 479. The retired createReleaseProjection SCOPED that away (dropped the unseeded gists,
+// stamped survivors CURRENT). Under the consolidated design there is nothing to scope: coverage is
+// sealed against the exact corpus being assembled, so an observation that names gists the corpus's
+// receipt does not carry is a DEFECT — assembleBundle refuses, the corpus returns to preparation.
+// The positive control (same fixture, zero unseeded gists) proves the rejection is about the drift,
+// not about the fixture. Uses the checkout's REAL, current schema-3 gist receipt (492 gists today),
+// resealed around a fixture passages file with the same production sealing function.
+describe('sealed gist receipt vs observed gists — rejection, never scoping', () => {
+  const dirs = [];
+  afterEach(() => { while (dirs.length) fs.rmSync(dirs.pop(), { recursive: true, force: true }); });
+  const realReceipt = () => JSON.parse(fs.readFileSync(path.join(ROOT, 'kb', 'ruv-gists.sources.json'), 'utf8'));
+
+  it('positive control: coverage naming exactly the sealed gist set assembles', async () => {
+    const { assembleBundle } = await import('../../scripts/build-bundle.mjs');
+    const fx = await import('../helpers/assemble-bundle-fixture.mjs');
+    const runtimeRoot = fx.buildRuntimeRoot(dirs);
+    const corpusDir = await fx.buildCorpus(dirs, { runtimeRoot, stores: ['alpha', 'ruv-gists'], gistReceipt: realReceipt() });
+    const coverage = fx.writeCoverage(runtimeRoot, corpusDir);
+    const sealedCount = Object.keys(JSON.parse(fs.readFileSync(path.join(corpusDir, 'ruv-gists.sources.json'), 'utf8')).gists).length;
+    expect(coverage.totals.gists).toBe(sealedCount);
+    const outDir = path.join(fx.tempDir(dirs, 'out'), 'ruvnet-brain');
+    const result = await assembleBundle({ corpusDir, runtimeRoot, outDir, identity: { version, sourceSnapshot } });
+    expect(result.selectedStores.sort()).toEqual(['alpha', 'ruv-gists']);
+  });
+
+  it('REJECTS coverage that names gists the sealed receipt does not carry (the 492-observed vs 479-sealed shape)', async () => {
+    const { assembleBundle } = await import('../../scripts/build-bundle.mjs');
+    const fx = await import('../helpers/assemble-bundle-fixture.mjs');
+    const runtimeRoot = fx.buildRuntimeRoot(dirs);
+    const corpusDir = await fx.buildCorpus(dirs, { runtimeRoot, stores: ['alpha', 'ruv-gists'], gistReceipt: realReceipt() });
+    const unseeded = Array.from({ length: 13 }, (_, i) => `${'f'.repeat(24)}${String(i).padStart(8, '0')}`);
+    const coverage = fx.writeCoverage(runtimeRoot, corpusDir, { unseededGistIds: unseeded });
+    const sealedCount = Object.keys(JSON.parse(fs.readFileSync(path.join(corpusDir, 'ruv-gists.sources.json'), 'utf8')).gists).length;
+    expect(coverage.totals.gists).toBe(sealedCount + 13);
+    const outDir = path.join(fx.tempDir(dirs, 'out'), 'ruvnet-brain');
+    await expect(assembleBundle({ corpusDir, runtimeRoot, outDir, identity: { version, sourceSnapshot } }))
+      .rejects.toThrow(/does not match its sealed coverage/);
+    // Nothing was scoped, rewritten, or shipped.
+    expect(fs.existsSync(`${outDir}.zip`)).toBe(false);
+  });
 });

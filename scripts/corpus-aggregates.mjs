@@ -8,7 +8,7 @@ import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { buildGistAggregate } from './rebuild-gists-from-receipts.mjs';
 import { writeRvfGeneration } from './rvf-generation.mjs';
 import { digest, sha256File } from './coverage-integrity.mjs';
-import { materializePublicInputs } from './public-inputs.mjs';
+import { materializePublicInputs, SELECTION_RECEIPT_KIND, SELECTION_RECEIPT_SCHEMA } from './public-inputs.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -48,8 +48,10 @@ export function buildConceptAggregate({ publicInputDir, selectionReceipt, observ
   const input = path.resolve(publicInputDir || '');
   const output = path.resolve(outDir || '');
   if (!HEX64.test(String(observationSha256 || ''))) fail('concepts require an exact source observation');
-  if (!selectionReceipt || selectionReceipt.schemaVersion !== 1
-    || selectionReceipt.kind !== 'ruvnet-brain-public-input-selection-receipt') {
+  // Step 5 remediation (2026-09-13): the receipt is schema 2 (byte-bound `files[]`); the exact
+  // kind/schema constants are the producer's own exports, never restated here.
+  if (!selectionReceipt || selectionReceipt.schemaVersion !== SELECTION_RECEIPT_SCHEMA
+    || selectionReceipt.kind !== SELECTION_RECEIPT_KIND) {
     fail('concepts require a valid public input selection receipt');
   }
   const ownership = new Map(Object.entries(selectionReceipt.ownership || {}));

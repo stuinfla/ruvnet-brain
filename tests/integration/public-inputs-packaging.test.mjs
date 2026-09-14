@@ -17,15 +17,18 @@
 // commit landed, a different checkout ref, a replay of an older candidate), packaging would
 // silently ship different content than what concepts/gist construction actually sealed and hashed.
 //
-// THE FIX (build-bundle.mjs): check for materializePublicInputs' own sealed
-// PUBLIC-INPUT-SELECTION.json in ASSETS first. If present, reconciliation already ran and ASSETS
-// already IS the canonical result -- trust it byte-for-byte, never call materializePublicInputs
-// again. Only call it when no sealed selection exists yet (the genuine standalone/local-dev case,
-// builderRoot === outDir).
+// THE FIX (build-bundle.mjs), as remediated in Step 5 (2026-09-13): the branch is chosen by an
+// EXPLICIT condition, never by whether a file happens to exist. An EXTERNAL assets directory (any
+// corpus that is not the checkout's own kb/) MUST carry materializePublicInputs' sealed
+// PUBLIC-INPUT-SELECTION.json, and that receipt is VERIFIED on read (kind, schemaVersion, recomputed
+// receiptSha256, every sealed file's bytes, no unsealed managed prose) before a single byte is
+// trusted -- then packaging ships exactly the sealed set, never re-deriving. A STANDALONE run
+// (corpus === kb/) always materializes fresh and never trusts a receipt already sitting in kb/.
 //
-// WHY SUBPROCESS for build-bundle.mjs: same reasoning as tests/integration/build-bundle-fence.test.mjs
-// (loadPrivateStores() calls process.exit(1) at module top level; importing in-process would kill the
-// test runner). No real network calls: observationSha256 is a synthetic hex64, not a live gh lookup.
+// WHY SUBPROCESS for build-bundle.mjs: this suite is about the shipped CLI path end to end (same
+// harness as tests/integration/build-bundle-fence.test.mjs). assembleBundle itself is importable and
+// only throws; the in-process proofs live in tests/unit/assemble-bundle.test.mjs. No real network
+// calls: observationSha256 is a synthetic hex64, and assembleBundle's org-count lookup is offline.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -151,6 +154,12 @@ describe('build-bundle.mjs — never re-derives an already-reconciled public-inp
     });
     writeRvfPlaceholders(assets, ['concepts', 'public-repo']);
     stampGenerationLedger(assets, ['concepts', 'public-repo']);
+    // Step 5 remediation: a sealed corpus also carries the installed updater's configuration, one
+    // entry per repository store (corpus SOURCE.json is a required input, never silently defaulted).
+    fs.writeFileSync(path.join(assets, 'SOURCE.json'), JSON.stringify({
+      builder: 'rvf-kb-forge', canonicalManifestUrl: 'https://example.invalid/manifest.json',
+      stores: { 'public-repo': { kbName: 'public-repo' } },
+    }));
     expect(fs.existsSync(path.join(assets, SELECTION_FILE))).toBe(true);
 
     const sealedPrimer = fs.readFileSync(path.join(assets, 'public-repo-primer.md'));
@@ -206,9 +215,10 @@ describe('build-bundle.mjs — property 4: concepts packaging is byte-identical,
   it('packages concepts.sources.json + public-store-classes.json byte-for-byte, and never re-discovers private prose', () => {
     // Self-materializing case: builderRoot === outDir === tmp/kb, exactly what rebuildCorpusAggregates
     // does when assetsDir happens to equal the checkout. This seals PUBLIC-INPUT-SELECTION.json into
-    // kb/ as a side effect, so the build-bundle.mjs run below takes the "trust the sealed selection"
-    // path proven directly above -- the strongest form of byte-identical packaging, since nothing is
-    // re-derived at packaging time at all.
+    // kb/ as a side effect. The build-bundle.mjs run below is a STANDALONE run (corpus === kb/), which
+    // since the Step 5 remediation ALWAYS re-materializes from the checkout and never trusts a receipt
+    // already in kb/ -- so the byte-identity assertions below hold because the same prose produces the
+    // same selection, and concepts.sources.json / public-store-classes.json are copied, not re-derived.
     const kb = path.join(tmp, 'kb');
     writeCheckoutProse(kb, {
       publicPrimer: '# public-repo primer\n\npublic primer body.',

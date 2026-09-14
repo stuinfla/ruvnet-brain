@@ -24,12 +24,25 @@
 //                                 [--seed-tag <tag> --seed-sha256 <64-hex> --seed-bytes <n>
 //                                  --baseline-receipt-sha256 <64-hex>]
 //
-// `--seed-tag`/`--seed-sha256`/`--seed-bytes`/`--baseline-receipt-sha256` are optional. When all four
-// are supplied, this run additionally produces and validates the release coverage projection (the
-// real-release shape ci.yml's release-qe job needs). When any is absent, assembleBundle still
-// produces a complete, correctly-selected candidate archive with no release-projection files — the
-// shape scripts/corpus-reconcile.mjs's prepareCorpusCandidate and scripts/self-update.mjs both need,
-// and have always needed, without ever wanting a release coverage projection of their own.
+// `--seed-tag`/`--seed-sha256`/`--seed-bytes`/`--baseline-receipt-sha256` are optional AS A SET. When
+// all four are supplied, this run additionally produces and validates the release coverage
+// projection (the real-release shape a step-11 consumer switch will call). When NONE is supplied,
+// assembleBundle produces a complete, correctly-selected candidate archive with no release-
+// projection files — the shape scripts/corpus-reconcile.mjs's prepareCorpusCandidate and
+// scripts/self-update.mjs both need. A PARTIAL set is rejected loudly: a build is either a release
+// build or it is not, never a silently downgraded one.
+//
+// assembleBundle is OFFLINE. It never calls GitHub: the org repo total in manifest.json comes from
+// the committed record (data/org-repo-count.json, `source: 'recorded'`) or is honestly `unknown`.
+// Assembling sealed bytes must not depend on network availability, and must not vary with it.
+//
+// CONSUMER STATUS (Step 5 remediation, 2026-09-13): .github/workflows/ci.yml's release-qe job still
+// runs the PRE-consolidation build/project/build sequence against the pinned data/corpus-seed.json
+// (v4.2.1-dev, a pre-Step-3/4 seed with no sealed public-input selection and a gist receipt sealed
+// against an older observation). That path cannot pass this file's sealed-input checks, by design —
+// the corpus it consumes predates the seal. The consumer switch is the plan's step 11, after a
+// Step-4-produced seed is published and re-pinned. Until then this file ships as the library + CLI
+// the new consumer will call; nothing in production calls the seedIdentity path yet.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -41,7 +54,8 @@ import { auditRvfIndexes } from './rvf-index-audit.mjs';
 import { readRvfGenerations, validateSelectedRvfGenerations } from './rvf-generation.mjs';
 import { validatePublicInventory } from './public-inventory.mjs';
 import { bindAssembledReleaseProjection, createReleaseProjection } from './release-projection.mjs';
-import { materializePublicInputs, SELECTION_FILE } from './public-inputs.mjs';
+import { materializePublicInputs, SELECTION_FILE, validateSelectionReceipt } from './public-inputs.mjs';
+import { validateCoverageLedger } from './coverage-integrity.mjs';
 // The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
 // sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
 import { orgRepoCount } from './org-repo-count.mjs';
@@ -286,7 +300,11 @@ export function projectStoreViews({ selectedResults, identity, updaterConfig }) 
     };
     if (kind !== 'repository') continue; // SOURCE.json and manifest rows are repository-only, exactly as forge-refresh.mjs's own SOURCE.json has always been.
     const updater = (config.stores && config.stores[name]) || {};
+    // Spread the corpus's own updater entry FIRST so every field kb/forge-update.mjs may read
+    // (updateManaged, a per-store releaseTag, anything added later) survives; then bind the
+    // identity fields from the selected generation, which always win.
     sourceStores[name] = {
+      ...updater,
       kbName: updater.kbName || name,
       sourceRepo: updater.sourceRepo || null,
       sourceCommit: generation.sourceCommit ?? null,
@@ -306,7 +324,11 @@ export function projectStoreViews({ selectedResults, identity, updaterConfig }) 
       status: 'built',
     });
   }
+  // Top-level envelope: the corpus's own top-level updater fields survive (spread first); identity
+  // fields and the store map are then bound from this assembly and always win.
+  const { stores: _configStores, ...configTopLevel } = config;
   const source = {
+    ...configTopLevel,
     builder: config.builder || 'rvf-kb-forge',
     brainVersion: version,
     releaseTag: `v${version}`,
@@ -346,46 +368,70 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
   const versionTag = `v${version}`;
   const sourceSnapshot = identity.sourceSnapshot || tryGitSha(runtime);
 
+  // A build is a release build or it is not. A seedIdentity that is present but incomplete is
+  // rejected HERE, before any work, never silently downgraded to a non-release candidate.
+  if (seedIdentity !== null && seedIdentity !== undefined) {
+    const { tag, archiveSha256, archiveBytes, baselineReceiptSha256 } = seedIdentity;
+    if (typeof tag !== 'string' || !tag || !/^[a-f0-9]{64}$/.test(String(archiveSha256 || ''))
+      || !Number.isSafeInteger(archiveBytes) || archiveBytes < 1
+      || !/^[a-f0-9]{64}$/.test(String(baselineReceiptSha256 || ''))) {
+      fail('seed identity is incomplete or malformed (tag, archiveSha256, archiveBytes, and baselineReceiptSha256 '
+        + 'are all required together) — refusing to silently downgrade to a non-release build');
+    }
+  }
+
   // ---- algorithm step 1: validate the finalized corpus and derive one explicit corpus file allowlist
   const privateStores = loadPrivateStores(kbDir);
 
   // Public-prose selection (primers, L2, capability cards, repo aliases) happens EXACTLY ONCE per
   // corpus round, in materializePublicInputs (scripts/public-inputs.mjs) — a SEPARATE policy from the
-  // per-repo CODE store fence above. PACKAGING MUST NEVER RE-DERIVE IT.
+  // per-repo CODE store fence above. PACKAGING MUST NEVER RE-DERIVE IT — and must never TRUST a seal
+  // it has not verified, either. Two cases, chosen by an EXPLICIT condition, never by whether a file
+  // happens to exist:
   //
-  // Finalized corpus input is immutable: reconciliation seals the canonical public-prose tree into
-  // `corpus` and writes SELECTION_FILE (PUBLIC-INPUT-SELECTION.json) as proof it did. If that file is
-  // already present, reconciliation has already run and `corpus` already IS the canonical, sealed
-  // result — trust it byte-for-byte and do NOT call materializePublicInputs again. Calling it a
-  // second time here would re-derive from the checkout regardless of whether `corpus` had already
-  // been reconciled from a different checkout/ref/commit.
-  //
-  // materializePublicInputs is called here ONLY when no sealed selection exists yet — the genuine
-  // standalone/local-dev case this CLI's own default (`--assets kb`, i.e. corpusDir === runtimeRoot's
-  // own kb/) exists for, where there is nothing reconciled to trust and self-materializing fresh is
-  // correct and safe (public-inputs.mjs's own stage-before-delete ordering).
+  //   STANDALONE — corpus === runtimeRoot/kb (this CLI's own `--assets kb` default; self-update.mjs).
+  //     Nothing reconciled can live here, so the selection is ALWAYS materialized fresh. A receipt
+  //     already sitting in kb/ (a previous local run's scratch; gitignored) is never read, so a stale
+  //     checkout receipt can never flip this toggle and ship prose the current fence would exclude.
+  //   EXTERNAL — any other corpus directory. It MUST carry the receipt reconciliation sealed there,
+  //     and that receipt must VALIDATE (validateSelectionReceipt: kind, schemaVersion, recomputed
+  //     receiptSha256, every sealed file present with exact bytes, every included name backed, and
+  //     no unsealed managed prose on disk). No receipt, or a failing one, is a defect in the corpus:
+  //     assembly stops and the seed returns to preparation. It is never self-materialized into (and
+  //     thereby mutated) a directory this build does not own.
+  const standalone = corpus === kbDir;
   const sealedSelectionFile = path.join(corpus, SELECTION_FILE);
-  let publicInputs;
-  if (fs.existsSync(sealedSelectionFile)) {
-    let selectionReceipt;
-    try { selectionReceipt = JSON.parse(fs.readFileSync(sealedSelectionFile, 'utf8')); }
-    catch (error) { fail(`sealed public-input selection (${sealedSelectionFile}) is present but unreadable (${error.message})`); }
-    publicInputs = { kind: 'public-input-set', dir: corpus, selectionReceipt,
-      excluded: selectionReceipt.excluded || { primers: [], topics: [], l2: [], cards: [] } };
-    console.log(`[build-bundle] trusting already-reconciled public-input selection at ${sealedSelectionFile} (never re-derived)`);
-  } else {
+  let selectionReceipt;
+  if (standalone) {
     try {
-      publicInputs = materializePublicInputs({
+      ({ selectionReceipt } = materializePublicInputs({
         builderRoot: runtime, outDir: corpus,
         policy: { allowNoFence: process.env.ALLOW_NO_PRIVATE_FENCE === '1' },
-      });
+      }));
     } catch (error) {
       fail(`public-prose selection failed (${error.message})`);
     }
+  } else {
+    if (!fs.existsSync(sealedSelectionFile)) {
+      fail(`external corpus ${corpus} carries no sealed public-input selection (${SELECTION_FILE}) — ` +
+        'reconciliation never sealed this directory; it returns to preparation and is never self-materialized here');
+    }
+    try { selectionReceipt = JSON.parse(fs.readFileSync(sealedSelectionFile, 'utf8')); }
+    catch (error) { fail(`sealed public-input selection (${sealedSelectionFile}) is present but unreadable (${error.message})`); }
+  }
+  // Verified on read in BOTH cases (a fresh materialization is checked against its own output too):
+  // the seal is a proof, not a toggle.
+  try {
+    validateSelectionReceipt({ receipt: selectionReceipt, dir: corpus });
+  } catch (error) {
+    fail(`${error.message} (${sealedSelectionFile})`);
+  }
+  if (!standalone) {
+    console.log(`[build-bundle] trusting already-reconciled public-input selection at ${sealedSelectionFile} (verified, never re-derived)`);
   }
   {
-    const excludedCount = publicInputs.excluded.primers.length + publicInputs.excluded.topics.length
-      + publicInputs.excluded.l2.length + publicInputs.excluded.cards.length;
+    const excluded = selectionReceipt.excluded || { primers: [], topics: [], l2: [], cards: [] };
+    const excludedCount = excluded.primers.length + excluded.topics.length + excluded.l2.length + excluded.cards.length;
     if (excludedCount) console.log(`[build-bundle] public-input selection excluded ${excludedCount} private prose item(s)`);
   }
 
@@ -420,11 +466,35 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
   if (fs.existsSync(coverageFile)) {
     try { corpusCoverage = JSON.parse(fs.readFileSync(coverageFile, 'utf8')); }
     catch (error) { fail(`sealed corpus coverage is present but unreadable (${error.message})`); }
+    // The coverage is itself a sealed ledger: its own digests (coverageGeneration, enumeration
+    // receipt, policy digests) must recompute before anything here trusts a row in it.
+    const ledgerCheck = validateCoverageLedger(corpusCoverage);
+    if (corpusCoverage?.kind !== 'ruvnet-brain-corpus-coverage' || !ledgerCheck.valid) {
+      fail(`sealed corpus coverage is invalid: ${ledgerCheck.failures.join('; ') || 'not a ruvnet-brain-corpus-coverage ledger'}`);
+    }
     try {
       inventory = validatePublicInventory({ assetsDir: corpus, coverage: corpusCoverage, ledger: ledgerIn });
     } catch (error) {
       fail(`finalized corpus does not match its sealed coverage (${error.message}) — a deficient seed ` +
         'returns to preparation; packaging never repairs source evidence');
+    }
+    // Bind the coverage to THIS corpus, not merely to "a" corpus: every eligible row's recorded
+    // artifact identity (the RVF digest it was measured against; for repositories also the source
+    // generation) must be exactly what this corpus's own ledger carries for that store —
+    // validatePublicInventory has already bound that ledger to the bytes on disk.
+    for (const row of corpusCoverage.rows) {
+      if (row.disposition !== 'eligible') continue;
+      const store = String(row.artifact?.store || '');
+      const generation = ledgerIn.stores?.[store]
+        || Object.entries(ledgerIn.stores || {}).find(([key]) => key.toLowerCase() === store.toLowerCase())?.[1];
+      if (!generation) fail(`coverage row ${row.key} names store ${store}, which this corpus's ledger does not carry`);
+      if (String(row.artifact?.rvfSha256 || '').toLowerCase() !== String(generation.sha256 || '').toLowerCase()) {
+        fail(`coverage row ${row.key} was measured against different ${store} RVF bytes than this corpus carries`);
+      }
+      if (row.kind === 'repository'
+        && String(row.artifact?.sourceCommit || '').toLowerCase() !== String(generation.sourceCommit || '').toLowerCase()) {
+        fail(`coverage row ${row.key} records a different ${store} source generation than this corpus's ledger`);
+      }
     }
     const discoveredLower = new Set(discovered.map((s) => s.toLowerCase()));
     const missingFromDisk = inventory.publicStores.filter((s) => !discoveredLower.has(s));
@@ -435,13 +505,26 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
   }
 
   // ---- classify each selected store + gather the facts every downstream view needs ---------------
+  // public-store-classes.json is the derived-store registry (concepts). FAIL-LOUD: an unparseable or
+  // malformed copy is never tolerated. A MISSING copy is tolerated only in the standalone case (a
+  // local kb/ that has never built a derived store) — and even there never when a `concepts` store
+  // is present, since misclassifying it as a repository would yield a wrong SOURCE.json row, a wrong
+  // manifest row, a wrong grade lookup, and a wrong per-repo MCP entry. A sealed corpus always has
+  // one (buildConceptAggregate writes it every reconciliation round), so its absence there is a defect.
   const classesFile = path.join(corpus, 'public-store-classes.json');
   const derivedNames = new Set();
   if (fs.existsSync(classesFile)) {
-    try {
-      const classes = JSON.parse(fs.readFileSync(classesFile, 'utf8'));
-      for (const entry of classes.derived || []) derivedNames.add(String(entry.store || '').toLowerCase());
-    } catch { /* an unparseable classes file is reported later, when its bytes are actually required */ }
+    let classes;
+    try { classes = JSON.parse(fs.readFileSync(classesFile, 'utf8')); }
+    catch (error) { fail(`public-store-classes.json is present but unreadable (${error.message})`); }
+    if (classes?.schemaVersion !== 1 || !Array.isArray(classes.derived)) {
+      fail('public-store-classes.json is malformed (expected schemaVersion 1 with a derived array)');
+    }
+    for (const entry of classes.derived) derivedNames.add(String(entry?.store || '').toLowerCase());
+  } else if (!standalone) {
+    fail(`sealed corpus ${corpus} carries no public-store-classes.json — reconciliation always writes one; this corpus returns to preparation`);
+  } else if (discovered.some((name) => name.toLowerCase() === 'concepts')) {
+    fail('a concepts store is present but public-store-classes.json is missing — it cannot be classified, and will not be guessed');
   }
   // Unchanged from before this step: registry.tiers.json is a required checkout input (tier/star
   // labels for the manifest and README), never optional enrichment — a missing or corrupt copy
@@ -451,8 +534,20 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
   for (const [tier, t] of Object.entries(registry.tiers || {})) for (const r of (t.repos || [])) regFlat.push({ ...r, tier });
   const regByLower = new Map(regFlat.map((r) => [r.name.toLowerCase(), r]));
 
-  let updaterConfig = { stores: {} };
-  try { updaterConfig = JSON.parse(fs.readFileSync(path.join(corpus, 'SOURCE.json'), 'utf8')); } catch { /* enrichment only; identity always comes from the ledger */ }
+  // SOURCE.json is the installed self-updater's configuration: kb/forge-update.mjs reads its
+  // top-level canonicalManifestUrl/releaseTag and every per-store entry (kbName, canonicalBundleUrl,
+  // updateManaged). It is a REQUIRED corpus input, read through projectStoreViews as an explicit
+  // adapter — never optional enrichment. A missing or corrupt copy used to be silently replaced by
+  // `{ stores: {} }`, which shipped every installer with self-update UNCONFIGURED. Fail loud instead.
+  const updaterFile = path.join(corpus, 'SOURCE.json');
+  if (!fs.existsSync(updaterFile)) fail(`corpus SOURCE.json is missing (${updaterFile}) — self-update configuration is a required input`);
+  let updaterConfig;
+  try { updaterConfig = JSON.parse(fs.readFileSync(updaterFile, 'utf8')); }
+  catch (error) { fail(`corpus SOURCE.json is unreadable (${error.message})`); }
+  if (!updaterConfig || typeof updaterConfig !== 'object' || Array.isArray(updaterConfig)
+    || (updaterConfig.stores !== undefined && (typeof updaterConfig.stores !== 'object' || Array.isArray(updaterConfig.stores)))) {
+    fail('corpus SOURCE.json is malformed (expected an object with an optional stores object)');
+  }
 
   const selectedResults = discovered.map((name) => {
     const folded = name.toLowerCase();
@@ -467,6 +562,15 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
     const hasSymbols = fs.existsSync(path.join(corpus, `${name}.symbols.json`));
     const hasPrimer = fs.existsSync(path.join(corpus, `${name}-primer.md`));
     const kind = folded === 'ruv-gists' ? 'gist-aggregate' : derivedNames.has(folded) ? 'derived' : 'repository';
+    // A sealed corpus's SOURCE.json carries an updater entry for every repository store it holds
+    // (corpus-reconcile.mjs's validateWorkerOutput requires it before a worker result is merged).
+    // Its absence would ship that store with no canonicalBundleUrl/kbName for the installed updater
+    // — refuse, rather than ship a half-configured self-update. A standalone kb/ may legitimately
+    // predate that convention for some store, so it is noted there rather than fatal.
+    if (kind === 'repository' && !(updaterConfig.stores && typeof updaterConfig.stores[name] === 'object' && updaterConfig.stores[name] !== null)) {
+      if (!standalone) fail(`${name}: sealed corpus SOURCE.json carries no updater entry for this repository store`);
+      console.log(`[build-bundle] note: standalone kb/SOURCE.json has no updater entry for ${name} — its per-store self-update fields ship null`);
+    }
     const reg = regByLower.get(folded) || {};
     return {
       name, kind, tier: reg.tier || '?', stars: reg.stars ?? null,
@@ -500,22 +604,34 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
     cp(`${name}.passages.jsonl`, out, { required: true, from: corpus });
     cp(`${name}.meta.json`, out, { required: true, from: corpus });
     cp(`${name}.symbols.json`, out, { from: corpus });
-    cp(`${name}-primer.md`, out, { from: corpus });
     for (const extra of (EXTRA_SIDECARS_BY_KIND[result.kind]?.(name) || [])) {
       cp(extra.name, out, { required: extra.required, from: corpus });
     }
   }
-  if (selectedResults.some((r) => r.kind === 'derived')) {
-    if (!cp('public-store-classes.json', out, { from: corpus })) {
-      console.log('[build-bundle] note: derived store selected but public-store-classes.json is absent from the finalized corpus');
-    }
+  // The derived-store registry ships whenever the corpus has one (every sealed corpus does), not only
+  // when a derived store happens to be selected: validateCoverageDirectory — the release-projection
+  // proof bindAssembledReleaseProjection runs on the assembled tree — requires it unconditionally.
+  if (fs.existsSync(classesFile)) cp('public-store-classes.json', out, { required: true, from: corpus });
+  // The public prose: EXACTLY the files the (verified) selection receipt seals — the receipt IS the
+  // allowlist — plus the receipt itself, so every assembled archive carries its own proof and can be
+  // re-assembled from (round-tripped) without re-deriving anything. Per-repo primers, l2/ articles,
+  // l2-topics files, capability-cards.md and repo-aliases.json all arrive through this one loop; no
+  // per-store primer copy and no ad hoc directory copy exist beside it to disagree with it.
+  // validateSelectionReceipt has already proven each row is a regular, non-symlink file inside
+  // `corpus` with exactly these bytes; the only check left is that nothing else already claimed the
+  // destination path.
+  for (const row of selectionReceipt.files) {
+    const dest = path.join(out, row.path);
+    if (fs.existsSync(dest)) fail(`destination collision while copying sealed public prose: ${row.path}`);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(path.join(corpus, row.path), dest);
   }
-  cpDir(path.join(corpus, 'l2'), path.join(out, 'l2'));
-  if (!cp('capability-cards.md', out, { from: corpus })) {
-    console.log('[build-bundle] note: no capability-cards.md in the finalized corpus -- the fast lane ships with no card source and will honestly fall through on every query');
+  cp(SELECTION_FILE, out, { required: true, from: corpus });
+  if (!selectionReceipt.files.some((row) => row.path === 'capability-cards.md')) {
+    console.log('[build-bundle] note: no capability-cards.md in the sealed selection -- the fast lane ships with no card source and will honestly fall through on every query');
   }
-  if (!cp('repo-aliases.json', out, { from: corpus })) {
-    console.log('[build-bundle] note: no repo-aliases.json in the finalized corpus -- product-name aliases will not resolve on install');
+  if (!selectionReceipt.included.aliases) {
+    console.log('[build-bundle] note: no repo-aliases.json in the sealed selection -- product-name aliases will not resolve on install');
   }
   // The master ruvnet-primer overview is a single static runtime doc, not per-repo corpus content —
   // nothing private to fence, so (unlike everything above) it ships from the exact code checkout.
@@ -543,7 +659,10 @@ export async function assembleBundle({ corpusDir, runtimeRoot, outDir, identity 
   const builtLower = new Set(discovered.map((b) => b.toLowerCase()));
   const pendingRepos = regFlat.filter((r) => !builtLower.has(r.name.toLowerCase())).map((r) => ({ name: r.name, tier: r.tier }));
   const now = new Date();
-  const ORG = orgRepoCount();
+  // OFFLINE by construction: `fetch: () => null` disables orgRepoCount's live `gh api` probe, so the
+  // total comes from the committed record (source 'recorded') or is honestly `unknown`. Assembly of
+  // sealed bytes never depends on, or varies with, network availability.
+  const ORG = orgRepoCount({ fetch: () => null });
   const hasConcepts = selectedResults.some((r) => r.kind === 'derived' && r.name.toLowerCase() === 'concepts');
   const manifest = {
     brainVersion: version, // FIELD = bare literal; versionTag stays the v-prefixed Release tag
@@ -614,9 +733,9 @@ node forge-ask.mjs --dir . --name ruvector --variant big --q "what is the RVF co
 
   // ---- algorithm step 9: release coverage projection, only when a seed identity is supplied -------
   let projection = null;
-  const seedComplete = seedIdentity?.tag && seedIdentity?.archiveSha256 != null
-    && seedIdentity?.archiveBytes != null && seedIdentity?.baselineReceiptSha256;
-  if (seedComplete) {
+  // seedIdentity was fully validated (or rejected) at the top of this function; a non-null value
+  // here is a complete release identity.
+  if (seedIdentity !== null && seedIdentity !== undefined) {
     if (!corpusCoverage || !inventory) {
       fail('a release coverage projection was requested (seedIdentity supplied) but no sealed corpus ' +
         `coverage was found at ${coverageFile}`);
@@ -716,18 +835,34 @@ if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
   // the genuine local/self-update case — see public-inputs.mjs's own header for why that is safe).
   const corpusDir = path.resolve(ROOT, arg('--assets', 'kb'));
   const outDir = path.resolve(ROOT, arg('--out', 'dist/ruvnet-brain'));
-  // `--coverage`/`--projection` are accepted and ignored: scripts/corpus-reconcile.mjs's
-  // prepareCorpusCandidate always points `--coverage` at the SAME conventional path this CLI now
-  // reads directly (runtimeRoot/data/source-coverage.json), and `--projection` names the now-retired
-  // two-pass round-trip this consolidation replaces with one in-process assembly.
+  // Coverage is a SEALED INPUT, not a per-run argument: assembleBundle reads it from the one
+  // canonical path prepareCorpusCandidate writes (runtimeRoot/data/source-coverage.json). A
+  // `--coverage` that names any OTHER file is rejected loudly — accepting-and-ignoring it (as this
+  // CLI briefly did) would let a caller believe a coverage it supplied was consumed when it was not.
+  // `--projection` named the retired two-pass round-trip; it is rejected for the same reason.
+  const canonicalCoverage = path.join(ROOT, 'data', 'source-coverage.json');
+  const coverageFlag = process.argv.indexOf('--coverage');
+  const coverageValue = coverageFlag >= 0 ? process.argv[coverageFlag + 1] : undefined;
+  const coverageIsCanonical = coverageFlag < 0
+    || (typeof coverageValue === 'string' && path.resolve(ROOT, coverageValue) === canonicalCoverage);
+  // Seed flags are an all-or-nothing SET: any present flag builds the object as given (possibly
+  // partial), and assembleBundle rejects a partial one before doing any work.
   const seedTag = arg('--seed-tag');
   const seedSha256 = arg('--seed-sha256');
   const seedBytesArg = arg('--seed-bytes');
   const baselineReceiptSha256 = arg('--baseline-receipt-sha256');
-  const seedIdentity = seedTag && seedSha256 && seedBytesArg && baselineReceiptSha256
-    ? { tag: seedTag, archiveSha256: seedSha256, archiveBytes: Number(seedBytesArg), baselineReceiptSha256 }
+  const seedIdentity = [seedTag, seedSha256, seedBytesArg, baselineReceiptSha256].some((value) => value !== undefined)
+    ? { tag: seedTag, archiveSha256: seedSha256, archiveBytes: seedBytesArg === undefined ? undefined : Number(seedBytesArg), baselineReceiptSha256 }
     : null;
   try {
+    if (!coverageIsCanonical) {
+      fail(`--coverage must name the canonical sealed coverage (${canonicalCoverage}); got ` +
+        `${coverageValue === undefined ? '(no value)' : path.resolve(ROOT, coverageValue)}. Coverage is a sealed input, not a per-run argument`);
+    }
+    if (process.argv.includes('--projection')) {
+      fail('--projection was retired by the step-5 consolidation: the release coverage projection is produced ' +
+        'in-process by assembleBundle (pass --seed-tag/--seed-sha256/--seed-bytes/--baseline-receipt-sha256 instead)');
+    }
     await assembleBundle({
       corpusDir, runtimeRoot: ROOT, outDir,
       identity: { version: arg('--version', getVersionTag()), sourceSnapshot: arg('--source-snapshot') },
