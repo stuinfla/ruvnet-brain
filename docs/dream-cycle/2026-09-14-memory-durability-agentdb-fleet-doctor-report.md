@@ -161,13 +161,23 @@ Reward-Hack Check below.
 - `node scripts/doc-currency.mjs --check --changed HEAD`: no blocking violations. No ADR governs
   `scripts/agentdb-fleet-doctor.mjs`.
 - `npm run claims:verify`: 4 PASS / 3 SKIP (brain-not-installed class, same as every prior night).
-- `npx vitest run tests/unit` (full suite, 381+ files): started this session, still running at the
-  time of this commit (this repo's own stop-hook requires committing/pushing promptly rather than
-  holding work uncommitted while a ~450s full run completes). The targeted candidate test
-  (`tests/unit/agentdb-fleet-doctor.test.mjs`) already ran to completion multiple times above (TEETH
-  red→green, independently reproduced by a separate critic agent). Full-suite numbers will be pushed
-  as a follow-up commit to this same PR once the run completes — the pattern this repo's own prior
-  nights (e.g. #275, #276) already use for iterative, multi-commit draft PRs.
+- `npx vitest run tests/unit` (full suite, 442 files, run clean on the post-merge head `907ecb8`,
+  488.5s): **10 failed files / 34 failed tests / 5315 passed / 40 skipped / 138 todo of 5527.**
+  `record-lesson.test.mjs` and `agentdb-fleet-doctor.test.mjs` are NOT among the 10 failed files
+  (grep-confirmed). All 10 fall into classes already documented pre-existing in this ledger: (a) the
+  `chmod`-under-root class (`user-settings.test.mjs`, `advocacy-ignored.test.mjs`,
+  `advocacy-outcomes.test.mjs`, `advocacy-route.test.mjs`, `hook-shim-fallback-once.test.mjs` — each
+  asserts a write refusal that `chmod` cannot enforce for this container's root user, the exact class
+  the 2026-08-26/08-28 ledger rows name); (b) corpus-pipeline tests newly introduced by TODAY's own
+  `main` advance (ADR-086 step 15, merged as `35fbe038`/`e57968ca` while this session was already
+  running) that need artifacts this container doesn't have — `corpus-accuracy-gate.test.mjs`,
+  `corpus-customer-promotion.test.mjs`, `corpus-seed-release-authority.test.mjs`,
+  `rehearse-corpus-pipeline.test.mjs` (one case shells to short SHAs from pre-2026-09-07 history that
+  no longer resolve after the squash, per the #275 report's own note; another needs
+  `kb/node_modules`, absent in this container); (c) `doc-currency.test.mjs`'s single `ADR-0013`
+  currency-lag case, also unrelated to this diff (no ADR governs `agentdb-fleet-doctor.mjs`). None of
+  the 10 reference `record-lesson.mjs` or `agentdb-fleet-doctor.mjs` (grep-confirmed against the full
+  failure list).
 - `sqlite3` CLI installed this session (`apt-get install -y sqlite3`) to seed a real AgentDB schema
   for the new test — same operational note as the 2026-08-26 ledger row.
 
@@ -242,9 +252,9 @@ Cycle night since 2026-08-19). Full report committed at this path.
 ## Witness
 
 ```
-SESSION_COMMIT = dd435b6bd9132716db23ac4c40d3e04d9f25b95e
-REPORT_HASH    = 654fac486b51449aa6b33b4f7522b7fd540b289faf5ce8beb23499bfff1d60b0
-WITNESS        = 12dba9c0a72a63bcda0021d867c6ebadbed613026b8a2c6a22d8100637752bdb
+SESSION_COMMIT = 907ecb863ff0a2f4bc94dd5f6792ca7dd4f5efbe
+REPORT_HASH    = 8032f69f394c1869bc437737ef5ca287e7fdcb5e77607e8d13dcf8ec03514075
+WITNESS        = 047e5c94f68999688fc6289ccd1dcca943c0b4593d33840e57d1ef6cdde920bf
 ```
 
 5-step verifier procedure anyone can reproduce:
