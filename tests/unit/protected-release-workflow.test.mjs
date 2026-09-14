@@ -21,7 +21,7 @@ describe('protected release rail', () => {
       expect(command).toMatch(/--coverage\s+[^\n]*release-evidence\/COVERAGE\.json/);
     }
   });
-  it('is the sole human release dispatch and accepts source identity only', () => {
+  it('is the sole human release dispatch and accepts source identity plus one mode selector', () => {
     const releaseWorkflows = [
       'protected-release.yml',
       'release-cycle.yml',
@@ -36,7 +36,13 @@ describe('protected release rail', () => {
       .filter((file) => fs.existsSync(path.join(ROOT, '.github/workflows', file)))
       .filter((file) => /\n\s{2}workflow_dispatch:/.test(read(`.github/workflows/${file}`)));
     expect(dispatchers).toEqual(['protected-release.yml']);
-    expect(dispatchInputNames(workflow())).toEqual(['candidate_sha', 'version']);
+    // `mode` is a SELECTOR, not an authority grant (ADR-086 step 17): it chooses between the
+    // owner-gated code chain and the corpus-only chain, and the corpus chain re-proves corpus-only
+    // routing in its own jobs. The input list stays closed — a fourth input here would be a new,
+    // unreviewed way to steer the only workflow permitted to sign and publish.
+    expect(dispatchInputNames(workflow())).toEqual(['mode', 'candidate_sha', 'version']);
+    const source = workflow();
+    expect(source).toMatch(/mode:\s*\n\s+description:[^\n]*\n\s+required: false\n\s+default: code\n\s+type: choice\n\s+options:\n\s+- code\n\s+- corpus\n/);
   });
 
   it('runs every expensive lane once in the exact-SHA preflight before publication', () => {

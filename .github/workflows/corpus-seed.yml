@@ -11,11 +11,15 @@ on:
         required: true
         type: string
       seed_tag:
-        description: Deprecated; the committed data/corpus-seed.json is authoritative
+        description: Runtime seed override — the previous published generation; blank uses the committed bootstrap
         required: false
         type: string
       seed_sha256:
-        description: Exact SHA-256 of the configured bootstrap ruvnet-brain.zip
+        description: Exact SHA-256 of the seed ruvnet-brain.zip (required with seed_tag)
+        required: false
+        type: string
+      seed_bytes:
+        description: Exact byte length of the seed ruvnet-brain.zip (required with seed_tag)
         required: false
         type: string
   workflow_call:
@@ -29,6 +33,13 @@ on:
       seed_sha256:
         required: false
         type: string
+      seed_bytes:
+        required: false
+        type: string
+    secrets:
+      RUVNET_GISTS_TOKEN:
+        description: Read-only gist-scoped token for per-gist detail fetches; optional, falls back to github.token
+        required: false
     outputs:
       artifact_name:
         description: Exact-SHA preparation artifact for protected-release.yml
@@ -36,6 +47,12 @@ on:
       archive_sha256:
         description: SHA-256 of the newly prepared corpus candidate
         value: ${{ jobs.prepare.outputs.archive_sha256 }}
+      receipt_sha256:
+        description: SHA-256 of the sealed corpus receipt
+        value: ${{ jobs.prepare.outputs.receipt_sha256 }}
+      seed_sha256:
+        description: SHA-256 of the seed this round reconciled from (equal archive_sha256 means a no-change round)
+        value: ${{ jobs.prepare.outputs.seed_sha256 }}
 
 permissions:
   actions: read
@@ -52,6 +69,8 @@ jobs:
     outputs:
       artifact_name: ${{ steps.seal.outputs.artifact_name }}
       archive_sha256: ${{ steps.seal.outputs.archive_sha256 }}
+      receipt_sha256: ${{ steps.seal.outputs.receipt_sha256 }}
+      seed_sha256: ${{ steps.seal.outputs.seed_sha256 }}
     env:
       EXPECTED_SHA: ${{ inputs.candidate_sha }}
     steps:
@@ -76,14 +95,44 @@ jobs:
           test "$(git rev-parse origin/main)" = "$EXPECTED_SHA" || { echo 'candidate is not current origin/main' >&2; exit 1; }
           test -z "$(git status --porcelain)" || { echo 'candidate checkout is dirty before reconciliation' >&2; exit 1; }
 
-      - name: Load the committed exact corpus seed identity
+      - name: Bind this round to one exact seed identity
+        env:
+          INPUT_SEED_TAG: ${{ inputs.seed_tag }}
+          INPUT_SEED_SHA256: ${{ inputs.seed_sha256 }}
+          INPUT_SEED_BYTES: ${{ inputs.seed_bytes }}
         shell: bash
         run: |
           set -euo pipefail
           node -e "const s=require('./data/corpus-seed.json'); if(!/^[0-9a-f]{64}$/.test(s.sha256)||!Number.isSafeInteger(s.bytes)||s.bytes<1||!s.tag||s.asset!=='ruvnet-brain.zip') process.exit(1)"
-          echo "SEED_TAG=$(node -p "require('./data/corpus-seed.json').tag")" >> "$GITHUB_ENV"
-          echo "SEED_SHA256=$(node -p "require('./data/corpus-seed.json').sha256")" >> "$GITHUB_ENV"
-          echo "SEED_BYTES=$(node -p "require('./data/corpus-seed.json').bytes")" >> "$GITHUB_ENV"
+          # ADR-086 step 18: "Resolve the previous compatible, verified corpus generation at runtime as
+          # the next seed; retain the committed exact seed as bootstrap/recovery input. Do not commit a
+          # new pointer every night." A runtime override is therefore ALL-OR-NOTHING and fully
+          # content-addressed — a tag without its digest and byte length would reintroduce exactly the
+          # mutable-pointer seeding this design exists to remove.
+          if [[ -n "${INPUT_SEED_TAG:-}" || -n "${INPUT_SEED_SHA256:-}" || -n "${INPUT_SEED_BYTES:-}" ]]; then
+            if [[ -z "${INPUT_SEED_TAG:-}" || -z "${INPUT_SEED_SHA256:-}" || -z "${INPUT_SEED_BYTES:-}" ]]; then
+              echo 'a runtime seed override must supply seed_tag, seed_sha256 and seed_bytes together' >&2; exit 1
+            fi
+            [[ "$INPUT_SEED_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo 'seed_sha256 must be 64 lowercase hex characters' >&2; exit 1; }
+            [[ "$INPUT_SEED_BYTES" =~ ^[1-9][0-9]*$ ]] || { echo 'seed_bytes must be a positive integer' >&2; exit 1; }
+            [[ "$INPUT_SEED_TAG" != latest ]] || { echo 'seed_tag must never be the mutable latest pointer' >&2; exit 1; }
+            RESOLVED_SEED_TAG="$INPUT_SEED_TAG"
+            RESOLVED_SEED_SHA256="$INPUT_SEED_SHA256"
+            RESOLVED_SEED_BYTES="$INPUT_SEED_BYTES"
+            RESOLVED_SEED_ORIGIN=runtime-generation
+          else
+            RESOLVED_SEED_TAG="$(node -p "require('./data/corpus-seed.json').tag")"
+            RESOLVED_SEED_SHA256="$(node -p "require('./data/corpus-seed.json').sha256")"
+            RESOLVED_SEED_BYTES="$(node -p "require('./data/corpus-seed.json').bytes")"
+            RESOLVED_SEED_ORIGIN=committed-bootstrap
+          fi
+          {
+            echo "SEED_TAG=$RESOLVED_SEED_TAG"
+            echo "SEED_SHA256=$RESOLVED_SEED_SHA256"
+            echo "SEED_BYTES=$RESOLVED_SEED_BYTES"
+            echo "SEED_ORIGIN=$RESOLVED_SEED_ORIGIN"
+          } >> "$GITHUB_ENV"
+          echo "seeding from $RESOLVED_SEED_ORIGIN $RESOLVED_SEED_TAG ($RESOLVED_SEED_SHA256)"
 
       - uses: actions/setup-node@v4
         with:
@@ -164,9 +213,33 @@ jobs:
             echo "artifact_name=$artifact_name"
             echo "archive_sha256=$archive_sha256"
             echo "receipt_sha256=$receipt_sha256"
+            echo "seed_sha256=$SEED_SHA256"
           } >> "$GITHUB_OUTPUT"
-          printf 'candidate_sha=%s\narchive_sha256=%s\nreceipt_sha256=%s\n' \
-            "$EXPECTED_SHA" "$archive_sha256" "$receipt_sha256" > release-evidence/corpus-preparation.identity
+          printf 'candidate_sha=%s\narchive_sha256=%s\nreceipt_sha256=%s\nseed_tag=%s\nseed_sha256=%s\nseed_origin=%s\n' \
+            "$EXPECTED_SHA" "$archive_sha256" "$receipt_sha256" "$SEED_TAG" "$SEED_SHA256" "$SEED_ORIGIN" \
+            > release-evidence/corpus-preparation.identity
+
+      # ONE artifact root, outside the tracked tree. The previous upload mixed `$RUNNER_TEMP/...`
+      # with workspace-relative paths, so actions/upload-artifact rooted the archive at their least
+      # common ancestor (/home/runner/work) and every entry carried a runner-layout prefix that the
+      # consumer could only guess at. Staging one flat directory makes the consumer's paths exact,
+      # and keeps the ~500 MB payload out of the git checkout entirely.
+      - name: Stage the sealed candidate outside the tracked tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          staged="$RUNNER_TEMP/corpus-prepared"
+          rm -rf "$staged"
+          mkdir -p "$staged"
+          mv "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip" "$staged/ruvnet-brain.zip"
+          cp release-evidence/corpus-receipt.json "$staged/corpus-receipt.json"
+          cp release-evidence/corpus-reconcile.log "$staged/corpus-reconcile.log"
+          cp release-evidence/corpus-preparation.identity "$staged/corpus-preparation.identity"
+          cp data/source-coverage.json "$staged/source-coverage.json"
+          cp docs/RUVNET-COVERAGE.md "$staged/RUVNET-COVERAGE.md"
+          cp kb/PRIVATE-STORES.json "$staged/PRIVATE-STORES.json"
+          test "$(sha256sum "$staged/ruvnet-brain.zip" | cut -d' ' -f1)" = "${{ steps.seal.outputs.archive_sha256 }}"
+          test "$(sha256sum "$staged/corpus-receipt.json" | cut -d' ' -f1)" = "${{ steps.seal.outputs.receipt_sha256 }}"
 
       - name: Upload exact candidate for protected-release.yml
         uses: actions/upload-artifact@v4
@@ -174,20 +247,14 @@ jobs:
           name: ${{ steps.seal.outputs.artifact_name }}
           if-no-files-found: error
           retention-days: 14
-          path: |
-            ${{ runner.temp }}/corpus-candidate/ruvnet-brain.zip
-            release-evidence/corpus-receipt.json
-            release-evidence/corpus-reconcile.log
-            release-evidence/corpus-preparation.identity
-            data/source-coverage.json
-            docs/RUVNET-COVERAGE.md
-            kb/PRIVATE-STORES.json
+          path: ${{ runner.temp }}/corpus-prepared/
 
       - name: State the remaining authority boundary
         run: |
           echo 'Candidate prepared and sealed; NOT published.'
-          echo 'The existing protected-release.yml must download this exact artifact, re-verify both digests,'
-          echo 'extract the candidate, restore the uploaded exact private-store fence, cross its protected'
-          echo 'environment, and only then call node scripts/release.mjs --corpus-seed (the'
-          echo 'canonical publisher; see ADR-085). That nightly job path is not yet built —'
-          echo 'this workflow only prepares and seals a candidate.'
+          echo 'protected-release.yml (mode=corpus) authenticates this run and this exact artifact through'
+          echo 'the GitHub API, downloads it into RUNNER_TEMP only, re-verifies both digests, re-derives the'
+          echo 'candidate from the archive bytes, proves every executable file equals the owner-approved'
+          echo 'shipped runtime, crosses the corpus-only signing environment, and only then calls'
+          echo 'node scripts/release.mjs --corpus-seed (the canonical publisher; see ADR-085/ADR-086).'
+          echo 'This workflow holds no signing or publication authority of its own.'

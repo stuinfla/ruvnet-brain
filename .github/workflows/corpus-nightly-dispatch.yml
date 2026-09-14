@@ -1,0 +1,150 @@
+name: corpus-nightly-dispatch
+
+# THE ONE JOB THIS WORKFLOW HAS: turn a schedule into a genuine workflow_dispatch.
+#
+# scripts/protected-release-invocation.mjs:23-33 requires GITHUB_EVENT_NAME === 'workflow_dispatch'
+# before publication is allowed. A `schedule:` trigger does not carry that event, so putting a cron
+# on protected-release.yml itself would be rejected by its own authority predicate — and weakening
+# that predicate to admit `schedule` would delete the boundary rather than cross it. Dual's
+# resolution, verbatim: "The separate scheduler must call gh workflow run protected-release.yml
+# --ref main with corpus mode. That produces a genuine workflow_dispatch; preserve
+# validateProtectedPublishEnvironment unchanged."
+#
+# THIS WORKFLOW IS NOT THE SECURITY BOUNDARY, and must not be mistaken for one. Dual again: "actions:
+# write is broader than one workflow; a hardcoded dispatcher command is not the security boundary."
+# Anyone who can run this could dispatch protected-release.yml directly. The boundary lives in the
+# TARGET: mode=corpus selects a chain that never binds the npm-scoped environment, and code
+# publication still needs the owner-approved preflight artifact this workflow cannot produce.
+#
+# So the permissions here are the floor, not a formality: `contents: read` to read the candidate SHA
+# and version off main, `actions: write` to dispatch. No environment, no secrets, no id-token, no
+# `contents: write`. It cannot sign anything and it cannot publish anything.
+on:
+  schedule:
+    # 07:17 UTC — off the hour, so it does not queue behind the hourly GitHub Actions rush.
+    - cron: '17 7 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: corpus-nightly-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: dispatch-protected-corpus-run
+    # Forks inherit schedules; they must never dispatch against the upstream release rail.
+    if: github.repository == 'stuinfla/ruvnet-brain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - id: candidate
+        name: Read the exact current-main candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          candidate_version="$(node -p "require('./package.json').version")"
+          [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$candidate_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          {
+            echo "candidate_sha=$candidate_sha"
+            echo "candidate_version=$candidate_version"
+          } >> "$GITHUB_OUTPUT"
+      - id: armed
+        name: Stand down until an owner-gated code release has armed unattended promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          # THE ORDERING, ENFORCED RATHER THAN DOCUMENTED (ADR-086 A7: "step 16 needs an owner-gated
+          # code release installed before step 18 is enabled"). Two independent prerequisites are
+          # satisfied by one artifact: data/approved-runtime.json can only be produced by an
+          # owner-gated code release, and that same release is what carries the client changes an
+          # installed customer needs before a corpus release is usable to them at all. Until it
+          # exists on main, this dispatcher stands DOWN cleanly — it does not fail, because a
+          # correctly-disarmed scheduler is not a broken one, and a nightly red X trains the owner to
+          # ignore the alert that matters.
+          if [[ -s data/approved-runtime.json ]]; then
+            echo 'armed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'armed=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::corpus-nightly-dispatch is DISARMED: no data/approved-runtime.json on main.'
+            echo '::notice::Unattended corpus promotion begins only after one owner-gated code release'
+            echo '::notice::pins the shipped runtime and is installed-verified. Nothing was dispatched.'
+          fi
+
+      - name: Dispatch protected-release.yml on protected main in corpus mode
+        if: steps.armed.outputs.armed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
+          CANDIDATE_VERSION: ${{ steps.candidate.outputs.candidate_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISPATCHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DISPATCHED_AT=$DISPATCHED_AT" >> "$GITHUB_ENV"
+          gh workflow run protected-release.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f mode=corpus \
+            -f "candidate_sha=$CANDIDATE_SHA" \
+            -f "version=$CANDIDATE_VERSION"
+      - name: Record the target run this schedule actually created
+        if: steps.armed.outputs.armed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ADR-086 A5, verbatim: "Step 18 proof must include the actual run record: a schedule-fired
+          # dispatcher whose `gh workflow run` produces a target run with event=workflow_dispatch.
+          # Until that record exists, S2 is a design, not a resolution." This step IS that record. It
+          # fails the dispatcher if no such run appears, so a silently-dropped dispatch can never be
+          # reported as a successful night.
+          record=''
+          for _attempt in 1 2 3 4 5 6 7 8 9 10; do
+            record="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/protected-release.yml/runs?event=workflow_dispatch&per_page=20" \
+              --jq "[.workflow_runs[] | select(.head_sha == \"$CANDIDATE_SHA\" and .created_at >= \"$DISPATCHED_AT\")] | sort_by(.id) | last // empty")"
+            [[ -n "$record" ]] && break
+            sleep 10
+          done
+          if [[ -z "$record" ]]; then
+            echo '::error::gh workflow run reported success but no protected-release run with event=workflow_dispatch appeared'
+            exit 1
+          fi
+          printf '%s\n' "$record" > "$RUNNER_TEMP/dispatched-run.json"
+          run_event="$(node -p "require(process.env.RUNNER_TEMP + '/dispatched-run.json').event")"
+          run_id="$(node -p "require(process.env.RUNNER_TEMP + '/dispatched-run.json').id")"
+          run_url="$(node -p "require(process.env.RUNNER_TEMP + '/dispatched-run.json').html_url")"
+          test "$run_event" = workflow_dispatch
+          {
+            echo '### corpus-nightly-dispatch'
+            echo ''
+            echo "- target run: [$run_id]($run_url)"
+            echo "- event: \`$run_event\`"
+            echo "- candidate: \`$CANDIDATE_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve the dispatch run record
+        if: always() && steps.armed.outputs.armed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-dispatch-record-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/dispatched-run.json
+          if-no-files-found: warn
+          retention-days: 90
