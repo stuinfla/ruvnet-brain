@@ -91,14 +91,16 @@ Frozen before re-running the repros or touching any file. Not modified since.
 - `npm run convergence:check` (after `npm run convergence:write` to add the new ADR to the
   tracked-file list, required whenever an ADR is added — same requirement PR #237's own diff
   shows), re-run fresh as the last step before pushing, against the real `origin/main` base:
-  `{"ok":true,"version":"4.3.25","trackedFileCount":1489,"adrCount":87}`. (Two earlier, superseded
-  checks exist in this candidate's own history: `1301` against an incomplete tree, then `1302`
-  against the stale local base — both corrected in turn, first by an independent critic agent
-  catching the first staleness, then by this session catching the stale-branch-base issue itself.)
+  `{"ok":true,"version":"4.3.25","trackedFileCount":1494,"adrCount":88}` — the final number, after
+  the second renumbering (see ADR section below) and a second `main` merge. Three earlier,
+  superseded checks exist in this candidate's own history: `1301` against an incomplete tree, then
+  `1302` against the stale local base, then `1489`/`87` against the first `main` merge — each
+  corrected in turn as the underlying condition was caught (an independent critic agent, this
+  session's own stale-branch-base catch, then this session's own second-ADR-collision catch).
 - `npm run doc:currency`: exits 1, but with the same pre-existing violation set every night since
   2026-08-26 has documented (dozens of ADRs stamp-lagging/presumed-stale from the unrelated
   2026-09-04 `e6774a3` and 2026-09-07 batch-release commits — none touching this candidate's
-  files). The new `ADR-0086` itself surfaces only expected warnings for an uncommitted-at-check-time
+  files). The new `ADR-0087` itself surfaces only expected warnings for an uncommitted-at-check-time
   file (`no-git-history`, `stamp-unverifiable-dirty`) plus `no-governs` (this ADR makes no
   machine-checkable claim about code — it is Proposed, not yet implemented, same as the original
   2026-09-03 draft) — none of these are new problems introduced by the recovery.
@@ -118,7 +120,7 @@ OBSERVATION (issue #236 points at "ADR-0076 (Proposed)"; `docs/adr/0076-*.md` on
 different, Rejected proposal) → MEASUREMENT (`git log --all --grep` confirms the original draft
 was never merged, traced to closed PR #237's diff; both recovered repro scripts re-run
 byte-identical `VULNERABLE` against current `main`) → DECISION (recover the content under a free
-number, `ADR-0086`; repoint issue #236; no new analysis, no code change).
+number, `ADR-0087`; repoint issue #236; no new analysis, no code change).
 
 ## Reward-Hack Check
 
@@ -141,9 +143,9 @@ dream/2026-09-13-grounding-quality-adr-recovery origin/main` + cherry-pick (one 
 in the generated `data/convergence-manifest.json`, resolved by regenerating it fresh — not by hand)
 and renamed the branch with an `-adr-recovery` suffix to avoid colliding with the concurrent
 session's branch, per this repo's established protocol. Re-verified everything below fresh against
-the corrected base before finalizing. `ADR-0086` remained the correct next free number on the real
+the corrected base before finalizing. `ADR-0087` remained the correct next free number on the real
 `origin/main` too (confirmed: `0085` is the highest pre-existing file, `0076`–`0085` all already
-occupied by unrelated ADRs, `0086` still free).
+occupied by unrelated ADRs, `0087` still free).
 
 ## Adversarial Critique
 
@@ -178,7 +180,7 @@ reviewed the staged change before it was pushed. Verdict: **1 blocking finding, 
 
 This recovers, rather than introduces, a security finding: `kb/verify-citation.mjs`'s
 `parseCitations()` is confirmed still vulnerable to the relative-offset citation-rank-hijack
-described in `ADR-0086` (re-verified live tonight, not merely asserted from memory). No production
+described in `ADR-0087` (re-verified live tonight, not merely asserted from memory). No production
 behavior changes as a result of this PR — the vulnerability's status (present, unfixed, tracked)
 is unchanged; only its documentation trail is repaired. The severity/scope framing from the
 original report stands: exploitable by any actor who can get content indexed into a store this
@@ -197,12 +199,22 @@ appear among the `presumed-stale`/`stamp-lags-doc` rows, which all predate 2026-
 
 ## ADR
 
-`docs/adr/0086-citation-header-spoofing-needs-a-structural-fix.md` — recovered, not newly
+`docs/adr/0087-citation-header-spoofing-needs-a-structural-fix.md` — recovered, not newly
 authored; Status remains `Proposed` (unchanged; this session cannot make the Option A/B decision).
 Added its filename to the `data/convergence-manifest.json` tracked ADR list via
 `npm run convergence:write`. `docs/adr/README.md`'s index table was already known stale before
 ADR-0011 (flagged 2026-09-03) — not touched again tonight, same reasoning as before (adding one row
-would misrepresent the table as current when it covers only 10 of 86 ADRs).
+would misrepresent the table as current when it covers only 10 of 87 ADRs).
+
+**Second renumbering, caught during PR-babysitting (2026-09-14):** while this PR (#287) was still
+open, a genuinely unrelated `ADR-0086` ("Corpus seed pipeline consolidation") was authored and
+pushed directly to `main` (commit `57f6000`), independently of this PR — a real, non-displaced
+occupant of that number, unlike the first `0076` collision this ADR's own recovery note documents.
+A routine PR-babysitting re-sync (merging `main`'s further advance to resolve a manifest conflict)
+caught it before this PR's `0086` file could land alongside it. Renumbered to `0087` (confirmed the
+actual next free number on `main` at commit `f3fc5a7`), updated every internal reference (the ADR
+file itself, both evidence scripts' header comments, this report, the ledger row), and merged
+`main` a second time. No analysis changed — only the number, throughout.
 
 ## Gist
 
@@ -213,31 +225,32 @@ Dream Cycle night in this repo has hit). Full report is this committed file.
 
 Per this repo's ISSUE DISPOSITION OVERRIDE (`dream.config.json`): issue #236 already exists,
 already describes this exact finding, and remains open — no new issue opened. Instead, issue #236
-received a comment tonight pointing at the recovered `ADR-0086` and this report, so the human
+received a comment tonight pointing at the recovered `ADR-0087` and this report, so the human
 decision it is waiting on is reachable again.
 
 ## Witness
 
 ```
-SESSION_COMMIT = f95a1a56034656ced96d535cad911c5cd72bae2b
-REPORT_HASH    = 40d4998506fe6d11d65c7cede0c12d565ae060dfb9da598c1e3ac5c6cad1d9d5
-WITNESS        = b1f854b601edbfbce019bb7ec1672afad0924da96fb5563f1223eac401aa566a
+SESSION_COMMIT = f3fc5a77b40b4d8a0cb53a434000b7244e72ab1d
+REPORT_HASH    = e7db558f393fbf2c76fe70ceb4a7a8fbf4512018bfc77ecfeb16caf220618488
+WITNESS        = d6267352748e2b8e33f8acb845a33d4480bcb7428ea2b0ae679d6fa0fda9081c
 ```
 
-`SESSION_COMMIT` is `origin/main`'s real tip at the time this branch was rebuilt (see Branch-Base
-Correction) — not this session's original `b8d6802` starting point, which turned out to sit under a
-stale local branch ref rather than the true base this PR merges against. `REPORT_HASH` is the
-sha256 of this file's own content, everything above this `## Witness` heading, as finalized (after
-both the independent critic's correction and the branch-base correction were applied — earlier
-hashes taken before either correction are superseded, documented rather than erased in this
-report's own Adversarial Critique and Branch-Base Correction sections). `WITNESS =
-sha256(REPORT_HASH + SESSION_COMMIT)`, no separator.
+`SESSION_COMMIT` is `origin/main`'s real tip after the second renumbering's merge (see the ADR
+section's "Second renumbering" note) — superseding two earlier values, `b8d6802` (this session's
+original, since-discovered-stale-local-base starting point) and `f95a1a5` (the tip after the first
+`main` merge, before the second collision was caught). `REPORT_HASH` is the sha256 of this file's
+own content, everything above this `## Witness` heading, as finally finalized (after the
+independent critic's correction, the branch-base correction, and the second ADR-collision
+correction were all applied — earlier hashes taken before any of these are superseded, documented
+rather than erased in this report's own Adversarial Critique, Branch-Base Correction, and ADR
+sections). `WITNESS = sha256(REPORT_HASH + SESSION_COMMIT)`, no separator.
 
 **Verifier procedure** (5 steps, reproducible by anyone):
 1. Check out this PR's branch and take this file's own content, everything above this `## Witness`
    heading, exactly as committed.
 2. `sha256sum` that content → should reproduce `REPORT_HASH`.
-3. `printf '%s%s' "$REPORT_HASH" "f95a1a56034656ced96d535cad911c5cd72bae2b" | sha256sum` → should
+3. `printf '%s%s' "$REPORT_HASH" "f3fc5a77b40b4d8a0cb53a434000b7244e72ab1d" | sha256sum` → should
    reproduce `WITNESS`.
 4. A match proves this report's content is bound to `main`'s exact commit at the time this session
    started.
@@ -250,6 +263,6 @@ sha256(REPORT_HASH + SESSION_COMMIT)`, no separator.
 `evaluated: yes` (documentation-integrity check, not a benchmark-graded evaluation) /
 `verdict: ACCEPT` — the repair is bounded, verified (both repros re-run, byte-identical), and
 low-risk (docs-only, zero production code changed). A human decision is still needed on
-`ADR-0086`'s Option A vs Option B; recovering the document only makes that decision reachable
+`ADR-0087`'s Option A vs Option B; recovering the document only makes that decision reachable
 again, it does not make it. Separately: the `dream/*` open-PR backlog (6+ open drafts, 19 open
 `dream-cycle` issues) remains worth the owner's attention, restated because it is still true.

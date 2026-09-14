@@ -1,7 +1,8 @@
 // Reproduction A (Dream Cycle 2026-09-03, grounding-quality / citation-binding).
 // Recovered 2026-09-13 from closed, unmerged PR #237 (byte-for-byte, no changes) after the
 // original ADR-0076 that referenced this file was displaced by an unrelated ADR reusing the
-// number. See docs/adr/0086-citation-header-spoofing-needs-a-structural-fix.md.
+// number (twice — see that file's own recovery notes). See
+// docs/adr/0087-citation-header-spoofing-needs-a-structural-fix.md.
 // Run from repo root: node docs/dream-cycle/evidence/2026-09-03-grounding-quality-repro-a.mjs
 //
 // Shows that kb/verify-citation.mjs's parseCitations() can have a real citation's rank SLOT

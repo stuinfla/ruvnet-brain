@@ -1,9 +1,9 @@
 ---
-id: ADR-086
+id: ADR-087
 title: Citation-header rank hijacking needs a structural fix, not another parser patch
 status: Proposed
 date: 2026-09-03
-updated: 2026-09-13
+updated: 2026-09-14
 authors: [Claude Code]
 tags: [security, grounding, citation-binding, dream-cycle]
 supersedes: []
@@ -11,7 +11,7 @@ relates: [ADR-002, ADR-025]
 governs: []
 ---
 
-# ADR-086 — Citation-header rank hijacking needs a structural fix, not another parser patch
+# ADR-087 — Citation-header rank hijacking needs a structural fix, not another parser patch
 
 ## Status
 
@@ -25,10 +25,16 @@ decision ledger", authors Stuart Kerr + Codex) was filed and merged under the sa
 `ADR-0076`, was Accepted, then Rejected the same day on measurement — leaving
 `docs/adr/0076-memory-full-integration.md` on `main` as a dead end for anyone following issue
 #236's pointer. Tonight's Dream Cycle (2026-09-13, slot 3, grounding-quality) recovered this
-document's original content byte-for-byte from PR #237's diff, re-filed it as `ADR-0086` (the next
-free number), independently re-ran both original evidence scripts against current `main` and
-confirmed the underlying vulnerability still reproduces unchanged, and repointed issue #236 at this
-file. No analysis below is new; only the number, the `updated` date, and this note are.
+document's original content byte-for-byte from PR #237's diff and re-filed it as `ADR-0086` (the
+number confirmed free on `origin/main` at the time).
+
+**Second renumbering (2026-09-14):** While this PR (#287) was still open and un-merged, a second,
+genuinely unrelated `ADR-0086` ("Corpus seed pipeline consolidation") was authored and pushed
+directly to `main` (commit `57f6000`), a real, independent occupant of that number this time — not
+a stale/displaced one. Re-detected via routine PR-babysitting re-sync, before this PR could
+collide with it. Renumbered again to `ADR-0087` (confirmed the next free number on `main` as of
+`f3fc5a7`) rather than repeating the same class of defect this ADR itself documents. No analysis
+below is new; only the number, the `updated` date, and these two notes are.
 
 ## Context
 
@@ -146,5 +152,6 @@ work beyond a tiny nightly candidate, and this repo's learning signal (long stre
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-09-14 | Renumbered a second time, `ADR-0086` → `ADR-0087`, after a genuinely unrelated ADR ("Corpus seed pipeline consolidation") was authored and pushed directly to `main` under `ADR-0086` (commit `57f6000`) while this PR (#287) was still open. Caught during routine PR-babysitting re-sync, before collision. Confirmed `0087` free on `main` at `f3fc5a7`. No analysis changed. | PR #287 babysitting check-in, `docs/dream-cycle/2026-09-13-grounding-quality-report.md`. |
 | 2026-09-13 | Recovered from closed, unmerged PR #237 and re-filed as `ADR-0086` after `ADR-0076` was reused by an unrelated, since-Rejected proposal on 2026-09-11 (`docs/adr/0076-memory-full-integration.md`). Underlying vulnerability re-verified live against `main` commit `b8d6802039dcfa72118f803e76776548bd2da48a` via both original repro scripts, unchanged. Issue `stuinfla/ruvnet-brain#236` repointed at this file. No analysis changed. | Dream Cycle nightly routine, `docs/dream-cycle/2026-09-13-grounding-quality-report.md`, issue #236. |
 | 2026-09-03 | ADR created (as `ADR-0076`). Status: Proposed. | Dream Cycle nightly routine, `docs/dream-cycle/2026-09-03-grounding-quality-report.md`, PR #237. |
