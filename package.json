@@ -92,6 +92,7 @@
     "scripts/",
     "kb/verify-citation.mjs",
     "kb/retrieval-result.mjs",
+    "kb/corpus-release-identity.mjs",
     "kb/zip-extract.mjs",
     "kb/brain-profile.mjs",
     "kb/lifecycle-evidence-retention.mjs",
