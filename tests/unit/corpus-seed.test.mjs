@@ -119,6 +119,25 @@ describe('immutable corpus candidate receipt (schema 2)', () => {
     await indexer.query(probe, 1);
     await indexer.close();
 
+    // Step 13's deep C2 audit proves id-map <-> vector <-> passage <-> source-mapping
+    // correspondence, so replacing the store's vectors means replacing its sidecars too — the
+    // fixture's 2-passage set describes v-0/v-1, not the 1,024 vectors ingested above. Without
+    // this the positive control below fails `passage-missing` before corruption is ever tested.
+    const bigPassages = Array.from({ length: 1024 }, (_, index) => ({
+      id: `vector-${index}`,
+      text: `alpha passage ${index}`,
+      path: `docs/${index}.md`,
+      title: String(index),
+    }));
+    fs.writeFileSync(path.join(f.bundleDir, 'alpha.passages.jsonl'), `${bigPassages.map((row) => JSON.stringify(row)).join('\n')}\n`);
+    fs.writeFileSync(path.join(f.bundleDir, 'alpha.meta.json'), JSON.stringify({
+      dimensions: 3,
+      incremental: {
+        schemaVersion: 2,
+        files: Object.fromEntries(bigPassages.map((row) => [row.path, { chunkIds: [row.id] }])),
+      },
+    }));
+
     const rebindLedgerToCurrentBytes = () => {
       const ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
       ledger.stores.alpha.sha256 = sha256(rvfPath);
