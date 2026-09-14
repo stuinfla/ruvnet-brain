@@ -93,6 +93,9 @@ jobs:
       - name: Install the exact lockfile dependency graph
         run: npm ci
 
+      - name: Install kb deps (@ruvector/rvf and @xenova/transformers live here, not the root)
+        run: cd kb && npm ci --no-audit --no-fund
+
       - name: Download the one configured immutable corpus seed
         env:
           GH_TOKEN: ${{ github.token }}
@@ -120,7 +123,13 @@ jobs:
       - name: Reconcile exact upstream SHAs and seal a candidate
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Actions' default GITHUB_TOKEN is a GitHub App token with no gist scope, so per-gist
+          # detail fetches (scripts/gist-receipts.mjs's defaultFetchGist) 403 with "Resource not
+          # accessible by integration" even though the list-level call (observeGists) already has
+          # its own unauthenticated curl fallback (scripts/source-coverage.mjs, fixed separately).
+          # Prefer a narrowly-scoped, read-only gist PAT when the repo secret is configured; fall
+          # back to github.token so forks/environments without that secret keep prior behavior.
+          GH_TOKEN: ${{ secrets.RUVNET_GISTS_TOKEN || github.token }}
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/release-evidence"
@@ -148,9 +157,7 @@ jobs:
           archive_sha256="$(sha256sum "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip" | cut -d' ' -f1)"
           receipt_sha256="$(sha256sum release-evidence/corpus-receipt.json | cut -d' ' -f1)"
           node scripts/corpus-candidate.mjs --verify \
-            --assets "$RUNNER_TEMP/corpus-assets" \
             --bundle "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip" \
-            --policy data/source-coverage.json \
             --receipt release-evidence/corpus-receipt.json
           artifact_name="corpus-seed-prepared-$EXPECTED_SHA"
           {

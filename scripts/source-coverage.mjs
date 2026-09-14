@@ -190,10 +190,46 @@ export function gistVersion(gist) {
   return versions.length && new Set(versions).size === 1 ? versions[0] : null;
 }
 
-export function observeGists(owner, { gh = runGh } = {}) {
-  const raw = gh(['api', `users/${owner}/gists?per_page=100`, '--paginate', '--slurp']);
-  const parsed = JSON.parse(raw);
-  const pages = Array.isArray(parsed[0]) ? parsed : [parsed];
+// Test seam: same injection pattern as `gh = runGh` above, so the fallback's failure path is
+// exercisable with a fake HTTP layer instead of the live API or even real loopback networking.
+// Reads the API base fresh per call (not frozen at module load) for the same reason.
+function runCurl(url) {
+  const result = spawnSync('curl', ['-sS', '--max-time', '30', '-H', 'accept: application/vnd.github+json',
+    '-H', 'user-agent: ruvnet-brain-source-coverage', url],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 35_000 });
+  if (result.status !== 0) throw new Error(`unauthenticated gists list failed: ${(result.stderr || '').trim()}`);
+  return result.stdout;
+}
+
+// Actions' GITHUB_TOKEN is a GitHub App token, and the gists list API is closed to those
+// ("Resource not accessible by integration", HTTP 403 — confirmed live 2026-09-13, corpus-seed.yml's
+// first-ever run). Public gists need no auth, so fall back to curl against the plain API on that
+// specific failure, mirroring ingest-gists.mjs's already-working listGists/listGistsPublic split
+// (kept synchronous here, matching this module's existing gh-injection style, rather than
+// threading async through observeSourceUniverse/buildCoverage's whole synchronous call chain).
+function listGistsUnauthenticated(owner, curl) {
+  const apiBase = process.env.RUVNET_GISTS_API || 'https://api.github.com';
+  const pages = [];
+  for (let page = 1; page <= 10; page++) {
+    const parsed = JSON.parse(curl(`${apiBase}/users/${owner}/gists?per_page=100&page=${page}`));
+    if (parsed?.message) throw new Error(`unauthenticated gists list failed: ${parsed.message}`);
+    if (!Array.isArray(parsed)) throw new Error('unauthenticated gists list returned an unexpected shape');
+    pages.push(parsed);
+    if (parsed.length < 100) break;
+  }
+  return pages;
+}
+
+export function observeGists(owner, { gh = runGh, curl = runCurl } = {}) {
+  let pages;
+  try {
+    const raw = gh(['api', `users/${owner}/gists?per_page=100`, '--paginate', '--slurp']);
+    const parsed = JSON.parse(raw);
+    pages = Array.isArray(parsed[0]) ? parsed : [parsed];
+  } catch (error) {
+    if (!/resource not accessible by integration|HTTP 403/i.test(String(error.message))) throw error;
+    pages = listGistsUnauthenticated(owner, curl);
+  }
   const rows = pages.flat().filter((gist) => gist?.id);
   const expected = Number(JSON.parse(gh(['api', `users/${owner}`])).public_gists);
   if (rows.length !== expected) throw new Error(`gist enumeration incomplete: ${rows.length}/${expected}`);
@@ -245,12 +281,19 @@ export function classifyRepository(repo, evidence, exclusion = null) {
 
 export function classifyGist(gist, evidence) {
   const source = evidence.sources?.gists?.[gist.id] || null;
-  const ingestedAt = source?.ingestedAt || evidence.cache?.[gist.id] || null;
+  const ingestedAt = source?.ingestedAt || null;
   // The list API does not expose gist history.version. A just-fetched individual source receipt is
   // still the authoritative version when the live list's updated_at is unchanged; otherwise the
   // list proves drift and the row is stale until the individual gist is refreshed.
+  //
+  // 2026-09-13 (Step 4, rule 2): a flat timestamp cache (`.ruv-gists.cache.json` -- "we last saw
+  // this updated_at at some point") is NEVER consulted here anymore. It used to OR into
+  // `currentByDate`, so a gist could be classified CURRENT purely because a bare cache file claimed
+  // a date matched -- with no binding whatsoever to the gist's actual captured/rendered content.
+  // Currency is now provable ONLY from the real, already-validated per-gist source receipt (Step 2's
+  // schema-3 `ruv-gists.sources.json`): its own `updatedAt` field must equal the live list's.
   const version = source?.updatedAt === gist.updated_at ? source.versionSha : gistVersion(gist);
-  const currentByDate = source?.updatedAt === gist.updated_at || evidence.cache?.[gist.id] === gist.updated_at;
+  const currentByDate = source?.updatedAt === gist.updated_at;
   let status = 'CURRENT';
   const reasons = [];
   if (!evidence.rvfPresent) { status = 'MISSING'; reasons.push('ruv-gists RVF is absent'); }
@@ -376,8 +419,6 @@ export function buildCoverage({ owner = 'ruvnet', env = process.env, home = os.h
   const ledger = readRvfGenerations(kbDir);
   const cards = fs.readFileSync(path.join(kbDir, 'capability-cards.md'), 'utf8');
   const cardStores = new Set([...cards.matchAll(/^##\s+(.+?)\s*$/gm)].map((match) => storeName(match[1])));
-  const gistCachePath = path.join(kbDir, '.ruv-gists.cache.json');
-  const gistCache = fs.existsSync(gistCachePath) ? JSON.parse(fs.readFileSync(gistCachePath, 'utf8')) : {};
   const gistSourcesPath = path.join(kbDir, 'ruv-gists.sources.json');
   const gistSources = fs.existsSync(gistSourcesPath) ? JSON.parse(fs.readFileSync(gistSourcesPath, 'utf8')) : null;
   const exclusionsPath = path.join(policyDir, 'no-corpus-repos.json');
@@ -386,7 +427,7 @@ export function buildCoverage({ owner = 'ruvnet', env = process.env, home = os.h
     const store = storeName(repo.storeName || repo.name);
     return classifyRepository(repo, artifactEvidence(kbDir, ledger, cardStores, store), exclusions[store] || null);
   });
-  const gistEvidence = { ...artifactEvidence(kbDir, ledger, cardStores, 'ruv-gists'), cache: gistCache, sources: gistSources };
+  const gistEvidence = { ...artifactEvidence(kbDir, ledger, cardStores, 'ruv-gists'), sources: gistSources };
   try {
     validateGistAggregateReceipt({ receipt: gistSources,
       passagesFile: path.join(kbDir, 'ruv-gists.passages.jsonl'),
