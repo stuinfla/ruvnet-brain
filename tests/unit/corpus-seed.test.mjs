@@ -8,7 +8,7 @@ import {
   verifyCorpusReceipt,
   verifySeedBaseline,
 } from '../../scripts/corpus-candidate.mjs';
-import { RvfDatabase, SOURCE_COMMIT, buildAssets, seal, sha256 } from '../helpers/corpus-seed-fixture.mjs';
+import { RvfDatabase, SOURCE_COMMIT, buildAssets, seal, sha256, writeAccuracyReport } from '../helpers/corpus-seed-fixture.mjs';
 
 // The genuine-RVF bundle fixture (writeMinimalRvf / buildAssets / seal) moved to
 // tests/helpers/corpus-seed-fixture.mjs on 2026-09-13 so tests/unit/corpus-seed-release-authority.test.mjs
@@ -37,13 +37,13 @@ async function create(f) {
   });
 }
 
-describe('immutable corpus candidate receipt (schema 2)', () => {
+describe('immutable corpus candidate receipt (schema 3)', () => {
   it('creates and verifies a receipt binding every public store, sidecar, fence, and archive byte', async () => {
     const f = await fixture();
     const receipt = await create(f);
 
     expect(receipt).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       kind: 'ruvnet-brain-corpus-candidate',
       builderSourceSha: 'c'.repeat(40),
       storeCount: 1,
@@ -244,6 +244,10 @@ describe('immutable corpus candidate receipt (schema 2)', () => {
     }
     expect(hits, 'the fixture must actually contain a traversal name, or this test guards nothing').toBeGreaterThan(0);
     fs.writeFileSync(f.bundle, bytes);
+    // Step 15: the detached accuracy report binds the archive's OUTER digest, so it has to be
+    // rewritten for the traversal bytes — otherwise this would assert the accuracy binding rather
+    // than the extractor rejection it exists to prove.
+    writeAccuracyReport(f.bundle);
     await expect(create(f)).rejects.toThrow(/cannot extract archive/i);
   });
 });

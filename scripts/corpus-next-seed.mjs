@@ -103,8 +103,17 @@ function judgeRelease({ run, repo, tag, digest, approved, rejected }) {
     try { receipt = JSON.parse(fs.readFileSync(path.join(scratch, RECEIPT_ASSET), 'utf8')); }
     catch (error) { rejected.push({ tag, reason: `unverified: corpus receipt unreadable (${error.message})` }); return null; }
 
-    if (receipt.schemaVersion !== 2 || receipt.kind !== 'ruvnet-brain-corpus-candidate') {
-      rejected.push({ tag, reason: 'unverified: receipt schema or kind is not a schema-2 corpus candidate' });
+    // ADR-086 Step 15 / A6 moved the corpus receipt to schemaVersion 3 (it now binds the detached
+    // retrieval-accuracy report). This reader has to move with it: left at 2 it would reject every
+    // schema-3 generation as unverified and silently fall back to the committed bootstrap seed every
+    // night — a degradation that looks exactly like "no new generation yet".
+    if (receipt.schemaVersion !== 3 || receipt.kind !== 'ruvnet-brain-corpus-candidate') {
+      rejected.push({ tag, reason: 'unverified: receipt schema or kind is not a schema-3 corpus candidate' });
+      return null;
+    }
+    if (!receipt.accuracyReport?.file || !/^[a-f0-9]{64}$/.test(String(receipt.accuracyReport.sha256 || ''))
+      || !Number.isSafeInteger(receipt.accuracyReport.bytes)) {
+      rejected.push({ tag, reason: 'unverified: receipt carries no retrieval-accuracy binding' });
       return null;
     }
     if (receipt.archive?.sha256 !== digest || receipt.archive?.bytes !== archive.size) {

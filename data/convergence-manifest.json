@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.3.25",
-  "sourceIdentity": "276fd1e99516b62d8b6ef1fdb63e8b36713b355d499df2829c8f1d7568a01e64",
+  "sourceIdentity": "e6333ff3c6e7f9d98a28890544dabd63793a8b8c8294bf43ac5d37b24953afa5",
   "versionSurfaces": {
     "package.json": "4.3.25",
     "plugin/.claude-plugin/plugin.json": "4.3.25",
@@ -102,8 +102,8 @@
     "0087-citation-header-spoofing-needs-a-structural-fix.md",
     "README.md"
   ],
-  "trackedFileCount": 1526,
-  "trackedFilesSha256": "96c61014cf8eb519b88a92d3efa6dc8c681bf2b7948e34e90723af6655a54ea7",
+  "trackedFileCount": 1528,
+  "trackedFilesSha256": "394c8e33cd1de22ca22b71b612995a7ead50d0eb25cbc4bb846026d1e65d3fba",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

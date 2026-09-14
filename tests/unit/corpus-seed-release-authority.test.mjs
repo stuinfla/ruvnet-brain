@@ -4,10 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createCorpusReceipt } from '../../scripts/corpus-candidate.mjs';
-import { sealedCorpusBundle } from '../helpers/corpus-seed-fixture.mjs';
+import { fixtureReleaseRoot, sealedCorpusBundle, writeAccuracyReport } from '../helpers/corpus-seed-fixture.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
-const RELEASE = path.join(ROOT, 'scripts/release.mjs');
 const HEAD = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
 const dirs = [];
 
@@ -41,7 +40,12 @@ process.exit(0);
 `);
   fs.chmodSync(gh, 0o755);
 
-  const { bundle } = await sealedCorpusBundle(dir); // <dir>/ruvnet-brain.zip
+  // Step 15: the publication gate hashes the retrieval-accuracy oracle committed in release.mjs's
+  // OWN root, so the publisher is spawned from a fixture root that symlinks the real scripts/kb/
+  // plugin/keys/.git and owns only `data/` — a committed oracle without touching the checkout.
+  const releaseRoot = fixtureReleaseRoot(path.join(dir, 'root'));
+  const { bundle } = await sealedCorpusBundle(dir, { accuracy: null }); // <dir>/ruvnet-brain.zip
+  writeAccuracyReport(bundle, { oracleSha256: releaseRoot.oracleSha256, generatorSha256: releaseRoot.generatorSha256 });
   const receiptFile = path.join(dir, 'corpus-receipt.json');
   const receipt = await createCorpusReceipt({
     bundleFile: bundle,
@@ -73,11 +77,11 @@ process.exit(0);
     RUVNET_GH_COMMAND: process.execPath,
     RUVNET_GH_SCRIPT: path.join(bin, 'gh-fixture.mjs'),
   };
-  return { dir, bundle, digest, receipt, receiptFile, tag, args, env, log };
+  return { dir, bundle, digest, receipt, receiptFile, tag, args, env, log, releaseRoot };
 }
 
 function run(f, { args = f.args, env = f.env } = {}) {
-  return spawnSync(process.execPath, [RELEASE, ...args], {
+  return spawnSync(process.execPath, [...f.releaseRoot.nodeArgs, f.releaseRoot.release, ...args], {
     cwd: ROOT,
     env,
     encoding: 'utf8',
@@ -217,7 +221,7 @@ describe('protected corpus-seed release authority', () => {
       '--repo', 'stuinfla/ruvnet-brain',
       '--title', `Immutable corpus seed ${f.digest.slice(0, 16)}`,
       '--notes', expect.stringContaining(`Archive SHA-256: ${f.digest}`),
-      f.bundle, f.receiptFile,
+      f.bundle, f.receiptFile, `${f.bundle}.accuracy.json`,
     ]);
     expect(calls[1]).not.toContain('--draft');
     expect(calls[1]).not.toContain('--clobber');

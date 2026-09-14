@@ -52,10 +52,13 @@ function generation(seed, overrides = {}) {
     createdAt: overrides.createdAt || '2026-09-10T00:00:00Z',
     assets: overrides.assets || ASSETS(600_000_000),
     receipt: {
-      schemaVersion: 2,
+      // ADR-086 Step 15 / A6: schema 3, and the accuracy binding is part of what makes a published
+      // generation seedable at all.
+      schemaVersion: 3,
       kind: 'ruvnet-brain-corpus-candidate',
       builderSourceSha: 'c'.repeat(40),
       archive: { file: 'ruvnet-brain.zip', sha256, bytes: 600_000_000 },
+      accuracyReport: { file: 'ruvnet-brain.zip.accuracy.json', sha256: 'a'.repeat(64), bytes: 2048 },
       archiveManifestVersion: APPROVED_VERSION,
       archiveManifestReleaseTag: APPROVED_TAG,
       ...(overrides.receipt || {}),
@@ -139,7 +142,9 @@ describe('corpus next-seed resolution (ADR-086 step 18)', () => {
       assets: [...ASSETS(1), { name: 'ruvnet-brain.zip', size: 1, state: 'uploaded' }],
     }, /expected exactly one ruvnet-brain\.zip asset/],
     ['a draft release', { release: { isDraft: true } }, /draft/],
-    ['a schema-downgraded receipt', { receipt: { schemaVersion: 1 } }, /not a schema-2 corpus candidate/],
+    ['a schema-downgraded receipt', { receipt: { schemaVersion: 2 } }, /not a schema-3 corpus candidate/],
+    ['a receipt with no retrieval-accuracy binding', { receipt: { accuracyReport: undefined } },
+      /carries no retrieval-accuracy binding/],
     ['a receipt whose archive digest is not the tag digest', {
       receipt: { archive: { file: 'ruvnet-brain.zip', sha256: digest('0'), bytes: 600_000_000 } },
     }, /disagrees with the content-addressed tag/],

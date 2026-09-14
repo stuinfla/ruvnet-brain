@@ -6,17 +6,20 @@ import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createCorpusReceipt } from '../../scripts/corpus-candidate.mjs';
 import { evaluateCorpusPromotion, parseCorpusGeneration, CORPUS_GENERATION_FIELD } from '../../scripts/corpus-promotion.mjs';
-import { sealedCorpusBundle } from '../helpers/corpus-seed-fixture.mjs';
+import { fixtureReleaseRoot, sealedCorpusBundle, writeAccuracyReport } from '../helpers/corpus-seed-fixture.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
-const RELEASE = path.join(ROOT, 'scripts/release.mjs');
 const SIGN = path.join(ROOT, 'scripts/sign-bundle.mjs');
 const HEAD = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
 const REPO = 'stuinfla/ruvnet-brain';
 const dirs = [];
 afterEach(() => { while (dirs.length) fs.rmSync(dirs.pop(), { recursive: true, force: true }); });
 
-const ASSET_NAMES = ['ruvnet-brain.zip', 'ruvnet-brain.zip.sig', 'ruvnet-brain.zip.sha256', 'corpus-receipt.json'];
+// ADR-086 Step 15: the detached retrieval-accuracy report is now a published corpus asset, because a
+// downloaded archive that cannot be reverified against the identity it was measured under is not a
+// deliverable artifact.
+const ASSET_NAMES = ['ruvnet-brain.zip', 'ruvnet-brain.zip.sig', 'ruvnet-brain.zip.sha256', 'corpus-receipt.json',
+  'ruvnet-brain.zip.accuracy.json'];
 const uploaded = (names = ASSET_NAMES) => names.map((name) => ({ name, size: 10, state: 'uploaded' }));
 
 // The real gh surface the promote path touches, driven by a JSON config so each case mutates exactly
@@ -64,7 +67,13 @@ async function fixture({ sign = true, signWithAttackerKey = false, config = {} }
   const pubPath = path.join(dir, 'trusted.pub.pem');
   fs.writeFileSync(pubPath, trusted.publicKey.export({ type: 'spki', format: 'pem' }));
 
-  const { bundle } = await sealedCorpusBundle(dir);
+  // Step 15: release.mjs's publication gate hashes the retrieval-accuracy oracle committed in ITS
+  // OWN root, so the publisher is spawned from a fixture root that symlinks the real scripts/kb/
+  // plugin/keys/.git and owns only `data/`. That supplies a committed oracle without ever writing
+  // into the tracked checkout.
+  const releaseRoot = fixtureReleaseRoot(path.join(dir, 'root'));
+  const { bundle } = await sealedCorpusBundle(dir, { accuracy: null });
+  writeAccuracyReport(bundle, { oracleSha256: releaseRoot.oracleSha256, generatorSha256: releaseRoot.generatorSha256 });
   const receiptFile = path.join(dir, 'corpus-receipt.json');
   const receipt = await createCorpusReceipt({
     bundleFile: bundle, receiptFile, builderSourceSha: HEAD, createdAt: '2026-09-13T12:00:00.000Z',
@@ -94,7 +103,7 @@ async function fixture({ sign = true, signWithAttackerKey = false, config = {} }
   fs.writeFileSync(configFile, JSON.stringify(resolved));
 
   return {
-    dir, bundle, receiptFile, receipt, digest, tag, configFile, log, resolved,
+    dir, bundle, receiptFile, receipt, digest, tag, configFile, log, resolved, releaseRoot,
     write: (patch) => fs.writeFileSync(configFile, JSON.stringify({ ...resolved, ...patch })),
     args: [
       '--corpus-seed', '--promote-latest', '--corpus-tag', tag,
@@ -125,7 +134,7 @@ async function fixture({ sign = true, signWithAttackerKey = false, config = {} }
   };
 }
 
-const run = (f, args = f.args) => spawnSync(process.execPath, [RELEASE, ...args], {
+const run = (f, args = f.args) => spawnSync(process.execPath, [...f.releaseRoot.nodeArgs, f.releaseRoot.release, ...args], {
   cwd: ROOT, env: f.env, encoding: 'utf8', timeout: 60_000,
 });
 const calls = (f) => (fs.existsSync(f.log) ? fs.readFileSync(f.log, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : []);
@@ -168,7 +177,8 @@ describe('customer corpus promotion (ADR-086 C4 resolution S1)', () => {
     expect(create).not.toContain('--latest=false');
     // ASSETS COMPLETE BEFORE PROMOTION: created as a draft, which releases/latest cannot resolve to.
     expect(create).toContain('--draft');
-    expect(create.slice(-4)).toEqual([f.bundle, `${f.bundle}.sig`, `${f.bundle}.sha256`, f.receiptFile]);
+    expect(create.slice(-5)).toEqual([f.bundle, `${f.bundle}.sig`, `${f.bundle}.sha256`, f.receiptFile,
+      `${f.bundle}.accuracy.json`]);
     expect(create[create.indexOf('--notes') + 1]).toContain(`${CORPUS_GENERATION_FIELD} 2026-09-13T12:00:00.000Z`);
 
     expect(sequence[4]).toEqual(['release', 'edit', f.tag, '--repo', REPO, '--draft=false', '--latest', '--prerelease=false']);

@@ -18,6 +18,7 @@ import {
   createRetrospectiveBaselineVerification,
 } from '../../scripts/public-verification-inputs.mjs';
 import { createCorpusReceipt } from '../../scripts/corpus-candidate.mjs';
+import { writeAccuracyReport } from '../helpers/corpus-seed-fixture.mjs';
 import { validatePlanAgainstCoverage } from '../../scripts/retrieval-canary.mjs';
 import { writeStoredZip } from '../helpers/zip-fixture.mjs';
 
@@ -470,10 +471,13 @@ describe('createReceiptedBaselineVerification — the new seed-type path (task 3
     sealDirectory(bundleDir, { version: '9.9.9', releaseTag: 'v9.9.9' });
     const bundle = path.join(root, 'ruvnet-brain.zip');
     zipDirectory(bundleDir, bundle);
+    // ADR-086 Step 15: a schema-3 receipt binds the detached retrieval-accuracy report that measured
+    // these exact archive bytes, so the seed fixture has to carry one.
+    writeAccuracyReport(bundle);
     return { root, bundle };
   }
 
-  it('verifies a seed through its schema-2 candidate receipt without comparing the external tag to the internal manifest tag', async () => {
+  it('verifies a seed through its schema-3 candidate receipt without comparing the external tag to the internal manifest tag', async () => {
     const { root, bundle } = await receiptedSeedFixture();
     const receiptFile = path.join(root, 'corpus-receipt.json');
     const receipt = await createCorpusReceipt({ bundleFile: bundle, builderSourceSha: 'c'.repeat(40), receiptFile });

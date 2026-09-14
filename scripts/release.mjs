@@ -36,6 +36,7 @@ import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
 import { verifyCorpusReceipt } from './corpus-candidate.mjs';
+import { readAccuracyReport } from './oracle/retrieval-accuracy.mjs';
 import { verifyBundle } from './verify-bundle.mjs';
 import { CORPUS_GENERATION_FIELD, evaluateCorpusPromotion } from './corpus-promotion.mjs';
 
@@ -140,9 +141,12 @@ export async function runProtectedCorpusSeed({
     corpusFailure('target must exactly equal HEAD, GITHUB_SHA, and the corpus receipt builderSourceSha');
   }
 
-  // Schema 2: the receipt binds the full provenance closure shipped INSIDE the sealed archive
-  // (ARCHIVE-MANIFEST.json, PRIVATE-STORES.json, RVF-GENERATIONS.json, SOURCE.json) rather than a
-  // separate, unshipped assets/eligibility-policy directory.
+  // Schema 3 (ADR-086 Step 15 / A6): the receipt binds the full provenance closure shipped INSIDE
+  // the sealed archive (ARCHIVE-MANIFEST.json, PRIVATE-STORES.json, RVF-GENERATIONS.json,
+  // SOURCE.json) AND the detached, digest-bound retrieval-accuracy report that measured this exact
+  // archive. Schema 2 is refused outright: a schema-2 seed carries no accuracy binding, so it is
+  // UNPUBLISHABLE from here forward and data/corpus-seed.json must be re-pointed at a schema-3 seed
+  // in the same change that publishes one.
   const boundaryIdentities = [receipt.privateFence, receipt.generationLedger, receipt.sourceManifest, receipt.archiveManifest];
   const storeBindingsValid = Number.isSafeInteger(receipt.storeCount) && receipt.storeCount > 0
     && Array.isArray(receipt.stores) && receipt.stores.length === receipt.storeCount
@@ -162,9 +166,10 @@ export async function runProtectedCorpusSeed({
   const generatorFile = path.join(root, 'scripts/corpus-candidate.mjs');
   const generatorValid = fs.existsSync(generatorFile)
     && receipt.generator?.corpusCandidateSha256 === sha256File(generatorFile);
-  if (receipt.schemaVersion !== 2 || receipt.kind !== 'ruvnet-brain-corpus-candidate'
+  if (receipt.schemaVersion !== 3 || receipt.kind !== 'ruvnet-brain-corpus-candidate'
     || !receipt.createdAt || !storeBindingsValid || !emptyFailureArrays
     || !privateExclusionsValid || !boundaryIdentities.every(exactFileIdentity) || !exactFileIdentity(receipt.archive)
+    || !exactFileIdentity(receipt.accuracyReport)
     || !generatorValid
     || receipt.archive.file !== path.basename(bundleFile)) {
     corpusFailure('corpus receipt bindings are incomplete or invalid');
@@ -176,6 +181,38 @@ export async function runProtectedCorpusSeed({
   }
   if (digestMatch[1] !== archiveSha256) corpusFailure('corpus tag digest does not match the receipt and archive');
 
+  // ADR-086 Step 15's second binding. The detached accuracy report travels beside the archive; this
+  // proves (a) the file the receipt names is the file present here, byte for byte, (b) the report
+  // was measured against THESE archive bytes, (c) every partition in both query modes passed
+  // 20x>=19x with no timeouts and no bounded sampling, and (d) it was produced by the committed
+  // benchmark against the committed oracle — so a swapped oracle or a patched benchmark is caught
+  // here even though the receipt itself carries only {file, sha256, bytes}.
+  const accuracyReportFile = `${bundleFile}.accuracy.json`;
+  if (receipt.accuracyReport.file !== path.basename(accuracyReportFile)) {
+    corpusFailure('corpus receipt names an accuracy report that is not the one beside this archive');
+  }
+  if (!fs.existsSync(accuracyReportFile) || !fs.statSync(accuracyReportFile).isFile()) {
+    corpusFailure(`detached retrieval-accuracy report missing beside the archive (${path.basename(accuracyReportFile)})`);
+  }
+  if (sha256File(accuracyReportFile) !== receipt.accuracyReport.sha256
+    || fs.statSync(accuracyReportFile).size !== receipt.accuracyReport.bytes) {
+    corpusFailure('detached retrieval-accuracy report bytes do not match the corpus receipt');
+  }
+  const committedOracleFile = path.join(root, 'data/retrieval-accuracy-oracle.json');
+  const accuracyGeneratorFile = path.join(root, 'scripts/oracle/retrieval-accuracy.mjs');
+  if (!fs.existsSync(committedOracleFile)) corpusFailure('committed retrieval-accuracy oracle is missing from the release checkout');
+  if (!fs.existsSync(accuracyGeneratorFile)) corpusFailure('committed retrieval-accuracy benchmark is missing from the release checkout');
+  try {
+    readAccuracyReport({
+      reportFile: accuracyReportFile,
+      archive: { file: receipt.archive.file, sha256: archiveSha256, bytes: fs.statSync(bundleFile).size },
+      expectedOracleSha256: sha256File(committedOracleFile),
+      expectedGeneratorSha256: sha256File(accuracyGeneratorFile),
+    });
+  } catch (error) {
+    corpusFailure(`retrieval accuracy does not qualify this corpus for publication (${error.message})`);
+  }
+
   // Deep re-verification — moved here 2026-09-13 from the deleted scripts/corpus-seed-publish.mjs
   // (ADR-085). Everything above proves the receipt is well-FORMED and that the archive's outer
   // digest matches it; none of it proves the receipt is TRUE. verifyCorpusReceipt re-extracts the
@@ -184,7 +221,9 @@ export async function runProtectedCorpusSeed({
   // the receipt. A receipt with a single forged store digest passes every check above and fails
   // here. It runs before any `gh` call so an untrue candidate never reaches the network.
   try {
-    await verifyCorpusReceipt({ receiptFile, bundleFile, expectedBuilderSha: target, expectedArchiveSha256: archiveSha256 });
+    await verifyCorpusReceipt({
+      receiptFile, bundleFile, accuracyReportFile, expectedBuilderSha: target, expectedArchiveSha256: archiveSha256,
+    });
   } catch (error) {
     corpusFailure(`corpus receipt does not verify against the sealed archive (${error.message})`);
   }
@@ -229,10 +268,14 @@ export async function runProtectedCorpusSeed({
       'Content-addressed RuvNet Brain corpus seed.',
       `Archive SHA-256: ${archiveSha256}`,
       `Receipt SHA-256: ${receiptSha256}`,
+      `Accuracy report SHA-256: ${receipt.accuracyReport.sha256}`,
       `Stores: ${receipt.storeCount}`,
       `Builder source SHA: ${receipt.builderSourceSha}`,
       'This published prerelease is immutable and must never be replaced.',
     ].join('\n');
+    // The detached accuracy report ships AS AN ASSET. Without it a downloader holds an archive it
+    // cannot re-verify — "reverify the downloaded final artifact against the measured identity"
+    // requires the measurement to travel with the artifact it measured.
     const createArgs = [
       'release', 'create', tag,
       '--prerelease', '--latest=false',
@@ -240,7 +283,7 @@ export async function runProtectedCorpusSeed({
       '--repo', repo,
       '--title', `Immutable corpus seed ${archiveSha256.slice(0, 16)}`,
       '--notes', notes,
-      bundleFile, receiptFile,
+      bundleFile, receiptFile, accuracyReportFile,
     ];
     const create = gh(createArgs);
     if (create.error || create.status !== 0) {
@@ -287,7 +330,10 @@ export async function runProtectedCorpusSeed({
   // release with no archive — every polling client in that window fails or, worse, half-downloads.
   // Create as a draft (invisible to releases/latest), prove all four assets landed, and only then
   // flip draft off and claim latest in one edit.
-  const assetFiles = [bundleFile, signatureFile, digestFile, receiptFile];
+  // accuracyReportFile rides with every corpus release for the same reason it rides with a seed: a
+  // customer (or the next night's dispatcher) that downloads the archive must be able to reverify it
+  // against the identity it was actually measured under.
+  const assetFiles = [bundleFile, signatureFile, digestFile, receiptFile, accuracyReportFile];
   const create = gh([
     'release', 'create', tag,
     '--draft',
