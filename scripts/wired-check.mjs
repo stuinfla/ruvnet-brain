@@ -70,6 +70,10 @@ const argv = process.argv.slice(2);
  * every entry on every run, below, so they cannot rot unseen.
  */
 const STANDALONE = [
+  ['spike-run', 'ADR-086 Step 14 oracle feasibility-spike driver, run by hand against disposable snapshots outside the checkout. '
+    + 'It is deliberately NOT imported by the pipeline: Step 14 only proves or disproves that a trustworthy unattended label '
+    + 'producer exists, and Step 15 owns any prepareCorpusCandidate wiring. The three modules it drives (source-units, '
+    + 'produce-questions, validate-labels) are each wired to a real caller; this driver is the human entry point.'],
   ['gate', 'retired automatic-hook helper and manual benchmark retained for explicit human use; no workflow or scheduler invokes this expensive command'],
   ['dream-issue-gate', 'pure Dream Cycle disposition policy; invoked by the external issue adapter, never a GitHub writer'],
   ['sync-census', 'explicit maintainer census writer; a destructive source-to-surface refresh is never scheduled'],
@@ -336,6 +340,10 @@ export const REQUIRED_OPERATIONAL_EXPORTS = [
   // Step 13 (2026-09-13): the C2 deep store audit — measured recall, hash-verified segments, id-map /
   // passage / source-map correspondence — that corpus-candidate.mjs fails closed on.
   { rel: 'scripts/rvf-index-audit.mjs', symbol: 'auditCorpusStores' },
+  // Step 15 (2026-09-14): the C3 retrieval-accuracy gate. prepareCorpusCandidate shells out to its
+  // CLI after single-pass assembly; corpus-candidate.mjs and release.mjs both import its
+  // readAccuracyReport reader so candidate acceptance and publication can never drift apart.
+  { rel: 'scripts/oracle/retrieval-accuracy.mjs', symbol: 'runRetrievalAccuracy' },
 ];
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))

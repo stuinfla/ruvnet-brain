@@ -40,6 +40,22 @@ export async function writeMinimalRvf(rvfPath) {
   await db.close();
 }
 
+/** Every regular file under `dir`, as `relative path -> sha256:bytes`. Used to prove a directory is
+ * an INPUT: byte-identical before and after, with nothing added and nothing pruned. */
+export function treeIdentity(dir) {
+  const out = {};
+  const walk = (abs, rel) => {
+    for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      const child = path.join(abs, entry.name);
+      if (entry.isDirectory()) walk(child, childRel);
+      else out[childRel] = `${sha256File(child)}:${fs.statSync(child).size}`;
+    }
+  };
+  if (fs.existsSync(dir)) walk(dir, '');
+  return out;
+}
+
 export function tempDir(dirs, label) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `assemble-bundle-${label}-`));
   dirs.push(dir);

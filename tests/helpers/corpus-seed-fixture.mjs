@@ -76,7 +76,78 @@ export function createArchive(bundle, bundleRoot) {
 // test mutates bundleDir *before* calling seal(), so the manifest and the zip it seals are always
 // mutually consistent — exactly like the real builder. Returns the sealed bundle path
 // (<root>/ruvnet-brain.zip for a bundleDir of <root>/bundle/ruvnet-brain).
-export function seal(root, bundleDir) {
+// ADR-086 Step 15: a sealed corpus is now a TWO-artifact identity — the archive, and the detached
+// retrieval-accuracy report bound to its digest. Every fixture that wants to get past
+// deriveCorpusCandidate needs both, so seal() writes a complete, all-PASS report by default and the
+// mutation tests break exactly one thing about it.
+export const FIXTURE_ORACLE_PARTITION = 'alpha';
+
+export function accuracyOracle({ labels = 20 } = {}) {
+  const partitions = [{ partition: 'alpha', kind: 'repository', store: 'alpha', sourceCommit: SOURCE_COMMIT }];
+  const rows = [];
+  for (let index = 0; index < labels; index += 1) {
+    rows.push({
+      id: `alpha-${String(index).padStart(3, '0')}`,
+      partition: 'alpha',
+      question: `What does alpha passage ${index} say?`,
+      span: index % 2 === 0 ? 'alpha passage zero' : 'alpha passage one',
+      sourcePath: index % 2 === 0 ? 'docs/zero.md' : 'docs/one.md',
+      blobSha: crypto.createHash('sha1').update(`blob-${index}`).digest('hex'),
+      unitSha256: crypto.createHash('sha256').update(`unit-${index}`).digest('hex'),
+    });
+  }
+  return { partitions, labels: rows };
+}
+
+/**
+ * A complete, all-PASS accuracy report bound to `bundle`'s exact bytes. `overrides` is merged last so
+ * a test can break precisely one binding (archive digest, coverage completeness, a partition's
+ * counters) and prove the gate refuses it.
+ */
+export function accuracyReportFor(bundle, {
+  oracleSha256 = 'b'.repeat(64), generatorSha256 = 'e'.repeat(64), overrides = {}, n = 20, successes = 20, timeouts = 0,
+} = {}) {
+  const partition = (mode) => ({
+    partition: 'alpha', partitionKind: 'repository', store: 'alpha', sourceCommit: SOURCE_COMMIT,
+    mode, n, successes, failures: n - successes, errors: 0, timeouts, sampled: false, oracleRows: n,
+    failedLabels: [], state: (20 * successes >= 19 * n && timeouts === 0) ? 'PASS' : 'FAIL',
+  });
+  const partitions = [partition('explicit-repository'), partition('full-corpus')];
+  return {
+    schemaVersion: 1,
+    kind: 'ruvnet-brain-retrieval-accuracy',
+    createdAt: '2026-09-14T00:00:00.000Z',
+    archive: { file: path.basename(bundle), sha256: sha256(bundle), bytes: fs.statSync(bundle).size },
+    oracle: {
+      file: 'data/retrieval-accuracy-oracle.json', sha256: oracleSha256, bytes: 1234,
+      oracleVersion: 'fixture/1', labelsSha256: 'c'.repeat(64), partitionsSha256: 'd'.repeat(64),
+    },
+    generator: { retrievalAccuracySha256: generatorSha256 },
+    metric: 'evidence-supporting-hit@5',
+    k: 5,
+    threshold: { numerator: 19, denominator: 20 },
+    modes: ['explicit-repository', 'full-corpus'],
+    queryTimeoutMs: 120000,
+    coverage: {
+      complete: true, bounded: null, archiveStores: ['alpha'], oraclePartitions: 1,
+      measuredPartitions: 1, unmeasuredPartitions: [], uncoveredArchiveStores: [], emptySources: [],
+    },
+    totals: {
+      n: n * 2, successes: successes * 2, failures: (n - successes) * 2, errors: 0, timeouts: timeouts * 2,
+    },
+    partitions,
+    state: partitions.every((row) => row.state === 'PASS') ? 'PASS' : 'FAIL',
+    ...overrides,
+  };
+}
+
+export function writeAccuracyReport(bundle, options = {}) {
+  const file = `${bundle}.accuracy.json`;
+  fs.writeFileSync(file, `${JSON.stringify(accuracyReportFor(bundle, options), null, 2)}\n`);
+  return file;
+}
+
+export function seal(root, bundleDir, { accuracy = {} } = {}) {
   const files = [];
   const walk = (dir, prefix = '') => {
     for (const name of fs.readdirSync(dir).sort()) {
@@ -101,6 +172,9 @@ export function seal(root, bundleDir) {
   fs.writeFileSync(path.join(bundleDir, 'ARCHIVE-MANIFEST.json'), JSON.stringify(manifest, null, 2));
   const bundle = path.join(path.dirname(path.dirname(bundleDir)), 'ruvnet-brain.zip');
   createArchive(bundle, bundleDir);
+  // `accuracy: null` deliberately seals an archive with NO detached report — the "missing accuracy
+  // report" case the Step 15 proof text requires to block.
+  if (accuracy) writeAccuracyReport(bundle, accuracy);
   return bundle;
 }
 
@@ -146,8 +220,42 @@ export async function buildAssets(root) {
 }
 
 // Build and seal a complete, genuine bundle under `root`. The caller owns `root`'s lifetime.
-export async function sealedCorpusBundle(root) {
+export async function sealedCorpusBundle(root, options = {}) {
   const bundleDir = await buildAssets(root);
-  const bundle = seal(root, bundleDir);
+  const bundle = seal(root, bundleDir, options);
   return { bundleDir, bundle };
+}
+
+/**
+ * A minimal repository root that runProtectedCorpusSeed can be pointed at in-process: it carries the
+ * two committed generators the publication gate hashes, plus a committed retrieval-accuracy oracle.
+ * The real repo deliberately has NO committed oracle yet (ADR-086 Step 14 owns producing it), so the
+ * publication gate refuses against the real root — which is itself one of the RED proofs.
+ */
+export function fixtureReleaseRoot(root, { oracleBody = null } = {}) {
+  const repoRoot = path.resolve(import.meta.dirname, '../..');
+  fs.mkdirSync(root, { recursive: true });
+  // scripts/kb/plugin/keys are symlinked to the real tree so the spawned release.mjs is the REAL
+  // publisher with the REAL generator bytes (its generator-identity check hashes them); only `data`
+  // is a private directory, which is what lets a test supply a committed oracle without ever writing
+  // into the tracked checkout. Spawn with --preserve-symlinks --preserve-symlinks-main so
+  // release.mjs's own ROOT resolves to THIS directory rather than the repo it is linked from.
+  for (const dir of ['scripts', 'kb', 'plugin', 'keys']) {
+    fs.symlinkSync(path.join(repoRoot, dir), path.join(root, dir));
+  }
+  // The publisher resolves release HEAD with `git rev-parse HEAD` in its own root and requires it to
+  // equal --target. Linking the real .git makes that the REAL head — a fixture cannot invent a SHA
+  // and must not be able to.
+  fs.symlinkSync(path.join(repoRoot, '.git'), path.join(root, '.git'));
+  fs.mkdirSync(path.join(root, 'data'), { recursive: true });
+  const oracleFile = path.join(root, 'data', 'retrieval-accuracy-oracle.json');
+  fs.writeFileSync(oracleFile, oracleBody ?? `${JSON.stringify({ fixture: 'oracle' }, null, 2)}\n`);
+  return {
+    root,
+    release: path.join(root, 'scripts', 'release.mjs'),
+    nodeArgs: ['--preserve-symlinks', '--preserve-symlinks-main'],
+    oracleFile,
+    oracleSha256: sha256(oracleFile),
+    generatorSha256: sha256(path.join(repoRoot, 'scripts/oracle/retrieval-accuracy.mjs')),
+  };
 }
