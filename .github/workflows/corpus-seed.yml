@@ -110,10 +110,19 @@ jobs:
           # ADR-086 Step 15 / correction A6: the corpus receipt is schemaVersion 3, so a seed is now a
           # THREE-file identity — the archive, its receipt, and the DETACHED retrieval-accuracy report
           # that measured those exact archive bytes. A schema-2 seed carries no accuracy binding and is
-          # unpublishable; requiring the descriptor to SAY schemaVersion 3 makes an older pointer fail
-          # loudly here instead of being consumed as if it were still current. Re-pointing
-          # data/corpus-seed.json at a schema-3 seed is ADR-086 Step 11's job.
-          node -e "const s=require('./data/corpus-seed.json'); if(!/^[0-9a-f]{64}$/.test(s.sha256)||!Number.isSafeInteger(s.bytes)||s.bytes<1||!s.tag||s.asset!=='ruvnet-brain.zip'||s.schemaVersion!==3) process.exit(1)"
+          # unpublishable. But that is a property of the seed's RECEIPT, not of this DESCRIPTOR.
+          #
+          # SCHEMA CONFLATION, measured 2026-09-14 (raised by Dual, verified against both files).
+          # data/corpus-seed.json is its own small format -- tag, asset, sha256, bytes, sourceCommit --
+          # and its schema is 1: scripts/corpus-next-seed.mjs validateBootstrapSeed() refuses anything
+          # else. This guard used to demand s.schemaVersion===3, so the SAME file had to be both 1 and 3.
+          # Every dispatch since step 15 therefore died on this line, BEFORE the seed download -- one step
+          # earlier than the accuracy-report bootstrap deadlock fixed below, which was consequently never
+          # reachable either. The receipt-schema-3 requirement is still enforced where a receipt is
+          # actually read (corpus-next-seed.mjs judgeRelease, scripts/release.mjs). Re-pointing this
+          # descriptor at a seed whose RECEIPT is schema 3 is ADR-086 Step 11's job; the descriptor
+          # itself stays schema 1.
+          node -e "const s=require('./data/corpus-seed.json'); if(!/^[0-9a-f]{64}$/.test(s.sha256)||!Number.isSafeInteger(s.bytes)||s.bytes<1||!s.tag||s.asset!=='ruvnet-brain.zip'||s.schemaVersion!==1) process.exit(1)"
           # ADR-086 step 18: "Resolve the previous compatible, verified corpus generation at runtime as
           # the next seed; retain the committed exact seed as bootstrap/recovery input. Do not commit a
           # new pointer every night." A runtime override is therefore ALL-OR-NOTHING and fully

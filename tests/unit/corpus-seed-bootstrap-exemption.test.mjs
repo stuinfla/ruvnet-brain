@@ -23,6 +23,7 @@
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -107,5 +108,50 @@ describe('corpus-seed.yml seed-download accuracy-report gate', () => {
       'the seed accuracy verification itself must still exist — the fix narrows WHEN it runs, it ' +
         'does not delete it',
     ).toBe(true);
+  });
+});
+
+// THE SCHEMA CONFLATION one step EARLIER (measured 2026-09-14, raised by Dual, verified against both
+// files). The "Bind this round to one exact seed identity" step validated data/corpus-seed.json with
+// s.schemaVersion!==3, while scripts/corpus-next-seed.mjs validateBootstrapSeed() requires 1. Schema 3
+// is the seed RECEIPT's schema, not the DESCRIPTOR's. The same file could never satisfy both, so every
+// dispatch died on that line before the download — which also made the accuracy-report deadlock above
+// unreachable. These tests EXECUTE the guard's own node snippet, and require it to agree with the
+// descriptor's canonical validator, so the two can never drift apart silently again.
+describe('corpus-seed.yml seed-descriptor bind guard', () => {
+  const extractDescriptorGuard = () => {
+    const source = fs.readFileSync(WORKFLOW, 'utf8');
+    const match = source.match(/node -e "(const s=require\('\.\/data\/corpus-seed\.json'\);[^"]*)"/);
+    if (!match) throw new Error('the seed-descriptor bind guard is gone from corpus-seed.yml');
+    return match[1];
+  };
+  const runSnippet = (snippet, cwd) => spawnSync(process.execPath, ['-e', snippet], { cwd, encoding: 'utf8', timeout: 20000 });
+
+  it('accepts the committed descriptor — the one every dispatch actually binds', () => {
+    const r = runSnippet(extractDescriptorGuard(), ROOT);
+    expect(r.status, `the bind guard rejects data/corpus-seed.json, so every dispatch dies before download:\n${r.stderr}`).toBe(0);
+  });
+
+  it('agrees with validateBootstrapSeed(), the descriptor\'s canonical validator', async () => {
+    const { validateBootstrapSeed } = await import('../../scripts/corpus-next-seed.mjs');
+    expect(validateBootstrapSeed(seed), 'the canonical validator must accept the committed descriptor').toEqual([]);
+    expect(runSnippet(extractDescriptorGuard(), ROOT).status).toBe(0);
+  });
+
+  it('still refuses a descriptor at the wrong schema, so the guard did not become a no-op', () => {
+    const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'rvb-descriptor-'));
+    try {
+      fs.mkdirSync(path.join(dir, 'data'));
+      fs.writeFileSync(path.join(dir, 'data', 'corpus-seed.json'), JSON.stringify({ ...seed, schemaVersion: 3 }));
+      expect(runSnippet(extractDescriptorGuard(), dir).status, 'a schema-3 DESCRIPTOR is not a valid descriptor').not.toBe(0);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('FAILS against the old conflated guard — proves this file catches the regression', () => {
+    const regressed = extractDescriptorGuard().replace('s.schemaVersion!==1', 's.schemaVersion!==3');
+    expect(regressed, 'mutation did not apply — the guard text changed shape').not.toBe(extractDescriptorGuard());
+    expect(runSnippet(regressed, ROOT).status, 'the old !==3 guard must reject the committed descriptor').not.toBe(0);
   });
 });
