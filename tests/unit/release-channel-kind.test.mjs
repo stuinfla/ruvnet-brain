@@ -138,7 +138,12 @@ describe('every author-side consumer asks for the CODE generation, not the lates
     const release = read('scripts/release.mjs');
     expect(release).toContain('const signatureFile = `${bundleFile}.sig`;');
     expect(release).toContain('const digestFile = `${bundleFile}.sha256`;');
-    expect(release).toContain('const assetFiles = [bundleFile, signatureFile, digestFile, receiptFile];');
+    // ADR-086 Step 15 appended the detached retrieval-accuracy report to this list. The contract
+    // this test defends is that the names the client looks up are still ATTACHED and still spelled
+    // the same — bin/install.mjs:103 and verify-channels check #4 resolve assets BY NAME, never by
+    // an exact set — so an added asset is compatible while a rename or a removal is not.
+    expect(release).toContain('const assetFiles = [bundleFile, signatureFile, digestFile, receiptFile, accuracyReportFile];');
+    expect(release).toContain('const accuracyReportFile = `${bundleFile}.accuracy.json`;');
     const workflow = read('.github/workflows/protected-release.yml');
     expect(workflow).toContain('node scripts/sign-bundle.mjs --bundle "$staged/ruvnet-brain.zip"');
   });

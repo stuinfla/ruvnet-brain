@@ -50,6 +50,9 @@ on:
       receipt_sha256:
         description: SHA-256 of the sealed corpus receipt
         value: ${{ jobs.prepare.outputs.receipt_sha256 }}
+      accuracy_sha256:
+        description: SHA-256 of the detached retrieval-accuracy report bound to the candidate archive
+        value: ${{ jobs.prepare.outputs.accuracy_sha256 }}
       seed_sha256:
         description: SHA-256 of the seed this round reconciled from (equal archive_sha256 means a no-change round)
         value: ${{ jobs.prepare.outputs.seed_sha256 }}
@@ -70,6 +73,7 @@ jobs:
       artifact_name: ${{ steps.seal.outputs.artifact_name }}
       archive_sha256: ${{ steps.seal.outputs.archive_sha256 }}
       receipt_sha256: ${{ steps.seal.outputs.receipt_sha256 }}
+      accuracy_sha256: ${{ steps.seal.outputs.accuracy_sha256 }}
       seed_sha256: ${{ steps.seal.outputs.seed_sha256 }}
     env:
       EXPECTED_SHA: ${{ inputs.candidate_sha }}
@@ -103,7 +107,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node -e "const s=require('./data/corpus-seed.json'); if(!/^[0-9a-f]{64}$/.test(s.sha256)||!Number.isSafeInteger(s.bytes)||s.bytes<1||!s.tag||s.asset!=='ruvnet-brain.zip') process.exit(1)"
+          # ADR-086 Step 15 / correction A6: the corpus receipt is schemaVersion 3, so a seed is now a
+          # THREE-file identity — the archive, its receipt, and the DETACHED retrieval-accuracy report
+          # that measured those exact archive bytes. A schema-2 seed carries no accuracy binding and is
+          # unpublishable; requiring the descriptor to SAY schemaVersion 3 makes an older pointer fail
+          # loudly here instead of being consumed as if it were still current. Re-pointing
+          # data/corpus-seed.json at a schema-3 seed is ADR-086 Step 11's job.
+          node -e "const s=require('./data/corpus-seed.json'); if(!/^[0-9a-f]{64}$/.test(s.sha256)||!Number.isSafeInteger(s.bytes)||s.bytes<1||!s.tag||s.asset!=='ruvnet-brain.zip'||s.schemaVersion!==3) process.exit(1)"
           # ADR-086 step 18: "Resolve the previous compatible, verified corpus generation at runtime as
           # the next seed; retain the committed exact seed as bootstrap/recovery input. Do not commit a
           # new pointer every night." A runtime override is therefore ALL-OR-NOTHING and fully
@@ -160,14 +170,31 @@ jobs:
           if (release.tagName !== process.env.SEED_TAG || release.isDraft) {
             throw new Error('configured corpus seed is absent, draft, or names another tag');
           }
-          const matches = (release.assets || []).filter(({ name }) => name === 'ruvnet-brain.zip');
-          if (matches.length !== 1) throw new Error(`configured corpus seed must carry exactly one ruvnet-brain.zip; found ${matches.length}`);
+          for (const asset of ['ruvnet-brain.zip', 'ruvnet-brain.zip.accuracy.json']) {
+            const matches = (release.assets || []).filter(({ name }) => name === asset);
+            if (matches.length !== 1) throw new Error(`configured corpus seed must carry exactly one ${asset}; found ${matches.length}`);
+          }
           NODE
           gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern 'ruvnet-brain.zip' --dir "$RUNNER_TEMP/corpus-seed-download"
+          gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'ruvnet-brain.zip.accuracy.json' --dir "$RUNNER_TEMP/corpus-seed-download"
           test "$(find "$RUNNER_TEMP/corpus-seed-download" -maxdepth 1 -type f -name 'ruvnet-brain.zip' | wc -l | tr -d ' ')" = 1
           printf '%s  %s\n' "$SEED_SHA256" "$RUNNER_TEMP/corpus-seed-download/ruvnet-brain.zip" | sha256sum --check --strict
           test "$(stat -c %s "$RUNNER_TEMP/corpus-seed-download/ruvnet-brain.zip")" = "$SEED_BYTES"
+          # "Reverify the downloaded final artifact against the measured identity." The seed's detached
+          # accuracy report must bind the bytes just downloaded, and must be a complete, all-PASS
+          # measurement — a bounded one is refused by the same reader the candidate seal uses.
+          node --input-type=module <<'NODE'
+          import { readAccuracyReport } from './scripts/oracle/retrieval-accuracy.mjs';
+          import fs from 'node:fs';
+          const bundle = `${process.env.RUNNER_TEMP}/corpus-seed-download/ruvnet-brain.zip`;
+          readAccuracyReport({
+            reportFile: `${bundle}.accuracy.json`,
+            archive: { file: 'ruvnet-brain.zip', sha256: process.env.SEED_SHA256, bytes: fs.statSync(bundle).size },
+          });
+          console.log('seed retrieval-accuracy report verified against the downloaded seed bytes');
+          NODE
 
       - name: Reconcile exact upstream SHAs and seal a candidate
         shell: bash
@@ -193,6 +220,7 @@ jobs:
             --coverage "$GITHUB_WORKSPACE/data/source-coverage.json" \
             --candidate-out "$RUNNER_TEMP/corpus-candidate/ruvnet-brain" \
             --receipt-out "$GITHUB_WORKSPACE/release-evidence/corpus-receipt.json" \
+            --accuracy-oracle "$GITHUB_WORKSPACE/data/retrieval-accuracy-oracle.json" \
             --builder-sha "$EXPECTED_SHA" \
             --owner ruvnet | tee "$GITHUB_WORKSPACE/release-evidence/corpus-reconcile.log"
 
@@ -203,20 +231,27 @@ jobs:
           set -euo pipefail
           test -s "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip"
           test -s release-evidence/corpus-receipt.json
+          # ADR-086 Step 15: the detached accuracy report is a first-class candidate artifact. It is
+          # produced beside the archive by prepareCorpusCandidate and MUST travel with it — without
+          # it the receipt cannot be verified anywhere downstream.
+          test -s "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.accuracy.json"
           archive_sha256="$(sha256sum "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip" | cut -d' ' -f1)"
           receipt_sha256="$(sha256sum release-evidence/corpus-receipt.json | cut -d' ' -f1)"
+          accuracy_sha256="$(sha256sum "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.accuracy.json" | cut -d' ' -f1)"
           node scripts/corpus-candidate.mjs --verify \
             --bundle "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip" \
-            --receipt release-evidence/corpus-receipt.json
+            --receipt release-evidence/corpus-receipt.json \
+            --accuracy-report "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.accuracy.json"
           artifact_name="corpus-seed-prepared-$EXPECTED_SHA"
           {
             echo "artifact_name=$artifact_name"
             echo "archive_sha256=$archive_sha256"
             echo "receipt_sha256=$receipt_sha256"
+            echo "accuracy_sha256=$accuracy_sha256"
             echo "seed_sha256=$SEED_SHA256"
           } >> "$GITHUB_OUTPUT"
-          printf 'candidate_sha=%s\narchive_sha256=%s\nreceipt_sha256=%s\nseed_tag=%s\nseed_sha256=%s\nseed_origin=%s\n' \
-            "$EXPECTED_SHA" "$archive_sha256" "$receipt_sha256" "$SEED_TAG" "$SEED_SHA256" "$SEED_ORIGIN" \
+          printf 'candidate_sha=%s\narchive_sha256=%s\nreceipt_sha256=%s\naccuracy_sha256=%s\nseed_tag=%s\nseed_sha256=%s\nseed_origin=%s\n' \
+            "$EXPECTED_SHA" "$archive_sha256" "$receipt_sha256" "$accuracy_sha256" "$SEED_TAG" "$SEED_SHA256" "$SEED_ORIGIN" \
             > release-evidence/corpus-preparation.identity
 
       # ONE artifact root, outside the tracked tree. The previous upload mixed `$RUNNER_TEMP/...`
@@ -232,6 +267,10 @@ jobs:
           rm -rf "$staged"
           mkdir -p "$staged"
           mv "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip" "$staged/ruvnet-brain.zip"
+          # The detached report keeps the exact `<archive>.accuracy.json` name every reader resolves
+          # by convention — the receipt carries only its basename, so renaming it here would break
+          # verification everywhere downstream.
+          mv "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.accuracy.json" "$staged/ruvnet-brain.zip.accuracy.json"
           cp release-evidence/corpus-receipt.json "$staged/corpus-receipt.json"
           cp release-evidence/corpus-reconcile.log "$staged/corpus-reconcile.log"
           cp release-evidence/corpus-preparation.identity "$staged/corpus-preparation.identity"
@@ -240,6 +279,7 @@ jobs:
           cp kb/PRIVATE-STORES.json "$staged/PRIVATE-STORES.json"
           test "$(sha256sum "$staged/ruvnet-brain.zip" | cut -d' ' -f1)" = "${{ steps.seal.outputs.archive_sha256 }}"
           test "$(sha256sum "$staged/corpus-receipt.json" | cut -d' ' -f1)" = "${{ steps.seal.outputs.receipt_sha256 }}"
+          test "$(sha256sum "$staged/ruvnet-brain.zip.accuracy.json" | cut -d' ' -f1)" = "${{ steps.seal.outputs.accuracy_sha256 }}"
 
       - name: Upload exact candidate for protected-release.yml
         uses: actions/upload-artifact@v4

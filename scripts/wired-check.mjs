@@ -340,6 +340,10 @@ export const REQUIRED_OPERATIONAL_EXPORTS = [
   // Step 13 (2026-09-13): the C2 deep store audit — measured recall, hash-verified segments, id-map /
   // passage / source-map correspondence — that corpus-candidate.mjs fails closed on.
   { rel: 'scripts/rvf-index-audit.mjs', symbol: 'auditCorpusStores' },
+  // Step 15 (2026-09-14): the C3 retrieval-accuracy gate. prepareCorpusCandidate shells out to its
+  // CLI after single-pass assembly; corpus-candidate.mjs and release.mjs both import its
+  // readAccuracyReport reader so candidate acceptance and publication can never drift apart.
+  { rel: 'scripts/oracle/retrieval-accuracy.mjs', symbol: 'runRetrievalAccuracy' },
 ];
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))
