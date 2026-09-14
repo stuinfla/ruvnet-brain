@@ -35,6 +35,7 @@ import { materializePublicationHandoff, resolvePublicationHandoffPaths } from '.
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
+import { verifyCorpusReceipt } from './corpus-candidate.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
@@ -83,7 +84,7 @@ function corpusFailure(message) {
   throw new Error(`[corpus-seed] ${message}`);
 }
 
-export function runProtectedCorpusSeed({
+export async function runProtectedCorpusSeed({
   argv = process.argv.slice(2),
   env = process.env,
   root = ROOT,
@@ -166,6 +167,19 @@ export function runProtectedCorpusSeed({
   }
   if (digestMatch[1] !== archiveSha256) corpusFailure('corpus tag digest does not match the receipt and archive');
 
+  // Deep re-verification — moved here 2026-09-13 from the deleted scripts/corpus-seed-publish.mjs
+  // (ADR-085). Everything above proves the receipt is well-FORMED and that the archive's outer
+  // digest matches it; none of it proves the receipt is TRUE. verifyCorpusReceipt re-extracts the
+  // sealed archive and re-derives the entire candidate from its own bytes — per-store file digests,
+  // private-store fence, generation ledger, RVF index audit — and requires canonical equality with
+  // the receipt. A receipt with a single forged store digest passes every check above and fails
+  // here. It runs before any `gh` call so an untrue candidate never reaches the network.
+  try {
+    await verifyCorpusReceipt({ receiptFile, bundleFile, expectedBuilderSha: target, expectedArchiveSha256: archiveSha256 });
+  } catch (error) {
+    corpusFailure(`corpus receipt does not verify against the sealed archive (${error.message})`);
+  }
+
   const viewArgs = ['release', 'view', tag, '--json', 'tagName', '--repo', repo];
   const ghCommand = env.RUVNET_GH_COMMAND || 'gh';
   const ghPrefix = env.RUVNET_GH_SCRIPT ? [env.RUVNET_GH_SCRIPT] : [];
@@ -200,7 +214,7 @@ export function runProtectedCorpusSeed({
 
 if (CORPUS_SEED) {
   try {
-    const result = runProtectedCorpusSeed();
+    const result = await runProtectedCorpusSeed();
     console.log(JSON.stringify({ ok: true, mode: 'corpus-seed', ...result }, null, 2));
   } catch (error) {
     console.error(error.message);

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Build a corpus candidate from one immutable seed and exact upstream repository SHAs.
 // This module deliberately has no publication capability. The protected-release workflow owns
-// the only legal call to corpus-seed-publish.mjs.
+// the only legal call to the canonical publisher, `scripts/release.mjs --corpus-seed`
+// (release-authority.mjs's CANONICAL_PUBLISHERS) — see ADR-085.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
