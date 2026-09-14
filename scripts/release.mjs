@@ -130,11 +130,17 @@ export function runProtectedCorpusSeed({
     corpusFailure('target must exactly equal HEAD, GITHUB_SHA, and the corpus receipt builderSourceSha');
   }
 
-  const boundaryIdentities = [receipt.privateFence, receipt.eligibilityPolicy, receipt.generationLedger];
+  // Schema 2: the receipt binds the full provenance closure shipped INSIDE the sealed archive
+  // (ARCHIVE-MANIFEST.json, PRIVATE-STORES.json, RVF-GENERATIONS.json, SOURCE.json) rather than a
+  // separate, unshipped assets/eligibility-policy directory.
+  const boundaryIdentities = [receipt.privateFence, receipt.generationLedger, receipt.sourceManifest, receipt.archiveManifest];
   const storeBindingsValid = Number.isSafeInteger(receipt.storeCount) && receipt.storeCount > 0
     && Array.isArray(receipt.stores) && receipt.stores.length === receipt.storeCount
     && receipt.stores.every((store) => typeof store?.name === 'string' && store.name.length > 0
-      && /^[a-f0-9]{7,64}$/.test(String(store.sourceCommit || ''))
+      && ['repository', 'gist-aggregate', 'derived'].includes(store.kind)
+      && (store.kind === 'repository'
+        ? /^[a-f0-9]{7,64}$/.test(String(store.sourceCommit || ''))
+        : store.sourceCommit === null || /^[a-f0-9]{7,64}$/i.test(String(store.sourceCommit || '')))
       && typeof store.builtUtc === 'string' && Number.isFinite(Date.parse(store.builtUtc))
       && typeof store.model === 'string' && store.model.length > 0
       && Number.isSafeInteger(store.dimensions) && store.dimensions > 0
@@ -146,8 +152,8 @@ export function runProtectedCorpusSeed({
   const generatorFile = path.join(root, 'scripts/corpus-candidate.mjs');
   const generatorValid = fs.existsSync(generatorFile)
     && receipt.generator?.corpusCandidateSha256 === sha256File(generatorFile);
-  if (receipt.schemaVersion !== 1 || receipt.kind !== 'ruvnet-brain-corpus-candidate'
-    || !receipt.createdAt || !receipt.coverageGeneration || !storeBindingsValid || !emptyFailureArrays
+  if (receipt.schemaVersion !== 2 || receipt.kind !== 'ruvnet-brain-corpus-candidate'
+    || !receipt.createdAt || !storeBindingsValid || !emptyFailureArrays
     || !privateExclusionsValid || !boundaryIdentities.every(exactFileIdentity) || !exactFileIdentity(receipt.archive)
     || !generatorValid
     || receipt.archive.file !== path.basename(bundleFile)) {
@@ -173,7 +179,7 @@ export function runProtectedCorpusSeed({
     `Archive SHA-256: ${archiveSha256}`,
     `Receipt SHA-256: ${sha256File(receiptFile)}`,
     `Stores: ${receipt.storeCount}`,
-    `Coverage generation: ${receipt.coverageGeneration}`,
+    `Builder source SHA: ${receipt.builderSourceSha}`,
     'This published prerelease is immutable and must never be replaced.',
   ].join('\n');
   const createArgs = [

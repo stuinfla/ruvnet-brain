@@ -10,10 +10,11 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
-import { buildCoverage, observeSourceUniverse, sourceObservationDigest } from './source-coverage.mjs';
-import { reconcileGistReceipts } from './gist-receipts.mjs';
+import { buildCoverage, observeSourceUniverse, renderMarkdown } from './source-coverage.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';
+import { fileIdentity } from '../plugin/scripts/coverage-integrity.mjs';
+import { storeRoot } from '../kb/store-root.mjs';
 
 export { rebuildCorpusAggregates };
 
@@ -32,6 +33,38 @@ const REQUIRED_STORE_ARTIFACT_SUFFIXES = [
 
 function fail(message) {
   throw new Error(`[corpus-reconcile] ${message}`);
+}
+
+function abortError(signal) {
+  if (signal?.reason instanceof Error) return signal.reason;
+  return Object.assign(new Error('reconciliation round aborted'), { name: 'AbortError' });
+}
+
+function containsPath(parent, child) {
+  const relative = path.relative(path.resolve(parent), path.resolve(child));
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+// Step 4, rule 7 (2026-09-13): reconciliation output must never land on -- or contain, or be
+// contained by -- the checkout's own build workspace (<repo>/kb, never a second brain per
+// kb/store-root.mjs), or the installed brain (~/.cache/ruvnet-brain/kb, or its env override --
+// storeRoot()'s own answer). A caller that pointed reconciliation output at either would silently
+// mutate a live tree mid-round instead of the disposable scratch area this loop assumes it owns.
+export function forbiddenOutputRoots(root) {
+  return [
+    { label: 'the checkout kb build workspace', dir: path.join(path.resolve(root), 'kb') },
+    { label: 'the installed brain', dir: storeRoot() },
+  ];
+}
+
+export function assertPathNotOverlapping(label, targetDir, forbidden) {
+  const resolved = path.resolve(targetDir || '');
+  for (const entry of forbidden) {
+    const forbiddenDir = path.resolve(entry.dir);
+    if (containsPath(forbiddenDir, resolved) || containsPath(resolved, forbiddenDir)) {
+      fail(`${label} must not be, or contain, or be contained by, ${entry.label} (${resolved})`);
+    }
+  }
 }
 
 function sha256File(file) {
@@ -90,12 +123,29 @@ export function normalizeExtractedCorpus({ extractedDir, assetsDir }) {
   const ledgers = filesNamed(extracted, 'RVF-GENERATIONS.json');
   if (ledgers.length !== 1) fail(`seed archive must contain exactly one RVF-GENERATIONS.json; found ${ledgers.length}`);
   const corpusRoot = path.dirname(ledgers[0]);
-  if (fs.existsSync(path.join(corpusRoot, 'PRIVATE-STORES.json'))) {
-    fail('a published seed must not supply a private-store fence; the exact builder checkout owns that policy');
-  }
+  // A published seed's own PRIVATE-STORES.json is AUTHENTICATED HISTORICAL EVIDENCE of what that
+  // prior round excluded — never the current builder's live policy. Keep it under a distinct name
+  // (SEED-PRIVATE-STORES.json) so it can never shadow, or be mistaken for, the canonical fence the
+  // exact builder checkout copies in below (main()), and is never overwritten.
+  const seedFence = path.join(corpusRoot, 'PRIVATE-STORES.json');
+  const hasSeedFence = fs.existsSync(seedFence);
   fs.mkdirSync(assets, { recursive: true });
-  for (const entry of fs.readdirSync(corpusRoot)) fs.renameSync(path.join(corpusRoot, entry), path.join(assets, entry));
+  for (const entry of fs.readdirSync(corpusRoot)) {
+    if (hasSeedFence && entry === 'PRIVATE-STORES.json') continue;
+    fs.renameSync(path.join(corpusRoot, entry), path.join(assets, entry));
+  }
+  if (hasSeedFence) fs.renameSync(seedFence, path.join(assets, 'SEED-PRIVATE-STORES.json'));
   return assets;
+}
+
+// Historical evidence only: the identity of the PRIOR seed's own private-store fence, if the seed
+// archive shipped one. Never used to gate anything against the current builder's live policy.
+export function seedPrivateFenceEvidence(assetsDir) {
+  const file = path.join(path.resolve(assetsDir || ''), 'SEED-PRIVATE-STORES.json');
+  if (!fs.existsSync(file)) return null;
+  const stat = fs.lstatSync(file);
+  if (!stat.isFile() || stat.isSymbolicLink()) fail('seed private-fence evidence is not a trusted regular file');
+  return fileIdentity(file);
 }
 
 function repositorySlug(url) {
@@ -235,6 +285,38 @@ function writeJsonAtomic(file, value) {
   fs.renameSync(temporary, file);
 }
 
+// Step 4, rule 3 (2026-09-13): POSITIVE SELECTION for the generation ledger / SOURCE manifest --
+// the old `prune` seam in reconcileUntilStable was a hardcoded no-op (`() => ({ pruned: [] })`), so
+// a repository removed from policy, made private, or deleted upstream simply lingered in
+// RVF-GENERATIONS.json/SOURCE.json (and its .big.rvf family on disk) forever once ingested. This is
+// the real prune: `eligibleStores` is the EXACT set this round's own coverage just measured as
+// `kind: 'repository', disposition: 'eligible'` -- any OTHER repository store still present in the
+// ledger no longer belongs, and its full artifact family plus its ledger/SOURCE rows are removed.
+// `ruv-gists` and `concepts` are out of scope here: those are already fully regenerated from
+// nothing every round (buildGistAggregate / materializePublicInputs+buildConceptAggregate), never
+// overlaid, so nothing here ever needs to -- or may -- touch them.
+export function pruneIneligibleStores({ assetsDir, eligibleStores }) {
+  const assets = path.resolve(assetsDir || '');
+  const ledgerFile = path.join(assets, 'RVF-GENERATIONS.json');
+  if (!fs.existsSync(ledgerFile)) return { pruned: [] };
+  const ledger = readJson(ledgerFile, 'RVF generation ledger');
+  const sourceFile = path.join(assets, 'SOURCE.json');
+  const source = fs.existsSync(sourceFile) ? readJson(sourceFile, 'SOURCE manifest') : { builder: 'rvf-kb-forge', stores: {} };
+  const eligible = new Set([...(eligibleStores || [])].map((store) => String(store).toLowerCase()));
+  const stale = Object.keys(ledger.stores || {})
+    .filter((store) => !['ruv-gists', 'concepts'].includes(store.toLowerCase()) && !eligible.has(store.toLowerCase()))
+    .sort();
+  if (!stale.length) return { pruned: [] };
+  for (const store of stale) {
+    delete ledger.stores[store];
+    if (source.stores) delete source.stores[store];
+    for (const suffix of STORE_ARTIFACT_SUFFIXES) fs.rmSync(path.join(assets, `${store}${suffix}`), { force: true });
+  }
+  writeJsonAtomic(ledgerFile, ledger);
+  writeJsonAtomic(sourceFile, source);
+  return { pruned: stale };
+}
+
 function seedWorkerAssets({ assets, output, store, ledger, source }) {
   fs.mkdirSync(output, { recursive: true });
   for (const name of storeArtifacts(store)) {
@@ -296,6 +378,7 @@ export async function executeReconciliation({
   root = DEFAULT_ROOT,
   run = defaultRunAsync,
   concurrency = 5,
+  signal,
 }) {
   if (!Array.isArray(plan) || !Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 10) {
     fail('reconciliation plan or worker concurrency is invalid');
@@ -315,7 +398,27 @@ export async function executeReconciliation({
   const lowerStores = orderedPlan.map(({ store }) => store.toLowerCase());
   if (new Set(lowerStores).size !== lowerStores.length) fail('reconciliation plan has duplicate or case-fold-colliding stores');
 
+  // Step 4, required proof 4 (2026-09-13): every worker in this pool shares ONE internal
+  // AbortController. Before this, `Promise.all` over the fixed-size worker pool below rejected as
+  // soon as ANY lane's `worker()` threw -- but the OTHER lanes kept running their own `while` loop
+  // completely unobserved: still cloning, still spawning forge-refresh, with nobody left awaiting
+  // them once the outer Promise.all had already settled. A later failure (or success) in one of
+  // those orphaned lanes could then surface as an unhandled rejection, or simply keep doing
+  // unnecessary work after the round was already lost. Now: the first failure aborts the shared
+  // signal, every lane observes it (both at its own loop-top and via the signal threaded into every
+  // child-process spawn below) and returns promptly, and `Promise.all` -- which no lane's promise
+  // ever rejects out of directly -- only resolves once every lane has actually stopped. Only then do
+  // we throw the FIRST real error (an aborted sibling's own error is discarded, never overwrites it).
+  // An externally supplied `signal` (a caller discarding this whole round) aborts the same
+  // controller, so both cancellation paths join through the one place.
+  const controller = new AbortController();
+  if (signal) {
+    if (signal.aborted) controller.abort(signal.reason);
+    else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
+  }
+
   const worker = async (item) => {
+    if (controller.signal.aborted) throw abortError(controller.signal);
     if (!SAFE_STORE.test(item.store) || !HEX40.test(item.upstreamSha) || !repositorySlug(item.url)) {
       fail(`unsafe reconciliation item for ${item?.store || item?.name || 'unknown store'}`);
     }
@@ -324,28 +427,38 @@ export async function executeReconciliation({
     const output = path.join(workerRoot, 'assets');
     fs.mkdirSync(workerRoot, { recursive: true });
     seedWorkerAssets({ assets, output, store: item.store, ledger: canonicalLedger, source: canonicalSource });
-    await checkedAsync(run, 'git', ['clone', '--no-checkout', '--filter=blob:none', item.url, cloneDir]);
-    await checkedAsync(run, 'git', ['-C', cloneDir, 'fetch', '--depth=1', 'origin', item.upstreamSha]);
-    await checkedAsync(run, 'git', ['-C', cloneDir, 'checkout', '--detach', 'FETCH_HEAD']);
-    const head = await checkedAsync(run, 'git', ['-C', cloneDir, 'rev-parse', 'HEAD']);
+    await checkedAsync(run, 'git', ['clone', '--no-checkout', '--filter=blob:none', item.url, cloneDir], { signal: controller.signal });
+    await checkedAsync(run, 'git', ['-C', cloneDir, 'fetch', '--depth=1', 'origin', item.upstreamSha], { signal: controller.signal });
+    await checkedAsync(run, 'git', ['-C', cloneDir, 'checkout', '--detach', 'FETCH_HEAD'], { signal: controller.signal });
+    const head = await checkedAsync(run, 'git', ['-C', cloneDir, 'rev-parse', 'HEAD'], { signal: controller.signal });
     if (String(head.stdout || '').trim().toLowerCase() !== item.upstreamSha) {
       fail(`${item.store}: fresh clone did not resolve the exact upstream SHA`);
     }
     await checkedAsync(run, process.execPath, [forge, '--repo', cloneDir, '--out', output, '--name', item.store,
       ...(FULL_HINTS[item.store] ? ['--full', FULL_HINTS[item.store]] : []),
       ...(KEEP_DIRS[item.store] ? ['--keep', KEEP_DIRS[item.store]] : []),
-    ], { stdio: 'inherit', env: { ...process.env, RUVNET_BIG_SHARDS: '1' } });
+    ], { stdio: 'inherit', env: { ...process.env, RUVNET_BIG_SHARDS: '1' }, signal: controller.signal });
     return validateWorkerOutput({ output, item });
   };
 
   const results = new Array(orderedPlan.length);
   let next = 0;
+  let firstError = null;
   await Promise.all(Array.from({ length: Math.min(concurrency, orderedPlan.length) }, async () => {
     while (next < orderedPlan.length) {
+      if (controller.signal.aborted) return;
       const index = next++;
-      results[index] = await worker(orderedPlan[index]);
+      try {
+        results[index] = await worker(orderedPlan[index]);
+      } catch (error) {
+        if (!firstError) firstError = error;
+        controller.abort(error);
+        return;
+      }
     }
   }));
+  if (!firstError && controller.signal.aborted) firstError = abortError(controller.signal);
+  if (firstError) throw firstError;
   if (!results.length) return { refreshed: [], workers: [] };
 
   const merge = path.join(workspace, 'merge-candidate');
@@ -373,71 +486,79 @@ export async function executeReconciliation({
     workers: results.map(({ output: _output, ...receipt }) => receipt) };
 }
 
+// syncCorpusInputs — Step 3 (2026-09-13): this used to ALSO sync public-prose inputs
+// (capability-cards.md, primers, l2/, l2-topics.*.json, public-store-classes.json), and did it by
+// OVERLAY -- copying this round's files onto whatever a prior round's assets directory already had,
+// so a primer or topics file removed from the checkout never disappeared from a long-lived assets
+// tree. That selection is now owned entirely by materializePublicInputs (scripts/public-inputs.mjs),
+// called fresh every round from rebuildCorpusAggregates -- it positively selects (and fences) every
+// public-prose input from nothing, so a removed/newly-private input simply is not reproduced.
+// public-store-classes.json is no longer synced as an input at all (rule 9): it is generated by
+// buildConceptAggregate from the stores actually accepted that round, never read from a checkout copy.
+//
+// What remains here is a SEPARATE, deliberately smaller concern (rule 5): CODE-INGESTION eligibility
+// policy (which repositories/gists may enter the corpus at all) -- needed before the reconciliation
+// loop can even observe the source universe, and unrelated to what public prose ships.
 export function syncCorpusInputs({ root = DEFAULT_ROOT, assetsDir }) {
   const sourceKb = path.join(path.resolve(root), 'kb');
   const assets = path.resolve(assetsDir || '');
-  const required = ['capability-cards.md', 'external-sources.json', 'no-corpus-repos.json',
-    'public-store-classes.json'];
+  const required = ['external-sources.json', 'no-corpus-repos.json'];
   for (const name of required) {
     const source = path.join(sourceKb, name);
     if (!fs.existsSync(source) || !fs.statSync(source).isFile()) fail(`canonical corpus input missing (${source})`);
     fs.copyFileSync(source, path.join(assets, name));
   }
-  const sourceL2 = path.join(sourceKb, 'l2');
-  if (!fs.existsSync(sourceL2) || !fs.statSync(sourceL2).isDirectory()) fail(`canonical L2 input missing (${sourceL2})`);
-  fs.rmSync(path.join(assets, 'l2'), { recursive: true, force: true });
-  fs.cpSync(sourceL2, path.join(assets, 'l2'), { recursive: true });
-  for (const entry of fs.readdirSync(sourceKb)) {
-    if (entry.endsWith('-primer.md') || /^l2-topics\..+\.json$/.test(entry)) {
-      fs.copyFileSync(path.join(sourceKb, entry), path.join(assets, entry));
-    }
-  }
   return { copied: required };
 }
 
-export async function materializeGistReceipts({ observation, assetsDir, fetchGist, fetchBody, now } = {}) {
-  if (observation?.observationSha256 !== sourceObservationDigest(observation)) {
-    fail('gist receipts require an exact sealed source observation');
-  }
-  const sourceFile = path.join(path.resolve(assetsDir || ''), 'ruv-gists.sources.json');
-  const existing = fs.existsSync(sourceFile) ? readJson(sourceFile, 'existing gist receipts') : null;
-  const receipt = await reconcileGistReceipts({ observation, existing, fetchGist, fetchBody, now });
-  if (receipt.sourceObservationSha256 !== observation.observationSha256) {
-    fail('gist receipts differ from the sealed source observation');
-  }
-  writeJsonAtomic(sourceFile, receipt);
-  return { sourceFile, receipt };
-}
-
-export async function observeAndMaterializeGistReceipts({ owner = 'ruvnet', assetsDir,
-  observe = observeSourceUniverse, fetchGist, fetchBody, now } = {}) {
+// A PURE, READ-ONLY observation of the live source universe -- lists repositories and gists but
+// NEVER materializes/binds a gist receipt. This is exactly what structurally prevents the
+// 2026-09-12 "observation resets passage binding" bug: previously `observe()` both listed the live
+// universe AND re-sealed `ruv-gists.sources.json` against whatever it just saw, so calling it a
+// second time within one round (to detect drift after the repository refresh + gist aggregate build
+// below) clobbered the receipt `rebuild()` had just sealed with a bound `passagesSha256` back to an
+// unbound one. Gist capture/render/seal now happens EXACTLY once per round, inside `rebuild` (via
+// rebuildCorpusAggregates -> buildGistAggregate) -- `observe` can be called as many times as
+// stability detection needs without ever touching what `rebuild` already sealed.
+async function observeSourceOnly({ owner, assetsDir }) {
   const assets = path.resolve(assetsDir || '');
   const externalFile = path.join(assets, 'external-sources.json');
   const policy = fs.existsSync(externalFile) ? readJson(externalFile, 'external source policy') : { sources: [] };
   if (!Array.isArray(policy.sources)) fail('external source policy has no sources array');
-  const observation = await observe({ owner, externalSources: policy.sources });
-  const materialized = await materializeGistReceipts({ observation, assetsDir: assets, fetchGist, fetchBody, now });
-  return { observation, ...materialized };
+  return observeSourceUniverse({ owner, externalSources: policy.sources });
 }
 
 export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, workspaceDir,
   root = DEFAULT_ROOT, maxRounds = 3,
-  observeAndMaterialize = null,
+  observe = null,
   build = (observation) => buildCoverage({ owner, kbDir: assetsDir, policyDir: assetsDir, observation }),
   readLedger = () => readJson(path.join(path.resolve(assetsDir || ''), 'RVF-GENERATIONS.json'),
     'RVF generation ledger'),
   execute = executeReconciliation,
-  prune = () => ({ pruned: [] }),
-  rebuild = (_coverage, observation) => rebuildCorpusAggregates({ assetsDir, observation, root }),
+  // Step 4, rule 3: positive selection, not a no-op. `coverage` here is `preliminary` -- the FULL,
+  // freshly-measured coverage for the round about to run (every row, not just the ones needing
+  // rebuild) -- so the eligible set is always this round's own, never a stale snapshot.
+  prune = (coverage) => pruneIneligibleStores({
+    assetsDir,
+    eligibleStores: coverage.rows.filter((row) => row.kind === 'repository' && row.disposition === 'eligible')
+      .map((row) => row.artifact.store),
+  }),
+  // `coverage` is now threaded through (rule 8) rather than discarded: rebuildCorpusAggregates
+  // asserts the concepts observation identity exactly equals coverage's own, instead of trusting an
+  // accidental shared reference.
+  rebuild = (coverage, observation) => rebuildCorpusAggregates({ assetsDir, observation, coverage, root }),
 } = {}) {
   if (!assetsDir || !workspaceDir) fail('stable reconciliation requires explicit assets and workspace directories');
   const workspace = path.resolve(workspaceDir || '');
+  const forbidden = forbiddenOutputRoots(root);
+  assertPathNotOverlapping('reconciliation assets directory', assetsDir, forbidden);
+  assertPathNotOverlapping('reconciliation workspace directory', workspace, forbidden);
+  assertPathNotOverlapping('reconciliation workspace directory', workspace,
+    [{ label: 'the assets directory', dir: assetsDir }]);
   return reconcileUntilStable({
     maxRounds,
     assetsDir,
-    observe: async () => (await (observeAndMaterialize
-      ? observeAndMaterialize({ owner, assetsDir })
-      : observeAndMaterializeGistReceipts({ owner, assetsDir }))).observation,
+    observe: () => (observe || observeSourceOnly)({ owner, assetsDir }),
     build,
     readLedger,
     execute: (plan, round) => execute({
@@ -448,22 +569,37 @@ export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, 
   });
 }
 
-export async function reconcileAndPrepareCorpusCandidate({ plan, assetsDir, workspaceDir, root = DEFAULT_ROOT,
-  owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile,
-  execute = executeReconciliation, prepare = prepareCorpusCandidate } = {}) {
-  const reconciliation = await execute({ plan, assetsDir, workspaceDir, root });
-  const candidate = await prepare({ root, assetsDir, owner, builderSha, candidateDir, receiptFile, coverageFile });
-  return { reconciliation, candidate };
+// Step 4, rule 4 (2026-09-13): this used to take an OPAQUE `plan`/`execute` pair, and main() below
+// passed `plan: []` (an inert placeholder -- the real per-round plans are computed INSIDE the
+// stability loop, never known up front) plus `execute: () => reconcileCorpusUntilStable(...)` (an
+// override that threw the supplied `plan` away entirely and substituted the whole multi-round loop).
+// That indirection existed only because this function's default (`executeReconciliation`) runs a
+// SINGLE round against a caller-supplied plan, while production always needs the full
+// round-until-stable loop -- so production always had to override the default just to get correct
+// behavior. Now `reconcile` defaults directly to the stability loop itself: main() calls this with
+// no override at all, and a caller that genuinely wants one-shot single-round execution (e.g. a
+// test) can still supply its own `reconcile`.
+export async function reconcileAndPrepareCorpusCandidate({ assetsDir, workspaceDir, root = DEFAULT_ROOT,
+  owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity = null, maxRounds = 3,
+  reconcile = (options) => reconcileCorpusUntilStable(options),
+  prepare = prepareCorpusCandidate } = {}) {
+  const finalized = await reconcile({ owner, assetsDir, workspaceDir, root, maxRounds });
+  const candidate = await prepare({
+    root, assetsDir, builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity,
+    coverage: finalized.coverage,
+  });
+  return { reconciliation: finalized, candidate };
 }
 
 export function prepareCorpusCandidate({
   root = DEFAULT_ROOT,
   assetsDir,
-  owner = 'ruvnet',
   builderSha,
   candidateDir,
   receiptFile,
   coverageFile,
+  bootstrapIdentity = null,
+  coverage,
   run = defaultRun,
 }) {
   const sourceRoot = path.resolve(root);
@@ -474,23 +610,46 @@ export function prepareCorpusCandidate({
   if (!HEX40.test(String(builderSha || '').toLowerCase())) fail('builder SHA must be exact 40-character lowercase hex');
   const expectedPolicy = path.join(sourceRoot, 'data', 'source-coverage.json');
   if (policy !== expectedPolicy) fail(`coverage policy must be the generator's canonical projection (${expectedPolicy})`);
-  const coverageScript = path.join(sourceRoot, 'scripts', 'source-coverage.mjs');
+  // Step 4, rules 5-6 (2026-09-13): prepareCorpusCandidate performs NO live source observation of
+  // its own. The old flow shelled out to `source-coverage.mjs --write` and then `--check --strict`
+  // as two SEPARATE live re-observations of the real GitHub source universe, mutating the tracked
+  // checkout's data/source-coverage.json and docs/RUVNET-COVERAGE.md a SECOND time, after
+  // reconcileCorpusUntilStable had already captured and measured a stable observation -- exactly
+  // the "re-observes and mutates tracked checkout files after the stable observation was already
+  // captured" bug flagged 2026-09-13. `coverage` here is that already-stabilized measurement
+  // (FinalizedCorpus.coverage); both the committed JSON and the committed Markdown are now rendered
+  // from that SAME in-memory object, so they can never independently disagree with each other or
+  // with what the reconciliation loop actually verified.
+  if (!coverage || coverage.kind !== 'ruvnet-brain-corpus-coverage' || !Array.isArray(coverage.rows)) {
+    fail('prepareCorpusCandidate requires an already-measured coverage object; it never re-observes live sources');
+  }
+  const blockers = coverage.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
+  if (blockers.length) fail(`strict coverage: ${blockers.length} eligible row(s) are not CURRENT`);
+  assertPathNotOverlapping('candidate output directory', candidate, forbiddenOutputRoots(sourceRoot));
   const buildScript = path.join(sourceRoot, 'scripts', 'build-bundle.mjs');
   const receiptScript = path.join(sourceRoot, 'scripts', 'corpus-candidate.mjs');
-  for (const required of [coverageScript, buildScript, receiptScript]) {
+  for (const required of [buildScript, receiptScript]) {
     if (!fs.existsSync(required)) fail(`required candidate builder missing (${required})`);
   }
   fs.mkdirSync(path.dirname(candidate), { recursive: true });
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
-  checked(run, process.execPath, [coverageScript, '--owner', owner, '--assets', assets, '--write'], { stdio: 'inherit' });
-  checked(run, process.execPath, [coverageScript, '--owner', owner, '--assets', assets, '--check', '--strict'], { stdio: 'inherit' });
+  fs.mkdirSync(path.dirname(policy), { recursive: true });
+  fs.writeFileSync(policy, `${JSON.stringify(coverage, null, 2)}\n`);
+  const markdownPath = path.join(sourceRoot, 'docs', 'RUVNET-COVERAGE.md');
+  fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
+  fs.writeFileSync(markdownPath, renderMarkdown(coverage));
   checked(run, process.execPath, [buildScript, '--assets', assets, '--out', candidate,
     '--coverage', policy], { stdio: 'inherit' });
   const bundleFile = path.join(path.dirname(candidate), `${path.basename(candidate)}.zip`);
-  checked(run, process.execPath, [receiptScript, '--assets', assets, '--bundle', bundleFile,
-    '--policy', policy, '--receipt', receipt, '--builder-source-sha', builderSha], { stdio: 'inherit' });
-  checked(run, process.execPath, [receiptScript, '--verify', '--assets', assets, '--bundle', bundleFile,
-    '--policy', policy, '--receipt', receipt], { stdio: 'inherit' });
+  // The candidate receipt is derived ENTIRELY from the sealed bundle's own bytes (schema 2) — the
+  // separate assets/policy directory used to build it is no longer an alternate verification root.
+  const bootstrapArgs = bootstrapIdentity?.tag && bootstrapIdentity?.sha256
+    ? ['--bootstrap-tag', bootstrapIdentity.tag, '--bootstrap-sha256', bootstrapIdentity.sha256]
+    : [];
+  checked(run, process.execPath, [receiptScript, '--bundle', bundleFile,
+    '--receipt', receipt, '--builder-source-sha', builderSha, ...bootstrapArgs], { stdio: 'inherit' });
+  checked(run, process.execPath, [receiptScript, '--verify', '--bundle', bundleFile,
+    '--receipt', receipt], { stdio: 'inherit' });
   return { bundleFile, receiptFile: receipt, coverageFile: policy };
 }
 
@@ -512,7 +671,7 @@ export async function main(argv = process.argv.slice(2)) {
   const builderSha = String(arg(argv, '--builder-sha', '')).toLowerCase();
   const owner = arg(argv, '--owner', 'ruvnet');
 
-  assertBootstrapIdentity({ archiveFile, tag: seedTag, sha256: seedSha256, allowPinnedTag: process.argv.includes('--allow-pinned-seed-tag') });
+  const bootstrap = assertBootstrapIdentity({ archiveFile, tag: seedTag, sha256: seedSha256, allowPinnedTag: process.argv.includes('--allow-pinned-seed-tag') });
   if (fs.existsSync(assetsDir) && fs.readdirSync(assetsDir).length) fail(`bootstrap assets directory is not empty (${assetsDir})`);
   fs.mkdirSync(path.dirname(assetsDir), { recursive: true });
   const extractParent = fs.mkdtempSync(path.join(path.dirname(assetsDir), '.corpus-seed-extract-'));
@@ -523,9 +682,9 @@ export async function main(argv = process.argv.slice(2)) {
   fs.copyFileSync(privateFence, path.join(assetsDir, 'PRIVATE-STORES.json'), fs.constants.COPYFILE_EXCL);
   fs.rmSync(extractParent, { recursive: true, force: true });
   syncCorpusInputs({ root, assetsDir });
+  const bootstrapIdentity = { tag: bootstrap.tag, sha256: bootstrap.sha256, privateFenceEvidence: seedPrivateFenceEvidence(assetsDir) };
   const { reconciliation, candidate } = await reconcileAndPrepareCorpusCandidate({
-    plan: [], assetsDir, workspaceDir, root, owner, builderSha, candidateDir, receiptFile, coverageFile,
-    execute: () => reconcileCorpusUntilStable({ owner, assetsDir, workspaceDir, root }),
+    assetsDir, workspaceDir, root, owner, builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity,
   });
   const plan = reconciliation.rounds.flatMap((round) => round.plan);
   process.stdout.write(`${JSON.stringify({ ok: true, seedTag, seedSha256, plan, reconciliation, ...candidate }, null, 2)}\n`);

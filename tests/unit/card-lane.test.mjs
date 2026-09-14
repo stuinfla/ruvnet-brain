@@ -686,3 +686,42 @@ describe('routeReposFromCards — routing never masquerades as a card answer', (
     expect(route.repos[0]).toBe('sparc');
   });
 });
+
+describe('routeReposFromCards — namesRepo hyphen-safety (issue #284)', () => {
+  // THE BUG THIS CATCHES. `namesRepo` folds hyphens to spaces before a phrase match, on BOTH the
+  // repo name and the query, so a bare store name matches INSIDE its own hyphen-prefixed compound
+  // sibling ("widget" reads as present in "widget forge" once "widget-forge" is folded). This is
+  // currently shielded for the specific ruvnet/ruvnet-brain pair by `primaryBrainScope`, but that
+  // mechanism only prunes siblings AWAY from an already-misnamed 'ruvnet-brain' -- it does not fix
+  // namesRepo itself, and does nothing for any other hyphen-prefixed pair. Synthetic fixture (not
+  // one of the issue's own named pairs) so the fix is proven general, not hardcoded to those five.
+  const cardsFor = (tmp) => fs.writeFileSync(path.join(tmp, 'capability-cards.md'), [
+    '## widget',
+    'A small standalone gadget utility, unrelated to any pipeline builder.',
+    '## widget-forge',
+    'Builds Quantum-Fizzbuzz pipelines end to end.',
+  ].join('\n'));
+
+  it('does not let a bare store name match merely because it is a substring inside a hyphen-prefixed compound sibling', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'card-lane-hyphen-'));
+    try {
+      cardsFor(tmp);
+      const route = routeReposFromCards('What does widget-forge do?', tmp, ['widget', 'widget-forge']);
+      expect(route.namedRepos).toContain('widget-forge');
+      expect(route.namedRepos).not.toContain('widget');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('control: a genuinely bare mention still names the bare store on its own', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'card-lane-hyphen-control-'));
+    try {
+      cardsFor(tmp);
+      const route = routeReposFromCards('What does widget do?', tmp, ['widget', 'widget-forge']);
+      expect(route.namedRepos).toEqual(['widget']);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

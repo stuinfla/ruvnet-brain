@@ -1,31 +1,22 @@
 // Rebuild the two source-derived public aggregate stores as one atomic artifact set.
 
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
-import { reconstructGists, writeReconstruction } from './rebuild-gists-from-receipts.mjs';
+import { buildGistAggregate } from './rebuild-gists-from-receipts.mjs';
 import { writeRvfGeneration } from './rvf-generation.mjs';
+import { digest, sha256File } from './coverage-integrity.mjs';
+import { materializePublicInputs } from './public-inputs.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HEX64 = /^[a-f0-9]{64}$/;
 const MODEL = 'Xenova/bge-base-en-v1.5';
 const DIMENSIONS = 768;
-const AGGREGATES = ['ruv-gists', 'concepts'];
 
 function fail(message) {
   throw new Error(`[corpus-aggregates] ${message}`);
-}
-
-function readJson(file, label) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch (error) { fail(`${label} is missing or unreadable (${error.message})`); }
-}
-
-function sha256File(file) {
-  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
 function chunks(text, size = 3200) {
@@ -42,46 +33,36 @@ function chunks(text, size = 3200) {
   return result;
 }
 
-export function buildConceptAggregate({ inputDir, outDir, sourceObservationSha256,
+// buildConceptAggregate — Step 3 (2026-09-13): this used to be a SECOND, independently-fenced
+// concepts transformation (its own privateStores/privateSlugs re-derivation from
+// PRIVATE-STORES.json/l2-topics.*.json, duplicating scripts/build-concepts.mjs's separate copy of
+// the same logic). Fencing now happens EXACTLY ONCE, upstream, in materializePublicInputs
+// (scripts/public-inputs.mjs) -- `publicInputDir` is trusted to already contain ONLY public prose,
+// so this function does no fencing of its own; it just assembles passages from what is actually
+// there. `selectionReceipt` is the PublicInputSet's own receipt (proves what was excluded, by
+// digest, without carrying private content) and `observationSha256` must be the corpus coverage's
+// own observation identity -- callers assert that equality (rebuildCorpusAggregates does, below),
+// not this pure function.
+export function buildConceptAggregate({ publicInputDir, selectionReceipt, observationSha256, outDir,
   now = () => new Date().toISOString() } = {}) {
-  const input = path.resolve(inputDir || '');
+  const input = path.resolve(publicInputDir || '');
   const output = path.resolve(outDir || '');
-  if (!HEX64.test(String(sourceObservationSha256 || ''))) fail('concepts require an exact source observation');
-  const fenceFile = path.join(input, 'PRIVATE-STORES.json');
-  const fence = readJson(fenceFile, 'private fence');
-  if (!Array.isArray(fence.privateStores)) fail('private fence has no privateStores array');
-  const privateStores = new Set(fence.privateStores.map((store) => String(store).toLowerCase()));
-  const privateSlugs = new Set();
-  for (const store of privateStores) {
-    const file = path.join(input, `l2-topics.${store}.json`);
-    if (!fs.existsSync(file)) continue;
-    const topics = readJson(file, `${store} private topic fence`);
-    if (!Array.isArray(topics)) fail(`${store} private topic fence is malformed`);
-    for (const topic of topics) if (topic?.slug) privateSlugs.add(String(topic.slug));
+  if (!HEX64.test(String(observationSha256 || ''))) fail('concepts require an exact source observation');
+  if (!selectionReceipt || selectionReceipt.schemaVersion !== 1
+    || selectionReceipt.kind !== 'ruvnet-brain-public-input-selection-receipt') {
+    fail('concepts require a valid public input selection receipt');
   }
+  const ownership = new Map(Object.entries(selectionReceipt.ownership || {}));
 
   const repositories = fs.readdirSync(input)
     .filter((file) => file.endsWith('-primer.md'))
     .map((file) => file.slice(0, -'-primer.md'.length))
-    .filter((store) => !privateStores.has(store.toLowerCase()))
     .sort();
-  const slugRepository = new Map([
-    ['guidance-mechanism', 'ruflo'], ['memory-end-to-end', 'ruflo'], ['adr-coverage', 'ruflo'],
-  ]);
-  const inputFiles = new Set(['PRIVATE-STORES.json']);
-  for (const repository of repositories) {
-    const relative = `l2-topics.${repository}.json`;
-    const file = path.join(input, relative);
-    if (!fs.existsSync(file)) continue;
-    const topics = readJson(file, `${repository} topics`);
-    if (!Array.isArray(topics)) fail(`${repository} topics are malformed`);
-    inputFiles.add(relative);
-    for (const topic of topics) if (topic?.slug) slugRepository.set(String(topic.slug), repository);
-  }
 
   const passages = [];
   const entries = {};
   let nextId = 0;
+  const inputFiles = new Set();
   const add = (repository, kind, slug, title, body) => {
     const parts = chunks(body);
     for (const [index, text] of parts.entries()) {
@@ -93,15 +74,15 @@ export function buildConceptAggregate({ inputDir, outDir, sourceObservationSha25
   };
 
   const l2Dir = path.join(input, 'l2');
-  if (!fs.existsSync(l2Dir) || !fs.statSync(l2Dir).isDirectory()) fail('concept L2 input directory is missing');
-  for (const name of fs.readdirSync(l2Dir).filter((file) => file.endsWith('.md')).sort()) {
-    const slug = name.slice(0, -3);
-    const repository = slugRepository.get(slug) || 'ruvnet';
-    if (privateStores.has(repository.toLowerCase()) || privateSlugs.has(slug)) continue;
-    const relative = `l2/${name}`;
-    const body = fs.readFileSync(path.join(input, relative), 'utf8');
-    inputFiles.add(relative);
-    add(repository, 'L2', slug, body.match(/^#\s+(.+)/m)?.[1] || slug, body);
+  if (fs.existsSync(l2Dir)) {
+    for (const name of fs.readdirSync(l2Dir).filter((file) => file.endsWith('.md')).sort()) {
+      const slug = name.slice(0, -3);
+      const repository = ownership.get(slug) || 'ruvnet';
+      const relative = `l2/${name}`;
+      const body = fs.readFileSync(path.join(input, relative), 'utf8');
+      inputFiles.add(relative);
+      add(repository, 'L2', slug, body.match(/^#\s+(.+)/m)?.[1] || slug, body);
+    }
   }
   for (const repository of repositories) {
     const relative = `${repository}-primer.md`;
@@ -119,7 +100,7 @@ export function buildConceptAggregate({ inputDir, outDir, sourceObservationSha25
       if (newline < 0) continue;
       const repository = section.slice(0, newline).trim();
       const body = section.slice(newline + 1).trim();
-      if (!repository || !body || privateStores.has(repository.toLowerCase())) continue;
+      if (!repository || !body) continue;
       add(repository, 'CARD', `${repository}-card`, `${repository} — Capability`, `${repository} — ${body}`);
     }
   }
@@ -136,19 +117,19 @@ export function buildConceptAggregate({ inputDir, outDir, sourceObservationSha25
     schemaVersion: 1,
     kind: 'ruvnet-brain-derived-store-receipt',
     store: 'concepts',
-    sourceObservationSha256,
+    observationSha256,
+    selectionReceiptSha256: selectionReceipt.receiptSha256,
     inputs: [...inputFiles].sort().map((relative) => ({ path: relative, sha256: sha256File(path.join(input, relative)) })),
-    passagesSha256: crypto.createHash('sha256').update(passageBody).digest('hex'),
+    passagesSha256: digest(passageBody),
   };
   fs.writeFileSync(path.join(output, 'concepts.sources.json'), `${JSON.stringify(receipt, null, 2)}\n`);
-  const classesFile = path.join(input, 'public-store-classes.json');
-  const classes = fs.existsSync(classesFile) ? readJson(classesFile, 'public store classes') : { schemaVersion: 1, derived: [] };
-  if (classes.schemaVersion !== 1 || !Array.isArray(classes.derived)) fail('public store classes are malformed');
-  classes.derived = [...classes.derived.filter((entry) => String(entry?.store || '').toLowerCase() !== 'concepts'),
-    { store: 'concepts', receipt: 'concepts.sources.json' }]
-    .sort((a, b) => String(a.store).localeCompare(String(b.store)));
+  // Rule 9: the store-classes registry is generated FRESH from the derived stores this call actually
+  // produced -- never merged with a stale checkout copy of public-store-classes.json. Concepts is
+  // the only derived store this pipeline builds today; ruv-gists is a repository/gist-class store,
+  // classified separately (scripts/build-bundle.mjs's own discovery), not through this registry.
+  const classes = { schemaVersion: 1, derived: [{ store: 'concepts', receipt: 'concepts.sources.json' }] };
   fs.writeFileSync(path.join(output, 'public-store-classes.json'), `${JSON.stringify(classes, null, 2)}\n`);
-  return { passages: passages.length, receipt };
+  return { store: 'concepts', kind: 'derived-store-aggregate', passages: passages.length, receipt };
 }
 
 function defaultBuildVector({ root, assetsDir, store }) {
@@ -159,35 +140,55 @@ function defaultBuildVector({ root, assetsDir, store }) {
   if (result.error || result.status !== 0) fail(`${store} vector build failed (${result.error?.message || `exit ${result.status}`})`);
 }
 
-export async function rebuildCorpusAggregates({ assetsDir, observation, root = ROOT,
-  fetchFn = globalThis.fetch, buildVector = defaultBuildVector, now = () => new Date().toISOString() } = {}) {
+// Gists and concepts are independent derived stores (concepts never reads gist content), so each is
+// now built and promoted through its OWN atomic step rather than one shared stage+promotion:
+//   1. buildGistAggregate owns the ENTIRE gist lifecycle -- capture, render, embed, seal, validate,
+//      and promote -- as one atomic unit (see gist-receipts.mjs). A failed gist build/embed leaves
+//      `assets` completely untouched and concepts is never attempted.
+//   2. concepts is then rebuilt from the (now gist-updated) `assets` tree, exactly as before.
+// This trades the OLD single joint promotion of both stores for two independently-atomic ones; each
+// store's own artifact set can never be left half-written, which the joint promotion could not
+// promise for gists specifically once gist capture/render/seal became a single multi-step pipeline.
+export async function rebuildCorpusAggregates({ assetsDir, observation, coverage, root = ROOT, cache = null,
+  transport = {}, buildVector = defaultBuildVector, builderSha = null, allowNoPrivateFence = false,
+  now = () => new Date().toISOString() } = {}) {
   const assets = path.resolve(assetsDir || '');
   const observationSha256 = String(observation?.observationSha256 || '');
   if (!HEX64.test(observationSha256)) fail('aggregate rebuild requires an exact source observation');
-  const sourceFile = path.join(assets, 'ruv-gists.sources.json');
-  const source = readJson(sourceFile, 'gist source receipt');
-  if (source.sourceObservationSha256 !== observationSha256) fail('gist source receipt observation differs from the stable observation');
   if (typeof buildVector !== 'function') fail('aggregate vector builder is unavailable');
+  // Rule 8: the concepts receipt's observation identity must EXACTLY EQUAL corpus coverage's own
+  // observation identity, not merely happen to be fed the same value by an accident of call order.
+  if (!coverage || coverage.sourceObservationSha256 !== observationSha256) {
+    fail('concepts observation identity does not exactly equal the corpus coverage observation identity');
+  }
+
+  const gistAggregate = await buildGistAggregate({
+    observation, cache, outDir: assets, root, transport, buildVector, sourceCommit: observationSha256, now,
+  });
+
+  // Public prose selection (rule 1-3, 5): a fresh, positively-selected, already-fenced tree, rebuilt
+  // every round directly into `assets` -- never an overlay onto whatever a prior round left behind.
+  const publicInputs = materializePublicInputs({
+    builderRoot: root, outDir: assets, policy: { allowNoFence: allowNoPrivateFence }, builderSha, now,
+  });
 
   const stage = fs.mkdtempSync(path.join(path.dirname(assets), '.corpus-aggregates-'));
   try {
-    const gists = await reconstructGists(source, { fetchFn });
-    writeReconstruction(gists, { outDir: stage });
-    buildConceptAggregate({ inputDir: assets, outDir: stage, sourceObservationSha256: observationSha256, now });
-    for (const store of AGGREGATES) await buildVector({ root, assetsDir: stage, store });
-    writeRvfGeneration({ dir: stage, previousDir: assets, store: 'ruv-gists', model: MODEL,
-      dimensions: DIMENSIONS, sourceCommit: observationSha256, builtUtc: now() });
-    writeRvfGeneration({ dir: stage, previousDir: stage, store: 'concepts', model: MODEL,
+    buildConceptAggregate({
+      publicInputDir: assets, selectionReceipt: publicInputs.selectionReceipt,
+      observationSha256, outDir: stage, now,
+    });
+    await buildVector({ root, assetsDir: stage, store: 'concepts' });
+    writeRvfGeneration({ dir: stage, previousDir: assets, store: 'concepts', model: MODEL,
       dimensions: DIMENSIONS, sourceCommit: observationSha256, builtUtc: now() });
     const files = [
-      ...AGGREGATES.flatMap((store) => [
-        `${store}.passages.jsonl`, `${store}.meta.json`, `${store}.big.rvf`,
-        `${store}.big.rvf.idmap.json`, `${store}.big.rvf.embed.json`,
-      ]),
-      'ruv-gists.sources.json', 'concepts.sources.json', 'public-store-classes.json', 'RVF-GENERATIONS.json',
+      'concepts.passages.jsonl', 'concepts.meta.json', 'concepts.big.rvf',
+      'concepts.big.rvf.idmap.json', 'concepts.big.rvf.embed.json',
+      'concepts.sources.json', 'public-store-classes.json', 'RVF-GENERATIONS.json',
     ];
     promoteArtifactSet({ liveDir: assets, candidateDir: stage, files });
-    return { rebuilt: [...AGGREGATES].sort(), sourceObservationSha256: observationSha256 };
+    const rebuilt = gistAggregate.omitted ? ['concepts'] : ['concepts', 'ruv-gists'];
+    return { rebuilt: rebuilt.sort(), sourceObservationSha256: observationSha256, gistAggregate, publicInputs };
   } finally {
     fs.rmSync(stage, { recursive: true, force: true });
   }

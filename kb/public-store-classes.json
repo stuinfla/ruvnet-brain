@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "derived": [
+    {
+      "store": "concepts",
+      "receipt": "concepts.sources.json"
+    }
+  ]
+}

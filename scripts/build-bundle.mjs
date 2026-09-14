@@ -23,6 +23,7 @@ import { auditRvfIndexes } from './rvf-index-audit.mjs';
 import { readRvfGenerations, validateSelectedRvfGenerations } from './rvf-generation.mjs';
 import { validatePublicInventory } from './public-inventory.mjs';
 import { bindAssembledReleaseProjection } from './release-projection.mjs';
+import { materializePublicInputs, SELECTION_FILE } from './public-inputs.mjs';
 // The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
 // sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
 import { orgRepoCount } from './org-repo-count.mjs';
@@ -39,7 +40,6 @@ const OUT = path.resolve(ROOT, arg('--out', 'dist/ruvnet-brain'));
 const COVERAGE = arg('--coverage', null);
 const PROJECTION = arg('--projection', null);
 const BRAIN_VERSION = arg('--version', getVersionTag()); // inherits the single source of truth
-const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
 // ---- registry: tier + the full 169-repo pending list -------------------------------------------
 const registry = JSON.parse(fs.readFileSync(path.join(DATA, 'registry.tiers.json'), 'utf8'));
@@ -135,23 +135,60 @@ function cp(src, destDir, { required = false, asset = false } = {}) {
   copied++;
   return true;
 }
-// Private SLUG set (QE-0011 security#1) — kb/l2/ is copied wholesale below; a private repo's raw L2
-// .md would ship as a file even though the vector store fences it. Read each private repo's own
-// l2-topics.<repo>.json to learn its slugs and skip those .md files. Fail-closed on a corrupt file.
-const PRIVATE_L2_SLUGS = new Set();
-for (const p of PRIVATE_STORES) {
-  const tf = path.join(KB, `l2-topics.${p}.json`);
-  if (!fs.existsSync(tf)) continue;
-  try { for (const t of JSON.parse(fs.readFileSync(tf, 'utf8'))) if (t.slug) PRIVATE_L2_SLUGS.add(`${t.slug}.md`); }
-  catch (e) { console.error(`[build-bundle] FATAL: private topics ${tf} corrupt (${e.message}). Refusing to build.`); process.exit(1); }
+// Public-prose selection (primers, L2, capability cards, repo aliases) happens EXACTLY ONCE per
+// corpus round, in materializePublicInputs (scripts/public-inputs.mjs) — a SEPARATE policy from the
+// per-repo CODE store fence above (PRIVATE_STORES). PACKAGING MUST NEVER RE-DERIVE IT.
+//
+// Finalized corpus input is immutable: reconciliation (rebuildCorpusAggregates,
+// scripts/corpus-aggregates.mjs) seals the canonical public-prose tree into ASSETS and writes
+// SELECTION_FILE (PUBLIC-INPUT-SELECTION.json) as proof it did. If that file is already present,
+// reconciliation has already run and ASSETS already IS the canonical, sealed result — this script
+// trusts it byte-for-byte and does NOT call materializePublicInputs again. Calling it a second time
+// here used to re-derive from checkout ROOT/kb regardless of whether ASSETS had already been
+// reconciled from a DIFFERENT checkout/ref/commit (a later commit landed, a different checkout, a
+// replay of an older candidate) — happening to match today only because nothing mutates checkout
+// between the two calls within one CI job, not because the guarantee was structurally real. Found
+// by independent Dual verification 2026-09-13.
+//
+// materializePublicInputs is called here ONLY when no sealed selection exists yet -- the genuine
+// standalone/local-dev case this file's own default (`--assets kb`, i.e. builderRoot === outDir)
+// exists for, where there is nothing reconciled to trust and self-materializing fresh is correct
+// and safe (public-inputs.mjs's own stage-before-delete ordering).
+const sealedSelectionFile = path.join(ASSETS, SELECTION_FILE);
+let publicInputs;
+if (fs.existsSync(sealedSelectionFile)) {
+  let selectionReceipt;
+  try {
+    selectionReceipt = JSON.parse(fs.readFileSync(sealedSelectionFile, 'utf8'));
+  } catch (error) {
+    console.error(`[build-bundle] FATAL: sealed public-input selection (${sealedSelectionFile}) is present but unreadable (${error.message}). Refusing to build.`);
+    process.exit(1);
+  }
+  publicInputs = { kind: 'public-input-set', dir: ASSETS, selectionReceipt,
+    excluded: selectionReceipt.excluded || { primers: [], topics: [], l2: [], cards: [] } };
+  console.log(`[build-bundle] trusting already-reconciled public-input selection at ${sealedSelectionFile} (never re-derived)`);
+} else {
+  try {
+    publicInputs = materializePublicInputs({
+      builderRoot: ROOT, outDir: ASSETS,
+      policy: { allowNoFence: process.env.ALLOW_NO_PRIVATE_FENCE === '1' },
+    });
+  } catch (error) {
+    console.error(`[build-bundle] FATAL: public-prose selection failed (${error.message}). Refusing to build.`);
+    process.exit(1);
+  }
 }
-// skipNames: an optional Set of filenames to exclude (used to fence private L2 .md out of the l2/ copy).
-function cpDir(srcDir, destDir, skipNames) {
+{
+  const excludedCount = publicInputs.excluded.primers.length + publicInputs.excluded.topics.length
+    + publicInputs.excluded.l2.length + publicInputs.excluded.cards.length;
+  if (excludedCount) console.log(`[build-bundle] public-input selection excluded ${excludedCount} private prose item(s)`);
+}
+
+function cpDir(srcDir, destDir) {
   if (!fs.existsSync(srcDir)) return false;
   fs.mkdirSync(destDir, { recursive: true });
   for (const e of fs.readdirSync(srcDir, { withFileTypes: true })) {
-    if (skipNames && skipNames.has(e.name)) continue;
-    if (e.isDirectory()) cpDir(path.join(srcDir, e.name), path.join(destDir, e.name), skipNames);
+    if (e.isDirectory()) cpDir(path.join(srcDir, e.name), path.join(destDir, e.name));
     else { fs.copyFileSync(path.join(srcDir, e.name), path.join(destDir, e.name)); copied++; }
   }
   return true;
@@ -253,7 +290,7 @@ for (const name of built) {
   cp(`${name}.passages.jsonl`, OUT, { required: true, asset: true });
   cp(`${name}.meta.json`, OUT, { required: true, asset: true });
   const hasSymbols = cp(`${name}.symbols.json`, OUT, { asset: true });
-  const hasPrimer = cp(`${name}-primer.md`, OUT);
+  const hasPrimer = cp(`${name}-primer.md`, OUT, { asset: true });
   // metadata
   let chunks = null, model = null, dims = null;
   try { const m = JSON.parse(fs.readFileSync(path.join(ASSETS, `${name}.meta.json`), 'utf8')); chunks = m.entries ? Object.keys(m.entries).length : null; model = m.model; dims = m.dimensions; } catch { /* */ }
@@ -293,92 +330,58 @@ for (const name of built) {
   }
 }
 
-// L2 articles (whole dir, fencing out private repos' raw .md) + master primer dir (the master
+// L2 articles (already fenced by materializePublicInputs above) + master primer dir (the master
 // ruvnet-primer overview — not per-repo, so nothing private to fence there).
-cpDir(path.join(KB, 'l2'), path.join(OUT, 'l2'), PRIVATE_L2_SLUGS);
+cpDir(path.join(ASSETS, 'l2'), path.join(OUT, 'l2'));
 cpDir(path.join(ROOT, 'primer'), path.join(OUT, 'primer'));
 
 // CONCEPTS store (L2 + primers embedded as prose; big-only) — the cross-repo tool unions it at query
 // time so code-implemented capabilities are retrievable as high-confidence prose. discoverRepos in the
 // bundle finds concepts.big.rvf automatically, so search_ruvnet searches it with no extra config.
+//
+// Every file here — including concepts.sources.json and public-store-classes.json — is packaged
+// BYTE-FOR-BYTE from ASSETS, exactly as buildConceptAggregate (scripts/corpus-aggregates.mjs) wrote
+// it. No re-derivation, no re-filtering, no fallback fabrication at packaging time (rule 6/9): a
+// build-bundle-fabricated concepts.sources.json used to be shipped whenever the real one was
+// missing, with its only declared "input" being its own already-packaged output — circular, and
+// proving nothing. `.big.passages.jsonl`/`.big.meta.json` are deliberately NOT in this list:
+// forge-big.mjs (the only builder concepts/ruv-gists ever go through) never produces them, so
+// including them only risked reintroducing exactly the legacy duplicates kb/forge-refresh.mjs's
+// removeLegacyDuplicates deletes for ordinary per-repo stores.
 const hasConcepts = fs.existsSync(path.join(ASSETS, 'concepts.big.rvf'));
-if (hasConcepts) for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.json', 'concepts.big.rvf.embed.json', 'concepts.big.passages.jsonl', 'concepts.big.meta.json', 'concepts.passages.jsonl', 'concepts.meta.json', 'concepts.sources.json']) cp(suf, OUT, { asset: true });
+if (hasConcepts) {
+  for (const suf of ['concepts.big.rvf', 'concepts.big.rvf.idmap.json', 'concepts.big.rvf.embed.json',
+    'concepts.passages.jsonl', 'concepts.meta.json', 'concepts.sources.json', 'public-store-classes.json']) {
+    cp(suf, OUT, { asset: true });
+  }
+}
 
 // RUV-GISTS store (rUv's public gists — release notes / integration dossiers; big-only, same shape as
-// concepts, unioned by search_ruvnet at query time). BUG FIX: only `concepts` was special-cased above,
-// so ruv-gists — a PUBLIC store, not private-fenced — was silently omitted from EVERY bundle ever
-// shipped. Include it, WITH .big.passages.jsonl (the big variant opens it by name, same as concepts).
+// concepts, unioned by search_ruvnet at query time). Every gist file, RVF and passage bytes AND the
+// source receipt come from the same reconciled ASSETS root -- buildGistAggregate (gist-receipts.mjs)
+// seals ruv-gists.sources.json in the SAME atomic step that writes the passages/RVF it ships next to.
 const hasGists = fs.existsSync(path.join(ASSETS, 'ruv-gists.big.rvf'));
 if (hasGists) {
-  // RVF and passage bytes come from the sealed seed; the source receipt is governed source
-  // evidence from this checkout. The seed predates shipping that receipt, so sourcing every file
-  // from ASSETS makes the release projection fail closed even though the exact gist bytes exist.
-  for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json', 'ruv-gists.big.passages.jsonl', 'ruv-gists.big.meta.json', 'ruv-gists.passages.jsonl', 'ruv-gists.meta.json']) cp(suf, OUT, { asset: true });
-  cp('ruv-gists.sources.json', OUT, { required: !PROJECTION });
-}
-// The inventory projection consumes this registry from the assembled bundle. Older corpus seeds
-// do not carry it, so derive the only valid legacy class (concepts) from the exact bytes already
-// assembled instead of failing before projection can create its release-bound evidence set.
-if (!cp('public-store-classes.json', OUT, { asset: true })) {
-  const derived = [];
-  const conceptsPassages = path.join(OUT, 'concepts.passages.jsonl');
-  if (fs.existsSync(conceptsPassages)) {
-    const bytes = fs.readFileSync(conceptsPassages);
-    const receipt = { schemaVersion: 1, kind: 'ruvnet-brain-derived-store-receipt', store: 'concepts',
-      inputs: [{ path: 'concepts.passages.jsonl', sha256: sha256(bytes) }], passagesSha256: sha256(bytes) };
-    fs.writeFileSync(path.join(OUT, 'concepts.sources.json'), `${JSON.stringify(receipt, null, 2)}\n`);
-    derived.push({ store: 'concepts', receipt: 'concepts.sources.json' });
+  for (const suf of ['ruv-gists.big.rvf', 'ruv-gists.big.rvf.idmap.json', 'ruv-gists.big.rvf.embed.json',
+    'ruv-gists.passages.jsonl', 'ruv-gists.meta.json']) {
+    cp(suf, OUT, { asset: true });
   }
-  fs.writeFileSync(path.join(OUT, 'public-store-classes.json'), `${JSON.stringify({ schemaVersion: 1, derived }, null, 2)}\n`);
-  copied++;
+  cp('ruv-gists.sources.json', OUT, { required: !PROJECTION, asset: true });
+}
+if (!hasConcepts && !fs.existsSync(path.join(OUT, 'public-store-classes.json'))) {
+  console.log('[build-bundle] note: no concepts store in the reconciled assets -- public-store-classes.json will not ship');
 }
 
-// capability-cards.md — the FAST LANE's zero-ML answer source (kb/card-lane.mjs, the first
-// responder search_ruvnet consults before the heavy cross-repo search). Ships as its own small
-// text file, NOT only baked into concepts.big.rvf, so the fast lane can answer without opening
-// any vector store or loading either ONNX model. Re-filtered by the SAME PRIVATE_STORES fence
-// applied to every other shipped artifact above — reapplied here rather than trusted from the
-// source file, because a raw-file copy is a NEW shipping path for this exact content
-// (scripts/build-concepts.mjs already fences it into the concepts store; that fence must not be
-// silently regained by a second path that copies the same source file without it).
+// capability-cards.md and repo-aliases.json — already public-fenced (cards) and selected (aliases)
+// by materializePublicInputs above; packaged byte-for-byte from ASSETS, never re-filtered here.
 {
-  const cardsSrc = path.join(KB, 'capability-cards.md');
-  if (fs.existsSync(cardsSrc)) {
-    const raw = fs.readFileSync(cardsSrc, 'utf8');
-    const parts = raw.split(/^##\s+/m);
-    const kept = [];
-    let filteredAny = false;
-    for (const sec of parts.slice(1)) {
-      const nl = sec.indexOf('\n');
-      const repo = nl < 0 ? '' : sec.slice(0, nl).trim();
-      if (repo && PRIVATE_STORES.has(repo.toLowerCase())) { filteredAny = true; continue; }
-      kept.push(`## ${sec}`);
-    }
-    fs.writeFileSync(path.join(OUT, 'capability-cards.md'), parts[0] + kept.join(''));
-    copied++;
-    if (filteredAny) console.log('[build-bundle] filtered private repo card(s) out of shipped capability-cards.md');
-
-    // repo-aliases.json TRAVELS WITH THE CARDS OR EVERY ALIAS IS DEAD ON ARRIVAL.
-    //
-    // card-lane.mjs reads it (REPO_ALIASES_FILE) to resolve a PRODUCT name to its installed store:
-    // `agent-harness-generator -> metaharness`, `ruvnet-brain -> brain`, `ruvector -> rvf`,
-    // `agentic-qe -> qe`. The bundle never copied it, so on every install those mappings were absent
-    // and the fast lane could not route them. Measured 2026-08-19 against the live store root:
-    // repo-aliases.json ABSENT, and `search_ruvnet("metaharness: what does Darwin mode mutate?")`
-    // answered "card router was ambiguous" — the product cannot be found by its own name.
-    //
-    // `forge-update.mjs:505` already lists this file among the ones it manages, so the updater knew
-    // about it and the builder did not — one fact, two shipping paths, only one of them told. Same
-    // shape as the reader/writer store-root split and the ingest `--out` bug fixed this week.
-    const aliasesSrc = path.join(KB, 'repo-aliases.json');
-    if (fs.existsSync(aliasesSrc)) {
-      fs.copyFileSync(aliasesSrc, path.join(OUT, 'repo-aliases.json'));
-      copied++;
-    } else {
-      console.log('[build-bundle] note: kb/repo-aliases.json absent — product-name aliases will not resolve on install');
-    }
-  } else {
-    console.log('[build-bundle] note: kb/capability-cards.md absent — the fast lane ships with no card source and will honestly fall through on every query');
+  const copiedCards = cp('capability-cards.md', OUT, { asset: true });
+  if (!copiedCards) {
+    console.log('[build-bundle] note: no capability-cards.md in the reconciled assets -- the fast lane ships with no card source and will honestly fall through on every query');
+  }
+  const copiedAliases = cp('repo-aliases.json', OUT, { asset: true });
+  if (!copiedAliases) {
+    console.log('[build-bundle] note: no repo-aliases.json in the reconciled assets -- product-name aliases will not resolve on install');
   }
 }
 

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { canonicalJson, digest, validateCoverageLedger, validateCoverageLink } from './coverage-integrity.mjs';
 import { validatePublicInventory } from './public-inventory.mjs';
+import { verifySeedBaseline } from './corpus-candidate.mjs';
 import {
   buildRetrievalCanaryPlan,
   validateRetrievalQueryEvidence,
@@ -305,6 +306,48 @@ function observedBaselineFromTree({ extractedRoot, bundleFile, expectedTag, expe
   return { receipt, bytes, fileSha256: crypto.createHash('sha256').update(bytes).digest('hex'), root, archiveManifest };
 }
 
+// The external, content-addressed seed tag (corpus-sha256-<digest>) and the archive's own internal
+// ARCHIVE-MANIFEST release tag/version are two independent identity domains. Unlike the legacy
+// retrospective/observed baseline readers above — which predate the schema-2 candidate receipt and
+// compare a seed's tag directly against its internal releaseTag — this reader never makes that
+// comparison: it verifies the seed purely through its schema-2 candidate receipt.
+async function receiptedBaselineFromSeed({ seedDescriptor, bundleFile, receiptFile }) {
+  const verified = await verifySeedBaseline({ seedDescriptor, bundleFile, receiptFile });
+  const payload = {
+    schemaVersion: 1,
+    kind: 'ruvnet-brain-receipted-public-baseline',
+    verificationMode: 'candidate-receipt-verification',
+    historicalCorpusReceipt: true,
+    tag: verified.tag,
+    archive: { sha256: verified.sha256, bytes: verified.bytes },
+    archiveManifestSha256: verified.receipt.archiveManifest.sha256,
+    internalArchiveVersion: verified.receipt.archiveManifestVersion,
+    internalArchiveReleaseTag: verified.receipt.archiveManifestReleaseTag,
+    builderSourceSha: verified.receipt.builderSourceSha,
+    candidateReceiptSha256: sha256File(path.resolve(receiptFile)),
+    storeCount: verified.receipt.storeCount,
+    storeSetSha256: digest(verified.receipt.stores.map(({ name }) => name)),
+    stores: verified.receipt.stores.map(({ name, kind, sourceCommit, builtUtc, model, dimensions }) =>
+      ({ name, kind, sourceCommit, builtUtc, model, dimensions })),
+    limitations: [
+      "the external content-addressed seed tag is an independent identity from the archive's "
+      + 'internal ARCHIVE-MANIFEST release tag/version and is never compared against it',
+    ],
+  };
+  const receipt = { ...payload, receiptSha256: digest(payload) };
+  const bytes = encoded(receipt);
+  return { receipt, bytes, fileSha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+}
+
+export async function createReceiptedBaselineVerification({ seedDescriptor, baselineBundle, baselineReceipt,
+  outFile = 'release-evidence/baseline-verification-receipt.json' } = {}) {
+  const archive = trustedFile(baselineBundle, 'baseline archive');
+  const receiptFile = trustedFile(baselineReceipt, 'baseline candidate receipt');
+  const result = await receiptedBaselineFromSeed({ seedDescriptor, bundleFile: archive, receiptFile });
+  writeExactFile(outFile, result.bytes, 'baseline-verification-receipt.json');
+  return result;
+}
+
 function writeExactFile(file, bytes, label) {
   const output = path.resolve(file);
   if (fs.existsSync(output)) {
@@ -365,7 +408,8 @@ function writeExactOutputs(outDir, outputs) {
 }
 
 export async function createPublicVerificationInputs({ baselineBundle, candidateBundle,
-  candidatePackage, oracleFile, repo = process.cwd(), outDir = 'release-evidence', baselineMode = 'verified' } = {}) {
+  candidatePackage, oracleFile, repo = process.cwd(), outDir = 'release-evidence', baselineMode = 'verified',
+  baselineReceipt = null } = {}) {
   const baselineArchive = trustedFile(baselineBundle, 'baseline archive');
   const candidateArchive = trustedFile(candidateBundle, 'candidate archive');
   const packageFile = trustedFile(candidatePackage, 'candidate package');
@@ -384,32 +428,62 @@ export async function createPublicVerificationInputs({ baselineBundle, candidate
     const candidateTree = validateArchive(candidateExtracted);
     const candidateResult = validateCandidate({ root: candidateTree.root, bundleFile: candidateArchive, packageFile });
     const seed = candidateResult.coverage.corpusSeed;
-    if (!['verified', 'observed'].includes(baselineMode)) fail('baseline mode must be verified or observed');
-    const baselineProof = baselineMode === 'observed'
-      ? observedBaselineFromTree({ extractedRoot: baselineExtracted, bundleFile: baselineArchive,
-        expectedTag: seed.tag, expectedSha256: seed.archiveSha256, expectedBytes: seed.archiveBytes })
-      : retrospectiveBaselineFromTree({ extractedRoot: baselineExtracted, bundleFile: baselineArchive,
-        expectedTag: seed.tag, expectedSha256: seed.archiveSha256, expectedBytes: seed.archiveBytes });
-    if (seed.archiveSha256 !== baselineProof.receipt.archive.sha256
-      || seed.archiveBytes !== baselineProof.receipt.archive.bytes) {
-      fail('baseline archive bytes differ from release coverage');
+    if (!['verified', 'observed', 'receipted'].includes(baselineMode)) {
+      fail('baseline mode must be verified, observed, or receipted');
     }
-    if (seed.receiptSha256 !== baselineProof.fileSha256) fail('baseline receipt differs from release coverage');
-    if (seed.tag !== baselineProof.receipt.releaseTag) {
-      fail('baseline release tag differs from release coverage');
+    let baselineProof;
+    let baseline;
+    if (baselineMode === 'receipted') {
+      // The new seed-type path (task 3): route through verifySeedBaseline's schema-2 candidate
+      // receipt instead of the legacy retrospective/observed historical-baseline readers, which
+      // remain untouched below for genuinely historical (receipt-less) seeds only.
+      if (!baselineReceipt) fail('receipted baseline mode requires the seed candidate receipt file');
+      baselineProof = await receiptedBaselineFromSeed({
+        seedDescriptor: { tag: seed.tag, sha256: seed.archiveSha256, bytes: seed.archiveBytes, allowPinnedTag: true },
+        bundleFile: baselineArchive,
+        receiptFile: trustedFile(baselineReceipt, 'baseline candidate receipt'),
+      });
+      if (seed.archiveSha256 !== baselineProof.receipt.archive.sha256
+        || seed.archiveBytes !== baselineProof.receipt.archive.bytes) {
+        fail('baseline archive bytes differ from release coverage');
+      }
+      if (seed.receiptSha256 !== baselineProof.fileSha256) fail('baseline receipt differs from release coverage');
+      // NEVER: seed.tag !== baselineProof.receipt.internalArchiveReleaseTag — the external
+      // content-addressed tag and the archive's internal release tag are independent identities.
+      const baselineStores = baselineProof.receipt.stores.map(({ name }) => name);
+      baseline = { schemaVersion: 1, kind: 'ruvnet-brain-receipted-public-baseline', tag: seed.tag,
+        archiveSha256: seed.archiveSha256, archiveBytes: seed.archiveBytes,
+        archiveManifestSha256: baselineProof.receipt.archiveManifestSha256,
+        candidateReceiptSha256: baselineProof.receipt.candidateReceiptSha256,
+        verificationReceiptSha256: baselineProof.fileSha256,
+        stores: baselineStores, storeCount: baselineStores.length };
+    } else {
+      baselineProof = baselineMode === 'observed'
+        ? observedBaselineFromTree({ extractedRoot: baselineExtracted, bundleFile: baselineArchive,
+          expectedTag: seed.tag, expectedSha256: seed.archiveSha256, expectedBytes: seed.archiveBytes })
+        : retrospectiveBaselineFromTree({ extractedRoot: baselineExtracted, bundleFile: baselineArchive,
+          expectedTag: seed.tag, expectedSha256: seed.archiveSha256, expectedBytes: seed.archiveBytes });
+      if (seed.archiveSha256 !== baselineProof.receipt.archive.sha256
+        || seed.archiveBytes !== baselineProof.receipt.archive.bytes) {
+        fail('baseline archive bytes differ from release coverage');
+      }
+      if (seed.receiptSha256 !== baselineProof.fileSha256) fail('baseline receipt differs from release coverage');
+      if (seed.tag !== baselineProof.receipt.releaseTag) {
+        fail('baseline release tag differs from release coverage');
+      }
+      const baselineStores = baselineProof.receipt.stores.map(({ name }) => name);
+      baseline = { schemaVersion: 1,
+        kind: baselineMode === 'observed' ? 'ruvnet-brain-observed-failed-public-baseline' : 'ruvnet-brain-verified-public-baseline',
+        ...(baselineMode === 'observed' ? { integrity: 'DEGRADED', historicalCorpusReceipt: false,
+          candidateVerificationEligible: false, observationReceiptSha256: baselineProof.fileSha256,
+          discrepancyDigest: baselineProof.receipt.discrepancyDigest,
+          ledgerDiscrepancies: baselineProof.receipt.ledgerDiscrepancies,
+          provenanceGaps: baselineProof.receipt.provenanceGaps } : {}), tag: seed.tag,
+        archiveSha256: seed.archiveSha256, archiveBytes: seed.archiveBytes,
+        archiveManifestSha256: baselineProof.receipt.archiveManifestSha256,
+        ...(baselineMode === 'verified' ? { verificationReceiptSha256: baselineProof.fileSha256 } : {}),
+        stores: baselineStores, storeCount: baselineStores.length };
     }
-    const baselineStores = baselineProof.receipt.stores.map(({ name }) => name);
-    const baseline = { schemaVersion: 1,
-      kind: baselineMode === 'observed' ? 'ruvnet-brain-observed-failed-public-baseline' : 'ruvnet-brain-verified-public-baseline',
-      ...(baselineMode === 'observed' ? { integrity: 'DEGRADED', historicalCorpusReceipt: false,
-        candidateVerificationEligible: false, observationReceiptSha256: baselineProof.fileSha256,
-        discrepancyDigest: baselineProof.receipt.discrepancyDigest,
-        ledgerDiscrepancies: baselineProof.receipt.ledgerDiscrepancies,
-        provenanceGaps: baselineProof.receipt.provenanceGaps } : {}), tag: seed.tag,
-      archiveSha256: seed.archiveSha256, archiveBytes: seed.archiveBytes,
-      archiveManifestSha256: baselineProof.receipt.archiveManifestSha256,
-      ...(baselineMode === 'verified' ? { verificationReceiptSha256: baselineProof.fileSha256 } : {}),
-      stores: baselineStores, storeCount: baselineStores.length };
     const { value: queryEvidence } = readJson(oraclePath, 'independent strict-ancestor query oracle');
     validateRetrievalQueryEvidence(queryEvidence);
   verifyQueryOracleSource(queryEvidence, candidateResult.candidate.sourceSha, {
@@ -456,6 +530,17 @@ export async function main(argv = process.argv.slice(2)) {
       provenanceGaps: result.receipt.provenanceGaps.length, receiptFileSha256: result.fileSha256 }));
     return result;
   }
+  if (argv[0] === 'receipted-baseline') {
+    const result = await createReceiptedBaselineVerification({
+      seedDescriptor: { tag: arg(argv, '--expected-tag'), sha256: arg(argv, '--expected-sha256'),
+        bytes: Number(arg(argv, '--expected-bytes')), allowPinnedTag: argv.includes('--allow-pinned-tag') },
+      baselineBundle: arg(argv, '--baseline-bundle'),
+      baselineReceipt: arg(argv, '--baseline-receipt'),
+      outFile: arg(argv, '--out') || 'release-evidence/baseline-verification-receipt.json' });
+    console.log(JSON.stringify({ ok: true, mode: 'receipted-baseline', tag: result.receipt.tag,
+      stores: result.receipt.storeCount, receiptFileSha256: result.fileSha256 }));
+    return result;
+  }
   const result = await createPublicVerificationInputs({
     baselineBundle: arg(argv, '--baseline-bundle'),
     candidateBundle: arg(argv, '--candidate-bundle'),
@@ -463,7 +548,8 @@ export async function main(argv = process.argv.slice(2)) {
     oracleFile: arg(argv, '--oracle'),
     repo: arg(argv, '--repo') || process.cwd(),
     outDir: arg(argv, '--out-dir') || 'release-evidence',
-    baselineMode: argv.includes('--observed-baseline') ? 'observed' : 'verified',
+    baselineMode: argv.includes('--receipted-baseline') ? 'receipted' : argv.includes('--observed-baseline') ? 'observed' : 'verified',
+    baselineReceipt: arg(argv, '--baseline-receipt'),
   });
   console.log(JSON.stringify({ ok: true, sourceSha: result.candidate.sourceSha,
     coverageGeneration: result.coverage.releaseCoverageGeneration, cases: result.plan.cases.length }));

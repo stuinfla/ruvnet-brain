@@ -13,24 +13,37 @@
 // KB already stamps `ADR STATUS: PROPOSED` onto ADR passages. Retrieval then hands the model the
 // claim AND its epistemic status together; they cannot be separated downstream.
 //
-//   node scripts/ingest-gists.mjs                    # incremental (only re-fetch changed gists)
-//   node scripts/ingest-gists.mjs --full             # ignore the cache, refetch everything
+// STEP 2 (2026-09-13): this file no longer owns its own fetch+write+chunk logic. Actual content
+// ingestion routes through the one canonical pipeline (gist-receipts.mjs's captureGistSources ->
+// buildGistAggregate), the same producer corpus-reconcile.mjs and seal-gist-receipt.mjs use. This
+// file's own job is now just: (1) the cheap human-index/discovery operation (--index-only,
+// --dry-run — pure listing, no per-gist fetch), and (2) deciding WHEN to invoke the canonical
+// pipeline and with what local capture cache, never re-rendering a passage itself.
+//
+//   node scripts/ingest-gists.mjs                    # incremental (only re-fetches changed gists)
+//   node scripts/ingest-gists.mjs --full             # ignore the local capture cache, refetch everything
 //   node scripts/ingest-gists.mjs --owner ruvnet     # default owner
 //   node scripts/ingest-gists.mjs --dry-run          # list what would change, write nothing
 //
-// Then embed (the store becomes searchable with no restart — forge-ask-all discovers *.rvf at query
-// time):
+// Embedding is a SEPARATE step (this file never builds vectors — nightly-gists.sh's own sharded
+// `forge-big.mjs shard-all` does, after this exits 0 with real changes):
 //   node kb/forge-big.mjs both --dir kb --name ruv-gists
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { digest } from './coverage-integrity.mjs';
+import { buildGistAggregate, captureGistSources } from './gist-receipts.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KB = path.join(ROOT, 'kb');
 const NAME = 'ruv-gists';
-const CACHE = path.join(KB, `.${NAME}.cache.json`);
+// The RESUMABLE capture cache (raw body text included) -- kept in the preparation workspace (kb/,
+// this job's own working directory) and NEVER published: build-bundle.mjs only ever ships named,
+// non-dotfile artifacts. It is purely an optimization; a missing or `--full`-ignored cache just
+// means every currently-listed gist is treated as changed and refetched.
+const CAPTURE_CACHE = path.join(KB, `.${NAME}.capture-cache.json`);
 
 const argv = process.argv.slice(2);
 const arg = (f, d = null) => { const i = argv.indexOf(f); return i !== -1 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
@@ -43,10 +56,6 @@ const DRY = argv.includes('--dry-run');
 const INDEX_ONLY = argv.includes('--index-only');
 const INDEX_PATH = path.join(ROOT, 'docs', 'RUV-GISTS.md');
 const FETCH_TIMEOUT_MS = Number(process.env.RUVNET_GISTS_FETCH_TIMEOUT_MS || 30_000);
-
-// Markdown/text only. A gist's code files are better read from the repo they land in; prose is the
-// thing repos don't carry.
-const TEXT_EXT = new Set(['.md', '.markdown', '.txt', '.rst']);
 
 /** Authenticated GitHub calls via `gh` — 5000 req/hr instead of 60, and no token handling here. */
 function gh(endpointArgs) {
@@ -102,31 +111,6 @@ async function listGistsPublic(owner) {
   return all;
 }
 
-/** Raw file bodies. The list endpoint truncates `content`, so fetch each gist individually. */
-function fetchGist(id) {
-  return JSON.parse(gh(['api', `gists/${id}`]));
-}
-
-// ~3200-char paragraph-aligned chunks — same shape build-concepts.mjs uses, so the reader's chunk
-// handling and the `#N` suffix convention stay uniform across stores.
-function chunk(text, size = 3200) {
-  const out = [];
-  let buf = '';
-  for (const para of text.split(/\n\n+/)) {
-    if (buf && buf.length + para.length + 2 > size) { out.push(buf); buf = ''; }
-    buf = buf ? `${buf}\n\n${para}` : para;
-  }
-  if (buf.trim()) out.push(buf);
-  return out.length ? out : [];
-}
-
-/** The banner that travels WITH the text, so a retrieval hit can never lose its provenance. */
-const banner = (g, file) =>
-  `SOURCE: GitHub gist by @${OWNER} — "${(g.description || file).replace(/\s+/g, ' ').trim().slice(0, 160)}"\n` +
-  `GIST STATUS: rUv's own notes / release announcement — may describe PROPOSED or UNRELEASED work.\n` +
-  `Treat as intent, not as confirmed shipped behavior: verify against repo source before asserting.\n` +
-  `updated: ${g.updated_at?.slice(0, 10)} · https://gist.github.com/${OWNER}/${g.id}\n\n`;
-
 /** A tiny, git-trackable feed of what rUv has published, newest first. Costs ~5 API calls. */
 function writeIndex(gists) {
   const rows = [...gists].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
@@ -153,10 +137,20 @@ function writeIndex(gists) {
   console.log(`  wrote ${path.relative(ROOT, INDEX_PATH)} (${rows.length} rows)`);
 }
 
+function loadCaptureCache() {
+  if (FULL || !fs.existsSync(CAPTURE_CACHE)) return null;
+  try { return JSON.parse(fs.readFileSync(CAPTURE_CACHE, 'utf8')); }
+  catch { return null; } // a corrupt local cache is a MISS, never a crash — everything refetches.
+}
+
+function saveCaptureCache(captured) {
+  try { fs.writeFileSync(CAPTURE_CACHE, JSON.stringify(captured)); }
+  catch (error) { console.error(`  note: could not persist the local capture cache (${error.message})`); }
+}
+
 async function main() {
   if (!fs.existsSync(KB)) { console.error(`ingest-gists: no kb dir at ${KB}`); process.exit(2); }
 
-  const cache = !FULL && fs.existsSync(CACHE) ? JSON.parse(fs.readFileSync(CACHE, 'utf8')) : {};
   console.log(`ingest-gists: listing public gists for @${OWNER}…`);
   let gists;
   try {
@@ -174,7 +168,20 @@ async function main() {
 
   if (INDEX_ONLY) { writeIndex(gists); return; }
 
-  const changed = gists.filter((g) => cache[g.id] !== g.updated_at);
+  // "changed" is computed against the ONE canonical schema-3 receipt (kb/ruv-gists.sources.json) —
+  // never a private cache file's idea of the truth. Absent/unreadable/pre-schema-3 reads as "nothing
+  // known yet", so every listed gist counts as changed (a correct, if conservative, first run).
+  const receiptFile = path.join(KB, `${NAME}.sources.json`);
+  let knownUpdatedAt = new Map();
+  if (!FULL && fs.existsSync(receiptFile)) {
+    try {
+      const receipt = JSON.parse(fs.readFileSync(receiptFile, 'utf8'));
+      if (receipt.schemaVersion === 3) {
+        knownUpdatedAt = new Map(Object.entries(receipt.gists || {}).map(([id, row]) => [id, row.updatedAt]));
+      }
+    } catch { /* treat as "nothing known yet" */ }
+  }
+  const changed = gists.filter((g) => knownUpdatedAt.get(g.id) !== g.updated_at);
   console.log(`  ${changed.length} new or updated since last run${FULL ? ' (--full: cache ignored)' : ''}`);
   if (DRY) {
     for (const g of changed.slice(0, 20)) console.log(`    ${g.updated_at.slice(0, 10)}  ${Object.keys(g.files)[0]}`);
@@ -186,73 +193,39 @@ async function main() {
     return;
   }
 
-  // Full rebuild of the passage file (ids must stay dense and aligned with the .rvf idmap; a
-  // partial append would desynchronise them — the failure mode that maps a vector to the wrong text).
-  const passages = [];
-  const entries = {};
-  let id = 0;
-  let files = 0;
-  let skipped = 0;
+  const observedAt = new Date().toISOString();
+  const rows = gists.map((g) => ({ id: g.id, updated_at: g.updated_at, files: g.files }));
+  const observation = {
+    owner: OWNER, observedAt,
+    observationSha256: digest({ owner: OWNER, rows: rows.map(({ id, updated_at }) => ({ id, updated_at })) }),
+    gists: { rows },
+  };
+  const now = () => observedAt;
 
-  for (const [i, stub] of gists.entries()) {
-    if (i % 25 === 0) process.stdout.write(`\r  fetching ${i}/${gists.length}…`);
-    let g;
-    try {
-      g = fetchGist(stub.id);
-    } catch (err) {
-      skipped++;
-      console.error(`\n  fetch failed for gist ${stub.id}: ${err.message}`);
-      continue;
-    }
-    for (const [fname, f] of Object.entries(g.files || {})) {
-      if (!TEXT_EXT.has(path.extname(fname).toLowerCase())) continue;
-      // JSONL readers treat U+2028/U+2029 as physical line separators on some runtimes. Normalize
-      // them before serialization so one JSON object always remains one physical passage line.
-      const body = (f.truncated && f.raw_url ? '' : (f.content || '')).replace(/[\u2028\u2029]/g, '\n');
-      if (!body.trim()) {
-        skipped++;
-        console.error(`\n  empty or truncated text file: ${stub.id}/${fname}`);
-        continue;
-      }
-      const title = (g.description || fname).replace(/\s+/g, ' ').trim().slice(0, 180) || fname;
-      const head = banner(g, fname);
-      // Banner on EVERY chunk, not just the first. Retrieval returns ONE chunk — if the provenance
-      // lives only in chunk 0, then chunk 2 reaches the model as an unlabelled assertion, which is
-      // exactly the fence this file claims to build. (Caught by reading a real retrieval: the top
-      // hit for "enable the flywheel" was `…flywheel.md#2` and carried no status line.)
-      const chunks = chunk(body);
-      chunks.forEach((c, ci) => {
-        const sid = String(id++);
-        const p = `${g.id.slice(0, 8)}/${fname}${chunks.length > 1 ? `#${ci}` : ''}`;
-        const text = head + c;
-        passages.push({ id: sid, text, path: p, title });
-        entries[sid] = { path: p, kind: 'doc', title, chunk: ci, preview: text.slice(0, 200) };
-      });
-      files++;
-    }
-    cache[stub.id] = stub.updated_at;
+  // Capture once ourselves (reusing the local body-bearing cache for anything unchanged) so we have
+  // real raw bytes to persist for NEXT run's reuse. Handing that same captured set to
+  // buildGistAggregate as ITS cache means its own internal capture pass is a 100%-reuse, zero-network
+  // pass — this file still routes every byte through the one canonical pipeline, it just does not
+  // throw away the bytes it already paid to fetch.
+  const priorCache = loadCaptureCache();
+  const captured = await captureGistSources({ observation, cache: priorCache, now });
+  // Embedding is deliberately NOT done here (buildVector: null) — nightly-gists.sh's own sharded
+  // `forge-big.mjs shard-all` embeds afterward, only when this process reports real changes; see the
+  // module header. generation stays null and RVF-GENERATIONS.json is left untouched.
+  const result = await buildGistAggregate({ observation, cache: captured, outDir: KB, buildVector: null, now });
+  saveCaptureCache(captured);
+
+  if (result.omitted) {
+    console.log(`ingest-gists: @${OWNER} currently has zero public gists — aggregate omitted, nothing ingested.`);
+    writeIndex(gists);
+    return;
   }
-  process.stdout.write('\r');
-
-  // A receipt-only or partial corpus is more dangerous than a failed run: its RVF idmap can look
-  // healthy while silently omitting live source. Preserve the previous complete corpus and make
-  // the nightly job retry instead of publishing incomplete search data.
-  if (skipped > 0) {
-    throw new Error(`ingest-gists: refusing to write partial corpus (${skipped} fetch/content failures)`);
-  }
-
-  fs.writeFileSync(path.join(KB, `${NAME}.passages.jsonl`), passages.map((p) => JSON.stringify(p)).join('\n') + '\n');
-  fs.writeFileSync(path.join(KB, `${NAME}.meta.json`), JSON.stringify({
-    model: NAME, dimensions: 0, metric: 'cosine', name: NAME,
-    generated: new Date().toISOString(), repo: `gists/${OWNER}`,
-    note: "rUv's public gists — announcements and thinking, PROPOSED unless confirmed in repo source.",
-    entries,
-  }, null, 2));
-  fs.writeFileSync(CACHE, JSON.stringify(cache, null, 2));
-
-  console.log(`ingest-gists: ${gists.length} gists · ${files} text files · ${passages.length} passages · ${skipped} skipped`);
+  // Report OUR OWN capture pass's reuseEvidence, not buildGistAggregate's internal one -- the latter
+  // is a 100%-reuse pass by construction (it is handed the set WE just captured) and would always
+  // read "reused N, fetched 0" regardless of how much real network work just happened.
+  console.log(`ingest-gists: ${gists.length} gists · reused ${captured.reuseEvidence.reused.length} · fetched ${captured.reuseEvidence.fetched.length} fresh`);
   writeIndex(gists);
-  console.log(`  wrote kb/${NAME}.passages.jsonl + kb/${NAME}.meta.json`);
+  console.log(`  wrote kb/${NAME}.passages.jsonl + kb/${NAME}.meta.json + kb/${NAME}.sources.json`);
   console.log(`  next: node kb/forge-big.mjs both --dir kb --name ${NAME}   (embed → ${NAME}.big.rvf)`);
 }
 
