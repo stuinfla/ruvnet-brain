@@ -121,6 +121,13 @@ export function sha256File(file) {
   return hash.digest('hex');
 }
 
+// One shared file-identity primitive: always hashes the actual written bytes on disk (never a
+// claimed/serialized value). Every corpus/release receipt reader and writer binds file identity
+// through this single function so they can never independently drift from each other.
+export function fileIdentity(file) {
+  return { file: path.basename(file), sha256: sha256File(file), bytes: fs.statSync(file).size };
+}
+
 const readJson = (file, label) => {
   let stat;
   try { stat = fs.lstatSync(file); } catch { throw new Error(`${label} is missing`); }
