@@ -599,7 +599,7 @@ export async function runNightlyTwoRunProof({ packagePath, bundlePath, out, time
   }
 }
 
-if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
   try {
     const args = parseArgs(process.argv.slice(2));
     const receipt = await runNightlyTwoRunProof({ packagePath: args.package, bundlePath: args.bundle, out: args.out,

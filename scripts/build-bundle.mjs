@@ -1069,7 +1069,7 @@ node forge-ask.mjs --dir . --name ruvector --variant big --q "what is the RVF co
 }
 
 // ---- CLI -----------------------------------------------------------------------------------------
-if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
   const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
   // Corpus content is a release asset, not a Git blob. A clean worktree has zero stores unless the
   // operator supplies the canonical external corpus directory (or has already built one into kb/,

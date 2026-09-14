@@ -986,7 +986,7 @@ export async function main(argv = process.argv.slice(2)) {
   return receipt.verdict === 'PASS' ? 0 : 1;
 }
 
-if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
   main().then((code) => { process.exitCode = code; }).catch((error) => {
     console.error(error?.message || error);
     process.exitCode = 1;
