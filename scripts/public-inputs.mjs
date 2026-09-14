@@ -45,12 +45,129 @@ const HEX40 = /^[a-f0-9]{40}$/;
 // signal build-bundle.mjs uses to decide between trusting an already-reconciled ASSETS directory
 // byte-for-byte and materializing fresh in the genuine local/standalone case.
 export const SELECTION_FILE = 'PUBLIC-INPUT-SELECTION.json';
+export const SELECTION_RECEIPT_KIND = 'ruvnet-brain-public-input-selection-receipt';
+// Schema 2 (Step 5 remediation, 2026-09-13): the receipt binds every included file's BYTES
+// (`files[]` = relative path + sha256 + size), not just its NAME. Schema 1 sealed names only, so a
+// consumer could verify that "alpha-primer.md" was selected while shipping any bytes at all under
+// that name -- exactly the "checks exists, then trusts blindly" trap Dual's review named.
+export const SELECTION_RECEIPT_SCHEMA = 2;
 
 /** Digest+size of an excluded file, WITHOUT its content -- the private-exclusion evidence never
  * carries the bytes it proves were excluded. */
 function excludedIdentity(file) {
   const { sha256, bytes } = fileIdentity(file);
   return { sha256, bytes };
+}
+
+// The ONE definition of "a managed public-prose entry" -- shared by the producer's positive-selection
+// cleanup below and by validateSelectionReceipt's leak check, so the two can never disagree about
+// which files this selection owns. Directory-level: `l2/` is owned wholesale.
+const MANAGED_PRIMER = /^.+-primer\.md$/;
+const MANAGED_TOPICS = /^l2-topics\..+\.json$/;
+const MANAGED_STATIC = ['capability-cards.md', 'repo-aliases.json'];
+const isManagedTopLevel = (name) => MANAGED_PRIMER.test(name) || MANAGED_TOPICS.test(name)
+  || MANAGED_STATIC.includes(name) || name === 'l2' || name === SELECTION_FILE;
+
+/** Every managed public-prose FILE currently on disk under `dir`, as relative POSIX paths (the
+ * receipt itself excluded). `l2/` is walked recursively: anything under it is owned by this
+ * selection, so a stray subdirectory there is a leak, not an exemption. */
+export function managedPublicProseFiles(dir) {
+  const out = [];
+  if (!fs.existsSync(dir)) return out;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === SELECTION_FILE) continue;
+    if (entry.name === 'l2') {
+      const walk = (abs, rel) => {
+        for (const child of fs.readdirSync(abs, { withFileTypes: true })) {
+          const childRel = `${rel}/${child.name}`;
+          if (child.isDirectory()) walk(path.join(abs, child.name), childRel);
+          else out.push(childRel);
+        }
+      };
+      if (entry.isDirectory()) walk(path.join(dir, 'l2'), 'l2');
+      else out.push('l2');
+      continue;
+    }
+    if (isManagedTopLevel(entry.name)) out.push(entry.name);
+  }
+  return out.sort();
+}
+
+/** Relative-path identity rows for every regular file under `dir` except the receipt itself. */
+function sealedFileRows(dir) {
+  const rows = [];
+  const walk = (abs, rel) => {
+    for (const entry of fs.readdirSync(abs, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      if (childRel === SELECTION_FILE) continue;
+      if (entry.isDirectory()) walk(path.join(abs, entry.name), childRel);
+      else {
+        const { sha256, bytes } = fileIdentity(path.join(abs, entry.name));
+        rows.push({ path: childRel, sha256, bytes });
+      }
+    }
+  };
+  walk(dir, '');
+  return rows;
+}
+
+/**
+ * validateSelectionReceipt({ receipt, dir }) -> receipt
+ *
+ * The fail-closed READER for SELECTION_FILE, owned by the same module that writes it (the same
+ * producer-owns-validator discipline gist-receipts.mjs uses). Every consumer that wants to trust a
+ * sealed public-input tree calls this instead of checking that the file merely exists:
+ *   - kind / schemaVersion are exactly this module's;
+ *   - receiptSha256 is recomputed from the receipt's own content and must match;
+ *   - every sealed file exists under `dir` as a regular file with the exact sha256 and byte count;
+ *   - every `included` name is backed by a sealed file, and every sealed file is named by `included`;
+ *   - no managed public-prose file exists on disk that the receipt does not seal (an extra managed
+ *     file is a LEAK -- unfenced prose riding along under a "sealed" label).
+ */
+export function validateSelectionReceipt({ receipt, dir } = {}) {
+  const root = path.resolve(dir || '');
+  const fail = (message) => { throw new Error(`public-input selection receipt: ${message}`); };
+  if (!receipt || typeof receipt !== 'object') fail('missing or not an object');
+  if (receipt.kind !== SELECTION_RECEIPT_KIND) fail(`kind is ${JSON.stringify(receipt.kind)}, expected ${SELECTION_RECEIPT_KIND}`);
+  if (receipt.schemaVersion !== SELECTION_RECEIPT_SCHEMA) fail(`schemaVersion is ${JSON.stringify(receipt.schemaVersion)}, expected ${SELECTION_RECEIPT_SCHEMA}`);
+  const { receiptSha256, ...payload } = receipt;
+  if (typeof receiptSha256 !== 'string' || receiptSha256 !== digest(payload)) fail('receiptSha256 does not match the receipt content');
+  const included = receipt.included;
+  if (!included || !Array.isArray(receipt.files) || !Array.isArray(included.primers) || !Array.isArray(included.topics)
+    || !Array.isArray(included.l2) || !Array.isArray(included.cards) || typeof included.aliases !== 'boolean') {
+    fail('included/files sections are malformed');
+  }
+  const sealed = new Map();
+  for (const row of receipt.files) {
+    if (typeof row?.path !== 'string' || !row.path || path.isAbsolute(row.path) || row.path.split('/').includes('..')
+      || !/^[a-f0-9]{64}$/.test(String(row.sha256 || '')) || !Number.isSafeInteger(row.bytes) || row.bytes < 0) {
+      fail(`sealed file row is malformed (${JSON.stringify(row?.path)})`);
+    }
+    if (sealed.has(row.path)) fail(`sealed file ${row.path} is listed twice`);
+    sealed.set(row.path, row);
+    const abs = path.join(root, row.path);
+    if (!fs.existsSync(abs)) fail(`sealed file ${row.path} is missing from ${root}`);
+    const stat = fs.lstatSync(abs);
+    if (!stat.isFile() || stat.isSymbolicLink()) fail(`sealed file ${row.path} is not a regular file`);
+    const { sha256, bytes } = fileIdentity(abs);
+    if (sha256 !== row.sha256 || bytes !== row.bytes) fail(`sealed file ${row.path} bytes differ from the receipt`);
+  }
+  const expected = new Set([
+    ...included.primers.map((repo) => `${repo}-primer.md`),
+    ...included.topics.map((repo) => `l2-topics.${repo}.json`),
+    ...included.l2.map((slug) => `l2/${slug}.md`),
+    ...(included.cards.length ? ['capability-cards.md'] : []),
+    ...(included.aliases ? ['repo-aliases.json'] : []),
+  ]);
+  for (const name of expected) if (!sealed.has(name)) fail(`included name ${name} has no sealed file row`);
+  // capability-cards.md may legitimately be sealed with zero card sections (header-only file);
+  // every OTHER sealed file must be accounted for by an included name.
+  for (const name of sealed.keys()) {
+    if (!expected.has(name) && name !== 'capability-cards.md') fail(`sealed file ${name} is not named by any included entry`);
+  }
+  const extras = managedPublicProseFiles(root).filter((name) => !sealed.has(name));
+  if (extras.length) fail(`managed public-prose file(s) on disk are not sealed by the receipt (unfenced leak): ${extras.join(', ')}`);
+  return receipt;
 }
 
 // Legacy slug ownership that predates per-repo l2-topics.<repo>.json files. Treated exactly like an
@@ -102,12 +219,14 @@ export function resolveTopicOwnership(kbDir, repos) {
   return ownership;
 }
 
-function sealSelectionReceipt({ builderSha, generatedAt, included, excluded, ownership }) {
+function sealSelectionReceipt({ builderSha, generatedAt, included, excluded, ownership, files }) {
   const payload = {
-    schemaVersion: 1,
-    kind: 'ruvnet-brain-public-input-selection-receipt',
+    schemaVersion: SELECTION_RECEIPT_SCHEMA,
+    kind: SELECTION_RECEIPT_KIND,
     builderSha: builderSha || null,
     generatedAt,
+    // Byte binding (schema 2): every file this selection actually wrote, by relative path.
+    files: [...files].sort((a, b) => a.path.localeCompare(b.path)),
     included: {
       primers: [...included.primers].sort(),
       topics: [...included.topics].sort(),
@@ -227,20 +346,21 @@ export function materializePublicInputs({ builderRoot = DEFAULT_ROOT, policy = {
       included.aliases = true;
     }
 
-    const selectionReceipt = sealSelectionReceipt({ builderSha, generatedAt: now(), included, excluded, ownership });
+    // Seal the BYTES actually staged (schema 2), never a claim about them: identities are read back
+    // from the stage directory after every file has been written.
+    const selectionReceipt = sealSelectionReceipt({
+      builderSha, generatedAt: now(), included, excluded, ownership, files: sealedFileRows(stage),
+    });
     fs.writeFileSync(path.join(stage, SELECTION_FILE), `${JSON.stringify(selectionReceipt, null, 2)}\n`);
 
     // Positive selection (rule 3): remove every previously-managed entry that this round did NOT
     // reproduce -- a primer/topics file whose source disappeared or went private simply never lands
     // in `stage`, and is removed here rather than left behind by an overlay. `stage` is fully built
-    // (every file read from `kb` already) before anything under `out` is touched.
+    // (every file read from `kb` already) before anything under `out` is touched. "Managed" is the
+    // SAME predicate validateSelectionReceipt uses for its leak check (isManagedTopLevel).
     const stageEntries = new Set(fs.readdirSync(stage));
-    const managedPattern = /^.+-primer\.md$/;
-    const topicsPattern = /^l2-topics\..+\.json$/;
-    const staticManaged = ['l2', 'capability-cards.md', 'repo-aliases.json', SELECTION_FILE];
     const stale = fs.existsSync(out)
-      ? fs.readdirSync(out).filter((name) => (managedPattern.test(name) || topicsPattern.test(name)
-        || staticManaged.includes(name)) && !stageEntries.has(name))
+      ? fs.readdirSync(out).filter((name) => isManagedTopLevel(name) && !stageEntries.has(name))
       : [];
     for (const name of stale) fs.rmSync(path.join(out, name), { recursive: true, force: true });
     promoteArtifactSet({ liveDir: out, candidateDir: stage, files: [...stageEntries] });

@@ -77,6 +77,13 @@ coverage/
 # gist ingest fetch-cache (machine-local; the index in docs/ is the tracked artifact)
 kb/.ruv-gists.cache.json
 
+# The public-input selection receipt a STANDALONE `node scripts/build-bundle.mjs` (corpus === kb/)
+# seals into kb/ as a side effect of self-materializing. It is per-run scratch, never source: a
+# committed copy would be a stale receipt that a later run could be tricked into "trusting".
+# build-bundle.mjs never trusts a checkout copy (standalone always re-materializes), and this rule
+# makes sure one can never reach a commit either (Step 5 remediation, 2026-09-13).
+kb/PUBLIC-INPUT-SELECTION.json
+
 # ruflo flywheel: the locally-applied signed retrieval-config champion (per-install state)
 .claude/proven-config.json
 .claude/.proven-config-version

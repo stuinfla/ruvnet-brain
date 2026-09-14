@@ -46,13 +46,24 @@ describe('both writers strip before writing — the regression guard', () => {
   // A source-level guard, deliberately. Running brain-stamp/build-bundle in a unit test would
   // shell out to git and rewrite real files; asserting on what they WRITE catches the revert
   // (`brainVersion: BRAIN_VERSION`) that caused this, at the moment someone types it.
-  for (const f of ['scripts/brain-stamp.mjs', 'scripts/build-bundle.mjs']) {
-    it(`${f} writes brainVersion via stripTag(), not the raw tag`, () => {
-      const src = read(f);
-      expect(src).toMatch(/brainVersion:\s*stripTag\(/);
-      expect(src).not.toMatch(/brainVersion:\s*BRAIN_VERSION\s*,/);
-    });
-  }
+  it('scripts/brain-stamp.mjs writes brainVersion via stripTag(), not the raw tag', () => {
+    const src = read('scripts/brain-stamp.mjs');
+    expect(src).toMatch(/brainVersion:\s*stripTag\(/);
+    expect(src).not.toMatch(/brainVersion:\s*BRAIN_VERSION\s*,/);
+  });
+
+  // Step 5 (2026-09-13): build-bundle.mjs no longer carries a single global BRAIN_VERSION constant
+  // written inline at every `brainVersion:` call site. assembleBundle strips the tag EXACTLY ONCE,
+  // into `version`, and every `brainVersion:` field (SOURCE.json, the generation ledger, manifest.json)
+  // reuses that same already-stripped value — a stronger guarantee than repeating stripTag() at every
+  // site (there is only one place the tag could ever leak a 'v' from), so the guard here checks the
+  // single stripping point exists and that no `brainVersion:` field ever assigns the raw tag form.
+  it('scripts/build-bundle.mjs strips the tag exactly once, then reuses the bare literal everywhere', () => {
+    const src = read('scripts/build-bundle.mjs');
+    expect(src).toMatch(/const\s+version\s*=\s*stripTag\(/);
+    expect(src).toMatch(/brainVersion:\s*version\b/);
+    expect(src).not.toMatch(/brainVersion:\s*(identity\.version|versionTag|getVersionTag\(\))\s*[,}]/);
+  });
 
   it('brain-stamp still uses the v-prefixed TAG for the human stamp line', () => {
     // The tag is not wrong — it is wrong only inside a field. Keep the display form.
@@ -63,9 +74,17 @@ describe('both writers strip before writing — the regression guard', () => {
     expect(read('scripts/build-bundle.mjs')).toMatch(/arg\('--version', getVersionTag\(\)\)/);
   });
 
-  it('build-bundle rebinds both SOURCE identity fields to the current generation', () => {
+  // Step 5 (2026-09-13): SOURCE.json is no longer copied from the checkout and then rebound after
+  // the fact (`doc.brainVersion = getVersion()`) — projectStoreViews generates it already bound to
+  // the exact current generation identity, in one place, at construction time. Assert the identity
+  // fields are bound from the SAME `version` the rest of the assembly uses, not a second, independent
+  // getVersion()/getVersionTag() call that could drift from it.
+  it('build-bundle binds SOURCE.json identity fields to the exact current generation at construction, never by rebinding a copy', () => {
     const src = read('scripts/build-bundle.mjs');
-    expect(src).toContain('doc.brainVersion = getVersion()');
-    expect(src).toContain('doc.releaseTag = getVersionTag()');
+    expect(src).not.toMatch(/cp\('SOURCE\.json'/);
+    expect(src).not.toMatch(/doc\.brainVersion\s*=\s*getVersion\(\)/);
+    const projectStoreViews = src.slice(src.indexOf('export function projectStoreViews'), src.indexOf('export async function assembleBundle'));
+    expect(projectStoreViews).toMatch(/brainVersion:\s*version\b/);
+    expect(projectStoreViews).toMatch(/releaseTag:\s*`v\$\{version\}`/);
   });
 });
