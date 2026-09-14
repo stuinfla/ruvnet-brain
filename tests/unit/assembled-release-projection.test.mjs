@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { bindAssembledReleaseProjection, createReleaseProjection } from '../../scripts/release-projection.mjs';
+import { sealGistReceiptSet } from '../../scripts/gist-receipts.mjs';
 import { coverageGenerationFor, validateCoverageDirectory } from '../../plugin/scripts/coverage-integrity.mjs';
 import { getVersion } from '../../scripts/version.mjs';
 
@@ -17,11 +18,24 @@ const project = (corpusCoverage) => createReleaseProjection({ corpusCoverage, as
   corpusSeed: { tag: `corpus-sha256-${'e'.repeat(64)}`, archiveSha256: 'e'.repeat(64), archiveBytes: 1 },
   baselineReceiptSha256: 'f'.repeat(64) });
 
-// The projection reads the SEALED receipt from kb/ruv-gists.sources.json (no injection seam — the
-// seed is not a parameter), so the fixture's seeded gist set is exactly that receipt's id set.
-// Stage the aggregate store the seed ships and ledger it, the way the fixture builder does `fixture`.
+// Step 2 (2026-09-13): the projection now reads the canonical schema-3 receipt from the RECONCILED
+// assets directory, never from the maintainer checkout as a fallback -- that checkout/reconciled-
+// assets divergence was exactly the bug found 2026-09-13. This fixture simulates a reconciled
+// assets directory by copying the checkout's own real, current receipt into `assetsDir` (which is
+// what reconciliation actually does in production, via buildGistAggregate) rather than relying on
+// release-projection.mjs to read the checkout on its own. The fixture's seeded gist set is exactly
+// that receipt's id set.
 function stageSeededGistAggregate() {
-  const receipt = JSON.parse(fs.readFileSync(path.join(ROOT, 'kb', 'ruv-gists.sources.json'), 'utf8'));
+  const source = JSON.parse(fs.readFileSync(path.join(ROOT, 'kb', 'ruv-gists.sources.json'), 'utf8'));
+  // ruv-gists.passages.jsonl is a gitignored build artifact (like every RVF binary), so this checkout
+  // never has the real one to copy. Stage a fixture passages file and reseal the real receipt's
+  // gist set around ITS actual bytes -- sealGistReceiptSet is the same production sealing function,
+  // so the result is exactly as internally consistent as a real buildGistAggregate output.
+  const passageBody = 'fixture ruv-gists passages\n';
+  fs.writeFileSync(path.join(assetsDir, 'ruv-gists.passages.jsonl'), passageBody);
+  const passagesSha256 = crypto.createHash('sha256').update(passageBody).digest('hex');
+  const receipt = sealGistReceiptSet({ ...source, passagesSha256 });
+  fs.writeFileSync(path.join(assetsDir, 'ruv-gists.sources.json'), JSON.stringify(receipt));
   const bytes = Buffer.alloc(768, 9);
   fs.writeFileSync(path.join(assetsDir, 'ruv-gists.big.rvf'), bytes);
   const ledgerFile = path.join(assetsDir, 'RVF-GENERATIONS.json');
@@ -29,18 +43,21 @@ function stageSeededGistAggregate() {
   ledger.stores['ruv-gists'] = { file: 'ruv-gists.big.rvf', sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
     bytes: bytes.length, sourceCommit: null, model: 'fixture-model', dimensions: 384, builtUtc: '2026-08-21T12:00:00.000Z' };
   fs.writeFileSync(ledgerFile, `${JSON.stringify(ledger)}\n`);
-  return Object.keys(receipt.gists);
+  return { seededIds: Object.keys(receipt.gists), sourceObservationSha256: receipt.sourceObservationSha256 };
 }
 const gistRow = (id) => ({ key: `gist:${id}`, kind: 'gist', name: id, url: `https://gist.github.com/ruvnet/${id}`,
   status: 'UNVERIFIED', disposition: 'eligible', upstream: { updatedAt: '2026-09-10T00:00:00Z' }, artifact: { store: 'ruv-gists' }, reasons: [] });
 const repoRow = (name) => ({ key: `repo:${name}`, kind: 'repository', name, url: `https://github.com/ruvnet/${name}`,
   status: 'UNVERIFIED', disposition: 'eligible', upstream: {}, artifact: { store: name }, reasons: [] });
 // An observed corpus ledger in the exact shape source-coverage.mjs emits and validateCoverageLedger accepts.
-function observedCorpus(rows) {
+// `sourceObservationSha256` must be the EXACT digest the staged gist receipt is sealed against --
+// validatePublicInventory now genuinely binds the two (schema 3 no longer skips this check the way
+// the old schema-2 downgrade silently did).
+function observedCorpus(rows, { sourceObservationSha256 = 'c'.repeat(64) } = {}) {
   const count = (kind) => rows.filter((row) => row.kind === kind).length;
   const enumerationReceipt = { schemaVersion: 1, terminal: true, duplicateKeys: 0,
     repositories: { expected: count('repository'), pages: [] }, gists: { expected: count('gist'), pages: [] } };
-  const identity = { generatorSourceSha: 'a'.repeat(64), snapshotRoot: 'b'.repeat(64), sourceObservationSha256: 'c'.repeat(64) };
+  const identity = { generatorSourceSha: 'a'.repeat(64), snapshotRoot: 'b'.repeat(64), sourceObservationSha256 };
   const byStatus = Object.fromEntries([...new Set(rows.map((row) => row.status))].sort()
     .map((status) => [status, rows.filter((row) => row.status === status).length]));
   const corpus = { schemaVersion: 1, kind: 'ruvnet-brain-corpus-coverage', ...identity, rows, enumerationReceipt,
@@ -96,9 +113,10 @@ it('rejects modified coverage instead of treating ledger rebinding as qualificat
 // coverage-integrity rejected the receipt — `release-qe` red on 740752c5 and 7b472440. A gist the
 // seed receipt does not carry is unseeded exactly like a repository whose store is absent.
 it('scopes gist rows to the sealed seed receipt: unseeded gists are dropped, never rewritten CURRENT', () => {
-  const seededIds = stageSeededGistAggregate();
+  const { seededIds, sourceObservationSha256 } = stageSeededGistAggregate();
   const unseeded = Array.from({ length: 13 }, (_, i) => `${'f'.repeat(24)}${String(i).padStart(8, '0')}`);
-  const corpus = observedCorpus([repoRow('fixture'), repoRow('unseeded-repo'), ...seededIds.map(gistRow), ...unseeded.map(gistRow)]);
+  const corpus = observedCorpus([repoRow('fixture'), repoRow('unseeded-repo'), ...seededIds.map(gistRow), ...unseeded.map(gistRow)],
+    { sourceObservationSha256 });
   expect(corpus.totals.gists).toBe(seededIds.length + unseeded.length);
 
   const release = project(corpus);
@@ -116,9 +134,10 @@ it('scopes gist rows to the sealed seed receipt: unseeded gists are dropped, nev
   expect(observed.rows.filter((row) => row.kind === 'gist')).toHaveLength(seededIds.length + unseeded.length);
   expect(observed.rows.map((row) => row.key)).toContain('repo:unseeded-repo');
   for (const id of unseeded) expect(observed.rows.find((row) => row.key === `gist:${id}`)?.status).toBe('UNVERIFIED');
-  // The receipt written into the assets is the sealed one — not regenerated to fit the observation.
+  // The receipt in the assets directory is untouched by projection -- it was already the sealed,
+  // canonical schema-3 receipt buildGistAggregate produced; projection only READS it.
   const written = JSON.parse(fs.readFileSync(path.join(assetsDir, 'ruv-gists.sources.json')));
-  expect(written.schemaVersion).toBe(2);
+  expect(written.schemaVersion).toBe(3);
   expect(Object.keys(written.gists).sort()).toEqual([...seededIds].sort());
   // And the assembled directory validates end to end, exactly as build-bundle --projection then binds it.
   expect(bind().valid).toBe(true);

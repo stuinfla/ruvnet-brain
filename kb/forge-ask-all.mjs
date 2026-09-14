@@ -143,7 +143,7 @@ function manifestInventoryCandidates(dir, name, query, topN = 8) {
   const asksInventory = /\bnpm\b/.test(q)
     && /\b(?:crate|crates|cargo)\b/.test(q)
     && /\bworkspace\b/.test(q);
-  const namesRepo = new RegExp(`\\b${String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(query);
+  const namesRepo = nameAppearsInQuery(name, query);
   if (!asksInventory || !namesRepo) return [];
   const e = bm25Corpus(dir, name);
   if (!e) return [];
@@ -2378,6 +2378,17 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Hyphen-safe word boundary (issue #283). A bare `\b` boundary treats a hyphen as a word break,
+// so `\bruvector\b` also matches inside "ruvector-core" -- the SHORTER sibling of every
+// hyphen-prefixed compound store (ruvnet/ruvnet-brain, sparc/sparc-ide, ruos/ruos-macair,
+// electo1/electo1-js, ruvector/ruvector-core) falsely reads as "named" whenever the query actually
+// names the longer, compound one. This is the exact technique inventoryReposFromQuery already used
+// correctly (immediately below); isNamed/NAME_BOOST and manifestInventoryCandidates now share it
+// rather than each inventing their own bare-`\b` pattern.
+function nameAppearsInQuery(name, query) {
+  return new RegExp(`(?:^|[^a-z0-9._-])${escapeRegExp(name)}(?=$|[^a-z0-9._-])`, 'i').test(query);
+}
+
 export function deployedFamilyReposFromQuery(query, dir, availableRepos) {
   const available = Array.isArray(availableRepos) ? availableRepos : [];
   if (!available.length) return [];
@@ -2466,7 +2477,7 @@ function inventoryReposFromQuery(query, dir, availableRepos) {
   const exactInventory = [];
   const naturalProjectScope = [];
   for (const repo of available) {
-    if (repo.length > 4 && new RegExp(`(?:^|[^a-z0-9._-])${escapeRegExp(repo)}(?=$|[^a-z0-9._-])`, 'i').test(query)) {
+    if (repo.length > 4 && nameAppearsInQuery(repo, query)) {
       exactInventory.push(repo);
     }
     const names = repositoryNames(repo, dir);
@@ -2677,15 +2688,20 @@ export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true }) 
   // Word-boundary match on the repo name (not substring) so `fact` doesn't fire on "facts", while
   // multi-word names like `agent-harness-generator` still match. Boost clears a sibling that merely
   // *contains a file named after* the repo (e.g. dspy.ts/…/safla.ts) when the question names the repo.
-  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // Length floor 3, not 4: the floor exists to keep trivial tokens from matching, but two REAL
   // stores have 3-char names (rvm, daa) and the old >=4 floor silently exempted them from the
   // affinity boost — "Can RVM partition hardware…" lost to ruvector's vendored crates/rvm/ copy
   // because rvm's own userguide never got the boost its name earned. Word-boundary matching
   // already prevents substring hits, so 3-char store names are safe to honor.
+  //
+  // A bare `\b` boundary is NOT hyphen-safe: a hyphen is a non-word character, so `\bruvector\b`
+  // also matches inside "ruvector-core" -- the SHORTER sibling of every hyphen-prefixed compound
+  // store falsely reads as named whenever the query actually names the longer, compound one.
+  // nameAppearsInQuery is the same hyphen-safe boundary inventoryReposFromQuery already uses
+  // correctly (above) -- reused here rather than inventing a second pattern (issue #283).
   const isNamed = (repo) => {
     const names = repositoryNames(repo);
-    return names.some((n) => n.length >= 3 && new RegExp(`\\b${esc(n)}\\b`, 'i').test(query));
+    return names.some((n) => n.length >= 3 && nameAppearsInQuery(n, query));
   };
   const NAME_BOOST = 2.0;
   for (const r of ranked) {
@@ -3020,7 +3036,31 @@ export async function searchAll({
     // gist content under this exact reason string. rUv (the person) is never itself hyphenated into
     // a compound name, so excluding that one case removes the false positive without narrowing the
     // genuine "what did rUv publish" gist-provenance intent this line exists to catch.
-    const gistIntent = /\b(?:gist|rUv(?:'s)?(?!-)|published|write[- ]up|announcement|fable\.md|first\s+to\s+market|agentbbs|jacobian[- ]lens|workspace[- ]lens|interpretability\s+package)\b/i.test(String(query || ''));
+    //
+    // "published" alone is a common English word (issue #285, same root shape as the rUv-hyphen
+    // fix above -- a common word/fragment overriding a legitimate product question). A bare
+    // `\bpublished\b` fires on any question that happens to ask about a documented number rather
+    // than an actual gist/announcement: "What is the published SWE-Bench score of ruv-swarm?" has
+    // empty namedRepos (ruv-swarm's content lives inside a different store, and the query never
+    // literally names it), so this alternative alone silently redirected the question away from
+    // the real answer. Fix: exclude the "published <metric> ... of/for/by <something>" measurement-
+    // attribution shape, which is never itself a request for a gist -- narrower than dropping
+    // "published" outright, so "What did rUv publish about X" and "What was published this week?"
+    // still route correctly. Reviewed every other alternative in this regex for the same shape:
+    // gist/write-up/announcement/fable.md/first-to-market/agentbbs/jacobian-lens/workspace-lens/
+    // interpretability-package are all specific tokens or multi-word phrases, not bare common
+    // English words, so "published" was the only one exhibiting this failure mode.
+    const publishedAsMeasurementAttribution = new RegExp(
+      '\\bpublished\\b'
+        + '(?:\\s+\\S+){0,4}?\\s+(?:score|scores|result|results|benchmark|benchmarks|number|numbers'
+        + '|metric|metrics|figure|figures|version|versions|release|releases|rating|ratings|ranking|rankings)\\b'
+        + '(?:\\s+\\S+){0,3}?\\s+(?:of|for|by)\\b',
+      'i',
+    ).test(String(query || ''));
+    const gistIntent = (
+      /\b(?:gist|rUv(?:'s)?(?!-)|write[- ]up|announcement|fable\.md|first\s+to\s+market|agentbbs|jacobian[- ]lens|workspace[- ]lens|interpretability\s+package)\b/i.test(String(query || ''))
+      || (/\bpublished\b/i.test(String(query || '')) && !publishedAsMeasurementAttribution)
+    );
     if (gistIntent && discovered.includes('ruv-gists') && !planned.namedRepos?.length) {
       planned = {
         repos: ['ruv-gists'],
@@ -3224,6 +3264,12 @@ export async function searchAll({
     }
   }
   const list = discovered;
+  // The full set of real, independently-indexed store names, for the identifier-lane's
+  // foreign-repo-name guard (issue #286 RC3, kb/identifier-lane.mjs's identifierEvidence): an
+  // identifier that IS itself one of these names has an authoritative home already, so a
+  // DIFFERENT repo's own subtree merely sharing that name should not earn the same "authoritatively
+  // named after this" credit.
+  const knownRepos = new Set(discovered.map((r) => String(r).toLowerCase()));
   const perRepo = {};
   // CORPUS AGE (issue #31, Jan Lafko): the brain is a periodic snapshot, and a model quoting a
   // version from it had NO signal that the fact might trail live reality. Derive the queried
@@ -3336,7 +3382,7 @@ export async function searchAll({
       if (identifierScanTokens.length) {
         const seen = new Set(cands.map((candidate) => candidate.path));
         const scan = identifierScan(dir, identifierScanTokens, { maxRepos: 2 });
-        const byIdentifier = identifierCandidates(scan, name, identifierTokens)
+        const byIdentifier = identifierCandidates(scan, name, identifierTokens, 8, knownRepos)
           .filter((candidate) => !seen.has(candidate.path));
         cands = cands.concat(byIdentifier);
       }

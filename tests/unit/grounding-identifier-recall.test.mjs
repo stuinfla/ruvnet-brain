@@ -120,6 +120,72 @@ describe('the boost is EARNED — a chunk that repeats the question must not out
   });
 });
 
+// Issue #286 root cause 3 (photonlayer): TWO independent path-attribution false positives, found
+// live against the real release-candidate bundle. Both fixed in identifierEvidence; both fixtures
+// below are reconstructed from the real measured data (repo=ruvector, path=
+// crates/photonlayer-bench/src/bin/bench.rs, ce=-3.804 raw; repo=ruvector, path=
+// docs/research/photonlayer/ASSESSMENT.md, ce=1.795 post-boost) so this is not a synthetic case.
+describe('pathNamed is a whole PATH SEGMENT, never a directory-name prefix (issue #286 RC3)', () => {
+  const ids = ['photonlayer'];
+  it('does NOT credit a sibling directory that merely STARTS WITH the identifier', () => {
+    // crates/photonlayer-bench/... contains the literal substring "/photonlayer" (the start of
+    // "photonlayer-bench"), which is what let ruvector's own, unrelated photonlayer-bench subtree
+    // earn the same "named after this" credit as the real photonlayer repo's own files.
+    const evidence = identifierEvidence(
+      { path: 'crates/photonlayer-bench/src/bin/bench.rs', text: 'use photonlayer_bench::baselines;' },
+      ids,
+    );
+    expect(evidence.pathNamed).toBe(0);
+    // The body text does still literally contain "photonlayer" (via "photonlayer_bench"), so a
+    // mention is still earned — just not the stronger, path-based "this document IS the thing" credit.
+    expect(evidence.matched).toBe(true);
+    expect(identifierBoost(evidence)).toBe(1);
+  });
+  it('still credits a document living in a directory EXACTLY named after the identifier', () => {
+    const evidence = identifierEvidence({ path: 'crates/photonlayer/README.md', text: 'binary' }, ids);
+    expect(evidence.pathNamed).toBe(1);
+  });
+});
+
+describe('pathNamed defers to the identifier\'s OWN repo when it collides with a different, ' +
+  'independently-indexed store (issue #286 RC3)', () => {
+  const ids = ['photonlayer'];
+  const knownRepos = new Set(['photonlayer', 'ruvector']);
+  it('does not credit a foreign repo\'s own subtree that happens to share the identifier\'s name', () => {
+    // ruvector's docs/research/photonlayer/ASSESSMENT.md is not a vendored copy of anything — it is
+    // ruvector's own, genuine research note about PhotonLayer — but "photonlayer" already has an
+    // authoritative home (the photonlayer store itself), so a same-named subtree in a DIFFERENT,
+    // independently-indexed repo must not earn that repo's own "authoritatively named after this".
+    const evidence = identifierEvidence(
+      { path: 'docs/research/photonlayer/ASSESSMENT.md', text: 'PhotonLayer is a deterministic optical AI front end.' },
+      ids,
+      { repo: 'ruvector', knownRepos },
+    );
+    expect(evidence.pathNamed).toBe(0);
+    // Still earns the mention floor — the fix removes false PATH attribution, not genuine content.
+    expect(evidence.matched).toBe(true);
+    expect(identifierBoost(evidence)).toBe(1);
+  });
+  it('still credits the identifier\'s OWN repo for the exact same path shape', () => {
+    const evidence = identifierEvidence(
+      { path: 'docs/research/photonlayer/ASSESSMENT.md', text: 'PhotonLayer is a deterministic optical AI front end.' },
+      ids,
+      { repo: 'photonlayer', knownRepos },
+    );
+    expect(evidence.pathNamed).toBe(1);
+  });
+  it('is a no-op when the identifier is not itself a known repo name (the founding memory.db case)', () => {
+    // Every existing identifier-lane behavior — the whole reason this module exists — must be
+    // untouched: filenames like memory.db are never repo names, so the guard never engages for them.
+    const evidence = identifierEvidence(
+      { path: 'src/memory.db', text: 'binary' },
+      ['memory.db'],
+      { repo: 'ruflo', knownRepos: new Set(['photonlayer', 'ruvector']) },
+    );
+    expect(evidence.pathNamed).toBe(1);
+  });
+});
+
 describe('identifierExcerpt — the ranker reads the window around the identifier', () => {
   it('centres a long passage on the identifier instead of its first 512 tokens', () => {
     const noise = 'unrelated release entry. '.repeat(300);

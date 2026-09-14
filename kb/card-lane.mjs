@@ -377,10 +377,20 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
   }
   const aliases = loadRepoAliases(dir);
   const scopedPackage = /@[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+/i.test(q);
+  // Hyphen-safe phrase match (issue #284). The old version folded hyphens to spaces on BOTH the
+  // repo name and the query (qIdentityPhrase), so a bare store name matched INSIDE its own
+  // hyphen-prefixed compound sibling: a short name reads as present in its own longer sibling once
+  // that sibling's hyphen is folded to a space, and the same shape breaks any hyphen-prefixed pair.
+  // Fix: keep the useful part of folding -- a hyphen or a space between the repo's own WORDS is
+  // interchangeable, so a multi-word name still matches a query that typed a space instead of a
+  // hyphen -- but check it against the RAW query with a hyphen-safe outer boundary (the same
+  // technique forge-ask-all.mjs's inventoryReposFromQuery already uses), so the match fails the
+  // instant the name is glued to more identifier characters on either side.
   const namesRepo = (repo) => {
-    const phrase = String(repo).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    return phrase.length >= 3
-      && new RegExp(`(?:^|\\s)${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|\\s)`).test(qIdentityPhrase);
+    const words = String(repo).toLowerCase().match(/[a-z0-9]+/g);
+    if (!words || words.join(' ').length < 3) return false;
+    const pattern = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s-]+');
+    return new RegExp(`(?:^|[^a-z0-9._-])${pattern}(?=$|[^a-z0-9._-])`, 'i').test(q);
   };
   const canonicalNamed = new Set();
   const aliasNamed = new Set();

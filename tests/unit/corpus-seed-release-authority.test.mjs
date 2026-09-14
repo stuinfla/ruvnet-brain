@@ -41,24 +41,32 @@ process.exit(0);
   const digest = sha256(bundle);
   const receiptFile = path.join(dir, 'corpus-receipt.json');
   const receipt = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'ruvnet-brain-corpus-candidate',
     builderSourceSha: HEAD,
     createdAt: '2026-08-21T12:34:56.000Z',
-    coverageGeneration: 'coverage-2026-08-21',
+    archiveManifest: { file: 'ARCHIVE-MANIFEST.json', sha256: 'e'.repeat(64), bytes: 5 },
+    archiveManifestVersion: '9.9.9',
+    archiveManifestReleaseTag: 'v9.9.9',
+    fileCount: 6,
+    totalBytes: 42,
     storeCount: 1,
     stores: [{
-      name: 'alpha', sourceCommit: 'a'.repeat(40), builtUtc: '2026-08-21T12:00:00.000Z',
+      name: 'alpha', kind: 'repository', sourceCommit: 'a'.repeat(40), builtUtc: '2026-08-21T12:00:00.000Z',
       model: 'local', dimensions: 384,
       files: [{ file: 'alpha.big.rvf', sha256: 'a'.repeat(64), bytes: 1 }],
     }],
     privateFence: { file: 'PRIVATE-STORES.json', sha256: 'b'.repeat(64), bytes: 2 },
-    eligibilityPolicy: { file: 'source-coverage.json', sha256: 'c'.repeat(64), bytes: 3 },
     generationLedger: { file: 'RVF-GENERATIONS.json', sha256: 'd'.repeat(64), bytes: 4 },
+    sourceManifest: { file: 'SOURCE.json', sha256: 'f'.repeat(64), bytes: 3 },
+    gistAggregate: null,
+    derivedStores: [],
     excludedPrivateStores: ['secret'],
     duplicateRvfDigests: [],
     unreceiptedRvfFiles: [],
     missingSidecars: [],
+    bootstrap: null,
+    finalBytePartitionSha256: '1'.repeat(64),
     archive: { file: path.basename(bundle), sha256: digest, bytes: fs.statSync(bundle).size },
     generator: { corpusCandidateSha256: sha256(path.join(ROOT, 'scripts/corpus-candidate.mjs')) },
   };
@@ -167,12 +175,14 @@ describe('protected corpus-seed release authority', () => {
 
   it.each([
     ['receipt kind', (f) => { f.receipt.kind = 'forged'; }],
+    ['schema downgrade', (f) => { f.receipt.schemaVersion = 1; }],
     ['failure arrays', (f) => { f.receipt.missingSidecars = ['alpha.meta.json']; }],
     ['store count', (f) => { f.receipt.storeCount = 2; }],
-    ['policy binding', (f) => { f.receipt.eligibilityPolicy.sha256 = 'nope'; }],
+    ['generation ledger binding', (f) => { f.receipt.generationLedger.sha256 = 'nope'; }],
     ['archive name', (f) => { f.receipt.archive.file = 'other.zip'; }],
     ['generator binding', (f) => { f.receipt.generator.corpusCandidateSha256 = 'e'.repeat(64); }],
     ['store provenance', (f) => { f.receipt.stores[0].sourceCommit = ''; }],
+    ['store kind', (f) => { f.receipt.stores[0].kind = 'not-a-kind'; }],
     ['private exclusion list', (f) => { f.receipt.excludedPrivateStores = 'secret'; }],
   ])('refuses invalid %s binding', (_name, mutate) => {
     const f = fixture();

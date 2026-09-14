@@ -5,10 +5,15 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   assertBootstrapIdentity,
+  assertPathNotOverlapping,
   executeReconciliation,
   normalizeExtractedCorpus,
   planReconciliation,
   prepareCorpusCandidate,
+  pruneIneligibleStores,
+  reconcileCorpusUntilStable,
+  reconcileUntilStable,
+  seedPrivateFenceEvidence,
 } from '../../scripts/corpus-reconcile.mjs';
 
 const temps = [];
@@ -67,12 +72,24 @@ describe('exact corpus bootstrap identity', () => {
     expect(() => normalizeExtractedCorpus({ extractedDir: ambiguous, assetsDir: path.join(root, 'bad-assets') }))
       .toThrow(/exactly one RVF-GENERATIONS/i);
 
+    // A published seed's own PRIVATE-STORES.json is accepted as AUTHENTICATED HISTORICAL EVIDENCE
+    // (task 4 / ADR bootstrap-fence correction) — never as current policy. It is kept aside under a
+    // distinct name so it can never shadow or be overwritten by the exact builder checkout's own
+    // canonical fence (copied in by main(), after normalizeExtractedCorpus returns).
     const fenced = path.join(root, 'fenced');
     fs.mkdirSync(fenced, { recursive: true });
     fs.writeFileSync(path.join(fenced, 'RVF-GENERATIONS.json'), '{"stores":{}}');
-    fs.writeFileSync(path.join(fenced, 'PRIVATE-STORES.json'), '{"privateStores":[]}');
-    expect(() => normalizeExtractedCorpus({ extractedDir: fenced, assetsDir: path.join(root, 'fenced-assets') }))
-      .toThrow(/must not supply a private-store fence/i);
+    fs.writeFileSync(path.join(fenced, 'alpha.big.rvf'), 'rvf');
+    fs.writeFileSync(path.join(fenced, 'PRIVATE-STORES.json'), '{"privateStores":["secret"]}');
+    const fencedAssets = path.join(root, 'fenced-assets');
+    expect(normalizeExtractedCorpus({ extractedDir: fenced, assetsDir: fencedAssets })).toBe(fencedAssets);
+    expect(fs.existsSync(path.join(fencedAssets, 'PRIVATE-STORES.json'))).toBe(false);
+    expect(fs.existsSync(path.join(fencedAssets, 'SEED-PRIVATE-STORES.json'))).toBe(true);
+    expect(seedPrivateFenceEvidence(fencedAssets)).toMatchObject({
+      file: 'SEED-PRIVATE-STORES.json', sha256: expect.stringMatching(/^[a-f0-9]{64}$/), bytes: expect.any(Number),
+    });
+    // No historical fence at all: evidence is simply absent, never fabricated.
+    expect(seedPrivateFenceEvidence(assets)).toBeNull();
   });
 });
 
@@ -183,36 +200,312 @@ describe('reconciliation execution', () => {
     await expect(executeReconciliation({ plan, assetsDir, workspaceDir: path.join(root, 'clones'), root, run }))
       .rejects.toThrow(/worker artifact family is incomplete|did not bind alpha to the exact upstream SHA/i);
   });
+
+  // Required proof 4 (2026-09-13): a worker failure must abort and join its still-running siblings
+  // -- no orphaned processes, no unhandled rejection from a sibling that finishes after the pool has
+  // already been given up on. Before this fix `executeReconciliation` had no cancellation at all: a
+  // failing lane's `Promise.all` member rejected immediately while sibling lanes kept running,
+  // completely unobserved.
+  it('aborts and joins still-running sibling workers when one worker fails mid-round', async () => {
+    const root = temp();
+    const assetsDir = path.join(root, 'assets');
+    const workspaceDir = path.join(root, 'clones');
+    fs.mkdirSync(assetsDir, { recursive: true });
+    fs.mkdirSync(path.join(root, 'kb'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'kb', 'forge-refresh.mjs'), '// fixture');
+    fs.writeFileSync(path.join(assetsDir, 'RVF-GENERATIONS.json'), JSON.stringify({ stores: {} }));
+    const plan = [
+      { name: 'alpha', store: 'alpha', url: 'https://github.com/ruvnet/alpha', upstreamSha: sha('a'), ledgerSourceCommit: null, reason: 'missing ledger receipt' },
+      { name: 'beta', store: 'beta', url: 'https://github.com/ruvnet/beta', upstreamSha: sha('b'), ledgerSourceCommit: null, reason: 'missing ledger receipt' },
+    ];
+    let betaCloneStarted = false;
+    let betaSawAbort = false;
+    const run = (command, args, options = {}) => {
+      if (command === 'git' && args[0] === 'clone') {
+        fs.mkdirSync(args.at(-1), { recursive: true });
+        const isBeta = args.at(-1).includes('beta');
+        if (!isBeta) return Promise.resolve({ status: 1, stdout: '', stderr: 'simulated alpha clone failure' });
+        // beta hangs -- exactly like a real long-running clone would -- until the shared signal
+        // aborts it, proving the still-running sibling is actually joined, not left dangling.
+        betaCloneStarted = true;
+        return new Promise((resolve) => {
+          options.signal?.addEventListener('abort', () => {
+            betaSawAbort = true;
+            resolve({ status: null, error: Object.assign(new Error('aborted'), { name: 'AbortError' }) });
+          }, { once: true });
+        });
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    await expect(executeReconciliation({ plan, assetsDir, workspaceDir, root, run, concurrency: 2 }))
+      .rejects.toThrow(/simulated alpha clone failure/);
+    expect(betaCloneStarted, 'beta must actually have started, or this test guards nothing').toBe(true);
+    expect(betaSawAbort, 'beta must have observed the shared abort signal and joined promptly').toBe(true);
+  });
 });
 
 describe('candidate preparation', () => {
-  it('runs strict coverage before building and sealing, and never invokes a publisher', () => {
+  // Step 4, rules 5-6 (2026-09-13): prepareCorpusCandidate used to shell out to
+  // `source-coverage.mjs --write` then `--check --strict` -- two SEPARATE live re-observations of
+  // the real source universe, run AFTER reconciliation had already stabilized. It now trusts an
+  // already-measured `coverage` object outright and renders both the committed JSON and Markdown
+  // from that one object, never touching source-coverage.mjs at all.
+  const coverageFixture = (status) => ({
+    kind: 'ruvnet-brain-corpus-coverage', observedAt: '2026-09-13T00:00:00.000Z', coverageGeneration: 'gen-1',
+    totals: { repositories: 1, gists: 0, byStatus: { [status]: 1 } },
+    rows: [{ kind: 'repository', name: 'alpha', url: 'https://github.com/ruvnet/alpha', disposition: 'eligible',
+      status, upstream: {}, artifact: {}, reasons: status === 'CURRENT' ? [] : ['x'] }],
+  });
+
+  it('never re-observes live sources; renders coverage JSON+Markdown from one object, then builds and seals', () => {
     const root = temp();
     fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
-    fs.mkdirSync(path.join(root, 'data'), { recursive: true });
-    for (const file of ['source-coverage.mjs', 'build-bundle.mjs', 'corpus-candidate.mjs']) {
+    for (const file of ['build-bundle.mjs', 'corpus-candidate.mjs']) {
       fs.writeFileSync(path.join(root, 'scripts', file), '// fixture');
     }
+    const coverage = coverageFixture('CURRENT');
     const calls = [];
     const run = (command, args) => { calls.push([command, ...args]); return { status: 0, stdout: '', stderr: '' }; };
     const result = prepareCorpusCandidate({
       root,
       assetsDir: path.join(root, 'assets'),
-      owner: 'ruvnet',
       builderSha: sha('e'),
       candidateDir: path.join(root, 'candidate', 'ruvnet-brain'),
       receiptFile: path.join(root, 'evidence', 'corpus-receipt.json'),
       coverageFile: path.join(root, 'data', 'source-coverage.json'),
+      coverage,
       run,
     });
     expect(result.bundleFile).toBe(path.join(root, 'candidate', 'ruvnet-brain.zip'));
     const joined = calls.map((call) => call.join(' '));
-    expect(joined[0]).toMatch(/source-coverage\.mjs .*--write/);
-    expect(joined[1]).toMatch(/source-coverage\.mjs .*--check .*--strict/);
-    expect(joined[2]).toMatch(/build-bundle\.mjs/);
-    expect(joined[3]).toMatch(/corpus-candidate\.mjs/);
-    expect(joined[4]).toMatch(/corpus-candidate\.mjs .*--verify/);
-    expect(joined.join('\n')).not.toMatch(/corpus-seed-publish|release create|--publish/);
+    expect(joined).toHaveLength(3);
+    expect(joined[0]).toMatch(/build-bundle\.mjs/);
+    expect(joined[1]).toMatch(/corpus-candidate\.mjs/);
+    expect(joined[1]).not.toMatch(/--verify/);
+    expect(joined[2]).toMatch(/corpus-candidate\.mjs .*--verify/);
+    expect(joined.join('\n')).not.toMatch(/corpus-seed-publish|release create|--publish|source-coverage\.mjs/);
+    expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'source-coverage.json'), 'utf8'))).toEqual(coverage);
+    expect(fs.readFileSync(path.join(root, 'docs', 'RUVNET-COVERAGE.md'), 'utf8')).toContain('alpha');
+  });
+
+  it('fails closed on any non-CURRENT eligible row, before ever shelling out to build or seal', () => {
+    const root = temp();
+    fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
+    for (const file of ['build-bundle.mjs', 'corpus-candidate.mjs']) {
+      fs.writeFileSync(path.join(root, 'scripts', file), '// fixture');
+    }
+    const calls = [];
+    const run = (command, args) => { calls.push([command, ...args]); return { status: 0, stdout: '', stderr: '' }; };
+    expect(() => prepareCorpusCandidate({
+      root, assetsDir: path.join(root, 'assets'), builderSha: sha('e'),
+      candidateDir: path.join(root, 'candidate', 'ruvnet-brain'),
+      receiptFile: path.join(root, 'evidence', 'corpus-receipt.json'),
+      coverageFile: path.join(root, 'data', 'source-coverage.json'),
+      coverage: coverageFixture('STALE'), run,
+    })).toThrow(/strict coverage/i);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('rejects a coverage object that is missing or not the real coverage shape', () => {
+    const root = temp();
+    expect(() => prepareCorpusCandidate({
+      root, assetsDir: path.join(root, 'assets'), builderSha: sha('e'),
+      candidateDir: path.join(root, 'candidate', 'ruvnet-brain'),
+      receiptFile: path.join(root, 'evidence', 'corpus-receipt.json'),
+      coverageFile: path.join(root, 'data', 'source-coverage.json'),
+    })).toThrow(/already-measured coverage object/i);
+  });
+});
+
+describe('reconciliation output paths must never overlap the checkout, seed, or installed brain (rule 7)', () => {
+  it('rejects an assets or workspace directory that is, contains, or is contained by the checkout kb build workspace', async () => {
+    const root = temp();
+    const kb = path.join(root, 'kb');
+    fs.mkdirSync(kb, { recursive: true });
+    await expect(reconcileCorpusUntilStable({ assetsDir: kb, workspaceDir: path.join(root, 'work'), root }))
+      .rejects.toThrow(/checkout kb build workspace/i);
+    await expect(reconcileCorpusUntilStable({ assetsDir: path.join(root, 'assets'), workspaceDir: kb, root }))
+      .rejects.toThrow(/checkout kb build workspace/i);
+    await expect(reconcileCorpusUntilStable({ assetsDir: path.join(kb, 'nested'), workspaceDir: path.join(root, 'work'), root }))
+      .rejects.toThrow(/checkout kb build workspace/i);
+  });
+
+  it('rejects a workspace directory that is, or is nested within, the assets directory', async () => {
+    const root = temp();
+    const assetsDir = path.join(root, 'assets');
+    fs.mkdirSync(assetsDir, { recursive: true });
+    await expect(reconcileCorpusUntilStable({ assetsDir, workspaceDir: path.join(assetsDir, 'sub'), root }))
+      .rejects.toThrow(/assets directory/i);
+  });
+
+  it('assertPathNotOverlapping fails closed on any direction of overlap, and passes clean, disjoint paths', () => {
+    const root = temp();
+    const forbidden = [{ label: 'the forbidden root', dir: path.join(root, 'forbidden') }];
+    fs.mkdirSync(path.join(root, 'forbidden'), { recursive: true });
+    expect(() => assertPathNotOverlapping('target', path.join(root, 'forbidden'), forbidden)).toThrow(/forbidden root/i);
+    expect(() => assertPathNotOverlapping('target', path.join(root, 'forbidden', 'nested'), forbidden)).toThrow(/forbidden root/i);
+    expect(() => assertPathNotOverlapping('target', root, forbidden)).toThrow(/forbidden root/i); // parent of forbidden
+    expect(() => assertPathNotOverlapping('target', path.join(root, 'clean'), forbidden)).not.toThrow();
+  });
+});
+
+describe('round-stability loop (reconcileUntilStable)', () => {
+  const observationA = { observationSha256: 'a'.repeat(64) };
+  const coverageStub = { schemaVersion: 1, coverageGeneration: 'g1', rows: [] };
+  const noopLedger = () => ({ stores: {} });
+
+  it('required proof 1: converges on round 1 when the observation never changes, without extra rounds', async () => {
+    const observe = vi.fn(async () => observationA);
+    const build = vi.fn(async () => coverageStub);
+    const execute = vi.fn(async () => ({ refreshed: [] }));
+    const prune = vi.fn(async () => ({ pruned: [] }));
+    const rebuild = vi.fn(async () => ({ rebuilt: [] }));
+    const result = await reconcileUntilStable({
+      maxRounds: 3, assetsDir: temp(), observe, build, readLedger: noopLedger, execute, prune, rebuild,
+    });
+    expect(result.rounds).toHaveLength(1);
+    expect(result.observation).toEqual(observationA);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(rebuild).toHaveBeenCalledTimes(1);
+  });
+
+  it('required proof 2: discards a round and retries with the fresh observation when the source moves mid-round', async () => {
+    const observationB = { observationSha256: 'b'.repeat(64) };
+    let calls = 0;
+    const observe = vi.fn(async () => (calls++ === 0 ? observationA : observationB));
+    const build = vi.fn(async () => coverageStub);
+    const execute = vi.fn(async () => ({ refreshed: [] }));
+    const prune = vi.fn(async () => ({ pruned: [] }));
+    let rebuildCalls = 0;
+    const rebuild = vi.fn(async () => {
+      rebuildCalls += 1;
+      if (rebuildCalls === 1) {
+        const error = new Error('gist moved');
+        error.code = 'GIST_OBSERVATION_MOVED';
+        error.gistId = 'g1';
+        throw error;
+      }
+      return { rebuilt: ['concepts'] };
+    });
+    const result = await reconcileUntilStable({
+      maxRounds: 3, assetsDir: temp(), observe, build, readLedger: noopLedger, execute, prune, rebuild,
+    });
+    expect(rebuildCalls).toBe(2);
+    expect(result.observation).toEqual(observationB);
+    expect(result.rounds[0]).toMatchObject({
+      before: observationA.observationSha256, after: observationB.observationSha256,
+      invalidated: { reason: expect.stringMatching(/gist observation moved/i), gistId: 'g1' },
+    });
+    expect(result.rounds).toHaveLength(2);
+  });
+
+  it('required proof 3: throws the exact stabilization-failure error when maxRounds is exhausted without ever stabilizing', async () => {
+    let n = 0;
+    const observe = vi.fn(async () => ({ observationSha256: String(n++).padStart(64, '0') }));
+    const build = vi.fn(async () => coverageStub);
+    const execute = vi.fn(async () => ({ refreshed: [] }));
+    const prune = vi.fn(async () => ({ pruned: [] }));
+    const rebuild = vi.fn(async () => ({ rebuilt: [] }));
+    await expect(reconcileUntilStable({
+      maxRounds: 2, assetsDir: temp(), observe, build, readLedger: noopLedger, execute, prune, rebuild,
+    })).rejects.toThrow(/did not stabilize within 2 reconciliation rounds/i);
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('positive-selection pruning (pruneIneligibleStores) — required proof 5', () => {
+  it('removes a store\'s full artifact family and ledger/SOURCE entries once it is no longer eligible', () => {
+    const assetsDir = temp();
+    for (const store of ['alpha', 'beta']) {
+      for (const name of ['big.rvf', 'big.rvf.idmap.json', 'big.rvf.embed.json', 'passages.jsonl', 'meta.json']) {
+        fs.writeFileSync(path.join(assetsDir, `${store}.${name}`), 'x');
+      }
+    }
+    fs.writeFileSync(path.join(assetsDir, 'RVF-GENERATIONS.json'), JSON.stringify({ stores: {
+      alpha: { file: 'alpha.big.rvf', sourceCommit: sha('a') },
+      beta: { file: 'beta.big.rvf', sourceCommit: sha('b') },
+      'ruv-gists': { file: 'ruv-gists.big.rvf', sourceCommit: null },
+    } }));
+    fs.writeFileSync(path.join(assetsDir, 'SOURCE.json'), JSON.stringify({ stores: {
+      alpha: { sourceCommit: sha('a') }, beta: { sourceCommit: sha('b') },
+    } }));
+
+    // beta was eligible in a prior round (present in ledger + SOURCE + on disk) but is no longer
+    // eligible this round (removed from policy, gone private, or deleted upstream) -- it must not
+    // linger in the finalized corpus.
+    const result = pruneIneligibleStores({ assetsDir, eligibleStores: ['alpha'] });
+
+    expect(result.pruned).toEqual(['beta']);
+    for (const name of ['big.rvf', 'big.rvf.idmap.json', 'big.rvf.embed.json', 'passages.jsonl', 'meta.json']) {
+      expect(fs.existsSync(path.join(assetsDir, `beta.${name}`))).toBe(false);
+      expect(fs.existsSync(path.join(assetsDir, `alpha.${name}`))).toBe(true);
+    }
+    const ledger = JSON.parse(fs.readFileSync(path.join(assetsDir, 'RVF-GENERATIONS.json'), 'utf8'));
+    expect(Object.keys(ledger.stores).sort()).toEqual(['alpha', 'ruv-gists']);
+    const source = JSON.parse(fs.readFileSync(path.join(assetsDir, 'SOURCE.json'), 'utf8'));
+    expect(Object.keys(source.stores)).toEqual(['alpha']);
+  });
+
+  it('never prunes ruv-gists or concepts, and no-ops cleanly when there is nothing stale', () => {
+    const assetsDir = temp();
+    fs.writeFileSync(path.join(assetsDir, 'RVF-GENERATIONS.json'), JSON.stringify({ stores: {
+      alpha: { file: 'alpha.big.rvf', sourceCommit: sha('a') },
+      'ruv-gists': { file: 'ruv-gists.big.rvf', sourceCommit: null },
+      concepts: { file: 'concepts.big.rvf', sourceCommit: null },
+    } }));
+    expect(pruneIneligibleStores({ assetsDir, eligibleStores: ['alpha'] })).toEqual({ pruned: [] });
+  });
+
+  it('no-ops cleanly when the ledger does not exist yet (nothing to prune)', () => {
+    expect(pruneIneligibleStores({ assetsDir: temp(), eligibleStores: [] })).toEqual({ pruned: [] });
+  });
+});
+
+describe('legacy provenance is preserved distinctly from current-round rebuilds — required proof 6', () => {
+  it('pruning never touches a still-eligible store, whether legacy-reused or freshly rebuilt this round', () => {
+    const assetsDir = temp();
+    const legacyGeneration = { file: 'alpha.big.rvf', sourceCommit: sha('a'),
+      builtUtc: '2026-01-01T00:00:00.000Z', model: 'legacy-model' };
+    const freshGeneration = { file: 'beta.big.rvf', sourceCommit: sha('b'),
+      builtUtc: '2026-09-13T00:00:00.000Z', model: 'fresh-model' };
+    fs.writeFileSync(path.join(assetsDir, 'RVF-GENERATIONS.json'), JSON.stringify({
+      stores: { alpha: legacyGeneration, beta: freshGeneration },
+    }));
+    fs.writeFileSync(path.join(assetsDir, 'alpha.big.rvf'), 'legacy-bytes');
+    fs.writeFileSync(path.join(assetsDir, 'beta.big.rvf'), 'fresh-bytes');
+
+    const result = pruneIneligibleStores({ assetsDir, eligibleStores: ['alpha', 'beta'] });
+
+    expect(result).toEqual({ pruned: [] });
+    const ledger = JSON.parse(fs.readFileSync(path.join(assetsDir, 'RVF-GENERATIONS.json'), 'utf8'));
+    // The legacy row is preserved byte-for-byte -- pruning must never re-stamp or reclassify a
+    // still-eligible store's generation record just because a round ran, which is exactly what
+    // would erase the distinction between "verified this round" and "legacy, already verified".
+    expect(ledger.stores.alpha).toEqual(legacyGeneration);
+    expect(ledger.stores.beta).toEqual(freshGeneration);
+  });
+
+  it('a seed\'s bootstrap fence evidence is untouched by reconciliation pruning', () => {
+    const assetsDir = temp();
+    fs.writeFileSync(path.join(assetsDir, 'SEED-PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['secret'] }));
+    fs.writeFileSync(path.join(assetsDir, 'PRIVATE-STORES.json'), JSON.stringify({ privateStores: [] }));
+    const before = seedPrivateFenceEvidence(assetsDir);
+    expect(before).not.toBeNull();
+
+    fs.writeFileSync(path.join(assetsDir, 'RVF-GENERATIONS.json'), JSON.stringify({ stores: {
+      alpha: { file: 'alpha.big.rvf', sourceCommit: sha('a') },
+      ghost: { file: 'ghost.big.rvf', sourceCommit: sha('c') },
+    } }));
+    fs.writeFileSync(path.join(assetsDir, 'alpha.big.rvf'), 'x');
+    fs.writeFileSync(path.join(assetsDir, 'ghost.big.rvf'), 'x');
+
+    const result = pruneIneligibleStores({ assetsDir, eligibleStores: ['alpha'] });
+
+    expect(result.pruned).toEqual(['ghost']);
+    expect(fs.existsSync(path.join(assetsDir, 'ghost.big.rvf'))).toBe(false);
+    // The bootstrap-fence distinction Step 1 established (seedPrivateFenceEvidence /
+    // bootstrapIdentity) must never be weakened or bypassed by the new positive-selection prune.
+    expect(seedPrivateFenceEvidence(assetsDir)).toEqual(before);
   });
 });
 
