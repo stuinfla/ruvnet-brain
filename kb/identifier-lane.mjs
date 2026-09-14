@@ -142,12 +142,28 @@ export function identifierScan(dir, identifiers, { perRepo = 8, maxRepos = 6 } =
  * How strongly a passage EARNS an identifier. Mention is the floor; the rank is decided by
  * definition-shaped context and by the document's own path, because the adversarial case is a
  * chunk that merely repeats the question.
+ *
+ * `opts.repo` / `opts.knownRepos` guard the PATH-NAMED signal against a second, distinct false
+ * positive from the same root cause (issue #286 RC3): an identifier that is ITSELF the name of a
+ * different, independently-indexed repository in the corpus (e.g. `photonlayer`) must not credit
+ * "this document is named after the identifier" to a candidate from a DIFFERENT repo just because
+ * that repo also happens to have a subtree literally called `photonlayer` — ruvector's own
+ * `docs/research/photonlayer/ASSESSMENT.md` genuinely discusses PhotonLayer (it is not a vendored
+ * copy of anything, so no near-duplicate/content-similarity check would ever catch it), but
+ * "photonlayer" the identifier already has an authoritative, independently-indexed home — the
+ * `photonlayer` store itself — and crediting a directory-name coincidence in an unrelated repo the
+ * same "authoritatively named after this" signal is a plain attribution bug. Both params are
+ * OPTIONAL and default to a no-op so every existing call site (including the identifier-lane's own
+ * founding case, where the identifiers are filenames like `memory.db` that are not themselves repo
+ * names) is byte-for-byte unaffected.
  */
-export function identifierEvidence(record, identifiers) {
+export function identifierEvidence(record, identifiers, { repo = null, knownRepos = null } = {}) {
   const text = String(record?.text || record?.fullText || '');
   const lower = text.toLowerCase();
   const docPath = String(record?.path || '').toLowerCase();
-  const base = docPath.split('/').pop() || '';
+  const segments = docPath.split('/');
+  const base = segments[segments.length - 1] || '';
+  const ownRepo = repo ? String(repo).toLowerCase() : null;
   let distinct = 0;
   let defining = 0;
   let pathNamed = 0;
@@ -155,7 +171,32 @@ export function identifierEvidence(record, identifiers) {
     // The document's own NAME counts as carrying the identifier. A binary or a fixture called
     // `memory.db` may say nothing about itself in its text, and it is still the thing being asked
     // about — requiring a body mention made the strongest possible evidence score zero.
-    const named = base === id || docPath.includes(`/${id}`);
+    //
+    // MUST be a whole PATH SEGMENT, not merely a substring of one (issue #286 root cause 3, found
+    // live 2026-09-13 against the real release-candidate bundle). The prior check was
+    // `docPath.includes('/' + id)`, which matches ANY directory that merely STARTS WITH the
+    // identifier: `crates/photonlayer-bench/src/bin/bench.rs` contains the literal substring
+    // `/photonlayer` (the start of the sibling directory name `photonlayer-bench`), so a query
+    // naming the `photonlayer` repo gave every file under ruvector's OWN, unrelated
+    // `photonlayer-bench`/`photonlayer-core` vendored subtree the same "this document is named
+    // after the identifier" credit (+3.0 pathNamed, on top of the +1.0 mention floor) as the real
+    // `photonlayer` repository's own files — none of which is a duplicate-content problem
+    // (`selectResults`'s repo-name-affinity boost already handles that): it is a plain path-prefix
+    // false positive that fires identically regardless of which repo the file actually belongs to.
+    // Measured effect on the retrieval-canary oracle ("In the photonlayer repository, what is
+    // PhotonLayer..."): this false credit alone lifted 3 candidates (one from `ruvector`, two from
+    // `photonlayer`'s own noisier files) above the oracle's designated passage
+    // (`crates/photonlayer-core/README.md`), which otherwise ranks in the top 10.
+    //
+    // A second, independent false positive survives the segment fix alone: an identifier that IS a
+    // real repo name (`knownRepos` has it) belongs to that repo, not to whichever OTHER repo also
+    // happens to have an exactly-named subdirectory. Gate pathNamed on repo attribution only in that
+    // specific case — an identifier that is not a known repo name (the founding `memory.db` case)
+    // is completely unaffected.
+    const pathSegmentNamed = segments.includes(id);
+    const identifierIsForeignRepoName = pathSegmentNamed && knownRepos && ownRepo
+      && knownRepos.has(id) && id !== ownRepo;
+    const named = pathSegmentNamed && !identifierIsForeignRepoName;
     if (!lower.includes(id) && !named) continue;
     distinct++;
     if (named) pathNamed++;
@@ -235,11 +276,11 @@ export function identifierExcerpt(text, identifiers, { before = 600, after = 2_4
 }
 
 /** Scanned passages for one repo, shaped as searchAll candidates on the exempt `rescue` lane. */
-export function identifierCandidates(scan, repo, identifiers, topN = 8) {
+export function identifierCandidates(scan, repo, identifiers, topN = 8, knownRepos = null) {
   const rows = scan?.byRepo?.get(repo);
   if (!rows?.length) return [];
   const ranked = rows
-    .map(({ record }) => ({ record, evidence: identifierEvidence(record, identifiers) }))
+    .map(({ record }) => ({ record, evidence: identifierEvidence(record, identifiers, { repo, knownRepos }) }))
     .filter(({ evidence }) => evidence.matched)
     .sort((a, b) => identifierBoost(b.evidence) - identifierBoost(a.evidence)
       || String(a.record.path).localeCompare(String(b.record.path)));

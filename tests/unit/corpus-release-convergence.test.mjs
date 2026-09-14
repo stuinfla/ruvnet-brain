@@ -9,9 +9,25 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 describe('corpus and release convergence wiring', () => {
   it('pins CI to the committed seed descriptor and its digest', () => {
     const seed = JSON.parse(fs.readFileSync(path.join(root, 'data/corpus-seed.json'), 'utf8'));
-    expect(seed.tag).toBe('v4.2.1-dev'); // sync-version-ignore: immutable external seed tag, not the candidate product version
     expect(seed.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(seed.bytes).toBeGreaterThan(0);
+    expect(typeof seed.tag).toBe('string');
+    expect(seed.tag.length).toBeGreaterThan(0);
+    expect(seed.tag).not.toBe('latest');
+    // The committed seed tag is either the real content-addressed identity (corpus-sha256-<digest>
+    // of the exact seed bytes — see scripts/corpus-candidate.mjs's corpusSeedTag/verifySeedBaseline)
+    // or, for a seed minted before content-addressing existed, a pinned exception — sync-version-
+    // ignore: an immutable external seed tag, never the candidate product version. A pinned tag is
+    // legitimate ONLY when the bootstrap pipeline that consumes it explicitly acknowledges the pin:
+    // scripts/corpus-reconcile.mjs's assertBootstrapIdentity requires allowPinnedTag=true for
+    // exactly this case, matched here by --allow-pinned-seed-tag in the workflow that invokes it.
+    // This is the test's real intent — that the committed pointer and the code consuming it agree —
+    // preserved for either tag form rather than one hard-pinned literal string.
+    const contentAddressed = seed.tag === `corpus-sha256-${seed.sha256}`;
+    if (!contentAddressed) {
+      const seedWorkflow = fs.readFileSync(path.join(root, '.github/workflows/corpus-seed.yml'), 'utf8');
+      expect(seedWorkflow).toContain('--allow-pinned-seed-tag');
+    }
     const workflow = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
     expect(workflow).toContain('data/corpus-seed.json');
     expect(workflow).toContain('SEED_SHA256');

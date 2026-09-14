@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { artifactEvidence, buildCoverage, canonicalGistRows, canonicalJson, canonicalRepositoryRows, classifyGist,
-  classifyRepository, digest, gistVersion, observeExternalRepositories, observeSourceUniverse, sealCoverage,
-  sourceObservationDigest } from '../../scripts/source-coverage.mjs';
+  classifyRepository, digest, gistVersion, observeExternalRepositories, observeGists, observeSourceUniverse,
+  sealCoverage, sourceObservationDigest } from '../../scripts/source-coverage.mjs';
 
 const repo = {
   databaseId: 1, name: 'ruflo', url: 'https://github.com/ruvnet/ruflo', isFork: false,
@@ -166,14 +166,27 @@ describe('artifact-bound source coverage', () => {
     expect(classifyRepository(repo, input).status).toBe(status);
   });
 
-  it('requires a complete version-bound per-gist receipt before calling a gist current', () => {
+  it('requires a complete version-bound per-gist receipt before calling a gist current, never a timestamp cache', () => {
     const gist = { id: 'g', updated_at: '2026-08-21T00:00:00Z', html_url: 'https://gist.github.com/g',
       files: { a: { filename: 'a.md', raw_url: `https://gist.githubusercontent.com/ruvnet/g/raw/${'d'.repeat(40)}/a.md` } } };
     expect(gistVersion(gist)).toBe('d'.repeat(40));
-    const base = { rvfPresent: true, bytesVerified: true, passagesBound: true, receipt: {}, cache: { g: gist.updated_at } };
+    const base = { rvfPresent: true, bytesVerified: true, passagesBound: true, receipt: {} };
     expect(classifyGist(gist, base).status).toBe('UNVERIFIED');
-    expect(classifyGist(gist, { ...base, sources: { gists: { g: {
+    // 2026-09-13 (Step 4, rule 2): a bare flat-file timestamp cache entry (`.ruv-gists.cache.json`,
+    // modeled here as `cache`) is NOT sufficient evidence of currency on its own -- only the real
+    // per-gist source receipt's own `updatedAt` field may establish CURRENT. Before this fix, the
+    // cache entry alone made this exact row CURRENT even though the receipt row carries no
+    // `updatedAt` at all.
+    expect(classifyGist(gist, { ...base, cache: { g: gist.updated_at }, sources: { gists: { g: {
       versionSha: 'd'.repeat(40), ingestedAt: gist.updated_at, contentDigest: 'x', files: [{}], complete: true,
+    } } } }).status).toBe('STALE');
+    // A source row present but whose OWN updatedAt does not match the live list is still stale.
+    expect(classifyGist(gist, { ...base, sources: { gists: { g: {
+      versionSha: 'd'.repeat(40), updatedAt: '2020-01-01T00:00:00Z', ingestedAt: gist.updated_at, contentDigest: 'x', files: [{}], complete: true,
+    } } } }).status).toBe('STALE');
+    // Only the receipt's own matching updatedAt establishes CURRENT.
+    expect(classifyGist(gist, { ...base, sources: { gists: { g: {
+      versionSha: 'd'.repeat(40), updatedAt: gist.updated_at, ingestedAt: gist.updated_at, contentDigest: 'x', files: [{}], complete: true,
     } } } }).status).toBe('CURRENT');
   });
 
@@ -217,5 +230,46 @@ describe('artifact-bound source coverage', () => {
     } finally {
       fs.rmSync(kb, { recursive: true, force: true });
     }
+  });
+});
+
+// Found live 2026-09-13 running corpus-seed.yml for real: Actions' GITHUB_TOKEN is a GitHub App
+// token and the gists list API is closed to those ("Resource not accessible by integration", HTTP
+// 403) -- corpus-reconcile.mjs's first-ever run failed here. observeGists() had no fallback (unlike
+// scripts/ingest-gists.mjs's already-working listGists/listGistsPublic split, which this project
+// hit the same wall on before). Fixed with a synchronous curl-based fallback on that exact error.
+describe('observeGists — falls back to the unauthenticated API on the Actions gists 403 (#corpus-seed)', () => {
+  it('RED->GREEN: retrieves every gist via the unauthenticated fallback when gh fails with the Actions 403', () => {
+    const gists = Array.from({ length: 5 }, (_, i) => ({ id: `g${i}`, files: {} }));
+    const gh = (args) => {
+      if (String(args[1]).includes('gists')) {
+        throw new Error('gh api users/ruvnet/gists?per_page=100 failed: Resource not accessible by integration (HTTP 403)');
+      }
+      return JSON.stringify({ public_gists: gists.length });
+    };
+    const curl = (url) => {
+      expect(url).toContain('page=1');
+      return JSON.stringify(gists); // fewer than 100 -> fallback stops after page 1, curl called once
+    };
+    const result = observeGists('ruvnet', { gh, curl });
+    expect(result.rows).toHaveLength(5);
+    expect(result.rows.map((g) => g.id)).toEqual(['g0', 'g1', 'g2', 'g3', 'g4']);
+    expect(result.expected).toBe(5);
+  });
+
+  it('control: a gh failure for any OTHER reason still throws, not silently falling back', () => {
+    const gh = () => { throw new Error('gh api users/ruvnet/gists?per_page=100 failed: net/http: TLS handshake timeout'); };
+    const curl = () => { throw new Error('must not be called'); };
+    expect(() => observeGists('ruvnet', { gh, curl })).toThrow(/TLS handshake timeout/);
+  });
+
+  it('control: when gh succeeds, the unauthenticated fallback is never invoked', () => {
+    const gists = [{ id: 'only-one', files: {} }];
+    const gh = (args) => (String(args[1]).includes('gists')
+      ? JSON.stringify(gists)
+      : JSON.stringify({ public_gists: 1 }));
+    const curl = () => { throw new Error('must not be called'); };
+    const result = observeGists('ruvnet', { gh, curl });
+    expect(result.rows).toEqual(gists);
   });
 });

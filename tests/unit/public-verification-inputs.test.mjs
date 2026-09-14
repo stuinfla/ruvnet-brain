@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -13,8 +14,10 @@ import { sealRetrievalQueryEvidence } from '../../scripts/retrieval-canary.mjs';
 import {
   createPublicVerificationInputs,
   createObservedBaselineReceipt,
+  createReceiptedBaselineVerification,
   createRetrospectiveBaselineVerification,
 } from '../../scripts/public-verification-inputs.mjs';
+import { createCorpusReceipt } from '../../scripts/corpus-candidate.mjs';
 import { validatePlanAgainstCoverage } from '../../scripts/retrieval-canary.mjs';
 import { writeStoredZip } from '../helpers/zip-fixture.mjs';
 
@@ -22,6 +25,18 @@ const roots = [];
 const FAILED_SEED_VERSION = '4.2.1-dev'; // sync-version-ignore: immutable external failed-seed identity, not candidate product version
 const FAILED_SEED_TAG = `v${FAILED_SEED_VERSION}`; // sync-version-ignore: immutable external failed-seed identity, not candidate product version
 const sha = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+// deriveCorpusCandidate (scripts/corpus-candidate.mjs) now audits every shipped .big.rvf's HNSW
+// index via scripts/rvf-index-audit.mjs's auditRvfIndexes, which opens the file with the real
+// @ruvector/rvf runtime — a placeholder text file no longer stands in for an RVF store. This
+// writes a genuine, minimal RVF (well under the 1,024-vector HNSW threshold, so no persisted
+// index is required and the audit always reports PASS for it).
+const requireFromKb = createRequire(new URL('../../kb/package.json', import.meta.url));
+const { RvfDatabase } = requireFromKb('@ruvector/rvf');
+async function writeMinimalRvf(rvfPath) {
+  const db = await RvfDatabase.create(rvfPath, { dimensions: 3, metric: 'cosine' });
+  await db.ingestBatch([{ id: 'v-0', vector: [1, 0, 0] }, { id: 'v-1', vector: [0, 1, 0] }]);
+  await db.close();
+}
 const fileId = (file) => ({ file: path.basename(file), sha256: sha(fs.readFileSync(file)), bytes: fs.statSync(file).size });
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -411,5 +426,76 @@ describe('public verification input producer', () => {
     await expect(createPublicVerificationInputs(f)).rejects.toThrow(/existing retrieval-candidate\.json differs/i);
     expect(fs.readFileSync(path.join(f.outDir, 'retrieval-candidate.json'), 'utf8')).toBe('attacker bytes\n');
     expect(fs.readdirSync(f.outDir)).toEqual(['retrieval-candidate.json']);
+  });
+});
+
+describe('createReceiptedBaselineVerification — the new seed-type path (task 3)', () => {
+  async function receiptedSeedFixture() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'receipted-baseline-'));
+    roots.push(root);
+    const bundleDir = path.join(root, 'bundle', 'ruvnet-brain');
+    fs.mkdirSync(bundleDir, { recursive: true });
+    // RvfDatabase.create() writes alpha.big.rvf AND its own alpha.big.rvf.idmap.json sidecar, so
+    // that one must not be pre-written here.
+    await writeMinimalRvf(path.join(bundleDir, 'alpha.big.rvf'));
+    fs.writeFileSync(path.join(bundleDir, 'alpha.big.rvf.embed.json'), '{}');
+    fs.writeFileSync(path.join(bundleDir, 'alpha.passages.jsonl'), '{}\n');
+    fs.writeFileSync(path.join(bundleDir, 'alpha.meta.json'), '{"dimensions":384}');
+    const sourceCommit = 'a'.repeat(40);
+    writeJson(path.join(bundleDir, 'PRIVATE-STORES.json'), { privateStores: [] });
+    writeJson(path.join(bundleDir, 'RVF-GENERATIONS.json'), {
+      schemaVersion: 1, brainVersion: '9.9.9', releaseTag: 'v9.9.9',
+      stores: { alpha: { file: 'alpha.big.rvf', ...fileId(path.join(bundleDir, 'alpha.big.rvf')),
+        model: 'local', dimensions: 384, sourceCommit, builtUtc: '2026-08-21T12:00:00.000Z' } },
+    });
+    writeJson(path.join(bundleDir, 'SOURCE.json'), { builder: 'rvf-kb-forge', stores: { alpha: { sourceCommit } } });
+    writeJson(path.join(bundleDir, 'public-store-classes.json'), { schemaVersion: 1, derived: [] });
+    // Deliberately a DIFFERENT identity domain from the external content-addressed tag derived
+    // below — this is the exact conflation the historical retrospective/observed baseline readers
+    // had (seed.tag === baselineProof.receipt.releaseTag) and that verifySeedBaseline fixes.
+    sealDirectory(bundleDir, { version: '9.9.9', releaseTag: 'v9.9.9' });
+    const bundle = path.join(root, 'ruvnet-brain.zip');
+    zipDirectory(bundleDir, bundle);
+    return { root, bundle };
+  }
+
+  it('verifies a seed through its schema-2 candidate receipt without comparing the external tag to the internal manifest tag', async () => {
+    const { root, bundle } = await receiptedSeedFixture();
+    const receiptFile = path.join(root, 'corpus-receipt.json');
+    const receipt = await createCorpusReceipt({ bundleFile: bundle, builderSourceSha: 'c'.repeat(40), receiptFile });
+    expect(receipt.archiveManifestReleaseTag).toBe('v9.9.9');
+    const tag = `corpus-sha256-${receipt.archive.sha256}`;
+    expect(tag).not.toBe(receipt.archiveManifestReleaseTag);
+
+    const result = await createReceiptedBaselineVerification({
+      seedDescriptor: { tag, sha256: receipt.archive.sha256, bytes: receipt.archive.bytes },
+      baselineBundle: bundle,
+      baselineReceipt: receiptFile,
+      outFile: path.join(root, 'baseline-verification-receipt.json'),
+    });
+    expect(result.receipt).toMatchObject({
+      kind: 'ruvnet-brain-receipted-public-baseline',
+      historicalCorpusReceipt: true,
+      tag,
+      internalArchiveReleaseTag: 'v9.9.9',
+      storeCount: 1,
+    });
+    expect(result.receipt.tag).not.toBe(result.receipt.internalArchiveReleaseTag);
+    const writtenFile = path.join(root, 'baseline-verification-receipt.json');
+    expect(fs.existsSync(writtenFile)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(writtenFile, 'utf8'))).toEqual(result.receipt);
+  });
+
+  it('rejects a seed whose archive bytes were tampered after the receipt was sealed', async () => {
+    const { root, bundle } = await receiptedSeedFixture();
+    const receiptFile = path.join(root, 'corpus-receipt.json');
+    const receipt = await createCorpusReceipt({ bundleFile: bundle, builderSourceSha: 'c'.repeat(40), receiptFile });
+    fs.appendFileSync(bundle, 'tampered');
+    await expect(createReceiptedBaselineVerification({
+      seedDescriptor: { tag: `corpus-sha256-${receipt.archive.sha256}`, sha256: receipt.archive.sha256, bytes: receipt.archive.bytes },
+      baselineBundle: bundle,
+      baselineReceipt: receiptFile,
+      outFile: path.join(root, 'baseline-verification-receipt.json'),
+    })).rejects.toThrow(/seed bundle sha256/i);
   });
 });

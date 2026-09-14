@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "kind": "ruvnet-brain-derived-store-receipt",
+  "store": "concepts",
+  "inputs": [
+    {
+      "path": "concepts.passages.jsonl",
+      "sha256": "21554920d2712c1d8ac44d40d56f18f40b2945ae375fb46f0f5c1d87b6a5d203"
+    }
+  ],
+  "passagesSha256": "21554920d2712c1d8ac44d40d56f18f40b2945ae375fb46f0f5c1d87b6a5d203"
+}
