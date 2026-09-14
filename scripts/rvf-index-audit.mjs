@@ -44,7 +44,9 @@ export const RVF_RECALL_THRESHOLD = 0.95;
 export const RVF_RECALL_K = 10;
 export const RVF_RECALL_SAMPLE = 50;
 export const RVF_PROBE_SAMPLE = 5;
-export const RVF_PROBE_MIN_COSINE = 0.98;
+// The passage<->vector probe accepts a sampled passage when its re-embedding ranks the vector stored
+// under its own id first. See probePassageEmbeddings for why this is a rank and not a cosine cutoff.
+export const RVF_PROBE_MAX_RANK = 1;
 const MAX_LISTED_FAILURES = 20;
 
 export function isPassingState(state) {
@@ -464,12 +466,22 @@ export async function createPassageEmbedder(embedConfig) {
 
 /**
  * A CONSISTENT id-map swap (idToLabel and labelToId swapped together) is invisible to label-level
- * recall, so vector<->passage correspondence is proven by re-embedding a few sampled passages and
- * comparing them with the vector stored under their id. Without an embedder the probe reports
- * NOT-RUN — visibly, never as a pass.
+ * recall, so vector<->passage correspondence is proven by re-embedding sampled passages and checking
+ * them against the vector stored under their id. Without an embedder the probe reports NOT-RUN —
+ * visibly, never as a pass.
+ *
+ * The criterion is RANK, not an absolute cosine, and that is a measured decision rather than a
+ * preference. Measured 2026-09-14 over three shipped stores (12 + 12 + 3 samples), correctly paired
+ * re-embeddings scored as low as 0.9326 — those stores predate the model-revision pin, so rebuilding
+ * today drifts slightly — while a deliberately MIS-paired vector scored as high as 0.9462, because
+ * adjacent chunks of one document are genuinely near-duplicate text. Those ranges overlap (one store
+ * separated by -0.0136), so no fixed cutoff can hold. Ranking does: across 39 samples in stores of 3
+ * to 3,641 vectors, every passage's re-embedding ranked its OWN stored vector first. A consistent
+ * swap still fails, because the vector the id map points at is then another passage's and the true
+ * one outranks it.
  */
 export async function probePassageEmbeddings({
-  rvfPath, stored, idmap, passages, embedder, sampleSize = RVF_PROBE_SAMPLE, minCosine = RVF_PROBE_MIN_COSINE, seed = 0,
+  rvfPath, stored, idmap, passages, embedder, sampleSize = RVF_PROBE_SAMPLE, maxRank = RVF_PROBE_MAX_RANK, seed = 0,
 }) {
   if (!embedder) return { state: 'NOT-RUN', reason: 'no embedder (pass embedder or set RUVNET_BRAIN_RVF_AUDIT_EMBED=1 to load the store\'s pinned model)', failures: [] };
   const candidates = [...idmap.idToLabel.keys()].filter((id) => passages.get(id)?.text && stored.vectors.has(idmap.idToLabel.get(id))).sort();
@@ -479,12 +491,29 @@ export async function probePassageEmbeddings({
   const results = [];
   const failures = [];
   sample.forEach((id, index) => {
-    const storedVector = stored.vectors.get(idmap.idToLabel.get(id));
-    const cosine = 1 - DISTANCE.cosine(storedVector, embedded[index]);
-    results.push({ id, cosine: Number(cosine.toFixed(6)) });
-    if (!(cosine >= minCosine)) failures.push({ kind: 'vector-passage-mismatch', id, detail: `re-embedded passage vs stored vector cosine ${cosine.toFixed(4)} < ${minCosine}` });
+    const ownLabel = idmap.idToLabel.get(id);
+    const probe = embedded[index];
+    const ownScore = 1 - DISTANCE.cosine(stored.vectors.get(ownLabel), probe);
+    let rank = 1;
+    let best = null;
+    for (const [label, vector] of stored.vectors) {
+      if (label === ownLabel) continue;
+      const score = 1 - DISTANCE.cosine(vector, probe);
+      if (score > ownScore) {
+        rank++;
+        if (best === null || score > best.score) best = { label, score };
+      }
+    }
+    results.push({ id, cosine: Number(ownScore.toFixed(6)), rank });
+    if (rank > maxRank) {
+      failures.push({
+        kind: 'vector-passage-mismatch',
+        id,
+        detail: `the re-embedded passage ranks its own stored vector #${rank} (cosine ${ownScore.toFixed(4)}); ${best === null ? 'nothing' : `id ${JSON.stringify(idmap.labelToId.get(best.label) ?? best.label)} scores higher at ${best.score.toFixed(4)}`}`,
+      });
+    }
   });
-  return { state: failures.length ? 'FAIL' : 'PASS', sampleSize: sample.length, minCosine, results, failures };
+  return { state: failures.length ? 'FAIL' : 'PASS', sampleSize: sample.length, maxRank, results, failures };
 }
 
 // --- composite ------------------------------------------------------------------------------------
