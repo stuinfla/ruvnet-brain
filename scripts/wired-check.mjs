@@ -325,7 +325,7 @@ const CALLER_EXTS = new Set(['.mjs', '.js', '.sh', '.json', '.html', '.yml', '.y
 export const REQUIRED_OPERATIONAL_EXPORTS = [
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'syncCorpusInputs' },
   { rel: 'scripts/corpus-aggregates.mjs', symbol: 'rebuildCorpusAggregates' },
-  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'reconcileCorpusUntilStable' },
+  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'acquireCorpusGeneration' },
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'reconcileAndPrepareCorpusCandidate' },
   { rel: 'scripts/gist-receipts.mjs', symbol: 'buildGistAggregate' },
   // Step 3 (2026-09-13): the single canonical public-prose selection entry point, same rigor as

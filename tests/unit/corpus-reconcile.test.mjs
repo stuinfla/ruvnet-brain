@@ -11,8 +11,8 @@ import {
   planReconciliation,
   prepareCorpusCandidate,
   pruneIneligibleStores,
-  reconcileCorpusUntilStable,
-  reconcileUntilStable,
+  acquireCorpusGeneration,
+  acquireSealedGeneration,
   seedPrivateFenceEvidence,
 } from '../../scripts/corpus-reconcile.mjs';
 
@@ -367,11 +367,11 @@ describe('reconciliation output paths must never overlap the checkout, seed, or 
     const root = temp();
     const kb = path.join(root, 'kb');
     fs.mkdirSync(kb, { recursive: true });
-    await expect(reconcileCorpusUntilStable({ assetsDir: kb, workspaceDir: path.join(root, 'work'), root }))
+    await expect(acquireCorpusGeneration({ assetsDir: kb, workspaceDir: path.join(root, 'work'), root }))
       .rejects.toThrow(/checkout kb build workspace/i);
-    await expect(reconcileCorpusUntilStable({ assetsDir: path.join(root, 'assets'), workspaceDir: kb, root }))
+    await expect(acquireCorpusGeneration({ assetsDir: path.join(root, 'assets'), workspaceDir: kb, root }))
       .rejects.toThrow(/checkout kb build workspace/i);
-    await expect(reconcileCorpusUntilStable({ assetsDir: path.join(kb, 'nested'), workspaceDir: path.join(root, 'work'), root }))
+    await expect(acquireCorpusGeneration({ assetsDir: path.join(kb, 'nested'), workspaceDir: path.join(root, 'work'), root }))
       .rejects.toThrow(/checkout kb build workspace/i);
   });
 
@@ -379,7 +379,7 @@ describe('reconciliation output paths must never overlap the checkout, seed, or 
     const root = temp();
     const assetsDir = path.join(root, 'assets');
     fs.mkdirSync(assetsDir, { recursive: true });
-    await expect(reconcileCorpusUntilStable({ assetsDir, workspaceDir: path.join(assetsDir, 'sub'), root }))
+    await expect(acquireCorpusGeneration({ assetsDir, workspaceDir: path.join(assetsDir, 'sub'), root }))
       .rejects.toThrow(/assets directory/i);
   });
 
@@ -394,37 +394,57 @@ describe('reconciliation output paths must never overlap the checkout, seed, or 
   });
 });
 
-describe('round-stability loop (reconcileUntilStable)', () => {
+describe('sealed-generation acquisition (acquireSealedGeneration)', () => {
+  // The round-stability loop this replaced only returned when a fresh observation of the ENTIRE live
+  // source universe hashed identically to the one it started with. Measured 2026-09-14/15: a round takes
+  // about an hour, the hash covers each repository's updatedAt/pushedAt/diskUsage/head oid, and the org
+  // pushes continuously -- so progress was unreliable under sustained churn and a local run died there
+  // after refreshing 90 stores. Dual's ruling: freeze one discovery manifest, accept on completeness
+  // against its immutable pins, and demote the closing observation to telemetry that cannot veto.
   const observationA = { observationSha256: 'a'.repeat(64) };
   const coverageStub = { schemaVersion: 1, coverageGeneration: 'g1', rows: [] };
   const noopLedger = () => ({ stores: {} });
-
-  it('required proof 1: converges on round 1 when the observation never changes, without extra rounds', async () => {
-    const observe = vi.fn(async () => observationA);
-    const build = vi.fn(async () => coverageStub);
-    const execute = vi.fn(async () => ({ refreshed: [] }));
-    const prune = vi.fn(async () => ({ pruned: [] }));
-    const rebuild = vi.fn(async () => ({ rebuilt: [] }));
-    const result = await reconcileUntilStable({
-      maxRounds: 3, assetsDir: temp(), observe, build, readLedger: noopLedger, execute, prune, rebuild,
-    });
-    expect(result.rounds).toHaveLength(1);
-    expect(result.observation).toEqual(observationA);
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(rebuild).toHaveBeenCalledTimes(1);
+  const seams = () => ({
+    build: vi.fn(async () => coverageStub),
+    execute: vi.fn(async () => ({ refreshed: [] })),
+    prune: vi.fn(async () => ({ pruned: [] })),
+    rebuild: vi.fn(async () => ({ rebuilt: [] })),
   });
 
-  it('required proof 2: discards a round and retries with the fresh observation when the source moves mid-round', async () => {
-    const observationB = { observationSha256: 'b'.repeat(64) };
+  it('observes ONCE and accepts on completeness against the sealed manifest', async () => {
+    const observe = vi.fn(async () => observationA);
+    const f = seams();
+    const result = await acquireSealedGeneration({
+      maxAttempts: 3, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
+    });
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(result.attempts).toHaveLength(1);
+    expect(result.observation).toEqual(observationA);
+    expect(result.consistencyModel).toBe('sealed-acquisition-manifest/1');
+    expect(f.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('MUST NOT restart when the universe keeps moving: continuous churn cannot invalidate a sealed generation', async () => {
+    // Every call returns a DIFFERENT universe hash -- the exact condition that made the old loop fail
+    // after exhausting its rounds. A sealed generation never re-observes, so it simply completes.
+    let n = 0;
+    const observe = vi.fn(async () => ({ observationSha256: String(n++).padStart(64, '0') }));
+    const f = seams();
+    const result = await acquireSealedGeneration({
+      maxAttempts: 3, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
+    });
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(result.attempts).toHaveLength(1);
+    expect(f.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries the SAME pinned inputs when a gist revision moves mid-fetch, without re-observing', async () => {
+    const observe = vi.fn(async () => observationA);
+    const f = seams();
     let calls = 0;
-    const observe = vi.fn(async () => (calls++ === 0 ? observationA : observationB));
-    const build = vi.fn(async () => coverageStub);
-    const execute = vi.fn(async () => ({ refreshed: [] }));
-    const prune = vi.fn(async () => ({ pruned: [] }));
-    let rebuildCalls = 0;
-    const rebuild = vi.fn(async () => {
-      rebuildCalls += 1;
-      if (rebuildCalls === 1) {
+    f.rebuild = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
         const error = new Error('gist moved');
         error.code = 'GIST_OBSERVATION_MOVED';
         error.gistId = 'g1';
@@ -432,29 +452,55 @@ describe('round-stability loop (reconcileUntilStable)', () => {
       }
       return { rebuilt: ['concepts'] };
     });
-    const result = await reconcileUntilStable({
-      maxRounds: 3, assetsDir: temp(), observe, build, readLedger: noopLedger, execute, prune, rebuild,
+    const result = await acquireSealedGeneration({
+      maxAttempts: 3, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
     });
-    expect(rebuildCalls).toBe(2);
-    expect(result.observation).toEqual(observationB);
-    expect(result.rounds[0]).toMatchObject({
-      before: observationA.observationSha256, after: observationB.observationSha256,
-      invalidated: { reason: expect.stringMatching(/gist observation moved/i), gistId: 'g1' },
-    });
-    expect(result.rounds).toHaveLength(2);
+    expect(observe).toHaveBeenCalledTimes(1); // the universe is never re-observed
+    expect(calls).toBe(2);
+    expect(result.attempts[0].retried).toMatchObject({ reason: expect.stringMatching(/gist revision moved/i), gistId: 'g1' });
+    expect(result.observation).toEqual(observationA);
   });
 
-  it('required proof 3: throws the exact stabilization-failure error when maxRounds is exhausted without ever stabilizing', async () => {
-    let n = 0;
-    const observe = vi.fn(async () => ({ observationSha256: String(n++).padStart(64, '0') }));
-    const build = vi.fn(async () => coverageStub);
-    const execute = vi.fn(async () => ({ refreshed: [] }));
-    const prune = vi.fn(async () => ({ pruned: [] }));
-    const rebuild = vi.fn(async () => ({ rebuilt: [] }));
-    await expect(reconcileUntilStable({
-      maxRounds: 2, assetsDir: temp(), observe, build, readLedger: noopLedger, execute, prune, rebuild,
-    })).rejects.toThrow(/did not stabilize within 2 reconciliation rounds/i);
-    expect(execute).toHaveBeenCalledTimes(2);
+  it('MUST BLOCK: an exhausted partial generation fails explicitly rather than being accepted', async () => {
+    const observe = vi.fn(async () => observationA);
+    const f = seams();
+    // One eligible source never reaches CURRENT: completeness against the manifest is unmet.
+    f.build = vi.fn(async () => ({
+      ...coverageStub,
+      rows: [{
+        kind: 'repository', disposition: 'eligible', status: 'STALE', name: 'x',
+        url: 'https://github.com/ruvnet/x', upstream: { sha: 'a'.repeat(40) },
+        artifact: { store: 'x', sourceCommit: 'b'.repeat(40) },
+      }],
+    }));
+    await expect(acquireSealedGeneration({
+      maxAttempts: 2, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
+    })).rejects.toThrow(/sealed generation incomplete after 2 acquisition attempt\(s\).*unresolved against the sealed manifest/is);
+    expect(f.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports freshness as telemetry only: a moved universe is recorded, never a veto', async () => {
+    const observe = vi.fn(async () => observationA);
+    const f = seams();
+    const result = await acquireSealedGeneration({
+      maxAttempts: 1, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
+      closingObservation: async () => ({ observationSha256: 'f'.repeat(64) }),
+    });
+    expect(result.freshness).toMatchObject({ checkStatus: 'NEWER_REVISION_OBSERVED', closingObservationSha256: 'f'.repeat(64) });
+    expect(result.coverage).toEqual(coverageStub); // accepted regardless
+  });
+
+  it('a failed or absent closing observation yields UNKNOWN freshness and still accepts', async () => {
+    const observe = vi.fn(async () => observationA);
+    const failing = await acquireSealedGeneration({
+      maxAttempts: 1, assetsDir: temp(), observe, readLedger: noopLedger, ...seams(),
+      closingObservation: async () => { throw new Error('rate limited'); },
+    });
+    expect(failing.freshness).toMatchObject({ checkStatus: 'UNKNOWN', reason: expect.stringMatching(/rate limited/) });
+    const absent = await acquireSealedGeneration({
+      maxAttempts: 1, assetsDir: temp(), observe, readLedger: noopLedger, ...seams(),
+    });
+    expect(absent.freshness).toMatchObject({ checkStatus: 'UNKNOWN', reason: expect.stringMatching(/no closing observation/) });
   });
 });
 
