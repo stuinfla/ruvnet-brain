@@ -523,9 +523,12 @@ Stating that plainly is the whole point of writing it down here.
 C3 as this ADR defines it (≥95% evidence-supporting Hit@5 per repository, N = 2 × min(100,U)
 mechanically-templated questions per repository) was finally run against a real sealed archive
 (4.3.25, 1,130 files, 196 stores). It returned **680/1152 = 59.0%**, self-classified `diagnostic` /
-`c3Eligible:false`, exit 1. Both candidate explanations were tested and **disproved**: `ef_search` is
-irrelevant (identical results at 100, 256 and 512) and the labels are valid (sampled commits match,
-17/17 sampled spans present in the corpus).
+`c3Eligible:false`, exit 1. Both candidate explanations were tested and **disproved**: raising
+`ef_search` changes nothing on this corpus (identical results at 100, 256 and 512) and the labels are
+valid (sampled commits match, 17/17 sampled spans present in the corpus). That first finding is
+bounded to the range measured and is NOT a claim that `ef_search` does not matter in general — rUv's
+own `ruvector/crates/rvf/rvf-index/README.md` reports recall@10 moving 0.986 → 0.996 at ef_search=30,
+so the knee sits well below 100 (grounding receipt `8dc4c644a6b6`).
 
 A second, independent measurement was then run against **the same archive bytes** using
 `data/retrieval-query-evidence.json` — 194 human-written questions, one per repository, committed at
