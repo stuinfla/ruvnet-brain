@@ -10,6 +10,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
+import { normalizeUpdaterManifest } from './updater-manifest.mjs';
 import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
 import { buildCoverage, observeSourceUniverse, renderMarkdown } from './source-coverage.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
@@ -634,17 +635,35 @@ export async function acquireCorpusGeneration({ owner = 'ruvnet', assetsDir, wor
 // no override at all, and a caller that genuinely wants one-shot single-round execution (e.g. a
 // test) can still supply its own `reconcile`.
 export async function reconcileAndPrepareCorpusCandidate({ assetsDir, workspaceDir, root = DEFAULT_ROOT,
-  owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity = null, maxRounds = 3,
+  owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity = null, maxAttempts = 3,
   reconcile = (options) => acquireCorpusGeneration(options),
+  normalizeUpdaters = normalizeUpdaterManifest,
   accuracyOracleFile = null, accuracyStores = null, accuracySample = null, accuracyTimeoutMs = null,
   prepare = prepareCorpusCandidate } = {}) {
-  const finalized = await reconcile({ owner, assetsDir, workspaceDir, root, maxRounds });
+  const finalized = await reconcile({ owner, assetsDir, workspaceDir, root, maxAttempts });
+  // Every shipped repository store needs a complete updater entry, and a seed that predates the
+  // convention leaves inherited stores without one -- measured 2026-09-15: 100 of 194 repository
+  // stores, none of them refreshed that run, which build-bundle rightly refused to ship. Normalize
+  // AFTER reconciliation and aggregate rebuild, BEFORE anything seals or assembles this corpus, and
+  // run even when nothing was refreshed. A store whose artifact cannot be verified against the ledger
+  // is never synthesized -- it is reported here and fails the build, because it needs a real rebuild.
+  const updaters = normalizeUpdaters({
+    assetsDir,
+    coverage: finalized.coverage,
+    refreshedStores: (finalized.attempts || []).flatMap((a) => (a.refreshed || []).map((r) => r?.store || r)).filter(Boolean),
+    seedIdentity: bootstrapIdentity,
+  });
+  if (updaters.missing?.length) {
+    fail(`${updaters.missing.length} repository store(s) still carry no updater entry after normalization `
+      + `(${updaters.missing.slice(0, 5).join(', ')}${updaters.missing.length > 5 ? ', ...' : ''}); `
+      + `unverified: ${JSON.stringify(updaters.unverified?.slice(0, 5) || [])}`);
+  }
   const candidate = await prepare({
     root, assetsDir, builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity,
     coverage: finalized.coverage,
     accuracyOracleFile, accuracyStores, accuracySample, accuracyTimeoutMs,
   });
-  return { reconciliation: finalized, candidate };
+  return { reconciliation: finalized, updaters, candidate };
 }
 
 export function prepareCorpusCandidate({
