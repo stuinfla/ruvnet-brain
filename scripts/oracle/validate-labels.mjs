@@ -149,7 +149,10 @@ export async function validateLabels({ labels, snapshotDir, embed, thresholds = 
     leakyCos.push(cosine(v(emb.leak), v(emb.s)));
     directCos.push(cd.cosine);
     paraCos.push(cp.cosine);
-    perLabel.push({ unitId: label.unitId, path: label.path, kind: label.kind, pass: a.pass && b.pass && c.pass && d.pass, checks: { a, b, c, d }, informational: { e }, codex: label.codex });
+    // Role-neutral judge verdicts: path B (2026-09-14) lets claude judge, so read `judge` and fall back to
+    // the historical codex-shaped record. `codex` is still carried unchanged for existing consumers.
+    const judge = label.judge ?? (label.codex ? { host: 'codex', ...label.codex } : undefined);
+    perLabel.push({ unitId: label.unitId, path: label.path, kind: label.kind, pass: a.pass && b.pass && c.pass && d.pass, checks: { a, b, c, d }, informational: { e }, codex: label.codex, judge });
   }
   const count = (key) => ({ pass: perLabel.filter((r) => r.checks[key].pass).length, fail: perLabel.filter((r) => !r.checks[key].pass).length });
   const codexVerdicts = perLabel.filter((r) => r.codex && !r.codex.error);
@@ -171,6 +174,18 @@ export async function validateLabels({ labels, snapshotDir, embed, thresholds = 
         bothYes: codexVerdicts.filter((r) => r.codex.direct?.answers === 'yes' && r.codex.paraphrase?.answers === 'yes').length,
         bothYesAndAllChecksPass: codexVerdicts.filter((r) => r.pass && r.codex.direct?.answers === 'yes' && r.codex.paraphrase?.answers === 'yes').length,
       },
+      // Whichever host judged. `allThreeYes` also requires the pair-equivalence verdict Dual required:
+      // two supported questions are not proof the paraphrase means the same thing.
+      judge: (() => {
+        const judged = perLabel.filter((r) => r.judge && !r.judge.error && !r.judge.direct?.error);
+        const yesOn = (side) => judged.filter((r) => r.judge[side]?.answers === 'yes').length;
+        const allThree = (r) => ['direct', 'paraphrase', 'equivalent'].every((side) => r.judge[side]?.answers === 'yes');
+        return {
+          hosts: [...new Set(judged.map((r) => r.judge.host))], withVerdicts: judged.length,
+          directYes: yesOn('direct'), paraphraseYes: yesOn('paraphrase'), equivalentYes: yesOn('equivalent'),
+          allThreeYes: judged.filter(allThree).length, allThreeYesAndAllChecksPass: judged.filter((r) => r.pass && allThree(r)).length,
+        };
+      })(),
       cosineCalibration: { directVsSpan: quantiles(directCos), paraphraseVsSpan: quantiles(paraCos), syntheticLeakyVsSpan: quantiles(leakyCos) },
     },
     perLabel,
@@ -217,4 +232,19 @@ export async function main(argv = process.argv.slice(2)) {
   return 0;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) process.exitCode = await main();
+// Entry-point guard. Compares REALPATHS on both sides: path.resolve() normalizes a path but does
+// NOT follow symlinks, while import.meta.url IS symlink-resolved by Node. Through a symlink (npm bin
+// shims, wrapper scripts, and every os.tmpdir() path on macOS) the two sides disagree, so main()
+// never runs -- and because nothing throws, the process exits 0. A silent exit 0 is indistinguishable
+// from "ran, found nothing", which is how prepareCorpusCandidate once reported SUCCESS with no
+// archive on disk. Reproduced live 2026-07-27; pinned by tests/unit/entrypoint-symlink.test.mjs.
+function isDirectInvocation() {
+  try {
+    if (!process.argv[1]) return false;
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectInvocation()) process.exitCode = await main();

@@ -17,9 +17,10 @@ afterEach(() => { while (dirs.length) fs.rmSync(dirs.pop(), { recursive: true, f
 
 // ADR-086 Step 15: the detached retrieval-accuracy report is now a published corpus asset, because a
 // downloaded archive that cannot be reverified against the identity it was measured under is not a
-// deliverable artifact.
+// deliverable artifact. The 2026-09-15 amendment adds the repo-recall report beside it — that one is
+// the measurement that actually qualified the release, so it ships for the same reason.
 const ASSET_NAMES = ['ruvnet-brain.zip', 'ruvnet-brain.zip.sig', 'ruvnet-brain.zip.sha256', 'corpus-receipt.json',
-  'ruvnet-brain.zip.accuracy.json'];
+  'ruvnet-brain.zip.accuracy.json', 'ruvnet-brain.zip.recall.json'];
 const uploaded = (names = ASSET_NAMES) => names.map((name) => ({ name, size: 10, state: 'uploaded' }));
 
 // The real gh surface the promote path touches, driven by a JSON config so each case mutates exactly
@@ -177,8 +178,8 @@ describe('customer corpus promotion (ADR-086 C4 resolution S1)', () => {
     expect(create).not.toContain('--latest=false');
     // ASSETS COMPLETE BEFORE PROMOTION: created as a draft, which releases/latest cannot resolve to.
     expect(create).toContain('--draft');
-    expect(create.slice(-5)).toEqual([f.bundle, `${f.bundle}.sig`, `${f.bundle}.sha256`, f.receiptFile,
-      `${f.bundle}.accuracy.json`]);
+    expect(create.slice(-6)).toEqual([f.bundle, `${f.bundle}.sig`, `${f.bundle}.sha256`, f.receiptFile,
+      `${f.bundle}.accuracy.json`, `${f.bundle}.recall.json`]);
     expect(create[create.indexOf('--notes') + 1]).toContain(`${CORPUS_GENERATION_FIELD} 2026-09-13T12:00:00.000Z`);
 
     expect(sequence[4]).toEqual(['release', 'edit', f.tag, '--repo', REPO, '--draft=false', '--latest', '--prerelease=false']);

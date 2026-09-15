@@ -32,7 +32,8 @@ import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { canonicalJson, digest, fileIdentity, sha256File, validateGistAggregateReceipt } from '../plugin/scripts/coverage-integrity.mjs';
 import { auditCorpusStores, isPassingState } from './rvf-index-audit.mjs';
-import { readAccuracyReport } from './oracle/retrieval-accuracy.mjs';
+import { readDiagnosticAccuracyReport } from './oracle/retrieval-accuracy.mjs';
+import { loadFixture, readRecallReport } from './oracle/repo-recall.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REQUIRED_SUFFIXES = [
@@ -123,21 +124,33 @@ function normalizeBootstrapIdentity(bootstrapIdentity) {
 // from bundleFile, or is one of the three inputs that are not archive-derived (builderSourceSha,
 // bootstrapIdentity, createdAt) — verification supplies those from the receipt being checked, so a
 // receipt can never claim archive contents that were not really shipped.
-async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapIdentity, createdAt, accuracyReportFile }) {
+async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapIdentity, createdAt, accuracyReportFile, recallReportFile }) {
   const bundle = path.resolve(bundleFile || '');
   if (!fs.existsSync(bundle) || !fs.statSync(bundle).isFile()) fail(`bundle missing (${bundle || 'no path supplied'})`);
   if (!HEX_SOURCE.test(builderSourceSha || '')) fail('builderSourceSha must be a 40-64 hex source identity');
   const bootstrap = normalizeBootstrapIdentity(bootstrapIdentity);
   const archive = fileIdentity(bundle);
 
-  // C3 (ADR-086 Step 15): the detached retrieval-accuracy report travels BESIDE the archive under a
-  // fixed derived name, so the writer and the reader — including a reader holding nothing but a
-  // downloaded release asset — resolve the same file without the receipt having to carry a path.
-  // Validation re-derives every count, re-checks the 20x>=19x threshold per partition per mode, and
-  // refuses a bounded measurement outright, so "missing accuracy report", "altered archive",
-  // "below-threshold repository", "missing partition" and "timeout" each fail here, before a
-  // receipt exists at all.
-  const accuracy = readAccuracyReport({
+  // THE BLOCKING RETRIEVAL GATE (ADR-086 amendment, 2026-09-15). Both reports travel BESIDE the
+  // archive under fixed derived names, so any reader holding nothing but a downloaded release asset
+  // resolves the same files without the receipt carrying a path.
+  //
+  // What blocks: the frozen-fixture repo-recall gate. Every one of the 194 pre-existing human
+  // questions must complete without error, every repository must return content of its own, and the
+  // exact-file Hit@5 count may never fall below the accepted floor.
+  //
+  // What NO LONGER blocks: ADR-086's original C3 predicate. Measured against the real 4.3.25 archive
+  // it returns 680/1152 = 59.0% (diagnostic, c3Eligible:false) after both of its candidate
+  // explanations were tested and disproved. Holding publication on it shipped nothing. That swap is
+  // a DECLARED REDUCTION in release requirements, not a demonstration that C3 passed — so the C3
+  // report is still required to exist and still bound to these exact archive bytes, and is published
+  // alongside rather than quietly dropped.
+  const recall = readRecallReport({
+    reportFile: recallReportFile || `${bundle}.recall.json`,
+    archive,
+    expectedFixtureSha256: loadFixture().fixtureSha256,
+  });
+  const accuracyDiagnostic = readDiagnosticAccuracyReport({
     reportFile: accuracyReportFile || `${bundle}.accuracy.json`,
     archive,
   });
@@ -370,7 +383,26 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
       // A6, verbatim: "bump the corpus receipt to schemaVersion 3 with accuracyReport
       // {file, sha256, bytes}". Exactly those three fields — the oracle and generator identities
       // the publication gate needs are reached THROUGH this digest, by re-reading the bound report.
-      accuracyReport: accuracy.identity,
+      // The field keeps its name and shape so existing seed readers are unaffected; what changed is
+      // that this report is now a published DIAGNOSTIC, and `recallReport` is the blocking one.
+      accuracyReport: accuracyDiagnostic.identity,
+      accuracyDiagnostic: {
+        state: accuracyDiagnostic.state,
+        classification: accuracyDiagnostic.classification,
+        c3Eligible: accuracyDiagnostic.c3Eligible,
+        blocking: false,
+        note: 'ADR-086 C3 was NOT met and is NOT demonstrated by this release. Published for inspection.',
+      },
+      recallReport: recall.identity,
+      recallSummary: {
+        fixtureSha256: recall.report.fixture.sha256,
+        questions: recall.report.totals.questions,
+        repositoriesAnswering: recall.report.totals.repoCoverage,
+        exactFileTop1: recall.report.totals.hitTop1,
+        exactFileTop5: recall.report.totals.hitTop5,
+        floor: recall.report.floor.value,
+        blocking: true,
+      },
       generator: { corpusCandidateSha256: sha256File(fileURLToPath(import.meta.url)) },
     };
   } finally {
@@ -385,7 +417,7 @@ function currentGitSha() {
 }
 
 export async function createCorpusReceipt({
-  bundleFile, builderSourceSha, bootstrapIdentity = null, receiptFile, createdAt, accuracyReportFile = null,
+  bundleFile, builderSourceSha, bootstrapIdentity = null, receiptFile, createdAt, accuracyReportFile = null, recallReportFile = null,
 } = {}) {
   const resolvedReceiptFile = path.resolve(receiptFile || 'dist/corpus-receipt.json');
   const receipt = await deriveCorpusCandidate({
@@ -394,6 +426,7 @@ export async function createCorpusReceipt({
     bootstrapIdentity,
     createdAt: createdAt || new Date().toISOString(),
     accuracyReportFile,
+    recallReportFile,
   });
   fs.mkdirSync(path.dirname(resolvedReceiptFile), { recursive: true });
   fs.writeFileSync(resolvedReceiptFile, `${JSON.stringify(receipt, null, 2)}\n`);
@@ -401,7 +434,7 @@ export async function createCorpusReceipt({
 }
 
 export async function verifyCorpusReceipt({
-  bundleFile, receiptFile, expectedBuilderSha, expectedArchiveSha256, expectedReceiptSha256, accuracyReportFile = null,
+  bundleFile, receiptFile, expectedBuilderSha, expectedArchiveSha256, expectedReceiptSha256, accuracyReportFile = null, recallReportFile = null,
 } = {}) {
   const resolvedReceiptFile = path.resolve(receiptFile || '');
   const resolvedBundleFile = path.resolve(bundleFile || '');
@@ -431,6 +464,7 @@ export async function verifyCorpusReceipt({
     bootstrapIdentity: receipt.bootstrap,
     createdAt: receipt.createdAt,
     accuracyReportFile,
+    recallReportFile,
   });
   if (canonicalJson(derived) !== canonicalJson(receipt)) fail('receipt does not match the exact corpus archive contents');
   return receipt;
@@ -440,7 +474,7 @@ export async function verifyCorpusReceipt({
 // (corpus-sha256-<digest>) and its accompanying schema-2 candidate receipt. This never compares
 // the external tag against the archive's own internal ARCHIVE-MANIFEST releaseTag/version — those
 // are two independent identity domains and conflating them was the historical bug this fixes.
-export async function verifySeedBaseline({ seedDescriptor, bundleFile, receiptFile, accuracyReportFile = null } = {}) {
+export async function verifySeedBaseline({ seedDescriptor, bundleFile, receiptFile, accuracyReportFile = null, recallReportFile = null } = {}) {
   if (!seedDescriptor || typeof seedDescriptor !== 'object') fail('seed descriptor is required');
   const { tag, sha256, bytes, sourceCommit = null, allowPinnedTag = false } = seedDescriptor;
   const expectedSha256 = String(sha256 || '').toLowerCase();
@@ -463,6 +497,7 @@ export async function verifySeedBaseline({ seedDescriptor, bundleFile, receiptFi
     bundleFile: resolvedBundleFile,
     receiptFile,
     accuracyReportFile,
+    recallReportFile,
     expectedArchiveSha256: expectedSha256,
     ...(sourceCommit ? { expectedBuilderSha: sourceCommit } : {}),
   });
@@ -479,6 +514,7 @@ async function main() {
   const bundleFile = arg('--bundle', 'dist/ruvnet-brain.zip');
   const receiptFile = arg('--receipt', arg('--out', 'dist/corpus-receipt.json'));
   const accuracyReportFile = arg('--accuracy-report');
+  const recallReportFile = arg('--recall-report');
   if (mode === 'create') {
     const bootstrapTag = arg('--bootstrap-tag');
     const bootstrapSha256 = arg('--bootstrap-sha256');
@@ -489,21 +525,23 @@ async function main() {
       bootstrapIdentity,
       receiptFile,
       accuracyReportFile,
+      recallReportFile,
     });
     console.log(JSON.stringify({
-      ok: true, mode, archive: receipt.archive, stores: receipt.storeCount, accuracyReport: receipt.accuracyReport,
+      ok: true, mode, archive: receipt.archive, stores: receipt.storeCount, accuracyReport: receipt.accuracyReport, recall: receipt.recallSummary,
     }, null, 2));
   } else {
     const receipt = await verifyCorpusReceipt({
       bundleFile,
       receiptFile,
       accuracyReportFile,
+      recallReportFile,
       expectedBuilderSha: arg('--expected-builder-sha'),
       expectedArchiveSha256: arg('--expected-archive-sha256'),
       expectedReceiptSha256: arg('--expected-receipt-sha256'),
     });
     console.log(JSON.stringify({
-      ok: true, mode, archive: receipt.archive, stores: receipt.storeCount, accuracyReport: receipt.accuracyReport,
+      ok: true, mode, archive: receipt.archive, stores: receipt.storeCount, accuracyReport: receipt.accuracyReport, recall: receipt.recallSummary,
     }, null, 2));
   }
 }

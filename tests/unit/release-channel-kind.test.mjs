@@ -142,8 +142,12 @@ describe('every author-side consumer asks for the CODE generation, not the lates
     // this test defends is that the names the client looks up are still ATTACHED and still spelled
     // the same — bin/install.mjs:103 and verify-channels check #4 resolve assets BY NAME, never by
     // an exact set — so an added asset is compatible while a rename or a removal is not.
-    expect(release).toContain('const assetFiles = [bundleFile, signatureFile, digestFile, receiptFile, accuracyReportFile];');
+    expect(release).toContain('const assetFiles = [bundleFile, signatureFile, digestFile, receiptFile, accuracyReportFile, recallReportFile];');
     expect(release).toContain('const accuracyReportFile = `${bundleFile}.accuracy.json`;');
+    // The BLOCKING retrieval evidence ships too (ADR-086 amendment 2026-09-15). A customer that
+    // downloads the archive must be able to re-verify BOTH the number that qualified the release and
+    // the C3 diagnostic it did not meet, without taking either on trust.
+    expect(release).toContain('const recallReportFile = `${bundleFile}.recall.json`;');
     const workflow = read('.github/workflows/protected-release.yml');
     expect(workflow).toContain('node scripts/sign-bundle.mjs --bundle "$staged/ruvnet-brain.zip"');
   });
