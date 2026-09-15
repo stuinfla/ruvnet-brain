@@ -18,7 +18,7 @@ import {
   createRetrospectiveBaselineVerification,
 } from '../../scripts/public-verification-inputs.mjs';
 import { createCorpusReceipt } from '../../scripts/corpus-candidate.mjs';
-import { writeAccuracyReport } from '../helpers/corpus-seed-fixture.mjs';
+import { writeAccuracyReport, writeRecallReport } from '../helpers/corpus-seed-fixture.mjs';
 import { validatePlanAgainstCoverage } from '../../scripts/retrieval-canary.mjs';
 import { writeStoredZip } from '../helpers/zip-fixture.mjs';
 
@@ -474,6 +474,8 @@ describe('createReceiptedBaselineVerification — the new seed-type path (task 3
     // ADR-086 Step 15: a schema-3 receipt binds the detached retrieval-accuracy report that measured
     // these exact archive bytes, so the seed fixture has to carry one.
     writeAccuracyReport(bundle);
+    // ...and, since the 2026-09-15 amendment, the detached repo-recall report that actually blocks.
+    writeRecallReport(bundle);
     return { root, bundle };
   }
 

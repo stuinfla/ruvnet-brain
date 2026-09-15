@@ -50,10 +50,21 @@ import { extractZip } from '../../kb/zip-extract.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
 
-export const ACCURACY_SCHEMA_VERSION = 1;
+// SCHEMA 2 (2026-09-14): ADR-086:248's denominator is now ENFORCED rather than documented. A schema-1
+// oracle — unpaired questions with no unit inventory — and every report measured against one remain
+// READABLE, but only as DIAGNOSTIC benchmarks: validateAccuracyReport refuses them for candidate
+// acceptance and for publication, however high they score. Raised by Dual, verified in code.
+export const ACCURACY_SCHEMA_VERSION = 2;
 export const ACCURACY_KIND = 'ruvnet-brain-retrieval-accuracy';
-export const ORACLE_SCHEMA_VERSION = 1;
+export const ORACLE_SCHEMA_VERSION = 2;
+export const LEGACY_ORACLE_SCHEMA_VERSION = 1;
 export const ORACLE_KIND = 'ruvnet-brain-retrieval-accuracy-oracle';
+// ADR-086:248: "Deterministically stratify and select min(100, U) units ... Each selected unit receives
+// one direct and one meaning-preserving paraphrased question, so N = 2 × min(100, U)."
+export const MAX_SELECTED_UNITS = 100;
+export const QUESTION_FORMS = Object.freeze(['direct', 'paraphrase']);
+export const C3_ACCEPTANCE = 'c3-acceptance';
+export const DIAGNOSTIC = 'diagnostic';
 export const ACCURACY_METRIC = 'evidence-supporting-hit@5';
 export const HIT_AT_K = 5;
 // 20 x successes >= 19 x N. Held as the two integers Dual named so the comparison stays exact
@@ -121,24 +132,41 @@ function resultText(row) {
  * customer-visible text. "A matching file path without the supporting span fails" is the reason the
  * span check is not optional and is not a similarity score — it is substring containment after
  * whitespace normalization, so a result that merely names the right file scores zero.
+ *
+ * "CORRECTLY ATTRIBUTED" MEANS THE RIGHT REPOSITORY (2026-09-14, raised by Dual, confirmed in code).
+ * The previous version never looked at which store a result came from, and matched paths by suffix in
+ * BOTH directions. In full-corpus mode another repository's file carrying the same sentence was
+ * credited, and an expected `docs/README.md` was satisfied by ANY bare `README.md` in any directory of
+ * any repository. Attribution now requires the result's store to equal the partition's store AND the
+ * repository-relative path to be EXACTLY the labelled path. kb/forge-ask-all.mjs searchAll rows carry
+ * `repo` in both query modes (measured against the live brain), which defaultSearch maps to `store`.
  */
-export function scoreEvidenceHit({ results, label }) {
+export function scoreEvidenceHit({ results, label, store }) {
   const top = (Array.isArray(results) ? results : []).slice(0, HIT_AT_K);
   const wantPath = normalizePath(label?.sourcePath);
   const wantSpan = normalizeText(label?.span);
   if (!wantPath || !wantSpan) fail(`label ${label?.id || '(unnamed)'} has no source path or no span`);
-  let pathOnly = false;
-  for (const row of top) {
-    const attributed = resultPaths(row)
-      .map(normalizePath)
-      .some((candidate) => candidate === wantPath || candidate.endsWith(`/${wantPath}`) || wantPath.endsWith(`/${candidate}`));
-    if (!attributed) continue;
-    pathOnly = true;
-    if (normalizeText(resultText(row)).includes(wantSpan)) {
-      return { hit: true, reason: 'evidence-supporting' };
-    }
+  if (typeof store !== 'string' || !store) {
+    fail(`label ${label?.id || '(unnamed)'} was scored without its partition's store — repository attribution cannot be skipped`);
   }
-  return { hit: false, reason: pathOnly ? 'path-matched-without-supporting-span' : 'no-attributed-result' };
+  let pathOnly = false;
+  let wrongRepository = false;
+  for (const row of top) {
+    if (!resultPaths(row).map(normalizePath).some((candidate) => candidate === wantPath)) continue;
+    const spanPresent = normalizeText(resultText(row)).includes(wantSpan);
+    if (row?.store !== store) {
+      if (spanPresent) wrongRepository = true;
+      continue;
+    }
+    pathOnly = true;
+    if (spanPresent) return { hit: true, reason: 'evidence-supporting' };
+  }
+  return {
+    hit: false,
+    reason: pathOnly ? 'path-matched-without-supporting-span'
+      : wrongRepository ? 'evidence-from-wrong-repository'
+        : 'no-attributed-result',
+  };
 }
 
 /**
@@ -153,9 +181,14 @@ export function scoreEvidenceHit({ results, label }) {
  */
 export function validateAccuracyOracle(oracle) {
   if (!oracle || typeof oracle !== 'object') fail('oracle is missing or not an object');
-  if (oracle.schemaVersion !== ORACLE_SCHEMA_VERSION || oracle.kind !== ORACLE_KIND) {
+  if (oracle.kind !== ORACLE_KIND
+    || (oracle.schemaVersion !== ORACLE_SCHEMA_VERSION && oracle.schemaVersion !== LEGACY_ORACLE_SCHEMA_VERSION)) {
     fail('oracle schema version or kind is wrong');
   }
+  // A legacy oracle is still validated in full — it must still be sealed and upstream-grounded — but it
+  // is classified DIAGNOSTIC and can never satisfy C3, because it carries no unit inventory, no fixed
+  // denominator and no direct/paraphrase pairing.
+  const compliant = oracle.schemaVersion === ORACLE_SCHEMA_VERSION;
   if (!Array.isArray(oracle.partitions) || !oracle.partitions.length) fail('oracle declares no partitions');
   if (!Array.isArray(oracle.labels) || !oracle.labels.length) fail('oracle carries no labels');
   const partitions = new Map();
@@ -166,7 +199,37 @@ export function validateAccuracyOracle(oracle) {
     if (!PARTITION_KINDS.has(row.kind)) fail(`oracle partition ${id} has an unsupported kind`);
     if (typeof row.store !== 'string' || !row.store) fail(`oracle partition ${id} names no shipped store`);
     if (!HEX_COMMIT.test(String(row.sourceCommit || ''))) fail(`oracle partition ${id} has no upstream source commit`);
-    partitions.set(id, { partition: id, kind: row.kind, store: row.store, sourceCommit: String(row.sourceCommit).toLowerCase() });
+    const normalized = { partition: id, kind: row.kind, store: row.store, sourceCommit: String(row.sourceCommit).toLowerCase() };
+    if (compliant) {
+      if (!Number.isSafeInteger(row.U) || row.U < 1) {
+        fail(`oracle partition ${id} carries no meaningful-unit count U >= 1 — N=0 is NOT MEASURED; a genuinely empty source belongs in emptySources with independent evidence`);
+      }
+      const expectedSelected = Math.min(MAX_SELECTED_UNITS, row.U);
+      if (row.selectedUnits !== expectedSelected) {
+        fail(`oracle partition ${id} selects ${row.selectedUnits} units; ADR-086:248 requires min(100, U=${row.U}) = ${expectedSelected}`);
+      }
+      if (row.N !== 2 * expectedSelected) {
+        fail(`oracle partition ${id} declares N=${row.N}; ADR-086:248 requires N = 2 x min(100, U) = ${2 * expectedSelected}`);
+      }
+      if (!HEX64.test(String(row.inventorySha256 || '').toLowerCase())) {
+        fail(`oracle partition ${id} binds no meaningful-unit inventory digest`);
+      }
+      if (typeof row.rulesVersion !== 'string' || !row.rulesVersion) fail(`oracle partition ${id} names no enumeration rules version`);
+      if (!Array.isArray(row.unproduced)) fail(`oracle partition ${id} does not account for unproduced units`);
+      const unproducedIds = new Set();
+      const unproduced = row.unproduced.map((entry) => {
+        const unitId = String(entry?.unitId || '');
+        if (!unitId || typeof entry.reason !== 'string' || !entry.reason) fail(`oracle partition ${id} has an unproduced unit with no id or reason`);
+        if (unproducedIds.has(unitId)) fail(`oracle partition ${id} lists unproduced unit ${unitId} twice`);
+        unproducedIds.add(unitId);
+        return { unitId, reason: entry.reason };
+      });
+      Object.assign(normalized, {
+        U: row.U, selectedUnits: expectedSelected, N: row.N,
+        inventorySha256: String(row.inventorySha256).toLowerCase(), rulesVersion: row.rulesVersion, unproduced,
+      });
+    }
+    partitions.set(id, normalized);
   }
   const seen = new Set();
   const labels = [];
@@ -185,7 +248,7 @@ export function validateAccuracyOracle(oracle) {
     if (!HEX64.test(String(row.unitSha256 || '').toLowerCase())) {
       fail(`oracle label ${id} carries no upstream unit byte digest`);
     }
-    labels.push({
+    const normalized = {
       id,
       partition: row.partition,
       question: row.question,
@@ -193,7 +256,49 @@ export function validateAccuracyOracle(oracle) {
       sourcePath: row.sourcePath,
       blobSha: String(row.blobSha).toLowerCase(),
       unitSha256: String(row.unitSha256).toLowerCase(),
-    });
+    };
+    if (compliant) {
+      if (typeof row.unit !== 'string' || !row.unit) fail(`oracle label ${id} names no selected source unit`);
+      if (!QUESTION_FORMS.includes(row.form)) fail(`oracle label ${id} is neither the direct nor the paraphrased question of its unit`);
+      Object.assign(normalized, { unit: row.unit, form: row.form });
+    }
+    labels.push(normalized);
+  }
+  if (compliant) {
+    // Exactly one direct and one paraphrase per produced unit, sharing one upstream evidence identity;
+    // produced + unproduced must account for EVERY selected unit, so a missing, duplicate, extra or
+    // substituted slot cannot quietly move the denominator.
+    const byUnit = new Map();
+    for (const label of labels) {
+      const key = `${label.partition}\u0000${label.unit}`;
+      if (!byUnit.has(key)) byUnit.set(key, new Map());
+      const forms = byUnit.get(key);
+      if (forms.has(label.form)) fail(`oracle unit ${label.unit} in partition ${label.partition} has two ${label.form} questions`);
+      forms.set(label.form, label);
+    }
+    const producedByPartition = new Map();
+    for (const [key, forms] of byUnit) {
+      const [partitionId, unit] = key.split('\u0000');
+      const direct = forms.get('direct');
+      const paraphrase = forms.get('paraphrase');
+      if (!direct || !paraphrase) fail(`oracle unit ${unit} in partition ${partitionId} is missing its ${direct ? 'paraphrase' : 'direct'} question`);
+      for (const field of ['span', 'sourcePath', 'blobSha', 'unitSha256']) {
+        if (direct[field] !== paraphrase[field]) fail(`oracle unit ${unit} in partition ${partitionId}: direct and paraphrase disagree on ${field}`);
+      }
+      if (normalizeText(direct.question).toLowerCase() === normalizeText(paraphrase.question).toLowerCase()) {
+        fail(`oracle unit ${unit} in partition ${partitionId}: the paraphrase repeats the direct question`);
+      }
+      if (partitions.get(partitionId).unproduced.some((entry) => entry.unitId === unit)) {
+        fail(`oracle unit ${unit} in partition ${partitionId} is listed as both produced and unproduced`);
+      }
+      producedByPartition.set(partitionId, (producedByPartition.get(partitionId) || 0) + 1);
+    }
+    for (const partition of partitions.values()) {
+      const produced = producedByPartition.get(partition.partition) || 0;
+      if (produced + partition.unproduced.length !== partition.selectedUnits) {
+        fail(`oracle partition ${partition.partition} accounts for ${produced + partition.unproduced.length} of its ${partition.selectedUnits} selected units — a missing, duplicate or substituted slot would change N`);
+      }
+    }
   }
   const empties = [];
   for (const row of oracle.emptySources || []) {
@@ -213,7 +318,12 @@ export function validateAccuracyOracle(oracle) {
   if (seal.labelsSha256 !== labelsSha256 || seal.partitionsSha256 !== partitionsSha256) {
     fail('oracle seal does not match its own partition/label rows');
   }
-  return { partitions, labels, empties, labelsSha256, partitionsSha256 };
+  return {
+    schemaVersion: oracle.schemaVersion,
+    classification: compliant ? C3_ACCEPTANCE : DIAGNOSTIC,
+    c3Eligible: compliant,
+    partitions, labels, empties, labelsSha256, partitionsSha256,
+  };
 }
 
 export function readAccuracyOracle(file) {
@@ -337,14 +447,21 @@ export async function runRetrievalAccuracy({
         .slice()
         .sort((a, b) => a.id.localeCompare(b.id));
       const selected = sampleLimit == null ? all : all.slice(0, sampleLimit);
+      // THE DENOMINATOR. For a compliant oracle N comes from the unit inventory — 2 x min(100, U) —
+      // never from how many labels happened to survive production. Every unproduced unit keeps its two
+      // slots and scores them as misses below. A bounded --sample run is incomplete and unacceptable
+      // regardless, so it measures only what it sampled.
+      const unproducedSlots = oracle.c3Eligible && sampleLimit == null ? partition.unproduced : [];
       for (const mode of selectedModes) {
         const row = {
           partition: partition.partition,
           partitionKind: partition.kind,
           store: partition.store,
           sourceCommit: partition.sourceCommit,
+          ...(oracle.c3Eligible ? { U: partition.U, N: partition.N } : {}),
           mode,
-          n: selected.length,
+          n: selected.length + 2 * unproducedSlots.length,
+          unproducedQuestions: 2 * unproducedSlots.length,
           successes: 0,
           failures: 0,
           errors: 0,
@@ -374,7 +491,7 @@ export async function runRetrievalAccuracy({
               timeouts += 1;
               outcome = { hit: false, reason: 'timeout' };
             } else {
-              outcome = scoreEvidenceHit({ results: answered?.results, label });
+              outcome = scoreEvidenceHit({ results: answered?.results, label, store: partition.store });
             }
           } catch (error) {
             row.errors += 1;
@@ -388,6 +505,17 @@ export async function runRetrievalAccuracy({
             row.failures += 1;
             if (row.failedLabels.length < 20) row.failedLabels.push({ id: label.id, reason: outcome.reason });
           }
+        }
+        for (const slot of unproducedSlots) {
+          // Two questions per selected unit, both misses: the unit was selected, so it counts.
+          row.failures += 2;
+          if (row.failedLabels.length < 20) row.failedLabels.push({ id: `${partition.partition}::${slot.unitId}`, reason: `unproduced: ${slot.reason}` });
+        }
+        if (row.successes + row.failures !== row.n) {
+          fail(`internal: partition ${row.partition} (${mode}) scored ${row.successes + row.failures} outcomes for n=${row.n}`);
+        }
+        if (oracle.c3Eligible && sampleLimit == null && row.n !== row.N) {
+          fail(`internal: partition ${row.partition} (${mode}) measured n=${row.n} but its inventory fixes N=${row.N}`);
         }
         row.state = meetsThreshold(row.successes, row.n) && row.timeouts === 0 ? 'PASS' : 'FAIL';
         partitions.push(row);
@@ -417,9 +545,14 @@ export async function runRetrievalAccuracy({
     const payload = {
       schemaVersion: ACCURACY_SCHEMA_VERSION,
       kind: ACCURACY_KIND,
+      // A legacy-oracle run is a DIAGNOSTIC benchmark: its number describes that oracle and this
+      // evaluator only, and validateAccuracyReport refuses it for acceptance and publication.
+      classification: oracle.classification,
+      c3Eligible: oracle.c3Eligible,
       createdAt: now(),
       archive,
       oracle: {
+        schemaVersion: oracle.schemaVersion,
         file: oracle.file,
         sha256: oracle.sha256,
         bytes: oracle.bytes,
@@ -462,10 +595,15 @@ export async function runRetrievalAccuracy({
 }
 
 /**
- * The reader-side gate. Every consumer of the accuracy receipt — corpus-candidate.mjs's
- * deriveCorpusCandidate (candidate acceptance) and release.mjs's runProtectedCorpusSeed
- * (publication) — validates through THIS function, so the two can never drift apart, and every
- * number is RE-DERIVED here rather than trusted from the report's own summary fields.
+ * The STRICT C3 reader: schema, metric, threshold, c3Eligible, archive binding, complete coverage and
+ * every per-partition PASS, all re-derived here rather than trusted from the report's summary fields.
+ *
+ * RETAINED DELIBERATELY THOUGH NOTHING IN THE RELEASE PATH CALLS IT SINCE 2026-09-15. C3 measured
+ * 59.0% on a real archive and was demoted to a published diagnostic (readDiagnosticAccuracyReport is
+ * what candidate acceptance and publication now use). This function is the RE-ARM path: when the
+ * retrieval-quality work lands and C3 can be met, restoring the blocking predicate is a one-line
+ * change back to this reader rather than a rewrite. Its behaviour stays pinned by
+ * tests/unit/corpus-accuracy-gate.test.mjs so it cannot rot while it waits.
  */
 export function validateAccuracyReport({
   report, archive, expectedOracleSha256 = null, expectedGeneratorSha256 = null,
@@ -477,6 +615,10 @@ export function validateAccuracyReport({
   if (report.metric !== ACCURACY_METRIC || report.k !== HIT_AT_K
     || report.threshold?.numerator !== THRESHOLD_NUMERATOR || report.threshold?.denominator !== THRESHOLD_DENOMINATOR) {
     fail('accuracy report does not measure the contracted metric, k or threshold');
+  }
+  if (report.c3Eligible !== true || report.classification !== C3_ACCEPTANCE
+    || report.oracle?.schemaVersion !== ORACLE_SCHEMA_VERSION) {
+    fail(`accuracy report is a ${report.classification || 'legacy'} benchmark against an oracle of schema ${report.oracle?.schemaVersion ?? 'unknown'} — only an ADR-086:248-compliant (schema ${ORACLE_SCHEMA_VERSION}) measurement can qualify a corpus for C3, however high it scored`);
   }
   // The BINDING: the report is bound to the exact final-archive bytes it was measured against. An
   // altered archive changes this digest and the report stops applying, which is the whole reason the
@@ -519,6 +661,12 @@ export function validateAccuracyReport({
     if (row.successes + row.failures !== row.n) {
       fail(`accuracy report partition ${row.partition} (${row.mode}) changed its denominator after the fact`);
     }
+    if (!Number.isSafeInteger(row.U) || row.U < 1 || row.N !== 2 * Math.min(MAX_SELECTED_UNITS, row.U)) {
+      fail(`accuracy report partition ${row.partition} (${row.mode}) carries no ADR-086:248 denominator (U=${row.U}, N=${row.N})`);
+    }
+    if (row.n !== row.N) {
+      fail(`accuracy report partition ${row.partition} (${row.mode}) measured n=${row.n} but its inventory fixes N=${row.N} — a denominator taken from surviving labels`);
+    }
     if (row.timeouts > 0) {
       fail(`accuracy report partition ${row.partition} (${row.mode}) recorded ${row.timeouts} timeout(s)`);
     }
@@ -547,6 +695,48 @@ export function validateAccuracyReport({
  * Read a detached accuracy report from disk and validate it against the archive it must bind.
  * Returns the {file, sha256, bytes} identity A6 requires the corpus receipt to carry.
  */
+/**
+ * INTEGRITY-ONLY read of the machine-generated C3 measurement, for the lane where it is published as
+ * a DIAGNOSTIC rather than used as the blocking predicate (ADR-086 amendment, 2026-09-15: C3 measured
+ * 59.0% on the real archive and no longer blocks; scripts/oracle/repo-recall.mjs does).
+ *
+ * This still refuses a report that is malformed, or that describes a DIFFERENT archive — a diagnostic
+ * that is not bound to the bytes it graded is worse than none, because it looks like evidence. What it
+ * deliberately does NOT enforce is the 19/20 threshold, c3Eligible or the C3 classification, so a
+ * failing-but-honest measurement can travel with the release and be read by anyone.
+ */
+export function readDiagnosticAccuracyReport({ reportFile, archive, expectedOracleSha256 = null, expectedGeneratorSha256 = null } = {}) {
+  const resolved = path.resolve(reportFile || '');
+  if (!resolved || !fs.existsSync(resolved)) fail(`diagnostic retrieval-accuracy report missing (${resolved || 'no path supplied'})`);
+  const stat = fs.lstatSync(resolved);
+  if (!stat.isFile() || stat.isSymbolicLink()) fail('diagnostic retrieval-accuracy report is not a trusted regular file');
+  let report;
+  try { report = JSON.parse(fs.readFileSync(resolved, 'utf8')); }
+  catch (error) { fail(`diagnostic retrieval-accuracy report unreadable/corrupt (${error.message})`); }
+  if (report?.schemaVersion !== ACCURACY_SCHEMA_VERSION || report?.kind !== ACCURACY_KIND) {
+    fail('diagnostic retrieval-accuracy report schema version or kind is wrong');
+  }
+  if (!archive || report.archive?.sha256 !== archive.sha256 || report.archive?.bytes !== archive.bytes) {
+    fail('diagnostic retrieval-accuracy report is not bound to this exact final archive');
+  }
+  // The oracle and generator bindings are KEPT even though the score no longer blocks. A diagnostic
+  // that does not name the instrument it was measured with is not a diagnostic, it is a number; and
+  // silently swapping the oracle underneath a published 59.0% would make that figure meaningless.
+  if (expectedOracleSha256 != null && report.oracle?.sha256 !== expectedOracleSha256) {
+    fail('diagnostic retrieval-accuracy report was measured against a different retrieval oracle than the one committed here');
+  }
+  if (expectedGeneratorSha256 != null && report.generator?.retrievalAccuracySha256 !== expectedGeneratorSha256) {
+    fail('diagnostic retrieval-accuracy report was produced by a different benchmark generator than the one committed here');
+  }
+  return {
+    identity: { file: path.basename(resolved), sha256: sha256File(resolved), bytes: stat.size },
+    state: report.state,
+    classification: report.classification ?? null,
+    c3Eligible: report.c3Eligible === true,
+    totals: report.totals ?? null,
+  };
+}
+
 export function readAccuracyReport({
   reportFile, archive, expectedOracleSha256 = null, expectedGeneratorSha256 = null,
 } = {}) {
