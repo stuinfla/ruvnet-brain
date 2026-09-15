@@ -64,6 +64,9 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+// THE canonical continuity policy — the same module bin/install.mjs and scripts/hook-retirement-check.mjs
+// import. Never re-implement this predicate locally; see the note below the imports.
+import { isAllowedContinuityRegistration } from '../plugin/scripts/continuity-hook-policy.mjs';
 
 // ── contract constants (ADR-053 §2.5 / §2.3) ────────────────────────────────────────────────────
 export const STDOUT_CAP_BYTES = 4096; // it lands in the user's context window
@@ -73,26 +76,31 @@ export const WATCHDOG_GRACE_MS = 2000; // SIGTERM → this long → hard kill, t
 /** Advisory hooks may only ever exit 0. Blocking hooks may exit 0, 1 or 2 (ADR-023's table). */
 export const ALLOWED_EXITS = Object.freeze({ advisory: [0], blocking: [0, 1, 2] });
 
-// Keep this predicate local: selfcheck is copied into isolated mutation fixtures and must remain
-// runnable when only this one file is present. The shipped registry policy is the authority for
-// manifests; this duplicate is deliberately limited to classifying the two allowed lifecycle rows.
-function isAllowedContinuityRegistration({ event, matcher, command } = {}, contracts = []) {
-  const text = String(command || '');
-  if (!/(?:hook-shim\.mjs|codex-hook\.mjs)/i.test(text)) return false;
-  const id = event === 'SessionStart' && String(matcher ?? '') === 'startup|resume|clear|compact|fork'
-    ? 'session-start'
-    : event === 'Stop' && String(matcher ?? '') === '*'
-      ? 'continuation-gate'
-      : null;
-  if (id && new RegExp(`(?:^|[\\s"'])${id}(?:$|[\\s"'])`).test(text)) return true;
-  // Installed fixtures and older published bundles may use an explicit contract rather than the
-  // canonical shim. A declared contract is the source of truth; charging it as "legacy" makes a
-  // valid advisory registration fail before its exit-code/timeout behavior is even measured.
-  return contracts.some((contract) => typeof contract?.commandIncludes === 'string'
-    && text.includes(contract.commandIncludes)
-    && (!contract.event || contract.event === event)
-    && (contract.matcher == null || String(contract.matcher) === String(matcher)));
-}
+// THE SECOND COPY OF THE CONTINUITY POLICY — DELETED 2026-09-15, and this is why.
+//
+// This file used to carry its OWN isAllowedContinuityRegistration(), hardcoding the two ids
+// 'session-start' and 'continuation-gate'. That was correct when the plane really was retired to
+// continuity-only (00526b12, 2026-09-07). The project then deliberately grew the plane back to
+// ELEVEN registrations (9c45d408 restored the lifecycle, 7b8e6e73 wired the search-first gate,
+// ef2b8e12 extended it to Codex). plugin/scripts/continuity-hook-policy.mjs was updated. This
+// duplicate was not.
+//
+// WHAT THAT COST: `npm run hooks:check` and bin/install.mjs both import the canonical policy, so
+// both reported the plane compliant -- while THIS file, which runs unconditionally at the end of
+// every `npx ruvnet-brain` install and every --doctor, classified 9 of the 11 shipped registrations
+// as LEGACY and exited 1. Reproduced byte-for-byte outside CI against an `installed:<version>`
+// surface -- the directory a SUCCESSFUL `claude plugin install` creates. The more correctly the
+// install succeeded, the more certainly it reported failure. Only the stranger matrix could see it,
+// and stranger had been skipped for a month behind a red `ci` job.
+//
+// The old comment justified the duplicate as "selfcheck is copied into isolated mutation fixtures
+// and must remain runnable when only this one file is present". That is no longer true and is
+// verified, not assumed: tests/mutation/install-selfcheck-consumption-mutation.test.mjs stages
+// CONSOLE_RUNTIME_SURFACE, which lists 'plugin/scripts' (scripts/console-runtime-identity.mjs:34),
+// so the canonical policy is already present in that fixture.
+//
+// ONE policy, ONE source of truth. A checker and its subject that disagree guarantee recurring red
+// builds -- the same lesson scripts/repo-count-detector.mjs was extracted to record.
 
 /**
  * Load hook-registry.mjs. It is a sibling in `scripts/`, shipped alongside this file — see the
@@ -659,10 +667,19 @@ export async function selfCheck({ home = os.homedir(), repo = null, cwd = os.tmp
       }
     } catch { /* battery already has the authoritative result */ }
     const legacyRegistrations = battery.registrations.filter((registration) =>
-      !isAllowedContinuityRegistration({ ...registration, layer: 'plugin' }, contracts)
+      !isAllowedContinuityRegistration({ ...registration, layer: 'plugin' })
+      // KEPT DELIBERATELY. The current plugin/hooks/hook-contracts.json carries no
+      // `commandIncludes`, so it is tempting to call this dead and delete it -- I did, and
+      // tests/mesh/coexistence.test.mjs immediately proved it wrong. `git log -S commandIncludes`
+      // shows the field WAS on real contracts until 00526b12 (2026-09-07, the retire-automatic-hooks
+      // release), so anyone still installed from a bundle older than that has contracts only this
+      // branch can recognise. Charging their valid registration as "legacy" would fail their install
+      // for upgrading late. The BUG was never this fallback -- it was the hardcoded two-id list
+      // above it, now replaced by the canonical policy.
       && !(battery.surface.source.startsWith('installed:')
         && contracts.some((contract) => typeof contract?.commandIncludes === 'string'
           && String(registration.command || '').includes(contract.commandIncludes))));
+
     if (legacyRegistrations.length !== 0) {
       violations.push({
         kind: 'automatic-registration',
