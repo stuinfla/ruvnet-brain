@@ -9,7 +9,7 @@
 //
 // THIS IS AN ORCHESTRATOR. It calls the existing entry points; it reimplements none of them:
 //   scripts/corpus-reconcile.mjs  assertBootstrapIdentity, normalizeExtractedCorpus, syncCorpusInputs,
-//                                 seedPrivateFenceEvidence, reconcileCorpusUntilStable,
+//                                 seedPrivateFenceEvidence, acquireCorpusGeneration,
 //                                 reconcileAndPrepareCorpusCandidate, prepareCorpusCandidate
 //   scripts/source-coverage.mjs   observeSourceUniverse, canonicalSourceObservation, buildCoverage
 //   scripts/build-bundle.mjs      assembleBundle (invoked exactly once per candidate, via its CLI,
@@ -609,7 +609,7 @@ async function runGeneration({ index, api, checkoutRoot, workRoot, seed, bounds,
     assetsDir, workspaceDir, root: checkoutRoot, owner: bounds.owner, builderSha: bounds.builderSha,
     candidateDir, receiptFile, coverageFile: path.join(checkoutRoot, 'data', 'source-coverage.json'),
     bootstrapIdentity, maxRounds: bounds.maxRounds,
-    reconcile: (options) => api.reconcileCorpusUntilStable({ ...options, observe: boundedObserve }),
+    reconcile: (options) => api.acquireCorpusGeneration({ ...options, observe: boundedObserve }),
     prepare: (options) => api.prepareCorpusCandidate({ ...options, run: recordingRun }),
   });
   generation.reconciliation = {
@@ -826,7 +826,7 @@ export async function rehearseCorpusPipeline({
       normalizeExtractedCorpus: reconcileMod.normalizeExtractedCorpus,
       seedPrivateFenceEvidence: reconcileMod.seedPrivateFenceEvidence,
       syncCorpusInputs: reconcileMod.syncCorpusInputs,
-      reconcileCorpusUntilStable: reconcileMod.reconcileCorpusUntilStable,
+      acquireCorpusGeneration: reconcileMod.acquireCorpusGeneration,
       reconcileAndPrepareCorpusCandidate: reconcileMod.reconcileAndPrepareCorpusCandidate,
       prepareCorpusCandidate: reconcileMod.prepareCorpusCandidate,
       observeSourceUniverse: coverageMod.observeSourceUniverse,
