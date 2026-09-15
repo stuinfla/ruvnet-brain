@@ -99,15 +99,20 @@ describe('corpus-seed.yml seed-download accuracy-report gate', () => {
     // A guard that exempted "any seed with no accuracy.json asset" would be self-defeating — every
     // seed could opt out by omitting the file. Any other pinned tag is still exempt (it is
     // pre-contract by construction), but nothing about the ASSETS decides that.
-    const r = runGuard({ tag: 'v9.9.9-dev', sha256: seed.sha256 });
+    const r = runGuard({ tag: 'v9.9.9-dev', sha256: seed.sha256 }); // sync-version-ignore: a deliberately impossible fixture tag, not a product version
     expect(r.status).toBe(0);
     expect(r.requiresReport).toBe(false);
     const source = fs.readFileSync(WORKFLOW, 'utf8');
+    // The seed's retrieval verification must still exist — the fix narrows WHEN it runs, it does not
+    // delete it. Since the 2026-09-15 ADR-086 amendment that verification is TWO readers: the
+    // blocking repo-recall gate, and a BINDING-only read of the C3 diagnostic (which is published at
+    // 59.0% and would reject every seed this pipeline can produce if it still had to pass).
+    expect(source.includes('readRecallReport'), 'the blocking seed recall gate must still run').toBe(true);
+    expect(source.includes('readDiagnosticAccuracyReport'), 'the C3 diagnostic must still be bound to the seed bytes').toBe(true);
     expect(
-      source.includes('readAccuracyReport'),
-      'the seed accuracy verification itself must still exist — the fix narrows WHEN it runs, it ' +
-        'does not delete it',
-    ).toBe(true);
+      source.includes('readAccuracyReport({'),
+      'the C3 report must NOT be re-armed as a blocking seed predicate without amending ADR-086 again',
+    ).toBe(false);
   });
 });
 

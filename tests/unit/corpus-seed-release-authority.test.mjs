@@ -221,7 +221,7 @@ describe('protected corpus-seed release authority', () => {
       '--repo', 'stuinfla/ruvnet-brain',
       '--title', `Immutable corpus seed ${f.digest.slice(0, 16)}`,
       '--notes', expect.stringContaining(`Archive SHA-256: ${f.digest}`),
-      f.bundle, f.receiptFile, `${f.bundle}.accuracy.json`,
+      f.bundle, f.receiptFile, `${f.bundle}.accuracy.json`, `${f.bundle}.recall.json`,
     ]);
     expect(calls[1]).not.toContain('--draft');
     expect(calls[1]).not.toContain('--clobber');

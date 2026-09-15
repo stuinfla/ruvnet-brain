@@ -595,10 +595,15 @@ export async function runRetrievalAccuracy({
 }
 
 /**
- * The reader-side gate. Every consumer of the accuracy receipt — corpus-candidate.mjs's
- * deriveCorpusCandidate (candidate acceptance) and release.mjs's runProtectedCorpusSeed
- * (publication) — validates through THIS function, so the two can never drift apart, and every
- * number is RE-DERIVED here rather than trusted from the report's own summary fields.
+ * The STRICT C3 reader: schema, metric, threshold, c3Eligible, archive binding, complete coverage and
+ * every per-partition PASS, all re-derived here rather than trusted from the report's summary fields.
+ *
+ * RETAINED DELIBERATELY THOUGH NOTHING IN THE RELEASE PATH CALLS IT SINCE 2026-09-15. C3 measured
+ * 59.0% on a real archive and was demoted to a published diagnostic (readDiagnosticAccuracyReport is
+ * what candidate acceptance and publication now use). This function is the RE-ARM path: when the
+ * retrieval-quality work lands and C3 can be met, restoring the blocking predicate is a one-line
+ * change back to this reader rather than a rewrite. Its behaviour stays pinned by
+ * tests/unit/corpus-accuracy-gate.test.mjs so it cannot rot while it waits.
  */
 export function validateAccuracyReport({
   report, archive, expectedOracleSha256 = null, expectedGeneratorSha256 = null,
@@ -690,6 +695,48 @@ export function validateAccuracyReport({
  * Read a detached accuracy report from disk and validate it against the archive it must bind.
  * Returns the {file, sha256, bytes} identity A6 requires the corpus receipt to carry.
  */
+/**
+ * INTEGRITY-ONLY read of the machine-generated C3 measurement, for the lane where it is published as
+ * a DIAGNOSTIC rather than used as the blocking predicate (ADR-086 amendment, 2026-09-15: C3 measured
+ * 59.0% on the real archive and no longer blocks; scripts/oracle/repo-recall.mjs does).
+ *
+ * This still refuses a report that is malformed, or that describes a DIFFERENT archive — a diagnostic
+ * that is not bound to the bytes it graded is worse than none, because it looks like evidence. What it
+ * deliberately does NOT enforce is the 19/20 threshold, c3Eligible or the C3 classification, so a
+ * failing-but-honest measurement can travel with the release and be read by anyone.
+ */
+export function readDiagnosticAccuracyReport({ reportFile, archive, expectedOracleSha256 = null, expectedGeneratorSha256 = null } = {}) {
+  const resolved = path.resolve(reportFile || '');
+  if (!resolved || !fs.existsSync(resolved)) fail(`diagnostic retrieval-accuracy report missing (${resolved || 'no path supplied'})`);
+  const stat = fs.lstatSync(resolved);
+  if (!stat.isFile() || stat.isSymbolicLink()) fail('diagnostic retrieval-accuracy report is not a trusted regular file');
+  let report;
+  try { report = JSON.parse(fs.readFileSync(resolved, 'utf8')); }
+  catch (error) { fail(`diagnostic retrieval-accuracy report unreadable/corrupt (${error.message})`); }
+  if (report?.schemaVersion !== ACCURACY_SCHEMA_VERSION || report?.kind !== ACCURACY_KIND) {
+    fail('diagnostic retrieval-accuracy report schema version or kind is wrong');
+  }
+  if (!archive || report.archive?.sha256 !== archive.sha256 || report.archive?.bytes !== archive.bytes) {
+    fail('diagnostic retrieval-accuracy report is not bound to this exact final archive');
+  }
+  // The oracle and generator bindings are KEPT even though the score no longer blocks. A diagnostic
+  // that does not name the instrument it was measured with is not a diagnostic, it is a number; and
+  // silently swapping the oracle underneath a published 59.0% would make that figure meaningless.
+  if (expectedOracleSha256 != null && report.oracle?.sha256 !== expectedOracleSha256) {
+    fail('diagnostic retrieval-accuracy report was measured against a different retrieval oracle than the one committed here');
+  }
+  if (expectedGeneratorSha256 != null && report.generator?.retrievalAccuracySha256 !== expectedGeneratorSha256) {
+    fail('diagnostic retrieval-accuracy report was produced by a different benchmark generator than the one committed here');
+  }
+  return {
+    identity: { file: path.basename(resolved), sha256: sha256File(resolved), bytes: stat.size },
+    state: report.state,
+    classification: report.classification ?? null,
+    c3Eligible: report.c3Eligible === true,
+    totals: report.totals ?? null,
+  };
+}
+
 export function readAccuracyReport({
   reportFile, archive, expectedOracleSha256 = null, expectedGeneratorSha256 = null,
 } = {}) {

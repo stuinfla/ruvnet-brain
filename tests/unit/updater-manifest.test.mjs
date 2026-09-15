@@ -97,9 +97,11 @@ describe('backfilling inherited stores', () => {
 
   it('binds inheritance evidence to the seed and the verified artifact', () => {
     const { dir, coverage } = fixture();
-    normalizeUpdaterManifest({ assetsDir: dir, coverage, seedIdentity: { tag: 'v4.2.1-dev', sha256: 'c'.repeat(64) } });
+    // sync-version-ignore: v4.2.1-dev is the PINNED BOOTSTRAP SEED tag (data/corpus-seed.json), a
+    // fixed historical identity that must NOT track the product version -- syncing it would break the guard.
+    normalizeUpdaterManifest({ assetsDir: dir, coverage, seedIdentity: { tag: 'v4.2.1-dev', sha256: 'c'.repeat(64) } }); // sync-version-ignore: the pinned bootstrap seed tag
     const e = read(dir).stores.beta.inheritanceEvidence;
-    expect(e).toMatchObject({ seedTag: 'v4.2.1-dev', seedSha256: 'c'.repeat(64), builtUtc: ORIGINAL_BUILT, artifactBytes: Buffer.from('rvf-bytes-for-beta').length });
+    expect(e).toMatchObject({ seedTag: 'v4.2.1-dev', seedSha256: 'c'.repeat(64), builtUtc: ORIGINAL_BUILT, artifactBytes: Buffer.from('rvf-bytes-for-beta').length }); // sync-version-ignore: the pinned bootstrap seed tag
     expect(e.artifactSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(e.ledgerSha256).toMatch(/^[a-f0-9]{64}$/);
   });

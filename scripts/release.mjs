@@ -36,7 +36,26 @@ import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
 import { verifyCorpusReceipt } from './corpus-candidate.mjs';
-import { readAccuracyReport } from './oracle/retrieval-accuracy.mjs';
+import { readDiagnosticAccuracyReport } from './oracle/retrieval-accuracy.mjs';
+import { loadFixture, readRecallReport } from './oracle/repo-recall.mjs';
+
+/**
+ * The measured retrieval numbers, stated in the release notes themselves rather than left behind a
+ * digest. Both halves go in together on purpose: the number that qualified the release, and the one
+ * it did NOT meet. A reader who sees only the first would reasonably assume the second was fine.
+ */
+const recallNotes = (receipt) => {
+  const r = receipt.recallSummary;
+  if (!r) return [];
+  return [
+    `Retrieval (blocking): ${r.repositoriesAnswering}/${r.questions} repositories answer a real question`
+      + ` about themselves from their own content; ${r.exactFileTop5}/${r.questions} return the exact`
+      + ` labeled file in the top 5 (floor ${r.floor}).`,
+    'NOT measured: generated-answer correctness, citation support, or unscoped whole-corpus discovery.',
+    `ADR-086 C3 was NOT met and is NOT claimed — its measurement ships as ${receipt.accuracyReport.file}`
+      + ' for inspection.',
+  ];
+};
 import { verifyBundle } from './verify-bundle.mjs';
 import { CORPUS_GENERATION_FIELD, evaluateCorpusPromotion } from './corpus-promotion.mjs';
 
@@ -202,15 +221,39 @@ export async function runProtectedCorpusSeed({
   const accuracyGeneratorFile = path.join(root, 'scripts/oracle/retrieval-accuracy.mjs');
   if (!fs.existsSync(committedOracleFile)) corpusFailure('committed retrieval-accuracy oracle is missing from the release checkout');
   if (!fs.existsSync(accuracyGeneratorFile)) corpusFailure('committed retrieval-accuracy benchmark is missing from the release checkout');
+  // The BLOCKING retrieval predicate at publication is the frozen-fixture repo-recall gate, read
+  // through the same module candidate acceptance used so the two can never drift apart. ADR-086's
+  // C3 report still has to exist and still has to be bound to these exact archive bytes — an
+  // unbound diagnostic looks like evidence and is worse than none — but its score no longer refuses
+  // publication. That reduction is declared in docs/adr/0086 and in the published report itself.
+  const archiveIdentity = { file: receipt.archive.file, sha256: archiveSha256, bytes: fs.statSync(bundleFile).size };
   try {
-    readAccuracyReport({
+    readDiagnosticAccuracyReport({
       reportFile: accuracyReportFile,
-      archive: { file: receipt.archive.file, sha256: archiveSha256, bytes: fs.statSync(bundleFile).size },
+      archive: archiveIdentity,
       expectedOracleSha256: sha256File(committedOracleFile),
       expectedGeneratorSha256: sha256File(accuracyGeneratorFile),
     });
   } catch (error) {
-    corpusFailure(`retrieval accuracy does not qualify this corpus for publication (${error.message})`);
+    corpusFailure(`the published C3 diagnostic is not bound to this archive (${error.message})`);
+  }
+  const recallReportFile = `${bundleFile}.recall.json`;
+  if (!fs.existsSync(recallReportFile)) {
+    corpusFailure(`detached repo-recall report missing beside the archive (${path.basename(recallReportFile)})`);
+  }
+  if (!receipt.recallReport
+    || sha256File(recallReportFile) !== receipt.recallReport.sha256
+    || fs.statSync(recallReportFile).size !== receipt.recallReport.bytes) {
+    corpusFailure('detached repo-recall report bytes do not match the corpus receipt');
+  }
+  try {
+    readRecallReport({
+      reportFile: recallReportFile,
+      archive: archiveIdentity,
+      expectedFixtureSha256: loadFixture().fixtureSha256,
+    });
+  } catch (error) {
+    corpusFailure(`retrieval does not qualify this corpus for publication (${error.message})`);
   }
 
   // Deep re-verification — moved here 2026-09-13 from the deleted scripts/corpus-seed-publish.mjs
@@ -222,7 +265,7 @@ export async function runProtectedCorpusSeed({
   // here. It runs before any `gh` call so an untrue candidate never reaches the network.
   try {
     await verifyCorpusReceipt({
-      receiptFile, bundleFile, accuracyReportFile, expectedBuilderSha: target, expectedArchiveSha256: archiveSha256,
+      receiptFile, bundleFile, accuracyReportFile, recallReportFile, expectedBuilderSha: target, expectedArchiveSha256: archiveSha256,
     });
   } catch (error) {
     corpusFailure(`corpus receipt does not verify against the sealed archive (${error.message})`);
@@ -269,6 +312,8 @@ export async function runProtectedCorpusSeed({
       `Archive SHA-256: ${archiveSha256}`,
       `Receipt SHA-256: ${receiptSha256}`,
       `Accuracy report SHA-256: ${receipt.accuracyReport.sha256}`,
+      `Recall report SHA-256: ${receipt.recallReport.sha256}`,
+      ...recallNotes(receipt),
       `Stores: ${receipt.storeCount}`,
       `Builder source SHA: ${receipt.builderSourceSha}`,
       'This published prerelease is immutable and must never be replaced.',
@@ -283,7 +328,7 @@ export async function runProtectedCorpusSeed({
       '--repo', repo,
       '--title', `Immutable corpus seed ${archiveSha256.slice(0, 16)}`,
       '--notes', notes,
-      bundleFile, receiptFile, accuracyReportFile,
+      bundleFile, receiptFile, accuracyReportFile, recallReportFile,
     ];
     const create = gh(createArgs);
     if (create.error || create.status !== 0) {
@@ -322,6 +367,7 @@ export async function runProtectedCorpusSeed({
     `Stores: ${receipt.storeCount}`,
     `Builder source SHA: ${receipt.builderSourceSha}`,
     `Shipped runtime: ${receipt.archiveManifestReleaseTag}`,
+    ...recallNotes(receipt),
     'Immutable: this tag is the archive digest and must never be replaced.',
   ].join('\n');
 
@@ -330,10 +376,11 @@ export async function runProtectedCorpusSeed({
   // release with no archive — every polling client in that window fails or, worse, half-downloads.
   // Create as a draft (invisible to releases/latest), prove all four assets landed, and only then
   // flip draft off and claim latest in one edit.
-  // accuracyReportFile rides with every corpus release for the same reason it rides with a seed: a
-  // customer (or the next night's dispatcher) that downloads the archive must be able to reverify it
-  // against the identity it was actually measured under.
-  const assetFiles = [bundleFile, signatureFile, digestFile, receiptFile, accuracyReportFile];
+  // Both reports ride with every corpus release for the same reason they ride with a seed: a customer
+  // (or the next night's dispatcher) that downloads the archive must be able to reverify it against
+  // the identity it was actually measured under — the blocking recall gate AND the C3 diagnostic it
+  // scored 59.0% on, so nobody has to take either number on trust.
+  const assetFiles = [bundleFile, signatureFile, digestFile, receiptFile, accuracyReportFile, recallReportFile];
   const create = gh([
     'release', 'create', tag,
     '--draft',

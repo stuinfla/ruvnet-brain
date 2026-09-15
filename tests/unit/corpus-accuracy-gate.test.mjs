@@ -22,9 +22,10 @@ import {
 } from '../../scripts/oracle/retrieval-accuracy.mjs';
 import { createCorpusReceipt, verifyCorpusReceipt } from '../../scripts/corpus-candidate.mjs';
 import {
-  accuracyOracle, accuracyReportFor, buildAssets, fixtureReleaseRoot, seal, sealedCorpusBundle,
-  writeAccuracyReport, SOURCE_COMMIT,
+  accuracyOracle, accuracyReportFor, buildAssets, fixtureReleaseRoot, recallReportFor, seal,
+  sealedCorpusBundle, writeAccuracyReport, SOURCE_COMMIT,
 } from '../helpers/corpus-seed-fixture.mjs';
+import { tally } from '../../scripts/oracle/repo-recall.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const HEAD = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
@@ -470,9 +471,9 @@ describe('validateAccuracyReport re-derives every number rather than trusting th
 });
 
 describe('corpus receipt schema 3 binds the detached accuracy report', () => {
-  async function sealed({ accuracy = {} } = {}) {
+  async function sealed({ accuracy = {}, recall = {} } = {}) {
     const dir = temp();
-    const { bundle, bundleDir } = await sealedCorpusBundle(dir, { accuracy });
+    const { bundle, bundleDir } = await sealedCorpusBundle(dir, { accuracy, recall });
     const receiptFile = path.join(dir, 'corpus-receipt.json');
     return { dir, bundle, bundleDir, receiptFile };
   }
@@ -494,7 +495,7 @@ describe('corpus receipt schema 3 binds the detached accuracy report', () => {
     const { bundle, receiptFile } = await sealed({ accuracy: null });
     await expect(createCorpusReceipt({
       bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40), createdAt: '2026-09-14T00:00:00.000Z',
-    })).rejects.toThrow(/detached retrieval-accuracy report missing/i);
+    })).rejects.toThrow(/diagnostic retrieval-accuracy report missing/i);
   });
 
   it('MUST BLOCK: an altered archive leaves the report bound to bytes that no longer exist', async () => {
@@ -521,14 +522,42 @@ describe('corpus receipt schema 3 binds the detached accuracy report', () => {
       .rejects.toThrow(/does not match the exact corpus archive contents/i);
   });
 
-  it('MUST BLOCK: a bounded report cannot seal a candidate', async () => {
+  // DECLARED CHANGE, 2026-09-15 (ADR-086 amendment): a bounded or failing C3 report no longer refuses
+  // a candidate, because C3 measured 59.0% on a real archive and blocking on it shipped nothing. What
+  // replaces that guard is NOT nothing — it is the repo-recall gate below. This test pins both halves
+  // so the reduction stays visible: the C3 state is RECORDED rather than silently dropped, and an
+  // incomplete recall run still refuses. If someone deletes the second half, the first half alone
+  // would let an unmeasured corpus seal.
+  it('a bounded C3 report no longer blocks, but its state is recorded on the receipt', async () => {
     const { bundle, receiptFile } = await sealed({ accuracy: null });
     writeAccuracyReport(bundle, {
       overrides: { coverage: { complete: false, bounded: { reasons: ['--stores 2'] }, archiveStores: ['alpha'], unmeasuredPartitions: [], uncoveredArchiveStores: [] } },
     });
+    const receipt = await createCorpusReceipt({
+      bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40), createdAt: '2026-09-14T00:00:00.000Z',
+    });
+    expect(receipt.accuracyDiagnostic.blocking).toBe(false);
+    expect(receipt.accuracyDiagnostic.note).toMatch(/C3 was NOT met/i);
+    expect(receipt.recallSummary.blocking).toBe(true);
+  });
+
+  it('MUST BLOCK: an incomplete repo-recall run cannot seal a candidate', async () => {
+    const { bundle, receiptFile } = await sealed({ recall: null });
+    // One question short of the frozen fixture: the gate must refuse rather than score what it ran.
+    const short = recallReportFor(bundle);
+    short.rows = short.rows.slice(0, -1);
+    short.totals = tally(short.rows);
+    fs.writeFileSync(`${bundle}.recall.json`, `${JSON.stringify(short, null, 2)}\n`);
     await expect(createCorpusReceipt({
       bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40), createdAt: '2026-09-14T00:00:00.000Z',
-    })).rejects.toThrow(/BOUNDED measurement/i);
+    })).rejects.toThrow(/asked 193 of 194|regressed to/i);
+  });
+
+  it('MUST BLOCK: a missing repo-recall report cannot be sealed', async () => {
+    const { bundle, receiptFile } = await sealed({ recall: null });
+    await expect(createCorpusReceipt({
+      bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40), createdAt: '2026-09-14T00:00:00.000Z',
+    })).rejects.toThrow(/detached repo-recall report missing/i);
   });
 
   it('MUST BLOCK: a schema-2 receipt is unverifiable — schema-2 seeds become unpublishable', async () => {
@@ -660,19 +689,21 @@ process.exit(0);
     expect(f.ghCalls()).toHaveLength(0);
   });
 
-  it('MUST BLOCK: one below-threshold repository, even with the receipt forged to bind it', async () => {
-    // A below-threshold report can never be SEALED (the candidate gate refuses it first), so the only
-    // way it reaches publication is a forged receipt that binds the bad report's digest. That forgery
-    // survives every well-formedness check and is caught here, before any gh call.
+  it('MUST BLOCK: a below-floor recall result, even with the receipt forged to bind it', async () => {
+    // This is the successor to the old "one below-threshold repository" publication guard. A
+    // below-floor report can never be SEALED (the candidate gate refuses it first), so the only way
+    // it reaches publication is a forged receipt that binds the bad report's digest. That forgery
+    // survives every well-formedness check and must still be caught here, before any gh call —
+    // otherwise moving the blocking predicate would have quietly removed a publication guard.
     const f = await publishable();
-    const bad = accuracyReportFor(f.bundle, {
-      oracleSha256: f.fixtureRoot.oracleSha256, generatorSha256: f.fixtureRoot.generatorSha256, successes: 18,
-    });
-    const reportFile = `${f.bundle}.accuracy.json`;
+    const bad = recallReportFor(f.bundle);
+    bad.rows = bad.rows.map((row, i) => (i < 20 ? { ...row, exactFileRank: null } : row));
+    bad.totals = tally(bad.rows);
+    const reportFile = `${f.bundle}.recall.json`;
     fs.writeFileSync(reportFile, `${JSON.stringify(bad, null, 2)}\n`);
     const forged = {
       ...f.receipt,
-      accuracyReport: {
+      recallReport: {
         file: path.basename(reportFile),
         sha256: crypto.createHash('sha256').update(fs.readFileSync(reportFile)).digest('hex'),
         bytes: fs.statSync(reportFile).size,
@@ -681,7 +712,7 @@ process.exit(0);
     fs.writeFileSync(f.receiptFile, JSON.stringify(forged, null, 2));
     const result = f.run();
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/below threshold: 18\/20/);
+    expect(result.stderr).toMatch(/regressed to \d+, below the accepted floor/i);
     expect(f.ghCalls()).toHaveLength(0);
   });
 

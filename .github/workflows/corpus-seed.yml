@@ -220,7 +220,7 @@ jobs:
             throw new Error('configured corpus seed is absent, draft, or names another tag');
           }
           const required = process.env.SEED_IS_DIGEST_DERIVED === '1'
-            ? ['ruvnet-brain.zip', 'ruvnet-brain.zip.accuracy.json']
+            ? ['ruvnet-brain.zip', 'ruvnet-brain.zip.accuracy.json', 'ruvnet-brain.zip.recall.json']
             : ['ruvnet-brain.zip'];
           for (const asset of required) {
             const matches = (release.assets || []).filter(({ name }) => name === asset);
@@ -232,23 +232,43 @@ jobs:
           if [ "$SEED_IS_DIGEST_DERIVED" = 1 ]; then
             gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
               --pattern 'ruvnet-brain.zip.accuracy.json' --dir "$RUNNER_TEMP/corpus-seed-download"
+            gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern 'ruvnet-brain.zip.recall.json' --dir "$RUNNER_TEMP/corpus-seed-download"
           fi
           test "$(find "$RUNNER_TEMP/corpus-seed-download" -maxdepth 1 -type f -name 'ruvnet-brain.zip' | wc -l | tr -d ' ')" = 1
           printf '%s  %s\n' "$SEED_SHA256" "$RUNNER_TEMP/corpus-seed-download/ruvnet-brain.zip" | sha256sum --check --strict
           test "$(stat -c %s "$RUNNER_TEMP/corpus-seed-download/ruvnet-brain.zip")" = "$SEED_BYTES"
-          # "Reverify the downloaded final artifact against the measured identity." The seed's detached
-          # accuracy report must bind the bytes just downloaded, and must be a complete, all-PASS
-          # measurement — a bounded one is refused by the same reader the candidate seal uses.
+          # "Reverify the downloaded final artifact against the measured identity." Both detached
+          # reports must bind the bytes just downloaded, through the SAME readers the candidate seal
+          # uses, so a seed can never be accepted on weaker evidence than a candidate.
+          #
+          # The BLOCKING one is the repo-recall gate. The C3 report is verified for BINDING ONLY: it
+          # is a published diagnostic since the 2026-09-15 ADR-086 amendment, so requiring it to pass
+          # here would reject every seed this pipeline is now capable of producing — but leaving it
+          # unbound would let a diagnostic from some other archive ride along looking like evidence.
           if [ "$SEED_IS_DIGEST_DERIVED" = 1 ]; then
           node --input-type=module <<'NODE'
-          import { readAccuracyReport } from './scripts/oracle/retrieval-accuracy.mjs';
+          import { readDiagnosticAccuracyReport } from './scripts/oracle/retrieval-accuracy.mjs';
+          import { ABSOLUTE_FLOOR, loadFixture, readRecallReport } from './scripts/oracle/repo-recall.mjs';
           import fs from 'node:fs';
           const bundle = `${process.env.RUNNER_TEMP}/corpus-seed-download/ruvnet-brain.zip`;
-          readAccuracyReport({
-            reportFile: `${bundle}.accuracy.json`,
-            archive: { file: 'ruvnet-brain.zip', sha256: process.env.SEED_SHA256, bytes: fs.statSync(bundle).size },
+          const archive = { file: 'ruvnet-brain.zip', sha256: process.env.SEED_SHA256, bytes: fs.statSync(bundle).size };
+          readDiagnosticAccuracyReport({ reportFile: `${bundle}.accuracy.json`, archive });
+          // A SEED is graded against ABSOLUTE_FLOOR, not against today's committed floor. The ratchet
+          // exists to gate what we are about to ACCEPT; re-judging an already-published seed by a
+          // later, higher bar would strand the pipeline the first time the floor is raised — the last
+          // good seed would stop being usable and there would be nothing to build the next
+          // generation from. ABSOLUTE_FLOOR is a fixed minimum the report cannot talk its way under,
+          // so this stays fail-closed without creating that trap.
+          const { report } = readRecallReport({
+            reportFile: `${bundle}.recall.json`,
+            archive,
+            expectedFixtureSha256: loadFixture().fixtureSha256,
+            floorValue: ABSOLUTE_FLOOR,
           });
-          console.log('seed retrieval-accuracy report verified against the downloaded seed bytes');
+          console.log(`seed repo-recall gate verified against the downloaded seed bytes: `
+            + `${report.totals.repoCoverage}/${report.totals.questions} repositories answering, `
+            + `${report.totals.hitTop5}/${report.totals.questions} exact-file Hit@5`);
           NODE
           fi
 
@@ -291,23 +311,30 @@ jobs:
           # produced beside the archive by prepareCorpusCandidate and MUST travel with it — without
           # it the receipt cannot be verified anywhere downstream.
           test -s "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.accuracy.json"
+          # The detached repo-recall report is the BLOCKING retrieval evidence (ADR-086 amendment
+          # 2026-09-15). Same first-class status: produced beside the archive and required to travel
+          # with it, or the receipt cannot be verified anywhere downstream.
+          test -s "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.recall.json"
           archive_sha256="$(sha256sum "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip" | cut -d' ' -f1)"
           receipt_sha256="$(sha256sum release-evidence/corpus-receipt.json | cut -d' ' -f1)"
           accuracy_sha256="$(sha256sum "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.accuracy.json" | cut -d' ' -f1)"
+          recall_sha256="$(sha256sum "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.recall.json" | cut -d' ' -f1)"
           node scripts/corpus-candidate.mjs --verify \
             --bundle "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip" \
             --receipt release-evidence/corpus-receipt.json \
-            --accuracy-report "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.accuracy.json"
+            --accuracy-report "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.accuracy.json" \
+            --recall-report "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.recall.json"
           artifact_name="corpus-seed-prepared-$EXPECTED_SHA"
           {
             echo "artifact_name=$artifact_name"
             echo "archive_sha256=$archive_sha256"
             echo "receipt_sha256=$receipt_sha256"
             echo "accuracy_sha256=$accuracy_sha256"
+            echo "recall_sha256=$recall_sha256"
             echo "seed_sha256=$SEED_SHA256"
           } >> "$GITHUB_OUTPUT"
-          printf 'candidate_sha=%s\narchive_sha256=%s\nreceipt_sha256=%s\naccuracy_sha256=%s\nseed_tag=%s\nseed_sha256=%s\nseed_origin=%s\n' \
-            "$EXPECTED_SHA" "$archive_sha256" "$receipt_sha256" "$accuracy_sha256" "$SEED_TAG" "$SEED_SHA256" "$SEED_ORIGIN" \
+          printf 'candidate_sha=%s\narchive_sha256=%s\nreceipt_sha256=%s\naccuracy_sha256=%s\nrecall_sha256=%s\nseed_tag=%s\nseed_sha256=%s\nseed_origin=%s\n' \
+            "$EXPECTED_SHA" "$archive_sha256" "$receipt_sha256" "$accuracy_sha256" "$recall_sha256" "$SEED_TAG" "$SEED_SHA256" "$SEED_ORIGIN" \
             > release-evidence/corpus-preparation.identity
 
       # ONE artifact root, outside the tracked tree. The previous upload mixed `$RUNNER_TEMP/...`
@@ -327,6 +354,7 @@ jobs:
           # by convention — the receipt carries only its basename, so renaming it here would break
           # verification everywhere downstream.
           mv "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.accuracy.json" "$staged/ruvnet-brain.zip.accuracy.json"
+          mv "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.recall.json" "$staged/ruvnet-brain.zip.recall.json"
           cp release-evidence/corpus-receipt.json "$staged/corpus-receipt.json"
           cp release-evidence/corpus-reconcile.log "$staged/corpus-reconcile.log"
           cp release-evidence/corpus-preparation.identity "$staged/corpus-preparation.identity"
@@ -336,6 +364,7 @@ jobs:
           test "$(sha256sum "$staged/ruvnet-brain.zip" | cut -d' ' -f1)" = "${{ steps.seal.outputs.archive_sha256 }}"
           test "$(sha256sum "$staged/corpus-receipt.json" | cut -d' ' -f1)" = "${{ steps.seal.outputs.receipt_sha256 }}"
           test "$(sha256sum "$staged/ruvnet-brain.zip.accuracy.json" | cut -d' ' -f1)" = "${{ steps.seal.outputs.accuracy_sha256 }}"
+          test "$(sha256sum "$staged/ruvnet-brain.zip.recall.json" | cut -d' ' -f1)" = "${{ steps.seal.outputs.recall_sha256 }}"
 
       - name: Upload exact candidate for protected-release.yml
         uses: actions/upload-artifact@v4

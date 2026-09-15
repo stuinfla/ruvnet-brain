@@ -8,7 +8,7 @@ import {
   verifyCorpusReceipt,
   verifySeedBaseline,
 } from '../../scripts/corpus-candidate.mjs';
-import { RvfDatabase, SOURCE_COMMIT, buildAssets, seal, sha256, writeAccuracyReport } from '../helpers/corpus-seed-fixture.mjs';
+import { RvfDatabase, SOURCE_COMMIT, buildAssets, seal, sha256, writeAccuracyReport, writeRecallReport } from '../helpers/corpus-seed-fixture.mjs';
 
 // The genuine-RVF bundle fixture (writeMinimalRvf / buildAssets / seal) moved to
 // tests/helpers/corpus-seed-fixture.mjs on 2026-09-13 so tests/unit/corpus-seed-release-authority.test.mjs
@@ -248,6 +248,10 @@ describe('immutable corpus candidate receipt (schema 3)', () => {
     // rewritten for the traversal bytes — otherwise this would assert the accuracy binding rather
     // than the extractor rejection it exists to prove.
     writeAccuracyReport(f.bundle);
+    // Same reason for the recall report: it is bound to the archive's OUTER digest and the blocking
+    // gate reads it BEFORE extraction, so without rebinding this would assert the recall binding
+    // rather than the extractor rejection it exists to prove.
+    writeRecallReport(f.bundle);
     await expect(create(f)).rejects.toThrow(/cannot extract archive/i);
   });
 });

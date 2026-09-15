@@ -344,6 +344,11 @@ export const REQUIRED_OPERATIONAL_EXPORTS = [
   // CLI after single-pass assembly; corpus-candidate.mjs and release.mjs both import its
   // readAccuracyReport reader so candidate acceptance and publication can never drift apart.
   { rel: 'scripts/oracle/retrieval-accuracy.mjs', symbol: 'runRetrievalAccuracy' },
+  // ADR-086 amendment (2026-09-15): the BLOCKING retrieval gate. C3 above still runs and still ships,
+  // but as a published diagnostic; this is the module that can refuse a candidate. prepareCorpusCandidate
+  // shells out to its CLI after single-pass assembly, and corpus-candidate.mjs and release.mjs both
+  // import its readRecallReport reader so candidate acceptance and publication can never drift apart.
+  { rel: 'scripts/oracle/repo-recall.mjs', symbol: 'runRepoRecall' },
 ];
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))

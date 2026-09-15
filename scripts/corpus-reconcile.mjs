@@ -708,7 +708,8 @@ export function prepareCorpusCandidate({
   const buildScript = path.join(sourceRoot, 'scripts', 'build-bundle.mjs');
   const receiptScript = path.join(sourceRoot, 'scripts', 'corpus-candidate.mjs');
   const accuracyScript = path.join(sourceRoot, 'scripts', 'oracle', 'retrieval-accuracy.mjs');
-  for (const required of [buildScript, receiptScript, accuracyScript]) {
+  const recallScript = path.join(sourceRoot, 'scripts', 'oracle', 'repo-recall.mjs');
+  for (const required of [buildScript, receiptScript, accuracyScript, recallScript]) {
     if (!fs.existsSync(required)) fail(`required candidate builder missing (${required})`);
   }
   // ADR-086 Step 15 / C3. The oracle is a hard input, checked BEFORE the expensive single-pass
@@ -718,6 +719,14 @@ export function prepareCorpusCandidate({
   const accuracyOracle = path.resolve(accuracyOracleFile || path.join(sourceRoot, 'data', 'retrieval-accuracy-oracle.json'));
   if (!fs.existsSync(accuracyOracle) || !fs.statSync(accuracyOracle).isFile()) {
     fail(`retrieval-accuracy oracle missing (${accuracyOracle}); ADR-086 Step 15's C3 gate cannot seal an unmeasured corpus`);
+  }
+  // The recall gate's two inputs are hard inputs, checked BEFORE the expensive assembly for the same
+  // reason the oracle is: a missing ratchet must fail in seconds, not after an hour of building.
+  for (const required of [
+    path.join(sourceRoot, 'data', 'retrieval-query-evidence.json'),
+    path.join(sourceRoot, 'data', 'repo-recall-floor.json'),
+  ]) {
+    if (!fs.existsSync(required)) fail(`repo-recall gate input missing (${required}); a corpus cannot be sealed without the frozen fixture and the ratchet it must not regress below`);
   }
   fs.mkdirSync(path.dirname(candidate), { recursive: true });
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
@@ -741,18 +750,31 @@ export function prepareCorpusCandidate({
     ...(accuracySample != null ? ['--sample', String(accuracySample)] : []),
     ...(accuracyTimeoutMs != null ? ['--timeout-ms', String(accuracyTimeoutMs)] : [])],
   { stdio: 'inherit' });
+  // THE BLOCKING RETRIEVAL GATE (ADR-086 amendment 2026-09-15). Same placement and same discipline
+  // as the C3 run above — the EXTRACTED final archive through the customer query path — but this is
+  // the measurement that can refuse a candidate. It asks the 194 frozen human questions, one per
+  // repository, and fails on any error, any repository that returns nothing of its own, or any
+  // exact-file Hit@5 below the committed ratchet floor.
+  const recallReportFile = `${bundleFile}.recall.json`;
+  checked(run, process.execPath, [recallScript, '--bundle', bundleFile, '--out', recallReportFile],
+    { stdio: 'inherit' });
   // The candidate receipt is derived ENTIRELY from the sealed bundle's own bytes plus the detached,
-  // digest-bound accuracy report (schema 3) — the separate assets/policy directory used to build it
-  // is no longer an alternate verification root.
+  // digest-bound reports — the separate assets/policy directory used to build it is no longer an
+  // alternate verification root.
   const bootstrapArgs = bootstrapIdentity?.tag && bootstrapIdentity?.sha256
     ? ['--bootstrap-tag', bootstrapIdentity.tag, '--bootstrap-sha256', bootstrapIdentity.sha256]
     : [];
   checked(run, process.execPath, [receiptScript, '--bundle', bundleFile,
     '--receipt', receipt, '--builder-source-sha', builderSha,
-    '--accuracy-report', accuracyReportFile, ...bootstrapArgs], { stdio: 'inherit' });
+    '--accuracy-report', accuracyReportFile, '--recall-report', recallReportFile,
+    ...bootstrapArgs], { stdio: 'inherit' });
   checked(run, process.execPath, [receiptScript, '--verify', '--bundle', bundleFile,
-    '--receipt', receipt, '--accuracy-report', accuracyReportFile], { stdio: 'inherit' });
-  return { bundleFile, receiptFile: receipt, coverageFile: policy, accuracyReportFile, accuracyOracleFile: accuracyOracle };
+    '--receipt', receipt, '--accuracy-report', accuracyReportFile,
+    '--recall-report', recallReportFile], { stdio: 'inherit' });
+  return {
+    bundleFile, receiptFile: receipt, coverageFile: policy,
+    accuracyReportFile, accuracyOracleFile: accuracyOracle, recallReportFile,
+  };
 }
 
 function arg(argv, name, fallback = null) {

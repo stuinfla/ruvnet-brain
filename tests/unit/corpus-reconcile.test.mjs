@@ -258,18 +258,43 @@ describe('candidate preparation', () => {
   });
 
   // ADR-086 Step 15 wired the C3 retrieval-accuracy benchmark into this function, so a candidate root
-  // now needs the benchmark script and the committed oracle as well as the two older builders.
-  const candidateRoot = ({ oracle = true } = {}) => {
+  // needs the benchmark script and the committed oracle as well as the two older builders. The
+  // 2026-09-15 amendment added the BLOCKING repo-recall gate beside it, which brings two more hard
+  // inputs — the frozen fixture and the ratchet floor — checked before assembly for the same reason:
+  // a missing one must fail in seconds, not after an hour of building.
+  const candidateRoot = ({ oracle = true, recallInputs = true } = {}) => {
     const root = temp();
     fs.mkdirSync(path.join(root, 'scripts', 'oracle'), { recursive: true });
     fs.mkdirSync(path.join(root, 'data'), { recursive: true });
     for (const file of ['build-bundle.mjs', 'corpus-candidate.mjs']) {
       fs.writeFileSync(path.join(root, 'scripts', file), '// fixture');
     }
-    fs.writeFileSync(path.join(root, 'scripts', 'oracle', 'retrieval-accuracy.mjs'), '// fixture');
+    for (const file of ['retrieval-accuracy.mjs', 'repo-recall.mjs']) {
+      fs.writeFileSync(path.join(root, 'scripts', 'oracle', file), '// fixture');
+    }
     if (oracle) fs.writeFileSync(path.join(root, 'data', 'retrieval-accuracy-oracle.json'), '{}');
+    if (recallInputs) {
+      fs.writeFileSync(path.join(root, 'data', 'retrieval-query-evidence.json'), '{}');
+      fs.writeFileSync(path.join(root, 'data', 'repo-recall-floor.json'), '{}');
+    }
     return root;
   };
+
+  it('MUST BLOCK: a checkout missing the frozen fixture or the ratchet assembles nothing at all', () => {
+    const coverage = coverageFixture('CURRENT');
+    const run = () => ({ status: 0, stdout: '', stderr: '' });
+    const attempt = () => prepareCorpusCandidate({
+      root: candidateRoot({ recallInputs: false }),
+      assets: path.join(temp(), 'assets'),
+      candidate: path.join(temp(), 'out', 'ruvnet-brain'),
+      receipt: path.join(temp(), 'out', 'corpus-receipt.json'),
+      policy: path.join(temp(), 'out', 'coverage.json'),
+      builderSha: 'a'.repeat(40),
+      coverage,
+      run,
+    });
+    expect(attempt).toThrow(/repo-recall gate input missing/i);
+  });
 
   it('never re-observes live sources; renders coverage JSON+Markdown from one object, then builds and seals', () => {
     const root = candidateRoot();
@@ -288,19 +313,25 @@ describe('candidate preparation', () => {
     });
     expect(result.bundleFile).toBe(path.join(root, 'candidate', 'ruvnet-brain.zip'));
     const joined = calls.map((call) => call.join(' '));
-    // Step 15: assembly, THEN the accuracy benchmark against the assembled archive, THEN the seal
-    // that binds its report, THEN independent re-verification. Order is the contract: a benchmark run
-    // before assembly would measure nothing, and one after the seal could not be bound by it.
-    expect(joined).toHaveLength(4);
+    // Step 15 plus the 2026-09-15 amendment: assembly, THEN the C3 benchmark against the assembled
+    // archive, THEN the BLOCKING repo-recall gate against the same archive, THEN the seal that binds
+    // both reports, THEN independent re-verification. Order is the contract: a measurement run before
+    // assembly would measure nothing, and one after the seal could not be bound by it.
+    expect(joined).toHaveLength(5);
     expect(joined[0]).toMatch(/build-bundle\.mjs/);
     expect(joined[1]).toMatch(/oracle\/retrieval-accuracy\.mjs .*--bundle .*ruvnet-brain\.zip/);
     expect(joined[1]).toMatch(/--out .*ruvnet-brain\.zip\.accuracy\.json/);
     expect(joined[1]).not.toMatch(/--stores|--sample/);
-    expect(joined[2]).toMatch(/corpus-candidate\.mjs/);
-    expect(joined[2]).not.toMatch(/--verify/);
-    expect(joined[2]).toMatch(/--accuracy-report .*ruvnet-brain\.zip\.accuracy\.json/);
-    expect(joined[3]).toMatch(/corpus-candidate\.mjs .*--verify/);
+    expect(joined[2]).toMatch(/oracle\/repo-recall\.mjs .*--bundle .*ruvnet-brain\.zip/);
+    expect(joined[2]).toMatch(/--out .*ruvnet-brain\.zip\.recall\.json/);
+    expect(joined[3]).toMatch(/corpus-candidate\.mjs/);
+    expect(joined[3]).not.toMatch(/--verify/);
+    expect(joined[3]).toMatch(/--accuracy-report .*ruvnet-brain\.zip\.accuracy\.json/);
+    expect(joined[3]).toMatch(/--recall-report .*ruvnet-brain\.zip\.recall\.json/);
+    expect(joined[4]).toMatch(/corpus-candidate\.mjs .*--verify/);
+    expect(joined[4]).toMatch(/--recall-report .*ruvnet-brain\.zip\.recall\.json/);
     expect(result.accuracyReportFile).toBe(path.join(root, 'candidate', 'ruvnet-brain.zip.accuracy.json'));
+    expect(result.recallReportFile).toBe(path.join(root, 'candidate', 'ruvnet-brain.zip.recall.json'));
     expect(joined.join('\n')).not.toMatch(/corpus-seed-publish|release create|--publish|source-coverage\.mjs/);
     expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'source-coverage.json'), 'utf8'))).toEqual(coverage);
     expect(fs.readFileSync(path.join(root, 'docs', 'RUVNET-COVERAGE.md'), 'utf8')).toContain('alpha');

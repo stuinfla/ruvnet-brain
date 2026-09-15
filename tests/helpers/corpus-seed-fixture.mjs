@@ -14,6 +14,7 @@
 // the 1,024-vector HNSW threshold, so no persisted index is required and the audit reports PASS).
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { ABSOLUTE_FLOOR, loadFixture, tally } from '../../scripts/oracle/repo-recall.mjs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
@@ -178,7 +179,45 @@ export function writeAccuracyReport(bundle, options = {}) {
   return file;
 }
 
-export function seal(root, bundleDir, { accuracy = {} } = {}) {
+/**
+ * The detached repo-recall report — the BLOCKING retrieval gate since the 2026-09-15 ADR-086
+ * amendment. Synthesised at exactly the accepted floor over the real committed fixture, so a fixture
+ * bundle exercises the same predicate a release does rather than a weakened stand-in.
+ */
+export function recallReportFor(bundle, overrides = {}) {
+  const stat = fs.statSync(bundle);
+  const fixture = loadFixture();
+  const rows = fixture.questions.map((q, i) => ({
+    store: q.store,
+    expectedPath: q.expectedPath,
+    repoCovered: true,
+    exactFileRank: i < 139 ? 1 : i < 176 ? 4 : null,
+    returnedPaths: [`${q.store}/${q.expectedPath}`],
+  }));
+  return {
+    schemaVersion: 1,
+    kind: 'ruvnet-brain-repo-recall',
+    state: 'PASS',
+    failures: [],
+    measuredUtc: '2026-09-15T00:00:00.000Z',
+    archive: { file: path.basename(bundle), sha256: sha256(bundle), bytes: stat.size },
+    fixture: { file: fixture.file, sha256: fixture.fixtureSha256, sourceCommit: fixture.sourceCommit, questionCount: rows.length },
+    protocol: { entryPoint: 'fixture', k: 5, repositoryScope: 'explicit', scoring: 'exact labeled file path within top-k' },
+    floor: { value: ABSOLUTE_FLOOR, committed: ABSOLUTE_FLOOR, absolute: ABSOLUTE_FLOOR },
+    totals: tally(rows),
+    meaning: {},
+    rows,
+    ...overrides,
+  };
+}
+
+export function writeRecallReport(bundle, options = {}) {
+  const file = `${bundle}.recall.json`;
+  fs.writeFileSync(file, `${JSON.stringify(recallReportFor(bundle, options), null, 2)}\n`);
+  return file;
+}
+
+export function seal(root, bundleDir, { accuracy = {}, recall = {} } = {}) {
   const files = [];
   const walk = (dir, prefix = '') => {
     for (const name of fs.readdirSync(dir).sort()) {
@@ -206,6 +245,7 @@ export function seal(root, bundleDir, { accuracy = {} } = {}) {
   // `accuracy: null` deliberately seals an archive with NO detached report — the "missing accuracy
   // report" case the Step 15 proof text requires to block.
   if (accuracy) writeAccuracyReport(bundle, accuracy);
+  if (recall) writeRecallReport(bundle, recall);
   return bundle;
 }
 
@@ -281,6 +321,14 @@ export function fixtureReleaseRoot(root, { oracleBody = null } = {}) {
   fs.mkdirSync(path.join(root, 'data'), { recursive: true });
   const oracleFile = path.join(root, 'data', 'retrieval-accuracy-oracle.json');
   fs.writeFileSync(oracleFile, oracleBody ?? `${JSON.stringify({ fixture: 'oracle' }, null, 2)}\n`);
+  // The repo-recall gate's two committed inputs. `--preserve-symlinks` makes the publisher's ROOT
+  // this directory, so it reads THESE — which is the point: a release checkout that has lost the
+  // frozen fixture or the ratchet must refuse to publish, and that has to be reachable in a test.
+  // They are COPIES of the real committed files, not invented ones, so the fixture exercises the
+  // real fixture digest and the real floor rather than a weakened stand-in.
+  for (const name of ['retrieval-query-evidence.json', 'repo-recall-floor.json']) {
+    fs.copyFileSync(path.join(repoRoot, 'data', name), path.join(root, 'data', name));
+  }
   return {
     root,
     release: path.join(root, 'scripts', 'release.mjs'),
