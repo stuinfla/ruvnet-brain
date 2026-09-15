@@ -424,6 +424,27 @@ describe('sealed-generation acquisition (acquireSealedGeneration)', () => {
     expect(f.execute).toHaveBeenCalledTimes(1);
   });
 
+  it('re-derives coverage AFTER rebuilding aggregates, against the same sealed observation', async () => {
+    // The refactor to sealed acquisition originally dropped this, and a real 56-minute build died at
+    // build-bundle with "coverage row gist:... was measured against different ruv-gists RVF bytes than
+    // this corpus carries" -- the rows still pinned the PRE-rebuild aggregate digest. Coverage must be
+    // recomputed after the rebuild, from the SAME observation (never a fresh one).
+    const observe = vi.fn(async () => observationA);
+    const f = seams();
+    const stale = { ...coverageStub, coverageGeneration: 'before-rebuild' };
+    const settled = { ...coverageStub, coverageGeneration: 'after-rebuild' };
+    let builds = 0;
+    f.build = vi.fn(async () => { builds += 1; return builds === 1 ? stale : settled; });
+    const result = await acquireSealedGeneration({
+      maxAttempts: 1, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
+    });
+    expect(builds).toBe(2);
+    expect(f.build).toHaveBeenNthCalledWith(1, observationA);
+    expect(f.build).toHaveBeenNthCalledWith(2, observationA); // same sealed observation, not a new one
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(result.coverage).toEqual(settled); // the post-rebuild coverage is what ships
+  });
+
   it('MUST NOT restart when the universe keeps moving: continuous churn cannot invalidate a sealed generation', async () => {
     // Every call returns a DIFFERENT universe hash -- the exact condition that made the old loop fail
     // after exhausting its rounds. A sealed generation never re-observes, so it simply completes.

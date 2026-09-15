@@ -268,13 +268,20 @@ export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = nul
         retried: { reason: 'gist revision moved during exact detail fetch', gistId: error.gistId || null } });
       continue;
     }
-    const remaining = planReconciliation({ coverage, ledger: currentLedger(), assetsDir });
-    const unresolved = coverage.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
+    // Re-derive coverage from the SAME sealed observation after the aggregates were rebuilt. This is
+    // NOT re-observation -- the manifest is untouched -- it recomputes each row's artifact digests
+    // against the bytes this corpus now actually carries. Measured 2026-09-15: without it, a coverage
+    // row still pinned the PRE-rebuild ruv-gists digest and build-bundle refused the candidate with
+    // "coverage row gist:... was measured against different ruv-gists RVF bytes than this corpus
+    // carries", 56 minutes into an otherwise complete run.
+    const settled = await build(observation);
+    const remaining = planReconciliation({ coverage: settled, ledger: currentLedger(), assetsDir });
+    const unresolved = settled.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
     attempts.push({ attempt, plan, ...reconciliation, ...pruning, ...aggregates,
       remainingArtifacts: remaining.length, unresolvedSources: unresolved.length });
     if (!remaining.length && !unresolved.length) {
       return {
-        observation, coverage, attempts, consistencyModel: CONSISTENCY_MODEL,
+        observation, coverage: settled, attempts, consistencyModel: CONSISTENCY_MODEL,
         freshness: await measureFreshness({ closingObservation, observation }),
       };
     }
