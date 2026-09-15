@@ -22,9 +22,10 @@ import {
 } from '../../scripts/oracle/retrieval-accuracy.mjs';
 import { createCorpusReceipt, verifyCorpusReceipt } from '../../scripts/corpus-candidate.mjs';
 import {
-  accuracyOracle, accuracyReportFor, buildAssets, fixtureReleaseRoot, seal, sealedCorpusBundle,
-  writeAccuracyReport, SOURCE_COMMIT,
+  accuracyOracle, accuracyReportFor, buildAssets, fixtureReleaseRoot, recallReportFor, seal,
+  sealedCorpusBundle, writeAccuracyReport, SOURCE_COMMIT,
 } from '../helpers/corpus-seed-fixture.mjs';
+import { tally } from '../../scripts/oracle/repo-recall.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const HEAD = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
@@ -48,12 +49,17 @@ function canonical(value) {
   return JSON.stringify(value === undefined ? null : value);
 }
 
-/** A sealed oracle file on disk, matching what scripts/oracle/retrieval-accuracy.mjs will re-derive. */
-function writeOracle(dir, { partitions, labels, emptySources = [], mutate = (o) => o } = {}) {
+/**
+ * A sealed oracle file on disk, matching what scripts/oracle/retrieval-accuracy.mjs will re-derive.
+ * Schema 2 (ADR-086:248) by default. `schemaVersion: 1` writes the LEGACY shape, which the gate must
+ * still read — but only as a diagnostic benchmark that can never qualify a corpus for C3.
+ */
+function writeOracle(dir, { partitions, labels, emptySources = [], schemaVersion = 2, mutate = (o) => o } = {}) {
+  const legacy = schemaVersion === 1;
   const body = mutate({
-    schemaVersion: 1,
+    schemaVersion,
     kind: 'ruvnet-brain-retrieval-accuracy-oracle',
-    oracleVersion: 'fixture/1',
+    oracleVersion: `fixture/${schemaVersion}`,
     partitions,
     emptySources,
     labels,
@@ -61,9 +67,15 @@ function writeOracle(dir, { partitions, labels, emptySources = [], mutate = (o) 
       labelsSha256: sha256Of(canonical(labels.map((row) => ({
         id: row.id, partition: row.partition, question: row.question, span: row.span,
         sourcePath: row.sourcePath, blobSha: row.blobSha, unitSha256: row.unitSha256,
+        ...(legacy ? {} : { unit: row.unit, form: row.form }),
       })))),
       partitionsSha256: sha256Of(canonical(partitions.map((row) => ({
         partition: row.partition, kind: row.kind, store: row.store, sourceCommit: row.sourceCommit,
+        ...(legacy ? {} : {
+          U: row.U, selectedUnits: row.selectedUnits, N: row.N, inventorySha256: row.inventorySha256,
+          rulesVersion: row.rulesVersion,
+          unproduced: (row.unproduced || []).map((u) => ({ unitId: u.unitId, reason: u.reason })),
+        }),
       })))),
     },
   });
@@ -104,37 +116,70 @@ describe('C3 metric and threshold arithmetic', () => {
   it('fails a matching file path that does not carry the supporting span', () => {
     const label = { id: 'x', sourcePath: 'docs/zero.md', span: 'alpha passage zero' };
     expect(scoreEvidenceHit({
-      results: [{ path: 'docs/zero.md', text: 'a different sentence entirely' }], label,
+      results: [{ store: 'alpha', path: 'docs/zero.md', text: 'a different sentence entirely' }], label, store: 'alpha',
     })).toEqual({ hit: false, reason: 'path-matched-without-supporting-span' });
   });
 
   it('fails a supporting span that is attributed to the wrong source', () => {
     const label = { id: 'x', sourcePath: 'docs/zero.md', span: 'alpha passage zero' };
     expect(scoreEvidenceHit({
-      results: [{ path: 'docs/elsewhere.md', text: 'alpha passage zero' }], label,
+      results: [{ store: 'alpha', path: 'docs/elsewhere.md', text: 'alpha passage zero' }], label, store: 'alpha',
     }).hit).toBe(false);
   });
 
   it('passes only correctly attributed source evidence, and only within the first five results', () => {
     const label = { id: 'x', sourcePath: 'docs/zero.md', span: 'alpha passage zero' };
-    const good = { path: 'docs/zero.md', text: 'prelude alpha passage zero coda' };
-    const filler = { path: 'docs/other.md', text: 'noise' };
-    expect(scoreEvidenceHit({ results: [good], label }).hit).toBe(true);
-    expect(scoreEvidenceHit({ results: [...Array(HIT_AT_K - 1).fill(filler), good], label }).hit).toBe(true);
+    const good = { store: 'alpha', path: 'docs/zero.md', text: 'prelude alpha passage zero coda' };
+    const filler = { store: 'alpha', path: 'docs/other.md', text: 'noise' };
+    expect(scoreEvidenceHit({ results: [good], label, store: 'alpha' }).hit).toBe(true);
+    expect(scoreEvidenceHit({ results: [...Array(HIT_AT_K - 1).fill(filler), good], label, store: 'alpha' }).hit).toBe(true);
     // Rank six: the customer never sees it, so it is not a hit.
-    expect(scoreEvidenceHit({ results: [...Array(HIT_AT_K).fill(filler), good], label }).hit).toBe(false);
+    expect(scoreEvidenceHit({ results: [...Array(HIT_AT_K).fill(filler), good], label, store: 'alpha' }).hit).toBe(false);
   });
 
   it('normalizes whitespace so a re-wrapped passage still counts, without loosening to fuzzy matching', () => {
     const label = { id: 'x', sourcePath: 'docs/zero.md', span: 'alpha   passage\n zero' };
-    expect(scoreEvidenceHit({ results: [{ path: 'docs/zero.md', text: 'alpha passage zero' }], label }).hit).toBe(true);
-    expect(scoreEvidenceHit({ results: [{ path: 'docs/zero.md', text: 'alpha passage one' }], label }).hit).toBe(false);
+    expect(scoreEvidenceHit({ results: [{ store: 'alpha', path: 'docs/zero.md', text: 'alpha passage zero' }], label, store: 'alpha' }).hit).toBe(true);
+    expect(scoreEvidenceHit({ results: [{ store: 'alpha', path: 'docs/zero.md', text: 'alpha passage one' }], label, store: 'alpha' }).hit).toBe(false);
+  });
+});
+
+describe('attribution means the right repository and the exact path (raised by Dual, confirmed in code 2026-09-14)', () => {
+  const label = { id: 'x', sourcePath: 'docs/README.md', span: 'alpha passage zero' };
+
+  it('MUST BLOCK: the same path and span from ANOTHER repository is not a hit', () => {
+    const results = [{ store: 'beta', path: 'docs/README.md', text: 'alpha passage zero' }];
+    expect(scoreEvidenceHit({ results, label, store: 'alpha' }))
+      .toEqual({ hit: false, reason: 'evidence-from-wrong-repository' });
+  });
+
+  it('MUST BLOCK: a bare README.md in another directory does not satisfy docs/README.md', () => {
+    // The old suffix match accepted this in BOTH directions: `docs/README.md`.endsWith('/README.md').
+    const results = [{ store: 'alpha', path: 'README.md', text: 'alpha passage zero' }];
+    expect(scoreEvidenceHit({ results, label, store: 'alpha' }).hit).toBe(false);
+  });
+
+  it('MUST BLOCK: a deeper path that merely ends with the labelled path is a different file', () => {
+    const results = [{ store: 'alpha', path: 'vendor/docs/README.md', text: 'alpha passage zero' }];
+    expect(scoreEvidenceHit({ results, label, store: 'alpha' }).hit).toBe(false);
+  });
+
+  it('still credits the right repository when a wrong-repository copy ranks above it', () => {
+    const results = [
+      { store: 'beta', path: 'docs/README.md', text: 'alpha passage zero' },
+      { store: 'alpha', path: 'docs/README.md', text: 'prelude alpha passage zero coda' },
+    ];
+    expect(scoreEvidenceHit({ results, label, store: 'alpha' })).toEqual({ hit: true, reason: 'evidence-supporting' });
+  });
+
+  it('refuses to score at all without the partition store — attribution cannot be skipped', () => {
+    expect(() => scoreEvidenceHit({ results: [], label })).toThrow(/without its partition's store/i);
   });
 });
 
 describe('oracle ground truth must trace to upstream bytes', () => {
   const base = () => {
-    const { partitions, labels } = accuracyOracle({ labels: 2 });
+    const { partitions, labels } = accuracyOracle({ units: 1 });
     return { partitions, labels };
   };
 
@@ -162,7 +207,7 @@ describe('oracle ground truth must trace to upstream bytes', () => {
     const file = writeOracle(dir, {
       partitions,
       labels,
-      mutate: (oracle) => { oracle.labels[0].span = 'something else entirely'; return oracle; },
+      mutate: (oracle) => { oracle.labels[0].question = 'something else entirely'; return oracle; },
     });
     expect(() => validateAccuracyOracle(JSON.parse(fs.readFileSync(file, 'utf8'))))
       .toThrow(/seal does not match/i);
@@ -181,11 +226,99 @@ describe('oracle ground truth must trace to upstream bytes', () => {
   });
 });
 
+describe('ADR-086:248 denominator: N = 2 x min(100, U), fixed by the unit inventory', () => {
+  const read = (file) => validateAccuracyOracle(JSON.parse(fs.readFileSync(file, 'utf8')));
+  const legacyOf = ({ partitions, labels }) => ({
+    partitions: partitions.map(({ partition, kind, store, sourceCommit }) => ({ partition, kind, store, sourceCommit })),
+    labels: labels.map(({ unit, form, ...rest }) => rest),
+    schemaVersion: 1,
+  });
+
+  it('accepts a compliant oracle and classifies it as C3-eligible', () => {
+    const v = read(writeOracle(temp(), accuracyOracle()));
+    expect(v.c3Eligible).toBe(true);
+    expect(v.classification).toBe('c3-acceptance');
+  });
+
+  it('still reads a legacy schema-1 oracle, but ONLY as a diagnostic benchmark', () => {
+    const v = read(writeOracle(temp(), legacyOf(accuracyOracle())));
+    expect(v.c3Eligible).toBe(false);
+    expect(v.classification).toBe('diagnostic');
+  });
+
+  it('MUST BLOCK: a selection that is not min(100, U)', () => {
+    const { partitions, labels } = accuracyOracle();
+    partitions[0] = { ...partitions[0], U: 250 }; // min(100, 250) = 100, but only 10 are selected
+    expect(() => read(writeOracle(temp(), { partitions, labels }))).toThrow(/requires min\(100, U=250\) = 100/);
+  });
+
+  it('MUST BLOCK: an N that is not 2 x min(100, U)', () => {
+    const { partitions, labels } = accuracyOracle();
+    partitions[0] = { ...partitions[0], N: 18 };
+    expect(() => read(writeOracle(temp(), { partitions, labels }))).toThrow(/requires N = 2 x min\(100, U\) = 20/);
+  });
+
+  it('MUST BLOCK: a unit missing its paraphrase', () => {
+    const { partitions, labels } = accuracyOracle();
+    const pruned = labels.filter((row) => !(row.unit === 'unit-000' && row.form === 'paraphrase'));
+    expect(() => read(writeOracle(temp(), { partitions, labels: pruned }))).toThrow(/missing its paraphrase question/);
+  });
+
+  it('MUST BLOCK: a selected unit silently dropped instead of recorded as unproduced', () => {
+    const { partitions, labels } = accuracyOracle();
+    const dropped = labels.filter((row) => row.unit !== 'unit-009');
+    expect(() => read(writeOracle(temp(), { partitions, labels: dropped }))).toThrow(/accounts for 9 of its 10 selected units/);
+  });
+
+  it('MUST BLOCK: a paraphrase that repeats the direct question', () => {
+    const { partitions, labels } = accuracyOracle();
+    const direct = labels.find((row) => row.unit === 'unit-000' && row.form === 'direct');
+    const copied = labels.map((row) => (row.unit === 'unit-000' && row.form === 'paraphrase' ? { ...row, question: direct.question } : row));
+    expect(() => read(writeOracle(temp(), { partitions, labels: copied }))).toThrow(/paraphrase repeats the direct question/);
+  });
+
+  it('MUST BLOCK: unproduced units stay in N — two of ten unproduced is 16/20, not 16/16', async () => {
+    const dir = temp();
+    const { bundle } = await sealedCorpusBundle(dir, { accuracy: null });
+    const { partitions, labels } = accuracyOracle({ unproduced: 2 });
+    const oracleFile = writeOracle(dir, { partitions, labels });
+    const { report } = await runRetrievalAccuracy({
+      bundleFile: bundle, oracleFile, outFile: path.join(dir, 'accuracy.json'),
+      search: answeringSearch({ labels }), now: () => '2026-09-14T00:00:00.000Z',
+    });
+    for (const row of report.partitions) {
+      expect(row.N).toBe(20);
+      expect(row.n).toBe(20);
+      expect(row.successes).toBe(16); // every produced question answered correctly
+      expect(row.failures).toBe(4); // the two unproduced units still count, twice each
+      expect(row.state).toBe('FAIL'); // 80%; a label-count denominator would have read 100%
+    }
+    expect(report.state).toBe('FAIL');
+  });
+
+  it('MUST BLOCK: a PERFECT score against a legacy oracle is diagnostic and cannot qualify a corpus', async () => {
+    const dir = temp();
+    const { bundle } = await sealedCorpusBundle(dir, { accuracy: null });
+    const legacy = legacyOf(accuracyOracle());
+    const oracleFile = writeOracle(dir, legacy);
+    const { report } = await runRetrievalAccuracy({
+      bundleFile: bundle, oracleFile, outFile: path.join(dir, 'accuracy.json'),
+      search: answeringSearch({ labels: legacy.labels }), now: () => '2026-09-14T00:00:00.000Z',
+    });
+    expect(report.partitions.every((row) => row.successes === row.n)).toBe(true); // 100%
+    expect(report.c3Eligible).toBe(false);
+    expect(report.classification).toBe('diagnostic');
+    const archive = { file: report.archive.file, sha256: report.archive.sha256, bytes: report.archive.bytes };
+    expect(() => validateAccuracyReport({ report, archive }))
+      .toThrow(/only an ADR-086:248-compliant \(schema 2\) measurement can qualify a corpus for C3/);
+  });
+});
+
 describe('the benchmark measures the extracted final archive and marks bounded runs as bounded', () => {
   async function bench(overrides = {}, oracleOverrides = {}) {
     const dir = temp();
     const { bundle } = await sealedCorpusBundle(dir, { accuracy: null });
-    const { partitions, labels } = accuracyOracle({ labels: 20 });
+    const { partitions, labels } = accuracyOracle();
     const oracleFile = writeOracle(dir, { partitions, labels, ...oracleOverrides });
     const { report } = await runRetrievalAccuracy({
       bundleFile: bundle,
@@ -240,7 +373,7 @@ describe('the benchmark measures the extracted final archive and marks bounded r
   it('a bounded --sample run is marked incomplete even when every answer is a hit', async () => {
     const dir = temp();
     const { bundle } = await sealedCorpusBundle(dir, { accuracy: null });
-    const { partitions, labels } = accuracyOracle({ labels: 20 });
+    const { partitions, labels } = accuracyOracle();
     const oracleFile = writeOracle(dir, { partitions, labels });
     const { report } = await runRetrievalAccuracy({
       bundleFile: bundle, oracleFile, outFile: path.join(dir, 'accuracy.json'),
@@ -259,7 +392,7 @@ describe('the benchmark measures the extracted final archive and marks bounded r
     // one missing gist".
     fs.copyFileSync(path.join(bundleDir, 'alpha.big.rvf'), path.join(bundleDir, 'beta.big.rvf'));
     const bundle = seal(dir, bundleDir, { accuracy: null });
-    const { partitions, labels } = accuracyOracle({ labels: 20 });
+    const { partitions, labels } = accuracyOracle();
     const oracleFile = writeOracle(dir, { partitions, labels });
     const { report } = await runRetrievalAccuracy({
       bundleFile: bundle, oracleFile, outFile: path.join(dir, 'accuracy.json'),
@@ -338,9 +471,9 @@ describe('validateAccuracyReport re-derives every number rather than trusting th
 });
 
 describe('corpus receipt schema 3 binds the detached accuracy report', () => {
-  async function sealed({ accuracy = {} } = {}) {
+  async function sealed({ accuracy = {}, recall = {} } = {}) {
     const dir = temp();
-    const { bundle, bundleDir } = await sealedCorpusBundle(dir, { accuracy });
+    const { bundle, bundleDir } = await sealedCorpusBundle(dir, { accuracy, recall });
     const receiptFile = path.join(dir, 'corpus-receipt.json');
     return { dir, bundle, bundleDir, receiptFile };
   }
@@ -362,7 +495,7 @@ describe('corpus receipt schema 3 binds the detached accuracy report', () => {
     const { bundle, receiptFile } = await sealed({ accuracy: null });
     await expect(createCorpusReceipt({
       bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40), createdAt: '2026-09-14T00:00:00.000Z',
-    })).rejects.toThrow(/detached retrieval-accuracy report missing/i);
+    })).rejects.toThrow(/diagnostic retrieval-accuracy report missing/i);
   });
 
   it('MUST BLOCK: an altered archive leaves the report bound to bytes that no longer exist', async () => {
@@ -389,14 +522,42 @@ describe('corpus receipt schema 3 binds the detached accuracy report', () => {
       .rejects.toThrow(/does not match the exact corpus archive contents/i);
   });
 
-  it('MUST BLOCK: a bounded report cannot seal a candidate', async () => {
+  // DECLARED CHANGE, 2026-09-15 (ADR-086 amendment): a bounded or failing C3 report no longer refuses
+  // a candidate, because C3 measured 59.0% on a real archive and blocking on it shipped nothing. What
+  // replaces that guard is NOT nothing — it is the repo-recall gate below. This test pins both halves
+  // so the reduction stays visible: the C3 state is RECORDED rather than silently dropped, and an
+  // incomplete recall run still refuses. If someone deletes the second half, the first half alone
+  // would let an unmeasured corpus seal.
+  it('a bounded C3 report no longer blocks, but its state is recorded on the receipt', async () => {
     const { bundle, receiptFile } = await sealed({ accuracy: null });
     writeAccuracyReport(bundle, {
       overrides: { coverage: { complete: false, bounded: { reasons: ['--stores 2'] }, archiveStores: ['alpha'], unmeasuredPartitions: [], uncoveredArchiveStores: [] } },
     });
+    const receipt = await createCorpusReceipt({
+      bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40), createdAt: '2026-09-14T00:00:00.000Z',
+    });
+    expect(receipt.accuracyDiagnostic.blocking).toBe(false);
+    expect(receipt.accuracyDiagnostic.note).toMatch(/C3 was NOT met/i);
+    expect(receipt.recallSummary.blocking).toBe(true);
+  });
+
+  it('MUST BLOCK: an incomplete repo-recall run cannot seal a candidate', async () => {
+    const { bundle, receiptFile } = await sealed({ recall: null });
+    // One question short of the frozen fixture: the gate must refuse rather than score what it ran.
+    const short = recallReportFor(bundle);
+    short.rows = short.rows.slice(0, -1);
+    short.totals = tally(short.rows);
+    fs.writeFileSync(`${bundle}.recall.json`, `${JSON.stringify(short, null, 2)}\n`);
     await expect(createCorpusReceipt({
       bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40), createdAt: '2026-09-14T00:00:00.000Z',
-    })).rejects.toThrow(/BOUNDED measurement/i);
+    })).rejects.toThrow(/asked 193 of 194|regressed to/i);
+  });
+
+  it('MUST BLOCK: a missing repo-recall report cannot be sealed', async () => {
+    const { bundle, receiptFile } = await sealed({ recall: null });
+    await expect(createCorpusReceipt({
+      bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40), createdAt: '2026-09-14T00:00:00.000Z',
+    })).rejects.toThrow(/detached repo-recall report missing/i);
   });
 
   it('MUST BLOCK: a schema-2 receipt is unverifiable — schema-2 seeds become unpublishable', async () => {
@@ -528,19 +689,21 @@ process.exit(0);
     expect(f.ghCalls()).toHaveLength(0);
   });
 
-  it('MUST BLOCK: one below-threshold repository, even with the receipt forged to bind it', async () => {
-    // A below-threshold report can never be SEALED (the candidate gate refuses it first), so the only
-    // way it reaches publication is a forged receipt that binds the bad report's digest. That forgery
-    // survives every well-formedness check and is caught here, before any gh call.
+  it('MUST BLOCK: a below-floor recall result, even with the receipt forged to bind it', async () => {
+    // This is the successor to the old "one below-threshold repository" publication guard. A
+    // below-floor report can never be SEALED (the candidate gate refuses it first), so the only way
+    // it reaches publication is a forged receipt that binds the bad report's digest. That forgery
+    // survives every well-formedness check and must still be caught here, before any gh call —
+    // otherwise moving the blocking predicate would have quietly removed a publication guard.
     const f = await publishable();
-    const bad = accuracyReportFor(f.bundle, {
-      oracleSha256: f.fixtureRoot.oracleSha256, generatorSha256: f.fixtureRoot.generatorSha256, successes: 18,
-    });
-    const reportFile = `${f.bundle}.accuracy.json`;
+    const bad = recallReportFor(f.bundle);
+    bad.rows = bad.rows.map((row, i) => (i < 20 ? { ...row, exactFileRank: null } : row));
+    bad.totals = tally(bad.rows);
+    const reportFile = `${f.bundle}.recall.json`;
     fs.writeFileSync(reportFile, `${JSON.stringify(bad, null, 2)}\n`);
     const forged = {
       ...f.receipt,
-      accuracyReport: {
+      recallReport: {
         file: path.basename(reportFile),
         sha256: crypto.createHash('sha256').update(fs.readFileSync(reportFile)).digest('hex'),
         bytes: fs.statSync(reportFile).size,
@@ -549,7 +712,7 @@ process.exit(0);
     fs.writeFileSync(f.receiptFile, JSON.stringify(forged, null, 2));
     const result = f.run();
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/below threshold: 18\/20/);
+    expect(result.stderr).toMatch(/regressed to \d+, below the accepted floor/i);
     expect(f.ghCalls()).toHaveLength(0);
   });
 

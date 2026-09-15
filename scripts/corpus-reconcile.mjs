@@ -10,6 +10,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
+import { normalizeUpdaterManifest } from './updater-manifest.mjs';
 import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
 import { buildCoverage, observeSourceUniverse, renderMarkdown } from './source-coverage.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
@@ -199,45 +200,97 @@ export function planReconciliation({ coverage, ledger, assetsDir = null }) {
   return plan.sort((a, b) => a.store.localeCompare(b.store));
 }
 
-export async function reconcileUntilStable({ maxRounds = 3, assetsDir = null, observe, build, readLedger: currentLedger,
-  execute, prune, rebuild } = {}) {
-  if (!Number.isSafeInteger(maxRounds) || maxRounds < 1 || maxRounds > 10
-    || [observe, build, currentLedger, execute, prune, rebuild].some((fn) => typeof fn !== 'function')) {
-    fail('bounded reconciliation loop configuration is invalid');
+export const CONSISTENCY_MODEL = 'sealed-acquisition-manifest/1';
+
+/**
+ * Optional freshness telemetry. It NEVER throws and NEVER vetoes acceptance: a source moving after
+ * the manifest was sealed is ordinary, and says nothing about whether this generation is complete
+ * against its own pinned inputs. Absent or failed telemetry yields UNKNOWN, not failure.
+ */
+async function measureFreshness({ closingObservation, observation }) {
+  if (typeof closingObservation !== 'function') {
+    return { checkStatus: 'UNKNOWN', reason: 'no closing observation configured', closingObservationSha256: null };
   }
-  const rounds = [];
-  let observation = await observe();
-  for (let round = 1; round <= maxRounds; round += 1) {
-    const preliminary = await build(observation);
-    const plan = planReconciliation({ coverage: preliminary, ledger: currentLedger(), assetsDir });
-    const reconciliation = await execute(plan, round);
-    const pruning = await prune(preliminary, round);
+  try {
+    const closing = await closingObservation();
+    const moved = closing?.observationSha256 !== observation.observationSha256;
+    return {
+      checkStatus: moved ? 'NEWER_REVISION_OBSERVED' : 'NO_CHANGE_OBSERVED',
+      closingObservationSha256: closing?.observationSha256 ?? null,
+    };
+  } catch (error) {
+    return { checkStatus: 'UNKNOWN', reason: `closing observation failed: ${error.message}`, closingObservationSha256: null };
+  }
+}
+
+/**
+ * Acquire ONE SEALED GENERATION against a frozen discovery manifest.
+ *
+ * WHY THIS REPLACED THE ROUND-STABILITY LOOP (measured 2026-09-14/15, Dual verdict "choose A").
+ * The previous loop only returned when a fresh observation of the ENTIRE live source universe hashed
+ * identically to the one it started with, and failed the whole build after 3 rounds otherwise. A round
+ * takes about an hour; the observation hash covers each repository's updatedAt, pushedAt, diskUsage and
+ * head oid; and the org pushes continuously (8 repositories in 24h; 13 of 185 moved since the committed
+ * coverage generation). So progress was unreliable under sustained churn -- a quiet hour could succeed,
+ * but nothing guaranteed one -- and a local run died exactly there after refreshing 90 stores. Every
+ * corpus-seed CI run in history has failed, none having reached even this far.
+ *
+ * The rule now: one bounded discovery pass freezes the identity set; every required source resolves to
+ * immutable pinned inputs; movement elsewhere can never invalidate an already-resolved entry or restart
+ * the generation. Acceptance is COMPLETENESS AGAINST THE SEALED MANIFEST -- every required source
+ * validated against the inputs it was pinned to -- not equality with a live universe that never holds
+ * still. A source that moves mid-run finishes at its pinned revision and is picked up by the NEXT
+ * generation; `latest` is never substituted, and an exhausted partial generation is never accepted.
+ */
+export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = null, observe, build,
+  readLedger: currentLedger, execute, prune, rebuild, closingObservation = null } = {}) {
+  if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 10
+    || [observe, build, currentLedger, execute, prune, rebuild].some((fn) => typeof fn !== 'function')) {
+    fail('bounded acquisition configuration is invalid');
+  }
+  // ONE discovery pass. This observation is the sealed manifest every later step consumes; it is never
+  // re-taken, so upstream churn cannot restart or invalidate the generation.
+  const observation = await observe();
+  const attempts = [];
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const coverage = await build(observation);
+    const plan = planReconciliation({ coverage, ledger: currentLedger(), assetsDir });
+    const reconciliation = await execute(plan, attempt);
+    const pruning = await prune(coverage, attempt);
     let aggregates;
     try {
-      aggregates = await rebuild(preliminary, observation, round);
+      aggregates = await rebuild(coverage, observation, attempt);
     } catch (error) {
       if (error?.code !== 'GIST_OBSERVATION_MOVED') throw error;
-      const nextObservation = await observe();
-      rounds.push({ round, before: observation.observationSha256, after: nextObservation.observationSha256,
-        plan, ...reconciliation, ...pruning, rebuilt: [], invalidated: {
-          reason: 'gist observation moved during exact detail fetch', gistId: error.gistId || null } });
-      observation = nextObservation;
+      // A gist moved between its list entry and its detail fetch. The remedy is to retry against the
+      // SAME pinned inputs until one internally consistent revision is captured -- never to re-observe
+      // the universe, which is what made the old loop unable to finish.
+      attempts.push({ attempt, plan, ...reconciliation, ...pruning, rebuilt: [],
+        retried: { reason: 'gist revision moved during exact detail fetch', gistId: error.gistId || null } });
       continue;
     }
-    const nextObservation = await observe();
-    rounds.push({ round, before: observation.observationSha256, after: nextObservation.observationSha256,
-      plan, ...reconciliation, ...pruning, ...aggregates });
-    if (nextObservation.observationSha256 === observation.observationSha256) {
-      const coverage = await build(nextObservation);
-      const remaining = planReconciliation({ coverage, ledger: currentLedger(), assetsDir });
-      if (remaining.length) fail(`reconciliation stabilized with ${remaining.length} unresolved repository artifact(s)`);
-      const unresolved = coverage.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
-      if (unresolved.length) fail(`reconciliation stabilized with ${unresolved.length} unresolved eligible source(s)`);
-      return { observation: nextObservation, coverage, rounds };
+    // Re-derive coverage from the SAME sealed observation after the aggregates were rebuilt. This is
+    // NOT re-observation -- the manifest is untouched -- it recomputes each row's artifact digests
+    // against the bytes this corpus now actually carries. Measured 2026-09-15: without it, a coverage
+    // row still pinned the PRE-rebuild ruv-gists digest and build-bundle refused the candidate with
+    // "coverage row gist:... was measured against different ruv-gists RVF bytes than this corpus
+    // carries", 56 minutes into an otherwise complete run.
+    const settled = await build(observation);
+    const remaining = planReconciliation({ coverage: settled, ledger: currentLedger(), assetsDir });
+    const unresolved = settled.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
+    attempts.push({ attempt, plan, ...reconciliation, ...pruning, ...aggregates,
+      remainingArtifacts: remaining.length, unresolvedSources: unresolved.length });
+    if (!remaining.length && !unresolved.length) {
+      return {
+        observation, coverage: settled, attempts, consistencyModel: CONSISTENCY_MODEL,
+        freshness: await measureFreshness({ closingObservation, observation }),
+      };
     }
-    observation = nextObservation;
   }
-  fail(`source observation did not stabilize within ${maxRounds} reconciliation rounds`);
+  const last = attempts[attempts.length - 1] || {};
+  fail(`sealed generation incomplete after ${maxAttempts} acquisition attempt(s): `
+    + `${last.remainingArtifacts ?? 'unknown'} artifact(s) and ${last.unresolvedSources ?? 'unknown'} `
+    + 'eligible source(s) remain unresolved against the sealed manifest');
 }
 
 function defaultRun(command, args, options = {}) {
@@ -287,7 +340,7 @@ function writeJsonAtomic(file, value) {
 }
 
 // Step 4, rule 3 (2026-09-13): POSITIVE SELECTION for the generation ledger / SOURCE manifest --
-// the old `prune` seam in reconcileUntilStable was a hardcoded no-op (`() => ({ pruned: [] })`), so
+// the old `prune` seam in the round-stability loop (now acquireSealedGeneration) was a hardcoded no-op (`() => ({ pruned: [] })`), so
 // a repository removed from policy, made private, or deleted upstream simply lingered in
 // RVF-GENERATIONS.json/SOURCE.json (and its .big.rvf family on disk) forever once ingested. This is
 // the real prune: `eligibleStores` is the EXACT set this round's own coverage just measured as
@@ -529,8 +582,8 @@ async function observeSourceOnly({ owner, assetsDir }) {
   return observeSourceUniverse({ owner, externalSources: policy.sources });
 }
 
-export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, workspaceDir,
-  root = DEFAULT_ROOT, maxRounds = 3,
+export async function acquireCorpusGeneration({ owner = 'ruvnet', assetsDir, workspaceDir,
+  root = DEFAULT_ROOT, maxAttempts = 3, closingObservation = null,
   observe = null,
   build = (observation) => buildCoverage({ owner, kbDir: assetsDir, policyDir: assetsDir, observation }),
   readLedger = () => readJson(path.join(path.resolve(assetsDir || ''), 'RVF-GENERATIONS.json'),
@@ -556,14 +609,15 @@ export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, 
   assertPathNotOverlapping('reconciliation workspace directory', workspace, forbidden);
   assertPathNotOverlapping('reconciliation workspace directory', workspace,
     [{ label: 'the assets directory', dir: assetsDir }]);
-  return reconcileUntilStable({
-    maxRounds,
+  return acquireSealedGeneration({
+    maxAttempts,
+    closingObservation,
     assetsDir,
     observe: () => (observe || observeSourceOnly)({ owner, assetsDir }),
     build,
     readLedger,
-    execute: (plan, round) => execute({
-      plan, assetsDir, workspaceDir: path.join(workspace, `round-${round}`), root,
+    execute: (plan, attempt) => execute({
+      plan, assetsDir, workspaceDir: path.join(workspace, `attempt-${attempt}`), root,
     }),
     prune,
     rebuild,
@@ -572,7 +626,7 @@ export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, 
 
 // Step 4, rule 4 (2026-09-13): this used to take an OPAQUE `plan`/`execute` pair, and main() below
 // passed `plan: []` (an inert placeholder -- the real per-round plans are computed INSIDE the
-// stability loop, never known up front) plus `execute: () => reconcileCorpusUntilStable(...)` (an
+// acquisition loop, never known up front) plus `execute: () => acquireCorpusGeneration(...)` (an
 // override that threw the supplied `plan` away entirely and substituted the whole multi-round loop).
 // That indirection existed only because this function's default (`executeReconciliation`) runs a
 // SINGLE round against a caller-supplied plan, while production always needs the full
@@ -581,17 +635,35 @@ export async function reconcileCorpusUntilStable({ owner = 'ruvnet', assetsDir, 
 // no override at all, and a caller that genuinely wants one-shot single-round execution (e.g. a
 // test) can still supply its own `reconcile`.
 export async function reconcileAndPrepareCorpusCandidate({ assetsDir, workspaceDir, root = DEFAULT_ROOT,
-  owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity = null, maxRounds = 3,
-  reconcile = (options) => reconcileCorpusUntilStable(options),
+  owner = 'ruvnet', builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity = null, maxAttempts = 3,
+  reconcile = (options) => acquireCorpusGeneration(options),
+  normalizeUpdaters = normalizeUpdaterManifest,
   accuracyOracleFile = null, accuracyStores = null, accuracySample = null, accuracyTimeoutMs = null,
   prepare = prepareCorpusCandidate } = {}) {
-  const finalized = await reconcile({ owner, assetsDir, workspaceDir, root, maxRounds });
+  const finalized = await reconcile({ owner, assetsDir, workspaceDir, root, maxAttempts });
+  // Every shipped repository store needs a complete updater entry, and a seed that predates the
+  // convention leaves inherited stores without one -- measured 2026-09-15: 100 of 194 repository
+  // stores, none of them refreshed that run, which build-bundle rightly refused to ship. Normalize
+  // AFTER reconciliation and aggregate rebuild, BEFORE anything seals or assembles this corpus, and
+  // run even when nothing was refreshed. A store whose artifact cannot be verified against the ledger
+  // is never synthesized -- it is reported here and fails the build, because it needs a real rebuild.
+  const updaters = normalizeUpdaters({
+    assetsDir,
+    coverage: finalized.coverage,
+    refreshedStores: (finalized.attempts || []).flatMap((a) => (a.refreshed || []).map((r) => r?.store || r)).filter(Boolean),
+    seedIdentity: bootstrapIdentity,
+  });
+  if (updaters.missing?.length) {
+    fail(`${updaters.missing.length} repository store(s) still carry no updater entry after normalization `
+      + `(${updaters.missing.slice(0, 5).join(', ')}${updaters.missing.length > 5 ? ', ...' : ''}); `
+      + `unverified: ${JSON.stringify(updaters.unverified?.slice(0, 5) || [])}`);
+  }
   const candidate = await prepare({
     root, assetsDir, builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity,
     coverage: finalized.coverage,
     accuracyOracleFile, accuracyStores, accuracySample, accuracyTimeoutMs,
   });
-  return { reconciliation: finalized, candidate };
+  return { reconciliation: finalized, updaters, candidate };
 }
 
 export function prepareCorpusCandidate({
@@ -621,7 +693,7 @@ export function prepareCorpusCandidate({
   // its own. The old flow shelled out to `source-coverage.mjs --write` and then `--check --strict`
   // as two SEPARATE live re-observations of the real GitHub source universe, mutating the tracked
   // checkout's data/source-coverage.json and docs/RUVNET-COVERAGE.md a SECOND time, after
-  // reconcileCorpusUntilStable had already captured and measured a stable observation -- exactly
+  // acquireCorpusGeneration had already captured and measured the sealed observation -- exactly
   // the "re-observes and mutates tracked checkout files after the stable observation was already
   // captured" bug flagged 2026-09-13. `coverage` here is that already-stabilized measurement
   // (FinalizedCorpus.coverage); both the committed JSON and the committed Markdown are now rendered
@@ -636,7 +708,8 @@ export function prepareCorpusCandidate({
   const buildScript = path.join(sourceRoot, 'scripts', 'build-bundle.mjs');
   const receiptScript = path.join(sourceRoot, 'scripts', 'corpus-candidate.mjs');
   const accuracyScript = path.join(sourceRoot, 'scripts', 'oracle', 'retrieval-accuracy.mjs');
-  for (const required of [buildScript, receiptScript, accuracyScript]) {
+  const recallScript = path.join(sourceRoot, 'scripts', 'oracle', 'repo-recall.mjs');
+  for (const required of [buildScript, receiptScript, accuracyScript, recallScript]) {
     if (!fs.existsSync(required)) fail(`required candidate builder missing (${required})`);
   }
   // ADR-086 Step 15 / C3. The oracle is a hard input, checked BEFORE the expensive single-pass
@@ -646,6 +719,14 @@ export function prepareCorpusCandidate({
   const accuracyOracle = path.resolve(accuracyOracleFile || path.join(sourceRoot, 'data', 'retrieval-accuracy-oracle.json'));
   if (!fs.existsSync(accuracyOracle) || !fs.statSync(accuracyOracle).isFile()) {
     fail(`retrieval-accuracy oracle missing (${accuracyOracle}); ADR-086 Step 15's C3 gate cannot seal an unmeasured corpus`);
+  }
+  // The recall gate's two inputs are hard inputs, checked BEFORE the expensive assembly for the same
+  // reason the oracle is: a missing ratchet must fail in seconds, not after an hour of building.
+  for (const required of [
+    path.join(sourceRoot, 'data', 'retrieval-query-evidence.json'),
+    path.join(sourceRoot, 'data', 'repo-recall-floor.json'),
+  ]) {
+    if (!fs.existsSync(required)) fail(`repo-recall gate input missing (${required}); a corpus cannot be sealed without the frozen fixture and the ratchet it must not regress below`);
   }
   fs.mkdirSync(path.dirname(candidate), { recursive: true });
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
@@ -669,18 +750,31 @@ export function prepareCorpusCandidate({
     ...(accuracySample != null ? ['--sample', String(accuracySample)] : []),
     ...(accuracyTimeoutMs != null ? ['--timeout-ms', String(accuracyTimeoutMs)] : [])],
   { stdio: 'inherit' });
+  // THE BLOCKING RETRIEVAL GATE (ADR-086 amendment 2026-09-15). Same placement and same discipline
+  // as the C3 run above — the EXTRACTED final archive through the customer query path — but this is
+  // the measurement that can refuse a candidate. It asks the 194 frozen human questions, one per
+  // repository, and fails on any error, any repository that returns nothing of its own, or any
+  // exact-file Hit@5 below the committed ratchet floor.
+  const recallReportFile = `${bundleFile}.recall.json`;
+  checked(run, process.execPath, [recallScript, '--bundle', bundleFile, '--out', recallReportFile],
+    { stdio: 'inherit' });
   // The candidate receipt is derived ENTIRELY from the sealed bundle's own bytes plus the detached,
-  // digest-bound accuracy report (schema 3) — the separate assets/policy directory used to build it
-  // is no longer an alternate verification root.
+  // digest-bound reports — the separate assets/policy directory used to build it is no longer an
+  // alternate verification root.
   const bootstrapArgs = bootstrapIdentity?.tag && bootstrapIdentity?.sha256
     ? ['--bootstrap-tag', bootstrapIdentity.tag, '--bootstrap-sha256', bootstrapIdentity.sha256]
     : [];
   checked(run, process.execPath, [receiptScript, '--bundle', bundleFile,
     '--receipt', receipt, '--builder-source-sha', builderSha,
-    '--accuracy-report', accuracyReportFile, ...bootstrapArgs], { stdio: 'inherit' });
+    '--accuracy-report', accuracyReportFile, '--recall-report', recallReportFile,
+    ...bootstrapArgs], { stdio: 'inherit' });
   checked(run, process.execPath, [receiptScript, '--verify', '--bundle', bundleFile,
-    '--receipt', receipt, '--accuracy-report', accuracyReportFile], { stdio: 'inherit' });
-  return { bundleFile, receiptFile: receipt, coverageFile: policy, accuracyReportFile, accuracyOracleFile: accuracyOracle };
+    '--receipt', receipt, '--accuracy-report', accuracyReportFile,
+    '--recall-report', recallReportFile], { stdio: 'inherit' });
+  return {
+    bundleFile, receiptFile: receipt, coverageFile: policy,
+    accuracyReportFile, accuracyOracleFile: accuracyOracle, recallReportFile,
+  };
 }
 
 function arg(argv, name, fallback = null) {

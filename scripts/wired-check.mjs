@@ -325,7 +325,7 @@ const CALLER_EXTS = new Set(['.mjs', '.js', '.sh', '.json', '.html', '.yml', '.y
 export const REQUIRED_OPERATIONAL_EXPORTS = [
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'syncCorpusInputs' },
   { rel: 'scripts/corpus-aggregates.mjs', symbol: 'rebuildCorpusAggregates' },
-  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'reconcileCorpusUntilStable' },
+  { rel: 'scripts/corpus-reconcile.mjs', symbol: 'acquireCorpusGeneration' },
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'reconcileAndPrepareCorpusCandidate' },
   { rel: 'scripts/gist-receipts.mjs', symbol: 'buildGistAggregate' },
   // Step 3 (2026-09-13): the single canonical public-prose selection entry point, same rigor as
@@ -344,6 +344,11 @@ export const REQUIRED_OPERATIONAL_EXPORTS = [
   // CLI after single-pass assembly; corpus-candidate.mjs and release.mjs both import its
   // readAccuracyReport reader so candidate acceptance and publication can never drift apart.
   { rel: 'scripts/oracle/retrieval-accuracy.mjs', symbol: 'runRetrievalAccuracy' },
+  // ADR-086 amendment (2026-09-15): the BLOCKING retrieval gate. C3 above still runs and still ships,
+  // but as a published diagnostic; this is the module that can refuse a candidate. prepareCorpusCandidate
+  // shells out to its CLI after single-pass assembly, and corpus-candidate.mjs and release.mjs both
+  // import its readRecallReport reader so candidate acceptance and publication can never drift apart.
+  { rel: 'scripts/oracle/repo-recall.mjs', symbol: 'runRepoRecall' },
 ];
 
 const isTestFile = (f) => /\.(test|spec)\.(mjs|js)$/.test(path.basename(f))
