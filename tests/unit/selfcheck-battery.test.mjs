@@ -613,6 +613,14 @@ describe('mutation proof — every assertion is load-bearing', () => {
     const file = path.join(dir, 'mutant.mjs');
     fs.writeFileSync(file, source
       .replace(find, replace)
+      // selfcheck.mjs imports THE canonical continuity policy by relative path. This mutant is
+      // written to a temp dir, so that specifier has to be re-pointed at the real module — the same
+      // absolute-path rewrite this fixture already does for `here` on the line below. Staging a
+      // COPY of the policy here would recreate the exact defect this import was added to remove:
+      // two copies of one policy, drifting apart (2026-09-15 — the stale local duplicate classified
+      // 9 of 11 shipped hook registrations as legacy and failed every real user's install).
+      .replace("from '../plugin/scripts/continuity-hook-policy.mjs'",
+        `from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, 'plugin/scripts/continuity-hook-policy.mjs')).href)}`)
       .replace(ANCHOR, `const here = ${JSON.stringify(path.join(REPO_ROOT, 'scripts'))};`));
     return { mod: await import(pathToFileURL(file).href), file, dir };
   }

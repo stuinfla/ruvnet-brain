@@ -109,9 +109,12 @@ describe('clean host installation from only the packed artifact', () => {
     expect(marketplace.plugins.some((entry) => entry.name === plugin.name)).toBe(true);
     expect(plugin).not.toHaveProperty('updated');
     expect(hooks.hooks).toBeTypeOf('object');
-    expect(Object.keys(hooks.hooks).sort()).toEqual(['SessionStart', 'Stop']);
+    // Derived from the source plane, not frozen to a literal: this assertion used to hardcode
+    // ['SessionStart', 'Stop'] and went stale the moment the plane was legitimately grown back
+    // (9c45d408 / 7b8e6e73 / ef2b8e12). What matters is that packing preserves the plane exactly.
+    const sourceHooks = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/hooks/hooks.json'), 'utf8'));
+    expect(Object.keys(hooks.hooks).sort()).toEqual(Object.keys(sourceHooks.hooks).sort());
     expect(JSON.stringify(hooks.hooks)).toContain('session-start');
-    expect(JSON.stringify(hooks.hooks)).toContain('continuation-gate');
     expect(fs.existsSync(path.join(artifact, 'plugin/.mcp.json'))).toBe(true);
   });
 
@@ -134,13 +137,25 @@ describe('clean host installation from only the packed artifact', () => {
     expect(install.codexStatus({ codexDir, configPath: config }).wired).toBe(true);
   });
 
-  it('ships continuity-only automatic registrations in both packed host manifests', () => {
+  // WAS: 'ships continuity-only automatic registrations', asserting the plane is exactly
+  // ['SessionStart', 'Stop']. That described a real state -- the plane WAS retired to
+  // continuity-only at 00526b12 (2026-09-07) -- and then the project deliberately grew it back:
+  // 9c45d408 restored the continuity lifecycle, 7b8e6e73 wired the search-first gate
+  // (ground-ruvnet on UserPromptSubmit, decision-gate on PreToolUse, grounding-stamp on
+  // PostToolUse), ef2b8e12 extended those to Codex and added the Stop gate. The assertion was never
+  // updated, so it failed every release-QE run while describing a world that no longer existed.
+  //
+  // The GUARD is still worth having and is what this now checks: the PACKED manifests must carry
+  // exactly the plane the SOURCE declares -- a packaging step that silently drops or adds a hook
+  // event is a real defect. Reading the expectation from plugin/hooks/*.json means this cannot go
+  // stale again the next time the plane legitimately changes.
+  it('packs exactly the hook plane the source declares, in both host manifests', () => {
     for (const name of ['hooks.json', 'codex-hooks.json']) {
-      const document = JSON.parse(fs.readFileSync(path.join(artifact, 'plugin/hooks', name), 'utf8'));
-      expect(Object.keys(document.hooks).sort()).toEqual(['SessionStart', 'Stop']);
-      const commands = Object.values(document.hooks).flatMap((groups) => groups.flatMap((group) => group.hooks.map((hook) => hook.command)));
+      const packed = JSON.parse(fs.readFileSync(path.join(artifact, 'plugin/hooks', name), 'utf8'));
+      const source = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/hooks', name), 'utf8'));
+      expect(Object.keys(packed.hooks).sort()).toEqual(Object.keys(source.hooks).sort());
+      const commands = Object.values(packed.hooks).flatMap((groups) => groups.flatMap((group) => group.hooks.map((hook) => hook.command)));
       expect(commands.filter((command) => command.includes('session-start'))).toHaveLength(1);
-      expect(commands.filter((command) => command.includes('continuation-gate'))).toHaveLength(1);
     }
   });
 

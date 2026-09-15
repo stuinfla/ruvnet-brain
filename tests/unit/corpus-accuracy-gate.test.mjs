@@ -25,7 +25,7 @@ import {
   accuracyOracle, accuracyReportFor, buildAssets, fixtureReleaseRoot, recallReportFor, seal,
   sealedCorpusBundle, writeAccuracyReport, SOURCE_COMMIT,
 } from '../helpers/corpus-seed-fixture.mjs';
-import { tally } from '../../scripts/oracle/repo-recall.mjs';
+import { evaluateGate, tally } from '../../scripts/oracle/repo-recall.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const HEAD = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
@@ -550,7 +550,7 @@ describe('corpus receipt schema 3 binds the detached accuracy report', () => {
     fs.writeFileSync(`${bundle}.recall.json`, `${JSON.stringify(short, null, 2)}\n`);
     await expect(createCorpusReceipt({
       bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40), createdAt: '2026-09-14T00:00:00.000Z',
-    })).rejects.toThrow(/asked 193 of 194|regressed to/i);
+    })).rejects.toThrow(/integrity FAILED: asked \d+ of \d+/i);
   });
 
   it('MUST BLOCK: a missing repo-recall report cannot be sealed', async () => {
@@ -689,31 +689,21 @@ process.exit(0);
     expect(f.ghCalls()).toHaveLength(0);
   });
 
-  it('MUST BLOCK: a below-floor recall result, even with the receipt forged to bind it', async () => {
-    // This is the successor to the old "one below-threshold repository" publication guard. A
-    // below-floor report can never be SEALED (the candidate gate refuses it first), so the only way
-    // it reaches publication is a forged receipt that binds the bad report's digest. That forgery
-    // survives every well-formedness check and must still be caught here, before any gh call —
-    // otherwise moving the blocking predicate would have quietly removed a publication guard.
-    const f = await publishable();
-    const bad = recallReportFor(f.bundle);
-    bad.rows = bad.rows.map((row, i) => (i < 20 ? { ...row, exactFileRank: null } : row));
-    bad.totals = tally(bad.rows);
-    const reportFile = `${f.bundle}.recall.json`;
-    fs.writeFileSync(reportFile, `${JSON.stringify(bad, null, 2)}\n`);
-    const forged = {
-      ...f.receipt,
-      recallReport: {
-        file: path.basename(reportFile),
-        sha256: crypto.createHash('sha256').update(fs.readFileSync(reportFile)).digest('hex'),
-        bytes: fs.statSync(reportFile).size,
-      },
-    };
-    fs.writeFileSync(f.receiptFile, JSON.stringify(forged, null, 2));
-    const result = f.run();
-    expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/regressed to \d+, below the accepted floor/i);
-    expect(f.ghCalls()).toHaveLength(0);
+  it('a below-floor recall result is RECORDED, not refused — the ratchet stopped being a gate', () => {
+    // DELIBERATE REDUCTION, 2026-09-15. The old guard refused a below-threshold retrieval result at
+    // publication. Its successor ratchet compared a fixed hit COUNT against a fixture whose size can
+    // legitimately change; re-scoping the fixture 194 -> 182 turned the same constant from 90.7%
+    // into 96.7% and refused a candidate nobody had measured. Retrieval quality on the release path
+    // is gated by the canary in scripts/retrieval-canary.mjs, through a real installed host. What
+    // this module still REFUSES is availability and integrity — a repository that answers nothing,
+    // a question that errored, an incomplete run — none of which depend on a threshold.
+    // 100 questions, every repository answering, but only 50 exact-file hits: far below any floor.
+    const rows = Array.from({ length: 100 }, (_, i) => ({
+      store: `s${i}`, expectedPath: 'a.md', repoCovered: true, exactFileRank: i < 50 ? 1 : null, returnedPaths: [],
+    }));
+    const gate = evaluateGate({ totals: tally(rows), floorValue: 176, fixtureCount: 100 });
+    expect(gate.failures.some((f) => /below the accepted floor/.test(f))).toBe(true);
+    expect(gate.failures.filter((f) => !/below the accepted floor/.test(f))).toEqual([]);
   });
 
   it('MUST BLOCK: a schema-2 receipt is refused by runProtectedCorpusSeed', async () => {
