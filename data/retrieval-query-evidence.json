@@ -2,10 +2,10 @@
   "schemaVersion": 2,
   "kind": "ruvnet-brain-retrieval-query-evidence",
   "queryStoreSetSha256": "15c9b34624d9689ce8f95bafae3d4769840af7c1047900ba05a0ff02df05313e",
-  "sourceCommit": "149b290c2b9ae5f60abb61169689e7580b99be69",
+  "sourceCommit": "eed238632345b0a52e27d4ca18849c620467a4de",
   "sourcePath": "data/retrieval-query-evidence.json",
   "sourceBlobSha256": "9fe2259689eb5607e2174e100b1fc404ce0f4e35d268cdcd12c3960e27bdb56e",
-  "receiptSha256": "9dc1f9347e8b5494bf6f10801f70cc72acf092f9e80bb924cf3325498691f69e",
+  "receiptSha256": "03a6da2e77a1de44a78fe3c86a7d468fa8a6eb8c5fe2b5f96691fde1b27da63c",
   "queries": {
     "2bottalk": {
       "query": "In the 2bottalk repository, what is 2 BoT Talk AI-powered Bot Duo, what problem does it solve, and how is it intended to be used?",
