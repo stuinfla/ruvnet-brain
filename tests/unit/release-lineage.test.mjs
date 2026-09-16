@@ -38,7 +38,7 @@ describe('release command wording', () => {
     const provider = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction-provider.mjs'), 'utf8');
     const nightly = fs.readFileSync(path.join(ROOT, 'scripts/self-update.mjs'), 'utf8');
     expect(release).toContain('await runReleaseTransaction');
-    expect(provider).toContain("command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`])");
+    expect(provider).toContain("command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`], PUBLISH_COMMAND_OPTIONS)");
     expect(provider).toContain("command('npm', ['dist-tag', 'add', `${PACKAGE}@${identity.version}`, 'latest'])");
     expect(nightly).not.toMatch(/execFileSync\(['"]npm['"],\s*\[['"]publish['"]/);
     expect(nightly).toContain('self-update is rebuild-only');

@@ -2973,6 +2973,53 @@ function bpField(bp) {
   return (bp && Array.isArray(bp.schema) && bp.schema[0]) || null;
 }
 
+/* ------------------------------------------------------------ inventory */
+
+// Renders /api/state's `inventory` section: the installed brain's stores BY NAME, joined with their
+// upstream repo and build commit. Ranked by recency (server-side) — never alphabetical. Read-only.
+function renderInventory(inv) {
+  const body = $('#body-inventory');
+  if (!body) return;
+  if (!inv || inv.available !== true) {
+    setChips('chips-inventory', [chip('can’t read the manifest', 'nt')]);
+    body.replaceChildren(el('p', { class: 'muted' },
+      inv && inv.reason ? inv.reason : 'The console could not read RVF-GENERATIONS.json from the installed brain, so it is not guessing a list.'));
+    return;
+  }
+  const chips = [chip(`${fmtInt(inv.count)} repositories`, 'green')];
+  if (inv.privateCount > 0) chips.push(chip(`${fmtInt(inv.privateCount)} private`, 'cyan', 'Fenced private stores — never leave this machine'));
+  if (inv.releaseTag) chips.push(chip(`generation ${inv.releaseTag}`, 'grey'));
+  setChips('chips-inventory', chips);
+
+  const mb = inv.totalBytes ? `${(inv.totalBytes / 1e6).toFixed(0)} MB on disk` : null;
+  const summary = el('p', { class: 'muted' },
+    `${fmtInt(inv.count)} searchable stores`,
+    inv.withProvenance != null ? `, ${fmtInt(inv.withProvenance)} with a recorded upstream commit` : '',
+    mb ? `, ${mb}.` : '.');
+
+  const rows = (inv.stores || []).map((s) => el('li', { class: 'inv-row', 'data-name': s.name.toLowerCase() },
+    el('span', { class: 'mono inv-name' }, s.name),
+    s.private ? chip('private', 'cyan') : null,
+    s.sourceRepo && /^https?:\/\//.test(s.sourceRepo)
+      ? el('a', { class: 'inv-src', href: s.sourceRepo, target: '_blank', rel: 'noopener noreferrer' }, s.sourceRepo.replace(/^https?:\/\/(www\.)?github\.com\//, ''))
+      : el('span', { class: 'muted inv-src' }, s.sourceRepo || '—'),
+    el('span', { class: 'mono muted inv-meta' },
+      s.sourceCommit ? `@${s.sourceCommit}` : '', s.builtUtc ? ` · built ${String(s.builtUtc).slice(0, 10)}` : ''),
+  ));
+  const list = el('ul', { class: 'inv-list', 'aria-label': 'Repositories in the brain' }, ...rows);
+  const filter = el('input', {
+    class: 'inv-filter', type: 'search', placeholder: 'Filter by name…', 'aria-label': 'Filter repositories by name',
+    oninput: (e) => {
+      const q = String(e.target.value || '').trim().toLowerCase();
+      let shown = 0;
+      for (const li of list.children) { const hit = !q || li.dataset.name.includes(q); li.hidden = !hit; if (hit) shown += 1; }
+      count.textContent = q ? `${fmtInt(shown)} of ${fmtInt(inv.count)} match` : '';
+    },
+  });
+  const count = el('span', { class: 'muted inv-count', 'aria-live': 'polite' });
+  body.replaceChildren(summary, el('div', { class: 'inv-tools' }, filter, count), list);
+}
+
 function renderBrainPower(bp) {
   const body = $('#body-brain');
   if (!body) return;
@@ -3663,6 +3710,7 @@ async function loadState({ landed = false } = {}) {
     renderHost(state.host, state.generatedAt);
     const s = state.sections || {};
     renderBrainPower(s.brainPower);
+    renderInventory(s.inventory);
     renderWiring(s.wiring);
     lastMemory = s.memory;
     renderMemory(s.memory);

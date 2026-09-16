@@ -108,6 +108,25 @@
     </div>
   </section>
 
+  <!-- The one thing this page never showed: WHICH repositories are in the brain, by name. It always
+       carried the count and never the list. Read-only mirror of the installed manifest. -->
+  <section class="card rail-mirror" id="card-inventory" aria-labelledby="card-inventory-h">
+    <div class="qgroup-head">
+      <span class="card-ic ic-mirror" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+      </span>
+      <span class="card-head">
+        <span class="stage st-mirror">Mirror</span>
+        <h2 id="card-inventory-h">What’s in your brain</h2>
+        <span class="q">Every repository the brain can search right now, by name — where it came from and when it was built.</span>
+      </span>
+      <span class="chips" id="chips-inventory"><span class="chip tone-wait">counting…</span></span>
+    </div>
+    <div class="body" id="body-inventory">
+      <div class="skeleton" aria-hidden="true"><div class="sk-bar w40"></div><div class="sk-bar w75"></div></div>
+    </div>
+  </section>
+
   <!-- ======================================================= HERO -->
   <section class="intro">
     <div class="intro-grid">

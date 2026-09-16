@@ -2,16 +2,16 @@
   "schemaVersion": 3,
   "kind": "ruvnet-brain-gist-source-receipts",
   "owner": "ruvnet",
-  "generated": "2026-09-15T01:47:27.914Z",
-  "observedAt": "2026-09-15T01:47:27.914Z",
-  "sourceObservationSha256": "f62f927dd8d475514bcd08597373c412da67fb42ea30d9ab3b3bcc46814d4fa1",
+  "generated": "2026-09-16T01:47:30.139Z",
+  "observedAt": "2026-09-16T01:47:30.139Z",
+  "sourceObservationSha256": "4cb95c6b0be0b31452937adeb04758d22c75065aae9cebbf9dbeae9f073450f4",
   "gistSet": {
-    "count": 493,
-    "idsSha256": "9cf14ebf78179b9f418e9b776cc7d0f8c41af2d26e9158eb496453afa45bd74d",
-    "observationSha256": "f62f927dd8d475514bcd08597373c412da67fb42ea30d9ab3b3bcc46814d4fa1"
+    "count": 494,
+    "idsSha256": "68a48ba0cca216791db8d0e849e488c26b794879dafd649edf3f95a09a415629",
+    "observationSha256": "4cb95c6b0be0b31452937adeb04758d22c75065aae9cebbf9dbeae9f073450f4"
   },
-  "sourceSetSha256": "8719e61c690914ee0bbb62710e6e3ed86aee370decc4641edb97c2783560be0e",
-  "passagesSha256": "0033588f36324a09f5ae5b6792838f2e8b4fbdca2d0a256fe44aac1c2edde738",
+  "sourceSetSha256": "afa1da2f07bfc59e2bd4ab723b596e16aa1b45bed80c778973ec6e4c1b4d0356",
+  "passagesSha256": "c79bbfde30f81361e85226edcf45a5ee9eb59b6347bda0f4895a5249837a15a2",
   "gists": {
     "0020d02e9ce85a773412f8bf518737a0": {
       "schemaVersion": 3,
@@ -50,8 +50,8 @@
       "kind": "ruvnet-brain-gist-source-receipt",
       "gistId": "0033f22f0702d35f38d74d2beece57c1",
       "versionSha": "9b2fa60666162e043f4e8ff1eef53ed831ade07d",
-      "updatedAt": "2026-09-15T00:56:05Z",
-      "ingestedAt": "2026-09-15T01:47:27.914Z",
+      "updatedAt": "2026-09-16T01:29:41Z",
+      "ingestedAt": "2026-09-16T01:47:30.139Z",
       "fileCount": 1,
       "files": [
         {
@@ -63,7 +63,7 @@
       ],
       "contentDigest": "8f55afecd56f950ab26e92c03b5b8d8a8515ea1c12e37431fd9d1db2083c3438",
       "complete": true,
-      "receiptSha256": "b6879f17279412931fa234667a78f18230fd7a749bd6a9aa020af7253645b0b3"
+      "receiptSha256": "ec4eb1009fd32439b2bb89ac31ec281ffc78445e957c5d75db0f8668c81a5d97"
     },
     "00cf79588f7aa84b163594b34c4a60b5": {
       "schemaVersion": 3,
@@ -4464,6 +4464,26 @@
       "contentDigest": "0730badc36a31c19e4ee5c24d0086e768111e581e3fc70909d64797895481fca",
       "complete": true,
       "receiptSha256": "68bc039a081a1dd2b6abc3f5a8109710bbf92f59567ea46679c40c0b8d299603"
+    },
+    "554751b1068c48f7ee210aa447cd4088": {
+      "schemaVersion": 3,
+      "kind": "ruvnet-brain-gist-source-receipt",
+      "gistId": "554751b1068c48f7ee210aa447cd4088",
+      "versionSha": "971b6826c31fdae0ecf48b12b04bc0b329beb740",
+      "updatedAt": "2026-09-15T17:52:26Z",
+      "ingestedAt": "2026-09-16T01:47:30.139Z",
+      "fileCount": 1,
+      "files": [
+        {
+          "filename": "rtl8721dx-vs-esp32-csi-comparison.md",
+          "included": true,
+          "sha256": "01c4fd3d6bc65a2dca2663146572472c191888fd211a5fe3dd3cab9588cfb6b7",
+          "bytes": 17848
+        }
+      ],
+      "contentDigest": "cfeb77e81edc25cef87e95e628e050739db85865611be68ff24b434a74cb9a2e",
+      "complete": true,
+      "receiptSha256": "04d5ff7eb206cecc5881c0cd184f7fb1edffa24add527424660d7c7280c06feb"
     },
     "55ed6ef677779473a11795739e92f381": {
       "schemaVersion": 3,
@@ -11548,5 +11568,5 @@
       "receiptSha256": "f0c4615ae0ef3c6e8a7f6e10fbea1f1af571eccd65eab28da1eefec7f774c300"
     }
   },
-  "receiptSha256": "c610be7397fedeb7849c6b077944a0b1bcccc0559f3310796db6db4b78c2f9fd"
+  "receiptSha256": "c11d2ee993d5ecc38c7468ca5e5d9ef450850e8a2e8f3373942d674b2a48ad5f"
 }
