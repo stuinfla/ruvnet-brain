@@ -98,6 +98,12 @@ const OBSERVATION_POLICY = {
   multiplier: 1.8,
   jitter: (delay) => Math.floor(Math.random() * Math.min(1_000, delay * 0.2)),
 };
+// The one command in this file that mutates a public channel gets its stderr in the job log and a
+// timeout sized for a real registry upload. command()'s defaults — stderr piped and dropped, 30s —
+// meant 4.3.25's first run left NO diagnostic between "stage-npm" and the deadline error, and a slow
+// registry would have killed a legitimate publish mid-upload. Named, so the publish call stays one
+// pinnable line for tests/unit/release-lineage + publication-receipt-wiring (one publisher, one tag).
+const PUBLISH_COMMAND_OPTIONS = Object.freeze({ stdio: ['ignore', 'pipe', 'inherit'], timeout: 600_000 });
 
 export function selectCurrentReleaseBytes({ remoteBytes, localBytes, generatedBytes, identity }) {
   const bytes = remoteBytes || localBytes || generatedBytes;
@@ -414,12 +420,7 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
         command('npm', ['dist-tag', 'add', `${PACKAGE}@${identity.version}`, `candidate-v${identity.version}`]);
         return;
       }
-      // The one command in this file that mutates a public channel gets its stderr in the job log and
-      // a timeout sized for a real registry upload. command()'s defaults — stderr piped and dropped,
-      // 30s — meant 4.3.25's first run left NO diagnostic between "stage-npm" and the deadline error,
-      // and a slow registry would have killed a legitimate publish mid-upload.
-      command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`],
-        { stdio: ['ignore', 'pipe', 'inherit'], timeout: 600_000 });
+      command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`], PUBLISH_COMMAND_OPTIONS);
     },
 
     async observeNpmCandidate(identity) {

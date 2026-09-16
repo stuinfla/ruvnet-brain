@@ -108,6 +108,26 @@ describe('ADR-062 recovery transaction', () => {
     await expect(execute(provider)).rejects.toThrow('GitHub non-latest publication not observed');
   });
 
+  // 4.3.25, run 35109036116 verbatim: the previous run died AFTER publishing the draft and writing
+  // github-promote-intent, BEFORE its observation receipt. Resume must rebuild that receipt from
+  // fresh state and carry on to promotion — under the real "latest = code recency" contract.
+  it('RESUME: a run that died after publishDraftNonLatest recovers and converges', async () => {
+    const provider = new FakeReleaseProvider();
+    provider.codeRecencyLatest = true;
+    const publish = provider.publishDraftNonLatest.bind(provider);
+    let crashed = false;
+    provider.publishDraftNonLatest = async (...args) => {
+      await publish(...args);
+      if (!crashed) { crashed = true; throw new Error('runner died after publish'); }
+    };
+    await expect(execute(provider)).rejects.toThrow('runner died after publish');
+    expect(provider.receipts.at(-1).state).toBe('github-promote-intent');
+    const final = await execute(provider);
+    expect(final.state).toBe('channels-converged');
+    expect(provider.receipts.some((r) => r.state === 'github-promoted-nonlatest' && r.observation?.recovered === true)).toBe(true);
+    expect(provider.pointerTag).toBe(identity.tag);
+  });
+
   it('fails closed on immutable npm byte mismatch', async () => {
     const provider = new FakeReleaseProvider();
     provider.candidatePublished = true;
