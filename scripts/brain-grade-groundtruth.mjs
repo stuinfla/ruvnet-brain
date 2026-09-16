@@ -7,6 +7,10 @@
 //     with the poison rule (incomplete-but-not-wrong < 50). No same-family LLM is the final word.
 // Emits a JSON report + console summary with REAL NUMBERS. Never claims PASS itself — prints the data.
 //
+// summary.generatedAt (ISSUE #258 write-side fast-follow, via brain-grade-summary.mjs): the moment
+// this panel was actually measured. brain-score.mjs's readPanel() prefers it over checkout mtime —
+// without it, that preference is unreachable and every panel silently reads as fresh on any clone.
+//
 //   node scripts/brain-grade-groundtruth.mjs --name ruflo --variant big \
 //        --questions kb/questions.ruflo.json --repo ../ruvnet-repos/ruflo   (or set RUVNET_REPO)
 import fs from 'node:fs';
@@ -14,6 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { searchKb } from '../kb/forge-ask.mjs';
 import { rerankKb } from '../kb/forge-rerank.mjs';
+import { buildGradeSummary } from './brain-grade-summary.mjs';
 const RERANK = process.argv.includes('--rerank');
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -83,16 +88,10 @@ for (let i = 0; i < questions.length; i++) {
 
 // Aggregate
 const valid = report.filter(r => Number.isFinite(r.avgStrict));
-const mean = (k) => valid.reduce((s, r) => s + r[k], 0) / valid.length;
-const minK = (k) => Math.min(...valid.map(r => r[k]));
 const gtFail = report.filter(r => !r.groundTruthPathExists).length;
-const summary = {
-  name: NAME, variant: VARIANT, questions: questions.length, models: MODELS,
-  avgStrict: +mean('avgStrict').toFixed(2), avgRealUse: +mean('avgRealUse').toFixed(2),
-  minStrict: minK('avgStrict'), minRealUse: minK('avgRealUse'),
-  poisonStrict: valid.filter(r => r.avgStrict < 50).length, poisonRealUse: valid.filter(r => r.avgRealUse < 50).length,
-  groundTruthCitationFailures: gtFail,
-};
+const summary = buildGradeSummary({
+  name: NAME, variant: VARIANT, questions: questions.length, models: MODELS, valid, gtFail,
+});
 fs.writeFileSync(path.join(ROOT, `data/grade-${NAME}-${VARIANT}.json`), JSON.stringify({ summary, report }, null, 2));
 console.log('=== SUMMARY (real numbers) ===');
 console.log(JSON.stringify(summary, null, 2));
