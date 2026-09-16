@@ -560,7 +560,7 @@ export function ensureUpdaterPrerequisites(kbDir) {
   return { updater: true, validator: placeTrustedCoverageValidator(kbDir) };
 }
 
-export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTag = null } = {}) {
+export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTag = null, activate = true } = {}) {
   step(
     'Unpacking the brain into place',
     'so the plugin finds forge-mcp-all.mjs and the vector stores right where it looks',
@@ -667,6 +667,10 @@ export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTa
       'The live brain was not touched. Fetch a complete current release and retry.');
   }
 
+  // Recovery consumes this authenticated staging result through the KB transaction. Keep fresh
+  // activation below as the only owner of installer replacement and private-overlay refusal.
+  if (!activate) return { status: 'STAGED', stageDir, extractedBy, coverage: stagedCoverage };
+
   // Activation is an exact directory generation swap. A malformed candidate never reaches this
   // point, retired public files cannot survive as overlay debris, and a failed rename restores the
   // prior generation. Existing private overlays are update-owned and must never be stripped by the
@@ -747,6 +751,19 @@ export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTa
   return { status: 'ACTIVATED', priorGeneration: hadPrior
     ? { status: 'PRESERVED_UNCLASSIFIED', path: preservedDir, automaticCleanupEligible: false }
     : null };
+}
+
+/** Stage and validate a bundle for forge-update recovery without touching the live generation. */
+export async function stageBundleForRecovery(zipPath, cacheDir, sourceDir = null, { releaseTag = null, signaturePath = `${zipPath}.sig` } = {}) {
+  const verified = verifyBundle(zipPath, signaturePath);
+  if (!verified.ok) throw new Error(`recovery bundle signature verification failed: ${verified.reason}`);
+  const bundleSha256 = crypto.createHash('sha256').update(fs.readFileSync(zipPath)).digest('hex');
+  const result = await unzipInto(zipPath, cacheDir, sourceDir, { releaseTag, activate: false });
+  fs.writeFileSync(`${result.stageDir}.staged-release.json`, JSON.stringify({
+    schemaVersion: 1, kind: 'ruvnet-brain-authenticated-stage', bundleSha256,
+    releaseTag, stagedAt: new Date().toISOString(),
+  }) + '\n', { mode: 0o600 });
+  return { ...result, bundleSha256 };
 }
 
 /**
@@ -1045,6 +1062,7 @@ function installReader(cacheDir) {
   // (SEC-0010 #8 — otherwise every install did a fully unpinned resolve). Fall back to `npm i`
   // for older bundles that predate the shipped lockfile.
   const hasLock = fs.existsSync(path.join(cacheDir, 'package-lock.json'));
+  let installMode = hasLock ? 'pinned-npm-ci' : 'legacy-npm-install';
   const npmArgs = hasLock
     ? ['ci', '--no-audit', '--no-fund', '--loglevel=error']
     : ['i', '--no-audit', '--no-fund', '--loglevel=error'];
@@ -1058,6 +1076,7 @@ function installReader(cacheDir) {
     // `npm ci` is strict (fails if lock and package.json disagree); fall back to `npm i` once
     // rather than hard-failing a user's install on a lockfile mismatch.
     if (hasLock) {
+      installMode = 'legacy-npm-install-fallback';
       warn(`pinned install (npm ci) failed (${e.message}); retrying with npm i`);
       try {
         run('npm', ['i', '--no-audit', '--no-fund', '--loglevel=error'], {
@@ -1071,6 +1090,7 @@ function installReader(cacheDir) {
     }
   }
   ok('reader installed');
+  return { mode: installMode, qualifying: installMode === 'pinned-npm-ci' };
 }
 
 // The Console must survive the temporary npm/npx extraction directory. Before 4.0.2 its skills
@@ -3407,7 +3427,7 @@ export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSI
   return { healthy: true, state: 'channels-converged' };
 }
 
-function runUpdate() {
+async function runUpdate() {
   printBanner('update');
   const kbDir = resolvedKbDir();
   const brainHome = process.env.RUVNET_BRAIN_HOME || path.dirname(kbDir);
@@ -3549,10 +3569,38 @@ function runUpdate() {
     warn("the knowledge bundle could not refresh; continuing with executable host synchronization only");
     updateStatus = 0;
   } else if (outcome.fallback) {
-    warn("\nthe bundle's own updater couldn't complete — falling back to a fresh install of the latest Release (this always works)…\n");
-    const self = fileURLToPath(import.meta.url);
-    const fr = spawnSync(process.execPath, [self, '--force'], { stdio: 'inherit',
-      env: { ...refreshEnv, RUVNET_BRAIN_NO_UPDATE_FALLBACK: '1' } });
+    let hasPrivateOverlay = false;
+    try {
+      const installedSource = JSON.parse(fs.readFileSync(path.join(kbDir, 'SOURCE.json'), 'utf8'));
+      const installedStores = Array.isArray(installedSource.stores) ? installedSource.stores : Object.values(installedSource.stores || {});
+      hasPrivateOverlay = installedStores.some((store) => store?.updateManaged === false);
+    } catch { /* updater already supplied the authoritative failure */ }
+    let fr;
+    if (hasPrivateOverlay) {
+      warn("\nthe installed updater failed; using authenticated staged recovery to preserve private stores…\n");
+      const release = await resolveRelease();
+      const bundle = await obtainBundle(release);
+      if (!bundle.zipPath) throw new Error('private-overlay recovery requires a downloadable signed bundle');
+      const sigPath = `${bundle.zipPath}.sig`;
+      const stagedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-recovery-stage-'));
+      const staged = await stageBundleForRecovery(bundle.zipPath, stagedRoot, null, { signaturePath: sigPath,
+        releaseTag: release?.source === 'latest' ? (release.tag || null) : null });
+      const descriptor = path.join(stagedRoot, 'recovery-input.json');
+      let expectedRuntimeVersion = PACKAGE_VERSION;
+      try { expectedRuntimeVersion = JSON.parse(fs.readFileSync(path.join(kbDir, 'RUNTIME-IDENTITY.json'), 'utf8')).brainVersion || expectedRuntimeVersion; } catch { /* validator reports missing identity */ }
+      fs.writeFileSync(descriptor, JSON.stringify({ stagedDir: staged.stageDir, liveDir: kbDir,
+        bundlePath: bundle.zipPath, signaturePath: sigPath, bundleSha256: staged.bundleSha256,
+        expectedRuntimeVersion, releaseTag: release?.source === 'latest' ? (release.tag || null) : null,
+      }) + '\n', { mode: 0o600 });
+      fr = spawnSync(process.execPath, [path.join(REPO_ROOT, 'kb', 'forge-update.mjs'), '--staged-release', descriptor], {
+        stdio: 'inherit', cwd: path.dirname(kbDir), env: { ...refreshEnv, RUVNET_BRAIN_NO_UPDATE_FALLBACK: '1' },
+      });
+    } else {
+      warn("\nthe bundle's own updater couldn't complete — falling back to a fresh install of the latest Release…\n");
+      const self = fileURLToPath(import.meta.url);
+      fr = spawnSync(process.execPath, [self, '--force'], { stdio: 'inherit',
+        env: { ...refreshEnv, RUVNET_BRAIN_NO_UPDATE_FALLBACK: '1' } });
+    }
     updateStatus = fr.error ? 1 : (fr.status === null ? 1 : fr.status);
   } else {
     updateStatus = outcome.exitCode;
@@ -5468,7 +5516,10 @@ the installer reports that boot-level declarations changed.
     }
   }
 
-  installReader(cacheDir);
+  const readerInstall = installReader(cacheDir);
+  if (!readerInstall.qualifying) {
+    warn(`reader installed via ${readerInstall.mode}; this legacy dependency resolution is non-qualifying current evidence`);
+  }
   try {
     const consoleEntry = installConsoleRuntime(cacheDir);
     ok(`Brain Console installed at ${consoleEntry}`);

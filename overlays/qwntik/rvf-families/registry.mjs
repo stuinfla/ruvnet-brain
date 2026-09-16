@@ -327,7 +327,14 @@ export function verifyOverlayRegistration({ overlay, kbDir, manifestsDir }) {
     if (cards.get(name) !== expected) failures.push(`capability-cards.md mismatch: ${name}`);
   }
   for (const [name, expected] of Object.entries(overlay.familyRoutes || {})) {
-    if (!sameJson(familyRoutes.families?.[name], expected)) failures.push(`family-routes.json mismatch: ${name}`);
+    const actual = familyRoutes.families?.[name];
+    if (!sameJson(actual, expected)) failures.push(`family-routes.json mismatch: ${name}`);
+    if (actual && !sameJson(actual.stores || [], expected.stores || [])) {
+      failures.push(`family-routes.json store-set mismatch: ${name}`);
+    }
+    if (actual && !sameJson(actual.routes || {}, expected.routes || {})) {
+      failures.push(`family-routes.json route-key/value mismatch: ${name}`);
+    }
   }
   const retiredNames = new Set((overlay.retiredStores || []).map((store) => store.name));
   for (const name of retiredNames) {

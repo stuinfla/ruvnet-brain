@@ -28,7 +28,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { resolveBundleUrl, verifyLanded } from '../../kb/forge-update.mjs';
+import { applyVerifiedStagedRelease, resolveBundleUrl, verifyLanded } from '../../kb/forge-update.mjs';
 
 // A realistic per-store `local` record, shaped exactly like forge-build.mjs writes it (see
 // kb/forge-build.mjs:476-486 and the real kb/SOURCE.json in this repo).
@@ -210,5 +210,22 @@ describe('verifyLanded (issue #35 item 2)', () => {
     const result = verifyLanded({ kbDir: kb, kbName: 'ruvnet', before: staleLocal, expectedDigest: digest, downloadedBuffer: buf });
 
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('applyVerifiedStagedRelease (private recovery rail)', () => {
+  it('fails closed on a missing detached signature before touching the live tree', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'staged-recovery-trust-'));
+    const staged = path.join(root, 'staged');
+    const live = path.join(root, 'live');
+    fs.mkdirSync(staged); fs.mkdirSync(live);
+    fs.writeFileSync(path.join(staged, 'SOURCE.json'), '{}');
+    fs.writeFileSync(path.join(live, 'SOURCE.json'), '{}');
+    const before = fs.readFileSync(path.join(live, 'SOURCE.json'));
+    await expect(applyVerifiedStagedRelease({ stagedDir: staged, liveDir: live,
+      bundlePath: path.join(root, 'bundle.zip'), signaturePath: path.join(root, 'bundle.zip.sig'),
+      expectedRuntimeVersion: '4.3.26', validateCoverageDirectory: () => ({ valid: true, failures: [] })
+    })).rejects.toThrow(/signature verification failed/i);
+    expect(fs.readFileSync(path.join(live, 'SOURCE.json'))).toEqual(before);
   });
 });

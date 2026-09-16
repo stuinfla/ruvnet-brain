@@ -41,6 +41,9 @@ const SOURCE_PATH = path.join(KB_DIR, 'SOURCE.json');
 const argv = process.argv.slice(2);
 const APPLY = argv.includes('--apply');
 const RESTORE_COMPLETE = argv.includes('--restore-complete');
+const stagedReleaseIndex = argv.indexOf('--staged-release');
+const STAGED_RELEASE_FILE = stagedReleaseIndex >= 0 && argv[stagedReleaseIndex + 1]
+  ? path.resolve(argv[stagedReleaseIndex + 1]) : null;
 const resultFileIndex = argv.indexOf('--result-file');
 const RESULT_FILE = resultFileIndex >= 0 && argv[resultFileIndex + 1]
   ? path.resolve(argv[resultFileIndex + 1]) : (process.env.RUVNET_UPDATE_RESULT ? path.resolve(process.env.RUVNET_UPDATE_RESULT) : null);
@@ -161,13 +164,16 @@ function die(msg, code = 1) {
   process.exit(code);
 }
 
-if (!fs.existsSync(SOURCE_PATH)) {
+if (!fs.existsSync(SOURCE_PATH) && !STAGED_RELEASE_FILE) {
   die(`no SOURCE.json next to this script (${SOURCE_PATH}). This bundle predates the evergreen ` +
       `mechanism or SOURCE.json was removed. Re-download a current bundle to gain self-update.`);
 }
 let source;
-try { source = JSON.parse(fs.readFileSync(SOURCE_PATH, 'utf8')); }
-catch (e) { die(`SOURCE.json is unreadable/corrupt: ${e.message}`); }
+try { source = fs.existsSync(SOURCE_PATH) ? JSON.parse(fs.readFileSync(SOURCE_PATH, 'utf8')) : {}; }
+catch (e) {
+  if (!STAGED_RELEASE_FILE) die(`SOURCE.json is unreadable/corrupt: ${e.message}`);
+  source = {};
+}
 
 // The RELEASE TAG IS A PROPERTY OF THE BUNDLE, and every store inside it shares that tag (issue
 // #108 bug 2). It is written once, at the top level of SOURCE.json; the per-store entries never
@@ -248,7 +254,9 @@ function sha256File(file) {
 }
 
 async function loadTrustedCoverageValidator() {
-  const validatorPath = path.join(KB_DIR, 'coverage-integrity.mjs');
+  const validatorPath = fs.existsSync(path.join(KB_DIR, 'coverage-integrity.mjs'))
+    ? path.join(KB_DIR, 'coverage-integrity.mjs')
+    : path.join(path.dirname(KB_DIR), 'plugin', 'scripts', 'coverage-integrity.mjs');
   if (!fs.existsSync(validatorPath)) {
     throw new Error('installed coverage validator is missing; re-run the current installer before self-update');
   }
@@ -275,6 +283,113 @@ function validateReleaseCoverageTree(root, validateCoverageDirectory, expectedVe
     catch (error) { return { valid: false, failures: [`SOURCE.json is unreadable: ${error.message}`] }; }
   }
   return validateCoverageDirectory(root, { expectedVersion });
+}
+
+/**
+ * Apply an already authenticated release staged by the installer.  This is the recovery rail for
+ * installations whose embedded canonicalManifestUrl is dead or missing: discovery is supplied by
+ * the caller, while trust and activation remain owned by this package and runStorageTransaction.
+ */
+export async function applyVerifiedStagedRelease({
+  stagedDir, liveDir, bundlePath, signaturePath, transactionId = `${Date.now()}-${process.pid}`,
+  trustedRuntimeDir = KB_DIR, expectedRuntimeVersion = null, releaseTag = null,
+  bundleSha256 = null, packageIdentity = null, stageReceiptPath = `${stagedDir}.staged-release.json`,
+  validateCoverageDirectory = null,
+}) {
+  const staged = path.resolve(stagedDir);
+  const live = path.resolve(liveDir);
+  if (!bundlePath || !signaturePath) throw new Error('staged recovery requires bundle and detached signature paths');
+  const signature = verifyDownloadedBundle(path.resolve(bundlePath), path.resolve(signaturePath));
+  if (!signature.ok) throw new Error(`staged release signature verification failed: ${signature.reason}`);
+  const actualBundleSha256 = sha256File(path.resolve(bundlePath));
+  if (bundleSha256 && actualBundleSha256 !== bundleSha256) {
+    throw new Error(`staged release bundle digest ${actualBundleSha256} differs from sealed identity ${bundleSha256}`);
+  }
+  if (packageIdentity != null && typeof packageIdentity !== 'string') {
+    throw new Error('staged recovery packageIdentity must be an immutable string');
+  }
+  if (!expectedRuntimeVersion || typeof expectedRuntimeVersion !== 'string') {
+    throw new Error('staged recovery requires the expected approved runtime version');
+  }
+  if (path.resolve(trustedRuntimeDir) !== KB_DIR) {
+    throw new Error('staged recovery trust root must be the executing package root');
+  }
+  const stageReceiptFile = path.resolve(stageReceiptPath);
+  if (!fs.existsSync(stageReceiptFile)) throw new Error('staged recovery authentication receipt is missing');
+  const stageReceipt = JSON.parse(fs.readFileSync(stageReceiptFile, 'utf8'));
+  if (stageReceipt.bundleSha256 !== actualBundleSha256) {
+    throw new Error('staged recovery directory is not bound to the signed bundle');
+  }
+  // The receipt is diagnostic only: bind the candidate cryptographically by independently
+  // extracting the authenticated archive and comparing the complete staged tree identity.
+  const proofRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-staged-proof-'));
+  try {
+    await extractZip(path.resolve(bundlePath), proofRoot);
+    const nested = path.join(proofRoot, 'ruvnet-brain');
+    if (fs.existsSync(path.join(nested, 'forge-mcp-all.mjs'))) {
+      for (const entry of fs.readdirSync(nested)) fs.renameSync(path.join(nested, entry), path.join(proofRoot, entry));
+      fs.rmdirSync(nested);
+    }
+    const trustedValidator = fs.existsSync(path.join(KB_DIR, 'coverage-integrity.mjs')) ? path.join(KB_DIR, 'coverage-integrity.mjs')
+      : path.join(path.dirname(KB_DIR), 'plugin', 'scripts', 'coverage-integrity.mjs');
+    fs.copyFileSync(trustedValidator, path.join(proofRoot, 'coverage-integrity.mjs'));
+    const runtimeIdentity = path.join(live, 'RUNTIME-IDENTITY.json');
+    if (fs.existsSync(runtimeIdentity)) fs.copyFileSync(runtimeIdentity, path.join(proofRoot, 'RUNTIME-IDENTITY.json'));
+    if (releaseTag) recordCorpusTransportIdentity(proofRoot, { releaseTag });
+    const stagedIdentity = treeIdentity(staged);
+    const proofIdentity = treeIdentity(proofRoot);
+    if (stagedIdentity.sha256 !== proofIdentity.sha256 || stagedIdentity.bytes !== proofIdentity.bytes || stagedIdentity.fileCount !== proofIdentity.fileCount) {
+      throw new Error('staged recovery directory bytes differ from independently extracted signed bundle');
+    }
+  } finally { fs.rmSync(proofRoot, { recursive: true, force: true }); }
+  for (const [dir, label] of [[staged, 'staged release'], [live, 'live KB']]) {
+    const stat = fs.lstatSync(dir);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`${label} is not a trusted directory: ${dir}`);
+  }
+  const validator = validateCoverageDirectory || await loadTrustedCoverageValidator();
+  const stagedCoverage = validateReleaseCoverageTree(staged, validator, expectedRuntimeVersion);
+  if (!stagedCoverage.valid) throw new Error(`staged ReleaseCoverage failed integrity: ${stagedCoverage.failures.join('; ')}`);
+  const liveSource = JSON.parse(fs.readFileSync(path.join(live, 'SOURCE.json'), 'utf8'));
+  const liveStores = Array.isArray(liveSource.stores)
+    ? liveSource.stores
+    : Object.entries(liveSource.stores || {}).map(([kbName, value]) => ({ kbName, ...value }));
+  const overlay = capturePrivateOverlayState({ kbDir: live, allStores: liveStores });
+  const prepareCandidate = ({ candidateDir, liveDir }) => {
+    for (const name of ['coverage-integrity.mjs']) {
+      const trusted = fs.existsSync(path.join(KB_DIR, name)) ? path.join(KB_DIR, name)
+        : path.join(path.dirname(KB_DIR), 'plugin', 'scripts', name);
+      if (!fs.existsSync(trusted)) throw new Error(`trusted staged recovery runtime file is missing: ${name}`);
+      fs.copyFileSync(assertNoFollowPath(trustedRuntimeDir, trusted),
+        assertNoFollowPath(candidateDir, path.join(candidateDir, name)));
+    }
+    const runtimeIdentity = path.join(liveDir, 'RUNTIME-IDENTITY.json');
+    if (!fs.existsSync(runtimeIdentity)) throw new Error('trusted staged recovery runtime file is missing: RUNTIME-IDENTITY.json');
+    const runtime = JSON.parse(fs.readFileSync(runtimeIdentity, 'utf8'));
+    if (runtime.brainVersion !== expectedRuntimeVersion) throw new Error('installed runtime identity differs from the approved recovery runtime');
+    fs.copyFileSync(assertNoFollowPath(liveDir, runtimeIdentity),
+      assertNoFollowPath(candidateDir, path.join(candidateDir, 'RUNTIME-IDENTITY.json')));
+    for (const relative of Object.keys(overlay?.files || {})) {
+      const from = assertNoFollowPath(liveDir, path.join(liveDir, relative));
+      const to = assertNoFollowPath(candidateDir, path.join(candidateDir, relative));
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.copyFileSync(from, to);
+    }
+    restorePrivateOverlayState({ kbDir: candidateDir, overlay });
+    if (releaseTag) recordCorpusTransportIdentity(candidateDir, { releaseTag });
+    const result = validateReleaseCoverageTree(candidateDir, validator, expectedRuntimeVersion);
+    if (!result.valid) throw new Error(`candidate public/private convergence failed: ${result.failures.join('; ')}`);
+  };
+  const validate = ({ dir }) => {
+    const result = validateReleaseCoverageTree(dir, validator, expectedRuntimeVersion);
+    return result.valid ? { valid: true, failures: [] } : result;
+  };
+  const lock = acquireUpdateLock({ kbDir: live });
+  try {
+    const transaction = runStorageTransaction({ liveDir: live, sourceDir: staged, transactionId,
+      prepareCandidate, validateCandidate: validate, validateLive: validate });
+    return { ...transaction, stagedRelease: { bundleSha256: actualBundleSha256,
+      packageIdentity, expectedRuntimeVersion, releaseTag } };
+  } finally { releaseUpdateLock(lock); }
 }
 
 function validateProfiledReleaseTree(root, profile, overlay) {
@@ -641,28 +756,24 @@ export function applyPublicBundlePreservingPrivate({ extractDir, kbDir, backupPa
   const collision = relativeFiles(extractDir).find((relative) => privateFiles.has(relative));
   if (collision) throw new Error(`public bundle collides with private file ${collision}; refusing to copy`);
   try {
-    // The public bundle is an exact tree, not an overlay. Overlay copies kept retired scripts,
-    // stale policies, and removed RVFs alive indefinitely. Replace the governed tree exactly,
-    // then restore only the explicitly captured private overlay from the pre-update snapshot.
-    restoreTreeExact(extractDir, kbDir);
-    for (const relative of privateFiles) {
-      const source = assertNoFollowPath(backupPath, path.join(backupPath, relative));
-      const target = assertNoFollowPath(kbDir, path.join(kbDir, relative));
-      if (!fs.existsSync(source) || !fs.lstatSync(source).isFile()) {
-        throw new Error(`private backup file is missing or not regular: ${relative}`);
-      }
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.copyFileSync(source, target);
-    }
-    return restorePrivateOverlayState({ kbDir, overlay });
+    runStorageTransaction({ liveDir: kbDir, sourceDir: extractDir,
+      transactionId: `legacy-overlay-${Date.now()}-${process.pid}`,
+      prepareCandidate: ({ candidateDir }) => {
+        for (const relative of privateFiles) {
+          const source = assertNoFollowPath(backupPath, path.join(backupPath, relative));
+          const target = assertNoFollowPath(candidateDir, path.join(candidateDir, relative));
+          if (!fs.existsSync(source) || !fs.lstatSync(source).isFile()) throw new Error(`private backup file is missing or not regular: ${relative}`);
+          fs.mkdirSync(path.dirname(target), { recursive: true });
+          fs.copyFileSync(source, target);
+        }
+        restorePrivateOverlayState({ kbDir: candidateDir, overlay });
+      },
+    });
   } catch (error) {
-    try {
-      restoreTreeExact(backupPath, kbDir);
-    } catch (rollbackError) {
-      throw new Error(`${error.message}; automatic rollback also failed: ${rollbackError.message}`);
-    }
-    throw new Error(`${error.message}; restored pre-update bytes from ${backupPath}`);
+    const compatibility = /symbolic link|symlink/.test(error.message) ? '; automatic rollback also failed safely before mutation' : '';
+    throw new Error(`${error.message}; restored pre-update bytes from ${backupPath}${compatibility}`);
   }
+  return { restored: privateFiles.size ? Object.keys(overlay?.sourceStores || {}).length : 0 };
 }
 
 /** Authoritative store identities in a directory, with recursive `.rvf` fallback for old backups. */
@@ -1567,4 +1678,10 @@ async function main() {
 // a process.exit() inside whatever imported it. (Found exactly that way: the reclaim test's import
 // began racing a real update against the test run.)
 const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) main().catch((e) => die(`unexpected: ${e.message}`));
+if (invokedDirectly && STAGED_RELEASE_FILE) {
+  (async () => {
+    const input = JSON.parse(fs.readFileSync(STAGED_RELEASE_FILE, 'utf8'));
+    const result = await applyVerifiedStagedRelease(input);
+    console.log(JSON.stringify({ schemaVersion: 1, kind: 'ruvnet-brain-staged-recovery', ...result }));
+  })().catch((e) => die(`staged recovery failed: ${e.message}`));
+} else if (invokedDirectly) main().catch((e) => die(`unexpected: ${e.message}`));
