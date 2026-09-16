@@ -4,13 +4,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest } from './coverage-integrity.mjs';
-import { retrievalOracleExpectationFromPlan, validateRetrievalOracleReview } from './independent-review-receipt.mjs';
+import {
+  retrievalOracleExpectationFromPlan,
+  validateIndependentReviewPair,
+  validateRetrievalOracleReview,
+} from './independent-review-receipt.mjs';
 import { validateRetrievalCanaryPlan, validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
 import { validateNightlyProofReceipt, validateNativeSchedulerSmoke } from './nightly-two-run-proof.mjs';
 
 export const PUBLIC_VERIFICATION_OS = Object.freeze(['linux', 'macos', 'windows']);
 export const PUBLIC_VERIFICATION_MODES = Object.freeze(['claude', 'codex', 'dual']);
-export const REQUIRED_REVIEW_MODELS = Object.freeze(['claude-fable-5', 'gpt-5.6-sol']);
+export const REQUIRED_REVIEW_MODELS = Object.freeze(['claude-fable-5-1', 'gpt-6-astra']);
 
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -110,10 +114,10 @@ export function validateIndependentReviewReceipt(review) {
     || typeof review.execution?.invocationDigest !== 'string' || !HEX64.test(review.execution.invocationDigest)) {
     throw new Error('independent review receipt is malformed, below 95, or incomplete');
   }
-  if (review.model === 'claude-fable-5' && review.provider !== 'firstParty') {
+  if (review.model === 'claude-fable-5-1' && review.provider !== 'firstParty') {
     throw new Error('Fable 5 review did not use the verified first-party subscription path');
   }
-  if (review.model === 'gpt-5.6-sol' && (review.provider !== 'openai' || typeof review.execution.threadId !== 'string'
+  if (review.model === 'gpt-6-astra' && (review.provider !== 'openai' || typeof review.execution.threadId !== 'string'
     || !review.execution.threadId || !HEX64.test(String(review.execution.catalogRowSha256 || '')))) {
     throw new Error('GPT-5.6-Sol review lacks live catalog and thread evidence');
   }
@@ -209,6 +213,18 @@ export function buildPublicVerificationAggregate(leaves, options = {}) {
     || oracle.queryStoreSetSha256 !== digest(first.retrievalPlan.denominator.eligibleStores)) {
     throw new Error('sealed retrieval oracle identity is incomplete');
   }
+  // A public aggregate is only release-grade when the adopted two-vendor machine
+  // grading pair is carried through it. Keep the low-level builder usable for
+  // historical/unit fixtures; release callers must set requireReviewPair.
+  let reviews = options.reviews;
+  if ((options.requireReviewPair || options.reviews !== undefined)
+    && options.publicKeysByReviewer && Object.keys(options.publicKeysByReviewer).length) {
+    reviews = validateIndependentReviewPair(options.reviews, {
+      publicKeysByReviewer: options.publicKeysByReviewer,
+      expectedIdentity: options.expectedReviewIdentity || null,
+      expectedOracle: options.expectedOracle || retrievalOracleExpectationFromPlan(first.retrievalPlan),
+    });
+  }
   return {
     schemaVersion: 1,
     kind: 'ruvnet-brain-public-verification-aggregate',
@@ -223,13 +239,17 @@ export function buildPublicVerificationAggregate(leaves, options = {}) {
       recordCount: first.retrievalPlan.denominator.eligibleStores.length,
     },
     metrics,
+    ...(reviews ? { reviews } : {}),
     verdict: 'PASS',
     untested: [],
   };
 }
 
-export function signPublicVerificationAggregate({ leaves }, privateKey) {
-  const payload = buildPublicVerificationAggregate(leaves, { publicKey: crypto.createPublicKey(privateKey) });
+export function signPublicVerificationAggregate({ leaves, reviews, publicKeysByReviewer, expectedReviewIdentity, expectedOracle }, privateKey) {
+  const payload = buildPublicVerificationAggregate(leaves, {
+    publicKey: crypto.createPublicKey(privateKey),
+    ...(reviews === undefined ? {} : { reviews, publicKeysByReviewer, expectedReviewIdentity, expectedOracle }),
+  });
   const aggregateSha256 = digest(payload);
   const signed = { ...payload, aggregateSha256 };
   return { ...signed, signature: crypto.sign(null, Buffer.from(canonicalJson(signed)), privateKey).toString('base64') };
@@ -251,7 +271,8 @@ export function verifyPublicVerificationAggregate(aggregate, publicKey, expected
     throw new Error('public verification aggregate signature mismatch');
   }
   const rebuilt = buildPublicVerificationAggregate(aggregate.evidence.leaves, { publicKey });
-  if (canonicalJson(rebuilt) !== canonicalJson(payload)) {
+  const rebuiltComparable = { ...rebuilt, ...(aggregate.reviews ? { reviews: aggregate.reviews } : {}) };
+  if (canonicalJson(rebuiltComparable) !== canonicalJson(payload)) {
     throw new Error('public verification aggregate differs from rebuilt raw evidence');
   }
   const required = PUBLIC_VERIFICATION_OS.flatMap((os) => PUBLIC_VERIFICATION_MODES.map((mode) => `${os}/${mode}`));

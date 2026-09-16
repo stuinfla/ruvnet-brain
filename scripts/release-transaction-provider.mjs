@@ -17,6 +17,10 @@ const command = (name, args, options = {}) => execFileSync(name, args, {
   encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000, ...options,
 }).trim();
 const json = (name, args, options) => JSON.parse(command(name, args, options));
+export const redactDiagnostic = (value, max = 2_000) => String(value || '')
+  .replace(/(authorization)\s*:\s*bearer\s+[^\s,;]+/gi, '$1: Bearer [REDACTED]')
+  .replace(/(token|password|secret|authorization|api[-_]?key)\s*[:=]\s*(?!bearer\b)[^\s,;]+/gi, '$1=[REDACTED]')
+  .slice(0, max);
 // ADR-086 S1: `releases/latest` is the customer download pointer and is a corpus generation on any
 // night a corpus round shipped. Every question this provider asks is about the CODE generation, so
 // it must resolve the latest CODE release rather than read a pointer that now answers differently.
@@ -57,7 +61,9 @@ const assetToFile = (asset, destination) => {
     stdio: ['ignore', fs.openSync(destination, 'w'), 'pipe'], timeout: ASSET_DOWNLOAD_TIMEOUT_MS,
   });
   if (result.error || result.signal || result.status !== 0) {
-    throw new Error(`cannot download transaction asset ${asset.name}: ${result.error?.message || result.signal || `exit ${result.status}`}`);
+    const detail = result.error?.message || (result.signal ? `signal ${result.signal}` : `exit ${result.status}`);
+    const stderr = redactDiagnostic(result.stderr);
+    throw new Error(`cannot download transaction asset ${asset.name}: ${detail}${stderr ? `; stderr: ${stderr}` : ''}`);
   }
   return destination;
 };

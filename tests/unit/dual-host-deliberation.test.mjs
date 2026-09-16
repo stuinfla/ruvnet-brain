@@ -15,6 +15,11 @@ const eligible = {
   claude: { host: 'claude-code', eligible: true, auth: 'claude.ai-subscription' },
   codex: { host: 'codex', eligible: true, auth: 'chatgpt-subscription' },
 };
+const validStage = (host, name) => ({ schemaVersion: 1, stage: name, artifactSha256: 'a'.repeat(64),
+  ...(name === 'proposal' ? { proposal: { host }, plan: `${host}-plan` } : {}),
+  ...(name === 'critique' ? { findings: [`review-${host}`] } : {}),
+  ...(name === 'synthesis' || name === 'revise' ? { artifact: { host }, adr: {}, ddd: {}, qe: {} } : {}),
+  ...(name === 'verify' || name === 'reverify' ? { verdict: 'accept', corrections: [] } : {}) });
 
 describe('hardProblem', () => {
   it.each([
@@ -44,10 +49,7 @@ describe('deliberate', () => {
     const calls = [];
     const runHost = async (host, stage, payload) => {
       calls.push({ host, stage, payload });
-      if (stage === 'proposal') return { ok: true, value: { host, plan: `${host}-plan` } };
-      if (stage === 'critique') return { ok: true, value: { host, findings: [`review-${host}`] } };
-      if (stage === 'synthesis') return { ok: true, value: { adr: {}, ddd: {}, qe: {}, unresolved: [] } };
-      return { ok: true, value: { verdict: 'accept', corrections: [] } };
+      return { ok: true, value: validStage(host, stage) };
     };
 
     const out = await deliberate('Design the security architecture ADR', {
@@ -73,10 +75,7 @@ describe('deliberate', () => {
         claude: { host: 'claude-code', eligible: false, auth: 'capacity-limited' },
         codex: eligible.codex,
       },
-      runHost: async (host, stage) => ({
-        ok: true,
-        value: { host, stage, adr: {}, ddd: {}, qe: {} },
-      }),
+      runHost: async (host, stage) => ({ ok: true, value: validStage(host, stage) }),
       persist: async () => false,
     });
 
@@ -102,10 +101,10 @@ describe('deliberate', () => {
 
   it('does not promote host completion into an accepted quality outcome', async () => {
     const runHost = async (host, stage) => {
-      if (stage === 'verify') return { ok: true, value: { verdict: 'changes', corrections: ['missing oracle'] } };
-      if (stage === 'revise') return { ok: true, value: { adr: {}, ddd: {}, qe: {} } };
-      if (stage === 'reverify') return { ok: true, value: { verdict: 'block', corrections: ['still incomplete'] } };
-      return { ok: true, value: { host, stage } };
+      if (stage === 'verify') return { ok: true, value: { ...validStage(host, stage), verdict: 'changes', corrections: [{ id: 'missing-oracle', text: 'missing oracle' }] } };
+      if (stage === 'revise') return { ok: true, value: validStage(host, stage) };
+      if (stage === 'reverify') return { ok: true, value: { ...validStage(host, stage), verdict: 'block', corrections: [{ id: 'still-incomplete', text: 'still incomplete' }] } };
+      return { ok: true, value: validStage(host, stage) };
     };
     const out = await deliberate('Build an Agentic-QE architecture', {
       probes: eligible,
@@ -175,8 +174,8 @@ describe('deliberate persistence boundary', () => {
       probes: eligible,
       now: () => 1_785_240_000_000,
       runHost: async (host, stage) => {
-        if (stage === 'verify') return { ok: true, value: { verdict: 'accept' } };
-        return { ok: true, value: { host, stage } };
+        if (stage === 'verify') return { ok: true, value: validStage(host, stage) };
+        return { ok: true, value: validStage(host, stage) };
       },
     });
     expect(out.status).toBe('accepted');
@@ -194,8 +193,8 @@ describe('deliberate persistence boundary', () => {
       probes: eligible,
       now: () => 1_785_240_000_000,
       runHost: async (host, stage) => {
-        if (stage === 'verify') return { ok: true, value: { verdict: 'accept' } };
-        return { ok: true, value: { host, stage } };
+        if (stage === 'verify') return { ok: true, value: validStage(host, stage) };
+        return { ok: true, value: validStage(host, stage) };
       },
       persist: async (value) => {
         request = value;

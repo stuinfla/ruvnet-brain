@@ -79,6 +79,11 @@ const EXEMPT = new Set(['scripts/no-silent-substitution.mjs', 'tests/unit/no-sil
 
 // The disclosure that makes a hand-roll legitimate. Explicit, greppable, impossible to write by accident.
 const DISCLOSURE = /HAND-ROLLED:.*REAL TOOL:\s*(\S+)/is;
+// Public product language names the assurance mechanism, not the implementation
+// filename. “Independent review” was an ambiguous legacy label that allowed a
+// signed machine-grade pair to be mistaken for a human approval gate.
+export const OBSOLETE_GRADING_LANGUAGE = /\bindependent(?:ly)?\s+review(?:ers?|ed|ing)?\b|\bindependent\s+grading\b/i;
+export const CURRENT_GRADING_LANGUAGE = 'machine grading by two vendors';
 
 export function walk(dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -155,8 +160,24 @@ export function audit(root = ROOT) {
   return violations;
 }
 
+export function auditUserFacingGradingLanguage(root = ROOT) {
+  const files = ['docs', '.github'].flatMap((dir) => {
+    const abs = path.join(root, dir);
+    return fs.existsSync(abs) ? walk(abs, []) : [];
+  }).filter((file) => !file.endsWith('no-silent-substitution.mjs'));
+  return files.flatMap((file) => {
+    const source = fs.readFileSync(file, 'utf8');
+    if (!OBSOLETE_GRADING_LANGUAGE.test(source)) return [];
+    return [{ file: path.relative(root, file).split(path.sep).join('/'),
+      capability: 'two-vendor machine grading',
+      pkg: 'native subscription reviewers',
+      why: `user-facing grading language uses the obsolete independent-review label; use "${CURRENT_GRADING_LANGUAGE}"`,
+      fix: `replace the legacy label with "${CURRENT_GRADING_LANGUAGE}"` }];
+  });
+}
+
 function main() {
-  const violations = audit();
+  const violations = [...audit(), ...auditUserFacingGradingLanguage()];
   console.log('no-silent-substitution — is any local code impersonating a real rUv tool?\n');
   if (!violations.length) {
     console.log('✅ none. Every RuvNet capability this repo names is either genuinely used or openly disclosed as a hand-roll.');

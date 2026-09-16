@@ -10,6 +10,37 @@ import { RELEASE_REQUIREMENTS } from './release-qualification-contract.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PLATFORM = { linux: 'linux', darwin: 'macos', win32: 'windows' }[process.platform];
+export function validateConsistencyAcceptance(manifest) {
+  if (manifest?.schemaVersion !== 1 || typeof manifest.program !== 'string'
+    || typeof manifest.baselineSourceSha !== 'string' || !/^[a-f0-9]{40}$/.test(manifest.baselineSourceSha)
+    || !Array.isArray(manifest.obligations) || !manifest.obligations.length) {
+    throw new Error('consistency acceptance manifest is malformed');
+  }
+  const ids = new Set();
+  for (const row of manifest.obligations) {
+    if (!row || typeof row.id !== 'string' || !row.id || ids.has(row.id) || typeof row.owner !== 'string'
+      || !Array.isArray(row.checks) || !Array.isArray(row.journeys)
+      || !Array.isArray(row.northStarPillars) || !row.northStarPillars.length) {
+      throw new Error('consistency acceptance obligation is malformed');
+    }
+    ids.add(row.id);
+    for (const list of [row.checks, row.journeys, row.northStarPillars]) {
+      if (list.some((value) => typeof value !== 'string' || !value.trim())) {
+        throw new Error(`consistency acceptance obligation ${row.id} contains an invalid reference`);
+      }
+    }
+  }
+  return manifest;
+}
+
+export function readConsistencyAcceptance(root = ROOT) {
+  const file = path.join(root, 'data', 'consistency-acceptance.json');
+  if (!fs.existsSync(file)) return null;
+  let manifest;
+  try { manifest = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (error) { throw new Error(`consistency acceptance manifest is unreadable: ${error.message}`); }
+  return validateConsistencyAcceptance(manifest);
+}
 
 export function qualificationPlan(suite = 'source') {
   const requirements = RELEASE_REQUIREMENTS[suite];
@@ -17,7 +48,9 @@ export function qualificationPlan(suite = 'source') {
   const files = requirements.flatMap((entry) => entry.files);
   if (new Set(files).size !== files.length || files.some((file) => !file.startsWith('tests/')
     || !file.endsWith('.test.mjs') || file.includes('..'))) throw new Error('invalid qualification inventory');
-  return { requirements, files, contractSha256: digest(requirements) };
+  const acceptance = readConsistencyAcceptance();
+  return { requirements, files, contractSha256: digest(requirements),
+    ...(acceptance ? { consistencyAcceptanceSha256: digest(acceptance) } : {}) };
 }
 
 export function assessTestReport(report, files, root = ROOT, platform = PLATFORM) {

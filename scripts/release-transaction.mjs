@@ -564,6 +564,10 @@ export async function finalizeReleaseTransaction({
     releaseTransactionId: transactionIdFor(identity),
   };
   verifyPublicVerificationAggregate(aggregate, aggregatePublicKey, expectedAggregateIdentity);
+  if (!Array.isArray(aggregate.reviews) || aggregate.reviews.length !== 2
+    || new Set(aggregate.reviews.map((review) => review?.id)).size !== 2) {
+    throw new Error('public verification finalizer requires the two-vendor machine grading pair');
+  }
   const discovered = await adapter.discover(identity);
   const chain = validateReceiptChain(discovered.receipts || [], identity, publicKey);
   const current = chain.at(-1);

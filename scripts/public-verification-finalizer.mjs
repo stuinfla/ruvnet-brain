@@ -27,6 +27,7 @@ export async function finalizePublicVerification({
   workflowRunId,
   privatePem = process.env.RUVNET_SIGNING_KEY,
   publicKeyFile = 'keys/ruvnet-brain-signing.pub.pem',
+  requireReviewPair = false,
   adapter = liveReleaseProvider({ root: process.cwd() }),
 } = {}) {
   if (!identityFile || !aggregateFile || !outputFile) throw new Error('--identity, --aggregate, and --out are required');
@@ -37,7 +38,7 @@ export async function finalizePublicVerification({
   const aggregate = regularJson(aggregateFile, 'public verification aggregate');
   const publicKey = crypto.createPublicKey(fs.readFileSync(path.resolve(publicKeyFile), 'utf8'));
   const receipt = await finalizeReleaseTransaction({ identity, aggregate, adapter, verifierSha, workflowRunId,
-    privateKey: crypto.createPrivateKey(privatePem), publicKey, aggregatePublicKey: publicKey });
+    privateKey: crypto.createPrivateKey(privatePem), publicKey, aggregatePublicKey: publicKey, requireReviewPair });
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.writeFileSync(output, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   return receipt;
@@ -51,6 +52,7 @@ export async function main(args = process.argv.slice(2)) {
       outputFile: argument(args, '--out'),
       verifierSha: argument(args, '--verifier-sha') ?? undefined,
       workflowRunId: argument(args, '--workflow-run-id'),
+      requireReviewPair: args.includes('--require-review-pair'),
     });
     process.stdout.write(`${JSON.stringify({ state: receipt.state, transactionId: receipt.transactionId,
       receiptDigest: receipt.receiptDigest }, null, 2)}\n`);

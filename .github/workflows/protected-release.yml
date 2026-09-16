@@ -546,6 +546,7 @@ jobs:
             --workflow-run-id "$GITHUB_RUN_ID" \
             --identity release-evidence/release-identity.json \
             --aggregate release-evidence/public-verification-aggregate.json \
+            --require-review-pair \
             --out release-evidence/install-verified-receipt.json
           test "$(node -p "require('./release-evidence/install-verified-receipt.json').state")" = install-verified
       - name: Preserve terminal public verification evidence

@@ -1,7 +1,7 @@
 import { digest } from '../../scripts/coverage-integrity.mjs';
 import { expect, it } from 'vitest';
 import path from 'node:path';
-import { assessTestReport, qualificationPlan, validateQualificationReceipt } from '../../scripts/release-qualification.mjs';
+import { assessTestReport, qualificationPlan, validateConsistencyAcceptance, validateQualificationReceipt } from '../../scripts/release-qualification.mjs';
 const file = 'tests/unit/example.test.mjs';
 const root = process.cwd();
 const report = () => ({ success: true, numFailedTests: 0, numFailedTestSuites: 0,
@@ -25,6 +25,14 @@ it('rejects an empty suite, missing cases, and forged totals', () => {
   expect(() => assessTestReport(value, [file], root)).toThrow('execute and pass');
   value.numTotalTests = 1; value.testResults[0].assertionResults = [];
   expect(() => assessTestReport(value, [file], root)).toThrow('execute and pass');
+});
+it('validates the versioned consistency acceptance manifest shape', () => {
+  const manifest = { schemaVersion: 1, program: 'consistency', baselineSourceSha: 'a'.repeat(40), obligations: [
+    { id: 'review', owner: 'DELIVERY', checks: ['npm test'], journeys: ['release'], northStarPillars: ['QA'] },
+  ] };
+  expect(validateConsistencyAcceptance(manifest)).toEqual(manifest);
+  expect(() => validateConsistencyAcceptance({ ...manifest, obligations: [manifest.obligations[0], manifest.obligations[0]] })).toThrow();
+  expect(() => validateConsistencyAcceptance({ ...manifest, baselineSourceSha: 'bad' })).toThrow();
 });
 it('rejects undefined qualification classes rather than falling back to the historical suite', () => {
   expect(() => qualificationPlan('all')).toThrow('unknown');

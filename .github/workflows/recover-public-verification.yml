@@ -293,6 +293,7 @@ jobs:
             --verifier-sha "${{ github.sha }}" \
             --identity release-evidence/release-identity.json \
             --aggregate release-evidence/public-verification-aggregate.json \
+            --require-review-pair \
             --out release-evidence/install-verified-receipt.json
           test "$(node -p "require('./release-evidence/install-verified-receipt.json').state")" = install-verified
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"

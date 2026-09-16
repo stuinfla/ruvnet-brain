@@ -9,8 +9,12 @@ const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 export const ALLOWED_INDEPENDENT_REVIEWERS = Object.freeze([
+  Object.freeze({ identity: 'claude-fable-5-1', model: 'claude-fable-5-1', provider: 'firstParty' }),
+  Object.freeze({ identity: 'gpt-6-astra', model: 'gpt-6-astra', provider: 'openai' })]);
+export const HISTORICAL_INDEPENDENT_REVIEWERS = Object.freeze([
   Object.freeze({ identity: 'claude-fable-5', model: 'claude-fable-5', provider: 'firstParty' }),
-  Object.freeze({ identity: 'gpt-5.6-sol', model: 'gpt-5.6-sol', provider: 'openai' })]);
+  Object.freeze({ identity: 'gpt-5.6-sol', model: 'gpt-5.6-sol', provider: 'openai' }),
+]);
 
 const INPUT_KEYS = Object.freeze([
   'artifactSha256', 'deductions', 'execution', 'findings', 'id', 'independent', 'model', 'payloadId',
@@ -214,7 +218,8 @@ function normalizeReleaseIdentity(identity) {
 }
 
 function reviewerFor(input) {
-  const reviewer = ALLOWED_INDEPENDENT_REVIEWERS.find(({ identity }) => identity === input.id);
+  const reviewer = [...ALLOWED_INDEPENDENT_REVIEWERS, ...HISTORICAL_INDEPENDENT_REVIEWERS]
+    .find(({ identity }) => identity === input.id);
   if (!reviewer || input.model !== reviewer.model || input.provider !== reviewer.provider || input.id !== input.model) {
     throw new Error('reviewer identity, model, and provider are not an allowed exact tuple');
   }
@@ -222,17 +227,18 @@ function reviewerFor(input) {
 }
 
 function normalizeExecution(execution, reviewer) {
-  const required = reviewer.identity === 'gpt-5.6-sol'
+  const isOpenAiNative = reviewer.provider === 'openai';
+  const required = isOpenAiNative
     ? ['catalogRowSha256', 'invocationDigest', 'subscriptionAuthenticated', 'threadId']
     : ['invocationDigest', 'subscriptionAuthenticated'];
-  if (reviewer.identity === 'gpt-5.6-sol'
+  if (isOpenAiNative
     && (!Object.hasOwn(execution || {}, 'threadId') || !Object.hasOwn(execution || {}, 'catalogRowSha256'))) {
     throw new Error('GPT review thread and catalog evidence are required');
   }
   exactKeys(execution, required, 'review execution');
   if (execution.subscriptionAuthenticated !== true) throw new Error('review execution is not subscription authenticated');
   hex(execution.invocationDigest, HEX64, 'review invocation digest');
-  if (reviewer.identity === 'gpt-5.6-sol') {
+  if (isOpenAiNative) {
     text(execution.threadId, 'GPT review thread');
     hex(execution.catalogRowSha256, HEX64, 'GPT review catalog row');
   }

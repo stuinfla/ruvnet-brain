@@ -74,6 +74,40 @@ function parseHostValue(host, stdout) {
   }
 }
 
+const STAGE_SCHEMAS = Object.freeze({
+  proposal: { required: ['schemaVersion', 'stage', 'artifactSha256', 'proposal'], optional: ['task', 'plan', 'adr', 'ddd', 'qe', 'artifact', 'host'] },
+  critique: { required: ['schemaVersion', 'stage', 'artifactSha256', 'findings'], optional: ['corrections', 'risks', 'verdict', 'host'] },
+  synthesis: { required: ['schemaVersion', 'stage', 'artifactSha256', 'artifact'], optional: ['adr', 'ddd', 'qe', 'unresolved', 'host'] },
+  revise: { required: ['schemaVersion', 'stage', 'artifactSha256', 'artifact'], optional: ['adr', 'ddd', 'qe', 'unresolved', 'host'] },
+  verify: { required: ['schemaVersion', 'stage', 'artifactSha256', 'verdict', 'corrections'], optional: ['findings'] },
+  reverify: { required: ['schemaVersion', 'stage', 'artifactSha256', 'verdict', 'corrections'], optional: ['findings'] },
+});
+
+export function validateStageValue(stage, value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.text !== undefined) {
+    throw new Error(`${stage} response is not a structured stage object`);
+  }
+  const schema = STAGE_SCHEMAS[stage];
+  if (!schema) throw new Error(`${stage} response has an unknown stage`);
+  const allowed = new Set([...schema.required, ...schema.optional]);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) throw new Error(`${stage} response has unknown field: ${unknown.sort()[0]}`);
+  const missing = schema.required.find((key) => !Object.hasOwn(value, key));
+  if (missing) throw new Error(`${stage} response is missing ${missing}`);
+  if (value.schemaVersion !== 1 || value.stage !== stage || !/^[a-f0-9]{64}$/.test(String(value.artifactSha256))) {
+    throw new Error(`${stage} response identity is invalid`);
+  }
+  if (['verify', 'reverify'].includes(stage)) {
+    if (!['accept', 'changes', 'block'].includes(value.verdict)) throw new Error(`${stage} verdict is invalid`);
+    if (!Array.isArray(value.corrections) || value.corrections.some((correction) => !correction
+      || typeof correction !== 'object' || !/^[a-z0-9][a-z0-9._-]*$/i.test(String(correction.id || ''))
+      || typeof correction.text !== 'string' || !correction.text.trim())) {
+      throw new Error(`${stage} corrections are invalid`);
+    }
+  }
+  return value;
+}
+
 function spawnHost(binary, args, options, input = '') {
   return new Promise((resolve) => {
     const child = spawn(binary, args, options);
@@ -179,6 +213,10 @@ function missingHosts(probes) {
 
 async function singleHostDraft(task, host, context) {
   const draft = await context.runHost(host, 'proposal', { task, cwd: context.cwd });
+  if (draft.ok) {
+    try { validateStageValue('proposal', draft.value); }
+    catch (error) { return { status: 'unresolved', dual: false, missing: HOSTS.filter((candidate) => candidate !== host), error: error.message, learningPersisted: false, verifiedOutcome: false }; }
+  }
   return {
     status: draft.ok ? 'degraded' : 'unavailable',
     dual: false,
@@ -214,7 +252,7 @@ export async function deliberate(task, options = {}) {
     runHost(host, 'proposal', { task, cwd })
   )));
   const successfulProposals = HOSTS.flatMap((host, index) => (
-    proposalResults[index].ok ? [{ host, value: proposalResults[index].value }] : []
+    proposalResults[index].ok ? (() => { try { return [{ host, value: validateStageValue('proposal', proposalResults[index].value) }]; } catch { return []; } })() : []
   ));
   if (successfulProposals.length < 2) {
     const host = successfulProposals[0]?.host;
@@ -241,8 +279,14 @@ export async function deliberate(task, options = {}) {
   const critiques = Object.fromEntries(await Promise.all(HOSTS.map(async (host) => {
     const other = HOSTS.find((candidate) => candidate !== host);
     const result = await runHost(host, 'critique', { task, proposal: proposals[other] });
-    return [host, result.ok ? result.value : { unavailable: true }];
+    if (!result.ok) return [host, { unavailable: true }];
+    try { return [host, validateStageValue('critique', result.value)]; }
+    catch (error) { return [host, { unavailable: true, diagnostic: error.message }]; }
   })));
+  if (HOSTS.some((host) => critiques[host]?.unavailable === true)) {
+    return { status: 'unresolved', dual: true, roles: chooseRoles(task), critiques,
+      error: 'both cross-critiques are required before synthesis', verifiedOutcome: false, learningPersisted: false };
+  }
   const roles = chooseRoles(task);
   const synthesis = await runHost(roles.scribe, 'synthesis', { task, proposals, critiques });
   if (!synthesis.ok) {
@@ -255,8 +299,12 @@ export async function deliberate(task, options = {}) {
     };
   }
 
+  try { validateStageValue('synthesis', synthesis.value); }
+  catch (error) { return { status: 'unresolved', dual: true, roles, error: error.message, verifiedOutcome: false, learningPersisted: false }; }
+
   let artifact = synthesis.value;
   let verification = await runHost(roles.verifier, 'verify', { task, artifact });
+  let verificationStage = 'verify';
   if (verification.ok && verification.value?.verdict === 'changes') {
     const revision = await runHost(roles.scribe, 'revise', {
       task,
@@ -264,12 +312,20 @@ export async function deliberate(task, options = {}) {
       corrections: verification.value.corrections ?? [],
     });
     if (revision.ok) {
-      artifact = revision.value;
-      verification = await runHost(roles.verifier, 'reverify', { task, artifact });
+      try { artifact = validateStageValue('revise', revision.value); }
+      catch { verification = { ok: true, value: { verdict: 'block', corrections: ['revision response is not substantive'] } }; }
+      if (verification.value?.verdict !== 'block') {
+        verification = await runHost(roles.verifier, 'reverify', { task, artifact });
+        verificationStage = 'reverify';
+      }
     }
   }
 
-  const accepted = verification.ok && verification.value?.verdict === 'accept';
+  let accepted = false;
+  if (verification.ok) {
+    try { accepted = validateStageValue(verificationStage, verification.value).verdict === 'accept'; }
+    catch { accepted = false; }
+  }
   const receipt = {
     protocol: 'dual-host-deliberation-v1',
     taskHash: createHash('sha256').update(String(task)).digest('hex'),

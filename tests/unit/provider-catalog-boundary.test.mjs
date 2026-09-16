@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { providerAvailability } from '../../scripts/provider-availability.mjs';
+import { redactDiagnostic } from '../../scripts/release-transaction-provider.mjs';
 import { gatherRouterEngine } from '../../scripts/onboarding-console.mjs';
 
 describe('issue #86 — provider catalog boundary', () => {
+  it('retains bounded provider diagnostics without exposing credential values', () => {
+    const diagnostic = redactDiagnostic('Authorization: Bearer secret-value token=abc stderr detail');
+    expect(diagnostic).toContain('Authorization: Bearer [REDACTED]');
+    expect(diagnostic).toContain('token=[REDACTED]');
+    expect(diagnostic).not.toContain('secret-value');
+  });
   it('detects OpenAI and both Google aliases without returning credential values', () => {
     const catalog = {
       providers: {
