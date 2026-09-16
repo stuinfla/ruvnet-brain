@@ -112,7 +112,10 @@ describe('approved runtime pin — enforced equality (ADR-086 step 17)', () => {
   });
 
   it.each([
-    ['brainVersion', { version: '4.3.26', releaseTag: 'v4.3.26' }, /is not the approved shipped runtime/],
+    // An impossible version, on purpose. This fixture used to say 4.3.26 as "some future generation" and
+    // collided with sync-version's stray-literal scan the day 4.3.26 became the real version — a fixture
+    // pinned to a plausible future is a stale literal waiting to happen.
+    ['brainVersion', { version: '9.9.9', releaseTag: 'v9.9.9' }, /is not the approved shipped runtime/],
     ['releaseTag', { releaseTag: 'v4.3.25-dev' }, /releaseTag does not match its version/], // sync-version-ignore: fixture drift value, not a shipped manifest
   ])('RED (wrong %s): a different shipped generation is refused', (_name, overrides, message) => {
     const result = verifyApprovedRuntime({ manifest: manifest(overrides), pin: pinFor() });
