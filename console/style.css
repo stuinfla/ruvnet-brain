@@ -2147,3 +2147,29 @@ details.sub .sub-body > *:first-child { margin-top: 4px; }
 #body-brain .fn-path {
   font-family: var(--mono); font-size: 0.86em; color: var(--faint); overflow-wrap: anywhere;
 }
+
+/* ------------------------------------------------------------ inventory card
+   The repository list, by name. Same row language as .cap-row (hairline separators, quiet meta),
+   with a type-to-filter above it because 200+ names need a way in. Long upstream URLs wrap rather
+   than overflow the card. */
+.inv-tools { display: flex; align-items: center; gap: 12px; margin: 10px 0 8px; flex-wrap: wrap; }
+.inv-filter {
+  flex: 1 1 220px; min-width: 0; padding: 7px 10px; font: inherit; font-size: 13.5px;
+  color: var(--ink); background: var(--panel-2, transparent);
+  border: 1px solid var(--hair-strong); border-radius: 8px;
+}
+.inv-filter:focus { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.inv-count { font-size: 12.5px; }
+.inv-list { list-style: none; margin: 0; padding: 0; max-height: 28rem; overflow: auto; border-top: 1px solid var(--hair); }
+.inv-row {
+  display: grid; grid-template-columns: minmax(10ch, 16ch) auto 1fr auto; align-items: baseline; gap: 6px 12px;
+  padding: 7px 4px; border-bottom: 1px solid var(--hair); font-size: 13.5px;
+}
+.inv-row[hidden] { display: none; }
+.inv-name { font-size: 13px; overflow-wrap: anywhere; }
+.inv-src { min-width: 0; overflow-wrap: anywhere; font-size: 12.5px; }
+.inv-meta { font-size: 12px; white-space: nowrap; }
+@media (max-width: 640px) {
+  .inv-row { grid-template-columns: 1fr auto; }
+  .inv-src, .inv-meta { grid-column: 1 / -1; white-space: normal; }
+}

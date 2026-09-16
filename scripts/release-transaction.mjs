@@ -194,6 +194,25 @@ const npmCandidateExact = (snapshot, identity) => snapshot?.npm?.candidateVersio
 const npmLatestIsB = (snapshot, identity) => snapshot?.npm?.latestVersion === identity.version;
 const githubIsB = (snapshot, identity) => snapshot?.github?.sha === identity.candidateSha
   && snapshot?.github?.tag === identity.tag;
+// TWO DIFFERENT QUESTIONS ABOUT "LATEST", ANSWERED BY TWO DIFFERENT FIELDS (4.3.25, 2026-09-16).
+//
+// `snapshot.github.latest` is "is this the newest CODE release" — observeGithub derives it from
+// latestCodeReleaseTag(), deliberately, because per ADR-086 S1 a corpus generation may legitimately
+// hold GitHub's releases/latest pointer and a code release must not observe itself as demoted.
+// `snapshot.github.pointerTag` is what releases/latest actually points at.
+//
+// Every promotion, recovery, verification and abort check in this file wants the SECOND question:
+// "has the pointer been moved to B yet". Ten sites read the first. A freshly published code release
+// is ALWAYS the newest code release, so `!latest` was unsatisfiable (publish gate, resume clause —
+// the transaction wedged at github-promote-intent), `latest` was trivially true (promotion looked
+// already done, the pointer never moved, converge and finalize passed with it unmoved), and abort
+// refused because "latest" had moved. Ask the pointer. Snapshots without one (recorded receipts,
+// older providers) fall back to code recency so history stays interpretable.
+const githubPointerIsB = (snapshot, identity) => (snapshot?.github?.pointerTag !== undefined
+  ? snapshot.github.pointerTag === identity.tag
+  : snapshot?.github?.latest === true);
+const githubPointerTag = (snapshot) => (snapshot?.github?.pointerTag !== undefined
+  ? snapshot.github.pointerTag : snapshot?.github?.latestTag);
 
 /**
  * Pure, total next-action selector. Receipt history is an audit chain, never permission to skip a
@@ -206,7 +225,7 @@ export function reduceReleaseState({ lastReceipt, snapshot, identity, prior }) {
   const npmB = npmLatestIsB(snapshot, identity);
   const githubB = githubIsB(snapshot, identity);
   const githubPublished = githubB && snapshot.github?.published === true;
-  const githubLatest = githubPublished && snapshot.github?.latest === true;
+  const githubLatest = githubPublished && githubPointerIsB(snapshot, identity);
 
   if (snapshot.npm?.candidateVersion === identity.version && snapshot.npm?.candidateIntegrity
     && snapshot.npm.candidateIntegrity !== identity.packageIntegrity) {
@@ -338,8 +357,11 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
       await transition('prepared', { recovered: true });
       continue;
     }
+    // 4.3.25 run 35109036116: run 2 died after writing github-promote-intent, run 3 found the draft
+    // published, the reducer asked for promote-npm — not a legal edge from here. This clause was the
+    // only legal exit and its `!latest` was unsatisfiable. Wedged.
     if (current.state === 'github-promote-intent' && githubIsB(snapshot, identity)
-      && snapshot.github?.published && !snapshot.github?.latest) {
+      && snapshot.github?.published && !githubPointerIsB(snapshot, identity)) {
       await transition('github-promoted-nonlatest', { github: snapshot.github, recovered: true });
       continue;
     }
@@ -348,7 +370,7 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
       continue;
     }
     if (current.state === 'github-latest-intent' && npmLatestIsB(snapshot, identity)
-      && githubIsB(snapshot, identity) && snapshot.github?.latest) {
+      && githubIsB(snapshot, identity) && githubPointerIsB(snapshot, identity)) {
       await transition('defaults-promoted', { npm: snapshot.npm, github: snapshot.github, recovered: true });
       continue;
     }
@@ -357,7 +379,7 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
       throw new Error('npm compensation recovered; resume the same transaction');
     }
     if (current.state === 'finalize-intent' && npmCandidateExact(snapshot, identity) && npmLatestIsB(snapshot, identity)
-      && githubIsB(snapshot, identity) && snapshot.github?.published && snapshot.github?.latest
+      && githubIsB(snapshot, identity) && snapshot.github?.published && githubPointerIsB(snapshot, identity)
       && snapshot.github?.assetsExact) {
       return append('channels-converged', { verdict: 'PUBLISHED_NOT_VERIFIED', recovered: true,
         npm: snapshot.npm, github: snapshot.github });
@@ -425,7 +447,10 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
       await transition('github-promote-intent');
       await adapter.publishDraftNonLatest(draft, identity);
       const observed = await adapter.observeSnapshot(identity, draft);
-      if (!(githubIsB(observed, identity) && observed.github.published && !observed.github.latest)) {
+      // Published as B, and the POINTER has not moved to B yet — it is promoted later, in
+      // make-github-latest. 4.3.25 run 35057738103 published this correctly and then threw here on
+      // `!latest`, which a just-published code release can never satisfy.
+      if (!(githubIsB(observed, identity) && observed.github.published && !githubPointerIsB(observed, identity))) {
         throw new Error('GitHub non-latest publication not observed');
       }
       await transition('github-promoted-nonlatest', { github: observed.github });
@@ -446,7 +471,7 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
       await transition('github-latest-intent');
       await adapter.makeGithubLatest(draft, identity, prior.githubLatest);
       const observed = await adapter.observeSnapshot(identity, draft);
-      if (!(npmLatestIsB(observed, identity) && observed.github?.latest && githubIsB(observed, identity))) {
+      if (!(npmLatestIsB(observed, identity) && githubPointerIsB(observed, identity) && githubIsB(observed, identity))) {
         throw new Error('provider defaults not jointly observed at candidate B');
       }
       await transition('defaults-promoted', { npm: observed.npm, github: observed.github });
@@ -469,7 +494,7 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
       }
       await transition('finalize-intent');
       const reobserved = await adapter.observeSnapshot(identity, draft, { forceAssets: true });
-      if (!(npmLatestIsB(reobserved, identity) && reobserved.github?.latest && githubIsB(reobserved, identity))) {
+      if (!(npmLatestIsB(reobserved, identity) && githubPointerIsB(reobserved, identity) && githubIsB(reobserved, identity))) {
         throw new Error('provider defaults drifted before channel convergence');
       }
       if (!reobserved.github?.assetsExact || !npmCandidateExact(reobserved, identity)) {
@@ -491,8 +516,12 @@ export async function abortReleaseTransaction({ identity, receipts, reason, auth
   }
   const snapshot = await adapter.observeSnapshot(identity);
   const prior = chain[0]?.observation?.prior;
-  if (!prior || snapshot.npm?.latestVersion === identity.version || snapshot.github?.latest === true
-    || snapshot.npm?.latestVersion !== prior.npmLatest || snapshot.github?.latestTag !== prior.githubLatest) {
+  // "Both defaults still at the captured prior generation" is a question about the npm `latest`
+  // dist-tag and GitHub's releases/latest POINTER. A published-but-not-promoted candidate is the
+  // newest CODE release, so the old `latest === true` / `latestTag !== prior` reads refused to abort
+  // exactly the transaction that most needs aborting: one wedged after publish, before promotion.
+  if (!prior || snapshot.npm?.latestVersion === identity.version || githubPointerIsB(snapshot, identity)
+    || snapshot.npm?.latestVersion !== prior.npmLatest || githubPointerTag(snapshot) !== prior.githubLatest) {
     throw new Error('release abort cannot prove both defaults at captured prior generation');
   }
   const receipt = stateReceipt({
@@ -550,7 +579,7 @@ export async function finalizeReleaseTransaction({
   }
   const snapshot = await adapter.observeSnapshot(identity, discovered.matchingDrafts?.[0], { forceAssets: true });
   if (snapshot.readError || !npmLatestIsB(snapshot, identity) || !npmCandidateExact(snapshot, identity)
-    || !githubIsB(snapshot, identity) || snapshot.github?.published !== true || snapshot.github?.latest !== true
+    || !githubIsB(snapshot, identity) || snapshot.github?.published !== true || !githubPointerIsB(snapshot, identity)
     || snapshot.github?.assetsExact !== true) throw new Error('public channels drifted before install verification');
   const materialized = await adapter.materializePublicVerificationAggregate({ identity, aggregate });
   const aggregateAssetSha256 = crypto.createHash('sha256').update(canonicalJson(aggregate)).digest('hex');
@@ -642,7 +671,7 @@ export async function abandonPublicVerificationTransaction({ identity, expected,
   }
   const snapshot = await adapter.observeSnapshot(identity, discovered.matchingDrafts?.[0], { forceAssets: true });
   if (snapshot.readError || !npmLatestIsB(snapshot, identity) || !npmCandidateExact(snapshot, identity)
-    || !githubIsB(snapshot, identity) || snapshot.github?.published !== true || snapshot.github?.latest !== true
+    || !githubIsB(snapshot, identity) || snapshot.github?.published !== true || !githubPointerIsB(snapshot, identity)
     || snapshot.github?.assetsExact !== true
     || canonicalJson(snapshot.npm) !== canonicalJson(current.observation.npm)
     || canonicalJson(snapshot.github) !== canonicalJson(current.observation.github)) {

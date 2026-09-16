@@ -21,6 +21,11 @@ const json = (name, args, options) => JSON.parse(command(name, args, options));
 // night a corpus round shipped. Every question this provider asks is about the CODE generation, so
 // it must resolve the latest CODE release rather than read a pointer that now answers differently.
 const latestCodeTag = () => latestCodeReleaseTag(json('gh', ['api', `repos/${REPO}/releases?per_page=30`]));
+// Two DIFFERENT questions, deliberately: latestCodeTag() is "which CODE generation is newest" (a
+// corpus generation may hold the pointer — designed steady state); githubPointerTag() is "what does
+// GitHub's releases/latest actually point at right now". The publish-github-nonlatest gate needs the
+// second and was reading the first, which made it unsatisfiable for every freshly published release.
+const githubPointerTag = () => maybe(() => json('gh', ['api', `repos/${REPO}/releases/latest`]).tag_name, null);
 const maybe = (callback, fallback = null) => {
   try { return callback(); } catch { return fallback; }
 };
@@ -79,14 +84,26 @@ const sha256File = (file) => {
   return hash.digest('hex');
 };
 const assetDigest = (asset) => withTempAsset(asset, sha256File);
+// 4.3.25 run 35056636514: `npm publish` succeeded at ~04:47:31Z and the registry first showed the
+// version at 04:53:40Z (time.modified) — roughly six minutes. The poll gave up at 156s, the job
+// reported FAILURE, and an already-published release was left half-promoted with npm and GitHub
+// naming different generations (the exact #77 split). The action was never the problem; the
+// deadline was shorter than npm's propagation for this package. Ten minutes covers the observed
+// ~6 with margin; the env overrides remain for a runner that knows better.
 const OBSERVATION_POLICY = {
-  maxElapsedMs: Number(process.env.RUVNET_NPM_VISIBILITY_TIMEOUT_MS || 180_000),
-  maxAttempts: Number(process.env.RUVNET_NPM_VISIBILITY_ATTEMPTS || 14),
+  maxElapsedMs: Number(process.env.RUVNET_NPM_VISIBILITY_TIMEOUT_MS || 600_000),
+  maxAttempts: Number(process.env.RUVNET_NPM_VISIBILITY_ATTEMPTS || 40),
   initialDelayMs: 1_000,
   maxDelayMs: 15_000,
   multiplier: 1.8,
   jitter: (delay) => Math.floor(Math.random() * Math.min(1_000, delay * 0.2)),
 };
+// The one command in this file that mutates a public channel gets its stderr in the job log and a
+// timeout sized for a real registry upload. command()'s defaults — stderr piped and dropped, 30s —
+// meant 4.3.25's first run left NO diagnostic between "stage-npm" and the deadline error, and a slow
+// registry would have killed a legitimate publish mid-upload. Named, so the publish call stays one
+// pinnable line for tests/unit/release-lineage + publication-receipt-wiring (one publisher, one tag).
+const PUBLISH_COMMAND_OPTIONS = Object.freeze({ stdio: ['ignore', 'pipe', 'inherit'], timeout: 600_000 });
 
 export function selectCurrentReleaseBytes({ remoteBytes, localBytes, generatedBytes, identity }) {
   const bytes = remoteBytes || localBytes || generatedBytes;
@@ -263,6 +280,7 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
       try {
         const release = draft?.id ? hydratedRelease(releaseById(draft.id)) : null;
         const latestTag = latestCodeTag();
+        const pointerTag = githubPointerTag();
         const candidate = maybe(() => json('npm', ['view', `${PACKAGE}@candidate-v${identity.version}`, '--json']), null);
         const exactVersion = maybe(() => json('npm', ['view', `${PACKAGE}@${identity.version}`, '--json']), null);
         const latestVersion = command('npm', ['view', `${PACKAGE}@latest`, 'version']);
@@ -295,8 +313,10 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
             published: release.draft === false,
             latest: latestTag === identity.tag,
             latestTag,
+            // What releases/latest actually points at — distinct from `latest` (code recency) above.
+            pointerTag,
             assetsExact: assetsExactFor(release, identity, forceAssets),
-          } : { tag: null, sha: null, draft: false, published: false, latest: false, assetsExact: false },
+          } : { tag: null, sha: null, draft: false, published: false, latest: false, pointerTag, assetsExact: false },
           publicReceiptExact,
           publicHostsExact,
         };
@@ -400,7 +420,7 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
         command('npm', ['dist-tag', 'add', `${PACKAGE}@${identity.version}`, `candidate-v${identity.version}`]);
         return;
       }
-      command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`]);
+      command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`], PUBLISH_COMMAND_OPTIONS);
     },
 
     async observeNpmCandidate(identity) {
@@ -437,7 +457,7 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
       // legitimately holding `releases/latest` is NOT that — it is the designed steady state between
       // code releases — so the comparison is made against the latest CODE release, and the pointer's
       // own kind is recorded rather than treated as a conflict.
-      const pointer = json('gh', ['api', `repos/${REPO}/releases/latest`]).tag_name;
+      const pointer = githubPointerTag();
       const current = latestCodeTag();
       if (current !== expectedPrior && current !== identity.tag) {
         throw new Error(`refusing GitHub promotion: latest code release is ${current}, expected ${expectedPrior}`);

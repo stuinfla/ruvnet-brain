@@ -23,7 +23,10 @@ describe('publication receipt wiring', () => {
     expect(release).toContain("sealedPackageArtifact = path.resolve(ROOT, protectedCandidate.artifact.path)");
     expect(release).toContain("packagePath: byRole.get('npm')");
     expect(release).toContain('candidate receipt package and payload package bytes differ');
-    expect(provider).toContain("command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`])");
+    // Pins the ONE publish call: explicit candidate tag, and (since 4.3.26) stderr surfaced with a
+    // registry-sized timeout — 4.3.25's first run published successfully and left no diagnostic.
+    expect(provider).toContain("command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`], PUBLISH_COMMAND_OPTIONS)");
+    expect(provider).toContain("const PUBLISH_COMMAND_OPTIONS = Object.freeze({ stdio: ['ignore', 'pipe', 'inherit'], timeout: 600_000 })");
     expect(provider).toContain("command('gh', ['release', 'upload', draft.tag, file, '--repo', REPO])");
   });
 
