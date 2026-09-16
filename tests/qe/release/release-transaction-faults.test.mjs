@@ -83,6 +83,31 @@ describe('ADR-062 recovery transaction', () => {
     expect(final.state).toBe('channels-converged');
   });
 
+  // 4.3.25, run 35057738103. The real provider's `github.latest` means "newest CODE release" — true
+  // the instant the draft is published — while the publish-github-nonlatest gate read it as "holds
+  // the latest pointer" and demanded it be false. Every freshly published code release failed its own
+  // observation, deterministically. The fixture had modelled `latest` as the pointer, so no test
+  // could see it. codeRecencyLatest=true gives the fixture the real contract.
+  it('REPRODUCTION: a just-published code release is the newest code release and must still converge', async () => {
+    const provider = new FakeReleaseProvider();
+    provider.codeRecencyLatest = true;
+    const final = await execute(provider);
+    expect(final.state).toBe('channels-converged');
+    expect(provider.npmLatest).toBe(identity.version);
+    // The pointer must have been promoted by the transaction, not merely observed as "latest".
+    expect(provider.pointerTag).toBe(identity.tag);
+    expect(provider.calls.filter((call) => call === 'makeGithubLatest')).toHaveLength(1);
+  });
+
+  it('the non-latest gate still bites: a pointer that already moved to the candidate is refused', async () => {
+    const provider = new FakeReleaseProvider();
+    provider.codeRecencyLatest = true;
+    const publish = provider.publishDraftNonLatest.bind(provider);
+    // Someone promoted the pointer out of band between publish and observation.
+    provider.publishDraftNonLatest = async (...args) => { await publish(...args); provider.pointerTag = identity.tag; };
+    await expect(execute(provider)).rejects.toThrow('GitHub non-latest publication not observed');
+  });
+
   it('fails closed on immutable npm byte mismatch', async () => {
     const provider = new FakeReleaseProvider();
     provider.candidatePublished = true;

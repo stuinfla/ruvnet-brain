@@ -206,7 +206,14 @@ export function reduceReleaseState({ lastReceipt, snapshot, identity, prior }) {
   const npmB = npmLatestIsB(snapshot, identity);
   const githubB = githubIsB(snapshot, identity);
   const githubPublished = githubB && snapshot.github?.published === true;
-  const githubLatest = githubPublished && snapshot.github?.latest === true;
+  // "Has GitHub's latest POINTER been promoted to B" — decided by the pointer when the provider
+  // reports one. `latest` alone is code-recency (see observeGithub): a code release is the newest
+  // code release the instant it is published, so reading it here made make-github-latest look
+  // already done and the transaction converged without ever moving releases/latest. Proven by
+  // release-transaction-faults REPRODUCTION against a fixture that models the real contract.
+  const githubLatest = githubPublished && (snapshot.github?.pointerTag !== undefined
+    ? snapshot.github.pointerTag === identity.tag
+    : snapshot.github?.latest === true);
 
   if (snapshot.npm?.candidateVersion === identity.version && snapshot.npm?.candidateIntegrity
     && snapshot.npm.candidateIntegrity !== identity.packageIntegrity) {
@@ -425,7 +432,18 @@ export async function runReleaseTransaction({ identity, assets, adapter, private
       await transition('github-promote-intent');
       await adapter.publishDraftNonLatest(draft, identity);
       const observed = await adapter.observeSnapshot(identity, draft);
-      if (!(githubIsB(observed, identity) && observed.github.published && !observed.github.latest)) {
+      // `observed.github.latest` means "is this the newest CODE generation" (see observeGithub) — a
+      // deliberate contract, because a corpus generation may legitimately hold GitHub's
+      // releases/latest pointer. A release that was just published is therefore ALWAYS `latest` by
+      // that definition, and requiring `!latest` here made this gate unsatisfiable for every code
+      // release: 4.3.25 run 35057738103 published the draft correctly (draft=false, pointer still on
+      // v4.3.21) and then threw on its own observation. What this step needs to confirm is that
+      // the release is published as B and that GitHub's actual latest POINTER has not moved to it
+      // yet — the pointer is promoted later, in make-github-latest, and that step checks the
+      // pointer too. So ask the pointer, not the code-generation scan.
+      const pointerStillPrior = observed.github.pointerTag === undefined
+        || observed.github.pointerTag !== identity.tag;
+      if (!(githubIsB(observed, identity) && observed.github.published && pointerStillPrior)) {
         throw new Error('GitHub non-latest publication not observed');
       }
       await transition('github-promoted-nonlatest', { github: observed.github });
