@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, execFileSync, spawn } from 'node:child_process';
 
 import { auditModel, installedVersion } from './stack-sync.mjs';
-import { candidateRoots, findStores, diagnose } from './memory-doctor.mjs';
+import { candidateRoots, findStores, findProjects, diagnose } from './memory-doctor.mjs';
 import { buildStackRecommendations, buildWiringRecommendations, summarizeWiring, scoreMemoryHealth, buildHealthRecommendations, buildCapabilityRecommendations } from './console-engine.mjs';
 import { planFor } from './remedy-registry.mjs';
 import { auditAll as capabilityAuditAll } from './capability-registry.mjs';
@@ -73,6 +73,7 @@ import { applyNightlyChoice, nightlyStatus } from './nightly-controller.mjs';
 // One canonical answer to "which directory is this, and have I counted it already?" — shared with
 // the PreCompact snapshot producer (#85) and with memory-doctor's root scan (#107).
 import { canonicalPath, pathIdentity, projectDirectory } from '../plugin/scripts/project-identity.mjs';
+import { resolveProjectStore } from '../plugin/scripts/project-store-resolver.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(__dirname);
@@ -350,27 +351,6 @@ function robustReadJSON(db, sql) {
 const VENDOR = ['/clones/', '/node_modules/', '/vendor/', '/upstream/', '.claude-backup', '_snapshots',
   '/ruvnet-repos/', '/ruvnet_repos/'];
 
-// memory-doctor.mjs owns candidate-root policy for the standalone CLI, Console, and other callers.
-// Keeping one exported implementation prevents a new project-root convention from fixing one
-// surface while another continues to print a confident but incomplete machine-wide count (#81).
-function findProjects(root) {
-  const out = new Set();
-  const walk = (dir, depth) => {
-    if (depth > 4) return;
-    let ents; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    for (const e of ents) {
-      const p = path.join(dir, e.name);
-      if (VENDOR.some((m) => (p + '/').includes(m))) continue;
-      if (e.isDirectory()) {
-        if (e.name === '.claude') { out.add(dir); continue; }
-        if (e.name.startsWith('.') || e.name === 'node_modules') continue;
-        walk(p, depth + 1);
-      } else if (e.name === '.mcp.json') out.add(dir);
-    }
-  };
-  walk(root, 0);
-  return [...out].sort();
-}
 // Text that PRINTS the word npx is not an npx call site. Two of the sites this card warned about were
 // `echo "Session ended. Run: npx aqe learn status"` — advice being displayed to the user, matched as
 // though the machine were executing it. Strip quoted echo/printf payloads before classifying.
@@ -483,15 +463,15 @@ function memoryRows(file) {
   return r.ok ? (r.value === null ? 0 : parseInt(r.value, 10)) : null;
 }
 export function memoryStores(projectDir) {
-  const [canonicalPath, coordinationPath] = MEMORY_DB_NAMES.map((name) => path.join(projectDir, '.swarm', name));
+  let canonicalPath;
+  try { canonicalPath = resolveProjectStore({ projectDir }).canonicalAgentDbPath; }
+  catch { canonicalPath = path.join(projectDir, '.swarm', MEMORY_DB_NAMES[0]); }
+  const coordinationPath = path.join(path.dirname(canonicalPath), MEMORY_DB_NAMES[1]);
   const canonical = { path: canonicalPath, exists: fs.existsSync(canonicalPath), rows: memoryRows(canonicalPath) };
   const coordination = { path: coordinationPath, exists: fs.existsSync(coordinationPath), rows: memoryRows(coordinationPath) };
-  // A canonical store that holds rows — or is busy being written this instant (rows null) — is the
-  // one scored. Only an absent or EMPTY canonical store hands the score to the coordination file.
-  const scored = canonical.exists && (canonical.rows === null || canonical.rows > 0) ? canonical.path
-    : coordination.exists ? coordination.path
-      : canonical.path; // canonical name for the "absent" message
-  return { canonical, coordination, scored };
+  // Coordination storage is a separate diagnostic container. It can never become project memory
+  // merely because the canonical file is absent, empty, busy, or larger.
+  return { canonical, coordination, scored: canonical.path };
 }
 export function resolveMemoryDb(projectDir) {
   return memoryStores(projectDir).scored;
@@ -1534,11 +1514,28 @@ function writeCache(file, at, data, scope = null) {
  */
 let REFRESH_CHILD = null;
 const REFRESH_WEDGED_MS = 5 * 60 * 1000;
-function kickRefresh({ force = false } = {}) {
-  if (process.env.RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH === '1') return false;
+let REFRESH_STATE = Object.freeze({ status: 'idle', runId: null, error: null });
+export function refreshState() { return REFRESH_STATE; }
+export function classifyRefreshState({ disabled = false, running = false, debounced = false, failed = null, runId = null } = {}) {
+  if (disabled) return Object.freeze({ status: 'disabled', runId: null, error: null });
+  if (failed) return Object.freeze({ status: 'failed', runId, error: String(failed) });
+  if (running || debounced) return Object.freeze({ status: 'already-running', runId, error: debounced ? 'debounced' : null });
+  return Object.freeze({ status: 'started', runId, error: null });
+}
+function kickRefreshDetailed({ force = false } = {}) {
+  if (process.env.RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH === '1') {
+    REFRESH_STATE = classifyRefreshState({ disabled: true });
+    return REFRESH_STATE;
+  }
   const now = Date.now();
-  if (REFRESH_CHILD && now - LAST_REFRESH_KICK < REFRESH_WEDGED_MS) return false;  // one at a time
-  if (!force && now - LAST_REFRESH_KICK < 15000) return false;   // debounce: at most one background refresh / 15s
+  if (REFRESH_CHILD && now - LAST_REFRESH_KICK < REFRESH_WEDGED_MS) {
+    REFRESH_STATE = classifyRefreshState({ running: true, runId: REFRESH_STATE.runId });
+    return REFRESH_STATE;
+  }
+  if (!force && now - LAST_REFRESH_KICK < 15000) {
+    REFRESH_STATE = classifyRefreshState({ debounced: true, runId: REFRESH_STATE.runId });
+    return REFRESH_STATE;
+  }
   LAST_REFRESH_KICK = now;
   try {
     // cwd = the SERVED project, NOT REPO. This was `cwd: REPO` and it was a real console-honesty bug
@@ -1553,12 +1550,27 @@ function kickRefresh({ force = false } = {}) {
     // contract (the 2026-07-17 outage) — only to which project the background compute is about.
     const child = spawn(process.execPath, [SELF, '--refresh-cache'], { detached: true, stdio: 'ignore', cwd: process.cwd() });
     REFRESH_CHILD = child;
+    const runId = `${process.pid}-${now}`;
+    REFRESH_STATE = classifyRefreshState({ runId });
     // unref() only releases the event-loop hold; these listeners still fire while the server lives.
-    child.on('exit', () => { REFRESH_CHILD = null; });
-    child.on('error', () => { REFRESH_CHILD = null; });
+    child.on('exit', (code, signal) => {
+      REFRESH_CHILD = null;
+      if (code !== 0) REFRESH_STATE = classifyRefreshState({ failed: signal ? `signal ${signal}` : `exit ${code}`, runId });
+    });
+    child.on('error', (error) => {
+      REFRESH_CHILD = null;
+      REFRESH_STATE = classifyRefreshState({ failed: error?.message || error, runId });
+    });
     child.unref();   // let it outlive this request; it writes the caches and exits on its own
-    return true;
-  } catch { REFRESH_CHILD = null; return false; /* a failed spawn just means the cache ages until the next kick */ }
+    return REFRESH_STATE;
+  } catch (error) {
+    REFRESH_CHILD = null;
+    REFRESH_STATE = classifyRefreshState({ failed: error?.message || error });
+    return REFRESH_STATE;
+  }
+}
+function kickRefresh(options = {}) {
+  return kickRefreshDetailed(options).status === 'started';
 }
 
 /**
@@ -3078,8 +3090,8 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
           //     refresh that did not start must not report that it did, so `started` is the child's
           //     real answer, not a constant.
           expireCachesEmbedding([STATE_CACHE, STACK_CACHE, MEMORY_CACHE, CAPABILITY_CACHE]);
-          const started = kickRefresh({ force: true });
-          return sendJSON(res, 200, { ok: true, refreshing: true, started });
+          const refresh = kickRefreshDetailed({ force: true });
+          return sendJSON(res, 200, { ok: refresh.status !== 'failed', refreshing: refresh.status === 'started' || refresh.status === 'already-running', refresh });
         }
         if (url === '/api/undo') return sendJSON(res, 200, undo(body.undoToken));
         if (url === '/api/set-lesson') return sendJSON(res, 200, setLesson(body));

@@ -96,12 +96,20 @@ function toolAction(payload) {
   const responseRecord = response && typeof response === 'object' && !Array.isArray(response)
     ? response
     : null;
-  const exitCode = responseRecord && [responseRecord.exit_code, responseRecord.exitCode, responseRecord.status]
+  const explicitCode = responseRecord && [responseRecord.exit_code, responseRecord.exitCode, responseRecord.status]
     .find((value) => Number.isSafeInteger(value));
-  const interrupted = responseRecord?.interrupted === true;
-  const failed = interrupted || (Number.isSafeInteger(exitCode) && exitCode !== 0);
+  const responseText = typeof response === 'string' ? response : '';
+  const textualCode = responseText.match(/(?:exit(?:\s+code)?|status)\s*[:=]\s*(-?\d+)/i);
+  const exitCode = Number.isSafeInteger(explicitCode)
+    ? explicitCode
+    : textualCode ? Number(textualCode[1]) : undefined;
+  const interrupted = responseRecord?.interrupted === true || responseRecord?.signal === 'SIGINT';
+  const explicitError = responseRecord?.isError === true || payload.is_error === true;
+  const failed = interrupted || explicitError || (Number.isSafeInteger(exitCode) && exitCode !== 0);
+  const terminal = failed || Number.isSafeInteger(exitCode)
+    || responseRecord?.success === true || responseRecord?.ok === true;
   const outcome = payload.hook_event_name === 'PostToolUse'
-    ? (failed ? 'failure' : response === undefined ? 'unknown' : 'success')
+    ? (failed ? 'failure' : terminal ? 'success' : 'unknown')
     : 'pending';
   const observation = {
     trigger: payload.hook_event_name,
@@ -111,6 +119,7 @@ function toolAction(payload) {
     outcome,
     ...(Number.isSafeInteger(exitCode) ? { exitCode } : {}),
     ...(interrupted ? { interrupted: true } : {}),
+    ...(explicitError ? { isError: true } : {}),
   };
   if (responseRecord) {
     const stdout = boundedText(responseRecord.stdout);

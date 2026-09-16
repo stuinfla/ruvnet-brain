@@ -44,16 +44,14 @@ describe('Fix 2 — Memory quality is scored on the canonical store, never the b
     expect(s.scored).toBe(s.canonical.path);
   });
 
-  // The two cases #127 was fixed for must keep working: the reporter's live data sat in
-  // agentdb-memory.db while memory.db was absent or empty.
-  it('#127 — canonical absent: the coordination store is the only store, so it is scored', () => {
+  it('coordination-only storage remains diagnostic and cannot become project memory', () => {
     seedMemoryDb(coordination(), 31);
-    expect(resolveMemoryDb(tmp)).toBe(coordination());
+    expect(resolveMemoryDb(tmp)).toBe(canonical());
   });
-  it('#127 — canonical present but EMPTY: falls through to the store that actually holds rows', () => {
+  it('an empty canonical store remains the authoritative project path', () => {
     seedMemoryDb(canonical(), 0);
     seedMemoryDb(coordination(), 31);
-    expect(resolveMemoryDb(tmp)).toBe(coordination());
+    expect(resolveMemoryDb(tmp)).toBe(canonical());
   });
   it('neither present: returns the canonical path so the "absent" message names the right file', () => {
     expect(resolveMemoryDb(tmp)).toBe(canonical());

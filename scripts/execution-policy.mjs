@@ -4,6 +4,7 @@
 
 const NATIVE_HOSTS = new Set(['claude', 'codex']);
 const API_EXECUTORS = new Set(['agent_execute', 'sdk', 'openrouter', 'api']);
+const ACTIONS = new Set(['read', 'write', 'delegate', 'release', 'external']);
 const ARCHITECTURE_TERMS = /\b(adr|ddd|architecture|release|deploy|qa|security|schema|migration)\b/i;
 const CONSEQUENTIAL_ACTIONS = new Set(['delegate', 'write', 'release', 'external']);
 const FRESHNESS_MS = 30 * 60 * 1000;
@@ -33,8 +34,8 @@ export function validateEvidence(input = {}, now = Date.now()) {
   if (!memory || memory.status !== 'retrieved' || !fresh(memory.observedAt, now)) {
     failures.push('fresh exact AgentDB checkpoint retrieval is required');
   } else {
-    if (!String(memory.path || '').endsWith('/.swarm/memory.db')) failures.push('memory receipt must use the project .swarm/memory.db');
-    if (!/^project-state-current-\d+$/.test(String(memory.key || ''))) failures.push('memory receipt must retrieve an append-only project-state-current key');
+    if (!/[\\/]\.swarm[\\/]memory\.db$/.test(String(memory.path || ''))) failures.push('memory receipt must use the project .swarm/memory.db');
+    if (!/^project-state-current-\d+(?:-[A-Za-z0-9][A-Za-z0-9_-]*)?$/.test(String(memory.key || ''))) failures.push('memory receipt must retrieve an append-only project-state-current key');
     if (!hex64(memory.valueDigest)) failures.push('memory receipt must bind the retrieved value digest');
   }
   return { valid: failures.length === 0, failures };
@@ -46,6 +47,13 @@ export function classifyExecutionPolicy(input = {}) {
   const changedFiles = [...new Set((input.changedFiles || []).map(String).filter(Boolean))];
   const nativeHosts = [...new Set((input.nativeHosts || []).map(String).filter((h) => NATIVE_HOSTS.has(h)))];
   const requestedExecutor = String(input.requestedExecutor || '');
+  if (!ACTIONS.has(action)) {
+    return {
+      schema: 'ruvnet-brain.execution-policy.v1',
+      verdict: 'REFUSE', action, swarmRequired: false, swarmReason: 'invalid-action',
+      executor: 'unknown', reason: 'unsupported-action', evidence: { valid: false, failures: ['action must be one of read, write, delegate, release, external'] },
+    };
+  }
   const explicitSwarm = input.explicitSwarm === true;
   const multiFile = changedFiles.length >= 3;
   const architectureTask = ARCHITECTURE_TERMS.test(description) || ['release', 'external'].includes(action);

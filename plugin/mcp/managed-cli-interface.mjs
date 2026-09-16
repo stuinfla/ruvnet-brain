@@ -242,11 +242,26 @@ function execute(executable, argv, env) {
   });
 }
 
+/**
+ * Convert the child-process result into the managed boundary's terminal vocabulary. A zero exit
+ * status is necessary but not sufficient: a tool that emits a fatal marker or cannot provide a
+ * terminal status must remain failure/unknown evidence for progression consumers.
+ */
+export function normalizeManagedExecution(execution) {
+  const output = [execution?.stdout, execution?.stderr].filter(Boolean)
+    .join(execution?.stdout && execution?.stderr ? '\n' : '');
+  const contradictoryFailure = /(?:^|\n)\s*(?:❌|\[ERROR\])|invalid pragma command|key not found/i.test(output);
+  if (execution?.error || contradictoryFailure || execution?.code === null || execution?.code === undefined) {
+    return { outcome: execution?.error || contradictoryFailure ? 'failure' : 'unknown', output, contradictoryFailure };
+  }
+  return { outcome: execution.code === 0 ? 'success' : 'failure', output, contradictoryFailure };
+}
+
 function resultOf(executable, argv, result) {
   const output = [result.stdout, result.stderr].filter(Boolean).join(result.stdout && result.stderr ? '\n' : '');
-  const contradictoryFailure = /(?:^|\n)\s*(?:❌|\[ERROR\])|invalid pragma command|key not found/i.test(output);
-  if (result.error || result.code !== 0 || contradictoryFailure) {
-    const reason = result.error || (contradictoryFailure ? 'fatal output despite exit 0' : `exit ${result.code}`);
+  const normalized = normalizeManagedExecution(result);
+  if (normalized.outcome !== 'success') {
+    const reason = result.error || (normalized.contradictoryFailure ? 'fatal output despite exit 0' : result.code == null ? 'no terminal exit status' : `exit ${result.code}`);
     return {
       content: [{ type: 'text', text: output || `${executable} ${argv.join(' ')} failed: ${reason}` }],
       isError: true,
@@ -258,7 +273,7 @@ function resultOf(executable, argv, result) {
   };
 }
 
-export async function callManagedCli(toolName, args, env = process.env, fetchImpl = globalThis.fetch) {
+export async function callManagedCli(toolName, args, env = process.env, fetchImpl = globalThis.fetch, lifecycle = {}) {
   try {
     const executable = assertExecutable(args?.executable);
     const argv = literalArgv(args?.argv ?? []);
@@ -330,7 +345,14 @@ export async function callManagedCli(toolName, args, env = process.env, fetchImp
       const childEnv = (executable === 'agentic-flow' || executable === 'agentic-qe')
         ? runtimeChildEnv({ env, cwd: projectRoot })
         : env;
+      if (lifecycle && typeof lifecycle.beforeExecute === 'function') {
+        await lifecycle.beforeExecute({ executable, argv, projectRoot, env: childEnv });
+      }
       const execution = await execute(executable, argv, childEnv);
+      const normalized = normalizeManagedExecution(execution);
+      if (lifecycle && typeof lifecycle.afterExecute === 'function') {
+        await lifecycle.afterExecute({ executable, argv, projectRoot, env: childEnv, execution, normalized });
+      }
       recordManagedCliObservation({ toolName, executable, argv, execution, env });
       return resultOf(executable, argv, execution);
     }

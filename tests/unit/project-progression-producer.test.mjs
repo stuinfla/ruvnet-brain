@@ -160,6 +160,16 @@ describe('progression producer', () => {
     expect(produced.projectProgression.completeProjectState.nextAction).toBe('the next thing');
   });
 
+  it('keeps transcript prose out of the resumable next action when no durable action exists', () => {
+    const produced = buildProjectProgression({
+      resolution: resolutionFixture(), payload: payloadFor(transcriptFixture()), host: 'claude',
+      env: { RUVNET_WORK_LEDGER: path.join(temporaryRoot('noledger-'), 'absent.json') },
+      now: () => '2026-09-11T00:00:00.000Z',
+    });
+    expect(produced.projectProgression.completeProjectState.nextAction).toBeNull();
+    expect(produced.provenance.nextAction).toEqual({ source: 'none', authoritative: false });
+  });
+
   it('never lets secret-shaped transcript material reach ANY produced field', () => {
     const produced = buildProjectProgression({
       resolution: resolutionFixture(),

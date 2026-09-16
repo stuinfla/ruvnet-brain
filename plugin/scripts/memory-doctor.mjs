@@ -45,6 +45,10 @@ import { canonicalPath, pathIdentity } from './project-identity.mjs';
 
 const HOME = os.homedir();
 const DEFAULT_SCAN_ROOTS = ['Code', 'code', 'src', 'source', 'projects', 'dev', 'work'];
+const DEFAULT_PROJECT_VENDOR = Object.freeze([
+  '/clones/', '/node_modules/', '/vendor/', '/upstream/', '/ruvnet-repos/', '/ruvnet_repos/',
+  '/ruvnet-packages/', '/.targets/', '.claude-backup', '_snapshots',
+]);
 
 // Telemetry namespaces: high-volume, unembedded, zero-signal. Written by the npx hook calls.
 // Counted separately so "you have 11,000 memories" is never mistaken for "you have 11,000 lessons".
@@ -169,6 +173,45 @@ export function candidateRoots({
     throw new Error('configured scanRoots contain no existing directories');
   }
   return [...roots.values()].sort();
+}
+
+/**
+ * Enumerate project directories once for wiring/reconciliation consumers. The result is canonical
+ * and de-duplicated by filesystem identity, so symlinked roots and case aliases cannot double-count
+ * a project. `purpose` is retained in the interface for callers that need to document a narrower
+ * scan without creating another traversal policy.
+ */
+export function findProjects(root, { purpose = 'general', maxDepth = 4, vendor = [] } = {}) {
+  if (typeof root !== 'string' || !root.trim()) return [];
+  const exclusions = [...DEFAULT_PROJECT_VENDOR, ...vendor].map(String);
+  const found = new Map();
+  const canonicalRoot = canonicalPath(root);
+  if (!canonicalRoot) return [];
+  const walk = (dir, depth) => {
+    if (depth > maxDepth) return;
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const candidate = path.join(dir, entry.name);
+      if (exclusions.some((marker) => `${candidate}/`.includes(marker))) continue;
+      if (entry.isDirectory()) {
+        if (entry.name === '.claude') {
+          const identity = pathIdentity(dir) ?? canonicalPath(dir) ?? dir;
+          found.set(identity, canonicalPath(dir) ?? dir);
+          continue;
+        }
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+        walk(candidate, depth + 1);
+      } else if (entry.name === '.mcp.json') {
+        const identity = pathIdentity(dir) ?? canonicalPath(dir) ?? dir;
+        found.set(identity, canonicalPath(dir) ?? dir);
+      }
+    }
+  };
+  walk(canonicalRoot, 0);
+  // Keep purpose observable to profilers without changing the stable result shape.
+  void purpose;
+  return [...found.values()].sort();
 }
 
 // Keyed by pathIdentity for the same reason candidateRoots is: one store reached by two names is

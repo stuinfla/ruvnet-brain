@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { candidateRoots } from '../../scripts/memory-doctor.mjs';
+import { candidateRoots, findProjects } from '../../scripts/memory-doctor.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const DOCTOR = path.join(REPO, 'scripts', 'memory-doctor.mjs');
@@ -49,6 +49,16 @@ afterEach(() => {
 });
 
 describe('issue #81 — shared AgentDB fleet discovery', () => {
+  it('shares one canonical project traversal across wiring consumers', () => {
+    const home = isolatedHome();
+    const project = path.join(home, 'source', 'project');
+    fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.mcp.json'), '{}');
+    const vendor = path.join(home, 'source', 'ruvnet-repos', 'clone');
+    fs.mkdirSync(path.join(vendor, '.claude'), { recursive: true });
+    expect(findProjects(path.join(home, 'source'), { purpose: 'wiring' })).toEqual([project]);
+  });
+
   it('finds common, configured, and known stores once when no root is supplied', () => {
     const home = isolatedHome();
     const expected = [

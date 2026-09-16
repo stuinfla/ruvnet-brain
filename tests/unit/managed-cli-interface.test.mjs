@@ -8,6 +8,7 @@ import {
   MANAGED_CLI_TOOLS,
   callManagedCli,
   helpKey,
+  normalizeManagedExecution,
   resolveManagedExecutable,
   stampKeysForHelp,
 } from '../../plugin/mcp/managed-cli-interface.mjs';
@@ -53,6 +54,13 @@ describe('managed CLI structured interface policy', () => {
     expect(source).toMatch(/shell:\s*false/);
   });
 
+  it('keeps missing terminal status unknown and rejects nonzero or contradictory execution', () => {
+    expect(normalizeManagedExecution({ code: null, stdout: '', stderr: '', error: null }).outcome).toBe('unknown');
+    expect(normalizeManagedExecution({ code: 1, stdout: '', stderr: '', error: null }).outcome).toBe('failure');
+    expect(normalizeManagedExecution({ code: 0, stdout: '[ERROR] refused', stderr: '', error: null }).outcome).toBe('failure');
+    expect(normalizeManagedExecution({ code: 0, stdout: 'ok', stderr: '', error: null }).outcome).toBe('success');
+  });
+
   it('pins Ruflo to the one global binary when it exists', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-ruflo-home-'));
     const canonical = path.join(home, '.npm-global', 'bin', process.platform === 'win32' ? 'ruflo.cmd' : 'ruflo');
@@ -85,6 +93,26 @@ describe('managed CLI structured interface policy', () => {
     expect(readLiveSurfaceReceipts({ file: evidence })).toEqual([
       expect.objectContaining({ executable: 'ruflo', observationClass: 'current-version', observedVersion: '3.38.16' }),
     ]);
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it('exposes the real managed execution boundary for durable pre/post capture', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-cli-lifecycle-'));
+    const canonical = path.join(home, '.npm-global', 'bin', process.platform === 'win32' ? 'ruflo.cmd' : 'ruflo');
+    fs.mkdirSync(path.dirname(canonical), { recursive: true });
+    fs.writeFileSync(canonical, process.platform === 'win32'
+      ? '@echo ruflo ok\r\n'
+      : '#!/bin/sh\nprintf "ruflo ok\\n"\n');
+    fs.chmodSync(canonical, 0o755);
+    const env = { ...process.env, HOME: home, RUVNET_BRAIN_HOME: path.join(home, '.cache', 'brain') };
+    const phases = [];
+    await callManagedCli('ruvnet_cli_help', { executable: 'ruflo', argv: ['status'] }, env);
+    const result = await callManagedCli('ruvnet_cli_run', { executable: 'ruflo', argv: ['status'] }, env, globalThis.fetch, {
+      beforeExecute: ({ executable, argv }) => { phases.push(['before', executable, argv]); },
+      afterExecute: ({ normalized }) => { phases.push(['after', normalized.outcome]); },
+    });
+    expect(result.isError).toBe(false);
+    expect(phases).toEqual([['before', 'ruflo', ['status']], ['after', 'success']]);
     fs.rmSync(home, { recursive: true, force: true });
   });
 

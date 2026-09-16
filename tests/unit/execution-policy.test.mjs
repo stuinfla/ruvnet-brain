@@ -31,4 +31,21 @@ describe('knowledge-to-execution policy', () => {
     expect(classifyExecutionPolicy({ action: 'delegate', description: 'reconcile ADR and QA architecture', nativeHosts: ['codex'] }))
       .toMatchObject({ swarmRequired: true, swarmReason: 'architecture-or-consequential-action' });
   });
+
+  it('refuses an unsupported action instead of silently treating it as a read', () => {
+    expect(classifyExecutionPolicy({ action: 'imagine' }))
+      .toMatchObject({ verdict: 'REFUSE', reason: 'unsupported-action', swarmReason: 'invalid-action' });
+  });
+
+  it('accepts Windows canonical paths and append-only checkpoint slugs in evidence', () => {
+    const now = Date.now();
+    expect(classifyExecutionPolicy({
+      action: 'write', enforceEvidence: true, now,
+      groundingReceipt: { status: 'success', observedAt: new Date(now).toISOString(), sources: ['repo'] },
+      memoryReceipt: {
+        status: 'retrieved', observedAt: new Date(now).toISOString(),
+        path: 'C:\\Project\\.swarm\\memory.db', key: 'project-state-current-123-slug', valueDigest: 'a'.repeat(64),
+      },
+    })).toMatchObject({ verdict: 'ALLOW' });
+  });
 });
