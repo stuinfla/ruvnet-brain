@@ -59,6 +59,8 @@ describe('managed CLI structured interface policy', () => {
     expect(normalizeManagedExecution({ code: 1, stdout: '', stderr: '', error: null }).outcome).toBe('failure');
     expect(normalizeManagedExecution({ code: 0, stdout: '[ERROR] refused', stderr: '', error: null }).outcome).toBe('failure');
     expect(normalizeManagedExecution({ code: 0, stdout: 'ok', stderr: '', error: null }).outcome).toBe('success');
+    expect(normalizeManagedExecution({ code: null, signal: 'SIGINT', stdout: '', stderr: '', error: null }))
+      .toMatchObject({ outcome: 'interrupted', signal: 'SIGINT' });
   });
 
   it('pins Ruflo to the one global binary when it exists', () => {
@@ -104,7 +106,7 @@ describe('managed CLI structured interface policy', () => {
       ? '@echo ruflo ok\r\n'
       : '#!/bin/sh\nprintf "ruflo ok\\n"\n');
     fs.chmodSync(canonical, 0o755);
-    const env = { ...process.env, HOME: home, RUVNET_BRAIN_HOME: path.join(home, '.cache', 'brain') };
+    const env = { ...process.env, HOME: home, RUVNET_BRAIN_HOME: path.join(home, '.cache', 'brain'), RUVNET_BRAIN_PROJECT_DIR: home };
     const phases = [];
     await callManagedCli('ruvnet_cli_help', { executable: 'ruflo', argv: ['status'] }, env);
     const result = await callManagedCli('ruvnet_cli_run', { executable: 'ruflo', argv: ['status'] }, env, globalThis.fetch, {

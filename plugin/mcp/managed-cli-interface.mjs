@@ -235,11 +235,11 @@ function execute(executable, argv, env) {
       clearTimeout(timer);
       resolve({ code: null, stdout: '', stderr: '', error: error.message });
     });
-    child.once('close', (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ code, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString(), error: null });
+      child.once('close', (code, signal) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ code, signal, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString(), error: null });
     });
   });
 }
@@ -253,6 +253,7 @@ export function normalizeManagedExecution(execution) {
   const output = [execution?.stdout, execution?.stderr].filter(Boolean)
     .join(execution?.stdout && execution?.stderr ? '\n' : '');
   const contradictoryFailure = /(?:^|\n)\s*(?:❌|\[ERROR\])|invalid pragma command|key not found/i.test(output);
+  if (execution?.signal) return { outcome: 'interrupted', output, signal: execution.signal, contradictoryFailure };
   if (execution?.error || contradictoryFailure || execution?.code === null || execution?.code === undefined) {
     return { outcome: execution?.error || contradictoryFailure ? 'failure' : 'unknown', output, contradictoryFailure };
   }
@@ -283,6 +284,7 @@ function managedProgressionCapture({ executable, argv, projectRoot, env, event, 
         stdout: execution.stdout,
         stderr: execution.stderr,
         exit_code: execution.code,
+        ...(execution.signal ? { signal: execution.signal, interrupted: true } : {}),
         outcome: normalized?.outcome,
         ...(execution.error ? { error: execution.error } : {}),
       },
