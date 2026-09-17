@@ -5,12 +5,32 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { chunkText, FORGE_CHUNKER_VERSION } from './forge-corpus.mjs';
 import { stableChunkId } from './incremental-refresh.mjs';
-import { isIngestibleDisposition, validateForkDeltaIdentity as validatePolicyIdentity } from '../plugin/scripts/coverage-integrity.mjs';
-
-export { isIngestibleDisposition, validatePolicyIdentity as validateForkDeltaIdentity };
 export const FORK_DELTA_VERSION = 'fork-delta/1';
+let validatorPromise;
+async function validator() {
+  if (!validatorPromise) {
+    const local = path.join(path.dirname(fileURLToPath(import.meta.url)), 'coverage-integrity.mjs');
+    const installed = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugin', 'scripts', 'coverage-integrity.mjs');
+    validatorPromise = import(pathToFileURL(fs.existsSync(local) ? local : installed).href);
+  }
+  return validatorPromise;
+}
+const TRUSTED_VALIDATOR = await validator();
+export function validateForkDeltaIdentity(value) {
+  if (typeof TRUSTED_VALIDATOR.validateForkDeltaIdentity !== 'function') {
+    throw new Error('trusted coverage validator does not expose validateForkDeltaIdentity');
+  }
+  return TRUSTED_VALIDATOR.validateForkDeltaIdentity(value);
+}
+export function isIngestibleDisposition(value) {
+  if (typeof TRUSTED_VALIDATOR.isIngestibleDisposition !== 'function') {
+    throw new Error('trusted coverage validator does not expose isIngestibleDisposition');
+  }
+  return TRUSTED_VALIDATOR.isIngestibleDisposition(value);
+}
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const git = (repo, args, encoding = 'utf8') => execFileSync('git', ['-C', repo, ...args], {
@@ -21,7 +41,7 @@ const validSha = (v) => /^[0-9a-f]{40}$/i.test(String(v || ''));
 
 function identity(meta) {
   const id = meta?.forkDelta || meta;
-  validatePolicyIdentity(id);
+  validateForkDeltaIdentity(id);
   for (const key of ['forkRepository', 'upstream', 'upstreamHeadSha', 'forkHeadSha', 'mergeBaseSha']) {
     if (typeof id[key] !== 'string' || !id[key].trim()) throw new Error(`fork delta missing ${key}`);
   }
@@ -56,7 +76,9 @@ export function validateForkDeltaRepository(meta, { repo } = {}) {
   if (head !== id.forkHeadSha) throw new Error('fork head object does not match pinned forkHeadSha');
   const upstream = String(git(repo, ['rev-parse', `${id.upstreamHeadSha}^{commit}`])).trim().toLowerCase();
   if (upstream !== id.upstreamHeadSha) throw new Error('upstream head object does not match pinned upstreamHeadSha');
-  const base = String(git(repo, ['merge-base', id.upstreamHeadSha, id.forkHeadSha])).trim().toLowerCase();
+  const bases = String(git(repo, ['merge-base', '--all', id.upstreamHeadSha, id.forkHeadSha])).trim().split(/\s+/).filter(Boolean).map((v) => v.toLowerCase());
+  if (bases.length !== 1) throw new Error(`fork delta merge base is ambiguous (${bases.length} candidates)`);
+  const base = bases[0];
   if (base !== id.mergeBaseSha) throw new Error('computed merge base does not match pinned mergeBaseSha');
   return id;
 }
@@ -83,15 +105,15 @@ function parseRawNameStatus(buffer) {
 function operationText(repo, id, op) {
   const pathArgs = ['--', ...op.paths];
   let diff = '';
-  try { diff = git(repo, ['diff', '--no-ext-diff', '--no-textconv', '--unified=3', id.mergeBaseSha, id.forkHeadSha, ...pathArgs]); }
-  catch { diff = ''; }
+  try { diff = git(repo, ['diff', '--no-ext-diff', '--no-textconv', '--unified=0', id.mergeBaseSha, id.forkHeadSha, ...pathArgs]); }
+  catch (error) { throw new Error(`fork delta diff failed for ${op.paths.join(' → ')}: ${error.message}`); }
   const label = op.kind === 'R' ? `rename ${op.paths[0]} → ${op.paths[1]}`
     : op.kind === 'C' ? `copy ${op.paths[0]} → ${op.paths[1]}` : `${op.status} ${op.paths[0]}`;
   return `Fork delta ${id.forkRepository} relative to upstream ${id.upstream} at ${id.mergeBaseSha}\nOperation: ${label}\nPinned fork head: ${id.forkHeadSha}\n\n${diff || '(no textual payload; see typed operation above)'}`;
 }
 
 /** Materialize only changed operations into a temporary corpus-shaped directory. */
-export function buildForkDeltaCorpus({ repo, name, metadata, outputDir } = {}) {
+export async function buildForkDeltaCorpus({ repo, name, metadata, outputDir } = {}) {
   const id = validateForkDeltaRepository(metadata, { repo });
   const raw = git(repo, ['diff', '--no-ext-diff', '--no-textconv', '--name-status', '-z', '--find-renames', '--find-copies', id.mergeBaseSha, id.forkHeadSha], 'buffer');
   const operations = parseRawNameStatus(raw);
@@ -100,17 +122,23 @@ export function buildForkDeltaCorpus({ repo, name, metadata, outputDir } = {}) {
   const dir = outputDir || fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-fork-delta-'));
   fs.mkdirSync(dir, { recursive: true });
   const docs = [];
-  for (const op of operations) {
+  for (const op of operations.length ? operations : [{ kind: 'N', status: 'NETZERO', paths: ['(no changed paths)'] }]) {
     const sourcePath = op.paths.at(-1).split('\\').join('/');
-    const text = operationText(repo, id, op);
-    for (const [index, content] of chunkText(text).entries()) docs.push({
+    const text = op.kind === 'N'
+      ? `Fork delta ${id.forkRepository} has no net changed paths relative to ${id.mergeBaseSha}; ${id.aheadBy} ahead commit(s) were observed.`
+      : operationText(repo, id, op);
+    const pieces = chunkText(text);
+    for (const [index, content] of pieces.entries()) docs.push({
       id: stableChunkId({ repo: name, sourcePath: `fork-delta/${sourcePath}`, chunkerVersion: FORGE_CHUNKER_VERSION, ordinal: index, content }),
       path: `fork-delta/${sourcePath}`, kind: 'fork-delta', title: `Fork delta ${sourcePath}`,
-      chunk: index + 1, of: chunkText(text).length, text, embedText: content, preview: content.slice(0, 200),
+      chunk: index + 1, of: pieces.length, text: content, embedText: content, preview: content.slice(0, 200),
+      operation: { status: op.status, kind: op.kind, paths: op.paths },
     });
   }
   fs.writeFileSync(path.join(dir, 'fork-delta.inventory.json'), inventory);
-  const passages = docs.map((d) => JSON.stringify({ id: d.id, text: d.text, path: d.path, title: d.title })).join('\n') + (docs.length ? '\n' : '');
+  const passages = docs.map((d) => JSON.stringify({
+    id: d.id, text: d.text, path: d.path, title: d.title, operation: d.operation,
+  })).join('\n') + (docs.length ? '\n' : '');
   fs.writeFileSync(path.join(dir, 'fork-delta.passages.jsonl'), passages);
   return { ...id, sourceMode: 'fork-delta', operations, chunks: docs, inventorySha256, passagesSha256: sha256(passages), outputDir: dir };
 }

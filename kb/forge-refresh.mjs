@@ -172,14 +172,16 @@ function writeSourceManifest() {
 }
 
 function writeCandidateSidecars(chunks, corpus, ledger, previousMeta) {
-  const passages = chunks.map(({ id, text, path: sourcePath, title }) =>
-    JSON.stringify({ id, text, path: sourcePath, title })).join('\n') + '\n';
+  const passages = chunks.map(({ id, text, path: sourcePath, title, operation }) =>
+    JSON.stringify({ id, text, path: sourcePath, title, ...(operation ? { operation } : {}) })).join('\n') + '\n';
   const entries = Object.fromEntries(chunks.map((chunk) => [chunk.id, {
     path: chunk.path,
     kind: chunk.kind,
     title: chunk.title,
     chunk: `${chunk.chunk}/${chunk.of}`,
     preview: chunk.preview,
+    ...(chunk.operation ? { operation: chunk.operation } : {}),
+    ...(sourceProvenance ? { sourceMode: 'fork-delta', forkDelta: sourceProvenance } : {}),
   }]));
   const generated = new Date().toISOString();
   const meta = {
@@ -378,14 +380,15 @@ try {
   let corpus;
   if (FORK_DELTA_FILE) {
     const metadata = JSON.parse(fs.readFileSync(path.resolve(FORK_DELTA_FILE), 'utf8'));
-    const delta = buildForkDeltaCorpus({ repo: root, name: NAME, metadata });
+    const delta = await buildForkDeltaCorpus({ repo: root, name: NAME, metadata, outputDir: candidate });
     sourceProvenance = {
       version: delta.version, forkRepository: delta.forkRepository, upstream: delta.upstream,
       upstreamHeadSha: delta.upstreamHeadSha, forkHeadSha: delta.forkHeadSha, mergeBaseSha: delta.mergeBaseSha,
       aheadBy: delta.aheadBy, behindBy: delta.behindBy, inventorySha256: delta.inventorySha256,
       passagesSha256: delta.passagesSha256,
     };
-    corpus = { ...delta, census: { 'fork-delta': delta.operations.length }, counts: { 'fork-delta': delta.operations.length },
+    const operationCount = Math.max(delta.operations.length, 1);
+    corpus = { ...delta, census: { 'fork-delta': operationCount }, counts: { 'fork-delta': operationCount },
       intentionallySkipped: [], coveredPaths: new Set(delta.operations.map((operation) => operation.paths.at(-1))).size };
   } else {
     corpus = buildCorpus({ repo: root, name: NAME, fullPrefixes: FULL, keepNames: KEEP });
