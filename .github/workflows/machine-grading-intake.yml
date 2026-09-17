@@ -1,0 +1,47 @@
+name: machine-grading-intake
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha: { required: true, type: string }
+      fable_receipt_b64: { required: true, type: string }
+      astra_receipt_b64: { required: true, type: string }
+      release_identity_b64: { required: true, type: string }
+permissions: { actions: write, contents: read }
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    environment: Production – ruvnet-brain
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: ${{ inputs.candidate_sha }}, fetch-depth: 1, persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Validate local signed pair against exact candidate
+        env:
+          FABLE_B64: ${{ inputs.fable_receipt_b64 }}
+          ASTRA_B64: ${{ inputs.astra_receipt_b64 }}
+          IDENTITY_B64: ${{ inputs.release_identity_b64 }}
+          FABLE_PUBLIC_KEY: ${{ secrets.RUVNET_FABLE_REVIEW_PUBLIC_KEY }}
+          ASTRA_PUBLIC_KEY: ${{ secrets.RUVNET_ASTRA_REVIEW_PUBLIC_KEY }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p reviews
+          printf '%s' "$FABLE_B64" | base64 --decode > reviews/claude-fable-5-1.json
+          printf '%s' "$ASTRA_B64" | base64 --decode > reviews/gpt-6-astra.json
+          printf '%s' "$IDENTITY_B64" | base64 --decode > release-identity.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { validateIndependentReviewPair } from './scripts/independent-review-receipt.mjs';
+          const identity=JSON.parse(fs.readFileSync('release-identity.json','utf8'));
+          if(identity.candidateSha!==process.env.CANDIDATE_SHA) throw new Error('candidate identity mismatch');
+          const reviews=[JSON.parse(fs.readFileSync('reviews/claude-fable-5-1.json')),JSON.parse(fs.readFileSync('reviews/gpt-6-astra.json'))];
+          validateIndependentReviewPair(reviews,{publicKeysByReviewer:{'claude-fable-5-1':process.env.FABLE_PUBLIC_KEY,'gpt-6-astra':process.env.ASTRA_PUBLIC_KEY}});
+          if(reviews.some(r=>r.sourceSha!==identity.candidateSha||r.artifactSha256!==identity.packageSha256||r.payloadId!==identity.payloadId||r.releaseIdentity?.version!==identity.version||r.releaseIdentity?.tag!==identity.tag||r.releaseIdentity?.bundleSha256!==identity.bundleSha256)) throw new Error('review is bound to a different release');
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: machine-grading-${{ inputs.candidate_sha }}
+          path: reviews/
+          if-no-files-found: error
+          retention-days: 14
