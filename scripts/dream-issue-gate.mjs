@@ -5,6 +5,9 @@
 // the caller supplies the finding and the current open issues, and receives a disposition before
 // invoking any GitHub write operation.
 
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 const HEX_SHA = /^[0-9a-f]{7,64}$/i;
 const ISSUE_MARKER = 'dream-fingerprint:';
 
@@ -95,10 +98,26 @@ export function buildIssueBody(finding, decision = assessFinding(finding)) {
   ].join('\n');
 }
 
+// Entry-point guard. Compares REALPATHS on both sides: `new URL(import.meta.url).pathname` does
+// NOT follow symlinks and does not decode percent-encoding, while `fs.realpathSync` resolves both.
+// Through a symlink (every os.tmpdir() path on macOS) or a path containing a URL-reserved character,
+// the old comparison never matches, main() never runs, and because nothing throws the process exits
+// 0 with zero output — indistinguishable from "ran, found nothing" on the one gate that decides
+// whether the Dream Machine may call `gh issue create`. Same defect class as commit 43bf391;
+// pinned by tests/unit/entrypoint-symlink.test.mjs.
+function isDirectInvocation() {
+  try {
+    if (!process.argv[1]) return false;
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
 // Adapter contract for the Dream Machine runner. Input is JSON on stdin:
 // { "finding": { ... }, "openIssues": [{ "number", "title", "body" }] }
 // Output is the disposition JSON. This command intentionally cannot create or mutate GitHub data.
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (isDirectInvocation()) {
   let input = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (chunk) => { input += chunk; });
