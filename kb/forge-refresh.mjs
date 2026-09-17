@@ -12,6 +12,7 @@ import path from 'node:path';
 import { execFile, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildCorpus, FORGE_BUILD_FINGERPRINT } from './forge-corpus.mjs';
+import { buildForkDeltaCorpus } from './fork-source.mjs';
 import {
   buildCorpusLedger,
   chunkDelta,
@@ -43,8 +44,9 @@ const FULL = (arg('--full', '') || '').split(',').map((value) => value.trim()).f
 const KEEP = (arg('--keep', '') || '').split(',').map((value) => value.trim()).filter(Boolean);
 const CANONICAL_URL = (arg('--canonical-url', '') || '').replace(/\/+$/, '');
 const STRUCTURAL_ONLY = process.argv.includes('--structural-only');
+const FORK_DELTA_FILE = arg('--fork-delta');
 if (!REPO || !OUT || !NAME) {
-  console.error('Usage: node forge-refresh.mjs --repo <repo> --out <dir> --name <kb-name> [--full a,b] [--keep v2]');
+  console.error('Usage: node forge-refresh.mjs --repo <repo> --out <dir> --name <kb-name> [--full a,b] [--keep v2] [--fork-delta metadata.json]');
   process.exit(2);
 }
 
@@ -53,6 +55,7 @@ const root = path.resolve(REPO);
 const out = path.resolve(OUT);
 const candidate = fs.mkdtempSync(path.join(path.dirname(out), `.forge-${NAME}-candidate-`));
 const env = { ...process.env };
+let sourceProvenance = null;
 
 const artifactFiles = [
   `${NAME}.passages.jsonl`,
@@ -149,6 +152,21 @@ function writeSourceManifest() {
     canonicalManifestUrl: manifestUrl,
     canonicalBundleUrl: CANONICAL_URL ? `${CANONICAL_URL}/${NAME}-kb-bundle.zip` : null,
     selfUpdate: `node forge-update.mjs ${NAME}`,
+    ...(sourceProvenance ? {
+      sourceMode: 'fork-delta',
+      forkDelta: {
+        version: sourceProvenance.version,
+        forkRepository: sourceProvenance.forkRepository,
+        upstream: sourceProvenance.upstream,
+        upstreamHeadSha: sourceProvenance.upstreamHeadSha,
+        forkHeadSha: sourceProvenance.forkHeadSha,
+        mergeBaseSha: sourceProvenance.mergeBaseSha,
+        aheadBy: sourceProvenance.aheadBy,
+        behindBy: sourceProvenance.behindBy,
+        inventorySha256: sourceProvenance.inventorySha256,
+        passagesSha256: sourceProvenance.passagesSha256,
+      },
+    } : {}),
   };
   fs.writeFileSync(path.join(candidate, 'SOURCE.json'), JSON.stringify(source, null, 2) + '\n');
 }
@@ -176,6 +194,7 @@ function writeCandidateSidecars(chunks, corpus, ledger, previousMeta) {
     corpusCounts: corpus.counts,
     coveredPaths: corpus.coveredPaths,
     intentionallySkipped: corpus.intentionallySkipped,
+    ...(sourceProvenance ? { sourceMode: 'fork-delta', forkDelta: sourceProvenance } : {}),
     incremental: ledger,
     entries,
   };
@@ -239,7 +258,7 @@ async function qaCandidate() {
 }
 
 function stampCandidateGeneration() {
-  writeRvfGeneration({
+  const manifest = writeRvfGeneration({
     dir: candidate,
     previousDir: out,
     store: NAME,
@@ -247,6 +266,12 @@ function stampCandidateGeneration() {
     dimensions: BGE.dimensions,
     sourceCommit: gitInfo(root).sha,
   });
+  if (sourceProvenance) {
+    const file = path.join(candidate, RVF_GENERATIONS_FILE);
+    const generations = JSON.parse(fs.readFileSync(file, 'utf8'));
+    generations.stores[NAME] = { ...manifest, sourceMode: 'fork-delta', forkDelta: sourceProvenance };
+    fs.writeFileSync(file, `${JSON.stringify(generations, null, 2)}\n`);
+  }
 }
 
 async function fullRefresh(reason, corpus, previousMeta, currentLedger) {
@@ -350,12 +375,21 @@ async function migrateLegacyStore(corpus, previousMeta, currentLedger) {
 
 try {
   fs.mkdirSync(out, { recursive: true });
-  const corpus = buildCorpus({
-    repo: root,
-    name: NAME,
-    fullPrefixes: FULL,
-    keepNames: KEEP,
-  });
+  let corpus;
+  if (FORK_DELTA_FILE) {
+    const metadata = JSON.parse(fs.readFileSync(path.resolve(FORK_DELTA_FILE), 'utf8'));
+    const delta = buildForkDeltaCorpus({ repo: root, name: NAME, metadata });
+    sourceProvenance = {
+      version: delta.version, forkRepository: delta.forkRepository, upstream: delta.upstream,
+      upstreamHeadSha: delta.upstreamHeadSha, forkHeadSha: delta.forkHeadSha, mergeBaseSha: delta.mergeBaseSha,
+      aheadBy: delta.aheadBy, behindBy: delta.behindBy, inventorySha256: delta.inventorySha256,
+      passagesSha256: delta.passagesSha256,
+    };
+    corpus = { ...delta, census: { 'fork-delta': delta.operations.length }, counts: { 'fork-delta': delta.operations.length },
+      intentionallySkipped: [], coveredPaths: new Set(delta.operations.map((operation) => operation.paths.at(-1))).size };
+  } else {
+    corpus = buildCorpus({ repo: root, name: NAME, fullPrefixes: FULL, keepNames: KEEP });
+  }
   if (!corpus.chunks.length) throw new Error('0 chunks produced; refusing to replace a live store');
   const currentLedger = buildCorpusLedger(corpus.chunks, {
     buildFingerprint: FORGE_BUILD_FINGERPRINT,
@@ -367,7 +401,9 @@ try {
     current: currentLedger,
   });
   const completeLiveSet = artifactFiles.every((file) => fs.existsSync(path.join(out, file)));
-  if (!previousMeta?.incremental) {
+  if (FORK_DELTA_FILE) {
+    await fullRefresh('fork-delta-source', corpus, previousMeta, currentLedger);
+  } else if (!previousMeta?.incremental) {
     const migration = await migrateLegacyStore(corpus, previousMeta, currentLedger);
     if (!migration.migrated) {
       await fullRefresh(migration.reason || 'no-incremental-ledger', corpus, previousMeta, currentLedger);
