@@ -359,6 +359,16 @@ export function verifyIndependentReviewReceipt(receipt, publicKey) {
   return receipt;
 }
 
+// Structural/digest validation for aggregate callers that verify signatures separately.
+export function validateIndependentReviewReceipt(receipt) {
+  exactKeys(receipt, RECEIPT_KEYS, 'independent review receipt');
+  assertNormalizedCore(signingPayload(receipt));
+  if (receipt.receiptSha256 !== digest({ ...signingPayload(receipt), signature: receipt.signature })) {
+    throw new Error('independent review receipt digest mismatch');
+  }
+  return receipt;
+}
+
 function publicKeyFor(source, identity) {
   return source instanceof Map ? source.get(identity) : source && typeof source === 'object' ? source[identity] : undefined;
 }
