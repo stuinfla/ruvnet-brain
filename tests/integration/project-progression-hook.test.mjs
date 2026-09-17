@@ -353,6 +353,18 @@ describe('ADR-073 host-neutral progression capture', () => {
     expect(snapshot.completeProjectState.failures.at(-1).outcome).toBe('interrupted');
   });
 
+  it('keeps terminal failure authoritative over a contradictory declared success', () => {
+    const project = temporaryProject();
+    const store = recordingStore(project);
+    const { snapshot } = captureProjectTransition({
+      host: 'codex', payload: envelope(project, 'codex', {}, {
+        tool_name: 'Bash', tool_input: { command: 'npm test' },
+        tool_response: { outcome: 'success', exit_code: 1 },
+      }), projectDir: project, adapterVersion: getVersion(), storeFactory: store.factory,
+    });
+    expect(snapshot.completeProjectState.commands.at(-1).outcome).toBe('failure');
+  });
+
 describe('the existing dual-host session snapshot hook is the production caller', () => {
   it('preserves the metadata receipt and forwards an explicit progression envelope', () => {
     const project = temporaryProject();
