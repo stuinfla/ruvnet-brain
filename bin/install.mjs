@@ -417,6 +417,13 @@ async function obtainBundle(release) {
     info(`source: ${proofBundle.spec}`);
     return { zipPath: proofBundle.spec, downloaded: false };
   }
+  // Isolated integration fixtures may provide an already verified release artifact. This seam is
+  // test-only and cannot be enabled by normal users; stageBundleForRecovery still verifies the
+  // detached signature before the bytes can reach the updater.
+  if (TEST_MODE && process.env.RUVNET_BRAIN_TEST_BUNDLE) {
+    const zipPath = path.resolve(process.env.RUVNET_BRAIN_TEST_BUNDLE);
+    return { zipPath, downloaded: false };
+  }
   const localZip = path.join(REPO_ROOT, 'dist', 'ruvnet-brain.zip');
   const localDir = path.join(REPO_ROOT, 'dist', 'ruvnet-brain');
   const haveLocal = fs.existsSync(localZip);
@@ -551,7 +558,14 @@ export function placeTrustedCoverageValidator(kbDir, { source = TRUSTED_VALIDATO
   // shipped runtime and its executable hashes. Copying current-main package.json or preserving a
   // version string alone is insufficient." Re-stamped on every placement (install AND `--update`
   // preflight), so an upgraded runtime immediately supersedes the previous pin.
-  const runtime = writeInstalledRuntimeIdentity(kbDir, { brainVersion });
+  // An update preflight may be running an installer newer than the installed historical brain.
+  // Preserve that installed identity until the signed candidate has been accepted; stamping the
+  // package version here would erase the very runtime pin recovery must verify.
+  let runtimeVersion = brainVersion;
+  if (brainVersion === PACKAGE_VERSION) {
+    try { runtimeVersion = JSON.parse(fs.readFileSync(path.join(kbDir, 'RUNTIME-IDENTITY.json'), 'utf8')).brainVersion || brainVersion; } catch { /* first install */ }
+  }
+  const runtime = writeInstalledRuntimeIdentity(kbDir, { brainVersion: runtimeVersion });
   return { action: unchanged ? 'unchanged' : (existing ? 'replaced' : 'placed'), path: target, runtimeIdentity: runtime };
 }
 /** `--update` preflight: place the validator only where an updater exists to consume it. */
@@ -560,7 +574,7 @@ export function ensureUpdaterPrerequisites(kbDir) {
   return { updater: true, validator: placeTrustedCoverageValidator(kbDir) };
 }
 
-export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTag = null, activate = true } = {}) {
+export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTag = null, activate = true, expectedVersion = PACKAGE_VERSION } = {}) {
   step(
     'Unpacking the brain into place',
     'so the plugin finds forge-mcp-all.mjs and the vector stores right where it looks',
@@ -660,7 +674,7 @@ export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTa
         'The live brain was not touched. Re-run the installer.');
     }
   }
-  const stagedCoverage = validateCoverageDirectory(stageDir, { expectedVersion: PACKAGE_VERSION });
+  const stagedCoverage = validateCoverageDirectory(stageDir, { expectedVersion });
   if (!stagedCoverage.valid) {
     fs.rmSync(stageDir, { recursive: true, force: true });
     die(`staged ReleaseCoverage failed integrity — ${stagedCoverage.failures.join('; ')}`,
@@ -754,11 +768,11 @@ export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTa
 }
 
 /** Stage and validate a bundle for forge-update recovery without touching the live generation. */
-export async function stageBundleForRecovery(zipPath, cacheDir, sourceDir = null, { releaseTag = null, signaturePath = `${zipPath}.sig` } = {}) {
+export async function stageBundleForRecovery(zipPath, cacheDir, sourceDir = null, { releaseTag = null, signaturePath = `${zipPath}.sig`, expectedVersion = PACKAGE_VERSION } = {}) {
   const verified = verifyBundle(zipPath, signaturePath);
   if (!verified.ok) throw new Error(`recovery bundle signature verification failed: ${verified.reason}`);
   const bundleSha256 = crypto.createHash('sha256').update(fs.readFileSync(zipPath)).digest('hex');
-  const result = await unzipInto(zipPath, cacheDir, sourceDir, { releaseTag, activate: false });
+  const result = await unzipInto(zipPath, cacheDir, sourceDir, { releaseTag, activate: false, expectedVersion });
   fs.writeFileSync(`${result.stageDir}.staged-release.json`, JSON.stringify({
     schemaVersion: 1, kind: 'ruvnet-brain-authenticated-stage', bundleSha256,
     releaseTag, stagedAt: new Date().toISOString(),
@@ -1464,6 +1478,7 @@ function codexManagedBlock(serverPath) {
     '[mcp_servers.ruvnet-brain]',
     'command = "node"',
     `args = [${JSON.stringify(serverPath)}]`,
+    'env = { RUVNET_HOOK_HOST = "codex" }',
     'startup_timeout_sec = 30',
     CODEX_BLOCK_END,
   ].join('\n');
@@ -3429,7 +3444,14 @@ export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSI
 
 async function runUpdate() {
   printBanner('update');
-  const kbDir = resolvedKbDir();
+  const configuredKbDir = resolvedKbDir();
+  // macOS commonly presents the same directory through /var and /private/var. The installed
+  // updater derives its root from import.meta.url, so pass one realpath to both lock owners or
+  // inherited refresh ownership is falsely rejected on the second run.
+  const kbDir = (() => {
+    try { return fs.realpathSync(configuredKbDir); }
+    catch (error) { if (error?.code === 'ENOENT') return configuredKbDir; throw error; }
+  })();
   const brainHome = process.env.RUVNET_BRAIN_HOME || path.dirname(kbDir);
   if (FLAG_HOST_SYNC_ONLY) {
     info(c.dim('repairing host shells and managed model catalog without mutating KB bytes…\n'));
@@ -3583,18 +3605,23 @@ async function runUpdate() {
       if (!bundle.zipPath) throw new Error('private-overlay recovery requires a downloadable signed bundle');
       const sigPath = `${bundle.zipPath}.sig`;
       const stagedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-recovery-stage-'));
-      const staged = await stageBundleForRecovery(bundle.zipPath, stagedRoot, null, { signaturePath: sigPath,
-        releaseTag: release?.source === 'latest' ? (release.tag || null) : null });
-      const descriptor = path.join(stagedRoot, 'recovery-input.json');
       let expectedRuntimeVersion = PACKAGE_VERSION;
       try { expectedRuntimeVersion = JSON.parse(fs.readFileSync(path.join(kbDir, 'RUNTIME-IDENTITY.json'), 'utf8')).brainVersion || expectedRuntimeVersion; } catch { /* validator reports missing identity */ }
+      const staged = await stageBundleForRecovery(bundle.zipPath, stagedRoot, null, { signaturePath: sigPath,
+        releaseTag: release?.source === 'latest' ? (release.tag || null) : null, expectedVersion: expectedRuntimeVersion });
+      const descriptor = path.join(stagedRoot, 'recovery-input.json');
+      const stagedResultFile = path.join(stagedRoot, 'recovery-result.json');
       fs.writeFileSync(descriptor, JSON.stringify({ stagedDir: staged.stageDir, liveDir: kbDir,
         bundlePath: bundle.zipPath, signaturePath: sigPath, bundleSha256: staged.bundleSha256,
         expectedRuntimeVersion, releaseTag: release?.source === 'latest' ? (release.tag || null) : null,
       }) + '\n', { mode: 0o600 });
-      fr = spawnSync(process.execPath, [path.join(REPO_ROOT, 'kb', 'forge-update.mjs'), '--staged-release', descriptor], {
-        stdio: 'inherit', cwd: path.dirname(kbDir), env: { ...refreshEnv, RUVNET_BRAIN_NO_UPDATE_FALLBACK: '1' },
+      fr = spawnSync(process.execPath, [path.join(REPO_ROOT, 'kb', 'forge-update.mjs'), '--staged-release', descriptor,
+        '--result-file', stagedResultFile], {
+        stdio: 'inherit', cwd: path.dirname(kbDir),
+        env: { ...refreshEnv, RUVNET_BRAIN_NO_UPDATE_FALLBACK: '1' },
       });
+      try { if (fs.existsSync(stagedResultFile)) updaterResult = JSON.parse(fs.readFileSync(stagedResultFile, 'utf8')); }
+      catch { /* child exit remains authoritative */ }
     } else {
       warn("\nthe bundle's own updater couldn't complete — falling back to a fresh install of the latest Release…\n");
       const self = fileURLToPath(import.meta.url);
@@ -3602,10 +3629,11 @@ async function runUpdate() {
         env: { ...refreshEnv, RUVNET_BRAIN_NO_UPDATE_FALLBACK: '1' } });
     }
     updateStatus = fr.error ? 1 : (fr.status === null ? 1 : fr.status);
+    if (updaterResult?.terminalVerdict === 'applied' || updaterResult?.terminalVerdict === 'noop') updateStatus = 0;
   } else {
     updateStatus = outcome.exitCode;
   }
-  const cleanupPending = outcome.verdict === 'cleanup-pending';
+  const cleanupPending = updaterResult?.terminalVerdict === 'cleanup-pending' || outcome.verdict === 'cleanup-pending';
   if (updateStatus !== 0 && !cleanupPending) {
     recordRefreshPhase(refreshReceipt, 'source-enumeration', 'FAIL', {
       updaterExit, finalExit: updateStatus, fallback: outcome.fallback, verdict: outcome.verdict,
@@ -3704,7 +3732,7 @@ async function runUpdate() {
   settleRefresh(cleanupPending ? 12 : (retentionFailed ? 1 : updateStatus), {
     phase: cleanupFailed ? 'cleanup' : (updateStatus === 0 ? 'complete' : 'failed'),
     terminalVerdict: cleanupPending ? 'cleanup-pending' : retentionFailed ? 'recovery-required'
-      : (outcome.verdict === 'noop' ? 'noop' : 'applied'),
+      : (updaterResult?.terminalVerdict === 'noop' || outcome.verdict === 'noop' ? 'noop' : 'applied'),
     storageDelta: updaterResult?.storageDelta || null, lifecycleRetention: retention });
   process.removeListener('exit', exitGuard);
 }

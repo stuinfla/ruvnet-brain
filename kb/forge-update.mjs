@@ -336,8 +336,16 @@ export async function applyVerifiedStagedRelease({
     const runtimeIdentity = path.join(live, 'RUNTIME-IDENTITY.json');
     if (fs.existsSync(runtimeIdentity)) fs.copyFileSync(runtimeIdentity, path.join(proofRoot, 'RUNTIME-IDENTITY.json'));
     if (releaseTag) recordCorpusTransportIdentity(proofRoot, { releaseTag });
-    const stagedIdentity = treeIdentity(staged);
-    const proofIdentity = treeIdentity(proofRoot);
+    // Validator/runtime identity are installer-owned bindings added after extraction. Compare the
+    // authenticated archive projection while excluding those two local files.
+    const archiveIdentity = (root) => {
+      const identity = treeIdentity(root);
+      const entries = identity.entries.filter((entry) => !['coverage-integrity.mjs', 'RUNTIME-IDENTITY.json'].includes(entry.path));
+      return { sha256: createHash('sha256').update(JSON.stringify(entries)).digest('hex'),
+        bytes: entries.reduce((sum, entry) => sum + (entry.bytes || 0), 0), fileCount: entries.filter((e) => e.type === 'file').length };
+    };
+    const stagedIdentity = archiveIdentity(staged);
+    const proofIdentity = archiveIdentity(proofRoot);
     if (stagedIdentity.sha256 !== proofIdentity.sha256 || stagedIdentity.bytes !== proofIdentity.bytes || stagedIdentity.fileCount !== proofIdentity.fileCount) {
       throw new Error('staged recovery directory bytes differ from independently extracted signed bundle');
     }
@@ -359,7 +367,9 @@ export async function applyVerifiedStagedRelease({
       const trusted = fs.existsSync(path.join(KB_DIR, name)) ? path.join(KB_DIR, name)
         : path.join(path.dirname(KB_DIR), 'plugin', 'scripts', name);
       if (!fs.existsSync(trusted)) throw new Error(`trusted staged recovery runtime file is missing: ${name}`);
-      fs.copyFileSync(assertNoFollowPath(trustedRuntimeDir, trusted),
+      const trustedStat = fs.lstatSync(trusted);
+      if (!trustedStat.isFile() || trustedStat.isSymbolicLink()) throw new Error(`trusted staged recovery runtime file is not a regular package file: ${name}`);
+      fs.copyFileSync(trusted,
         assertNoFollowPath(candidateDir, path.join(candidateDir, name)));
     }
     const runtimeIdentity = path.join(liveDir, 'RUNTIME-IDENTITY.json');
@@ -368,6 +378,9 @@ export async function applyVerifiedStagedRelease({
     if (runtime.brainVersion !== expectedRuntimeVersion) throw new Error('installed runtime identity differs from the approved recovery runtime');
     fs.copyFileSync(assertNoFollowPath(liveDir, runtimeIdentity),
       assertNoFollowPath(candidateDir, path.join(candidateDir, 'RUNTIME-IDENTITY.json')));
+    const privateFence = path.join(liveDir, 'PRIVATE-STORES.json');
+    if (fs.existsSync(privateFence)) fs.copyFileSync(privateFence,
+      assertNoFollowPath(candidateDir, path.join(candidateDir, 'PRIVATE-STORES.json')));
     for (const relative of Object.keys(overlay?.files || {})) {
       const from = assertNoFollowPath(liveDir, path.join(liveDir, relative));
       const to = assertNoFollowPath(candidateDir, path.join(candidateDir, relative));
