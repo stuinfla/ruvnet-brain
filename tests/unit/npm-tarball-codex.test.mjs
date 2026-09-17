@@ -142,9 +142,12 @@ describe('the installed server completes initialize and tools/list', () => {
     const env = { ...process.env, RUVNET_BRAIN_HOME: tmpdir() };
     delete env.RUVNET_BRAIN_KB;
     delete env.KB_DIR;
-    const proc = spawn(process.execPath, [serverPath], { stdio: ['pipe', 'pipe', 'ignore'], env });
+    const proc = spawn(process.execPath, [serverPath], { stdio: ['pipe', 'pipe', 'pipe'], env });
     const replies = new Map();
     let buf = '';
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('error', (error) => { stderr += `\nprocess error: ${error.stack || error.message}`; });
     proc.stdout.on('data', (d) => {
       buf += d;
       let nl;
@@ -154,7 +157,7 @@ describe('the installed server completes initialize and tools/list', () => {
       }
     });
     const request = (id, method, params = {}) => new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error(`no reply to ${method} in 15s`)), 15_000);
+      const t = setTimeout(() => reject(new Error(`no reply to ${method} in 15s (stderr: ${stderr || '(empty)'}; env: ${JSON.stringify({ RUVNET_BRAIN_HOME: env.RUVNET_BRAIN_HOME, RUVNET_BRAIN_KB: env.RUVNET_BRAIN_KB || null })})`)), 15_000);
       replies.set(id, (m) => { clearTimeout(t); resolve(m); });
       proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
     });
