@@ -579,7 +579,7 @@ export async function finalizeReleaseTransaction({
     || reviewIdentity.releaseIdentity?.tag !== identity.tag) {
     throw new Error('terminal review pair is bound to a different release identity');
   }
-  validateIndependentReviewPair(aggregate.reviews, { publicKeysByReviewer: reviewPublicKeysByReviewer, expectedOracle: undefined });
+  validateIndependentReviewPair(aggregate.reviews, { publicKeysByReviewer: reviewPublicKeysByReviewer, expectedIdentity: identity, expectedOracle: undefined });
   if (!Array.isArray(aggregate.reviews) || aggregate.reviews.length !== 2
     || new Set(aggregate.reviews.map((review) => review?.id)).size !== 2) {
     throw new Error('public verification finalizer requires the two-vendor machine grading pair');

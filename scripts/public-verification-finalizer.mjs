@@ -40,7 +40,7 @@ export async function finalizePublicVerification({
   const aggregate = regularJson(aggregateFile, 'public verification aggregate');
   if (requireReviewPair && !reviewPublicKeysByReviewer) throw new Error('required machine grading pair keys are missing');
   if (reviewPublicKeysByReviewer) {
-    validateIndependentReviewPair(aggregate.reviews, { publicKeysByReviewer: reviewPublicKeysByReviewer });
+    validateIndependentReviewPair(aggregate.reviews, { publicKeysByReviewer: reviewPublicKeysByReviewer, expectedIdentity: identity });
   }
   const publicKey = crypto.createPublicKey(fs.readFileSync(path.resolve(publicKeyFile), 'utf8'));
   const receipt = await finalizeReleaseTransaction({ identity, aggregate, adapter, verifierSha, workflowRunId,

@@ -416,7 +416,17 @@ export function validateIndependentReviewPair(receipts, { publicKeysByReviewer, 
     throw new Error('independent reviewers reviewed identity differs');
   }
   if (expectedIdentity && canonicalJson(identity) !== canonicalJson(expectedIdentity)) {
-    throw new Error('independent review pair differs from expected reviewed identity');
+    if (expectedIdentity.candidateSha === undefined) throw new Error('independent review pair differs from expected reviewed identity');
+  }
+  if (expectedIdentity?.candidateSha !== undefined && ordered.some((receipt) => receipt.sourceSha !== expectedIdentity.candidateSha
+    || receipt.artifactSha256 !== expectedIdentity.packageSha256 || receipt.payloadId !== expectedIdentity.payloadId
+    || receipt.releaseIdentity?.candidateSha !== expectedIdentity.candidateSha
+    || receipt.releaseIdentity?.packageSha256 !== expectedIdentity.packageSha256
+    || receipt.releaseIdentity?.bundleSha256 !== expectedIdentity.bundleSha256
+    || receipt.releaseIdentity?.payloadId !== expectedIdentity.payloadId
+    || receipt.releaseIdentity?.version !== expectedIdentity.version
+    || receipt.releaseIdentity?.tag !== expectedIdentity.tag)) {
+    throw new Error('independent review pair differs from expected release identity');
   }
   if (expectedOracle) {
     const expected = normalizeExpectedOracle(expectedOracle);
