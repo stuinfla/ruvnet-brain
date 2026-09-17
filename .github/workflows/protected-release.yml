@@ -545,7 +545,7 @@ jobs:
           [[ "$MACHINE_GRADING_RUN_ID" =~ ^[0-9]+$ && "$MACHINE_GRADING_ARTIFACT_ID" =~ ^[0-9]+$ ]]
           metadata="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$MACHINE_GRADING_RUN_ID")"
           jq -e --arg sha "${{ needs.verified-candidate.outputs.candidate_sha }}" \
-            '.id == ($ENV.MACHINE_GRADING_RUN_ID|tonumber) and .status == "completed" and .conclusion == "success" and .head_sha == $sha and .path == ".github/workflows/machine-grading.yml" and .repository.full_name == env.GITHUB_REPOSITORY' <<<"$metadata" >/dev/null
+            '.id == ($ENV.MACHINE_GRADING_RUN_ID|tonumber) and .status == "completed" and .conclusion == "success" and .head_sha == $sha and .path == ".github/workflows/machine-grading-intake.yml" and .repository.full_name == env.GITHUB_REPOSITORY' <<<"$metadata" >/dev/null
           artifact_meta="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$MACHINE_GRADING_ARTIFACT_ID")"
           jq -e --arg run "$MACHINE_GRADING_RUN_ID" --arg sha "${{ needs.verified-candidate.outputs.candidate_sha }}" \
             '.id == ($ENV.MACHINE_GRADING_ARTIFACT_ID|tonumber) and .workflow_run.id == ($run|tonumber) and .workflow_run.head_sha == $sha and .expired == false and .name == ("machine-grading-" + $sha)' <<<"$artifact_meta" >/dev/null
