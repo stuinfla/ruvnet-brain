@@ -71,6 +71,9 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     const cwd = arg(args, '--cwd') || process.cwd();
     const actualSource = execFileSync('git', ['-C', cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
     if (actualSource !== input.sourceTree) throw new Error('review source tree differs from requested subject');
+    if (execFileSync('git', ['-C', cwd, 'status', '--porcelain'], { encoding: 'utf8' }).trim()) {
+      throw new Error('review source tree is dirty');
+    }
     const policy = REVIEWERS[reviewer];
     if (!policy) throw new Error('reviewer is not an adopted native identity');
     const probe = probeSubscriptionHosts()[policy.host === 'claude-code' ? 'claude' : 'codex'];
