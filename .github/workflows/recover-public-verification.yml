@@ -274,6 +274,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
+          MACHINE_GRADING_RUN_ID: ${{ secrets.RUVNET_MACHINE_GRADING_RUN_ID }}
           MACHINE_GRADING_ARTIFACT_ID: ${{ secrets.RUVNET_MACHINE_GRADING_ARTIFACT_ID }}
           FABLE_REVIEW_PUBLIC_KEY: ${{ secrets.RUVNET_FABLE_REVIEW_PUBLIC_KEY }}
           ASTRA_REVIEW_PUBLIC_KEY: ${{ secrets.RUVNET_ASTRA_REVIEW_PUBLIC_KEY }}
@@ -281,13 +282,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$MACHINE_GRADING_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$MACHINE_GRADING_RUN_ID" =~ ^[0-9]+$ && "$MACHINE_GRADING_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          metadata="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$MACHINE_GRADING_RUN_ID")"
+          jq -e --arg sha "${{ needs.authorize.outputs.candidate_sha }}" '.id == ($ENV.MACHINE_GRADING_RUN_ID|tonumber) and .status == "completed" and .conclusion == "success" and .head_sha == $sha and .path == ".github/workflows/machine-grading.yml" and .repository.full_name == env.GITHUB_REPOSITORY' <<<"$metadata" >/dev/null
+          artifact_meta="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$MACHINE_GRADING_ARTIFACT_ID")"
+          jq -e --arg run "$MACHINE_GRADING_RUN_ID" --arg sha "${{ needs.authorize.outputs.candidate_sha }}" '.id == ($ENV.MACHINE_GRADING_ARTIFACT_ID|tonumber) and .workflow_run.id == ($run|tonumber) and .workflow_run.head_sha == $sha and .expired == false and .name == ("machine-grading-" + $sha)' <<<"$artifact_meta" >/dev/null
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$MACHINE_GRADING_ARTIFACT_ID/zip" > "$RUNNER_TEMP/machine-grading.zip"
           mkdir -p release-evidence/reviews
-          while IFS= read -r archive_path; do
-            [[ "$archive_path" != /* && "$archive_path" != *../* && "$archive_path" != ../* ]] || { echo "unsafe review archive path" >&2; exit 1; }
-          done < <(unzip -Z1 "$RUNNER_TEMP/machine-grading.zip")
-          unzip -q "$RUNNER_TEMP/machine-grading.zip" -d release-evidence/reviews
+          mapfile -t archive_entries < <(unzip -Z1 "$RUNNER_TEMP/machine-grading.zip")
+          ((${#archive_entries[@]} == 2))
+          for archive_path in "${archive_entries[@]}"; do
+            [[ "$archive_path" == claude-fable-5-1.json || "$archive_path" == gpt-6-astra.json ]] || { echo "unexpected review archive member" >&2; exit 1; }
+            unzip -p "$RUNNER_TEMP/machine-grading.zip" "$archive_path" > "release-evidence/reviews/$archive_path"
+            test -f "release-evidence/reviews/$archive_path" && test ! -L "release-evidence/reviews/$archive_path"
+          done
           mkdir -p release-evidence/reviews/keys
           printf '%s\n' "$FABLE_REVIEW_PUBLIC_KEY" > release-evidence/reviews/keys/claude-fable-5-1.pub.pem
           printf '%s\n' "$ASTRA_REVIEW_PUBLIC_KEY" > release-evidence/reviews/keys/gpt-6-astra.pub.pem
