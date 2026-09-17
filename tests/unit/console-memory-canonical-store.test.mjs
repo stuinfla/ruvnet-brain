@@ -57,6 +57,18 @@ describe('Fix 2 — Memory quality is scored on the canonical store, never the b
     expect(resolveMemoryDb(tmp)).toBe(canonical());
   });
 
+  it('reports resolver refusal as unknown without probing a guessed store path', () => {
+    fs.mkdirSync(path.join(tmp, '.swarm'), { recursive: true });
+    const foreign = fs.mkdtempSync(path.join(path.dirname(tmp), 'foreign-store-'));
+    fs.writeFileSync(path.join(foreign, 'memory.db'), 'foreign');
+    fs.symlinkSync(foreign, path.join(tmp, '.swarm', 'memory.db'));
+    const stores = memoryStores(tmp);
+    expect(stores.resolutionError).toBeTruthy();
+    expect(stores.canonical.status).toBe('unknown');
+    expect(stores.canonical.rows).toBeNull();
+    expect(probeMemory(tmp).liveness.status).toBe('unknown');
+  });
+
   it('the page names the unscored coordination store instead of silently folding it in', () => {
     const src = fs.readFileSync(APP_JS, 'utf8');
     expect(src).toContain('stores.coordination');

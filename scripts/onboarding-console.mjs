@@ -104,7 +104,9 @@ const INSTALLED_KB = process.env.RUVNET_BRAIN_KB
   || path.join(CONSOLE_ROOT, '.cache', 'ruvnet-brain', 'kb');
 const COMPLETE_BRAIN_SOURCE = process.env.RUVNET_BRAIN_COMPLETE_SOURCE
   || path.join(REPO, 'dist', 'ruvnet-brain');
-const TOKEN = crypto.randomBytes(24).toString('hex');
+const TOKEN = process.env.NODE_ENV === 'test' && process.env.RUVNET_CONSOLE_TEST_TOKEN
+  ? process.env.RUVNET_CONSOLE_TEST_TOKEN
+  : crypto.randomBytes(24).toString('hex');
 const RUNTIME_RECEIPT_DIR = path.join(CONSOLE_ROOT, '.cache', 'ruvnet-brain', 'console-instances');
 const RUNTIME_PRODUCT = 'ruvnet-brain-console';
 const RUNTIME_SCHEMA = 1;
@@ -464,14 +466,24 @@ function memoryRows(file) {
 }
 export function memoryStores(projectDir) {
   let canonicalPath;
+  let resolutionError = null;
   try { canonicalPath = resolveProjectStore({ projectDir }).canonicalAgentDbPath; }
-  catch { canonicalPath = path.join(projectDir, '.swarm', MEMORY_DB_NAMES[0]); }
+  catch (error) {
+    // A resolver refusal (foreign store, broken symlink, or ambiguous project) is an
+    // authoritative UNKNOWN. Never probe a guessed path after the resolver declines it.
+    canonicalPath = path.join(projectDir, '.swarm', MEMORY_DB_NAMES[0]);
+    resolutionError = String(error?.message || error);
+  }
   const coordinationPath = path.join(path.dirname(canonicalPath), MEMORY_DB_NAMES[1]);
-  const canonical = { path: canonicalPath, exists: fs.existsSync(canonicalPath), rows: memoryRows(canonicalPath) };
-  const coordination = { path: coordinationPath, exists: fs.existsSync(coordinationPath), rows: memoryRows(coordinationPath) };
+  const canonical = resolutionError
+    ? { path: canonicalPath, exists: null, rows: null, status: 'unknown', error: resolutionError }
+    : { path: canonicalPath, exists: fs.existsSync(canonicalPath), rows: memoryRows(canonicalPath) };
+  const coordination = resolutionError
+    ? { path: coordinationPath, exists: null, rows: null, status: 'unknown', error: 'canonical project store could not be resolved' }
+    : { path: coordinationPath, exists: fs.existsSync(coordinationPath), rows: memoryRows(coordinationPath) };
   // Coordination storage is a separate diagnostic container. It can never become project memory
   // merely because the canonical file is absent, empty, busy, or larger.
-  return { canonical, coordination, scored: canonical.path };
+  return { canonical, coordination, scored: canonical.path, resolutionError };
 }
 export function resolveMemoryDb(projectDir) {
   return memoryStores(projectDir).scored;
@@ -498,6 +510,12 @@ function probeMemory(projectDir, { now = Date.now() } = {}) {
   probes.sessionSurfacing = sessionHookExists() ? { status: 'ok', detail: 'the global SessionStart hook surfaces project state at launch' } : { status: 'warn', detail: 'no SessionStart recall hook found' };
   // recall quality: honestly NOT probed at render (a true probe needs an embedding query; left for an explicit deep test)
   probes.recallQuality = { status: 'notTested', detail: 'not checked this session — a real recall probe needs an embedding round-trip, which render deliberately avoids' };
+
+  if (stores.resolutionError) {
+    probes.liveness = { status: 'unknown', detail: `canonical project store could not be resolved: ${stores.resolutionError}` };
+    probes.coverage = { status: 'unknown', detail: 'project checkpoint cannot be assessed until the canonical store resolves' };
+    return probes;
+  }
 
   if (!fs.existsSync(db)) {
     probes.liveness = { status: 'fail', detail: 'this project has no memory store (.swarm/memory.db) yet' };
@@ -560,7 +578,8 @@ function gatherMemory(cwd, { fleet = true } = {}) {
   // launched from a subdirectory probes the project root the hook actually wrote to, instead of
   // warning that a snapshot it can see on disk does not exist (#85).
   const scope = projectDirectory({ cwd });
-  const project = fs.existsSync(path.join(scope, '.swarm/memory.db')) ? scope : REPO;
+  let project = scope;
+  try { project = resolveProjectStore({ projectDir: scope }).projectRoot; } catch { /* probe reports unavailable */ }
   const projName = project.replace(CONSOLE_ROOT + '/Code/', '').replace(CONSOLE_ROOT + '/', '~/');
   const probes = probeMemory(project);
   const health = scoreMemoryHealth({ project: projName, probes });
@@ -1522,6 +1541,11 @@ export function classifyRefreshState({ disabled = false, running = false, deboun
   if (running || debounced) return Object.freeze({ status: 'already-running', runId, error: debounced ? 'debounced' : null });
   return Object.freeze({ status: 'started', runId, error: null });
 }
+export function settleRefreshState({ currentRunId, runId, code = 0, signal = null } = {}) {
+  if (currentRunId !== runId) return null;
+  if (code !== 0 || signal) return classifyRefreshState({ failed: signal ? `signal ${signal}` : `exit ${code}`, runId });
+  return Object.freeze({ status: 'settled', runId, error: null });
+}
 function kickRefreshDetailed({ force = false } = {}) {
   if (process.env.RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH === '1') {
     REFRESH_STATE = classifyRefreshState({ disabled: true });
@@ -1554,12 +1578,17 @@ function kickRefreshDetailed({ force = false } = {}) {
     REFRESH_STATE = classifyRefreshState({ runId });
     // unref() only releases the event-loop hold; these listeners still fire while the server lives.
     child.on('exit', (code, signal) => {
+      // An older child can exit after a newer run has started. It may only settle its own run.
+      const settled = settleRefreshState({ currentRunId: REFRESH_STATE.runId, runId, code, signal });
+      if (!settled) return;
       REFRESH_CHILD = null;
-      if (code !== 0) REFRESH_STATE = classifyRefreshState({ failed: signal ? `signal ${signal}` : `exit ${code}`, runId });
+      REFRESH_STATE = settled;
     });
     child.on('error', (error) => {
+      const settled = settleRefreshState({ currentRunId: REFRESH_STATE.runId, runId, code: 1, signal: error?.message || error });
+      if (!settled) return;
       REFRESH_CHILD = null;
-      REFRESH_STATE = classifyRefreshState({ failed: error?.message || error, runId });
+      REFRESH_STATE = settled;
     });
     child.unref();   // let it outlive this request; it writes the caches and exits on its own
     return REFRESH_STATE;
@@ -1831,10 +1860,12 @@ function findMemoryStores(root) {
       const p = path.join(dir, e.name);
       if (VENDOR.some((m) => (p + '/').includes(m))) continue;
       if (e.name === '.swarm') {
-        // Same resolution as probeMemory — the fleet walk had the identical hardcoded assumption (#127).
-        const resolved = ['memory.db', 'agentdb-memory.db'].map((n) => path.join(p, n)).filter((f) => fs.existsSync(f))
-          .sort((a, b) => { const sz = (f) => { try { return fs.statSync(f).size; } catch { return 0; } }; return sz(b) - sz(a); })[0];
-        if (resolved) out.push({ project: dir, db: resolved });
+        // Fleet activity is project memory, so resolve the canonical store rather than selecting a
+        // coordination database by size. The latter is diagnostic-only and can contain unrelated rows.
+        try {
+          const resolved = resolveProjectStore({ projectDir: dir }).canonicalAgentDbPath;
+          if (fs.existsSync(resolved)) out.push({ project: dir, db: resolved });
+        } catch { /* an unresolvable directory is not a project store */ }
         continue;
       }
       if (e.name.startsWith('.') || e.name === 'node_modules') continue;
@@ -1845,8 +1876,16 @@ function findMemoryStores(root) {
   return out;
 }
 function gatherActivity(cwd) {
-  const project = fs.existsSync(path.join(cwd, '.swarm/memory.db')) ? cwd : REPO;
-  const db = path.join(project, '.swarm/memory.db');
+  let project;
+  let db;
+  try {
+    const resolved = resolveProjectStore({ projectDir: projectDirectory({ cwd }) });
+    project = resolved.projectRoot;
+    db = resolved.canonicalAgentDbPath;
+  } catch {
+    const measuredAt = new Date().toISOString();
+    return { generatedAt: measuredAt, project: path.basename(cwd), hasStore: false, continuity: 'unavailable', ...freshnessOf(measuredAt) };
+  }
   if (!fs.existsSync(db)) {
     // No store to read — the existence check above IS the entire measurement, so it IS the
     // observation instant. Stamped here, not with a value taken before the check ran.
@@ -3091,7 +3130,7 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
           //     real answer, not a constant.
           expireCachesEmbedding([STATE_CACHE, STACK_CACHE, MEMORY_CACHE, CAPABILITY_CACHE]);
           const refresh = kickRefreshDetailed({ force: true });
-          return sendJSON(res, 200, { ok: refresh.status !== 'failed', refreshing: refresh.status === 'started' || refresh.status === 'already-running', refresh });
+          return sendJSON(res, 200, { ok: refresh.status !== 'failed', started: refresh.status === 'started', refreshing: refresh.status === 'started' || refresh.status === 'already-running', refresh });
         }
         if (url === '/api/undo') return sendJSON(res, 200, undo(body.undoToken));
         if (url === '/api/set-lesson') return sendJSON(res, 200, setLesson(body));

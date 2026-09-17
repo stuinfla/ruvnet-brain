@@ -40,6 +40,20 @@ const STATE_VALUE_FIELDS = Object.freeze([
   'currentGoal', 'acceptanceContract', 'activeProcess', 'activeStep', 'nextAction',
 ]);
 
+// Canonical field ownership. Producers may fill a field only from the listed durable sources;
+// readers/checkpoints preserve this provenance and surface conflicts instead of silently choosing.
+export const PROGRESSION_FIELD_AUTHORITY = Object.freeze({
+  currentGoal: Object.freeze(['ledger', 'prior-head', 'owner-note', 'transcript-derived']),
+  nextAction: Object.freeze(['ledger', 'prior-head']),
+  acceptanceContract: Object.freeze(['prior-head', 'ledger']),
+  plan: Object.freeze(['ledger', 'prior-head']),
+  completed: Object.freeze(['ledger', 'prior-head']),
+  inProgress: Object.freeze(['ledger', 'prior-head']),
+  decisions: Object.freeze(['ledger', 'owner-note', 'prior-head']),
+  changedFiles: Object.freeze(['git']),
+  sourceIdentity: Object.freeze(['git']),
+});
+
 function eventKeyFor(value) {
   const identityDigest = digestCanonical({
     projectId: value.projectIdentity.id,

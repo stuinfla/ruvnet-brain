@@ -3672,7 +3672,12 @@ async function doManualRefresh() {
     announce('The refresh could not be started.');
     return;
   }
-  if (body.started === false && pill) {
+  if (body.refresh?.status === 'failed') {
+    if (pill) { pill.className = 'chip tone-warn'; pill.textContent = 'refresh failed — click to try again'; }
+    announce(`The refresh failed: ${body.refresh.error || 'the measurement child exited'}.`);
+    return;
+  }
+  if (body.started === false && body.refresh?.status === 'already-running' && pill) {
     // Honest, and not an error: a measurement was already running, so this click joined it instead
     // of starting a second full scan of the same machine.
     pill.className = 'chip tone-cyan';
@@ -4099,7 +4104,7 @@ async function mockGet(url) {
 
 async function mockPost(url, body) {
   await sleep(850);
-  if (url === '/api/refresh') return { status: 200, ok: true, data: { ok: true, refreshing: true, started: true } };
+  if (url === '/api/refresh') return { status: 200, ok: true, data: { ok: true, refreshing: true, started: true, refresh: { status: 'started', runId: 'mock-refresh' } } };
   if (url === '/api/save-brain-power') {
     return { status: 200, ok: true, data: { ok: true, off: !!(body.values || {}).off, log: 'mock: the switch moved and was read back from disk' } };
   }

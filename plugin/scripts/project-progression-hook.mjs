@@ -99,17 +99,19 @@ function toolAction(payload) {
   const explicitCode = responseRecord && [responseRecord.exit_code, responseRecord.exitCode, responseRecord.status]
     .find((value) => Number.isSafeInteger(value));
   const responseText = typeof response === 'string' ? response : '';
-  const textualCode = responseText.match(/(?:exit(?:\s+code)?|status)\s*[:=]\s*(-?\d+)/i);
+  // Native host terminal envelopes may serialize an exact `Exit code: N` line. Do not
+  // scan arbitrary prose: tool output often quotes logs or examples containing `status: 0`.
+  const textualCode = responseText.match(/^\s*Exit code:\s*(-?\d+)\s*$/i);
   const exitCode = Number.isSafeInteger(explicitCode)
     ? explicitCode
     : textualCode ? Number(textualCode[1]) : undefined;
   const interrupted = responseRecord?.interrupted === true || responseRecord?.signal === 'SIGINT';
   const explicitError = responseRecord?.isError === true || payload.is_error === true;
-  const failed = interrupted || explicitError || (Number.isSafeInteger(exitCode) && exitCode !== 0);
+  const failed = explicitError || (Number.isSafeInteger(exitCode) && exitCode !== 0);
   const terminal = failed || Number.isSafeInteger(exitCode)
     || responseRecord?.success === true || responseRecord?.ok === true;
   const outcome = payload.hook_event_name === 'PostToolUse'
-    ? (failed ? 'failure' : terminal ? 'success' : 'unknown')
+    ? (interrupted ? 'interrupted' : failed ? 'failure' : terminal ? 'success' : 'unknown')
     : 'pending';
   const observation = {
     trigger: payload.hook_event_name,
@@ -142,7 +144,7 @@ function enrichStateWithObservation(state, payload) {
   return {
     ...state,
     commands: [...commands, observation],
-    ...(observation.outcome === 'failure' ? { failures: [...failures, observation] } : {}),
+    ...(observation.outcome === 'failure' || observation.outcome === 'interrupted' ? { failures: [...failures, observation] } : {}),
   };
 }
 

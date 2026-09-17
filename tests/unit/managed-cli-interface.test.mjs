@@ -116,6 +116,29 @@ describe('managed CLI structured interface policy', () => {
     fs.rmSync(home, { recursive: true, force: true });
   });
 
+  it('requires adopted projects to acknowledge durable pre and post progression capture', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-cli-capture-'));
+    const canonical = path.join(home, '.npm-global', 'bin', process.platform === 'win32' ? 'ruflo.cmd' : 'ruflo');
+    fs.mkdirSync(path.dirname(canonical), { recursive: true });
+    fs.writeFileSync(canonical, process.platform === 'win32' ? '@echo ok\r\n' : '#!/bin/sh\nexit 0\n');
+    fs.chmodSync(canonical, 0o755);
+    const env = { ...process.env, HOME: home, RUVNET_BRAIN_HOME: path.join(home, '.cache', 'brain') };
+    await callManagedCli('ruvnet_cli_help', { executable: 'ruflo', argv: ['status'] }, env);
+    const events = [];
+    const result = await callManagedCli('ruvnet_cli_run', { executable: 'ruflo', argv: ['status'] }, env, globalThis.fetch, {
+      capture: ({ event }) => { events.push(event); return { adopted: true, progressionCaptured: true }; },
+    });
+    expect(result.isError).toBe(false);
+    expect(events).toEqual(['PreToolUse', 'PostToolUse']);
+
+    const refused = await callManagedCli('ruvnet_cli_run', { executable: 'ruflo', argv: ['status'] }, env, globalThis.fetch, {
+      capture: ({ event }) => event === 'PreToolUse' ? { adopted: true, progressionCaptured: false, skipped: 'outbox unavailable' } : { adopted: true, progressionCaptured: true },
+    });
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0].text).toContain('outbox unavailable');
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
   it('exposes a read-only registry probe and mints latest-version evidence from its exact response', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-ruflo-registry-'));
     const evidence = path.join(home, 'live-evidence.jsonl');
