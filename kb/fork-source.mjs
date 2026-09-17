@@ -130,6 +130,7 @@ function operationText(repo, id, op) {
     : op.kind === 'C' ? `copy ${op.paths[0]} → ${op.paths[1]}` : `${op.status} ${op.paths[0]}`;
   const hunks = [...diff.matchAll(/^@@ -([0-9]+)(?:,([0-9]+))? \+([0-9]+)(?:,([0-9]+))? @@/gm)]
     .map((m) => ({ oldLine: Number(m[1]), oldCount: Number(m[2] || 1), newLine: Number(m[3]), newCount: Number(m[4] || 1) }));
+  op.hunks = hunks;
   const typed = JSON.stringify({ status: op.status, kind: op.kind, paths: op.paths, oldMode: op.oldMode,
     newMode: op.newMode, oldObject: op.oldObject, newObject: op.newObject, typed: op.typed, hunks });
   return `Fork delta ${id.forkRepository} relative to upstream ${id.upstream} at ${id.mergeBaseSha}\nOperation: ${label}\nOperation metadata: ${typed}\nPinned fork head: ${id.forkHeadSha}\n\n${diff || '(no textual payload; see typed operation above)'}`;
@@ -140,8 +141,6 @@ export async function buildForkDeltaCorpus({ repo, name, metadata, outputDir } =
   const id = validateForkDeltaRepository(metadata, { repo });
   const raw = git(repo, ['diff', '--no-ext-diff', '--no-textconv', '--raw', '-z', '--no-abbrev', '--find-renames', '--find-copies', id.mergeBaseSha, id.forkHeadSha], 'buffer');
   const operations = parseRawRecords(raw);
-  const inventory = JSON.stringify({ version: FORK_DELTA_VERSION, identity: id, operations }, null, 2) + '\n';
-  const inventorySha256 = sha256(inventory);
   const dir = outputDir || fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-fork-delta-'));
   fs.mkdirSync(dir, { recursive: true });
   const docs = [];
@@ -151,14 +150,22 @@ export async function buildForkDeltaCorpus({ repo, name, metadata, outputDir } =
       ? `Fork delta ${id.forkRepository} has no net changed paths relative to ${id.mergeBaseSha}; ${id.aheadBy} ahead commit(s) were observed.`
       : operationText(repo, id, op);
     const pieces = chunkText(text);
+    const operation = {
+      status: op.status, kind: op.kind, paths: op.paths, hunks: op.hunks || [],
+      ...(op.oldMode ? { oldMode: op.oldMode } : {}), ...(op.newMode ? { newMode: op.newMode } : {}),
+      ...(op.oldObject ? { oldObject: op.oldObject } : {}), ...(op.newObject ? { newObject: op.newObject } : {}),
+      ...(op.similarity !== null && op.similarity !== undefined ? { similarity: op.similarity } : {}),
+      ...(op.typed ? { typed: op.typed } : {}),
+    };
     for (const [index, content] of pieces.entries()) docs.push({
       id: stableChunkId({ repo: name, sourcePath: `fork-delta/${sourcePath}`, chunkerVersion: FORGE_CHUNKER_VERSION, ordinal: index, content }),
       path: `fork-delta/${sourcePath}`, kind: 'fork-delta', title: `Fork delta ${sourcePath}`,
       chunk: index + 1, of: pieces.length, text: content, embedText: content, preview: content.slice(0, 200),
-      operation: { status: op.status, kind: op.kind, paths: op.paths, oldMode: op.oldMode, newMode: op.newMode,
-        oldObject: op.oldObject, newObject: op.newObject, similarity: op.similarity, typed: op.typed },
+      operation,
     });
   }
+  const inventory = JSON.stringify({ version: FORK_DELTA_VERSION, identity: id, operations }, null, 2) + '\n';
+  const inventorySha256 = sha256(inventory);
   fs.writeFileSync(path.join(dir, 'fork-delta.inventory.json'), inventory);
   const passages = docs.map((d) => JSON.stringify({
     id: d.id, text: d.text, path: d.path, title: d.title, operation: d.operation,

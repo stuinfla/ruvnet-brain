@@ -92,7 +92,7 @@ describe('fork-source delta materialization', () => {
     const out = await buildForkDeltaCorpus({ repo: f.root, name: 'fork', metadata });
     expect(out.operations).toEqual([]);
     expect(out.chunks).toHaveLength(1);
-    expect(out.chunks[0].operation).toEqual({ kind: 'N', status: 'NETZERO', paths: ['(no changed paths)'] });
+    expect(out.chunks[0].operation).toMatchObject({ kind: 'N', status: 'NETZERO', paths: ['(no changed paths)'], hunks: [] });
     expect(out.chunks[0].text).toContain('no net changed paths');
   });
 
