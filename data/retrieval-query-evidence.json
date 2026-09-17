@@ -1,11 +1,7 @@
 {
   "schemaVersion": 2,
   "kind": "ruvnet-brain-retrieval-query-evidence",
-  "queryStoreSetSha256": "15c9b34624d9689ce8f95bafae3d4769840af7c1047900ba05a0ff02df05313e",
-  "sourceCommit": "eed238632345b0a52e27d4ca18849c620467a4de",
-  "sourcePath": "data/retrieval-query-evidence.json",
-  "sourceBlobSha256": "9fe2259689eb5607e2174e100b1fc404ce0f4e35d268cdcd12c3960e27bdb56e",
-  "receiptSha256": "03a6da2e77a1de44a78fe3c86a7d468fa8a6eb8c5fe2b5f96691fde1b27da63c",
+  "queryStoreSetSha256": "9a8f45be934a0513b61b9370dbf0a4b2c62a389db843c7f76c07e4300c6ae624",
   "queries": {
     "2bottalk": {
       "query": "In the 2bottalk repository, what is 2 BoT Talk AI-powered Bot Duo, what problem does it solve, and how is it intended to be used?",
@@ -115,17 +111,17 @@
       "query": "In the agentic-reports repository, what is Agentic Reports, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "bd8bbdd37f6077c73d4b92d6fbdf5517a56f780798ae7e4e409d135e051d803c"
+        "passageSha256": "f9d0fb7d4fe90e51821b18dbc4033243e5ed20abc459ccafebe2d681901445e7"
       },
-      "recordSha256": "c7bcbb14d718cccd9b4e8f1c1f67d0d6beae47461e446862304933050b51da4b"
+      "recordSha256": "3a05786b755fdd833853ae29b6b75e0fb04f18c223360bad383a116b874eeaba"
     },
     "agentic-robotics": {
       "query": "In the agentic-robotics repository, How does agentic-robotics-rt isolate high-priority control loops from low-priority logging and expose deadline and latency tracking?",
       "expected": {
         "path": "crates/agentic-robotics-rt/README.md",
-        "passageSha256": "2265f8a2d6e258ad5d68f93745041951f7434c1149ac4e91875afc39b487d07d"
+        "passageSha256": "189217ef244b8c68608ec2a893039f1b56c8342daefc95d7118eca16578acda7"
       },
-      "recordSha256": "7645e9d8414e5ed9babd75d8aff6c47f9ba5389283e4ff3bb6722f42368e1091"
+      "recordSha256": "835d1286333b59a727075482060fd02257978c0019407a3943c852b142d30cb4"
     },
     "agentic-scraper": {
       "query": "In the agentic-scraper repository, what is Agentic Scraper, what problem does it solve, and how is it intended to be used?",
@@ -138,34 +134,34 @@
     "agentic-search": {
       "query": "In the agentic-search repository, what is Agentic Github Copilot Extension, what problem does it solve, and how is it intended to be used?",
       "expected": {
-        "path": "README.md",
-        "passageSha256": "5129aaf17ca429ca9db019b1f7dc56c530851fb8dd4c947b3b5eb01dce5b2287"
+        "path": "docs/historical-readme.md",
+        "passageSha256": "3438f35b64004b07cce646b1c562004f8a7dbc7d036d2af2c3d1d65946d74d00"
       },
-      "recordSha256": "250e78c2606a2eeb194c236392ac30c6af39c80d68494b313c0eecc479d46132"
+      "recordSha256": "7a721574328681e39117a850f1515368bf91e27806c6277996a8f63bad92b632"
     },
     "agentic-security": {
       "query": "In the agentic-security repository, what is Agentic Security, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "docs/architecture/README.md",
-        "passageSha256": "18ce34b3be11f3992b4b39d4f59f58790fed6deafe4bd3a9353024630955b8b0"
+        "passageSha256": "f40b9d4b58154fb1e4655f584a55f6ea70cb25f7384161d589237fc41a0e4e53"
       },
-      "recordSha256": "5b7d0014eacdc509f1610f09539cbcf7b4b7a321635a8aa7079470715b4f60ef"
+      "recordSha256": "177e844ed5091779aec51240f201c747d9a127f829fc744652efed7530424699"
     },
     "agentic-voice": {
-      "query": "In the agentic-voice repository, Where does Agentic Voice define its base instructions, assistant persona, greeting, common answers, and silent audio constant?",
+      "query": "In the agentic-voice repository, what does Agentic Voice v2 alpha provide and what secure-revival boundaries does its README document?",
       "expected": {
-        "path": "agentic-voice/app/lib/constants.ts",
-        "passageSha256": "a06fbbc409275d96bb3e94371c3d5cd025977f6de3be5084dd5a0dcdd1d42d33"
+        "path": "README.md",
+        "passageSha256": "79fc8a0e7b35e958480270ee3a6da6677c221778c7d56e03261ef7a596d54a58"
       },
-      "recordSha256": "5cb76652f6835b88e240cd66b1f6378bb04c4354103978c93dbd8caa50766cd7"
+      "recordSha256": "70f85b1278d4586e868b0bff94464ad4693dd73331e7640415eb433ba09347f0"
     },
     "agenticow": {
-      "query": "In the agenticow repository, How does agenticow describe copy-on-write branch read-through and rollback, and what does it explicitly avoid claiming about model intelligence?",
+      "query": "In the agenticow repository, how does read-through combine parent and child edits, and what external verification step occurs before Promote or Discard?",
       "expected": {
         "path": "docs/index.html",
-        "passageSha256": "4da496f993c779b97d138d37a646c5ceb01f3cfac43a157a478083b0fbf86a28"
+        "passageSha256": "d11cd121b39d2b1f0d0cb02f7734e0f76c3063f87f1de29cdc9024be7352a227"
       },
-      "recordSha256": "2a9f819d35efaac7d484e143ae07133520c57cf95692a1a1095108e1fe173fc5"
+      "recordSha256": "160034ca1532cdd298fd60bd15e85f70b90fd17f3d3422cf018340990918678a"
     },
     "agentics-meetup": {
       "query": "In the agentics-meetup repository, What identifying text and starting-state description does the sparse agentics-meetup project documentation contain?",
@@ -206,14 +202,6 @@
         "passageSha256": "94d908aabd3f396fb40ea2e75d1c624f81934ee80ecb870b03f1d7dd75196269"
       },
       "recordSha256": "80ee7f3c04f00be6efe86971505a39be74ac66e65397c4e299b7311b4d4044fa"
-    },
-    "ai-browse": {
-      "query": "In the ai-browse repository, What project identifier does the sparse ai-browse documentation provide?",
-      "expected": {
-        "path": "README.md",
-        "passageSha256": "a037ddeeac9ffd0a2880a92ab2e403c1a1549095d0a7869a4d94b149512f404c"
-      },
-      "recordSha256": "a3313d72da8e73ddd55ef1a38afd44c61d401acfe099113397ba270aa38dfbe6"
     },
     "ai-code-generator-": {
       "query": "In the ai-code-generator- repository, Which Codex generation, testing and GitHub integration features are still to be implemented in the ai-code-generator skeleton?",
@@ -319,6 +307,14 @@
       },
       "recordSha256": "8ce96db36e794ab8a9d7bd9111242394dbc4873abd14a24260fdfbd163e3e26c"
     },
+    "apx": {
+      "query": "In the apx repository, how does APx define Agentic Power against a matched human reference, and what does its eight-hour human versus one-hour agent example score in AP?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "070324d3df486a374375e9fdbf5881b1e1f74c89d1b6f5a47c38f36722c209b4"
+      },
+      "recordSha256": "0de0276ec16558d3da310f8c5be47ceb37a432074151a05a5081a14eedbe5327"
+    },
     "arcadia": {
       "query": "In the arcadia repository, What package metadata, build, test, documentation, security, and release checks must ARCADIA satisfy before publication to crates.io?",
       "expected": {
@@ -331,9 +327,9 @@
       "query": "In the auto-browser repository, what is Auto-Browser, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "516733496b7d60a507e0c35da6b445950667ac8a8c2ced62300da169848161bd"
+        "passageSha256": "84bc598ab8aefa965ae383d0dcb7f311c6da8c9fbe0a8f5483529ead8479ecae"
       },
-      "recordSha256": "30ac932194fa64ae8eb739ff84756b97b2a1058d57a5ad7478bc45480fa4c82b"
+      "recordSha256": "87986deb347a225607d134dd49ecbabd80b33f7efb4c43ba032e5f8b4417adf2"
     },
     "autogenous": {
       "query": "In the autogenous repository, what is 🧬 Autogenous, what problem does it solve, and how is it intended to be used?",
@@ -350,6 +346,14 @@
         "passageSha256": "c12956ba141b45810b6d3760afb37b4491346c42b951a002c47168aa6e23e2f3"
       },
       "recordSha256": "a6094949ee7ec720928598a0a0dfddc5fec0716fc80d1e84a4349b96b1dcdf89"
+    },
+    "batvu": {
+      "query": "In the batvu repository, how does BatVu use an ordinary iPhone to ping a room in ultrasound and draw the returning echoes as a plan position display?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "e70b0d65f9ca8c066ab036e5e6526c1ef11fc386c35519737d3724ec0bbab453"
+      },
+      "recordSha256": "ae6e9c74e952467d8a90d1fb34cbddff5d935c02e22d80a69a95213f0a875534"
     },
     "bot-generator-bot": {
       "query": "In the bot-generator-bot repository, what is Bot Generator Bot, what problem does it solve, and how is it intended to be used?",
@@ -448,12 +452,12 @@
       "recordSha256": "3d8dadd98cfd594e1bbcb5e4ce4af775e02ce0a1e22387d69cc32f14274849ab"
     },
     "cognitum-claude-plugin": {
-      "query": "In the cognitum-claude-plugin repository, How does the Cognitum Claude plugin marketplace distinguish its three platform plugins from cog plugins, and where do cog binaries execute?",
+      "query": "In the cognitum-claude-plugin repository, which MCP server name, endpoint and transport does the plugin register, and how is the plugin installed?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "f7a6ee76c3c74bd3b7fce73c59034ac852e5c0bea35a8453b964ef84c2e5ba7a"
+        "passageSha256": "a1aad1772a7528839a959c158a94488e847e835a9a6f7b9f2965726d26971246"
       },
-      "recordSha256": "5b51f8608fdb6cb41b50c25cbb45d4de67a7cfb18f7b6612a2650dc3d8040950"
+      "recordSha256": "098779999b7f1d4d6a7edfad567aece8338c794fa1ef63686ed279bd27ee2764"
     },
     "cognitum-cogs": {
       "query": "In the cognitum-cogs repository, How does cog-cognitive-pipeline gate language-model inference from sensor windows and record resulting cognitive events?",
@@ -467,49 +471,49 @@
       "query": "In the cognitum-learn repository, what is Cognitum Learn, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": ".claude/skills/cognitum-learn/SKILL.md",
-        "passageSha256": "4eceeb4de435ae3242221ed8dd37af7cd28d0fa5c81aa4b5d207b9a51ebe32da"
+        "passageSha256": "9cdae009049f52f5c65f92d82d0bcc1c5525597bb8a66b13394f4fc562bc4dc4"
       },
-      "recordSha256": "6ce717337e75220289a61972e32fe49e7ac8ec3c0b1728053b56303e16d0345c"
+      "recordSha256": "b0ee2821da515d8c27a487a91f410f9d897eae65fcff5d1be906cf457a94485b"
     },
     "cognitum-learn-site": {
       "query": "In the cognitum-learn-site repository, what is cognitum-learn-site, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "e79162d8345d2cb9a822f09603de05258cb6d4929c88796c76a871c020cb45bd"
+        "passageSha256": "5179d05d56ff4dc31e16a7c2dd653a69fc03bd3c2b574ca12e03d7471b81d660"
       },
-      "recordSha256": "88d69c596f18ad3aa9814e7289616cf7eb40b77e63020f18ab8f89ac80bf1f57"
+      "recordSha256": "72716f93be6fcb703a75016d07f40133f082eeecabddba053566f401ce02c8bc"
     },
     "cognitum-meta-llm-docs": {
       "query": "In the cognitum-meta-llm-docs repository, How do the public Cognitum MaaS docs describe its multi-tenant, tiered, metered OpenAI and Anthropic completions platform?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "e7efacaf6c574a23fc017c9c8da7f37c7c67b0545a9c009e49b2ae8787454882"
+        "passageSha256": "36fb7ca0289bf66c1cdebd337891e45f615e9cfb734568bf2230878edbe972ce"
       },
-      "recordSha256": "0709384568c7b16d450580cad268a78c420da18549d31614596e133afdf27176"
+      "recordSha256": "496575d56da120d568a84dccebb05cd04cf673f323155786e59f61f6ea24eaf1"
     },
     "cognitum-meta-proxy-dist": {
       "query": "In the cognitum-meta-proxy-dist repository, what is meta-proxy-dist, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "1ec2b8a09f60b60203ff3745ea6e7d4638031becfd851e38846f4593e54e18ec"
+        "passageSha256": "c27bb1669ca9099115d9a147dafcbf2439cb33bb252c366e20eee4ac16d50100"
       },
-      "recordSha256": "2cfb232134b6275013a0f7adc639a2a6aa664f00d6cb3f6b9016593fb812ef1c"
+      "recordSha256": "f335f3ae94668740ca0b23b5be93c0fc93ff4b1988aa0d72f17c6fd25797ca37"
     },
     "cognitum-one-sensor-primer": {
-      "query": "In the cognitum-one-sensor-primer repository, which BGE 768-dimensional big Mac store and MiniLM 384-dimensional small Cognitum One Seed store variants are recorded in the last-built knowledge-bundle manifest?",
+      "query": "In the cognitum-one-sensor-primer repository, which BGE 768-dimensional big Mac/PC store and MiniLM 384-dimensional small Cognitum One Seed store variants are recorded in the last-built knowledge-bundle manifest?",
       "expected": {
         "path": "kb/.last-built.json",
-        "passageSha256": "18fd8781202cd3c1f84de15e5f38ffb27dd263e0de26efb7358cbe52a5de490c"
+        "passageSha256": "31bb70496e9b53b698cbdbf0f97d6de3f5c4526f5ad9da49da3befa9faf6aa09"
       },
-      "recordSha256": "aeb32697ac6bb5aca1618037b043e4ee45f40913a301312ce409cfa5b2b42417"
+      "recordSha256": "4163e52b7c258b777e48f8de2cf144bdc2bb8337f1862090b2fdc54e94011d6d"
     },
     "cognitum-ruos": {
       "query": "In the cognitum-ruos repository, which Rust binary package is the ruOS agentic daemon for observing, reasoning, acting, self-monitoring, automatic profiles, AIDefence, and OTA?",
       "expected": {
         "path": "crates/ruos-agent/Cargo.toml",
-        "passageSha256": "e3359c3bddfcb8ca72fa3717b5386d9cdd8ee24ac373e1af6afd72d771a5f8cb"
+        "passageSha256": "2daa2641e211141348c08f1b886ace4f6128b799a1a09060a134e0d44fd826a9"
       },
-      "recordSha256": "868aea78976a0fd6be0ed9bbb9d189f539573d628d36c395395c31b5ffeacb50"
+      "recordSha256": "c6ab85c1ddd359166519f8b43079bdbda67d4e1adae13aee3d9d423ec4c50ffd"
     },
     "cognitum-support": {
       "query": "In the cognitum-support repository, How does a new Cognitum Seed owner plug in the device, open its local guide, and complete initial setup?",
@@ -547,17 +551,17 @@
       "query": "In the cve-bench repository, what is CVE-bench: A SWE-bench-Style Security Benchmark, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "package.json",
-        "passageSha256": "8956631b131904d742fd5f3aa4897c7c123296e03909b8dd2449f2fdf66b2dc8"
+        "passageSha256": "be469aa7ab65fe81709413d4fdcdab569676e4e04f0f0300bc32419babc29af5"
       },
-      "recordSha256": "8825e1f8c8995f1fe3d43e14ff1b04564128051dac849d95227cf4fedc3aed26"
+      "recordSha256": "21e68a0d6fef6b90404249365396c5c367be4f7cc023218692f772c31b64ab59"
     },
     "daa": {
       "query": "In the daa repository, How does the DAA SDK entry point describe Node versus browser bindings, and which orchestrator and prime exports are marked TODO?",
       "expected": {
         "path": "packages/daa-sdk/src/index.ts",
-        "passageSha256": "55889c6bcb174dcdee8ab721c357c6feb9cbcd2c70ba85d88d1af0ce03e48ca0"
+        "passageSha256": "0a80676863d86029516e1179103fd1980342022b207b8307194ca14c30b6ba57"
       },
-      "recordSha256": "d733ba30efd3a35dcabb6287877fc6fc6cb3d8d03b5cf7f1b7f3cdaf50ebef8c"
+      "recordSha256": "3da4e39086318dd32122021893049e445a72d2591d2be609e2db1df5202a2278"
     },
     "demo-proxy-app": {
       "query": "In the demo-proxy-app repository, what is DEMO PROXY API Proxy, what problem does it solve, and how is it intended to be used?",
@@ -579,25 +583,25 @@
       "query": "In the drupaljs repository, which Vite npm package defines dev, build, lint, and preview scripts and depends on React, React Router, TanStack Query, and Tailwind CSS?",
       "expected": {
         "path": "Drupal.js/package.json",
-        "passageSha256": "95652bcbaac2fec9d15e6225f5b8b0672dd641aa3f6ff480474cc7dd9f901de0"
+        "passageSha256": "776d76ee4738ed69362cc67fd29e884701d3399b09bd918473d1afbf411da2fc"
       },
-      "recordSha256": "7479b3065b4ab96262af649f708fed26c40ab788392c1da598db43f3da09826c"
+      "recordSha256": "f18f9b674c85145c3d645c7921bb22a20d8ece5e793e6b2f73a916a1541998c3"
     },
     "dspy.ts": {
       "query": "In the dspy.ts repository, Which language-model pipeline backends and documentation sections are proposed in DSPy.ts's Phase 7 documentation plan?",
       "expected": {
         "path": "plans/Phase7_Documentation_and_Examples.md",
-        "passageSha256": "c004fabfb4a2a63d16e70505cb2e4597e04f8e4df702d6cc3fd963aadcae44a3"
+        "passageSha256": "36dceaea33f6b04dfbf5d5404f12369da6e175373174778f4537addfb206fff1"
       },
-      "recordSha256": "c34e61e0d4079e3266e2271cc82fefcf55d8d0cf3e7a1817b7fa09520678efc0"
+      "recordSha256": "f8b8c23ee9b9d5a1bea30d4d9cda64e6146123bbcfac44994314e545b9c9db38"
     },
     "dynamo-mcp": {
       "query": "In the dynamo-mcp repository, what is Dynamo MCP, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "9986cedbf7c693a51cdaeb9257f19aafb49190d7c90d43908d0560a1d39370bb"
+        "passageSha256": "b5d8f4c2ff035f1ee38be762b5aa2f6fab226275922e717165d2a1995ce0b73a"
       },
-      "recordSha256": "fe7ae217f11df98c2e43cf0b4969fac2921048be8313fe092dd1a3c4529dd87f"
+      "recordSha256": "20db061936317bc98c683f456e3e94206d9a3ba165964dfae8fe9dd27031c1b0"
     },
     "electo1": {
       "query": "In the electo1 repository, what is Agentic Election Prediction System, what problem does it solve, and how is it intended to be used?",
@@ -615,13 +619,21 @@
       },
       "recordSha256": "15d50f3c7fb152afbecaef1209ffa9d635b5a9f4b19d646b5503ba0ff03e5c65"
     },
+    "event-horizon": {
+      "query": "In the event-horizon repository, what do Field Mode and Atlas Mode each render in Event Horizon Laboratory, and how does the interface separate catalogued measurements from computed visuals?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "ee53b85a2be6c5a618f5d76cd6f851771c9598ae03cafb2d5db5d2bf35b7ad79"
+      },
+      "recordSha256": "1d7b1a0d0703fa3ebe52286ac578b0b5f5aaf1a8eb26373aa6a4244ed4cb1acc"
+    },
     "fact": {
       "query": "In the fact repository, Which FACT Memory example demonstrates user-scoped memory operations, and which demonstrates Mem0-compatible MCP calls?",
       "expected": {
         "path": "fact-memory/examples/README.md",
-        "passageSha256": "397ec36fb663080cf131a9195abd247893cb10c0464d690939ddc4e2f54858fd"
+        "passageSha256": "627ffe285c4b7e45945e2b911df0131ef70ac876181e937414f83f8e15f6d89d"
       },
-      "recordSha256": "05ae6c01913ed82bab0f295215bc553cb595fe8e8e107ba6c686e66b996c9931"
+      "recordSha256": "656f893e873c1824ad8d193a2fb2fa38ee54ba4854820e8988fa40416a02939b"
     },
     "federated-mcp": {
       "query": "In the federated-mcp repository, what is AI Federation Network, what problem does it solve, and how is it intended to be used?",
@@ -643,9 +655,9 @@
       "query": "In the flow-nexus repository, How does the Flow Nexus marketing tutorial separate SDK, authentication, database and API modules, and in what order are they initialized?",
       "expected": {
         "path": "tutorials/agentic-marketing/TUTORIAL.md",
-        "passageSha256": "ee84f0520df27c26dfcd74d48e78840e89d1f70d05aca2b6a2073f6f84fe4708"
+        "passageSha256": "5ab9bba042c9672ae75f7c1ae33518d8fd4493d536ed62354a3e00dc479fe88a"
       },
-      "recordSha256": "97499724730cf1452ac56df2d0bf615cfdf0fe0d2cb7f836afe4edf7b3a92c13"
+      "recordSha256": "2dcece6904a3d7431586711a288c3c900d5fa3d290a5547a6a5135808fa7eee9"
     },
     "genai-superstream": {
       "query": "In the genai-superstream repository, what is GenAI-Superstream, what problem does it solve, and how is it intended to be used?",
@@ -671,13 +683,21 @@
       },
       "recordSha256": "963da57bb277c223ccf54489d3966e237a3a7fc42afd2059bc331d0adfdaaa79"
     },
+    "group-field-theory": {
+      "query": "In the group-field-theory repository, how does Before Space Before Time turn Group Field Theory condensate states into eight interactive thought experiments about emergent spacetime?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "aed4c7b55b5766ca7d154eada06aabbc804bf7442f03f212d430882931ebf337"
+      },
+      "recordSha256": "a479706020b79aeee6d3ec3774070ce49c88a0cacd797b8fbdaa9620f569b768"
+    },
     "guardrail": {
       "query": "In the guardrail repository, what is GuardRail OSS - Open Source Ai Guidance & Analysis API, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "4b1acabbf73332178ccf89fbf24387732f8b15d40ac980cc9fb6bbd24a91fb6d"
+        "passageSha256": "b1edf85d7bee816716210efb3a63f99e745d6ceaee3e1825c7941ee4bd4e37ae"
       },
-      "recordSha256": "aa2340c20e26918033e467586c3b994f4c80cf2ead18b3ac864fd2b6ab5b6022"
+      "recordSha256": "168bf9be93bdd3046714471c6947fda839036d592b6f48b0bdb513e5f300d167"
     },
     "hacker-league": {
       "query": "In the hacker-league repository, what is Insider Trading Mirror System, what problem does it solve, and how is it intended to be used?",
@@ -691,9 +711,9 @@
       "query": "In the hackerone repository, what is @metaharness/hackerone, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "0dd8b061c1f4b460d0bddacd310ffa88753ed2987d650fcf20f1963d3f641450"
+        "passageSha256": "619bb64487f098be78ab511188edb117e2540f9b78a689811ae5e995a693b106"
       },
-      "recordSha256": "ab3e9787560c9de26f06de5f90da437b6e005e9672eab94022a2bd5fa37f262c"
+      "recordSha256": "88bc4247b3301ce2448c78c96fb1ae8cf42f3e733ccdd8c85006d3205990973a"
     },
     "helix": {
       "query": "In the helix repository, How does Helix assemble private health records, signals, and results into a continual visual dossier without inventing facts?",
@@ -779,9 +799,9 @@
       "query": "In the marketing repository, How do AI Marketing Swarms agents coordinate, and which lifecycle and recovery responsibilities belong to the swarm coordinator?",
       "expected": {
         "path": "docs/architecture/README.md",
-        "passageSha256": "87e62a2331002280fff02685a280284166daa4fbfae840bbdd6bc6227ed1bd81"
+        "passageSha256": "7baa11b32a7dd311b298eaf8dc957c05b87f6b1e8d2f8556b7ef6fc17f100dff"
       },
-      "recordSha256": "5de7fc163b46f84b0e66ee9b14abad89587290af86de16dc4ab9c293b7e4a931"
+      "recordSha256": "9f72fcb0ea367e0846259de9d65397dd230607a36c8e835554fd2ed5c3fcaf84"
     },
     "markov-chains": {
       "query": "In the markov-chains repository, what is markov-chains, what problem does it solve, and how is it intended to be used?",
@@ -803,25 +823,41 @@
       "query": "In the midstream repository, Which MidStream integration provides real-time video-stream introspection and analysis for RTMP, WebRTC, and HLS?",
       "expected": {
         "path": "npm/src/restream-integration.ts",
-        "passageSha256": "214a9290c215862e283fb668be75ac7b1949245feabb4df50e9a1b71fe4eaf8d"
+        "passageSha256": "2874ffa1c1fe999c763398b9b095e66cf91bf6ebfd547628627636cce26557dc"
       },
-      "recordSha256": "8844987fc21d65c2c5dac4dfb9c41961236dc325d1f9fa8b2a928f06be1a63bc"
+      "recordSha256": "28c29b5e9c8d9a2ceb8a4bb15dc736652a7a52b73831ca143d3f11cdd9252b5a"
+    },
+    "minitoo-control": {
+      "query": "In the minitoo-control repository, how do the macOS tools drive a Divoom MiniToo over Bluetooth Classic RFCOMM without modifying MiniToo or ESP32 firmware?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "0bdb8ce6e598b2a65c4967c14ebb5ec04d478dc1b1d675c4b97ba49f2ddd79aa"
+      },
+      "recordSha256": "dc9825f0572c5f09f4eaa12cca2b1582c3ade3ae28f604fb98ea6dea137f5123"
+    },
+    "moe-foundry": {
+      "query": "In the moe-foundry repository, how does MoE Foundry export smaller specialist models from one Mixture of Experts model and use MetaHarness to pick a specialist per request?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "22cbf1291373dc71f6770b04c9b0acdcfff27f7bfa579bb122091d9c94ea6559"
+      },
+      "recordSha256": "36db9f3fea9c39e2d6822efa07ca0fcf6af8ffabad68106b894ede00af3a5ae1"
     },
     "musica": {
       "query": "In the musica repository, Why does Musica VJ use an isolated Tauri desktop subproject, and which operations must remain unavailable in its browser development build?",
       "expected": {
         "path": "docs/adr/ADR-160-musica-vj-tauri-subproject-boundary.md",
-        "passageSha256": "e0f55e99f20a8a60f39e330c3dda5e7020a8de130dde4c0d6329604a4a45e505"
+        "passageSha256": "807562ccbc67f02eb008a0b9ff32baf6e1035d569b1b67d6bb02175c95c9c63c"
       },
-      "recordSha256": "451186700bb6bc0f309d410588e7b4c534d5d9aadc673552cb24547d62fc8582"
+      "recordSha256": "12e98776015e66cfc1f5ea3379fe7717382e22fcab1c3dbce9c29192122c3b4d"
     },
     "musicai": {
       "query": "In the musicai repository, Which source entry point identifies itself as Magic AI Music Box - Agent Swarm System?",
       "expected": {
         "path": "src/index.ts",
-        "passageSha256": "9bf86747b87db565b6ed8bfa8184fda3e02e6b527ee2df2bf5ea6547308e2b34"
+        "passageSha256": "d36dff010a542d36240397a18a810e470c05ef5b6a5e7aa866889aca785f2049"
       },
-      "recordSha256": "7e1273b715ca720bf119edc0f8013a3f25992010dd1212b91e758797fcf224e5"
+      "recordSha256": "b094cfa4d8be66200ca240756d496d785df037f46951b5a540bb25d5df47be7f"
     },
     "nova": {
       "query": "In the nova repository, How does the NOVA CAC integration initialize neural and symbolic subsystems and combine their task results through gating?",
@@ -835,9 +871,9 @@
       "query": "In the obsidian-brain repository, what is obsidian-brain, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "fe03dd3b1854740ea9f2e9480301585c089e69797c337c9a9293148a1634fd36"
+        "passageSha256": "fb414b95987cf274f588f3fa4532c9d01df0e03de59c2f6ae0dd41f15481f211"
       },
-      "recordSha256": "d5b8d27f44e0bdaa129fc26a3c79314c7491aaa49189759c390776a6d4972b45"
+      "recordSha256": "7425806f9f74dfac880c8668d4f1d178fe871ab669b140cffb1e626b1175e7e2"
     },
     "omnipotent": {
       "query": "In the omnipotent repository, what is Quantum Consciousness Voice Interface, what problem does it solve, and how is it intended to be used?",
@@ -887,6 +923,14 @@
       },
       "recordSha256": "4fec6328a9c975c52e20a64a5438d60f88769fa4fe63339012846e38c29a6b59"
     },
+    "openavo": {
+      "query": "In the openavo repository, which controls does the OpenAVO harness keep while an Autonomous Variation Operator inspects, edits, executes, branches and commits?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "e9e19e01db4ef5e4e3fdf4b0326a7424dc8ed34c3d62addbc0261a49102bbfe7"
+      },
+      "recordSha256": "c362c6448f8a55bd42af59f6a34088540c5adf7f6905d8dc45c99e88a92eac51"
+    },
     "p2pgpt": {
       "query": "In the p2pgpt repository, what is P2P GPT for Slack and Web Sockets Add-on, what problem does it solve, and how is it intended to be used?",
       "expected": {
@@ -912,12 +956,12 @@
       "recordSha256": "d1ac3b38d69a05442c98c724a45ba3b61df9d0402d6d7acd24e83ac75b59f50e"
     },
     "photonlayer": {
-      "query": "In the photonlayer repository, what is PhotonLayer, what problem does it solve, and how is it intended to be used?",
+      "query": "In the photonlayer repository, what positioning and target markets does the source describe?",
       "expected": {
         "path": "crates/photonlayer-core/README.md",
-        "passageSha256": "5255a8892d2df65ca1156096275e3f4780d40a4f3c2298f8c2d88f4c651d9e9e"
+        "passageSha256": "e863713628ef479beb4414f741c2a85be4cc51e3a23ecdf72255faabcce2a2e8"
       },
-      "recordSha256": "4fd73e84b4d2610937c0fc33451b00f7f6d4dc456d2805a57a2544359f2d46e9"
+      "recordSha256": "cc82bfe843d237505affd2ef357aa11595c0f395d6cab7ece54eb27ac081f476"
     },
     "pipackager": {
       "query": "In the pipackager repository, what is pipackager, what problem does it solve, and how is it intended to be used?",
@@ -944,12 +988,12 @@
       "recordSha256": "0898efe5369fd594c9323671deff2d184211e8ec8d54ebf75f01c85ecf484329"
     },
     "promptlang": {
-      "query": "In the promptlang repository, what is PromptLang, what problem does it solve, and how is it intended to be used?",
+      "query": "In the promptlang repository, what tool and core operation does the source describe?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "507ea25a74878bb5ba203d80b13217b85aaa27383187daa4fb507b22a4debd9e"
+        "passageSha256": "6554b3f4fe49363bd9109d601d251a555b95943cc09f3ad35df81abfcb81b602"
       },
-      "recordSha256": "9dd4460fff3d76a9962b8954a568a7c5364976c438ec984e0112394f9169a3e5"
+      "recordSha256": "0112c9e0aae68565ae955bcd332bdc4b5c3e0b4be9576a8989a352d6c0b0d8ab"
     },
     "pygentic": {
       "query": "In the pygentic repository, what is pygentic, what problem does it solve, and how is it intended to be used?",
@@ -1000,12 +1044,12 @@
       "recordSha256": "11cb58114e42f3851ea493cd9952b9d6682c3b25381149523e2ac27f8dd381dc"
     },
     "qudag": {
-      "query": "In the qudag repository, In the QuDAG Exchange business plan, how are compute tasks submitted and how are contributors intended to receive task fees?",
+      "query": "In the QuDAG Exchange business plan, which vault is credited in the completion-payment example?",
       "expected": {
         "path": "qudag-admin/plans/admin.md",
-        "passageSha256": "d76f27839576c965651bf3e527fcb6e43a7b42d64539c5c8575b038a829ec573"
+        "passageSha256": "32eb44681d9542f601a2252294f22ff6662752cce33061ae7b6e6c11c9ce0474"
       },
-      "recordSha256": "c0a8e937cb7adf9e0cf149cfa4db0f3a0ba7da6d8fad223873570bb7d570ffa0"
+      "recordSha256": "addb5e00c74675b76893ecebd78ded8f02eba0ffcc485189defbc076093ac61a"
     },
     "r-flow": {
       "query": "In the r-flow repository, what is React Flow JavaScript starter, what problem does it solve, and how is it intended to be used?",
@@ -1031,6 +1075,14 @@
       },
       "recordSha256": "c2bcb159084085fb3fe671724e9dbdb30e7a10f08a097e0d7c5ff9d414333e80"
     },
+    "rgi": {
+      "query": "In the rgi repository, how does the rGi perpetual agentic runtime keep an agent working across individual prompts and clean restarts, and what does it do with ambiguous outcomes?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "0f57d837073d20040834977820590b80ac0ea7caa9afaa8d5fb8016501c37a50"
+      },
+      "recordSha256": "491c31c7dc47cec15edf1cd2e01a62a0054a1d459173705d3fd596ddcb0b21b3"
+    },
     "roomodes": {
       "query": "In the roomodes repository, What kind of configurations does the roomodes README say the repository contains?",
       "expected": {
@@ -1047,13 +1099,21 @@
       },
       "recordSha256": "84b9c43736101fd38ecc8cecf27f58e45ffbc03442b810a24e0bad9675ffcbf1"
     },
+    "ruclip": {
+      "query": "In the ruclip repository, how does ruClip sit above existing agents as a governance control plane instead of being an agent framework of its own?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "cf19034d1c55a6e8743b2108c7cee1d55f7f61aacc0123e4e4457b86149b172e"
+      },
+      "recordSha256": "429a4c2730128fa8f5ab999d1514206e83900dc4ac78a8a254e1f51bc7f98661"
+    },
     "rudevolution": {
       "query": "In the rudevolution repository, How does the ruDevolution npm decompiler design expose package decompilation through CLI and MCP, and what witness output does it produce?",
       "expected": {
         "path": "docs/adr/ADR-137-npm-decompiler-cli-and-mcp.md",
-        "passageSha256": "b2275a652e32b0a642a534df52a34d9df675d0b60b4d3ab6ff209ed0529623fa"
+        "passageSha256": "e4edfd56273fcc787067bd1f9d2a2cf5b2254f6c18d3b9cf164e3614f940ed82"
       },
-      "recordSha256": "dbad685fb0d66bc0e96debe99a54a27b4bda58c36c87a71193f170cca48925a4"
+      "recordSha256": "1461c3189105e2385a259c13e9ec86c99adf2041b72894ab56d51b60893038ee"
     },
     "rufield": {
       "query": "In the rufield repository, what is RuField MFS, what problem does it solve, and how is it intended to be used?",
@@ -1071,13 +1131,37 @@
       },
       "recordSha256": "28001661c195e945128f86b4ca2b235316119f54837ae4264a712d54ec00bb0e"
     },
+    "ruforecast": {
+      "query": "In the ruforecast repository, how does RuForecast predict coupled multivariate signals as a range of plausible outcomes rather than as one confident number?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "3b1aac3f02b2550b3aafa7448e9b138949b5a26853a1e33d8262acce56f1e576"
+      },
+      "recordSha256": "3b45537a691a1342e8f52c7f7eb95c04d849917475c2910dfb4a134cc7f97943"
+    },
     "rulake": {
-      "query": "In the rulake repository, What minimum backend adapter trait does ruLake require for listing collections, pulling vectors, generation coherence, and optional ANN pushdown?",
+      "query": "In the rulake repository, what minimum interface does the documentation expose?",
       "expected": {
         "path": "crates/core/src/backend.rs",
-        "passageSha256": "1b086f385a81754428b69073a1ca94e8d709f18c6ad4409a202e6c14355ccc51"
+        "passageSha256": "b0e52ea17cc2e03520ba241a8673cf57ab4b18cd6bf87183724e93ffeb4ddc72"
       },
-      "recordSha256": "e190c548de285b39e935089daf48e7c919b41b3e5c0ba1bb7ca0eedf667febf0"
+      "recordSha256": "73c6918dfbaeb0b38da9ac095d4ec77db3273eea1db3cb33fb37b890de940fcf"
+    },
+    "rultra": {
+      "query": "In the rultra repository, how does the self-optimizing Raspberry Pi 5 sensor box put every onboard sensor behind a single trait and keep an honest record of how well each one works?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "02226e2414a95346108fb08453c4edc45106dd5529da339771e8d6ce1c5d7ed1"
+      },
+      "recordSha256": "9d82bf83e18e42b4415f71843356da13979746cab173d38ad53ed6aeb38c339d"
+    },
+    "ruos": {
+      "query": "In the ruos repository, what does the public ruOS control surface expose through its computer-use MCP server and its ruvnet-stack skills directory?",
+      "expected": {
+        "path": "README.md",
+        "passageSha256": "eefffa40a5c00f1c158d2869935e348fa2051e581609e155f3566b59d34ec2b2"
+      },
+      "recordSha256": "7f4e5095c2c9811260841c0ebd9de82939886320f4e2449d158c56dbb1b8bc85"
     },
     "ruos-macair": {
       "query": "In the ruos-macair repository, what is ruOS MacBook Air 2012, what problem does it solve, and how is it intended to be used?",
@@ -1091,33 +1175,33 @@
       "query": "In the rupixel repository, what is rupixel — search documents by *meaning*, including pictures of pages, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "0a87578330ac3510e567eec04fcbc919f355b6e2c4de604470ba3ba6aaaab7b3"
+        "passageSha256": "5539b54a9c5e4eb5a67819c0efb2e1114d2a8c2660e48d3075cae6aba669f36c"
       },
-      "recordSha256": "dc5ea1b6c2b4b912814a20b838714cf451fd548f2937b3df862bf38107a06d56"
+      "recordSha256": "753043b35a3d11632d7f342115f31b6b516d025e2abd67c9468a7e993dad446b"
     },
     "ruqu": {
       "query": "In the ruqu repository, what is ruqu — Quantum Computing in Pure Rust + WebAssembly, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "bb53bc801eedb3c7f13123516707064c533d0a37d7440ef11bb240ef312919a8"
+        "passageSha256": "99c898bef5e537d750f05bf962d3e4bada6c84e7b9174083d554c3df8577f511"
       },
-      "recordSha256": "c17806c98a54e811a66d5964685d10e8fbcbd6b6d6cdd4cfbeabe1eea5efc4fa"
+      "recordSha256": "f949a6c8062310c952ad311dc10074f00dcae235384bbeb714111fa8ea9b1c02"
     },
     "ruv-dev": {
       "query": "In the ruv-dev repository, How does the create-SPARC blueprint prevent duplication of Roo configuration while supporting cross-platform project scaffolding?",
       "expected": {
         "path": "plans/README.md",
-        "passageSha256": "b7137ef9e8ab70d98ef71fe858b2abd9f01afb1557aa0720ddfbb14c282dcd13"
+        "passageSha256": "f495c5d0bedb7d9203ab38a70d450390aaa9586d452a743327d0eb49e2bd8b7d"
       },
-      "recordSha256": "9f19419497c2d6cf487f66806b8636dafe17206341a7b7c035ed6687729d60d6"
+      "recordSha256": "149589d54b24d5661056695f05ff573db6826d48474fcf6598e29bf95a620dba"
     },
     "ruv-drone": {
       "query": "In the ruv-drone repository, Which public module boundaries does the ruv-drone crate expose for swarm planning, sensing, learning and failsafe control?",
       "expected": {
         "path": "src/lib.rs",
-        "passageSha256": "175211491cb7f3b4bf402966afe3df0f91f4212d51cfed9348e84633beef26c1"
+        "passageSha256": "1b5ebe4b32282bc979717ba07235d9d268589b7dd8e3be99364a49ea34ea536c"
       },
-      "recordSha256": "640d3c66b9f48214b06e632d1c9de731d3070431e88ec5df14f278b2d2e9659f"
+      "recordSha256": "9d086a54ef52d757c5aa48997529ff4e9980e35d030e0b9b823c93660d32a57e"
     },
     "ruv-enterprise-ai-guide": {
       "query": "In the ruv-enterprise-ai-guide repository, what is The rUv Enterprise AI Guide, what problem does it solve, and how is it intended to be used?",
@@ -1131,17 +1215,17 @@
       "query": "In the ruv-fann repository, Which neural integration capabilities does the ruv-FANN report claim complete, and which acceleration and architecture features remain future work?",
       "expected": {
         "path": "ruv-swarm/docs/NEURAL_INTEGRATION.md",
-        "passageSha256": "0d0777d02487861c96b4e8121b8153d4ecfe77267c341f6fb42a04318c21db4d"
+        "passageSha256": "48dceca5c02c778c47262cdbd853c4211d58973fa5bd6de8396e4add839ebfb0"
       },
-      "recordSha256": "41e3915e64bd00b6753b646b375c418550cc730ea3fb1a6d01cfbc1d7ad8d2c1"
+      "recordSha256": "766a8f7e963d5f5e8672a1cb36e25c7899b9012e4bb129a48c71b12d8530f379"
     },
     "ruv-neural": {
-      "query": "In the ruv-neural repository, How does rUv Neural define its accepted closed-loop architecture for detecting personal state and conservatively adapting sensory stimulation?",
+      "query": "In the ruv-neural repository, How does rUv Neural define its accepted closed-loop architecture for detecting subject’s state and conservatively adapting stimulation?",
       "expected": {
         "path": "docs/adr/0003-closed-loop-architecture.md",
-        "passageSha256": "f178cb40ebca07d792fd98d617617e1fc08a51ad27716b4ae120b596d6a5080f"
+        "passageSha256": "4f87aa600cbd806860cd556676f225bcc27eb73a0acc6c06af7c4595af05f032"
       },
-      "recordSha256": "048763fc265dd2b0c920bcc730d6efa895562066b926b46e71afe25ace151983"
+      "recordSha256": "6505905832cb678082bcaca48cba12dcb11273f97761b9818a17a0fa6d4ebfc8"
     },
     "ruv.io": {
       "query": "In the ruv.io repository, What does the code-mesh-cli wrapper plan propose for Node.js integration and distribution, and which API details are still placeholders?",
@@ -1155,9 +1239,9 @@
       "query": "In the ruvbot repository, which llama2_app npm package depends on LlamaIndex, Next.js, React, and provides dev, build, start, lint, and generate scripts?",
       "expected": {
         "path": "llama2_app/package.json",
-        "passageSha256": "edf6cd19c24f893e10131dc298b07f88ed106763e0b0e666b9ee753406c8ebcc"
+        "passageSha256": "772bdddaa98ed6c6353bf6566f2b4b54296fb65c7d8cd999f6c32d745bc400f6"
       },
-      "recordSha256": "d03e01ac53790570137f2eb5ae1ac7b16b6a6edbda43f94681c9deaadaecdd95"
+      "recordSha256": "b03c5bda23787923ca10e676b04e52d63a56a1c52145142945dd4750c402469c"
     },
     "ruvector": {
       "query": "In the ruvector repository, Which modules make up the RuVector solver crate, including its push algorithms, BMSSP, conjugate gradient, random walk, router, SIMD, audit, budget, and validation components?",
@@ -1184,52 +1268,52 @@
       "recordSha256": "14c45e30645ad1a102bd2c70ada0334ccf3b28a2fc0afbac3608d1f76b171578"
     },
     "ruvnet": {
-      "query": "In the ruvnet repository, Which primary systems does the rUv profile index identify, and what rules does it give for interpreting repository metrics and root commits?",
+      "query": "In the ruvnet repository, which five primary systems does the source identify?",
       "expected": {
         "path": "llms.txt",
-        "passageSha256": "17d2820e3dadc3ca22118f796b94bcf5888960baf3c9a44c61f6f3edce5e9c8a"
+        "passageSha256": "8fd2328465d4421bd81a0aa6a21ed0d0d1e682148c5c22f501dc48927e9eff4c"
       },
-      "recordSha256": "41b025ff0a97ddb1e61657b15204cfab43809cf22c0efcd6f257423e167a0a99"
+      "recordSha256": "c0c8dc0e611584f5af4a73ae2f55e982cb9472d7569e8268b211047bf06c2222"
     },
     "ruvnet-brain": {
-      "query": "In the ruvnet-brain repository, What delivery channels and installation commands are listed in the archived RuvNet Brain explainer?",
+      "query": "In the ruvnet-brain repository, which hosts and retrieval interfaces does the source support, and what install command does it give?",
       "expected": {
         "path": "explainer/llms-full.txt",
-        "passageSha256": "65869ef9b83293ca65d62c8e1603a358454d46b567983a5569df1ef322016d42"
+        "passageSha256": "3d83fbe25bb725d9d873d01d6ada217f82229f4d0ae2947860ad6e5881795dcd"
       },
-      "recordSha256": "b2f2c5d9ac756f5b11bf4069738337aeec3c843800275c63069eb628f7cac426"
+      "recordSha256": "a9257ba5c066686570316376a17e29858528d73c8b57e8b7edd1ccad9bc8e684"
     },
     "rvcsi": {
-      "query": "In the rvcsi repository, What does the proposed rvCSI PRD assign to C, Rust and TypeScript, and what sensing claims does it exclude?",
+      "query": "In the rvcsi repository, what problem statement and ingestion sources does the supplied PRD describe?",
       "expected": {
         "path": "docs/prd/rvcsi-platform-prd.md",
-        "passageSha256": "4371f547be631961b02c59a99640b75291d072321fe4dd2757fca82e6ebfee74"
+        "passageSha256": "0712978ca14671bd59c65415d7a88f66042d056166783c8e36fe7dba6d634fd9"
       },
-      "recordSha256": "1d26723729c39ca34df907202e17609989dd902e0d4a8c754ddbd793be1d51d0"
+      "recordSha256": "650d931fe8673c2f5e106c2d337695c8494ae359d0ce644e4df7af62e60bcb5a"
     },
     "rvdna": {
       "query": "In the rvdna repository, How do the rvDNA bindings document two-bit DNA encoding and translation of DNA to protein?",
       "expected": {
         "path": "npm/packages/rvdna/index.d.ts",
-        "passageSha256": "b0fa69bc296809c5d90ca29f2533b946208f3ed5ac9fdc898e3ba3a208857628"
+        "passageSha256": "0aec4bf62db71ceb19ee1a0bcf2996f5c6b18720d4e492b41ef47b350ac5f0ee"
       },
-      "recordSha256": "eaaefbf5c948e2b636ad8657cb2d495d0712b9ab1680511d237b1f4f0885e1d2"
+      "recordSha256": "796bed835a43c01cc7d32c76263d1847b0ebfb0bb06f306173cd144fae0fdfa8"
     },
     "rvface": {
-      "query": "In the rvface repository, what is rvFACE, what problem does it solve, and how is it intended to be used?",
+      "query": "In the rvface repository, what is rvFACE and which execution targets does ADR-0001 describe?",
       "expected": {
         "path": "docs/adrs/0001-project-scope-and-layout.md",
-        "passageSha256": "660a215dd3e5f076e5f1ee2061efe9eec1b45d892e814fb43cfef8ec1bf55e2d"
+        "passageSha256": "d027a4792388b1207bf873b31af855aeb3a29a5e6bcd065e0ba4ede34e4822f2"
       },
-      "recordSha256": "4d3b827491690cde933525441b1b4ad89a4baf8dc4cdd2f35f39c9bf9e080f25"
+      "recordSha256": "5be4913839cc67d0f77ca9b4385129b65a49f267747fa62c45f69826b585cf24"
     },
     "rvm": {
-      "query": "In the rvm repository, How does RVM layer kernel, partition, security and shared types, and which crates are optional?",
+      "query": "In the rvm repository, which optional feature crates does the source explicitly name?",
       "expected": {
         "path": "userguide/03-architecture.md",
-        "passageSha256": "36077470cfa5bce1ec8dd263a6ed10db3587ecab28bbe1ca32aa258a8722af81"
+        "passageSha256": "41d26482f9a64f26cd29d519352f4290f37f98083ed046f1fd063bef87f07899"
       },
-      "recordSha256": "cf93983b07031d450890cf45aa3d159c2ac089e99300dc2ccc5a9b31bc6e5ad1"
+      "recordSha256": "201a6ec5819cb32e71e865a85d0def202f83de45613f77e12af56cdc87b4636c"
     },
     "rvqr": {
       "query": "In the rvqr repository, How does the rvQR benchmark ensure its indexed-chunk baseline exercises shipped transport behavior rather than a model?",
@@ -1240,36 +1324,36 @@
       "recordSha256": "db73661eb98bc094cee43b03648e5294277b0861af6f009af18a9ba0b87c7d42"
     },
     "safla": {
-      "query": "In the safla repository, Which technical infrastructure and evaluation questions does the SAFLA research scope prioritize?",
+      "query": "In the safla repository, what technical infrastructure and research objectives does the source describe?",
       "expected": {
         "path": "research/01_initial_queries/01_scope_definition.md",
-        "passageSha256": "8dafe3689fe73b12b97328d759cb77b10cfdd79ecfd90296afbbc2691e54ff59"
+        "passageSha256": "d8f9970546aa724d64830060fb605c4930269d6cc4f05707e6f20931c6cb01ca"
       },
-      "recordSha256": "637af29f1be9b44a897dc200abee778299af4cdb1dce61a9962cf12b4c349867"
+      "recordSha256": "16243800b75a0c980269513817bdd73dc1a3a776c7dff2831a6063594eb7ab0c"
     },
     "skygraph": {
-      "query": "In the skygraph repository, what is SkyGraph, what problem does it solve, and how is it intended to be used?",
+      "query": "In the skygraph repository, what documented core pipeline observes, projects, records and explains activity above a fixed location?",
       "expected": {
         "path": "core/src/lib.rs",
-        "passageSha256": "ba5db83bea9ec3e4630653d15ee5993505cd6e1d9923408047f51b1cc1ffdeed"
+        "passageSha256": "1a5997846308d123d812a4afd52a0ebc515d38e826544880593a64eff44374f2"
       },
-      "recordSha256": "7485d96b6c4e0f781e83f3c324a1103fd123aab78da7dffb09dc4a9834edbf02"
+      "recordSha256": "c79e343e68e2820f5c14c3c6110c382bcfbcd5ce9d9368785552b024e88fac4d"
     },
     "sonicchamber": {
       "query": "In the sonicchamber repository, How does Sonic Chamber acoustic memory use reconstructed-scan embeddings and a navigable small-world graph for longitudinal tracking, FWI warm starts, and anomaly detection?",
       "expected": {
         "path": "crates/sonic-ct/src/memory.rs",
-        "passageSha256": "2d7bcb9461a43769be414f6175dc7a5c737d820f9e1baf24df6fda2561335e8b"
+        "passageSha256": "6699d0e8c5f04ff56c6fefab2bb8bbda30f3eff3edde6ca7c1ffa475b7aad342"
       },
-      "recordSha256": "2acfd17cfd1fcb5ff02b5baa635b948c4b052792a18781d0c17ab2f50a16b36a"
+      "recordSha256": "014f2e767dab192a19e78ba79257397698353d130e664ccb4b830216a27ae460"
     },
     "sparc": {
-      "query": "In the sparc repository, How does the SPARC CLI express a task and select research-only or human-in-the-loop operation?",
+      "query": "In the sparc repository, how are task messages selected and how is research-only operation requested?",
       "expected": {
         "path": "configuration/CONVENTIONS.md",
-        "passageSha256": "6f5ee0893059ac410d540df10629e9239f26fa96cedb78d04a72976bfb1e5bc6"
+        "passageSha256": "8eedb285a45c573cba30d44824de5557fe6af1823b5c6f464090379590f9ed72"
       },
-      "recordSha256": "d286e3d3a76b1427e8dfa3cbd437c19dbf5dd3a614b55a3ed0a63baa6d7a6af8"
+      "recordSha256": "cead834cefe2e40a39d02ea246213edc463a3fba53ac7f5034e9f0eaed037b4a"
     },
     "sparc-ide": {
       "query": "In the sparc-ide repository, How does SPARC IDE extend VSCodium, and what stages build its branded editor with Roo Code integration?",
@@ -1288,12 +1372,12 @@
       "recordSha256": "cd047ddb0425edd6108ac2a88c4dfba710490772d3169c1c39976d4bd3e978b1"
     },
     "sublinear-time-solver": {
-      "query": "In the sublinear-time-solver repository, Which interfaces and solver modules are connected by the Sublinear Time Solver architecture plan?",
+      "query": "In the sublinear-time-solver repository, which interfaces expose the solver core to Node.js, HTTP, and browsers?",
       "expected": {
         "path": "plans/01-system-architecture.md",
-        "passageSha256": "3d7996f44a9e688075842f06af268cf4f6e745883f52168cecdfdb8fa6d56c2e"
+        "passageSha256": "e34a58232b13ca29cc9fb2c6dd988a2957b39ac037a488bccbccc460bd498b69"
       },
-      "recordSha256": "00e294e056652856114a551310e01332ce32546b6b81514b17cc76941b615c71"
+      "recordSha256": "2cb1bfccb097d8df6eae3f9a9518d165e66a363e5747e9cdb881f5401671e593"
     },
     "supa-ruv": {
       "query": "In the supa-ruv repository, what is Supabase CLI Management Script, what problem does it solve, and how is it intended to be used?",
@@ -1347,17 +1431,17 @@
       "query": "In the symbolic-scribe repository, what is Symbolic Scribe, what problem does it solve, and how is it intended to be used?",
       "expected": {
         "path": "README.md",
-        "passageSha256": "047760041f5c7781188ff91e6ed54b464f8447f521e111ba3cc6ec494aa09e3f"
+        "passageSha256": "631b58177be6f963a43ac1a3f7b356a76aac26056dc79ab836f674e29a09eebc"
       },
-      "recordSha256": "57870d62964e320324dd351e323b39347030989f51b52016c9408fb627f86be2"
+      "recordSha256": "feb57c17f5281e80d25177a4be0d4e9bda756c5b5892db9da8d3738d5d8f3ac1"
     },
     "synaptic-mesh": {
-      "query": "In the synaptic-mesh repository, Which roles does the Synaptic Neural Mesh implementation report assign to QuDAG Core, ruv-FANN WASM and Neural Mesh?",
+      "query": "In the synaptic-mesh repository, what role does QuDAG Core play in the documented architecture?",
       "expected": {
         "path": "plans/reports/RUST_IMPLEMENTATION_SUMMARY.md",
-        "passageSha256": "2fc6169267b89f09f93c97792b86b32c64e5a8b6584ab67eb0ef54262fe44bb2"
+        "passageSha256": "dfbda1ce0c1374fe4093ac26b623f9cda9b9b001fdbbd08273620db5dd259384"
       },
-      "recordSha256": "d361731a29aa6d6d63cc8fc6392a3cfeee74edc2265a7e3998eea32c4fd7f889"
+      "recordSha256": "6e0437504b019611a11a94b3b1e32688508d68b0b62c9be2ce2d8718f985ff05"
     },
     "synthlang": {
       "query": "In the synthlang repository, How does the SynthLang evolution system combine genetic algorithms with self-play tournaments to improve symbolic prompts?",
@@ -1451,9 +1535,9 @@
       "query": "In the worldgraph repository, which Rust crate is the ADR-139 environmental digital twin using typed petgraph for RuView?",
       "expected": {
         "path": "wifi-densepose-worldgraph/Cargo.toml",
-        "passageSha256": "fc95d95c6afad248bc2411dee1c97bb0e190394859f0c246ef9c2509fab87cea"
+        "passageSha256": "9ae57e34b974e2daf0a1605acdb4b8a300186406277324e69a69304aacc4e04c"
       },
-      "recordSha256": "58b284659511feeee4467b16e9bd64330b1f9bc8ac06f9fa2b64dfe27f3ed293"
+      "recordSha256": "f3de9d19ff3d12999c4c747898f05016aed5a7c025bb4f5fef3f428c4e27efbc"
     },
     "yyz-agentics-june": {
       "query": "In the yyz-agentics-june repository, Which layer families and weight initializers does the NumPy neural-network component report describe, and how do the dropout variants differ?",
@@ -1468,6 +1552,66 @@
         ]
       },
       "recordSha256": "61ea87ff7a3b7276e8f443fdea91ce0dbf0cfe54c44b0dea2a69c17809ee107c"
+    },
+    "dossier": {
+      "query": "What concrete source changes does the fork make in lib/orchestration/execute-checks.ts for fs import handling and pnpm-lock.yaml detection?",
+      "expected": {
+        "path": "fork-delta/lib/orchestration/execute-checks.ts",
+        "passageSha256": "90136cd935920f2c3cc332f4a8356975d589a443358ad006dc3af913553d3294"
+      },
+      "recordSha256": "95e3a87778e1d97bf355ebdfc54e59943a71fa257155c62614cc4f7e57732319"
+    },
+    "video-sync": {
+      "query": "In the video-sync repository, what does the ruvnet fork add with the committed type-stub file web/pkg/video_sync.d.ts for the wasm-pack video_sync WASM package?",
+      "expected": {
+        "path": "fork-delta/web/pkg/video_sync.d.ts",
+        "passageSha256": "940502ffde0cb855d641a3e12401ad1dcac70cfd04719b074a02f2342118ed66"
+      },
+      "recordSha256": "7553f3b0e710579d17b6f2ff1c90135150222c37325867e7f1bd637ba16e85dd"
+    },
+    "agentbbs": {
+      "query": "In the agentbbs repository, what capability categories, topologies, strategies, and agent groups does the added .claude-flow/CAPABILITIES.md document?",
+      "expected": {
+        "path": "fork-delta/.claude-flow/CAPABILITIES.md",
+        "passageSha256": "a290ed800b1e38c2140dbd29f6e8248ddc33262641197d66e954c8b98842dfc7"
+      },
+      "recordSha256": "868549ba97eda6ba2f2638eaa0df5d3c14220c047429112e515f966d8c6006d1"
+    },
+    "streamlit-example": {
+      "query": "In the streamlit-example repository, which runtime model and prompt behavior does the fork show in streamlit_app.py?",
+      "expected": {
+        "path": "fork-delta/streamlit_app.py",
+        "passageSha256": "dd4c2b2efe9fce48d0cf662038481af10005a0d0ff470274aa1c603658a02be9"
+      },
+      "recordSha256": "42863cdaa065761a8aa340e6e0b441964f7a7072992788720f748e838e1b8552"
+    },
+    "ruv-engineer": {
+      "query": "How does the ruv-engineer fork change the workspace paths used by .devcontainer/postCreateCommand.sh?",
+      "expected": {
+        "path": "fork-delta/.devcontainer/postCreateCommand.sh",
+        "passageSha256": "86503f7cd89dad8389f94bb83b0b1a8a8bafaf0618d3a224446482fd419a3485"
+      },
+      "recordSha256": "20b304addaec804d1bd658ae4f5644ac4b8b2186fe7c269a4114567c6dfc7705"
+    },
+    "swirl-search": {
+      "query": "In the swirl-search repository, what documentation stages are visible in the added agentic-development plan?",
+      "expected": {
+        "path": "fork-delta/sow/agentic_development.md",
+        "passageSha256": "4845fb5e01c34c67353a01d3774da073fc15a896b3d0c606ac83d642702643ca"
+      },
+      "recordSha256": "e382681d8f560b2b1ee0a831d43b076f0dae69d577d11f115e04ec1cc379c35d"
+    },
+    "deco": {
+      "query": "What does the dev/main.ts file added by the ruvnet/deco fork do?",
+      "expected": {
+        "path": "fork-delta/dev/main.ts",
+        "passageSha256": "f26154a5007901c6be7227d91a021b5eda456ccf08b70812cbb9321712054865"
+      },
+      "recordSha256": "2fd4ce7e84019e676061516d5eb906642848f092c5651c140e296a8b4ae5f935"
     }
-  }
+  },
+  "sourceCommit": "149b290c2b9ae5f60abb61169689e7580b99be69",
+  "sourcePath": "data/retrieval-query-evidence.json",
+  "sourceBlobSha256": "f6bc48e0a714fac545eaf52c8160dc42af0308888a239ef5c27431f330301f99",
+  "receiptSha256": "813dddde8aeec4652a74eba8cf498afc30b2e507d3b5ce61a263de3e24176c03"
 }
