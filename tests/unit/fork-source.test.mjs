@@ -21,9 +21,20 @@ function fixture() {
   fs.renameSync(path.join(root, 'old.js'), path.join(root, 'renamed.js'));
   fs.writeFileSync(path.join(root, 'renamed.js'), 'const shared = true;\nconst after = true;\n');
   fs.rmSync(path.join(root, 'deleted.txt')); git(root, 'add', '-A'); git(root, 'commit', '-qm', 'fork changes');
+  fs.chmodSync(path.join(root, 'renamed.js'), 0o755);
+  fs.symlinkSync('renamed.js', path.join(root, 'linked.js'));
+  fs.writeFileSync(path.join(root, 'binary.bin'), Buffer.from([0, 255, 1, 2, 0, 3]));
+  const nested = fs.mkdtempSync(path.join(os.tmpdir(), 'fork-submodule-')); tempDirs.push(nested);
+  git(nested, 'init', '-q'); git(nested, 'config', 'user.email', 'test@example.invalid'); git(nested, 'config', 'user.name', 'test');
+  fs.writeFileSync(path.join(nested, 'module.txt'), 'submodule\n'); git(nested, 'add', '.'); git(nested, 'commit', '-qm', 'module');
+  const submoduleSha = git(nested, 'rev-parse', 'HEAD');
+  fs.writeFileSync(path.join(root, 'literal\\name.txt'), 'backslash path\n');
+  git(root, 'add', 'renamed.js', 'linked.js', 'binary.bin', 'literal\\name.txt');
+  git(root, 'update-index', '--add', `--cacheinfo`, `160000,${submoduleSha},submodule`);
+  git(root, 'commit', '-qm', 'typed operations');
   const head = git(root, 'rev-parse', 'HEAD');
   git(root, 'remote', 'add', 'origin', 'https://github.com/example/fork.git');
-  return { root, base, head };
+  return { root, base, head, submoduleSha };
 }
 
 describe('fork-source delta materialization', () => {
@@ -31,17 +42,22 @@ describe('fork-source delta materialization', () => {
     const f = fixture();
     const metadata = {
       version: 'fork-delta/1', forkRepository: 'example/fork', upstream: 'example/upstream',
-      upstreamHeadSha: f.base, forkHeadSha: f.head, mergeBaseSha: f.base, aheadBy: 1, behindBy: 0,
+      upstreamHeadSha: f.base, forkHeadSha: f.head, mergeBaseSha: f.base, aheadBy: 2, behindBy: 0,
     };
     expect(validateForkDeltaIdentity(metadata)).toMatchObject(metadata);
     const out = await buildForkDeltaCorpus({ repo: f.root, name: 'fork', metadata });
     expect(out.sourceMode).toBe('fork-delta');
-    expect(out.operations.map((x) => x.kind)).toEqual(['D', 'R']);
+    expect(out.operations.map((x) => x.kind)).toEqual(['A', 'A', 'A', 'A', 'D', 'R']);
     expect(out.chunks.length).toBeGreaterThan(0);
     const passages = fs.readFileSync(path.join(out.outputDir, 'fork-delta.passages.jsonl'), 'utf8');
     expect(passages).not.toContain('UPSTREAM ONLY');
     expect(passages).toContain('Operation: rename old.js → renamed.js');
     expect(passages).toContain('Operation: D deleted.txt');
+    expect(out.operations.find((x) => x.typed === 'symlink')).toMatchObject({ newMode: '120000' });
+    expect(out.operations.find((x) => x.typed === 'submodule')).toMatchObject({ newMode: '160000', newObject: f.submoduleSha });
+    expect(out.operations.find((x) => x.kind === 'R')).toMatchObject({ oldMode: '100644', newMode: '100755' });
+    expect(out.operations.find((x) => x.paths[0] === 'literal\\name.txt')).toBeTruthy();
+    expect(out.chunks.some((chunk) => chunk.text.includes('Binary files'))).toBe(true);
     expect(out.chunks.every((chunk) => chunk.text === chunk.embedText)).toBe(true);
     expect(out.chunks.every((chunk) => chunk.operation?.paths?.length)).toBe(true);
     expect(passages).not.toMatch(/@@[^\n]*\n [^\n]/);
@@ -53,9 +69,18 @@ describe('fork-source delta materialization', () => {
     const f = fixture();
     const metadata = {
       version: 'fork-delta/1', forkRepository: 'other/fork', upstream: 'example/upstream',
-      upstreamHeadSha: f.base, forkHeadSha: f.head, mergeBaseSha: f.base, aheadBy: 1, behindBy: 0,
+      upstreamHeadSha: f.base, forkHeadSha: f.head, mergeBaseSha: f.base, aheadBy: 2, behindBy: 0,
     };
     await expect(buildForkDeltaCorpus({ repo: f.root, name: 'fork', metadata })).rejects.toThrow(/remote/);
+  });
+
+  it('rejects graph counts that do not match the pinned ancestry', async () => {
+    const f = fixture();
+    const metadata = {
+      version: 'fork-delta/1', forkRepository: 'example/fork', upstream: 'example/upstream',
+      upstreamHeadSha: f.base, forkHeadSha: f.head, mergeBaseSha: f.base, aheadBy: 1, behindBy: 0,
+    };
+    await expect(buildForkDeltaCorpus({ repo: f.root, name: 'fork', metadata })).rejects.toThrow(/graph counts/);
   });
 
   it('keeps a typed document for a net-zero delta', async () => {

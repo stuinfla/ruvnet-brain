@@ -66,6 +66,7 @@ const artifactFiles = [
   'SOURCE.json',
   RVF_GENERATIONS_FILE,
 ];
+if (FORK_DELTA_FILE) artifactFiles.push(`${NAME}.fork-delta.inventory.json`);
 
 const run = (script, args, options = {}) => execFileSync(process.execPath, [script, ...args], {
   cwd: KB_DIR,
@@ -201,6 +202,9 @@ function writeCandidateSidecars(chunks, corpus, ledger, previousMeta) {
     entries,
   };
   fs.writeFileSync(path.join(candidate, `${NAME}.passages.jsonl`), passages);
+  if (sourceProvenance) {
+    fs.copyFileSync(path.join(candidate, 'fork-delta.inventory.json'), path.join(candidate, `${NAME}.fork-delta.inventory.json`));
+  }
   fs.writeFileSync(path.join(candidate, `${NAME}.meta.json`), JSON.stringify(meta));
   writeSourceManifest();
 }
