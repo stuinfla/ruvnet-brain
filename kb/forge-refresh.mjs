@@ -392,7 +392,9 @@ try {
   }
   if (!corpus.chunks.length) throw new Error('0 chunks produced; refusing to replace a live store');
   const currentLedger = buildCorpusLedger(corpus.chunks, {
-    buildFingerprint: FORGE_BUILD_FINGERPRINT,
+    buildFingerprint: sourceProvenance
+      ? `${FORGE_BUILD_FINGERPRINT}|${sourceProvenance.version}|${sourceProvenance.inventorySha256}|${sourceProvenance.passagesSha256}`
+      : FORGE_BUILD_FINGERPRINT,
   });
   const metaPath = path.join(out, `${NAME}.meta.json`);
   const previousMeta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf8')) : null;
