@@ -2303,7 +2303,7 @@ export function preferredSeat(subs) {
 function gatherState(cwd, { fleet = true } = {}) {
   const wiring = wiringSurvey();
   const memory = gatherMemory(cwd, { fleet });
-  try { memory.learnings = learnings(); } catch { memory.learnings = null; }
+  try { memory.learnings = learnings({ cwd }); } catch { memory.learnings = null; }
   const savings = gatherSavings();
   const cfgNow = readJSON(CONFIG_PATH) || {};
   // issue #20: the Savings card's "Turn on smart routing" CTA must reflect what was actually saved —

@@ -38,4 +38,29 @@ describe('learnings — the console “What I’ve learned” reader', () => {
     expect(l.recentWorkflow).toEqual(['git push origin main', 'gh run watch --exit-status']);
     expect(l.lastAdaptation).toMatch(/^2026-07-13T/);
   });
+
+  it('uses the configured project learner when the active scope is project', () => {
+    const project = path.join(TMP, 'project-scope');
+    const stats = path.join(project, '.claude-flow', 'neural');
+    fs.mkdirSync(stats, { recursive: true });
+    fs.writeFileSync(path.join(stats, 'stats.json'), JSON.stringify({ trajectoriesRecorded: 7, patternsLearned: 3 }));
+    const l = learnings({ cwd: project, env: { RUVNET_LEARNING_SCOPE: 'project' }, home: TMP });
+    expect(l.scope).toBe('project');
+    expect(l.trajectories).toBe(7);
+    expect(l.statsPath).toBe(path.join(project, '.claude-flow', 'neural', 'stats.json'));
+  });
+
+  it('uses the user learner and capture queue when scope is user', () => {
+    const userStats = path.join(TMP, '.claude-flow', 'neural');
+    const queue = path.join(TMP, '.cache', 'ruvnet-brain', 'learn');
+    fs.mkdirSync(userStats, { recursive: true });
+    fs.mkdirSync(queue, { recursive: true });
+    fs.writeFileSync(path.join(userStats, 'stats.json'), JSON.stringify({ trajectoriesRecorded: 11, patternsLearned: 9 }));
+    fs.writeFileSync(path.join(queue, 'session-x.jsonl'), JSON.stringify({ tool: 'Bash', action: 'git status' }) + '\n');
+    const l = learnings({ cwd: path.join(TMP, 'other-project'), env: { RUVNET_LEARNING_SCOPE: 'user' }, home: TMP });
+    expect(l.scope).toBe('user');
+    expect(l.trajectories).toBe(11);
+    expect(l.recentWorkflow).toEqual(['git status']);
+    expect(l.queueDir).toBe(queue);
+  });
 });

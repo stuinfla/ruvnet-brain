@@ -8,13 +8,22 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { learningScope, learnerCwd } from '../plugin/scripts/runtime-preferences.mjs';
 
 const HOME = os.homedir();
 
-/** @param {{statsPath?:string, queueDir?:string, now?:number}} [opts] */
-export function learnings({ statsPath, queueDir, now = Date.now() } = {}) {
-  const sp = statsPath || path.join(HOME, '.claude-flow/neural/stats.json');
-  const qd = queueDir || path.join(HOME, '.cache/ruvnet-brain/learn');
+/** @param {{statsPath?:string, queueDir?:string, now?:number, cwd?:string, env?:object, home?:string}} [opts] */
+export function learnings({ statsPath, queueDir, now = Date.now(), cwd, env, home } = {}) {
+  // The flusher and the console must inspect the same learner. A fixed HOME path made the panel
+  // report a stale global learner while project-scoped captures were fed under the active project.
+  // Keep injectable paths for callers/tests, but derive both defaults from the shared scope owner.
+  const project = cwd || process.env.RUVNET_BRAIN_PROJECT_DIR || process.cwd();
+  const scope = learningScope({ cwd: project, env: env || process.env });
+  const learner = learnerCwd({ cwd: project, env: env || process.env, home: home || HOME });
+  const sp = statsPath || path.join(learner, '.claude-flow', 'neural', 'stats.json');
+  const qd = queueDir || (scope === 'user'
+    ? path.join(home || HOME, '.cache', 'ruvnet-brain', 'learn')
+    : path.join(project, '.swarm', 'ruvnet-brain-learn'));
 
   let stats = {};
   try { stats = JSON.parse(fs.readFileSync(sp, 'utf8')); } catch { /* no learner yet */ }
@@ -53,7 +62,12 @@ export function learnings({ statsPath, queueDir, now = Date.now() } = {}) {
     lastAdaptation: lastMs ? new Date(lastMs).toISOString() : null,
     daysSinceLastAdaptation: daysSince,
     recentWorkflow,
-    note: 'Learnings are how you work — shared across all your projects and getting smarter over time. Project facts stay isolated per project; nothing here is project data.',
+    note: scope === 'user'
+      ? 'Learnings are how you work — shared across your projects and getting smarter over time. Project facts stay isolated per project; nothing here is project data.'
+      : 'Learnings are how you work in this project and getting smarter over time. User-scoped learning remains isolated from this project; nothing here is project data.',
+    scope,
+    statsPath: sp,
+    queueDir: qd,
   };
 }
 
