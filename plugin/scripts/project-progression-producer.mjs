@@ -30,7 +30,7 @@
  */
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { digestCanonical, redactProgression, restoreProjectProgression } from './project-progression-contract.mjs';
+import { digestCanonical, fieldAuthorityAllows, redactProgression, restoreProjectProgression } from './project-progression-contract.mjs';
 import { readOwnerNote, readSourceIdentity, readTranscriptReference, readWorkLedger } from './project-progression-sources.mjs';
 import { withProgressionReader } from './project-progression-reader.mjs';
 
@@ -132,7 +132,12 @@ export function buildProjectProgression({
   const priorState = heads.length === 1 ? heads[0].completeProjectState : null;
 
   const provenance = {};
-  const record = (field, sourceName) => { provenance[field] = marker(sourceName); };
+  const record = (field, sourceName) => {
+    if (sourceName !== 'none' && !fieldAuthorityAllows(field === 'sourceIdentity' ? 'sourceIdentity' : field, sourceName)) {
+      throw new Error(`source ${sourceName} is not authoritative for progression field ${field}`);
+    }
+    provenance[field] = marker(sourceName);
+  };
 
   // GOAL — the ledger's oldest open item is what the user actually committed to. A coherent prior
   // head carries that commitment forward; an owner note or transcript can provide context only when

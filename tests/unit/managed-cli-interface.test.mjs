@@ -158,6 +158,16 @@ describe('managed CLI structured interface policy', () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
+  it('does not accept a caller supplied host label for continuity identity', async () => {
+    const env = { ...process.env, RUVNET_HOOK_HOST: undefined };
+    const capture = [];
+    const result = await callManagedCli('ruvnet_cli_run', { executable: 'ruflo', argv: ['status'], host: 'codex' }, env, globalThis.fetch, {
+      capture: ({ event, env: childEnv }) => { capture.push([event, childEnv.RUVNET_HOOK_HOST]); return { adopted: true, progressionCaptured: true }; },
+    });
+    expect(result.isError).toBe(true);
+    expect(capture).toEqual([]);
+  });
+
   it('exposes a read-only registry probe and mints latest-version evidence from its exact response', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-ruflo-registry-'));
     const evidence = path.join(home, 'live-evidence.jsonl');

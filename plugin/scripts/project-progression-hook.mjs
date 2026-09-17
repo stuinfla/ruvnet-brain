@@ -113,7 +113,7 @@ function toolAction(payload) {
   const terminal = failed || Number.isSafeInteger(exitCode)
     || responseRecord?.success === true || responseRecord?.ok === true;
   const outcome = payload.hook_event_name === 'PostToolUse'
-    ? (declaredOutcome || (interrupted ? 'interrupted' : failed ? 'failure' : terminal ? 'success' : 'unknown'))
+    ? (interrupted ? 'interrupted' : failed ? 'failure' : declaredOutcome || (terminal ? 'success' : 'unknown'))
     : 'pending';
   const observation = {
     trigger: payload.hook_event_name,

@@ -1,4 +1,4 @@
-Updated: 2026-08-22 11:21:00 EDT | Version 0.1.0
+Updated: 2026-09-16 20:25:00 EDT | Version 0.1.1
 Created: 2026-08-22 11:21:00 EDT
 
 # DDD-0019 — Project continuity context
@@ -188,6 +188,9 @@ history but retains all open state and receipt identities.
 10. Compaction removes minutiae only after independent restore proves equivalent state.
 
 ## Failure semantics and acceptance
+
+The installed managed CLI boundary is the production `HostProgressionAdapter` consumer. Native host identity comes from trusted adapter process context; tool arguments cannot relabel a continuity record. Managed execution captures before acknowledgement and appends the same normalized terminal outcome afterward. An adopted project with an unresolvable canonical store is refused, while an unadopted project remains outside the continuity write plane. ADR-075 ExecutionPolicy is host-invoked and does not provide an automatic hook guarantee.
+
 
 Missing boundary wiring makes a host unsupported. Store/readback mismatch is `REPLAY_REQUIRED`.
 Verified journal data with no valid resume state is `RESTORE_REJECTED`. Outbox-only state is durable

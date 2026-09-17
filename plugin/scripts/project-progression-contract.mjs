@@ -53,6 +53,9 @@ export const PROGRESSION_FIELD_AUTHORITY = Object.freeze({
   changedFiles: Object.freeze(['git']),
   sourceIdentity: Object.freeze(['git']),
 });
+export function fieldAuthorityAllows(field, source) {
+  return PROGRESSION_FIELD_AUTHORITY[field]?.includes(source) === true;
+}
 
 function eventKeyFor(value) {
   const identityDigest = digestCanonical({

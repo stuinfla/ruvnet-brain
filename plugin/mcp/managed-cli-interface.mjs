@@ -376,11 +376,12 @@ export async function callManagedCli(toolName, args, env = process.env, fetchImp
           isError: true,
         };
       }
-      const requestedHost = typeof args?.host === 'string' ? args.host.trim().toLowerCase() : '';
-      const hostEnv = ['claude', 'codex'].includes(requestedHost) ? { ...env, RUVNET_HOOK_HOST: requestedHost } : env;
+      // Host identity is process context established by the native adapter, never a tool argument.
+      // A caller can request a CLI command, but must not relabel its continuity record as another
+      // host by supplying an arbitrary `host` property.
       const childEnv = (executable === 'agentic-flow' || executable === 'agentic-qe')
-        ? runtimeChildEnv({ env: hostEnv, cwd: projectRoot })
-        : hostEnv;
+        ? runtimeChildEnv({ env, cwd: projectRoot })
+        : env;
       const capture = typeof lifecycle.capture === 'function' ? lifecycle.capture : managedProgressionCapture;
       const beforeCapture = await capture({ executable, argv, projectRoot, env: childEnv, event: 'PreToolUse' });
       if (beforeCapture?.error || (beforeCapture?.adopted && beforeCapture.progressionCaptured !== true)) {
