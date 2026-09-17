@@ -14,10 +14,14 @@ export const API_BILLING_ENV = Object.freeze([
   'GEMINI_API_KEY',
   'XAI_API_KEY',
 ]);
+export const PRIVATE_SIGNING_ENV = Object.freeze([
+  'RUVNET_SIGNING_KEY', 'RUVNET_FABLE_REVIEW_SIGNING_KEY', 'RUVNET_ASTRA_REVIEW_SIGNING_KEY',
+]);
 
 export function subscriptionOnlyEnv(parent = process.env) {
   const child = { ...parent, RUVNET_SUBSCRIPTION_ONLY: '1' };
   for (const name of API_BILLING_ENV) delete child[name];
+  for (const name of PRIVATE_SIGNING_ENV) delete child[name];
   return child;
 }
 

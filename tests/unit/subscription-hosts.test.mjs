@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   API_BILLING_ENV,
+  PRIVATE_SIGNING_ENV,
   probeClaudeSubscription,
   probeCodexSubscription,
   subscriptionOnlyEnv,
@@ -12,6 +13,7 @@ describe('subscriptionOnlyEnv', () => {
   it('removes every API-billing credential without mutating the parent environment', () => {
     const parent = { PATH: '/bin', HOME: '/tmp/home' };
     for (const name of API_BILLING_ENV) parent[name] = `canary-${name}`;
+    for (const name of PRIVATE_SIGNING_ENV) parent[name] = `private-${name}`;
     const child = subscriptionOnlyEnv(parent);
 
     expect(child.PATH).toBe('/bin');
@@ -20,6 +22,10 @@ describe('subscriptionOnlyEnv', () => {
     for (const name of API_BILLING_ENV) {
       expect(child).not.toHaveProperty(name);
       expect(parent[name]).toBe(`canary-${name}`);
+    }
+    for (const name of PRIVATE_SIGNING_ENV) {
+      expect(child).not.toHaveProperty(name);
+      expect(parent[name]).toBe(`private-${name}`);
     }
   });
 });
