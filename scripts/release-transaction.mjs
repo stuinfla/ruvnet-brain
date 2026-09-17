@@ -573,7 +573,10 @@ export async function finalizeReleaseTransaction({
     || reviewIdentity.payloadId !== identity.payloadId
     || reviewIdentity.releaseIdentity?.candidateSha !== identity.candidateSha
     || reviewIdentity.releaseIdentity?.packageSha256 !== identity.packageSha256
-    || reviewIdentity.releaseIdentity?.payloadId !== identity.payloadId) {
+    || reviewIdentity.releaseIdentity?.payloadId !== identity.payloadId
+    || reviewIdentity.releaseIdentity?.bundleSha256 !== identity.bundleSha256
+    || reviewIdentity.releaseIdentity?.version !== identity.version
+    || reviewIdentity.releaseIdentity?.tag !== identity.tag) {
     throw new Error('terminal review pair is bound to a different release identity');
   }
   validateIndependentReviewPair(aggregate.reviews, { publicKeysByReviewer: reviewPublicKeysByReviewer, expectedOracle: undefined });
