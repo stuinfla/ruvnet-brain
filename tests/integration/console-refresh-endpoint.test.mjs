@@ -41,7 +41,7 @@ beforeAll(async () => {
   const requestedPort = await freePort();
   child = spawn(process.execPath, [ENTRY, '--serve'], {
     cwd: project,
-    env: { ...process.env, NODE_ENV: 'test', CONSOLE_PORT: String(requestedPort), RUVNET_CONSOLE_ROOT: consoleRoot, RUVNET_CONSOLE_TEST_TOKEN: 'a'.repeat(48), RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1' },
+    env: { ...process.env, CONSOLE_PORT: String(requestedPort), RUVNET_CONSOLE_ROOT: consoleRoot, RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   port = await waitForUrl();
@@ -49,8 +49,10 @@ beforeAll(async () => {
   const receipt = fs.readdirSync(receiptDir).map((name) => path.join(receiptDir, name))
     .map((file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } })
     .find((value) => value?.port === port && value?.scope === project);
-  token = 'a'.repeat(48);
+  const page = await fetch(`http://127.0.0.1:${port}/`).then((response) => response.text());
+  token = page.match(/window\.__CONSOLE_TOKEN__=\"([a-f0-9]{48})\"/)?.[1];
   expect(receipt?.port).toBe(port);
+  expect(token).toMatch(/^[a-f0-9]{48}$/);
 });
 
 afterAll(() => { try { child?.kill('SIGTERM'); } catch {} });

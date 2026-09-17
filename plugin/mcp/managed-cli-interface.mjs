@@ -266,11 +266,13 @@ function managedSessionId(env) {
 
 /** Bind managed CLI execution to the existing progression writer when this project has adopted it. */
 function managedProgressionCapture({ executable, argv, projectRoot, env, event, execution, normalized }) {
+  const adopted = fs.existsSync(path.join(projectRoot, '.swarm'));
+  if (!adopted) return { adopted: false, skipped: 'project has not adopted the canonical store' };
   const host = String(env.RUVNET_HOOK_HOST || '').toLowerCase();
-  if (!['claude', 'codex'].includes(host)) return { adopted: false, skipped: 'managed host identity unavailable' };
+  if (!['claude', 'codex'].includes(host)) return { adopted: true, error: 'managed host identity unavailable' };
   let resolution;
-  try { resolution = resolveProjectStore({ projectDir: projectRoot }); } catch { return { adopted: false, skipped: 'project store could not be resolved' }; }
-  if (!fs.existsSync(path.dirname(resolution.canonicalAgentDbPath))) return { adopted: false, skipped: 'project has not adopted the canonical store' };
+  try { resolution = resolveProjectStore({ projectDir: projectRoot }); }
+  catch (error) { return { adopted: true, error: `project store could not be resolved: ${error?.message || error}` }; }
   const payload = {
     session_id: managedSessionId(env),
     hook_event_name: event,
@@ -281,6 +283,7 @@ function managedProgressionCapture({ executable, argv, projectRoot, env, event, 
         stdout: execution.stdout,
         stderr: execution.stderr,
         exit_code: execution.code,
+        outcome: normalized?.outcome,
         ...(execution.error ? { error: execution.error } : {}),
       },
     } : {}),
@@ -373,9 +376,11 @@ export async function callManagedCli(toolName, args, env = process.env, fetchImp
           isError: true,
         };
       }
+      const requestedHost = typeof args?.host === 'string' ? args.host.trim().toLowerCase() : '';
+      const hostEnv = ['claude', 'codex'].includes(requestedHost) ? { ...env, RUVNET_HOOK_HOST: requestedHost } : env;
       const childEnv = (executable === 'agentic-flow' || executable === 'agentic-qe')
-        ? runtimeChildEnv({ env, cwd: projectRoot })
-        : env;
+        ? runtimeChildEnv({ env: hostEnv, cwd: projectRoot })
+        : hostEnv;
       const capture = typeof lifecycle.capture === 'function' ? lifecycle.capture : managedProgressionCapture;
       const beforeCapture = await capture({ executable, argv, projectRoot, env: childEnv, event: 'PreToolUse' });
       if (beforeCapture?.error || (beforeCapture?.adopted && beforeCapture.progressionCaptured !== true)) {

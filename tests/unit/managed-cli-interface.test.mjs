@@ -139,6 +139,25 @@ describe('managed CLI structured interface policy', () => {
     fs.rmSync(home, { recursive: true, force: true });
   });
 
+  it('refuses the actual managed path when the adopted canonical store resolves outside the project', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-cli-foreign-'));
+    const home = path.join(root, 'home');
+    const bin = path.join(home, '.npm-global', 'bin');
+    const project = path.join(root, 'project');
+    const foreign = path.join(root, 'foreign');
+    fs.mkdirSync(bin, { recursive: true }); fs.mkdirSync(path.join(project, '.swarm'), { recursive: true }); fs.mkdirSync(foreign, { recursive: true });
+    const executable = path.join(bin, 'ruflo');
+    fs.writeFileSync(executable, '#!/bin/sh\nexit 0\n'); fs.chmodSync(executable, 0o755);
+    fs.writeFileSync(path.join(foreign, 'memory.db'), 'foreign');
+    fs.symlinkSync(foreign, path.join(project, '.swarm', 'memory.db'));
+    const env = { ...process.env, HOME: home, RUVNET_BRAIN_HOME: path.join(home, '.cache', 'brain'), RUVNET_BRAIN_PROJECT_DIR: project, RUVNET_HOOK_HOST: 'codex' };
+    await callManagedCli('ruvnet_cli_help', { executable: 'ruflo', argv: ['status'] }, env);
+    const result = await callManagedCli('ruvnet_cli_run', { executable: 'ruflo', argv: ['status'] }, env);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/store could not be resolved|refused/i);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
   it('exposes a read-only registry probe and mints latest-version evidence from its exact response', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-ruflo-registry-'));
     const evidence = path.join(home, 'live-evidence.jsonl');

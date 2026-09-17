@@ -107,11 +107,13 @@ function toolAction(payload) {
     : textualCode ? Number(textualCode[1]) : undefined;
   const interrupted = responseRecord?.interrupted === true || responseRecord?.signal === 'SIGINT';
   const explicitError = responseRecord?.isError === true || payload.is_error === true;
+  const declaredOutcome = ['success', 'failure', 'interrupted', 'unknown'].includes(responseRecord?.outcome)
+    ? responseRecord.outcome : null;
   const failed = explicitError || (Number.isSafeInteger(exitCode) && exitCode !== 0);
   const terminal = failed || Number.isSafeInteger(exitCode)
     || responseRecord?.success === true || responseRecord?.ok === true;
   const outcome = payload.hook_event_name === 'PostToolUse'
-    ? (interrupted ? 'interrupted' : failed ? 'failure' : terminal ? 'success' : 'unknown')
+    ? (declaredOutcome || (interrupted ? 'interrupted' : failed ? 'failure' : terminal ? 'success' : 'unknown'))
     : 'pending';
   const observation = {
     trigger: payload.hook_event_name,

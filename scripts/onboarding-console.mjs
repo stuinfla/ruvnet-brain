@@ -104,9 +104,7 @@ const INSTALLED_KB = process.env.RUVNET_BRAIN_KB
   || path.join(CONSOLE_ROOT, '.cache', 'ruvnet-brain', 'kb');
 const COMPLETE_BRAIN_SOURCE = process.env.RUVNET_BRAIN_COMPLETE_SOURCE
   || path.join(REPO, 'dist', 'ruvnet-brain');
-const TOKEN = process.env.NODE_ENV === 'test' && process.env.RUVNET_CONSOLE_TEST_TOKEN
-  ? process.env.RUVNET_CONSOLE_TEST_TOKEN
-  : crypto.randomBytes(24).toString('hex');
+const TOKEN = crypto.randomBytes(24).toString('hex');
 const RUNTIME_RECEIPT_DIR = path.join(CONSOLE_ROOT, '.cache', 'ruvnet-brain', 'console-instances');
 const RUNTIME_PRODUCT = 'ruvnet-brain-console';
 const RUNTIME_SCHEMA = 1;
