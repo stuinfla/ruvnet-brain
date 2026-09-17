@@ -396,10 +396,13 @@ for (const c of candidates) {
       let offer = true;
       try { offer = led.shouldStillOffer(findingId, { severity, stateHash }); } catch { offer = false; }
       if (!offer) break;                                     // dismissed / budget spent → drop
-      // Deliver, and record the OFFERED denominator centrally (best-effort; recording never breaks
-      // the hook it measures). Moving OFFERED here is what makes precision computable at the one place
-      // that actually decides to show a card.
-      try { led.record({ id: findingId, action: led.ACTIONS.OFFERED, severity, stateHash }); } catch { /* a lost row costs one denominator, never the turn */ }
+      // Persist the OFFERED denominator before delivery. A recommendation whose delivery receipt was
+      // not durably written cannot participate in the later applied/dismissed lifecycle; emitting it
+      // anyway would create a card the next prompt cannot resolve and would make precision lie.
+      let receipt;
+      try { receipt = led.record({ id: findingId, action: led.ACTIONS.OFFERED, severity, stateHash }); }
+      catch { receipt = null; }
+      if (!receipt?.ok) break;
       advisories.push({ copy, hookEventName });
       break;
     }

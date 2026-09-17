@@ -450,7 +450,10 @@ async function main() {
   }
   // DIRECT MODE (a human running this file, or a host without the runtime). Here this process IS the
   // writer, so it owns the denominator too.
-  try { record({ id: candidate.findingId, action: ACTIONS.OFFERED, severity: 'normal', stateHash: candidate.observationHash }); } catch { /* never break the surface we measure */ }
+  let receipt;
+  try { receipt = record({ id: candidate.findingId, action: ACTIONS.OFFERED, severity: 'normal', stateHash: candidate.observationHash }); }
+  catch { receipt = null; }
+  if (!receipt?.ok) return 0; // never emit an untracked offer that cannot be resolved later
   process.stdout.write(`${candidate.copy}\n`);
   return 0;
 }

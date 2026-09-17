@@ -514,6 +514,20 @@ describe('closed world, functionally: the built-in registry reaches the real pro
     expect(ledgerRows(path.join(dir, 'route-outcomes.jsonl'), 'recommend:agentic-qe')).toEqual([]);
   });
 
+  it('a relevant advocacy candidate is withheld when the OFFERED receipt cannot persist', () => {
+    const outcomes = path.join(dir, 'outcomes-directory');
+    fs.mkdirSync(outcomes);
+    const env = { ...routeEnv(dir), RUVNET_SETTINGS_FILE: writeSettings('all'), RUVNET_ADVOCACY_OUTCOMES: outcomes };
+    const r = fireRuntime('UserPromptSubmit', {
+      producers: seam('persistence-failure.sh'),
+      env: { ...env, CANDIDATE_LINE: advocacyCandidate() },
+      payload: { prompt: 'a relevant quality gates request', session_id: 'receipt-failure' },
+    });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toBe('');
+  });
+
   it('a standalone copied plugin payload applies an actionable lesson without a marketplace fallback', () => {
     const payloadRoot = path.join(dir, 'standalone-plugin');
     fs.cpSync(path.join(ROOT, 'plugin'), payloadRoot, { recursive: true });
