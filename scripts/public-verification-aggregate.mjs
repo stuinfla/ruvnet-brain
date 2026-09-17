@@ -6,9 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest } from './coverage-integrity.mjs';
 import {
   retrievalOracleExpectationFromPlan,
+  validateIndependentReviewReceipt,
   validateIndependentReviewPair,
   validateRetrievalOracleReview,
 } from './independent-review-receipt.mjs';
+export { validateIndependentReviewReceipt };
 import { validateRetrievalCanaryPlan, validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
 import { validateNightlyProofReceipt, validateNativeSchedulerSmoke } from './nightly-two-run-proof.mjs';
 
