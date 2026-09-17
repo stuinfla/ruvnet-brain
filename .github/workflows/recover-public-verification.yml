@@ -274,17 +274,37 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
+          MACHINE_GRADING_ARTIFACT_ID: ${{ secrets.RUVNET_MACHINE_GRADING_ARTIFACT_ID }}
+          FABLE_REVIEW_PUBLIC_KEY: ${{ secrets.RUVNET_FABLE_REVIEW_PUBLIC_KEY }}
+          ASTRA_REVIEW_PUBLIC_KEY: ${{ secrets.RUVNET_ASTRA_REVIEW_PUBLIC_KEY }}
           RUVNET_SIGNING_KEY: ${{ secrets.RUVNET_SIGNING_KEY }}
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$MACHINE_GRADING_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$MACHINE_GRADING_ARTIFACT_ID/zip" > "$RUNNER_TEMP/machine-grading.zip"
+          mkdir -p release-evidence/reviews
+          while IFS= read -r archive_path; do
+            [[ "$archive_path" != /* && "$archive_path" != *../* && "$archive_path" != ../* ]] || { echo "unsafe review archive path" >&2; exit 1; }
+          done < <(unzip -Z1 "$RUNNER_TEMP/machine-grading.zip")
+          unzip -q "$RUNNER_TEMP/machine-grading.zip" -d release-evidence/reviews
+          mkdir -p release-evidence/reviews/keys
+          printf '%s\n' "$FABLE_REVIEW_PUBLIC_KEY" > release-evidence/reviews/keys/claude-fable-5-1.pub.pem
+          printf '%s\n' "$ASTRA_REVIEW_PUBLIC_KEY" > release-evidence/reviews/keys/gpt-6-astra.pub.pem
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"
           test "$(find public-lanes -type f -name '*.json' | wc -l | tr -d ' ')" = 3
+          test -s release-evidence/reviews/claude-fable-5-1.json
+          test -s release-evidence/reviews/gpt-6-astra.json
+          test -s release-evidence/reviews/keys/claude-fable-5-1.pub.pem
+          test -s release-evidence/reviews/keys/gpt-6-astra.pub.pem
           node scripts/public-verification-aggregate.mjs \
             --workflow-run-id "$GITHUB_RUN_ID" \
             --verifier-sha "${{ github.sha }}" \
             --lanes public-lanes \
+            --reviews-dir release-evidence/reviews \
+            --fable-public-key release-evidence/reviews/keys/claude-fable-5-1.pub.pem \
+            --astra-public-key release-evidence/reviews/keys/gpt-6-astra.pub.pem \
             --out release-evidence/public-verification-aggregate.json
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"
@@ -293,6 +313,7 @@ jobs:
             --verifier-sha "${{ github.sha }}" \
             --identity release-evidence/release-identity.json \
             --aggregate release-evidence/public-verification-aggregate.json \
+            --review-keys-dir release-evidence/reviews/keys \
             --require-review-pair \
             --out release-evidence/install-verified-receipt.json
           test "$(node -p "require('./release-evidence/install-verified-receipt.json').state")" = install-verified

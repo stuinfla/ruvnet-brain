@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { finalizeReleaseTransaction } from './release-transaction.mjs';
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
+import { validateIndependentReviewPair } from './independent-review-receipt.mjs';
 
 const argument = (args, name) => {
   const index = args.indexOf(name);
@@ -28,6 +29,7 @@ export async function finalizePublicVerification({
   privatePem = process.env.RUVNET_SIGNING_KEY,
   publicKeyFile = 'keys/ruvnet-brain-signing.pub.pem',
   requireReviewPair = false,
+  reviewPublicKeysByReviewer = null,
   adapter = liveReleaseProvider({ root: process.cwd() }),
 } = {}) {
   if (!identityFile || !aggregateFile || !outputFile) throw new Error('--identity, --aggregate, and --out are required');
@@ -36,9 +38,13 @@ export async function finalizePublicVerification({
   if (!privatePem) throw new Error('RUVNET_SIGNING_KEY is required');
   const identity = regularJson(identityFile, 'release identity');
   const aggregate = regularJson(aggregateFile, 'public verification aggregate');
+  if (requireReviewPair && !reviewPublicKeysByReviewer) throw new Error('required machine grading pair keys are missing');
+  if (reviewPublicKeysByReviewer) {
+    validateIndependentReviewPair(aggregate.reviews, { publicKeysByReviewer: reviewPublicKeysByReviewer });
+  }
   const publicKey = crypto.createPublicKey(fs.readFileSync(path.resolve(publicKeyFile), 'utf8'));
   const receipt = await finalizeReleaseTransaction({ identity, aggregate, adapter, verifierSha, workflowRunId,
-    privateKey: crypto.createPrivateKey(privatePem), publicKey, aggregatePublicKey: publicKey, requireReviewPair });
+    privateKey: crypto.createPrivateKey(privatePem), publicKey, aggregatePublicKey: publicKey, requireReviewPair, reviewPublicKeysByReviewer });
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.writeFileSync(output, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   return receipt;
@@ -53,6 +59,10 @@ export async function main(args = process.argv.slice(2)) {
       verifierSha: argument(args, '--verifier-sha') ?? undefined,
       workflowRunId: argument(args, '--workflow-run-id'),
       requireReviewPair: args.includes('--require-review-pair'),
+      ...(argument(args, '--review-keys-dir') ? { reviewPublicKeysByReviewer: {
+        'claude-fable-5-1': fs.readFileSync(path.join(argument(args, '--review-keys-dir'), 'claude-fable-5-1.pub.pem'), 'utf8'),
+        'gpt-6-astra': fs.readFileSync(path.join(argument(args, '--review-keys-dir'), 'gpt-6-astra.pub.pem'), 'utf8'),
+      } } : {}),
     });
     process.stdout.write(`${JSON.stringify({ state: receipt.state, transactionId: receipt.transactionId,
       receiptDigest: receipt.receiptDigest }, null, 2)}\n`);

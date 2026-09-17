@@ -541,6 +541,7 @@ export async function finalizeReleaseTransaction({
   privateKey,
   publicKey,
   aggregatePublicKey,
+  reviewPublicKeysByReviewer,
 } = {}) {
   if (!/^[1-9][0-9]*$/.test(String(workflowRunId || ''))) throw new Error('expected workflow run ID is required');
   if (verifierSha !== undefined && (!/^[a-f0-9]{40}$/.test(String(verifierSha))
@@ -564,6 +565,9 @@ export async function finalizeReleaseTransaction({
     releaseTransactionId: transactionIdFor(identity),
   };
   verifyPublicVerificationAggregate(aggregate, aggregatePublicKey, expectedAggregateIdentity);
+  if (!reviewPublicKeysByReviewer) throw new Error('terminal finalizer requires pinned machine grading public keys');
+  const { validateIndependentReviewPair } = await import('./independent-review-receipt.mjs');
+  validateIndependentReviewPair(aggregate.reviews, { publicKeysByReviewer: reviewPublicKeysByReviewer, expectedOracle: undefined });
   if (!Array.isArray(aggregate.reviews) || aggregate.reviews.length !== 2
     || new Set(aggregate.reviews.map((review) => review?.id)).size !== 2) {
     throw new Error('public verification finalizer requires the two-vendor machine grading pair');

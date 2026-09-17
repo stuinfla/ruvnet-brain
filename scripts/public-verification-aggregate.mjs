@@ -98,44 +98,6 @@ function aggregatePayload(aggregate) {
   return payload;
 }
 
-function reviewPayload(review) {
-  const { receiptSha256: _receiptSha256, ...payload } = review;
-  return payload;
-}
-
-export function validateIndependentReviewReceipt(review) {
-  if (review?.schemaVersion !== 2 || review?.kind !== 'ruvnet-brain-independent-review'
-    || !REQUIRED_REVIEW_MODELS.includes(review.model) || review.id !== review.model
-    || review.independent !== true || review.verdict !== 'PASS' || !Number.isInteger(review.score) || review.score < 95
-    || !HEX40.test(String(review.sourceSha || '')) || !HEX64.test(String(review.artifactSha256 || ''))
-    || !HEX64.test(String(review.payloadId || '')) || !HEX64.test(String(review.productContractSha256 || ''))
-    || !HEX64.test(String(review.rubricSha256 || '')) || !Array.isArray(review.deductions)
-    || !Array.isArray(review.untested) || review.untested.length || !review.execution?.subscriptionAuthenticated
-    || typeof review.execution?.invocationDigest !== 'string' || !HEX64.test(review.execution.invocationDigest)) {
-    throw new Error('independent review receipt is malformed, below 95, or incomplete');
-  }
-  if (review.model === 'claude-fable-5-1' && review.provider !== 'firstParty') {
-    throw new Error('Fable 5 review did not use the verified first-party subscription path');
-  }
-  if (review.model === 'gpt-6-astra' && (review.provider !== 'openai' || typeof review.execution.threadId !== 'string'
-    || !review.execution.threadId || !HEX64.test(String(review.execution.catalogRowSha256 || '')))) {
-    throw new Error('GPT-5.6-Sol review lacks live catalog and thread evidence');
-  }
-  const semantic = validateRetrievalOracleReview(review.retrievalOracleReview, { requireAcceptance: true });
-  if (canonicalJson(semantic) !== canonicalJson(review.retrievalOracleReview)) {
-    throw new Error('retrieval oracle semantic review is not canonical');
-  }
-  if (digest(reviewPayload(review)) !== review.receiptSha256) throw new Error('independent review receipt digest mismatch');
-  return review;
-}
-
-export function createIndependentReviewReceipt(input) {
-  const semantic = validateRetrievalOracleReview(input?.retrievalOracleReview, { requireAcceptance: true });
-  const payload = { schemaVersion: 2, kind: 'ruvnet-brain-independent-review', ...input,
-    retrievalOracleReview: semantic };
-  return validateIndependentReviewReceipt({ ...payload, receiptSha256: digest(payload) });
-}
-
 function validateReviewOracleAgainstPlan(review, retrievalPlan) {
   const expected = retrievalOracleExpectationFromPlan(retrievalPlan);
   const semantic = validateRetrievalOracleReview(review.retrievalOracleReview, { requireAcceptance: true });
@@ -217,13 +179,22 @@ export function buildPublicVerificationAggregate(leaves, options = {}) {
   // grading pair is carried through it. Keep the low-level builder usable for
   // historical/unit fixtures; release callers must set requireReviewPair.
   let reviews = options.reviews;
-  if ((options.requireReviewPair || options.reviews !== undefined)
-    && options.publicKeysByReviewer && Object.keys(options.publicKeysByReviewer).length) {
-    reviews = validateIndependentReviewPair(options.reviews, {
-      publicKeysByReviewer: options.publicKeysByReviewer,
-      expectedIdentity: options.expectedReviewIdentity || null,
-      expectedOracle: options.expectedOracle || retrievalOracleExpectationFromPlan(first.retrievalPlan),
-    });
+  if (options.reviews !== undefined) {
+    if (options.publicKeysByReviewer && Object.keys(options.publicKeysByReviewer).length === 2) {
+      const expected = options.reviews[0];
+      if (!expected || options.reviews.some((review) => review.sourceSha !== identity.sourceSha
+        || review.artifactSha256 !== identity.artifactSha256 || review.payloadId !== identity.payloadId
+        || review.releaseIdentity?.candidateSha !== identity.sourceSha
+        || review.releaseIdentity?.packageSha256 !== identity.artifactSha256
+        || review.releaseIdentity?.payloadId !== identity.payloadId)) {
+        throw new Error('machine grading pair reviewed identity differs from public release identity');
+      }
+      reviews = validateIndependentReviewPair(options.reviews, {
+        publicKeysByReviewer: options.publicKeysByReviewer,
+        expectedIdentity: options.expectedReviewIdentity || null,
+        expectedOracle: options.expectedOracle || retrievalOracleExpectationFromPlan(first.retrievalPlan),
+      });
+    }
   }
   return {
     schemaVersion: 1,
@@ -246,6 +217,9 @@ export function buildPublicVerificationAggregate(leaves, options = {}) {
 }
 
 export function signPublicVerificationAggregate({ leaves, reviews, publicKeysByReviewer, expectedReviewIdentity, expectedOracle }, privateKey) {
+  if (reviews !== undefined && (!publicKeysByReviewer || Object.keys(publicKeysByReviewer).length !== 2)) {
+    throw new Error('signed aggregate review pair requires exactly two pinned public keys');
+  }
   const payload = buildPublicVerificationAggregate(leaves, {
     publicKey: crypto.createPublicKey(privateKey),
     ...(reviews === undefined ? {} : { reviews, publicKeysByReviewer, expectedReviewIdentity, expectedOracle }),
@@ -306,13 +280,16 @@ function parseCliArgs(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!['--lanes', '--out', '--verifier-sha', '--workflow-run-id'].includes(flag) || !value) {
+    if (!['--lanes', '--out', '--verifier-sha', '--workflow-run-id', '--reviews-dir', '--fable-public-key', '--astra-public-key'].includes(flag) || !value) {
       throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --out <file> --workflow-run-id <id>');
     }
     parsed[flag.slice(2)] = value;
   }
   if (!parsed.lanes || !parsed.out || !/^[1-9][0-9]*$/.test(parsed['workflow-run-id'] || '')) {
     throw new Error('usage: public-verification-aggregate.mjs --lanes <dir> --out <file> --workflow-run-id <id>');
+  }
+  if (parsed['reviews-dir'] && (!parsed['fable-public-key'] || !parsed['astra-public-key'])) {
+    throw new Error('review artifact directory requires both pinned public keys');
   }
   return parsed;
 }
@@ -352,12 +329,13 @@ function readLaneLeaves(directory, options = {}) {
   return PUBLIC_VERIFICATION_OS.flatMap((osName) => byOs.get(osName));
 }
 
-export function generatePublicVerificationAggregate({ lanesDirectory, outputFile, privateKey, verifierSha, workflowRunId }) {
+export function generatePublicVerificationAggregate({ lanesDirectory, outputFile, privateKey, verifierSha, workflowRunId,
+  reviews, publicKeysByReviewer }) {
   if (!/^[1-9][0-9]*$/.test(String(workflowRunId || ''))) throw new Error('expected workflow run ID is required');
   if (!privateKey) throw new Error('RUVNET_SIGNING_KEY is required');
   if (fs.existsSync(outputFile)) throw new Error(`refusing to overwrite existing aggregate: ${outputFile}`);
   const leaves = readLaneLeaves(lanesDirectory, { publicKey: crypto.createPublicKey(privateKey) });
-  const aggregate = signPublicVerificationAggregate({ leaves }, privateKey);
+  const aggregate = signPublicVerificationAggregate({ leaves, ...(reviews ? { reviews, publicKeysByReviewer } : {}) }, privateKey);
   if (aggregate.workflowRunId !== String(workflowRunId)) throw new Error('public verification aggregate workflow run differs from the expected run');
   if (verifierSha !== undefined && (!HEX40.test(String(verifierSha)) || aggregate.identity.verifierSha !== verifierSha)) {
     throw new Error('public verification aggregate verifier SHA differs from the expected verifier');
@@ -374,6 +352,13 @@ async function main() {
     verifierSha: options['verifier-sha'],
     workflowRunId: options['workflow-run-id'],
     privateKey: process.env.RUVNET_SIGNING_KEY,
+    ...(options['reviews-dir'] ? {
+      reviews: ['claude-fable-5-1', 'gpt-6-astra'].map((id) => JSON.parse(fs.readFileSync(path.join(options['reviews-dir'], `${id}.json`), 'utf8'))),
+      publicKeysByReviewer: {
+        'claude-fable-5-1': fs.readFileSync(options['fable-public-key'], 'utf8'),
+        'gpt-6-astra': fs.readFileSync(options['astra-public-key'], 'utf8'),
+      },
+    } : {}),
   });
   process.stdout.write(`${JSON.stringify({ ok: true, aggregateSha256: aggregate.aggregateSha256,
     leaves: aggregate.metrics.leaves })}\n`);

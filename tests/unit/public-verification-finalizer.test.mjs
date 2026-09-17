@@ -7,16 +7,17 @@ import { describe, expect, it } from 'vitest';
 import { canonicalJson, digest } from '../../scripts/coverage-integrity.mjs';
 import { runRetrievalCanaries, sealRetrievalQueryEvidence } from '../../scripts/retrieval-canary.mjs';
 import {
-  createIndependentReviewReceipt,
   createPublicVerificationLeaf,
   PUBLIC_VERIFICATION_MODES,
   PUBLIC_VERIFICATION_OS,
   signPublicVerificationAggregate,
 } from '../../scripts/public-verification-aggregate.mjs';
+import { createIndependentReviewReceipt } from '../../scripts/independent-review-receipt.mjs';
 import { finalizeReleaseTransaction, transactionIdFor } from '../../scripts/release-transaction.mjs';
 import { finalizePublicVerification } from '../../scripts/public-verification-finalizer.mjs';
 import { execute, FakeReleaseProvider, identity, keys } from '../helpers/release-transaction-fixture.mjs';
 import { getVersionTag } from '../../scripts/version.mjs';
+identity.transactionId = transactionIdFor(identity);
 
 const plan = { schemaVersion: 2, kind: 'ruvnet-brain-retrieval-canary-plan',
   coverage: { sha256: '4'.repeat(64), bytes: 100, releaseCoverageGeneration: 'f'.repeat(64) },
@@ -72,9 +73,10 @@ async function aggregate(reviewKeys = keys, verifierSha) {
       coverage: { verified: true, eligibleCurrent: 2, eligibleTotal: 2, gistCurrent: 1, gistTotal: 1 },
       retrievalPlan: plan, retrieval, untested: [], skipped: 0, unknown: 0 }, { publicKey: reviewKeys.publicKey }));
   }
-  const reviewCommon = { sourceSha: identity.candidateSha, artifactSha256: identity.packageSha256,
+  const reviewCommon = { subjectProducerIdentity: 'release-builder', sourceTree: identity.candidateSha, payloadSha256: '8'.repeat(64),
+    releaseIdentity: identity, sourceSha: identity.candidateSha, artifactSha256: identity.packageSha256,
     payloadId: identity.payloadId, productContractSha256: '3'.repeat(64), rubricSha256: '4'.repeat(64),
-    independent: true, verdict: 'PASS', score: 96, deductions: [], untested: [],
+    independent: true, verdict: 'PASS', score: 100, deductions: [], untested: [], reviewedAt: '2026-09-16T00:00:00.000Z', findings: [],
     retrievalOracleReview: {
       schemaVersion: 1, kind: 'ruvnet-brain-retrieval-oracle-semantic-review',
       oracleReceiptSha256: plan.oracle.receiptSha256, queryStoreSetSha256: plan.oracle.queryStoreSetSha256,
@@ -86,12 +88,14 @@ async function aggregate(reviewKeys = keys, verifierSha) {
       verdict: 'PASS', untested: [],
     } };
   const reviews = [
-    createIndependentReviewReceipt({ ...reviewCommon, id: 'claude-fable-5', model: 'claude-fable-5', provider: 'firstParty',
-      execution: { subscriptionAuthenticated: true, invocationDigest: '5'.repeat(64) } }),
-    createIndependentReviewReceipt({ ...reviewCommon, id: 'gpt-5.6-sol', model: 'gpt-5.6-sol', provider: 'openai',
-      execution: { subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64), threadId: 'thread', catalogRowSha256: '7'.repeat(64) } }),
+    createIndependentReviewReceipt({ ...reviewCommon, id: 'claude-fable-5-1', model: 'claude-fable-5-1', provider: 'firstParty',
+      execution: { nativeHost: 'claude-code', subscriptionAuthenticated: true, invocationDigest: '5'.repeat(64) } }, reviewKeys.privateKey),
+    createIndependentReviewReceipt({ ...reviewCommon, id: 'gpt-6-astra', model: 'gpt-6-astra', provider: 'openai',
+      execution: { nativeHost: 'codex', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64), threadId: 'thread', catalogRowSha256: '7'.repeat(64) } }, reviewKeys.privateKey),
   ];
-  return signPublicVerificationAggregate({ leaves, reviews }, reviewKeys.privateKey);
+  return signPublicVerificationAggregate({ leaves, reviews, publicKeysByReviewer: {
+    'claude-fable-5-1': reviewKeys.publicKey, 'gpt-6-astra': reviewKeys.publicKey,
+  } }, reviewKeys.privateKey);
 }
 
 async function convergedProvider() {
@@ -111,7 +115,8 @@ describe('schema-3 install-verified finalizer', () => {
     const verifierSha = '9'.repeat(40);
     const evidence = await aggregate(keys, verifierSha);
     const args = { workflowRunId: '12345', identity, aggregate: evidence, adapter: provider,
-      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey };
+      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey, reviewPublicKeysByReviewer: { 'claude-fable-5-1': keys.publicKey, 'gpt-6-astra': keys.publicKey },
+      reviewPublicKeysByReviewer: { 'claude-fable-5-1': keys.publicKey, 'gpt-6-astra': keys.publicKey } };
     const before = provider.receipts.length;
     await expect(finalizeReleaseTransaction({ ...args, workflowRunId: undefined })).rejects.toThrow(/workflow run ID/);
     await expect(finalizeReleaseTransaction({ ...args, workflowRunId: '99999' })).rejects.toThrow(/workflow run|identity/i);
@@ -131,11 +136,11 @@ describe('schema-3 install-verified finalizer', () => {
     }
     const evidence = await aggregate();
     const final = await finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: provider,
-      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey });
+      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey, reviewPublicKeysByReviewer: { 'claude-fable-5-1': keys.publicKey, 'gpt-6-astra': keys.publicKey } });
     expect(final.state).toBe('install-verified');
     expect(final.observation.publicVerification.aggregateSha256).toBe(evidence.aggregateSha256);
     expect((await finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: provider,
-      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey })).receiptDigest)
+      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey, reviewPublicKeysByReviewer: { 'claude-fable-5-1': keys.publicKey, 'gpt-6-astra': keys.publicKey } })).receiptDigest)
       .toBe(final.receiptDigest);
   });
 
@@ -144,18 +149,18 @@ describe('schema-3 install-verified finalizer', () => {
     const fresh = new FakeReleaseProvider();
     fresh.materializePublicVerificationAggregate = async () => ({});
     await expect(finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: fresh,
-      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey })).rejects.toThrow(/no receipt chain/);
+      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey, reviewPublicKeysByReviewer: { 'claude-fable-5-1': keys.publicKey, 'gpt-6-astra': keys.publicKey } })).rejects.toThrow(/no receipt chain/);
     const drifted = await convergedProvider();
     drifted.npmLatest = drifted.prior;
     await expect(finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: drifted,
-      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey })).rejects.toThrow(/channels drifted/);
+      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey, reviewPublicKeysByReviewer: { 'claude-fable-5-1': keys.publicKey, 'gpt-6-astra': keys.publicKey } })).rejects.toThrow(/channels drifted/);
     await expect(finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: await convergedProvider(),
       privateKey: keys.privateKey, publicKey: keys.publicKey,
       aggregatePublicKey: crypto.generateKeyPairSync('ed25519').publicKey })).rejects.toThrow(/signature mismatch/);
     const badMaterialization = await convergedProvider();
     badMaterialization.materializePublicVerificationAggregate = async () => ({ aggregateSha256: '0'.repeat(64), signatureSha256: '0'.repeat(64) });
     await expect(finalizeReleaseTransaction({ workflowRunId: '12345', identity, aggregate: evidence, adapter: badMaterialization,
-      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey })).rejects.toThrow(/differs/);
+      privateKey: keys.privateKey, publicKey: keys.publicKey, aggregatePublicKey: keys.publicKey, reviewPublicKeysByReviewer: { 'claude-fable-5-1': keys.publicKey, 'gpt-6-astra': keys.publicKey } })).rejects.toThrow(/differs/);
   });
 
   it('persists the exact install-verified receipt once through the workflow-facing producer', async () => {
@@ -168,7 +173,8 @@ describe('schema-3 install-verified finalizer', () => {
     fs.writeFileSync(aggregateFile, JSON.stringify(await aggregate()));
     fs.writeFileSync(publicKeyFile, keys.publicKey.export({ type: 'spki', format: 'pem' }));
     const options = { workflowRunId: '12345', identityFile, aggregateFile, outputFile, publicKeyFile,
-      privatePem: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }), adapter: await convergedProvider() };
+      privatePem: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }), adapter: await convergedProvider(),
+      reviewPublicKeysByReviewer: { 'claude-fable-5-1': keys.publicKey, 'gpt-6-astra': keys.publicKey } };
     const receipt = await finalizePublicVerification(options);
     expect(receipt.state).toBe('install-verified');
     expect(JSON.parse(fs.readFileSync(outputFile, 'utf8'))).toEqual(receipt);

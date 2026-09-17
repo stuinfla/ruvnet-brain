@@ -10,16 +10,20 @@ import {
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { digest } from '../../scripts/coverage-integrity.mjs';
 
 const eligible = {
   claude: { host: 'claude-code', eligible: true, auth: 'claude.ai-subscription' },
   codex: { host: 'codex', eligible: true, auth: 'chatgpt-subscription' },
 };
-const validStage = (host, name) => ({ schemaVersion: 1, stage: name, artifactSha256: 'a'.repeat(64),
-  ...(name === 'proposal' ? { proposal: { host }, plan: `${host}-plan` } : {}),
-  ...(name === 'critique' ? { findings: [`review-${host}`] } : {}),
-  ...(name === 'synthesis' || name === 'revise' ? { artifact: { host }, adr: {}, ddd: {}, qe: {} } : {}),
-  ...(name === 'verify' || name === 'reverify' ? { verdict: 'accept', corrections: [] } : {}) });
+const validStage = (host, name) => {
+  const content = name === 'proposal' ? { host } : name === 'critique' ? [`review-${host}`] : { host };
+  return { schemaVersion: 1, stage: name, artifactSha256: 'a'.repeat(64), contentDigest: digest(content),
+    ...(name === 'proposal' ? { proposal: content, plan: `${host}-plan` } : {}),
+    ...(name === 'critique' ? { findings: content } : {}),
+    ...(name === 'synthesis' || name === 'revise' ? { artifact: content, adr: {}, ddd: {}, qe: {} } : {}),
+    ...(name === 'verify' || name === 'reverify' ? { verdict: 'accept', corrections: [] } : {}) };
+};
 
 describe('hardProblem', () => {
   it.each([
@@ -67,6 +71,21 @@ describe('deliberate', () => {
     expect(calls.filter((c) => c.stage === 'synthesis')).toHaveLength(1);
     expect(calls.filter((c) => c.stage === 'verify')).toHaveLength(1);
     expect(new Set(calls.map((c) => c.host))).toEqual(new Set(['claude-code', 'codex']));
+  });
+
+  it('carries correction IDs through a resolved revision and rejects vanished resolutions', async () => {
+    let revisionArtifact;
+    const runHost = async (host, stage, payload) => {
+      if (stage === 'critique') return { ok: true, value: { ...validStage(host, stage), corrections: [{ id: 'c1', text: 'add evidence' }] } };
+      if (stage === 'synthesis') return { ok: true, value: validStage(host, stage) };
+      if (stage === 'verify') return { ok: true, value: { ...validStage(host, stage), verdict: 'changes', corrections: [{ id: 'c1', text: 'add evidence' }] } };
+      if (stage === 'revise') { revisionArtifact = { host, changed: true }; return { ok: true, value: { ...validStage(host, stage), artifact: revisionArtifact, contentDigest: digest(revisionArtifact), resolutions: [{ id: 'c1', status: 'resolved', reason: 'evidence added' }] } }; }
+      if (stage === 'reverify') return { ok: true, value: { ...validStage(host, stage), verdict: 'accept', artifactSha256: payload.artifact.artifactSha256, contentDigest: digest(payload.artifact.artifact), resolutions: payload.resolutions } };
+      return { ok: true, value: validStage(host, stage) };
+    };
+    const out = await deliberate('correction ledger', { probes: eligible, runHost });
+    expect(out.status).toBe('accepted');
+    expect(out.verifiedOutcome).toBe(true);
   });
 
   it('returns an honestly labeled draft when one subscription is unavailable', async () => {

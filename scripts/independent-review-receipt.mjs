@@ -228,9 +228,12 @@ function reviewerFor(input) {
 
 function normalizeExecution(execution, reviewer) {
   const isOpenAiNative = reviewer.provider === 'openai';
+  const nativeHost = reviewer.identity === 'claude-fable-5-1' ? 'claude-code'
+    : reviewer.identity === 'gpt-6-astra' ? 'codex' : null;
   const required = isOpenAiNative
     ? ['catalogRowSha256', 'invocationDigest', 'subscriptionAuthenticated', 'threadId']
     : ['invocationDigest', 'subscriptionAuthenticated'];
+  if (nativeHost) required.push('nativeHost');
   if (isOpenAiNative
     && (!Object.hasOwn(execution || {}, 'threadId') || !Object.hasOwn(execution || {}, 'catalogRowSha256'))) {
     throw new Error('GPT review thread and catalog evidence are required');
@@ -238,6 +241,7 @@ function normalizeExecution(execution, reviewer) {
   exactKeys(execution, required, 'review execution');
   if (execution.subscriptionAuthenticated !== true) throw new Error('review execution is not subscription authenticated');
   hex(execution.invocationDigest, HEX64, 'review invocation digest');
+  if (nativeHost && execution.nativeHost !== nativeHost) throw new Error('review native host differs from policy');
   if (isOpenAiNative) {
     text(execution.threadId, 'GPT review thread');
     hex(execution.catalogRowSha256, HEX64, 'GPT review catalog row');
@@ -485,8 +489,8 @@ export function main(args = process.argv.slice(2), runtime = {}) {
       readJson(options['--sol'], 'Sol review receipt')];
     const ordered = validateIndependentReviewPair(receipts, {
       publicKeysByReviewer: {
-        'claude-fable-5': readRegular(options['--fable-public-key'], 'Fable review public key'),
-        'gpt-5.6-sol': readRegular(options['--sol-public-key'], 'Sol review public key'),
+        'claude-fable-5-1': readRegular(options['--fable-public-key'], 'Fable review public key'),
+        'gpt-6-astra': readRegular(options['--sol-public-key'], 'Astra review public key'),
       },
       expectedIdentity: options['--expected-identity']
         ? readJson(options['--expected-identity'], 'expected review identity') : null,

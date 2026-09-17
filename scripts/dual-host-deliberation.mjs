@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { probeSubscriptionHosts, subscriptionOnlyEnv } from './subscription-hosts.mjs';
+import { canonicalJson, digest } from './coverage-integrity.mjs';
 
 const HOSTS = Object.freeze(['claude-code', 'codex']);
 // Top subscription models verified on the native hosts on 2026-09-10.
@@ -37,6 +38,7 @@ function promptFor(stage, payload) {
     'You are one half of a subscription-only Claude Code and Codex deliberation.',
     'Do not request or use API keys. Work read-only. Return JSON only.',
     `Stage: ${stage}`,
+    `Response contract: ${JSON.stringify(STAGE_SCHEMAS[stage] || {})}`,
     JSON.stringify(payload),
   ].join('\n');
 }
@@ -75,12 +77,13 @@ function parseHostValue(host, stdout) {
 }
 
 const STAGE_SCHEMAS = Object.freeze({
-  proposal: { required: ['schemaVersion', 'stage', 'artifactSha256', 'proposal'], optional: ['task', 'plan', 'adr', 'ddd', 'qe', 'artifact', 'host'] },
-  critique: { required: ['schemaVersion', 'stage', 'artifactSha256', 'findings'], optional: ['corrections', 'risks', 'verdict', 'host'] },
-  synthesis: { required: ['schemaVersion', 'stage', 'artifactSha256', 'artifact'], optional: ['adr', 'ddd', 'qe', 'unresolved', 'host'] },
-  revise: { required: ['schemaVersion', 'stage', 'artifactSha256', 'artifact'], optional: ['adr', 'ddd', 'qe', 'unresolved', 'host'] },
-  verify: { required: ['schemaVersion', 'stage', 'artifactSha256', 'verdict', 'corrections'], optional: ['findings'] },
-  reverify: { required: ['schemaVersion', 'stage', 'artifactSha256', 'verdict', 'corrections'], optional: ['findings'] },
+  proposal: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'proposal'], optional: ['task', 'plan', 'adr', 'ddd', 'qe', 'artifact', 'host'] },
+  critique: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'findings'], optional: ['corrections', 'risks', 'verdict', 'host'] },
+  synthesis: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'artifact'], optional: ['adr', 'ddd', 'qe', 'unresolved', 'host'] },
+  revise: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'artifact'], optional: ['adr', 'ddd', 'qe', 'unresolved', 'host', 'resolutions'] },
+  verify: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'verdict', 'corrections'], optional: ['findings', 'resolutions'] },
+  reverify: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'verdict', 'corrections'], optional: ['findings', 'resolutions'] },
+  review: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'verdict', 'score', 'findings', 'deductions', 'untested', 'reviewedAt', 'retrievalOracleReview'], optional: ['host', 'execution'] },
 });
 
 export function validateStageValue(stage, value) {
@@ -94,8 +97,37 @@ export function validateStageValue(stage, value) {
   if (unknown.length) throw new Error(`${stage} response has unknown field: ${unknown.sort()[0]}`);
   const missing = schema.required.find((key) => !Object.hasOwn(value, key));
   if (missing) throw new Error(`${stage} response is missing ${missing}`);
-  if (value.schemaVersion !== 1 || value.stage !== stage || !/^[a-f0-9]{64}$/.test(String(value.artifactSha256))) {
+  if (value.schemaVersion !== 1 || value.stage !== stage || !/^[a-f0-9]{64}$/.test(String(value.artifactSha256))
+    || !/^[a-f0-9]{64}$/.test(String(value.contentDigest))) {
     throw new Error(`${stage} response identity is invalid`);
+  }
+  if (stage === 'proposal' && (!value.proposal || typeof value.proposal !== 'object' || Array.isArray(value.proposal)
+    || Object.keys(value.proposal).length === 0)) {
+    throw new Error('proposal response is not substantive');
+  }
+  if (stage === 'critique' && (!Array.isArray(value.findings) || value.findings.length === 0
+    || value.findings.some((finding) => (typeof finding !== 'string' && (!finding || typeof finding !== 'object'))
+      || (typeof finding === 'object' && Object.keys(finding).length === 0)))) {
+    throw new Error('critique findings are not substantive');
+  }
+  if (stage === 'critique' && value.corrections !== undefined) {
+    if (!Array.isArray(value.corrections) || value.corrections.some((correction) => !correction || typeof correction !== 'object'
+      || !/^[a-z0-9][a-z0-9._-]*$/i.test(String(correction.id || '')) || typeof correction.text !== 'string' || !correction.text.trim())) {
+      throw new Error('critique corrections are invalid');
+    }
+  }
+  if (['synthesis', 'revise'].includes(stage)
+    && (!value.artifact || typeof value.artifact !== 'object' || Array.isArray(value.artifact))) {
+    throw new Error(`${stage} artifact is not substantive`);
+  }
+  if (stage === 'review' && (!['PASS', 'FAIL'].includes(value.verdict) || !Number.isInteger(value.score)
+    || !Array.isArray(value.findings) || !Array.isArray(value.deductions) || !Array.isArray(value.untested)
+    || typeof value.reviewedAt !== 'string' || !value.retrievalOracleReview || typeof value.retrievalOracleReview !== 'object')) {
+    throw new Error('review response is not substantive');
+  }
+  const boundContent = value.proposal ?? value.findings ?? value.artifact;
+  if (boundContent !== undefined && digest(boundContent) !== value.contentDigest) {
+    throw new Error(`${stage} response artifact digest differs from substantive content`);
   }
   if (['verify', 'reverify'].includes(stage)) {
     if (!['accept', 'changes', 'block'].includes(value.verdict)) throw new Error(`${stage} verdict is invalid`);
@@ -104,8 +136,40 @@ export function validateStageValue(stage, value) {
       || typeof correction.text !== 'string' || !correction.text.trim())) {
       throw new Error(`${stage} corrections are invalid`);
     }
+    if (value.verdict === 'accept' && value.corrections.length) throw new Error(`${stage} acceptance has unresolved corrections`);
+    if (value.verdict === 'changes' && value.corrections.length === 0) throw new Error(`${stage} changes require corrections`);
+    if (value.resolutions !== undefined && (!Array.isArray(value.resolutions) || value.resolutions.some((row) => !row
+      || typeof row !== 'object' || typeof row.id !== 'string' || !row.id.trim()
+      || !['resolved', 'rejected'].includes(row.status) || typeof row.reason !== 'string' || !row.reason.trim()))) {
+      throw new Error(`${stage} correction resolutions are invalid`);
+    }
   }
   return value;
+}
+
+function correctionLedgerFromCritiques(critiques) {
+  const rows = Object.values(critiques).flatMap((critique) => (critique.corrections || []).map((correction) => ({
+    id: correction.id, text: correction.text, status: 'open', source: critique.host || 'critique',
+  })));
+  const byId = new Map();
+  for (const row of rows) {
+    if (byId.has(row.id) && byId.get(row.id).text !== row.text) throw new Error('critique correction IDs conflict');
+    byId.set(row.id, row);
+  }
+  return [...byId.values()];
+}
+
+function assertCorrectionResolutions(ledger, resolutions, originalArtifact, revisedArtifact) {
+  if (!ledger.length) return;
+  if (canonicalJson(originalArtifact) === canonicalJson(revisedArtifact)) throw new Error('corrections require a changed artifact');
+  if (!Array.isArray(resolutions)) throw new Error('correction resolution ledger is missing');
+  const byId = new Map(resolutions.map((row) => [row?.id, row]));
+  for (const correction of ledger) {
+    const row = byId.get(correction.id);
+    if (!row || !['resolved', 'rejected'].includes(row.status) || typeof row.reason !== 'string' || !row.reason.trim()) {
+      throw new Error(`correction ${correction.id} lacks a reasoned verifier disposition`);
+    }
+  }
 }
 
 function spawnHost(binary, args, options, input = '') {
@@ -168,7 +232,22 @@ export async function runSubscriptionHost(host, stage, payload, { cwd = process.
         : 'host-failed',
     };
   }
-  return { ok: true, value: parseHostValue(host, result.stdout) };
+  const value = parseHostValue(host, result.stdout);
+  if (stage === 'review' && value && typeof value === 'object' && !Array.isArray(value)) {
+    const transportDigest = createHash('sha256').update(prompt).update(result.stdout).digest('hex');
+    const threadEvent = String(result.stdout).split('\n').map((line) => { try { return JSON.parse(line); } catch { return null; } })
+      .find((event) => event?.type === 'thread.started' && typeof event.thread_id === 'string');
+    const transportThread = threadEvent?.thread_id;
+    if (host === 'codex' && !transportThread) return { ok: false, reason: 'native transport omitted thread.started' };
+    value.execution = { nativeHost: host, subscriptionAuthenticated: true, invocationDigest: transportDigest,
+      ...(host === 'codex' ? { threadId: transportThread,
+        catalogRowSha256: createHash('sha256').update(`codex:${TOP_SUBSCRIPTION_MODELS.codex}`).digest('hex') } : {}) };
+  }
+  if (stage === 'review') {
+    try { validateStageValue(stage, value); }
+    catch (error) { return { ok: false, reason: 'invalid-structured-response', error: error.message }; }
+  }
+  return { ok: true, value };
 }
 
 export function deliberationMemoryStoreRequest(receipt, { now = Date.now } = {}) {
@@ -287,8 +366,9 @@ export async function deliberate(task, options = {}) {
     return { status: 'unresolved', dual: true, roles: chooseRoles(task), critiques,
       error: 'both cross-critiques are required before synthesis', verifiedOutcome: false, learningPersisted: false };
   }
+  const correctionLedger = correctionLedgerFromCritiques(critiques);
   const roles = chooseRoles(task);
-  const synthesis = await runHost(roles.scribe, 'synthesis', { task, proposals, critiques });
+  const synthesis = await runHost(roles.scribe, 'synthesis', { task, proposals, critiques, correctionLedger });
   if (!synthesis.ok) {
     return {
       status: 'unresolved',
@@ -303,27 +383,48 @@ export async function deliberate(task, options = {}) {
   catch (error) { return { status: 'unresolved', dual: true, roles, error: error.message, verifiedOutcome: false, learningPersisted: false }; }
 
   let artifact = synthesis.value;
-  let verification = await runHost(roles.verifier, 'verify', { task, artifact });
+  let verification = await runHost(roles.verifier, 'verify', { task, artifact, correctionLedger });
+  if (verification.ok) {
+    try {
+      const checked = validateStageValue('verify', verification.value);
+      if (checked.artifactSha256 !== artifact.artifactSha256) throw new Error('verification subject digest differs from synthesized artifact');
+      verification.value = checked;
+    } catch (error) { verification = { ok: false, error: error.message }; }
+  }
   let verificationStage = 'verify';
   if (verification.ok && verification.value?.verdict === 'changes') {
     const revision = await runHost(roles.scribe, 'revise', {
       task,
       artifact,
       corrections: verification.value.corrections ?? [],
+      correctionLedger,
     });
     if (revision.ok) {
       try { artifact = validateStageValue('revise', revision.value); }
       catch { verification = { ok: true, value: { verdict: 'block', corrections: ['revision response is not substantive'] } }; }
       if (verification.value?.verdict !== 'block') {
-        verification = await runHost(roles.verifier, 'reverify', { task, artifact });
+        verification = await runHost(roles.verifier, 'reverify', { task, artifact,
+          correctionLedger, resolutions: revision.value.resolutions ?? [] });
         verificationStage = 'reverify';
+        if (verification.ok) {
+          try {
+            const checked = validateStageValue('reverify', verification.value);
+            if (checked.artifactSha256 !== artifact.artifactSha256) throw new Error('reverification subject digest differs from revised artifact');
+            verification.value = checked;
+          } catch (error) { verification = { ok: false, error: error.message }; }
+        }
       }
     }
   }
 
   let accepted = false;
   if (verification.ok) {
-    try { accepted = validateStageValue(verificationStage, verification.value).verdict === 'accept'; }
+    try {
+      const checked = validateStageValue(verificationStage, verification.value);
+      if (checked.verdict === 'accept' && correctionLedger.length) assertCorrectionResolutions(
+        correctionLedger, checked.resolutions, synthesis.value.artifact, artifact.artifact);
+      accepted = checked.verdict === 'accept';
+    }
     catch { accepted = false; }
   }
   const receipt = {

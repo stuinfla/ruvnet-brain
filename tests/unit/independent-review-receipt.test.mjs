@@ -91,10 +91,10 @@ const common = {
 function fableInput(overrides = {}) {
   return {
     ...common,
-    id: 'claude-fable-5',
-    model: 'claude-fable-5',
+    id: 'claude-fable-5-1',
+    model: 'claude-fable-5-1',
     provider: 'firstParty',
-    execution: { subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64) },
+    execution: { nativeHost: 'claude-code', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64) },
     ...overrides,
   };
 }
@@ -106,10 +106,11 @@ function fable(overrides = {}) {
 function sol(overrides = {}) {
   return createIndependentReviewReceipt({
     ...common,
-    id: 'gpt-5.6-sol',
-    model: 'gpt-5.6-sol',
+    id: 'gpt-6-astra',
+    model: 'gpt-6-astra',
     provider: 'openai',
     execution: {
+      nativeHost: 'codex',
       subscriptionAuthenticated: true,
       invocationDigest: '7'.repeat(64),
       threadId: 'thread-adr072-review',
@@ -120,8 +121,8 @@ function sol(overrides = {}) {
 }
 
 const publicKeys = () => ({
-  'claude-fable-5': fableKeys.publicKey,
-  'gpt-5.6-sol': solKeys.publicKey,
+  'claude-fable-5-1': fableKeys.publicKey,
+  'gpt-6-astra': solKeys.publicKey,
 });
 
 function sink() {
@@ -141,8 +142,8 @@ describe('independent review receipt', () => {
     expect(first).toMatchObject({
       schemaVersion: 2,
       kind: 'ruvnet-brain-independent-review',
-      id: 'claude-fable-5',
-      model: 'claude-fable-5',
+      id: 'claude-fable-5-1',
+      model: 'claude-fable-5-1',
       sourceSha: release.candidateSha,
       sourceTree: '2'.repeat(40),
       payloadId: release.payloadId,
@@ -180,13 +181,13 @@ describe('independent review receipt', () => {
 
   it('rejects the wrong key, unknown fields, non-Ed25519 keys, and malformed timestamps', () => {
     expect(() => verifyIndependentReviewReceipt(fable(), strangerKeys.publicKey)).toThrow(/signing key identity|signature mismatch/);
-    expect(() => createIndependentReviewReceipt({ ...common, id: 'claude-fable-5', model: 'claude-fable-5', provider: 'firstParty',
-      execution: { subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64) }, unsignedEscape: true }, fableKeys.privateKey))
+    expect(() => createIndependentReviewReceipt({ ...common, id: 'claude-fable-5-1', model: 'claude-fable-5-1', provider: 'firstParty',
+      execution: { nativeHost: 'claude-code', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64) }, unsignedEscape: true }, fableKeys.privateKey))
       .toThrow(/unknown field/);
     expect(() => fable({ reviewedAt: '2026-08-22' })).toThrow(/timestamp/);
     const rsa = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
-    expect(() => createIndependentReviewReceipt({ ...common, id: 'claude-fable-5', model: 'claude-fable-5', provider: 'firstParty',
-      execution: { subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64) } }, rsa.privateKey)).toThrow(/Ed25519/);
+    expect(() => createIndependentReviewReceipt({ ...common, id: 'claude-fable-5-1', model: 'claude-fable-5-1', provider: 'firstParty',
+      execution: { nativeHost: 'claude-code', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64) } }, rsa.privateKey)).toThrow(/Ed25519/);
   });
 
   it('fails closed across malformed schema, nested evidence, key, signature, and canonicalization boundaries', () => {
@@ -205,7 +206,7 @@ describe('independent review receipt', () => {
     expect(() => fable({ deductions: null })).toThrow(/deductions.*array/);
     expect(() => fable({ deductions: [{ ...common.deductions[0], points: 0 }] })).toThrow(/points/);
     expect(() => fable({ deductions: [common.deductions[0], { ...common.deductions[0] }] })).toThrow(/duplicate codes/);
-    expect(() => fable({ execution: { subscriptionAuthenticated: false, invocationDigest: '6'.repeat(64) } }))
+    expect(() => fable({ execution: { nativeHost: 'claude-code', subscriptionAuthenticated: false, invocationDigest: '6'.repeat(64) } }))
       .toThrow(/not subscription authenticated/);
     expect(() => fable({ independent: false })).toThrow(/independent execution/);
     expect(() => fable({ verdict: 'UNKNOWN' })).toThrow(/verdict/);
@@ -242,17 +243,17 @@ describe('independent review receipt', () => {
 
   it('enforces the live allowed reviewer/provider/execution contracts', () => {
     expect(ALLOWED_INDEPENDENT_REVIEWERS).toEqual([
-      { identity: 'claude-fable-5', model: 'claude-fable-5', provider: 'firstParty' },
-      { identity: 'gpt-5.6-sol', model: 'gpt-5.6-sol', provider: 'openai' },
+      { identity: 'claude-fable-5-1', model: 'claude-fable-5-1', provider: 'firstParty' },
+      { identity: 'gpt-6-astra', model: 'gpt-6-astra', provider: 'openai' },
     ]);
     expect(() => fable({ provider: 'openai' })).toThrow(/reviewer identity.*model.*provider/);
-    expect(() => sol({ execution: { subscriptionAuthenticated: true, invocationDigest: '7'.repeat(64) } }))
+    expect(() => sol({ execution: { nativeHost: 'codex', subscriptionAuthenticated: true, invocationDigest: '7'.repeat(64) } }))
       .toThrow(/thread.*catalog/);
     expect(() => fable({ id: 'unknown-reviewer', model: 'unknown-reviewer' })).toThrow(/reviewer identity/);
   });
 
   it('rejects release drift and self-review before signing', () => {
-    expect(() => fable({ subjectProducerIdentity: 'claude-fable-5' })).toThrow(/self-review/);
+    expect(() => fable({ subjectProducerIdentity: 'claude-fable-5-1' })).toThrow(/self-review/);
     expect(() => fable({ artifactSha256: '9'.repeat(64) })).toThrow(/release identity/);
     expect(() => fable({ releaseIdentity: { ...release, transactionId: '9'.repeat(64) } })).toThrow(/release transaction identity/);
     expect(() => fable({ releaseIdentity: { ...release, tag: 'v9.9.9' } })).toThrow(/release tag|release transaction identity/);
@@ -316,10 +317,10 @@ describe('independent review receipt', () => {
 describe('independent review pair', () => {
   it('requires and deterministically orders both distinct signed allowed reviewers', () => {
     const result = validateIndependentReviewPair([sol(), fable()], { publicKeysByReviewer: publicKeys() });
-    expect(result.map(({ id }) => id)).toEqual(['claude-fable-5', 'gpt-5.6-sol']);
+    expect(result.map(({ id }) => id)).toEqual(['claude-fable-5-1', 'gpt-6-astra']);
     expect(validateIndependentReviewPair([sol(), fable()], {
       publicKeysByReviewer: new Map(Object.entries(publicKeys())),
-    }).map(({ id }) => id)).toEqual(['claude-fable-5', 'gpt-5.6-sol']);
+    }).map(({ id }) => id)).toEqual(['claude-fable-5-1', 'gpt-6-astra']);
   });
 
   it('rejects duplicate, missing, mismatched, self, failing, and wrong-key review evidence', () => {
@@ -335,9 +336,9 @@ describe('independent review pair', () => {
       deductions: [{ ...common.deductions[0], points: 5 }], untested: ['real Windows host'] })],
     { publicKeysByReviewer: publicKeys() })).toThrow(/passing reviews/);
     expect(() => validateIndependentReviewPair([fable(), sol()], { publicKeysByReviewer: {
-      ...publicKeys(), 'gpt-5.6-sol': strangerKeys.publicKey } })).toThrow(/signing key identity|signature mismatch/);
+      ...publicKeys(), 'gpt-6-astra': strangerKeys.publicKey } })).toThrow(/signing key identity|signature mismatch/);
     expect(() => validateIndependentReviewPair([fable(), sol()], {
-      publicKeysByReviewer: { 'claude-fable-5': fableKeys.publicKey },
+      publicKeysByReviewer: { 'claude-fable-5-1': fableKeys.publicKey },
     })).toThrow(/public key is missing/);
     expect(() => validateIndependentReviewPair([fable(), sol()], { publicKeysByReviewer: null }))
       .toThrow(/public key is missing/);
@@ -359,10 +360,10 @@ describe('independent review receipt CLI', () => {
     fs.writeFileSync(fableInputFile, JSON.stringify(fableInput()));
     fs.writeFileSync(solInputFile, JSON.stringify({
       ...common,
-      id: 'gpt-5.6-sol',
-      model: 'gpt-5.6-sol',
+      id: 'gpt-6-astra',
+      model: 'gpt-6-astra',
       provider: 'openai',
-      execution: { subscriptionAuthenticated: true, invocationDigest: '7'.repeat(64),
+      execution: { nativeHost: 'codex', subscriptionAuthenticated: true, invocationDigest: '7'.repeat(64),
         threadId: 'thread-adr072-review', catalogRowSha256: '8'.repeat(64) },
     }));
     fs.writeFileSync(fablePublic, fableKeys.publicKey.export({ type: 'spki', format: 'pem' }));
@@ -410,7 +411,7 @@ describe('independent review receipt CLI', () => {
       '--retrieval-plan', retrievalPlan,
       '--expected-identity', expectedIdentity], { stdout: pairOut, stderr })).toBe(0);
     expect(JSON.parse(pairOut.read())).toMatchObject({ verdict: 'PASS', reviews: [
-      { id: 'claude-fable-5' }, { id: 'gpt-5.6-sol' },
+      { id: 'claude-fable-5-1' }, { id: 'gpt-6-astra' },
     ] });
     expect(main(['verify-pair', '--fable', fableReceipt, '--sol', solReceipt,
       '--fable-public-key', fablePublic, '--sol-public-key', solPublic,
