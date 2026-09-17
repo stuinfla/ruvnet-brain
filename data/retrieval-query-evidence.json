@@ -1610,8 +1610,8 @@
       "recordSha256": "2fd4ce7e84019e676061516d5eb906642848f092c5651c140e296a8b4ae5f935"
     }
   },
-  "sourceCommit": "149b290c2b9ae5f60abb61169689e7580b99be69",
+  "sourceCommit": "0b72c9d4102cb26304f772b631c38e754a16f0fd",
   "sourcePath": "data/retrieval-query-evidence.json",
   "sourceBlobSha256": "f6bc48e0a714fac545eaf52c8160dc42af0308888a239ef5c27431f330301f99",
-  "receiptSha256": "813dddde8aeec4652a74eba8cf498afc30b2e507d3b5ce61a263de3e24176c03"
+  "receiptSha256": "128607229c061a0efff9798afaf7bd5c8f97c9c662ad8855be66a43ac00b34e4"
 }
