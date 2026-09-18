@@ -112,10 +112,32 @@ Baseline = unmodified `origin/main` (`3996f502b18157fdc84e325fbe87c2a05351d58c`)
   Independently re-run a second time by the adversarial critic subagent (below), same result.
 - **Evidence script**: `node docs/dream-cycle/evidence/2026-09-18-grounding-quality-repro.mjs` — exit 1
   "VULNERABLE" against unmodified `main`, exit 0 "FIXED" against the candidate.
-- **`npm run test:unit`** (candidate, full suite): PENDING AT TIME OF WRITING — filled in below once the
-  background run completes; will not gate without it.
-- **`npm run test:integration`** (candidate, full suite, both-hosts conformance): PENDING AT TIME OF
-  WRITING — filled in below.
+- **`npm run test:unit`** (full suite, 448 files/5617-5618 tests): baseline (clean `git worktree` at
+  `3996f50`, no candidate files present, isolated from this branch's other changes to avoid the
+  `convergence-manifest.test.mjs` false-positive a mixed working tree produced on a first attempt —
+  see below) `13 failed | 424 passed | 11 skipped` files, `40 failed | 5392 passed | 47 skipped | 138
+  todo` tests. Candidate (this branch) `14 failed | 423 passed | 11 skipped` files, `41 failed | 5392
+  passed | 47 skipped | 138 todo` tests. The one extra failing file, `tests/unit/advocacy-claim.test.mjs`,
+  is a **confirmed pre-existing flake unrelated to this diff**: re-ran it in isolation 3× on the
+  candidate (1 pass, 2 fail) and 3× on the untouched baseline worktree (0 pass, 3 fail, same assertion,
+  same file) — it nondeterministically fails on both sides regardless of this change (a
+  `claimOffer(..., { dir: '/nonexistent-root/...' })` mkdir-under-root timing issue in
+  `advocacy-claim.mjs` itself, orthogonal to `eval-brain.mjs`/`verify-citation.mjs`). Every other failing
+  file is byte-identical between baseline and candidate: `advocacy-ignored`, `advocacy-outcomes`,
+  `advocacy-route`, `console-memory-canonical-store`, `corpus-accuracy-gate`, `corpus-customer-promotion`,
+  `corpus-seed-release-authority`, `doc-currency`, `hook-shim-fallback-once`, `rehearse-corpus-pipeline`,
+  `retrieval-canary`, `user-settings`, `wired-baseline-classification` — none reference the changed files
+  (grep-confirmed), all pre-existing root-permission/EACCES/missing-corpus environmental gaps. Net: **+1
+  test count is exactly the one new `it()` added**; failure delta is fully accounted for by a
+  reproduced, diff-independent flake, not a regression.
+- **`npm run test:integration`** (full suite, both-hosts conformance, 49 files/400 tests): baseline and
+  candidate are **byte-identical**: `9 failed | 37 passed | 3 skipped` files, `23 failed | 309 passed |
+  15 skipped | 53 todo` tests, same 9 failing files both sides (`anticipate`, `anticipate-dial`,
+  `console-apply-timings`, `health-repair`, `project-progression-checkpoint`,
+  `project-progression-concurrent-sessions`, `project-progression-reader-identity`,
+  `project-progression-restore-semantics`, `reader-deadlock-regression`) — all pre-existing environmental
+  gaps (missing ONNX/CE cache, root-permission simulation, no global Ruflo, headless-browser timing), zero
+  touching the changed files. Both-hosts conformance gate unaffected.
 - **`npm run claims:verify`**: `3 verified, 4 unmeasured; omitted=none` — identical composition to this
   repo's documented baseline (brain-dependent claims skip loudly; coverage run absent).
 
@@ -178,11 +200,12 @@ credential, write path, or untrusted-input path. Attack surface unchanged.
 
 ## Regression Analysis
 
-See Evaluation Receipt above for full-suite numbers (pending completion at time of writing; will not be
-represented as final without them). No production behavior changes for any caller other than the one
-`provenance`-stratum branch inside `scripts/eval-brain.mjs`'s own `main()`, which is exercised only by
-`npm run eval:gate` — itself blocked in this container, so the changed branch has not executed against
-real data on this host either way.
+See Evaluation Receipt above for full baseline-vs-candidate numbers: `test:integration` byte-identical;
+`test:unit` differs only by one confirmed pre-existing, diff-independent flake (`advocacy-claim`,
+reproduced failing on both sides independently) plus the one new test this diff itself adds. No
+production behavior changes for any caller other than the one `provenance`-stratum branch inside
+`scripts/eval-brain.mjs`'s own `main()`, which is exercised only by `npm run eval:gate` — itself blocked
+in this container, so the changed branch has not executed against real data on this host either way.
 
 ## ADR
 
@@ -214,9 +237,14 @@ small and reviewable as this repo's own conventions allow, precisely because of 
 
 ```
 SESSION_COMMIT = 3996f502b18157fdc84e325fbe87c2a05351d58c
-REPORT_HASH    = <computed at STEP 16, see below>
-WITNESS        = <computed at STEP 16, see below>
+REPORT_HASH    = 982460e88d704ebf6bf66e94744cfbefcf72a2af404e974b45a39a7c07e51460
+WITNESS        = 7c48fc9cba00d0b1ec6dc4ac401371785991b84d1250502f437f3d770edb7b9a
 ```
+
+Note on `REPORT_HASH`: it is the sha256 of this report's content as it stood through the "Recommendation"
+section, computed BEFORE this Witness section was rewritten with the stamp (the standard chicken-and-egg
+order STEP 16 specifies). It will therefore NOT match a fresh `sha256sum` of this file as it now reads,
+since rewriting this section changed the bytes — expected by construction, not evidence of tampering.
 
 **Verifier procedure (reproduce independently):**
 1. `git checkout 3996f502b18157fdc84e325fbe87c2a05351d58c` (this cycle's base commit on `main`).
