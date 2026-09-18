@@ -77,6 +77,33 @@ describe('gradeQuestion — one rule per stratum', () => {
     expect(gradeQuestion(q, { grounded: true, citations: cite('ruv-gists', 4), bannerPresent: false }).pass).toBe(false);
     expect(gradeQuestion(q, { grounded: true, citations: cite('ruflo', 4), bannerPresent: false }).pass).toBe(true);
   });
+  it('provenance credits the citation verify-citation.mjs actually resolved (`receipt`), not merely ' +
+     'citations[0] — the exact sibling gap already closed for `routed`, never migrated to this ' +
+     'stratum\'s own banner-requirement check', () => {
+    const q = { stratum: 'provenance', expectRepo: ['ruv-gists', 'ruflo'] };
+
+    // Top-ranked citation names ruv-gists but never resolved (fabricated); the citation that
+    // actually grounded the answer is a DIFFERENT, real repo. This is exactly "a better hit from
+    // the real repo" — the comment's own stated non-failure case — and must pass WITHOUT a banner.
+    const citationsBetterHit = [
+      { repo: 'ruv-gists', fullPath: 'ruv-gists/fake/path', ce: 5 },
+      { repo: 'ruflo', fullPath: 'ruflo/real/path', ce: 3 },
+    ];
+    const receiptBetterHit = { repo: 'ruflo', path: 'ruflo/real/path' };
+    expect(gradeQuestion(q, { grounded: true, citations: citationsBetterHit, receipt: receiptBetterHit, bannerPresent: false }).pass).toBe(true);
+
+    // Mirror: top-ranked citation coincidentally names a non-gist repo but never resolved; the
+    // citation that ACTUALLY grounded the answer is a ruv-gists chunk carrying no banner. Crediting
+    // the pass off the fabricated top hit's repo would silently bypass the one mechanism this
+    // stratum exists to test.
+    const citationsGistMiss = [
+      { repo: 'ruflo', fullPath: 'ruflo/fake/path', ce: 5 },
+      { repo: 'ruv-gists', fullPath: 'ruv-gists/real/path', ce: 3 },
+    ];
+    const receiptGistMiss = { repo: 'ruv-gists', path: 'ruv-gists/real/path' };
+    expect(gradeQuestion(q, { grounded: true, citations: citationsGistMiss, receipt: receiptGistMiss, bannerPresent: false }).pass).toBe(false);
+    expect(gradeQuestion(q, { grounded: true, citations: citationsGistMiss, receipt: receiptGistMiss, bannerPresent: true }).pass).toBe(true);
+  });
   it('routed credits the citation verify-citation.mjs actually resolved (`receipt`), not merely ' +
      'citations[0] — citationResolves() accepts the first RESOLVING hit, which can rank below an ' +
      'unresolved (fabricated) top citation', () => {
