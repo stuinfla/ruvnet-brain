@@ -38,9 +38,9 @@ function sandbox() {
 }
 
 /** Run the script against an isolated project dir with a controllable fake `ruflo` on disk. */
-function run(args, { rufloBody = null } = {}) {
+function run(args, { rufloBody = null, rufloPath = null, extraEnv = {} } = {}) {
   const dir = tmp || sandbox();
-  let ruflo = '/nonexistent/ruflo';
+  let ruflo = rufloPath || '/nonexistent/ruflo';
   if (rufloBody) {
     ruflo = path.join(dir, 'fake-ruflo');
     if (process.platform === 'win32') {
@@ -61,7 +61,7 @@ else if (op === 'search') console.log(mode === 'healthy' ? 'lesson-probe' : '[WA
   return spawnSync(process.execPath, [SCRIPT, '--dir', dir, ...args], {
     encoding: 'utf8',
     timeout: 30_000,
-    env: { ...process.env, RUFLO_BIN: ruflo },
+    env: { ...process.env, RUFLO_BIN: ruflo, ...extraEnv },
   });
 }
 
@@ -77,15 +77,6 @@ const INCIDENT_SHAPE_RUFLO = '#!/bin/sh\n'
   + '  search)   echo "[WARN] No results found"; exit 0;;\n'
   + 'esac\nexit 0\n';
 
-// A fake CLI where the write genuinely lands: retrieve echoes the exact value back.
-const HEALTHY_RUFLO = '#!/bin/sh\n'
-  + 'case "$2" in\n'
-  + '  store)    echo "[OK] Data stored successfully"; exit 0;;\n'
-  + '  retrieve) echo "TASK: probe task OUTCOME: success"; exit 0;;\n'
-  + '  distill)  echo "Episodes | 1"; exit 0;;\n'
-  + '  search)   echo "lesson-probe"; exit 0;;\n'
-  + 'esac\nexit 0\n';
-
 // A THIRD shape, distinct from both of the above: the store is damaged and `retrieve` returns a
 // SQL-layer error rather than "Key not found". This discriminates a genuine value comparison from
 // a shallower "not literally Key-not-found" check — the latter would wrongly call this a success.
@@ -96,6 +87,47 @@ const CORRUPT_STORE_RUFLO = '#!/bin/sh\n'
   + '  distill)  echo "Episodes | 0"; exit 0;;\n'
   + '  search)   echo "[WARN] No results found"; exit 0;;\n'
   + 'esac\nexit 0\n';
+
+/**
+ * A STATEFUL fake `ruflo`, implemented once in Node (like the win32 branch above already does for
+ * the canned fixtures) so the identical logic runs on every host: `store` writes whatever `--value`
+ * it received into a state file on disk, UNLESS `RL_SILENT_NOOP=1` — which simulates a store call
+ * that claims success but persists nothing, the 2026-08-13 incident shape applied to a SECOND call
+ * rather than the first — and `retrieve` echoes back whatever currently sits in that file. This lets
+ * a test control exactly what a "stale, still-present write from an earlier call" looks like, which
+ * the canned single-string fixtures above cannot do (their `retrieve` branch is a fixed string).
+ */
+function statefulRuflo(dir, { preseed = null } = {}) {
+  const state = path.join(dir, 'fake-store-state.txt');
+  if (preseed !== null) fs.writeFileSync(state, preseed);
+  const script = `
+import fs from 'node:fs';
+const STATE = ${JSON.stringify(state)};
+const op = process.argv[3];
+const silentNoop = process.env.RL_SILENT_NOOP === '1';
+if (op === 'store') {
+  const i = process.argv.indexOf('--value');
+  const val = i >= 0 ? process.argv[i + 1] : '';
+  if (!silentNoop) fs.writeFileSync(STATE, val);
+  console.log('[OK] Data stored successfully');
+} else if (op === 'retrieve') {
+  console.log(fs.existsSync(STATE) ? fs.readFileSync(STATE, 'utf8') : '[WARN] Key not found: lesson-probe');
+} else if (op === 'distill') {
+  console.log('Episodes | 1');
+} else if (op === 'search') {
+  console.log('lesson-probe');
+}
+`;
+  fs.writeFileSync(path.join(dir, 'fake-ruflo-stateful.mjs'), script);
+  let ruflo = path.join(dir, 'fake-ruflo-stateful');
+  if (process.platform === 'win32') {
+    fs.writeFileSync(`${ruflo}.cmd`, '@echo off\r\nnode "%~dp0fake-ruflo-stateful.mjs" %*\r\n');
+    ruflo = `${ruflo}.cmd`;
+  } else {
+    fs.writeFileSync(ruflo, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} "$(dirname "$0")/fake-ruflo-stateful.mjs" "$@"\n`, { mode: 0o755 });
+  }
+  return ruflo;
+}
 
 describe('record-lesson — a lesson is not "stored" until it round-trips', () => {
   it('TEETH: a store that claims success but does not round-trip is reported as FAILED, not stored', () => {
@@ -109,8 +141,43 @@ describe('record-lesson — a lesson is not "stored" until it round-trips', () =
   });
 
   it('a write that genuinely round-trips is reported as stored, exit 0', () => {
-    sandbox();
-    const r = run(['--task', 'probe task', '--slug', 'probe'], { rufloBody: HEALTHY_RUFLO });
+    const dir = sandbox();
+    const ruflo = statefulRuflo(dir);
+    const r = run(['--task', 'probe task', '--slug', 'probe'], { rufloPath: ruflo });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/round-trip verified/);
+  });
+
+  it('TEETH: a second identical invocation whose store silently no-ops must not be proven by a '
+    + 'stale-but-textually-identical retrieve', () => {
+    // Reproduces PR #167's own disclosed, deferred gap (2026-08-24): `key`/`value` are fully
+    // deterministic from the CLI args, so a stale write left by an EARLIER successful invocation is
+    // textually indistinguishable from what THIS invocation intends to write. Pre-seed the state file
+    // with exactly that stale content (as if a prior identical call already stored it), then force
+    // THIS call's own store to silently no-op — the shape of a write that claims success but never
+    // lands, applied to a key that already happens to hold the right-looking value.
+    const dir = sandbox();
+    const staleValue = 'TASK: probe task OUTCOME: success';
+    const ruflo = statefulRuflo(dir, { preseed: staleValue });
+    const r = run(['--task', 'probe task', '--slug', 'probe'], {
+      rufloPath: ruflo,
+      extraEnv: { RL_SILENT_NOOP: '1' },
+    });
+    // Pre-candidate code checked `back.includes(value)` — `value` here is exactly `staleValue`, so
+    // the stale retrieve would satisfy it and this call would wrongly exit 0.
+    expect(r.status).toBe(1);
+    expect(r.stdout).not.toMatch(/round-trip verified/);
+    expect(r.stdout).toMatch(/retrieve did not return the value/);
+  });
+
+  it('a fresh write is still correctly proven even though its base content matches stale prior state', () => {
+    // The companion positive case: pre-seed the SAME stale content as above, but let this call's
+    // store actually land (no RL_SILENT_NOOP). The nonce this run appends is necessarily different
+    // from anything the stale content could contain, so the round trip must still succeed.
+    const dir = sandbox();
+    const staleValue = 'TASK: probe task OUTCOME: success';
+    const ruflo = statefulRuflo(dir, { preseed: staleValue });
+    const r = run(['--task', 'probe task', '--slug', 'probe'], { rufloPath: ruflo });
     expect(r.status).toBe(0);
     expect(r.stdout).toMatch(/round-trip verified/);
   });
