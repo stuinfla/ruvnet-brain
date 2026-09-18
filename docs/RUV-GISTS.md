@@ -5,10 +5,11 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_494 gists · refreshed 2026-09-16_
+_495 gists · refreshed 2026-09-18_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-09-16 | [README.md](https://gist.github.com/ruvnet/ef9777f7da479f5cda6ff1c09ebe6c7f) | Today's release work — ruflo, agentic-flow, and RuVector (2026-09-16) |
 | 2026-09-16 | [release-notes-3.42.0.md](https://gist.github.com/ruvnet/0033f22f0702d35f38d74d2beece57c1) | Ruflo v3.42.0 release notes — Swarm, Memory & Security Reliability Batch |
 | 2026-09-15 | [rtl8721dx-vs-esp32-csi-comparison.md](https://gist.github.com/ruvnet/554751b1068c48f7ee210aa447cd4088) | RuView: RTL8721Dx vs ESP32 family (S3/C6/C5) WiFi CSI sensing comparison (2026-09-15) |
 | 2026-09-11 | [*specification.md](https://gist.github.com/ruvnet/6217ea3bd75cc0c27522965965e7383b) | TikTok-like recommender Algorithm |

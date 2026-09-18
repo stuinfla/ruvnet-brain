@@ -35,6 +35,7 @@ let tmp, binDir, logFile, fixtures;
 const DEPENDENCY_FILES = [
   'scripts/ingest-gists.mjs',
   'scripts/gist-receipts.mjs',
+  'scripts/gist-git-source.mjs',
   'scripts/coverage-integrity.mjs',
   'scripts/rvf-generation.mjs',
   'scripts/version.mjs',
