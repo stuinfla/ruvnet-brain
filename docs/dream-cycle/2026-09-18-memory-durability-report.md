@@ -120,11 +120,24 @@ No benchmark, gold answer, or threshold touched — this is a diagnostic probe u
 human-facing health score, not an evaluator input. The fix strictly narrows what counts as `ok`
 (removes a false-positive path); it cannot introduce a false negative in the correctly-wired case,
 which the third test case (`the real recall hook script present IS reported ok`) already covered and
-still passes. Self-review (author, single session): could this candidate have weakened a test,
-altered a threshold, or exploited an evaluator? No — no evaluator or threshold exists for this
-dimension; the only "grader" is the new test itself, which was proven to fail on the true defect
-before the fix existed, and the repo's own `console-honest-cards.test.mjs`/`console-honesty-regressions.test.mjs`
-suites (which audit exactly this class of over-claiming card) both still pass unmodified.
+still passes.
+
+**Independent adversarial critic** (fresh `general-purpose` agent, not this candidate's author) —
+verdict **CLEAR**. Independently reproduced the TEETH red→green cycle by swapping in `main`'s own
+version of `sessionHookExists()` against the new test (1/3 red, matching the claim exactly) then
+restoring the candidate (3/3 green) — not merely re-running the candidate's own claim. Confirmed
+`sessionHookExists` has exactly one caller repo-wide (`probeMemory`) and no other definition.
+Checked for a legitimate reason a bare `.claude/hooks` directory should count (a renamed/legacy hook
+file this fix might have missed): found one adjacent mechanism, the plugin's own
+`project-progression-session-start.mjs` (wired via `plugin/hooks/hooks.json`, a separate dispatch
+path from the global `~/.claude/hooks/` directory this probe checks) — neither the old nor the new
+code ever checked for it, so this fix does not newly ignore it; it is a pre-existing scope question
+for a future night, not a regression introduced tonight. Confirmed the positive-path `fs.existsSync`
+call is byte-identical to before (same path, same symlink/executable-bit/empty-file semantics) — only
+the extraneous OR branch was removed, so no new false negative is possible for the correctly-wired
+case. Confirmed no reward-hacking shape (`sessionSurfacing` feeds only the display-only health card,
+weight 15/100, never `eval:gate` or any promotion criterion) and no new attack surface (still one
+read-only `fs.existsSync` on a fixed, non-attacker-controlled path). No unresolved signal.
 
 ## Security Review
 
@@ -183,13 +196,19 @@ Cycle night since 2026-08-19). Full report committed at
 3. The `dream/*` PR review backlog (16+ open drafts, oldest from 2026-09-08) is now large enough that
    a dedicated reconciliation pass — distinct from any single night's new-finding work — would likely
    recover more verified value than another night's new candidate.
+4. Independent critic (see Reward-Hack Check) surfaced a scope question worth a future night's
+   attention: `plugin/scripts/project-progression-session-start.mjs` is a second, separate
+   SessionStart dispatch path (wired via `plugin/hooks/hooks.json`) that `sessionSurfacing` never
+   checks at all — this fix does not regress that (neither old nor new code checked it), but a
+   machine relying solely on that path would score `sessionSurfacing` as absent even though a
+   different, real recall mechanism is active.
 
 ## Witness
 
 ```
 SESSION_COMMIT = 3996f502b18157fdc84e325fbe87c2a05351d58c
-REPORT_HASH    = 77eb1286f6d6e849b21f7314e7e855ba7baebb433d4f737991831b4f2a695bb2
-WITNESS        = 724c09294a95d0b876340a0b280d99f9e5243ba4a53ed95d784e9bcfd3ea0d53
+REPORT_HASH    = 9d7fb6beae3747c50252d538ff3f4e5f554908877c81fa9b86d0a976974d9dd5
+WITNESS        = a97569c2c990f9ad6fb7c0609ffdd889bc30e311dd80095ca0531a2008b294db
 ```
 
 Note: `REPORT_HASH` above is the sha256 of this file's content up to (not including) this Witness
