@@ -3,8 +3,8 @@ id: ADR-084
 title: The three user invariants — complete-and-current corpus, enforced hooks, an end-user console
 status: Proposed
 date: 2026-09-12
-updated: 2026-09-12
-version: 1.0.1
+updated: 2026-09-15
+version: 1.0.2
 reviewed_digest: PENDING
 authors: [Stuart Kerr, Claude]
 tags: [product, corpus, hooks, console, north-star, invariants]
@@ -125,12 +125,16 @@ sufficient. The additional bar this ADR sets: a fixture turn matching the RuvNet
 no `search_ruvnet` call, must be **caught before the turn ends** — on every host the plugin claims to
 support — or the plugin must not claim that host.
 
-**Known gap this ADR names, not yet closed as of this writing:** `decision-gate` and
-`grounding-stamp` — the only two hooks in the plane capable of altering an outcome — are registered
-`['claude']` only. `ground-ruvnet` is registered `['claude', 'codex']` but is advisory-only on both:
-it cannot block a plain-text answer, only `decision-gate` can block a file write. Closing this gap
-(Codex parity for the real gate, and a Stop-time check for the assert-without-searching case) is
-in-flight work this ADR governs going forward; it is not yet Implemented.
+**Gap this ADR named, partially closed 2026-09-12 (see Currency log):** `decision-gate`'s write route
+and `grounding-stamp` are now registered `['claude', 'codex']` — measured live against codex-cli
+0.154.0 (a real `apply_patch` write and a real MCP `search_ruvnet` call, both firing `PreToolUse`/
+`PostToolUse` with real payloads; `tests/unit/codex-claude-hook-parity.test.mjs`). The Stop-time
+check for the assert-without-searching case also shipped (`grounding-turn-mark` +
+`grounding-turn-gate`, `tests/unit/grounding-turn-gate.test.mjs`). **Still open:** `decision-gate`'s
+bash route (Codex `exec_command`) remains Claude-only — the 2026-09-12 measurement covered a write
+and an MCP call, not `exec_command`, and `plugin/hooks/codex-hooks.json`'s own description states
+plainly that extending on that evidence would repeat the unproven-leap mistake this gap closure
+corrects. Closing the bash route is still in-flight work this ADR governs going forward.
 
 **Grok CLI is out of scope until researched.** `tri-smart-skill/` already installs a *skill* to Grok
 (engaged only when the model chooses to invoke it); whether Grok CLI has any *hook* mechanism
@@ -175,5 +179,6 @@ reading the rendered page as a first-time customer, not as the maintainer, is st
 - The console's default view is measured against a customer's question, not a maintainer's checklist.
 
 ## Currency log
+| 2026-09-15 | **Dream Cycle reconciliation (DEEP=cross-host-conformance, SLOT 0).** `node scripts/doc-currency.mjs --check --changed main` flagged this document `presumed-stale`: its governed paths (`plugin/hooks/hooks.json`, `plugin/hooks/codex-hooks.json`, `plugin/scripts/continuity-hook-policy.mjs`) moved 3 commits after this document's own last touch (`5d8a8b47`, 2026-09-12) — specifically `41bbd5fb`, `76632b15`, `9c45d408`, `7b8e6e73`, `5168f03a`, `ef2b8e12` (2026-09-11/12), none reconciled here. Read the diffs directly (not inferred) and updated Invariant 2's "Known gap" paragraph above to match current source: `decision-gate`'s write route and `grounding-stamp` are dual-host as of `ef2b8e12`, verified green tonight (`npx vitest run tests/unit/codex-claude-hook-parity.test.mjs tests/unit/grounding-turn-gate.test.mjs tests/unit/ruvnet-gate1-pattern.test.mjs tests/unit/hook-contracts-doctor.test.mjs tests/unit/hook-registry-lint.test.mjs tests/integration/hook-conformance-both-hosts.test.mjs tests/unit/codex-lifecycle-hooks.test.mjs` — 108 passed/21 skipped, 0 failed). The bash/`exec_command` route gap `ef2b8e12` itself disclosed as unverified remains open and is restated accurately, not closed by this row — this container has no `codex` CLI, so that evidence could not be extended tonight. No code changed; this is a documentation-currency reconciliation only. `node scripts/doc-currency.mjs --check --changed main` reproduces `presumed-stale` for this document on the pre-edit source and clears it after. | Direct read of `plugin/hooks/codex-hooks.json`'s description field, `plugin/hooks/hook-contracts.json`, `tests/unit/codex-claude-hook-parity.test.mjs`, and `git log` for the 6 commits named above. |
 | 2026-09-12 | **Downgraded Accepted → Proposed.** Dual verification (Fable 5.1 scribe + Codex/Astra verifier, both re-reading cited source directly) found 4 blocking + 10 major/minor defects, synthesized with no surviving disagreement. Blocking, this document: Invariant 1's named command (`source-coverage.mjs --check`) does not actually enforce universal currency or a freshness bound, and prints a count not names even under `--strict` (S3); Invariant 1's mechanism is delegated entirely to ADR-085, which itself has 2 blocking defects, so accepting this ADR accepted an unreachable publish path (S14); this ADR and ADR-085 directly contradict each other on whether `release-authority.mjs`'s canonical-publisher set may grow (S4); `governs:` names two files that do not exist and the wrong path for `codex-hooks.json` (S5). Major: Invariants 2 and 3 have no real PASS/FAIL command despite the claim (S11); the "57-row" gap is misattributed — ADR-0069 records 63 mismatched-SHA-under-CURRENT rows and a separate 57 UNVERIFIED rows; this document conflated them (S12). None of this invalidates the three invariants as a *statement of what matters*; it invalidates the claim that each is *already* mechanically checkable today. Full defect list preserved in the session record; revision owed before re-acceptance. | Dual verification pass, 2026-09-12, reading `scripts/source-coverage.mjs:419-432`, `scripts/release-authority.mjs:10-13`, `docs/adr/0069-source-coverage-contract.md:244-250`, `plugin/scripts/continuity-hook-policy.mjs:76-94` directly. |
 | 2026-09-12 | Initial acceptance (superseded same day by the row above — kept for the record, not the current status). | This document; the incident measured 2026-09-12 across the corpus staleness, the Codex hook asymmetry, and the console's maintainer-card placement. |
