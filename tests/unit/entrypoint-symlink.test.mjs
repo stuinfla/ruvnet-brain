@@ -59,6 +59,12 @@ const PIPELINE_ENTRY_POINTS = [
   'host-registry.mjs',
   'adr-072-completion.mjs',
   'product-integrity-contract.mjs',
+  // Added 2026-09-17: dream-issue-gate.mjs (created by 7d3ecf0, after 43bf391's sweep) carried a
+  // FOURTH old-form guard shape the sweep's grep never matched: `new URL(import.meta.url).pathname`
+  // with no fileURLToPath/realpathSync. This is the meta-gate deciding whether the Dream Machine may
+  // call `gh issue create` — a silent no-op here is a control silently vanishing, not just a missing
+  // search result.
+  'dream-issue-gate.mjs',
 ];
 
 describe('KB entry points run when invoked through a symlink', () => {
