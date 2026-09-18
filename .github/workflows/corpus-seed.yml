@@ -294,22 +294,22 @@ jobs:
           test "$(stat -c %s "$RUNNER_TEMP/corpus-seed-download/ruvnet-brain.zip")" = "$SEED_BYTES"
           if [ "$SEED_IS_DIGEST_DERIVED" = 1 ]; then
             node --input-type=module <<'NODE'
-            import path from 'node:path';
-            import { verifyBundle } from './scripts/verify-bundle.mjs';
-            import { verifySeedBaseline } from './scripts/corpus-candidate.mjs';
-            const dir = `${process.env.RUNNER_TEMP}/corpus-seed-download`;
-            const bundle = path.join(dir, 'ruvnet-brain.zip');
-            const signature = verifyBundle(bundle, path.join(dir, 'ruvnet-brain.zip.sig'));
-            if (!signature.ok) throw new Error(`seed detached signature rejected: ${signature.reason}`);
-            await verifySeedBaseline({
-              seedDescriptor: { tag: process.env.SEED_TAG, sha256: process.env.SEED_SHA256,
-                bytes: Number(process.env.SEED_BYTES), receiptSha256: process.env.SEED_RECEIPT_SHA256 },
-              bundleFile: bundle, receiptFile: path.join(dir, 'corpus-receipt.json'),
-              accuracyReportFile: `${bundle}.accuracy.json`, recallReportFile: `${bundle}.recall.json`,
-              trustedReportPublicKey: process.env.RUVNET_MEASUREMENT_PUBLIC_KEY || null,
-            });
-            console.log(`baseline receipt and detached signature verified for ${process.env.SEED_TAG}`);
-            NODE
+          import path from 'node:path';
+          import { verifyBundle } from './scripts/verify-bundle.mjs';
+          import { verifySeedBaseline } from './scripts/corpus-candidate.mjs';
+          const dir = `${process.env.RUNNER_TEMP}/corpus-seed-download`;
+          const bundle = path.join(dir, 'ruvnet-brain.zip');
+          const signature = verifyBundle(bundle, path.join(dir, 'ruvnet-brain.zip.sig'));
+          if (!signature.ok) throw new Error(`seed detached signature rejected: ${signature.reason}`);
+          await verifySeedBaseline({
+            seedDescriptor: { tag: process.env.SEED_TAG, sha256: process.env.SEED_SHA256,
+              bytes: Number(process.env.SEED_BYTES), receiptSha256: process.env.SEED_RECEIPT_SHA256 },
+            bundleFile: bundle, receiptFile: path.join(dir, 'corpus-receipt.json'),
+            accuracyReportFile: `${bundle}.accuracy.json`, recallReportFile: `${bundle}.recall.json`,
+            trustedReportPublicKey: process.env.RUVNET_MEASUREMENT_PUBLIC_KEY || null,
+          });
+          console.log(`baseline receipt and detached signature verified for ${process.env.SEED_TAG}`);
+          NODE
             echo "SEED_BASELINE_RECEIPT_FILE=$RUNNER_TEMP/corpus-seed-download/corpus-receipt.json" >> "$GITHUB_ENV"
           else
             node scripts/public-verification-inputs.mjs observe-baseline \

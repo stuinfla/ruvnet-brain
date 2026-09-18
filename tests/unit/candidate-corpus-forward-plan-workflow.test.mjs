@@ -122,6 +122,19 @@ describe('forwarded corpus candidate source admission', () => {
 });
 
 describe('candidate corpus workflow serialization', () => {
+  it('parses every release shell step, including nested heredocs', () => {
+    for (const name of ['corpus-seed', 'ci', 'release-candidate-preflight', 'protected-release']) {
+      const { doc } = workflow(`.github/workflows/${name}.yml`);
+      for (const job of Object.values(doc.jobs)) {
+        for (const item of job.steps || []) {
+          if (!item.run || item.shell === 'pwsh') continue;
+          expect(() => execFileSync('bash', ['-n'], { input: item.run, stdio: ['pipe', 'pipe', 'pipe'] }),
+            `${name}: ${item.name || item.id || 'unnamed shell step'}`).not.toThrow();
+        }
+      }
+    }
+  });
+
   it('serializes corpus preparation before ci with exact source and prepared inputs', () => {
     const { doc } = workflow('.github/workflows/release-candidate-preflight.yml');
     const jobs = doc.jobs;
