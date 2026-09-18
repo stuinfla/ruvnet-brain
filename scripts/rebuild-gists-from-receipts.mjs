@@ -149,7 +149,7 @@ export async function reconstructGists(source, { fetchFn = globalThis.fetch, con
     const digest = sha256(bytes);
     if (digest !== file.sha256) fail(`${gistId}/${file.filename} sha256 ${digest} differs from receipt ${file.sha256}`);
     try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
     } catch {
       fail(`${gistId}/${file.filename} is not valid UTF-8 text`);
       return undefined; // unreachable; keeps linters happy about a missing return on every path

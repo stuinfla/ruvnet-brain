@@ -278,7 +278,8 @@ export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = nul
       // SAME pinned inputs until one internally consistent revision is captured -- never to re-observe
       // the universe, which is what made the old loop unable to finish.
       attempts.push({ attempt, plan, ...reconciliation, ...pruning, rebuilt: [],
-        retried: { reason: 'gist revision moved during exact detail fetch', gistId: error.gistId || null } });
+        retried: { reason: 'gist revision moved during exact detail fetch', gistId: error.gistId || null,
+          ...(error.detail ? { detail: error.detail } : {}) } });
       continue;
     }
     // Re-derive coverage from the SAME sealed observation after the aggregates were rebuilt. This is
@@ -302,7 +303,8 @@ export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = nul
   const last = attempts[attempts.length - 1] || {};
   fail(`sealed generation incomplete after ${maxAttempts} acquisition attempt(s): `
     + `${last.remainingArtifacts ?? 'unknown'} artifact(s) and ${last.unresolvedSources ?? 'unknown'} `
-    + 'eligible source(s) remain unresolved against the sealed manifest');
+    + 'eligible source(s) remain unresolved against the sealed manifest'
+    + (last.retried ? `; last acquisition failure: ${JSON.stringify(last.retried)}` : ''));
 }
 
 function defaultRun(command, args, options = {}) {

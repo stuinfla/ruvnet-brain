@@ -523,6 +523,7 @@ describe('sealed-generation acquisition (acquireSealedGeneration)', () => {
         const error = new Error('gist moved');
         error.code = 'GIST_OBSERVATION_MOVED';
         error.gistId = 'g1';
+        error.detail = { check: 'oid', filename: 'notes.md', expected: 'old', actual: 'new' };
         throw error;
       }
       return { rebuilt: ['concepts'] };
@@ -533,7 +534,18 @@ describe('sealed-generation acquisition (acquireSealedGeneration)', () => {
     expect(observe).toHaveBeenCalledTimes(1); // the universe is never re-observed
     expect(calls).toBe(2);
     expect(result.attempts[0].retried).toMatchObject({ reason: expect.stringMatching(/gist revision moved/i), gistId: 'g1' });
+    expect(result.attempts[0].retried.detail).toMatchObject({ check: 'oid', filename: 'notes.md' });
     expect(result.observation).toEqual(observationA);
+  });
+
+  it('retains the exact gist mismatch when all acquisition attempts fail', async () => {
+    const f = seams();
+    f.rebuild = async () => { throw Object.assign(new Error('gist moved'), {
+      code: 'GIST_OBSERVATION_MOVED', gistId: 'g1', detail: { check: 'oid', filename: 'notes.md' },
+    }); };
+    await expect(acquireSealedGeneration({ maxAttempts: 2, assetsDir: temp(),
+      observe: async () => observationA, readLedger: noopLedger, ...f }))
+      .rejects.toThrow(/last acquisition failure:.*notes\.md/);
   });
 
   it('MUST BLOCK: an exhausted partial generation fails explicitly rather than being accepted', async () => {
@@ -676,13 +688,15 @@ describe('legacy provenance is preserved distinctly from current-round rebuilds 
 });
 
 describe('standalone workflow boundary', () => {
-  it('binds preparation to exact main SHA/tag/digest and leaves publication to protected-release', () => {
+  it('binds preparation to exact invoking main/release SHA/tag/digest and leaves publication to protected-release', () => {
     const workflow = fs.readFileSync(path.resolve('.github/workflows/corpus-seed.yml'), 'utf8');
     expect(workflow).toContain('candidate_sha:');
     expect(workflow).toContain('seed_tag:');
     expect(workflow).toContain('seed_sha256:');
     expect(workflow).toContain('ref: ${{ inputs.candidate_sha }}');
-    expect(workflow).toContain('git rev-parse origin/main');
+    expect(workflow).toContain('test "$SOURCE_REF" = "$INVOKING_REF"');
+    expect(workflow).toContain('git fetch --no-tags origin "$SOURCE_REF"');
+    expect(workflow).toContain('test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_SHA"');
     expect(workflow).toContain('gh release download "$SEED_TAG"');
     expect(workflow).toContain('node scripts/corpus-reconcile.mjs');
     expect(workflow).toContain('kb/PRIVATE-STORES.json');

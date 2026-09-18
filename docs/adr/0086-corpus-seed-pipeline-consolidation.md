@@ -3,8 +3,8 @@ id: ADR-086
 title: The corpus-seed pipeline consolidation — the written contract for the in-flight rewrite (twelve steps, amended to nineteen)
 status: Proposed
 date: 2026-09-13
-updated: 2026-09-17
-version: 1.0.3
+updated: 2026-09-18
+version: 1.0.4
 authors: [Stuart Kerr, Claude Fable 5.1]
 tags: [corpus, release, consolidation, provenance, gists, assembly, dual-review, living-plan, acceptance-criteria]
 supersedes: []
@@ -161,6 +161,42 @@ contracts, aggregate provenance and required vector bindings, isolation, cancell
 failure, privacy and publication-authority gates, and independent accuracy and extracted-archive
 verification. Reconciliation success alone still does not close C1 or C2 — required fork ingestion, an
 acceptable accuracy oracle and downstream candidate verification remain independent gates.
+
+### Amendment 2026-09-18 — public Git acquisition for gist-scope rejection
+
+Candidate preflight `35301206824` rebuilt repository stores but failed after 137 minutes when
+the anonymous gist-detail fallback returned HTTP 403. A dedicated gist-read token remains a
+supported option; copying a developer's broad OAuth credential into Actions is not the remedy.
+
+Only the existing `GIST_FORBIDDEN` integration-token rejection may select public Git when a
+complete frozen gist observation is available. The transport resolves a public Git commit once
+and independently matches its **entire regular-file tree** against the observed filenames,
+per-file blob OIDs in `raw_url`, and byte sizes, including policy-excluded files. A raw URL's
+blob OID is not a commit SHA, and different files may have different OIDs. Missing, extra,
+changed, or unsafe entries fail closed; movement retains `GIST_OBSERVATION_MOVED` with details.
+
+Receipt revision is the actual resolved commit. The frozen `updated_at` remains observation
+metadata, not a fresh REST response or proof of the exact historical commit at list time.
+Canonical capture, rendering, source receipts, complete coverage, and publisher authority remain
+unchanged. Included UTF-8 bytes preserve BOM and line endings through capture and receipt replay.
+
+The Git child receives an explicit environment allowlist, no API tokens or ambient Git config,
+no credential helper, an empty template, and HTTPS-only transport. Acquisition has a 60-second
+per-gist deadline with at most three transient fetch attempts. Async child cancellation removes
+the temporary repository; a killed Git parent may leave a short-lived HTTPS helper, constrained
+by low-speed bounds and removal of that repository. No worktree or source checkout is created.
+
+Dual requires real Git failure fixtures and a recorded comparison of every observed gist against
+REST revisions and included-file bytes using the exact production Git transport before CI reruns.
+Git/API revision differences require explicit resolution. This transport does not turn failed
+acquisition, incomplete coverage, or pending release qualification into release authority.
+
+The 2026-09-18 production-transport comparison passed all **495 gists / 774 files**, including
+byte parity for **579 included text files** and Git/API revision equality for every gist, with
+zero mismatches. Evidence: `finish-gist-live-comparison.json`, SHA-256
+`7507300600188beea3169fb31be123754d4de50b4843a29a98c3c810f5f63408`; its source bindings match
+the reviewed transport, capture and replay modules. The associated nine-file regression run
+passed 174 tests. These results establish acquisition parity, not release completion.
 
 ### Resolved disagreements (the four points the two models argued to a close)
 

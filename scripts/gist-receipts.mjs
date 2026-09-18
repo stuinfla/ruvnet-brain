@@ -33,9 +33,11 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest, validateGistAggregateReceipt } from './coverage-integrity.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { writeRvfGeneration } from './rvf-generation.mjs';
+import { fetchPublicGistGit } from './gist-git-source.mjs';
 
 const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TEXT_EXT = new Set(['.md', '.markdown', '.txt', '.rst']);
+export const isIncludedGistFile = (filename) => TEXT_EXT.has(path.extname(filename).toLowerCase());
 const EMBED_MODEL = 'Xenova/bge-base-en-v1.5';
 const EMBED_DIMENSIONS = 768;
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
@@ -111,10 +113,10 @@ export function sealGistReceiptSet(receipt) {
 //                                                    GistFetchError. Never returned as null.
 //   - "resource not accessible by integration"   -> thrown non-retryably BY defaultFetchGist, then
 //     (still-missing gist scope, 403)                caught ONE layer up by defaultFetchDetail and
-//                                                    retried against the PUBLIC, unauthenticated
-//                                                    detail endpoint (no Authorization header) —
-//                                                    mirroring source-coverage.mjs's
-//                                                    listGistsUnauthenticated fallback pattern.
+//                                                    captured via PUBLIC Git when a frozen list
+//                                                    observation is supplied. Its complete tree must
+//                                                    independently match the observed blob inventory.
+//                                                    Legacy callers without a stub use public REST.
 //   - a rate limit (primary or secondary, 403)    -> retried with backoff, bounded by `retries`.
 //   - any other transient failure (timeouts,      -> retried with backoff, bounded by `retries`.
 //     TLS/connection resets, 5xx, 429)
@@ -201,12 +203,20 @@ async function fetchPublicGistDetail(id, { fetchImpl = globalThis.fetch, signal 
 // The transport `captureGistSources` uses by default for per-gist DETAIL. Wraps `defaultFetchGist`
 // without duplicating its retry logic: on any OTHER classified failure (not found, rate-limited,
 // transient, or a plain non-retryable failure) the original error propagates untouched -- only the
-// specific integration-token rejection falls back to the public endpoint.
+// specific integration-token rejection falls back. No-login, 404, exhausted rate limits and other
+// failures retain their existing behavior. The Git fixture executor is never forwarded here.
 export async function defaultFetchDetail(id, options = {}) {
   try {
     return await defaultFetchGist(id, options);
   } catch (error) {
     if (error?.code !== 'GIST_FORBIDDEN') throw error;
+    if (options.stub && !OWNER_RE.test(String(options.owner || ''))) {
+      throw new GistFetchError(`gist ${id} has an invalid observation owner`,
+        { code: 'GIST_OBSERVATION_INVALID', gistId: id });
+    }
+    if (options.stub && options.owner) return fetchPublicGistGit(id, {
+      stub: options.stub, owner: options.owner, signal: options.signal, includeFile: isIncludedGistFile,
+    });
     return fetchPublicGistDetail(id, options);
   }
 }
@@ -360,7 +370,7 @@ export async function captureGistSources({ observation, cache = null, fetchDetai
     }
     if (verdict === 'reuse') { gists[stub.id] = cached; reused.push(stub.id); continue; }
 
-    const full = await fetchDetail(stub.id, { signal });
+    const full = await fetchDetail(stub.id, { signal, stub, owner: observation.owner });
     const versionSha = full?.history?.[0]?.version;
     if (full?.id !== stub.id || full.updated_at !== stub.updated_at || !HEX40.test(String(versionSha || ''))
       || canonicalJson(listedFileIdentity(full)) !== canonicalJson(listedFileIdentity(stub))) {
@@ -371,18 +381,21 @@ export async function captureGistSources({ observation, cache = null, fetchDetai
     }
     const files = [];
     for (const [filename, file] of Object.entries(full.files || {}).sort(([a], [b]) => a.localeCompare(b))) {
-      if (!TEXT_EXT.has(path.extname(filename).toLowerCase())) {
+      if (!isIncludedGistFile(filename)) {
         files.push({ filename, included: false, reason: 'non-text policy exclusion', size: file.size ?? null });
         continue;
       }
       const rawBody = await fetchRaw(file, { signal });
       const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody), 'utf8');
       let text;
-      try { text = new TextDecoder('utf-8', { fatal: true }).decode(body); }
+      try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(body); }
       catch { throw new Error(`gist ${stub.id}/${filename} is not valid UTF-8 text`); }
       files.push({ filename, included: true, sha256: sha256(body), bytes: body.length, body: text });
     }
+    // Git snapshots already proved the actual tree against the list in gist-git-source; the
+    // comparison above is an additional shape check, not a synthetic REST verification.
     gists[stub.id] = { gistId: stub.id, versionSha, updatedAt: full.updated_at, ingestedAt: now(),
+      ...(full.captureEvidence ? { captureEvidence: full.captureEvidence } : {}),
       complete: files.length === Object.keys(full.files || {}).length, files };
     fetched.push(stub.id);
   }
