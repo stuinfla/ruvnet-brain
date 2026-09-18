@@ -28,6 +28,10 @@ on:
         type: string
   workflow_call:
     inputs:
+      source_ref:
+        description: Exact invoking main or release branch; preparation remains read-only
+        type: string
+        default: refs/heads/main
       candidate_sha:
         required: true
         type: string
@@ -60,6 +64,12 @@ on:
       receipt_sha256:
         description: SHA-256 of the sealed corpus receipt
         value: ${{ jobs.prepare.outputs.receipt_sha256 }}
+      recall_sha256:
+        value: ${{ jobs.prepare.outputs.recall_sha256 }}
+      artifact_id:
+        value: ${{ jobs.prepare.outputs.artifact_id }}
+      artifact_digest:
+        value: ${{ jobs.prepare.outputs.artifact_digest }}
       accuracy_sha256:
         description: SHA-256 of the detached retrieval-accuracy report bound to the candidate archive
         value: ${{ jobs.prepare.outputs.accuracy_sha256 }}
@@ -85,8 +95,14 @@ jobs:
       receipt_sha256: ${{ steps.seal.outputs.receipt_sha256 }}
       accuracy_sha256: ${{ steps.seal.outputs.accuracy_sha256 }}
       seed_sha256: ${{ steps.seal.outputs.seed_sha256 }}
+      recall_sha256: ${{ steps.seal.outputs.recall_sha256 }}
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
     env:
       EXPECTED_SHA: ${{ inputs.candidate_sha }}
+      SOURCE_REF: ${{ inputs.source_ref || 'refs/heads/main' }}
+      INVOKING_REF: ${{ github.ref }}
+      INVOKING_SHA: ${{ github.sha }}
       RUVNET_MEASUREMENT_PUBLIC_KEY: ${{ vars.RUVNET_MEASUREMENT_PUBLIC_KEY }}
     steps:
       - name: Reject ambiguous seed or source identities
@@ -101,14 +117,21 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Require the exact clean current main source
+      - name: Require the exact clean invoking source
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || { echo 'candidate checkout SHA mismatch' >&2; exit 1; }
-          test "$(git rev-parse origin/main)" = "$EXPECTED_SHA" || { echo 'candidate is not current origin/main' >&2; exit 1; }
-          test -z "$(git status --porcelain)" || { echo 'candidate checkout is dirty before reconciliation' >&2; exit 1; }
+          git check-ref-format "$SOURCE_REF"
+          case "$SOURCE_REF" in
+            refs/heads/main|refs/heads/release/?*) ;;
+            *) echo 'preparation requires main or a release branch' >&2; exit 1 ;;
+          esac
+          test "$SOURCE_REF" = "$INVOKING_REF"
+          test "$EXPECTED_SHA" = "$INVOKING_SHA"
+          git fetch --no-tags origin "$SOURCE_REF"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
 
       - name: Bind this round to one exact seed identity
         env:
@@ -393,6 +416,14 @@ jobs:
           mv "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.accuracy.json" "$staged/ruvnet-brain.zip.accuracy.json"
           mv "$RUNNER_TEMP/corpus-candidate/ruvnet-brain.zip.recall.json" "$staged/ruvnet-brain.zip.recall.json"
           cp release-evidence/corpus-receipt.json "$staged/corpus-receipt.json"
+          cp "$SEED_BASELINE_RECEIPT_FILE" "$staged/baseline-receipt.json"
+          STAGED="$staged" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const e=process.env;
+          fs.writeFileSync(`${e.STAGED}/seed-identity.json`, JSON.stringify({tag:e.SEED_TAG,
+            sha256:e.SEED_SHA256,bytes:Number(e.SEED_BYTES),receiptSha256:e.SEED_RECEIPT_SHA256,
+            origin:e.SEED_ORIGIN})+'\n');
+          NODE
           cp release-evidence/corpus-reconcile.log "$staged/corpus-reconcile.log"
           cp release-evidence/corpus-preparation.identity "$staged/corpus-preparation.identity"
           cp data/source-coverage.json "$staged/source-coverage.json"
@@ -404,6 +435,7 @@ jobs:
           test "$(sha256sum "$staged/ruvnet-brain.zip.recall.json" | cut -d' ' -f1)" = "${{ steps.seal.outputs.recall_sha256 }}"
 
       - name: Upload exact candidate for protected-release.yml
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.seal.outputs.artifact_name }}

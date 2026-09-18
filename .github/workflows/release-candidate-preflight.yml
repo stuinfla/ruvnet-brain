@@ -15,10 +15,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  corpus-prepare:
+    uses: ./.github/workflows/corpus-seed.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+      source_ref: ${{ github.ref }}
+    secrets:
+      RUVNET_MEASUREMENT_SIGNING_KEY: ${{ secrets.RUVNET_MEASUREMENT_SIGNING_KEY }}
+      RUVNET_GISTS_TOKEN: ${{ secrets.RUVNET_GISTS_TOKEN }}
+
   ci:
+    needs: corpus-prepare
     uses: ./.github/workflows/ci.yml
     with:
       candidate_sha: ${{ github.sha }}
+      prepared_artifact_name: ${{ needs.corpus-prepare.outputs.artifact_name }}
+      prepared_artifact_id: ${{ needs.corpus-prepare.outputs.artifact_id }}
+      prepared_artifact_digest: ${{ needs.corpus-prepare.outputs.artifact_digest }}
+      prepared_archive_sha256: ${{ needs.corpus-prepare.outputs.archive_sha256 }}
+      prepared_receipt_sha256: ${{ needs.corpus-prepare.outputs.receipt_sha256 }}
+      prepared_accuracy_sha256: ${{ needs.corpus-prepare.outputs.accuracy_sha256 }}
+      prepared_recall_sha256: ${{ needs.corpus-prepare.outputs.recall_sha256 }}
 
   integration:
     uses: ./.github/workflows/integration-linux.yml

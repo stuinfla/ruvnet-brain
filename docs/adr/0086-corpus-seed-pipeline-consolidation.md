@@ -4,7 +4,7 @@ title: The corpus-seed pipeline consolidation — the written contract for the i
 status: Proposed
 date: 2026-09-13
 updated: 2026-09-17
-version: 1.0.2
+version: 1.0.3
 authors: [Stuart Kerr, Claude Fable 5.1]
 tags: [corpus, release, consolidation, provenance, gists, assembly, dual-review, living-plan, acceptance-criteria]
 supersedes: []
@@ -40,6 +40,33 @@ governs:
 # ADR-086 — The corpus-seed pipeline consolidation
 
 **Status**: Proposed
+
+## Exact-candidate preparation bridge (2026-09-17)
+
+Code-release preflight now invokes the existing read-only corpus preparation workflow on its
+exact `release/**` ref and commit before CI consumes the sealed archive. Preparation also accepts
+`main` for the existing protected corpus caller. Invoking ref, invoking SHA, checkout HEAD and the
+fetched branch commit must agree. Publication remains exclusively in `protected-release.yml`,
+after the unchanged qualifying commit is fast-forwarded to `main`.
+
+CI authenticates the preparation artifact ID, name, digest, run and source SHA; verifies archive,
+receipt and detached report bytes; and consumes that archive unchanged. The staged observation
+must equal the archive's `CORPUS-COVERAGE.json`. This prepared observation, linked to the archive's
+`COVERAGE.json`, is authoritative for census and canary planning. The committed observation can
+predate reconciliation and is neither silently overwritten nor substituted for prepared evidence.
+
+This bridge accepts only the committed bootstrap seed. Its exact observed baseline receipt is
+preserved, independently reproduced, and required to match byte-for-byte. Runtime-generation
+seed overrides remain on the existing protected corpus path; this change does not claim code-CI
+support for that separate receipt mode. The payload's `corpus-seed` member records bootstrap-input
+provenance; the bundle and generation ledger identify the shipped output. Corpus receipt, both
+measurement reports and the baseline receipt remain bound through both publisher handoffs.
+
+The old two-pass legacy projection is removed from release QE. The warm-brain source-grounding
+lane still uses the pinned historical seed as its fixture. Diagnostic accuracy and signed blocking
+repository recall keep their existing declared roles; this bridge does not establish strict C3
+accuracy, a completed North Star review, or a published release. Native Fable/Astra reviewed the
+bridge and baseline/coverage corrections; qualification and publication remain required evidence.
 
 This is a living acceptance plan, not a completion receipt. The original September 13 step
 statuses below are historical. Later amendments and the currency log record subsequent changes;

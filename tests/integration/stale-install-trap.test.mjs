@@ -62,8 +62,8 @@ function seedBrain(tag) {
  * ERR_MODULE_NOT_FOUND — reported as "expected 'node:internal/modules/esm/resolve:275…' to match
  * /could not check/", which reads like an honesty regression rather than a missing file.
  *
- * Deriving the closure from the source means the fixture cannot fall behind the installer again.
- * Node itself is the arbiter of what is missing, so a genuine packaging break still fails here.
+ * This copies JavaScript imports. Runtime data files are supplied separately by runInstaller.
+ * Node itself is the arbiter of what is missing, so missing fixture dependencies fail here.
  */
 function copyLocalImportClosure(entry, fromRoot, toRoot, seen = new Set()) {
   const abs = path.resolve(entry);
@@ -93,6 +93,8 @@ function runInstaller({ breakLookup = false, latestTag } = {}) {
     script = path.join(work, 'bin', 'install.mjs');
     fs.mkdirSync(path.dirname(script), { recursive: true });
     fs.mkdirSync(path.join(work, 'kb'), { recursive: true });
+    // node-version.mjs loads package metadata via URL rather than a JavaScript import.
+    fs.copyFileSync(path.join(ROOT, 'kb', 'package.json'), path.join(work, 'kb', 'package.json'));
     fs.mkdirSync(path.join(work, 'scripts'), { recursive: true });
     const src = fs.readFileSync(INSTALLER, 'utf8')
       .replace("const REPO = 'stuinfla/ruvnet-brain';", "const REPO = 'stuinfla/definitely-not-a-real-repo-xyz';");

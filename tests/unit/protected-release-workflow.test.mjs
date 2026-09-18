@@ -123,8 +123,8 @@ describe('protected release rail', () => {
 
   it('derives baseline and candidate retrieval inputs before sealing the payload', () => {
     const source = read('.github/workflows/ci.yml');
-    expect(source.match(/node scripts\/public-verification-inputs\.mjs/g)?.length || 0).toBeGreaterThanOrEqual(2);
-    expect(source.indexOf('Build the immutable knowledge bundle exactly once'))
+    expect(source.match(/node scripts\/public-verification-inputs\.mjs/g)).toHaveLength(1);
+    expect(source.indexOf('Verify and consume the immutable prepared corpus'))
       .toBeLessThan(source.indexOf('node scripts/public-verification-inputs.mjs'));
     expect(source.indexOf('node scripts/public-verification-inputs.mjs'))
       .toBeLessThan(source.indexOf('Persist the canonical candidate payload manifest'));
@@ -137,11 +137,13 @@ describe('protected release rail', () => {
     ]) expect(source).toContain(argument);
   });
 
-  it('selects a real RVF rather than macOS ZIP metadata', () => {
+  it('qualifies the sealed complete corpus without selecting arbitrary archive sidecars', () => {
     const source = read('.github/workflows/ci.yml');
-    expect(source).toContain("-type f -name '*.big.rvf'");
-    expect(source).toContain("! -path '*/__MACOSX/*' ! -name '._*'");
-    expect(source).toContain("LC_ALL=C sort -u");
-    expect(source).toContain('node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}"');
+    const consume = source.slice(source.indexOf('Verify and consume the immutable prepared corpus'),
+      source.indexOf('Derive public verification inputs'));
+    expect(consume).toContain('node scripts/corpus-candidate.mjs --verify');
+    expect(consume).toContain('requireCompleteProfile:true');
+    expect(consume).toContain('dist/ruvnet-brain/CORPUS-COVERAGE.json');
+    expect(consume).not.toMatch(/build-bundle|--repair|asset_dirs/);
   });
 });

@@ -6,7 +6,28 @@ on:
   workflow_call:
     inputs:
       candidate_sha:
-        description: Exact current-main SHA owned by the protected release run
+        description: Exact release candidate SHA owned by the invoking preflight
+        required: true
+        type: string
+      prepared_artifact_name:
+        required: true
+        type: string
+      prepared_artifact_id:
+        required: true
+        type: string
+      prepared_artifact_digest:
+        required: true
+        type: string
+      prepared_archive_sha256:
+        required: true
+        type: string
+      prepared_receipt_sha256:
+        required: true
+        type: string
+      prepared_accuracy_sha256:
+        required: true
+        type: string
+      prepared_recall_sha256:
         required: true
         type: string
 
@@ -230,74 +251,101 @@ jobs:
           artifact="$RUNNER_TEMP/release-evidence/$(node -p "JSON.parse(require('fs').readFileSync(process.env.RUNNER_TEMP + '/release-evidence/npm-pack.json'))[0].filename")"
           test -s "$artifact"
           echo "RUVNET_SEALED_PACKAGE=$artifact" >> "$GITHUB_ENV"
-      - name: Build the immutable knowledge bundle exactly once
+      - name: Authenticate the same-run prepared corpus artifact
         env:
           GH_TOKEN: ${{ github.token }}
+          PREPARED_ID: ${{ inputs.prepared_artifact_id }}
+          PREPARED_NAME: ${{ inputs.prepared_artifact_name }}
+          PREPARED_DIGEST: ${{ inputs.prepared_artifact_digest }}
+          EXPECTED_SHA: ${{ inputs.candidate_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/release-seed/extracted"
-          SEED_TAG="$(node -p "require('./data/corpus-seed.json').tag")"
-          SEED_ASSET="$(node -p "require('./data/corpus-seed.json').asset")"
-          SEED_SHA256="$(node -p "require('./data/corpus-seed.json').sha256")"
-          SEED_BYTES="$(node -p "require('./data/corpus-seed.json').bytes")"
-          gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$SEED_ASSET" --dir "$RUNNER_TEMP/release-seed"
-          seed="$RUNNER_TEMP/release-seed/$SEED_ASSET"
-          echo "RUVNET_SEED_BUNDLE=$seed" >> "$GITHUB_ENV"
-          test "$(sha256sum "$seed" | cut -d' ' -f1)" = "$SEED_SHA256"
-          test "$(stat -c %s "$seed")" = "$SEED_BYTES"
-          unzip -q "$seed" -d "$RUNNER_TEMP/release-seed/extracted"
-          mapfile -t asset_dirs < <(find "$RUNNER_TEMP/release-seed/extracted" -type f -name '*.big.rvf' ! -path '*/__MACOSX/*' ! -name '._*' -printf '%h\n' | LC_ALL=C sort -u)
-          test "${#asset_dirs[@]}" -eq 1
-          # --repair also re-seals stale ledger hashes after index persistence. The v4.2.1 seed
-          # exposed three roots whose HNSW bytes had advanced after their ledger rows were written.
-          node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}" --repair
-          # Do not re-observe GitHub here. GITHUB_TOKEN cannot read user gists (HTTP 403), and
-          # release-QE must consume the checked-in, source-bound observation that was validated
-          # when the corpus candidate was prepared. A separate credentialed refresh updates that
-          # input; this publisher never silently substitutes a partial live observation.
-          node scripts/public-verification-inputs.mjs observe-baseline \
-            --baseline-bundle "$seed" --expected-tag "$SEED_TAG" --expected-sha256 "$SEED_SHA256" \
-            --expected-bytes "$SEED_BYTES" --out "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json"
-          # --legacy-seed-projection declares, EXPLICITLY, that this rail consumes the pinned
-          # PRE-Step-3/4 corpus seed through the two-pass release-projection path. Without it
-          # build-bundle.mjs applies the step-5 single-pass contract, which this seed cannot satisfy:
-          # measured against v4.2.1-dev on 2026-09-14 it carries 186 stores, no sealed public-input
-          # selection, no public-store-classes.json and no ruv-gists.sources.json, while
-          # data/source-coverage.json observes 195 eligible stores and 492 eligible gists. The flag,
-          # release-projection.mjs's CLI, and assembleBundle's legacySeedProjection branch RETIRE
-          # TOGETHER at plan step 11, when a Step-4-produced seed is published and re-pinned.
-          node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" \
-            --assets "${asset_dirs[0]}" --legacy-seed-projection
-          baseline_receipt_sha256="$(sha256sum "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json" | cut -d' ' -f1)"
-          node scripts/release-projection.mjs \
-            --corpus data/source-coverage.json --assets dist/ruvnet-brain \
-            --out "$RUNNER_TEMP/release-projection" \
-            --version "$(node -p "require('./package.json').version")" --source-snapshot "$GITHUB_SHA" \
-            --baseline-receipt-sha256 "$baseline_receipt_sha256" --seed-tag "$SEED_TAG" \
-            --seed-sha256 "$SEED_SHA256" --seed-bytes "$SEED_BYTES"
-          node scripts/build-bundle.mjs --version "v$(node -p "require('./package.json').version")" \
-            --assets "${asset_dirs[0]}" --legacy-seed-projection \
-            --coverage "$RUNNER_TEMP/release-projection/COVERAGE.json" \
-            --projection "$RUNNER_TEMP/release-projection"
-          cp dist/ruvnet-brain.zip "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip"
+          [[ "$PREPARED_ID" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$PREPARED_ID" > "$RUNNER_TEMP/prepared-artifact.json"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const e=process.env; const a=JSON.parse(fs.readFileSync(`${e.RUNNER_TEMP}/prepared-artifact.json`));
+          const d=x=>String(x||'').replace(/^sha256:/,'');
+          if(String(a.id)!==e.PREPARED_ID||a.name!==e.PREPARED_NAME||a.expired
+            ||String(a.workflow_run?.id)!==e.GITHUB_RUN_ID||a.workflow_run?.head_sha!==e.EXPECTED_SHA
+            ||!(/^[a-f0-9]{64}$/.test(d(e.PREPARED_DIGEST)))||d(a.digest)!==d(e.PREPARED_DIGEST))
+            throw new Error('prepared corpus artifact identity differs from this candidate run');
+          NODE
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.prepared_artifact_id }}
+          path: ${{ runner.temp }}/prepared-corpus
+          merge-multiple: true
+      - name: Verify and consume the immutable prepared corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ inputs.candidate_sha }}
+          ARCHIVE_SHA: ${{ inputs.prepared_archive_sha256 }}
+          RECEIPT_SHA: ${{ inputs.prepared_receipt_sha256 }}
+          ACCURACY_SHA: ${{ inputs.prepared_accuracy_sha256 }}
+          RECALL_SHA: ${{ inputs.prepared_recall_sha256 }}
+          RUVNET_MEASUREMENT_PUBLIC_KEY: ${{ vars.RUVNET_MEASUREMENT_PUBLIC_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          prepared="$RUNNER_TEMP/prepared-corpus"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'; import crypto from 'node:crypto';
+          const e=process.env;const dir=`${e.RUNNER_TEMP}/prepared-corpus`;
+          const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+          for(const [name,expected] of [['ruvnet-brain.zip',e.ARCHIVE_SHA],['corpus-receipt.json',e.RECEIPT_SHA],
+            ['ruvnet-brain.zip.accuracy.json',e.ACCURACY_SHA],['ruvnet-brain.zip.recall.json',e.RECALL_SHA]]) {
+            if(!/^[a-f0-9]{64}$/.test(expected||'')||sha(`${dir}/${name}`)!==expected)throw new Error(`prepared bytes differ: ${name}`);
+          }
+          const seed=JSON.parse(fs.readFileSync(`${dir}/seed-identity.json`));
+          const pinned=JSON.parse(fs.readFileSync('data/corpus-seed.json'));
+          if(seed.origin!=='committed-bootstrap'||seed.tag!==pinned.tag||seed.sha256!==pinned.sha256||seed.bytes!==pinned.bytes
+            ||sha(`${dir}/baseline-receipt.json`)!==seed.receiptSha256)
+            throw new Error('prepared baseline differs from the exact configured seed');
+          fs.appendFileSync(e.GITHUB_ENV,`RUVNET_SEED_BUNDLE=${e.RUNNER_TEMP}/release-seed/${pinned.asset}\n`);
+          NODE
+          node scripts/corpus-candidate.mjs --verify \
+            --bundle "$prepared/ruvnet-brain.zip" --receipt "$prepared/corpus-receipt.json" \
+            --accuracy-report "$prepared/ruvnet-brain.zip.accuracy.json" \
+            --recall-report "$prepared/ruvnet-brain.zip.recall.json" \
+            --expected-builder-sha "$EXPECTED_SHA" --expected-archive-sha256 "$ARCHIVE_SHA" \
+            --expected-receipt-sha256 "$RECEIPT_SHA"
+          mkdir -p "$RUNNER_TEMP/release-seed"
+          seed_tag="$(node -p "require('./data/corpus-seed.json').tag")"
+          seed_asset="$(node -p "require('./data/corpus-seed.json').asset")"
+          gh release download "$seed_tag" --repo "$GITHUB_REPOSITORY" --pattern "$seed_asset" --dir "$RUNNER_TEMP/release-seed"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';
+          import {extractZip} from './kb/zip-extract.mjs';
+          import {validateCoverageDirectory} from './plugin/scripts/coverage-integrity.mjs';
+          const e=process.env, prepared=path.join(e.RUNNER_TEMP,'prepared-corpus');
+          const pinned=JSON.parse(fs.readFileSync('data/corpus-seed.json'));
+          const seedFile=path.join(e.RUNNER_TEMP,'release-seed',pinned.asset);
+          const hash=crypto.createHash('sha256').update(fs.readFileSync(seedFile)).digest('hex');
+          if(hash!==pinned.sha256||fs.statSync(seedFile).size!==pinned.bytes)throw new Error('baseline archive bytes differ');
+          if(fs.existsSync('dist/ruvnet-brain'))throw new Error('candidate extraction destination already exists');
+          await extractZip(path.join(prepared,'ruvnet-brain.zip'),'dist');
+          const check=validateCoverageDirectory('dist/ruvnet-brain',{
+            expectedVersion:JSON.parse(fs.readFileSync('package.json')).version,
+            expectedSourceSnapshot:e.EXPECTED_SHA,requireCompleteProfile:true});
+          if(!check.valid)throw new Error(check.failures.join('; '));
+          // Prepared observation is authoritative; the checkout observation may predate reconciliation.
+          if(!fs.readFileSync(path.join(prepared,'source-coverage.json')).equals(fs.readFileSync('dist/ruvnet-brain/CORPUS-COVERAGE.json')))
+            throw new Error('prepared coverage differs from the sealed corpus observation');
+          const baseline=JSON.parse(fs.readFileSync(path.join(prepared,'seed-identity.json')));
+          if(check.coverage.corpusSeed.receiptSha256!==baseline.receiptSha256
+            ||check.coverage.corpusSeed.archiveSha256!==baseline.sha256
+            ||check.coverage.corpusSeed.archiveBytes!==baseline.bytes||check.coverage.corpusSeed.tag!==baseline.tag)
+            throw new Error('prepared corpus coverage baseline identity differs');
+          NODE
+          for file in ruvnet-brain.zip corpus-receipt.json ruvnet-brain.zip.accuracy.json ruvnet-brain.zip.recall.json; do
+            cp "$prepared/$file" "$RUNNER_TEMP/release-evidence/$file"
+          done
+          cp "$prepared/baseline-receipt.json" "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json"
+          # This member describes bootstrap input provenance; the bundle and ledger identify output.
           cp data/corpus-seed.json "$RUNNER_TEMP/release-evidence/corpus-seed.json"
           cp dist/ruvnet-brain/RVF-GENERATIONS.json "$RUNNER_TEMP/release-evidence/RVF-GENERATIONS.json"
-          # THE SIDECAR MUST NAME THE FILE, NOT THE MACHINE THAT BUILT IT (fixed 2026-08-07, #77).
-          #
-          # This was `sha256sum "$RUNNER_TEMP/.../ruvnet-brain.zip" > ...sha256`, and sha256sum writes
-          # the path it was GIVEN into the file, so the sidecar shipped as:
-          #     a35724de…  /home/runner/work/_temp/release-evidence/ruvnet-brain.zip
-          # Two consequences, one fatal. For a user, `shasum -c` then looks for a file at a CI
-          # runner's temp path that does not exist on their machine — the sidecar cannot verify the
-          # download it exists to verify. For the release rail, the sidecar's OWN sha256 becomes
-          # environment-dependent, so `assetsExact` compared it against a digest sealed elsewhere and
-          # failed every time with `staged GitHub payload mismatch`. That was the last thing standing
-          # between #77 and a convergent release, after the aborted-state deadlock was cleared.
-          #
-          # `cd` first so the recorded name is the bare basename — identical to what
-          # scripts/sign-bundle.mjs:59 writes (`${digest}  ${path.basename(bundle)}`), which is the
-          # format the verifier and every user's `shasum -c` both expect.
           ( cd "$RUNNER_TEMP/release-evidence" && sha256sum ruvnet-brain.zip > ruvnet-brain.zip.sha256 )
       - name: Derive public verification inputs from exact candidate bytes
         shell: bash
@@ -314,6 +362,8 @@ jobs:
             --repo "$GITHUB_WORKSPACE" \
             --out-dir "$RUNNER_TEMP/release-evidence" \
             --observed-baseline
+          # The deterministic historical observation must reproduce preparation's exact receipt.
+          cmp "$RUNNER_TEMP/prepared-corpus/baseline-receipt.json" "$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json"
       - name: Persist the canonical candidate payload manifest
         shell: bash
         run: |
@@ -326,6 +376,10 @@ jobs:
             --member "bundle=$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \
             --member "corpus-seed=$RUNNER_TEMP/release-evidence/corpus-seed.json" \
             --member "generation-ledger=$RUNNER_TEMP/release-evidence/RVF-GENERATIONS.json" \
+            --member "corpus-receipt=$RUNNER_TEMP/release-evidence/corpus-receipt.json" \
+            --member "corpus-accuracy=$RUNNER_TEMP/release-evidence/ruvnet-brain.zip.accuracy.json" \
+            --member "corpus-recall=$RUNNER_TEMP/release-evidence/ruvnet-brain.zip.recall.json" \
+            --member "corpus-baseline=$RUNNER_TEMP/release-evidence/baseline-observation-receipt.json" \
             --out "$RUNNER_TEMP/release-evidence/payload-manifest.json" \
             | tee "$RUNNER_TEMP/release-evidence/payload-id.json"
       - name: Qualify the census against the exact staged candidate

@@ -277,6 +277,10 @@ jobs:
             release-evidence/ruvnet-brain.zip.sha256
             release-evidence/corpus-seed.json
             release-evidence/RVF-GENERATIONS.json
+            release-evidence/corpus-receipt.json
+            release-evidence/ruvnet-brain.zip.accuracy.json
+            release-evidence/ruvnet-brain.zip.recall.json
+            release-evidence/baseline-observation-receipt.json
             release-evidence/COVERAGE.json
             release-evidence/retrieval-canary-plan.json
             release-evidence/candidate-receipt.json
@@ -297,6 +301,10 @@ jobs:
             release-evidence/ruvnet-brain.zip.sha256
             release-evidence/corpus-seed.json
             release-evidence/RVF-GENERATIONS.json
+            release-evidence/corpus-receipt.json
+            release-evidence/ruvnet-brain.zip.accuracy.json
+            release-evidence/ruvnet-brain.zip.recall.json
+            release-evidence/baseline-observation-receipt.json
             release-evidence/COVERAGE.json
             release-evidence/retrieval-canary-plan.json
             release-evidence/candidate-receipt.json
