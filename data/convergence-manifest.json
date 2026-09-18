@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.3.26",
-  "sourceIdentity": "9916d076f9ed8900875ce17b9358591133b6d7bb8c92954589be4c311f743dc1",
+  "sourceIdentity": "6fbb2095eddc777d61f75aff7648ac7037b66379983ecf68d427aff24c724e35",
   "versionSurfaces": {
     "package.json": "4.3.26",
     "plugin/.claude-plugin/plugin.json": "4.3.26",
@@ -99,10 +99,11 @@
     "0084-the-three-user-invariants.md",
     "0085-nightly-corpus-release-channel.md",
     "0086-corpus-seed-pipeline-consolidation.md",
+    "0087-citation-header-spoofing-needs-a-structural-fix.md",
     "README.md"
   ],
-  "trackedFileCount": 1542,
-  "trackedFilesSha256": "d3a6c0745212512a0e337ccb35e5ced4ce4041f45cc0be50b28b3a9155f7ee7e",
+  "trackedFileCount": 1543,
+  "trackedFilesSha256": "7f27cb7491fdbdfd050f807a329171574d397aedb0107aaf0519545e459652b6",
   "ownershipChecks": [
     "version:check",
     "doc:currency",
