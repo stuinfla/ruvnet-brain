@@ -721,6 +721,7 @@ test('`--doctor --hooks` goes RED when the selected installed plugin retains a h
     const registry = path.join(home, '.claude', 'plugins', 'installed_plugins.json');
     fs.mkdirSync(path.dirname(registry), { recursive: true });
     fs.writeFileSync(registry, JSON.stringify({
+      version: 2,
       plugins: { 'ruvnet-brain@ruvnet-brain': [{ scope: 'user', version: '9.9.9', installPath: pluginRoot }] },
     }));
     const hangFixture = path.join(ROOT, 'tests', 'fixtures', 'selfcheck-hooks', 'hang.mjs');
