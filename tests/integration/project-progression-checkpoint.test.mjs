@@ -95,10 +95,31 @@ describe('explicit project checkpoint', () => {
         expect(payload.projectProgression.completeProjectState.currentGoal).toBe('one writer only');
         return { snapshot: { sequence: 1 }, receipt: { eventKey: 'k', payloadDigest: 'd', readbackDigest: 'd' } };
       },
-      storeFactory: () => ({ replay: () => [] }),
+      storeFactory: () => ({ replay: () => { seen.push('replay'); return []; } }),
     });
-    expect(seen).toEqual(['produce:checkpoint', 'capture:claude:checkpoint']);
+    expect(seen).toEqual(['replay', 'produce:checkpoint', 'capture:claude:checkpoint']);
     expect(outcome.receipt.eventKey).toBe('k');
+  });
+
+  it('refuses to produce or capture while pending replay is unresolved', () => {
+    const calls = [];
+    expect(() => runCheckpoint({
+      projectDir: temporaryProject(),
+      state: { currentGoal: 'must not write behind pending replay' },
+      storeFactory: () => ({ replay: () => { calls.push('replay'); throw new Error('replay unavailable'); } }),
+      produce: () => { calls.push('produce'); return { projectProgression: {} }; },
+      capture: () => { calls.push('capture'); return { snapshot: { sequence: 1 }, receipt: {} }; },
+    })).toThrow(/pending progression replay failed: replay unavailable/);
+    expect(calls).toEqual(['replay']);
+  });
+
+  it('refuses to write an incoherent multi-head producer result', () => {
+    let captured = false;
+    expect(() => runCheckpoint({ projectDir: temporaryProject(), state: STATE,
+      produce: () => ({ projectProgression: null, skipped: { reason: 'concurrent progression heads require reconciliation' } }),
+      capture: () => { captured = true; }, storeFactory: () => ({ replay: () => [] }),
+    })).toThrow(/concurrent progression heads/);
+    expect(captured).toBe(false);
   });
 
   it('prints a receipt a reader can check, and exits non-zero when it cannot store', () => {

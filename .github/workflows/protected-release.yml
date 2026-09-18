@@ -37,6 +37,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  RUVNET_MEASUREMENT_PUBLIC_KEY: ${{ vars.RUVNET_MEASUREMENT_PUBLIC_KEY }}
   # NOT a hardcoded version. This was `EXPECTED_VERSION: 4.0.8`, which pinned the ONLY workflow
   # allowed to sign and publish to a single generation — so 4.0.9 and 4.0.10 could not be released
   # by the release rail at all, and every release after 4.0.8 was done by hand or by "emergency
@@ -614,6 +615,7 @@ jobs:
       seed_tag: ${{ steps.seed.outputs.seed_tag }}
       seed_sha256: ${{ steps.seed.outputs.seed_sha256 }}
       seed_bytes: ${{ steps.seed.outputs.seed_bytes }}
+      seed_receipt_sha256: ${{ steps.seed.outputs.seed_receipt_sha256 }}
       seed_origin: ${{ steps.seed.outputs.seed_origin }}
     steps:
       - uses: actions/checkout@v4
@@ -663,6 +665,7 @@ jobs:
             echo "seed_tag=$(node -p "require(process.env.RUNNER_TEMP + '/next-seed.json').tag")"
             echo "seed_sha256=$(node -p "require(process.env.RUNNER_TEMP + '/next-seed.json').sha256")"
             echo "seed_bytes=$(node -p "require(process.env.RUNNER_TEMP + '/next-seed.json').bytes")"
+            echo "seed_receipt_sha256=$(node -p "require(process.env.RUNNER_TEMP + '/next-seed.json').receiptSha256 || ''")"
             echo "seed_origin=$(node -p "require(process.env.RUNNER_TEMP + '/next-seed.json').origin")"
           } >> "$GITHUB_OUTPUT"
 
@@ -679,7 +682,9 @@ jobs:
       seed_tag: ${{ needs.corpus-identity.outputs.seed_tag }}
       seed_sha256: ${{ needs.corpus-identity.outputs.seed_sha256 }}
       seed_bytes: ${{ needs.corpus-identity.outputs.seed_bytes }}
+      seed_receipt_sha256: ${{ needs.corpus-identity.outputs.seed_receipt_sha256 }}
     secrets:
+      RUVNET_MEASUREMENT_SIGNING_KEY: ${{ secrets.RUVNET_MEASUREMENT_SIGNING_KEY }}
       RUVNET_GISTS_TOKEN: ${{ secrets.RUVNET_GISTS_TOKEN }}
 
   corpus-no-change:

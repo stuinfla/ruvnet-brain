@@ -1,6 +1,6 @@
 {
   "agentic-flows": {
-    "reason": "repository contains only a heading-only README, license, and git metadata — no functional corpus",
+    "reason": "repository contains only a heading-only README, license, and git metadata \u2014 no functional corpus",
     "pushedAt": "2024-08-27T15:41:11Z",
     "at": "2026-08-21T10:58:00.000Z",
     "evidence": {
@@ -9,14 +9,23 @@
       "inspectedAt": "2026-09-14T01:49:40Z",
       "truncated": false,
       "files": [
-        { "path": ".gitignore", "size": 3139 },
-        { "path": "LICENSE", "size": 1060 },
-        { "path": "README.md", "size": 15 }
+        {
+          "path": ".gitignore",
+          "size": 3139
+        },
+        {
+          "path": "LICENSE",
+          "size": 1060
+        },
+        {
+          "path": "README.md",
+          "size": 15
+        }
       ]
     }
   },
   "agentic-music": {
-    "reason": "repository contains only a heading-only README, license, and git metadata — no functional corpus",
+    "reason": "repository contains only a heading-only README, license, and git metadata \u2014 no functional corpus",
     "pushedAt": "2024-08-14T18:17:36Z",
     "at": "2026-08-21T10:58:00.000Z",
     "evidence": {
@@ -25,14 +34,23 @@
       "inspectedAt": "2026-09-14T01:49:40Z",
       "truncated": false,
       "files": [
-        { "path": ".gitignore", "size": 3139 },
-        { "path": "LICENSE", "size": 1060 },
-        { "path": "README.md", "size": 15 }
+        {
+          "path": ".gitignore",
+          "size": 3139
+        },
+        {
+          "path": "LICENSE",
+          "size": 1060
+        },
+        {
+          "path": "README.md",
+          "size": 15
+        }
       ]
     }
   },
   "santa-ai-workshop": {
-    "reason": "repository tree at HEAD contains exactly one blob, LICENSE (11357 bytes) — no functional corpus. The earlier record's '0 chunks produced (forge exit 3)' was an extraction outcome, not source evidence; the tree inventory below is.",
+    "reason": "repository tree at HEAD contains exactly one blob, LICENSE (11357 bytes) \u2014 no functional corpus. The earlier record's '0 chunks produced (forge exit 3)' was an extraction outcome, not source evidence; the tree inventory below is.",
     "pushedAt": "2023-12-22T21:14:33Z",
     "at": "2026-08-21T07:15:12.466Z",
     "evidence": {
@@ -41,12 +59,15 @@
       "inspectedAt": "2026-09-14T01:49:40Z",
       "truncated": false,
       "files": [
-        { "path": "LICENSE", "size": 11357 }
+        {
+          "path": "LICENSE",
+          "size": 11357
+        }
       ]
     }
   },
   "codegpt": {
-    "reason": "repository contains one empty readme.md and git metadata — no functional corpus",
+    "reason": "repository contains one empty readme.md and git metadata \u2014 no functional corpus",
     "pushedAt": "2023-04-17T16:49:26Z",
     "at": "2026-08-21T12:31:00.000Z",
     "evidence": {
@@ -55,7 +76,38 @@
       "inspectedAt": "2026-09-14T01:49:40Z",
       "truncated": false,
       "files": [
-        { "path": "readme.md", "size": 1 }
+        {
+          "path": "readme.md",
+          "size": 1
+        }
+      ]
+    }
+  },
+  "ai-browse": {
+    "reason": "pinned repository contains only a heading-only README, standard license, and gitignore; all three blob contents inspected, no functional corpus",
+    "pushedAt": "2025-01-11T15:29:57Z",
+    "at": "2026-09-17T01:50:50.446562Z",
+    "evidence": {
+      "method": "gh api repos/ruvnet/ai-browse/git/trees/1b1e1de8b16196eb77b631d3d9a3137b31aacc30?recursive=1 plus every pinned blob",
+      "headSha": "1b1e1de8b16196eb77b631d3d9a3137b31aacc30",
+      "inspectedAt": "2026-09-17T01:50:50.446562Z",
+      "truncated": false,
+      "files": [
+        {
+          "path": ".gitignore",
+          "size": 3415,
+          "sha": "15201acc113da01edf6fa2fb2708b2e9076b6bc5"
+        },
+        {
+          "path": "LICENSE",
+          "size": 1060,
+          "sha": "2dd524ac380d7e2f68710913b95e3dbd4cce7319"
+        },
+        {
+          "path": "README.md",
+          "size": 11,
+          "sha": "6078dfb5cac309a68d044bee83a80bd8985fc115"
+        }
       ]
     }
   }

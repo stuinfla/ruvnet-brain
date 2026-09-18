@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readRvfGenerations, sha256File } from './rvf-generation.mjs';
-import { canonicalJson, coverageGenerationFor, digest, validateGistAggregateReceipt } from './coverage-integrity.mjs';
+import { canonicalJson, coverageGenerationFor, digest, validateGistAggregateReceipt, isIngestibleDisposition, forkDeltaIdentityFor, forkDeltaMatches } from './coverage-integrity.mjs';
 import { repositoryNames } from '../kb/card-lane.mjs';
 import { rootNeverMaterialized, storeRoot } from '../kb/store-root.mjs';
 
@@ -26,13 +26,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 //       exclusion must carry source-file evidence bound to the observed head.
 export const SOURCE_POLICY_VERSION = 2;
 
-// Dispositions whose rows the corpus is expected to contain. `fork:original-content` is deliberately
-// NOT spelled `eligible`: scripts/corpus-reconcile.mjs full-clones every `eligible` repository row,
-// and a full clone of a fork ingests upstream authors' commits under rUv's name — the misattribution
-// the #286 RC3 repo-attribution guard exists to stop. The delta-only build that consumes this
-// disposition is corpus-reconcile's work; this layer records what it needs (`forkDelta`).
-const INGESTIBLE_DISPOSITIONS = new Set(['eligible', 'fork:original-content']);
-export function isIngestibleDisposition(disposition) { return INGESTIBLE_DISPOSITIONS.has(disposition); }
+export { isIngestibleDisposition } from './coverage-integrity.mjs';
 
 const REPO_QUERY = `query($login:String!,$cursor:String){
   user(login:$login){
@@ -370,6 +364,14 @@ export function classifyRepository(repo, evidence, exclusion = null) {
   else if (evidence.receipt.sourceCommit !== upstreamSha) { status = 'STALE'; reasons.push('receipt sourceCommit differs from upstream HEAD'); }
   else if (!evidence.bytesVerified) { status = 'FAILED'; reasons.push('RVF bytes do not match receipt'); }
   else if (!evidence.passagesPresent) { status = 'FAILED'; reasons.push('passage inventory is absent'); }
+  if (status === 'CURRENT' && disposition === 'fork:original-content') {
+    const expected = forkDeltaIdentityFor({ url: repo.url, forkDelta: repo.forkDelta, upstream: { sha: upstreamSha } });
+    if (!forkDeltaMatches(evidence.receipt, expected)) {
+      status = 'UNVERIFIED'; reasons.push('delta-only receipt does not bind the observed fork and upstream baseline');
+    } else if (!evidence.forkBytesVerified) {
+      status = 'FAILED'; reasons.push('fork inventory or passages do not match the delta receipt');
+    }
+  }
   return {
     key: repo.fullName ? `repo:${repo.fullName.toLowerCase()}` : `repo:${repo.databaseId}`,
     kind: 'repository',
@@ -382,7 +384,7 @@ export function classifyRepository(repo, evidence, exclusion = null) {
     ...(repo.forkDelta ? { forkDelta: { ...repo.forkDelta } } : {}),
     upstream: { sha: upstreamSha, committedAt: repo.defaultBranchRef?.target?.committedDate || null,
       pushedAt: repo.pushedAt, updatedAt: repo.updatedAt },
-    artifact: { store: storeName(repo.storeName || repo.name), sourceCommit: evidence.receipt?.sourceCommit || null,
+    artifact: { ...(evidence.receipt?.sourceMode ? { sourceMode: evidence.receipt.sourceMode, forkDelta: evidence.receipt.forkDelta } : {}), store: storeName(repo.storeName || repo.name), sourceCommit: evidence.receipt?.sourceCommit || null,
       ingestedAt: evidence.receipt?.builtUtc || null, rvfSha256: evidence.receipt?.sha256 || null,
       bytesVerified: evidence.bytesVerified, passagesPresent: evidence.passagesPresent,
       cardPresent: evidence.cardPresent },
@@ -450,6 +452,11 @@ export function artifactEvidence(kbDir, ledger, cardStores, name) {
     bytesVerified: Boolean(rvfPresent && receipt?.sha256 && sha256File(rvfPath) === receipt.sha256),
     passagesPresent: fs.existsSync(path.join(kbDir, `${store}.passages.jsonl`))
       && fs.statSync(path.join(kbDir, `${store}.passages.jsonl`)).size > 0,
+    forkBytesVerified: ['passages', 'inventory'].every(kind => {
+      const file = path.join(kbDir, `${store}${kind === 'passages' ? '.passages.jsonl' : '.fork-delta.inventory.json'}`);
+      return fs.existsSync(file) && fs.lstatSync(file).isFile() && !fs.lstatSync(file).isSymbolicLink()
+        && receipt?.forkDelta?.[`${kind}Sha256`] === sha256File(file);
+    }),
     cardPresent: repositoryNames(store, kbDir).some((alias) => cardStores.has(storeName(alias))),
   };
 }

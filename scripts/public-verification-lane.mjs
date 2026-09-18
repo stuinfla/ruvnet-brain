@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isIngestibleDisposition } from './coverage-integrity.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import osModule from 'node:os';
@@ -86,8 +87,8 @@ function coverageProjection(coverage) {
   if (!checked.valid || coverage.kind !== 'ruvnet-brain-release-coverage') {
     throw new Error(`release coverage is invalid: ${checked.failures.join('; ')}`);
   }
-  const repositories = coverage.rows.filter((row) => row.kind === 'repository' && row.disposition === 'eligible');
-  const gists = coverage.rows.filter((row) => row.kind === 'gist' && row.disposition === 'eligible');
+  const repositories = coverage.rows.filter((row) => row.kind === 'repository' && isIngestibleDisposition(row.disposition));
+  const gists = coverage.rows.filter((row) => row.kind === 'gist' && isIngestibleDisposition(row.disposition));
   const currentRepositories = repositories.filter(({ status }) => status === 'CURRENT').length;
   const currentGists = gists.filter(({ status }) => status === 'CURRENT').length;
   if (currentRepositories !== repositories.length || currentGists !== gists.length) {

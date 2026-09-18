@@ -23,6 +23,7 @@
  *                                           errors: [{ message, location }] } }
  */
 import crypto from 'node:crypto';
+import { validateSnapshot } from './source-tree.mjs';
 import { selectUnits, DEFAULT_SEED } from './unit-sampling.mjs';
 
 export const RULES_VERSION = 'oracle-source-units/2';
@@ -61,10 +62,37 @@ export function unitIdFor({ repo, path, objectSha, kind, startByte, endByte }) {
  * inputs. `adapters` order is the published dialect precedence: the first adapter that matches claims
  * the entry.
  */
-export function buildInventory({ manifest, blobs, adapters, seed = DEFAULT_SEED }) {
+export function buildInventory({ manifest, blobs, adapters, seed = DEFAULT_SEED, dispositions = null, requireSemanticReview = false }) {
   if (!manifest?.repo || !manifest?.treeSha || !Array.isArray(manifest.entries)) {
     throw new Error('buildInventory needs a source-tree snapshot manifest');
   }
+  if (dispositions && (dispositions.schemaVersion !== 1 || dispositions.kind !== 'oracle-source-dispositions'
+    || dispositions.repo !== manifest.repo || dispositions.commitSha !== manifest.commitSha
+    || dispositions.treeSha !== manifest.treeSha || !Array.isArray(dispositions.entries))) {
+    throw new Error('semantic dispositions do not bind the exact source tree');
+  }
+  validateSnapshot({ manifest, blobs });
+  const reviewed = new Map();
+  const reviewedEntries = new Map();
+  for (const row of dispositions?.entries || []) {
+    if (row?.kind === 'entry') {
+      if (typeof row.path !== 'string' || reviewedEntries.has(row.path) || row.disposition !== 'non-source'
+        || !/^[a-f0-9]{40}$/.test(row.objectSha || '') || !/^[a-f0-9]{64}$/.test(row.bytesSha256 || '')
+        || typeof row.reason !== 'string' || !row.reason.trim() || typeof row.reviewer !== 'string' || !row.reviewer.trim()) {
+        throw new Error('entry disposition is malformed or duplicate');
+      }
+      reviewedEntries.set(row.path,row);continue;
+    }
+    if (!row?.unitId || reviewed.has(row.unitId) || !['eligible', 'excluded'].includes(row.disposition)
+      || typeof row.path !== 'string' || !/^[a-f0-9]{40}$/.test(row.objectSha || '')
+      || !/^[a-f0-9]{64}$/.test(row.bytesSha256 || '')
+      || typeof row.reason !== 'string' || !row.reason.trim() || typeof row.reviewer !== 'string' || !row.reviewer.trim()) {
+      throw new Error('semantic disposition is malformed or duplicate');
+    }
+    reviewed.set(row.unitId, row);
+  }
+  const pendingSemanticReview = [];
+  const dispositionRows = [];
   const rows = [];
   const units = [];
   const failures = [];
@@ -74,8 +102,16 @@ export function buildInventory({ manifest, blobs, adapters, seed = DEFAULT_SEED 
     if (fixed) { rows.push({ path: entry.path, entryKind: entry.entryKind, ...fixed }); continue; }
     const bytes = blobs.get(entry.objectSha);
     if (!bytes) throw new Error(`no blob bytes for ${entry.path} (${entry.objectSha})`);
+    const entryReview = reviewedEntries.get(entry.path);
+    if (entryReview) {
+      if (entryReview.objectSha !== entry.objectSha || entryReview.bytesSha256 !== sha256(bytes)) throw new Error(`entry disposition source drift: ${entry.path}`);
+      rows.push({path:entry.path,entryKind:entry.entryKind,disposition:'excluded',reason:entryReview.reason,reviewer:entryReview.reviewer});
+      dispositionRows.push(entryReview);reviewedEntries.delete(entry.path);continue;
+    }
     const text = bytes.toString('utf8');
-    if (Buffer.byteLength(text, 'utf8') !== bytes.length || text.includes('�')) {
+    let validUtf8 = true;
+    try { new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { validUtf8 = false; }
+    if (!validUtf8) {
       failures.push({ path: entry.path, objectSha: entry.objectSha, adapter: null, message: 'not valid UTF-8 text' });
       rows.push({ path: entry.path, entryKind: entry.entryKind, disposition: 'extraction-failed', reason: 'decoding' });
       continue;
@@ -89,6 +125,7 @@ export function buildInventory({ manifest, blobs, adapters, seed = DEFAULT_SEED 
     let result;
     try {
       result = adapter.enumerate({ path: entry.path, text, bytes });
+      if (!result || !Array.isArray(result.units) || !Array.isArray(result.errors)) throw new Error('adapter must return explicit units and errors arrays');
     } catch (error) {
       result = { units: [], errors: [{ message: `adapter threw: ${error.message}`, location: null }] };
     }
@@ -102,6 +139,12 @@ export function buildInventory({ manifest, blobs, adapters, seed = DEFAULT_SEED 
         throw new Error(`${adapter.id} returned an invalid owned span for ${entry.path}: ${u.startByte}..${u.endByte}`);
       }
       const owned = bytes.subarray(u.startByte, u.endByte);
+      const decoder = new TextDecoder('utf-8', { fatal: true });
+      const prefix = decoder.decode(bytes.subarray(0, u.startByte));
+      const source = decoder.decode(owned);
+      const startLine = prefix.split('\n').length;
+      const endLine = startLine + source.split('\n').length - 1;
+      if (u.startLine !== startLine || u.endLine !== endLine) throw new Error('adapter line bounds disagree with owned bytes');
       return {
         unitId: unitIdFor({ repo: manifest.repo, path: entry.path, objectSha: entry.objectSha, kind: u.kind, startByte: u.startByte, endByte: u.endByte }),
         path: entry.path, blobSha: entry.objectSha, kind: u.kind, name: u.name ?? null, sourceType: u.sourceType,
@@ -109,14 +152,27 @@ export function buildInventory({ manifest, blobs, adapters, seed = DEFAULT_SEED 
         bytesSha256: sha256(owned), chars: owned.toString('utf8').length, adapter: `${adapter.id}@${adapter.version}`,
       };
     });
-    units.push(...fileUnits);
-    rows.push({ path: entry.path, entryKind: entry.entryKind, disposition: fileUnits.length ? 'eligible' : 'no-eligible-units', adapter: adapter.id, units: fileUnits.length });
+    const accepted = [];
+    for (const unit of fileUnits) {
+      const review = reviewed.get(unit.unitId);
+      if (review && (review.path !== unit.path || review.objectSha !== unit.blobSha || review.bytesSha256 !== unit.bytesSha256)) {
+        throw new Error(`semantic disposition source drift for ${unit.unitId}`);
+      }
+      if (requireSemanticReview && !review) pendingSemanticReview.push(unit.unitId);
+      if (!review || review.disposition === 'eligible') accepted.push(unit);
+      if (review) { dispositionRows.push(review); reviewed.delete(unit.unitId); }
+    }
+    units.push(...accepted);
+    rows.push({ path: entry.path, entryKind: entry.entryKind, disposition: accepted.length ? 'eligible' : 'no-eligible-units', adapter: adapter.id, candidates: fileUnits.length, units: accepted.length });
   }
 
-  const inventoryComplete = failures.length === 0 && unsupported.length === 0;
+  if (reviewedEntries.size) throw new Error('entry dispositions contain entries outside the reviewable inventory');
+  if (reviewed.size) throw new Error('semantic dispositions contain units outside this inventory');
+  const inventoryComplete = failures.length === 0 && unsupported.length === 0 && pendingSemanticReview.length === 0;
   const identity = {
     rulesVersion: RULES_VERSION, repo: manifest.repo, commitSha: manifest.commitSha, treeSha: manifest.treeSha,
     manifestSha256: manifest.manifestSha256,
+    pendingSemanticReview, dispositionRows, requireSemanticReview,
     adapters: adapters.map((a) => ({ id: a.id, version: a.version, parserIdentity: a.parserIdentity })),
   };
   if (!inventoryComplete) {

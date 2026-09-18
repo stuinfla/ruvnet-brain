@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isIngestibleDisposition } from './coverage-integrity.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -204,8 +205,10 @@ export function auditOracleCoverage({ coverage, queryEvidence, exemptions = null
   const checked = validateCoverageLedger(coverage);
   if (!checked.valid) throw new Error(`coverage ledger is invalid: ${checked.failures.join('; ')}`);
   validateRetrievalQueryEvidence(queryEvidence);
+  const unresolved = coverage.rows.filter(row => isIngestibleDisposition(row.disposition) && row.status !== 'CURRENT');
+  if (unresolved.length) throw new Error(`eligible coverage contains ${unresolved.length} non-CURRENT source(s)`);
   const eligibleRows = coverage.rows.filter((row) => row.kind === 'repository'
-    && row.disposition === 'eligible' && row.status === 'CURRENT');
+    && isIngestibleDisposition(row.disposition));
   const eligible = ordered(eligibleRows.map(storeOf));
   if (!eligible.length || new Set(eligible).size !== eligible.length || eligible.some((store) => !store)) {
     throw new Error('eligible coverage denominator is invalid');
@@ -350,10 +353,11 @@ export function validatePlanAgainstCoverage(plan, coverage, { allowObservedBasel
   }
   const checked = validateCoverageLedger(coverage);
   if (!checked.valid) throw new Error(`coverage ledger is invalid: ${checked.failures.join('; ')}`);
+  if (coverage.rows.some(row => isIngestibleDisposition(row.disposition) && row.status !== 'CURRENT')) throw new Error('eligible coverage contains non-CURRENT sources');
   const generation = coverage.kind === 'ruvnet-brain-release-coverage'
     ? coverage.releaseCoverageGeneration : coverage.coverageGeneration;
   const eligible = ordered(coverage.rows.filter((row) => row.kind === 'repository'
-    && row.disposition === 'eligible' && row.status === 'CURRENT').map(storeOf));
+    && isIngestibleDisposition(row.disposition)).map(storeOf));
   if (!eligible.length || new Set(eligible).size !== eligible.length) throw new Error('eligible coverage denominator is invalid');
   const baseline = new Set(plan.baseline.stores);
   const delta = eligible.filter((store) => !baseline.has(store));
@@ -417,7 +421,7 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
   }
   validateRetrievalQueryEvidence(queryEvidence);
   if (queryEvidence.sourceCommit === candidate.sourceSha) throw new Error('independent query source is not pre-candidate');
-  const eligible = coverage.rows.filter((row) => row.kind === 'repository' && row.disposition === 'eligible');
+  const eligible = coverage.rows.filter((row) => row.kind === 'repository' && isIngestibleDisposition(row.disposition));
   if (!eligible.length || eligible.some((row) => row.status !== 'CURRENT' || !storeOf(row))) {
     throw new Error('eligible repository coverage is incomplete');
   }

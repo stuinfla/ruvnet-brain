@@ -12,6 +12,13 @@ afterEach(() => {
 });
 
 describe('subscription-only dual-host installer wiring', () => {
+  it('does not silently drop implementation controls through the TriSmart Dual adapter', () => {
+    const run = spawnSync(process.execPath, ['scripts/trismart.mjs', '--mode=dual', '--implement', 'implement changes'], {
+      cwd: ROOT, encoding: 'utf8', timeout: 15000,
+    });
+    expect(run.status, run.stderr).toBe(2);
+    expect(JSON.parse(run.stdout).error).toMatch(/brief/);
+  });
   it('materializes both coordinator tools at the stable user path', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-dual-host-'));
     homes.push(home);
@@ -41,5 +48,15 @@ describe('subscription-only dual-host installer wiring', () => {
     expect(fs.existsSync(path.join(bin, 'subscription-hosts.mjs'))).toBe(true);
     expect(fs.existsSync(path.join(bin, 'dual-host-deliberation.mjs'))).toBe(true);
     expect(fs.existsSync(path.join(bin, 'dual-host-suggest.mjs'))).toBe(true);
+    const installed = spawnSync(process.execPath, [path.join(bin, 'dual-host-deliberation.mjs'), '--implement', 'change this application'], {
+      cwd: ROOT, encoding: 'utf8', timeout: 15000, env: { ...process.env, HOME: home },
+    });
+    expect(installed.status, installed.stderr).toBe(2);
+    expect(JSON.parse(installed.stdout)).toMatchObject({ status: 'unresolved', verifiedOutcome: false });
+    expect(JSON.parse(installed.stdout).error).toMatch(/brief/);
+    const preflight = spawnSync(process.execPath, [path.join(bin, 'execution-preflight.mjs'), '{"action":"read"}'], {
+      cwd: ROOT, encoding: 'utf8', timeout: 15000,
+    });
+    expect(preflight.status, preflight.stderr).toBe(0);
   });
 });

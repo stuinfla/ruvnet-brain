@@ -143,7 +143,8 @@ if (!doc.stores?.[value('--name')]) { console.error('no entry for store "'+value
   fs.writeFileSync(path.join(dir, 'public-store-classes.json'), JSON.stringify({ schemaVersion: 1, derived: [] }));
   const rows = storeNames.map((name) => ({ key: `repo:${name}`, kind: 'repository', name,
     url: `https://github.com/ruvnet/${name}`, status: 'CURRENT', disposition: 'eligible', upstream: {},
-    artifact: { store: name }, reasons: [] }));
+    artifact: { store: name, rvfSha256: publicLedger.stores[name].sha256,
+      sourceCommit: publicLedger.stores[name].sourceCommit }, reasons: [] }));
   const enumerationReceipt = { schemaVersion: 1, terminal: true, duplicateKeys: 0,
     repositories: { expected: rows.length, pages: [] }, gists: { expected: 0, pages: [] } };
   const generatorSourceSha = 'a'.repeat(64);

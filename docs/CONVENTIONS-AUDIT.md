@@ -1,7 +1,7 @@
 # The Conventions Audit — every rule in this repo, and whether anything enforces it
 
 Created: 2026-07-22
-Updated: 2026-08-02 — issue #84 truthful Agent/Task hook timing semantics
+Updated: 2026-09-17 18:31:22 EDT | Version 1.0.1
 Why: The owner, 2026-07-22 — *"There are dozens of things like this that are the difference between
 you acting as a smart learning partner and somebody that needs to constantly be reminded of
 everything all the time."* This document is the enumeration of "things like this." It exists because
@@ -86,9 +86,11 @@ sit on it, both gate-green.
 
 ---
 
-## 2. What is actually enforced today — the gate inventory
+## 2. Historical gate inventory
 
-Eight enforcement surfaces exist. This is the honest denominator for everything in §3.
+These eight surfaces describe the dated audit above, not current host registration. The current
+continuity manifests and explicit MCP boundary are summarized in `SECURITY.md`. Historical gate
+counts below must not be used as present installation or enforcement proof.
 
 | # | Surface | Mechanism | Blocks? | Covers |
 |---|---|---|---|---|
@@ -96,8 +98,8 @@ Eight enforcement surfaces exist. This is the honest denominator for everything 
 | 2 | **CI `ci.yml` / windows-unit** | full `tests/unit` on win32 | hard red | cross-platform regressions |
 | 3 | **`scripts/git-hooks/pre-push`** | secret scan + `verify-channels --pre-push` | refuses push | live API keys, channel drift |
 | 4 | **`.claude/settings.json` PreToolUse:Bash** | `version-bump-gate.sh` | exit 2 | every push carries a version bump |
-| 5 | **`~/.claude/settings.json` PreToolUse** | `ground-before-write.sh`; `verify-interface.sh` advisory | exit 2 only from the grounding wall | ungrounded rUv-domain writes; legacy raw-shell CLI calls receive migration guidance only |
-| 6 | **`plugin/hooks/hooks.json`** | hooks via `hook-shim.mjs` | 3 blocking | `design-wall`, `unprompted-speech`, and `protect-state`; route-dispatch and interface guidance are advisory |
+| 5 | **`~/.claude/settings.json` PreToolUse** | `ground-before-write.sh` | exit 2 only from the grounding wall | ungrounded rUv-domain writes; managed CLI interface enforcement belongs to the structured MCP boundary |
+| 6 | **`plugin/hooks/hooks.json`** | hooks via `hook-shim.mjs` | 3 blocking | `design-wall`, `unprompted-speech`, and `protect-state`; route-dispatch is advisory; the former interface guidance is historical |
 | 7 | **`scripts/release.mjs`** | gates A–E | aborts ship | both suites, narrative version, clean tree, live channel walk |
 | 8 | **`Stop` hook** | `continuation-gate.mjs` | advisory (exit 0) | unfinished authorized work |
 

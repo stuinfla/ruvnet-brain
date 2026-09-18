@@ -8,6 +8,7 @@ import { CONSOLE_RUNTIME_SURFACE, consoleRuntimeDigest } from '../../scripts/con
 const repo = path.resolve(import.meta.dirname, '../..');
 const roots = [];
 const required = [
+  'kb/node-version.mjs',
   'kb/refresh-run.mjs',
   'kb/lifecycle-evidence-retention.mjs',
   'kb/model-requirements.mjs',
@@ -31,6 +32,8 @@ function stage() {
 function importStaged({ runtime, home }) {
   return spawnSync(process.execPath, ['--input-type=module', '-e', `
     await import('./bin/install.mjs');
+    const { nodeVersionFailure } = await import('./kb/node-version.mjs');
+    if (nodeVersionFailure()) throw new Error('staged Node requirement rejected the supported runtime');
     await import('./scripts/onboarding-console.mjs');
     // The installer loads this helper dynamically only when extracting an archive.
     const { extractZip } = await import('./kb/zip-extract.mjs');
@@ -57,6 +60,17 @@ describe('exact staged Console import closure', () => {
     expect(result.stdout).toContain('staged-import-ok');
     expect(fs.readdirSync(fixture.home)).toEqual([]);
     expect(fs.existsSync(path.join(fixture.runtime, 'node_modules'))).toBe(false);
+  });
+
+  it('carries the runtime requirement manifest and refuses to guess when it is missing', () => {
+    const fixture = stage();
+    expect(CONSOLE_RUNTIME_SURFACE).toContain('kb/package.json');
+    fs.unlinkSync(path.join(fixture.runtime, 'kb/package.json'));
+    const result = importStaged(fixture);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('ENOENT');
+    expect(result.stderr).toContain('kb/package.json');
+    expect(fs.readdirSync(fixture.home)).toEqual([]);
   });
 
   it.each(required)('binds %s to the generation and fails actual import if omitted', (relative) => {

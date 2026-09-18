@@ -42,6 +42,11 @@ const PASCAL = /^(?:[A-Z][a-z0-9]+){2,}$/;                        // RvfDatabase
 const SNAKE = /^[a-z0-9]+(?:_[a-z0-9]+){1,}$/;                    // memory_entries
 const ISSUE = /^#\d{2,6}$/;                                       // #2786
 const SCOPED = /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/i;  // @claude-flow/aidefence
+const normalizePath = (value) => String(value || '')
+  .replaceAll('\\', '/')
+  .replace(/^(?:\.{0,2}\/)+/, '')
+  .replace(/\/+/g, '/')
+  .toLowerCase();
 
 /**
  * The exact, rare tokens a question contains. Deliberately conservative: every token returned here
@@ -51,13 +56,18 @@ const SCOPED = /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/i;  // @claude-flo
 export function exactIdentifiers(query) {
   const out = new Set();
   const raw = String(query || '');
-  // Path-shaped runs first, so ".swarm/memory.db" contributes its basename rather than being split.
-  for (const m of raw.matchAll(/[A-Za-z0-9_@./#-]*[/.][A-Za-z0-9_@./#-]+/g)) {
+  const pathRaw = raw.replaceAll('\\', '/');
+  // Preserve explicit path suffixes and their basename fallback.
+  for (const m of pathRaw.matchAll(/[A-Za-z0-9_@./#-]*[/.][A-Za-z0-9_@./#-]+/g)) {
     const token = m[0].replace(/[.,;:?!)\]}'"]+$/, '');
     if (SCOPED.test(token)) { out.add(token.toLowerCase()); continue; }
     const base = token.split('/').pop();
-    if (base && FILE_LIKE.test(base) && !NOT_AN_IDENTIFIER.has(base.toLowerCase()) && base.length >= 6) {
-      out.add(base.toLowerCase());
+    const explicitFile = base && (FILE_LIKE.test(base) || /^\.[a-z0-9][a-z0-9._-]*$/i.test(base)
+      || /^(?:Dockerfile|Makefile|LICENSE|NOTICE|README)$/i.test(base));
+    if (token.includes('/') && explicitFile) out.add(normalizePath(token));
+    if (base && FILE_LIKE.test(base) && base.length >= 6) {
+      if (token.includes('/')) out.add(normalizePath(token));
+      if (!NOT_AN_IDENTIFIER.has(base.toLowerCase())) out.add(base.toLowerCase());
     }
   }
   for (const m of raw.matchAll(/#\d{2,6}|[A-Za-z_][A-Za-z0-9_]{3,}/g)) {
@@ -90,15 +100,15 @@ const _scans = new Map();
 /**
  * Which stores literally contain these identifiers, and the matching passages from each.
  *
- * Reads each sidecar as a Buffer and tests membership WITHOUT decoding — only lines in a file that
- * already matched are parsed, so the cost is dominated by sequential reads (measured 4.17 s for
- * 466 MB), not by JSON.
+ * Checks sidecars case-insensitively before parsing matching rows. Explicit path
+ * queries scan beyond the basename budget but retain only bounded candidate sets.
  */
 export function identifierScan(dir, identifiers, { perRepo = 8, maxRepos = 6 } = {}) {
   const key = `${dir}|${[...identifiers].sort().join(' ')}|${perRepo}|${maxRepos}`;
   const cached = _scans.get(key);
   if (cached) return cached;
   const needles = identifiers.filter((t) => typeof t === 'string' && t.length >= 3);
+  const pathNeedles = needles.filter(token => token.includes('/')).map(normalizePath);
   const empty = { repos: [], byRepo: new Map(), scannedMs: 0 };
   if (!needles.length) { _scans.set(key, empty); return empty; }
 
@@ -112,27 +122,46 @@ export function identifierScan(dir, identifiers, { perRepo = 8, maxRepos = 6 } =
     const repo = file.replace(/\.big\.passages\.jsonl$|\.passages\.jsonl$/, '');
     let buf;
     try { buf = fs.readFileSync(path.join(dir, file)); } catch { continue; }
-    const present = needles.filter((n) => buf.includes(n));
-    if (!present.length) continue;
+    const lowerBuf = buf.toString('utf8').toLowerCase();
+    const present = needles.filter((n) => lowerBuf.includes(n));
+    if (!present.length && !pathNeedles.length) continue;
     const rows = [];
+    const exactRows = [];
+    const rowLimit = perRepo * 6;
     for (const line of buf.toString('utf8').split('\n')) {
+      if (!pathNeedles.length && rows.length >= rowLimit) break;
+      if (exactRows.length >= rowLimit && rows.length >= rowLimit) break;
       if (!line) continue;
       const lower = line.toLowerCase();
       const hitTokens = present.filter((n) => lower.includes(n));
-      if (!hitTokens.length) continue;
+      if (!hitTokens.length && !pathNeedles.length) continue;
       let record;
       try { record = JSON.parse(line); } catch { continue; }
-      rows.push({ record, hitTokens });
-      if (rows.length >= perRepo * 6) break;   // a bounded read of one store, not a full parse
+      const recordPath = normalizePath(record.path);
+      const pathTokens = pathNeedles.filter(token => recordPath === token || recordPath.endsWith(`/${token}`));
+      const exactPath = pathTokens.length > 0;
+      if (!hitTokens.length && !exactPath) continue;
+      for (const token of pathTokens) if (!hitTokens.includes(token)) hitTokens.push(token);
+      if (exactPath) {
+        if (exactRows.length < rowLimit) exactRows.push({ record, hitTokens });
+      } else if (rows.length < rowLimit) {
+        rows.push({ record, hitTokens });
+      }
     }
-    if (rows.length) scored.push({ repo, present: present.length, rows });
+    const retainedRows = exactRows.concat(rows);
+    if (retainedRows.length) scored.push({ repo, exactMatches: exactRows.length, present: present.length, rows: retainedRows });
   }
   // Most identifiers matched wins; a store that carries every identifier the question named is the
   // one that defines them. Ties break on how many passages matched, then by name for determinism.
-  scored.sort((a, b) => b.present - a.present || b.rows.length - a.rows.length || a.repo.localeCompare(b.repo));
+  scored.sort((a, b) => Number(b.exactMatches > 0) - Number(a.exactMatches > 0)
+    || b.present - a.present || b.rows.length - a.rows.length || a.repo.localeCompare(b.repo));
   const top = scored.slice(0, maxRepos);
   const byRepo = new Map();
-  for (const { repo, rows } of top) byRepo.set(repo, rows.slice(0, perRepo * 6));
+  for (const { repo, rows } of top) {
+    // `identifierScan` already places actual path matches before bounded
+    // basename fallback rows; do not re-rank textual path mentions here.
+    byRepo.set(repo, rows.slice(0, perRepo * 6));
+  }
   const result = { repos: top.map((s) => s.repo), byRepo, scannedMs: Date.now() - t0 };
   _scans.set(key, result);
   return result;
@@ -167,6 +196,7 @@ export function identifierEvidence(record, identifiers, { repo = null, knownRepo
   let distinct = 0;
   let defining = 0;
   let pathNamed = 0;
+  let exactPathNamed = 0;
   for (const id of identifiers) {
     // The document's own NAME counts as carrying the identifier. A binary or a fixture called
     // `memory.db` may say nothing about itself in its text, and it is still the thing being asked
@@ -193,13 +223,19 @@ export function identifierEvidence(record, identifiers, { repo = null, knownRepo
     // happens to have an exactly-named subdirectory. Gate pathNamed on repo attribution only in that
     // specific case — an identifier that is not a known repo name (the founding `memory.db` case)
     // is completely unaffected.
-    const pathSegmentNamed = segments.includes(id);
+    const normalizedPath = normalizePath(docPath);
+    const pathIdentifier = id.includes('/');
+    const pathSuffixNamed = pathIdentifier
+      && (normalizedPath === normalizePath(id) || normalizedPath.endsWith(`/${normalizePath(id)}`));
+    const pathSegmentNamed = !pathIdentifier && segments.includes(id);
     const identifierIsForeignRepoName = pathSegmentNamed && knownRepos && ownRepo
       && knownRepos.has(id) && id !== ownRepo;
     const named = pathSegmentNamed && !identifierIsForeignRepoName;
-    if (!lower.includes(id) && !named) continue;
+    const exactPath = pathSuffixNamed;
+    if (!lower.includes(id) && !named && !exactPath) continue;
     distinct++;
     if (named) pathNamed++;
+    if (exactPath) exactPathNamed++;
     // A DEFINITION, NOT A MENTION — and the discriminator has to survive the adversarial case, which
     // is a chunk that repeats the QUESTION. An earlier version accepted any of
     // added|fixed|canonical|basename within 120 characters of the identifier; the question itself
@@ -220,7 +256,7 @@ export function identifierEvidence(record, identifiers, { repo = null, knownRepo
     );
     if (declared.test(text)) defining++;
   }
-  return { distinct, defining, pathNamed, matched: distinct > 0 };
+  return { distinct, defining, pathNamed, exactPathNamed, matched: distinct > 0 };
 }
 
 /**
@@ -245,6 +281,7 @@ export function identifierBoost(evidence) {
   return 1.0
     + 1.0 * Math.max(0, evidence.distinct - 1)
     + 5.0 * evidence.defining
+    + 6.0 * (evidence.exactPathNamed ?? 0)
     + 3.0 * evidence.pathNamed;
 }
 
@@ -292,13 +329,15 @@ export function identifierCandidates(scan, repo, identifiers, topN = 8, knownRep
     out.push({
       path: record.path,
       title: record.title,
-      fullText: record.text,
-      text: record.text,
+      kind: record.kind,
+      truncated: record.truncated,
+      fullText: record.fullText ?? record.text,
+      text: record.fullText ?? record.text,
       bestDistance: 1.0,
       distance: 1.0,
       _lane: 'rescue',
       _exactIdentifier: evidence,
-      _ceText: identifierExcerpt(record.text, identifiers),
+      _ceText: identifierExcerpt(record.fullText ?? record.text, identifiers),
     });
     if (out.length >= topN) break;
   }

@@ -31,7 +31,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CONTEXT_EVENTS } from './codex-hook-events.mjs';
+import { CONTEXT_EVENTS, canonicalCodexEvent } from './codex-hook-events.mjs';
 import { developmentHooksSuspended } from './development-maintenance.mjs';
 
 if (developmentHooksSuspended()) process.exit(0);
@@ -42,8 +42,9 @@ try { input = raw ? JSON.parse(raw) : {}; } catch { /* the shared hook bodies al
 if (typeof input.cwd === 'string' && developmentHooksSuspended(input.cwd)) process.exit(0);
 
 const hookId = process.argv[2] || '';
-const event = String(input.hook_event_name || '');
-let adapted = false;
+const event = canonicalCodexEvent(input.hook_event_name);
+let adapted = event !== String(input.hook_event_name || '');
+if (adapted) input.hook_event_name = event;
 const codexToolName = String(input.tool_name).toLowerCase();
 
 // CONTEXT_EVENTS (events whose output schema defines a *HookSpecificOutputWire with

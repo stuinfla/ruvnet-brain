@@ -165,12 +165,16 @@ describe('§1 sentinel foreign hooks — before AND after ours, each fires exact
 
     // layer 'third-party:acme-tools' — an enabled plugin's own hooks.json — FOREIGN
     writeJson(path.join(thirdPartyInstall, 'hooks/hooks.json'), hookDoc(sentinelCmd('sentinel-nonzero.mjs', c.nonzero, '7')));
-    writeJson(path.join(home, '.claude/plugins/installed_plugins.json'), {
-      plugins: { 'acme-tools@acme-market': [{ scope: 'user', installPath: thirdPartyInstall }] },
-    });
 
     // layer 'plugin-installed' — the packed cache copy a stranger's machine actually boots — OURS
     const installedRoot = path.join(home, '.claude/plugins/cache/ruvnet-brain/ruvnet-brain/9.9.9');
+    writeJson(path.join(home, '.claude/plugins/installed_plugins.json'), {
+      version: 2,
+      plugins: {
+        'acme-tools@acme-market': [{ scope: 'user', installPath: thirdPartyInstall }],
+        'ruvnet-brain@ruvnet-brain': [{ scope: 'user', installPath: installedRoot }],
+      },
+    });
     writeJson(path.join(installedRoot, 'hooks/hooks.json'), hookDoc(sentinelCmd('ours-ok.mjs', c.installed)));
     writeJson(path.join(installedRoot, 'hooks/hook-contracts.json'), {
       contracts: [{ layer: 'plugin', event: EVENT, commandIncludes: 'ours-ok.mjs', mode: 'advisory', offBehavior: 'run' }],
@@ -484,6 +488,10 @@ describe('§2b byte-equivalence — ~/.claude/settings.json', () => {
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.cpSync(path.join(REPO_ROOT, relative), target, { recursive: true });
     }
+    // install.mjs imports this small policy predicate directly, but it is intentionally outside the
+    // console runtime surface. Keep the mutant fixture's dependency closure complete as production
+    // imports evolve; this is the only installer dependency outside that governed surface today.
+    fs.cpSync(path.join(REPO_ROOT, 'kb', 'node-version.mjs'), path.join(kbDir, 'node-version.mjs'));
     // The installer also imports from `plugin/scripts/` (ADR-067 added mcp-readiness there). The
     // whole POINT of this fixture is that only install.mjs is mutated and its dependencies stay
     // byte-identical — so the tree it needs is copied rather than hand-listed. A hand-list is what
@@ -553,9 +561,9 @@ describe('§2b byte-equivalence — ~/.claude/settings.json', () => {
 // §3 ENUMERATE-BUT-NEVER-CHARGE — a broken foreign hook must leave OUR exit code at 0
 // =====================================================================================================
 describe('§3 enumerate-but-never-charge — scripts/selfcheck.mjs proven end-to-end, not just in isolation', () => {
-  /** One healthy "ours" registration + the three broken foreign sentinels, laid out the way
-   *  scripts/selfcheck.mjs actually reads a stranger's machine (resolveInstalledSurface picks the
-   *  packed cache copy). Returns enough to mutate OUR OWN hook's command in place afterward. */
+  /** A current install with no legacy lifecycle registrations, alongside three broken foreign
+   *  sentinels. The mutant adds our retired registration to prove selfCheck rejects it before
+   *  execution while leaving foreign hooks untouched. */
   function buildSelfCheckFixture() {
     const repo = mkdtemp('mesh-sc-repo-');
     const home = mkdtemp('mesh-sc-home-');
@@ -574,26 +582,24 @@ describe('§3 enumerate-but-never-charge — scripts/selfcheck.mjs proven end-to
     userSettings.enabledPlugins = { 'acme-tools@acme-market': true };
     writeJson(path.join(home, '.claude/settings.json'), userSettings);
     writeJson(path.join(thirdPartyInstall, 'hooks/hooks.json'), hookDoc(sentinelCmd('sentinel-nonzero.mjs', c.nonzero, '7')));
-    writeJson(path.join(home, '.claude/plugins/installed_plugins.json'), {
-      plugins: { 'acme-tools@acme-market': [{ scope: 'user', installPath: thirdPartyInstall }] },
-    });
 
-    // OURS — the installed (packed cache) surface selfCheck() actually reads and fires.
+    // OURS — the configured cache surface inspected before any hook execution.
     const installedRoot = path.join(home, '.claude/plugins/cache/ruvnet-brain/ruvnet-brain/9.9.9');
-    const hooksFile = path.join(installedRoot, 'hooks/hooks.json');
-    writeJson(hooksFile, hookDoc(sentinelCmd('ours-ok.mjs', c.ours)));
-    // 'ours-' (not the full 'ours-ok.mjs') so the SAME contract still resolves a mode after the
-    // mutant test below swaps this hooks.json to point at a mutated 'ours-blocking.mjs' copy —
-    // otherwise a real regression (our hook silently losing its declared mode) would be
-    // indistinguishable from the mutant just breaking the contract MATCH, which would prove nothing.
-    writeJson(path.join(installedRoot, 'hooks/hook-contracts.json'), {
-      contracts: [{ layer: 'plugin', event: EVENT, commandIncludes: 'ours-', mode: 'advisory', offBehavior: 'run' }],
+    writeJson(path.join(home, '.claude/plugins/installed_plugins.json'), {
+      version: 2,
+      plugins: {
+        'acme-tools@acme-market': [{ scope: 'user', installPath: thirdPartyInstall }],
+        'ruvnet-brain@ruvnet-brain': [{ scope: 'user', installPath: installedRoot }],
+      },
     });
+    const hooksFile = path.join(installedRoot, 'hooks/hooks.json');
+    writeJson(hooksFile, { hooks: {} });
+    writeJson(path.join(installedRoot, 'hooks/hook-contracts.json'), { contracts: [] });
 
     return { repo, home, hooksFile, counters: c };
   }
 
-  it('FIXTURE: healthy ours + three BROKEN foreign hooks => selfCheck() exit 0, foreign hooks never executed', async () => {
+  it('FIXTURE: current install + three BROKEN foreign hooks => selfCheck() exit 0, no sentinels executed', async () => {
     const { repo, home, counters } = buildSelfCheckFixture();
 
     const result = await selfcheck.selfCheck({ home, repo, cwd: os.tmpdir(), regimes: ['valid'], security: false });
@@ -605,54 +611,30 @@ describe('§3 enumerate-but-never-charge — scripts/selfcheck.mjs proven end-to
     // …and never RUN: the sentinels' own bad behaviour never happened, because selfCheck() never
     // executes a foreign registration (scripts/selfcheck.mjs §5's own contract).
     for (const [name, file] of Object.entries(counters)) {
-      if (name === 'ours') continue;
-      expect(fireCount(file), `foreign sentinel "${name}" must NEVER be executed by selfCheck()`).toBe(0);
+      expect(fireCount(file), `sentinel "${name}" must NEVER be executed by selfCheck()`).toBe(0);
     }
-    expect(fireCount(counters.ours), 'our OWN healthy hook did run, exactly once').toBe(1);
+    expect(result.battery.results).toEqual([]);
   }, 30_000);
 
-  // ── MUTANT: OUR OWN advisory hook exits 2 on this same event -> the single-blocker invariant reds
-  // (ADR-055 M2) ────────────────────────────────────────────────────────────────────────────────
-  // A COPY of ours-ok.mjs (never the committed fixture) is rewritten to exit(2) instead of exit(0)
-  // and swapped into the SAME fixture's installed hooks.json — proving two things in one measurement:
-  // (a) our own regression IS caught (assertContract's exit-code rule, ALREADY-SHIPPED, unmutated),
-  // and (b) the three foreign sentinels sitting right next to it are STILL never charged — the
-  // asymmetry D5 exists to prove, in one fixture.
-  it('MUTANT: our advisory hook exiting 2 turns selfCheck() red — the single-blocker invariant fires on OUR regression, never on theirs', async () => {
+  it('MUTANT: a retired own registration is rejected before execution, without charging foreign hooks', async () => {
     const { repo, home, hooksFile, counters } = buildSelfCheckFixture();
-
-    // baseline: healthy — recorded so the mutant's delta is against a real measured "before".
     const before = await selfcheck.selfCheck({ home, repo, cwd: os.tmpdir(), regimes: ['valid'], security: false });
     expect(before.exitCode).toBe(0);
 
-    // Apply the mutant: a temp copy of OUR OWN hook, `exit(0)` -> `exit(2)`.
-    const realFixture = fs.readFileSync(path.join(SENTINELS, 'ours-ok.mjs'), 'utf8');
-    expect(realFixture).toContain('process.exit(0);');
-    const mutantDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mesh-ours-mutant-'));
-    const mutantFixture = path.join(mutantDir, 'ours-blocking.mjs');
-    fs.writeFileSync(mutantFixture, realFixture.replace('process.exit(0);', 'process.exit(2);'));
+    writeJson(hooksFile, hookDoc(sentinelCmd('ours-ok.mjs', counters.ours)));
+    const after = await selfcheck.selfCheck({ home, repo, cwd: os.tmpdir(), regimes: ['valid'], security: false });
 
-    try {
-      writeJson(hooksFile, hookDoc(`node "${mutantFixture}" "${counters.ours}"`));
-
-      const after = await selfcheck.selfCheck({ home, repo, cwd: os.tmpdir(), regimes: ['valid'], security: false });
-
-      // REAL, PASTED, FAILING OUTPUT (what this measured):
-      //   exitCode: 1
-      //   violations: [{ kind: 'exit-code', where: 'PreToolUse ^Bash$ -> ours-blocking.mjs',
-      //     detail: "[valid] exited 2; a 'advisory' hook may only exit 0" }]
-      expect(after.exitCode, `expected the mutant to go red; got:\n${JSON.stringify(after, null, 2)}`).toBe(1);
-      const ownViolation = after.violations.find((v) => v.kind === 'exit-code');
-      expect(ownViolation, `expected an exit-code violation; got:\n${JSON.stringify(after.violations, null, 2)}`).toBeTruthy();
-      expect(ownViolation.detail).toMatch(/exited 2/);
-      expect(ownViolation.where).toMatch(/ours-blocking\.mjs/);
-
-      // The asymmetry, proven in the SAME run: foreign layers are STILL never charged.
-      expect(after.violations.filter((v) => /sentinel|acme|third-party/i.test(JSON.stringify(v)))).toEqual([]);
-      expect(after.coexist.foreign.length).toBe(3);
-    } finally {
-      fs.rmSync(mutantDir, { recursive: true, force: true }); // restore: nothing real was ever touched
+    expect(after.exitCode).toBe(1);
+    expect(after.violations).toEqual([{
+      kind: 'automatic-registration',
+      where: 'configured-on-disk',
+      detail: '1 legacy Brain lifecycle registration(s) remain installed',
+    }]);
+    expect(after.coexist.foreign.map((f) => f.layer).sort()).toEqual(['project', 'third-party:acme-tools', 'user']);
+    for (const [name, file] of Object.entries(counters)) {
+      expect(fireCount(file), `sentinel "${name}" must NEVER run during retirement inspection`).toBe(0);
     }
+    expect(after.battery.results).toEqual([]);
   }, 30_000);
 });
 

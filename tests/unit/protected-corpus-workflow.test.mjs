@@ -149,6 +149,13 @@ describe('protected-release corpus chain (ADR-086 steps 9 + 17)', () => {
     expect(blocks['corpus-publish']).toContain('ref: ${{ needs.corpus-identity.outputs.candidate_sha }}');
     expect(blocks['corpus-publish']).toContain('test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"');
   });
+
+  it('CANDIDATE SEED IDENTITY: the selector carries the published receipt digest into preparation', () => {
+    const blocks = jobBlocks(workflow());
+    expect(blocks['corpus-identity']).toContain('seed_receipt_sha256: ${{ steps.seed.outputs.seed_receipt_sha256 }}');
+    expect(blocks['corpus-identity']).toContain('seed_receipt_sha256=$(node -p');
+    expect(blocks['corpus-prepare']).toContain('seed_receipt_sha256: ${{ needs.corpus-identity.outputs.seed_receipt_sha256 }}');
+  });
 });
 
 describe('corpus-seed.yml preparation contract', () => {
@@ -171,6 +178,32 @@ describe('corpus-seed.yml preparation contract', () => {
     expect(source).toContain('RESOLVED_SEED_ORIGIN=runtime-generation');
     // And the seed digest is still checked against the downloaded bytes.
     expect(source).toContain('sha256sum --check --strict');
+  });
+
+  it('requires and verifies the external receipt and detached archive signature for digest seeds', () => {
+    const source = seedWorkflow();
+    expect(source).toContain('seed_receipt_sha256:');
+    expect(source).toContain('digest-derived seed requires externally pinned seed_receipt_sha256');
+    expect(source).toContain('seed_receipt_sha256 is valid only for digest-derived seeds');
+    expect(source).toContain("'ruvnet-brain.zip.sig'");
+    expect(source).toContain("'corpus-receipt.json'");
+    expect(source).toContain("verifyBundle(bundle, path.join(dir, 'ruvnet-brain.zip.sig'))");
+    expect(source).toContain('verifySeedBaseline({');
+    expect(source).toContain('--baseline-receipt');
+    expect(source).toContain('--baseline-receipt-sha256');
+    expect(source).toContain('receiptSha256: process.env.SEED_RECEIPT_SHA256');
+    expect(source).toContain('seed detached signature rejected');
+    expect(source).toContain('echo "SEED_IS_DIGEST_DERIVED=$SEED_IS_DIGEST_DERIVED" >> "$GITHUB_ENV"');
+    expect(source).toContain('verifySeedBaseline({');
+    expect(source).toContain('baseline-observation-receipt.json');
+    expect(source).not.toContain('readRecallReport({');
+  });
+
+  it('keeps the pre-contract pinned bootstrap path explicitly receipt-free', () => {
+    const source = seedWorkflow();
+    const pinned = source.slice(source.indexOf('RESOLVED_SEED_ORIGIN=committed-bootstrap'));
+    expect(pinned).toContain("RESOLVED_SEED_RECEIPT_SHA256=''");
+    expect(source).toContain("? ['ruvnet-brain.zip', 'ruvnet-brain.zip.sig', 'corpus-receipt.json'");
   });
 
   it('uploads one flat artifact root outside the tracked tree, with the identities the consumer checks', () => {

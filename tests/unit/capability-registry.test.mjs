@@ -105,6 +105,8 @@ describe('turnOn is null-or-verified', () => {
     // whoever adds it to go run `--help` first, which is the entire discipline.
     const VERIFIED = new Set([
       'ruflo memory distill run',          // `ruflo memory distill --help` → SUBCOMMANDS: run | status | config
+      // 2026-09-17, global ruflo 3.42.3: --subcommand lists evolve, bench and flywheel.
+      'ruflo metaharness --subcommand evolve',
       'ruflo hooks pretrain',              // `ruflo hooks pretrain --help` → "Bootstrap intelligence from repository"
       'claude mcp add <name> <commandOrUrl>', // `claude mcp --help` → "add [options] <name> <commandOrUrl> [args...]"
     ]);
@@ -135,13 +137,13 @@ describe('turnOn is null-or-verified', () => {
   });
 
   it('keeps turnOn null where the CLI was checked and has no such command', () => {
-    // Pinned negatives. `ruflo hooks --help` lists no enable/disable subcommand, and
-    // `ruflo metaharness --help` enumerates score|genome|mcp-scan|threat-model|oia-audit|
-    // audit-list|audit-trend|similarity|drift-from-history|mint|redblue|learn|gepa — no `evolve`.
+    // `ruflo hooks --help` lists no enable/disable subcommand.
     // Without these assertions the tempting fix for a red "OFF" row is to invent a command.
     const byKey = Object.fromEntries(CAPABILITIES.map((c) => [c.key, c]));
     expect(byKey['learning-hooks'].turnOn, 'ruflo has no hooks enable command').toBe(null);
-    expect(byKey['harness-evolution'].turnOn, 'ruflo metaharness has no evolve subcommand').toBe(null);
+    expect(byKey['harness-evolution'].turnOn.cmd).toBe('ruflo metaharness --subcommand evolve');
+    expect(byKey['harness-evolution'].turnOn.human).toMatch(/OPENROUTER_API_KEY/);
+    expect(byKey['harness-evolution'].turnOn.human).toMatch(/--subcommand score/);
   });
 });
 

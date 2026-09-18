@@ -53,6 +53,44 @@ afterEach(() => {
 });
 
 describe('typed public inventory partition', () => {
+  it('reads mixed-case physical repository, gist, derived, and sidecar files', () => {
+    const f = fixture();
+    for (const [logical, physical] of [['alpha', 'Alpha'], ['ruv-gists', 'Ruv-Gists'], ['concepts', 'Concepts']]) {
+      fs.renameSync(path.join(f.root, `${logical}.big.rvf`), path.join(f.root, `${physical}.big.rvf`));
+      f.ledger.stores[physical] = { ...f.ledger.stores[logical], file: `${physical}.big.rvf` };
+      delete f.ledger.stores[logical];
+    }
+    for (const suffix of ['passages.jsonl', 'sources.json']) {
+      fs.renameSync(path.join(f.root, `ruv-gists.${suffix}`), path.join(f.root, `Ruv-Gists.${suffix}`));
+    }
+    for (const suffix of ['passages.jsonl', 'sources.json']) {
+      fs.renameSync(path.join(f.root, `concepts.${suffix}`), path.join(f.root, `Concepts.${suffix}`));
+    }
+    f.coverage.rows[0].artifact.store = 'ALPHA';
+    f.coverage.rows[1].artifact.store = 'RUV-GISTS';
+    const classes = readJson(path.join(f.root, 'public-store-classes.json'));
+    classes.derived[0].store = 'CONCEPTS';
+    classes.derived[0].receipt = 'Concepts.sources.json';
+    writeJson(path.join(f.root, 'public-store-classes.json'), classes);
+    const receipt = readJson(path.join(f.root, 'Concepts.sources.json'));
+    receipt.store = 'CONCEPTS';
+    writeJson(path.join(f.root, 'Concepts.sources.json'), receipt);
+    const result = validatePublicInventory({ assetsDir: f.root, coverage: f.coverage, ledger: f.ledger });
+    expect(result.publicStores).toEqual(['alpha', 'concepts', 'ruv-gists']);
+    expect(result.evidenceFiles.map(({ path: file }) => file)).toEqual(expect.arrayContaining([
+      'Ruv-Gists.passages.jsonl', 'Ruv-Gists.sources.json', 'Concepts.passages.jsonl', 'Concepts.sources.json',
+    ]));
+  });
+
+  it('compares repository, file and ledger names consistently without changing source bytes', () => {
+    const f = fixture();
+    fs.renameSync(path.join(f.root, 'alpha.big.rvf'), path.join(f.root, 'Alpha.big.rvf'));
+    f.ledger.stores.Alpha = {...f.ledger.stores.alpha, file: 'Alpha.big.rvf'};
+    delete f.ledger.stores.alpha;
+    f.coverage.rows[0].artifact.store = 'ALPHA';
+    expect(validatePublicInventory({assetsDir:f.root,coverage:f.coverage,ledger:f.ledger}).repositories).toEqual(['alpha']);
+  });
+
   it('partitions repository, gist aggregate, and derived families exhaustively', () => {
     const f = fixture();
     const result = validatePublicInventory({ assetsDir: f.root, coverage: f.coverage, ledger: f.ledger });
@@ -185,4 +223,23 @@ describe('typed public inventory partition', () => {
     expect(() => validatePublicInventory({ assetsDir: f.root, coverage: f.coverage, ledger: f.ledger }))
       .toThrow(/public store classes overlap/i);
   });
+});
+
+
+it('includes admitted forks and rejects changed delta evidence at the installed boundary', () => {
+  const f = fixture();
+  fs.renameSync(path.join(f.root, 'alpha.big.rvf'), path.join(f.root, 'Alpha.big.rvf'));
+  f.ledger.stores.Alpha = { ...f.ledger.stores.alpha, file: 'Alpha.big.rvf' };
+  delete f.ledger.stores.alpha;
+  const forkDelta = { version: 'fork-delta/2', forkRepository: 'ruvnet/alpha', upstream: 'original/alpha',
+    forkHeadSha: 'a'.repeat(40), upstreamHeadSha: 'b'.repeat(40), mergeBaseSha: 'c'.repeat(40), aheadBy: 1, behindBy: 2,
+    inventorySha256: sha256('inventory'), passagesSha256: sha256('passages') };
+  Object.assign(f.coverage.rows[0], { disposition: 'fork:original-content', url: 'https://github.com/ruvnet/alpha',
+    upstream: { sha: 'a'.repeat(40) }, forkDelta, artifact: { store: 'alpha', sourceMode: 'fork-delta', forkDelta } });
+  Object.assign(f.ledger.stores.Alpha, { sourceMode: 'fork-delta', forkDelta });
+  fs.writeFileSync(path.join(f.root, 'Alpha.passages.jsonl'), 'passages');
+  fs.writeFileSync(path.join(f.root, 'Alpha.fork-delta.inventory.json'), 'inventory');
+  expect(validatePublicInventory({ assetsDir: f.root, coverage: f.coverage, ledger: f.ledger }).repositories).toEqual(['alpha']);
+  fs.appendFileSync(path.join(f.root, 'Alpha.fork-delta.inventory.json'), 'changed');
+  expect(() => validatePublicInventory({ assetsDir: f.root, coverage: f.coverage, ledger: f.ledger })).toThrow(/inventorySha256 differs/);
 });

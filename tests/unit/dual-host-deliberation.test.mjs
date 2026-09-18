@@ -16,13 +16,13 @@ const eligible = {
   claude: { host: 'claude-code', eligible: true, auth: 'claude.ai-subscription' },
   codex: { host: 'codex', eligible: true, auth: 'chatgpt-subscription' },
 };
-const validStage = (host, name) => {
+const validStage = (host, name, payload = {}) => {
   const content = name === 'proposal' ? { host } : name === 'critique' ? [`review-${host}`] : { host };
   return { schemaVersion: 1, stage: name, artifactSha256: 'a'.repeat(64), contentDigest: digest(content),
     ...(name === 'proposal' ? { proposal: content, plan: `${host}-plan` } : {}),
     ...(name === 'critique' ? { findings: content } : {}),
     ...(name === 'synthesis' || name === 'revise' ? { artifact: content, adr: {}, ddd: {}, qe: {} } : {}),
-    ...(name === 'verify' || name === 'reverify' ? { verdict: 'accept', corrections: [] } : {}) };
+    ...(name === 'verify' || name === 'reverify' ? { verdict: 'accept', corrections: [], contentDigest: payload.artifact?.contentDigest ?? digest(content) } : {}) };
 };
 
 describe('hardProblem', () => {
@@ -53,7 +53,7 @@ describe('deliberate', () => {
     const calls = [];
     const runHost = async (host, stage, payload) => {
       calls.push({ host, stage, payload });
-      return { ok: true, value: validStage(host, stage) };
+      return { ok: true, value: validStage(host, stage, payload) };
     };
 
     const out = await deliberate('Design the security architecture ADR', {
@@ -76,16 +76,69 @@ describe('deliberate', () => {
   it('carries correction IDs through a resolved revision and rejects vanished resolutions', async () => {
     let revisionArtifact;
     const runHost = async (host, stage, payload) => {
-      if (stage === 'critique') return { ok: true, value: { ...validStage(host, stage), corrections: [{ id: 'c1', text: 'add evidence' }] } };
-      if (stage === 'synthesis') return { ok: true, value: validStage(host, stage) };
-      if (stage === 'verify') return { ok: true, value: { ...validStage(host, stage), verdict: 'changes', corrections: [{ id: 'c1', text: 'add evidence' }] } };
-      if (stage === 'revise') { revisionArtifact = { host, changed: true }; return { ok: true, value: { ...validStage(host, stage), artifact: revisionArtifact, contentDigest: digest(revisionArtifact), resolutions: [{ id: 'c1', status: 'resolved', reason: 'evidence added' }] } }; }
-      if (stage === 'reverify') return { ok: true, value: { ...validStage(host, stage), verdict: 'accept', artifactSha256: payload.artifact.artifactSha256, contentDigest: digest(payload.artifact.artifact), resolutions: payload.resolutions } };
-      return { ok: true, value: validStage(host, stage) };
+      if (stage === 'critique') return { ok: true, value: { ...validStage(host, stage, payload), corrections: [{ id: 'c1', text: 'add evidence' }] } };
+      if (stage === 'synthesis') return { ok: true, value: validStage(host, stage, payload) };
+      if (stage === 'verify') return { ok: true, value: { ...validStage(host, stage, payload), verdict: 'changes', corrections: [{ id: 'c1', text: 'add evidence' }] } };
+      if (stage === 'revise') { revisionArtifact = { host, changed: true }; return { ok: true, value: { ...validStage(host, stage, payload), artifact: revisionArtifact, contentDigest: digest(revisionArtifact), resolutions: [{ id: 'c1', status: 'resolved', reason: 'evidence added' }] } }; }
+      if (stage === 'reverify') return { ok: true, value: { ...validStage(host, stage, payload), verdict: 'accept', artifactSha256: payload.artifact.artifactSha256, contentDigest: digest(payload.artifact.artifact), resolutions: payload.resolutions } };
+      return { ok: true, value: validStage(host, stage, payload) };
     };
     const out = await deliberate('correction ledger', { probes: eligible, runHost });
     expect(out.status).toBe('accepted');
-    expect(out.verifiedOutcome).toBe(true);
+    expect(out.planAccepted).toBe(true);
+    expect(out.verifiedOutcome).toBe(false);
+  });
+
+  it('requires verifier-only corrections to change the artifact and retain dispositions', async () => {
+    for (const variant of ['unchanged', 'missing', 'duplicate', 'valid']) {
+      let original;
+      const runHost = async (host, stage, payload) => {
+        const value = validStage(host, stage, payload);
+        if (stage === 'synthesis') original = value.artifact;
+        if (stage === 'verify') return {ok:true,value:{...value,verdict:'changes',corrections:[{id:'late',text:'retain executable evidence'}]}};
+        if (stage === 'revise') {
+          const artifact = variant === 'unchanged' ? original : {...original, evidence:'measured'};
+          return {ok:true,value:{...value,artifact,contentDigest:digest(artifact)}};
+        }
+        if (stage === 'reverify') {
+          const row={id:'late',status:'resolved',reason:'Executable evidence is retained in the revised artifact'};
+          return {ok:true,value:{...value,artifactSha256:payload.artifact.artifactSha256,
+            resolutions:variant==='missing'?[]:variant==='duplicate'?[row,row]:[row]}};
+        }
+        return {ok:true,value};
+      };
+      const out = await deliberate('verifier-only ledger', {probes:eligible,runHost});
+      expect(out.status === 'accepted', variant).toBe(variant === 'valid');
+    }
+  });
+
+  it('accepts critique corrections resolved in the first synthesis', async () => {
+    const out = await deliberate('first synthesis resolution', { probes: eligible,
+      runHost: async (host, stage, payload) => {
+        const value = validStage(host, stage, payload);
+        if (stage === 'critique') value.corrections = [{ id: 'evidence', text: 'include test evidence' }];
+        if (stage === 'verify') {
+          value.resolutions = [{ id: 'evidence', status: 'resolved', reason: 'The synthesis includes the requested evidence' }];
+          value.findings = ['Evidence inspected'];
+        }
+        return { ok: true, value };
+      } });
+    expect(out.status).toBe('accepted');
+  });
+
+  it.each(['verify', 'reverify'].flatMap(stage => ['contentDigest','artifactSha256'].map(field=>[stage,field])))('rejects stale acceptance at %s with changed %s', async (targetStage, field) => {
+    const out = await deliberate('stale subject replay', { probes: eligible,
+      runHost: async (host, stage, payload) => {
+        const value = validStage(host, stage, payload);
+        if (stage === 'verify' && targetStage === 'reverify') {
+          value.verdict = 'changes'; value.corrections = [{ id: 'e', text: 'add evidence' }];
+        }
+        if (stage === 'revise') { value.artifact.evidence = 'new'; value.contentDigest = digest(value.artifact); }
+        if (stage === targetStage) { value[field] = 'b'.repeat(64); value.resolutions = [{ id: 'e', status: 'resolved', reason: 'done' }]; }
+        return { ok: true, value };
+      } });
+    expect(out.status).toBe('unresolved');
+    expect(out.verifiedOutcome).toBe(false);
   });
 
   it('returns an honestly labeled draft when one subscription is unavailable', async () => {
@@ -94,7 +147,7 @@ describe('deliberate', () => {
         claude: { host: 'claude-code', eligible: false, auth: 'capacity-limited' },
         codex: eligible.codex,
       },
-      runHost: async (host, stage) => ({ ok: true, value: validStage(host, stage) }),
+      runHost: async (host, stage, payload) => ({ ok: true, value: validStage(host, stage, payload) }),
       persist: async () => false,
     });
 
@@ -119,11 +172,11 @@ describe('deliberate', () => {
   });
 
   it('does not promote host completion into an accepted quality outcome', async () => {
-    const runHost = async (host, stage) => {
-      if (stage === 'verify') return { ok: true, value: { ...validStage(host, stage), verdict: 'changes', corrections: [{ id: 'missing-oracle', text: 'missing oracle' }] } };
-      if (stage === 'revise') return { ok: true, value: validStage(host, stage) };
-      if (stage === 'reverify') return { ok: true, value: { ...validStage(host, stage), verdict: 'block', corrections: [{ id: 'still-incomplete', text: 'still incomplete' }] } };
-      return { ok: true, value: validStage(host, stage) };
+    const runHost = async (host, stage, payload) => {
+      if (stage === 'verify') return { ok: true, value: { ...validStage(host, stage, payload), verdict: 'changes', corrections: [{ id: 'missing-oracle', text: 'missing oracle' }] } };
+      if (stage === 'revise') return { ok: true, value: validStage(host, stage, payload) };
+      if (stage === 'reverify') return { ok: true, value: { ...validStage(host, stage, payload), verdict: 'block', corrections: [{ id: 'still-incomplete', text: 'still incomplete' }] } };
+      return { ok: true, value: validStage(host, stage, payload) };
     };
     const out = await deliberate('Build an Agentic-QE architecture', {
       probes: eligible,
@@ -159,7 +212,8 @@ describe('persistDeliberationReceipt', () => {
       hosts: ['claude-code', 'codex'],
       roles: { scribe: 'codex', verifier: 'claude-code' },
       accepted: true,
-      verifiedOutcome: true,
+      planAccepted: true,
+      verifiedOutcome: false,
       recordedAt: '2026-07-28T12:00:00.000Z',
     });
     expect(request.arguments.value).not.toContain('must not persist');
@@ -192,9 +246,9 @@ describe('deliberate persistence boundary', () => {
     const out = await deliberate('Design the security architecture ADR', {
       probes: eligible,
       now: () => 1_785_240_000_000,
-      runHost: async (host, stage) => {
-        if (stage === 'verify') return { ok: true, value: validStage(host, stage) };
-        return { ok: true, value: validStage(host, stage) };
+      runHost: async (host, stage, payload) => {
+        if (stage === 'verify') return { ok: true, value: validStage(host, stage, payload) };
+        return { ok: true, value: validStage(host, stage, payload) };
       },
     });
     expect(out.status).toBe('accepted');
@@ -211,9 +265,9 @@ describe('deliberate persistence boundary', () => {
     const out = await deliberate('Design the security architecture ADR', {
       probes: eligible,
       now: () => 1_785_240_000_000,
-      runHost: async (host, stage) => {
-        if (stage === 'verify') return { ok: true, value: validStage(host, stage) };
-        return { ok: true, value: validStage(host, stage) };
+      runHost: async (host, stage, payload) => {
+        if (stage === 'verify') return { ok: true, value: validStage(host, stage, payload) };
+        return { ok: true, value: validStage(host, stage, payload) };
       },
       persist: async (value) => {
         request = value;
@@ -226,24 +280,115 @@ describe('deliberate persistence boundary', () => {
 });
 
 describe('runSubscriptionHost prompt transport', () => {
+  it('rejects oversized prompts before invoking even the version probe', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(),'dual-budget-'));
+    const sentinel = path.join(root,'invoked');
+    fs.writeFileSync(path.join(root,'codex'), `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(sentinel)},'called');`, {mode:0o755});
+    const prior = process.env.PATH; process.env.PATH = `${root}${path.delimiter}${prior}`;
+    try {
+      expect(await runSubscriptionHost('codex','proposal',{task:'x'.repeat(1_000_001)})).toEqual({ok:false,reason:'prompt-exceeds-evidence-budget'});
+      expect(fs.existsSync(sentinel)).toBe(false);
+    } finally { process.env.PATH = prior; fs.rmSync(root,{recursive:true,force:true}); }
+  });
+  it('retains complete transport when its stage content is truncated JSON', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(),'dual-json-'));
+    fs.writeFileSync(path.join(root,'codex'), `#!/usr/bin/env node
+if(process.argv.includes('--version')){console.log('fixture-client');process.exit(0)}
+process.stdin.resume();process.stdin.on('end',()=>{
+for(const row of [{type:'thread.started',thread_id:'fixture-thread'},{type:'item.completed',item:{type:'agent_message',text:'{"proposal":'}},{type:'turn.completed'}]) console.log(JSON.stringify(row));
+});`,{mode:0o755});
+    const prior = process.env.PATH; process.env.PATH = `${root}${path.delimiter}${prior}`;
+    try {
+      const result = await runSubscriptionHost('codex','proposal',{});
+      expect(result.reason).toBe('invalid-native-response');
+      expect(result.transport.result.stdout).toContain('turn.completed');
+    } finally { process.env.PATH = prior; fs.rmSync(root,{recursive:true,force:true}); }
+  });
+  it('requests and reads Claude structured verification output with reasoned resolutions', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dual-structured-'));
+    const bin = path.join(root, 'claude');
+    fs.writeFileSync(bin, `#!/usr/bin/env node
+const args=process.argv.slice(2); if(args[0]==='--version'){console.log('fixture-client');process.exit(0)} const schema=JSON.parse(args[args.indexOf('--json-schema')+1]);
+process.stdin.resume(); process.stdin.on('end',()=>console.log(JSON.stringify({session_id:'fixture-session',is_error:false,modelUsage:{'claude-fable-5-1':{}},structured_output:{
+ schemaVersion:1,stage:'verify',artifactSha256:'a'.repeat(64),contentDigest:'b'.repeat(64),
+ verdict:'accept',corrections:[],resolutions:[{id:'c1',status:'resolved',reason:schema.properties.resolutions.items.required.join(',')}]
+}})));
+`);
+    fs.chmodSync(bin, 0o755);
+    const previous = process.env.PATH; process.env.PATH = `${root}${path.delimiter}${previous}`;
+    try {
+      const result = await runSubscriptionHost('claude-code', 'verify', { task: 'verify contract' });
+      expect(result.ok).toBe(true);
+      expect(result.value.resolutions[0].reason).toBe('id,status,reason');
+      expect(result.value.verdict).toBe('accept');
+    } finally { process.env.PATH = previous; fs.rmSync(root, { recursive: true, force: true }); }
+  });
+  it('kills the native host process group at its deadline', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dual-host-timeout-'));
+    const pidFile = path.join(root, 'child.pid');
+    const bin = path.join(root, 'codex');
+    fs.writeFileSync(bin, `#!/usr/bin/env node
+import {spawn} from 'node:child_process'; import fs from 'node:fs';
+if(process.argv.includes('--version')){console.log('fixture-client');process.exit(0)}
+const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'inherit'});
+fs.writeFileSync(${JSON.stringify(pidFile)},String(c.pid));setInterval(()=>{},1000);
+`);
+    fs.chmodSync(bin,0o755);
+    const prior = process.env.PATH; process.env.PATH = `${root}${path.delimiter}${prior}`;
+    try {
+      const result = await runSubscriptionHost('codex','proposal',{task:'deadline'}, { timeoutMs:1000 });
+      expect(result.ok).toBe(false); expect(result.error).toMatch(/timed out/);
+      const pid=Number(fs.readFileSync(pidFile,'utf8'));
+      // Reaping of a killed grandchild can lag its parent's close event briefly.
+      for(let i=0;i<50;i++){try{process.kill(pid,0);}catch{break;} await new Promise(resolve=>setTimeout(resolve,20));}
+      expect(()=>process.kill(pid,0)).toThrow();
+    } finally {process.env.PATH=prior;fs.rmSync(root,{recursive:true,force:true});}
+  });
+
   it('sends prompts over stdin, including prompts larger than 256 KiB, while retaining host flags', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dual-host-stdin-'));
     const bin = path.join(root, 'codex');
-    fs.writeFileSync(bin, '#!/usr/bin/env node\nlet data=""; process.stdin.on("data", c => data += c); process.stdin.on("end", () => process.stdout.write(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:JSON.stringify({length:data.length, argv:process.argv.slice(2)})}})));\n');
+    fs.writeFileSync(bin, `#!/usr/bin/env node
+if(process.argv.includes('--version')){console.log('fixture-client');process.exit(0)}
+let data='';process.stdin.on('data',c=>data+=c);process.stdin.on('end',()=>{
+ console.log(JSON.stringify({type:'thread.started',thread_id:'fixture-thread'}));
+ console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:JSON.stringify({schemaVersion:1,stage:'proposal',proposal:{length:data.length,argv:process.argv.slice(2)}})}}));
+ console.log(JSON.stringify({type:'turn.completed'}));
+});`);
     fs.chmodSync(bin, 0o755);
     const previousPath = process.env.PATH;
     process.env.PATH = `${root}${path.delimiter}${previousPath}`;
     try {
-      const result = await runSubscriptionHost('codex', 'proposal', { task: 'x'.repeat(300 * 1024) });
+      const result = await runSubscriptionHost('codex', 'proposal', { task: 'x'.repeat(300 * 1024) }, { reasoningEffort: 'high' });
       expect(result.ok).toBe(true);
-      expect(result.value.length).toBeGreaterThan(256 * 1024);
-      expect(result.value.argv).toContain('--json');
-      expect(result.value.argv).toContain('gpt-6-astra');
-      expect(result.value.argv).not.toContain('x'.repeat(300 * 1024));
+      expect(result.value.proposal.length).toBeGreaterThan(256 * 1024);
+      expect(result.value.proposal.argv).toContain('--json');
+      expect(result.value.proposal.argv).toContain('gpt-6-astra');
+      expect(result.value.proposal.argv).toContain('model_reasoning_effort="high"');
+      expect(result.value.proposal.argv).not.toContain('x'.repeat(300 * 1024));
     } finally {
       process.env.PATH = previousPath;
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('native completion on every Dual stage', () => {
+  it.each(['proposal', 'critique', 'synthesis', 'revise', 'verify', 'reverify', 'review'])('rejects incomplete %s transport before admission', async stage => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dual-terminal-'));
+    fs.writeFileSync(path.join(root, 'codex'), `#!/usr/bin/env node
+if(process.argv.includes('--version')){console.log('fixture-client');process.exit(0)}
+process.stdin.resume();process.stdin.on('end',()=>{
+console.log(JSON.stringify({type:'thread.started',thread_id:'fixture-thread'}));
+console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'{}'}}));
+});`, { mode:0o755 });
+    const previous = process.env.PATH; process.env.PATH = `${root}${path.delimiter}${previous}`;
+    try {
+      const result = await runSubscriptionHost('codex', stage, {});
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/turn.completed/);
+      expect(result.transport.result.stdout).toContain('thread.started');
+    } finally { process.env.PATH = previous; fs.rmSync(root, { recursive:true, force:true }); }
   });
 });
 

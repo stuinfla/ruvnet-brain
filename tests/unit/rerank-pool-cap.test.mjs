@@ -127,6 +127,34 @@ describe('capRerankPool — what is allowed to reach the cross-encoder', () => {
 });
 
 describe('selectResults — the post-rerank stage, now replayable', () => {
+  it('preserves an ADR collision hidden behind an identical differently numbered passage', () => {
+    const ranked = [
+      { repo: 'alpha', path: 'ADR-084.md', title: 'ADR-084', text: 'same decision text', ceScore: 9 },
+      { repo: 'alpha', path: 'ADR-085.md', title: 'ADR-085', text: 'same decision text', ceScore: 8 },
+      { repo: 'beta', path: 'ADR-085.md', title: 'ADR-085', text: 'other decision text', ceScore: 7 },
+    ];
+    const output = selectResults({ query: 'ADR-085', ranked, k: 2 });
+    expect(output.adrCollision.repos).toEqual(['alpha', 'beta']);
+    expect(output.results.map(row => `${row.repo}/${row.path}`)).toEqual(['alpha/ADR-085.md', 'beta/ADR-085.md']);
+  });
+
+  it('chooses the same representative for tied duplicate candidate permutations', () => {
+    const ranked = ['z.md', 'a.md'].map(path => ({ repo: 'sample', path, fullText: 'identical', ceScore: 5 }));
+    const first = selectResults({ query: 'overview', ranked, k: 1 });
+    const reversed = selectResults({ query: 'overview', ranked: ranked.slice().reverse(), k: 1 });
+    expect(first).toEqual(reversed);
+    expect(first.results[0].path).toBe('a.md');
+  });
+  it('fills top-k with distinct passages while keeping the best duplicate source', () => {
+    const ranked = [
+      { repo: 'sample', path: 'README.md', fullText: 'product overview', ceScore: 8 },
+      { repo: 'sample', path: 'mirror/README.md', fullText: 'product overview', ceScore: 7 },
+      { repo: 'sample', path: 'guide.md', fullText: 'installation instructions', ceScore: 6 },
+    ];
+    const { results } = selectResults({ query: 'describe the product', ranked, k: 2 });
+    expect(results.map(row => row.path)).toEqual(['README.md', 'guide.md']);
+    expect(results[0].alternativePaths).toEqual(['mirror/README.md']);
+  });
   const scored = (list) => list.map((c, i) => ({ ...c, ceScore: 1 - i * 0.1, fullText: 'body' }));
 
   it('GUARD: is pure — replaying the same pool twice gives byte-identical scores', () => {

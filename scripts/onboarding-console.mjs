@@ -18,6 +18,7 @@
 //     verifies against disk, and is idempotent (stack-sync.mjs --sync, reconcile-project.mjs --apply).
 //   • Bind 127.0.0.1 only; mint a random per-launch token; every mutating POST must echo it (else 403).
 
+import { isIngestibleDisposition } from './coverage-integrity.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -3383,7 +3384,7 @@ function computeScope({ coverage, generations, gistSources, installedStores, roo
     const kind = row.kind === 'gist' ? 'gists' : 'repos';
     if (row.artifact?.store) covered.add(row.artifact.store);
     counts[kind].total += 1;
-    if (row.disposition !== 'eligible') { counts[kind].ineligible += 1; continue; }
+    if (!isIngestibleDisposition(row.disposition)) { counts[kind].ineligible += 1; continue; }
     const r = scopeRow(row, { generations, gistSources, installedStores, cards });
     counts[kind][r.bucket === 'not-in-brain' ? 'notInBrain' : r.bucket] += 1;
     out[kind].push(r);

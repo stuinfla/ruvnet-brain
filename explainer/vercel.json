@@ -2,7 +2,17 @@
   "cleanUrls": true,
   "redirects": [
     {
-      "source": "^/(?!api/|metrics)(.*)$",
+      "source": "/metrics",
+      "destination": "https://isovision.ai/ruvnet-brain/",
+      "permanent": true
+    },
+    {
+      "source": "/metrics.html",
+      "destination": "https://isovision.ai/ruvnet-brain/",
+      "permanent": true
+    },
+    {
+      "source": "^/(?!api/)(.*)$",
       "has": [
         {
           "type": "host",

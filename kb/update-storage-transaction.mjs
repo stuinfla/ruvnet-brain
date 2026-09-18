@@ -98,7 +98,6 @@ export function managedStorageInventory(liveDir, { measuredAt = new Date().toISO
   const evidence = [];
   for (const name of fs.readdirSync(parent).sort()) {
     const file = path.join(parent, name);
-    const stat = fs.lstatSync(file);
     const installerKind = name.startsWith(`${basename}.install-preserved-`) ? 'installer-preserved'
       : name.startsWith(`${basename}.install-prior-`) ? 'installer-prior'
         : name.startsWith(`.${basename}.install-stage-`) ? 'installer-stage' : null;
@@ -112,9 +111,11 @@ export function managedStorageInventory(liveDir, { measuredAt = new Date().toISO
           : name.startsWith(`${basename}.failed-`) ? 'failed'
             : name.startsWith(`${basename}.bak-`) ? 'backup' : null;
     if (kind) {
+      const stat = fs.lstatSync(file);
       if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`managed ${kind} entry is not a trusted directory: ${file}`);
       fullCorpusCopies.push(trustedTreeSummary(file, kind));
     } else if ([`.${basename}.update-transactions`, 'refresh-runs'].includes(name)) {
+      const stat = fs.lstatSync(file);
       if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`managed evidence entry is not a trusted directory: ${file}`);
       evidence.push(trustedTreeSummary(file, name === 'refresh-runs' ? 'refresh-evidence' : 'transaction-evidence'));
     }

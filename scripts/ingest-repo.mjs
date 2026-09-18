@@ -60,6 +60,20 @@ const dir = SOURCE ? path.resolve(SOURCE) : path.join(CLONES, NAME);
 const env = { ...process.env };
 const run = (cmd, args, opts) => execFileSync(cmd, args, { stdio: 'inherit', ...opts });
 
+// Public on-demand ingestion obeys the same pinned source identity as corpus reconciliation.
+if (![ORG, NAME].every(value => /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value))) throw new Error('invalid GitHub source identity');
+const observed = JSON.parse(execFileSync('gh', ['api', `repos/${ORG}/${NAME}`], { encoding: 'utf8' }));
+if (observed.fork) throw new Error('forks require delta-only ingestion through corpus-reconcile; full-tree ingestion is forbidden');
+if (observed.disabled || !observed.default_branch) throw new Error('source has no available default branch');
+const pinned = JSON.parse(execFileSync('gh', ['api', `repos/${ORG}/${NAME}/commits/${encodeURIComponent(observed.default_branch)}`], { encoding: 'utf8' })).sha;
+if (!/^[a-f0-9]{40}$/.test(pinned || '')) throw new Error('source head is not an immutable commit');
+const gitText = (...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+const existing = fs.existsSync(path.join(dir, '.git'));
+if (existing) {
+  if (gitText('status', '--porcelain')) throw new Error('source checkout is dirty; refusing to reset or ingest it');
+  const remote = gitText('remote', 'get-url', 'origin').replace(/^git@github\.com:/, 'https://github.com/').replace(/\.git$/, '').replace(/\/$/, '');
+  if (remote.toLowerCase() !== `https://github.com/${ORG}/${NAME}`.toLowerCase()) throw new Error('source checkout remote differs from requested repository');
+}
 fs.mkdirSync(CLONES, { recursive: true });
 if (SOURCE) {
   if (!fs.existsSync(path.join(dir, '.git'))) {
@@ -73,8 +87,10 @@ if (SOURCE) {
 } else {
   console.log(`[update] ${ORG}/${NAME}`);
   run('git', ['-C', dir, 'fetch', '--depth', '1', 'origin']);
-  run('git', ['-C', dir, 'reset', '--hard', 'origin/HEAD']);
+  run('git', ['-C', dir, 'checkout', '--detach', pinned]);
 }
+
+if (gitText('rev-parse', 'HEAD') !== pinned) throw new Error('source checkout differs from observed pinned head');
 
 const url = process.env.RUVNET_CANONICAL_URL || 'https://raw.githubusercontent.com/stuinfla/ruvnet-brain/main/kb';
 // Depth config (--full / --keep) comes from the SHARED per-repo map, overridable per-invocation.

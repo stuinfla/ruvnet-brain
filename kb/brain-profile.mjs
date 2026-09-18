@@ -80,7 +80,7 @@ function managedEntries(dir, store) {
   const names = new Set([`${store}-primer.md`, ...[
     '.rvf', '.big.rvf', '.idmap.json', '.rvf.idmap.json', '.rvf.embed.json',
     '.big.rvf.idmap.json', '.big.rvf.embed.json', '.passages.jsonl',
-    '.big.passages.jsonl', '.meta.json', '.big.meta.json', '.symbols.json',
+    '.big.passages.jsonl', '.meta.json', '.big.meta.json', '.symbols.json', '.fork-delta.inventory.json',
   ].map((suffix) => `${store}${suffix}`)]);
   return fs.readdirSync(dir).filter((entry) => names.has(entry));
 }

@@ -49,6 +49,7 @@
 // public-store-classes.json, no ruv-gists.sources.json. Its unprovable aggregate stores are scoped
 // out rather than shipped unproven. THE WHOLE MODE RETIRES AT PLAN STEP 11, when a Step-4-produced
 // seed is published and data/corpus-seed.json is re-pinned to it.
+import { isIngestibleDisposition } from './coverage-integrity.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -62,15 +63,31 @@ import { validatePublicInventory } from './public-inventory.mjs';
 import { bindAssembledReleaseProjection, createReleaseProjection } from './release-projection.mjs';
 import { materializePublicInputs, SELECTION_FILE, validateSelectionReceipt } from './public-inputs.mjs';
 import { isPrivate, loadPrivateSlugs, shouldFenceL2 } from './private-fence.mjs';
-import { validateCoverageLedger } from './coverage-integrity.mjs';
+import { validateCoverageArtifactBindings, validateCoverageLedger } from './coverage-integrity.mjs';
 // The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
 // sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
 import { orgRepoCount } from './org-repo-count.mjs';
+import { parse } from '@babel/parser';
+import { RUNTIME_LOADING_CONTRACT } from './modulegraph-runtime-contract.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function fail(message) {
   throw new Error(message);
+}
+
+export function validateRequiredRuntimeFiles(runtimeRoot) {
+  const runtime = path.resolve(runtimeRoot);
+  const requiredFiles = [...new Map(Object.values(RUNTIME_LOADING_CONTRACT)
+    .flatMap((entry) => entry.requiredFiles || [])
+    .map((entry) => [entry.destination, entry])).values()];
+  return requiredFiles.map((requiredFile) => {
+    const source = path.join(runtime, requiredFile.source);
+    if (!fs.existsSync(source) || !fs.lstatSync(source).isFile()) fail(`required runtime validator is missing: ${source}`);
+    const digest = crypto.createHash('sha256').update(fs.readFileSync(source)).digest('hex');
+    if (digest !== requiredFile.sha256) fail(`required runtime validator differs from the reviewed canonical source: ${source}`);
+    return { ...requiredFile, source };
+  });
 }
 
 /** A directory must not be, contain, or be contained by any of `forbidden` (algorithm step 2: a
@@ -232,29 +249,43 @@ function gradeFor(dataDir, name, generation) {
 }
 
 // ---- file copy helper ---------------------------------------------------------------------------
-function makeCopier() {
+export function makeCopier() {
   let copied = 0;
   const missing = [];
+  const destinations = new Map();
   /** cp(relativeName, destDir, { required, from }) — `from` is the exact source directory; every
    * call site names it explicitly (never an implicit ASSETS-vs-KB default) so "which root did this
    * file come from" is always visible at the call site, not inferred from a flag. */
-  function cp(name, destDir, { required = false, from } = {}) {
+  function cp(name, destDir, { required = false, from, destinationName = null } = {}) {
     const s = path.isAbsolute(name) ? name : path.join(from, name);
     const stat = fs.existsSync(s) ? fs.lstatSync(s) : null;
-    if (!stat || !stat.isFile()) { if (required) missing.push(path.basename(name)); return false; }
-    if (stat.isSymbolicLink()) fail(`refusing to copy a symbolic link into the bundle: ${s}`);
-    fs.copyFileSync(s, path.join(destDir, path.basename(s)));
+    if (stat?.isSymbolicLink()) fail(`refusing to copy a symbolic link into the bundle: ${s}`);
+    if (!stat || !stat.isFile()) { if (required) missing.push(name); return false; }
+    const relative = destinationName || (path.isAbsolute(name) ? path.basename(s) : name.split(path.sep).join('/'));
+    const destination = path.resolve(destDir, relative);
+    const within = path.relative(path.resolve(destDir), destination);
+    if (within === '..' || within.startsWith(`..${path.sep}`) || path.isAbsolute(within)) {
+      fail(`destination path escapes bundle root: ${relative}`);
+    }
+    const prior = destinations.get(destination);
+    if (prior && prior !== path.resolve(s)) fail(`destination collision while copying ${s}: ${relative} already supplied by ${prior}`);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(s, destination);
+    destinations.set(destination, path.resolve(s));
     copied++;
     return true;
   }
   function cpDir(srcDir, destDir) {
     if (!fs.existsSync(srcDir)) return false;
-    fs.mkdirSync(destDir, { recursive: true });
-    for (const e of fs.readdirSync(srcDir, { withFileTypes: true })) {
-      if (e.isSymbolicLink()) fail(`refusing to copy a symbolic link into the bundle: ${path.join(srcDir, e.name)}`);
-      if (e.isDirectory()) cpDir(path.join(srcDir, e.name), path.join(destDir, e.name));
-      else { fs.copyFileSync(path.join(srcDir, e.name), path.join(destDir, e.name)); copied++; }
-    }
+    const walk = (current, relative = '') => {
+      for (const e of fs.readdirSync(current, { withFileTypes: true })) {
+        const next = relative ? path.join(relative, e.name) : e.name;
+        if (e.isSymbolicLink()) fail(`refusing to copy a symbolic link into the bundle: ${path.join(current, e.name)}`);
+        if (e.isDirectory()) walk(path.join(current, e.name), next);
+        else cp(next, destDir, { required: true, from: srcDir });
+      }
+    };
+    walk(srcDir);
     return true;
   }
   return { cp, cpDir, get copied() { return copied; }, get missing() { return missing; } };
@@ -267,24 +298,165 @@ const ENTRYPOINTS = [
 ];
 const EXTRA_FILES = ['package.json', 'package-lock.json', 'package-owners.json'];
 
-/** Local (relative) specifiers a module imports — static, side-effect, and literal dynamic. */
-function localImportsOf(absFile) {
-  const raw = fs.readFileSync(absFile, 'utf8');
-  const src = raw
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')          // block comments
-    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');      // line comments (the [^:] guard spares "https://")
+/** Local specifiers from the parsed graph; comments and strings cannot create false edges. */
+export function localImportsOf(absFile) {
+  const ast = parse(fs.readFileSync(absFile, "utf8"), { sourceType: "unambiguous", plugins: ["dynamicImport", "importMeta", "topLevelAwait"] });
+  const bindings = new Map();
+  const ambiguous = new Set();
+  const requireAliases = new Set(['require']);
+  const createRequireAliases = new Set(['createRequire']);
+  const moduleNamespaces = new Set();
   const specs = new Set();
-  for (const m of src.matchAll(/\b(?:import|export)\b[^;'"]*?\bfrom\s*['"]([^'"]+)['"]/g)) specs.add(m[1]);
-  for (const m of src.matchAll(/\bimport\s*['"]([^'"]+)['"]/g)) specs.add(m[1]);
-  for (const m of src.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) specs.add(m[1]);
-  for (const m of src.matchAll(/\bimport\s*\(\s*new\s+URL\s*\(\s*['"]([^'"]+)['"]/g)) specs.add(m[1]);
-  return [...specs].filter((s) => s.startsWith('./') || s.startsWith('../'));
+  const add = (value) => { if (value.startsWith("./") || value.startsWith("../")) specs.add(value); };
+  const literal = (node, resolving = new Set()) => {
+    if (!node) return null;
+    if (node.type === "StringLiteral") return { known: true, value: node.value };
+    if (node.type === "TemplateLiteral" && node.expressions.length === 0) return { known: true, value: node.quasis[0].value.cooked };
+    if (node.type === "Identifier" && ambiguous.has(node.name)) return { known: false, value: null };
+    if (node.type === "Identifier" && bindings.has(node.name)) {
+      if (resolving.has(node.name)) return { known: false, value: null };
+      const next = new Set(resolving);
+      next.add(node.name);
+      return literal(bindings.get(node.name), next);
+    }
+    return { known: false, value: null };
+  };
+  const collectBindings = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (node.type === 'ImportDeclaration' && ['node:module', 'module'].includes(node.source?.value)) {
+      for (const specifier of node.specifiers || []) {
+        if (specifier.type === 'ImportSpecifier' && specifier.imported?.name === 'createRequire') createRequireAliases.add(specifier.local.name);
+        if (specifier.type === 'ImportNamespaceSpecifier' || specifier.type === 'ImportDefaultSpecifier') moduleNamespaces.add(specifier.local.name);
+      }
+    }
+    if (node.type === "VariableDeclarator" && node.id?.type === "Identifier") {
+      const callee = node.init?.type === 'CallExpression' ? node.init.callee : null;
+      const createsRequire = callee?.type === 'Identifier' && createRequireAliases.has(callee.name)
+        || callee?.type === 'MemberExpression' && !callee.computed && callee.property?.name === 'createRequire'
+          && callee.object?.type === 'Identifier' && moduleNamespaces.has(callee.object.name);
+      if (createsRequire || node.init?.type === 'Identifier' && requireAliases.has(node.init.name)) requireAliases.add(node.id.name);
+      if (node.init?.type === 'MemberExpression' && !node.init.computed && node.init.property?.name === 'createRequire'
+        && node.init.object?.type === 'Identifier' && moduleNamespaces.has(node.init.object.name)) createRequireAliases.add(node.id.name);
+      if (node.init?.type === 'Identifier' && createRequireAliases.has(node.init.name)) createRequireAliases.add(node.id.name);
+      if (bindings.has(node.id.name)) ambiguous.add(node.id.name);
+      else if (node.init) bindings.set(node.id.name, node.init);
+    }
+    if (node.type === 'VariableDeclarator' && node.id?.type === 'ObjectPattern'
+      && node.init?.type === 'Identifier' && moduleNamespaces.has(node.init.name)) {
+      for (const property of node.id.properties || []) {
+        if (property.type !== 'ObjectProperty' || property.computed || property.key?.name !== 'createRequire') continue;
+        const alias = property.value?.type === 'Identifier' ? property.value.name : null;
+        if (alias) createRequireAliases.add(alias);
+      }
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (["loc", "tokens", "comments"].includes(key)) continue;
+      if (Array.isArray(value)) value.forEach(collectBindings); else if (value && typeof value === "object") collectBindings(value);
+    }
+  };
+  collectBindings(ast.program);
+  // Resolve alias chains after the complete program has been collected, so declaration order
+  // cannot turn `const r = localRequire` into an accidentally untracked loader.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const init of bindings.entries()) {
+      const [name, value] = init;
+      if (value?.type === 'Identifier' && requireAliases.has(value.name) && !ambiguous.has(name) && !requireAliases.has(name)) {
+        requireAliases.add(name); changed = true;
+      }
+      if (value?.type === 'Identifier' && createRequireAliases.has(value.name) && !ambiguous.has(name) && !createRequireAliases.has(name)) {
+        createRequireAliases.add(name); changed = true;
+      }
+    }
+  }
+  const markPattern = (pattern) => {
+    if (!pattern || typeof pattern !== 'object') return;
+    if (pattern.type === 'Identifier') ambiguous.add(pattern.name);
+    for (const [key, value] of Object.entries(pattern)) {
+      if (['loc', 'comments', 'type', 'name'].includes(key)) continue;
+      if (Array.isArray(value)) value.forEach(markPattern);
+      else if (value && typeof value === 'object') markPattern(value);
+    }
+  };
+  const markMutable = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'VariableDeclaration' && node.kind !== 'const') {
+      node.declarations.forEach((decl) => markPattern(decl.id));
+    }
+    if (node.type === 'VariableDeclarator' && node.id?.type !== 'Identifier') markPattern(node.id);
+    if (node.type === 'AssignmentExpression') markPattern(node.left);
+    if (node.type === 'UpdateExpression' && node.argument?.type === 'Identifier') ambiguous.add(node.argument.name);
+    if (Array.isArray(node.params)) for (const param of node.params) markPattern(param);
+    if (node.type === 'CatchClause') markPattern(node.param);
+    for (const [key, value] of Object.entries(node)) {
+      if (["loc", "tokens", "comments"].includes(key)) continue;
+      if (Array.isArray(value)) value.forEach(markMutable); else if (value && typeof value === 'object') markMutable(value);
+    }
+  };
+  markMutable(ast.program);
+  const unresolved = [];
+  const fileName = path.basename(absFile);
+  const contract = RUNTIME_LOADING_CONTRACT[fileName];
+  const sourceHash = crypto.createHash('sha256').update(fs.readFileSync(absFile)).digest('hex');
+  const contractSites = sourceHash === contract?.sha256 ? contract.sites : [];
+  const siteMatches = (shape, identifier) => contractSites.some((site) => site.shape === shape
+    && (site.identifier === undefined || site.identifier === identifier));
+  const trustedOpaque = (argument, callee) => {
+    const pathCall = argument?.type === 'MemberExpression' && argument.property?.type === 'Identifier'
+      && argument.property.name === 'href' && argument.object?.type === 'CallExpression'
+      && argument.object.callee?.type === 'Identifier' && argument.object.callee.name === 'pathToFileURL';
+    const pathArgument = pathCall ? argument.object.arguments[0] : null;
+    if (pathCall && pathArgument?.type === 'Identifier'
+      && siteMatches('pathToFileURL(identifier).href', pathArgument.name)) return true;
+    if (pathCall && pathArgument?.type === 'ConditionalExpression'
+      && siteMatches('pathToFileURL(conditional).href')) return true;
+    if (callee?.type === 'Identifier' && callee.name === 'localRequire' && argument?.type === 'Identifier'
+      && siteMatches('require-alias', argument.name)) return true;
+    return argument?.type === 'Identifier' && siteMatches('identifier', argument.name);
+  };
+  const visit = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (["ImportDeclaration", "ExportNamedDeclaration", "ExportAllDeclaration"].includes(node.type) && node.source?.type === "StringLiteral") add(node.source.value);
+    if (node.type === "CallExpression" && (node.callee?.type === "Import"
+      || (node.callee?.type === "Identifier" && requireAliases.has(node.callee.name)))) {
+      const argument = node.arguments[0];
+      if (node.callee?.type === 'Identifier' && ambiguous.has(node.callee.name)) {
+        if (argument) unresolved.push(argument);
+      } else {
+      const urlObject = argument?.type === 'NewExpression' ? argument : argument?.type === 'MemberExpression' && argument.object?.type === 'NewExpression' ? argument.object : null;
+      const urlImportMeta = urlObject?.callee?.type === 'Identifier' && urlObject.callee.name === 'URL'
+        && urlObject.arguments[1]?.type === 'MemberExpression' && urlObject.arguments[1].object?.type === 'MetaProperty';
+      const result = urlImportMeta ? literal(urlObject.arguments[0]) : literal(argument);
+      if (result?.known) add(result.value);
+      else if (node.arguments[0] && !trustedOpaque(node.arguments[0], node.callee)) unresolved.push(node.arguments[0]);
+      }
+    }
+    const recognizedFactory = node.callee?.type === 'Identifier' && createRequireAliases.has(node.callee.name)
+      || node.callee?.type === 'MemberExpression' && !node.callee.computed
+        && node.callee.property?.name === 'createRequire'
+        && node.callee.object?.type === 'Identifier' && moduleNamespaces.has(node.callee.object.name);
+    if (node.type === 'CallExpression' && !recognizedFactory && !requireAliases.has(node.callee?.name)
+      && (node.callee?.type === 'Identifier' && node.callee.name === 'createRequire'
+        || node.callee?.type === 'MemberExpression' && node.callee.property?.name === 'createRequire')) {
+      unresolved.push(node.arguments[0] || node);
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (["loc", "tokens", "comments"].includes(key)) continue;
+      if (Array.isArray(value)) value.forEach(visit); else if (value && typeof value === "object") visit(value);
+    }
+  };
+  visit(ast.program);
+  if (unresolved.length) {
+    fail(`${absFile} contains an unresolved or ambiguous dynamic module specifier; use a unique const literal relative path or a bound package name`);
+  }
+  return [...specs];
 }
 
 /** Transitive closure of local modules reachable from the entry points, relative to `kbDir`. */
-function resolveModuleGraph(kbDir) {
+export function resolveModuleGraph(kbDir, entrypoints = ENTRYPOINTS) {
   const seen = new Set();
-  const queue = ENTRYPOINTS.map((rel) => ({ rel, from: null }));
+  const queue = entrypoints.map((rel) => ({ rel, from: null }));
   const escapes = [];
   while (queue.length) {
     const { rel, from } = queue.shift();
@@ -322,6 +494,14 @@ function resolveModuleGraph(kbDir) {
  * likewise derived directly from the selected generation (algorithm step 7) — there is no external
  * "prior manifest" lookup left to drift from it.
  */
+/** The single retrieval closure used by assembly and controlled measurement. */
+export function retrievalRuntimeFiles(kbDir) {
+  const modules = resolveModuleGraph(kbDir, ['forge-ask-all.mjs']);
+  const requiredFiles = [...new Map(modules.flatMap(file =>
+    (RUNTIME_LOADING_CONTRACT[path.basename(file)]?.requiredFiles || []).map(row => [row.destination, row]))).values()];
+  return {files: [...new Set([...modules, ...requiredFiles.map(row => row.destination), 'package.json', 'package-lock.json'])].sort(), requiredFiles};
+}
+
 export function projectStoreViews({ selectedResults, identity, updaterConfig }) {
   if (!Array.isArray(selectedResults) || !selectedResults.length) {
     fail('projectStoreViews requires at least one selected record');
@@ -336,6 +516,10 @@ export function projectStoreViews({ selectedResults, identity, updaterConfig }) 
   const ledgerStores = {};
   const sourceStores = {};
   const manifestEntries = [];
+  const generationProvenance = (generation) => ({
+    ...(generation.sourceMode === undefined ? {} : { sourceMode: generation.sourceMode }),
+    ...(generation.forkDelta === undefined ? {} : { forkDelta: generation.forkDelta }),
+  });
   for (const result of [...selectedResults].sort((a, b) => a.name.localeCompare(b.name))) {
     const { name, kind, generation } = result;
     if (!generation || typeof generation.sha256 !== 'string' || !generation.sha256) {
@@ -349,6 +533,7 @@ export function projectStoreViews({ selectedResults, identity, updaterConfig }) 
       dimensions: generation.dimensions,
       sourceCommit: generation.sourceCommit ?? null,
       builtUtc: generation.builtUtc,
+      ...generationProvenance(generation),
     };
     if (kind !== 'repository') continue; // SOURCE.json and manifest rows are repository-only, exactly as forge-refresh.mjs's own SOURCE.json has always been.
     const updater = (config.stores && config.stores[name]) || {};
@@ -366,6 +551,7 @@ export function projectStoreViews({ selectedResults, identity, updaterConfig }) 
       canonicalManifestUrl: updater.canonicalManifestUrl || null,
       canonicalBundleUrl: updater.canonicalBundleUrl || null,
       selfUpdate: updater.selfUpdate || `node forge-update.mjs ${name}`,
+      ...generationProvenance(generation),
     };
     manifestEntries.push({
       name, tier: result.tier, stars: result.stars,
@@ -374,6 +560,7 @@ export function projectStoreViews({ selectedResults, identity, updaterConfig }) 
       gradeRealUse: result.gradeRealUse,
       builtFromSha: generation.sourceCommit || 'unknown',
       status: 'built',
+      ...generationProvenance(generation),
     });
   }
   // Top-level envelope: the corpus's own top-level updater fields survive (spread first); identity
@@ -601,7 +788,7 @@ async function assembleBundleImpl({ corpusDir, runtimeRoot, outDir, identity = {
       ? (JSON.parse(fs.readFileSync(projectedClasses, 'utf8')).derived || []).map((e) => String(e?.store || '').toLowerCase())
       : [];
     const projected = new Set([
-      ...legacyCoverage.rows.filter((row) => row.disposition === 'eligible')
+      ...legacyCoverage.rows.filter((row) => isIngestibleDisposition(row.disposition))
         .map((row) => String(row?.artifact?.store || '').toLowerCase()),
       ...projectedDerived,
     ].filter(Boolean));
@@ -665,24 +852,10 @@ async function assembleBundleImpl({ corpusDir, runtimeRoot, outDir, identity = {
       fail(`finalized corpus does not match its sealed coverage (${error.message}) — a deficient seed ` +
         'returns to preparation; packaging never repairs source evidence');
     }
-    // Bind the coverage to THIS corpus, not merely to "a" corpus: every eligible row's recorded
-    // artifact identity (the RVF digest it was measured against; for repositories also the source
-    // generation) must be exactly what this corpus's own ledger carries for that store —
-    // validatePublicInventory has already bound that ledger to the bytes on disk.
-    for (const row of corpusCoverage.rows) {
-      if (row.disposition !== 'eligible') continue;
-      const store = String(row.artifact?.store || '');
-      const generation = ledgerIn.stores?.[store]
-        || Object.entries(ledgerIn.stores || {}).find(([key]) => key.toLowerCase() === store.toLowerCase())?.[1];
-      if (!generation) fail(`coverage row ${row.key} names store ${store}, which this corpus's ledger does not carry`);
-      if (String(row.artifact?.rvfSha256 || '').toLowerCase() !== String(generation.sha256 || '').toLowerCase()) {
-        fail(`coverage row ${row.key} was measured against different ${store} RVF bytes than this corpus carries`);
-      }
-      if (row.kind === 'repository'
-        && String(row.artifact?.sourceCommit || '').toLowerCase() !== String(generation.sourceCommit || '').toLowerCase()) {
-        fail(`coverage row ${row.key} records a different ${store} source generation than this corpus's ledger`);
-      }
-    }
+    // Bind coverage to THIS corpus through the canonical validator shared by assembly and archive
+    // consumers; every eligible artifact and repository source generation must match this ledger.
+    try { validateCoverageArtifactBindings(corpusCoverage, ledgerIn); }
+    catch (error) { fail(`coverage artifacts do not match this corpus's ledger (${error.message})`); }
     const discoveredLower = new Set(discovered.map((s) => s.toLowerCase()));
     const missingFromDisk = inventory.publicStores.filter((s) => !discoveredLower.has(s));
     if (missingFromDisk.length) fail(`classified public store(s) missing from the finalized corpus: ${missingFromDisk.join(', ')}`);
@@ -787,6 +960,11 @@ async function assembleBundleImpl({ corpusDir, runtimeRoot, outDir, identity = {
 
   const { cp, cpDir, missing } = makeCopier();
 
+  // Runtime loaders may only rely on validator bytes that this assembly verifies and ships.
+  for (const requiredFile of validateRequiredRuntimeFiles(runtime)) {
+    cp(requiredFile.source, out, { required: true, from: runtime, destinationName: requiredFile.destination });
+  }
+
   // The shipped bundle must carry the exact policy boundary used during assembly.
   cp('PRIVATE-STORES.json', out, { required: true, from: kbDir });
 
@@ -798,6 +976,7 @@ async function assembleBundleImpl({ corpusDir, runtimeRoot, outDir, identity = {
     cp(`${name}.big.rvf.embed.json`, out, { required: true, from: corpus });
     cp(`${name}.passages.jsonl`, out, { required: true, from: corpus });
     cp(`${name}.meta.json`, out, { required: true, from: corpus });
+    if (result.generation?.sourceMode === 'fork-delta') cp(`${name}.fork-delta.inventory.json`, out, { required: true, from: corpus });
     cp(`${name}.symbols.json`, out, { from: corpus });
     for (const extra of (EXTRA_SIDECARS_BY_KIND[result.kind]?.(name) || [])) {
       cp(extra.name, out, { required: extra.required, from: corpus });
@@ -1022,6 +1201,7 @@ node forge-ask.mjs --dir . --name ruvector --variant big --q "what is the RVF co
     fileCount: archiveFiles.length,
     totalBytes: archiveFiles.reduce((total, file) => total + fs.statSync(path.join(out, file)).size, 0),
     files: archiveFiles.map(archiveIdentity),
+    retrievalRuntimeFiles: retrievalRuntimeFiles(kbDir).files,
   };
   fs.writeFileSync(path.join(out, 'ARCHIVE-MANIFEST.json'), `${JSON.stringify(archiveManifest, null, 2)}\n`);
   archiveFiles.push('ARCHIVE-MANIFEST.json');
@@ -1057,7 +1237,7 @@ node forge-ask.mjs --dir . --name ruvector --variant big --q "what is the RVF co
   }
 
   console.log(`\n=== build-bundle → ${path.relative(runtime, out)} (${versionTag}) ===`);
-  console.log(`built repos: ${manifestEntries.length}/${regFlat.length} | selected stores: ${discovered.length}`);
+  console.log(`built repositories: ${manifestEntries.length} | catalogued repositories: ${regFlat.length} | selected stores: ${discovered.length}`);
   for (const b of manifestEntries) console.log(`  ${b.tier} ${b.name.padEnd(10)} chunks=${String(b.chunks).padStart(6)} variants=${b.variants.join('+').padEnd(10)} symbols=${b.hasSymbols ? 'y' : '-'} primer=${b.hasPrimer ? 'y' : '-'} grade=${b.gradeRealUse ?? '-'} sha=${(b.builtFromSha || '').slice(0, 10)}`);
   console.log(`\nmanifest: ${path.join(path.relative(runtime, out), 'manifest.json')} | mcp snippet + README written.`);
   console.log('STATUS: assembled OK.');

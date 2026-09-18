@@ -1,6 +1,6 @@
 # The 8-dimension grading rubric — CANONICAL, reuse verbatim
 
-Updated: 2026-07-27 | Version 1.0.0
+Updated: 2026-09-17 18:31:22 EDT | Version 1.0.1
 Created: 2026-07-27
 
 Preserved 2026-07-27 from a SESSION TEMP DIRECTORY, which was its only copy. This rubric is
@@ -62,7 +62,7 @@ D8 POST-IMPLEMENTATION CHECKLIST - MANDATORY and currently the weakest: anything
    never unattended loops).
 6. ELEGANCE, judged not admired: is the suite's shape simple enough that a contributor can add the
    right test in the right place without being told? Cite examples of both good and bad shape.
-7. LIVE EVIDENCE just captured, use it: verify-interface.sh false-POSITIVE-blocked a maintainer
+7. HISTORICAL LIVE EVIDENCE, pre-retirement: verify-interface.sh false-POSITIVE-blocked a maintainer
    command because product prose inside a heredoc looked like an invocation. Issues #12, #13 and #44
    are the same regex-parsing-of-shell class. Grade what this says about D7 and about the suite's
    ability to catch its own gates misfiring.

@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Updated: 2026-09-17 18:31:22 EDT | Version 1.0.1; hook-retirement documentation -->
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -732,15 +733,16 @@ table.tb { width: 100%; border-collapse: collapse; font-size: var(--fs--1); min-
       </span>
       <span class="card-head">
         <h2>3 · The hooks</h2>
-        <span class="q">The part people mean by “hooks and this and that”. Ten scripts, six events, one readable file.</span>
+        <span class="q">Historical hook architecture and the current continuity boundary.</span>
       </span>
       <span class="chips"><span class="chip tone-opt">optional, individually</span><span class="chip tone-cost">~630 tok / prompt</span></span>
       <span class="chev" aria-hidden="true">›</span>
     </summary>
     <div class="body">
-      <p>Everything here is one file you can open and edit line by line:
-      <code>plugin/hooks/hooks.json</code>. Six Claude Code events, 14 invocations, 10 distinct
-      scripts. Nothing is all-or-nothing — each row below is an entry you can delete.</p>
+      <p>The table and measurements below describe the historical hook architecture. Current automatic
+      registrations are the continuity and grounding handlers in <code>plugin/hooks/hooks.json</code>
+      and <code>plugin/hooks/codex-hooks.json</code>. Managed CLI help/run is an explicit MCP boundary;
+      the former shell interface hook is retired.</p>
 
       <div class="scroll-x">
         <table class="tb">
@@ -750,7 +752,7 @@ table.tb { width: 100%; border-collapse: collapse; font-size: var(--fs--1); min-
             <tr><td class="cell-mono">UserPromptSubmit</td><td class="cell-name">ground-ruvnet.sh</td><td><span class="part">nudge</span></td><td>Three gates on your prompt: <b>RuvNet</b> (you named the stack → ground before asserting), <b>drift</b> (you reached for a classical default → name the rUv replacement), <b>build</b> (a build request → apply the playbook).</td></tr>
             <tr><td class="cell-mono">PreToolUse<small>Write · Edit · Bash</small></td><td class="cell-name">hijack-ruvnet.sh</td><td><span class="part">nudge</span></td><td>Scans the payload for four categories of classical default — generic vector stores, paid embedding APIs, generic RAG frameworks, hand-rolled memory glue — and names the rUv replacement. <b>Never blocks.</b> One word on line 12 would make it block; it ships as advisory because a false-positive refusal bricks real work.</td></tr>
             <tr><td class="cell-mono">PreToolUse<small>Task · Agent</small></td><td class="cell-name">route-dispatch.sh</td><td><span class="part">audit</span></td><td>Records declared versus inherited model use. Claude Code 2.1.220 consumes this result after dispatch, so it never claims a late refusal. <b>Opt-in only</b> — with no router profile on disk it does nothing.</td></tr>
-            <tr><td class="cell-mono">PreToolUse<small>Bash</small></td><td class="cell-name">verify-interface.sh</td><td><span class="no">blocks</span></td><td>Refuses an ecosystem CLI subcommand whose <code>--help</code> you have not read in 24 h. Born from reporting AgentDB broken three times when the real defect was passing a query positionally instead of with <code>-q</code>.</td></tr>
+            <tr><td class="cell-mono">MCP</td><td class="cell-name">ruvnet_cli_help → ruvnet_cli_run</td><td><span class="yes">enforced</span></td><td>Managed CLI calls use finite executable names, literal argv, and <code>shell:false</code>; the retired shell ID is a silent compatibility no-op.</td></tr>
             <tr><td class="cell-mono">PreToolUse<small>Bash</small></td><td class="cell-name">design-wall.sh</td><td><span class="no">blocks</span></td><td>Refuses shipping or opening a visual surface with no fresh design grade. <b>Scoped to this repo</b> since issue&nbsp;#17, after a plain <code>git commit</code> in an unrelated project got blocked demanding someone else's ritual.</td></tr>
             <tr><td class="cell-mono">PreToolUse · Stop</td><td class="cell-name">lesson-hooks.sh</td><td><span class="part">nudge</span></td><td>Surfaces your own recorded corrections at the moment they apply — writing code, changing the machine, asserting a fact, claiming done.</td></tr>
             <tr><td class="cell-mono">PostToolUse</td><td class="cell-name">learn-capture.sh</td><td><span class="part">nudge</span></td><td>Appends one compact step to the session's learning queue: a command <i>verb</i> or a file's <i>basename</i>. Never content, never full paths, never secrets.</td></tr>
@@ -786,10 +788,10 @@ RUVNET_BRAIN_METER=0              # stop the measuring (editing hooks.json stops
       <p>Real refusals over 2.5 days, across 13 different project directories.</p>
       <div class="scroll-x">
         <table class="tb">
-          <thead><tr><th>Gate</th><th class="num">Refusals</th><th>In a fresh install?</th></tr></thead>
+          <thead><tr><th>Gate</th><th class="num">Refusals</th><th>Registered at the July measurement?</th></tr></thead>
           <tbody>
             <tr><td class="cell-name">route-dispatch</td><td class="cell-mono">142</td><td><span class="part">▲</span> shipped, but inert unless you opt into cost routing</td></tr>
-            <tr><td class="cell-name">verify-interface</td><td class="cell-mono">50</td><td><span class="yes">✓</span> yes</td></tr>
+            <tr><td class="cell-name">verify-interface</td><td class="cell-mono">50</td><td><span class="part">historical</span> pre-retirement measurement</td></tr>
             <tr><td class="cell-name">ground-before-write</td><td class="cell-mono">11</td><td><span class="no">✕</span> <b>no</b> — wired in this machine's own global settings</td></tr>
             <tr><td class="cell-name">design-wall</td><td class="cell-mono">7</td><td><span class="part">▲</span> shipped, fires only inside this repo</td></tr>
             <tr><td class="cell-name">version-bump-gate</td><td class="cell-mono">5</td><td><span class="no">✕</span> <b>no</b> — wired in this repo's project settings</td></tr>
@@ -797,12 +799,10 @@ RUVNET_BRAIN_METER=0              # stop the measuring (editing hooks.json stops
         </table>
       </div>
 
-      <div class="why"><b>Two of those five are not part of what you install, and saying otherwise
-      would be the exact dishonesty this project exists to kill.</b> A fresh install gets <b>three</b>
-      blocking gates: one inert without opt-in, one that only fires inside this repository. In practice
-      a new user is subject to exactly one — <code>verify-interface</code>. The <code>version-bump-gate</code>
-      lived in <i>global</i> settings until 2026-07-14, taxing every Bash command in 34+ projects with a
-      rule that is true in one. A hook belongs in the narrowest scope where it is true.</div>
+      <div class="why"><b>These are historical measurements, not current installation behavior.</b>
+      Managed CLI enforcement now lives at the structured MCP boundary. The retired shell interface
+      ID has no dispatch in the current shim. The July data remains here to explain why the boundary
+      changed; it is not a current performance or enforcement claim.</div>
 
       <h3>What their absence costs, specifically</h3>
       <dl class="beat">

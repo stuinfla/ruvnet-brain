@@ -2,7 +2,12 @@
   "mcpServers": {
     "ruvnet-brain": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/server.mjs"]
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/mcp/server.mjs"
+      ],
+      "env": {
+        "RUVNET_HOOK_HOST": "claude"
+      }
     }
   }
 }

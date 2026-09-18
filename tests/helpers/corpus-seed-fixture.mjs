@@ -13,7 +13,31 @@
 // file cannot stand in for an RVF store. writeMinimalRvf writes a genuine, minimal RVF (well under
 // the 1,024-vector HNSW threshold, so no persisted index is required and the audit reports PASS).
 import crypto from 'node:crypto';
+import { currentAccuracyInstruments, readAccuracyOracle } from '../../scripts/oracle/retrieval-accuracy.mjs';
+import { digest } from '../../scripts/coverage-integrity.mjs';
+import { beforeEach, afterEach } from 'vitest';
+import { attestMeasurementReport } from '../../scripts/oracle/measurement-attestation.mjs';
+let priorOracleFile; let fixtureOracleDir;
+beforeEach(() => {
+  priorOracleFile = process.env.RUVNET_ACCURACY_ORACLE_FILE;
+  fixtureOracleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-fixture-oracle-'));
+  const file = path.join(fixtureOracleDir, 'oracle.json');
+  fs.writeFileSync(file, fixtureOracleBody());
+  process.env.RUVNET_ACCURACY_ORACLE_FILE = file;
+});
+afterEach(() => {
+  if (priorOracleFile === undefined) delete process.env.RUVNET_ACCURACY_ORACLE_FILE;
+  else process.env.RUVNET_ACCURACY_ORACLE_FILE = priorOracleFile;
+  fs.rmSync(fixtureOracleDir, { recursive: true, force: true });
+});
+const measurementKeys = crypto.generateKeyPairSync('ed25519');
+let priorMeasurementKey;
+beforeEach(()=>{ priorMeasurementKey=process.env.RUVNET_MEASUREMENT_PUBLIC_KEY; process.env.RUVNET_MEASUREMENT_PUBLIC_KEY=measurementKeys.publicKey.export({type:'spki',format:'pem'}); });
+afterEach(()=>{ if(priorMeasurementKey===undefined)delete process.env.RUVNET_MEASUREMENT_PUBLIC_KEY; else process.env.RUVNET_MEASUREMENT_PUBLIC_KEY=priorMeasurementKey; });
+export function attestFixtureRecall(report) { return {...report,attestation:attestMeasurementReport(report,measurementKeys.privateKey)}; }
+
 import fs from 'node:fs';
+import os from 'node:os';
 import { ABSOLUTE_FLOOR, loadFixture, tally } from '../../scripts/oracle/repo-recall.mjs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -130,11 +154,41 @@ export function accuracyOracle({ units = FIXTURE_UNITS, unproduced = 0 } = {}) {
  * a test can break precisely one binding (archive digest, coverage completeness, a partition's
  * counters) and prove the gate refuses it.
  */
+export function fixtureOracleBody() {
+  const { partitions, labels } = accuracyOracle();
+  return `${JSON.stringify({ schemaVersion: 2, kind: 'ruvnet-brain-retrieval-accuracy-oracle',
+    oracleVersion: 'fixture/2', partitions, labels, emptySources: [],
+    seal: { labelsSha256: digest(labels), partitionsSha256: digest(partitions) } }, null, 2)}\n`;
+}
+
+const FIXTURE_RUNTIME_FILES = {
+  'forge-ask-all.mjs': 'export async function searchAll() { return {results: []}; }\n',
+  'package.json': JSON.stringify({name: 'fixture-runtime', type: 'module', version: '1.0.0'}),
+  'package-lock.json': JSON.stringify({name: 'fixture-runtime', lockfileVersion: 3, packages: {}}),
+};
+
+function fixtureRuntimeIdentity(bundle) {
+  // seal() has already written this manifest. Arithmetic-only report tests deliberately
+  // use a non-ZIP placeholder; they use the same explicit synthetic runtime bytes.
+  const manifestFile = path.join(path.dirname(bundle), 'bundle', 'ruvnet-brain', 'ARCHIVE-MANIFEST.json');
+  const rows = fs.existsSync(manifestFile) ? JSON.parse(fs.readFileSync(manifestFile, 'utf8')).files
+    : Object.entries(FIXTURE_RUNTIME_FILES).map(([path, body]) => ({path,
+      sha256: crypto.createHash('sha256').update(body).digest('hex')}));
+  const files = rows.filter(row => Object.hasOwn(FIXTURE_RUNTIME_FILES, row.path))
+    .map(({path, sha256}) => ({path, sha256}));
+  const dependencies = [];
+  const payload = { files, dependencies, sha256: digest({files, dependencies}), installation: {method: 'npm-ci-ignore-scripts',
+    lockSha256: files.find(row => row.path === 'package-lock.json')?.sha256, dependencies: []} };
+  return {...payload, runtimeSha256: digest(payload)};
+}
+
 export function accuracyReportFor(bundle, {
-  oracleSha256 = 'b'.repeat(64), generatorSha256 = 'e'.repeat(64), overrides = {}, n = 20, successes = 20, timeouts = 0,
+  oracleSha256 = currentAccuracyInstruments().expectedOracleSha256, generatorSha256 = currentAccuracyInstruments().expectedGeneratorSha256, overrides = {}, n = 20, successes = 20, timeouts = 0,
 } = {}) {
   // Schema 2: each row carries its ADR-086:248 denominator, N = 2 x min(100, U), and n must equal it.
   const U = Math.max(1, Math.ceil(n / 2));
+  const selectedOracle = readAccuracyOracle(process.env.RUVNET_ACCURACY_ORACLE_FILE);
+  const runtime = {kind:'controlled-archive',identity:fixtureRuntimeIdentity(bundle)};
   const partition = (mode) => ({
     partition: 'alpha', partitionKind: 'repository', store: 'alpha', sourceCommit: SOURCE_COMMIT,
     U, N: 2 * Math.min(100, U),
@@ -151,10 +205,11 @@ export function accuracyReportFor(bundle, {
     archive: { file: path.basename(bundle), sha256: sha256(bundle), bytes: fs.statSync(bundle).size },
     oracle: {
       schemaVersion: 2,
-      file: 'data/retrieval-accuracy-oracle.json', sha256: oracleSha256, bytes: 1234,
-      oracleVersion: 'fixture/2', labelsSha256: 'c'.repeat(64), partitionsSha256: 'd'.repeat(64),
+      file: selectedOracle.file, sha256: oracleSha256, bytes: selectedOracle.bytes,
+      oracleVersion: selectedOracle.oracleVersion, labelsSha256: selectedOracle.labelsSha256, partitionsSha256: selectedOracle.partitionsSha256,
     },
     generator: { retrievalAccuracySha256: generatorSha256 },
+    runtime,
     metric: 'evidence-supporting-hit@5',
     k: 5,
     threshold: { numerator: 19, denominator: 20 },
@@ -188,13 +243,15 @@ export function recallReportFor(bundle, overrides = {}) {
   const stat = fs.statSync(bundle);
   const fixture = loadFixture();
   const rows = fixture.questions.map((q, i) => ({
-    store: q.store,
+    store: q.store, query: q.query,
     expectedPath: q.expectedPath,
     repoCovered: true,
     exactFileRank: i < 139 ? 1 : i < 176 ? 4 : null,
-    returnedPaths: [`${q.store}/${q.expectedPath}`],
+    returnedPaths: i < 139 ? [`${q.store}/${q.expectedPath}`]
+      : i < 176 ? [1,2,3].map(n=>`${q.store}/unrelated-${n}`).concat(`${q.store}/${q.expectedPath}`)
+      : [`${q.store}/unrelated`],
   }));
-  return {
+  return attestFixtureRecall({
     schemaVersion: 1,
     kind: 'ruvnet-brain-repo-recall',
     state: 'PASS',
@@ -202,13 +259,14 @@ export function recallReportFor(bundle, overrides = {}) {
     measuredUtc: '2026-09-15T00:00:00.000Z',
     archive: { file: path.basename(bundle), sha256: sha256(bundle), bytes: stat.size },
     fixture: { file: fixture.file, sha256: fixture.fixtureSha256, sourceCommit: fixture.sourceCommit, questionCount: rows.length },
-    protocol: { entryPoint: 'fixture', k: 5, repositoryScope: 'explicit', scoring: 'exact labeled file path within top-k' },
+    protocol: { runtimeIdentity: fixtureRuntimeIdentity(bundle), entryPoint: 'fixture', k: 5, repositoryScope: 'explicit', scoring: 'exact labeled file path within top-k' },
     floor: { value: ABSOLUTE_FLOOR, committed: ABSOLUTE_FLOOR, absolute: ABSOLUTE_FLOOR },
+    gate: { floorValue: ABSOLUTE_FLOOR },
     totals: tally(rows),
     meaning: {},
     rows,
     ...overrides,
-  };
+  });
 }
 
 export function writeRecallReport(bundle, options = {}) {
@@ -235,6 +293,7 @@ export function seal(root, bundleDir, { accuracy = {}, recall = {} } = {}) {
     kind: 'ruvnet-brain-archive-manifest',
     version: '9.9.9',
     releaseTag: 'v9.9.9',
+    retrievalRuntimeFiles: files.filter(row => Object.hasOwn(FIXTURE_RUNTIME_FILES, row.path)).map(row => row.path).sort(),
     fileCount: files.length,
     totalBytes: files.reduce((total, file) => total + file.bytes, 0),
     files,
@@ -260,6 +319,7 @@ export async function buildAssets(root) {
   await writeMinimalRvf(path.join(bundleDir, 'alpha.big.rvf'));
   const sidecars = minimalStoreSidecars();
   const publicFiles = {
+    ...FIXTURE_RUNTIME_FILES,
     'alpha.big.rvf.embed.json': '{"model":"local"}',
     'alpha.passages.jsonl': sidecars.passages,
     'alpha.meta.json': sidecars.meta,
@@ -311,7 +371,7 @@ export function fixtureReleaseRoot(root, { oracleBody = null } = {}) {
   // is a private directory, which is what lets a test supply a committed oracle without ever writing
   // into the tracked checkout. Spawn with --preserve-symlinks --preserve-symlinks-main so
   // release.mjs's own ROOT resolves to THIS directory rather than the repo it is linked from.
-  for (const dir of ['scripts', 'kb', 'plugin', 'keys']) {
+  for (const dir of ['scripts', 'kb', 'plugin', 'keys', 'node_modules']) {
     fs.symlinkSync(path.join(repoRoot, dir), path.join(root, dir));
   }
   // The publisher resolves release HEAD with `git rev-parse HEAD` in its own root and requires it to
@@ -320,7 +380,7 @@ export function fixtureReleaseRoot(root, { oracleBody = null } = {}) {
   fs.symlinkSync(path.join(repoRoot, '.git'), path.join(root, '.git'));
   fs.mkdirSync(path.join(root, 'data'), { recursive: true });
   const oracleFile = path.join(root, 'data', 'retrieval-accuracy-oracle.json');
-  fs.writeFileSync(oracleFile, oracleBody ?? `${JSON.stringify({ fixture: 'oracle' }, null, 2)}\n`);
+  fs.writeFileSync(oracleFile, oracleBody ?? fixtureOracleBody());
   // The repo-recall gate's two committed inputs. `--preserve-symlinks` makes the publisher's ROOT
   // this directory, so it reads THESE — which is the point: a release checkout that has lost the
   // frozen fixture or the ratchet must refuse to publish, and that has to be reachable in a test.

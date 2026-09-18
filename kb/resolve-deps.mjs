@@ -10,10 +10,11 @@
 //   2. node_modules walked up from this file.
 //   3. An explicit env override   (RVF_MODULE_PATH / XENOVA_PATH).
 //
-// This file ships INSIDE the bundle, so it must not assume anything beyond Node 18+ and the
+// This file ships INSIDE the bundle, so it must not assume anything beyond Node 20.9+ and the
 // two npm deps being installable via `npm i @ruvector/rvf @xenova/transformers`.
 
 import { createRequire } from 'node:module';
+import { assertSupportedNode } from './node-version.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -34,6 +35,7 @@ function existsModuleDir(p) {
  * Order: KB node_modules -> RVF_MODULE_PATH env -> Mac npm-global.
  */
 export function loadRvf() {
+  assertSupportedNode();
   // 1. project / KB node_modules (walked up from this file)
   try {
     return { mod: localRequire('@ruvector/rvf'), via: 'project node_modules' };
@@ -130,6 +132,7 @@ export function guardNetwork() {
  * Applies guardNetwork() — the reader path must fail loud, never hang (issue #27).
  */
 export async function loadTransformers() {
+  assertSupportedNode();
   guardNetwork();
   // 1. node_modules — resolve the package entry, import via file:// URL.
   try {

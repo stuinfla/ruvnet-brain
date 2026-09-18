@@ -108,9 +108,9 @@ export class ProjectProgressionStore {
     });
   }
 
-  validateSnapshot(snapshot) {
+  validateSnapshot(snapshot, { requireObservationDigest = false } = {}) {
     const verdict = validateProgressionSnapshot(snapshot, {
-      expectedProjectIdentity: this.resolution.projectIdentity,
+      expectedProjectIdentity: this.resolution.projectIdentity, requireObservationDigest,
     });
     if (!verdict.ok) throw new Error(`invalid progression snapshot: ${verdict.errors.join(', ')}`);
   }
@@ -169,7 +169,7 @@ export class ProjectProgressionStore {
   }
 
   capture(snapshot, { onPhase = () => {} } = {}) {
-    this.validateSnapshot(snapshot);
+    this.validateSnapshot(snapshot, { requireObservationDigest: true });
     this.outbox.appendSnapshot(snapshot);
     onPhase('outbox-fsynced');
     const receipt = this.appendExact(snapshot, { onPhase });

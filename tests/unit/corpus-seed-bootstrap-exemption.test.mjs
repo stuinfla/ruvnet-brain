@@ -103,16 +103,10 @@ describe('corpus-seed.yml seed-download accuracy-report gate', () => {
     expect(r.status).toBe(0);
     expect(r.requiresReport).toBe(false);
     const source = fs.readFileSync(WORKFLOW, 'utf8');
-    // The seed's retrieval verification must still exist — the fix narrows WHEN it runs, it does not
-    // delete it. Since the 2026-09-15 ADR-086 amendment that verification is TWO readers: the
-    // blocking repo-recall gate, and a BINDING-only read of the C3 diagnostic (which is published at
-    // 59.0% and would reject every seed this pipeline can produce if it still had to pass).
-    expect(source.includes('readRecallReport'), 'the blocking seed recall gate must still run').toBe(true);
-    expect(source.includes('readDiagnosticAccuracyReport'), 'the C3 diagnostic must still be bound to the seed bytes').toBe(true);
-    expect(
-      source.includes('readAccuracyReport({'),
-      'the C3 report must NOT be re-armed as a blocking seed predicate without amending ADR-086 again',
-    ).toBe(false);
+    // The workflow invokes the one strict seed verifier. Its behavioral test exercises the
+    // extracted workflow block with signed fixtures, wrong receipt identities, and bad signatures.
+    expect(source.includes('verifySeedBaseline({')).toBe(true);
+    expect(source.includes('receiptSha256: process.env.SEED_RECEIPT_SHA256')).toBe(true);
   });
 });
 

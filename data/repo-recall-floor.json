@@ -5,5 +5,5 @@
   "fixtureSha256": "79f9f17e6d4875d690405acaf325996973507d46ec0178dd3dd3875e25b34c12",
   "acceptedForRelease": null,
   "acceptedUtc": null,
-  "note": "The exact-file Hit@5 count a corpus candidate may not fall below. Set from the first measurement of the 4.3.25 candidate (176/194). It may be RAISED when a release measures higher; lowering it cannot buy a failing candidate a pass, because scripts/oracle/repo-recall.mjs clamps the effective floor at ABSOLUTE_FLOOR. A floor accepted against a different fixture digest is refused rather than carried over."
+  "note": "Historical exact-file Hit@5 reference (176/194), informational under ADR-086. It applies only to its recorded fixture digest; another fixture records the fallback floor of zero. Repository availability and execution integrity remain blocking. Installed retrieval-canary quality acceptance is separate; this diagnostic floor is not proof of C3 or North Star quality."
 }

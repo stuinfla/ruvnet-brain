@@ -28,7 +28,7 @@
 #   • Product terms only (agentdb, metaharness, ...). Generic words like "memory"/"hook"
 #     would fire on half of all software.
 #   • Block only the UNGROUNDED terms — grounding agentdb unlocks agentdb, not metaharness.
-#     Granularity matches the mistake, same as verify-interface.sh's per-subcommand stamps.
+#     Each grounding stamp authorizes only its named product.
 #
 # CONTRACT: exit 0 = allow · exit 2 + stderr = BLOCK (stderr returns to the model as reason).
 # FAILS OPEN on anything unparseable. Opt-in (router profile), like every gate here.

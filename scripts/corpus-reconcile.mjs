@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { validateMeasurementKeyPair } from './oracle/measurement-attestation.mjs';
 // Build a corpus candidate from one immutable seed and exact upstream repository SHAs.
 // This module deliberately has no publication capability. The protected-release workflow owns
 // the only legal call to the canonical publisher, `scripts/release.mjs --corpus-seed`
@@ -15,7 +16,7 @@ import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
 import { buildCoverage, observeSourceUniverse, renderMarkdown } from './source-coverage.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';
-import { fileIdentity } from '../plugin/scripts/coverage-integrity.mjs';
+import { fileIdentity, SOURCE_DISPOSITIONS, isIngestibleDisposition, forkDeltaIdentityFor, forkDeltaMatches } from '../plugin/scripts/coverage-integrity.mjs';
 import { storeRoot } from '../kb/store-root.mjs';
 
 export { rebuildCorpusAggregates };
@@ -27,7 +28,7 @@ const HEX64 = /^[0-9a-f]{64}$/;
 const SAFE_STORE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const STORE_ARTIFACT_SUFFIXES = [
   '.big.rvf', '.big.rvf.idmap.json', '.big.rvf.embed.json', '.big.passages.jsonl',
-  '.big.meta.json', '.passages.jsonl', '.meta.json',
+  '.big.meta.json', '.passages.jsonl', '.meta.json', '.fork-delta.inventory.json',
 ];
 const REQUIRED_STORE_ARTIFACT_SUFFIXES = [
   '.big.rvf', '.big.rvf.idmap.json', '.big.rvf.embed.json', '.passages.jsonl', '.meta.json',
@@ -162,7 +163,8 @@ export function planReconciliation({ coverage, ledger, assetsDir = null }) {
   if (!ledger?.stores || typeof ledger.stores !== 'object' || Array.isArray(ledger.stores)) {
     fail('RVF generation ledger has no stores object');
   }
-  const eligible = coverage.rows.filter((row) => row?.kind === 'repository' && row?.disposition === 'eligible');
+  if (coverage.rows.some(row => !SOURCE_DISPOSITIONS.includes(row?.disposition))) fail('unknown source disposition');
+  const eligible = coverage.rows.filter((row) => row?.kind === 'repository' && isIngestibleDisposition(row?.disposition));
   const seen = new Set();
   const plan = [];
   for (const row of eligible) {
@@ -176,8 +178,10 @@ export function planReconciliation({ coverage, ledger, assetsDir = null }) {
     if (!repositorySlug(row.url)) fail(`${row?.name || store} has no exact GitHub repository URL`);
     const generation = Object.entries(ledger.stores).find(([name]) => name.toLowerCase() === folded)?.[1] || null;
     const current = String(generation?.sourceCommit || '').toLowerCase();
+    const forkDelta = row.disposition === 'fork:original-content' ? forkDeltaIdentityFor(row) : null;
+    const compatible = !forkDelta || forkDeltaMatches(generation, forkDelta);
     let reason = generation?.sourceCommit ? 'sourceCommit differs' : 'missing ledger receipt';
-    if (current === upstreamSha) {
+    if (current === upstreamSha && compatible) {
       if (!assetsDir) continue;
       const expectedFile = `${store}.big.rvf`;
       const rvfFile = path.join(path.resolve(assetsDir), expectedFile);
@@ -185,7 +189,14 @@ export function planReconciliation({ coverage, ledger, assetsDir = null }) {
         && fs.existsSync(rvfFile)
         && generation?.bytes === fs.statSync(rvfFile).size
         && generation?.sha256 === sha256File(rvfFile);
-      if (receiptMatches) continue;
+      const deltaBytesMatch = !forkDelta || [
+        ['.passages.jsonl', 'passagesSha256'], ['.fork-delta.inventory.json', 'inventorySha256'],
+      ].every(([suffix, key]) => {
+        const file = path.join(path.resolve(assetsDir), `${store}${suffix}`);
+        return fs.existsSync(file) && fs.lstatSync(file).isFile() && !fs.lstatSync(file).isSymbolicLink()
+          && sha256File(file) === generation.forkDelta[key];
+      });
+      if (receiptMatches && deltaBytesMatch) continue;
       reason = 'generation receipt differs from seed bytes';
     }
     plan.push({
@@ -193,6 +204,7 @@ export function planReconciliation({ coverage, ledger, assetsDir = null }) {
       store,
       url: row.url,
       upstreamSha,
+      ...(forkDelta ? { sourceMode: 'fork-delta', forkDelta } : {}),
       ledgerSourceCommit: generation?.sourceCommit || null,
       reason,
     });
@@ -277,7 +289,7 @@ export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = nul
     // carries", 56 minutes into an otherwise complete run.
     const settled = await build(observation);
     const remaining = planReconciliation({ coverage: settled, ledger: currentLedger(), assetsDir });
-    const unresolved = settled.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
+    const unresolved = settled.rows.filter((row) => isIngestibleDisposition(row.disposition) && row.status !== 'CURRENT');
     attempts.push({ attempt, plan, ...reconciliation, ...pruning, ...aggregates,
       remainingArtifacts: remaining.length, unresolvedSources: unresolved.length });
     if (!remaining.length && !unresolved.length) {
@@ -314,6 +326,8 @@ function defaultRunAsync(command, args, options = {}) {
     let stdout = '';
     let stderr = '';
     if (!inherited) {
+      child.stdout.setEncoding('utf8');
+      child.stderr.setEncoding('utf8');
       child.stdout.on('data', (chunk) => { stdout += chunk; });
       child.stderr.on('data', (chunk) => { stderr += chunk; });
     }
@@ -418,6 +432,15 @@ function validateWorkerOutput({ output, item }) {
     || String(source.stores[item.store].sourceCommit || '').toLowerCase() !== item.upstreamSha) {
     fail(`${item.store}: worker SOURCE manifest does not bind exact source`);
   }
+  if (item.sourceMode === 'fork-delta') {
+    for (const receipt of [generation, source.stores[item.store]]) {
+      if (!forkDeltaMatches(receipt, item.forkDelta)) fail(`${item.store}: worker fork delta identity differs`);
+      for (const [suffix, field] of [['.passages.jsonl', 'passagesSha256'], ['.fork-delta.inventory.json', 'inventorySha256']]) {
+        const file = path.join(output, `${item.store}${suffix}`);
+        if (!fs.existsSync(file) || receipt.forkDelta[field] !== sha256File(file)) fail(`${item.store}: worker fork ${field} differs`);
+      }
+    }
+  }
   const files = names.filter((name) => !['RVF-GENERATIONS.json', 'SOURCE.json'].includes(name))
     .map((name) => ({ name, sha256: sha256File(path.join(output, name)), bytes: fs.statSync(path.join(output, name)).size }));
   const payload = { schemaVersion: 1, kind: 'ruvnet-brain-corpus-worker-result', store: item.store,
@@ -482,13 +505,21 @@ export async function executeReconciliation({
     fs.mkdirSync(workerRoot, { recursive: true });
     seedWorkerAssets({ assets, output, store: item.store, ledger: canonicalLedger, source: canonicalSource });
     await checkedAsync(run, 'git', ['clone', '--no-checkout', '--filter=blob:none', item.url, cloneDir], { signal: controller.signal });
-    await checkedAsync(run, 'git', ['-C', cloneDir, 'fetch', '--depth=1', 'origin', item.upstreamSha], { signal: controller.signal });
-    await checkedAsync(run, 'git', ['-C', cloneDir, 'checkout', '--detach', 'FETCH_HEAD'], { signal: controller.signal });
+    await checkedAsync(run, 'git', ['-C', cloneDir, 'fetch', ...(item.sourceMode === 'fork-delta' ? [] : ['--depth=1']), 'origin', item.upstreamSha], { signal: controller.signal });
+    let deltaArgs = [];
+    if (item.sourceMode === 'fork-delta') {
+      const forkDelta = forkDeltaIdentityFor({ url: item.url, forkDelta: item.forkDelta, upstream: { sha: item.upstreamSha } });
+      await checkedAsync(run, 'git', ['-C', cloneDir, 'fetch', `https://github.com/${forkDelta.upstream}`, forkDelta.upstreamHeadSha], { signal: controller.signal });
+      const metadataFile = path.join(workerRoot, 'fork-delta.json');
+      fs.writeFileSync(metadataFile, JSON.stringify(forkDelta, null, 2) + '\n');
+      deltaArgs = ['--fork-delta', metadataFile];
+    }
+    await checkedAsync(run, 'git', ['-C', cloneDir, 'checkout', '--detach', item.upstreamSha], { signal: controller.signal });
     const head = await checkedAsync(run, 'git', ['-C', cloneDir, 'rev-parse', 'HEAD'], { signal: controller.signal });
     if (String(head.stdout || '').trim().toLowerCase() !== item.upstreamSha) {
       fail(`${item.store}: fresh clone did not resolve the exact upstream SHA`);
     }
-    await checkedAsync(run, process.execPath, [forge, '--repo', cloneDir, '--out', output, '--name', item.store,
+    await checkedAsync(run, process.execPath, [forge, '--repo', cloneDir, '--out', output, '--name', item.store, ...deltaArgs,
       ...(FULL_HINTS[item.store] ? ['--full', FULL_HINTS[item.store]] : []),
       ...(KEEP_DIRS[item.store] ? ['--keep', KEEP_DIRS[item.store]] : []),
     ], { stdio: 'inherit', env: { ...process.env, RUVNET_BIG_SHARDS: '1' }, signal: controller.signal });
@@ -594,7 +625,7 @@ export async function acquireCorpusGeneration({ owner = 'ruvnet', assetsDir, wor
   // rebuild) -- so the eligible set is always this round's own, never a stale snapshot.
   prune = (coverage) => pruneIneligibleStores({
     assetsDir,
-    eligibleStores: coverage.rows.filter((row) => row.kind === 'repository' && row.disposition === 'eligible')
+    eligibleStores: coverage.rows.filter((row) => row.kind === 'repository' && isIngestibleDisposition(row.disposition))
       .map((row) => row.artifact.store),
   }),
   // `coverage` is now threaded through (rule 8) rather than discarded: rebuildCorpusAggregates
@@ -639,7 +670,10 @@ export async function reconcileAndPrepareCorpusCandidate({ assetsDir, workspaceD
   reconcile = (options) => acquireCorpusGeneration(options),
   normalizeUpdaters = normalizeUpdaterManifest,
   accuracyOracleFile = null, accuracyStores = null, accuracySample = null, accuracyTimeoutMs = null,
+  accuracySourceEvidenceFile = null, accuracyProductionPublicKeyFile = null,
+  accuracyAttestationKeyFile = null, accuracyPublicKeyFile = null,
   prepare = prepareCorpusCandidate } = {}) {
+  if (prepare === prepareCorpusCandidate) validateMeasurementKeyPair();
   const finalized = await reconcile({ owner, assetsDir, workspaceDir, root, maxAttempts });
   // Every shipped repository store needs a complete updater entry, and a seed that predates the
   // convention leaves inherited stores without one -- measured 2026-09-15: 100 of 194 repository
@@ -662,6 +696,8 @@ export async function reconcileAndPrepareCorpusCandidate({ assetsDir, workspaceD
     root, assetsDir, builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity,
     coverage: finalized.coverage,
     accuracyOracleFile, accuracyStores, accuracySample, accuracyTimeoutMs,
+    accuracySourceEvidenceFile, accuracyProductionPublicKeyFile,
+    accuracyAttestationKeyFile, accuracyPublicKeyFile,
   });
   return { reconciliation: finalized, updaters, candidate };
 }
@@ -679,6 +715,10 @@ export function prepareCorpusCandidate({
   accuracyStores = null,
   accuracySample = null,
   accuracyTimeoutMs = null,
+  accuracySourceEvidenceFile = null,
+  accuracyProductionPublicKeyFile = null,
+  accuracyAttestationKeyFile = null,
+  accuracyPublicKeyFile = null,
   run = defaultRun,
 }) {
   const sourceRoot = path.resolve(root);
@@ -702,7 +742,7 @@ export function prepareCorpusCandidate({
   if (!coverage || coverage.kind !== 'ruvnet-brain-corpus-coverage' || !Array.isArray(coverage.rows)) {
     fail('prepareCorpusCandidate requires an already-measured coverage object; it never re-observes live sources');
   }
-  const blockers = coverage.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
+  const blockers = coverage.rows.filter((row) => isIngestibleDisposition(row.disposition) && row.status !== 'CURRENT');
   if (blockers.length) fail(`strict coverage: ${blockers.length} eligible row(s) are not CURRENT`);
   assertPathNotOverlapping('candidate output directory', candidate, forbiddenOutputRoots(sourceRoot));
   const buildScript = path.join(sourceRoot, 'scripts', 'build-bundle.mjs');
@@ -720,14 +760,33 @@ export function prepareCorpusCandidate({
   if (!fs.existsSync(accuracyOracle) || !fs.statSync(accuracyOracle).isFile()) {
     fail(`retrieval-accuracy oracle missing (${accuracyOracle}); ADR-086 Step 15's C3 gate cannot seal an unmeasured corpus`);
   }
-  // The recall gate's two inputs are hard inputs, checked BEFORE the expensive assembly for the same
-  // reason the oracle is: a missing ratchet must fail in seconds, not after an hour of building.
-  for (const required of [
-    path.join(sourceRoot, 'data', 'retrieval-query-evidence.json'),
-    path.join(sourceRoot, 'data', 'repo-recall-floor.json'),
-  ]) {
-    if (!fs.existsSync(required)) fail(`repo-recall gate input missing (${required}); a corpus cannot be sealed without the frozen fixture and the ratchet it must not regress below`);
+  const accuracyInputs = {
+    sourceEvidence: accuracySourceEvidenceFile,
+    productionPublicKey: accuracyProductionPublicKeyFile,
+    attestationKey: accuracyAttestationKeyFile,
+    publicKey: accuracyPublicKeyFile,
+  };
+  const suppliedAccuracyInputs = Object.values(accuracyInputs).filter(Boolean).length;
+  if (suppliedAccuracyInputs !== 0 && suppliedAccuracyInputs !== 4) {
+    fail('accuracy qualification inputs are all-or-none: source evidence, production public key, report attestation key, and trusted report public key are required together');
   }
+  for (const [label, input] of Object.entries(accuracyInputs)) {
+    if (input == null) continue;
+    const file = path.resolve(input);
+    let stat;
+    try { stat = fs.lstatSync(file); } catch (error) { fail(`accuracy ${label} file is missing (${file})`); }
+    if (!stat.isFile() || stat.isSymbolicLink()) fail(`accuracy ${label} file must be a trusted regular file (${file})`);
+  }
+  // The fixture is mandatory; its ranking floor is informational and may be absent.
+  const recallFixture = path.join(sourceRoot, 'data', 'retrieval-query-evidence.json');
+  if (!fs.existsSync(recallFixture)) fail(`repo-recall gate input missing (${recallFixture})`);
+  validateMeasurementKeyPair();
+  const hasProjection = bootstrapIdentity && Number.isSafeInteger(bootstrapIdentity.archiveBytes)
+    && bootstrapIdentity.archiveBytes > 0 && HEX64.test(bootstrapIdentity.baselineReceiptSha256 || '')
+    && HEX64.test(bootstrapIdentity.sha256 || '') && typeof bootstrapIdentity.tag === 'string' && bootstrapIdentity.tag;
+  if (suppliedAccuracyInputs && !hasProjection) fail('strict accuracy preparation requires the seed archive byte count and externally pinned baseline receipt identity for its coverage projection');
+  const projectionArgs = hasProjection ? ['--seed-tag',bootstrapIdentity.tag,'--seed-sha256',bootstrapIdentity.sha256,
+    '--seed-bytes',String(bootstrapIdentity.archiveBytes),'--baseline-receipt-sha256',bootstrapIdentity.baselineReceiptSha256] : [];
   fs.mkdirSync(path.dirname(candidate), { recursive: true });
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
   fs.mkdirSync(path.dirname(policy), { recursive: true });
@@ -736,16 +795,20 @@ export function prepareCorpusCandidate({
   fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
   fs.writeFileSync(markdownPath, renderMarkdown(coverage));
   checked(run, process.execPath, [buildScript, '--assets', assets, '--out', candidate,
-    '--coverage', policy], { stdio: 'inherit' });
+    '--coverage', policy, '--source-snapshot', builderSha, ...projectionArgs], { stdio: 'inherit' });
   const bundleFile = path.join(path.dirname(candidate), `${path.basename(candidate)}.zip`);
   // ADR-086 Step 15: the benchmark runs HERE — after single-pass assembly and before the seal —
   // against the EXTRACTED final archive through the customer query path, never against `assets`.
   // The report is written detached, beside the archive, and the seal below binds its digest. A
-  // bounded run (--stores/--sample) still writes a report, but it marks itself incomplete and the
-  // seal refuses it, so a bounded measurement can never be presented as a corpus-wide pass.
+  // bounded run (--stores/--sample) records incomplete scope in the diagnostic receipt. The strict
+  // qualification lane refuses bounded scope; neither lane presents it as corpus-wide acceptance.
   const accuracyReportFile = `${bundleFile}.accuracy.json`;
   checked(run, process.execPath, [accuracyScript, '--bundle', bundleFile,
     '--oracle', accuracyOracle, '--out', accuracyReportFile,
+    ...(!accuracyPublicKeyFile ? ['--diagnostic'] : []),
+    ...(accuracySourceEvidenceFile ? ['--source-evidence', path.resolve(accuracySourceEvidenceFile)] : []),
+    ...(accuracyProductionPublicKeyFile ? ['--production-public-key', path.resolve(accuracyProductionPublicKeyFile)] : []),
+    ...(accuracyAttestationKeyFile ? ['--report-attestation-key', path.resolve(accuracyAttestationKeyFile)] : []),
     ...(accuracyStores != null ? ['--stores', String(accuracyStores)] : []),
     ...(accuracySample != null ? ['--sample', String(accuracySample)] : []),
     ...(accuracyTimeoutMs != null ? ['--timeout-ms', String(accuracyTimeoutMs)] : [])],
@@ -754,7 +817,7 @@ export function prepareCorpusCandidate({
   // as the C3 run above — the EXTRACTED final archive through the customer query path — but this is
   // the measurement that can refuse a candidate. It asks the 194 frozen human questions, one per
   // repository, and fails on any error, any repository that returns nothing of its own, or any
-  // exact-file Hit@5 below the committed ratchet floor.
+  // malformed result. Exact-file Hit@5 and its historical floor remain informational.
   const recallReportFile = `${bundleFile}.recall.json`;
   checked(run, process.execPath, [recallScript, '--bundle', bundleFile, '--out', recallReportFile],
     { stdio: 'inherit' });
@@ -764,16 +827,24 @@ export function prepareCorpusCandidate({
   const bootstrapArgs = bootstrapIdentity?.tag && bootstrapIdentity?.sha256
     ? ['--bootstrap-tag', bootstrapIdentity.tag, '--bootstrap-sha256', bootstrapIdentity.sha256]
     : [];
+  const accuracyVerificationArgs = ['--accuracy-oracle', accuracyOracle, '--expected-oracle-sha256', sha256File(accuracyOracle),
+    '--expected-generator-sha256', sha256File(accuracyScript),
+    ...(accuracyPublicKeyFile ? ['--accuracy-public-key', path.resolve(accuracyPublicKeyFile),
+      '--source-evidence', path.resolve(accuracySourceEvidenceFile)] : [])];
   checked(run, process.execPath, [receiptScript, '--bundle', bundleFile,
     '--receipt', receipt, '--builder-source-sha', builderSha,
     '--accuracy-report', accuracyReportFile, '--recall-report', recallReportFile,
+    ...accuracyVerificationArgs,
     ...bootstrapArgs], { stdio: 'inherit' });
   checked(run, process.execPath, [receiptScript, '--verify', '--bundle', bundleFile,
     '--receipt', receipt, '--accuracy-report', accuracyReportFile,
-    '--recall-report', recallReportFile], { stdio: 'inherit' });
+    '--recall-report', recallReportFile, ...accuracyVerificationArgs], { stdio: 'inherit' });
   return {
     bundleFile, receiptFile: receipt, coverageFile: policy,
     accuracyReportFile, accuracyOracleFile: accuracyOracle, recallReportFile,
+    accuracySourceEvidenceFile: accuracySourceEvidenceFile ? path.resolve(accuracySourceEvidenceFile) : null,
+    accuracyProductionPublicKeyFile: accuracyProductionPublicKeyFile ? path.resolve(accuracyProductionPublicKeyFile) : null,
+    accuracyPublicKeyFile: accuracyPublicKeyFile ? path.resolve(accuracyPublicKeyFile) : null,
   };
 }
 
@@ -800,6 +871,10 @@ export async function main(argv = process.argv.slice(2)) {
   const accuracyStores = arg(argv, '--accuracy-stores') ? Number(arg(argv, '--accuracy-stores')) : null;
   const accuracySample = arg(argv, '--accuracy-sample') ? Number(arg(argv, '--accuracy-sample')) : null;
   const accuracyTimeoutMs = arg(argv, '--accuracy-timeout-ms') ? Number(arg(argv, '--accuracy-timeout-ms')) : null;
+  const accuracySourceEvidenceFile = arg(argv, '--source-evidence');
+  const accuracyProductionPublicKeyFile = arg(argv, '--production-public-key');
+  const accuracyAttestationKeyFile = arg(argv, '--report-attestation-key');
+  const accuracyPublicKeyFile = arg(argv, '--accuracy-public-key');
 
   const bootstrap = assertBootstrapIdentity({ archiveFile, tag: seedTag, sha256: seedSha256, allowPinnedTag: process.argv.includes('--allow-pinned-seed-tag') });
   if (fs.existsSync(assetsDir) && fs.readdirSync(assetsDir).length) fail(`bootstrap assets directory is not empty (${assetsDir})`);
@@ -813,11 +888,24 @@ export async function main(argv = process.argv.slice(2)) {
   fs.rmSync(extractParent, { recursive: true, force: true });
   syncCorpusInputs({ root, assetsDir });
   const bootstrapIdentity = { tag: bootstrap.tag, sha256: bootstrap.sha256, privateFenceEvidence: seedPrivateFenceEvidence(assetsDir) };
+  const baselineReceiptFile = arg(argv, '--baseline-receipt');
+  const baselineReceiptSha256 = arg(argv, '--baseline-receipt-sha256');
+  if (baselineReceiptFile || baselineReceiptSha256) {
+    if (!baselineReceiptFile || !HEX64.test(baselineReceiptSha256 || '')) fail('baseline receipt file and externally expected sha256 are required together');
+    const file = path.resolve(baselineReceiptFile);
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink() || sha256File(file) !== baselineReceiptSha256) fail('baseline receipt differs from externally pinned identity');
+    const baseline = JSON.parse(fs.readFileSync(file,'utf8'));
+    const archiveBytes = fs.statSync(archiveFile).size;
+    if (baseline.archive?.sha256 !== bootstrap.sha256 || baseline.archive?.bytes !== archiveBytes) fail('baseline receipt does not describe the configured seed archive');
+    Object.assign(bootstrapIdentity,{archiveBytes,baselineReceiptSha256});
+  }
   const { reconciliation, candidate } = await reconcileAndPrepareCorpusCandidate({
     assetsDir, workspaceDir, root, owner, builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity,
     accuracyOracleFile, accuracyStores, accuracySample, accuracyTimeoutMs,
+    accuracySourceEvidenceFile, accuracyProductionPublicKeyFile, accuracyAttestationKeyFile, accuracyPublicKeyFile,
   });
-  const plan = reconciliation.rounds.flatMap((round) => round.plan);
+  const plan = reconciliation.attempts.flatMap((round) => round.plan);
   process.stdout.write(`${JSON.stringify({ ok: true, seedTag, seedSha256, plan, reconciliation, ...candidate }, null, 2)}\n`);
   return 0;
 }

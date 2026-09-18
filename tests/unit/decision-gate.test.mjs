@@ -132,6 +132,14 @@ withBash('ADR-067 — the real gate, fired the way the host fires it', () => {
     expect(r.stderr, 'stderr on an allow would surface as a spurious error to the user').toBe('');
   }, 40_000);
 
+  it('reports budget exhaustion explicitly instead of claiming every policy was consulted', () => {
+    const r = fire('write', { file_path: path.join(os.tmpdir(), 'ordinary.txt'), content: 'x' }, 'Write', {
+      RUVNET_DECISION_BUDGET_MS: '1', // Deliberately exhaust the real policy deadline.
+    });
+    expect(r.code).toBe(0);
+    expect(r.stderr).toMatch(/ALLOWED WITHOUT CONSULTING:/);
+  }, 40_000);
+
   it('an unknown sub-event allows rather than guessing', () => {
     expect(fire('nonsense', { file_path: '/tmp/x' }).code).toBe(0);
   }, 40_000);

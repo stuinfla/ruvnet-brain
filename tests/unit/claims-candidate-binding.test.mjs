@@ -1,3 +1,4 @@
+import { fixtureArtifact } from '../../scripts/ci/coverage-fixture.mjs';
 import { afterEach, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -31,7 +32,7 @@ function fixture(claimText = '2 chunks, 1 public stores, 1 built stores') {
   const corpus = { schemaVersion: 1, kind: 'ruvnet-brain-corpus-coverage', sourceObservationSha256: '1'.repeat(64),
     generatorSourceSha: '2'.repeat(64), snapshotRoot: '3'.repeat(64), rows: [{ key: 'repo:fixture/alpha', kind: 'repository',
       name: 'alpha', url: 'https://example.invalid/alpha', disposition: 'eligible', status: 'CURRENT', upstream: { commit: sha },
-      artifact: { store: 'alpha' }, reasons: [] }], totals: { repositories: 1, gists: 0, rows: 1, byStatus: { CURRENT: 1 } },
+      artifact: fixtureArtifact('alpha', ledger), reasons: [] }], totals: { repositories: 1, gists: 0, rows: 1, byStatus: { CURRENT: 1 } },
     enumerationReceipt: { schemaVersion: 1, terminal: true, duplicateKeys: 0, repositories: { expected: 1, pages: [] }, gists: { expected: 0, pages: [] } },
     policy: { policyDispositionDigests: [], exemptionDigests: [] } };
   corpus.coverageGeneration = coverageGenerationFor({ ...corpus, ...corpus.policy }); write(kb, 'CORPUS-COVERAGE.json', corpus);

@@ -55,6 +55,7 @@ beforeEach(() => {
   fs.mkdirSync(path.join(tmp, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(tmp, 'kb'), { recursive: true });
   fs.mkdirSync(path.join(tmp, 'data'), { recursive: true });
+  fs.symlinkSync(path.join(REPO_ROOT, 'node_modules'), path.join(tmp, 'node_modules'));
   fs.mkdirSync(path.join(tmp, 'plugin/.claude-plugin'), { recursive: true });
   // THE DEPENDENCY LIST IS DERIVED, NOT HAND-LISTED (2026-08-12).
   //

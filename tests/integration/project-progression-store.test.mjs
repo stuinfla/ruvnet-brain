@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createProgressionSnapshot, digestCanonical } from '../../plugin/scripts/project-progression-contract.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
 import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
+import { ProgressionOutbox } from '../../plugin/scripts/project-progression-outbox.mjs';
 import { resolveRuflo } from '../../plugin/scripts/ruflo-bin.mjs';
 import { getVersion } from '../../scripts/version.mjs';
 
@@ -112,7 +113,7 @@ describe('managed ProjectProgression append and readback', () => {
     expect(receipt.readbackDigest).toBe(snapshot.payloadDigest);
     expect(JSON.parse(fake.rows.get(`${NAMESPACE}/${snapshot.eventKey}`))).toEqual(snapshot);
     expect(bridge.outbox.pendingSnapshots()).toEqual([]);
-    const persisted = fs.readFileSync(bridge.outbox.path, 'utf8');
+    const persisted = JSON.stringify(bridge.outbox.records());
     expect(persisted).toContain('[REDACTED:api-key]');
     expect(persisted).not.toContain('fictional-key-material');
     expect(persisted).not.toContain('fictional-password');
@@ -121,10 +122,11 @@ describe('managed ProjectProgression append and readback', () => {
 
   it('fsyncs the outbox, invokes literal managed Ruflo argv, exact-retrieves, then commits', () => {
     const projectRoot = temporaryProject();
-    const outboxPath = path.join(projectRoot, '.swarm', 'project-progression-outbox.jsonl');
     const fake = memoryRunner({
       beforeStore() {
-        expect(fs.readFileSync(outboxPath, 'utf8')).toContain('"type":"snapshot"');
+        expect(new ProgressionOutbox({ projectRoot }).records()).toEqual([
+          expect.objectContaining({ type: 'snapshot' }),
+        ]);
       },
     });
     const bridge = new ProjectProgressionStore({
@@ -213,6 +215,7 @@ describe('managed ProjectProgression append and readback', () => {
 
     expect(() => bridge.capture(unsafe)).toThrow(/invalid progression snapshot.*unredacted/i);
     expect(fs.existsSync(bridge.outbox.path)).toBe(false);
+    expect(fs.existsSync(bridge.outbox.spoolPath)).toBe(false);
     expect(fake.calls).toEqual([]);
   });
 

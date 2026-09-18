@@ -37,3 +37,13 @@ export const ALL_HOST_EVENTS = [
   'PreToolUse', 'PermissionRequest', 'PostToolUse', 'PreCompact', 'PostCompact',
   'SessionStart', 'SessionEnd', 'UserPromptSubmit', 'SubagentStart', 'SubagentStop', 'Stop',
 ];
+
+// Normalize both native snake_case and manifest PascalCase names at the host boundary.
+const EVENT_NAMES = new Map(ALL_HOST_EVENTS.flatMap((event) => [
+  [event.toLowerCase(), event],
+  [event.replace(/[A-Z]/g, (letter, index) => `${index ? '_' : ''}${letter.toLowerCase()}`), event],
+]));
+export function canonicalCodexEvent(value) {
+  const raw = String(value || '');
+  return EVENT_NAMES.get(raw.toLowerCase()) || raw;
+}

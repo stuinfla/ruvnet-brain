@@ -21,7 +21,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const SOURCE_TREE_VERSION = 'oracle-source-tree/1';
+import { languageOf } from './source-language.mjs';
+
+export const SOURCE_TREE_VERSION = 'oracle-source-tree/2';
 export const LFS_POINTER_PREFIX = 'version https://git-lfs.github.com/spec/v1';
 // git's own binary heuristic looks for a NUL in the first 8000 bytes; use the same boundary.
 export const BINARY_SNIFF_BYTES = 8000;
@@ -49,7 +51,7 @@ export function resolveCommit({ repoDir, commit }) {
 export function listTree({ repoDir, commit }) {
   const raw = git(repoDir, ['ls-tree', '-r', '-l', '-z', '--full-tree', commit]);
   const entries = [];
-  for (const record of raw.toString('utf8').split('\0')) {
+  for (const record of new TextDecoder('utf-8', { fatal: true }).decode(raw).split('\0')) {
     if (!record) continue;
     const tab = record.indexOf('\t');
     if (tab < 0) throw new Error(`unparseable ls-tree record: ${record.slice(0, 120)}`);
@@ -90,12 +92,16 @@ export function classifyEntry(entry, bytes) {
   if (entry.type === 'commit' || entry.mode === '160000') return 'gitlink';
   if (entry.mode === '120000') return 'symlink';
   if (!bytes) throw new Error(`classifyEntry(${entry.path}) needs the blob bytes`);
-  if (bytes.subarray(0, LFS_POINTER_PREFIX.length).toString('utf8') === LFS_POINTER_PREFIX) return 'lfs-pointer';
-  if (bytes.subarray(0, BINARY_SNIFF_BYTES).includes(0)) return 'binary';
+  if (/^version https:\/\/git-lfs\.github\.com\/spec\/v1\noid sha256:[a-f0-9]{64}\nsize (?:0|[1-9][0-9]*)\n?$/.test(bytes.toString('utf8'))) return 'lfs-pointer';
+  if (bytes.subarray(0, BINARY_SNIFF_BYTES).includes(0)) {
+    // A NUL in a UTF-8 source literal is not permission to hide source from semantic review.
+    const source = languageOf(entry, bytes.toString('utf8')) !== null;
+    if (!source) return 'binary'; // recognized source reaches decoding validation, including invalid UTF-8
+  }
   return entry.mode === '100755' ? 'executable' : 'file';
 }
 
-function canonical(value) {
+export function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (value && typeof value === 'object') {
     return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonical(value[k])}`).join(',')}}`;
@@ -127,6 +133,29 @@ export function snapshotManifest({ repoDir, commit, repo }) {
   });
   const body = { version: SOURCE_TREE_VERSION, repo, commitSha, treeSha, entries: rows };
   return { manifest: { ...body, manifestSha256: sha256(Buffer.from(canonical(body), 'utf8')) }, blobs };
+}
+
+/** Verify content-addressed snapshot inputs before adapters or exclusions consume them. */
+export function validateSnapshot({ manifest, blobs }) {
+  const { manifestSha256, ...body } = manifest;
+  if (manifestSha256 !== sha256(Buffer.from(canonical(body)))) throw new Error('snapshot manifest digest mismatch');
+  const paths = new Set();
+  for (const entry of manifest.entries) {
+    if (paths.has(entry.path) || typeof entry.path !== 'string' || !entry.path || entry.path.startsWith('/')
+      || entry.path.split('/').some(p => !p || p === '..' || p === '.')) throw new Error('invalid or duplicate snapshot path');
+    paths.add(entry.path);
+    if (['symlink', 'gitlink'].includes(entry.entryKind)) {
+      const requiredMode = entry.entryKind === 'symlink' ? '120000' : '160000';
+      if (entry.mode !== requiredMode) throw new Error(`snapshot mode mismatch: ${entry.path}`);
+      continue;
+    }
+    const bytes = blobs.get(entry.objectSha);
+    if (!Buffer.isBuffer(bytes) || bytes.length !== entry.size || sha256(bytes) !== entry.contentSha256
+      || crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') !== entry.objectSha) {
+      throw new Error(`snapshot blob integrity mismatch: ${entry.path}`);
+    }
+    if (classifyEntry({ ...entry, type: 'blob' }, bytes) !== entry.entryKind) throw new Error(`snapshot classification mismatch: ${entry.path}`);
+  }
 }
 
 function arg(argv, flag) { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : undefined; }

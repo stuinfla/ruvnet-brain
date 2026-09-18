@@ -1,6 +1,6 @@
 # Security Policy
 
-Updated: 2026-08-02
+Updated: 2026-09-17 18:31:22 EDT | Version 1.0.2
 Created: 2026-07-06
 
 RuvNet Brain runs on your machine, downloads a knowledge bundle, and (with your consent) can update
@@ -29,32 +29,36 @@ Include: what you found, a `file:line` or reproduction, the impact, and (if you 
 
 ## What runs automatically, and when
 
-Installing the plugin installs everything under `plugin/` (that's the marketplace source —
-[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) points at `./plugin`), but only the
-hooks actually registered in [`plugin/hooks/hooks.json`](plugin/hooks/hooks.json) run automatically. Here
-is every one of them, what it does, and whether it can block you:
+The current registrations live in `plugin/hooks/hooks.json` (Claude) and
+`plugin/hooks/codex-hooks.json` (Codex). Installing a script does not register it as an automatic
+hook. These manifests retain the continuity and grounding paths below:
 
-| Event | Script | What it does | Can it block a turn? |
-|---|---|---|---|
-| `SessionStart` | `session-start.sh` | Prints the "brain active" confirmation, checks a handful of local state files (nightly-failure marker, brain-health flags), and — rate-limited to once per ~15 min — does a single read-only `curl` to check whether a newer plugin version exists. First-run-only, it asks two one-time yes/no questions (auto-update? anonymous usage counts?) and records your answer to a local file. | No — always exits 0. |
-| `UserPromptSubmit` | `ground-ruvnet.sh` | Reads your prompt text and, if it matches certain keyword patterns, injects grounding/context text before Claude answers (e.g. call `search_ruvnet` before asserting a stack capability). Also runs a rate-limited (~6 h) background version check against the public npm registry for a few packages. | No — always exits 0. |
-| `PreToolUse` (`Write`\|`Edit`\|`Bash`) | `hijack-ruvnet.sh` | Scans the content of a proposed Write/Edit/Bash for third-party defaults it thinks the rUv stack already has a native replacement for, and injects a suggestion via `additionalContext`. | No — `permissionDecision: "defer"`, never denies. |
-| `PreToolUse` (`Task`\|`Agent`) | `route-dispatch.sh` | For users who opted into model-cost routing, records whether a subagent declared a model or inherited the caller's model. Claude Code 2.1.220 checks Agent/Task hook results after dispatch, so this is bounded, silent audit rather than a false refusal ([#84](https://github.com/stuinfla/ruvnet-brain/issues/84)). No profile, or an assumption-only profile, means the hook is a no-op. | **No.** Always exits 0; the host currently offers no synchronous input-dependent enforcement boundary for these tools. |
-| `PreToolUse` (`Bash`) | `verify-interface.sh` | For a confirmed router profile, legacy raw Bash that mentions a managed ecosystem CLI receives advisory context pointing to the structured `ruvnet_cli_help` → `ruvnet_cli_run` boundary. Issue #48 retired authorization decisions reconstructed from shell text; the structured MCP tools enforce the finite executable list, successful-help freshness, literal argv, and `shell:false`. | **No.** The legacy hook always exits 0 and is silent for absent or assumption-only profiles. |
-| `PreToolUse` (`Bash`) | `design-wall.sh` | **Gated to this repo, not opt-in-gated.** First resolves the git root and checks the plugin manifest's own `name` field (`design-wall.sh:48-56`); **on any other project it exits 0 immediately and does nothing.** Inside a ruvnet-brain checkout it blocks `git commit` when staged files include anything under `explainer/`, `console/`, or a `README.md`, blocks `vercel ... --prod`, and blocks `open`-ing a hardcoded list of this project's own URLs — unless a fresh (≤45 min) passing design-grade stamp exists. Escape hatch: `RUVNET_SKIP_DESIGN_WALL=1`. | **Yes — but only inside this repo.** It cannot block work in your own projects. (An earlier version of this row said it could match paths in *any* project; the repo-identity gate makes that false. Corrected 2026-07-22.) |
-| `PreToolUse` (`Write`\|`Edit`\|`MultiEdit`\|`NotebookEdit`) | `protect-brain-state.sh` | Blocks a write **only** to the brain's own on/off state: the sentinel `~/.config/ruvnet-brain/brain-off` and the settings mirror `~/.config/ruvnet-brain/settings.json` (plus their `.bak-*`/`.lock`/`.tmp-*` siblings). It exists so an agent cannot switch the brain back on — or off — behind your back; ADR-054 treats an agent-initiated flip as a consent violation. It reads only the target path, never file content, and touches nothing else. | **Yes — and this one is neither opt-in nor repo-scoped**, because a consent switch an agent can silently flip is not a switch. It matches those paths and nothing else, so it cannot block ordinary work. Added 2026-07-26 (v3.9.84). |
-| `UserPromptSubmit`, `PreToolUse` (`Write`\|`Edit`), `PreToolUse` (`Bash`), `Stop` | `lesson-hooks.sh` | Surfaces lessons you have explicitly ratified at the matching decision point. Reads only the event name, never prompt or file content. Writes nothing. Ratified blocking lessons propagate `exit 2`; everything else is advisory. | **Yes, for lessons you ratified yourself** via `scripts/lesson-ratify.mjs`. Model-inferred lessons are quarantined and can never become blocking. |
-| `UserPromptSubmit` | `anticipate.sh` | Reads your prompt text to decide whether to surface a capability you haven't been told about. The prompt is passed to a short-lived node child **as an environment variable, never written to a temp file**; persisted state is capability keys and `{id, action, at, severity, scope}` only — no prompt text reaches disk. | No — advisory only. |
-| `Stop` | `continuation-gate.mjs` | Reads the local token ledger to decide whether work should continue. Writes only when explicitly passed `--commit-to`. Lives inside the plugin dir (`${CLAUDE_PLUGIN_ROOT}/scripts/`). It previously resolved *outside* it, which meant it never ran in an installed plugin at all — only from a dev checkout. | No. |
-| `PostToolUse` (`Write`\|`Edit`\|`MultiEdit`\|`Bash`) | `learn-capture.sh` | Appends one line per tool call to a local per-session queue (mode `0600`, in a `0700` directory): the tool name plus either a Bash command's **leading verb chain only** — at most two tokens, stopping at the first token containing `=`, `/`, `@` or `:` — or an edited file's basename (never its path or contents). So `git push` is recorded as `git push`, while `export AWS_SECRET_ACCESS_KEY=…` records only `export` and `cd /Users/you/ClientProject` records only `cd`. **This previously captured the first 120 characters up to an embedded quote, which did not protect unquoted inline secrets; that was a real defect, fixed 2026-07-22 (ADR-038) and covered by a test that replays credential-bearing commands.** | No — always exits 0. |
-| `SessionEnd` | `learn-flush.mjs` | Reads that session's queue, dedupes to at most 8 distinct actions, and feeds them into the ruflo/AgentDB self-learning store **at `$HOME`** (i.e. your global, cross-project learner, not this project's `.swarm/memory.db`) via `ruflo hooks post-command`/`post-edit`. Deletes the queue file when done. | No — best-effort, every failure swallowed. |
+| Event | Registered responsibility |
+|---|---|
+| SessionStart | `session-start` restores session context. |
+| UserPromptSubmit | `unprompted-speech`, `ground-ruvnet`, and `grounding-turn-mark` provide context and mark grounding obligations. |
+| PreToolUse, write tools | `decision-gate write` checks the write decision. Codex also matches `apply_patch`. |
+| PostToolUse, successful search | `grounding-stamp` records the grounding evidence. |
+| Stop | `continuation-gate` and `grounding-turn-gate` can request continued work; Claude also captures `session-snapshot`. |
+| PreCompact | Claude captures `session-snapshot`; Codex has no registered PreCompact handler. |
+| SessionEnd | Both hosts capture `session-snapshot`. |
 
-`plugin/scripts/` also ships four more scripts — `ground-before-write.sh`, `grounding-stamp.sh`,
-`kling-preflight.sh`, `version-bump-gate.sh` — that are **not** referenced in `hooks.json`. They ship as
-inert files with every install; they only ever run if something *else* explicitly wires them into a
-`settings.json` (this repo's own [`.claude/settings.json`](.claude/settings.json) wires
-`version-bump-gate.sh` for this repo's own maintainers — that is a project-scoped dev convenience, not
-part of what an installed plugin does for you).
+The legacy broad Bash/Task interceptors are not registered by these manifests. Their retained
+scripts may still be explicitly invoked by user-owned configuration. The removed
+`verify-interface.sh` has no executable body; the current shim handles its former ID as a silent
+no-op without resolving or dispatching an older body. An already-running host with a frozen older
+shim requires an update/reload to acquire that behavior.
+
+Managed CLI interface enforcement is explicit: `ruvnet_cli_help` followed by `ruvnet_cli_run`.
+The MCP boundary validates executable names, help freshness, and literal argv, uses `shell:false`,
+and refuses adopted-project execution without trusted host identity and durable progression capture.
+This does not intercept arbitrary shell commands.
+
+Automatic execution is defined by the current hook manifests and their dispatcher. The dormant
+Kling preflight product copy has been removed; Kling-specific policy belongs to the separately
+installed Kling skill. Its private files are not part of this cleanup. The retained
+`version-bump-gate.sh` is an unregistered legacy interceptor, not an automatically installed gate.
+Grounding policies remain on the active decision-gate and successful-search paths.
 
 ## What leaves your machine — and what never does
 

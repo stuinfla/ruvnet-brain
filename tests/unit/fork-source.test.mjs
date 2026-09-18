@@ -41,11 +41,12 @@ describe('fork-source delta materialization', () => {
   it('validates pinned identity and emits only deterministic changed-operation documents', async () => {
     const f = fixture();
     const metadata = {
-      version: 'fork-delta/1', forkRepository: 'example/fork', upstream: 'example/upstream',
+      version: 'fork-delta/2', forkRepository: 'example/fork', upstream: 'example/upstream',
       upstreamHeadSha: f.base, forkHeadSha: f.head, mergeBaseSha: f.base, aheadBy: 2, behindBy: 0,
     };
     expect(validateForkDeltaIdentity(metadata)).toMatchObject(metadata);
     const out = await buildForkDeltaCorpus({ repo: f.root, name: 'fork', metadata });
+    tempDirs.push(out.outputDir);
     expect(out.sourceMode).toBe('fork-delta');
     expect(out.operations.map((x) => x.kind)).toEqual(['A', 'A', 'A', 'A', 'D', 'R']);
     expect(out.chunks.length).toBeGreaterThan(0);
@@ -57,7 +58,7 @@ describe('fork-source delta materialization', () => {
     expect(out.operations.find((x) => x.typed === 'submodule')).toMatchObject({ newMode: '160000', newObject: f.submoduleSha });
     expect(out.operations.find((x) => x.kind === 'R')).toMatchObject({ oldMode: '100644', newMode: '100755' });
     expect(out.operations.find((x) => x.paths[0] === 'literal\\name.txt')).toBeTruthy();
-    expect(out.chunks.some((chunk) => chunk.text.includes('Binary files'))).toBe(true);
+    expect(out.chunks.some((chunk) => chunk.operation.typed === 'binary' && chunk.text.includes('non-text binary operation'))).toBe(true);
     expect(out.chunks.every((chunk) => chunk.text === chunk.embedText)).toBe(true);
     expect(out.chunks.every((chunk) => chunk.operation?.paths?.length)).toBe(true);
     expect(passages).not.toMatch(/@@[^\n]*\n [^\n]/);
@@ -65,10 +66,28 @@ describe('fork-source delta materialization', () => {
     expect(out.passagesSha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it('records credential-shaped paths without reading or embedding their payload', async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.root, '.env'), 'FAKE_TEST_SECRET=must-not-be-embedded\n');
+    fs.writeFileSync(path.join(f.root, 'server.key'), 'FAKE_PRIVATE_KEY_TEST_BYTES\n');
+    git(f.root, 'add', '-f', '.env', 'server.key'); git(f.root, 'commit', '-qm', 'sensitive fixture');
+    const head = git(f.root, 'rev-parse', 'HEAD');
+    const out = await buildForkDeltaCorpus({ repo:f.root, name:'fork', metadata:{
+      version:'fork-delta/2', forkRepository:'example/fork', upstream:'example/upstream',
+      upstreamHeadSha:f.base, forkHeadSha:head, mergeBaseSha:f.base, aheadBy:3, behindBy:0,
+    }});
+    tempDirs.push(out.outputDir);
+    const passages=fs.readFileSync(path.join(out.outputDir, 'fork-delta.passages.jsonl'), 'utf8');
+    expect(passages).not.toContain('must-not-be-embedded');
+    expect(passages).not.toContain('FAKE_PRIVATE_KEY_TEST_BYTES');
+    for (const file of ['.env', 'server.key']) expect(out.operations.find(op=>op.paths.includes(file)))
+      .toMatchObject({typed:'sensitive-metadata-only', hunks:[], newObject:expect.stringMatching(/^[a-f0-9]{40}$/)});
+  });
+
   it('rejects a forged remote or pinned head before materialization', async () => {
     const f = fixture();
     const metadata = {
-      version: 'fork-delta/1', forkRepository: 'other/fork', upstream: 'example/upstream',
+      version: 'fork-delta/2', forkRepository: 'other/fork', upstream: 'example/upstream',
       upstreamHeadSha: f.base, forkHeadSha: f.head, mergeBaseSha: f.base, aheadBy: 2, behindBy: 0,
     };
     await expect(buildForkDeltaCorpus({ repo: f.root, name: 'fork', metadata })).rejects.toThrow(/remote/);
@@ -77,7 +96,7 @@ describe('fork-source delta materialization', () => {
   it('rejects graph counts that do not match the pinned ancestry', async () => {
     const f = fixture();
     const metadata = {
-      version: 'fork-delta/1', forkRepository: 'example/fork', upstream: 'example/upstream',
+      version: 'fork-delta/2', forkRepository: 'example/fork', upstream: 'example/upstream',
       upstreamHeadSha: f.base, forkHeadSha: f.head, mergeBaseSha: f.base, aheadBy: 1, behindBy: 0,
     };
     await expect(buildForkDeltaCorpus({ repo: f.root, name: 'fork', metadata })).rejects.toThrow(/graph counts/);
@@ -86,10 +105,11 @@ describe('fork-source delta materialization', () => {
   it('keeps a typed document for a net-zero delta', async () => {
     const f = fixture();
     const metadata = {
-      version: 'fork-delta/1', forkRepository: 'example/fork', upstream: 'example/upstream',
+      version: 'fork-delta/2', forkRepository: 'example/fork', upstream: 'example/upstream',
       upstreamHeadSha: f.head, forkHeadSha: f.head, mergeBaseSha: f.head, aheadBy: 0, behindBy: 0,
     };
     const out = await buildForkDeltaCorpus({ repo: f.root, name: 'fork', metadata });
+    tempDirs.push(out.outputDir);
     expect(out.operations).toEqual([]);
     expect(out.chunks).toHaveLength(1);
     expect(out.chunks[0].operation).toMatchObject({ kind: 'N', status: 'NETZERO', paths: ['(no changed paths)'], hunks: [] });

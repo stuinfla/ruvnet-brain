@@ -69,6 +69,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { resolveProjectStore } from './project-store-resolver.mjs';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -284,23 +285,295 @@ function readRegistrations(file) {
   return out;
 }
 
-/**
- * The ruvnet-brain plugin copy Claude Code actually booted, if this machine has one installed.
- * Exported because the post-install self-check (scripts/selfcheck.mjs) must read the INSTALLED
- * hooks.json rather than the repo's — a stranger's machine has no checkout, and a self-check that
- * reads the preimage instead of the booted copy is the adjacent-door defect ADR-055 F16 names.
- */
+// The static census above intentionally accepts legacy shapes so CI can enumerate every historical
+// source. Runtime status needs a stricter boundary: silently skipping a malformed active hook would
+// turn a damaged install into "no hooks". Keep this parser separate so tightening the active view
+// cannot change M1/M3/M5/M6's source census.
+function readConfiguredHookDocument(file) {
+  const raw = fs.readFileSync(file, 'utf8');
+  const doc = JSON.parse(raw);
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('root must be an object');
+  // Settings documents may legitimately omit `hooks`; that means no registrations. A bare hooks
+  // map remains supported for packed hook manifests, but ordinary settings properties are never
+  // interpreted as event names.
+  const node = doc.hooks === undefined ? {} : doc.hooks;
+  if (!node || typeof node !== 'object' || Array.isArray(node)) throw new Error('hooks must be an object');
+  const records = [];
+  for (const [event, groups] of Object.entries(node)) {
+    if (!Array.isArray(groups)) throw new Error(`${event} must be an array`);
+    for (const [groupIndex, group] of groups.entries()) {
+      if (!group || typeof group !== 'object' || Array.isArray(group) || !Array.isArray(group.hooks)) {
+        throw new Error(`${event}[${groupIndex}].hooks must be an array`);
+      }
+      for (const [hookIndex, hook] of group.hooks.entries()) {
+        if (!hook || typeof hook !== 'object' || Array.isArray(hook)) throw new Error(`${event}[${groupIndex}].hooks[${hookIndex}] must be an object`);
+        const command = hook.command;
+        const prompt = hook.prompt;
+        const validCommand = typeof command === 'string' && command.trim();
+        const validPrompt = (hook.type === 'prompt' || hook.type === 'agent') && typeof prompt === 'string' && prompt.trim();
+        const validHttp = hook.type === 'http' && typeof hook.url === 'string' && hook.url.trim();
+        if (!validCommand && !validPrompt && !validHttp) throw new Error(`${event}[${groupIndex}].hooks[${hookIndex}] has an invalid handler type or missing command/prompt/url`);
+        records.push({
+          event,
+          matcher: typeof group.matcher === 'string' ? group.matcher : '',
+          command: validCommand ? command : null,
+          type: typeof hook.type === 'string' ? hook.type : (validCommand ? 'command' : 'prompt'),
+          prompt: validPrompt ? prompt : null,
+          url: validHttp ? hook.url : null,
+          timeout: typeof hook.timeout === 'number' ? hook.timeout : null,
+          asyncRewake: hook.asyncRewake === true,
+          async: hook.async === true,
+          if: typeof hook.if === 'string' ? hook.if : null,
+        });
+      }
+    }
+  }
+  return records;
+}
+
+function readStrictJSON(file) {
+  try { return { value: JSON.parse(fs.readFileSync(file, 'utf8')) }; }
+  catch (error) { return { error: String(error?.message || error) }; }
+}
+
+function pathInside(root, candidate) {
+  const rel = path.relative(root, candidate);
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+}
+
+function regularPathWithoutSymlinks(file, { directory = false, base = path.parse(path.resolve(file)).root } = {}) {
+  const absolute = path.resolve(file);
+  const relative = path.relative(path.resolve(base), absolute);
+  let current = path.resolve(base);
+  for (const part of relative.split(path.sep)) {
+    if (!part) continue;
+    current = path.join(current, part);
+    let stat;
+    try { stat = fs.lstatSync(current); } catch { return { ok: false, reason: `${current} is missing` }; }
+    if (stat.isSymbolicLink()) return { ok: false, reason: `${current} is a symlink` };
+  }
+  let stat;
+  try { stat = fs.lstatSync(absolute); } catch (error) { return { ok: false, reason: error.message }; }
+  if (directory ? !stat.isDirectory() : !stat.isFile()) return { ok: false, reason: `${absolute} is not a regular ${directory ? 'directory' : 'file'}` };
+  return { ok: true };
+}
+
+function claudeConfigDir(home) {
+  return process.env.CLAUDE_CONFIG_DIR
+    ? path.resolve(process.env.CLAUDE_CONFIG_DIR)
+    : path.resolve(home, '.claude');
+}
+
+function selectedClaudeInstall({ home, project, registry }) {
+  if (!registry || typeof registry !== 'object' || Array.isArray(registry)) return { state: 'unknown', error: 'installed_plugins.json root must be an object' };
+  if (registry.version !== 2 || !registry.plugins || typeof registry.plugins !== 'object' || Array.isArray(registry.plugins)) {
+    return { state: 'unknown', error: 'installed_plugins.json has an unrecognised schema' };
+  }
+  const rows = registry.plugins['ruvnet-brain@ruvnet-brain'];
+  if (rows === undefined) return { state: 'absent', installPath: null };
+  if (!Array.isArray(rows)) return { state: 'unknown', error: 'Brain plugin registry entry must be an array' };
+  if (rows.some((row) => !row || typeof row !== 'object' || typeof row.installPath !== 'string' || !row.installPath)) {
+    return { state: 'unknown', error: 'Brain plugin registry contains an invalid installPath row' };
+  }
+  const applicable = rows.filter((row) => {
+    if (row.scope === 'user') return true;
+    return (row.scope === 'project' || row.scope === 'local') && typeof row.projectPath === 'string'
+      && path.resolve(row.projectPath) === path.resolve(project);
+  });
+  if (rows.some((row) => !row || typeof row !== 'object' || (row.scope !== 'user' && row.scope !== 'project' && row.scope !== 'local'))) {
+    return { state: 'unknown', error: 'Brain plugin registry contains an invalid scope row' };
+  }
+  if (applicable.length === 0) return { state: 'absent', installPath: null };
+  if (applicable.length > 1) return { state: 'unknown', error: 'multiple applicable Brain plugin registry rows' };
+  const row = applicable[0];
+  if (!path.isAbsolute(row.installPath)) return { state: 'unknown', error: 'Brain plugin installPath must be absolute' };
+  const managedLexical = path.join(claudeConfigDir(home), 'plugins/cache/ruvnet-brain/ruvnet-brain');
+  let managedRoot;
+  let installPath;
+  try {
+    managedRoot = fs.realpathSync(managedLexical);
+    installPath = fs.realpathSync(path.resolve(row.installPath));
+  } catch (error) { return { state: 'unknown', error: `selected Brain plugin install is unreadable: ${error.message}` }; }
+  if (!pathInside(managedRoot, installPath)) return { state: 'unknown', error: 'Brain plugin installPath escapes the managed cache' };
+  const lexicalInstall = path.resolve(row.installPath);
+  const rootCheck = regularPathWithoutSymlinks(managedLexical, { directory: true, base: path.dirname(managedLexical) });
+  const installCheck = regularPathWithoutSymlinks(lexicalInstall, { directory: true, base: managedLexical });
+  const hooksPath = path.join(lexicalInstall, 'hooks', 'hooks.json');
+  const hooksCheck = regularPathWithoutSymlinks(hooksPath, { base: lexicalInstall });
+  if (!rootCheck.ok || !installCheck.ok || !hooksCheck.ok) return { state: 'unknown', error: rootCheck.reason || installCheck.reason || hooksCheck.reason };
+  return { state: 'configured-on-disk', installPath, scope: row.scope, version: row.version || null };
+}
+
+export function resolveClaudeConfiguredInstall({ home = os.homedir(), project = process.cwd(), registry } = {}) {
+  const configDir = claudeConfigDir(home);
+  const registryPath = path.join(configDir, 'plugins/installed_plugins.json');
+  const source = registry === undefined
+    ? (fs.existsSync(registryPath) ? readStrictJSON(registryPath) : { value: null, absent: true })
+    : { value: registry };
+  if (source.error) return { state: 'unknown', error: source.error };
+  if (source.absent) return { state: 'absent', installPath: null };
+  return selectedClaudeInstall({ home, project, registry: source.value });
+}
+
+/** Resolve configured Claude registrations without spawning or using cache mtimes. */
+function managedSettingsPath() {
+  if (process.platform === 'darwin') return '/Library/Application Support/ClaudeCode/managed-settings.json';
+  if (process.platform === 'win32') return 'C:/Program Files/ClaudeCode/managed-settings.json';
+  return '/etc/claude-code/managed-settings.json';
+}
+
+function managedSettingsLayers(file) {
+  const primary = file || managedSettingsPath();
+  const layers = [readSettingLayer(primary, 'managed')];
+  const directory = path.join(path.dirname(primary), 'managed-settings.d');
+  try {
+    for (const name of fs.readdirSync(directory).filter((entry) => !entry.startsWith('.') && entry.endsWith('.json')).sort()) {
+      layers.push(readSettingLayer(path.join(directory, name), `managed:${name}`));
+    }
+  } catch { /* optional drop-in directory */ }
+  // File policy loads base first, then alphabetical drop-ins. Consumers inspect highest
+  // precedence first while retaining each source so hook arrays remain additive.
+  return layers.reverse();
+}
+
+function repositoryRoot(project) {
+  try { return resolveProjectStore({ projectDir: project }).projectRoot; } catch { /* outside a git checkout */ }
+  return project;
+}
+
+function readSettingLayer(file, layer) {
+  if (!fs.existsSync(file)) return { layer, file, present: false, value: {} };
+  const parsed = readStrictJSON(file);
+  return parsed.error
+    ? { layer, file, present: true, error: parsed.error, value: null }
+    : { layer, file, present: true, value: parsed.value };
+}
+
+function effectivePluginEnablement(layers) {
+  for (const layer of layers) {
+    if (layer.error) return { state: 'unknown', error: layer.error, layer: layer.layer };
+    const values = layer.value?.enabledPlugins;
+    if (values === undefined) continue;
+    if (!values || typeof values !== 'object' || Array.isArray(values)) return { state: 'unknown', error: 'enabledPlugins must be an object', layer: layer.layer };
+    if (Object.prototype.hasOwnProperty.call(values, 'ruvnet-brain@ruvnet-brain')) {
+      const value = values['ruvnet-brain@ruvnet-brain'];
+      if (typeof value !== 'boolean') return { state: 'unknown', error: 'Brain plugin enablement must be boolean', layer: layer.layer };
+      return { state: value ? 'enabled' : 'disabled', layer: layer.layer };
+    }
+  }
+  return { state: 'unspecified' };
+}
+
+/** Resolve the effective Claude configured-on-disk view; diagnostic preimages never count active. */
+export function activeClaudeView({ repo = REPO, home = os.homedir(), project = process.cwd(), pluginRoot = null, managedFile = null } = {}) {
+  const sources = [];
+  const errors = [];
+  const add = (layer, file, role = 'active') => {
+    if (!file || !fs.existsSync(file)) return { layer, file, present: false, role };
+    try {
+      const records = readConfiguredHookDocument(file);
+      const source = { layer, file, present: true, role, records };
+      sources.push(source);
+      return source;
+    } catch (error) {
+      const source = { layer, file, present: true, role, records: [], error: error.message };
+      sources.push(source); errors.push({ layer, file, error: error.message });
+      return source;
+    }
+  };
+  const configDir = claudeConfigDir(home);
+  const settingsPath = path.join(configDir, 'settings.json');
+  const projectSettingsPath = path.join(project, '.claude/settings.json');
+  const projectLocalSettingsPath = path.join(repositoryRoot(project), '.claude/settings.local.json');
+  const settingsLayers = [
+    ...managedSettingsLayers(managedFile),
+    readSettingLayer(projectLocalSettingsPath, 'project-local'),
+    readSettingLayer(projectSettingsPath, 'project'),
+    readSettingLayer(settingsPath, 'user'),
+  ];
+  for (const layer of settingsLayers) {
+    if (layer.error) errors.push({ layer: layer.layer, file: layer.file, error: layer.error });
+    if (layer.present) add(layer.layer, layer.file);
+  }
+  const enablement = effectivePluginEnablement(settingsLayers);
+  const managedLayers = settingsLayers.filter((layer) => layer.layer === 'managed' || layer.layer.startsWith('managed:'));
+  const managedValue = (key) => managedLayers.find((layer) =>
+    layer.value && Object.prototype.hasOwnProperty.call(layer.value, key))?.value[key];
+  const managedOnly = managedValue('allowManagedHooksOnly') === true;
+  const managedPluginEnabled = effectivePluginEnablement(managedLayers).state === 'enabled';
+  let pluginState;
+  let pluginSource = null;
+  if (pluginRoot) {
+    const source = add('plugin', path.join(pluginRoot, 'hooks/hooks.json'), 'diagnostic-preimage');
+    pluginSource = source.file;
+    pluginState = source.error ? 'unknown' : 'diagnostic-preimage';
+  } else {
+    const registryPath = path.join(configDir, 'plugins/installed_plugins.json');
+    if (!fs.existsSync(registryPath)) pluginState = 'absent';
+    else {
+      const registryResult = readStrictJSON(registryPath);
+      const selected = resolveClaudeConfiguredInstall({ home, project, registry: registryResult.value });
+      if (selected.error) errors.push({ layer: 'plugin-installed', file: registryPath, error: selected.error });
+      pluginState = selected.state;
+      if (selected.state === 'configured-on-disk') {
+        const source = add('plugin-installed', path.join(selected.installPath, 'hooks/hooks.json'), 'active');
+        pluginSource = source.file;
+      }
+    }
+    if (pluginState === 'configured-on-disk' && enablement.state !== 'enabled') {
+      pluginState = enablement.state === 'disabled' ? 'disabled' : 'unknown';
+      if (pluginState === 'disabled' || pluginState === 'unknown') {
+        for (let index = sources.length - 1; index >= 0; index -= 1) {
+          if (sources[index].layer === 'plugin-installed') sources.splice(index, 1);
+        }
+        pluginSource = null;
+      }
+      if (pluginState === 'unknown') errors.push({ layer: 'plugin-installed', file: settingsPath, error: 'Brain plugin enablement is missing or invalid' });
+    }
+    if (pluginState === 'configured-on-disk' && managedOnly
+      && !managedPluginEnabled) {
+      pluginState = 'disabled';
+      for (let index = sources.length - 1; index >= 0; index -= 1) {
+        if (sources[index].layer === 'plugin-installed') sources.splice(index, 1);
+      }
+      pluginSource = null;
+    }
+    if (pluginState === 'absent' && repo && fs.existsSync(path.join(repo, 'plugin/hooks/hooks.json'))) {
+      const source = add('plugin', path.join(repo, 'plugin/hooks/hooks.json'), 'diagnostic-preimage');
+      pluginSource = source.file;
+      pluginState = source.error ? 'unknown' : 'diagnostic-preimage';
+    }
+  }
+  const hooksDisabled = settingsLayers.find((layer) => layer.value
+    && Object.prototype.hasOwnProperty.call(layer.value, 'disableAllHooks'))?.value.disableAllHooks === true;
+  const managedHooksDisabled = managedValue('disableAllHooks') === true;
+  // A lower-tier disable narrows execution; only a managed disable removes managed hooks.
+  // Force-enabled managed plugins retain the same exemption as managed hook sources.
+  const effectiveSources = managedOnly || hooksDisabled
+    ? sources.filter((source) => source.layer === 'managed' || source.layer.startsWith('managed:')
+      || (source.layer === 'plugin-installed' && managedPluginEnabled))
+    : sources;
+  const records = managedHooksDisabled ? [] : effectiveSources.flatMap((source) => source.records.map((record) => ({ ...record, layer: source.layer, file: source.file, role: source.role })));
+  return {
+    state: errors.length ? 'unknown' : (pluginState === 'diagnostic-preimage' ? 'diagnostic-preimage' : (pluginState === 'absent' && records.length === 0 ? 'absent' : 'configured-on-disk')),
+    pluginState,
+    pluginSource,
+    sources,
+    records,
+    errors,
+    settingsLayers,
+    provenance: { authority: 'configured-on-disk', configDir, project: path.resolve(project), managedOnly, hooksDisabled },
+    complete: errors.length === 0,
+  };
+}
+
+/** Diagnostic compatibility helper. This reports the configured-on-disk payload; it cannot prove
+ * which snapshot an already-running Claude session booted. Use activeClaudeView for status. */
 export function installedPluginHooks(home = os.homedir()) {
-  const base = path.join(home, '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain');
-  let versions = [];
-  try { versions = fs.readdirSync(base); } catch { return null; }
-  const hits = versions
-    .map((v) => path.join(base, v, 'hooks', 'hooks.json'))
-    .filter((p) => fs.existsSync(p));
-  if (!hits.length) return null;
-  // Newest mtime wins — several generations can sit in the cache at once.
-  hits.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-  return hits[0];
+  const resolved = resolveClaudeConfiguredInstall({ home, project: process.cwd() });
+  return resolved.state === 'configured-on-disk'
+    ? path.join(resolved.installPath, 'hooks', 'hooks.json')
+    : null;
 }
 
 /** Enabled third-party plugins that register hooks, read from the machine's own plugin state. */

@@ -58,7 +58,7 @@ function writeHome(home) {
   fs.writeFileSync(path.join(home, '.claude', 'settings.json'), JSON.stringify({ hooks: {
     PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'bash "${HOME}/.claude/hooks/pre-action-gate.sh"' }] }],   // can refuse
     SessionStart: [{ matcher: '*', hooks: [{ type: 'command', command: 'bash "${HOME}/.claude/hooks/agentdb-ensure.sh" || true' }] }], // cannot
-  } }));
+  }, enabledPlugins: { 'ruvnet-brain@ruvnet-brain': true } }));
 }
 function writeRepoWithGitHooks(repo) {
   const common = path.join(tmp, 'main.git');
@@ -76,7 +76,7 @@ describe('Fix 4 — gates survey counts what the host loads and names what is un
     writeHome(home); writePlugin(plugin); fs.mkdirSync(repo);
     const s = gatesSurvey({ repo, home, pluginRoot: plugin });
     const pluginNames = s.gates.filter((g) => g.source.startsWith('plugin')).map((g) => g.name).sort();
-    expect(pluginNames).toEqual(['continuation-gate', 'memory-ensure', 'memory-snapshot-threads', 'memory-store-decisions', 'session-start']);
+    expect(pluginNames).toEqual([]); // checkout payload is a diagnostic preimage, never active
     expect(pluginNames).not.toContain('hook-shim');
   });
 
@@ -84,9 +84,9 @@ describe('Fix 4 — gates survey counts what the host loads and names what is un
     const home = path.join(tmp, 'home'); const plugin = path.join(tmp, 'plugin'); const repo = path.join(tmp, 'repo');
     writeHome(home); writePlugin(plugin); fs.mkdirSync(repo);
     const s = gatesSurvey({ repo, home, pluginRoot: plugin });
-    expect(s.summary.armed).toBe(7);
+    expect(s.summary.armed).toBe(2);
     expect(s.summary.blocking).toBe(1);
-    expect(s.summary.advisory).toBe(6);
+    expect(s.summary.advisory).toBe(1);
   });
 
   it('lists blocking gates that hook-shim knows but hooks.json never registers — with whether they exist on disk', () => {
@@ -102,14 +102,14 @@ describe('Fix 4 — gates survey counts what the host loads and names what is un
   });
 
   it('resolves the plugin the host actually loads from installed_plugins.json when no pluginRoot is given', () => {
-    const home = path.join(tmp, 'home'); const plugin = path.join(tmp, 'cache', 'ruvnet-brain', '9.9.9'); const repo = path.join(tmp, 'repo');
+    const home = path.join(tmp, 'home'); const plugin = path.join(home, '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain', '9.9.9'); const repo = path.join(tmp, 'repo');
     writeHome(home); writePlugin(plugin); fs.mkdirSync(repo);
     fs.mkdirSync(path.join(home, '.claude', 'plugins'), { recursive: true });
     fs.writeFileSync(path.join(home, '.claude', 'plugins', 'installed_plugins.json'),
-      JSON.stringify({ plugins: { 'ruvnet-brain@ruvnet-brain': [{ installPath: plugin }] } }));
+      JSON.stringify({ version: 2, plugins: { 'ruvnet-brain@ruvnet-brain': [{ scope: 'user', installPath: plugin }] } }));
     const s = gatesSurvey({ repo, home });
     expect(s.pluginSource).toBe('installed');
-    expect(s.pluginPath).toBe(path.join(plugin, 'hooks', 'hooks.json'));
+    expect(s.pluginPath).toBe(fs.realpathSync(path.join(plugin, 'hooks', 'hooks.json')));
     expect(s.gates.filter((g) => g.source.startsWith('plugin'))).toHaveLength(5);
   });
 

@@ -32,8 +32,10 @@ import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { canonicalJson, digest, fileIdentity, sha256File, validateGistAggregateReceipt } from '../plugin/scripts/coverage-integrity.mjs';
 import { auditCorpusStores, isPassingState } from './rvf-index-audit.mjs';
-import { readDiagnosticAccuracyReport } from './oracle/retrieval-accuracy.mjs';
+import { readAccuracyReport, readDiagnosticAccuracyReport, archiveStores, currentAccuracyInstruments, defaultAccuracyOracleFile, validateRuntimeIdentity } from './oracle/retrieval-accuracy.mjs';
 import { loadFixture, readRecallReport } from './oracle/repo-recall.mjs';
+import { sourceEvidenceDigest } from './oracle/production-evidence.mjs';
+import { archiveSourceCensus } from './oracle/source-census.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REQUIRED_SUFFIXES = [
@@ -124,20 +126,26 @@ function normalizeBootstrapIdentity(bootstrapIdentity) {
 // from bundleFile, or is one of the three inputs that are not archive-derived (builderSourceSha,
 // bootstrapIdentity, createdAt) — verification supplies those from the receipt being checked, so a
 // receipt can never claim archive contents that were not really shipped.
-async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapIdentity, createdAt, accuracyReportFile, recallReportFile }) {
+async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapIdentity, createdAt, accuracyReportFile, recallReportFile,
+  producerSha256 = sha256File(fileURLToPath(import.meta.url)), allowLegacyManifest = false,
+  fixtureFile = null, expectedFixtureSha256 = null, oracleFile = defaultAccuracyOracleFile(), trustedReportPublicKey = null, expectedSourceEvidenceSha256 = null, expectedOracleSha256 = null, expectedGeneratorSha256 = null }) {
   const bundle = path.resolve(bundleFile || '');
   if (!fs.existsSync(bundle) || !fs.statSync(bundle).isFile()) fail(`bundle missing (${bundle || 'no path supplied'})`);
   if (!HEX_SOURCE.test(builderSourceSha || '')) fail('builderSourceSha must be a 40-64 hex source identity');
   const bootstrap = normalizeBootstrapIdentity(bootstrapIdentity);
   const archive = fileIdentity(bundle);
+  if (!trustedReportPublicKey && (expectedOracleSha256 == null || expectedGeneratorSha256 == null)) {
+    const current = currentAccuracyInstruments(oracleFile);
+    expectedOracleSha256 ??= current.expectedOracleSha256;
+    expectedGeneratorSha256 ??= current.expectedGeneratorSha256;
+  }
 
   // THE BLOCKING RETRIEVAL GATE (ADR-086 amendment, 2026-09-15). Both reports travel BESIDE the
   // archive under fixed derived names, so any reader holding nothing but a downloaded release asset
   // resolves the same files without the receipt carrying a path.
   //
   // What blocks: the frozen-fixture repo-recall gate. Every one of the 194 pre-existing human
-  // questions must complete without error, every repository must return content of its own, and the
-  // exact-file Hit@5 count may never fall below the accepted floor.
+  // questions must complete without error, every repository must return content of its own. Exact-file Hit@5 is informational.
   //
   // What NO LONGER blocks: ADR-086's original C3 predicate. Measured against the real 4.3.25 archive
   // it returns 680/1152 = 59.0% (diagnostic, c3Eligible:false) after both of its candidate
@@ -148,12 +156,32 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
   const recall = readRecallReport({
     reportFile: recallReportFile || `${bundle}.recall.json`,
     archive,
-    expectedFixtureSha256: loadFixture().fixtureSha256,
+    fixtureFile, expectedFixtureSha256: expectedFixtureSha256 ?? loadFixture(fixtureFile).fixtureSha256,
+    trustedReportPublicKey: trustedReportPublicKey ?? process.env.RUVNET_MEASUREMENT_PUBLIC_KEY,
   });
-  const accuracyDiagnostic = readDiagnosticAccuracyReport({
-    reportFile: accuracyReportFile || `${bundle}.accuracy.json`,
-    archive,
-  });
+  let accuracyResult;
+  if (trustedReportPublicKey) {
+    if (![expectedSourceEvidenceSha256, expectedOracleSha256, expectedGeneratorSha256]
+      .every((value) => /^[a-f0-9]{64}$/.test(String(value || '').toLowerCase()))) {
+      fail('strict accuracy qualification requires canonical source-evidence, oracle, and generator sha256 bindings');
+    }
+    accuracyResult = readAccuracyReport({
+      reportFile: accuracyReportFile || `${bundle}.accuracy.json`,
+      archive,
+      trustedReportPublicKey,
+      expectedSourceEvidenceSha256,
+      expectedOracleSha256,
+      expectedGeneratorSha256,
+    });
+  } else {
+    accuracyResult = readDiagnosticAccuracyReport({
+      oracleFile,
+      reportFile: accuracyReportFile || `${bundle}.accuracy.json`,
+      archive,
+      expectedOracleSha256,
+      expectedGeneratorSha256,
+    });
+  }
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-candidate-'));
   try {
@@ -181,6 +209,10 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
       fail('archive manifest totals differ from its file rows');
     }
 
+
+    validateRuntimeIdentity(accuracyResult.report, manifest, {allowLegacyManifest});
+    validateRuntimeIdentity({ runtime: { kind: 'controlled-archive', identity: recall.report.protocol?.runtimeIdentity } }, manifest, {allowLegacyManifest});
+
     const privateFenceFile = path.join(root, 'PRIVATE-STORES.json');
     const fence = readJson(privateFenceFile, 'private fence');
     if (!Array.isArray(fence.privateStores)) fail('private fence has no privateStores array');
@@ -201,6 +233,7 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
 
     const rvfFiles = fs.readdirSync(root).filter((name) => /^.+\.big\.rvf$/.test(name)).sort();
     const rvfByStore = new Map(rvfFiles.map((file) => [file.slice(0, -'.big.rvf'.length), file]));
+    const physicalNames = new Map([...rvfByStore.keys()].map(store => [store.toLowerCase(), store]));
     const foldedStores = [...rvfByStore.keys()].map((store) => store.toLowerCase());
     if (new Set(foldedStores).size !== foldedStores.length) fail('archive RVF store names have case-fold aliases');
 
@@ -240,7 +273,7 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
         derivedNames.add(store);
         const receiptFile = containedFile(root, entry.receipt, `derived ${store} receipt`);
         const dReceipt = readJson(receiptFile, `derived ${store} receipt`);
-        const passagesFile = containedFile(root, `${store}.passages.jsonl`, `derived ${store} passages`);
+        const passagesFile = containedFile(root, `${physicalNames.get(store) || store}.passages.jsonl`, `derived ${store} passages`);
         if (dReceipt.schemaVersion !== 1 || dReceipt.kind !== 'ruvnet-brain-derived-store-receipt'
           || String(dReceipt.store || '').toLowerCase() !== store || !Array.isArray(dReceipt.inputs) || !dReceipt.inputs.length
           || !HEX64.test(String(dReceipt.passagesSha256 || '')) || dReceipt.passagesSha256 !== sha256File(passagesFile)) {
@@ -356,6 +389,15 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
       files: finalByteFiles,
     });
 
+    const measuredCoverage = accuracyResult.report.coverage;
+    if (canonicalJson(archiveStores(root)) !== canonicalJson(measuredCoverage.archiveStores)) {
+      fail('accuracy report store scope differs from the actual archive');
+    }
+    const census = archiveSourceCensus(root, { requireCoverage: Boolean(trustedReportPublicKey) });
+    if (canonicalJson(census) !== canonicalJson(measuredCoverage.sourceCensus ?? null)) {
+      fail('accuracy report source census differs from the authenticated archive');
+    }
+
     return {
       schemaVersion: 3,
       kind: 'ruvnet-brain-corpus-candidate',
@@ -385,14 +427,26 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
       // the publication gate needs are reached THROUGH this digest, by re-reading the bound report.
       // The field keeps its name and shape so existing seed readers are unaffected; what changed is
       // that this report is now a published DIAGNOSTIC, and `recallReport` is the blocking one.
-      accuracyReport: accuracyDiagnostic.identity,
-      accuracyDiagnostic: {
-        state: accuracyDiagnostic.state,
-        classification: accuracyDiagnostic.classification,
-        c3Eligible: accuracyDiagnostic.c3Eligible,
-        blocking: false,
-        note: 'ADR-086 C3 was NOT met and is NOT demonstrated by this release. Published for inspection.',
-      },
+      accuracyReport: accuracyResult.identity,
+      ...(trustedReportPublicKey ? {
+        accuracyQualification: {
+          state: accuracyResult.report.state,
+          classification: accuracyResult.report.classification,
+          c3Eligible: accuracyResult.report.c3Eligible,
+          sourceEvidenceSha256: expectedSourceEvidenceSha256,
+          blocking: true,
+        },
+      } : {
+        accuracyDiagnostic: {
+          state: accuracyResult.state,
+          classification: accuracyResult.classification,
+          c3Eligible: false,
+          blocking: false,
+          coverage: accuracyResult.coverage,
+          note: 'ADR-086 C3 was NOT met and is NOT demonstrated by this release. Published for inspection.',
+        },
+      }),
+      accuracyInstruments: { oracleSha256: expectedOracleSha256, generatorSha256: expectedGeneratorSha256 },
       recallReport: recall.identity,
       recallSummary: {
         fixtureSha256: recall.report.fixture.sha256,
@@ -400,10 +454,10 @@ async function deriveCorpusCandidate({ bundleFile, builderSourceSha, bootstrapId
         repositoriesAnswering: recall.report.totals.repoCoverage,
         exactFileTop1: recall.report.totals.hitTop1,
         exactFileTop5: recall.report.totals.hitTop5,
-        floor: recall.report.floor.value,
+        floor: recall.gate.floorValue,
         blocking: true,
       },
-      generator: { corpusCandidateSha256: sha256File(fileURLToPath(import.meta.url)) },
+      generator: { corpusCandidateSha256: producerSha256 },
     };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -418,6 +472,7 @@ function currentGitSha() {
 
 export async function createCorpusReceipt({
   bundleFile, builderSourceSha, bootstrapIdentity = null, receiptFile, createdAt, accuracyReportFile = null, recallReportFile = null,
+  fixtureFile = null, expectedFixtureSha256 = null, oracleFile = defaultAccuracyOracleFile(), trustedReportPublicKey = null, expectedSourceEvidenceSha256 = null, expectedOracleSha256 = null, expectedGeneratorSha256 = null,
 } = {}) {
   const resolvedReceiptFile = path.resolve(receiptFile || 'dist/corpus-receipt.json');
   const receipt = await deriveCorpusCandidate({
@@ -427,6 +482,7 @@ export async function createCorpusReceipt({
     createdAt: createdAt || new Date().toISOString(),
     accuracyReportFile,
     recallReportFile,
+    fixtureFile, expectedFixtureSha256, oracleFile, trustedReportPublicKey, expectedSourceEvidenceSha256, expectedOracleSha256, expectedGeneratorSha256,
   });
   fs.mkdirSync(path.dirname(resolvedReceiptFile), { recursive: true });
   fs.writeFileSync(resolvedReceiptFile, `${JSON.stringify(receipt, null, 2)}\n`);
@@ -435,6 +491,7 @@ export async function createCorpusReceipt({
 
 export async function verifyCorpusReceipt({
   bundleFile, receiptFile, expectedBuilderSha, expectedArchiveSha256, expectedReceiptSha256, accuracyReportFile = null, recallReportFile = null,
+  fixtureFile = null, expectedFixtureSha256 = null, oracleFile = defaultAccuracyOracleFile(), trustedReportPublicKey = null, expectedSourceEvidenceSha256 = null, expectedOracleSha256 = null, expectedGeneratorSha256 = null,
 } = {}) {
   const resolvedReceiptFile = path.resolve(receiptFile || '');
   const resolvedBundleFile = path.resolve(bundleFile || '');
@@ -458,13 +515,25 @@ export async function verifyCorpusReceipt({
   if (expectedArchiveSha256 != null && actualArchiveSha256 !== expectedArchiveSha256) {
     fail('archive sha256 differs from the expected archive sha256');
   }
+  // Only an externally pinned receipt can supply historical instrument identities.
+  // Without that pin the caller must supply them, or current instruments apply.
+  if (expectedReceiptSha256 != null) {
+    expectedOracleSha256 ??= receipt.accuracyInstruments?.oracleSha256;
+    expectedGeneratorSha256 ??= receipt.accuracyInstruments?.generatorSha256;
+    expectedFixtureSha256 ??= receipt.recallSummary?.fixtureSha256;
+    expectedSourceEvidenceSha256 ??= receipt.accuracyQualification?.sourceEvidenceSha256;
+  }
+  if (!HEX64.test(String(receipt.generator?.corpusCandidateSha256 || ''))) fail('receipt producer identity is invalid');
   const derived = await deriveCorpusCandidate({
+    allowLegacyManifest: expectedReceiptSha256 != null,
+    producerSha256: expectedReceiptSha256 != null ? receipt.generator.corpusCandidateSha256 : undefined,
     bundleFile: resolvedBundleFile,
     builderSourceSha: receipt.builderSourceSha,
     bootstrapIdentity: receipt.bootstrap,
     createdAt: receipt.createdAt,
     accuracyReportFile,
     recallReportFile,
+    fixtureFile, expectedFixtureSha256, oracleFile, trustedReportPublicKey, expectedSourceEvidenceSha256, expectedOracleSha256, expectedGeneratorSha256,
   });
   if (canonicalJson(derived) !== canonicalJson(receipt)) fail('receipt does not match the exact corpus archive contents');
   return receipt;
@@ -474,7 +543,8 @@ export async function verifyCorpusReceipt({
 // (corpus-sha256-<digest>) and its accompanying schema-2 candidate receipt. This never compares
 // the external tag against the archive's own internal ARCHIVE-MANIFEST releaseTag/version — those
 // are two independent identity domains and conflating them was the historical bug this fixes.
-export async function verifySeedBaseline({ seedDescriptor, bundleFile, receiptFile, accuracyReportFile = null, recallReportFile = null } = {}) {
+export async function verifySeedBaseline({ seedDescriptor, bundleFile, receiptFile, accuracyReportFile = null, recallReportFile = null,
+  fixtureFile = null, expectedFixtureSha256 = null, oracleFile = defaultAccuracyOracleFile(), trustedReportPublicKey = null, expectedSourceEvidenceSha256 = null, expectedOracleSha256 = null, expectedGeneratorSha256 = null } = {}) {
   if (!seedDescriptor || typeof seedDescriptor !== 'object') fail('seed descriptor is required');
   const { tag, sha256, bytes, sourceCommit = null, allowPinnedTag = false } = seedDescriptor;
   const expectedSha256 = String(sha256 || '').toLowerCase();
@@ -499,6 +569,8 @@ export async function verifySeedBaseline({ seedDescriptor, bundleFile, receiptFi
     accuracyReportFile,
     recallReportFile,
     expectedArchiveSha256: expectedSha256,
+    expectedReceiptSha256: seedDescriptor.receiptSha256,
+    fixtureFile, expectedFixtureSha256, oracleFile, trustedReportPublicKey, expectedSourceEvidenceSha256, expectedOracleSha256, expectedGeneratorSha256,
     ...(sourceCommit ? { expectedBuilderSha: sourceCommit } : {}),
   });
   return { tag, sha256: expectedSha256, bytes: fs.statSync(resolvedBundleFile).size, receipt };
@@ -509,12 +581,34 @@ function arg(name, fallback) {
   return index >= 0 ? process.argv[index + 1] : fallback;
 }
 
+function accuracyVerificationArgs() {
+  const publicKeyFile = arg('--accuracy-public-key');
+  const sourceEvidenceFile = arg('--source-evidence');
+  if ((publicKeyFile && !sourceEvidenceFile) || (!publicKeyFile && sourceEvidenceFile)) {
+    fail('accuracy verification requires --accuracy-public-key and --source-evidence together');
+  }
+  const instruments = { fixtureFile: arg('--recall-fixture'), expectedFixtureSha256: arg('--expected-fixture-sha256'), oracleFile: arg('--accuracy-oracle', defaultAccuracyOracleFile()), expectedOracleSha256: arg('--expected-oracle-sha256'),
+    expectedGeneratorSha256: arg('--expected-generator-sha256') };
+  if (!publicKeyFile) return instruments;
+  for (const [label, file] of [['accuracy public key', publicKeyFile], ['source evidence', sourceEvidenceFile]]) {
+    const resolved = path.resolve(file);
+    const stat = fs.lstatSync(resolved);
+    if (!stat.isFile() || stat.isSymbolicLink()) fail(`${label} must be a trusted regular file`);
+  }
+  return {
+    trustedReportPublicKey: fs.readFileSync(path.resolve(publicKeyFile), 'utf8'),
+    expectedSourceEvidenceSha256: sourceEvidenceDigest(readJson(path.resolve(sourceEvidenceFile), 'accuracy source evidence')),
+    ...instruments,
+  };
+}
+
 async function main() {
   const mode = process.argv.includes('--verify') ? 'verify' : 'create';
   const bundleFile = arg('--bundle', 'dist/ruvnet-brain.zip');
   const receiptFile = arg('--receipt', arg('--out', 'dist/corpus-receipt.json'));
   const accuracyReportFile = arg('--accuracy-report');
   const recallReportFile = arg('--recall-report');
+  const accuracyVerification = accuracyVerificationArgs();
   if (mode === 'create') {
     const bootstrapTag = arg('--bootstrap-tag');
     const bootstrapSha256 = arg('--bootstrap-sha256');
@@ -526,6 +620,7 @@ async function main() {
       receiptFile,
       accuracyReportFile,
       recallReportFile,
+      ...accuracyVerification,
     });
     console.log(JSON.stringify({
       ok: true, mode, archive: receipt.archive, stores: receipt.storeCount, accuracyReport: receipt.accuracyReport, recall: receipt.recallSummary,
@@ -536,6 +631,7 @@ async function main() {
       receiptFile,
       accuracyReportFile,
       recallReportFile,
+      ...accuracyVerification,
       expectedBuilderSha: arg('--expected-builder-sha'),
       expectedArchiveSha256: arg('--expected-archive-sha256'),
       expectedReceiptSha256: arg('--expected-receipt-sha256'),

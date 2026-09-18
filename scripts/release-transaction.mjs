@@ -567,19 +567,7 @@ export async function finalizeReleaseTransaction({
   verifyPublicVerificationAggregate(aggregate, aggregatePublicKey, expectedAggregateIdentity);
   if (!reviewPublicKeysByReviewer) throw new Error('terminal finalizer requires pinned machine grading public keys');
   const { validateIndependentReviewPair } = await import('./independent-review-receipt.mjs');
-  const reviewIdentity = aggregate.reviews?.[0];
-  if (!reviewIdentity || reviewIdentity.sourceSha !== identity.candidateSha
-    || reviewIdentity.artifactSha256 !== identity.packageSha256
-    || reviewIdentity.payloadId !== identity.payloadId
-    || reviewIdentity.releaseIdentity?.candidateSha !== identity.candidateSha
-    || reviewIdentity.releaseIdentity?.packageSha256 !== identity.packageSha256
-    || reviewIdentity.releaseIdentity?.payloadId !== identity.payloadId
-    || reviewIdentity.releaseIdentity?.bundleSha256 !== identity.bundleSha256
-    || reviewIdentity.releaseIdentity?.version !== identity.version
-    || reviewIdentity.releaseIdentity?.tag !== identity.tag) {
-    throw new Error('terminal review pair is bound to a different release identity');
-  }
-  validateIndependentReviewPair(aggregate.reviews, { publicKeysByReviewer: reviewPublicKeysByReviewer, expectedIdentity: identity, expectedOracle: undefined });
+  validateIndependentReviewPair(aggregate.reviews, { publicKeysByReviewer: reviewPublicKeysByReviewer, expectedIdentity: identity });
   if (!Array.isArray(aggregate.reviews) || aggregate.reviews.length !== 2
     || new Set(aggregate.reviews.map((review) => review?.id)).size !== 2) {
     throw new Error('public verification finalizer requires the two-vendor machine grading pair');

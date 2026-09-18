@@ -74,7 +74,6 @@ const SHIM = path.join(REPO, 'plugin/scripts/hook-shim.mjs');
 const PROTECT = path.join(REPO, 'plugin/scripts/protect-brain-state.sh');
 const ROUTE_DISPATCH = path.join(REPO, 'plugin/scripts/route-dispatch.sh');
 const RECEIPT_DIR = ['meta', 'harness'].join('');
-const VERIFY_IFACE = path.join(REPO, 'plugin/scripts/verify-interface.sh');
 const DESIGN_WALL = path.join(REPO, 'plugin/scripts/design-wall.sh');
 const FORGE_MCP = path.join(REPO, 'kb/forge-mcp-all.mjs');
 const INSTALLER = path.join(REPO, 'bin/install.mjs');
@@ -301,15 +300,6 @@ describe.skipIf(bashOnly)('ADR-054 gate 2 — off disarms the grounding gate and
     expect(receipt).toMatchObject({ model: 'inherited', enforcement: 'advisory-host-timing' });
   });
 
-  it('the verify-interface body remains nonblocking even if invoked directly while OFF', () => {
-    optIn();
-    offNow();
-    const r = fireBash(VERIFY_IFACE, { tool_name: 'Bash', tool_input: { command: 'npx ruf' + 'lo@latest memory search -q test' } });
-    expect(r.status).toBe(0);
-    expect(r.stderr).toBe('');
-    expect(r.stdout).toContain('ruvnet_cli_help');
-  });
-
   it('OFF does NOT disarm the design wall — honesty about visual surfaces is not retrieval', () => {
     optIn();
     offNow();
@@ -327,7 +317,7 @@ describe.skipIf(bashOnly)('ADR-054 gate 2 — off disarms the grounding gate and
       expect(line, `${wall} missing from the shim table`).toBeTruthy();
       expect(line, `${wall} must keep running while the brain is off`).toMatch(/offBehavior:\s*'run'/);
     }
-    for (const quiet of ['ground-ruvnet', 'hijack-ruvnet', 'verify-interface', 'unprompted-speech', 'md-stamp']) {
+    for (const quiet of ['ground-ruvnet', 'hijack-ruvnet', 'unprompted-speech', 'md-stamp']) {
       const line = src.split('\n').find((l) => l.includes(`'${quiet}':`));
       expect(line, `${quiet} must go silent while the brain is off`).toMatch(/offBehavior:\s*'silence'/);
     }

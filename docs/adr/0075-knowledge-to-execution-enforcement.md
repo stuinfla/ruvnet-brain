@@ -3,9 +3,9 @@ id: ADR-075
 title: Knowledge-to-execution enforcement is a mandatory policy boundary
 status: Accepted
 date: 2026-08-30
-updated: 2026-09-12
-reviewed_digest: 96d0798621fb
-version: 1.1.2
+updated: 2026-09-17
+reviewed_digest: 70434122574d
+version: 1.2.1
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [architecture, enforcement, routing, swarms, adr, ddd, qa, release]
@@ -25,6 +25,8 @@ governs:
   - scripts/doc-currency.mjs
   - scripts/convergence-manifest.mjs
   - tests/unit/execution-policy.test.mjs
+  - scripts/execution-policy.mjs
+  - plugin/mcp/managed-cli-interface.mjs
 ---
 
 # ADR-075 — Knowledge-to-execution enforcement is a mandatory policy boundary
@@ -56,11 +58,15 @@ take a different path. That is precisely the class of failure this product must 
 
 ## Decision
 
-Create one executable `ExecutionPolicy` boundary shared by hooks, CLI orchestration, and release
-receipts. It does not replace Ruflo, host CLIs, or the existing gates. It decides whether an
-action is eligible and which existing executor is allowed.
+Use `scripts/execution-policy.mjs` as the host-invoked policy classifier and evidence preflight.
+It decides whether a supplied action is eligible and which existing executor is allowed. Calling
+it is explicit; installed hook manifests do not automatically enforce it on every host action.
+`plugin/mcp/managed-cli-interface.mjs` is the managed command execution boundary. Its continuity
+capture surrounds commands it actually executes. Neither boundary implies control over commands
+launched outside it. ADR-087 adopts this precise scope; universal hook enforcement remains an
+unfulfilled target and must not be advertised as current behavior.
 
-### 1. Every consequential action receives a policy decision
+### 1. Policy preflight contract for consequential actions
 
 The policy classifies actions as `read`, `write`, `delegate`, `release`, or `external`. It records
 the task fingerprint, source-grounding receipt, project memory recall status, selected host,
@@ -167,6 +173,16 @@ red until all required assets exist.
 
 ## Current implementation status
 
+**2026-09-16 reconciliation:** the classifier is host-invoked. The installed hooks have been
+retired or narrowed deliberately; they are not an automatic universal execution gate. Managed
+command continuity is being qualified under ADR-087. Source-bound review, runtime continuity,
+and a signed publication receipt are different evidence claims. A local classifier test cannot
+establish successful cross-host restoration or authorize publication.
+
+The following paragraph records the earlier implementation assessment; outstanding criteria
+remain open until the ADR-087 receipts establish otherwise.
+
+
 `Accepted, built with follow-on criteria.` The execution classifier and callable evidence preflight
 exist, with unit coverage in the shared QA lane inventory. QA preserves dependency failures, partial
 selections, source-byte identity, and explicit UNKNOWN runtime results; those receipts do not
@@ -178,6 +194,7 @@ complete reconciliation and dual-seat receipt enforcement, exhaustive architectu
 and public release proof remain outstanding.
 
 ## Currency log
+| 2026-09-17 | Reviewed the knowledge-to-execution policy and governed skill source at integration HEAD; policy text does not establish successful production execution. | `plugin/skills/ruvnet-brain/SKILL.md`; reviewed_digest 70434122574d. |
 | 2026-09-12 | Currency review at commit dae83538: decision unchanged — `plugin/scripts/decision-gate.mjs` and `ground-ruvnet.sh` are byte-unchanged; this ADR's write-time enforcement is unaffected. The hook-parity fork extended `hooks.json`/`codex-hooks.json` with Codex's `apply_patch` matcher on the SAME `decision-gate` route (no new gate, same enforcement code, one more matched tool name on Codex) and added a separate, independent Stop-time pair (`grounding-turn-mark`/`grounding-turn-gate`) that closes the different gap this ADR's currency log doesn't cover (an ungrounded plain-text answer that never calls a write tool). `plugin/skills/ruvnet-brain/SKILL.md`, `PLAYBOOK.md`, `ground-before-write.sh`, `route-dispatch.sh`, `bin/install.mjs` did not move in this fork's diff. | Reviewed `plugin/hooks/hooks.json`/`codex-hooks.json`'s diff directly (merge-base `13cfc38b`..`ef2b8e12`) and confirmed `decision-gate.mjs`/`ground-ruvnet.sh` are unchanged. |
 
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged and its primitives now registered. `7b8e6e73` wired `plugin/scripts/ground-ruvnet.sh` (UserPromptSubmit), the `decision-gate.mjs` write route (PreToolUse on Write, Edit, MultiEdit and NotebookEdit, composing `ground-before-write.sh`) and `grounding-stamp` (PostToolUse) into the continuity plane with hook-contracts v5. The integration owner's own probe on main: a rUv-stack prompt → a 1,310-byte directive; an unrelated prompt → silence; an ungrounded `.mjs` naming agentdb → exit 2 BLOCKED; a payload carrying the real `Searched <n> RuvNet repos` banner → a per-term stamp → the same write exits 0; a different ungrounded product → exit 2; `RUVNET_SKIP_GROUNDING_CHECK=1` → 0. `ground-before-write` is opt-in on `~/.claude/model-router/profile.json`. `bin/install.mjs` `dc18fadc` and `09079037` (2026-09-09, no false restart requirement); skills `60f269ad` pre-session. `scripts/doc-currency.mjs`, `scripts/convergence-manifest.mjs`, `plugin/scripts/route-dispatch.sh`, `scripts/qa-runner.mjs`, `tests/unit/execution-policy.test.mjs` did not move. §4's same-change reconciliation is what this row is. | Reviewed `plugin/hooks/hooks.json`, `plugin/scripts/ground-ruvnet.sh`, `plugin/scripts/ground-before-write.sh`, `plugin/scripts/decision-gate.mjs`. reviewed_digest 685935ca744e. |
@@ -189,3 +206,5 @@ and public release proof remain outstanding.
 
 
 | 2026-08-30 | Created after a live audit showed that correct Brain guidance could still be bypassed by selecting Ruflo's API-backed executor instead of the native subscription executor. | `plugin/skills/ruvnet-brain/SKILL.md`, `docs/adr/0061-subscription-only-dual-host-deliberation.md`, `plugin/scripts/route-dispatch.sh`, and the failed Ruflo execution receipt in the session record. |
+
+| 2026-09-16 | Clarified host-invoked execution scope and managed CLI ownership | `scripts/execution-policy.mjs`, `plugin/mcp/managed-cli-interface.mjs`, and installed hook manifests do not implement a universal automatic gate; ADR-087 qualification remains in progress. |

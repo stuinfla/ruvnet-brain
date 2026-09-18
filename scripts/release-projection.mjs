@@ -16,6 +16,7 @@
 // The caller (scripts/build-bundle.mjs's assembleBundle) is the ONE place that reads inputs from
 // disk and the ONE place that writes the resulting files, exactly once, alongside everything else it
 // assembles in the same pass.
+import { isIngestibleDisposition } from './coverage-integrity.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -176,19 +177,20 @@ export function projectReleaseFromAssets({ corpusCoverage, assetsDir, version, s
   const seededGistIds = new Set(gistReceipt ? Object.keys(gistReceipt.gists) : []);
   const seeded = (row) => availableStores.has(String(row.artifact?.store || '').toLowerCase())
     && (row.kind !== 'gist' || seededGistIds.has(String(row.key || '').replace(/^gist:/, '')));
-  const seededRows = corpusCoverage.rows.filter((row) => row.disposition === 'eligible' && seeded(row));
+  const seededRows = corpusCoverage.rows.filter((row) => isIngestibleDisposition(row.disposition) && seeded(row));
   if (!seededRows.length) throw new Error('immutable seed contains no eligible corpus stores');
-  const seededExcludedRows = corpusCoverage.rows.filter((row) => row.disposition !== 'eligible'
+  const seededExcludedRows = corpusCoverage.rows.filter((row) => !isIngestibleDisposition(row.disposition)
     && availableStores.has(String(row.artifact?.store || '').toLowerCase()));
   const rows = [...seededRows, ...seededExcludedRows].map((row) => {
-    if (row.disposition !== 'eligible') return { ...row };
+    if (!isIngestibleDisposition(row.disposition)) return { ...row };
     const store = String(row.artifact.store);
     const generation = sourceLedger.stores[store];
     if (!generation) throw new Error(`immutable seed ledger is missing public store ${store}`);
+    if (row.disposition === 'fork:original-content') throw new Error('legacy release projection cannot establish fork delta provenance; rebuild through corpus reconciliation');
     return { ...row, status: 'CURRENT', artifact: { ...row.artifact,
       sourceCommit: generation.sourceCommit, rvfSha256: generation.sha256 } };
   });
-  const publicStores = [...new Set(rows.filter((row) => row.disposition === 'eligible')
+  const publicStores = [...new Set(rows.filter((row) => isIngestibleDisposition(row.disposition))
     .map((row) => String(row.artifact.store).toLowerCase()))];
   const classesFile = path.join(assets, 'public-store-classes.json');
   const derivedStores = fs.existsSync(classesFile)

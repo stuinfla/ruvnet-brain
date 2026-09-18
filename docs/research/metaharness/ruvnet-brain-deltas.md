@@ -1,6 +1,6 @@
 # RuvNet-Brain deltas — always-running MetaHarness coding service
 
-Updated: 2026-07-17
+Updated: 2026-09-17 | Version 1.0.1
 
 **Status:** research only; no service, harness, cloud resource, or deployment has been created.
 **Written:** 2026-07-17
@@ -165,7 +165,7 @@ npm run catalog:verify        # model catalog live-verified against committed sn
 npm test                      # structure + grounding-hook behavior (plugin/test/run-tests.mjs)
 npm run test:cov              # vitest unit suite + coverage (tests/unit)
 node --test tests/integration/install-smoke.mjs
-node kb/test-guard-injection.mjs
+npm exec -- vitest run tests/unit/forge-guard-injection.test.mjs tests/unit/forge-guard-passages.test.mjs
 node tests/integration/redteam-guard.mjs
 npm audit --audit-level=high  # (run inside kb/, its own package boundary)
 ```

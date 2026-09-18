@@ -9,7 +9,6 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { TextDecoder } from 'node:util';
 import { chunkText, FORGE_CHUNKER_VERSION } from './forge-corpus.mjs';
 import { stableChunkId } from './incremental-refresh.mjs';
-export const FORK_DELTA_VERSION = 'fork-delta/1';
 let validatorPromise;
 async function validator() {
   if (!validatorPromise) {
@@ -20,6 +19,8 @@ async function validator() {
   return validatorPromise;
 }
 const TRUSTED_VALIDATOR = await validator();
+export const FORK_DELTA_VERSION = TRUSTED_VALIDATOR.FORK_DELTA_VERSION;
+if (!FORK_DELTA_VERSION) throw new Error('trusted coverage validator lacks fork delta version');
 export function validateForkDeltaIdentity(value) {
   if (typeof TRUSTED_VALIDATOR.validateForkDeltaIdentity !== 'function') {
     throw new Error('trusted coverage validator does not expose validateForkDeltaIdentity');
@@ -34,7 +35,7 @@ export function isIngestibleDisposition(value) {
 }
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
-const git = (repo, args, encoding = 'utf8') => execFileSync('git', ['-C', repo, ...args], {
+const git = (repo, args, encoding = 'utf8') => execFileSync('git', ['--literal-pathspecs', '-C', repo, ...args], {
   encoding, maxBuffer: 64 * 1024 * 1024,
   env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_EXTERNAL_DIFF: 'false', GIT_ATTR_NOSYSTEM: '1' },
 });
@@ -120,9 +121,12 @@ function parseRawRecords(buffer) {
 }
 
 function operationText(repo, id, op) {
+  const sensitive = op.paths.some(file => /^(?:\.env(?:\..*)?|id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|credentials(?:\..*)?)$/i.test(path.posix.basename(file))
+    || /\.(?:key|pem|p12|pfx)$/i.test(file));
+  if (sensitive) op.typed = 'sensitive-metadata-only';
   const pathArgs = ['--', ...op.paths];
   let diff = '';
-  try { diff = git(repo, ['diff', '--no-ext-diff', '--no-textconv', '--unified=0', id.mergeBaseSha, id.forkHeadSha, ...pathArgs]); }
+  try { if (!sensitive) diff = utf8.decode(git(repo, ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '--no-relative', '--ignore-submodules=none', '--submodule=short', '--diff-algorithm=myers', '--no-indent-heuristic', '--unified=0', id.mergeBaseSha, id.forkHeadSha, ...pathArgs], 'buffer')); }
   catch (error) { throw new Error(`fork delta diff failed for ${op.paths.join(' → ')}: ${error.message}`); }
   if (/^Binary files /m.test(diff)) op.typed ||= 'binary';
   if (!op.typed && op.oldMode !== op.newMode) op.typed = 'mode-change';
@@ -133,7 +137,8 @@ function operationText(repo, id, op) {
   op.hunks = hunks;
   const typed = JSON.stringify({ status: op.status, kind: op.kind, paths: op.paths, oldMode: op.oldMode,
     newMode: op.newMode, oldObject: op.oldObject, newObject: op.newObject, typed: op.typed, hunks });
-  return `Fork delta ${id.forkRepository} relative to upstream ${id.upstream} at ${id.mergeBaseSha}\nOperation: ${label}\nOperation metadata: ${typed}\nPinned fork head: ${id.forkHeadSha}\n\n${diff || '(no textual payload; see typed operation above)'}`;
+  const payload = ['binary', 'symlink', 'submodule', 'sensitive-metadata-only'].includes(op.typed) ? `(non-text ${op.typed} operation; no source payload)` : diff;
+  return `Fork delta ${id.forkRepository} relative to upstream ${id.upstream} at ${id.mergeBaseSha}\nOperation: ${label}\nOperation metadata: ${typed}\nPinned fork head: ${id.forkHeadSha}\n\n${payload || '(no textual payload; see typed operation above)'}`;
 }
 
 /** Materialize only changed operations into a temporary corpus-shaped directory. */

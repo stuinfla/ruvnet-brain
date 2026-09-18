@@ -36,8 +36,7 @@ jobs:
           const identity=JSON.parse(fs.readFileSync('release-identity.json','utf8'));
           if(identity.candidateSha!==process.env.CANDIDATE_SHA) throw new Error('candidate identity mismatch');
           const reviews=[JSON.parse(fs.readFileSync('reviews/claude-fable-5-1.json')),JSON.parse(fs.readFileSync('reviews/gpt-6-astra.json'))];
-          validateIndependentReviewPair(reviews,{publicKeysByReviewer:{'claude-fable-5-1':process.env.FABLE_PUBLIC_KEY,'gpt-6-astra':process.env.ASTRA_PUBLIC_KEY}});
-          if(reviews.some(r=>r.sourceSha!==identity.candidateSha||r.artifactSha256!==identity.packageSha256||r.payloadId!==identity.payloadId||r.releaseIdentity?.version!==identity.version||r.releaseIdentity?.tag!==identity.tag||r.releaseIdentity?.bundleSha256!==identity.bundleSha256)) throw new Error('review is bound to a different release');
+          validateIndependentReviewPair(reviews,{publicKeysByReviewer:{'claude-fable-5-1':process.env.FABLE_PUBLIC_KEY,'gpt-6-astra':process.env.ASTRA_PUBLIC_KEY},expectedIdentity:identity});
           NODE
       - uses: actions/upload-artifact@v4
         with:

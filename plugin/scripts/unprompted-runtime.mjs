@@ -84,7 +84,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnNativeHost } from './native-host-process.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readStdinBounded } from './hook-input.mjs';
 import { resolveBash } from './hook-shim-bash.mjs';
@@ -112,9 +112,14 @@ const SCRIPTS_DIR = path.dirname(SELF);                     // the payload's scr
 // The CC event name the shim forwarded. No event → nothing to run; stay silent.
 const EVENT = process.argv[2] || '';
 
-// Bound the whole runtime well under the 5s hook budget: producers run sequentially and each has its
-// own internal watchdog, but a backstop timeout here means a wedged producer can never hang the turn.
-const PRODUCER_TIMEOUT_MS = Number(process.env.RUVNET_UNPROMPTED_TIMEOUT_MS) || 4000;
+// The outermost Codex wrapper allows 2500ms; Claude allows 3000ms. Leave startup and
+// delivery headroom, and measure input plus sequential producer work against one monotonic deadline.
+const requestedBudget = Number(process.env.RUVNET_UNPROMPTED_TIMEOUT_MS);
+const PRODUCER_TIMEOUT_MS = Number.isFinite(requestedBudget) && requestedBudget > 0 && requestedBudget <= 1800
+  ? requestedBudget : 1800;
+const DEADLINE = PRODUCER_TIMEOUT_MS; // performance.now includes this process's bootstrap and imports
+const CLEANUP_RESERVE_MS = 100;
+const DELIVERY_RESERVE_MS = 100;
 const MAX_BUFFER = 1 << 20;
 
 const VALID_CHANNELS = new Set(['advocacy', 'promotion', 'lesson', 'alarm']);
@@ -162,7 +167,7 @@ const lesson = (subEvent) => ({ argv: [BASH, path.join(SCRIPTS_DIR, 'lesson-hook
 const ADVOCACY_ROUTE = { argv: [process.execPath, path.join(SCRIPTS_DIR, 'advocacy-route.mjs')], feedStdin: true, channels: ['advocacy'] };
 
 const BUILTIN_REGISTRY = {
-  'UserPromptSubmit': [ANTICIPATE, ADVOCACY_ROUTE, lesson('UserPromptSubmit')],
+  'UserPromptSubmit': [lesson('UserPromptSubmit'), ANTICIPATE, ADVOCACY_ROUTE],
   'PreToolUse-write': [lesson('PreToolUse-write')],
   'PreToolUse-bash':  [lesson('PreToolUse-bash')],
   'PreToolUse-push':  [lesson('PreToolUse-push')],
@@ -195,7 +200,7 @@ function resolveProducers(event) {
 // so read only when fd 0 is a real pipe/file. A manual run with no redirect yields empty, not a hang.
 let payload = Buffer.alloc(0);
 if (!process.stdin.isTTY) {
-  try { payload = await readStdinBounded(); } catch { payload = Buffer.alloc(0); }
+  try { payload = await readStdinBounded({ totalMs: Math.max(1, DEADLINE - performance.now() - DELIVERY_RESERVE_MS) }); } catch { payload = Buffer.alloc(0); }
 }
 
 // AN UNPROMPTED UTTERANCE MUST BE OCCASIONED BY A REAL EVENT (fixed 2026-07-27).
@@ -230,56 +235,44 @@ if (!producers.length) silent();   // unknown event, or nothing wired for it —
 // stdio is piped (input buffer for stdin; stdout/stderr captured into the result). NOTHING a producer
 // writes touches the real streams — that is what makes the runtime the sole writer, and what drops a
 // rogue producer's raw bytes before they can reach a terminal.
-// ONE global deadline for ALL producers combined (GPT-5.6-Sol): sequential per-producer timeouts could
-// otherwise sum past the 5s hook budget. Each producer gets only the remaining budget; once it is spent,
-// no further producer runs. rawLines carries each line WITH its producer's authorised channel set.
-const rawLines = [];   // { s, channels }
-const DEADLINE = Date.now() + PRODUCER_TIMEOUT_MS;
-for (const p of producers) {
-  const remaining = DEADLINE - Date.now();
-  if (remaining <= 0) break;                 // global budget spent → run no more producers
-  let out = '';
-  try {
-    // Build env for the spawned producer. advocacy-route.mjs needs RUVNET_ADVOCACY_ROUTE_BUDGET_MS
-    // to self-limit under concurrent load; pass it through if set by the test or caller.
-    const producerEnv = {
-      ...process.env,
-      RUVNET_EMIT_CANDIDATES: '1',
-    };
-    if (process.env.RUVNET_ADVOCACY_ROUTE_BUDGET_MS) {
-      producerEnv.RUVNET_ADVOCACY_ROUTE_BUDGET_MS = process.env.RUVNET_ADVOCACY_ROUTE_BUDGET_MS;
-    }
-    const r = spawnSync(p.argv[0], p.argv.slice(1), {
-      input: p.feedStdin ? payload : Buffer.alloc(0),
-      env: producerEnv,
-      timeout: remaining,
-      maxBuffer: MAX_BUFFER,
-    });
-    // FAIL CLOSED (GPT-5.6-Sol): a producer that errored, exited non-zero, was signalled (a timeout kill),
-    // or overflowed maxBuffer has UNTRUSTWORTHY partial output — discard it, never deliver a fragment.
-    if (!r.error && r.status === 0 && !r.signal && r.stdout) out = r.stdout.toString('utf8');
-  } catch { out = ''; }   // a failed spawn contributes no candidates — never a failure of the turn
-  for (const line of out.split('\n')) {
-    const s = line.trim();
-    if (s) rawLines.push({ s, channels: p.channels });
+// Sequential producers share the input deadline. The existing process owner kills the whole
+// child tree; an authorized terminal refusal is delivered before any later producer starts.
+const MAX_COPY = 8192;
+function parseCandidates(output, channels) {
+  const accepted = [];
+  for (const line of output.split('\n')) {
+    let candidate;
+    try { candidate = JSON.parse(line); } catch { continue; }
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
+    if (!VALID_CHANNELS.has(candidate.channel) || !channels.includes(candidate.channel)) continue;
+    if (!VALID_EFFECTS.has(candidate.effect) || typeof candidate.copy !== 'string' || !candidate.copy.trim()) continue;
+    accepted.push({ ...candidate, copy: candidate.copy.slice(0, MAX_COPY) });
   }
+  return accepted;
 }
-
-// ── Parse candidates. Anything that is not a well-formed candidate object is dropped here, which is
-// where the "raw bytes are a protocol violation" guarantee is actually enforced. ───────────────────
-const MAX_COPY = 8192;   // a real advisory is short; cap so a rogue/buggy 900KB emission cannot bloat delivery
 const candidates = [];
-for (const { s, channels } of rawLines) {
-  let c;
-  try { c = JSON.parse(s); } catch { continue; }              // not JSON → drop (a rogue's raw line)
-  if (!c || typeof c !== 'object' || Array.isArray(c)) continue;
-  if (!VALID_CHANNELS.has(c.channel)) continue;               // unknown/absent channel → drop
-  if (!channels.includes(c.channel)) continue;                // ANTI-SPOOF (GPT-5.6-Sol): this producer is
-                                                              // not authorised for this channel → drop
-  if (!VALID_EFFECTS.has(c.effect)) continue;                 // unknown/absent effect → drop
-  if (typeof c.copy !== 'string' || !c.copy.trim()) continue; // nothing to say → drop
-  c.copy = c.copy.slice(0, MAX_COPY);                         // cap size; delivery below is synchronous
-  candidates.push(c);
+for (const producer of producers) {
+  const remaining = DEADLINE - performance.now() - CLEANUP_RESERVE_MS - DELIVERY_RESERVE_MS;
+  if (remaining <= 0) break;
+  let batch = [];
+  try {
+    const result = await spawnNativeHost(producer.argv[0], producer.argv.slice(1), {
+      env: { ...process.env, RUVNET_EMIT_CANDIDATES: '1' },
+      stdio: ['pipe', 'pipe', 'pipe'], timeout: remaining,
+      terminationFallbackMs: CLEANUP_RESERVE_MS, maxBuffer: MAX_BUFFER, allowEarlyStdinClose: true,
+    }, producer.feedStdin ? payload : Buffer.alloc(0));
+    // Failed or truncated output cannot create a refusal, even if a valid line arrived first.
+    if (result.outputTrusted === true) {
+      batch = parseCandidates(result.stdout, producer.channels);
+    }
+  } catch { /* failed spawn contributes no candidates */ }
+  const blockingReasons = batch.filter((candidate) => candidate.channel === 'lesson' && candidate.effect === 'block')
+    .map((candidate) => candidate.copy);
+  if (blockingReasons.length) {
+    fs.writeSync(2, `${blockingReasons.join('\n')}\n`);
+    process.exit(2);
+  }
+  candidates.push(...batch);
 }
 if (!candidates.length) silent();
 
@@ -345,7 +338,6 @@ async function ledger() {
 
 // ── Apply per-channel policy ───────────────────────────────────────────────────────────────────────
 const advisories = [];   // { copy, hookEventName }
-const blocks = [];       // reason strings
 
 for (const c of candidates) {
   const hookEventName = typeof c.hookEventName === 'string' && c.hookEventName.trim() ? c.hookEventName.trim() : null;
@@ -359,14 +351,7 @@ for (const c of candidates) {
       break;
 
     case 'lesson':
-      if (c.effect === 'block') {
-        // The lesson producer only emits effect:'block' for a lesson the user personally opted into
-        // (blocking-optin.json). The runtime propagates that refusal untouched — it never invents one
-        // and never swallows one.
-        blocks.push(copy);
-      } else {
-        advisories.push({ copy, hookEventName });
-      }
+      advisories.push({ copy, hookEventName });
       break;
 
     case 'promotion': {
@@ -410,15 +395,6 @@ for (const c of candidates) {
     default:
       break;   // unreachable — VALID_CHANNELS already filtered
   }
-}
-
-// ── Deliver. A surviving block dominates everything. ───────────────────────────────────────────────
-if (blocks.length) {
-  // Exit 2: stdout is ignored by the harness and MUST be byte-empty; stderr becomes the model's refusal
-  // reason. SYNCHRONOUS write (GPT-5.6-Sol) — process.exit() after an async write drops buffered bytes on a
-  // pipe (measured 900KB→8KB). Advisories collected this pass are discarded: a refusal supersedes.
-  try { fs.writeSync(2, blocks.join('\n') + '\n'); } catch { /* nothing else to do at the boundary */ }
-  process.exit(2);
 }
 
 if (!advisories.length) silent();

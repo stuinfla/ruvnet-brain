@@ -15,8 +15,7 @@ import {
   aggregate,
 } from './learning-replay-contract.mjs';
 
-const KEEP_RUNS = 14;
-const PROOF_SCHEMA = 2;
+const KEEP_RUNS = 14, PROOF_SCHEMA = 2;
 const PROOF_ROOT = path.join(ROOT, 'data', 'learning-replay-transcripts');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const HOST_HOME_PATHS = [...new Set([os.homedir(), process.env.HOME].filter(Boolean))]
@@ -211,22 +210,24 @@ function aggregateMismatch(artifact, recomputed) {
 function currency(artifact, repo, maxAgeDays) {
   if (!artifact.sha) return { ok: false, why: 'artifact states no SHA' };
   const head = headSha(repo);
-  if (head && artifact.sha !== head) {
+  if (!head) return { ok: false, why: 'artifact currency cannot inspect HEAD' };
+  if (artifact.sha !== head) {
     const ancestor = spawnSync('git', ['merge-base', '--is-ancestor', artifact.sha, head], { cwd: repo });
     if (ancestor.status !== 0) return { ok: false, why: `artifact source ${artifact.sha} is not an ancestor of HEAD` };
     const diff = spawnSync('git', [
       'diff', '--name-only', `${artifact.sha}..${head}`, '--', ...LOAD_BEARING,
     ], { cwd: repo, encoding: 'utf8' });
-    const changed = diff.status === 0
-      ? diff.stdout.split('\n').map((value) => value.trim()).filter(Boolean)
-      : [];
-    if (changed.length) return { ok: false, why: `load-bearing files changed: ${changed.join(', ')}` };
+    if (diff.error || diff.status !== 0) {
+      const detail = redactHostPaths(diff.error?.message || diff.stderr || `exit ${diff.status}`).trim().slice(0, 400);
+      return { ok: false, why: `artifact currency source comparison failed: ${detail}` };
+    }
+    const changed = diff.stdout.trim();
+    if (changed) return { ok: false, why: `load-bearing files changed: ${changed.replaceAll('\n', ', ')}` };
   }
   const age = artifact.at ? (Date.now() - Date.parse(artifact.at)) / 86_400_000 : Infinity;
   if (!(age <= maxAgeDays)) return { ok: false, why: `artifact is older than ${maxAgeDays} days` };
   return { ok: true };
 }
-
 export function checkArtifact({ file = RESULT_FILE, repo = ROOT, maxAgeDays = 14 } = {}) {
   if (!fs.existsSync(file)) return { status: VERDICT.UNKNOWN, why: 'result artifact does not exist' };
   let artifact;

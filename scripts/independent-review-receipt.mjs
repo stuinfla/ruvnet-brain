@@ -230,11 +230,14 @@ function normalizeExecution(execution, reviewer) {
   const isOpenAiNative = reviewer.provider === 'openai';
   const nativeHost = reviewer.identity === 'claude-fable-5-1' ? 'claude-code'
     : reviewer.identity === 'gpt-6-astra' ? 'codex' : null;
-  const required = isOpenAiNative
+  const requestedOnly = reviewer.identity === 'gpt-6-astra' || reviewer.identity === 'claude-fable-5-1';
+  const required = requestedOnly
+    ? ['invocationDigest', 'modelIdentityClass', 'requestedModel', 'subscriptionAuthenticated', 'threadId', 'sessionId']
+    : isOpenAiNative
     ? ['catalogRowSha256', 'invocationDigest', 'subscriptionAuthenticated', 'threadId']
     : ['invocationDigest', 'subscriptionAuthenticated'];
   if (nativeHost) required.push('nativeHost');
-  if (isOpenAiNative
+  if (isOpenAiNative && !requestedOnly
     && (!Object.hasOwn(execution || {}, 'threadId') || !Object.hasOwn(execution || {}, 'catalogRowSha256'))) {
     throw new Error('GPT review thread and catalog evidence are required');
   }
@@ -242,8 +245,14 @@ function normalizeExecution(execution, reviewer) {
   if (execution.subscriptionAuthenticated !== true) throw new Error('review execution is not subscription authenticated');
   hex(execution.invocationDigest, HEX64, 'review invocation digest');
   if (nativeHost && execution.nativeHost !== nativeHost) throw new Error('review native host differs from policy');
-  if (isOpenAiNative) {
-    text(execution.threadId, 'GPT review thread');
+  if (requestedOnly && execution.modelIdentityClass !== 'requested-only') throw new Error('native execution model identity must be requested-only');
+  if (requestedOnly && execution.requestedModel !== reviewer.model) throw new Error('native requested model differs from reviewer');
+  if (isOpenAiNative) text(execution.threadId, 'GPT review thread');
+  if (requestedOnly) {
+    if (nativeHost === 'claude-code') text(execution.sessionId, 'Claude review session');
+    if ((nativeHost === 'claude-code' && execution.threadId !== null) || (nativeHost === 'codex' && execution.sessionId !== null)) throw new Error('review host session identity differs');
+  }
+  if (isOpenAiNative && !requestedOnly) {
     hex(execution.catalogRowSha256, HEX64, 'GPT review catalog row');
   }
   return Object.fromEntries(required.map((key) => [key, execution[key]]));
@@ -415,18 +424,15 @@ export function validateIndependentReviewPair(receipts, { publicKeysByReviewer, 
   if (ordered.slice(1).some((receipt) => canonicalJson(reviewedIdentity(receipt)) !== canonicalJson(identity))) {
     throw new Error('independent reviewers reviewed identity differs');
   }
-  if (expectedIdentity && canonicalJson(identity) !== canonicalJson(expectedIdentity)) {
-    if (expectedIdentity.candidateSha === undefined) throw new Error('independent review pair differs from expected reviewed identity');
-  }
-  if (expectedIdentity?.candidateSha !== undefined && ordered.some((receipt) => receipt.sourceSha !== expectedIdentity.candidateSha
-    || receipt.artifactSha256 !== expectedIdentity.packageSha256 || receipt.payloadId !== expectedIdentity.payloadId
-    || receipt.releaseIdentity?.candidateSha !== expectedIdentity.candidateSha
-    || receipt.releaseIdentity?.packageSha256 !== expectedIdentity.packageSha256
-    || receipt.releaseIdentity?.bundleSha256 !== expectedIdentity.bundleSha256
-    || receipt.releaseIdentity?.payloadId !== expectedIdentity.payloadId
-    || receipt.releaseIdentity?.version !== expectedIdentity.version
-    || receipt.releaseIdentity?.tag !== expectedIdentity.tag)) {
-    throw new Error('independent review pair differs from expected release identity');
+  if (expectedIdentity) {
+    if (Object.hasOwn(expectedIdentity, 'candidateSha')) {
+      const expectedRelease = normalizeReleaseIdentity(expectedIdentity);
+      if (ordered.some(receipt => canonicalJson(receipt.releaseIdentity) !== canonicalJson(expectedRelease))) {
+        throw new Error('independent review pair differs from expected release identity');
+      }
+    } else if (canonicalJson(identity) !== canonicalJson(expectedIdentity)) {
+      throw new Error('independent review pair differs from expected reviewed identity');
+    }
   }
   if (expectedOracle) {
     const expected = normalizeExpectedOracle(expectedOracle);

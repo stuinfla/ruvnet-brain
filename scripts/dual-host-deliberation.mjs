@@ -1,19 +1,20 @@
 #!/usr/bin/env node
+import { nativeReviewEvidenceDigest, readNativeCompletion, NATIVE_PROMPT_BUDGET } from './native-review-evidence.mjs';
 
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawnNativeHost as spawnHost } from './native-host-process.mjs';
 import { fileURLToPath } from 'node:url';
 import { probeSubscriptionHosts, subscriptionOnlyEnv } from './subscription-hosts.mjs';
-import { canonicalJson, digest } from './coverage-integrity.mjs';
+import { digest } from './coverage-integrity.mjs';
+import { validateDualPlan } from './dual-workflow-contract.mjs';
+import { assertDualBriefCurrent } from './dual-workflow.mjs';
+import { DualWorkflowStore } from './dual-workflow-store.mjs';
+import { STAGE_SCHEMAS, verificationJsonSchema, validateStageValue, bindStageContent, TOP_SUBSCRIPTION_MODELS, correctionLedgerFromCritiques, mergeVerifierCorrections, validateDeliberationTrace } from './dual-deliberation-contract.mjs';
+export { validateStageValue } from './dual-deliberation-contract.mjs';
 
 const HOSTS = Object.freeze(['claude-code', 'codex']);
-// Top subscription models verified on the native hosts on 2026-09-10.
-// Keep these explicit: an implicit host default silently weakens the dual review.
-export const TOP_SUBSCRIPTION_MODELS = Object.freeze({
-  'claude-code': 'claude-fable-5-1',
-  codex: 'gpt-6-astra',
-});
+export { TOP_SUBSCRIPTION_MODELS } from './dual-deliberation-contract.mjs';
 const HARD_PROBLEM = /\b(adr|architecture|architect|ddd|bounded context|aggregate|agentic[- ]?qe|holistic|security|production|migration|irreversible|threat model|experience)\b/i;
 
 export function hardProblem(task) {
@@ -34,183 +35,35 @@ function hostKey(host) {
 }
 
 function promptFor(stage, payload) {
+  const schema = structuredClone(STAGE_SCHEMAS[stage] || {});
+  if (['proposal','critique','synthesis','revise','review'].includes(stage)) {
+    schema.required = schema.required.filter(key => key !== 'contentDigest'
+      && (stage === 'review' || key !== 'artifactSha256'));
+  }
   return [
     'You are one half of a subscription-only Claude Code and Codex deliberation.',
     'Do not request or use API keys. Work read-only. Return JSON only.',
     `Stage: ${stage}`,
-    `Response contract: ${JSON.stringify(STAGE_SCHEMAS[stage] || {})}`,
+    'For verify/reverify, copy artifactSha256 AND contentDigest from the exact supplied artifact. These identify the reviewed subject, not your findings.',
+    'For proposal/critique/synthesis/revise, omit artifactSha256 and contentDigest: the native adapter computes them from your new content. Do not invent cryptographic hashes.',
+    'For review, copy the supplied artifactSha256; omit contentDigest because the adapter hashes your fresh findings.',
+    `Response contract: ${JSON.stringify(schema)}`,
     JSON.stringify(payload),
   ].join('\n');
 }
 
-function parseCodexJsonl(stdout) {
-  const messages = String(stdout).trim().split('\n').flatMap((line) => {
-    try {
-      const value = JSON.parse(line);
-      return value.type === 'item.completed' && value.item?.type === 'agent_message'
-        ? [value.item.text]
-        : [];
-    } catch {
-      return [];
-    }
-  });
-  return messages.at(-1) ?? stdout;
-}
-
-function parseHostValue(host, stdout) {
-  const raw = host === 'claude-code'
-    ? (() => {
-        try {
-          const envelope = JSON.parse(stdout);
-          return envelope.result ?? envelope;
-        } catch {
-          return stdout;
-        }
-      })()
-    : parseCodexJsonl(stdout);
-  if (typeof raw !== 'string') return raw;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return { text: raw };
-  }
-}
-
-const STAGE_SCHEMAS = Object.freeze({
-  proposal: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'proposal'], optional: ['task', 'plan', 'adr', 'ddd', 'qe', 'artifact', 'host'] },
-  critique: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'findings'], optional: ['corrections', 'risks', 'verdict', 'host'] },
-  synthesis: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'artifact'], optional: ['adr', 'ddd', 'qe', 'unresolved', 'host'] },
-  revise: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'artifact'], optional: ['adr', 'ddd', 'qe', 'unresolved', 'host', 'resolutions'] },
-  verify: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'verdict', 'corrections'], optional: ['findings', 'resolutions'] },
-  reverify: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'verdict', 'corrections'], optional: ['findings', 'resolutions'] },
-  review: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'verdict', 'score', 'findings', 'deductions', 'untested', 'reviewedAt', 'retrievalOracleReview'], optional: ['host', 'execution'] },
-});
-
-export function validateStageValue(stage, value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || value.text !== undefined) {
-    throw new Error(`${stage} response is not a structured stage object`);
-  }
-  const schema = STAGE_SCHEMAS[stage];
-  if (!schema) throw new Error(`${stage} response has an unknown stage`);
-  const allowed = new Set([...schema.required, ...schema.optional]);
-  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
-  if (unknown.length) throw new Error(`${stage} response has unknown field: ${unknown.sort()[0]}`);
-  const missing = schema.required.find((key) => !Object.hasOwn(value, key));
-  if (missing) throw new Error(`${stage} response is missing ${missing}`);
-  if (value.schemaVersion !== 1 || value.stage !== stage || !/^[a-f0-9]{64}$/.test(String(value.artifactSha256))
-    || !/^[a-f0-9]{64}$/.test(String(value.contentDigest))) {
-    throw new Error(`${stage} response identity is invalid`);
-  }
-  if (stage === 'proposal' && (!value.proposal || typeof value.proposal !== 'object' || Array.isArray(value.proposal)
-    || Object.keys(value.proposal).length === 0)) {
-    throw new Error('proposal response is not substantive');
-  }
-  if (stage === 'critique' && (!Array.isArray(value.findings) || value.findings.length === 0
-    || value.findings.some((finding) => (typeof finding !== 'string' && (!finding || typeof finding !== 'object'))
-      || (typeof finding === 'object' && Object.keys(finding).length === 0)))) {
-    throw new Error('critique findings are not substantive');
-  }
-  if (stage === 'critique' && value.corrections !== undefined) {
-    if (!Array.isArray(value.corrections) || value.corrections.some((correction) => !correction || typeof correction !== 'object'
-      || !/^[a-z0-9][a-z0-9._-]*$/i.test(String(correction.id || '')) || typeof correction.text !== 'string' || !correction.text.trim())) {
-      throw new Error('critique corrections are invalid');
-    }
-  }
-  if (['synthesis', 'revise'].includes(stage)
-    && (!value.artifact || typeof value.artifact !== 'object' || Array.isArray(value.artifact))) {
-    throw new Error(`${stage} artifact is not substantive`);
-  }
-  if (stage === 'review' && (!['PASS', 'FAIL'].includes(value.verdict) || !Number.isInteger(value.score)
-    || !Array.isArray(value.findings) || !Array.isArray(value.deductions) || !Array.isArray(value.untested)
-    || typeof value.reviewedAt !== 'string' || !value.retrievalOracleReview || typeof value.retrievalOracleReview !== 'object')) {
-    throw new Error('review response is not substantive');
-  }
-  const boundContent = value.proposal ?? value.findings ?? value.artifact;
-  if (boundContent !== undefined && digest(boundContent) !== value.contentDigest) {
-    throw new Error(`${stage} response artifact digest differs from substantive content`);
-  }
-  if (['verify', 'reverify'].includes(stage)) {
-    if (!['accept', 'changes', 'block'].includes(value.verdict)) throw new Error(`${stage} verdict is invalid`);
-    if (!Array.isArray(value.corrections) || value.corrections.some((correction) => !correction
-      || typeof correction !== 'object' || !/^[a-z0-9][a-z0-9._-]*$/i.test(String(correction.id || ''))
-      || typeof correction.text !== 'string' || !correction.text.trim())) {
-      throw new Error(`${stage} corrections are invalid`);
-    }
-    if (value.verdict === 'accept' && value.corrections.length) throw new Error(`${stage} acceptance has unresolved corrections`);
-    if (value.verdict === 'changes' && value.corrections.length === 0) throw new Error(`${stage} changes require corrections`);
-    if (value.resolutions !== undefined && (!Array.isArray(value.resolutions) || value.resolutions.some((row) => !row
-      || typeof row !== 'object' || typeof row.id !== 'string' || !row.id.trim()
-      || !['resolved', 'rejected'].includes(row.status) || typeof row.reason !== 'string' || !row.reason.trim()))) {
-      throw new Error(`${stage} correction resolutions are invalid`);
-    }
-  }
-  return value;
-}
-
-function correctionLedgerFromCritiques(critiques) {
-  const rows = Object.values(critiques).flatMap((critique) => (critique.corrections || []).map((correction) => ({
-    id: correction.id, text: correction.text, status: 'open', source: critique.host || 'critique',
-  })));
-  const byId = new Map();
-  for (const row of rows) {
-    if (byId.has(row.id) && byId.get(row.id).text !== row.text) throw new Error('critique correction IDs conflict');
-    byId.set(row.id, row);
-  }
-  return [...byId.values()];
-}
-
-function assertCorrectionResolutions(ledger, resolutions, originalArtifact, revisedArtifact) {
-  if (!ledger.length) return;
-  if (canonicalJson(originalArtifact) === canonicalJson(revisedArtifact)) throw new Error('corrections require a changed artifact');
-  if (!Array.isArray(resolutions)) throw new Error('correction resolution ledger is missing');
-  const byId = new Map(resolutions.map((row) => [row?.id, row]));
-  for (const correction of ledger) {
-    const row = byId.get(correction.id);
-    if (!row || !['resolved', 'rejected'].includes(row.status) || typeof row.reason !== 'string' || !row.reason.trim()) {
-      throw new Error(`correction ${correction.id} lacks a reasoned verifier disposition`);
-    }
-  }
-}
-
-function spawnHost(binary, args, options, input = '') {
-  return new Promise((resolve) => {
-    const child = spawn(binary, args, options);
-    let stdout = '';
-    let stderr = '';
-    let inputError = null;
-    let settled = false;
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      resolve(result);
-    };
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.stdin.on('error', (error) => {
-      inputError = error;
-      stderr += `${stderr ? '\n' : ''}${error.message}`;
-      try { child.kill(); } catch { /* child may already be gone */ }
-    });
-    child.on('error', (error) => finish({ status: null, stdout, stderr: error.message, error }));
-    try {
-      child.stdin.end(input);
-    } catch (error) {
-      inputError = error;
-      stderr += `${stderr ? '\n' : ''}${error.message}`;
-      try { child.kill(); } catch { /* child may already be gone */ }
-    }
-    child.on('close', (status) => finish({ status, stdout, stderr, error: inputError }));
-  });
-}
-
-export async function runSubscriptionHost(host, stage, payload, { cwd = process.cwd() } = {}) {
+export async function runSubscriptionHost(host, stage, payload, { cwd = process.cwd(), timeoutMs = 900000, reasoningEffort = 'medium' } = {}) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error('native host deadline must be a positive integer');
+  if (!['medium', 'high'].includes(reasoningEffort)) throw new Error('Dual reasoning effort must be medium or high');
   const prompt = promptFor(stage, payload);
+  if (prompt.length > NATIVE_PROMPT_BUDGET) return { ok:false, reason:'prompt-exceeds-evidence-budget' };
   const env = subscriptionOnlyEnv();
   const command = host === 'claude-code'
     ? {
         binary: 'claude',
         args: [
           '-p', '--output-format', 'json', '--permission-mode', 'plan',
+          ...(['verify', 'reverify'].includes(stage) ? ['--json-schema', JSON.stringify(verificationJsonSchema(stage))] : []),
           '--tools', 'Read,Grep,Glob', '--no-session-persistence', '--effort', 'high',
           '--model', TOP_SUBSCRIPTION_MODELS['claude-code'],
         ],
@@ -219,35 +72,43 @@ export async function runSubscriptionHost(host, stage, payload, { cwd = process.
         binary: 'codex',
         args: [
           'exec', '--ephemeral', '--sandbox', 'read-only', '--color', 'never', '--json',
-          '-m', TOP_SUBSCRIPTION_MODELS.codex, '-c', 'model_reasoning_effort="medium"',
+          '-m', TOP_SUBSCRIPTION_MODELS.codex, '-c', `model_reasoning_effort="${reasoningEffort}"`,
         ],
       };
-  const result = await spawnHost(command.binary, command.args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }, prompt);
-  if (result.status !== 0) {
+  const startedAt = new Date().toISOString();
+  const version = await spawnHost(command.binary, ['--version'], { cwd, env, timeout:Math.min(timeoutMs,15000), killSignal:'SIGKILL', stdio: ['pipe','pipe','pipe'] }, '');
+  if (version.status !== 0 || version.outputTrusted !== true || !version.stdout.trim()) return { ok:false, reason:'native client version unavailable' };
+  const result = await spawnHost(command.binary, command.args, { cwd, env, timeout:timeoutMs, killSignal:'SIGKILL', stdio: ['pipe', 'pipe', 'pipe'] }, prompt);
+  if (result.status !== 0 || result.outputTrusted !== true) {
     return {
       ok: false,
       error: result.stderr || `host exited without a status (${result.status})`,
-      reason: /limit|quota|capacity|usage/i.test(result.stderr)
+      transport:{host,stage,startedAt,completedAt:new Date().toISOString(),prompt,result},
+      timedOut: result.timedOut === true,
+      reason: result.timedOut ? 'timeout' : /limit|quota|capacity|usage/i.test(result.stderr)
         ? 'capacity-limited'
         : 'host-failed',
     };
   }
-  const value = parseHostValue(host, result.stdout);
-  if (stage === 'review' && value && typeof value === 'object' && !Array.isArray(value)) {
-    const transportDigest = createHash('sha256').update(prompt).update(result.stdout).digest('hex');
-    const threadEvent = String(result.stdout).split('\n').map((line) => { try { return JSON.parse(line); } catch { return null; } })
-      .find((event) => event?.type === 'thread.started' && typeof event.thread_id === 'string');
-    const transportThread = threadEvent?.thread_id;
-    if (host === 'codex' && !transportThread) return { ok: false, reason: 'native transport omitted thread.started' };
-    value.execution = { nativeHost: host, subscriptionAuthenticated: true, invocationDigest: transportDigest,
-      ...(host === 'codex' ? { threadId: transportThread,
-        catalogRowSha256: createHash('sha256').update(`codex:${TOP_SUBSCRIPTION_MODELS.codex}`).digest('hex') } : {}) };
+  const completedAt = new Date().toISOString();
+  const transport = { host, stage, startedAt, completedAt, prompt, result };
+  try {
+    const completion = readNativeCompletion(host, result.stdout, TOP_SUBSCRIPTION_MODELS[host]);
+    const { threadId, sessionId, observedModels } = completion;
+    const evidence = { schemaVersion:1, kind:'ruvnet-brain-native-review-evidence', nativeHost:host,
+      clientVersion:version.stdout.trim(), requestedModel:TOP_SUBSCRIPTION_MODELS[host], modelIdentityClass:'requested-only',
+      threadId, sessionId, completionStatus:'completed', status:result.status, signal:result.signal,
+      startedAt, completedAt, prompt, stdout:result.stdout, stderr:result.stderr };
+    const canonicalDigest = nativeReviewEvidenceDigest(evidence);
+    const value = bindStageContent(stage, completion.value);
+    if (stage === 'review') value.execution = { nativeHost:host, subscriptionAuthenticated:true,
+      invocationDigest:canonicalDigest, requestedModel:TOP_SUBSCRIPTION_MODELS[host],
+      modelIdentityClass:'requested-only', threadId, sessionId };
+    validateStageValue(stage, value);
+    return { ok:true, value, extra:{ evidence, canonicalDigest, observedModels } };
+  } catch (error) {
+    return { ok:false, reason:'invalid-native-response', error:error.message, transport };
   }
-  if (stage === 'review') {
-    try { validateStageValue(stage, value); }
-    catch (error) { return { ok: false, reason: 'invalid-structured-response', error: error.message }; }
-  }
-  return { ok: true, value };
 }
 
 export function deliberationMemoryStoreRequest(receipt, { now = Date.now } = {}) {
@@ -258,7 +119,8 @@ export function deliberationMemoryStoreRequest(receipt, { now = Date.now } = {})
     hosts: receipt.hosts,
     roles: receipt.roles,
     accepted: receipt.accepted === true,
-    verifiedOutcome: receipt.accepted === true,
+    planAccepted: receipt.accepted === true,
+    verifiedOutcome: false,
     recordedAt: new Date(recordedAt).toISOString(),
   };
   const key = `dual-deliberation-${recordedAt}-${receipt.taskHash.slice(0, 12)}`;
@@ -307,11 +169,27 @@ async function singleHostDraft(task, host, context) {
 }
 
 export async function deliberate(task, options = {}) {
-  const probes = options.probes ?? probeSubscriptionHosts();
-  const runHost = options.runHost ?? ((host, stage, payload) => (
-    runSubscriptionHost(host, stage, payload, { cwd: options.cwd })
-  ));
+  const implementation = options.mode === 'implementation' || options.brief !== undefined;
   const cwd = options.cwd ?? process.cwd();
+  if (options.mode !== undefined && !['review', 'implementation'].includes(options.mode)) throw new Error('unknown Dual mode');
+  if (implementation) {
+    try { assertDualBriefCurrent(options.brief, cwd); }
+    catch (error) { return { status: 'unresolved', dual: false, planAccepted: false, verifiedOutcome: false, error: error.message }; }
+  }
+  const probes = options.probes ?? probeSubscriptionHosts();
+  const executeHost = options.runHost ?? ((host, stage, payload) => (
+    runSubscriptionHost(host, stage, payload, { cwd: options.cwd, reasoningEffort: options.reasoningEffort })
+  ));
+  const nativeEvidence = [], trace = [];
+  const runHost = async (host, stage, payload) => {
+    const input = implementation
+      ? { ...payload, implementation: { brief:options.brief, briefDigest:digest(options.brief),
+        contract:'Synthesis/revise artifact must be a schemaVersion 1 plan: briefDigest, adr, ddd, unresolved [], ordered jobs [{id,outcome,dependsOn,paths,goals,checks:[{id,command,args,timeoutMs,kind,proves,expectedOutput,optional report}]}], completion {jobId,clean,optional branch,root,preservedPaths,worktreeCount}. One owner per path; every goal and deletion mapped. Accepting a plan does not verify implementation.' } } : payload;
+    const result = await executeHost(host, stage, input);
+    if (result.ok) trace.push(structuredClone({host,stage,payload:input,value:result.value}));
+    if (result.ok && result.extra?.evidence) nativeEvidence.push({host,stage,...result.extra});
+    return result;
+  };
   const eligibleHosts = HOSTS.filter((host) => probes[hostKey(host)]?.eligible);
 
   if (eligibleHosts.length === 0) {
@@ -379,7 +257,7 @@ export async function deliberate(task, options = {}) {
     };
   }
 
-  try { validateStageValue('synthesis', synthesis.value); }
+  try { validateStageValue('synthesis', synthesis.value); if (implementation) validateDualPlan(synthesis.value.artifact, options.brief); }
   catch (error) { return { status: 'unresolved', dual: true, roles, error: error.message, verifiedOutcome: false, learningPersisted: false }; }
 
   let artifact = synthesis.value;
@@ -387,12 +265,14 @@ export async function deliberate(task, options = {}) {
   if (verification.ok) {
     try {
       const checked = validateStageValue('verify', verification.value);
-      if (checked.artifactSha256 !== artifact.artifactSha256) throw new Error('verification subject digest differs from synthesized artifact');
+      if (checked.artifactSha256 !== artifact.artifactSha256 || checked.contentDigest !== artifact.contentDigest) throw new Error('verification subject digest differs from synthesized artifact');
       verification.value = checked;
     } catch (error) { verification = { ok: false, error: error.message }; }
   }
   let verificationStage = 'verify';
   if (verification.ok && verification.value?.verdict === 'changes') {
+    try { mergeVerifierCorrections(correctionLedger, verification.value, roles.verifier); }
+    catch (error) { return {status:'unresolved',dual:true,roles,error:error.message,verifiedOutcome:false,learningPersisted:false}; }
     const revision = await runHost(roles.scribe, 'revise', {
       task,
       artifact,
@@ -400,7 +280,7 @@ export async function deliberate(task, options = {}) {
       correctionLedger,
     });
     if (revision.ok) {
-      try { artifact = validateStageValue('revise', revision.value); }
+      try { artifact = validateStageValue('revise', revision.value); if (implementation) validateDualPlan(artifact.artifact, options.brief); }
       catch { verification = { ok: true, value: { verdict: 'block', corrections: ['revision response is not substantive'] } }; }
       if (verification.value?.verdict !== 'block') {
         verification = await runHost(roles.verifier, 'reverify', { task, artifact,
@@ -409,7 +289,7 @@ export async function deliberate(task, options = {}) {
         if (verification.ok) {
           try {
             const checked = validateStageValue('reverify', verification.value);
-            if (checked.artifactSha256 !== artifact.artifactSha256) throw new Error('reverification subject digest differs from revised artifact');
+            if (checked.artifactSha256 !== artifact.artifactSha256 || checked.contentDigest !== artifact.contentDigest) throw new Error('reverification subject digest differs from revised artifact');
             verification.value = checked;
           } catch (error) { verification = { ok: false, error: error.message }; }
         }
@@ -420,10 +300,9 @@ export async function deliberate(task, options = {}) {
   let accepted = false;
   if (verification.ok) {
     try {
-      const checked = validateStageValue(verificationStage, verification.value);
-      if (checked.verdict === 'accept' && correctionLedger.length) assertCorrectionResolutions(
-        correctionLedger, checked.resolutions, synthesis.value.artifact, artifact.artifact);
-      accepted = checked.verdict === 'accept';
+      validateDeliberationTrace(trace, {roles, brief:implementation ? options.brief : undefined});
+      if (implementation) { validateDualPlan(artifact.artifact, options.brief); assertDualBriefCurrent(options.brief, cwd, { plan:artifact.artifact }); }
+      accepted = true;
     }
     catch { accepted = false; }
   }
@@ -452,7 +331,11 @@ export async function deliberate(task, options = {}) {
     roles,
     artifact,
     verification: verification.ok ? verification.value : undefined,
-    verifiedOutcome: accepted,
+    planAccepted: accepted,
+    verifiedOutcome: false,
+    executionAuthorized: false,
+    nativeEvidence, requestedModels:TOP_SUBSCRIPTION_MODELS,
+    ...(implementation ? { workflow: { brief: options.brief, completed: [] } } : {}),
     learningPersisted,
     ...(learningPersistenceRequest ? { learningPersistenceRequest } : {}),
   };
@@ -463,13 +346,51 @@ export async function main(argv = process.argv.slice(2), {
   stdout = process.stdout,
   stderr = process.stderr,
 } = {}) {
-  const task = argv.join(' ').trim();
+  const operations = ['--activate', '--reapprove', '--verify-job', '--complete', '--workflow-status', '--recover-lock'];
+  if (operations.includes(argv[0])) {
+    try {
+      const store = new DualWorkflowStore();
+      let result;
+      if (['--activate', '--reapprove'].includes(argv[0])) {
+        if (argv.length !== 2) throw new Error('activation requires exactly one accepted Dual result file');
+        result = await store.activate(JSON.parse(fs.readFileSync(argv[1], 'utf8')), { replaceActive: argv[0] === '--reapprove' });
+      } else if (argv[0] === '--verify-job') {
+        if (argv.length !== 2) throw new Error('verification requires exactly one job ID');
+        result = await store.verifyJob(argv[1]);
+      } else {
+        const maintenance = argv[0] === '--recover-lock' && argv.length === 2 && argv[1] === '--controllers-stopped';
+        if (argv.length !== 1 && !maintenance) throw new Error('unexpected workflow command argument');
+        result = argv[0] === '--complete' ? await store.complete()
+          : argv[0] === '--recover-lock' ? store.recoverLock({ controllersStopped: maintenance }) : store.current();
+      }
+      stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return 0;
+    } catch (error) { stderr.write(`Dual workflow refused: ${error.message}\n`); return 2; }
+  }
+  const args = [...argv];
+  const briefIndex = args.indexOf('--brief');
+  let brief;
+  if (briefIndex !== -1) {
+    try { brief = JSON.parse(fs.readFileSync(args[briefIndex + 1], 'utf8')); }
+    catch { stderr.write('Dual --brief requires a readable reviewed-source JSON document\n'); return 64; }
+    args.splice(briefIndex, 2);
+  }
+  const implementIndex = args.indexOf('--implement');
+  const mode = implementIndex !== -1 || brief !== undefined ? 'implementation' : 'review';
+  if (implementIndex !== -1) args.splice(implementIndex, 1);
+  if (args.some(arg => arg.startsWith('--'))) { stderr.write('unknown Dual option\n'); return 64; }
+  const task = args.join(' ').trim();
   if (!task) {
-    stderr.write('Usage: dual-host-deliberation.mjs "<hard problem>"\n');
+    stderr.write('Usage: dual-host-deliberation.mjs [--implement --brief reviewed-source.json] "<hard problem>"\n');
     return 64;
   }
   try {
-    const result = await deliberateFn(task);
+    if (implementIndex !== -1 && new DualWorkflowStore().current()?.status === 'active') throw new Error('an implementation plan is already active; finish it or explicitly reapprove a replacement');
+    const result = await deliberateFn(task, { mode, ...(brief !== undefined ? { brief } : {}) });
+    if (implementIndex !== -1 && result.status === 'accepted') {
+      await new DualWorkflowStore().activate(result);
+      result.workflowPersisted = true;
+    }
     stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return result.status === 'accepted' ? 0 : result.status === 'unavailable' ? 3 : 2;
   } catch (error) {

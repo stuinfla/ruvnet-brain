@@ -3,9 +3,9 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-12
-version: 1.2.0
-reviewed_digest: e9b97c9c1016
+updated: 2026-09-17
+version: 1.2.1
+reviewed_digest: 6777878ce3c8
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -179,7 +179,7 @@ requirement for public-download PASS before publication is superseded by this se
 | S-7 | Publication cannot overclaim | Channel publication emits only `PUBLISHED, NOT VERIFIED`. The same protected-release run reaches `install-verified` only after downloading actual npm/GitHub bytes and validating the signed nine-leaf aggregate and retrieval canaries. |
 | S-8 | Architecture and proof agree | Every Accepted/Implemented ADR and DDD claim governing changed code maps to its implementation owner and executable evidence. Zero unresolved contradictions, dangling supersessions, or unlinked release-critical code at the candidate seal. |
 | S-9 | Essential behavior is completely tested | 100% of essential invariants, state transitions, failure boundaries, and public commands in the traceability matrix have at least one positive and one adversarial proof. Security/release/lifecycle state-machine branches are 100% covered. Repository line coverage remains a diagnostic, never a substitute for this requirement. |
-| S-10 | Independent review is real when judgment changes | Architecture or retrieval-oracle changes require Fable 5 and GPT-5.6-Sol to independently review the same immutable design/change/rubric. Routine releases consume the accepted change-bound review and mechanical evidence; caller-supplied per-release keys are not an independent trust anchor and cannot authorize publication. |
+| S-10 | Candidate evidence is machine-graded by two vendors | The current versioned grading policy requires authenticated native Fable and Astra executions over the same sealed source, artifacts, rubric and complete oracle. Canonical signed receipts retain runtime-resolved model identities and trusted grader-key mappings. Every new qualifying aggregate and terminal receipt validates and retains that pair, including recovery and idempotent readback. Historical receipts remain readable history; missing grading does not qualify a new candidate. Caller-supplied keys and model assertions cannot authenticate themselves or authorize publication. |
 | S-11 | Project continuity is complete and host-neutral | Every observable project transition is append-only, exact-key verified in the canonical project AgentDB, and automatically restored by every supported coding host. Crash, compaction, semantic-search miss, concurrent writers, and loss of a host-private transcript lose zero resumable project state. |
 | S-12 | RuvNet capability claims are evidence-bound | Every final-answer claim about an installed, supported, current, healthy, reachable, present, or absent RuvNet capability carries evidence typed to that claim. Contradictions are corrected before delivery; incomplete evidence yields `UNKNOWN`. Claude Code and Codex pass the same adversarial host matrix, and Grok remains unsupported until a native lifecycle adapter proves the same boundary. |
 
@@ -194,7 +194,7 @@ requirement for public-download PASS before publication is superseded by this se
 - **Refinement:** implement context by context with one writer; after each context, run its focused
   acceptance, mutation, and integration proofs.
 - **Completion:** execute full QE, coverage, security, performance/storage, exact-SHA candidate,
-  any change-triggered architecture/oracle review, public 3x3 installs, canaries, and two-run nightly proof. Only the protected
+  the candidate-bound two-vendor machine grading pair, public 3x3 installs, canaries, and two-run nightly proof. Only the protected
   finalizer may publish the success receipt.
 
 ### 6. Tests are derived from the contract
@@ -409,6 +409,7 @@ defines expiry and rollback defenses. These are design references, not claims of
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-09-17 | Reviewed the whole-product contract and governed DDD context at integration HEAD; native signed grading, C3, North Star, and public installed proof remain unverified. | `docs/ddd/0018-product-integrity-context.md`; reviewed_digest 6777878ce3c8. |
 | 2026-08-23 | Reconciled the release artifact proof with the private-store integrity boundary. | The bundle builder now copies the source fence into the output and regression coverage asserts it, preventing a candidate that assembles without the policy document required by public-inventory validation. |
 | 2026-08-23 | Re-read the CI release path after adding the seed-coverage preflight. | Commit `efcecad` adds a fail-closed coverage assertion before bundle projection; the product-integrity obligations remain unchanged and still require exact green publication evidence. |
 | 2026-08-22 | Re-read the S-1 public-partition boundary after the real lifecycle candidate exposed policy-ineligible local stores and unclassified archive sidecars. | Commit `f088e4f` integrates the prerequisite that excludes explicitly ineligible repositories from public generation selection without deleting their local evidence. Commit `5f9a52c` extends the candidate archive check from RVF roots to every recognized sidecar family and rejects case-fold aliases. The combined 63-test focused gate, executable trace, and wiring audit pass; public canaries, dual final-candidate reviews, and the real three-OS host matrix remain absent, so S-1/S-3/S-6/S-10 are not declared complete. |
@@ -427,3 +428,7 @@ defines expiry and rollback defenses. These are design references, not claims of
 | 2026-08-22 | Added the schema-3 public finalizer and immutable aggregate materialization. | Only a valid signed aggregate may append `install-verified`; channel drift, legacy state, evidence conflict, and failed readback remain red. Workflow wiring remains open. |
 | 2026-08-21 | Added the explicit partial-supersession map for ADR-001, ADR-062/DDD-0015, and ADR-064. | Earlier decisions retain valid archive, provider-transaction, and machinery-QA intent, but their obsolete archive-member, release-terminal, and mixed-generation clauses contradicted ADR-070/072. Narrow reconciliation removes ambiguity without deleting history. |
 Implementation note (2026-08-23): ReleaseProjection is wired into the bundle workflow; exact CI remains the production certification boundary.
+
+### 2026-09-16 consistency decision
+
+ADR-087 reconciles S-10 with one canonical signed grading policy consumed at every qualifying boundary. This amends the earlier change-triggered wording; it does not rewrite historical receipts or claim the new producer and installed acceptance are already verified. The implementation record must show actual authenticated native executions, trusted key mappings and terminal readback before completion.

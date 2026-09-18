@@ -95,7 +95,6 @@ const TABLE = {
   'route-dispatch':   { file: 'route-dispatch.sh',   interpreter: 'bash', mode: 'advisory', offBehavior: 'run', stdinBytes: 65536 },
   'ground-before-write': { file: 'ground-before-write.sh', interpreter: 'bash', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
   'grounding-stamp': { file: 'grounding-stamp.sh', interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
-  'verify-interface': { file: 'verify-interface.sh', interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
   'design-wall':      { file: 'design-wall.sh',      interpreter: 'bash', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
   // The consent guard (ADR-054 §3): it protects the OFF state itself, so it is the one hook that
   // matters MORE while the brain is off. 'run', permanently.
@@ -171,6 +170,8 @@ const TABLE = {
 };
 
 const hookId = process.argv[2];
+// Retired raw-shell advisory: stale explicit callers stay silent and cannot revive an old body.
+if (hookId === 'verify-interface') process.exit(0);
 const entry = TABLE[hookId];
 if (!entry) {
   process.stderr.write(`[hook-shim] unknown hook id: ${JSON.stringify(hookId)} — known: ${Object.keys(TABLE).join(', ')}\n`);

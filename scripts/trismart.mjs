@@ -19,8 +19,11 @@ if (args.includes('--help') || args.includes('-h')) { usage(); process.exit(0); 
 const mode = args.find((arg) => arg.startsWith('--mode='))?.slice(7) ?? 'auto';
 if (!['auto', 'dual', 'tri'].includes(mode)) { console.error('mode must be auto, dual, or tri'); process.exit(2); }
 const dryRun = args.includes('--dry-run');
+const forwarded = args.filter(arg => !arg.startsWith('--mode=') && arg !== '--dry-run');
+const workflowRequested = forwarded.some(arg => ['--implement', '--brief', '--activate', '--reapprove', '--verify-job', '--complete', '--workflow-status', '--recover-lock'].includes(arg));
+if (workflowRequested && mode !== 'dual') { console.error('Dual implementation controls require --mode=dual'); process.exit(2); }
 const task = args.filter((arg) => !arg.startsWith('--')).join(' ').trim();
-if (!task) { usage(); process.exit(2); }
+if (!task && !workflowRequested) { usage(); process.exit(2); }
 
 if (dryRun) {
   const providers = mode === 'dual' ? ['claude', 'codex'] : ['claude', 'codex', 'grok'];
@@ -37,6 +40,6 @@ if (mode === 'tri' || mode === 'auto') {
   const result = spawnSync(process.execPath, [TRISMART, `--mode=${mode}`, task], { stdio: 'inherit' });
   process.exitCode = result.status ?? 1;
 } else {
-  const result = spawnSync(process.execPath, [DUAL, task], { stdio: 'inherit' });
+  const result = spawnSync(process.execPath, [DUAL, ...forwarded], { stdio: 'inherit' });
   process.exitCode = result.status ?? 1;
 }

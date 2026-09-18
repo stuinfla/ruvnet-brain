@@ -3,7 +3,8 @@ id: ADR-080
 title: Hybrid Model Routing Strategy for 95/100 North Star Campaign
 status: Rejected
 date: 2026-09-11
-updated: 2026-09-11
+updated: 2026-09-16
+version: 1.0.1
 authors: [System Architect, Claude, Codex]
 tags: [architecture, model-routing, optimization, north-star, campaign]
 supersedes: []
@@ -32,7 +33,7 @@ The RuvNet Brain campaign must reach 95/100 North Star by 2026-09-25 (14 days), 
 1. **Cost vs. confidence tradeoff:** Cheaper models (Haiku, Sonnet, GPT-5.6) are fast but risk gate failures on high-reasoning tasks (advocacy, grounding, security audit). Expensive models (Opus, Fable, Astra) are slow but guarantee gate passage.
 2. **Gate risk by dimension:** High-risk gates (advocacy, grounding, docs/honesty) fail on weaker models; low-risk gates (self-improve, dev loop) tolerate cheaper models.
 3. **Escalation budgeting:** If a cheaper model fails a gate, escalation to a stronger model costs tokens but saves campaign time.
-4. **Independent grading:** All 8 dimensions must be scored by independent reviewers (not self-graded) using top-tier models to ensure 95/100 is credible.
+4. **Separate machine assessment:** All 8 dimensions must be assessed by separate machine reviewers using top-tier models; the result informs the 95/100 decision.
 
 **Prior routing decision (ADR-070):** Documented the agentic-flow CLI as the cheap-model path for read-only work; however, a coordinated campaign with 6 agents requires **coordinated, context-aware** model selection, not just isolated task batching.
 
@@ -64,13 +65,13 @@ Use **HYBRID ROUTING** across three phases:
 **Phase 2 Budget:** ~$4K  
 **Phase 2 Confidence:** 80% on hard gates.
 
-### Phase 3 (W5–W6): Final Proof & Ship — Independent Grading (Expensive but Final)
-- **All dimensions:** Reviewed by independent graders (Fable 5.1 + GPT-6 Astra dual-grade).
-- **Score published:** Only after independent verification reaches 95/100 across all 8 dimensions.
+### Phase 3 (W5–W6): Final Proof & Ship — Separate Machine Assessment (Expensive but Final)
+- **All dimensions:** Reviewed through separate machine assessment (Fable 5.1 + GPT-6 Astra dual-grade).
+- **Score published:** Only after the assessment is reconciled against the rubric across all 8 dimensions.
 - **No shortcuts:** Every high-risk gate double-reviewed before ship.
 
 **Phase 3 Budget:** ~$2–3K  
-**Phase 3 Confidence:** 95%+ after independent grading.
+**Phase 3 Confidence:** 95%+ after separate machine assessment.
 
 **TOTAL BUDGET:** $7–9K (hybrid approach balances cost + confidence).
 
@@ -116,9 +117,9 @@ Tier 2 (manual gate review) and Tier 3 (campaign halt) escalations per ADR-0080 
 
 - **Goal-first alone** would cost $12–15K (Astra + Fable + Opus everywhere) and is slower (40–45 tok/s vs 90+ tok/s). Hybrid achieves same 95% confidence with 30–40% lower cost and faster W2 execution.
 
-### Why Independent Grading in Phase 3?
+### Why Separate Machine Assessment in Phase 3?
 
-- All 8 dimensions must be scored by reviewers *not* the authors of the work. Dual-grade (Fable + Astra) removes self-assessment bias and provides credible proof for the 95/100 claim.
+- All 8 dimensions must be scored through separate machine assessment, with reviewers separate from the authors of the work. Reviews by Fable and Astra can reduce blind spots. The product score still requires the rubric and executable evidence; reviewer agreement alone does not prove it.
 
 ---
 
@@ -144,9 +145,9 @@ Tier 2 (manual gate review) and Tier 3 (campaign halt) escalations per ADR-0080 
 
 ## Consequences
 
-- **Dimensions reach 95+ predicted:** All 8 pillars expected to reach 95/100 by ship, with independent grading proof.
+- **Dimensions reach 95+ predicted:** All 8 pillars expected to reach 95/100 by ship, with separate machine-assessment evidence.
 - **Cost predictability:** Budget tracked in three phases; escalation triggers are explicit.
-- **Campaign velocity:** W2 fast (cheap models), W3–W4 careful (goal-first gates), W5–W6 proof (independent grading).
+- **Campaign velocity:** W2 fast (cheap models), W3–W4 careful (goal-first gates), W5–W6 proof (separate machine assessment).
 - **Precedent set:** Future campaigns adopt hybrid routing (cost + confidence phases) as standard practice.
 
 ---
@@ -156,4 +157,3 @@ Tier 2 (manual gate review) and Tier 3 (campaign halt) escalations per ADR-0080 
 This decision is pending dual-optimizer analysis (cost-first vs goal-first agents currently running in parallel). Final sign-off after both optimizers complete and reconciliation is reviewed by Stuart.
 
 **Expected completion:** 2026-09-11 afternoon (within 2 hours of analysis launch).
-

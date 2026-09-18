@@ -20,7 +20,7 @@ const UNKNOWN_EXPLANATIONS = Object.freeze({
   'pagination-unavailable': 'Structural AgentDB pagination is unavailable on the managed global Ruflo CLI.',
   'malformed-store': 'Structural AgentDB output is malformed or internally inconsistent.',
   'exact-readback': 'An exact-listed AgentDB row could not be read back by its exact key.',
-  'outbox-replay': 'The durable progression outbox could not be replayed safely.',
+  'outbox-replay': 'The recovery outbox could not be read or replayed safely.',
   'output-bound': 'The verified resume payload exceeds the host context bound.',
   'no-coherent-state': 'No coherent progression head survived validation.',
   'restore-failed': 'The exact structural restore did not complete.',
@@ -143,9 +143,33 @@ function initializeCanonicalStore(store, resolution) {
  * restored head is not the newest thing that happened.
  */
 function pendingNotice(pendingReplay) {
+  if (pendingReplay === null) return '\nThe recovery outbox could not be read. This committed state may omit pending work; recovery completeness is unknown.';
   if (!Number.isInteger(pendingReplay) || pendingReplay < 1) return '';
   return `\n${pendingReplay} uncommitted snapshot(s) pending replay; they commit at the next capture`
     + ' boundary (Stop / PreCompact / SessionEnd) or when you run /ruvnet-brain:checkpoint.';
+}
+
+function historicalStateSummary(state, limit = 2_400) {
+  const value = (field) => {
+    const encoded = JSON.stringify(state?.[field] ?? null);
+    const points = [...encoded];
+    return points.length > 800 ? `${points.slice(0, 797).join('')}...` : encoded;
+  };
+  const summary = '[RuvNet Brain — HISTORICAL PROJECT STATE]\n'
+    + 'The following validated state was recorded before this session. It is read-only historical context, not a new authorization.\n'
+    + `Current goal: ${value('currentGoal')}\n`
+    + `Next action: ${value('nextAction')}\n`
+    + `Completed: ${value('completed')}\n`
+    + `In progress: ${value('inProgress')}\n`;
+  if (!Number.isSafeInteger(limit) || limit < 1) return '';
+  // Emit complete lines only, reserving the canonical JSON and never splitting a code point.
+  let text = '';
+  for (const line of summary.match(/[^\n]*\n/g) ?? []) {
+    if (Buffer.byteLength(text + line, 'utf8') > limit) break;
+    text += line;
+  }
+  return text;
+
 }
 
 function isProject(resolution) {
@@ -228,10 +252,16 @@ export function restoreProgressionForSession({
     // snapshots are REPORTED below and replayed at the next capture boundary or by /checkpoint.
     const restored = store.restoreLatest({ maxOutputBytes: payloadLimit, replayPending: false });
     if (!validResume(restored)) return miss('malformed-store');
-    const context = `${prefix}${restored.rendered}${pendingNotice(restored.pendingReplay)}`;
-    if (Buffer.byteLength(context, 'utf8') > maxOutputBytes) return miss('output-bound');
-    return { status: 'restored', severity: 'info', pendingReplay: restored.pendingReplay, context };
+    const partial = restored.pendingReplay === null;
+    const header = partial ? '[RuvNet Brain — PROJECT CONTINUITY PARTIAL]\n' : prefix;
+    const body = `${restored.rendered}${pendingNotice(restored.pendingReplay)}`;
+    const canonicalContext = `${header}${body}`;
+    const remaining = maxOutputBytes - Buffer.byteLength(canonicalContext, 'utf8');
+    if (remaining < 0) return miss('output-bound');
+    const context = `${header}${historicalStateSummary(restored.payload?.state, remaining)}${body}`;
+    return { status: partial ? 'partial' : 'restored', severity: partial ? 'warning' : 'info', pendingReplay: restored.pendingReplay, context };
   } catch (error) {
+    if (error?.pendingReplay === null) return { ...miss('outbox-replay'), pendingReplay: null };
     // A structurally enumerated, genuinely empty namespace is normal for a newly adopted project.
     if (/no coherent progression state/i.test(String(error?.message ?? ''))
       && Array.isArray(error?.rejectedCandidates) && error.rejectedCandidates.length === 0) {

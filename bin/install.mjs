@@ -21,6 +21,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import readline from 'node:readline';
 import crypto from 'node:crypto';
 import { applyBrainProfile, readBrainProfile } from '../kb/brain-profile.mjs';
+import { nodeVersionFailure } from '../kb/node-version.mjs';
 import { acquireRefreshLock, finishRefreshReceipt, openRefreshReceipt, recordRefreshAdvisory,
   recordRefreshPhase, settleRefreshRun, UPDATE_REFRESH_PHASES } from '../kb/refresh-run.mjs';
 import { pruneLifecycleEvidence } from '../kb/lifecycle-evidence-retention.mjs';
@@ -30,6 +31,7 @@ import {
 } from '../kb/model-requirements.mjs';
 import { applyManagedCatalogUpdate } from '../scripts/model-router-catalog.mjs';
 import { cmpVersion } from '../scripts/stack-sync.mjs';
+import { resolveClaudeConfiguredInstall } from '../plugin/scripts/hook-registry.mjs';
 import { validateCoverageDirectory } from '../plugin/scripts/coverage-integrity.mjs';
 import {
   continuityContractIds,
@@ -1016,7 +1018,7 @@ export function serverDependencies(source, seen = new Set()) {
     seen.add(file);
     let src = '';
     try { src = fs.readFileSync(file, 'utf8'); } catch { return; }
-    for (const m of src.matchAll(/^\s*(?:import|export)[^'"\n]*from\s*['"](\.[^'"]+)['"]/gm)) {
+    for (const m of src.matchAll(/^\s*(?:import|export)[\s\S]*?\bfrom\s*['"](\.[^'"]+)['"]/gm)) {
       const spec = specPrefix ? path.join(specPrefix, m[1]) : m[1];
       const from = path.resolve(path.dirname(file), m[1]);
       if (out.some((d) => d.from === from)) continue;
@@ -1280,20 +1282,17 @@ function pluginCommandsDir() {
 
 // ── step: wire the Claude Code plugin ────────────────────────────────────────────────────────────
 export function claudePluginStatus({ home = os.homedir() } = {}) {
-  const registry = path.join(home, '.claude', 'plugins', 'installed_plugins.json');
+  const configDir = process.env.CLAUDE_CONFIG_DIR ? path.resolve(process.env.CLAUDE_CONFIG_DIR) : path.join(home, '.claude');
+  const registry = path.join(configDir, 'plugins', 'installed_plugins.json');
   let sawUserRecord = false;
   try {
     const doc = JSON.parse(fs.readFileSync(registry, 'utf8'));
     const rows = doc?.plugins?.['ruvnet-brain@ruvnet-brain'];
-    const row = Array.isArray(rows) ? rows.find((candidate) => candidate?.scope === 'user') : null;
-    if (!row?.installPath) return { managed: false, installed: false, version: null };
-    sawUserRecord = true;
-    const realHome = fs.realpathSync(home);
-    const cacheRoot = path.join(realHome, '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain');
-    const realInstall = fs.realpathSync(row.installPath);
-    if (realInstall !== cacheRoot && !realInstall.startsWith(`${cacheRoot}${path.sep}`)) {
-      return { managed: true, installed: false, version: null, error: 'user plugin installPath escapes the managed cache' };
-    }
+    sawUserRecord = Array.isArray(rows) && rows.some((candidate) => candidate?.scope === 'user');
+    const resolved = resolveClaudeConfiguredInstall({ home, project: process.cwd(), registry: doc });
+    if (resolved.state === 'absent') return { managed: false, installed: false, version: null };
+    if (resolved.state !== 'configured-on-disk') return { managed: sawUserRecord, installed: false, version: null, error: resolved.error || 'Claude plugin install is not configured on disk' };
+    const realInstall = resolved.installPath;
     const manifestPath = path.join(realInstall, '.claude-plugin', 'plugin.json');
     const commandPath = path.join(realInstall, 'commands', 'rvbc.md');
     if (!fs.lstatSync(manifestPath).isFile() || fs.lstatSync(manifestPath).isSymbolicLink()
@@ -1304,7 +1303,7 @@ export function claudePluginStatus({ home = os.homedir() } = {}) {
     return {
       managed: true,
       installed: true,
-      version: manifest?.version || row.version || null,
+      version: manifest?.version || resolved.version || null,
       installPath: realInstall,
     };
   } catch {
@@ -2029,8 +2028,13 @@ export function classifyCodexLifecycle(plugin, listed = null) {
   if (!plugin.available) return { state: 'probe-failed', plugin, hooks: [], error: plugin.error };
   if (!plugin.installed) return { state: 'not-installed', plugin, hooks: [] };
   if (!plugin.enabled) return { state: 'disabled', plugin, hooks: [] };
-  if (!listed.ok) return { state: 'probe-failed', plugin, hooks: [], error: listed.error };
-  const groups = Array.isArray(listed.value?.data) ? listed.value.data : [];
+  if (!listed || typeof listed !== 'object') return { state: 'unknown', plugin, hooks: [], error: 'Codex hooks/list probe was not supplied' };
+  if (listed.ok !== true) return { state: 'probe-failed', plugin, hooks: [], error: listed.error || 'Codex hooks/list probe failed' };
+  if (!Array.isArray(listed.value?.data) || listed.value.data.some((group) => !group || typeof group !== 'object'
+    || !Array.isArray(group.hooks) || (group.errors !== undefined && !Array.isArray(group.errors)))) {
+    return { state: 'unknown', plugin, hooks: [], error: 'Codex hooks/list response is malformed' };
+  }
+  const groups = listed.value.data;
   const hooks = groups.flatMap((group) => (Array.isArray(group?.hooks) ? group.hooks : [])
     .map((hook) => ({ ...hook, event: hook?.event ?? group?.event ?? null })))
     .filter((hook) => hook?.pluginId === CODEX_PLUGIN_ID);
@@ -4302,6 +4306,8 @@ export async function offerRouterProfile() {
     const s = path.join(pkgRoot, 'scripts', t);
     if (fs.existsSync(s)) { fs.copyFileSync(s, path.join(routerDir, 'bin', t)); copied++; }
   }
+  const { installDualRuntime } = await import('../scripts/install-dual-runtime.mjs');
+  installDualRuntime({ packageRoot: pkgRoot, routerRoot: routerDir });
   if (copied) {
     try { fs.chmodSync(path.join(routerDir, 'bin', 'codex-routed.sh'), 0o755); } catch { /* not fatal */ }
     ok(`${copied} router tools at ~/.claude/model-router/bin/ (stable path — the npx dir vanishes)`);
@@ -5393,15 +5399,14 @@ the installer reports that boot-level declarations changed.
   // platform-specific ways (permissions, competing version managers). The safe, correct move is to
   // hand back the exact right one-liner for the platform actually in front of us.
   {
-    const m = /^v(\d+)/.exec(process.version);
-    const major = m ? Number(m[1]) : 0;
-    if (major && major < 18) {
+    const nodeFailure = nodeVersionFailure();
+    if (nodeFailure) {
       const fix = IS_WIN
         ? `Update Node (pick one):\n  • winget install OpenJS.NodeJS.LTS\n  • or download the LTS installer: https://nodejs.org`
         : process.platform === 'darwin'
           ? `Update Node (pick one):\n  • brew install node\n  • or: nvm install 20 && nvm use 20 (https://nodejs.org)`
           : `Update Node (pick one):\n  • nvm install 20 && nvm use 20\n  • or your distro's Node 20+ package (see https://nodejs.org)`;
-      die(`RuvNet Brain needs Node 18 or newer — you're on ${process.version}.`, `${fix}\nThen re-run this same command — everything else is ready.`);
+      die(nodeFailure, `${fix}\nThen re-run this same command — everything else is ready.`);
     }
   }
 

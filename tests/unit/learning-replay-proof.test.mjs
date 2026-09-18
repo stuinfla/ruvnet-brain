@@ -376,6 +376,36 @@ describe('archive retention is chronological and receipt-aware', () => {
 });
 
 describe('learning replay source boundaries', () => {
+  it('fails closed when Git cannot compare a historical receipt', () => {
+    const file = writeArtifact(artifact());
+    const advance = spawnSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'user.name=Fixture',
+      '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false',
+      'commit', '--allow-empty', '-qm', 'Unchanged replay source'], { cwd: ROOT, encoding: 'utf8' });
+    expect(advance.status, advance.stderr).toBe(0);
+    // Successful inspection reaches the evidence validator; the fixture's aggregate is deliberately minimal.
+    const baseline = replay.checkArtifact({ file, repo: ROOT });
+    expect(baseline.status).toBe(replay.VERDICT.FAIL);
+    expect(baseline.why).toMatch(/recomputed evidence/);
+    const realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
+    const shim = path.join(dir, 'bin');
+    fs.mkdirSync(shim);
+    fs.writeFileSync(path.join(shim, 'git'), `#!${process.execPath}\n`
+      + `import { spawnSync } from 'node:child_process';\n`
+      + `const args = process.argv.slice(2);\n`
+      + `if (args[0] === 'diff') { process.stderr.write('forced source comparison failure'); process.exit(128); }\n`
+      + `const r = spawnSync(${JSON.stringify(realGit)}, args, {stdio:'inherit'}); process.exit(r.status ?? 1);\n`, { mode: 0o755 });
+    // Exercise the public receipt consumer in a separate process with a failing Git transport.
+    const code = `import {checkArtifact} from ${JSON.stringify(pathToFileURL(path.join(ROOT, 'scripts/learning-replay-proof.mjs')).href)};`
+      + `console.log(JSON.stringify(checkArtifact(${JSON.stringify({file, repo:ROOT})})));`;
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', code], {
+      encoding: 'utf8', env: {...process.env, PATH: `${shim}${path.delimiter}${process.env.PATH}`},
+    });
+    expect(child.status, child.stderr).toBe(0);
+    const checked = JSON.parse(child.stdout);
+    expect(checked.status).toBe(replay.VERDICT.UNKNOWN);
+    expect(checked.why).toContain('source comparison failed: forced source comparison failure');
+  });
+
   it('rejects a dirty default lesson source in both receipt verification and CLI dry-run', () => {
     const lesson = path.join(ROOT, 'plugin/scripts/lesson-gate.mjs');
     const original = fs.readFileSync(lesson);

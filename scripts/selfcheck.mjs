@@ -67,6 +67,7 @@ import { fileURLToPath } from 'node:url';
 // THE canonical continuity policy — the same module bin/install.mjs and scripts/hook-retirement-check.mjs
 // import. Never re-implement this predicate locally; see the note below the imports.
 import { isAllowedContinuityRegistration } from '../plugin/scripts/continuity-hook-policy.mjs';
+import { resolveClaudeConfiguredInstall } from '../plugin/scripts/hook-registry.mjs';
 
 // ── contract constants (ADR-053 §2.5 / §2.3) ────────────────────────────────────────────────────
 export const STDOUT_CAP_BYTES = 4096; // it lands in the user's context window
@@ -175,28 +176,22 @@ export function groundingUnproven(state) {
 
 // ── §1 RESOLVE THE INSTALLED SURFACE (never the repo's) ─────────────────────────────────────────
 /**
- * Find the plugin payload Claude Code actually BOOTED. Order matters and is not arbitrary:
- * the packed install cache is what a stranger runs; the marketplace clone is what the user layer's
- * own commands execute from; the checkout is the preimage and is only correct for a developer.
- * Reading the wrong one is precisely the defect this check exists to catch, so the choice is
- * reported in the output rather than assumed.
+ * Find the plugin payload Claude Code actually BOOTED. Claude's configured user registry row and
+ * enabledPlugins setting are authoritative for the Claude surface; the Codex cache is a separate
+ * host surface. Marketplace clones are acquisition mirrors, and the checkout is a diagnostic
+ * preimage, so neither is selected as an active Claude generation.
  */
 export function resolveInstalledSurface({ home = os.homedir(), repo = null } = {}) {
   const candidates = [];
-  const cache = path.join(home, '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain');
-  try {
-    for (const v of fs.readdirSync(cache)) {
-      const root = path.join(cache, v);
-      if (fs.existsSync(path.join(root, 'hooks', 'hooks.json'))) {
-        candidates.push({ root, source: `installed:${v}`, hooksFile: path.join(root, 'hooks', 'hooks.json'), mtime: fs.statSync(path.join(root, 'hooks', 'hooks.json')).mtimeMs });
-      }
-    }
-  } catch { /* no packed install on this machine */ }
-  candidates.sort((a, b) => b.mtime - a.mtime); // newest generation wins; several can coexist
-  const clone = path.join(home, '.claude', 'plugins', 'marketplaces', 'ruvnet-brain', 'plugin');
-  if (fs.existsSync(path.join(clone, 'hooks', 'hooks.json'))) {
-    candidates.push({ root: clone, source: 'marketplace-clone', hooksFile: path.join(clone, 'hooks', 'hooks.json'), mtime: 0 });
+  const claude = resolveClaudeConfiguredInstall({ home, project: repo || process.cwd() });
+  if (claude.state === 'unknown') return { ok: false, unknown: true, reason: claude.error || 'Claude configured-on-disk hook authority is unknown' };
+  if (claude.state === 'disabled') return { ok: false, unknown: false, reason: 'Claude ruvnet-brain plugin is disabled; no installed hook surface is active' };
+  if (claude.state === 'configured-on-disk') {
+    const hooksFile = path.join(claude.installPath, 'hooks', 'hooks.json');
+    candidates.push({ root: claude.installPath, source: 'configured-on-disk', hooksFile, mtime: 0 });
   }
+  // The configured install path above is authoritative; no Claude cache generation is selected by mtime.
+  // A marketplace clone is an acquisition mirror, not an active registration authority.
   // Codex installs the same immutable payload under its own cache. A Codex-only machine has no
   // Claude marketplace clone, so treating that layout as "no plugin" made the real installed
   // Codex hooks impossible to self-check (the release host matrix caught this). Keep the same

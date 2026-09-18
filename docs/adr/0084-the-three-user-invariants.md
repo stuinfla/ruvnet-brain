@@ -3,9 +3,9 @@ id: ADR-084
 title: The three user invariants — complete-and-current corpus, enforced hooks, an end-user console
 status: Proposed
 date: 2026-09-12
-updated: 2026-09-12
-version: 1.0.1
-reviewed_digest: PENDING
+updated: 2026-09-17
+version: 1.0.2
+reviewed_digest: c1bece900075
 authors: [Stuart Kerr, Claude]
 tags: [product, corpus, hooks, console, north-star, invariants]
 supersedes: []
@@ -175,5 +175,6 @@ reading the rendered page as a first-time customer, not as the maintainer, is st
 - The console's default view is measured against a customer's question, not a maintainer's checklist.
 
 ## Currency log
+| 2026-09-17 | Reviewed the three invariants and governed product context at integration HEAD; current corpus, enforced hooks, and end-user console remain separate proof obligations. | `docs/ddd/0021-corpus-supply-chain-context.md`; reviewed_digest c1bece900075. |
 | 2026-09-12 | **Downgraded Accepted → Proposed.** Dual verification (Fable 5.1 scribe + Codex/Astra verifier, both re-reading cited source directly) found 4 blocking + 10 major/minor defects, synthesized with no surviving disagreement. Blocking, this document: Invariant 1's named command (`source-coverage.mjs --check`) does not actually enforce universal currency or a freshness bound, and prints a count not names even under `--strict` (S3); Invariant 1's mechanism is delegated entirely to ADR-085, which itself has 2 blocking defects, so accepting this ADR accepted an unreachable publish path (S14); this ADR and ADR-085 directly contradict each other on whether `release-authority.mjs`'s canonical-publisher set may grow (S4); `governs:` names two files that do not exist and the wrong path for `codex-hooks.json` (S5). Major: Invariants 2 and 3 have no real PASS/FAIL command despite the claim (S11); the "57-row" gap is misattributed — ADR-0069 records 63 mismatched-SHA-under-CURRENT rows and a separate 57 UNVERIFIED rows; this document conflated them (S12). None of this invalidates the three invariants as a *statement of what matters*; it invalidates the claim that each is *already* mechanically checkable today. Full defect list preserved in the session record; revision owed before re-acceptance. | Dual verification pass, 2026-09-12, reading `scripts/source-coverage.mjs:419-432`, `scripts/release-authority.mjs:10-13`, `docs/adr/0069-source-coverage-contract.md:244-250`, `plugin/scripts/continuity-hook-policy.mjs:76-94` directly. |
 | 2026-09-12 | Initial acceptance (superseded same day by the row above — kept for the record, not the current status). | This document; the incident measured 2026-09-12 across the corpus staleness, the Codex hook asymmetry, and the console's maintainer-card placement. |

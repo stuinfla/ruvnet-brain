@@ -92,7 +92,6 @@ describe.skipIf(process.platform === 'win32')('hook-shim.mjs — restart-free ho
       'route-dispatch': 'route-dispatch.sh',
       'unprompted-speech': 'unprompted-runtime.mjs',
       'ground-ruvnet': 'ground-ruvnet.sh',
-      'verify-interface': 'verify-interface.sh',
       'learn-capture': 'learn-capture.sh',
     };
     const consumers = registeredIds.filter((id) => FILES[id]).map((id) => [id, FILES[id]]);

@@ -1,4 +1,4 @@
-Updated: 2026-09-04 07:33:00 EDT | Version 2.1.1
+Updated: 2026-09-17 01:00:00 EDT | Version 2.2.1
 Created: 2026-08-02 20:10:00 EDT
 
 # DDD-0015 — The Release Transaction bounded context
@@ -223,11 +223,9 @@ sign the nine-leaf aggregate, and append create-only `install-verified`. Existin
 disabled, approval, and Console conditions remain local doctor findings and do not rewrite the
 global receipt.
 
-### Review and issue policy
+### Machine grading and issue policy
 
-Fable 5 and GPT-5.6-Sol independently review changes to architecture or the sealed retrieval oracle.
-Their accepted, change-bound findings inform the candidate, but caller-supplied per-release keys are
-not a trust anchor and do not authorize provider mutation. Only open issues carrying the explicit
+The candidate is machine-graded by two vendors through the canonical signed grading policy (ADR-087 and ADR-072 S-10). Authenticated native Fable and Astra executions bind their runtime-resolved identities, findings and full oracle judgments to the same sealed candidate. New aggregates and terminal receipts preserve and validate both signed records through normal, recovery and idempotent readback paths. Historical records remain history; absent grading cannot qualify a new candidate. Caller-supplied keys are not a trust anchor and model verdicts do not authorize provider mutation. Only open issues carrying the explicit
 `release-blocker` label enter prepublication policy; unrelated open issues do not become domain state.
 
 ### Candidate-tag and abort policy

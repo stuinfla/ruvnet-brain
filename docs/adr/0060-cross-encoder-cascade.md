@@ -3,8 +3,9 @@ id: ADR-060
 title: The two-stage cross-encoder cascade — reading every passage, cheaply, before reading a few properly
 status: Accepted
 date: 2026-07-27
-updated: 2026-09-12
-reviewed_digest: f00b91f1cf09
+updated: 2026-09-17
+version: 1.0.7
+reviewed_digest: a25b1cde3683
 authors: [Stuart Kerr, Claude Code]
 tags: [retrieval, latency, cross-encoder, cascade, measurement]
 supersedes: [ADR-059]
@@ -18,7 +19,7 @@ governs:
   - plugin/mcp/server.mjs
 ---
 
-Updated: 2026-09-11 | Version 1.0.6
+Updated: 2026-09-17 | Version 1.0.7
 Created: 2026-07-27
 
 # ADR-060 — The two-stage cross-encoder cascade
@@ -232,6 +233,8 @@ opt in with `KB_CE_CASCADE_K=64`; this ADR does not accept that value as the def
   number in this ADR is therefore a **real** measurement, never a replay.
 
 ## Currency log
+
+| 2026-09-17 | Re-read all 6 governed retrieval paths. The cascade remains off by default, the completed 24-question result remains historical, and the required current 120-question acceptance result remains absent. Ranking and worker changes do not establish a new cascade measurement. Source-bound review digest `a25b1cde3683`. | kb/forge-rerank.mjs; kb/forge-ask-all.mjs; scripts/rerank-cap-warm-ab.mjs; scripts/rerank-cap-eval.mjs; kb/forge-mcp-all.mjs; plugin/mcp/server.mjs |
 
 | Date | What changed | Why (with referents) |
 |---|---|---|

@@ -27,6 +27,7 @@
 //                                     [--bootstrap data/corpus-seed.json] [--out <file>]
 
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -39,6 +40,7 @@ const CORPUS_TAG = /^corpus-sha256-([0-9a-f]{64})$/;
 const ARCHIVE_ASSET = 'ruvnet-brain.zip';
 const SIGNATURE_ASSET = 'ruvnet-brain.zip.sig';
 const RECEIPT_ASSET = 'corpus-receipt.json';
+const sha256File = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
 const defaultRun = (command, args, options) => spawnSync(command, args, { encoding: 'utf8', ...options });
 
@@ -130,6 +132,7 @@ function judgeRelease({ run, repo, tag, digest, approved, rejected }) {
       asset: ARCHIVE_ASSET,
       sha256: digest,
       bytes: archive.size,
+      receiptSha256: sha256File(path.join(scratch, RECEIPT_ASSET)),
       sourceCommit: typeof receipt.builderSourceSha === 'string' ? receipt.builderSourceSha : null,
       brainVersion: receipt.archiveManifestVersion,
     };

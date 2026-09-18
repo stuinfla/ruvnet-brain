@@ -14,7 +14,7 @@
    skeleton. A repo's whole art direction is ~12 variables.
 
    Mobile-first (390 → 1440), dependency-free, WCAG 2.1 AA.
-   Updated: 2026-06-28
+   Updated: 2026-09-17 | Version 1.0.1
    ============================================================================ */
 
 /* ============================================================================
@@ -382,14 +382,6 @@ pre.code-block .s { color: var(--accent-2); }              /* string/flag   */
   box-shadow: var(--shadow-deep);
 }
 .hero-art img { width: 100%; }
-/* The hero film. Sits in the same framed card the hero image used, so the layout is unchanged —
-   it just plays now. `display:block` kills the inline-element gap under the video. */
-.hero-video { width: 100%; height: auto; display: block; background: #0b0a16; }
-.hero-art figcaption {
-  font-family: var(--mono); font-size: var(--step--2); color: var(--muted);
-  padding: 8px 12px; border-top: 1px solid var(--ridge); background: var(--surface-2);
-}
-
 /* One-plain-sentence band — the bridge from hero into the arc. */
 .plainband {
   margin-top: var(--space-xl); padding: clamp(20px, 4vw, 34px);

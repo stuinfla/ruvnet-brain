@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { subscriptionOnlyEnv } from './subscription-hosts.mjs';
 import { makeLesson, saveLessons, loadLessons } from './lesson-store.mjs';
 import {
   ROOT,
@@ -28,14 +29,22 @@ const sh = (cmd, args, options = {}) => {
     ? [process.execPath, [cmd, ...args]]
     : [cmd, args];
   return spawnSync(binary, argv, {
+    ...options,
     encoding: 'utf8',
     timeout: 120_000,
-    ...options,
+    env: replayHostEnv(options.env || process.env),
   });
 };
 const remove = (target) => {
   try { fs.rmSync(target, { recursive: true, force: true }); } catch { /* already gone */ }
 };
+
+export function replayHostEnv(parent = process.env, overrides = {}) {
+  const child = subscriptionOnlyEnv({ ...parent, ...overrides });
+  child.RUFLO_DAEMON_AUTOSTART = '0';
+  for (const name of ['RUVNET_SIGNING_KEY', 'RUVNET_REVIEW_SIGNING_KEY', 'NPM_TOKEN']) delete child[name];
+  return child;
+}
 
 export function allocateRunBase(root = path.join(ROOT, '.ruvnet-brain', 'learning-replay')) {
   fs.mkdirSync(root, { recursive: true });
@@ -284,20 +293,44 @@ export function buildCodexArgv({
 
 export function replayRunError(events, result) {
   if (result?.error) return String(result.error.message || result.error);
-  const event = events.find((value) => value.type === 'result');
-  if (!event?.is_error) return null;
-  const status = event.api_error_status ? `HTTP ${event.api_error_status}: ` : '';
-  return `${status}${event.result || event.terminal_reason || 'model execution failed'}`;
+  const errors = events.filter((event) => event?.type === 'error'
+    || (event?.type === 'result' && event.is_error === true));
+  const error = errors[0];
+  if (error) {
+    const status = error.api_error_status ? `HTTP ${error.api_error_status}: ` : '';
+    return `${status}${error.result || error.message || error.error?.message || error.terminal_reason || 'model execution failed'}`;
+  }
+  if (result?.signal) return `Claude terminated by ${result.signal}`;
+  if (result?.timedOut) return 'Claude timed out';
+  const terminals = events.filter((event) => event?.type === 'result');
+  if (terminals.length !== 1 || terminals[0].subtype !== 'success' || terminals[0].is_error !== false) return 'Claude turn did not complete successfully';
+  if (result?.status !== 0) return `Claude exited ${result?.status ?? ' with no status'}`;
+  return null;
 }
 
 export function parseCodexRunError(events, result) {
   if (result?.error) return String(result.error.message || result.error);
   const failed = events.find((event) => event.type === 'turn.failed');
   if (failed) return String(failed.error?.message || failed.error || 'Codex turn failed');
-  if (events.some((event) => event.type === 'turn.completed') && result?.status === 0) return null;
-  const error = events.find((event) => event.type === 'item.completed' && event.item?.type === 'error');
-  if (error) return String(error.item?.message || error.item?.text || 'Codex execution failed');
-  return result?.status && result.status !== 0 ? `Codex exited ${result.status}` : null;
+  const errors = events.filter((event) => event.type === 'error'
+    || (event.type === 'item.completed' && event.item?.type === 'error'));
+  const fatal = errors.find((event) => {
+    const message = event.type === 'error'
+      ? event.message || event.error?.message || event.error
+      : event.item?.message || event.item?.text || event.item?.error;
+    return String(message || 'Codex execution failed') !== 'hook trust bypass is enabled';
+  });
+  if (fatal) {
+    const message = fatal.type === 'error'
+      ? fatal.message || fatal.error?.message || fatal.error
+      : fatal.item?.message || fatal.item?.text || fatal.item?.error;
+    return String(message || 'Codex execution failed');
+  }
+  if (result?.signal) return `Codex terminated by ${result.signal}`;
+  if (result?.timedOut) return 'Codex timed out';
+  if (!events.some((event) => event.type === 'turn.completed')) return 'Codex turn did not complete';
+  if (result?.status !== 0) return `Codex exited ${result?.status ?? ' with no status'}`;
+  return null;
 }
 
 export function codexLessonBeforeTool(sequence) {
@@ -355,8 +388,7 @@ export function runArm({
     encoding: 'utf8',
     timeout: 300_000,
     maxBuffer: 64 * 1024 * 1024,
-    env: {
-      ...process.env,
+    env: replayHostEnv(process.env, {
       RUVNET_BRAIN_HOME: dirs.brainHome,
       RUVNET_BRAIN_STATE_DIR: stateDir,
       RUVNET_CONFIG_ROOT: path.join(dirs.base, 'config'),
@@ -367,7 +399,7 @@ export function runArm({
       RUVNET_REPLAY_LESSON_PROBE: spec.lesson.slice(0, 60),
       RUVNET_REPLAY_RECORDER: path.join(ROOT, 'scripts', 'ci', 'learning-replay-recorder.mjs'),
       CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'),
-    },
+    }),
   });
   const wallMs = Date.now() - started;
   fs.writeFileSync(streamFile, result.stdout || '');
@@ -402,11 +434,12 @@ export function runArm({
   const subcommand = trap === TRAP.POST_TASK
     ? postTaskSubcommandCorrect(command)
     : subcommandCorrect(command);
-  const execution = executeProducedCommand(command, {
-    cwd: dirs.projectB,
-    base: dirs.base,
-    trap,
-  });
+  const hostError = host === 'codex'
+    ? parseCodexRunError(events, result) || codexReplayInstrumentationError(events, sequence, attemptLines)
+    : replayRunError(events, result);
+  const execution = hostError
+    ? { exitOk: false, retrieved: false, skipped: true, why: `host execution invalid: ${hostError}` }
+    : executeProducedCommand(command, { cwd: dirs.projectB, base: dirs.base, trap });
   const answer = events.find((event) => event.type === 'result');
   return {
     arm,
@@ -430,9 +463,7 @@ export function runArm({
     host,
     transcript: path.relative(ROOT, streamFile),
     exit: result.status,
-    spawnError: host === 'codex'
-      ? parseCodexRunError(events, result) || codexReplayInstrumentationError(events, sequence, attemptLines)
-      : replayRunError(events, result),
+    spawnError: hostError,
   };
 }
 

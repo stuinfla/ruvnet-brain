@@ -25,7 +25,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { parseRetrievalResult } from '../kb/retrieval-result.mjs';
 import { runRetrievalCanaries, validateRetrievalCanaryReceipt, resolveInstalledCanaryCitation } from './retrieval-canary.mjs';
@@ -118,79 +118,8 @@ export function fixturePath(mode, temp, locate) {
 }
 
 /**
- * Install `packageRoot` into a clean HOME per mode and run its doctor. Returns a result for EVERY
- * mode — including the ones that failed — because "which host broke" is the whole diagnostic value,
- * and the previous harnesses threw on the first failure and lost the rest.
- *
- * @returns {{verdict:'PASS'|'FAIL', fixtures:Record<string,object>, error?:string}}
- */
-export function runHostMatrix({ packageRoot, version, variant = 'staged', locate, temp, run = spawnSync }) {
-  const spec = VARIANTS[variant];
-  if (!spec) throw new Error(`unknown host-matrix variant: ${variant}`);
-  const workspace = fs.realpathSync(temp || fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-host-matrix-')));
-  const installer = path.join(packageRoot, 'bin', 'install.mjs');
-  const fixtures = {};
-  let verdict = 'PASS';
-  let error;
-
-  for (const mode of HOST_MODES) {
-    const result = runHostMode({ mode, packageRoot, version, spec, workspace, locate, run });
-    if (result.error) {
-      verdict = 'FAIL';
-      fixtures[mode] = result.fixture;
-      error = error || result.error;
-    } else {
-      fixtures[mode] = result.fixture;
-    }
-  }
-  return error ? { verdict, fixtures, error } : { verdict, fixtures };
-}
-
-function runHostMode({ mode, packageRoot, version, spec, workspace, locate, run }) {
-  try {
-    const home = path.join(workspace, `home-${mode}`);
-    const codexHome = path.join(home, '.codex');
-    const brainHome = path.join(home, '.cache', 'ruvnet-brain');
-    fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
-    if (mode !== 'claude') fs.mkdirSync(codexHome, { recursive: true });
-    const env = {
-      ...process.env,
-      HOME: home,
-      CODEX_HOME: codexHome,
-      RUVNET_BRAIN_HOME: brainHome,
-      RUVNET_BRAIN_KB: path.join(brainHome, 'kb'),
-      CI: 'true',
-      PATH: fixturePath(mode, workspace, locate),
-      ...spec.env({ packageRoot }),
-    };
-    const installer = path.join(packageRoot, 'bin', 'install.mjs');
-    const install = run(process.execPath, [installer, ...spec.installerArgs(version)], {
-      cwd: packageRoot, env, encoding: 'utf8', timeout: 1_200_000, maxBuffer: 32 * 1024 * 1024,
-    });
-    if (install.error || install.status !== 0) {
-      throw new Error(`install failed for ${mode}: ${(install.stderr || install.error?.message || '').slice(-4000)}`);
-    }
-    const doctor = run(process.execPath, [installer, '--doctor', '--hooks'], {
-      cwd: packageRoot, env, encoding: 'utf8', timeout: 300_000, maxBuffer: 32 * 1024 * 1024,
-    });
-    const classified = classifyDoctor(doctor);
-    const fixture = { status: classified.status, doctorExit: doctor.status, version };
-    if (!classified.accepted) {
-      fixture.output = classified.output.slice(-5000);
-      return {
-        fixture,
-        error: `doctor failed for ${mode} (exit ${doctor.status}): ${classified.output.slice(-4000)}`,
-      };
-    }
-    return { fixture };
-  } catch (e) {
-    return { fixture: { status: 'FAIL', error: e.message }, error: e.message };
-  }
-}
-
-/**
- * Async equivalent used by hosted release qualification. Each mode owns its HOME and PATH, so
- * the expensive installer/doctor pairs can run concurrently without sharing mutable state.
+ * Hosted release qualification. Each mode owns its HOME and PATH, so installers and installed
+ * MCP retrieval checks run concurrently without sharing mutable state.
  * Results are reassembled in HOST_MODES order before the single caller writes its receipt.
  */
 export async function runHostMatrixAsync({

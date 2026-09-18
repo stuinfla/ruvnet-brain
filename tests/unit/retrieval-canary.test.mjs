@@ -447,8 +447,8 @@ describe('independent oracle coverage inventory', () => {
     expect(report.missing).toEqual([]);
     expect(report.extra).toEqual([]);
     expect(report.covered).toBe(report.eligible);
-    // Not a tautology: these are the exact numbers ADR-085's F9 reported as 182 of 194.
-    expect(report.eligible).toBe(194);
+    // Frozen 2026-09-16 census: 200 admitted repository sources (including seven forks).
+    expect(report.eligible).toBe(200);
     for (const store of ['apx', 'batvu', 'event-horizon', 'group-field-theory', 'minitoo-control',
       'moe-foundry', 'openavo', 'rgi', 'ruclip', 'ruforecast', 'rultra', 'ruos']) {
       expect(queryEvidence.queries[store].expected.path).toBe('README.md');

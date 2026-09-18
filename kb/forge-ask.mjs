@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 import { loadRvf, loadTransformers, configureModel } from './resolve-deps.mjs';
 import { configureTransformersModel, materializeModelRevision } from './model-requirements.mjs';
 
+import { appendStageTrace } from './retrieval-stage-trace.mjs';
+
 // LAZY, not module-level (2026-07-12): an eager loadRvf() here killed every importer — including
 // forge-mcp-all's MCP server — at STARTUP on any machine without @ruvector/rvf resolvable, before
 // it could answer anything. That's why the check CI job was red on every run since it was added
@@ -864,22 +866,33 @@ export async function searchKb({ dir, name, query, k = 6, n, variant }) {
   const crateMaturityTok = crateMaturityTarget(query, entity.crates);
 
   const hits = await db.query(qv, Math.max(RAW_HITS, k * 4));
+  const traceEnabled = Boolean(process.env.KB_RETRIEVAL_STAGE_TRACE);
+  if (traceEnabled) appendStageTrace({ stage: 'raw-dense', query, store: name, candidates: hits.map((h, index) => {
+      const rec = byId.get(String(h.id));
+      return { rawRank: index + 1, id: String(h.id), path: rec?.path || null, distance: h.distance };
+    }) });
 
   // FIX 1 — collapse chunk hits into documents keyed by path (doc score = min distance).
   const docs = new Map();
-  for (const h of hits) {
+  for (const [index, h] of hits.entries()) {
     const rec = byId.get(String(h.id));
     if (!rec) continue;
     const cur = docs.get(rec.path);
-    if (!cur || h.distance < cur.bestDistance) docs.set(rec.path, { path: rec.path, title: rec.title, bestDistance: h.distance, matchedId: rec.id });
+    if (!cur || h.distance < cur.bestDistance) {
+      docs.set(rec.path, { path: rec.path, title: rec.title, bestDistance: h.distance,
+        matchedId: rec.id, _rawRank: cur?._rawRank ?? index + 1 });
+    }
   }
+  if (traceEnabled) appendStageTrace({ stage: 'post-document-collapse', query, store: name,
+    candidates: [...docs.values()].map((d) => ({ path: d.path, id: d.matchedId,
+      distance: d.bestDistance, rawRank: d._rawRank })) });
 
   // INTENT: ensure force-routed targets are IN the candidate pool even if MiniLM ranked them out.
   const ensureDoc = (p) => {
     if (!p || docs.has(p)) return;
     const chunks = byPath.get(p);
     if (!chunks || !chunks.length) return;
-    docs.set(p, { path: p, title: chunks[0].title, bestDistance: 1.0, matchedId: chunks[0].id });
+    docs.set(p, { path: p, title: chunks[0].title, bestDistance: 1.0, matchedId: chunks[0].id, _rawRank: null });
   };
   if (targetPrimerSlug) ensureDoc(targetPrimerSlug);
   if (glossarySlug) ensureDoc(glossarySlug);   // concept query: glossary may softly win
@@ -982,6 +995,7 @@ export async function searchKb({ dir, name, query, k = 6, n, variant }) {
       ? `ADR STATUS: ${adrStatus}${statusIsProposed(adrStatus) ? ' — design intent, NOT confirmed shipped' : ' — accepted/implemented'}`
       : null;
     return { path: d.path, title: d.title, fullText, bestDistance: d.bestDistance, effDistance: d.effDistance,
+      ...(traceEnabled ? { _rawRank: d._rawRank ?? null } : {}),
       kind, adrStatus, statusLabel, label: label || null,
       chunksJoined, truncated, text: fullText, distance: d.bestDistance };
   };

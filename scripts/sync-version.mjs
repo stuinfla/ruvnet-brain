@@ -60,6 +60,11 @@ const targets = [
     get: (s) => (JSON.parse(s).version),
     set: (s) => s.replace(/("version"\s*:\s*)"[^"]+"/, `$1"${V}"`),
   },
+  { // KB npm lock roots follow the shipped MCP manifest as one dependency identity.
+    file: 'kb/package-lock.json',
+    get: readLockVersion,
+    set: (s) => writeLockVersion(s, V),
+  },
   { // the human primer's header stamp — shipped in the bundle, read by real users
     // (drifted to v2.0.0 during the 2.0.1 release because no target covered it — 2026-07-10 gremlin hunt)
     file: 'primer/ruvnet-primer.md',

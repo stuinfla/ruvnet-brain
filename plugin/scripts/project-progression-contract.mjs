@@ -57,7 +57,7 @@ export function fieldAuthorityAllows(field, source) {
   return PROGRESSION_FIELD_AUTHORITY[field]?.includes(source) === true;
 }
 
-function eventKeyFor(value) {
+function legacyEventKeyFor(value) {
   const identityDigest = digestCanonical({
     projectId: value.projectIdentity.id,
     host: value.hostIdentity.host,
@@ -75,6 +75,21 @@ function eventKeyFor(value) {
   ].join('-');
 }
 
+// New snapshots bind every persisted, redacted observation to their identity. Historical keys
+// remain readable through legacyEventKeyFor; replay never reconstructs a stored snapshot.
+function eventKeyFor(value) {
+  const identityDigest = digestCanonical({ projectId: value.projectIdentity.id,
+    host: value.hostIdentity.host, session: value.sessionIdentity, sequence: value.sequence,
+    dedupId: value.dedupId, observationDigest: value.observationDigest });
+  return ['project-progress-v1', keyPart(value.projectIdentity.id), keyPart(value.hostIdentity.host),
+    keyPart(value.sessionIdentity), String(value.sequence).padStart(12, '0'), identityDigest].join('-');
+}
+function observationBody(snapshot) {
+  const body = canonicalize(snapshot);
+  delete body.observationDigest; delete body.eventKey; delete body.payloadDigest;
+  return body;
+}
+
 function secretKind(key) {
   const normalized = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
   if (normalized.includes('privatekey')) return 'private-key';
@@ -89,8 +104,12 @@ function secretKind(key) {
 
 const INLINE_SECRETS = Object.freeze([
   {
+    kind: 'assignment',
+    pattern: /\b([A-Za-z0-9_.-]*(?:password|passwd|token|secret|credential|api[-_]?key)[A-Za-z0-9_.-]*)\s*[:=]\s*(?:"(?:\\.|[^"\\])*(?:"|$)|'(?:\\.|[^'\\])*(?:'|$)|[^\s;,]+)/gi,
+  },
+  {
     kind: 'private-key',
-    pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+    pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
     replace: '[REDACTED:private-key]',
   },
   {
@@ -103,19 +122,9 @@ const INLINE_SECRETS = Object.freeze([
     pattern: /\b(?:sk|api-key|ghp|github_pat)[-_][A-Za-z0-9._-]{8,}/gi,
     replace: '[REDACTED:api-key]',
   },
-  {
-    kind: 'password',
-    pattern: /\b(password|passwd)\s*[:=]\s*[^\s;,]+/gi,
-    replace: '$1=[REDACTED:password]',
-  },
-  {
-    kind: 'token',
-    pattern: /\b(token|secret|credential)\s*[:=]\s*[^\s;,]+/gi,
-    replace: '$1=[REDACTED:token]',
-  },
 ]);
 
-export function redactProgression(value) {
+export function redactProgression(value, { includeExisting = false } = {}) {
   const redactions = [];
   const mark = (path, kind) => {
     if (!redactions.some((row) => row.path === path && row.kind === kind)) redactions.push({ path, kind });
@@ -125,11 +134,23 @@ export function redactProgression(value) {
       let output = current;
       for (const rule of INLINE_SECRETS) {
         rule.pattern.lastIndex = 0;
+        if (rule.kind === 'assignment') {
+          output = output.replace(rule.pattern, (match, key) => {
+            const kind = secretKind(key);
+            const replacement = `${key}=[REDACTED:${kind}]`;
+            if (match !== replacement) mark(currentPath, kind);
+            return replacement;
+          });
+          continue;
+        }
         const replaced = output.replace(rule.pattern, rule.replace);
         if (replaced !== output) {
           mark(currentPath, rule.kind);
           output = replaced;
         }
+      }
+      if (includeExisting) {
+        for (const match of output.matchAll(/\[REDACTED:([a-z-]+)\]/g)) mark(currentPath, match[1]);
       }
       return output;
     }
@@ -139,7 +160,7 @@ export function redactProgression(value) {
         const path = `${currentPath}.${key}`;
         const kind = secretKind(key);
         if (kind && current[key] !== null && current[key] !== undefined) {
-          if (current[key] !== `[REDACTED:${kind}]`) mark(path, kind);
+          if (includeExisting || current[key] !== `[REDACTED:${kind}]`) mark(path, kind);
           return [key, `[REDACTED:${kind}]`];
         }
         return [key, walk(current[key], path)];
@@ -190,12 +211,16 @@ export function createProgressionSnapshot(input) {
     completeProjectState: input.completeProjectState,
     sourceIdentity: input.sourceIdentity,
   });
-  const { value: redacted, redactions } = redactProgression(draft);
-  const snapshot = canonicalize({ ...redacted, eventKey: eventKeyFor(redacted), redactions });
+  // Producers redact before emitting hook payloads. Preserve that omission evidence
+  // even when the second pass has no remaining secret bytes to remove.
+  const { value: redacted, redactions } = redactProgression(draft, { includeExisting: true });
+  const body = canonicalize({ ...redacted, redactions });
+  const observed = { ...body, observationDigest: digestCanonical(body) };
+  const snapshot = canonicalize({ ...observed, eventKey: eventKeyFor(observed) });
   return Object.freeze({ ...snapshot, payloadDigest: digestCanonical(snapshot) });
 }
 
-export function validateProgressionSnapshot(snapshot, { expectedProjectIdentity } = {}) {
+export function validateProgressionSnapshot(snapshot, { expectedProjectIdentity, requireObservationDigest = false } = {}) {
   const errors = [];
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
     return { ok: false, errors: ['snapshot must be an object'] };
@@ -235,7 +260,14 @@ export function validateProgressionSnapshot(snapshot, { expectedProjectIdentity 
   if (snapshot.projectIdentity && snapshot.hostIdentity && typeof snapshot.sessionIdentity === 'string'
     && Number.isSafeInteger(snapshot.sequence) && typeof snapshot.dedupId === 'string') {
     try {
-      if (snapshot.eventKey !== eventKeyFor(snapshot)) errors.push('event key mismatch');
+      const observed = Object.prototype.hasOwnProperty.call(snapshot, 'observationDigest');
+      if (requireObservationDigest && !observed) errors.push('observation digest required');
+      if (observed) {
+        if (typeof snapshot.observationDigest !== 'string' || !/^[0-9a-f]{64}$/.test(snapshot.observationDigest)) errors.push('invalid observation digest');
+        else if (digestCanonical(observationBody(snapshot)) !== snapshot.observationDigest) errors.push('observation digest mismatch');
+      }
+      const key = observed ? eventKeyFor(snapshot) : legacyEventKeyFor(snapshot);
+      if (snapshot.eventKey !== key) errors.push('event key mismatch');
     } catch { errors.push('event key is unverifiable'); }
   }
   try {
@@ -294,7 +326,7 @@ function conflict(field, heads, valueFor) {
   return { field, values };
 }
 
-function planItemId(item) {
+export function planItemId(item) {
   return typeof item?.id === 'string' && item.id ? item.id : digestCanonical(item);
 }
 
@@ -304,7 +336,7 @@ function mergeHeads(heads) {
       ...heads[0].completeProjectState,
       sourceIdentity: heads[0].sourceIdentity,
       journalHeads: [heads[0].eventKey],
-      resumeConflicts: [],
+      resumeConflicts: heads[0].completeProjectState.resumeConflicts,
     });
   }
 

@@ -124,11 +124,13 @@ describe('mutation proof — groundingUnproven is load-bearing, not vestigial', 
     // to nothing, so the mutant failed to import and this mutation proof silently stopped proving
     // anything. selfcheck-battery.test.mjs:622 already re-points it; this second copier did not.
     const POLICY_ANCHOR = "from '../plugin/scripts/continuity-hook-policy.mjs'";
+    const REGISTRY_ANCHOR = "from '../plugin/scripts/hook-registry.mjs'";
     expect(mutated.includes(POLICY_ANCHOR), 'policy import anchor moved — re-point it for the mutant').toBe(true);
     const policyUrl = pathToFileURL(path.join(path.dirname(SRC), '../plugin/scripts/continuity-hook-policy.mjs')).href;
     fs.writeFileSync(file, mutated
       .replace(REG_ANCHOR, `const here = ${JSON.stringify(path.dirname(SRC))};`)
-      .replace(POLICY_ANCHOR, `from ${JSON.stringify(policyUrl)}`));
+      .replace(POLICY_ANCHOR, `from ${JSON.stringify(policyUrl)}`)
+      .replace(REGISTRY_ANCHOR, `from ${JSON.stringify(pathToFileURL(path.join(path.dirname(SRC), '../plugin/scripts/hook-registry.mjs')).href)}`));
     try {
       const mod = await import(`${file}?v=${Date.now()}`);
       expect(mod.groundingUnproven({ grounding: 'unproven' })).toBe(false); // ← the defect, reproduced

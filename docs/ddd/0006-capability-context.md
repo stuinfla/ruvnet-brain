@@ -1,6 +1,6 @@
 # DDD-0006 — The Capability bounded context
 
-Updated: 2026-07-22 | Version 1.0.0
+Updated: 2026-09-17 18:31:22 EDT | Version 1.0.1
 Created: 2026-07-22
 
 Governs **ADR-032** (the capability surface).
@@ -215,7 +215,8 @@ recommendation id"* — which is what shipped twice before the registry existed.
 Every Artifact here belongs to somebody else — rUv's CLI, Anthropic's config files, launchd. All of
 them drift.
 
-- **Interfaces are grounded before use**, never guessed. `verify-interface` already gates this;
+- **Interfaces are grounded before use**, never guessed. The structured MCP CLI boundary gates this;
+  the former verify-interface shell ID is silent compatibility only.
   DDD-0004 records a live case where a documented `--train-neural` flag did not exist in the
   installed build.
 - **A non-zero exit is `unknown`, never `off`.** This inverts the usual shell instinct and is the

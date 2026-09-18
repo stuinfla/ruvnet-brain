@@ -272,31 +272,16 @@
     <section class="hero">
       <div class="wrap">
         <div class="hero-grid">
-          <!-- ORDER IS DELIBERATE: eyebrow → headline → THE FILM → the copy → the buttons.
-               The film IS the explanation, so it comes before the paragraph that explains it. When the
-               film sat beside the headline in a 2-col grid it rendered 406px wide (illegible data
-               cards) and when it sat below a 90-word lede it fell entirely under the fold on a
-               MacBook — measured, both times. Headline first (the thesis), film second (the proof),
-               prose third (for whoever wants it), CTA last (once you've been convinced). -->
           <div class="hero-copy">
             <p class="eyebrow"><span class="nb">ruvnet brain</span> &middot; <span class="nb">first-class in Claude Code + Codex</span></p>
             <h1>Measure it. <span class="grad">Master it.</span><br />rUv&rsquo;s whole stack &mdash;<br />without being <span class="grad">rUv</span>.</h1>
           </div>
           <figure class="hero-art">
-            <!-- The 85-second film. poster = the moment the Brain connects, so the still frame sells
-                 the story before a single byte of video plays. preload="none" keeps the page fast:
-                 the 4.4MB file is only fetched if someone actually presses play. -->
-            <video class="hero-video" controls playsinline preload="none"
-                   poster="assets/video/explainer-poster.jpg"
-                   width="1400" height="788">
-              <source src="assets/video/ruvnet-brain-explainer.mp4" type="video/mp4" />
-              <picture>
-                <source srcset="assets/img/hero.webp" type="image/webp" />
-                <img src="assets/img/hero.png" width="1400" height="934" decoding="async"
-                     alt="A brain made of glowing amber and cyan filaments, wired into rUv's ecosystem — the whole RuvNet toolkit gathered into one intelligence." />
-              </picture>
-            </video>
-            <figcaption>&#9654;&nbsp; Watch the 85-second film &mdash; what the Brain does, and why it matters.</figcaption>
+            <picture>
+              <source srcset="assets/img/hero.webp" type="image/webp" />
+              <img src="assets/img/hero.png" width="1400" height="934" decoding="async"
+                   alt="A brain made of glowing amber and cyan filaments, wired into rUv's ecosystem — the whole RuvNet toolkit gathered into one intelligence." />
+            </picture>
           </figure>
           <div class="hero-copy hero-copy-after">
             <p class="lede">

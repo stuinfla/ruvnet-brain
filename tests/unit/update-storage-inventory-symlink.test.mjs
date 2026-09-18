@@ -7,7 +7,7 @@
  * a store file is reported, not fatal; a symlinked `.rvf` still throws. This applies the same rule
  * to the transaction inventory.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,7 +26,10 @@ const npmLink = (dir) => {
   fs.mkdirSync(path.join(dir, 'node_modules', '.bin'), { recursive: true });
   fs.symlinkSync('../semver/bin/semver.js', path.join(dir, 'node_modules', '.bin', 'semver'));
 };
-afterEach(() => roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
+afterEach(() => {
+  vi.restoreAllMocks();
+  roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true }));
+});
 
 describe('managed storage inventory and tooling symlinks', () => {
   it('reports an npm .bin symlink in the ACTIVE tree instead of throwing', () => {
@@ -52,5 +55,33 @@ describe('managed storage inventory and tooling symlinks', () => {
     const { live } = layout();
     fs.symlinkSync('/usr/bin/true', path.join(live, 'evil.rvf'));
     expect(() => managedStorageInventory(live)).toThrow(/symbolic link.*evil\.rvf/);
+  });
+
+  it('does not inspect unrelated parent entries before classifying them', () => {
+    const { root, live } = layout();
+    const unrelated = path.join(root, 'continuity-temp');
+    fs.mkdirSync(unrelated);
+    const originalLstat = fs.lstatSync;
+    vi.spyOn(fs, 'lstatSync').mockImplementation((file, ...args) => {
+      if (file === unrelated) throw Object.assign(new Error('unrelated entry disappeared'), { code: 'ENOENT' });
+      return originalLstat.call(fs, file, ...args);
+    });
+    expect(managedStorageInventory(live).active).toMatchObject({ kind: 'active', fileCount: 1 });
+  });
+
+  it('still fails closed when a recognized managed entry disappears during inventory', () => {
+    const { root, live } = layout();
+    const backup = path.join(root, 'kb.bak-race');
+    fs.mkdirSync(backup);
+    fs.writeFileSync(path.join(backup, 'public.rvf'), 'backup');
+    const originalLstat = fs.lstatSync;
+    vi.spyOn(fs, 'lstatSync').mockImplementation((file, ...args) => {
+      if (file === backup) {
+        fs.rmSync(backup, { recursive: true, force: true });
+        throw Object.assign(new Error('managed entry disappeared'), { code: 'ENOENT' });
+      }
+      return originalLstat.call(fs, file, ...args);
+    });
+    expect(() => managedStorageInventory(live)).toThrow(/managed entry disappeared/);
   });
 });

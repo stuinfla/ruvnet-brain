@@ -1,7 +1,7 @@
 {
   "name": "ruvnet-brain",
   "version": "4.3.26",
-  "description": "One-command installer for RuvNet Brain — a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
+  "description": "One-command installer for RuvNet Brain \u2014 a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
   "type": "module",
   "bin": {
     "ruvnet-brain": "bin/install.mjs"
@@ -68,7 +68,10 @@
     "cap:ab": "node scripts/rerank-cap-warm-ab.mjs",
     "hooks:check": "node scripts/hook-retirement-check.mjs",
     "release:qualify": "node scripts/release-qualification.mjs",
-    "rehearse:corpus": "node scripts/rehearse-corpus-pipeline.mjs"
+    "rehearse:corpus": "node scripts/rehearse-corpus-pipeline.mjs",
+    "grading:produce": "node scripts/native-machine-grading-producer.mjs",
+    "grading:dispatch": "node scripts/machine-grading-dispatch.mjs",
+    "acceptance:continuity": "node scripts/continuity-acceptance.mjs"
   },
   "files": [
     ".claude-plugin/marketplace.json",
@@ -99,11 +102,13 @@
     "kb/lifecycle-evidence-retention.mjs",
     "kb/refresh-run.mjs",
     "kb/update-storage-transaction.mjs",
+    "kb/node-version.mjs",
+    "kb/package.json",
     "kb/model-requirements.mjs",
     "keys/ruvnet-brain-signing.pub.pem"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9.0"
   },
   "keywords": [
     "ruvnet",
@@ -128,12 +133,19 @@
   "author": "Stuart Kerr",
   "devDependencies": {
     "@babel/parser": "^7.29.7",
+    "@iarna/toml": "^2.2.5",
     "@metaharness/darwin": "~0.9.2",
     "@ruvector/rvf": "^0.3.4",
     "@vitest/coverage-v8": "^4.1.10",
+    "@vscode/tree-sitter-wasm": "^0.3.1",
+    "fast-xml-parser": "^5.11.1",
+    "jsonc-parser": "^3.3.1",
     "mdast-util-from-markdown": "2.0.3",
+    "parse5": "^8.0.1",
     "playwright": "^1.62.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "web-tree-sitter": "^0.27.0",
+    "yaml": "^2.9.1"
   },
   "dependencies": {
     "@metaharness/flywheel": "^0.1.7",

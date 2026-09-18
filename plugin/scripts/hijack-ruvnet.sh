@@ -34,7 +34,7 @@ fi
 # product's central promise — and told nobody. Reproduced live before the fix: with jq on PATH the
 # hook emits its advisory; with jq removed from PATH it emitted ABSOLUTELY NOTHING and exited 0.
 # jq is NOT guaranteed on a corporate laptop or a hardened CI image; node IS guaranteed in Claude
-# Code's environment, and verify-interface.sh:155 already depends on exactly that. So the field
+# Code's environment. So the field
 # union moved into the shared parser (hook-input.mjs `payloadOf`, reachable as the `payload` CLI
 # mode) and the dependency is gone rather than made conditional.
 #

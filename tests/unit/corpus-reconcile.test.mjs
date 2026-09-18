@@ -25,6 +25,7 @@ const temp = () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   while (temps.length) fs.rmSync(temps.pop(), { recursive: true, force: true });
 });
 
@@ -176,7 +177,7 @@ describe('reconciliation execution', () => {
     expect(calls).toEqual(expect.arrayContaining([
       ['git', 'clone', '--no-checkout', '--filter=blob:none', 'https://github.com/ruvnet/alpha', expect.stringContaining('alpha')],
       ['git', '-C', expect.stringContaining('alpha'), 'fetch', '--depth=1', 'origin', sha('a')],
-      ['git', '-C', expect.stringContaining('alpha'), 'checkout', '--detach', 'FETCH_HEAD'],
+      ['git', '-C', expect.stringContaining('alpha'), 'checkout', '--detach', sha('a')],
       [process.execPath, expect.stringMatching(/kb[\\/]forge-refresh\.mjs$/), '--repo', expect.stringContaining('alpha'), '--out', expect.stringMatching(/workers[\\/]alpha[\\/]assets$/), '--name', 'alpha'],
     ]));
     expect(calls.find((call) => call[0] === process.execPath))
@@ -263,6 +264,9 @@ describe('candidate preparation', () => {
   // inputs — the frozen fixture and the ratchet floor — checked before assembly for the same reason:
   // a missing one must fail in seconds, not after an hour of building.
   const candidateRoot = ({ oracle = true, recallInputs = true } = {}) => {
+    const keys = crypto.generateKeyPairSync('ed25519');
+    vi.stubEnv('RUVNET_MEASUREMENT_SIGNING_KEY',keys.privateKey.export({type:'pkcs8',format:'pem'}));
+    vi.stubEnv('RUVNET_MEASUREMENT_PUBLIC_KEY',keys.publicKey.export({type:'spki',format:'pem'}));
     const root = temp();
     fs.mkdirSync(path.join(root, 'scripts', 'oracle'), { recursive: true });
     fs.mkdirSync(path.join(root, 'data'), { recursive: true });
@@ -280,7 +284,7 @@ describe('candidate preparation', () => {
     return root;
   };
 
-  it('MUST BLOCK: a checkout missing the frozen fixture or the ratchet assembles nothing at all', () => {
+  it('MUST BLOCK: a checkout missing the frozen fixture assembles nothing at all', () => {
     const coverage = coverageFixture('CURRENT');
     const run = () => ({ status: 0, stdout: '', stderr: '' });
     const attempt = () => prepareCorpusCandidate({
@@ -335,6 +339,25 @@ describe('candidate preparation', () => {
     expect(joined.join('\n')).not.toMatch(/corpus-seed-publish|release create|--publish|source-coverage\.mjs/);
     expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'source-coverage.json'), 'utf8'))).toEqual(coverage);
     expect(fs.readFileSync(path.join(root, 'docs', 'RUVNET-COVERAGE.md'), 'utf8')).toContain('alpha');
+  });
+
+  it('rejects missing and mismatched measurement authority before assembly', () => {
+    const root=candidateRoot(); const run=vi.fn(()=>({status:0}));
+    const args={root,assetsDir:path.join(root,'assets'),builderSha:sha('a'),coverage:coverageFixture('CURRENT'),run};
+    vi.stubEnv('RUVNET_MEASUREMENT_SIGNING_KEY','');
+    expect(()=>prepareCorpusCandidate(args)).toThrow(/keys are required/);expect(run).not.toHaveBeenCalled();
+    const wrong=crypto.generateKeyPairSync('ed25519');
+    vi.stubEnv('RUVNET_MEASUREMENT_SIGNING_KEY',wrong.privateKey.export({type:'pkcs8',format:'pem'}));
+    expect(()=>prepareCorpusCandidate(args)).toThrow(/does not match/);expect(run).not.toHaveBeenCalled();
+  });
+
+  it('allows an absent informational floor and passes complete seed provenance into one assembly', () => {
+    const root=candidateRoot();fs.rmSync(path.join(root,'data','repo-recall-floor.json'));
+    const calls=[];const run=(_command,args)=>{calls.push(args);return{status:0}};
+    prepareCorpusCandidate({root,assetsDir:path.join(root,'assets'),builderSha:sha('a'),coverage:coverageFixture('CURRENT'),run,
+      bootstrapIdentity:{tag:'corpus-sha256-'+'b'.repeat(64),sha256:'b'.repeat(64),archiveBytes:123,baselineReceiptSha256:'c'.repeat(64)}});
+    expect(calls.filter(args=>args[0].endsWith('build-bundle.mjs'))).toHaveLength(1);
+    expect(calls[0]).toEqual(expect.arrayContaining(['--seed-bytes','123','--baseline-receipt-sha256','c'.repeat(64),'--source-snapshot',sha('a')]));
   });
 
   it('fails closed on any non-CURRENT eligible row, before ever shelling out to build or seal', () => {
@@ -665,5 +688,22 @@ describe('standalone workflow boundary', () => {
     expect(workflow).toContain('kb/PRIVATE-STORES.json');
     expect(workflow).not.toMatch(/releases\/latest|download\/latest|\brelease create\b|node scripts\/corpus-seed-publish\.mjs/);
     expect(workflow).toMatch(/protected-release\.yml/);
+  });
+});
+
+
+describe('admitted fork reconciliation', () => {
+  const forkDelta = { version: 'fork-delta/2', forkRepository: 'ruvnet/alpha', upstream: 'original/alpha',
+    forkHeadSha: sha('a'), upstreamHeadSha: sha('b'), mergeBaseSha: sha('c'), aheadBy: 1, behindBy: 2 };
+  const row = { ...repo({ name: 'alpha', disposition: 'fork:original-content' }), forkDelta };
+  it('plans a delta build even when an old full-tree generation claims the same head', () => {
+    const plan = planReconciliation({ coverage: coverage([row]), ledger: { stores: { alpha: { sourceCommit: sha('a') } } } });
+    expect(plan).toHaveLength(1);
+    expect(plan[0]).toMatchObject({ sourceMode: 'fork-delta', forkDelta });
+  });
+  it('does not reuse a delta receipt for a different upstream baseline', () => {
+    const generation = { sourceCommit: sha('a'), sourceMode: 'fork-delta', forkDelta: {
+      ...forkDelta, upstreamHeadSha: sha('d'), inventorySha256: 'e'.repeat(64), passagesSha256: 'f'.repeat(64) } };
+    expect(planReconciliation({ coverage: coverage([row]), ledger: { stores: { alpha: generation } } })).toHaveLength(1);
   });
 });

@@ -22,6 +22,7 @@ import {
   PROJECT_B_MEMORY_KEY, PROJECT_B_MEMORY_VALUE, RUFLO_BIN, MUTANTS, WRONG_SUBCOMMAND_COMMAND,
   replayRunError, buildCodexArgv, parseCodexRunError, codexLessonBeforeTool,
   codexReplayHookArgs, codexReplayInstrumentationError,
+  replayHostEnv,
   checkMutantArtifacts, MUTANT_RESULT_FILES, allocateRunBase,
   TRAP, classifyPostTaskCommand, postTaskSubcommandCorrect, verifyPostTaskContract,
   assertPostTaskPersisted,
@@ -59,6 +60,23 @@ describe('executor failures remain visible in replay evidence', () => {
     expect(replayRunError(events, {})).toContain("weekly limit");
   });
 
+  it('rejects missing, signalled, timed-out, and non-success Claude terminals', () => {
+    expect(replayRunError([], { status: 0 })).toMatch(/did not complete/);
+    expect(replayRunError([{ type: 'result', subtype: 'success', is_error: false }, { type: 'result', subtype: 'error', is_error: false }], { status: 0 })).toMatch(/did not complete/);
+    expect(replayRunError([{ type: 'result', subtype: 'success', is_error: false }], { status: 0, signal: 'SIGTERM' })).toMatch(/SIGTERM/);
+    expect(replayRunError([{ type: 'result', subtype: 'success', is_error: false }], { status: 0, timedOut: true })).toMatch(/timed out/);
+    expect(replayRunError([{ type: 'result', subtype: 'error', is_error: false }], { status: 0 })).toMatch(/did not complete/);
+    expect(replayRunError([{ type: 'result', subtype: 'success', is_error: false }], { status: 1 })).toMatch(/exited 1/);
+  });
+
+  it('a later Claude error result dominates an earlier successful result', () => {
+    const events = [
+      { type: 'result', subtype: 'success', is_error: false },
+      { type: 'result', is_error: true, result: 'later Claude failure' },
+    ];
+    expect(replayRunError(events, { status: 0 })).toContain('later Claude failure');
+  });
+
   it('preserves a Codex turn failure instead of treating an empty artifact as model behavior', () => {
     const events = [
       { type: 'turn.started' },
@@ -75,6 +93,94 @@ describe('executor failures remain visible in replay evidence', () => {
       { type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } },
     ];
     expect(parseCodexRunError(events, { status: 0 })).toBeNull();
+  });
+
+  it('does not let a fatal item error hide behind turn.completed', () => {
+    const events = [
+      { type: 'turn.completed' },
+      { type: 'item.completed', item: { type: 'error', message: 'fixture command failed' } },
+    ];
+    expect(parseCodexRunError(events, { status: 0 })).toContain('fixture command failed');
+  });
+
+  it('does not let a benign notice hide a later fatal item, in either order', () => {
+    const benign = { type: 'item.completed', item: { type: 'error', message: 'hook trust bypass is enabled' } };
+    const fatal = { type: 'item.completed', item: { type: 'error', message: 'later fixture failure' } };
+    expect(parseCodexRunError([benign, fatal, { type: 'turn.completed' }], { status: 0 })).toContain('later fixture failure');
+    expect(parseCodexRunError([fatal, benign, { type: 'turn.completed' }], { status: 0 })).toContain('later fixture failure');
+  });
+
+  it('rejects a top-level error even when the turn completed', () => {
+    expect(parseCodexRunError([
+      { type: 'error', message: 'top-level transport failure' },
+      { type: 'turn.completed' },
+    ], { status: 0 })).toContain('top-level transport failure');
+  });
+
+  it('rejects incomplete, signalled, and timed-out Codex runs even with status zero', () => {
+    expect(parseCodexRunError([], { status: 0 })).toMatch(/did not complete/);
+    expect(parseCodexRunError([{ type: 'turn.completed' }], { status: 0, signal: 'SIGTERM' })).toMatch(/SIGTERM/);
+    expect(parseCodexRunError([{ type: 'turn.completed' }], { status: 0, timedOut: true })).toMatch(/timed out/);
+  });
+
+  it('builds every fixture child environment without daemon autostart or API billing keys', () => {
+    const parent = {
+      PATH: process.env.PATH,
+      RUFLO_DAEMON_AUTOSTART: '1',
+      ANTHROPIC_API_KEY: 'metered-anthropic',
+      OPENAI_API_KEY: 'metered-openai',
+      RUVNET_SUBSCRIPTION_ONLY: '0',
+    };
+    const env = replayHostEnv(parent);
+    expect(env.RUFLO_DAEMON_AUTOSTART).toBe('0'); // sync-version-ignore: independent daemon-off safety contract fixture
+    expect(env.RUVNET_SUBSCRIPTION_ONLY).toBe('1'); // sync-version-ignore: independent subscription-only safety contract fixture
+    expect(env).not.toHaveProperty('ANTHROPIC_API_KEY');
+    expect(env).not.toHaveProperty('OPENAI_API_KEY');
+    expect(replayHostEnv(parent, {
+      RUFLO_DAEMON_AUTOSTART: '1', OPENAI_API_KEY: 'malicious-override', RUVNET_SIGNING_KEY: 'malicious-key',
+    })).toEqual(expect.objectContaining({ RUFLO_DAEMON_AUTOSTART: '0' }));
+    expect(replayHostEnv(parent, { OPENAI_API_KEY: 'malicious-override', RUVNET_SIGNING_KEY: 'malicious-key' }))
+      .not.toHaveProperty('OPENAI_API_KEY');
+
+  });
+
+  it('runArm passes the sanitized environment to the actual host consumer stub', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'learning-replay-host-env-'));
+    const marker = path.join(base, 'host-env.json');
+    const stub = path.join(base, 'codex-stub.mjs');
+    fs.writeFileSync(stub, `#!/usr/bin/env node\nimport fs from 'node:fs'; fs.writeFileSync(process.env.HOST_ENV_MARKER, JSON.stringify({ daemon: process.env.RUFLO_DAEMON_AUTOSTART, subscription: process.env.RUVNET_SUBSCRIPTION_ONLY, openai: process.env.OPENAI_API_KEY, signing: process.env.RUVNET_SIGNING_KEY })); fs.writeFileSync(process.env.RUVNET_REPLAY_ATTEMPTS_FILE, JSON.stringify({ command: 'echo fixture' }) + '\\n'); fs.writeFileSync(process.env.RUVNET_REPLAY_SEQUENCE_FILE, JSON.stringify({ kind: 'tool', atNs: '2' }) + '\\n'); console.log(JSON.stringify({type:'item.completed',item:{type:'command_execution',command:'echo fixture'}})); console.log(JSON.stringify({type:'turn.completed'}));\n`);
+    fs.chmodSync(stub, 0o755);
+    const runner = `const { buildFixtures, runArm } = await import('./scripts/learning-replay.mjs'); const dirs = buildFixtures(process.env.REPLAY_BASE); const result = runArm({ dirs, arm: 'treated', stateDir: dirs.stateOn, model: 'fixture', host: 'codex', tag: 'env-stub' }); if (result.spawnError) { console.error(result.spawnError); process.exit(1); }`;
+    try {
+      const child = spawnSync(process.execPath, ['--input-type=module', '-e', runner], {
+        cwd: path.resolve(import.meta.dirname, '../..'), encoding: 'utf8', timeout: 120_000,
+        env: { ...process.env, REPLAY_BASE: base, HOST_ENV_MARKER: marker, RUVNET_CODEX_BIN: stub,
+          RUFLO_DAEMON_AUTOSTART: '1', OPENAI_API_KEY: 'must-be-stripped', RUVNET_SIGNING_KEY: 'must-be-stripped' },
+      });
+      expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(0);
+      expect(JSON.parse(fs.readFileSync(marker, 'utf8'))).toEqual({ daemon: '0', subscription: '1' });
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('Claude runArm skips produced-command execution on host failure and accepts a valid terminal', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'learning-replay-claude-host-'));
+    const marker = path.join(base, 'command-executed');
+    const claude = path.join(base, 'claude-stub.mjs');
+    const ruflo = path.join(base, 'ruflo-stub.sh');
+    fs.writeFileSync(claude, `#!/usr/bin/env node\nimport fs from 'node:fs'; fs.writeFileSync(process.env.RUVNET_REPLAY_ATTEMPTS_FILE, JSON.stringify({ command: 'ruflo memory search -q x --path .swarm/memory.db' }) + '\\n'); const bad = process.env.CLAUDE_STUB_MODE === 'bad'; console.log(JSON.stringify({ type: 'result', subtype: bad ? 'error' : 'success', is_error: bad, result: bad ? 'host command failed' : 'ok' }));\n`);
+    fs.writeFileSync(ruflo, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\nprintf '%s\\n' fixture\n`);
+    fs.chmodSync(claude, 0o755); fs.chmodSync(ruflo, 0o755);
+    const runner = `const { buildFixtures, runArm } = await import('./scripts/learning-replay.mjs'); const dirs = buildFixtures(process.env.REPLAY_BASE); process.env.CLAUDE_STUB_MODE = 'bad'; const bad = runArm({ dirs, arm: 'treated', stateDir: dirs.stateOn, model: 'fixture', host: 'claude-code', tag: 'bad', forceCommand: 'ruflo memory search -q x --path .swarm/memory.db' }); if (!bad.spawnError || !bad.exec?.skipped || (await import('node:fs')).existsSync(process.env.COMMAND_MARKER)) process.exit(2); process.env.CLAUDE_STUB_MODE = 'good'; const good = runArm({ dirs, arm: 'treated', stateDir: dirs.stateOn, model: 'fixture', host: 'claude-code', tag: 'good', forceCommand: 'ruflo memory search -q x --path .swarm/memory.db' }); if (good.spawnError || !good.exec) process.exit(3);`;
+    try {
+      const child = spawnSync(process.execPath, ['--input-type=module', '-e', runner], {
+        cwd: path.resolve(import.meta.dirname, '../..'), encoding: 'utf8', timeout: 120_000,
+        env: { ...process.env, REPLAY_BASE: base, RUVNET_CLAUDE_BIN: claude, RUVNET_RUFLO_BIN: ruflo, COMMAND_MARKER: marker, RUFLO_DAEMON_AUTOSTART: '0' },
+      });
+      expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(0);
+      expect(fs.existsSync(marker)).toBe(true);
+    } finally { fs.rmSync(base, { recursive: true, force: true }); }
   });
 });
 

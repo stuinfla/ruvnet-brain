@@ -1,3 +1,4 @@
+import { fixtureArtifact } from '../../scripts/ci/coverage-fixture.mjs';
 import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -40,7 +41,7 @@ if (!doc.stores?.[value('--name')]) { console.error('no entry for store "'+value
   fs.writeFileSync(path.join(dir, 'public-store-classes.json'), JSON.stringify({ schemaVersion: 1, derived: [] }));
   const rows = storeNames.map((name) => ({ key: `repo:${name}`, kind: 'repository', name,
     url: `https://github.com/ruvnet/${name}`, status: 'CURRENT', disposition: 'eligible', upstream: {},
-    artifact: { store: name }, reasons: [] }));
+    artifact: fixtureArtifact(name, publicLedger), reasons: [] }));
   const enumerationReceipt = { schemaVersion: 1, terminal: true, duplicateKeys: 0,
     repositories: { expected: rows.length, pages: [] }, gists: { expected: 0, pages: [] } };
   const generatorSourceSha = 'a'.repeat(64);

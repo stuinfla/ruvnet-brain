@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -110,6 +111,7 @@ describe('corpus next-seed resolution (ADR-086 step 18)', () => {
     expect(seed.tag).toBe(latest.tag);
     expect(seed.sha256).toBe(latest.sha256);
     expect(seed.bytes).toBe(600_000_000);
+    expect(seed.receiptSha256).toBe(crypto.createHash('sha256').update(JSON.stringify(latest.receipt)).digest('hex'));
     expect(seed.brainVersion).toBe(APPROVED_VERSION);
   });
 

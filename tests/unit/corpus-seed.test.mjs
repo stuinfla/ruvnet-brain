@@ -3,12 +3,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { digest } from '../../scripts/coverage-integrity.mjs';
+import { loadFixture } from '../../scripts/oracle/repo-recall.mjs';
+import { sealRetrievalQueryEvidence } from '../../scripts/retrieval-canary.mjs';
 import {
   createCorpusReceipt,
   verifyCorpusReceipt,
   verifySeedBaseline,
 } from '../../scripts/corpus-candidate.mjs';
-import { RvfDatabase, SOURCE_COMMIT, buildAssets, seal, sha256, writeAccuracyReport, writeRecallReport } from '../helpers/corpus-seed-fixture.mjs';
+import { RvfDatabase, SOURCE_COMMIT, buildAssets, seal, sha256, writeAccuracyReport, writeRecallReport, attestFixtureRecall } from '../helpers/corpus-seed-fixture.mjs';
 
 // The genuine-RVF bundle fixture (writeMinimalRvf / buildAssets / seal) moved to
 // tests/helpers/corpus-seed-fixture.mjs on 2026-09-13 so tests/unit/corpus-seed-release-authority.test.mjs
@@ -64,6 +67,78 @@ describe('immutable corpus candidate receipt (schema 3)', () => {
       receiptFile: f.receiptFile,
       bundleFile: f.bundle,
     })).resolves.toEqual(receipt);
+  });
+
+  it('rejects measurement identities for different runtime bytes, even with a valid report digest', async () => {
+    for (const kind of ['accuracy', 'recall']) {
+      const f = await fixture();
+      const file = `${f.bundle}.${kind}.json`;
+      const report = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const identity = kind === 'accuracy' ? report.runtime.identity : report.protocol.runtimeIdentity;
+      identity.files.find(row => row.path === 'forge-ask-all.mjs').sha256 = 'f'.repeat(64);
+      identity.sha256 = digest({files: identity.files, dependencies: identity.dependencies});
+      const {runtimeSha256, ...payload} = identity;
+      identity.runtimeSha256 = digest(payload);
+      fs.writeFileSync(file, JSON.stringify(kind === 'recall' ? attestFixtureRecall(report) : report));
+      await expect(create(f)).rejects.toThrow(/runtime files.*differ from the archive/);
+    }
+  });
+
+  it('rejects a report that omits part of the sealed runtime closure after resealing its digests', async () => {
+    const f = await fixture();
+    const file = `${f.bundle}.accuracy.json`;
+    const report = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const identity = report.runtime.identity;
+    identity.files = identity.files.filter(row => row.path !== 'package.json');
+    identity.sha256 = digest({ files: identity.files, dependencies: identity.dependencies });
+    const { runtimeSha256, ...payload } = identity;
+    identity.runtimeSha256 = digest(payload);
+    fs.writeFileSync(file, JSON.stringify(report));
+    await expect(create(f)).rejects.toThrow(/complete archive retrieval closure/);
+  });
+
+  it('rejects an inconsistent inner runtime digest even when the outer digest is recomputed', async () => {
+    const f = await fixture();
+    const file = `${f.bundle}.accuracy.json`;
+    const report = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const identity = report.runtime.identity;
+    identity.sha256 = 'f'.repeat(64);
+    const { runtimeSha256, ...payload } = identity;
+    identity.runtimeSha256 = digest(payload);
+    fs.writeFileSync(file, JSON.stringify(report));
+    await expect(create(f)).rejects.toThrow(/runtime source closure digest/);
+  });
+
+  it('rejects an attested recall measurement with no controlled runtime identity', async () => {
+    const f = await fixture();
+    const file = `${f.bundle}.recall.json`;
+    const report = JSON.parse(fs.readFileSync(file, 'utf8'));
+    report.protocol.runtimeIdentity = null;
+    fs.writeFileSync(file, JSON.stringify(attestFixtureRecall(report)));
+    await expect(create(f)).rejects.toThrow(/controlled archive runtime identity/);
+  });
+
+  it('verifies a pinned historical receipt using its explicitly supplied historical fixture', async () => {
+    const f = await fixture();
+    const oldFixture = path.join(f.root, 'historical-fixture.json');
+    const historical = JSON.parse(fs.readFileSync(loadFixture().file, 'utf8'));
+    const record = Object.values(historical.queries)[0];
+    record.expected.passageSha256 = '0'.repeat(64);
+    record.recordSha256 = digest({query: record.query, expected: record.expected});
+    fs.writeFileSync(oldFixture, JSON.stringify(sealRetrievalQueryEvidence(historical)));
+    const reportFile = `${f.bundle}.recall.json`;
+    const report = JSON.parse(fs.readFileSync(reportFile, 'utf8'));
+    report.fixture.sha256 = loadFixture(oldFixture).fixtureSha256;
+    fs.writeFileSync(reportFile, JSON.stringify(attestFixtureRecall(report)));
+    const receipt = await createCorpusReceipt({bundleFile: f.bundle, receiptFile: f.receiptFile,
+      builderSourceSha: 'c'.repeat(40), fixtureFile: oldFixture});
+    receipt.generator.corpusCandidateSha256 = 'f'.repeat(64);
+    fs.writeFileSync(f.receiptFile, JSON.stringify(receipt));
+    const options = {bundleFile: f.bundle, receiptFile: f.receiptFile,
+      expectedReceiptSha256: sha256(f.receiptFile), fixtureFile: oldFixture};
+    await expect(verifyCorpusReceipt(options)).resolves.toEqual(receipt);
+    await expect(verifyCorpusReceipt({...options, fixtureFile: null})).rejects.toThrow(/fixture/);
+    await expect(verifyCorpusReceipt({...options, expectedReceiptSha256: undefined})).rejects.toThrow(/receipt does not match/);
   });
 
   it('fails closed for unreceipted RVFs, missing sidecars, duplicate RVFs, and orphan ledger rows', async () => {

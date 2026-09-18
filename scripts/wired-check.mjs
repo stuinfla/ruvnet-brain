@@ -226,10 +226,6 @@ const STANDALONE = [
   // The grounding wall and its successful-search stamp used to be in this inert class. They now
   // ship through the plugin shim on both Claude and Codex; keeping them exempt here made the wiring
   // report contradict its own live hook census.
-  ['kling-preflight', 'PreToolUse (Bash) gate — ships inert by design, same SECURITY.md class as '
-    + 'ground-before-write. Per ADR-0014 ownership moved to the Kling skill (confirmed live: a copy '
-    + 'ships at ~/.claude/skills/klingai/scripts/kling-preflight.sh); NOT currently wired into any '
-    + 'settings.json there either — honestly dormant until a user opts in, not a silent gap'],
 ];
 // REMOVED 2026-07-22, each verified before removal:
 //   check-legibility / check-indexation / status-honesty — claimed "invoked from the workflow";
@@ -682,9 +678,6 @@ export function audit({ repo = REPO, standalone = STANDALONE, held = HELD,
  *   • Check B (hook wiring) HARD-FAILS on a genuinely new unwired hook — same as an unwired module
  *     above, because a hook script IS a shippable module: this repo owns hooks.json, this repo's
  *     own .claude/settings.json, and (per HOOK_PLUMBING/HOOK_HELD) can name every known exception.
- *     kling-preflight.sh is the one PRE-EXISTING, already-documented gap (STANDALONE says the same
- *     thing above) — it is HELD, not unwired, so today's run does not break release.mjs for a
- *     condition this task did not introduce and was not asked to fix.
  *   • Check C (lesson triggers) is ADVISORY ONLY, NEVER fails --check, by deliberate design: the
  *     lesson store lives at ~/.config/ruvnet-brain/lessons.json (or $RUVNET_LESSON_STORE) — per-user,
  *     per-machine state OUTSIDE this repo. A fresh machine has none (loadLessons() degrades to []
@@ -720,20 +713,7 @@ const HOOK_PLUMBING = [
 ];
 const HOOK_PLUMBING_NAMES = new Set(HOOK_PLUMBING.map(([n]) => n));
 
-/**
- * DELIBERATELY HELD, same bar as HELD above: a hook-intended script genuinely not reachable from
- * hooks.json or any settings.json today, and NOT a gap this check can silently close — the owner's
- * call, already recorded once (STANDALONE's kling-preflight entry above) and reproduced here so
- * --check does not fail the ship path on a pre-existing, already-documented, non-regression condition.
- */
-const HOOK_HELD = {
-  'kling-preflight.sh': 'PreToolUse (Bash) gate — ships inert by design (SECURITY.md), ownership moved to '
-    + 'the Kling skill by ADR-0014 (confirmed live: a copy ships at '
-    + '~/.claude/skills/klingai/scripts/kling-preflight.sh). Not currently wired into plugin/hooks/'
-    + 'hooks.json, this repo\'s .claude/settings.json, or ~/.claude/settings.json — matching '
-    + 'STANDALONE\'s own entry for this file above. Honestly dormant until a user opts in, not a silent '
-    + 'gap this check introduces.',
-};
+const HOOK_HELD = {};
 
 /** Read+JSON.parse a file. null on ANY failure (missing, unreadable, malformed) — never throws. */
 function readJsonSafe(file) {

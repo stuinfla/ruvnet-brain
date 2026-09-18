@@ -9,14 +9,23 @@ import { MANAGED_CLI_TOOLS } from '../../plugin/mcp/managed-cli-interface.mjs';
 const REPO = path.resolve(import.meta.dirname, '../..');
 const SERVER = path.join(REPO, 'plugin/mcp/server.mjs');
 const children = new Set();
+const fixtureRoots = new Set();
 
-afterEach(() => {
-  for (const child of children) child.kill('SIGTERM');
+afterEach(async () => {
+  await Promise.all([...children].map((child) => new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+    const timer = setTimeout(() => child.kill('SIGKILL'), 3000);
+    child.once('close', () => { clearTimeout(timer); resolve(); });
+    child.kill('SIGTERM');
+  })));
   children.clear();
+  for (const root of fixtureRoots) fs.rmSync(root, { recursive: true, force: true });
+  fixtureRoots.clear();
 });
 
 function fixture({ withBrain = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-cli-mcp-'));
+  fixtureRoots.add(root);
   const home = path.join(root, 'home');
   const bin = path.join(root, 'bin');
   const calls = path.join(root, 'calls.jsonl');
@@ -132,7 +141,7 @@ setInterval(() => {}, 1 << 30);
 
 function startServer(fx, extraEnv = {}) {
   const child = spawn(process.execPath, [SERVER], {
-    cwd: REPO,
+    cwd: fx.root,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
@@ -142,7 +151,11 @@ function startServer(fx, extraEnv = {}) {
       WARMUP_MARKER: fx.warmup,
       RUVNET_BRAIN_HOME: path.join(fx.root, 'brain'),
       RUVNET_BRAIN_KB: fx.kb,
+      RUVNET_BRAIN_CHILD_MCP: path.join(fx.kb, 'forge-mcp-all.mjs'),
+      RUVNET_BRAIN_HELP_READ_DIR: path.join(fx.root, 'brain', 'help-read'),
+      RUVNET_CAPABILITY_LIVE_EVIDENCE: path.join(fx.root, 'brain', 'live-evidence.jsonl'),
       RUVNET_BRAIN_PROJECT_SETTINGS_FILE: path.join(fx.root, 'absent-project-settings.json'),
+      RUVNET_BRAIN_PROJECT_DIR: fx.root,
       ...extraEnv,
     },
   });
@@ -398,7 +411,7 @@ rl.on('line', (line) => {
       'memory', 'search', ';', 'touch', injected, '$(touch nope)', '|', 'cat',
     ]);
     expect(fs.existsSync(injected)).toBe(false);
-    expect(fs.existsSync(path.join(REPO, 'nope'))).toBe(false);
+    expect(fs.existsSync(path.join(fx.root, 'nope'))).toBe(false);
   });
 
   it('enforces live routing and QE-fleet choices before either real executable starts', async () => {

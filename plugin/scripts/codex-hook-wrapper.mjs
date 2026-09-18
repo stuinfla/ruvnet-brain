@@ -69,7 +69,8 @@ function timeoutFor(hookId) {
   // tinguishable from a crash; 6000ms covers the gate's cap plus this chain's spawn overhead
   // (measured 773–1145ms end-to-end warm, so ~150–400ms of that is the wrapper/adapter/shim).
   if (hookId === 'decision-gate') return 6_000;
-  if (hookId === 'ground-ruvnet' || hookId === 'unprompted-speech' || hookId === 'continuation-gate') {
+  if (hookId === 'unprompted-speech') return 2_100;
+  if (hookId === 'ground-ruvnet' || hookId === 'continuation-gate') {
     return 8_500;
   }
   return 4_000;

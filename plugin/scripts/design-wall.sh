@@ -9,8 +9,8 @@
 # mechanism: "Suggestions mean bullshit to you. RuvNet Brain needs to be smart enough to make sure
 # those suggestions become law and the law becomes followed."
 #
-# He is right about the mechanism. This repo's entire history says advisory rules fail and walls hold
-# (route-dispatch, verify-interface, ground-before-write, substitution:check, narrative-version).
+# This opt-in gate retains its visual review contract. Managed CLI help validation belongs to
+# the structured MCP boundary; the former verify-interface shell advisory is retired.
 # So the 95-gate is a WALL: deploying the explainer, committing visual surfaces, or opening a page
 # for the user REQUIRES a fresh passing design-grade stamp for that surface. The only key is
 # scripts/design-grade.mjs, which itself refuses to stamp without >=2 fresh screenshots at distinct

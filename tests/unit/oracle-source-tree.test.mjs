@@ -112,3 +112,11 @@ describe('the snapshot manifest is read from the pinned git tree, not the filesy
     expect(() => classifyEntry({ path: 'x', mode: '100644', type: 'blob' }, null)).toThrow(/needs the blob bytes/);
   });
 });
+
+it('does not disguise substantive text as an LFS pointer or supported NUL-bearing source as binary',()=>{
+  const entry={path:'note.txt',mode:'100644',type:'blob'};
+  expect(classifyEntry(entry,Buffer.from(`${LFS_POINTER_PREFIX}\nA substantive implementation follows.\n`))).toBe('file');
+  for(const name of ['code.rb','code.php','code.bash','code.ps1','guide.markdown']){
+    expect(classifyEntry({...entry,path:name},Buffer.from('source\0content'))).toBe('file');
+  }
+});

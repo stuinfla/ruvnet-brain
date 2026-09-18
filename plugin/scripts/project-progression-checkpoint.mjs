@@ -29,6 +29,7 @@ import { buildProjectProgression } from './project-progression-producer.mjs';
 import { ProjectProgressionStore } from './project-progression-store.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { projectDirectory } from './project-identity.mjs';
+import { inspectReconciliation, prepareReconciliation } from './project-progression-reconciliation.mjs';
 
 /** Fields a checkpoint may contribute. Anything else is ignored rather than silently stored. */
 export const CHECKPOINT_FIELDS = Object.freeze([
@@ -71,6 +72,21 @@ export function readCheckpointState({ json, 'json-file': jsonFile } = {}) {
   return state;
 }
 
+export function readReconciliationInput({ json, 'json-file': jsonFile } = {}) {
+  const text = typeof jsonFile === 'string' && jsonFile ? fs.readFileSync(jsonFile, 'utf8') : json;
+  if (typeof text !== 'string' || !text.trim()) throw new Error('reconciliation needs --json or --json-file');
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { throw new Error('reconciliation input is not JSON'); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('reconciliation input must be an object');
+  if (!Array.isArray(parsed.expectedHeads)) throw new Error('reconciliation expectedHeads must be an array');
+  if (!parsed.dispositions || typeof parsed.dispositions !== 'object' || Array.isArray(parsed.dispositions)) {
+    throw new Error('reconciliation dispositions must be an object');
+  }
+  const unknown = Object.keys(parsed).filter((key) => !['expectedHeads', 'dispositions'].includes(key));
+  if (unknown.length) throw new Error(`unknown reconciliation field(s): ${unknown.join(', ')}`);
+  return { expectedHeads: parsed.expectedHeads, dispositions: parsed.dispositions };
+}
+
 export function runCheckpoint({
   projectDir = projectDirectory(),
   state,
@@ -79,13 +95,13 @@ export function runCheckpoint({
   produce = buildProjectProgression,
   capture = captureProjectTransition,
   storeFactory,
+  reconcile,
 } = {}) {
   const resolution = resolveProjectStore({ projectDir });
   if (!fs.existsSync(path.dirname(resolution.canonicalAgentDbPath))) {
     throw new Error(`this project has not adopted the canonical store (${resolution.canonicalAgentDbPath})`);
   }
   const payload = { session_id: sessionId, hook_event_name: 'checkpoint' };
-  const produced = produce({ resolution, payload, host, trigger: 'checkpoint' });
 
   // Commit any durable-but-uncommitted snapshot first, so an explicit checkpoint also settles the
   // debt SessionStart is forbidden from settling. Same ordering as the automatic boundaries.
@@ -93,10 +109,21 @@ export function runCheckpoint({
     projectDir, requestedStorePath: resolution.canonicalAgentDbPath,
   });
   let replayed = 0;
-  try { replayed = store.replay().length; } catch { /* the checkpoint itself is still worth writing */ }
+  try { replayed = store.replay().length; }
+  catch (error) { throw new Error(`pending progression replay failed: ${error.message}`, { cause: error }); }
+
+  const prepared = reconcile ? prepareReconciliation({ store, ...reconcile }) : null;
+  const produced = produce({ resolution, payload, host, trigger: 'checkpoint', reconcile: prepared });
+  if (!produced.projectProgression) throw new Error(produced.skipped?.reason || 'checkpoint has no coherent progression state');
+  if (prepared) {
+    // Re-read immediately before the managed writer. A head arriving during production must
+    // invalidate this proposal rather than being silently adopted as an unreviewed parent.
+    const confirmed = prepareReconciliation({ store, ...reconcile });
+    if (confirmed.proposalDigest !== prepared.proposalDigest) throw new Error('progression heads changed; inspect again before applying reconciliation');
+  }
 
   const provenance = { ...produced.projectProgression.completeProjectState.provenance };
-  for (const field of Object.keys(state)) provenance[field] = { source: 'model-checkpoint', authoritative: false };
+  for (const field of Object.keys(state ?? {})) provenance[field] = { source: 'model-checkpoint', authoritative: false };
 
   const result = capture({
     host,
@@ -108,20 +135,35 @@ export function runCheckpoint({
         ...produced.projectProgression,
         completeProjectState: {
           ...produced.projectProgression.completeProjectState,
-          ...state,
+          ...(state ?? {}),
           provenance,
         },
       },
     },
   });
-  return { receipt: result.receipt, replayed, provenance, sequence: result.snapshot.sequence };
+  if (!prepared) return { receipt: result.receipt, replayed, provenance, sequence: result.snapshot.sequence };
+  const after = inspectReconciliation({ store });
+  const remaining = after.expectedHeads.map((head) => head.eventKey);
+  return { receipt: result.receipt, replayed, provenance, sequence: result.snapshot.sequence,
+    reconciliation: { parentsConsumed: prepared.expectedHeads, headsAfterCommit: after.expectedHeads,
+      supersededByLedger: Object.keys(prepared.state).filter((field) =>
+        produced.projectProgression.completeProjectState.provenance?.[field]?.source === 'ledger'
+        && JSON.stringify(prepared.state[field]) !== JSON.stringify(produced.projectProgression.completeProjectState[field])).sort(),
+      reconciled: remaining.length === 1 && remaining[0] === result.receipt.eventKey } };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2));
   try {
+    if (args['reconcile-inspect']) {
+      const projectDir = typeof args['project-dir'] === 'string' ? args['project-dir'] : projectDirectory();
+      const resolution = resolveProjectStore({ projectDir });
+      const store = new ProjectProgressionStore({ projectDir, requestedStorePath: resolution.canonicalAgentDbPath });
+      console.log(JSON.stringify(inspectReconciliation({ store }), null, 2));
+      process.exit(0);
+    }
     const outcome = runCheckpoint({
-      state: readCheckpointState(args),
+      ...(args['reconcile-apply'] ? { reconcile: readReconciliationInput(args), state: {} } : { state: readCheckpointState(args) }),
       ...(typeof args['project-dir'] === 'string' ? { projectDir: args['project-dir'] } : {}),
       ...(typeof args.session === 'string' ? { sessionId: args.session } : {}),
     });
@@ -137,6 +179,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       alreadyStored: outcome.receipt.alreadyStored,
       replayedPending: outcome.replayed,
       committedAt: outcome.receipt.committedAt,
+      ...(outcome.reconciliation ? { reconciliation: outcome.reconciliation } : {}),
     }, null, 2));
   } catch (error) {
     console.error(`[checkpoint] ${error.message}`);

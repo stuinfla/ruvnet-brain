@@ -2,7 +2,7 @@
 id: ADR-012
 status: Accepted
 date: 2026-07-13
-updated: 2026-07-27
+updated: 2026-09-17
 updated_source: derived-from-git
 ---
 # ADR-0012: Grounding gate on the write path — brain consultation is enforced, not advisory
@@ -23,7 +23,7 @@ hand-rolled "MetaHarness router" while `@metaharness/router@0.3.2` sat on npm. C
 days and Stuart's trust.
 
 The existing walls each guard a different door — `no-silent-substitution.mjs` gates what
-**ships** (CI), `verify-interface.sh` gates what **runs** (PreToolUse on Bash),
+**ships** (CI); the retired shell interface ID no longer gates what runs (managed CLI calls use the structured MCP boundary),
 `route-dispatch.sh` gates what gets **dispatched** (PreToolUse on Task). Nothing gated what
 gets **written**. Every prompt-level rule ("always consult the brain first") failed, exactly as
 rUv's guidance package predicts (ADR-G007): *"prompts are advisory. Agents can and do ignore
@@ -46,7 +46,7 @@ wiring pattern (`ruflo/.claude/commands/hooks/overview.md`):
 Scope is deliberately narrow so the gate never becomes a tax that gets switched off: code files
 only (docs are enforced by the CI claim gates), product terms only (not generic words), and
 per-term granularity (grounding `agentdb` does not unlock `metaharness` — granularity matches
-the mistake, same as `verify-interface.sh`'s per-subcommand stamps). Same hardening contract as
+the mistake, historically associated with `verify-interface.sh`'s per-subcommand stamps). Same hardening contract as
 its siblings: opt-in via the router `profile.json`, fails open on anything unparseable, bash
 builtins only, spoken-override escape hatch (`RUVNET_SKIP_GROUNDING_CHECK=1`).
 

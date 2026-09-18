@@ -121,6 +121,21 @@ function tree(root) {
 }
 
 describe('anticipate.sh — it delivers', () => {
+  it('preserves a command prerequisite in the delivered suggestion without executing it', () => {
+    const marker = path.join(work, 'must-not-execute');
+    const row = { ...DORMANT_ROW, turnOn: {
+      cmd: `touch '${marker}'`, human: 'Requires OPENROUTER_API_KEY; read-only scoring is free',
+    } };
+    const { status, stdout } = run({
+      event: { session_id: 'prerequisite', prompt: PROMPT },
+      registry: writeRegistry([row]), matcher: writeMatcher('remember', [GOOD_MATCH]),
+    });
+    expect(status).toBe(0);
+    expect(stdout).toContain(row.turnOn.cmd);
+    expect(stdout).toContain(row.turnOn.human);
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+
   it('fires on a genuinely matching prompt, naming only derived values', () => {
     const { status, stdout } = run({
       event: { session_id: 's1', prompt: PROMPT },

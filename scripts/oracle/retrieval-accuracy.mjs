@@ -41,11 +41,13 @@
 // loose is not.
 
 import crypto from 'node:crypto';
+import { canonicalJson as canonical, digest } from '../coverage-integrity.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../../kb/zip-extract.mjs';
+import { archiveSourceCensus, assertSourceCensusPartitions } from './source-census.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -92,12 +94,106 @@ function sha256File(file) {
   return sha256Of(fs.readFileSync(file));
 }
 
-function canonical(value) {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+
+/** A trusted measurement runner attests the complete detached report, not a claimed score. */
+export function attestAccuracyReport(report, privateKey) {
+  const { attestation: ignored, ...payload } = report;
+  const key = crypto.createPrivateKey(privateKey);
+  if (key.asymmetricKeyType !== 'ed25519') fail('accuracy attestation requires Ed25519');
+  const keyId = sha256Of(crypto.createPublicKey(key).export({ type: 'spki', format: 'der' }));
+  const payloadSha256 = sha256Of(canonical(payload));
+  const message = canonical({ kind: 'ruvnet-brain-accuracy-attestation', schemaVersion: 1, payloadSha256 });
+  return { ...payload, attestation: { schemaVersion: 1, kind: 'ruvnet-brain-accuracy-attestation', keyId,
+    payloadSha256, signature: crypto.sign(null, Buffer.from(message), key).toString('base64') } };
+}
+
+export function defaultAccuracyOracleFile() {
+  return process.env.RUVNET_ACCURACY_ORACLE_FILE || path.join(ROOT, DEFAULT_ORACLE_FILE);
+}
+
+export function currentAccuracyInstruments(oracleFile = defaultAccuracyOracleFile()) {
+  return { expectedOracleSha256: sha256File(oracleFile),
+    expectedGeneratorSha256: sha256File(fileURLToPath(import.meta.url)) };
+}
+
+export function validateRuntimeIdentity(report, manifest = null, { allowLegacyManifest = false } = {}) {
+  const runtime = report.runtime;
+  const identity = runtime?.identity;
+  if (runtime?.kind !== 'controlled-archive' || !identity || !HEX64.test(String(identity.runtimeSha256 || ''))
+    || identity.installation?.method !== 'npm-ci-ignore-scripts'
+    || !HEX64.test(String(identity.installation.lockSha256 || '')) || !Array.isArray(identity.installation.dependencies)) {
+    fail('accuracy report lacks controlled archive runtime identity');
   }
-  return JSON.stringify(value === undefined ? null : value);
+  const { runtimeSha256, ...payload } = identity;
+  if (runtimeSha256 !== digest(payload)) fail('accuracy runtime identity digest differs');
+  if (manifest) {
+    const files = new Map(manifest.files.map(row => [row.path, row]));
+    const entries = identity.files;
+    const expected = manifest.retrievalRuntimeFiles;
+    if (!Array.isArray(expected)) {
+      if (!allowLegacyManifest) fail('archive manifest lacks its sealed retrieval runtime closure');
+    } else if (new Set(expected).size !== expected.length
+      || canonical([...expected].sort()) !== canonical((entries || []).map(row => row.path).sort())) {
+      fail('measurement runtime file set differs from the complete archive retrieval closure');
+    }
+    if (identity.sha256 !== digest({files: entries, dependencies: identity.dependencies})) {
+      fail('measurement runtime source closure digest differs');
+    }
+
+    if (!Array.isArray(entries) || new Set(entries.map(row => row.path)).size !== entries.length
+      || !['forge-ask-all.mjs', 'package.json', 'package-lock.json'].every(name => entries.some(row => row.path === name))
+      || entries.some(row => files.get(row.path)?.sha256 !== row.sha256)
+      || files.get('package-lock.json')?.sha256 !== identity.installation.lockSha256) {
+      fail('measurement runtime files or dependency lock differ from the archive manifest');
+    }
+  }
+
+}
+
+function derivedViewStatus(census) {
+  return (census?.excludedDerived || []).map(row => ({ store: row.store, status: 'NOT-MEASURED',
+    reason: 'Source coverage does not establish that this derived view was exercised with correct source attribution' }));
+}
+
+function verifyAccuracyAttestation(report, trustedReportPublicKey, expectedSourceEvidenceSha256) {
+  if (!trustedReportPublicKey) fail('accuracy acceptance requires an external trusted report key');
+  const key = crypto.createPublicKey(trustedReportPublicKey);
+  const { attestation, ...payload } = report;
+  const keyId = sha256Of(key.export({ type: 'spki', format: 'der' }));
+  if (key.asymmetricKeyType !== 'ed25519' || attestation?.schemaVersion !== 1
+    || attestation?.kind !== 'ruvnet-brain-accuracy-attestation' || attestation.keyId !== keyId
+    || attestation.payloadSha256 !== sha256Of(canonical(payload))
+    || !crypto.verify(null, Buffer.from(canonical({ kind: attestation.kind, schemaVersion: 1,
+      payloadSha256: attestation.payloadSha256 })), key, Buffer.from(attestation.signature || '', 'base64'))) {
+    fail('accuracy report attestation is invalid');
+  }
+  const qualification = report.qualification;
+  if (qualification?.schemaVersion !== 1 || qualification?.kind !== 'ruvnet-brain-oracle-source-qualification'
+    || !HEX64.test(String(qualification.trustedProductionKeyId || ''))
+    || !HEX64.test(String(expectedSourceEvidenceSha256 || ''))
+    || qualification.sourceEvidenceSha256 !== expectedSourceEvidenceSha256
+    || !Array.isArray(qualification.partitions) || !qualification.partitions.length) {
+    fail('accuracy report lacks externally bound source qualification');
+  }
+  const qualified = new Map();
+  for (const row of qualification.partitions) {
+    if (typeof row.id !== 'string' || !row.id || qualified.has(row.id) || typeof row.store !== 'string' || !row.store
+      || typeof row.repo !== 'string' || !row.repo || !HEX40.test(String(row.commit || ''))
+      || ![row.inventoryDigest, row.labelsDigest, row.keyId].every(value => HEX64.test(String(value || '')))
+      || row.keyId !== qualification.trustedProductionKeyId || !Number.isSafeInteger(row.U) || row.U < 1
+      || row.selectedUnits !== Math.min(MAX_SELECTED_UNITS, row.U)) fail('source qualification partition is invalid');
+    qualified.set(row.id, row);
+  }
+  const measured = new Set(report.partitions.map(row => row.partition));
+  if (canonical([...measured].sort()) !== canonical([...qualified.keys()].sort())) fail('measured partitions differ from authenticated source qualification');
+  for (const row of report.partitions) {
+    const source = qualified.get(row.partition);
+    if (row.store !== source.store || row.sourceCommit !== source.commit || row.U !== source.U
+      || row.N !== 2 * source.selectedUnits) fail('measured partition differs from authenticated source identity or denominator');
+  }
+  const byMode = new Map(report.modes.map(mode => [mode, report.partitions.filter(row => row.mode === mode)]));
+  for (const rows of byMode.values()) assertSourceCensusPartitions(report.coverage.sourceCensus,
+    rows.map(row => ({ id: row.partition, kind: row.partitionKind, store: row.store, sourceCommit: row.sourceCommit })));
 }
 
 /** Whitespace-normalized comparison text. A span is "present" iff it is a contiguous substring here. */
@@ -154,7 +250,7 @@ export function scoreEvidenceHit({ results, label, store }) {
   for (const row of top) {
     if (!resultPaths(row).map(normalizePath).some((candidate) => candidate === wantPath)) continue;
     const spanPresent = normalizeText(resultText(row)).includes(wantSpan);
-    if (row?.store !== store) {
+    if (typeof row?.store !== 'string' || row.store.toLowerCase() !== store.toLowerCase()) {
       if (spanPresent) wrongRepository = true;
       continue;
     }
@@ -320,8 +416,8 @@ export function validateAccuracyOracle(oracle) {
   }
   return {
     schemaVersion: oracle.schemaVersion,
-    classification: compliant ? C3_ACCEPTANCE : DIAGNOSTIC,
-    c3Eligible: compliant,
+    classification: DIAGNOSTIC,
+    c3Eligible: false, hasUnitAccounting: compliant,
     partitions, labels, empties, labelsSha256, partitionsSha256,
   };
 }
@@ -353,30 +449,27 @@ export function readAccuracyOracle(file) {
 export function archiveStores(root) {
   return fs.readdirSync(root)
     .filter((name) => name.endsWith('.big.rvf'))
-    .map((name) => name.slice(0, -'.big.rvf'.length))
+    .map((name) => name.slice(0, -'.big.rvf'.length).toLowerCase())
     .sort();
 }
 
-async function defaultSearch({ dir, query, repos, timeoutMs }) {
-  const module = await import('../../kb/forge-ask-all.mjs');
-  let timer = null;
-  const timeout = new Promise((resolve) => {
-    timer = setTimeout(() => resolve({ __timedOut: true }), timeoutMs);
-  });
+function checkedSearchResponse(answered) {
+  if (!answered || !Array.isArray(answered.results)) throw new Error('customer retrieval returned no results array');
+  const failures = Object.values(answered.perRepo || {}).filter(value => typeof value === 'string' && value.startsWith('ERR:'));
+  if (failures.length) throw new Error(`customer retrieval failed: ${failures.join('; ')}`);
+  if (answered.results.some(row => !row || typeof row.repo !== 'string' || !row.repo
+    || typeof row.path !== 'string' || !row.path || typeof (row.fullText ?? row.text) !== 'string')) {
+    throw new Error('customer retrieval returned malformed evidence');
+  }
+  return { timedOut: false, results: answered.results.map(row => ({ store: row.repo, path: row.path, text: row.fullText ?? row.text })) };
+}
+
+async function defaultSearch({ runtime, dir, query, repos, timeoutMs }) {
   try {
-    const answered = await Promise.race([
-      module.searchAll({ dir, query, k: HIT_AT_K, ...(repos ? { repos } : {}) }),
-      timeout,
-    ]);
-    if (answered?.__timedOut) return { timedOut: true, results: [] };
-    return {
-      timedOut: false,
-      results: (answered?.results || []).map((row) => ({
-        store: row.repo, path: row.path, text: row.fullText || row.text || '',
-      })),
-    };
-  } finally {
-    if (timer) clearTimeout(timer);
+    return checkedSearchResponse(await runtime.searchAll({ dir, query, k: HIT_AT_K, ...(repos ? { repos } : {}), timeoutMs }));
+  } catch (error) {
+    if (/search query timed out/.test(error.message)) return { timedOut: true, results: [] };
+    throw error;
   }
 }
 
@@ -396,18 +489,22 @@ export async function runRetrievalAccuracy({
   modes = QUERY_MODES,
   timeoutMs = DEFAULT_QUERY_TIMEOUT_MS,
   search = defaultSearch,
-  now = () => new Date().toISOString(),
+  now = () => new Date().toISOString(), sourceEvidence = null, trustedProductionKey = null, reportAttestationKey = null,
 } = {}) {
+  if (reportAttestationKey && (search !== defaultSearch || !sourceEvidence || !trustedProductionKey)) fail('attested measurement requires source evidence and the actual customer search path');
+  if (sourceEvidence && !reportAttestationKey) fail('qualified measurement requires a report attestation key');
   const bundle = path.resolve(bundleFile || '');
   if (!bundle || !fs.existsSync(bundle) || !fs.statSync(bundle).isFile()) {
     fail(`archive missing (${bundle || 'no path supplied'})`);
   }
   const archive = { file: path.basename(bundle), sha256: sha256File(bundle), bytes: fs.statSync(bundle).size };
   const report = path.resolve(outFile || `${bundle}.accuracy.json`);
-  const oracle = readAccuracyOracle(oracleFile);
+  let oracle = readAccuracyOracle(oracleFile);
   const selectedModes = QUERY_MODES.filter((mode) => modes.includes(mode));
   if (!selectedModes.length) fail('no supported query mode selected');
 
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) fail('query timeout must be a positive integer');
+  let runtime = null;
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'retrieval-accuracy-'));
   try {
     try {
@@ -430,7 +527,17 @@ export async function runRetrievalAccuracy({
     const corpusDir = path.dirname(manifests[0]);
     const shipped = archiveStores(corpusDir);
     if (!shipped.length) fail('extracted archive ships no stores to measure');
+    const sourceCensus = archiveSourceCensus(corpusDir, { requireCoverage: Boolean(sourceEvidence) });
+    if (sourceEvidence) {
+      const { qualifyOracleSource } = await import('./qualify-source.mjs');
+      oracle = { ...oracle, ...await qualifyOracleSource(JSON.parse(fs.readFileSync(oracleFile,'utf8')), oracle,
+        { evidence: sourceEvidence, trustedProductionKey, sourceCensus }) };
+    }
 
+    if (search === defaultSearch) {
+      const { loadArchiveSearch } = await import('./search-runtime.mjs');
+      runtime = await loadArchiveSearch({ kbDir: corpusDir });
+    }
     const labelsByPartition = new Map();
     for (const label of oracle.labels) {
       if (!labelsByPartition.has(label.partition)) labelsByPartition.set(label.partition, []);
@@ -451,14 +558,14 @@ export async function runRetrievalAccuracy({
       // never from how many labels happened to survive production. Every unproduced unit keeps its two
       // slots and scores them as misses below. A bounded --sample run is incomplete and unacceptable
       // regardless, so it measures only what it sampled.
-      const unproducedSlots = oracle.c3Eligible && sampleLimit == null ? partition.unproduced : [];
+      const unproducedSlots = oracle.hasUnitAccounting && sampleLimit == null ? partition.unproduced : [];
       for (const mode of selectedModes) {
         const row = {
           partition: partition.partition,
           partitionKind: partition.kind,
           store: partition.store,
           sourceCommit: partition.sourceCommit,
-          ...(oracle.c3Eligible ? { U: partition.U, N: partition.N } : {}),
+          ...(oracle.hasUnitAccounting ? { U: partition.U, N: partition.N } : {}),
           mode,
           n: selected.length + 2 * unproducedSlots.length,
           unproducedQuestions: 2 * unproducedSlots.length,
@@ -466,7 +573,7 @@ export async function runRetrievalAccuracy({
           failures: 0,
           errors: 0,
           timeouts: 0,
-          sampled: sampleLimit != null && selected.length < all.length,
+          sampled: sampleLimit != null && (selected.length < all.length || (oracle.hasUnitAccounting && selected.length < partition.N)),
           oracleRows: all.length,
           failedLabels: [],
         };
@@ -480,6 +587,7 @@ export async function runRetrievalAccuracy({
           let outcome;
           try {
             const answered = await search({
+              runtime,
               dir: corpusDir,
               query: label.question,
               repos: mode === 'explicit-repository' ? [partition.store] : null,
@@ -491,6 +599,9 @@ export async function runRetrievalAccuracy({
               timeouts += 1;
               outcome = { hit: false, reason: 'timeout' };
             } else {
+              if (!answered || !Array.isArray(answered.results) || answered.results.some(row => !row
+                || typeof row.store !== 'string' || !row.store || !resultPaths(row).length
+                || ![row.fullText,row.text,row.passage,row.snippet].some(value => typeof value === 'string'))) throw new Error('retrieval returned malformed evidence');
               outcome = scoreEvidenceHit({ results: answered?.results, label, store: partition.store });
             }
           } catch (error) {
@@ -514,7 +625,7 @@ export async function runRetrievalAccuracy({
         if (row.successes + row.failures !== row.n) {
           fail(`internal: partition ${row.partition} (${mode}) scored ${row.successes + row.failures} outcomes for n=${row.n}`);
         }
-        if (oracle.c3Eligible && sampleLimit == null && row.n !== row.N) {
+        if (oracle.hasUnitAccounting && sampleLimit == null && row.n !== row.N) {
           fail(`internal: partition ${row.partition} (${mode}) measured n=${row.n} but its inventory fixes N=${row.N}`);
         }
         row.state = meetsThreshold(row.successes, row.n) && row.timeouts === 0 ? 'PASS' : 'FAIL';
@@ -526,9 +637,10 @@ export async function runRetrievalAccuracy({
     const unmeasuredPartitions = orderedPartitions
       .filter((row) => !measuredIds.has(row.partition))
       .map((row) => row.partition);
-    const emptyStores = new Set(oracle.empties.map((row) => row.store));
-    const coveredStores = new Set(partitions.filter((row) => row.n > 0).map((row) => row.store));
-    const uncoveredArchiveStores = shipped.filter((store) => !coveredStores.has(store) && !emptyStores.has(store));
+    const emptyStores = new Set(oracle.empties.map((row) => row.store.toLowerCase()));
+    const coveredStores = new Set(partitions.filter((row) => row.n > 0).map((row) => row.store.toLowerCase()));
+    const derivedStores = new Set((sourceCensus?.excludedDerived || []).map(row => row.store));
+    const uncoveredArchiveStores = shipped.filter((store) => !coveredStores.has(store) && !emptyStores.has(store) && !derivedStores.has(store));
     const sampledAny = partitions.some((row) => row.sampled);
     const boundedReasons = [];
     if (storeLimit != null) boundedReasons.push(`--stores ${storeLimit}`);
@@ -536,19 +648,27 @@ export async function runRetrievalAccuracy({
     if (selectedModes.length !== QUERY_MODES.length) boundedReasons.push(`--modes ${selectedModes.join(',')}`);
     if (unmeasuredPartitions.length) boundedReasons.push(`${unmeasuredPartitions.length} oracle partition(s) not measured`);
     if (uncoveredArchiveStores.length) boundedReasons.push(`${uncoveredArchiveStores.length} shipped store(s) with no oracle coverage`);
+    if (partitions.some(row => row.n === 0)) boundedReasons.push('at least one partition has no measured questions');
     if (sampledAny) boundedReasons.push('at least one partition measured a sample of its oracle rows');
+    let sourceCensusIssue = null;
+    if (sourceCensus) {
+      try { assertSourceCensusPartitions(sourceCensus, measuredPartitions.map(row => ({
+        id: row.partition, kind: row.kind, store: row.store, sourceCommit: row.sourceCommit,
+      }))); } catch (error) { sourceCensusIssue = error.message; boundedReasons.push(sourceCensusIssue); }
+    }
     const complete = boundedReasons.length === 0;
 
     const failingPartitions = partitions.filter((row) => row.state !== 'PASS');
     const state = complete && !failingPartitions.length && timeouts === 0 ? 'PASS' : 'FAIL';
 
-    const payload = {
+    let payload = {
       schemaVersion: ACCURACY_SCHEMA_VERSION,
       kind: ACCURACY_KIND,
       // A legacy-oracle run is a DIAGNOSTIC benchmark: its number describes that oracle and this
       // evaluator only, and validateAccuracyReport refuses it for acceptance and publication.
       classification: oracle.classification,
       c3Eligible: oracle.c3Eligible,
+      ...(oracle.qualification ? { qualification: oracle.qualification } : {}),
       createdAt: now(),
       archive,
       oracle: {
@@ -561,6 +681,7 @@ export async function runRetrievalAccuracy({
         partitionsSha256: oracle.partitionsSha256,
       },
       generator: { retrievalAccuracySha256: sha256File(fileURLToPath(import.meta.url)) },
+      runtime: runtime ? { kind:'controlled-archive', identity:runtime.identity } : { kind:'injected-diagnostic' },
       metric: ACCURACY_METRIC,
       k: HIT_AT_K,
       threshold: { numerator: THRESHOLD_NUMERATOR, denominator: THRESHOLD_DENOMINATOR },
@@ -575,6 +696,9 @@ export async function runRetrievalAccuracy({
         unmeasuredPartitions,
         uncoveredArchiveStores,
         emptySources: oracle.empties,
+        sourceCensus,
+        sourceCensusIssue,
+        derivedViews: derivedViewStatus(sourceCensus),
       },
       totals: {
         n: partitions.reduce((sum, row) => sum + row.n, 0),
@@ -586,10 +710,12 @@ export async function runRetrievalAccuracy({
       partitions,
       state,
     };
+    if (reportAttestationKey) payload = attestAccuracyReport(payload, reportAttestationKey);
     fs.mkdirSync(path.dirname(report), { recursive: true });
     fs.writeFileSync(report, `${JSON.stringify(payload, null, 2)}\n`);
     return { reportFile: report, report: payload };
   } finally {
+    await runtime?.close();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
@@ -606,7 +732,7 @@ export async function runRetrievalAccuracy({
  * tests/unit/corpus-accuracy-gate.test.mjs so it cannot rot while it waits.
  */
 export function validateAccuracyReport({
-  report, archive, expectedOracleSha256 = null, expectedGeneratorSha256 = null,
+  report, archive, expectedOracleSha256 = null, expectedGeneratorSha256 = null, trustedReportPublicKey = null, expectedSourceEvidenceSha256 = null,
 } = {}) {
   if (!report || typeof report !== 'object') fail('accuracy report is missing or not an object');
   if (report.schemaVersion !== ACCURACY_SCHEMA_VERSION || report.kind !== ACCURACY_KIND) {
@@ -688,6 +814,25 @@ export function validateAccuracyReport({
     fail(`accuracy report recorded ${report.totals.timeouts} timeout(s)`);
   }
   if (report.state !== 'PASS') fail(`accuracy report state is ${report.state}`);
+  const unique = values => Array.isArray(values) && new Set(values).size === values.length;
+  const stores = [...new Set(report.partitions.map(row => row.store))].sort();
+  if (!unique(report.coverage.archiveStores) || stores.some(store => typeof store !== 'string' || !store)
+    || canonical([...stores,...(report.coverage.sourceCensus?.excludedDerived || []).map(row=>row.store.toLowerCase())].sort()) !== canonical([...report.coverage.archiveStores].sort())
+    || report.coverage.emptySources?.length || report.coverage.bounded !== null
+    || report.coverage.oraclePartitions !== seenModes.size || report.coverage.measuredPartitions !== seenModes.size
+    || !Array.isArray(report.coverage.unmeasuredPartitions) || !Array.isArray(report.coverage.uncoveredArchiveStores)) {
+    fail('accuracy report source coverage and measured partition set differ');
+  }
+  if (!unique(report.modes) || report.modes.length !== QUERY_MODES.length) fail('accuracy report modes are duplicated or unsupported');
+  for (const field of ['n', 'successes', 'failures', 'errors', 'timeouts']) {
+    const total = report.partitions.reduce((sum, row) => sum + row[field], 0);
+    if (report.totals?.[field] !== total) fail(`accuracy report total ${field} differs from its rows`);
+  }
+  if (report.partitions.some(row => row.errors + row.timeouts > row.failures)) fail('accuracy report errors exceed failed questions');
+  verifyAccuracyAttestation(report, trustedReportPublicKey, expectedSourceEvidenceSha256);
+  validateRuntimeIdentity(report);
+  if (canonical(report.coverage.derivedViews || []) !== canonical(derivedViewStatus(report.coverage.sourceCensus))) fail('derived view measurement status is absent or inaccurate');
+  if (!HEX64.test(String(expectedOracleSha256 || '')) || !HEX64.test(String(expectedGeneratorSha256 || ''))) fail('accuracy acceptance requires external oracle and generator identities');
   return report;
 }
 
@@ -705,7 +850,104 @@ export function validateAccuracyReport({
  * deliberately does NOT enforce is the 19/20 threshold, c3Eligible or the C3 classification, so a
  * failing-but-honest measurement can travel with the release and be read by anyone.
  */
-export function readDiagnosticAccuracyReport({ reportFile, archive, expectedOracleSha256 = null, expectedGeneratorSha256 = null } = {}) {
+export function validateDiagnosticMeasurements(report) {
+  if (report?.schemaVersion !== ACCURACY_SCHEMA_VERSION || report.kind !== ACCURACY_KIND
+    || report.metric !== ACCURACY_METRIC || report.k !== HIT_AT_K
+    || report.threshold?.numerator !== THRESHOLD_NUMERATOR || report.threshold?.denominator !== THRESHOLD_DENOMINATOR) fail('diagnostic accuracy metric or schema is invalid');
+  if (!Array.isArray(report.modes) || !report.modes.length || new Set(report.modes).size !== report.modes.length
+    || report.modes.some(mode => !QUERY_MODES.includes(mode)) || !Array.isArray(report.partitions) || !report.partitions.length) fail('diagnostic accuracy has no valid measurements');
+  const seen = new Map();
+  const identities = new Map();
+  for (const row of report.partitions) {
+    if (typeof row.partition !== 'string' || !row.partition || typeof row.store !== 'string' || !row.store
+      || !report.modes.includes(row.mode) || !Number.isSafeInteger(row.n) || row.n < 0
+      || !['successes','failures','errors','timeouts'].every(field => Number.isSafeInteger(row[field]) && row[field] >= 0)
+      || row.successes + row.failures !== row.n || row.errors + row.timeouts > row.failures) fail('diagnostic accuracy row counters or identity are invalid');
+    if (!seen.has(row.partition)) seen.set(row.partition, new Set());
+    const identity=canonical({store:row.store,kind:row.partitionKind,sourceCommit:row.sourceCommit,U:row.U,N:row.N,
+      n:row.n,oracleRows:row.oracleRows,unproducedQuestions:row.unproducedQuestions,sampled:row.sampled});
+    if (identities.has(row.partition) && identities.get(row.partition)!==identity) fail('diagnostic partition identity or denominator differs between modes');
+    identities.set(row.partition,identity);
+    if (report.oracle?.schemaVersion === ORACLE_SCHEMA_VERSION) {
+      if (!Number.isSafeInteger(row.U) || row.U<1 || row.N!==2*Math.min(MAX_SELECTED_UNITS,row.U)
+        || !Number.isSafeInteger(row.oracleRows) || row.oracleRows<0
+        || !Number.isSafeInteger(row.unproducedQuestions) || row.unproducedQuestions<0 || row.unproducedQuestions%2!==0 || row.unproducedQuestions > row.failures
+        || row.n>row.N || (row.sampled!==true && row.n!==row.N)
+        || (row.sampled!==true && row.oracleRows+row.unproducedQuestions!==row.N)) fail('diagnostic source-unit denominator is invalid');
+    }
+    const modes = seen.get(row.partition);
+    if (modes.has(row.mode)) fail('diagnostic accuracy repeats a partition mode');
+    modes.add(row.mode);
+    if (row.state !== (row.n === 0 ? 'NOT-MEASURED' : meetsThreshold(row.successes,row.n) && row.timeouts === 0 ? 'PASS' : 'FAIL')) fail('diagnostic accuracy row state differs from measured counters');
+  }
+  for (const modes of seen.values()) if (modes.size !== report.modes.length) fail('diagnostic accuracy partition omits a declared mode');
+  for (const field of ['n','successes','failures','errors','timeouts']) {
+    if (report.totals?.[field] !== report.partitions.reduce((sum,row)=>sum+row[field],0)) fail(`diagnostic accuracy total ${field} differs from measurements`);
+  }
+  const coverage = report.coverage;
+  if (!coverage || typeof coverage.complete !== 'boolean' || !Array.isArray(coverage.archiveStores)
+    || !Array.isArray(coverage.unmeasuredPartitions) || !Array.isArray(coverage.uncoveredArchiveStores)
+    || !Array.isArray(coverage.emptySources) || coverage.measuredPartitions !== seen.size
+    || coverage.oraclePartitions !== seen.size + coverage.unmeasuredPartitions.length
+    || new Set(coverage.archiveStores).size !== coverage.archiveStores.length
+    || new Set(coverage.unmeasuredPartitions).size !== coverage.unmeasuredPartitions.length) fail('diagnostic accuracy coverage accounting is invalid');
+  const covered = new Set(report.partitions.filter(row=>row.n > 0).map(row=>row.store.toLowerCase()));
+  const empty = new Set(coverage.emptySources.map(row=>row.store.toLowerCase()));
+  const derivedStores = new Set((coverage.sourceCensus?.excludedDerived || []).map(row=>row.store.toLowerCase()));
+  const uncovered = coverage.archiveStores.filter(store=>!covered.has(store) && !empty.has(store) && !derivedStores.has(store)).sort();
+  if (canonical(coverage.derivedViews || []) !== canonical(derivedViewStatus(coverage.sourceCensus))) fail('derived view measurement status is absent or inaccurate');
+  if (canonical(uncovered) !== canonical([...coverage.uncoveredArchiveStores].sort())) fail('diagnostic accuracy uncovered stores differ from measurements');
+  if (coverage.sourceCensus) {
+    let issue = null;
+    try { assertSourceCensusPartitions(coverage.sourceCensus, report.partitions.filter(row=>row.mode === report.modes[0])
+      .map(row=>({id:row.partition,kind:row.partitionKind,store:row.store,sourceCommit:row.sourceCommit}))); }
+    catch(error) { issue = error.message; }
+    if (issue !== coverage.sourceCensusIssue || (issue && coverage.complete)) fail('diagnostic source census accounting differs from measurements');
+  }
+  if (coverage.complete && (coverage.bounded !== null || coverage.unmeasuredPartitions.length || uncovered.length
+    || report.modes.length !== QUERY_MODES.length || report.partitions.some(row=>row.sampled || row.n === 0))) fail('diagnostic accuracy falsely claims complete coverage');
+  if (!coverage.complete && (!coverage.bounded || !Array.isArray(coverage.bounded.reasons) || !coverage.bounded.reasons.length)) fail('diagnostic accuracy omits bounded measurement reasons');
+  const state = coverage.complete && report.partitions.every(row=>row.state === 'PASS') && report.totals.timeouts === 0 ? 'PASS' : 'FAIL';
+  if (report.state !== state) fail('diagnostic accuracy state differs from measurements');
+  return report;
+}
+
+/** Reconstruct scope and denominators from externally selected, hash-bound oracle bytes. */
+export function validateReportOracleMembership(report, oracle) {
+  if (report.oracle?.sha256 !== oracle.sha256 || report.oracle.schemaVersion !== oracle.schemaVersion
+    || report.oracle.labelsSha256 !== oracle.labelsSha256 || report.oracle.partitionsSha256 !== oracle.partitionsSha256
+    || report.oracle.bytes !== oracle.bytes) fail('diagnostic oracle identity differs from selected oracle bytes');
+  const measured = new Set(report.partitions.map(row => row.partition));
+  const missing = [...oracle.partitions.keys()].filter(id => !measured.has(id)).sort();
+  if (report.coverage.oraclePartitions !== oracle.partitions.size
+    || canonical([...report.coverage.unmeasuredPartitions].sort()) !== canonical(missing)
+    || canonical(report.coverage.emptySources) !== canonical(oracle.empties)) {
+    fail('diagnostic scope differs from the external oracle partition or empty-source inventory');
+  }
+  const sampleLimit = report.coverage.bounded?.sampleLimit ?? null;
+  if (sampleLimit !== null && (!Number.isSafeInteger(sampleLimit) || sampleLimit < 1)) fail('diagnostic sample limit is invalid');
+  for (const row of report.partitions) {
+    const partition = oracle.partitions.get(row.partition);
+    if (!partition || row.store !== partition.store || row.partitionKind !== partition.kind
+      || row.sourceCommit !== partition.sourceCommit) fail('diagnostic scope differs from external oracle source identity');
+    const labels = oracle.labels.filter(label => label.partition === row.partition).length;
+    const selected = sampleLimit === null ? labels : Math.min(sampleLimit, labels);
+    const unproduced = oracle.hasUnitAccounting && sampleLimit === null ? 2 * partition.unproduced.length : 0;
+    const sampled = sampleLimit !== null && (selected < labels || (oracle.hasUnitAccounting && selected < partition.N));
+    if (row.oracleRows !== labels || row.n !== selected + unproduced
+      || row.unproducedQuestions !== unproduced || row.sampled !== sampled
+      || (oracle.hasUnitAccounting && (row.U !== partition.U || row.N !== partition.N))) {
+      fail('diagnostic denominator differs from external oracle units and labels');
+    }
+  }
+  return report;
+}
+
+export function readDiagnosticAccuracyReport({ reportFile, archive, oracleFile = defaultAccuracyOracleFile(), expectedOracleSha256 = null, expectedGeneratorSha256 = null } = {}) {
+  const current = (expectedOracleSha256 == null || expectedGeneratorSha256 == null) ? currentAccuracyInstruments(oracleFile) : null;
+  expectedOracleSha256 ??= current.expectedOracleSha256;
+  expectedGeneratorSha256 ??= current.expectedGeneratorSha256;
+  if (![expectedOracleSha256,expectedGeneratorSha256].every(value=>HEX64.test(String(value)))) fail('diagnostic accuracy requires external instrument identities');
   const resolved = path.resolve(reportFile || '');
   if (!resolved || !fs.existsSync(resolved)) fail(`diagnostic retrieval-accuracy report missing (${resolved || 'no path supplied'})`);
   const stat = fs.lstatSync(resolved);
@@ -728,17 +970,25 @@ export function readDiagnosticAccuracyReport({ reportFile, archive, expectedOrac
   if (expectedGeneratorSha256 != null && report.generator?.retrievalAccuracySha256 !== expectedGeneratorSha256) {
     fail('diagnostic retrieval-accuracy report was produced by a different benchmark generator than the one committed here');
   }
+  validateDiagnosticMeasurements(report);
+  const oracle = readAccuracyOracle(oracleFile);
+  if (oracle.sha256 !== expectedOracleSha256) fail('selected oracle bytes differ from external oracle digest');
+  validateReportOracleMembership(report, oracle);
+  validateRuntimeIdentity(report);
+  if (report.totals.errors || report.totals.timeouts) fail('diagnostic retrieval measurement has execution errors or timeouts');
   return {
     identity: { file: path.basename(resolved), sha256: sha256File(resolved), bytes: stat.size },
+    report,
+    coverage: report.coverage,
     state: report.state,
-    classification: report.classification ?? null,
-    c3Eligible: report.c3Eligible === true,
+    classification: DIAGNOSTIC,
+    c3Eligible: false,
     totals: report.totals ?? null,
   };
 }
 
 export function readAccuracyReport({
-  reportFile, archive, expectedOracleSha256 = null, expectedGeneratorSha256 = null,
+  reportFile, archive, expectedOracleSha256 = null, expectedGeneratorSha256 = null, trustedReportPublicKey = null, expectedSourceEvidenceSha256 = null,
 } = {}) {
   const resolved = path.resolve(reportFile || '');
   if (!resolved || !fs.existsSync(resolved)) {
@@ -752,7 +1002,7 @@ export function readAccuracyReport({
   } catch (error) {
     fail(`detached retrieval-accuracy report unreadable/corrupt (${error.message})`);
   }
-  const report = validateAccuracyReport({ report: parsed, archive, expectedOracleSha256, expectedGeneratorSha256 });
+  const report = validateAccuracyReport({ report: parsed, archive, expectedOracleSha256, expectedGeneratorSha256, trustedReportPublicKey, expectedSourceEvidenceSha256 });
   return {
     identity: { file: path.basename(resolved), sha256: sha256File(resolved), bytes: stat.size },
     report,
@@ -776,6 +1026,9 @@ export async function main(argv = process.argv.slice(2)) {
     bundleFile: arg(argv, '--bundle'),
     oracleFile: arg(argv, '--oracle', path.join(ROOT, DEFAULT_ORACLE_FILE)),
     outFile: arg(argv, '--out'),
+    sourceEvidence: arg(argv,'--source-evidence') ? JSON.parse(fs.readFileSync(arg(argv,'--source-evidence'),'utf8')) : null,
+    trustedProductionKey: arg(argv,'--production-public-key') ? fs.readFileSync(arg(argv,'--production-public-key'),'utf8') : null,
+    reportAttestationKey: arg(argv,'--report-attestation-key') ? fs.readFileSync(arg(argv,'--report-attestation-key'),'utf8') : null,
     storeLimit: positiveInt(arg(argv, '--stores'), '--stores'),
     sampleLimit: positiveInt(arg(argv, '--sample'), '--sample'),
     modes: arg(argv, '--modes') ? String(arg(argv, '--modes')).split(',').map((mode) => mode.trim()) : QUERY_MODES,
@@ -791,6 +1044,10 @@ export async function main(argv = process.argv.slice(2)) {
   }, null, 2)}\n`);
   // A bounded or failing measurement is not an acceptable candidate input; say so with the exit code
   // as well as in the report, so a shell caller that forgets to read the JSON still fails closed.
+  if (argv.includes('--diagnostic')) {
+    validateDiagnosticMeasurements(report);
+    return report.totals.errors === 0 && report.totals.timeouts === 0 ? 0 : 1;
+  }
   return report.state === 'PASS' ? 0 : 1;
 }
 

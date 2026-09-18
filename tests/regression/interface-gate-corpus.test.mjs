@@ -5,8 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
-const SHIM = path.join(REPO, 'plugin/scripts/hook-shim.mjs');
-const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
+const SCRIPTS = path.join(REPO, 'plugin/scripts');
 
 const CASES = [
   ['#44 literal bash payload', "bash -lc 'ruflo memory search -q x'"],
@@ -23,26 +22,58 @@ const CASES = [
   ['dynamic executable', '$TOOL memory search -q x'],
 ];
 
-function fire(command) {
+function fire(command, off, id = 'verify-interface', raw) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'igc-'));
-  fs.mkdirSync(path.join(home, '.claude/model-router'), { recursive: true });
-  fs.writeFileSync(path.join(home, '.claude/model-router/profile.json'), '{}');
-  return spawnSync(process.execPath, [SHIM, 'verify-interface'], {
-    cwd: REPO,
-    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
-    env: { ...process.env, HOME: home },
-    encoding: 'utf8',
-    timeout: 25_000,
+  const frozen = path.join(home, 'frozen');
+  const brain = path.join(home, 'brain');
+  const active = path.join(brain, 'versions', 'fixture');
+  const state = path.join(home, 'state');
+  const markers = [path.join(home, 'frozen-executed'), path.join(home, 'active-executed')];
+  try {
+    for (const root of [frozen, active]) fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
+    fs.mkdirSync(state);
+    if (off) fs.writeFileSync(path.join(state, 'brain-off'), 'off');
+    for (const file of ['hook-shim.mjs', 'hook-shim-bash.mjs', 'development-maintenance.mjs']) {
+      fs.copyFileSync(path.join(SCRIPTS, file), path.join(frozen, 'scripts', file));
+    }
+    for (const [index, root] of [frozen, active].entries()) {
+      fs.writeFileSync(path.join(root, 'scripts/verify-interface.sh'),
+        `#!/bin/bash\nprintf executed > "$RETIREMENT_SENTINEL_${index}"\nprintf resurrected >&2\nexit 2\n`);
+    }
+    fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ codeRoot: active, version: 'fixture', generation: 1 }));
+    const result = spawnSync(process.execPath, [path.join(frozen, 'scripts/hook-shim.mjs'), id], {
+      cwd: home,
+      input: raw ?? JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+      env: { ...process.env, HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: brain,
+        RUVNET_BRAIN_STATE_DIR: state, CLAUDE_PLUGIN_ROOT: frozen,
+        RETIREMENT_SENTINEL_0: markers[0], RETIREMENT_SENTINEL_1: markers[1] },
+      encoding: 'utf8', timeout: 5000,
+    });
+    return { ...result, bodyExecuted: markers.some(marker => fs.existsSync(marker)) };
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+}
+
+function expectRetired(result) {
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toBe('');
+  expect(result.bodyExecuted).toBe(false);
+}
+
+for (const off of [false, true]) {
+  describe(`retired interface ID with Brain ${off ? 'OFF' : 'ON'}`, () => {
+    it.each(CASES)('%s remains silent without executing either old body', (_label, command) => {
+      expectRetired(fire(command, off));
+    });
+    it.each(['', '{malformed'])('ignores retired payload %j without a shell or parser', raw => {
+      expectRetired(fire('', off, 'verify-interface', raw));
+    });
   });
 }
 
-describe.skipIf(!hasBash || process.platform === 'win32')(
-  'interface advisory corpus — every historical raw-shell shape stays non-blocking',
-  () => {
-    it.each(CASES)('%s: %s', (_label, command) => {
-      const result = fire(command);
-      expect(result.status, `raw Bash must never be blocked: ${command}\n${result.stderr}`).toBe(0);
-      expect(result.stderr).not.toMatch(/BLOCKED/);
-    }, 30_000);
-  },
-);
+it('keeps an unrelated unknown ID diagnostic so silence cannot pass vacuously', () => {
+  const result = fire('', false, 'unknown-retirement-control');
+  expect(result.status).toBe(0);
+  expect(result.stderr).toMatch(/unknown hook id/);
+  expect(result.bodyExecuted).toBe(false);
+});

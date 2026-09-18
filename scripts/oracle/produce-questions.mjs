@@ -28,8 +28,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { API_BILLING_ENV, subscriptionOnlyEnv } from '../subscription-hosts.mjs';
-import { gitBlobSha, sha256Hex, unitText } from './source-units.mjs';
+import { API_BILLING_ENV, subscriptionOnlyEnv, probeSubscriptionHosts } from '../subscription-hosts.mjs';
+import { attestProduction, MAX_UNIT_CHARS } from './production-evidence.mjs';
+import { gitBlobSha, sha256Hex, unitText, verifyInventory } from './source-units.mjs';
 import {
   DEFAULT_ROLES, LABEL_SCHEMA, PRODUCER_MODELS, VERDICT_SCHEMA, generatorPrompt, hostAdapters, isQuotaRefusal,
   judgePrompt, spawnHost,
@@ -41,9 +42,9 @@ export {
   parseClaudeEnvelope, parseClaudeVerdicts, parseCodexJsonl, parseCodexLabels, spawnHost,
 } from './producer-hosts.mjs';
 
-export const PRODUCER_VERSION = 'oracle-producer/2';
+export const PRODUCER_VERSION = 'oracle-producer/3';
 export const DEFAULT_BATCH = 20;
-export const MAX_UNIT_CHARS = 6000;
+export { MAX_UNIT_CHARS } from './production-evidence.mjs';
 
 export function batchUnits(units, size = DEFAULT_BATCH) {
   const out = [];
@@ -57,14 +58,15 @@ export function loadUnitTexts(snapshotDir, units) {
   return units.map((unit) => {
     if (!cache.has(unit.path)) {
       const buf = fs.readFileSync(path.join(snapshotDir, unit.path));
-      cache.set(unit.path, { blobSha: gitBlobSha(buf), lines: buf.toString('utf8').split('\n') });
+      cache.set(unit.path, { blobSha: gitBlobSha(buf), bytes: buf, lines: buf.toString('utf8').split('\n') });
     }
     const file = cache.get(unit.path);
     if (file.blobSha !== unit.blobSha) throw new Error(`blob drift: ${unit.path} is ${file.blobSha}, inventory says ${unit.blobSha}`);
-    const text = unitText(file.lines, unit.startLine, unit.endLine);
+    const text = Number.isSafeInteger(unit.startByte) && Number.isSafeInteger(unit.endByte)
+      ? file.bytes.subarray(unit.startByte, unit.endByte).toString('utf8')
+      : unitText(file.lines, unit.startLine, unit.endLine);
     if (sha256Hex(Buffer.from(text, 'utf8')) !== unit.bytesSha256) throw new Error(`unit drift: ${unit.unitId} ${unit.path}:${unit.startLine}-${unit.endLine}`);
-    const truncated = text.length > MAX_UNIT_CHARS;
-    return { unit, text: truncated ? text.slice(0, MAX_UNIT_CHARS) : text, truncated };
+    return { unit, text, exceedsContext: text.length > MAX_UNIT_CHARS };
   });
 }
 
@@ -87,8 +89,16 @@ export async function produceQuestions({
   inventory, snapshotDir, batchSize = DEFAULT_BATCH, maxClaudeCalls = 8, maxCodexCalls = 8, maxGeneratorCalls, maxJudgeCalls,
   effort = 'medium', models = PRODUCER_MODELS, roles = DEFAULT_ROLES, allowSameVendor = false, retries = 0,
   checkpointFile = null, spawnImpl = spawnHost, workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-producer-')),
-  log = () => {},
+  log = () => {}, diagnosticLegacy = false, attestationPrivateKey = null,
 }) {
+  if (!diagnosticLegacy) await verifyInventory(inventory, snapshotDir);
+  else if (inventory.schemaVersion === 2) throw new Error('v2 inventory cannot bypass semantic disposition in diagnostic mode');
+  let authentication = null;
+  if (attestationPrivateKey) {
+    if (diagnosticLegacy || spawnImpl !== spawnHost || checkpointFile) throw new Error('attested production requires fresh native execution without diagnostic or untrusted checkpoint inputs');
+    authentication = probeSubscriptionHosts();
+    if (!authentication.claude.eligible || !authentication.codex.eligible) throw new Error('both native subscriptions must authenticate before attested production');
+  }
   const env = subscriptionOnlyEnv();
   const envAudit = { parentHadBillingKeys: billingNamesPresent(process.env), childHadBillingKeys: billingNamesPresent(env) };
   if (envAudit.childHadBillingKeys.length) throw new Error(`fence violated: child env still carries ${envAudit.childHadBillingKeys.join(',')}`);
@@ -115,11 +125,17 @@ export async function produceQuestions({
 
   const loaded = loadUnitTexts(snapshotDir, inventory.selected);
   const byUnit = new Map();
-  for (const { unit } of loaded) {
+  for (const { unit, exceedsContext } of loaded) {
+    if (exceedsContext) {
+      byUnit.set(unit.unitId, baseLabel(unit, { accountedMiss: true, missReason: 'unit_exceeds_producer_context', unproducedSlots: ['direct', 'paraphrase'] }));
+      continue;
+    }
     const prior = reused.get(unit.unitId);
     if (prior && prior.path === unit.path && prior.blobSha === unit.blobSha && prior.bytesSha256 === unit.bytesSha256) byUnit.set(unit.unitId, prior);
   }
-  const reusedUnits = byUnit.size;
+  const judged = label => !label.judge?.error && ['direct', 'paraphrase', 'equivalent'].every(side =>
+    !label.judge?.[side]?.error && ['yes', 'no'].includes(label.judge?.[side]?.answers));
+  const reusedUnits = [...byUnit.values()].filter(label => !label.producerError && judged(label)).length;
   const calls = [];
   let suspended = null;
   const ordered = () => loaded.map(({ unit }) => byUnit.get(unit.unitId)).filter(Boolean);
@@ -127,20 +143,28 @@ export async function produceQuestions({
     if (checkpointFile) fs.writeFileSync(checkpointFile, `${JSON.stringify({ key, producerVersion: PRODUCER_VERSION, labels: ordered(), suspended })}\n`);
   };
 
+  const usedCalls = { generator: 0, judge: 0 };
+  const budgets = { generator: generatorBudget, judge: judgeBudget };
+  for (const value of Object.values(budgets)) if (!Number.isSafeInteger(value) || value < 0) throw new Error('call budgets must be nonnegative integers');
   const runCall = async (adapter, batchIndex, items, input) => {
     for (let attempt = 0; ; attempt += 1) {
+      if (usedCalls[adapter.stage] >= budgets[adapter.stage]) return { error: `${adapter.host} call budget exhausted` };
+      usedCalls[adapter.stage]++;
       const result = await spawnImpl(adapter.binary, adapter.args, { cwd: adapter.cwd, env, timeoutMs: adapter.timeoutMs }, input);
       const parsed = result.status === 0 && !result.timedOut
         ? adapter.parse(result.stdout)
         : { error: result.timedOut ? 'timeout' : `exit ${result.status}: ${String(result.stderr || '').slice(0, 300)}` };
       const quotaRefusal = Boolean(parsed.error) && isQuotaRefusal(`${result.stderr}\n${parsed.error}`);
-      calls.push(callRecord(adapter, batchIndex, items, result, parsed, attempt, quotaRefusal));
+      const record = { ...callRecord(adapter, batchIndex, items, result, parsed, attempt, quotaRefusal),
+        requestDigest: sha256Hex(Buffer.from(input)), transportDigest: sha256Hex(Buffer.from(JSON.stringify(result))),
+        callId: `call-${calls.length + 1}` };
+      calls.push(record);
       if (quotaRefusal) {
         // Suspend: no further calls to ANY host. Remaining work is recorded as unproduced, never dropped.
         suspended = { host: adapter.host, stage: adapter.stage, batchIndex, reason: String(result.stderr || parsed.error).slice(-300) };
-        return parsed;
+        return { ...parsed, __callId: record.callId };
       }
-      if (!parsed.error || attempt >= retries) return parsed;
+      if (!parsed.error || attempt >= retries) return { ...parsed, __callId: record.callId };
       log(`[producer] ${adapter.host} ${adapter.stage} batch ${batchIndex + 1} retry ${attempt + 1}/${retries} after: ${parsed.error}`);
     }
   };
@@ -148,7 +172,7 @@ export async function produceQuestions({
   const pending = loaded.filter(({ unit }) => !byUnit.has(unit.unitId));
   for (const [index, batch] of batchUnits(pending, batchSize).entries()) {
     const stop = suspended ? `suspended: ${suspended.host} refused for capacity`
-      : index >= generatorBudget ? `${generator.host} call budget exhausted` : null;
+      : usedCalls.generator >= generatorBudget ? `${generator.host} call budget exhausted` : null;
     if (stop) { for (const { unit } of batch) byUnit.set(unit.unitId, baseLabel(unit, { producerError: stop })); continue; }
     log(`[producer] ${generator.host} generator batch ${index + 1} (${batch.length} units)`);
     const parsed = await runCall(generator, index, batch.length, generator.prompt(batch));
@@ -156,20 +180,21 @@ export async function produceQuestions({
       for (const { unit } of batch) byUnit.set(unit.unitId, baseLabel(unit, { producerError: parsed.error }));
     } else {
       const returned = new Map(parsed.structured.labels.map((l) => [l.unitId, l]));
-      for (const { unit, truncated } of batch) {
+      for (const { unit } of batch) {
         const l = returned.get(unit.unitId);
         byUnit.set(unit.unitId, l ? baseLabel(unit, {
           direct: l.direct, paraphrase: l.paraphrase, span: l.span, spanStartLine: l.spanStartLine, spanEndLine: l.spanEndLine,
-          skip: l.skip === true, skipReason: l.skip ? l.reason : '', truncatedForProducer: truncated,
+          skip: l.skip === true, skipReason: l.skip ? l.reason : '', truncatedForProducer: false,
+          producerCallId: parsed.__callId,
         }) : baseLabel(unit, { producerError: `unit missing from ${generator.host} output` }));
       }
     }
     saveCheckpoint();
   }
 
-  const unjudged = ordered().filter((l) => !l.producerError && !l.skip && !l.judge);
+  const unjudged = ordered().filter((l) => !l.accountedMiss && !l.producerError && !l.skip && !judged(l));
   for (const [index, batch] of batchUnits(unjudged, batchSize).entries()) {
-    const stop = suspended ? 'suspended' : index >= judgeBudget ? `${judge.host} call budget exhausted` : null;
+    const stop = suspended ? 'suspended' : usedCalls.judge >= judgeBudget ? `${judge.host} call budget exhausted` : null;
     if (stop) { for (const l of batch) setVerdicts(l, judge, { error: stop }); continue; }
     const items = batch.flatMap((l) => [
       { id: `${l.unitId}:d`, question: l.direct, span: l.span },
@@ -179,44 +204,56 @@ export async function produceQuestions({
     log(`[producer] ${judge.host} judge batch ${index + 1} (${items.length} items)`);
     const parsed = await runCall(judge, index, items.length, judge.prompt(items));
     const verdicts = new Map((parsed.structured?.verdicts || []).map((v) => [v.id, v]));
-    for (const l of batch) setVerdicts(l, judge, parsed.error ? { error: parsed.error } : { verdicts });
+    for (const l of batch) setVerdicts(l, judge, parsed.error ? { error: parsed.error } : { verdicts, callId: parsed.__callId });
     saveCheckpoint();
   }
 
+  saveCheckpoint();
   const shown = (adapter) => ({
     host: adapter.host, binary: adapter.binary, requestedModel: adapter.model, effort,
     args: adapter.args.filter((a) => !a.startsWith('{')).map((a) => (a.startsWith(workDir) ? '<schema>' : a)),
   });
-  return {
+  const output = {
     schemaVersion: 1, kind: 'oracle-labels', repo: inventory.repo, commit: inventory.commit, rulesVersion: inventory.rulesVersion,
     producerVersion: PRODUCER_VERSION, roles,
+    inventoryDigest: sha256Hex(Buffer.from(JSON.stringify(inventory))),
+    oracleComplete: false, // Only the deterministic source-bound validator may establish oracle acceptance.
+    diagnosticLegacy, productionComplete: ordered().length > 0 && ordered().every((label) => label.accountedMiss || (!label.producerError && !label.skip
+      && ['direct', 'paraphrase', 'equivalent'].every((side) => label.judge?.[side]?.answers === 'yes'))),
     producer: {
       generator: shown(generator), judge: shown(judge),
       claude: { binary: 'claude', requestedModel: models.claude, effort },
       codex: { binary: 'codex', requestedModel: models.codex, effort },
       batchSize, retries,
-      note: 'total_cost_usd is the host\'s at-list-price estimate; both hosts were verified subscription-authenticated (claude.ai/max, ChatGPT) and no provider key was present in the child env.',
+      note: 'total_cost_usd is a host-reported estimate. Provider billing keys are removed from child environments; this record alone does not attest subscription authentication.',
     },
     checkpoint: checkpointFile ? { file: checkpointFile, key, reusedUnits } : null,
-    suspended, envAudit, calls, labels: ordered(),
+    suspended, envAudit, authentication, calls, labels: ordered(),
   };
+  if (attestationPrivateKey) output.attestation = attestProduction(output, attestationPrivateKey);
+  return output;
 }
 
 /** Role-neutral verdicts on `judge`; the historical `codex` shape is kept exactly when codex judged. */
-function setVerdicts(label, judge, { error, verdicts }) {
+function setVerdicts(label, judge, { error, verdicts, callId }) {
   const pick = (suffix) => {
     if (error) return { error };
     const v = verdicts.get(`${label.unitId}:${suffix}`);
     return v ? { answers: v.answers, reason: v.reason } : { error: 'missing verdict' };
   };
-  label.judge = { host: judge.host, model: judge.model, direct: pick('d'), paraphrase: pick('p'), equivalent: pick('e') };
+  label.judge = { host: judge.host, model: judge.model, callId, direct: pick('d'), paraphrase: pick('p'), equivalent: pick('e') };
+  if (!error && [label.judge.direct, label.judge.paraphrase, label.judge.equivalent].some(v => v.answers === 'no')) {
+    label.accountedMiss = true;
+    label.missReason = 'judge_verdict_no';
+  }
   if (judge.host === 'codex') label.codex = error ? { error } : { direct: label.judge.direct, paraphrase: label.judge.paraphrase };
 }
 
 function baseLabel(unit, extra) {
   return {
     unitId: unit.unitId, path: unit.path, blobSha: unit.blobSha, startLine: unit.startLine, endLine: unit.endLine,
-    bytesSha256: unit.bytesSha256, kind: unit.kind, language: unit.language, ...extra,
+    startByte: unit.startByte, endByte: unit.endByte,
+    bytesSha256: unit.bytesSha256, kind: unit.kind, language: unit.language ?? unit.sourceType, ...extra,
   };
 }
 
@@ -228,11 +265,25 @@ function callRecord(adapter, batchIndex, items, result, parsed, attempt, quotaRe
   if (adapter.host === 'claude' && parsed.envelope) {
     const e = parsed.envelope;
     rec.modelUsage = Object.keys(e.modelUsage || {});
+    rec.observedModels = rec.modelUsage;
     rec.numTurns = e.num_turns;
     rec.reportedCostEstimateUsd = e.total_cost_usd;
     rec.usage = e.usage && { input: e.usage.input_tokens, cacheCreate: e.usage.cache_creation_input_tokens, cacheRead: e.usage.cache_read_input_tokens, output: e.usage.output_tokens };
   }
-  if (adapter.host === 'codex') rec.hostErrors = parsed.errors || [];
+  if (adapter.host === 'codex') {
+    rec.hostErrors = parsed.errors || [];
+    const observed = [];
+    for (const line of String(result.stdout || '').split('\n')) {
+      try {
+        const value = JSON.parse(line);
+        for (const candidate of [value.model, value.response?.model, value.item?.model, value.thread?.model]) {
+          if (typeof candidate === 'string' && candidate) observed.push(candidate);
+        }
+      } catch { /* host chatter is not identity evidence */ }
+    }
+    rec.observedModels = [...new Set(observed)];
+    rec.modelObservation = rec.observedModels.length ? 'observed' : 'unknown';
+  }
   rec.returnedLabels = parsed.structured?.labels?.length;
   rec.returnedVerdicts = parsed.structured?.verdicts?.length;
   if (parsed.error) rec.stderrTail = String(result.stderr || '').slice(-400);
@@ -255,7 +306,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   const inventory = JSON.parse(fs.readFileSync(inventoryFile, 'utf8'));
   const labels = await produceQuestions({
-    inventory, snapshotDir: path.resolve(snapshotDir),
+    inventory, snapshotDir: path.resolve(snapshotDir), diagnosticLegacy: argv.includes('--diagnostic-legacy'),
     roles: { generator: arg(argv, '--generator') || DEFAULT_ROLES.generator, judge: arg(argv, '--judge') || DEFAULT_ROLES.judge },
     models: { claude: arg(argv, '--claude-model') || PRODUCER_MODELS.claude, codex: arg(argv, '--codex-model') || PRODUCER_MODELS.codex },
     batchSize: Number(arg(argv, '--batch') || DEFAULT_BATCH),
@@ -265,6 +316,7 @@ export async function main(argv = process.argv.slice(2)) {
     maxJudgeCalls: optionalNumber(arg(argv, '--max-judge-calls')),
     retries: Number(arg(argv, '--retries') || 0),
     checkpointFile: arg(argv, '--checkpoint') || null,
+    attestationPrivateKey: arg(argv, '--attestation-key') ? fs.readFileSync(arg(argv, '--attestation-key'),'utf8') : null,
     effort: arg(argv, '--effort') || 'medium',
     log: (line) => process.stderr.write(`${line}\n`),
   });
@@ -272,7 +324,7 @@ export async function main(argv = process.argv.slice(2)) {
   const okCalls = labels.calls.filter((c) => c.ok).length;
   process.stderr.write(`[producer] ${labels.repo}: ${labels.labels.length} labels, ${labels.calls.length} calls (${okCalls} ok)`
     + `${labels.suspended ? ` — SUSPENDED on ${labels.suspended.host} capacity refusal` : ''}\n`);
-  return labels.suspended ? 75 : 0;
+  return labels.suspended ? 75 : labels.productionComplete && !labels.diagnosticLegacy ? 0 : 2;
 }
 
 // Entry-point guard. Compares REALPATHS on both sides: path.resolve() normalizes a path but does

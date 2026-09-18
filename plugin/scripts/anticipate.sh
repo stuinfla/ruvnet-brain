@@ -524,7 +524,7 @@ if (!writeState(st)) quit();   // cannot remember having spoken → do not speak
 // off the audited row, `why` from the matcher. Where the registry has no verified command it says
 // so in those words — there is no invented one-liner and no fabricated state anywhere in it.
 const cmd = best.row.turnOn && typeof best.row.turnOn.cmd === 'string' && best.row.turnOn.cmd.trim()
-  ? `turn on with \`${best.row.turnOn.cmd.trim()}\``
+  ? `turn on with \`${best.row.turnOn.cmd.trim()}\`${best.row.turnOn.human ? `; ${best.row.turnOn.human}` : ''}`
   : 'no verified one-line command exists for it — offer to walk them through it';
 
 // DO NOT REPEAT THE PAYOFF. goal-match.mjs's explain() already folds `whatItBuysYou` into its `why`,
@@ -614,16 +614,14 @@ NODE_PID=$!
 # this line only ever ran in a dev checkout. Making L4 work is what woke it up — the fix did not
 # create this leak, it revealed one that had been shipping dormant.
 #
-# FIX: fork the sleep as OUR OWN child so we hold its pid, and reap both. A `trap` inside the
-# subshell was tried first and MEASURED WORSE (it defeats the shell's exec optimisation and leaked
-# where the original did not) — hence the explicit two-pid form rather than anything cleverer.
-sleep 2 &
-SLEEP_PID=$!
-( wait "$SLEEP_PID" 2>/dev/null && kill -9 "$NODE_PID" 2>/dev/null ) >/dev/null 2>&1 &
+# FIX: make the watchdog itself the owned timer process. A subshell cannot `wait` for a sibling
+# sleep, so the old form never reached kill(2) and orphaned the sleep. This child owns no further
+# process: it holds the node pid as argv and sends SIGKILL when the deadline expires.
+node -e 'const pid = Number(process.argv[1]); setTimeout(() => { try { process.kill(pid, "SIGKILL"); } catch {} }, 2000)' "$NODE_PID" >/dev/null 2>&1 &
 WATCHDOG_PID=$!
 wait "$NODE_PID" 2>/dev/null
-kill "$SLEEP_PID" "$WATCHDOG_PID" 2>/dev/null
-wait "$SLEEP_PID" "$WATCHDOG_PID" 2>/dev/null
+kill "$WATCHDOG_PID" 2>/dev/null
+wait "$WATCHDOG_PID" 2>/dev/null
 
 # ALWAYS. Every failure above already routed to silence; this makes the guarantee unconditional.
 exit 0

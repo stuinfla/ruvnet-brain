@@ -205,15 +205,17 @@ describe('packed interrupted cross-host project resume', () => {
     // AND the interrupted work is what the next session is told it is doing. With no work ledger in
     // the fixture, the goal can only have been carried from the prior head — which is the point.
     expect(resumed.state.currentGoal).toBe(state.currentGoal);
-    expect(resumed.state.provenance.currentGoal).toEqual({ source: 'prior-head', authoritative: true });
+    expect(resumed.state.provenance.currentGoal).toEqual({ source: 'prior-head', origin: 'unknown', authoritative: false });
     expect(resumed.evidence).toMatchObject({ structurallyEnumerated: 2, exactRetrieved: 2, rejectedCandidates: [] });
     expect(resumed.evidence.readPath).toBe('node:sqlite');
 
     // STEP 4 — EXACTLY ONCE. A second SessionStart commits nothing and changes no byte.
-    const committed = fs.readFileSync(f.store.outbox.path, 'utf8');
+    const outboxBytes = () => fs.readdirSync(f.store.outbox.spoolPath).sort()
+      .map((name) => [name, fs.readFileSync(path.join(f.store.outbox.spoolPath, name))]);
+    const committed = outboxBytes();
     expect(f.store.outbox.records().filter((row) => row.type === 'commit')).toHaveLength(2);
     expect(sessionStart(f, to)).toContain(resumed.heads[0]);
-    expect(fs.readFileSync(f.store.outbox.path, 'utf8')).toBe(committed);
+    expect(outboxBytes()).toEqual(committed);
     expect(f.store.listSnapshotKeys()).toEqual(keys);
 
     const foreign = fixture(`${from}-foreign`);

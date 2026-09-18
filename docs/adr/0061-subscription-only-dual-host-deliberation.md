@@ -3,8 +3,9 @@ id: ADR-061
 title: Subscription-only dual-host deliberation for hard problems
 status: Proposed
 date: 2026-07-28
-updated: 2026-09-11
-reviewed_digest: 6df53471296d
+updated: 2026-09-17
+version: 1.1.0
+reviewed_digest: 0f78717de5a9
 authors: [Stuart Kerr, GPT-5.6-Sol]
 tags: [claude-code, codex, subscriptions, adr, ddd, agentic-qe, deliberation]
 supersedes: []
@@ -23,14 +24,14 @@ governs:
 
 **Status**: Proposed
 
-Codex review is complete; Claude review is still required before acceptance.
+No acceptance is claimed; machine grading by two vendors and the remaining runtime checks are still required before acceptance.
 **Date**: 2026-07-28
 
 ## Context
 
 Claude Code and OpenAI Codex are both first-class RuvNet Brain hosts. When a developer has logged
-into both through paid developer subscriptions, using only one on a hard problem wastes a useful
-independent perspective. Architecture, security boundaries, migrations, ADRs, DDDs and experience
+into both through paid developer subscriptions, using only one on a hard problem omits a useful
+separate perspective. Architecture, security boundaries, migrations, ADRs, DDDs and experience
 quality are precisely where independent reasoning and adversarial reconciliation earn their cost.
 
 The existing model router already records which subscription seats a user has. It does not
@@ -71,7 +72,7 @@ credential values.
 
 Both hosts receive the same task and repository root:
 
-1. independent ADR + DDD + outcome-QE proposals;
+1. separate ADR + DDD + outcome-QE proposals;
 2. parallel cross-critiques;
 3. one deterministic scribe (selected from the task hash, so neither host is permanently senior);
 4. the other host verifies the synthesis;
@@ -147,13 +148,13 @@ the user for a provider API key.
 
 ## Verification required before acceptance
 
-1. Claude Code and Codex independently review this ADR and DDD-0014 from fresh contexts.
+1. Claude Code and Codex perform machine grading by two vendors of this ADR and DDD-0014 from fresh contexts.
 2. A real key-free dual run completes through both subscription CLIs.
 3. Parent-environment sentinel keys are absent from both injected child environments.
 4. Repository hash is identical before and after the run.
 5. Claude-quota and Codex-capacity failures each produce an honest single-host result.
 6. Windows, Linux and macOS argv/path tests pass.
-7. Agentic-QE and an independent human-readable grader approve the experience plan.
+7. Agentic-QE and the machine grading by two vendors approve the experience plan.
 
 ## Review record
 
@@ -183,7 +184,71 @@ On 2026-08-10, **Re-read after #130/#131; subscription routing is unchanged.** G
 
 ## Currency log
 
+| 2026-09-17 | Re-read all 7 resolved governed entries against the current integration working tree: subscription eligibility, credential stripping, bounded stage protocol, schema validation, and the read-only test fixtures still match this Proposed decision. No two-host acceptance is claimed; machine grading by two vendors and runtime checks remain required. Source-bound review digest `0f78717de5a9`. | scripts/subscription-hosts.mjs; scripts/dual-host-deliberation.mjs; scripts/dual-host-suggest.mjs; tests/unit/subscription-hosts.test.mjs; tests/unit/dual-host-deliberation.test.mjs |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged and re-pinned — subscription-only, two native CLIs. `scripts/dual-host-deliberation.mjs` +8/−1 since 7cfd9e17 (`32b7b7ca`, the pre-session worktree merge): the host models moved to an explicit `TOP_SUBSCRIPTION_MODELS` map (`claude-code` → `claude-fable-5-1`, `codex` → `gpt-6-astra`, replacing the literal `gpt-5.6-sol`), verified on the native hosts 2026-09-10; no API key, fetch or OpenRouter path was added. `tests/unit/dual-host-deliberation.test.mjs` +1. `plugin/skills/ruvnet-brain/SKILL.md` `60f269ad` (recommend-first contract). The TriSmart skill merged the same day (`tri-smart-skill/`, `scripts/trismart.mjs`) wraps this coordinator (`trismart.mjs:8` imports `dual-host-deliberation.mjs`); it does not replace it. `scripts/subscription-hosts.mjs`, `scripts/dual-host-suggest.mjs` did not move. | Reviewed `scripts/dual-host-deliberation.mjs`, `scripts/subscription-hosts.mjs`, `tests/unit/dual-host-deliberation.test.mjs`. reviewed_digest 6df53471296d. |
 | 2026-08-19 | Codex wiring changed under this decision (gate routing + wrapper budget); the subscription-only posture is UNCHANGED — no host gained a metered path. Reinforced rather than eroded: `spend-guard` now refuses an agent fleet that would inherit ANTHROPIC_API_KEY / OPENAI_API_KEY on either host, after agentic-qe#557 billed $1,600 across ~374 headless agents while the Max subscription sat unused. `claude` and `codex` are the seats and are never blocked. |
+
+## Generic implementation enforcement — 2026-09-17
+
+Dual review and Dual implementation are different modes. A review may accept an analysis;
+that result always has `verifiedOutcome: false` and grants no execution authority. Implementation
+uses a reviewed brief supplied by the calling project. Objective names, source dispositions,
+job scope, commands, expected output and completion predicates are plan inputs. Dual does not
+hardcode RuvNet Brain, North Star, `main`, or a worktree count.
+
+The canonical contract is `scripts/dual-workflow-contract.mjs`. The reviewed brief binds the
+complete Git source inventory (tracked and non-ignored untracked files), file dispositions and
+canonical owners, an objective document and acceptance criteria, and the checkout reconciliation.
+The executable observer verifies those bytes before and after the debate. This establishes
+source binding, not proof that a human or model understood every line.
+
+The approved artifact contains ADR/DDD decisions, no unresolved questions, ordered jobs with
+one owner per path, complete goal and deletion coverage, and bounded executable acceptance
+checks. Each check specifies `expectedOutput` as well as its command, arguments and purpose;
+a zero exit without that output is insufficient. Reviewers must assess whether these checks
+actually prove the intended behavior. Neither process exit nor a matching string establishes
+semantic correctness on its own.
+
+`--implement --brief <file> <task>` validates preparation before spending model calls, runs the
+existing bounded native debate, and activates an accepted plan in the canonical project AgentDB.
+`--brief <file> <task>` prepares a replacement without activation. `--reapprove <result-file>`
+explicitly replaces the active plan after renewed acceptance and resets all completion credit.
+There is no silent scope expansion or automatic retry until agreement.
+
+Workflow state is append-only in AgentDB's `dual-workflow` namespace, with immutable content
+chunks in `dual-workflow-content` to avoid argv-size limits. A local exclusive transition lock,
+chained event identities and exact read-back prevent two normal controllers from advancing
+simultaneously. An interrupted lock fails closed; `--recover-lock` requires a proven exited local owner and refuses a live, reused, remote, or unverifiable owner. It never steals a lock on a timer. These records
+are local controller evidence, not signed third-party attestations. A process with arbitrary
+write access to AgentDB or the installed controller can tamper with them.
+
+The execution preflight loads active state from AgentDB itself. Omitting the workflow from the
+request cannot bypass it. An active job must be the next unfinished job, changes must stay within
+its paths, and completed paths must still match their accepted bytes. `--verify-job <id>` runs
+the exact approved checks against stable source, then appends acceptance. Failure stops the
+sequence. `--complete` checks every job and the plan's live repository completion predicates.
+A completed workflow refuses further implementation until another plan is approved.
+
+### Enforcement boundary
+
+These controls operate at Dual's CLI and `execution-preflight.mjs`. A project without an activated
+workflow is explicitly reported as unmanaged. This is not a global restriction on every coding
+session. Arbitrary shell/file tools that do not invoke the preflight remain outside this boundary.
+No new parent-host interception, signed release proof, deployed product readiness, or bug-free
+result is claimed. Native host hook registration and real denial proof remain separate work.
+
+The installer preserves canonical relative imports under `dual-runtime/`, with thin stable CLI
+entrypoints. Installed tests execute those entrypoints. Fixture tests use disposable repositories
+and the real global Ruflo store; they do not call paid model APIs.
+
+Lock publication uses an owner-bearing staging directory and atomic rename. A crash before rename
+leaves an unused preparation directory, not a held lock. For legacy ownerless locks or interrupted
+recovery, first stop all Dual controllers for that project, then run
+`--recover-lock --controllers-stopped`. This is an explicit maintenance acknowledgement, never an
+automatic fallback. It removes only empty ownerless lock directories or locally proven exited
+owners; live/foreign/malformed owners and unknown nonempty directories are still refused. Normal
+`--recover-lock` requires a locally proven exited owner. This is a local single-operator maintenance
+procedure, not distributed lease recovery or a grant to override a running controller.

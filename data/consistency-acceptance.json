@@ -1,0 +1,258 @@
+{
+  "schemaVersion": 1,
+  "program": "ADR-087",
+  "baselineSourceSha": "3996f502b18157fdc84e325fbe87c2a05351d58c",
+  "obligations": [
+    {
+      "id": "signed-grading",
+      "owner": "delivery",
+      "checks": [
+        "tests/unit/independent-review-receipt.test.mjs",
+        "tests/unit/public-verification-aggregate.test.mjs",
+        "tests/unit/release-transaction.test.mjs"
+      ],
+      "journeys": [
+        "normal and recovery terminal receipts retain and validate exact signed pair"
+      ],
+      "northStarPillars": [
+        "qa"
+      ]
+    },
+    {
+      "id": "strict-dual",
+      "owner": "delivery",
+      "checks": [
+        "tests/unit/dual-host-deliberation.test.mjs"
+      ],
+      "journeys": [
+        "native stages reject malformed output and preserve every correction"
+      ],
+      "northStarPillars": [
+        "qa",
+        "development-loop"
+      ]
+    },
+    {
+      "id": "qualification-parity",
+      "owner": "delivery",
+      "checks": [
+        "tests/unit/release-qualification.test.mjs",
+        "tests/unit/retrieval-canary.test.mjs"
+      ],
+      "journeys": [
+        "required check removal and failing canary rejected by normal and recovery workflows"
+      ],
+      "northStarPillars": [
+        "qa",
+        "grounding"
+      ]
+    },
+    {
+      "id": "corpus-census",
+      "owner": "integration",
+      "checks": [
+        "tests/unit/retrieval-canary.test.mjs",
+        "tests/unit/oracle-repo-recall.test.mjs",
+        "tests/unit/forge-ask-stage-trace.test.mjs",
+        "tests/unit/forge-ask-stage-trace-real.test.mjs",
+        "tests/unit/forge-ask-transcript-candidates.test.mjs"
+      ],
+      "journeys": [
+        "candidate bytes and oracle equal sealed eligible-CURRENT census; outside stores explicitly dispositioned"
+      ],
+      "northStarPillars": [
+        "grounding"
+      ]
+    },
+    {
+      "id": "canonical-project-store",
+      "owner": "runtime",
+      "checks": [
+        "tests/unit/project-store-resolver.test.mjs",
+        "tests/unit/console-memory-canonical-store.test.mjs"
+      ],
+      "journeys": [
+        "console memory activity fleet and restore resolve same nested/worktree project store"
+      ],
+      "northStarPillars": [
+        "continuity"
+      ]
+    },
+    {
+      "id": "progression-authority",
+      "owner": "runtime",
+      "checks": [
+        "tests/unit/project-progression-contract.test.mjs",
+        "tests/unit/project-progression-producer.test.mjs"
+      ],
+      "journeys": [
+        "normal and interrupted cross-host resumes preserve substantive state without private transcript"
+      ],
+      "northStarPillars": [
+        "continuity",
+        "development-loop"
+      ]
+    },
+    {
+      "id": "terminal-outcomes",
+      "owner": "runtime",
+      "checks": [
+        "tests/unit/hook-input.test.mjs",
+        "tests/unit/native-host-process.test.mjs",
+        "tests/unit/hook-input-deadline.test.mjs",
+        "tests/integration/unprompted-host-deadline.test.mjs"
+      ],
+      "journeys": [
+        "real host failed interrupted pending and unknown actions remain distinct"
+      ],
+      "northStarPillars": [
+        "continuity",
+        "qa"
+      ]
+    },
+    {
+      "id": "private-recovery",
+      "owner": "recovery",
+      "checks": [
+        "tests/unit/update-storage-transaction.test.mjs",
+        "tests/unit/install-trusted-validator.test.mjs"
+      ],
+      "journeys": [
+        "historical dead manifest and missing validator recover through verified staged runtime with unchanged private bytes and metadata"
+      ],
+      "northStarPillars": [
+        "operations"
+      ]
+    },
+    {
+      "id": "shared-discovery",
+      "owner": "runtime",
+      "checks": [
+        "tests/unit/memory-doctor-discovery.test.mjs"
+      ],
+      "journeys": [
+        "console and reconcile default discovery sets agree with named purpose filters"
+      ],
+      "northStarPillars": [
+        "operations"
+      ]
+    },
+    {
+      "id": "overlay-parity",
+      "owner": "recovery",
+      "checks": [
+        "tests/unit/private-overlay.test.mjs"
+      ],
+      "journeys": [
+        "fresh and prior-route destinations validate exact manifest-derived route store hash parity"
+      ],
+      "northStarPillars": [
+        "operations"
+      ]
+    },
+    {
+      "id": "provider-diagnostics",
+      "owner": "delivery",
+      "checks": [
+        "tests/unit/provider-catalog-boundary.test.mjs"
+      ],
+      "journeys": [
+        "provider failure retains redacted bounded diagnostics and pending transaction discovery"
+      ],
+      "northStarPillars": [
+        "operations",
+        "qa"
+      ]
+    },
+    {
+      "id": "causal-learning",
+      "owner": "integration",
+      "checks": [
+        "tests/unit/learning-replay-proof.test.mjs",
+        "tests/unit/learning-replay.test.mjs",
+        "tests/unit/learning-replay-verdict.test.mjs"
+      ],
+      "journeys": [
+        "failed Git comparison is non-success; held-out controlled tasks demonstrate useful learning across hosts and update"
+      ],
+      "northStarPillars": [
+        "learning"
+      ]
+    },
+    {
+      "id": "refresh-status",
+      "owner": "runtime",
+      "checks": [
+        "tests/unit/console-refresh.test.mjs"
+      ],
+      "journeys": [
+        "console shows started already-running disabled failed and asynchronous outcomes"
+      ],
+      "northStarPillars": [
+        "operations",
+        "documentation"
+      ]
+    },
+    {
+      "id": "version-lock-identity",
+      "owner": "integration",
+      "checks": [
+        "tests/unit/sync-version-lock.test.mjs"
+      ],
+      "journeys": [
+        "actual installer installs lock-consistent current KB; legacy fallback explicit and non-qualifying"
+      ],
+      "northStarPillars": [
+        "operations"
+      ]
+    },
+    {
+      "id": "truthful-docs",
+      "owner": "integration",
+      "checks": [],
+      "journeys": [
+        "advertised commands and rendered download/runtime labels match evidence; simulated content labelled"
+      ],
+      "northStarPillars": [
+        "documentation"
+      ]
+    },
+    {
+      "id": "scheduled-delivery",
+      "owner": "delivery",
+      "checks": [],
+      "journeys": [
+        "actual scheduled cycles activate loaded generation; delta retrieval and subsequent no-op across declared OS matrix"
+      ],
+      "northStarPillars": [
+        "operations"
+      ]
+    },
+    {
+      "id": "useful-recommendations",
+      "owner": "integration",
+      "checks": [
+        "tests/integration/unprompted-speech-registry.test.mjs",
+        "tests/integration/unprompted-host-deadline.test.mjs"
+      ],
+      "journeys": [
+        "grounded unprompted recommendation seen and acted upon; unavailable irrelevant and refused cases respect intent"
+      ],
+      "northStarPillars": [
+        "proactive-recommendations",
+        "development-loop"
+      ]
+    },
+    {
+      "id": "complete-semantic-review",
+      "owner": "integration",
+      "checks": [],
+      "journeys": [
+        "every first-party file reviewed against immutable bytes; generated binary and third-party dispositions explicit"
+      ],
+      "northStarPillars": [
+        "qa"
+      ]
+    }
+  ]
+}

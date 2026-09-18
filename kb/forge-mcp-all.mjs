@@ -425,6 +425,7 @@ async function handle(msg) {
               + `the WHOLE document is in structuredContent.retrieval.results[${i}].text, sha-bound) -----`;
           return `#${i + 1}  repo=${r.repo}  (relevance ${r.ceScore == null ? 'n/a' : r.ceScore.toFixed(3)}; vec ${r.bestDistance == null ? 'n/a' : r.bestDistance.toFixed(4)})\n`
             + `path : ${r.repo}/${r.path}\n`
+            + (r.alternativePaths?.length ? `identical passage also at: ${r.alternativePaths.map(p => `${r.repo}/${p}`).join(', ')}${r.omittedAlternativePaths ? ` (${r.omittedAlternativePaths} more paths omitted)` : ''}\n` : '')
             + `title: ${r.title}\n`
             + `evidence class: ${r.evidenceClass || 'unknown'}${r.lifecycleStatus ? `; lifecycle status: ${r.lifecycleStatus}` : ''}\n`
             + `${header}\n`

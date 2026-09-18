@@ -27,7 +27,7 @@ describe('the seven formerly-unclassified first-party entrypoints', () => {
       expect(rows.get(name).callers, name).toEqual(['package.json']);
       expect(rows.get(name).why, name).toMatch(/reachable only by a human typing/i);
     }
-  });
+  }, 90_000); // Whole-source caller audit; measured at39s with coverage instrumentation.
 
   it('classifies the active Codex hook chain as wired', () => {
     const rows = new Map(hookWiringAudit({ repo: ROOT }).rows.map((row) => [row.file, row]));

@@ -3,8 +3,9 @@ id: ADR-049
 title: The console rebuild — explain every section, scope every suggestion, and make the safe ones checkable
 status: Accepted
 date: 2026-07-24
-updated: 2026-09-12
-reviewed_digest: bbcfde973786
+updated: 2026-09-17
+version: 1.0.3
+reviewed_digest: 79c9afe3a347
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, console, advocacy, capability, cache, honesty]
 supersedes: []
@@ -112,14 +113,14 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
 - The Recommendation aggregate now has a `scope` field and a fourth builder
   (`buildCapabilityRecommendations`). ADR-013's schema description is extended, not replaced.
 - The checkbox's honesty rule (present only with a server-vouched recId + proven undo) means the
-  control surface grows only as capabilities earn verified undos — one today. That is the intended
+  control surface grows only as capabilities earn verified undos; currently no capabilities qualify. That is the intended
   rate: a checkbox is a promise that the inverse exists.
 - **Partially resolved 2026-07-28:** the console now offers the owner-approved coarse install
   profile — **Complete Brain** or **RuVector Only** — and physically applies it to the installed RVF
-  families. The broader granular install checklist (item 4 above) is still open — designed, with
-  a static mockup (`console/install-mockup.html`) built from real `bin/install.mjs` items and their
-  line-cited implications, awaiting the owner's approval before installer code is written. The
-  grouped-sections recommendation layout is likewise deferred pending his call on group structure.
+  families. The broader granular install checklist (item 4 above) is still open. The obsolete
+  standalone mockup was removed during the 2026-09-17 cleanup; `console/architecture.html` remains
+  the canonical install explanation. Removing the mockup does not implement granular controls.
+  The grouped-sections recommendation layout remains deferred.
 - **Verification:** all four shipped pieces are on `feat/console-rebuild`, each render-verified live;
   the checkbox is proven end to end (renders, click scrolls the consent-gated proposal into view with
   its Apply button). Suites green (1756 vitest, 51/51 npm). ~~Not yet merged to main — the branch is
@@ -131,6 +132,9 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
   precisely the failure ADR-055 was written to end, found by the drift check rather than by a reader.
 
 ## Currency log
+
+| 2026-09-17 | Re-read all 6 governed runtime paths against the current integration snapshot: console scope rendering, recommendation/checkbox eligibility, runtime preferences, nightly state, and installer delivery remain aligned. Current source still exposes zero eligible undo-backed capability checkboxes; no broader capability qualification is claimed. Source-bound review digest `79c9afe3a347`. | console/app.js; scripts/console-engine.mjs; scripts/onboarding-console.mjs; plugin/scripts/runtime-preferences.mjs; scripts/nightly-controller.mjs; bin/install.mjs |
+| 2026-09-17 | Corrected the remaining claim of one eligible capability to zero. Source review only; no new browser acceptance is claimed. | `scripts/console-engine.mjs` defines an empty `CAPABILITY_ELIGIBLE`; this agrees with section 3 and the 2026-09-11 review. |
 | 2026-09-12 | Currency review at commit 491ea740: decision unchanged. `40d8c16b` moved the release-provenance card out of the end-user flow into a closed maintainer `<details>` and added Newest/A–Z/Behind-first views + description search to the scope page — both extend this ADR's console-scope decision rather than contradict it. `5f919c52` (`bin/install.mjs`) added `placeTrustedCoverageValidator()`, unrelated to console UI/scope; read in full, no capability-checkbox or explainer logic touched. | Reviewed `console/app.js`, `scripts/console-engine.mjs`, `scripts/onboarding-console.mjs`, `plugin/scripts/runtime-preferences.mjs`, `scripts/nightly-controller.mjs`, `bin/install.mjs` against commits `40d8c16b` and `5f919c52`; both diffs read in full. |
 
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged. Motion since a5584de3 on this ADR's paths: the seven console card fixes (`c98b64d5` … `ec85ac68`, itemised in ADR-0013's row) and `8747d2f8` in `scripts/onboarding-console.mjs` / `console/app.js` — every card now renders measured state with its section explainer intact; the scope page (ADR-0069, merged `1f956632`) adds `gatherScope` to `onboarding-console.mjs`. `scripts/console-engine.mjs` did not move today (its plain-node test `scripts/console-engine.test.mjs`, not governed here, was updated at `e03454a0` to the stronger invariant the `6a6ba72f` engine already enforced — no recommendation without a currently available inverse — which this ADR's info-bubble decision does not touch). `bin/install.mjs` `dc18fadc` (retention wording) and the pre-session worktree merge `2c24ecd1` are outside this ADR's concern; `plugin/scripts/runtime-preferences.mjs` and `scripts/nightly-controller.mjs` did not move. | Reviewed `console/app.js`, `scripts/console-engine.mjs`, `scripts/onboarding-console.mjs`; cross-checked ADR-0069. reviewed_digest bbcfde973786. |

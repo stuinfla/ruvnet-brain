@@ -284,3 +284,18 @@ describe('observeGists — falls back to the unauthenticated API on the Actions 
     expect(result.rows).toEqual(gists);
   });
 });
+
+
+describe('delta-only fork currency', () => {
+  const forkDelta = { version: 'fork-delta/2', forkRepository: 'ruvnet/ruflo', upstream: 'original/ruflo',
+    forkHeadSha: 'a'.repeat(40), upstreamHeadSha: 'c'.repeat(40), mergeBaseSha: 'd'.repeat(40), aheadBy: 2, behindBy: 3 };
+  const fork = { ...repo, isFork: true, forkDelta };
+  const bound = { ...evidence, forkBytesVerified: true, receipt: { ...evidence.receipt, sourceMode: 'fork-delta',
+    forkDelta: { ...forkDelta, inventorySha256: 'e'.repeat(64), passagesSha256: 'f'.repeat(64) } } };
+  it('requires exact observed ancestry and verified delta bytes', () => {
+    expect(classifyRepository(fork, evidence).status).toBe('UNVERIFIED');
+    expect(classifyRepository(fork, bound).status).toBe('CURRENT');
+    expect(classifyRepository(fork, { ...bound, forkBytesVerified: false }).status).toBe('FAILED');
+    expect(classifyRepository({ ...fork, forkDelta: { ...forkDelta, upstreamHeadSha: 'b'.repeat(40) } }, bound).status).toBe('UNVERIFIED');
+  });
+});

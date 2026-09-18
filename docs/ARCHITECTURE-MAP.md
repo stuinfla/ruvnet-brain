@@ -1,4 +1,4 @@
-Updated: 2026-08-22 12:15:00 EDT | Version 1.1.0
+Updated: 2026-09-17 18:31:22 EDT | Version 1.1.1
 Created: 2026-07-22 11:05:00 EDT
 
 # The Architecture Map — what the pieces ARE, and what you lose if you take only some
@@ -200,11 +200,10 @@ conclusion in this project's history came from.
 
 ## 3 · The hooks
 
-This is the piece people mean when they say "hooks and this and that", so it gets enumerated rather
-than summarized. **Everything below is one file you can read in full: `plugin/hooks/hooks.json`.**
-
-Six Claude Code events, 14 invocations, 10 distinct scripts. All but two route through
-`plugin/scripts/hook-shim.mjs`, which resolves the active code generation per invocation (see §4).
+The table and measurements in this section document the historical hook architecture. They are
+not a current installation inventory. Current automatic registrations are the continuity and
+grounding handlers in `plugin/hooks/hooks.json` and `plugin/hooks/codex-hooks.json`, summarized in
+`SECURITY.md`. Managed CLI help/run enforcement is an explicit MCP boundary, not a Bash hook.
 
 | Event | Script | Mode | What it actually does |
 |---|---|---|---|
@@ -213,7 +212,7 @@ Six Claude Code events, 14 invocations, 10 distinct scripts. All but two route t
 | UserPromptSubmit | `lesson-hooks.sh assert-fact/recommend-architecture` | advisory | Surfaces your own recorded corrections that apply to stating a fact or proposing an architecture. |
 | PreToolUse `Write\|Edit\|Bash` | `hijack-ruvnet.sh` | advisory (`permissionDecision: defer`) | Scans the payload for four categories of classical default — vector stores (`pinecone\|pgvector\|chroma\|weaviate\|faiss\|milvus\|qdrant\|hnswlib\|annoy`), paid embedding APIs, RAG/agent frameworks (`langchain\|llamaindex\|autogen\|crewai\|semantic-kernel`), memory glue (`mem0\|zep\|redis+memory`) — and injects the rUv replacement. **Never blocks.** `DECISION="defer"` is on line 12 and a one-word edit makes it `deny`; it ships as `defer` because a false-positive deny would brick legitimate work. |
 | PreToolUse `Task\|Agent` | `route-dispatch.sh` | advisory audit | Records declared versus inherited model use. Claude Code 2.1.220 consumes this hook after dispatch, so it always exits 0 and never claims a late refusal. **Opt-in only**: no `~/.claude/model-router/profile.json` → no receipt. |
-| PreToolUse `Bash` | `verify-interface.sh` | advisory | Points legacy raw-shell callers to the structured `ruvnet_cli_help` → `ruvnet_cli_run` boundary. It never blocks: issue #48 retired authorization decisions derived from reconstructed shell structure. |
+| MCP | structured MCP CLI boundary | enforced at the protocol boundary | Managed CLI calls use finite executable names, literal argv, and `shell:false`; the retired shell ID is silent compatibility only. |
 | PreToolUse `Bash` | `design-wall.sh` | **blocking** | Refuses shipping/committing/opening a visual surface without a fresh design-grade stamp. **Repo-scoped since issue #17** — it checks the plugin manifest's own name and stays silent everywhere else, after a plain `git commit` in an unrelated project got blocked demanding a ruvnet-brain ritual. |
 | PreToolUse `Write\|Edit\|MultiEdit` / `Bash` | `lesson-hooks.sh write-code` / `mutate-machine` | advisory | Your recorded corrections for writing code / changing the machine. |
 | PostToolUse `Write\|Edit\|MultiEdit\|Bash` | `learn-capture.sh` | advisory | Appends one compact step to the session's learning queue: the command *verb* or a file's *basename*. Never content, never full paths, never secrets. |
@@ -248,19 +247,17 @@ From `~/.cache/ruvnet-brain/gate-blocks.jsonl` — **215 refusals over 2.5 days 
 | Gate | Refusals | Shipped in `hooks.json`? |
 |---|---|---|
 | `route-dispatch` | 142 | Yes — but inert unless you opted into cost routing |
-| `verify-interface` | 50 | Yes |
+| `verify-interface` | 50 | Yes, at the historical measurement; now retired |
 | `ground-before-write` | 11 | **No** — see below |
 | `design-wall` | 7 | Yes, ruvnet-brain's own repo only |
 | `version-bump-gate` | 5 | **No** — see below |
 
-**Two of those five are not part of what you install, and saying otherwise would be the exact
-dishonesty this project exists to kill.** `ground-before-write.sh` is wired in *this machine's*
+**At the July measurement, two of those five were not shipped registrations.** `ground-before-write.sh` is wired in *this machine's*
 global `~/.claude/settings.json`; `version-bump-gate.sh` is wired in *this repo's* project-scoped
 `.claude/settings.json` (it lived in global settings until 2026-07-14, taxing every Bash command in
 34+ projects with a rule that is only true here — a hook belongs in the narrowest scope where it is
-true). A fresh install gets **three** blocking gates, one of which is inert without opt-in and one of
-which only fires inside this repo. In practice a new user is subject to exactly one:
-`verify-interface`.
+true). This paragraph is historical; current managed CLI enforcement lives at the structured MCP
+boundary, and the retired verify-interface ID has no dispatch.
 
 **What you lose without the hooks.** Concretely:
 

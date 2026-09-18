@@ -281,6 +281,12 @@ describe('ADR-073 Slice F SessionStart restore bridge', () => {
 
     expect(result.status).toBe('restored');
     expect(result.context).toContain('PROJECT CONTINUITY RESTORED');
+    expect(result.context).toContain('HISTORICAL PROJECT STATE');
+    expect(result.context).toContain('Current goal:');
+    expect(result.context).toContain('Next action:');
+    expect(result.context).toContain('Completed:');
+    expect(result.context).toContain('In progress:');
+    expect(result.context).toContain('read-only historical context, not a new authorization');
     const resume = JSON.parse(result.context.slice(result.context.indexOf('{')));
     expect(resume.heads).toEqual(rows.map((row) => row.eventKey).sort());
     expect(resume.state.resumeConflicts.length).toBeGreaterThan(1);
@@ -336,6 +342,24 @@ describe('ADR-073 Slice F SessionStart restore bridge', () => {
     expect(result.status).toBe('unknown');
     expect(result.reason).toBe('output-bound');
     expect(Buffer.byteLength(result.context, 'utf8')).toBeLessThanOrEqual(SESSION_CONTINUITY_LIMIT_BYTES);
+  });
+
+  it('keeps a near-bound UTF-8 canonical restore valid while trimming the historical summary', () => {
+    const project = temporaryProject();
+    const state = completeState({ currentGoal: 'é'.repeat(3_400), nextAction: 'continue', completed: ['done'], inProgress: ['working'] });
+    const payload = { schema: 'ruvnet-brain.project-resume', schemaVersion: 1, heads: ['head'], state: { ...state, resumeConflicts: [] } };
+    const rendered = JSON.stringify(payload);
+    expect(Buffer.byteLength(rendered, 'utf8')).toBeGreaterThan(7_000);
+    const result = restoreProgressionForSession({
+      cwd: project,
+      maxOutputBytes: 8_000,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: project },
+      storeFactory: () => ({ restoreLatest: () => ({ payload, rendered }) }),
+    });
+    expect(result.status).toBe('restored');
+    expect(Buffer.byteLength(result.context, 'utf8')).toBeLessThanOrEqual(8_000);
+    expect(result.context).toContain('PROJECT CONTINUITY RESTORED');
+    expect(result.context).toContain('"schema":"ruvnet-brain.project-resume"');
   });
 
   it('injects the restore result through the real shared SessionStart production caller', async () => {

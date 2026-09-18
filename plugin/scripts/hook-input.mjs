@@ -46,7 +46,7 @@ export function parseHookEvent(raw) {
  * survive a host/adapter that leaves the pipe open, especially on Windows where readFileSync(0)
  * waits for EOF even after all envelope bytes are available.
  */
-export function readStdinBounded({ maxBytes = 65536, idleMs = 50, emptyMs = 250 } = {}) {
+export function readStdinBounded({ maxBytes = 65536, idleMs = 50, emptyMs = 250, totalMs = null } = {}) {
   if (process.stdin.isTTY) return Promise.resolve(Buffer.alloc(0));
   return new Promise((resolve) => {
     const chunks = [];
@@ -54,10 +54,12 @@ export function readStdinBounded({ maxBytes = 65536, idleMs = 50, emptyMs = 250 
     let settled = false;
     let idleTimer;
     let emptyTimer;
+    let totalTimer;
 
     const cleanup = () => {
       clearTimeout(idleTimer);
       clearTimeout(emptyTimer);
+      clearTimeout(totalTimer);
       process.stdin.off('data', onData);
       process.stdin.off('end', onEnd);
       process.stdin.off('error', onError);
@@ -92,6 +94,7 @@ export function readStdinBounded({ maxBytes = 65536, idleMs = 50, emptyMs = 250 
     process.stdin.once('end', onEnd);
     process.stdin.once('error', onError);
     emptyTimer = setTimeout(finish, emptyMs);
+    if (Number.isFinite(totalMs) && totalMs > 0) totalTimer = setTimeout(finish, totalMs);
     process.stdin.resume();
   });
 }
@@ -410,7 +413,7 @@ const ASSIGN_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
  * with jq removed from PATH it emits ABSOLUTELY NOTHING and exits 0.
  *
  * Silent-off is scored equal to crashing (DDD-0013, External-Signal invariant 6). node is guaranteed
- * in Claude Code's environment — verify-interface.sh:155 already depends on exactly that — so the
+ * in Claude Code's environment, so the
  * union moves into the shared parser, which is where the ACL says host-envelope knowledge belongs,
  * and the jq dependency disappears instead of being made conditional.
  */

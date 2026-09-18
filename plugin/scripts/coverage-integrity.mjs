@@ -2,6 +2,35 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+/** Canonical source admission policy shared by acquisition and installed validators. */
+export const FORK_DELTA_VERSION = 'fork-delta/2';
+const INGESTIBLE = new Set(['eligible', 'fork:original-content']);
+export const SOURCE_DISPOSITIONS = Object.freeze(['eligible', 'fork:original-content', 'fork:no-original-content',
+  'excluded-no-corpus', 'disabled', 'empty', 'fork', 'archived']);
+export function isIngestibleDisposition(value) { return INGESTIBLE.has(value); }
+export function validateForkDeltaIdentity(value) {
+  if (!value || value.version !== FORK_DELTA_VERSION) throw new Error('fork delta format is missing or unsupported');
+  const slug = name => typeof name === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(name);
+  if (!slug(value.forkRepository) || !slug(value.upstream)) throw new Error('fork delta repository identities are invalid');
+  for (const key of ['forkHeadSha','upstreamHeadSha','mergeBaseSha']) {
+    if (!/^[a-f0-9]{40}$/.test(value[key] || '')) throw new Error(`fork delta ${key} is invalid`);
+  }
+  for (const key of ['aheadBy','behindBy']) if (!Number.isSafeInteger(value[key]) || value[key] < 0) throw new Error(`fork delta ${key} is invalid`);
+  return Object.fromEntries(['version','forkRepository','upstream','forkHeadSha','upstreamHeadSha','mergeBaseSha','aheadBy','behindBy'].map(key=>[key,value[key]]));
+}
+export function forkDeltaIdentityFor(row) {
+  const match = String(row.url || '').match(/^https:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/);
+  const value = validateForkDeltaIdentity({ ...row.forkDelta, version:FORK_DELTA_VERSION, forkRepository:match?.[1] });
+  if (value.forkHeadSha !== row.upstream?.sha) throw new Error('fork delta head differs from admitted source');
+  return value;
+}
+export function forkDeltaMatches(receipt, expected) {
+  try {
+    return receipt?.sourceMode === 'fork-delta' && JSON.stringify(validateForkDeltaIdentity(receipt.forkDelta)) === JSON.stringify(validateForkDeltaIdentity(expected))
+      && ['inventorySha256','passagesSha256'].every(key=>/^[a-f0-9]{64}$/.test(receipt.forkDelta[key] || ''));
+  } catch { return false; }
+}
+
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
 const HEX_GIST = /^[a-f0-9]{20,64}$/;
@@ -215,9 +244,12 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
     throw new Error('installed public store selection is missing or duplicated');
   }
   const selectedSet = selected === null ? null : new Set(selected);
+  const physicalNames = new Map(canonicalStores(root).map(name => [name.toLowerCase(), name]));
+  if (physicalNames.size !== canonicalStores(root).length) throw new Error('physical store names have case-fold aliases');
   if (!Array.isArray(coverage?.rows) || !ledger?.stores || typeof ledger.stores !== 'object' || Array.isArray(ledger.stores)) {
     throw new Error('coverage rows or generation ledger stores are malformed');
   }
+  if (coverage.rows.some(row => !SOURCE_DISPOSITIONS.includes(row?.disposition))) throw new Error('unknown source disposition');
   const fence = readJson(path.join(root, 'PRIVATE-STORES.json'), 'private fence');
   if (!Array.isArray(fence.privateStores)) throw new Error('private fence has no privateStores array');
   const privateStores = fence.privateStores.map((store) => String(store).toLowerCase());
@@ -231,23 +263,40 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
     if (stores.some((store) => !store) || new Set(stores).size !== stores.length) throw new Error(`${family} stores are missing or duplicated`);
     return stores.sort();
   };
-  const repos = coverage.rows.filter((row) => row.kind === 'repository' && row.disposition === 'eligible');
+  const repos = coverage.rows.filter((row) => row.kind === 'repository' && isIngestibleDisposition(row.disposition));
   if (repos.some((row) => row.status !== 'CURRENT')) throw new Error('an eligible repository is not CURRENT');
+  for (const row of repos.filter(row => row.disposition === 'fork:original-content')) {
+    const store = String(row.artifact?.store || '').toLowerCase();
+    const expected = forkDeltaIdentityFor(row);
+    const generation = Object.entries(ledger.stores).find(([key]) => key.toLowerCase() === store)?.[1];
+    if (!forkDeltaMatches(row.artifact, expected) || !forkDeltaMatches(generation, expected)
+      || canonicalJson(row.artifact.forkDelta) !== canonicalJson(generation.forkDelta)) {
+      throw new Error(`fork ${store} lacks matching delta provenance`);
+    }
+    if (!selectedSet || selectedSet.has(store)) {
+      for (const [suffix, field] of [['.passages.jsonl', 'passagesSha256'], ['.fork-delta.inventory.json', 'inventorySha256']]) {
+        const file = containedRegular(root, `${physicalNames.get(store) || store}${suffix}`, `fork ${store} ${field}`);
+        if (sha256File(file) !== generation.forkDelta[field]) throw new Error(`fork ${store} ${field} differs`);
+        evidenceFiles.push(evidenceIdentity(root, file, 'fork-delta'));
+      }
+    }
+  }
   const repositories = uniqueStores(repos, 'repository');
   const excludedRepositories = uniqueStores(coverage.rows.filter((row) => row.kind === 'repository'
-    && row.disposition !== 'eligible'), 'excluded repository');
+    && !isIngestibleDisposition(row.disposition)), 'excluded repository');
   const excludedSet = new Set(excludedRepositories);
   if (repositories.some((store) => excludedSet.has(store))) throw new Error('eligible and excluded repository stores overlap');
-  const gists = coverage.rows.filter((row) => row.kind === 'gist' && row.disposition === 'eligible');
+  const gists = coverage.rows.filter((row) => row.kind === 'gist' && isIngestibleDisposition(row.disposition));
   if (gists.some((row) => row.status !== 'CURRENT')) throw new Error('an eligible gist is not CURRENT');
   let gistAggregate = null;
   if (gists.length) {
     const gistStores = new Set(gists.map((row) => String(row?.artifact?.store || '').toLowerCase()));
     if (gistStores.size !== 1 || !gistStores.has('ruv-gists')) throw new Error('eligible gists must use the ruv-gists aggregate');
     if (!selectedSet || selectedSet.has('ruv-gists')) {
-      const receiptFile = path.join(root, 'ruv-gists.sources.json');
+      const gistStoreName = physicalNames.get('ruv-gists') || 'ruv-gists';
+      const receiptFile = path.join(root, `${gistStoreName}.sources.json`);
       const receipt = gistReceipt || readJson(receiptFile, 'gist aggregate receipt');
-      const passages = path.join(root, 'ruv-gists.passages.jsonl');
+      const passages = path.join(root, `${gistStoreName}.passages.jsonl`);
       const ids = gists.map((row) => String(row.key || '').replace(/^gist:/, ''));
       if (ids.some((id) => !id)) throw new Error('gist coverage row identity is missing');
       validateGistAggregateReceipt({ receipt, passagesFile: passages, expectedIds: ids,
@@ -268,7 +317,7 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
     if (selectedSet && !selectedSet.has(store)) continue;
     const receiptFile = containedRegular(root, entry.receipt, `derived ${store} receipt`);
     const receipt = readJson(receiptFile, `derived ${store} receipt`);
-    const passages = containedRegular(root, `${store}.passages.jsonl`, `derived ${store} passages`);
+    const passages = containedRegular(root, `${physicalNames.get(store) || store}.passages.jsonl`, `derived ${store} passages`);
     if (receipt.schemaVersion !== 1 || receipt.kind !== 'ruvnet-brain-derived-store-receipt'
       || String(receipt.store || '').toLowerCase() !== store || !Array.isArray(receipt.inputs) || receipt.inputs.length === 0
       || !HEX64.test(String(receipt.passagesSha256 || '')) || receipt.passagesSha256 !== sha256File(passages)) {
@@ -293,8 +342,7 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
   if (privateCollision.length) throw new Error(`private/public store collision: ${privateCollision.join(', ')}`);
   const installedExpected = selected === null ? expected : [...selected].sort();
   if (installedExpected.some((store) => !expected.includes(store))) throw new Error('installed profile selects an unknown public store');
-  const actual = canonicalStores(root).filter((store) => !privateSet.has(store.toLowerCase())
-    && !excludedSet.has(store.toLowerCase())).sort();
+  const actual = [...physicalNames.keys()].filter(store => !privateSet.has(store) && !excludedSet.has(store)).sort();
   const missing = installedExpected.filter((store) => !actual.includes(store));
   const extras = actual.filter((store) => !installedExpected.includes(store));
   if (missing.length) throw new Error(`${missing.join(', ')} public store is missing`);
@@ -305,14 +353,14 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
     throw new Error('generation ledger store names have case-fold aliases');
   }
   const publicLedgerStores = ledgerStores.filter((store) => !privateSet.has(store.toLowerCase())
-    && !excludedSet.has(store.toLowerCase())).sort();
+    && !excludedSet.has(store.toLowerCase())).map(store => store.toLowerCase()).sort();
   if (canonicalJson(publicLedgerStores) !== canonicalJson(expected)) throw new Error('public generation ledger store set differs from the inventory partition');
   for (const store of expected) {
-    const generation = ledger.stores[store];
-    const filename = `${store}.big.rvf`;
+    const generation = Object.entries(ledger.stores).find(([key]) => key.toLowerCase() === store)?.[1];
+    const filename = `${physicalNames.get(store) || store}.big.rvf`;
     const file = path.join(root, filename);
     const selected = installedExpected.includes(store);
-    if (generation?.file !== filename || (selected && (generation.bytes !== fs.statSync(file).size || generation.sha256 !== sha256File(file)))) {
+    if (String(generation?.file).toLowerCase() !== filename.toLowerCase() || (selected && (generation.bytes !== fs.statSync(file).size || generation.sha256 !== sha256File(file)))) {
       throw new Error(`${store} generation record does not bind the RVF bytes`);
     }
     if (typeof generation.model !== 'string' || !generation.model.trim()
@@ -365,7 +413,7 @@ function validateRowsAndTotals(coverage, failures) {
   if (new Set(keys).size !== keys.length) failures.push('row keys are duplicated');
   if (rows.some((row) => !['repository', 'gist'].includes(row?.kind)
       || typeof row?.name !== 'string' || typeof row?.url !== 'string'
-      || typeof row?.status !== 'string' || typeof row?.disposition !== 'string'
+      || typeof row?.status !== 'string' || !SOURCE_DISPOSITIONS.includes(row?.disposition)
       || !row?.upstream || !row?.artifact || !Array.isArray(row?.reasons))) failures.push('row shape is invalid');
   const repositoryCount = rows.filter((row) => row.kind === 'repository').length;
   const gistCount = rows.filter((row) => row.kind === 'gist').length;
@@ -451,7 +499,29 @@ export function validateCoverageLink({ releaseCoverage, corpusCoverage, corpusCo
   if (releaseCoverage?.corpusCoverage?.coverageGeneration !== corpusCoverage?.coverageGeneration) {
     failures.push('corpus coverage generation differs');
   }
+  if (canonicalJson(releaseCoverage?.rows) !== canonicalJson(corpusCoverage?.rows)) {
+    failures.push('release and corpus coverage source rows differ');
+  }
   return { valid: failures.length === 0, failures };
+}
+
+/** One source-to-artifact identity check for assembly and archive consumers. */
+export function validateCoverageArtifactBindings(coverage, ledger) {
+  const generations = new Map(Object.entries(ledger?.stores || {}).map(([name, row]) => [name.toLowerCase(), row]));
+  for (const row of coverage.rows || []) {
+    if (!isIngestibleDisposition(row.disposition)) continue;
+    const store = String(row.artifact?.store || '').toLowerCase();
+    const generation = generations.get(store);
+    if (!generation) throw new Error(`coverage row ${row.key} names an absent generation: ${store}`);
+    if (!HEX64.test(String(row.artifact?.rvfSha256 || ''))
+      || row.artifact.rvfSha256.toLowerCase() !== String(generation.sha256).toLowerCase()) {
+      throw new Error(`coverage row ${row.key} was measured against different ${store} RVF bytes`);
+    }
+    if (row.kind === 'repository' && String(row.artifact?.sourceCommit || '').toLowerCase()
+      !== String(generation.sourceCommit || '').toLowerCase()) {
+      throw new Error(`coverage row ${row.key} records a different ${store} source generation`);
+    }
+  }
 }
 
 /**
@@ -527,12 +597,13 @@ export function validateCoverageDirectory(root, {
           if (requireCompleteProfile) failures.push('complete public corpus is required but the installed profile is ruvector');
         }
       }
+      validateCoverageArtifactBindings(corpusCoverage, generationLedger);
       const selectedPublicStores = installedProfile?.selectedPublicStores || null;
       publicInventory = validatePublicInventory({ assetsDir: root, coverage, ledger: generationLedger, installedPublicStores: selectedPublicStores });
       if (publicInventory.publicStores.length !== coverage?.generationLedger?.storeCount) failures.push('generation ledger public store count differs');
       if (publicInventory.partitionSha256 !== coverage?.publicInventoryPartitionSha256) failures.push('installed public inventory partition digest differs');
 
-      const immutableNames = Object.keys(generationLedger.stores || {}).sort();
+      const immutableNames = Object.keys(generationLedger.stores || {}).map(name => name.toLowerCase()).sort();
       if (canonicalJson(immutableNames) !== canonicalJson(publicInventory.publicStores)) {
         failures.push('immutable public generation ledger contains non-public stores');
       }
@@ -546,7 +617,10 @@ export function validateCoverageDirectory(root, {
       }
       const fence = readJson(path.join(root, 'PRIVATE-STORES.json'), 'private fence');
       const privateSet = new Set((fence.privateStores || []).map((name) => String(name).toLowerCase()));
-      const runtimeNames = Object.keys(runtimeGenerationLedger.stores || {});
+      const runtimeNames = Object.keys(runtimeGenerationLedger.stores || {}).map(name => name.toLowerCase());
+      const runtimeRows = new Map(Object.entries(runtimeGenerationLedger.stores || {}).map(([name,row]) => [name.toLowerCase(),row]));
+      const publicRows = new Map(Object.entries(generationLedger.stores || {}).map(([name,row]) => [name.toLowerCase(),row]));
+      if (runtimeRows.size !== runtimeNames.length) failures.push('runtime store names have case-fold aliases');
       const runtimePublicNames = runtimeNames.filter((name) => !privateSet.has(name.toLowerCase())).sort();
       const undeclaredExtras = runtimeNames.filter((name) => !immutableNames.includes(name) && !privateSet.has(name.toLowerCase()));
       if (undeclaredExtras.length) failures.push(`runtime generation ledger has unclassified stores: ${undeclaredExtras.sort().join(', ')}`);
@@ -555,7 +629,7 @@ export function validateCoverageDirectory(root, {
         failures.push('runtime public generation store set differs from immutable public ledger');
       } else {
         for (const name of expectedRuntimePublicNames) {
-          if (canonicalJson(runtimeGenerationLedger.stores[name]) !== canonicalJson(generationLedger.stores[name])) {
+          if (canonicalJson(runtimeRows.get(name)) !== canonicalJson(publicRows.get(name))) {
             failures.push(`runtime public generation record differs for ${name}`);
           }
         }

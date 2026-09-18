@@ -3,9 +3,9 @@ id: ADR-074
 title: RuvNet capability claims require live evidence
 status: Accepted
 date: 2026-08-22
-updated: 2026-09-12
-reviewed_digest: 3dc633e7f906
-version: 1.1.1
+updated: 2026-09-17
+reviewed_digest: a0598f86bd12
+version: 1.1.2
 authors: [Stuart Kerr, Codex]
 tags: [architecture, truthfulness, capabilities, hosts, evidence, receipts]
 supersedes: []
@@ -148,6 +148,7 @@ result. Cross-platform, public-byte, false-positive, and aggregate obligations r
 
 | Date | What changed | Why |
 |---|---|---|
+| 2026-09-17 | Reviewed capability-claim obligations and governed receipt paths at integration HEAD; live host and signed public claim evidence remain unproven. | `plugin/scripts/capability-inventory-receipt.mjs`; reviewed_digest a0598f86bd12. |
 | 2026-08-22 | Bound proactive capability routing to live audit evidence digests and added optional routing receipts with explicit RuvNet tool preferences. | Recommendations must not silently fall back to an invented hand-rolled capability; synthetic host fixtures remain compatible while real rows fail closed. |
 | 2026-08-22 | Added the read-only `ruvnet_registry_latest` MCP probe, content-bound registry receipts, exact version comparison, and packed Claude/Codex latest-version cases. | “Latest” is a public-surface claim; installed CLI output cannot prove it. Network failure and malformed registry metadata still emit no receipt, so the answer remains `UNKNOWN` instead of inheriting a cached or adjacent version. |
 | 2026-08-22 | Added full-SHA behavior receipts, managed-CLI current-version/health receipts, host-bound Stop auditing, typed signed aggregate logic, and packed Claude/Codex cases; latest remains `UNKNOWN`. | `plugin/scripts/capability-claim-evidence.mjs`, `plugin/mcp/managed-cli-interface.mjs`, and `tests/acceptance/adr-074-packed-capability-claims.acceptance.test.mjs` now distinguish evidence classes instead of treating installation as proof of behavior or currency. |

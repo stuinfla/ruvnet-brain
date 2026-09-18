@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   PROJECT_PROGRESSION_SCHEMA,
@@ -61,6 +62,18 @@ function input(overrides = {}) {
 }
 
 describe('ADR-073 ProjectProgression snapshot identity', () => {
+  it('records omissions when a producer already redacted the incoming state', () => {
+    const state = redactProgression({ ...STATE, currentGoal: 'password="private multiword value"',
+      evidence: { apiKey: 'another-private-value' } }).value;
+    const snapshot = createProgressionSnapshot(input({ completeProjectState: state }));
+    expect(snapshot.redactions).toEqual(expect.arrayContaining([
+      { path: '$.completeProjectState.currentGoal', kind: 'password' },
+      { path: '$.completeProjectState.evidence.apiKey', kind: 'api-key' },
+    ]));
+    expect(validateProgressionSnapshot(snapshot).ok).toBe(true);
+    expect(JSON.stringify(snapshot)).not.toContain('private multiword value');
+    expect(createProgressionSnapshot(snapshot).payloadDigest).toBe(snapshot.payloadDigest);
+  });
   it('creates the canonical versioned snapshot and preserves supplied source identity', () => {
     const snapshot = createProgressionSnapshot(input());
 
@@ -258,30 +271,26 @@ describe('causal restoration', () => {
   });
 
   it('rejects every member of a causal cycle', () => {
-    const left = createProgressionSnapshot(input({ sequence: 1, dedupId: 'left' }));
-    const right = createProgressionSnapshot(input({ sequence: 1, dedupId: 'right', sessionIdentity: 'session-b' }));
-    const cyclicLeft = withDigest(left, { parentEventKeys: [right.eventKey] });
-    const cyclicRight = withDigest(right, { parentEventKeys: [left.eventKey] });
-
-    const restored = restoreProjectProgression([cyclicRight, cyclicLeft], { expectedProjectIdentity: PROJECT });
+    const [left, right] = JSON.parse(fs.readFileSync(new URL('../fixtures/progression/legacy-v1-cycle.json', import.meta.url)));
+    const restored = restoreProjectProgression([right, left], { expectedProjectIdentity: left.projectIdentity });
 
     expect(restored.ok).toBe(false);
     expect(restored.heads).toEqual([]);
     expect(restored.rejected).toEqual([
       { eventKey: left.eventKey, reasons: ['causal cycle'] },
       { eventKey: right.eventKey, reasons: ['causal cycle'] },
-    ]);
+    ].sort((a, b) => a.eventKey.localeCompare(b.eventKey)));
   });
 
   it('poisons an event key after divergent payloads even when identical copies follow', () => {
-    const original = createProgressionSnapshot(input({ sequence: 1, dedupId: 'collision' }));
+    const original = JSON.parse(fs.readFileSync(new URL('../fixtures/progression/legacy-v1-snapshot.json', import.meta.url)));
     const divergent = withDigest(original, {
-      completeProjectState: { ...STATE, nextAction: 'divergent but internally valid' },
+      completeProjectState: { ...original.completeProjectState, nextAction: 'divergent but internally valid' },
     });
 
     const restored = restoreProjectProgression(
       [original, divergent, structuredClone(original), structuredClone(divergent)],
-      { expectedProjectIdentity: PROJECT },
+      { expectedProjectIdentity: original.projectIdentity },
     );
 
     expect(restored.ok).toBe(false);
@@ -317,6 +326,43 @@ describe('causal restoration', () => {
       { head: removed.eventKey, value: null },
       { head: retained.eventKey, value: { id: 'contract', status: 'complete' } },
     ].sort((left, right) => left.head.localeCompare(right.head)));
+  });
+
+  it('redacts complete quoted credentials containing spaces from stored snapshots', () => {
+    const snapshot = createProgressionSnapshot(input({ completeProjectState: {
+      ...STATE, decisions: ['password="alpha beta" token=\'gamma delta\' secret="with\\\"escaped content"'],
+    } }));
+    const text = JSON.stringify(snapshot);
+    for (const word of ['alpha', 'beta', 'gamma', 'delta', 'escaped', 'content']) expect(text).not.toContain(word);
+    expect(validateProgressionSnapshot(snapshot).ok).toBe(true);
+  });
+
+  it('redacts credential excerpts whose closing quote was truncated', () => {
+    for (const secret of ['password="alpha beta', "token='gamma delta"]) {
+      const snapshot = createProgressionSnapshot(input({ completeProjectState: { ...STATE, decisions: [secret] } }));
+      for (const word of ['alpha', 'beta', 'gamma', 'delta']) expect(JSON.stringify(snapshot)).not.toContain(word);
+      expect(validateProgressionSnapshot(snapshot).ok).toBe(true);
+    }
+  });
+
+  it('redacts common environment-variable and API-key assignment forms', () => {
+    for (const secret of ['DB_PASSWORD=hunter2', 'access_token=abcdefgh', 'CLIENT_SECRET="alpha beta"',
+      'AWS_SECRET_ACCESS_KEY=abcdefg', 'api_key=abcdefg', 'apikey="alpha beta']) {
+      const snapshot = createProgressionSnapshot(input({ completeProjectState: { ...STATE, decisions: [secret] } }));
+      for (const word of ['hunter2','abcdefgh','abcdefg','alpha','beta']) expect(JSON.stringify(snapshot)).not.toContain(word);
+      expect(validateProgressionSnapshot(snapshot).ok).toBe(true);
+    }
+  });
+
+  it('preserves unresolved conflicts carried by a single valid head', () => {
+    const pendingConflict = { field: 'nextAction', values: [
+      { head: 'source-a', value: 'review' }, { head: 'source-b', value: 'test' },
+    ] };
+    const snapshot = createProgressionSnapshot(input({
+      completeProjectState: { ...STATE, resumeConflicts: [pendingConflict] },
+    }));
+    const restored = restoreProjectProgression([snapshot], { expectedProjectIdentity: PROJECT });
+    expect(restored.state.resumeConflicts).toEqual([pendingConflict]);
   });
 
   it('deterministically merges concurrent heads and makes scalar and plan conflicts explicit', () => {

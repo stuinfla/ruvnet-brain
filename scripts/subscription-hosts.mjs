@@ -16,6 +16,7 @@ export const API_BILLING_ENV = Object.freeze([
 ]);
 export const PRIVATE_SIGNING_ENV = Object.freeze([
   'RUVNET_SIGNING_KEY', 'RUVNET_FABLE_REVIEW_SIGNING_KEY', 'RUVNET_ASTRA_REVIEW_SIGNING_KEY',
+  'RUVNET_MEASUREMENT_SIGNING_KEY', 'RUVNET_ORACLE_REPORT_SIGNING_KEY', 'RUVNET_ORACLE_PRODUCTION_SIGNING_KEY',
 ]);
 
 export function subscriptionOnlyEnv(parent = process.env) {

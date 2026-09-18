@@ -2,8 +2,10 @@
 // Compile the exact public-verification inputs from immutable artifact bytes.
 // Queries are an independent review input: this producer validates them but never invents them.
 
+import { isIngestibleDisposition } from './coverage-integrity.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { sourceEvidenceDigest } from './oracle/production-evidence.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -119,7 +121,7 @@ function validateCandidate({ root, bundleFile, packageFile }) {
   let coverage;
   try { coverage = JSON.parse(coverageBytes); } catch (error) { fail(`candidate release coverage is unreadable: ${error.message}`); }
   const checked = validateCoverageLedger(coverage);
-  const eligible = Array.isArray(coverage.rows) ? coverage.rows.filter((row) => row.disposition === 'eligible') : [];
+  const eligible = Array.isArray(coverage.rows) ? coverage.rows.filter((row) => isIngestibleDisposition(row.disposition)) : [];
   if (!checked.valid || coverage.kind !== 'ruvnet-brain-release-coverage'
     || !eligible.length || eligible.some((row) => row.status !== 'CURRENT')) {
     fail(`candidate release coverage is invalid or incomplete: ${checked.failures.join('; ')}`);
@@ -311,8 +313,24 @@ function observedBaselineFromTree({ extractedRoot, bundleFile, expectedTag, expe
 // retrospective/observed baseline readers above — which predate the schema-3 candidate receipt and
 // compare a seed's tag directly against its internal releaseTag — this reader never makes that
 // comparison: it verifies the seed purely through its schema-3 candidate receipt.
-async function receiptedBaselineFromSeed({ seedDescriptor, bundleFile, receiptFile }) {
-  const verified = await verifySeedBaseline({ seedDescriptor, bundleFile, receiptFile });
+function resolveAccuracyVerification({ accuracyPublicKeyFile = null, accuracySourceEvidenceFile = null,
+  expectedOracleSha256 = null, expectedGeneratorSha256 = null } = {}) {
+  const supplied = [accuracyPublicKeyFile, accuracySourceEvidenceFile, expectedOracleSha256, expectedGeneratorSha256].filter(Boolean).length;
+  if (supplied !== 0 && supplied !== 4) fail('strict accuracy verification requires trusted public key, source evidence, oracle digest, and generator digest together');
+  if (!supplied) return {};
+  const publicKeyFile = trustedFile(accuracyPublicKeyFile, 'accuracy trusted public key');
+  const sourceEvidenceFile = trustedFile(accuracySourceEvidenceFile, 'accuracy source evidence');
+  if (!HEX64.test(String(expectedOracleSha256)) || !HEX64.test(String(expectedGeneratorSha256))) fail('accuracy oracle and generator digests must be 64-character sha256 values');
+  return {
+    trustedReportPublicKey: fs.readFileSync(publicKeyFile, 'utf8'),
+    expectedSourceEvidenceSha256: sourceEvidenceDigest(readJson(sourceEvidenceFile, 'accuracy source evidence').value),
+    expectedOracleSha256: String(expectedOracleSha256).toLowerCase(),
+    expectedGeneratorSha256: String(expectedGeneratorSha256).toLowerCase(),
+  };
+}
+
+async function receiptedBaselineFromSeed({ seedDescriptor, bundleFile, receiptFile, accuracyVerification = {} }) {
+  const verified = await verifySeedBaseline({ seedDescriptor, bundleFile, receiptFile, ...accuracyVerification });
   const payload = {
     schemaVersion: 1,
     kind: 'ruvnet-brain-receipted-public-baseline',
@@ -340,10 +358,10 @@ async function receiptedBaselineFromSeed({ seedDescriptor, bundleFile, receiptFi
 }
 
 export async function createReceiptedBaselineVerification({ seedDescriptor, baselineBundle, baselineReceipt,
-  outFile = 'release-evidence/baseline-verification-receipt.json' } = {}) {
+  outFile = 'release-evidence/baseline-verification-receipt.json', accuracyVerification = {} } = {}) {
   const archive = trustedFile(baselineBundle, 'baseline archive');
   const receiptFile = trustedFile(baselineReceipt, 'baseline candidate receipt');
-  const result = await receiptedBaselineFromSeed({ seedDescriptor, bundleFile: archive, receiptFile });
+  const result = await receiptedBaselineFromSeed({ seedDescriptor, bundleFile: archive, receiptFile, accuracyVerification });
   writeExactFile(outFile, result.bytes, 'baseline-verification-receipt.json');
   return result;
 }
@@ -409,7 +427,7 @@ function writeExactOutputs(outDir, outputs) {
 
 export async function createPublicVerificationInputs({ baselineBundle, candidateBundle,
   candidatePackage, oracleFile, repo = process.cwd(), outDir = 'release-evidence', baselineMode = 'verified',
-  baselineReceipt = null } = {}) {
+  baselineReceipt = null, accuracyVerification = {} } = {}) {
   const baselineArchive = trustedFile(baselineBundle, 'baseline archive');
   const candidateArchive = trustedFile(candidateBundle, 'candidate archive');
   const packageFile = trustedFile(candidatePackage, 'candidate package');
@@ -442,6 +460,7 @@ export async function createPublicVerificationInputs({ baselineBundle, candidate
         seedDescriptor: { tag: seed.tag, sha256: seed.archiveSha256, bytes: seed.archiveBytes, allowPinnedTag: true },
         bundleFile: baselineArchive,
         receiptFile: trustedFile(baselineReceipt, 'baseline candidate receipt'),
+        accuracyVerification,
       });
       if (seed.archiveSha256 !== baselineProof.receipt.archive.sha256
         || seed.archiveBytes !== baselineProof.receipt.archive.bytes) {
@@ -511,6 +530,12 @@ function arg(argv, name) {
 }
 
 export async function main(argv = process.argv.slice(2)) {
+  const accuracyVerification = resolveAccuracyVerification({
+    accuracyPublicKeyFile: arg(argv, '--accuracy-public-key'),
+    accuracySourceEvidenceFile: arg(argv, '--source-evidence'),
+    expectedOracleSha256: arg(argv, '--oracle-sha256'),
+    expectedGeneratorSha256: arg(argv, '--generator-sha256'),
+  });
   if (argv[0] === 'baseline') {
     const result = await createRetrospectiveBaselineVerification({ baselineBundle: arg(argv, '--baseline-bundle'),
       expectedTag: arg(argv, '--expected-tag'), expectedSha256: arg(argv, '--expected-sha256'),
@@ -536,7 +561,7 @@ export async function main(argv = process.argv.slice(2)) {
         bytes: Number(arg(argv, '--expected-bytes')), allowPinnedTag: argv.includes('--allow-pinned-tag') },
       baselineBundle: arg(argv, '--baseline-bundle'),
       baselineReceipt: arg(argv, '--baseline-receipt'),
-      outFile: arg(argv, '--out') || 'release-evidence/baseline-verification-receipt.json' });
+      outFile: arg(argv, '--out') || 'release-evidence/baseline-verification-receipt.json', accuracyVerification });
     console.log(JSON.stringify({ ok: true, mode: 'receipted-baseline', tag: result.receipt.tag,
       stores: result.receipt.storeCount, receiptFileSha256: result.fileSha256 }));
     return result;
@@ -550,6 +575,7 @@ export async function main(argv = process.argv.slice(2)) {
     outDir: arg(argv, '--out-dir') || 'release-evidence',
     baselineMode: argv.includes('--receipted-baseline') ? 'receipted' : argv.includes('--observed-baseline') ? 'observed' : 'verified',
     baselineReceipt: arg(argv, '--baseline-receipt'),
+    accuracyVerification,
   });
   console.log(JSON.stringify({ ok: true, sourceSha: result.candidate.sourceSha,
     coverageGeneration: result.coverage.releaseCoverageGeneration, cases: result.plan.cases.length }));

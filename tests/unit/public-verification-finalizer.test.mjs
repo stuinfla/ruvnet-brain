@@ -89,9 +89,9 @@ async function aggregate(reviewKeys = keys, verifierSha) {
     } };
   const reviews = [
     createIndependentReviewReceipt({ ...reviewCommon, id: 'claude-fable-5-1', model: 'claude-fable-5-1', provider: 'firstParty',
-      execution: { nativeHost: 'claude-code', subscriptionAuthenticated: true, invocationDigest: '5'.repeat(64) } }, reviewKeys.privateKey),
+      execution: { nativeHost: 'claude-code', threadId: null, sessionId: 'session', subscriptionAuthenticated: true, invocationDigest: '5'.repeat(64), requestedModel: 'claude-fable-5-1', modelIdentityClass: 'requested-only' } }, reviewKeys.privateKey),
     createIndependentReviewReceipt({ ...reviewCommon, id: 'gpt-6-astra', model: 'gpt-6-astra', provider: 'openai',
-      execution: { nativeHost: 'codex', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64), threadId: 'thread', catalogRowSha256: '7'.repeat(64) } }, reviewKeys.privateKey),
+      execution: { nativeHost: 'codex', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64), threadId: 'thread', sessionId: null, requestedModel: 'gpt-6-astra', modelIdentityClass: 'requested-only' } }, reviewKeys.privateKey),
   ];
   return signPublicVerificationAggregate({ leaves, reviews, publicKeysByReviewer: {
     'claude-fable-5-1': reviewKeys.publicKey, 'gpt-6-astra': reviewKeys.publicKey,

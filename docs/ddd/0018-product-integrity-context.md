@@ -1,4 +1,4 @@
-Updated: 2026-09-05 19:08:40 EDT | Version 0.4.0
+Updated: 2026-09-17 17:01:00 EDT | Version 0.6.1
 Created: 2026-08-21 13:34:00 EDT
 
 # DDD-0018 — Whole-product integrity context
@@ -109,11 +109,41 @@ Unit < integration < packed artifact < candidate OS/host < actual public-byte pr
 may satisfy a weaker obligation only when identities match. A weaker proof never satisfies a stronger
 one.
 
-### Independent review
+### Machine grading by two vendors
 
-Fable 5 and GPT-5.6-Sol inspect the same immutable inputs independently. Their scores are advisory
-until mechanical evidence passes; neither model can authorize publication or substitute for a real
+The canonical policy requires authenticated native Fable and Astra executions with runtime-resolved identities over the same immutable candidate, rubric and full oracle (ADR-087). The signed pair survives aggregate rebuild, transaction finalization and exact readback; malformed, missing or mismatched records keep the obligation open. Their scores are advisory until mechanical evidence passes; neither model can authorize publication or substitute for a real
 host, scheduler, registry, filesystem, or retrieval observation.
+
+## Cleanup execution boundary
+
+ADR-087 is the single cleanup decision. Its current J01–J12 execution plan must be admitted
+against the reviewed source after preparation J00/J00B; the historical September 16 plan receipt
+does not approve a later source or plan. The executable workflow contract owns literal path
+ownership, job dependencies, correction disposition and source-bound acceptance. This context
+owns whole-product obligations, not a second job scheduler.
+
+`ReviewedSourceBrief` binds the complete file population, exact bytes, semantic review ranges,
+candidate dispositions, objective document and existing checkouts. `ApprovedCleanupPlan` binds
+both native hosts and their causal critique/correction history to that brief. `JobAcceptance`
+records actual commands, complete test populations, owned source state and preservation results.
+`CheckoutRetirement` requires unique/private-data accounting and fresh preserved-byte checks
+before final main consolidation. These records are evidence, not permission to bypass a changed
+source, live user update or missing filesystem observation.
+
+A canonical owner may have generated artifact projections, but projections cannot introduce
+independent policy. RVF owns vectors; the canonical project AgentDB owns operational state;
+JSON compatibility views remain projections. Native requested identity, observed completion and
+attested execution are distinct facts. Neither successful transport nor a lesson write is a
+measured useful learning outcome.
+
+Cleanup acceptance, North Star certification and public `INSTALL_VERIFIED` are separate states.
+The eight-pillar populations in ADR-087 and S-1 through S-12 below remain required. A smaller
+codebase or accepted plan cannot close an unmeasured obligation. A subsequent decision change
+invalidates affected receipts explicitly; it cannot silently preserve completed-job evidence.
+
+The authorized deletion-first pass in ADR-087 withdraws the synthetic public metrics surface
+from source. It adds no metrics authority or domain boundary. The unrelated admin-stats endpoint
+remains; neither its counters nor local cleanup evidence establish whole-product acceptance.
 
 ## Failure semantics
 
@@ -148,3 +178,10 @@ host inventory and `PublicVerification` contributing exact source/version eviden
 DDD-0020 define its supporting capability-claim context without adding a ninth product process.
 The completion boundary accepts S-12 only as a valid signed aggregate over all three operating
 systems, both supported hosts, and every typed claim class with no `UNKNOWN` or untested scope.
+
+
+## Currency log
+
+| Date | Review | Evidence boundary |
+|---|---|---|
+| 2026-09-17 | Reviewed the context against current integration source and release state. | The contract remains proof-gated; no published or installed conformance is inferred from source or focused tests. |

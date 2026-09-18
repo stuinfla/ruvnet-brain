@@ -54,9 +54,28 @@ const ECHO = 'Which is canonical: .swarm/memory.db or .swarm/agentdb-memory.db? 
   + 'People ask about memory.db and agentdb-memory.db a lot. memory.db, agentdb-memory.db.';
 
 describe('exactIdentifiers — only rare, exact tokens, because each one costs a corpus scan', () => {
+  it('preserves explicit short, hidden and extensionless paths without broadening bare prose', () => {
+    for (const file of ['src/a.ts', 'config/.gitignore', 'docker/Dockerfile', 'docs/README.md']) {
+      expect(exactIdentifiers(`Find ${file}`)).toContain(file.toLowerCase());
+    }
+    expect(exactIdentifiers('Read the README.md')).toEqual([]);
+    expect(exactIdentifiers('Use client/server and/or service prose')).toEqual([]);
+    expect(exactIdentifiers('Find ../kb/a.mjs')).toContain('kb/a.mjs');
+    expect(exactIdentifiers('Find /fork-delta/.claude-flow/CAPABILITIES.md')).toContain('fork-delta/.claude-flow/capabilities.md');
+  });
   it('lifts file basenames out of a path, including the one with a dot in it', () => {
     expect(exactIdentifiers('Which is canonical: .swarm/memory.db or .swarm/agentdb-memory.db?'))
       .toEqual(expect.arrayContaining(['memory.db', 'agentdb-memory.db']));
+  });
+  it('preserves a slash-separated path alongside its basename', () => {
+    expect(exactIdentifiers('Which file is .claude-flow/CAPABILITIES.md?'))
+      .toEqual(expect.arrayContaining(['.claude-flow/capabilities.md', 'capabilities.md']));
+    expect(exactIdentifiers('Which file is fork-delta/.claude-flow/CAPABILITIES.md?'))
+      .toContain('fork-delta/.claude-flow/capabilities.md');
+  });
+  it('normalizes Windows separators before extracting a path identifier', () => {
+    expect(exactIdentifiers(String.raw`Which file is .claude-flow\CAPABILITIES.md?`))
+      .toContain('.claude-flow/capabilities.md');
   });
   it('finds camelCase symbols and issue references', () => {
     const ids = exactIdentifiers('Does getAgentDbPath change after #2786?');
@@ -74,6 +93,48 @@ describe('exactIdentifiers — only rare, exact tokens, because each one costs a
 });
 
 describe('identifierScan — the store that CONTAINS the identifier, not the one whose name it spells', () => {
+  it('matches decoded Windows and repeated-separator paths without a basename fallback', () => {
+    const dir = bundle({ sample: [
+      { path: 'docs\\README.md', text: 'Windows record' },
+      { path: 'mirror/docs//README.md', text: 'Repeated separators' },
+    ] });
+    const ids = exactIdentifiers('Find docs/README.md');
+    const scan = identifierScan(dir, ids);
+    expect(scan.byRepo.get('sample')).toHaveLength(2);
+  });
+  it('carries source kind and truncation metadata through the rescue lane', () => {
+    const dir = bundle({ sample: [
+      { path: 'src/package.json', text: 'manifest entry', kind: 'manifest', truncated: true },
+    ] });
+    const ids = exactIdentifiers('Find src/package.json');
+    const [row] = identifierCandidates(identifierScan(dir, ids), 'sample', ids);
+    expect(row).toMatchObject({ path: 'src/package.json', kind: 'manifest', truncated: true });
+  });
+  it('finds an exact path suffix case-insensitively and outranks a basename-only sibling', () => {
+    const dir = bundle({ agentbbs: [
+      ...Array.from({ length: 60 }, (_, index) => ({
+        path: `docs/archive-${index}/CAPABILITIES.md`, title: 'Other capabilities', text: 'other capabilities.md mention',
+      })),
+      { path: 'fork-delta/.claude-flow/CAPABILITIES.md', title: 'Capabilities', text: 'Topology and agent groups.' },
+      { path: 'fork-delta/.claude-flow/.gitignore', title: 'Ignore', text: 'ignore capabilities.md mention' },
+      { path: 'docs/CAPABILITIES.md', title: 'Other capabilities', text: 'other capabilities.md mention' },
+    ] });
+    const ids = exactIdentifiers('What does .claude-flow/CAPABILITIES.md document?');
+    const scan = identifierScan(dir, ids, { maxRepos: 1 });
+    const candidates = identifierCandidates(scan, 'agentbbs', ids, 8);
+    expect(candidates[0].path).toBe('fork-delta/.claude-flow/CAPABILITIES.md');
+    expect(candidates[0]._exactIdentifier.exactPathNamed).toBe(1);
+  });
+  it('does not treat near-miss directory names as the requested path', () => {
+    const dir = bundle({ agentbbs: [
+      { path: 'fork-delta/.claude-flowx/CAPABILITIES.md', title: 'Wrong', text: 'wrong' },
+      { path: 'x.claude-flow/CAPABILITIES.md', title: 'Wrong', text: 'wrong' },
+    ] });
+    const ids = exactIdentifiers('What does .claude-flow/CAPABILITIES.md document?');
+    const scan = identifierScan(dir, ids, { maxRepos: 1 });
+    const candidates = identifierCandidates(scan, 'agentbbs', ids, 8);
+    expect(candidates.every((candidate) => candidate._exactIdentifier.exactPathNamed === 0)).toBe(true);
+  });
   it('routes to the store holding the literal, not the substring match in the identifier itself', () => {
     const dir = bundle({
       agentdb: [{ path: 'ui/agents/swarm-memory-manager.md', title: 'Swarm memory manager', text: 'A swarm memory manager for agent coordination and hive-mind state.' }],
@@ -114,6 +175,16 @@ describe('the boost is EARNED — a chunk that repeats the question must not out
   it('credits a document named after the identifier', () => {
     const named = identifierEvidence({ path: 'src/memory.db', text: 'binary' }, ['memory.db']);
     expect(named.pathNamed).toBe(1);
+  });
+  it('gives an exact path suffix stronger evidence than a basename-only match', () => {
+    const exact = identifierEvidence(
+      { path: 'fork-delta/.claude-flow/CAPABILITIES.md', text: 'binary' },
+      ['.claude-flow/capabilities.md', 'capabilities.md'],
+    );
+    const basename = identifierEvidence({ path: 'docs/CAPABILITIES.md', text: 'binary' }, ['capabilities.md']);
+    expect(exact.exactPathNamed).toBe(1);
+    expect(identifierBoost(exact)).toBeGreaterThan(identifierBoost(basename));
+    expect(identifierBoost({ matched: true, distinct: 1, defining: 0, pathNamed: 0 })).toBe(1);
   });
   it('scores nothing when the identifier is absent', () => {
     expect(identifierBoost(identifierEvidence({ path: 'x.md', text: 'unrelated prose' }, ids))).toBe(0);

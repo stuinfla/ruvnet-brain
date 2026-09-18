@@ -3,12 +3,13 @@ id: ADR-057
 title: 95 on both graders — closing a 38/53 against a self-reported 83, dimension by dimension
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-12
+updated: 2026-09-17
 impl: verification-expired
 verified: 2026-07-30
 verified_digest: 1c276a7dfbc5
 verified_by: governed-source claim ledger in this ADR plus node scripts/doc-currency.mjs --json
-reviewed_digest: 4e276b45d242
+version: 1.0.2
+reviewed_digest: 699b9d4ac96e
 governs:
   - scripts/behavioral-l1-l4.mjs
   - scripts/no-silent-substitution.mjs
@@ -62,7 +63,7 @@ all pass" was never evidence of behaviour, on either count.
 
 | Dim | | Fable | GPT | worst |
 |---|---|---|
-| 2026-08-10 | Re-read after #128/#129; this plan stays Proposed and no score is promoted. | The governed `bin/install.mjs` changes are scheduling convergence (#129) and stale-generation pruning (#128). Neither adds, removes or relaxes a grader, a dimension or an observable, and neither is offered as evidence toward 95. `impl: verification-expired` is unchanged — two independent graders at or above 95 remain outstanding. |---|---|
+| 2026-08-10 | Re-read after #128/#129; this plan stays Proposed and no score is promoted. | The governed `bin/install.mjs` changes are scheduling convergence (#129) and stale-generation pruning (#128). Neither adds, removes or relaxes a grader, a dimension or an observable, and neither is offered as evidence toward 95. `impl: verification-expired` is unchanged — machine grading by two vendors at or above 95 remains outstanding. |---|---|
 | D1 | Works well under real conditions | 50 | 60 | 50 |
 | D2 | Works as the user expects | 55 | 42 | 42 |
 | D3 | Proactive and measured | 69 | 53 | 53 |
@@ -130,7 +131,7 @@ be required for any promised behaviour.**
 
 **D7 — proper/clean · 32 → 95.** GPT: *"the interface gate still parses shell semantics with regex…
 the same defect class has now recurred across issues #12, #13, #41, #44."* Required: a real parser or
-a constrained command model for `verify-interface`, plus a seeded incident corpus (heredocs,
+a constrained command model for the former `verify-interface` shell consumer, plus a seeded incident corpus (heredocs,
 `bash -lc`, backticks, `$()`) with false-positive AND false-negative mutants. Five recurrences of one
 defect class is a design verdict, not a run of bad luck.
 
@@ -214,7 +215,7 @@ component diagnostics; they stop being evidence that the brain changes Claude's 
 > | 5 | Substitution audit re-pointed at the user's project | **OPEN** | `scripts/no-silent-substitution.mjs` still exports `audit(root = ROOT)` and its CLI calls `audit()` with no `--project` argument |
 > | 6 | D4 counterfactual learning replay | **IMPLEMENTED; promotion proof OPEN** | `bbf6db0` wired the Codex-backed replay and `2b39f68` committed one exact-source result: treated 3/3, control 0/3 at source SHA `63e5e67`, with delete-lesson and brain-off-treated mutants failing. That is one source artifact, not ADR-029 win-twice, a Fable rerun, or published-package proof |
 > | 7 | Claim-to-behaviour release gate (vector, not average) | **SOURCE-WIRED; current release verdict not established here** | `scripts/release-vector.mjs` now emits `PASS\|FAIL\|UNKNOWN`, takes the vector minimum, and is invoked by release checking; `dc27f41` repaired its Windows runner boundary. This re-read did not convert workflow/source presence into an exact-SHA PASS |
-> | 8 | Replace regex authorization at the CLI boundary | **DONE in source; packed-host proof remains** | `e089074` added the structured `ruvnet_cli_help`/`ruvnet_cli_run` boundary and made the installer persist its module; `4ad464e` made raw `verify-interface` advisory and retained a non-blocking historical shell corpus. The published host remains part of D8 proof, not something this source read can award |
+> | 8 | Replace regex authorization at the CLI boundary | **DONE in source; packed-host proof remains** | `e089074` added the structured `ruvnet_cli_help`/`ruvnet_cli_run` boundary and made the installer persist its module; `4ad464e` made raw `verify-interface` advisory; its body is now removed and the historical shell corpus proves silent no-dispatch compatibility. The published host remains part of D8 proof, not something this source read can award |
 >
 > Net: 5 of 8 items are source-complete (1, 3, 4, 7, 8), item 6 has one committed causal run but
 > remains below its promotion bar, and items 2 and 5 are open. That is why the artifact mechanically
@@ -232,7 +233,7 @@ to the five governed paths; it does not adjudicate the product or substitute for
 | `scripts/no-silent-substitution.mjs` | The downstream-project audit remains open | `audit(root = ROOT)` scans fixed directories under its argument, while `main()` invokes `audit()` without a project CLI option |
 | `tests/mesh/coexistence.test.mjs` | D5 has a source-level coexistence fixture with mutants | Commit `314be33`; sentinel ordering, config byte preservation, foreign-hook non-charging, and own-hook failure are exercised in scratch homes only |
 | `bin/install.mjs` | The installer consumes self-check state, persists structured Codex support, and has changed since the prior review | Commits `2f420e7`, `7eb11fb`, and `e089074`; these are source facts and do not prove the published tarball or five-host matrix ran green |
-| `plugin/hooks/hooks.json` | Routing outcomes are observed and raw shell reconstruction is advisory | `27cca88` adds `routing-outcome`; `4ad464e` adds `|| true` to `verify-interface`. Outcome rows are not artifact-quality labels, and source registration is not installed-host proof |
+| `plugin/hooks/hooks.json` | Routing outcomes are observed; raw shell reconstruction is historical | `27cca88` adds `routing-outcome`; the retired interface ID is compatibility-only. Outcome rows are not artifact-quality labels, and source registration is not installed-host proof |
 
 ## Consequences
 
@@ -250,6 +251,8 @@ to the five governed paths; it does not adjudicate the product or substitute for
   last independent score recorded here; source reconciliation cannot revise it.
 
 ## Currency log
+
+| 2026-09-17 | Re-read all 5 governed grading and release paths. The plan remains Proposed with verification expired: historical scores are retained as historical evidence, machine grading by two vendors at or above 95 remains outstanding, and source-wired gates do not establish a release score. Source-bound review digest `699b9d4ac96e`. | scripts/behavioral-l1-l4.mjs; scripts/no-silent-substitution.mjs; tests/mesh/coexistence.test.mjs; bin/install.mjs; plugin/hooks/hooks.json |
 | 2026-09-12 | Currency review at commit dae83538: decision unchanged — this ADR's grading claims and open build-order items are unaffected. The hook-parity fork added Codex `PreToolUse`/`PostToolUse` registration and the new grounding-turn-mark/gate Stop pair to `plugin/hooks/hooks.json`; `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `bin/install.mjs` did not move in this fork's diff. `impl: verification-expired` remains unchanged — no re-grade is claimed. | Reviewed `plugin/hooks/hooks.json`'s diff directly (merge-base `13cfc38b`..`ef2b8e12`); confirmed the other four governed paths untouched. |
 
 | date | why |

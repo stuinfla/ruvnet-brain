@@ -15,7 +15,7 @@
 // Cron example (Mon 09:00, log result):
 //   0 9 * * 1  cd /path/to/kb && /usr/bin/node forge-update.mjs --check >> forge-update.log 2>&1
 //
-// Zero dependencies. Node 18+ (global fetch). Network failures fail LOUD and CLEAN: clear
+// Node >=20.9.0 (see node-version.mjs). Network failures fail LOUD and CLEAN: clear
 // message, non-zero exit, NO partial clobber. If --canonical-url was not set at build time the
 // URLs are null and this prints a clear "self-update not configured for this build" message.
 
@@ -36,6 +36,16 @@ import {
 } from './corpus-release-identity.mjs';
 
 const KB_DIR = path.dirname(fileURLToPath(import.meta.url));
+// The validator is shipped beside this standalone updater; source checkouts use the plugin owner.
+// Defer a missing-module error until a policy-dependent operation, so historical diagnostics remain usable.
+const policyPath = fs.existsSync(path.join(KB_DIR, 'coverage-integrity.mjs'))
+  ? path.join(KB_DIR, 'coverage-integrity.mjs')
+  : path.join(path.dirname(KB_DIR), 'plugin', 'scripts', 'coverage-integrity.mjs');
+const sourcePolicy = fs.existsSync(policyPath) ? await import(pathToFileURL(policyPath).href) : null;
+function isIngestibleDisposition(disposition) {
+  if (typeof sourcePolicy?.isIngestibleDisposition !== 'function') throw new Error('trusted source policy is missing; re-run the current installer');
+  return sourcePolicy.isIngestibleDisposition(disposition);
+}
 const SOURCE_PATH = path.join(KB_DIR, 'SOURCE.json');
 
 const argv = process.argv.slice(2);
@@ -443,7 +453,7 @@ function phaseEvidenceFor({ root, terminalVerdict, bundleSha256 = null, transact
   overlay = null, storageDelta = null }) {
   const coverage = JSON.parse(fs.readFileSync(path.join(root, 'COVERAGE.json'), 'utf8'));
   const ledgerBytes = fs.readFileSync(path.join(root, 'PUBLIC-RVF-GENERATIONS.json'));
-  const currentRows = (coverage.rows || []).filter((row) => row.disposition === 'eligible' && row.status === 'CURRENT');
+  const currentRows = (coverage.rows || []).filter((row) => isIngestibleDisposition(row.disposition) && row.status === 'CURRENT');
   const evidence = {
     'source-enumeration': { sourceObservationSha256: coverage.sourceObservationSha256,
       rows: coverage.totals?.rows, terminal: coverage.enumerationReceipt?.terminal === true },
@@ -993,7 +1003,7 @@ export function reclaimBackups({
   const readJsonQuietly = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
   const coverageRows = readJsonQuietly(path.join(kbDir, 'COVERAGE.json'))?.rows;
   const policyExcluded = (Array.isArray(coverageRows) ? coverageRows : [])
-    .filter((row) => row && row.kind === 'repository' && row.disposition && row.disposition !== 'eligible')
+    .filter((row) => row && row.kind === 'repository' && sourcePolicy?.SOURCE_DISPOSITIONS?.includes(row.disposition) && !isIngestibleDisposition(row.disposition))
     .map((row) => String(row.artifact?.store || row.name || '').toLowerCase()).filter(Boolean);
   // PRIVATE-fenced stores (PRIVATE-STORES.json, read from live AND from the backup itself, since a
   // backup knows what was private when it was made) are never disposable: a backup holding one the

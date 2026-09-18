@@ -21,6 +21,15 @@ import {
 } from '../../scripts/oracle/produce-questions.mjs';
 import { API_BILLING_ENV } from '../../scripts/subscription-hosts.mjs';
 import { gitBlobSha, sha256Hex } from '../../scripts/oracle/source-units.mjs';
+import { spawnHost } from '../../scripts/oracle/producer-hosts.mjs';
+
+it('preserves source text when UTF-8 characters cross stdout and stderr pipe chunks', async()=>{
+  const program='const bytes=Buffer.from("é😀"); process.stdout.write(bytes.subarray(0,1)); process.stderr.write(bytes.subarray(0,4)); setTimeout(()=>{process.stdout.write(bytes.subarray(1)); process.stderr.write(bytes.subarray(4));},30);';
+  const result=await spawnHost(process.execPath,['-e',program],{cwd:process.cwd(),env:process.env,timeoutMs:5000},'');
+  expect(result.status).toBe(0);
+  expect(result.stdout).toBe('é😀');
+  expect(result.stderr).toBe('é😀');
+});
 
 const HOSTS_MODULE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/oracle/producer-hosts.mjs');
 const UNIT_BODY = ['## Retry policy', '', 'The client retries a failed request up to three times before giving up entirely.'].join('\n');
@@ -83,7 +92,7 @@ describe('path B: codex generates, claude judges', () => {
 
   it('runs codex then claude, the judge sees no unit text or path, and verdicts land on `judge`', async () => {
     const calls = [];
-    const out = await produceQuestions({ inventory: inventory(), snapshotDir: root, roles: PATH_B, spawnImpl: hostStub(calls), workDir: workDir() });
+    const out = await produceQuestions({ diagnosticLegacy: true, inventory: inventory(), snapshotDir: root, roles: PATH_B, spawnImpl: hostStub(calls), workDir: workDir() });
     expect(calls.map((c) => c.binary)).toEqual(['codex', 'claude']);
     for (const name of API_BILLING_ENV) for (const c of calls) expect(c.env[name]).toBeUndefined();
     const judgeInput = calls[1].input;
@@ -111,7 +120,7 @@ describe('path B: codex generates, claude judges', () => {
     const minimal = { schemaFiles: { labels: 'l.json', verdicts: 'v.json' }, workDir: os.tmpdir(), codexCwd: os.tmpdir() };
     expect(() => hostAdapters({ ...minimal, roles: { generator: 'codex', judge: 'codex' } })).toThrow(/same-vendor production/);
     expect(() => hostAdapters({ ...minimal, roles: { generator: 'claude', judge: 'claude' } })).toThrow(/same-vendor production/);
-    await expect(produceQuestions({
+    await expect(produceQuestions({ diagnosticLegacy: true,
       inventory: inventory(), snapshotDir: root, roles: { generator: 'codex', judge: 'codex' }, spawnImpl: hostStub([]), workDir: workDir(),
     })).rejects.toThrow(/same-vendor production/);
   });
@@ -119,7 +128,7 @@ describe('path B: codex generates, claude judges', () => {
   it('MUST SUSPEND on a capacity refusal: no further calls to ANY host, remaining units recorded unproduced', async () => {
     const calls = [];
     const refusal = { status: 1, timedOut: false, durationMs: 1, stdout: '', stderr: 'Error: usage limit reached, try again later' };
-    const out = await produceQuestions({
+    const out = await produceQuestions({ diagnosticLegacy: true,
       inventory: inventory(3), snapshotDir: root, roles: PATH_B, batchSize: 1,
       spawnImpl: hostStub(calls, { failGenerator: (n) => (n === 2 ? refusal : null) }), workDir: workDir(),
     });
@@ -137,7 +146,7 @@ describe('path B: codex generates, claude judges', () => {
   it('retries a malformed reply when asked to, but NEVER retries a capacity refusal', async () => {
     const malformedCalls = [];
     const garbage = { status: 0, timedOut: false, durationMs: 1, stdout: 'garbage', stderr: '' };
-    const recovered = await produceQuestions({
+    const recovered = await produceQuestions({ diagnosticLegacy: true,
       inventory: inventory(), snapshotDir: root, roles: PATH_B, retries: 1,
       spawnImpl: hostStub(malformedCalls, { failGenerator: (n) => (n === 1 ? garbage : null) }), workDir: workDir(),
     });
@@ -146,7 +155,7 @@ describe('path B: codex generates, claude judges', () => {
 
     const refusedCalls = [];
     const refusal = { status: 1, timedOut: false, durationMs: 1, stdout: '', stderr: '429 Too Many Requests' };
-    const refused = await produceQuestions({
+    const refused = await produceQuestions({ diagnosticLegacy: true,
       inventory: inventory(), snapshotDir: root, roles: PATH_B, retries: 3,
       spawnImpl: hostStub(refusedCalls, { failGenerator: () => refusal }), workDir: workDir(),
     });
@@ -157,20 +166,20 @@ describe('path B: codex generates, claude judges', () => {
   it('reuses a checkpoint ONLY under the identical producer configuration', async () => {
     const dir = workDir();
     const checkpointFile = path.join(dir, 'checkpoint.json');
-    const first = await produceQuestions({ inventory: inventory(2), snapshotDir: root, roles: PATH_B, checkpointFile, spawnImpl: hostStub([]), workDir: dir });
+    const first = await produceQuestions({ diagnosticLegacy: true, inventory: inventory(2), snapshotDir: root, roles: PATH_B, checkpointFile, spawnImpl: hostStub([]), workDir: dir });
     expect(fs.existsSync(checkpointFile)).toBe(true);
     expect(first.checkpoint.reusedUnits).toBe(0);
 
     // Same configuration: every unit is reused, so NO host is called at all.
     const resumedCalls = [];
-    const resumed = await produceQuestions({ inventory: inventory(2), snapshotDir: root, roles: PATH_B, checkpointFile, spawnImpl: hostStub(resumedCalls), workDir: dir });
+    const resumed = await produceQuestions({ diagnosticLegacy: true, inventory: inventory(2), snapshotDir: root, roles: PATH_B, checkpointFile, spawnImpl: hostStub(resumedCalls), workDir: dir });
     expect(resumedCalls).toHaveLength(0);
     expect(resumed.checkpoint.reusedUnits).toBe(2);
     expect(resumed.labels.map((l) => l.judge?.equivalent?.answers)).toEqual(['yes', 'yes']);
 
     // A different configuration (effort) must NOT reuse labels produced under another prompt/model setup.
     const changedCalls = [];
-    const changed = await produceQuestions({ inventory: inventory(2), snapshotDir: root, roles: PATH_B, effort: 'high', checkpointFile, spawnImpl: hostStub(changedCalls), workDir: dir });
+    const changed = await produceQuestions({ diagnosticLegacy: true, inventory: inventory(2), snapshotDir: root, roles: PATH_B, effort: 'high', checkpointFile, spawnImpl: hostStub(changedCalls), workDir: dir });
     expect(changed.checkpoint.reusedUnits).toBe(0);
     expect(changedCalls.some((c) => c.binary === 'codex')).toBe(true);
   });

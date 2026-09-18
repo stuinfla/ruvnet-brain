@@ -481,7 +481,7 @@ describe.skipIf(bashOnly)('every stdin-reading hook body returns on a stdin that
   // comfortably inside that, so 5s is the assertion and the harness's kill is never the thing that
   // ends the process.
   const BODIES = [
-    'design-wall.sh', 'verify-interface.sh', 'protect-brain-state.sh', 'route-dispatch.sh',
+    'design-wall.sh', 'protect-brain-state.sh', 'route-dispatch.sh',
     'version-bump-gate.sh', 'learn-capture.sh', 'ground-before-write.sh', 'grounding-stamp.sh',
     'lesson-hooks.sh', 'ground-ruvnet.sh', 'hijack-ruvnet.sh',
   ];

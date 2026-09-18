@@ -1,3 +1,6 @@
+Updated: 2026-09-16 23:25:00 EDT | Version 1.0.1
+Created: 2026-08-28 00:00:00 EDT
+
 # Citation-Binding Integrity SOTA Report — 2026
 
 ## TL;DR
@@ -32,7 +35,7 @@ look-alike text does not organically continue.
   confirmed by reading the printer at `kb/forge-ask-all.mjs:3192-3200`, and by checking every other
   emitter of this format in the repo for compatibility with the invariant).
 - Five new failing-then-passing tests added to the existing `tests/unit/verify-citation.test.mjs`
-  suite (two from the initial fix, one added and one corrected after independent review, plus an
+  suite (two from the initial fix, one added and one corrected after a separate machine review, plus an
   end-to-end `verifyGrounding` test demonstrating the exact false-positive this closes).
 
 ## Competitors / prior art (grade C — internal code reading, not externally re-verified tonight)
@@ -97,7 +100,7 @@ code path, not a substitute metric.
   and the end-to-end `verifyGrounding` false-positive).
 - **Candidate (final, post-correction)**: all 22/22 tests pass, including the 6 new ones. The
   intermediate (pre-correction) version passed 21/21 — it had not yet been given a test for the
-  critic's false-negative — which is exactly why an independent review mattered here: the tests
+  critic's false-negative — which is exactly why a separate machine review mattered here: the tests
   written by the same session that wrote the fix did not cover the failure mode a fresh reviewer
   found in under 3 minutes of tracing.
 - **Full `test:unit`** (277 files, 3598 tests): 3408 pass, 5 fail this run — but that failing SET is
@@ -145,7 +148,7 @@ evolution theater, not a real search. Skipped deliberately rather than run vacuo
   (`meetings/totally/made/up`, does not resolve) is masked by the embedded look-alike resolving
   instead, reporting `grounded: true`; post-fix: correctly reports `grounded: false,
   reason: 'citations-do-not-resolve'`.
-- MEASUREMENT (found by independent review, not this session's own testing): the *intermediate*
+- MEASUREMENT (found by a separate machine review, not this session's own testing): the *intermediate*
   fix version — rank check correct, but `expectedRank` advanced before the path check — silently
   dropped a REAL, later citation whenever an earlier hit's body contained a bare, pathless fragment
   at the next rank. Reproduced directly: with that ordering, a real rank-2 citation vanishes
@@ -166,7 +169,7 @@ subagent (genuinely separate from the candidate's author, not self-critique) rev
 version of this fix and found a real problem — see Correction below. The corrected version's
 self-critique: CLEAR, with one residual risk disclosed below.
 
-## Correction (found by independent review, before this PR left draft)
+## Correction (found by a separate machine review, before this PR left draft)
 
 The first version of this fix advanced `expectedRank` as soon as a header's rank matched, **before**
 checking whether that block actually had a `path` line. An independent critic subagent traced every
@@ -217,7 +220,7 @@ implicit.
 
 ## Witness
 
-This report was revised once, after independent review found a real bug in the fix's first version
+This report was revised once, after a separate machine review found a real bug in the fix's first version
 (see Correction above) — the hash below is over the FINAL, corrected content, not the version this
 session first drafted.
 

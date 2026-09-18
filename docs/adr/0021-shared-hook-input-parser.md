@@ -7,11 +7,11 @@ authors: [Stuart Kerr, Claude Code]
 tags: [gates, hooks, parsing, correctness, dry, trust]
 supersedes: []
 relates: [ADR-020]
-updated: 2026-07-27
+updated: 2026-09-17
 updated_source: derived-from-git
 ---
 
-**Status**: Accepted (hook-input.mjs shipped; design-wall.sh + verify-interface.sh ported; tested)
+**Status**: Accepted (hook-input.mjs shipped; design-wall.sh ported; former verify-interface shell consumer retired)
 
 ## Context
 
@@ -37,9 +37,9 @@ file, regenerated in the sibling. JSON string escaping is not a regular language
   `commandOf`, `field(path)`; also a CLI (`… | node hook-input.mjs command`) the bash gates call. It
   fails open by contract: any parse failure or missing field returns `""` / exit 0, never a throw or
   nonzero — a gate that breaks the shell protects nothing.
-- **Ported both gates onto it.** `design-wall.sh` and `verify-interface.sh` now extract via
-  hook-input.mjs instead of a hand-rolled regex (design-wall) / a duplicated inline `node -e`
-  (verify-interface). One parser, one behavior.
+- **Ported the remaining shell gate onto it.** `design-wall.sh` extracts via
+  hook-input.mjs instead of a hand-rolled regex. The former verify-interface consumer is retired;
+  managed CLI authorization is owned by structured MCP arguments.
 - **One known-bad fixture, tested once** (`tests/unit/hook-input.test.mjs`): a command whose
   interesting part sits AFTER an embedded quote must round-trip WHOLE. Proven end-to-end: design-wall
   now correctly BLOCKS (exit 2) a quoted `vercel --prod` it previously let through, and still allows

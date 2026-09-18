@@ -28,6 +28,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import { sourceEvidenceDigest } from './oracle/production-evidence.mjs';
 import crypto from 'node:crypto';
 import { validateProtectedPublishEnvironment, validateProtectedPublishInvocation } from './protected-release-invocation.mjs';
 import { runReleaseTransaction } from './release-transaction.mjs';
@@ -36,8 +37,9 @@ import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
 import { verifyCorpusReceipt } from './corpus-candidate.mjs';
-import { readDiagnosticAccuracyReport } from './oracle/retrieval-accuracy.mjs';
+import { readAccuracyReport, readDiagnosticAccuracyReport } from './oracle/retrieval-accuracy.mjs';
 import { loadFixture, readRecallReport } from './oracle/repo-recall.mjs';
+import { digest } from '../plugin/scripts/coverage-integrity.mjs';
 
 /**
  * The measured retrieval numbers, stated in the release notes themselves rather than left behind a
@@ -52,8 +54,10 @@ const recallNotes = (receipt) => {
       + ` about themselves from their own content; ${r.exactFileTop5}/${r.questions} return the exact`
       + ` labeled file in the top 5 (floor ${r.floor}).`,
     'NOT measured: generated-answer correctness, citation support, or unscoped whole-corpus discovery.',
-    `ADR-086 C3 was NOT met and is NOT claimed — its measurement ships as ${receipt.accuracyReport.file}`
-      + ' for inspection.',
+    receipt.accuracyQualification?.c3Eligible === true
+      ? `ADR-086 C3 qualification is signed and source-bound — ${receipt.accuracyReport.file}.`
+      : `ADR-086 C3 was NOT met and is NOT claimed — its measurement ships as ${receipt.accuracyReport.file}`
+        + ' for inspection.',
   ];
 };
 import { verifyBundle } from './verify-bundle.mjs';
@@ -123,6 +127,18 @@ export async function runProtectedCorpusSeed({
   // process even if a future workflow edit put them in the same job.
   if (argv.includes('--publish')) corpusFailure('--corpus-seed cannot be combined with --publish; corpus routing must never enter product publication');
   const promoteLatest = argv.includes('--promote-latest');
+  const accuracyPublicKeyFile = env.RUVNET_ACCURACY_PUBLIC_KEY_FILE || null;
+  const accuracySourceEvidenceFile = env.RUVNET_ACCURACY_SOURCE_EVIDENCE_FILE || null;
+  if ((accuracyPublicKeyFile && !accuracySourceEvidenceFile) || (!accuracyPublicKeyFile && accuracySourceEvidenceFile)) {
+    corpusFailure('accuracy publication qualification requires both RUVNET_ACCURACY_PUBLIC_KEY_FILE and RUVNET_ACCURACY_SOURCE_EVIDENCE_FILE');
+  }
+  if (accuracyPublicKeyFile) {
+    for (const [label, file] of [['accuracy public key', accuracyPublicKeyFile], ['accuracy source evidence', accuracySourceEvidenceFile]]) {
+      let stat;
+      try { stat = fs.lstatSync(path.resolve(file)); } catch (error) { corpusFailure(`${label} is missing (${file})`); }
+      if (!stat.isFile() || stat.isSymbolicLink()) corpusFailure(`${label} must be a trusted regular file`);
+    }
+  }
 
   const tag = cliArg(argv, '--corpus-tag');
   const bundleFile = cliArg(argv, '--corpus-bundle');
@@ -228,12 +244,21 @@ export async function runProtectedCorpusSeed({
   // publication. That reduction is declared in docs/adr/0086 and in the published report itself.
   const archiveIdentity = { file: receipt.archive.file, sha256: archiveSha256, bytes: fs.statSync(bundleFile).size };
   try {
-    readDiagnosticAccuracyReport({
+    const accuracyArgs = {
       reportFile: accuracyReportFile,
       archive: archiveIdentity,
       expectedOracleSha256: sha256File(committedOracleFile),
       expectedGeneratorSha256: sha256File(accuracyGeneratorFile),
-    });
+    };
+    if (accuracyPublicKeyFile) {
+      readAccuracyReport({
+        ...accuracyArgs,
+        trustedReportPublicKey: fs.readFileSync(path.resolve(accuracyPublicKeyFile), 'utf8'),
+        expectedSourceEvidenceSha256: sourceEvidenceDigest(JSON.parse(fs.readFileSync(path.resolve(accuracySourceEvidenceFile), 'utf8'))),
+      });
+    } else {
+      readDiagnosticAccuracyReport(accuracyArgs);
+    }
   } catch (error) {
     corpusFailure(`the published C3 diagnostic is not bound to this archive (${error.message})`);
   }
@@ -265,7 +290,13 @@ export async function runProtectedCorpusSeed({
   // here. It runs before any `gh` call so an untrue candidate never reaches the network.
   try {
     await verifyCorpusReceipt({
-      receiptFile, bundleFile, accuracyReportFile, recallReportFile, expectedBuilderSha: target, expectedArchiveSha256: archiveSha256,
+      receiptFile, bundleFile, accuracyReportFile, recallReportFile, oracleFile: committedOracleFile, expectedBuilderSha: target, expectedArchiveSha256: archiveSha256,
+      ...(accuracyPublicKeyFile ? {
+        trustedReportPublicKey: fs.readFileSync(path.resolve(accuracyPublicKeyFile), 'utf8'),
+        expectedSourceEvidenceSha256: sourceEvidenceDigest(JSON.parse(fs.readFileSync(path.resolve(accuracySourceEvidenceFile), 'utf8'))),
+        expectedOracleSha256: sha256File(committedOracleFile),
+        expectedGeneratorSha256: sha256File(accuracyGeneratorFile),
+      } : {}),
     });
   } catch (error) {
     corpusFailure(`corpus receipt does not verify against the sealed archive (${error.message})`);

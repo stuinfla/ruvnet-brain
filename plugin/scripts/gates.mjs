@@ -44,6 +44,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { activeClaudeView, resolveClaudeConfiguredInstall, shimTable as readRegistryShimTable } from './hook-registry.mjs';
 
 const HOME = os.homedir();
 const PLUGIN_ID = 'ruvnet-brain@ruvnet-brain';
@@ -107,12 +108,10 @@ function collect(hooksObj, source, shimTable = null) {
 // assumed, because on an installed host the repo path does not exist and used to read as "no gates".
 export function resolvePluginRoot({ home = HOME, repo = null, pluginRoot = null } = {}) {
   if (pluginRoot) return { root: pluginRoot, source: 'explicit' };
-  const reg = readJSON(path.join(home, '.claude/plugins/installed_plugins.json'));
-  const entries = reg?.plugins?.[PLUGIN_ID];
-  const installPath = Array.isArray(entries) ? entries[0]?.installPath : null;
-  if (installPath && isFile(path.join(installPath, 'hooks', 'hooks.json'))) return { root: installPath, source: 'installed' };
+  const selected = resolveClaudeConfiguredInstall({ home, project: repo || process.cwd() });
+  if (selected.state === 'configured-on-disk') return { root: selected.installPath, source: 'installed' };
   if (repo && isFile(path.join(repo, 'plugin', 'hooks', 'hooks.json'))) return { root: path.join(repo, 'plugin'), source: 'repo' };
-  return { root: null, source: null };
+  return { root: null, source: selected.state === 'unknown' ? 'unknown' : null, error: selected.error || null };
 }
 
 // Git hooks stop COMMITS, not tool calls — reported in their own list so they never inflate the
@@ -155,13 +154,37 @@ export function gateBlocks(home = HOME) {
 }
 
 export function gatesSurvey({ repo, home = HOME, pluginRoot } = {}) {
-  const machine = collect(readJSON(path.join(home, '.claude/settings.json'))?.hooks, 'machine');
-
-  const resolved = resolvePluginRoot({ home, repo, pluginRoot });
-  const pluginPath = resolved.root ? path.join(resolved.root, 'hooks', 'hooks.json') : null;
-  const pluginCfg = pluginPath ? readJSON(pluginPath) : null;
+  const view = activeClaudeView({ repo, home, project: repo, pluginRoot });
+  const selectedPlugin = view.pluginSource;
+  const pluginShim = selectedPlugin
+    ? readRegistryShimTable(path.join(path.dirname(path.dirname(selectedPlugin)), 'scripts', 'hook-shim.mjs'))
+    : null;
+  const convert = (record) => {
+    if (!record.command) return null;
+    const name = NAME(record.command);
+    const shimMode = pluginShim?.[name]?.mode ?? null;
+    return {
+      event: record.event,
+      matcher: record.matcher || '*',
+      name,
+      blocking: canBlock(record.event, record.command) && shimMode !== 'advisory',
+      source: record.layer === 'plugin-installed' || record.role === 'diagnostic-preimage' ? 'plugin' : 'machine',
+      ...(shimMode ? { shimMode } : {}),
+    };
+  };
+  // A checkout/explicit payload is a diagnostic preimage. It may be inspected, but it is never
+  // an active protection and must not contribute to armed/blocking counts.
+  const all = view.records
+    .filter((record) => record.role !== 'diagnostic-preimage')
+    .map(convert).filter(Boolean);
+  const machine = all.filter((entry) => entry.source === 'machine');
+  const plugin = all.filter((entry) => entry.source === 'plugin');
+  const resolved = pluginRoot
+    ? { root: pluginRoot, source: 'repo' }
+    : { root: selectedPlugin ? path.dirname(path.dirname(selectedPlugin)) : null,
+      source: selectedPlugin ? (view.pluginState === 'diagnostic-preimage' ? 'repo' : 'installed') : null };
+  const pluginPath = selectedPlugin || (resolved.root ? path.join(resolved.root, 'hooks', 'hooks.json') : null);
   const shimTable = resolved.root ? readShimTable(path.join(resolved.root, 'scripts', 'hook-shim.mjs')) : null;
-  const plugin = collect(pluginCfg?.hooks || pluginCfg, 'plugin', shimTable);
 
   // Blocking gates the launcher KNOWS but hooks.json never wires — they cannot stop anything until
   // registered. `onDisk` separates "unplugged" from "missing": both are findings, of different kinds.
@@ -173,8 +196,8 @@ export function gatesSurvey({ repo, home = HOME, pluginRoot } = {}) {
 
   const git = gitHooks(repo);
 
-  const all = [...machine, ...plugin];
-  const blocking = all.filter((g) => g.blocking);
+  const combined = [...machine, ...plugin];
+  const blocking = combined.filter((g) => g.blocking);
 
   // THE LEDGER IS MACHINE-WIDE; THIS SURVEY IS ABOUT ONE PROJECT. Every catch ever recorded on the
   // machine used to be counted here, so standing in an empty folder produced "203 refusals have been
@@ -193,7 +216,7 @@ export function gatesSurvey({ repo, home = HOME, pluginRoot } = {}) {
   // work, and counting it as two protections would inflate the only number on the card that matters.
   const seen = new Map();
   const duplicated = [];
-  for (const g of all) {
+  for (const g of combined) {
     const k = `${g.event}:${g.name}`;
     if (seen.has(k) && seen.get(k) !== g.source) { if (!duplicated.includes(g.name)) duplicated.push(g.name); }
     seen.set(k, g.source);
@@ -225,9 +248,9 @@ export function gatesSurvey({ repo, home = HOME, pluginRoot } = {}) {
   const blockingWired = blocking.length;
   return {
     summary: {
-      armed: all.length,
+      armed: combined.length,
       blocking: blockingWired,           // wired entries that can refuse — same unit as `armed`
-      advisory: all.length - blockingWired,
+      advisory: combined.length - blockingWired,
       blockingDistinct: uniqueBlocking,  // distinct gates that can refuse; ≤ blocking when wired twice
       duplicated,                        // wired twice; runs twice
       unregisteredBlocking: unregistered.length, // blocking gates the launcher knows but nothing wires
@@ -237,11 +260,13 @@ export function gatesSurvey({ repo, home = HOME, pluginRoot } = {}) {
       caughtThisWeek: recent.length,
       everRecorded: blocks.length > 0,
     },
-    gates: all.sort((a, b) => Number(b.blocking) - Number(a.blocking)),
+    gates: combined.sort((a, b) => Number(b.blocking) - Number(a.blocking)),
     unregistered,
     git,
     pluginSource: resolved.source,
     pluginPath,
+    state: view.state,
+    errors: view.errors,
     // Newest first — the most recent catch is the one worth reading.
     catches: blocks.slice(-12).reverse(),
     byGate: Object.fromEntries(Object.entries(byGate).map(([k, v]) => [k, v.length])),

@@ -18,6 +18,7 @@ import {
   createRetrospectiveBaselineVerification,
 } from '../../scripts/public-verification-inputs.mjs';
 import { createCorpusReceipt } from '../../scripts/corpus-candidate.mjs';
+import { verifyBundle } from '../../scripts/verify-bundle.mjs';
 import { writeAccuracyReport, writeRecallReport } from '../helpers/corpus-seed-fixture.mjs';
 import { validatePlanAgainstCoverage } from '../../scripts/retrieval-canary.mjs';
 import { writeStoredZip } from '../helpers/zip-fixture.mjs';
@@ -76,6 +77,8 @@ function filesUnder(root, prefix = '') {
 function sealDirectory(root, { version, releaseTag }) {
   const files = filesUnder(root);
   const manifest = { schemaVersion: 1, kind: 'ruvnet-brain-archive-manifest', version, releaseTag,
+    retrievalRuntimeFiles: files.filter((row) => ['forge-ask-all.mjs', 'package.json', 'package-lock.json'].includes(row.path))
+      .map((row) => row.path).sort(),
     fileCount: files.length, totalBytes: files.reduce((sum, row) => sum + row.bytes, 0), files };
   writeJson(path.join(root, 'ARCHIVE-MANIFEST.json'), manifest);
   return manifest;
@@ -118,10 +121,12 @@ function generation(store, sourceCommit, file) {
     sourceCommit, builtUtc: '2026-08-22T00:00:00.000Z', model: 'fixture-model', dimensions: 8 };
 }
 
-function coverageRows(stores) {
+function coverageRows(stores, { artifactRoot = null, sourceCommit = null } = {}) {
   return stores.map((store) => ({ key: `repo:ruvnet/${store}`, kind: 'repository', name: store,
     url: `https://github.com/ruvnet/${store}`, disposition: 'eligible', status: 'CURRENT', reasons: [],
-    upstream: { sha: 'b'.repeat(40) }, artifact: { store, rvfSha256: digest(`rvf:${store}`) } }));
+    upstream: { sha: 'b'.repeat(40) }, artifact: { store,
+      rvfSha256: artifactRoot ? fileId(path.join(artifactRoot, `${store}.big.rvf`)).sha256 : digest(`rvf:${store}`),
+      ...(sourceCommit ? { sourceCommit } : {}) } }));
 }
 
 function enumeration(count) {
@@ -141,6 +146,15 @@ function corpusCoverage(stores) {
   value.coverageGeneration = coverageGenerationFor({ generatorSourceSha: value.generatorSourceSha,
     snapshotRoot: value.snapshotRoot, sourceObservationSha256: value.sourceObservationSha256, rows,
     enumerationReceipt, policyDispositionDigests: [], exemptionDigests: [] });
+  return value;
+}
+
+function rebindCorpusCoverage(value, rows) {
+  value.rows = rows;
+  value.totals = { ...value.totals, rows: rows.length, repositories: rows.filter((row) => row.kind === 'repository').length };
+  value.coverageGeneration = coverageGenerationFor({ generatorSourceSha: value.generatorSourceSha,
+    snapshotRoot: value.snapshotRoot, sourceObservationSha256: value.sourceObservationSha256, rows,
+    enumerationReceipt: value.enumerationReceipt, policyDispositionDigests: [], exemptionDigests: [] });
   return value;
 }
 
@@ -226,7 +240,7 @@ function fixture() {
       generation(store, candidateSha, path.join(candidateRoot, `${store}.big.rvf`))])) };
   const publicLedgerFile = path.join(candidateRoot, 'PUBLIC-RVF-GENERATIONS.json');
   writeJson(publicLedgerFile, publicLedger);
-  const rows = coverageRows(['new', 'old']);
+  const rows = coverageRows(['new', 'old'], { artifactRoot: candidateRoot, sourceCommit: candidateSha });
   const enumerationReceipt = enumeration(2);
   const coverage = { schemaVersion: 1, kind: 'ruvnet-brain-release-coverage', owner: 'ruvnet',
     observedAt: '2026-08-22T00:00:00.000Z', generatorSourceSha: '4'.repeat(64),
@@ -242,8 +256,12 @@ function fixture() {
     policy: { policyDispositionDigests: [], exemptionDigests: [] }, enumerationReceipt, rows,
     totals: { repositories: 2, gists: 0, rows: 2, byStatus: { CURRENT: 2 } } };
   coverage.releaseCoverageGeneration = releaseCoverageGenerationFor(coverage);
+  const candidateCorpus = rebindCorpusCoverage(corpusCoverage(['new', 'old']), rows);
+  writeJson(path.join(candidateRoot, 'CORPUS-COVERAGE.json'), candidateCorpus);
+  coverage.corpusCoverage = { sha256: fileId(path.join(candidateRoot, 'CORPUS-COVERAGE.json')).sha256,
+    coverageGeneration: candidateCorpus.coverageGeneration };
+  coverage.releaseCoverageGeneration = releaseCoverageGenerationFor(coverage);
   writeJson(path.join(candidateRoot, 'COVERAGE.json'), coverage);
-  writeJson(path.join(candidateRoot, 'CORPUS-COVERAGE.json'), corpus);
   sealDirectory(candidateRoot, { version: '9.9.9', releaseTag: 'v9.9.9' });
   const candidateBundle = path.join(root, 'candidate.zip');
   zipDirectory(candidateRoot, candidateBundle);
@@ -465,6 +483,14 @@ describe('createReceiptedBaselineVerification — the new seed-type path (task 3
     });
     writeJson(path.join(bundleDir, 'SOURCE.json'), { builder: 'rvf-kb-forge', stores: { alpha: { sourceCommit } } });
     writeJson(path.join(bundleDir, 'public-store-classes.json'), { schemaVersion: 1, derived: [] });
+    // The hardened receipt reader requires the archive's complete retrieval runtime closure. Keep
+    // the fixture's executable, package manifest, and lockfile inside this manually assembled bundle
+    // so its detached reports carry the same controlled runtime identity as a produced archive.
+    for (const [name, body] of Object.entries({
+      'forge-ask-all.mjs': 'export async function searchAll() { return { results: [] }; }\n',
+      'package.json': JSON.stringify({ name: 'fixture-runtime', type: 'module', version: '1.0.0' }),
+      'package-lock.json': JSON.stringify({ name: 'fixture-runtime', lockfileVersion: 3, packages: {} }),
+    })) fs.writeFileSync(path.join(bundleDir, name), body);
     // Deliberately a DIFFERENT identity domain from the external content-addressed tag derived
     // below — this is the exact conflation the historical retrospective/observed baseline readers
     // had (seed.tag === baselineProof.receipt.releaseTag) and that verifySeedBaseline fixes.
@@ -517,5 +543,29 @@ describe('createReceiptedBaselineVerification — the new seed-type path (task 3
       baselineReceipt: receiptFile,
       outFile: path.join(root, 'baseline-verification-receipt.json'),
     })).rejects.toThrow(/seed bundle sha256/i);
+  });
+
+  it('rejects a changed external receipt and detached archive signature', async () => {
+    const { root, bundle } = await receiptedSeedFixture();
+    const receiptFile = path.join(root, 'corpus-receipt.json');
+    const receipt = await createCorpusReceipt({ bundleFile: bundle, builderSourceSha: 'c'.repeat(40), receiptFile });
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+    const publicFile = path.join(root, 'public.pem');
+    const signatureFile = `${bundle}.sig`;
+    fs.writeFileSync(publicFile, publicKey.export({ type: 'spki', format: 'pem' }));
+    fs.writeFileSync(signatureFile, crypto.sign(null, Buffer.from(receipt.archive.sha256, 'hex'), privateKey));
+    expect(verifyBundle(bundle, signatureFile, publicFile).ok).toBe(true);
+    fs.writeFileSync(signatureFile, Buffer.from('forged'));
+    expect(verifyBundle(bundle, signatureFile, publicFile).ok).toBe(false);
+    const originalReceiptSha = sha(fs.readFileSync(receiptFile));
+    const changed = JSON.parse(fs.readFileSync(receiptFile, 'utf8'));
+    changed.builderSourceSha = 'd'.repeat(40);
+    fs.writeFileSync(receiptFile, `${JSON.stringify(changed, null, 2)}\n`);
+    await expect(createReceiptedBaselineVerification({
+      seedDescriptor: { tag: `corpus-sha256-${receipt.archive.sha256}`, sha256: receipt.archive.sha256,
+        bytes: receipt.archive.bytes, receiptSha256: originalReceiptSha },
+      baselineBundle: bundle, baselineReceipt: receiptFile,
+      outFile: path.join(root, 'changed-baseline.json'),
+    })).rejects.toThrow(/receipt file bytes differ|receipt does not match|builder source/i);
   });
 });

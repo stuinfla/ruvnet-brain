@@ -61,13 +61,11 @@ export default defineConfig({
       // counts files no test ever imports at 0% — that zero is the honest truth, not a regression.
       all: true,
       // ADR-0011 Phase 1: the denominator is ALL first-party source — scripts/, kb/, bin/, and the
-      // shipped plugin MCP server. plugin/test/run-tests.mjs is the plugin's own test battery and
-      // kb/test-guard-injection.mjs is a test script (both run directly in CI), so they are test
-      // code, not source — excluded from the denominator like tests/.
+      // shipped plugin MCP server. Test batteries live outside these source include patterns.
       // The visual console is shipped product code too. Omitting it let source-string assertions
       // look green while the browser behavior itself contributed nothing to the release denominator.
       include: ['scripts/**/*.mjs', 'kb/*.mjs', 'bin/*.mjs', 'plugin/mcp/*.mjs', 'plugin/scripts/**/*.mjs', 'console/**/*.js'],
-      exclude: ['kb/node_modules/**', 'kb/clones/**', 'kb/test-guard-injection.mjs'],
+      exclude: ['kb/node_modules/**', 'kb/clones/**'],
       // json-summary writes coverage/coverage-summary.json, which scripts/claims-verify.mjs's
       // verifyCoverageBadge RE-DERIVES the README badge % from (it no longer string-matches a
       // hardcoded "10%" needle — a gate that can't fail isn't a gate). ADR-0020.

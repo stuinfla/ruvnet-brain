@@ -33,3 +33,12 @@ describe('unavailable project-distillation inverse', () => {
     expect(autoEligibleIds([{ id: 'enable:memory-distillation', scope: 'project' }])).toEqual([]);
   });
 });
+
+
+it('does not turn the manual harness evolution command into an executable console offer', () => {
+  const row = CAPABILITIES.find((item) => item.key === 'harness-evolution');
+  expect(row.turnOn.cmd).toContain('--subcommand evolve');
+  expect(row.turnOn.human).toContain('OPENROUTER_API_KEY');
+  expect(buildCapabilityRecommendations({ capabilities: [{ ...row, state: 'off' }] })).toEqual([]);
+  expect(autoEligibleIds([{ id: 'enable:harness-evolution', scope: 'machine' }])).toEqual([]);
+});

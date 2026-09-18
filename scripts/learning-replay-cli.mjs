@@ -35,6 +35,7 @@ import {
   writeArtifact,
 } from './learning-replay-proof.mjs';
 import { ROOT } from './learning-replay-contract.mjs';
+import { probeClaudeSubscription, probeCodexSubscription } from './subscription-hosts.mjs';
 
 const usage = () => `Usage:
   node scripts/learning-replay.mjs [--trap ${TRAP.MEMORY_SEARCH}|${TRAP.POST_TASK}] [--n N] [--host codex|claude-code] [--model MODEL]
@@ -126,6 +127,16 @@ export async function main(argv = process.argv.slice(2)) {
   if (!premise.ok) {
     writeArtifact(outFile, aggregate([]), { host, model, mutant, trap, task: spec.prompt });
     return EXIT.UNKNOWN;
+  }
+
+  if (!has('--dry-run')) {
+    const subscription = host === 'codex' ? probeCodexSubscription() : probeClaudeSubscription();
+    if (!subscription.eligible) {
+      console.error(`  ${INVARIANT}: UNKNOWN — ${subscription.reason}`);
+      writeArtifact(outFile, aggregate([]), { host, model, mutant, trap, task: spec.prompt, flag: premise, subscription });
+      return EXIT.UNKNOWN;
+    }
+    console.log(`  subscription: VERIFIED (${subscription.auth}${subscription.plan ? `, ${subscription.plan}` : ''})`);
   }
 
   const base = allocateRunBase();

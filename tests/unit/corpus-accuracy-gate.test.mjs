@@ -1,3 +1,8 @@
+import { augmentSourceCoverage } from '../helpers/oracle-source-census-fixture.mjs';
+import { archiveSourceCensus } from '../../scripts/oracle/source-census.mjs';
+import { attestMeasurementReport } from '../../scripts/oracle/measurement-attestation.mjs';
+import { createReceiptedBaselineVerification } from '../../scripts/public-verification-inputs.mjs';
+import { digest } from '../../plugin/scripts/coverage-integrity.mjs';
 // ADR-086 Step 15 — the C3 retrieval-accuracy gate.
 //
 // Dual's proof text names six things that MUST block candidate acceptance and publication:
@@ -18,18 +23,24 @@ import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   HIT_AT_K, QUERY_MODES, meetsThreshold, scoreEvidenceHit, validateAccuracyOracle,
-  validateAccuracyReport, runRetrievalAccuracy, sha256Of,
+  validateAccuracyReport, runRetrievalAccuracy, readAccuracyOracle, sha256Of, attestAccuracyReport, validateDiagnosticMeasurements, readDiagnosticAccuracyReport,
 } from '../../scripts/oracle/retrieval-accuracy.mjs';
-import { createCorpusReceipt, verifyCorpusReceipt } from '../../scripts/corpus-candidate.mjs';
+import { createCorpusReceipt, verifyCorpusReceipt, verifySeedBaseline } from '../../scripts/corpus-candidate.mjs';
 import {
-  accuracyOracle, accuracyReportFor, buildAssets, fixtureReleaseRoot, recallReportFor, seal,
-  sealedCorpusBundle, writeAccuracyReport, SOURCE_COMMIT,
+  attestFixtureRecall, accuracyOracle, accuracyReportFor, buildAssets, fixtureReleaseRoot, recallReportFor, seal,
+  sealedCorpusBundle, writeAccuracyReport, writeRecallReport, SOURCE_COMMIT,
 } from '../helpers/corpus-seed-fixture.mjs';
 import { evaluateGate, tally } from '../../scripts/oracle/repo-recall.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const HEAD = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
 const dirs = [];
+
+function alphaSourceCensus() {
+  const payload={schemaVersion:2,archiveStores:['alpha'],excludedDerived:[],kind:'ruvnet-brain-oracle-archive-source-census',coverageSha256:'d'.repeat(64),
+    corpusCoverageSha256:'e'.repeat(64),partitions:[{id:'alpha',kind:'repository',store:'alpha',sourceCommit:SOURCE_COMMIT}]};
+  return {...payload,censusSha256:digest(payload)};
+}
 
 afterEach(() => {
   while (dirs.length) fs.rmSync(dirs.pop(), { recursive: true, force: true });
@@ -98,6 +109,37 @@ function answeringSearch({ hitFor = () => true, timeoutFor = () => false, throwF
     return { timedOut: false, results: [{ store: label.partition, path: label.sourcePath, text: `... ${label.span} ...` }] };
   };
 }
+
+describe('diagnostic measurement integrity',()=>{
+  function report(){const bundle=path.join(temp(),'fixture.zip');fs.writeFileSync(bundle,'fixture');return accuracyReportFor(bundle,{successes:0});}
+  it('retains an honest below-threshold measurement',()=>{
+    const value=report(); expect(value.state).toBe('FAIL'); expect(validateDiagnosticMeasurements(value)).toBe(value);
+  });
+  it('retains zero-question attempted partitions as explicitly unmeasured',()=>{
+    const value=report();
+    for(const row of value.partitions)Object.assign(row,{n:0,successes:0,failures:0,errors:0,timeouts:0,sampled:true,state:'NOT-MEASURED'});
+    Object.assign(value.totals,{n:0,successes:0,failures:0,errors:0,timeouts:0});
+    Object.assign(value.coverage,{complete:false,bounded:{reasons:['no measured questions']},uncoveredArchiveStores:['alpha']});
+    expect(validateDiagnosticMeasurements(value)).toBe(value);
+    expect(()=>validateDiagnosticMeasurements({...value,coverage:{...value.coverage,complete:true,bounded:null}})).toThrow(/complete coverage/);
+  });
+  it('rejects denominator shrinkage and identity drift between modes',()=>{
+    const value=report();
+    const shrunk=structuredClone(value); for(const row of shrunk.partitions)Object.assign(row,{n:1,failures:1});
+    Object.assign(shrunk.totals,{n:2,failures:2});
+    expect(()=>validateDiagnosticMeasurements(shrunk)).toThrow(/denominator/);
+    const drift=structuredClone(value);drift.partitions[1].sourceCommit='f'.repeat(40);
+    expect(()=>validateDiagnosticMeasurements(drift)).toThrow(/differs between modes/);
+  });
+  it('rejects an empty report envelope and fabricated measurement totals',()=>{
+    const value=report();
+    expect(()=>validateDiagnosticMeasurements({...value,partitions:[]})).toThrow(/no valid measurements/);
+    expect(()=>validateDiagnosticMeasurements({...value,totals:{...value.totals,n:999}})).toThrow(/total n/);
+    expect(()=>validateDiagnosticMeasurements({...value,state:'PASS'})).toThrow(/state differs/);
+    expect(()=>validateDiagnosticMeasurements({...value,partitions:[...value.partitions,value.partitions[0]]})).toThrow(/repeats/);
+    expect(()=>validateDiagnosticMeasurements({...value,coverage:{...value.coverage,unmeasuredPartitions:['missing']}})).toThrow(/coverage/);
+  });
+});
 
 describe('C3 metric and threshold arithmetic', () => {
   it('compares 20 x successes >= 19 x N as exact integers — it never rounds a near miss up', () => {
@@ -234,10 +276,11 @@ describe('ADR-086:248 denominator: N = 2 x min(100, U), fixed by the unit invent
     schemaVersion: 1,
   });
 
-  it('accepts a compliant oracle and classifies it as C3-eligible', () => {
+  it('retains v2 accounting but requires source and authenticated judge proof for C3', () => {
     const v = read(writeOracle(temp(), accuracyOracle()));
-    expect(v.c3Eligible).toBe(true);
-    expect(v.classification).toBe('c3-acceptance');
+    expect(v.c3Eligible).toBe(false);
+    expect(v.classification).toBe('diagnostic');
+    expect(v.hasUnitAccounting).toBe(true);
   });
 
   it('still reads a legacy schema-1 oracle, but ONLY as a diagnostic benchmark', () => {
@@ -385,6 +428,13 @@ describe('the benchmark measures the extracted final archive and marks bounded r
     expect(report.state).toBe('FAIL'); // a bounded run is never presentable as a corpus-wide pass
   });
 
+  it.each([undefined, {}, {results:[{store:'alpha',path:'README.md'}]}])('counts malformed search responses as execution errors', async response => {
+    const dir=temp(); const assets=await buildAssets(dir); const bundle=seal(dir,assets,{accuracy:null});
+    const {partitions,labels}=accuracyOracle(); const oracleFile=writeOracle(dir,{partitions,labels});
+    const {report}=await runRetrievalAccuracy({bundleFile:bundle,oracleFile,outFile:path.join(dir,'bad.json'),search:async()=>response});
+    expect(report.totals.errors).toBe(report.totals.n); expect(report.totals.successes).toBe(0);
+  });
+
   it('MUST BLOCK: a shipped store with no oracle partition leaves the run incomplete', async () => {
     const dir = temp();
     const bundleDir = await buildAssets(dir);
@@ -407,12 +457,47 @@ describe('the benchmark measures the extracted final archive and marks bounded r
 describe('validateAccuracyReport re-derives every number rather than trusting the report', () => {
   const archive = { file: 'ruvnet-brain.zip', sha256: 'a'.repeat(64), bytes: 10 };
   const report = (overrides = {}) => {
-    const base = accuracyReportFor(__filename); // placeholder archive identity, replaced below
+    const base = accuracyReportFor(__filename,{oracleSha256:'b'.repeat(64),generatorSha256:'e'.repeat(64)}); // placeholder archive identity, replaced below
     return { ...base, archive, ...overrides };
   };
 
-  it('accepts a complete, all-PASS report bound to the archive', () => {
-    expect(() => validateAccuracyReport({ report: report(), archive })).not.toThrow();
+  const keys = crypto.generateKeyPairSync('ed25519');
+  const privateKey = keys.privateKey.export({ format: 'pem', type: 'pkcs8' });
+  const publicKey = keys.publicKey.export({ format: 'pem', type: 'spki' });
+  const trust = { trustedReportPublicKey: publicKey, expectedSourceEvidenceSha256: 'a'.repeat(64),
+    expectedOracleSha256: 'b'.repeat(64), expectedGeneratorSha256: 'e'.repeat(64) };
+  const qualifiedReport = () => {
+    const value = report();
+    value.coverage.sourceCensus=alphaSourceCensus();
+    value.qualification = { schemaVersion: 1, kind: 'ruvnet-brain-oracle-source-qualification',
+      sourceEvidenceSha256: trust.expectedSourceEvidenceSha256, trustedProductionKeyId: 'c'.repeat(64),
+      partitions: [{ id: 'alpha', store: 'alpha', repo: 'alpha', commit: SOURCE_COMMIT,
+        inventoryDigest: 'd'.repeat(64), labelsDigest: 'e'.repeat(64), keyId: 'c'.repeat(64), U: 10, selectedUnits: 10 }] };
+    return attestAccuracyReport(value, privateKey);
+  };
+  it('requires trusted attestation and exact source qualification for a complete report', () => {
+    expect(() => validateAccuracyReport({ report: qualifiedReport(), archive, ...trust })).not.toThrow();
+    expect(() => validateAccuracyReport({ report: report(), archive })).toThrow(/external trusted report key/);
+    expect(() => validateAccuracyReport({ report: qualifiedReport(), archive, ...trust,
+      expectedSourceEvidenceSha256: 'f'.repeat(64) })).toThrow(/source qualification/);
+    const changed = qualifiedReport(); changed.createdAt = 'forged';
+    expect(() => validateAccuracyReport({ report: changed, archive, ...trust })).toThrow(/attestation/);
+  });
+  it('rejects invented completeness even when omission arrays are empty', () => {
+    const changed = qualifiedReport(); changed.coverage.archiveStores.push('omitted');
+    expect(() => validateAccuracyReport({ report: changed, archive, ...trust })).toThrow(/partition set differ/);
+    const totals = qualifiedReport(); totals.totals.successes += 2;
+    expect(() => validateAccuracyReport({ report: totals, archive, ...trust })).toThrow(/total successes/);
+    const source = qualifiedReport(); source.qualification.partitions.push({ ...source.qualification.partitions[0], id: 'missing', store: 'missing' });
+    expect(() => validateAccuracyReport({ report: attestAccuracyReport(source, privateKey), archive, ...trust })).toThrow(/measured partitions differ/);
+  });
+  it('rejects one aggregate partition pretending to cover every gist',()=>{
+    const value=qualifiedReport();
+    const payload={...alphaSourceCensus(),archiveStores:['alpha','ruv-gists'],partitions:[...alphaSourceCensus().partitions,
+      {id:`gist:${'f'.repeat(32)}`,kind:'gist',store:'ruv-gists',sourceCommit:'a'.repeat(40)}]};
+    delete payload.censusSha256;
+    value.coverage.sourceCensus={...payload,censusSha256:digest(payload)};
+    expect(()=>validateAccuracyReport({report:attestAccuracyReport(value,privateKey),archive,...trust})).toThrow(/source census partitions are missing/);
   });
 
   it('MUST BLOCK: an altered archive breaks the binding', () => {
@@ -491,6 +576,69 @@ describe('corpus receipt schema 3 binds the detached accuracy report', () => {
     await expect(verifyCorpusReceipt({ bundleFile: bundle, receiptFile })).resolves.toBeTruthy();
   });
 
+  it.each(['oracle', 'generator', 'runtime'])('requires standalone diagnostic %s identity', async (field) => {
+    const { bundle, receiptFile } = await sealed();
+    const report = JSON.parse(fs.readFileSync(`${bundle}.accuracy.json`,'utf8'));
+    if (field === 'oracle') report.oracle.sha256 = '0'.repeat(64);
+    if (field === 'generator') report.generator.retrievalAccuracySha256 = '0'.repeat(64);
+    if (field === 'runtime') delete report.runtime;
+    fs.writeFileSync(`${bundle}.accuracy.json`,JSON.stringify(report));
+    expect(()=>readDiagnosticAccuracyReport({reportFile:`${bundle}.accuracy.json`,archive:report.archive})).toThrow(/oracle|generator|runtime/);
+    await expect(createCorpusReceipt({bundleFile:bundle,receiptFile,builderSourceSha:'a'.repeat(40)})).rejects.toThrow(/oracle|generator|runtime/);
+  });
+
+  it('rejects self-consistent diagnostic scope that names a different physical store', async () => {
+    const { bundle, receiptFile } = await sealed();
+    const report=JSON.parse(fs.readFileSync(`${bundle}.accuracy.json`,'utf8'));
+    report.coverage.archiveStores=['invented'];
+    report.partitions.forEach(row=>{row.store='invented';row.partition='invented';});
+    fs.writeFileSync(`${bundle}.accuracy.json`,JSON.stringify(report));
+    expect(()=>validateDiagnosticMeasurements(report)).not.toThrow();
+    await expect(createCorpusReceipt({bundleFile:bundle,receiptFile,builderSourceSha:'a'.repeat(40)})).rejects.toThrow(/scope differs/);
+  });
+
+  it('rejects omitted same-store oracle partitions even with self-consistent totals and no census', async () => {
+    const { bundle } = await sealed();
+    const first = accuracyOracle();
+    const second = structuredClone(first);
+    second.partitions[0].partition = 'alpha-other-source';
+    second.labels.forEach(row => { row.partition = 'alpha-other-source'; row.id = `other-${row.id}`; });
+    const oracleFile = writeOracle(temp(), { partitions: [...first.partitions, ...second.partitions], labels: [...first.labels, ...second.labels] });
+    const oracle = readAccuracyOracle(oracleFile);
+    const report = accuracyReportFor(bundle, { oracleSha256: oracle.sha256 });
+    report.oracle = { ...report.oracle, bytes: oracle.bytes, labelsSha256: oracle.labelsSha256, partitionsSha256: oracle.partitionsSha256 };
+    const file = `${bundle}.accuracy.json`;
+    // The omitted partition shares the same physical store; archive store equality cannot catch it.
+    expect(() => validateDiagnosticMeasurements(report)).not.toThrow();
+    fs.writeFileSync(file, JSON.stringify(report));
+    expect(() => readDiagnosticAccuracyReport({ reportFile: file, archive: report.archive,
+      oracleFile, expectedOracleSha256: oracle.sha256 })).toThrow(/external oracle partition/);
+    report.coverage.oraclePartitions = 2;
+    report.coverage.unmeasuredPartitions = ['alpha-other-source'];
+    report.coverage.complete = false;
+    report.coverage.bounded = { reasons: ['one partition not measured'], sampleLimit: null };
+    report.state = 'FAIL';
+    fs.writeFileSync(file, JSON.stringify(report));
+    expect(readDiagnosticAccuracyReport({ reportFile: file, archive: report.archive,
+      oracleFile, expectedOracleSha256: oracle.sha256 }).c3Eligible).toBe(false);
+  });
+
+  it('reverifies historical evaluator identity only with an external receipt pin', async () => {
+    const { bundle, receiptFile } = await sealed();
+    const historicalGenerator = '9'.repeat(64);
+    writeAccuracyReport(bundle, { generatorSha256: historicalGenerator });
+    await createCorpusReceipt({ bundleFile: bundle, receiptFile, builderSourceSha: HEAD,
+      expectedGeneratorSha256: historicalGenerator });
+    await expect(verifyCorpusReceipt({ bundleFile: bundle, receiptFile })).rejects.toThrow(/different benchmark generator/);
+    const historical = JSON.parse(fs.readFileSync(receiptFile));
+    historical.generator.corpusCandidateSha256 = '8'.repeat(64);
+    fs.writeFileSync(receiptFile, JSON.stringify(historical));
+    await expect(verifyCorpusReceipt({ bundleFile: bundle, receiptFile,
+      expectedReceiptSha256: sha256Of(fs.readFileSync(receiptFile)) })).resolves.toBeTruthy();
+    await expect(verifyCorpusReceipt({ bundleFile: bundle, receiptFile,
+      expectedReceiptSha256: '0'.repeat(64) })).rejects.toThrow(/receipt file bytes/);
+  });
+
   it('MUST BLOCK: a missing accuracy report cannot be sealed', async () => {
     const { bundle, receiptFile } = await sealed({ accuracy: null });
     await expect(createCorpusReceipt({
@@ -531,7 +679,7 @@ describe('corpus receipt schema 3 binds the detached accuracy report', () => {
   it('a bounded C3 report no longer blocks, but its state is recorded on the receipt', async () => {
     const { bundle, receiptFile } = await sealed({ accuracy: null });
     writeAccuracyReport(bundle, {
-      overrides: { coverage: { complete: false, bounded: { reasons: ['--stores 2'] }, archiveStores: ['alpha'], unmeasuredPartitions: [], uncoveredArchiveStores: [] } },
+      overrides: { state:'FAIL', coverage: { complete: false, bounded: { reasons: ['--stores 2'] }, archiveStores: ['alpha'], oraclePartitions:1, measuredPartitions:1, emptySources:[], unmeasuredPartitions: [], uncoveredArchiveStores: [] } },
     });
     const receipt = await createCorpusReceipt({
       bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40), createdAt: '2026-09-14T00:00:00.000Z',
@@ -547,10 +695,10 @@ describe('corpus receipt schema 3 binds the detached accuracy report', () => {
     const short = recallReportFor(bundle);
     short.rows = short.rows.slice(0, -1);
     short.totals = tally(short.rows);
-    fs.writeFileSync(`${bundle}.recall.json`, `${JSON.stringify(short, null, 2)}\n`);
+    fs.writeFileSync(`${bundle}.recall.json`, `${JSON.stringify(attestFixtureRecall(short), null, 2)}\n`);
     await expect(createCorpusReceipt({
       bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40), createdAt: '2026-09-14T00:00:00.000Z',
-    })).rejects.toThrow(/integrity FAILED: asked \d+ of \d+/i);
+    })).rejects.toThrow(/rows do not exactly match the frozen fixture/i);
   });
 
   it('MUST BLOCK: a missing repo-recall report cannot be sealed', async () => {
@@ -627,6 +775,7 @@ process.exit(0);
     const receiptFile = path.join(dir, 'corpus-receipt.json');
     const receipt = await createCorpusReceipt({
       bundleFile: bundle, receiptFile, builderSourceSha: HEAD, createdAt: '2026-09-14T00:00:00.000Z',
+      expectedOracleSha256: fixtureRoot.oracleSha256, expectedGeneratorSha256: fixtureRoot.generatorSha256,
     });
     const env = {
       ...process.env,
@@ -727,5 +876,90 @@ process.exit(0);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/committed retrieval-accuracy oracle is missing/i);
     expect(f.ghCalls()).toHaveLength(0);
+  });
+});
+
+describe('source-qualified accuracy consumers', () => {
+  function qualifiedReport(bundle, sourceEvidenceSha256, privateKey, sourceCensus) {
+    const report = accuracyReportFor(bundle, {
+      oracleSha256:'b'.repeat(64),generatorSha256:'e'.repeat(64),
+      overrides: {
+        qualification: {
+          schemaVersion: 1,
+          kind: 'ruvnet-brain-oracle-source-qualification',
+          trustedProductionKeyId: 'f'.repeat(64),
+          sourceEvidenceSha256,
+          partitions: [{
+            id: 'alpha', store: 'alpha', repo: 'ruvnet/alpha', commit: SOURCE_COMMIT,
+            inventoryDigest: '1'.repeat(64), labelsDigest: '2'.repeat(64), keyId: 'f'.repeat(64),
+            U: 10, selectedUnits: 10,
+          }],
+        },
+      },
+    });
+    report.coverage.sourceCensus=sourceCensus;
+    return attestAccuracyReport(report, privateKey);
+  }
+
+  async function strictFixture() {
+    const dir = temp('strict-accuracy-');
+    const bundleDir = await buildAssets(dir);
+    augmentSourceCoverage(bundleDir);
+    const census=archiveSourceCensus(bundleDir);
+    const bundle = seal(dir, bundleDir, { accuracy: null });
+    writeRecallReport(bundle);
+    const sourceEvidenceFile = path.join(dir, 'source-evidence.json');
+    fs.writeFileSync(sourceEvidenceFile, JSON.stringify({ alpha: { commit: SOURCE_COMMIT, U: 10 } }, null, 2));
+    const sourceEvidenceSha256 = digest(JSON.parse(fs.readFileSync(sourceEvidenceFile, 'utf8')));
+    const keys = crypto.generateKeyPairSync('ed25519');
+    const publicKey = keys.publicKey.export({ type: 'spki', format: 'pem' });
+    const privateKey = keys.privateKey.export({ type: 'pkcs8', format: 'pem' });
+    const recallFile = `${bundle}.recall.json`;
+    const recall = JSON.parse(fs.readFileSync(recallFile, 'utf8'));
+    delete recall.attestation;
+    recall.attestation = attestMeasurementReport(recall, keys.privateKey);
+    fs.writeFileSync(recallFile, `${JSON.stringify(recall, null, 2)}\n`);
+    const reportFile = `${bundle}.accuracy.json`;
+    fs.writeFileSync(reportFile, `${JSON.stringify(qualifiedReport(bundle, sourceEvidenceSha256, privateKey,census), null, 2)}\n`);
+    const receiptFile = path.join(dir, 'receipt.json');
+    const args = {
+      bundleFile: bundle, receiptFile, builderSourceSha: 'a'.repeat(40),
+      trustedReportPublicKey: publicKey, expectedSourceEvidenceSha256: sourceEvidenceSha256,
+      expectedOracleSha256: 'b'.repeat(64), expectedGeneratorSha256: 'e'.repeat(64),
+    };
+    return { ...args, sourceEvidenceFile, publicKey, keys, receipt: await createCorpusReceipt(args) };
+  }
+
+  it('accepts a signed source-qualified report through receipt and baseline consumers', async () => {
+    const fixture = await strictFixture();
+    await expect(verifyCorpusReceipt(fixture)).resolves.toBeTruthy();
+    await expect(createReceiptedBaselineVerification({
+      seedDescriptor:{tag:`corpus-sha256-${fixture.receipt.archive.sha256}`,sha256:fixture.receipt.archive.sha256},
+      baselineBundle:fixture.bundleFile,baselineReceipt:fixture.receiptFile,
+      outFile:path.join(path.dirname(fixture.receiptFile),'public-baseline.json'),
+      accuracyVerification:{trustedReportPublicKey:fixture.publicKey,expectedSourceEvidenceSha256:fixture.expectedSourceEvidenceSha256,
+        expectedOracleSha256:'b'.repeat(64),expectedGeneratorSha256:'e'.repeat(64)},
+    })).resolves.toBeTruthy();
+    await expect(verifySeedBaseline({
+      seedDescriptor: { tag: `corpus-sha256-${fixture.receipt.archive.sha256}`, sha256: fixture.receipt.archive.sha256 },
+      bundleFile: fixture.bundleFile, receiptFile: fixture.receiptFile,
+      accuracyReportFile: `${fixture.bundleFile}.accuracy.json`, recallReportFile: `${fixture.bundleFile}.recall.json`,
+      trustedReportPublicKey: fixture.publicKey, expectedSourceEvidenceSha256: fixture.expectedSourceEvidenceSha256,
+      expectedOracleSha256: 'b'.repeat(64), expectedGeneratorSha256: 'e'.repeat(64),
+    })).resolves.toBeTruthy();
+  });
+
+  it('rejects changed report bytes, source evidence digest, and trusted key', async () => {
+    const fixture = await strictFixture();
+    fs.appendFileSync(`${fixture.bundleFile}.accuracy.json`, '\n');
+    await expect(verifyCorpusReceipt(fixture)).rejects.toThrow(/does not match the exact corpus archive contents/i);
+    const clean = await strictFixture();
+    const changedEvidence = path.join(path.dirname(clean.sourceEvidenceFile), 'changed.json');
+    fs.writeFileSync(changedEvidence, JSON.stringify({ changed: true }));
+    await expect(verifyCorpusReceipt({ ...clean, expectedSourceEvidenceSha256: digest({ changed: true }) }))
+      .rejects.toThrow(/source qualification|source evidence/i);
+    const other = crypto.generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' });
+    await expect(verifyCorpusReceipt({ ...clean, trustedReportPublicKey: other }))
+      .rejects.toThrow(/attestation|signature/i);
   });
 });

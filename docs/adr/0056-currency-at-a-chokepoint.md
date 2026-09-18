@@ -3,9 +3,9 @@ id: ADR-056
 title: Pay the debt, then wire the gate — document currency without a ratchet
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-12
-version: 1.2.0
-reviewed_digest: 04d3acc31aa9
+updated: 2026-09-17
+version: 1.2.1
+reviewed_digest: a61362111ccb
 impl: wired
 governs:
   - scripts/wired-check.mjs
@@ -21,7 +21,7 @@ relates: [ADR-034, ADR-024, ADR-037, ADR-009, ADR-020]
 # ADR-056: Pay the debt, then wire the gate
 
 **Status**: Proposed
-**Date**: 2026-07-27 · **Last updated**: 2026-09-05 · **Why**: shared currency findings and opt-in
+**Date**: 2026-07-27 · **Last updated**: 2026-09-17 · **Why**: shared currency findings and opt-in
 managed stamps now have explicit source-bound behavior; historical design review remains in §Duel.
 **Implementation**: wired (DERIVED, not claimed — §§1, 2, 5, 7 are built, wired and tested; §8's
 session-start notice is not established by this review) · **Verified in sync**: never
@@ -343,6 +343,8 @@ Both models credited exactly one section of v1 as correct and correctly-sized: *
 fix** — which is the one section that was already built.
 
 ## Currency log
+
+| 2026-09-17 | Re-read all 4 governed currency paths: wired-check reachability, digest resolution, pre-push enforcement, and managed stamp behavior. The Proposed decision still distinguishes source examination from semantic approval and keeps session-start notification unproven. Source-bound review digest `a61362111ccb`. | scripts/wired-check.mjs; scripts/doc-currency.mjs; scripts/git-hooks/pre-push; plugin/scripts/md-stamp.mjs |
 
 | 2026-09-12 | Currency review at commit b593a92b: decision unchanged, and the gate is stronger — `scripts/wired-check.mjs` now excludes `.claude/worktrees/` from the caller search (`b593a92b`, test-first: two of three assertions red on the old code). The defect it removes is the one this document exists to prevent: with any agent worktree present, the worktree's full repository copy was counted as a caller, so `handoff-asset` read `wired` while invoked by nothing and the entire MANUAL class read 0 — a green gate that was measuring a copy of the repo instead of the repo. `--check` with no worktree present is unchanged (261 wired · 7 manual · 56 exempt · 4 held · 0 UNWIRED), which is the point: the fix changes nothing about the real tree, only stops the pollution. | Reviewed `scripts/wired-check.mjs`; `scripts/doc-currency.mjs`, `scripts/git-hooks/pre-push`, `plugin/scripts/md-stamp.mjs` did not move. reviewed_digest 04d3acc31aa9. |
 | 2026-09-11 | Currency review at commit c7418a77: decision unchanged. `scripts/wired-check.mjs` moved once more after the 7296c984 review: `c7418a77` adds a STANDALONE declaration for `scripts/handoff-asset.mjs` (a human-run client handoff per docs/CLIENT-ASSET-HANDOFF.md, added 32b7b7ca with the TriSmart sub-product). It was the one UNWIRED module the first worktree-free run of the day surfaced — while agent worktrees existed under `.claude/worktrees/`, their `package.json` copies were counted as callers, hiding it and the entire MANUAL class (7 tools). No predicate or search-set change in this commit; the search-set pollution is pre-existing (85f584b2's wired-check reports the same worktree callers on the same tree) and is the next thing this document should govern. `--check`: 261 wired · 7 manual · 56 exempt · 4 held · 0 UNWIRED. | Reviewed `scripts/wired-check.mjs`; `scripts/doc-currency.mjs`, `scripts/git-hooks/pre-push`, `plugin/scripts/md-stamp.mjs` did not move. reviewed_digest 0fb32c7b7ff0. |

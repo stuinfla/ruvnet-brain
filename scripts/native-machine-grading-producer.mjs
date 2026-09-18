@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createIndependentReviewReceipt } from './independent-review-receipt.mjs';
 import { runSubscriptionHost, validateStageValue } from './dual-host-deliberation.mjs';
 import { probeSubscriptionHosts } from './subscription-hosts.mjs';
+import { nativeReviewEvidenceDigest, writeNativeEvidenceSidecar } from './native-review-evidence.mjs';
 
 const REVIEWERS = Object.freeze({
   'claude-fable-5-1': { keyEnv: 'RUVNET_FABLE_REVIEW_SIGNING_KEY', host: 'claude-code', provider: 'firstParty' },
@@ -29,7 +30,7 @@ export function produceNativeMachineGrade({ input, reviewer, signingKey } = {}) 
   return receipt;
 }
 
-export async function produceFromNativeHost({ input, reviewer, signingKey, cwd = process.cwd(), runHost = runSubscriptionHost } = {}) {
+export async function produceFromNativeHost({ input, reviewer, signingKey, cwd = process.cwd(), runHost = runSubscriptionHost, onEvidence = null } = {}) {
   const policy = REVIEWERS[reviewer];
   if (!policy) throw new Error('reviewer is not an adopted native identity');
   if (input.artifactPath) {
@@ -47,19 +48,36 @@ export async function produceFromNativeHost({ input, reviewer, signingKey, cwd =
   if (!result?.ok || !result.value || typeof result.value !== 'object' || Array.isArray(result.value)) {
     throw new Error('native reviewer did not return a structured machine-grade judgment');
   }
+  if (!result.extra?.evidence || typeof result.extra.canonicalDigest !== 'string'
+    || !/^[a-f0-9]{64}$/.test(result.extra.canonicalDigest)
+    || nativeReviewEvidenceDigest(result.extra.evidence) !== result.extra.canonicalDigest) {
+    throw new Error('native reviewer transport evidence is missing or tampered');
+  }
   try { validateStageValue('review', result.value); } catch (error) { throw new Error(`native reviewer judgment is invalid: ${error.message}`); }
   if (result.value.artifactSha256 !== input.artifactSha256 || !result.value.execution
     || result.value.execution.nativeHost !== policy.host || result.value.execution.subscriptionAuthenticated !== true
-    || typeof result.value.execution.invocationDigest !== 'string') {
+    || result.value.execution.requestedModel !== reviewer || result.value.execution.modelIdentityClass !== 'requested-only'
+    || (policy.host === 'codex' ? (!result.value.execution.threadId || result.value.execution.sessionId !== null)
+      : (!result.value.execution.sessionId || result.value.execution.threadId !== null))
+    || result.value.execution.invocationDigest !== result.extra.canonicalDigest) {
     throw new Error('native reviewer judgment is not bound to the requested review artifact');
+  }
+  const evidence = result.extra.evidence;
+  if (evidence.nativeHost !== policy.host || evidence.requestedModel !== reviewer
+    || evidence.modelIdentityClass !== result.value.execution.modelIdentityClass
+    || evidence.threadId !== (result.value.execution.threadId ?? null)
+    || evidence.sessionId !== (result.value.execution.sessionId ?? null)) {
+    throw new Error('native reviewer transport identity differs from execution provenance');
   }
   const judgmentKeys = ['deductions', 'findings', 'retrievalOracleReview', 'score', 'untested', 'verdict', 'reviewedAt'];
   const judgment = { ...input, ...Object.fromEntries(judgmentKeys
     .filter((key) => Object.hasOwn(result.value, key)).map((key) => [key, result.value[key]])),
     id: reviewer, model: reviewer, provider: policy.provider,
-    execution: result.value.execution };
+    execution: { ...result.value.execution, invocationDigest: result.extra.canonicalDigest } };
   delete judgment.artifactPath;
-  return produceNativeMachineGrade({ input: judgment, reviewer, signingKey });
+  const receipt = produceNativeMachineGrade({ input: judgment, reviewer, signingKey });
+  if (typeof onEvidence === 'function') onEvidence(result.extra.evidence);
+  return receipt;
 }
 
 export async function main(args = process.argv.slice(2), env = process.env) {
@@ -70,7 +88,9 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     if (!input.artifactPath || !input.sourceTree) throw new Error('review artifact path and source tree are required');
     const cwd = arg(args, '--cwd') || process.cwd();
     const actualSource = execFileSync('git', ['-C', cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-    if (actualSource !== input.sourceTree) throw new Error('review source tree differs from requested subject');
+    if (actualSource !== input.sourceSha) throw new Error('review source commit differs from requested subject');
+    const actualTree = execFileSync('git', ['-C', cwd, 'rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim();
+    if (actualTree !== input.sourceTree) throw new Error('review source tree differs from requested subject');
     if (execFileSync('git', ['-C', cwd, 'status', '--porcelain'], { encoding: 'utf8' }).trim()) {
       throw new Error('review source tree is dirty');
     }
@@ -78,8 +98,18 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     if (!policy) throw new Error('reviewer is not an adopted native identity');
     const probe = probeSubscriptionHosts()[policy.host === 'claude-code' ? 'claude' : 'codex'];
     if (!probe?.eligible) throw new Error(`${policy.host} subscription authentication is not verified`);
-    const receipt = await produceFromNativeHost({ input, reviewer, signingKey: env[policy.keyEnv], cwd });
-    fs.writeFileSync(path.resolve(outFile), `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    let evidence;
+    const receipt = await produceFromNativeHost({ input, reviewer, signingKey: env[policy.keyEnv], cwd,
+      onEvidence: (value) => { evidence = value; } });
+    const evidenceFile = `${path.resolve(outFile)}.native-evidence.json`;
+    if (fs.existsSync(path.resolve(outFile))) throw new Error('review receipt already exists');
+    writeNativeEvidenceSidecar(evidenceFile, evidence);
+    try {
+      fs.writeFileSync(path.resolve(outFile), `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    } catch (error) {
+      try { fs.rmSync(evidenceFile, { force: true }); } catch { /* preserve original failure */ }
+      throw error;
+    }
     process.stdout.write(`${JSON.stringify({ verdict: receipt.verdict, reviewer, receiptSha256: receipt.receiptSha256 })}\n`);
     return 0;
   } catch (error) { process.stderr.write(`native-machine-grading-producer: ${error.message}\n`); return 1; }

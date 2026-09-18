@@ -1,39 +1,25 @@
 #!/usr/bin/env node
 /**
- * scripts/oracle/repo-recall.mjs — the BLOCKING retrieval gate for a corpus release.
+ * Repository availability and exact-file retrieval diagnostics over the frozen fixture.
+ * Availability and execution integrity block release: every question must run without error,
+ * every repository must return its own content, and rows must exactly match the external fixture.
+ * The exact-file Hit@5 floor is informational under ADR-086's 2026-09-15 amendment. Both the CLI
+ * and report consumers use validateRecallReport for this policy. Neither a low score nor a changed
+ * fixture silently becomes C3 evidence: the original per-source evidence-supporting Hit@5 contract
+ * is separate, and diagnostic publication does not demonstrate that contract.
  *
- * WHAT THIS REPLACES, AND WHY THAT IS A REDUCTION, NOT A PASS.
- * ADR-086's C3 asked for >= 95% Hit@5 PER REPOSITORY over N = 2 x min(100, U) questions that are
- * mechanically templated from sampled source spans. Measured against the real 4.3.25 archive it
- * returns 680/1152 = 59.0%, classified `diagnostic` / c3Eligible:false. Two hypotheses for that
- * number were tested and BOTH DISPROVED: ef_search is irrelevant (identical at 100/256/512) and the
- * labels are valid (commits match, sampled spans present in the corpus). C3 is therefore not
- * demonstrated, and nothing in this module demonstrates it.
- *
- * This gate measures a NARROWER, checkable promise: every repository in the archive answers a real
- * human question about itself out of its own content, and the labeled file keeps appearing in the
- * top 5 at no worse a rate than the last accepted release. The Astra/Astra Dual deliberation
- * (2026-09-15, cross-vendor independence ABSENT and disclosed) was explicit about the status of
- * that swap: "Legitimate as an openly acknowledged reduction and redefinition of release
- * requirements. It is instrument-shopping if presented as satisfying C3 or providing equivalent
- * evidence for the original accuracy promise." So the report this module emits carries BOTH
- * measurements, and every field is named so it cannot be read as more than it is.
- *
- * THE RATCHET IS THE TEETH. A coverage-only gate would pass an archive whose ranking had collapsed,
- * because a store returning any of its own passages still "covers" its repository. The committed
- * floor in data/repo-recall-floor.json forbids that: Hit@5 may rise freely and may never fall. A
- * candidate at 175/194 is REFUSED even with perfect coverage and a better machine-oracle score.
- *
- * Fixture: data/retrieval-query-evidence.json — 194 questions, one per repository, written before
- * this gate existed (sourceCommit 149b290c) and frozen by digest here, so the instrument cannot be
- * quietly edited to make a candidate pass.
+ * Question text, source paths and source passage identities are sealed by loadFixture. The report
+ * cannot choose its own fixture file or question count. The measured runtime is the shipped search
+ * closure, verified against the checkout before loading its installed dependencies.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { extractZip } from '../../kb/zip-extract.mjs';
+import { loadArchiveSearch } from './search-runtime.mjs';
+import { attestMeasurementReport, verifyMeasurementReport } from './measurement-attestation.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -43,6 +29,7 @@ export const FLOOR_KIND = 'ruvnet-brain-repo-recall-floor';
 export const DEFAULT_FIXTURE_FILE = 'data/retrieval-query-evidence.json';
 export const DEFAULT_FLOOR_FILE = 'data/repo-recall-floor.json';
 export const DEFAULT_K = 5;
+export const DEFAULT_QUERY_TIMEOUT_MS = 30_000;
 /**
  * WITHDRAWN AS A BLOCKING BAR, 2026-09-15, hours after it was written.
  *
@@ -55,7 +42,7 @@ export const DEFAULT_K = 5;
  * Retrieval quality on the release path is already measured, through a real installed host, by
  * scripts/retrieval-canary.mjs (recallAt10 >= 0.98 over the sealed plan). A second, differently
  * scoped, differently thresholded instrument on the same property did not add safety; it added a
- * failure mode. So this module now RECORDS and never REFUSES, and 0 is the floor it reports.
+ * failure mode. The ranking floor is recorded rather than enforced; availability and execution integrity remain blocking. Zero is the fallback floor.
  */
 export const ABSOLUTE_FLOOR = 0;
 
@@ -119,7 +106,7 @@ export function validateFloor(floor) {
 
 export function readFloor(floorFile) {
   const resolved = path.resolve(floorFile || path.join(ROOT, DEFAULT_FLOOR_FILE));
-  if (!fs.existsSync(resolved)) fail(`recall floor missing (${resolved}). A corpus release may not be accepted without the ratchet it must not regress below.`);
+  if (!fs.existsSync(resolved)) fail(`recall floor missing (${resolved}). No committed ranking floor is available for this diagnostic.`);
   let parsed;
   try { parsed = JSON.parse(fs.readFileSync(resolved, 'utf8')); }
   catch (error) { fail(`recall floor unreadable (${error.message})`); }
@@ -143,14 +130,34 @@ export function effectiveFloor({ floor, fixtureSha256 }) {
 
 /** Score one question's results. Pure, so the predicate is testable without a corpus. */
 export function scoreQuestion({ store, expectedPath, results }) {
-  const rows = Array.isArray(results) ? results : [];
-  const fromRepo = rows.filter((r) => String(r?.repo || '').toLowerCase() === String(store).toLowerCase());
-  const rank = fromRepo.findIndex((r) => String(r?.path) === String(expectedPath));
+  const rows = Array.isArray(results) ? results.slice(0, DEFAULT_K) : [];
+  const fromRepo = rows.filter((r) => typeof r?.repo === 'string' && typeof r?.path === 'string'
+    && r.repo.toLowerCase() === String(store).toLowerCase());
+  // Rank is the position a caller actually receives, including other repositories.
+  const rank = rows.findIndex((r) => typeof r?.repo === 'string'
+    && r.repo.toLowerCase() === String(store).toLowerCase() && r.path === String(expectedPath));
   return {
     repoCovered: fromRepo.length > 0,
     exactFileRank: rank < 0 ? null : rank + 1,
     returnedPaths: rows.slice(0, DEFAULT_K).map((r) => `${r?.repo ?? '?'}/${r?.path ?? '?'}`),
   };
+}
+
+function validateMeasuredRow(row, label = 'row') {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) fail(`${label} is not an object`);
+  if (typeof row.store !== 'string' || !row.store || typeof row.query !== 'string' || !row.query
+    || typeof row.expectedPath !== 'string' || !row.expectedPath) fail(`${label} question fields are invalid`);
+  if (typeof row.repoCovered !== 'boolean') fail(`${label}.repoCovered is not boolean`);
+  if (row.exactFileRank !== null && (!Number.isSafeInteger(row.exactFileRank) || row.exactFileRank < 1 || row.exactFileRank > DEFAULT_K)) fail(`${label}.exactFileRank is impossible`);
+  if (!Array.isArray(row.returnedPaths) || row.returnedPaths.length > DEFAULT_K
+    || row.returnedPaths.some((value) => typeof value !== 'string' || !value.trim())) fail(`${label}.returnedPaths is invalid`);
+  const own = row.returnedPaths.filter((value) => value.toLowerCase().startsWith(`${row.store.toLowerCase()}/`));
+  const derivedCovered = own.length > 0;
+  const derivedRank = row.returnedPaths.findIndex((value) => value.toLowerCase().startsWith(`${row.store.toLowerCase()}/`)
+    && value.slice(row.store.length + 1) === row.expectedPath);
+  if (row.repoCovered !== derivedCovered) fail(`${label}.repoCovered disagrees with returnedPaths`);
+  if ((row.exactFileRank === null) !== (derivedRank < 0) || (row.exactFileRank !== null && row.exactFileRank !== derivedRank + 1)) fail(`${label}.exactFileRank disagrees with returnedPaths`);
+  if (row.error !== undefined && (typeof row.error !== 'string' || !row.error)) fail(`${label}.error is invalid`);
 }
 
 /** Roll per-question rows into the counts the predicates are evaluated on. */
@@ -184,7 +191,7 @@ export function evaluateGate({ totals, floorValue, fixtureCount }) {
   return { verdict: failures.length === 0 ? 'PASS' : 'FAIL', failures };
 }
 
-export function validateRecallReport({ report, archive, expectedFixtureSha256 = null, floorValue = null, floorFile = null } = {}) {
+export function validateRecallReport({ report, archive, fixtureFile = null, expectedFixtureSha256 = null, floorValue = null, floorFile = null } = {}) {
   const failures = [];
   if (!report || typeof report !== 'object') fail('repo-recall report is not an object');
   if (report.schemaVersion !== RECALL_SCHEMA_VERSION || report.kind !== RECALL_KIND) {
@@ -194,15 +201,22 @@ export function validateRecallReport({ report, archive, expectedFixtureSha256 = 
     if (report.archive?.sha256 !== archive.sha256) failures.push('repo-recall report does not describe this archive');
     if (report.archive?.bytes !== archive.bytes) failures.push('repo-recall report archive byte length differs');
   }
-  if (expectedFixtureSha256 && report.fixture?.sha256 !== expectedFixtureSha256) {
-    failures.push('repo-recall report was measured against a different frozen fixture');
-  }
+  const fixture = loadFixture(fixtureFile);
+  if (expectedFixtureSha256 && fixture.fixtureSha256 !== expectedFixtureSha256) failures.push('configured fixture does not match the expected frozen fixture');
+  if (report.fixture?.sha256 !== fixture.fixtureSha256) failures.push('repo-recall report was measured against a different frozen fixture');
+  if (report.fixture?.questionCount !== fixture.questions.length) failures.push('repo-recall report fixture question count differs from the frozen fixture');
   if (!Array.isArray(report.rows) || !report.rows.length) failures.push('repo-recall report carries no per-question rows');
   else {
+    report.rows.forEach((row, index) => validateMeasuredRow(row, `report.rows[${index}]`));
     const recomputed = tally(report.rows);
     if (canonical(recomputed) !== canonical(report.totals)) {
       failures.push('repo-recall report totals do not re-derive from its own rows');
     }
+    const expected = fixture.questions.map((row) => `${row.store}\u0000${row.query}\u0000${row.expectedPath}`).sort();
+    const actual = report.rows.map((row) => `${row.store}\u0000${row.query}\u0000${row.expectedPath}`).sort();
+    if (new Set(actual).size !== actual.length) failures.push('repo-recall report contains duplicate question rows');
+    if (new Set(report.rows.map((row) => row.store)).size !== report.rows.length) failures.push('repo-recall report contains duplicate repository rows');
+    if (actual.length !== expected.length || canonical(actual) !== canonical(expected)) failures.push('repo-recall report rows do not exactly match the frozen fixture store/query/expected-path set');
   }
   if (failures.length) fail(`repo-recall report invalid: ${failures.join('; ')}`);
   // NEVER trust the report's own `floor.value`. A report that declares its own bar could declare
@@ -230,15 +244,15 @@ export function validateRecallReport({ report, archive, expectedFixtureSha256 = 
   //     and refused a candidate it had never measured. It is RECORDED, never enforced. Retrieval
   //     quality on the release path is gated by scripts/retrieval-canary.mjs through a real
   //     installed host, which is the instrument that belongs in that role.
-  const gate = evaluateGate({ totals: report.totals, floorValue: floor, fixtureCount: report.fixture.questionCount });
+  const gate = evaluateGate({ totals: report.totals, floorValue: floor, fixtureCount: fixture.questions.length });
   const blocking = gate.failures.filter((f) => !/below the accepted floor/.test(f));
-  report.gate = { blocking: blocking.length > 0, verdict: gate.verdict, failures: gate.failures, enforced: blocking };
+  const verifiedGate = { blocking: blocking.length > 0, verdict: gate.verdict, failures: gate.failures, enforced: blocking, floorValue:floor };
   if (blocking.length) fail(`repo-recall integrity FAILED: ${blocking.join('; ')}`);
-  return report;
+  return { ...report, gate: verifiedGate };
 }
 
 /** Read a detached report beside an archive and enforce the gate. Mirrors readAccuracyReport. */
-export function readRecallReport({ reportFile, archive, expectedFixtureSha256 = null, floorValue = null, floorFile = null } = {}) {
+export function readRecallReport({ reportFile, archive, fixtureFile = null, expectedFixtureSha256 = null, floorValue = null, floorFile = null, trustedReportPublicKey = process.env.RUVNET_MEASUREMENT_PUBLIC_KEY } = {}) {
   const resolved = path.resolve(reportFile || '');
   if (!resolved || !fs.existsSync(resolved)) fail(`detached repo-recall report missing (${resolved || 'no path supplied'})`);
   const stat = fs.lstatSync(resolved);
@@ -246,8 +260,12 @@ export function readRecallReport({ reportFile, archive, expectedFixtureSha256 = 
   let parsed;
   try { parsed = JSON.parse(fs.readFileSync(resolved, 'utf8')); }
   catch (error) { fail(`detached repo-recall report unreadable/corrupt (${error.message})`); }
-  const report = validateRecallReport({ report: parsed, archive, expectedFixtureSha256, floorValue, floorFile });
-  return { identity: { file: path.basename(resolved), sha256: sha256File(resolved), bytes: stat.size }, report };
+  verifyMeasurementReport(parsed, parsed.attestation, trustedReportPublicKey);
+  // The signed measurement owns its informational floor. Rechecking integrity must not
+  // rewrite signed bytes or make an old receipt depend on today's informational floor.
+  if (!Number.isSafeInteger(parsed.floor?.value) || parsed.floor.value < 0) fail('attested recall floor is invalid');
+  const report = validateRecallReport({ report: parsed, archive, fixtureFile, expectedFixtureSha256, floorValue: parsed.floor.value });
+  return { identity: { file: path.basename(resolved), sha256: sha256File(resolved), bytes: stat.size }, report: parsed, gate: report.gate };
 }
 
 /**
@@ -256,11 +274,11 @@ export function readRecallReport({ reportFile, archive, expectedFixtureSha256 = 
  * forge-ask-all.mjs — the exact bytes a customer installs — not the checkout's copy.
  */
 export async function runRepoRecall({
-  kbDir, fixtureFile, floorFile, archive = null, k = DEFAULT_K, searchAll = null, now = () => new Date(),
+  kbDir, fixtureFile, floorFile, archive = null, k = DEFAULT_K, searchAll = null, now = () => new Date(), queryTimeoutMs = DEFAULT_QUERY_TIMEOUT_MS, reportAttestationKey = process.env.RUVNET_MEASUREMENT_SIGNING_KEY,
 } = {}) {
   const fixture = loadFixture(fixtureFile);
   // Fail-soft, same reason as the reader: a floor recorded against another fixture is a note, not a
-  // reason to stop. Nothing here refuses a candidate any more.
+  // reason to stop. The canonical validator still rejects availability and execution failures.
   let floor = null; let floorValue = ABSOLUTE_FLOOR;
   try {
     floor = readFloor(floorFile);
@@ -269,30 +287,32 @@ export async function runRepoRecall({
 
   let search = searchAll;
   let entryPoint = 'injected';
+  let runtimeIdentity = null;
+  let loadedRuntime = null;
+  if (k !== DEFAULT_K || !Number.isSafeInteger(queryTimeoutMs) || queryTimeoutMs < 1) fail('recall requires k=5 and a positive integer query deadline');
+  if (searchAll && reportAttestationKey) fail('measurement attestation cannot sign an injected search result');
   if (!search) {
-    // WHICH BYTES GET MEASURED. The archive's own forge-ask-all.mjs is what a customer runs, but an
-    // extracted archive carries no node_modules, so importing it directly fails to resolve
-    // @xenova/transformers and every query dies (measured 2026-09-15: a clean-looking 0/194). The
-    // checkout's kb/ copy resolves its dependencies and is the file build-bundle.mjs copies FROM.
-    // So: import the resolvable copy, and PROVE byte-for-byte that it is the shipped one. If they
-    // ever diverge, this refuses rather than quietly grading code the archive does not contain.
-    const shipped = path.resolve(kbDir || '', 'forge-ask-all.mjs');
-    if (!fs.existsSync(shipped)) fail(`no shipped search entry point at ${shipped}`);
-    const checkout = path.join(ROOT, 'kb', 'forge-ask-all.mjs');
-    if (!fs.existsSync(checkout)) fail(`no checkout search entry point at ${checkout}`);
-    const shippedSha = sha256File(shipped);
-    if (shippedSha !== sha256File(checkout)) {
-      fail(`the archive's forge-ask-all.mjs (${shippedSha.slice(0, 12)}) is not the checkout's `
-        + `(${sha256File(checkout).slice(0, 12)}); refusing to grade code the archive does not ship`);
-    }
-    ({ searchAll: search } = await import(pathToFileURL(checkout).href));
-    entryPoint = `kb/forge-ask-all.mjs@${shippedSha.slice(0, 12)} (proven identical to the archive's copy)`;
+    let loaded;
+    try { loaded = await loadArchiveSearch({ kbDir, root: ROOT }); }
+    catch (error) { fail(error.message); }
+    loadedRuntime = loaded;
+    search = loaded.searchAll;
+    entryPoint = loaded.entryPoint;
+    runtimeIdentity = loaded.identity;
   }
 
   const rows = [];
+  try {
   for (const question of fixture.questions) {
     try {
-      const out = await search({ dir: kbDir, query: question.query, k, repos: [question.store] });
+      let timer;
+      try {
+        const out = loadedRuntime
+          ? await search({ dir: kbDir, query: question.query, k, repos: [question.store], timeoutMs: queryTimeoutMs })
+          : await Promise.race([
+          Promise.resolve().then(() => search({ dir: kbDir, query: question.query, k, repos: [question.store], timeoutMs: queryTimeoutMs })),
+          new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`query timeout after ${queryTimeoutMs}ms`)), queryTimeoutMs); }),
+        ]);
       // searchAll reports a store that could not be OPENED as an "ERR: ..." string in perRepo and
       // then returns an empty result list. Left unread, that is indistinguishable from "this
       // repository genuinely has no matching content" — and the gate would publish a broken harness
@@ -303,6 +323,7 @@ export async function runRepoRecall({
       if (storeError) {
         rows.push({
           store: question.store,
+          query: question.query,
           expectedPath: question.expectedPath,
           repoCovered: false,
           exactFileRank: null,
@@ -311,14 +332,23 @@ export async function runRepoRecall({
         });
         continue;
       }
+      if (!Array.isArray(out?.results)) throw new Error('search result outcomes are not an array');
+      if (out.results.some((row) => !row || typeof row !== 'object' || Array.isArray(row)
+        || typeof row.repo !== 'string' || !row.repo.trim() || typeof row.path !== 'string' || !row.path.trim()
+        || ![row.fullText, row.text, row.passage, row.snippet].some(value => typeof value === 'string' && value.trim()))) {
+        throw new Error('search result outcome has invalid repo/path or no passage text');
+      }
       rows.push({
         store: question.store,
+        query: question.query,
         expectedPath: question.expectedPath,
         ...scoreQuestion({ store: question.store, expectedPath: question.expectedPath, results: out?.results || [] }),
       });
+      } finally { clearTimeout(timer); }
     } catch (error) {
       rows.push({
         store: question.store,
+        query: question.query,
         expectedPath: question.expectedPath,
         repoCovered: false,
         exactFileRank: null,
@@ -328,6 +358,8 @@ export async function runRepoRecall({
     }
   }
 
+  } finally { await loadedRuntime?.close(); }
+
   const totals = tally(rows);
   const gate = evaluateGate({ totals, floorValue, fixtureCount: fixture.questions.length });
   const report = {
@@ -336,7 +368,8 @@ export async function runRepoRecall({
     state: gate.verdict,
     failures: gate.failures,
     // Stated on the produced report as well as the read one: this verdict is recorded, not enforced.
-    gate: { blocking: false, verdict: gate.verdict, failures: gate.failures },
+    gate: { blocking: gate.failures.some(f=>!/below the accepted floor/.test(f)), verdict: gate.verdict, failures: gate.failures,
+      enforced:gate.failures.filter(f=>!/below the accepted floor/.test(f)),floorValue },
     measuredUtc: now().toISOString(),
     archive,
     fixture: {
@@ -346,7 +379,7 @@ export async function runRepoRecall({
       questionCount: fixture.questions.length,
       shape: 'exactly one human-written question per repository',
     },
-    protocol: { entryPoint, k, repositoryScope: 'explicit', scoring: 'exact labeled file path within top-k of results from the requested repository' },
+    protocol: { entryPoint, runtimeIdentity, k, repositoryScope: 'explicit', scoring: 'exact labeled file path within top-k of results from the requested repository' },
     floor: { value: floorValue, committed: floor?.hitTop5Floor ?? null, absolute: ABSOLUTE_FLOOR, acceptedForRelease: floor?.acceptedForRelease ?? null },
     totals,
     // Named so no reader can mistake availability for answer accuracy.
@@ -358,6 +391,7 @@ export async function runRepoRecall({
     },
     rows,
   };
+  if (!searchAll && reportAttestationKey) report.attestation = attestMeasurementReport(report, reportAttestationKey);
   return { report, gate };
 }
 
@@ -370,7 +404,7 @@ const arg = (argv, name, fallback = null) => {
  * Measure a SEALED archive: extract it, find the store root, and grade that — never the build
  * directory the archive was assembled from. Returns the report bound to the archive's own digest.
  */
-export async function runRepoRecallOnBundle({ bundleFile, fixtureFile, floorFile, k = DEFAULT_K } = {}) {
+export async function runRepoRecallOnBundle({ bundleFile, fixtureFile, floorFile, k = DEFAULT_K, reportAttestationKey = process.env.RUVNET_MEASUREMENT_SIGNING_KEY } = {}) {
   const bundle = path.resolve(bundleFile || '');
   if (!bundle || !fs.existsSync(bundle) || !fs.statSync(bundle).isFile()) {
     fail(`archive missing (${bundle || 'no path supplied'})`);
@@ -389,20 +423,22 @@ export async function runRepoRecallOnBundle({ bundleFile, fixtureFile, floorFile
     };
     walk(tmp);
     if (roots.length !== 1) fail(`expected exactly one ARCHIVE-MANIFEST.json in the archive, found ${roots.length}`);
-    return await runRepoRecall({ kbDir: roots[0], fixtureFile, floorFile, archive, k });
+    return await runRepoRecall({ kbDir: roots[0], fixtureFile, floorFile, archive, k, reportAttestationKey });
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
 
-export async function main(argv = process.argv.slice(2)) {
+export async function main(argv = process.argv.slice(2), { run = null } = {}) {
   const kbDir = arg(argv, '--kb');
   const bundleFile = arg(argv, '--bundle');
   if (!kbDir && !bundleFile) {
     process.stderr.write('usage: repo-recall.mjs (--bundle <archive.zip> | --kb <extracted root>) [--out <report.json>] [--fixture <file>] [--floor <file>]\n');
     return 64;
   }
-  const { report, gate } = bundleFile
+  const { report } = run
+    ? await run({ bundleFile, kbDir, fixtureFile: arg(argv, '--fixture'), floorFile: arg(argv, '--floor') })
+    : bundleFile
     ? await runRepoRecallOnBundle({
       bundleFile: path.resolve(bundleFile),
       fixtureFile: arg(argv, '--fixture'),
@@ -413,7 +449,23 @@ export async function main(argv = process.argv.slice(2)) {
       fixtureFile: arg(argv, '--fixture'),
       floorFile: arg(argv, '--floor'),
     });
+  // Re-run the canonical report validator for the CLI boundary. A low Hit@5 floor is
+  // informational; availability, timeout, identity, and fixture integrity failures remain fatal.
   const out = arg(argv, '--out') || (bundleFile ? `${path.resolve(bundleFile)}.recall.json` : null);
+  let validated;
+  try {
+    validated = validateRecallReport({
+      report,
+      archive: report.archive,
+      fixtureFile: arg(argv, '--fixture'),
+      expectedFixtureSha256: loadFixture(arg(argv, '--fixture')).fixtureSha256,
+      floorFile: arg(argv, '--floor'),
+    });
+  } catch (error) {
+    if (out) fs.writeFileSync(path.resolve(out), `${JSON.stringify(report, null, 2)}\n`);
+    process.stderr.write(`${error.message}\n`);
+    return 1;
+  }
   if (out) fs.writeFileSync(path.resolve(out), `${JSON.stringify(report, null, 2)}\n`);
   const t = report.totals;
   process.stdout.write(`${JSON.stringify({
@@ -424,9 +476,9 @@ export async function main(argv = process.argv.slice(2)) {
     exactFileTop1: `${t.hitTop1}/${t.questions}`,
     exactFileTop5: `${t.hitTop5}/${t.questions}`,
     floor: report.floor.value,
-    failures: gate.failures,
+    failures: validated.gate.failures,
   }, null, 2)}\n`);
-  return gate.verdict === 'PASS' ? 0 : 1;
+  return validated.gate.blocking ? 1 : 0;
 }
 
 // Realpath both sides: argv[1] is whatever the caller typed, while Node resolves import.meta.url

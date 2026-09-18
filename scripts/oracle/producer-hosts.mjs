@@ -17,7 +17,7 @@
  * 2026-09-14, a one-word `claude -p` loaded 303,673 cache-creation tokens without those flags and 2,334
  * with them.
  */
-import { spawn } from 'node:child_process';
+import { spawnNativeHost } from '../native-host-process.mjs';
 
 // Pinned on 2026-09-13 against the native hosts (same ids scripts/dual-host-deliberation.mjs pins).
 export const PRODUCER_MODELS = Object.freeze({ claude: 'claude-fable-5-1', codex: 'gpt-6-astra' });
@@ -211,25 +211,5 @@ export function hostAdapters({
 }
 
 export function spawnHost(binary, args, { cwd, env, timeoutMs }, input) {
-  return new Promise((resolve) => {
-    const started = Date.now();
-    const child = spawn(binary, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-    let settled = false;
-    const timer = setTimeout(() => { timedOut = true; try { child.kill('SIGKILL'); } catch { /* gone */ } }, timeoutMs);
-    const finish = (status, error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ status, stdout, stderr: error ? `${stderr}\n${error.message}` : stderr, timedOut, durationMs: Date.now() - started });
-    };
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.stdin.on('error', () => { /* host closed stdin early; the close event still settles */ });
-    child.on('error', (error) => finish(null, error));
-    child.on('close', (status) => finish(status));
-    child.stdin.end(input);
-  });
+  return spawnNativeHost(binary, args, { cwd, env, timeout: timeoutMs, stdio: ['pipe','pipe','pipe'] }, input);
 }

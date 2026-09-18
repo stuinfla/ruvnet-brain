@@ -7,6 +7,21 @@ import { fileURLToPath } from 'node:url';
 import { qaLanes, selectLanes } from './qa-lanes.mjs';
 import { runLanes, verdictOf, sourceIdentity } from './qa-contract.mjs';
 
+const valuedOptions = new Set(['--lane', '--base', '--candidate-kb', '--candidate-sha', '--candidate-version',
+  '--candidate-root', '--payload-manifest', '--payload-signature', '--payload-id', '--qualification-mode']);
+for (let index = 2; index < process.argv.length; index += 1) {
+  const option = process.argv[index];
+  if (valuedOptions.has(option)) {
+    if (!process.argv[index + 1] || process.argv[index + 1].startsWith('--')) throw new Error(`${option} requires a value`);
+    index += 1;
+  } else if (!['--release', '--list', '--help'].includes(option)) throw new Error(`unknown QA option: ${option}`);
+}
+if (process.argv.includes('--help')) {
+  console.log('Usage: node scripts/qa-runner.mjs [--release] [--list] [--lane NAME] [--base SHA]');
+  console.log('Candidate evidence options: ' + [...valuedOptions].filter(name => name !== '--lane' && name !== '--base').join(', '));
+  process.exit(0);
+}
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const release = process.argv.includes('--release');
 const argument = (name) => { const i = process.argv.indexOf(name); return i < 0 ? null : process.argv[i + 1]; };

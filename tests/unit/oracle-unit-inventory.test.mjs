@@ -188,3 +188,23 @@ describe('complete accounting that finds nothing is flagged for review, never re
     expect(() => buildInventory({ manifest: { repo: 'r' }, blobs: new Map(), adapters: [] })).toThrow(/snapshot manifest/);
   });
 });
+
+it('rejects forged snapshot/blob bytes and malformed adapter results', () => {
+  const repo=fixtureRepo({'guide.md':'## State\nThe store persists records.\n'});
+  const original=snapshot(repo);
+  const forged=structuredClone(original.manifest);forged.entries[0].size++;
+  expect(()=>buildInventory({...original,manifest:forged,adapters:[markdownDouble]})).toThrow(/manifest digest/);
+  const blobs=new Map(original.blobs);blobs.set(original.manifest.entries[0].objectSha,Buffer.from('substituted'));
+  expect(()=>buildInventory({...original,blobs,adapters:[markdownDouble]})).toThrow(/blob integrity/);
+  for(const value of [{}, {units:[]}, Promise.resolve({units:[],errors:[]})]){
+    const result=buildInventory({...original,adapters:[{...markdownDouble,enumerate:()=>value}]});
+    expect(result.inventoryComplete).toBe(false);expect(result.failures[0].message).toMatch(/explicit units/);
+  }
+});
+it('refuses UTF-8 splitting and invented line coordinates from adapters', () => {
+  const original=snapshot(fixtureRepo({'guide.md':'é state is durable.\n'}));
+  for(const bounds of [{startByte:1,endByte:4,startLine:1,endLine:1},
+    {startByte:0,endByte:4,startLine:99,endLine:99}]){
+    expect(()=>buildInventory({...original,adapters:[{...markdownDouble,enumerate:()=>({errors:[],units:[{kind:'invalid',...bounds}]})}]})).toThrow();
+  }
+});

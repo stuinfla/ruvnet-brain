@@ -232,7 +232,7 @@ export function stateHashOf(evidence) {
     .filter(Boolean)
     .sort();   // order of evidence is presentation, not state
   if (!items.length) return null;
-  return crypto.createHash('sha256').update(items.join(' ')).digest('hex').slice(0, 16);
+  return crypto.createHash('sha256').update(items.join('\0')).digest('hex').slice(0, 16);
 }
 
 function toIso(at) {

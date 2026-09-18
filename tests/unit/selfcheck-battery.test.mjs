@@ -115,6 +115,11 @@ process.exit(entry.mode === 'blocking' ? (r.status ?? 0) : 0);
 
 const surfaces = [];
 const surface = (entries, opts) => { const s = makeSurface(entries, opts); surfaces.push(s.root); return s; };
+function configureInstalledBrain(home, installed, { enabled = true } = {}) {
+  fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.claude/settings.json'), JSON.stringify({ enabledPlugins: { 'ruvnet-brain@ruvnet-brain': enabled } }));
+  fs.writeFileSync(path.join(home, '.claude/plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'ruvnet-brain@ruvnet-brain': [{ scope: 'user', installPath: installed, version: '9.9.9' }] } }));
+}
 afterAll(() => { for (const r of surfaces) fs.rmSync(r, { recursive: true, force: true }); });
 
 // ── §1 THE WATCHDOG: the one thing nothing upstream can do ──────────────────────────────────────
@@ -389,9 +394,10 @@ describe('the real shipped plugin surface', () => {
     const packed = path.join(home, '.claude/plugins/cache/ruvnet-brain/ruvnet-brain/9.9.9');
     fs.mkdirSync(path.join(packed, 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(packed, 'hooks/hooks.json'), '{"hooks":{}}');
+    configureInstalledBrain(home, packed);
     const s = resolveInstalledSurface({ home, repo: REPO_ROOT });
     expect(s.ok).toBe(true);
-    expect(s.source).toBe('installed:9.9.9'); // NOT the checkout, even though a checkout was offered
+    expect(s.source).toBe('configured-on-disk'); // NOT the checkout, even though a checkout was offered
     expect(s.alternates).toContain('checkout');
     fs.rmSync(home, { recursive: true, force: true });
   });
@@ -541,6 +547,7 @@ describe('verdict — exit codes are the point', () => {
     const installed = path.join(home, '.claude/plugins/cache/ruvnet-brain/ruvnet-brain/9.9.9');
     fs.mkdirSync(path.dirname(installed), { recursive: true });
     fs.cpSync(s.root, installed, { recursive: true });
+    configureInstalledBrain(home, installed);
     const r = await selfCheck({
       home, regimes: STDIN_REGIMES, security: false,
       installState: { repos: 12, reader: true, mcp: true },
@@ -559,6 +566,7 @@ describe('verdict — exit codes are the point', () => {
     const installed = path.join(home, '.claude/plugins/cache/ruvnet-brain/ruvnet-brain/9.9.9');
     fs.mkdirSync(path.dirname(installed), { recursive: true });
     fs.cpSync(s.root, installed, { recursive: true });
+    configureInstalledBrain(home, installed);
 
     const r = await selfCheck({
       home, regimes: ['valid'], security: false,
@@ -621,6 +629,8 @@ describe('mutation proof — every assertion is load-bearing', () => {
       // 9 of 11 shipped hook registrations as legacy and failed every real user's install).
       .replace("from '../plugin/scripts/continuity-hook-policy.mjs'",
         `from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, 'plugin/scripts/continuity-hook-policy.mjs')).href)}`)
+      .replace("from '../plugin/scripts/hook-registry.mjs'",
+        `from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, 'plugin/scripts/hook-registry.mjs')).href)}`)
       .replace(ANCHOR, `const here = ${JSON.stringify(path.join(REPO_ROOT, 'scripts'))};`));
     return { mod: await import(pathToFileURL(file).href), file, dir };
   }

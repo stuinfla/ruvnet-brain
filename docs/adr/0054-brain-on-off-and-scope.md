@@ -3,9 +3,9 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-09-13
-reviewed_digest: 1ae0fda6d176
-version: 1.1.4
+updated: 2026-09-17
+reviewed_digest: 29f0fd52c770
+version: 1.1.8
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -31,7 +31,9 @@ updated_at_source: authored-current
 
 # ADR-054: Brain on/off and per-part scope
 
-**Status**: Implemented (master switch plus Complete Brain / RuVector Only storage profiles)
+**Status**: Accepted
+
+Implementation is present for the master switch and Complete Brain / RuVector Only storage profiles. Prior runtime verification has expired.
 **Date**: 2026-07-26
 **Related**: ADR-052 (proactivity-you-control), ADR-053 (experience QA), ADR-023 (stable spine)
 
@@ -125,9 +127,10 @@ publication; explicit QA and publication retain their own gates. See
   paths). The soft result must carry machine-readable `disabled:true` so telemetry never counts
   it as success or outage.
 - **Hooks — per-entry `offBehavior` in the shim's table** (silence / run / partial): advertising,
-  grounding, and the advisory legacy `verify-interface` notice go silent; the NON-brain safety
+  grounding go silent; the NON-brain safety
   non-retrieval protections (route-dispatch cost audit and design-wall) STAY ON — they guard money and honesty, not
-  retrieval. Issue #48 moved interface enforcement to structured MCP arguments.
+  retrieval. Issue #48 moved interface enforcement to structured MCP arguments. The retired
+  `verify-interface` ID is handled before table lookup and dispatch, silently in both ON and OFF states.
 - **session-start splits internally**: auto-updater heartbeat, GONG health alarm and SLA banner
   keep running (an off machine must still receive fixes — otherwise the fix for an off-state bug
   can never arrive); ALL advertising dies; exactly ONE dim state line remains: "brain OFF by your
@@ -190,7 +193,7 @@ over scope plumbing, safety walls exempt from off.
 
 1. Skew round-trip: previous release's `saveSettings` cannot flip OFF back on (sentinel survives).
 2. Real-wiring gate disarm: brain off ⇒ a rUv-domain Write through the USER-wired
-   ground-before-write does not block; verify-interface is silent; route-dispatch emits its advisory
+   ground-before-write does not block; the retired interface ID is silent with no dispatch; route-dispatch emits its advisory
    cost audit and design-wall retains its blocking behavior, with development maintenance inactive.
 3. Stamp-from-refusal: a disabled/out-of-scope soft-answer mints NO grounding stamp.
 4. session-start split: off ⇒ zero advertising bytes, one state line; updater + GONG demonstrably still run.
@@ -227,6 +230,9 @@ overlays and preserves the prior generation as unclassified data instead of dele
 source review does not renew the expired verification or prove the native-host acceptance criteria.
 
 ## Currency log
+
+| 2026-09-17 | Re-read all 9 governed runtime paths: settings sentinel resolution, retrieval scope, MCP state, hook/session banners, console preferences, brain profile, update path, and installer behavior. The implementation boundary remains present while the stored runtime verification remains expired; no current verification is claimed. Source-bound review digest `29f0fd52c770`. | scripts/user-settings.mjs; kb/forge-ask-all.mjs; plugin/mcp/server.mjs; plugin/scripts/hook-shim.mjs; plugin/scripts/session-start-core.mjs; scripts/onboarding-console.mjs; kb/brain-profile.mjs; kb/forge-update.mjs; bin/install.mjs |
+| 2026-09-17 | Source review confirms the existing sentinel, per-plane OFF and profile boundaries; runtime and browser requalification remain open. | `scripts/user-settings.mjs`, `kb/forge-ask-all.mjs`, `plugin/mcp/server.mjs`, `plugin/scripts/hook-shim.mjs` and `kb/brain-profile.mjs` retain those responsibilities. |
 
 | 2026-09-13 | `kb/forge-ask-all.mjs` moved twice tonight (aca43039, 1efcf536): a negative-cross-encoder-score prune exemption for name-boosted candidates (root cause 1 of issue #286), and a document-noun exclusion in `CODE_INTENT_RE`/`IMPL_INTENT_RE` (root cause 2). Both are retrieval-ranking/intent-classification fixes with no interaction with this ADR's decision — no on/off sentinel, scope-suppression, or `wasBrainOff`/`offBehavior` logic was touched. Decision unchanged. `scripts/user-settings.mjs`, `plugin/mcp/server.mjs`, `plugin/scripts/hook-shim.mjs`, `plugin/scripts/session-start-core.mjs`, `scripts/onboarding-console.mjs`, `kb/brain-profile.mjs`, `kb/forge-update.mjs`, `bin/install.mjs` did not move. | Reviewed both `kb/forge-ask-all.mjs` diffs (`aca43039`, `1efcf536`) in full for on/off or scope-related surface; none found. reviewed_digest 1ae0fda6d176. |
 | 2026-09-12 | Currency review at commit dae83538: decision unchanged. The hook-parity fork added `grounding-turn-mark`/`grounding-turn-gate` to `plugin/scripts/hook-shim.mjs`'s TABLE and registered Codex `PreToolUse`/`PostToolUse` in `hooks.json`/`codex-hooks.json`; both new hooks read `wasBrainOff`/`offBehavior:'silence'` the same way `ground-ruvnet` already does — no new on/off surface, no change to the sentinel file or the console power section. `bin/install.mjs`, `kb/forge-update.mjs`, `kb/brain-profile.mjs`, `scripts/onboarding-console.mjs`, `plugin/mcp/server.mjs`, `scripts/user-settings.mjs`, `kb/forge-ask-all.mjs`, `plugin/scripts/session-start-core.mjs` did not move in this fork's diff. | Reviewed `plugin/scripts/hook-shim.mjs`'s new TABLE entries and `hooks.json`/`codex-hooks.json`'s new registrations directly; diff read in full. |

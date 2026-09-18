@@ -80,7 +80,7 @@ import { fileURLToPath } from 'node:url';
 // really has wired. Both are imported from the modules that own them, statically — a missing sibling
 // here is a broken build caught by tests, not a runtime degradation to paper over.
 import { nightlyStatus } from './nightly-controller.mjs';
-import { buildRegistry, REPO } from './hook-registry.mjs';
+import { activeClaudeView, REPO, matchedTools, shimTable } from './hook-registry.mjs';
 
 const HOME = os.homedir();
 
@@ -184,6 +184,7 @@ export const SCOPE = Object.freeze({ PROJECT: 'project', USER: 'user', MACHINE: 
 const helpers = {};
 for (const [name, spec] of Object.entries({
   memoryDoctor: './memory-doctor.mjs',
+  projectStore: './project-store-resolver.mjs',
   lessonStore: './lesson-store.mjs',
   lessonPromote: './lesson-promote.mjs',
   gates: './gates.mjs',
@@ -244,7 +245,6 @@ function lineCount(file) {
  * counts only while the plugin is enabled.
  */
 export function dispatchGateWiring({ repo = REPO, home = HOME } = {}) {
-  const PREIMAGE = new Set(['plugin', 'marketplace-clone']);
   // 'codex' joined hook-registry.mjs's mesh 2026-08-20 (Dream Cycle cross-host-conformance) so M1/
   // M3/M5/M6 could see codex-hooks.json — but this function asks a CLAUDE CODE question ("is a
   // PreToolUse gate on subagent dispatch wired to the cheap-model router" for THIS session), and
@@ -253,18 +253,23 @@ export function dispatchGateWiring({ repo = REPO, home = HOME } = {}) {
   // shared shim table) reported `wired: true` on a machine that had never installed Codex at all —
   // caught by re-running this function before/after the hook-registry.mjs change.
   const NOT_CLAUDE_CODE = new Set(['codex']);
-  let records;
-  try { records = buildRegistry({ repo, home }).records; }
-  catch { return { wired: false, layer: null, unreadable: true }; }
+  const view = activeClaudeView({ repo, home, project: repo });
+  if (view.errors.length) return { wired: false, layer: null, unreadable: true, errors: view.errors };
+  const pluginTable = view.pluginSource
+    ? shimTable(path.dirname(path.dirname(view.pluginSource)))
+    : shimTable(repo);
+  const records = view.records.filter((r) => r.command && r.role !== 'diagnostic-preimage').map((r) => {
+    const shimId = r.command.match(/hook-shim\.mjs["'`]?\s+([a-zA-Z][\w-]*)/)?.[1] || null;
+    const handler = shimId ? pluginTable[shimId]?.file : r.command.match(/[\w.-]+\.(?:mjs|sh|py|cjs|js|cmd)\b/g)?.at(-1) || null;
+    return { ...r, handler, tools: matchedTools(r.matcher, r.event) };
+  });
   const hits = records.filter((r) => r.event === 'PreToolUse'
     && r.handler === 'route-dispatch.sh'
     && r.tools.some((t) => t === 'Task' || t === 'Agent' || t === '*')
-    && !PREIMAGE.has(r.layer)
     && !NOT_CLAUDE_CODE.has(r.layer));
   const external = hits.find((r) => r.layer !== 'plugin-installed');
   if (external) return { wired: true, layer: external.layer, unreadable: false };
-  const enabled = Object.entries(readJSON(path.join(home, '.claude/settings.json')).value?.enabledPlugins || {})
-    .some(([k, v]) => k.startsWith('ruvnet-brain@') && v === true);
+  const enabled = view.pluginState === 'configured-on-disk';
   const ours = enabled ? hits[0] : null;
   return { wired: Boolean(ours), layer: ours ? ours.layer : null, unreadable: false };
 }
@@ -341,17 +346,11 @@ function countHookCommands(groups) {
  */
 const CAPTURE_COMMAND = /(agentdb|autocapture|auto-capture|session-end|session_end|sessionend|precompact|pre-compact|memory[\s_-]*(store|save|persist)|\bruflo\b[^"]*\b(memory|session|hooks)\b|claude-flow[^"]*\b(memory|session|hooks)\b|(capture|persist|snapshot|checkpoint)[\w-]*\.(mjs|js|sh|py))/i;
 
-function countCaptureCommands(groups) {
-  if (groups === undefined) return 0;          // nothing registered at this boundary is a real answer
-  if (!Array.isArray(groups)) return null;     // present but unreadable — not the same as absent
+function countCaptureRecords(records, event) {
   let n = 0;
-  for (const g of groups) {
-    if (g?.hooks !== undefined && !Array.isArray(g.hooks)) return null;
-    for (const h of Array.isArray(g?.hooks) ? g.hooks : []) {
-      const cmd = typeof h?.command === 'string' ? h.command.trim() : '';
-      if (!cmd) continue;
-      if (CAPTURE_COMMAND.test(cmd)) n += 1;
-    }
+  for (const record of records.filter((entry) => entry.event === event)) {
+    const cmd = typeof record.command === 'string' ? record.command.trim() : '';
+    if (cmd && CAPTURE_COMMAND.test(cmd)) n += 1;
   }
   return n;
 }
@@ -425,8 +424,11 @@ export const CAPABILITIES = [
     // database replacement. Keep diagnosis visible without promising an available inverse.
     turnOn: null,
     detect({ project = process.cwd() } = {}) {
-      const db = path.join(project, '.swarm/memory.db');
-      if (!fs.existsSync(db)) return row(STATE.ABSENT, `no memory store exists for this project yet (${path.join(path.basename(project), '.swarm/memory.db')} is not present)`);
+      if (!helpers.projectStore) return row(STATE.UNKNOWN, `the project store resolver could not be loaded (${helpers.projectStoreErr}) — distillation state not checked`);
+      let db;
+      try { db = helpers.projectStore.resolveProjectStore({ projectDir: project }).canonicalAgentDbPath; }
+      catch (error) { return row(STATE.UNKNOWN, `the project store could not be resolved (${String(error.message).slice(0, 120)}) — distillation state not checked`); }
+      if (!fs.existsSync(db)) return row(STATE.ABSENT, `no memory store exists for this project yet (${db} is not present)`);
       if (!helpers.memoryDoctor) return row(STATE.UNKNOWN, `the memory diagnostic could not be loaded (${helpers.memoryDoctorErr}) — distillation state not checked`);
 
       let d;
@@ -738,8 +740,6 @@ export const CAPABILITIES = [
     },
     whatItBuysYou: 'The rules your AI works by get tested against each other, and the version that measurably does better becomes the new default.',
     scope: SCOPE.MACHINE,
-    // VERIFIED NULL: `ruflo metaharness --help` enumerates its subcommands and `evolve` is not among them.
-    turnOn: null,
     detect({ project = process.cwd() } = {}) {
       const policy = path.join(HOME, '.claude-flow/harness-active-policy.json');
       // The archive is a per-project artifact even though the ACTIVE POLICY it feeds is machine-wide,
@@ -803,15 +803,10 @@ export const CAPABILITIES = [
     scope: SCOPE.MACHINE,
     // Registering hooks means editing settings.json by hand — no single verified command.
     turnOn: null,
-    detect() {
-      const r = readJSON(path.join(HOME, '.claude/settings.json'));
-      if (r.missing) return row(STATE.ABSENT, 'no Claude Code settings file exists on this machine yet');
-      if (r.err) return row(STATE.UNKNOWN, `the settings file could not be parsed (${r.err}) — capture hooks not checked`);
-      const hooksRoot = r.value?.hooks;
-      if (hooksRoot !== undefined && (!hooksRoot || typeof hooksRoot !== 'object' || Array.isArray(hooksRoot))) {
-        return row(STATE.UNKNOWN, 'the settings file has a hooks section this version cannot interpret — capture hooks not counted');
-      }
-      const hooks = hooksRoot || {};
+    detect({ project = process.cwd() } = {}) {
+      const view = activeClaudeView({ repo: REPO, home: HOME, project });
+      if (view.errors.length) return row(STATE.UNKNOWN, `configured Claude hook sources could not all be read — capture registration is unknown (${view.errors[0].error})`);
+      const hooks = view.records.filter((record) => record.role !== 'diagnostic-preimage');
       // COUNT COMMANDS, NOT MATCHER GROUPS. See countHookCommands: `[{matcher:'.*',hooks:[]}]` has
       // length 1 and executes nothing, and the old `.length` check called that "both boundaries are
       // covered" — a fabricated ON on a machine that saves nothing.
@@ -829,22 +824,20 @@ export const CAPABILITIES = [
       // row reported OFF — "nothing is saved when a session compacts" — about a machine whose capture
       // hook we simply failed to parse. Identical structure to the bug fixed in that file, opposite
       // treatment, same commit.
-      const pre = countCaptureCommands(hooks.PreCompact);
-      const end = countCaptureCommands(hooks.SessionEnd);
-      if (pre === null || end === null) {
-        return row(STATE.UNKNOWN, `the ${pre === null ? 'pre-compaction' : 'session-end'} hook list could not be parsed, so whether anything is registered there cannot be read — no conclusion is drawn from the half that did parse`);
-      }
+      const pre = countCaptureRecords(hooks, 'PreCompact');
+      const end = countCaptureRecords(hooks, 'SessionEnd');
+      const provenance = [...new Set(hooks.filter((entry) => entry.event === 'PreCompact' || entry.event === 'SessionEnd').map((entry) => entry.file))].join(', ');
       // "registered", never "capturing" — the same standard the MCP row holds itself to twenty lines
       // below. A settings entry proves a command is wired to fire; no local artifact proves it ever
       // ran or that it succeeded when it did, and claiming captured state from a config file would be
       // exactly the fabricated status this registry exists to refuse.
-      if (pre && end) return row(STATE.ON, 'a state-saving hook is registered at both boundaries: one before compaction and one at session end — registered, which is not the same as proven to have captured anything');
+      if (pre && end) return row(STATE.ON, `state-saving hooks are registered at both boundaries (${provenance || 'configured Claude sources'}) — registration is not proof that capture succeeded`);
       // ON, not OFF: one boundary IS covered. Partially configured is not never-used — half the
       // sessions are being saved today, and calling that "off" both understates what they have and
       // invites them to re-enable a thing already running. The gap is named in the evidence, which is
       // where a real but partial shortfall belongs. Found by GPT-5.6-Sol, 2026-07-24.
-      if (pre || end) return row(STATE.ON, `a state-saving hook is registered only at ${pre ? 'the pre-compaction' : 'the session-end'} boundary — the other one loses its state`);
-      return row(STATE.OFF, 'no hook that saves session state is registered at either boundary, so nothing is kept when a session compacts or closes');
+      if (pre || end) return row(STATE.ON, `a state-saving hook is registered only at ${pre ? 'the pre-compaction' : 'the session-end'} boundary (${provenance || 'configured Claude sources'}) — the other boundary is not registered`);
+      return row(STATE.OFF, 'no whitelisted state-saving hook is registered at either configured boundary');
     },
   },
 

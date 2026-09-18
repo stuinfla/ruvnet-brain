@@ -3,7 +3,7 @@ id: ADR-030
 title: Latent knowledge is not knowledge — few gates, many lessons, retrieved at the decision point
 status: Proposed
 date: 2026-07-22
-updated: 2026-07-23
+updated: 2026-09-17
 authors: [Stuart Kerr, Claude Code]
 tags: [learning, enforcement, gates, context-budget, compounding, 4.0]
 supersedes: []
@@ -36,7 +36,7 @@ From a single session (2026-07-21/22), sorted by what actually happened:
 | Knowledge form | Instances | Complied? |
 |---|---|---|
 | `ground-before-write` gate | 3 | **3/3** — stopped a hand-roll every time |
-| `verify-interface` gate | 1 | **1/1** — blocked a guessed CLI flag |
+| `verify-interface` gate | 1 | **1/1** — blocked a guessed CLI flag (historical, before shell-hook retirement) |
 | `narrative-version` gate | 1 | **1/1** — forced the release story to be written |
 | `sync-version --check` gate | 1 | **1/1** |
 | no-hardcoded-version gate | 2 | **2/2** — caught the author's own test fixtures |

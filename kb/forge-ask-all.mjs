@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { appendStageTrace } from './retrieval-stage-trace.mjs';
 // forge-ask-all.mjs — ONE question → the best source-grounded answer across the ENTIRE RuvNet brain.
 //
 // The per-repo forge-ask.mjs answers about one repo. This wrapper makes the bundle behave like a
@@ -18,6 +19,7 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { searchKb } from './forge-ask.mjs';
 import { describeSearchFailure } from './search-outcome.mjs';
+import { collapseIdenticalResults } from './retrieval-result.mjs';
 import { rerankPairs, cePrefilterScores } from './forge-rerank.mjs';
 import {
   contentTokens,
@@ -71,6 +73,9 @@ const TRANSCRIPT_STORES = new Set(
   (process.env.KB_TRANSCRIPT_STORES || 'ruv-meetings').split(',').map((s) => s.trim()).filter(Boolean),
 );
 const isTranscriptStore = (name) => TRANSCRIPT_STORES.has(String(name).replace(/\.big$/, ''));
+const OVERVIEW_BM25_MAX_STORES = 2;
+const OVERVIEW_BM25_MIN = 12;
+const OVERVIEW_BM25_MAX = 64;
 const _mbm = new Map(); // dir|name -> { passages, toks, stats } (built once per process)
 function bm25Corpus(dir, name) {
   const key = `${dir}|${name}`;
@@ -95,6 +100,43 @@ function meetingBm25Candidates(dir, name, query, topN = 40) {
     .map((p, i) => ({ p, s: bm25Score(qt, e.toks[i], e.stats) }))
     .sort((a, b) => b.s - a.s).slice(0, topN).filter((x) => x.s > 0)
     .map(({ p }) => ({ path: p.path, title: p.title, fullText: p.text, text: p.text, bestDistance: 1.0, distance: 1.0 }));
+}
+
+// Overview questions are often phrased with product-purpose words that embed closer to generated
+// instructions or source files than to the repository's explanatory documents.  Add a small,
+// repository-local lexical lane before the common reranker so those documents get judged on the
+// same scale.  This is deliberately metadata/kind based and does not name an expected path.
+export function overviewBm25Candidates(dir, name, query, topN = 12) {
+  const e = bm25Corpus(dir, name);
+  if (!e) return [];
+  const qt = tokenize(query);
+  const byPath = new Map();
+  for (const row of e.passages
+    .map((p, i) => ({ p, score: bm25Score(qt, e.toks[i], e.stats) }))
+    .filter(({ p, score }) => score > 0 && /\.(?:md|mdx|html?|txt)$/i.test(String(p.path || '')))) {
+    const prior = byPath.get(row.p.path);
+    if (!prior || row.score > prior.score || (row.score === prior.score
+      && (String(row.p.id || '') < String(prior.p.id || '')
+        || (String(row.p.id || '') === String(prior.p.id || '')
+          && String(row.p.text || '') < String(prior.p.text || ''))))) byPath.set(row.p.path, row);
+  }
+  return [...byPath.values()]
+    .sort((a, b) => b.score - a.score
+      || (String(a.p.path) < String(b.p.path) ? -1 : String(a.p.path) > String(b.p.path) ? 1 : 0)
+      || (String(a.p.id) < String(b.p.id) ? -1 : String(a.p.id) > String(b.p.id) ? 1 : 0))
+    .slice(0, topN)
+    .map(({ p }) => ({
+      path: p.path,
+      title: p.title,
+      kind: p.kind || 'doc',
+      fullText: p.text,
+      text: p.text,
+      id: p.id,
+      bestDistance: 1.0,
+      distance: 1.0,
+      _lane: 'bm25',
+      _source: 'overview-bm25',
+    }));
 }
 
 // Exact package names are stronger than embedding proximity. Scan only a routed repo's already-built
@@ -451,8 +493,11 @@ function livingAdrDriftQuestion(query) {
   return decisionRecords && living && realityCheck;
 }
 
-function sourceCardQueryMode(query) {
-  const text = String(query || '');
+export function sourceCardQueryMode(query) {
+  const text = String(query || '').replace(
+    /^\s*in\s+(?:the\s+)?[a-z0-9][a-z0-9._-]*\s+(?:repo|repository),\s*/i,
+    '',
+  );
   if (costQualityTradeoffQuestion(text)) return 'enumeration';
   if (specificationToCompletionMethodQuestion(text)) return 'concept-inventory';
   if (pythonFreeRustNeuralQuestion(text)) return 'enumeration';
@@ -468,6 +513,9 @@ function sourceCardQueryMode(query) {
   if (replayableHarnessPolicyEvolutionQuestion(text)) return 'enumeration';
   if (livingAdrDriftQuestion(text)) return 'documentation-scope';
   if (offlineOnDeviceSemanticIndexQuestion(text)) return 'confirmation';
+  // Purpose plus intended use is one overview even when clauses use commas.
+  if (/^\s*what\s+is\b[^?]*,\s*what\s+(?:need|problem|use\s+cases?)\b/i.test(text)
+      && (!/\bhow\b/i.test(text) || /\bhow\s+is\s+(?:it|this)\s+intended\s+to\s+be\s+used\b/i.test(text))) return 'overview';
   if (/^\s*what\s+is\b[\s\S]*\band\s+who\s+is\s+(?:it|this)\s+for\b/i.test(text)) {
     return 'overview';
   }
@@ -508,6 +556,18 @@ function sourceCardQueryMode(query) {
   if (/^\s*what\s+is\b/i.test(text) && !sourceDetail.test(text)) return 'definition';
   if (/^\s*(?:what|which)\b/i.test(text)) return 'enumeration';
   return null;
+}
+
+export function overviewLanePlan({ storeCount, pool, query }) {
+  const enabled = Number.isSafeInteger(storeCount)
+    && storeCount >= 1 && storeCount <= OVERVIEW_BM25_MAX_STORES
+    && sourceCardQueryMode(query) === 'overview'
+    && !sourceCardHasUnsafePolarity(query);
+  const topN = Math.min(
+    OVERVIEW_BM25_MAX,
+    Math.max(OVERVIEW_BM25_MIN, Number.isFinite(pool) ? Math.floor(pool) : OVERVIEW_BM25_MIN),
+  );
+  return { enabled, topN };
 }
 
 function sourceCardHasUnsafePolarity(query) {
@@ -2677,8 +2737,10 @@ export function cascadeRerankPool(candidates, { limit, s1 }) {
 // pool cap's effect on ANSWERS affordable: score the full 605-pair pool once, then replay every
 // candidate policy against those exact scores — exactly, not approximately. Works on shallow
 // copies because the boosts mutate ceScore, and a replay must not poison the next replay's input.
-export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true }) {
+export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true, traceWriter = null }) {
   ranked = ranked.map((r) => ({ ...r }));
+  const traceKey = (row) => JSON.stringify([row.repo, row.path, row._poolIdx ?? null]);
+  const originalScores = traceWriter ? new Map(ranked.map((row) => [traceKey(row), row.ceScore])) : null;
   const queriedNames = scopedNamesIn(query);
   // Repo-name affinity: when the question explicitly NAMES a repo ("Does QuDAG…", "what can SAFLA do",
   // "can ruflo orchestrate…"), that repo should win ties/near-ties over a sibling that merely mentions it.
@@ -2799,7 +2861,13 @@ export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true }) 
     }
   }
 
-  ranked.sort((a, b) => (b.ceScore ?? -Infinity) - (a.ceScore ?? -Infinity));
+  const lexical = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+  ranked.sort((a, b) => (b.ceScore ?? -Infinity) - (a.ceScore ?? -Infinity)
+    || lexical(String(a.repo || ''), String(b.repo || ''))
+    || lexical(String(a.path || ''), String(b.path || ''))
+    || lexical(String(a.id || ''), String(b.id || '')));
+  const uncollapsed = ranked;
+  ranked = collapseIdenticalResults(ranked);
 
   // ── BARE ADR-NUMBER QUERIES ARE AMBIGUOUS (issue #33 Part B, Jan Lafko / @lafinak) ────────────
   // ADR numbering is PER-REPO, not global: "ADR-085" names a completely different decision
@@ -2825,7 +2893,7 @@ export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true }) 
     };
     // Best-scoring representative per repo — the collision set.
     const byRepo = new Map();
-    for (const r of ranked) {
+    for (const r of uncollapsed) {
       if (sameNumber(r) && !byRepo.has(r.repo)) byRepo.set(r.repo, r);
     }
     if (byRepo.size > 1) {
@@ -2859,8 +2927,9 @@ export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true }) 
       const isBareLookup = residual.split(/\s+/).filter(Boolean).length <= 4;
       if (isBareLookup) {
         const forced = [...byRepo.values()].slice(0, k);
-        const forcedSet = new Set(forced);
-        results = [...forced, ...ranked.filter((r) => !forcedSet.has(r))].slice(0, k);
+        const forcedSet = new Set(forced.map(r => JSON.stringify([r.repo, r.path])));
+        results = collapseIdenticalResults([...forced,
+          ...uncollapsed.filter(r => !forcedSet.has(JSON.stringify([r.repo, r.path])))]).slice(0, k);
       }
     }
   }
@@ -2905,11 +2974,37 @@ export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true }) 
   // passages whose own repo the query's text literally names (or aliases) — an unrelated widened
   // sibling repo's near-duplicate content (e.g. ruvector vendoring a copy of skygraph's own example)
   // is untouched and still gets pruned like any other irrelevant noise.
+  const selectedBeforePrune = traceWriter ? new Set(results.map(traceKey)) : null;
   const kept = pruneIrrelevant
     ? results.filter((r, i) => i === 0 || r.nameBoosted || (r.ceScore ?? -Infinity) >= 0)
     : results;
   const droppedIrrelevant = results.length - kept.length;
   results = kept;
+
+  if (traceWriter) {
+    const keptKeys = new Set(results.map(traceKey));
+    const collapsedKeys = new Set(ranked.map(traceKey));
+    const describe = (row) => ({ repo: row.repo, path: row.path, poolIdx: row._poolIdx ?? null,
+      ceOriginal: originalScores.get(traceKey(row)) ?? null, ceFinal: row.ceScore ?? null,
+      alternatives: Array.isArray(row.alternativePaths) ? row.alternativePaths : [] });
+    try { traceWriter({ stage: 'post-selection', query,
+      allRows: uncollapsed.map((row) => {
+        const key = traceKey(row);
+        const disposition = keptKeys.has(key) ? 'kept' : selectedBeforePrune.has(key) ? 'pruned'
+          : collapsedKeys.has(key) ? 'outside-selection' : 'collapsed-equivalent';
+        return { ...describe(row), disposition,
+          pruneReason: disposition === 'pruned' ? 'negative-score-after-selection' : null };
+      }),
+      beforeCollapse: uncollapsed.map((row) => ({ ...describe(row),
+        nameBoosted: Boolean(row.nameBoosted), inventoryBoosted: Boolean(row.inventoryBoosted),
+        quotedClaimsBoosted: Boolean(row.quotedClaimsBoosted), exactAdrBoosted: Boolean(row.exactAdrBoosted),
+        sourceDetailBoosted: Boolean(row.sourceDetailBoosted), identifierBoosted: row.identifierBoosted || null,
+      })), afterCollapse: ranked.map(describe),
+      kept: results.map(describe), pruned: droppedIrrelevant,
+    }); } catch (error) {
+      if (process.env.KB_DEBUG) console.error(`[forge-ask-all] stage trace unavailable: ${error.message}`);
+    }
+  }
 
   const grade = topScore == null ? 'insufficient_evidence'
     : topScore >= STRONG ? 'strong'
@@ -3264,6 +3359,10 @@ export async function searchAll({
     }
   }
   const list = discovered;
+  const overviewPlan = overviewLanePlan({ storeCount: list.length, pool, query });
+  const overviewLaneEnabled = overviewPlan.enabled;
+  const overviewBm25TopN = overviewPlan.topN;
+  const overviewDiagnostics = [];
   // The full set of real, independently-indexed store names, for the identifier-lane's
   // foreign-repo-name guard (issue #286 RC3, kb/identifier-lane.mjs's identifierEvidence): an
   // identifier that IS itself one of these names has an authoritative home already, so a
@@ -3387,10 +3486,20 @@ export async function searchAll({
         cands = cands.concat(byIdentifier);
       }
       if (isTranscriptStore(name)) {
-        const seen = new Set(hits.map((h) => h.path));
+        const seen = new Set(cands.map((candidate) => candidate.path));
         const bm = meetingBm25Candidates(dir, name, query, 40).filter((c) => !seen.has(c.path));
-        cands = hits.concat(bm); // the global cross-encoder (rerankPairs below) then promotes the real answer
+        cands = cands.concat(bm); // preserve earlier lanes before the global cross-encoder ranks the answer
         for (let i = 0; i < bm.length; i++) bm[i]._lane = 'bm25';
+      }
+      if (overviewLaneEnabled) {
+        try {
+          const seen = new Set(cands.map((candidate) => candidate.path));
+          const bm = overviewBm25Candidates(dir, name, query, overviewBm25TopN)
+            .filter((candidate) => !seen.has(candidate.path));
+          cands = cands.concat(bm);
+        } catch (error) {
+          overviewDiagnostics.push({ store: name, error: String(error?.message || error) });
+        }
       }
       // Every candidate carries WHY it is in the pool and HOW deep it sat in that lane. Nothing
       // downstream of the cross-encoder needs this — the reranker's job is to forget where a
@@ -3422,6 +3531,11 @@ export async function searchAll({
   // otherwise a replay would break ties differently from production and quietly measure a
   // different policy than the one being shipped.
   for (let i = 0; i < pooledAll.length; i++) pooledAll[i]._poolIdx = i;
+  const traceEnabled = Boolean(process.env.KB_RETRIEVAL_STAGE_TRACE);
+  const traceCandidates = (rows) => rows.map((row) => ({ repo: row.repo, path: row.path,
+    lane: row._lane || 'dense', rawRank: row._rawRank ?? null, sourceRank: row._srcRank ?? null,
+    poolIdx: row._poolIdx, distance: row.bestDistance ?? null }));
+  if (traceEnabled) appendStageTrace({ stage: 'candidate-pool-before-cap', query, candidates: traceCandidates(pooledAll) });
   // An explicit KB_CE_MAX_PAIRS is the operator's word and wins on every lane. Absent that, the
   // full-corpus fallback takes the measured B=408 budget (see FULL_CORPUS_MAX_PAIRS_DEFAULT) and
   // every other lane keeps CE_MAX_PAIRS_DEFAULT — which is 0, i.e. unchanged.
@@ -3452,6 +3566,7 @@ export async function searchAll({
   const { kept: candidates, dropped: cappedOut } = s1
     ? cascadeRerankPool(pooledAll, { limit: cascadeK, s1 })
     : capRerankPool(pooledAll, { limit: capLimit });
+  if (traceEnabled) appendStageTrace({ stage: 'candidate-pool-after-cap', query, cappedOut, candidates: traceCandidates(candidates) });
   // ONE cross-encoder pass over the whole cross-repo pool → a single comparable relevance scale.
   deadline?.check('rerank');
   const ranked = await rerankPairs(query, candidates, { deadline });
@@ -3468,6 +3583,7 @@ export async function searchAll({
       cascadeK, cascadeTokens: s1 ? cascadeTokens : null, prefilterMs,
       cands: ranked.map((r) => ({
         repo: r.repo, path: r.path, title: r.title ?? null, lane: r._lane ?? 'dense',
+        id: r.id ?? null, source: r._source ?? null,
         rank: r._srcRank ?? 0, poolIdx: r._poolIdx ?? 0, ce: r.ceScore, dist: r.bestDistance ?? null,
         s1: s1By.has(r._poolIdx) ? s1By.get(r._poolIdx) : null,
         len: (r.fullText || r.text || '').length,
@@ -3475,7 +3591,7 @@ export async function searchAll({
       })),
     }) + '\n');
   }
-  const { results, adrCollision, evidence, implementation } = selectResults({ query, ranked, k });
+  const { results, adrCollision, evidence, implementation } = selectResults({ query, ranked, k, traceWriter: traceEnabled ? appendStageTrace : null });
 
   // `pooled` stays the number of pairs the cross-encoder read IN FULL — that is what the count
   // has always meant to a reader. `pooledAll`/`cappedOut` report what the cap withheld, because a
@@ -3487,7 +3603,7 @@ export async function searchAll({
     repos: list, perRepo, results,
     pooled: candidates.length, pooledAll: pooledAll.length, cappedOut,
     prefiltered: s1 ? pooledAll.length : 0, prefilterTokens: s1 ? cascadeTokens : 0, prefilterMs,
-    corpusAge, adrCollision, evidence, implementation, routing,
+    corpusAge, adrCollision, evidence, implementation, routing, overviewDiagnostics,
   };
 }
 
@@ -3625,3 +3741,6 @@ const realOrSelf = (p) => { try { return fs.realpathSync(p); } catch { return pa
 if (process.argv[1] && realOrSelf(process.argv[1]) === realOrSelf(__filename)) {
   main().catch((e) => { console.error('ERROR:', e.message); process.exit(1); });
 }
+
+// Reuse the canonical embedder warmup for archive readiness.
+export { warmQueryEmbedder } from './forge-ask.mjs';

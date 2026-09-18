@@ -224,7 +224,7 @@ describe('applyVerifiedStagedRelease (private recovery rail)', () => {
     const before = fs.readFileSync(path.join(live, 'SOURCE.json'));
     await expect(applyVerifiedStagedRelease({ stagedDir: staged, liveDir: live,
       bundlePath: path.join(root, 'bundle.zip'), signaturePath: path.join(root, 'bundle.zip.sig'),
-      expectedRuntimeVersion: '4.3.26', validateCoverageDirectory: () => ({ valid: true, failures: [] })
+      expectedRuntimeVersion: JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url))).version, validateCoverageDirectory: () => ({ valid: true, failures: [] })
     })).rejects.toThrow(/signature verification failed/i);
     expect(fs.readFileSync(path.join(live, 'SOURCE.json'))).toEqual(before);
   });

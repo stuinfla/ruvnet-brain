@@ -94,7 +94,7 @@ function fableInput(overrides = {}) {
     id: 'claude-fable-5-1',
     model: 'claude-fable-5-1',
     provider: 'firstParty',
-    execution: { nativeHost: 'claude-code', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64) },
+    execution: { nativeHost: 'claude-code', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64), requestedModel: 'claude-fable-5-1', modelIdentityClass: 'requested-only', threadId: null, sessionId: 'session-adr072-review' },
     ...overrides,
   };
 }
@@ -114,7 +114,8 @@ function sol(overrides = {}) {
       subscriptionAuthenticated: true,
       invocationDigest: '7'.repeat(64),
       threadId: 'thread-adr072-review',
-      catalogRowSha256: '8'.repeat(64),
+      sessionId: null,
+      requestedModel: 'gpt-6-astra', modelIdentityClass: 'requested-only',
     },
     ...overrides,
   }, solKeys.privateKey);
@@ -182,12 +183,12 @@ describe('independent review receipt', () => {
   it('rejects the wrong key, unknown fields, non-Ed25519 keys, and malformed timestamps', () => {
     expect(() => verifyIndependentReviewReceipt(fable(), strangerKeys.publicKey)).toThrow(/signing key identity|signature mismatch/);
     expect(() => createIndependentReviewReceipt({ ...common, id: 'claude-fable-5-1', model: 'claude-fable-5-1', provider: 'firstParty',
-      execution: { nativeHost: 'claude-code', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64) }, unsignedEscape: true }, fableKeys.privateKey))
+      execution: { nativeHost: 'claude-code', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64), requestedModel: 'claude-fable-5-1', modelIdentityClass: 'requested-only', threadId: null, sessionId: 'session-adr072-review' }, unsignedEscape: true }, fableKeys.privateKey))
       .toThrow(/unknown field/);
     expect(() => fable({ reviewedAt: '2026-08-22' })).toThrow(/timestamp/);
     const rsa = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
     expect(() => createIndependentReviewReceipt({ ...common, id: 'claude-fable-5-1', model: 'claude-fable-5-1', provider: 'firstParty',
-      execution: { nativeHost: 'claude-code', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64) } }, rsa.privateKey)).toThrow(/Ed25519/);
+      execution: { nativeHost: 'claude-code', subscriptionAuthenticated: true, invocationDigest: '6'.repeat(64), requestedModel: 'claude-fable-5-1', modelIdentityClass: 'requested-only', threadId: null, sessionId: 'session-adr072-review' } }, rsa.privateKey)).toThrow(/Ed25519/);
   });
 
   it('fails closed across malformed schema, nested evidence, key, signature, and canonicalization boundaries', () => {
@@ -206,7 +207,7 @@ describe('independent review receipt', () => {
     expect(() => fable({ deductions: null })).toThrow(/deductions.*array/);
     expect(() => fable({ deductions: [{ ...common.deductions[0], points: 0 }] })).toThrow(/points/);
     expect(() => fable({ deductions: [common.deductions[0], { ...common.deductions[0] }] })).toThrow(/duplicate codes/);
-    expect(() => fable({ execution: { nativeHost: 'claude-code', subscriptionAuthenticated: false, invocationDigest: '6'.repeat(64) } }))
+    expect(() => fable({ execution: { nativeHost: 'claude-code', subscriptionAuthenticated: false, invocationDigest: '6'.repeat(64), requestedModel: 'claude-fable-5-1', modelIdentityClass: 'requested-only', threadId: null, sessionId: 'session-adr072-review' } }))
       .toThrow(/not subscription authenticated/);
     expect(() => fable({ independent: false })).toThrow(/independent execution/);
     expect(() => fable({ verdict: 'UNKNOWN' })).toThrow(/verdict/);
@@ -247,9 +248,15 @@ describe('independent review receipt', () => {
       { identity: 'gpt-6-astra', model: 'gpt-6-astra', provider: 'openai' },
     ]);
     expect(() => fable({ provider: 'openai' })).toThrow(/reviewer identity.*model.*provider/);
-    expect(() => sol({ execution: { nativeHost: 'codex', subscriptionAuthenticated: true, invocationDigest: '7'.repeat(64) } }))
-      .toThrow(/thread.*catalog/);
+    expect(() => sol({ execution: { nativeHost: 'codex', subscriptionAuthenticated: true, invocationDigest: '7'.repeat(64), threadId: 'thread' } }))
+      .toThrow(/modelIdentityClass|requested model/);
     expect(() => fable({ id: 'unknown-reviewer', model: 'unknown-reviewer' })).toThrow(/reviewer identity/);
+  });
+
+  it('rejects signed execution identity mutations', () => {
+    const receipt = fable();
+    expect(() => verifyIndependentReviewReceipt({ ...receipt, execution: { ...receipt.execution, modelIdentityClass: 'executed' } }, fableKeys.publicKey)).toThrow();
+    expect(() => verifyIndependentReviewReceipt({ ...receipt, execution: { ...receipt.execution, requestedModel: 'claude-other' } }, fableKeys.publicKey)).toThrow();
   });
 
   it('rejects release drift and self-review before signing', () => {
@@ -364,7 +371,7 @@ describe('independent review receipt CLI', () => {
       model: 'gpt-6-astra',
       provider: 'openai',
       execution: { nativeHost: 'codex', subscriptionAuthenticated: true, invocationDigest: '7'.repeat(64),
-        threadId: 'thread-adr072-review', catalogRowSha256: '8'.repeat(64) },
+        threadId: 'thread-adr072-review', sessionId: null, requestedModel: 'gpt-6-astra', modelIdentityClass: 'requested-only' },
     }));
     fs.writeFileSync(fablePublic, fableKeys.publicKey.export({ type: 'spki', format: 'pem' }));
     fs.writeFileSync(solPublic, solKeys.publicKey.export({ type: 'spki', format: 'pem' }));
@@ -479,3 +486,12 @@ describe('independent review receipt CLI', () => {
     }
   });
 });
+
+
+it.each(['repository', 'package', 'packageIntegrity', 'packageAssetName', 'evidenceDigest', 'bundleSignatureSha256', 'bundleDigestSha256', 'corpusSeedSha256', 'generationLedgerSha256'])(
+  'rejects a different complete release identity field %s', (field) => {
+    const expected = { ...release, [field]: field.endsWith('Sha256') || field === 'evidenceDigest' ? '9'.repeat(64) : 'different-value' };
+    expected.transactionId = transactionIdFor(expected);
+    expect(() => validateIndependentReviewPair([fable(), sol()], { publicKeysByReviewer: publicKeys(), expectedIdentity: expected })).toThrow(/identity|release/);
+    expect(() => validateIndependentReviewPair([fable(), sol()], { publicKeysByReviewer: publicKeys(), expectedIdentity: release })).not.toThrow();
+  });

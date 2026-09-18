@@ -81,6 +81,9 @@ it('selfcheck rejects stale registration without executing its sentinel command'
   const home = temporary();
   const installed = path.join(home, '.claude/plugins/cache/ruvnet-brain/ruvnet-brain/9.9.9');
   fs.cpSync(path.join(ROOT, 'plugin'), installed, { recursive: true });
+  fs.writeFileSync(path.join(home, '.claude/plugins/installed_plugins.json'), JSON.stringify({
+    version: 2, plugins: { 'ruvnet-brain@ruvnet-brain': [{ scope: 'user', installPath: installed }] },
+  }));
   const sentinel = path.join(home, 'must-not-exist');
   const script = path.join(installed, 'sentinel.mjs');
   fs.writeFileSync(script, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(sentinel)}, 'executed');`);

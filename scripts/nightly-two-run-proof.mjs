@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { isIngestibleDisposition } from './coverage-integrity.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -386,7 +387,7 @@ function validateInstalledRun(run, proof) {
     || evidence['source-enumeration']?.sourceObservationSha256 !== coverage.sourceObservationSha256
     || evidence['source-enumeration']?.rows !== coverage.totals.rows
     || evidence['source-enumeration']?.terminal !== true
-    || evidence.ingestion?.eligibleCurrent !== coverage.rows.filter((row) => row.disposition === 'eligible' && row.status === 'CURRENT').length
+    || evidence.ingestion?.eligibleCurrent !== coverage.rows.filter((row) => isIngestibleDisposition(row.disposition) && row.status === 'CURRENT').length
     || evidence.ingestion?.storeCount !== coverage.generationLedger.storeCount
     || evidence['bundle-assembly']?.version !== coverage.releaseIdentity.version
     || evidence['bundle-assembly']?.sourceSnapshot !== proof.sourceSha

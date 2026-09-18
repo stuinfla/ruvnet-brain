@@ -86,6 +86,10 @@ export function buildRuntimeRoot(dirs, { privateStores = [], prose = {} } = {}) 
   fs.writeFileSync(path.join(root, 'data', 'registry.tiers.json'), JSON.stringify({ tiers: {} }));
   fs.writeFileSync(path.join(root, 'scripts', 'verify-bundle.mjs'), '// fixture verify-bundle.mjs\n');
   fs.writeFileSync(path.join(root, 'keys', 'ruvnet-brain-signing.pub.pem'), '-----BEGIN PUBLIC KEY-----\nfixture\n-----END PUBLIC KEY-----\n');
+  // The actual validator is a required runtime dependency, even in minimal bundle fixtures.
+  fs.mkdirSync(path.join(root, 'plugin/scripts'), { recursive: true });
+  fs.copyFileSync(new URL('../../plugin/scripts/coverage-integrity.mjs', import.meta.url),
+    path.join(root, 'plugin/scripts/coverage-integrity.mjs'));
   writeProse(kb, prose);
   return root;
 }

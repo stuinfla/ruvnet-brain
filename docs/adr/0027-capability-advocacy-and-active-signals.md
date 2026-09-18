@@ -3,7 +3,7 @@ id: ADR-027
 title: The brain advocates, it does not wait — capability advocacy + the death of passive signals
 status: Proposed
 date: 2026-07-21
-updated: 2026-08-01
+updated: 2026-09-17
 authors: [Stuart Kerr, Claude Code]
 tags: [strategy, learning, proactivity, agentdb, sona, reasoningbank, console, health]
 supersedes: []
@@ -59,7 +59,7 @@ exact and repeats without variation:
 | Store integrity | a console card | corruption sat unfixed until the owner noticed |
 | Learning | a CLI nobody runs | 1,884 events queued, learner idle six days |
 
-Against that, the signals encoded as **gates** — `ground-before-write`, `verify-interface`,
+Against that, the historical signals encoded as **gates** — `ground-before-write`, former `verify-interface`,
 `pre-push` — were obeyed **100% of the time**, including three occasions in one session where they
 stopped this author from hand-rolling a tool rUv already ships.
 

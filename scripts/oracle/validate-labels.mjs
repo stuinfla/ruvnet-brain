@@ -22,7 +22,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gitBlobSha, sha256Hex, unitText } from './source-units.mjs';
+import { verifyProductionEvidence, MAX_UNIT_CHARS } from './production-evidence.mjs';
+import { gitBlobSha, sha256Hex, unitText, verifyInventory } from './source-units.mjs';
 
 export const THRESHOLDS = Object.freeze({
   minSpanChars: 40, minSpanTokens: 6, maxSpanFractionOfUnit: 0.9,
@@ -103,11 +104,15 @@ function readUnit(snapshotDir, label, cache) {
   if (!cache.has(label.path)) {
     let buf;
     try { buf = fs.readFileSync(path.join(snapshotDir, label.path)); } catch { cache.set(label.path, null); return null; }
-    cache.set(label.path, { blobSha: gitBlobSha(buf), lines: buf.toString('utf8').split('\n') });
+    cache.set(label.path, { blobSha: gitBlobSha(buf), bytes: buf, lines: buf.toString('utf8').split('\n') });
   }
   const file = cache.get(label.path);
   if (!file || file.blobSha !== label.blobSha) return null;
-  const text = unitText(file.lines, label.startLine, label.endLine);
+  const byteBound = label.startByte !== undefined || label.endByte !== undefined;
+  if (byteBound && !(Number.isSafeInteger(label.startByte) && Number.isSafeInteger(label.endByte)
+    && label.startByte >= 0 && label.endByte > label.startByte && label.endByte <= file.bytes.length)) return null;
+  const text = byteBound ? file.bytes.subarray(label.startByte, label.endByte).toString('utf8')
+    : unitText(file.lines, label.startLine, label.endLine);
   return sha256Hex(Buffer.from(text, 'utf8')) === label.bytesSha256 ? text : null;
 }
 
@@ -121,10 +126,25 @@ const quantiles = (xs) => {
 /** Synthetic leaky question: the span's own first 20 tokens — what a lazy producer would emit. */
 export const leakyQuestionFor = (span) => `According to the text, ${tokens(span).slice(0, 20).join(' ')}?`;
 
-export async function validateLabels({ labels, snapshotDir, embed, thresholds = THRESHOLDS }) {
+export async function validateLabels({ labels, inventory, snapshotDir, embed, thresholds = THRESHOLDS, diagnosticLegacy = false, trustedProductionKey = null }) {
+  if (!diagnosticLegacy) {
+    await verifyInventory(inventory, snapshotDir);
+    if (labels.repo !== inventory.repo || labels.commit !== inventory.commit || labels.rulesVersion !== inventory.rulesVersion
+      || labels.inventoryDigest !== sha256Hex(Buffer.from(JSON.stringify(inventory)))) throw new Error('labels do not bind authoritative inventory');
+    const expected = new Map(inventory.selected.map(unit => [unit.unitId, unit]));
+    if (!Array.isArray(labels.labels) || labels.labels.length !== expected.size) throw new Error('labels omit or duplicate selected units');
+    for (const label of labels.labels) {
+      const unit = expected.get(label.unitId);
+      if (!unit || ['path','blobSha','bytesSha256','startByte','endByte','startLine','endLine'].some(key => label[key] !== unit[key])) {
+        throw new Error('label source identity differs from exact selected unit');
+      }
+      expected.delete(label.unitId);
+    }
+  }
+
   const cache = new Map();
   const rows = labels.labels.map((label) => ({ label, unit: label.producerError || label.skip ? null : readUnit(snapshotDir, label, cache) }));
-  const live = rows.filter((r) => r.unit !== null);
+  const live = rows.filter((r) => r.unit !== null && !r.label.accountedMiss);
   const texts = [];
   const index = (t) => { texts.push(t); return texts.length - 1; };
   for (const r of live) r.emb = { d: index(r.label.direct), p: index(r.label.paraphrase), s: index(r.label.span), leak: index(leakyQuestionFor(r.label.span)) };
@@ -134,6 +154,11 @@ export async function validateLabels({ labels, snapshotDir, embed, thresholds = 
   const directCos = [];
   const paraCos = [];
   for (const { label, unit, emb } of rows) {
+    if (label.accountedMiss) {
+      const valid = (label.missReason === 'unit_exceeds_producer_context' && unit !== null && unit.length > MAX_UNIT_CHARS && JSON.stringify(label.unproducedSlots) === JSON.stringify(['direct', 'paraphrase'])) || label.missReason === 'judge_verdict_no';
+      perLabel.push({ unitId: label.unitId, path: label.path, pass: false, accountedMiss: valid, checks: failAll(valid ? `accounted miss: ${label.missReason}` : 'invalid accounted miss') });
+      continue;
+    }
     if (label.producerError) { perLabel.push({ unitId: label.unitId, path: label.path, pass: false, checks: failAll(`producer error: ${label.producerError}`) }); continue; }
     if (label.skip) { perLabel.push({ unitId: label.unitId, path: label.path, pass: false, checks: failAll(`skipped by producer: ${label.skipReason}`) }); continue; }
     if (unit === null) { perLabel.push({ unitId: label.unitId, path: label.path, pass: false, checks: failAll('blob or unit drift: upstream bytes differ from the inventory') }); continue; }
@@ -157,8 +182,12 @@ export async function validateLabels({ labels, snapshotDir, embed, thresholds = 
   const count = (key) => ({ pass: perLabel.filter((r) => r.checks[key].pass).length, fail: perLabel.filter((r) => !r.checks[key].pass).length });
   const codexVerdicts = perLabel.filter((r) => r.codex && !r.codex.error);
   const yes = (side) => codexVerdicts.filter((r) => r.codex[side]?.answers === 'yes').length;
+  const productionEvidence = verifyProductionEvidence(labels, trustedProductionKey);
   return {
-    schemaVersion: 1, kind: 'oracle-validation', repo: labels.repo, commit: labels.commit, thresholds,
+    inventoryDigest: labels.inventoryDigest, productionEvidence,
+    oracleComplete: !diagnosticLegacy && productionEvidence.verified && perLabel.length > 0 && perLabel.every(row => row.accountedMiss || (row.pass
+      && ['direct', 'paraphrase', 'equivalent'].every(side => row.judge?.[side]?.answers === 'yes'))),
+    diagnosticLegacy, schemaVersion: 1, kind: 'oracle-validation', repo: labels.repo, commit: labels.commit, thresholds,
     aggregate: {
       total: perLabel.length, pass: perLabel.filter((r) => r.pass).length,
       producerErrors: rows.filter((r) => r.label.producerError).length, skipped: rows.filter((r) => r.label.skip).length,
@@ -224,12 +253,15 @@ export async function main(argv = process.argv.slice(2)) {
   if (!labelsFile || !snapshotDir) { process.stderr.write('Usage: validate-labels.mjs --labels <labels.json> --dir <snapshot> [--out <validation.json>]\n'); return 64; }
   const labels = JSON.parse(fs.readFileSync(labelsFile, 'utf8'));
   const embed = await loadBgeEmbedder();
-  const validation = await validateLabels({ labels, snapshotDir: path.resolve(snapshotDir), embed });
+  const inventoryFile = arg(argv, '--inventory');
+  const inventory = inventoryFile ? JSON.parse(fs.readFileSync(inventoryFile, 'utf8')) : null;
+  const validation = await validateLabels({ labels, inventory, snapshotDir: path.resolve(snapshotDir), embed, diagnosticLegacy: argv.includes('--diagnostic-legacy'),
+    trustedProductionKey: arg(argv,'--production-public-key') ? fs.readFileSync(arg(argv,'--production-public-key'),'utf8') : null });
   const json = `${JSON.stringify(validation, null, 2)}\n`;
   if (out) fs.writeFileSync(out, json); else process.stdout.write(json);
   const a = validation.aggregate;
   process.stderr.write(`[validate] ${labels.repo}: ${a.pass}/${a.total} pass | a=${a.byCheck.a.pass} b=${a.byCheck.b.pass} c=${a.byCheck.c.pass} d=${a.byCheck.d.pass} | ws-normalised=${a.secondary.whitespaceNormalizedMatch} line-range=${a.secondary.lineRangeMatch}\n`);
-  return 0;
+  return validation.oracleComplete ? 0 : 2;
 }
 
 // Entry-point guard. Compares REALPATHS on both sides: path.resolve() normalizes a path but does

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  DEFAULT_BATCH, PRODUCER_MODELS, batchUnits, claudeArgs, claudePrompt, codexArgs, codexPrompt,
+  DEFAULT_BATCH, MAX_UNIT_CHARS, PRODUCER_MODELS, batchUnits, claudeArgs, claudePrompt, codexArgs, codexPrompt,
   loadUnitTexts, parseClaudeEnvelope, parseCodexJsonl, produceQuestions,
 } from '../../scripts/oracle/produce-questions.mjs';
 import { API_BILLING_ENV, subscriptionOnlyEnv } from '../../scripts/subscription-hosts.mjs';
@@ -35,7 +35,7 @@ describe('the hard fence (owner mandate: zero out-of-pocket spend)', () => {
     process.env.OPENROUTER_API_KEY = 'sk-should-be-stripped';
     try {
       // subscriptionOnlyEnv strips it, so this MUST succeed and record the parent/child asymmetry.
-      const out = await produceQuestions({ inventory, snapshotDir: os.tmpdir(), spawnImpl: async () => { throw new Error('no host should be spawned for zero units'); }, workDir: fs.mkdtempSync(path.join(os.tmpdir(), 'fence-')) });
+      const out = await produceQuestions({ diagnosticLegacy: true, inventory, snapshotDir: os.tmpdir(), spawnImpl: async () => { throw new Error('no host should be spawned for zero units'); }, workDir: fs.mkdtempSync(path.join(os.tmpdir(), 'fence-')) });
       expect(out.envAudit.parentHadBillingKeys).toContain('OPENROUTER_API_KEY');
       expect(out.envAudit.childHadBillingKeys).toEqual([]);
     } finally {
@@ -162,7 +162,7 @@ describe('produceQuestions with a stubbed spawn (no model, no network)', () => {
 
   it('runs both passes, records both verdicts, and strips billing keys from the child env', async () => {
     const calls = [];
-    const out = await produceQuestions({ inventory: inventory(), snapshotDir: root, spawnImpl: stub(calls), workDir: workDir() });
+    const out = await produceQuestions({ diagnosticLegacy: true, inventory: inventory(), snapshotDir: root, spawnImpl: stub(calls), workDir: workDir() });
     expect(calls.map((c) => c.binary)).toEqual(['claude', 'codex']);
     for (const name of API_BILLING_ENV) for (const c of calls) expect(c.env[name]).toBeUndefined();
     // Derived, never restated: the child must carry the SAME marker the shared helper produces,
@@ -176,7 +176,7 @@ describe('produceQuestions with a stubbed spawn (no model, no network)', () => {
 
   it('the codex pass receives the span but NEVER the unit text', async () => {
     const calls = [];
-    await produceQuestions({ inventory: inventory(), snapshotDir: root, spawnImpl: stub(calls), workDir: workDir() });
+    await produceQuestions({ diagnosticLegacy: true, inventory: inventory(), snapshotDir: root, spawnImpl: stub(calls), workDir: workDir() });
     const codexInput = calls.find((c) => c.binary === 'codex').input;
     expect(codexInput).toContain('up to three times');
     expect(codexInput).not.toContain('## Retry policy');
@@ -187,7 +187,7 @@ describe('produceQuestions with a stubbed spawn (no model, no network)', () => {
     const failing = async (binary) => (binary === 'claude'
       ? { status: 1, timedOut: false, durationMs: 3, stdout: '', stderr: 'usage limit reached' }
       : { status: 0, timedOut: false, durationMs: 1, stdout: '', stderr: '' });
-    const out = await produceQuestions({ inventory: inventory(), snapshotDir: root, spawnImpl: failing, workDir: workDir() });
+    const out = await produceQuestions({ diagnosticLegacy: true, inventory: inventory(), snapshotDir: root, spawnImpl: failing, workDir: workDir() });
     expect(out.labels).toHaveLength(1);
     expect(out.labels[0].producerError).toMatch(/exit 1.*usage limit reached/);
     expect(out.calls[0]).toMatchObject({ host: 'claude', ok: false });
@@ -195,7 +195,7 @@ describe('produceQuestions with a stubbed spawn (no model, no network)', () => {
 
   it('RED: a timeout becomes a producerError', async () => {
     const timing = async () => ({ status: null, timedOut: true, durationMs: 99, stdout: '', stderr: '' });
-    const out = await produceQuestions({ inventory: inventory(), snapshotDir: root, spawnImpl: timing, workDir: workDir() });
+    const out = await produceQuestions({ diagnosticLegacy: true, inventory: inventory(), snapshotDir: root, spawnImpl: timing, workDir: workDir() });
     expect(out.labels[0].producerError).toBe('timeout');
   });
 
@@ -203,15 +203,65 @@ describe('produceQuestions with a stubbed spawn (no model, no network)', () => {
     const omitting = async (binary) => (binary === 'claude'
       ? { status: 0, timedOut: false, durationMs: 4, stderr: '', stdout: JSON.stringify({ structured_output: { labels: [] } }) }
       : { status: 0, timedOut: false, durationMs: 1, stdout: '', stderr: '' });
-    const out = await produceQuestions({ inventory: inventory(), snapshotDir: root, spawnImpl: omitting, workDir: workDir() });
+    const out = await produceQuestions({ diagnosticLegacy: true, inventory: inventory(), snapshotDir: root, spawnImpl: omitting, workDir: workDir() });
     expect(out.labels[0].producerError).toBe('unit missing from claude output');
+  });
+
+  it('counts failed retries against the actual generator call budget', async () => {
+    let invoked=0;
+    const out=await produceQuestions({diagnosticLegacy:true,inventory:inventory(),snapshotDir:root,workDir:workDir(),
+      maxGeneratorCalls:1,retries:3,spawnImpl:async()=>{invoked++;return {status:1,stderr:'temporary transport failure',stdout:''};}});
+    expect(invoked).toBe(1);
+    expect(out.labels[0].producerError).toBe('claude call budget exhausted');
+  });
+
+  it('resumes incomplete judge work without regenerating source-bound questions',async()=>{
+    const checkpointFile=path.join(workDir(),'checkpoint.json');
+    const first=await produceQuestions({diagnosticLegacy:true,inventory:inventory(),snapshotDir:root,workDir:workDir(),
+      checkpointFile,maxJudgeCalls:0,spawnImpl:stub([])});
+    expect(first.labels[0].judge.direct.error).toMatch(/budget/);
+    const calls=[];
+    const resumed=await produceQuestions({diagnosticLegacy:true,inventory:inventory(),snapshotDir:root,workDir:workDir(),
+      checkpointFile,maxJudgeCalls:1,spawnImpl:stub(calls)});
+    expect(calls.map(c=>c.binary)).toEqual(['codex']);
+    expect(resumed.checkpoint.reusedUnits).toBe(0);
+    expect(resumed.labels[0].judge.direct.answers).toBe('yes');
   });
 
   it('respects the call budget instead of spending unbounded subscription calls', async () => {
     const many = { ...inventory(), selected: Array.from({ length: 5 }, (_, i) => ({ ...inventory().selected[0], unitId: `u${i}` })) };
     const calls = [];
-    const out = await produceQuestions({ inventory: many, snapshotDir: root, spawnImpl: stub(calls), workDir: workDir(), batchSize: 1, maxClaudeCalls: 2, maxCodexCalls: 1 });
+    const out = await produceQuestions({ diagnosticLegacy: true, inventory: many, snapshotDir: root, spawnImpl: stub(calls), workDir: workDir(), batchSize: 1, maxClaudeCalls: 2, maxCodexCalls: 1 });
     expect(calls.filter((c) => c.binary === 'claude')).toHaveLength(2);
     expect(out.labels.filter((l) => l.producerError === 'claude call budget exhausted')).toHaveLength(3);
+  });
+});
+
+
+describe('v2 source accounting reaches the producer boundary', () => {
+  it('refuses incomplete semantic accounting before any host call', async () => {
+    let calls = 0;
+    await expect(produceQuestions({ diagnosticLegacy: true, inventory: { schemaVersion: 2, inventoryComplete: false, selected: [] },
+      snapshotDir: os.tmpdir(), spawnImpl: async () => { calls++; } })).rejects.toThrow(/semantic disposition/);
+    expect(calls).toBe(0);
+  });
+  it('preserves oversized exact bytes, records both unproduced slots, and makes no host call', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-oversized-'));
+    try {
+      const text = 'é'.repeat(MAX_UNIT_CHARS + 1);
+      const bytes = Buffer.from(text);
+      fs.writeFileSync(path.join(dir, 'big.txt'), bytes);
+      const unit = { unitId: 'big', path: 'big.txt', blobSha: gitBlobSha(bytes), bytesSha256: sha256Hex(bytes),
+        startByte: 0, endByte: bytes.length, startLine: 1, endLine: 1 };
+      expect(loadUnitTexts(dir, [unit])[0]).toMatchObject({ text, exceedsContext: true });
+      let calls = 0;
+      const out = await produceQuestions({ diagnosticLegacy: true, inventory: { repo: 'r', commit: 'c', selected: [unit] }, snapshotDir: dir,
+        workDir: dir, spawnImpl: async () => { calls++; throw new Error('forbidden'); } });
+      expect(calls).toBe(0);
+      expect(out.oracleComplete).toBe(false);
+      expect(out.labels).toHaveLength(1);
+      expect(out.labels[0]).toMatchObject({ accountedMiss: true, missReason: 'unit_exceeds_producer_context',
+        unproducedSlots: ['direct', 'paraphrase'], startByte: 0, endByte: bytes.length });
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });

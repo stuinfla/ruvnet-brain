@@ -4,6 +4,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+import { createProgressionSnapshot, restoreProjectProgression } from '../../plugin/scripts/project-progression-contract.mjs';
+import { expectedSchemaFingerprint } from '../../plugin/scripts/project-progression-reader.mjs';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   DERIVED_TEXT_LIMIT,
@@ -175,7 +178,7 @@ describe('progression producer', () => {
       resolution: resolutionFixture(),
       payload: payloadFor(transcriptFixture({
         // Every secret in the FIRST sentence, so the sentence bound cannot be what saves us.
-        user: 'Use sk-proj-ABCDEF1234567890 and password=hunter2 now, immediately, for everything.',
+        user: 'Use sk-proj-ABCDEF1234567890 and password=hunter2 and password="alpha beta" and token="gamma delta" now.',
         assistant: 'Authorization: Bearer abcdef0123456789 is the token I used and will keep using.',
       })),
       host: 'claude',
@@ -183,7 +186,7 @@ describe('progression producer', () => {
       now: () => '2026-09-11T00:00:00.000Z',
     });
     const serialized = JSON.stringify(produced);
-    for (const secret of ['sk-proj-ABCDEF1234567890', 'hunter2', 'abcdef0123456789']) {
+    for (const secret of ['sk-proj-ABCDEF1234567890', 'hunter2', 'abcdef0123456789', 'alpha', 'beta', 'gamma', 'delta']) {
       expect(serialized, `leaked ${secret}`).not.toContain(secret);
     }
     // Redacted, not merely absent: the derived field still exists and still says something.
@@ -201,5 +204,184 @@ describe('progression producer', () => {
     expect(buildProjectProgression(options).skipped).toBeUndefined();
     expect(buildProjectProgression(options).meaningDigest)
       .toBe(buildProjectProgression({ ...options, trigger: 'PreCompact' }).meaningDigest);
+  });
+});
+
+
+describe('durable state survives later automatic captures', () => {
+  function scenario() {
+    const resolution = resolutionFixture();
+    const ledgerFile = path.join(temporaryRoot(), 'work.json');
+    fs.writeFileSync(ledgerFile, JSON.stringify({ items: [
+      { text: 'completed change', done: true }, { text: 'remaining change', done: false },
+    ], objective: { text: 'finish the work', state: 'active' } }));
+    const options = { resolution, env: { RUVNET_WORK_LEDGER: ledgerFile }, host: 'claude',
+      payload: { session_id: 'source', hook_event_name: 'Stop' }, now: () => '2026-09-17T00:00:00.000Z' };
+    const produced = buildProjectProgression(options).projectProgression;
+    Object.assign(produced.completeProjectState, {
+      blockers: ['await review'], failures: ['previous run failed'], commands: ['npm test'],
+      proofArtifacts: ['receipt-1'], untested: ['real host'], customContext: { reason: 'keep this' },
+    });
+    const snapshot = createProgressionSnapshot({ ...produced, projectIdentity: resolution.projectIdentity,
+      hostIdentity: { host: 'claude', adapterVersion: 'test' }, sessionIdentity: 'source', trigger: 'Stop' });
+    // Only the throwaway unit-test store is written directly, never project memory.
+    const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
+    const db = new DatabaseSync(resolution.canonicalAgentDbPath);
+    db.exec(`CREATE TABLE memory_entries (${expectedSchemaFingerprint().columns.map(x => `"${x}" TEXT`).join(',')})`);
+    const insert = db.prepare('INSERT INTO memory_entries (key, namespace, content, status) VALUES (?, ?, ?, ?)');
+    insert.run(snapshot.eventKey, 'project-progression', JSON.stringify(snapshot), 'active');
+    return { resolution, ledgerFile, options, snapshot, db, insert };
+  }
+
+  it('rejects a valid snapshot stored under a different exact key', () => {
+    const fx = scenario();
+    fx.db.prepare('UPDATE memory_entries SET key=?').run('unrelated-stored-key');
+    fx.db.close();
+    expect(() => buildProjectProgression(fx.options)).toThrow(/exact key\/payload identity mismatch/);
+  });
+
+  it('preserves explicit cleared goals and decisions despite a newer contextual note', () => {
+    const fx = scenario();
+    const body = { ...fx.snapshot, dedupId: 'cleared', completeProjectState: {
+      ...fx.snapshot.completeProjectState, currentGoal: null, nextAction: null, decisions: [],
+      provenance: { ...fx.snapshot.completeProjectState.provenance,
+        currentGoal: { source: 'model-checkpoint', authoritative: false },
+        nextAction: { source: 'model-checkpoint', authoritative: false },
+        decisions: { source: 'model-checkpoint', authoritative: false } },
+    } };
+    const cleared = createProgressionSnapshot(body);
+    fx.db.prepare('DELETE FROM memory_entries').run();
+    fx.insert.run(cleared.eventKey, 'project-progression', JSON.stringify(cleared), 'active');
+    fx.insert.run('project-state-current-9', 'default', 'Old goal that must remain cleared.', 'active');
+    fx.db.close(); fs.unlinkSync(fx.ledgerFile);
+    const output = buildProjectProgression(fx.options).projectProgression.completeProjectState;
+    expect(output.currentGoal).toBeNull(); expect(output.nextAction).toBeNull();
+    expect(output.decisions).toEqual([]);
+    for (const field of ['currentGoal', 'nextAction', 'decisions']) {
+      expect(output.provenance[field]).toMatchObject({ source: 'prior-head', authoritative: false, origin: 'model-checkpoint' });
+    }
+  });
+
+  it('carries the complete prior work and evidence after its original ledger disappears', () => {
+    const fx = scenario(); fx.db.close(); fs.unlinkSync(fx.ledgerFile);
+    const output = buildProjectProgression({ ...fx.options, host: 'codex', payload: { session_id: 'destination', hook_event_name: 'Stop' } });
+    const state = output.projectProgression.completeProjectState;
+    for (const field of ['currentGoal', 'nextAction', 'plan', 'completed', 'inProgress', 'decisions',
+      'blockers', 'failures', 'commands', 'proofArtifacts', 'untested', 'customContext']) {
+      expect(state[field], field).toEqual(fx.snapshot.completeProjectState[field]);
+    }
+    for (const field of ['plan', 'completed', 'inProgress', 'decisions']) expect(state.provenance[field].source).toBe('prior-head');
+    expect(output.projectProgression.parentEventKeys).toEqual([fx.snapshot.eventKey]);
+    expect(state.evidence.workLedger.present).toBe(false);
+    expect(state.evidence.lastKnownInputs.workLedger).toEqual(fx.snapshot.completeProjectState.evidence.workLedger);
+  });
+
+  it('retains provenance for preserved checkpoint fields and readable ledger plan text', () => {
+    const fx = scenario();
+    expect(fx.snapshot.completeProjectState.plan[0]).toMatchObject({ text: 'remaining change', status: 'open' });
+    const carried = createProgressionSnapshot({ ...fx.snapshot, completeProjectState: {
+      ...fx.snapshot.completeProjectState, acceptanceContract: { required: ['real host verification'] },
+      provenance: { ...fx.snapshot.completeProjectState.provenance,
+        acceptanceContract: { source: 'model-checkpoint', authoritative: false },
+        proofArtifacts: { source: 'model-checkpoint', authoritative: false },
+      },
+    } });
+    fx.db.prepare('UPDATE memory_entries SET key=?, content=? WHERE key=?').run(carried.eventKey, JSON.stringify(carried), fx.snapshot.eventKey);
+    fx.db.close(); fs.unlinkSync(fx.ledgerFile);
+    const state = buildProjectProgression(fx.options).projectProgression.completeProjectState;
+    for (const field of ['acceptanceContract', 'proofArtifacts']) {
+      expect(state[field]).toEqual(carried.completeProjectState[field]);
+      expect(state.provenance[field]).toEqual(carried.completeProjectState.provenance[field]);
+    }
+  });
+
+  it('does not treat an agent-authored owner note as user authorization', () => {
+    const fx = scenario();
+    fx.db.prepare('DELETE FROM memory_entries WHERE namespace=?').run('project-progression');
+    fx.insert.run('project-state-current-1', 'default', 'contextual operator narrative', 'active');
+    fx.db.close(); fs.unlinkSync(fx.ledgerFile);
+    const state = buildProjectProgression(fx.options).projectProgression.completeProjectState;
+    expect(state.currentGoal).toBe('contextual operator narrative');
+    expect(state.nextAction).toBeNull();
+    for (const field of ['currentGoal', 'decisions']) {
+      expect(state.provenance[field]).toEqual({ source: 'owner-note', authoritative: false });
+    }
+  });
+
+  it('retains durable decisions when a contextual owner note remains available', () => {
+    const fx = scenario();
+    fx.insert.run('project-state-current-1', 'default', 'a different narrative', 'active');
+    fx.db.close(); fs.unlinkSync(fx.ledgerFile);
+    const state = buildProjectProgression(fx.options).projectProgression.completeProjectState;
+    expect(state.decisions).toEqual(fx.snapshot.completeProjectState.decisions);
+    expect(state.evidence.ownerNote.key).toBe('project-state-current-1');
+    expect(state.evidence.priorCapture).toEqual({ eventKey: fx.snapshot.eventKey, payloadDigest: fx.snapshot.payloadDigest });
+  });
+
+  it('does not promote a carried transcript-derived goal to authoritative work', () => {
+    const fx = scenario();
+    const inferred = createProgressionSnapshot({ ...fx.snapshot,
+      completeProjectState: { ...fx.snapshot.completeProjectState, provenance: {
+        ...fx.snapshot.completeProjectState.provenance, currentGoal: { source: 'transcript-derived', authoritative: false },
+      } },
+    });
+    fx.db.prepare('UPDATE memory_entries SET key=?, content=? WHERE key=?').run(inferred.eventKey, JSON.stringify(inferred), fx.snapshot.eventKey);
+    fx.db.close(); fs.unlinkSync(fx.ledgerFile);
+    const state = buildProjectProgression(fx.options).projectProgression.completeProjectState;
+    expect(state.provenance.currentGoal).toEqual({ source: 'prior-head', authoritative: false, origin: 'transcript-derived' });
+  });
+
+  it('refuses an unreadable existing history instead of producing a parentless successor', () => {
+    const fx = scenario(); fx.db.exec('ALTER TABLE memory_entries ADD COLUMN unexpected TEXT'); fx.db.close();
+    expect(() => buildProjectProgression(fx.options)).toThrow(/progression store unreadable/);
+  });
+
+  it('refuses malformed or digest-invalid history instead of silently discarding it', () => {
+    const fx = scenario();
+    fx.db.prepare('UPDATE memory_entries SET content=?').run('{invalid'); fx.db.close();
+    expect(() => buildProjectProgression(fx.options)).toThrow(/malformed snapshot/);
+  });
+
+  it('redacts truncated private keys and avoids slicing secret-bearing plan identifiers', () => {
+    const ledgerFile = path.join(temporaryRoot(), 'ledger.json');
+    fs.writeFileSync(ledgerFile, JSON.stringify({ items: [
+      { text: '-----BEGIN PRIVATE KEY-----\nSENSITIVEPARTIALMATERIAL', done: false },
+    ] }));
+    const produced = buildProjectProgression({ resolution: resolutionFixture(), env: { RUVNET_WORK_LEDGER: ledgerFile } });
+    expect(JSON.stringify(produced)).not.toContain('SENSITIVEPARTIALMATERIAL');
+    expect(produced.projectProgression.completeProjectState.plan[0].id).toMatch(/^[a-f0-9]{16}$/);
+  });
+
+  it('captures new transcript evidence even when the durable goal and tree do not change', () => {
+    const fx = scenario(); fx.db.close();
+    expect(buildProjectProgression(fx.options).skipped?.reason).toMatch(/no-op capture/);
+    const produced = buildProjectProgression({ ...fx.options, payload: {
+      ...fx.options.payload, transcript_path: transcriptFixture({ user: 'unchanged goal evidence', assistant: 'another observation' }),
+    } });
+    expect(produced.skipped).toBeUndefined();
+    expect(produced.projectProgression.completeProjectState.currentGoal).toBe(fx.snapshot.completeProjectState.currentGoal);
+    expect(produced.projectProgression.completeProjectState.evidence.transcript.excerptSha256).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('honors an explicitly empty ledger without reviving previously open work', () => {
+    const fx = scenario(); fx.db.close();
+    fs.writeFileSync(fx.ledgerFile, JSON.stringify({ items: [] }));
+    const state = buildProjectProgression(fx.options).projectProgression.completeProjectState;
+    expect(state.currentGoal).toBeNull(); expect(state.nextAction).toBeNull();
+    expect(state.plan).toEqual([]); expect(state.inProgress).toEqual([]); expect(state.completed).toEqual([]);
+    expect(state.decisions).toEqual(fx.snapshot.completeProjectState.decisions);
+  });
+
+  it('does not silently consume conflicting heads with an empty automatic successor', () => {
+    const fx = scenario();
+    const sibling = createProgressionSnapshot({ ...fx.snapshot, sessionIdentity: 'parallel', dedupId: 'parallel',
+      completeProjectState: { ...fx.snapshot.completeProjectState, currentGoal: 'different task' } });
+    fx.insert.run(sibling.eventKey, 'project-progression', JSON.stringify(sibling), 'active'); fx.db.close();
+    fs.unlinkSync(fx.ledgerFile);
+    const output = buildProjectProgression(fx.options);
+    expect(output.skipped?.reason).toMatch(/concurrent progression heads/);
+    expect(output.projectProgression).toBeNull();
+    const restored = restoreProjectProgression([fx.snapshot, sibling], { expectedProjectIdentity: fx.resolution.projectIdentity });
+    expect(restored.heads).toHaveLength(2); expect(restored.state.resumeConflicts.some(x => x.field === 'currentGoal')).toBe(true);
   });
 });

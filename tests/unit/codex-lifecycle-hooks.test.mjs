@@ -63,7 +63,7 @@ function installGroundingGeneration(brain, version) {
   }));
 }
 
-function installInterfaceGeneration(brain, version) {
+function installRetiredInterfaceGeneration(brain, version) {
   const scripts = path.join(brain, 'versions', version, 'scripts');
   fs.mkdirSync(scripts, { recursive: true });
   for (const file of [
@@ -72,7 +72,6 @@ function installInterfaceGeneration(brain, version) {
     'development-maintenance.mjs',
     'hook-shim.mjs',
     'hook-shim-bash.mjs',
-    'verify-interface.sh',
     'hook-input.mjs',
     'gate-receipt.sh',
   ]) {
@@ -253,10 +252,6 @@ describe.skip('HISTORICAL: Codex automatic lifecycle packaging before ADR-076 re
       expect(group.matcher).toMatch(/functions\\\.exec_command/);
       expect(group.matcher).toMatch(/apply_patch/);
     }
-    for (const group of requireGroups('PreToolUse', 'verify-interface')) {
-      expect(group.matcher).toMatch(/exec_command/);
-      expect(group.matcher).toMatch(/functions\\\.exec_command/);
-    }
     for (const group of requireGroups('PostToolUse', 'md-stamp')) {
       expect(group.matcher).toMatch(/apply_patch/);
     }
@@ -427,6 +422,18 @@ describe.skip('HISTORICAL: Codex automatic lifecycle packaging before ADR-076 re
 });
 
 describe('continuity-only Codex lifecycle packaging', () => {
+  it('keeps every SessionEnd registration and wrapper budget within the observed three-second host cap', () => {
+    const hooks = JSON.parse(fs.readFileSync(HOOKS, 'utf8')).hooks.SessionEnd.flatMap((group) => group.hooks);
+    expect(hooks.length).toBeGreaterThan(0);
+    for (const hook of hooks) {
+      expect(hook.timeout).toBeGreaterThan(0);
+      expect(hook.timeout).toBeLessThanOrEqual(3);
+      const budget = Number(hook.command.match(/" (\d+) session-snapshot SessionEnd$/)?.[1]);
+      expect(budget).toBeGreaterThan(0);
+      expect(budget).toBeLessThanOrEqual(hook.timeout * 1000);
+    }
+  });
+
   it('keeps canonical host pointers while both shipped registries carry only continuity', () => {
     const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
     const codex = JSON.parse(fs.readFileSync(HOOKS, 'utf8'));
@@ -517,6 +524,26 @@ describe('Codex lifecycle adapter', () => {
         additionalContext: '[RuvNet Brain start]',
       },
     });
+  });
+
+  it('normalizes native snake_case SessionStart for both the shared body and host output', () => {
+    const { home, brain } = fixture();
+    installGeneration(brain, 'v1', 'let raw=""; process.stdin.on("data",chunk=>raw+=chunk); process.stdin.on("end",()=>process.stdout.write(JSON.parse(raw).hook_event_name));');
+    const result = fire(home, 'session-start', {
+      session_id: 'codex-snake-event', hook_event_name: 'session_start', source: 'startup', cwd: ROOT,
+    });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'SessionStart' },
+    });
+  });
+
+  it('delivers canonical Stop to shared continuation logic and preserves its block', () => {
+    const { home, brain } = fixture();
+    installGeneration(brain, 'v1', 'let raw=""; process.stdin.on("data",chunk=>raw+=chunk); process.stdin.on("end",()=>{ if(JSON.parse(raw).hook_event_name === "Stop") process.stdout.write(JSON.stringify({decision:"block",reason:"unfinished work"})); });');
+    const result = fire(home, 'continuation-gate', { hook_event_name: 'stop', cwd: ROOT });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ decision: 'block', reason: 'unfinished work' });
   });
 
   it('maps Codex PLUGIN_ROOT to the Claude-compatible variable used by shared hooks', () => {
@@ -626,7 +653,7 @@ describe('Codex lifecycle adapter', () => {
       );
       const command = 'ruflo memory search "the prior decision" --limit 10';
 
-      const result = fire(home, 'verify-interface', {
+      const result = fire(home, 'route-dispatch', {
         session_id: 'codex-exec',
         turn_id: 'turn-exec',
         hook_event_name: 'PreToolUse',
@@ -647,9 +674,12 @@ describe('Codex lifecycle adapter', () => {
     },
   );
 
-  it('advises without blocking an unverified Ruflo command through the real Codex exec_command boundary', () => {
+  it('retires the interface ID silently through the real Codex exec_command boundary', () => {
     const { home, brain } = fixture();
-    installInterfaceGeneration(brain, 'v1');
+    installRetiredInterfaceGeneration(brain, 'v1');
+    const marker = path.join(home, 'retired-body-executed');
+    fs.writeFileSync(path.join(brain, 'versions/v1/scripts/verify-interface.sh'),
+      '#!/bin/bash\nprintf resurrected >&2\nprintf executed > "$RETIREMENT_SENTINEL"\n');
     const profile = path.join(home, '.claude', 'model-router', 'profile.json');
     fs.mkdirSync(path.dirname(profile), { recursive: true });
     fs.writeFileSync(profile, '{}');
@@ -663,12 +693,12 @@ describe('Codex lifecycle adapter', () => {
         cmd: 'ruflo memory search "the prior decision" --limit 10',
       },
       cwd: ROOT,
-    });
+    }, { RETIREMENT_SENTINEL: marker });
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('ruvnet_cli_help');
-    expect(result.stdout).toContain('ruvnet_cli_run');
+    expect(result.stdout).toBe('');
+    expect(fs.existsSync(marker)).toBe(false);
   });
 
   it('blocks the founding remote-import contradiction through the installed Codex boundary', () => {

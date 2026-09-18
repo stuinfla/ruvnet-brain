@@ -40,22 +40,34 @@ function isWithin(root, candidate) {
   return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
 }
 
+// Git hooks export repository-local overrides. A diagnostic must resolve its explicit caller
+// directory, not a different repository selected by the invoking hook's environment.
+const GIT_LOCAL_ENV = [
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT',
+  'GIT_OBJECT_DIRECTORY', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE',
+  'GIT_INDEX_FILE', 'GIT_NO_REPLACE_OBJECTS', 'GIT_REPLACE_REF_BASE', 'GIT_PREFIX',
+  'GIT_SHALLOW_FILE', 'GIT_COMMON_DIR',
+];
 function gitValue(cwd, args) {
+  const env = { ...process.env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0' };
+  for (const name of GIT_LOCAL_ENV) delete env[name];
   try {
     return execFileSync('git', args, {
-      cwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
+      cwd, env, encoding: 'utf8', timeout: 750, maxBuffer: 64 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
-  } catch {
-    return null;
+  } catch (error) {
+    if (error.status === 128 && /fatal: not a git repository/.test(String(error.stderr || ''))) return null;
+    // Missing Git, timeout, permissions and malformed metadata cannot establish a non-Git root.
+    throw new Error(`Git project identity could not be read (${error.code || error.signal || error.status || 'unknown failure'})`);
   }
 }
 
 function gitProject(projectDir) {
   const commonValue = gitValue(projectDir, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+  if (commonValue === null) return null;
   const checkoutValue = gitValue(projectDir, ['rev-parse', '--show-toplevel']);
-  if (!commonValue || !checkoutValue) return null;
+  if (!commonValue || !checkoutValue) throw new Error('Git project identity is incomplete');
   const gitCommonDir = canonicalDirectory(commonValue, 'Git common directory');
   const checkoutRoot = canonicalDirectory(checkoutValue, 'Git checkout root');
   if (path.basename(gitCommonDir) !== '.git') {

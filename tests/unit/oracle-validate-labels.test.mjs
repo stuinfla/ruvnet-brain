@@ -155,35 +155,51 @@ describe('validateLabels end to end (stubbed embedder, real bytes on disk)', () 
   const embed = async (texts) => texts.map((_, i) => Array.from({ length: 8 }, (_, j) => (j === i % 8 ? 1 : 0)));
 
   it('passes a well-formed label and reports every check', async () => {
-    const out = await validateLabels({ labels: { repo: 'r', commit: 'c', labels: [label()] }, snapshotDir: root, embed });
+    const out = await validateLabels({ diagnosticLegacy: true, labels: { repo: 'r', commit: 'c', labels: [label()] }, snapshotDir: root, embed });
     expect(out.aggregate.total).toBe(1);
     expect(out.aggregate.pass).toBe(1);
     expect(out.perLabel[0].checks.a.pass).toBe(true);
     expect(out.aggregate.byCheck.a).toEqual({ pass: 1, fail: 0 });
   });
 
+  it('validates exact UTF-8 byte spans within a line and refuses malformed boundaries', async () => {
+    const text = `é prefix ${UNIT} suffix`;
+    const bytes = Buffer.from(text);
+    fs.writeFileSync(path.join(root, 'bytes.txt'), bytes);
+    const startByte = Buffer.byteLength('é prefix ');
+    const exact = label({ path: 'bytes.txt', blobSha: gitBlobSha(bytes), startLine: 1, endLine: 1,
+      startByte, endByte: startByte + Buffer.byteLength(UNIT) });
+    const valid = await validateLabels({ diagnosticLegacy: true, labels: { labels: [exact] }, snapshotDir: root, embed });
+    expect(valid.aggregate.pass).toBe(1);
+    for (const bad of [{ startByte: -1 }, { endByte: bytes.length + 1 }, { endByte: undefined }]) {
+      const invalid = await validateLabels({ diagnosticLegacy: true, labels: { labels: [{ ...exact, ...bad }] }, snapshotDir: root, embed });
+      expect(invalid.aggregate.pass).toBe(0);
+      expect(invalid.perLabel[0].checks.a.reason).toMatch(/drift/);
+    }
+  });
+
   it('RED: a producer error counts as a failure of every check, never as a skip', async () => {
-    const out = await validateLabels({ labels: { repo: 'r', commit: 'c', labels: [label({ producerError: 'timeout' })] }, snapshotDir: root, embed });
+    const out = await validateLabels({ diagnosticLegacy: true, labels: { repo: 'r', commit: 'c', labels: [label({ producerError: 'timeout' })] }, snapshotDir: root, embed });
     expect(out.aggregate.pass).toBe(0);
     expect(out.aggregate.producerErrors).toBe(1);
     for (const key of ['a', 'b', 'c', 'd']) expect(out.perLabel[0].checks[key]).toMatchObject({ pass: false, reason: 'producer error: timeout' });
   });
 
   it('RED: a producer-skipped unit counts as a failure', async () => {
-    const out = await validateLabels({ labels: { repo: 'r', commit: 'c', labels: [label({ skip: true, skipReason: 'no askable content' })] }, snapshotDir: root, embed });
+    const out = await validateLabels({ diagnosticLegacy: true, labels: { repo: 'r', commit: 'c', labels: [label({ skip: true, skipReason: 'no askable content' })] }, snapshotDir: root, embed });
     expect(out.aggregate.pass).toBe(0);
     expect(out.aggregate.skipped).toBe(1);
     expect(out.perLabel[0].checks.a.reason).toMatch(/skipped by producer/);
   });
 
   it('RED: upstream drift (the file changed since the inventory) fails everything', async () => {
-    const out = await validateLabels({ labels: { repo: 'r', commit: 'c', labels: [label({ blobSha: 'f'.repeat(40) })] }, snapshotDir: root, embed });
+    const out = await validateLabels({ diagnosticLegacy: true, labels: { repo: 'r', commit: 'c', labels: [label({ blobSha: 'f'.repeat(40) })] }, snapshotDir: root, embed });
     expect(out.aggregate.pass).toBe(0);
     expect(out.perLabel[0].checks.a.reason).toMatch(/drift/);
   });
 
   it('RED: a label whose span is not in the unit fails check (a) while (b) and (d) can still pass', async () => {
-    const out = await validateLabels({
+    const out = await validateLabels({ diagnosticLegacy: true,
       labels: { repo: 'r', commit: 'c', labels: [label({ span: 'The client retries a failed request up to seventeen times.' })] },
       snapshotDir: root, embed,
     });
@@ -195,7 +211,7 @@ describe('validateLabels end to end (stubbed embedder, real bytes on disk)', () 
 
   it('carries the cross-vendor verdict through and counts both-yes agreement', async () => {
     const codex = { direct: { answers: 'yes', reason: 'r' }, paraphrase: { answers: 'no', reason: 'r' } };
-    const out = await validateLabels({ labels: { repo: 'r', commit: 'c', labels: [label({ codex })] }, snapshotDir: root, embed });
+    const out = await validateLabels({ diagnosticLegacy: true, labels: { repo: 'r', commit: 'c', labels: [label({ codex })] }, snapshotDir: root, embed });
     expect(out.aggregate.codex).toMatchObject({ withVerdicts: 1, directYes: 1, paraphraseYes: 0, bothYes: 0 });
   });
 });

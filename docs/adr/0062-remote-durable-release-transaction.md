@@ -3,9 +3,9 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-09-11
-reviewed_digest: 792292744a60
-version: 1.1.3
+updated: 2026-09-17
+reviewed_digest: d69443ee3afd
+version: 1.1.5
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -35,6 +35,8 @@ established by this source review.
 
 ## Currency log
 
+| 2026-09-17 | Re-read all 9 resolved governed entries against the current integration working tree: candidate preflight, exact-SHA protected publication, transaction state/recovery, provider observation, staged host verification, and DDD invariants remain the stated release boundary. Current source review does not claim a published or install-verified release. Source-bound review digest `d69443ee3afd`. | scripts/release.mjs; scripts/release-transaction.mjs; scripts/release-transaction-provider.mjs; scripts/staged-host-verifier.mjs; .github/workflows/ci.yml; .github/workflows/protected-release.yml |
+
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged; none of the 15 Invariants are touched. Of 13 drift commits, only `53fbe65b` moved a true protocol file (`scripts/release-transaction-provider.mjs`, +6 lines): it skips unrelated DRAFT releases' 404-ing assets when scanning history for the latest-by-transaction receipt, while still fully receipt-gating any PUBLISHED release — this reinforces Invariant 4 (drafts never count as current generation) and 5 (monotonic receipts), it does not weaken them. `scripts/release.mjs` and `scripts/release-transaction.mjs` were not touched at all in this range. The other 12 commits are entirely `.github/workflows/*.yml` lane/matrix/checkout/scheduling mechanics (including `00526b12`'s 426-line `ci.yml` reduction, part of the same hooks-retirement pass reviewed under ADR-034/056) — none add a second publisher, bypass exact-SHA gating, or touch receipt/identity code. | Read `53fbe65b`'s diff in full (the one protocol-file change); confirmed `scripts/release.mjs`/`scripts/release-transaction.mjs` have zero commits in `git log 4823f1aa..HEAD`; reviewed the combined `git log --stat` for all 13 drift commits. reviewed_digest 792292744a60. |
 | 2026-09-07 | Reviewed unsuccessful closure verifies the prior signed chain and unchanged public bytes, retains PUBLISHED_NOT_VERIFIED, and finalization requires the actual verification workflow run; source digest 7deada1c383f. | `scripts/release-transaction.mjs`; source review only, hosted and public acceptance remain pending. |
 
@@ -47,7 +49,7 @@ established by this source review.
 | 2026-09-04 | Integration evidence now distinguishes executed PASS from governed environment exclusions: every Linux skip must match the exact checked-in allowlist, all skipped and todo names are enumerated and digested, and any new or renamed skip fails before aggregation. | This replaces the impossible `skipped === 0` wrapper over a suite with known host-dependent cases without counting excluded work as passed or allowing an arbitrary accounted skip to turn green. |
 | 2026-09-04 | Split qualification from publication without duplicating work: `release-candidate-preflight.yml` runs CI/integration/UX/stranger once on `release/**` and emits `release-candidate-<exact SHA>`; after that SHA fast-forwards to main, `protected-release.yml` imports and revalidates the sealed payload before publishing once and completing public 3x3/`install-verified`. | Deterministic artifact discovery removes human run-ID authority while source, receipt, payload, and digest revalidation preserve the fail-closed boundary. Fable/Sol remains change-triggered and only labeled `release-blocker` issues stop the transaction. |
 | 2026-08-31 | Release qualification now runs the three isolated host fixtures concurrently and reassembles their results in canonical order before the single receipt write, reducing the critical host-matrix wall time without changing evidence, verdict, or publication authority. | `scripts/host-install-matrix.mjs`; `scripts/staged-host-verifier.mjs`; the published-side verification remains receipt-bound. |
-| 2026-08-31 | Replaced the manual cross-workflow handoff with one release-cycle controller. It derives the exact successful CI and aggregate runs for one candidate SHA, dispatches the mandatory signed independent review, waits for its exact-SHA result, and dispatches the protected publisher with all IDs. The protected publisher remains the only code allowed to publish. | `.github/workflows/release-cycle.yml`; manual run-ID copying is removed from the normal path while exact-SHA and signed-review requirements remain. |
+| 2026-08-31 | Replaced the manual cross-workflow handoff with one release-cycle controller. It derives the exact successful CI and aggregate runs for one candidate SHA, dispatches the mandatory signed machine review; two vendor identities are recorded in its receipt, waits for its exact-SHA result, and dispatches the protected publisher with all IDs. The protected publisher remains the only code allowed to publish. | `.github/workflows/release-cycle.yml`; manual run-ID copying is removed from the normal path while exact-SHA and signed-review requirements remain. |
 | 2026-08-31 | Added an external per-step watchdog and machine-readable receipt to the long hosted release and cross-platform stages. Job-level timeouts remain the outer fence; named stage budgets now fail a wedged operation at its actual boundary instead of leaving an opaque compound step in progress. | `scripts/ci/step-watchdog.mjs`; `.github/workflows/ci.yml`; `tests/unit/step-watchdog.test.mjs` |
 | 2026-08-31 | Reconciled after removing the duplicate canonical QA workflow job from the release candidate path. | `.github/workflows/ci.yml` now leaves the bounded QA contract to its single authoritative workflow; protected release transaction, exact-SHA, and durable receipt rules remain unchanged. |
 

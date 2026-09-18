@@ -94,7 +94,8 @@ describe('Step 12 — forks are dispositioned by the compare API, never blanket-
       forkDelta: { upstream: 'block/buzz', aheadBy: 213, upstreamHeadSha: UPSTREAM_HEAD, forkHeadSha: FORK_HEAD } });
     expect(isIngestibleDisposition(missing.disposition)).toBe(true);
     // Once a store bound to the FORK's own head exists, the row is CURRENT like any eligible repository.
-    expect(classifyRepository(fork, evidenceFor(FORK_HEAD))).toMatchObject({ disposition: 'fork:original-content', status: 'CURRENT' });
+    // A legacy full-tree artifact at the same head is not delta provenance.
+    expect(classifyRepository(fork, evidenceFor(FORK_HEAD))).toMatchObject({ disposition: 'fork:original-content', status: 'UNVERIFIED' });
     // It is NOT literally 'eligible': corpus-reconcile.mjs full-clones every 'eligible' row, which
     // would ingest upstream authors' commits under rUv's name — the misattribution A2 forbids.
     expect(missing.disposition).not.toBe('eligible');

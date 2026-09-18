@@ -1,0 +1,48 @@
+{
+  "completeProjectState": {
+    "acceptanceContract": null,
+    "activeProcess": "continuity",
+    "activeStep": "legacy",
+    "blockers": [],
+    "changedFiles": [],
+    "commands": [],
+    "completed": [],
+    "currentGoal": "Preserve historical rows",
+    "decisions": [],
+    "failures": [],
+    "inProgress": [],
+    "nextAction": "Read without rewriting",
+    "plan": [],
+    "proofArtifacts": [],
+    "resumeConflicts": [],
+    "untested": []
+  },
+  "dedupId": "legacy-dedup",
+  "eventKey": "project-progress-v1-legacy-fixture-codex-legacy-session-000000000001-4a588c398e4ee099f69258b3ff4ec3fd775602da4241dd1ca15903efcf6034ea",
+  "hostIdentity": {
+    "adapterVersion": "4.3.26",
+    "host": "codex"
+  },
+  "occurredAt": "2026-09-17T00:00:00.000Z",
+  "parentEventKeys": [],
+  "projectIdentity": {
+    "canonicalAgentDbPath": "/fixture/.swarm/memory.db",
+    "id": "legacy-fixture"
+  },
+  "redactions": [],
+  "schema": "ruvnet-brain.project-progression",
+  "schemaVersion": 1,
+  "sequence": 1,
+  "sessionIdentity": "legacy-session",
+  "sourceIdentity": {
+    "branch": "main",
+    "checkoutPath": "/fixture",
+    "dirtyTreeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "trackedDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "untrackedDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "worktreeId": "primary"
+  },
+  "trigger": "checkpoint",
+  "payloadDigest": "4e92a5a4ed49fe8b9e9e7a5709fcc11141e71035a1e2d8976df6347d86f7856d"
+}

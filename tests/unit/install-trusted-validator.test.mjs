@@ -13,6 +13,7 @@
  * "Trusted" is why the placement belongs to the installer: the validator judges the downloaded
  * bundle, so it must come from the signed npm package, never from the artifact it validates.
  */
+import { fixtureArtifact } from '../../scripts/ci/coverage-fixture.mjs';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -138,7 +139,7 @@ function layDownRelease(dir, { stores = ['alpha'] } = {}) {
   fs.writeFileSync(path.join(dir, 'PRIVATE-STORES.json'), JSON.stringify({ privateStores: [] }));
   fs.writeFileSync(path.join(dir, 'public-store-classes.json'), JSON.stringify({ schemaVersion: 1, derived: [] }));
   const rows = stores.map((name) => ({ key: `repo:${name}`, kind: 'repository', name, url: `https://github.com/ruvnet/${name}`,
-    status: 'CURRENT', disposition: 'eligible', upstream: {}, artifact: { store: name }, reasons: [] }));
+    status: 'CURRENT', disposition: 'eligible', upstream: {}, artifact: fixtureArtifact(name, publicLedger), reasons: [] }));
   const enumerationReceipt = { schemaVersion: 1, terminal: true, duplicateKeys: 0, repositories: { expected: rows.length, pages: [] }, gists: { expected: 0, pages: [] } };
   const generatorSourceSha = 'a'.repeat(64); const snapshotRoot = 'b'.repeat(64); const sourceObservationSha256 = 'c'.repeat(64);
   const corpus = { schemaVersion: 1, kind: 'ruvnet-brain-corpus-coverage', generatorSourceSha, snapshotRoot, sourceObservationSha256, rows,

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // One-publisher source gate for issue #77. Rebuild and maintenance jobs may prepare bytes, but
-// only scripts/release.mjs may contain operations that create a GitHub Release, publish npm, or
-// move an npm dist-tag. CI and the canonical release path both execute this check.
+// only the protected release entry (scripts/release.mjs) and its canonical provider
+// (scripts/release-transaction-provider.mjs) may contain operations that create a GitHub Release,
+// publish npm, or move an npm dist-tag. CI and the canonical release path both execute this check.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -185,11 +186,11 @@ export function main(root = ROOT) {
   const findings = findUnauthorizedPublishers(root);
   const drift = findTrustRootDrift(root);
   if (findings.length === 0 && drift.length === 0) {
-    console.log('[release-authority] PASS: scripts/release.mjs is the only publisher; trust root is identical in all copies');
+    console.log('[release-authority] PASS: protected release entry scripts/release.mjs and canonical provider scripts/release-transaction-provider.mjs are authorized; trust root is identical in all copies');
     return 0;
   }
   if (findings.length) {
-    console.error('[release-authority] FAIL: publication action found outside scripts/release.mjs');
+    console.error('[release-authority] FAIL: publication action found outside the protected release entry and canonical provider');
     for (const finding of findings) console.error(`  ${finding.file}: ${finding.action}`);
   }
   if (drift.length) {

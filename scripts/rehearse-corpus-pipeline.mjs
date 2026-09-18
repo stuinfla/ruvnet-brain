@@ -40,6 +40,7 @@
 // Done is an exit code, not an opinion: FAIL exits non-zero. A phase that could not run is a SKIP
 // with a stated reason, never a silent pass.
 
+import { isIngestibleDisposition } from './coverage-integrity.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -441,7 +442,7 @@ function selectBoundedRepoStores({ api, observation, assetsDir, count }) {
     const coverage = api.buildCoverage({ owner: observation.owner, kbDir: assetsDir, policyDir: assetsDir, observation: probe });
     eligible.length = 0;
     for (const row of coverage.rows) {
-      if (row.kind === 'repository' && row.disposition === 'eligible') eligible.push(String(row.artifact.store).toLowerCase());
+      if (row.kind === 'repository' && isIngestibleDisposition(row.disposition)) eligible.push(String(row.artifact.store).toLowerCase());
       if (eligible.length >= count) break;
     }
   }
@@ -608,16 +609,16 @@ async function runGeneration({ index, api, checkoutRoot, workRoot, seed, bounds,
   const { reconciliation, candidate } = await api.reconcileAndPrepareCorpusCandidate({
     assetsDir, workspaceDir, root: checkoutRoot, owner: bounds.owner, builderSha: bounds.builderSha,
     candidateDir, receiptFile, coverageFile: path.join(checkoutRoot, 'data', 'source-coverage.json'),
-    bootstrapIdentity, maxRounds: bounds.maxRounds,
+    bootstrapIdentity, maxAttempts: bounds.maxRounds,
     reconcile: (options) => api.acquireCorpusGeneration({ ...options, observe: boundedObserve }),
     prepare: (options) => api.prepareCorpusCandidate({ ...options, run: recordingRun }),
   });
   generation.reconciliation = {
-    rounds: reconciliation.rounds.length,
+    rounds: reconciliation.attempts.length,
     observationSha256: reconciliation.observation.observationSha256,
-    refreshed: reconciliation.rounds.flatMap((round) => round.refreshed || []),
-    pruned: reconciliation.rounds.flatMap((round) => round.pruned || []).length,
-    rebuilt: reconciliation.rounds.flatMap((round) => round.rebuilt || []),
+    refreshed: reconciliation.attempts.flatMap((round) => round.refreshed || []),
+    pruned: reconciliation.attempts.flatMap((round) => round.pruned || []).length,
+    rebuilt: reconciliation.attempts.flatMap((round) => round.rebuilt || []),
     durationMs: Date.now() - reconcileStart,
   };
   const assemblyInvocations = invocations.filter((row) => row.script === 'build-bundle.mjs');

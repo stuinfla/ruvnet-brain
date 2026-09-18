@@ -46,33 +46,12 @@ function fireRuntime(event, { producers, env = {}, payload, runtime = RUNTIME } 
   const r = spawnSync('node', [runtime, event], {
     input: JSON.stringify(payload ?? { prompt: 'a prompt long enough to look like a real goal statement', session_id: 's1' }),
     encoding: 'utf8',
-    // TIMEOUT ORDERING (2026-07-27): the OUTER spawn timeout must exceed the INNER producer
-    // deadline, or the outer SIGKILL lands first and the test sees EMPTY stdout — which reads as
-    // 'the runtime chose silence' when it actually means 'we killed it mid-sentence'. It was
-    // inverted here (outer 20000 < inner 30000), and integration-linux went red on a DIFFERENT
-    // test each run — the tell that it was load, not logic. macOS never reproduced it.
-    // Inner is now 8000: a `/bin/bash printf` needs milliseconds, so 8s is enormous headroom even
-    // on a saturated runner, and it lets the runtime's OWN timeout handling fire and report
-    // instead of dying to an external kill. A guard below pins outer > inner.
+    // Let the runtime finish its own bounded failure path before the test kills it.
     timeout: 45000,
     env: {
       ...process.env,
-      // The runtime gives ALL producers ONE 4s global deadline and then FAILS CLOSED — a producer
-      // that misses it is killed and its output discarded (unprompted-runtime.mjs:91,163-180). That
-      // is correct product behavior and is deliberately not weakened here; what is wrong is running
-      // the assertions under it, because spawning bash inside a saturated 108-file suite regularly
-      // costs more than 4s of wall clock.
-      //
-      // The visible symptom was one flaky failure: the single test asserting DELIVERY went red in 2
-      // of 3 full-suite runs while passing 5 of 5 alone. The real damage was silent and larger — a
-      // timeout yields exactly `code 0, stdout ''`, which is byte-identical to a correct drop, so
-      // the EIGHT tests asserting `stdout === ''` passed under load no matter what the drop logic
-      // did. Eight assertions that cannot fail on broken code are not tests, and they were the ones
-      // guarding the "raw bytes never reach the user" protocol rule.
-      //
-      // A generous deadline restores the meaning of both halves. The 4s default still ships; only
-      // the measurement environment changes, which is the one thing that was actually broken.
-      RUVNET_UNPROMPTED_TIMEOUT_MS: '25000',
+      // Exercise the shipped 1.8s limit; larger overrides are rejected by the runtime.
+      RUVNET_UNPROMPTED_TIMEOUT_MS: '1800',
       ...(producers ? { RUVNET_UNPROMPTED_PRODUCERS: JSON.stringify(producers) } : {}),
       ...env,
     },
@@ -90,6 +69,20 @@ function emitter(name = 'emit.sh') {
   return { argv: ['/bin/bash', p], feedStdin: true };
 }
 const seam = (name) => [emitter(name)];
+function fixedEmitter(name, line, { exit = 0, delay = 0 } = {}) {
+  const p = path.join(dir, name);
+  fs.writeFileSync(p, `const line = ${JSON.stringify(line)};\nsetTimeout(() => { process.stdout.write(line + String.fromCharCode(10)); process.exit(${exit}); }, ${delay * 1000});\n`);
+  fs.chmodSync(p, 0o755);
+  return { argv: ['node', p], feedStdin: true };
+}
+function fixedEmitterLines(name, lines, options = {}) {
+  const p = path.join(dir, name);
+  const exit = options.exit ?? 0;
+  const delay = (options.delay ?? 0) * 1000;
+  fs.writeFileSync(p, `const lines = ${JSON.stringify(lines)};\nsetTimeout(() => { process.stdout.write(lines.join(String.fromCharCode(10)) + String.fromCharCode(10)); process.exit(${exit}); }, ${delay});\n`);
+  fs.chmodSync(p, 0o755);
+  return { argv: ['node', p], feedStdin: true };
+}
 
 /** A versioned settings envelope in the shape user-settings.saveSettings() actually writes — the ONLY
  *  shape loadSettings() reads (it validates `parsed.settings`, so a bare {advocacy} is INVISIBLE). */
@@ -411,6 +404,94 @@ describe('lesson channel: the advocacy dial does NOT govern it (a ratified lesso
     });
     expect(r.code).toBe(0);                 // no consent ⇒ no refusal
     expect(r.stdout).not.toBe('');          // still shown, as a nudge
+  });
+
+  it('a validated block dominates an earlier advisory without recording OFFERED state', () => {
+    const outcomes = path.join(dir, 'block-order-outcomes.jsonl');
+    const advisory = JSON.stringify({ channel: 'advocacy', effect: 'advisory', hookEventName: 'UserPromptSubmit',
+      copy: 'ADVISORY BEFORE BLOCK', findingId: 'order-finding', severity: 'high', observationHash: 'order-hash' });
+    const block = JSON.stringify({ channel: 'lesson', effect: 'block', hookEventName: 'UserPromptSubmit', copy: 'BLOCK REASON ONE' });
+    const r = fireRuntime('UserPromptSubmit', {
+      producers: [fixedEmitter('advisory-first.sh', advisory), fixedEmitter('block-second.sh', block)],
+      env: { RUVNET_SETTINGS_FILE: writeSettings('all'), RUVNET_ADVOCACY_OUTCOMES: outcomes },
+    });
+    expect(r.code).toBe(2);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toBe('BLOCK REASON ONE\n');
+    expect(fs.existsSync(outcomes)).toBe(false);
+  });
+
+  it('delivers the first blocking producer and does not wait for successors', () => {
+    const outcomes = path.join(dir, 'block-order-reverse-outcomes.jsonl');
+    const advisory = JSON.stringify({ channel: 'advocacy', effect: 'advisory', hookEventName: 'UserPromptSubmit',
+      copy: 'ADVISORY AFTER BLOCK', findingId: 'reverse-finding', severity: 'high', observationHash: 'reverse-hash' });
+    const blockOne = JSON.stringify({ channel: 'lesson', effect: 'block', copy: 'BLOCK REASON A' });
+    const blockTwo = JSON.stringify({ channel: 'lesson', effect: 'block', copy: 'BLOCK REASON B' });
+    const r = fireRuntime('UserPromptSubmit', {
+      producers: [fixedEmitter('block-a.sh', blockOne), fixedEmitter('block-b.sh', blockTwo), fixedEmitter('advisory-after.sh', advisory)],
+      env: { RUVNET_SETTINGS_FILE: writeSettings('all'), RUVNET_ADVOCACY_OUTCOMES: outcomes },
+    });
+    expect(r.code).toBe(2);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toBe('BLOCK REASON A\n');
+    expect(fs.existsSync(outcomes)).toBe(false);
+  });
+
+  it('same producer order cannot import or call advocacy outcomes when a block is valid', () => {
+    const outcomes = writeLedger([{ id: 'old-finding', action: 'dismissed' }]);
+    const before = fs.readFileSync(outcomes);
+    const calls = path.join(dir, 'outcomes-calls.log');
+    const module = path.join(dir, 'fake-outcomes.mjs');
+    fs.writeFileSync(module, `import fs from 'node:fs';\nfs.appendFileSync(${JSON.stringify(calls)}, 'import\\n');\nexport const ACTIONS = { OFFERED: 'offered' };\nexport function shouldStillOffer() { fs.appendFileSync(${JSON.stringify(calls)}, 'should\\n'); return true; }\nexport function record() { fs.appendFileSync(${JSON.stringify(calls)}, 'record\\n'); return { ok: true }; }\n`);
+    const advisory = JSON.stringify({ channel: 'advocacy', effect: 'advisory', copy: 'MUST NOT DELIVER', findingId: 'blocked-finding', severity: 'high', observationHash: 'blocked-hash' });
+    const block = JSON.stringify({ channel: 'lesson', effect: 'block', copy: 'SAME PRODUCER BLOCK' });
+    const r = fireRuntime('UserPromptSubmit', {
+      producers: [{ ...fixedEmitterLines('same-producer.sh', [advisory, block, JSON.stringify({ channel: 'lesson', effect: 'block', copy: 'SECOND SAME PRODUCER BLOCK' })]), channels: ['advocacy', 'lesson'] }],
+      env: { RUVNET_SETTINGS_FILE: writeSettings('all'), RUVNET_ADVOCACY_OUTCOMES: outcomes,
+        RUVNET_ADVOCACY_OUTCOMES_MODULE: module },
+    });
+    expect(r.code).toBe(2);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toBe('SAME PRODUCER BLOCK\nSECOND SAME PRODUCER BLOCK\n');
+    expect(fs.readFileSync(outcomes)).toEqual(before);
+    expect(fs.existsSync(calls)).toBe(false);
+  });
+
+  it('ignores unauthorized, malformed, failed, and timed-out block producers when advisory is eligible', () => {
+    const outcomes = path.join(dir, 'invalid-block-outcomes.jsonl');
+    const advisory = JSON.stringify({ channel: 'advocacy', effect: 'advisory', hookEventName: 'UserPromptSubmit',
+      copy: 'ELIGIBLE ADVISORY', findingId: 'eligible-finding', severity: 'high', observationHash: 'eligible-hash' });
+    const unauthorizedBlock = JSON.stringify({ channel: 'lesson', effect: 'block', copy: 'UNAUTHORIZED BLOCK' });
+    const r = fireRuntime('UserPromptSubmit', {
+      producers: [
+        { ...fixedEmitter('unauthorized-block.sh', unauthorizedBlock), channels: ['advocacy'] },
+        fixedEmitter('malformed-block.sh', 'not-json'),
+        fixedEmitter('failed-block.sh', JSON.stringify({ channel: 'lesson', effect: 'block', copy: 'FAILED BLOCK' }), { exit: 1 }),
+        fixedEmitter('eligible-advisory.sh', advisory),
+        fixedEmitter('timedout-block.sh', JSON.stringify({ channel: 'lesson', effect: 'block', copy: 'TIMEOUT BLOCK' }), { delay: 30 }),
+      ],
+      env: { RUVNET_SETTINGS_FILE: writeSettings('all'), RUVNET_ADVOCACY_OUTCOMES: outcomes,
+        RUVNET_UNPROMPTED_TIMEOUT_MS: '1000' },
+    });
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout).hookSpecificOutput.additionalContext).toContain('ELIGIBLE ADVISORY');
+    expect(r.stderr).toBe('');
+    expect(ledgerRows(outcomes, 'eligible-finding').some((row) => row.action === 'offered')).toBe(true);
+  });
+
+  it('treats alarm:block as advisory while recording exactly one eligible advocacy offer', () => {
+    const outcomes = path.join(dir, 'alarm-and-advocacy.jsonl');
+    const alarm = JSON.stringify({ channel: 'alarm', effect: 'block', copy: 'ALARM NOTICE' });
+    const advocacy = JSON.stringify({ channel: 'advocacy', effect: 'advisory', copy: 'ONE ADVOCACY', findingId: 'one-offer', severity: 'high', observationHash: 'one-hash' });
+    const r = fireRuntime('UserPromptSubmit', {
+      producers: [{ ...fixedEmitterLines('alarm-and-advocacy.sh', [alarm, advocacy]), channels: ['alarm', 'advocacy'] }],
+      env: { RUVNET_SETTINGS_FILE: writeSettings('all'), RUVNET_ADVOCACY_OUTCOMES: outcomes },
+    });
+    expect(r.code).toBe(0);
+    const context = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    expect(context).toContain('ALARM NOTICE');
+    expect(context).toContain('ONE ADVOCACY');
+    expect(ledgerRows(outcomes, 'one-offer').filter((row) => row.action === 'offered')).toHaveLength(1);
   });
 });
 
