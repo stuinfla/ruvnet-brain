@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.3.26",
-  "sourceIdentity": "09dbe2297e574d028111268503e6e32bc6cca8ff1447a9fd79cae76518d9f528",
+  "sourceIdentity": "8c38ddfd56eefe6598f4b18ae4fb426bf77cc56faa58c9435c9b89290120ccc3",
   "versionSurfaces": {
     "package.json": "4.3.26",
     "plugin/.claude-plugin/plugin.json": "4.3.26",
@@ -102,8 +102,8 @@
     "0087-codebase-consistency-and-north-star.md",
     "README.md"
   ],
-  "trackedFileCount": 1604,
-  "trackedFilesSha256": "04028ff1bf76616da0d7d415c5618c6281bb124cd58812ecbb1ac5a67ef1e895",
+  "trackedFileCount": 1606,
+  "trackedFilesSha256": "db75cc4772f8ec813aac761d7c1c7bcc5c985680cd4695a22e06d4a0c7d41f38",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

@@ -3,8 +3,8 @@ id: ADR-087
 title: One policy owner per responsibility and North Star acceptance
 status: Accepted
 date: 2026-09-16
-updated: 2026-09-17
-version: 1.3.2
+updated: 2026-09-18
+version: 1.3.3
 authors: [Stuart Kerr, Codex]
 tags: [consistency, continuity, recovery, grading, north-star, acceptance]
 relates: [ADR-072, ADR-073, ADR-075, ADR-084, ADR-085, ADR-086]
@@ -20,7 +20,7 @@ governs:
   - scripts/qa-runner.mjs
 ---
 
-Updated: 2026-09-17 18:31:22 EDT | Version 1.3.1
+Updated: 2026-09-18 02:08:00 EDT | Version 1.3.3
 Created: 2026-09-16 19:51:00 EDT
 
 # ADR-087 — One policy owner per responsibility
@@ -219,6 +219,23 @@ Fork admission is owned by the installed `coverage-integrity.mjs` module. Acquis
 C3 qualification is distinct from the diagnostic publication policy adopted in ADR-086. A diagnostic reader always returns `c3Eligible: false`. A qualified report needs verified source and native production evidence, an externally trusted measurement attestation, exact store and partition sets, and re-derived counters. Passing local fixture tests establishes these rejection rules; it does not supply the missing complete production oracle or demonstrate the C3 threshold.
 
 Native release grading is available through `npm run grading:produce -- ...` and signed-pair intake through `npm run grading:dispatch -- ...`. These are explicit operator entry points because the native subscriptions run on the authenticated local host. The hosted workflow validates signatures; it does not execute native subscriptions. A GitHub dispatch ref must be a branch or tag at the candidate commit. Receipt consumption checks the complete normalized release identity, including optional artifact identities, rather than a caller-selected subset.
+
+The September 18 transport repair uses one shared gzip/base64 codec for dispatch and intake.
+The complete signed receipt pair for the current 200-store canary exceeds the plain dispatch
+budget; compression preserves every original byte. Both ends enforce a 60,000-byte encoded
+budget, and intake enforces an 8 MiB limit per document during decompression, one gzip member,
+valid UTF-8 and JSON, followed by the unchanged signature and complete-identity validator.
+Plain legacy inputs are rejected; this intake workflow had never successfully deployed.
+Candidate SHA format is checked before checkout. Tests use synthetic judgments and ephemeral
+fixture keys and do not establish product grades or reviewer trust.
+
+Operator prerequisites remain the approved native-review signing keys and their trusted public
+keys in the Production environment, an actual review pair over the sealed artifact and canonical
+D1–D8 rubric, and the successful exact-SHA intake run/artifact IDs. The keys and IDs were absent
+from the checked repository/environment configuration on September 18. The transport repair is
+not an end-to-end intake receipt, a 95 score, or publication authority. Intake executes the
+candidate's validator after approved promotion; it is not an independent boundary against a
+malicious candidate replacing that validator.
 
 
 ### Native grading identity amendment

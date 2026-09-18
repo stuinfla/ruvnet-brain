@@ -10,10 +10,15 @@ permissions: { actions: write, contents: read }
 jobs:
   intake:
     runs-on: ubuntu-latest
-    environment: Production – ruvnet-brain
+    environment: 'Production – ruvnet-brain'
     steps:
+      - name: Require an immutable candidate SHA before checkout
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: '[[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]'
       - uses: actions/checkout@v4
-        with: { ref: ${{ inputs.candidate_sha }}, fetch-depth: 1, persist-credentials: false }
+        with: { ref: "${{ inputs.candidate_sha }}", fetch-depth: 1, persist-credentials: false }
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       - name: Validate local signed pair against exact candidate
@@ -26,10 +31,7 @@ jobs:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         run: |
           set -euo pipefail
-          mkdir -p reviews
-          printf '%s' "$FABLE_B64" | base64 --decode > reviews/claude-fable-5-1.json
-          printf '%s' "$ASTRA_B64" | base64 --decode > reviews/gpt-6-astra.json
-          printf '%s' "$IDENTITY_B64" | base64 --decode > release-identity.json
+          node scripts/machine-grading-transport.mjs
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import { validateIndependentReviewPair } from './scripts/independent-review-receipt.mjs';
@@ -40,7 +42,7 @@ jobs:
           NODE
       - uses: actions/upload-artifact@v4
         with:
-          name: machine-grading-${{ inputs.candidate_sha }}
+          name: 'machine-grading-${{ inputs.candidate_sha }}'
           path: reviews/
           if-no-files-found: error
           retention-days: 14
