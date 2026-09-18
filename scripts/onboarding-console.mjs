@@ -448,8 +448,13 @@ function wiringSurvey() {
 }
 
 // ── Memory health (read-only probes for the project the console was launched from) ────────────────
+// Dream Cycle 2026-09-18 (memory-durability, round-trip-proof): this used to also pass on ANY
+// `.claude/hooks` directory existing, so a machine whose hooks folder holds only an unrelated
+// script (a different plugin, a stale leftover) scored `sessionSurfacing: ok` and printed "the
+// global SessionStart hook surfaces project state at launch" — a claim about a hook that was never
+// installed. Only the specific recall hook's presence can support that claim.
 function sessionHookExists() {
-  return fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks/agentdb-ensure.sh')) || fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks'));
+  return fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks/agentdb-ensure.sh'));
 }
 // WHICH FILE IS THE PROJECT'S MEMORY STORE IS NOT A CONSTANT (issue #127).
 //
