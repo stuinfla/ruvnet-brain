@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const isCapabilityOnly = name => String(name).toLowerCase() === 'cognitum-ruos';
+export const CAPABILITY_RETIRED_SUFFIXES = [
+  '.symbols.json', '.rvf', '.rvf.idmap.json', '.rvf.embed.json', '.big.passages.jsonl', '.big.meta.json',
+];
 
 // Reject historical source-bearing stores at the final packaging boundary, even
 // when their upstream SHA and signed generation receipt are otherwise current.
@@ -18,7 +21,7 @@ export function assertCapabilityOnlyStore(dir, name) {
   if (entries.length !== 1 || entries[0].path !== 'CAPABILITIES.md' || entries[0].kind !== 'doc') {
     throw new Error(`${name}: capability-only metadata contains unexpected source paths`);
   }
-  if (fs.existsSync(path.join(dir, `${name}.symbols.json`))) {
-    throw new Error(`${name}: capability-only store must not carry a symbol index`);
+  if (CAPABILITY_RETIRED_SUFFIXES.some(suffix => fs.existsSync(path.join(dir, `${name}${suffix}`)))) {
+    throw new Error(`${name}: capability-only store must not carry a symbol index or legacy source sidecar`);
   }
 }

@@ -5,12 +5,46 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { buildCorpus } from '../../kb/forge-corpus.mjs';
 import { assertCapabilityOnlyStore } from '../../kb/capability-only.mjs';
-import { planReconciliation } from '../../scripts/corpus-reconcile.mjs';
+import { planReconciliation, executeReconciliation } from '../../scripts/corpus-reconcile.mjs';
 
 const temporary = [];
 afterEach(() => temporary.splice(0).forEach(dir => fs.rmSync(dir, { recursive: true, force: true })));
 
 describe('Cognitum ruOS capability-only corpus', () => {
+  it('removes stale seed sidecars after a capability-only worker is merged', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ruos-policy-merge-'));
+    temporary.push(root);
+    const assetsDir = path.join(root, 'assets');
+    fs.mkdirSync(assetsDir);
+    const store = 'cognitum-ruos', sha = 'a'.repeat(40);
+    fs.writeFileSync(path.join(assetsDir, 'RVF-GENERATIONS.json'), '{"stores":{}}');
+    fs.writeFileSync(path.join(assetsDir, `${store}.symbols.json`), 'PRIVATE_SYMBOL_CANARY');
+    fs.writeFileSync(path.join(assetsDir, `${store}.rvf`), 'LEGACY_PRIVATE_CANARY');
+    const plan = [{ name: store, store, upstreamSha: sha, url: 'https://github.com/cognitum-one/ruOS' }];
+    const run = (command, args) => {
+      if (command === 'git' && args[0] === 'clone') fs.mkdirSync(args.at(-1), { recursive: true });
+      if (command === 'git' && args.includes('rev-parse')) return { status: 0, stdout: sha };
+      if (command === process.execPath) {
+        const out = args[args.indexOf('--out') + 1];
+        const corpus = buildCorpus({ repo: root, name: store });
+        for (const suffix of ['.big.rvf.idmap.json', '.big.rvf.embed.json']) fs.writeFileSync(path.join(out, store + suffix), '{}');
+        fs.writeFileSync(path.join(out, `${store}.big.rvf`), 'rvf');
+        fs.writeFileSync(path.join(out, `${store}.passages.jsonl`), corpus.chunks.map(c => JSON.stringify(c)).join('\n') + '\n');
+        fs.writeFileSync(path.join(out, `${store}.meta.json`), JSON.stringify({ entries: { safe: { path: 'CAPABILITIES.md', kind: 'doc' } } }));
+        fs.writeFileSync(path.join(out, 'RVF-GENERATIONS.json'), JSON.stringify({ stores: { [store]: {
+          file: `${store}.big.rvf`, sourceCommit: sha, bytes: 3,
+          sha256: crypto.createHash('sha256').update('rvf').digest('hex'),
+        } } }));
+        fs.writeFileSync(path.join(out, 'SOURCE.json'), JSON.stringify({ stores: { [store]: { sourceCommit: sha } } }));
+      }
+      return { status: 0, stdout: '' };
+    };
+    await executeReconciliation({ plan, assetsDir, workspaceDir: path.join(root, 'work'), run });
+    expect(() => assertCapabilityOnlyStore(assetsDir, store)).not.toThrow();
+    expect(fs.existsSync(path.join(assetsDir, `${store}.symbols.json`))).toBe(false);
+    expect(fs.existsSync(path.join(assetsDir, `${store}.rvf`))).toBe(false);
+  });
+
   it('rebuilds an unchanged upstream store until its curated content and symbol policy pass', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ruos-policy-rebuild-'));
     temporary.push(dir);
