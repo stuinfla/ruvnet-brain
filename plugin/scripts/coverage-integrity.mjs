@@ -89,6 +89,23 @@ export function validateGistAggregateReceipt({ receipt, passagesFile, expectedId
       || row.contentDigest !== digest(files)) {
       throw new Error(`gist ${id} receipt is incomplete or internally inconsistent`);
     }
+    const proofs = files.map((file) => file?.sourceGit).filter(Boolean);
+    if (proofs.length && (proofs.length !== files.length || proofs.some((proof) =>
+      !HEX40.test(String(proof.headSha || '')) || !HEX40.test(String(proof.treeSha || ''))
+      || !HEX40.test(String(proof.blobSha || '')) || proof.captureMethod !== 'public-bare-git-v1'
+      || proof.revisionKind !== 'git-commit' || proof.headSha !== row.versionSha
+      || proof.sourceObservationSha256 !== receipt.sourceObservationSha256
+      || !HEX64.test(String(proof.observedRowsSha256 || ''))
+      || !Number.isSafeInteger(proof.treeFileCount) || proof.treeFileCount !== files.length
+      || proof.observedTruncated !== false || proof.observedFileCount !== proof.treeFileCount
+      || proof.observed !== true || !HEX40.test(String(proof.observedRawRevisionSha || ''))
+      || !['blob', 'commit'].includes(proof.observedRawRevisionKind)
+      || proof.observedRawBlobSha !== proof.blobSha
+      || proofs.some((other) => other.headSha !== proof.headSha || other.treeSha !== proof.treeSha
+        || other.sourceObservationSha256 !== proof.sourceObservationSha256
+        || other.observedRowsSha256 !== proof.observedRowsSha256)))) {
+      throw new Error(`gist ${id} Git tree proof is incomplete or inconsistent`);
+    }
     const { receiptSha256, ...payload } = row;
     if (!HEX64.test(String(receiptSha256 || '')) || receiptSha256 !== digest(payload)) {
       throw new Error(`gist ${id} receipt digest differs`);

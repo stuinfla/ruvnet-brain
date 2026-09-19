@@ -18,7 +18,7 @@
 // corpus that looks searchable. The command is bounded per gist so the nightly cannot wedge forever.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -35,6 +35,7 @@ let tmp, binDir, logFile, fixtures;
 const DEPENDENCY_FILES = [
   'scripts/ingest-gists.mjs',
   'scripts/gist-receipts.mjs',
+  'scripts/gist-git-transport.mjs',
   'scripts/coverage-integrity.mjs',
   'scripts/rvf-generation.mjs',
   'scripts/version.mjs',
@@ -94,11 +95,13 @@ function writeFixture(name, obj) {
 }
 
 function runGists(args, { forceFail = false, env: extraEnv = {} } = {}) {
+  if (!args.includes('--index-only') && !args.includes('--dry-run')) prepareGitFixtures();
   const r = spawnSync(process.execPath, ['scripts/ingest-gists.mjs', ...args], {
     cwd: tmp,
     env: {
       ...process.env,
       PATH: `${binDir}:${process.env.PATH}`,
+      REAL_GIT: execFileSync('which', ['git'], { encoding: 'utf8' }).trim(),
       LOGFILE: logFile,
       FIXTURES: fixtures,
       GH_FAIL: forceFail ? '1' : '',
@@ -112,6 +115,57 @@ function runGists(args, { forceFail = false, env: extraEnv = {} } = {}) {
     stderr: r.stderr || '',
     calls: fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean) : [],
   };
+}
+
+function prepareGitFixtures() {
+  const listPath = path.join(fixtures, 'list.json');
+  const list = JSON.parse(fs.readFileSync(listPath, 'utf8'));
+  const gitRoot = path.join(fixtures, 'git');
+  fs.mkdirSync(gitRoot, { recursive: true });
+  const gitShim = [
+    '#!/usr/bin/env node',
+    "const { spawnSync } = require('node:child_process');",
+    "const path = require('node:path');",
+    "const args = process.argv.slice(2);",
+    "const index = args.findIndex((arg) => /^https:\\/\\/gist\\.github\\.com\\/[a-f0-9]{20,64}\\.git$/i.test(arg));",
+    "if (index >= 0) { const id = args[index].match(/\\/([a-f0-9]{20,64})\\.git$/i)[1]; args[index] = path.join(process.env.FIXTURES, 'git', `${id}.git`); }",
+    "const input = []; process.stdin.on('data', (chunk) => input.push(chunk)); process.stdin.on('end', () => {",
+    "  const result = spawnSync(process.env.REAL_GIT, args, { cwd: process.cwd(), env: process.env, input: Buffer.concat(input), encoding: null });",
+    "  if (result.stdout) process.stdout.write(result.stdout); if (result.stderr) process.stderr.write(result.stderr);",
+    "  process.exit(result.status ?? 1);",
+    "});",
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(binDir, 'git'), gitShim);
+  fs.chmodSync(path.join(binDir, 'git'), 0o755);
+
+  for (const gist of list) {
+    const detail = JSON.parse(fs.readFileSync(path.join(fixtures, 'gists', `${gist.id}.json`), 'utf8'));
+    const work = path.join(fixtures, 'git-work', gist.id);
+    const bare = path.join(gitRoot, `${gist.id}.git`);
+    fs.mkdirSync(work, { recursive: true });
+    execFileSync('git', ['init', '-q', work]);
+    execFileSync('git', ['-C', work, 'config', 'user.name', 'Gist Fixture']);
+    execFileSync('git', ['-C', work, 'config', 'user.email', 'fixture@example.invalid']);
+    const fullFiles = Object.entries(detail.files || {});
+    for (const [filename, file] of fullFiles) {
+      const body = file.truncated ? 'The full, untruncated body.' : String(file.content || '');
+      const destination = path.join(work, filename);
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      fs.writeFileSync(destination, body);
+    }
+    execFileSync('git', ['-C', work, 'add', '.']);
+    execFileSync('git', ['-C', work, 'commit', '-qm', 'fixture gist snapshot']);
+    execFileSync('git', ['clone', '-q', '--bare', work, bare]);
+    gist.truncated = false;
+    gist.files = Object.fromEntries(fullFiles.map(([filename, file]) => {
+      const blob = execFileSync('git', ['--git-dir', bare, 'rev-parse', `HEAD:${filename}`], { encoding: 'utf8' }).trim();
+      const body = file.truncated ? 'The full, untruncated body.' : String(file.content || '');
+      return [filename, { filename, raw_url: `https://gist.githubusercontent.com/ruvnet/${gist.id}/raw/${blob}/${filename}`,
+        size: Buffer.byteLength(body), type: file.type || 'text/plain', language: file.language || 'Text' }];
+    }));
+  }
+  fs.writeFileSync(listPath, JSON.stringify(list));
 }
 
 // Real gist ids are 32-char lowercase hex (captureGistSources now validates this, matching every

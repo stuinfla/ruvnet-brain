@@ -215,6 +215,9 @@ export function canonicalGistRows(rows = []) {
     id: gist?.id,
     updated_at: gist?.updated_at ?? null,
     html_url: gist?.html_url,
+    // Preserve GitHub's top-level completeness indicator. `files.truncated` is a different
+    // per-file content flag; neither omission nor a missing value means the inventory is complete.
+    ...(Object.hasOwn(gist || {}, 'truncated') ? { truncated: gist.truncated } : {}),
     files: Object.fromEntries(Object.entries(gist?.files || {}).sort(([a], [b]) => a.localeCompare(b))
       .map(([key, file]) => [key, {
         filename: file?.filename,
@@ -409,6 +412,7 @@ export function classifyGist(gist, evidence) {
   let status = 'CURRENT';
   const reasons = [];
   if (!evidence.rvfPresent) { status = 'MISSING'; reasons.push('ruv-gists RVF is absent'); }
+  else if (gist.truncated !== false) { status = 'UNVERIFIED'; reasons.push('GitHub gist file inventory is truncated or its completeness flag is unknown'); }
   else if (!evidence.receipt || !source || !version) { status = 'UNVERIFIED'; reasons.push('per-gist source receipt is absent'); }
   else if (!evidence.bytesVerified) { status = 'FAILED'; reasons.push('ruv-gists RVF bytes do not match the generation receipt'); }
   else if (!evidence.passagesBound) { status = 'FAILED'; reasons.push('gist passages do not match the source receipt'); }
@@ -421,7 +425,8 @@ export function classifyGist(gist, evidence) {
     name: Object.values(gist.files || {})[0]?.filename || gist.id,
     url: gist.html_url,
     disposition: 'eligible',
-    upstream: { sha: version, updatedAt: gist.updated_at, fileCount: filenames.length, files: filenames },
+    upstream: { sha: version, updatedAt: gist.updated_at, truncated: gist.truncated ?? null,
+      fileCount: filenames.length, files: filenames },
     artifact: { store: 'ruv-gists', sourceCommit: source?.versionSha || null, ingestedAt: source?.ingestedAt || ingestedAt,
       contentDigest: source?.contentDigest || null, fileCount: source?.files?.length || null,
       rvfSha256: evidence.receipt?.sha256 || null, bytesVerified: evidence.bytesVerified },

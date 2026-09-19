@@ -125,6 +125,16 @@ describe('artifact-bound source coverage', () => {
     expect(sourceObservationDigest(first)).toBe(sourceObservationDigest(second));
   });
 
+  it('preserves top-level gist inventory truncation as a sealed source fact', () => {
+    const base = { id: 'abc', updated_at: '2026-08-21T00:00:00Z', files: {} };
+    expect(canonicalGistRows([{ ...base, truncated: true }])[0].truncated).toBe(true);
+    expect(canonicalGistRows([{ ...base, truncated: false }])[0].truncated).toBe(false);
+    const obs = (truncated) => ({ schemaVersion: 1, kind: 'ruvnet-brain-source-observation', owner: 'ruvnet',
+      repositories: { rows: [], expected: 0 }, gists: { rows: [{ ...base, truncated }], expected: 1 } });
+    expect(sourceObservationDigest(obs(true))).not.toBe(sourceObservationDigest(obs(false)));
+    expect(canonicalGistRows([{ ...base }])[0]).not.toHaveProperty('truncated');
+  });
+
   it.each([
     ['repository HEAD', (base) => ({ ...base, repositories: { ...base.repositories, rows: [
       { ...base.repositories.rows[0], defaultBranchRef: { ...base.repositories.rows[0].defaultBranchRef,
@@ -171,7 +181,7 @@ describe('artifact-bound source coverage', () => {
   });
 
   it('requires a complete version-bound per-gist receipt before calling a gist current, never a timestamp cache', () => {
-    const gist = { id: 'g', updated_at: '2026-08-21T00:00:00Z', html_url: 'https://gist.github.com/g',
+    const gist = { id: 'g', updated_at: '2026-08-21T00:00:00Z', html_url: 'https://gist.github.com/g', truncated: false,
       files: { a: { filename: 'a.md', raw_url: `https://gist.githubusercontent.com/ruvnet/g/raw/${'d'.repeat(40)}/a.md` } } };
     expect(gistVersion(gist)).toBe('d'.repeat(40));
     const base = { rvfPresent: true, bytesVerified: true, passagesBound: true, receipt: {} };
@@ -192,6 +202,11 @@ describe('artifact-bound source coverage', () => {
     expect(classifyGist(gist, { ...base, sources: { gists: { g: {
       versionSha: 'd'.repeat(40), updatedAt: gist.updated_at, ingestedAt: gist.updated_at, contentDigest: 'x', files: [{}], complete: true,
     } } } }).status).toBe('CURRENT');
+    expect(classifyGist({ ...gist, truncated: true }, { ...base, sources: { gists: { g: {
+      versionSha: 'd'.repeat(40), updatedAt: gist.updated_at, ingestedAt: gist.updated_at, contentDigest: 'x', files: [{}], complete: true,
+    } } } })).toMatchObject({ status: 'UNVERIFIED', upstream: { truncated: true } });
+    const { truncated: _flag, ...unknownInventory } = gist;
+    expect(classifyGist(unknownInventory, base).status).toBe('UNVERIFIED');
   });
 
   it('binds enumeration evidence and every ordered row into one stable generation', () => {

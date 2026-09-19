@@ -194,10 +194,13 @@ async function main() {
   }
 
   const observedAt = new Date().toISOString();
-  const rows = gists.map((g) => ({ id: g.id, updated_at: g.updated_at, files: g.files }));
+  const rows = gists.map((g) => ({ id: g.id, updated_at: g.updated_at, html_url: g.html_url,
+    truncated: g.truncated, files: g.files }));
   const observation = {
     owner: OWNER, observedAt,
-    observationSha256: digest({ owner: OWNER, rows: rows.map(({ id, updated_at }) => ({ id, updated_at })) }),
+    // Bind the exact listed file inventory and its truncation indicator. A timestamp-only digest
+    // could otherwise reuse a capture after the API changes a file's pinned raw blob or completeness.
+    observationSha256: digest({ owner: OWNER, rows }),
     gists: { rows },
   };
   const now = () => observedAt;

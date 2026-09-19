@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest, validateGistAggregateReceipt } from './coverage-integrity.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { writeRvfGeneration } from './rvf-generation.mjs';
+import { fetchGistGitSnapshot } from './gist-git-transport.mjs';
 
 const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TEXT_EXT = new Set(['.md', '.markdown', '.txt', '.rst']);
@@ -45,6 +46,7 @@ const HEX_GIST = /^[a-f0-9]{20,64}$/;
 const OWNER_RE = /^[A-Za-z0-9-]{1,39}$/;
 const compareCanonicalText = (left, right) => String(left) < String(right) ? -1
   : String(left) > String(right) ? 1 : 0;
+const VERIFIED_CAPTURE_SETS = new WeakMap();
 
 function validDate(value) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
@@ -400,18 +402,49 @@ function reusableCachedGist(cached, stub) {
   return 'reuse';
 }
 
-export async function captureGistSources({ observation, cache = null, fetchDetail = defaultFetchDetail,
-  fetchRaw = defaultFetchRaw, signal, now = () => new Date().toISOString() } = {}) {
+export async function captureGistSources({ observation, cache = null, fetchDetail = null,
+  fetchRaw = defaultFetchRaw, fetchGitSnapshot = fetchGistGitSnapshot, signal,
+  now = () => new Date().toISOString() } = {}) {
   const stubs = observation?.gists?.rows;
   if (!Array.isArray(stubs) || stubs.some(({ id }) => !HEX_GIST.test(String(id || '')))
     || new Set(stubs.map(({ id }) => id)).size !== stubs.length) {
     throw new Error('source observation has missing or duplicate gist ids');
   }
+  const observedRowsSha256 = digest({ owner: observation.owner, observedAt: observation.observedAt, rows: stubs });
   const gists = {};
   const reused = [];
   const fetched = [];
   for (const stub of [...stubs].sort((a, b) => String(a.id).localeCompare(String(b.id)))) {
     if (signal?.aborted) throw abortError(signal);
+    if (!fetchDetail) {
+      // The production/no-key route never spends one REST detail request per gist and never trusts
+      // a body-free cache or timestamps as content identity. A full bare clone gives one immutable
+      // Git commit/tree; every observed raw_url's blob identity must match its HEAD file bytes.
+      const snapshot = await fetchGitSnapshot({ owner: observation.owner, stub, signal });
+      const files = [];
+      for (const source of snapshot.files) {
+        const filename = source.filename;
+        if (!TEXT_EXT.has(path.extname(filename).toLowerCase())) {
+          files.push({ filename, included: false, reason: 'non-text policy exclusion', size: source.size,
+            sourceGit: { ...source.sourceGit, captureMethod: 'public-bare-git-v1', revisionKind: 'git-commit',
+              observedAt: observation.observedAt, observedRowsSha256,
+              sourceObservationSha256: observation.observationSha256 } });
+          continue;
+        }
+        let text;
+        try { text = new TextDecoder('utf-8', { fatal: true }).decode(source.body); }
+        catch { throw new Error(`gist ${stub.id}/${filename} is not valid UTF-8 text`); }
+        files.push({ filename, included: true, sha256: sha256(source.body), bytes: source.size,
+          body: text, sourceGit: { ...source.sourceGit, captureMethod: 'public-bare-git-v1', revisionKind: 'git-commit',
+            observedAt: observation.observedAt, observedRowsSha256,
+            sourceObservationSha256: observation.observationSha256 } });
+      }
+      if (files.length !== snapshot.treeFileCount) throw new Error(`gist ${stub.id} Git inventory changed during capture`);
+      gists[stub.id] = { gistId: stub.id, versionSha: snapshot.headSha, updatedAt: stub.updated_at,
+        ingestedAt: now(), complete: true, files };
+      fetched.push(stub.id);
+      continue;
+    }
     const cached = cache?.gists?.[stub.id];
     const verdict = cached ? reusableCachedGist(cached, stub) : 'miss';
     if (verdict === 'tampered') {
@@ -446,14 +479,31 @@ export async function captureGistSources({ observation, cache = null, fetchDetai
       complete: files.length === Object.keys(full.files || {}).length, files };
     fetched.push(stub.id);
   }
-  return {
+  const captured = {
     owner: observation.owner,
+    observedRowsSha256,
     observedAt: observation.observedAt,
     sourceObservationSha256: observation.observationSha256,
     generatedAt: now(),
     gists,
     reuseEvidence: { reused, fetched },
   };
+  VERIFIED_CAPTURE_SETS.set(captured, {
+    fingerprint: digest(captured),
+    owner: observation.owner,
+    observedRowsSha256,
+    sourceObservationSha256: observation.observationSha256,
+  });
+  return captured;
+}
+
+function isCurrentVerifiedCapture(captured, observation) {
+  const proof = captured && typeof captured === 'object' ? VERIFIED_CAPTURE_SETS.get(captured) : null;
+  return Boolean(proof && proof.owner === observation?.owner
+    && proof.observedRowsSha256 === digest({ owner: observation?.owner,
+      observedAt: observation?.observedAt, rows: observation?.gists?.rows })
+    && proof.sourceObservationSha256 === observation?.observationSha256
+    && proof.fingerprint === digest(captured));
 }
 
 // ── stage 2: render ──────────────────────────────────────────────────────────────────────────────
@@ -522,6 +572,25 @@ export function validateGistReceipt({ receipt, observation = null, passagesFile,
     if (!validDate(row?.updatedAt) || !validDate(row?.ingestedAt)) {
       throw new Error(`gist ${gistId} has an invalid updatedAt/ingestedAt timestamp`);
     }
+    const sourceProofs = (row?.files || []).map((file) => file?.sourceGit).filter(Boolean);
+    if (sourceProofs.length && sourceProofs.length !== row.files.length) {
+      throw new Error(`gist ${gistId} mixes Git-bound and unbound file evidence`);
+    }
+    if (sourceProofs.length && sourceProofs.some((proof) => !HEX40.test(String(proof.headSha || ''))
+      || !HEX40.test(String(proof.treeSha || '')) || !HEX40.test(String(proof.blobSha || ''))
+      || proof.captureMethod !== 'public-bare-git-v1' || proof.revisionKind !== 'git-commit'
+      || !validDate(proof.observedAt) || proof.sourceObservationSha256 !== receipt.sourceObservationSha256
+      || !HEX64.test(String(proof.observedRowsSha256 || ''))
+      || !Number.isSafeInteger(proof.treeFileCount) || proof.treeFileCount !== row.files.length
+      || proof.observedTruncated !== false || proof.observedFileCount !== proof.treeFileCount
+      || proof.headSha !== row.versionSha || proof.observed !== true
+      || !HEX40.test(String(proof.observedRawRevisionSha || ''))
+      || !['blob', 'commit'].includes(proof.observedRawRevisionKind)
+      || proof.observedRawBlobSha !== proof.blobSha
+      || sourceProofs.some((other) => other.treeSha !== proof.treeSha || other.headSha !== proof.headSha
+        || other.observedRowsSha256 !== proof.observedRowsSha256))) {
+      throw new Error(`gist ${gistId} has an incomplete Git snapshot proof`);
+    }
     for (const file of row?.files || []) {
       if (!validateFilename(file?.filename)) throw new Error(`gist ${gistId} has an unsafe or missing filename`);
     }
@@ -577,8 +646,9 @@ export async function buildGistAggregate({ observation, cache = null, outDir, ro
       sourceMetadata: null, files: [], sourceReceipt: null, reuseEvidence: { reused: [], fetched: [] } };
   }
 
-  const captured = await captureGistSources({
-    observation, cache, fetchDetail: transport.fetchDetail, fetchRaw: transport.fetchRaw, signal, now,
+  const captured = isCurrentVerifiedCapture(cache, observation) ? cache : await captureGistSources({
+    observation, cache, fetchDetail: transport.fetchDetail, fetchRaw: transport.fetchRaw,
+    fetchGitSnapshot: transport.fetchGitSnapshot, signal, now,
   });
   const { passageBytes, metadata, gistRecords } = renderGistPassages({ captured, generatedAt: captured.generatedAt });
   const includedFileCount = Object.values(captured.gists)

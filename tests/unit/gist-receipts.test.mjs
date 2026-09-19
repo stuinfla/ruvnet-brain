@@ -258,6 +258,24 @@ describe('validateGistReceipt — the one shared validator (reuse / produce / ar
     expect(() => validateGistReceipt({ receipt: {}, passagesFile: null })).toThrow(/passages file/);
   });
 
+  it('rejects an internally inconsistent Git snapshot proof before treating it as complete', () => {
+    const root = temp();
+    const passagesFile = path.join(root, 'ruv-gists.passages.jsonl');
+    fs.writeFileSync(passagesFile, '');
+    const sourceObservationSha256 = 'f'.repeat(64);
+    const row = sealGistReceipt({ gistId: id('a'), versionSha: 'c'.repeat(40),
+      updatedAt: '2026-08-22T00:00:00Z', ingestedAt: '2026-08-22T00:30:00Z', complete: true,
+      files: [{ filename: 'readme.md', included: true, sha256: digest('body'), bytes: 4,
+        sourceGit: { headSha: 'c'.repeat(40), treeSha: 'd'.repeat(40), blobSha: 'e'.repeat(40),
+          treeFileCount: 2, observedFileCount: 1, observedTruncated: false, observed: true, observedRawBlobSha: 'e'.repeat(40) } }],
+    });
+    const receipt = sealGistReceiptSet({ owner: 'ruvnet', generated: '2026-08-22T02:00:00Z',
+      observedAt: '2026-08-22T01:30:00Z', sourceObservationSha256,
+      passagesSha256: digest(''), gists: { [id('a')]: row } });
+    expect(() => validateGistReceipt({ receipt, passagesFile, expectedOwner: 'ruvnet' }))
+      .toThrow(/incomplete Git snapshot proof/);
+  });
+
   it('rejects an owner mismatch, unsafe filename, or malformed timestamp before delegating to the shared aggregate validator', () => {
     const root = temp();
     const passagesFile = path.join(root, 'ruv-gists.passages.jsonl');
