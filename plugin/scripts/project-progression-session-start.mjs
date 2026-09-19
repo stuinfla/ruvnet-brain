@@ -4,11 +4,15 @@ import { spawnSync } from 'node:child_process';
 import { ProjectProgressionStore } from './project-progression-store.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { withProgressionReader } from './project-progression-reader.mjs';
+import { STAGE_BUDGETS_MS } from './session-start-budget.mjs';
 
 const PROGRESSION_NAMESPACE = 'project-progression';
 
 export const SESSION_CONTINUITY_LIMIT_BYTES = 8 * 1024;
-export const SESSION_CONTINUITY_DEADLINE_MS = 2_500;
+// Keep the restore's enforced wall-clock ceiling identical to the SessionStart latency contract.
+// The fast path normally completes in milliseconds; when the managed CLI fallback cannot fit this
+// stage, the caller reports UNKNOWN with its reason instead of consuming the rest of the hook budget.
+export const SESSION_CONTINUITY_DEADLINE_MS = STAGE_BUDGETS_MS.restore;
 
 const RESTORED_HEADER = '[RuvNet Brain — PROJECT CONTINUITY RESTORED]';
 const UNKNOWN_HEADER = '[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]';
