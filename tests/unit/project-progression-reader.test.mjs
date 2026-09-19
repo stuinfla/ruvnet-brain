@@ -155,6 +155,14 @@ describe('canonical progression reader', () => {
     // And the refusal is the fallback signal, never a restore-killing error.
     expect(withProgressionReader(fixtureStore(rows, { extraColumn: 'tier' }), () => 'unreachable'))
       .toEqual({ ok: false, reason: expect.stringMatching(/columns differ/) });
+
+    // The live managed store was observed with this one additional column. Ruflo's installed
+    // memory_entries DDL does not define it; the compatibility exception is projection-safe because
+    // this reader never reads session_id. Unknown additions still take the managed CLI path.
+    const observed = openProgressionReader(fixtureStore(rows, { extraColumn: 'session_id' }));
+    try { expect(observed.listKeys(NAMESPACE)).toEqual(['alpha']); } finally { observed.close(); }
+    expect(() => openProgressionReader(fixtureStore(rows, { extraColumn: 'session_id TEXT, tier' })))
+      .toThrow(/unexpected .*tier/);
   });
 
   it('withProgressionReader reports fallback for unavailability and serves an available store', () => {
