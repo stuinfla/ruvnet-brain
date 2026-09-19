@@ -13,7 +13,7 @@ import {
   gradeOperationalFixture,
   latencyDistribution,
   verifyFixtureSourceSupport,
-} from '../evals/operational-benchmark.v1.mjs';
+} from '../evals/operational-benchmark.v2.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -95,7 +95,7 @@ export async function runOperationalBenchmark({ fixtures = OPERATIONAL_FIXTURES,
     },
   ]));
   return {
-    schema: 'ruvnet-brain-operational-benchmark/v1',
+    schema: 'ruvnet-brain-operational-benchmark/v2',
     generatedAt: new Date().toISOString(),
     runtime: {
       kb: path.resolve(kb),
@@ -103,7 +103,7 @@ export async function runOperationalBenchmark({ fixtures = OPERATIONAL_FIXTURES,
       nodeVersion: process.version,
       readerSha256: await hashFile(reader),
       verifierSha256: await hashFile(verifierPath),
-      fixtureSha256: await hashFile(path.join(ROOT, 'evals', 'operational-benchmark.v1.mjs')),
+      fixtureSha256: await hashFile(path.join(ROOT, 'evals', 'operational-benchmark.v2.mjs')),
       oracleSha256: Object.fromEntries(await Promise.all([...oracleFiles.keys()].map(async (file) => [path.relative(ROOT, file), await hashFile(file)]))),
       sourceManifestSha256: await hashExistingFiles(kb, ['SOURCE.json', 'RVF-GENERATIONS.json', 'PUBLIC-RVF-GENERATIONS.json']),
     },
@@ -142,8 +142,8 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
   const out = path.join(outDir, `${report.generatedAt.replace(/[:.]/g, '-')}.json`);
   fs.writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(JSON.stringify({ pass: report.passed === report.total, passed: report.passed, total: report.total, classes: report.classes, receipt: out }, null, 2));
-  if (report.passed !== report.total) process.exitCode = 1;
+  console.log(JSON.stringify({ pass: report.passed === report.total && report.unavailable.length === 0, unavailable: report.unavailable.length, passed: report.passed, total: report.total, classes: report.classes, receipt: out }, null, 2));
+  if (report.passed !== report.total || report.unavailable.length) process.exitCode = 1;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

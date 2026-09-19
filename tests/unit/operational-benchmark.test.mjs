@@ -9,7 +9,7 @@ import {
   gradeOperationalFixture,
   latencyDistribution,
   verifyFixtureSourceSupport,
-} from '../../evals/operational-benchmark.v1.mjs';
+} from '../../evals/operational-benchmark.v2.mjs';
 
 const fixtureHash = createHash('sha256').update(JSON.stringify(OPERATIONAL_FIXTURES)).digest('hex');
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -17,7 +17,7 @@ const citation = (repo, docPath, ce = 1) => ({ rank: 1, repo, fullPath: `${repo}
 
 describe('independently authored operational benchmark', () => {
   it('freezes broad, named, negative, and ambiguity queries plus their source-fact oracles', () => {
-    expect(fixtureHash).toBe('c4a299993b41029305f1c18fa3e65ac54836a385c54babe16df3601af098cc18');
+    expect(fixtureHash).toBe('f87263ea8096e90aa489ed21ce3075508a5ef97636018002aa16756923a24dfd');
     expect(new Set(OPERATIONAL_FIXTURES.map((item) => item.class))).toEqual(new Set(['broad', 'named', 'negative', 'ambiguity']));
     for (const item of OPERATIONAL_FIXTURES.filter((entry) => ['broad', 'named'].includes(entry.class) && !entry.availability)) {
       expect(item.expectedRepos.length, item.id).toBeGreaterThan(0);
@@ -36,13 +36,13 @@ describe('independently authored operational benchmark', () => {
     }
   });
 
-  it('distinguishes same-project continuity from cross-project learning and records missing IPFS evidence as unavailable', () => {
+  it('distinguishes same-project continuity from cross-project learning and binds IPFS evidence to a pinned public source', () => {
     const sameProject = OPERATIONAL_FIXTURES.find((item) => item.id === 'broad-next-session-learning');
     const crossProject = OPERATIONAL_FIXTURES.find((item) => item.id === 'broad-cross-project-learning-status');
-    const ipfs = OPERATIONAL_FIXTURES.find((item) => item.id === 'named-ruflo-ipfs-unavailable');
+    const ipfs = OPERATIONAL_FIXTURES.find((item) => item.id === 'named-ruflo-ipfs');
     expect(sameProject.expectedFact).not.toBe(crossProject.expectedFact);
     expect(crossProject.oraclePath).toBe('docs/4.0-EXPLAINER-BRIEF.md');
-    expect(ipfs).toMatchObject({ class: 'named', expectedFact: null, availability: 'unavailable-no-source-oracle-in-checked-in-corpus' });
+    expect(ipfs).toMatchObject({ class: 'named', expectedFact: 'IPFS-based cross-project pattern transfer', oraclePath: 'evals/oracles/ruflo-ipfs-plugin.json' });
     expect(OPERATIONAL_FIXTURES.find((item) => item.id === 'named-cognitum-ruos')?.expectedFact).toBe('agentic Linux operating system for AI workstations');
   });
 

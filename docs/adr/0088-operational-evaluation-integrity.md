@@ -3,6 +3,7 @@ id: ADR-088
 status: Accepted
 date: 2026-09-19
 updated: 2026-09-19
+version: 1.0.1
 authors: [Stuart Kerr, Codex]
 tags: [evaluation, benchmark, grounding, operations, abstention]
 supersedes: []
@@ -12,6 +13,7 @@ governs:
   - scripts/eval-brain.mjs
   - scripts/brain-novice-50.mjs
   - evals/operational-benchmark.v1.mjs
+  - evals/operational-benchmark.v2.mjs
   - scripts/run-operational-benchmark.mjs
   - tests/unit/eval-brain-gate.test.mjs
   - tests/unit/brain-novice-50.test.mjs
@@ -34,9 +36,9 @@ The novice-50 evaluator also exposed `expectedRepoCited` but did not require it 
 1. Negative cross-encoder evidence cannot pass an answerable named, described, scenario, or provenance case. Only the adversarial stratum may pass by abstaining. An honest refusal stays correct on a negative control and does not convert an answerable miss into a pass.
 2. Novice-50 `effective` requires an expected-owner citation in addition to transport, citation presence, the existing keyword signal, honesty, and its latency bound. The keyword match remains a heuristic indicator; it is not represented as semantic accuracy.
 3. Operational quality claims use a separately frozen, independently authored query set with broad, named, negative, and ambiguity classes. Answerable fixtures carry exact expected source spans authored before replay. A pass requires a resolved citation from an allowed owner and the expected span inside that cited result. Negative and ambiguous cases have no source-fact oracle and pass only with explicit evidence-qualified abstention.
-4. The fixture suite distinguishes same-project next-session continuity from cross-project transfer. It includes a source-backed CogruOS named query. A requested named capability without a source oracle (Ruflo/IPFS pattern sharing in this checkout) is reported as unavailable and excluded from measured denominators; the runner must not invent an expected fact or count the case as success.
+4. The fixture suite distinguishes same-project next-session continuity from cross-project transfer. It includes a source-backed CogruOS named query. A named capability without a source oracle is reported as unavailable and excluded from measured denominators; it also blocks the overall qualification verdict. Version 1 retained an unavailable IPFS case. Before candidate replay, version 2 binds that case to the public Ruflo plugin declaration at commit `e332689b8c04fc63989d82124298e6cf3d71ee76` (`evals/oracles/ruflo-ipfs-provenance.json`), which proves a documentation claim only. The original version 1 fixture remains unchanged.
 5. Each operational run writes raw query output, verification receipts, oracle decisions, latency observations, and per-class p50/p95/p99. It does not overwrite `evals/baseline.json`, the historical novice report, or the frozen held-out fixture hashes.
-5. Source-span checks provide auditable evidence support for the specific asserted fact; they do not claim complete semantic coverage. Reports must keep routing, citation existence, exact source support, refusal behavior, and latency as distinct measures.
+6. Source-span checks provide auditable evidence support for the specific asserted fact; they do not claim complete semantic coverage. Reports must keep routing, citation existence, exact source support, refusal behavior, and latency as distinct measures.
 
 ## Consequences
 
@@ -62,3 +64,9 @@ The novice-50 evaluator also exposed `expectedRepoCited` but did not require it 
 ## Implementation state
 
 Accepted decision; implementation and qualification are tracked by the governing code and test files above. Acceptance of this ADR does not claim that a live corpus benchmark has passed.
+
+## Currency log
+
+| Date | Change | Evidence |
+|---|---|---|
+| 2026-09-19 | Added v2 with a pinned public IPFS oracle before candidate replay; unavailable cases now block overall qualification. Preserved v1. | `evals/oracles/ruflo-ipfs-provenance.json`, `evals/operational-benchmark.v2.mjs`, `scripts/run-operational-benchmark.mjs`; no universal quality score claimed. |
