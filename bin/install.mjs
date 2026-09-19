@@ -30,6 +30,7 @@ import {
 } from '../kb/model-requirements.mjs';
 import { applyManagedCatalogUpdate } from '../scripts/model-router-catalog.mjs';
 import { cmpVersion } from '../scripts/stack-sync.mjs';
+import { inspectInstalledBrain, classifySmokeEvidence } from '../scripts/installed-brain-health.mjs';
 import { validateCoverageDirectory } from '../plugin/scripts/coverage-integrity.mjs';
 import {
   continuityContractIds,
@@ -2402,7 +2403,7 @@ async function smokeQuery(cacheDir) {
   if (!fs.existsSync(ask)) return { ran: false };
   step(
     'Asking the brain a real question',
-    'this warms the local model so your first real answer is instant — and proves grounding works end to end',
+    'this warms the local model and checks that retrieval returns usable, cited evidence',
   );
   const Q = 'How should I store embeddings in this project without running a server?';
   info(`Q: ${c.cyan(`"${Q}"`)}`);
@@ -2476,6 +2477,11 @@ async function smokeQuery(cacheDir) {
   }
 
   const v = await verifier.verifyGrounding(out, cacheDir);
+  const evidence = classifySmokeEvidence(v, out);
+  if (v.grounded && !evidence.usable) {
+    warn(`the citation resolves, but the question was not answered with sufficient evidence (${evidence.reason})`);
+    return { ran: true, grounded: false, citationResolved: true, reason: evidence.reason, secs };
+  }
   if (v.grounded) {
     ok(`grounded in rUv's real source — verified in ${secs}s, not guessed ✦`);
     console.log(`      ${c.dim('cited:')}    ${c.bold(v.receipt.path)}`);
@@ -2693,6 +2699,13 @@ async function doctor() {
   // Two independent version streams (KB bundle vs plugin wrapper) — see checkVersionDrift()'s
   // header comment for the full story. Silent unless they've genuinely diverged.
   reportVersionDrift(cacheDir);
+  const installedIdentity = inspectInstalledBrain(cacheDir, PACKAGE_VERSION);
+  info(`installed identities: package ${installedIdentity.packageVersion || 'unknown'}; search engine ${installedIdentity.searchVersion || 'unknown'}; validator ${installedIdentity.validatorVersion || 'unknown'}`);
+  if (installedIdentity.corpusTag) info(`corpus generation: ${installedIdentity.corpusTag}`);
+  if (!installedIdentity.healthy) {
+    for (const issue of installedIdentity.issues) warn(`installed identity: ${issue}`);
+    info(`Repair the installed generation: ${c.bold('npx ruvnet-brain@latest --update')}`);
+  }
   // Extraction no longer needs an external binary at all — kb/zip-extract.mjs does it with node:zlib
   // (see unzipInto()). So this reports the file's PRESENCE, not a PATH lookup: if it is missing from
   // the install, extraction on Windows silently loses its primary method, which is exactly the class
@@ -2883,6 +2896,8 @@ async function doctor() {
   const codexWiringFailed = Boolean(cx.host && !cx.wired);
   const codexReadinessFailed = Boolean(codexMcp?.blocking);
   const failed = (hookResult ? hookResult.exitCode !== 0 : !allGreen)
+    || !installedIdentity.healthy
+    || smoke.grounded !== true
     || groundingUnprovenPersisted
     || (codexLifecycleFailed && !codexTrustBypassed)
     || codexWiringFailed
@@ -3056,7 +3071,7 @@ function reportVersionDrift(cacheDir) {
   const state = checkVersionDrift(cacheDir);
   if (!state.drift) return state;
   warn(`the brain (${c.bold(state.kb)}) and the Claude Code plugin (${c.bold(state.wrapper)}) have drifted apart —`);
-  info(`that's normal (they update on separate schedules) and neither one is broken. To bring the`);
+  info(`they update on separate schedules; this comparison does not prove either is healthy. To bring the`);
   info(`plugin up to date:  ${c.bold('claude plugin marketplace update ruvnet-brain')}  ${c.dim('(body updates go live without a restart; boot-surface changes are called out)')}`);
   return state;
 }

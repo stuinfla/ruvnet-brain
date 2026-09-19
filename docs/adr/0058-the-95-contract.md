@@ -3,8 +3,8 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-12
-version: 1.1.3
+updated: 2026-09-19
+version: 1.1.4
 impl: wired
 reviewed_digest: 351f22130c54
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
@@ -52,6 +52,10 @@ governs:
 ---
 
 # ADR-058: The 95 contract
+
+**Updated 2026-09-19:** Doctor now fails explicit weak retrieval and installed search/validator
+identity drift (ADR-089), independently of persisted grounding state. This candidate change does
+not establish public-install qualification or change this broader contract's Proposed status.
 
 ## Current implementation boundary — reviewed 2026-09-05 19:08:40 EDT
 
