@@ -55,6 +55,11 @@ Historical decision: do not build a second publisher; use the canonical protecte
 
 ### Current correction, 2026-09-19
 
+Independent review found that SHA/time alone could attach a simultaneous manual release to the
+nightly receipt. The scheduler now passes a unique run/attempt correlation id; the protected
+workflow exposes it in the corpus run title, and the receipt selector requires exactly one match
+on that title, SHA, main branch, event and creation boundary. This id grants no release authority.
+
 The 2026-09-13 statements below that no scheduled mechanism exists are historical and no longer current. The dispatcher has a daily `17 7 * * *` trigger; the morning run 35429366082 was green because `data/approved-runtime.json` was absent and it stood down. A later real candidate run, 35463759285, reached the gist aggregate and failed on HTTP 403 for gist `1afab76a2b67161b7bd1fbdd8930b408` after about 70 minutes. The historical response omitted headers, so its cause remains UNKNOWN. A fresh unauthenticated GET from the root session later returned HTTP 200 with remaining quota 59, showing the failure was not a stable access denial in that environment; this does not establish which condition affected the hosted run. The ingestion path now preflights and captures all observed gist bodies against the frozen observation before repository clone/embedding work, then reuses those body-hash-verified captures for the aggregate. HTTP status and a small allowlist of non-secret response headers are retained; retry is bounded and only applies to classified rate-limit/transient failures. The scheduled dispatcher now waits up to 350 minutes for the protected child outcome; if the child remains active at that bound, it records the outcome as UNKNOWN and fails the dispatcher, never reporting dispatch acceptance as corpus success. The child preparation has a 360-minute job bound and publication has a separate 60-minute job bound, so the watcher cannot cover their theoretical combined maximum; the explicit UNKNOWN path preserves that limit instead of attributing a timeout to a child failure. These code changes have focused local tests; no production dispatch or successful nightly refresh is claimed.
 
 ### Where this actually stands, 2026-09-13

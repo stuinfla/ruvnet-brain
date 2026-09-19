@@ -99,11 +99,14 @@ jobs:
         run: |
           set -euo pipefail
           DISPATCHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          CORPUS_DISPATCH_ID="corpus-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "DISPATCHED_AT=$DISPATCHED_AT" >> "$GITHUB_ENV"
+          echo "CORPUS_DISPATCH_ID=$CORPUS_DISPATCH_ID" >> "$GITHUB_ENV"
           gh workflow run protected-release.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
             -f mode=corpus \
+            -f "corpus_dispatch_id=$CORPUS_DISPATCH_ID" \
             -f "candidate_sha=$CANDIDATE_SHA" \
             -f "version=$CANDIDATE_VERSION"
       - name: Record the target run this schedule actually created
@@ -121,8 +124,8 @@ jobs:
           # reported as a successful night.
           record=''
           for _attempt in 1 2 3 4 5 6 7 8 9 10; do
-            record="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/protected-release.yml/runs?event=workflow_dispatch&per_page=20" \
-              --jq "[.workflow_runs[] | select(.head_sha == \"$CANDIDATE_SHA\" and .created_at >= \"$DISPATCHED_AT\")] | sort_by(.id) | last // empty")"
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/protected-release.yml/runs?event=workflow_dispatch&per_page=100" > "$RUNNER_TEMP/dispatch-candidates.json"
+            record="$(node scripts/corpus-dispatch-receipt.mjs "$RUNNER_TEMP/dispatch-candidates.json")"
             [[ -n "$record" ]] && break
             sleep 10
           done
