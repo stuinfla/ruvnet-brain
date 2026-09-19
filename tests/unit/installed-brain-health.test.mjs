@@ -51,6 +51,17 @@ describe('installed search engine health', () => {
     fs.unlinkSync(file);
     expect(inspectInstalledBrain(dir, '9.9.8').healthy).toBe(false);
   });
+  it('checks transitive runtime files listed by the archive, not only entrypoints', () => {
+    const dir = fixture(); const file = path.join(dir, 'ARCHIVE-MANIFEST.json');
+    const manifest = JSON.parse(fs.readFileSync(file));
+    const body = '// approved helper';
+    fs.writeFileSync(path.join(dir, 'capability-families.mjs'), body);
+    manifest.files.push({ path: 'capability-families.mjs', bytes: Buffer.byteLength(body), sha256: createHash('sha256').update(body).digest('hex') });
+    fs.writeFileSync(file, JSON.stringify(manifest));
+    expect(inspectInstalledBrain(dir, '9.9.8').healthy).toBe(true);
+    fs.appendFileSync(path.join(dir, 'capability-families.mjs'), '// changed');
+    expect(inspectInstalledBrain(dir, '9.9.8').issues).toContain('search executable capability-families.mjs differs from the installed archive manifest');
+  });
   it('keeps corpus content addresses separate from runtime versions', () => {
     const dir = fixture(); const file = path.join(dir, 'SOURCE.json');
     const source = JSON.parse(fs.readFileSync(file)); source.corpusReleaseTag = `corpus-sha256-${'a'.repeat(64)}`;

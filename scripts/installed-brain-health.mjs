@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { readInstalledRuntime, isCorpusReleaseTag } from '../kb/corpus-release-identity.mjs';
 import { cmpVersion } from './stack-sync.mjs';
+import { isRuntimeFile } from './approved-runtime.mjs';
 
 const SEARCH_FILES = ['forge-mcp-all.mjs', 'forge-ask-all.mjs', 'forge-rerank.mjs', 'card-lane.mjs'];
 const version = value => typeof value === 'string' && /^v?\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(value)
@@ -49,11 +50,24 @@ export function inspectInstalledBrain(kbDir, packageVersion) {
     if (version(archive.version) !== result.searchVersion) {
       result.issues.push('archive manifest and search engine versions differ');
     }
-    for (const file of SEARCH_FILES) {
+    const runtimeFiles = new Set([...SEARCH_FILES, ...archive.files.filter(row => isRuntimeFile(row?.path)).map(row => row.path)]);
+    for (const file of runtimeFiles) {
+      if (typeof file !== 'string' || path.isAbsolute(file) || file.includes('\\')
+        || file.split('/').some(part => !part || part === '.' || part === '..')) {
+        result.issues.push('archive manifest contains an unsafe runtime path');
+        continue;
+      }
       const rows = archive.files.filter(row => row?.path === file);
-      const actual = result.searchFiles[file];
+      let actual = result.searchFiles[file];
+      if (!actual) {
+        try {
+          const bytes = fs.readFileSync(path.join(kbDir, file));
+          actual = { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
+          result.searchFiles[file] = actual;
+        } catch { result.issues.push(`runtime file ${file} is missing`); }
+      }
       if (rows.length !== 1 || !/^[a-f0-9]{64}$/.test(rows[0]?.sha256 || '')
-        || !Number.isSafeInteger(rows[0]?.bytes) || rows[0].bytes <= 0) {
+        || !Number.isSafeInteger(rows[0]?.bytes) || rows[0].bytes < 0) {
         result.issues.push(`archive manifest has no unique valid identity for ${file}`);
       } else if (actual && (actual.sha256 !== rows[0].sha256 || actual.bytes !== rows[0].bytes)) {
         result.issues.push(`search executable ${file} differs from the installed archive manifest`);
