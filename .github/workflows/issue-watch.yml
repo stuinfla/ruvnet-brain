@@ -17,9 +17,7 @@ name: issue-watch
 # deliberately NOT on this schedule — fixing is a conscious, cost-bearing action, not an unattended one.
 
 on:
-  schedule:
-    - cron: '0 */4 * * *'   # 00,04,08,12,16,20 UTC — six times a day, every four hours
-  workflow_dispatch: {}      # manual trigger, so the mechanism can be PROVEN on demand (not only on the clock)
+  workflow_dispatch: {}      # manual trigger remains available; four-hour schedule paused 2026-09-18
 
 permissions:
   issues: read               # gh issue list / view — read only; this job never writes to GitHub

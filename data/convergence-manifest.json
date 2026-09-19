@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.3.26",
-  "sourceIdentity": "c38cedf73c2903cede52bcc7ed59a35833be89341748ecc8e07f7c10bd485d94",
+  "sourceIdentity": "559739da873c2544889ff42fa1365e91796b425a544f135fc03a9ac7b352648f",
   "versionSurfaces": {
     "package.json": "4.3.26",
     "plugin/.claude-plugin/plugin.json": "4.3.26",
@@ -101,8 +101,8 @@
     "0086-corpus-seed-pipeline-consolidation.md",
     "README.md"
   ],
-  "trackedFileCount": 1542,
-  "trackedFilesSha256": "838d2a3ff3c8769e9f0a0965bf30fb8d6657021f7df5bc00eeeb153250fce00c",
+  "trackedFileCount": 1547,
+  "trackedFilesSha256": "e05496a1ef19b3d1980447090b589545dc2b2984b6ced27854dd63f73bc65bd8",
   "ownershipChecks": [
     "version:check",
     "doc:currency",
