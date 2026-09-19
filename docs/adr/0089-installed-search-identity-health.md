@@ -4,7 +4,7 @@ title: Doctor verifies the installed search engine separately from the validator
 status: Accepted
 date: 2026-09-19
 updated: 2026-09-19
-version: 1.0.1
+version: 1.0.2
 governs:
   - scripts/installed-brain-health.mjs
   - bin/install.mjs
@@ -25,7 +25,7 @@ Doctor now reads the source runtime identity, validator pin and package independ
 their values, and fails on missing identity, a validator/source mismatch, an engine behind the
 package, missing search executables or contradictory source version fields. A coherent engine
 ahead of the invoking package remains valid; a corpus content address is never ordered as semver.
-Observed search-file hashes identify bytes for diagnosis; they are not release approval receipts.
+Observed search-file hashes are compared with the installed archive manifest, detecting changed code even when version labels stay unchanged. Missing, duplicate or invalid file identities fail health. This local-manifest consistency check is not independent release authentication; the signed artifact and public-install gates retain that responsibility.
 
 A resolving citation is also insufficient for the fixed answerable smoke question when the
 retriever explicitly reports thin/insufficient evidence or unproven required implementation.
@@ -40,4 +40,5 @@ public-artifact verification remain release gates; these tests do not prove answ
 
 | Date | Change | Evidence |
 |---|---|---|
+| 2026-09-19 | Added installed archive-manifest equality checks for the four search entrypoints. | `scripts/installed-brain-health.mjs`, `tests/unit/installed-brain-health.test.mjs`; unchanged-version code drift must fail. |
 | 2026-09-19 | Implemented separate installed identity and smoke-evidence diagnostics; release authentication remains outside this helper. | `scripts/installed-brain-health.mjs`, `bin/install.mjs`, `tests/unit/installed-brain-health.test.mjs`; focused tests passed, public qualification pending. |

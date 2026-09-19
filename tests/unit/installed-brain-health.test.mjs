@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { inspectInstalledBrain, classifySmokeEvidence } from '../../scripts/installed-brain-health.mjs';
 import { writeInstalledRuntimeIdentity } from '../../kb/corpus-release-identity.mjs';
+import { createHash } from 'node:crypto';
 
 const dirs = [];
 afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
@@ -14,6 +15,13 @@ function fixture(searchVersion = '9.9.8', validatorVersion = searchVersion) {
   }
   fs.writeFileSync(path.join(dir, 'SOURCE.json'), JSON.stringify({ brainVersion: searchVersion, releaseTag: `v${searchVersion}` }));
   writeInstalledRuntimeIdentity(dir, { brainVersion: validatorVersion });
+  fs.writeFileSync(path.join(dir, 'ARCHIVE-MANIFEST.json'), JSON.stringify({
+    kind: 'ruvnet-brain-archive-manifest', version: searchVersion,
+    files: ['forge-mcp-all.mjs', 'forge-ask-all.mjs', 'forge-rerank.mjs', 'card-lane.mjs'].map(file => {
+      const bytes = fs.readFileSync(path.join(dir, file));
+      return { path: file, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
+    }),
+  }));
   return dir;
 }
 describe('installed search engine health', () => {
@@ -26,6 +34,22 @@ describe('installed search engine health', () => {
     const state = inspectInstalledBrain(fixture(), '9.9.8');
     expect(state.healthy).toBe(true);
     expect(state.searchFiles['forge-mcp-all.mjs'].sha256).toMatch(/^[a-f0-9]{64}$/);
+  });
+  it('rejects search code drift even when all version labels remain unchanged', () => {
+    const dir = fixture();
+    fs.appendFileSync(path.join(dir, 'forge-ask-all.mjs'), '// stale replacement');
+    const state = inspectInstalledBrain(dir, '9.9.8');
+    expect(state.healthy).toBe(false);
+    expect(state.issues).toContain('search executable forge-ask-all.mjs differs from the installed archive manifest');
+  });
+  it('rejects ambiguous or missing archive identities', () => {
+    const dir = fixture(); const file = path.join(dir, 'ARCHIVE-MANIFEST.json');
+    const manifest = JSON.parse(fs.readFileSync(file));
+    manifest.files.push(manifest.files[0]);
+    fs.writeFileSync(file, JSON.stringify(manifest));
+    expect(inspectInstalledBrain(dir, '9.9.8').healthy).toBe(false);
+    fs.unlinkSync(file);
+    expect(inspectInstalledBrain(dir, '9.9.8').healthy).toBe(false);
   });
   it('keeps corpus content addresses separate from runtime versions', () => {
     const dir = fixture(); const file = path.join(dir, 'SOURCE.json');

@@ -46,6 +46,14 @@ describe('parseCitations — read the reader’s own output', () => {
     expect(first.fullPath).toBe('concepts/ruvector/CARD/ruvector-card');
     expect(first.docPath).toBe('ruvector/CARD/ruvector-card');
   });
+  it('preserves an explicitly unscored proof lane without manufacturing a CE score', () => {
+    const [citation] = parseCitations('#1 repo=ruvector ce=n/a kind=doc proof=original-query-claim-groups\npath : ruvector/README.md\ntitle: Vector storage');
+    expect(citation).toMatchObject({ ce: null, kind: 'doc', proofMethod: 'original-query-claim-groups' });
+  });
+  it('does not take a proof method from the document body', () => {
+    const [citation] = parseCitations('#1 repo=ruvector ce=0.5\npath : ruvector/README.md\ntitle: Storage\nproof=original-query-claim-groups');
+    expect(citation.proofMethod).toBeNull();
+  });
   it('returns [] for prose with no citations — the hallucination case', () => {
     expect(parseCitations('Just use RVF, it needs no server.')).toEqual([]);
     expect(parseCitations('')).toEqual([]);
