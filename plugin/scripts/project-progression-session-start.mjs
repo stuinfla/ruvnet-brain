@@ -25,7 +25,7 @@ const UNKNOWN_EXPLANATIONS = Object.freeze({
   'malformed-store': 'Structural AgentDB output is malformed or internally inconsistent.',
   'exact-readback': 'An exact-listed AgentDB row could not be read back by its exact key.',
   'outbox-replay': 'The durable progression outbox could not be replayed safely.',
-  'output-bound': 'The verified resume payload exceeds the host context bound.',
+  'output-bound': 'The full checkpoint and a goal/action-preserving bounded summary do not fit the host context; no checkpoint state was injected.',
   'no-coherent-state': 'No coherent progression head survived validation.',
   'restore-failed': 'The exact structural restore did not complete.',
   // MEASURED, and named rather than hidden. The in-process read path costs ~15ms for six snapshots;
@@ -202,7 +202,9 @@ export function restoreProgressionForSession({
   const miss = (reason) => unknown(reason, { rowCount });
 
   const prefix = `${RESTORED_HEADER}\n`;
-  const payloadLimit = maxOutputBytes - Buffer.byteLength(prefix, 'utf8');
+  // Reserve room for the status prefix, the bounded-summary explanation, and any pending-outbox
+  // notice appended after the payload. The final complete context is still checked below.
+  const payloadLimit = maxOutputBytes - Buffer.byteLength(prefix, 'utf8') - 400;
   if (!Number.isSafeInteger(payloadLimit) || payloadLimit < 1) return miss('output-bound');
 
   let store;
@@ -230,11 +232,23 @@ export function restoreProgressionForSession({
     // COMMITTED ROWS ONLY (ADR-073 §5). Replay is a write, a write is a `ruflo memory store`
     // process, and one of those costs more than this entire boundary's budget. Pending durable
     // snapshots are REPORTED below and replayed at the next capture boundary or by /checkpoint.
-    const restored = store.restoreLatest({ maxOutputBytes: payloadLimit, replayPending: false });
+    const restored = store.restoreLatest({ maxOutputBytes: payloadLimit, replayPending: false, projectToBound: true });
     if (!validResume(restored)) return miss('malformed-store');
-    const context = `${prefix}${restored.rendered}${pendingNotice(restored.pendingReplay)}`;
+    const summaryNotice = restored.projected
+      ? '\n[BOUNDED CONTINUITY SUMMARY] The merged current goal and next action are preserved exactly; '
+        + 'a null value means the journal heads conflict. '
+        + 'Other omitted details remain in the canonical AgentDB records; consult the listed head keys '
+        + 'and omission digests. Omitted fields are marked and are not empty.'
+      : '';
+    const context = `${prefix}${summaryNotice}\n${restored.rendered}${pendingNotice(restored.pendingReplay)}`;
     if (Buffer.byteLength(context, 'utf8') > maxOutputBytes) return miss('output-bound');
-    return { status: 'restored', severity: 'info', pendingReplay: restored.pendingReplay, context };
+    return {
+      status: restored.projected ? 'restored-summary' : 'restored',
+      severity: restored.projected ? 'warning' : 'info',
+      degraded: restored.projected === true,
+      pendingReplay: restored.pendingReplay,
+      context,
+    };
   } catch (error) {
     // A structurally enumerated, genuinely empty namespace is normal for a newly adopted project.
     if (/no coherent progression state/i.test(String(error?.message ?? ''))
