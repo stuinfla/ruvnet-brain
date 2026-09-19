@@ -39,7 +39,9 @@ jobs:
     # Forks inherit schedules; they must never dispatch against the upstream release rail.
     if: github.repository == 'stuinfla/ruvnet-brain'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Keep the scheduler alive through the protected child workflow so a green dispatcher means
+    # the downstream corpus run reached a successful conclusion, not merely that dispatch worked.
+    timeout-minutes: 360
     permissions:
       contents: read
       actions: write
@@ -140,11 +142,42 @@ jobs:
             echo "- event: \`$run_event\`"
             echo "- candidate: \`$CANDIDATE_SHA\`"
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Preserve the dispatch run record
+      - name: Wait for and report the protected corpus run outcome
+        if: steps.armed.outputs.armed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id="$(node -p "require(process.env.RUNNER_TEMP + '/dispatched-run.json').id")"
+          started=$SECONDS
+          while (( SECONDS - started < 21000 )); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > "$RUNNER_TEMP/target-run-status.json"
+            status="$(node -p "require(process.env.RUNNER_TEMP + '/target-run-status.json').status")"
+            conclusion="$(node -p "require(process.env.RUNNER_TEMP + '/target-run-status.json').conclusion || ''")"
+            if [[ "$status" == completed ]]; then
+              run_url="$(node -p "require(process.env.RUNNER_TEMP + '/target-run-status.json').html_url")"
+              {
+                echo '### protected corpus outcome'
+                echo ''
+                echo "- target run: [$run_id]($run_url)"
+                echo "- status: $status"
+                echo "- conclusion: $conclusion"
+              } >> "$GITHUB_STEP_SUMMARY"
+              [[ "$conclusion" == success ]] || { echo "::error::protected corpus run concluded $conclusion"; exit 1; }
+              exit 0
+            fi
+            sleep 30
+          done
+          echo '::error::protected corpus run did not finish before dispatcher timeout; outcome is unknown'
+          exit 1
+      - name: Preserve the dispatch and downstream outcome records
         if: always() && steps.armed.outputs.armed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: corpus-dispatch-record-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/dispatched-run.json
+          path: |
+            ${{ runner.temp }}/dispatched-run.json
+            ${{ runner.temp }}/target-run-status.json
           if-no-files-found: warn
           retention-days: 90
