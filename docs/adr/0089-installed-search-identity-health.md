@@ -4,7 +4,7 @@ title: Doctor verifies the installed search engine separately from the validator
 status: Accepted
 date: 2026-09-19
 updated: 2026-09-19
-version: 1.0.0
+version: 1.0.1
 governs:
   - scripts/installed-brain-health.mjs
   - bin/install.mjs
@@ -35,3 +35,9 @@ Warmup no longer promises an instant first answer.
 Tests exercise real disposable source/validator files, changed bytes, missing identities, ahead
 versions and corpus tags, plus explicit weak-evidence counterexamples. Installed customer and
 public-artifact verification remain release gates; these tests do not prove answer correctness.
+
+## Currency log
+
+| Date | Change | Evidence |
+|---|---|---|
+| 2026-09-19 | Implemented separate installed identity and smoke-evidence diagnostics; release authentication remains outside this helper. | `scripts/installed-brain-health.mjs`, `bin/install.mjs`, `tests/unit/installed-brain-health.test.mjs`; focused tests passed, public qualification pending. |

@@ -246,6 +246,8 @@ const STANDALONE = [
  * small lie that hides a real gap. Held work is VISIBLE work.
  */
 const HELD = {
+  'source-tree': 'ADR-086 oracle-source-units/2 groundwork, not consumed by the current v1 oracle pipeline. Requires complete parser-adapter integration and source-bound inventory acceptance before activation; no production extraction-completeness claim.',
+  'unit-inventory': 'ADR-086 parser-independent v2 inventory core, currently exercised only by tests. Requires adapters for the declared source scope plus pipeline integration and failure-path qualification; cannot authorize a C3 pass.',
   'correction-detect': 'N3 lesson extraction. Re-measured 2026-07-23 on a reproducible held-out split '
     + 'of 1,328 real transcripts (scripts/correction-detect-measure.mjs): 5 real detector bugs fixed, '
     + 'corpus detections 2->8, ~50-100% precision at n=4 on the holdout. TWO measured findings now bound '
