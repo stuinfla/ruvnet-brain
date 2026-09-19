@@ -66,6 +66,7 @@ import { validateCoverageLedger } from './coverage-integrity.mjs';
 // The org total is DERIVED, never a literal: it was hardcoded 248 in this file and in its
 // sibling while the account actually had 200 — one stale fact, restated twice (2026-08-12).
 import { orgRepoCount } from './org-repo-count.mjs';
+import { assertCapabilityOnlyStore } from '../kb/capability-only.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -742,6 +743,7 @@ async function assembleBundleImpl({ corpusDir, runtimeRoot, outDir, identity = {
   }
 
   const selectedResults = discovered.map((name) => {
+    assertCapabilityOnlyStore(corpus, name);
     const folded = name.toLowerCase();
     const generation = ledgerIn.stores?.[name]
       || Object.entries(ledgerIn.stores || {}).find(([key]) => key.toLowerCase() === folded)?.[1];
