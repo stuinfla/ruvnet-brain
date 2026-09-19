@@ -12,6 +12,7 @@ import path from 'node:path';
 import { execFile, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildCorpus, FORGE_BUILD_FINGERPRINT } from './forge-corpus.mjs';
+import { isCapabilityOnly } from './capability-only.mjs';
 import {
   buildCorpusLedger,
   chunkDelta,
@@ -221,6 +222,7 @@ function validateDeltaResult(label, result, expectedVectors) {
 }
 
 function removeLegacyDuplicates() {
+  if (isCapabilityOnly(NAME)) fs.rmSync(path.join(out, `${NAME}.symbols.json`), { force: true });
   for (const file of [
     `${NAME}.rvf`,
     `${NAME}.rvf.idmap.json`,
@@ -367,7 +369,10 @@ try {
     current: currentLedger,
   });
   const completeLiveSet = artifactFiles.every((file) => fs.existsSync(path.join(out, file)));
-  if (!previousMeta?.incremental) {
+  if (isCapabilityOnly(NAME)) {
+    // Never retain retired implementation bytes in an incremental RVF or old metadata.
+    await fullRefresh('capability-only clean rebuild', corpus, null, currentLedger);
+  } else if (!previousMeta?.incremental) {
     const migration = await migrateLegacyStore(corpus, previousMeta, currentLedger);
     if (!migration.migrated) {
       await fullRefresh(migration.reason || 'no-incremental-ledger', corpus, previousMeta, currentLedger);

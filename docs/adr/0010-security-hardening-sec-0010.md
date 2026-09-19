@@ -2,8 +2,9 @@
 id: ADR-010
 status: Accepted
 date: 2026-07-06
-updated: 2026-07-27
-updated_source: derived-from-git
+updated: 2026-09-19
+version: 1.1.1
+updated_source: capability-only-cognitum-ruos-policy
 ---
 # ADR-0010: Security hardening (SEC-0010) — Dragan's QE review, and exactly how each finding was fixed
 
@@ -63,6 +64,25 @@ private cognitum source.
 aborts unless `ALLOW_NO_PRIVATE_FENCE=1` (the explicit escape hatch a genuine no-private fork needs, never the
 silent default). **Verified by fault injection:** deliberately corrupted the fence → build exits `FATAL`
 instead of shipping everything.
+
+**2026-09-19 amendment — Cognitum ruOS capabilities only.** At the owner's instruction,
+`cognitum-ruos` is discoverable through a curated `CAPABILITIES.md`, while repository code,
+internal documentation, configuration, and symbol indexes are excluded. `forge-corpus.mjs`
+substitutes the curated input before traversal; `forge-refresh.mjs` creates a clean RVF.
+`corpus-reconcile.mjs` invalidates source-current seed content that violates this policy and
+retires legacy sidecars during promotion; `build-bundle.mjs` rejects nonconforming output.
+The separate `ruvnet/ruos` store is unaffected. Local installed MCP and 128 focused tests
+passed; public release and clean public installation remain unverified. This controls Brain
+distribution and does not change the visibility of the upstream GitHub repository.
+
+**Demo publication authorization, 2026-09-19:** Stuart explicitly waived waiting for
+Windows/macOS/Linux verification and requested production publication plus a real `npx`
+install check. `data/approved-runtime.json` therefore records the existing signed v4.3.26
+runtime (code `3996f502b18157fdc84e325fbe87c2a05351d58c`), derived with the canonical
+emitter from the signature-verified public archive. This is owner approval for a corpus
+refresh, not an `install-verified` receipt: failed platform results remain failed. Corpus
+content checks, signatures, runtime byte equality, and public-install verification remain
+required. No npm code release is authorized merely by this corpus runtime pin.
 
 ### #5 — aggregate stores bypassed the fence — FIXED (`ff8193b`)
 **Seen:** `scripts/build-concepts.mjs` folds every primer + L2 article into the shipped, *searchable* concepts
