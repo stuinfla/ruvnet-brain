@@ -3,9 +3,9 @@ id: ADR-075
 title: Knowledge-to-execution enforcement is a mandatory policy boundary
 status: Accepted
 date: 2026-08-30
-updated: 2026-09-12
-reviewed_digest: 96d0798621fb
-version: 1.1.2
+updated: 2026-09-19
+reviewed_digest: c3ed97fa9160
+version: 1.1.3
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [architecture, enforcement, routing, swarms, adr, ddd, qa, release]
@@ -178,6 +178,10 @@ complete reconciliation and dual-seat receipt enforcement, exhaustive architectu
 and public release proof remain outstanding.
 
 ## Currency log
+
+| 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest c3ed97fa9160. | `plugin/skills/ruvnet-brain/SKILL.md`, `plugin/skills/ruvnet-brain/PLAYBOOK.md`, `plugin/hooks/hooks.json`; source consistency review only, no new deployment or acceptance claim. |
+
+| 2026-09-19 | Source review: capacity-aware-parallel-work emits context only; it neither authorizes nor executes delegation. Installer validates release/runtime identity. Doc-currency caches repeated caller lookups within one evaluation only, recomputing on each invocation. None of these changes grants action capabilities or replaces exact-source QA receipts; live publication is not established. | Reviewed current governed-source diffs; this row records source consistency, not renewed runtime acceptance. |
 | 2026-09-12 | Currency review at commit dae83538: decision unchanged — `plugin/scripts/decision-gate.mjs` and `ground-ruvnet.sh` are byte-unchanged; this ADR's write-time enforcement is unaffected. The hook-parity fork extended `hooks.json`/`codex-hooks.json` with Codex's `apply_patch` matcher on the SAME `decision-gate` route (no new gate, same enforcement code, one more matched tool name on Codex) and added a separate, independent Stop-time pair (`grounding-turn-mark`/`grounding-turn-gate`) that closes the different gap this ADR's currency log doesn't cover (an ungrounded plain-text answer that never calls a write tool). `plugin/skills/ruvnet-brain/SKILL.md`, `PLAYBOOK.md`, `ground-before-write.sh`, `route-dispatch.sh`, `bin/install.mjs` did not move in this fork's diff. | Reviewed `plugin/hooks/hooks.json`/`codex-hooks.json`'s diff directly (merge-base `13cfc38b`..`ef2b8e12`) and confirmed `decision-gate.mjs`/`ground-ruvnet.sh` are unchanged. |
 
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged and its primitives now registered. `7b8e6e73` wired `plugin/scripts/ground-ruvnet.sh` (UserPromptSubmit), the `decision-gate.mjs` write route (PreToolUse on Write, Edit, MultiEdit and NotebookEdit, composing `ground-before-write.sh`) and `grounding-stamp` (PostToolUse) into the continuity plane with hook-contracts v5. The integration owner's own probe on main: a rUv-stack prompt → a 1,310-byte directive; an unrelated prompt → silence; an ungrounded `.mjs` naming agentdb → exit 2 BLOCKED; a payload carrying the real `Searched <n> RuvNet repos` banner → a per-term stamp → the same write exits 0; a different ungrounded product → exit 2; `RUVNET_SKIP_GROUNDING_CHECK=1` → 0. `ground-before-write` is opt-in on `~/.claude/model-router/profile.json`. `bin/install.mjs` `dc18fadc` and `09079037` (2026-09-09, no false restart requirement); skills `60f269ad` pre-session. `scripts/doc-currency.mjs`, `scripts/convergence-manifest.mjs`, `plugin/scripts/route-dispatch.sh`, `scripts/qa-runner.mjs`, `tests/unit/execution-policy.test.mjs` did not move. §4's same-change reconciliation is what this row is. | Reviewed `plugin/hooks/hooks.json`, `plugin/scripts/ground-ruvnet.sh`, `plugin/scripts/ground-before-write.sh`, `plugin/scripts/decision-gate.mjs`. reviewed_digest 685935ca744e. |

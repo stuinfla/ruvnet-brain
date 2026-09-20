@@ -233,6 +233,8 @@ opt in with `KB_CE_CASCADE_K=64`; this ADR does not accept that value as the def
 
 ## Currency log
 
+| 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest 2a8622cc4c91. | `kb/forge-rerank.mjs`, `kb/forge-ask-all.mjs`, `scripts/rerank-cap-warm-ab.mjs`; source consistency review only, no new deployment or acceptance claim. |
+
 | Date | What changed | Why (with referents) |
 |---|---|---|
 | 2026-09-19 | Replaced the earlier same-day family override and exact-template positive reply with a separate related-documentation supplement (ADR-090). Primary routing, ranked results, OFF controls, and CE settings retain their existing authority. Source review does not renew expired runtime verification. | Reviewed forge-ask-all, forge-mcp-all, grounded-response and capability tests; supplements are separately guarded and never enter primary grounding receipts. |

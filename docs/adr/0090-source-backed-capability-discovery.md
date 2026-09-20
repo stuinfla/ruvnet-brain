@@ -81,6 +81,8 @@ quality improvement. No universal 98% quality or deployed-runtime claim is made 
 
 ## Currency log
 
+| 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest 9e737a426e6a. | `kb/capability-families.mjs`, `kb/card-lane.mjs`, `kb/forge-ask-all.mjs`; source consistency review only, no new deployment or acceptance claim. |
+
 | Date | Review |
 |---|---|
 | 2026-09-19 | Supersedes the earlier same-day template/candidate mechanism with additive, separately labeled documentation. Independent MCP review found one owner-routing regression and little generalization; revised behavior preserves primary search and all evidence grades. Source review and focused tests only; live qualification pending. |
