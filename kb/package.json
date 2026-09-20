@@ -1,6 +1,6 @@
 {
   "name": "ruvnet-brain-kb",
-  "version": "4.3.26",
+  "version": "4.3.27",
   "private": true,
   "type": "module",
   "description": "Self-contained RVF knowledge base for ruvnet-brain, built by rvf-kb-forge. Run `npm i` here, then use forge-ask.mjs (CLI) or forge-mcp.mjs (MCP stdio server). Vectors live in ruvnet-brain.rvf; full passage text in ruvnet-brain.passages.jsonl.",
@@ -17,6 +17,7 @@
     "big": "node forge-big.mjs both --dir . --name ruvnet-brain"
   },
   "dependencies": {
+    "@babel/parser": "^7.29.9",
     "@ruvector/rvf": "^0.3.4",
     "@xenova/transformers": "2.17.2"
   },

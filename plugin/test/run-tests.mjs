@@ -83,13 +83,15 @@ check('marketplace.json lists the ruvnet-brain plugin', Array.isArray(market?.pl
 const mcp = readJson('.mcp.json');
 check('.mcp.json registers the ruvnet-brain MCP server', !!mcp?.mcpServers?.['ruvnet-brain']);
 const hooks = readJson('hooks/hooks.json');
-check('hooks.json declares only continuity lifecycle hooks', hooks?.hooks
+check('hooks.json declares only the continuity plane and bounded capacity guidance', hooks?.hooks
   // DERIVED from continuity-hook-policy.mjs (the plane's single source). 'SessionStart,Stop' was restated
   // here and stayed red for two days after the five-event plane landed; this session then hardcoded the
   // broken manifest ('PostEdit,SessionStart,Stop') to match. Neither is a check. This is.
   && Object.keys(hooks.hooks).sort().join(',') === [...new Set(continuityRegistrations('claude').map((r) => r.event))].sort().join(',')
   && JSON.stringify(hooks.hooks).includes('session-start')
-  && JSON.stringify(hooks.hooks).includes('continuation-gate'));
+  && JSON.stringify(hooks.hooks).includes('continuation-gate')
+  && hooks.hooks.UserPromptSubmit.some((group) => group.hooks.some((hook) =>
+    hook.command.includes('capacity-aware-parallel-work'))));
 for (const f of ['skills/ruvnet-brain/SKILL.md', 'skills/brain-score/SKILL.md', 'skills/brain-build/SKILL.md', 'skills/brain-prompt/SKILL.md', 'mcp/server.mjs', 'scripts/ground-ruvnet.sh', 'README.md', 'test/capability-questions.json']) {
   check(`exists: ${f}`, fs.existsSync(path.join(ROOT, f)));
 }

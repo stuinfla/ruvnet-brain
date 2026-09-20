@@ -212,6 +212,33 @@ const stdout = merge(stdouts);
 let parsed = null;
 try { parsed = JSON.parse(stdout); } catch { /* a shared body may legitimately print prose */ }
 
+function validPostToolUseOutput(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const topLevelKeys = new Set([
+    'continue', 'stopReason', 'suppressOutput', 'systemMessage',
+    'terminalSequence', 'decision', 'reason', 'hookSpecificOutput',
+  ]);
+  if (Object.keys(value).some((key) => !topLevelKeys.has(key))) return false;
+  if (value.continue !== undefined && typeof value.continue !== 'boolean') return false;
+  if (value.stopReason !== undefined && typeof value.stopReason !== 'string') return false;
+  if (value.suppressOutput !== undefined && typeof value.suppressOutput !== 'boolean') return false;
+  if (value.systemMessage !== undefined && typeof value.systemMessage !== 'string') return false;
+  if (value.terminalSequence !== undefined && typeof value.terminalSequence !== 'string') return false;
+  if (value.decision !== undefined && value.decision !== 'block') return false;
+  if (value.decision === 'block' && (typeof value.reason !== 'string' || !value.reason.trim())) return false;
+  if (value.hookSpecificOutput !== undefined) {
+    const specific = value.hookSpecificOutput;
+    if (!specific || typeof specific !== 'object' || Array.isArray(specific)) return false;
+    const specificKeys = new Set([
+      'hookEventName', 'additionalContext', 'updatedToolOutput', 'updatedMCPToolOutput',
+    ]);
+    if (Object.keys(specific).some((key) => !specificKeys.has(key))) return false;
+    if (specific.hookEventName !== 'PostToolUse') return false;
+    if (specific.additionalContext !== undefined && typeof specific.additionalContext !== 'string') return false;
+  }
+  return true;
+}
+
 if (event === 'Stop') {
   const reason = parsed?.hookSpecificOutput?.additionalContext
     || parsed?.reason
@@ -238,6 +265,16 @@ if (!parsed) {
       hookSpecificOutput: { hookEventName: event, additionalContext: stdout },
     }));
   }
+  process.exit(0);
+}
+
+// A body can emit syntactically valid JSON that is still invalid for Codex's event-specific wire
+// schema (wrong event name, unsupported fields, or bad field types). Preserve the advisory as text
+// inside the known-good PostToolUse envelope instead of forwarding a payload the host rejects.
+if (event === 'PostToolUse' && !validPostToolUseOutput(parsed)) {
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: { hookEventName: event, additionalContext: stdout.trim() },
+  }));
   process.exit(0);
 }
 

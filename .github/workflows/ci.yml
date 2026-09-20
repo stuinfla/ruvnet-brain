@@ -249,6 +249,15 @@ jobs:
           unzip -q "$seed" -d "$RUNNER_TEMP/release-seed/extracted"
           mapfile -t asset_dirs < <(find "$RUNNER_TEMP/release-seed/extracted" -type f -name '*.big.rvf' ! -path '*/__MACOSX/*' ! -name '._*' -printf '%h\n' | LC_ALL=C sort -u)
           test "${#asset_dirs[@]}" -eq 1
+          # The public ruOS input is capabilities-only. The prior immutable seed predates that
+          # policy, so rebuild its RVF from the curated summary before the packaging boundary checks
+          # it. Never carry vectors or passages embedded from the proprietary repository source.
+          npm install --prefix "${asset_dirs[0]}" --no-save --package-lock=false --ignore-scripts \
+            @xenova/transformers@2.17.2 @ruvector/rvf@0.3.4
+          export XENOVA_PATH="${asset_dirs[0]}/node_modules/@xenova/transformers"
+          export RVF_MODULE_PATH="${asset_dirs[0]}/node_modules"
+          export KB_MODEL_CACHE="$RUNNER_TEMP/ruvnet-brain-model-cache"
+          node scripts/refresh-capability-only-store.mjs --assets "${asset_dirs[0]}"
           # --repair also re-seals stale ledger hashes after index persistence. The v4.2.1 seed
           # exposed three roots whose HNSW bytes had advanced after their ledger rows were written.
           node scripts/rvf-index-audit.mjs --dir "${asset_dirs[0]}" --repair

@@ -3,8 +3,9 @@ id: ADR-055
 title: Proactivity that meshes — one decision law, four planes, substance-bound enforcement, learning bound to outcomes
 status: Accepted
 date: 2026-07-27
-updated: 2026-09-12
-reviewed_digest: d14941d1fb33
+updated: 2026-09-19
+version: 1.0.3
+reviewed_digest: 51b1698e64f7
 impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6 (codex, read-only)]
 tags: [proactivity, hooks, mesh, fourth-wall, learning, grounding, qa]
@@ -13,6 +14,10 @@ relates: [ADR-012, ADR-017, ADR-023, ADR-028, ADR-030, ADR-040, ADR-043, ADR-050
 governs:
   - plugin/hooks/hooks.json
   - plugin/hooks/codex-hooks.json
+  - plugin/hooks/hook-contracts.json
+  - plugin/scripts/continuity-hook-policy.mjs
+  - plugin/scripts/hook-shim.mjs
+  - plugin/scripts/capacity-aware-parallel-work.mjs
   # NARROWED 2026-08-19. These were `plugin/scripts/*.mjs` and `*.sh` — wildcards over EVERY
   # script, so any hook change anywhere made this ADR presumed-stale. It blocked five pushes
   # across three sessions, each time demanding a currency row about code this decision does not
@@ -35,6 +40,7 @@ governs:
   - kb/forge-mcp-all.mjs
   - kb/forge-evidence.mjs
   - tests/mesh/*.mjs
+  - tests/unit/capacity-aware-parallel-work.test.mjs
   - tests/experience/*.json
   - tests/experience/*.mjs
 ---
@@ -709,7 +715,25 @@ past v1 (§3.7.1); override human-terminal requirement — Fable's refusal shipp
 clause as the pre-agreed escalation (§3.5); Task-prompt scanning — Fable's refusal shipped,
 delegation drift goes to the interrupt tier (§3.7.9).
 
+## Capacity-aware independent-work advisory (2026-09-19)
+
+The shared UserPromptSubmit plane may add a context-only recommendation for clearly substantial,
+independently splittable work. It uses bounded local memory-pressure percentage, swap, compressor
+bytes, and normalized one-minute system load per logical CPU. The normalized-load value is a CPU
+pressure proxy, not measured CPU utilization. Trivial prompts exit silently before any capacity
+probe; incomplete probes fail open to a serial recommendation.
+
+Resource headroom limits concurrency, but it does not prove that agent tools or runtime slots exist.
+When a trustworthy total runtime cap is present in host metadata, it is the hard limit; lower
+configured worker counts and the number of independent work units further reduce the recommendation.
+If the host cap is unknown, the advisory uses four total agents as a conservative ceiling, explicitly
+labels the runtime limit unknown, and tells the coordinator to inspect the live tool/harness cap
+before dispatch. Four is not a universal ceiling. This hook adds context only: it never spawns a
+worker, calls a paid execution API, blocks a turn, or claims that work is running. The coordinator
+must launch real non-overlapping worker tasks through available tools and verify their results.
+
 ## Currency log
+| 2026-09-19 | Reviewed and added the narrowly classified `capacity-aware-parallel-work` UserPromptSubmit context advisory on Claude and Codex. It samples memory pressure, swap, compressor bytes, and load-per-core only for substantial work; unknown measurements default to serial, unknown runtime capacity has a conservative four-total-agent ceiling, and any reported runtime cap, configured worker ceiling, or identified work-unit count can only lower the recommendation. No agent spawn or user-facing speech is performed by the hook. The source also requires real tool availability and completion evidence before a coordinator claims workers ran. reviewed_digest 51b1698e64f7. | Reviewed `plugin/scripts/capacity-aware-parallel-work.mjs`, `plugin/scripts/hook-shim.mjs`, `plugin/scripts/continuity-hook-policy.mjs`, `plugin/hooks/hook-contracts.json`, `plugin/hooks/hooks.json`, `plugin/hooks/codex-hooks.json`, and `tests/unit/capacity-aware-parallel-work.test.mjs`; `node scripts/hook-retirement-check.mjs` PASS and capacity-focused Vitest 7/7 PASS. |
 | 2026-09-12 | Currency review at commit 55f98705: decision unchanged. Two governed paths moved: `plugin/hooks/hooks.json`/`codex-hooks.json` (`ef2b8e12`, this session's hook-parity work — Codex write-route parity and the new grounding-turn-gate Stop pair; unrelated to proactivity/mesh semantics) and `kb/forge-mcp-all.mjs` (`55f98705`, a card-lane routing fix — an explicit-`k` check so an omitted `k` reaches the fast card lane instead of always deferring to source retrieval; a retrieval-latency bugfix, not a proactivity/mesh change). The other governed paths in the drift window did not move. | Reviewed `plugin/hooks/hooks.json`, `codex-hooks.json`, `kb/forge-mcp-all.mjs` diffs in full against commits `ef2b8e12` and `55f98705`. |
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged; the plane re-converged toward §2 and Appendix A. `plugin/hooks/hooks.json`: `76632b15` dropped four registrations (`unprompted-speech`; `session-snapshot` at Stop, PreCompact and SessionEnd) and added `PostEdit`, which is not a host event; `9c45d408` restored 85f584b2; `7b8e6e73` registered `ground-ruvnet` at UserPromptSubmit — where Appendix A's 2026-07-27 census already had it before `00526b12` retired it — plus `decision-gate write` (PreToolUse, ADR-067) and `grounding-stamp` (PostToolUse); `hooks:check` PASS with nine registrations. `codex-hooks.json` likewise (+6/−1 vs 85f584b2). `plugin/scripts/unprompted-runtime.mjs` +10/−2 vs 85f584b2 (`1380c98b` passes RUVNET_ADVOCACY_ROUTE_BUDGET_MS explicitly, a no-op; 27/27 tests). `session-start-core.mjs` identical to 85f584b2. `ground-ruvnet.sh` itself did not move. §1's block / interrupt / advise law is untouched; the second UserPromptSubmit owner is recorded as ADR-040's amendment. | Reviewed `plugin/hooks/hooks.json`, `plugin/hooks/codex-hooks.json`, `plugin/scripts/unprompted-runtime.mjs`, `plugin/scripts/ground-ruvnet.sh`. reviewed_digest 9a057f3b2269. |
 | 2026-09-09 | Reviewed the governed proactivity surface after the North Star D2/D5 repairs; the weakest governed members are the experience test fixtures, which are built but have no production caller, so the stored implementation claim is now honestly `built`. | Source digest 89b16f14daff; tests/experience/scenarios.json; tests/experience/report.test.mjs; tests/mesh/coexistence.test.mjs. |

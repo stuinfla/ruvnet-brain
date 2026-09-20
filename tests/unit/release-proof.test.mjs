@@ -6,7 +6,7 @@ import {
   evaluateStabilizationCandidateReceipt,
   evaluateLivePreflight,
   evaluatePublicationReceipt,
-  latestRunsByWorkflow,
+  resolveRequiredChecks,
 } from '../../scripts/release-proof.mjs';
 
 const require = createRequire(import.meta.url);
@@ -254,24 +254,13 @@ describe('release-proof publication authority', () => {
 });
 
 describe('release-proof live preflight', () => {
-  it('uses only the newest exact-SHA result per workflow', () => {
-    expect(latestRunsByWorkflow([
-      { workflowName: 'ci', databaseId: 2, conclusion: 'success' },
-      { workflowName: 'ci', databaseId: 1, conclusion: 'failure' },
-      { workflowName: 'ux-qe', databaseId: 3, conclusion: 'failure' },
-    ])).toEqual([
-      { workflowName: 'ci', databaseId: 2, conclusion: 'success' },
-      { workflowName: 'ux-qe', databaseId: 3, conclusion: 'failure' },
-    ]);
-  });
-
   it('shows the current class of bypass and delivery blockers instead of claiming readiness', () => {
     const result = evaluateLivePreflight({
       localSha: SHA,
       remoteSha: 'd'.repeat(40),
       dirty: true,
-      openIssues: [{ number: 54 }],
-      failedRuns: [{ workflowName: 'ci', conclusion: 'failure' }],
+      releaseBlockers: [{ number: 54 }],
+      requiredChecks: [{ context: 'integration', status: 'FAIL' }],
       activeSelfStore: false,
       branchEnforceAdmins: false,
       productionProtected: false,
@@ -281,12 +270,74 @@ describe('release-proof live preflight', () => {
     expect(result.failures.map((failure) => failure.code)).toEqual(expect.arrayContaining([
       'DIRTY_WORKTREE',
       'REMOTE_SHA_MISMATCH',
-      'OPEN_ISSUES',
-      'GITHUB_FAILURES',
+      'RELEASE_BLOCKERS_OPEN',
+      'REQUIRED_CHECK_NOT_GREEN',
       'BRAIN_SELF_STORE_MISSING',
       'ADMIN_BYPASS_ENABLED',
       'PRODUCTION_ENV_UNPROTECTED',
       'RELEASE_VECTOR_NOT_PASS',
     ]));
+  });
+
+  it('marks intentionally skipped vector evidence incomplete, never as a product failure or release pass', () => {
+    const result = evaluateLivePreflight({
+      localSha: SHA,
+      remoteSha: SHA,
+      dirty: false,
+      releaseBlockers: [],
+      requiredChecks: [{ context: 'integration', status: 'PASS' }, { context: 'canonical-qa', status: 'PASS' }],
+      activeSelfStore: true,
+      branchEnforceAdmins: true,
+      productionProtected: true,
+      releaseVector: 'NOT_EVALUATED',
+    });
+    expect(result.verdict).toBe('INCOMPLETE');
+    expect(result.failures).toEqual([]);
+    expect(result.incomplete.map((item) => item.code)).toContain('RELEASE_VECTOR_NOT_EVALUATED');
+  });
+
+  it('does not block on unlabelled issue backlog but fails closed when blocker evidence is unavailable', () => {
+    const readyExceptIssueEvidence = {
+      localSha: SHA,
+      remoteSha: SHA,
+      dirty: false,
+      requiredChecks: [{ context: 'integration', status: 'PASS' }],
+      activeSelfStore: true,
+      branchEnforceAdmins: true,
+      productionProtected: true,
+      releaseVector: 'PASS',
+    };
+    expect(evaluateLivePreflight({ ...readyExceptIssueEvidence, releaseBlockers: [] }).verdict).toBe('PASS');
+    expect(evaluateLivePreflight({ ...readyExceptIssueEvidence, releaseBlockers: null }).failures.map((item) => item.code))
+      .toContain('RELEASE_BLOCKERS_UNKNOWN');
+  });
+
+  it('fails closed when a required check is missing instead of inferring success from no red workflows', () => {
+    const result = evaluateLivePreflight({
+      localSha: SHA,
+      remoteSha: SHA,
+      dirty: false,
+      releaseBlockers: [],
+      requiredChecks: [{ context: 'canonical-qa', status: 'MISSING' }],
+      activeSelfStore: true,
+      branchEnforceAdmins: true,
+      productionProtected: true,
+      releaseVector: 'PASS',
+    });
+    expect(result.verdict).toBe('FAIL');
+    expect(result.failures.map((item) => item.detail)).toContain('canonical-qa is MISSING on the exact remote SHA');
+  });
+
+  it('binds each required status context to its configured GitHub Actions app', () => {
+    expect(resolveRequiredChecks(
+      [{ context: 'integration', app_id: 15368 }],
+      [{ name: 'integration', status: 'completed', conclusion: 'success', app: { id: 15368 } }],
+      [{ context: 'integration', state: 'success' }],
+    )).toEqual([{ context: 'integration', appId: 15368, status: 'PASS' }]);
+    expect(resolveRequiredChecks(
+      [{ context: 'integration', app_id: 15368 }],
+      [{ name: 'integration', status: 'completed', conclusion: 'success', app: { id: 7 } }],
+      [{ context: 'integration', state: 'success' }],
+    )).toEqual([{ context: 'integration', appId: 15368, status: 'MISSING' }]);
   });
 });

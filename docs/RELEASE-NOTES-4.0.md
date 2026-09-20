@@ -1,6 +1,6 @@
 # RuvNet-Brain 4.0 line — what's new (the major-release highlights)
 
-Updated: 2026-08-01
+Updated: 2026-09-20
 
 > **Source of truth** for the `/whats-new` command and the first-run upgrade message. Curated, honest,
 > major-only — not the point-release churn. If a claim here isn't true of the shipping build, it does not
@@ -19,10 +19,11 @@ it's landing now.
 
 ### Release proof is fail-closed
 The 4.0 release path now separates a clean candidate seal from a post-publication seal. Dirty
-lineage, zero/skipped/todo tests, open issues, red or pending exact-SHA workflows, a missing
+lineage, zero/skipped/todo tests, open `release-blocker` issues, red or pending exact-SHA workflows, a missing
 `ruvnet-brain` self-RVF store, weak query-deadline margin, missing independent graders,
 host/artifact mismatches, and public-byte drift are release failures rather than warnings.
-`npm run release:proof -- --status --quick` shows the current live blockers.
+The local `release:proof --status --quick` command is only a diagnostic and cannot qualify a
+candidate; use the exact-SHA preflight receipt and protected publisher evidence.
 
 ### 1. The Console is the front door
 Type `/rvbc` and your whole RuvNet stack is on one live local page: what's installed, what the AI has

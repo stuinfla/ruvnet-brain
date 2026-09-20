@@ -21,6 +21,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { performance } from 'node:perf_hooks';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -276,35 +277,58 @@ export function headSha() {
 /** Strings a non-PASS verdict mechanically bans from release surfaces (ADR-058). */
 export const BANNED_WHEN_DEGRADED = ['healthy', 'proven', 'all pass'];
 
-export async function evaluate(invariants = INVARIANTS, options = {}) {
+export async function evaluate(invariants = INVARIANTS, options = {}, { onInvariantStart, onInvariantComplete } = {}) {
   const lineage = candidateLineage(options.root || ROOT);
   const sha = lineage.sha;
   const results = [];
   for (const inv of invariants) {
+    onInvariantStart?.({ name: inv.name, dimension: inv.dimension });
+    const started = performance.now();
     const r = await inv.detect(options);
-    results.push({ name: inv.name, dimension: inv.dimension, state: r.state, why: r.why, sha });
+    const elapsedMs = Math.max(0, Math.round(performance.now() - started));
+    const result = { name: inv.name, dimension: inv.dimension, state: r.state, why: r.why, sha, elapsedMs };
+    results.push(result);
+    onInvariantComplete?.(result);
   }
   return { sha, lineage, results, verdict: verdictWithLineage(results, lineage) };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  const { sha, lineage, results, verdict } = await evaluate();
-  const json = process.argv.includes('--json');
-  if (json) {
-    console.log(JSON.stringify({ sha, lineage, verdict, results }, null, 2));
-  } else {
-    const mark = { PASS: '✓', FAIL: '✗', UNKNOWN: '?' };
-    console.log(`\n  release vector @ ${sha.slice(0, 7)}\n`);
-    for (const r of results) {
-      console.log(`  ${mark[r.state]} ${r.state.padEnd(7)} ${r.dimension.padEnd(3)} ${r.name.padEnd(22)} ${r.why}`);
-    }
-    console.log(`  lineage: tree ${lineage.tree.slice(0, 12)} · ${lineage.dirty ? 'DIRTY (release-blocking)' : 'clean'}`);
-    console.log(`\n  verdict: ${verdict}   (vector MINIMUM over ${results.length} invariants — never an average)`);
-    if (verdict !== 'PASS') {
-      console.log(`  release metadata must read DEGRADED; these strings are banned: ${BANNED_WHEN_DEGRADED.map((s) => `"${s}"`).join(', ')}\n`);
-    } else {
-      console.log('');
-    }
+/** Map the vector verdict to the process contract: only PASS exits successfully. */
+export function exitCodeForVerdict(verdict) {
+  return verdict === 'PASS' ? 0 : 1;
+}
+
+/** Render either CLI format from one already-evaluated result; rendering never reruns detectors. */
+export function formatVectorOutput(result, { json = false } = {}) {
+  if (json) return JSON.stringify(result, null, 2);
+  const mark = { PASS: '✓', FAIL: '✗', UNKNOWN: '?' };
+  const rows = result.results.map((r) =>
+    `  ${mark[r.state]} ${r.state.padEnd(7)} ${r.dimension.padEnd(3)} ${r.name.padEnd(22)} (${r.elapsedMs ?? '—'}ms) ${r.why}`);
+  const lines = [
+    '',
+    `  release vector @ ${result.sha.slice(0, 7)}`,
+    '',
+    ...rows,
+    `  lineage: tree ${result.lineage.tree.slice(0, 12)} · ${result.lineage.dirty ? 'DIRTY (release-blocking)' : 'clean'}`,
+    '',
+    `  verdict: ${result.verdict}   (vector MINIMUM over ${result.results.length} invariants — never an average)`,
+  ];
+  if (result.verdict !== 'PASS') {
+    lines.push(`  release metadata must read DEGRADED; these strings are banned: ${BANNED_WHEN_DEGRADED.map((s) => `"${s}"`).join(', ')}`);
   }
-  process.exitCode = verdict === 'PASS' ? 0 : 1;
+  return `${lines.join('\n')}\n`;
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  const timings = process.argv.includes('--timings');
+  const emitTiming = (phase, data) => process.stderr.write(`${JSON.stringify({
+    schema: 'ruvnet-brain.release-vector.timing', phase, ...data,
+  })}\n`);
+  const result = await evaluate(INVARIANTS, {}, timings ? {
+    onInvariantStart: ({ name, dimension }) => emitTiming('start', { name, dimension }),
+    onInvariantComplete: ({ name, dimension, elapsedMs }) => emitTiming('complete', { name, dimension, elapsedMs }),
+  } : {});
+  const json = process.argv.includes('--json');
+  console.log(formatVectorOutput(result, { json }));
+  process.exitCode = exitCodeForVerdict(result.verdict);
 }

@@ -18,12 +18,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { storeRoot } from './store-root.mjs';
-import { searchAll, discoverRepos, deployedFamilyReposFromQuery } from './forge-ask-all.mjs';
+import { searchAll, discoverRepos, deployedFamilyReposFromQuery, relatedCapabilitySources } from './forge-ask-all.mjs';
 import { warmKnowledgeStores, warmQueryEmbedder } from './forge-ask.mjs';
 import { warmReranker } from './forge-rerank.mjs';
 import { guardPassages } from './forge-guard-injection.mjs';
 import { answerFromCards, renderCardHit } from './card-lane.mjs';
-import { implementationNotice } from './implementation-evidence.mjs';
+import { implementationNotice, requiresImplementationProof } from './implementation-evidence.mjs';
+import { isSourceDiscoveryIntent } from './source-discovery-intent.mjs';
 import { describeSearchOutcome, describeSearchFailure } from './search-outcome.mjs';
 import { groundedToolResult } from './grounded-response.mjs';
 
@@ -327,6 +328,30 @@ async function handle(msg) {
         // ran — including in what it costs and in what it counts.
         const offState = brainOffState();
         if (offState) return disabledResult(id, k, offState);
+        // A small, independently reviewed set of source witnesses can answer broad discovery
+        // questions without paying for an unrelated lexical candidate's full retrieval/rerank.
+        // This lane is deliberately a lead, not ranked evidence: exact API/implementation claims,
+        // explicit multi-result requests, and all unmatched questions continue through normal
+        // retrieval. The helper re-reads and hashes the real passage on every call.
+        const exactMemberQuestion = /\b[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*\s*\(/.test(query);
+        const sourceDiscoveryIntent = isSourceDiscoveryIntent(query);
+        const directImplementationClaim = requiresImplementationProof(query) && !sourceDiscoveryIntent;
+        if (!explicitK && !directImplementationClaim && !exactMemberQuestion && sourceDiscoveryIntent) {
+          const discoverySources = await relatedCapabilitySources({ dir: KB_DIR, query, repos: REPOS });
+          if (discoverySources.length) {
+            const sourceRepos = [...new Set(discoverySources.map((source) => source.repo))];
+            const body = 'SOURCE-BOUNDED DISCOVERY: A reviewed repository source matches this capability area. '
+              + 'The separate source excerpt below is a discovery lead, not a complete answer or proof of '
+              + 'every requested constraint. Name a repository or exact API when you need primary retrieval.';
+            meterLog({ ts: new Date().toISOString(), source: 'mcp', tool: 'search_ruvnet', k,
+              bytes: body.length, sourceDiscovery: true });
+            return ok(id, groundedToolResult({
+              body, relatedSources: discoverySources,
+              query, k, results: [],
+              extra: { sourceDiscovery: { repos: sourceRepos, acceptedAsPrimaryEvidence: false } },
+            }));
+          }
+        }
         // ── FAST LANE — FIRST RESPONDER (card-lane.mjs) ─────────────────────────────────────────
         // Tried on EVERY query, BEFORE the heavy cross-repo search below. Zero ML: keyword overlap
         // over kb/capability-cards.md. Measured 2026-07-27: the heavy path (searchAll) costs
@@ -369,6 +394,7 @@ async function handle(msg) {
           meterLog({ ts: new Date().toISOString(), source: 'mcp', tool: 'search_ruvnet', k, bytes: cardBody.length, cardLane: true });
           return ok(id, groundedToolResult({
             body: cardBody,
+            relatedSources: await relatedCapabilitySources({ dir: KB_DIR, query, repos: REPOS }),
             query, k, results: [{ repo: cardHit.repo, path: cardHit.path, text: cardBody }],
             grounding: cardReceipt?.sources?.length ? cardReceipt : null,
             extra: {
@@ -385,6 +411,7 @@ async function handle(msg) {
           adrCollision,
           implementation,
           routing,
+          relatedSources,
         } = await searchAll({
           dir: KB_DIR,
           query,
@@ -453,7 +480,9 @@ async function handle(msg) {
             + (evidence.droppedIrrelevant > 0
               ? `${evidence.droppedIrrelevant} further result(s) were judged irrelevant by the reranker and WITHHELD rather than padded in.\n`
               : '')
-            + `➡ INSTRUCTION TO THE MODEL: do not tell the user this capability does not exist. Say coverage is thin, and try a narrower or artifact-named query first.\n\n`
+            + (evidence.grade === 'source_grounded'
+              ? `➡ INSTRUCTION TO THE MODEL: present this as a documented capability only; runtime implementation was not verified.\n\n`
+              : `➡ INSTRUCTION TO THE MODEL: do not tell the user this capability does not exist. Say coverage is thin, and try a narrower or artifact-named query first.\n\n`)
           : '';
         // Same discipline for cross-repo ADR-number collisions (issue #33 Part B).
         const adrNote = adrCollision ? `⚠ ${adrCollision.note}\n\n` : '';
@@ -512,11 +541,13 @@ async function handle(msg) {
         // receipt line just above — an empty result must never be mistaken for proof.
         if (results.length > 0) markGroundingProven();
         return ok(id, groundedToolResult({
-          body,
+          body, relatedSources,
           query, k, results,
           grounding: receipt?.sources?.length ? receipt : null,
           implementation,
-          extra: routing ? { routing } : {},
+          extra: {
+            ...(routing ? { routing } : {}),
+          },
         }));
       } catch (e) {
         const body = `search_ruvnet error: ${e.message}`;
