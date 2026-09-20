@@ -4,7 +4,7 @@ title: Brain on/off and per-part scope — a user-controlled brain that can neve
 status: Accepted
 date: 2026-07-26
 updated: 2026-09-19
-reviewed_digest: ed958558e10b
+reviewed_digest: a90d980ad3e7
 version: 1.1.5
 impl: verification-expired
 verified: 2026-07-31
@@ -241,6 +241,8 @@ source review does not renew the expired verification or prove the native-host a
 
 | date | why |
 |---|---|
+| 2026-09-19 | Reviewed retrieval integration: preserve existing same-path evidence instead of replacing it with a short catalog excerpt; preserve source order in the catalog excerpt. No OFF/scope or cascade-default changes, and no latency or installed-runtime claim. | `kb/forge-ask-all.mjs`; `tests/unit/capability-discovery.test.mjs`; reviewed_digest a90d980ad3e7. |
+
 | 2026-08-30 | Rechecked plugin/scripts/session-start-core.mjs in 05cabf0: the host-facing session banner is limited to one status line by default; diagnostics remain internal. |
 | Date | What changed | Why (with referents) |
 |---|---|---|

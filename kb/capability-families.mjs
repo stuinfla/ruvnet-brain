@@ -88,7 +88,7 @@ export function buildReviewedCapabilityExcerpt(passageText, evidence) {
       || !browserSection.includes(persistence) || !text.includes(privacy)) return null;
     const browserLines = browserSection.split('\n').filter((line) =>
       line === '### Browser-Specific Optimizations' || line === persistence);
-    return `${overview}\n\n${browserLines.join('\n')}\n${privacy}`;
+    return `${overview}\n\n${privacy}\n\n${browserLines.join('\n')}`;
   }
 
   if (evidence.excerptKind === 'reviewed-cross-project-ipfs-transfer') {

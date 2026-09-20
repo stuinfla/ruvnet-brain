@@ -7,9 +7,11 @@ vi.mock('../../kb/forge-ask.mjs', () => ({ searchKb: vi.fn(async () => []) }));
 vi.mock('../../kb/forge-rerank.mjs', () => ({ rerankPairs: vi.fn(async () => []) }));
 
 import { searchAll } from '../../kb/forge-ask-all.mjs';
+import { searchKb } from '../../kb/forge-ask.mjs';
 import { rerankPairs } from '../../kb/forge-rerank.mjs';
 import { routeReposFromCards } from '../../kb/card-lane.mjs';
 import { buildReviewedCapabilityExcerpt, matchReviewedCapabilityIntent } from '../../kb/capability-families.mjs';
+import { isVerbatimSourceProjection } from '../../evals/operational-benchmark.v3.mjs';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 const tempDirs = [];
@@ -35,6 +37,14 @@ function corpusFor({ repo = 'ruvector', title, preview, body, path: relativePath
 }
 
 describe('source-backed capability discovery', () => {
+  it('keeps the approved local excerpt in source order for independent evidence verification', () => {
+    const body = fs.readFileSync(path.join(REPO_ROOT, 'tests/fixtures/retrieval/ruvector-router-wasm-reviewed-passage.txt'), 'utf8');
+    const evidence = matchReviewedCapabilityIntent('How should I store embeddings in this project without running a server?', 'local-vector-storage');
+    const excerpt = buildReviewedCapabilityExcerpt(body, evidence);
+    expect(excerpt).toContain('IndexedDB');
+    expect(isVerbatimSourceProjection(excerpt, [{ rows: [body] }])).toBe(true);
+    expect(isVerbatimSourceProjection(`These claims are false.\n${excerpt}`, [{ rows: [body] }])).toBe(false);
+  });
   it('answers the installer smoke phrasing only from documentation covering storage and no-server use', async () => {
     const body = fs.readFileSync(path.join(REPO_ROOT, 'tests/fixtures/retrieval/ruvector-router-wasm-reviewed-passage.txt'), 'utf8');
     const dir = corpusFor({
@@ -219,6 +229,25 @@ describe('source-backed capability discovery', () => {
     expect(out.routing?.lane).not.toBe('source-backed-discovery');
     expect(out.sourceDiscovery).toBeUndefined();
     expect(out.evidence?.grade).not.toBe('source_grounded');
+  });
+
+  it('preserves richer existing same-path evidence instead of replacing it with the short witness', async () => {
+    vi.mocked(rerankPairs).mockClear();
+    const body = fs.readFileSync(path.join(REPO_ROOT, 'tests/fixtures/retrieval/ruvector-router-wasm-reviewed-passage.txt'), 'utf8');
+    const sourcePath = 'crates/ruvector-router-wasm/README.md';
+    const dir = corpusFor({ title: 'Browser vector storage', path: sourcePath,
+      preview: 'Client-side vector storage.', body });
+    vi.mocked(searchKb).mockResolvedValueOnce([{ path: sourcePath, title: 'Complete source',
+      text: body, fullText: body, bestDistance: 0.8, score: 0.8 }]);
+    const query = 'How can I store embeddings locally with browser-specific configuration?';
+    await searchAll({ dir, query, repos: ['ruvector'], _routeStage: true,
+      _capabilityFamily: 'local-vector-storage', k: 3, allowFullCorpus: false });
+    const [rerankedQuery, candidates] = vi.mocked(rerankPairs).mock.calls.at(-1);
+    const matching = candidates.filter((candidate) => candidate.path === sourcePath);
+    expect(rerankedQuery).toBe(query);
+    expect(matching).toHaveLength(1);
+    expect(matching[0].fullText).toBe(body);
+    expect(matching[0]._proofMethod).not.toBe('reviewed-capability-witness-candidate');
   });
 
   it('rejects a changed witness hash and continues through ordinary reranking', async () => {

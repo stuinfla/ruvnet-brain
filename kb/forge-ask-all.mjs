@@ -3592,14 +3592,9 @@ export async function searchAll({
       }
       if (_capabilityFamily) {
         const witness = await reviewedCapabilityWitness({ dir, repo: name, family: _capabilityFamily });
-        if (witness) {
-          const existing = cands.find((candidate) => candidate.path === witness.path);
-          const candidate = existing
-            ? { ...existing, ...witness, score: existing.score, bestDistance: existing.bestDistance }
-            : witness;
-          cands = cands.filter((item) => item.path !== witness.path);
-          cands.push(candidate);
-        }
+        // Existing retrieval may carry details answering additional query constraints.
+        // A short reviewed excerpt must never replace that richer evidence.
+        if (witness && !cands.some((candidate) => candidate.path === witness.path)) cands.push(witness);
       }
       if (isTranscriptStore(name)) {
         const seen = new Set(hits.map((h) => h.path));
