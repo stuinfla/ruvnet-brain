@@ -35,10 +35,20 @@
  * CODEX RECORDS NEVER ROUTE THROUGH `hook-shim.mjs` — Codex's own wrapper chain
  * (`codex-hook-wrapper.mjs` → `codex-hook-adapter.mjs`) resolves the active spine generation and
  * dispatches by a trailing CLI token instead (`codexDispatchIdIn()`, below). That token is drawn
- * from the SAME id space as `hook-shim.mjs`'s dispatch TABLE — verified 2026-08-20: every id
- * `codex-hooks.json` uses (`decision-gate`, `route-dispatch`, `learn-capture`, …) already exists as
- * a table key — so a codex registration's `mode`/`offBehavior` resolve from that one table too,
- * exactly like a plugin registration. No new contract file, no invented declaration.
+ * from the SAME id space as `hook-shim.mjs`'s dispatch TABLE — verified 2026-08-20, RE-VERIFIED
+ * 2026-09-20 against the current continuity plane: every id `codex-hooks.json` uses today
+ * (`session-start`, `decision-gate`, `grounding-stamp`, …) already exists as a table key — so a
+ * codex registration's `mode`/`offBehavior` resolve from that one table too, exactly like a plugin
+ * registration. No new contract file, no invented declaration. (The 2026-08-20 example ids
+ * `route-dispatch`/`learn-capture` stopped being live Codex examples at commit `00526b12`
+ * (2026-09-07, "retire automatic hooks"), which wiped `codex-hooks.json` to an empty
+ * `{"hooks": {}}` registry — NOT the 2026-09-09 restore (`56420430`) some later prose mis-cited;
+ * that commit only re-registered `session-start`/`continuation-gate` into the already-empty file,
+ * it retired nothing. Both ids remain valid `hook-shim.mjs` TABLE keys, just no longer ones Codex
+ * dispatches, so citing them here as live Codex examples was stale. This invariant — every id a
+ * live registration names resolves to a real TABLE entry — is independently enforced on every run
+ * by `tests/unit/hook-registry-lint.test.mjs`'s `handlerFor()` assertion, not by this comment; this
+ * paragraph is documentation, not enforcement.)
  *
  * The last two are the SAME registrations as `plugin`, delivered as different code copies — the
  * repo copy is the preimage, the cache copy is what Claude Code booted, the marketplace clone is
