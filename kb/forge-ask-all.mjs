@@ -15,6 +15,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
+import { createHash } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { searchKb } from './forge-ask.mjs';
 import { describeSearchFailure } from './search-outcome.mjs';
@@ -26,6 +28,7 @@ import {
   repositoryNames,
   routeReposFromCards,
 } from './card-lane.mjs';
+import { buildReviewedCapabilityExcerpt, matchReviewedCapabilityIntent } from './capability-families.mjs';
 import { tokenize, buildCorpusStats, bm25Score } from './forge-hybrid.mjs';
 import {
   assessImplementation,
@@ -1248,7 +1251,7 @@ async function sourcePassageTexts(dir, repo, allowedPaths) {
   const identity = `${stat.size}:${stat.mtimeMs}`;
   let cache = SOURCE_PASSAGE_CACHE.get(passageFile);
   if (!cache || cache.identity !== identity) {
-    cache = { identity, loaded: new Set(), texts: new Map() };
+    cache = { identity, loaded: new Set(), texts: new Map(), records: new Map() };
     SOURCE_PASSAGE_CACHE.set(passageFile, cache);
   }
   const unresolved = [...allowedPaths].filter((sourcePath) => !cache.loaded.has(sourcePath));
@@ -1257,13 +1260,21 @@ async function sourcePassageTexts(dir, repo, allowedPaths) {
     const needles = unresolved.map((sourcePath) => JSON.stringify(sourcePath));
     const input = fs.createReadStream(passageFile, { encoding: 'utf8' });
     const lines = readline.createInterface({ input, crlfDelay: Infinity });
+    let byteOffset = 0;
     try {
       for await (const line of lines) {
+        const lineOffset = byteOffset;
+        const lineBytes = Buffer.byteLength(line, 'utf8');
+        byteOffset += lineBytes + 1; // the passage index is LF-delimited JSONL
         if (!line.trim() || !needles.some((needle) => line.includes(needle))) continue;
         let passage;
         try { passage = JSON.parse(line); } catch { continue; }
         const sourcePath = String(passage?.path || '');
         if (!wanted.has(sourcePath)) continue;
+        const passageText = String(passage?.text || '');
+        const records = cache.records.get(sourcePath) || [];
+        if (records.length < 32) records.push({ offset: lineOffset, length: lineBytes, text: passageText });
+        cache.records.set(sourcePath, records);
         const previous = cache.texts.get(sourcePath) || '';
         if (previous.length >= 32_000) continue;
         cache.texts.set(
@@ -1280,6 +1291,35 @@ async function sourcePassageTexts(dir, repo, allowedPaths) {
   return new Map([...allowedPaths]
     .filter((sourcePath) => cache.texts.has(sourcePath))
     .map((sourcePath) => [sourcePath, cache.texts.get(sourcePath)]));
+}
+
+async function reviewedSourcePassage(dir, repo, sourcePath, expectedSha256) {
+  await sourcePassageTexts(dir, repo, new Set([sourcePath]));
+  const passageFile = [
+    path.join(dir, `${repo}.passages.jsonl`),
+    path.join(dir, `${repo}.big.passages.jsonl`),
+  ].find((file) => fs.existsSync(file));
+  if (!passageFile) return null;
+  const cache = SOURCE_PASSAGE_CACHE.get(passageFile);
+  let handle;
+  try {
+    handle = await fs.promises.open(passageFile, 'r');
+    for (const record of cache?.records.get(sourcePath) || []) {
+      const buffer = Buffer.alloc(record.length);
+      const { bytesRead } = await handle.read(buffer, 0, record.length, record.offset);
+      if (bytesRead !== record.length) continue;
+      let passage;
+      try { passage = JSON.parse(buffer.toString('utf8')); } catch { continue; }
+      if (passage?.path !== sourcePath || typeof passage?.text !== 'string') continue;
+      const digest = createHash('sha256').update(passage.text).digest('hex');
+      if (digest === expectedSha256) return passage.text;
+    }
+  } catch {
+    return null;
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+  return null;
 }
 
 async function graphMemoryPassageTexts(dir, repo, allowedPaths) {
@@ -2936,9 +2976,104 @@ export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true }) 
 }
 
 // Query every repo, pool, rerank on a common scale, return global top-k labeled by repo.
+function traceRetrieval(record) {
+  const target = process.env.KB_RETRIEVAL_TRACE;
+  if (!target) return undefined;
+  try { fs.appendFileSync(target, `${JSON.stringify({ ts: new Date().toISOString(), ...record })}\n`); }
+  catch { /* diagnostics must never affect retrieval */ }
+  return undefined;
+}
+
+async function sourceBackedCapabilityDiscovery({ dir, query, planned, k }) {
+  const family = String(planned?.family || '');
+  const reviewed = matchReviewedCapabilityIntent(query, family);
+  if (!reviewed || planned?.repos?.length !== 1 || planned.repos[0] !== reviewed.repo || k < 1) return null;
+
+  const metaFile = path.join(dir, `${reviewed.repo}.meta.json`);
+  if (!fs.existsSync(metaFile)) return null;
+  let meta;
+  try { meta = parseMetadataFile(metaFile); }
+  catch { return null; }
+  const entry = Object.values(meta.entries || {}).find((item) =>
+    item?.path === reviewed.path && ['doc', 'skill', 'tutorial', 'adr'].includes(String(item.kind || '').toLowerCase()));
+  if (!entry) return null;
+  const sourceText = await reviewedSourcePassage(dir, reviewed.repo, reviewed.path, reviewed.passageSha256);
+  if (!sourceText) return null;
+  const excerpt = buildReviewedCapabilityExcerpt(sourceText, reviewed);
+  if (!excerpt) return null;
+  const result = {
+    repo: reviewed.repo,
+    path: reviewed.path,
+    title: String(entry.title || path.basename(reviewed.path)),
+    kind: String(entry.kind || 'doc').toLowerCase(),
+    text: excerpt,
+    fullText: excerpt,
+    score: null,
+    ceScore: null,
+    bestDistance: null,
+    chunksJoined: 1,
+    truncated: false,
+    direct: [],
+    corroborating: [],
+    _lane: 'source-backed-discovery',
+    _proofMethod: 'reviewed-source-catalog',
+    _sourcePassageSha256: reviewed.passageSha256,
+    _verifiedClaimGroups: [...reviewed.claimGroups],
+    ...classifyResultEvidence({ kind: String(entry.kind || 'doc').toLowerCase(), path: reviewed.path, text: excerpt }),
+  };
+  const results = [result];
+  return {
+    repos: [reviewed.repo],
+    perRepo: { [reviewed.repo]: 1 },
+    results,
+    pooled: 0,
+    pooledAll: 1,
+    cappedOut: 0,
+    prefiltered: 0,
+    prefilterTokens: 0,
+    prefilterMs: 0,
+    corpusAge: corpusAgeFor(dir, [reviewed.repo]),
+    adrCollision: null,
+    evidence: {
+      grade: 'source_grounded',
+      topScore: null,
+      droppedIrrelevant: 0,
+      caveat: family === 'local-vector-storage'
+        ? 'Documented browser option using IndexedDB; native/server-side compatibility and runtime behavior not verified.'
+        : 'Documented cross-project pattern transfer via IPFS; runtime configuration and credential availability not verified.',
+    },
+    implementation: {
+      required: false,
+      verdict: 'unproven',
+      implementationSources: [],
+      proofMethod: 'reviewed-source-catalog',
+    },
+    documentationSources: [`${reviewed.repo}/${reviewed.path}`],
+    sourceDiscovery: {
+      proofMethod: 'reviewed-source-catalog',
+      repo: reviewed.repo,
+      path: reviewed.path,
+      passageSha256: reviewed.passageSha256,
+      claimGroups: [...reviewed.claimGroups],
+    },
+    routing: {
+      attempted: true,
+      accepted: true,
+      lane: 'source-backed-discovery',
+      confidence: planned.confidence,
+      reason: planned.reason,
+      candidateRepos: planned.repos,
+      implementationRequired: false,
+      implementationVerdict: 'unproven',
+      verifiedClaimGroups: [...reviewed.claimGroups],
+    },
+  };
+}
+
 export async function searchAll({
   dir, query, k = 6, pool = 64, repos, _routeStage = false, allowFullCorpus = true, deadline = null,
 }) {
+  const startedAt = performance.now();
   // The reranker needs a bounded candidate pool larger than the requested output list.
   pool = Math.max(pool, k);
   // THE FULL-CORPUS LANE IS THE ONE THAT CAN RUN AWAY. It is reached only when the caller named no
@@ -3161,8 +3296,21 @@ export async function searchAll({
       }
     }
     if (planned.repos.length && planned.repos.length < discovered.length) {
-      const sourceCard = await sourceBackedCardLane({ dir, query, k, planned });
-      if (sourceCard) return sourceCard;
+      const routeMs = performance.now() - startedAt;
+      const sourceProofStartedAt = performance.now();
+      const capabilityDiscovery = planned.family
+        ? await sourceBackedCapabilityDiscovery({ dir, query, k, planned })
+        : null;
+      const sourceCard = capabilityDiscovery
+        || await sourceBackedCardLane({ dir, query, k, planned });
+      if (sourceCard) {
+        traceRetrieval({ query, family: planned.family || null, routeMs: +routeMs.toFixed(2),
+          sourceProofMs: +(performance.now() - sourceProofStartedAt).toFixed(2),
+          candidateRepos: planned.repos.length, retrievedCandidates: sourceCard.pooledAll || 0,
+          scoredCandidates: 0, lane: 'source-backed-card' });
+        return sourceCard;
+      }
+      const scopedStartedAt = performance.now();
       const scoped = await searchAll({
         dir,
         query,
@@ -3173,6 +3321,7 @@ export async function searchAll({
         allowFullCorpus,
         deadline,
       });
+      const scopedSearchMs = performance.now() - scopedStartedAt;
       const scopedErrors = Object.values(scoped.perRepo)
         .filter((value) => typeof value === 'string' && value.startsWith('ERR:'));
       const implementationRequired = requiresImplementationProof(query);
@@ -3207,6 +3356,10 @@ export async function searchAll({
             implementationRequired,
             implementationVerdict: scoped.implementation?.verdict || 'not-required',
           },
+          diagnostics: traceRetrieval({ query, family: planned.family || null,
+            routeMs: +routeMs.toFixed(2), scopedSearchMs: +scopedSearchMs.toFixed(2),
+            candidateRepos: planned.repos.length, lane: 'bounded-source-search',
+            retrievedCandidates: scoped.pooledAll || 0, scoredCandidates: scoped.pooled || 0 }),
         };
       }
       const scopedRouting = {
@@ -3226,6 +3379,10 @@ export async function searchAll({
         return {
           ...scoped,
           routing: scopedRouting,
+          diagnostics: traceRetrieval({ query, family: planned.family || null,
+            routeMs: +routeMs.toFixed(2), scopedSearchMs: +scopedSearchMs.toFixed(2),
+            candidateRepos: planned.repos.length, lane: 'bounded-source-search',
+            retrievedCandidates: scoped.pooledAll || 0, scoredCandidates: scoped.pooled || 0 }),
         };
       }
       routing = scopedRouting;
@@ -3264,6 +3421,7 @@ export async function searchAll({
     }
   }
   const list = discovered;
+  const routeMs = performance.now() - startedAt;
   // The full set of real, independently-indexed store names, for the identifier-lane's
   // foreign-repo-name guard (issue #286 RC3, kb/identifier-lane.mjs's identifierEvidence): an
   // identifier that IS itself one of these names has an authoritative home already, so a
@@ -3418,6 +3576,7 @@ export async function searchAll({
     }
   }));
   const pooledAll = perRepoHits.flat();
+  const retrievalMs = performance.now() - startedAt - routeMs;
   // The pool's own order is the cap's tie-break, so it has to survive into any recorded trace —
   // otherwise a replay would break ties differently from production and quietly measure a
   // different policy than the one being shipped.
@@ -3454,7 +3613,9 @@ export async function searchAll({
     : capRerankPool(pooledAll, { limit: capLimit });
   // ONE cross-encoder pass over the whole cross-repo pool → a single comparable relevance scale.
   deadline?.check('rerank');
+  const rerankStartedAt = performance.now();
   const ranked = await rerankPairs(query, candidates, { deadline });
+  const rerankMs = performance.now() - rerankStartedAt + prefilterMs;
   // Recording the SCORED pool (not the answer) is what makes a pool-policy change measurable: one
   // 605-pair run, then selectResults replayed against those exact scores for any candidate policy.
   if (process.env.KB_CE_TRACE) {
@@ -3488,6 +3649,11 @@ export async function searchAll({
     pooled: candidates.length, pooledAll: pooledAll.length, cappedOut,
     prefiltered: s1 ? pooledAll.length : 0, prefilterTokens: s1 ? cascadeTokens : 0, prefilterMs,
     corpusAge, adrCollision, evidence, implementation, routing,
+    diagnostics: traceRetrieval({ query, family: null,
+      routeMs: +routeMs.toFixed(2), retrievalMs: +retrievalMs.toFixed(2),
+      rerankMs: +rerankMs.toFixed(2), candidateRepos: list.length,
+      retrievedCandidates: pooledAll.length, scoredCandidates: candidates.length,
+      lane: (!repos || !repos.length) && !_routeStage ? 'full-corpus' : 'scoped-search' }),
   };
 }
 
@@ -3599,7 +3765,8 @@ async function main() {
     : cappedOut ? ` (cross-encoded ${pooled} of ${pooledAll}; ${cappedOut} beyond the pair budget)` : '';
   console.log(`repos searched: ${used.join(', ')}  |  per-repo hits: ${JSON.stringify(perRepo)}  |  pooled candidates: ${pooled}${poolNote}\n`);
   results.forEach((r, i) => {
-    console.log(`#${i + 1}  repo=${r.repo}  ce=${r.ceScore == null ? 'n/a' : r.ceScore.toFixed(3)}  vec=${r.bestDistance?.toFixed(4)}${r.kind ? `  kind=${r.kind}` : ''}  evidence=${r.evidenceClass || 'unknown'}${r.lifecycleStatus ? `  lifecycle=${r.lifecycleStatus}` : ''}`);
+    const proof = r._proofMethod ? `  proof=${r._proofMethod}` : '';
+    console.log(`#${i + 1}  repo=${r.repo}  ce=${r.ceScore == null ? 'n/a' : r.ceScore.toFixed(3)}  vec=${r.bestDistance?.toFixed(4)}${r.kind ? `  kind=${r.kind}` : ''}  evidence=${r.evidenceClass || 'unknown'}${proof}${r.lifecycleStatus ? `  lifecycle=${r.lifecycleStatus}` : ''}`);
     console.log(`path : ${r.repo}/${r.path}`);
     console.log(`title: ${r.title}`);
     if (r.designIntentWarning) console.log(r.designIntentWarning);

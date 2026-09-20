@@ -22,7 +22,7 @@ import { searchAll, discoverRepos, deployedFamilyReposFromQuery } from './forge-
 import { warmKnowledgeStores, warmQueryEmbedder } from './forge-ask.mjs';
 import { warmReranker } from './forge-rerank.mjs';
 import { guardPassages } from './forge-guard-injection.mjs';
-import { answerFromCards, renderCardHit } from './card-lane.mjs';
+import { answerFromCards, renderCardHit, routeReposFromCards } from './card-lane.mjs';
 import { implementationNotice } from './implementation-evidence.mjs';
 import { describeSearchOutcome, describeSearchFailure } from './search-outcome.mjs';
 import { groundedToolResult } from './grounded-response.mjs';
@@ -339,8 +339,15 @@ async function handle(msg) {
         // fabricated hit; naming a repo is not by itself sufficient confidence).
         // Heavy-path model revisions are materialized locally by forge-rerank before remote access.
         const namedFamilyRepos = deployedFamilyReposFromQuery(query, KB_DIR, repoList);
-        const cardHit = namedFamilyRepos.length
-          ? { hit: false, reason: 'named deployed RVF family requires multi-store search' }
+        // A family match only chooses a bounded source owner; capability-card prose cannot prove
+        // the original request's persistence, deployment, or cross-project transfer details.
+        // Let searchAll run its reviewed-source catalog check before considering a card.
+        const familyDiscovery = !namedFamilyRepos.length
+          && routeReposFromCards(query, KB_DIR, repoList).confidence === 'capability-family';
+        const cardHit = (namedFamilyRepos.length || familyDiscovery)
+          ? { hit: false, reason: familyDiscovery
+            ? 'broad capability family requires source-witness discovery'
+            : 'named deployed RVF family requires multi-store search' }
           : answerFromCards(query, KB_DIR, { allowGuideAnswers: true, k: explicitK ? k : 1 });
         if (cardHit.hit) {
           const cardBody = renderCardHit(cardHit);
@@ -385,6 +392,7 @@ async function handle(msg) {
           adrCollision,
           implementation,
           routing,
+          sourceDiscovery,
         } = await searchAll({
           dir: KB_DIR,
           query,
@@ -453,7 +461,9 @@ async function handle(msg) {
             + (evidence.droppedIrrelevant > 0
               ? `${evidence.droppedIrrelevant} further result(s) were judged irrelevant by the reranker and WITHHELD rather than padded in.\n`
               : '')
-            + `➡ INSTRUCTION TO THE MODEL: do not tell the user this capability does not exist. Say coverage is thin, and try a narrower or artifact-named query first.\n\n`
+            + (evidence.grade === 'source_grounded'
+              ? `➡ INSTRUCTION TO THE MODEL: present this as a documented capability only; runtime implementation was not verified.\n\n`
+              : `➡ INSTRUCTION TO THE MODEL: do not tell the user this capability does not exist. Say coverage is thin, and try a narrower or artifact-named query first.\n\n`)
           : '';
         // Same discipline for cross-repo ADR-number collisions (issue #33 Part B).
         const adrNote = adrCollision ? `⚠ ${adrCollision.note}\n\n` : '';
@@ -516,7 +526,10 @@ async function handle(msg) {
           query, k, results,
           grounding: receipt?.sources?.length ? receipt : null,
           implementation,
-          extra: routing ? { routing } : {},
+          extra: {
+            ...(routing ? { routing } : {}),
+            ...(sourceDiscovery ? { sourceDiscovery } : {}),
+          },
         }));
       } catch (e) {
         const body = `search_ruvnet error: ${e.message}`;

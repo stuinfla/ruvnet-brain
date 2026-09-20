@@ -32,6 +32,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requiresImplementationProof } from './implementation-evidence.mjs';
+import { routeCapabilityFamily } from './capability-families.mjs';
 
 export const CARDS_FILE = 'capability-cards.md';
 export const REPO_ALIASES_FILE = 'repo-aliases.json';
@@ -467,6 +468,13 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
     for (const repo of explicitlyNamed) {
       if (repo !== 'ruvnet-brain') explicitlyNamed.delete(repo);
     }
+  }
+  // Use a small capability vocabulary for broad, unnamed needs whose wording is too colloquial
+  // for the one-card lexical winner. This only selects source stores; the source-backed lane or
+  // normal retrieval still has to establish the answer. Explicit product names always win.
+  if (!explicitlyNamed.size) {
+    const familyRoute = routeCapabilityFamily(q, [...available]);
+    if (familyRoute) return familyRoute;
   }
   const resolveStore = (cardRepo) => {
     if (available.has(cardRepo)) return cardRepo;
