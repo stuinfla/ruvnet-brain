@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { hasConcreteClassMethod } from './exact-member-proof.mjs';
 
 const IMPLEMENTATION_QUERY =
   /\b(?:build(?:s|ing)?|built|ship(?:s|ped|ping)?|implement(?:ed|ation|ing|s)?|released?|deployed?|working|exists?|available|can|does|has|supports?|provides?|includes?|exposes?)\b/i;
@@ -13,62 +14,6 @@ const SOURCE_EXTENSIONS = new Set([
 function requestedMember(query) {
   const match = String(query || '').match(/\b([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*\(/);
   return match ? { owner: match[1], member: match[2] } : null;
-}
-
-function definesRequestedMember(text, { owner, member }) {
-  const escapedOwner = owner.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const escapedMember = member.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const source = String(text || '').replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|(['"`])(?:\\.|(?!\1)[^\\])*?\1/g, (match) =>
-    match.replace(/[^\n]/g, ' '));
-  const declaredAtTopLevel = (body, rust = false) => {
-    const declaration = rust
-      ? new RegExp(`(?:^|[};\\n])\\s*(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+${escapedMember}\\s*\\(`, 'gm')
-      : new RegExp(`(?:^|[};\\n])\\s*(?:(?:public|private|protected|static|readonly|async|override)\\s+)*${escapedMember}\\s*(?:<[^>{}]*>)?\\s*\\(`, 'gm');
-    for (const match of body.matchAll(declaration)) {
-      const start = match.index + match[0].lastIndexOf(member);
-      let depth = 0;
-      for (let index = 0; index < start; index++) {
-        if (body[index] === '{') depth++;
-        else if (body[index] === '}') depth--;
-      }
-      if (depth !== 0) continue;
-
-      // A call that happens to sit inside a method body is not a declaration. Require a method
-      // body after its balanced parameter list; signatures in ambient declarations and interfaces
-      // describe a contract but do not prove an implementation exists.
-      let open = body.indexOf('(', start);
-      let parens = 0;
-      let close = -1;
-      for (let index = open; index < body.length; index++) {
-        if (body[index] === '(') parens++;
-        else if (body[index] === ')' && --parens === 0) { close = index; break; }
-      }
-      if (close < 0) continue;
-      let tail = close + 1;
-      while (tail < body.length && body[tail] !== '{' && body[tail] !== ';') tail++;
-      if (body[tail] === '{') return true;
-    }
-    return false;
-  };
-  const owners = [
-    { pattern: new RegExp(`\\bclass\\s+${escapedOwner}\\b`, 'g'), rust: false },
-    { pattern: new RegExp(`\\bimpl(?:<[^>]+>)?\\s+${escapedOwner}\\b`, 'g'), rust: true },
-  ];
-  for (const { pattern, rust } of owners) {
-    for (const match of source.matchAll(pattern)) {
-      const open = source.indexOf('{', match.index + match[0].length);
-      if (open < 0) continue;
-      let depth = 0;
-      for (let index = open; index < source.length; index++) {
-        if (source[index] === '{') depth++;
-        if (source[index] === '}' && --depth === 0) {
-          if (declaredAtTopLevel(source.slice(open + 1, index), rust)) return true;
-          break;
-        }
-      }
-    }
-  }
-  return false;
 }
 
 export function requiresImplementationProof(query) {
@@ -146,7 +91,11 @@ export function assessImplementation(query, results) {
     // A source file is not proof merely because it appeared somewhere in a noisy result set.
     // Require the same weakest-known-good relevance floor used by forge-ask-all's evidence grade.
     .filter((result) => result.evidenceClass === 'implementation' && Number(result.ceScore) >= 4
-      && (!exactMember || definesRequestedMember(result.fullText || result.text, exactMember)))
+      && (!exactMember || hasConcreteClassMethod(
+        result.fullText || result.text,
+        result.path,
+        exactMember,
+      )))
     .map((result) => `${result.repo}/${result.path}`);
   const retrievedImplementationSources = enriched
     .filter((result) => result.evidenceClass === 'implementation')

@@ -143,6 +143,10 @@ describe('implementation truth gate — design intent is never built-state proof
 
     const falseDeclarations = [
       ['src/api.ts', 'class RvfStore { realMethod() { return "fakeMethod("; } }'],
+      ['src/api.ts', 'declare class RvfStore { fakeMethod(): { x: string }; }'],
+      ['src/api.ts', 'class RvfStore { fakeMethod(): void\n realMethod() {} }'],
+      ['src/api.ts', 'declare class RvfStore { fakeMethod(): any\n realMethod(): { a: string }; }'],
+      ['src/api.ts', 'const fixture = /class RvfStore { fakeMethod() {} }/;'],
       ['src/api.ts', 'class RvfStore { class Other { fakeMethod() {} } }'],
       ['src/api.ts', 'class RvfStore { fakemethod() {} }'],
       ['types/api.d.ts', 'declare class RvfStore { fakeMethod(): void; }'],
@@ -161,6 +165,23 @@ describe('implementation truth gate — design intent is never built-state proof
       ranked('source', 'src/rvf-store.ts', 'export class RvfStore { query(vector) { return vector; } }'),
     );
     expect(legitimate.implementation).toMatchObject({ verdict: 'proven', unprovenReason: null });
+
+    const typedLegitimate = assessImplementation(
+      'How do I call RvfStore.query()?',
+      ranked('source', 'src/rvf-store.ts',
+        'class RvfStore { query(vector): { result: number } { return { result: vector }; } }'),
+    );
+    expect(typedLegitimate.implementation).toMatchObject({ verdict: 'proven', unprovenReason: null });
+
+    const rustExactMember = assessImplementation(
+      'How do I call RvfStore.query()?',
+      ranked('source', 'src/rvf_store.rs', 'impl RvfStore { pub fn query(&self) -> usize { 1 } }'),
+    );
+    expect(rustExactMember.implementation).toMatchObject({
+      verdict: 'unproven',
+      retrievedImplementationSources: ['fictional-ruv-project/src/rvf_store.rs'],
+      unprovenReason: 'exact-member-not-established',
+    });
 
     const ordinary = assessImplementation(
       'Which vector database concepts are documented?',
