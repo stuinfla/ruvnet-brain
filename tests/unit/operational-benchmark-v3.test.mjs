@@ -113,6 +113,10 @@ describe('operational benchmark v3 frozen facts and preflight', () => {
     expect(matchClaimSlots(preflight, { citations: [
       cite('rvfguide', 'README.md', FACT_A, 1), cite('rvfguide', 'alt.md', FACT_B, 1),
     ] }).allSlotsSupported).toBe(true);
+    // Older source-card lanes omit the newer proof label; the independent source contract is equal.
+    expect(matchClaimSlots(preflight, { citations: [
+      cite('rvfguide', 'README.md', FACT_A, null, null), cite('rvfguide', 'alt.md', FACT_B, null, 'untrusted-label'),
+    ] }).allSlotsSupported).toBe(true);
     expect(matchClaimSlots(preflight, { citations: [
       cite('rvfguide', 'README.md', FACT_A, 1), cite('vector-index', 'INDEX.md', FACT_B, -2),
     ] }).allSlotsSupported).toBe(false);
@@ -143,6 +147,9 @@ describe('operational benchmark v3 frozen facts and preflight', () => {
     const noncontiguous = `${first}\n\n${last}`;
     expect(isVerbatimSourceProjection(noncontiguous, [{ rows: [`${first}\n${middle}\n${last}`] }])).toBe(true);
     expect(isVerbatimSourceProjection(`Untrusted setup. ${middle}`, [{ rows: [middle] }])).toBe(false);
+    expect(isVerbatimSourceProjection([last, first, middle].join('\n'), [{ rows: [first, middle, last] }])).toBe(true);
+    expect(isVerbatimSourceProjection([last, 'invented claim', middle].join('\n'), [{ rows: [first, middle, last] }])).toBe(false);
+    expect(isVerbatimSourceProjection([middle, middle].join('\n'), [{ rows: [first, middle, last] }])).toBe(false);
   });
 
   it('marks absent source passages as corpus gaps and malformed fixture sets as invalid oracles', async () => {
@@ -158,6 +165,8 @@ describe('operational benchmark v3 frozen facts and preflight', () => {
   it('requires process success and explicit uncertainty for negatives and ambiguity', () => {
     expect(gradeOperationalFixtureV3(QUERY, { processOk: false, preflightStatus: 'PASS' })).toMatchObject({ status: 'RETRIEVAL_MISS', pass: false });
     const refusal = '⚠ EVIDENCE: INSUFFICIENT_EVIDENCE (top score -1.2) — no source supports the claim';
+    expect(gradeOperationalFixtureV3(QUERY, { processOk: true, preflightStatus: 'PASS', output: refusal,
+      verification: { grounded: true }, sourceSupport: { allSlotsSupported: true } }).pass).toBe(false);
     expect(gradeOperationalFixtureV3(NEGATIVE, { processOk: true, preflightStatus: 'PASS',
       output: refusal, verification: { grounded: false, citations: [] } })).toMatchObject({ status: 'PASS', pass: true });
     expect(gradeOperationalFixtureV3(NEGATIVE, { processOk: true, preflightStatus: 'PASS',

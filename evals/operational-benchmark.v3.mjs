@@ -65,6 +65,18 @@ export function isVerbatimSourceProjection(returnedText, sourceRowsByStore = [])
   for (const { rows } of sourceRowsByStore) {
     if (!Array.isArray(rows)) continue;
     if (rows.join('\n').includes(returnedText)) return true;
+    // The runtime can join complete retrieved rows in ranking order rather than file order.
+    // Accept only exact whole rows, each at most once, with the runtime's newline separator.
+    const remaining = rows.filter((row) => typeof row === 'string' && row.length).sort((a, b) => b.length - a.length);
+    let offset = 0;
+    while (remaining.length) {
+      const index = remaining.findIndex((row) => returnedText.startsWith(row, offset));
+      if (index < 0) break;
+      offset += remaining.splice(index, 1)[0].length;
+      if (offset === returnedText.length) return true;
+      if (returnedText[offset] !== '\n') break;
+      offset += 1;
+    }
     const sourceParagraphs = rows.flatMap((row) => row.split(/\r?\n+/)).filter(Boolean);
     const returnedParagraphs = returnedText.split(/\r?\n+/).filter(Boolean);
     if (returnedParagraphs.length < 2) continue;
@@ -202,7 +214,9 @@ export function gradeOperationalFixtureV3(fixture, { output, verification, sourc
       reason: 'negative and ambiguous controls require explicit uncertainty with no positive citation' };
   }
   const matchedSlots = sourceSupport?.slots?.filter((slot) => slot.supported).map(({ id }) => id) ?? [];
-  const pass = !!verification?.grounded && sourceSupport?.allSlotsSupported === true;
+  const preamble = String(output ?? '').split(/^#\d+\s+repo=/m, 1)[0];
+  const abstained = /^⚠ EVIDENCE: INSUFFICIENT_EVIDENCE\b/m.test(preamble);
+  const pass = !abstained && !!verification?.grounded && sourceSupport?.allSlotsSupported === true;
   return { pass, status: pass ? 'PASS' : 'RETRIEVAL_MISS', grounded: !!verification?.grounded,
     allClaimSlotsSupported: sourceSupport?.allSlotsSupported === true, matchedSlots,
     receipt: verification?.receipt ?? null };
@@ -220,10 +234,9 @@ export function matchClaimSlots(preflight, verification) {
       // existence and a parser-supplied proof label alone prove nothing.
       if (!alt.spans.every((span) => alt.storedText.includes(span) && returnedText.includes(span))) return false;
       if (!isVerbatimSourceProjection(returnedText, alt.sourceRowsByStore)) return false;
-      // A proof header is descriptive only. Numeric positive CE is the ordinary lane; CE-null is
-      // accepted only on the independently source-checked reviewed-source-catalog lane.
-      if (typeof citation.ce === 'number') return citation.ce >= 0;
-      return citation.ce === null && citation.proofMethod === 'reviewed-source-catalog';
+      // Source validation above is identical for old and new unscored source-card lanes.
+      // Runtime proof labels are descriptive, never an authority or version discriminator.
+      return citation.ce === null || (Number.isFinite(citation.ce) && citation.ce >= 0);
     }));
     return { id: slot.id, supported: !!matched, alternative: matched ?? null };
   });
