@@ -32,23 +32,52 @@ function asFixtureMap(fixtures) { return new Map(fixtures.map((fixture) => [fixt
 async function readExactPassage(kbDir, alternative) {
   const candidates = [`${alternative.repo}.passages.jsonl`, `${alternative.repo}.big.passages.jsonl`];
   let firstMismatch = null;
+  const sourceRowsByStore = [];
   for (const name of candidates) {
     const file = path.join(kbDir, name);
     if (!isRegularFile(file)) continue;
+    const rows = [];
     const input = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
     try {
       for await (const line of input) {
         let record;
         try { record = JSON.parse(line); } catch { continue; }
         if (record?.path === alternative.path && typeof record.text === 'string') {
-          const found = { record, file, storeSha256: await hashFile(file) };
-          if (sha256(record.text) === alternative.passageSha256) return found;
-          firstMismatch ??= found;
+          rows.push(record.text);
+          firstMismatch ??= { record, file, storeSha256: await hashFile(file) };
         }
       }
     } finally { input.close(); }
+    if (rows.some((text) => sha256(text) === alternative.passageSha256)) {
+      sourceRowsByStore.push({ file, storeSha256: await hashFile(file), rows });
+    }
   }
-  return firstMismatch;
+  const witness = sourceRowsByStore.flatMap((store) => store.rows.map((text) => ({ text, store })))
+    .find(({ text }) => sha256(text) === alternative.passageSha256);
+  if (!witness) return firstMismatch;
+  return { record: { text: witness.text }, file: witness.store.file,
+    storeSha256: witness.store.storeSha256, sourceRowsByStore };
+}
+
+/** Accept only exact source bytes: contiguous text, newline-joined rows, or ordered verbatim paragraphs. */
+export function isVerbatimSourceProjection(returnedText, sourceRowsByStore = []) {
+  if (typeof returnedText !== 'string' || !returnedText.length || !sourceRowsByStore.length) return false;
+  for (const { rows } of sourceRowsByStore) {
+    if (!Array.isArray(rows)) continue;
+    if (rows.join('\n').includes(returnedText)) return true;
+    const sourceParagraphs = rows.flatMap((row) => row.split(/\r?\n+/)).filter(Boolean);
+    const returnedParagraphs = returnedText.split(/\r?\n+/).filter(Boolean);
+    if (returnedParagraphs.length < 2) continue;
+    let cursor = 0;
+    const ordered = returnedParagraphs.every((paragraph) => {
+      for (let index = cursor; index < sourceParagraphs.length; index += 1) {
+        if (sourceParagraphs[index].includes(paragraph)) { cursor = index + 1; return true; }
+      }
+      return false;
+    });
+    if (ordered) return true;
+  }
+  return false;
 }
 
 const storeHashes = new Map();
@@ -141,6 +170,9 @@ export async function preflightOperationalOracle({ fixtures = OPERATIONAL_FIXTUR
         if (passageSha256 !== alt.passageSha256) { malformed = true; break; }
         if (!alt.spans.every((span) => found.record.text.includes(span))) { malformed = true; break; }
         resolvedAlternatives.push({ ...alt, passageSha256, storedText: found.record.text,
+          sourceRowsByStore: found.sourceRowsByStore.map((store) => ({
+            store: path.basename(store.file), storeSha256: store.storeSha256, rows: store.rows,
+          })),
           store: path.basename(found.file), storeSha256: found.storeSha256 });
       }
       if (malformed) break;
@@ -187,6 +219,7 @@ export function matchClaimSlots(preflight, verification) {
       // in this citation block's returned body. The whole passage need not be returned, but path
       // existence and a parser-supplied proof label alone prove nothing.
       if (!alt.spans.every((span) => alt.storedText.includes(span) && returnedText.includes(span))) return false;
+      if (!isVerbatimSourceProjection(returnedText, alt.sourceRowsByStore)) return false;
       // A proof header is descriptive only. Numeric positive CE is the ordinary lane; CE-null is
       // accepted only on the independently source-checked reviewed-source-catalog lane.
       if (typeof citation.ce === 'number') return citation.ce >= 0;

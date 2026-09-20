@@ -7,7 +7,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { performance } from 'node:perf_hooks';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import {
   OPERATIONAL_FIXTURES_V3,
   ORACLE_CATALOG,
@@ -15,6 +15,7 @@ import {
   matchClaimSlots,
   preflightOperationalOracle,
 } from '../evals/operational-benchmark.v3.mjs';
+import { verifyGrounding as evaluatorVerifyGrounding } from '../kb/verify-citation.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,7 +43,9 @@ export async function runOperationalBenchmarkV3({ fixtures = OPERATIONAL_FIXTURE
   if (!fs.existsSync(reader) || !fs.existsSync(verifierPath)) throw new Error(`RuvNet Brain runtime or verifier missing under ${kb}`);
   const loaded = await readCatalog(catalog, catalogFile);
   const catalogSha256AtStart = loaded.sha256 ?? null;
-  const verifier = verify || (await import(pathToFileURL(verifierPath).href)).verifyGrounding;
+  // Both baseline and candidate use the evaluator checkout's fixed parser/verifier. The runtime
+  // archive verifier is hashed as runtime metadata, never imported as the grader implementation.
+  const verifier = verify || evaluatorVerifyGrounding;
   const preflight = loaded.error
     ? new Map(fixtures.map((fixture) => [fixture.id, { status: 'INVALID_ORACLE', reason: `oracle catalog cannot be read: ${loaded.error}` }]))
     : await preflightOperationalOracle({ fixtures, catalog: loaded.value, catalogPath: loaded.file, kbDir: kb });
@@ -88,8 +91,10 @@ export async function runOperationalBenchmarkV3({ fixtures = OPERATIONAL_FIXTURE
       processOk, preflightStatus: oracle.status });
     receipts.push({ fixtureId: fixture.id, class: fixture.class, query: fixture.query,
       preflight: { status: oracle.status, resolvedSlots: oracle.resolvedSlots?.map((slot) => ({
-        id: slot.id, alternatives: slot.alternatives.map(({ repo, path: sourcePath, passageSha256, store, storeSha256 }) =>
-          ({ repo, path: sourcePath, passageSha256, store, storeSha256 })),
+        id: slot.id, alternatives: slot.alternatives.map(({ repo, path: sourcePath, passageSha256,
+          store, storeSha256, sourceRowsByStore }) => ({ repo, path: sourcePath, passageSha256, store,
+          storeSha256, sourceStores: sourceRowsByStore.map(({ store: sourceStore, storeSha256: sourceStoreSha256 }) =>
+            ({ store: sourceStore, storeSha256: sourceStoreSha256 })) })),
       })) ?? [] }, elapsedMs, processOk, processExitCode, error, stderr, verification, sourceSupport,
       grade, rawOutput: output });
     process.stderr.write(`${grade.status} ${fixture.id} ${elapsedMs}ms\n`);
@@ -112,14 +117,18 @@ export async function runOperationalBenchmarkV3({ fixtures = OPERATIONAL_FIXTURE
   const storeIdentities = new Map();
   for (const row of receipts) {
     for (const slot of row.preflight?.resolvedSlots ?? []) {
-      for (const alt of slot.alternatives ?? []) storeIdentities.set(alt.store, alt.storeSha256);
+      for (const alt of slot.alternatives ?? []) {
+        storeIdentities.set(alt.store, alt.storeSha256);
+        for (const sourceStore of alt.sourceStores ?? []) storeIdentities.set(sourceStore.store, sourceStore.storeSha256);
+      }
     }
   }
   for (const [store, expectedSha256] of storeIdentities) {
     const actual = await hashIfPresent(path.join(kb, store));
     if (actual === expectedSha256) continue;
     for (const row of receipts) {
-      const bound = (row.preflight?.resolvedSlots ?? []).some((slot) => slot.alternatives?.some((alt) => alt.store === store));
+      const bound = (row.preflight?.resolvedSlots ?? []).some((slot) => slot.alternatives?.some((alt) =>
+        alt.store === store || alt.sourceStores?.some((sourceStore) => sourceStore.store === store)));
       if (!bound || row.preflight.status !== 'PASS') continue;
       row.preflight = { status: 'CORPUS_GAP', reason: `source passage store ${store} changed or disappeared during replay` };
       row.grade = { pass: false, status: 'CORPUS_GAP', reason: row.preflight.reason };
@@ -136,11 +145,13 @@ export async function runOperationalBenchmarkV3({ fixtures = OPERATIONAL_FIXTURE
       invalidOracle: rows.filter((row) => row.preflight?.status === 'INVALID_ORACLE').length,
       latency: { n: latencies.length, p50Ms: percentile(.5), p95Ms: percentile(.95), p99Ms: percentile(.99), maxMs: latencies.at(-1) ?? null } }];
   }));
-  const [readerSha256, verifierSha256, archiveManifestSha256, sourceManifestSha256,
-    fixtureSha256, oracleCatalogSha256] = await Promise.all([
-    hashBytes(reader), hashBytes(verifierPath), hashIfPresent(path.join(kb, 'ARCHIVE-MANIFEST.json')),
+  const [readerSha256, runtimeVerifierSha256, evaluatorParserSha256, archiveManifestSha256, sourceManifestSha256,
+    runnerSha256, graderSha256, querySetSha256, oracleCatalogSha256] = await Promise.all([
+    hashBytes(reader), hashBytes(verifierPath), hashBytes(path.join(ROOT, 'kb/verify-citation.mjs')),
+    hashIfPresent(path.join(kb, 'ARCHIVE-MANIFEST.json')),
     hashIfPresent(path.join(kb, 'SOURCE.json')),
-    hashBytes(path.join(ROOT, 'evals/operational-benchmark.v3.mjs')),
+    hashBytes(fileURLToPath(import.meta.url)), hashBytes(path.join(ROOT, 'evals/operational-benchmark.v3.mjs')),
+    Promise.resolve(digestBytes(Buffer.from(JSON.stringify(fixtures)))),
     Promise.resolve(catalogSha256AtStart),
   ]);
   const measured = receipts.filter((row) => row.preflight?.status === 'PASS');
@@ -151,8 +162,8 @@ export async function runOperationalBenchmarkV3({ fixtures = OPERATIONAL_FIXTURE
   return {
     schema: 'ruvnet-brain-operational-benchmark/v3', generatedAt: now(),
     runtime: { kb: path.resolve(kb), nodeExecutable: process.execPath, nodeVersion: process.version,
-      readerSha256, verifierSha256, archiveManifestSha256, sourceManifestSha256,
-      fixtureSha256, oracleCatalogSha256 },
+      readerSha256, runtimeVerifierSha256, evaluatorParserSha256, archiveManifestSha256, sourceManifestSha256,
+      runnerSha256, graderSha256, querySetSha256, oracleCatalogSha256 },
     evaluationConfig: { lane: process.env.EVAL_FULL_CORPUS === '1' ? 'full-corpus' : 'bounded',
       k: 5, timeoutMs, sequential: true, preflightBeforeSearch: true },
     claimBoundary: { sourceSupportedRetrieval: 'measured', generatedAnswerUsefulness: 'UNKNOWN; this is a retrieval tool evaluation' },

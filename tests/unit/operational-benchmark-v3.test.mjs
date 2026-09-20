@@ -7,6 +7,7 @@ import { OPERATIONAL_FIXTURES } from '../../evals/operational-benchmark.v2.mjs';
 import {
   OPERATIONAL_FIXTURES_V3,
   gradeOperationalFixtureV3,
+  isVerbatimSourceProjection,
   matchClaimSlots,
   preflightOperationalOracle,
 } from '../../evals/operational-benchmark.v3.mjs';
@@ -102,6 +103,10 @@ describe('operational benchmark v3 frozen facts and preflight', () => {
       cite('vector-index', 'INDEX.md', 'on-device vector index', null, 'reviewed-source-catalog'),
     ] }).allSlotsSupported).toBe(true);
     expect(matchClaimSlots(preflight, { citations: [
+      cite('rvfguide', 'README.md', `The following claim is false and must not be relied upon: ${FACT_A}`, 1),
+      cite('vector-index', 'INDEX.md', FACT_B, 1),
+    ] }).allSlotsSupported).toBe(false);
+    expect(matchClaimSlots(preflight, { citations: [
       cite('rvfguide', 'README.md', 'This source only discusses bananas.', 1),
       cite('rvfguide', 'other.md', FACT_B, 1),
     ] }).allSlotsSupported).toBe(false);
@@ -117,6 +122,27 @@ describe('operational benchmark v3 frozen facts and preflight', () => {
       cite('rvfguide', 'README.md', 'This source only discusses bananas.', 1),
     ] });
     expect(samePathWrongText.allSlotsSupported).toBe(false);
+  });
+
+  it('accepts runtime-joined same-path rows and ordered noncontiguous source excerpts only', async () => {
+    const first = 'A source introduction.';
+    const middle = FACT_A;
+    const last = 'A source conclusion.';
+    const kb = corpus({ rvfguide: [
+      { path: 'README.md', text: first }, { path: 'README.md', text: middle },
+      { path: 'README.md', text: last }, { path: 'alt.md', text: 'Search uses an on-device vector index.' },
+    ], 'vector-index': [{ path: 'INDEX.md', text: FACT_B }] });
+    const catalog = makeCatalog(kb);
+    const preflight = (await preflightOperationalOracle({ fixtures: [QUERY, GAP_QUERY, NEGATIVE], catalog, kbDir: kb })).get(QUERY.id);
+    const joined = [first, middle, last].join('\n');
+    expect(matchClaimSlots(preflight, { citations: [
+      { repo: 'rvfguide', docPath: 'README.md', returnedText: joined, ce: 1 },
+      { repo: 'rvfguide', docPath: 'alt.md', returnedText: 'Search uses an on-device vector index.', ce: 1 },
+    ] }).allSlotsSupported).toBe(true);
+
+    const noncontiguous = `${first}\n\n${last}`;
+    expect(isVerbatimSourceProjection(noncontiguous, [{ rows: [`${first}\n${middle}\n${last}`] }])).toBe(true);
+    expect(isVerbatimSourceProjection(`Untrusted setup. ${middle}`, [{ rows: [middle] }])).toBe(false);
   });
 
   it('marks absent source passages as corpus gaps and malformed fixture sets as invalid oracles', async () => {
@@ -157,6 +183,11 @@ describe('operational benchmark v3 frozen facts and preflight', () => {
     expect(searches).toEqual([QUERY.id, NEGATIVE.id]);
     expect(report).toMatchObject({ schema: 'ruvnet-brain-operational-benchmark/v3', total: 3, measured: 2,
       qualificationPass: false, corpusGaps: [{ fixtureId: 'gap' }] });
+    expect(report.runtime.evaluatorParserSha256).toBe(hash(fs.readFileSync(new URL('../../kb/verify-citation.mjs', import.meta.url))));
+    expect(report.runtime.runtimeVerifierSha256).toBe(hash('// test boundary'));
+    expect(report.runtime.runnerSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(report.runtime.graderSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(report.runtime.querySetSha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('demotes a result if a passage store changes while retrieval is running', async () => {
