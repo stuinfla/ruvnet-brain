@@ -73,6 +73,9 @@ export function parseCitations(stdout) {
     const fullPath = pathM[1].trim();
     // Strip the repo prefix the reader adds, so the remainder can be matched against the store.
     const docPath = fullPath.startsWith(`${repo}/`) ? fullPath.slice(repo.length + 1) : fullPath;
+    // Retain only the reader's bounded document body. Missing/truncated delimiters fail
+    // closed, so evaluators cannot borrow claims from headers, diagnostics, or later hits.
+    const body = /^----- full document -----\r?\n([\s\S]*?)\r?\n={67}(?:\r?\n|$)/m.exec(block);
     out.push({
       rank,
       repo,
@@ -80,6 +83,7 @@ export function parseCitations(stdout) {
       vec: score('vec'),
       kind: field('kind'),
       proofMethod: field('proof'),
+      returnedText: body ? body[1] : null,
       fullPath,
       docPath,
       title: titleM ? titleM[1].trim() : null,
