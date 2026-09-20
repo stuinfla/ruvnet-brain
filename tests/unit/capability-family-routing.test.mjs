@@ -5,30 +5,33 @@ import { routeCapabilityFamily } from '../../kb/capability-families.mjs';
 const KB = new URL('../../kb/', import.meta.url).pathname;
 const STORES = ['ruvector', 'ruflo', 'codex-one', 'agentdb'];
 
-describe('broad capability-family routing', () => {
-  it('routes ordinary-language local vector storage to its source owner', () => {
+describe('capability-family matching stays separate from baseline source routing', () => {
+  it('keeps baseline card-owner selection for ordinary-language local vector storage', () => {
     expect(routeReposFromCards(
       'What is the best way to store and search embeddings on disk locally and privately?',
       KB,
       STORES,
-    )).toMatchObject({ repos: ['ruvector'], confidence: 'capability-family' });
+    )).toMatchObject({ repos: ['ruvector'], confidence: 'described' });
   });
 
   it.each([
     'How should I store embeddings in this project without running a server?',
     'Can I keep vector data offline on this device and still search it?',
     'Where can I persist private embeddings locally for similarity lookup?',
-  ])('routes an independent local-persistence paraphrase: %s', (query) => {
+  ])('keeps the existing card route for a local-persistence paraphrase: %s', (query) => {
     expect(routeReposFromCards(query, KB, STORES))
-      .toMatchObject({ repos: ['ruvector'], confidence: 'capability-family' });
+      .toMatchObject({ repos: ['ruvector'], confidence: 'described' });
   });
 
-  it('routes cross-project agent learning to Ruflo without product vocabulary', () => {
-    expect(routeReposFromCards(
+  it('does not replace the baseline cross-project owner with the Ruflo family guess', () => {
+    const baseline = routeReposFromCards(
       'How can agents carry useful learning from one project to another?',
       KB,
       STORES,
-    )).toMatchObject({ repos: ['ruflo'], confidence: 'capability-family' });
+    );
+    expect(baseline).toMatchObject({ repos: ['codex-one'], confidence: 'described' });
+    expect(routeCapabilityFamily('How can agents carry useful learning from one project to another?', STORES))
+      .toMatchObject({ repos: ['ruflo'], confidence: 'capability-family' });
   });
 
   it.each([

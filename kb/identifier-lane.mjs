@@ -112,10 +112,15 @@ export function identifierScan(dir, identifiers, { perRepo = 8, maxRepos = 6 } =
     const repo = file.replace(/\.big\.passages\.jsonl$|\.passages\.jsonl$/, '');
     let buf;
     try { buf = fs.readFileSync(path.join(dir, file)); } catch { continue; }
-    const present = needles.filter((n) => buf.includes(n));
+    // Identifiers are normalized to lowercase before the scan, while source symbols are usually
+    // PascalCase or camelCase. Decode once for the case-folded membership check; reuse that same
+    // text below when parsing matching JSONL rows.
+    const decoded = buf.toString('utf8');
+    const folded = decoded.toLowerCase();
+    const present = needles.filter((n) => folded.includes(n.toLowerCase()));
     if (!present.length) continue;
     const rows = [];
-    for (const line of buf.toString('utf8').split('\n')) {
+    for (const line of decoded.split('\n')) {
       if (!line) continue;
       const lower = line.toLowerCase();
       const hitTokens = present.filter((n) => lower.includes(n));

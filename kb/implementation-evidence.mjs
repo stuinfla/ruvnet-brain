@@ -8,8 +8,42 @@ const SOURCE_EXTENSIONS = new Set([
   '.py', '.rb', '.rs', '.sh', '.sol', '.swift', '.ts', '.tsx', '.wasm',
 ]);
 
+// A fully qualified member call asks about one exact API symbol. A nearby class match or an
+// unrelated implementation file cannot prove that member exists.
+function requestedMember(query) {
+  const match = String(query || '').match(/\b([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*\(/);
+  return match ? { owner: match[1], member: match[2] } : null;
+}
+
+function definesRequestedMember(text, { owner, member }) {
+  const escapedOwner = owner.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedMember = member.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const source = String(text || '').replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '');
+  const owners = [
+    { pattern: new RegExp(`\\bclass\\s+${escapedOwner}\\b`, 'g'), member: new RegExp(`\\b(?:async\\s+)?${escapedMember}\\s*\\(`, 'i') },
+    { pattern: new RegExp(`\\bimpl(?:<[^>]+>)?\\s+${escapedOwner}\\b`, 'g'), member: new RegExp(`\\bfn\\s+${escapedMember}\\s*\\(`, 'i') },
+    { pattern: new RegExp(`\\binterface\\s+${escapedOwner}\\b`, 'g'), member: new RegExp(`\\b${escapedMember}\\s*\\(`, 'i') },
+  ];
+  for (const { pattern, member: memberPattern } of owners) {
+    for (const match of source.matchAll(pattern)) {
+      const open = source.indexOf('{', match.index + match[0].length);
+      if (open < 0) continue;
+      let depth = 0;
+      for (let index = open; index < source.length; index++) {
+        if (source[index] === '{') depth++;
+        if (source[index] === '}' && --depth === 0) {
+          if (memberPattern.test(source.slice(open + 1, index))) return true;
+          break;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 export function requiresImplementationProof(query) {
   const text = String(query || '');
+  if (requestedMember(text)) return true;
   // "Agents working in parallel" describes the workload being coordinated; it is not the
   // operational-status claim "is this working?". Keep the status word load-bearing everywhere
   // else, but do not force a capability-selection question onto the built-state proof lane merely
@@ -73,6 +107,7 @@ export function classifyResultEvidence(result) {
 
 export function assessImplementation(query, results) {
   const required = requiresImplementationProof(query);
+  const exactMember = requestedMember(query);
   const enriched = (results || []).map((result) => ({
     ...result,
     ...classifyResultEvidence(result),
@@ -80,13 +115,15 @@ export function assessImplementation(query, results) {
   const implementationSources = enriched
     // A source file is not proof merely because it appeared somewhere in a noisy result set.
     // Require the same weakest-known-good relevance floor used by forge-ask-all's evidence grade.
-    .filter((result) => result.evidenceClass === 'implementation' && Number(result.ceScore) >= 4)
+    .filter((result) => result.evidenceClass === 'implementation' && Number(result.ceScore) >= 4
+      && (!exactMember || definesRequestedMember(result.fullText || result.text, exactMember)))
     .map((result) => `${result.repo}/${result.path}`);
   const retrievedImplementationSources = enriched
     .filter((result) => result.evidenceClass === 'implementation')
     .map((result) => `${result.repo}/${result.path}`);
   const unprovenReason = required && !implementationSources.length
-    ? (retrievedImplementationSources.length ? 'insufficient-relevance' : 'no-implementation-source')
+    ? (exactMember ? 'exact-member-not-established'
+      : retrievedImplementationSources.length ? 'insufficient-relevance' : 'no-implementation-source')
     : null;
 
   return {
@@ -96,6 +133,7 @@ export function assessImplementation(query, results) {
       verdict: required ? (implementationSources.length ? 'proven' : 'unproven') : 'not-required',
       implementationSources,
       retrievedImplementationSources,
+      requestedMember: exactMember,
       unprovenReason,
     },
   };
@@ -110,6 +148,8 @@ export function implementationNotice(implementation) {
     ? 'Implementation-bearing source or manifest was retrieved, but its relevance does not meet the proof threshold. '
     : implementation.unprovenReason === 'no-implementation-source'
       ? 'The retrieved material contains no implementation-bearing source or manifest. ADRs and documentation below may describe design intent. '
+      : implementation.unprovenReason === 'exact-member-not-established'
+        ? `The retrieved source does not establish the exact member ${implementation.requestedMember?.owner}.${implementation.requestedMember?.member}. Related class or repository matches do not prove it exists, and this result does not establish global nonexistence. `
       : 'The retrieved evidence does not establish the requested capability. ';
   return '⛔ BUILT/SHIPPED CLAIM: NOT PROVEN. ' + reason + 'Do not tell the '
     + 'user this capability was built, shipped, implemented, deployed, or is available.\n\n';

@@ -32,7 +32,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requiresImplementationProof } from './implementation-evidence.mjs';
-import { routeCapabilityFamily } from './capability-families.mjs';
 
 export const CARDS_FILE = 'capability-cards.md';
 export const REPO_ALIASES_FILE = 'repo-aliases.json';
@@ -403,6 +402,17 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
       aliasNamed.add(repo);
     }
   }
+  // Two independently maintained ruOS repositories have different owners. The fully qualified
+  // Cognitum name is an explicit disambiguator for its capability-summary store; the bare `ruos`
+  // identity continues to resolve to the public ruvnet desktop-control repository.
+  const explicitCognitumRuos = /\bcognitum(?:-one)?(?:\s+|\/)ruos\b/i.test(q)
+    && available.has('cognitum-ruos');
+  const cognitumRuosOnly = explicitCognitumRuos
+    && !/\b(?:compare|comparison|versus|vs\.?|between|across|difference|differ)\b/i.test(q);
+  if (explicitCognitumRuos) {
+    canonicalNamed.add('cognitum-ruos');
+    if (cognitumRuosOnly) canonicalNamed.delete('ruos');
+  }
   const namedPackage = q.match(/@[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+/i)?.[0]?.toLowerCase();
   const packageOwner = namedPackage ? packageOwnerFor(namedPackage, loadPackageOwners(dir)) : null;
   if (packageOwner && available.has(packageOwner)) canonicalNamed.add(packageOwner);
@@ -469,13 +479,6 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
       if (repo !== 'ruvnet-brain') explicitlyNamed.delete(repo);
     }
   }
-  // Use a small capability vocabulary for broad, unnamed needs whose wording is too colloquial
-  // for the one-card lexical winner. This only selects source stores; the source-backed lane or
-  // normal retrieval still has to establish the answer. Explicit product names always win.
-  if (!explicitlyNamed.size) {
-    const familyRoute = routeCapabilityFamily(q, [...available]);
-    if (familyRoute) return familyRoute;
-  }
   const resolveStore = (cardRepo) => {
     if (available.has(cardRepo)) return cardRepo;
     return (aliases[cardRepo] || []).find((alias) => available.has(alias)) || null;
@@ -488,9 +491,10 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
       const storeIdentity = repo.toLowerCase();
       const named = explicitlyNamed.has(repo)
         || (!primaryBrainScope && (
-          qIdentity.has(card.repoIdentity)
-          || qIdentity.has(storeIdentity)
-          || namesRepo(card.repo)
+          !(cognitumRuosOnly && repo === 'ruos')
+          && (qIdentity.has(card.repoIdentity)
+            || qIdentity.has(storeIdentity)
+            || namesRepo(card.repo))
         ));
       const tokens = qTokens.filter((token) =>
         token !== card.repoIdentity && token !== storeIdentity);

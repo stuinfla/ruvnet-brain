@@ -94,6 +94,16 @@ describe('identifierScan — the store that CONTAINS the identifier, not the one
     expect(candidate._lane).toBe('rescue');
     expect(candidate._exactIdentifier.defining).toBeGreaterThan(0);
   });
+
+  it('matches PascalCase source symbols after exact identifiers are normalized', () => {
+    const dir = bundle({ ruvector: [{
+      path: 'src/rvf-store.ts', title: 'RVF store',
+      text: 'export class RvfStore { query(vector) { return vector; } }',
+    }] });
+    const identifiers = exactIdentifiers('How do I call RvfStore.query()?');
+    expect(identifiers).toContain('rvfstore');
+    expect(identifierScan(dir, identifiers, { maxRepos: 2 }).repos).toContain('ruvector');
+  });
 });
 
 describe('the boost is EARNED — a chunk that repeats the question must not outrank the definition', () => {

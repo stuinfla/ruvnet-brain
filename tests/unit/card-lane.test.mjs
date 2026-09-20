@@ -535,6 +535,21 @@ describe('routeReposFromCards — routing never masquerades as a card answer', (
       .toEqual(expect.arrayContaining(['ruvector', 'agentdb']));
   });
 
+  it('routes RVF class names to RuVector and distinguishes the fully named Cognitum ruOS', () => {
+    const stores = [...available, 'cognitum-ruos', 'ruos'];
+    expect(routeReposFromCards(
+      'How do I call RvfStore.telepathicQuantumSync() to synchronize my vector database?',
+      KB,
+      stores,
+    ).repos).toContain('ruvector');
+    expect(routeReposFromCards('What is cognitum ruOS?', KB, stores).repos)
+      .toEqual(['cognitum-ruos']);
+    expect(routeReposFromCards('What is ruvnet/ruos?', KB, stores).repos)
+      .toEqual(['ruos']);
+    expect(routeReposFromCards('What is ruos?', KB, stores).repos)
+      .not.toContain('cognitum-ruos');
+  });
+
   it('routes an exact scoped package through the shipped ownership registry', () => {
     const route = routeReposFromCards(
       'What does the @claude-flow/neural package implement — which algorithms?',

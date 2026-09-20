@@ -115,6 +115,37 @@ describe('implementation truth gate — design intent is never built-state proof
     expect(out.results[0].evidenceClass).toBe('implementation');
   });
 
+  it('does not infer an exact API method from a relevant class or neighboring implementation', () => {
+    const query = 'How do I call RvfStore.telepathicQuantumSync() to synchronize my vector database?';
+    const out = assessImplementation(query, ranked(
+      'source',
+      'src/rvf-store.ts',
+      'export class RvfStore { query(vector) { return vector; } }',
+      9,
+    ));
+    expect(out.implementation).toMatchObject({
+      required: true,
+      verdict: 'unproven',
+      requestedMember: { owner: 'RvfStore', member: 'telepathicQuantumSync' },
+      unprovenReason: 'exact-member-not-established',
+    });
+    expect(implementationNotice(out.implementation)).toMatch(/does not establish global nonexistence/);
+  });
+
+  it('accepts an exact method declaration while preserving ordinary query behavior', () => {
+    const legitimate = assessImplementation(
+      'How do I call RvfStore.query()?',
+      ranked('source', 'src/rvf-store.ts', 'export class RvfStore { query(vector) { return vector; } }'),
+    );
+    expect(legitimate.implementation).toMatchObject({ verdict: 'proven', unprovenReason: null });
+
+    const ordinary = assessImplementation(
+      'Which vector database concepts are documented?',
+      ranked('source', 'src/rvf-store.ts', 'export class RvfStore { query(vector) {} }'),
+    );
+    expect(ordinary.implementation).toMatchObject({ required: false, verdict: 'not-required' });
+  });
+
   it('does not use an irrelevant source hit as proof merely because it is code', () => {
     const out = selectResults({
       query: 'Does this project implement orbital deployment?',
