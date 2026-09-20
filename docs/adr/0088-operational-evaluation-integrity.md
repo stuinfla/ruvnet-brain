@@ -3,7 +3,7 @@ id: ADR-088
 status: Accepted
 date: 2026-09-19
 updated: 2026-09-19
-version: 1.1.1
+version: 1.1.2
 authors: [Stuart Kerr, Codex]
 tags: [evaluation, benchmark, grounding, operations, abstention]
 supersedes: []
@@ -19,6 +19,7 @@ governs:
   - evals/oracles/operational-source-oracles.v3.json
   - scripts/run-operational-benchmark.mjs
   - scripts/run-operational-benchmark.v3.mjs
+  - package.json
   - tests/unit/eval-brain-gate.test.mjs
   - tests/unit/brain-novice-50.test.mjs
   - tests/unit/verify-citation.test.mjs
@@ -70,11 +71,11 @@ The novice-50 evaluator also exposed `expectedRepoCited` but did not require it 
 - Fixture text, expected repositories, and exact source facts are frozen by a test-pinned SHA-256. Intentional fixture changes require a new benchmark version and documented independent oracle review; never modify historical fixture hashes to make a result pass.
 - V3 preflight must happen before query execution; malformed catalogs, absent source, failed retrieval, and successful retrieval remain separate statuses. A qualification result requires every one of the 21 fixtures to be available and passing.
 - Any unavailable fixture is listed in its own report field and is absent from the class's measured `n` and latency distribution; it is not a pass.
-- Run `npx vitest run tests/unit/eval-brain-gate.test.mjs tests/unit/brain-novice-50.test.mjs tests/unit/operational-benchmark.test.mjs tests/unit/operational-benchmark-v3.test.mjs --maxWorkers=1` and report the result. The v3 real-corpus run uses `RUVNET_BRAIN_KB=<pinned-kb> node scripts/run-operational-benchmark.v3.mjs`; retain the generated raw receipt and report actual latency distributions and every unavailable fixture.
+- Run `npx vitest run tests/unit/eval-brain-gate.test.mjs tests/unit/brain-novice-50.test.mjs tests/unit/operational-benchmark.test.mjs tests/unit/operational-benchmark-v3.test.mjs --maxWorkers=1` and report the result. The v3 real-corpus run uses `RUVNET_BRAIN_KB=<pinned-kb> EVAL_FULL_CORPUS=1 npm run benchmark:operational`; retain the generated raw receipt and report actual latency distributions and every unavailable fixture. Both baseline and candidate comparisons use the same frozen catalog and full-corpus command, with separate `RUVNET_BRAIN_KB` inputs.
 
 ## Implementation state
 
-Accepted decision; v1/v2 history remains preserved and v3 implementation is tracked by the governing code and tests above. The pinned 4.3.26 archive preflight currently validates 20 cases and records one explicit cross-project `CORPUS_GAP`; no full retrieval replay is claimed by this ADR update.
+Accepted decision; v1/v2 history remains preserved and v3 implementation is tracked by the governing code and tests above. The pinned 4.3.26 archive preflight currently validates 20 cases and records one explicit cross-project `CORPUS_GAP`. An initial full-corpus attempt is diagnostic-only because its isolated archive dependency setup failed; no valid baseline or candidate retrieval replay is claimed by this ADR update.
 
 ## Currency log
 
@@ -83,3 +84,4 @@ Accepted decision; v1/v2 history remains preserved and v3 implementation is trac
 | 2026-09-19 | Added v2 with a pinned public IPFS oracle before candidate replay; unavailable cases now block overall qualification. Preserved v1. | `evals/oracles/ruflo-ipfs-provenance.json`, `evals/operational-benchmark.v2.mjs`, `scripts/run-operational-benchmark.mjs`; no universal quality score claimed. |
 | 2026-09-19 | Added v3's archive-bound source catalog and preflight-before-search runner. It requires every claim slot, verifies exact actual passage hashes/spans, separates invalid oracle/corpus gap/retrieval miss/pass, preserves all 21 cases, and keeps the one automatic cross-project case unavailable. The exact archive preflight is 20 available source oracles plus 1 explicit gap; no heavy baseline/candidate replay was run here. | `evals/oracles/operational-source-oracles.v3.json` (catalog SHA-256 `8426dfb0fe3cbe9f98a882dc9a08039fb80987394eb7e1e75064084a53724c67`); `evals/operational-benchmark.v3.mjs`; `scripts/run-operational-benchmark.v3.mjs`; `tests/unit/operational-benchmark-v3.test.mjs`; `/tmp/brain-retrieval-20260919-ut54XL/archive-kb`. |
 | 2026-09-19 | Adversarial verification showed path and proof-label matching could credit a fact found elsewhere in the same stored document, and a substring refusal phrase could spoof negative cases. V3 now requires source spans in the exact citation-block return body and the independently hash-bound witness; only the runtime's anchored `INSUFFICIENT_EVIDENCE` preamble can earn refusal credit. The first full-corpus run is retained as diagnostic-only: 19 of 20 measurable invocations exited 1 because the disposable archive lacked `@xenova/transformers`, and its path-only grading is invalid under this correction. | `evals/operational-runs/v3-2026-09-20T00-13-55-545Z.json`; source regression tests in `tests/unit/operational-benchmark-v3.test.mjs`; `kb/verify-citation.mjs` / `tests/unit/verify-citation.test.mjs` for bounded returned-text parsing. |
+| 2026-09-19 | Recorded the integration-owned `benchmark:operational` wiring. Baseline and candidate commands use the same v3 catalog and `EVAL_FULL_CORPUS=1`, with the archive selected explicitly through `RUVNET_BRAIN_KB`; outputs remain separate receipts. | `package.json`; `scripts/run-operational-benchmark.v3.mjs`; `tests/unit/operational-benchmark-v3.test.mjs`. |
