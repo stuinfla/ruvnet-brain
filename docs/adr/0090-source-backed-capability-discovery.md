@@ -4,6 +4,7 @@ title: Reviewed-source discovery for finite capability queries
 status: Accepted
 date: 2026-09-19
 updated: 2026-09-19
+reviewed_digest: fe7a22ebf299
 authors: [Stuart Kerr, Codex]
 tags: [retrieval, routing, source-grounding, capability-discovery]
 relates: [ADR-060, ADR-074]
@@ -69,3 +70,9 @@ source fallback, negative qualifier controls, and the omitted-`k` MCP boundary. 
 measurements are recorded with the operational repair receipt; this ADR itself makes no performance
 or installation-health claim. Documentation discovery establishes only what the reviewed source
 describes, not that the described runtime is wired or operational.
+
+## Currency log
+
+| Date | Review |
+|---|---|
+| 2026-09-19 | Reviewed the exact query-template allowlist, passage-hash gate, excerpt construction, and MCP default-`k` route. Independent source review pinned the approved passage hashes in this ADR's governed implementation. A same-size, same-mtime passage mutation is rejected. reviewed_digest fe7a22ebf299. | Reviewed `kb/capability-families.mjs`, `kb/forge-ask-all.mjs`, `kb/forge-mcp-all.mjs`, and `tests/unit/capability-discovery.test.mjs`; confirmed changed or missing source passages fail closed. |
