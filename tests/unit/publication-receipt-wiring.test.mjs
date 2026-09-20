@@ -86,6 +86,13 @@ describe('publication receipt wiring', () => {
     expect(producer).toContain('only one model-backed MCP worker can consume resources at a time');
   });
 
+  it('bounds the install smoke to one source-cited result from the Brain self store', () => {
+    expect(producer).toContain("const SELF_STORE_PROOF_QUERY = 'repo:ruvnet-brain What is the RuvNet Brain release evidence workflow?'");
+    expect(producer).toContain('const SELF_STORE_PROOF_K = 1');
+    expect(producer).toContain('/repo\\s*=\\s*ruvnet-brain/i.test(result.stdout)');
+    expect(producer).toContain('installed Brain ${phase} failed for ${mode} after ${timeoutMs}ms');
+  });
+
   it('does not downgrade the accepted dual-host native nightly proof', () => {
     expect(producer).not.toContain('publicNativeNightly: false');
     expect(publicLane).toContain("if (mode === 'dual')");

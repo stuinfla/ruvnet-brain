@@ -32,6 +32,8 @@ const REPO = 'stuinfla/ruvnet-brain';
 const PACKAGE = 'ruvnet-brain';
 const DEADLINE_MS = 30_000;
 const WARMUP_TIMEOUT_MS = 300_000;
+const SELF_STORE_PROOF_QUERY = 'repo:ruvnet-brain What is the RuvNet Brain release evidence workflow?';
+const SELF_STORE_PROOF_K = 1;
 
 export async function runMeasuredHostSearches(hosts, search, { warmup, after } = {}) {
   const results = new Map();
@@ -541,14 +543,16 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       const searchInstalledHost = async ({ mode }, timeoutMs) => {
         const publicMode = MODE_FROM_RECEIPT_NAME[mode];
         const session = mcpSessions.get(publicMode);
+        const phase = timeoutMs > DEADLINE_MS ? 'warmup' : 'measured search';
+        console.log(`Public verification: ${mode} ${phase} (limit ${timeoutMs}ms)`);
         const result = await session.search({
-          query: 'How does RuvNet Brain prove a public release artifact?', k: 5,
+          query: SELF_STORE_PROOF_QUERY, k: SELF_STORE_PROOF_K,
           timeoutMs,
         });
         if (result.error || !result.mcpResult || (Object.hasOwn(result, 'status') && result.status !== 0)) {
-          throw new Error(`installed Brain search failed for ${mode}: ${result.error?.message || 'no MCP result'}`);
+          throw new Error(`installed Brain ${phase} failed for ${mode} after ${timeoutMs}ms: ${result.error?.message || 'no MCP result'}`);
         }
-        if (!/repo=/i.test(result.stdout) || !/path\s*:/i.test(result.stdout)) {
+        if (!/repo\s*=\s*ruvnet-brain/i.test(result.stdout) || !/path\s*:/i.test(result.stdout)) {
           throw new Error(`installed Brain search returned no source citation for ${mode}`);
         }
         return result;
@@ -616,9 +620,9 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       // installed process that passed the host canary instead of starting a cold verifier child.
       const session = mcpSessions.get(mode);
       const result = session
-        ? await session.search({ query: 'How does RuvNet Brain prove a public release artifact?', k: 5, timeoutMs: DEADLINE_MS })
+        ? await session.search({ query: SELF_STORE_PROOF_QUERY, k: SELF_STORE_PROOF_K, timeoutMs: DEADLINE_MS })
         : await rpcSearch(server, installContext.env,
-          'How does RuvNet Brain prove a public release artifact?', 5, DEADLINE_MS);
+          SELF_STORE_PROOF_QUERY, SELF_STORE_PROOF_K, DEADLINE_MS);
       if (result.error || !result.mcpResult || (Object.hasOwn(result, 'status') && result.status !== 0)) {
         throw new Error(`installed Brain search failed for ${mode}: ${result.error?.message || 'no MCP result'}`);
       }
@@ -643,7 +647,7 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         session = createInstalledMcpSession({ serverPath: findMcpServer(context.home), env: context.env, timeout: WARMUP_TIMEOUT_MS });
         mcpSessions.set(mode, session);
         const warmed = await session.search({
-          query: 'How does RuvNet Brain prove a public release artifact?', k: 5, timeoutMs: WARMUP_TIMEOUT_MS,
+          query: SELF_STORE_PROOF_QUERY, k: SELF_STORE_PROOF_K, timeoutMs: WARMUP_TIMEOUT_MS,
         });
         if (warmed.error || !warmed.mcpResult || (Object.hasOwn(warmed, 'status') && warmed.status !== 0)) {
           throw new Error(`installed Brain warmup failed for ${mode}: ${warmed.error?.message || 'no MCP result'}`);
