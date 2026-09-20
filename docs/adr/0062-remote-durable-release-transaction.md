@@ -5,7 +5,7 @@ status: Accepted
 date: 2026-08-02
 updated: 2026-09-20
 reviewed_digest: 792292744a60
-version: 1.1.5
+version: 1.1.6
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -20,6 +20,9 @@ governs:
   - scripts/release-transaction-provider.mjs
   - scripts/staged-host-verifier.mjs
   - scripts/public-verification-inputs.mjs
+  - scripts/public-inputs.mjs
+  - kb/capability-only.mjs
+  - scripts/refresh-capability-only-store.mjs
   - docs/ddd/0015-release-transaction-context.md
 ---
 
@@ -36,6 +39,8 @@ established by this source review.
 
 ## Currency log
 
+| 2026-09-20 | Release-QE refreshes Cognitum ruOS's RVF from the one curated capabilities summary before bundle assembly, removes legacy source-bearing sidecars, and rebinds the runtime generation ledger. | The immutable v4.3.26 seed predates the capability-only contract enforced by `kb/capability-only.mjs`; the prior release step stopped at that boundary. |
+| 2026-09-20 | Capability-only policy now excludes the Cognitum ruOS implementation primer from public prose, removes it from the immutable seed, and prunes its historical passages from the Brain self-store RVF and metadata before resealing generation identity. | Archive replay found a second disclosure route outside the ruOS store: a standalone primer and four self-store vectors carried source paths and implementation detail. The tracked primer is removed so nightly corpus rebuilds cannot re-ingest it. |
 | 2026-09-20 | Historical baseline verification accepts the schema-2 runtime generation ledger emitted by the current public seed while retaining schema-1 support and exact per-store byte/provenance checks. | The v4.3.26 seed carries `ruvnet-brain-runtime-generation-ledger`; rejecting its schema version stopped release-QE before candidate qualification. |
 | 2026-09-20 | Clarified exact-SHA promotion: qualify on `release/**`, obtain the release PR's consumer checks, then promote by ordinary fast-forward; PR merge methods invalidate the candidate artifact. Marked quick local status as diagnostic only. | Removes SHA-changing merge ambiguity without weakening source, receipt, payload, digest, or protected publication checks. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged; none of the 15 Invariants are touched. Of 13 drift commits, only `53fbe65b` moved a true protocol file (`scripts/release-transaction-provider.mjs`, +6 lines): it skips unrelated DRAFT releases' 404-ing assets when scanning history for the latest-by-transaction receipt, while still fully receipt-gating any PUBLISHED release — this reinforces Invariant 4 (drafts never count as current generation) and 5 (monotonic receipts), it does not weaken them. `scripts/release.mjs` and `scripts/release-transaction.mjs` were not touched at all in this range. The other 12 commits are entirely `.github/workflows/*.yml` lane/matrix/checkout/scheduling mechanics (including `00526b12`'s 426-line `ci.yml` reduction, part of the same hooks-retirement pass reviewed under ADR-034/056) — none add a second publisher, bypass exact-SHA gating, or touch receipt/identity code. | Read `53fbe65b`'s diff in full (the one protocol-file change); confirmed `scripts/release.mjs`/`scripts/release-transaction.mjs` have zero commits in `git log 4823f1aa..HEAD`; reviewed the combined `git log --stat` for all 13 drift commits. reviewed_digest 792292744a60. |

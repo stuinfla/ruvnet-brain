@@ -3,7 +3,7 @@ import path from 'node:path';
 
 export const isCapabilityOnly = name => String(name).toLowerCase() === 'cognitum-ruos';
 export const CAPABILITY_RETIRED_SUFFIXES = [
-  '.symbols.json', '.rvf', '.rvf.idmap.json', '.rvf.embed.json', '.big.passages.jsonl', '.big.meta.json',
+  '-primer.md', '.symbols.json', '.rvf', '.rvf.idmap.json', '.rvf.embed.json', '.big.passages.jsonl', '.big.meta.json',
 ];
 
 // Reject historical source-bearing stores at the final packaging boundary, even
