@@ -130,6 +130,29 @@ describe('implementation truth gate — design intent is never built-state proof
       unprovenReason: 'exact-member-not-established',
     });
     expect(implementationNotice(out.implementation)).toMatch(/does not establish global nonexistence/);
+
+    const callInsideOtherMethod = assessImplementation(
+      'How do I call RvfStore.fakeMethod()?',
+      ranked('source', 'src/api.ts',
+        'class RvfStore { realMethod() { this.fakeMethod(); } }', 8),
+    );
+    expect(callInsideOtherMethod.implementation).toMatchObject({
+      verdict: 'unproven',
+      unprovenReason: 'exact-member-not-established',
+    });
+
+    const falseDeclarations = [
+      ['src/api.ts', 'class RvfStore { realMethod() { return "fakeMethod("; } }'],
+      ['src/api.ts', 'class RvfStore { class Other { fakeMethod() {} } }'],
+      ['src/api.ts', 'class RvfStore { fakemethod() {} }'],
+      ['types/api.d.ts', 'declare class RvfStore { fakeMethod(): void; }'],
+      ['src/lib.rs', 'impl RvfStore { fn real_method() { fn fakeMethod() {} } }'],
+      ['src/api.ts', 'interface RvfStore { fakeMethod(): void; }'],
+    ];
+    for (const [file, source] of falseDeclarations) {
+      expect(assessImplementation('How do I call RvfStore.fakeMethod()?',
+        ranked('source', file, source, 8)).implementation.verdict).toBe('unproven');
+    }
   });
 
   it('accepts an exact method declaration while preserving ordinary query behavior', () => {

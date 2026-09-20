@@ -26,13 +26,44 @@ describe('public ruOS knowledge discovery', () => {
     expect(result.repos).not.toContain('cognitum-ruos');
   });
 
-  it('reproduces the original discovery failure when the two ruOS cards are removed', () => {
+  it('preserves named-store routing when the two ruOS cards are removed', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ruos-card-regression-'));
     temporary.push(dir);
     const cards = fs.readFileSync(path.join(kb, 'capability-cards.md'), 'utf8')
       .replace(/\n## (?:cognitum-ruos|ruos)\n[\s\S]*?(?=\n## |$)/g, '');
     fs.writeFileSync(path.join(dir, 'capability-cards.md'), cards);
     expect(routeReposFromCards('What is ruOS?', dir, stores).repos).toEqual([]);
-    expect(routeReposFromCards('What is cognitum-ruos?', dir, stores).repos).not.toContain('cognitum-ruos');
+    expect(routeReposFromCards('What is cognitum-ruos?', dir, stores).repos).toEqual(['cognitum-ruos']);
+  });
+
+  it('routes an explicitly named installed Cognitum store when it has no capability card', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ruos-missing-card-'));
+    temporary.push(dir);
+    const cards = fs.readFileSync(path.join(kb, 'capability-cards.md'), 'utf8')
+      .replace(/\n## cognitum-ruos\n[\s\S]*?(?=\n## |$)/g, '');
+    fs.writeFileSync(path.join(dir, 'capability-cards.md'), cards);
+    fs.copyFileSync(path.join(kb, 'repo-aliases.json'), path.join(dir, 'repo-aliases.json'));
+
+    const named = routeReposFromCards('What is cognitum ruOS?', dir, stores);
+    expect(named.repos).toEqual(['cognitum-ruos']);
+    expect(named.cardRepos).not.toHaveProperty('cognitum-ruos');
+    expect(named.confidence).toBe('named');
+    expect(routeReposFromCards('What is ruOS?', dir, stores).repos).toEqual(['ruos']);
+    expect(routeReposFromCards('How do I center a div?', dir, stores).repos).toEqual([]);
+  });
+
+  it('keeps an explicit no-card source scope from inheriting an unrelated card owner', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'missing-card-scope-'));
+    temporary.push(dir);
+    fs.writeFileSync(path.join(dir, 'capability-cards.md'),
+      '## ruflo\nAgents share learned patterns across projects through memory APIs.\n');
+    const route = routeReposFromCards(
+      'Within missing-card only, how can agents share learned patterns across projects?',
+      dir,
+      ['missing-card', 'ruflo'],
+    );
+    expect(route.repos).toEqual(['missing-card']);
+    expect(route.namedRepos).toEqual(['missing-card']);
+    expect(route.cardRepos).not.toHaveProperty('missing-card');
   });
 });

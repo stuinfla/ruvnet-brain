@@ -27,7 +27,7 @@ governs:
   - tests/fixtures/retrieval/ruflo-cross-project-transfer-reviewed-passage.txt
 ---
 
-Updated: 2026-09-19 | Version 1.2.0
+Updated: 2026-09-19 | Version 1.2.1
 Created: 2026-09-19
 
 # ADR-090 — Additive source-verified capability discovery
@@ -67,9 +67,14 @@ separate.
    updated fixture before the supplement can return. Runtime never regenerates its own approval.
    This small catalog is a bounded discovery repair, not proof of corpus-wide advisory completeness.
 8. Exact `Owner.member()` queries require relevant implementation source declaring that member.
-   A callsite or class match is insufficient. The case-folded exact identifier scan widens only;
+   A callsite, class match, nested call, or declaration without a body is insufficient. A direct
+   exact-member scan may return qualified indexed absence for the routed stores; this does not
+   establish global nonexistence. The case-folded exact identifier scan widens only;
    RvfStore/RvfDatabase and explicitly qualified Cognitum ruOS have canonical routing aliases.
 9. Pool size, cascade defaults, CE thresholds, timeouts and default `k` are unchanged.
+10. An explicitly named installed multiword store remains a source-search scope when it has no
+    capability card. The route records the name but supplies no card mapping or answer; source
+    retrieval and implementation-evidence gates remain authoritative.
 
 ## Verification boundary
 
@@ -91,4 +96,5 @@ quality improvement. No universal 98% quality or deployed-runtime claim is made 
 | 2026-09-19 | Generalized broad-family discovery without broadening the exact no-rerank allowlist: a matching query can add one independently reviewed, SHA-bound passage as a candidate in the normal rerank/evidence path. Curated cards cannot return early for a family query. Changed hashes fail closed; original query text and qualifiers are preserved. Focused unit tests only; no latency, held-out recall, or installed-runtime claim. | Reviewed the scoped `searchAll` handoff, witness injection, source hash check, card-lane bypass, and focused capability-discovery tests. |
 | 2026-09-19 | Exact `Owner.member()` questions now require relevant implementation source declaring that exact member before implementation is reported proven; a class match or callsite alone leaves a qualified insufficient-evidence result. Exact identifiers are matched case-insensitively so normalized PascalCase symbols reach the existing widened-only scan. Added exact `RvfStore`/`RvfDatabase` owner aliases and a full Cognitum ruOS disambiguator; bare `ruos` remains the ruvnet desktop-control owner. Focused unit tests only; no MCP runtime or global absence claim. | Reviewed `kb/implementation-evidence.mjs`, `kb/identifier-lane.mjs`, `kb/repo-aliases.json`, `kb/card-lane.mjs`, and the focused evidence/router/scanner tests. |
 | 2026-09-19 | Removed capability-family guesses from the card router after a reviewed cross-project paraphrase showed the override could replace its existing `codex-one` owner with `ruflo`. The card router retains its baseline owner selection; the family matcher has no authority to replace that source route. Existing reviewed-source discovery remains separately governed. | Reviewed `kb/card-lane.mjs` and `tests/unit/capability-family-routing.test.mjs`; baseline fixture continues to route to `codex-one`. |
+| 2026-09-19 | Explicit named stores without curated cards now remain source-search scopes and are recorded in `namedRepos`; no card answer is created. Exact member proof requires a direct top-level declaration with a body. An exact-member index miss returns qualified insufficiency, never global nonexistence. Focused tests: 217 passed. One bounded CLI run on the 2026-09-19 archive returned the qualified miss in 9.25s; its older alias registry routed four stores, so this is not installed-MCP or broad-latency qualification. | Reviewed `kb/card-lane.mjs`, `kb/forge-ask-all.mjs`, `kb/identifier-lane.mjs`, `kb/implementation-evidence.mjs` and focused router, identifier, implementation, and orchestration tests. |
 | 2026-09-19 | Reviewed the exact query-template allowlist, passage-hash gate, excerpt construction, and MCP default-`k` route. Independent source review pinned the approved passage hashes in this ADR's governed implementation. A same-size, same-mtime passage mutation is rejected. reviewed_digest fe7a22ebf299. | Reviewed `kb/capability-families.mjs`, `kb/forge-ask-all.mjs`, `kb/forge-mcp-all.mjs`, and `tests/unit/capability-discovery.test.mjs`; confirmed changed or missing source passages fail closed. |

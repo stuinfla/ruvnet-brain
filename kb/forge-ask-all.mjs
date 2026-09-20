@@ -43,6 +43,7 @@ import {
 } from './implementation-evidence.mjs';
 import {
   exactIdentifiers,
+  exactMemberIndexPresence,
   identifierBoost,
   identifierCandidates,
   identifierScan,
@@ -3283,6 +3284,36 @@ async function searchAllPrimary({
     }
     if (planned.repos.length && planned.repos.length < discovered.length) {
       const routeMs = performance.now() - startedAt;
+      const requestedMember = String(query || '').match(/\b([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*\(/);
+      if (requestedMember && planned.repos.length) {
+        const [, owner, member] = requestedMember;
+        const memberEvidence = exactMemberIndexPresence(dir, planned.repos, member);
+        if (memberEvidence.scannedRepos.length && !memberEvidence.present) {
+          const caveat = `No indexed passage in ${memberEvidence.scannedRepos.join(', ')} contains the exact member ${owner}.${member}. This is not evidence of global nonexistence; the corpus may be incomplete or stale.`;
+          return {
+            repos: memberEvidence.scannedRepos,
+            perRepo: Object.fromEntries(memberEvidence.scannedRepos.map((repo) => [repo, caveat])),
+            results: [], pooled: 0, pooledAll: 0, cappedOut: 0,
+            prefiltered: 0, prefilterTokens: 0, prefilterMs: 0,
+            corpusAge: corpusAgeFor(dir, memberEvidence.scannedRepos),
+            adrCollision: null,
+            evidence: { grade: 'insufficient_evidence', topScore: null, droppedIrrelevant: 0, caveat },
+            implementation: {
+              required: true, verdict: 'unproven', implementationSources: [],
+              retrievedImplementationSources: [], requestedMember: { owner, member },
+              unprovenReason: 'exact-member-not-established',
+            },
+            routing: {
+              attempted: true, accepted: false, confidence: planned.confidence,
+              reason: planned.reason, candidateRepos: memberEvidence.scannedRepos,
+              fallback: 'qualified-indexed-absence',
+            },
+            diagnostics: traceRetrieval({ query, routeMs: +routeMs.toFixed(2),
+              candidateRepos: memberEvidence.scannedRepos.length, retrievedCandidates: 0,
+              scoredCandidates: 0, lane: 'exact-member-index-absence' }),
+          };
+        }
+      }
       const sourceProofStartedAt = performance.now();
       const sourceCard = await sourceBackedCardLane({ dir, query, k, planned });
       if (sourceCard) {
