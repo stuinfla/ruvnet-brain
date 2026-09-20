@@ -30,7 +30,7 @@ import {
 } from '../kb/model-requirements.mjs';
 import { applyManagedCatalogUpdate } from '../scripts/model-router-catalog.mjs';
 import { cmpVersion } from '../scripts/stack-sync.mjs';
-import { inspectInstalledBrain, classifySmokeEvidence } from '../scripts/installed-brain-health.mjs';
+import { inspectInstalledBrain, classifySmokeEvidence, DOCTOR_SMOKE_QUERY, doctorSmokeArgs } from '../scripts/installed-brain-health.mjs';
 import { validateCoverageDirectory } from '../plugin/scripts/coverage-integrity.mjs';
 import {
   continuityContractIds,
@@ -2405,7 +2405,7 @@ async function smokeQuery(cacheDir) {
     'Asking the brain a real question',
     'this warms the local model and checks that retrieval returns usable, cited evidence',
   );
-  const Q = 'How should I store embeddings in this project without running a server?';
+  const Q = DOCTOR_SMOKE_QUERY;
   info(`Q: ${c.cyan(`"${Q}"`)}`);
   info(c.dim('(first run downloads a small local model once — this can take a minute)'));
   const started = Date.now();
@@ -2416,7 +2416,7 @@ async function smokeQuery(cacheDir) {
     // absolute path via spawnSync (no shell involved) that identity check silently fails on this
     // machine, so main() never runs — exit 0, zero stdout, zero stderr, no exception. Looks like a
     // clean success; is actually a total no-op. Verified: switching to a relative name + cwd fixes it.
-    r = spawnSync('node', ['forge-ask-all.mjs', '--dir', cacheDir, '--q', Q, '--k', '3'], {
+    r = spawnSync('node', doctorSmokeArgs(cacheDir), {
       cwd: cacheDir,
       encoding: 'utf8',
       timeout: 240000,

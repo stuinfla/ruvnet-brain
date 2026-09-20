@@ -7,6 +7,13 @@ import { cmpVersion } from './stack-sync.mjs';
 import { isRuntimeFile } from './approved-runtime.mjs';
 
 const SEARCH_FILES = ['forge-mcp-all.mjs', 'forge-ask-all.mjs', 'forge-rerank.mjs', 'card-lane.mjs'];
+// Keep the doctor probe answerable and bounded. A health probe must exercise a real indexed
+// source/citation path; it must not turn an unclear broad question into an all-corpus rerank.
+export const DOCTOR_SMOKE_QUERY = 'What package name is declared in the RuvNet Brain KB package manifest?';
+export function doctorSmokeArgs(cacheDir) {
+  return ['forge-ask-all.mjs', '--dir', cacheDir, '--q', DOCTOR_SMOKE_QUERY,
+    '--repos', 'ruvnet-brain', '--k', '3', '--pool', '8', '--bounded'];
+}
 const version = value => typeof value === 'string' && /^v?\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(value)
   ? value.replace(/^v/, '') : null;
 

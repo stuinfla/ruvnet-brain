@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { inspectInstalledBrain, classifySmokeEvidence } from '../../scripts/installed-brain-health.mjs';
+import { inspectInstalledBrain, classifySmokeEvidence, DOCTOR_SMOKE_QUERY, doctorSmokeArgs } from '../../scripts/installed-brain-health.mjs';
 import { writeInstalledRuntimeIdentity } from '../../kb/corpus-release-identity.mjs';
 import { createHash } from 'node:crypto';
 
@@ -25,6 +25,14 @@ function fixture(searchVersion = '9.9.8', validatorVersion = searchVersion) {
   return dir;
 }
 describe('installed search engine health', () => {
+  it('keeps the live grounding smoke on a named repo and a bounded candidate path', () => {
+    expect(DOCTOR_SMOKE_QUERY).toMatch(/RuvNet Brain KB package manifest/);
+    expect(doctorSmokeArgs('/cache/kb')).toEqual([
+      'forge-ask-all.mjs', '--dir', '/cache/kb', '--q', DOCTOR_SMOKE_QUERY,
+      '--repos', 'ruvnet-brain', '--k', '3', '--pool', '8', '--bounded',
+    ]);
+  });
+
   it('rejects a current validator receipt around an old search engine', () => {
     const state = inspectInstalledBrain(fixture('9.9.7', '9.9.8'), '9.9.8');
     expect(state.healthy).toBe(false);

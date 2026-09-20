@@ -3,8 +3,8 @@ id: ADR-090
 title: Additive source-verified capability discovery
 status: Accepted
 date: 2026-09-19
-updated: 2026-09-19
-reviewed_digest: 9e737a426e6a
+updated: 2026-09-20
+reviewed_digest: 0be7e2e73218
 authors: [Stuart Kerr, Codex]
 tags: [retrieval, routing, source-grounding, capability-discovery]
 relates: [ADR-060, ADR-074]
@@ -15,19 +15,22 @@ governs:
   - kb/forge-mcp-all.mjs
   - kb/grounded-response.mjs
   - kb/implementation-evidence.mjs
+  - kb/exact-member-proof.mjs
+  - kb/source-discovery-intent.mjs
   - kb/identifier-lane.mjs
   - kb/repo-aliases.json
   - tests/unit/capability-family-routing.test.mjs
   - tests/unit/capability-discovery.test.mjs
   - tests/integration/forge-mcp-capability-discovery.test.mjs
   - tests/unit/implementation-truth.test.mjs
+  - tests/unit/source-discovery-intent.test.mjs
   - tests/unit/grounding-identifier-recall.test.mjs
   - tests/unit/card-lane.test.mjs
   - tests/fixtures/retrieval/ruvector-router-wasm-reviewed-passage.txt
   - tests/fixtures/retrieval/ruflo-cross-project-transfer-reviewed-passage.txt
 ---
 
-Updated: 2026-09-19 | Version 1.2.1
+Updated: 2026-09-20 | Version 1.2.3
 Created: 2026-09-19
 
 # ADR-090 — Additive source-verified capability discovery
@@ -46,10 +49,14 @@ separate.
 ## Decision
 
 1. Capability concepts identify related documentation only. They do not replace primary routing,
-   candidate ordering, cross-encoder scores, evidence grades, or implementation verdicts.
+   candidate ordering, cross-encoder scores, evidence grades, or implementation verdicts. A separate
+   source-discovery response may be used only for an allowlisted positive discovery phrasing; it is
+   explicitly labeled as a lead, has no ranked result or grounding receipt, and cannot claim the
+   full query is answered.
 2. Remove the finite exact-query positive shortcut and family-owner override. The observed holdout
    regression (useful AQE transfer documentation replaced by irrelevant Ruflo guidance) shows why
-   recognizing a topic must not override the original search. The existing card fast lane remains.
+   recognizing a topic must not override the original search. For non-discovery phrasings, the
+   existing card and primary retrieval paths remain authoritative.
 3. A shared collector adds `relatedSources` separately to normal, card-hit, and routing-decline
    MCP responses and to CLI output. Supplements never enter ranked results or grounding receipts.
    Text and structured fields contain the same guarded excerpt, with a hash of the returned bytes.
@@ -61,15 +68,26 @@ separate.
    publish/load and includes required `PINATA_API_JWT`; it establishes neither automatic nor
    credential-free offline transfer. Each supplement states these limits, without a fabricated CE.
 6. Explicit repository restrictions and named product scope restrict supplements. Ambiguous
-   multi-family requests do not receive an arbitrary family's source. OFF and outage paths remain
-   authoritative; the supplement does not turn them into successful search responses.
+   multi-family requests do not receive an arbitrary family's source. OFF is checked before source
+   discovery; the discovery lead does not mint a search receipt or claim index health. All queries
+   outside the positive discovery contract retain the primary outage/search path.
 7. Nightly source changes require independent catalog review, an exact new passage hash, and an
    updated fixture before the supplement can return. Runtime never regenerates its own approval.
+   For a query matching exactly one reviewed family, MCP may return this source as a
+   `SOURCE-BOUNDED DISCOVERY` lead before card or model retrieval when the source is inside any
+   explicit repository scope and the query expresses positive option-finding or conceptual
+   cross-project-transfer intent. Assertions, negative/prevention/troubleshooting phrasing,
+   implementation details, explicit multi-result, exact-member, and direct built-state queries
+   remain on primary retrieval. It stays outside ranked results and grounding receipts and states
+   its limits.
    This small catalog is a bounded discovery repair, not proof of corpus-wide advisory completeness.
-8. Exact `Owner.member()` queries require relevant implementation source declaring that member.
-   A callsite, class match, nested call, or declaration without a body is insufficient. A direct
-   exact-member scan may return qualified indexed absence for the routed stores; this does not
-   establish global nonexistence. The case-folded exact identifier scan widens only;
+8. Exact `Owner.member()` queries require a direct concrete class-method declaration parsed from
+   supported JavaScript/TypeScript source by Babel. A callsite, class match, nested call, getter,
+   setter, overload signature without a body, unsupported language, parse failure, or missing parser
+   is insufficient. A positive result proves declaration presence only; it does not prove
+   accessibility, call shape, or runtime behavior. A direct exact-member scan may return qualified
+   indexed absence for the routed stores; this does not establish global nonexistence. The
+   case-folded exact identifier scan widens only;
    RvfStore/RvfDatabase and explicitly qualified Cognitum ruOS have canonical routing aliases.
 9. Pool size, cascade defaults, CE thresholds, timeouts and default `k` are unchanged.
 10. An explicitly named installed multiword store remains a source-search scope when it has no
@@ -92,6 +110,8 @@ quality improvement. No universal 98% quality or deployed-runtime claim is made 
 |---|---|
 | 2026-09-19 | Supersedes the earlier same-day template/candidate mechanism with additive, separately labeled documentation. Independent MCP review found one owner-routing regression and little generalization; revised behavior preserves primary search and all evidence grades. Source review and focused tests only; live qualification pending. |
 | 2026-09-19 | Reviewed retrieval integration: preserve existing same-path evidence instead of replacing it with a short catalog excerpt; preserve source order in the catalog excerpt. No OFF/scope or cascade-default changes, and no latency or installed-runtime claim. | `kb/forge-ask-all.mjs`; `tests/unit/capability-discovery.test.mjs`; reviewed_digest 517fc91452d5. |
+| 2026-09-20 | Exact member declarations now use the production Babel parser for supported JavaScript/TypeScript, fail closed on parse errors or missing parser, and report only declaration presence. Runtime dependency added to the KB package; bundle module-graph traversal includes the helper. Focused unit tests only; release packaging and installed runtime remain unqualified. | `kb/exact-member-proof.mjs`, `kb/implementation-evidence.mjs`, `kb/package.json`, `tests/unit/implementation-truth.test.mjs`; reviewed_digest 0be7e2e73218. |
+| 2026-09-20 | Added a narrowly allowlisted, source-only MCP discovery response for two reviewed families after independent MCP testing showed the normal candidate route could return irrelevant sources or exceed the host window. It has empty ranked results, no grounding receipt, and only applies to positive discovery phrasings; assertion, prevention, troubleshooting, API, and explicit multi-result cases retain primary retrieval. Independent review and focused MCP/intention tests passed; broader retrieval quality remains unqualified. | `kb/source-discovery-intent.mjs`, `kb/forge-mcp-all.mjs`, `tests/unit/source-discovery-intent.test.mjs`, `tests/integration/forge-mcp-capability-discovery.test.mjs`; reviewed_digest 0be7e2e73218. |
 
 | 2026-09-19 | Generalized broad-family discovery without broadening the exact no-rerank allowlist: a matching query can add one independently reviewed, SHA-bound passage as a candidate in the normal rerank/evidence path. Curated cards cannot return early for a family query. Changed hashes fail closed; original query text and qualifiers are preserved. Focused unit tests only; no latency, held-out recall, or installed-runtime claim. | Reviewed the scoped `searchAll` handoff, witness injection, source hash check, card-lane bypass, and focused capability-discovery tests. |
 | 2026-09-19 | Exact `Owner.member()` questions now require relevant implementation source declaring that exact member before implementation is reported proven; a class match or callsite alone leaves a qualified insufficient-evidence result. Exact identifiers are matched case-insensitively so normalized PascalCase symbols reach the existing widened-only scan. Added exact `RvfStore`/`RvfDatabase` owner aliases and a full Cognitum ruOS disambiguator; bare `ruos` remains the ruvnet desktop-control owner. Focused unit tests only; no MCP runtime or global absence claim. | Reviewed `kb/implementation-evidence.mjs`, `kb/identifier-lane.mjs`, `kb/repo-aliases.json`, `kb/card-lane.mjs`, and the focused evidence/router/scanner tests. |

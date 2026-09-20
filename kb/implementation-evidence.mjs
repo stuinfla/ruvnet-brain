@@ -121,6 +121,10 @@ export function assessImplementation(query, results) {
 export function implementationNotice(implementation) {
   if (!implementation?.required) return '';
   if (implementation.verdict === 'proven') {
+    const member = implementation.requestedMember;
+    if (member) {
+      return `✅ IMPLEMENTATION EVIDENCE: PROVEN — a direct concrete declaration of ${member.owner}.${member.member} exists in ${implementation.implementationSources.join(', ')}. This establishes declaration presence only; accessibility, call shape, and runtime behavior were not verified.\n\n`;
+    }
     return `✅ IMPLEMENTATION EVIDENCE: PROVEN by ${implementation.implementationSources.join(', ')}.\n\n`;
   }
   const reason = implementation.unprovenReason === 'insufficient-relevance'

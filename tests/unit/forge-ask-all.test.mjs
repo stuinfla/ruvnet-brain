@@ -112,7 +112,7 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(out.evidence.caveat).toMatch(/not evidence of global nonexistence/i);
   });
 
-  it('keeps source retrieval and implementation proof when the exact member is indexed', async () => {
+  it('keeps Rust source retrieval but fails exact-member proof closed for an unsupported parser', async () => {
     const d = mkdirWith(['ruvector.rvf', 'concepts.rvf', 'ruflo.rvf']);
     fs.writeFileSync(path.join(d, 'capability-cards.md'),
       '## ruvector\nLocal vector storage and the RvfStore API.\n');
@@ -130,7 +130,9 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
       query: 'How do I call RvfStore.query()?', allowFullCorpus: false });
     expect(searchKb).toHaveBeenCalled();
     expect(rerankPairs).toHaveBeenCalled();
-    expect(out.implementation).toMatchObject({ verdict: 'proven', requestedMember: {
+    expect(out.results[0].path).toBe('src/rvf-store.rs');
+    expect(out.implementation).toMatchObject({ verdict: 'unproven',
+      unprovenReason: 'exact-member-not-established', requestedMember: {
       owner: 'RvfStore', member: 'query',
     } });
   });

@@ -54,7 +54,7 @@ describe('no-token Gist Git snapshot transport', () => {
     expect(safe.PATH).toBe('/usr/bin');
     expect(Object.keys(safe).some((key) => ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0', 'GIT_DIR'].includes(key)
       || key === 'GIT_OBJECT_DIRECTORY')).toBe(false);
-    expect(safe.GIT_TERMINAL_PROMPT).toBe('0');
+    expect(safe.GIT_TERMINAL_PROMPT).toBe('0'); // sync-version-ignore: this fixed literal is the documented git env contract
     expect(safe.GIT_CONFIG_GLOBAL).toBe(os.devNull);
   });
 

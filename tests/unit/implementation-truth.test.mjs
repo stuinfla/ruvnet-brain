@@ -169,6 +169,7 @@ describe('implementation truth gate — design intent is never built-state proof
       ranked('source', 'src/rvf-store.ts', 'export class RvfStore { query(vector) { return vector; } }'),
     );
     expect(legitimate.implementation).toMatchObject({ verdict: 'proven', unprovenReason: null });
+    expect(implementationNotice(legitimate.implementation)).toMatch(/declaration presence only; accessibility, call shape, and runtime behavior were not verified/);
 
     const typedLegitimate = assessImplementation(
       'How do I call RvfStore.query()?',

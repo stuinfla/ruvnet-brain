@@ -70,7 +70,7 @@ function callSearch(dir, query) {
 }
 
 describe('forge-mcp-all — related documentation stays separate from primary retrieval', () => {
-  it('keeps the default-k card response and appends verified local documentation', async () => {
+  it('answers broad local-vector discovery from the verified source without loading/reranking an unrelated card', async () => {
     const sourceText = fs.readFileSync(path.join(REPO_ROOT, 'tests/fixtures/retrieval/ruvector-router-wasm-reviewed-passage.txt'), 'utf8');
     const dir = makeCorpus(
       'ruvector',
@@ -87,16 +87,20 @@ describe('forge-mcp-all — related documentation stays separate from primary re
 
     expect(reply.result.structuredContent.relatedSources).toHaveLength(1);
     expect(serialized).toContain('crates/ruvector-router-wasm/README.md');
-    expect(reply.result.structuredContent.cardLane).toBeDefined();
     expect(serialized).toContain('"k":6');
-    expect(reply.result.structuredContent.retrieval.results[0].path).toContain('capability-cards.md');
+    expect(reply.result.structuredContent.sourceDiscovery).toMatchObject({
+      repos: ['ruvector'], acceptedAsPrimaryEvidence: false,
+    });
+    expect(reply.result.structuredContent.retrieval.results).toEqual([]);
+    expect(reply.result.structuredContent).not.toHaveProperty('grounding');
+    expect(reply.result.structuredContent).not.toHaveProperty('cardLane');
     expect(reply.result.structuredContent.relatedSources[0]).not.toHaveProperty('ceScore');
     expect(serialized).toContain('44404f0c1ae135b021ece8e5e30c271fb1900ea0c4f583f1f891ee3196386662');
     expect(serialized).toContain('Does not establish native Rust support');
     expect(reply.result.content[0].text).toContain('RELATED DOCUMENTATION');
   });
 
-  it('uses the reviewed cross-project source section for the default-k transfer query', async () => {
+  it('answers broad cross-project discovery from the verified source without primary reranking', async () => {
     const sourceText = fs.readFileSync(path.join(REPO_ROOT, 'tests/fixtures/retrieval/ruflo-cross-project-transfer-reviewed-passage.txt'), 'utf8');
     const dir = makeCorpus(
       'ruflo',
@@ -110,6 +114,11 @@ describe('forge-mcp-all — related documentation stays separate from primary re
 
     expect(reply.result.structuredContent.relatedSources).toHaveLength(1);
     expect(serialized).toContain('"k":6');
+    expect(reply.result.structuredContent.sourceDiscovery).toMatchObject({
+      repos: ['ruflo'], acceptedAsPrimaryEvidence: false,
+    });
+    expect(reply.result.structuredContent.retrieval.results).toEqual([]);
+    expect(reply.result.structuredContent).not.toHaveProperty('grounding');
     expect(serialized).toContain('3af770c2c5bceb4b612eac6757656d6e2be74b914bdf75f1d6f422af54dcdd36');
     expect(serialized).toContain('Requires `PINATA_API_JWT` configured.');
     expect(serialized).toContain('Does not establish automatic, credential-free, or offline');
