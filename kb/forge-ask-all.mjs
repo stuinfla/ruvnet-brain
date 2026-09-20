@@ -20,6 +20,7 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { searchKb } from './forge-ask.mjs';
 import { describeSearchFailure } from './search-outcome.mjs';
+import { prepareRelatedSources, renderRelatedSources } from './grounded-response.mjs';
 import { rerankPairs, cePrefilterScores } from './forge-rerank.mjs';
 import {
   contentTokens,
@@ -31,7 +32,7 @@ import {
 import {
   REVIEWED_CAPABILITY_EVIDENCE,
   buildReviewedCapabilityExcerpt,
-  matchReviewedCapabilityIntent,
+  routeCapabilityFamily,
 } from './capability-families.mjs';
 import { tokenize, buildCorpusStats, bm25Score } from './forge-hybrid.mjs';
 import {
@@ -2988,97 +2989,37 @@ function traceRetrieval(record) {
   return undefined;
 }
 
-async function sourceBackedCapabilityDiscovery({ dir, query, planned, k }) {
-  const family = String(planned?.family || '');
-  const reviewed = matchReviewedCapabilityIntent(query, family);
-  if (!reviewed || planned?.repos?.length !== 1 || planned.repos[0] !== reviewed.repo || k < 1) return null;
-
-  const metaFile = path.join(dir, `${reviewed.repo}.meta.json`);
-  if (!fs.existsSync(metaFile)) return null;
-  let meta;
-  try { meta = parseMetadataFile(metaFile); }
-  catch { return null; }
-  const entry = Object.values(meta.entries || {}).find((item) =>
-    item?.path === reviewed.path && ['doc', 'skill', 'tutorial', 'adr'].includes(String(item.kind || '').toLowerCase()));
-  if (!entry) return null;
-  const sourceText = await reviewedSourcePassage(dir, reviewed.repo, reviewed.path, reviewed.passageSha256);
-  if (!sourceText) return null;
-  const excerpt = buildReviewedCapabilityExcerpt(sourceText, reviewed);
-  if (!excerpt) return null;
-  const result = {
-    repo: reviewed.repo,
-    path: reviewed.path,
-    title: String(entry.title || path.basename(reviewed.path)),
-    kind: String(entry.kind || 'doc').toLowerCase(),
-    text: excerpt,
-    fullText: excerpt,
-    score: null,
-    ceScore: null,
-    bestDistance: null,
-    chunksJoined: 1,
-    truncated: false,
-    direct: [],
-    corroborating: [],
-    _lane: 'source-backed-discovery',
-    _proofMethod: 'reviewed-source-catalog',
-    _sourcePassageSha256: reviewed.passageSha256,
-    _verifiedClaimGroups: [...reviewed.claimGroups],
-    ...classifyResultEvidence({ kind: String(entry.kind || 'doc').toLowerCase(), path: reviewed.path, text: excerpt }),
-  };
-  const results = [result];
-  return {
-    repos: [reviewed.repo],
-    perRepo: { [reviewed.repo]: 1 },
-    results,
-    pooled: 0,
-    pooledAll: 1,
-    cappedOut: 0,
-    prefiltered: 0,
-    prefilterTokens: 0,
-    prefilterMs: 0,
-    corpusAge: corpusAgeFor(dir, [reviewed.repo]),
-    adrCollision: null,
-    evidence: {
-      grade: 'source_grounded',
-      topScore: null,
-      droppedIrrelevant: 0,
-      caveat: family === 'local-vector-storage'
-        ? 'Documented browser option using IndexedDB; native/server-side compatibility and runtime behavior not verified.'
-        : 'Documented cross-project pattern transfer via IPFS; runtime configuration and credential availability not verified.',
-    },
-    implementation: {
-      required: false,
-      verdict: 'unproven',
-      implementationSources: [],
-      proofMethod: 'reviewed-source-catalog',
-    },
-    documentationSources: [`${reviewed.repo}/${reviewed.path}`],
-    sourceDiscovery: {
-      proofMethod: 'reviewed-source-catalog',
-      repo: reviewed.repo,
-      path: reviewed.path,
-      passageSha256: reviewed.passageSha256,
-      claimGroups: [...reviewed.claimGroups],
-    },
-    routing: {
-      attempted: true,
-      accepted: true,
-      lane: 'source-backed-discovery',
-      confidence: planned.confidence,
-      reason: planned.reason,
-      candidateRepos: planned.repos,
-      implementationRequired: false,
-      implementationVerdict: 'unproven',
-      verifiedClaimGroups: [...reviewed.claimGroups],
-    },
-  };
+// Related documentation is additive: it never chooses the primary search scope or changes
+// relevance / implementation verdicts. Verify actual source bytes on every invocation.
+export async function relatedCapabilitySources({ dir, query, repos }) {
+  try {
+    const available = discoverRepos(dir);
+    const family = routeCapabilityFamily(query, available);
+    if (!family) return [];
+    const owner = family.repos[0];
+    const named = routeReposFromCards(query, dir, available).namedRepos || [];
+    if ((repos?.length && !repos.includes(owner)) || (named.length && !named.includes(owner))) return [];
+    const witness = await reviewedCapabilityWitness({ dir, repo: owner, family: family.family });
+    if (!witness) return [];
+    return [{
+      repo: witness.repo, path: witness.path, title: witness.title,
+      text: witness.text, evidenceClass: 'documentation',
+      relation: family.family,
+      passageSha256: witness._sourcePassageSha256,
+      excerptSha256: createHash('sha256').update(witness.text).digest('hex'),
+      scope: family.family === 'local-vector-storage'
+        ? 'Browser vector search and IndexedDB persistence documentation. Does not establish native Rust support, crash-recovery guarantees, or tested runtime behavior.'
+        : 'Explicit IPFS publish/load instructions requiring PINATA_API_JWT. Does not establish automatic, credential-free, or offline cross-project learning; runtime behavior not verified.',
+    }];
+  } catch { return []; } // Optional discovery cannot break primary retrieval.
 }
 
-// An untemplated query in a reviewed capability family gets the independently reviewed passage as
-// one extra candidate. It is not an answer lane: searchAll sends the ORIGINAL query and this exact,
-// hash-verified excerpt through the same cross-encoder, relevance grader, and implementation gate
-// as every other candidate. A stale/missing witness contributes nothing and normal retrieval stays
-// available.
+export async function searchAll(options) {
+  const primary = await searchAllPrimary(options);
+  const relatedSources = await relatedCapabilitySources(options);
+  return { ...primary, ...(relatedSources.length ? { relatedSources } : {}) };
+}
+
 async function reviewedCapabilityWitness({ dir, repo, family }) {
   const reviewed = REVIEWED_CAPABILITY_EVIDENCE[String(family || '')];
   if (!reviewed || reviewed.repo !== repo) return null;
@@ -3114,8 +3055,8 @@ async function reviewedCapabilityWitness({ dir, repo, family }) {
   };
 }
 
-export async function searchAll({
-  dir, query, k = 6, pool = 64, repos, _routeStage = false, _capabilityFamily = null,
+async function searchAllPrimary({
+  dir, query, k = 6, pool = 64, repos, _routeStage = false,
   allowFullCorpus = true, deadline = null,
 }) {
   const startedAt = performance.now();
@@ -3343,11 +3284,7 @@ export async function searchAll({
     if (planned.repos.length && planned.repos.length < discovered.length) {
       const routeMs = performance.now() - startedAt;
       const sourceProofStartedAt = performance.now();
-      const capabilityDiscovery = planned.family
-        ? await sourceBackedCapabilityDiscovery({ dir, query, k, planned })
-        : null;
-      const sourceCard = capabilityDiscovery
-        || (planned.family ? null : await sourceBackedCardLane({ dir, query, k, planned }));
+      const sourceCard = await sourceBackedCardLane({ dir, query, k, planned });
       if (sourceCard) {
         traceRetrieval({ query, family: planned.family || null, routeMs: +routeMs.toFixed(2),
           sourceProofMs: +(performance.now() - sourceProofStartedAt).toFixed(2),
@@ -3356,14 +3293,13 @@ export async function searchAll({
         return sourceCard;
       }
       const scopedStartedAt = performance.now();
-      const scoped = await searchAll({
+      const scoped = await searchAllPrimary({
         dir,
         query,
         k,
         pool,
         repos: planned.repos,
         _routeStage: true,
-        _capabilityFamily: planned.family,
         allowFullCorpus,
         deadline,
       });
@@ -3589,12 +3525,6 @@ export async function searchAll({
         const byIdentifier = identifierCandidates(scan, name, identifierTokens, 8, knownRepos)
           .filter((candidate) => !seen.has(candidate.path));
         cands = cands.concat(byIdentifier);
-      }
-      if (_capabilityFamily) {
-        const witness = await reviewedCapabilityWitness({ dir, repo: name, family: _capabilityFamily });
-        // Existing retrieval may carry details answering additional query constraints.
-        // A short reviewed excerpt must never replace that richer evidence.
-        if (witness && !cands.some((candidate) => candidate.path === witness.path)) cands.push(witness);
       }
       if (isTranscriptStore(name)) {
         const seen = new Set(hits.map((h) => h.path));
@@ -3827,6 +3757,8 @@ async function main() {
     console.log(r.fullText || r.text || '');
     console.log('===================================================================\n');
   });
+  const related = renderRelatedSources(prepareRelatedSources(searched.relatedSources));
+  if (related) console.log(related);
 }
 
 // REALPATH BOTH SIDES, not path.resolve(). REPRODUCED LIVE 2026-07-27: path.resolve() normalizes

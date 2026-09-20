@@ -4,8 +4,8 @@ title: Brain on/off and per-part scope — a user-controlled brain that can neve
 status: Accepted
 date: 2026-07-26
 updated: 2026-09-19
-reviewed_digest: a90d980ad3e7
-version: 1.1.5
+reviewed_digest: 910e8bb8c064
+version: 1.1.6
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -226,6 +226,7 @@ source review does not renew the expired verification or prove the native-host a
 
 ## Currency log
 
+| 2026-09-19 | Replaced the earlier same-day family override and exact-template positive reply with a separate related-documentation supplement (ADR-090). Primary routing, ranked results, OFF controls, and CE settings retain their existing authority. Source review does not renew expired runtime verification. | Reviewed forge-ask-all, forge-mcp-all, grounded-response and capability tests; supplements are separately guarded and never enter primary grounding receipts. |
 | 2026-09-19 | Currency review for retrieval generalization: `kb/forge-ask-all.mjs` adds a SHA-bound reviewed passage only as a candidate for matched capability-family queries; exact reviewed templates remain the sole no-rerank reply path. No brainEnabled/sentinel, per-part scope, OFF-state, maintenance, or profile logic changed. Focused retrieval unit tests do not rerun ADR-054's host/runtime OFF gates; `impl: verification-expired` remains unchanged. | Reviewed the actual `forge-ask-all.mjs` diff and capability-discovery tests. Confirmed edits are limited to candidate selection and do not touch OFF/scope authority. No global digest or runtime verification renewed. |
 | 2026-09-13 | `kb/forge-ask-all.mjs` moved twice tonight (aca43039, 1efcf536): a negative-cross-encoder-score prune exemption for name-boosted candidates (root cause 1 of issue #286), and a document-noun exclusion in `CODE_INTENT_RE`/`IMPL_INTENT_RE` (root cause 2). Both are retrieval-ranking/intent-classification fixes with no interaction with this ADR's decision — no on/off sentinel, scope-suppression, or `wasBrainOff`/`offBehavior` logic was touched. Decision unchanged. `scripts/user-settings.mjs`, `plugin/mcp/server.mjs`, `plugin/scripts/hook-shim.mjs`, `plugin/scripts/session-start-core.mjs`, `scripts/onboarding-console.mjs`, `kb/brain-profile.mjs`, `kb/forge-update.mjs`, `bin/install.mjs` did not move. | Reviewed both `kb/forge-ask-all.mjs` diffs (`aca43039`, `1efcf536`) in full for on/off or scope-related surface; none found. reviewed_digest ed958558e10b. |
 | 2026-09-12 | Currency review at commit dae83538: decision unchanged. The hook-parity fork added `grounding-turn-mark`/`grounding-turn-gate` to `plugin/scripts/hook-shim.mjs`'s TABLE and registered Codex `PreToolUse`/`PostToolUse` in `hooks.json`/`codex-hooks.json`; both new hooks read `wasBrainOff`/`offBehavior:'silence'` the same way `ground-ruvnet` already does — no new on/off surface, no change to the sentinel file or the console power section. `bin/install.mjs`, `kb/forge-update.mjs`, `kb/brain-profile.mjs`, `scripts/onboarding-console.mjs`, `plugin/mcp/server.mjs`, `scripts/user-settings.mjs`, `kb/forge-ask-all.mjs`, `plugin/scripts/session-start-core.mjs` did not move in this fork's diff. | Reviewed `plugin/scripts/hook-shim.mjs`'s new TABLE entries and `hooks.json`/`codex-hooks.json`'s new registrations directly; diff read in full. |

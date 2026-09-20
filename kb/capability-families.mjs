@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
-// Broad capability vocabulary used only to choose bounded source-search owners.
-// A match never answers the question; forge-ask-all must still return source evidence.
+// Broad concepts identify related documentation; they never override primary routing.
+// A match establishes relatedness only, not satisfaction of all query constraints.
 const FAMILIES = [
   {
     id: 'local-vector-storage',
@@ -10,8 +10,8 @@ const FAMILIES = [
     matches(query) {
       const q = String(query || '');
       const vectorData = /\b(?:vectors?|embeddings?)\b/i.test(q);
-      const storageIntent = /\b(?:stor\w*|persist\w*|save|write|keep)\b/i.test(q);
-      const localDeployment = /\b(?:local(?:ly)?|offline|on[- ]device|private(?:ly)?|without (?:running )?(?:a )?server|no server|zero server)\b/i.test(q);
+      const storageIntent = /\b(?:stor\w*|persist\w*|save|write|keep|database)\b/i.test(q);
+      const localDeployment = /\b(?:local(?:ly)?|browser|offline|on[- ]device|(?:on|this) (?:the )?device|private(?:ly)?|without (?:running |operating )?(?:a )?(?:server|backend)|no server|zero server)\b/i.test(q);
       return vectorData && storageIntent && localDeployment;
     },
   },
@@ -23,28 +23,12 @@ const FAMILIES = [
       const q = String(query || '');
       const learnedKnowledge = /\b(?:learn\w*|patterns?|experience|knowledge)\b/i.test(q);
       const projectBoundary = /\b(?:projects?|repository|repositories|repos|codebases?)\b/i.test(q)
-        && /\b(?:across|between|another|different|cross[- ]project)\b/i.test(q);
-      const transferIntent = /\b(?:carry|transfer|share|sharing|reuse|reus\w*|across|between|another|different)\b/i.test(q);
+        && /\b(?:across|between|another|different|separate|cross[- ]project)\b/i.test(q);
+      const transferIntent = /\b(?:carry|transfer|share|sharing|move|reuse|reus\w*|across|between|another|different)\b/i.test(q);
       return learnedKnowledge && projectBoundary && transferIntent;
     },
   },
 ];
-
-// These are finite, reviewed discovery prompts. Normalize only presentation punctuation and
-// whitespace; never drop digits, clauses, or qualifiers before deciding eligibility.
-const REVIEWED_DISCOVERY_TEMPLATES = new Map([
-  ['local-vector-storage', new Set([
-    'how should i store embeddings in this project without running a server',
-    'how can i store embeddings locally without a server',
-    'how can i store and search embeddings locally without a server',
-    'how should i store and search embeddings locally without a server',
-  ])],
-  ['cross-project-agent-learning', new Set([
-    'how can agents carry useful learning from one project to another',
-    'how can agents share learned patterns across projects',
-    'how can agents transfer learned patterns between projects',
-  ])],
-]);
 
 export const REVIEWED_CAPABILITY_EVIDENCE = Object.freeze({
   'local-vector-storage': Object.freeze({
@@ -62,15 +46,6 @@ export const REVIEWED_CAPABILITY_EVIDENCE = Object.freeze({
     claimGroups: Object.freeze(['cross-project-learned-pattern-transfer', 'explicit-ipfs-store-load', 'pinata-credential-required']),
   }),
 });
-
-export function matchReviewedCapabilityIntent(query, family) {
-  const templates = REVIEWED_DISCOVERY_TEMPLATES.get(family);
-  if (!templates) return null;
-  const normalized = String(query || '').trim().toLowerCase()
-    .replace(/[?!.]+$/g, '')
-    .replace(/\s+/g, ' ');
-  return templates.has(normalized) ? REVIEWED_CAPABILITY_EVIDENCE[family] : null;
-}
 
 export function buildReviewedCapabilityExcerpt(passageText, evidence) {
   const text = String(passageText || '');

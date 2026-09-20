@@ -4,7 +4,7 @@ title: The two-stage cross-encoder cascade — reading every passage, cheaply, b
 status: Accepted
 date: 2026-07-27
 updated: 2026-09-19
-reviewed_digest: c90736821651
+reviewed_digest: 2a8622cc4c91
 authors: [Stuart Kerr, Claude Code]
 tags: [retrieval, latency, cross-encoder, cascade, measurement]
 supersedes: [ADR-059]
@@ -18,7 +18,7 @@ governs:
   - plugin/mcp/server.mjs
 ---
 
-Updated: 2026-09-19 | Version 1.0.7
+Updated: 2026-09-19 | Version 1.0.8
 Created: 2026-07-27
 
 # ADR-060 — The two-stage cross-encoder cascade
@@ -235,6 +235,7 @@ opt in with `KB_CE_CASCADE_K=64`; this ADR does not accept that value as the def
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-09-19 | Replaced the earlier same-day family override and exact-template positive reply with a separate related-documentation supplement (ADR-090). Primary routing, ranked results, OFF controls, and CE settings retain their existing authority. Source review does not renew expired runtime verification. | Reviewed forge-ask-all, forge-mcp-all, grounded-response and capability tests; supplements are separately guarded and never enter primary grounding receipts. |
 | 2026-09-19 | Reviewed retrieval integration: preserve existing same-path evidence instead of replacing it with a short catalog excerpt; preserve source order in the catalog excerpt. No OFF/scope or cascade-default changes, and no latency or installed-runtime claim. | `kb/forge-ask-all.mjs`; `tests/unit/capability-discovery.test.mjs`; reviewed_digest c90736821651. |
 
 | 2026-09-19 | Currency review for ADR-090 at source digest `dc868233b250`: `kb/forge-ask-all.mjs` and `kb/forge-mcp-all.mjs` add a finite query-template lane backed by exact reviewed source-passage SHA-256 values, with null CE scores and explicit runtime-unverified caveats; MCP bypasses curated answer cards for those queries. Changed or missing source passages fall through. Cascade stages, pool size, timeout, CE threshold, default `k`, and worker protocol are unchanged. `kb/forge-rerank.mjs`, `scripts/rerank-cap-warm-ab.mjs`, and `scripts/rerank-cap-eval.mjs` did not change. See ADR-090 for the source-catalog contract. | Reviewed `kb/forge-ask-all.mjs`, `kb/forge-mcp-all.mjs`, `kb/forge-rerank.mjs`, and `docs/adr/0090-source-backed-capability-discovery.md`; confirmed no cascade settings or worker protocol changed. reviewed_digest dc868233b250. |

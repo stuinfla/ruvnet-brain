@@ -18,11 +18,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { storeRoot } from './store-root.mjs';
-import { searchAll, discoverRepos, deployedFamilyReposFromQuery } from './forge-ask-all.mjs';
+import { searchAll, discoverRepos, deployedFamilyReposFromQuery, relatedCapabilitySources } from './forge-ask-all.mjs';
 import { warmKnowledgeStores, warmQueryEmbedder } from './forge-ask.mjs';
 import { warmReranker } from './forge-rerank.mjs';
 import { guardPassages } from './forge-guard-injection.mjs';
-import { answerFromCards, renderCardHit, routeReposFromCards } from './card-lane.mjs';
+import { answerFromCards, renderCardHit } from './card-lane.mjs';
 import { implementationNotice } from './implementation-evidence.mjs';
 import { describeSearchOutcome, describeSearchFailure } from './search-outcome.mjs';
 import { groundedToolResult } from './grounded-response.mjs';
@@ -339,15 +339,8 @@ async function handle(msg) {
         // fabricated hit; naming a repo is not by itself sufficient confidence).
         // Heavy-path model revisions are materialized locally by forge-rerank before remote access.
         const namedFamilyRepos = deployedFamilyReposFromQuery(query, KB_DIR, repoList);
-        // A family match only chooses a bounded source owner; capability-card prose cannot prove
-        // the original request's persistence, deployment, or cross-project transfer details.
-        // Let searchAll run its reviewed-source catalog check before considering a card.
-        const familyDiscovery = !namedFamilyRepos.length
-          && routeReposFromCards(query, KB_DIR, repoList).confidence === 'capability-family';
-        const cardHit = (namedFamilyRepos.length || familyDiscovery)
-          ? { hit: false, reason: familyDiscovery
-            ? 'broad capability family requires source-witness discovery'
-            : 'named deployed RVF family requires multi-store search' }
+        const cardHit = namedFamilyRepos.length
+          ? { hit: false, reason: 'named deployed RVF family requires multi-store search' }
           : answerFromCards(query, KB_DIR, { allowGuideAnswers: true, k: explicitK ? k : 1 });
         if (cardHit.hit) {
           const cardBody = renderCardHit(cardHit);
@@ -376,6 +369,7 @@ async function handle(msg) {
           meterLog({ ts: new Date().toISOString(), source: 'mcp', tool: 'search_ruvnet', k, bytes: cardBody.length, cardLane: true });
           return ok(id, groundedToolResult({
             body: cardBody,
+            relatedSources: await relatedCapabilitySources({ dir: KB_DIR, query, repos: REPOS }),
             query, k, results: [{ repo: cardHit.repo, path: cardHit.path, text: cardBody }],
             grounding: cardReceipt?.sources?.length ? cardReceipt : null,
             extra: {
@@ -392,7 +386,7 @@ async function handle(msg) {
           adrCollision,
           implementation,
           routing,
-          sourceDiscovery,
+          relatedSources,
         } = await searchAll({
           dir: KB_DIR,
           query,
@@ -522,13 +516,12 @@ async function handle(msg) {
         // receipt line just above — an empty result must never be mistaken for proof.
         if (results.length > 0) markGroundingProven();
         return ok(id, groundedToolResult({
-          body,
+          body, relatedSources,
           query, k, results,
           grounding: receipt?.sources?.length ? receipt : null,
           implementation,
           extra: {
             ...(routing ? { routing } : {}),
-            ...(sourceDiscovery ? { sourceDiscovery } : {}),
           },
         }));
       } catch (e) {

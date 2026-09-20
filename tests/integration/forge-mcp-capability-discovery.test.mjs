@@ -69,8 +69,8 @@ function callSearch(dir, query) {
   });
 }
 
-describe('forge-mcp-all — broad family questions use source-witness discovery', () => {
-  it('does not return a curated card for the default-k local storage smoke query', async () => {
+describe('forge-mcp-all — related documentation stays separate from primary retrieval', () => {
+  it('keeps the default-k card response and appends verified local documentation', async () => {
     const sourceText = fs.readFileSync(path.join(REPO_ROOT, 'tests/fixtures/retrieval/ruvector-router-wasm-reviewed-passage.txt'), 'utf8');
     const dir = makeCorpus(
       'ruvector',
@@ -81,19 +81,19 @@ describe('forge-mcp-all — broad family questions use source-witness discovery'
     );
     const { reply } = await callSearch(
       dir,
-      'How should I store embeddings in this project without running a server?',
+      'What should I use to store vectors locally and privately with zero servers?',
     );
     const serialized = JSON.stringify(reply);
 
-    expect(serialized).toContain('source-backed-discovery');
+    expect(reply.result.structuredContent.relatedSources).toHaveLength(1);
     expect(serialized).toContain('crates/ruvector-router-wasm/README.md');
-    expect(serialized).not.toContain('FAST LANE');
+    expect(reply.result.structuredContent.cardLane).toBeDefined();
     expect(serialized).toContain('"k":6');
-    expect(serialized).toContain('"verdict":"unproven"');
-    expect(serialized).toContain('reviewed-source-catalog');
+    expect(reply.result.structuredContent.retrieval.results[0].path).toContain('capability-cards.md');
+    expect(reply.result.structuredContent.relatedSources[0]).not.toHaveProperty('ceScore');
     expect(serialized).toContain('44404f0c1ae135b021ece8e5e30c271fb1900ea0c4f583f1f891ee3196386662');
-    expect(serialized).toContain('native/server-side compatibility and runtime behavior not verified');
-    expect(serialized).not.toContain('Say coverage is thin');
+    expect(serialized).toContain('Does not establish native Rust support');
+    expect(reply.result.content[0].text).toContain('RELATED DOCUMENTATION');
   });
 
   it('uses the reviewed cross-project source section for the default-k transfer query', async () => {
@@ -108,10 +108,10 @@ describe('forge-mcp-all — broad family questions use source-witness discovery'
     const { reply } = await callSearch(dir, 'How can agents carry useful learning from one project to another?');
     const serialized = JSON.stringify(reply);
 
-    expect(serialized).toContain('source-backed-discovery');
+    expect(reply.result.structuredContent.relatedSources).toHaveLength(1);
     expect(serialized).toContain('"k":6');
     expect(serialized).toContain('3af770c2c5bceb4b612eac6757656d6e2be74b914bdf75f1d6f422af54dcdd36');
     expect(serialized).toContain('Requires `PINATA_API_JWT` configured.');
-    expect(serialized).toContain('runtime configuration and credential availability not verified');
+    expect(serialized).toContain('Does not establish automatic, credential-free, or offline');
   });
 });
