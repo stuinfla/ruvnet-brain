@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { selectResults } from '../../kb/forge-ask-all.mjs';
 import { answerFromCards } from '../../kb/card-lane.mjs';
 import { groundedToolResult } from '../../kb/grounded-response.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
 import {
   assessImplementation,
   implementationNotice,
   requiresImplementationProof,
 } from '../../kb/implementation-evidence.mjs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const KB = path.join(ROOT, 'kb');
@@ -113,6 +115,98 @@ describe('implementation truth gate — design intent is never built-state proof
       implementationSources: ['fictional-ruv-project/src/orbital_deployment.rs'],
     });
     expect(out.results[0].evidenceClass).toBe('implementation');
+  });
+
+  it('does not infer an exact API method from a relevant class or neighboring implementation', () => {
+    const query = 'How do I call RvfStore.telepathicQuantumSync() to synchronize my vector database?';
+    const out = assessImplementation(query, ranked(
+      'source',
+      'src/rvf-store.ts',
+      'export class RvfStore { query(vector) { return vector; } }',
+      9,
+    ));
+    expect(out.implementation).toMatchObject({
+      required: true,
+      verdict: 'unproven',
+      requestedMember: { owner: 'RvfStore', member: 'telepathicQuantumSync' },
+      unprovenReason: 'exact-member-not-established',
+    });
+    expect(implementationNotice(out.implementation)).toMatch(/does not establish global nonexistence/);
+
+    const callInsideOtherMethod = assessImplementation(
+      'How do I call RvfStore.fakeMethod()?',
+      ranked('source', 'src/api.ts',
+        'class RvfStore { realMethod() { this.fakeMethod(); } }', 8),
+    );
+    expect(callInsideOtherMethod.implementation).toMatchObject({
+      verdict: 'unproven',
+      unprovenReason: 'exact-member-not-established',
+    });
+
+    const falseDeclarations = [
+      ['src/api.ts', 'class RvfStore { realMethod() { return "fakeMethod("; } }'],
+      ['src/api.ts', 'declare class RvfStore { fakeMethod(): { x: string }; }'],
+      ['src/api.ts', 'class RvfStore { fakeMethod(): void\n realMethod() {} }'],
+      ['src/api.ts', 'declare class RvfStore { fakeMethod(): any\n realMethod(): { a: string }; }'],
+      ['src/api.ts', 'const fixture = /class RvfStore { fakeMethod() {} }/;'],
+      ['src/api.ts', 'class RvfStore { get fakeMethod() { return 1; } }'],
+      ['src/api.ts', 'class RvfStore { set fakeMethod(value) {} }'],
+      ['src/api.ts', 'class RvfStore { class Other { fakeMethod() {} } }'],
+      ['src/api.ts', 'class RvfStore { fakemethod() {} }'],
+      ['types/api.d.ts', 'declare class RvfStore { fakeMethod(): void; }'],
+      ['src/lib.rs', 'impl RvfStore { fn real_method() { fn fakeMethod() {} } }'],
+      ['src/api.ts', 'interface RvfStore { fakeMethod(): void; }'],
+    ];
+    for (const [file, source] of falseDeclarations) {
+      expect(assessImplementation('How do I call RvfStore.fakeMethod()?',
+        ranked('source', file, source, 8)).implementation.verdict).toBe('unproven');
+    }
+  });
+
+  it('accepts an exact method declaration while preserving ordinary query behavior', () => {
+    const legitimate = assessImplementation(
+      'How do I call RvfStore.query()?',
+      ranked('source', 'src/rvf-store.ts', 'export class RvfStore { query(vector) { return vector; } }'),
+    );
+    expect(legitimate.implementation).toMatchObject({ verdict: 'proven', unprovenReason: null });
+    expect(implementationNotice(legitimate.implementation)).toMatch(/declaration presence only; accessibility, call shape, and runtime behavior were not verified/);
+
+    const typedLegitimate = assessImplementation(
+      'How do I call RvfStore.query()?',
+      ranked('source', 'src/rvf-store.ts',
+        'class RvfStore { query(vector): { result: number } { return { result: vector }; } }'),
+    );
+    expect(typedLegitimate.implementation).toMatchObject({ verdict: 'proven', unprovenReason: null });
+
+    const rustExactMember = assessImplementation(
+      'How do I call RvfStore.query()?',
+      ranked('source', 'src/rvf_store.rs', 'impl RvfStore { pub fn query(&self) -> usize { 1 } }'),
+    );
+    expect(rustExactMember.implementation).toMatchObject({
+      verdict: 'unproven',
+      retrievedImplementationSources: ['fictional-ruv-project/src/rvf_store.rs'],
+      unprovenReason: 'exact-member-not-established',
+    });
+
+    const ordinary = assessImplementation(
+      'Which vector database concepts are documented?',
+      ranked('source', 'src/rvf-store.ts', 'export class RvfStore { query(vector) {} }'),
+    );
+    expect(ordinary.implementation).toMatchObject({ required: false, verdict: 'not-required' });
+  });
+
+  it('fails closed when the production parser dependency is unavailable', async () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'exact-member-no-parser-'));
+    try {
+      const helperPath = path.join(temp, 'exact-member-proof.mjs');
+      fs.copyFileSync(new URL('../../kb/exact-member-proof.mjs', import.meta.url), helperPath);
+      const { hasConcreteClassMethod } = await import(pathToFileURL(helperPath));
+      expect(hasConcreteClassMethod(
+        'class RvfStore { query() {} }', 'src/api.ts', { owner: 'RvfStore', member: 'query' },
+      )).toBe(false);
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
   });
 
   it('does not use an irrelevant source hit as proof merely because it is code', () => {

@@ -40,7 +40,7 @@ describe('protected release rail', () => {
     // owner-gated code chain and the corpus-only chain, and the corpus chain re-proves corpus-only
     // routing in its own jobs. The input list stays closed — a fourth input here would be a new,
     // unreviewed way to steer the only workflow permitted to sign and publish.
-    expect(dispatchInputNames(workflow())).toEqual(['mode', 'candidate_sha', 'version']);
+    expect(dispatchInputNames(workflow())).toEqual(['mode', 'candidate_sha', 'version', 'corpus_dispatch_id']);
     const source = workflow();
     expect(source).toMatch(/mode:\s*\n\s+description:[^\n]*\n\s+required: false\n\s+default: code\n\s+type: choice\n\s+options:\n\s+- code\n\s+- corpus\n/);
   });

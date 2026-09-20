@@ -1,6 +1,6 @@
 {
-  "_note": "The legacy automatic gate collection remains retired. What is permitted is the continuity plane below and nothing else: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint; Stop may nudge one explicitly authorized project-scoped objective AND capture a project snapshot; PreCompact and SessionEnd capture a project snapshot. Version 3 of this file permitted exactly two handlers, which was not a safety property but a contradiction: it demanded a restore while forbidding any event that could WRITE the journal the restore reads, so the canonical store held zero progression rows. Adding to this list is still a deliberate act that must pass `npm run hooks:check`; what changed is that the shape can now express the plane that actually works. Amended 2026-09-11 (Stuart): the continuity-only charter had retired the ONLY enforcement of ADR-0012 — never write rUv-product code the brain has not seen — and the failure it exists to prevent recurred the day it was measured absent. The plane now also carries three grounding registrations: ground-ruvnet (UserPromptSubmit, grounding injection — a second owner of that event, scoped by ADR-040 §Amendment 2026-09-11 to directives rather than speech), decision-gate’s write route (PreToolUse, the one refuser, ADR-067), and grounding-stamp (PostToolUse on a successful search_ruvnet, the receipt that opens the write gate). Amended 2026-09-12: the 2026-09-11 claim that Codex PreToolUse/PostToolUse delivery had never been observed was measured with a prompt that never invoked a tool (`codex exec \"reply OK\"`), so it was an untested path, not a failing one. Re-measured with prompts that actually call a tool (a real apply_patch write, a real MCP search_ruvnet call against this repo's own server): both events FIRED on codex-cli 0.154.0 with real payloads. decision-gate's write route and grounding-stamp are now dual-host (see _codexCapture and contracts below); the bash route (exec_command) remains Claude-only — today's measurement did not exercise it. Also amended 2026-09-12: added grounding-turn-mark (UserPromptSubmit) and grounding-turn-gate (Stop), the \"answered without searching\" pair — ground-ruvnet's Gate 1 directive is advisory, so nothing previously checked whether the model complied before the turn ended. grounding-turn-mark records that Gate 1 fired for a turn; grounding-turn-gate forces continuation at Stop if grounding-stamp's own evidence shows no search_ruvnet call happened since. Both dual-host from the start (the Stop-block contract is already proven on Codex via continuation-gate).",
-  "_version": 7,
+  "_note": "The legacy automatic gate collection remains retired. What is permitted is the continuity plane below and nothing else: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint; Stop may nudge one explicitly authorized project-scoped objective AND capture a project snapshot; PreCompact and SessionEnd capture a project snapshot. Version 3 of this file permitted exactly two handlers, which was not a safety property but a contradiction: it demanded a restore while forbidding any event that could WRITE the journal the restore reads, so the canonical store held zero progression rows. Adding to this list is still a deliberate act that must pass `npm run hooks:check`; what changed is that the shape can now express the plane that actually works. Amended 2026-09-11 (Stuart): the continuity-only charter had retired the ONLY enforcement of ADR-0012 — never write rUv-product code the brain has not seen — and the failure it exists to prevent recurred the day it was measured absent. The plane now also carries three grounding registrations: ground-ruvnet (UserPromptSubmit, grounding injection — a second owner of that event, scoped by ADR-040 §Amendment 2026-09-11 to directives rather than speech), decision-gate’s write route (PreToolUse, the one refuser, ADR-067), and grounding-stamp (PostToolUse on a successful search_ruvnet, the receipt that opens the write gate). Amended 2026-09-12: the 2026-09-11 claim that Codex PreToolUse/PostToolUse delivery had never been observed was measured with a prompt that never invoked a tool (`codex exec \"reply OK\"`), so it was an untested path, not a failing one. Re-measured with prompts that actually call a tool (a real apply_patch write, a real MCP search_ruvnet call against this repo's own server): both events FIRED on codex-cli 0.154.0 with real payloads. decision-gate's write route and grounding-stamp are now dual-host (see _codexCapture and contracts below); the bash route (exec_command) remains Claude-only — today's measurement did not exercise it. Also amended 2026-09-12: added grounding-turn-mark (UserPromptSubmit) and grounding-turn-gate (Stop), the \"answered without searching\" pair — ground-ruvnet's Gate 1 directive is advisory, so nothing previously checked whether the model complied before the turn ended. grounding-turn-mark records that Gate 1 fired for a turn; grounding-turn-gate forces continuation at Stop if grounding-stamp's own evidence shows no search_ruvnet call happened since. Both dual-host from the start (the Stop-block contract is already proven on Codex via continuation-gate). Added capacity-aware-parallel-work at UserPromptSubmit on both measured hosts: it is context-only, resource-bounded, and requires the coordinator to check actual tool/runtime slots; it does not spawn or claim workers.",
+  "_version": 8,
   "_eventOwners": [
     {
       "event": "SessionStart",
@@ -69,6 +69,16 @@
         "codex"
       ],
       "responsibility": "Injects a grounding directive into the model’s context when the prompt names the rUv stack, reaches for a classical default, or asks to build: call search_ruvnet before you assert. Not speech — emits no advocacy, promotion, lesson or alarm and reads no dial; silenced by the brain switch (ADR-054); scoped by ADR-040 §Amendment 2026-09-11."
+    },
+    {
+      "event": "UserPromptSubmit",
+      "owner": "capacity-aware-parallel-work",
+      "class": "capacity-aware coordination guidance",
+      "hosts": [
+        "claude",
+        "codex"
+      ],
+      "responsibility": "For clearly substantial, independently splittable work, adds context-only guidance based on bounded memory-pressure, swap, compression, and normalized-load signals. It never creates workers, claims they are running, or overrides the coordinator’s live agent-tool/runtime cap; unknown capacity recommends serial execution."
     },
     {
       "event": "PreToolUse",
@@ -227,6 +237,18 @@
       "offBehavior": "silence",
       "matcher": "*",
       "timeout": 10
+    },
+    {
+      "id": "capacity-aware-parallel-work",
+      "event": "UserPromptSubmit",
+      "hosts": [
+        "claude",
+        "codex"
+      ],
+      "mode": "advisory",
+      "offBehavior": "run",
+      "matcher": "*",
+      "timeout": 2
     },
     {
       "id": "decision-gate",

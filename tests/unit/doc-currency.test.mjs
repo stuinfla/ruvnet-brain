@@ -21,7 +21,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  evaluateDoc, evaluate, listDocs, parseFrontmatter, normativeBody, resolveGoverned,
+  evaluateDoc, evaluate, findCallers, listDocs, parseFrontmatter, normativeBody, resolveGoverned,
   computeDigest, deriveImpl, deriveDrift, weakest, planFix, applyFix, blockingFindings,
   changedDocumentScope, countReferents, main, IMPL_LADDER,
 } from '../../scripts/doc-currency.mjs';
@@ -561,6 +561,35 @@ describe('ADVERSARIAL: impl takes the WEAKEST governed path, never any', () => {
     expect(d.digest.match).toBe(false);
     expect(d.impl).toBe('verification-expired');
     expect(codes(d)).toContain('verification-expired');
+  });
+});
+
+describe('evaluation-scoped caller lookup cache', () => {
+  it('searches duplicate governed paths once per evaluation and sees edits on the next evaluation', () => {
+    const r = newRepo();
+    write(r, 'scripts/shared.mjs', 'export const shared = true;\n');
+    write(r, 'scripts/caller.mjs', "import './shared.mjs';\n");
+    write(r, 'docs/adr/0001-a.md', adr({ id: 'ADR-001', governs: ['scripts/shared.mjs'] }));
+    write(r, 'docs/adr/0002-b.md', adr({ id: 'ADR-002', governs: ['scripts/shared.mjs'] }));
+    commit(r, 'add shared governed path');
+
+    let calls = 0;
+    const observed = [];
+    const callerLookup = (root, rel) => {
+      calls += 1;
+      const result = findCallers(root, rel);
+      observed.push({ root, rel, result });
+      return result;
+    };
+    const first = evaluate(r, { dirs: ['docs/adr'], callerLookup });
+    expect(calls).toBe(1);
+    expect(observed[0]).toMatchObject({ rel: 'scripts/shared.mjs', result: ['scripts/caller.mjs'] });
+    expect(first.docs.map((doc) => doc.impl)).toEqual(['wired', 'wired']);
+
+    write(r, 'scripts/caller.mjs', 'export const consumer = true;\n');
+    const second = evaluate(r, { dirs: ['docs/adr'], callerLookup });
+    expect(calls).toBe(2);
+    expect(second.docs.map((doc) => doc.impl)).toEqual(['built', 'built']);
   });
 });
 
