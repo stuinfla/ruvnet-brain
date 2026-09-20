@@ -47,6 +47,7 @@ export function hasConcreteClassMethod(sourceText, filePath, { owner, member }) 
     if (declaration.id?.name !== owner || declaration.declare || declaration.abstract) return false;
     return declaration.body.body.some((element) =>
       element.type === 'ClassMethod'
+      && element.kind === 'method'
       && element.computed === false
       && element.key?.type === 'Identifier'
       && element.key.name === member
