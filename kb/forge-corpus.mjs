@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { stableChunkId } from './incremental-refresh.mjs';
 
 export const FORGE_CHUNKER_VERSION = 'forge-corpus-v1';
@@ -73,7 +74,11 @@ export function buildCorpus({
   keepNames = [],
   chunkerVersion = FORGE_CHUNKER_VERSION,
 }) {
-  const root = path.resolve(repo);
+  // Proprietary ruOS coverage is an editorial capability summary, never repository
+  // contents. Apply before traversal so --full/--keep cannot expose source or docs.
+  const root = String(name).toLowerCase() === 'cognitum-ruos'
+    ? fileURLToPath(new URL('./capability-summaries/cognitum-ruos/', import.meta.url))
+    : path.resolve(repo);
   const skipDirs = new Set(BASE_SKIP_DIRS);
   for (const kept of keepNames) skipDirs.delete(kept);
   const excluded = { dirs: new Set(), files: 0, reasons: {} };

@@ -15,6 +15,7 @@ import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
 import { buildCoverage, observeSourceUniverse, renderMarkdown } from './source-coverage.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';
+import { assertCapabilityOnlyStore, isCapabilityOnly, CAPABILITY_RETIRED_SUFFIXES } from '../kb/capability-only.mjs';
 import { fileIdentity } from '../plugin/scripts/coverage-integrity.mjs';
 import { storeRoot } from '../kb/store-root.mjs';
 
@@ -177,7 +178,12 @@ export function planReconciliation({ coverage, ledger, assetsDir = null }) {
     const generation = Object.entries(ledger.stores).find(([name]) => name.toLowerCase() === folded)?.[1] || null;
     const current = String(generation?.sourceCommit || '').toLowerCase();
     let reason = generation?.sourceCommit ? 'sourceCommit differs' : 'missing ledger receipt';
-    if (current === upstreamSha) {
+    let capabilityPolicyCurrent = !isCapabilityOnly(store);
+    if (!capabilityPolicyCurrent && assetsDir) {
+      try { assertCapabilityOnlyStore(assetsDir, store); capabilityPolicyCurrent = true; }
+      catch { reason = 'capability-only policy requires a clean rebuild'; }
+    }
+    if (current === upstreamSha && capabilityPolicyCurrent) {
       if (!assetsDir) continue;
       const expectedFile = `${store}.big.rvf`;
       const rvfFile = path.join(path.resolve(assetsDir), expectedFile);
@@ -414,6 +420,7 @@ function validateWorkerOutput({ output, item }) {
     fail(`${item.store}: worker generation does not bind exact source and RVF bytes`);
   }
   const source = readJson(path.join(output, 'SOURCE.json'), `${item.store} worker source manifest`);
+  assertCapabilityOnlyStore(output, item.store);
   if (Object.keys(source.stores || {}).length !== 1 || !source.stores[item.store]
     || String(source.stores[item.store].sourceCommit || '').toLowerCase() !== item.upstreamSha) {
     fail(`${item.store}: worker SOURCE manifest does not bind exact source`);
@@ -536,6 +543,12 @@ export async function executeReconciliation({
   writeJsonAtomic(path.join(merge, 'SOURCE.json'), mergedSource);
   promotedFiles.push('RVF-GENERATIONS.json', 'SOURCE.json');
   promoteArtifactSet({ liveDir: assets, candidateDir: merge, files: promotedFiles.sort() });
+  // Worker output replaces selected files, so explicitly retire old seed sidecars
+  // that are intentionally absent from a capability-only worker's output.
+  for (const { store } of results) if (isCapabilityOnly(store)) {
+    for (const suffix of CAPABILITY_RETIRED_SUFFIXES) fs.rmSync(path.join(assets, `${store}${suffix}`), { force: true });
+    assertCapabilityOnlyStore(assets, store);
+  }
   return { refreshed: results.map(({ store }) => store),
     workers: results.map(({ output: _output, ...receipt }) => receipt) };
 }
