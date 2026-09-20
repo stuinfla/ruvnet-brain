@@ -22,6 +22,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { paragraphChunks, provenanceBanner } from '../../scripts/gist-receipts.mjs';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 
@@ -94,8 +95,8 @@ function writeFixture(name, obj) {
   fs.writeFileSync(path.join(fixtures, name), JSON.stringify(obj));
 }
 
-function runGists(args, { forceFail = false, env: extraEnv = {} } = {}) {
-  if (!args.includes('--index-only') && !args.includes('--dry-run')) prepareGitFixtures();
+function runGists(args, { forceFail = false, prepare = true, env: extraEnv = {} } = {}) {
+  if (prepare && !args.includes('--index-only') && !args.includes('--dry-run')) prepareGitFixtures();
   const r = spawnSync(process.execPath, ['scripts/ingest-gists.mjs', ...args], {
     cwd: tmp,
     env: {
@@ -356,13 +357,55 @@ onPosix('ingest-gists.mjs — gh failure falls back to the public API; only a de
   });
 });
 
-describe.todo('ingest-gists.mjs — remaining gaps blocked on module-private functions (no export seam; flagged, not applied per this suite\'s sign-off norm)', () => {
-  it.todo('chunk(text) never splits WITHIN a single paragraph larger than `size` (3200) — one oversized paragraph becomes one oversized chunk, no hard cap enforced');
-  it.todo('chunk(text) collapses 3+ consecutive newlines the same as exactly 2 (the `/\\n\\n+/` split regex)');
-  it.todo('chunk("") and chunk(whitespace-only) both return [] rather than [""]');
-  it.todo('banner(g, file) falls back to the filename when g.description is empty/missing');
-  it.todo('banner(g, file) prints the literal string "undefined" for the updated date when g.updated_at is missing (g.updated_at?.slice(0,10) on undefined) — a real formatting gap, not just a hypothetical');
-  it.todo('listGists\'s pages.flat() defensive handling: a --slurp response shaped as an array-of-pages (nested one level) flattens to the same result as an already-flat array');
-  it.todo('the incremental "nothing to do" short-circuit (unchanged gists AND an existing passages.jsonl) only fires on a SECOND run — requires seeding kb/ruv-gists.passages.jsonl from a prior real run first, not just a fresh tmpdir');
-  it.todo('--dry-run\'s "… and N more" truncation message when more than 20 gists have changed');
+// The old TODOs referred to private chunk/banner functions removed by pipeline consolidation.
+// Exercise their exported canonical replacements and the actual CLI paths instead.
+onPosix('ingest-gists remaining boundary cases', () => {
+  it('preserves an oversized paragraph without dropping source text', () => {
+    const source = 'vector-storage '.repeat(500);
+    expect(paragraphChunks(source).join('\n\n')).toBe(source);
+  });
+  it('normalizes paragraph separators consistently', () => {
+    expect(paragraphChunks('first\n\n\n\nsecond')).toEqual(paragraphChunks('first\n\nsecond'));
+  });
+  it('does not create searchable passages from blank bodies', () => {
+    expect(paragraphChunks('')).toEqual([]);
+    expect(paragraphChunks('  \n\n  ')).toEqual([]);
+  });
+  it('uses the filename in provenance even with no gist description', () => {
+    const banner = provenanceBanner({ owner: 'ruvnet', gistId: GIST_A, filename: 'notes.md', updatedAt: '2026-07-01T00:00:00Z' });
+    expect(banner).toContain('"notes.md"');
+    expect(banner).toContain('may describe PROPOSED or UNRELEASED work');
+  });
+  it('rejects a missing provenance date instead of printing undefined', () => {
+    expect(() => provenanceBanner({ owner: 'ruvnet', gistId: GIST_A, filename: 'notes.md' })).toThrow();
+  });
+  it('produces the same index from nested list pages and a flat response', () => {
+    writeFixture('list.json', [ONE_GIST]);
+    expect(runGists(['--index-only']).code).toBe(0);
+    const index = fs.readFileSync(path.join(tmp, 'docs/RUV-GISTS.md'), 'utf8');
+    writeFixture('list.json', ONE_GIST);
+    expect(runGists(['--index-only']).code).toBe(0);
+    expect(fs.readFileSync(path.join(tmp, 'docs/RUV-GISTS.md'), 'utf8')).toBe(index);
+  });
+  it('leaves the real previous output unchanged on a second unchanged run', () => {
+    writeFixture('list.json', ONE_GIST);
+    writeFixture(`gists/${GIST_A}.json`, ONE_GIST_FULL);
+    expect(runGists([]).code).toBe(0);
+    const file = path.join(tmp, 'kb/ruv-gists.passages.jsonl');
+    const before = fs.readFileSync(file);
+    const second = runGists([], { prepare: false });
+    expect(second.code).toBe(0);
+    expect(second.stdout).toContain('nothing to do');
+    expect(fs.readFileSync(file)).toEqual(before);
+  });
+  it('limits a large dry-run listing without writing corpus output', () => {
+    writeFixture('list.json', Array.from({ length: 23 }, (_, i) => ({
+      id: String(i + 1).padStart(32, '0'), updated_at: '2026-07-01T00:00:00Z', files: { [`entry-${i}.md`]: {} },
+    })));
+    const result = runGists(['--dry-run']);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('… and 3 more');
+    expect((result.stdout.match(/entry-\d+\.md/g) || [])).toHaveLength(20);
+    expect(fs.existsSync(path.join(tmp, 'kb/ruv-gists.passages.jsonl'))).toBe(false);
+  });
 });
