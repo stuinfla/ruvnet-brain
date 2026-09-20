@@ -28,7 +28,11 @@ import {
   repositoryNames,
   routeReposFromCards,
 } from './card-lane.mjs';
-import { buildReviewedCapabilityExcerpt, matchReviewedCapabilityIntent } from './capability-families.mjs';
+import {
+  REVIEWED_CAPABILITY_EVIDENCE,
+  buildReviewedCapabilityExcerpt,
+  matchReviewedCapabilityIntent,
+} from './capability-families.mjs';
 import { tokenize, buildCorpusStats, bm25Score } from './forge-hybrid.mjs';
 import {
   assessImplementation,
@@ -3070,8 +3074,49 @@ async function sourceBackedCapabilityDiscovery({ dir, query, planned, k }) {
   };
 }
 
+// An untemplated query in a reviewed capability family gets the independently reviewed passage as
+// one extra candidate. It is not an answer lane: searchAll sends the ORIGINAL query and this exact,
+// hash-verified excerpt through the same cross-encoder, relevance grader, and implementation gate
+// as every other candidate. A stale/missing witness contributes nothing and normal retrieval stays
+// available.
+async function reviewedCapabilityWitness({ dir, repo, family }) {
+  const reviewed = REVIEWED_CAPABILITY_EVIDENCE[String(family || '')];
+  if (!reviewed || reviewed.repo !== repo) return null;
+  const metaFile = path.join(dir, `${repo}.meta.json`);
+  if (!fs.existsSync(metaFile)) return null;
+  let meta;
+  try { meta = parseMetadataFile(metaFile); }
+  catch { return null; }
+  const entry = Object.values(meta.entries || {}).find((item) =>
+    item?.path === reviewed.path && ['doc', 'skill', 'tutorial', 'adr'].includes(String(item.kind || '').toLowerCase()));
+  if (!entry) return null;
+  const sourceText = await reviewedSourcePassage(dir, repo, reviewed.path, reviewed.passageSha256);
+  if (!sourceText) return null;
+  const excerpt = buildReviewedCapabilityExcerpt(sourceText, reviewed);
+  if (!excerpt) return null;
+  return {
+    repo,
+    path: reviewed.path,
+    title: String(entry.title || path.basename(reviewed.path)),
+    kind: String(entry.kind || 'doc').toLowerCase(),
+    text: excerpt,
+    fullText: excerpt,
+    score: null,
+    ceScore: null,
+    bestDistance: null,
+    chunksJoined: 1,
+    truncated: false,
+    direct: [],
+    corroborating: [],
+    _lane: 'rescue',
+    _proofMethod: 'reviewed-capability-witness-candidate',
+    _sourcePassageSha256: reviewed.passageSha256,
+  };
+}
+
 export async function searchAll({
-  dir, query, k = 6, pool = 64, repos, _routeStage = false, allowFullCorpus = true, deadline = null,
+  dir, query, k = 6, pool = 64, repos, _routeStage = false, _capabilityFamily = null,
+  allowFullCorpus = true, deadline = null,
 }) {
   const startedAt = performance.now();
   // The reranker needs a bounded candidate pool larger than the requested output list.
@@ -3302,7 +3347,7 @@ export async function searchAll({
         ? await sourceBackedCapabilityDiscovery({ dir, query, k, planned })
         : null;
       const sourceCard = capabilityDiscovery
-        || await sourceBackedCardLane({ dir, query, k, planned });
+        || (planned.family ? null : await sourceBackedCardLane({ dir, query, k, planned }));
       if (sourceCard) {
         traceRetrieval({ query, family: planned.family || null, routeMs: +routeMs.toFixed(2),
           sourceProofMs: +(performance.now() - sourceProofStartedAt).toFixed(2),
@@ -3318,6 +3363,7 @@ export async function searchAll({
         pool,
         repos: planned.repos,
         _routeStage: true,
+        _capabilityFamily: planned.family,
         allowFullCorpus,
         deadline,
       });
@@ -3543,6 +3589,17 @@ export async function searchAll({
         const byIdentifier = identifierCandidates(scan, name, identifierTokens, 8, knownRepos)
           .filter((candidate) => !seen.has(candidate.path));
         cands = cands.concat(byIdentifier);
+      }
+      if (_capabilityFamily) {
+        const witness = await reviewedCapabilityWitness({ dir, repo: name, family: _capabilityFamily });
+        if (witness) {
+          const existing = cands.find((candidate) => candidate.path === witness.path);
+          const candidate = existing
+            ? { ...existing, ...witness, score: existing.score, bestDistance: existing.bestDistance }
+            : witness;
+          cands = cands.filter((item) => item.path !== witness.path);
+          cands.push(candidate);
+        }
       }
       if (isTranscriptStore(name)) {
         const seen = new Set(hits.map((h) => h.path));

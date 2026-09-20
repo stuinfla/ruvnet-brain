@@ -20,7 +20,7 @@ governs:
   - tests/fixtures/retrieval/ruflo-cross-project-transfer-reviewed-passage.txt
 ---
 
-Updated: 2026-09-19 | Version 1.0.0
+Updated: 2026-09-19 | Version 1.1.0
 Created: 2026-09-19
 
 # ADR-090 — Reviewed-source discovery for finite capability queries
@@ -40,9 +40,13 @@ separate.
 
 1. A narrowly matched capability family may choose one bounded source owner. It never supplies an
    answer. Ambiguous multi-family questions fall through to ordinary routing.
-2. Positive discovery replies use a finite allowlist of complete normalized query templates and
-   a reviewed source catalog. Normalization changes only case, surrounding whitespace, and trailing
-   punctuation; it never drops numbers, clauses, or qualifiers.
+2. Only the finite allowlist of complete normalized query templates may use the reviewed,
+   no-rerank discovery reply. Other queries in a matched capability family may add that family's
+   independently reviewed passage as one hash-bound retrieval candidate. The original query,
+   including every qualifier, continues through the ordinary reranker and evidence gates; the
+   witness candidate carries no positive grade or automatic answer authority. Template normalization
+   changes only case, surrounding whitespace, and trailing punctuation; it never drops numbers,
+   clauses, or qualifiers.
 3. Each catalog entry binds one repository, source path, exact passage SHA-256, and fixed claim
    groups. A missing or changed passage fails closed to ordinary retrieval. The excerpt is assembled
    only from exact slices of the hash-matched passage; there is no generic claim-word grader.
@@ -50,9 +54,11 @@ separate.
    language, and Ruflo's titled cross-project IPFS transfer section. The local entry makes no native
    or on-disk claim. The cross-project entry includes the documented store/load operations and the
    required `PINATA_API_JWT` configuration note.
-5. Replies are `source_grounded` with a null cross-encoder score and `implementation: unproven`.
-   Their caveats state that runtime behavior and relevant user configuration were not verified.
-   Any query outside the finite templates, or any source hash mismatch, uses ordinary retrieval.
+5. Exact-template replies are `source_grounded` with a null cross-encoder score and
+   `implementation: unproven`. Their caveats state that runtime behavior and relevant user
+   configuration were not verified. A stale or missing witness hash contributes no candidate and
+   ordinary retrieval continues. No claim is made that candidate availability alone improves
+   held-out recall, answer quality, or latency.
 6. Broad capability-family questions bypass the curated answer-card fast path at the MCP boundary
    so a card cannot circumvent reviewed-source verification. Explicitly named owners and unrelated
    queries keep their existing paths.
@@ -66,13 +72,15 @@ separate.
 ## Verification boundary
 
 Unit tests cover route selection, exact query templates, exact passage hashes and excerpts, changed
-source fallback, negative qualifier controls, and the omitted-`k` MCP boundary. Runtime and held-out
-measurements are recorded with the operational repair receipt; this ADR itself makes no performance
-or installation-health claim. Documentation discovery establishes only what the reviewed source
+source fallback, negative qualifier controls, the omitted-`k` MCP boundary, and the generalized
+candidate path for an unseen paraphrase. They assert that qualifiers remain intact through ordinary
+reranking and that changed witnesses are excluded. Runtime, held-out quality, and latency remain
+unmeasured for this change. Documentation discovery establishes only what the reviewed source
 describes, not that the described runtime is wired or operational.
 
 ## Currency log
 
 | Date | Review |
 |---|---|
+| 2026-09-19 | Generalized broad-family discovery without broadening the exact no-rerank allowlist: a matching query can add one independently reviewed, SHA-bound passage as a candidate in the normal rerank/evidence path. Curated cards cannot return early for a family query. Changed hashes fail closed; original query text and qualifiers are preserved. Focused unit tests only; no latency, held-out recall, or installed-runtime claim. | Reviewed the scoped `searchAll` handoff, witness injection, source hash check, card-lane bypass, and focused capability-discovery tests. |
 | 2026-09-19 | Reviewed the exact query-template allowlist, passage-hash gate, excerpt construction, and MCP default-`k` route. Independent source review pinned the approved passage hashes in this ADR's governed implementation. A same-size, same-mtime passage mutation is rejected. reviewed_digest fe7a22ebf299. | Reviewed `kb/capability-families.mjs`, `kb/forge-ask-all.mjs`, `kb/forge-mcp-all.mjs`, and `tests/unit/capability-discovery.test.mjs`; confirmed changed or missing source passages fail closed. |

@@ -7,6 +7,8 @@ vi.mock('../../kb/forge-ask.mjs', () => ({ searchKb: vi.fn(async () => []) }));
 vi.mock('../../kb/forge-rerank.mjs', () => ({ rerankPairs: vi.fn(async () => []) }));
 
 import { searchAll } from '../../kb/forge-ask-all.mjs';
+import { rerankPairs } from '../../kb/forge-rerank.mjs';
+import { routeReposFromCards } from '../../kb/card-lane.mjs';
 import { buildReviewedCapabilityExcerpt, matchReviewedCapabilityIntent } from '../../kb/capability-families.mjs';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
@@ -166,6 +168,98 @@ describe('source-backed capability discovery', () => {
 
     const second = await searchAll({ dir, query, k: 3, allowFullCorpus: false });
     expect(second.routing?.lane).not.toBe('source-backed-discovery');
+  });
+
+  it('adds the reviewed passage as a reranker candidate for an unseen family paraphrase', async () => {
+    vi.mocked(rerankPairs).mockClear();
+    const body = fs.readFileSync(path.join(REPO_ROOT, 'tests/fixtures/retrieval/ruvector-router-wasm-reviewed-passage.txt'), 'utf8');
+    const dir = corpusFor({
+      title: 'Browser vector storage',
+      path: 'crates/ruvector-router-wasm/README.md',
+      preview: 'Client-side vector search with zero server dependencies and IndexedDB persistence.',
+      body,
+    });
+    const query = 'Can I keep vector embeddings locally and search them while disconnected?';
+    expect(routeReposFromCards(query, dir, ['other', 'ruvector'])).toMatchObject({
+      family: 'local-vector-storage',
+      repos: ['ruvector'],
+    });
+    await searchAll({ dir, query, repos: ['ruvector'], _routeStage: true,
+      _capabilityFamily: 'local-vector-storage', k: 3, allowFullCorpus: false });
+
+    const [rerankedQuery, candidates] = vi.mocked(rerankPairs).mock.calls.at(-1);
+    expect(rerankedQuery).toBe(query);
+    expect(candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: 'crates/ruvector-router-wasm/README.md',
+        _proofMethod: 'reviewed-capability-witness-candidate',
+        _sourcePassageSha256: '44404f0c1ae135b021ece8e5e30c271fb1900ea0c4f583f1f891ee3196386662',
+      }),
+    ]));
+  });
+
+  it('sends unsupported qualifiers intact through ordinary reranking without a positive shortcut', async () => {
+    vi.mocked(rerankPairs).mockClear();
+    const body = fs.readFileSync(path.join(REPO_ROOT, 'tests/fixtures/retrieval/ruvector-router-wasm-reviewed-passage.txt'), 'utf8');
+    const dir = corpusFor({
+      title: 'Browser vector storage',
+      path: 'crates/ruvector-router-wasm/README.md',
+      preview: 'Client-side vector search with zero server dependencies and IndexedDB persistence.',
+      body,
+    });
+    const query = 'Can I keep vector embeddings locally and search them at one billion dimensions without a server?';
+    const out = await searchAll({ dir, query, repos: ['ruvector'], _routeStage: true,
+      _capabilityFamily: 'local-vector-storage', k: 3, allowFullCorpus: false });
+
+    const [rerankedQuery, candidates] = vi.mocked(rerankPairs).mock.calls.at(-1);
+    expect(rerankedQuery).toBe(query);
+    expect(candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ _proofMethod: 'reviewed-capability-witness-candidate' }),
+    ]));
+    expect(out.routing?.lane).not.toBe('source-backed-discovery');
+    expect(out.sourceDiscovery).toBeUndefined();
+    expect(out.evidence?.grade).not.toBe('source_grounded');
+  });
+
+  it('rejects a changed witness hash and continues through ordinary reranking', async () => {
+    vi.mocked(rerankPairs).mockClear();
+    const body = fs.readFileSync(path.join(REPO_ROOT, 'tests/fixtures/retrieval/ruvector-router-wasm-reviewed-passage.txt'), 'utf8');
+    const dir = corpusFor({
+      title: 'Browser vector storage',
+      path: 'crates/ruvector-router-wasm/README.md',
+      preview: 'Client-side vector search with zero server dependencies and IndexedDB persistence.',
+      body,
+    });
+    const passagesPath = path.join(dir, 'ruvector.passages.jsonl');
+    fs.writeFileSync(passagesPath, fs.readFileSync(passagesPath, 'utf8').replace('User data never leaves the device', 'User data maybe leaves the device'));
+    const query = 'Can I keep vector embeddings locally and search them while disconnected?';
+    const out = await searchAll({ dir, query, repos: ['ruvector'], _routeStage: true,
+      _capabilityFamily: 'local-vector-storage', k: 3, allowFullCorpus: false });
+
+    const [rerankedQuery, candidates] = vi.mocked(rerankPairs).mock.calls.at(-1);
+    expect(rerankedQuery).toBe(query);
+    expect(candidates).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ _proofMethod: 'reviewed-capability-witness-candidate' }),
+    ]));
+    expect(out.routing?.lane).not.toBe('source-backed-discovery');
+  });
+
+  it('leaves ordinary non-family retrieval without a reviewed capability witness', async () => {
+    vi.mocked(rerankPairs).mockClear();
+    const body = fs.readFileSync(path.join(REPO_ROOT, 'tests/fixtures/retrieval/ruvector-router-wasm-reviewed-passage.txt'), 'utf8');
+    const dir = corpusFor({
+      title: 'Browser vector storage',
+      path: 'crates/ruvector-router-wasm/README.md',
+      preview: 'Client-side vector search with zero server dependencies and IndexedDB persistence.',
+      body,
+    });
+    await searchAll({ dir, query: 'What is the release process for this project?', repos: ['ruvector'],
+      _routeStage: true, k: 3, allowFullCorpus: false });
+
+    const [, candidates] = vi.mocked(rerankPairs).mock.calls.at(-1);
+    expect(candidates).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ _proofMethod: 'reviewed-capability-witness-candidate' }),
+    ]));
   });
 
   it.each([
