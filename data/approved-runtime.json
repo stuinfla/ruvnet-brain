@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "kind": "ruvnet-brain-approved-runtime",
+  "brainVersion": "4.3.26",
+  "releaseTag": "v4.3.26",
+  "approvedCodeSha": "3996f502b18157fdc84e325fbe87c2a05351d58c",
+  "fileCount": 35,
+  "files": [
+    {
+      "path": "brain-alarm.mjs",
+      "sha256": "4f05793aabd71e8c609911e6b237a1a1656800057d12331829ca028e2eac9599",
+      "bytes": 5202
+    },
+    {
+      "path": "brain-profile.mjs",
+      "sha256": "b1319a34296ca6c065824752bfdb1f438dd865e13e9e8af337b355c39a982983",
+      "bytes": 10369
+    },
+    {
+      "path": "card-lane.mjs",
+      "sha256": "eea0a55c5e584bffe634090dd4ebed0967fb9bc31c60eb1d97d4eaa1037029b3",
+      "bytes": 37866
+    },
+    {
+      "path": "corpus-freshness.mjs",
+      "sha256": "fb8d062f332d34f10c9222b7a5c1d7a0456fbb5df6fd5725e3bdd72ba1869457",
+      "bytes": 12624
+    },
+    {
+      "path": "corpus-release-identity.mjs",
+      "sha256": "ff5841bb6165ff973e181098d00d359019aac38965ea5fd0571002a94d6ff129",
+      "bytes": 12359
+    },
+    {
+      "path": "forge-ask-all.mjs",
+      "sha256": "3e0d7d011af311ba5b363ba45838d91604b2db227fcd9cb0fc1a946f038d75df",
+      "bytes": 178009
+    },
+    {
+      "path": "forge-ask.mjs",
+      "sha256": "b7b0ad811924565db1453417e47295c8a39095b8c01848cd9ccfea78e9a51f43",
+      "bytes": 62032
+    },
+    {
+      "path": "forge-evidence.mjs",
+      "sha256": "f7df2e6d401dfdd4569d478b2a60ccf6b94346acc514be5854c6e10d07492728",
+      "bytes": 21812
+    },
+    {
+      "path": "forge-guard-injection.mjs",
+      "sha256": "08629d95b739d2935f214c4361c267c84b11df3db0f543ec2c2e3fb64490dd81",
+      "bytes": 14646
+    },
+    {
+      "path": "forge-guard.mjs",
+      "sha256": "a7f8af0b08bd0b7bf261bc230cea0e1e20f118d5e2afe01a3e7e83a4abaf4490",
+      "bytes": 9332
+    },
+    {
+      "path": "forge-hybrid.mjs",
+      "sha256": "39f41bc21073aac1314d074c893d1f64c4300c73962181beb613740329e42a02",
+      "bytes": 4505
+    },
+    {
+      "path": "forge-mcp-all.mjs",
+      "sha256": "2101dc9cd8adf6fcc052bf7ac3ee55b3ed08f243e79cf01c0fa782bd6bbed2b9",
+      "bytes": 39771
+    },
+    {
+      "path": "forge-mcp.mjs",
+      "sha256": "854118ba593256902e77f8166274bc1ac51b0babd56026e7e232233081c355a4",
+      "bytes": 5280
+    },
+    {
+      "path": "forge-rerank.mjs",
+      "sha256": "8fef233e17192d7fa21bc5a67be7cd96ce070ceaee4a28b5de97fff97f54143c",
+      "bytes": 28991
+    },
+    {
+      "path": "forge-update.mjs",
+      "sha256": "40ee42ab9572c1e6c4b0f0bd8c3d6d76c723409c0e4002870c9a65296767bbab",
+      "bytes": 94458
+    },
+    {
+      "path": "grounded-response.mjs",
+      "sha256": "70bb261de2c0ddde3967091a595e2ec01ae3cb69f03972558a66ee52a46fde9a",
+      "bytes": 890
+    },
+    {
+      "path": "identifier-lane.mjs",
+      "sha256": "e16c0fe324de5189c4aeb8a8c91331b5ce76d2cd4851b4cb02490f0cd0016af5",
+      "bytes": 17248
+    },
+    {
+      "path": "implementation-evidence.mjs",
+      "sha256": "90bd4ac8c541caa3cc551c61273b2ba7cde2d5b0b55d7ca5beab3a18d27d4c54",
+      "bytes": 5533
+    },
+    {
+      "path": "keys/ruvnet-brain-signing.pub.pem",
+      "sha256": "19a715914e0ef2fee0c9be352a83c2b5fc8bc79d2c406a6b72b8357ac59905c3",
+      "bytes": 113
+    },
+    {
+      "path": "lifecycle-evidence-retention.mjs",
+      "sha256": "ce4856c3e2cff6bd553fd0ba0af0952c5deac4db6a7693de436edfb29bc17b2c",
+      "bytes": 12034
+    },
+    {
+      "path": "model-requirements.mjs",
+      "sha256": "3aa4078e472199266d0044ac4761413ff020b970fb16088a64f2bd1409e2a4b2",
+      "bytes": 4094
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "ed2851a149669a95562373961c8b0c787ee7d41519cd15283769869be0558c08",
+      "bytes": 28837
+    },
+    {
+      "path": "package-owners.json",
+      "sha256": "bea024c7dd45db2dbb7b1a02a32d3827a4b27dc1ae002311981a416a2bc22740",
+      "bytes": 605
+    },
+    {
+      "path": "package.json",
+      "sha256": "b55a84f6851c717828dda80eb0767148a2b0da713262ad2ac8f74b957be8833d",
+      "bytes": 1093
+    },
+    {
+      "path": "query-deadline.mjs",
+      "sha256": "1238331ac8c0d008b7e17580cf8887927f4db9949b82f9ad0582bbbafe1fd7df",
+      "bytes": 7419
+    },
+    {
+      "path": "refresh-run.mjs",
+      "sha256": "096d432d2c11b7df3f19c50f3f9a41d34c3da0ed996331131552a0741d13b926",
+      "bytes": 18757
+    },
+    {
+      "path": "resolve-deps.mjs",
+      "sha256": "9f1b4507722ad51ea04b5547b5e6303144515f93652d1636dc87467650bfc622",
+      "bytes": 9737
+    },
+    {
+      "path": "retrieval-result.mjs",
+      "sha256": "74ccec822ada44febe3112c743c8b5831eb6a02e1628f4dfeafecebd50d19048",
+      "bytes": 2143
+    },
+    {
+      "path": "search-outcome.mjs",
+      "sha256": "8cfccda487fe321b97feeb4dc40cd1b29b90767b3c493195a9aa3f54d8473980",
+      "bytes": 4472
+    },
+    {
+      "path": "store-root.mjs",
+      "sha256": "cbc5795c4d8ecd3b4b8d964b1769c2bae5642e77fad7fb26b45033e70657cc24",
+      "bytes": 6576
+    },
+    {
+      "path": "telemetry-ping.mjs",
+      "sha256": "56f81834b8ecabe7aaca1e035cc075929443da9c201b8ee7a525ba6cdc986691",
+      "bytes": 6721
+    },
+    {
+      "path": "update-storage-transaction.mjs",
+      "sha256": "fd0436d4c2dde3cd5829c7c07b63dc74e9873821c0e076e6b4173256698c2eed",
+      "bytes": 24467
+    },
+    {
+      "path": "verify-bundle.mjs",
+      "sha256": "95c481c0542670584c9148f97ea889c2c4b165d60067dd6d207bc35f9f139b64",
+      "bytes": 2860
+    },
+    {
+      "path": "verify-citation.mjs",
+      "sha256": "52cbf64557e64614f77043d406c227bf52098274f35aa2472f552a20ef1d2aab",
+      "bytes": 6811
+    },
+    {
+      "path": "zip-extract.mjs",
+      "sha256": "5deb99a4c7500544f3355977288bc62c9faa2835998c327ce66b9dafbe7a522e",
+      "bytes": 17072
+    }
+  ]
+}
