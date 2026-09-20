@@ -61,9 +61,23 @@ jobs:
 
   aggregate:
     needs: [ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows]
+    # ALWAYS, not the default `success()`: a `needs` job's default condition means a skipped or
+    # failed upstream lane (e.g. `stranger`, which `needs: ci` and is silently SKIPPED — not
+    # failed — whenever `ci` is red) would skip `aggregate` too, and the whole workflow ends in a
+    # page of grey "skipped" checks instead of one red one. Dream Cycle 2026-09-20: commit
+    # 965ee55c records `stranger` having been skipped this way for a month before anyone noticed.
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Fail loudly if any required lane was skipped or failed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'skipped') || contains(needs.*.result, 'cancelled')
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          echo "One or more required lanes for release-candidate-preflight did not succeed on this SHA:"
+          echo "$NEEDS_JSON"
+          exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
