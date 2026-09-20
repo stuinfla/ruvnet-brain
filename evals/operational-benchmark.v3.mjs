@@ -140,7 +140,8 @@ export async function preflightOperationalOracle({ fixtures = OPERATIONAL_FIXTUR
         const passageSha256 = sha256(found.record.text);
         if (passageSha256 !== alt.passageSha256) { malformed = true; break; }
         if (!alt.spans.every((span) => found.record.text.includes(span))) { malformed = true; break; }
-        resolvedAlternatives.push({ ...alt, passageSha256, store: path.basename(found.file), storeSha256: found.storeSha256 });
+        resolvedAlternatives.push({ ...alt, passageSha256, storedText: found.record.text,
+          store: path.basename(found.file), storeSha256: found.storeSha256 });
       }
       if (malformed) break;
       resolvedSlots.push({ id: slot.id, alternatives: resolvedAlternatives });
@@ -159,9 +160,12 @@ export function gradeOperationalFixtureV3(fixture, { output, verification, sourc
   if (preflightStatus !== 'PASS') return { pass: false, status: preflightStatus, reason: 'source oracle preflight did not pass' };
   const citations = verification?.citations ?? [];
   if (fixture.class === 'negative' || fixture.class === 'ambiguity') {
-    const explicitRefusal = /EVIDENCE:\s*(?:THIN|INSUFFICIENT_EVIDENCE)|insufficient evidence|no source found|too ambiguous/i.test(String(output ?? ''));
+    // The runtime emits its structured confidence grade before result blocks. Inspect only that
+    // preamble so retrieved document text cannot spoof an abstention with a matching phrase.
+    const preamble = String(output ?? '').split(/^#\d+\s+repo=/m, 1)[0];
+    const explicitRefusal = /^⚠ EVIDENCE: INSUFFICIENT_EVIDENCE \(top score (?:null|-?\d+(?:\.\d+)?)\) — .+$/m.test(preamble);
     const noPositiveCitation = citations.every((citation) => typeof citation.ce === 'number' && citation.ce < 0);
-    const pass = !verification?.grounded && explicitRefusal && noPositiveCitation;
+    const pass = explicitRefusal && noPositiveCitation;
     return { pass, status: pass ? 'PASS' : 'RETRIEVAL_MISS', abstained: pass,
       reason: 'negative and ambiguous controls require explicit uncertainty with no positive citation' };
   }
@@ -178,6 +182,11 @@ export function matchClaimSlots(preflight, verification) {
   const slots = (preflight?.resolvedSlots ?? []).map((slot) => {
     const matched = slot.alternatives.find((alt) => citations.some((citation) => {
       if (citation.repo !== alt.repo || citation.docPath !== alt.path) return false;
+      const returnedText = typeof citation.returnedText === 'string' ? citation.returnedText : '';
+      // Each required excerpt must occur both in the independently SHA-bound stored witness and
+      // in this citation block's returned body. The whole passage need not be returned, but path
+      // existence and a parser-supplied proof label alone prove nothing.
+      if (!alt.spans.every((span) => alt.storedText.includes(span) && returnedText.includes(span))) return false;
       // A proof header is descriptive only. Numeric positive CE is the ordinary lane; CE-null is
       // accepted only on the independently source-checked reviewed-source-catalog lane.
       if (typeof citation.ce === 'number') return citation.ce >= 0;

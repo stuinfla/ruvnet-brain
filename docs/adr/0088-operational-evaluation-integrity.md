@@ -3,7 +3,7 @@ id: ADR-088
 status: Accepted
 date: 2026-09-19
 updated: 2026-09-19
-version: 1.1.0
+version: 1.1.1
 authors: [Stuart Kerr, Codex]
 tags: [evaluation, benchmark, grounding, operations, abstention]
 supersedes: []
@@ -12,6 +12,7 @@ relates: [ADR-0074, ADR-0086]
 governs:
   - scripts/eval-brain.mjs
   - scripts/brain-novice-50.mjs
+  - kb/verify-citation.mjs
   - evals/operational-benchmark.v1.mjs
   - evals/operational-benchmark.v2.mjs
   - evals/operational-benchmark.v3.mjs
@@ -20,6 +21,7 @@ governs:
   - scripts/run-operational-benchmark.v3.mjs
   - tests/unit/eval-brain-gate.test.mjs
   - tests/unit/brain-novice-50.test.mjs
+  - tests/unit/verify-citation.test.mjs
   - tests/unit/operational-benchmark.test.mjs
   - tests/unit/operational-benchmark-v3.test.mjs
 ---
@@ -43,8 +45,9 @@ The novice-50 evaluator also exposed `expectedRepoCited` but did not require it 
 4. The fixture suite distinguishes same-project next-session continuity from cross-project transfer. It includes a source-backed CogruOS named query. A named capability without a source oracle is reported as unavailable and excluded from measured denominators; it also blocks the overall qualification verdict. Version 1 retained an unavailable IPFS case. Before candidate replay, version 2 binds that case to the public Ruflo plugin declaration at commit `e332689b8c04fc63989d82124298e6cf3d71ee76` (`evals/oracles/ruflo-ipfs-provenance.json`), which proves a documentation claim only. The original version 1 fixture remains unchanged.
 5. Each operational run writes raw query output, verification receipts, oracle decisions, latency observations, and per-class p50/p95/p99. It does not overwrite `evals/baseline.json`, the historical novice report, or the frozen held-out fixture hashes.
 6. Source-span checks provide auditable evidence support for the specific asserted fact; they do not claim complete semantic coverage. Reports must keep routing, citation existence, exact source support, refusal behavior, and latency as distinct measures.
-7. Version 3 keeps the 19 v2 query strings unchanged and adds the frozen exact doctor query plus an independently authored cross-project discovery query. Its separate catalog binds each fixture to zero or more required claim slots; slots are AND, and reviewed source alternatives inside a slot are OR. Each alternative pins an exact repository/path, the SHA-256 of the stored passage text, and every required verbatim span. Before invoking retrieval, the runner verifies catalog structure, the mounted `ARCHIVE-MANIFEST.json` and `SOURCE.json` hashes, and every alternative against actual passage bytes. A source hash or span mismatch is `INVALID_ORACLE`; a pinned source absent from the mounted corpus is `CORPUS_GAP`; a valid oracle whose retrieval/process/citation does not satisfy all slots is `RETRIEVAL_MISS`; successful cases are `PASS`. Proof labels alone cannot satisfy an oracle. CE-null citations qualify only with the `reviewed-source-catalog` proof method and an independently preflighted exact source match.
+7. Version 3 keeps the 19 v2 query strings unchanged and adds the frozen exact doctor query plus an independently authored cross-project discovery query. Its separate catalog binds each fixture to zero or more required claim slots; slots are AND, and reviewed source alternatives inside a slot are OR. Each alternative pins an exact repository/path, the SHA-256 of the stored passage text, and every required verbatim span. Before invoking retrieval, the runner verifies catalog structure, the mounted `ARCHIVE-MANIFEST.json` and `SOURCE.json` hashes, and every alternative against actual passage bytes. A source hash or span mismatch is `INVALID_ORACLE`; a pinned source absent from the mounted corpus is `CORPUS_GAP`; a valid oracle whose retrieval/process/citation does not satisfy all slots is `RETRIEVAL_MISS`; successful cases are `PASS`. A credited slot requires every oracle span to occur in both the independently hash-bound witness passage and the exact body text returned inside that citation block. The verifier returns no body for incomplete or truncated citation blocks. Proof labels alone cannot satisfy an oracle. CE-null citations qualify only with the `reviewed-source-catalog` proof method and an independently preflighted exact source match.
 8. The v3 catalog has 21 fixed cases. A fixture marked unavailable remains in `total`, is reported as `CORPUS_GAP`, and forces `qualificationPass: false`; it is excluded only from the clearly named measurable count and latency distribution. The baseline's cross-project automatic-learning guarantee is intentionally unavailable because the pinned archive contains no independently verified end-to-end proof of automatic transfer. Manual IPFS transfer evidence does not establish that broader runtime behavior. No candidate search result can add, change, or repair an oracle.
+9. Negative and ambiguity controls pass only on a strict, anchored `INSUFFICIENT_EVIDENCE` grade line in the runtime preamble and when no citation has a nonnegative or unknown cross-encoder score. Natural-language phrases embedded in returned documents cannot grant abstention credit.
 
 ## Consequences
 
@@ -79,3 +82,4 @@ Accepted decision; v1/v2 history remains preserved and v3 implementation is trac
 |---|---|---|
 | 2026-09-19 | Added v2 with a pinned public IPFS oracle before candidate replay; unavailable cases now block overall qualification. Preserved v1. | `evals/oracles/ruflo-ipfs-provenance.json`, `evals/operational-benchmark.v2.mjs`, `scripts/run-operational-benchmark.mjs`; no universal quality score claimed. |
 | 2026-09-19 | Added v3's archive-bound source catalog and preflight-before-search runner. It requires every claim slot, verifies exact actual passage hashes/spans, separates invalid oracle/corpus gap/retrieval miss/pass, preserves all 21 cases, and keeps the one automatic cross-project case unavailable. The exact archive preflight is 20 available source oracles plus 1 explicit gap; no heavy baseline/candidate replay was run here. | `evals/oracles/operational-source-oracles.v3.json` (catalog SHA-256 `8426dfb0fe3cbe9f98a882dc9a08039fb80987394eb7e1e75064084a53724c67`); `evals/operational-benchmark.v3.mjs`; `scripts/run-operational-benchmark.v3.mjs`; `tests/unit/operational-benchmark-v3.test.mjs`; `/tmp/brain-retrieval-20260919-ut54XL/archive-kb`. |
+| 2026-09-19 | Adversarial verification showed path and proof-label matching could credit a fact found elsewhere in the same stored document, and a substring refusal phrase could spoof negative cases. V3 now requires source spans in the exact citation-block return body and the independently hash-bound witness; only the runtime's anchored `INSUFFICIENT_EVIDENCE` preamble can earn refusal credit. The first full-corpus run is retained as diagnostic-only: 19 of 20 measurable invocations exited 1 because the disposable archive lacked `@xenova/transformers`, and its path-only grading is invalid under this correction. | `evals/operational-runs/v3-2026-09-20T00-13-55-545Z.json`; source regression tests in `tests/unit/operational-benchmark-v3.test.mjs`; `kb/verify-citation.mjs` / `tests/unit/verify-citation.test.mjs` for bounded returned-text parsing. |

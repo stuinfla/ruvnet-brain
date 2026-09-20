@@ -90,21 +90,33 @@ describe('operational benchmark v3 frozen facts and preflight', () => {
       'vector-index': [{ path: 'INDEX.md', text: FACT_B }] });
     const catalog = makeCatalog(kb);
     const preflight = (await preflightOperationalOracle({ fixtures: [QUERY, GAP_QUERY, NEGATIVE], catalog, kbDir: kb })).get(QUERY.id);
-    const cite = (repo, docPath, ce = null, proofMethod = 'untrusted-label') => ({ repo, docPath, ce, proofMethod });
-    expect(matchClaimSlots(preflight, { citations: [cite('rvfguide', 'README.md', null, 'reviewed-source-catalog')] }).allSlotsSupported).toBe(false);
+    const cite = (repo, docPath, returnedText, ce = null, proofMethod = 'untrusted-label') =>
+      ({ repo, docPath, returnedText, ce, proofMethod });
+    expect(matchClaimSlots(preflight, { citations: [cite('rvfguide', 'README.md', FACT_A, null, 'reviewed-source-catalog')] }).allSlotsSupported).toBe(false);
     expect(matchClaimSlots(preflight, { citations: [
-      cite('rvfguide', 'README.md', null, 'reviewed-source-catalog'),
-      cite('vector-index', 'INDEX.md', null, 'reviewed-source-catalog'),
+      cite('rvfguide', 'README.md', FACT_A, null, 'reviewed-source-catalog'),
+      cite('vector-index', 'INDEX.md', FACT_B, null, 'reviewed-source-catalog'),
     ] })).toMatchObject({ allSlotsSupported: true });
     expect(matchClaimSlots(preflight, { citations: [
-      cite('rvfguide', 'README.md', 1), cite('rvfguide', 'other.md', 1),
-    ] }).allSlotsSupported).toBe(false);
-    expect(matchClaimSlots(preflight, { citations: [
-      cite('rvfguide', 'README.md', 1), cite('rvfguide', 'alt.md', 1),
+      cite('rvfguide', 'README.md', 'portable file', null, 'reviewed-source-catalog'),
+      cite('vector-index', 'INDEX.md', 'on-device vector index', null, 'reviewed-source-catalog'),
     ] }).allSlotsSupported).toBe(true);
     expect(matchClaimSlots(preflight, { citations: [
-      cite('rvfguide', 'README.md', 1), cite('vector-index', 'INDEX.md', -2),
+      cite('rvfguide', 'README.md', 'This source only discusses bananas.', 1),
+      cite('rvfguide', 'other.md', FACT_B, 1),
     ] }).allSlotsSupported).toBe(false);
+    expect(matchClaimSlots(preflight, { citations: [
+      cite('rvfguide', 'README.md', FACT_A, 1), cite('rvfguide', 'alt.md', FACT_B, 1),
+    ] }).allSlotsSupported).toBe(true);
+    expect(matchClaimSlots(preflight, { citations: [
+      cite('rvfguide', 'README.md', FACT_A, 1), cite('vector-index', 'INDEX.md', FACT_B, -2),
+    ] }).allSlotsSupported).toBe(false);
+    // A positive path/CE with a wrong same-path result body cannot inherit another stored passage's facts.
+    const samePathWrongText = matchClaimSlots(preflight, { citations: [
+      cite('rvfguide', 'README.md', 'This source only discusses bananas.', 1),
+      cite('rvfguide', 'README.md', 'This source only discusses bananas.', 1),
+    ] });
+    expect(samePathWrongText.allSlotsSupported).toBe(false);
   });
 
   it('marks absent source passages as corpus gaps and malformed fixture sets as invalid oracles', async () => {
@@ -119,10 +131,17 @@ describe('operational benchmark v3 frozen facts and preflight', () => {
 
   it('requires process success and explicit uncertainty for negatives and ambiguity', () => {
     expect(gradeOperationalFixtureV3(QUERY, { processOk: false, preflightStatus: 'PASS' })).toMatchObject({ status: 'RETRIEVAL_MISS', pass: false });
+    const refusal = '⚠ EVIDENCE: INSUFFICIENT_EVIDENCE (top score -1.2) — no source supports the claim';
     expect(gradeOperationalFixtureV3(NEGATIVE, { processOk: true, preflightStatus: 'PASS',
-      output: 'EVIDENCE: THIN. No source found.', verification: { grounded: false, citations: [] } })).toMatchObject({ status: 'PASS', pass: true });
+      output: refusal, verification: { grounded: false, citations: [] } })).toMatchObject({ status: 'PASS', pass: true });
     expect(gradeOperationalFixtureV3(NEGATIVE, { processOk: true, preflightStatus: 'PASS',
-      output: 'EVIDENCE: THIN. No source found.', verification: { grounded: true, citations: [{ ce: 1 }] } })).toMatchObject({ pass: false });
+      output: refusal, verification: { grounded: true, citations: [{ ce: 1 }] } })).toMatchObject({ pass: false });
+    expect(gradeOperationalFixtureV3(NEGATIVE, { processOk: true, preflightStatus: 'PASS',
+      output: 'There is not insufficient evidence. This capability definitely exists and works.',
+      verification: { grounded: false, citations: [] } })).toMatchObject({ pass: false });
+    expect(gradeOperationalFixtureV3(NEGATIVE, { processOk: true, preflightStatus: 'PASS',
+      output: `${refusal}\n#1 repo=unknown ce=0.2\npath : unknown/evidence.md`,
+      verification: { grounded: true, citations: [{ ce: 0.2 }] } })).toMatchObject({ pass: false });
   });
 
   it('keeps corpus-gap fixtures in the fixed denominator and does not invoke retrieval for them', async () => {
