@@ -3,7 +3,7 @@ id: ADR-084
 title: The three user invariants — complete-and-current corpus, enforced hooks, an end-user console
 status: Proposed
 date: 2026-09-12
-updated: 2026-09-19
+updated: 2026-09-20
 version: 1.0.2
 reviewed_digest: 408b9639999d
 authors: [Stuart Kerr, Claude]
