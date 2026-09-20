@@ -74,8 +74,16 @@ describe('publication receipt wiring', () => {
     expect(producer, 'the mode list must be derived, not restated').toContain('HOST_MODES');
     expect(producer).toContain("[installer, '--doctor', '--hooks']");
     expect(producer).toContain('stageVerifiedBundle({ bundlePath, bundleSha256, packageRoot })');
-    expect(position(producer, 'runMeasuredHostSearches(hostResults, searchInstalledHost)'))
+    expect(position(producer, 'runMeasuredHostSearches(hostResults, searchInstalledHost, {'))
       .toBeLessThan(position(producer, "await commandAsync(process.execPath, [installer, '--doctor', '--hooks']"));
+  });
+
+  it('keeps only one installed search worker active through host verification', () => {
+    expect(producer).toContain('runMeasuredHostSearches(hostResults, searchInstalledHost, {');
+    expect(producer).toContain('warmup: async ({ mode, context }) =>');
+    expect(producer).toContain('after: async ({ mode }) =>');
+    expect(producer).toContain('if (mode !== \'dual\')');
+    expect(producer).toContain('only one model-backed MCP worker can consume resources at a time');
   });
 
   it('does not downgrade the accepted dual-host native nightly proof', () => {
