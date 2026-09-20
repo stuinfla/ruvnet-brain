@@ -193,6 +193,28 @@ describe('the predicate — a mention is not a caller', () => {
   });
 });
 
+describe('invocation-scoped source reads', () => {
+  it('reads each caller source once per audit and refreshes after an edit', () => {
+    w('scripts/shared-cache-test.mjs', 'export const shared = true;\n');
+    w('scripts/consumer-cache-test.mjs', "import './shared-cache-test.mjs';\n");
+    const reads = new Map();
+    const readFile = (file, encoding) => {
+      reads.set(file, (reads.get(file) || 0) + 1);
+      return fs.readFileSync(file, encoding);
+    };
+    const runAudit = () => audit({ repo, standalone: [], held: {}, operationalExports: [], readFile });
+    const shared = 'scripts/shared-cache-test.mjs';
+    const consumer = path.join(repo, 'scripts/consumer-cache-test.mjs');
+
+    expect(stateOf(runAudit(), shared)).toBe('wired');
+    expect(reads.get(consumer)).toBe(1);
+
+    w('scripts/consumer-cache-test.mjs', 'export const consumer = true;\n');
+    expect(stateOf(runAudit(), shared)).toBe('unwired');
+    expect(reads.get(consumer)).toBe(2);
+  });
+});
+
 describe('a test is not a caller — the exclusion that is the entire point', () => {
   it('ignores tests/ directories', () => {
     w('scripts/widget.mjs', 'export const x = 1;\n');

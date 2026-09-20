@@ -3,7 +3,7 @@ id: ADR-010
 status: Accepted
 date: 2026-07-06
 updated: 2026-09-19
-version: 1.1.1
+version: 1.1.2
 updated_source: capability-only-cognitum-ruos-policy
 ---
 # ADR-0010: Security hardening (SEC-0010) — Dragan's QE review, and exactly how each finding was fixed
@@ -74,6 +74,11 @@ retires legacy sidecars during promotion; `build-bundle.mjs` rejects nonconformi
 The separate `ruvnet/ruos` store is unaffected. Local installed MCP and 128 focused tests
 passed; public release and clean public installation remain unverified. This controls Brain
 distribution and does not change the visibility of the upstream GitHub repository.
+
+The retrieval router recognizes the fully qualified phrase `cognitum ruOS` as the
+`cognitum-ruos` capability-summary owner. Bare `ruOS` continues to identify the separate
+`ruvnet/ruos` desktop-control store; comparison questions can select both. This is routing only
+and does not authorize additional Cognitum source, implementation, or configuration content.
 
 **Demo publication authorization, 2026-09-19:** Stuart explicitly waived waiting for
 Windows/macOS/Linux verification and requested production publication plus a real `npx`

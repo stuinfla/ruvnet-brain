@@ -3,7 +3,7 @@ id: ADR-030
 title: Latent knowledge is not knowledge — few gates, many lessons, retrieved at the decision point
 status: Proposed
 date: 2026-07-22
-updated: 2026-07-23
+updated: 2026-09-19
 authors: [Stuart Kerr, Claude Code]
 tags: [learning, enforcement, gates, context-budget, compounding, 4.0]
 supersedes: []
@@ -257,3 +257,11 @@ pieces; nothing turned a promoted lesson into an interruption, so nothing change
    the surface is a CLI rather than part of the console. Both remain open.
 5. ❌ Adversarial cross-model review recorded, per ADR-027 principle 6 — still outstanding for
    ADR-027, 028, 029 and this one.
+
+### Implementation note (2026-09-19)
+
+The hook lesson gate now emits a given non-blocking lesson once per session by default. This limits
+identical correction prose across repeated matching edits; `RUVNET_LESSON_MAX_SHOWS` remains an
+explicit cadence override. Opted-in user-stated blocking lessons remain uncapped and continue to
+refuse at each matching decision point. The session key comes from the host hook payload's
+`session_id`; missing IDs use the existing bounded project/day fallback.

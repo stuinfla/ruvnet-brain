@@ -3,9 +3,9 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-13
-version: 1.2.1
-reviewed_digest: ea6f7bbf8bcb
+updated: 2026-09-19
+version: 1.2.2
+reviewed_digest: 439dc4f9306d
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -64,8 +64,7 @@ contract is not. The generator, JSON/Markdown repository projections, strict can
 bundle projections, installed command, and third Console page exist and have focused tests. Signed
 enumeration, a closed immutable candidate snapshot, routing/focused-QA receipts, signed expiring
 exemptions, and complete candidate → public artifact → clean install → managed-host generation coherence remain
-unproven; implemented transport and validators are not substitutes for completed execution evidence. `Proposed` remains the only honest decision status until those release-blocking
-acceptance paths pass against the actual artifact.
+unproven; implemented transport and validators are not substitutes for completed execution evidence. The decision is Accepted; this is not a claim that those release-blocking acceptance paths have passed against the actual artifact.
 
 **Date**: 2026-08-21
 
@@ -302,6 +301,7 @@ of §1 nor the code.
 
 | Date | What changed | Why (with referents) |
 |---|---|---|
+| 2026-09-19 | Reviewed recovery changes: preserve and require the gist inventory completeness flag, bind the complete observed file inventory, and correlate the protected corpus dispatch by an explicit identifier. These changes do not establish all-source freshness or a completed nightly publication. reviewed_digest 439dc4f9306d. | `scripts/source-coverage.mjs`, `scripts/ingest-gists.mjs`, `.github/workflows/protected-release.yml`; scoped source diff reviewed against `231c5656`; related gist validation tests passed and one public Git capture passed, but complete 495-gist capture and protected publication remain untested. Historical Proposed wording above is preserved as history; current Accepted denotes the decision, not implementation completion. |
 | 2026-08-26 | `scripts/brain-stamp.mjs`'s `builtFromSha` now prefers `kb/RVF-GENERATIONS.json`'s recorded `sourceCommit` over the local clone's live HEAD, via a new pure `scripts/brain-stamp-resolve.mjs` helper; falls back to live HEAD only when no generation record exists. Does not itself satisfy this ADR's still-unbuilt signed enumeration, closed snapshot, or `data/source-coverage.json` generator. | Dream Cycle 2026-08-26 (issue #175) confirmed live the exact "clone freshness is not artifact freshness" gap this ADR's 2026-08-21 audit named against `scripts/brain-stamp.mjs`: the repo's own committed `kb/RVF-GENERATIONS.json` already disagreed with a live-HEAD read for `synthlang` (`sourceCommit` `69599563...`) and `autogenous` (`sourceCommit` `b5c6e838...`), the same two repos this ADR's Context section cites. |
 | 2026-08-21 | Re-read the emergency release rail and kept the broader source-coverage system explicitly unbuilt. | `.github/workflows/ci.yml` does not call the absent `scripts/source-coverage.mjs` or claim its absent projections. It uses the committed immutable seed identity plus strict repaired generation receipts to restore service; this ADR's complete coverage generator remains deferred. |
 | 2026-08-21 | Corrected the earlier implementation claim: the coverage command and Console projection remain planned, not shipped. | The named `plugin/commands/coverage.md`, `plugin/scripts/coverage.mjs`, and Console coverage files do not exist in this candidate. The emergency release implements corpus-seed and ledger identity only; the broader coverage read model remains Proposed and is explicitly deferred until after service is restored. |

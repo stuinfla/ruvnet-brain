@@ -33,6 +33,14 @@ export function writeLockVersion(s, version) {
   return `${JSON.stringify(doc, null, 2)}\n`;
 }
 
+export function readExplainerBadgeVersion(s) {
+  return s.match(/&middot;\s*v(\d+\.\d+\.\d+(?:-[\w.-]+)?)(?=\s*(?:&middot;|<))/)?.[1] ?? null;
+}
+
+export function writeExplainerBadgeVersion(s, version) {
+  return s.replace(/(&middot;\s*v)\d+\.\d+\.\d+(?:-[\w.-]+)?/, `$1${version}`);
+}
+
 // Each target: a file, a regex to find the version-bearing line, and the corrected line.
 const targets = [
   { // Codex plugin manifest — same product, same release train as the Claude manifest
@@ -71,12 +79,12 @@ const targets = [
     file: 'explainer/index.html',
     get: (s) => {
       const ld = s.match(/"softwareVersion"\s*:\s*"([^"]+)"/)?.[1] ?? null;
-      const badge = s.match(/&middot;\s*v([0-9][^\s<]*)</)?.[1] ?? null;
+      const badge = readExplainerBadgeVersion(s);
       return ld === badge ? ld : `mixed(${ld}, ${badge})`;
     },
     set: (s) => s
       .replace(/("softwareVersion"\s*:\s*)"[^"]+"/, `$1"${V}"`)
-      .replace(/(&middot;\s*v)[0-9][^\s<]*</, `$1${V}<`),
+      .replace(/&middot;\s*v\d+\.\d+\.\d+(?:-[\w.-]+)?/, (label) => writeExplainerBadgeVersion(label, V)),
   },
 ];
 

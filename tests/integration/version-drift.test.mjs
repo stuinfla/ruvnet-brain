@@ -108,8 +108,8 @@ describe('wrapper-vs-KB version drift — --doctor', () => {
     expect(out).toContain(KB_TAG);
     expect(out).toContain(WRAPPER_DIFFERENT);
     expect(out).toContain(FIX_COMMAND);
-    // Warm, not alarming: neither side is called broken.
-    expect(out).toMatch(/neither one is broken/);
+    // A version difference cannot establish health in either direction.
+    expect(out).toMatch(/does not prove either is healthy/);
   });
 
   it('never reports drift when the plugin wrapper is not installed', () => {

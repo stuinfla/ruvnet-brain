@@ -2,7 +2,7 @@
   "cleanUrls": true,
   "redirects": [
     {
-      "source": "^/(?!api/|metrics)(.*)$",
+      "source": "/:path((?!api/|metrics).*)",
       "has": [
         {
           "type": "host",
@@ -15,7 +15,7 @@
           "key": "cf-connecting-ip"
         }
       ],
-      "destination": "https://isovision.ai/ruvnet-brain/$1",
+      "destination": "https://isovision.ai/ruvnet-brain/:path*",
       "permanent": true
     }
   ]

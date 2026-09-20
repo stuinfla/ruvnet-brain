@@ -1,0 +1,125 @@
+# Router WASM
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/router-wasm.svg)](https://www.npmjs.com/package/router-wasm)
+[![Bundle Size](https://img.shields.io/bundlephobia/minzip/router-wasm)](https://bundlephobia.com/package/router-wasm)
+[![WebAssembly](https://img.shields.io/badge/WebAssembly-✓-654FF0.svg)](https://webassembly.org/)
+
+**WebAssembly bindings for intelligent neural routing and vector search in the browser.**
+
+> Bring powerful vector database capabilities to the client-side. Run sub-millisecond vector search entirely in the browser with **zero server dependencies**. Perfect for edge computing, offline AI, and privacy-first applications.
+
+## 🌟 Why Router WASM?
+
+Traditional vector databases require backend infrastructure and constant network connectivity. **Router WASM changes that.**
+
+### The Browser-First Advantage
+
+- ⚡ **Zero Latency**: No network roundtrips—search happens entirely in the browser
+- 🔒 **Privacy First**: User data never leaves the device
+- 🌐 **Offline Capable**: Full functionality without internet connection
+- 💰 **Cost Effective**: Eliminate backend infrastructure and API costs
+- 🚀 **Edge Computing**: Deploy intelligent routing to CDN edge nodes
+- 📦 **Small Bundle**: Optimized WASM binary for fast page loads
+
+## 🚀 Features
+
+### Core Capabilities
+
+- **Client-Side Vector Search**: Sub-millisecond similarity search in the browser
+- **Neural Routing**: Intelligent request routing and pattern matching
+- **Multiple Distance Metrics**: Euclidean, Cosine, Dot Product, Manhattan
+- **HNSW Indexing**: Fast approximate nearest neighbor search
+- **Memory Efficient**: Optimized for browser memory constraints
+- **TypeScript Support**: Full type definitions included
+- **Framework Agnostic**: Works with React, Vue, Svelte, vanilla JS
+- **Web Worker Ready**: Run computations off the main thread
+
+### Browser-Specific Optimizations
+
+- **SIMD Acceleration**: Hardware-accelerated vector operations where available
+- **Progressive Loading**: Load and initialize asynchronously
+- **Lazy Initialization**: Initialize only when needed
+- **Small Footprint**: <100KB gzipped WASM binary
+- **Memory Pooling**: Efficient memory management for long-running sessions
+- **IndexedDB Integration**: Persist vector data locally
+
+## 📦 Installation
+
+### NPM/Yarn
+
+```bash
+# Using npm
+npm install router-wasm
+
+# Using yarn
+yarn add router-wasm
+
+# Using pnpm
+pnpm add router-wasm
+```
+
+### CDN (Unpkg)
+
+```html
+<script type="module">
+  import init, { VectorDB } from 'https://unpkg.com/router-wasm/router_wasm.js';
+
+  await init();
+  const db = new VectorDB(128);
+</script>
+```
+
+## ⚡ Quick Start
+
+### Basic Usage (ES Modules)
+
+```javascript
+import init, { VectorDB, DistanceMetric } from 'router-wasm';
+
+// Initialize WASM module (only once)
+await init();
+
+// Create a vector database with 128 dimensions
+const db = new VectorDB(128);
+
+// Insert vectors
+db.insert('doc1', new Float32Array([0.1, 0.2, 0.3, /* ... 125 more */]));
+db.insert('doc2', new Float32Array([0.4, 0.5, 0.6, /* ... 125 more */]));
+db.insert('doc3', new Float32Array([0.7, 0.8, 0.9, /* ... 125 more */]));
+
+// Search for similar vectors
+const query = new Float32Array([0.15, 0.25, 0.35, /* ... 125 more */]);
+const results = db.search(query, 5);  // Top 5 results
+
+// Process results
+for (const result of results) {
+  console.log(`ID: ${result.id}, Score: ${result.score}`);
+}
+
+// Get collection size
+console.log(`Total vectors: ${db.count()}`);
+
+// Delete a vector
+db.delete('doc2');
+```
+
+### TypeScript Support
+
+```typescript
+import init, { VectorDB, DistanceMetric } from 'router-wasm';
+
+interface SearchResult {
+  id: string;
+  score: number;
+}
+
+async function initializeVectorSearch(): Promise<VectorDB> {
+  // Initialize WASM
+  await init();
+
+  // Create database with 384 dimensions (e.g., for sentence embeddings)
+  const db = new VectorDB(384);
+
+  return db;
+}

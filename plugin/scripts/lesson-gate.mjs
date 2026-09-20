@@ -203,7 +203,10 @@ const GATE_STATE_PATH = process.env.RUVNET_LESSON_GATE_STATE
   || path.join(CONFIG_ROOT, 'lesson-gate-state.json');
 const MAX_SHOWS = (() => {
   const n = Number(process.env.RUVNET_LESSON_MAX_SHOWS);
-  return Number.isInteger(n) && n > 0 ? n : 3;
+  // A user-correction advisory is useful once in a session; repeating identical prose on each
+  // matching edit trains the recipient to ignore it. Keep an explicit override for installations
+  // that want a different cadence. Actual opted-in refusals remain exempt below.
+  return Number.isInteger(n) && n > 0 ? n : 1;
 })();
 const KEEP_SESSIONS = 20;   // bound the state file to the most-recent sessions, same as anticipate.sh
 const SID = (typeof session === 'string' && session.trim())
