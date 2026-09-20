@@ -3,9 +3,9 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-09-19
+updated: 2026-09-20
 reviewed_digest: 55563231cc8b
-version: 1.1.5
+version: 1.1.6
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -30,6 +30,11 @@ governs:
 **Status**: Implemented
 **Date**: 2026-07-24
 **Related**: ADR-023
+
+> **Reviewed 2026-09-20 (candidate 4.3.27).** The Codex adapter now validates syntactically valid
+> PostToolUse JSON against the event wire shape and wraps incompatible output as `additionalContext`,
+> preventing malformed hook output from reaching the host. The implementation remains in place; public
+> availability still depends on protected release and exact-artifact host verification.
 
 > **Reviewed 2026-09-04 (4.3.9 candidate).** The Codex plugin manifest moved only as a derived
 > release-version projection. Host registration, lifecycle wiring, stable entrypoints, and doctor

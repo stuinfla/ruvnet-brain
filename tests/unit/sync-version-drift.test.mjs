@@ -31,6 +31,16 @@
 // 98-109) are left as an integration-style test (spawn `node scripts/sync-version.mjs --check` in a
 // tmp copy of the repo) rather than unit-extracted, since their value is in walking REAL files.
 import { describe, it, expect } from 'vitest';
+import { readExplainerBadgeVersion, writeExplainerBadgeVersion } from '../../scripts/sync-version.mjs';
+
+describe('sync-version.mjs explainer status label', () => {
+  it('recognizes the product version when a public npm version follows it', () => {
+    const label = '&middot; v4.3.27 &middot; public npm v4.3.26';
+    expect(readExplainerBadgeVersion(label)).toBe('4.3.27');
+    expect(writeExplainerBadgeVersion(label, '4.3.28'))
+      .toBe('&middot; v4.3.28 &middot; public npm v4.3.26');
+  });
+});
 
 describe.todo('sync-version.mjs — readBadgeVersion(readmeText) / writeBadgeVersion(readmeText, version) (requires export, see file header)', () => {
   it.todo('reads "0.5.0-dev" out of a badge URL token "version_0.5.0--dev-updated_2026--07--08" (hyphens shields.io-escaped as `--`)');
