@@ -3,12 +3,13 @@ id: ADR-057
 title: 95 on both graders — closing a 38/53 against a self-reported 83, dimension by dimension
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-12
+updated: 2026-09-19
+version: 1.0.1
 impl: verification-expired
 verified: 2026-07-30
 verified_digest: 1c276a7dfbc5
 verified_by: governed-source claim ledger in this ADR plus node scripts/doc-currency.mjs --json
-reviewed_digest: 4e276b45d242
+reviewed_digest: 2f8099012566
 governs:
   - scripts/behavioral-l1-l4.mjs
   - scripts/no-silent-substitution.mjs
@@ -250,6 +251,10 @@ to the five governed paths; it does not adjudicate the product or substitute for
   last independent score recorded here; source reconciliation cannot revise it.
 
 ## Currency log
+
+| 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest 2f8099012566. | `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `tests/mesh/coexistence.test.mjs`; source consistency review only, no new deployment or acceptance claim. |
+
+| 2026-09-19 | Source review: installer release/health checks and the hook registry changed. Capacity guidance is advisory and provides no behavioral-grade evidence. Scoring contract and named grader implementation are unchanged; no fresh 95 score or host verification is claimed. Proposed status and dated historical verification remain. | Reviewed current governed-source diffs; this row records source consistency, not renewed runtime acceptance. |
 | 2026-09-12 | Currency review at commit dae83538: decision unchanged — this ADR's grading claims and open build-order items are unaffected. The hook-parity fork added Codex `PreToolUse`/`PostToolUse` registration and the new grounding-turn-mark/gate Stop pair to `plugin/hooks/hooks.json`; `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `bin/install.mjs` did not move in this fork's diff. `impl: verification-expired` remains unchanged — no re-grade is claimed. | Reviewed `plugin/hooks/hooks.json`'s diff directly (merge-base `13cfc38b`..`ef2b8e12`); confirmed the other four governed paths untouched. |
 
 | date | why |

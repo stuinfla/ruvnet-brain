@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest, validateGistAggregateReceipt } from './coverage-integrity.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { writeRvfGeneration } from './rvf-generation.mjs';
+import { fetchGistGitSnapshot } from './gist-git-transport.mjs';
 
 const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TEXT_EXT = new Set(['.md', '.markdown', '.txt', '.rst']);
@@ -45,6 +46,7 @@ const HEX_GIST = /^[a-f0-9]{20,64}$/;
 const OWNER_RE = /^[A-Za-z0-9-]{1,39}$/;
 const compareCanonicalText = (left, right) => String(left) < String(right) ? -1
   : String(left) > String(right) ? 1 : 0;
+const VERIFIED_CAPTURE_SETS = new WeakMap();
 
 function validDate(value) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
@@ -122,38 +124,67 @@ const RATE_LIMIT_RE = /rate limit/i;
 const NOT_FOUND_RE = /\bnot found\b|HTTP 404/i;
 const FORBIDDEN_INTEGRATION_RE = /resource not accessible by integration/i;
 const TRANSIENT_RE = /timeout|timed out|TLS handshake|ECONNRESET|ECONNREFUSED|EAI_AGAIN|temporary failure|HTTP 5\d\d|HTTP 429|socket hang up/i;
+const MAX_RATE_LIMIT_WAIT_MS = 15 * 60 * 1000;
+
+function retryDelay(error, attempt, retryDelayMs) {
+  if (error?.code !== 'GIST_RATE_LIMITED') return retryDelayMs * attempt;
+  const retryAfter = Number(error.headers?.['retry-after']);
+  const resetAt = Number(error.headers?.['x-ratelimit-reset']);
+  const requested = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000
+    : Number.isFinite(resetAt) && resetAt > 0 ? Math.max(0, resetAt * 1000 - Date.now()) : retryDelayMs * attempt;
+  return requested > MAX_RATE_LIMIT_WAIT_MS ? null : Math.max(retryDelayMs * attempt, requested);
+}
 
 export class GistFetchError extends Error {
-  constructor(message, { code, gistId, status, retryable = false } = {}) {
+  constructor(message, { code, gistId, status, headers = {}, retryable = false } = {}) {
     super(message);
     this.name = 'GistFetchError';
     this.code = code;
     this.gistId = gistId;
     if (status !== undefined) this.status = status;
+    if (headers && Object.keys(headers).length) this.headers = headers;
     this.retryable = retryable;
   }
 }
 
-function classifyGistFetchFailure(stderr, gistId) {
+function classifyGistFetchFailure(stderr, gistId, { status, headers = {} } = {}) {
   const message = String(stderr || '').trim();
-  if (NOT_FOUND_RE.test(message)) {
-    return new GistFetchError(`gist ${gistId} was moved or deleted: ${message}`,
-      { code: 'GIST_NOT_FOUND', gistId, retryable: false });
+  const responseStatus = status ?? (Number(message.match(/\bHTTP\s+(\d{3})\b/i)?.[1]) || undefined);
+  const safeHeaders = Object.fromEntries(['x-ratelimit-remaining', 'x-ratelimit-reset', 'retry-after', 'x-ratelimit-resource', 'x-github-request-id']
+    .flatMap((key) => headers[key] == null ? [] : [[key, String(headers[key])]]));
+  const responseDetail = [responseStatus ? `HTTP ${responseStatus}` : '', Object.keys(safeHeaders).length
+    ? `headers=${JSON.stringify(safeHeaders)}` : '', message].filter(Boolean).join('; ');
+  if (responseStatus === 404 || (!responseStatus && NOT_FOUND_RE.test(message))) {
+    return new GistFetchError(`gist ${gistId} was moved or deleted: ${responseDetail}`,
+      { code: 'GIST_NOT_FOUND', gistId, status: responseStatus, headers: safeHeaders, retryable: false });
   }
-  if (FORBIDDEN_INTEGRATION_RE.test(message)) {
-    return new GistFetchError(`gist ${gistId} fetch rejected -- token lacks gist scope: ${message}`,
-      { code: 'GIST_FORBIDDEN', gistId, retryable: false });
+  if (RATE_LIMIT_RE.test(message) || (responseStatus === 403 && headers['x-ratelimit-remaining'] === '0')
+    || (responseStatus === 429 && Boolean(headers['retry-after']))) {
+    return new GistFetchError(`gist ${gistId} fetch rate-limited: ${responseDetail}`,
+      { code: 'GIST_RATE_LIMITED', gistId, status: responseStatus, headers: safeHeaders, retryable: true });
   }
-  if (RATE_LIMIT_RE.test(message)) {
-    return new GistFetchError(`gist ${gistId} fetch rate-limited: ${message}`,
-      { code: 'GIST_RATE_LIMITED', gistId, retryable: true });
+  if (responseStatus === 403 && (FORBIDDEN_INTEGRATION_RE.test(message) || !headers['x-ratelimit-remaining'])) {
+    return new GistFetchError(`gist ${gistId} fetch rejected (HTTP 403): ${responseDetail}`,
+      { code: 'GIST_FORBIDDEN', gistId, status: responseStatus, headers: safeHeaders, retryable: false });
   }
-  if (TRANSIENT_RE.test(message)) {
-    return new GistFetchError(`gist ${gistId} fetch failed transiently: ${message}`,
-      { code: 'GIST_TRANSIENT_FAILURE', gistId, retryable: true });
+  if (TRANSIENT_RE.test(message) || (responseStatus >= 500 && responseStatus < 600) || responseStatus === 429) {
+    return new GistFetchError(`gist ${gistId} fetch failed transiently: ${responseDetail}`,
+      { code: 'GIST_TRANSIENT_FAILURE', gistId, status: responseStatus, headers: safeHeaders, retryable: true });
   }
-  return new GistFetchError(`gist ${gistId} fetch failed: ${message}`,
-    { code: 'GIST_FETCH_FAILED', gistId, retryable: false });
+  return new GistFetchError(`gist ${gistId} fetch failed: ${responseDetail}`,
+    { code: 'GIST_FETCH_FAILED', gistId, status: responseStatus, headers: safeHeaders, retryable: false });
+}
+
+function parseGhResponse(output) {
+  const text = String(output || '');
+  const match = text.match(/^HTTP\/\S+\s+(\d+)\r?\n([\s\S]*?)\r?\n\r?\n([\s\S]*)$/m);
+  if (!match) return { status: undefined, headers: {}, body: text };
+  const headers = {};
+  for (const line of match[2].split(/\r?\n/)) {
+    const split = line.indexOf(':');
+    if (split > 0) headers[line.slice(0, split).trim().toLowerCase()] = line.slice(split + 1).trim();
+  }
+  return { status: Number(match[1]), headers, body: match[3] };
 }
 
 function defaultSleep(ms) {
@@ -172,11 +203,14 @@ export async function defaultFetchGist(id, { spawn = spawnSync, retries = 3, ret
   const attempts = Math.max(1, retries);
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const result = spawn('gh', ['api', `gists/${id}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    if (result.status === 0) return JSON.parse(result.stdout);
-    lastError = classifyGistFetchFailure(result.stderr, id);
+    const result = spawn('gh', ['api', '--include', `gists/${id}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const response = parseGhResponse(result.stdout);
+    if (result.status === 0) return JSON.parse(response.body);
+    lastError = classifyGistFetchFailure(`${result.stderr || ''}\n${response.body || ''}`, id, response);
     if (!lastError.retryable || attempt === attempts) throw lastError;
-    await sleep(retryDelayMs * attempt);
+    const delay = retryDelay(lastError, attempt, retryDelayMs);
+    if (delay === null) throw lastError;
+    await sleep(delay);
     if (signal?.aborted) throw abortError(signal);
   }
   throw lastError;
@@ -185,17 +219,34 @@ export async function defaultFetchGist(id, { spawn = spawnSync, retries = 3, ret
 // The unauthenticated fallback used ONLY for the specific 403 "no gist scope" rejection. Mirrors
 // source-coverage.mjs's listGistsUnauthenticated: same env var, same accept header, same
 // unauthenticated-quota reasoning. `fetchImpl` is a test seam (default: global fetch).
-async function fetchPublicGistDetail(id, { fetchImpl = globalThis.fetch, signal } = {}) {
+async function fetchPublicGistDetail(id, { fetchImpl = globalThis.fetch, retries = 3, retryDelayMs = 300,
+  sleep = defaultSleep, signal } = {}) {
   const apiBase = process.env.RUVNET_GISTS_API || 'https://api.github.com';
-  const response = await fetchImpl(`${apiBase}/gists/${id}`, {
-    headers: { accept: 'application/vnd.github+json', 'user-agent': 'ruvnet-brain-gist-receipts' },
-    signal,
-  });
-  if (!response.ok) {
-    throw new GistFetchError(`gist ${id} public detail fetch failed: HTTP ${response.status}`,
-      { code: 'GIST_FETCH_FAILED', gistId: id, status: response.status, retryable: false });
+  const attempts = Math.max(1, retries);
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const response = await fetchImpl(`${apiBase}/gists/${id}`, {
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'ruvnet-brain-gist-receipts' },
+      signal,
+    });
+    if (response.ok) return response.json();
+    const headers = {};
+    for (const key of ['x-ratelimit-remaining', 'x-ratelimit-reset', 'retry-after', 'x-ratelimit-resource', 'x-github-request-id']) {
+      const value = response.headers?.get?.(key);
+      if (value != null) headers[key] = value;
+    }
+    const body = await response.json?.().catch?.(() => null);
+    const classified = classifyGistFetchFailure(`public detail fetch failed: HTTP ${response.status} ${body?.message || ''}`, id,
+      { status: response.status, headers });
+    const error = new GistFetchError(`gist ${id} public detail fetch failed: ${classified.message}`,
+      { code: classified.code, gistId: id, status: response.status, headers: classified.headers,
+        retryable: classified.retryable });
+    if (!error.retryable || attempt === attempts) throw error;
+    const delay = retryDelay(error, attempt, retryDelayMs);
+    if (delay === null) throw error;
+    await sleep(delay);
+    if (signal?.aborted) throw abortError(signal);
   }
-  return response.json();
+  throw new Error(`gist ${id} public detail retries exhausted`);
 }
 
 // The transport `captureGistSources` uses by default for per-gist DETAIL. Wraps `defaultFetchGist`
@@ -229,9 +280,18 @@ export async function defaultFetchRaw(file, { fetchImpl = globalThis.fetch, retr
         headers: { 'user-agent': 'ruvnet-brain-gist-receipts' }, signal,
       });
       if (response.ok) return Buffer.from(await response.arrayBuffer());
-      const transient = response.status === 429 || (response.status >= 500 && response.status < 600);
-      lastError = new GistFetchError(`raw gist fetch failed: HTTP ${response.status}`,
-        { code: transient ? 'GIST_RAW_TRANSIENT_FAILURE' : 'GIST_RAW_FETCH_FAILED', status: response.status, retryable: transient });
+      const headers = {};
+      for (const key of ['x-ratelimit-remaining', 'x-ratelimit-reset', 'retry-after', 'x-ratelimit-resource', 'x-github-request-id']) {
+        const value = response.headers?.get?.(key);
+        if (value != null) headers[key] = value;
+      }
+      const rateLimited = response.status === 403 && (headers['x-ratelimit-remaining'] === '0'
+        || RATE_LIMIT_RE.test(response.statusText || '')) || response.status === 429;
+      const transient = rateLimited || (response.status >= 500 && response.status < 600);
+      lastError = new GistFetchError(`raw gist fetch failed: HTTP ${response.status}; headers=${JSON.stringify(
+        Object.fromEntries(Object.entries(headers).filter(([key]) => ['x-ratelimit-remaining', 'x-ratelimit-reset', 'retry-after', 'x-ratelimit-resource', 'x-github-request-id'].includes(key))))}`,
+      { code: rateLimited ? 'GIST_RATE_LIMITED' : transient ? 'GIST_RAW_TRANSIENT_FAILURE' : 'GIST_RAW_FETCH_FAILED',
+        status: response.status, headers, retryable: transient });
       if (!transient) throw lastError;
     } catch (error) {
       if (error instanceof GistFetchError) { lastError = error; if (!error.retryable) throw error; }
@@ -243,7 +303,9 @@ export async function defaultFetchRaw(file, { fetchImpl = globalThis.fetch, retr
       }
     }
     if (attempt === attempts) throw lastError;
-    await sleep(retryDelayMs * attempt);
+    const delay = retryDelay(lastError, attempt, retryDelayMs);
+    if (delay === null) throw lastError;
+    await sleep(delay);
     if (signal?.aborted) throw abortError(signal);
   }
   throw lastError;
@@ -340,18 +402,49 @@ function reusableCachedGist(cached, stub) {
   return 'reuse';
 }
 
-export async function captureGistSources({ observation, cache = null, fetchDetail = defaultFetchDetail,
-  fetchRaw = defaultFetchRaw, signal, now = () => new Date().toISOString() } = {}) {
+export async function captureGistSources({ observation, cache = null, fetchDetail = null,
+  fetchRaw = defaultFetchRaw, fetchGitSnapshot = fetchGistGitSnapshot, signal,
+  now = () => new Date().toISOString() } = {}) {
   const stubs = observation?.gists?.rows;
   if (!Array.isArray(stubs) || stubs.some(({ id }) => !HEX_GIST.test(String(id || '')))
     || new Set(stubs.map(({ id }) => id)).size !== stubs.length) {
     throw new Error('source observation has missing or duplicate gist ids');
   }
+  const observedRowsSha256 = digest({ owner: observation.owner, observedAt: observation.observedAt, rows: stubs });
   const gists = {};
   const reused = [];
   const fetched = [];
   for (const stub of [...stubs].sort((a, b) => String(a.id).localeCompare(String(b.id)))) {
     if (signal?.aborted) throw abortError(signal);
+    if (!fetchDetail) {
+      // The production/no-key route never spends one REST detail request per gist and never trusts
+      // a body-free cache or timestamps as content identity. A full bare clone gives one immutable
+      // Git commit/tree; every observed raw_url's blob identity must match its HEAD file bytes.
+      const snapshot = await fetchGitSnapshot({ owner: observation.owner, stub, signal });
+      const files = [];
+      for (const source of snapshot.files) {
+        const filename = source.filename;
+        if (!TEXT_EXT.has(path.extname(filename).toLowerCase())) {
+          files.push({ filename, included: false, reason: 'non-text policy exclusion', size: source.size,
+            sourceGit: { ...source.sourceGit, captureMethod: 'public-bare-git-v1', revisionKind: 'git-commit',
+              observedAt: observation.observedAt, observedRowsSha256,
+              sourceObservationSha256: observation.observationSha256 } });
+          continue;
+        }
+        let text;
+        try { text = new TextDecoder('utf-8', { fatal: true }).decode(source.body); }
+        catch { throw new Error(`gist ${stub.id}/${filename} is not valid UTF-8 text`); }
+        files.push({ filename, included: true, sha256: sha256(source.body), bytes: source.size,
+          body: text, sourceGit: { ...source.sourceGit, captureMethod: 'public-bare-git-v1', revisionKind: 'git-commit',
+            observedAt: observation.observedAt, observedRowsSha256,
+            sourceObservationSha256: observation.observationSha256 } });
+      }
+      if (files.length !== snapshot.treeFileCount) throw new Error(`gist ${stub.id} Git inventory changed during capture`);
+      gists[stub.id] = { gistId: stub.id, versionSha: snapshot.headSha, updatedAt: stub.updated_at,
+        ingestedAt: now(), complete: true, files };
+      fetched.push(stub.id);
+      continue;
+    }
     const cached = cache?.gists?.[stub.id];
     const verdict = cached ? reusableCachedGist(cached, stub) : 'miss';
     if (verdict === 'tampered') {
@@ -386,14 +479,31 @@ export async function captureGistSources({ observation, cache = null, fetchDetai
       complete: files.length === Object.keys(full.files || {}).length, files };
     fetched.push(stub.id);
   }
-  return {
+  const captured = {
     owner: observation.owner,
+    observedRowsSha256,
     observedAt: observation.observedAt,
     sourceObservationSha256: observation.observationSha256,
     generatedAt: now(),
     gists,
     reuseEvidence: { reused, fetched },
   };
+  VERIFIED_CAPTURE_SETS.set(captured, {
+    fingerprint: digest(captured),
+    owner: observation.owner,
+    observedRowsSha256,
+    sourceObservationSha256: observation.observationSha256,
+  });
+  return captured;
+}
+
+function isCurrentVerifiedCapture(captured, observation) {
+  const proof = captured && typeof captured === 'object' ? VERIFIED_CAPTURE_SETS.get(captured) : null;
+  return Boolean(proof && proof.owner === observation?.owner
+    && proof.observedRowsSha256 === digest({ owner: observation?.owner,
+      observedAt: observation?.observedAt, rows: observation?.gists?.rows })
+    && proof.sourceObservationSha256 === observation?.observationSha256
+    && proof.fingerprint === digest(captured));
 }
 
 // ── stage 2: render ──────────────────────────────────────────────────────────────────────────────
@@ -462,6 +572,25 @@ export function validateGistReceipt({ receipt, observation = null, passagesFile,
     if (!validDate(row?.updatedAt) || !validDate(row?.ingestedAt)) {
       throw new Error(`gist ${gistId} has an invalid updatedAt/ingestedAt timestamp`);
     }
+    const sourceProofs = (row?.files || []).map((file) => file?.sourceGit).filter(Boolean);
+    if (sourceProofs.length && sourceProofs.length !== row.files.length) {
+      throw new Error(`gist ${gistId} mixes Git-bound and unbound file evidence`);
+    }
+    if (sourceProofs.length && sourceProofs.some((proof) => !HEX40.test(String(proof.headSha || ''))
+      || !HEX40.test(String(proof.treeSha || '')) || !HEX40.test(String(proof.blobSha || ''))
+      || proof.captureMethod !== 'public-bare-git-v1' || proof.revisionKind !== 'git-commit'
+      || !validDate(proof.observedAt) || proof.sourceObservationSha256 !== receipt.sourceObservationSha256
+      || !HEX64.test(String(proof.observedRowsSha256 || ''))
+      || !Number.isSafeInteger(proof.treeFileCount) || proof.treeFileCount !== row.files.length
+      || proof.observedTruncated !== false || proof.observedFileCount !== proof.treeFileCount
+      || proof.headSha !== row.versionSha || proof.observed !== true
+      || !HEX40.test(String(proof.observedRawRevisionSha || ''))
+      || !['blob', 'commit'].includes(proof.observedRawRevisionKind)
+      || proof.observedRawBlobSha !== proof.blobSha
+      || sourceProofs.some((other) => other.treeSha !== proof.treeSha || other.headSha !== proof.headSha
+        || other.observedRowsSha256 !== proof.observedRowsSha256))) {
+      throw new Error(`gist ${gistId} has an incomplete Git snapshot proof`);
+    }
     for (const file of row?.files || []) {
       if (!validateFilename(file?.filename)) throw new Error(`gist ${gistId} has an unsafe or missing filename`);
     }
@@ -517,8 +646,9 @@ export async function buildGistAggregate({ observation, cache = null, outDir, ro
       sourceMetadata: null, files: [], sourceReceipt: null, reuseEvidence: { reused: [], fetched: [] } };
   }
 
-  const captured = await captureGistSources({
-    observation, cache, fetchDetail: transport.fetchDetail, fetchRaw: transport.fetchRaw, signal, now,
+  const captured = isCurrentVerifiedCapture(cache, observation) ? cache : await captureGistSources({
+    observation, cache, fetchDetail: transport.fetchDetail, fetchRaw: transport.fetchRaw,
+    fetchGitSnapshot: transport.fetchGitSnapshot, signal, now,
   });
   const { passageBytes, metadata, gistRecords } = renderGistPassages({ captured, generatedAt: captured.generatedAt });
   const includedFileCount = Object.values(captured.gists)

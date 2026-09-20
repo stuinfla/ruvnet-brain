@@ -291,11 +291,15 @@ export function findCallers(root, rel) {
 // ── impl derivation ─────────────────────────────────────────────────────────────────────────────
 // PER PATH, then the WEAKEST wins. Any-semantics ("one member is wired ⇒ wired") reports green on
 // exactly the built-but-unwired case the rung exists to catch.
-export function deriveImpl(root, governed, { checkWiring = true } = {}) {
+export function deriveImpl(root, governed, { checkWiring = true, callerCache = new Map(), callerLookup = findCallers } = {}) {
   if (!governed.length) return { impl: 'unknown', perPath: [], unwired: [], reason: 'no governs: set' };
   const perPath = governed.map((g) => {
     if (!g.onDisk && !g.resolved) return { path: g.path, impl: 'unbuilt', type: g.type };
-    const callers = checkWiring ? findCallers(root, g.path) : [];
+    let callers = [];
+    if (checkWiring) {
+      if (!callerCache.has(g.path)) callerCache.set(g.path, callerLookup(root, g.path));
+      callers = callerCache.get(g.path);
+    }
     return { path: g.path, impl: callers.length ? 'wired' : 'built', callers, type: g.type };
   });
   return {
@@ -630,7 +634,8 @@ export function evaluateDoc(root, rel, opts = {}) {
   }
 
   // ── impl (derived; the stored value is a claim to be checked, never an input) ──────────────────
-  const derived = deriveImpl(root, governed, { checkWiring });
+  const derived = deriveImpl(root, governed, { checkWiring,
+    callerCache: opts.callerCache, callerLookup: opts.callerLookup });
   const digest = computeDigest(root, rel, text, governed);
   const storedDigest = doc.verifiedDigestStored;
   const digestMatch = digest.digest && storedDigest ? digest.digest === storedDigest : null;
@@ -739,7 +744,10 @@ export function evaluateDoc(root, rel, opts = {}) {
 
 export function evaluate(root = REPO_ROOT, opts = {}) {
   const dirs = opts.dirs ?? DEFAULT_DIRS;
-  const docs = (opts.files ?? listDocs(root, dirs)).map((rel) => evaluateDoc(root, rel, opts));
+  // This cache belongs to exactly one evaluation. Each distinct governed path is searched once,
+  // even when several ADRs name it; a later call creates a fresh map and sees current source.
+  const invocation = { ...opts, callerCache: new Map(), callerLookup: opts.callerLookup ?? findCallers };
+  const docs = (opts.files ?? listDocs(root, dirs)).map((rel) => evaluateDoc(root, rel, invocation));
   return { root, docs };
 }
 

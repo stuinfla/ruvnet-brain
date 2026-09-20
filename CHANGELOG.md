@@ -7,6 +7,18 @@ current campaign and is finalized by the lead session before the next release cu
 
 ## Unreleased
 
+Operational recovery candidate 4.3.27 (2026-09-19), not yet published:
+
+- Doctor distinguishes package, search-engine and validator versions, checks installed runtime
+  bytes against the archive manifest, and rejects thin evidence in its answerable smoke test.
+- Automatic hooks tolerate missing optional session identifiers, bound continuity work, and avoid
+  repeating advisory interruptions. Explicit opt-in enforcement retains its contract.
+- Public gist capture uses verified Git snapshots, checks complete observed inventories and source
+  revisions, and fails before expensive corpus work when capture cannot be verified. Nightly
+  completion follows the uniquely identified child workflow instead of treating dispatch as success.
+- Retrieval qualification checks source support and process success. Historical routing/citation
+  scores are not described as answer accuracy. A frozen operational oracle records corpus gaps.
+
 Campaign context: a dual North-Star review (Fable 5.1 + GPT-6 Astra) measured this project at
 31/100 against commit `2eef2024` (see `PROGRESS.md`'s 2026-09-11 entry for the full per-pillar
 breakdown and provenance). The following lanes are running in parallel worktrees to close the

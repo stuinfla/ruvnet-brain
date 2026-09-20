@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { digest, fileIdentity } from './coverage-integrity.mjs';
 import { isPrivate, loadPrivateFence, loadPrivateSlugs, shouldFenceL2 } from './private-fence.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
+import { isCapabilityOnly } from '../kb/capability-only.mjs';
 
 const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HEX40 = /^[a-f0-9]{40}$/;
@@ -299,7 +300,7 @@ export function materializePublicInputs({ builderRoot = DEFAULT_ROOT, policy = {
   try {
     for (const repo of allRepos) {
       const src = path.join(kb, `${repo}-primer.md`);
-      if (isPrivate(privateSet, repo)) {
+      if (isPrivate(privateSet, repo) || isCapabilityOnly(repo)) {
         excluded.primers.push({ repo, ...excludedIdentity(src) });
         continue;
       }

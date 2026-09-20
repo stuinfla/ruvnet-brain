@@ -91,6 +91,13 @@ const SCHEMA_FINGERPRINT = Object.freeze({
   ]),
 });
 
+// The current managed store on the host also carries `session_id` on memory_entries, although the
+// installed Ruflo memory_entries DDL does not declare it. This reader has no reason to attribute
+// that column to Ruflo: it is an observed local compatibility shape only. It is safe for this
+// projection because the reader never selects or interprets it; every required column must still
+// match, and every other addition remains a hard fallback to the managed CLI.
+const OBSERVED_COMPATIBILITY_COLUMNS = Object.freeze(['session_id']);
+
 /** The fingerprint this module requires, so the doctor and tests can name it exactly. */
 export function expectedSchemaFingerprint() {
   return { userVersion: SCHEMA_FINGERPRINT.userVersion, columns: [...SCHEMA_FINGERPRINT.columns] };
@@ -110,7 +117,11 @@ function assertSchemaFingerprint(database) {
     throw new ProgressionReaderUnavailable(
       `schema fingerprint mismatch: user_version ${userVersion} is not ${SCHEMA_FINGERPRINT.userVersion}`);
   }
-  if (columns.join(',') !== SCHEMA_FINGERPRINT.columns.join(',')) {
+  const required = SCHEMA_FINGERPRINT.columns;
+  const compatibleObservedShape = columns.length === required.length + 1
+    && OBSERVED_COMPATIBILITY_COLUMNS.every((name) => columns.includes(name))
+    && required.every((name) => columns.includes(name));
+  if (columns.join(',') !== required.join(',') && !compatibleObservedShape) {
     const missing = SCHEMA_FINGERPRINT.columns.filter((name) => !columns.includes(name));
     const added = columns.filter((name) => !SCHEMA_FINGERPRINT.columns.includes(name));
     throw new ProgressionReaderUnavailable('schema fingerprint mismatch: memory_entries columns differ'

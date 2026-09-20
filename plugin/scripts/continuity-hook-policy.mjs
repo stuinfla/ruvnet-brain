@@ -24,6 +24,7 @@
  *   session-snapshot    continuity capture    at PreCompact         claude
  *   session-snapshot    continuity capture    at SessionEnd         claude, codex
  *   ground-ruvnet       grounding injection   at UserPromptSubmit   claude, codex
+ *   capacity-aware-parallel-work coordination guidance at UserPromptSubmit claude, codex
  *   decision-gate       write authorization   at PreToolUse (write) claude, codex
  *   grounding-stamp     grounding receipt     at PostToolUse        claude, codex
  *   grounding-turn-mark grounding turn marker at UserPromptSubmit   claude, codex
@@ -125,6 +126,9 @@ export const CONTINUITY_EVENTS = Object.freeze({
   UserPromptSubmit: Object.freeze([
     registration('unprompted-speech', '*', ['claude', 'codex']),
     registration('ground-ruvnet', '*', ['claude', 'codex']),
+    // Context-only recommendation for clearly substantial, independently splittable work. The
+    // body samples bounded local pressure signals; it never starts workers or reports that it did.
+    registration('capacity-aware-parallel-work', '*', ['claude', 'codex']),
     // The "answered without searching" gate, half 1 of 2 (2026-09-12) — see grounding-turn-gate.mjs's
     // header for the full rationale. Records that ground-ruvnet's Gate 1 fired for this turn, since
     // Stop's own payload carries no prompt text for grounding-turn-gate to test.

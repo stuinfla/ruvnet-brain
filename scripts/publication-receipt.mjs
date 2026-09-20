@@ -33,6 +33,12 @@ const PACKAGE = 'ruvnet-brain';
 const DEADLINE_MS = 30_000;
 const WARMUP_TIMEOUT_MS = 300_000;
 
+export async function runMeasuredHostSearches(hosts, search) {
+  const results = new Map();
+  for (const host of hosts) results.set(host.mode, await search(host, DEADLINE_MS));
+  return results;
+}
+
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const receiptDigest = (candidate) => String(candidate?.artifact?.sha256 || '').replace(/^sha256:/, '');
@@ -549,15 +555,14 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         }
         return result;
       };
-      // Warm each worker serially. The model cache is shared, but simultaneous first-loads can
-      // contend on slower runners (the macOS Codex-only timeout that motivated this path). The
-      // warm-up is bounded generously and is never used as the release latency measurement.
+      // Warm each worker serially. The model cache is shared, so parallel first-loads can contend
+      // on hosted runners. Warm-up is bounded generously and is never the release latency measure.
       for (const host of hostResults) await searchInstalledHost(host, WARMUP_TIMEOUT_MS);
-      // Once initialized, the three steady-state checks can run in parallel and are each held to
-      // the strict public deadline that the receipt and aggregate validators enforce.
-      await Promise.all(hostResults.map(async (host) => {
-        searched.set(host.mode, await searchInstalledHost(host, DEADLINE_MS));
-      }));
+      // Measure each initialized host separately under the strict public deadline. Running three
+      // independent search workers together oversubscribes hosted runners and turns the acceptance
+      // check into a load test; serialize so the receipt measures each installed host's service.
+      const measuredSearches = await runMeasuredHostSearches(hostResults, searchInstalledHost);
+      for (const [mode, result] of measuredSearches) searched.set(mode, result);
       await Promise.all(hostResults.map(async ({ context, installer }) => {
         await commandAsync(process.execPath, [installer, '--doctor', '--hooks'], {
           env: context.env, cwd: packageRoot, timeout: 300_000, stdio: 'inherit',
