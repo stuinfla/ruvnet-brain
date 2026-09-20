@@ -195,24 +195,42 @@ export function evaluatePublicationReceipt(candidate, publication) {
 
 export function evaluateLivePreflight(observed) {
   const failures = [];
+  const incomplete = [];
   if (observed?.dirty !== false) failures.push(fail('DIRTY_WORKTREE', 'local worktree is dirty'));
   if (observed?.localSha !== observed?.remoteSha) failures.push(fail('REMOTE_SHA_MISMATCH', 'local HEAD is not origin/main'));
-  if (!Array.isArray(observed?.openIssues) || observed.openIssues.length > 0) failures.push(fail('OPEN_ISSUES', `${observed?.openIssues?.length ?? 'unknown'} issue(s) open`));
-  if (!Array.isArray(observed?.failedRuns) || observed.failedRuns.length > 0) failures.push(fail('GITHUB_FAILURES', `${observed?.failedRuns?.length ?? 'unknown'} recent failed run(s)`));
+  const blockers = observed?.releaseBlockers;
+  if (!Array.isArray(blockers)) failures.push(fail('RELEASE_BLOCKERS_UNKNOWN', 'could not verify open issues labeled release-blocker'));
+  else if (blockers.length > 0) failures.push(fail('RELEASE_BLOCKERS_OPEN', `${blockers.length} release-blocker issue(s) remain open`));
+  const requiredChecks = observed?.requiredChecks;
+  if (!Array.isArray(requiredChecks) || requiredChecks.length === 0) {
+    failures.push(fail('REQUIRED_CHECKS_UNKNOWN', 'could not verify the required main-branch checks on the exact remote SHA'));
+  } else {
+    for (const check of requiredChecks) {
+      if (check?.status !== 'PASS') failures.push(fail('REQUIRED_CHECK_NOT_GREEN', `${check?.context || 'unknown'} is ${check?.status || 'UNKNOWN'} on the exact remote SHA`));
+    }
+  }
   if (observed?.activeSelfStore !== true) failures.push(fail('BRAIN_SELF_STORE_MISSING', 'installed active registry lacks ruvnet-brain'));
   if (observed?.branchEnforceAdmins !== true) failures.push(fail('ADMIN_BYPASS_ENABLED', 'main protection does not enforce required checks for admins'));
-  if (observed?.productionProtected !== true) failures.push(fail('PRODUCTION_ENV_UNPROTECTED', 'production environment has no required reviewer protection'));
-  if (observed?.releaseVector !== 'PASS') failures.push(fail('RELEASE_VECTOR_NOT_PASS', `release vector is ${observed?.releaseVector ?? 'UNKNOWN'}`));
-  return { verdict: failures.length === 0 ? 'PASS' : 'FAIL', observed, failures };
+  if (observed?.productionProtected !== true) failures.push(fail('PRODUCTION_ENV_UNPROTECTED', 'production environment lacks an enforced protection rule'));
+  if (observed?.releaseVector === 'NOT_EVALUATED') incomplete.push(fail('RELEASE_VECTOR_NOT_EVALUATED', 'quick status skipped the release vector; run full status for that evidence'));
+  else if (observed?.releaseVector !== 'PASS') failures.push(fail('RELEASE_VECTOR_NOT_PASS', `release vector is ${observed?.releaseVector ?? 'UNKNOWN'}`));
+  return {
+    verdict: failures.length > 0 ? 'FAIL' : incomplete.length > 0 ? 'INCOMPLETE' : 'PASS',
+    observed,
+    failures,
+    incomplete,
+  };
 }
 
-export function latestRunsByWorkflow(runs) {
-  const latest = new Map();
-  for (const run of Array.isArray(runs) ? runs : []) {
-    const prior = latest.get(run.workflowName);
-    if (!prior || Number(run.databaseId || 0) > Number(prior.databaseId || 0)) latest.set(run.workflowName, run);
-  }
-  return [...latest.values()];
+export function resolveRequiredChecks(requiredContexts, checkRuns, statuses) {
+  if (!Array.isArray(requiredContexts) || !Array.isArray(checkRuns) || !Array.isArray(statuses)) return null;
+  return requiredContexts.map(({ context, app_id: appId }) => {
+    const checkRun = checkRuns.find((row) => row.name === context && (appId == null || row.app?.id === appId));
+    const status = appId == null ? statuses.find((row) => row.context === context) : null;
+    const passed = (checkRun?.status === 'completed' && checkRun.conclusion === 'success') || status?.state === 'success';
+    const pending = checkRun?.status === 'queued' || checkRun?.status === 'in_progress' || status?.state === 'pending';
+    return { context, appId, status: passed ? 'PASS' : pending ? 'PENDING' : checkRun || status ? 'FAIL' : 'MISSING' };
+  });
 }
 
 function command(cmd, args, options = {}) {
@@ -235,15 +253,21 @@ export function collectLivePreflight({ root = process.cwd(), repo = 'stuinfla/ru
   const git = (args) => command('git', args, { cwd: root });
   const localSha = git(['rev-parse', 'HEAD']).stdout.trim();
   const dirty = Boolean(git(['status', '--porcelain']).stdout.trim());
-  git(['fetch', '--quiet', 'origin', 'main']);
-  const remoteSha = git(['rev-parse', 'origin/main']).stdout.trim();
-  const openIssues = jsonCommand('gh', ['issue', 'list', '--repo', repo, '--state', 'open', '--limit', '100', '--json', 'number,title,url']) ?? null;
-  const runs = jsonCommand('gh', ['run', 'list', '--repo', repo, '--limit', '50', '--json', 'databaseId,workflowName,headSha,status,conclusion,url']) ?? null;
-  const failedRuns = Array.isArray(runs)
-    ? latestRunsByWorkflow(runs.filter((run) => run.headSha === remoteSha))
-      .filter((run) => run.status !== 'completed' || run.conclusion !== 'success')
-    : null;
+  const fetched = git(['fetch', '--quiet', 'origin', 'main']);
+  const remoteSha = fetched.status === 0 ? git(['rev-parse', 'origin/main']).stdout.trim() : null;
+  const releaseBlockers = jsonCommand('gh', ['issue', 'list', '--repo', repo, '--state', 'open', '--label', 'release-blocker', '--limit', '100', '--json', 'number,title,url']) ?? null;
   const protection = jsonCommand('gh', ['api', `repos/${repo}/branches/main/protection`]);
+  const requiredChecksConfig = protection?.required_status_checks?.checks;
+  const requiredContexts = Array.isArray(requiredChecksConfig)
+    ? requiredChecksConfig
+    : protection?.required_status_checks?.contexts?.map((context) => ({ context, app_id: null }));
+  const checkRuns = remoteSha
+    ? jsonCommand('gh', ['api', `repos/${repo}/commits/${remoteSha}/check-runs?per_page=100`])?.check_runs
+    : null;
+  const statuses = remoteSha
+    ? jsonCommand('gh', ['api', `repos/${repo}/commits/${remoteSha}/status`])?.statuses
+    : null;
+  const requiredChecks = resolveRequiredChecks(requiredContexts, checkRuns, statuses);
   const environments = jsonCommand('gh', ['api', `repos/${repo}/environments`]);
   const production = environments?.environments?.find((environment) => environment.name === 'Production – ruvnet-brain');
   let activeSelfStore = false;
@@ -256,13 +280,13 @@ export function collectLivePreflight({ root = process.cwd(), repo = 'stuinfla/ru
   if (includeVector) {
     const vector = jsonCommand(process.execPath, [path.join(root, 'scripts/release-vector.mjs'), '--json'], { cwd: root });
     releaseVector = vector?.verdict || 'UNKNOWN';
-  }
+  } else releaseVector = 'NOT_EVALUATED';
   return {
     localSha,
     remoteSha,
     dirty,
-    openIssues,
-    failedRuns,
+    releaseBlockers,
+    requiredChecks,
     activeSelfStore,
     branchEnforceAdmins: protection?.enforce_admins?.enabled === true,
     productionProtected: Array.isArray(production?.protection_rules) && production.protection_rules.length > 0 && production.can_admins_bypass === false,
@@ -280,7 +304,7 @@ export function main(args = process.argv.slice(2)) {
   if (args.includes('--status')) {
     const result = evaluateLivePreflight(collectLivePreflight({ includeVector: !args.includes('--quick') }));
     console.log(JSON.stringify(result, null, 2));
-    return result.verdict === 'PASS' ? 0 : 1;
+    return result.verdict === 'PASS' ? 0 : result.verdict === 'INCOMPLETE' ? 2 : 1;
   }
   const candidatePath = argument(args, '--candidate');
   const publicationPath = argument(args, '--publication');
