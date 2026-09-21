@@ -26,8 +26,9 @@ Current 4.3.28 candidate (not yet published):
   `CE_INTRA_OP_THREADS` as an operator override. The model, candidate set and ranking policy are
   unchanged. Candidate qualification now rejects any host's first cited search above the same
   30-second limit used by public verification, and exercises the exact sealed artifact on macOS
-  across all three host modes. Candidate host searches run sequentially so concurrent test fixtures
-  do not compete for the same inference resources as a single real Brain user.
+  across all three host modes after installing the current host CLIs. Candidate host searches run
+  sequentially so concurrent test fixtures do not compete for the runner's inference resources as a
+  single real Brain user.
 - UX qualification now retries failed hard UI acceptance checks within its existing bounded
   attempts, keeps every acceptance budget unchanged, and remains red if no complete attempt passes.
 

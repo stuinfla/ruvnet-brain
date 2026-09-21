@@ -80,6 +80,14 @@ jobs:
         with:
           name: release-evidence-${{ github.sha }}
           path: release-evidence
+      - name: Install current hosts for exact Mac candidate qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global --prefix "$RUNNER_TEMP/host-clis" \
+            @anthropic-ai/claude-code@latest \
+            @openai/codex@latest
+          echo "$RUNNER_TEMP/host-clis/bin" >> "$GITHUB_PATH"
       - name: Run three installed host searches against sealed candidate bytes
         shell: bash
         env:

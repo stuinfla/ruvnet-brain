@@ -22,6 +22,14 @@ describe('protected release rail', () => {
       if (script === 'candidate-host-evidence') expect(command).toMatch(/--sequential-searches/);
     }
   });
+  it('installs both host CLIs before the exact Mac candidate matrix uses them', () => {
+    const source = read('.github/workflows/release-candidate-preflight.yml');
+    const macJob = source.split('  macos-candidate-search:')[1]?.split('\n  aggregate:')[0] || '';
+    expect(macJob).toContain('@anthropic-ai/claude-code@latest');
+    expect(macJob).toContain('@openai/codex@latest');
+    expect(macJob).toContain('echo "$RUNNER_TEMP/host-clis/bin" >> "$GITHUB_PATH"');
+    expect(macJob.indexOf('Install current hosts')).toBeLessThan(macJob.indexOf('Run three installed host searches'));
+  });
   it('is the sole human release dispatch and accepts source identity plus one mode selector', () => {
     const releaseWorkflows = [
       'protected-release.yml',
