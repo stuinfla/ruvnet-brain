@@ -145,42 +145,17 @@ jobs:
             echo "- event: \`$run_event\`"
             echo "- candidate: \`$CANDIDATE_SHA\`"
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Wait for and report the protected corpus run outcome
+      - name: Report asynchronous outcome monitoring
         if: steps.armed.outputs.armed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           run_id="$(node -p "require(process.env.RUNNER_TEMP + '/dispatched-run.json').id")"
-          started=$SECONDS
-          while (( SECONDS - started < 21000 )); do
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > "$RUNNER_TEMP/target-run-status.json"
-            status="$(node -p "require(process.env.RUNNER_TEMP + '/target-run-status.json').status")"
-            conclusion="$(node -p "require(process.env.RUNNER_TEMP + '/target-run-status.json').conclusion || ''")"
-            if [[ "$status" == completed ]]; then
-              run_url="$(node -p "require(process.env.RUNNER_TEMP + '/target-run-status.json').html_url")"
-              {
-                echo '### protected corpus outcome'
-                echo ''
-                echo "- target run: [$run_id]($run_url)"
-                echo "- status: $status"
-                echo "- conclusion: $conclusion"
-              } >> "$GITHUB_STEP_SUMMARY"
-              [[ "$conclusion" == success ]] || { echo "::error::protected corpus run concluded $conclusion"; exit 1; }
-              exit 0
-            fi
-            sleep 30
-          done
-          echo '::error::protected corpus run did not finish before dispatcher timeout; outcome is unknown'
-          exit 1
-      - name: Preserve the dispatch and downstream outcome records
-        if: always() && steps.armed.outputs.armed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: corpus-dispatch-record-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/dispatched-run.json
-            ${{ runner.temp }}/target-run-status.json
-          if-no-files-found: warn
-          retention-days: 90
+          run_url="$(node -p "require(process.env.RUNNER_TEMP + '/dispatched-run.json').html_url")"
+          {
+            echo '### protected corpus outcome monitoring'
+            echo ''
+            echo "- target run: [$run_id]($run_url)"
+            echo '- completion: recorded asynchronously by corpus-release-outcome'
+            echo '- failure, cancellation, or timeout: preserved as a red outcome run and reported by ntfy-alerts'
+          } >> "$GITHUB_STEP_SUMMARY"
