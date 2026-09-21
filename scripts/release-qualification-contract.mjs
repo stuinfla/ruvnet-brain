@@ -17,10 +17,13 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/release-identity-invariants.test.mjs",
         "tests/unit/release-transaction.test.mjs",
         "tests/unit/prepublication-evidence.test.mjs",
+        "tests/unit/candidate-host-evidence.test.mjs",
+        "tests/unit/host-install-matrix-concurrency.test.mjs",
         "tests/unit/integration-evidence.test.mjs",
         "tests/unit/qualified-candidate-check.test.mjs",
         "tests/unit/release-qualification.test.mjs",
-        "tests/unit/development-push-boundary.test.mjs"
+        "tests/unit/development-push-boundary.test.mjs",
+        "tests/unit/protected-release-workflow.test.mjs"
       ]
     },
     {
@@ -51,6 +54,13 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/nightly-scheduler.test.mjs",
         "tests/unit/nightly-refresh-launcher.test.mjs",
         "tests/unit/nightly-two-run-proof.test.mjs"
+      ]
+    },
+    {
+      "id": "ux-hard-acceptance",
+      "reason": "Retry accounting preserves hard UI acceptance failures and chooses only a clean measured attempt",
+      "files": [
+        "tests/unit/ux-render-best-of-n.test.mjs"
       ]
     }
   ],
