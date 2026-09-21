@@ -9,6 +9,7 @@ import { RELEASE_QUALIFICATION_POLICY } from './integration-evidence.mjs';
 import { readCandidateRetrieval } from './staged-host-verifier.mjs';
 import { validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
 import { payloadIdFor } from './release-payload.mjs';
+import { RELEASE_SEARCH_DEADLINE_MS } from './host-install-matrix.mjs';
 
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
@@ -100,6 +101,7 @@ export function buildPrepublicationEvidence({
     if (leaf.sha !== sha || leaf.payloadId !== payload.payloadId || leaf.status !== 'completed'
       || leaf.conclusion !== 'success' || leaf.verdict !== 'PASS'
       || leaf.functionalSearch !== true || leaf.searchExit !== 0 || !grounded
+      || !Number.isFinite(leaf.searchMs) || leaf.searchMs < 0 || leaf.searchMs > RELEASE_SEARCH_DEADLINE_MS
       || leaf.artifactSha256 !== host.value.artifactSha256) {
       throw new Error(`candidate host leaf is not an exact PASS: ${leaf.name || '(missing)'}`);
     }

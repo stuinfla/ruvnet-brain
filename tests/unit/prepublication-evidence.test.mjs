@@ -35,6 +35,7 @@ function fixture() {
     leaves: hostNames.map((name) => ({
       name, sha, payloadId, status: 'completed', conclusion: 'success', verdict: 'PASS',
       source: 'candidate-host-evidence', functionalSearch: true, searchExit: 0, grounding, artifactSha256, retrieval,
+      searchMs: 12_000,
     })),
   });
   const runtimeCensusFile = write('runtime-census.json', {
@@ -130,6 +131,15 @@ describe('prepublication evidence', () => {
     const f = fixture();
     const receipt = JSON.parse(fs.readFileSync(f.hostFile));
     delete receipt.leaves[0].grounding;
+    fs.writeFileSync(f.hostFile, JSON.stringify(receipt));
+    expect(() => buildPrepublicationEvidence(f)).toThrow(/candidate host leaf is not an exact PASS/);
+  });
+
+  it.each([['missing', undefined], ['over deadline', 30_001]])('rejects candidate host search timing that is %s', (_name, searchMs) => {
+    const f = fixture();
+    const receipt = JSON.parse(fs.readFileSync(f.hostFile));
+    if (searchMs === undefined) delete receipt.leaves[0].searchMs;
+    else receipt.leaves[0].searchMs = searchMs;
     fs.writeFileSync(f.hostFile, JSON.stringify(receipt));
     expect(() => buildPrepublicationEvidence(f)).toThrow(/candidate host leaf is not an exact PASS/);
   });

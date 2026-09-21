@@ -32,6 +32,7 @@ import { runRetrievalCanaries, validateRetrievalCanaryReceipt, resolveInstalledC
 
 /** The three host shapes a release must survive. ONE name each, for every consumer. */
 export const HOST_MODES = Object.freeze(['claude', 'codex', 'dual']);
+export const RELEASE_SEARCH_DEADLINE_MS = 30_000;
 
 /** Which CLIs each mode is allowed to see. A codex-only box genuinely has no `claude`. */
 export const MODE_HOSTS = Object.freeze({
@@ -299,6 +300,7 @@ export async function runHostMatrixAsync({
     status: error ? 'FAIL' : 'PASS',
     version,
     process: processIdentity(processResult),
+    searchMs: Number.isFinite(processResult.broadMs) ? processResult.broadMs : null,
     ...(grounding?.receipt ? { grounding: grounding.receipt } : {}),
     ...(retrieval ? { retrieval } : {}),
     ...(error ? { error } : {}),

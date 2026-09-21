@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { stagedHostVerifier, readCandidateRetrieval, verifyCandidateRetrievalAssets } from './staged-host-verifier.mjs';
 import { payloadIdFor } from './release-payload.mjs';
 import { validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
+import { RELEASE_SEARCH_DEADLINE_MS } from './host-install-matrix.mjs';
 
 const arg = (name) => {
   const index = process.argv.indexOf(name);
@@ -35,6 +36,9 @@ export async function buildCandidateHostEvidence({ manifestFile, packagePath, bu
   const leaves = Object.entries(modeNames).map(([mode, name]) => {
     const fixture = result.fixtures?.[mode];
     const grounding = fixture?.grounding;
+    if (!Number.isFinite(fixture?.searchMs) || fixture.searchMs < 0 || fixture.searchMs > RELEASE_SEARCH_DEADLINE_MS) {
+      throw new Error(`${name} first cited search exceeded the ${RELEASE_SEARCH_DEADLINE_MS}ms candidate deadline (${fixture?.searchMs ?? 'unmeasured'}ms)`);
+    }
     const grounded = grounding && ['repo', 'path', 'file', 'storedPath']
       .every((field) => typeof grounding[field] === 'string' && grounding[field].trim());
     if (fixture?.status !== 'PASS' || fixture?.process?.status !== 0 || !grounded) {
@@ -52,6 +56,7 @@ export async function buildCandidateHostEvidence({ manifestFile, packagePath, bu
       mode,
       functionalSearch: true,
       searchExit: fixture.process.status,
+      searchMs: fixture.searchMs,
       grounding,
       retrieval: fixture.retrieval,
       artifactSha256: retrieval.artifactSha256,

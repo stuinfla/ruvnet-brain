@@ -15,7 +15,7 @@ import { spawn, spawnSync } from 'node:child_process';
 // `fixtures.claude` described the same fixture and nothing could tell. The richer
 // post-publication proofs below (payload assertions, MCP wiring, SOURCE.json, rpcSearch)
 // stay here — they are this side's job, not duplication.
-import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor, VARIANTS, createInstalledMcpSession } from './host-install-matrix.mjs';
+import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor, VARIANTS, createInstalledMcpSession, RELEASE_SEARCH_DEADLINE_MS } from './host-install-matrix.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt, evaluatePublicationReceipt } from './release-proof.mjs';
 import { verifyPayload } from './release-payload.mjs';
@@ -30,7 +30,7 @@ import { parseRetrievalResult } from '../kb/retrieval-result.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
 const PACKAGE = 'ruvnet-brain';
-const DEADLINE_MS = 30_000;
+const DEADLINE_MS = RELEASE_SEARCH_DEADLINE_MS;
 const WARMUP_TIMEOUT_MS = 300_000;
 const SELF_STORE_PROOF_QUERY = 'repo:ruvnet-brain What is the RuvNet Brain release evidence workflow?';
 const SELF_STORE_PROOF_K = 1;

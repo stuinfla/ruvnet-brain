@@ -54,6 +54,7 @@ it.each(['valid', 'body-spoof', 'legacy-text'])('executes %s through staged extr
   if (mode === 'valid') {
     const result = await produced;
     expect(result.leaves).toHaveLength(3);
+    expect(result.leaves.every(({ searchMs }) => Number.isFinite(searchMs) && searchMs >= 0 && searchMs <= 30_000)).toBe(true);
     expect(fs.existsSync(f.args.failureFile)).toBe(false);
     expect(result.leaves.every(({ retrieval }) => retrieval.metrics.deltaCitationRate === 1 && retrieval.metrics.recallAt10 === 1)).toBe(true);
   } else {
@@ -84,4 +85,11 @@ it.each(['missing-retrieval', 'changed-bytes'])('does not seal %s behind a green
     return { verdict: 'PASS', fixtures: Object.fromEntries(['claude', 'codex', 'dual'].map((mode) => [mode,
       { status: 'PASS', process: { status: 0 }, grounding: { repo: 'new', path: 'src/new.mjs', file: 'new.passages.jsonl', storedPath: 'src/new.mjs' } }])) };
   } }) })).rejects.toThrow();
+});
+it('does not seal a candidate when any host search exceeds the public deadline', async () => {
+  const f = fixture();
+  await expect(buildCandidateHostEvidence(f.args, { createVerifier: () => ({ verify: async () => ({ verdict: 'PASS', fixtures:
+    Object.fromEntries(['claude', 'codex', 'dual'].map((mode) => [mode, { status: 'PASS', searchMs: mode === 'codex' ? 30_001 : 100,
+      process: { status: 0 }, grounding: { repo: 'new', path: 'src/new.mjs', file: 'new.passages.jsonl', storedPath: 'src/new.mjs' } }])) }) })
+  })).rejects.toThrow(/codex-only first cited search exceeded/);
 });
