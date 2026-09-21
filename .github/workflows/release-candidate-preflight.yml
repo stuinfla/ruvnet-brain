@@ -106,7 +106,6 @@ jobs:
             --out "$RUNNER_TEMP/candidate-host-evidence-macos.json"
           test "$(node -p "JSON.parse(require('fs').readFileSync('$RUNNER_TEMP/candidate-host-evidence-macos.json')).sha")" = "$CANDIDATE_SHA"
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: macos-candidate-search-${{ github.sha }}
           path: |
@@ -114,6 +113,7 @@ jobs:
             ${{ runner.temp }}/candidate-host-evidence-macos.json.failure.json
           if-no-files-found: warn
           retention-days: 30
+        if: always()
 
   aggregate:
     needs: [ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows, macos-candidate-search]
