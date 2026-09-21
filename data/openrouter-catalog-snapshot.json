@@ -1,8 +1,8 @@
 {
   "_meta": {
     "source": "OpenRouter /api/v1/models (live metadata)",
-    "pulledAt": "2026-09-19T23:13:03.808Z",
-    "modelCount": 447
+    "pulledAt": "2026-09-21T09:31:56.110Z",
+    "modelCount": 446
   },
   "models": {
     "prism-ml/ternary-bonsai-2-27b": {
@@ -18,12 +18,12 @@
       "out": 7.5
     },
     "~deepseek/deepseek-pro-latest": {
-      "in": 0.5782,
-      "out": 1.7345
+      "in": 0.7,
+      "out": 2.88
     },
     "~deepseek/deepseek-flash-latest": {
-      "in": 0.13,
-      "out": 0.52
+      "in": 0.12,
+      "out": 0.48
     },
     "inference-net/schematron-v2-turbo": {
       "in": 0.03,
@@ -66,8 +66,8 @@
       "out": 0
     },
     "deepseek/deepseek-v4.1-flash": {
-      "in": 0.15,
-      "out": 0.6
+      "in": 0.3,
+      "out": 1.2
     },
     "inception/mercury-2.5": {
       "in": 0.04,
@@ -130,8 +130,8 @@
       "out": 25
     },
     "ibm-granite/granite-4.2-8b": {
-      "in": 0.06,
-      "out": 0.25
+      "in": 0.1,
+      "out": 0.15
     },
     "tencent/hy4-preview": {
       "in": 0.834,
@@ -166,8 +166,8 @@
       "out": 0.2
     },
     "deepseek/deepseek-v4-flash-vision-exp": {
-      "in": 0.2156,
-      "out": 0.6468
+      "in": 0.22,
+      "out": 0.66
     },
     "deepseek/deepseek-v4-flash-vision-exp:batch": {
       "in": 0.11,
@@ -182,8 +182,8 @@
       "out": 0.295
     },
     "~z-ai/glm-latest": {
-      "in": 0.8442,
-      "out": 2.6532
+      "in": 0.7735,
+      "out": 2.431
     },
     "tencent/hy-mt2-7b": {
       "in": 0.074,
@@ -198,8 +198,8 @@
       "out": 2.2
     },
     "qwen/qwen3.8-27b": {
-      "in": 0.214,
-      "out": 2.55
+      "in": 0.2,
+      "out": 2.5
     },
     "qwen/qwen3.8-27b:free": {
       "in": 0,
@@ -234,8 +234,8 @@
       "out": 3
     },
     "deepseek/deepseek-v4-pro-0813": {
-      "in": 0.5782,
-      "out": 1.7345
+      "in": 1.32,
+      "out": 3.96
     },
     "deepseek/deepseek-v4-pro-0813:batch": {
       "in": 0.66,
@@ -266,8 +266,8 @@
       "out": 0.36
     },
     "meta/muse-glimmer-30b": {
-      "in": 0.35,
-      "out": 1.5
+      "in": 0.3,
+      "out": 1.2
     },
     "meta/muse-glimmer-30b:batch": {
       "in": 0.175,
@@ -279,19 +279,15 @@
     },
     "~deepseek/deepseek-v4-flash-latest": {
       "in": 0.04,
-      "out": 0.08
+      "out": 0.16
     },
     "deepseek/deepseek-v4-flash-0731": {
       "in": 0.04,
-      "out": 0.08
+      "out": 0.16
     },
     "deepseek/deepseek-v4-flash-0731:batch": {
       "in": 0.11,
       "out": 0.33
-    },
-    "deepseek/deepseek-v4-flash-0731:free": {
-      "in": 0,
-      "out": 0
     },
     "thinkingmachines/inkling-small": {
       "in": 0.45,
@@ -442,8 +438,8 @@
       "out": 6
     },
     "tencent/hy3": {
-      "in": 0.0825,
-      "out": 0.33
+      "in": 0.132,
+      "out": 0.528
     },
     "poolside/laguna-xs-2.1": {
       "in": 0.06,
@@ -638,8 +634,8 @@
       "out": 1.125
     },
     "qwen/qwen3.6-35b-a3b": {
-      "in": 0.1,
-      "out": 0.9
+      "in": 0.15,
+      "out": 1
     },
     "qwen/qwen3.6-max-preview": {
       "in": 1.027,
@@ -666,12 +662,12 @@
       "out": 15
     },
     "deepseek/deepseek-v4-pro": {
-      "in": 0.4223,
-      "out": 0.8446
+      "in": 0.9553,
+      "out": 1.9105
     },
     "deepseek/deepseek-v4-flash": {
-      "in": 0.0384,
-      "out": 0.0767
+      "in": 0.0886,
+      "out": 0.1772
     },
     "tencent/hy3-preview": {
       "in": 0.18,
@@ -850,8 +846,8 @@
       "out": 3
     },
     "qwen/qwen3.5-35b-a3b": {
-      "in": 0.1625,
-      "out": 1.3
+      "in": 0.3125,
+      "out": 1.25
     },
     "qwen/qwen3.5-27b": {
       "in": 0.195,
@@ -1486,8 +1482,8 @@
       "out": 0.2
     },
     "meta-llama/llama-4-maverick": {
-      "in": 0.1875,
-      "out": 0.6525
+      "in": 0.2,
+      "out": 0.8
     },
     "meta-llama/llama-4-scout": {
       "in": 0.1,
@@ -1690,8 +1686,8 @@
       "out": 10
     },
     "meta-llama/llama-3.1-70b-instruct": {
-      "in": 0.4,
-      "out": 0.4
+      "in": 0.72,
+      "out": 0.72
     },
     "meta-llama/llama-3.1-8b-instruct": {
       "in": 0.05,
