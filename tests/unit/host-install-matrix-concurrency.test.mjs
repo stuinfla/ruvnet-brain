@@ -91,6 +91,12 @@ describe('host install matrix cold-model orchestration', () => {
       const phases = calls.map((call) => call.phase);
       expect(phases.slice(0, 3)).toEqual(['install', 'install', 'install']);
       expect(phases[3]).toBe('prewarm');
+      const prewarm = calls[3].args;
+      expect(prewarm).toContain('--bounded');
+      expect(prewarm).toContain('--repos');
+      expect(prewarm[prewarm.indexOf('--repos') + 1]).toBe('ruvnet-brain');
+      expect(prewarm).toContain('--pool');
+      expect(prewarm[prewarm.indexOf('--pool') + 1]).toBe('8');
       expect(phases.slice(4).sort()).toEqual(['search', 'search', 'search']);
 
       for (const call of calls.filter((entry) => entry.phase === 'search')) {

@@ -253,12 +253,17 @@ export async function runHostMatrixAsync({
 
   const prewarmContext = contexts[0];
   const prewarmReader = path.join(prewarmContext.env.RUVNET_BRAIN_KB, 'forge-ask-all.mjs');
+  // This query only primes the shared model cache. Keep it in the Brain's own bounded store so
+  // Mac/Windows/Linux runner speed does not determine whether the later real host searches run.
+  // The following MCP matrix remains the measured, source-grounded candidate acceptance.
   const prewarm = await runCommand(process.execPath, [prewarmReader, '--dir', prewarmContext.env.RUVNET_BRAIN_KB,
-    '--q', 'How does RuvNet Brain prove a public release artifact?', '--k', '1'], {
+    '--q', 'How does RuvNet Brain prove a public release artifact?', '--k', '1', '--pool', '8',
+    '--repos', 'ruvnet-brain', '--bounded'], {
     cwd: prewarmContext.env.RUVNET_BRAIN_KB, env: prewarmContext.env, timeout: 300_000,
   });
   if (prewarm.error || prewarm.status !== 0) {
-    return { verdict: 'FAIL', fixtures: {}, error: `shared model prewarm failed (${processDiagnostic(prewarm)})` };
+    const detail = String(prewarm.stderr || prewarm.stdout || '').trim().split('\n').slice(-8).join(' | ').slice(-1600);
+    return { verdict: 'FAIL', fixtures: {}, error: `shared model prewarm failed (${processDiagnostic(prewarm)})${detail ? `; ${detail}` : ''}` };
   }
   const prewarmGrounding = await verifyGrounding(String(prewarm.stdout || ''), prewarmContext.env.RUVNET_BRAIN_KB);
   if (!prewarmGrounding?.grounded) {
