@@ -35,10 +35,13 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { writeInstalledRuntimeIdentity } from '../../kb/corpus-release-identity.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const INSTALLER = path.join(ROOT, 'bin', 'install.mjs');
+const PACKAGE_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
 // Run the real installer. Bounded timeout, inherited env (+ overrides), never touches the network
 // in the modes exercised here.
@@ -92,8 +95,47 @@ function assertVerdict(r, expected, label) {
   assert.equal(
     r.status,
     expected,
-    `${label}: expected doctor verdict ${expected}, got ${r.status}\nstderr:\n${r.stderr || ''}`,
+    `${label}: expected doctor verdict ${expected}, got ${r.status}\nstdout:\n${r.stdout || ''}\nstderr:\n${r.stderr || ''}`,
   );
+}
+
+function writeCompleteBrainFixture(brainDir, { liveProof = true } = {}) {
+  const searchFiles = ['forge-mcp-all.mjs', 'forge-ask-all.mjs', 'forge-rerank.mjs', 'card-lane.mjs'];
+  const runtimeFile = 'coverage-integrity.mjs';
+  const contents = new Map(searchFiles.map((name) => [name, `// fixture ${name}\n`]));
+  contents.set(runtimeFile, fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', runtimeFile)));
+  for (const [name, bytes] of contents) {
+    fs.writeFileSync(path.join(brainDir, name), bytes);
+  }
+  fs.writeFileSync(path.join(brainDir, 'SOURCE.json'), JSON.stringify({
+    brainVersion: PACKAGE_VERSION,
+    releaseTag: `v${PACKAGE_VERSION}`,
+  }));
+  const askScript = liveProof
+    ? "console.log('RuvNet Brain package manifest declares ruvnet-brain [source/package.json]');\n"
+    : "process.exit(1);\n";
+  contents.set('forge-ask-all.mjs', askScript);
+  fs.writeFileSync(path.join(brainDir, 'forge-ask-all.mjs'), askScript);
+  if (liveProof) {
+    fs.writeFileSync(path.join(brainDir, 'verify-citation.mjs'), [
+      'export async function verifyGrounding() {',
+      "  return { grounded: true, receipt: { path: 'source/package.json', file: 'passages.jsonl' } };",
+      '}',
+      '',
+    ].join('\n'));
+  }
+  const identities = [...contents].map(([name, value]) => {
+    const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    return { path: name, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length };
+  });
+  fs.writeFileSync(path.join(brainDir, 'ARCHIVE-MANIFEST.json'), JSON.stringify({
+    schemaVersion: 1,
+    kind: 'ruvnet-brain-archive-manifest',
+    version: PACKAGE_VERSION,
+    files: identities,
+  }));
+  const runtime = writeInstalledRuntimeIdentity(brainDir, { brainVersion: PACKAGE_VERSION });
+  assert.equal(runtime.written, true, 'fixture must carry a verified installed-runtime identity');
 }
 
 test('the installer file exists at bin/install.mjs', () => {
@@ -102,11 +144,10 @@ test('the installer file exists at bin/install.mjs', () => {
 
 test('the install smoke warms the same model cache used by the stable MCP runtime', () => {
   const source = fs.readFileSync(INSTALLER, 'utf8');
-  assert.match(
-    source,
-    /spawnSync\('node',\s*\['forge-ask-all\.mjs'[\s\S]*?env:\s*\{\s*\.\.\.process\.env,\s*KB_MODEL_CACHE:\s*resolveRuntimeModelCache\(\)\s*\}/,
-    'smokeQuery must pass the runtime model cache to the real reader process',
-  );
+  assert.match(source, /spawnSync\('node',\s*doctorSmokeArgs\(cacheDir\)/,
+    'smokeQuery must launch the reader with the shared canonical argument builder');
+  assert.match(source, /KB_MODEL_CACHE:\s*resolveRuntimeModelCache\(\)/,
+    'smokeQuery must warm the same model cache used by the stable MCP runtime');
 });
 
 test('`--help` exits 0 and prints usage + flags', () => {
@@ -150,7 +191,7 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
   const home = path.join(cacheDir, 'home');
   fs.mkdirSync(home, { recursive: true });
   try {
-    fs.writeFileSync(path.join(brainDir, 'forge-mcp-all.mjs'), '// stub for install-smoke — never executed\n');
+    writeCompleteBrainFixture(brainDir);
     // Current release bundles contain canonical *.big.rvf stores only. The older checker excluded
     // that suffix and falsely failed a real 60-store v3.9.131 install as "zero stores".
     fs.writeFileSync(path.join(brainDir, 'ruvector.big.rvf'), 'not a real store — presence is what gatherInstallState counts\n');
@@ -183,7 +224,7 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
 // older failure before the final gate reads it. Same complete-brain-dir fixture as the healthy test
 // above (repos/reader/mcp all present); absent forge-ask-all.mjs, the ONLY variable across the first
 // three cases is what install-state.json says, proving the gate is real and not another signal.
-function completeBrainFixture() {
+function completeBrainFixture(options) {
   const brainDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-grounding-'));
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-grounding-cache-'));
   // Doctor reads host lifecycle state as part of its health verdict. Isolate that state so these
@@ -191,7 +232,7 @@ function completeBrainFixture() {
   // to carry a different Codex installation or retired hooks.
   const home = path.join(cacheDir, 'home');
   fs.mkdirSync(home, { recursive: true });
-  fs.writeFileSync(path.join(brainDir, 'forge-mcp-all.mjs'), '// stub for install-smoke — never executed\n');
+  writeCompleteBrainFixture(brainDir, options);
   fs.writeFileSync(path.join(brainDir, 'ruvector.rvf'), 'not a real store — presence is what gatherInstallState counts\n');
   const xen = path.join(brainDir, 'node_modules', '@xenova', 'transformers');
   fs.mkdirSync(xen, { recursive: true });
@@ -201,7 +242,7 @@ function completeBrainFixture() {
 }
 
 test('`--doctor` FAILS (exit 1) on an otherwise-COMPLETE brain dir when the persisted verdict says grounding is unproven', () => {
-  const { brainDir, cacheDir, brainHome, home } = completeBrainFixture();
+  const { brainDir, cacheDir, brainHome, home } = completeBrainFixture({ liveProof: false });
   try {
     const stateDir = path.join(cacheDir, 'ruvnet-brain');
     fs.mkdirSync(stateDir, { recursive: true });
@@ -245,14 +286,6 @@ test('`--doctor` replaces a stale unproven verdict when its live citation proof 
       grounding: 'unproven',
       reason: 'no-answer',
     }));
-    fs.writeFileSync(path.join(brainDir, 'forge-ask-all.mjs'), "console.log('fixture cited answer');\n");
-    fs.writeFileSync(path.join(brainDir, 'verify-citation.mjs'), [
-      'export async function verifyGrounding() {',
-      "  return { grounded: true, receipt: { path: 'source/path.rs', file: 'passages.jsonl' } };",
-      '}',
-      '',
-    ].join('\n'));
-
     const r = runInstaller(['--doctor'], {
       RUVNET_BRAIN_KB: brainDir,
       RUVNET_BRAIN_HOME: brainHome,

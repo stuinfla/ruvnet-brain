@@ -18,6 +18,7 @@ import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';
 import { assertCapabilityOnlyStore, isCapabilityOnly, CAPABILITY_RETIRED_SUFFIXES } from '../kb/capability-only.mjs';
 import { fileIdentity } from '../plugin/scripts/coverage-integrity.mjs';
 import { storeRoot } from '../kb/store-root.mjs';
+import { captureGistSources } from './gist-receipts.mjs';
 
 export { rebuildCorpusAggregates };
 
@@ -249,7 +250,7 @@ async function measureFreshness({ closingObservation, observation }) {
  * generation; `latest` is never substituted, and an exhausted partial generation is never accepted.
  */
 export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = null, observe, build,
-  readLedger: currentLedger, execute, prune, rebuild, closingObservation = null } = {}) {
+  readLedger: currentLedger, execute, prune, rebuild, preflight = null, closingObservation = null } = {}) {
   if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 10
     || [observe, build, currentLedger, execute, prune, rebuild].some((fn) => typeof fn !== 'function')) {
     fail('bounded acquisition configuration is invalid');
@@ -257,6 +258,10 @@ export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = nul
   // ONE discovery pass. This observation is the sealed manifest every later step consumes; it is never
   // re-taken, so upstream churn cannot restart or invalidate the generation.
   const observation = await observe();
+  // Validate/fetch the source most likely to fail late (gist detail/raw access) before any expensive
+  // repository clone and embedding work. Its verified bodies are the existing capture cache consumed
+  // by the later aggregate build, so preflight does not double-fetch or weaken source binding.
+  const preflightResult = typeof preflight === 'function' ? await preflight(observation) : null;
   const attempts = [];
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const coverage = await build(observation);
@@ -265,7 +270,7 @@ export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = nul
     const pruning = await prune(coverage, attempt);
     let aggregates;
     try {
-      aggregates = await rebuild(coverage, observation, attempt);
+      aggregates = await rebuild(coverage, observation, attempt, preflightResult);
     } catch (error) {
       if (error?.code !== 'GIST_OBSERVATION_MOVED') throw error;
       // A gist moved between its list entry and its detail fetch. The remedy is to retry against the
@@ -613,7 +618,10 @@ export async function acquireCorpusGeneration({ owner = 'ruvnet', assetsDir, wor
   // `coverage` is now threaded through (rule 8) rather than discarded: rebuildCorpusAggregates
   // asserts the concepts observation identity exactly equals coverage's own, instead of trusting an
   // accidental shared reference.
-  rebuild = (coverage, observation) => rebuildCorpusAggregates({ assetsDir, observation, coverage, root }),
+  preflight = (observation) => captureGistSources({ observation }),
+  rebuild = (coverage, observation, _attempt, capturedGists) => rebuildCorpusAggregates({
+    assetsDir, observation, coverage, root, cache: capturedGists,
+  }),
 } = {}) {
   if (!assetsDir || !workspaceDir) fail('stable reconciliation requires explicit assets and workspace directories');
   const workspace = path.resolve(workspaceDir || '');
@@ -634,6 +642,7 @@ export async function acquireCorpusGeneration({ owner = 'ruvnet', assetsDir, wor
     }),
     prune,
     rebuild,
+    preflight,
   });
 }
 

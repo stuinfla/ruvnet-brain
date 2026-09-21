@@ -1,6 +1,6 @@
 
-Updated: 2026-07-27
-Created: 2026-06-29
+Updated: 2026-09-19 19:15:00 EDT | Version 1.0.2
+Created: 2026-06-29 00:00:00 EDT
 > **Before writing or reviewing any ADR, read [`../PRINCIPLES.md`](../PRINCIPLES.md).**
 > An ADR that contradicts a principle is wrong, and the contradiction is the finding.
 
@@ -20,3 +20,4 @@ Each ADR records a decision the 3-way red-team forced, so it can't be quietly re
 | [0008](0008-autonomous-engineering-loop.md) | **Autonomous build loop**: Ruflo *decides* · Claude Code *acts* · brain *grounds*; SPARC + score-to-≥98 + ADR-0005 hooks + one-command install | the "brain alone is the product" / drift-on-action |
 | [0009](0009-mirror-discipline-self-audit-and-qa.md) | **Mirror Discipline**: the brain passes its own bar — single version SoT, smoke-gated publish, eval flywheel, ADR-QA/DDD-QA/doc-currency as capabilities, ADR-0005/DDD reconciled to reality | self-drift; the "grounded product that lies about its own version" |
 | [0010](0010-security-hardening-sec-0010.md) | **Security hardening (SEC-0010)**: Dragan's QE review — fail-closed fences, single version SoT, CVSS-9.8 dep cleared, injection-guard recall, unsigned-updater RCE vector closed (signing tracked), CI, secret-leak scrub — each finding's root cause + exact fix + verification | fence-fails-open; unsigned-RCE; CVSS-9.8; secret-leak; the drift class |
+| [0088](0088-operational-evaluation-integrity.md) | **Operational evaluation integrity**: source-supported retrieval, explicit abstention, immutable independent fixtures, raw receipts | false passes from path-only grading and keyword-only usefulness scores |

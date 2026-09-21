@@ -3,8 +3,8 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-12
-version: 1.1.3
+updated: 2026-09-19
+version: 1.1.6
 impl: wired
 reviewed_digest: 351f22130c54
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
@@ -53,6 +53,10 @@ governs:
 
 # ADR-058: The 95 contract
 
+**Updated 2026-09-19:** Doctor now fails explicit weak retrieval and installed search/validator
+identity drift (ADR-089), independently of persisted grounding state. This candidate change does
+not establish public-install qualification or change this broader contract's Proposed status.
+
 ## Current implementation boundary — reviewed 2026-09-05 19:08:40 EDT
 
 This source review does not award a 95 score, change Proposed status, or establish release
@@ -84,6 +88,8 @@ Codex replay now registers isolated fixture hooks explicitly; the prior uninstru
 UNKNOWN, and no new behavioral learning result is claimed.
 
 ## Currency log
+| 2026-09-19 | Kept all eight detector predicates and their individual timeouts unchanged while removing the second full detector-graph run from the CLI unit tests. One real CLI graph execution returns per-invariant elapsed milliseconds; opt-in `--timings` writes start/completion events to stderr so a timed-out graph still identifies its active detector. Deterministic fixtures exercise text/JSON rendering and PASS/FAIL/UNKNOWN/dirty exit mapping from the same result. | `scripts/release-vector.mjs`, `tests/unit/release-vector.test.mjs`; no blanket timeout increase or skipped detector. Full detector timing is environment-sensitive and does not qualify as a performance claim. |
+| 2026-09-19 | The release vector and verdict remain unchanged; local gate probes now reuse source text within each wired-check invocation and caller results within each document-currency evaluation. | `scripts/wired-check.mjs`, `scripts/doc-currency.mjs`; focused tests count avoided reads/lookups and prove edits are visible on the next invocation. No timeout was raised and no check was weakened. |
 | 2026-09-13 | Currency review (corpus-seed pipeline consolidation, step 5, remediated on top of `86cbe798`): decision unchanged. The seeded-scoping release projection this contract's release vector consumed — `scripts/release-projection.mjs` filtering coverage rows to the seed and rewriting survivors `CURRENT` — is retired: `createReleaseProjection` is a pure wrapper over Step-4-sealed coverage, and `scripts/build-bundle.mjs`'s `assembleBundle` VERIFIES the public-input seal on read (kind, schemaVersion, recomputed `receiptSha256`, per-file bytes, unsealed-prose leak check) instead of detecting that a file exists. Consumer status: `.github/workflows/ci.yml` `release-qe` is byte-identical to `main` and still runs the pre-consolidation build/project/build sequence against the pinned v4.2.1-dev seed; that path cannot satisfy the new sealed-input checks by design (the pinned seed predates the seal), and the consumer switch is the plan's step 11, after a Step-4-produced seed is published and re-pinned. | Reviewed `scripts/build-bundle.mjs`, `scripts/release-projection.mjs`, `scripts/public-inputs.mjs` (schema-2 receipt + `validateSelectionReceipt`), `.github/workflows/ci.yml` (0-line diff vs `main`), `tests/unit/assemble-bundle.test.mjs`. |
 | 2026-09-12 | Currency review at commit dae83538: decision unchanged. The hook-parity fork extended Codex's `PreToolUse`/`PostToolUse` registration (matcher now includes `apply_patch`, Codex's own write-tool name — measured live, a real `apply_patch` call fires the event) and added `grounding-turn-mark`/`grounding-turn-gate` (the "answered without searching" Stop pair) to `hooks.json`/`codex-hooks.json`/`hook-shim.mjs`. The eight-invariant release vector, `release-authority`, and `sync-version` are unaffected; `bin/install.mjs` did not move in this fork's diff. | Reviewed `plugin/hooks/hooks.json`, `codex-hooks.json`, `plugin/scripts/hook-shim.mjs` directly against the hook-parity fork's diff (merge-base `13cfc38b`..`ef2b8e12`). |
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged — the eight-invariant release vector and the candidate-CI guarantee are intact; the day's motion across this ADR's 37 paths nets to restores. `scripts/release.mjs`: rewritten at `e3b0f0ba` (lost `--publish` / `--check` / `--corpus-seed`; a second publisher, `release-authority` FAIL; the v4.4.0 tag's publish run was refused by `prepublishOnly`) and restored to 85f584b2 at `a4b1bf0d` (numstat 0/0; `release-authority` PASS; `sync-version --check` PASS at 4.3.22). `plugin/hooks/hooks.json`, `codex-hooks.json`, `plugin/scripts/hook-shim.mjs`, `session-start-core.mjs`: see the ADR-0055 and ADR-0054 rows (net: plane restored plus three gates; shim and session-start identical to 85f584b2). `bin/install.mjs` `dc18fadc`. Pre-session worktree merges account for the remainder. | Reviewed `scripts/release.mjs`, `plugin/hooks/hooks.json`, `plugin/scripts/hook-shim.mjs`, `bin/install.mjs`. reviewed_digest e44ed1e763ac. |
