@@ -14,19 +14,19 @@
 // module is a regression-hiding device.
 import { describe, it, expect } from 'vitest';
 import {
-  runRenderProbeBestOf, betterAttempt, overBudgetRows, RENDER_ATTEMPTS,
+  runRenderProbeBestOf, betterAttempt, overBudgetRows, failedAcceptanceRows, RENDER_ATTEMPTS,
 } from '../../scripts/qe/ux-suite.mjs';
 
 const BUDGETS = { 'console time-to-visible': 4000, 'tips time-to-visible (hero)': 3500 };
 
 /** One probe result shaped like the real one. */
-const attempt = (consoleMs, tipsMs = 1000, notes = []) => ({
+const attempt = (consoleMs, tipsMs = 1000, notes = [], acceptance = [{ label: 'stub', pass: true, detail: 'stub' }]) => ({
   results: [
     { label: 'console time-to-visible', ms: consoleMs },
     { label: 'tips time-to-visible (hero)', ms: tipsMs },
   ],
   notes,
-  acceptance: [{ label: 'stub', pass: true, detail: 'stub' }],
+  acceptance,
 });
 
 /** A run() that replays a fixed sequence of attempts and counts how many were consumed. */
@@ -88,6 +88,36 @@ describe('ux-qe render probe — best-of-N must NOT rescue a regression', () => 
     await runRenderProbeBestOf(BUDGETS, { attempts: 2, run: fn });
     expect(used()).toBe(2); // did not accept the noted attempt as final
   });
+
+  it('retries a failed hard UI acceptance and accepts only a completely clean attempt', async () => {
+    const failed = attempt(900, 1000, [], [{ label: 'settings persist', pass: false, detail: 'slow reload' }]);
+    const { fn, used } = replay([failed, attempt(900)]);
+    const r = await runRenderProbeBestOf(BUDGETS, { attempts: 3, run: fn });
+    expect(failedAcceptanceRows(r.acceptance)).toEqual([]);
+    expect(r.attemptsUsed).toBe(2);
+    expect(used()).toBe(2);
+  });
+
+  it('keeps persistent acceptance failures red and reports the best failing attempt', async () => {
+    const oneFailure = attempt(900, 1000, [], [{ label: 'save provider', pass: false }]);
+    const twoFailures = attempt(800, 900, [], [
+      { label: 'save provider', pass: false }, { label: 'save advocacy', pass: false },
+    ]);
+    const { fn, used } = replay([twoFailures, oneFailure, oneFailure]);
+    const r = await runRenderProbeBestOf(BUDGETS, { attempts: 3, run: fn });
+    expect(failedAcceptanceRows(r.acceptance)).toHaveLength(1);
+    expect(r.acceptance[0].label).toBe('save provider');
+    expect(r.attemptsUsed).toBe(3);
+    expect(used()).toBe(3);
+  });
+
+  it('treats missing acceptance evidence as a failure, never a clean attempt', async () => {
+    const missing = attempt(900, 1000, [], []);
+    const { fn, used } = replay([missing, missing]);
+    const r = await runRenderProbeBestOf(BUDGETS, { attempts: 2, run: fn });
+    expect(failedAcceptanceRows(r.acceptance)).toHaveLength(1);
+    expect(used()).toBe(2);
+  });
 });
 
 describe('ux-qe render probe — attempt ranking', () => {
@@ -98,6 +128,12 @@ describe('ux-qe render probe — attempt ranking', () => {
     const fast = attempt(4500, 1000);
     const slow = attempt(4600, 1000);
     expect(betterAttempt(slow, fast, BUDGETS)).toBe(fast);
+  });
+
+  it('acceptance failures outrank timing improvements when selecting the best attempt', () => {
+    const failed = attempt(900);
+    const failedAcceptance = attempt(500, 500, [], [{ label: 'settings persist', pass: false }]);
+    expect(betterAttempt(failedAcceptance, failed, BUDGETS)).toBe(failed);
   });
 
   it('defaults to 3 attempts and honours the env override', () => {

@@ -363,6 +363,23 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(searchKb.mock.calls.map(([args]) => args.name)).toEqual(['sensor-manual']);
   });
 
+  it('keeps an explicit repo directive scoped when identifier mentions exist elsewhere', async () => {
+    const d = mkdirWith(['ruvnet-brain.rvf', 'agentdb.rvf', 'agentic-flow.rvf']);
+    for (const repo of ['agentdb', 'agentic-flow']) {
+      fs.writeFileSync(path.join(d, `${repo}.passages.jsonl`), JSON.stringify({
+        id: '1', path: 'docs/brain.md', title: 'RuvNet Brain integration', text: 'RuvNet Brain release details.',
+      }) + '\n');
+    }
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+
+    const out = await searchAll({ dir: d,
+      query: 'repo:ruvnet-brain How does RuvNet Brain prove a public release artifact?',
+      allowFullCorpus: false });
+
+    expect(out.repos).toEqual(['ruvnet-brain']);
+    expect(searchKb.mock.calls.map(([args]) => args.name)).toEqual(['ruvnet-brain']);
+  });
+
   it.each(['relevant', 'irrelevant', 'outage'])('bounds ambiguous metadata routing and independently verifies %s source evidence', async (mode) => {
     const d = mkdirWith(['manual.rvf', 'card-one.rvf', 'card-two.rvf', 'other.rvf']);
     fs.writeFileSync(path.join(d, 'manual.meta.json'), JSON.stringify({ entries: {
