@@ -29,9 +29,10 @@ Current 4.3.29 repair candidate (not yet published):
 - Natural-language repository scope is a hard retrieval boundary, preventing identifier discovery
   from widening a named repository search. The public 30-second search limit now applies to every
   acceptance canary, not only the initial smoke query.
-- The retrieval oracle again covers all 194 currently eligible repositories. The 12 omitted rows
-  are restored only where their immutable source commit matches current coverage; the complete oracle
-  is resealed against its own source commit before release qualification.
+- The retrieval oracle remains bound to the exact 182-store public seed. The separate upstream
+  inventory contains 194 eligible repositories, but 12 corresponding vector stores are not present
+  in the pinned release seed. This release does not claim those stores were published; they require
+  a separately qualified corpus-seed publication.
 
 4.3.28 candidate changes retained below:
 
