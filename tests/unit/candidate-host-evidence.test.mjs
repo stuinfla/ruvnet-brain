@@ -10,6 +10,7 @@ import { createPayloadManifest } from '../../scripts/release-payload.mjs';
 import { sha256File } from '../../scripts/coverage-integrity.mjs';
 import { candidateRetrievalFixture } from '../fixtures/candidate-retrieval-fixture.mjs';
 import { writeStoredZip } from '../helpers/zip-fixture.mjs';
+import { runRetrievalCanaries } from '../../scripts/retrieval-canary.mjs';
 const roots = [];
 afterEach(() => roots.splice(0).forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })));
 function fixture() {
@@ -88,8 +89,13 @@ it.each(['missing-retrieval', 'changed-bytes'])('does not seal %s behind a green
 });
 it('does not seal a candidate when any host search exceeds the public deadline', async () => {
   const f = fixture();
+  const retrieval = await runRetrievalCanaries({ ...f.candidate,
+    search: async ({ query }) => [f.candidate.plan.cases.find((row) => row.query === query).expected],
+    citationResolver: async (_matched, expected) => ({ resolved: true,
+      evidence: { passageSha256: expected.passageSha256, passageFileSha256: 'd'.repeat(64) } }),
+  });
   await expect(buildCandidateHostEvidence(f.args, { createVerifier: () => ({ verify: async () => ({ verdict: 'PASS', fixtures:
     Object.fromEntries(['claude', 'codex', 'dual'].map((mode) => [mode, { status: 'PASS', searchMs: mode === 'codex' ? 30_001 : 100,
-      process: { status: 0 }, grounding: { repo: 'new', path: 'src/new.mjs', file: 'new.passages.jsonl', storedPath: 'src/new.mjs' } }])) }) })
+      process: { status: 0 }, grounding: { repo: 'new', path: 'src/new.mjs', file: 'new.passages.jsonl', storedPath: 'src/new.mjs' }, retrieval }])) }) })
   })).rejects.toThrow(/codex-only first cited search exceeded/);
 });
