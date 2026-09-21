@@ -22,6 +22,15 @@ describe('protected release rail', () => {
       if (script === 'candidate-host-evidence') expect(command).toMatch(/--sequential-searches/);
     }
   });
+
+  it('retains failed Mac timing diagnostics without treating them as a promotable receipt', () => {
+    const source = read('.github/workflows/release-candidate-preflight.yml');
+    const upload = source.slice(source.indexOf('name: macos-candidate-search-${{ github.sha }}'));
+    expect(upload).toContain('if: always()');
+    expect(upload).toContain('candidate-host-evidence-macos.json.failure.json');
+    expect(upload).toContain('if-no-files-found: warn');
+    expect(source).toContain('needs: [ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows, macos-candidate-search]');
+  });
   it('installs both host CLIs before the exact Mac candidate matrix uses them', () => {
     const source = read('.github/workflows/release-candidate-preflight.yml');
     const macJob = source.split('  macos-candidate-search:')[1]?.split('\n  aggregate:')[0] || '';

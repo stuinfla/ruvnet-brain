@@ -9,6 +9,7 @@ const transaction = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction
 const provider = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction-provider.mjs'), 'utf8');
 const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/protected-release.yml'), 'utf8');
 const producer = fs.readFileSync(path.join(ROOT, 'scripts/publication-receipt.mjs'), 'utf8');
+const hostMatrix = fs.readFileSync(path.join(ROOT, 'scripts/host-install-matrix.mjs'), 'utf8');
 const publicLane = fs.readFileSync(path.join(ROOT, 'scripts/public-verification-lane.mjs'), 'utf8');
 const finalizer = fs.readFileSync(path.join(ROOT, 'scripts/public-verification-finalizer.mjs'), 'utf8');
 
@@ -87,8 +88,10 @@ describe('publication receipt wiring', () => {
   });
 
   it('bounds the install smoke to one source-cited result from the Brain self store', () => {
-    expect(producer).toContain("const SELF_STORE_PROOF_QUERY = 'repo:ruvnet-brain What is the RuvNet Brain release evidence workflow?'");
-    expect(producer).toContain('const SELF_STORE_PROOF_K = 1');
+    expect(hostMatrix).toContain("export const SELF_STORE_PROOF_QUERY = 'repo:ruvnet-brain What is the RuvNet Brain release evidence workflow?'");
+    expect(hostMatrix).toContain('export const SELF_STORE_PROOF_K = 1');
+    expect(producer).toContain('SELF_STORE_PROOF_QUERY');
+    expect(producer).toContain('SELF_STORE_PROOF_K');
     expect(producer).toContain('/repo\\s*=\\s*ruvnet-brain/i.test(result.stdout)');
     expect(producer).toContain('installed Brain ${phase} failed for ${mode} after ${timeoutMs}ms');
   });

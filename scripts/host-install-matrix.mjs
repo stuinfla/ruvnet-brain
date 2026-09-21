@@ -32,6 +32,9 @@ import { runRetrievalCanaries, validateRetrievalCanaryReceipt, resolveInstalledC
 
 /** The three host shapes a release must survive. ONE name each, for every consumer. */
 export const HOST_MODES = Object.freeze(['claude', 'codex', 'dual']);
+export const SELF_STORE_PROOF_QUERY = 'repo:ruvnet-brain What is the RuvNet Brain release evidence workflow?';
+export const SELF_STORE_PROOF_K = 1;
+export const HOST_WARMUP_TIMEOUT_MS = 300_000;
 export const RELEASE_SEARCH_DEADLINE_MS = 30_000;
 
 /** Which CLIs each mode is allowed to see. A codex-only box genuinely has no `claude`. */
@@ -277,13 +280,33 @@ export async function runHostMatrixAsync({
       // One installed worker per host: model/store state survives smoke and every sealed case.
       session = runMcpSearch === runInstalledMcpSearch ? createInstalledMcpSession({ serverPath, env: context.env }) : null;
       const searchMcp = session ? (args) => session.search(args) : runMcpSearch;
-      const processResult = await searchMcp({ mode: context.mode, serverPath, env: context.env });
+      // The installed shell warms its in-process models and stores asynchronously from MCP
+      // initialize. Candidate qualification must give that same worker the same cited readiness
+      // probe used by the public verifier before timing the first user search; a separate CLI
+      // prewarm only primes disk cache and cannot warm this worker's process memory.
+      const warmupResult = await searchMcp({ mode: context.mode, serverPath, env: context.env,
+        query: SELF_STORE_PROOF_QUERY, k: SELF_STORE_PROOF_K, timeoutMs: HOST_WARMUP_TIMEOUT_MS });
+      const warmupOutput = `${warmupResult.stdout || ''}${warmupResult.stderr || ''}`;
+      if (warmupResult.error || warmupResult.status !== 0) {
+        return { context, processResult: warmupResult,
+          error: `MCP warmup failed for ${context.mode} (${processDiagnostic(warmupResult)}): ${warmupOutput.slice(-2000)}` };
+      }
+      const warmupGrounding = await verifyGrounding(warmupOutput, context.env.RUVNET_BRAIN_KB);
+      if (!warmupGrounding?.grounded || warmupGrounding.receipt?.repo !== 'ruvnet-brain') {
+        return { context, processResult: warmupResult, warmupMs: warmupResult.broadMs,
+          error: `MCP self-store warmup grounding unproven for ${context.mode}` };
+      }
+      const processResult = await searchMcp({ mode: context.mode, serverPath, env: context.env,
+        query: 'How does RuvNet Brain prove a public release artifact?', k: 5,
+        timeoutMs: RELEASE_SEARCH_DEADLINE_MS });
       const output = `${processResult.stdout || ''}${processResult.stderr || ''}`;
       if (processResult.error || processResult.status !== 0) {
-        return { context, processResult, error: `MCP search failed for ${context.mode} (${processDiagnostic(processResult)}): ${output.slice(-2000)}` };
+        return { context, processResult, warmupMs: warmupResult.broadMs, warmupGrounding,
+          error: `MCP search failed for ${context.mode} (${processDiagnostic(processResult)}): ${output.slice(-2000)}` };
       }
       const grounding = await verifyGrounding(output, context.env.RUVNET_BRAIN_KB);
-      if (!grounding?.grounded) return { context, processResult, error: `MCP search grounding unproven for ${context.mode}` };
+      if (!grounding?.grounded) return { context, processResult, warmupMs: warmupResult.broadMs,
+        warmupGrounding, error: `MCP search grounding unproven for ${context.mode}` };
       let receipt;
       if (retrieval) {
         receipt = await runRetrievalCanaries({ ...retrieval,
@@ -295,9 +318,11 @@ export async function runHostMatrixAsync({
           citationResolver: (matched, expected) => resolveInstalledCanaryCitation({ kbDir: context.env.RUVNET_BRAIN_KB, matched, expected }),
         });
         try { validateRetrievalCanaryReceipt(receipt, { plan: retrieval.plan }); }
-        catch (error) { return { context, processResult, grounding, retrieval: receipt, error: `${context.mode} canary rejected: ${error.message}` }; }
+        catch (error) { return { context, processResult, warmupMs: warmupResult.broadMs,
+          warmupGrounding, grounding, retrieval: receipt, error: `${context.mode} canary rejected: ${error.message}` }; }
       }
-      return { context, processResult, grounding, ...(receipt ? { retrieval: receipt } : {}) };
+      return { context, processResult, warmupMs: warmupResult.broadMs, warmupGrounding,
+        grounding, ...(receipt ? { retrieval: receipt } : {}) };
     } catch (error) {
       return { context, processResult: { status: null, error }, error: `${context.mode} host search failed: ${error.message}` };
     } finally { await session?.close(); }
@@ -308,10 +333,13 @@ export async function runHostMatrixAsync({
   } else {
     searches.push(...await Promise.all(contexts.map(searchOne)));
   }
-  const fixtures = Object.fromEntries(searches.map(({ context, processResult, grounding, retrieval, error }) => [context.mode, {
+  const fixtures = Object.fromEntries(searches.map(({ context, processResult, warmupMs, warmupGrounding,
+    grounding, retrieval, error }) => [context.mode, {
     status: error ? 'FAIL' : 'PASS',
     version,
     process: processIdentity(processResult),
+    warmupMs: Number.isFinite(warmupMs) ? warmupMs : null,
+    ...(warmupGrounding?.receipt ? { warmupGrounding: warmupGrounding.receipt } : {}),
     searchMs: Number.isFinite(processResult.broadMs) ? processResult.broadMs : null,
     ...(grounding?.receipt ? { grounding: grounding.receipt } : {}),
     ...(retrieval ? { retrieval } : {}),
