@@ -386,6 +386,7 @@ jobs:
             --bundle "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \
             --plan "$RUNNER_TEMP/release-evidence/retrieval-canary-plan.json" \
             --coverage "$RUNNER_TEMP/release-evidence/COVERAGE.json" \
+            --sequential-searches \
             --out "$RUNNER_TEMP/release-evidence/candidate-host-evidence.json"
       - name: Exact-artifact release QE
         run: |

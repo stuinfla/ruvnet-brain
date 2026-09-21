@@ -152,6 +152,23 @@ describe('publication receipt producer', () => {
     expect([...results]).toEqual([['claudeOnly', 'claudeOnly'], ['codexOnly', 'codexOnly'], ['dual', 'dual']]);
   });
 
+  it('runs each warmup and measured search within one host lifecycle before advancing', async () => {
+    const hosts = [{ mode: 'claudeOnly' }, { mode: 'codexOnly' }];
+    const events = [];
+    const results = await runMeasuredHostSearches(hosts, async (host, timeoutMs) => {
+      events.push(`measure:${host.mode}:${timeoutMs}`);
+      return host.mode;
+    }, {
+      warmup: async (host) => events.push(`warm:${host.mode}`),
+      after: async (host) => events.push(`retire:${host.mode}`),
+    });
+    expect(events).toEqual([
+      'warm:claudeOnly', 'measure:claudeOnly:30000', 'retire:claudeOnly',
+      'warm:codexOnly', 'measure:codexOnly:30000', 'retire:codexOnly',
+    ]);
+    expect([...results]).toEqual([['claudeOnly', 'claudeOnly'], ['codexOnly', 'codexOnly']]);
+  });
+
   it('resolves the actual optional-package Windows Codex executable, not its cmd wrapper', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'public-codex-native-'));
     try {

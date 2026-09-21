@@ -15,7 +15,9 @@ import { spawn, spawnSync } from 'node:child_process';
 // `fixtures.claude` described the same fixture and nothing could tell. The richer
 // post-publication proofs below (payload assertions, MCP wiring, SOURCE.json, rpcSearch)
 // stay here — they are this side's job, not duplication.
-import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor, VARIANTS, createInstalledMcpSession } from './host-install-matrix.mjs';
+import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor, VARIANTS,
+  createInstalledMcpSession, HOST_WARMUP_TIMEOUT_MS, RELEASE_SEARCH_DEADLINE_MS, SELF_STORE_PROOF_QUERY,
+  SELF_STORE_PROOF_K } from './host-install-matrix.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt, evaluatePublicationReceipt } from './release-proof.mjs';
 import { verifyPayload } from './release-payload.mjs';
@@ -30,12 +32,19 @@ import { parseRetrievalResult } from '../kb/retrieval-result.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
 const PACKAGE = 'ruvnet-brain';
-const DEADLINE_MS = 30_000;
-const WARMUP_TIMEOUT_MS = 300_000;
+const DEADLINE_MS = RELEASE_SEARCH_DEADLINE_MS;
+const WARMUP_TIMEOUT_MS = HOST_WARMUP_TIMEOUT_MS;
 
-export async function runMeasuredHostSearches(hosts, search) {
+export async function runMeasuredHostSearches(hosts, search, { warmup, after } = {}) {
   const results = new Map();
-  for (const host of hosts) results.set(host.mode, await search(host, DEADLINE_MS));
+  for (const host of hosts) {
+    try {
+      await warmup?.(host);
+      results.set(host.mode, await search(host, DEADLINE_MS));
+    } finally {
+      await after?.(host);
+    }
+  }
   return results;
 }
 
@@ -530,38 +539,54 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         };
       }));
 
-      // Keep one MCP worker per host. The first search on each worker may load the local model,
-      // but all later proofs reuse the initialized process instead of paying that startup cost
-      // again. The fixed deadline remains strict for each actual search operation.
-      for (const { mode, context } of hostResults) {
-        const publicMode = MODE_FROM_RECEIPT_NAME[mode];
-        mcpSessions.set(publicMode, createInstalledMcpSession({
-          serverPath: findMcpServer(context.home), env: context.env, timeout: WARMUP_TIMEOUT_MS,
-        }));
-      }
       const searched = new Map();
       const searchInstalledHost = async ({ mode }, timeoutMs) => {
         const publicMode = MODE_FROM_RECEIPT_NAME[mode];
         const session = mcpSessions.get(publicMode);
+        const phase = timeoutMs > DEADLINE_MS ? 'warmup' : 'measured search';
+        console.log(`Public verification: ${mode} ${phase} (limit ${timeoutMs}ms)`);
         const result = await session.search({
-          query: 'How does RuvNet Brain prove a public release artifact?', k: 5,
+          query: SELF_STORE_PROOF_QUERY, k: SELF_STORE_PROOF_K,
           timeoutMs,
         });
         if (result.error || !result.mcpResult || (Object.hasOwn(result, 'status') && result.status !== 0)) {
-          throw new Error(`installed Brain search failed for ${mode}: ${result.error?.message || 'no MCP result'}`);
+          throw new Error(`installed Brain ${phase} failed for ${mode} after ${timeoutMs}ms: ${result.error?.message || 'no MCP result'}`);
         }
-        if (!/repo=/i.test(result.stdout) || !/path\s*:/i.test(result.stdout)) {
+        if (!/repo\s*=\s*ruvnet-brain/i.test(result.stdout) || !/path\s*:/i.test(result.stdout)) {
           throw new Error(`installed Brain search returned no source citation for ${mode}`);
         }
         return result;
       };
-      // Warm each worker serially. The model cache is shared, so parallel first-loads can contend
-      // on hosted runners. Warm-up is bounded generously and is never the release latency measure.
-      for (const host of hostResults) await searchInstalledHost(host, WARMUP_TIMEOUT_MS);
-      // Measure each initialized host separately under the strict public deadline. Running three
-      // independent search workers together oversubscribes hosted runners and turns the acceptance
-      // check into a load test; serialize so the receipt measures each installed host's service.
-      const measuredSearches = await runMeasuredHostSearches(hostResults, searchInstalledHost);
+      // Warm and measure one isolated host at a time, then retire its model-backed worker before
+      // moving to the next host. Serial RPCs alone are insufficient: keeping three independent
+      // workers resident still competes for memory and CPU during the measured query on macOS.
+      const measuredSearches = await runMeasuredHostSearches(hostResults, searchInstalledHost, {
+        warmup: async ({ mode, context }) => {
+          for (const [openMode, session] of mcpSessions) {
+            if (openMode !== MODE_FROM_RECEIPT_NAME[mode]) {
+              await session.close();
+              mcpSessions.delete(openMode);
+            }
+          }
+          const publicMode = MODE_FROM_RECEIPT_NAME[mode];
+          if (!mcpSessions.has(publicMode)) {
+            mcpSessions.set(publicMode, createInstalledMcpSession({
+              serverPath: findMcpServer(context.home), env: context.env, timeout: WARMUP_TIMEOUT_MS,
+            }));
+          }
+          // The generous bound is for one-time readiness/model warmup only; the following
+          // measured query still has the unchanged strict 30-second deadline.
+          await searchInstalledHost({ mode }, WARMUP_TIMEOUT_MS);
+        },
+        after: async ({ mode }) => {
+          const publicMode = MODE_FROM_RECEIPT_NAME[mode];
+          if (mode !== 'dual') {
+            const session = mcpSessions.get(publicMode);
+            if (session) await session.close();
+            mcpSessions.delete(publicMode);
+          }
+        },
+      });
       for (const [mode, result] of measuredSearches) searched.set(mode, result);
       await Promise.all(hostResults.map(async ({ context, installer }) => {
         await commandAsync(process.execPath, [installer, '--doctor', '--hooks'], {
@@ -595,9 +620,9 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       // installed process that passed the host canary instead of starting a cold verifier child.
       const session = mcpSessions.get(mode);
       const result = session
-        ? await session.search({ query: 'How does RuvNet Brain prove a public release artifact?', k: 5, timeoutMs: DEADLINE_MS })
+        ? await session.search({ query: SELF_STORE_PROOF_QUERY, k: SELF_STORE_PROOF_K, timeoutMs: DEADLINE_MS })
         : await rpcSearch(server, installContext.env,
-          'How does RuvNet Brain prove a public release artifact?', 5, DEADLINE_MS);
+          SELF_STORE_PROOF_QUERY, SELF_STORE_PROOF_K, DEADLINE_MS);
       if (result.error || !result.mcpResult || (Object.hasOwn(result, 'status') && result.status !== 0)) {
         throw new Error(`installed Brain search failed for ${mode}: ${result.error?.message || 'no MCP result'}`);
       }
@@ -609,13 +634,24 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
     async searchInstalled({ mode, query, k }) {
       const context = installContexts.get(mode);
       if (!context) throw new Error(`${mode} public host is not installed`);
-      // Keep one MCP worker per installed host. Starting a fresh worker for every canary reloads
-      // the local embedding model repeatedly and can exceed the fixed 30-second public deadline
-      // on macOS, even when the installed Brain itself is healthy.
+      // Retrieval canaries run mode-by-mode. Retire the prior mode before opening this host so
+      // only one model-backed MCP worker can consume resources at a time.
+      for (const [openMode, openSession] of mcpSessions) {
+        if (openMode !== mode) {
+          await openSession.close();
+          mcpSessions.delete(openMode);
+        }
+      }
       let session = mcpSessions.get(mode);
       if (!session) {
-        session = createInstalledMcpSession({ serverPath: findMcpServer(context.home), env: context.env, timeout: DEADLINE_MS });
+        session = createInstalledMcpSession({ serverPath: findMcpServer(context.home), env: context.env, timeout: WARMUP_TIMEOUT_MS });
         mcpSessions.set(mode, session);
+        const warmed = await session.search({
+          query: SELF_STORE_PROOF_QUERY, k: SELF_STORE_PROOF_K, timeoutMs: WARMUP_TIMEOUT_MS,
+        });
+        if (warmed.error || !warmed.mcpResult || (Object.hasOwn(warmed, 'status') && warmed.status !== 0)) {
+          throw new Error(`installed Brain warmup failed for ${mode}: ${warmed.error?.message || 'no MCP result'}`);
+        }
       }
       const result = await session.search({ query, k, timeoutMs: DEADLINE_MS });
       return parseRetrievalResult(result.mcpResult, { query, k });

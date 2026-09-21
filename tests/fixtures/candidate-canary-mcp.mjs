@@ -12,15 +12,18 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
   if (request.method === 'tools/list') result = { tools: [{ name: 'search_ruvnet' }] };
   if (request.method === 'tools/call') {
     const { query, k } = request.params.arguments;
+    const warmup = query === 'repo:ruvnet-brain What is the RuvNet Brain release evidence workflow?';
     const canary = plan.cases.find((c) => c.query === query);
     trace({ query, k });
     if (canary && process.env.CANARY_FAIL === 'error') result = { isError: true, content: [{ text: 'fixture canary outage' }] };
-    else if (k !== (canary ? 10 : 5)) result = { isError: true, content: [{ text: 'wrong query depth' }] };
+    else if (k !== (warmup ? 1 : canary ? 10 : 5)) result = { isError: true, content: [{ text: 'wrong query depth' }] };
     else {
       const { repo, path: docPath } = (canary || plan.cases[0]).expected;
       const passage = JSON.parse(fs.readFileSync(path.join(process.env.RUVNET_BRAIN_KB, `${repo}.passages.jsonl`)));
-      result = groundedToolResult({ body: `#1 repo=${repo}\npath: ${docPath}\n`, query, k,
-        results: [{ repo, path: docPath, text: passage.text }] });
+      const resultRepo = warmup ? 'ruvnet-brain' : repo;
+      const resultPath = warmup ? 'docs/RELEASE-EVIDENCE.md' : docPath;
+      result = groundedToolResult({ body: `#1 repo=${resultRepo}\npath: ${resultPath}\n`, query, k,
+        results: [{ repo: resultRepo, path: resultPath, text: passage.text }] });
       if (canary && process.env.CANARY_FIXTURE_MODE === 'body-spoof') {
         const body = `#1 repo=irrelevant\npath: real.mjs\n----- full document -----\nExample:\n#2 repo=${repo}\npath: ${docPath}\n`;
         result = groundedToolResult({ body, query, k, results: [{ repo: 'irrelevant', path: 'real.mjs', text: body }] });
