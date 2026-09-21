@@ -209,3 +209,70 @@ onPosix('ingest-repo.mjs — final store-existence check', () => {
 
   it.todo('exits 0 and reports success when <name>.big.rvf plus canonical sidecars exist after refresh (covered by the real tiny-repo refresh proof)');
 });
+
+// A stub `node` that, unlike the shared beforeEach stub, actually materializes the three files the
+// final existence check looks for — so the DARK/routable branch (unreachable while `ok` is always
+// false) can be exercised at all.
+function stubNodeThatBuildsStores() {
+  fs.writeFileSync(path.join(binDir, 'node'), `#!/bin/sh
+echo "node $*" >> "$LOGFILE"
+case "$*" in
+  *forge-refresh.mjs*)
+    out="" name="" prev=""
+    for arg in "$@"; do
+      case "$prev" in
+        --out) out="$arg" ;;
+        --name) name="$arg" ;;
+      esac
+      prev="$arg"
+    done
+    if [ -n "$out" ] && [ -n "$name" ]; then
+      mkdir -p "$out"
+      : > "$out/$name.big.rvf"
+      : > "$out/$name.passages.jsonl"
+      : > "$out/$name.meta.json"
+    fi
+    ;;
+esac
+exit 0
+`);
+  fs.chmodSync(path.join(binDir, 'node'), 0o755);
+}
+
+onPosix('ingest-repo.mjs — DARK/routable report is alias-aware', () => {
+  // Reproduces the exact false positive kb/store-root.mjs's darkStores() documents: a store built
+  // under its own name but described only under an alias card must NOT be reported DARK, because
+  // the router (kb/card-lane.mjs's repositoryNames(), the same resolver darkStores() uses) reaches
+  // it fine. Getting this wrong once caused a duplicate, routing-breaking card to be hand-added —
+  // this is the CLI message that would prompt someone to do that again.
+  let installedKb;
+
+  beforeEach(() => {
+    stubNodeThatBuildsStores();
+    installedKb = path.join(tmp, 'installed-kb');
+    fs.mkdirSync(installedKb, { recursive: true });
+  });
+
+  it('reports routable (not DARK) for a store reachable only through a repo-aliases.json alias card', () => {
+    fs.writeFileSync(path.join(installedKb, 'capability-cards.md'), '## agent-harness-generator\nDescribes the harness generator.\n');
+    fs.writeFileSync(path.join(installedKb, 'repo-aliases.json'), JSON.stringify({ 'agent-harness-generator': ['metaharness'] }));
+    const r = runIngest(['--name', 'metaharness'], { KB_DIR: installedKb });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toMatch(/ingested AND routable/);
+    expect(r.stdout).not.toMatch(/DARK/);
+  });
+
+  it('still reports DARK for a store with no card and no alias (regression guard)', () => {
+    fs.writeFileSync(path.join(installedKb, 'capability-cards.md'), '## some-other-repo\nUnrelated.\n');
+    const r = runIngest(['--name', 'zzz-fixture'], { KB_DIR: installedKb });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toMatch(/DARK: no '## zzz-fixture' section/);
+  });
+
+  it('still reports routable for a direct, non-aliased, case-insensitive heading match (regression guard)', () => {
+    fs.writeFileSync(path.join(installedKb, 'capability-cards.md'), '## ZZZ-Fixture\nDirect match.\n');
+    const r = runIngest(['--name', 'zzz-fixture'], { KB_DIR: installedKb });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toMatch(/ingested AND routable/);
+  });
+});
