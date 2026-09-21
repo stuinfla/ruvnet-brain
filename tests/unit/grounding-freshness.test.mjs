@@ -18,6 +18,7 @@ import {
   liveLookupDisabledReason,
   probeLiveVersions,
   stalenessNotice,
+  versionIntent,
 } from '../../kb/corpus-freshness.mjs';
 import { MANAGED_CLI_TOOLS } from '../../plugin/mcp/managed-cli-interface.mjs';
 import fs from 'node:fs';
@@ -89,6 +90,43 @@ describe('freshnessAdvisory — the version question gets the live-verification 
   });
   it('says nothing on a question that is not about a version', () => {
     expect(freshnessAdvisory({ query: 'How does RVF store vectors on disk?', dir, corpusAge: null })).toBe('');
+  });
+});
+
+describe('versionIntent — a sentence-ending period is a boundary, not part of the package name', () => {
+  // Measured 2026-09-21: a version question ending "...version of ruflo." (a completely ordinary
+  // sentence) returned `packages: []` — the bare-name boundary regex treated the trailing "." as
+  // still part of the token, so neither the "boundary char" alternative nor the end-of-string
+  // alternative matched. The scoped-package regex had the opposite failure: it has no requirement
+  // that a match END on an identifier character, so it happily absorbed the period INTO the name,
+  // turning "@claude-flow/cli." into the npm-invalid package string "@claude-flow/cli.".
+  it('still names a bare package when the question ends in a period', () => {
+    expect(versionIntent('What is the latest version of ruflo.').packages).toEqual(['ruflo']);
+    expect(versionIntent('Current release of ruvector.').packages).toEqual(['ruvector']);
+  });
+  it('strips the sentence period from a scoped package instead of absorbing it', () => {
+    expect(versionIntent('What is the latest version of @claude-flow/cli.').packages)
+      .toEqual(['@claude-flow/cli']);
+  });
+  it('still matches with no trailing punctuation at all (unchanged behavior)', () => {
+    expect(versionIntent('What is the latest version of ruflo').packages).toEqual(['ruflo']);
+    expect(versionIntent('What is the latest version of @claude-flow/cli').packages)
+      .toEqual(['@claude-flow/cli']);
+  });
+  it('a period immediately followed by another identifier char is still NOT a boundary', () => {
+    // Guards against the fix over-correcting: "ruflo.config.js" must not read as a mention of the
+    // package "ruflo" — the period here is a filename separator, not sentence punctuation.
+    expect(versionIntent('what changed in ruflo.config.js recently').packages).toEqual([]);
+  });
+  it('a mid-sentence period followed by whitespace is also a boundary', () => {
+    expect(versionIntent('latest version of ruflo. Also check agentic-qe').packages)
+      .toEqual(['ruflo', 'agentic-qe']);
+  });
+  it('an ellipsis (multiple dots) is a boundary too, not just a single period', () => {
+    // Caught by an independent adversarial critic pass: the first fix only recognized a SINGLE
+    // trailing ".", so "...version of ruflo..." repeated the exact failure the fix was meant to
+    // close, just with three dots instead of one.
+    expect(versionIntent('What is the latest version of ruflo...').packages).toEqual(['ruflo']);
   });
 });
 
