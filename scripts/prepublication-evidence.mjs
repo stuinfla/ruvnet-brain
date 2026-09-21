@@ -9,6 +9,7 @@ import { RELEASE_QUALIFICATION_POLICY } from './integration-evidence.mjs';
 import { readCandidateRetrieval } from './staged-host-verifier.mjs';
 import { validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
 import { payloadIdFor } from './release-payload.mjs';
+import { HOST_WARMUP_TIMEOUT_MS, RELEASE_SEARCH_DEADLINE_MS } from './host-install-matrix.mjs';
 
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
@@ -95,11 +96,18 @@ export function buildPrepublicationEvidence({
   requireExactSet(host.value.leaves.map(({ name }) => name), ['claude-only', 'codex-only', 'dual-host'], 'candidate host leaves');
   for (const leaf of host.value.leaves) {
     const grounding = leaf.grounding;
+    const warmupGrounding = leaf.warmupGrounding;
     const grounded = grounding && ['repo', 'path', 'file', 'storedPath']
       .every((field) => typeof grounding[field] === 'string' && grounding[field].trim());
+    const warmupGrounded = warmupGrounding && ['repo', 'path', 'file', 'storedPath']
+      .every((field) => typeof warmupGrounding[field] === 'string' && warmupGrounding[field].trim());
+    const selfStoreWarmup = warmupGrounding?.repo === 'ruvnet-brain';
     if (leaf.sha !== sha || leaf.payloadId !== payload.payloadId || leaf.status !== 'completed'
       || leaf.conclusion !== 'success' || leaf.verdict !== 'PASS'
       || leaf.functionalSearch !== true || leaf.searchExit !== 0 || !grounded
+      || !Number.isFinite(leaf.warmupMs) || leaf.warmupMs < 0 || leaf.warmupMs > HOST_WARMUP_TIMEOUT_MS
+      || !warmupGrounded || !selfStoreWarmup
+      || !Number.isFinite(leaf.searchMs) || leaf.searchMs < 0 || leaf.searchMs > RELEASE_SEARCH_DEADLINE_MS
       || leaf.artifactSha256 !== host.value.artifactSha256) {
       throw new Error(`candidate host leaf is not an exact PASS: ${leaf.name || '(missing)'}`);
     }
