@@ -32,6 +32,8 @@ Current 4.3.28 candidate (not yet published):
   grounded host searches determine candidate acceptance.
 - UX qualification now retries failed hard UI acceptance checks within its existing bounded
   attempts, keeps every acceptance budget unchanged, and remains red if no complete attempt passes.
+- An explicit `repo:<name>` query now remains inside that source boundary; exact-identifier
+  discovery no longer widens the requested release search into unrelated repositories.
 
 Campaign context: a dual North-Star review (Fable 5.1 + GPT-6 Astra) measured this project at
 31/100 against commit `2eef2024` (see `PROGRESS.md`'s 2026-09-11 entry for the full per-pillar

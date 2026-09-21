@@ -34,6 +34,7 @@ import { runRetrievalCanaries, validateRetrievalCanaryReceipt, resolveInstalledC
 export const HOST_MODES = Object.freeze(['claude', 'codex', 'dual']);
 export const SELF_STORE_PROOF_QUERY = 'repo:ruvnet-brain What is the RuvNet Brain release evidence workflow?';
 export const SELF_STORE_PROOF_K = 1;
+export const RELEASE_SEARCH_QUERY = 'repo:ruvnet-brain How does RuvNet Brain prove a public release artifact?';
 export const HOST_WARMUP_TIMEOUT_MS = 300_000;
 export const RELEASE_SEARCH_DEADLINE_MS = 30_000;
 
@@ -260,7 +261,7 @@ export async function runHostMatrixAsync({
   // Mac/Windows/Linux runner speed does not determine whether the later real host searches run.
   // The following MCP matrix remains the measured, source-grounded candidate acceptance.
   const prewarm = await runCommand(process.execPath, [prewarmReader, '--dir', prewarmContext.env.RUVNET_BRAIN_KB,
-    '--q', 'How does RuvNet Brain prove a public release artifact?', '--k', '1', '--pool', '8',
+    '--q', RELEASE_SEARCH_QUERY, '--k', '1', '--pool', '8',
     '--repos', 'ruvnet-brain', '--bounded'], {
     cwd: prewarmContext.env.RUVNET_BRAIN_KB, env: prewarmContext.env, timeout: 300_000,
   });
@@ -297,7 +298,7 @@ export async function runHostMatrixAsync({
           error: `MCP self-store warmup grounding unproven for ${context.mode}` };
       }
       const processResult = await searchMcp({ mode: context.mode, serverPath, env: context.env,
-        query: 'How does RuvNet Brain prove a public release artifact?', k: 5,
+        query: RELEASE_SEARCH_QUERY, k: 5,
         timeoutMs: RELEASE_SEARCH_DEADLINE_MS });
       const output = `${processResult.stdout || ''}${processResult.stderr || ''}`;
       if (processResult.error || processResult.status !== 0) {
@@ -437,7 +438,7 @@ export function createInstalledMcpSession({ serverPath, env, timeout = 300_000, 
     pending.set(id, { resolve, reject });
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
   });
-  const execute = async ({ query = 'How does RuvNet Brain prove a public release artifact?', k = 5,
+  const execute = async ({ query = RELEASE_SEARCH_QUERY, k = 5,
     timeoutMs = timeout } = {}) => {
     if (terminalError) return { status: null, error: terminalError, signal: exitSignal, stdout: '', stderr };
     stderr = '';
