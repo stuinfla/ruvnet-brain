@@ -340,6 +340,7 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
 
   const qTokens = contentTokens(q);
   const qIdentity = wholeTokens(q);
+  const aliases = loadRepoAliases(dir);
 
   // A card route is a safety boundary, not a license to turn any lexical overlap into an
   // answer.  Queries that contain multiple concrete terms absent from the entire card catalogue
@@ -365,9 +366,17 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
     .filter((token) => !STOPWORDS.has(token)
       && !cardVocabulary.has(token)
       && !neutralProperTerms.has(token));
+  const normalizedQueryIdentity = ` ${qIdentityPhrase} `;
+  const namesAvailableIdentity = (repo) => repositoryNames(repo, dir).some((name) => {
+    const normalizedName = String(name).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    return normalizedName.length >= 3 && normalizedQueryIdentity.includes(` ${normalizedName} `);
+  });
   const hasKnownProductIdentity = [...qIdentity].some((identity) =>
     cards.some((card) => repositoryNames(card.repo, dir)
-      .some((name) => String(name).toLowerCase() === identity)));
+      .some((name) => String(name).toLowerCase() === identity))
+    || [...available].some((repo) => repositoryNames(repo, dir)
+      .some((name) => String(name).toLowerCase() === identity)))
+    || [...available].some(namesAvailableIdentity);
   if (!hasKnownProductIdentity && unknownProperTerms.length >= 2) {
     return {
       repos: [],
@@ -375,7 +384,6 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
       reason: `query contains ${unknownProperTerms.slice(0, 3).join(', ')} outside the card catalogue`,
     };
   }
-  const aliases = loadRepoAliases(dir);
   const scopedPackage = /@[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+/i.test(q);
   // Hyphen-safe phrase match (issue #284). The old version folded hyphens to spaces on BOTH the
   // repo name and the query (qIdentityPhrase), so a bare store name matched INSIDE its own
@@ -394,13 +402,31 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
   };
   const canonicalNamed = new Set();
   const aliasNamed = new Set();
+  const symbolOwner = q.match(/\b([A-Z][A-Za-z0-9_$]*)\.[A-Za-z_$][\w$]*\s*\(/)?.[1];
   for (const repo of available) {
     if (qIdentity.has(repo.toLowerCase()) || namesRepo(repo)) canonicalNamed.add(repo);
-    if (repositoryNames(repo, dir)
+    if ((symbolOwner && repositoryNames(repo, dir).some((name) => name === symbolOwner))
+      || repositoryNames(repo, dir)
       .filter((name) => name.toLowerCase() !== repo.toLowerCase())
       .some((name) => qIdentity.has(name.toLowerCase()) || namesRepo(name))) {
       aliasNamed.add(repo);
     }
+  }
+  // A complete multiword/hyphenated store identity remains a source-search scope when its card
+  // has not been curated. Generic one-word product vocabulary still needs a card or another route.
+  for (const repo of available) {
+    if (/[-.]/.test(repo) && namesRepo(repo)) canonicalNamed.add(repo);
+  }
+  // Two independently maintained ruOS repositories have different owners. The fully qualified
+  // Cognitum name is an explicit disambiguator for its capability-summary store; the bare `ruos`
+  // identity continues to resolve to the public ruvnet desktop-control repository.
+  const explicitCognitumRuos = /\bcognitum(?:-one)?(?:\s+|\/)ruos\b/i.test(q)
+    && available.has('cognitum-ruos');
+  const cognitumRuosOnly = explicitCognitumRuos
+    && !/\b(?:compare|comparison|versus|vs\.?|between|across|difference|differ)\b/i.test(q);
+  if (explicitCognitumRuos) {
+    canonicalNamed.add('cognitum-ruos');
+    if (cognitumRuosOnly) canonicalNamed.delete('ruos');
   }
   const namedPackage = q.match(/@[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+/i)?.[0]?.toLowerCase();
   const packageOwner = namedPackage ? packageOwnerFor(namedPackage, loadPackageOwners(dir)) : null;
@@ -480,9 +506,10 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
       const storeIdentity = repo.toLowerCase();
       const named = explicitlyNamed.has(repo)
         || (!primaryBrainScope && (
-          qIdentity.has(card.repoIdentity)
-          || qIdentity.has(storeIdentity)
-          || namesRepo(card.repo)
+          !(cognitumRuosOnly && repo === 'ruos')
+          && (qIdentity.has(card.repoIdentity)
+            || qIdentity.has(storeIdentity)
+            || namesRepo(card.repo))
         ));
       const tokens = qTokens.filter((token) =>
         token !== card.repoIdentity && token !== storeIdentity);
@@ -499,6 +526,15 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
     .sort((a, b) => Number(b.named) - Number(a.named) || b.overlap - a.overlap || b.coverage - a.coverage);
 
   const named = scored.filter((candidate) => candidate.named);
+  // An explicitly named installed store remains a valid source-search destination even when its
+  // optional capability card has not been curated yet. This is routing only: cardRepos deliberately
+  // omits it, so no card content can be mistaken for source evidence.
+  const cardBackedRepos = new Set(scored.map((candidate) => candidate.repo));
+  const namedWithoutCards = [...explicitlyNamed].filter((repo) =>
+    available.has(repo)
+    && !cardBackedRepos.has(repo)
+    && (/-|\./.test(repo) || repositoryNames(repo, dir).some((name) =>
+      String(name).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().includes(' '))));
   const first = scored[0];
   const second = scored[1];
   const described = !named.length
@@ -514,7 +550,7 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
       && candidate.coverage >= MIN_COVERAGE)
     : [];
   const describedCluster = !described && tiedLeaders.length >= 2 && tiedLeaders.length <= 3;
-  if (!named.length && !described && !describedCluster) {
+  if (!named.length && !namedWithoutCards.length && !described && !describedCluster) {
     return {
       repos: [],
       confidence: 'none',
@@ -524,7 +560,9 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
 
   const selected = [];
   const candidates = named.length
-    ? named
+    ? [...named, ...namedWithoutCards.map((repo) => ({ repo, named: true, overlap: 0 }))]
+    : namedWithoutCards.length
+      ? namedWithoutCards.map((repo) => ({ repo, named: true, overlap: 0 }))
     : describedCluster
       ? tiedLeaders
       : [first];
@@ -545,12 +583,12 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
     .filter(([, cardRepo]) => cardRepo));
   return {
     repos: selected,
-    namedRepos: named.map((candidate) => candidate.repo),
+    namedRepos: [...new Set([...named.map((candidate) => candidate.repo), ...namedWithoutCards])],
     cardRepos,
     primaryProductScope: primaryBrainScope,
-    confidence: named.length ? 'named' : 'described',
-    reason: named.length
-      ? `query explicitly names ${named.map((candidate) => candidate.repo).join(', ')}`
+    confidence: named.length || namedWithoutCards.length ? 'named' : 'described',
+    reason: named.length || namedWithoutCards.length
+      ? `query explicitly names ${[...new Set([...named.map((candidate) => candidate.repo), ...namedWithoutCards])].join(', ')}`
       : describedCluster
         ? `card evidence preserves ${tiedLeaders.length} tied source candidates (${first.overlap} matching concepts)`
         : `card evidence favors ${first.repo} (${first.overlap} matching concepts)`,

@@ -3,7 +3,12 @@
     "brain"
   ],
   "ruvector": [
-    "rvf"
+    "rvf",
+    "RvfStore",
+    "RvfDatabase"
+  ],
+  "cognitum-ruos": [
+    "cognitum ruOS"
   ],
   "agentic-qe": [
     "qe"

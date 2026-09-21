@@ -19,7 +19,25 @@ describe('protected release rail', () => {
       expect(command, `${script} must execute`).toBeTruthy();
       expect(command).toMatch(/--plan\s+[^\n]*release-evidence\/retrieval-canary-plan\.json/);
       expect(command).toMatch(/--coverage\s+[^\n]*release-evidence\/COVERAGE\.json/);
+      if (script === 'candidate-host-evidence') expect(command).toMatch(/--sequential-searches/);
     }
+  });
+
+  it('retains failed Mac timing diagnostics without treating them as a promotable receipt', () => {
+    const source = read('.github/workflows/release-candidate-preflight.yml');
+    const upload = source.slice(source.indexOf('name: macos-candidate-search-${{ github.sha }}'));
+    expect(upload).toContain('if: always()');
+    expect(upload).toContain('candidate-host-evidence-macos.json.failure.json');
+    expect(upload).toContain('if-no-files-found: warn');
+    expect(source).toContain('needs: [ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows, macos-candidate-search]');
+  });
+  it('installs both host CLIs before the exact Mac candidate matrix uses them', () => {
+    const source = read('.github/workflows/release-candidate-preflight.yml');
+    const macJob = source.split('  macos-candidate-search:')[1]?.split('\n  aggregate:')[0] || '';
+    expect(macJob).toContain('@anthropic-ai/claude-code@latest');
+    expect(macJob).toContain('@openai/codex@latest');
+    expect(macJob).toContain('echo "$RUNNER_TEMP/host-clis/bin" >> "$GITHUB_PATH"');
+    expect(macJob.indexOf('Install current hosts')).toBeLessThan(macJob.indexOf('Run three installed host searches'));
   });
   it('is the sole human release dispatch and accepts source identity plus one mode selector', () => {
     const releaseWorkflows = [
@@ -40,7 +58,7 @@ describe('protected release rail', () => {
     // owner-gated code chain and the corpus-only chain, and the corpus chain re-proves corpus-only
     // routing in its own jobs. The input list stays closed — a fourth input here would be a new,
     // unreviewed way to steer the only workflow permitted to sign and publish.
-    expect(dispatchInputNames(workflow())).toEqual(['mode', 'candidate_sha', 'version']);
+    expect(dispatchInputNames(workflow())).toEqual(['mode', 'candidate_sha', 'version', 'corpus_dispatch_id']);
     const source = workflow();
     expect(source).toMatch(/mode:\s*\n\s+description:[^\n]*\n\s+required: false\n\s+default: code\n\s+type: choice\n\s+options:\n\s+- code\n\s+- corpus\n/);
   });

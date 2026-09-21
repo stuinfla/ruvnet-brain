@@ -1,7 +1,7 @@
 ---
 name: release-proof
 description: Fail-closed exact-artifact release and deployment authority. Use before saying a release is ready, pushing a release commit, publishing npm packages, creating GitHub releases, deploying production, closing release-blocking issues, or claiming all gates are green. Requires clean immutable lineage, zero labeled release blockers, exact-SHA GitHub success, nonzero no-skip QE, packed-artifact host tests, installed Brain/RVF proof, and post-publication byte verification.
-updated: 2026-09-07
+updated: 2026-09-20
 ---
 
 # Release Proof
@@ -37,9 +37,28 @@ green.
 ## Candidate seal
 
 Generate the candidate receipt in `.github/workflows/release-candidate-preflight.yml`; do not
-hand-author it. The preflight runs the long CI, integration, UX, and stranger lanes once on
-`release/**`, then emits the source-bound package and aggregate as
-`release-candidate-<exact SHA>`. Fast-forward that unchanged SHA to `main`.
+hand-author it. Push the exact candidate commit to `release/<version>` to run the long CI,
+integration, UX, and stranger lanes once. Require the successful exact-SHA artifact
+`release-candidate-<SHA>` before promotion.
+
+Then open a PR from that `release/**` branch to `main`. The release-branch `canonical-qa` and
+`integration` consumers verify the producer receipt and report the required checks on the exact
+candidate SHA. Wait for both required checks to pass on that SHA. Do **not** use the GitHub PR merge
+button: merge, squash, and rebase all create a different commit identity and invalidate the sealed
+artifact. Promote only with an ordinary non-force fast-forward push after confirming current `main`
+is an ancestor of the candidate:
+
+```bash
+git fetch origin main
+git merge-base --is-ancestor origin/main "$CANDIDATE_SHA"
+git push origin "$CANDIDATE_SHA:refs/heads/main"
+test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$CANDIDATE_SHA"
+```
+
+If the normal push is rejected, stop and repair branch-policy or required-check configuration; never
+force-push, use an admin bypass, or substitute a merge-created SHA. Any source change requires a new
+candidate preflight and artifact. The PR is review context; its merge button is not the promotion
+mechanism.
 
 Dispatch `.github/workflows/protected-release.yml` only after the fast-forward. It is the sole
 publication controller: it proves current `origin/main` is the preflight SHA, selects the artifact
@@ -77,6 +96,11 @@ node scripts/release-proof.mjs \
 Only exit 0 permits “shipped,” “deployed,” “green,” or “ready.” If publication occurred but this
 seal fails, say `PUBLICATION DEGRADED`, preserve the previous known-good release, and repair or
 roll back through the release workflow.
+
+`npm run release:proof -- --status --quick` is a live local/main diagnostic only. It deliberately
+does not evaluate the release vector and therefore reports `INCOMPLETE` when that is its only
+missing evidence. It is never a candidate receipt or publication authority. Use the exact candidate
+receipt and workflow artifacts for release decisions.
 
 `scripts/release.mjs --publish` is intentionally unusable from a local shell or another workflow.
 Its invocation guard requires GitHub Actions workflow `protected-release`, the candidate receipt,

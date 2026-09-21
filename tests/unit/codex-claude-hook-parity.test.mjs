@@ -310,6 +310,20 @@ describe('the adapter emits output Codex will accept, per event', () => {
     });
   });
 
+  it('wraps syntactically valid but PostToolUse-incompatible JSON before it reaches Codex', () => {
+    const invalid = JSON.stringify({
+      hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'wrong event' },
+    });
+    const r = runAdapter({
+      shim: `process.stdin.resume();process.stdin.on("end",()=>process.stdout.write(${JSON.stringify(invalid)}));`,
+      payload: { session_id: 'p', hook_event_name: 'PostToolUse', cwd: os.tmpdir() },
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({
+      hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: invalid },
+    });
+  });
+
   it.each(NO_CONTEXT_EVENTS)('drops a body\'s plain text on %s, which has nowhere to put it', (event) => {
     // session-end.command.output does not exist in the Codex schema set and pre-compact.command
     // .output has no additionalContext. Emitting an envelope here would trade a silent no-op for a

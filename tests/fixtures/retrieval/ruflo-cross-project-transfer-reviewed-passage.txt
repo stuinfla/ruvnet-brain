@@ -1,0 +1,54 @@
+.
+- `claude-memories` — Claude Code auto-memory bridge. Don't write directly; SessionStart hook handles it.
+
+Do not pass `namespace: 'foo'` to `hooks_intelligence_pattern-*` or `agentdb_pattern-*` — those tools route by ReasoningBank, not by namespace string. Namespace strings only apply to `memory_*` and `embeddings_search`.
+
+## MoE mode selection
+
+`hooks_intelligence` accepts a `mode` parameter:
+
+- `balanced` (default) — SONA + HNSW retrieval, no MoE specialization
+- `sona` — single-domain SONA-only adaptation
+- `moe` — multi-domain expert routing (use when tasks span ≥3 distinct domains)
+- `hnsw` — pure pattern retrieval, no online adaptation
+
+## EWC++ in practice
+
+The plugin claims EWC++ consolidation. In code that means:
+
+1. After `hooks_intelligence_trajectory-end`, call `hooks_intelligence_learn`.
+2. Every N task completions (≥10 is reasonable), call `agentdb_consolidate`.
+3. For SONA / MicroLoRA adapters, call `ruvllm_microlora_adapt --consolidate` to apply EWC++ on the adapter's weight deltas.
+
+Skip these and the system forgets.
+
+## Cross-project pattern transfer
+
+For sharing learned patterns across machines or projects:
+
+```bash
+# Publish current project's patterns to IPFS
+mcp tool call hooks_transfer --json -- '{"action": "store"}'
+
+# Pull a peer's patterns from IPFS by CID
+mcp tool call hooks_transfer --json -- '{"action": "load", "cid": "Qm..."}'
+```
+
+Requires `PINATA_API_JWT` configured. The `intelligence-transfer` skill walks the full flow.
+
+## Related Plugins
+
+- **ruflo-agentdb** — HNSW-indexed pattern storage backing the RETRIEVE step; namespace contract owner
+- **ruflo-ruvector** — trajectory recording substrate; `intelligence_trajectory-*` writes land here
+- **ruflo-browser** — uses trajectory hooks for session replay (ADR-0001 there)
+- **ruflo-daa** — Dynamic Agentic Architecture cognitive patterns feed into routing
+
+## After-task hook
+
+Always close the loop after a task completes:
+
+```bash
+npx @claude-flow/cli@latest hooks post-task --task-id "TASK_ID" --success true --train-neural true
+```
+
+This calls `agentdb_pattern-store` (ReasoningBank — writes to `pattern` with `memory-store-fallback` if registry is unavailable) and feeds the DISTILL phase.

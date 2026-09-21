@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { hasConcreteClassMethod } from './exact-member-proof.mjs';
 
 const IMPLEMENTATION_QUERY =
   /\b(?:build(?:s|ing)?|built|ship(?:s|ped|ping)?|implement(?:ed|ation|ing|s)?|released?|deployed?|working|exists?|available|can|does|has|supports?|provides?|includes?|exposes?)\b/i;
@@ -8,8 +9,16 @@ const SOURCE_EXTENSIONS = new Set([
   '.py', '.rb', '.rs', '.sh', '.sol', '.swift', '.ts', '.tsx', '.wasm',
 ]);
 
+// A fully qualified member call asks about one exact API symbol. A nearby class match or an
+// unrelated implementation file cannot prove that member exists.
+function requestedMember(query) {
+  const match = String(query || '').match(/\b([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*\(/);
+  return match ? { owner: match[1], member: match[2] } : null;
+}
+
 export function requiresImplementationProof(query) {
   const text = String(query || '');
+  if (requestedMember(text)) return true;
   // "Agents working in parallel" describes the workload being coordinated; it is not the
   // operational-status claim "is this working?". Keep the status word load-bearing everywhere
   // else, but do not force a capability-selection question onto the built-state proof lane merely
@@ -73,6 +82,7 @@ export function classifyResultEvidence(result) {
 
 export function assessImplementation(query, results) {
   const required = requiresImplementationProof(query);
+  const exactMember = requestedMember(query);
   const enriched = (results || []).map((result) => ({
     ...result,
     ...classifyResultEvidence(result),
@@ -80,13 +90,19 @@ export function assessImplementation(query, results) {
   const implementationSources = enriched
     // A source file is not proof merely because it appeared somewhere in a noisy result set.
     // Require the same weakest-known-good relevance floor used by forge-ask-all's evidence grade.
-    .filter((result) => result.evidenceClass === 'implementation' && Number(result.ceScore) >= 4)
+    .filter((result) => result.evidenceClass === 'implementation' && Number(result.ceScore) >= 4
+      && (!exactMember || hasConcreteClassMethod(
+        result.fullText || result.text,
+        result.path,
+        exactMember,
+      )))
     .map((result) => `${result.repo}/${result.path}`);
   const retrievedImplementationSources = enriched
     .filter((result) => result.evidenceClass === 'implementation')
     .map((result) => `${result.repo}/${result.path}`);
   const unprovenReason = required && !implementationSources.length
-    ? (retrievedImplementationSources.length ? 'insufficient-relevance' : 'no-implementation-source')
+    ? (exactMember ? 'exact-member-not-established'
+      : retrievedImplementationSources.length ? 'insufficient-relevance' : 'no-implementation-source')
     : null;
 
   return {
@@ -96,6 +112,7 @@ export function assessImplementation(query, results) {
       verdict: required ? (implementationSources.length ? 'proven' : 'unproven') : 'not-required',
       implementationSources,
       retrievedImplementationSources,
+      requestedMember: exactMember,
       unprovenReason,
     },
   };
@@ -104,12 +121,18 @@ export function assessImplementation(query, results) {
 export function implementationNotice(implementation) {
   if (!implementation?.required) return '';
   if (implementation.verdict === 'proven') {
+    const member = implementation.requestedMember;
+    if (member) {
+      return `✅ IMPLEMENTATION EVIDENCE: PROVEN — a direct concrete declaration of ${member.owner}.${member.member} exists in ${implementation.implementationSources.join(', ')}. This establishes declaration presence only; accessibility, call shape, and runtime behavior were not verified.\n\n`;
+    }
     return `✅ IMPLEMENTATION EVIDENCE: PROVEN by ${implementation.implementationSources.join(', ')}.\n\n`;
   }
   const reason = implementation.unprovenReason === 'insufficient-relevance'
     ? 'Implementation-bearing source or manifest was retrieved, but its relevance does not meet the proof threshold. '
     : implementation.unprovenReason === 'no-implementation-source'
       ? 'The retrieved material contains no implementation-bearing source or manifest. ADRs and documentation below may describe design intent. '
+      : implementation.unprovenReason === 'exact-member-not-established'
+        ? `The retrieved source does not establish the exact member ${implementation.requestedMember?.owner}.${implementation.requestedMember?.member}. Related class or repository matches do not prove it exists, and this result does not establish global nonexistence. `
       : 'The retrieved evidence does not establish the requested capability. ';
   return '⛔ BUILT/SHIPPED CLAIM: NOT PROVEN. ' + reason + 'Do not tell the '
     + 'user this capability was built, shipped, implemented, deployed, or is available.\n\n';

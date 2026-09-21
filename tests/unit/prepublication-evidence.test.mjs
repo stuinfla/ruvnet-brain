@@ -35,6 +35,7 @@ function fixture() {
     leaves: hostNames.map((name) => ({
       name, sha, payloadId, status: 'completed', conclusion: 'success', verdict: 'PASS',
       source: 'candidate-host-evidence', functionalSearch: true, searchExit: 0, grounding, artifactSha256, retrieval,
+      warmupMs: 10, warmupGrounding: grounding, searchMs: 12_000,
     })),
   });
   const runtimeCensusFile = write('runtime-census.json', {
@@ -130,6 +131,42 @@ describe('prepublication evidence', () => {
     const f = fixture();
     const receipt = JSON.parse(fs.readFileSync(f.hostFile));
     delete receipt.leaves[0].grounding;
+    fs.writeFileSync(f.hostFile, JSON.stringify(receipt));
+    expect(() => buildPrepublicationEvidence(f)).toThrow(/candidate host leaf is not an exact PASS/);
+  });
+
+  it.each([['missing', undefined], ['over deadline', 30_001]])('rejects candidate host search timing that is %s', (_name, searchMs) => {
+    const f = fixture();
+    const receipt = JSON.parse(fs.readFileSync(f.hostFile));
+    if (searchMs === undefined) delete receipt.leaves[0].searchMs;
+    else receipt.leaves[0].searchMs = searchMs;
+    fs.writeFileSync(f.hostFile, JSON.stringify(receipt));
+    expect(() => buildPrepublicationEvidence(f)).toThrow(/candidate host leaf is not an exact PASS/);
+  });
+
+  it.each([
+    ['missing', undefined], ['over warmup budget', 300_001],
+  ])('rejects candidate host warmup timing that is %s', (_name, warmupMs) => {
+    const f = fixture();
+    const receipt = JSON.parse(fs.readFileSync(f.hostFile));
+    if (warmupMs === undefined) delete receipt.leaves[0].warmupMs;
+    else receipt.leaves[0].warmupMs = warmupMs;
+    fs.writeFileSync(f.hostFile, JSON.stringify(receipt));
+    expect(() => buildPrepublicationEvidence(f)).toThrow(/candidate host leaf is not an exact PASS/);
+  });
+
+  it('rejects candidate warmup without a source-bound grounding receipt', () => {
+    const f = fixture();
+    const receipt = JSON.parse(fs.readFileSync(f.hostFile));
+    delete receipt.leaves[0].warmupGrounding;
+    fs.writeFileSync(f.hostFile, JSON.stringify(receipt));
+    expect(() => buildPrepublicationEvidence(f)).toThrow(/candidate host leaf is not an exact PASS/);
+  });
+
+  it('rejects candidate warmup grounded outside the Brain self store', () => {
+    const f = fixture();
+    const receipt = JSON.parse(fs.readFileSync(f.hostFile));
+    receipt.leaves[0].warmupGrounding.repo = 'unrelated-repo';
     fs.writeFileSync(f.hostFile, JSON.stringify(receipt));
     expect(() => buildPrepublicationEvidence(f)).toThrow(/candidate host leaf is not an exact PASS/);
   });

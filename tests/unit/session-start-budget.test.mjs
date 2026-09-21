@@ -10,6 +10,7 @@ import {
   sumBudgetsMs,
   sessionStartTimeoutMs,
 } from '../../plugin/scripts/session-start-budget.mjs';
+import { SESSION_CONTINUITY_DEADLINE_MS } from '../../plugin/scripts/project-progression-session-start.mjs';
 
 describe('SessionStart derived-sum latency budget contract', () => {
   it('sums every declared stage budget below the hook\'s own hooks.json timeout, minus measured node boot', () => {
@@ -21,6 +22,10 @@ describe('SessionStart derived-sum latency budget contract', () => {
   it('restore is budgeted at <= 1000ms and banner at <= 200ms (explicit reviewer corrections)', () => {
     expect(STAGE_BUDGETS_MS.restore).toBeLessThanOrEqual(1000);
     expect(STAGE_BUDGETS_MS.banner).toBeLessThanOrEqual(200);
+  });
+
+  it('the continuity implementation enforces the same restore ceiling declared in this budget', () => {
+    expect(SESSION_CONTINUITY_DEADLINE_MS).toBe(STAGE_BUDGETS_MS.restore);
   });
 
   it('every declared stage has an explicit, positive budget', () => {

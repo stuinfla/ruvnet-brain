@@ -1,0 +1,394 @@
+{
+  "schema": "operational-source-oracles/v3",
+  "authorship": "Independently inspected indexed source passages before v3 replay; not derived from candidate retrieval output.",
+  "claimBoundary": "Document-supported retrieval only; neither implementation execution nor generated-answer accuracy.",
+  "corpus": {
+    "archiveManifestSha256": "014376622b0826c7808d3907408a21ad5d17d92b42959f27ad167d36670f2718",
+    "sourceManifestSha256": "8313e685f25c25b88ef3db68f1c37e860ccd902579bcf499e77ab02b8b0c9794"
+  },
+  "fixtures": [
+    {
+      "id": "broad-risk-testing",
+      "claimSlots": [
+        {
+          "id": "risk-prioritized-coverage",
+          "alternatives": [
+            {
+              "repo": "agentic-qe",
+              "path": "README.md",
+              "passageSha256": "8f9265728b8a13ea138e7077086734a407ba3a29da20cd1bb10ab60c3a6fc57d",
+              "spans": [
+                "**Finds coverage gaps and prioritizes what to test** — risk-weighted analysis identifies the most impactful untested code paths"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "named-agentic-qe-risk",
+      "claimSlots": [
+        {
+          "id": "risk-prioritized-coverage",
+          "alternatives": [
+            {
+              "repo": "agentic-qe",
+              "path": "README.md",
+              "passageSha256": "8f9265728b8a13ea138e7077086734a407ba3a29da20cd1bb10ab60c3a6fc57d",
+              "spans": [
+                "**Finds coverage gaps and prioritizes what to test** — risk-weighted analysis identifies the most impactful untested code paths"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "broad-portable-index",
+      "claimSlots": [
+        {
+          "id": "portable-embeddings",
+          "alternatives": [
+            {
+              "repo": "ruvector",
+              "path": "crates/rvf/README.md",
+              "passageSha256": "1202b5417af7d25a3e56b51a2fdc758157e5ec86e237551a24d6625afd2df014",
+              "spans": [
+                "A `.rvf` file can store vector embeddings",
+                "all in one file that runs anywhere from a browser to bare metal."
+              ]
+            }
+          ]
+        },
+        {
+          "id": "similarity-search-without-backend",
+          "alternatives": [
+            {
+              "repo": "ruvector",
+              "path": "crates/rvf/README.md",
+              "passageSha256": "1202b5417af7d25a3e56b51a2fdc758157e5ec86e237551a24d6625afd2df014",
+              "spans": [
+                "same file serve queries in a browser tab with zero backend.",
+                "Combine vector similarity with metadata conditions"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "broad-next-session-learning",
+      "claimSlots": [
+        {
+          "id": "session-context-and-decisions",
+          "alternatives": [
+            {
+              "repo": "ruflo",
+              "path": ".agents/skills/hooks-automation/SKILL.md",
+              "passageSha256": "b91ac005cc7833ce1b37344ae0f25938ec7761195a2d9f403a07b2dcec21302d",
+              "spans": [
+                "Load previous session context",
+                "Restore memory state and decisions",
+                "Resume in-progress tasks"
+              ]
+            },
+            {
+              "repo": "ruflo",
+              "path": ".agents/skills/hooks-automation/SKILL.md",
+              "passageSha256": "7c4848be83cb95f90c2b2f6ffec736de1a149363a95ff286ef638783e799890d",
+              "spans": [
+                "Load previous session context",
+                "Restore memory state and decisions",
+                "Resume in-progress tasks"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "broad-cross-project-learning-status",
+      "claimSlots": [],
+      "unavailableReason": "No independently verified end-to-end automatic cross-project application oracle. Historical Brain brief and documented manual IPFS transfer cannot prove the current broad runtime claim."
+    },
+    {
+      "id": "broad-no-camera-sensing",
+      "claimSlots": [
+        {
+          "id": "wifi-sensing-input",
+          "alternatives": [
+            {
+              "repo": "ruview",
+              "path": "README.md",
+              "passageSha256": "ebebe6a534bcf29f377a4d191e98bbbe8fdc40a214bce9a720215bef878cb382",
+              "spans": [
+                "RuView captures these disturbances using Channel State Information (CSI) from low-cost ESP32 sensors"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "camera-free-presence",
+          "alternatives": [
+            {
+              "repo": "ruview",
+              "path": "README.md",
+              "passageSha256": "ebebe6a534bcf29f377a4d191e98bbbe8fdc40a214bce9a720215bef878cb382",
+              "spans": [
+                "Detect people, measure breathing and heart rate, track movement, and monitor rooms — through walls, in the dark, with no cameras or wearables."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "named-ruview-input",
+      "claimSlots": [
+        {
+          "id": "wifi-sensing-input",
+          "alternatives": [
+            {
+              "repo": "ruview",
+              "path": "README.md",
+              "passageSha256": "ebebe6a534bcf29f377a4d191e98bbbe8fdc40a214bce9a720215bef878cb382",
+              "spans": [
+                "RuView captures these disturbances using Channel State Information (CSI) from low-cost ESP32 sensors"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "camera-free-presence",
+          "alternatives": [
+            {
+              "repo": "ruview",
+              "path": "README.md",
+              "passageSha256": "ebebe6a534bcf29f377a4d191e98bbbe8fdc40a214bce9a720215bef878cb382",
+              "spans": [
+                "Detect people, measure breathing and heart rate, track movement, and monitor rooms — through walls, in the dark, with no cameras or wearables."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "named-sparc-phases",
+      "claimSlots": [
+        {
+          "id": "five-phases",
+          "alternatives": [
+            {
+              "repo": "sparc",
+              "path": "README.md",
+              "passageSha256": "ad906201a3c29175a0b31185e3f3cafbf8ef8e577106cbad7be6b6551e09ac48",
+              "spans": [
+                "SPARC stands for **Specification**, **Pseudocode**, **Architecture**, **Refinement**, and **Completion**."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "broad-spec-to-code",
+      "claimSlots": [
+        {
+          "id": "five-phases",
+          "alternatives": [
+            {
+              "repo": "sparc",
+              "path": "README.md",
+              "passageSha256": "ad906201a3c29175a0b31185e3f3cafbf8ef8e577106cbad7be6b6551e09ac48",
+              "spans": [
+                "SPARC stands for **Specification**, **Pseudocode**, **Architecture**, **Refinement**, and **Completion**."
+              ]
+            }
+          ]
+        },
+        {
+          "id": "review-controls",
+          "alternatives": [
+            {
+              "repo": "sparc",
+              "path": "README.md",
+              "passageSha256": "401886a225fd6ce6b43a5208a7d261540f6087a7bde5784aad062834f2d8a921",
+              "spans": [
+                "Human-in-the-loop Controls: Review and approve AI actions during execution"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "deployment-preparation",
+          "alternatives": [
+            {
+              "repo": "sparc",
+              "path": "README.md",
+              "passageSha256": "49142a7b9680765f95b2d02f797ef310e22caa4bc6bbefeef72906b2560f1e8d",
+              "spans": [
+                "**Completion**: Finalize the project through extensive testing, documentation, and deployment preparations."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "broad-shared-hosts",
+      "claimSlots": [
+        {
+          "id": "both-hosts",
+          "alternatives": [
+            {
+              "repo": "ruvnet-brain",
+              "path": "docs/adr/0023-intelligent-updating-stable-spine.md",
+              "passageSha256": "211012abebbedd73ce3e20470ba8deaeed3efac85ddda6598604e51add76e674",
+              "spans": [
+                "every detected Claude Code and Codex host through its supported plugin lifecycle"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "named-brain-hosts",
+      "claimSlots": [
+        {
+          "id": "both-hosts",
+          "alternatives": [
+            {
+              "repo": "ruvnet-brain",
+              "path": "docs/adr/0023-intelligent-updating-stable-spine.md",
+              "passageSha256": "211012abebbedd73ce3e20470ba8deaeed3efac85ddda6598604e51add76e674",
+              "spans": [
+                "every detected Claude Code and Codex host through its supported plugin lifecycle"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "named-cognitum-ruos",
+      "claimSlots": [
+        {
+          "id": "public-capability-only",
+          "alternatives": [
+            {
+              "repo": "cognitum-ruos",
+              "path": "README.md",
+              "passageSha256": "9ce0bd030f03fa4753befb7751c20882923acd9227797727db77565118405c8c",
+              "spans": [
+                "agentic operating system for AI workstations."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "named-ruflo-ipfs",
+      "claimSlots": [
+        {
+          "id": "explicit-cross-project-transfer",
+          "alternatives": [
+            {
+              "repo": "ruflo",
+              "path": "plugins/ruflo-intelligence/agents/intelligence-specialist.md",
+              "passageSha256": "3af770c2c5bceb4b612eac6757656d6e2be74b914bdf75f1d6f422af54dcdd36",
+              "spans": [
+                "For sharing learned patterns across machines or projects:",
+                "# Publish current project's patterns to IPFS",
+                "# Pull a peer's patterns from IPFS by CID",
+                "Requires `PINATA_API_JWT` configured."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "broad-cross-project-discovery",
+      "claimSlots": [
+        {
+          "id": "explicit-cross-project-transfer",
+          "alternatives": [
+            {
+              "repo": "ruflo",
+              "path": "plugins/ruflo-intelligence/agents/intelligence-specialist.md",
+              "passageSha256": "3af770c2c5bceb4b612eac6757656d6e2be74b914bdf75f1d6f422af54dcdd36",
+              "spans": [
+                "For sharing learned patterns across machines or projects:",
+                "# Publish current project's patterns to IPFS",
+                "# Pull a peer's patterns from IPFS by CID",
+                "Requires `PINATA_API_JWT` configured."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "broad-adr-status",
+      "claimSlots": [
+        {
+          "id": "decision-not-implementation",
+          "alternatives": [
+            {
+              "repo": "ruvnet-brain",
+              "path": "docs/adr/0034-document-currency.md",
+              "passageSha256": "522ea87d80ccb2880d118cca8950784fd355d74b08911fdd4270f37829723e9b",
+              "spans": [
+                "a decision's status and code's state are different facts with\ndifferent owners",
+                "`proposed → accepted` is a social fact",
+                "`built → wired → verified` is a mechanical fact"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "doctor-local-vector-storage",
+      "claimSlots": [
+        {
+          "id": "browser-local-vector-persistence",
+          "alternatives": [
+            {
+              "repo": "ruvector",
+              "path": "crates/ruvector-router-wasm/README.md",
+              "passageSha256": "44404f0c1ae135b021ece8e5e30c271fb1900ea0c4f583f1f891ee3196386662",
+              "spans": [
+                "Run sub-millisecond vector search entirely in the browser with **zero server dependencies**.",
+                "**IndexedDB Integration**: Persist vector data locally"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "negative-invented-sensor",
+      "claimSlots": []
+    },
+    {
+      "id": "negative-unlisted-package",
+      "claimSlots": []
+    },
+    {
+      "id": "ambiguity-memory-owner",
+      "claimSlots": []
+    },
+    {
+      "id": "ambiguity-model",
+      "claimSlots": []
+    },
+    {
+      "id": "ambiguity-install",
+      "claimSlots": []
+    }
+  ]
+}

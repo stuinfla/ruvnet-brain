@@ -70,8 +70,11 @@ describe('corpus nightly dispatcher (ADR-086 step 18)', () => {
 
   it('records the dispatch against the exact candidate it dispatched', () => {
     const source = read(DISPATCHER);
-    expect(source).toContain('select(.head_sha == \\"$CANDIDATE_SHA\\"');
-    expect(source).toContain('.created_at >= \\"$DISPATCHED_AT\\"');
+    expect(source).toContain('node scripts/corpus-dispatch-receipt.mjs');
+    expect(source).toContain('corpus_dispatch_id=$CORPUS_DISPATCH_ID');
+    const selector = read('scripts/corpus-dispatch-receipt.mjs');
+    expect(selector).toContain('run.head_sha === sha');
+    expect(selector).toContain('Date.parse(run.created_at) >= Date.parse(notBefore)');
   });
 });
 
