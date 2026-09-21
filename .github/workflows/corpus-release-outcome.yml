@@ -1,0 +1,81 @@
+name: corpus-release-outcome
+
+# A completed protected corpus run is recorded in a fresh, short workflow instead of keeping the
+# nightly dispatcher runner alive for hours. The protected-release run remains the source of truth;
+# this workflow only preserves its terminal result and makes non-success conclusions visibly red.
+on:
+  workflow_run:
+    workflows: ["protected-release"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: corpus-release-outcome-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  record:
+    if: startsWith(github.event.workflow_run.display_title, 'protected-release corpus corpus-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      RUN_EVENT: ${{ github.event.workflow_run.event }}
+      RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      RUN_TITLE: ${{ github.event.workflow_run.display_title }}
+      RUN_STATUS: ${{ github.event.workflow_run.status }}
+      RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+    steps:
+      - name: Validate and preserve the terminal child result
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUN_EVENT" = workflow_dispatch
+          test "$RUN_BRANCH" = main
+          [[ "$RUN_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RUN_TITLE" =~ ^protected-release\ corpus\ corpus-[0-9]+-[0-9]+$ ]]
+          test "$RUN_STATUS" = completed
+          node - <<'NODE' > corpus-release-outcome.json
+          const fs = require('node:fs');
+          const record = {
+            run_id: Number(process.env.RUN_ID),
+            run_url: process.env.RUN_URL,
+            event: process.env.RUN_EVENT,
+            head_sha: process.env.RUN_SHA,
+            head_branch: process.env.RUN_BRANCH,
+            display_title: process.env.RUN_TITLE,
+            status: process.env.RUN_STATUS,
+            conclusion: process.env.RUN_CONCLUSION,
+          };
+          fs.writeFileSync(1, `${JSON.stringify(record, null, 2)}\n`);
+          NODE
+          {
+            echo '### protected corpus terminal outcome'
+            echo ''
+            echo "- target run: [$RUN_ID]($RUN_URL)"
+            echo "- status: $RUN_STATUS"
+            echo "- conclusion: $RUN_CONCLUSION"
+            echo "- candidate: \`$RUN_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve the terminal outcome record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-release-outcome-${{ github.event.workflow_run.id }}
+          path: corpus-release-outcome.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Propagate a non-success terminal result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUN_CONCLUSION" = success || {
+            echo "::error::protected corpus run concluded $RUN_CONCLUSION"
+            exit 1
+          }
