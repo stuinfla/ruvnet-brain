@@ -55,6 +55,7 @@ it.each(['valid', 'body-spoof', 'legacy-text'])('executes %s through staged extr
   if (mode === 'valid') {
     const result = await produced;
     expect(result.leaves).toHaveLength(3);
+    expect(result.hostPlatform).toBe(process.platform);
     expect(result.leaves.every(({ searchMs }) => Number.isFinite(searchMs) && searchMs >= 0 && searchMs <= 30_000)).toBe(true);
     expect(fs.existsSync(f.args.failureFile)).toBe(false);
     expect(result.leaves.every(({ retrieval }) => retrieval.metrics.deltaCitationRate === 1 && retrieval.metrics.recallAt10 === 1)).toBe(true);

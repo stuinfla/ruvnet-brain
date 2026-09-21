@@ -84,7 +84,7 @@ const preparePackage = async ({ packagePath, bundlePath }) => {
   }
 };
 
-export function stagedHostVerifier({ assets, identity, retrieval }, { runMatrix = runHostMatrixAsync } = {}) {
+export function stagedHostVerifier({ assets, identity, retrieval, sequentialSearches = false }, { runMatrix = runHostMatrixAsync } = {}) {
   return {
     async verify({ source, assets: observedAssets = assets }) {
       if (retrieval) verifyCandidateRetrievalAssets({ retrieval, assets: observedAssets });
@@ -104,6 +104,7 @@ export function stagedHostVerifier({ assets, identity, retrieval }, { runMatrix 
           locate,
           temp: prepared.temp,
           retrieval,
+          sequentialSearches,
         });
         if (retrieval) verifyCandidateRetrievalAssets({ retrieval, assets: observedAssets });
         if (matrix.verdict !== 'PASS') {

@@ -205,6 +205,7 @@ export async function runHostMatrixAsync({
   verifyGrounding = verifyInstalledGrounding,
   resolveMcpServer = resolveInstalledMcpServer,
   retrieval,
+  sequentialSearches = false,
 }) {
   const spec = VARIANTS[variant];
   if (!spec) throw new Error(`unknown host-matrix variant: ${variant}`);
@@ -264,7 +265,7 @@ export async function runHostMatrixAsync({
     return { verdict: 'FAIL', fixtures: {}, error: 'shared model prewarm returned no grounded source receipt' };
   }
 
-  const searches = await Promise.all(contexts.map(async (context) => {
+  const searchOne = async (context) => {
     let session;
     try {
       const serverPath = resolveMcpServer(context);
@@ -295,7 +296,13 @@ export async function runHostMatrixAsync({
     } catch (error) {
       return { context, processResult: { status: null, error }, error: `${context.mode} host search failed: ${error.message}` };
     } finally { await session?.close(); }
-  }));
+  };
+  const searches = [];
+  if (sequentialSearches) {
+    for (const context of contexts) searches.push(await searchOne(context));
+  } else {
+    searches.push(...await Promise.all(contexts.map(searchOne)));
+  }
   const fixtures = Object.fromEntries(searches.map(({ context, processResult, grounding, retrieval, error }) => [context.mode, {
     status: error ? 'FAIL' : 'PASS',
     version,

@@ -9,6 +9,31 @@ const ok = (stdout = '') => ({ status: 0, signal: null, error: null, stdout, std
 const locate = (name) => `/tools/${name}`;
 
 describe('host install matrix cold-model orchestration', () => {
+  it('can run measured host searches sequentially to match public release verification', async () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'host-matrix-serial-'));
+    let active = 0, maxActive = 0;
+    const order = [];
+    try {
+      const result = await runHostMatrixAsync({
+        packageRoot: '/candidate/package', version: getVersion(), variant: 'staged', locate, temp,
+        sequentialSearches: true,
+        runCommand: async (_command, args, options) => args.some((arg) => /[\\/]bin[\\/]install\.mjs$/.test(arg))
+          ? ok() : ok('repo=ruvnet-brain path=README.md'),
+        runMcpSearch: async ({ mode }) => {
+          active += 1; maxActive = Math.max(maxActive, active); order.push(mode);
+          await new Promise((resolve) => setTimeout(resolve, 2));
+          active -= 1;
+          return ok(`repo=ruvnet-brain path=${mode}.md`);
+        },
+        verifyGrounding: async () => ({ grounded: true, receipt: { repo: 'ruvnet-brain', path: 'README.md' } }),
+        resolveMcpServer: ({ home }) => path.join(home, 'installed-mcp', 'server.mjs'),
+      });
+      expect(result.verdict).toBe('PASS');
+      expect(maxActive).toBe(1);
+      expect(order).toEqual(['claude', 'codex', 'dual']);
+    } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+  });
+
   it('installs isolated staged hosts without smoke, prewarms one shared cache, then probes all MCP hosts concurrently', async () => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'host-matrix-order-'));
     const calls = [];

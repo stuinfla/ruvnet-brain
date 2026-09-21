@@ -13,13 +13,13 @@ const arg = (name) => {
 };
 
 export async function buildCandidateHostEvidence({ manifestFile, packagePath, bundlePath, planFile, coverageFile, failureFile },
-  { createVerifier = stagedHostVerifier } = {}) {
+  { createVerifier = stagedHostVerifier, sequentialSearches = false } = {}) {
   const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
   const payloadId = payloadIdFor(manifest);
   const identity = { version: manifest.version, candidateSha: manifest.candidateSha, payloadId };
   const retrieval = readCandidateRetrieval({ manifest, planFile, coverageFile });
   verifyCandidateRetrievalAssets({ retrieval, assets: { packagePath, bundlePath } });
-  const result = await createVerifier({ assets: { packagePath, bundlePath }, identity, retrieval })
+  const result = await createVerifier({ assets: { packagePath, bundlePath }, identity, retrieval, sequentialSearches })
     .verify({ source: 'candidate', assets: { packagePath, bundlePath } });
   verifyCandidateRetrievalAssets({ retrieval, assets: { packagePath, bundlePath } });
   if (result.verdict !== 'PASS') {
@@ -65,6 +65,7 @@ export async function buildCandidateHostEvidence({ manifestFile, packagePath, bu
   return {
     schemaVersion: 1,
     sha: manifest.candidateSha,
+    hostPlatform: process.platform,
     payloadId,
     artifactSha256: retrieval.artifactSha256,
     leaves,
@@ -73,7 +74,8 @@ export async function buildCandidateHostEvidence({ manifestFile, packagePath, bu
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const evidence = await buildCandidateHostEvidence({ manifestFile: arg('--manifest'),
-    packagePath: arg('--package'), bundlePath: arg('--bundle'), planFile: arg('--plan'), coverageFile: arg('--coverage'), failureFile: arg('--out') ? `${arg('--out')}.failure.json` : null });
+    packagePath: arg('--package'), bundlePath: arg('--bundle'), planFile: arg('--plan'), coverageFile: arg('--coverage'), failureFile: arg('--out') ? `${arg('--out')}.failure.json` : null },
+  { sequentialSearches: process.argv.includes('--sequential-searches') });
   fs.writeFileSync(path.resolve(arg('--out')), `${JSON.stringify(evidence, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   console.log(JSON.stringify({ verdict: 'PASS', payloadId: evidence.payloadId, leaves: evidence.leaves.map(({ name }) => name) }));
 }

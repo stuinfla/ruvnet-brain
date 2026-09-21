@@ -59,8 +59,53 @@ jobs:
       os_name: windows
       runner: windows-latest
 
+  macos-candidate-search:
+    name: macos-exact-candidate-search
+    needs: ci
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-evidence-${{ github.sha }}
+          path: release-evidence
+      - name: Run three installed host searches against sealed candidate bytes
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          package_name="$(node -p "JSON.parse(require('fs').readFileSync('release-evidence/npm-pack.json'))[0].filename")"
+          test -s "release-evidence/$package_name"
+          node scripts/candidate-host-evidence.mjs \
+            --manifest release-evidence/payload-manifest.json \
+            --package "release-evidence/$package_name" \
+            --bundle release-evidence/ruvnet-brain.zip \
+            --plan release-evidence/retrieval-canary-plan.json \
+            --coverage release-evidence/COVERAGE.json \
+            --sequential-searches \
+            --out "$RUNNER_TEMP/candidate-host-evidence-macos.json"
+          test "$(node -p "JSON.parse(require('fs').readFileSync('$RUNNER_TEMP/candidate-host-evidence-macos.json')).sha")" = "$CANDIDATE_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-candidate-search-${{ github.sha }}
+          path: ${{ runner.temp }}/candidate-host-evidence-macos.json
+          if-no-files-found: error
+          retention-days: 30
+
   aggregate:
-    needs: [ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows]
+    needs: [ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows, macos-candidate-search]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -96,6 +141,10 @@ jobs:
         with:
           pattern: early-public-${{ github.sha }}-*
           path: lane-evidence/early-public
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-candidate-search-${{ github.sha }}
+          path: lane-evidence/macos-candidate-search
       - name: Validate all three early public-artifact receipts
         shell: bash
         env:
@@ -130,6 +179,46 @@ jobs:
             }
           }
           console.log(JSON.stringify({ status: 'PASS', receipts: files.length, sha: process.env.CANDIDATE_SHA }));
+          NODE
+      - name: Require exact-candidate macOS search timing evidence
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { payloadIdFor } from './scripts/release-payload.mjs';
+          import { RELEASE_SEARCH_DEADLINE_MS } from './scripts/host-install-matrix.mjs';
+          import { readCandidateRetrieval } from './scripts/staged-host-verifier.mjs';
+          import { validateRetrievalCanaryReceipt } from './scripts/retrieval-canary.mjs';
+          const manifest = JSON.parse(fs.readFileSync('release-evidence/payload-manifest.json', 'utf8'));
+          const receipt = JSON.parse(fs.readFileSync('lane-evidence/macos-candidate-search/candidate-host-evidence-macos.json', 'utf8'));
+          const retrieval = readCandidateRetrieval({ manifest,
+            planFile: 'release-evidence/retrieval-canary-plan.json', coverageFile: 'release-evidence/COVERAGE.json' });
+          const npm = manifest.members?.filter(({ role }) => role === 'npm') || [];
+          const modes = ['claude-only', 'codex-only', 'dual-host'];
+          if (receipt.schemaVersion !== 1 || receipt.hostPlatform !== 'darwin'
+            || receipt.sha !== process.env.CANDIDATE_SHA || receipt.sha !== manifest.candidateSha
+            || receipt.payloadId !== payloadIdFor(manifest) || npm.length !== 1
+            || receipt.artifactSha256 !== npm[0].sha256 || receipt.leaves?.length !== modes.length) {
+            throw new Error('macOS host receipt is not bound to the exact sealed candidate');
+          }
+          if (JSON.stringify(receipt.leaves.map(({ name }) => name).sort()) !== JSON.stringify([...modes].sort())) {
+            throw new Error('macOS host mode coverage is incomplete');
+          }
+          for (const leaf of receipt.leaves) {
+            if (leaf.sha !== receipt.sha || leaf.payloadId !== receipt.payloadId || leaf.status !== 'completed'
+              || leaf.conclusion !== 'success' || leaf.verdict !== 'PASS' || leaf.functionalSearch !== true
+              || leaf.searchExit !== 0 || !Number.isFinite(leaf.searchMs) || leaf.searchMs < 0
+              || leaf.searchMs > RELEASE_SEARCH_DEADLINE_MS || leaf.artifactSha256 !== receipt.artifactSha256
+              || !leaf.grounding || ['repo', 'path', 'file', 'storedPath'].some((key) => !String(leaf.grounding[key] || '').trim())) {
+              throw new Error(`macOS ${leaf.name} search failed exact timing or grounding acceptance`);
+            }
+            validateRetrievalCanaryReceipt(leaf.retrieval, { plan: retrieval.plan });
+          }
+          console.log(JSON.stringify({ verdict: 'PASS', sourceSha: receipt.sha, hostPlatform: receipt.hostPlatform,
+            searchMs: Object.fromEntries(receipt.leaves.map(({ name, searchMs }) => [name, searchMs])), deadlineMs: RELEASE_SEARCH_DEADLINE_MS }));
           NODE
       - name: Validate typed receipts and bind the candidate envelope
         shell: bash
