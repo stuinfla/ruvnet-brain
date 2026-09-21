@@ -7,7 +7,8 @@ current campaign and is finalized by the lead session before the next release cu
 
 ## Unreleased
 
-Operational recovery candidate 4.3.27 (2026-09-19), not yet published:
+Operational recovery candidate 4.3.27 (2026-09-19), published to npm and GitHub but still awaiting
+public installation verification:
 
 - Doctor distinguishes package, search-engine and validator versions, checks installed runtime
   bytes against the archive manifest, and rejects thin evidence in its answerable smoke test.
@@ -18,6 +19,12 @@ Operational recovery candidate 4.3.27 (2026-09-19), not yet published:
   completion follows the uniquely identified child workflow instead of treating dispatch as success.
 - Retrieval qualification checks source support and process success. Historical routing/citation
   scores are not described as answer accuracy. A frozen operational oracle records corpus gaps.
+
+Current 4.3.28 candidate (not yet published):
+
+- Inline cross-encoder inference uses a two-thread ONNX budget by default, with
+  `CE_INTRA_OP_THREADS` as an operator override. The model, candidate set and ranking policy are
+  unchanged; public macOS performance verification is still required.
 
 Campaign context: a dual North-Star review (Fable 5.1 + GPT-6 Astra) measured this project at
 31/100 against commit `2eef2024` (see `PROGRESS.md`'s 2026-09-11 entry for the full per-pillar
