@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.3.28",
-  "sourceIdentity": "cc8f9d3f3285a10ed74a2465e9153ede46db0901e4414081cdcae3e85ae4f5f2",
+  "sourceIdentity": "00e710b33848ec1a645915524a23142b3a274f7636b5fc985e9afccb13e844c3",
   "versionSurfaces": {
     "package.json": "4.3.28",
     "plugin/.claude-plugin/plugin.json": "4.3.28",
@@ -104,8 +104,8 @@
     "0090-source-backed-capability-discovery.md",
     "README.md"
   ],
-  "trackedFileCount": 1573,
-  "trackedFilesSha256": "38a5bbf5ab972a6562f79d569aab5dbd980796f15bf2492791d86303ec70e307",
+  "trackedFileCount": 1574,
+  "trackedFilesSha256": "3545192b7a5e11dd8cadcd2ef03eefdfd86e60beddf81d27349b49359db2e5a2",
   "ownershipChecks": [
     "version:check",
     "doc:currency",
