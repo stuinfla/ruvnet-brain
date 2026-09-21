@@ -228,6 +228,23 @@ describe('coverage-derived retrieval canaries', () => {
     expect(() => validateRetrievalCanaryReceipt(unknown, { plan })).toThrow(/acceptance/);
   });
 
+  it('forwards the release search deadline to every canary query', async () => {
+    const plan = buildRetrievalCanaryPlan({ ...fixture(), legacySampleSize: 4 });
+    const deadlines = [];
+    await runRetrievalCanaries({ plan, sourceSha, artifactSha256,
+      candidateArchiveSha256: plan.candidate.archiveSha256, searchTimeoutMs: 30_000,
+      search: async ({ query, timeoutMs }) => {
+        deadlines.push({ query, timeoutMs });
+        const expected = plan.cases.find((row) => row.query === query).expected;
+        return [{ repo: expected.repo, path: expected.path }];
+      },
+      citationResolver: async (_matched, expected) => ({ resolved: true,
+        evidence: { passageSha256: expected.passageSha256, passageFileSha256: 'e'.repeat(64) } }),
+    });
+    expect(deadlines).toHaveLength(plan.cases.length);
+    expect(deadlines.every(({ timeoutMs }) => timeoutMs === 30_000)).toBe(true);
+  });
+
   it('rejects a contradictory no-delta declaration even when its digest is resealed', () => {
     const plan = buildRetrievalCanaryPlan(fixture());
     const { planSha256: _old, ...payload } = { ...plan, noDelta: true };
