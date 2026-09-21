@@ -19,6 +19,7 @@ describe('protected release rail', () => {
       expect(command, `${script} must execute`).toBeTruthy();
       expect(command).toMatch(/--plan\s+[^\n]*release-evidence\/retrieval-canary-plan\.json/);
       expect(command).toMatch(/--coverage\s+[^\n]*release-evidence\/COVERAGE\.json/);
+      if (script === 'candidate-host-evidence') expect(command).toMatch(/--sequential-searches/);
     }
   });
   it('is the sole human release dispatch and accepts source identity plus one mode selector', () => {
