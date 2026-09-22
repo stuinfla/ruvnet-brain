@@ -881,3 +881,80 @@ jobs:
             ${{ runner.temp }}/archive-manifest.json
           if-no-files-found: warn
           retention-days: 90
+
+  corpus-terminal-outcome:
+    name: corpus-terminal-outcome
+    if: always() && inputs.mode == 'corpus'
+    needs: [corpus-identity, corpus-prepare, corpus-no-change, corpus-authorize, corpus-publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      RUN_ID: ${{ github.run_id }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      RUN_EVENT: ${{ github.event_name }}
+      RUN_SHA: ${{ github.sha }}
+      RUN_BRANCH: ${{ github.ref_name }}
+      RUN_ATTEMPT: ${{ github.run_attempt }}
+      IDENTITY_RESULT: ${{ needs.corpus-identity.result }}
+      PREPARE_RESULT: ${{ needs.corpus-prepare.result }}
+      NO_CHANGE_RESULT: ${{ needs.corpus-no-change.result }}
+      AUTHORIZE_RESULT: ${{ needs.corpus-authorize.result }}
+      PUBLISH_RESULT: ${{ needs.corpus-publish.result }}
+    steps:
+      - name: Preserve this corpus run's terminal dependency state
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUN_EVENT" = workflow_dispatch
+          test "$RUN_BRANCH" = main
+          [[ "$RUN_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+          node - <<'NODE' > corpus-release-outcome.json
+          const fs = require('node:fs');
+          const results = {
+            identity: process.env.IDENTITY_RESULT,
+            prepare: process.env.PREPARE_RESULT,
+            no_change: process.env.NO_CHANGE_RESULT,
+            authorize: process.env.AUTHORIZE_RESULT,
+            publish: process.env.PUBLISH_RESULT,
+          };
+          const allowed = new Set(['success', 'failure', 'cancelled', 'skipped']);
+          for (const [job, result] of Object.entries(results)) {
+            if (!allowed.has(result)) throw new Error(`invalid ${job} result: ${result}`);
+          }
+          let conclusion = 'success';
+          if (Object.values(results).includes('failure')) conclusion = 'failure';
+          else if (Object.values(results).includes('cancelled')) conclusion = 'cancelled';
+          const record = {
+            run_id: Number(process.env.RUN_ID),
+            run_attempt: Number(process.env.RUN_ATTEMPT),
+            run_url: process.env.RUN_URL,
+            event: process.env.RUN_EVENT,
+            head_sha: process.env.RUN_SHA,
+            head_branch: process.env.RUN_BRANCH,
+            status: 'completed-dependencies',
+            conclusion,
+            jobs: results,
+          };
+          fs.writeFileSync(1, `${JSON.stringify(record, null, 2)}\n`);
+          NODE
+          conclusion="$(node -p "require('./corpus-release-outcome.json').conclusion")"
+          {
+            echo '### protected corpus terminal outcome'
+            echo ''
+            echo "- target run: [$RUN_ID]($RUN_URL)"
+            echo "- dependency conclusion: $conclusion"
+            echo "- candidate: \`$RUN_SHA\`"
+            echo "- attempt: $RUN_ATTEMPT"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve the terminal outcome record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-release-outcome-${{ github.run_id }}-${{ github.run_attempt }}
+          path: corpus-release-outcome.json
+          if-no-files-found: error
+          retention-days: 90

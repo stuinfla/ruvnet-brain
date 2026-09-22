@@ -74,20 +74,20 @@ describe('corpus nightly dispatcher (ADR-086 step 18)', () => {
     expect(source).not.toContain('while (( SECONDS - started');
     expect(source).not.toContain('target-run-status.json');
     expect(source).not.toContain('sleep 30');
-    expect(source).toContain('recorded asynchronously by corpus-release-outcome');
+    expect(source).toContain("recorded by the protected child's always-running corpus-terminal-outcome job");
   });
 
   it('preserves success/failure/cancellation/timeout visibility without polling', () => {
     const source = read(DISPATCHER);
     const notifier = read('.github/workflows/ntfy-alerts.yml');
-    const outcome = read('.github/workflows/corpus-release-outcome.yml');
+    const protectedRelease = read('.github/workflows/protected-release.yml');
     expect(source).toContain('target run: [$run_id]($run_url)');
     expect(notifier).toContain('"protected-release"');
-    expect(notifier).toContain('"corpus-release-outcome"');
-    expect(outcome).toContain('workflows: ["protected-release"]');
-    expect(outcome).toContain('types: [completed]');
-    expect(outcome).toContain("test \"$RUN_CONCLUSION\" = success");
-    expect(outcome).toContain('retention-days: 90');
+    expect(protectedRelease).toContain('corpus-terminal-outcome:');
+    expect(protectedRelease).toContain("if: always() && inputs.mode == 'corpus'");
+    expect(protectedRelease).toContain('name: corpus-release-outcome-${{ github.run_id }}-${{ github.run_attempt }}');
+    expect(protectedRelease).toContain('retention-days: 90');
+    expect(() => read('.github/workflows/corpus-release-outcome.yml')).toThrow();
     expect(notifier).toContain('types: [completed]');
     expect(notifier).toContain('[ "$WR_CONC" = "success" ] && exit 0');
     expect(notifier).toContain('TITLE="🔴 CI ${WR_CONC}: ${WR_NAME}"');
