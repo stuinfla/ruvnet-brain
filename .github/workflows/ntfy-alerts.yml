@@ -10,7 +10,7 @@ on:
   workflow_run:
     # EVERY scheduled/CI workflow belongs here — gists-nightly failed 3 nights in a row (07-10..12)
     # in silence because it was missing from this list. Silent redness is the one banned failure mode.
-    workflows: ["ci", "integration-linux", "gists-nightly", "protected-release", "corpus-release-outcome"]
+    workflows: ["ci", "integration-linux", "gists-nightly", "protected-release"]
     types: [completed]
 # The notify job needs nothing from the repo — strip the token to read-nothing so an injected
 # payload (were one ever to slip through again) has no credential to steal.

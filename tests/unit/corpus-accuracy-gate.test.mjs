@@ -729,3 +729,16 @@ process.exit(0);
     expect(f.ghCalls()).toHaveLength(0);
   });
 });
+
+describe('committed diagnostic oracle tracks every shipped store class', () => {
+  it('covers mcp-studio and the concepts derived store while retaining independently reviewed ai-browse emptiness', () => {
+    const oracle = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/retrieval-accuracy-oracle.json'), 'utf8'));
+    expect(oracle.partitions.find((row) => row.store === 'mcp-studio')).toMatchObject({ kind: 'repository' });
+    expect(oracle.partitions.find((row) => row.store === 'concepts')).toMatchObject({ kind: 'derived' });
+    expect(oracle.labels.filter((row) => row.partition === 'mcp-studio')).toHaveLength(3);
+    expect(oracle.labels.filter((row) => row.partition === 'concepts')).toHaveLength(3);
+    expect(oracle.emptySources.find((row) => row.store === 'ai-browse')).toMatchObject({
+      sourceCommit: '1b1e1de8b16196eb77b631d3d9a3137b31aacc30',
+    });
+  });
+});
