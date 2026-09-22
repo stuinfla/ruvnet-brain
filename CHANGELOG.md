@@ -7,6 +7,34 @@ current campaign and is finalized by the lead session before the next release cu
 
 ## Unreleased
 
+Operational recovery candidate 4.3.27 (2026-09-19), published to npm and GitHub but still awaiting
+public installation verification:
+
+- Doctor distinguishes package, search-engine and validator versions, checks installed runtime
+  bytes against the archive manifest, and rejects thin evidence in its answerable smoke test.
+- Automatic hooks tolerate missing optional session identifiers, bound continuity work, and avoid
+  repeating advisory interruptions. Explicit opt-in enforcement retains its contract.
+- Public gist capture uses verified Git snapshots, checks complete observed inventories and source
+  revisions, and fails before expensive corpus work when capture cannot be verified. Nightly
+  completion follows the uniquely identified child workflow instead of treating dispatch as success.
+- Retrieval qualification checks source support and process success. Historical routing/citation
+  scores are not described as answer accuracy. A frozen operational oracle records corpus gaps.
+
+Current 4.3.28 candidate (not yet published):
+
+- Inline cross-encoder inference uses a two-thread ONNX budget by default, with
+  `CE_INTRA_OP_THREADS` as an operator override. The model, candidate set and ranking policy are
+  unchanged. Candidate qualification now rejects any host's first cited search above the same
+  30-second limit used by public verification, and exercises the exact sealed artifact on macOS
+  across all three host modes after installing the current host CLIs. Candidate host searches run
+  sequentially so concurrent test fixtures do not compete for the runner's inference resources as a
+  single real Brain user. Model warm-up is bounded to the Brain's own store; only the subsequent
+  grounded host searches determine candidate acceptance.
+- UX qualification now retries failed hard UI acceptance checks within its existing bounded
+  attempts, keeps every acceptance budget unchanged, and remains red if no complete attempt passes.
+- An explicit `repo:<name>` query now remains inside that source boundary; exact-identifier
+  discovery no longer widens the requested release search into unrelated repositories.
+
 Campaign context: a dual North-Star review (Fable 5.1 + GPT-6 Astra) measured this project at
 31/100 against commit `2eef2024` (see `PROGRESS.md`'s 2026-09-11 entry for the full per-pillar
 breakdown and provenance). The following lanes are running in parallel worktrees to close the

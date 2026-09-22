@@ -83,6 +83,22 @@ export function scannableIdentifiers(query) {
   return exactIdentifiers(query).filter((token) => !SCOPED.test(token));
 }
 
+/** Check whether an exact owner.member call token is present in the routed stores' indexed text. */
+export function exactMemberIndexPresence(dir, repos, member) {
+  const escaped = String(member || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!escaped || !Array.isArray(repos) || !repos.length) return { present: false, scannedRepos: [] };
+  const token = new RegExp(`(^|[^a-zA-Z0-9_$])${escaped}($|[^a-zA-Z0-9_$])`);
+  const scannedRepos = [];
+  for (const repo of [...new Set(repos)]) {
+    const file = path.join(dir, `${repo}.passages.jsonl`);
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+    scannedRepos.push(repo);
+    if (token.test(text)) return { present: true, scannedRepos };
+  }
+  return { present: false, scannedRepos };
+}
+
 // One scan per (dir, identifier set) per process. The MCP worker is warm and long-lived, so a
 // repeated question costs nothing after the first.
 const _scans = new Map();
@@ -112,10 +128,15 @@ export function identifierScan(dir, identifiers, { perRepo = 8, maxRepos = 6 } =
     const repo = file.replace(/\.big\.passages\.jsonl$|\.passages\.jsonl$/, '');
     let buf;
     try { buf = fs.readFileSync(path.join(dir, file)); } catch { continue; }
-    const present = needles.filter((n) => buf.includes(n));
+    // Identifiers are normalized to lowercase before the scan, while source symbols are usually
+    // PascalCase or camelCase. Decode once for the case-folded membership check; reuse that same
+    // text below when parsing matching JSONL rows.
+    const decoded = buf.toString('utf8');
+    const folded = decoded.toLowerCase();
+    const present = needles.filter((n) => folded.includes(n.toLowerCase()));
     if (!present.length) continue;
     const rows = [];
-    for (const line of buf.toString('utf8').split('\n')) {
+    for (const line of decoded.split('\n')) {
       if (!line) continue;
       const lower = line.toLowerCase();
       const hitTokens = present.filter((n) => lower.includes(n));

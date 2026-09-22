@@ -42,7 +42,7 @@ import readline from 'node:readline';
 export function parseCitations(stdout) {
   const out = [];
   const text = String(stdout ?? '');
-  const blockRe = /^#(\d+)\s+repo=(\S+)(?:\s+ce=(-?[\d.]+))?(?:\s+vec=(-?[\d.]+))?(?:\s+kind=(\S+))?/gm;
+  const blockRe = /^#(\d+)[ \t]+repo=(\S+)([^\r\n]*)/gm;
   const nextHeaderRe = /^#\d+\s+repo=\S+/gm;
   let m;
   let expectedRank = 1;
@@ -63,15 +63,27 @@ export function parseCitations(stdout) {
     if (!pathM) continue;
     expectedRank = rank + 1;
     const repo = m[2];
+    // Metadata comes only from the header, never from a retrieved document body.
+    // A proof label is descriptive; consumers must independently validate its evidence.
+    const field = (name) => new RegExp(`(?:^|[ \\t])${name}=([^ \\t]+)`).exec(m[3])?.[1] ?? null;
+    const score = (name) => {
+      const value = field(name);
+      return value !== null && /^-?\d+(?:\.\d+)?$/.test(value) ? Number(value) : null;
+    };
     const fullPath = pathM[1].trim();
     // Strip the repo prefix the reader adds, so the remainder can be matched against the store.
     const docPath = fullPath.startsWith(`${repo}/`) ? fullPath.slice(repo.length + 1) : fullPath;
+    // Retain only the reader's bounded document body. Missing/truncated delimiters fail
+    // closed, so evaluators cannot borrow claims from headers, diagnostics, or later hits.
+    const body = /^----- full document -----\r?\n([\s\S]*?)\r?\n={67}(?:\r?\n|$)/m.exec(block);
     out.push({
       rank,
       repo,
-      ce: m[3] !== undefined ? Number(m[3]) : null,
-      vec: m[4] !== undefined ? Number(m[4]) : null,
-      kind: m[5] ?? null,
+      ce: score('ce'),
+      vec: score('vec'),
+      kind: field('kind'),
+      proofMethod: field('proof'),
+      returnedText: body ? body[1] : null,
       fullPath,
       docPath,
       title: titleM ? titleM[1].trim() : null,

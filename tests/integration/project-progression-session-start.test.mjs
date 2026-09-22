@@ -47,7 +47,7 @@ function completeState(overrides = {}) {
   };
 }
 
-function snapshot(project, { host, dedupId, nextAction }) {
+function snapshot(project, { host, dedupId, nextAction, state = {} }) {
   const resolution = resolveProjectStore({ projectDir: project });
   return createProgressionSnapshot({
     projectIdentity: resolution.projectIdentity,
@@ -67,7 +67,7 @@ function snapshot(project, { host, dedupId, nextAction }) {
     trigger: 'SessionEnd',
     parentEventKeys: [],
     dedupId,
-    completeProjectState: completeState({ currentGoal: `${host} goal`, nextAction }),
+    completeProjectState: completeState({ currentGoal: `${host} goal`, nextAction, ...state }),
   });
 }
 
@@ -336,6 +336,52 @@ describe('ADR-073 Slice F SessionStart restore bridge', () => {
     expect(result.status).toBe('unknown');
     expect(result.reason).toBe('output-bound');
     expect(Buffer.byteLength(result.context, 'utf8')).toBeLessThanOrEqual(SESSION_CONTINUITY_LIMIT_BYTES);
+  });
+
+  it('restores a goal-preserving bounded summary and marks omitted history explicitly', () => {
+    const project = temporaryProject();
+    const row = snapshot(project, {
+      host: 'claude', dedupId: 'large-history', nextAction: 'Run the remaining exact check',
+      state: { commands: Array.from({ length: 30 }, (_, index) => `completed command ${index}: ${'x'.repeat(400)}`) },
+    });
+    const cli = fakeRunner([row]);
+    const result = restoreProgressionForSession({
+      cwd: project,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: project },
+      storeFactory: realStoreFactory(cli),
+    });
+
+    expect(result.status).toBe('restored-summary');
+    expect(result.severity).toBe('warning');
+    expect(result.degraded).toBe(true);
+    expect(result.context).toContain('BOUNDED CONTINUITY SUMMARY');
+    expect(result.context).toContain('Omitted fields are marked and are not empty');
+    const resume = JSON.parse(result.context.slice(result.context.indexOf('{')));
+    expect(resume.state.currentGoal).toBe('claude goal');
+    expect(resume.state.nextAction).toBe('Run the remaining exact check');
+    expect(resume.heads).toEqual([row.eventKey]);
+    expect(resume.state.commands).toMatchObject({ omitted: true, count: 30, sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(resume.projection).toMatchObject({ mode: 'bounded-summary' });
+    expect(Buffer.byteLength(result.context, 'utf8')).toBeLessThanOrEqual(SESSION_CONTINUITY_LIMIT_BYTES);
+  });
+
+  it('keeps UNKNOWN when the mandatory goal and next action cannot fit the bounded context', () => {
+    const project = temporaryProject();
+    const row = snapshot(project, {
+      host: 'claude', dedupId: 'oversize-goal', nextAction: 'N'.repeat(5_000),
+      state: { currentGoal: 'G'.repeat(5_000) },
+    });
+    const result = restoreProgressionForSession({
+      cwd: project,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: project },
+      storeFactory: realStoreFactory(fakeRunner([row])),
+    });
+
+    expect(result.status).toBe('unknown');
+    expect(result.reason).toBe('output-bound');
+    expect(result.context).toContain('goal/action-preserving bounded summary do not fit');
+    expect(result.context).not.toContain('G'.repeat(100));
+    expect(result.context).not.toContain('N'.repeat(100));
   });
 
   it('injects the restore result through the real shared SessionStart production caller', async () => {

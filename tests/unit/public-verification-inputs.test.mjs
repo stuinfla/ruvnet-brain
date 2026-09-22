@@ -206,7 +206,8 @@ function fixture() {
   writeJson(path.join(baselineRoot, 'public-store-classes.json'), { schemaVersion: 1, derived: [] });
   writeStore(baselineRoot, 'old');
   const oldRvf = path.join(baselineRoot, 'old.big.rvf');
-  const baselineLedger = { schemaVersion: 1, brainVersion: FAILED_SEED_VERSION, releaseTag: FAILED_SEED_TAG,
+  const baselineLedger = { schemaVersion: 2, kind: 'ruvnet-brain-runtime-generation-ledger',
+    brainVersion: FAILED_SEED_VERSION, releaseTag: FAILED_SEED_TAG, sourceSnapshot: 'e'.repeat(40),
     stores: { old: generation('old', 'd'.repeat(40), oldRvf) } };
   writeJson(path.join(baselineRoot, 'RVF-GENERATIONS.json'), baselineLedger);
   const corpus = corpusCoverage(['old']);

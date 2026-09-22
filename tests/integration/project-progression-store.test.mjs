@@ -5,7 +5,10 @@ import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createProgressionSnapshot, digestCanonical } from '../../plugin/scripts/project-progression-contract.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
-import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
+import {
+  ProjectProgressionStore,
+  projectResumePayloadToBound,
+} from '../../plugin/scripts/project-progression-store.mjs';
 import { resolveRuflo } from '../../plugin/scripts/ruflo-bin.mjs';
 import { getVersion } from '../../scripts/version.mjs';
 
@@ -88,6 +91,67 @@ function memoryRunner({ beforeStore } = {}) {
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+
+describe('bounded resume context projection', () => {
+  const fullPayload = () => ({
+    schema: 'ruvnet-brain.project-resume',
+    schemaVersion: 1,
+    projectIdentity: { id: 'projection-test', canonicalAgentDbPath: '/project/.swarm/memory.db' },
+    heads: ['head-a', 'head-b'],
+    state: {
+      currentGoal: 'Finish the verified task.',
+      nextAction: 'Run the exact remaining check.',
+      activeProcess: 'verification',
+      activeStep: null,
+      acceptanceContract: { required: ['primary goal and next action remain exact'] },
+      blockers: [], failures: [], inProgress: [], plan: [], completed: [], decisions: [],
+      changedFiles: [], commands: [], proofArtifacts: [], untested: [],
+      journalHeads: ['head-a', 'head-b'],
+      sourceIdentity: null,
+      resumeConflicts: [{
+        field: 'sourceIdentity',
+        values: [
+          { head: 'head-a', value: { checkoutPath: '/project/a', detail: 'A'.repeat(900) } },
+          { head: 'head-b', value: { checkoutPath: '/project/b', detail: 'B'.repeat(900) } },
+        ],
+      }],
+    },
+    evidence: { structurallyEnumerated: 2, exactRetrieved: 2, causallyStale: 0, rejectedCandidates: [], readPath: 'node:sqlite', pendingReplay: 0 },
+  });
+
+  it('keeps the exact goal/action and exposes digested omissions with deterministic head references', () => {
+    const input = fullPayload();
+    const first = projectResumePayloadToBound(input, 1800);
+    const second = projectResumePayloadToBound(input, 1800);
+
+    expect(first).not.toBeNull();
+    expect(first).toEqual(second);
+    expect(Buffer.byteLength(first.rendered)).toBeLessThanOrEqual(1800);
+    expect(first.payload.state.currentGoal).toBe(input.state.currentGoal);
+    expect(first.payload.state.nextAction).toBe(input.state.nextAction);
+    expect(first.payload.heads).toEqual(['head-a', 'head-b']);
+    expect(first.payload.projection.mode).toBe('bounded-summary');
+    expect(first.payload.state.resumeConflicts[0]).toEqual({
+      field: 'sourceIdentity',
+      valueCount: 2,
+      valuesDigest: digestCanonical(input.state.resumeConflicts[0].values),
+    });
+    expect(first.payload.projection.omitted).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: 'state.resumeConflicts[].values',
+        count: 2,
+        sha256: digestCanonical(input.state.resumeConflicts[0].values.map((row) => row.value)),
+      }),
+    ]));
+  });
+
+  it('returns no projection when required goal/action and identity cannot fit', () => {
+    const input = fullPayload();
+    input.state.currentGoal = 'G'.repeat(4_000);
+    input.state.nextAction = 'N'.repeat(4_000);
+    expect(projectResumePayloadToBound(input, 1_000)).toBeNull();
+  });
 });
 
 describe('managed ProjectProgression append and readback', () => {

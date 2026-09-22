@@ -3,9 +3,9 @@
 // GROUND TRUTH rather than by a model's opinion of them. (ADR-0011 Phase 0.)
 //
 // FIVE STRATA, because a gate that only asks easy questions cannot fail:
-//   named       — the repo is named in the question           pass = grounded AND routed
-//   described   — capability described, no names              pass = grounded AND routed
-//   scenario    — a real-world situation, no names            pass = grounded AND routed
+//   named       — the repo is named in the question           pass = grounded AND routed AND not abstained
+//   described   — capability described, no names              pass = grounded AND routed AND not abstained
+//   scenario    — a real-world situation, no names            pass = grounded AND routed AND not abstained
 //   adversarial — the correct answer is NOT in this corpus    pass = ABSTAINED (top ce < 0, or no hits)
 //   provenance  — gist-shaped content                          pass = grounded AND (if the top hit IS a
 //                 gist chunk, it must carry its GIST STATUS banner — better repo grounding also passes)
@@ -95,9 +95,11 @@ export function gradeQuestion(q, { grounded, citations, bannerPresent, receipt, 
       // the citation verify-citation.mjs actually resolved (`routedRepo`, the same signal `routed`
       // uses below) — not merely the raw top-ranked citation, which citationResolves() can walk
       // past when it is unverified/fabricated (the sibling gap already closed for `routed`).
-      return { grounded, routed: null, abstained, pass: !!grounded && (routedRepo !== 'ruv-gists' || bannerPresent) };
+      return { grounded, routed: null, abstained, pass: !!grounded && !abstained && (routedRepo !== 'ruv-gists' || bannerPresent) };
     default:
-      return { grounded, routed, abstained, pass: !!grounded && routed };
+      // Abstention is correct only for the adversarial stratum. A negative cross-encoder score on
+      // an answerable question is an answer miss, even when an unrelated existing path resolves.
+      return { grounded, routed, abstained, pass: !!grounded && routed && !abstained };
   }
 }
 

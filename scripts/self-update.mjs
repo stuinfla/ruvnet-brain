@@ -167,6 +167,8 @@ for (const r of inScope) {
   else if (built === 'unknown') action = live ? 'rebuild (changed)' : 'unverified (probe failed)';
   else if (live === null) action = 'unverified (probe failed)';
   else if (live !== built) action = 'rebuild (changed)';
+  // The curated capability summary can change without a change to upstream code.
+  if (r.name === 'cognitum-ruos' && live) action = 'rebuild (changed)';
   plan.push({ name: r.name, owner: r.owner, repo: r.repo, tier: r.tier, built: built?.slice(0, 12) || '—', live: live?.slice(0, 12) || '?', action });
 }
 if (inScope.length > 0 && probeFailures * 2 >= inScope.length) {

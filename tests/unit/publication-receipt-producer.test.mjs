@@ -12,6 +12,7 @@ import {
   nativeCodexExecutable,
   generatePublicationReceipt,
   rpcSearch,
+  runMeasuredHostSearches,
   stageVerifiedBundle,
   tarExtractionInvocation,
 } from '../../scripts/publication-receipt.mjs';
@@ -128,6 +129,46 @@ async function run(overrides = {}) {
 }
 
 describe('publication receipt producer', () => {
+  it('measures each installed host serially against the unchanged per-search deadline', async () => {
+    const hosts = [{ mode: 'claudeOnly' }, { mode: 'codexOnly' }, { mode: 'dual' }];
+    const order = [];
+    let active = 0;
+    let maxActive = 0;
+    const results = await runMeasuredHostSearches(hosts, async (host, timeoutMs) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      order.push(`${host.mode}:start:${timeoutMs}`);
+      await Promise.resolve();
+      order.push(`${host.mode}:end`);
+      active -= 1;
+      return host.mode;
+    });
+    expect(maxActive).toBe(1);
+    expect(order).toEqual([
+      'claudeOnly:start:30000', 'claudeOnly:end',
+      'codexOnly:start:30000', 'codexOnly:end',
+      'dual:start:30000', 'dual:end',
+    ]);
+    expect([...results]).toEqual([['claudeOnly', 'claudeOnly'], ['codexOnly', 'codexOnly'], ['dual', 'dual']]);
+  });
+
+  it('runs each warmup and measured search within one host lifecycle before advancing', async () => {
+    const hosts = [{ mode: 'claudeOnly' }, { mode: 'codexOnly' }];
+    const events = [];
+    const results = await runMeasuredHostSearches(hosts, async (host, timeoutMs) => {
+      events.push(`measure:${host.mode}:${timeoutMs}`);
+      return host.mode;
+    }, {
+      warmup: async (host) => events.push(`warm:${host.mode}`),
+      after: async (host) => events.push(`retire:${host.mode}`),
+    });
+    expect(events).toEqual([
+      'warm:claudeOnly', 'measure:claudeOnly:30000', 'retire:claudeOnly',
+      'warm:codexOnly', 'measure:codexOnly:30000', 'retire:codexOnly',
+    ]);
+    expect([...results]).toEqual([['claudeOnly', 'claudeOnly'], ['codexOnly', 'codexOnly']]);
+  });
+
   it('resolves the actual optional-package Windows Codex executable, not its cmd wrapper', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'public-codex-native-'));
     try {

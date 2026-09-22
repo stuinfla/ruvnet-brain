@@ -607,7 +607,7 @@ describe('PER-SESSION FREQUENCY CAP: a reminder stops repeating; a refusal never
     // the block would be suppressed after MAX_SHOWS and this loop's later iterations would exit 0.
     writeStore([blockLesson()]);                             // enforcement:block, user-stated, ratified
     writeOptIn(['T01-verify-with-a-capable-channel']);       // opted in → it actually refuses
-    for (let i = 0; i < 6; i += 1) {                          // 6 >> MAX_SHOWS (default 3)
+    for (let i = 0; i < 6; i += 1) {                          // 6 >> MAX_SHOWS
       const r = runGate(['--event', 'PreToolUse', '--trigger', 'claim-done', '--session', 'blk'],
         { RUVNET_LESSON_MAX_SHOWS: '2' });
       expect(r.code).toBe(2);                                // refuses, every single time
@@ -640,6 +640,18 @@ describe('PER-SESSION FREQUENCY CAP: a reminder stops repeating; a refusal never
     expect(ctxOf(fireAdvisory('s', env))).toContain('ADVMARKA');   // show 2 of 2
     expect(ctxOf(fireAdvisory('s', env))).not.toContain('ADVMARKA'); // capped — silent now
     expect(ctxOf(fireAdvisory('s', env))).not.toContain('ADVMARKA'); // stays silent
+  });
+
+  test('identical advisory is emitted once by default across consecutive writes in one session', () => {
+    writeStore([advisory('DEFAULT')]);
+    const first = fireAdvisory('same-session');
+    expect(first.code).toBe(0);
+    expect(ctxOf(first)).toContain('ADVMARKDEFAULT');
+    for (let i = 0; i < 3; i += 1) {
+      const repeated = fireAdvisory('same-session');
+      expect(repeated.code).toBe(0);
+      expect(ctxOf(repeated)).not.toContain('ADVMARKDEFAULT');
+    }
   });
 
   test('the cap is PER-SESSION — a different session_id starts fresh', () => {

@@ -1,4 +1,4 @@
-Updated: 2026-09-07 11:07:28 EDT | Version 1.2.0
+Updated: 2026-09-20 11:10:00 EDT | Version 1.2.1
 Created: 2026-09-05 19:00:00 EDT
 
 # QA and release process
@@ -37,6 +37,42 @@ is UNKNOWN unless a separate producer proves it. Only terminal `install-verified
 `qa:pr`, `qa:release`, and the historical test aliases remain explicit diagnostics. Their inventory
 is [qa-lanes.mjs](../scripts/qa-lanes.mjs); their PASS cannot replace reviewed qualification,
 packaged runtime checks, public verification, or complete North Star conformance.
+
+## Exact-SHA promotion (do not merge the release PR)
+
+Push the candidate commit to `release/<version>` and wait for `release-candidate-preflight` to pass.
+Then open a PR from that release branch to `main`; its `canonical-qa` and `integration` consumers
+verify the preflight receipt and must pass on the exact candidate SHA. The PR provides review context
+and required-check evidence.
+
+From a clean candidate checkout, the first step is reproducible without a version pin:
+
+```bash
+CANDIDATE_SHA="$(git rev-parse HEAD)"
+VERSION="$(node -p "require('./package.json').version")"
+git push origin "$CANDIDATE_SHA:refs/heads/release/$VERSION"
+```
+
+After the release preflight is green, open the PR and wait for its checks:
+
+```bash
+gh pr create --base main --head "release/$VERSION" --title "Release $VERSION"
+gh pr checks --watch
+```
+
+Do not click Merge, Squash, or Rebase: each creates a new SHA while the publisher requires the
+preflighted SHA unchanged on `main`. After the candidate artifact and required checks pass, promote
+with an ordinary non-force fast-forward push. Confirm current `origin/main` is an ancestor first and
+verify the remote ref afterward. If the push is rejected, stop and repair branch-policy/check
+configuration; never force-push or bypass checks. A changed source SHA must repeat preflight.
+
+`release:proof --status --quick` is only a local/main diagnostic. Because it omits vector evaluation,
+it reports `INCOMPLETE` rather than `PASS` when all other observations are clean. It does not
+qualify a candidate. Candidate authority comes from the typed preflight receipt and exact-SHA
+workflow evidence. After the PR's exact-SHA consumer checks pass and `main` is still an ancestor,
+the final source promotion is `git push origin "$CANDIDATE_SHA:refs/heads/main"`; then verify the
+remote ref equals `$CANDIDATE_SHA` before dispatching `protected-release.yml` with `mode=code`, that
+SHA, and the derived version.
 
 The plugin manifest remains the version source. `npm run version:set -- X.Y.Z` propagates generated
 surfaces, and `npm run convergence:write` refreshes source identity. Neither command proves behavior.

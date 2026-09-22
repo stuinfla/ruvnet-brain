@@ -39,7 +39,9 @@ jobs:
     # Forks inherit schedules; they must never dispatch against the upstream release rail.
     if: github.repository == 'stuinfla/ruvnet-brain'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Keep the scheduler alive through the protected child workflow so a green dispatcher means
+    # the downstream corpus run reached a successful conclusion, not merely that dispatch worked.
+    timeout-minutes: 360
     permissions:
       contents: read
       actions: write
@@ -97,11 +99,14 @@ jobs:
         run: |
           set -euo pipefail
           DISPATCHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          CORPUS_DISPATCH_ID="corpus-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "DISPATCHED_AT=$DISPATCHED_AT" >> "$GITHUB_ENV"
+          echo "CORPUS_DISPATCH_ID=$CORPUS_DISPATCH_ID" >> "$GITHUB_ENV"
           gh workflow run protected-release.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
             -f mode=corpus \
+            -f "corpus_dispatch_id=$CORPUS_DISPATCH_ID" \
             -f "candidate_sha=$CANDIDATE_SHA" \
             -f "version=$CANDIDATE_VERSION"
       - name: Record the target run this schedule actually created
@@ -119,8 +124,8 @@ jobs:
           # reported as a successful night.
           record=''
           for _attempt in 1 2 3 4 5 6 7 8 9 10; do
-            record="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/protected-release.yml/runs?event=workflow_dispatch&per_page=20" \
-              --jq "[.workflow_runs[] | select(.head_sha == \"$CANDIDATE_SHA\" and .created_at >= \"$DISPATCHED_AT\")] | sort_by(.id) | last // empty")"
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/protected-release.yml/runs?event=workflow_dispatch&per_page=100" > "$RUNNER_TEMP/dispatch-candidates.json"
+            record="$(node scripts/corpus-dispatch-receipt.mjs "$RUNNER_TEMP/dispatch-candidates.json")"
             [[ -n "$record" ]] && break
             sleep 10
           done
@@ -140,11 +145,17 @@ jobs:
             echo "- event: \`$run_event\`"
             echo "- candidate: \`$CANDIDATE_SHA\`"
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Preserve the dispatch run record
-        if: always() && steps.armed.outputs.armed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: corpus-dispatch-record-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/dispatched-run.json
-          if-no-files-found: warn
-          retention-days: 90
+      - name: Report asynchronous outcome monitoring
+        if: steps.armed.outputs.armed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id="$(node -p "require(process.env.RUNNER_TEMP + '/dispatched-run.json').id")"
+          run_url="$(node -p "require(process.env.RUNNER_TEMP + '/dispatched-run.json').html_url")"
+          {
+            echo '### protected corpus outcome monitoring'
+            echo ''
+            echo "- target run: [$run_id]($run_url)"
+            echo '- completion: recorded asynchronously by corpus-release-outcome'
+            echo '- failure, cancellation, or timeout: preserved as a red outcome run and reported by ntfy-alerts'
+          } >> "$GITHUB_STEP_SUMMARY"

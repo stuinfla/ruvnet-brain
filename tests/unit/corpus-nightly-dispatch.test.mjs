@@ -68,10 +68,38 @@ describe('corpus nightly dispatcher (ADR-086 step 18)', () => {
     expect(source).toContain('dispatched-run.json');
   });
 
+
+  it('does not hold a second runner open while the protected child completes', () => {
+    const source = executable(read(DISPATCHER));
+    expect(source).not.toContain('while (( SECONDS - started');
+    expect(source).not.toContain('target-run-status.json');
+    expect(source).not.toContain('sleep 30');
+    expect(source).toContain('recorded asynchronously by corpus-release-outcome');
+  });
+
+  it('preserves success/failure/cancellation/timeout visibility without polling', () => {
+    const source = read(DISPATCHER);
+    const notifier = read('.github/workflows/ntfy-alerts.yml');
+    const outcome = read('.github/workflows/corpus-release-outcome.yml');
+    expect(source).toContain('target run: [$run_id]($run_url)');
+    expect(notifier).toContain('"protected-release"');
+    expect(notifier).toContain('"corpus-release-outcome"');
+    expect(outcome).toContain('workflows: ["protected-release"]');
+    expect(outcome).toContain('types: [completed]');
+    expect(outcome).toContain("test \"$RUN_CONCLUSION\" = success");
+    expect(outcome).toContain('retention-days: 90');
+    expect(notifier).toContain('types: [completed]');
+    expect(notifier).toContain('[ "$WR_CONC" = "success" ] && exit 0');
+    expect(notifier).toContain('TITLE="🔴 CI ${WR_CONC}: ${WR_NAME}"');
+  });
+
   it('records the dispatch against the exact candidate it dispatched', () => {
     const source = read(DISPATCHER);
-    expect(source).toContain('select(.head_sha == \\"$CANDIDATE_SHA\\"');
-    expect(source).toContain('.created_at >= \\"$DISPATCHED_AT\\"');
+    expect(source).toContain('node scripts/corpus-dispatch-receipt.mjs');
+    expect(source).toContain('corpus_dispatch_id=$CORPUS_DISPATCH_ID');
+    const selector = read('scripts/corpus-dispatch-receipt.mjs');
+    expect(selector).toContain('run.head_sha === sha');
+    expect(selector).toContain('Date.parse(run.created_at) >= Date.parse(notBefore)');
   });
 });
 

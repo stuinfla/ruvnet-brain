@@ -48,7 +48,7 @@ const itReal = HAVE_REAL ? it : it.skip;
 const REAL_TIMEOUT = 180_000; // pool spawn + per-worker model load (~1s each, measured) + scoring
 
 // ---------- env save/restore ----------
-const ENV_KEYS = ['CE_WORKERS', 'CE_PARALLEL_MIN', 'CE_FORCE_WORKER_FAIL', 'KB_MODEL_CACHE', 'CE_DEBUG', 'CE_MODEL'];
+const ENV_KEYS = ['CE_WORKERS', 'CE_PARALLEL_MIN', 'CE_FORCE_WORKER_FAIL', 'CE_INTRA_OP_THREADS', 'KB_MODEL_CACHE', 'CE_DEBUG', 'CE_MODEL'];
 const savedEnv = {};
 beforeEach(() => { for (const k of ENV_KEYS) savedEnv[k] = process.env[k]; });
 afterEach(() => {
@@ -87,6 +87,27 @@ async function importReal() {
 }
 
 describe('parallel dispatch — hermetic (mocked CE, no model, no real workers)', () => {
+  it('bounds inline ONNX threading by default and honors a positive operator override', async () => {
+    process.env.CE_INTRA_OP_THREADS = '';
+    const { resolveCeIntraOpThreads } = await importMocked();
+    expect(resolveCeIntraOpThreads({ requested: '', cores: 16, fallback: 2 })).toBe(2);
+    expect(resolveCeIntraOpThreads({ requested: '', cores: 1, fallback: 2 })).toBe(1);
+    expect(resolveCeIntraOpThreads({ requested: '3', cores: 1, fallback: 2 })).toBe(3);
+    expect(resolveCeIntraOpThreads({ requested: 'invalid', cores: 4, fallback: 3 })).toBe(3);
+  });
+
+  it('applies intra-op and inter-op budgets while preserving the runtime options', async () => {
+    const { applyCeIntraOpThreadBudget } = await importMocked();
+    const create = vi.fn(async () => ({ ok: true }));
+    const ort = { InferenceSession: { create } };
+    expect(applyCeIntraOpThreadBudget(ort, 2)).toBe(true);
+    await ort.InferenceSession.create('weights', { graphOptimizationLevel: 'all', intraOpNumThreads: 16 });
+    expect(create).toHaveBeenCalledWith('weights', {
+      graphOptimizationLevel: 'all', intraOpNumThreads: 2, interOpNumThreads: 1,
+    });
+    expect(applyCeIntraOpThreadBudget(ort, 0)).toBe(false);
+  });
+
   it('(b) empty docs -> [] even with workers configured (short-circuits before pool/CE)', async () => {
     process.env.CE_WORKERS = '4';
     process.env.CE_PARALLEL_MIN = '1';

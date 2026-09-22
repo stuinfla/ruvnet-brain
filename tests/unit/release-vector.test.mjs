@@ -139,6 +139,67 @@ describe('release-vector runners cross the Windows command-shim boundary', () =>
   });
 });
 
+describe('one evaluated vector supplies both CLI formats and exit behavior', () => {
+  const resultFor = (verdict, { dirty = false } = {}) => ({
+    sha: 'a'.repeat(40),
+    lineage: { sha: 'a'.repeat(40), tree: 'b'.repeat(40), dirty },
+    results: [
+      { name: 'GOOD', dimension: 'D1', state: 'PASS', why: 'fixture pass', sha: 'a'.repeat(40), elapsedMs: 3 },
+      { name: 'BLOCKED', dimension: 'D4', state: verdict, why: 'fixture evidence', sha: 'a'.repeat(40), elapsedMs: 7 },
+    ],
+    verdict: dirty ? 'FAIL' : verdict,
+  });
+
+  it('renders text and JSON from the same result without another detector call', () => {
+    const result = resultFor('UNKNOWN');
+    const text = RV.formatVectorOutput(result);
+    expect(text).toMatch(/UNKNOWN\s+D4\s+BLOCKED/);
+    expect(text).toContain('(7ms) fixture evidence');
+    expect(text).toContain('release metadata must read DEGRADED');
+    for (const banned of RV.BANNED_WHEN_DEGRADED) expect(text).toContain(banned);
+
+    const json = JSON.parse(RV.formatVectorOutput(result, { json: true }));
+    expect(json).toEqual(result);
+    expect(json.results.map(({ elapsedMs }) => elapsedMs)).toEqual([3, 7]);
+
+    const failedText = RV.formatVectorOutput(resultFor('FAIL'));
+    expect(failedText).toContain('FAIL');
+    expect(failedText).toContain('release metadata must read DEGRADED');
+  });
+
+  it('only PASS exits zero; FAIL, UNKNOWN, and dirty lineage remain blocking', () => {
+    expect(RV.exitCodeForVerdict('PASS')).toBe(0);
+    expect(RV.exitCodeForVerdict('FAIL')).toBe(1);
+    expect(RV.exitCodeForVerdict('UNKNOWN')).toBe(1);
+    const dirty = resultFor('PASS', { dirty: true });
+    expect(RV.verdictWithLineage(dirty.results, dirty.lineage)).toBe('FAIL');
+    expect(RV.exitCodeForVerdict(dirty.verdict)).toBe(1);
+    expect(RV.formatVectorOutput(dirty)).toContain('DIRTY (release-blocking)');
+  });
+
+  it('does not print the degraded ban list for a clean PASS result', () => {
+    const text = RV.formatVectorOutput(resultFor('PASS'));
+    expect(text).toContain('verdict: PASS');
+    expect(text).not.toContain('release metadata must read DEGRADED');
+  });
+
+  it('emits ordered per-invariant start and completion timing callbacks', async () => {
+    const events = [];
+    const measured = await RV.evaluate([
+      { name: 'FIRST', dimension: 'D1', detect: () => ({ state: 'PASS', why: 'first' }) },
+      { name: 'SECOND', dimension: 'D2', detect: () => ({ state: 'UNKNOWN', why: 'second' }) },
+    ], {}, {
+      onInvariantStart: ({ name }) => events.push({ phase: 'start', name }),
+      onInvariantComplete: ({ name, elapsedMs }) => events.push({ phase: 'complete', name, elapsedMs }),
+    });
+    expect(events.map(({ phase, name }) => [phase, name])).toEqual([
+      ['start', 'FIRST'], ['complete', 'FIRST'], ['start', 'SECOND'], ['complete', 'SECOND'],
+    ]);
+    expect(events.filter(({ phase }) => phase === 'complete').every(({ elapsedMs }) => elapsedMs >= 0)).toBe(true);
+    expect(measured.results.map(({ elapsedMs }) => elapsedMs)).toHaveLength(2);
+  });
+});
+
 describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () => {
   it('isolates simultaneous D3 mutants and preserves tracked source bytes', async () => {
     const tracked = [
@@ -279,29 +340,32 @@ describe('KNOWN-BAD MUTANTS — the gate proven to go red on real breakage', () 
 });
 
 describe('the CLI is the door that actually gets walked through', () => {
-  // Each invocation runs the real D1-D8 subprocess graph. Under the full parallel unit suite the
-  // first measured 26.1s on this machine, beyond vitest's 20s per-test default, while completing
-  // normally. Keep vitest's outer budget just above the command's own 180s timeout so a real hang
-  // returns a named runner failure instead of being killed by an unrelated test-runner clock.
-  it('exits non-zero whenever the verdict is not PASS, and prints the DEGRADED ban list', () => {
-    // An earlier reading of a gate in this repo showed "FAIL (hard)" next to exit 0 — it was the
-    // harness reading a pipe's status, not the process's. Read the process's status directly.
-    const r = spawnSync('node', ['scripts/release-vector.mjs'], { cwd: REPO, encoding: 'utf8', timeout: 180_000 });
-    expect(r.status, 'the runner itself must complete').not.toBeNull();
-    const verdictLine = (r.stdout.match(/verdict:\s*(\w+)/) || [])[1];
-    expect(['PASS', 'FAIL', 'UNKNOWN']).toContain(verdictLine);
-    expect(r.status === 0).toBe(verdictLine === 'PASS');
-    if (verdictLine !== 'PASS') {
-      for (const banned of RV.BANNED_WHEN_DEGRADED) expect(r.stdout).toContain(banned);
-    }
-  }, 190_000);
-
-  it('--json emits a machine-readable verdict carrying the candidate SHA', () => {
-    const r = spawnSync('node', ['scripts/release-vector.mjs', '--json'], { cwd: REPO, encoding: 'utf8', timeout: 180_000 });
+  // One invocation executes the real D1-D8 graph. Both formats and non-PASS rendering are tested
+  // above from one evaluated result, avoiding a second graph execution. The outer 180s process
+  // bound and every detector's own timeout remain unchanged.
+  it('executes the real graph once and returns its machine verdict, SHA, timings, and exit mapping', () => {
+    const r = spawnSync('node', ['scripts/release-vector.mjs', '--json', '--timings'], { cwd: REPO, encoding: 'utf8', timeout: 180_000 });
+    expect(r.status, `the runner must complete within its existing 180s bound; partial timing trace: ${r.stderr}`).not.toBeNull();
     const j = JSON.parse(r.stdout);
     expect(j.sha).toMatch(/^[0-9a-f]{40}$/);
     expect(j.results).toHaveLength(8);
     expect(j.verdict).toBe(RV.verdictWithLineage(j.results, j.lineage));
-    for (const x of j.results) expect(x.sha).toBe(j.sha);   // every result stamped with the same SHA
+    for (const x of j.results) {
+      expect(x.sha).toBe(j.sha);   // every result stamped with the same SHA
+      expect(Number.isFinite(x.elapsedMs)).toBe(true);
+      expect(x.elapsedMs).toBeGreaterThanOrEqual(0);
+    }
+    expect(r.status).toBe(RV.exitCodeForVerdict(j.verdict));
+    const timingEvents = r.stderr.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+    const starts = timingEvents.filter(({ phase }) => phase === 'start').map(({ name }) => name);
+    const completions = timingEvents.filter(({ phase }) => phase === 'complete');
+    expect(starts).toEqual(j.results.map(({ name }) => name));
+    expect(completions.map(({ name }) => name)).toEqual(starts);
+    expect(completions.map(({ elapsedMs }) => elapsedMs)).toEqual(j.results.map(({ elapsedMs }) => elapsedMs));
+    const text = RV.formatVectorOutput(j);
+    expect(text).toContain(`verdict: ${j.verdict}`);
+    if (j.verdict !== 'PASS') {
+      for (const banned of RV.BANNED_WHEN_DEGRADED) expect(text).toContain(banned);
+    }
   }, 190_000);
 });

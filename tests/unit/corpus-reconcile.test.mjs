@@ -455,6 +455,32 @@ describe('sealed-generation acquisition (acquireSealedGeneration)', () => {
     expect(f.execute).toHaveBeenCalledTimes(1);
   });
 
+  it('preflights sources before expensive execution and forwards verified capture for reuse', async () => {
+    const order = [];
+    const captured = { gists: { ['a'.repeat(32)]: { gistId: 'a'.repeat(32) } } };
+    const f = seams();
+    f.build = vi.fn(async () => { order.push('coverage'); return coverageStub; });
+    f.execute = vi.fn(async () => { order.push('expensive'); return { refreshed: [] }; });
+    f.rebuild = vi.fn(async (_coverage, _observation, _attempt, cache) => {
+      order.push('rebuild');
+      expect(cache).toBe(captured);
+      return { rebuilt: [] };
+    });
+    await acquireSealedGeneration({ maxAttempts: 1, assetsDir: temp(), observe: async () => observationA,
+      preflight: async () => { order.push('preflight'); return captured; }, readLedger: noopLedger, ...f });
+    expect(order).toEqual(['preflight', 'coverage', 'expensive', 'rebuild', 'coverage']);
+  });
+
+  it('source preflight failure stops before coverage, cloning, or embedding work', async () => {
+    const f = seams();
+    await expect(acquireSealedGeneration({ maxAttempts: 1, assetsDir: temp(), observe: async () => observationA,
+      preflight: async () => { throw Object.assign(new Error('gist detail HTTP 403'), { code: 'GIST_FORBIDDEN' }); },
+      readLedger: noopLedger, ...f })).rejects.toMatchObject({ code: 'GIST_FORBIDDEN' });
+    expect(f.build).not.toHaveBeenCalled();
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(f.rebuild).not.toHaveBeenCalled();
+  });
+
   it('re-derives coverage AFTER rebuilding aggregates, against the same sealed observation', async () => {
     // The refactor to sealed acquisition originally dropped this, and a real 56-minute build died at
     // build-bundle with "coverage row gist:... was measured against different ruv-gists RVF bytes than

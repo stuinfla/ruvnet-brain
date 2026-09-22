@@ -89,6 +89,54 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(Array.isArray(out.results)).toBe(true);
   });
 
+  it('returns qualified indexed absence for an exact member before model reranking', async () => {
+    const d = mkdirWith(['ruvector.rvf', 'concepts.rvf', 'ruflo.rvf']);
+    fs.writeFileSync(path.join(d, 'capability-cards.md'),
+      '## ruvector\nLocal vector storage and the RvfStore API.\n');
+    fs.writeFileSync(path.join(d, 'repo-aliases.json'), JSON.stringify({ ruvector: ['RvfStore'] }));
+    fs.writeFileSync(path.join(d, 'ruvector.passages.jsonl'), JSON.stringify({
+      id: '1', path: 'src/store.rs', title: 'RvfStore', text: 'impl RvfStore { fn query(&self) {} }',
+    }) + '\n');
+    const out = await searchAll({ dir: d,
+      query: 'How do I call RvfStore.telepathicQuantumSync() to synchronize my vector database?',
+      allowFullCorpus: false });
+
+    expect(searchKb).not.toHaveBeenCalled();
+    expect(rerankPairs).not.toHaveBeenCalled();
+    expect(out.routing.fallback).toBe('qualified-indexed-absence');
+    expect(out.implementation).toMatchObject({
+      verdict: 'unproven',
+      requestedMember: { owner: 'RvfStore', member: 'telepathicQuantumSync' },
+      unprovenReason: 'exact-member-not-established',
+    });
+    expect(out.evidence.caveat).toMatch(/not evidence of global nonexistence/i);
+  });
+
+  it('keeps Rust source retrieval but fails exact-member proof closed for an unsupported parser', async () => {
+    const d = mkdirWith(['ruvector.rvf', 'concepts.rvf', 'ruflo.rvf']);
+    fs.writeFileSync(path.join(d, 'capability-cards.md'),
+      '## ruvector\nLocal vector storage and the RvfStore API.\n');
+    fs.writeFileSync(path.join(d, 'repo-aliases.json'), JSON.stringify({ ruvector: ['RvfStore'] }));
+    fs.writeFileSync(path.join(d, 'ruvector.passages.jsonl'), JSON.stringify({
+      id: '1', path: 'src/rvf-store.rs', title: 'RvfStore query',
+      text: 'impl RvfStore { pub fn query(&self) -> Vec<f32> { Vec::new() } }',
+    }) + '\n');
+    vi.mocked(searchKb).mockResolvedValue([hit({ repo: 'ruvector', path: 'src/rvf-store.rs',
+      kind: 'source', fullText: 'impl RvfStore { pub fn query(&self) -> Vec<f32> { Vec::new() } }' })]);
+    vi.mocked(rerankPairs).mockImplementation(async (_query, rows) =>
+      rows.map((row) => ({ ...row, ceScore: 8 })));
+
+    const out = await searchAll({ dir: d,
+      query: 'How do I call RvfStore.query()?', allowFullCorpus: false });
+    expect(searchKb).toHaveBeenCalled();
+    expect(rerankPairs).toHaveBeenCalled();
+    expect(out.results[0].path).toBe('src/rvf-store.rs');
+    expect(out.implementation).toMatchObject({ verdict: 'unproven',
+      unprovenReason: 'exact-member-not-established', requestedMember: {
+      owner: 'RvfStore', member: 'query',
+    } });
+  });
+
   it('labels every returned passage with the repo it came from', async () => {
     const d = mkdirWith(['safla.rvf', 'daa.rvf']);
     vi.mocked(searchKb).mockResolvedValue([hit()]);
@@ -313,6 +361,23 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     const out = await searchAll({ dir: d, query: 'In sensor-manual, which store dimensions are recorded?', allowFullCorpus: false });
     expect(out.repos).toEqual(['sensor-manual']);
     expect(searchKb.mock.calls.map(([args]) => args.name)).toEqual(['sensor-manual']);
+  });
+
+  it('keeps an explicit repo directive scoped when identifier mentions exist elsewhere', async () => {
+    const d = mkdirWith(['ruvnet-brain.rvf', 'agentdb.rvf', 'agentic-flow.rvf']);
+    for (const repo of ['agentdb', 'agentic-flow']) {
+      fs.writeFileSync(path.join(d, `${repo}.passages.jsonl`), JSON.stringify({
+        id: '1', path: 'docs/brain.md', title: 'RuvNet Brain integration', text: 'RuvNet Brain release details.',
+      }) + '\n');
+    }
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+
+    const out = await searchAll({ dir: d,
+      query: 'repo:ruvnet-brain How does RuvNet Brain prove a public release artifact?',
+      allowFullCorpus: false });
+
+    expect(out.repos).toEqual(['ruvnet-brain']);
+    expect(searchKb.mock.calls.map(([args]) => args.name)).toEqual(['ruvnet-brain']);
   });
 
   it.each(['relevant', 'irrelevant', 'outage'])('bounds ambiguous metadata routing and independently verifies %s source evidence', async (mode) => {
