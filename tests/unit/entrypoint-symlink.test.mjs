@@ -59,6 +59,10 @@ const PIPELINE_ENTRY_POINTS = [
   'host-registry.mjs',
   'adr-072-completion.mjs',
   'product-integrity-contract.mjs',
+  // development-push-check.mjs: the pre-push credential scanner (scripts/git-hooks/pre-push).
+  // Read-only (git log -p against real history, no writes) and closes stdin immediately when spawned
+  // with no `input`, so it is safe to run un-symlinked here like its siblings above.
+  'development-push-check.mjs',
 ];
 
 describe('KB entry points run when invoked through a symlink', () => {
