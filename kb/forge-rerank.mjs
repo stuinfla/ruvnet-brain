@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { fork } from 'node:child_process';
 import { loadTransformers } from './resolve-deps.mjs';
@@ -18,6 +19,46 @@ import { materializeModelRevision, modelCacheReady } from './model-requirements.
 // Same packaged entry, separate process: a native ONNX/V8 fault cannot kill the parent host.
 // Both the literal fork argument and a live IPC channel are required; ambient env cannot opt in.
 const IS_CE_WORKER = process.argv[2] === '--ce-worker' && typeof process.send === 'function';
+const localRequire = createRequire(import.meta.url);
+const DEFAULT_INLINE_CE_THREADS = 2;
+
+/** Resolve a bounded ONNX intra-op thread budget without changing model inputs or scores. */
+export function resolveCeIntraOpThreads({
+  requested = process.env.CE_INTRA_OP_THREADS,
+  cores = typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length,
+  fallback = DEFAULT_INLINE_CE_THREADS,
+} = {}) {
+  const configured = Number(requested);
+  if (String(requested ?? '').trim() && Number.isSafeInteger(configured) && configured > 0) return configured;
+  const available = Number.isSafeInteger(Math.floor(Number(cores))) && Number(cores) > 0
+    ? Math.floor(Number(cores)) : 1;
+  const defaultThreads = Number.isSafeInteger(Math.floor(Number(fallback))) && Number(fallback) > 0
+    ? Math.floor(Number(fallback)) : DEFAULT_INLINE_CE_THREADS;
+  return Math.max(1, Math.min(available, defaultThreads));
+}
+
+/** Set thread limits on the shared ONNX session factory; preserve all other caller options. */
+export function applyCeIntraOpThreadBudget(ort, threads) {
+  if (!Number.isSafeInteger(threads) || threads < 1 || typeof ort?.InferenceSession?.create !== 'function') return false;
+  const original = ort.InferenceSession.create.bind(ort.InferenceSession);
+  ort.InferenceSession.create = (model, options = {}) => original(model, {
+    ...options,
+    intraOpNumThreads: threads,
+    interOpNumThreads: 1,
+  });
+  return true;
+}
+
+function configureCeIntraOpThreadBudget(fallback = DEFAULT_INLINE_CE_THREADS) {
+  try {
+    const ort = localRequire('onnxruntime-node');
+    const threads = resolveCeIntraOpThreads({ fallback });
+    return applyCeIntraOpThreadBudget(ort, threads);
+  } catch {
+    // Transformers.js can fall back to its WASM backend when the native runtime is unavailable.
+    return false;
+  }
+}
 
 // searchKb is only needed by rerankKb in the parent. forge-ask.mjs calls loadRvf() at import
 // time, so a static import would drag the whole @ruvector/rvf native module into every CE worker
@@ -36,6 +77,7 @@ const CE_REVISION = CE_MODEL === DEFAULT_CE_MODEL ? 'a09144355adeed5f58c8ed011d2
 let _ce = null;
 async function loadCE() {
   if (_ce) return _ce;
+  if (!IS_CE_WORKER) configureCeIntraOpThreadBudget();
   const { T, modelCache } = await loadTransformers();   // same resolver as forge-ask (KB node_modules / XENOVA_PATH), not a bare import
   // Bug A (issue #29, found+fixed by Jan Lafko): the cache dir was only wired up when KB_MODEL_CACHE
   // was explicitly exported — otherwise the loader had no idea where the pre-cached models lived and
@@ -449,13 +491,9 @@ if (IS_CE_WORKER) {
   // onnxruntime-node isn't resolvable (e.g. a wasm-only environment), default threading applies.
   // Thread count does NOT change numerics (verified: identical score digest at 2 vs 16 threads).
   try {
-    const { createRequire } = await import('node:module');
-    const ort = createRequire(import.meta.url)('onnxruntime-node');
-    const cap = Math.max(1, Math.floor(Number(process.argv[3]) || 0));
-    if (cap && ort?.InferenceSession?.create) {
-      const orig = ort.InferenceSession.create.bind(ort.InferenceSession);
-      ort.InferenceSession.create = (buf, opts = {}) => orig(buf, { ...opts, intraOpNumThreads: cap, interOpNumThreads: 1 });
-    }
+    const fallback = Math.max(1, Math.floor(Number(process.argv[3]) || 0));
+    const ort = localRequire('onnxruntime-node');
+    applyCeIntraOpThreadBudget(ort, resolveCeIntraOpThreads({ fallback }));
   } catch { /* onnxruntime-node not present — transformers' fallback backend keeps its defaults */ }
   let tasks = Promise.resolve();
   // IPC disconnect is also delivered when the parent is killed: do not orphan a warm model.

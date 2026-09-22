@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.3.26",
-  "sourceIdentity": "393335c7b444c53df48164934e77b85b1b3dbb8196b0195a17bb7bfc8b13e07a",
+  "version": "4.3.28",
+  "sourceIdentity": "78a4a5d38bf8376bc187c54e59c2ffd4b93632c1ee84299b616b5e40dab4fc70",
   "versionSurfaces": {
-    "package.json": "4.3.26",
-    "plugin/.claude-plugin/plugin.json": "4.3.26",
-    "plugin/.codex-plugin/plugin.json": "4.3.26",
-    "data/manifest.json": "4.3.26",
-    "kb/RVF-GENERATIONS.json": "4.3.26",
-    "explainer/index.html": "4.3.26",
-    "primer/ruvnet-primer.md": "4.3.26"
+    "package.json": "4.3.28",
+    "plugin/.claude-plugin/plugin.json": "4.3.28",
+    "plugin/.codex-plugin/plugin.json": "4.3.28",
+    "data/manifest.json": "4.3.28",
+    "kb/RVF-GENERATIONS.json": "4.3.28",
+    "explainer/index.html": "4.3.28",
+    "primer/ruvnet-primer.md": "4.3.28"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -99,10 +99,13 @@
     "0084-the-three-user-invariants.md",
     "0085-nightly-corpus-release-channel.md",
     "0086-corpus-seed-pipeline-consolidation.md",
+    "0088-operational-evaluation-integrity.md",
+    "0089-installed-search-identity-health.md",
+    "0090-source-backed-capability-discovery.md",
     "README.md"
   ],
-  "trackedFileCount": 1542,
-  "trackedFilesSha256": "5a29c904400a9b5bd87333007d24d6508992aca7c31ec198c9652673123c347a",
+  "trackedFileCount": 1574,
+  "trackedFilesSha256": "42ee3845f8b18e796b06e68a6b672468c34614dbee0d0538d3d42ed0b8c9fa23",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

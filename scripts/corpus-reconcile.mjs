@@ -15,8 +15,10 @@ import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
 import { buildCoverage, observeSourceUniverse, renderMarkdown } from './source-coverage.mjs';
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';
+import { assertCapabilityOnlyStore, isCapabilityOnly, CAPABILITY_RETIRED_SUFFIXES } from '../kb/capability-only.mjs';
 import { fileIdentity } from '../plugin/scripts/coverage-integrity.mjs';
 import { storeRoot } from '../kb/store-root.mjs';
+import { captureGistSources } from './gist-receipts.mjs';
 
 export { rebuildCorpusAggregates };
 
@@ -177,7 +179,12 @@ export function planReconciliation({ coverage, ledger, assetsDir = null }) {
     const generation = Object.entries(ledger.stores).find(([name]) => name.toLowerCase() === folded)?.[1] || null;
     const current = String(generation?.sourceCommit || '').toLowerCase();
     let reason = generation?.sourceCommit ? 'sourceCommit differs' : 'missing ledger receipt';
-    if (current === upstreamSha) {
+    let capabilityPolicyCurrent = !isCapabilityOnly(store);
+    if (!capabilityPolicyCurrent && assetsDir) {
+      try { assertCapabilityOnlyStore(assetsDir, store); capabilityPolicyCurrent = true; }
+      catch { reason = 'capability-only policy requires a clean rebuild'; }
+    }
+    if (current === upstreamSha && capabilityPolicyCurrent) {
       if (!assetsDir) continue;
       const expectedFile = `${store}.big.rvf`;
       const rvfFile = path.join(path.resolve(assetsDir), expectedFile);
@@ -243,7 +250,7 @@ async function measureFreshness({ closingObservation, observation }) {
  * generation; `latest` is never substituted, and an exhausted partial generation is never accepted.
  */
 export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = null, observe, build,
-  readLedger: currentLedger, execute, prune, rebuild, closingObservation = null } = {}) {
+  readLedger: currentLedger, execute, prune, rebuild, preflight = null, closingObservation = null } = {}) {
   if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 10
     || [observe, build, currentLedger, execute, prune, rebuild].some((fn) => typeof fn !== 'function')) {
     fail('bounded acquisition configuration is invalid');
@@ -251,6 +258,10 @@ export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = nul
   // ONE discovery pass. This observation is the sealed manifest every later step consumes; it is never
   // re-taken, so upstream churn cannot restart or invalidate the generation.
   const observation = await observe();
+  // Validate/fetch the source most likely to fail late (gist detail/raw access) before any expensive
+  // repository clone and embedding work. Its verified bodies are the existing capture cache consumed
+  // by the later aggregate build, so preflight does not double-fetch or weaken source binding.
+  const preflightResult = typeof preflight === 'function' ? await preflight(observation) : null;
   const attempts = [];
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const coverage = await build(observation);
@@ -259,7 +270,7 @@ export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = nul
     const pruning = await prune(coverage, attempt);
     let aggregates;
     try {
-      aggregates = await rebuild(coverage, observation, attempt);
+      aggregates = await rebuild(coverage, observation, attempt, preflightResult);
     } catch (error) {
       if (error?.code !== 'GIST_OBSERVATION_MOVED') throw error;
       // A gist moved between its list entry and its detail fetch. The remedy is to retry against the
@@ -414,6 +425,7 @@ function validateWorkerOutput({ output, item }) {
     fail(`${item.store}: worker generation does not bind exact source and RVF bytes`);
   }
   const source = readJson(path.join(output, 'SOURCE.json'), `${item.store} worker source manifest`);
+  assertCapabilityOnlyStore(output, item.store);
   if (Object.keys(source.stores || {}).length !== 1 || !source.stores[item.store]
     || String(source.stores[item.store].sourceCommit || '').toLowerCase() !== item.upstreamSha) {
     fail(`${item.store}: worker SOURCE manifest does not bind exact source`);
@@ -536,6 +548,12 @@ export async function executeReconciliation({
   writeJsonAtomic(path.join(merge, 'SOURCE.json'), mergedSource);
   promotedFiles.push('RVF-GENERATIONS.json', 'SOURCE.json');
   promoteArtifactSet({ liveDir: assets, candidateDir: merge, files: promotedFiles.sort() });
+  // Worker output replaces selected files, so explicitly retire old seed sidecars
+  // that are intentionally absent from a capability-only worker's output.
+  for (const { store } of results) if (isCapabilityOnly(store)) {
+    for (const suffix of CAPABILITY_RETIRED_SUFFIXES) fs.rmSync(path.join(assets, `${store}${suffix}`), { force: true });
+    assertCapabilityOnlyStore(assets, store);
+  }
   return { refreshed: results.map(({ store }) => store),
     workers: results.map(({ output: _output, ...receipt }) => receipt) };
 }
@@ -600,7 +618,10 @@ export async function acquireCorpusGeneration({ owner = 'ruvnet', assetsDir, wor
   // `coverage` is now threaded through (rule 8) rather than discarded: rebuildCorpusAggregates
   // asserts the concepts observation identity exactly equals coverage's own, instead of trusting an
   // accidental shared reference.
-  rebuild = (coverage, observation) => rebuildCorpusAggregates({ assetsDir, observation, coverage, root }),
+  preflight = (observation) => captureGistSources({ observation }),
+  rebuild = (coverage, observation, _attempt, capturedGists) => rebuildCorpusAggregates({
+    assetsDir, observation, coverage, root, cache: capturedGists,
+  }),
 } = {}) {
   if (!assetsDir || !workspaceDir) fail('stable reconciliation requires explicit assets and workspace directories');
   const workspace = path.resolve(workspaceDir || '');
@@ -621,6 +642,7 @@ export async function acquireCorpusGeneration({ owner = 'ruvnet', assetsDir, wor
     }),
     prune,
     rebuild,
+    preflight,
   });
 }
 

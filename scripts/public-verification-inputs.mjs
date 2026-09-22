@@ -113,6 +113,18 @@ function exactNamedFile(root, name, label) {
   return trustedFile(path.join(root, name), label);
 }
 
+function validHistoricalGenerationLedger(ledger, names) {
+  const legacy = ledger?.schemaVersion === 1;
+  const runtime = ledger?.schemaVersion === 2
+    && ledger?.kind === 'ruvnet-brain-runtime-generation-ledger'
+    && HEX40.test(String(ledger?.sourceSnapshot || ''));
+  return (legacy || runtime)
+    && typeof ledger?.brainVersion === 'string' && Boolean(ledger.brainVersion)
+    && typeof ledger?.releaseTag === 'string' && Boolean(ledger.releaseTag)
+    && names.length > 0
+    && new Set(names.map((name) => name.toLowerCase())).size === names.length;
+}
+
 function validateCandidate({ root, bundleFile, packageFile }) {
   const coverageFile = trustedFile(path.join(root, 'COVERAGE.json'), 'candidate release coverage');
   const coverageBytes = fs.readFileSync(coverageFile);
@@ -176,9 +188,7 @@ function retrospectiveBaselineFromTree({ extractedRoot, bundleFile, expectedTag,
   const root = path.dirname(ledgerFile);
   const { value: ledger } = readJson(ledgerFile, 'historical baseline generation ledger');
   const names = Object.keys(ledger?.stores || {}).sort();
-  if (ledger.schemaVersion !== 1 || typeof ledger.brainVersion !== 'string' || !ledger.brainVersion
-    || typeof ledger.releaseTag !== 'string' || !ledger.releaseTag || !names.length
-    || new Set(names.map((name) => name.toLowerCase())).size !== names.length) {
+  if (!validHistoricalGenerationLedger(ledger, names)) {
     fail('historical baseline generation ledger is malformed');
   }
   const archive = namedIdentity(bundleFile);
@@ -245,9 +255,7 @@ function observedBaselineFromTree({ extractedRoot, bundleFile, expectedTag, expe
   const root = path.dirname(ledgerFile);
   const { value: ledger } = readJson(ledgerFile, 'historical baseline generation ledger');
   const ledgerNames = Object.keys(ledger?.stores || {}).sort();
-  if (ledger.schemaVersion !== 1 || typeof ledger.brainVersion !== 'string' || !ledger.brainVersion
-    || typeof ledger.releaseTag !== 'string' || !ledger.releaseTag || !ledgerNames.length
-    || new Set(ledgerNames.map((name) => name.toLowerCase())).size !== ledgerNames.length) {
+  if (!validHistoricalGenerationLedger(ledger, ledgerNames)) {
     fail('historical baseline generation ledger is malformed');
   }
   const archive = namedIdentity(bundleFile);

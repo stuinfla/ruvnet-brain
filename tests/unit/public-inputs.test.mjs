@@ -75,6 +75,15 @@ describe('materializePublicInputs — property 1: private fixtures are excluded'
     expect(JSON.stringify(result.selectionReceipt)).not.toContain('secret body');
   });
 
+  it('excludes capability-only Cognitum ruOS implementation primers from public prose', () => {
+    const root = makeBuilderRoot({ repos: { 'cognitum-ruos': { primer: '# Internal paths and implementation' }, 'sample-public-repo': {} } });
+    const out = path.join(temp(), 'assets');
+    const result = materializePublicInputs({ builderRoot: root, outDir: out });
+    expect(fs.existsSync(path.join(out, 'cognitum-ruos-primer.md'))).toBe(false);
+    expect(result.selectionReceipt.included.primers).not.toContain('cognitum-ruos');
+    expect(result.selectionReceipt.excluded.primers.map(row => row.repo)).toContain('cognitum-ruos');
+  });
+
   it('fences a private-owned L2 article even when its repo attribution is unattributed/public (QE-0011 shape)', () => {
     const root = makeBuilderRoot({
       privateStores: ['sample-private-repo'],

@@ -175,13 +175,22 @@ export function overBudgetRows(results, budgets) {
   return (results || []).filter((r) => timingFailure(r.label, r.ms, budgets[r.label]) !== null);
 }
 
+/** Failed or missing acceptance rows are hard failures and must participate in attempt ranking. */
+export function failedAcceptanceRows(acceptance) {
+  if (!Array.isArray(acceptance) || acceptance.length === 0) return [{ label: 'acceptance: NOT RUN' }];
+  return acceptance.filter((row) => row?.pass !== true);
+}
+
 /**
- * Rank two attempts: fewer over-budget rows wins; ties break on lower total measured ms, so a
- * genuinely faster run is preferred over a marginally-less-bad one.
+ * Rank two attempts: fewer failed hard acceptance checks wins first, then fewer over-budget
+ * timings, with the lower measured total breaking remaining ties.
  */
 export function betterAttempt(a, b, budgets) {
   if (!a) return b;
   if (!b) return a;
+  const aa = failedAcceptanceRows(a.acceptance).length;
+  const ba = failedAcceptanceRows(b.acceptance).length;
+  if (aa !== ba) return aa < ba ? a : b;
   const oa = overBudgetRows(a.results, budgets).length;
   const ob = overBudgetRows(b.results, budgets).length;
   if (oa !== ob) return oa < ob ? a : b;
@@ -190,8 +199,8 @@ export function betterAttempt(a, b, budgets) {
 }
 
 /**
- * Run the render probe until an attempt clears every budget, or ATTEMPTS is exhausted; return the
- * best attempt seen, annotated with how many attempts it took.
+ * Run the render probe until timings, hard acceptance checks and harness notes are clean, or
+ * ATTEMPTS is exhausted; return the best attempt seen, annotated with how many attempts it took.
  */
 export async function runRenderProbeBestOf(budgets, {
   attempts = RENDER_ATTEMPTS,
@@ -200,9 +209,12 @@ export async function runRenderProbeBestOf(budgets, {
   let best = null;
   for (let i = 1; i <= attempts; i++) {
     const attempt = await run();
+    const acceptanceFailures = failedAcceptanceRows(attempt.acceptance);
     // `notes` means the probe could not produce a reading at all — a harness failure, not slowness.
     // Retrying it is legitimate for the same reason, but it must never be silently swallowed.
-    if (!overBudgetRows(attempt.results, budgets).length && !(attempt.notes || []).length) {
+    if (!overBudgetRows(attempt.results, budgets).length
+      && acceptanceFailures.length === 0
+      && !(attempt.notes || []).length) {
       return { ...attempt, attemptsUsed: i, attemptsAllowed: attempts };
     }
     best = betterAttempt(best, attempt, budgets);

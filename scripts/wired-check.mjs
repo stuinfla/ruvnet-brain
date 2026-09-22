@@ -246,6 +246,8 @@ const STANDALONE = [
  * small lie that hides a real gap. Held work is VISIBLE work.
  */
 const HELD = {
+  'source-tree': 'ADR-086 oracle-source-units/2 groundwork, not consumed by the current v1 oracle pipeline. Requires complete parser-adapter integration and source-bound inventory acceptance before activation; no production extraction-completeness claim.',
+  'unit-inventory': 'ADR-086 parser-independent v2 inventory core, currently exercised only by tests. Requires adapters for the declared source scope plus pipeline integration and failure-path qualification; cannot authorize a C3 pass.',
   'correction-detect': 'N3 lesson extraction. Re-measured 2026-07-23 on a reproducible held-out split '
     + 'of 1,328 real transcripts (scripts/correction-detect-measure.mjs): 5 real detector bugs fixed, '
     + 'corpus detections 2->8, ~50-100% precision at n=4 on the holdout. TWO measured findings now bound '
@@ -477,6 +479,26 @@ export function stripComments(src, ext) {
     .join('\n');
 }
 
+/** Source text cache whose lifetime is one audit call; never shared across invocations. */
+export function createInvocationSourceCache(readFile = fs.readFileSync) {
+  const text = new Map();
+  const uncommented = new Map();
+  const read = (file) => {
+    if (!text.has(file)) {
+      try { text.set(file, readFile(file, 'utf8')); } catch { text.set(file, null); }
+    }
+    return text.get(file);
+  };
+  const commentFree = (file) => {
+    if (!uncommented.has(file)) {
+      const src = read(file);
+      uncommented.set(file, src === null ? null : stripComments(src, path.extname(file)));
+    }
+    return uncommented.get(file);
+  };
+  return { read, commentFree };
+}
+
 /**
  * ── THE THIRD STATE (ADR-056, 2026-07-27) ────────────────────────────────────────────────────────
  * DEFINING an npm script is not INVOKING it. `package.json` line 35 defines `doc:currency` as a
@@ -533,7 +555,7 @@ export function npmScriptsNaming(pkgSrc, modFile) {
  * Automated means: npm itself runs it (a lifecycle name), or some file — a workflow, a shell hook,
  * or another composite npm script — invokes it by name.
  */
-export function npmScriptAutomated(names, files, repo = REPO) {
+export function npmScriptAutomated(names, files, repo = REPO, sourceCache = createInvocationSourceCache()) {
   for (const n of names) {
     if (NPM_AUTO_LIFECYCLE.has(n)) return { automated: true, via: `npm lifecycle (\`${n}\` is run by npm itself)` };
   }
@@ -542,36 +564,35 @@ export function npmScriptAutomated(names, files, repo = REPO) {
     const re = new RegExp(`(?:npm|pnpm|yarn|npm-run-all|run-s|run-p)\\s+(?:run\\s+)?${esc(n)}(?![\\w:-])`);
     for (const f of files) {
       const rel = path.relative(repo, f).split(path.sep).join('/');
-      let src = '';
-      try { src = fs.readFileSync(f, 'utf8'); } catch { continue; }
+      const src = sourceCache.commentFree(f);
+      if (src === null) continue;
       // A composite script in package.json ("test:all": "npm run test:unit && …") IS automation.
-      if (re.test(stripComments(src, path.extname(f)))) return { automated: true, via: `${rel} runs \`${n}\`` };
+      if (re.test(src)) return { automated: true, via: `${rel} runs \`${n}\`` };
     }
   }
   return { automated: false, via: null };
 }
 
 /** Count REAL callers. Tests excluded deliberately: all seven failures had passing tests. */
-export function callersOf(mod, files, repo = REPO) {
+export function callersOf(mod, files, repo = REPO, sourceCache = createInvocationSourceCache()) {
   const re = callerPattern(mod.file);
   const hits = [];
   for (const f of files) {
     const rel = path.relative(repo, f).split(path.sep).join('/');
     if (rel === mod.rel) continue;              // self
     if (isTestFile(rel)) continue;              // a test is not a caller
-    let src = '';
-    try { src = fs.readFileSync(f, 'utf8'); } catch { continue; }
-    if (re.test(stripComments(src, path.extname(f)))) hits.push(rel);
+    const src = sourceCache.commentFree(f);
+    if (src !== null && re.test(src)) hits.push(rel);
   }
   return hits;
 }
 
-export function operationalExportAudit({ repo = REPO, required = REQUIRED_OPERATIONAL_EXPORTS } = {}) {
+export function operationalExportAudit({ repo = REPO, required = REQUIRED_OPERATIONAL_EXPORTS,
+  sourceCache = createInvocationSourceCache() } = {}) {
   const files = callerFiles(repo);
   const rows = required.map(({ rel, symbol }) => {
     const sourceFile = path.join(repo, rel);
-    let source = '';
-    try { source = fs.readFileSync(sourceFile, 'utf8'); } catch { /* reported as missing below */ }
+    const source = sourceCache.read(sourceFile) || '';
     const quoted = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const exported = new RegExp(`\\bexport\\s+(?:async\\s+)?function\\s+${quoted}\\s*\\(`).test(source);
     if (!exported) return { rel, symbol, state: 'missing', callers: [] };
@@ -581,8 +602,8 @@ export function operationalExportAudit({ repo = REPO, required = REQUIRED_OPERAT
     for (const file of files) {
       const callerRel = path.relative(repo, file).split(path.sep).join('/');
       if (isTestFile(callerRel)) continue;
-      let body = '';
-      try { body = stripComments(fs.readFileSync(file, 'utf8'), path.extname(file)); } catch { continue; }
+      let body = sourceCache.commentFree(file);
+      if (body === null) continue;
       body = body.replace(declaration, 'export function __operational_definition__(');
       if (invocation.test(body)) callers.push(callerRel);
     }
@@ -592,7 +613,8 @@ export function operationalExportAudit({ repo = REPO, required = REQUIRED_OPERAT
 }
 
 export function audit({ repo = REPO, standalone = STANDALONE, held = HELD,
-  operationalExports = REQUIRED_OPERATIONAL_EXPORTS } = {}) {
+  operationalExports = REQUIRED_OPERATIONAL_EXPORTS, readFile = fs.readFileSync, sourceCache = null } = {}) {
+  const invocationSource = sourceCache ?? createInvocationSourceCache(readFile);
   const dupes = [];
   const seen = new Map();
   for (const [name, why] of standalone) {
@@ -605,16 +627,15 @@ export function audit({ repo = REPO, standalone = STANDALONE, held = HELD,
   for (const m of all) {
     if (seen.has(m.base)) { rows.push({ ...m, state: 'exempt', why: seen.get(m.base) }); continue; }
     if (held[m.base]) { rows.push({ ...m, state: 'held', why: held[m.base] }); continue; }
-    const callers = callersOf(m, files, repo);
+    const callers = callersOf(m, files, repo, invocationSource);
     let state = callers.length ? 'wired' : 'unwired';
     let why;
     // ADR-056: callers that are ONLY the package.json line defining the script are not automation.
     if (callers.length && callers.every((c) => c === 'package.json')) {
-      let pkgSrc = '';
-      try { pkgSrc = fs.readFileSync(path.join(repo, 'package.json'), 'utf8'); } catch { /* none */ }
+      const pkgSrc = invocationSource.read(path.join(repo, 'package.json')) || '';
       const names = npmScriptsNaming(pkgSrc, m.file);
       if (names.length) {
-        const auto = npmScriptAutomated(names, files, repo);
+        const auto = npmScriptAutomated(names, files, repo, invocationSource);
         if (!auto.automated) {
           state = 'manual';
           const list = names.map((n) => `\`${n}\``).join(', ');
@@ -626,7 +647,7 @@ export function audit({ repo = REPO, standalone = STANDALONE, held = HELD,
     }
     rows.push({ ...m, state, callers, ...(why ? { why } : {}) });
   }
-  const operationalRows = operationalExportAudit({ repo, required: operationalExports }).rows;
+  const operationalRows = operationalExportAudit({ repo, required: operationalExports, sourceCache: invocationSource }).rows;
   return { rows, operationalRows, dupes, inventory: all.length };
 }
 
@@ -736,8 +757,11 @@ const HOOK_HELD = {
 };
 
 /** Read+JSON.parse a file. null on ANY failure (missing, unreadable, malformed) — never throws. */
-function readJsonSafe(file) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+function readJsonSafe(file, sourceCache) {
+  try {
+    const src = sourceCache ? sourceCache.read(file) : fs.readFileSync(file, 'utf8');
+    return src === null ? null : JSON.parse(src);
+  } catch { return null; }
 }
 
 /** Every `command` string inside a hooks.json / settings.json shaped `{ hooks: {...} }` document. */
@@ -775,10 +799,10 @@ function codexHookIdIn(cmd) {
  * (`codex-hook-wrapper.mjs`). Both names plus the actual copy operation must be present; otherwise
  * there is no proven bridge and the hook stays unwired.
  */
-function installedCodexHookWrapper(repo) {
-  let src = '';
-  try { src = fs.readFileSync(path.join(repo, 'bin/install.mjs'), 'utf8'); } catch { return null; }
-  const stripped = stripComments(src, '.mjs');
+function installedCodexHookWrapper(repo, sourceCache) {
+  const src = sourceCache.read(path.join(repo, 'bin/install.mjs'));
+  if (src === null) return null;
+  const stripped = sourceCache.commentFree(path.join(repo, 'bin/install.mjs'));
   const source = stripped.match(/hookWrapperSource\s*=\s*path\.join\([\s\S]{0,240}?['"]([\w.-]+\.mjs)['"]\)/)?.[1];
   const target = stripped.match(/const codexHookWrapperPath[\s\S]{0,260}?['"]([\w.-]+\.mjs)['"]\)/)?.[1];
   const copiesSource = /fs\.copyFileSync\(hookWrapperSource,\s*tmp\)/.test(stripped);
@@ -786,9 +810,9 @@ function installedCodexHookWrapper(repo) {
 }
 
 /** hook-shim.mjs's own dispatch TABLE: id -> file. Parsed, not re-implemented — it IS the authority. */
-function hookShimTable(repo) {
-  let src = '';
-  try { src = fs.readFileSync(path.join(repo, 'plugin/scripts/hook-shim.mjs'), 'utf8'); } catch { return {}; }
+function hookShimTable(repo, sourceCache) {
+  const src = sourceCache.read(path.join(repo, 'plugin/scripts/hook-shim.mjs'));
+  if (src === null) return {};
   const map = {};
   const re = /'([\w-]+)':\s*{\s*file:\s*'([\w.-]+)'/g;
   let m; while ((m = re.exec(src))) map[m[1]] = m[2];
@@ -813,6 +837,7 @@ export function hookWiringAudit({
   repo = REPO,
   homeSettingsFile = path.join(os.homedir(), '.claude', 'settings.json'),
   held = HOOK_HELD,
+  sourceCache = createInvocationSourceCache(),
 } = {}) {
   const retirementFiles = [
     path.join(repo, 'plugin/hooks/hooks.json'),
@@ -821,7 +846,7 @@ export function hookWiringAudit({
     path.join(repo, '.codex/hooks.json'),
   ];
   const automaticHooksConstrained = retirementFiles.every((file) => {
-    const doc = readJsonSafe(file);
+    const doc = readJsonSafe(file, sourceCache);
     if (!doc?.hooks) return false;
     const packageRegistry = file.endsWith('/plugin/hooks/hooks.json') || file.endsWith('/plugin/hooks/codex-hooks.json');
     const rows = Object.entries(doc.hooks).flatMap(([event, groups]) => (groups ?? []).flatMap((group) =>
@@ -832,8 +857,8 @@ export function hookWiringAudit({
         && rows.every((row) => isAllowedContinuityRegistration({ ...row, host }))
       : rows.length === 0;
   });
-  const table = hookShimTable(repo);
-  const codexWrapper = installedCodexHookWrapper(repo);
+  const table = hookShimTable(repo, sourceCache);
+  const codexWrapper = installedCodexHookWrapper(repo, sourceCache);
   const reached = new Map(); // basename -> Set(reason)
   const add = (name, reason) => {
     if (!name) return;
@@ -842,7 +867,7 @@ export function hookWiringAudit({
   };
 
   const scanConfig = (file, label, { codex = false } = {}) => {
-    const doc = readJsonSafe(file);
+    const doc = readJsonSafe(file, sourceCache);
     if (!doc || !doc.hooks) return;
     for (const cmd of commandStrings(doc.hooks)) {
       const basenames = basenamesIn(cmd);
@@ -867,11 +892,11 @@ export function hookWiringAudit({
   for (let i = 0; i < 10; i++) {
     let changed = false;
     for (const from of [...reached.keys()]) {
-      let src = ''; try { src = fs.readFileSync(path.join(scriptsDir, from), 'utf8'); } catch { continue; }
-      const stripped = stripComments(src, path.extname(from));
+      const src = sourceCache.commentFree(path.join(scriptsDir, from));
+      if (src === null) continue;
       for (const cand of all) {
         if (reached.has(cand)) continue;
-        if (callerPattern(cand).test(stripped)) { add(cand, `spawned by plugin/scripts/${from}`); changed = true; }
+        if (callerPattern(cand).test(src)) { add(cand, `spawned by plugin/scripts/${from}`); changed = true; }
       }
     }
     if (!changed) break;
@@ -880,7 +905,8 @@ export function hookWiringAudit({
   const rows = [];
   for (const f of all) {
     if (HOOK_PLUMBING_NAMES.has(f)) continue; // plumbing, not a hook body — never part of the census
-    let src = ''; try { src = fs.readFileSync(path.join(scriptsDir, f), 'utf8'); } catch { continue; }
+    const src = sourceCache.read(path.join(scriptsDir, f));
+    if (src === null) continue;
     const declared = hookHeaderDeclares(src);
     const isReached = reached.has(f);
     if (!declared && !isReached) continue; // not hook-intended at all — outside the census
@@ -904,10 +930,10 @@ export function hookWiringAudit({
  * to this audit — and Check C would then depend on an unrelated dead case label merely coexisting in
  * the file to report it correctly, which breaks the moment that dead label is ever cleaned up.
  */
-function lessonHooksRequestedTriggers(repo) {
-  let src = '';
-  try { src = fs.readFileSync(path.join(repo, 'plugin/scripts/lesson-hooks.sh'), 'utf8'); } catch { return new Set(); }
-  const stripped = stripComments(src, '.sh');
+function lessonHooksRequestedTriggers(repo, sourceCache) {
+  const src = sourceCache.read(path.join(repo, 'plugin/scripts/lesson-hooks.sh'));
+  if (src === null) return new Set();
+  const stripped = sourceCache.commentFree(path.join(repo, 'plugin/scripts/lesson-hooks.sh'));
   const requested = new Set();
   const re = /TRIGGERS="([^"]*)"/g;
   let m;
@@ -921,8 +947,9 @@ function lessonHooksRequestedTriggers(repo) {
  * CHECK C — LESSON-TRIGGER WIRING. See the file-level comment above for the full reasoning
  * (advisory-only, deliberately, because the store is per-user/per-machine state outside this repo).
  */
-export function lessonTriggerAudit({ repo = REPO, lessonsFile = undefined } = {}) {
-  const requested = lessonHooksRequestedTriggers(repo);
+export function lessonTriggerAudit({ repo = REPO, lessonsFile = undefined,
+  sourceCache = createInvocationSourceCache() } = {}) {
+  const requested = lessonHooksRequestedTriggers(repo, sourceCache);
   const lessons = loadLessons(lessonsFile);
   const live = lessons.filter((l) => !l.demoted && (l.status === STATUS.RATIFIED || l.status === STATUS.ACTIVE));
   const labelOf = (trigger) => Object.values(TRIGGERS).find((t) => t.key === trigger)?.label || trigger;
@@ -936,17 +963,18 @@ const invokedDirectly = process.argv[1]
   && path.resolve(process.argv[1]).endsWith(`wired-check${path.extname(process.argv[1])}`);
 
 if (invokedDirectly) {
-  const { rows, operationalRows, dupes, inventory } = audit();
+  const sourceCache = createInvocationSourceCache();
+  const { rows, operationalRows, dupes, inventory } = audit({ sourceCache });
   const by = (s) => rows.filter((r) => r.state === s);
   const unwired = by('unwired');
   const operationalUnwired = operationalRows.filter((row) => row.state !== 'wired');
 
-  const hookAudit = hookWiringAudit();
+  const hookAudit = hookWiringAudit({ sourceCache });
   const hookBy = (s) => hookAudit.rows.filter((r) => r.state === s);
   const hookUnwired = hookBy('unwired');
   const hookRetired = hookBy('retired');
 
-  const lessonAudit = lessonTriggerAudit();
+  const lessonAudit = lessonTriggerAudit({ sourceCache });
 
   if (!argv.includes('--quiet')) {
     console.log(`\n  ${inventory} first-party module(s) in the inventory`);

@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-12
+updated: 2026-09-22
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -136,6 +136,7 @@ committed config).
 
 ## Currency log
 
+| 2026-09-22 | Currency review after tonight's `LEDGER.md`-governed edit (a night-22 enforcement-integrity reconciliation of this very PR — rebuilt on current `main` `5f39481f` and pushed to this branch rather than opened as a new PR, per tonight's backlog-reduction priority: zero of the ~20 `dream/*` PRs opened 2026-09-07 through 2026-09-21 have merged). Decision unchanged. | 5f39481f |
 | 2026-09-12 | Currency review after tonight's `LEDGER.md`/`dream.config.json`-governed edit (a night-12 enforcement-integrity reconciliation, see LEDGER.md row); decision unchanged. Separately: on 2026-09-07 ~18:48 UTC a bulk close landed on ~20+ open `dream/*` PRs without merging (confirmed via GitHub MCP, not assumed) — `autoMerge: false` was never at risk (closing without merging cannot promote a candidate), but it is the first observed instance of the review backlog being cleared by closure rather than merge or supersession, worth the owner's awareness for future bulk-review passes. | 8888a88 |
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 

@@ -9,6 +9,7 @@ const transaction = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction
 const provider = fs.readFileSync(path.join(ROOT, 'scripts/release-transaction-provider.mjs'), 'utf8');
 const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/protected-release.yml'), 'utf8');
 const producer = fs.readFileSync(path.join(ROOT, 'scripts/publication-receipt.mjs'), 'utf8');
+const hostMatrix = fs.readFileSync(path.join(ROOT, 'scripts/host-install-matrix.mjs'), 'utf8');
 const publicLane = fs.readFileSync(path.join(ROOT, 'scripts/public-verification-lane.mjs'), 'utf8');
 const finalizer = fs.readFileSync(path.join(ROOT, 'scripts/public-verification-finalizer.mjs'), 'utf8');
 
@@ -74,8 +75,25 @@ describe('publication receipt wiring', () => {
     expect(producer, 'the mode list must be derived, not restated').toContain('HOST_MODES');
     expect(producer).toContain("[installer, '--doctor', '--hooks']");
     expect(producer).toContain('stageVerifiedBundle({ bundlePath, bundleSha256, packageRoot })');
-    expect(position(producer, 'searched.set(host.mode, await searchInstalledHost(host, DEADLINE_MS)'))
+    expect(position(producer, 'runMeasuredHostSearches(hostResults, searchInstalledHost, {'))
       .toBeLessThan(position(producer, "await commandAsync(process.execPath, [installer, '--doctor', '--hooks']"));
+  });
+
+  it('keeps only one installed search worker active through host verification', () => {
+    expect(producer).toContain('runMeasuredHostSearches(hostResults, searchInstalledHost, {');
+    expect(producer).toContain('warmup: async ({ mode, context }) =>');
+    expect(producer).toContain('after: async ({ mode }) =>');
+    expect(producer).toContain('if (mode !== \'dual\')');
+    expect(producer).toContain('only one model-backed MCP worker can consume resources at a time');
+  });
+
+  it('bounds the install smoke to one source-cited result from the Brain self store', () => {
+    expect(hostMatrix).toContain("export const SELF_STORE_PROOF_QUERY = 'repo:ruvnet-brain What is the RuvNet Brain release evidence workflow?'");
+    expect(hostMatrix).toContain('export const SELF_STORE_PROOF_K = 1');
+    expect(producer).toContain('SELF_STORE_PROOF_QUERY');
+    expect(producer).toContain('SELF_STORE_PROOF_K');
+    expect(producer).toContain('/repo\\s*=\\s*ruvnet-brain/i.test(result.stdout)');
+    expect(producer).toContain('installed Brain ${phase} failed for ${mode} after ${timeoutMs}ms');
   });
 
   it('does not downgrade the accepted dual-host native nightly proof', () => {

@@ -3,9 +3,9 @@ id: ADR-084
 title: The three user invariants — complete-and-current corpus, enforced hooks, an end-user console
 status: Proposed
 date: 2026-09-12
-updated: 2026-09-12
-version: 1.0.1
-reviewed_digest: PENDING
+updated: 2026-09-19
+version: 1.0.2
+reviewed_digest: 408b9639999d
 authors: [Stuart Kerr, Claude]
 tags: [product, corpus, hooks, console, north-star, invariants]
 supersedes: []
@@ -84,9 +84,13 @@ and visible — never silently absorbed into a `status: CURRENT` word that does 
 `release-projection.mjs` stamps `CURRENT` on every seeded row regardless of drift (a known, accepted,
 separately-tracked gap in ADR-0069's amendment).
 
-**Command:** `node scripts/source-coverage.mjs --check` exits 0 only when every eligible row is
-CURRENT by the `sourceCommit` test, with observedAt within the freshness bound. It exits non-zero and
-NAMES every non-current row otherwise — no row is ever silently dropped from the count.
+**Current command:** `node scripts/source-coverage.mjs --check` recomputes the live observation
+and detects projection or eligibility-policy drift; `--strict` additionally rejects eligible rows
+that are not CURRENT. Policy v2 includes archives, classifies forks by evidence of original content,
+records evidence-bound exclusions, and includes gist observations. Its drift diagnostics name rows.
+The check reuses recorded `observedAt` when comparing projections, so it does **not** enforce an
+age bound. A fresh observation and an independently enforced maximum age remain required to satisfy
+this proposed invariant; a successful check alone does not establish complete-and-current delivery.
 
 **Mechanism (nightly, unattended, no human GO):** ADR-085 found that the publish mechanism for this
 already exists — built, unit-tested, and never wired into a live workflow
@@ -125,12 +129,16 @@ sufficient. The additional bar this ADR sets: a fixture turn matching the RuvNet
 no `search_ruvnet` call, must be **caught before the turn ends** — on every host the plugin claims to
 support — or the plugin must not claim that host.
 
-**Known gap this ADR names, not yet closed as of this writing:** `decision-gate` and
+**Historical gap identified on 2026-09-12 (not a current registry census):** `decision-gate` and
 `grounding-stamp` — the only two hooks in the plane capable of altering an outcome — are registered
 `['claude']` only. `ground-ruvnet` is registered `['claude', 'codex']` but is advisory-only on both:
 it cannot block a plain-text answer, only `decision-gate` can block a file write. Closing this gap
 (Codex parity for the real gate, and a Stop-time check for the assert-without-searching case) is
 in-flight work this ADR governs going forward; it is not yet Implemented.
+
+The September 19 capacity-aware parallel-work hook is advisory context. It does not satisfy the
+structural enforcement invariant and does not prove that workers were launched. Registration and
+focused hook tests do not substitute for per-host turn acceptance.
 
 **Grok CLI is out of scope until researched.** `tri-smart-skill/` already installs a *skill* to Grok
 (engaged only when the model chooses to invoke it); whether Grok CLI has any *hook* mechanism
@@ -148,6 +156,9 @@ not yet wired to do so.
 the default flow iff a customer, not the product's own developer, would use it to decide something);
 `console/scope.html` / `/api/scope`, which answers the single question a customer actually asks — "is
 the thing rUv just shipped in here" — sorted by recency, searchable by name and by what a repo does.
+
+The main console now mirrors a read-only named “What's in your brain” inventory. This improves
+visibility; it is not an editable scope choice or proof that corpus freshness is guaranteed.
 
 **Command:** none is purely mechanical here by nature (this invariant is partly a judgment about
 audience, not only a data check) — but `tests/unit/console-index-structure.test.mjs` pins the
@@ -175,5 +186,9 @@ reading the rendered page as a first-time customer, not as the maintainer, is st
 - The console's default view is measured against a customer's question, not a maintainer's checklist.
 
 ## Currency log
+
+| 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest 408b9639999d. | `docs/ddd/0021-corpus-supply-chain-context.md`, `scripts/source-coverage.mjs`, `console/scope.html`; source consistency review only, no new deployment or acceptance claim. |
+
+| 2026-09-19 | Reconciled source-policy-v2 eligibility and current check semantics, the read-only named console inventory, and advisory capacity guidance. Freshness-age enforcement, live structural hook proof, nightly customer delivery, and complete invariant acceptance remain unproven; Proposed status retained. | Reviewed current governed-source diffs; this row records source consistency, not renewed runtime acceptance. |
 | 2026-09-12 | **Downgraded Accepted → Proposed.** Dual verification (Fable 5.1 scribe + Codex/Astra verifier, both re-reading cited source directly) found 4 blocking + 10 major/minor defects, synthesized with no surviving disagreement. Blocking, this document: Invariant 1's named command (`source-coverage.mjs --check`) does not actually enforce universal currency or a freshness bound, and prints a count not names even under `--strict` (S3); Invariant 1's mechanism is delegated entirely to ADR-085, which itself has 2 blocking defects, so accepting this ADR accepted an unreachable publish path (S14); this ADR and ADR-085 directly contradict each other on whether `release-authority.mjs`'s canonical-publisher set may grow (S4); `governs:` names two files that do not exist and the wrong path for `codex-hooks.json` (S5). Major: Invariants 2 and 3 have no real PASS/FAIL command despite the claim (S11); the "57-row" gap is misattributed — ADR-0069 records 63 mismatched-SHA-under-CURRENT rows and a separate 57 UNVERIFIED rows; this document conflated them (S12). None of this invalidates the three invariants as a *statement of what matters*; it invalidates the claim that each is *already* mechanically checkable today. Full defect list preserved in the session record; revision owed before re-acceptance. | Dual verification pass, 2026-09-12, reading `scripts/source-coverage.mjs:419-432`, `scripts/release-authority.mjs:10-13`, `docs/adr/0069-source-coverage-contract.md:244-250`, `plugin/scripts/continuity-hook-policy.mjs:76-94` directly. |
 | 2026-09-12 | Initial acceptance (superseded same day by the row above — kept for the record, not the current status). | This document; the incident measured 2026-09-12 across the corpus staleness, the Codex hook asymmetry, and the console's maintainer-card placement. |

@@ -17,6 +17,7 @@ import path from 'node:path';
 
 import {
   exactIdentifiers,
+  exactMemberIndexPresence,
   identifierBoost,
   identifierCandidates,
   identifierEvidence,
@@ -74,6 +75,19 @@ describe('exactIdentifiers — only rare, exact tokens, because each one costs a
 });
 
 describe('identifierScan — the store that CONTAINS the identifier, not the one whose name it spells', () => {
+  it('checks an exact requested member only in routed stores and requires token boundaries', () => {
+    const dir = bundle({
+      ruvector: [{ path: 'src/lib.rs', title: 'Store', text: 'impl RvfStore { fn query(vector: Vec<f32>) {} fn telepathicquantumsync() {} }' }],
+      unrelated: [{ path: 'README.md', title: 'Question echo', text: 'telepathicQuantumSync is only mentioned here.' }],
+    });
+    expect(exactMemberIndexPresence(dir, ['ruvector'], 'telepathicQuantumSync'))
+      .toEqual({ present: false, scannedRepos: ['ruvector'] });
+    fs.writeFileSync(path.join(dir, 'ruvector.passages.jsonl'), JSON.stringify({
+      id: '1', path: 'src/lib.rs', text: 'impl RvfStore { fn telepathicQuantumSync(&self) {} }',
+    }) + '\n');
+    expect(exactMemberIndexPresence(dir, ['ruvector'], 'telepathicQuantumSync').present).toBe(true);
+  });
+
   it('routes to the store holding the literal, not the substring match in the identifier itself', () => {
     const dir = bundle({
       agentdb: [{ path: 'ui/agents/swarm-memory-manager.md', title: 'Swarm memory manager', text: 'A swarm memory manager for agent coordination and hive-mind state.' }],
@@ -93,6 +107,16 @@ describe('identifierScan — the store that CONTAINS the identifier, not the one
     expect(candidate.path).toBe('CHANGELOG.md');
     expect(candidate._lane).toBe('rescue');
     expect(candidate._exactIdentifier.defining).toBeGreaterThan(0);
+  });
+
+  it('matches PascalCase source symbols after exact identifiers are normalized', () => {
+    const dir = bundle({ ruvector: [{
+      path: 'src/rvf-store.ts', title: 'RVF store',
+      text: 'export class RvfStore { query(vector) { return vector; } }',
+    }] });
+    const identifiers = exactIdentifiers('How do I call RvfStore.query()?');
+    expect(identifiers).toContain('rvfstore');
+    expect(identifierScan(dir, identifiers, { maxRepos: 2 }).repos).toContain('ruvector');
   });
 });
 
