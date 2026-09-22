@@ -8,7 +8,7 @@ const workflow = () => read('.github/workflows/protected-release.yml');
 const seedWorkflow = () => read('.github/workflows/corpus-seed.yml');
 
 const CODE_JOBS = ['identity', 'verified-candidate', 'seal-payload', 'publish', 'public-verification', 'finalize-public-verification'];
-const CORPUS_JOBS = ['corpus-identity', 'corpus-prepare', 'corpus-no-change', 'corpus-authorize', 'corpus-publish'];
+const CORPUS_JOBS = ['corpus-identity', 'corpus-prepare', 'corpus-no-change', 'corpus-authorize', 'corpus-publish', 'corpus-terminal-outcome'];
 
 /**
  * Comments stripped, exactly as scripts/release-authority.mjs:16-23 does before it looks for
@@ -44,7 +44,7 @@ describe('protected-release corpus chain (ADR-086 steps 9 + 17)', () => {
       expect(blocks[job], `${job} must be skipped in corpus mode`).toContain("if: inputs.mode != 'corpus'");
     }
     for (const job of CORPUS_JOBS) {
-      expect(blocks[job], `${job} must run only in corpus mode`).toContain("if: inputs.mode == 'corpus'");
+      expect(blocks[job], `${job} must run only in corpus mode`).toContain("inputs.mode == 'corpus'");
     }
   });
 
