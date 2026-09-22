@@ -156,6 +156,6 @@ jobs:
             echo '### protected corpus outcome monitoring'
             echo ''
             echo "- target run: [$run_id]($run_url)"
-            echo '- completion: recorded asynchronously by corpus-release-outcome'
-            echo '- failure, cancellation, or timeout: preserved as a red outcome run and reported by ntfy-alerts'
+            echo '- completion: recorded by the protected child's always-running corpus-terminal-outcome job'
+            echo '- failure, cancellation, or timeout: preserved by the child's terminal artifact and reported by ntfy-alerts'
           } >> "$GITHUB_STEP_SUMMARY"
