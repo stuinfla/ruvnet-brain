@@ -21,6 +21,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { FULL_HINTS, KEEP_DIRS } from './full-hints.mjs';
 import { storeRoot } from '../kb/store-root.mjs';
+import { repositoryNames } from '../kb/card-lane.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
@@ -102,11 +103,20 @@ const ok = fs.existsSync(path.join(KB, `${kb}.big.rvf`))
 // cannot reach it. 26 of 66 stores are in exactly that state. The 2026-08-12 incident (three repos
 // ingested, all reporting success, none findable) was read as a path bug; the path was only half of
 // it. A store with no card is BUILT AND DARK, and saying "searchable" of it is the product lying.
+// ALIAS-AWARE, BECAUSE THE ROUTER IS (kb/store-root.mjs's darkStores(), same fix). A raw heading
+// match against `kb` alone reports DARK for a store only reachable through an alias card — e.g.
+// `metaharness` is built as `metaharness.big.rvf` but described under `## agent-harness-generator`.
+// That exact false positive once caused a DUPLICATE `## metaharness` card to be hand-added, which
+// collided with the alias card and broke routing outright (see kb/store-root.mjs's own account).
+// This CLI is where a user/agent decides whether to write a new card off this message, so it is
+// the highest-leverage place to get alias resolution right.
 const carded = (() => {
+  let headings;
   try {
-    return new RegExp(`^##\\s+${kb}\\s*$`, 'im')
-      .test(fs.readFileSync(path.join(KB, 'capability-cards.md'), 'utf8'));
+    const raw = fs.readFileSync(path.join(KB, 'capability-cards.md'), 'utf8');
+    headings = [...raw.matchAll(/^##\s+(\S+)\s*$/gm)].map((m) => m[1].toLowerCase());
   } catch { return false; }
+  return repositoryNames(kb, KB).some((name) => headings.includes(String(name).toLowerCase()));
 })();
 // AN ARTIFACT WITH NO COMMITTED RECIPE IS NOT DURABLE WORK — it is a local side effect with a
 // countdown on it. Proven overnight 2026-08-13 -> 08-14: a scheduled bundle apply extracted an
