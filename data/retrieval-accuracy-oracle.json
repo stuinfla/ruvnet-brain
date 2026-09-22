@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-retrieval-accuracy-oracle",
-  "oracleVersion": "corpus-wide/2026-09-14",
-  "note": "Corpus-wide C3 oracle (ADR-086 step 14). Every span is a verbatim contiguous substring of the upstream git blob named by blobSha at the partition's pinned sourceCommit — never of the candidate's own passage sidecars. Sources with no prose anywhere upstream are declared in emptySources with a complete upstream blob inventory as independent evidence.",
+  "oracleVersion": "corpus-wide/2026-09-22",
+  "note": "Corpus-wide C3 oracle (ADR-086 step 14). Every span is a verbatim contiguous substring of the upstream git blob named by blobSha at the partition's pinned sourceCommit — never of the candidate's own passage sidecars. Sources with no prose anywhere upstream are declared in emptySources with a complete upstream blob inventory as independent evidence. Coverage extended on 2026-09-22 for the newly shipped mcp-studio repository store and the independently receipt-bound concepts derived store; ai-browse remains independently verified empty at its pinned source commit.",
   "partitions": [
     {
       "partition": "yyz-agentics-june",
@@ -1167,6 +1167,18 @@
       "kind": "gist",
       "store": "ruv-gists",
       "sourceCommit": "8232f42b02a166a81ddace139564283d6dc753e4"
+    },
+    {
+      "partition": "mcp-studio",
+      "kind": "repository",
+      "store": "mcp-studio",
+      "sourceCommit": "1de79b28e679ea39937df54586cc9bdcffdf4cdc"
+    },
+    {
+      "partition": "concepts",
+      "kind": "derived",
+      "store": "concepts",
+      "sourceCommit": "5f39481ff7190d8d40ad4ff5273b68c15b9e3841"
     }
   ],
   "labels": [
@@ -6353,6 +6365,60 @@
       "sourcePath": "2-Response.md",
       "blobSha": "2ac1087a89d28b32fe21376c16f14900380fc0cf",
       "unitSha256": "b1664d02c1f1aaab1e0fc230d21a97c496d8df4aad3dbc4eb55ece9d1ee372ed"
+    },
+    {
+      "id": "mcp-studio-001",
+      "partition": "mcp-studio",
+      "question": "What kind of starter is MCP Studio, and how do the site and embedded widget relate to its MCP server?",
+      "span": "A generic web based ChatGPT plugin starter. The site and the embedded widget share one real MCP server.",
+      "sourcePath": "README.md",
+      "blobSha": "87a813ccf6f1c75182bd74400deb3c002747e719",
+      "unitSha256": "47b538da5507d796ae812b7da1371fec2799a9d1271920d91bc61a2fd78d791c"
+    },
+    {
+      "id": "mcp-studio-002",
+      "partition": "mcp-studio",
+      "question": "How many read-only tools does MCP Studio expose, and what do they return?",
+      "span": "The server exposes 12 read only tools. Two render MCP Apps. Ten return structured data for catalog search, schema validation, context budgeting, workflow planning, resource discovery, security review, estimates, examples, and templates.",
+      "sourcePath": "README.md",
+      "blobSha": "87a813ccf6f1c75182bd74400deb3c002747e719",
+      "unitSha256": "47b538da5507d796ae812b7da1371fec2799a9d1271920d91bc61a2fd78d791c"
+    },
+    {
+      "id": "mcp-studio-003",
+      "partition": "mcp-studio",
+      "question": "What must be added before MCP Studio expands beyond harmless examples?",
+      "span": "Add per user authorization, durable storage, distributed rate limits, and audit trails before expanding beyond harmless examples.",
+      "sourcePath": "README.md",
+      "blobSha": "87a813ccf6f1c75182bd74400deb3c002747e719",
+      "unitSha256": "47b538da5507d796ae812b7da1371fec2799a9d1271920d91bc61a2fd78d791c"
+    },
+    {
+      "id": "concepts-001",
+      "partition": "concepts",
+      "question": "Which technologies does the RuView concepts synthesis say are integrated for sensing and cognitive storage?",
+      "span": "RuView integrates CSI for pose estimation, utilizes ESP32 sensors for data capture, employs WiFi-DensePose for enhanced pose detection through dual-modal sensing, and leverages RVF cognitive containers for efficient data management and processing.",
+      "sourcePath": "ruview/L2/ruview-s-core-concepts",
+      "blobSha": "12c35dd06f8b6fda8a1a33d0b5f8c3ca15683576",
+      "unitSha256": "c07f0da2f6a32fedff9c24c6d3f8ab4df73ccde3537d3d202bae76740973fe48"
+    },
+    {
+      "id": "concepts-002",
+      "partition": "concepts",
+      "question": "How does the RuView concepts synthesis describe WiFi-DensePose pose estimation?",
+      "span": "WiFi-DensePose is a specific application within RuView that combines WiFi CSI data with video input to perform pose estimation.",
+      "sourcePath": "ruview/L2/ruview-s-core-concepts",
+      "blobSha": "12c35dd06f8b6fda8a1a33d0b5f8c3ca15683576",
+      "unitSha256": "c07f0da2f6a32fedff9c24c6d3f8ab4df73ccde3537d3d202bae76740973fe48"
+    },
+    {
+      "id": "concepts-003",
+      "partition": "concepts",
+      "question": "What does the concepts store say RVF cognitive containers package?",
+      "span": "These containers include different segment types such as vectors, models, and other resources that facilitate the processing and storage of CSI data and learned representations.",
+      "sourcePath": "ruview/L2/ruview-s-core-concepts",
+      "blobSha": "12c35dd06f8b6fda8a1a33d0b5f8c3ca15683576",
+      "unitSha256": "c07f0da2f6a32fedff9c24c6d3f8ab4df73ccde3537d3d202bae76740973fe48"
     }
   ],
   "emptySources": [
@@ -6363,7 +6429,7 @@
     }
   ],
   "seal": {
-    "labelsSha256": "32451cef5e6c9e688a5ce4afab457ce11dc65a9a4840619faf95002c43dfe83f",
-    "partitionsSha256": "c7692a51cab270b6efc716f95bc1aa4a445dfbf91d88f5514377f5e7b07c28a2"
+    "labelsSha256": "bea6f35b62630ab1e8ad2746a8985770b426581213bd261cb642ce265dbec469",
+    "partitionsSha256": "ed8a4386a08db45527d36b8c4e2fe31a77acf113e7589026ea645f8006e9fcfd"
   }
 }
