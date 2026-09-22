@@ -3,7 +3,8 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-09-20
+reviewed_digest: b4cad563f5c1
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -135,6 +136,8 @@ bootstrap prompt (recommended over a frozen prompt, so the schedule can never dr
 committed config).
 
 ## Currency log
+
+| 2026-09-20 | Reviewed (digest `b4cad563f5c1`, recorded as this document's `reviewed_digest:`) after PR #294 (Dream Cycle 2026-09-17, enforcement-integrity) merged three days of upstream `main` into its branch and, resolving a merge conflict in the generated `data/convergence-manifest.json` (regenerated via `npm run convergence:write`, never hand-edited), moved `docs/dream-cycle/LEDGER.md` past this ADR's last-reviewed commit. Read against current `dream.config.json`, `docs/dream-cycle/LEDGER.md` and `tests/unit/dream-config.test.mjs`: no decision in this ADR is contradicted by their current content. | Referents: `docs/dream-cycle/LEDGER.md`; PR #294; merge commit `c43aa3e1`. |
 
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
