@@ -68,6 +68,31 @@ describe('corpus nightly dispatcher (ADR-086 step 18)', () => {
     expect(source).toContain('dispatched-run.json');
   });
 
+
+  it('does not hold a second runner open while the protected child completes', () => {
+    const source = executable(read(DISPATCHER));
+    expect(source).not.toContain('while (( SECONDS - started');
+    expect(source).not.toContain('target-run-status.json');
+    expect(source).not.toContain('sleep 30');
+    expect(source).toContain("recorded by the protected child's always-running corpus-terminal-outcome job");
+  });
+
+  it('preserves success/failure/cancellation/timeout visibility without polling', () => {
+    const source = read(DISPATCHER);
+    const notifier = read('.github/workflows/ntfy-alerts.yml');
+    const protectedRelease = read('.github/workflows/protected-release.yml');
+    expect(source).toContain('target run: [$run_id]($run_url)');
+    expect(notifier).toContain('"protected-release"');
+    expect(protectedRelease).toContain('corpus-terminal-outcome:');
+    expect(protectedRelease).toContain("if: always() && inputs.mode == 'corpus'");
+    expect(protectedRelease).toContain('name: corpus-release-outcome-${{ github.run_id }}-${{ github.run_attempt }}');
+    expect(protectedRelease).toContain('retention-days: 90');
+    expect(() => read('.github/workflows/corpus-release-outcome.yml')).toThrow();
+    expect(notifier).toContain('types: [completed]');
+    expect(notifier).toContain('[ "$WR_CONC" = "success" ] && exit 0');
+    expect(notifier).toContain('TITLE="🔴 CI ${WR_CONC}: ${WR_NAME}"');
+  });
+
   it('records the dispatch against the exact candidate it dispatched', () => {
     const source = read(DISPATCHER);
     expect(source).toContain('node scripts/corpus-dispatch-receipt.mjs');
