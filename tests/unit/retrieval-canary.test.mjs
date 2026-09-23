@@ -11,6 +11,7 @@ import {
   buildRetrievalCanaryPlan,
   runRetrievalCanaries,
   sealRetrievalQueryEvidence,
+  validateRetrievalQueryEvidence,
   validateRetrievalCanaryPlan,
   validateRetrievalCanaryReceipt,
   validatePlanAgainstCoverage,
