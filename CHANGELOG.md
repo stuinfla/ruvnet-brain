@@ -20,7 +20,21 @@ public installation verification:
 - Retrieval qualification checks source support and process success. Historical routing/citation
   scores are not described as answer accuracy. A frozen operational oracle records corpus gaps.
 
-Current 4.3.28 candidate (not yet published):
+4.3.28 was published to npm and GitHub but did not complete public installation verification.
+Its Mac Claude-only lane reported seven trailing retrieval cases as unknown; it remains
+`PUBLISHED_NOT_VERIFIED` until explicitly closed and is not being represented as a successful release.
+
+Current 4.3.29 repair candidate (not yet published):
+
+- Natural-language repository scope is a hard retrieval boundary, preventing identifier discovery
+  from widening a named repository search. The public 30-second search limit now applies to every
+  acceptance canary, not only the initial smoke query.
+- The retrieval oracle remains bound to the exact 182-store public seed. The separate upstream
+  inventory contains 194 eligible repositories, but 12 corresponding vector stores are not present
+  in the pinned release seed. This release does not claim those stores were published; they require
+  a separately qualified corpus-seed publication.
+
+4.3.28 candidate changes retained below:
 
 - Inline cross-encoder inference uses a two-thread ONNX budget by default, with
   `CE_INTRA_OP_THREADS` as an operator override. The model, candidate set and ranking policy are

@@ -310,9 +310,9 @@ export async function runHostMatrixAsync({
         warmupGrounding, error: `MCP search grounding unproven for ${context.mode}` };
       let receipt;
       if (retrieval) {
-        receipt = await runRetrievalCanaries({ ...retrieval,
-          search: async ({ query, k }) => {
-            const result = await searchMcp({ mode: context.mode, serverPath, env: context.env, query, k });
+        receipt = await runRetrievalCanaries({ ...retrieval, searchTimeoutMs: RELEASE_SEARCH_DEADLINE_MS,
+          search: async ({ query, k, timeoutMs }) => {
+            const result = await searchMcp({ mode: context.mode, serverPath, env: context.env, query, k, timeoutMs });
             if (result.error || result.status !== 0) throw new Error(`canary MCP search failed: ${processDiagnostic(result)}`);
             return parseRetrievalResult(result.mcpResult, { query, k });
           },

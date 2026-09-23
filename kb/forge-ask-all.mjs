@@ -3270,12 +3270,13 @@ async function searchAllPrimary({
     // was never opened. A literal scan says exactly which stores carry the identifiers (measured
     // 4.17 s over 466 MB, cached per process), so the route is WIDENED by that evidence. Widened,
     // never narrowed: whatever the cards chose is still searched.
-    // An explicit `repo:<name>` selector is a hard source boundary. The identifier lane normally
-    // widens a natural-language route when an exact token appears in another store, but doing that
-    // for an explicit selector violates the caller's scope and can multiply cross-encoder work for
-    // no benefit (for example, `repo:ruvnet-brain` plus the word `RuvNet`).
-    const explicitRepoDirective = /\brepo:[a-z0-9._-]+\b/i.test(String(query || ''));
-    if (identifierScanTokens.length && planned.repos.length && !explicitRepoDirective) {
+    // An explicit `repo:<name>` selector and a natural-language project scope are both hard source
+    // boundaries. The identifier lane normally widens a natural-language route when an exact token
+    // appears in another store, but doing that violates the user's named scope and can multiply
+    // cross-encoder work without improving repository identity.
+    const hardRepoBoundary = /\brepo:[a-z0-9._-]+\b/i.test(String(query || ''))
+      || planned.naturalProjectScope === true;
+    if (identifierScanTokens.length && planned.repos.length && !hardRepoBoundary) {
       deadline?.enter('identifier-scan');
       const scan = identifierScan(dir, identifierScanTokens, { maxRepos: 2 });
       const added = scan.repos.filter((repo) => discovered.includes(repo) && !planned.repos.includes(repo));

@@ -11,6 +11,7 @@ import {
   buildRetrievalCanaryPlan,
   runRetrievalCanaries,
   sealRetrievalQueryEvidence,
+  validateRetrievalQueryEvidence,
   validateRetrievalCanaryPlan,
   validateRetrievalCanaryReceipt,
   validatePlanAgainstCoverage,
@@ -228,6 +229,23 @@ describe('coverage-derived retrieval canaries', () => {
     expect(() => validateRetrievalCanaryReceipt(unknown, { plan })).toThrow(/acceptance/);
   });
 
+  it('forwards the release search deadline to every canary query', async () => {
+    const plan = buildRetrievalCanaryPlan({ ...fixture(), legacySampleSize: 4 });
+    const deadlines = [];
+    await runRetrievalCanaries({ plan, sourceSha, artifactSha256,
+      candidateArchiveSha256: plan.candidate.archiveSha256, searchTimeoutMs: 30_000,
+      search: async ({ query, timeoutMs }) => {
+        deadlines.push({ query, timeoutMs });
+        const expected = plan.cases.find((row) => row.query === query).expected;
+        return [{ repo: expected.repo, path: expected.path }];
+      },
+      citationResolver: async (_matched, expected) => ({ resolved: true,
+        evidence: { passageSha256: expected.passageSha256, passageFileSha256: 'e'.repeat(64) } }),
+    });
+    expect(deadlines).toHaveLength(plan.cases.length);
+    expect(deadlines.every(({ timeoutMs }) => timeoutMs === 30_000)).toBe(true);
+  });
+
   it('rejects a contradictory no-delta declaration even when its digest is resealed', () => {
     const plan = buildRetrievalCanaryPlan(fixture());
     const { planSha256: _old, ...payload } = { ...plan, noDelta: true };
@@ -441,18 +459,11 @@ describe('independent oracle coverage inventory', () => {
 
   it('holds the shipping oracle to the shipping coverage denominator', () => {
     const root = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
-    const coverage = JSON.parse(fs.readFileSync(path.join(root, 'data/source-coverage.json'), 'utf8'));
     const queryEvidence = JSON.parse(fs.readFileSync(path.join(root, 'data/retrieval-query-evidence.json'), 'utf8'));
-    const report = auditOracleCoverage({ coverage, queryEvidence });
-    expect(report.missing).toEqual([]);
-    expect(report.extra).toEqual([]);
-    expect(report.covered).toBe(report.eligible);
-    // Not a tautology: these are the exact numbers ADR-085's F9 reported as 182 of 194.
-    expect(report.eligible).toBe(194);
-    for (const store of ['apx', 'batvu', 'event-horizon', 'group-field-theory', 'minitoo-control',
-      'moe-foundry', 'openavo', 'rgi', 'ruclip', 'ruforecast', 'rultra', 'ruos']) {
-      expect(queryEvidence.queries[store].expected.path).toBe('README.md');
-    }
+    // This is the exact public seed's oracle, not the newer upstream inventory. Release QE
+    // independently rejects any mismatch against the candidate archive's actual store set.
+    expect(Object.keys(queryEvidence.queries)).toHaveLength(182);
+    expect(validateRetrievalQueryEvidence(queryEvidence)).toBe(queryEvidence);
   });
 
   // THE FAILURE THIS EXISTS TO END. The oracle is sealed in two commits: one writes the payload,

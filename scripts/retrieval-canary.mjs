@@ -594,7 +594,7 @@ export function validateRetrievalCanaryReceipt(receipt, { plan, requireAcceptanc
 }
 
 export async function runRetrievalCanaries({ plan, sourceSha, artifactSha256, candidateArchiveSha256,
-  search, citationResolver, concurrency = 3 } = {}) {
+  search, citationResolver, concurrency = 3, searchTimeoutMs = null } = {}) {
   validateRetrievalCanaryPlan(plan);
   if (!HEX40.test(String(sourceSha || '')) || !HEX64.test(String(artifactSha256 || ''))
     || !HEX64.test(String(candidateArchiveSha256 || '')) || sourceSha !== plan.candidate.sourceSha
@@ -609,7 +609,8 @@ export async function runRetrievalCanaries({ plan, sourceSha, artifactSha256, ca
     for (let index = next++; index < plan.cases.length; index = next++) {
       const canary = plan.cases[index];
       try {
-        const rows = resultRows(await search({ query: canary.query, k: 10 }));
+        const rows = resultRows(await search({ query: canary.query, k: 10,
+          ...(Number.isFinite(searchTimeoutMs) && searchTimeoutMs > 0 ? { timeoutMs: searchTimeoutMs } : {}) }));
         const top = rows.slice(0, 10);
         const rank = top.findIndex((row) => String(row?.repo || '').toLowerCase() === canary.expected.repo
           && expectedSources(canary.expected).some((source) => row?.path === source.path));
