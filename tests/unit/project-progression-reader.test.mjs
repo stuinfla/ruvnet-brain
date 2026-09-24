@@ -182,4 +182,53 @@ describe('canonical progression reader', () => {
     expect(() => withProgressionReader(file, (reader) => reader.listKeys(NAMESPACE)))
       .toThrow(/duplicate progression key/);
   });
+
+  it('NEVER WRITES, measured: a resting WAL store gains no -wal/-shm sidecars from a read', () => {
+    // A real canonical memory.db runs in WAL mode. `fixtureStore` above defaults to node:sqlite's
+    // own "delete" journal mode, so it never exercises this path — this fixture opts in explicitly
+    // and then checkpoints+truncates, the documented signature of "no writer holds this open".
+    const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
+    const file = path.join(temporaryRoot(), 'memory.db');
+    const database = new DatabaseSync(file);
+    database.exec('PRAGMA journal_mode=WAL;');
+    database.exec(`CREATE TABLE memory_entries (
+      id TEXT PRIMARY KEY, key TEXT, namespace TEXT, content TEXT, type TEXT, embedding BLOB,
+      embedding_model TEXT, embedding_dimensions INTEGER, tags TEXT, metadata TEXT, owner_id TEXT,
+      created_at INTEGER, updated_at INTEGER, expires_at INTEGER, last_accessed_at INTEGER,
+      access_count INTEGER, status TEXT, provenance_type TEXT)`);
+    database.prepare('INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?, ?, ?, ?, ?)')
+      .run('entry_0', 'alpha', NAMESPACE, '{"eventKey":"alpha"}', null);
+    database.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+    database.close();
+    expect(fs.existsSync(`${file}-wal`), 'fixture must start resting').toBe(false);
+    expect(fs.existsSync(`${file}-shm`), 'fixture must start resting').toBe(false);
+
+    const reader = openProgressionReader(file);
+    try {
+      expect(reader.listKeys(NAMESPACE)).toEqual(['alpha']);
+      expect(reader.readContent(NAMESPACE, 'alpha')).toBe('{"eventKey":"alpha"}');
+    } finally { reader.close(); }
+
+    // THE INVARIANT under test: a read-only restore path must leave no new files next to a store it
+    // does not own. Measured on this Node build (v22 node:sqlite): plain `readOnly: true` vivifies
+    // both as a side effect of establishing WAL-index shared memory for the reader.
+    expect(fs.existsSync(`${file}-wal`)).toBe(false);
+    expect(fs.existsSync(`${file}-shm`)).toBe(false);
+  });
+
+  it('stands down rather than trust an immutable read once a writer arrives mid-read', () => {
+    const file = fixtureStore([{ key: 'alpha', content: '{"eventKey":"alpha"}' }]);
+    const reader = openProgressionReader(file);
+    // Simulate a writer opening the store between this reader's open and its next query, using the
+    // exact signature this module (and memory-doctor.mjs) trusts: sidecar presence.
+    fs.writeFileSync(`${file}-wal`, '');
+    fs.writeFileSync(`${file}-shm`, '');
+    try {
+      expect(() => reader.listKeys(NAMESPACE)).toThrow(/writer opened the store mid-read/);
+    } finally {
+      fs.rmSync(`${file}-wal`, { force: true });
+      fs.rmSync(`${file}-shm`, { force: true });
+      reader.close();
+    }
+  });
 });
