@@ -76,8 +76,19 @@ tip, re-fetched, not assumed).
 - `npm run eval:gate`: not applicable (diagnostic probe, not retrieval quality) and independently
   blocked anyway — `no brain at /root/.cache/ruvnet-brain/kb`, unchanged every night since
   2026-08-19. `LLM_EVAL=blocked`.
-- `npx vitest run tests/integration`: running; full result recorded in the committed report and
-  PR body once complete (see Evaluation Receipt).
+- `npx vitest run tests/integration`: 9 failed files/23 failed tests/38 passed files/4 skipped of
+  51 (407 tests: 323 passed/16 skipped/45 todo) on the candidate, reproduced identically on
+  unmodified `main` (see PR #322's Evaluation Receipt for the full comparison method).
+
+## Post-push CI (caught and fixed mid-session, not hidden)
+
+After opening PR #322, this repo's `qualify-development`/`canonical-qa` checks went red on every
+push — root-caused via `get_job_logs`, not assumed: `release-source-identity` failed with
+`[convergence] manifest is stale; run npm run convergence:write`, because this branch's own new
+files (the test file, this report, the ledger row) changed the tracked source tree without
+regenerating `data/convergence-manifest.json`. Fixed by running `npm run convergence:write`,
+verified by rerunning `node scripts/release-qualification.mjs --suite source` locally end-to-end
+(374/374 tests PASS) before pushing the fix.
 
 ## Darwin
 
