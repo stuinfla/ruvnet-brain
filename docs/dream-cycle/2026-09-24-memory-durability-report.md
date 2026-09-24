@@ -85,6 +85,28 @@ Not run — no continuous parameter to evolve for a discrete "which mechanism, i
 this probe" check; same precedent as every prior memory-durability night (#142/143 through
 #296/#300).
 
+## Reward-Hack Check / Independent Critic
+
+No benchmark, gold answer, scoring weight, or threshold touched — `git diff main...HEAD --stat`
+touches exactly `scripts/onboarding-console.mjs`, the new test file, and this
+report/`LEDGER.md`. The fix strictly ADDS a second, independently-real `ok` path; it cannot
+introduce a false negative in the already-correct legacy-hook case (explicitly tested).
+
+**Independent adversarial critic** (fresh `general-purpose` agent, not this candidate's author,
+working from the checked-out branch with no access to this session's own claims) — verdict
+**CLEAR**. It independently reproduced TEETH itself (reverted the production file, ran the test:
+4/8 red, matching the claimed pre-fix behavior; restored: 8/8 green), confirmed the diff touches
+no benchmark/gold/threshold file, confirmed `sessionHookExists`/`pluginEnabled` have exactly one
+call site repo-wide (`probeMemory()` at line 541) with no other reader broken by the return-type
+change (boolean → string|null), confirmed `pluginEnabled()`'s `k.startsWith('ruvnet-brain@')`
+pattern is genuinely reused verbatim from `capability-registry.mjs:267` (not invented), confirmed
+no new filesystem/network access (same `CONSOLE_ROOT`/`.claude/settings.json` trust boundary
+`wiringSurvey()` already reads), and read all 8 test cases directly, confirming each asserts a
+specific `status`/`via` pair rather than a tautology. One disclosed, non-blocking residual risk
+carried over unchanged from #296's own critic: a stale or copied `settings.json` claiming the
+plugin enabled would misreport `ok` even if the actual hook files are absent — the same trust
+level as the pre-existing `agentdb-ensure.sh` file-existence check, not a regression.
+
 ## Next steps (concrete)
 
 1. The owner should review and merge (or reject) this consolidated PR, then close #296 and #300 —
