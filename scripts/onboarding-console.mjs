@@ -448,8 +448,31 @@ function wiringSurvey() {
 }
 
 // ── Memory health (read-only probes for the project the console was launched from) ────────────────
+// Dream Cycle 2026-09-18 (memory-durability, round-trip-proof): this used to also pass on ANY
+// `.claude/hooks` directory existing, so a machine whose hooks folder holds only an unrelated
+// script (a different plugin, a stale leftover) scored `sessionSurfacing: ok` and printed "the
+// global SessionStart hook surfaces project state at launch" — a claim about a hook that was never
+// installed. Only the specific recall hook's presence can support that claim.
+//
+// Dream Cycle 2026-09-19 (memory-durability, managed-boundary): the fix above still checked only
+// the LEGACY standalone `agentdb-ensure.sh` global hook. It ignored the mechanism this very repo
+// ships and documents as the automatic one — `plugin/hooks/hooks.json`'s own SessionStart entry,
+// which every session restores via `project-progression-session-start.mjs` (wired through
+// `session-start-core.mjs`) whenever the `ruvnet-brain` plugin itself is enabled. A machine that
+// installed this plugin the real, current way (Claude Code's marketplace flow) and never separately
+// placed the legacy global shell hook scored `sessionSurfacing: warn` — a false negative, flagged
+// as an open scope question by PR #296's independent critic, not chased there to keep that change
+// to one conceptual fix. `pluginEnabled()` mirrors the exact `k.startsWith('ruvnet-brain@')` check
+// `capability-registry.mjs`'s `wiredForRoute()` already uses for the same "is our plugin the one
+// Claude Code will actually load" question, rather than re-deriving a second way to ask it.
+function pluginEnabled() {
+  const settings = readJSON(path.join(CONSOLE_ROOT, '.claude', 'settings.json'));
+  return Object.entries(settings?.enabledPlugins || {}).some(([k, v]) => k.startsWith('ruvnet-brain@') && v === true);
+}
 function sessionHookExists() {
-  return fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks/agentdb-ensure.sh')) || fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks'));
+  if (fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks/agentdb-ensure.sh'))) return 'agentdb-ensure';
+  if (pluginEnabled()) return 'ruvnet-brain-plugin';
+  return null;
 }
 // WHICH FILE IS THE PROJECT'S MEMORY STORE IS NOT A CONSTANT (issue #127).
 //
@@ -515,7 +538,12 @@ function probeMemory(projectDir, { now = Date.now() } = {}) {
   probes.compactionSurvival = snapshot.fresh
     ? { status: 'ok', detail: snapshotDetail, artifact: snapshot.kind }
     : { status: 'warn', detail: snapshotDetail, artifact: snapshot.kind };
-  probes.sessionSurfacing = sessionHookExists() ? { status: 'ok', detail: 'the global SessionStart hook surfaces project state at launch' } : { status: 'warn', detail: 'no SessionStart recall hook found' };
+  const sessionHookVia = sessionHookExists();
+  probes.sessionSurfacing = sessionHookVia === 'agentdb-ensure'
+    ? { status: 'ok', detail: 'the global SessionStart hook surfaces project state at launch', via: sessionHookVia }
+    : sessionHookVia === 'ruvnet-brain-plugin'
+      ? { status: 'ok', detail: 'the ruvnet-brain plugin\'s own SessionStart hook surfaces project state at launch', via: sessionHookVia }
+      : { status: 'warn', detail: 'no SessionStart recall hook found', via: null };
   // recall quality: honestly NOT probed at render (a true probe needs an embedding query; left for an explicit deep test)
   probes.recallQuality = { status: 'notTested', detail: 'not checked this session — a real recall probe needs an embedding round-trip, which render deliberately avoids' };
 
