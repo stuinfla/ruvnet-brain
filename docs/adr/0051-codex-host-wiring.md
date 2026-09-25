@@ -3,8 +3,8 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-09-20
-reviewed_digest: 55563231cc8b
+updated: 2026-09-25
+reviewed_digest: 4aa936dafaeb
 version: 1.1.6
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
@@ -295,6 +295,7 @@ These source observations do not establish native Windows or public installed-ho
 
 ## Currency log
 
+| 2026-09-25 | **The stranger-project-behaviour release gate proved this ADR's §1/§4 wiring on zero of its five images.** Dream Cycle 2026-09-25 (cross-host-conformance DEEP, stranger-project-behaviour SCAN): `scripts/ci/stranger-scenario.mjs`'s `healthy` scenario builds a virgin `HOME_DIR` for every stranger image and never seeds `~/.codex` inside it, so `wireCodexHost()` (§1) always takes its `{host:false,action:'no-host'}` early return there — reproduced locally via the exact `npm pack` → `npm install <tarball>` → driver invocation `.github/workflows/stranger-matrix.yml` uses: `--doctor --hooks` prints "Codex: no host detected (no ~/.codex) — nothing to wire" and the scenario still reports `PASS`. Confirmed this is a live false-green, not merely an untested path: with `plugin/mcp/server.mjs` deleted from the same installed tarball (simulating #43's exact failure mode), the unpatched driver still exits 0. Same failure shape as the 2026-07-26 Addendum below — a wiring path proven only where the file happens to exist — this time in the CI gate meant to catch exactly that, not in the npm `files` whitelist. Fix: seed `~/.codex` before the `healthy` install and assert `codexStatus()` (§4's own `wired`/`serverExists` facts) plus the installed hook-bridge file's existence, reusing existing exported functions rather than re-implementing what "wired" means; `codexHookWrapperPath` (previously module-private) is now exported for this caller, zero behavior change. Re-verified red→green on the real evaluator: candidate FAILs on the broken-Codex fixture, PASSes on the genuinely healthy one; `seeded-broken`/`strict-ungrounded` scenarios byte-unchanged. Reviewed the 5 commits touching this ADR's `governs:` paths since the 2026-09-19 rows below (`cf6467c` version-only, `597056e` already covered by the 2026-09-20 review quote above, `d4a7b7b` touches only the unrelated grounding-smoke question in `smokeQuery()`, `a6a7bc4` already covered by the 09-19 capacity-aware-parallel-work row, `12f8bf1` a recovery-commit restoration of already-reviewed content) — none change §1-8's decisions. reviewed_digest 4aa936dafaeb. | `scripts/ci/stranger-scenario.mjs`, `bin/install.mjs` (`codexHookWrapperPath` export only). PR: dream/2026-09-25-cross-host-conformance-stranger-codex-wiring. |
 | 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest 55563231cc8b. | `bin/install.mjs`, `.codex/config.toml`, `.codex/hooks.json`; source consistency review only, no new deployment or acceptance claim. |
 
 | 2026-09-19 | Source review: installer now validates corpus-only release identity/assets and installed runtime health. Codex hook registry includes capacity-aware-parallel-work advisory context. The advisory neither launches workers nor grants authority; host wiring and stable entrypoints are unchanged. Historical host proof is not renewed by this review. | Reviewed current governed-source diffs; this row records source consistency, not renewed runtime acceptance. |
