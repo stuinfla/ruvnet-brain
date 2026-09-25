@@ -164,6 +164,16 @@ const dropMcp = SCENARIO === 'seeded-broken';
 const fixtureDir = buildKbFixture({ dropMcp, noRvf: false });
 stageLocalBundle(fixtureDir, INSTALLED);
 
+// Codex-parity (stranger-project-behaviour scan, 2026-09-25 finding): a virgin HOME with no
+// ~/.codex makes wireCodexHost() (bin/install.mjs) take its `{host:false, action:'no-host'}` early
+// return, so on every one of the 5 stranger images the ENTIRE Codex MCP+hook-bridge wiring path ran
+// zero times — invisible here because this driver only ever asserted the Claude-side registries
+// (automaticHookRetirementStatus / claudeInstalledHookRetirementStatus). `--doctor` on an unpatched
+// virgin home says so itself: "Codex: no host detected (no ~/.codex) — nothing to wire." Only the
+// `healthy` scenario gets a second host seeded — `seeded-broken`/`strict-ungrounded` assert exit
+// codes unrelated to Codex and are left byte-unchanged.
+if (SCENARIO === 'healthy') fs.mkdirSync(path.join(HOME_DIR, '.codex'), { recursive: true });
+
 const strictEnv = SCENARIO === 'strict-ungrounded' ? { RUVNET_STRICT_INSTALL: '1' } : {};
 const install = runInstaller(
   ['--local', '--no-stack', '--no-enhance', '--no-statusline', '--no-telemetry', '--no-nightly-prompt'],
@@ -197,6 +207,20 @@ if (SCENARIO === 'healthy') {
 
   if (fs.existsSync(authorSettings)) fail('installer must never create an author-local settings.json in a virgin image');
   log('OK — no author-local ~/.claude/settings.json in this virgin image');
+
+  // Codex-parity: prove the second host's wiring actually ran, using the exact functions
+  // wireCodexHost() itself returns/depends on — not a re-implementation of what "wired" means.
+  const codexDir = path.join(HOME_DIR, '.codex');
+  // codexStatus()'s own `configPath` default does NOT derive from a passed-in `codexDir` (unlike
+  // wireCodexHost()'s) — every other caller in this repo (tests/unit/codex-wiring.test.mjs,
+  // tests/unit/npm-tarball-codex.test.mjs, tests/qe/release/packed-clean-install.test.mjs) already
+  // knows this and passes both; matching that convention here.
+  const codex = installedApi.codexStatus({ codexDir, configPath: path.join(codexDir, 'config.toml') });
+  if (!codex.host) fail('Codex host was seeded (~/.codex created) but codexStatus() still reports host:false');
+  if (!codex.wired || !codex.serverExists) fail(`Codex MCP server not wired: ${JSON.stringify(codex)}`);
+  const hookBridge = installedApi.codexHookWrapperPath(codexDir);
+  if (!fs.existsSync(hookBridge)) fail(`Codex hook bridge missing after install: ${hookBridge}`);
+  log(`OK — Codex host wired (server ${codex.serverPath}) and hook bridge installed at ${hookBridge}`);
 } else {
   // seeded-broken / strict-ungrounded: the whole point is a non-zero exit.
   //

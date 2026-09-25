@@ -1433,7 +1433,11 @@ const CODEX_BLOCK_END = '# --- end ruvnet-brain ---';
 const codexHomeDir = () => process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 const codexConfigPath = () => path.join(codexHomeDir(), 'config.toml');
 const codexServerDir = () => path.join(os.homedir(), '.claude', 'ruvnet-brain', 'mcp');
-const codexHookWrapperPath = (codexDir = codexHomeDir()) =>
+// Exported (2026-09-25): the stranger-project-behaviour gate (scripts/ci/stranger-scenario.mjs)
+// needs the same return-contract path callers already depend on (see the comment at wireCodexHost's
+// call site) to prove the hook bridge actually landed on a virgin Codex host, not just that
+// wireCodexHost() ran without throwing.
+export const codexHookWrapperPath = (codexDir = codexHomeDir()) =>
   path.join(path.dirname(codexDir), '.cache', 'ruvnet-brain', 'codex-hook.mjs');
 
 // The exact bytes we own. Kept in one place so the writer and the doctor probe can never disagree.
