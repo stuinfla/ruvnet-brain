@@ -34,6 +34,7 @@ import { auditAll as capabilityAuditAll } from './capability-registry.mjs';
 import { getVersion } from './version.mjs';
 import { consoleRuntimeDigest } from './console-runtime-identity.mjs';
 import { isCorpusReleaseTag } from '../kb/corpus-release-identity.mjs';
+import { repositoryNames } from '../kb/card-lane.mjs';
 // L5 (ADR-028): the audit is the one place that observes live capability state, so it is where an
 // OFFERED-then-now-`on` transition becomes an APPLIED — the numerator of the precision metric that
 // tells the owner whether advocacy is landing or nagging. Both are pure reads/appends and never throw.
@@ -3286,7 +3287,7 @@ function scopeDesc(row, { isGist, store, gistId, gistSources, cards }) {
   return (store && cards?.get(String(store).toLowerCase())) || null;
 }
 
-function scopeRow(row, { generations, gistSources, installedStores, cards }) {
+function scopeRow(row, { generations, gistSources, installedStores, cards, root }) {
   const isGist = row.kind === 'gist';
   const store = row.artifact?.store ?? null;
   const ledger = store ? (generations?.stores?.[store] ?? null) : null;
@@ -3300,7 +3301,11 @@ function scopeRow(row, { generations, gistSources, installedStores, cards }) {
   const ruvChangedAt = (isGist ? row.upstream?.updatedAt : row.upstream?.committedAt) ?? null;
   const brainReadAt = row.artifact?.ingestedAt ?? ledger?.builtUtc ?? null;
 
-  let installed = Boolean(store) && installedStores.has(store);
+  // Alias-aware: the router resolves a store through repositoryNames() first (ADR-058/069;
+  // kb/store-root.mjs's darkStores(), scripts/source-coverage.mjs's artifactEvidence()), so a
+  // store installed on disk under an alias filename (kb/repo-aliases.json) must not read as
+  // "not in the brain" just because COVERAGE.json's canonical `artifact.store` differs from it.
+  let installed = Boolean(store) && repositoryNames(store, root).some((alias) => installedStores.has(alias));
   // With a gist receipt set present, a gist the set does not enumerate is not in the store.
   if (installed && isGist && gistSources?.gists && !(gistId in gistSources.gists)) installed = false;
 
@@ -3332,10 +3337,12 @@ function computeScope({ coverage, generations, gistSources, installedStores, roo
   const covered = new Set();
   for (const row of coverage.rows ?? []) {
     const kind = row.kind === 'gist' ? 'gists' : 'repos';
-    if (row.artifact?.store) covered.add(row.artifact.store);
+    // Alias-aware, same reason as scopeRow() below: an installed filename may be the alias, not
+    // the canonical `artifact.store` COVERAGE.json records, so every alias counts as covered.
+    if (row.artifact?.store) for (const alias of repositoryNames(row.artifact.store, root)) covered.add(alias);
     counts[kind].total += 1;
     if (row.disposition !== 'eligible') { counts[kind].ineligible += 1; continue; }
-    const r = scopeRow(row, { generations, gistSources, installedStores, cards });
+    const r = scopeRow(row, { generations, gistSources, installedStores, cards, root });
     counts[kind][r.bucket === 'not-in-brain' ? 'notInBrain' : r.bucket] += 1;
     out[kind].push(r);
   }
